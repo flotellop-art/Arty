@@ -9,6 +9,70 @@ interface ActionResult {
   screenshot?: string
 }
 
+interface IntentResponse {
+  action: string
+  params?: Record<string, string>
+}
+
+async function detectIntent(text: string): Promise<IntentResponse> {
+  const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY
+  if (!apiKey) return { action: 'none' }
+
+  const prompt = `Tu es un détecteur d'intention. Analyse le message utilisateur et retourne UNIQUEMENT un JSON (pas de texte autour).
+
+Actions possibles :
+- {"action":"open_app","params":{"app":"excel|word|chrome|navigateur|bloc-notes|notepad|calculatrice|paint|explorateur|wordpress"}}
+- {"action":"screenshot_pc"}
+- {"action":"read_emails"}
+- {"action":"list_drive"}
+- {"action":"search_price","params":{"product":"nom du produit"}}
+- {"action":"create_article"}
+- {"action":"none"}
+
+Règles :
+- "ouvre/lance/démarre/mets [app]" → open_app
+- "wordpress/wp/admin du site/blog" → open_app avec app=wordpress
+- "screenshot/capture/écran du pc/montre l'écran" → screenshot_pc
+- "emails/mails/courrier/boîte de réception" → read_emails
+- "drive/fichiers/documents google" → list_drive
+- "prix/tarif/coût chez fournisseur/combien coûte" → search_price
+- "article/publier/publication/blog/rédiger pour le site" → create_article
+- Sinon → none
+
+Message: "${text.replace(/"/g, '\\"')}"
+
+JSON:`
+
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 100,
+        messages: [{ role: 'user', content: prompt }],
+      }),
+    })
+
+    if (!res.ok) return { action: 'none' }
+
+    const data = await res.json()
+    const text_response = data.content?.[0]?.text || ''
+    const jsonMatch = text_response.match(/\{[^}]+\}/)
+    if (jsonMatch) {
+      return JSON.parse(jsonMatch[0])
+    }
+    return { action: 'none' }
+  } catch {
+    return { action: 'none' }
+  }
+}
+
 export async function detectAndRunAction(
   text: string,
   computer: ReturnType<typeof useComputer>,
@@ -16,94 +80,82 @@ export async function detectAndRunAction(
   gmail: ReturnType<typeof useGmail>,
   drive: ReturnType<typeof useDrive>,
 ): Promise<ActionResult> {
-  const lower = text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  const intent = await detectIntent(text)
 
-  // --- Computer Use: open app ---
-  const openMatch = lower.match(/ouvr\w*\s+(excel|wordpress|word|chrome|navigateur|bloc-notes|notepad|calculatrice|paint|explorateur)/)
-  if (openMatch) {
-    const app = openMatch[1]!
-    const result = await computer.openApp(app)
-    if (result?.success) {
+  switch (intent.action) {
+    case 'open_app': {
+      const app = intent.params?.app || ''
+      if (!app) return { handled: false }
+      const result = await computer.openApp(app)
+      if (result?.success) {
+        return {
+          handled: true,
+          context: `[Action exécutée avec succès] ${app} a été ouvert sur le PC de Florent. Un screenshot de l'écran est affiché ci-dessous. Confirme à Florent que c'est fait.`,
+          screenshot: result.screenshot,
+        }
+      }
       return {
         handled: true,
-        context: `[Action exécutée avec succès] ${app} a été ouvert sur le PC de Florent. Un screenshot de l'écran est affiché ci-dessous. Confirme à Florent que c'est fait.`,
-        screenshot: result.screenshot,
+        context: `[Action échouée] Impossible d'ouvrir ${app} : ${result?.error || 'PC non joignable.'}`,
       }
     }
-    return {
-      handled: true,
-      context: `[Action échouée] Impossible d'ouvrir ${app} : ${result?.error || 'PC non joignable. Vérifiez que start-all.bat est lancé.'}`,
-    }
-  }
 
-  // --- Computer Use: screenshot ---
-  if (lower.includes('screenshot') || (lower.includes('capture') && (lower.includes('ecran') || lower.includes('pc')))) {
-    const result = await computer.screenshot()
-    if (result?.success) {
+    case 'screenshot_pc': {
+      const result = await computer.screenshot()
+      if (result?.success) {
+        return {
+          handled: true,
+          context: `[Action exécutée avec succès] Screenshot de l'écran du PC capturé et affiché ci-dessous.`,
+          screenshot: result.screenshot,
+        }
+      }
       return {
         handled: true,
-        context: `[Action exécutée avec succès] Screenshot de l'écran du PC capturé et affiché ci-dessous.`,
-        screenshot: result.screenshot,
+        context: `[Action échouée] Impossible de capturer l'écran : ${result?.error || 'PC non joignable.'}`,
       }
     }
-    return {
-      handled: true,
-      context: `[Action échouée] Impossible de capturer l'écran : ${result?.error || 'PC non joignable.'}`,
-    }
-  }
 
-  // --- Gmail: read emails ---
-  if (lower.includes('email') && (lower.includes('lire') || lower.includes('lis') || lower.includes('mes email') || lower.includes('boite'))) {
-    const messages = await gmail.fetchMessages()
-    if (messages && messages.length > 0) {
-      const summary = messages.slice(0, 10).map((m, i) =>
-        `${i + 1}. **${m.from}** — ${m.subject}\n   _${m.snippet}_`
-      ).join('\n\n')
+    case 'read_emails': {
+      const messages = await gmail.fetchMessages()
+      if (messages && messages.length > 0) {
+        const summary = messages.slice(0, 10).map((m, i) =>
+          `${i + 1}. **${m.from}** — ${m.subject}\n   _${m.snippet}_`
+        ).join('\n\n')
+        return {
+          handled: true,
+          context: `[Emails récupérés] ${messages.length} emails non lus :\n\n${summary}`,
+        }
+      }
       return {
         handled: true,
-        context: `[Emails récupérés] ${messages.length} emails non lus :\n\n${summary}`,
+        context: messages && messages.length === 0
+          ? '[Emails récupérés] Aucun email non lu.'
+          : '[Erreur] Impossible de lire les emails. Vérifiez la connexion Google.',
       }
     }
-    return {
-      handled: true,
-      context: messages && messages.length === 0
-        ? '[Emails récupérés] Aucun email non lu.'
-        : '[Erreur] Impossible de lire les emails. Vérifiez la connexion Google.',
-    }
-  }
 
-  // --- Drive: search files ---
-  if (lower.includes('drive') || (lower.includes('fichier') && (lower.includes('cherch') || lower.includes('trouv') || lower.includes('list')))) {
-    const files = await drive.fetchFiles()
-    if (files && files.length > 0) {
-      const summary = files.slice(0, 15).map((f, i) =>
-        `${i + 1}. **${f.name}** (${f.mimeType.split('.').pop() || f.mimeType})`
-      ).join('\n')
+    case 'list_drive': {
+      const files = await drive.fetchFiles()
+      if (files && files.length > 0) {
+        const summary = files.slice(0, 15).map((f, i) =>
+          `${i + 1}. **${f.name}** (${f.mimeType.split('.').pop() || f.mimeType})`
+        ).join('\n')
+        return {
+          handled: true,
+          context: `[Google Drive] ${files.length} fichiers trouvés :\n\n${summary}`,
+        }
+      }
       return {
         handled: true,
-        context: `[Google Drive] ${files.length} fichiers trouvés :\n\n${summary}`,
+        context: files && files.length === 0
+          ? '[Google Drive] Aucun fichier trouvé.'
+          : '[Erreur] Impossible d\'accéder à Drive.',
       }
     }
-    return {
-      handled: true,
-      context: files && files.length === 0
-        ? '[Google Drive] Aucun fichier trouvé.'
-        : '[Erreur] Impossible d\'accéder à Drive. Vérifiez la connexion Google.',
-    }
-  }
 
-  // --- WordPress: create/publish article ---
-  if ((lower.includes('article') || lower.includes('publier') || lower.includes('publication')) && (lower.includes('wordpress') || lower.includes('blog') || lower.includes('site'))) {
-    return {
-      handled: true,
-      context: `[WordPress disponible] L'utilisateur veut créer ou publier un article sur facadespollet.fr. Tu as accès à WordPress via Playwright. Demande-lui le titre et le contenu de l'article. Une fois qu'il a validé le brouillon, tu pourras le publier. Propose-lui de rédiger l'article.`,
-    }
-  }
-
-  // --- Browser: price search ---
-  if (lower.includes('prix') && (lower.includes('cherch') || lower.includes('compar') || lower.includes('fournisseur'))) {
-    const product = text.replace(/.*prix\s*(de|du|des|pour)?\s*/i, '').trim()
-    if (product) {
+    case 'search_price': {
+      const product = intent.params?.product || ''
+      if (!product) return { handled: false }
       const result = await browserActions.searchPrices(product)
       if (result) {
         const table = result.results.map(r => `| ${r.source} | ${r.product} | ${r.price} |`).join('\n')
@@ -112,8 +164,17 @@ export async function detectAndRunAction(
           context: `[Recherche prix] Résultats pour "${result.query}" :\n\n| Fournisseur | Produit | Prix |\n|---|---|---|\n${table}`,
         }
       }
+      return { handled: false }
     }
-  }
 
-  return { handled: false }
+    case 'create_article': {
+      return {
+        handled: true,
+        context: `[WordPress disponible] L'utilisateur veut créer ou publier un article sur facadespollet.fr. Demande-lui le titre et le contenu. Propose-lui de rédiger l'article.`,
+      }
+    }
+
+    default:
+      return { handled: false }
+  }
 }
