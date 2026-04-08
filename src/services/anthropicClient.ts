@@ -1,17 +1,15 @@
 import { SYSTEM_PROMPT } from '../constants/systemPrompt'
 
-// Tool definitions for Claude
 const TOOLS = [
   {
     name: 'open_app',
-    description: "Ouvre une application sur le PC de Florent. Utilise cette action quand Florent demande d'ouvrir un logiciel ou un site.",
+    description: "Ouvre une application sur le PC de Florent.",
     input_schema: {
       type: 'object' as const,
       properties: {
         app: {
           type: 'string' as const,
           enum: ['excel', 'word', 'chrome', 'navigateur', 'wordpress', 'bloc-notes', 'notepad', 'calculatrice', 'paint', 'explorateur'],
-          description: "Nom de l'application à ouvrir",
         },
       },
       required: ['app'],
@@ -19,110 +17,88 @@ const TOOLS = [
   },
   {
     name: 'screenshot_pc',
-    description: "Prend un screenshot de l'écran du PC de Florent. Utilise quand il veut voir son écran ou vérifier quelque chose.",
-    input_schema: {
-      type: 'object' as const,
-      properties: {},
-    },
+    description: "Prend un screenshot de l'écran du PC.",
+    input_schema: { type: 'object' as const, properties: {} },
   },
   {
     name: 'read_emails',
-    description: 'Lit les 10 derniers emails non lus de Gmail de Florent.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {},
-    },
+    description: 'Lit les derniers emails non lus de Gmail.',
+    input_schema: { type: 'object' as const, properties: {} },
   },
   {
     name: 'list_drive',
-    description: 'Liste les fichiers récents sur Google Drive de Florent.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {},
-    },
-  },
-  {
-    name: 'search_price',
-    description: 'Recherche les prix chez les fournisseurs BTP (Point P, Gedimat).',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        product: {
-          type: 'string' as const,
-          description: 'Nom du produit à rechercher',
-        },
-      },
-      required: ['product'],
-    },
+    description: 'Liste les fichiers sur Google Drive.',
+    input_schema: { type: 'object' as const, properties: {} },
   },
   {
     name: 'read_drive_file',
-    description: "Lit le contenu d'un fichier sur Google Drive (PDF, Google Doc, texte, tableur). Utilise l'ID du fichier obtenu via list_drive.",
+    description: "Lit le contenu d'un fichier Drive (PDF, Doc, texte).",
     input_schema: {
       type: 'object' as const,
       properties: {
-        file_id: { type: 'string' as const, description: 'ID du fichier Google Drive' },
+        file_id: { type: 'string' as const, description: 'ID du fichier' },
       },
       required: ['file_id'],
     },
   },
   {
-    name: 'publish_wordpress',
-    description: "Publie un article sur le site facadespollet.fr. Utilise quand Florent demande de créer/publier un article. Rédige d'abord le contenu complet puis publie.",
+    name: 'search_price',
+    description: 'Recherche prix chez fournisseurs BTP.',
     input_schema: {
       type: 'object' as const,
       properties: {
-        title: { type: 'string' as const, description: "Titre de l'article" },
-        content: { type: 'string' as const, description: "Contenu HTML de l'article" },
-        status: { type: 'string' as const, enum: ['draft', 'publish'], description: 'Brouillon ou publication directe' },
+        product: { type: 'string' as const, description: 'Produit à chercher' },
+      },
+      required: ['product'],
+    },
+  },
+  {
+    name: 'publish_wordpress',
+    description: "Publie un article sur facadespollet.fr.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        title: { type: 'string' as const },
+        content: { type: 'string' as const },
+        status: { type: 'string' as const, enum: ['draft', 'publish'] },
       },
       required: ['title', 'content', 'status'],
     },
   },
   {
     name: 'click_on_pc',
-    description: 'Clique à des coordonnées précises sur l\'écran du PC. Utilise après un screenshot pour interagir.',
+    description: "Clique à des coordonnées sur l'écran du PC.",
     input_schema: {
       type: 'object' as const,
       properties: {
-        x: { type: 'number' as const, description: 'Coordonnée X' },
-        y: { type: 'number' as const, description: 'Coordonnée Y' },
+        x: { type: 'number' as const },
+        y: { type: 'number' as const },
       },
       required: ['x', 'y'],
     },
   },
   {
     name: 'type_on_pc',
-    description: 'Tape du texte sur le PC de Florent dans l\'application active.',
+    description: "Tape du texte sur le PC.",
     input_schema: {
       type: 'object' as const,
       properties: {
-        text: { type: 'string' as const, description: 'Texte à taper' },
+        text: { type: 'string' as const },
       },
       required: ['text'],
     },
   },
 ]
 
-interface ApiMessage {
-  role: 'user' | 'assistant'
-  content: string | ContentBlock[]
-}
-
-type ContentBlock =
-  | { type: 'text'; text: string }
-  | { type: 'image'; source: { type: 'base64'; media_type: string; data: string } }
-  | { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> }
-  | { type: 'tool_result'; tool_use_id: string; content: string }
+type ToolHandler = (name: string, input: Record<string, unknown>) => Promise<{ result: string; screenshot?: string }>
 
 interface StreamOptions {
   systemPrompt?: string
-  image?: string
-  onToolCall?: (name: string, input: Record<string, unknown>) => Promise<{ result: string; screenshot?: string }>
+  onToolCall?: ToolHandler
 }
 
 export function streamMessage(
-  messages: ApiMessage[],
+  messages: Array<{ role: string; content: string }>,
   onToken: (text: string) => void,
   onDone: () => void,
   onError: (error: Error) => void,
@@ -136,101 +112,95 @@ export function streamMessage(
     return controller
   }
 
-  const apiMessages = messages.map((m, i) => {
-    if (options?.image && i === messages.length - 1 && m.role === 'user') {
-      const base64Data = options.image.replace(/^data:image\/\w+;base64,/, '')
-      return {
-        role: m.role,
-        content: [
-          { type: 'image' as const, source: { type: 'base64' as const, media_type: 'image/png', data: base64Data } },
-          { type: 'text' as const, text: typeof m.content === 'string' ? m.content : '' },
-        ],
-      }
-    }
-    return { role: m.role, content: m.content }
-  })
-
-  doStream(apiKey, apiMessages, options, onToken, onDone, onError, controller)
+  runWithTools(apiKey, messages, onToken, onDone, onError, options, controller)
   return controller
 }
 
-async function doStream(
+async function runWithTools(
   apiKey: string,
-  messages: ApiMessage[],
-  options: StreamOptions | undefined,
+  originalMessages: Array<{ role: string; content: string }>,
   onToken: (text: string) => void,
   onDone: () => void,
   onError: (error: Error) => void,
+  options: StreamOptions | undefined,
   controller: AbortController
 ) {
   try {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true',
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 4096,
-        stream: false,
-        system: options?.systemPrompt || SYSTEM_PROMPT,
-        tools: TOOLS,
-        messages,
-      }),
-      signal: controller.signal,
-    })
+    // Build API messages (only text content from conversation history)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const apiMessages: any[] = originalMessages.map((m) => ({
+      role: m.role,
+      content: m.content,
+    }))
 
-    if (!response.ok) {
-      const body = await response.text().catch(() => '')
-      throw new Error(`Erreur API (${response.status}): ${body}`)
-    }
+    // Loop: call API, handle tools, repeat until no more tools
+    let maxIterations = 5
+    while (maxIterations > 0) {
+      maxIterations--
 
-    const data = await response.json()
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true',
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-6',
+          max_tokens: 4096,
+          system: options?.systemPrompt || SYSTEM_PROMPT,
+          tools: TOOLS,
+          messages: apiMessages,
+        }),
+        signal: controller.signal,
+      })
 
-    // Collect text and ALL tool_use blocks
-    let textContent = ''
-    const toolUseBlocks: Array<{ id: string; name: string; input: Record<string, unknown> }> = []
-
-    for (const block of data.content) {
-      if (block.type === 'text') {
-        textContent += block.text
-      } else if (block.type === 'tool_use') {
-        toolUseBlocks.push({ id: block.id, name: block.name, input: block.input })
-      }
-    }
-
-    if (textContent) {
-      onToken(textContent)
-    }
-
-    // Execute ALL tool calls and send text-only results to Claude
-    // (screenshots are displayed in the UI, not sent to Claude to save tokens)
-    if (toolUseBlocks.length > 0 && options?.onToolCall) {
-      const toolResults: ContentBlock[] = []
-
-      for (const tool of toolUseBlocks) {
-        const toolResult = await options.onToolCall(tool.name, tool.input)
-
-        toolResults.push({
-          type: 'tool_result' as const,
-          tool_use_id: tool.id,
-          content: toolResult.result,
-        } as unknown as ContentBlock)
+      if (!response.ok) {
+        const body = await response.text().catch(() => '')
+        throw new Error(`Erreur API (${response.status}): ${body}`)
       }
 
-      const newMessages: ApiMessage[] = [
-        ...messages,
-        { role: 'assistant' as const, content: data.content },
-        { role: 'user' as const, content: toolResults },
-      ]
+      const data = await response.json()
 
-      await doStream(apiKey, newMessages, { ...options, image: undefined }, onToken, onDone, onError, controller)
-      return
+      // Extract text and tool calls
+      let hasToolUse = false
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const toolResults: any[] = []
+
+      for (const block of data.content) {
+        if (block.type === 'text' && block.text) {
+          onToken(block.text)
+        }
+        if (block.type === 'tool_use') {
+          hasToolUse = true
+        }
+      }
+
+      // If no tool calls, we're done
+      if (!hasToolUse || !options?.onToolCall) {
+        onDone()
+        return
+      }
+
+      // Execute all tool calls
+      for (const block of data.content) {
+        if (block.type === 'tool_use') {
+          const toolResult = await options.onToolCall(block.name, block.input)
+          toolResults.push({
+            type: 'tool_result',
+            tool_use_id: block.id,
+            content: toolResult.result,
+          })
+        }
+      }
+
+      // Append assistant response + tool results for next iteration
+      apiMessages.push({ role: 'assistant', content: data.content })
+      apiMessages.push({ role: 'user', content: toolResults })
     }
 
+    // Max iterations reached
     onDone()
   } catch (err) {
     if (err instanceof Error && err.name !== 'AbortError') {
