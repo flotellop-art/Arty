@@ -74,6 +74,16 @@ export function createToolExecutor(
         return { result: files?.length === 0 ? 'Aucun fichier.' : 'Erreur Drive.' }
       }
 
+      case 'read_drive_file': {
+        const fileId = input.file_id as string
+        if (!fileId) return { result: 'Erreur: ID fichier manquant.' }
+        const file = await drive.readFile(fileId)
+        if (file) {
+          return { result: `Fichier: ${file.name}\nType: ${file.mimeType}\n\nContenu:\n${file.content}` }
+        }
+        return { result: 'Erreur lecture fichier Drive.' }
+      }
+
       case 'search_price': {
         const product = input.product as string
         const res = await browserActions.searchPrices(product)

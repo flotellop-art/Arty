@@ -46,6 +46,32 @@ async function handleRead(token: string, req: VercelRequest, res: VercelResponse
     } else if (meta.mimeType?.startsWith('text/')) {
       const r = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, { headers: { Authorization: `Bearer ${token}` } })
       if (r.ok) content = await r.text()
+    } else if (meta.mimeType === 'application/pdf') {
+      // Export PDF as downloadable, extract text via Google Drive export
+      const r = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=text/plain`, { headers: { Authorization: `Bearer ${token}` } })
+      if (r.ok) {
+        content = await r.text()
+      } else {
+        // If export fails (native PDF, not Google Doc), download and extract basic info
+        const dlRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, { headers: { Authorization: `Bearer ${token}` } })
+        if (dlRes.ok) {
+          const buffer = Buffer.from(await dlRes.arrayBuffer())
+          // Basic PDF text extraction - find text between parentheses in PDF stream
+          const raw = buffer.toString('latin1')
+          const textParts: string[] = []
+          const regex = /\(([^)]+)\)/g
+          let match
+          while ((match = regex.exec(raw)) !== null) {
+            const t = match[1]
+            if (t && t.length > 1 && !/^[\\\/\d\s.]+$/.test(t)) {
+              textParts.push(t)
+            }
+          }
+          content = textParts.length > 0
+            ? textParts.join(' ').replace(/\\n/g, '\n').replace(/\\\(/g, '(').replace(/\\\)/g, ')')
+            : `[PDF : ${meta.name} — impossible d'extraire le texte. Le fichier peut être scanné/image.]`
+        }
+      }
     } else {
       content = `[Fichier binaire : ${meta.name} (${meta.mimeType})]`
     }

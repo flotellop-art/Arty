@@ -56,6 +56,17 @@ const TOOLS = [
     },
   },
   {
+    name: 'read_drive_file',
+    description: "Lit le contenu d'un fichier sur Google Drive (PDF, Google Doc, texte, tableur). Utilise l'ID du fichier obtenu via list_drive.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        file_id: { type: 'string' as const, description: 'ID du fichier Google Drive' },
+      },
+      required: ['file_id'],
+    },
+  },
+  {
     name: 'publish_wordpress',
     description: "Publie un article sur le site facadespollet.fr. Utilise quand Florent demande de créer/publier un article. Rédige d'abord le contenu complet puis publie.",
     input_schema: {
