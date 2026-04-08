@@ -12,6 +12,13 @@ const components: Components = {
       {children}
     </a>
   ),
+  img: ({ src, alt }) => (
+    <img
+      src={src}
+      alt={alt || 'Image'}
+      className="w-full rounded-lg border border-gray-200 my-2"
+    />
+  ),
   table: ({ children }) => (
     <div className="overflow-x-auto my-2">
       <table className="min-w-full border-collapse border border-gray-300 text-sm">

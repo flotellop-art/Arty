@@ -79,6 +79,8 @@ function AppContent() {
     setSystemPrompt(prompt)
   }, [googleAuth.isConnected, gmail.messages, drive.files, setSystemPrompt])
 
+  const [actionScreenshot, setActionScreenshot] = useState<string | null>(null)
+
   const handleSendWithActions = useCallback(
     async (text: string, conversationId?: string) => {
       const targetId = conversationId ?? createConversation()
@@ -87,7 +89,11 @@ function AppContent() {
       const result = await detectAndRunAction(text, computerActions, browserActions, gmail, drive)
 
       if (result.handled && result.context) {
-        // Send user message + action context to Claude
+        // Store screenshot separately (don't send base64 to Claude)
+        if (result.screenshot) {
+          setActionScreenshot(result.screenshot)
+        }
+        // Send user message + short context to Claude
         sendMessage(text + '\n\n' + result.context, targetId)
       } else {
         sendMessage(text, targetId)
@@ -177,6 +183,7 @@ function AppContent() {
               drive={drive}
               browserActions={browserActions}
               computerActions={computerActions}
+              actionScreenshot={actionScreenshot}
             />
           }
         />
@@ -198,6 +205,7 @@ interface ChatRouteProps {
   drive: ReturnType<typeof useDrive>
   browserActions: ReturnType<typeof useBrowser>
   computerActions: ReturnType<typeof useComputer>
+  actionScreenshot: string | null
 }
 
 function ChatRoute({
@@ -213,6 +221,7 @@ function ChatRoute({
   drive,
   browserActions,
   computerActions,
+  actionScreenshot,
 }: ChatRouteProps) {
   const { id } = useParams<{ id: string }>()
 
@@ -242,6 +251,7 @@ function ChatRoute({
       drive={drive}
       browserActions={browserActions}
       computerActions={computerActions}
+      actionScreenshot={actionScreenshot}
     />
   )
 }

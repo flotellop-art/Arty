@@ -21,6 +21,7 @@ interface ConversationScreenProps {
   drive: ReturnType<typeof useDrive>
   browserActions: ReturnType<typeof useBrowser>
   computerActions: ReturnType<typeof useComputer>
+  actionScreenshot: string | null
 }
 
 export function ConversationScreen({
@@ -35,6 +36,7 @@ export function ConversationScreen({
   drive,
   browserActions,
   computerActions,
+  actionScreenshot,
 }: ConversationScreenProps) {
   return (
     <div className="flex flex-col h-full">
@@ -50,6 +52,21 @@ export function ConversationScreen({
         isStreaming={isStreaming}
         streamingContent={streamingContent}
       />
+
+      {actionScreenshot && (
+        <div className="mx-4 mb-2">
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+            <div className="bg-gray-50 px-3 py-1.5 border-b border-gray-100 text-xs text-gray-500">
+              Screenshot PC
+            </div>
+            <img
+              src={actionScreenshot}
+              alt="Screenshot du PC"
+              className="w-full"
+            />
+          </div>
+        </div>
+      )}
 
       {(error || browserActions.error || computerActions.error) && (
         <div className="mx-4 mb-2 px-4 py-2 bg-red-50 border border-red-200 rounded-xl text-sm text-red-600">

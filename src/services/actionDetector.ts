@@ -6,6 +6,7 @@ import type { useDrive } from '../hooks/useDrive'
 interface ActionResult {
   handled: boolean
   context?: string
+  screenshot?: string
 }
 
 export async function detectAndRunAction(
@@ -22,10 +23,11 @@ export async function detectAndRunAction(
   if (openMatch) {
     const app = openMatch[1]!
     const result = await computer.openApp(app)
-    if (result?.success && result.screenshot) {
+    if (result?.success) {
       return {
         handled: true,
-        context: `[Action exécutée] J'ai ouvert ${app} sur le PC. Voici un screenshot de l'écran.\n\n![Screenshot PC](${result.screenshot})`,
+        context: `[Action exécutée avec succès] ${app} a été ouvert sur le PC de Florent. Un screenshot de l'écran est affiché ci-dessous. Confirme à Florent que c'est fait.`,
+        screenshot: result.screenshot,
       }
     }
     return {
@@ -37,10 +39,11 @@ export async function detectAndRunAction(
   // --- Computer Use: screenshot ---
   if (lower.includes('screenshot') || (lower.includes('capture') && (lower.includes('ecran') || lower.includes('pc')))) {
     const result = await computer.screenshot()
-    if (result?.success && result.screenshot) {
+    if (result?.success) {
       return {
         handled: true,
-        context: `[Action exécutée] Voici le screenshot de l'écran du PC.\n\n![Screenshot PC](${result.screenshot})`,
+        context: `[Action exécutée avec succès] Screenshot de l'écran du PC capturé et affiché ci-dessous.`,
+        screenshot: result.screenshot,
       }
     }
     return {
@@ -91,7 +94,6 @@ export async function detectAndRunAction(
 
   // --- Browser: price search ---
   if (lower.includes('prix') && (lower.includes('cherch') || lower.includes('compar') || lower.includes('fournisseur'))) {
-    // Extract product name from the message
     const product = text.replace(/.*prix\s*(de|du|des|pour)?\s*/i, '').trim()
     if (product) {
       const result = await browserActions.searchPrices(product)
