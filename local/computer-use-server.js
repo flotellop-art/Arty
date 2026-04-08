@@ -137,11 +137,13 @@ app.post('/computer/action', auth, async (req, res) => {
 
 function runPowerShell(script) {
   return new Promise((resolve, reject) => {
-    const escaped = script.replace(/"/g, '\\"');
-    exec(`powershell -NoProfile -Command "${escaped}"`, {
+    const psFile = path.join(require('os').tmpdir(), 'fp-ps-script.ps1');
+    fs.writeFileSync(psFile, script);
+    exec(`powershell -NoProfile -ExecutionPolicy Bypass -File "${psFile}"`, {
       maxBuffer: 50 * 1024 * 1024,
       timeout: 15000,
     }, (err, stdout, stderr) => {
+      try { fs.unlinkSync(psFile); } catch {}
       if (err) reject(new Error(stderr || err.message));
       else resolve(stdout.trim());
     });
@@ -149,23 +151,23 @@ function runPowerShell(script) {
 }
 
 async function takeScreenshot() {
-  const ps = `
-    Add-Type -AssemblyName System.Windows.Forms
-    Add-Type -AssemblyName System.Drawing
-    $tmpFile = Join-Path $env:TEMP "fp-screenshot.png"
-    $screen = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
-    $bitmap = New-Object System.Drawing.Bitmap($screen.Width, $screen.Height)
-    $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
-    $graphics.CopyFromScreen($screen.Location, [System.Drawing.Point]::Empty, $screen.Size)
-    $bitmap.Save($tmpFile, [System.Drawing.Imaging.ImageFormat]::Png)
-    $graphics.Dispose()
-    $bitmap.Dispose()
-    Write-Output $tmpFile
-  `;
+  const tmpFile = path.join(require('os').tmpdir(), 'fp-screenshot.png');
 
-  const tmpFile = await runPowerShell(ps);
-  const buffer = fs.readFileSync(tmpFile.trim());
-  fs.unlinkSync(tmpFile.trim());
+  const ps = `
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+$screen = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+$bitmap = New-Object System.Drawing.Bitmap($screen.Width, $screen.Height)
+$graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+$graphics.CopyFromScreen($screen.Location, [System.Drawing.Point]::Empty, $screen.Size)
+$bitmap.Save('${tmpFile}', [System.Drawing.Imaging.ImageFormat]::Png)
+$graphics.Dispose()
+$bitmap.Dispose()
+`;
+
+  await runPowerShell(ps);
+  const buffer = fs.readFileSync(tmpFile);
+  try { fs.unlinkSync(tmpFile); } catch {}
   return `data:image/png;base64,${buffer.toString('base64')}`;
 }
 
