@@ -206,30 +206,19 @@ async function doStream(
       onToken(textContent)
     }
 
-    // Execute ALL tool calls and send results
+    // Execute ALL tool calls and send text-only results to Claude
+    // (screenshots are displayed in the UI, not sent to Claude to save tokens)
     if (toolUseBlocks.length > 0 && options?.onToolCall) {
       const toolResults: ContentBlock[] = []
 
       for (const tool of toolUseBlocks) {
         const toolResult = await options.onToolCall(tool.name, tool.input)
 
-        if (toolResult.screenshot) {
-          const base64Data = toolResult.screenshot.replace(/^data:image\/\w+;base64,/, '')
-          toolResults.push({
-            type: 'tool_result' as const,
-            tool_use_id: tool.id,
-            content: [
-              { type: 'text', text: toolResult.result },
-              { type: 'image', source: { type: 'base64', media_type: 'image/png', data: base64Data } },
-            ],
-          } as unknown as ContentBlock)
-        } else {
-          toolResults.push({
-            type: 'tool_result' as const,
-            tool_use_id: tool.id,
-            content: toolResult.result,
-          } as unknown as ContentBlock)
-        }
+        toolResults.push({
+          type: 'tool_result' as const,
+          tool_use_id: tool.id,
+          content: toolResult.result,
+        } as unknown as ContentBlock)
       }
 
       const newMessages: ApiMessage[] = [
