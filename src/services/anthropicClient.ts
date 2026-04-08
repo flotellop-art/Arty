@@ -190,51 +190,54 @@ async function doStream(
 
     const data = await response.json()
 
-    // Process content blocks
+    // Collect text and ALL tool_use blocks
     let textContent = ''
-    let toolUseBlock: { id: string; name: string; input: Record<string, unknown> } | null = null
+    const toolUseBlocks: Array<{ id: string; name: string; input: Record<string, unknown> }> = []
 
     for (const block of data.content) {
       if (block.type === 'text') {
         textContent += block.text
       } else if (block.type === 'tool_use') {
-        toolUseBlock = { id: block.id, name: block.name, input: block.input }
+        toolUseBlocks.push({ id: block.id, name: block.name, input: block.input })
       }
     }
 
-    // If there's text, emit it
     if (textContent) {
       onToken(textContent)
     }
 
-    // If tool call, execute it and continue
-    if (toolUseBlock && options?.onToolCall) {
-      const toolResult = await options.onToolCall(toolUseBlock.name, toolUseBlock.input)
+    // Execute ALL tool calls and send results
+    if (toolUseBlocks.length > 0 && options?.onToolCall) {
+      const toolResults: ContentBlock[] = []
 
-      // Build tool result content (text + optional screenshot image)
-      let toolResultContent: string | Array<{ type: string; text?: string; source?: { type: string; media_type: string; data: string } }>
-      if (toolResult.screenshot) {
-        const base64Data = toolResult.screenshot.replace(/^data:image\/\w+;base64,/, '')
-        toolResultContent = [
-          { type: 'text', text: toolResult.result },
-          { type: 'image', source: { type: 'base64', media_type: 'image/png', data: base64Data } },
-        ]
-      } else {
-        toolResultContent = toolResult.result
+      for (const tool of toolUseBlocks) {
+        const toolResult = await options.onToolCall(tool.name, tool.input)
+
+        if (toolResult.screenshot) {
+          const base64Data = toolResult.screenshot.replace(/^data:image\/\w+;base64,/, '')
+          toolResults.push({
+            type: 'tool_result' as const,
+            tool_use_id: tool.id,
+            content: [
+              { type: 'text', text: toolResult.result },
+              { type: 'image', source: { type: 'base64', media_type: 'image/png', data: base64Data } },
+            ],
+          } as unknown as ContentBlock)
+        } else {
+          toolResults.push({
+            type: 'tool_result' as const,
+            tool_use_id: tool.id,
+            content: toolResult.result,
+          } as unknown as ContentBlock)
+        }
       }
 
       const newMessages: ApiMessage[] = [
         ...messages,
         { role: 'assistant' as const, content: data.content },
-        {
-          role: 'user' as const,
-          content: [
-            { type: 'tool_result' as const, tool_use_id: toolUseBlock.id, content: toolResultContent },
-          ] as ContentBlock[],
-        },
+        { role: 'user' as const, content: toolResults },
       ]
 
-      // Continue conversation with tool result (recursive)
       await doStream(apiKey, newMessages, { ...options, image: undefined }, onToken, onDone, onError, controller)
       return
     }
