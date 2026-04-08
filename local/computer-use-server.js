@@ -78,8 +78,8 @@ app.post('/computer/action', auth, async (req, res) => {
           });
         }
         await openApp(exeName);
-        // Wait for app to open then screenshot
-        await sleep(2000);
+        // Wait for app to open then screenshot (longer for URLs)
+        await sleep(exeName.includes('http') ? 6000 : 2000);
         const screenshot = await takeScreenshot();
         return res.json({ success: true, action: 'open_app', app: appName, screenshot });
       }
