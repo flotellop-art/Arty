@@ -1,12 +1,17 @@
 import { SYSTEM_PROMPT } from '../constants/systemPrompt'
 
+type ContentBlock =
+  | { type: 'text'; text: string }
+  | { type: 'image'; source: { type: 'base64'; media_type: string; data: string } }
+
 interface ApiMessage {
   role: 'user' | 'assistant'
-  content: string
+  content: string | ContentBlock[]
 }
 
 interface StreamOptions {
   systemPrompt?: string
+  image?: string // base64 data URI (data:image/png;base64,...)
 }
 
 export function streamMessage(
@@ -24,6 +29,21 @@ export function streamMessage(
     return controller
   }
 
+  // Build messages, injecting image into last user message if provided
+  const apiMessages = messages.map((m, i) => {
+    if (options?.image && i === messages.length - 1 && m.role === 'user') {
+      const base64Data = options.image.replace(/^data:image\/\w+;base64,/, '')
+      return {
+        role: m.role,
+        content: [
+          { type: 'image' as const, source: { type: 'base64' as const, media_type: 'image/png', data: base64Data } },
+          { type: 'text' as const, text: typeof m.content === 'string' ? m.content : '' },
+        ],
+      }
+    }
+    return { role: m.role, content: m.content }
+  })
+
   fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -37,7 +57,7 @@ export function streamMessage(
       max_tokens: 4096,
       stream: true,
       system: options?.systemPrompt || SYSTEM_PROMPT,
-      messages,
+      messages: apiMessages,
     }),
     signal: controller.signal,
   })

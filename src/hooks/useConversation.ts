@@ -64,6 +64,12 @@ export function useConversation() {
     systemPromptRef.current = prompt
   }, [])
 
+  const imageRef = useRef<string | undefined>(undefined)
+
+  const setImage = useCallback((image: string | undefined) => {
+    imageRef.current = image
+  }, [])
+
   const sendMessage = useCallback(
     (text: string, conversationId?: string) => {
       const targetId = conversationId ?? activeId
@@ -133,8 +139,11 @@ export function useConversation() {
           setStreamingContent('')
           abortRef.current = null
         },
-        { systemPrompt: systemPromptRef.current }
+        { systemPrompt: systemPromptRef.current, image: imageRef.current }
       )
+
+      // Clear image after sending
+      imageRef.current = undefined
 
       abortRef.current = controller
     },
@@ -175,5 +184,6 @@ export function useConversation() {
     deleteConversation: deleteConv,
     stopStreaming,
     setSystemPrompt,
+    setImage,
   }
 }

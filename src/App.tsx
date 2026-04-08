@@ -33,6 +33,7 @@ function AppContent() {
     deleteConversation,
     stopStreaming,
     setSystemPrompt,
+    setImage,
   } = conversation
 
   const googleAuth = useGoogleAuth()
@@ -89,9 +90,11 @@ function AppContent() {
       const result = await detectAndRunAction(text, computerActions, browserActions, gmail, drive)
 
       if (result.handled && result.context) {
-        // Store screenshot separately (don't send base64 to Claude)
+        // Display screenshot in chat
         if (result.screenshot) {
           setActionScreenshot(result.screenshot)
+          // Send screenshot as vision image to Claude (~1500 tokens vs 400K+)
+          setImage(result.screenshot)
         }
         // Send user message + short context to Claude
         sendMessage(text + '\n\n' + result.context, targetId)
