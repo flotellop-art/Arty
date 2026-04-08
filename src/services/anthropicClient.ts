@@ -195,7 +195,7 @@ async function runWithTools(
               tool_use_id: block.id,
               content: [
                 { type: 'text', text: toolResult.result },
-                { type: 'image', source: { type: 'base64', media_type: 'image/png', data: base64Data } },
+                { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64Data } },
               ],
             })
           } else {

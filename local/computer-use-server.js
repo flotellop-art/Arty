@@ -152,7 +152,7 @@ function runPowerShell(script) {
 }
 
 async function takeScreenshot() {
-  const tmpFile = path.join(require('os').tmpdir(), 'fp-screenshot.png');
+  const tmpFile = path.join(require('os').tmpdir(), 'fp-screenshot.jpg');
 
   const ps = `
 Add-Type -AssemblyName System.Windows.Forms
@@ -161,15 +161,24 @@ $screen = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
 $bitmap = New-Object System.Drawing.Bitmap($screen.Width, $screen.Height)
 $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
 $graphics.CopyFromScreen($screen.Location, [System.Drawing.Point]::Empty, $screen.Size)
-$bitmap.Save('${tmpFile}', [System.Drawing.Imaging.ImageFormat]::Png)
+# Resize to 1024px wide for faster transfer
+$newWidth = 1024
+$newHeight = [int]($screen.Height * $newWidth / $screen.Width)
+$resized = New-Object System.Drawing.Bitmap($bitmap, $newWidth, $newHeight)
+# Save as JPEG quality 60 for smaller file
+$encoder = [System.Drawing.Imaging.ImageCodecInfo]::GetImageEncoders() | Where-Object { $_.MimeType -eq 'image/jpeg' }
+$encoderParams = New-Object System.Drawing.Imaging.EncoderParameters(1)
+$encoderParams.Param[0] = New-Object System.Drawing.Imaging.EncoderParameter([System.Drawing.Imaging.Encoder]::Quality, 60)
+$resized.Save('${tmpFile}', $encoder, $encoderParams)
 $graphics.Dispose()
 $bitmap.Dispose()
+$resized.Dispose()
 `;
 
   await runPowerShell(ps);
   const buffer = fs.readFileSync(tmpFile);
   try { fs.unlinkSync(tmpFile); } catch {}
-  return `data:image/png;base64,${buffer.toString('base64')}`;
+  return `data:image/jpeg;base64,${buffer.toString('base64')}`;
 }
 
 async function openApp(exeName) {
