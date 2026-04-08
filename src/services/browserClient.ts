@@ -19,10 +19,10 @@ export async function publishWordPress(data: WpPublishRequest): Promise<WpPublis
 }
 
 export async function searchPrices(query: string): Promise<PriceSearchResponse> {
-  const res = await fetch('/api/browser/search-price', {
+  const res = await fetch('/api/browser/action', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query }),
+    body: JSON.stringify({ type: 'search-price', query }),
   })
   const result = await res.json()
   if (!res.ok) throw new Error(result.error || 'Erreur recherche prix')
@@ -34,10 +34,10 @@ export async function fillForm(
   fields: FormField[],
   submit?: boolean
 ): Promise<FormFillResponse> {
-  const res = await fetch('/api/browser/fill-form', {
+  const res = await fetch('/api/browser/action', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ url, fields, submit }),
+    body: JSON.stringify({ type: 'fill-form', url, fields, submit }),
   })
   const result = await res.json()
   if (!res.ok) throw new Error(result.error || 'Erreur remplissage formulaire')
@@ -45,10 +45,10 @@ export async function fillForm(
 }
 
 export async function takeScreenshot(url: string): Promise<ScreenshotResponse> {
-  const res = await fetch('/api/browser/screenshot', {
+  const res = await fetch('/api/browser/action', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ url }),
+    body: JSON.stringify({ type: 'screenshot', url }),
   })
   const result = await res.json()
   if (!res.ok) throw new Error(result.error || 'Erreur screenshot')

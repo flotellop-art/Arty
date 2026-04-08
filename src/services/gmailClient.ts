@@ -1,39 +1,36 @@
 import type { GmailMessage, GmailFullMessage, EmailDraft } from '../types/google'
 import { getValidAccessToken } from './googleAuth'
 
-async function authFetch(url: string, options: RequestInit = {}): Promise<Response> {
+async function gmailFetch(body: Record<string, unknown>): Promise<Response> {
   const token = await getValidAccessToken()
   if (!token) throw new Error('Non connecté à Google')
 
-  return fetch(url, {
-    ...options,
+  return fetch('/api/gmail/action', {
+    method: 'POST',
     headers: {
-      ...options.headers,
+      'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
     },
+    body: JSON.stringify(body),
   })
 }
 
 export async function listUnreadEmails(): Promise<GmailMessage[]> {
-  const res = await authFetch('/api/gmail/messages')
+  const res = await gmailFetch({ type: 'list' })
   const data = await res.json()
   if (!res.ok) throw new Error(data.error || 'Erreur Gmail')
   return data.messages
 }
 
 export async function readEmail(messageId: string): Promise<GmailFullMessage> {
-  const res = await authFetch(`/api/gmail/read?id=${messageId}`)
+  const res = await gmailFetch({ type: 'read', id: messageId })
   const data = await res.json()
   if (!res.ok) throw new Error(data.error || 'Erreur lecture email')
   return data
 }
 
 export async function sendEmail(draft: EmailDraft): Promise<{ id: string; threadId: string }> {
-  const res = await authFetch('/api/gmail/send', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(draft),
-  })
+  const res = await gmailFetch({ type: 'send', ...draft })
   const data = await res.json()
   if (!res.ok) throw new Error(data.error || 'Erreur envoi email')
   return data

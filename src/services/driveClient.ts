@@ -1,32 +1,29 @@
 import type { DriveFile, DriveFileContent } from '../types/google'
 import { getValidAccessToken } from './googleAuth'
 
-async function authFetch(url: string, options: RequestInit = {}): Promise<Response> {
+async function driveFetch(body: Record<string, unknown>): Promise<Response> {
   const token = await getValidAccessToken()
   if (!token) throw new Error('Non connecté à Google')
 
-  return fetch(url, {
-    ...options,
+  return fetch('/api/drive/action', {
+    method: 'POST',
     headers: {
-      ...options.headers,
+      'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
     },
+    body: JSON.stringify(body),
   })
 }
 
 export async function listFiles(folderId?: string, query?: string): Promise<DriveFile[]> {
-  const params = new URLSearchParams()
-  if (folderId) params.set('folderId', folderId)
-  if (query) params.set('q', query)
-
-  const res = await authFetch(`/api/drive/files?${params}`)
+  const res = await driveFetch({ type: 'list', folderId, q: query })
   const data = await res.json()
   if (!res.ok) throw new Error(data.error || 'Erreur Drive')
   return data.files
 }
 
 export async function readFile(fileId: string): Promise<DriveFileContent> {
-  const res = await authFetch(`/api/drive/read?id=${fileId}`)
+  const res = await driveFetch({ type: 'read', id: fileId })
   const data = await res.json()
   if (!res.ok) throw new Error(data.error || 'Erreur lecture fichier')
   return data
@@ -37,16 +34,7 @@ export async function createFile(
   content: string,
   options?: { mimeType?: string; folderId?: string }
 ): Promise<{ id: string; name: string; webViewLink: string }> {
-  const res = await authFetch('/api/drive/create', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      name,
-      content,
-      mimeType: options?.mimeType,
-      folderId: options?.folderId,
-    }),
-  })
+  const res = await driveFetch({ type: 'create', name, content, ...options })
   const data = await res.json()
   if (!res.ok) throw new Error(data.error || 'Erreur création fichier')
   return data
