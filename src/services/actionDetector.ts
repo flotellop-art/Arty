@@ -92,6 +92,14 @@ export async function detectAndRunAction(
     }
   }
 
+  // --- WordPress: create/publish article ---
+  if ((lower.includes('article') || lower.includes('publier') || lower.includes('publication')) && (lower.includes('wordpress') || lower.includes('blog') || lower.includes('site'))) {
+    return {
+      handled: true,
+      context: `[WordPress disponible] L'utilisateur veut créer ou publier un article sur facadespollet.fr. Tu as accès à WordPress via Playwright. Demande-lui le titre et le contenu de l'article. Une fois qu'il a validé le brouillon, tu pourras le publier. Propose-lui de rédiger l'article.`,
+    }
+  }
+
   // --- Browser: price search ---
   if (lower.includes('prix') && (lower.includes('cherch') || lower.includes('compar') || lower.includes('fournisseur'))) {
     const product = text.replace(/.*prix\s*(de|du|des|pour)?\s*/i, '').trim()
