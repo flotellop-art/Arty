@@ -4,85 +4,191 @@ Assistant IA pour Facades Pollet, entreprise de ravalement a Valence (26).
 
 PWA mobile-first connectee a l'API Anthropic (Claude Sonnet 4.6) avec streaming temps reel, integration Gmail et Google Drive.
 
-## Installation
+---
+
+## 1. Installer les dependances
 
 ```bash
+git clone https://github.com/flotellop-art/Appfacade.git
+cd Appfacade
 npm install
 ```
 
-## Configuration
+---
 
-Creer un fichier `.env` a la racine du projet :
+## 2. Configurer la cle API Anthropic
 
 ```bash
 cp .env.example .env
 ```
 
-Editer `.env` :
+Ouvrir `.env` et remplir :
 
 ```
-# Anthropic
-VITE_ANTHROPIC_API_KEY=sk-ant-...
+VITE_ANTHROPIC_API_KEY=sk-ant-api03-VOTRE-CLE-ICI
+```
 
-# Google OAuth (cote client)
-VITE_GOOGLE_CLIENT_ID=xxx.apps.googleusercontent.com
+Pour obtenir une cle : https://console.anthropic.com/settings/keys > **Create Key**
+
+---
+
+## 3. Configurer Google Cloud Console (Gmail + Drive)
+
+### 3.1 Creer un projet Google Cloud
+
+1. Ouvrir https://console.cloud.google.com
+2. En haut a gauche, cliquer sur le **selecteur de projet** (a cote du logo Google Cloud)
+3. Cliquer **NOUVEAU PROJET** en haut a droite de la fenetre modale
+4. Nom du projet : `Facades Pollet`
+5. Cliquer **CREER**
+6. Attendre quelques secondes, puis selectionner le projet dans le selecteur
+
+### 3.2 Activer les APIs
+
+1. Dans le menu hamburger a gauche, cliquer **APIs et services** > **Bibliotheque**
+2. Dans la barre de recherche, taper `Gmail API`
+3. Cliquer sur le resultat **Gmail API** (par Google)
+4. Cliquer le bouton bleu **ACTIVER**
+5. Revenir a la bibliotheque (fleche retour ou menu > Bibliotheque)
+6. Dans la barre de recherche, taper `Google Drive API`
+7. Cliquer sur le resultat **Google Drive API** (par Google)
+8. Cliquer le bouton bleu **ACTIVER**
+
+### 3.3 Configurer l'ecran de consentement OAuth
+
+1. Dans le menu a gauche, cliquer **APIs et services** > **Ecran de consentement OAuth**
+2. Selectionner **Externe** comme type d'utilisateur
+3. Cliquer **CREER**
+4. Remplir les champs obligatoires :
+   - **Nom de l'application** : `Facades Pollet`
+   - **Adresse e-mail d'assistance utilisateur** : votre adresse Gmail
+   - **Adresses e-mail du developpeur** (tout en bas) : votre adresse Gmail
+5. Cliquer **ENREGISTRER ET CONTINUER**
+6. Sur la page **Niveaux d'acces (Scopes)** :
+   - Cliquer **AJOUTER OU SUPPRIMER DES CHAMPS D'APPLICATION**
+   - Dans le filtre, chercher et cocher :
+     - `https://www.googleapis.com/auth/gmail.readonly` (Lire les emails)
+     - `https://www.googleapis.com/auth/gmail.send` (Envoyer des emails)
+     - `https://www.googleapis.com/auth/drive` (Google Drive complet)
+     - `https://www.googleapis.com/auth/userinfo.email` (Adresse email)
+     - `https://www.googleapis.com/auth/userinfo.profile` (Profil)
+   - Cliquer **METTRE A JOUR**
+   - Cliquer **ENREGISTRER ET CONTINUER**
+7. Sur la page **Utilisateurs tests** :
+   - Cliquer **+ AJOUTER DES UTILISATEURS**
+   - Entrer votre adresse Gmail (celle qui utilisera l'app)
+   - Cliquer **AJOUTER**
+   - Cliquer **ENREGISTRER ET CONTINUER**
+8. Verifier le resume, puis cliquer **RETOUR AU TABLEAU DE BORD**
+
+### 3.4 Creer les identifiants OAuth 2.0
+
+1. Dans le menu a gauche, cliquer **APIs et services** > **Identifiants**
+2. En haut, cliquer **+ CREER DES IDENTIFIANTS**
+3. Selectionner **ID client OAuth**
+4. Remplir :
+   - **Type d'application** : `Application Web`
+   - **Nom** : `Facades Pollet PWA`
+5. Dans la section **URI de redirection autorises**, cliquer **+ AJOUTER UN URI** :
+   - Ajouter : `http://localhost:5173/auth/callback`
+   - Cliquer **+ AJOUTER UN URI** a nouveau
+   - Ajouter : `https://VOTRE-DOMAINE.vercel.app/auth/callback`
+     (remplacer `VOTRE-DOMAINE` par votre vrai domaine Vercel)
+6. Cliquer **CREER**
+7. Une fenetre modale affiche votre **ID client** et votre **Code secret du client**
+8. Copier ces deux valeurs dans votre `.env` :
+
+```
+VITE_GOOGLE_CLIENT_ID=123456789-abc.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=GOCSPX-xxxxx
+```
+
+### 3.5 Configurer l'URI de redirection
+
+Dans `.env`, ajouter :
+
+```
+# Developpement local
 VITE_GOOGLE_REDIRECT_URI=http://localhost:5173/auth/callback
 
-# Google OAuth (cote serveur — NE PAS prefixer avec VITE_)
-GOOGLE_CLIENT_SECRET=xxx
+# OU pour la production Vercel (changer selon votre domaine)
+# VITE_GOOGLE_REDIRECT_URI=https://VOTRE-DOMAINE.vercel.app/auth/callback
 ```
 
-## Configurer Google Cloud Console
+### 3.6 Fichier .env complet
 
-1. Aller sur https://console.cloud.google.com
-2. Creer un nouveau projet (ex: "Facades Pollet")
-3. Dans le menu lateral, aller dans **APIs & Services > Library**
-4. Activer **Gmail API** : chercher "Gmail API" > cliquer > **Enable**
-5. Activer **Google Drive API** : chercher "Google Drive API" > cliquer > **Enable**
-6. Aller dans **APIs & Services > Credentials**
-7. Cliquer **+ CREATE CREDENTIALS > OAuth client ID**
-8. Si demande, configurer d'abord l'ecran de consentement OAuth :
-   - User Type : **External**
-   - App name : "Facades Pollet"
-   - User support email : votre email
-   - Scopes : ajouter `gmail.readonly`, `gmail.send`, `drive`, `userinfo.email`, `userinfo.profile`
-   - Test users : ajouter votre adresse Gmail
-   - Sauvegarder
-9. Revenir dans Credentials > Create OAuth client ID :
-   - Application type : **Web application**
-   - Name : "Facades Pollet PWA"
-   - Authorized redirect URIs :
-     - `http://localhost:5173/auth/callback` (dev)
-     - `https://votre-domaine.vercel.app/auth/callback` (prod)
-   - Cliquer **Create**
-10. Copier le **Client ID** et le **Client Secret** dans votre `.env`
+```env
+# Anthropic
+VITE_ANTHROPIC_API_KEY=sk-ant-api03-VOTRE-CLE
 
-## Lancer en local
+# Google OAuth (cote client — visible dans le navigateur)
+VITE_GOOGLE_CLIENT_ID=123456789-abc.apps.googleusercontent.com
+VITE_GOOGLE_REDIRECT_URI=http://localhost:5173/auth/callback
+
+# Google OAuth (cote serveur — JAMAIS expose au navigateur)
+GOOGLE_CLIENT_SECRET=GOCSPX-xxxxx
+```
+
+> **Important** : `GOOGLE_CLIENT_SECRET` n'a PAS de prefixe `VITE_`.
+> Il est uniquement utilise par les Vercel Serverless Functions (`/api/`),
+> jamais dans le code client React.
+
+---
+
+## 4. Lancer en local
 
 ```bash
 npm run dev
 ```
 
-L'application est accessible sur `http://localhost:5173`.
+L'application est accessible sur http://localhost:5173
 
-## Build production
+> **Note** : les fonctions serverless (`/api/`) ne fonctionnent qu'en
+> production sur Vercel. En local, l'OAuth Google ne sera pas fonctionnel
+> sauf si vous utilisez `vercel dev` a la place de `npm run dev`.
+
+Pour tester l'OAuth en local avec les serverless functions :
 
 ```bash
-npm run build
+npm i -g vercel
+vercel dev
 ```
 
-Les fichiers sont generes dans le dossier `dist/`.
+---
 
-## Deployer sur Vercel
+## 5. Deployer sur Vercel
 
-1. Connecter le repo GitHub a Vercel
-2. Framework Preset : **Vite**
-3. Ajouter les variables d'environnement dans les settings Vercel :
-   - `VITE_ANTHROPIC_API_KEY`
-   - `VITE_GOOGLE_CLIENT_ID`
-   - `VITE_GOOGLE_REDIRECT_URI` (= `https://votre-domaine.vercel.app/auth/callback`)
-   - `GOOGLE_CLIENT_SECRET`
-4. Deployer
+### 5.1 Connecter le repo
+
+1. Aller sur https://vercel.com/new
+2. Cliquer **Import** a cote de votre repo `Appfacade`
+3. Framework Preset : **Vite** (detecte automatiquement)
+
+### 5.2 Ajouter les variables d'environnement
+
+Dans les settings du projet avant de deployer (ou apres dans Settings > Environment Variables) :
+
+| Variable | Valeur | Environnement |
+|----------|--------|---------------|
+| `VITE_ANTHROPIC_API_KEY` | `sk-ant-api03-...` | Production |
+| `VITE_GOOGLE_CLIENT_ID` | `123...apps.googleusercontent.com` | Production |
+| `VITE_GOOGLE_REDIRECT_URI` | `https://VOTRE-DOMAINE.vercel.app/auth/callback` | Production |
+| `GOOGLE_CLIENT_SECRET` | `GOCSPX-...` | Production |
+
+### 5.3 Deployer
+
+Cliquer **Deploy**. Le build prend environ 30 secondes.
+
+### 5.4 Verifier
+
+1. Ouvrir l'URL Vercel sur mobile
+2. Cliquer **Connecter Google** sur l'ecran d'accueil
+3. Autoriser l'application
+4. Verifier que l'indicateur passe a "Google connecte"
+5. Taper "Lire mes emails" dans le chat
+6. Taper "Chercher un fichier Drive" dans le chat
+
+---
 
 ## Stack technique
 
@@ -93,6 +199,8 @@ Les fichiers sont generes dans le dossier `dist/`.
 - API Anthropic (claude-sonnet-4-6, streaming SSE)
 - Google OAuth 2.0 + Gmail API + Google Drive API
 - PWA installable (manifest.json + service worker)
+
+---
 
 ## Fonctionnalites
 
@@ -118,7 +226,31 @@ Les fichiers sont generes dans le dossier `dist/`.
 - System prompt enrichi avec contexte Gmail/Drive
 - Suggestions contextuelles ("Lire mes emails", "Chercher un fichier Drive")
 
-### Securite
+---
+
+## Securite
+
 - Le `GOOGLE_CLIENT_SECRET` n'est JAMAIS expose cote client
 - Les echanges OAuth passent par des Vercel Serverless Functions (`/api/`)
 - Aucun email n'est envoye sans double confirmation explicite de l'utilisateur
+- Les tokens Google sont stockes en localStorage (access_token + refresh_token)
+- L'access_token est rafraichi automatiquement quand il expire
+
+---
+
+## Architecture des API routes
+
+```
+api/
+├── auth/
+│   ├── token.ts       # POST — echange code OAuth → access_token + refresh_token
+│   └── refresh.ts     # POST — rafraichit un access_token expire
+├── gmail/
+│   ├── messages.ts    # GET  — liste les 10 derniers emails non lus
+│   ├── read.ts        # GET  — lit le contenu complet d'un email
+│   └── send.ts        # POST — envoie un email
+└── drive/
+    ├── files.ts       # GET  — liste les fichiers Drive
+    ├── read.ts        # GET  — lit le contenu d'un fichier (Docs, texte)
+    └── create.ts      # POST — cree un nouveau document
+```
