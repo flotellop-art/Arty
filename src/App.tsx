@@ -40,6 +40,15 @@ function AppContent() {
   const browserActions = useBrowser()
   const computerActions = useComputer()
 
+  // Auto-fetch Gmail and Drive when Google is connected
+  useEffect(() => {
+    if (googleAuth.isConnected) {
+      gmail.fetchMessages()
+      drive.fetchFiles()
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [googleAuth.isConnected])
+
   // Update system prompt with Google context
   useEffect(() => {
     if (!googleAuth.isConnected) {
