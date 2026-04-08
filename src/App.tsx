@@ -98,6 +98,7 @@ function AppContent() {
 
   const handleSendFromHome = useCallback(
     (text: string) => {
+      setActionScreenshot(null)
       const id = createConversation()
       sendMessage(text, id)
       navigate(`/chat/${id}`)
@@ -112,6 +113,7 @@ function AppContent() {
 
   const handleSelectConversation = useCallback(
     (id: string) => {
+      setActionScreenshot(null)
       selectConversation(id)
       navigate(`/chat/${id}`)
     },
@@ -119,6 +121,7 @@ function AppContent() {
   )
 
   const handleBack = useCallback(() => {
+    setActionScreenshot(null)
     clearActive()
     navigate('/')
   }, [clearActive, navigate])
