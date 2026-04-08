@@ -4,6 +4,8 @@ import { generateId } from '../utils/generateId'
 import { streamMessage } from '../services/anthropicClient'
 import * as storage from '../services/storage'
 
+type ToolHandler = (name: string, input: Record<string, unknown>) => Promise<{ result: string; screenshot?: string }>
+
 export function useConversation() {
   const [conversations, setConversations] = useState<Conversation[]>(() =>
     storage.getConversations()
@@ -13,6 +15,8 @@ export function useConversation() {
   const [streamingContent, setStreamingContent] = useState('')
   const [error, setError] = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
+  const systemPromptRef = useRef<string | undefined>(undefined)
+  const toolHandlerRef = useRef<ToolHandler | undefined>(undefined)
 
   const activeConversation = conversations.find((c) => c.id === activeId) ?? null
 
@@ -58,16 +62,12 @@ export function useConversation() {
     setError(null)
   }, [])
 
-  const systemPromptRef = useRef<string | undefined>(undefined)
-
   const setSystemPrompt = useCallback((prompt: string | undefined) => {
     systemPromptRef.current = prompt
   }, [])
 
-  const imageRef = useRef<string | undefined>(undefined)
-
-  const setImage = useCallback((image: string | undefined) => {
-    imageRef.current = image
+  const setToolHandler = useCallback((handler: ToolHandler) => {
+    toolHandlerRef.current = handler
   }, [])
 
   const sendMessage = useCallback(
@@ -96,7 +96,6 @@ export function useConversation() {
       refreshConversations()
       setActiveId(targetId)
 
-      // Start streaming
       setIsStreaming(true)
       setStreamingContent('')
 
@@ -139,11 +138,11 @@ export function useConversation() {
           setStreamingContent('')
           abortRef.current = null
         },
-        { systemPrompt: systemPromptRef.current, image: imageRef.current }
+        {
+          systemPrompt: systemPromptRef.current,
+          onToolCall: toolHandlerRef.current,
+        }
       )
-
-      // Clear image after sending
-      imageRef.current = undefined
 
       abortRef.current = controller
     },
@@ -184,6 +183,6 @@ export function useConversation() {
     deleteConversation: deleteConv,
     stopStreaming,
     setSystemPrompt,
-    setImage,
+    setToolHandler,
   }
 }

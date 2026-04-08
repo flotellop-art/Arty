@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { BrowserRouter, Routes, Route, useNavigate, useParams } from 'react-router-dom'
 import { useConversation } from './hooks/useConversation'
 import { useGoogleAuth } from './hooks/useGoogleAuth'
@@ -7,7 +7,7 @@ import { useDrive } from './hooks/useDrive'
 import { useBrowser } from './hooks/useBrowser'
 import { useComputer } from './hooks/useComputer'
 import { buildContextualPrompt } from './constants/systemPrompt'
-import { detectAndRunAction } from './services/actionDetector'
+import { createToolExecutor } from './services/toolExecutor'
 import { HomeScreen } from './components/home/HomeScreen'
 import { ConversationScreen } from './components/chat/ConversationScreen'
 import { Sidebar } from './components/layout/Sidebar'
@@ -16,6 +16,7 @@ import type { GmailMessage } from './types/google'
 
 function AppContent() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [actionScreenshot, setActionScreenshot] = useState<string | null>(null)
   const navigate = useNavigate()
 
   const conversation = useConversation()
@@ -33,7 +34,7 @@ function AppContent() {
     deleteConversation,
     stopStreaming,
     setSystemPrompt,
-    setImage,
+    setToolHandler,
   } = conversation
 
   const googleAuth = useGoogleAuth()
@@ -41,6 +42,21 @@ function AppContent() {
   const drive = useDrive()
   const browserActions = useBrowser()
   const computerActions = useComputer()
+
+  // Create tool executor and register it
+  const toolExecutorRef = useRef(createToolExecutor(computerActions, gmail, drive, browserActions))
+
+  useEffect(() => {
+    toolExecutorRef.current = createToolExecutor(computerActions, gmail, drive, browserActions)
+    setToolHandler((name: string, input: Record<string, unknown>) => {
+      return toolExecutorRef.current(name, input).then((res) => {
+        if (res.screenshot) {
+          setActionScreenshot(res.screenshot)
+        }
+        return res
+      })
+    })
+  }, [computerActions, gmail, drive, browserActions, setToolHandler])
 
   // Auto-fetch Gmail and Drive when Google is connected
   useEffect(() => {
@@ -80,39 +96,13 @@ function AppContent() {
     setSystemPrompt(prompt)
   }, [googleAuth.isConnected, gmail.messages, drive.files, setSystemPrompt])
 
-  const [actionScreenshot, setActionScreenshot] = useState<string | null>(null)
-
-  const handleSendWithActions = useCallback(
-    async (text: string, conversationId?: string) => {
-      const targetId = conversationId ?? createConversation()
-
-      // Detect and run actions (computer, gmail, drive, browser)
-      const result = await detectAndRunAction(text, computerActions, browserActions, gmail, drive)
-
-      if (result.handled && result.context) {
-        // Display screenshot in chat
-        if (result.screenshot) {
-          setActionScreenshot(result.screenshot)
-          // Send screenshot as vision image to Claude (~1500 tokens vs 400K+)
-          setImage(result.screenshot)
-        }
-        // Send user message + short context to Claude
-        sendMessage(text + '\n\n' + result.context, targetId)
-      } else {
-        sendMessage(text, targetId)
-      }
-
-      return targetId
-    },
-    [createConversation, sendMessage, computerActions, browserActions, gmail, drive]
-  )
-
   const handleSendFromHome = useCallback(
-    async (text: string) => {
-      const id = await handleSendWithActions(text)
+    (text: string) => {
+      const id = createConversation()
+      sendMessage(text, id)
       navigate(`/chat/${id}`)
     },
-    [handleSendWithActions, navigate]
+    [createConversation, sendMessage, navigate]
   )
 
   const handleNewConversation = useCallback(() => {
@@ -179,7 +169,7 @@ function AppContent() {
               streamingContent={streamingContent}
               error={error}
               onBack={handleBack}
-              onSend={(text: string) => handleSendWithActions(text, activeId ?? undefined)}
+              onSend={sendMessage}
               onStop={stopStreaming}
               onSelect={selectConversation}
               gmail={gmail}

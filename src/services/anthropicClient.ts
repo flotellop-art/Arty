@@ -1,17 +1,113 @@
 import { SYSTEM_PROMPT } from '../constants/systemPrompt'
 
-type ContentBlock =
-  | { type: 'text'; text: string }
-  | { type: 'image'; source: { type: 'base64'; media_type: string; data: string } }
+// Tool definitions for Claude
+const TOOLS = [
+  {
+    name: 'open_app',
+    description: "Ouvre une application sur le PC de Florent. Utilise cette action quand Florent demande d'ouvrir un logiciel ou un site.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        app: {
+          type: 'string' as const,
+          enum: ['excel', 'word', 'chrome', 'navigateur', 'wordpress', 'bloc-notes', 'notepad', 'calculatrice', 'paint', 'explorateur'],
+          description: "Nom de l'application à ouvrir",
+        },
+      },
+      required: ['app'],
+    },
+  },
+  {
+    name: 'screenshot_pc',
+    description: "Prend un screenshot de l'écran du PC de Florent. Utilise quand il veut voir son écran ou vérifier quelque chose.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+    },
+  },
+  {
+    name: 'read_emails',
+    description: 'Lit les 10 derniers emails non lus de Gmail de Florent.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+    },
+  },
+  {
+    name: 'list_drive',
+    description: 'Liste les fichiers récents sur Google Drive de Florent.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+    },
+  },
+  {
+    name: 'search_price',
+    description: 'Recherche les prix chez les fournisseurs BTP (Point P, Gedimat).',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        product: {
+          type: 'string' as const,
+          description: 'Nom du produit à rechercher',
+        },
+      },
+      required: ['product'],
+    },
+  },
+  {
+    name: 'publish_wordpress',
+    description: "Publie un article sur le site facadespollet.fr. Utilise quand Florent demande de créer/publier un article. Rédige d'abord le contenu complet puis publie.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        title: { type: 'string' as const, description: "Titre de l'article" },
+        content: { type: 'string' as const, description: "Contenu HTML de l'article" },
+        status: { type: 'string' as const, enum: ['draft', 'publish'], description: 'Brouillon ou publication directe' },
+      },
+      required: ['title', 'content', 'status'],
+    },
+  },
+  {
+    name: 'click_on_pc',
+    description: 'Clique à des coordonnées précises sur l\'écran du PC. Utilise après un screenshot pour interagir.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        x: { type: 'number' as const, description: 'Coordonnée X' },
+        y: { type: 'number' as const, description: 'Coordonnée Y' },
+      },
+      required: ['x', 'y'],
+    },
+  },
+  {
+    name: 'type_on_pc',
+    description: 'Tape du texte sur le PC de Florent dans l\'application active.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        text: { type: 'string' as const, description: 'Texte à taper' },
+      },
+      required: ['text'],
+    },
+  },
+]
 
 interface ApiMessage {
   role: 'user' | 'assistant'
   content: string | ContentBlock[]
 }
 
+type ContentBlock =
+  | { type: 'text'; text: string }
+  | { type: 'image'; source: { type: 'base64'; media_type: string; data: string } }
+  | { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> }
+  | { type: 'tool_result'; tool_use_id: string; content: string }
+
 interface StreamOptions {
   systemPrompt?: string
-  image?: string // base64 data URI (data:image/png;base64,...)
+  image?: string
+  onToolCall?: (name: string, input: Record<string, unknown>) => Promise<{ result: string; screenshot?: string }>
 }
 
 export function streamMessage(
@@ -25,11 +121,10 @@ export function streamMessage(
 
   const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY
   if (!apiKey) {
-    setTimeout(() => onError(new Error('Clé API Anthropic manquante. Configurez VITE_ANTHROPIC_API_KEY dans .env')), 0)
+    setTimeout(() => onError(new Error('Clé API manquante')), 0)
     return controller
   }
 
-  // Build messages, injecting image into last user message if provided
   const apiMessages = messages.map((m, i) => {
     if (options?.image && i === messages.length - 1 && m.role === 'user') {
       const base64Data = options.image.replace(/^data:image\/\w+;base64,/, '')
@@ -44,76 +139,100 @@ export function streamMessage(
     return { role: m.role, content: m.content }
   })
 
-  fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
-    },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 4096,
-      stream: true,
-      system: options?.systemPrompt || SYSTEM_PROMPT,
-      messages: apiMessages,
-    }),
-    signal: controller.signal,
-  })
-    .then(async (response) => {
-      if (!response.ok) {
-        const body = await response.text().catch(() => '')
-        throw new Error(`Erreur API (${response.status}): ${body}`)
+  doStream(apiKey, apiMessages, options, onToken, onDone, onError, controller)
+  return controller
+}
+
+async function doStream(
+  apiKey: string,
+  messages: ApiMessage[],
+  options: StreamOptions | undefined,
+  onToken: (text: string) => void,
+  onDone: () => void,
+  onError: (error: Error) => void,
+  controller: AbortController
+) {
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 4096,
+        stream: false,
+        system: options?.systemPrompt || SYSTEM_PROMPT,
+        tools: TOOLS,
+        messages,
+      }),
+      signal: controller.signal,
+    })
+
+    if (!response.ok) {
+      const body = await response.text().catch(() => '')
+      throw new Error(`Erreur API (${response.status}): ${body}`)
+    }
+
+    const data = await response.json()
+
+    // Process content blocks
+    let textContent = ''
+    let toolUseBlock: { id: string; name: string; input: Record<string, unknown> } | null = null
+
+    for (const block of data.content) {
+      if (block.type === 'text') {
+        textContent += block.text
+      } else if (block.type === 'tool_use') {
+        toolUseBlock = { id: block.id, name: block.name, input: block.input }
       }
+    }
 
-      const reader = response.body!.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ''
+    // If there's text, emit it
+    if (textContent) {
+      onToken(textContent)
+    }
 
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
+    // If tool call, execute it and continue
+    if (toolUseBlock && options?.onToolCall) {
+      const toolResult = await options.onToolCall(toolUseBlock.name, toolUseBlock.input)
 
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop()!
+      // Build new messages with tool result
+      const newMessages: ApiMessage[] = [
+        ...messages,
+        { role: 'assistant' as const, content: data.content },
+        {
+          role: 'user' as const,
+          content: [
+            { type: 'tool_result' as const, tool_use_id: toolUseBlock.id, content: toolResult.result },
+          ] as ContentBlock[],
+        },
+      ]
 
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue
-          const data = line.slice(6)
-          if (data === '[DONE]') continue
-
-          try {
-            const parsed = JSON.parse(data)
-            if (
-              parsed.type === 'content_block_delta' &&
-              parsed.delta?.type === 'text_delta' &&
-              parsed.delta.text
-            ) {
-              onToken(parsed.delta.text)
-            }
-            if (parsed.type === 'message_stop') {
-              onDone()
-              return
-            }
-            if (parsed.type === 'error') {
-              throw new Error(parsed.error?.message ?? 'Erreur streaming')
-            }
-          } catch (e) {
-            if (e instanceof SyntaxError) continue
-            throw e
-          }
+      // If tool returned a screenshot, add image
+      if (toolResult.screenshot) {
+        const base64Data = toolResult.screenshot.replace(/^data:image\/\w+;base64,/, '')
+        const lastMsg = newMessages[newMessages.length - 1]!
+        if (Array.isArray(lastMsg.content)) {
+          (lastMsg.content as ContentBlock[]).push({
+            type: 'image' as const,
+            source: { type: 'base64' as const, media_type: 'image/png', data: base64Data },
+          } as ContentBlock)
         }
       }
 
-      onDone()
-    })
-    .catch((err: Error) => {
-      if (err.name !== 'AbortError') {
-        onError(err)
-      }
-    })
+      // Continue conversation with tool result (recursive)
+      await doStream(apiKey, newMessages, { ...options, image: undefined }, onToken, onDone, onError, controller)
+      return
+    }
 
-  return controller
+    onDone()
+  } catch (err) {
+    if (err instanceof Error && err.name !== 'AbortError') {
+      onError(err)
+    }
+  }
 }
