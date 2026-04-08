@@ -4,6 +4,7 @@ import { useConversation } from './hooks/useConversation'
 import { useGoogleAuth } from './hooks/useGoogleAuth'
 import { useGmail } from './hooks/useGmail'
 import { useDrive } from './hooks/useDrive'
+import { useBrowser } from './hooks/useBrowser'
 import { buildContextualPrompt } from './constants/systemPrompt'
 import { HomeScreen } from './components/home/HomeScreen'
 import { ConversationScreen } from './components/chat/ConversationScreen'
@@ -35,6 +36,7 @@ function AppContent() {
   const googleAuth = useGoogleAuth()
   const gmail = useGmail()
   const drive = useDrive()
+  const browserActions = useBrowser()
 
   // Update system prompt with Google context
   useEffect(() => {
@@ -143,6 +145,7 @@ function AppContent() {
               onSelect={selectConversation}
               gmail={gmail}
               drive={drive}
+              browserActions={browserActions}
             />
           }
         />
@@ -162,6 +165,7 @@ interface ChatRouteProps {
   onSelect: (id: string) => void
   gmail: ReturnType<typeof useGmail>
   drive: ReturnType<typeof useDrive>
+  browserActions: ReturnType<typeof useBrowser>
 }
 
 function ChatRoute({
@@ -175,6 +179,7 @@ function ChatRoute({
   onSelect,
   gmail,
   drive,
+  browserActions,
 }: ChatRouteProps) {
   const { id } = useParams<{ id: string }>()
 
@@ -203,6 +208,7 @@ function ChatRoute({
       onStop={onStop}
       gmail={gmail}
       drive={drive}
+      browserActions={browserActions}
     />
   )
 }

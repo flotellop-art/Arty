@@ -2,7 +2,7 @@
 
 Assistant IA pour Facades Pollet, entreprise de ravalement a Valence (26).
 
-PWA mobile-first connectee a l'API Anthropic (Claude Sonnet 4.6) avec streaming temps reel, integration Gmail et Google Drive.
+PWA mobile-first connectee a l'API Anthropic (Claude Sonnet 4.6) avec streaming temps reel, integration Gmail, Google Drive, et navigation web automatisee (Playwright).
 
 ---
 
@@ -127,6 +127,11 @@ VITE_GOOGLE_REDIRECT_URI=http://localhost:5173/auth/callback
 
 # Google OAuth (cote serveur — JAMAIS expose au navigateur)
 GOOGLE_CLIENT_SECRET=GOCSPX-xxxxx
+
+# WordPress (cote serveur)
+WP_URL=https://facadespollet.fr
+WP_USERNAME=votre-login-wp
+WP_PASSWORD=votre-mot-de-passe-wp
 ```
 
 > **Important** : `GOOGLE_CLIENT_SECRET` n'a PAS de prefixe `VITE_`.
@@ -174,6 +179,9 @@ Dans les settings du projet avant de deployer (ou apres dans Settings > Environm
 | `VITE_GOOGLE_CLIENT_ID` | `123...apps.googleusercontent.com` | Production |
 | `VITE_GOOGLE_REDIRECT_URI` | `https://VOTRE-DOMAINE.vercel.app/auth/callback` | Production |
 | `GOOGLE_CLIENT_SECRET` | `GOCSPX-...` | Production |
+| `WP_URL` | `https://facadespollet.fr` | Production |
+| `WP_USERNAME` | login WordPress | Production |
+| `WP_PASSWORD` | mot de passe WordPress | Production |
 
 ### 5.3 Deployer
 
@@ -198,6 +206,7 @@ Cliquer **Deploy**. Le build prend environ 30 secondes.
 - react-markdown + remark-gfm
 - API Anthropic (claude-sonnet-4-6, streaming SSE)
 - Google OAuth 2.0 + Gmail API + Google Drive API
+- Playwright + @sparticuz/chromium (navigation web headless sur Vercel)
 - PWA installable (manifest.json + service worker)
 
 ---
@@ -226,6 +235,15 @@ Cliquer **Deploy**. Le build prend environ 30 secondes.
 - System prompt enrichi avec contexte Gmail/Drive
 - Suggestions contextuelles ("Lire mes emails", "Chercher un fichier Drive")
 
+### Phase 4 — Navigation web automatisee (Playwright)
+- Publication WordPress sur facadespollet.fr (avec confirmation obligatoire)
+- Recherche prix fournisseurs (Point P, Gedimat) avec tableau comparatif
+- Remplissage automatique de formulaires en ligne
+- Capture d'ecran de pages web
+- Bandeau anime dans le chat pendant la navigation
+- Detection automatique de CAPTCHA (arret + notification)
+- Toute soumission requiert une confirmation explicite de Florent
+
 ---
 
 ## Securite
@@ -233,6 +251,10 @@ Cliquer **Deploy**. Le build prend environ 30 secondes.
 - Le `GOOGLE_CLIENT_SECRET` n'est JAMAIS expose cote client
 - Les echanges OAuth passent par des Vercel Serverless Functions (`/api/`)
 - Aucun email n'est envoye sans double confirmation explicite de l'utilisateur
+- Aucune publication WordPress sans confirmation
+- Aucune soumission de formulaire sans confirmation
+- Detection automatique de CAPTCHA et arret immediat
+- Les identifiants WordPress (`WP_USERNAME`, `WP_PASSWORD`) restent cote serveur
 - Les tokens Google sont stockes en localStorage (access_token + refresh_token)
 - L'access_token est rafraichi automatiquement quand il expire
 
@@ -249,8 +271,16 @@ api/
 │   ├── messages.ts    # GET  — liste les 10 derniers emails non lus
 │   ├── read.ts        # GET  — lit le contenu complet d'un email
 │   └── send.ts        # POST — envoie un email
-└── drive/
-    ├── files.ts       # GET  — liste les fichiers Drive
-    ├── read.ts        # GET  — lit le contenu d'un fichier (Docs, texte)
-    └── create.ts      # POST — cree un nouveau document
+├── drive/
+│   ├── files.ts       # GET  — liste les fichiers Drive
+│   ├── read.ts        # GET  — lit le contenu d'un fichier (Docs, texte)
+│   └── create.ts      # POST — cree un nouveau document
+├── wordpress/
+│   └── publish.ts     # POST — publier/brouillon un article WordPress
+├── browser/
+│   ├── search-price.ts # POST — recherche prix fournisseurs
+│   ├── fill-form.ts    # POST — remplissage formulaire
+│   └── screenshot.ts   # POST — capture d'ecran
+└── _lib/
+    └── browser.ts      # Utilitaire partage Playwright + Chromium
 ```
