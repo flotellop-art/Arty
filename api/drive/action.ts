@@ -21,7 +21,7 @@ async function handleList(token: string, req: VercelRequest, res: VercelResponse
     let q = 'trashed=false'
     if (folderId) q += ` and '${folderId}' in parents`
     if (query) q += ` and (name contains '${query.replace(/'/g, "\\'")}')`
-    const params = new URLSearchParams({ q, fields: 'files(id,name,mimeType,modifiedTime,size,webViewLink,iconLink)', orderBy: 'modifiedTime desc', pageSize: '20' })
+    const params = new URLSearchParams({ q, fields: 'files(id,name,mimeType,modifiedTime,size,webViewLink,iconLink)', orderBy: 'modifiedTime desc', pageSize: '100' })
     const r = await fetch(`https://www.googleapis.com/drive/v3/files?${params}`, { headers: { Authorization: `Bearer ${token}` } })
     if (!r.ok) { const err = await r.json(); return res.status(r.status).json({ error: err.error?.message }) }
     const data = await r.json()
