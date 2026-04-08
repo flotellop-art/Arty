@@ -23,6 +23,7 @@ const ALLOWED_APPS = {
   'notepad': 'notepad.exe',
   'calculatrice': 'calc.exe',
   'paint': 'mspaint.exe',
+  'wordpress': 'chrome.exe https://www.facadespollet.fr/inova-admin/',
 };
 
 app.use(cors());
@@ -172,7 +173,13 @@ $bitmap.Dispose()
 }
 
 async function openApp(exeName) {
-  await runPowerShell(`Start-Process '${exeName}'`);
+  const parts = exeName.split(' ');
+  if (parts.length > 1) {
+    // App with arguments (e.g. "chrome.exe https://...")
+    await runPowerShell(`Start-Process '${parts[0]}' -ArgumentList '${parts.slice(1).join(' ')}'`);
+  } else {
+    await runPowerShell(`Start-Process '${exeName}'`);
+  }
 }
 
 async function click(x, y) {
