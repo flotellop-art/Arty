@@ -149,23 +149,23 @@ function runPowerShell(script) {
 }
 
 async function takeScreenshot() {
-  const tmpFile = path.join(require('os').tmpdir(), `screenshot-${Date.now()}.png`);
-
   const ps = `
     Add-Type -AssemblyName System.Windows.Forms
     Add-Type -AssemblyName System.Drawing
+    $tmpFile = Join-Path $env:TEMP "fp-screenshot.png"
     $screen = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
     $bitmap = New-Object System.Drawing.Bitmap($screen.Width, $screen.Height)
     $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
     $graphics.CopyFromScreen($screen.Location, [System.Drawing.Point]::Empty, $screen.Size)
-    $bitmap.Save('${tmpFile.replace(/\\/g, '\\\\')}', [System.Drawing.Imaging.ImageFormat]::Png)
+    $bitmap.Save($tmpFile, [System.Drawing.Imaging.ImageFormat]::Png)
     $graphics.Dispose()
     $bitmap.Dispose()
+    Write-Output $tmpFile
   `;
 
-  await runPowerShell(ps);
-  const buffer = fs.readFileSync(tmpFile);
-  fs.unlinkSync(tmpFile);
+  const tmpFile = await runPowerShell(ps);
+  const buffer = fs.readFileSync(tmpFile.trim());
+  fs.unlinkSync(tmpFile.trim());
   return `data:image/png;base64,${buffer.toString('base64')}`;
 }
 
