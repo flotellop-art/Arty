@@ -211,29 +211,28 @@ async function doStream(
     if (toolUseBlock && options?.onToolCall) {
       const toolResult = await options.onToolCall(toolUseBlock.name, toolUseBlock.input)
 
-      // Build new messages with tool result
+      // Build tool result content (text + optional screenshot image)
+      let toolResultContent: string | Array<{ type: string; text?: string; source?: { type: string; media_type: string; data: string } }>
+      if (toolResult.screenshot) {
+        const base64Data = toolResult.screenshot.replace(/^data:image\/\w+;base64,/, '')
+        toolResultContent = [
+          { type: 'text', text: toolResult.result },
+          { type: 'image', source: { type: 'base64', media_type: 'image/png', data: base64Data } },
+        ]
+      } else {
+        toolResultContent = toolResult.result
+      }
+
       const newMessages: ApiMessage[] = [
         ...messages,
         { role: 'assistant' as const, content: data.content },
         {
           role: 'user' as const,
           content: [
-            { type: 'tool_result' as const, tool_use_id: toolUseBlock.id, content: toolResult.result },
+            { type: 'tool_result' as const, tool_use_id: toolUseBlock.id, content: toolResultContent },
           ] as ContentBlock[],
         },
       ]
-
-      // If tool returned a screenshot, add image
-      if (toolResult.screenshot) {
-        const base64Data = toolResult.screenshot.replace(/^data:image\/\w+;base64,/, '')
-        const lastMsg = newMessages[newMessages.length - 1]!
-        if (Array.isArray(lastMsg.content)) {
-          (lastMsg.content as ContentBlock[]).push({
-            type: 'image' as const,
-            source: { type: 'base64' as const, media_type: 'image/png', data: base64Data },
-          } as ContentBlock)
-        }
-      }
 
       // Continue conversation with tool result (recursive)
       await doStream(apiKey, newMessages, { ...options, image: undefined }, onToken, onDone, onError, controller)
