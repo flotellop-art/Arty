@@ -1,14 +1,21 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { BrowserRouter, Routes, Route, useNavigate, useParams } from 'react-router-dom'
 import { useConversation } from './hooks/useConversation'
+import { useGoogleAuth } from './hooks/useGoogleAuth'
+import { useGmail } from './hooks/useGmail'
+import { useDrive } from './hooks/useDrive'
+import { buildContextualPrompt } from './constants/systemPrompt'
 import { HomeScreen } from './components/home/HomeScreen'
 import { ConversationScreen } from './components/chat/ConversationScreen'
 import { Sidebar } from './components/layout/Sidebar'
+import { OAuthCallback } from './components/google/OAuthCallback'
+import type { GmailMessage } from './types/google'
 
 function AppContent() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const navigate = useNavigate()
 
+  const conversation = useConversation()
   const {
     conversations,
     activeConversation,
@@ -22,7 +29,41 @@ function AppContent() {
     sendMessage,
     deleteConversation,
     stopStreaming,
-  } = useConversation()
+    setSystemPrompt,
+  } = conversation
+
+  const googleAuth = useGoogleAuth()
+  const gmail = useGmail()
+  const drive = useDrive()
+
+  // Update system prompt with Google context
+  useEffect(() => {
+    if (!googleAuth.isConnected) {
+      setSystemPrompt(undefined)
+      return
+    }
+
+    let gmailSummary: string | undefined
+    if (gmail.messages.length > 0) {
+      gmailSummary = `${gmail.messages.length} emails non lus :\n` +
+        gmail.messages
+          .slice(0, 5)
+          .map((m: GmailMessage) => `- De: ${m.from} | Objet: ${m.subject}`)
+          .join('\n')
+    }
+
+    let driveSummary: string | undefined
+    if (drive.files.length > 0) {
+      driveSummary = `Fichiers récents sur Drive :\n` +
+        drive.files
+          .slice(0, 5)
+          .map((f) => `- ${f.name} (${f.mimeType})`)
+          .join('\n')
+    }
+
+    const prompt = buildContextualPrompt({ gmailSummary, driveSummary })
+    setSystemPrompt(prompt)
+  }, [googleAuth.isConnected, gmail.messages, drive.files, setSystemPrompt])
 
   const handleSendFromHome = useCallback(
     (text: string) => {
@@ -51,6 +92,13 @@ function AppContent() {
     navigate('/')
   }, [clearActive, navigate])
 
+  const handleOAuthCallback = useCallback(
+    async (code: string) => {
+      await googleAuth.handleCallback(code)
+    },
+    [googleAuth]
+  )
+
   return (
     <div className="h-[100dvh] bg-cream font-sans font-light">
       <Sidebar
@@ -71,8 +119,15 @@ function AppContent() {
               onMenuToggle={() => setSidebarOpen((o) => !o)}
               onSend={handleSendFromHome}
               isStreaming={isStreaming}
+              googleAuth={googleAuth}
+              gmail={gmail}
+              drive={drive}
             />
           }
+        />
+        <Route
+          path="/auth/callback"
+          element={<OAuthCallback onCallback={handleOAuthCallback} />}
         />
         <Route
           path="/chat/:id"
@@ -86,6 +141,8 @@ function AppContent() {
               onSend={sendMessage}
               onStop={stopStreaming}
               onSelect={selectConversation}
+              gmail={gmail}
+              drive={drive}
             />
           }
         />
@@ -103,6 +160,8 @@ interface ChatRouteProps {
   onSend: (text: string) => void
   onStop: () => void
   onSelect: (id: string) => void
+  gmail: ReturnType<typeof useGmail>
+  drive: ReturnType<typeof useDrive>
 }
 
 function ChatRoute({
@@ -114,6 +173,8 @@ function ChatRoute({
   onSend,
   onStop,
   onSelect,
+  gmail,
+  drive,
 }: ChatRouteProps) {
   const { id } = useParams<{ id: string }>()
 
@@ -140,6 +201,8 @@ function ChatRoute({
       onBack={onBack}
       onSend={onSend}
       onStop={onStop}
+      gmail={gmail}
+      drive={drive}
     />
   )
 }

@@ -2,6 +2,9 @@ import type { Conversation } from '../../types'
 import { ChatTopBar } from './ChatTopBar'
 import { MessageList } from './MessageList'
 import { InputBar } from '../layout/InputBar'
+import { ActionBanner } from '../google/ActionBanner'
+import type { useGmail } from '../../hooks/useGmail'
+import type { useDrive } from '../../hooks/useDrive'
 
 interface ConversationScreenProps {
   conversation: Conversation
@@ -11,6 +14,8 @@ interface ConversationScreenProps {
   onBack: () => void
   onSend: (text: string) => void
   onStop: () => void
+  gmail: ReturnType<typeof useGmail>
+  drive: ReturnType<typeof useDrive>
 }
 
 export function ConversationScreen({
@@ -21,10 +26,23 @@ export function ConversationScreen({
   onBack,
   onSend,
   onStop,
+  gmail,
+  drive,
 }: ConversationScreenProps) {
   return (
     <div className="flex flex-col h-full">
       <ChatTopBar title={conversation.title} onBack={onBack} />
+
+      <ActionBanner
+        icon="📧"
+        message="Lecture emails..."
+        isVisible={gmail.isLoading}
+      />
+      <ActionBanner
+        icon="📁"
+        message="Accès Drive..."
+        isVisible={drive.isLoading}
+      />
 
       <MessageList
         messages={conversation.messages}

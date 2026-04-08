@@ -5,11 +5,16 @@ interface ApiMessage {
   content: string
 }
 
+interface StreamOptions {
+  systemPrompt?: string
+}
+
 export function streamMessage(
   messages: ApiMessage[],
   onToken: (text: string) => void,
   onDone: () => void,
-  onError: (error: Error) => void
+  onError: (error: Error) => void,
+  options?: StreamOptions
 ): AbortController {
   const controller = new AbortController()
 
@@ -31,7 +36,7 @@ export function streamMessage(
       model: 'claude-sonnet-4-6',
       max_tokens: 4096,
       stream: true,
-      system: SYSTEM_PROMPT,
+      system: options?.systemPrompt || SYSTEM_PROMPT,
       messages,
     }),
     signal: controller.signal,

@@ -58,6 +58,12 @@ export function useConversation() {
     setError(null)
   }, [])
 
+  const systemPromptRef = useRef<string | undefined>(undefined)
+
+  const setSystemPrompt = useCallback((prompt: string | undefined) => {
+    systemPromptRef.current = prompt
+  }, [])
+
   const sendMessage = useCallback(
     (text: string, conversationId?: string) => {
       const targetId = conversationId ?? activeId
@@ -126,7 +132,8 @@ export function useConversation() {
           setIsStreaming(false)
           setStreamingContent('')
           abortRef.current = null
-        }
+        },
+        { systemPrompt: systemPromptRef.current }
       )
 
       abortRef.current = controller
@@ -167,5 +174,6 @@ export function useConversation() {
     sendMessage,
     deleteConversation: deleteConv,
     stopStreaming,
+    setSystemPrompt,
   }
 }
