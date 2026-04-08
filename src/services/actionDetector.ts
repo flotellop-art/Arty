@@ -19,7 +19,7 @@ export async function detectAndRunAction(
   const lower = text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
 
   // --- Computer Use: open app ---
-  const openMatch = lower.match(/ouvr\w*\s+(excel|word|chrome|navigateur|bloc-notes|notepad|calculatrice|paint|explorateur|wordpress)/)
+  const openMatch = lower.match(/ouvr\w*\s+(excel|wordpress|word|chrome|navigateur|bloc-notes|notepad|calculatrice|paint|explorateur)/)
   if (openMatch) {
     const app = openMatch[1]!
     const result = await computer.openApp(app)
