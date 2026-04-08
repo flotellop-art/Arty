@@ -187,11 +187,24 @@ async function runWithTools(
       for (const block of data.content) {
         if (block.type === 'tool_use') {
           const toolResult = await options.onToolCall(block.name, block.input)
-          toolResults.push({
-            type: 'tool_result',
-            tool_use_id: block.id,
-            content: toolResult.result,
-          })
+
+          if (toolResult.screenshot) {
+            const base64Data = toolResult.screenshot.replace(/^data:image\/\w+;base64,/, '')
+            toolResults.push({
+              type: 'tool_result',
+              tool_use_id: block.id,
+              content: [
+                { type: 'text', text: toolResult.result },
+                { type: 'image', source: { type: 'base64', media_type: 'image/png', data: base64Data } },
+              ],
+            })
+          } else {
+            toolResults.push({
+              type: 'tool_result',
+              tool_use_id: block.id,
+              content: toolResult.result,
+            })
+          }
         }
       }
 
