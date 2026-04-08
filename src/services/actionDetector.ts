@@ -18,7 +18,7 @@ export async function detectAndRunAction(
   const lower = text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
 
   // --- Computer Use: open app ---
-  const openMatch = lower.match(/ouvr[eir]+ (excel|word|chrome|navigateur|bloc-notes|notepad|calculatrice|paint|explorateur)/)
+  const openMatch = lower.match(/ouvr\w*\s+(excel|word|chrome|navigateur|bloc-notes|notepad|calculatrice|paint|explorateur)/)
   if (openMatch) {
     const app = openMatch[1]!
     const result = await computer.openApp(app)
@@ -35,7 +35,7 @@ export async function detectAndRunAction(
   }
 
   // --- Computer Use: screenshot ---
-  if (lower.includes('screenshot') || lower.includes('capture') && (lower.includes('ecran') || lower.includes('pc'))) {
+  if (lower.includes('screenshot') || (lower.includes('capture') && (lower.includes('ecran') || lower.includes('pc')))) {
     const result = await computer.screenshot()
     if (result?.success && result.screenshot) {
       return {
