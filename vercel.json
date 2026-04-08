@@ -11,6 +11,9 @@
     "api/browser/**": {
       "maxDuration": 30,
       "memory": 1024
+    },
+    "api/computer/**": {
+      "maxDuration": 30
     }
   },
   "rewrites": [

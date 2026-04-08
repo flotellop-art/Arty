@@ -7,6 +7,7 @@ import { BrowserBanner } from '../google/BrowserBanner'
 import type { useGmail } from '../../hooks/useGmail'
 import type { useDrive } from '../../hooks/useDrive'
 import type { useBrowser } from '../../hooks/useBrowser'
+import type { useComputer } from '../../hooks/useComputer'
 
 interface ConversationScreenProps {
   conversation: Conversation
@@ -19,6 +20,7 @@ interface ConversationScreenProps {
   gmail: ReturnType<typeof useGmail>
   drive: ReturnType<typeof useDrive>
   browserActions: ReturnType<typeof useBrowser>
+  computerActions: ReturnType<typeof useComputer>
 }
 
 export function ConversationScreen({
@@ -32,6 +34,7 @@ export function ConversationScreen({
   gmail,
   drive,
   browserActions,
+  computerActions,
 }: ConversationScreenProps) {
   return (
     <div className="flex flex-col h-full">
@@ -40,6 +43,7 @@ export function ConversationScreen({
       <ActionBanner icon="📧" message="Lecture emails..." isVisible={gmail.isLoading} />
       <ActionBanner icon="📁" message="Accès Drive..." isVisible={drive.isLoading} />
       <BrowserBanner action={browserActions.currentAction} />
+      <BrowserBanner action={computerActions.currentAction} />
 
       <MessageList
         messages={conversation.messages}
@@ -47,9 +51,9 @@ export function ConversationScreen({
         streamingContent={streamingContent}
       />
 
-      {(error || browserActions.error) && (
+      {(error || browserActions.error || computerActions.error) && (
         <div className="mx-4 mb-2 px-4 py-2 bg-red-50 border border-red-200 rounded-xl text-sm text-red-600">
-          {error || browserActions.error}
+          {error || browserActions.error || computerActions.error}
         </div>
       )}
 
