@@ -93,27 +93,36 @@ export function createToolExecutor(
 
         // --- Google Drive ---
         case 'list_drive': {
-          const files = await drive.fetchFiles()
-          if (files && files.length > 0) {
-            const summary = files.slice(0, 30).map((f, i) =>
-              `${i + 1}. [ID:${f.id}] ${f.name} (${f.mimeType.split('.').pop() || f.mimeType})`
-            ).join('\n')
-            return { result: `${files.length} fichiers:\n${summary}` }
+          try {
+            const folderId = input.folder_id as string | undefined
+            const files = await drive.fetchFiles(folderId)
+            if (files && files.length > 0) {
+              const summary = files.slice(0, 50).map((f, i) =>
+                `${i + 1}. [ID:${f.id}] ${f.name} (${f.mimeType.split('.').pop() || f.mimeType})`
+              ).join('\n')
+              return { result: `${files.length} fichiers${folderId ? ' dans ce dossier' : ''}:\n${summary}` }
+            }
+            return { result: folderId ? 'Dossier vide.' : 'Aucun fichier sur Drive.' }
+          } catch (err) {
+            return { result: `Erreur Drive: ${err instanceof Error ? err.message : 'Google non connecté ?'}` }
           }
-          return { result: files?.length === 0 ? 'Aucun fichier sur Drive.' : 'Erreur: Google non connecté ?' }
         }
 
         case 'search_drive': {
           const query = input.query as string
           if (!query) return { result: 'Erreur: requête manquante.' }
-          const files = await drive.fetchFiles(undefined, query)
-          if (files && files.length > 0) {
-            const summary = files.map((f, i) =>
-              `${i + 1}. [ID:${f.id}] ${f.name} (${f.mimeType.split('.').pop() || f.mimeType})`
-            ).join('\n')
-            return { result: `${files.length} fichiers trouvés pour "${query}":\n${summary}` }
+          try {
+            const files = await drive.fetchFiles(undefined, query)
+            if (files && files.length > 0) {
+              const summary = files.map((f, i) =>
+                `${i + 1}. [ID:${f.id}] ${f.name} (${f.mimeType.split('.').pop() || f.mimeType})`
+              ).join('\n')
+              return { result: `${files.length} fichiers trouvés pour "${query}":\n${summary}` }
+            }
+            return { result: `Aucun fichier trouvé pour "${query}". Essaie avec d'autres mots-clés ou liste le contenu des dossiers avec list_drive.` }
+          } catch (err) {
+            return { result: `Erreur recherche Drive: ${err instanceof Error ? err.message : 'Google non connecté ?'}` }
           }
-          return { result: `Aucun fichier trouvé pour "${query}".` }
         }
 
         case 'read_drive_file': {

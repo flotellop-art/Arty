@@ -82,8 +82,13 @@ const TOOLS = [
   // --- Google Drive ---
   {
     name: 'list_drive',
-    description: 'Liste les fichiers récents sur Google Drive.',
-    input_schema: { type: 'object' as const, properties: {} },
+    description: 'Liste les fichiers sur Google Drive. Sans folder_id: liste la racine. Avec folder_id: liste le contenu du dossier. Pour trouver un fichier, explore les dossiers un par un.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        folder_id: { type: 'string' as const, description: 'ID du dossier à lister (optionnel — sans = racine)' },
+      },
+    },
   },
   {
     name: 'search_drive',
