@@ -178,6 +178,12 @@ export function createToolExecutor(
             })
             const data = await safeJson(res)
             if (data.error) return { result: `Erreur lecture: ${data.error}` }
+
+            // If Anthropic file_id returned, mark for native PDF reading
+            if (data.anthropicFileId) {
+              return { result: `__ANTHROPIC_DOC__${data.anthropicFileId}__${data.name}` }
+            }
+
             return { result: `Fichier: ${data.name}\nType: ${data.mimeType}\n\nContenu:\n${data.content}` }
           } catch (err) {
             return { result: `Erreur: ${err instanceof Error ? err.message : 'lecture échouée'}` }

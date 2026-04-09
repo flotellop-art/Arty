@@ -78,9 +78,41 @@ async function handleRead(token: string, req: VercelRequest, res: VercelResponse
             }
           } catch { /* pdf-parse failed */ }
 
-          // If text extraction failed, try OCR then base64 fallback
+          // If text extraction failed, upload PDF to Anthropic Files API for native reading
           if (!content) {
-            // Try Google Vision OCR first
+            try {
+              const anthropicKey = process.env.VITE_ANTHROPIC_API_KEY
+              if (anthropicKey) {
+                // Upload PDF to Anthropic
+                const formData = new FormData()
+                const blob = new Blob([buffer], { type: 'application/pdf' })
+                formData.append('file', blob, meta.name || 'document.pdf')
+                formData.append('purpose', 'vision')
+
+                const uploadRes = await fetch('https://api.anthropic.com/v1/files', {
+                  method: 'POST',
+                  headers: {
+                    'x-api-key': anthropicKey,
+                    'anthropic-version': '2023-06-01',
+                    'anthropic-beta': 'files-api-2025-04-14',
+                  },
+                  body: formData,
+                })
+
+                if (uploadRes.ok) {
+                  const uploadData = await uploadRes.json()
+                  const fileId = uploadData.id
+                  // Return special format that toolExecutor will handle
+                  return res.status(200).json({
+                    id: meta.id, name: meta.name, mimeType: meta.mimeType, modifiedTime: meta.modifiedTime,
+                    content: `[ANTHROPIC_FILE:${fileId}]`,
+                    anthropicFileId: fileId,
+                  })
+                }
+              }
+            } catch { /* Anthropic upload failed */ }
+
+            // Last resort: try Google Vision OCR
             try {
               const visionKey = process.env.GOOGLE_VISION_API_KEY
               if (visionKey) {
