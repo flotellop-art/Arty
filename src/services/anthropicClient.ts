@@ -509,7 +509,7 @@ async function runWithTools(
         },
         body: JSON.stringify({
           model: 'claude-sonnet-4-6',
-          max_tokens: 8096,
+          max_tokens: 16384,
           temperature: 0.7,
           system: options?.systemPrompt || SYSTEM_PROMPT,
           tools: TOOLS,
