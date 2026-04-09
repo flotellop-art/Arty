@@ -127,6 +127,189 @@ export function createToolExecutor(
         }
 
         // --- Web ---
+        case 'delete_drive_file': {
+          const fileId = input.file_id as string
+          try {
+            const token = await getGoogleToken()
+            if (!token) return { result: 'Erreur: Google non connecté.' }
+            const res = await fetch('/api/drive/action', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+              body: JSON.stringify({ type: 'delete', id: fileId }),
+            })
+            const data = await res.json()
+            return { result: data.success ? 'Fichier supprimé.' : `Erreur: ${data.error}` }
+          } catch { return { result: 'Erreur suppression.' } }
+        }
+
+        case 'rename_drive_file': {
+          try {
+            const token = await getGoogleToken()
+            if (!token) return { result: 'Erreur: Google non connecté.' }
+            const res = await fetch('/api/drive/action', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+              body: JSON.stringify({ type: 'rename', id: input.file_id, name: input.new_name }),
+            })
+            const data = await res.json()
+            return { result: data.success ? `Fichier renommé en "${data.name}".` : `Erreur: ${data.error}` }
+          } catch { return { result: 'Erreur renommage.' } }
+        }
+
+        case 'move_drive_file': {
+          try {
+            const token = await getGoogleToken()
+            if (!token) return { result: 'Erreur: Google non connecté.' }
+            const res = await fetch('/api/drive/action', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+              body: JSON.stringify({ type: 'move', id: input.file_id, folderId: input.folder_id }),
+            })
+            const data = await res.json()
+            return { result: data.success ? 'Fichier déplacé.' : `Erreur: ${data.error}` }
+          } catch { return { result: 'Erreur déplacement.' } }
+        }
+
+        case 'create_drive_folder': {
+          try {
+            const token = await getGoogleToken()
+            if (!token) return { result: 'Erreur: Google non connecté.' }
+            const res = await fetch('/api/drive/action', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+              body: JSON.stringify({ type: 'create_folder', name: input.name, parentId: input.parent_id }),
+            })
+            const data = await res.json()
+            return { result: data.id ? `Dossier "${data.name}" créé.${data.webViewLink ? ` Lien: ${data.webViewLink}` : ''}` : `Erreur: ${data.error}` }
+          } catch { return { result: 'Erreur création dossier.' } }
+        }
+
+        // --- Google Contacts ---
+        case 'search_contacts': {
+          try {
+            const token = await getGoogleToken()
+            if (!token) return { result: 'Erreur: Google non connecté.' }
+            const res = await fetch('/api/contacts/action', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+              body: JSON.stringify({ type: 'search', query: input.query }),
+            })
+            const data = await res.json()
+            if (data.contacts && data.contacts.length > 0) {
+              const list = data.contacts.map((c: { name: string; email: string; phone: string; company: string }, i: number) =>
+                `${i + 1}. ${c.name}${c.phone ? ` — ${c.phone}` : ''}${c.email ? ` — ${c.email}` : ''}${c.company ? ` (${c.company})` : ''}`
+              ).join('\n')
+              return { result: `${data.contacts.length} contacts:\n${list}` }
+            }
+            return { result: 'Aucun contact trouvé.' }
+          } catch { return { result: 'Erreur contacts.' } }
+        }
+
+        case 'create_contact': {
+          try {
+            const token = await getGoogleToken()
+            if (!token) return { result: 'Erreur: Google non connecté.' }
+            const res = await fetch('/api/contacts/action', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+              body: JSON.stringify({ type: 'create', ...input }),
+            })
+            const data = await res.json()
+            return { result: data.success ? `Contact "${input.name}" ajouté.` : `Erreur: ${data.error}` }
+          } catch { return { result: 'Erreur création contact.' } }
+        }
+
+        // --- Gmail avancé ---
+        case 'delete_email': {
+          try {
+            const token = await getGoogleToken()
+            if (!token) return { result: 'Erreur: Google non connecté.' }
+            const res = await fetch('/api/gmail/action', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+              body: JSON.stringify({ type: 'delete', id: input.message_id }),
+            })
+            const data = await res.json()
+            return { result: data.success ? 'Email supprimé.' : `Erreur: ${data.error}` }
+          } catch { return { result: 'Erreur suppression email.' } }
+        }
+
+        case 'star_email': {
+          try {
+            const token = await getGoogleToken()
+            if (!token) return { result: 'Erreur: Google non connecté.' }
+            const res = await fetch('/api/gmail/action', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+              body: JSON.stringify({ type: 'star', id: input.message_id }),
+            })
+            const data = await res.json()
+            return { result: data.success ? 'Email marqué important.' : `Erreur: ${data.error}` }
+          } catch { return { result: 'Erreur.' } }
+        }
+
+        // --- Calendar avancé ---
+        case 'update_calendar_event': {
+          try {
+            const token = await getGoogleToken()
+            if (!token) return { result: 'Erreur: Google non connecté.' }
+            const res = await fetch('/api/calendar/action', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+              body: JSON.stringify({ type: 'update', eventId: input.event_id, title: input.title, start: input.start, end: input.end, location: input.location }),
+            })
+            const data = await res.json()
+            return { result: data.success ? 'RDV modifié.' : `Erreur: ${data.error}` }
+          } catch { return { result: 'Erreur modification RDV.' } }
+        }
+
+        case 'delete_calendar_event': {
+          try {
+            const token = await getGoogleToken()
+            if (!token) return { result: 'Erreur: Google non connecté.' }
+            const res = await fetch('/api/calendar/action', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+              body: JSON.stringify({ type: 'delete', eventId: input.event_id }),
+            })
+            const data = await res.json()
+            return { result: data.success ? 'RDV supprimé.' : `Erreur: ${data.error}` }
+          } catch { return { result: 'Erreur suppression RDV.' } }
+        }
+
+        // --- Utilitaires métier ---
+        case 'calculate_surface': {
+          try {
+            const walls = JSON.parse(input.walls as string) as Array<{ width: number; height: number }>
+            const openings = input.openings ? JSON.parse(input.openings as string) as Array<{ width: number; height: number; count: number }> : []
+
+            let totalWall = 0
+            walls.forEach(w => { totalWall += w.width * w.height })
+
+            let totalOpenings = 0
+            openings.forEach(o => { totalOpenings += o.width * o.height * (o.count || 1) })
+
+            const net = totalWall - totalOpenings
+            return { result: `Surface brute : ${totalWall.toFixed(2)} m²\nOuvertures : ${totalOpenings.toFixed(2)} m²\nSurface nette : ${net.toFixed(2)} m²` }
+          } catch { return { result: 'Erreur: format JSON invalide.' } }
+        }
+
+        case 'calculate_distance': {
+          const dest = input.destination as string
+          try {
+            const res = await fetch('/api/browser/search', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ query: `distance Valence 26000 vers ${dest}` }),
+            })
+            const data = await res.json()
+            if (data.results && data.results.length > 0) {
+              return { result: `Recherche distance Valence → ${dest}:\n${data.results.slice(0, 3).map((r: { title: string; snippet: string }) => `${r.title}: ${r.snippet}`).join('\n')}` }
+            }
+            return { result: `Impossible de calculer la distance vers ${dest}.` }
+          } catch { return { result: 'Erreur calcul distance.' } }
+        }
+
         // --- Google Calendar ---
         case 'list_calendar': {
           const days = (input.days as number) || 7

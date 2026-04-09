@@ -105,6 +105,51 @@ const TOOLS = [
       required: ['name', 'content'],
     },
   },
+  {
+    name: 'delete_drive_file',
+    description: 'Supprime un fichier de Google Drive. CONFIRMATION OBLIGATOIRE.',
+    input_schema: {
+      type: 'object' as const,
+      properties: { file_id: { type: 'string' as const } },
+      required: ['file_id'],
+    },
+  },
+  {
+    name: 'rename_drive_file',
+    description: 'Renomme un fichier sur Google Drive.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        file_id: { type: 'string' as const },
+        new_name: { type: 'string' as const },
+      },
+      required: ['file_id', 'new_name'],
+    },
+  },
+  {
+    name: 'move_drive_file',
+    description: 'Déplace un fichier dans un dossier Drive.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        file_id: { type: 'string' as const },
+        folder_id: { type: 'string' as const, description: 'ID du dossier destination' },
+      },
+      required: ['file_id', 'folder_id'],
+    },
+  },
+  {
+    name: 'create_drive_folder',
+    description: 'Crée un dossier sur Google Drive (pour organiser par client/chantier).',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        name: { type: 'string' as const },
+        parent_id: { type: 'string' as const, description: 'ID du dossier parent (optionnel)' },
+      },
+      required: ['name'],
+    },
+  },
   // --- Google Calendar ---
   {
     name: 'list_calendar',
@@ -131,6 +176,54 @@ const TOOLS = [
       required: ['title', 'start'],
     },
   },
+  {
+    name: 'update_calendar_event',
+    description: 'Modifier un événement du calendrier.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        event_id: { type: 'string' as const },
+        title: { type: 'string' as const },
+        start: { type: 'string' as const },
+        end: { type: 'string' as const },
+        location: { type: 'string' as const },
+      },
+      required: ['event_id'],
+    },
+  },
+  {
+    name: 'delete_calendar_event',
+    description: 'Supprimer un événement du calendrier. CONFIRMATION OBLIGATOIRE.',
+    input_schema: {
+      type: 'object' as const,
+      properties: { event_id: { type: 'string' as const } },
+      required: ['event_id'],
+    },
+  },
+  // --- Google Contacts ---
+  {
+    name: 'search_contacts',
+    description: 'Chercher un contact client par nom.',
+    input_schema: {
+      type: 'object' as const,
+      properties: { query: { type: 'string' as const } },
+      required: ['query'],
+    },
+  },
+  {
+    name: 'create_contact',
+    description: 'Ajouter un nouveau contact client.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        name: { type: 'string' as const },
+        email: { type: 'string' as const },
+        phone: { type: 'string' as const },
+        company: { type: 'string' as const },
+      },
+      required: ['name'],
+    },
+  },
   // --- Gmail avancé ---
   {
     name: 'search_emails',
@@ -151,6 +244,24 @@ const TOOLS = [
       properties: {
         message_id: { type: 'string' as const },
       },
+      required: ['message_id'],
+    },
+  },
+  {
+    name: 'delete_email',
+    description: 'Supprime un email (met dans la corbeille). CONFIRMATION OBLIGATOIRE.',
+    input_schema: {
+      type: 'object' as const,
+      properties: { message_id: { type: 'string' as const } },
+      required: ['message_id'],
+    },
+  },
+  {
+    name: 'star_email',
+    description: 'Marque un email comme important/étoilé.',
+    input_schema: {
+      type: 'object' as const,
+      properties: { message_id: { type: 'string' as const } },
       required: ['message_id'],
     },
   },
@@ -180,6 +291,29 @@ const TOOLS = [
         client_name: { type: 'string' as const, description: 'Nom du client' },
       },
       required: ['items', 'tva_rate'],
+    },
+  },
+  {
+    name: 'calculate_surface',
+    description: 'Calcule la surface de façade (largeur × hauteur - ouvertures).',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        walls: { type: 'string' as const, description: 'Murs JSON: [{"width":10,"height":3},...]' },
+        openings: { type: 'string' as const, description: 'Ouvertures JSON: [{"width":1.2,"height":1.5,"count":3},...]' },
+      },
+      required: ['walls'],
+    },
+  },
+  {
+    name: 'calculate_distance',
+    description: 'Calcule la distance et le temps de trajet depuis Valence vers une adresse de chantier.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        destination: { type: 'string' as const, description: 'Adresse de destination' },
+      },
+      required: ['destination'],
     },
   },
   // --- Web ---

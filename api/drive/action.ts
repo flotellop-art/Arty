@@ -10,7 +10,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     case 'list': return handleList(token, req, res)
     case 'read': return handleRead(token, req, res)
     case 'create': return handleCreate(token, req, res)
-    default: return res.status(400).json({ error: 'Use type: list, read, or create' })
+    case 'delete': return handleDelete(token, req, res)
+    case 'rename': return handleRename(token, req, res)
+    case 'move': return handleMove(token, req, res)
+    case 'create_folder': return handleCreateFolder(token, req, res)
+    default: return res.status(400).json({ error: 'Use type: list, read, create, delete, rename, move, create_folder' })
   }
 }
 
@@ -97,4 +101,71 @@ async function handleCreate(token: string, req: VercelRequest, res: VercelRespon
     const result = await r.json()
     return res.status(200).json({ id: result.id, name: result.name, webViewLink: result.webViewLink })
   } catch { return res.status(500).json({ error: 'Failed to create file' }) }
+}
+
+async function handleDelete(token: string, req: VercelRequest, res: VercelResponse) {
+  const fileId = (req.body?.id) as string
+  if (!fileId) return res.status(400).json({ error: 'Missing id' })
+  try {
+    const r = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
+      method: 'DELETE', headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!r.ok && r.status !== 204) { const err = await r.json().catch(() => ({})); return res.status(r.status).json({ error: (err as {error?: {message?: string}}).error?.message || 'Delete failed' }) }
+    return res.status(200).json({ success: true })
+  } catch { return res.status(500).json({ error: 'Delete failed' }) }
+}
+
+async function handleRename(token: string, req: VercelRequest, res: VercelResponse) {
+  const { id, name } = req.body as { id?: string; name?: string }
+  if (!id || !name) return res.status(400).json({ error: 'Missing id or name' })
+  try {
+    const r = await fetch(`https://www.googleapis.com/drive/v3/files/${id}`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    })
+    if (!r.ok) { const err = await r.json(); return res.status(r.status).json({ error: err.error?.message }) }
+    return res.status(200).json({ success: true, name })
+  } catch { return res.status(500).json({ error: 'Rename failed' }) }
+}
+
+async function handleMove(token: string, req: VercelRequest, res: VercelResponse) {
+  const { id, folderId } = req.body as { id?: string; folderId?: string }
+  if (!id || !folderId) return res.status(400).json({ error: 'Missing id or folderId' })
+  try {
+    // Get current parents
+    const getRes = await fetch(`https://www.googleapis.com/drive/v3/files/${id}?fields=parents`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    const current = await getRes.json()
+    const previousParents = (current.parents || []).join(',')
+
+    const r = await fetch(`https://www.googleapis.com/drive/v3/files/${id}?addParents=${folderId}&removeParents=${previousParents}`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!r.ok) { const err = await r.json(); return res.status(r.status).json({ error: err.error?.message }) }
+    return res.status(200).json({ success: true })
+  } catch { return res.status(500).json({ error: 'Move failed' }) }
+}
+
+async function handleCreateFolder(token: string, req: VercelRequest, res: VercelResponse) {
+  const { name, parentId } = req.body as { name?: string; parentId?: string }
+  if (!name) return res.status(400).json({ error: 'Missing name' })
+  try {
+    const metadata: { name: string; mimeType: string; parents?: string[] } = {
+      name,
+      mimeType: 'application/vnd.google-apps.folder',
+    }
+    if (parentId) metadata.parents = [parentId]
+
+    const r = await fetch('https://www.googleapis.com/drive/v3/files?fields=id,name,webViewLink', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(metadata),
+    })
+    if (!r.ok) { const err = await r.json(); return res.status(r.status).json({ error: err.error?.message }) }
+    const result = await r.json()
+    return res.status(200).json({ id: result.id, name: result.name, webViewLink: result.webViewLink })
+  } catch { return res.status(500).json({ error: 'Create folder failed' }) }
 }

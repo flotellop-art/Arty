@@ -9,6 +9,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   switch (type) {
     case 'list': return handleList(token, req, res)
     case 'create': return handleCreate(token, req, res)
+    case 'update': return handleUpdate(token, req, res)
+    case 'delete': return handleDeleteEvent(token, req, res)
     default: return res.status(400).json({ error: 'Use type: list or create' })
   }
 }
@@ -108,4 +110,44 @@ async function handleCreate(token: string, req: VercelRequest, res: VercelRespon
   } catch {
     return res.status(500).json({ error: 'Failed to create event' })
   }
+}
+
+async function handleUpdate(token: string, req: VercelRequest, res: VercelResponse) {
+  const { eventId, title, start, end, location, description } = req.body as {
+    eventId?: string; title?: string; start?: string; end?: string; location?: string; description?: string
+  }
+  if (!eventId) return res.status(400).json({ error: 'Missing eventId' })
+  try {
+    const update: Record<string, unknown> = {}
+    if (title) update.summary = title
+    if (start) update.start = start.includes('T') ? { dateTime: start, timeZone: 'Europe/Paris' } : { date: start }
+    if (end) update.end = end.includes('T') ? { dateTime: end, timeZone: 'Europe/Paris' } : { date: end }
+    if (location) update.location = location
+    if (description) update.description = description
+
+    const r = await fetch(
+      `https://www.googleapis.com/calendar/v3/calendars/primary/events/${eventId}`,
+      {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(update),
+      }
+    )
+    if (!r.ok) { const err = await r.json(); return res.status(r.status).json({ error: err.error?.message }) }
+    const result = await r.json()
+    return res.status(200).json({ success: true, title: result.summary })
+  } catch { return res.status(500).json({ error: 'Update failed' }) }
+}
+
+async function handleDeleteEvent(token: string, req: VercelRequest, res: VercelResponse) {
+  const { eventId } = req.body as { eventId?: string }
+  if (!eventId) return res.status(400).json({ error: 'Missing eventId' })
+  try {
+    const r = await fetch(
+      `https://www.googleapis.com/calendar/v3/calendars/primary/events/${eventId}`,
+      { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } }
+    )
+    if (!r.ok && r.status !== 204) { const err = await r.json().catch(() => ({})); return res.status(r.status).json({ error: (err as {error?: {message?: string}}).error?.message || 'Delete failed' }) }
+    return res.status(200).json({ success: true })
+  } catch { return res.status(500).json({ error: 'Delete failed' }) }
 }

@@ -12,7 +12,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     case 'send': return handleSend(token, req, res)
     case 'search': return handleSearch(token, req, res)
     case 'archive': return handleArchive(token, req, res)
-    default: return res.status(400).json({ error: 'Use type: list, read, send, search, or archive' })
+    case 'delete': return handleDelete(token, req, res)
+    case 'star': return handleStar(token, req, res)
+    default: return res.status(400).json({ error: 'Use type: list, read, send, search, archive, delete, star' })
   }
 }
 
@@ -139,4 +141,34 @@ async function handleArchive(token: string, req: VercelRequest, res: VercelRespo
     if (!r.ok) { const err = await r.json(); return res.status(r.status).json({ error: err.error?.message }) }
     return res.status(200).json({ success: true })
   } catch { return res.status(500).json({ error: 'Archive failed' }) }
+}
+
+async function handleDelete(token: string, req: VercelRequest, res: VercelResponse) {
+  const messageId = (req.body?.id) as string
+  if (!messageId) return res.status(400).json({ error: 'Missing id' })
+  try {
+    const r = await fetch(
+      `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}/trash`,
+      { method: 'POST', headers: { Authorization: `Bearer ${token}` } }
+    )
+    if (!r.ok) { const err = await r.json(); return res.status(r.status).json({ error: err.error?.message }) }
+    return res.status(200).json({ success: true })
+  } catch { return res.status(500).json({ error: 'Delete failed' }) }
+}
+
+async function handleStar(token: string, req: VercelRequest, res: VercelResponse) {
+  const messageId = (req.body?.id) as string
+  if (!messageId) return res.status(400).json({ error: 'Missing id' })
+  try {
+    const r = await fetch(
+      `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}/modify`,
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ addLabelIds: ['STARRED'] }),
+      }
+    )
+    if (!r.ok) { const err = await r.json(); return res.status(r.status).json({ error: err.error?.message }) }
+    return res.status(200).json({ success: true })
+  } catch { return res.status(500).json({ error: 'Star failed' }) }
 }
