@@ -49,6 +49,13 @@ LAYOUT : grid-2 grid-3 grid-4 flex-row flex-between text-center text-right
 TIMELINE : <div class="timeline-item"><div class="timeline-date">8 Avril</div>contenu</div>
 PROGRESS : <div class="progress-bar"><div class="progress-fill" style="width:75%"></div></div> (variantes: progress-fill-green progress-fill-red)
 ALERTES : <div class="alert alert-info">ℹ️ Info</div> alert-success alert-warning alert-danger
+GRAVITÉ / DIAGNOSTIC :
+- <div class="severity-critical">✗ Problème critique</div> (rose poudré — défauts graves)
+- <div class="severity-warning">! Attention requise</div> (sable chaud — défauts modérés)
+- <div class="severity-ok">✓ Conforme</div> (sauge — état correct)
+- <div class="severity-info">ℹ État observé</div> (gris bleuté — neutre)
+- Barre gravité : <div class="severity-bar"><div class="severity-bar-fill critical" style="width:85%"></div></div> (variantes: warning, ok)
+IMPORTANT : Ne JAMAIS utiliser de couleurs inline (style="background:red") pour les niveaux de gravité. Toujours utiliser les classes severity-*.
 CITATION : <div class="quote-block">Citation importante ici</div>
 MÉTRIQUE : <div class="metric-row"><span class="metric-label">Label</span><span class="metric-value">Valeur</span></div>
 ICÔNES : <div class="icon-circle icon-circle-orange">☀️</div> (variantes: green blue red)
