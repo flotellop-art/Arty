@@ -52,7 +52,7 @@ export function Sidebar({
         <div className="flex items-center gap-3 px-5 py-5 border-b border-gray-100">
           <StarIcon size={28} />
           <h2 className="font-serif text-lg font-semibold text-bubble-user">
-            Arty
+            Arti
           </h2>
         </div>
 

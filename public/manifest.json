@@ -1,7 +1,7 @@
 {
-  "name": "Arty",
-  "short_name": "Arty",
-  "description": "Arty — Assistant IA personnel",
+  "name": "Arti",
+  "short_name": "Arti",
+  "description": "Arti — Assistant IA personnel",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#F5F0E8",
