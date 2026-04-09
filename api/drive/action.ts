@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
+import pdf from 'pdf-parse'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const token = req.headers.authorization?.replace('Bearer ', '')
@@ -54,29 +55,21 @@ async function handleRead(token: string, req: VercelRequest, res: VercelResponse
       const r = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, { headers: { Authorization: `Bearer ${token}` } })
       if (r.ok) content = await r.text()
     } else if (meta.mimeType === 'application/pdf') {
-      // Export PDF as downloadable, extract text via Google Drive export
+      // Try Google Drive export first (works for Google Docs saved as PDF)
       const r = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=text/plain`, { headers: { Authorization: `Bearer ${token}` } })
       if (r.ok) {
         content = await r.text()
       } else {
-        // If export fails (native PDF, not Google Doc), download and extract basic info
+        // Native PDF — download and parse with pdf-parse (handles FlateDecode, compression, etc.)
         const dlRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, { headers: { Authorization: `Bearer ${token}` } })
         if (dlRes.ok) {
           const buffer = Buffer.from(await dlRes.arrayBuffer())
-          // Basic PDF text extraction - find text between parentheses in PDF stream
-          const raw = buffer.toString('latin1')
-          const textParts: string[] = []
-          const regex = /\(([^)]+)\)/g
-          let match
-          while ((match = regex.exec(raw)) !== null) {
-            const t = match[1]
-            if (t && t.length > 1 && !/^[\\\/\d\s.]+$/.test(t)) {
-              textParts.push(t)
-            }
+          try {
+            const pdfData = await pdf(buffer)
+            content = pdfData.text || `[PDF : ${meta.name} — aucun texte extractible (PDF scanné/image ?)]`
+          } catch {
+            content = `[PDF : ${meta.name} — erreur lors de l'extraction du texte]`
           }
-          content = textParts.length > 0
-            ? textParts.join(' ').replace(/\\n/g, '\n').replace(/\\\(/g, '(').replace(/\\\)/g, ')')
-            : `[PDF : ${meta.name} — impossible d'extraire le texte. Le fichier peut être scanné/image.]`
         }
       }
     } else {
