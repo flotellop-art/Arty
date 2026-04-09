@@ -17,6 +17,7 @@ interface ConversationScreenProps {
   onBack: () => void
   onSend: (text: string) => void
   onStop: () => void
+  onAction?: (action: string, params: Record<string, string>) => void
   gmail: ReturnType<typeof useGmail>
   drive: ReturnType<typeof useDrive>
   browserActions: ReturnType<typeof useBrowser>
@@ -32,6 +33,7 @@ export function ConversationScreen({
   onBack,
   onSend,
   onStop,
+  onAction,
   gmail,
   drive,
   browserActions,
@@ -51,6 +53,7 @@ export function ConversationScreen({
         messages={conversation.messages}
         isStreaming={isStreaming}
         streamingContent={streamingContent}
+        onAction={onAction}
       />
 
       {actionScreenshot && (

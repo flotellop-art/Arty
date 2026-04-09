@@ -96,6 +96,42 @@ function AppContent() {
     setSystemPrompt(prompt)
   }, [googleAuth.isConnected, gmail.messages, drive.files, setSystemPrompt])
 
+  // Handle action buttons clicked in reports
+  const handleAction = useCallback(
+    async (action: string, params: Record<string, string>) => {
+      const executor = toolExecutorRef.current
+      switch (action) {
+        case 'send_email':
+          await executor('send_email', params)
+          break
+        case 'save_drive':
+          await executor('create_drive_file', { name: params.name || 'Document', content: params.content || '' })
+          break
+        case 'create_event':
+          await executor('create_calendar_event', params)
+          break
+        case 'publish_wp':
+          await executor('wp_create_post', { title: params.title || '', content: params.content || '', status: params.status || 'draft' })
+          break
+        case 'search_web':
+          await executor('web_search', { query: params.query || '' })
+          break
+        case 'call': {
+          // Open phone dialer
+          window.open(`tel:${params.phone}`, '_self')
+          break
+        }
+        case 'link': {
+          window.open(params.url, '_blank')
+          break
+        }
+        default:
+          await executor(action, params)
+      }
+    },
+    []
+  )
+
   const handleSendFromHome = useCallback(
     (text: string) => {
       setActionScreenshot(null)
@@ -180,6 +216,7 @@ function AppContent() {
               browserActions={browserActions}
               computerActions={computerActions}
               actionScreenshot={actionScreenshot}
+              onAction={handleAction}
             />
           }
         />
@@ -202,6 +239,7 @@ interface ChatRouteProps {
   browserActions: ReturnType<typeof useBrowser>
   computerActions: ReturnType<typeof useComputer>
   actionScreenshot: string | null
+  onAction?: (action: string, params: Record<string, string>) => void
 }
 
 function ChatRoute({
@@ -218,6 +256,7 @@ function ChatRoute({
   browserActions,
   computerActions,
   actionScreenshot,
+  onAction,
 }: ChatRouteProps) {
   const { id } = useParams<{ id: string }>()
 
@@ -248,6 +287,7 @@ function ChatRoute({
       browserActions={browserActions}
       computerActions={computerActions}
       actionScreenshot={actionScreenshot}
+      onAction={onAction}
     />
   )
 }

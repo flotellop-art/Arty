@@ -490,3 +490,59 @@ body {
   flex-shrink: 0;
   margin-top: 0.1rem;
 }
+
+/* --- Action Buttons --- */
+.report-content .action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 1rem;
+  border-radius: 0.75rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  transition: all 0.2s ease;
+  font-family: 'Inter', sans-serif;
+}
+.report-content .action-btn:active { transform: scale(0.97); }
+.report-content .btn-primary {
+  background: linear-gradient(135deg, #E05510, #c44a0e);
+  color: #F5F0E8;
+  box-shadow: 0 2px 8px rgba(224,85,16,0.3);
+}
+.report-content .btn-primary:hover {
+  box-shadow: 0 4px 16px rgba(224,85,16,0.4);
+  transform: translateY(-1px);
+}
+.report-content .btn-secondary {
+  background: white;
+  color: #1E1A14;
+  border: 1.5px solid #e8e4de;
+  box-shadow: 0 1px 4px rgba(30,26,20,0.06);
+}
+.report-content .btn-secondary:hover {
+  border-color: #E05510;
+  color: #E05510;
+}
+.report-content .btn-success {
+  background: linear-gradient(135deg, #22c55e, #16a34a);
+  color: white;
+  box-shadow: 0 2px 8px rgba(34,197,94,0.3);
+}
+.report-content .btn-danger {
+  background: linear-gradient(135deg, #ef4444, #dc2626);
+  color: white;
+  box-shadow: 0 2px 8px rgba(239,68,68,0.3);
+}
+.report-content .btn-group {
+  display: flex;
+  gap: 0.5rem;
+  margin: 0.75rem 0;
+  flex-wrap: wrap;
+}
+.report-content .btn-sm {
+  padding: 0.35rem 0.75rem;
+  font-size: 0.7rem;
+  border-radius: 0.5rem;
+}

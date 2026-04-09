@@ -8,9 +8,10 @@ interface MessageListProps {
   messages: Message[]
   isStreaming: boolean
   streamingContent: string
+  onAction?: (action: string, params: Record<string, string>) => void
 }
 
-export function MessageList({ messages, isStreaming, streamingContent }: MessageListProps) {
+export function MessageList({ messages, isStreaming, streamingContent, onAction }: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -23,12 +24,12 @@ export function MessageList({ messages, isStreaming, streamingContent }: Message
         msg.role === 'user' ? (
           <UserBubble key={msg.id} content={msg.content} />
         ) : (
-          <AssistantBubble key={msg.id} content={msg.content} />
+          <AssistantBubble key={msg.id} content={msg.content} onAction={onAction} />
         )
       ))}
 
       {isStreaming && streamingContent && (
-        <AssistantBubble content={streamingContent} />
+        <AssistantBubble content={streamingContent} onAction={onAction} />
       )}
 
       {isStreaming && !streamingContent && (
