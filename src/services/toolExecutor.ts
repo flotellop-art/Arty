@@ -68,9 +68,40 @@ export function createToolExecutor(
           if (!messageId) return { result: 'Erreur: ID message manquant.' }
           const email = await gmail.readMessage(messageId)
           if (email) {
-            return { result: `De: ${email.from}\nÀ: ${email.to}\nObjet: ${email.subject}\nDate: ${email.date}\n\n${email.body}` }
+            let result = `De: ${email.from}\nÀ: ${email.to}\nObjet: ${email.subject}\nDate: ${email.date}\n\n${email.body}`
+            const attachments = (email as unknown as Record<string, unknown>).attachments as Array<{ id: string; filename: string; mimeType: string; size: number }> | undefined
+            if (attachments && attachments.length > 0) {
+              result += `\n\nPièces jointes (${attachments.length}) :\n`
+              result += attachments.map((a, i) =>
+                `${i + 1}. ${a.filename} (${a.mimeType}, ${Math.round(a.size / 1024)}Ko) — attachment_id: ${a.id}`
+              ).join('\n')
+              result += '\n\nUtilise read_email_attachment avec le message_id et attachment_id pour lire le contenu des pièces jointes.'
+            }
+            return { result }
           }
           return { result: 'Erreur: impossible de lire cet email.' }
+        }
+
+        case 'read_email_attachment': {
+          const messageId = input.message_id as string
+          const attachmentId = input.attachment_id as string
+          if (!messageId || !attachmentId) return { result: 'Erreur: message_id et attachment_id requis.' }
+          try {
+            const token = await getGoogleToken()
+            if (!token) return { result: 'Erreur: Google non connecté.' }
+            const res = await fetch('/api/gmail/action', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+              body: JSON.stringify({ type: 'attachment', message_id: messageId, attachment_id: attachmentId }),
+            })
+            const data = await safeJson(res)
+            if (data.content) {
+              return { result: `Contenu de la pièce jointe (${data.type || 'inconnu'})${data.pages ? `, ${data.pages} pages` : ''} :\n\n${data.content}` }
+            }
+            return { result: data.error || 'Erreur: impossible de lire la pièce jointe.' }
+          } catch {
+            return { result: 'Erreur: lecture pièce jointe échouée.' }
+          }
         }
 
         case 'send_email': {

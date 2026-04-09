@@ -53,6 +53,18 @@ const TOOLS = [
     },
   },
   {
+    name: 'read_email_attachment',
+    description: "Lit le contenu d'une pièce jointe d'un email (PDF, texte, etc.). Utilise les IDs obtenus via read_email qui liste les pièces jointes.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        message_id: { type: 'string' as const, description: "ID de l'email" },
+        attachment_id: { type: 'string' as const, description: "ID de la pièce jointe (obtenu via read_email)" },
+      },
+      required: ['message_id', 'attachment_id'],
+    },
+  },
+  {
     name: 'send_email',
     description: "Envoie un email. TOUJOURS demander confirmation à l'utilisateur avant d'envoyer.",
     input_schema: {

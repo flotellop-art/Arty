@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
+import pdf from 'pdf-parse'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const token = req.headers.authorization?.replace('Bearer ', '')
@@ -11,6 +12,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     case 'read': return handleRead(token, req, res)
     case 'send': return handleSend(token, req, res)
     case 'search': return handleSearch(token, req, res)
+    case 'attachment': return handleAttachment(token, req, res)
     case 'archive': return handleArchive(token, req, res)
     case 'delete': return handleDelete(token, req, res)
     case 'star': return handleStar(token, req, res)
@@ -72,7 +74,22 @@ async function handleRead(token: string, req: VercelRequest, res: VercelResponse
     extract(msg.payload, 'text/plain')
     if (!body) extract(msg.payload, 'text/html')
 
-    return res.status(200).json({ id: msg.id, threadId: msg.threadId, from: h('From'), to: h('To'), subject: h('Subject'), date: h('Date'), body: body.slice(0, 5000), snippet: msg.snippet || '' })
+    // Extract attachments info
+    const attachments: Array<{ id: string; filename: string; mimeType: string; size: number }> = []
+    function findAttachments(part: { filename?: string; mimeType?: string; body?: { attachmentId?: string; size?: number }; parts?: unknown[] }) {
+      if (part.filename && part.body?.attachmentId) {
+        attachments.push({
+          id: part.body.attachmentId,
+          filename: part.filename,
+          mimeType: part.mimeType || 'application/octet-stream',
+          size: part.body.size || 0,
+        })
+      }
+      if (part.parts) for (const s of part.parts) findAttachments(s as typeof part)
+    }
+    findAttachments(msg.payload)
+
+    return res.status(200).json({ id: msg.id, threadId: msg.threadId, from: h('From'), to: h('To'), subject: h('Subject'), date: h('Date'), body: body.slice(0, 5000), snippet: msg.snippet || '', attachments })
   } catch { return res.status(500).json({ error: 'Failed to read message' }) }
 }
 
@@ -125,6 +142,46 @@ async function handleSearch(token: string, req: VercelRequest, res: VercelRespon
     }))
     return res.status(200).json({ messages: details.filter(Boolean) })
   } catch { return res.status(500).json({ error: 'Search failed' }) }
+}
+
+async function handleAttachment(token: string, req: VercelRequest, res: VercelResponse) {
+  const messageId = (req.body?.message_id || req.query.message_id) as string
+  const attachmentId = (req.body?.attachment_id || req.query.attachment_id) as string
+  if (!messageId || !attachmentId) return res.status(400).json({ error: 'Missing message_id or attachment_id' })
+
+  try {
+    const r = await fetch(
+      `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}/attachments/${attachmentId}`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    )
+    if (!r.ok) { const err = await r.json(); return res.status(r.status).json({ error: err.error?.message }) }
+    const data = await r.json()
+
+    // Decode base64url attachment data
+    const base64 = (data.data || '').replace(/-/g, '+').replace(/_/g, '/')
+    const buffer = Buffer.from(base64, 'base64')
+
+    // Try to extract text based on content type
+    // Check if it's a PDF by looking at the magic bytes
+    const isPdf = buffer.length > 4 && buffer[0] === 0x25 && buffer[1] === 0x50 && buffer[2] === 0x44 && buffer[3] === 0x46
+
+    if (isPdf) {
+      try {
+        const pdfData = await pdf(buffer)
+        return res.status(200).json({ content: pdfData.text.slice(0, 10000), type: 'pdf', pages: pdfData.numpages })
+      } catch {
+        return res.status(200).json({ content: '[PDF — impossible d\'extraire le texte (scanné/image ?)]', type: 'pdf' })
+      }
+    }
+
+    // Try plain text
+    const text = buffer.toString('utf-8')
+    if (text && !text.includes('\x00')) {
+      return res.status(200).json({ content: text.slice(0, 10000), type: 'text' })
+    }
+
+    return res.status(200).json({ content: '[Fichier binaire — contenu non lisible en texte]', type: 'binary' })
+  } catch { return res.status(500).json({ error: 'Failed to read attachment' }) }
 }
 
 async function handleArchive(token: string, req: VercelRequest, res: VercelResponse) {
