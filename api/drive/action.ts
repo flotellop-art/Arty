@@ -123,8 +123,9 @@ async function handleRead(token: string, req: VercelRequest, res: VercelResponse
                     }),
                   }
                 )
+                const visionText = await visionRes.text()
                 if (visionRes.ok) {
-                  const visionData = await visionRes.json()
+                  const visionData = JSON.parse(visionText)
                   const pages = visionData.responses?.[0]?.responses || []
                   const ocrText = pages
                     .map((p: { fullTextAnnotation?: { text?: string } }) => p.fullTextAnnotation?.text || '')
@@ -132,11 +133,17 @@ async function handleRead(token: string, req: VercelRequest, res: VercelResponse
                     .join('\n\n--- Page suivante ---\n\n')
                   if (ocrText) {
                     content = `[OCR — texte extrait d'un PDF scanné, ${pages.length} pages]\n\n${ocrText}`
+                  } else {
+                    content = `[OCR lancé mais aucun texte trouvé. Réponse Vision: ${visionText.slice(0, 500)}]`
                   }
+                } else {
+                  content = `[OCR échoué: ${visionText.slice(0, 300)}]`
                 }
+              } else {
+                content = `[OCR indisponible: GOOGLE_VISION_API_KEY non configurée]`
               }
-            } catch {
-              // OCR failed silently
+            } catch (ocrErr) {
+              content = `[OCR erreur: ${ocrErr instanceof Error ? ocrErr.message : 'inconnu'}]`
             }
           }
           if (!content) {
