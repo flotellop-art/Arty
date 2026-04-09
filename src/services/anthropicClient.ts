@@ -105,6 +105,83 @@ const TOOLS = [
       required: ['name', 'content'],
     },
   },
+  // --- Google Calendar ---
+  {
+    name: 'list_calendar',
+    description: 'Voir les RDV et événements du calendrier Google (par défaut : 7 prochains jours).',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        days: { type: 'number' as const, description: 'Nombre de jours à afficher (défaut 7)' },
+      },
+    },
+  },
+  {
+    name: 'create_calendar_event',
+    description: 'Créer un RDV dans Google Calendar (chantier, réunion, relance client).',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        title: { type: 'string' as const, description: "Titre de l'événement" },
+        start: { type: 'string' as const, description: 'Date/heure début (ISO 8601, ex: 2026-04-15T09:00:00)' },
+        end: { type: 'string' as const, description: 'Date/heure fin (optionnel)' },
+        location: { type: 'string' as const, description: 'Lieu (adresse du chantier, etc.)' },
+        description: { type: 'string' as const, description: 'Notes' },
+      },
+      required: ['title', 'start'],
+    },
+  },
+  // --- Gmail avancé ---
+  {
+    name: 'search_emails',
+    description: 'Cherche des emails par mot-clé, expéditeur, ou sujet.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        query: { type: 'string' as const, description: 'Recherche Gmail (ex: "from:client@email.com" ou "devis facade")' },
+      },
+      required: ['query'],
+    },
+  },
+  {
+    name: 'archive_email',
+    description: 'Archive un email (le retire de la boîte de réception).',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        message_id: { type: 'string' as const },
+      },
+      required: ['message_id'],
+    },
+  },
+  // --- Météo ---
+  {
+    name: 'get_weather',
+    description: 'Obtenir la météo actuelle et prévisions 5 jours. Utile pour planifier les chantiers façade (pas de travail sous la pluie).',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        city: { type: 'string' as const, description: 'Ville (défaut: Valence)' },
+      },
+    },
+  },
+  // --- Utilitaires ---
+  {
+    name: 'calculate_quote',
+    description: 'Calcule un chiffrage/devis. Surface × tarif + TVA.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        items: {
+          type: 'string' as const,
+          description: 'Liste des postes au format JSON: [{"label":"Enduit gratté","surface":120,"price_per_m2":45},...]',
+        },
+        tva_rate: { type: 'number' as const, description: 'Taux TVA en % (10 ou 20)' },
+        client_name: { type: 'string' as const, description: 'Nom du client' },
+      },
+      required: ['items', 'tva_rate'],
+    },
+  },
   // --- Web ---
   {
     name: 'web_search',

@@ -2,6 +2,11 @@ import type { useComputer } from '../hooks/useComputer'
 import type { useGmail } from '../hooks/useGmail'
 import type { useDrive } from '../hooks/useDrive'
 import type { useBrowser } from '../hooks/useBrowser'
+import { getValidAccessToken } from './googleAuth'
+
+async function getGoogleToken(): Promise<string | null> {
+  return getValidAccessToken()
+}
 
 interface ToolResult {
   result: string
@@ -122,6 +127,135 @@ export function createToolExecutor(
         }
 
         // --- Web ---
+        // --- Google Calendar ---
+        case 'list_calendar': {
+          const days = (input.days as number) || 7
+          try {
+            const token = await getGoogleToken()
+            if (!token) return { result: 'Erreur: Google non connecté.' }
+            const res = await fetch('/api/calendar/action', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+              body: JSON.stringify({ type: 'list', days }),
+            })
+            const data = await res.json()
+            if (data.events && data.events.length > 0) {
+              const summary = data.events.map((e: { title: string; start: string; end: string; location: string }, i: number) => {
+                const start = new Date(e.start).toLocaleString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+                return `${i + 1}. ${start} — ${e.title}${e.location ? ` (${e.location})` : ''}`
+              }).join('\n')
+              return { result: `${data.events.length} événements dans les ${days} prochains jours:\n${summary}` }
+            }
+            return { result: `Aucun événement dans les ${days} prochains jours.` }
+          } catch { return { result: 'Erreur calendrier.' } }
+        }
+
+        case 'create_calendar_event': {
+          const { title, start, end, location, description } = input as { title: string; start: string; end?: string; location?: string; description?: string }
+          try {
+            const token = await getGoogleToken()
+            if (!token) return { result: 'Erreur: Google non connecté.' }
+            const res = await fetch('/api/calendar/action', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+              body: JSON.stringify({ type: 'create', title, start, end, location, description }),
+            })
+            const data = await res.json()
+            if (data.id) {
+              return { result: `RDV "${data.title}" créé le ${new Date(data.start).toLocaleString('fr-FR')}.${data.link ? ` Lien: ${data.link}` : ''}` }
+            }
+            return { result: `Erreur: ${data.error || 'création échouée'}` }
+          } catch { return { result: 'Erreur création RDV.' } }
+        }
+
+        // --- Gmail avancé ---
+        case 'search_emails': {
+          const query = input.query as string
+          if (!query) return { result: 'Erreur: requête manquante.' }
+          try {
+            const token = await getGoogleToken()
+            if (!token) return { result: 'Erreur: Google non connecté.' }
+            const res = await fetch('/api/gmail/action', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+              body: JSON.stringify({ type: 'search', query }),
+            })
+            const data = await res.json()
+            if (data.messages && data.messages.length > 0) {
+              const summary = data.messages.map((m: { id: string; from: string; subject: string; snippet: string }, i: number) =>
+                `${i + 1}. [ID:${m.id}] De: ${m.from} | ${m.subject} | ${m.snippet}`
+              ).join('\n')
+              return { result: `${data.messages.length} résultats pour "${query}":\n${summary}` }
+            }
+            return { result: `Aucun email trouvé pour "${query}".` }
+          } catch { return { result: 'Erreur recherche email.' } }
+        }
+
+        case 'archive_email': {
+          const messageId = input.message_id as string
+          if (!messageId) return { result: 'Erreur: ID manquant.' }
+          try {
+            const token = await getGoogleToken()
+            if (!token) return { result: 'Erreur: Google non connecté.' }
+            const res = await fetch('/api/gmail/action', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+              body: JSON.stringify({ type: 'archive', id: messageId }),
+            })
+            const data = await res.json()
+            return { result: data.error ? `Erreur: ${data.error}` : 'Email archivé.' }
+          } catch { return { result: 'Erreur archivage.' } }
+        }
+
+        // --- Météo ---
+        case 'get_weather': {
+          const city = (input.city as string) || 'Valence'
+          try {
+            const res = await fetch('/api/browser/weather', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ city }),
+            })
+            const data = await res.json()
+            if (data.current) {
+              let result = `Météo ${data.city} : ${data.current.condition}, ${data.current.temperature}°C, vent ${data.current.wind} km/h\n\nPrévisions :\n`
+              result += data.forecast.map((d: { date: string; min: number; max: number; rain_chance: number; condition: string }) =>
+                `${d.date} : ${d.condition} ${d.min}°/${d.max}° — pluie ${d.rain_chance}%`
+              ).join('\n')
+              return { result }
+            }
+            return { result: `Erreur: ${data.error || 'météo indisponible'}` }
+          } catch { return { result: 'Erreur météo.' } }
+        }
+
+        // --- Utilitaires ---
+        case 'calculate_quote': {
+          try {
+            const items = JSON.parse(input.items as string) as Array<{ label: string; surface: number; price_per_m2: number }>
+            const tvaRate = (input.tva_rate as number) || 10
+            const clientName = (input.client_name as string) || ''
+
+            let totalHT = 0
+            const lines = items.map(item => {
+              const lineTotal = item.surface * item.price_per_m2
+              totalHT += lineTotal
+              return `${item.label} : ${item.surface} m² × ${item.price_per_m2}€ = ${lineTotal.toFixed(2)}€ HT`
+            })
+
+            const tva = totalHT * tvaRate / 100
+            const ttc = totalHT + tva
+
+            let result = `DEVIS${clientName ? ` — ${clientName}` : ''}\n${'='.repeat(40)}\n`
+            result += lines.join('\n')
+            result += `\n${'—'.repeat(40)}`
+            result += `\nTotal HT : ${totalHT.toFixed(2)}€`
+            result += `\nTVA ${tvaRate}% : ${tva.toFixed(2)}€`
+            result += `\nTotal TTC : ${ttc.toFixed(2)}€`
+
+            return { result }
+          } catch { return { result: 'Erreur: format items invalide.' } }
+        }
+
         case 'web_search': {
           const query = input.query as string
           if (!query) return { result: 'Erreur: requête manquante.' }
