@@ -330,6 +330,25 @@ const TOOLS = [
       required: ['destination'],
     },
   },
+  // --- Mémoire persistante ---
+  {
+    name: 'update_memory',
+    description: "Met à jour la mémoire persistante. Catégories : profil (préférences Florent), clients (fiches clients), chantiers (historique chantiers), notes (infos diverses). Envoie le JSON COMPLET de la catégorie (pas un diff).",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        category: {
+          type: 'string' as const,
+          enum: ['profil', 'clients', 'chantiers', 'notes'],
+          description: 'Catégorie à mettre à jour',
+        },
+        data: {
+          description: 'Données complètes (JSON). Pour clients/chantiers: tableau. Pour profil: objet. Pour notes: tableau de strings.',
+        },
+      },
+      required: ['category', 'data'],
+    },
+  },
   // --- Outils serveur Anthropic (exécutés côté API, zéro backend) ---
   {
     type: 'web_search_20250305',

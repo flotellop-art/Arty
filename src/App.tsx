@@ -7,6 +7,7 @@ import { useDrive } from './hooks/useDrive'
 import { useBrowser } from './hooks/useBrowser'
 import { useComputer } from './hooks/useComputer'
 import { buildContextualPrompt } from './constants/systemPrompt'
+import { useMemory } from './hooks/useMemory'
 import { createToolExecutor } from './services/toolExecutor'
 import { HomeScreen } from './components/home/HomeScreen'
 import { ConversationScreen } from './components/chat/ConversationScreen'
@@ -43,6 +44,7 @@ function AppContent() {
   const drive = useDrive()
   const browserActions = useBrowser()
   const computerActions = useComputer()
+  const memoryHook = useMemory()
 
   // Create tool executor and register it
   const toolExecutorRef = useRef(createToolExecutor(computerActions, gmail, drive, browserActions))
@@ -59,11 +61,12 @@ function AppContent() {
     })
   }, [computerActions, gmail, drive, browserActions, setToolHandler])
 
-  // Auto-fetch Gmail and Drive when Google is connected
+  // Auto-fetch Gmail, Drive, and Memory when Google is connected
   useEffect(() => {
     if (googleAuth.isConnected) {
       gmail.fetchMessages()
       drive.fetchFiles()
+      memoryHook.loadMemory()
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [googleAuth.isConnected])
@@ -93,9 +96,10 @@ function AppContent() {
           .join('\n')
     }
 
-    const prompt = buildContextualPrompt({ gmailSummary, driveSummary })
+    const memorySummary = memoryHook.getPromptContext()
+    const prompt = buildContextualPrompt({ gmailSummary, driveSummary, memorySummary })
     setSystemPrompt(prompt)
-  }, [googleAuth.isConnected, gmail.messages, drive.files, setSystemPrompt])
+  }, [googleAuth.isConnected, gmail.messages, drive.files, memoryHook.getPromptContext, setSystemPrompt])
 
   // Handle action buttons clicked in reports
   const handleAction = useCallback(

@@ -10,6 +10,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     case 'list': return handleList(token, req, res)
     case 'read': return handleRead(token, req, res)
     case 'create': return handleCreate(token, req, res)
+    case 'update': return handleUpdate(token, req, res)
     case 'delete': return handleDelete(token, req, res)
     case 'rename': return handleRename(token, req, res)
     case 'move': return handleMove(token, req, res)
@@ -103,6 +104,31 @@ async function handleCreate(token: string, req: VercelRequest, res: VercelRespon
     const result = await r.json()
     return res.status(200).json({ id: result.id, name: result.name, webViewLink: result.webViewLink })
   } catch { return res.status(500).json({ error: 'Failed to create file' }) }
+}
+
+async function handleUpdate(token: string, req: VercelRequest, res: VercelResponse) {
+  if (req.method !== 'POST') return res.status(405).json({ error: 'POST required' })
+  const { id, content } = req.body as { id?: string; content?: string }
+  if (!id || content === undefined) return res.status(400).json({ error: 'Missing id or content' })
+  try {
+    // Check if it's a Google Doc (need special handling)
+    const metaRes = await fetch(`https://www.googleapis.com/drive/v3/files/${id}?fields=mimeType`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    const meta = await metaRes.json()
+    const isGoogleDoc = meta.mimeType === 'application/vnd.google-apps.document'
+
+    const r = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${id}?uploadType=media`, {
+      method: 'PATCH',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': isGoogleDoc ? 'text/plain' : 'application/json',
+      },
+      body: content,
+    })
+    if (!r.ok) { const err = await r.json(); return res.status(r.status).json({ error: err.error?.message }) }
+    return res.status(200).json({ success: true })
+  } catch { return res.status(500).json({ error: 'Update failed' }) }
 }
 
 async function handleDelete(token: string, req: VercelRequest, res: VercelResponse) {

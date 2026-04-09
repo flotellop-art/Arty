@@ -5,6 +5,7 @@ import type { useBrowser } from '../hooks/useBrowser'
 import { getValidAccessToken } from './googleAuth'
 import { openReport } from './reportGenerator'
 import { safeJson } from '../utils/safeJson'
+import { updateMemory } from './memoryService'
 
 async function getGoogleToken(): Promise<string | null> {
   return getValidAccessToken()
@@ -447,6 +448,15 @@ export function createToolExecutor(
 
             return { result }
           } catch { return { result: 'Erreur: format items invalide.' } }
+        }
+
+        // --- Mémoire persistante ---
+        case 'update_memory': {
+          const category = input.category as 'profil' | 'clients' | 'chantiers' | 'notes'
+          const data = input.data
+          if (!category || !data) return { result: 'Erreur: catégorie ou données manquantes.' }
+          const res = await updateMemory(category, data)
+          return { result: res.message }
         }
 
         // web_search is now a server-side tool handled by Anthropic API directly
