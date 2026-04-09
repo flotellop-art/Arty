@@ -9,7 +9,7 @@ export function AssistantBubble({ content }: AssistantBubbleProps) {
   return (
     <div className="flex gap-2.5 mb-3">
       <AssistantAvatar />
-      <div className="max-w-[85%] bg-white text-bubble-user px-4 py-3 rounded-2xl rounded-tl-md shadow-sm text-sm leading-relaxed">
+      <div className="max-w-[92%] bg-white text-bubble-user px-4 py-3 rounded-2xl rounded-tl-md shadow-sm leading-relaxed">
         <MarkdownRenderer content={content} />
       </div>
     </div>
