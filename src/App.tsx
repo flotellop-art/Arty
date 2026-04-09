@@ -170,8 +170,15 @@ function AppContent() {
     (text: string, files?: import('./types').FileAttachment[]) => {
       setActionScreenshot(null)
       const id = createConversation()
-      sendMessage(text, id, files)
-      navigate(`/chat/${id}`)
+      // Store files in ref before navigating (sendMessage reads from ref)
+      if (files?.length) {
+        // Small delay to ensure conversation is created and active before sending
+        navigate(`/chat/${id}`)
+        setTimeout(() => sendMessage(text, id, files), 100)
+      } else {
+        sendMessage(text, id)
+        navigate(`/chat/${id}`)
+      }
     },
     [createConversation, sendMessage, navigate]
   )
