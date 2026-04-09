@@ -3,6 +3,7 @@ import type { useGmail } from '../hooks/useGmail'
 import type { useDrive } from '../hooks/useDrive'
 import type { useBrowser } from '../hooks/useBrowser'
 import { getValidAccessToken } from './googleAuth'
+import { openReport } from './reportGenerator'
 
 async function getGoogleToken(): Promise<string | null> {
   return getValidAccessToken()
@@ -22,6 +23,14 @@ export function createToolExecutor(
   return async (name: string, input: Record<string, unknown>): Promise<ToolResult> => {
     try {
       switch (name) {
+        // --- Reports ---
+        case 'generate_report': {
+          const title = input.title as string
+          const content = input.content as string
+          openReport(title, content)
+          return { result: `Rapport "${title}" généré et ouvert dans le navigateur.` }
+        }
+
         // --- PC Control ---
         case 'open_app': {
           const app = (input.app as string) || ''

@@ -2,6 +2,19 @@ import { SYSTEM_PROMPT } from '../constants/systemPrompt'
 import { addUsage } from './tokenTracker'
 
 const TOOLS = [
+  // --- Reports ---
+  {
+    name: 'generate_report',
+    description: "Génère un rapport HTML professionnel ouvert dans le navigateur. UTILISE CET OUTIL quand Florent demande un rapport, un devis, une analyse, un document structuré.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        title: { type: 'string' as const, description: 'Titre du rapport' },
+        content: { type: 'string' as const, description: 'Contenu HTML (utilise: card, card-accent, card-dark, chapter, big-number, subtitle, badge-*, grid-2, grid-3, table, alert-*, divider-accent, progress-bar, stat, etc.)' },
+      },
+      required: ['title', 'content'],
+    },
+  },
   // --- PC Control ---
   {
     name: 'open_app',
