@@ -167,10 +167,10 @@ function AppContent() {
   )
 
   const handleSendFromHome = useCallback(
-    (text: string) => {
+    (text: string, files?: import('./types').FileAttachment[]) => {
       setActionScreenshot(null)
       const id = createConversation()
-      sendMessage(text, id)
+      sendMessage(text, id, files)
       navigate(`/chat/${id}`)
     },
     [createConversation, sendMessage, navigate]

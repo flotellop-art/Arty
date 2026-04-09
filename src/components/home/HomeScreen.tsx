@@ -7,10 +7,11 @@ import { GoogleStatus } from '../google/GoogleStatus'
 import type { useGoogleAuth } from '../../hooks/useGoogleAuth'
 import type { useGmail } from '../../hooks/useGmail'
 import type { useDrive } from '../../hooks/useDrive'
+import type { FileAttachment } from '../../types'
 
 interface HomeScreenProps {
   onMenuToggle: () => void
-  onSend: (text: string) => void
+  onSend: (text: string, files?: FileAttachment[]) => void
   isStreaming: boolean
   googleAuth: ReturnType<typeof useGoogleAuth>
   gmail: ReturnType<typeof useGmail>
