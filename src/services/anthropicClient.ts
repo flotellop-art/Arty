@@ -736,7 +736,7 @@ async function runWithTools(
       content: m.content,
     }))
 
-    let maxIterations = 30
+    let maxIterations = 50
     while (maxIterations > 0) {
       maxIterations--
 
