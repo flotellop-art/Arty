@@ -73,8 +73,18 @@ async function handleRead(token: string, req: VercelRequest, res: VercelResponse
           } catch (e) {
             content = ''
           }
-          // Fallback: basic regex extraction if pdf-parse returned nothing
-          if (!content || content.trim().length < 20) {
+          // Check if extracted text is actually readable (not garbage/binary)
+          const isReadable = (text: string) => {
+            if (!text || text.trim().length < 50) return false
+            // Count readable characters vs total
+            const readable = text.replace(/[^\w\sàâäéèêëïîôùûüçœæÀÂÄÉÈÊËÏÎÔÙÛÜÇŒÆ.,;:!?€$%()/-]/g, '')
+            return readable.length > text.length * 0.5
+          }
+          if (!isReadable(content)) {
+            content = ''
+          }
+          // Regex fallback
+          if (!content) {
             const raw = buffer.toString('latin1')
             const textParts: string[] = []
             const regex = /\(([^)]{2,})\)/g
@@ -87,7 +97,10 @@ async function handleRead(token: string, req: VercelRequest, res: VercelResponse
               content = textParts.join(' ').replace(/\\n/g, '\n').replace(/\\\(/g, '(').replace(/\\\)/g, ')')
             }
           }
-          if (!content || content.trim().length < 20) {
+          if (!isReadable(content)) {
+            content = ''
+          }
+          if (!content) {
             // OCR fallback: use Google Vision API files:annotate for scanned PDFs
             try {
               const visionKey = process.env.GOOGLE_VISION_API_KEY
@@ -126,7 +139,7 @@ async function handleRead(token: string, req: VercelRequest, res: VercelResponse
               // OCR failed silently
             }
           }
-          if (!content || content.trim().length < 20) {
+          if (!content) {
             content = `[PDF : ${meta.name} — impossible d'extraire le texte. Fichier probablement scanné/image. Taille: ${buffer.length} octets]`
           }
         }
