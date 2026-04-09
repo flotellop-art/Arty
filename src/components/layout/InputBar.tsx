@@ -55,7 +55,7 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Discuter avec Arti..."
+          placeholder="Discuter avec Arty..."
           rows={1}
           className="flex-1 resize-none bg-transparent text-sm text-bubble-user placeholder-gray-400 focus:outline-none py-1.5 font-sans font-light leading-relaxed"
         />
