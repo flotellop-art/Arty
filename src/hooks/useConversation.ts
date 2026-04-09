@@ -225,12 +225,7 @@ export function useConversation() {
       setActiveId(targetId)
 
       // Store files in ref for the API call (survives re-renders, not in localStorage)
-      if (files && files.length > 0) {
-        pendingFilesRef.current = files
-        console.log('[Arty] Files stored in ref:', files.length, 'files, first:', files[0].name, 'type:', files[0].type, 'data length:', files[0].data?.length)
-      } else {
-        pendingFilesRef.current = null
-      }
+      pendingFilesRef.current = (files && files.length > 0) ? files : null
 
       activeIdRef.current = targetId
       setIsStreaming(true)

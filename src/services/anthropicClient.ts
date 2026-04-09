@@ -758,11 +758,6 @@ async function runWithTools(
     while (maxIterations > 0) {
       maxIterations--
 
-      // Log message content types for debugging
-      const lastMsg = apiMessages[apiMessages.length - 1]
-      const contentType = Array.isArray(lastMsg?.content) ? `array[${lastMsg.content.length}]: ${lastMsg.content.map((b: Record<string, unknown>) => b.type).join(',')}` : 'string'
-      console.log('[Arty API] Sending', apiMessages.length, 'messages. Last content type:', contentType)
-
       const requestBody = JSON.stringify({
         model: 'claude-sonnet-4-6',
         max_tokens: 65536,
