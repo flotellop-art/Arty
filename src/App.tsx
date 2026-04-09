@@ -106,6 +106,14 @@ function AppContent() {
     async (action: string, params: Record<string, string>) => {
       const executor = toolExecutorRef.current
       switch (action) {
+        case 'reply': {
+          // Quick reply — send the text as a user message
+          const text = params.text || params.value || ''
+          if (text && activeId) {
+            sendMessage(text, activeId)
+          }
+          break
+        }
         case 'send_email':
           await executor('send_email', params)
           break
@@ -134,7 +142,7 @@ function AppContent() {
           await executor(action, params)
       }
     },
-    []
+    [activeId, sendMessage]
   )
 
   const handleSendFromHome = useCallback(

@@ -23,12 +23,17 @@ export function AssistantBubble({ content, onAction }: AssistantBubbleProps) {
     }
 
     // Visual feedback
-    btn.style.opacity = '0.6'
-    btn.textContent = '⏳ En cours...'
-    setTimeout(() => {
-      btn.style.opacity = '1'
-      btn.textContent = '✅ Fait !'
-    }, 2000)
+    if (action === 'reply') {
+      btn.style.opacity = '0.5'
+      btn.style.pointerEvents = 'none'
+    } else {
+      btn.style.opacity = '0.6'
+      btn.textContent = '⏳ En cours...'
+      setTimeout(() => {
+        btn.style.opacity = '1'
+        btn.textContent = '✅ Fait !'
+      }, 2000)
+    }
 
     onAction(action, params)
   }, [onAction])
