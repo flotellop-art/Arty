@@ -88,31 +88,39 @@ async function handleRead(token: string, req: VercelRequest, res: VercelResponse
             }
           }
           if (!content || content.trim().length < 20) {
-            // OCR fallback: use Google Vision API for scanned PDFs
+            // OCR fallback: use Google Vision API files:annotate for scanned PDFs
             try {
               const base64Data = buffer.toString('base64')
               const visionRes = await fetch(
-                'https://vision.googleapis.com/v1/images:annotate',
+                'https://vision.googleapis.com/v1/files:annotate',
                 {
                   method: 'POST',
                   headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
                   body: JSON.stringify({
                     requests: [{
-                      image: { content: base64Data },
+                      inputConfig: {
+                        content: base64Data,
+                        mimeType: 'application/pdf',
+                      },
                       features: [{ type: 'DOCUMENT_TEXT_DETECTION' }],
+                      pages: [1, 2, 3, 4, 5],
                     }],
                   }),
                 }
               )
               if (visionRes.ok) {
                 const visionData = await visionRes.json()
-                const ocrText = visionData.responses?.[0]?.fullTextAnnotation?.text
+                const pages = visionData.responses?.[0]?.responses || []
+                const ocrText = pages
+                  .map((p: { fullTextAnnotation?: { text?: string } }) => p.fullTextAnnotation?.text || '')
+                  .filter(Boolean)
+                  .join('\n\n--- Page suivante ---\n\n')
                 if (ocrText) {
-                  content = `[OCR — texte extrait d'un PDF scanné]\n\n${ocrText}`
+                  content = `[OCR — texte extrait d'un PDF scanné, ${pages.length} pages]\n\n${ocrText}`
                 }
               }
             } catch {
-              // OCR failed silently, keep previous content
+              // OCR failed silently
             }
           }
           if (!content || content.trim().length < 20) {

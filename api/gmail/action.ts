@@ -175,25 +175,33 @@ async function handleAttachment(token: string, req: VercelRequest, res: VercelRe
         }
       } catch { /* pdf-parse failed, try OCR */ }
 
-      // OCR fallback for scanned PDFs
+      // OCR fallback for scanned PDFs — use files:annotate for PDF support
       try {
         const base64Data = buffer.toString('base64')
         const visionRes = await fetch(
-          'https://vision.googleapis.com/v1/images:annotate',
+          'https://vision.googleapis.com/v1/files:annotate',
           {
             method: 'POST',
             headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({
               requests: [{
-                image: { content: base64Data },
+                inputConfig: {
+                  content: base64Data,
+                  mimeType: 'application/pdf',
+                },
                 features: [{ type: 'DOCUMENT_TEXT_DETECTION' }],
+                pages: [1, 2, 3, 4, 5],
               }],
             }),
           }
         )
         if (visionRes.ok) {
           const visionData = await visionRes.json()
-          const ocrText = visionData.responses?.[0]?.fullTextAnnotation?.text
+          const pages = visionData.responses?.[0]?.responses || []
+          const ocrText = pages
+            .map((p: { fullTextAnnotation?: { text?: string } }) => p.fullTextAnnotation?.text || '')
+            .filter(Boolean)
+            .join('\n\n--- Page suivante ---\n\n')
           if (ocrText) {
             return res.status(200).json({ content: `[OCR]\n\n${ocrText.slice(0, 10000)}`, type: 'pdf-ocr' })
           }
