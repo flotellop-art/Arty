@@ -63,88 +63,32 @@ async function handleRead(token: string, req: VercelRequest, res: VercelResponse
       if (r.ok) {
         content = await r.text()
       } else {
-        // Native PDF — download and parse with pdf-parse
+        // Native PDF — download and try text extraction, fallback to base64 for Claude to read directly
         const dlRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, { headers: { Authorization: `Bearer ${token}` } })
         if (dlRes.ok) {
           const buffer = Buffer.from(await dlRes.arrayBuffer())
+          // Try pdf-parse first
           try {
             const pdfData = await pdf(buffer)
-            content = pdfData.text || ''
-          } catch (e) {
-            content = ''
-          }
-          // Check if extracted text is actually readable (not garbage/binary)
-          const isReadable = (text: string) => {
-            if (!text || text.trim().length < 50) return false
-            // Count readable characters vs total
+            const text = pdfData.text || ''
+            // Check if text is readable
             const readable = text.replace(/[^\w\sàâäéèêëïîôùûüçœæÀÂÄÉÈÊËÏÎÔÙÛÜÇŒÆ.,;:!?€$%()/-]/g, '')
-            return readable.length > text.length * 0.5
-          }
-          if (!isReadable(content)) {
-            content = ''
-          }
-          // Regex fallback
+            if (text.trim().length >= 50 && readable.length > text.length * 0.5) {
+              content = text
+            }
+          } catch { /* pdf-parse failed */ }
+
+          // If text extraction failed, return base64 for Claude to read natively
           if (!content) {
-            const raw = buffer.toString('latin1')
-            const textParts: string[] = []
-            const regex = /\(([^)]{2,})\)/g
-            let m
-            while ((m = regex.exec(raw)) !== null) {
-              const t = m[1]
-              if (t && !/^[\\\/\d\s.]+$/.test(t)) textParts.push(t)
-            }
-            if (textParts.length > 0) {
-              content = textParts.join(' ').replace(/\\n/g, '\n').replace(/\\\(/g, '(').replace(/\\\)/g, ')')
-            }
+            const base64Data = buffer.toString('base64')
+            return res.status(200).json({
+              id: meta.id, name: meta.name, mimeType: meta.mimeType, modifiedTime: meta.modifiedTime,
+              content: `[PDF_BASE64:${base64Data}]`,
+              isPdfBase64: true,
+            })
           }
-          if (!isReadable(content)) {
-            content = ''
-          }
-          if (!content) {
-            // OCR fallback: use Google Vision API files:annotate for scanned PDFs
-            try {
-              const visionKey = process.env.GOOGLE_VISION_API_KEY
-              if (visionKey) {
-                const base64Data = buffer.toString('base64')
-                const visionRes = await fetch(
-                  `https://vision.googleapis.com/v1/files:annotate?key=${visionKey}`,
-                  {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                      requests: [{
-                        inputConfig: {
-                          content: base64Data,
-                          mimeType: 'application/pdf',
-                        },
-                        features: [{ type: 'DOCUMENT_TEXT_DETECTION' }],
-                        pages: [1, 2, 3, 4, 5],
-                      }],
-                    }),
-                  }
-                )
-                const visionText = await visionRes.text()
-                if (visionRes.ok) {
-                  const visionData = JSON.parse(visionText)
-                  const pages = visionData.responses?.[0]?.responses || []
-                  const ocrText = pages
-                    .map((p: { fullTextAnnotation?: { text?: string } }) => p.fullTextAnnotation?.text || '')
-                    .filter(Boolean)
-                    .join('\n\n--- Page suivante ---\n\n')
-                  if (ocrText) {
-                    content = `[OCR — texte extrait d'un PDF scanné, ${pages.length} pages]\n\n${ocrText}`
-                  } else {
-                    content = `[OCR lancé mais aucun texte trouvé. Réponse Vision: ${visionText.slice(0, 500)}]`
-                  }
-                } else {
-                  content = `[OCR échoué: ${visionText.slice(0, 300)}]`
-                }
-              } else {
-                content = `[OCR indisponible: GOOGLE_VISION_API_KEY non configurée]`
-              }
-            } catch (ocrErr) {
-              content = `[OCR erreur: ${ocrErr instanceof Error ? ocrErr.message : 'inconnu'}]`
-            }
+        }
+      }
           }
           if (!content) {
             content = `[PDF : ${meta.name} — impossible d'extraire le texte. Fichier probablement scanné/image. Taille: ${buffer.length} octets]`

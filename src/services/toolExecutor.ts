@@ -168,11 +168,33 @@ export function createToolExecutor(
         case 'read_drive_file': {
           const fileId = input.file_id as string
           if (!fileId) return { result: 'Erreur: ID fichier manquant.' }
-          const file = await drive.readFile(fileId)
-          if (file) {
-            return { result: `Fichier: ${file.name}\nType: ${file.mimeType}\n\nContenu:\n${file.content}` }
+          try {
+            const token = await getGoogleToken()
+            if (!token) return { result: 'Erreur: Google non connecté.' }
+            const res = await fetch('/api/drive/action', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+              body: JSON.stringify({ type: 'read', id: fileId }),
+            })
+            const data = await safeJson(res)
+            if (data.error) return { result: `Erreur lecture: ${data.error}` }
+
+            // If PDF returned as base64, format for Claude to read natively
+            if (data.isPdfBase64 && data.content?.startsWith('[PDF_BASE64:')) {
+              const base64 = data.content.replace('[PDF_BASE64:', '').replace(']', '')
+              return {
+                result: JSON.stringify({
+                  type: 'document',
+                  source: { type: 'base64', media_type: 'application/pdf', data: base64 },
+                  name: data.name,
+                }),
+              }
+            }
+
+            return { result: `Fichier: ${data.name}\nType: ${data.mimeType}\n\nContenu:\n${data.content}` }
+          } catch (err) {
+            return { result: `Erreur: ${err instanceof Error ? err.message : 'lecture échouée'}` }
           }
-          return { result: 'Erreur: impossible de lire ce fichier.' }
         }
 
         case 'create_drive_file': {

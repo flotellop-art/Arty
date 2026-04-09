@@ -790,10 +790,25 @@ async function runWithTools(
       for (const block of contentBlocks) {
         if (block.type === 'tool_use') {
           const toolResult = await options.onToolCall(block.name, block.input)
+
+          // Check if result is a document (PDF base64) for Claude to read natively
+          let content: any = toolResult.result
+          try {
+            const parsed = JSON.parse(toolResult.result)
+            if (parsed.type === 'document' && parsed.source) {
+              content = [
+                { type: 'document', source: parsed.source },
+                { type: 'text', text: `Fichier: ${parsed.name || 'document.pdf'} — lis et analyse ce document.` },
+              ]
+            }
+          } catch {
+            // Not JSON, use as plain text
+          }
+
           toolResults.push({
             type: 'tool_result',
             tool_use_id: block.id,
-            content: toolResult.result,
+            content,
           })
         }
       }
