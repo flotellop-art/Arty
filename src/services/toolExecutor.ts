@@ -126,16 +126,25 @@ export function createToolExecutor(
         case 'list_drive': {
           try {
             const folderId = input.folder_id as string | undefined
-            const files = await drive.fetchFiles(folderId)
-            if (files && files.length > 0) {
-              const summary = files.slice(0, 50).map((f, i) =>
+            const token = await getGoogleToken()
+            if (!token) return { result: 'Erreur: Google non connecté. Reconnecte-toi.' }
+            const res = await fetch('/api/drive/action', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+              body: JSON.stringify({ type: 'list', folderId }),
+            })
+            const data = await safeJson(res)
+            if (data.error) return { result: `Erreur Drive: ${typeof data.error === 'string' ? data.error : JSON.stringify(data.error)}` }
+            const files = data.files || []
+            if (files.length > 0) {
+              const summary = files.slice(0, 50).map((f: { id: string; name: string; mimeType: string }, i: number) =>
                 `${i + 1}. [ID:${f.id}] ${f.name} (${f.mimeType.split('.').pop() || f.mimeType})`
               ).join('\n')
               return { result: `${files.length} fichiers${folderId ? ' dans ce dossier' : ''}:\n${summary}` }
             }
-            return { result: folderId ? 'Dossier vide.' : 'Aucun fichier sur Drive.' }
+            return { result: folderId ? 'Dossier vide.' : `Aucun fichier sur Drive. (debug: ${JSON.stringify(data.debug || {})})` }
           } catch (err) {
-            return { result: `Erreur Drive: ${err instanceof Error ? err.message : 'Google non connecté ?'}` }
+            return { result: `Erreur Drive: ${err instanceof Error ? err.message : 'inconnu'}` }
           }
         }
 

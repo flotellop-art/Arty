@@ -29,11 +29,14 @@ async function handleList(token: string, req: VercelRequest, res: VercelResponse
     let q = 'trashed=false'
     if (folderId) q += ` and '${folderId}' in parents`
     if (query) q += ` and (fullText contains '${query.replace(/'/g, "\\'")}')`
-    const params = new URLSearchParams({ q, fields: 'files(id,name,mimeType,modifiedTime,size,webViewLink,iconLink,parents)', orderBy: 'modifiedTime desc', pageSize: '200', includeItemsFromAllDrives: 'true', supportsAllDrives: 'true', corpora: 'allDrives' })
+    const params = new URLSearchParams({ q, fields: 'files(id,name,mimeType,modifiedTime,size,webViewLink,iconLink,parents)', orderBy: 'modifiedTime desc', pageSize: '200', supportsAllDrives: 'true', includeItemsFromAllDrives: 'true' })
     const r = await fetch(`https://www.googleapis.com/drive/v3/files?${params}`, { headers: { Authorization: `Bearer ${token}` } })
-    if (!r.ok) { const err = await r.json(); return res.status(r.status).json({ error: err.error?.message }) }
+    if (!r.ok) {
+      const errBody = await r.text()
+      return res.status(r.status).json({ error: errBody, debug: { status: r.status, query: q } })
+    }
     const data = await r.json()
-    return res.status(200).json({ files: data.files || [] })
+    return res.status(200).json({ files: data.files || [], debug: { query: q, count: (data.files || []).length } })
   } catch { return res.status(500).json({ error: 'Failed to list files' }) }
 }
 
