@@ -316,7 +316,30 @@ export function useConversation() {
           systemPrompt: systemPromptRef.current,
         })
       } else {
-        const apiMessages = buildApiMessages(conv.messages)
+        // Build API messages — inject files directly for the current message
+        const apiMessages: Array<{ role: string; content: string | Array<Record<string, unknown>> }> = conv.messages.map((m) => {
+          return { role: m.role, content: m.content }
+        })
+        // If files were attached, replace the last user message with content blocks
+        if (files?.length) {
+          const contentBlocks: Array<Record<string, unknown>> = []
+          for (const file of files) {
+            const mime = detectMimeType(file.name, file.type)
+            if (mime === 'application/pdf') {
+              contentBlocks.push({
+                type: 'document',
+                source: { type: 'base64', media_type: 'application/pdf', data: file.data },
+              })
+            } else if (mime.startsWith('image/')) {
+              contentBlocks.push({
+                type: 'image',
+                source: { type: 'base64', media_type: mime, data: file.data },
+              })
+            }
+          }
+          contentBlocks.push({ type: 'text', text: text || 'Analyse ce fichier.' })
+          apiMessages[apiMessages.length - 1] = { role: 'user', content: contentBlocks }
+        }
         controller = streamMessage(apiMessages, onToken, onDone, onErr, {
           systemPrompt: systemPromptRef.current,
           onToolCall: toolHandlerRef.current,
