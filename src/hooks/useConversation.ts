@@ -287,7 +287,9 @@ export function useConversation() {
         abortRef.current = null
       }
 
-      const provider = detectProvider(text)
+      // If files are attached, always use Claude (no hybrid/gemini)
+      const currentFiles = pendingFilesRef.current
+      const provider = (currentFiles && currentFiles.length > 0) ? 'claude' as const : detectProvider(text)
       let controller: AbortController
 
       if (provider === 'hybrid') {
@@ -325,8 +327,6 @@ export function useConversation() {
           return { role: m.role, content: m.content }
         })
         // If files were attached, replace the last user message with content blocks
-        const currentFiles = pendingFilesRef.current
-        console.log('[Arty] Building API messages. Pending files:', currentFiles?.length || 0)
         if (currentFiles && currentFiles.length > 0) {
           const contentBlocks: Array<Record<string, unknown>> = []
           for (const file of currentFiles) {
