@@ -67,6 +67,7 @@ export function useConversation() {
   const abortRef = useRef<AbortController | null>(null)
   const systemPromptRef = useRef<string | undefined>(undefined)
   const toolHandlerRef = useRef<ToolHandler | undefined>(undefined)
+  const pendingFilesRef = useRef<FileAttachment[] | null>(null)
 
   // Track active streaming state in refs (survives navigation)
   const streamingRef = useRef<{
@@ -223,10 +224,8 @@ export function useConversation() {
       refreshConversations()
       setActiveId(targetId)
 
-      // Keep files in memory for the API call (not stored in localStorage)
-      if (files?.length) {
-        userMessage.files = files
-      }
+      // Store files in ref for the API call (survives re-renders, not in localStorage)
+      pendingFilesRef.current = files?.length ? files : null
 
       activeIdRef.current = targetId
       setIsStreaming(true)
@@ -316,14 +315,15 @@ export function useConversation() {
           systemPrompt: systemPromptRef.current,
         })
       } else {
-        // Build API messages — inject files directly for the current message
+        // Build API messages
         const apiMessages: Array<{ role: string; content: string | Array<Record<string, unknown>> }> = conv.messages.map((m) => {
           return { role: m.role, content: m.content }
         })
         // If files were attached, replace the last user message with content blocks
-        if (files?.length) {
+        const currentFiles = pendingFilesRef.current
+        if (currentFiles && currentFiles.length > 0) {
           const contentBlocks: Array<Record<string, unknown>> = []
-          for (const file of files) {
+          for (const file of currentFiles) {
             const mime = detectMimeType(file.name, file.type)
             if (mime === 'application/pdf') {
               contentBlocks.push({
@@ -339,6 +339,7 @@ export function useConversation() {
           }
           contentBlocks.push({ type: 'text', text: text || 'Analyse ce fichier.' })
           apiMessages[apiMessages.length - 1] = { role: 'user', content: contentBlocks }
+          pendingFilesRef.current = null // Clear after use
         }
         controller = streamMessage(apiMessages, onToken, onDone, onErr, {
           systemPrompt: systemPromptRef.current,
