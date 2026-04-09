@@ -1,5 +1,6 @@
 import type { Conversation } from '../../types'
 import { StarIcon } from '../shared/StarIcon'
+import { TokenUsageBar } from '../shared/TokenUsageBar'
 
 interface SidebarProps {
   isOpen: boolean
@@ -117,6 +118,8 @@ export function Sidebar({
             </div>
           ))}
         </nav>
+
+        <TokenUsageBar />
       </aside>
     </>
   )

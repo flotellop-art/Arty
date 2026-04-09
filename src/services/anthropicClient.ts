@@ -1,4 +1,5 @@
 import { SYSTEM_PROMPT } from '../constants/systemPrompt'
+import { addUsage } from './tokenTracker'
 
 const TOOLS = [
   // --- PC Control ---
@@ -509,6 +510,11 @@ async function runWithTools(
       }
 
       const data = await response.json()
+
+      // Track token usage
+      if (data.usage) {
+        addUsage(data.usage.input_tokens || 0, data.usage.output_tokens || 0)
+      }
 
       let hasToolUse = false
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
