@@ -513,6 +513,156 @@ function formatApiError(status: number, body: string): string {
   }
 }
 
+async function fetchWithRetry(
+  requestBody: string,
+  apiKey: string,
+  controller: AbortController
+): Promise<Response> {
+  let response: Response | null = null
+  const maxRetries = 3
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: requestBody,
+      signal: controller.signal,
+    })
+
+    const isRetryable = response.status === 429 || response.status === 529 || response.status >= 500
+    if (response.ok || !isRetryable || attempt === maxRetries) {
+      break
+    }
+
+    // Exponential backoff: 2s, 4s, 8s
+    const delay = Math.pow(2, attempt + 1) * 1000
+    await new Promise((resolve) => setTimeout(resolve, delay))
+  }
+
+  if (!response!.ok) {
+    const body = await response!.text().catch(() => '')
+    throw new Error(formatApiError(response!.status, body))
+  }
+
+  return response!
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function parseSSEStream(
+  response: Response,
+  onToken: (text: string) => void,
+  _controller: AbortController
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+): Promise<{ contentBlocks: any[]; inputTokens: number; outputTokens: number }> {
+  const reader = response.body!.getReader()
+  const decoder = new TextDecoder()
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const contentBlocks: any[] = []
+  let currentToolInput = ''
+  let currentBlockType = ''
+  let currentTextContent = ''
+  let inputTokens = 0
+  let outputTokens = 0
+  let buffer = ''
+  let eventType = ''
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || ''
+
+      for (const line of lines) {
+        if (line.startsWith('event: ')) {
+          eventType = line.slice(7).trim()
+          continue
+        }
+
+        if (!line.startsWith('data: ')) continue
+        const jsonStr = line.slice(6)
+        if (jsonStr === '[DONE]') continue
+
+        let data
+        try {
+          data = JSON.parse(jsonStr)
+        } catch {
+          continue
+        }
+
+        switch (eventType) {
+          case 'message_start':
+            if (data.message?.usage) {
+              inputTokens = data.message.usage.input_tokens || 0
+            }
+            break
+
+          case 'content_block_start':
+            if (data.content_block?.type === 'text') {
+              currentBlockType = 'text'
+              currentTextContent = ''
+            } else if (data.content_block?.type === 'tool_use') {
+              currentBlockType = 'tool_use'
+              currentToolInput = ''
+              contentBlocks.push({
+                type: 'tool_use',
+                id: data.content_block.id,
+                name: data.content_block.name,
+                input: {},
+              })
+            }
+            break
+
+          case 'content_block_delta':
+            if (data.delta?.type === 'text_delta' && data.delta.text) {
+              onToken(data.delta.text)
+              currentTextContent += data.delta.text
+            } else if (data.delta?.type === 'input_json_delta' && data.delta.partial_json) {
+              currentToolInput += data.delta.partial_json
+            }
+            break
+
+          case 'content_block_stop':
+            if (currentBlockType === 'text' && currentTextContent) {
+              contentBlocks.push({ type: 'text', text: currentTextContent })
+            } else if (currentBlockType === 'tool_use' && currentToolInput) {
+              const lastTool = contentBlocks[contentBlocks.length - 1]
+              if (lastTool?.type === 'tool_use') {
+                try {
+                  lastTool.input = JSON.parse(currentToolInput)
+                } catch {
+                  lastTool.input = {}
+                }
+              }
+            }
+            currentBlockType = ''
+            break
+
+          case 'message_delta':
+            if (data.usage) {
+              outputTokens = data.usage.output_tokens || 0
+            }
+            break
+
+          case 'error':
+            throw new Error(data.error?.message || 'Erreur streaming')
+        }
+      }
+    }
+  } finally {
+    reader.releaseLock()
+  }
+
+  return { contentBlocks, inputTokens, outputTokens }
+}
+
 async function runWithTools(
   apiKey: string,
   originalMessages: Array<{ role: string; content: string }>,
@@ -537,68 +687,33 @@ async function runWithTools(
         model: 'claude-sonnet-4-6',
         max_tokens: 16384,
         temperature: 0.7,
+        stream: true,
         system: options?.systemPrompt || SYSTEM_PROMPT,
         tools: TOOLS,
         messages: apiMessages,
       })
 
-      // Retry logic for transient errors (429, 529, 5xx)
-      let response: Response | null = null
-      const maxRetries = 3
-      for (let attempt = 0; attempt <= maxRetries; attempt++) {
-        response = await fetch('https://api.anthropic.com/v1/messages', {
-          method: 'POST',
-          headers: {
-            'content-type': 'application/json',
-            'x-api-key': apiKey,
-            'anthropic-version': '2023-06-01',
-            'anthropic-dangerous-direct-browser-access': 'true',
-          },
-          body: requestBody,
-          signal: controller.signal,
-        })
-
-        const isRetryable = response.status === 429 || response.status === 529 || response.status >= 500
-        if (response.ok || !isRetryable || attempt === maxRetries) {
-          break
-        }
-
-        // Exponential backoff: 2s, 4s, 8s
-        const delay = Math.pow(2, attempt + 1) * 1000
-        await new Promise((resolve) => setTimeout(resolve, delay))
-      }
-
-      if (!response!.ok) {
-        const body = await response!.text().catch(() => '')
-        throw new Error(formatApiError(response!.status, body))
-      }
-
-      const data = await response!.json()
+      const response = await fetchWithRetry(requestBody, apiKey, controller)
+      const { contentBlocks, inputTokens, outputTokens } = await parseSSEStream(
+        response,
+        onToken,
+        controller
+      )
 
       // Track token usage
-      if (data.usage) {
-        addUsage(data.usage.input_tokens || 0, data.usage.output_tokens || 0)
-      }
+      addUsage(inputTokens, outputTokens)
 
-      let hasToolUse = false
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const toolResults: any[] = []
-
-      for (const block of data.content) {
-        if (block.type === 'text' && block.text) {
-          onToken(block.text)
-        }
-        if (block.type === 'tool_use') {
-          hasToolUse = true
-        }
-      }
+      const hasToolUse = contentBlocks.some((b) => b.type === 'tool_use')
 
       if (!hasToolUse || !options?.onToolCall) {
         onDone()
         return
       }
 
-      for (const block of data.content) {
+      // Execute tool calls
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const toolResults: any[] = []
+      for (const block of contentBlocks) {
         if (block.type === 'tool_use') {
           const toolResult = await options.onToolCall(block.name, block.input)
           toolResults.push({
@@ -609,7 +724,7 @@ async function runWithTools(
         }
       }
 
-      apiMessages.push({ role: 'assistant', content: data.content })
+      apiMessages.push({ role: 'assistant', content: contentBlocks })
       apiMessages.push({ role: 'user', content: toolResults })
     }
 
