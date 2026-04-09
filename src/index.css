@@ -48,3 +48,68 @@ body {
 .prose th, .prose td {
   padding: 0.5rem 0.75rem;
 }
+
+/* Report card styles */
+.report-content .card {
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.75rem;
+  padding: 1rem;
+  margin: 0.75rem 0;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+.report-content .card-accent {
+  background: linear-gradient(135deg, #E05510 0%, #c44a0e 100%);
+  color: #F5F0E8;
+  border: none;
+  border-radius: 0.75rem;
+  padding: 1.25rem;
+  margin: 0.75rem 0;
+}
+.report-content .card-dark {
+  background: #1E1A14;
+  color: #F5F0E8;
+  border: none;
+  border-radius: 0.75rem;
+  padding: 1.25rem;
+  margin: 0.75rem 0;
+}
+.report-content .badge {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  border-radius: 0.375rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+.report-content .badge-green { background: #dcfce7; color: #166534; }
+.report-content .badge-red { background: #fef2f2; color: #991b1b; }
+.report-content .badge-orange { background: #fff7ed; color: #9a3412; }
+.report-content .badge-blue { background: #eff6ff; color: #1e40af; }
+.report-content .badge-gray { background: #f3f4f6; color: #374151; }
+.report-content .big-number {
+  font-size: 2rem;
+  font-weight: 700;
+  font-family: 'Lora', serif;
+  color: #E05510;
+  line-height: 1.2;
+}
+.report-content .subtitle {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  opacity: 0.6;
+  font-weight: 600;
+}
+.report-content .grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+.report-content .grid-3 {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 0.75rem;
+}
+.report-content .text-center { text-align: center; }
+.report-content .mt-2 { margin-top: 0.5rem; }
+.report-content .mb-1 { margin-bottom: 0.25rem; }
