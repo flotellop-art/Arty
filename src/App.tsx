@@ -10,6 +10,7 @@ import { buildContextualPrompt } from './constants/systemPrompt'
 import { createToolExecutor } from './services/toolExecutor'
 import { HomeScreen } from './components/home/HomeScreen'
 import { ConversationScreen } from './components/chat/ConversationScreen'
+import { ReportPage } from './components/shared/ReportPage'
 import { Sidebar } from './components/layout/Sidebar'
 import { OAuthCallback } from './components/google/OAuthCallback'
 import type { GmailMessage } from './types/google'
@@ -198,6 +199,10 @@ function AppContent() {
         <Route
           path="/auth/callback"
           element={<OAuthCallback onCallback={handleOAuthCallback} />}
+        />
+        <Route
+          path="/report/:id"
+          element={<ReportPage />}
         />
         <Route
           path="/chat/:id"

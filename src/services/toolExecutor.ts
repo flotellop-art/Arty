@@ -27,8 +27,8 @@ export function createToolExecutor(
         case 'generate_report': {
           const title = input.title as string
           const content = input.content as string
-          openReport(title, content)
-          return { result: `Rapport "${title}" généré et ouvert dans le navigateur.` }
+          const reportId = openReport(title, content)
+          return { result: `Rapport "${title}" prêt. Lien : [📄 Ouvrir le rapport](${window.location.origin}/report/${reportId})` }
         }
 
         // --- PC Control ---
