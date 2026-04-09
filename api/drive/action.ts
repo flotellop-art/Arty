@@ -63,16 +63,35 @@ async function handleRead(token: string, req: VercelRequest, res: VercelResponse
       if (r.ok) {
         content = await r.text()
       } else {
-        // Native PDF — download and parse with pdf-parse (handles FlateDecode, compression, etc.)
+        // Native PDF — download and parse with pdf-parse
         const dlRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, { headers: { Authorization: `Bearer ${token}` } })
         if (dlRes.ok) {
           const buffer = Buffer.from(await dlRes.arrayBuffer())
           try {
             const pdfData = await pdf(buffer)
-            content = pdfData.text || `[PDF : ${meta.name} — aucun texte extractible (PDF scanné/image ?)]`
-          } catch {
-            content = `[PDF : ${meta.name} — erreur lors de l'extraction du texte]`
+            content = pdfData.text || ''
+          } catch (e) {
+            content = ''
           }
+          // Fallback: basic regex extraction if pdf-parse returned nothing
+          if (!content || content.trim().length < 20) {
+            const raw = buffer.toString('latin1')
+            const textParts: string[] = []
+            const regex = /\(([^)]{2,})\)/g
+            let m
+            while ((m = regex.exec(raw)) !== null) {
+              const t = m[1]
+              if (t && !/^[\\\/\d\s.]+$/.test(t)) textParts.push(t)
+            }
+            if (textParts.length > 0) {
+              content = textParts.join(' ').replace(/\\n/g, '\n').replace(/\\\(/g, '(').replace(/\\\)/g, ')')
+            }
+          }
+          if (!content || content.trim().length < 20) {
+            content = `[PDF : ${meta.name} — impossible d'extraire le texte. Fichier probablement scanné/image. Taille: ${buffer.length} octets]`
+          }
+        }
+      }
         }
       }
     } else {
