@@ -41,23 +41,13 @@ export function useConversation() {
   }, [refreshConversations])
 
   const selectConversation = useCallback((id: string) => {
-    if (abortRef.current) {
-      abortRef.current.abort()
-      abortRef.current = null
-    }
-    setIsStreaming(false)
-    setStreamingContent('')
+    // Don't abort — let the request finish in background
     setActiveId(id)
     setError(null)
   }, [])
 
   const clearActive = useCallback(() => {
-    if (abortRef.current) {
-      abortRef.current.abort()
-      abortRef.current = null
-    }
-    setIsStreaming(false)
-    setStreamingContent('')
+    // Don't abort — let the request finish in background
     setActiveId(null)
     setError(null)
   }, [])
