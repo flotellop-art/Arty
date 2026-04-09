@@ -330,18 +330,12 @@ const TOOLS = [
       required: ['destination'],
     },
   },
-  // --- Web ---
+  // --- Web (outil serveur Anthropic — recherche native côté API) ---
   {
+    type: 'web_search_20250305',
     name: 'web_search',
-    description: 'Recherche sur internet (DuckDuckGo). Pour trouver des infos, prix, actualités.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        query: { type: 'string' as const, description: 'Requête de recherche' },
-      },
-      required: ['query'],
-    },
-  },
+    max_uses: 5,
+  } as any,
   {
     name: 'search_price',
     description: 'Recherche prix chez fournisseurs BTP (Point P, Gedimat).',
@@ -617,6 +611,12 @@ async function parseSSEStream(
                 name: data.content_block.name,
                 input: {},
               })
+            } else if (data.content_block?.type === 'server_tool_use') {
+              // Server-side tool (web_search) — handled by Anthropic, skip
+              currentBlockType = 'server_tool_use'
+            } else if (data.content_block?.type === 'web_search_tool_result') {
+              // Search results from server — skip (Claude already uses them)
+              currentBlockType = 'web_search_tool_result'
             }
             break
 

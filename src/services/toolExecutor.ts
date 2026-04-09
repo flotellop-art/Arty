@@ -449,36 +449,7 @@ export function createToolExecutor(
           } catch { return { result: 'Erreur: format items invalide.' } }
         }
 
-        case 'web_search': {
-          const query = input.query as string
-          if (!query) return { result: 'Erreur: requête manquante.' }
-          const maxRetries = 2
-          for (let attempt = 0; attempt <= maxRetries; attempt++) {
-            try {
-              if (attempt > 0) await new Promise(r => setTimeout(r, 1000 * attempt))
-              const res = await fetch('/api/browser/search', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ query }),
-              })
-              const data = await safeJson(res)
-              if (data.results && data.results.length > 0) {
-                const summary = data.results.map((r: { title: string; url: string; snippet: string }, i: number) =>
-                  `${i + 1}. ${r.title}\n   ${r.url}\n   ${r.snippet}`
-                ).join('\n\n')
-                return { result: `Résultats pour "${query}":\n\n${summary}` }
-              }
-              if (attempt === maxRetries) {
-                return { result: `Aucun résultat pour "${query}" après ${maxRetries + 1} tentatives. Reformule ta requête avec des mots-clés différents ou continue sans cette recherche.` }
-              }
-            } catch {
-              if (attempt === maxRetries) {
-                return { result: `Recherche web échouée pour "${query}" après ${maxRetries + 1} tentatives (problème réseau). Reformule ta requête ou continue avec tes connaissances en le précisant clairement.` }
-              }
-            }
-          }
-          return { result: 'Erreur: recherche web indisponible.' }
-        }
+        // web_search is now a server-side tool handled by Anthropic API directly
 
         case 'search_price': {
           const product = input.product as string
