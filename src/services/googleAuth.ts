@@ -14,7 +14,6 @@ const SCOPES = [
   'https://www.googleapis.com/auth/contacts',
   'https://www.googleapis.com/auth/userinfo.email',
   'https://www.googleapis.com/auth/userinfo.profile',
-  'https://www.googleapis.com/auth/cloud-platform',
 ].join(' ')
 
 export function getRedirectUri(): string {

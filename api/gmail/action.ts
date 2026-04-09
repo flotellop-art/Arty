@@ -175,35 +175,38 @@ async function handleAttachment(token: string, req: VercelRequest, res: VercelRe
         }
       } catch { /* pdf-parse failed, try OCR */ }
 
-      // OCR fallback for scanned PDFs — use files:annotate for PDF support
+      // OCR fallback for scanned PDFs — use files:annotate with API key
       try {
-        const base64Data = buffer.toString('base64')
-        const visionRes = await fetch(
-          'https://vision.googleapis.com/v1/files:annotate',
-          {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              requests: [{
-                inputConfig: {
-                  content: base64Data,
-                  mimeType: 'application/pdf',
-                },
-                features: [{ type: 'DOCUMENT_TEXT_DETECTION' }],
-                pages: [1, 2, 3, 4, 5],
-              }],
-            }),
-          }
-        )
-        if (visionRes.ok) {
-          const visionData = await visionRes.json()
-          const pages = visionData.responses?.[0]?.responses || []
-          const ocrText = pages
-            .map((p: { fullTextAnnotation?: { text?: string } }) => p.fullTextAnnotation?.text || '')
-            .filter(Boolean)
-            .join('\n\n--- Page suivante ---\n\n')
-          if (ocrText) {
-            return res.status(200).json({ content: `[OCR]\n\n${ocrText.slice(0, 10000)}`, type: 'pdf-ocr' })
+        const visionKey = process.env.GOOGLE_VISION_API_KEY
+        if (visionKey) {
+          const base64Data = buffer.toString('base64')
+          const visionRes = await fetch(
+            `https://vision.googleapis.com/v1/files:annotate?key=${visionKey}`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                requests: [{
+                  inputConfig: {
+                    content: base64Data,
+                    mimeType: 'application/pdf',
+                  },
+                  features: [{ type: 'DOCUMENT_TEXT_DETECTION' }],
+                  pages: [1, 2, 3, 4, 5],
+                }],
+              }),
+            }
+          )
+          if (visionRes.ok) {
+            const visionData = await visionRes.json()
+            const pages = visionData.responses?.[0]?.responses || []
+            const ocrText = pages
+              .map((p: { fullTextAnnotation?: { text?: string } }) => p.fullTextAnnotation?.text || '')
+              .filter(Boolean)
+              .join('\n\n--- Page suivante ---\n\n')
+            if (ocrText) {
+              return res.status(200).json({ content: `[OCR]\n\n${ocrText.slice(0, 10000)}`, type: 'pdf-ocr' })
+            }
           }
         }
       } catch { /* OCR failed */ }

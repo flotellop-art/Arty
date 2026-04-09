@@ -90,33 +90,36 @@ async function handleRead(token: string, req: VercelRequest, res: VercelResponse
           if (!content || content.trim().length < 20) {
             // OCR fallback: use Google Vision API files:annotate for scanned PDFs
             try {
-              const base64Data = buffer.toString('base64')
-              const visionRes = await fetch(
-                'https://vision.googleapis.com/v1/files:annotate',
-                {
-                  method: 'POST',
-                  headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    requests: [{
-                      inputConfig: {
-                        content: base64Data,
-                        mimeType: 'application/pdf',
-                      },
-                      features: [{ type: 'DOCUMENT_TEXT_DETECTION' }],
-                      pages: [1, 2, 3, 4, 5],
-                    }],
-                  }),
-                }
-              )
-              if (visionRes.ok) {
-                const visionData = await visionRes.json()
-                const pages = visionData.responses?.[0]?.responses || []
-                const ocrText = pages
-                  .map((p: { fullTextAnnotation?: { text?: string } }) => p.fullTextAnnotation?.text || '')
-                  .filter(Boolean)
-                  .join('\n\n--- Page suivante ---\n\n')
-                if (ocrText) {
-                  content = `[OCR — texte extrait d'un PDF scanné, ${pages.length} pages]\n\n${ocrText}`
+              const visionKey = process.env.GOOGLE_VISION_API_KEY
+              if (visionKey) {
+                const base64Data = buffer.toString('base64')
+                const visionRes = await fetch(
+                  `https://vision.googleapis.com/v1/files:annotate?key=${visionKey}`,
+                  {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      requests: [{
+                        inputConfig: {
+                          content: base64Data,
+                          mimeType: 'application/pdf',
+                        },
+                        features: [{ type: 'DOCUMENT_TEXT_DETECTION' }],
+                        pages: [1, 2, 3, 4, 5],
+                      }],
+                    }),
+                  }
+                )
+                if (visionRes.ok) {
+                  const visionData = await visionRes.json()
+                  const pages = visionData.responses?.[0]?.responses || []
+                  const ocrText = pages
+                    .map((p: { fullTextAnnotation?: { text?: string } }) => p.fullTextAnnotation?.text || '')
+                    .filter(Boolean)
+                    .join('\n\n--- Page suivante ---\n\n')
+                  if (ocrText) {
+                    content = `[OCR — texte extrait d'un PDF scanné, ${pages.length} pages]\n\n${ocrText}`
+                  }
                 }
               }
             } catch {
