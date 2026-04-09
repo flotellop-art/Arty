@@ -166,12 +166,41 @@ async function handleAttachment(token: string, req: VercelRequest, res: VercelRe
     const isPdf = buffer.length > 4 && buffer[0] === 0x25 && buffer[1] === 0x50 && buffer[2] === 0x44 && buffer[3] === 0x46
 
     if (isPdf) {
+      let pdfText = ''
       try {
         const pdfData = await pdf(buffer)
-        return res.status(200).json({ content: pdfData.text.slice(0, 10000), type: 'pdf', pages: pdfData.numpages })
-      } catch {
-        return res.status(200).json({ content: '[PDF — impossible d\'extraire le texte (scanné/image ?)]', type: 'pdf' })
-      }
+        pdfText = pdfData.text || ''
+        if (pdfText.trim().length >= 20) {
+          return res.status(200).json({ content: pdfText.slice(0, 10000), type: 'pdf', pages: pdfData.numpages })
+        }
+      } catch { /* pdf-parse failed, try OCR */ }
+
+      // OCR fallback for scanned PDFs
+      try {
+        const base64Data = buffer.toString('base64')
+        const visionRes = await fetch(
+          'https://vision.googleapis.com/v1/images:annotate',
+          {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              requests: [{
+                image: { content: base64Data },
+                features: [{ type: 'DOCUMENT_TEXT_DETECTION' }],
+              }],
+            }),
+          }
+        )
+        if (visionRes.ok) {
+          const visionData = await visionRes.json()
+          const ocrText = visionData.responses?.[0]?.fullTextAnnotation?.text
+          if (ocrText) {
+            return res.status(200).json({ content: `[OCR]\n\n${ocrText.slice(0, 10000)}`, type: 'pdf-ocr' })
+          }
+        }
+      } catch { /* OCR failed */ }
+
+      return res.status(200).json({ content: '[PDF — impossible d\'extraire le texte]', type: 'pdf' })
     }
 
     // Try plain text

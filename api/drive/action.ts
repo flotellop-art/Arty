@@ -88,6 +88,34 @@ async function handleRead(token: string, req: VercelRequest, res: VercelResponse
             }
           }
           if (!content || content.trim().length < 20) {
+            // OCR fallback: use Google Vision API for scanned PDFs
+            try {
+              const base64Data = buffer.toString('base64')
+              const visionRes = await fetch(
+                'https://vision.googleapis.com/v1/images:annotate',
+                {
+                  method: 'POST',
+                  headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    requests: [{
+                      image: { content: base64Data },
+                      features: [{ type: 'DOCUMENT_TEXT_DETECTION' }],
+                    }],
+                  }),
+                }
+              )
+              if (visionRes.ok) {
+                const visionData = await visionRes.json()
+                const ocrText = visionData.responses?.[0]?.fullTextAnnotation?.text
+                if (ocrText) {
+                  content = `[OCR — texte extrait d'un PDF scanné]\n\n${ocrText}`
+                }
+              }
+            } catch {
+              // OCR failed silently, keep previous content
+            }
+          }
+          if (!content || content.trim().length < 20) {
             content = `[PDF : ${meta.name} — impossible d'extraire le texte. Fichier probablement scanné/image. Taille: ${buffer.length} octets]`
           }
         }
