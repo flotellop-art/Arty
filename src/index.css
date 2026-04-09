@@ -29,77 +29,116 @@ body {
 .typing-dot-2 { animation: typing-dot 1.4s infinite 0.2s; }
 .typing-dot-3 { animation: typing-dot 1.4s infinite 0.4s; }
 
-/* Scrollbar */
-::-webkit-scrollbar {
-  width: 4px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: #d1ccc4;
-  border-radius: 2px;
-}
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #d1ccc4; border-radius: 2px; }
 
-/* Prose overrides for chat */
-.prose table {
-  font-size: 0.875rem;
-}
-.prose th, .prose td {
-  padding: 0.5rem 0.75rem;
-}
+/* ========================================
+   REPORT PREMIUM STYLING
+   ======================================== */
 
-/* Report card styles */
+/* --- Cards --- */
 .report-content .card {
   background: white;
-  border: 1px solid #e5e7eb;
-  border-radius: 0.75rem;
-  padding: 1rem;
+  border: 1px solid #e8e4de;
+  border-radius: 1rem;
+  padding: 1.25rem;
   margin: 0.75rem 0;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+  box-shadow: 0 2px 8px rgba(30,26,20,0.04);
 }
 .report-content .card-accent {
-  background: linear-gradient(135deg, #E05510 0%, #c44a0e 100%);
+  background: linear-gradient(135deg, #E05510 0%, #b8440d 100%);
   color: #F5F0E8;
   border: none;
-  border-radius: 0.75rem;
-  padding: 1.25rem;
+  border-radius: 1rem;
+  padding: 1.5rem;
   margin: 0.75rem 0;
+  box-shadow: 0 4px 16px rgba(224,85,16,0.25);
 }
+.report-content .card-accent .subtitle { color: rgba(245,240,232,0.7); }
+.report-content .card-accent .big-number { color: #F5F0E8; }
+
 .report-content .card-dark {
-  background: #1E1A14;
+  background: linear-gradient(135deg, #1E1A14 0%, #2d2820 100%);
   color: #F5F0E8;
   border: none;
-  border-radius: 0.75rem;
+  border-radius: 1rem;
+  padding: 1.5rem;
+  margin: 0.75rem 0;
+  box-shadow: 0 4px 16px rgba(30,26,20,0.2);
+}
+.report-content .card-dark .subtitle { color: rgba(245,240,232,0.5); }
+.report-content .card-dark .big-number { color: #E05510; }
+
+.report-content .card-cream {
+  background: #F5F0E8;
+  border: 1px solid #e8e4de;
+  border-radius: 1rem;
   padding: 1.25rem;
   margin: 0.75rem 0;
 }
+
+.report-content .card-outline {
+  background: transparent;
+  border: 2px solid #E05510;
+  border-radius: 1rem;
+  padding: 1.25rem;
+  margin: 0.75rem 0;
+}
+
+/* --- Badges --- */
 .report-content .badge {
   display: inline-block;
-  padding: 0.15rem 0.5rem;
-  border-radius: 0.375rem;
-  font-size: 0.75rem;
-  font-weight: 600;
+  padding: 0.2rem 0.6rem;
+  border-radius: 0.5rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
 }
 .report-content .badge-green { background: #dcfce7; color: #166534; }
 .report-content .badge-red { background: #fef2f2; color: #991b1b; }
 .report-content .badge-orange { background: #fff7ed; color: #9a3412; }
 .report-content .badge-blue { background: #eff6ff; color: #1e40af; }
 .report-content .badge-gray { background: #f3f4f6; color: #374151; }
+.report-content .badge-accent { background: #E05510; color: #F5F0E8; }
+.report-content .badge-dark { background: #1E1A14; color: #F5F0E8; }
+
+/* --- Typography --- */
 .report-content .big-number {
-  font-size: 2rem;
+  font-size: 2.25rem;
   font-weight: 700;
   font-family: 'Lora', serif;
   color: #E05510;
+  line-height: 1.1;
+}
+.report-content .medium-number {
+  font-size: 1.5rem;
+  font-weight: 700;
+  font-family: 'Lora', serif;
+  color: #1E1A14;
   line-height: 1.2;
 }
 .report-content .subtitle {
-  font-size: 0.7rem;
+  font-size: 0.65rem;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
-  opacity: 0.6;
-  font-weight: 600;
+  letter-spacing: 0.12em;
+  opacity: 0.5;
+  font-weight: 700;
+  margin-bottom: 0.25rem;
 }
+.report-content .caption {
+  font-size: 0.75rem;
+  color: #9ca3af;
+  margin-top: 0.25rem;
+}
+.report-content .highlight {
+  background: linear-gradient(120deg, rgba(224,85,16,0.1) 0%, rgba(224,85,16,0.05) 100%);
+  padding: 0.1rem 0.3rem;
+  border-radius: 0.25rem;
+}
+
+/* --- Layout --- */
 .report-content .grid-2 {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -110,6 +149,188 @@ body {
   grid-template-columns: 1fr 1fr 1fr;
   gap: 0.75rem;
 }
+.report-content .grid-4 {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 1fr;
+  gap: 0.5rem;
+}
+.report-content .flex-row {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+.report-content .flex-between {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
 .report-content .text-center { text-align: center; }
+.report-content .text-right { text-align: right; }
+.report-content .mt-1 { margin-top: 0.25rem; }
 .report-content .mt-2 { margin-top: 0.5rem; }
+.report-content .mt-3 { margin-top: 0.75rem; }
 .report-content .mb-1 { margin-bottom: 0.25rem; }
+.report-content .mb-2 { margin-bottom: 0.5rem; }
+.report-content .p-0 { padding: 0; }
+
+/* --- Dividers --- */
+.report-content .divider {
+  height: 1px;
+  background: linear-gradient(to right, transparent, #d1ccc4, transparent);
+  margin: 1rem 0;
+}
+.report-content .divider-accent {
+  height: 3px;
+  background: linear-gradient(to right, #E05510, transparent);
+  border-radius: 2px;
+  margin: 1rem 0;
+}
+
+/* --- Progress bars --- */
+.report-content .progress-bar {
+  height: 8px;
+  background: #f3f4f6;
+  border-radius: 4px;
+  overflow: hidden;
+  margin: 0.5rem 0;
+}
+.report-content .progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #E05510, #f59e0b);
+  border-radius: 4px;
+  transition: width 0.3s;
+}
+.report-content .progress-fill-green {
+  height: 100%;
+  background: linear-gradient(90deg, #22c55e, #86efac);
+  border-radius: 4px;
+}
+.report-content .progress-fill-red {
+  height: 100%;
+  background: linear-gradient(90deg, #ef4444, #fca5a5);
+  border-radius: 4px;
+}
+
+/* --- Timeline --- */
+.report-content .timeline-item {
+  position: relative;
+  padding-left: 1.5rem;
+  padding-bottom: 1rem;
+  border-left: 2px solid #e8e4de;
+  margin-left: 0.5rem;
+}
+.report-content .timeline-item::before {
+  content: '';
+  position: absolute;
+  left: -6px;
+  top: 0.25rem;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #E05510;
+  border: 2px solid white;
+}
+.report-content .timeline-item:last-child { border-left: 2px solid transparent; }
+.report-content .timeline-date {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #E05510;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* --- Score/Rating --- */
+.report-content .score {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+.report-content .score-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #e8e4de;
+}
+.report-content .score-dot.active { background: #E05510; }
+.report-content .score-dot.good { background: #22c55e; }
+.report-content .score-dot.bad { background: #ef4444; }
+
+/* --- Alert boxes --- */
+.report-content .alert {
+  border-radius: 0.75rem;
+  padding: 1rem;
+  margin: 0.75rem 0;
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+}
+.report-content .alert-info {
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+}
+.report-content .alert-success {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+}
+.report-content .alert-warning {
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+}
+.report-content .alert-danger {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+}
+
+/* --- Stat block --- */
+.report-content .stat {
+  text-align: center;
+  padding: 0.75rem;
+}
+.report-content .stat-value {
+  font-size: 1.75rem;
+  font-weight: 700;
+  font-family: 'Lora', serif;
+  line-height: 1.2;
+}
+.report-content .stat-label {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  opacity: 0.5;
+  font-weight: 600;
+  margin-top: 0.25rem;
+}
+.report-content .stat-change {
+  font-size: 0.7rem;
+  font-weight: 600;
+  margin-top: 0.15rem;
+}
+.report-content .stat-change.up { color: #22c55e; }
+.report-content .stat-change.down { color: #ef4444; }
+
+/* --- Chapter header --- */
+.report-content .chapter {
+  background: linear-gradient(135deg, #1E1A14 0%, #2d2820 100%);
+  color: #F5F0E8;
+  border-radius: 1rem;
+  padding: 1.5rem;
+  margin: 1.5rem 0 1rem 0;
+}
+.report-content .chapter-number {
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  color: #E05510;
+  font-weight: 700;
+}
+.report-content .chapter-title {
+  font-size: 1.25rem;
+  font-family: 'Lora', serif;
+  font-weight: 700;
+  margin-top: 0.25rem;
+}
+.report-content .chapter-subtitle {
+  font-size: 0.8rem;
+  opacity: 0.6;
+  margin-top: 0.25rem;
+}
