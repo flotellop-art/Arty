@@ -92,8 +92,6 @@ async function handleRead(token: string, req: VercelRequest, res: VercelResponse
           }
         }
       }
-        }
-      }
     } else {
       content = `[Fichier binaire : ${meta.name} (${meta.mimeType})]`
     }
