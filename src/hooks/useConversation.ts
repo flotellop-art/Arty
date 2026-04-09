@@ -204,12 +204,14 @@ export function useConversation() {
       const conv = storage.getConversation(targetId)
       if (!conv) return
 
+      const displayContent = files?.length ? `${text}\n\n📎 ${files.map(f => f.name).join(', ')}` : text
+
+      // Save message WITHOUT file data (too large for localStorage)
       const userMessage: Message = {
         id: generateId(),
         role: 'user',
-        content: files?.length ? `${text}\n\n📎 ${files.map(f => f.name).join(', ')}` : text,
+        content: displayContent,
         timestamp: Date.now(),
-        files,
       }
 
       conv.messages.push(userMessage)
@@ -220,6 +222,11 @@ export function useConversation() {
       storage.saveConversation(conv)
       refreshConversations()
       setActiveId(targetId)
+
+      // Keep files in memory for the API call (not stored in localStorage)
+      if (files?.length) {
+        userMessage.files = files
+      }
 
       activeIdRef.current = targetId
       setIsStreaming(true)
