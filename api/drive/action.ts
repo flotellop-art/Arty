@@ -83,11 +83,13 @@ async function handleRead(token: string, req: VercelRequest, res: VercelResponse
             try {
               const anthropicKey = process.env.VITE_ANTHROPIC_API_KEY
               if (anthropicKey) {
-                // Upload PDF to Anthropic
-                const formData = new FormData()
-                const blob = new Blob([buffer], { type: 'application/pdf' })
-                formData.append('file', blob, meta.name || 'document.pdf')
-                formData.append('purpose', 'vision')
+                const filename = meta.name || 'document.pdf'
+                const boundary = '----AnthropicFileBoundary' + Date.now()
+                const body = Buffer.concat([
+                  Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${filename}"\r\nContent-Type: application/pdf\r\n\r\n`),
+                  buffer,
+                  Buffer.from(`\r\n--${boundary}--\r\n`),
+                ])
 
                 const uploadRes = await fetch('https://api.anthropic.com/v1/files', {
                   method: 'POST',
@@ -95,8 +97,10 @@ async function handleRead(token: string, req: VercelRequest, res: VercelResponse
                     'x-api-key': anthropicKey,
                     'anthropic-version': '2023-06-01',
                     'anthropic-beta': 'files-api-2025-04-14',
+                    'content-type': `multipart/form-data; boundary=${boundary}`,
                   },
-                  body: formData,
+                  body,
+                })
                 })
 
                 if (uploadRes.ok) {
