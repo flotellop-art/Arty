@@ -12,8 +12,17 @@ export interface TokenUsage {
 const INPUT_PRICE_PER_M = 3.0   // $3 per million input tokens
 const OUTPUT_PRICE_PER_M = 15.0  // $15 per million output tokens
 
+const INIT_KEY = 'fp-token-init-v2'
+
 export function getUsage(): TokenUsage {
   try {
+    // Force re-init once to include historical data
+    if (!localStorage.getItem(INIT_KEY)) {
+      localStorage.removeItem(STORAGE_KEY)
+      localStorage.setItem(INIT_KEY, '1')
+      return resetUsage()
+    }
+
     const data = localStorage.getItem(STORAGE_KEY)
     if (data) {
       const usage = JSON.parse(data) as TokenUsage
@@ -29,13 +38,15 @@ export function getUsage(): TokenUsage {
 }
 
 export function resetUsage(): TokenUsage {
+  // Initialize with historical usage from before tracker was installed
   const usage: TokenUsage = {
-    inputTokens: 0,
-    outputTokens: 0,
+    inputTokens: 1362217,
+    outputTokens: 15357,
     totalCost: 0,
     requestCount: 0,
-    lastReset: new Date().toISOString().slice(0, 7),
+    lastReset: '2026-04',
   }
+  usage.totalCost = (usage.inputTokens * INPUT_PRICE_PER_M + usage.outputTokens * OUTPUT_PRICE_PER_M) / 1_000_000
   localStorage.setItem(STORAGE_KEY, JSON.stringify(usage))
   return usage
 }
