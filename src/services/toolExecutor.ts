@@ -473,16 +473,129 @@ export function createToolExecutor(
           return { result: 'Erreur: recherche prix échouée.' }
         }
 
-        // --- WordPress ---
+        // --- Gmail extra ---
+        case 'create_draft_email': {
+          try {
+            const token = await getGoogleToken()
+            if (!token) return { result: 'Erreur: Google non connecté.' }
+            const res = await fetch('/api/gmail/action', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+              body: JSON.stringify({ type: 'draft', to: input.to, subject: input.subject, body: input.body }),
+            })
+            const data = await res.json()
+            return { result: data.success ? 'Brouillon créé dans Gmail.' : `Erreur: ${data.error}` }
+          } catch { return { result: 'Erreur création brouillon.' } }
+        }
+
+        case 'label_email': {
+          try {
+            const token = await getGoogleToken()
+            if (!token) return { result: 'Erreur: Google non connecté.' }
+            const res = await fetch('/api/gmail/action', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+              body: JSON.stringify({ type: 'label', id: input.message_id, label: input.label }),
+            })
+            const data = await res.json()
+            return { result: data.success ? `Label "${input.label}" appliqué.` : `Erreur: ${data.error}` }
+          } catch { return { result: 'Erreur label.' } }
+        }
+
+        // --- Drive extra ---
+        case 'share_drive_file': {
+          try {
+            const token = await getGoogleToken()
+            if (!token) return { result: 'Erreur: Google non connecté.' }
+            const res = await fetch('/api/drive/action', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+              body: JSON.stringify({ type: 'share', id: input.file_id, email: input.email, role: input.role }),
+            })
+            const data = await res.json()
+            return { result: data.success ? `Fichier partagé avec ${data.shared_with}.` : `Erreur: ${data.error}` }
+          } catch { return { result: 'Erreur partage.' } }
+        }
+
+        case 'copy_drive_file': {
+          try {
+            const token = await getGoogleToken()
+            if (!token) return { result: 'Erreur: Google non connecté.' }
+            const res = await fetch('/api/drive/action', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+              body: JSON.stringify({ type: 'copy', id: input.file_id, name: input.new_name }),
+            })
+            const data = await res.json()
+            return { result: data.id ? `Fichier copié: "${data.name}".` : `Erreur: ${data.error}` }
+          } catch { return { result: 'Erreur copie.' } }
+        }
+
+        // --- WordPress (REST API) ---
+        case 'wp_create_post': {
+          try {
+            const res = await fetch('/api/wordpress/action', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ type: 'create', title: input.title, content: input.content, status: input.status, date: input.date }),
+            })
+            const data = await res.json()
+            return { result: data.id ? `Article "${data.title}" créé (${data.status}).${data.link ? ` Lien: ${data.link}` : ''}` : `Erreur: ${data.error}` }
+          } catch { return { result: 'Erreur WordPress.' } }
+        }
+
+        case 'wp_list_posts': {
+          try {
+            const res = await fetch('/api/wordpress/action', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ type: 'list', status: input.status }),
+            })
+            const data = await res.json()
+            if (data.posts && data.posts.length > 0) {
+              const list = data.posts.map((p: { id: number; title: string; status: string; date: string; link: string }, i: number) =>
+                `${i + 1}. [ID:${p.id}] ${p.title} (${p.status}) — ${new Date(p.date).toLocaleDateString('fr-FR')}`
+              ).join('\n')
+              return { result: `${data.posts.length} articles:\n${list}` }
+            }
+            return { result: 'Aucun article trouvé.' }
+          } catch { return { result: 'Erreur WordPress.' } }
+        }
+
+        case 'wp_update_post': {
+          try {
+            const res = await fetch('/api/wordpress/action', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ type: 'update', postId: input.post_id, title: input.title, content: input.content, status: input.status }),
+            })
+            const data = await res.json()
+            return { result: data.id ? `Article "${data.title}" modifié (${data.status}).` : `Erreur: ${data.error}` }
+          } catch { return { result: 'Erreur WordPress.' } }
+        }
+
+        case 'wp_delete_post': {
+          try {
+            const res = await fetch('/api/wordpress/action', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ type: 'delete', postId: input.post_id }),
+            })
+            const data = await res.json()
+            return { result: data.success ? 'Article supprimé.' : `Erreur: ${data.error}` }
+          } catch { return { result: 'Erreur WordPress.' } }
+        }
+
+        // Old Playwright-based publish (fallback)
         case 'publish_wordpress': {
           const title = input.title as string
           const content = input.content as string
           const status = (input.status as string) || 'draft'
           const res = await browserActions.publishWP({ title, content, status: status as 'draft' | 'publish' })
           if (res) {
-            return { result: `Article "${title}" ${status === 'publish' ? 'publié' : 'enregistré en brouillon'} sur WordPress.${res.url ? ` URL: ${res.url}` : ''}` }
+            return { result: `Article "${title}" ${status === 'publish' ? 'publié' : 'enregistré en brouillon'}.${res.url ? ` URL: ${res.url}` : ''}` }
           }
-          return { result: 'Erreur: publication WordPress échouée.' }
+          return { result: 'Erreur WordPress Playwright.' }
         }
 
         default:

@@ -14,7 +14,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     case 'archive': return handleArchive(token, req, res)
     case 'delete': return handleDelete(token, req, res)
     case 'star': return handleStar(token, req, res)
-    default: return res.status(400).json({ error: 'Use type: list, read, send, search, archive, delete, star' })
+    case 'draft': return handleDraft(token, req, res)
+    case 'label': return handleLabel(token, req, res)
+    default: return res.status(400).json({ error: 'Use type: list, read, send, search, archive, delete, star, draft, label' })
   }
 }
 
@@ -171,4 +173,40 @@ async function handleStar(token: string, req: VercelRequest, res: VercelResponse
     if (!r.ok) { const err = await r.json(); return res.status(r.status).json({ error: err.error?.message }) }
     return res.status(200).json({ success: true })
   } catch { return res.status(500).json({ error: 'Star failed' }) }
+}
+
+async function handleDraft(token: string, req: VercelRequest, res: VercelResponse) {
+  const { to, subject, body } = req.body as { to?: string; subject?: string; body?: string }
+  if (!subject || !body) return res.status(400).json({ error: 'Missing subject or body' })
+  try {
+    const hdrs = [`Subject: ${subject}`, 'Content-Type: text/plain; charset=utf-8']
+    if (to) hdrs.unshift(`To: ${to}`)
+    const raw = hdrs.join('\r\n') + '\r\n\r\n' + body
+    const encoded = Buffer.from(raw).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+    const r = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/drafts', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: { raw: encoded } }),
+    })
+    if (!r.ok) { const err = await r.json(); return res.status(r.status).json({ error: err.error?.message }) }
+    const result = await r.json()
+    return res.status(200).json({ id: result.id, success: true })
+  } catch { return res.status(500).json({ error: 'Draft failed' }) }
+}
+
+async function handleLabel(token: string, req: VercelRequest, res: VercelResponse) {
+  const { id: messageId, label } = req.body as { id?: string; label?: string }
+  if (!messageId || !label) return res.status(400).json({ error: 'Missing id or label' })
+  try {
+    const r = await fetch(
+      `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}/modify`,
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ addLabelIds: [label.toUpperCase()] }),
+      }
+    )
+    if (!r.ok) { const err = await r.json(); return res.status(r.status).json({ error: err.error?.message }) }
+    return res.status(200).json({ success: true })
+  } catch { return res.status(500).json({ error: 'Label failed' }) }
 }

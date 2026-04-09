@@ -14,6 +14,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     case 'rename': return handleRename(token, req, res)
     case 'move': return handleMove(token, req, res)
     case 'create_folder': return handleCreateFolder(token, req, res)
+    case 'share': return handleShare(token, req, res)
+    case 'copy': return handleCopy(token, req, res)
     default: return res.status(400).json({ error: 'Use type: list, read, create, delete, rename, move, create_folder' })
   }
 }
@@ -168,4 +170,35 @@ async function handleCreateFolder(token: string, req: VercelRequest, res: Vercel
     const result = await r.json()
     return res.status(200).json({ id: result.id, name: result.name, webViewLink: result.webViewLink })
   } catch { return res.status(500).json({ error: 'Create folder failed' }) }
+}
+
+async function handleShare(token: string, req: VercelRequest, res: VercelResponse) {
+  const { id, email, role } = req.body as { id?: string; email?: string; role?: string }
+  if (!id || !email) return res.status(400).json({ error: 'Missing id or email' })
+  try {
+    const r = await fetch(`https://www.googleapis.com/drive/v3/files/${id}/permissions`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'user', role: role || 'reader', emailAddress: email }),
+    })
+    if (!r.ok) { const err = await r.json(); return res.status(r.status).json({ error: err.error?.message }) }
+    return res.status(200).json({ success: true, shared_with: email })
+  } catch { return res.status(500).json({ error: 'Share failed' }) }
+}
+
+async function handleCopy(token: string, req: VercelRequest, res: VercelResponse) {
+  const { id, name } = req.body as { id?: string; name?: string }
+  if (!id) return res.status(400).json({ error: 'Missing id' })
+  try {
+    const body: Record<string, string> = {}
+    if (name) body.name = name
+    const r = await fetch(`https://www.googleapis.com/drive/v3/files/${id}/copy?fields=id,name,webViewLink`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    if (!r.ok) { const err = await r.json(); return res.status(r.status).json({ error: err.error?.message }) }
+    const result = await r.json()
+    return res.status(200).json({ id: result.id, name: result.name, webViewLink: result.webViewLink })
+  } catch { return res.status(500).json({ error: 'Copy failed' }) }
 }

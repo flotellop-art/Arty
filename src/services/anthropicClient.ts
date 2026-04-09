@@ -339,18 +339,102 @@ const TOOLS = [
       required: ['product'],
     },
   },
+  {
+    name: 'create_draft_email',
+    description: 'Crée un brouillon email sans envoyer.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        to: { type: 'string' as const },
+        subject: { type: 'string' as const },
+        body: { type: 'string' as const },
+      },
+      required: ['subject', 'body'],
+    },
+  },
+  {
+    name: 'label_email',
+    description: 'Applique un label à un email (IMPORTANT, STARRED, etc.).',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        message_id: { type: 'string' as const },
+        label: { type: 'string' as const },
+      },
+      required: ['message_id', 'label'],
+    },
+  },
+  {
+    name: 'share_drive_file',
+    description: 'Partage un fichier Drive avec une adresse email.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        file_id: { type: 'string' as const },
+        email: { type: 'string' as const },
+        role: { type: 'string' as const, enum: ['reader', 'writer', 'commenter'] },
+      },
+      required: ['file_id', 'email'],
+    },
+  },
+  {
+    name: 'copy_drive_file',
+    description: 'Copie un fichier Drive.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        file_id: { type: 'string' as const },
+        new_name: { type: 'string' as const },
+      },
+      required: ['file_id'],
+    },
+  },
   // --- WordPress ---
   {
-    name: 'publish_wordpress',
-    description: "Publie un article sur facadespollet.fr. TOUJOURS demander confirmation avant de publier (pas brouillon).",
+    name: 'wp_create_post',
+    description: "Crée un article WordPress (brouillon ou publié). CONFIRMATION OBLIGATOIRE pour publier.",
     input_schema: {
       type: 'object' as const,
       properties: {
         title: { type: 'string' as const },
         content: { type: 'string' as const, description: 'Contenu HTML' },
-        status: { type: 'string' as const, enum: ['draft', 'publish'] },
+        status: { type: 'string' as const, enum: ['draft', 'publish', 'future'] },
+        date: { type: 'string' as const, description: 'Date de publication programmée (ISO 8601)' },
       },
       required: ['title', 'content', 'status'],
+    },
+  },
+  {
+    name: 'wp_list_posts',
+    description: 'Liste les articles WordPress.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        status: { type: 'string' as const, enum: ['publish', 'draft', 'any'] },
+      },
+    },
+  },
+  {
+    name: 'wp_update_post',
+    description: 'Modifie un article WordPress existant.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        post_id: { type: 'number' as const },
+        title: { type: 'string' as const },
+        content: { type: 'string' as const },
+        status: { type: 'string' as const, enum: ['draft', 'publish'] },
+      },
+      required: ['post_id'],
+    },
+  },
+  {
+    name: 'wp_delete_post',
+    description: 'Supprime un article WordPress. CONFIRMATION OBLIGATOIRE.',
+    input_schema: {
+      type: 'object' as const,
+      properties: { post_id: { type: 'number' as const } },
+      required: ['post_id'],
     },
   },
 ]
