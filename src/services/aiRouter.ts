@@ -23,6 +23,18 @@ const GEMINI_TRIGGERS = [
   /fournisseur[s]?\s+(de|d'|pour)|où\s+(acheter|trouver|commander)/i,
 ]
 
+// Détecte les demandes qui touchent aux données privées (Claude seul)
+const PRIVATE_DATA_TRIGGERS = [
+  /mes\s+(mails|emails|e-mails|courriers|messages)/i,
+  /mes\s+(fichiers|documents|drive|dossiers)/i,
+  /mes\s+(clients|contacts|chantiers|projets)/i,
+  /mes\s+(factures|devis|contrats)/i,
+  /mon\s+(agenda|calendrier|planning)/i,
+  /emails?\s+(non\s+lus|reçus|envoyés|du jour|récents)/i,
+  /boîte\s+(de\s+réception|mail)/i,
+  /sur\s+drive|dans\s+drive|google\s+drive/i,
+]
+
 // Détecte les demandes de rapport/analyse qui bénéficient d'une recherche web
 const REPORT_TRIGGERS = [
   /rapport\s+(sur|de|du|d')|fais[- ]moi\s+un\s+rapport/i,
@@ -39,7 +51,11 @@ export function detectProvider(message: string): AIProvider {
   const geminiKey = import.meta.env.VITE_GEMINI_API_KEY
   if (!geminiKey) return 'claude'
 
-  // Rapport/analyse → mode hybride (Gemini cherche, Claude rédige)
+  // Données privées → toujours Claude, même pour un rapport
+  const isPrivate = PRIVATE_DATA_TRIGGERS.some((r) => r.test(message))
+  if (isPrivate) return 'claude'
+
+  // Rapport/analyse sur un sujet web → mode hybride
   for (const regex of REPORT_TRIGGERS) {
     if (regex.test(message)) return 'hybrid'
   }
