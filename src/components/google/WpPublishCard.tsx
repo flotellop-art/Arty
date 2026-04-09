@@ -48,7 +48,7 @@ export function WpPublishCard({
 
       {confirmed && (
         <div className="mx-4 mb-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700">
-          Confirmez-vous la publication sur facadespollet.fr ?
+          Confirmez-vous la publication sur WordPress ?
         </div>
       )}
 

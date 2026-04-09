@@ -172,7 +172,7 @@ export function formatMemoryForPrompt(memory: MemoryData): string {
 
   // Profil
   if (memory.profil && Object.keys(memory.profil).length > 0) {
-    parts.push(`PROFIL FLORENT :\n${JSON.stringify(memory.profil, null, 2)}`)
+    parts.push(`PROFIL UTILISATEUR :\n${JSON.stringify(memory.profil, null, 2)}`)
   }
 
   // Clients

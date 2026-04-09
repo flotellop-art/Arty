@@ -91,7 +91,7 @@ export async function detectAndRunAction(
       if (result?.success) {
         return {
           handled: true,
-          context: `[Action exécutée avec succès] ${app} a été ouvert sur le PC de Florent. Un screenshot de l'écran est affiché ci-dessous. Confirme à Florent que c'est fait.`,
+          context: `[Action exécutée avec succès] ${app} a été ouvert sur le PC. Un screenshot de l'écran est affiché ci-dessous. Confirme que c'est fait.`,
           screenshot: result.screenshot,
         }
       }
@@ -171,7 +171,7 @@ export async function detectAndRunAction(
     case 'create_article': {
       return {
         handled: true,
-        context: `[WordPress disponible] L'utilisateur veut créer ou publier un article sur facadespollet.fr. Demande-lui le titre et le contenu. Propose-lui de rédiger l'article.`,
+        context: `[WordPress disponible] L'utilisateur veut créer ou publier un article. Demande-lui le titre et le contenu. Propose-lui de rédiger l'article.`,
       }
     }
 

@@ -5,7 +5,7 @@ const TOOLS = [
   // --- Reports ---
   {
     name: 'generate_report',
-    description: "Génère un rapport HTML professionnel ouvert dans le navigateur. UTILISE CET OUTIL quand Florent demande un rapport, un devis, une analyse, un document structuré.",
+    description: "Génère un rapport HTML professionnel ouvert dans le navigateur. UTILISE CET OUTIL quand l'utilisateur demande un rapport, un devis, une analyse, un document structuré.",
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -18,7 +18,7 @@ const TOOLS = [
   // --- PC Control ---
   {
     name: 'open_app',
-    description: "Ouvre une application sur le PC de Florent (quand le PC est allumé).",
+    description: "Ouvre une application sur le PC de l'utilisateur (quand le PC est allumé).",
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -32,7 +32,7 @@ const TOOLS = [
   },
   {
     name: 'screenshot_pc',
-    description: "Prend un screenshot de l'écran du PC de Florent.",
+    description: "Prend un screenshot de l'écran du PC.",
     input_schema: { type: 'object' as const, properties: {} },
   },
   // --- Gmail ---
@@ -54,7 +54,7 @@ const TOOLS = [
   },
   {
     name: 'send_email',
-    description: "Envoie un email. TOUJOURS demander confirmation à Florent avant d'envoyer.",
+    description: "Envoie un email. TOUJOURS demander confirmation à l'utilisateur avant d'envoyer.",
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -67,7 +67,7 @@ const TOOLS = [
   },
   {
     name: 'reply_email',
-    description: "Répond à un email existant. TOUJOURS demander confirmation à Florent.",
+    description: "Répond à un email existant. TOUJOURS demander confirmation à l'utilisateur.",
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -282,7 +282,7 @@ const TOOLS = [
   // --- Météo ---
   {
     name: 'get_weather',
-    description: 'Obtenir la météo actuelle et prévisions 5 jours. Utile pour planifier les chantiers façade (pas de travail sous la pluie).',
+    description: 'Obtenir la météo actuelle et prévisions 5 jours.',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -299,7 +299,7 @@ const TOOLS = [
       properties: {
         items: {
           type: 'string' as const,
-          description: 'Liste des postes au format JSON: [{"label":"Enduit gratté","surface":120,"price_per_m2":45},...]',
+          description: 'Liste des postes au format JSON: [{"label":"Prestation","surface":120,"price_per_m2":45},...]',
         },
         tva_rate: { type: 'number' as const, description: 'Taux TVA en % (10 ou 20)' },
         client_name: { type: 'string' as const, description: 'Nom du client' },
@@ -309,7 +309,7 @@ const TOOLS = [
   },
   {
     name: 'calculate_surface',
-    description: 'Calcule la surface de façade (largeur × hauteur - ouvertures).',
+    description: 'Calcule une surface (largeur × hauteur - ouvertures).',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -333,7 +333,7 @@ const TOOLS = [
   // --- Questions interactives ---
   {
     name: 'ask_user',
-    description: "Pose des questions à Florent via un formulaire interactif (modal étape par étape). Utilise-le quand tu as besoin de 2+ infos pour avancer. Chaque question apparaît une par une avec des options cliquables.",
+    description: "Pose des questions à l'utilisateur via un formulaire interactif (modal étape par étape). Utilise-le quand tu as besoin de 2+ infos pour avancer. Chaque question apparaît une par une avec des options cliquables.",
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -364,7 +364,7 @@ const TOOLS = [
   // --- Mémoire persistante ---
   {
     name: 'update_memory',
-    description: "Met à jour la mémoire persistante. Catégories : profil (préférences Florent), clients (fiches clients), chantiers (historique chantiers), notes (infos diverses). Envoie le JSON COMPLET de la catégorie (pas un diff).",
+    description: "Met à jour la mémoire persistante. Catégories : profil (préférences utilisateur), clients (fiches clients), chantiers (historique chantiers), notes (infos diverses). Envoie le JSON COMPLET de la catégorie (pas un diff).",
     input_schema: {
       type: 'object' as const,
       properties: {

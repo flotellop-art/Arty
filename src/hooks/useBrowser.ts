@@ -16,7 +16,7 @@ export function useBrowser() {
 
   const publishWP = useCallback(async (data: WpPublishRequest): Promise<WpPublishResponse | null> => {
     setIsLoading(true)
-    setCurrentAction('Publication WordPress sur facadespollet.fr...')
+    setCurrentAction('Publication WordPress en cours...')
     setError(null)
     try {
       const result = await browser.publishWordPress(data)

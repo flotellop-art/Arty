@@ -68,7 +68,7 @@ function AppContent() {
               const formatted = questions
                 .map((q, i) => `${q.question} → ${answers[i] || 'Non répondu'}`)
                 .join('\n')
-              resolve({ result: `Réponses de Florent :\n${formatted}` })
+              resolve({ result: `Réponses de l'utilisateur :\n${formatted}` })
             },
           })
         })

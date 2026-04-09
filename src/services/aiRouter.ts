@@ -14,7 +14,7 @@ const GEMINI_TRIGGERS = [
   // Météo
   /météo|quel\s+temps|prévisions?\s+(météo|pour)|pleuvoi?r|pluie\s+(demain|cette|ce)|température/i,
   // Concurrence / recherche entreprises
-  /concurrent[s]?|façadier[s]?\s+(à|près|dans|autour)|entreprise[s]?\s+(de|du)\s+(ravalement|façade)|qui\s+fait\s+(du\s+)?ravalement/i,
+  /concurrent[s]?\s+(à|près|dans|autour)|entreprise[s]?\s+(de|du|près)/i,
   // Normes / réglementations à jour
   /norme[s]?\s+(RE|RT|DTU|NF)|RE\s*20[2-3][0-9]|réglementation\s+(thermique|énergétique)|MaPrimeRénov|aide[s]?\s+(de l'état|gouvernement|anah|rénovation)/i,
   // Prix fournisseurs / comparatifs web

@@ -5,7 +5,7 @@ const REPORT_TEMPLATE = (title: string, content: string) => `<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>${title} — Façades Pollet</title>
+<title>${title} — Arty</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Lora:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -107,15 +107,15 @@ td{padding:0.5rem 0.6rem;white-space:nowrap}
 <button class="back-btn" onclick="history.back()">← Retour</button>
 <div class="page">
 <div class="header">
-<div class="logo">Façades Pollet — Rapport</div>
+<div class="logo">Arty — Rapport</div>
 <h1>${title}</h1>
-<div class="meta">Généré le ${new Date().toLocaleDateString('fr-FR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })} • facadespollet.fr</div>
+<div class="meta">Généré le ${new Date().toLocaleDateString('fr-FR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })} • Arty</div>
 </div>
 <div class="content">
 ${content}
 </div>
 <div class="footer">
-<strong>Façades Pollet</strong> — Artisan façadier, Valence (26)<br>facadespollet.fr
+<strong>Arty</strong> — Assistant IA personnel
 </div>
 </div>
 </body>
