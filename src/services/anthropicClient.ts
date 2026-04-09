@@ -1,9 +1,10 @@
 import { SYSTEM_PROMPT } from '../constants/systemPrompt'
 
 const TOOLS = [
+  // --- PC Control ---
   {
     name: 'open_app',
-    description: "Ouvre une application sur le PC de Florent.",
+    description: "Ouvre une application sur le PC de Florent (quand le PC est allumé).",
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -17,22 +18,73 @@ const TOOLS = [
   },
   {
     name: 'screenshot_pc',
-    description: "Prend un screenshot de l'écran du PC.",
+    description: "Prend un screenshot de l'écran du PC de Florent.",
     input_schema: { type: 'object' as const, properties: {} },
   },
+  // --- Gmail ---
   {
     name: 'read_emails',
-    description: 'Lit les derniers emails non lus de Gmail.',
+    description: 'Lit les 10 derniers emails non lus de Gmail.',
     input_schema: { type: 'object' as const, properties: {} },
   },
   {
+    name: 'read_email',
+    description: "Lit le contenu complet d'un email spécifique par son ID.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        message_id: { type: 'string' as const, description: "ID de l'email (obtenu via read_emails)" },
+      },
+      required: ['message_id'],
+    },
+  },
+  {
+    name: 'send_email',
+    description: "Envoie un email. TOUJOURS demander confirmation à Florent avant d'envoyer.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        to: { type: 'string' as const, description: 'Adresse email du destinataire' },
+        subject: { type: 'string' as const, description: 'Objet' },
+        body: { type: 'string' as const, description: 'Corps du message' },
+      },
+      required: ['to', 'subject', 'body'],
+    },
+  },
+  {
+    name: 'reply_email',
+    description: "Répond à un email existant. TOUJOURS demander confirmation à Florent.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        to: { type: 'string' as const },
+        subject: { type: 'string' as const },
+        body: { type: 'string' as const },
+        thread_id: { type: 'string' as const, description: 'ID du thread (obtenu via read_emails)' },
+      },
+      required: ['to', 'subject', 'body', 'thread_id'],
+    },
+  },
+  // --- Google Drive ---
+  {
     name: 'list_drive',
-    description: 'Liste les fichiers sur Google Drive.',
+    description: 'Liste les fichiers récents sur Google Drive.',
     input_schema: { type: 'object' as const, properties: {} },
+  },
+  {
+    name: 'search_drive',
+    description: 'Cherche un fichier par nom sur Google Drive.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        query: { type: 'string' as const, description: 'Nom ou mot-clé à chercher' },
+      },
+      required: ['query'],
+    },
   },
   {
     name: 'read_drive_file',
-    description: "Lit le contenu d'un fichier Drive (PDF, Doc, texte).",
+    description: "Lit le contenu d'un fichier Drive (PDF, Doc, texte, tableur).",
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -42,8 +94,32 @@ const TOOLS = [
     },
   },
   {
+    name: 'create_drive_file',
+    description: 'Crée un nouveau document sur Google Drive (Google Doc).',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        name: { type: 'string' as const, description: 'Nom du fichier' },
+        content: { type: 'string' as const, description: 'Contenu du document' },
+      },
+      required: ['name', 'content'],
+    },
+  },
+  // --- Web ---
+  {
+    name: 'web_search',
+    description: 'Recherche sur internet (DuckDuckGo). Pour trouver des infos, prix, actualités.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        query: { type: 'string' as const, description: 'Requête de recherche' },
+      },
+      required: ['query'],
+    },
+  },
+  {
     name: 'search_price',
-    description: 'Recherche prix chez fournisseurs BTP.',
+    description: 'Recherche prix chez fournisseurs BTP (Point P, Gedimat).',
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -52,40 +128,18 @@ const TOOLS = [
       required: ['product'],
     },
   },
+  // --- WordPress ---
   {
     name: 'publish_wordpress',
-    description: "Publie un article sur facadespollet.fr.",
+    description: "Publie un article sur facadespollet.fr. TOUJOURS demander confirmation avant de publier (pas brouillon).",
     input_schema: {
       type: 'object' as const,
       properties: {
         title: { type: 'string' as const },
-        content: { type: 'string' as const },
+        content: { type: 'string' as const, description: 'Contenu HTML' },
         status: { type: 'string' as const, enum: ['draft', 'publish'] },
       },
       required: ['title', 'content', 'status'],
-    },
-  },
-  {
-    name: 'click_on_pc',
-    description: "Clique à des coordonnées sur l'écran du PC.",
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        x: { type: 'number' as const },
-        y: { type: 'number' as const },
-      },
-      required: ['x', 'y'],
-    },
-  },
-  {
-    name: 'type_on_pc',
-    description: "Tape du texte sur le PC.",
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        text: { type: 'string' as const },
-      },
-      required: ['text'],
     },
   },
 ]
@@ -126,14 +180,12 @@ async function runWithTools(
   controller: AbortController
 ) {
   try {
-    // Build API messages (only text content from conversation history)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const apiMessages: any[] = originalMessages.map((m) => ({
       role: m.role,
       content: m.content,
     }))
 
-    // Loop: call API, handle tools, repeat until no more tools
     let maxIterations = 5
     while (maxIterations > 0) {
       maxIterations--
@@ -163,7 +215,6 @@ async function runWithTools(
 
       const data = await response.json()
 
-      // Extract text and tool calls
       let hasToolUse = false
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const toolResults: any[] = []
@@ -177,43 +228,26 @@ async function runWithTools(
         }
       }
 
-      // If no tool calls, we're done
       if (!hasToolUse || !options?.onToolCall) {
         onDone()
         return
       }
 
-      // Execute all tool calls
       for (const block of data.content) {
         if (block.type === 'tool_use') {
           const toolResult = await options.onToolCall(block.name, block.input)
-
-          if (toolResult.screenshot) {
-            const base64Data = toolResult.screenshot.replace(/^data:image\/\w+;base64,/, '')
-            toolResults.push({
-              type: 'tool_result',
-              tool_use_id: block.id,
-              content: [
-                { type: 'text', text: toolResult.result },
-                { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64Data } },
-              ],
-            })
-          } else {
-            toolResults.push({
-              type: 'tool_result',
-              tool_use_id: block.id,
-              content: toolResult.result,
-            })
-          }
+          toolResults.push({
+            type: 'tool_result',
+            tool_use_id: block.id,
+            content: toolResult.result,
+          })
         }
       }
 
-      // Append assistant response + tool results for next iteration
       apiMessages.push({ role: 'assistant', content: data.content })
       apiMessages.push({ role: 'user', content: toolResults })
     }
 
-    // Max iterations reached
     onDone()
   } catch (err) {
     if (err instanceof Error && err.name !== 'AbortError') {
