@@ -685,7 +685,7 @@ async function runWithTools(
 
       const requestBody = JSON.stringify({
         model: 'claude-sonnet-4-6',
-        max_tokens: 16384,
+        max_tokens: 65536,
         temperature: 0.7,
         stream: true,
         system: options?.systemPrompt || SYSTEM_PROMPT,
