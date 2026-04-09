@@ -29,7 +29,7 @@ async function handleList(token: string, req: VercelRequest, res: VercelResponse
     let q = 'trashed=false'
     if (folderId) q += ` and '${folderId}' in parents`
     if (query) q += ` and (fullText contains '${query.replace(/'/g, "\\'")}')`
-    const params = new URLSearchParams({ q, fields: 'files(id,name,mimeType,modifiedTime,size,webViewLink,iconLink)', orderBy: 'modifiedTime desc', pageSize: '200' })
+    const params = new URLSearchParams({ q, fields: 'files(id,name,mimeType,modifiedTime,size,webViewLink,iconLink,parents)', orderBy: 'modifiedTime desc', pageSize: '200', includeItemsFromAllDrives: 'true', supportsAllDrives: 'true', corpora: 'allDrives' })
     const r = await fetch(`https://www.googleapis.com/drive/v3/files?${params}`, { headers: { Authorization: `Bearer ${token}` } })
     if (!r.ok) { const err = await r.json(); return res.status(r.status).json({ error: err.error?.message }) }
     const data = await r.json()
@@ -41,7 +41,7 @@ async function handleRead(token: string, req: VercelRequest, res: VercelResponse
   const fileId = (req.query.id || req.body?.id) as string
   if (!fileId) return res.status(400).json({ error: 'Missing id' })
   try {
-    const metaRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=id,name,mimeType,modifiedTime`, { headers: { Authorization: `Bearer ${token}` } })
+    const metaRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=id,name,mimeType,modifiedTime&supportsAllDrives=true`, { headers: { Authorization: `Bearer ${token}` } })
     if (!metaRes.ok) { const err = await metaRes.json(); return res.status(metaRes.status).json({ error: err.error?.message }) }
     const meta = await metaRes.json()
     let content = ''
