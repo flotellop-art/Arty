@@ -178,19 +178,6 @@ export function createToolExecutor(
             })
             const data = await safeJson(res)
             if (data.error) return { result: `Erreur lecture: ${data.error}` }
-
-            // If PDF returned as base64, format for Claude to read natively
-            if (data.isPdfBase64 && data.content?.startsWith('[PDF_BASE64:')) {
-              const base64 = data.content.replace('[PDF_BASE64:', '').replace(']', '')
-              return {
-                result: JSON.stringify({
-                  type: 'document',
-                  source: { type: 'base64', media_type: 'application/pdf', data: base64 },
-                  name: data.name,
-                }),
-              }
-            }
-
             return { result: `Fichier: ${data.name}\nType: ${data.mimeType}\n\nContenu:\n${data.content}` }
           } catch (err) {
             return { result: `Erreur: ${err instanceof Error ? err.message : 'lecture échouée'}` }

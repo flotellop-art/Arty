@@ -78,14 +78,43 @@ async function handleRead(token: string, req: VercelRequest, res: VercelResponse
             }
           } catch { /* pdf-parse failed */ }
 
-          // If text extraction failed, return base64 for Claude to read natively
+          // If text extraction failed, try OCR then base64 fallback
           if (!content) {
-            const base64Data = buffer.toString('base64')
-            return res.status(200).json({
-              id: meta.id, name: meta.name, mimeType: meta.mimeType, modifiedTime: meta.modifiedTime,
-              content: `[PDF_BASE64:${base64Data}]`,
-              isPdfBase64: true,
-            })
+            // Try Google Vision OCR first
+            try {
+              const visionKey = process.env.GOOGLE_VISION_API_KEY
+              if (visionKey) {
+                const base64Data = buffer.toString('base64')
+                const visionRes = await fetch(
+                  `https://vision.googleapis.com/v1/files:annotate?key=${visionKey}`,
+                  {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      requests: [{
+                        inputConfig: { content: base64Data, mimeType: 'application/pdf' },
+                        features: [{ type: 'DOCUMENT_TEXT_DETECTION' }],
+                        pages: [1, 2, 3, 4, 5],
+                      }],
+                    }),
+                  }
+                )
+                if (visionRes.ok) {
+                  const visionData = await visionRes.json()
+                  const pages = visionData.responses?.[0]?.responses || []
+                  const ocrText = pages
+                    .map((p: { fullTextAnnotation?: { text?: string } }) => p.fullTextAnnotation?.text || '')
+                    .filter(Boolean)
+                    .join('\n\n--- Page suivante ---\n\n')
+                  if (ocrText && ocrText.trim().length > 20) {
+                    content = `[OCR — ${pages.length} pages]\n\n${ocrText}`
+                  }
+                }
+              }
+            } catch { /* OCR failed */ }
+          }
+          if (!content) {
+            content = `[PDF : ${meta.name} — impossible d'extraire le texte]`
           }
         }
       }
