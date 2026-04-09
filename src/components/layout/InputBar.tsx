@@ -1,14 +1,17 @@
 import { useState, useRef, useEffect, type KeyboardEvent } from 'react'
+import type { FileAttachment } from '../../types'
 
 interface InputBarProps {
-  onSend: (text: string) => void
+  onSend: (text: string, files?: FileAttachment[]) => void
   isStreaming: boolean
   onStop?: () => void
 }
 
 export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
   const [text, setText] = useState('')
+  const [files, setFiles] = useState<FileAttachment[]>([])
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Auto-resize textarea
   useEffect(() => {
@@ -20,9 +23,10 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
 
   const handleSend = () => {
     const trimmed = text.trim()
-    if (!trimmed || isStreaming) return
-    onSend(trimmed)
+    if ((!trimmed && files.length === 0) || isStreaming) return
+    onSend(trimmed || 'Analyse ce fichier.', files.length > 0 ? files : undefined)
     setText('')
+    setFiles([])
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto'
     }
@@ -35,19 +39,85 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
     }
   }
 
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFiles = e.target.files
+    if (!selectedFiles) return
+
+    const newFiles: FileAttachment[] = []
+    for (let i = 0; i < selectedFiles.length; i++) {
+      const f = selectedFiles.item(i)
+      if (!f) continue
+      // Max 10MB
+      if (f.size > 10 * 1024 * 1024) continue
+
+      const base64 = await new Promise<string>((resolve) => {
+        const reader = new FileReader()
+        reader.onload = () => {
+          const result = reader.result as string
+          resolve(result.split(',')[1] || '')
+        }
+        reader.readAsDataURL(f)
+      })
+
+      newFiles.push({
+        name: f.name,
+        type: f.type || 'application/octet-stream',
+        data: base64,
+      })
+    }
+
+    setFiles((prev) => [...prev, ...newFiles])
+    // Reset input so same file can be selected again
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+  const removeFile = (index: number) => {
+    setFiles((prev) => prev.filter((_, i) => i !== index))
+  }
+
   return (
     <div className="px-4 pb-4 pt-2 bg-cream">
+      {/* File previews */}
+      {files.length > 0 && (
+        <div className="flex gap-2 mb-2 overflow-x-auto pb-1">
+          {files.map((file, i) => (
+            <div
+              key={i}
+              className="flex items-center gap-1.5 bg-white rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs text-gray-600 flex-shrink-0"
+            >
+              <span>{file.type.startsWith('image/') ? '🖼️' : '📄'}</span>
+              <span className="max-w-[120px] truncate">{file.name}</span>
+              <button
+                onClick={() => removeFile(i)}
+                className="text-gray-400 hover:text-red-500 ml-1"
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
       <div className="flex items-end gap-2 bg-white rounded-2xl border border-gray-200 px-3 py-2 shadow-sm">
-        {/* Plus button */}
+        {/* Plus button — file upload */}
         <button
+          onClick={() => fileInputRef.current?.click()}
           className="flex-shrink-0 p-1.5 rounded-full hover:bg-gray-100 transition-colors text-gray-400 mb-0.5"
-          aria-label="Ajouter"
+          aria-label="Joindre un fichier"
         >
           <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
             <line x1="9" y1="3" x2="9" y2="15" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
             <line x1="3" y1="9" x2="15" y2="9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
           </svg>
         </button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          onChange={handleFileSelect}
+          accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.txt,.csv,.doc,.docx,.xls,.xlsx"
+          multiple
+          className="hidden"
+        />
 
         {/* Textarea */}
         <textarea
@@ -86,7 +156,7 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
         ) : (
           <button
             onClick={handleSend}
-            disabled={!text.trim()}
+            disabled={!text.trim() && files.length === 0}
             className="flex-shrink-0 w-8 h-8 rounded-full bg-bubble-user flex items-center justify-center disabled:opacity-30 hover:bg-gray-700 transition-colors mb-0.5"
             aria-label="Envoyer"
           >

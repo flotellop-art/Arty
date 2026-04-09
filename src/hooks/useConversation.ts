@@ -1,10 +1,39 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
-import type { Conversation, Message } from '../types'
+import type { Conversation, Message, FileAttachment } from '../types'
 import { generateId } from '../utils/generateId'
 import { streamMessage } from '../services/anthropicClient'
 import { streamGeminiMessage, geminiResearch } from '../services/geminiClient'
 import { detectProvider } from '../services/aiRouter'
 import * as storage from '../services/storage'
+
+// Build API messages with file attachments as content blocks
+function buildApiMessages(messages: Message[]): Array<{ role: string; content: string | Array<Record<string, unknown>> }> {
+  return messages.map((m) => {
+    if (!m.files || m.files.length === 0) {
+      return { role: m.role, content: m.content }
+    }
+
+    // Build content blocks: files first, then text
+    const contentBlocks: Array<Record<string, unknown>> = []
+
+    for (const file of m.files) {
+      if (file.type === 'application/pdf') {
+        contentBlocks.push({
+          type: 'document',
+          source: { type: 'base64', media_type: 'application/pdf', data: file.data },
+        })
+      } else if (file.type.startsWith('image/')) {
+        contentBlocks.push({
+          type: 'image',
+          source: { type: 'base64', media_type: file.type, data: file.data },
+        })
+      }
+    }
+
+    contentBlocks.push({ type: 'text', text: m.content })
+    return { role: m.role, content: contentBlocks }
+  })
+}
 
 type ToolHandler = (name: string, input: Record<string, unknown>) => Promise<{ result: string; screenshot?: string }>
 
@@ -147,7 +176,7 @@ export function useConversation() {
   }, [])
 
   const sendMessage = useCallback(
-    (text: string, conversationId?: string) => {
+    (text: string, conversationId?: string, files?: FileAttachment[]) => {
       const targetId = conversationId ?? activeId
       if (!targetId) return
 
@@ -159,8 +188,9 @@ export function useConversation() {
       const userMessage: Message = {
         id: generateId(),
         role: 'user',
-        content: text,
+        content: files?.length ? `${text}\n\n📎 ${files.map(f => f.name).join(', ')}` : text,
         timestamp: Date.now(),
+        files,
       }
 
       conv.messages.push(userMessage)
@@ -255,12 +285,12 @@ export function useConversation() {
         }).catch(onErr)
         controller = new AbortController()
       } else if (provider === 'gemini') {
-        const apiMessages = conv.messages.map((m) => ({ role: m.role, content: m.content }))
-        controller = streamGeminiMessage(apiMessages, onToken, onDone, onErr, {
+        const apiMessages = buildApiMessages(conv.messages)
+        controller = streamGeminiMessage(apiMessages as Array<{ role: string; content: string }>, onToken, onDone, onErr, {
           systemPrompt: systemPromptRef.current,
         })
       } else {
-        const apiMessages = conv.messages.map((m) => ({ role: m.role, content: m.content }))
+        const apiMessages = buildApiMessages(conv.messages)
         controller = streamMessage(apiMessages, onToken, onDone, onErr, {
           systemPrompt: systemPromptRef.current,
           onToolCall: toolHandlerRef.current,

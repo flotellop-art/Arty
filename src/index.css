@@ -122,6 +122,12 @@ body {
 }
 .report-content .card-dark .subtitle { color: rgba(245,240,232,0.4); }
 .report-content .card-dark .big-number { color: #E05510; }
+.report-content .card-dark th { color: rgba(245,240,232,0.6); }
+.report-content .card-dark td { color: #F5F0E8; }
+.report-content .card-dark tr { color: #F5F0E8; }
+.report-content .card-dark strong { color: #F5F0E8; }
+.report-content .card-dark tr[style] td { color: #F5F0E8 !important; }
+.report-content .card-dark tr td[style] { color: #F5F0E8 !important; }
 
 .report-content .card-cream {
   background: linear-gradient(135deg, #F5F0E8, #ece7df);

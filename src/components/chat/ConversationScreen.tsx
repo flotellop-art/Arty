@@ -1,4 +1,4 @@
-import type { Conversation } from '../../types'
+import type { Conversation, FileAttachment } from '../../types'
 import { ChatTopBar } from './ChatTopBar'
 import { MessageList } from './MessageList'
 import { InputBar } from '../layout/InputBar'
@@ -15,7 +15,7 @@ interface ConversationScreenProps {
   streamingContent: string
   error: string | null
   onBack: () => void
-  onSend: (text: string) => void
+  onSend: (text: string, files?: FileAttachment[]) => void
   onStop: () => void
   onAction?: (action: string, params: Record<string, string>) => void
   gmail: ReturnType<typeof useGmail>

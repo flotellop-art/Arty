@@ -246,7 +246,7 @@ function AppContent() {
               streamingContent={streamingContent}
               error={error}
               onBack={handleBack}
-              onSend={sendMessage}
+              onSend={(text, files) => sendMessage(text, undefined, files)}
               onStop={stopStreaming}
               onSelect={selectConversation}
               gmail={gmail}
@@ -276,7 +276,7 @@ interface ChatRouteProps {
   streamingContent: string
   error: string | null
   onBack: () => void
-  onSend: (text: string) => void
+  onSend: (text: string, files?: import('./types').FileAttachment[]) => void
   onStop: () => void
   onSelect: (id: string) => void
   gmail: ReturnType<typeof useGmail>

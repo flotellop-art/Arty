@@ -527,7 +527,7 @@ interface StreamOptions {
 }
 
 export function streamMessage(
-  messages: Array<{ role: string; content: string }>,
+  messages: Array<{ role: string; content: string | Array<Record<string, unknown>> }>,
   onToken: (text: string) => void,
   onDone: () => void,
   onError: (error: Error) => void,
@@ -593,6 +593,7 @@ async function fetchWithRetry(
         'content-type': 'application/json',
         'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
+        'anthropic-beta': 'pdfs-2024-09-25',
         'anthropic-dangerous-direct-browser-access': 'true',
       },
       body: requestBody,
@@ -739,7 +740,7 @@ async function parseSSEStream(
 
 async function runWithTools(
   apiKey: string,
-  originalMessages: Array<{ role: string; content: string }>,
+  originalMessages: Array<{ role: string; content: string | Array<Record<string, unknown>> }>,
   onToken: (text: string) => void,
   onDone: () => void,
   onError: (error: Error) => void,
