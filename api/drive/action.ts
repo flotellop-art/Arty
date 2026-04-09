@@ -78,14 +78,48 @@ async function handleRead(token: string, req: VercelRequest, res: VercelResponse
             }
           } catch { /* pdf-parse failed */ }
 
-          // 2. If failed, return base64 for Claude to read natively
+          // 2. If pdf-parse failed, use Google Vision OCR
           if (!content) {
-            const base64Data = buffer.toString('base64')
-            return res.status(200).json({
-              id: meta.id, name: meta.name, mimeType: meta.mimeType, modifiedTime: meta.modifiedTime,
-              content: '__PDF_NATIVE__',
-              pdfBase64: base64Data,
-            })
+            const visionKey = process.env.GOOGLE_VISION_API_KEY
+            if (visionKey) {
+              try {
+                const base64Data = buffer.toString('base64')
+                const visionRes = await fetch(
+                  `https://vision.googleapis.com/v1/files:annotate?key=${visionKey}`,
+                  {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      requests: [{
+                        inputConfig: { content: base64Data, mimeType: 'application/pdf' },
+                        features: [{ type: 'DOCUMENT_TEXT_DETECTION' }],
+                        pages: [1, 2, 3, 4, 5],
+                      }],
+                    }),
+                  }
+                )
+                const visionBody = await visionRes.text()
+                if (visionRes.ok) {
+                  const visionData = JSON.parse(visionBody)
+                  const pages = visionData.responses?.[0]?.responses || []
+                  const ocrText = pages
+                    .map((p: { fullTextAnnotation?: { text?: string } }) => p.fullTextAnnotation?.text || '')
+                    .filter(Boolean)
+                    .join('\n\n--- Page suivante ---\n\n')
+                  if (ocrText && ocrText.trim().length > 10) {
+                    content = ocrText
+                  } else {
+                    content = `[OCR: aucun texte trouvé. Réponse: ${visionBody.slice(0, 200)}]`
+                  }
+                } else {
+                  content = `[OCR échoué (${visionRes.status}): ${visionBody.slice(0, 200)}]`
+                }
+              } catch (e) {
+                content = `[OCR erreur: ${e instanceof Error ? e.message : 'inconnu'}]`
+              }
+            } else {
+              content = `[PDF illisible — GOOGLE_VISION_API_KEY non configurée sur Vercel]`
+            }
           }
         }
       }
