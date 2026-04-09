@@ -1,7 +1,7 @@
 {
-  "name": "Façades Pollet",
-  "short_name": "Façades Pollet",
-  "description": "Assistant IA pour Façades Pollet - Ravalement à Valence (26)",
+  "name": "Arty",
+  "short_name": "Arty",
+  "description": "Arty — Assistant IA personnel",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#F5F0E8",

@@ -1,4 +1,4 @@
-const STORAGE_KEY = 'fp-token-usage'
+const STORAGE_KEY = 'arty-token-usage'
 
 export interface TokenUsage {
   inputTokens: number
@@ -12,7 +12,7 @@ export interface TokenUsage {
 const INPUT_PRICE_PER_M = 3.0   // $3 per million input tokens
 const OUTPUT_PRICE_PER_M = 15.0  // $15 per million output tokens
 
-const INIT_KEY = 'fp-token-init-v2'
+const INIT_KEY = 'arty-token-init-v2'
 
 export function getUsage(): TokenUsage {
   try {

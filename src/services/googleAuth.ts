@@ -1,8 +1,8 @@
 import type { GoogleTokens, GoogleUser } from '../types/google'
 import { safeJson } from '../utils/safeJson'
 
-const TOKENS_KEY = 'fp-google-tokens'
-const USER_KEY = 'fp-google-user'
+const TOKENS_KEY = 'arty-google-tokens'
+const USER_KEY = 'arty-google-user'
 
 const SCOPES = [
   'https://www.googleapis.com/auth/gmail.readonly',

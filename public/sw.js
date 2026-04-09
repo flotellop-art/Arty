@@ -1,4 +1,4 @@
-const CACHE_NAME = 'fp-cache-v33'
+const CACHE_NAME = 'arty-cache-v1'
 
 // Install: cache shell
 self.addEventListener('install', (event) => {
@@ -20,7 +20,7 @@ self.addEventListener('activate', (event) => {
     caches.keys().then((keys) => {
       return Promise.all(
         keys
-          .filter((key) => key.startsWith('fp-cache-') && key !== CACHE_NAME)
+          .filter((key) => key.startsWith('arty-cache-') && key !== CACHE_NAME)
           .map((key) => caches.delete(key))
       )
     })

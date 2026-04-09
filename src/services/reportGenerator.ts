@@ -1,4 +1,4 @@
-const REPORT_STORAGE_KEY = 'fp-report-'
+const REPORT_STORAGE_KEY = 'arty-report-'
 
 const REPORT_TEMPLATE = (title: string, content: string) => `<!DOCTYPE html>
 <html lang="fr">

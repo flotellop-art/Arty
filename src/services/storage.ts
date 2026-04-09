@@ -1,6 +1,6 @@
 import type { Conversation } from '../types'
 
-const STORAGE_KEY = 'fp-conversations'
+const STORAGE_KEY = 'arty-conversations'
 
 export function getConversations(): Conversation[] {
   try {
