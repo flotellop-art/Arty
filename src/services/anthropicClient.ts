@@ -479,6 +479,40 @@ export function streamMessage(
   return controller
 }
 
+function formatApiError(status: number, body: string): string {
+  // Try to extract a clean message from the JSON error body
+  try {
+    const parsed = JSON.parse(body)
+    const errorType = parsed?.error?.type
+    if (errorType === 'overloaded_error') {
+      return 'Le serveur IA est temporairement surchargé. Réessai automatique...'
+    }
+    if (errorType === 'rate_limit_error') {
+      return 'Trop de requêtes envoyées. Patiente quelques secondes...'
+    }
+    if (errorType === 'authentication_error') {
+      return 'Clé API invalide ou expirée. Vérifie ta configuration.'
+    }
+    if (errorType === 'invalid_request_error') {
+      return `Requête invalide : ${parsed?.error?.message || 'vérifie le format du message.'}`
+    }
+    if (parsed?.error?.message) {
+      return parsed.error.message
+    }
+  } catch {
+    // Not JSON, use status-based message
+  }
+
+  switch (status) {
+    case 401: return 'Clé API invalide. Vérifie ta configuration.'
+    case 403: return 'Accès refusé à l\'API.'
+    case 429: return 'Trop de requêtes. Patiente quelques secondes...'
+    case 500: return 'Erreur serveur chez Anthropic. Réessaie dans un instant.'
+    case 529: return 'Le serveur IA est temporairement surchargé. Réessai automatique...'
+    default: return `Erreur de connexion (${status}). Vérifie ta connexion internet.`
+  }
+}
+
 async function runWithTools(
   apiKey: string,
   originalMessages: Array<{ role: string; content: string }>,
@@ -499,31 +533,47 @@ async function runWithTools(
     while (maxIterations > 0) {
       maxIterations--
 
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01',
-          'anthropic-dangerous-direct-browser-access': 'true',
-        },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-6',
-          max_tokens: 16384,
-          temperature: 0.7,
-          system: options?.systemPrompt || SYSTEM_PROMPT,
-          tools: TOOLS,
-          messages: apiMessages,
-        }),
-        signal: controller.signal,
+      const requestBody = JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 16384,
+        temperature: 0.7,
+        system: options?.systemPrompt || SYSTEM_PROMPT,
+        tools: TOOLS,
+        messages: apiMessages,
       })
 
-      if (!response.ok) {
-        const body = await response.text().catch(() => '')
-        throw new Error(`Erreur API (${response.status}): ${body}`)
+      // Retry logic for transient errors (429, 529, 5xx)
+      let response: Response | null = null
+      const maxRetries = 3
+      for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        response = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'x-api-key': apiKey,
+            'anthropic-version': '2023-06-01',
+            'anthropic-dangerous-direct-browser-access': 'true',
+          },
+          body: requestBody,
+          signal: controller.signal,
+        })
+
+        const isRetryable = response.status === 429 || response.status === 529 || response.status >= 500
+        if (response.ok || !isRetryable || attempt === maxRetries) {
+          break
+        }
+
+        // Exponential backoff: 2s, 4s, 8s
+        const delay = Math.pow(2, attempt + 1) * 1000
+        await new Promise((resolve) => setTimeout(resolve, delay))
       }
 
-      const data = await response.json()
+      if (!response!.ok) {
+        const body = await response!.text().catch(() => '')
+        throw new Error(formatApiError(response!.status, body))
+      }
+
+      const data = await response!.json()
 
       // Track token usage
       if (data.usage) {
