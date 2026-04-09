@@ -225,7 +225,12 @@ export function useConversation() {
       setActiveId(targetId)
 
       // Store files in ref for the API call (survives re-renders, not in localStorage)
-      pendingFilesRef.current = files?.length ? files : null
+      if (files && files.length > 0) {
+        pendingFilesRef.current = files
+        console.log('[Arty] Files stored in ref:', files.length, 'files, first:', files[0].name, 'type:', files[0].type, 'data length:', files[0].data?.length)
+      } else {
+        pendingFilesRef.current = null
+      }
 
       activeIdRef.current = targetId
       setIsStreaming(true)
@@ -321,6 +326,7 @@ export function useConversation() {
         })
         // If files were attached, replace the last user message with content blocks
         const currentFiles = pendingFilesRef.current
+        console.log('[Arty] Building API messages. Pending files:', currentFiles?.length || 0)
         if (currentFiles && currentFiles.length > 0) {
           const contentBlocks: Array<Record<string, unknown>> = []
           for (const file of currentFiles) {
