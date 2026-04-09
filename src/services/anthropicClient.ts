@@ -359,10 +359,7 @@ const TOOLS = [
     type: 'web_fetch_20260209',
     name: 'web_fetch',
   } as any,
-  {
-    type: 'code_execution_20250825',
-    name: 'code_execution',
-  } as any,
+  // code_execution is auto-injected by the API when web_search or web_fetch are present
   {
     name: 'search_price',
     description: 'Recherche prix chez fournisseurs BTP (Point P, Gedimat).',
