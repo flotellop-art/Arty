@@ -6,6 +6,21 @@ import { streamGeminiMessage, geminiResearch } from '../services/geminiClient'
 import { detectProvider } from '../services/aiRouter'
 import * as storage from '../services/storage'
 
+// Detect MIME type from filename if browser didn't set it
+function detectMimeType(name: string, type: string): string {
+  if (type && type !== 'application/octet-stream') return type
+  const ext = name.split('.').pop()?.toLowerCase()
+  switch (ext) {
+    case 'pdf': return 'application/pdf'
+    case 'jpg': case 'jpeg': return 'image/jpeg'
+    case 'png': return 'image/png'
+    case 'gif': return 'image/gif'
+    case 'webp': return 'image/webp'
+    case 'bmp': return 'image/bmp'
+    default: return type || 'application/octet-stream'
+  }
+}
+
 // Build API messages with file attachments as content blocks
 function buildApiMessages(messages: Message[]): Array<{ role: string; content: string | Array<Record<string, unknown>> }> {
   return messages.map((m) => {
@@ -17,16 +32,20 @@ function buildApiMessages(messages: Message[]): Array<{ role: string; content: s
     const contentBlocks: Array<Record<string, unknown>> = []
 
     for (const file of m.files) {
-      if (file.type === 'application/pdf') {
+      const mime = detectMimeType(file.name, file.type)
+      if (mime === 'application/pdf') {
         contentBlocks.push({
           type: 'document',
           source: { type: 'base64', media_type: 'application/pdf', data: file.data },
         })
-      } else if (file.type.startsWith('image/')) {
+      } else if (mime.startsWith('image/')) {
         contentBlocks.push({
           type: 'image',
-          source: { type: 'base64', media_type: file.type, data: file.data },
+          source: { type: 'base64', media_type: mime, data: file.data },
         })
+      } else {
+        // Unsupported file — mention in text
+        contentBlocks.push({ type: 'text', text: `[Fichier joint: ${file.name} (${mime}) — format non lisible directement]` })
       }
     }
 
