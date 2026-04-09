@@ -54,10 +54,10 @@ async function runGeminiStream(
         temperature: 0.7,
         maxOutputTokens: 8192,
       },
-      tools: [{ googleSearch: {} }],
+      tools: [{ google_search: {} }],
     }
 
-    const model = 'gemini-2.5-flash'
+    const model = 'gemini-3.1-flash-lite-preview'
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${apiKey}`
 
     const response = await fetch(url, {
