@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { useState, useCallback, useEffect, useRef, type ReactNode } from 'react'
 import { BrowserRouter, Routes, Route, useNavigate, useParams } from 'react-router-dom'
 import { useConversation } from './hooks/useConversation'
 import { useGoogleAuth } from './hooks/useGoogleAuth'
@@ -8,6 +8,7 @@ import { useBrowser } from './hooks/useBrowser'
 import { useComputer } from './hooks/useComputer'
 import { buildContextualPrompt } from './constants/systemPrompt'
 import { useMemory } from './hooks/useMemory'
+import { QuestionModal, type Question } from './components/chat/QuestionModal'
 import { createToolExecutor } from './services/toolExecutor'
 import { HomeScreen } from './components/home/HomeScreen'
 import { ConversationScreen } from './components/chat/ConversationScreen'
@@ -45,6 +46,10 @@ function AppContent() {
   const browserActions = useBrowser()
   const computerActions = useComputer()
   const memoryHook = useMemory()
+  const [questionModal, setQuestionModal] = useState<{
+    questions: Question[]
+    resolve: (answers: string[]) => void
+  } | null>(null)
 
   // Create tool executor and register it
   const toolExecutorRef = useRef(createToolExecutor(computerActions, gmail, drive, browserActions))
@@ -52,6 +57,22 @@ function AppContent() {
   useEffect(() => {
     toolExecutorRef.current = createToolExecutor(computerActions, gmail, drive, browserActions)
     setToolHandler((name: string, input: Record<string, unknown>) => {
+      // Intercept ask_user — show modal and wait for answers
+      if (name === 'ask_user') {
+        const questions = (input.questions as Question[]) || []
+        return new Promise<{ result: string }>((resolve) => {
+          setQuestionModal({
+            questions,
+            resolve: (answers) => {
+              setQuestionModal(null)
+              const formatted = questions
+                .map((q, i) => `${q.question} → ${answers[i] || 'Non répondu'}`)
+                .join('\n')
+              resolve({ result: `Réponses de Florent :\n${formatted}` })
+            },
+          })
+        })
+      }
       return toolExecutorRef.current(name, input).then((res) => {
         if (res.screenshot) {
           setActionScreenshot(res.screenshot)
@@ -238,6 +259,13 @@ function AppContent() {
           }
         />
       </Routes>
+
+      {questionModal && (
+        <QuestionModal
+          questions={questionModal.questions}
+          onComplete={questionModal.resolve}
+        />
+      )}
     </div>
   )
 }

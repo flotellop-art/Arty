@@ -1,4 +1,4 @@
-const CACHE_NAME = 'fp-cache-v24'
+const CACHE_NAME = 'fp-cache-v25'
 
 // Install: cache shell
 self.addEventListener('install', (event) => {

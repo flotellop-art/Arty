@@ -330,6 +330,37 @@ const TOOLS = [
       required: ['destination'],
     },
   },
+  // --- Questions interactives ---
+  {
+    name: 'ask_user',
+    description: "Pose des questions à Florent via un formulaire interactif (modal étape par étape). Utilise-le quand tu as besoin de 2+ infos pour avancer. Chaque question apparaît une par une avec des options cliquables.",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        questions: {
+          type: 'array' as const,
+          description: 'Liste des questions à poser',
+          items: {
+            type: 'object' as const,
+            properties: {
+              question: { type: 'string' as const, description: 'La question à poser' },
+              options: {
+                type: 'array' as const,
+                items: { type: 'string' as const },
+                description: 'Options de réponse cliquables (optionnel)',
+              },
+              allow_free_text: {
+                type: 'boolean' as const,
+                description: 'Autoriser la saisie libre en plus des options (défaut: true)',
+              },
+            },
+            required: ['question'],
+          },
+        },
+      },
+      required: ['questions'],
+    },
+  },
   // --- Mémoire persistante ---
   {
     name: 'update_memory',
