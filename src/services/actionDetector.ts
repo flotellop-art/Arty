@@ -2,6 +2,7 @@ import type { useBrowser } from '../hooks/useBrowser'
 import type { useComputer } from '../hooks/useComputer'
 import type { useGmail } from '../hooks/useGmail'
 import type { useDrive } from '../hooks/useDrive'
+import { safeJson } from '../utils/safeJson'
 
 interface ActionResult {
   handled: boolean
@@ -61,8 +62,8 @@ JSON:`
 
     if (!res.ok) return { action: 'none' }
 
-    const data = await res.json()
-    const text_response = data.content?.[0]?.text || ''
+    const data = await safeJson(res)
+    const text_response = (data.content as Array<{text?: string}>)?.[0]?.text || ''
     const jsonMatch = text_response.match(/\{[^}]+\}/)
     if (jsonMatch) {
       return JSON.parse(jsonMatch[0])

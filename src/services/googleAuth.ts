@@ -1,4 +1,5 @@
 import type { GoogleTokens, GoogleUser } from '../types/google'
+import { safeJson } from '../utils/safeJson'
 
 const TOKENS_KEY = 'fp-google-tokens'
 const USER_KEY = 'fp-google-user'
@@ -42,8 +43,8 @@ export async function exchangeCode(code: string): Promise<GoogleTokens> {
     body: JSON.stringify({ code, redirect_uri: getRedirectUri() }),
   })
 
-  const data = await res.json()
-  if (!res.ok) throw new Error(data.error || 'Token exchange failed')
+  const data = await safeJson(res)
+  if (!res.ok) throw new Error((data.error as string) || 'Token exchange failed')
 
   const tokens: GoogleTokens = {
     access_token: data.access_token,
@@ -65,7 +66,9 @@ export async function refreshAccessToken(): Promise<GoogleTokens | null> {
     body: JSON.stringify({ refresh_token: tokens.refresh_token }),
   })
 
-  const data = await res.json()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let data: any
+  try { data = await safeJson(res) } catch { logout(); return null }
   if (!res.ok) {
     logout()
     return null
@@ -100,7 +103,7 @@ export async function fetchGoogleUser(accessToken: string): Promise<GoogleUser> 
   })
 
   if (!res.ok) throw new Error('Failed to fetch user info')
-  const data = await res.json()
+  const data = await safeJson(res)
 
   const user: GoogleUser = {
     email: data.email,

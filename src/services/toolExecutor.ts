@@ -4,6 +4,7 @@ import type { useDrive } from '../hooks/useDrive'
 import type { useBrowser } from '../hooks/useBrowser'
 import { getValidAccessToken } from './googleAuth'
 import { openReport } from './reportGenerator'
+import { safeJson } from '../utils/safeJson'
 
 async function getGoogleToken(): Promise<string | null> {
   return getValidAccessToken()
@@ -146,7 +147,7 @@ export function createToolExecutor(
               headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
               body: JSON.stringify({ type: 'delete', id: fileId }),
             })
-            const data = await res.json()
+            const data = await safeJson(res)
             return { result: data.success ? 'Fichier supprimé.' : `Erreur: ${data.error}` }
           } catch { return { result: 'Erreur suppression.' } }
         }
@@ -160,7 +161,7 @@ export function createToolExecutor(
               headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
               body: JSON.stringify({ type: 'rename', id: input.file_id, name: input.new_name }),
             })
-            const data = await res.json()
+            const data = await safeJson(res)
             return { result: data.success ? `Fichier renommé en "${data.name}".` : `Erreur: ${data.error}` }
           } catch { return { result: 'Erreur renommage.' } }
         }
@@ -174,7 +175,7 @@ export function createToolExecutor(
               headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
               body: JSON.stringify({ type: 'move', id: input.file_id, folderId: input.folder_id }),
             })
-            const data = await res.json()
+            const data = await safeJson(res)
             return { result: data.success ? 'Fichier déplacé.' : `Erreur: ${data.error}` }
           } catch { return { result: 'Erreur déplacement.' } }
         }
@@ -188,7 +189,7 @@ export function createToolExecutor(
               headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
               body: JSON.stringify({ type: 'create_folder', name: input.name, parentId: input.parent_id }),
             })
-            const data = await res.json()
+            const data = await safeJson(res)
             return { result: data.id ? `Dossier "${data.name}" créé.${data.webViewLink ? ` Lien: ${data.webViewLink}` : ''}` : `Erreur: ${data.error}` }
           } catch { return { result: 'Erreur création dossier.' } }
         }
@@ -203,7 +204,7 @@ export function createToolExecutor(
               headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
               body: JSON.stringify({ type: 'search', query: input.query }),
             })
-            const data = await res.json()
+            const data = await safeJson(res)
             if (data.contacts && data.contacts.length > 0) {
               const list = data.contacts.map((c: { name: string; email: string; phone: string; company: string }, i: number) =>
                 `${i + 1}. ${c.name}${c.phone ? ` — ${c.phone}` : ''}${c.email ? ` — ${c.email}` : ''}${c.company ? ` (${c.company})` : ''}`
@@ -223,7 +224,7 @@ export function createToolExecutor(
               headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
               body: JSON.stringify({ type: 'create', ...input }),
             })
-            const data = await res.json()
+            const data = await safeJson(res)
             return { result: data.success ? `Contact "${input.name}" ajouté.` : `Erreur: ${data.error}` }
           } catch { return { result: 'Erreur création contact.' } }
         }
@@ -238,7 +239,7 @@ export function createToolExecutor(
               headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
               body: JSON.stringify({ type: 'delete', id: input.message_id }),
             })
-            const data = await res.json()
+            const data = await safeJson(res)
             return { result: data.success ? 'Email supprimé.' : `Erreur: ${data.error}` }
           } catch { return { result: 'Erreur suppression email.' } }
         }
@@ -252,7 +253,7 @@ export function createToolExecutor(
               headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
               body: JSON.stringify({ type: 'star', id: input.message_id }),
             })
-            const data = await res.json()
+            const data = await safeJson(res)
             return { result: data.success ? 'Email marqué important.' : `Erreur: ${data.error}` }
           } catch { return { result: 'Erreur.' } }
         }
@@ -267,7 +268,7 @@ export function createToolExecutor(
               headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
               body: JSON.stringify({ type: 'update', eventId: input.event_id, title: input.title, start: input.start, end: input.end, location: input.location }),
             })
-            const data = await res.json()
+            const data = await safeJson(res)
             return { result: data.success ? 'RDV modifié.' : `Erreur: ${data.error}` }
           } catch { return { result: 'Erreur modification RDV.' } }
         }
@@ -281,7 +282,7 @@ export function createToolExecutor(
               headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
               body: JSON.stringify({ type: 'delete', eventId: input.event_id }),
             })
-            const data = await res.json()
+            const data = await safeJson(res)
             return { result: data.success ? 'RDV supprimé.' : `Erreur: ${data.error}` }
           } catch { return { result: 'Erreur suppression RDV.' } }
         }
@@ -311,7 +312,7 @@ export function createToolExecutor(
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ query: `distance Valence 26000 vers ${dest}` }),
             })
-            const data = await res.json()
+            const data = await safeJson(res)
             if (data.results && data.results.length > 0) {
               return { result: `Recherche distance Valence → ${dest}:\n${data.results.slice(0, 3).map((r: { title: string; snippet: string }) => `${r.title}: ${r.snippet}`).join('\n')}` }
             }
@@ -330,7 +331,7 @@ export function createToolExecutor(
               headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
               body: JSON.stringify({ type: 'list', days }),
             })
-            const data = await res.json()
+            const data = await safeJson(res)
             if (data.events && data.events.length > 0) {
               const summary = data.events.map((e: { title: string; start: string; end: string; location: string }, i: number) => {
                 const start = new Date(e.start).toLocaleString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
@@ -352,7 +353,7 @@ export function createToolExecutor(
               headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
               body: JSON.stringify({ type: 'create', title, start, end, location, description }),
             })
-            const data = await res.json()
+            const data = await safeJson(res)
             if (data.id) {
               return { result: `RDV "${data.title}" créé le ${new Date(data.start).toLocaleString('fr-FR')}.${data.link ? ` Lien: ${data.link}` : ''}` }
             }
@@ -372,7 +373,7 @@ export function createToolExecutor(
               headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
               body: JSON.stringify({ type: 'search', query }),
             })
-            const data = await res.json()
+            const data = await safeJson(res)
             if (data.messages && data.messages.length > 0) {
               const summary = data.messages.map((m: { id: string; from: string; subject: string; snippet: string }, i: number) =>
                 `${i + 1}. [ID:${m.id}] De: ${m.from} | ${m.subject} | ${m.snippet}`
@@ -394,7 +395,7 @@ export function createToolExecutor(
               headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
               body: JSON.stringify({ type: 'archive', id: messageId }),
             })
-            const data = await res.json()
+            const data = await safeJson(res)
             return { result: data.error ? `Erreur: ${data.error}` : 'Email archivé.' }
           } catch { return { result: 'Erreur archivage.' } }
         }
@@ -408,7 +409,7 @@ export function createToolExecutor(
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ city }),
             })
-            const data = await res.json()
+            const data = await safeJson(res)
             if (data.current) {
               let result = `Météo ${data.city} : ${data.current.condition}, ${data.current.temperature}°C, vent ${data.current.wind} km/h\n\nPrévisions :\n`
               result += data.forecast.map((d: { date: string; min: number; max: number; rain_chance: number; condition: string }) =>
@@ -457,7 +458,7 @@ export function createToolExecutor(
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ query }),
             })
-            const data = await res.json()
+            const data = await safeJson(res)
             if (data.results && data.results.length > 0) {
               const summary = data.results.map((r: { title: string; url: string; snippet: string }, i: number) =>
                 `${i + 1}. ${r.title}\n   ${r.url}\n   ${r.snippet}`
@@ -492,7 +493,7 @@ export function createToolExecutor(
               headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
               body: JSON.stringify({ type: 'draft', to: input.to, subject: input.subject, body: input.body }),
             })
-            const data = await res.json()
+            const data = await safeJson(res)
             return { result: data.success ? 'Brouillon créé dans Gmail.' : `Erreur: ${data.error}` }
           } catch { return { result: 'Erreur création brouillon.' } }
         }
@@ -506,7 +507,7 @@ export function createToolExecutor(
               headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
               body: JSON.stringify({ type: 'label', id: input.message_id, label: input.label }),
             })
-            const data = await res.json()
+            const data = await safeJson(res)
             return { result: data.success ? `Label "${input.label}" appliqué.` : `Erreur: ${data.error}` }
           } catch { return { result: 'Erreur label.' } }
         }
@@ -521,7 +522,7 @@ export function createToolExecutor(
               headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
               body: JSON.stringify({ type: 'share', id: input.file_id, email: input.email, role: input.role }),
             })
-            const data = await res.json()
+            const data = await safeJson(res)
             return { result: data.success ? `Fichier partagé avec ${data.shared_with}.` : `Erreur: ${data.error}` }
           } catch { return { result: 'Erreur partage.' } }
         }
@@ -535,7 +536,7 @@ export function createToolExecutor(
               headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
               body: JSON.stringify({ type: 'copy', id: input.file_id, name: input.new_name }),
             })
-            const data = await res.json()
+            const data = await safeJson(res)
             return { result: data.id ? `Fichier copié: "${data.name}".` : `Erreur: ${data.error}` }
           } catch { return { result: 'Erreur copie.' } }
         }
@@ -548,7 +549,7 @@ export function createToolExecutor(
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ type: 'create', title: input.title, content: input.content, status: input.status, date: input.date }),
             })
-            const data = await res.json()
+            const data = await safeJson(res)
             return { result: data.id ? `Article "${data.title}" créé (${data.status}).${data.link ? ` Lien: ${data.link}` : ''}` : `Erreur: ${data.error}` }
           } catch { return { result: 'Erreur WordPress.' } }
         }
@@ -560,7 +561,7 @@ export function createToolExecutor(
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ type: 'list', status: input.status }),
             })
-            const data = await res.json()
+            const data = await safeJson(res)
             if (data.posts && data.posts.length > 0) {
               const list = data.posts.map((p: { id: number; title: string; status: string; date: string; link: string }, i: number) =>
                 `${i + 1}. [ID:${p.id}] ${p.title} (${p.status}) — ${new Date(p.date).toLocaleDateString('fr-FR')}`
@@ -578,7 +579,7 @@ export function createToolExecutor(
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ type: 'update', postId: input.post_id, title: input.title, content: input.content, status: input.status }),
             })
-            const data = await res.json()
+            const data = await safeJson(res)
             return { result: data.id ? `Article "${data.title}" modifié (${data.status}).` : `Erreur: ${data.error}` }
           } catch { return { result: 'Erreur WordPress.' } }
         }
@@ -590,7 +591,7 @@ export function createToolExecutor(
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ type: 'delete', postId: input.post_id }),
             })
-            const data = await res.json()
+            const data = await safeJson(res)
             return { result: data.success ? 'Article supprimé.' : `Erreur: ${data.error}` }
           } catch { return { result: 'Erreur WordPress.' } }
         }

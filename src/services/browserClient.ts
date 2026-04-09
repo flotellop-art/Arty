@@ -6,6 +6,7 @@ import type {
   FormFillResponse,
   ScreenshotResponse,
 } from '../types/browser'
+import { safeJson } from '../utils/safeJson'
 
 export async function publishWordPress(data: WpPublishRequest): Promise<WpPublishResponse> {
   const res = await fetch('/api/wordpress/publish', {
@@ -13,8 +14,8 @@ export async function publishWordPress(data: WpPublishRequest): Promise<WpPublis
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   })
-  const result = await res.json()
-  if (!res.ok) throw new Error(result.error || 'Erreur publication WordPress')
+  const result = await safeJson(res)
+  if (!res.ok) throw new Error((result.error as string) || 'Erreur publication WordPress')
   return result
 }
 
@@ -24,8 +25,8 @@ export async function searchPrices(query: string): Promise<PriceSearchResponse> 
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ type: 'search-price', query }),
   })
-  const result = await res.json()
-  if (!res.ok) throw new Error(result.error || 'Erreur recherche prix')
+  const result = await safeJson(res)
+  if (!res.ok) throw new Error((result.error as string) || 'Erreur recherche prix')
   return result
 }
 
@@ -39,8 +40,8 @@ export async function fillForm(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ type: 'fill-form', url, fields, submit }),
   })
-  const result = await res.json()
-  if (!res.ok) throw new Error(result.error || 'Erreur remplissage formulaire')
+  const result = await safeJson(res)
+  if (!res.ok) throw new Error((result.error as string) || 'Erreur remplissage formulaire')
   return result
 }
 
@@ -50,7 +51,7 @@ export async function takeScreenshot(url: string): Promise<ScreenshotResponse> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ type: 'screenshot', url }),
   })
-  const result = await res.json()
-  if (!res.ok) throw new Error(result.error || 'Erreur screenshot')
+  const result = await safeJson(res)
+  if (!res.ok) throw new Error((result.error as string) || 'Erreur screenshot')
   return result
 }

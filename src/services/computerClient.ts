@@ -1,4 +1,5 @@
 import type { ComputerAction, ComputerActionResponse } from '../types/computer'
+import { safeJson } from '../utils/safeJson'
 
 export async function sendComputerAction(
   action: ComputerAction,
@@ -9,8 +10,8 @@ export async function sendComputerAction(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action, params }),
   })
-  const data = await res.json()
-  if (!res.ok) throw new Error(data.error || 'Erreur contrôle PC')
+  const data = await safeJson(res)
+  if (!res.ok) throw new Error((data.error as string) || 'Erreur contrôle PC')
   return data
 }
 
