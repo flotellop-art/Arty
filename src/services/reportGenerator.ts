@@ -78,7 +78,20 @@ hr{border:none;height:1px;background:linear-gradient(to right,transparent,rgba(3
 .footer strong{color:#E05510}
 .back-btn{position:fixed;top:1rem;left:1rem;background:#1E1A14;color:#F5F0E8;border:none;border-radius:0.75rem;padding:0.5rem 1rem;font-size:0.8rem;cursor:pointer;z-index:10;font-family:'Inter',sans-serif;box-shadow:0 2px 8px rgba(0,0,0,0.2)}
 @media print{body{background:white}.page{padding:1rem}.back-btn{display:none}}
-@media(max-width:640px){.grid-2,.grid-3{grid-template-columns:1fr}.big-number{font-size:2rem}.header h1{font-size:1.4rem}}
+@media(max-width:640px){
+.grid-2,.grid-3{grid-template-columns:1fr}
+.big-number{font-size:1.8rem}
+.header h1{font-size:1.3rem}
+.header{padding:1.5rem}
+.page{padding:1rem 0.75rem}
+table{font-size:0.75rem;display:block;overflow-x:auto;-webkit-overflow-scrolling:touch}
+th{padding:0.5rem 0.6rem;font-size:0.55rem;white-space:nowrap}
+td{padding:0.5rem 0.6rem;white-space:nowrap}
+.card,.card-accent,.card-dark{padding:1rem}
+.chapter{padding:1rem 1.25rem}
+.chapter-title{font-size:1.05rem}
+.stat-value{font-size:1.3rem}
+}
 </style>
 </head>
 <body>
