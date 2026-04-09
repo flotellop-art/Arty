@@ -57,7 +57,7 @@ async function runGeminiStream(
       tools: [{ googleSearch: {} }],
     }
 
-    const model = 'gemini-2.5-flash-preview-05-20'
+    const model = 'gemini-2.5-flash'
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${apiKey}`
 
     const response = await fetch(url, {
