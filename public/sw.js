@@ -1,4 +1,4 @@
-const CACHE_NAME = 'arty-cache-v4'
+const CACHE_NAME = 'arty-cache-v5'
 
 // Install: cache shell
 self.addEventListener('install', (event) => {

@@ -27,6 +27,9 @@ export function useConversation() {
     saveInterval: ReturnType<typeof setInterval> | null
   } | null>(null)
 
+  // Track active conversation in ref for streaming callbacks
+  const activeIdRef = useRef<string | null>(null)
+
   const activeConversation = conversations.find((c) => c.id === activeId) ?? null
 
   const refreshConversations = useCallback(() => {
@@ -124,11 +127,13 @@ export function useConversation() {
   }, [refreshConversations])
 
   const selectConversation = useCallback((id: string) => {
+    activeIdRef.current = id
     setActiveId(id)
     setError(null)
   }, [])
 
   const clearActive = useCallback(() => {
+    activeIdRef.current = null
     setActiveId(null)
     setError(null)
   }, [])
@@ -167,6 +172,7 @@ export function useConversation() {
       refreshConversations()
       setActiveId(targetId)
 
+      activeIdRef.current = targetId
       setIsStreaming(true)
       setStreamingContent('')
 
@@ -177,17 +183,30 @@ export function useConversation() {
         saveInterval: setInterval(() => savePartial(), 3000),
       }
 
+      // Only update UI state if user is still on this conversation
+      const isActive = () => activeIdRef.current === targetId
+
       const onToken = (token: string) => {
         if (streamingRef.current) {
           streamingRef.current.accumulated += token
         }
-        setStreamingContent((prev) => prev + token)
+        if (isActive()) {
+          setStreamingContent((prev) => prev + token)
+        }
       }
 
       const onDone = () => {
         const content = streamingRef.current?.accumulated || ''
         finalize(targetId, content)
-        cleanupStreaming()
+        if (isActive()) {
+          setIsStreaming(false)
+          setStreamingContent('')
+        }
+        if (streamingRef.current?.saveInterval) {
+          clearInterval(streamingRef.current.saveInterval)
+        }
+        streamingRef.current = null
+        abortRef.current = null
       }
 
       const onErr = (err: Error) => {
@@ -196,8 +215,16 @@ export function useConversation() {
         if (content) {
           finalize(targetId, content + '\n\n⚠️ *Réponse interrompue*')
         }
-        setError(err.message)
-        cleanupStreaming()
+        if (isActive()) {
+          setError(err.message)
+          setIsStreaming(false)
+          setStreamingContent('')
+        }
+        if (streamingRef.current?.saveInterval) {
+          clearInterval(streamingRef.current.saveInterval)
+        }
+        streamingRef.current = null
+        abortRef.current = null
       }
 
       const provider = detectProvider(text)
