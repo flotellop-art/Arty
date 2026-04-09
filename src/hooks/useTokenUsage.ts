@@ -4,12 +4,12 @@ import { getUsage, resetUsage, formatCost, formatTokens, type TokenUsage } from 
 export function useTokenUsage() {
   const [usage, setUsage] = useState<TokenUsage>(getUsage)
 
-  // Refresh every 2 seconds (to catch updates from API calls)
   useEffect(() => {
-    const interval = setInterval(() => {
-      setUsage(getUsage())
-    }, 2000)
-    return () => clearInterval(interval)
+    const handler = (e: Event) => {
+      setUsage((e as CustomEvent<TokenUsage>).detail)
+    }
+    window.addEventListener('token-usage-updated', handler)
+    return () => window.removeEventListener('token-usage-updated', handler)
   }, [])
 
   const reset = useCallback(() => {

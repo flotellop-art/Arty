@@ -58,6 +58,7 @@ export function addUsage(inputTokens: number, outputTokens: number): TokenUsage 
   usage.requestCount += 1
   usage.totalCost = (usage.inputTokens * INPUT_PRICE_PER_M + usage.outputTokens * OUTPUT_PRICE_PER_M) / 1_000_000
   localStorage.setItem(STORAGE_KEY, JSON.stringify(usage))
+  window.dispatchEvent(new CustomEvent('token-usage-updated', { detail: usage }))
   return usage
 }
 
