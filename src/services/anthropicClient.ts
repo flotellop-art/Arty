@@ -593,7 +593,7 @@ async function fetchWithRetry(
         'content-type': 'application/json',
         'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
-        'anthropic-beta': 'files-api-2025-04-14',
+        'anthropic-beta': 'pdfs-2024-09-25',
         'anthropic-dangerous-direct-browser-access': 'true',
       },
       body: requestBody,
@@ -792,18 +792,18 @@ async function runWithTools(
         if (block.type === 'tool_use') {
           const toolResult = await options.onToolCall(block.name, block.input)
 
-          // Check if result contains an Anthropic file_id for native PDF reading
-          const docMatch = toolResult.result.match?.(/__ANTHROPIC_DOC__(.+?)__(.+)/)
-          if (docMatch) {
+          // Check if result contains PDF base64 for Claude to read natively
+          const pdfMatch = toolResult.result.match?.(/^__PDF_BASE64__(.+)__NAME__(.+)$/)
+          if (pdfMatch) {
             toolResults.push({
               type: 'tool_result',
               tool_use_id: block.id,
               content: [
                 {
                   type: 'document',
-                  source: { type: 'file', file_id: docMatch[1] },
+                  source: { type: 'base64', media_type: 'application/pdf', data: pdfMatch[1] },
                 },
-                { type: 'text', text: `Fichier: ${docMatch[2]} — lis et analyse ce document.` },
+                { type: 'text', text: `Fichier: ${pdfMatch[2]} — lis et analyse ce document.` },
               ],
             })
           } else {

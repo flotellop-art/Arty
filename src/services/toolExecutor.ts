@@ -179,9 +179,9 @@ export function createToolExecutor(
             const data = await safeJson(res)
             if (data.error) return { result: `Erreur lecture: ${data.error}` }
 
-            // If Anthropic file_id returned, mark for native PDF reading
-            if (data.anthropicFileId) {
-              return { result: `__ANTHROPIC_DOC__${data.anthropicFileId}__${data.name}` }
+            // If PDF base64 returned, mark for Claude to read natively
+            if (data.pdfBase64) {
+              return { result: `__PDF_BASE64__${data.pdfBase64}__NAME__${data.name}` }
             }
 
             return { result: `Fichier: ${data.name}\nType: ${data.mimeType}\n\nContenu:\n${data.content}` }

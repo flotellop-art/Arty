@@ -59,104 +59,33 @@ async function handleRead(token: string, req: VercelRequest, res: VercelResponse
       if (r.ok) content = await r.text()
     } else if (meta.mimeType === 'application/pdf') {
       // Try Google Drive export first (works for Google Docs saved as PDF)
-      const r = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=text/plain`, { headers: { Authorization: `Bearer ${token}` } })
-      if (r.ok) {
-        content = await r.text()
+      const expRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=text/plain`, { headers: { Authorization: `Bearer ${token}` } })
+      if (expRes.ok) {
+        content = await expRes.text()
       } else {
-        // Native PDF — download and try text extraction, fallback to base64 for Claude to read directly
+        // Native PDF — download
         const dlRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, { headers: { Authorization: `Bearer ${token}` } })
         if (dlRes.ok) {
           const buffer = Buffer.from(await dlRes.arrayBuffer())
-          // Try pdf-parse first
+
+          // 1. Try pdf-parse
           try {
             const pdfData = await pdf(buffer)
             const text = pdfData.text || ''
-            // Check if text is readable
             const readable = text.replace(/[^\w\sàâäéèêëïîôùûüçœæÀÂÄÉÈÊËÏÎÔÙÛÜÇŒÆ.,;:!?€$%()/-]/g, '')
             if (text.trim().length >= 50 && readable.length > text.length * 0.5) {
               content = text
             }
           } catch { /* pdf-parse failed */ }
 
-          // If text extraction failed, upload PDF to Anthropic Files API for native reading
+          // 2. If failed, return base64 for Claude to read natively
           if (!content) {
-            try {
-              const anthropicKey = process.env.VITE_ANTHROPIC_API_KEY
-              if (anthropicKey) {
-                const filename = meta.name || 'document.pdf'
-                const boundary = '----AnthropicFileBoundary' + Date.now()
-                const body = Buffer.concat([
-                  Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${filename}"\r\nContent-Type: application/pdf\r\n\r\n`),
-                  buffer,
-                  Buffer.from(`\r\n--${boundary}--\r\n`),
-                ])
-
-                const uploadRes = await fetch('https://api.anthropic.com/v1/files', {
-                  method: 'POST',
-                  headers: {
-                    'x-api-key': anthropicKey,
-                    'anthropic-version': '2023-06-01',
-                    'anthropic-beta': 'files-api-2025-04-14',
-                    'content-type': `multipart/form-data; boundary=${boundary}`,
-                  },
-                  body,
-                })
-                })
-
-                if (uploadRes.ok) {
-                  const uploadData = await uploadRes.json()
-                  const fileId = uploadData.id
-                  // Return special format that toolExecutor will handle
-                  return res.status(200).json({
-                    id: meta.id, name: meta.name, mimeType: meta.mimeType, modifiedTime: meta.modifiedTime,
-                    content: `[ANTHROPIC_FILE:${fileId}]`,
-                    anthropicFileId: fileId,
-                  })
-                }
-              }
-            } catch { /* Anthropic upload failed */ }
-
-            // Last resort: try Google Vision OCR
-            try {
-              const visionKey = process.env.GOOGLE_VISION_API_KEY
-              if (visionKey) {
-                const base64Data = buffer.toString('base64')
-                const visionRes = await fetch(
-                  `https://vision.googleapis.com/v1/files:annotate?key=${visionKey}`,
-                  {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                      requests: [{
-                        inputConfig: { content: base64Data, mimeType: 'application/pdf' },
-                        features: [{ type: 'DOCUMENT_TEXT_DETECTION' }],
-                        pages: [1, 2, 3, 4, 5],
-                      }],
-                    }),
-                  }
-                )
-                if (visionRes.ok) {
-                  const visionData = await visionRes.json()
-                  const pages = visionData.responses?.[0]?.responses || []
-                  const ocrText = pages
-                    .map((p: { fullTextAnnotation?: { text?: string } }) => p.fullTextAnnotation?.text || '')
-                    .filter(Boolean)
-                    .join('\n\n--- Page suivante ---\n\n')
-                  if (ocrText && ocrText.trim().length > 20) {
-                    content = `[OCR — ${pages.length} pages]\n\n${ocrText}`
-                  }
-                }
-              }
-            } catch { /* OCR failed */ }
-          }
-          if (!content) {
-            content = `[PDF : ${meta.name} — impossible d'extraire le texte]`
-          }
-        }
-      }
-          }
-          if (!content) {
-            content = `[PDF : ${meta.name} — impossible d'extraire le texte. Fichier probablement scanné/image. Taille: ${buffer.length} octets]`
+            const base64Data = buffer.toString('base64')
+            return res.status(200).json({
+              id: meta.id, name: meta.name, mimeType: meta.mimeType, modifiedTime: meta.modifiedTime,
+              content: '__PDF_NATIVE__',
+              pdfBase64: base64Data,
+            })
           }
         }
       }
