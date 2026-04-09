@@ -330,11 +330,19 @@ const TOOLS = [
       required: ['destination'],
     },
   },
-  // --- Web (outil serveur Anthropic — recherche native côté API) ---
+  // --- Outils serveur Anthropic (exécutés côté API, zéro backend) ---
   {
     type: 'web_search_20250305',
     name: 'web_search',
     max_uses: 5,
+  } as any,
+  {
+    type: 'web_fetch_20260209',
+    name: 'web_fetch',
+  } as any,
+  {
+    type: 'code_execution_20250825',
+    name: 'code_execution',
   } as any,
   {
     name: 'search_price',
@@ -612,11 +620,13 @@ async function parseSSEStream(
                 input: {},
               })
             } else if (data.content_block?.type === 'server_tool_use') {
-              // Server-side tool (web_search) — handled by Anthropic, skip
+              // Server-side tool (web_search, web_fetch, code_execution) — handled by Anthropic
               currentBlockType = 'server_tool_use'
-            } else if (data.content_block?.type === 'web_search_tool_result') {
-              // Search results from server — skip (Claude already uses them)
-              currentBlockType = 'web_search_tool_result'
+            } else if (data.content_block?.type === 'web_search_tool_result' ||
+                       data.content_block?.type === 'web_fetch_tool_result' ||
+                       data.content_block?.type === 'code_execution_tool_result') {
+              // Server tool results — Claude uses them internally, skip in stream
+              currentBlockType = 'server_tool_result'
             }
             break
 
