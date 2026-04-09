@@ -2,13 +2,15 @@
 
 const GEMINI_TRIGGERS = [
   // YouTube
-  /youtube|youtubeur|youtubeuse|chaîne|vidéo[s]?\s+(de|du|d')|dernières\s+vidéos|résumé.*vidéo/i,
-  // Google Maps / lieux
-  /google\s*maps|itinéraire|trajet\s+(vers|de|entre)|temps\s+de\s+(route|trajet)|street\s*view/i,
-  // Actualités temps réel très spécifiques
-  /résultats?\s+(du|de)\s+(match|élection|vote)|score\s+(du|de)|classement\s+(ligue|championnat)/i,
-  // Contenus web spécifiques que Claude ne peut pas fetcher
+  /youtube|youtubeur|youtubeuse|chaîne\s+(de|du|d')|vidéo[s]?\s+(de|du|d')|dernières\s+vidéos|résumé.*vidéo/i,
+  // Google Maps / lieux / restaurants / avis
+  /google\s*maps|itinéraire|trajet\s+(vers|de|entre)|temps\s+de\s+(route|trajet)|street\s*view|restaurant[s]?\s+(à|près|autour)|avis\s+(sur|google|client)/i,
+  // Actualités temps réel
+  /résultats?\s+(du|de)\s+(match|élection|vote)|score\s+(du|de)|classement\s+(ligue|championnat)|actu(alité)?s?\s+(du jour|récentes?)/i,
+  // Contenus web spécifiques
   /résumé\s+(du|de\s+l[a'])\s+(site|page|article|blog)\s/i,
+  // URLs directes
+  /https?:\/\//i,
 ]
 
 export type AIProvider = 'claude' | 'gemini'
