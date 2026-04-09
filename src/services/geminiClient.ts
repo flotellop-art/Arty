@@ -114,3 +114,48 @@ async function runGeminiStream(
     }
   }
 }
+
+// Non-streaming research call — used in hybrid mode
+export async function geminiResearch(query: string): Promise<string> {
+  const apiKey = import.meta.env.VITE_GEMINI_API_KEY
+  if (!apiKey) return ''
+
+  const model = 'gemini-3-flash-preview'
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
+
+  const body = {
+    contents: [{
+      role: 'user',
+      parts: [{ text: query }],
+    }],
+    systemInstruction: {
+      parts: [{
+        text: `Tu es un assistant de recherche. Cherche les informations demandées sur le web et retourne un résumé structuré avec les données clés, chiffres, sources et liens. Sois factuel et concis. Pas de blabla. Format: bullet points avec les données trouvées.`,
+      }],
+    },
+    generationConfig: {
+      temperature: 0.3,
+      maxOutputTokens: 4096,
+    },
+    tools: [
+      { google_search: {} },
+      { url_context: {} },
+    ],
+  }
+
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+
+    if (!res.ok) return ''
+
+    const data = await res.json()
+    const parts = data.candidates?.[0]?.content?.parts || []
+    return parts.map((p: { text?: string }) => p.text || '').join('\n')
+  } catch {
+    return ''
+  }
+}

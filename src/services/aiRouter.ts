@@ -23,12 +23,28 @@ const GEMINI_TRIGGERS = [
   /fournisseur[s]?\s+(de|d'|pour)|où\s+(acheter|trouver|commander)/i,
 ]
 
-export type AIProvider = 'claude' | 'gemini'
+// Détecte les demandes de rapport/analyse qui bénéficient d'une recherche web
+const REPORT_TRIGGERS = [
+  /rapport\s+(sur|de|du|d')|fais[- ]moi\s+un\s+rapport/i,
+  /analyse\s+(du|de|des|le|la)|fais[- ]moi\s+une\s+analyse/i,
+  /étude\s+(de|du|sur)|fais[- ]moi\s+une\s+étude/i,
+  /état\s+(du|de|des)\s+(marché|lieux|secteur)/i,
+  /benchmark|comparatif\s+(de|des|du)/i,
+  /tendance[s]?\s+(du|de|des|20)/i,
+]
+
+export type AIProvider = 'claude' | 'gemini' | 'hybrid'
 
 export function detectProvider(message: string): AIProvider {
   const geminiKey = import.meta.env.VITE_GEMINI_API_KEY
-  if (!geminiKey) return 'claude' // Pas de clé Gemini → toujours Claude
+  if (!geminiKey) return 'claude'
 
+  // Rapport/analyse → mode hybride (Gemini cherche, Claude rédige)
+  for (const regex of REPORT_TRIGGERS) {
+    if (regex.test(message)) return 'hybrid'
+  }
+
+  // Triggers Gemini directs
   for (const regex of GEMINI_TRIGGERS) {
     if (regex.test(message)) return 'gemini'
   }

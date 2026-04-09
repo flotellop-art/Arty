@@ -2,7 +2,7 @@ import { useState, useCallback, useRef } from 'react'
 import type { Conversation, Message } from '../types'
 import { generateId } from '../utils/generateId'
 import { streamMessage } from '../services/anthropicClient'
-import { streamGeminiMessage } from '../services/geminiClient'
+import { streamGeminiMessage, geminiResearch } from '../services/geminiClient'
 import { detectProvider } from '../services/aiRouter'
 import * as storage from '../services/storage'
 
@@ -131,14 +131,39 @@ export function useConversation() {
         abortRef.current = null
       }
 
-      const controller = provider === 'gemini'
-        ? streamGeminiMessage(apiMessages, onToken, onDone, onErr, {
-            systemPrompt: systemPromptRef.current,
-          })
-        : streamMessage(apiMessages, onToken, onDone, onErr, {
+      let controller: AbortController
+
+      if (provider === 'hybrid') {
+        // Mode hybride : Gemini cherche → Claude rédige
+        setStreamingContent('🔍 Recherche en cours (Gemini)...')
+        geminiResearch(text).then((research) => {
+          const enrichedMessages = [...apiMessages]
+          if (research) {
+            // Injecte la recherche Gemini comme contexte pour Claude
+            enrichedMessages[enrichedMessages.length - 1] = {
+              role: 'user',
+              content: `${text}\n\n--- RECHERCHE WEB (données Gemini, à jour) ---\n${research}\n--- FIN RECHERCHE ---\n\nUtilise ces données pour ton rapport. Cite les sources trouvées.`,
+            }
+          }
+          accumulated = ''
+          setStreamingContent('')
+          controller = streamMessage(enrichedMessages, onToken, onDone, onErr, {
             systemPrompt: systemPromptRef.current,
             onToolCall: toolHandlerRef.current,
           })
+          abortRef.current = controller
+        }).catch(onErr)
+        controller = new AbortController()
+      } else if (provider === 'gemini') {
+        controller = streamGeminiMessage(apiMessages, onToken, onDone, onErr, {
+          systemPrompt: systemPromptRef.current,
+        })
+      } else {
+        controller = streamMessage(apiMessages, onToken, onDone, onErr, {
+          systemPrompt: systemPromptRef.current,
+          onToolCall: toolHandlerRef.current,
+        })
+      }
 
       abortRef.current = controller
     },
