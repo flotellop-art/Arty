@@ -85,8 +85,12 @@ hr{border:none;height:1px;background:linear-gradient(to right,transparent,rgba(3
 .severity-bar-fill.ok{background:linear-gradient(90deg,#9AB896,#6B8F64)}
 .footer{margin-top:3rem;padding-top:1.5rem;border-top:2px solid rgba(30,26,20,0.06);text-align:center;font-size:0.7rem;color:#9ca3af}
 .footer strong{color:#96643A}
-.back-btn{position:fixed;top:1rem;left:1rem;background:#2C2622;color:#F5F0E8;border:none;border-radius:0.75rem;padding:0.5rem 1rem;font-size:0.8rem;cursor:pointer;z-index:10;font-family:'Inter',sans-serif;box-shadow:0 2px 8px rgba(0,0,0,0.15)}
-@media print{body{background:white}.page{padding:1rem}.back-btn{display:none}}
+.report-actions{position:fixed;top:1rem;left:1rem;display:flex;gap:0.5rem;z-index:10}
+.back-btn,.pdf-btn{background:#2C2622;color:#F5F0E8;border:none;border-radius:0.75rem;padding:0.5rem 1rem;font-size:0.8rem;cursor:pointer;font-family:'Inter',sans-serif;box-shadow:0 2px 8px rgba(0,0,0,0.15);transition:background 0.2s}
+.back-btn:hover,.pdf-btn:hover{background:#3a3330}
+.pdf-btn{background:#B8743D}
+.pdf-btn:hover{background:#9A6234}
+@media print{body{background:white}.page{padding:1rem}.report-actions{display:none}}
 @media(max-width:640px){
 .grid-2,.grid-3{grid-template-columns:1fr}
 .big-number{font-size:1.8rem}
@@ -104,7 +108,10 @@ td{padding:0.5rem 0.6rem;white-space:nowrap}
 </style>
 </head>
 <body>
+<div class="report-actions">
 <button class="back-btn" onclick="history.back()">← Retour</button>
+<button class="pdf-btn" onclick="window.print()">📥 Télécharger PDF</button>
+</div>
 <div class="page">
 <div class="header">
 <div class="logo">Arty — Rapport</div>
