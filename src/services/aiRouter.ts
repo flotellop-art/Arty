@@ -47,8 +47,8 @@ const REPORT_TRIGGERS = [
 
 export type AIProvider = 'claude' | 'gemini' | 'hybrid'
 
-export function detectProvider(message: string): AIProvider {
-  const geminiKey = import.meta.env.VITE_GEMINI_API_KEY
+export function detectProvider(message: string, geminiKeyOverride?: string): AIProvider {
+  const geminiKey = geminiKeyOverride || import.meta.env.VITE_GEMINI_API_KEY
   if (!geminiKey) return 'claude'
 
   // Données privées → toujours Claude, même pour un rapport

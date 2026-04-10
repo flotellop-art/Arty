@@ -1,5 +1,6 @@
 import type { GoogleTokens, GoogleUser } from '../types/google'
 import { safeJson } from '../utils/safeJson'
+import { secureSet, secureGet, isCryptoReady } from './crypto'
 
 const TOKENS_KEY = 'arty-google-tokens'
 const USER_KEY = 'arty-google-user'
@@ -52,12 +53,20 @@ export async function exchangeCode(code: string): Promise<GoogleTokens> {
     expires_at: Date.now() + data.expires_in * 1000,
   }
 
-  localStorage.setItem(TOKENS_KEY, JSON.stringify(tokens))
+  await storeTokens(tokens)
   return tokens
 }
 
+async function storeTokens(tokens: GoogleTokens): Promise<void> {
+  if (isCryptoReady()) {
+    await secureSet(TOKENS_KEY, tokens)
+  } else {
+    localStorage.setItem(TOKENS_KEY, JSON.stringify(tokens))
+  }
+}
+
 export async function refreshAccessToken(): Promise<GoogleTokens | null> {
-  const tokens = getStoredTokens()
+  const tokens = await getStoredTokensAsync()
   if (!tokens?.refresh_token) return null
 
   const res = await fetch('/api/auth/refresh', {
@@ -80,12 +89,19 @@ export async function refreshAccessToken(): Promise<GoogleTokens | null> {
     expires_at: Date.now() + data.expires_in * 1000,
   }
 
-  localStorage.setItem(TOKENS_KEY, JSON.stringify(updated))
+  await storeTokens(updated)
   return updated
 }
 
+async function getStoredTokensAsync(): Promise<GoogleTokens | null> {
+  if (isCryptoReady()) {
+    return await secureGet<GoogleTokens>(TOKENS_KEY)
+  }
+  return getStoredTokens()
+}
+
 export async function getValidAccessToken(): Promise<string | null> {
-  let tokens = getStoredTokens()
+  let tokens = await getStoredTokensAsync()
   if (!tokens) return null
 
   // Refresh if expiring within 5 minutes
@@ -111,7 +127,11 @@ export async function fetchGoogleUser(accessToken: string): Promise<GoogleUser> 
     picture: data.picture,
   }
 
-  localStorage.setItem(USER_KEY, JSON.stringify(user))
+  if (isCryptoReady()) {
+    await secureSet(USER_KEY, user)
+  } else {
+    localStorage.setItem(USER_KEY, JSON.stringify(user))
+  }
   return user
 }
 

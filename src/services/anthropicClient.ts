@@ -15,13 +15,14 @@ export function streamMessage(
   onToken: (text: string) => void,
   onDone: () => void,
   onError: (error: Error) => void,
-  options?: StreamOptions
+  options?: StreamOptions,
+  apiKeyOverride?: string
 ): AbortController {
   const controller = new AbortController()
 
-  const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY
+  const apiKey = apiKeyOverride || import.meta.env.VITE_ANTHROPIC_API_KEY
   if (!apiKey) {
-    setTimeout(() => onError(new Error('Clé API manquante')), 0)
+    setTimeout(() => onError(new Error('Clé API manquante — configure ta clé dans les paramètres')), 0)
     return controller
   }
 

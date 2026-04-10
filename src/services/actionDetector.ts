@@ -15,8 +15,14 @@ interface IntentResponse {
   params?: Record<string, string>
 }
 
+let _actionDetectorApiKey: string | undefined
+
+export function setActionDetectorApiKey(key: string) {
+  _actionDetectorApiKey = key
+}
+
 async function detectIntent(text: string): Promise<IntentResponse> {
-  const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY
+  const apiKey = _actionDetectorApiKey || import.meta.env.VITE_ANTHROPIC_API_KEY
   if (!apiKey) return { action: 'none' }
 
   const prompt = `Tu es un détecteur d'intention. Analyse le message utilisateur et retourne UNIQUEMENT un JSON (pas de texte autour).

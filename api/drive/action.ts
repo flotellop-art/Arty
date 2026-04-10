@@ -19,24 +19,34 @@ export default createApiHandler({
 async function handleList(token: string, req: VercelRequest, res: VercelResponse) {
   const folderId = (req.query.folderId || req.body?.folderId) as string | undefined
   const query = (req.query.q || req.body?.q) as string | undefined
+
+  // Validate folderId to prevent Drive query injection
+  if (folderId && !/^[a-zA-Z0-9_-]+$/.test(folderId)) {
+    return res.status(400).json({ error: 'Invalid folder ID' })
+  }
+
   try {
     let q = 'trashed=false'
     if (folderId) q += ` and '${folderId}' in parents`
-    if (query) q += ` and (fullText contains '${query.replace(/'/g, "\\'")}')`
+    if (query) {
+      // Sanitize: remove single quotes and backslashes entirely
+      const sanitized = query.replace(/['\\]/g, '')
+      q += ` and (fullText contains '${sanitized}')`
+    }
     const params = new URLSearchParams({ q, fields: 'files(id,name,mimeType,modifiedTime,size,webViewLink,iconLink)', orderBy: 'modifiedTime desc', pageSize: '200' })
     const r = await fetch(`https://www.googleapis.com/drive/v3/files?${params}`, { headers: { Authorization: `Bearer ${token}` } })
     if (!r.ok) {
-      const errBody = await r.text()
-      return res.status(r.status).json({ error: errBody, debug: { status: r.status, query: q } })
+      return res.status(r.status).json({ error: 'Drive API error' })
     }
     const data = await r.json()
-    return res.status(200).json({ files: data.files || [], debug: { query: q, count: (data.files || []).length } })
+    return res.status(200).json({ files: data.files || [] })
   } catch { return res.status(500).json({ error: 'Failed to list files' }) }
 }
 
 async function handleRead(token: string, req: VercelRequest, res: VercelResponse) {
   const fileId = (req.query.id || req.body?.id) as string
   if (!fileId) return res.status(400).json({ error: 'Missing id' })
+  if (!/^[a-zA-Z0-9_-]+$/.test(fileId)) return res.status(400).json({ error: 'Invalid file ID' })
   try {
     const metaRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=id,name,mimeType,modifiedTime`, { headers: { Authorization: `Bearer ${token}` } })
     if (!metaRes.ok) { const err = await metaRes.json(); return res.status(metaRes.status).json({ error: err.error?.message }) }
@@ -75,6 +85,7 @@ async function handleRead(token: string, req: VercelRequest, res: VercelResponse
 async function handleDownload(token: string, req: VercelRequest, res: VercelResponse) {
   const fileId = (req.query.id || req.body?.id) as string
   if (!fileId) return res.status(400).json({ error: 'Missing id' })
+  if (!/^[a-zA-Z0-9_-]+$/.test(fileId)) return res.status(400).json({ error: 'Invalid file ID' })
   try {
     const metaRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=id,name,mimeType`, { headers: { Authorization: `Bearer ${token}` } })
     if (!metaRes.ok) { const err = await metaRes.json(); return res.status(metaRes.status).json({ error: err.error?.message }) }

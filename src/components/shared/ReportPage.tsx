@@ -26,7 +26,7 @@ export function ReportPage() {
       srcDoc={html}
       className="w-full h-[100dvh] border-0"
       title="Rapport"
-      sandbox="allow-same-origin allow-popups allow-scripts"
+      sandbox="allow-popups"
     />
   )
 }

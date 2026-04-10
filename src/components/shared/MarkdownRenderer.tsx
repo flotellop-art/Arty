@@ -1,7 +1,36 @@
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeRaw from 'rehype-raw'
+import rehypeSanitize, { defaultSchema } from 'rehype-sanitize'
 import type { Components } from 'react-markdown'
+
+// Custom sanitize schema: allow Arty CSS classes + data-* attributes for action buttons
+// Block: <script>, <iframe>, onerror, onload, javascript: URIs
+const sanitizeSchema = {
+  ...defaultSchema,
+  tagNames: [
+    ...(defaultSchema.tagNames || []),
+    'div', 'span', 'button', 'section', 'article', 'details', 'summary',
+  ],
+  attributes: {
+    ...defaultSchema.attributes,
+    '*': ['className', 'class', 'style'],
+    button: ['className', 'class', 'data*'],
+    div: ['className', 'class', 'style', 'data*'],
+    span: ['className', 'class', 'style'],
+    a: ['href', 'target', 'rel', 'className'],
+    img: ['src', 'alt', 'className', 'width', 'height'],
+    td: ['colSpan', 'rowSpan', 'className'],
+    th: ['colSpan', 'rowSpan', 'className'],
+  },
+  protocols: {
+    ...defaultSchema.protocols,
+    href: ['http', 'https', 'mailto', 'tel'],
+    src: ['http', 'https', 'data'],
+  },
+  // Strip dangerous elements entirely
+  strip: ['script', 'iframe', 'object', 'embed', 'form', 'input', 'textarea'],
+}
 
 interface MarkdownRendererProps {
   content: string
@@ -115,7 +144,7 @@ const components: Components = {
 export function MarkdownRenderer({ content }: MarkdownRendererProps) {
   return (
     <div className="max-w-none text-sm text-bubble-user/90 leading-relaxed report-content">
-      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]} components={components}>
+      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw, [rehypeSanitize, sanitizeSchema]]} components={components}>
         {content}
       </ReactMarkdown>
     </div>

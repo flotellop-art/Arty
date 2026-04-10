@@ -15,11 +15,12 @@ export function streamGeminiMessage(
   onToken: (text: string) => void,
   onDone: () => void,
   onError: (error: Error) => void,
-  options?: GeminiStreamOptions
+  options?: GeminiStreamOptions,
+  apiKeyOverride?: string
 ): AbortController {
   const controller = new AbortController()
 
-  const apiKey = import.meta.env.VITE_GEMINI_API_KEY
+  const apiKey = apiKeyOverride || import.meta.env.VITE_GEMINI_API_KEY
   if (!apiKey) {
     setTimeout(() => onError(new Error('Clé API Gemini manquante')), 0)
     return controller
@@ -116,8 +117,8 @@ async function runGeminiStream(
 }
 
 // Non-streaming research call — used in hybrid mode
-export async function geminiResearch(query: string): Promise<string> {
-  const apiKey = import.meta.env.VITE_GEMINI_API_KEY
+export async function geminiResearch(query: string, apiKeyOverride?: string): Promise<string> {
+  const apiKey = apiKeyOverride || import.meta.env.VITE_GEMINI_API_KEY
   if (!apiKey) return ''
 
   const model = 'gemini-3-flash-preview'
