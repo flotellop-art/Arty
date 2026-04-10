@@ -1,23 +1,30 @@
-import { Capacitor } from '@capacitor/core'
+import { Capacitor, registerPlugin } from '@capacitor/core'
 import { buildOAuthUrl } from '../../services/googleAuth'
+
+// Native Google Sign-In plugin (defined in Java)
+interface GoogleSignInNativePlugin {
+  signIn(): Promise<{ email: string; name: string; avatar: string; serverAuthCode: string }>
+  signOut(): Promise<void>
+}
+
+const GoogleSignInNative = registerPlugin<GoogleSignInNativePlugin>('GoogleSignInNative')
 
 interface GoogleLoginTabProps {
   loading: boolean
-  onNativeGoogleLogin?: (email: string, name: string, avatar: string, idToken: string) => void
+  onNativeGoogleLogin?: (email: string, name: string, avatar: string, serverAuthCode: string) => void
 }
 
 export function GoogleLoginTab({ loading, onNativeGoogleLogin }: GoogleLoginTabProps) {
   const handleGoogleLogin = async () => {
     try {
       if (Capacitor.isNativePlatform() && onNativeGoogleLogin) {
-        // Native: use Google Sign-In SDK (native popup)
-        const { GoogleAuth } = await import('@codetrix-studio/capacitor-google-auth')
-        const result = await GoogleAuth.signIn()
+        // Native: use our custom Java plugin (Google Sign-In SDK)
+        const result = await GoogleSignInNative.signIn()
         onNativeGoogleLogin(
-          result.email || '',
+          result.email,
           result.name || result.email?.split('@')[0] || '',
-          result.imageUrl || '',
-          result.authentication?.accessToken || ''
+          result.avatar || '',
+          result.serverAuthCode
         )
       } else {
         // Web: redirect to Google OAuth
@@ -46,7 +53,7 @@ export function GoogleLoginTab({ loading, onNativeGoogleLogin }: GoogleLoginTabP
       </button>
 
       <p className="text-xs text-gray-400 text-center leading-relaxed">
-        Connecte ton compte Google pour accéder à Gmail, Drive et Calendar. Ta clé API Anthropic te sera demandée ensuite.
+        Connecte ton compte Google pour accéder à Gmail, Drive et Calendar.
       </p>
     </div>
   )

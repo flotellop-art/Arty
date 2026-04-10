@@ -183,18 +183,30 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
           {activeTab === 'google' && (
             <GoogleLoginTab
               loading={loading}
-              onNativeGoogleLogin={async (email, name, avatar, accessToken) => {
+              onNativeGoogleLogin={async (email, name, avatar, serverAuthCode) => {
                 setLoading(true)
                 try {
-                  // Store Google tokens via scoped storage
-                  scoped.setJSON('google-tokens', {
-                    access_token: accessToken,
-                    refresh_token: '',
-                    expires_at: Date.now() + 3600000,
+                  // Exchange serverAuthCode for access+refresh tokens via our API
+                  const { apiUrl } = await import('../../services/apiBase')
+                  const res = await fetch(apiUrl('/api/auth/token'), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      code: serverAuthCode,
+                      redirect_uri: '',
+                    }),
                   })
+                  const tokens = await res.json()
+
+                  if (tokens.access_token) {
+                    scoped.setJSON('google-tokens', {
+                      access_token: tokens.access_token,
+                      refresh_token: tokens.refresh_token || '',
+                      expires_at: Date.now() + (tokens.expires_in || 3600) * 1000,
+                    })
+                  }
                   scoped.setJSON('google-user', { email, name, picture: avatar })
 
-                  // Check if user already has API keys
                   const { generateUserId, setActiveSession } = await import('../../services/userSession')
                   const userId = await generateUserId('google', email)
                   setActiveSession({ userId, authMethod: 'google', displayName: name, email, avatar, createdAt: Date.now() })
