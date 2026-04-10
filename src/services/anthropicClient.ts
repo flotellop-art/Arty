@@ -72,7 +72,7 @@ async function fetchWithRetry(
   let response: Response | null = null
   const maxRetries = 3
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    response = await fetch('https://gateway.ai.cloudflare.com/v1/ea69cd5ca383355efe77bf22e68207e4/arty/anthropic/v1/messages', {
+    response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
