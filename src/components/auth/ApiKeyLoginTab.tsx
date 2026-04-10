@@ -1,13 +1,14 @@
 import { useState } from 'react'
 
 interface ApiKeyLoginTabProps {
-  onLogin: (anthropicKey: string, geminiKey?: string) => void
+  onLogin: (anthropicKey: string, geminiKey?: string, mistralKey?: string) => void
   loading: boolean
 }
 
 export function ApiKeyLoginTab({ onLogin, loading }: ApiKeyLoginTabProps) {
   const [anthropicKey, setAnthropicKey] = useState('')
   const [geminiKey, setGeminiKey] = useState('')
+  const [mistralKey, setMistralKey] = useState('')
   const [error, setError] = useState('')
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -22,7 +23,7 @@ export function ApiKeyLoginTab({ onLogin, loading }: ApiKeyLoginTabProps) {
       return
     }
     setError('')
-    onLogin(trimmed, geminiKey.trim() || undefined)
+    onLogin(trimmed, geminiKey.trim() || undefined, mistralKey.trim() || undefined)
   }
 
   return (
@@ -51,6 +52,20 @@ export function ApiKeyLoginTab({ onLogin, loading }: ApiKeyLoginTabProps) {
           value={geminiKey}
           onChange={(e) => setGeminiKey(e.target.value)}
           placeholder="AIza..."
+          className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 bg-gray-50"
+          autoComplete="off"
+        />
+      </div>
+
+      <div>
+        <label className="block text-xs font-medium text-gray-600 mb-1.5">
+          Clé API Mistral <span className="text-gray-400">(optionnel — données EU)</span>
+        </label>
+        <input
+          type="password"
+          value={mistralKey}
+          onChange={(e) => setMistralKey(e.target.value)}
+          placeholder="..."
           className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 bg-gray-50"
           autoComplete="off"
         />

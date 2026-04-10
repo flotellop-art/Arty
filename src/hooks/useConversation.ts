@@ -3,6 +3,7 @@ import type { Conversation, Message, FileAttachment } from '../types'
 import { generateId } from '../utils/generateId'
 import { streamMessage } from '../services/anthropicClient'
 import { streamGeminiMessage, geminiResearch } from '../services/geminiClient'
+import { streamMistralMessage } from '../services/mistralClient'
 import { detectProvider } from '../services/aiRouter'
 import * as storage from '../services/storage'
 import { useStreaming } from './useStreaming'
@@ -138,6 +139,11 @@ export function useConversation() {
       } else if (provider === 'gemini') {
         const apiMessages = buildApiMessages(conv.messages)
         controller = streamGeminiMessage(apiMessages as Array<{ role: string; content: string }>, onToken, onDone, onErr, {
+          systemPrompt: systemPromptRef.current,
+        })
+      } else if (provider === 'mistral') {
+        const apiMessages = conv.messages.map((m) => ({ role: m.role, content: m.content }))
+        controller = streamMistralMessage(apiMessages, onToken, onDone, onErr, {
           systemPrompt: systemPromptRef.current,
         })
       } else {

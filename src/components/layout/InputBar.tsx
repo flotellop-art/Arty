@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback, type KeyboardEvent } from 're
 import type { FileAttachment } from '../../types'
 import { useSpeechRecognition } from '../../hooks/useSpeechRecognition'
 import { getStyle, setStyle as saveStyle, STYLE_OPTIONS, type ResponseStyle } from '../../services/responseStyles'
+import { getSelectedModel, setSelectedModel, MODEL_OPTIONS, type AIModel } from '../../services/modelSelector'
 import { isNative } from '../../services/native/platform'
 import { takePhoto, scanDocument } from '../../services/native/camera'
 
@@ -15,6 +16,8 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
   const [text, setText] = useState('')
   const [currentStyle, setCurrentStyle] = useState<ResponseStyle>(getStyle)
   const [showStyles, setShowStyles] = useState(false)
+  const [currentModel, setCurrentModel] = useState<AIModel>(getSelectedModel)
+  const [showModels, setShowModels] = useState(false)
   const [files, setFiles] = useState<FileAttachment[]>([])
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -131,8 +134,13 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
     saveStyle(style)
     setCurrentStyle(style)
     setShowStyles(false)
-    // Notify useAppSetup that style changed
     window.dispatchEvent(new CustomEvent('style-changed', { detail: style }))
+  }
+
+  const handleModelChange = (model: AIModel) => {
+    setSelectedModel(model)
+    setCurrentModel(model)
+    setShowModels(false)
   }
 
   return (
@@ -178,6 +186,26 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
         </div>
       )}
 
+      {/* Model selector */}
+      {showModels && (
+        <div className="flex gap-1.5 mb-2 overflow-x-auto pb-1">
+          {MODEL_OPTIONS.map((opt) => (
+            <button
+              key={opt.id}
+              onClick={() => handleModelChange(opt.id)}
+              className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium transition-colors flex-shrink-0 ${
+                currentModel === opt.id
+                  ? 'bg-bubble-user text-cream'
+                  : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              <span>{opt.flag}</span>
+              <span>{opt.label}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Mic error message */}
       {micError && (
         <div className="text-xs text-red-500 mb-1 px-1">
@@ -195,7 +223,7 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
       <div className="flex items-end gap-2 bg-white rounded-2xl border border-gray-200 px-3 py-2 shadow-sm">
         {/* Style toggle button */}
         <button
-          onClick={() => setShowStyles((s) => !s)}
+          onClick={() => { setShowStyles((s) => !s); setShowModels(false) }}
           className={`flex-shrink-0 p-1.5 rounded-full transition-colors mb-0.5 ${
             currentStyle !== 'default' ? 'bg-orange-100 text-orange-600' : 'hover:bg-gray-100 text-gray-400'
           }`}
@@ -203,6 +231,18 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
           title={`Style: ${STYLE_OPTIONS.find(s => s.id === currentStyle)?.label || 'Normal'}`}
         >
           <span className="text-sm leading-none">{STYLE_OPTIONS.find(s => s.id === currentStyle)?.emoji || '💬'}</span>
+        </button>
+
+        {/* Model toggle button */}
+        <button
+          onClick={() => { setShowModels((s) => !s); setShowStyles(false) }}
+          className={`flex-shrink-0 p-1.5 rounded-full transition-colors mb-0.5 ${
+            currentModel !== 'auto' ? 'bg-blue-100 text-blue-600' : 'hover:bg-gray-100 text-gray-400'
+          }`}
+          aria-label="Modèle IA"
+          title={`Modèle: ${MODEL_OPTIONS.find(m => m.id === currentModel)?.label || 'Auto'}`}
+        >
+          <span className="text-sm leading-none">{MODEL_OPTIONS.find(m => m.id === currentModel)?.flag || '🔄'}</span>
         </button>
 
         {/* Plus button — file upload */}

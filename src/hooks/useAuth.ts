@@ -10,18 +10,20 @@ import {
   type AuthMethod,
 } from '../services/userSession'
 import { setActiveKeys, clearActiveKeys } from '../services/activeApiKey'
+import { initCrypto, migrateKey } from '../services/crypto'
 import * as scoped from '../services/scopedStorage'
 
 export function useAuth() {
   const [currentUser, setCurrentUser] = useState<UserSession | null>(getActiveSession)
   const [knownSessions, setKnownSessions] = useState(getKnownSessions)
 
-  // Restore API keys from scoped storage on mount
+  // Restore API keys and init crypto on mount
   useEffect(() => {
     if (currentUser) {
-      const keys = scoped.getJSON<{ anthropic: string; gemini?: string }>('api-keys')
+      const keys = scoped.getJSON<{ anthropic: string; gemini?: string; mistral?: string }>('api-keys')
       if (keys?.anthropic) {
-        setActiveKeys(keys.anthropic, keys.gemini)
+        setActiveKeys(keys.anthropic, keys.gemini, keys.mistral)
+        initCrypto(keys.anthropic).catch(() => {})
       }
     }
   }, [currentUser])
@@ -34,7 +36,8 @@ export function useAuth() {
       avatar?: string
       anthropicKey: string
       geminiKey?: string
-      identifier: string // email or API key — used to generate userId
+      mistralKey?: string
+      identifier: string
     }
   ) => {
     const userId = await generateUserId(method, credentials.identifier)
@@ -48,20 +51,27 @@ export function useAuth() {
       createdAt: Date.now(),
     }
 
-    // Activate session (this sets the prefix for scopedStorage)
+    // Activate session (sets the prefix for scopedStorage)
     setActiveSession(session)
 
-    // Migrate existing data if this is the first login after update
+    // Migrate existing data if first login after update
     migrateExistingData(userId)
 
-    // Store API keys in scoped storage
-    scoped.setJSON('api-keys', {
+    // Initialize encryption with the API key
+    await initCrypto(credentials.anthropicKey)
+
+    // Store API keys — plain first (sync), then encrypted in background
+    scoped.secureSetJSON('api-keys', {
       anthropic: credentials.anthropicKey,
       gemini: credentials.geminiKey,
+      mistral: credentials.mistralKey,
     })
 
-    // Set active keys in memory for the AI clients
-    setActiveKeys(credentials.anthropicKey, credentials.geminiKey)
+    // Migrate the api-keys entry to encrypted format
+    await migrateKey(`arty-${userId}-api-keys`)
+
+    // Set active keys in memory for AI clients
+    setActiveKeys(credentials.anthropicKey, credentials.geminiKey, credentials.mistralKey)
 
     setCurrentUser(session)
     setKnownSessions(getKnownSessions())
@@ -76,7 +86,6 @@ export function useAuth() {
   }, [])
 
   const switchAccount = useCallback(async (userId: string) => {
-    // Find the session in known sessions
     const known = getKnownSessions()
     const session = known.find(s => s.userId === userId)
     if (!session) return
@@ -85,9 +94,10 @@ export function useAuth() {
     setActiveSession(session)
 
     // Restore API keys
-    const keys = scoped.getJSON<{ anthropic: string; gemini?: string }>('api-keys')
+    const keys = scoped.getJSON<{ anthropic: string; gemini?: string; mistral?: string }>('api-keys')
     if (keys?.anthropic) {
-      setActiveKeys(keys.anthropic, keys.gemini)
+      await initCrypto(keys.anthropic)
+      setActiveKeys(keys.anthropic, keys.gemini, keys.mistral)
     }
 
     setCurrentUser(session)

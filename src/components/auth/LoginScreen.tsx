@@ -15,6 +15,7 @@ interface LoginScreenProps {
     avatar?: string
     anthropicKey: string
     geminiKey?: string
+    mistralKey?: string
     identifier: string
   }) => Promise<UserSession>
   knownSessions: UserSession[]
@@ -34,7 +35,7 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
     avatar?: string
   } | null>(null)
 
-  const handleApiKeyLogin = useCallback(async (anthropicKey: string, geminiKey?: string) => {
+  const handleApiKeyLogin = useCallback(async (anthropicKey: string, geminiKey?: string, mistralKey?: string) => {
     setLoading(true)
     try {
       // If we have a pending Google/Email auth, complete it with the API key
@@ -45,6 +46,7 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
           avatar: pendingAuth.avatar,
           anthropicKey,
           geminiKey,
+          mistralKey,
           identifier: pendingAuth.email,
         })
         setPendingAuth(null)
@@ -55,6 +57,7 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
           displayName: keyPreview,
           anthropicKey,
           geminiKey,
+          mistralKey,
           identifier: anthropicKey,
         })
       }
