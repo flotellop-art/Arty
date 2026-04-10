@@ -37,7 +37,9 @@ export function useGoogleAuth() {
   }, [isConnected])
 
   const login = useCallback(async () => {
+    alert('login called, isNative=' + Capacitor.isNativePlatform())
     if (Capacitor.isNativePlatform()) {
+      alert('Trying native Google Sign-In...')
       // Native: use Google Sign-In SDK (popup natif)
       try {
         setIsLoading(true)
@@ -68,6 +70,7 @@ export function useGoogleAuth() {
         setUser(googleUser)
         setIsConnected(true)
       } catch (err) {
+        alert('Native error: ' + (err as Error).message)
         setError(err instanceof Error ? err.message : 'Erreur Google Sign-In')
       } finally {
         setIsLoading(false)
