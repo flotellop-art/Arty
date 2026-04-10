@@ -48,6 +48,7 @@ export function useSpeechRecognition() {
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null)
   const wantListeningRef = useRef(false)
   const onTranscriptRef = useRef<((text: string) => void) | null>(null)
+  const processedCountRef = useRef(0)
 
   const isSupported = typeof window !== 'undefined' &&
     ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window)
@@ -66,24 +67,31 @@ export function useSpeechRecognition() {
     recognition.onstart = () => {
       setIsListening(true)
       setError(null)
+      processedCountRef.current = 0
     }
 
     recognition.onresult = (event: SpeechRecognitionEvent) => {
-      for (let i = event.resultIndex; i < event.results.length; i++) {
+      let latestInterim = ''
+
+      for (let i = 0; i < event.results.length; i++) {
         const result = event.results[i]
         if (!result || !result[0]) continue
 
         if (result.isFinal) {
-          // Send final text immediately to the callback
-          const text = result[0].transcript.trim()
-          if (text && onTranscriptRef.current) {
-            onTranscriptRef.current(text)
+          // Only send finals we haven't sent yet
+          if (i >= processedCountRef.current) {
+            const text = result[0].transcript.trim()
+            if (text && onTranscriptRef.current) {
+              onTranscriptRef.current(text)
+            }
+            processedCountRef.current = i + 1
           }
-          setInterimTranscript('')
         } else {
-          setInterimTranscript(result[0].transcript)
+          latestInterim = result[0].transcript
         }
       }
+
+      setInterimTranscript(latestInterim)
     }
 
     recognition.onerror = (event) => {
