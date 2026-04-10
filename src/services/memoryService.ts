@@ -1,4 +1,6 @@
 import * as drive from './driveClient'
+import { isConnected } from './googleAuth'
+import { getActiveUserId } from './userSession'
 
 const MEMORY_FOLDER_NAME = 'IA-Memoire'
 const MEMORY_FILES = {
@@ -85,7 +87,48 @@ function getDefaultData(category: MemoryCategory): unknown {
   }
 }
 
+// ─── D1 fallback for users without Google ───
+
+async function readMemoryD1(category: MemoryCategory): Promise<unknown> {
+  const userId = getActiveUserId()
+  if (!userId) return getDefaultData(category)
+
+  try {
+    const res = await fetch('/api/memory/action', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'read', userId, category }),
+    })
+    const result = await res.json() as { data: unknown }
+    return result.data ?? getDefaultData(category)
+  } catch {
+    return getDefaultData(category)
+  }
+}
+
+async function updateMemoryD1(category: MemoryCategory, data: unknown): Promise<{ success: boolean; message: string }> {
+  const userId = getActiveUserId()
+  if (!userId) return { success: false, message: 'Non connecté' }
+
+  try {
+    const res = await fetch('/api/memory/action', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'write', userId, category, data }),
+    })
+    if (!res.ok) return { success: false, message: 'Erreur D1' }
+    return { success: true, message: `Mémoire "${category}" mise à jour.` }
+  } catch (err) {
+    return { success: false, message: err instanceof Error ? err.message : 'Erreur' }
+  }
+}
+
+// ─── Public API (auto-selects Drive or D1) ───
+
 export async function readMemory(category: MemoryCategory): Promise<unknown> {
+  // Use Google Drive if connected, otherwise D1
+  if (!isConnected()) return readMemoryD1(category)
+
   try {
     const fileId = await findMemoryFile(category)
     if (!fileId) return getDefaultData(category)
@@ -117,6 +160,9 @@ export async function updateMemory(
   category: MemoryCategory,
   data: unknown
 ): Promise<{ success: boolean; message: string }> {
+  // Use Google Drive if connected, otherwise D1
+  if (!isConnected()) return updateMemoryD1(category, data)
+
   try {
     const folderId = await findOrCreateFolder()
     const content = JSON.stringify(data, null, 2)
@@ -200,4 +246,12 @@ export function formatMemoryForPrompt(memory: MemoryData): string {
 
   if (parts.length === 0) return ''
   return `\n\nMÉMOIRE PERSISTANTE (stockée sur Drive, mise à jour auto) :\n${parts.join('\n\n')}`
+}
+
+/** Reset in-memory caches (call on logout) */
+export function resetMemoryCache(): void {
+  folderIdCache = null
+  for (const key of Object.keys(fileIdCache) as MemoryCategory[]) {
+    delete fileIdCache[key]
+  }
 }

@@ -8,4 +8,5 @@ export interface Env {
   TUNNEL_URL: string
   TUNNEL_SECRET: string
   GOOGLE_VISION_API_KEY?: string
+  DB: D1Database  // Cloudflare D1 binding
 }
