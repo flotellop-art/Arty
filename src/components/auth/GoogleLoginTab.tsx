@@ -17,12 +17,8 @@ interface GoogleLoginTabProps {
 export function GoogleLoginTab({ loading, onNativeGoogleLogin }: GoogleLoginTabProps) {
   const handleGoogleLogin = async () => {
     try {
-      alert('isNative=' + Capacitor.isNativePlatform() + ' hasCallback=' + !!onNativeGoogleLogin)
       if (Capacitor.isNativePlatform() && onNativeGoogleLogin) {
-        // Native: use our custom Java plugin (Google Sign-In SDK)
-        alert('Calling native signIn...')
         const result = await GoogleSignInNative.signIn()
-        alert('signIn result: ' + JSON.stringify(result))
         onNativeGoogleLogin(
           result.email,
           result.name || result.email?.split('@')[0] || '',
@@ -35,7 +31,7 @@ export function GoogleLoginTab({ loading, onNativeGoogleLogin }: GoogleLoginTabP
         window.location.href = url
       }
     } catch (err) {
-      alert('Google error: ' + (err as Error).message)
+      console.error('Google login error:', err)
       console.error('Google login error:', err)
     }
   }
