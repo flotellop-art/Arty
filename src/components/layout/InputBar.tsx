@@ -2,6 +2,8 @@ import { useState, useRef, useEffect, useCallback, type KeyboardEvent } from 're
 import type { FileAttachment } from '../../types'
 import { useSpeechRecognition } from '../../hooks/useSpeechRecognition'
 import { getStyle, setStyle as saveStyle, STYLE_OPTIONS, type ResponseStyle } from '../../services/responseStyles'
+import { isNative } from '../../services/native/platform'
+import { takePhoto, scanDocument } from '../../services/native/camera'
 
 interface InputBarProps {
   onSend: (text: string, files?: FileAttachment[]) => void
@@ -103,6 +105,28 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
     }
   }
 
+  const handleCamera = async () => {
+    const photo = await takePhoto()
+    if (photo) {
+      setFiles((prev) => [...prev, {
+        name: `photo_${Date.now()}.${photo.mimeType.split('/')[1] || 'jpeg'}`,
+        type: photo.mimeType,
+        data: photo.base64,
+      }])
+    }
+  }
+
+  const handleScan = async () => {
+    const doc = await scanDocument()
+    if (doc) {
+      setFiles((prev) => [...prev, {
+        name: `scan_${Date.now()}.${doc.mimeType.split('/')[1] || 'jpeg'}`,
+        type: doc.mimeType,
+        data: doc.base64,
+      }])
+    }
+  }
+
   const handleStyleChange = (style: ResponseStyle) => {
     saveStyle(style)
     setCurrentStyle(style)
@@ -200,6 +224,37 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
           multiple
           className="hidden"
         />
+
+        {/* Camera button — native only */}
+        {isNative && (
+          <button
+            onClick={handleCamera}
+            className="flex-shrink-0 p-1.5 rounded-full hover:bg-gray-100 transition-colors text-gray-400 mb-0.5"
+            aria-label="Photo"
+          >
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+              <rect x="2" y="5" width="14" height="10" rx="2" stroke="currentColor" strokeWidth="1.3" />
+              <circle cx="9" cy="10" r="3" stroke="currentColor" strokeWidth="1.3" />
+              <path d="M6 5L7 3H11L12 5" stroke="currentColor" strokeWidth="1.3" />
+            </svg>
+          </button>
+        )}
+
+        {/* Scan button — native only */}
+        {isNative && (
+          <button
+            onClick={handleScan}
+            className="flex-shrink-0 p-1.5 rounded-full hover:bg-gray-100 transition-colors text-gray-400 mb-0.5"
+            aria-label="Scanner un document"
+          >
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+              <rect x="3" y="2" width="12" height="14" rx="1.5" stroke="currentColor" strokeWidth="1.3" />
+              <line x1="6" y1="6" x2="12" y2="6" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+              <line x1="6" y1="9" x2="12" y2="9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+              <line x1="6" y1="12" x2="10" y2="12" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+            </svg>
+          </button>
+        )}
 
         {/* Textarea */}
         <textarea

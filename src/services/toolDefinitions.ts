@@ -5,6 +5,7 @@ import { calendarToolDefinitions } from './tools/calendarTools'
 import { contactsToolDefinitions } from './tools/contactsTools'
 import { wordpressToolDefinitions } from './tools/wordpressTools'
 import { utilityToolDefinitions } from './tools/utilityTools'
+import { nativeToolDefinitions } from './tools/nativeTools'
 
 export const TOOLS = [
   ...utilityToolDefinitions,
@@ -14,6 +15,7 @@ export const TOOLS = [
   ...calendarToolDefinitions,
   ...contactsToolDefinitions,
   ...wordpressToolDefinitions,
+  ...nativeToolDefinitions,
   // Server-side tools (handled by Anthropic API, no local executor)
   {
     type: 'web_search_20250305',
