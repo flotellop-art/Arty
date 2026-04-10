@@ -1,6 +1,7 @@
 import { SYSTEM_PROMPT } from '../constants/systemPrompt'
 import { TOOLS } from './toolDefinitions'
 import { addUsage } from './tokenTracker'
+import { compressIfNeeded } from './conversationCompressor'
 
 type ToolHandler = (name: string, input: Record<string, unknown>) => Promise<{ result: string; screenshot?: string; fileData?: { name: string; mimeType: string; base64: string } }>
 
@@ -231,11 +232,15 @@ async function runWithTools(
   controller: AbortController
 ) {
   try {
+    // Compress old messages if conversation is too long
+    const compressed = await compressIfNeeded(
+      originalMessages.map((m) => ({ role: m.role, content: m.content })),
+      options?.systemPrompt,
+      apiKey
+    )
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const apiMessages: any[] = originalMessages.map((m) => ({
-      role: m.role,
-      content: m.content,
-    }))
+    const apiMessages: any[] = compressed
 
     let maxIterations = 200
     while (maxIterations > 0) {
