@@ -1,14 +1,23 @@
 import { buildOAuthUrl } from '../../services/googleAuth'
+import { Capacitor } from '@capacitor/core'
 
 interface GoogleLoginTabProps {
   loading: boolean
 }
 
 export function GoogleLoginTab({ loading }: GoogleLoginTabProps) {
-  const handleGoogleLogin = () => {
+  const handleGoogleLogin = async () => {
     try {
       const url = buildOAuthUrl()
-      window.location.href = url
+
+      if (Capacitor.isNativePlatform()) {
+        // Native: open system browser → deep link brings user back
+        const { Browser } = await import('@capacitor/browser')
+        await Browser.open({ url })
+      } else {
+        // Web: redirect in same window
+        window.location.href = url
+      }
     } catch (err) {
       console.error('Google OAuth error:', err)
     }

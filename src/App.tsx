@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { BrowserRouter, Routes, Route, useNavigate, useParams } from 'react-router-dom'
 import { useConversation } from './hooks/useConversation'
 import { useAppSetup } from './hooks/useAppSetup'
@@ -241,6 +241,56 @@ function ChatRoute({
 
 export default function App() {
   const auth = useAuth()
+  const [deepLinkCode, setDeepLinkCode] = useState<string | null>(null)
+
+  // Listen for deep links (native OAuth callback)
+  useEffect(() => {
+    async function setupDeepLinks() {
+      try {
+        const { App: CapApp } = await import('@capacitor/app')
+        CapApp.addListener('appUrlOpen', (event) => {
+          const url = new URL(event.url)
+          if (url.pathname === '/auth/callback') {
+            const code = url.searchParams.get('code')
+            if (code) setDeepLinkCode(code)
+          }
+        })
+      } catch {}
+    }
+    setupDeepLinks()
+  }, [])
+
+  // Process deep link OAuth code
+  useEffect(() => {
+    if (!deepLinkCode) return
+
+    async function processOAuth(code: string) {
+      try {
+        const { exchangeCode, fetchGoogleUser } = await import('./services/googleAuth')
+        const tokens = await exchangeCode(code)
+        const user = await fetchGoogleUser(tokens.access_token)
+        const { generateUserId, setActiveSession } = await import('./services/userSession')
+        const userId = await generateUserId('google', user.email)
+        setActiveSession({ userId, authMethod: 'google', displayName: user.name, email: user.email, avatar: user.picture, createdAt: Date.now() })
+        const { getJSON } = await import('./services/scopedStorage')
+        const existingKeys = getJSON<{ anthropic: string; gemini?: string; mistral?: string }>('api-keys')
+
+        if (existingKeys?.anthropic) {
+          await auth.login('google', {
+            displayName: user.name, email: user.email, avatar: user.picture,
+            anthropicKey: existingKeys.anthropic, geminiKey: existingKeys.gemini, mistralKey: existingKeys.mistral,
+            identifier: user.email,
+          })
+        }
+        // If no API keys yet, the LoginScreen will handle it
+      } catch (err) {
+        console.error('Deep link OAuth error:', err)
+      }
+      setDeepLinkCode(null)
+    }
+
+    processOAuth(deepLinkCode)
+  }, [deepLinkCode, auth])
 
   if (!auth.isAuthenticated) {
     return (
