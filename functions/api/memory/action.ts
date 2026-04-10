@@ -1,8 +1,28 @@
 import type { Env } from '../../env'
 
+async function ensureTable(db: D1Database) {
+  await db.prepare(`
+    CREATE TABLE IF NOT EXISTS memory (
+      user_id TEXT NOT NULL,
+      category TEXT NOT NULL,
+      data TEXT NOT NULL,
+      updated_at INTEGER NOT NULL DEFAULT (unixepoch()),
+      PRIMARY KEY (user_id, category)
+    )
+  `).run()
+}
+
+let tableReady = false
+
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   if (!env.DB) {
     return Response.json({ error: 'Database not configured' }, { status: 500 })
+  }
+
+  // Auto-create table on first call
+  if (!tableReady) {
+    await ensureTable(env.DB)
+    tableReady = true
   }
 
   const body = await request.json() as Record<string, unknown>
