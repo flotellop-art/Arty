@@ -58,8 +58,8 @@ export function useSpeechRecognition() {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
     const recognition = new SpeechRecognition()
 
-    // Don't use continuous — it's broken on mobile. Instead, restart on end.
-    recognition.continuous = false
+    // Use continuous mode — one single start() call, one single beep
+    recognition.continuous = true
     recognition.interimResults = true
     recognition.lang = 'fr-FR'
 
@@ -105,19 +105,7 @@ export function useSpeechRecognition() {
     }
 
     recognition.onend = () => {
-      // Auto-restart if user still wants to listen (handles mobile auto-stop)
-      if (wantListeningRef.current) {
-        try {
-          const newRecognition = createRecognition()
-          if (newRecognition) {
-            recognitionRef.current = newRecognition
-            newRecognition.start()
-            return
-          }
-        } catch {
-          // Restart failed
-        }
-      }
+      wantListeningRef.current = false
       setIsListening(false)
       setInterimTranscript('')
     }
