@@ -58,23 +58,11 @@ export async function exchangeCode(code: string): Promise<GoogleTokens> {
 }
 
 async function storeTokens(tokens: GoogleTokens): Promise<void> {
+  // Always save to localStorage for persistence across refreshes
+  localStorage.setItem(TOKENS_KEY, JSON.stringify(tokens))
+  // Also encrypt in background if crypto is ready
   if (isCryptoReady()) {
-    await secureSet(TOKENS_KEY, tokens)
-  } else {
-    // SECURITY: Store in memory only if crypto isn't ready yet.
-    // Will be persisted once initCrypto() is called.
-    _pendingTokens = tokens
-  }
-}
-
-// Tokens waiting to be encrypted and persisted
-let _pendingTokens: GoogleTokens | null = null
-
-/** Call after initCrypto() to persist any pending tokens */
-export async function flushPendingTokens(): Promise<void> {
-  if (_pendingTokens && isCryptoReady()) {
-    await secureSet(TOKENS_KEY, _pendingTokens)
-    _pendingTokens = null
+    secureSet(TOKENS_KEY, tokens).catch(() => {})
   }
 }
 
@@ -150,8 +138,6 @@ export async function fetchGoogleUser(accessToken: string): Promise<GoogleUser> 
 }
 
 export function getStoredTokens(): GoogleTokens | null {
-  // Return pending tokens if crypto not yet initialized
-  if (_pendingTokens) return _pendingTokens
   try {
     const data = localStorage.getItem(TOKENS_KEY)
     return data ? JSON.parse(data) : null
