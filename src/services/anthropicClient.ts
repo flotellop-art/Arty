@@ -72,14 +72,13 @@ async function fetchWithRetry(
   let response: Response | null = null
   const maxRetries = 3
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    response = await fetch('https://api.anthropic.com/v1/messages', {
+    response = await fetch('/api/ai/proxy', {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
         'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
         'anthropic-beta': 'pdfs-2024-09-25,prompt-caching-2024-07-31',
-        'anthropic-dangerous-direct-browser-access': 'true',
       },
       body: requestBody,
       signal: controller.signal,
