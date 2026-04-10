@@ -7,6 +7,7 @@ import { useComputer } from './useComputer'
 import { useMemory } from './useMemory'
 import { buildContextualPrompt } from '../constants/systemPrompt'
 import { createToolExecutor } from '../services/toolExecutor'
+import { getStyle, setStyle, getStylePrompt, STYLE_OPTIONS, type ResponseStyle } from '../services/responseStyles'
 import type { Question } from '../components/chat/QuestionModal'
 import type { GmailMessage } from '../types/google'
 
@@ -32,6 +33,17 @@ export function useAppSetup(conversation: ConversationHook) {
     questions: Question[]
     resolve: (answers: string[]) => void
   } | null>(null)
+  const [responseStyle, setResponseStyle] = useState<ResponseStyle>(getStyle)
+
+  // Listen for style changes from InputBar
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const style = (e as CustomEvent).detail as ResponseStyle
+      setResponseStyle(style)
+    }
+    window.addEventListener('style-changed', handler)
+    return () => window.removeEventListener('style-changed', handler)
+  }, [])
 
   const toolExecutorRef = useRef(createToolExecutor(computerActions, gmail, drive, browserActions))
 
@@ -99,9 +111,9 @@ export function useAppSetup(conversation: ConversationHook) {
     }
 
     const memorySummary = memoryHook.getPromptContext()
-    const prompt = buildContextualPrompt({ gmailSummary, driveSummary, memorySummary })
+    const prompt = buildContextualPrompt({ gmailSummary, driveSummary, memorySummary }) + getStylePrompt(responseStyle)
     setSystemPrompt(prompt)
-  }, [googleAuth.isConnected, gmail.messages, drive.files, memoryHook.getPromptContext, setSystemPrompt])
+  }, [googleAuth.isConnected, gmail.messages, drive.files, memoryHook.getPromptContext, setSystemPrompt, responseStyle])
 
   // Handle action buttons clicked in reports
   const handleAction = useCallback(
@@ -143,6 +155,11 @@ export function useAppSetup(conversation: ConversationHook) {
     [activeId, sendMessage]
   )
 
+  const changeStyle = useCallback((style: ResponseStyle) => {
+    setStyle(style)
+    setResponseStyle(style)
+  }, [])
+
   return {
     googleAuth,
     gmail,
@@ -153,5 +170,8 @@ export function useAppSetup(conversation: ConversationHook) {
     setActionScreenshot,
     questionModal,
     handleAction,
+    responseStyle,
+    changeStyle,
+    styleOptions: STYLE_OPTIONS,
   }
 }

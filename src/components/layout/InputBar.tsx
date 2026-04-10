@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback, type KeyboardEvent } from 'react'
 import type { FileAttachment } from '../../types'
 import { useSpeechRecognition } from '../../hooks/useSpeechRecognition'
+import { getStyle, setStyle as saveStyle, STYLE_OPTIONS, type ResponseStyle } from '../../services/responseStyles'
 
 interface InputBarProps {
   onSend: (text: string, files?: FileAttachment[]) => void
@@ -10,6 +11,8 @@ interface InputBarProps {
 
 export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
   const [text, setText] = useState('')
+  const [currentStyle, setCurrentStyle] = useState<ResponseStyle>(getStyle)
+  const [showStyles, setShowStyles] = useState(false)
   const [files, setFiles] = useState<FileAttachment[]>([])
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -100,6 +103,14 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
     }
   }
 
+  const handleStyleChange = (style: ResponseStyle) => {
+    saveStyle(style)
+    setCurrentStyle(style)
+    setShowStyles(false)
+    // Notify useAppSetup that style changed
+    window.dispatchEvent(new CustomEvent('style-changed', { detail: style }))
+  }
+
   return (
     <div className="px-4 pb-4 pt-2 bg-cream">
       {/* File previews */}
@@ -123,6 +134,26 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
         </div>
       )}
 
+      {/* Style selector */}
+      {showStyles && (
+        <div className="flex gap-1.5 mb-2 overflow-x-auto pb-1">
+          {STYLE_OPTIONS.map((opt) => (
+            <button
+              key={opt.id}
+              onClick={() => handleStyleChange(opt.id)}
+              className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium transition-colors flex-shrink-0 ${
+                currentStyle === opt.id
+                  ? 'bg-bubble-user text-cream'
+                  : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              <span>{opt.emoji}</span>
+              <span>{opt.label}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Mic error message */}
       {micError && (
         <div className="text-xs text-red-500 mb-1 px-1">
@@ -138,6 +169,18 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
       )}
 
       <div className="flex items-end gap-2 bg-white rounded-2xl border border-gray-200 px-3 py-2 shadow-sm">
+        {/* Style toggle button */}
+        <button
+          onClick={() => setShowStyles((s) => !s)}
+          className={`flex-shrink-0 p-1.5 rounded-full transition-colors mb-0.5 ${
+            currentStyle !== 'default' ? 'bg-orange-100 text-orange-600' : 'hover:bg-gray-100 text-gray-400'
+          }`}
+          aria-label="Style de réponse"
+          title={`Style: ${STYLE_OPTIONS.find(s => s.id === currentStyle)?.label || 'Normal'}`}
+        >
+          <span className="text-sm leading-none">{STYLE_OPTIONS.find(s => s.id === currentStyle)?.emoji || '💬'}</span>
+        </button>
+
         {/* Plus button — file upload */}
         <button
           onClick={() => fileInputRef.current?.click()}

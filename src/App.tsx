@@ -27,6 +27,7 @@ function AppContent() {
     clearActive,
     sendMessage,
     deleteConversation,
+    branchConversation,
     stopStreaming,
   } = conversation
 
@@ -76,6 +77,18 @@ function AppContent() {
     clearActive()
     navigate('/')
   }, [clearActive, navigate, setActionScreenshot])
+
+  const handleBranch = useCallback(
+    (messageIndex: number) => {
+      if (!activeId) return
+      const newId = branchConversation(activeId, messageIndex)
+      if (newId) {
+        selectConversation(newId)
+        navigate(`/chat/${newId}`)
+      }
+    },
+    [activeId, branchConversation, selectConversation, navigate]
+  )
 
   const handleOAuthCallback = useCallback(
     async (code: string) => {
@@ -136,6 +149,7 @@ function AppContent() {
               computerActions={computerActions}
               actionScreenshot={actionScreenshot}
               onAction={handleAction}
+              onBranch={handleBranch}
             />
           }
         />
@@ -166,6 +180,7 @@ interface ChatRouteProps {
   computerActions: ReturnType<typeof import('./hooks/useComputer').useComputer>
   actionScreenshot: string | null
   onAction?: (action: string, params: Record<string, string>) => void
+  onBranch?: (messageIndex: number) => void
 }
 
 function ChatRoute({
@@ -183,6 +198,7 @@ function ChatRoute({
   computerActions,
   actionScreenshot,
   onAction,
+  onBranch,
 }: ChatRouteProps) {
   const { id } = useParams<{ id: string }>()
 
@@ -214,6 +230,7 @@ function ChatRoute({
       computerActions={computerActions}
       actionScreenshot={actionScreenshot}
       onAction={onAction}
+      onBranch={onBranch}
     />
   )
 }

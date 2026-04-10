@@ -18,6 +18,7 @@ interface ConversationScreenProps {
   onSend: (text: string, files?: FileAttachment[]) => void
   onStop: () => void
   onAction?: (action: string, params: Record<string, string>) => void
+  onBranch?: (messageIndex: number) => void
   gmail: ReturnType<typeof useGmail>
   drive: ReturnType<typeof useDrive>
   browserActions: ReturnType<typeof useBrowser>
@@ -34,6 +35,7 @@ export function ConversationScreen({
   onSend,
   onStop,
   onAction,
+  onBranch,
   gmail,
   drive,
   browserActions,
@@ -54,6 +56,7 @@ export function ConversationScreen({
         isStreaming={isStreaming}
         streamingContent={streamingContent}
         onAction={onAction}
+        onBranch={onBranch}
       />
 
       {actionScreenshot && (

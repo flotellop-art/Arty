@@ -77,7 +77,7 @@ async function fetchWithRetry(
         'content-type': 'application/json',
         'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
-        'anthropic-beta': 'pdfs-2024-09-25',
+        'anthropic-beta': 'pdfs-2024-09-25,prompt-caching-2024-07-31',
         'anthropic-dangerous-direct-browser-access': 'true',
       },
       body: requestBody,
@@ -108,7 +108,7 @@ async function parseSSEStream(
   onToken: (text: string) => void,
   _controller: AbortController
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-): Promise<{ contentBlocks: any[]; inputTokens: number; outputTokens: number }> {
+): Promise<{ contentBlocks: any[]; inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheCreationTokens: number }> {
   const reader = response.body!.getReader()
   const decoder = new TextDecoder()
 
@@ -119,6 +119,8 @@ async function parseSSEStream(
   let currentTextContent = ''
   let inputTokens = 0
   let outputTokens = 0
+  let cacheReadTokens = 0
+  let cacheCreationTokens = 0
   let buffer = ''
   let eventType = ''
 
@@ -152,6 +154,8 @@ async function parseSSEStream(
           case 'message_start':
             if (data.message?.usage) {
               inputTokens = data.message.usage.input_tokens || 0
+              cacheReadTokens = data.message.usage.cache_read_input_tokens || 0
+              cacheCreationTokens = data.message.usage.cache_creation_input_tokens || 0
             }
             break
 
@@ -219,7 +223,7 @@ async function parseSSEStream(
     reader.releaseLock()
   }
 
-  return { contentBlocks, inputTokens, outputTokens }
+  return { contentBlocks, inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens }
 }
 
 async function runWithTools(
@@ -246,13 +250,24 @@ async function runWithTools(
     while (maxIterations > 0) {
       maxIterations--
 
+      // Build system prompt with cache_control for prompt caching
+      const systemText = options?.systemPrompt || SYSTEM_PROMPT
+      const systemBlocks = [
+        { type: 'text', text: systemText, cache_control: { type: 'ephemeral' } },
+      ]
+
+      // Add cache_control to last tool for tool definitions caching
+      const cachedTools = TOOLS.map((t, i) =>
+        i === TOOLS.length - 1 ? { ...t, cache_control: { type: 'ephemeral' } } : t
+      )
+
       const requestBody = JSON.stringify({
         model: 'claude-sonnet-4-6',
         max_tokens: 65536,
         temperature: 0.7,
         stream: true,
-        system: options?.systemPrompt || SYSTEM_PROMPT,
-        tools: TOOLS,
+        system: systemBlocks,
+        tools: cachedTools,
         messages: apiMessages,
       })
 

@@ -170,6 +170,28 @@ export function useConversation() {
     [activeId, refreshConversations]
   )
 
+  // Branch a conversation from a specific message index
+  const branchConversation = useCallback(
+    (fromConvId: string, messageIndex: number): string | null => {
+      const conv = storage.getConversation(fromConvId)
+      if (!conv) return null
+
+      const branchedMessages = conv.messages.slice(0, messageIndex + 1)
+      const newId = generateId()
+      const newConv: Conversation = {
+        id: newId,
+        title: `${conv.title} (branche)`,
+        messages: branchedMessages.map(m => ({ ...m, id: generateId() })),
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      }
+      storage.saveConversation(newConv)
+      refreshConversations()
+      return newId
+    },
+    [refreshConversations]
+  )
+
   return {
     conversations,
     activeConversation,
@@ -182,6 +204,7 @@ export function useConversation() {
     clearActive,
     sendMessage,
     deleteConversation: deleteConv,
+    branchConversation,
     stopStreaming: streaming.stopStreaming,
     setSystemPrompt,
     setToolHandler,
