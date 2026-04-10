@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, type KeyboardEvent } from 'react'
+import { useState, useRef, useEffect, useCallback, type KeyboardEvent } from 'react'
 import type { FileAttachment } from '../../types'
 import { useSpeechRecognition } from '../../hooks/useSpeechRecognition'
 
@@ -16,12 +16,11 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
 
   const {
     isListening,
-    transcript,
     interimTranscript,
+    error: micError,
     isSupported: isMicSupported,
     startListening,
     stopListening,
-    resetTranscript,
   } = useSpeechRecognition()
 
   // Auto-resize textarea
@@ -32,16 +31,13 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
     el.style.height = Math.min(el.scrollHeight, 120) + 'px'
   }, [text])
 
-  // Append transcript to text when speech recognition produces final results
-  useEffect(() => {
-    if (transcript) {
-      setText((prev) => {
-        const separator = prev && !prev.endsWith(' ') ? ' ' : ''
-        return prev + separator + transcript
-      })
-      resetTranscript()
-    }
-  }, [transcript, resetTranscript])
+  // Callback for speech recognition — appends each final phrase to text
+  const handleTranscript = useCallback((spokenText: string) => {
+    setText((prev) => {
+      if (!prev) return spokenText
+      return prev + (prev.endsWith(' ') ? '' : ' ') + spokenText
+    })
+  }, [])
 
   const handleSend = () => {
     const trimmed = text.trim()
@@ -70,7 +66,6 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
     for (let i = 0; i < selectedFiles.length; i++) {
       const f = selectedFiles.item(i)
       if (!f) continue
-      // Max 10MB
       if (f.size > 10 * 1024 * 1024) continue
 
       const base64 = await new Promise<string>((resolve) => {
@@ -90,7 +85,6 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
     }
 
     setFiles((prev) => [...prev, ...newFiles])
-    // Reset input so same file can be selected again
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
@@ -102,7 +96,7 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
     if (isListening) {
       stopListening()
     } else {
-      startListening()
+      startListening(handleTranscript)
     }
   }
 
@@ -126,6 +120,13 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
               </button>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Mic error message */}
+      {micError && (
+        <div className="text-xs text-red-500 mb-1 px-1">
+          {micError}
         </div>
       )}
 

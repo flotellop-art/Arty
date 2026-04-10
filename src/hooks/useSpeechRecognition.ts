@@ -8,15 +8,12 @@ interface SpeechRecognitionEvent {
 
 interface SpeechRecognitionResultList {
   length: number
-  item(index: number): SpeechRecognitionResult
-  [index: number]: SpeechRecognitionResult
+  [index: number]: SpeechRecognitionResult | undefined
 }
 
 interface SpeechRecognitionResult {
   isFinal: boolean
-  length: number
-  item(index: number): SpeechRecognitionAlternative
-  [index: number]: SpeechRecognitionAlternative
+  [index: number]: SpeechRecognitionAlternative | undefined
 }
 
 interface SpeechRecognitionAlternative {
@@ -46,93 +43,142 @@ declare global {
 
 export function useSpeechRecognition() {
   const [isListening, setIsListening] = useState(false)
-  const [transcript, setTranscript] = useState('')
   const [interimTranscript, setInterimTranscript] = useState('')
+  const [error, setError] = useState<string | null>(null)
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null)
-  const finalTranscriptRef = useRef('')
+  const wantListeningRef = useRef(false)
+  const onTranscriptRef = useRef<((text: string) => void) | null>(null)
 
   const isSupported = typeof window !== 'undefined' &&
     ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window)
 
+  const createRecognition = useCallback(() => {
+    if (!isSupported) return null
+
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
+    const recognition = new SpeechRecognition()
+
+    // Don't use continuous — it's broken on mobile. Instead, restart on end.
+    recognition.continuous = false
+    recognition.interimResults = true
+    recognition.lang = 'fr-FR'
+
+    recognition.onstart = () => {
+      setIsListening(true)
+      setError(null)
+    }
+
+    recognition.onresult = (event: SpeechRecognitionEvent) => {
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const result = event.results[i]
+        if (!result || !result[0]) continue
+
+        if (result.isFinal) {
+          // Send final text immediately to the callback
+          const text = result[0].transcript.trim()
+          if (text && onTranscriptRef.current) {
+            onTranscriptRef.current(text)
+          }
+          setInterimTranscript('')
+        } else {
+          setInterimTranscript(result[0].transcript)
+        }
+      }
+    }
+
+    recognition.onerror = (event) => {
+      const err = event.error
+      if (err === 'aborted') return
+
+      if (err === 'not-allowed') {
+        setError('Micro refusé — autorise le micro dans les paramètres du navigateur')
+        wantListeningRef.current = false
+      } else if (err === 'no-speech') {
+        // Normal — user paused, will auto-restart via onend
+      } else if (err === 'network') {
+        setError('Erreur réseau — vérifie ta connexion')
+        wantListeningRef.current = false
+      } else {
+        setError(`Erreur micro: ${err}`)
+        wantListeningRef.current = false
+      }
+    }
+
+    recognition.onend = () => {
+      // Auto-restart if user still wants to listen (handles mobile auto-stop)
+      if (wantListeningRef.current) {
+        try {
+          const newRecognition = createRecognition()
+          if (newRecognition) {
+            recognitionRef.current = newRecognition
+            newRecognition.start()
+            return
+          }
+        } catch {
+          // Restart failed
+        }
+      }
+      setIsListening(false)
+      setInterimTranscript('')
+    }
+
+    return recognition
+  }, [isSupported])
+
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
+      wantListeningRef.current = false
       if (recognitionRef.current) {
         recognitionRef.current.abort()
       }
     }
   }, [])
 
-  const startListening = useCallback(() => {
-    if (!isSupported) return
-
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
-    const recognition = new SpeechRecognition()
-
-    recognition.continuous = true
-    recognition.interimResults = true
-    recognition.lang = 'fr-FR'
-
-    recognition.onstart = () => {
-      setIsListening(true)
-      finalTranscriptRef.current = ''
-      setTranscript('')
-      setInterimTranscript('')
+  const startListening = useCallback((onTranscript: (text: string) => void) => {
+    if (!isSupported) {
+      setError('Reconnaissance vocale non supportée sur ce navigateur')
+      return
     }
 
-    recognition.onresult = (event: SpeechRecognitionEvent) => {
-      let interim = ''
-      let final = finalTranscriptRef.current
+    setError(null)
+    wantListeningRef.current = true
+    onTranscriptRef.current = onTranscript
 
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const result = event.results[i]
-        if (!result || !result[0]) continue
-        if (result.isFinal) {
-          final += result[0].transcript
-        } else {
-          interim += result[0].transcript
-        }
-      }
+    const recognition = createRecognition()
+    if (!recognition) return
 
-      finalTranscriptRef.current = final
-      setTranscript(final)
-      setInterimTranscript(interim)
-    }
-
-    recognition.onerror = (event) => {
-      if (event.error !== 'aborted') {
-        console.warn('Speech recognition error:', event.error)
-      }
-      setIsListening(false)
-    }
-
-    recognition.onend = () => {
-      setIsListening(false)
-      setInterimTranscript('')
+    // Stop any existing recognition
+    if (recognitionRef.current) {
+      recognitionRef.current.abort()
     }
 
     recognitionRef.current = recognition
-    recognition.start()
-  }, [isSupported])
+
+    try {
+      recognition.start()
+    } catch (e) {
+      // Already started or other error
+      setError('Impossible de démarrer le micro')
+      wantListeningRef.current = false
+    }
+  }, [isSupported, createRecognition])
 
   const stopListening = useCallback(() => {
+    wantListeningRef.current = false
+    onTranscriptRef.current = null
     if (recognitionRef.current) {
       recognitionRef.current.stop()
     }
-  }, [])
-
-  const resetTranscript = useCallback(() => {
-    finalTranscriptRef.current = ''
-    setTranscript('')
     setInterimTranscript('')
   }, [])
 
   return {
     isListening,
-    transcript,
     interimTranscript,
+    error,
     isSupported,
     startListening,
     stopListening,
-    resetTranscript,
   }
 }
