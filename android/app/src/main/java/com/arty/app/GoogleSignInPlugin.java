@@ -48,7 +48,7 @@ public class GoogleSignInPlugin extends Plugin {
     }
 
     @ActivityCallback
-    private void handleSignInResult(PluginCall call, ActivityResult result) {
+    public void handleSignInResult(PluginCall call, ActivityResult result) {
         if (call == null) return;
 
         try {
