@@ -2,7 +2,7 @@ import { SYSTEM_PROMPT } from '../constants/systemPrompt'
 import { TOOLS } from './toolDefinitions'
 import { addUsage } from './tokenTracker'
 
-type ToolHandler = (name: string, input: Record<string, unknown>) => Promise<{ result: string; screenshot?: string }>
+type ToolHandler = (name: string, input: Record<string, unknown>) => Promise<{ result: string; screenshot?: string; fileData?: { name: string; mimeType: string; base64: string } }>
 
 interface StreamOptions {
   systemPrompt?: string
@@ -275,11 +275,36 @@ async function runWithTools(
         if (block.type === 'tool_use') {
           const toolResult = await options.onToolCall(block.name, block.input)
 
-          toolResults.push({
-            type: 'tool_result',
-            tool_use_id: block.id,
-            content: toolResult.result,
-          })
+          // If tool returned a file (e.g. PDF from Drive), send it as a document block
+          // so Claude can read the file natively
+          if (toolResult.fileData) {
+            const contentBlocks: Array<Record<string, unknown>> = [
+              { type: 'text', text: toolResult.result },
+            ]
+            const mime = toolResult.fileData.mimeType
+            if (mime === 'application/pdf') {
+              contentBlocks.push({
+                type: 'document',
+                source: { type: 'base64', media_type: 'application/pdf', data: toolResult.fileData.base64 },
+              })
+            } else if (mime?.startsWith('image/')) {
+              contentBlocks.push({
+                type: 'image',
+                source: { type: 'base64', media_type: mime, data: toolResult.fileData.base64 },
+              })
+            }
+            toolResults.push({
+              type: 'tool_result',
+              tool_use_id: block.id,
+              content: contentBlocks,
+            })
+          } else {
+            toolResults.push({
+              type: 'tool_result',
+              tool_use_id: block.id,
+              content: toolResult.result,
+            })
+          }
         }
       }
 

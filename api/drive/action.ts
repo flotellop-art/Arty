@@ -5,6 +5,7 @@ import { createApiHandler } from '../_lib/apiHandler'
 export default createApiHandler({
   list: handleList,
   read: handleRead,
+  download: handleDownload,
   create: handleCreate,
   update: handleUpdate,
   delete: handleDelete,
@@ -69,6 +70,34 @@ async function handleRead(token: string, req: VercelRequest, res: VercelResponse
     }
     return res.status(200).json({ id: meta.id, name: meta.name, mimeType: meta.mimeType, modifiedTime: meta.modifiedTime, content: content.slice(0, 10000) })
   } catch { return res.status(500).json({ error: 'Failed to read file' }) }
+}
+
+async function handleDownload(token: string, req: VercelRequest, res: VercelResponse) {
+  const fileId = (req.query.id || req.body?.id) as string
+  if (!fileId) return res.status(400).json({ error: 'Missing id' })
+  try {
+    const metaRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=id,name,mimeType`, { headers: { Authorization: `Bearer ${token}` } })
+    if (!metaRes.ok) { const err = await metaRes.json(); return res.status(metaRes.status).json({ error: err.error?.message }) }
+    const meta = await metaRes.json()
+
+    let dlUrl: string
+    if (meta.mimeType === 'application/vnd.google-apps.document') {
+      dlUrl = `https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=application/pdf`
+    } else if (meta.mimeType === 'application/vnd.google-apps.spreadsheet') {
+      dlUrl = `https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=application/pdf`
+    } else {
+      dlUrl = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`
+    }
+
+    const dlRes = await fetch(dlUrl, { headers: { Authorization: `Bearer ${token}` } })
+    if (!dlRes.ok) return res.status(dlRes.status).json({ error: 'Download failed' })
+
+    const buffer = Buffer.from(await dlRes.arrayBuffer())
+    const base64 = buffer.toString('base64')
+    const mimeType = meta.mimeType?.startsWith('application/vnd.google-apps.') ? 'application/pdf' : meta.mimeType
+
+    return res.status(200).json({ id: meta.id, name: meta.name, mimeType, base64, size: buffer.length })
+  } catch { return res.status(500).json({ error: 'Download failed' }) }
 }
 
 async function handleCreate(token: string, req: VercelRequest, res: VercelResponse) {

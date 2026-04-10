@@ -160,9 +160,39 @@ export function createDriveHandlers(drive: ReturnType<typeof useDrive>): Record<
       const fileId = input.file_id as string
       if (!fileId) return { result: 'Erreur: ID fichier manquant.' }
       try {
+        // 1. Try text extraction (pdf-parse + OCR)
         const data = await callGoogleApi('/api/drive/action', { type: 'read', id: fileId })
         if (data.error) return { result: `Erreur lecture: ${data.error}` }
-        return { result: `Fichier: ${data.name}\nType: ${data.mimeType}\n\nContenu:\n${data.content}` }
+
+        const content = data.content || ''
+        const isUnreadable = !content
+          || content.startsWith('[PDF illisible')
+          || content.startsWith('[OCR échoué')
+          || content.startsWith('[OCR erreur')
+          || content.startsWith('[OCR:')
+          || content.startsWith('[Fichier binaire')
+          || (content.length < 50 && data.mimeType === 'application/pdf')
+
+        if (!isUnreadable) {
+          return { result: `Fichier: ${data.name}\nType: ${data.mimeType}\n\nContenu:\n${content}` }
+        }
+
+        // 2. Text extraction failed — download raw file for Claude to read natively
+        try {
+          const dlData = await callGoogleApi('/api/drive/action', { type: 'download', id: fileId })
+          if (dlData.base64 && dlData.mimeType) {
+            return {
+              result: `Fichier: ${dlData.name} (${dlData.mimeType}) — le texte n'a pas pu être extrait, voici le document brut pour lecture directe.`,
+              fileData: {
+                name: dlData.name,
+                mimeType: dlData.mimeType,
+                base64: dlData.base64,
+              },
+            }
+          }
+        } catch { /* download failed, return original result */ }
+
+        return { result: `Fichier: ${data.name}\nType: ${data.mimeType}\n\nContenu:\n${content}` }
       } catch (err) {
         return { result: `Erreur: ${err instanceof Error ? err.message : 'lecture échouée'}` }
       }
