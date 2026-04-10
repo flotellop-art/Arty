@@ -36,6 +36,25 @@
     </application>
 
     <!-- Permissions -->
-
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Camera -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+
+    <!-- Fichiers — Android 12 et moins -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+
+    <!-- Fichiers — Android 13+ (granular media permissions) -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+
+    <!-- Notifications push -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- Vibration (haptics) -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+
 </manifest>

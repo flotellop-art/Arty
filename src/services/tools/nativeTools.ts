@@ -24,7 +24,8 @@ export function createNativeHandlers(): Record<string, ToolHandler> {
       if (!file) return { result: `Impossible de lire le fichier : ${path}` }
 
       if (file.mimeType.startsWith('text/') || file.mimeType === 'application/json') {
-        const text = atob(file.data)
+        // Decode base64 with UTF-8 support (accents, special chars)
+        const text = decodeURIComponent(escape(atob(file.data)))
         return { result: `Contenu de ${path} :\n${text}` }
       }
 

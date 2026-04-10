@@ -5,7 +5,7 @@
     <key>CAPACITOR_DEBUG</key>
 	<string>$(CAPACITOR_DEBUG)</string>
 	<key>CFBundleDevelopmentRegion</key>
-	<string>en</string>
+	<string>fr</string>
 	<key>CFBundleDisplayName</key>
         <string>Arty</string>
 	<key>CFBundleExecutable</key>
@@ -47,5 +47,15 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
+
+	<!-- Privacy descriptions (required by Apple) -->
+	<key>NSCameraUsageDescription</key>
+	<string>Arty utilise la caméra pour prendre des photos et scanner des documents.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Arty accède à vos photos pour les joindre aux conversations.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Arty enregistre les photos et documents générés dans votre galerie.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Arty utilise le micro pour la saisie vocale.</string>
 </dict>
 </plist>

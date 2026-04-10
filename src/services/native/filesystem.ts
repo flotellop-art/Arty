@@ -1,5 +1,5 @@
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem'
-import { isNative } from './platform'
+import { isNative, platform } from './platform'
 
 export interface LocalFile {
   name: string
@@ -8,6 +8,11 @@ export interface LocalFile {
   size?: number
   modifiedAt?: number
   uri?: string
+}
+
+/** Use ExternalStorage on Android (sdcard), Documents on iOS */
+function getReadDirectory(): Directory {
+  return platform === 'android' ? Directory.ExternalStorage : Directory.Documents
 }
 
 /**
@@ -20,7 +25,7 @@ export async function listLocalFiles(path: string = ''): Promise<LocalFile[]> {
   try {
     const result = await Filesystem.readdir({
       path: path || '',
-      directory: Directory.ExternalStorage,
+      directory: getReadDirectory(),
     })
 
     return result.files.map((f) => ({
@@ -44,17 +49,29 @@ export async function readLocalFile(path: string): Promise<{ data: string; mimeT
   if (!isNative) return null
 
   try {
-    const result = await Filesystem.readFile({
-      path,
-      directory: Directory.ExternalStorage,
-    })
-
     const ext = path.split('.').pop()?.toLowerCase() || ''
     const mimeType = getMimeType(ext)
+    const isText = mimeType.startsWith('text/') || mimeType === 'application/json'
 
-    // result.data is base64 string or Blob depending on version
+    if (isText) {
+      // Read text files with UTF-8 encoding to handle accents correctly
+      const result = await Filesystem.readFile({
+        path,
+        directory: getReadDirectory(),
+        encoding: Encoding.UTF8,
+      })
+      // Convert text content to base64 for consistency
+      const data = typeof result.data === 'string' ? btoa(unescape(encodeURIComponent(result.data))) : ''
+      return { data, mimeType }
+    }
+
+    // Read binary files (PDF, images) as base64
+    const result = await Filesystem.readFile({
+      path,
+      directory: getReadDirectory(),
+    })
+
     const data = typeof result.data === 'string' ? result.data : await blobToBase64(result.data as Blob)
-
     return { data, mimeType }
   } catch (err) {
     console.warn('readLocalFile failed:', err)
@@ -169,7 +186,7 @@ function downloadInBrowser(filename: string, data: string, encoding: 'utf8' | 'b
     for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
     blob = new Blob([bytes])
   } else {
-    blob = new Blob([data], { type: 'text/plain' })
+    blob = new Blob([data], { type: 'text/plain;charset=utf-8' })
   }
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
