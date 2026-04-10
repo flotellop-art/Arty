@@ -37,29 +37,10 @@ export function useGoogleAuth() {
   }, [isConnected])
 
   const login = useCallback(async () => {
-    alert('login called, isNative=' + Capacitor.isNativePlatform())
     if (Capacitor.isNativePlatform()) {
-      alert('Trying native Google Sign-In...')
-      // Native: use Google Sign-In SDK (popup natif)
       try {
         setIsLoading(true)
         const result = await GoogleSignInNative.signIn()
-
-        // Exchange serverAuthCode for access+refresh tokens
-        const res = await fetch(apiUrl('/api/auth/token'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ code: result.serverAuthCode, redirect_uri: '' }),
-        })
-        const tokens = await res.json()
-
-        if (tokens.access_token) {
-          scoped.setJSON('google-tokens', {
-            access_token: tokens.access_token,
-            refresh_token: tokens.refresh_token || '',
-            expires_at: Date.now() + (tokens.expires_in || 3600) * 1000,
-          })
-        }
 
         const googleUser: GoogleUser = {
           email: result.email,
@@ -70,7 +51,6 @@ export function useGoogleAuth() {
         setUser(googleUser)
         setIsConnected(true)
       } catch (err) {
-        alert('Native error: ' + (err as Error).message)
         setError(err instanceof Error ? err.message : 'Erreur Google Sign-In')
       } finally {
         setIsLoading(false)
