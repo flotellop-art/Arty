@@ -36,15 +36,6 @@ public class GoogleSignInPlugin extends Plugin {
                 .requestEmail()
                 .requestProfile()
                 .requestServerAuthCode(serverClientId)
-                .requestScopes(
-                    new Scope("https://www.googleapis.com/auth/gmail.readonly"),
-                    new Scope("https://www.googleapis.com/auth/gmail.send"),
-                    new Scope("https://www.googleapis.com/auth/gmail.modify"),
-                    new Scope("https://www.googleapis.com/auth/drive"),
-                    new Scope("https://www.googleapis.com/auth/calendar"),
-                    new Scope("https://www.googleapis.com/auth/calendar.events"),
-                    new Scope("https://www.googleapis.com/auth/contacts")
-                )
                 .build();
 
         googleSignInClient = GoogleSignIn.getClient(getActivity(), gso);
