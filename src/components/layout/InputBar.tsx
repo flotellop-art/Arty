@@ -220,31 +220,29 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
         </div>
       )}
 
-      <div className="flex items-end gap-2 bg-white rounded-2xl border border-gray-200 px-3 py-2 shadow-sm">
-        {/* Style toggle button */}
+      {/* Quick toggles — style + model */}
+      <div className="flex gap-2 mb-1.5">
         <button
           onClick={() => { setShowStyles((s) => !s); setShowModels(false) }}
-          className={`flex-shrink-0 p-1.5 rounded-full transition-colors mb-0.5 ${
-            currentStyle !== 'default' ? 'bg-orange-100 text-orange-600' : 'hover:bg-gray-100 text-gray-400'
+          className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs transition-colors ${
+            currentStyle !== 'default' ? 'bg-orange-100 text-orange-600' : 'bg-gray-100 text-gray-500'
           }`}
-          aria-label="Style de réponse"
-          title={`Style: ${STYLE_OPTIONS.find(s => s.id === currentStyle)?.label || 'Normal'}`}
         >
-          <span className="text-sm leading-none">{STYLE_OPTIONS.find(s => s.id === currentStyle)?.emoji || '💬'}</span>
+          <span>{STYLE_OPTIONS.find(s => s.id === currentStyle)?.emoji || '💬'}</span>
+          <span>{STYLE_OPTIONS.find(s => s.id === currentStyle)?.label || 'Normal'}</span>
         </button>
-
-        {/* Model toggle button */}
         <button
           onClick={() => { setShowModels((s) => !s); setShowStyles(false) }}
-          className={`flex-shrink-0 p-1.5 rounded-full transition-colors mb-0.5 ${
-            currentModel !== 'auto' ? 'bg-blue-100 text-blue-600' : 'hover:bg-gray-100 text-gray-400'
+          className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs transition-colors ${
+            currentModel !== 'auto' ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-500'
           }`}
-          aria-label="Modèle IA"
-          title={`Modèle: ${MODEL_OPTIONS.find(m => m.id === currentModel)?.label || 'Auto'}`}
         >
-          <span className="text-sm leading-none">{MODEL_OPTIONS.find(m => m.id === currentModel)?.flag || '🔄'}</span>
+          <span>{MODEL_OPTIONS.find(m => m.id === currentModel)?.flag || '🔄'}</span>
+          <span>{MODEL_OPTIONS.find(m => m.id === currentModel)?.label || 'Auto'}</span>
         </button>
+      </div>
 
+      <div className="flex items-end gap-2 bg-white rounded-2xl border border-gray-200 px-3 py-2 shadow-sm">
         {/* Plus button — file upload */}
         <button
           onClick={() => fileInputRef.current?.click()}
