@@ -1,6 +1,6 @@
 import type { Env } from '../../env'
 
-const AI_GATEWAY_URL = 'https://gateway.ai.cloudflare.com/v1/ea69cd5ca383355efe77bf22e68207e4/arty/anthropic/v1/messages'
+const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages'
 
 export const onRequestPost: PagesFunction<Env> = async ({ request }) => {
   // Get the API key from the request header (user's BYOK key)
@@ -27,7 +27,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request }) => {
 
   try {
     // Forward to AI Gateway with the user's API key
-    const response = await fetch(AI_GATEWAY_URL, {
+    const response = await fetch(ANTHROPIC_URL, {
       method: 'POST',
       headers,
       body,
