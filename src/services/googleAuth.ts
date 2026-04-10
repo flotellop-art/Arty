@@ -16,7 +16,10 @@ const SCOPES = [
 ].join(' ')
 
 export function getRedirectUri(): string {
-  return import.meta.env.VITE_GOOGLE_REDIRECT_URI || `${window.location.origin}/auth/callback`
+  if (import.meta.env.VITE_GOOGLE_REDIRECT_URI) return import.meta.env.VITE_GOOGLE_REDIRECT_URI
+  // On native, origin is https://localhost — use Cloudflare URL instead
+  if (window.location.origin.includes('localhost')) return 'https://appfacade.pages.dev/auth/callback'
+  return `${window.location.origin}/auth/callback`
 }
 
 export function buildOAuthUrl(): string {
