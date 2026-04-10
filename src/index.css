@@ -9,6 +9,13 @@ body {
   margin: 0;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  /* Safe area for Android/iOS navigation bars */
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+html {
+  /* Ensure the app respects safe areas on all sides */
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
 }
 
 @keyframes slow-rotate {

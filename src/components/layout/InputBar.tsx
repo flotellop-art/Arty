@@ -144,7 +144,7 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
   }
 
   return (
-    <div className="px-4 pb-4 pt-2 bg-cream">
+    <div className="px-4 pb-4 pt-2 bg-cream" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 1rem))' }}>
       {/* File previews */}
       {files.length > 0 && (
         <div className="flex gap-2 mb-2 overflow-x-auto pb-1">
