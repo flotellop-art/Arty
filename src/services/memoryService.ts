@@ -1,72 +1,13 @@
-import * as drive from './driveClient'
-import { isConnected } from './googleAuth'
 import { getActiveUserId } from './userSession'
 
-const MEMORY_FOLDER_NAME = 'IA-Memoire'
-const MEMORY_FILES = {
-  profil: 'profil.json',
-  clients: 'clients.json',
-  chantiers: 'chantiers.json',
-  notes: 'notes.json',
-} as const
-
-type MemoryCategory = keyof typeof MEMORY_FILES
+const MEMORY_CATEGORIES = ['profil', 'clients', 'chantiers', 'notes'] as const
+type MemoryCategory = typeof MEMORY_CATEGORIES[number]
 
 export interface MemoryData {
   profil: Record<string, unknown>
   clients: Record<string, unknown>[]
   chantiers: Record<string, unknown>[]
   notes: string[]
-}
-
-// Cache folder/file IDs to avoid repeated lookups
-let folderIdCache: string | null = null
-const fileIdCache: Partial<Record<MemoryCategory, string>> = {}
-
-async function findOrCreateFolder(): Promise<string> {
-  if (folderIdCache) return folderIdCache
-
-  // Search for existing folder
-  const files = await drive.listFiles(undefined, MEMORY_FOLDER_NAME)
-  const folder = files.find(
-    (f) => f.name === MEMORY_FOLDER_NAME && f.mimeType === 'application/vnd.google-apps.folder'
-  )
-
-  if (folder) {
-    folderIdCache = folder.id
-    return folder.id
-  }
-
-  // Create folder via Drive API
-  const { getValidAccessToken } = await import('./googleAuth')
-  const token = await getValidAccessToken()
-  if (!token) throw new Error('Google non connecté')
-
-  const r = await fetch('/api/drive/action', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({ type: 'create_folder', name: MEMORY_FOLDER_NAME }),
-  })
-  const data = await r.json()
-  folderIdCache = data.id
-  return data.id
-}
-
-async function findMemoryFile(category: MemoryCategory): Promise<string | null> {
-  if (fileIdCache[category]) return fileIdCache[category]!
-
-  const folderId = await findOrCreateFolder()
-  const files = await drive.listFiles(folderId)
-  const file = files.find((f) => f.name === MEMORY_FILES[category])
-
-  if (file) {
-    fileIdCache[category] = file.id
-    return file.id
-  }
-  return null
 }
 
 function getDefaultData(category: MemoryCategory): unknown {
@@ -87,7 +28,7 @@ function getDefaultData(category: MemoryCategory): unknown {
   }
 }
 
-// ─── D1 fallback for users without Google ───
+// ─── D1 memory storage ───
 
 async function readMemoryD1(category: MemoryCategory): Promise<unknown> {
   const userId = getActiveUserId()
@@ -126,18 +67,8 @@ async function updateMemoryD1(category: MemoryCategory, data: unknown): Promise<
 // ─── Public API (auto-selects Drive or D1) ───
 
 export async function readMemory(category: MemoryCategory): Promise<unknown> {
-  // Use Google Drive if connected, otherwise D1
-  if (!isConnected()) return readMemoryD1(category)
-
-  try {
-    const fileId = await findMemoryFile(category)
-    if (!fileId) return getDefaultData(category)
-
-    const file = await drive.readFile(fileId)
-    return JSON.parse(file.content)
-  } catch {
-    return getDefaultData(category)
-  }
+  // Always use D1 for all users
+  return readMemoryD1(category)
 }
 
 export async function readAllMemory(): Promise<MemoryData> {
@@ -160,57 +91,7 @@ export async function updateMemory(
   category: MemoryCategory,
   data: unknown
 ): Promise<{ success: boolean; message: string }> {
-  // Use Google Drive if connected, otherwise D1
-  if (!isConnected()) return updateMemoryD1(category, data)
-
-  try {
-    const folderId = await findOrCreateFolder()
-    const content = JSON.stringify(data, null, 2)
-    const fileName = MEMORY_FILES[category]
-
-    const fileId = await findMemoryFile(category)
-
-    if (fileId) {
-      // Update existing file — use Drive API update
-      const { getValidAccessToken } = await import('./googleAuth')
-      const token = await getValidAccessToken()
-      if (!token) return { success: false, message: 'Google non connecté' }
-
-      const res = await fetch('/api/drive/action', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ type: 'update', id: fileId, content }),
-      })
-
-      if (!res.ok) {
-        // Fallback: delete and recreate
-        await fetch('/api/drive/action', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ type: 'delete', id: fileId }),
-        })
-        const newFile = await drive.createFile(fileName, content, { folderId })
-        fileIdCache[category] = newFile.id
-      }
-    } else {
-      // Create new file
-      const newFile = await drive.createFile(fileName, content, { folderId })
-      fileIdCache[category] = newFile.id
-    }
-
-    return { success: true, message: `Mémoire "${category}" mise à jour.` }
-  } catch (err) {
-    return {
-      success: false,
-      message: `Erreur mise à jour mémoire: ${err instanceof Error ? err.message : 'inconnu'}`,
-    }
-  }
+  return updateMemoryD1(category, data)
 }
 
 export function formatMemoryForPrompt(memory: MemoryData): string {
@@ -248,10 +129,7 @@ export function formatMemoryForPrompt(memory: MemoryData): string {
   return `\n\nMÉMOIRE PERSISTANTE (stockée sur Drive, mise à jour auto) :\n${parts.join('\n\n')}`
 }
 
-/** Reset in-memory caches (call on logout) */
+/** Reset (call on logout) */
 export function resetMemoryCache(): void {
-  folderIdCache = null
-  for (const key of Object.keys(fileIdCache) as MemoryCategory[]) {
-    delete fileIdCache[key]
-  }
+  // No local cache to clear — D1 handles everything server-side
 }
