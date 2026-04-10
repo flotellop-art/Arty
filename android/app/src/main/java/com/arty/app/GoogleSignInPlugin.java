@@ -1,6 +1,5 @@
 package com.arty.app;
 
-import android.app.Activity;
 import android.content.Intent;
 
 import com.getcapacitor.JSObject;
@@ -8,6 +7,7 @@ import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
+import com.getcapacitor.annotation.ActivityCallback;
 
 import com.google.android.gms.auth.api.signin.GoogleSignIn;
 import com.google.android.gms.auth.api.signin.GoogleSignInAccount;
@@ -16,12 +16,12 @@ import com.google.android.gms.auth.api.signin.GoogleSignInOptions;
 import com.google.android.gms.common.api.ApiException;
 import com.google.android.gms.tasks.Task;
 
+import androidx.activity.result.ActivityResult;
+
 @CapacitorPlugin(name = "GoogleSignInNative")
 public class GoogleSignInPlugin extends Plugin {
 
-    private static final int RC_SIGN_IN = 9001;
     private GoogleSignInClient googleSignInClient;
-    private PluginCall savedCall;
 
     @Override
     public void load() {
@@ -42,28 +42,16 @@ public class GoogleSignInPlugin extends Plugin {
 
     @PluginMethod
     public void signIn(PluginCall call) {
-        savedCall = call;
-        bridge.saveCall(call);
         Intent signInIntent = googleSignInClient.getSignInIntent();
-        getActivity().startActivityForResult(signInIntent, RC_SIGN_IN);
+        startActivityForResult(call, signInIntent, "handleSignInResult");
     }
 
-    @Override
-    protected void handleOnActivityResult(int requestCode, int resultCode, Intent data) {
-        super.handleOnActivityResult(requestCode, resultCode, data);
-
-        if (requestCode != RC_SIGN_IN || savedCall == null) return;
-
-        PluginCall call = savedCall;
-        savedCall = null;
-
-        if (resultCode == Activity.RESULT_CANCELED) {
-            call.reject("Connexion annulée", "CANCELLED");
-            return;
-        }
+    @ActivityCallback
+    public void handleSignInResult(PluginCall call, ActivityResult result) {
+        if (call == null) return;
 
         try {
-            Task<GoogleSignInAccount> task = GoogleSignIn.getSignedInAccountFromIntent(data);
+            Task<GoogleSignInAccount> task = GoogleSignIn.getSignedInAccountFromIntent(result.getData());
             GoogleSignInAccount account = task.getResult(ApiException.class);
 
             JSObject ret = new JSObject();
@@ -74,14 +62,14 @@ public class GoogleSignInPlugin extends Plugin {
 
             call.resolve(ret);
         } catch (ApiException e) {
-            call.reject("Google Sign-In failed: " + e.getStatusCode(), String.valueOf(e.getStatusCode()));
+            call.reject("Google Sign-In erreur: " + e.getStatusCode(), String.valueOf(e.getStatusCode()));
+        } catch (Exception e) {
+            call.reject("Erreur: " + e.getMessage());
         }
     }
 
     @PluginMethod
     public void signOut(PluginCall call) {
-        googleSignInClient.signOut().addOnCompleteListener(task -> {
-            call.resolve();
-        });
+        googleSignInClient.signOut().addOnCompleteListener(task -> call.resolve());
     }
 }
