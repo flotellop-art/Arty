@@ -44,6 +44,7 @@ async function handleList(token: string, res: VercelResponse) {
 async function handleRead(token: string, req: VercelRequest, res: VercelResponse) {
   const messageId = (req.query.id || req.body?.id) as string
   if (!messageId) return res.status(400).json({ error: 'Missing id' })
+  if (!/^[a-zA-Z0-9_-]+$/.test(messageId)) return res.status(400).json({ error: 'Invalid message ID' })
 
   try {
     const r = await fetch(
@@ -141,6 +142,9 @@ async function handleAttachment(token: string, req: VercelRequest, res: VercelRe
   const messageId = (req.body?.message_id || req.query.message_id) as string
   const attachmentId = (req.body?.attachment_id || req.query.attachment_id) as string
   if (!messageId || !attachmentId) return res.status(400).json({ error: 'Missing message_id or attachment_id' })
+  if (!/^[a-zA-Z0-9_-]+$/.test(messageId) || !/^[a-zA-Z0-9_-]+$/.test(attachmentId)) {
+    return res.status(400).json({ error: 'Invalid message or attachment ID' })
+  }
 
   try {
     const r = await fetch(
