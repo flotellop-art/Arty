@@ -1,25 +1,31 @@
-import { buildOAuthUrl } from '../../services/googleAuth'
 import { Capacitor } from '@capacitor/core'
+import { buildOAuthUrl } from '../../services/googleAuth'
 
 interface GoogleLoginTabProps {
   loading: boolean
+  onNativeGoogleLogin?: (email: string, name: string, avatar: string, idToken: string) => void
 }
 
-export function GoogleLoginTab({ loading }: GoogleLoginTabProps) {
+export function GoogleLoginTab({ loading, onNativeGoogleLogin }: GoogleLoginTabProps) {
   const handleGoogleLogin = async () => {
     try {
-      const url = buildOAuthUrl()
-
-      if (Capacitor.isNativePlatform()) {
-        // Native: open system browser → deep link brings user back
-        const { Browser } = await import('@capacitor/browser')
-        await Browser.open({ url })
+      if (Capacitor.isNativePlatform() && onNativeGoogleLogin) {
+        // Native: use Google Sign-In SDK (native popup)
+        const { GoogleAuth } = await import('@codetrix-studio/capacitor-google-auth')
+        const result = await GoogleAuth.signIn()
+        onNativeGoogleLogin(
+          result.email || '',
+          result.name || result.email?.split('@')[0] || '',
+          result.imageUrl || '',
+          result.authentication?.accessToken || ''
+        )
       } else {
-        // Web: redirect in same window
+        // Web: redirect to Google OAuth
+        const url = buildOAuthUrl()
         window.location.href = url
       }
     } catch (err) {
-      console.error('Google OAuth error:', err)
+      console.error('Google login error:', err)
     }
   }
 

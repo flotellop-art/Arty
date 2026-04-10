@@ -181,7 +181,41 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
             <ApiKeyLoginTab onLogin={handleApiKeyLogin} loading={loading} />
           )}
           {activeTab === 'google' && (
-            <GoogleLoginTab loading={loading} />
+            <GoogleLoginTab
+              loading={loading}
+              onNativeGoogleLogin={async (email, name, avatar, accessToken) => {
+                setLoading(true)
+                try {
+                  // Store Google tokens via scoped storage
+                  scoped.setJSON('google-tokens', {
+                    access_token: accessToken,
+                    refresh_token: '',
+                    expires_at: Date.now() + 3600000,
+                  })
+                  scoped.setJSON('google-user', { email, name, picture: avatar })
+
+                  // Check if user already has API keys
+                  const { generateUserId, setActiveSession } = await import('../../services/userSession')
+                  const userId = await generateUserId('google', email)
+                  setActiveSession({ userId, authMethod: 'google', displayName: name, email, avatar, createdAt: Date.now() })
+                  const existingKeys = scoped.getJSON<{ anthropic: string; gemini?: string; mistral?: string }>('api-keys')
+
+                  if (existingKeys?.anthropic) {
+                    await onLogin('google', {
+                      displayName: name, email, avatar,
+                      anthropicKey: existingKeys.anthropic,
+                      geminiKey: existingKeys.gemini || undefined,
+                      mistralKey: existingKeys.mistral || undefined,
+                      identifier: email,
+                    })
+                  } else {
+                    setPendingAuth({ method: 'google', displayName: name, email, avatar })
+                  }
+                } finally {
+                  setLoading(false)
+                }
+              }}
+            />
           )}
           {activeTab === 'email' && (
             <EmailLoginTab onLogin={handleEmailLogin} loading={loading} error={emailError} />
