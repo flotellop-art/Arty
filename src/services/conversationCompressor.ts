@@ -47,7 +47,7 @@ export async function compressIfNeeded(
 
   // Ask Claude to summarize (non-streaming, fast)
   try {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+    const response = await fetch('https://gateway.ai.cloudflare.com/v1/ea69cd5ca383355efe77bf22e68207e4/arty/anthropic/v1/messages', {
       method: 'POST',
       headers: {
         'content-type': 'application/json',

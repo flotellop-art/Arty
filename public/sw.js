@@ -34,7 +34,7 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url)
 
   // Never cache API calls
-  if (url.hostname === 'api.anthropic.com') {
+  if (url.hostname === 'api.anthropic.com' || url.hostname === 'gateway.ai.cloudflare.com') {
     return
   }
 
