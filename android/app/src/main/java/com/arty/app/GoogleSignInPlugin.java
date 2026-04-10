@@ -35,7 +35,7 @@ public class GoogleSignInPlugin extends Plugin {
         GoogleSignInOptions gso = new GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
                 .requestEmail()
                 .requestProfile()
-                .requestServerAuthCode(serverClientId)
+                .requestIdToken(serverClientId)
                 .build();
 
         googleSignInClient = GoogleSignIn.getClient(getActivity(), gso);
@@ -59,7 +59,7 @@ public class GoogleSignInPlugin extends Plugin {
             ret.put("email", account.getEmail());
             ret.put("name", account.getDisplayName() != null ? account.getDisplayName() : "");
             ret.put("avatar", account.getPhotoUrl() != null ? account.getPhotoUrl().toString() : "");
-            ret.put("serverAuthCode", account.getServerAuthCode());
+            ret.put("serverAuthCode", account.getIdToken() != null ? account.getIdToken() : "");
 
             call.resolve(ret);
         } catch (ApiException e) {
