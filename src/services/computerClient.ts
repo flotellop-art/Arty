@@ -1,11 +1,12 @@
 import type { ComputerAction, ComputerActionResponse } from '../types/computer'
 import { safeJson } from '../utils/safeJson'
+import { apiUrl } from './apiBase'
 
 export async function sendComputerAction(
   action: ComputerAction,
   params?: Record<string, unknown>
 ): Promise<ComputerActionResponse> {
-  const res = await fetch('/api/computer/relay', {
+  const res = await fetch(apiUrl('/api/computer/relay'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action, params }),

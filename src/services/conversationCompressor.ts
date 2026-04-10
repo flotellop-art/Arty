@@ -1,3 +1,5 @@
+import { apiUrl } from './apiBase'
+
 // Rough token estimation: ~4 chars per token for French text
 function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4)
@@ -47,7 +49,7 @@ export async function compressIfNeeded(
 
   // Ask Claude to summarize (non-streaming, fast)
   try {
-    const response = await fetch('/api/ai/proxy', {
+    const response = await fetch(apiUrl('/api/ai/proxy'), {
       method: 'POST',
       headers: {
         'content-type': 'application/json',

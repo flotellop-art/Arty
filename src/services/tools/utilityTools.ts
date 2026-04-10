@@ -3,6 +3,7 @@ import type { ToolHandler } from './types'
 import { openReport } from '../reportGenerator'
 import { updateMemory } from '../memoryService'
 import { safeJson } from '../../utils/safeJson'
+import { apiUrl } from '../apiBase'
 
 export const utilityToolDefinitions = [
   {
@@ -139,7 +140,7 @@ export function createUtilityHandlers(browserActions: ReturnType<typeof useBrows
     calculate_distance: async (input) => {
       const dest = input.destination as string
       try {
-        const res = await fetch('/api/browser/search', {
+        const res = await fetch(apiUrl('/api/browser/search'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ query: `distance Valence 26000 vers ${dest}` }),
@@ -155,7 +156,7 @@ export function createUtilityHandlers(browserActions: ReturnType<typeof useBrows
     get_weather: async (input) => {
       const city = (input.city as string) || 'Valence'
       try {
-        const res = await fetch('/api/browser/weather', {
+        const res = await fetch(apiUrl('/api/browser/weather'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ city }),

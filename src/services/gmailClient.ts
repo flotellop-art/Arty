@@ -1,12 +1,13 @@
 import type { GmailMessage, GmailFullMessage, EmailDraft } from '../types/google'
 import { getValidAccessToken } from './googleAuth'
 import { safeJson } from '../utils/safeJson'
+import { apiUrl } from './apiBase'
 
 async function gmailFetch(body: Record<string, unknown>): Promise<Response> {
   const token = await getValidAccessToken()
   if (!token) throw new Error('Non connecté à Google')
 
-  return fetch('/api/gmail/action', {
+  return fetch(apiUrl('/api/gmail/action'), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

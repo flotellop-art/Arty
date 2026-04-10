@@ -4,6 +4,7 @@ import type { useComputer } from '../hooks/useComputer'
 import type { useGmail } from '../hooks/useGmail'
 import type { useDrive } from '../hooks/useDrive'
 import { safeJson } from '../utils/safeJson'
+import { apiUrl } from './apiBase'
 
 interface ActionResult {
   handled: boolean
@@ -52,7 +53,7 @@ Message: "${text.replace(/"/g, '\\"')}"
 JSON:`
 
   try {
-    const res = await fetch('/api/ai/proxy', {
+    const res = await fetch(apiUrl('/api/ai/proxy'), {
       method: 'POST',
       headers: {
         'content-type': 'application/json',

@@ -1,5 +1,6 @@
 import { getMistralKey } from './activeApiKey'
 import { addUsage } from './tokenTracker'
+import { apiUrl } from './apiBase'
 
 const MISTRAL_SYSTEM = `Tu es Arty, un assistant IA personnel.
 Tu parles comme un pote compétent — direct, cash, pas de flatterie.
@@ -49,7 +50,7 @@ async function runMistralStream(
       ...messages.map(m => ({ role: m.role, content: m.content })),
     ]
 
-    const response = await fetch('/api/ai/mistral-proxy', {
+    const response = await fetch(apiUrl('/api/ai/mistral-proxy'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

@@ -3,6 +3,7 @@ import { TOOLS } from './toolDefinitions'
 import { addUsage } from './tokenTracker'
 import { compressIfNeeded } from './conversationCompressor'
 import { getAnthropicKey } from './activeApiKey'
+import { apiUrl } from './apiBase'
 
 type ToolHandler = (name: string, input: Record<string, unknown>) => Promise<{ result: string; screenshot?: string; fileData?: { name: string; mimeType: string; base64: string } }>
 
@@ -73,7 +74,7 @@ async function fetchWithRetry(
   let response: Response | null = null
   const maxRetries = 3
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    response = await fetch('/api/ai/proxy', {
+    response = await fetch(apiUrl('/api/ai/proxy'), {
       method: 'POST',
       headers: {
         'content-type': 'application/json',

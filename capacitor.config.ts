@@ -7,9 +7,6 @@ const config: CapacitorConfig = {
   server: {
     androidScheme: 'https',
     iosScheme: 'https',
-    // Use Cloudflare Pages as the backend for API calls
-    url: 'https://appfacade.pages.dev',
-    cleartext: false,
   },
   plugins: {
     SplashScreen: {

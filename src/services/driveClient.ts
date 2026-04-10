@@ -1,12 +1,13 @@
 import type { DriveFile, DriveFileContent } from '../types/google'
 import { getValidAccessToken } from './googleAuth'
 import { safeJson } from '../utils/safeJson'
+import { apiUrl } from './apiBase'
 
 async function driveFetch(body: Record<string, unknown>): Promise<Response> {
   const token = await getValidAccessToken()
   if (!token) throw new Error('Non connecté à Google')
 
-  return fetch('/api/drive/action', {
+  return fetch(apiUrl('/api/drive/action'), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

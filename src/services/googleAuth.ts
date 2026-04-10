@@ -1,6 +1,7 @@
 import type { GoogleTokens, GoogleUser } from '../types/google'
 import { safeJson } from '../utils/safeJson'
 import * as scoped from './scopedStorage'
+import { apiUrl } from './apiBase'
 
 const SCOPES = [
   'https://www.googleapis.com/auth/gmail.readonly',
@@ -35,7 +36,7 @@ export function buildOAuthUrl(): string {
 }
 
 export async function exchangeCode(code: string): Promise<GoogleTokens> {
-  const res = await fetch('/api/auth/token', {
+  const res = await fetch(apiUrl('/api/auth/token'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ code, redirect_uri: getRedirectUri() }),
@@ -62,7 +63,7 @@ export async function refreshAccessToken(): Promise<GoogleTokens | null> {
   const tokens = getStoredTokens()
   if (!tokens?.refresh_token) return null
 
-  const res = await fetch('/api/auth/refresh', {
+  const res = await fetch(apiUrl('/api/auth/refresh'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ refresh_token: tokens.refresh_token }),

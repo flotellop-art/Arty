@@ -1,4 +1,5 @@
 import { getActiveUserId } from './userSession'
+import { apiUrl } from './apiBase'
 
 const MEMORY_CATEGORIES = ['profil', 'clients', 'chantiers', 'notes'] as const
 type MemoryCategory = typeof MEMORY_CATEGORIES[number]
@@ -35,7 +36,7 @@ async function readMemoryD1(category: MemoryCategory): Promise<unknown> {
   if (!userId) return getDefaultData(category)
 
   try {
-    const res = await fetch('/api/memory/action', {
+    const res = await fetch(apiUrl('/api/memory/action'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ type: 'read', userId, category }),
@@ -52,7 +53,7 @@ async function updateMemoryD1(category: MemoryCategory, data: unknown): Promise<
   if (!userId) return { success: false, message: 'Non connecté' }
 
   try {
-    const res = await fetch('/api/memory/action', {
+    const res = await fetch(apiUrl('/api/memory/action'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ type: 'write', userId, category, data }),

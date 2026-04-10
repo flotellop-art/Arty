@@ -7,9 +7,10 @@ import type {
   ScreenshotResponse,
 } from '../types/browser'
 import { safeJson } from '../utils/safeJson'
+import { apiUrl } from './apiBase'
 
 export async function publishWordPress(data: WpPublishRequest): Promise<WpPublishResponse> {
-  const res = await fetch('/api/wordpress/publish', {
+  const res = await fetch(apiUrl('/api/wordpress/publish'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
@@ -20,7 +21,7 @@ export async function publishWordPress(data: WpPublishRequest): Promise<WpPublis
 }
 
 export async function searchPrices(query: string): Promise<PriceSearchResponse> {
-  const res = await fetch('/api/browser/action', {
+  const res = await fetch(apiUrl('/api/browser/action'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ type: 'search-price', query }),
@@ -35,7 +36,7 @@ export async function fillForm(
   fields: FormField[],
   submit?: boolean
 ): Promise<FormFillResponse> {
-  const res = await fetch('/api/browser/action', {
+  const res = await fetch(apiUrl('/api/browser/action'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ type: 'fill-form', url, fields, submit }),
@@ -46,7 +47,7 @@ export async function fillForm(
 }
 
 export async function takeScreenshot(url: string): Promise<ScreenshotResponse> {
-  const res = await fetch('/api/browser/action', {
+  const res = await fetch(apiUrl('/api/browser/action'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ type: 'screenshot', url }),
