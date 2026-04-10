@@ -33,8 +33,6 @@ public class GoogleSignInPlugin extends Plugin {
 
         GoogleSignInOptions gso = new GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
                 .requestEmail()
-                .requestProfile()
-                .requestIdToken(serverClientId)
                 .build();
 
         googleSignInClient = GoogleSignIn.getClient(getActivity(), gso);
