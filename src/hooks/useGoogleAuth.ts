@@ -11,7 +11,6 @@ import {
   logout as googleLogout,
 } from '../services/googleAuth'
 import * as scoped from '../services/scopedStorage'
-import { apiUrl } from '../services/apiBase'
 
 interface GoogleSignInNativePlugin {
   signIn(): Promise<{ email: string; name: string; avatar: string; serverAuthCode: string }>
@@ -41,6 +40,7 @@ export function useGoogleAuth() {
       try {
         setIsLoading(true)
         const result = await GoogleSignInNative.signIn()
+        alert('JS received: ' + JSON.stringify(result))
 
         const googleUser: GoogleUser = {
           email: result.email,
