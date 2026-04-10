@@ -5,9 +5,11 @@ const config: CapacitorConfig = {
   appName: 'Arty',
   webDir: 'dist',
   server: {
-    // Allow mixed content for API calls
     androidScheme: 'https',
     iosScheme: 'https',
+    // Use Cloudflare Pages as the backend for API calls
+    url: 'https://appfacade.pages.dev',
+    cleartext: false,
   },
   plugins: {
     SplashScreen: {
