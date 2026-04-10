@@ -1,3 +1,5 @@
+import { getGeminiKey } from './activeApiKey'
+
 // Gemini API client with streaming
 
 const GEMINI_SYSTEM = `Tu es Arty, un assistant IA personnel.
@@ -20,7 +22,7 @@ export function streamGeminiMessage(
 ): AbortController {
   const controller = new AbortController()
 
-  const apiKey = apiKeyOverride || import.meta.env.VITE_GEMINI_API_KEY
+  const apiKey = apiKeyOverride || getGeminiKey()
   if (!apiKey) {
     setTimeout(() => onError(new Error('Clé API Gemini manquante')), 0)
     return controller
@@ -118,7 +120,7 @@ async function runGeminiStream(
 
 // Non-streaming research call — used in hybrid mode
 export async function geminiResearch(query: string, apiKeyOverride?: string): Promise<string> {
-  const apiKey = apiKeyOverride || import.meta.env.VITE_GEMINI_API_KEY
+  const apiKey = apiKeyOverride || getGeminiKey()
   if (!apiKey) return ''
 
   const model = 'gemini-3-flash-preview'

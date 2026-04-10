@@ -1,9 +1,6 @@
 import type { GoogleTokens, GoogleUser } from '../types/google'
 import { safeJson } from '../utils/safeJson'
-import { secureSet, secureGet, isCryptoReady } from './crypto'
-
-const TOKENS_KEY = 'arty-google-tokens'
-const USER_KEY = 'arty-google-user'
+import * as scoped from './scopedStorage'
 
 const SCOPES = [
   'https://www.googleapis.com/auth/gmail.readonly',
@@ -58,16 +55,11 @@ export async function exchangeCode(code: string): Promise<GoogleTokens> {
 }
 
 async function storeTokens(tokens: GoogleTokens): Promise<void> {
-  // Always save to localStorage for persistence across refreshes
-  localStorage.setItem(TOKENS_KEY, JSON.stringify(tokens))
-  // Also encrypt in background if crypto is ready
-  if (isCryptoReady()) {
-    secureSet(TOKENS_KEY, tokens).catch(() => {})
-  }
+  scoped.setJSON('google-tokens', tokens)
 }
 
 export async function refreshAccessToken(): Promise<GoogleTokens | null> {
-  const tokens = await getStoredTokensAsync()
+  const tokens = getStoredTokens()
   if (!tokens?.refresh_token) return null
 
   const res = await fetch('/api/auth/refresh', {
@@ -94,15 +86,8 @@ export async function refreshAccessToken(): Promise<GoogleTokens | null> {
   return updated
 }
 
-async function getStoredTokensAsync(): Promise<GoogleTokens | null> {
-  if (isCryptoReady()) {
-    return await secureGet<GoogleTokens>(TOKENS_KEY)
-  }
-  return getStoredTokens()
-}
-
 export async function getValidAccessToken(): Promise<string | null> {
-  let tokens = await getStoredTokensAsync()
+  let tokens = getStoredTokens()
   if (!tokens) return null
 
   // Refresh if expiring within 5 minutes
@@ -128,36 +113,21 @@ export async function fetchGoogleUser(accessToken: string): Promise<GoogleUser> 
     picture: data.picture,
   }
 
-  if (isCryptoReady()) {
-    await secureSet(USER_KEY, user)
-  } else {
-    // Non-sensitive user info (name, email, picture) — OK to store plain
-    localStorage.setItem(USER_KEY, JSON.stringify(user))
-  }
+  scoped.setJSON('google-user', user)
   return user
 }
 
 export function getStoredTokens(): GoogleTokens | null {
-  try {
-    const data = localStorage.getItem(TOKENS_KEY)
-    return data ? JSON.parse(data) : null
-  } catch {
-    return null
-  }
+  return scoped.getJSON<GoogleTokens>('google-tokens')
 }
 
 export function getStoredUser(): GoogleUser | null {
-  try {
-    const data = localStorage.getItem(USER_KEY)
-    return data ? JSON.parse(data) : null
-  } catch {
-    return null
-  }
+  return scoped.getJSON<GoogleUser>('google-user')
 }
 
 export function logout(): void {
-  localStorage.removeItem(TOKENS_KEY)
-  localStorage.removeItem(USER_KEY)
+  scoped.removeItem('google-tokens')
+  scoped.removeItem('google-user')
 }
 
 export function isConnected(): boolean {

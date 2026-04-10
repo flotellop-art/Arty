@@ -2,15 +2,17 @@ import { useState, useCallback } from 'react'
 import { BrowserRouter, Routes, Route, useNavigate, useParams } from 'react-router-dom'
 import { useConversation } from './hooks/useConversation'
 import { useAppSetup } from './hooks/useAppSetup'
+import { useAuth } from './hooks/useAuth'
 import { QuestionModal } from './components/chat/QuestionModal'
 import { HomeScreen } from './components/home/HomeScreen'
 import { ConversationScreen } from './components/chat/ConversationScreen'
 import { ReportPage } from './components/shared/ReportPage'
 import { Sidebar } from './components/layout/Sidebar'
 import { OAuthCallback } from './components/google/OAuthCallback'
+import { LoginScreen } from './components/auth/LoginScreen'
 import type { FileAttachment } from './types'
 
-function AppContent() {
+function AppContent({ onLogout, userName }: { onLogout: () => void; userName?: string }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const navigate = useNavigate()
 
@@ -107,6 +109,8 @@ function AppContent() {
         onSelect={handleSelectConversation}
         onNew={handleNewConversation}
         onDelete={deleteConversation}
+        userName={userName}
+        onLogout={onLogout}
       />
 
       <Routes>
@@ -236,9 +240,71 @@ function ChatRoute({
 }
 
 export default function App() {
+  const auth = useAuth()
+
+  if (!auth.isAuthenticated) {
+    return (
+      <BrowserRouter>
+        <Routes>
+          <Route path="/auth/callback" element={<OAuthCallbackAuth auth={auth} />} />
+          <Route path="*" element={
+            <LoginScreen
+              onLogin={auth.login}
+              knownSessions={auth.knownSessions}
+              onSwitchAccount={auth.switchAccount}
+            />
+          } />
+        </Routes>
+      </BrowserRouter>
+    )
+  }
+
   return (
     <BrowserRouter>
-      <AppContent />
+      <AppContent onLogout={auth.logout} userName={auth.currentUser?.displayName} />
     </BrowserRouter>
   )
+}
+
+/** Handle OAuth callback when not yet authenticated */
+function OAuthCallbackAuth({ auth }: { auth: ReturnType<typeof useAuth> }) {
+  const navigate = useNavigate()
+
+  const handleCallback = useCallback(async (code: string) => {
+    try {
+      const { exchangeCode, fetchGoogleUser } = await import('./services/googleAuth')
+      const tokens = await exchangeCode(code)
+      const user = await fetchGoogleUser(tokens.access_token)
+
+      // Check if this Google user already has API keys saved
+      const { generateUserId, setActiveSession } = await import('./services/userSession')
+      const userId = await generateUserId('google', user.email)
+      // Temporarily set session to read scoped storage
+      setActiveSession({ userId, authMethod: 'google', displayName: user.name, email: user.email, avatar: user.picture, createdAt: Date.now() })
+      const { getJSON } = await import('./services/scopedStorage')
+      const existingKeys = getJSON<{ anthropic: string; gemini?: string }>('api-keys')
+
+      if (existingKeys?.anthropic) {
+        // Already has keys — login directly
+        await auth.login('google', {
+          displayName: user.name,
+          email: user.email,
+          avatar: user.picture,
+          anthropicKey: existingKeys.anthropic,
+          geminiKey: existingKeys.gemini,
+          identifier: user.email,
+        })
+        navigate('/')
+      } else {
+        // Need API key — will be handled by LoginScreen pendingAuth state
+        // For now just redirect to login
+        navigate('/')
+      }
+    } catch (err) {
+      console.error('OAuth callback error:', err)
+      navigate('/')
+    }
+  }, [auth, navigate])
+
+  return <OAuthCallback onCallback={handleCallback} />
 }

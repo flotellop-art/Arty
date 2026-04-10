@@ -2,6 +2,7 @@ import { SYSTEM_PROMPT } from '../constants/systemPrompt'
 import { TOOLS } from './toolDefinitions'
 import { addUsage } from './tokenTracker'
 import { compressIfNeeded } from './conversationCompressor'
+import { getAnthropicKey } from './activeApiKey'
 
 type ToolHandler = (name: string, input: Record<string, unknown>) => Promise<{ result: string; screenshot?: string; fileData?: { name: string; mimeType: string; base64: string } }>
 
@@ -20,7 +21,7 @@ export function streamMessage(
 ): AbortController {
   const controller = new AbortController()
 
-  const apiKey = apiKeyOverride || import.meta.env.VITE_ANTHROPIC_API_KEY
+  const apiKey = apiKeyOverride || getAnthropicKey()
   if (!apiKey) {
     setTimeout(() => onError(new Error('Clé API manquante — configure ta clé dans les paramètres')), 0)
     return controller

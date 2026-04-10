@@ -1,3 +1,4 @@
+import { getAnthropicKey } from './activeApiKey'
 import type { useBrowser } from '../hooks/useBrowser'
 import type { useComputer } from '../hooks/useComputer'
 import type { useGmail } from '../hooks/useGmail'
@@ -22,7 +23,7 @@ export function setActionDetectorApiKey(key: string) {
 }
 
 async function detectIntent(text: string): Promise<IntentResponse> {
-  const apiKey = _actionDetectorApiKey || import.meta.env.VITE_ANTHROPIC_API_KEY
+  const apiKey = _actionDetectorApiKey || getAnthropicKey()
   if (!apiKey) return { action: 'none' }
 
   const prompt = `Tu es un détecteur d'intention. Analyse le message utilisateur et retourne UNIQUEMENT un JSON (pas de texte autour).

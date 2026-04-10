@@ -10,6 +10,8 @@ interface SidebarProps {
   onSelect: (id: string) => void
   onNew: () => void
   onDelete: (id: string) => void
+  userName?: string
+  onLogout?: () => void
 }
 
 function timeAgo(timestamp: number): string {
@@ -31,6 +33,8 @@ export function Sidebar({
   onSelect,
   onNew,
   onDelete,
+  userName,
+  onLogout,
 }: SidebarProps) {
   return (
     <>
@@ -120,6 +124,21 @@ export function Sidebar({
         </nav>
 
         <TokenUsageBar />
+
+        {/* User info + logout */}
+        {userName && (
+          <div className="px-5 py-3 border-t border-gray-100 flex items-center justify-between">
+            <span className="text-xs text-gray-500 truncate">{userName}</span>
+            {onLogout && (
+              <button
+                onClick={onLogout}
+                className="text-xs text-gray-400 hover:text-red-500 transition-colors"
+              >
+                Déconnexion
+              </button>
+            )}
+          </div>
+        )}
       </aside>
     </>
   )

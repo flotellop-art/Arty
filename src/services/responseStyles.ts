@@ -1,4 +1,4 @@
-const STORAGE_KEY = 'arty-response-style'
+import * as scoped from './scopedStorage'
 
 export type ResponseStyle = 'default' | 'concis' | 'detaille' | 'formel' | 'technique'
 
@@ -19,15 +19,13 @@ const STYLE_PROMPTS: Record<ResponseStyle, string> = {
 }
 
 export function getStyle(): ResponseStyle {
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY)
-    if (saved && saved in STYLE_PROMPTS) return saved as ResponseStyle
-  } catch {}
+  const saved = scoped.getItem('response-style')
+  if (saved && saved in STYLE_PROMPTS) return saved as ResponseStyle
   return 'default'
 }
 
 export function setStyle(style: ResponseStyle): void {
-  localStorage.setItem(STORAGE_KEY, style)
+  scoped.setItem('response-style', style)
 }
 
 export function getStylePrompt(style: ResponseStyle): string {

@@ -1,3 +1,5 @@
+import { getGeminiKey } from './activeApiKey'
+
 // AI Router — decides which model to use based on the query
 
 const GEMINI_TRIGGERS = [
@@ -48,7 +50,7 @@ const REPORT_TRIGGERS = [
 export type AIProvider = 'claude' | 'gemini' | 'hybrid'
 
 export function detectProvider(message: string, geminiKeyOverride?: string): AIProvider {
-  const geminiKey = geminiKeyOverride || import.meta.env.VITE_GEMINI_API_KEY
+  const geminiKey = geminiKeyOverride || getGeminiKey()
   if (!geminiKey) return 'claude'
 
   // Données privées → toujours Claude, même pour un rapport

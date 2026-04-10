@@ -1,16 +1,8 @@
 import type { Conversation } from '../types'
-import { secureSet, isCryptoReady } from './crypto'
-
-const STORAGE_KEY = 'arty-conversations'
+import * as scoped from './scopedStorage'
 
 export function getConversations(): Conversation[] {
-  try {
-    const data = localStorage.getItem(STORAGE_KEY)
-    if (!data) return []
-    return JSON.parse(data)
-  } catch {
-    return []
-  }
+  return scoped.getJSON<Conversation[]>('conversations') || []
 }
 
 export function getConversation(id: string): Conversation | null {
@@ -26,21 +18,10 @@ export function saveConversation(conversation: Conversation): void {
   } else {
     conversations.unshift(conversation)
   }
-
-  // Always save synchronously to localStorage for immediate UI updates
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(conversations))
-
-  // Also encrypt in background if crypto is ready
-  if (isCryptoReady()) {
-    secureSet(STORAGE_KEY, conversations).catch(() => {})
-  }
+  scoped.setJSON('conversations', conversations)
 }
 
 export function deleteConversation(id: string): void {
   const conversations = getConversations().filter((c) => c.id !== id)
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(conversations))
-
-  if (isCryptoReady()) {
-    secureSet(STORAGE_KEY, conversations).catch(() => {})
-  }
+  scoped.setJSON('conversations', conversations)
 }
