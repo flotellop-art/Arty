@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, type KeyboardEvent } from 'react'
 import type { FileAttachment } from '../../types'
+import { useSpeechRecognition } from '../../hooks/useSpeechRecognition'
 
 interface InputBarProps {
   onSend: (text: string, files?: FileAttachment[]) => void
@@ -13,6 +14,16 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  const {
+    isListening,
+    transcript,
+    interimTranscript,
+    isSupported: isMicSupported,
+    startListening,
+    stopListening,
+    resetTranscript,
+  } = useSpeechRecognition()
+
   // Auto-resize textarea
   useEffect(() => {
     const el = textareaRef.current
@@ -21,9 +32,21 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
     el.style.height = Math.min(el.scrollHeight, 120) + 'px'
   }, [text])
 
+  // Append transcript to text when speech recognition produces final results
+  useEffect(() => {
+    if (transcript) {
+      setText((prev) => {
+        const separator = prev && !prev.endsWith(' ') ? ' ' : ''
+        return prev + separator + transcript
+      })
+      resetTranscript()
+    }
+  }, [transcript, resetTranscript])
+
   const handleSend = () => {
     const trimmed = text.trim()
     if ((!trimmed && files.length === 0) || isStreaming) return
+    if (isListening) stopListening()
     onSend(trimmed || 'Analyse ce fichier.', files.length > 0 ? files : undefined)
     setText('')
     setFiles([])
@@ -75,6 +98,14 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
     setFiles((prev) => prev.filter((_, i) => i !== index))
   }
 
+  const handleMicClick = () => {
+    if (isListening) {
+      stopListening()
+    } else {
+      startListening()
+    }
+  }
+
   return (
     <div className="px-4 pb-4 pt-2 bg-cream">
       {/* File previews */}
@@ -95,6 +126,13 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
               </button>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Interim transcript indicator */}
+      {isListening && interimTranscript && (
+        <div className="text-xs text-gray-400 italic mb-1 px-1 truncate">
+          {interimTranscript}...
         </div>
       )}
 
@@ -125,22 +163,32 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Discuter avec Arty..."
+          placeholder={isListening ? 'Écoute en cours...' : 'Discuter avec Arty...'}
           rows={1}
           className="flex-1 resize-none bg-transparent text-sm text-bubble-user placeholder-gray-400 focus:outline-none py-1.5 font-sans font-light leading-relaxed"
         />
 
         {/* Mic button */}
-        <button
-          className="flex-shrink-0 p-1.5 rounded-full hover:bg-gray-100 transition-colors text-gray-400 mb-0.5"
-          aria-label="Micro"
-        >
-          <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-            <rect x="6.5" y="2" width="5" height="9" rx="2.5" stroke="currentColor" strokeWidth="1.3" />
-            <path d="M4 9C4 11.76 6.24 14 9 14C11.76 14 14 11.76 14 9" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-            <line x1="9" y1="14" x2="9" y2="16" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-          </svg>
-        </button>
+        {isMicSupported && (
+          <button
+            onClick={handleMicClick}
+            className={`relative flex-shrink-0 p-1.5 rounded-full transition-colors mb-0.5 ${
+              isListening
+                ? 'bg-red-100 text-red-500 hover:bg-red-200'
+                : 'hover:bg-gray-100 text-gray-400'
+            }`}
+            aria-label={isListening ? 'Arrêter le micro' : 'Micro'}
+          >
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+              <rect x="6.5" y="2" width="5" height="9" rx="2.5" stroke="currentColor" strokeWidth="1.3" />
+              <path d="M4 9C4 11.76 6.24 14 9 14C11.76 14 14 11.76 14 9" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+              <line x1="9" y1="14" x2="9" y2="16" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+            </svg>
+            {isListening && (
+              <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse" />
+            )}
+          </button>
+        )}
 
         {/* Send / Stop button */}
         {isStreaming ? (
