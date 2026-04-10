@@ -1,26 +1,19 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import pdf = require('pdf-parse')
+import { extractPdfText } from '../_lib/pdfExtraction'
+import { createApiHandler } from '../_lib/apiHandler'
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
-  const token = req.headers.authorization?.replace('Bearer ', '')
-  if (!token) return res.status(401).json({ error: 'Missing access token' })
-
-  const { type } = (req.method === 'GET' ? req.query : req.body) as { type?: string }
-
-  switch (type) {
-    case 'list': return handleList(token, res)
-    case 'read': return handleRead(token, req, res)
-    case 'send': return handleSend(token, req, res)
-    case 'search': return handleSearch(token, req, res)
-    case 'attachment': return handleAttachment(token, req, res)
-    case 'archive': return handleArchive(token, req, res)
-    case 'delete': return handleDelete(token, req, res)
-    case 'star': return handleStar(token, req, res)
-    case 'draft': return handleDraft(token, req, res)
-    case 'label': return handleLabel(token, req, res)
-    default: return res.status(400).json({ error: 'Use type: list, read, send, search, archive, delete, star, draft, label' })
-  }
-}
+export default createApiHandler({
+  list: (token, _req, res) => handleList(token, res),
+  read: handleRead,
+  send: handleSend,
+  search: handleSearch,
+  attachment: handleAttachment,
+  archive: handleArchive,
+  delete: handleDelete,
+  star: handleStar,
+  draft: handleDraft,
+  label: handleLabel,
+})
 
 async function handleList(token: string, res: VercelResponse) {
   try {
@@ -166,52 +159,10 @@ async function handleAttachment(token: string, req: VercelRequest, res: VercelRe
     const isPdf = buffer.length > 4 && buffer[0] === 0x25 && buffer[1] === 0x50 && buffer[2] === 0x44 && buffer[3] === 0x46
 
     if (isPdf) {
-      let pdfText = ''
-      try {
-        const pdfData = await pdf(buffer)
-        pdfText = pdfData.text || ''
-        if (pdfText.trim().length >= 20) {
-          return res.status(200).json({ content: pdfText.slice(0, 10000), type: 'pdf', pages: pdfData.numpages })
-        }
-      } catch { /* pdf-parse failed, try OCR */ }
-
-      // OCR fallback for scanned PDFs — use files:annotate with API key
-      try {
-        const visionKey = process.env.GOOGLE_VISION_API_KEY
-        if (visionKey) {
-          const base64Data = buffer.toString('base64')
-          const visionRes = await fetch(
-            `https://vision.googleapis.com/v1/files:annotate?key=${visionKey}`,
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                requests: [{
-                  inputConfig: {
-                    content: base64Data,
-                    mimeType: 'application/pdf',
-                  },
-                  features: [{ type: 'DOCUMENT_TEXT_DETECTION' }],
-                  pages: [1, 2, 3, 4, 5],
-                }],
-              }),
-            }
-          )
-          if (visionRes.ok) {
-            const visionData = await visionRes.json()
-            const pages = visionData.responses?.[0]?.responses || []
-            const ocrText = pages
-              .map((p: { fullTextAnnotation?: { text?: string } }) => p.fullTextAnnotation?.text || '')
-              .filter(Boolean)
-              .join('\n\n--- Page suivante ---\n\n')
-            if (ocrText) {
-              return res.status(200).json({ content: `[OCR]\n\n${ocrText.slice(0, 10000)}`, type: 'pdf-ocr' })
-            }
-          }
-        }
-      } catch { /* OCR failed */ }
-
-      return res.status(200).json({ content: '[PDF — impossible d\'extraire le texte]', type: 'pdf' })
+      const pdfResult = await extractPdfText(buffer)
+      const type = pdfResult.method === 'ocr' ? 'pdf-ocr' : 'pdf'
+      const content = pdfResult.method === 'ocr' ? `[OCR]\n\n${pdfResult.content.slice(0, 10000)}` : pdfResult.content.slice(0, 10000)
+      return res.status(200).json({ content, type, pages: pdfResult.pages })
     }
 
     // Try plain text

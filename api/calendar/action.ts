@@ -1,19 +1,12 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
+import { createApiHandler } from '../_lib/apiHandler'
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
-  const token = req.headers.authorization?.replace('Bearer ', '')
-  if (!token) return res.status(401).json({ error: 'Missing access token' })
-
-  const { type } = req.body as { type?: string }
-
-  switch (type) {
-    case 'list': return handleList(token, req, res)
-    case 'create': return handleCreate(token, req, res)
-    case 'update': return handleUpdate(token, req, res)
-    case 'delete': return handleDeleteEvent(token, req, res)
-    default: return res.status(400).json({ error: 'Use type: list or create' })
-  }
-}
+export default createApiHandler({
+  list: handleList,
+  create: handleCreate,
+  update: handleUpdate,
+  delete: handleDeleteEvent,
+})
 
 async function handleList(token: string, req: VercelRequest, res: VercelResponse) {
   const { days } = req.body as { days?: number }

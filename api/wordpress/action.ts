@@ -17,6 +17,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     switch (type) {
       case 'list': {
+
         const { status, per_page } = req.body as { status?: string; per_page?: number }
         const params = new URLSearchParams({ per_page: String(per_page || 10), status: status || 'any' })
         const r = await fetch(`${apiBase}/posts?${params}`, { headers })

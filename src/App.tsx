@@ -1,25 +1,17 @@
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { useState, useCallback } from 'react'
 import { BrowserRouter, Routes, Route, useNavigate, useParams } from 'react-router-dom'
 import { useConversation } from './hooks/useConversation'
-import { useGoogleAuth } from './hooks/useGoogleAuth'
-import { useGmail } from './hooks/useGmail'
-import { useDrive } from './hooks/useDrive'
-import { useBrowser } from './hooks/useBrowser'
-import { useComputer } from './hooks/useComputer'
-import { buildContextualPrompt } from './constants/systemPrompt'
-import { useMemory } from './hooks/useMemory'
-import { QuestionModal, type Question } from './components/chat/QuestionModal'
-import { createToolExecutor } from './services/toolExecutor'
+import { useAppSetup } from './hooks/useAppSetup'
+import { QuestionModal } from './components/chat/QuestionModal'
 import { HomeScreen } from './components/home/HomeScreen'
 import { ConversationScreen } from './components/chat/ConversationScreen'
 import { ReportPage } from './components/shared/ReportPage'
 import { Sidebar } from './components/layout/Sidebar'
 import { OAuthCallback } from './components/google/OAuthCallback'
-import type { GmailMessage } from './types/google'
+import type { FileAttachment } from './types'
 
 function AppContent() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [actionScreenshot, setActionScreenshot] = useState<string | null>(null)
   const navigate = useNavigate()
 
   const conversation = useConversation()
@@ -36,143 +28,25 @@ function AppContent() {
     sendMessage,
     deleteConversation,
     stopStreaming,
-    setSystemPrompt,
-    setToolHandler,
   } = conversation
 
-  const googleAuth = useGoogleAuth()
-  const gmail = useGmail()
-  const drive = useDrive()
-  const browserActions = useBrowser()
-  const computerActions = useComputer()
-  const memoryHook = useMemory()
-  const [questionModal, setQuestionModal] = useState<{
-    questions: Question[]
-    resolve: (answers: string[]) => void
-  } | null>(null)
-
-  // Create tool executor and register it
-  const toolExecutorRef = useRef(createToolExecutor(computerActions, gmail, drive, browserActions))
-
-  useEffect(() => {
-    toolExecutorRef.current = createToolExecutor(computerActions, gmail, drive, browserActions)
-    setToolHandler((name: string, input: Record<string, unknown>) => {
-      // Intercept ask_user — show modal and wait for answers
-      if (name === 'ask_user') {
-        const questions = (input.questions as Question[]) || []
-        return new Promise<{ result: string }>((resolve) => {
-          setQuestionModal({
-            questions,
-            resolve: (answers) => {
-              setQuestionModal(null)
-              const formatted = questions
-                .map((q, i) => `${q.question} → ${answers[i] || 'Non répondu'}`)
-                .join('\n')
-              resolve({ result: `Réponses de l'utilisateur :\n${formatted}` })
-            },
-          })
-        })
-      }
-      return toolExecutorRef.current(name, input).then((res) => {
-        if (res.screenshot) {
-          setActionScreenshot(res.screenshot)
-        }
-        return res
-      })
-    })
-  }, [computerActions, gmail, drive, browserActions, setToolHandler])
-
-  // Auto-fetch Gmail, Drive, and Memory when Google is connected
-  useEffect(() => {
-    if (googleAuth.isConnected) {
-      gmail.fetchMessages()
-      drive.fetchFiles()
-      memoryHook.loadMemory()
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [googleAuth.isConnected])
-
-  // Update system prompt with Google context
-  useEffect(() => {
-    if (!googleAuth.isConnected) {
-      setSystemPrompt(undefined)
-      return
-    }
-
-    let gmailSummary: string | undefined
-    if (gmail.messages.length > 0) {
-      gmailSummary = `${gmail.messages.length} emails non lus :\n` +
-        gmail.messages
-          .slice(0, 5)
-          .map((m: GmailMessage) => `- De: ${m.from} | Objet: ${m.subject}`)
-          .join('\n')
-    }
-
-    let driveSummary: string | undefined
-    if (drive.files.length > 0) {
-      driveSummary = `Fichiers récents sur Drive :\n` +
-        drive.files
-          .slice(0, 5)
-          .map((f) => `- ${f.name} (${f.mimeType})`)
-          .join('\n')
-    }
-
-    const memorySummary = memoryHook.getPromptContext()
-    const prompt = buildContextualPrompt({ gmailSummary, driveSummary, memorySummary })
-    setSystemPrompt(prompt)
-  }, [googleAuth.isConnected, gmail.messages, drive.files, memoryHook.getPromptContext, setSystemPrompt])
-
-  // Handle action buttons clicked in reports
-  const handleAction = useCallback(
-    async (action: string, params: Record<string, string>) => {
-      const executor = toolExecutorRef.current
-      switch (action) {
-        case 'reply': {
-          // Quick reply — send the text as a user message
-          const text = params.text || params.value || ''
-          if (text && activeId) {
-            sendMessage(text, activeId)
-          }
-          break
-        }
-        case 'send_email':
-          await executor('send_email', params)
-          break
-        case 'save_drive':
-          await executor('create_drive_file', { name: params.name || 'Document', content: params.content || '' })
-          break
-        case 'create_event':
-          await executor('create_calendar_event', params)
-          break
-        case 'publish_wp':
-          await executor('wp_create_post', { title: params.title || '', content: params.content || '', status: params.status || 'draft' })
-          break
-        case 'search_web':
-          await executor('web_search', { query: params.query || '' })
-          break
-        case 'call': {
-          // Open phone dialer
-          window.open(`tel:${params.phone}`, '_self')
-          break
-        }
-        case 'link': {
-          window.open(params.url, '_blank')
-          break
-        }
-        default:
-          await executor(action, params)
-      }
-    },
-    [activeId, sendMessage]
-  )
+  const {
+    googleAuth,
+    gmail,
+    drive,
+    browserActions,
+    computerActions,
+    actionScreenshot,
+    setActionScreenshot,
+    questionModal,
+    handleAction,
+  } = useAppSetup(conversation)
 
   const handleSendFromHome = useCallback(
-    (text: string, files?: import('./types').FileAttachment[]) => {
+    (text: string, files?: FileAttachment[]) => {
       setActionScreenshot(null)
       const id = createConversation()
-      // Store files in ref before navigating (sendMessage reads from ref)
       if (files?.length) {
-        // Small delay to ensure conversation is created and active before sending
         navigate(`/chat/${id}`)
         setTimeout(() => sendMessage(text, id, files), 100)
       } else {
@@ -180,7 +54,7 @@ function AppContent() {
         navigate(`/chat/${id}`)
       }
     },
-    [createConversation, sendMessage, navigate]
+    [createConversation, sendMessage, navigate, setActionScreenshot]
   )
 
   const handleNewConversation = useCallback(() => {
@@ -194,14 +68,14 @@ function AppContent() {
       selectConversation(id)
       navigate(`/chat/${id}`)
     },
-    [selectConversation, navigate]
+    [selectConversation, navigate, setActionScreenshot]
   )
 
   const handleBack = useCallback(() => {
     setActionScreenshot(null)
     clearActive()
     navigate('/')
-  }, [clearActive, navigate])
+  }, [clearActive, navigate, setActionScreenshot])
 
   const handleOAuthCallback = useCallback(
     async (code: string) => {
@@ -283,13 +157,13 @@ interface ChatRouteProps {
   streamingContent: string
   error: string | null
   onBack: () => void
-  onSend: (text: string, files?: import('./types').FileAttachment[]) => void
+  onSend: (text: string, files?: FileAttachment[]) => void
   onStop: () => void
   onSelect: (id: string) => void
-  gmail: ReturnType<typeof useGmail>
-  drive: ReturnType<typeof useDrive>
-  browserActions: ReturnType<typeof useBrowser>
-  computerActions: ReturnType<typeof useComputer>
+  gmail: ReturnType<typeof import('./hooks/useGmail').useGmail>
+  drive: ReturnType<typeof import('./hooks/useDrive').useDrive>
+  browserActions: ReturnType<typeof import('./hooks/useBrowser').useBrowser>
+  computerActions: ReturnType<typeof import('./hooks/useComputer').useComputer>
   actionScreenshot: string | null
   onAction?: (action: string, params: Record<string, string>) => void
 }

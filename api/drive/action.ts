@@ -1,26 +1,19 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import pdf = require('pdf-parse')
+import { extractPdfText } from '../_lib/pdfExtraction'
+import { createApiHandler } from '../_lib/apiHandler'
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
-  const token = req.headers.authorization?.replace('Bearer ', '')
-  if (!token) return res.status(401).json({ error: 'Missing access token' })
-
-  const { type } = (req.method === 'GET' ? req.query : req.body) as { type?: string }
-
-  switch (type) {
-    case 'list': return handleList(token, req, res)
-    case 'read': return handleRead(token, req, res)
-    case 'create': return handleCreate(token, req, res)
-    case 'update': return handleUpdate(token, req, res)
-    case 'delete': return handleDelete(token, req, res)
-    case 'rename': return handleRename(token, req, res)
-    case 'move': return handleMove(token, req, res)
-    case 'create_folder': return handleCreateFolder(token, req, res)
-    case 'share': return handleShare(token, req, res)
-    case 'copy': return handleCopy(token, req, res)
-    default: return res.status(400).json({ error: 'Use type: list, read, create, delete, rename, move, create_folder' })
-  }
-}
+export default createApiHandler({
+  list: handleList,
+  read: handleRead,
+  create: handleCreate,
+  update: handleUpdate,
+  delete: handleDelete,
+  rename: handleRename,
+  move: handleMove,
+  create_folder: handleCreateFolder,
+  share: handleShare,
+  copy: handleCopy,
+})
 
 async function handleList(token: string, req: VercelRequest, res: VercelResponse) {
   const folderId = (req.query.folderId || req.body?.folderId) as string | undefined
@@ -67,60 +60,8 @@ async function handleRead(token: string, req: VercelRequest, res: VercelResponse
         const dlRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, { headers: { Authorization: `Bearer ${token}` } })
         if (dlRes.ok) {
           const buffer = Buffer.from(await dlRes.arrayBuffer())
-
-          // 1. Try pdf-parse
-          try {
-            const pdfData = await pdf(buffer)
-            const text = pdfData.text || ''
-            const readable = text.replace(/[^\w\sàâäéèêëïîôùûüçœæÀÂÄÉÈÊËÏÎÔÙÛÜÇŒÆ.,;:!?€$%()/-]/g, '')
-            if (text.trim().length >= 50 && readable.length > text.length * 0.5) {
-              content = text
-            }
-          } catch { /* pdf-parse failed */ }
-
-          // 2. If pdf-parse failed, use Google Vision OCR
-          if (!content) {
-            const visionKey = process.env.GOOGLE_VISION_API_KEY
-            if (visionKey) {
-              try {
-                const base64Data = buffer.toString('base64')
-                const visionRes = await fetch(
-                  `https://vision.googleapis.com/v1/files:annotate?key=${visionKey}`,
-                  {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                      requests: [{
-                        inputConfig: { content: base64Data, mimeType: 'application/pdf' },
-                        features: [{ type: 'DOCUMENT_TEXT_DETECTION' }],
-                        pages: [1, 2, 3, 4, 5],
-                      }],
-                    }),
-                  }
-                )
-                const visionBody = await visionRes.text()
-                if (visionRes.ok) {
-                  const visionData = JSON.parse(visionBody)
-                  const pages = visionData.responses?.[0]?.responses || []
-                  const ocrText = pages
-                    .map((p: { fullTextAnnotation?: { text?: string } }) => p.fullTextAnnotation?.text || '')
-                    .filter(Boolean)
-                    .join('\n\n--- Page suivante ---\n\n')
-                  if (ocrText && ocrText.trim().length > 10) {
-                    content = ocrText
-                  } else {
-                    content = `[OCR: aucun texte trouvé. Réponse: ${visionBody.slice(0, 200)}]`
-                  }
-                } else {
-                  content = `[OCR échoué (${visionRes.status}): ${visionBody.slice(0, 200)}]`
-                }
-              } catch (e) {
-                content = `[OCR erreur: ${e instanceof Error ? e.message : 'inconnu'}]`
-              }
-            } else {
-              content = `[PDF illisible — GOOGLE_VISION_API_KEY non configurée sur Vercel]`
-            }
-          }
+          const pdfResult = await extractPdfText(buffer)
+          content = pdfResult.content
         }
       }
     } else {
