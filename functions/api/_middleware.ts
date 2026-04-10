@@ -2,6 +2,7 @@
 // Runs before every API function on Cloudflare Pages
 
 const ALLOWED_ORIGINS = [
+  'https://appfacade.pages.dev',
   'https://arty.pages.dev',
   'https://app.arty.fr',
   'http://localhost:5173',
