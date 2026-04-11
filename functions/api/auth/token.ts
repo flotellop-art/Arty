@@ -3,7 +3,7 @@ import type { Env } from '../../env'
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   const { code, redirect_uri } = await request.json() as { code?: string; redirect_uri?: string }
 
-  if (!code || !redirect_uri) {
+  if (!code || redirect_uri === undefined || redirect_uri === null) {
     return Response.json({ error: 'Missing code or redirect_uri' }, { status: 400 })
   }
 
