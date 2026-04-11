@@ -80,12 +80,21 @@ export function useAuth() {
     return session
   }, [])
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
     // Clear API keys from memory
     clearActiveKeys()
     // Clear Google tokens and user data
     scoped.removeItem('google-tokens')
     scoped.removeItem('google-user')
+    // Sign out from native Google Sign-In (clears cached account)
+    try {
+      const { Capacitor } = await import('@capacitor/core')
+      if (Capacitor.isNativePlatform()) {
+        const { registerPlugin } = await import('@capacitor/core')
+        const GoogleSignInNative = registerPlugin<{ signOut(): Promise<void> }>('GoogleSignInNative')
+        await GoogleSignInNative.signOut()
+      }
+    } catch {}
     // Clear session
     clearActiveSession()
     setCurrentUser(null)
