@@ -325,3 +325,76 @@ toutes les requêtes bloquées.
 **Règle** : TOUJOURS passer par le proxy Cloudflare Pages Functions
 (`/api/ai/proxy`) pour les appels API. Ne JAMAIS appeler l'AI
 Gateway directement depuis le navigateur.
+
+### BUG 31 — Chaîne sans guillemets dans Response.json casse le build
+**Fichier** : `functions/api/drive/action.ts`
+**Problème** : `{ error: Drive operation failed }` sans guillemets
+autour de la string → esbuild voit `operation` comme identifiant →
+erreur de syntaxe → déploiement Cloudflare échoue silencieusement.
+**Règle** : TOUJOURS mettre des guillemets autour des strings dans
+les objets JSON. Vérifier `npx tsc --noEmit` ET tester le build.
+
+### BUG 32 — Gmail/Drive IDs non validés = risque d'injection
+**Fichier** : `functions/api/gmail/action.ts`, `functions/api/drive/action.ts`
+**Problème** : Les IDs de messages et fichiers n'étaient pas validés →
+un ID malveillant pouvait injecter dans les requêtes Google API.
+**Règle** : TOUJOURS valider les IDs avec regex `/^[a-zA-Z0-9_-]+$/`
+AVANT de les utiliser dans les URLs d'API.
+
+### BUG 33 — Permissions Android manquantes (camera, storage, notifications)
+**Fichier** : `android/app/src/main/AndroidManifest.xml`
+**Problème** : Permissions CAMERA, STORAGE, NOTIFICATIONS manquantes
+→ crash ou fonctionnalités silencieusement désactivées.
+**Règle** : Vérifier AndroidManifest.xml pour TOUTES les permissions.
+Android 13+ requiert READ_MEDIA_IMAGES au lieu de READ_EXTERNAL_STORAGE.
+
+### BUG 34 — iOS Info.plist sans descriptions de privacy = rejet App Store
+**Fichier** : `ios/App/App/Info.plist`
+**Problème** : NSCameraUsageDescription, NSPhotoLibraryUsageDescription,
+NSMicrophoneUsageDescription manquants → Apple rejette la publication.
+**Règle** : TOUJOURS remplir les descriptions de privacy iOS AVANT
+toute tentative de publication.
+
+### BUG 35 — ExternalStorage n'existe pas sur iOS
+**Fichier** : `src/services/native/filesystem.ts`
+**Problème** : `ExternalStorage` est Android uniquement → crash sur iOS.
+**Règle** : Détecter la plateforme avec `Capacitor.getPlatform()`.
+Utiliser Documents sur iOS, ExternalStorage sur Android.
+
+### BUG 36 — atob() casse les caractères UTF-8 français
+**Fichier** : `src/services/tools/nativeTools.ts`
+**Problème** : `atob()` retourne des octets bruts, pas du texte UTF-8
+→ "Café" devient du garbage.
+**Règle** : Pour du texte UTF-8, utiliser
+`decodeURIComponent(escape(atob(data)))` au lieu de `atob()` seul.
+
+### BUG 37 — .npmrc manquant = build Cloudflare échoue
+**Fichier** : `.npmrc`
+**Problème** : `@codetrix-studio/capacitor-google-auth` requiert
+Capacitor 6 mais le projet utilise Capacitor 8. `npm ci` sur
+Cloudflare refuse d'installer sans `--legacy-peer-deps`.
+**Règle** : Le fichier `.npmrc` avec `legacy-peer-deps=true` est
+OBLIGATOIRE. Ne jamais le supprimer.
+
+### BUG 38 — D1 table non créée au premier appel
+**Fichier** : `functions/api/memory/action.ts`
+**Problème** : La table `memory` n'existait pas dans D1 au premier
+déploiement → erreur 500 sur toutes les requêtes mémoire.
+**Règle** : L'endpoint mémoire doit faire un `CREATE TABLE IF NOT
+EXISTS` avant la première requête.
+
+### BUG 39 — wrangler.toml empêche Cloudflare Pages de détecter les functions
+**Fichier** : `wrangler.toml` (supprimé)
+**Problème** : La présence de `wrangler.toml` faisait croire à
+Cloudflare Pages que c'était un projet Workers → les functions
+dans `functions/` n'étaient pas détectées.
+**Règle** : Ne PAS avoir de `wrangler.toml` à la racine d'un projet
+Cloudflare Pages. La config se fait dans le dashboard.
+
+### BUG 40 — _redirects empêche le SPA routing sur Cloudflare
+**Fichier** : `_redirects` (supprimé)
+**Problème** : Le fichier `_redirects` (format Vercel/Netlify)
+n'est pas supporté par Cloudflare Pages. Les routes SPA
+(`/chat/:id`, `/auth/callback`) retournaient 404.
+**Règle** : Cloudflare Pages gère le SPA routing automatiquement.
+Ne pas ajouter de `_redirects` ou `_headers` manuellement.
