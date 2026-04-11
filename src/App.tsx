@@ -49,7 +49,8 @@ function AppContent({ onLogout, userName }: { onLogout: () => void; userName?: s
   const handleSendFromHome = useCallback(
     (text: string, files?: FileAttachment[]) => {
       setActionScreenshot(null)
-      const id = createConversation()
+      const isFirstConv = conversations.length === 0
+      const id = createConversation(isFirstConv)
       if (files?.length) {
         navigate(`/chat/${id}`)
         setTimeout(() => sendMessage(text, id, files), 100)
@@ -58,7 +59,7 @@ function AppContent({ onLogout, userName }: { onLogout: () => void; userName?: s
         navigate(`/chat/${id}`)
       }
     },
-    [createConversation, sendMessage, navigate, setActionScreenshot]
+    [createConversation, sendMessage, navigate, setActionScreenshot, conversations.length]
   )
 
   const handleNewConversation = useCallback(() => {
