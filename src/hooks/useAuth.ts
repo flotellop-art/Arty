@@ -60,8 +60,9 @@ export function useAuth() {
     // Initialize encryption with the API key
     await initCrypto(credentials.anthropicKey)
 
-    // Store API keys — plain first (sync), then encrypted in background
-    scoped.secureSetJSON('api-keys', {
+    // Store API keys as plain JSON for sync reads (getJSON in useEffect)
+    // migrateKey handles encryption separately
+    scoped.setJSON('api-keys', {
       anthropic: credentials.anthropicKey,
       gemini: credentials.geminiKey,
       mistral: credentials.mistralKey,

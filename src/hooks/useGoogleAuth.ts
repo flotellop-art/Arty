@@ -42,7 +42,7 @@ export function useGoogleAuth() {
         const result = await GoogleSignInNative.signIn()
 
         // Store minimal tokens so useEffect doesn't reset isConnected
-        scoped.secureSetJSON('google-tokens', {
+        scoped.setJSON('google-tokens', {
           access_token: 'native',
           refresh_token: '',
           expires_at: Date.now() + 86400000,
@@ -53,7 +53,7 @@ export function useGoogleAuth() {
           name: result.name || result.email?.split('@')[0] || '',
           picture: result.avatar || '',
         }
-        scoped.secureSetJSON('google-user', googleUser)
+        scoped.setJSON('google-user', googleUser)
         setUser(googleUser)
         setIsConnected(true)
       } catch (err) {

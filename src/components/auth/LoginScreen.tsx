@@ -200,13 +200,13 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
                   const tokens = await res.json()
 
                   if (tokens.access_token) {
-                    scoped.secureSetJSON('google-tokens', {
+                    scoped.setJSON('google-tokens', {
                       access_token: tokens.access_token,
                       refresh_token: tokens.refresh_token || '',
                       expires_at: Date.now() + (tokens.expires_in || 3600) * 1000,
                     })
                   }
-                  scoped.secureSetJSON('google-user', { email, name, picture: avatar })
+                  scoped.setJSON('google-user', { email, name, picture: avatar })
 
                   const { generateUserId, setActiveSession } = await import('../../services/userSession')
                   const userId = await generateUserId('google', email)
