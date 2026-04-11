@@ -41,7 +41,7 @@ export const onRequest: PagesFunction = async (context) => {
       headers: {
         'Access-Control-Allow-Origin': isAllowedOrigin ? (origin || '*') : '',
         'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-api-key, anthropic-version, anthropic-beta',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-api-key, x-google-token, anthropic-version, anthropic-beta',
         'Access-Control-Max-Age': '86400',
       },
     })
@@ -67,7 +67,7 @@ export const onRequest: PagesFunction = async (context) => {
   headers.set('Referrer-Policy', 'strict-origin-when-cross-origin')
   if (isAllowedOrigin && origin) {
     headers.set('Access-Control-Allow-Origin', origin)
-    headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-api-key, anthropic-version, anthropic-beta')
+    headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-api-key, x-google-token, anthropic-version, anthropic-beta')
   }
 
   return new Response(response.body, {

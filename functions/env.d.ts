@@ -5,6 +5,7 @@ export interface Env {
   ANTHROPIC_API_KEY?: string
   GEMINI_API_KEY?: string
   MISTRAL_API_KEY?: string
+  ALLOWED_EMAILS?: string  // comma-separated list of emails allowed to use server keys
   WP_URL: string
   WP_USERNAME: string
   WP_PASSWORD: string

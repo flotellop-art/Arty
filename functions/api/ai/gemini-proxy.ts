@@ -1,8 +1,18 @@
 import type { Env } from '../../env'
+import { checkAllowedUser } from '../_lib/checkAllowedUser'
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
-  // Use client's BYOK key, or fall back to server-side key
-  const apiKey = request.headers.get('authorization')?.replace('Bearer ', '') || env.GEMINI_API_KEY
+  // Use client's BYOK key first
+  let apiKey = request.headers.get('authorization')?.replace('Bearer ', '') || ''
+
+  // If no BYOK key, check if user is allowed to use server key
+  if (!apiKey && env.GEMINI_API_KEY) {
+    const allowed = await checkAllowedUser(request, env)
+    if (allowed) {
+      apiKey = env.GEMINI_API_KEY
+    }
+  }
+
   if (!apiKey) {
     return Response.json({ error: 'Missing Gemini API key' }, { status: 401 })
   }

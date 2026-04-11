@@ -4,6 +4,7 @@ import { addUsage } from './tokenTracker'
 import { compressIfNeeded } from './conversationCompressor'
 import { getAnthropicKey } from './activeApiKey'
 import { apiUrl } from './apiBase'
+import { getStoredTokens } from './googleAuth'
 
 type ToolHandler = (name: string, input: Record<string, unknown>) => Promise<{ result: string; screenshot?: string; fileData?: { name: string; mimeType: string; base64: string } }>
 
@@ -80,6 +81,11 @@ async function fetchWithRetry(
   }
   if (apiKey && apiKey !== 'server-provided') {
     headers['x-api-key'] = apiKey
+  }
+  // Send Google token so proxy can verify whitelist
+  const googleTokens = getStoredTokens()
+  if (googleTokens?.access_token) {
+    headers['x-google-token'] = googleTokens.access_token
   }
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     response = await fetch(apiUrl('/api/ai/proxy'), {

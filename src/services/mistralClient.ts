@@ -1,6 +1,7 @@
 import { getMistralKey } from './activeApiKey'
 import { addUsage } from './tokenTracker'
 import { apiUrl } from './apiBase'
+import { getStoredTokens } from './googleAuth'
 
 const MISTRAL_SYSTEM = `Tu es Arty, un assistant IA personnel.
 Tu parles comme un pote compétent — direct, cash, pas de flatterie.
@@ -49,6 +50,11 @@ async function runMistralStream(
     const headers: Record<string, string> = { 'Content-Type': 'application/json' }
     if (apiKey) {
       headers['Authorization'] = `Bearer ${apiKey}`
+    }
+    // Send Google token so proxy can verify whitelist
+    const googleTokens = getStoredTokens()
+    if (googleTokens?.access_token) {
+      headers['x-google-token'] = googleTokens.access_token
     }
 
     const response = await fetch(apiUrl('/api/ai/mistral-proxy'), {
