@@ -1,8 +1,6 @@
 import { useState, useRef, useEffect, useCallback, type KeyboardEvent } from 'react'
 import type { FileAttachment } from '../../types'
 import { useSpeechRecognition } from '../../hooks/useSpeechRecognition'
-import { getStyle, setStyle as saveStyle, STYLE_OPTIONS, type ResponseStyle } from '../../services/responseStyles'
-import { getSelectedModel, setSelectedModel, MODEL_OPTIONS, type AIModel } from '../../services/modelSelector'
 import { isNative } from '../../services/native/platform'
 import { takePhoto, scanDocument } from '../../services/native/camera'
 
@@ -14,10 +12,6 @@ interface InputBarProps {
 
 export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
   const [text, setText] = useState('')
-  const [currentStyle, setCurrentStyle] = useState<ResponseStyle>(getStyle)
-  const [showStyles, setShowStyles] = useState(false)
-  const [currentModel, setCurrentModel] = useState<AIModel>(getSelectedModel)
-  const [showModels, setShowModels] = useState(false)
   const [files, setFiles] = useState<FileAttachment[]>([])
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -39,7 +33,7 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
     el.style.height = Math.min(el.scrollHeight, 120) + 'px'
   }, [text])
 
-  // Callback for speech recognition — appends each final phrase to text
+  // Callback for speech recognition
   const handleTranscript = useCallback((spokenText: string) => {
     setText((prev) => {
       if (!prev) return spokenText
@@ -130,19 +124,6 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
     }
   }
 
-  const handleStyleChange = (style: ResponseStyle) => {
-    saveStyle(style)
-    setCurrentStyle(style)
-    setShowStyles(false)
-    window.dispatchEvent(new CustomEvent('style-changed', { detail: style }))
-  }
-
-  const handleModelChange = (model: AIModel) => {
-    setSelectedModel(model)
-    setCurrentModel(model)
-    setShowModels(false)
-  }
-
   return (
     <div className="px-4 pb-4 pt-2 bg-cream" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 1rem))' }}>
       {/* File previews */}
@@ -166,46 +147,6 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
         </div>
       )}
 
-      {/* Style selector */}
-      {showStyles && (
-        <div className="flex gap-1.5 mb-2 overflow-x-auto pb-1">
-          {STYLE_OPTIONS.map((opt) => (
-            <button
-              key={opt.id}
-              onClick={() => handleStyleChange(opt.id)}
-              className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium transition-colors flex-shrink-0 ${
-                currentStyle === opt.id
-                  ? 'bg-bubble-user text-cream'
-                  : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'
-              }`}
-            >
-              <span>{opt.emoji}</span>
-              <span>{opt.label}</span>
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* Model selector */}
-      {showModels && (
-        <div className="flex gap-1.5 mb-2 overflow-x-auto pb-1">
-          {MODEL_OPTIONS.map((opt) => (
-            <button
-              key={opt.id}
-              onClick={() => handleModelChange(opt.id)}
-              className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium transition-colors flex-shrink-0 ${
-                currentModel === opt.id
-                  ? 'bg-bubble-user text-cream'
-                  : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'
-              }`}
-            >
-              <span>{opt.flag}</span>
-              <span>{opt.label}</span>
-            </button>
-          ))}
-        </div>
-      )}
-
       {/* Mic error message */}
       {micError && (
         <div className="text-xs text-red-500 mb-1 px-1">
@@ -219,28 +160,6 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
           {interimTranscript}...
         </div>
       )}
-
-      {/* Quick toggles — style + model */}
-      <div className="flex gap-2 mb-1.5">
-        <button
-          onClick={() => { setShowStyles((s) => !s); setShowModels(false) }}
-          className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs transition-colors ${
-            currentStyle !== 'default' ? 'bg-orange-100 text-orange-600' : 'bg-gray-100 text-gray-500'
-          }`}
-        >
-          <span>{STYLE_OPTIONS.find(s => s.id === currentStyle)?.emoji || '💬'}</span>
-          <span>{STYLE_OPTIONS.find(s => s.id === currentStyle)?.label || 'Normal'}</span>
-        </button>
-        <button
-          onClick={() => { setShowModels((s) => !s); setShowStyles(false) }}
-          className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs transition-colors ${
-            currentModel !== 'auto' ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-500'
-          }`}
-        >
-          <span>{MODEL_OPTIONS.find(m => m.id === currentModel)?.flag || '🔄'}</span>
-          <span>{MODEL_OPTIONS.find(m => m.id === currentModel)?.label || 'Auto'}</span>
-        </button>
-      </div>
 
       <div className="flex items-end gap-2 bg-white rounded-2xl border border-gray-200 px-3 py-2 shadow-sm">
         {/* Plus button — file upload */}

@@ -1,5 +1,4 @@
 import { AnimatedStar } from './AnimatedStar'
-import { SuggestionCard } from './SuggestionCard'
 import { TopBar } from '../layout/TopBar'
 import { InputBar } from '../layout/InputBar'
 import { GoogleConnectButton } from '../google/GoogleConnectButton'
@@ -19,25 +18,11 @@ interface HomeScreenProps {
 }
 
 export function HomeScreen({ onMenuToggle, onSend, isStreaming, googleAuth }: HomeScreenProps) {
-  const suggestions = googleAuth.isConnected
-    ? [
-        'Lire mes emails',
-        'Chercher un fichier Drive',
-        'Générer un devis client',
-        'Répondre à un email',
-        'Analyser mes factures',
-      ]
-    : [
-        'Générer un devis client',
-        'Répondre à un email',
-        'Analyser mes factures',
-      ]
-
   return (
     <div className="flex flex-col h-full">
       <TopBar onMenuToggle={onMenuToggle} onHistoryToggle={onMenuToggle} />
 
-      <div className="flex-1 flex flex-col items-center justify-center px-6 pb-4 gap-5 overflow-y-auto">
+      <div className="flex-1 flex flex-col items-center justify-center px-6 pb-4 gap-5">
         <AnimatedStar />
 
         <h1 className="font-serif text-2xl md:text-3xl font-semibold text-bubble-user text-center leading-snug">
@@ -61,17 +46,6 @@ export function HomeScreen({ onMenuToggle, onSend, isStreaming, googleAuth }: Ho
           {googleAuth.error && (
             <p className="text-xs text-red-500">{googleAuth.error}</p>
           )}
-        </div>
-
-        {/* Suggestions */}
-        <div className="w-full max-w-md flex flex-col gap-3">
-          {suggestions.map((text) => (
-            <SuggestionCard
-              key={text}
-              text={text}
-              onClick={() => onSend(text)}
-            />
-          ))}
         </div>
       </div>
 
