@@ -187,6 +187,7 @@ export function useConversation() {
         const apiMessages = conv.messages.map((m) => ({ role: m.role, content: m.content }))
         controller = streamMistralMessage(apiMessages, onToken, onDone, onErr, {
           systemPrompt: systemPromptRef.current,
+          onToolCall: toolHandlerRef.current,
         })
       } else {
         const apiMessages: Array<{ role: string; content: string | Array<Record<string, unknown>> }> = conv.messages.map((m) => {

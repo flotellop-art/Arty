@@ -2,6 +2,8 @@ import { getMistralKey } from './activeApiKey'
 import { addUsage } from './tokenTracker'
 import { apiUrl } from './apiBase'
 import { getStoredTokens } from './googleAuth'
+import { TOOLS } from './toolDefinitions'
+import { convertToolsToOpenAI } from './tools/openaiFormat'
 
 const MISTRAL_SYSTEM = `Tu es Arty, un assistant IA personnel.
 Tu parles comme un pote compétent — direct, cash, pas de flatterie.
@@ -9,8 +11,11 @@ Tutoie l'utilisateur. Phrases courtes. Pas de "Excellente question !" ni de form
 Si l'utilisateur a tort, dis-le clairement. Sois cash mais respectueux.
 Adapte ton vocabulaire au métier de l'utilisateur si tu le connais.`
 
+type ToolHandler = (name: string, input: Record<string, unknown>) => Promise<{ result: string; screenshot?: string }>
+
 interface MistralStreamOptions {
   systemPrompt?: string
+  onToolCall?: ToolHandler
 }
 
 export function streamMistralMessage(
@@ -29,9 +34,18 @@ export function streamMistralMessage(
   return controller
 }
 
+// OpenAI-format message types for the tool loop
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type ApiMessage = { role: string; content?: string | null; tool_calls?: any[]; tool_call_id?: string; name?: string }
+
+interface ToolCall {
+  id: string
+  function: { name: string; arguments: string }
+}
+
 async function runMistralStream(
   apiKey: string | null,
-  messages: Array<{ role: string; content: string }>,
+  originalMessages: Array<{ role: string; content: string }>,
   onToken: (text: string) => void,
   onDone: () => void,
   onError: (error: Error) => void,
@@ -42,108 +56,63 @@ async function runMistralStream(
     const systemPrompt = options?.systemPrompt || MISTRAL_SYSTEM
 
     // Build messages in OpenAI format
-    const apiMessages = [
+    const apiMessages: ApiMessage[] = [
       { role: 'system', content: systemPrompt },
-      ...messages.map(m => ({ role: m.role, content: m.content })),
+      ...originalMessages.map(m => ({ role: m.role, content: m.content })),
     ]
 
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-    if (apiKey) {
-      headers['Authorization'] = `Bearer ${apiKey}`
-    }
-    // Send Google token so proxy can verify whitelist
-    const googleTokens = getStoredTokens()
-    if (googleTokens?.access_token) {
-      headers['x-google-token'] = googleTokens.access_token
-    }
+    // Convert tools to OpenAI format
+    const openaiTools = options?.onToolCall ? convertToolsToOpenAI(TOOLS) : []
 
-    const response = await fetch(apiUrl('/api/ai/mistral-proxy'), {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        model: 'mistral-large-latest',
-        messages: apiMessages,
-        stream: true,
-        max_tokens: 8192,
-        temperature: 0.7,
-      }),
-      signal: controller.signal,
-    })
+    let maxIterations = 20
 
-    if (!response.ok) {
-      const err = await response.text().catch(() => 'Unknown error')
-      if (response.status === 401) {
-        onError(new Error('Clé API Mistral invalide ou expirée'))
-      } else if (response.status === 429) {
-        onError(new Error('Limite de requêtes Mistral atteinte — réessaie dans quelques secondes'))
-      } else {
-        onError(new Error(`Erreur Mistral (${response.status}): ${err}`))
-      }
-      return
-    }
+    while (maxIterations > 0) {
+      maxIterations--
 
-    // Parse SSE stream (OpenAI format)
-    if (!response.body) {
-      onError(new Error('Mistral: réponse vide (pas de body)'))
-      return
-    }
-    const reader = response.body.getReader()
-    const decoder = new TextDecoder()
-    let buffer = ''
-    let totalContent = ''
-    let inputTokens = 0
-    let outputTokens = 0
-    let usageTracked = false
+      const { content, toolCalls, inputTokens, outputTokens } = await streamOnce(
+        apiKey, apiMessages, openaiTools, onToken, controller
+      )
 
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-
-      buffer += decoder.decode(value, { stream: true })
-      const lines = buffer.split('\n')
-      buffer = lines.pop() || ''
-
-      for (const line of lines) {
-        if (!line.startsWith('data: ')) continue
-        const data = line.slice(6).trim()
-        if (data === '[DONE]') {
-          if (!usageTracked) {
-            addUsage(inputTokens, outputTokens)
-            usageTracked = true
-          }
-          onDone()
-          return
-        }
-
-        try {
-          const parsed = JSON.parse(data)
-
-          // Extract token
-          const delta = parsed.choices?.[0]?.delta
-          if (delta?.content) {
-            totalContent += delta.content
-            onToken(delta.content)
-          }
-
-          // Extract usage if available
-          if (parsed.usage) {
-            inputTokens = parsed.usage.prompt_tokens || 0
-            outputTokens = parsed.usage.completion_tokens || 0
-          }
-        } catch {
-          continue
-        }
-      }
-    }
-
-    // Fallback: stream ended without [DONE] — estimate tokens if needed
-    if (!usageTracked) {
-      if (outputTokens === 0) {
-        outputTokens = Math.ceil(totalContent.length / 4)
-        inputTokens = Math.ceil(JSON.stringify(messages).length / 4)
-      }
       addUsage(inputTokens, outputTokens)
+
+      // No tool calls — we're done
+      if (!toolCalls || toolCalls.length === 0 || !options?.onToolCall) {
+        onDone()
+        return
+      }
+
+      // Add assistant message with tool_calls
+      apiMessages.push({
+        role: 'assistant',
+        content: content || null,
+        tool_calls: toolCalls.map(tc => ({
+          id: tc.id,
+          type: 'function',
+          function: { name: tc.function.name, arguments: tc.function.arguments },
+        })),
+      })
+
+      // Execute each tool call and add results
+      for (const tc of toolCalls) {
+        try {
+          const args = JSON.parse(tc.function.arguments)
+          const result = await options.onToolCall(tc.function.name, args)
+          apiMessages.push({
+            role: 'tool',
+            tool_call_id: tc.id,
+            content: result.result,
+          })
+        } catch (err) {
+          apiMessages.push({
+            role: 'tool',
+            tool_call_id: tc.id,
+            content: `Erreur: ${err instanceof Error ? err.message : 'outil échoué'}`,
+          })
+        }
+      }
     }
+
+    // Max iterations reached
     onDone()
   } catch (err) {
     if ((err as Error).name === 'AbortError') {
@@ -152,4 +121,149 @@ async function runMistralStream(
     }
     onError(err instanceof Error ? err : new Error('Mistral streaming failed'))
   }
+}
+
+/**
+ * Single streaming request to Mistral API.
+ * Returns the accumulated content, any tool_calls, and token usage.
+ */
+async function streamOnce(
+  apiKey: string | null,
+  messages: ApiMessage[],
+  tools: ReturnType<typeof convertToolsToOpenAI>,
+  onToken: (text: string) => void,
+  controller: AbortController
+): Promise<{
+  content: string
+  toolCalls: ToolCall[]
+  inputTokens: number
+  outputTokens: number
+}> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (apiKey) {
+    headers['Authorization'] = `Bearer ${apiKey}`
+  }
+  const googleTokens = getStoredTokens()
+  if (googleTokens?.access_token) {
+    headers['x-google-token'] = googleTokens.access_token
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const body: Record<string, any> = {
+    model: 'mistral-large-latest',
+    messages,
+    stream: true,
+    max_tokens: 8192,
+    temperature: 0.7,
+  }
+
+  // Only include tools if we have some
+  if (tools.length > 0) {
+    body.tools = tools
+    body.tool_choice = 'auto'
+  }
+
+  const response = await fetch(apiUrl('/api/ai/mistral-proxy'), {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(body),
+    signal: controller.signal,
+  })
+
+  if (!response.ok) {
+    const err = await response.text().catch(() => 'Unknown error')
+    if (response.status === 401) {
+      throw new Error('Clé API Mistral invalide ou expirée')
+    } else if (response.status === 429) {
+      throw new Error('Limite de requêtes Mistral atteinte — réessaie dans quelques secondes')
+    } else {
+      throw new Error(`Erreur Mistral (${response.status}): ${err}`)
+    }
+  }
+
+  if (!response.body) {
+    throw new Error('Mistral: réponse vide (pas de body)')
+  }
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  let content = ''
+  let inputTokens = 0
+  let outputTokens = 0
+  const toolCalls: ToolCall[] = []
+  // Accumulate partial tool calls by index
+  const partialToolCalls = new Map<number, { id: string; name: string; args: string }>()
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+
+    buffer += decoder.decode(value, { stream: true })
+    const lines = buffer.split('\n')
+    buffer = lines.pop() || ''
+
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue
+      const data = line.slice(6).trim()
+      if (data === '[DONE]') break
+
+      try {
+        const parsed = JSON.parse(data)
+        const delta = parsed.choices?.[0]?.delta
+
+        // Text content
+        if (delta?.content) {
+          content += delta.content
+          onToken(delta.content)
+        }
+
+        // Tool calls (streamed incrementally)
+        if (delta?.tool_calls) {
+          for (const tc of delta.tool_calls) {
+            const idx = tc.index ?? 0
+            if (tc.id) {
+              // New tool call starting
+              partialToolCalls.set(idx, {
+                id: tc.id,
+                name: tc.function?.name || '',
+                args: tc.function?.arguments || '',
+              })
+            } else {
+              // Continue accumulating arguments
+              const existing = partialToolCalls.get(idx)
+              if (existing) {
+                if (tc.function?.name) existing.name += tc.function.name
+                if (tc.function?.arguments) existing.args += tc.function.arguments
+              }
+            }
+          }
+        }
+
+        // Usage
+        if (parsed.usage) {
+          inputTokens = parsed.usage.prompt_tokens || 0
+          outputTokens = parsed.usage.completion_tokens || 0
+        }
+      } catch {
+        continue
+      }
+    }
+  }
+
+  // Finalize tool calls
+  for (const [, tc] of partialToolCalls) {
+    toolCalls.push({
+      id: tc.id,
+      function: { name: tc.name, arguments: tc.args },
+    })
+  }
+
+  // Estimate tokens if not provided
+  if (outputTokens === 0 && (content || toolCalls.length > 0)) {
+    outputTokens = Math.ceil(content.length / 4)
+    inputTokens = Math.ceil(JSON.stringify(messages).length / 4)
+  }
+
+  return { content, toolCalls, inputTokens, outputTokens }
 }
