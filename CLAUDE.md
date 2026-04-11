@@ -186,10 +186,10 @@ locale pouvait appeler les proxys.
 **Problème** : "Rapport sur mes mails" déclenchait le mode hybride → Gemini cherchait sur le web des données privées inaccessibles → réponse vide ou hallucinations. "Analyse le fichier" avec un PDF attaché déclenchait aussi le mode hybride (regex "analyse le")
 **Règle** : Les requêtes mentionnant des données privées (mes mails, mes fichiers, mon Drive) doivent TOUJOURS aller à Claude. Quand des fichiers sont attachés, TOUJOURS utiliser Claude — jamais hybride, jamais Gemini
 
-### BUG 13 — Erreurs TypeScript bloquent le déploiement Vercel silencieusement
+### BUG 13 — Erreurs TypeScript bloquent le déploiement silencieusement
 **Fichiers** : tous les fichiers `.ts`/`.tsx`
-**Problème** : Des `console.log` de debug avec `files[0].name` causaient TS2532 ("Object is possibly undefined") → `tsc --noEmit` échouait → le build Vercel plantait → les fix n'étaient jamais déployés, donnant l'impression que rien ne marchait
-**Règle** : Le build fait `tsc --noEmit && vite build`. TOUJOURS vérifier `npx tsc --noEmit` AVANT de push. Les erreurs TS bloquent le déploiement SANS notification visible dans l'app
+**Problème** : Des `console.log` de debug avec `files[0].name` causaient TS2532 ("Object is possibly undefined") → `tsc --noEmit` échouait → le build plantait → les fix n'étaient jamais déployés
+**Règle** : TOUJOURS vérifier `npx tsc --noEmit` AVANT de push. Les erreurs TS bloquent le déploiement SANS notification visible dans l'app
 
 ### BUG 14 — pdf-parse retourne du garbage sur PDFs compressés
 **Fichiers** : `api/_lib/pdfExtraction.ts`, `api/drive/action.ts`
@@ -200,3 +200,40 @@ locale pouvait appeler les proxys.
 **Fichiers** : `src/services/googleAuth.ts`, `api/_lib/pdfExtraction.ts`
 **Problème** : Les scopes `cloud-vision` et `cloud-platform` ne sont pas disponibles dans le flux OAuth pour comptes Gmail personnels → impossible de se reconnecter
 **Règle** : Utiliser une clé API serveur (`GOOGLE_VISION_API_KEY` dans env) pour Vision OCR, PAS le token OAuth utilisateur
+
+### BUG 16 — saveConversation async casse le UI
+**Fichier** : `src/services/storage.ts`
+**Problème** : Rendre `saveConversation()` async pour le chiffrement
+cassait l'affichage car les appelants (`useStreaming`, `useConversation`)
+ne faisaient pas `await`. Les messages n'apparaissaient qu'au refresh.
+**Règle** : `saveConversation()` DOIT rester synchrone. Le chiffrement
+se fait en arrière-plan séparément.
+
+### BUG 17 — Tokens Google en mémoire uniquement = déconnexion au refresh
+**Fichier** : `src/services/googleAuth.ts`
+**Problème** : Stocker les tokens Google uniquement en mémoire (pour
+la sécurité) causait une déconnexion Google à chaque rechargement.
+**Règle** : Les tokens Google doivent être dans localStorage (via
+`setJSON`), pas uniquement en mémoire.
+
+### BUG 18 — Header anthropic-beta vide rejeté par Anthropic
+**Fichier** : `functions/api/ai/proxy.ts`
+**Problème** : Un header `anthropic-beta: ''` (vide) faisait rejeter
+la requête par l'API Anthropic.
+**Règle** : Ne JAMAIS envoyer un header avec une valeur vide.
+Vérifier `if (beta)` avant d'ajouter le header.
+
+### BUG 19 — CSRF bloquait appfacade.pages.dev
+**Fichier** : `functions/api/_middleware.ts`
+**Problème** : L'origin `appfacade.pages.dev` n'était pas dans la
+whitelist CORS/CSRF → toutes les requêtes POST étaient bloquées.
+**Règle** : Toujours vérifier que les domaines de production sont
+dans `ALLOWED_ORIGINS` du middleware.
+
+### BUG 20 — XSS via markdown non sanitisé
+**Fichier** : `src/components/shared/MarkdownRenderer.tsx`
+**Problème** : Sans `rehype-sanitize`, les messages IA pouvaient
+contenir du `<script>`, `onerror=`, `javascript:` exécuté dans
+le navigateur.
+**Règle** : TOUJOURS utiliser `rehype-sanitize` dans le rendu
+markdown. Ne jamais désactiver la sanitisation.
