@@ -48,6 +48,15 @@ async function runGeminiStream(
       parts: [{ text: m.content }],
     }))
 
+    // Detect if query is map/location related — google_maps and google_search
+    // cannot be combined in the same Gemini request
+    const lastMessage = messages[messages.length - 1]?.content || ''
+    const isMapQuery = /google\s*maps|itinéraire|trajet|street\s*view|restaurant|horaires?|adresse|où\s+(se\s+trouve|est|aller|trouver)|coordonnées|GPS|plan\s+(de|du)|carte/i.test(lastMessage)
+
+    const tools = isMapQuery
+      ? [{ google_maps: {} }]
+      : [{ google_search: {} }, { url_context: {} }]
+
     const body = {
       contents,
       systemInstruction: {
@@ -57,11 +66,7 @@ async function runGeminiStream(
         temperature: 0.7,
         maxOutputTokens: 8192,
       },
-      tools: [
-        { google_search: {} },
-        { url_context: {} },
-        { google_maps: {} },
-      ],
+      tools,
     }
 
     const model = 'gemini-3-flash-preview'
