@@ -307,3 +307,21 @@ Google ne reconnaît pas ce redirect_uri → échec de l'échange OAuth.
 **Règle** : Sur natif, forcer `redirect_uri` vers l'URL Cloudflare
 (`https://appfacade.pages.dev/auth/callback`) ou utiliser `''` avec
 `serverAuthCode`.
+
+### BUG 29 — AI Gateway rejette les clés BYOK
+**Fichiers** : `src/services/anthropicClient.ts`
+**Problème** : Cloudflare AI Gateway (`gateway.ai.cloudflare.com`)
+retournait "invalid API key" pour les clés BYOK utilisateur. L'AI
+Gateway ne supporte que les clés du propriétaire du compte.
+**Règle** : Ne PAS utiliser l'AI Gateway pour les requêtes BYOK.
+Router directement vers `api.anthropic.com` via le proxy Worker.
+L'AI Gateway peut servir uniquement pour les clés serveur.
+
+### BUG 30 — AI Gateway bloque les requêtes navigateur (CORS)
+**Fichiers** : `src/services/anthropicClient.ts`
+**Problème** : L'AI Gateway est conçu pour du serveur-à-serveur,
+pas pour les appels depuis un navigateur. Pas de headers CORS →
+toutes les requêtes bloquées.
+**Règle** : TOUJOURS passer par le proxy Cloudflare Pages Functions
+(`/api/ai/proxy`) pour les appels API. Ne JAMAIS appeler l'AI
+Gateway directement depuis le navigateur.
