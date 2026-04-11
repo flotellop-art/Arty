@@ -170,3 +170,33 @@ dans les origins autorisées en production. N'importe quelle page
 locale pouvait appeler les proxys.
 **Règle** : Seuls les domaines de production + `capacitor://localhost`
 + `https://localhost` doivent être autorisés.
+
+### BUG 10 — code_execution en doublon avec web_search
+**Fichiers** : `src/services/toolDefinitions.ts`
+**Problème** : `code_execution` déclaré manuellement dans TOOLS alors que l'API Anthropic l'auto-injecte quand `web_search` ou `web_fetch` sont présents → erreur "Auto-injecting tools would conflict with existing tool names"
+**Règle** : Ne JAMAIS déclarer `code_execution` dans le tableau TOOLS — il est auto-injecté par l'API
+
+### BUG 11 — localStorage crashe avec les fichiers base64
+**Fichiers** : `src/hooks/useConversation.ts`, `src/hooks/useFileAttachments.ts`
+**Problème** : Les fichiers attachés (PDF, images) étaient stockés en base64 dans le Message → localStorage dépassait sa limite de 5MB → crash silencieux → fichiers perdus
+**Règle** : Ne JAMAIS stocker de données base64 de fichiers dans localStorage. Garder les fichiers en mémoire (ref) uniquement pour l'envoi API
+
+### BUG 12 — Mode hybride déclenché sur données privées
+**Fichiers** : `src/services/aiRouter.ts`
+**Problème** : "Rapport sur mes mails" déclenchait le mode hybride → Gemini cherchait sur le web des données privées inaccessibles → réponse vide ou hallucinations. "Analyse le fichier" avec un PDF attaché déclenchait aussi le mode hybride (regex "analyse le")
+**Règle** : Les requêtes mentionnant des données privées (mes mails, mes fichiers, mon Drive) doivent TOUJOURS aller à Claude. Quand des fichiers sont attachés, TOUJOURS utiliser Claude — jamais hybride, jamais Gemini
+
+### BUG 13 — Erreurs TypeScript bloquent le déploiement Vercel silencieusement
+**Fichiers** : tous les fichiers `.ts`/`.tsx`
+**Problème** : Des `console.log` de debug avec `files[0].name` causaient TS2532 ("Object is possibly undefined") → `tsc --noEmit` échouait → le build Vercel plantait → les fix n'étaient jamais déployés, donnant l'impression que rien ne marchait
+**Règle** : Le build fait `tsc --noEmit && vite build`. TOUJOURS vérifier `npx tsc --noEmit` AVANT de push. Les erreurs TS bloquent le déploiement SANS notification visible dans l'app
+
+### BUG 14 — pdf-parse retourne du garbage sur PDFs compressés
+**Fichiers** : `api/_lib/pdfExtraction.ts`, `api/drive/action.ts`
+**Problème** : pdf-parse retournait du texte binaire/garbage sur les PDFs FlateDecode → le test `length > 20` passait quand même → Claude recevait du garbage illisible
+**Règle** : Vérifier la LISIBILITÉ du texte extrait (>50% de caractères lisibles, >50 chars). Si illisible, passer au fallback OCR (Google Vision API avec `GOOGLE_VISION_API_KEY`)
+
+### BUG 15 — Google Vision OCR scope OAuth impossible sur comptes perso
+**Fichiers** : `src/services/googleAuth.ts`, `api/_lib/pdfExtraction.ts`
+**Problème** : Les scopes `cloud-vision` et `cloud-platform` ne sont pas disponibles dans le flux OAuth pour comptes Gmail personnels → impossible de se reconnecter
+**Règle** : Utiliser une clé API serveur (`GOOGLE_VISION_API_KEY` dans env) pour Vision OCR, PAS le token OAuth utilisateur
