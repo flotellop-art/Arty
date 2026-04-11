@@ -187,33 +187,54 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
               onNativeGoogleLogin={async (email, name, avatar, serverAuthCode) => {
                 setLoading(true)
                 try {
-                  // Exchange serverAuthCode for access+refresh tokens via our API
-                  const { apiUrl } = await import('../../services/apiBase')
-                  const res = await fetch(apiUrl('/api/auth/token'), {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                      code: serverAuthCode,
-                      redirect_uri: '',
-                    }),
-                  })
-                  const tokens = await res.json()
-
-                  if (tokens.access_token) {
-                    scoped.setJSON('google-tokens', {
-                      access_token: tokens.access_token,
-                      refresh_token: tokens.refresh_token || '',
-                      expires_at: Date.now() + (tokens.expires_in || 3600) * 1000,
-                    })
-                  }
+                  // Store user info first (always works)
                   scoped.setJSON('google-user', { email, name, picture: avatar })
 
                   const { generateUserId, setActiveSession } = await import('../../services/userSession')
                   const userId = await generateUserId('google', email)
                   setActiveSession({ userId, authMethod: 'google', displayName: name, email, avatar, createdAt: Date.now() })
-                  const existingKeys = scoped.getJSON<{ anthropic: string; gemini?: string; mistral?: string }>('api-keys')
 
-                  // Login directly — server-side proxy provides API keys if needed
+                  // Try to exchange serverAuthCode for real Google tokens
+                  let hasGoogleTokens = false
+                  if (serverAuthCode) {
+                    try {
+                      const { apiUrl } = await import('../../services/apiBase')
+                      const res = await fetch(apiUrl('/api/auth/token'), {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          code: serverAuthCode,
+                          redirect_uri: '',
+                        }),
+                      })
+
+                      if (res.ok) {
+                        const tokens = await res.json()
+                        if (tokens.access_token) {
+                          scoped.setJSON('google-tokens', {
+                            access_token: tokens.access_token,
+                            refresh_token: tokens.refresh_token || '',
+                            expires_at: Date.now() + (tokens.expires_in || 3600) * 1000,
+                          })
+                          hasGoogleTokens = true
+                        }
+                      }
+                    } catch {
+                      // Token exchange failed — continue without Google tokens
+                    }
+                  }
+
+                  // If no Google tokens, store a placeholder so the app knows Google is connected
+                  if (!hasGoogleTokens) {
+                    scoped.setJSON('google-tokens', {
+                      access_token: '',
+                      refresh_token: '',
+                      expires_at: 0,
+                    })
+                  }
+
+                  // Login with existing API keys or server-provided
+                  const existingKeys = scoped.getJSON<{ anthropic: string; gemini?: string; mistral?: string }>('api-keys')
                   await onLogin('google', {
                     displayName: name, email, avatar,
                     anthropicKey: existingKeys?.anthropic || 'server-provided',
@@ -223,17 +244,7 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
                   })
                 } catch (err) {
                   console.error('Native Google login error:', err)
-                  // If token exchange failed, login directly without tokens
-                  // (user can still use the app, Google features won't work)
-                  try {
-                    await onLogin('google', {
-                      displayName: name, email, avatar,
-                      anthropicKey: 'server-provided',
-                      identifier: email,
-                    })
-                  } catch {
-                    setPendingAuth({ method: 'google', displayName: name, email, avatar })
-                  }
+                  setPendingAuth({ method: 'google', displayName: name, email, avatar })
                 } finally {
                   setLoading(false)
                 }

@@ -97,6 +97,9 @@ export async function getValidAccessToken(): Promise<string | null> {
   let tokens = getStoredTokens()
   if (!tokens) return null
 
+  // Ignore placeholder/fake tokens
+  if (!tokens.access_token || tokens.access_token === 'native') return null
+
   // Refresh if expiring within 5 minutes
   if (tokens.expires_at - Date.now() < 5 * 60 * 1000) {
     tokens = await refreshAccessToken()
