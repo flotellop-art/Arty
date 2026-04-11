@@ -221,6 +221,19 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
                     mistralKey: existingKeys?.mistral || undefined,
                     identifier: email,
                   })
+                } catch (err) {
+                  console.error('Native Google login error:', err)
+                  // If token exchange failed, login directly without tokens
+                  // (user can still use the app, Google features won't work)
+                  try {
+                    await onLogin('google', {
+                      displayName: name, email, avatar,
+                      anthropicKey: 'server-provided',
+                      identifier: email,
+                    })
+                  } catch {
+                    setPendingAuth({ method: 'google', displayName: name, email, avatar })
+                  }
                 } finally {
                   setLoading(false)
                 }
