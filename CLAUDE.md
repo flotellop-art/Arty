@@ -237,3 +237,47 @@ contenir du `<script>`, `onerror=`, `javascript:` exécuté dans
 le navigateur.
 **Règle** : TOUJOURS utiliser `rehype-sanitize` dans le rendu
 markdown. Ne jamais désactiver la sanitisation.
+
+### BUG 21 — Google Sign-In natif ne retournait pas le serverAuthCode
+**Fichier** : `android/.../GoogleSignInPlugin.java`
+**Problème** : `GoogleSignInOptions` ne demandait pas
+`requestServerAuthCode(serverClientId)` → `serverAuthCode` retournait
+toujours `""` → échange de token impossible → pas d'accès Gmail/Drive.
+**Règle** : `GoogleSignInOptions` DOIT appeler `requestServerAuthCode()`
+avec le `server_client_id` ET `requestScopes()` pour les scopes
+Gmail/Drive/Calendar.
+
+### BUG 22 — Login Google natif : pas de catch sur l'échange de token
+**Fichier** : `src/components/auth/LoginScreen.tsx`
+**Problème** : Le handler `onNativeGoogleLogin` avait un `try/finally`
+sans `catch`. Si l'échange de token échouait (CORS, réseau, 400),
+l'erreur était avalée et l'app restait bloquée sans feedback.
+**Règle** : TOUJOURS avoir un `catch` avec un message d'erreur visible
+pour l'utilisateur. Ne JAMAIS avoir un `try/finally` sans `catch`.
+
+### BUG 23 — Google token expiré envoyé au proxy sans refresh
+**Fichiers** : `src/services/anthropicClient.ts`, `mistralClient.ts`,
+`geminiClient.ts`
+**Problème** : Les clients AI utilisaient `getStoredTokens()` (lecture
+brute) pour le header `x-google-token`. Si le token était expiré (>1h),
+Google le rejetait → `checkAllowedUser()` échouait → 401.
+**Règle** : TOUJOURS utiliser `getValidAccessToken()` (qui rafraîchit
+automatiquement) au lieu de `getStoredTokens()` pour le header
+`x-google-token`.
+
+### BUG 24 — Login Google web : pendingAuth perdu après redirect OAuth
+**Fichier** : `src/App.tsx`, `src/components/auth/LoginScreen.tsx`
+**Problème** : Après le redirect Google OAuth, le state React
+`pendingAuth` était réinitialisé (le redirect détruit le state).
+L'utilisateur devait cliquer 2 fois sur Google pour se connecter.
+**Règle** : Sauvegarder le `pendingAuth` dans `sessionStorage` avant
+le redirect, et le restaurer au chargement de LoginScreen.
+
+### BUG 25 — Clé API 'server-provided' envoyée comme vrai header
+**Fichier** : `src/services/anthropicClient.ts`
+**Problème** : La string `'server-provided'` (placeholder pour login
+Google sans BYOK) était envoyée dans le header `x-api-key` →
+Anthropic la rejetait comme clé invalide.
+**Règle** : Vérifier `apiKey !== 'server-provided'` avant d'ajouter
+le header. Le proxy utilise la clé serveur si aucune clé client
+n'est envoyée.
