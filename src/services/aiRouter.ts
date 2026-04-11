@@ -43,9 +43,9 @@ export function detectProvider(message: string): AIProvider {
 
   // If user forced a specific model, use it
   if (selectedModel !== 'auto') {
-    // Exception: private data always goes to Claude (tools required)
-    // EU-only conversations handle this separately
-    if (selectedModel !== 'claude') {
+    // Gemini has no tools — redirect private data to Claude
+    // Claude and Mistral both have tools — respect user choice
+    if (selectedModel === 'gemini') {
       const isPrivate = PRIVATE_DATA_TRIGGERS.some((r) => r.test(message))
       if (isPrivate) return 'claude'
     }

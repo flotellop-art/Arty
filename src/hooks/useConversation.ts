@@ -198,14 +198,10 @@ export function useConversation() {
         })
       } else if (provider === 'mistral') {
         const apiMessages = conv.messages.map((m) => ({ role: m.role, content: m.content }))
-        // EU-only conversations get tools, standard conversations don't
-        const mistralOptions: { systemPrompt?: string; onToolCall?: typeof toolHandlerRef.current } = {
+        controller = streamMistralMessage(apiMessages, onToken, onDone, onErr, {
           systemPrompt: systemPromptRef.current,
-        }
-        if (conv.euOnly && toolHandlerRef.current) {
-          mistralOptions.onToolCall = toolHandlerRef.current
-        }
-        controller = streamMistralMessage(apiMessages, onToken, onDone, onErr, mistralOptions)
+          onToolCall: toolHandlerRef.current,
+        })
       } else {
         const apiMessages: Array<{ role: string; content: string | Array<Record<string, unknown>> }> = conv.messages.map((m) => {
           return { role: m.role, content: m.content }
