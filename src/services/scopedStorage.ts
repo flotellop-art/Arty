@@ -45,16 +45,11 @@ export function setJSON(baseKey: string, value: unknown): void {
  */
 export function secureSetJSON(baseKey: string, value: unknown): void {
   const key = buildKey(baseKey)
+  // Always write plain JSON first for sync reads (getJSON)
+  localStorage.setItem(key, JSON.stringify(value))
+  // Then encrypt in background if crypto is ready (overwrites with encrypted version)
   if (isCryptoReady()) {
-    // Crypto ready — encrypt directly, write plain only as sync fallback
-    // (secureGet will read encrypted version first)
-    secureSet(key, value).catch(() => {
-      // Encryption failed — fallback to plain
-      localStorage.setItem(key, JSON.stringify(value))
-    })
-  } else {
-    // Crypto not ready yet — write plain, will be migrated later
-    localStorage.setItem(key, JSON.stringify(value))
+    secureSet(key, value).catch(() => {})
   }
 }
 
