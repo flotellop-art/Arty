@@ -28,12 +28,22 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
   const [emailError, setEmailError] = useState('')
 
   // Step 2 for Google/Email: ask for API key after auth
+  // Restore from sessionStorage if returning from OAuth redirect
   const [pendingAuth, setPendingAuth] = useState<{
     method: AuthMethod
     displayName: string
     email: string
     avatar?: string
-  } | null>(null)
+  } | null>(() => {
+    try {
+      const saved = sessionStorage.getItem('arty-pending-auth')
+      if (saved) {
+        sessionStorage.removeItem('arty-pending-auth')
+        return JSON.parse(saved)
+      }
+    } catch {}
+    return null
+  })
 
   const handleApiKeyLogin = useCallback(async (anthropicKey: string, geminiKey?: string, mistralKey?: string) => {
     setLoading(true)

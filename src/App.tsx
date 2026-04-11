@@ -357,8 +357,13 @@ function OAuthCallbackAuth({ auth }: { auth: ReturnType<typeof useAuth> }) {
         })
         navigate('/')
       } else {
-        // Need API key — will be handled by LoginScreen pendingAuth state
-        // For now just redirect to login
+        // No API key yet — save pending auth so LoginScreen can pick it up
+        sessionStorage.setItem('arty-pending-auth', JSON.stringify({
+          method: 'google',
+          displayName: user.name,
+          email: user.email,
+          avatar: user.picture,
+        }))
         navigate('/')
       }
     } catch (err) {
