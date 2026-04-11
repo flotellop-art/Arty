@@ -398,3 +398,13 @@ n'est pas supporté par Cloudflare Pages. Les routes SPA
 (`/chat/:id`, `/auth/callback`) retournaient 404.
 **Règle** : Cloudflare Pages gère le SPA routing automatiquement.
 Ne pas ajouter de `_redirects` ou `_headers` manuellement.
+
+### BUG 41 — Logout ne nettoie pas les tokens Google
+**Fichier** : `src/hooks/useAuth.ts`
+**Problème** : `logout()` effaçait la session et les clés API mais
+pas `google-tokens` ni `google-user` dans le localStorage. À la
+reconnexion, les anciens tokens (expirés/corrompus) bloquaient le
+flux OAuth — la requête partait mais pas de retour.
+**Règle** : `logout()` DOIT supprimer `google-tokens` ET
+`google-user` via `scoped.removeItem()` en plus de `clearActiveKeys()`
+et `clearActiveSession()`.
