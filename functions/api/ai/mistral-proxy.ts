@@ -18,6 +18,17 @@ export const onRequestPost: PagesFunction = async ({ request }) => {
       body,
     })
 
+    // Forward error responses with their original status
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => 'Unknown Mistral error')
+      return new Response(errorText, {
+        status: response.status,
+        headers: {
+          'content-type': 'application/json',
+        },
+      })
+    }
+
     return new Response(response.body, {
       status: response.status,
       headers: {

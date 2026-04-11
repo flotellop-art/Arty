@@ -22,7 +22,7 @@ export function getGeminiKey(): string | null {
 }
 
 export function getMistralKey(): string | null {
-  return _mistralKey || null
+  return _mistralKey || import.meta.env.VITE_MISTRAL_API_KEY || null
 }
 
 export function clearActiveKeys(): void {
@@ -33,4 +33,8 @@ export function clearActiveKeys(): void {
 
 export function hasAnthropicKey(): boolean {
   return !!getAnthropicKey()
+}
+
+export function hasMistralKey(): boolean {
+  return !!getMistralKey()
 }

@@ -9,6 +9,7 @@ interface ApiKeySetupProps {
 export function ApiKeySetup({ onSave }: ApiKeySetupProps) {
   const [anthropicKey, setAnthropicKey] = useState('')
   const [geminiKey, setGeminiKey] = useState('')
+  const [mistralKey, setMistralKey] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -30,6 +31,7 @@ export function ApiKeySetup({ onSave }: ApiKeySetupProps) {
       await onSave({
         anthropic: trimmed,
         gemini: geminiKey.trim() || undefined,
+        mistral: mistralKey.trim() || undefined,
       })
     } catch {
       setError('Erreur lors de la sauvegarde')
@@ -78,6 +80,20 @@ export function ApiKeySetup({ onSave }: ApiKeySetupProps) {
                 value={geminiKey}
                 onChange={(e) => setGeminiKey(e.target.value)}
                 placeholder="AIza..."
+                className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 bg-gray-50"
+                autoComplete="off"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1.5">
+                Clé API Mistral <span className="text-gray-400">(optionnel — données EU)</span>
+              </label>
+              <input
+                type="password"
+                value={mistralKey}
+                onChange={(e) => setMistralKey(e.target.value)}
+                placeholder="..."
                 className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 bg-gray-50"
                 autoComplete="off"
               />

@@ -14,6 +14,7 @@ import com.google.android.gms.auth.api.signin.GoogleSignInAccount;
 import com.google.android.gms.auth.api.signin.GoogleSignInClient;
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions;
 import com.google.android.gms.common.api.ApiException;
+import com.google.android.gms.common.api.Scope;
 import com.google.android.gms.tasks.Task;
 
 import androidx.activity.result.ActivityResultLauncher;
@@ -40,6 +41,17 @@ public class GoogleSignInPlugin extends Plugin {
 
             GoogleSignInOptions gso = new GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
                     .requestEmail()
+                    .requestProfile()
+                    .requestServerAuthCode(serverClientId)
+                    .requestScopes(
+                        new Scope("https://www.googleapis.com/auth/gmail.readonly"),
+                        new Scope("https://www.googleapis.com/auth/gmail.send"),
+                        new Scope("https://www.googleapis.com/auth/gmail.modify"),
+                        new Scope("https://www.googleapis.com/auth/drive"),
+                        new Scope("https://www.googleapis.com/auth/calendar"),
+                        new Scope("https://www.googleapis.com/auth/calendar.events"),
+                        new Scope("https://www.googleapis.com/auth/contacts")
+                    )
                     .build();
 
             googleSignInClient = GoogleSignIn.getClient(getActivity(), gso);
@@ -61,11 +73,14 @@ public class GoogleSignInPlugin extends Plugin {
                         GoogleSignInAccount account = task.getResult(ApiException.class);
                         Log.d(TAG, "Sign-in success: " + account.getEmail());
 
+                        String authCode = account.getServerAuthCode();
+                        Log.d(TAG, "serverAuthCode present: " + (authCode != null && !authCode.isEmpty()));
+
                         JSObject ret = new JSObject();
                         ret.put("email", account.getEmail() != null ? account.getEmail() : "");
                         ret.put("name", account.getDisplayName() != null ? account.getDisplayName() : "");
                         ret.put("avatar", account.getPhotoUrl() != null ? account.getPhotoUrl().toString() : "");
-                        ret.put("serverAuthCode", "");
+                        ret.put("serverAuthCode", authCode != null ? authCode : "");
                         call.resolve(ret);
                     } catch (ApiException e) {
                         Log.e(TAG, "ApiException: " + e.getStatusCode());

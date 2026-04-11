@@ -68,17 +68,28 @@ async function runMistralStream(
 
     if (!response.ok) {
       const err = await response.text().catch(() => 'Unknown error')
-      onError(new Error(`Mistral API error ${response.status}: ${err}`))
+      if (response.status === 401) {
+        onError(new Error('Clé API Mistral invalide ou expirée'))
+      } else if (response.status === 429) {
+        onError(new Error('Limite de requêtes Mistral atteinte — réessaie dans quelques secondes'))
+      } else {
+        onError(new Error(`Erreur Mistral (${response.status}): ${err}`))
+      }
       return
     }
 
     // Parse SSE stream (OpenAI format)
-    const reader = response.body!.getReader()
+    if (!response.body) {
+      onError(new Error('Mistral: réponse vide (pas de body)'))
+      return
+    }
+    const reader = response.body.getReader()
     const decoder = new TextDecoder()
     let buffer = ''
     let totalContent = ''
     let inputTokens = 0
     let outputTokens = 0
+    let usageTracked = false
 
     while (true) {
       const { done, value } = await reader.read()
@@ -92,8 +103,10 @@ async function runMistralStream(
         if (!line.startsWith('data: ')) continue
         const data = line.slice(6).trim()
         if (data === '[DONE]') {
-          // Track usage
-          addUsage(inputTokens, outputTokens)
+          if (!usageTracked) {
+            addUsage(inputTokens, outputTokens)
+            usageTracked = true
+          }
           onDone()
           return
         }
@@ -119,12 +132,14 @@ async function runMistralStream(
       }
     }
 
-    // Estimate tokens if not provided
-    if (outputTokens === 0) {
-      outputTokens = Math.ceil(totalContent.length / 4)
-      inputTokens = Math.ceil(JSON.stringify(messages).length / 4)
+    // Fallback: stream ended without [DONE] — estimate tokens if needed
+    if (!usageTracked) {
+      if (outputTokens === 0) {
+        outputTokens = Math.ceil(totalContent.length / 4)
+        inputTokens = Math.ceil(JSON.stringify(messages).length / 4)
+      }
+      addUsage(inputTokens, outputTokens)
     }
-    addUsage(inputTokens, outputTokens)
     onDone()
   } catch (err) {
     if ((err as Error).name === 'AbortError') {

@@ -6,6 +6,7 @@ const KEYS_STORAGE = 'arty-api-keys'
 export interface ApiKeys {
   anthropic: string
   gemini?: string
+  mistral?: string
 }
 
 export function useApiKeys() {
@@ -29,6 +30,7 @@ export function useApiKeys() {
         const migrated: ApiKeys = {
           anthropic: envKey,
           gemini: import.meta.env.VITE_GEMINI_API_KEY || undefined,
+          mistral: import.meta.env.VITE_MISTRAL_API_KEY || undefined,
         }
         // Initialize crypto with this key and save
         await initCrypto(envKey)
