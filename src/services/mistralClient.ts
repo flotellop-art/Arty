@@ -1,7 +1,7 @@
 import { getMistralKey } from './activeApiKey'
 import { addUsage } from './tokenTracker'
 import { apiUrl } from './apiBase'
-import { getStoredTokens } from './googleAuth'
+import { getValidAccessToken } from './googleAuth'
 import { TOOLS } from './toolDefinitions'
 import { convertToolsToOpenAI } from './tools/openaiFormat'
 
@@ -143,9 +143,10 @@ async function streamOnce(
   if (apiKey) {
     headers['Authorization'] = `Bearer ${apiKey}`
   }
-  const googleTokens = getStoredTokens()
-  if (googleTokens?.access_token) {
-    headers['x-google-token'] = googleTokens.access_token
+  // Get a valid (refreshed if needed) Google token for whitelist verification
+  const googleToken = await getValidAccessToken()
+  if (googleToken) {
+    headers['x-google-token'] = googleToken
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

@@ -1,6 +1,6 @@
 import { getGeminiKey } from './activeApiKey'
 import { apiUrl } from './apiBase'
-import { getStoredTokens } from './googleAuth'
+import { getValidAccessToken } from './googleAuth'
 
 // Gemini API client with streaming
 
@@ -75,9 +75,9 @@ async function runGeminiStream(
       headers['Authorization'] = `Bearer ${apiKey}`
     }
     // Send Google token so proxy can verify whitelist
-    const googleTokens = getStoredTokens()
-    if (googleTokens?.access_token) {
-      headers['x-google-token'] = googleTokens.access_token
+    const googleToken = await getValidAccessToken()
+    if (googleToken) {
+      headers['x-google-token'] = googleToken
     }
 
     const response = await fetch(apiUrl('/api/ai/gemini-proxy'), {
@@ -161,9 +161,9 @@ export async function geminiResearch(query: string, apiKeyOverride?: string): Pr
   if (apiKey) {
     headers['Authorization'] = `Bearer ${apiKey}`
   }
-  const googleTokens = getStoredTokens()
-  if (googleTokens?.access_token) {
-    headers['x-google-token'] = googleTokens.access_token
+  const googleToken = await getValidAccessToken()
+  if (googleToken) {
+    headers['x-google-token'] = googleToken
   }
 
   try {
