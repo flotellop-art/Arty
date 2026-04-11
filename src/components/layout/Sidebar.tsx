@@ -9,6 +9,7 @@ interface SidebarProps {
   activeId: string | null
   onSelect: (id: string) => void
   onNew: () => void
+  onNewEU?: () => void
   onDelete: (id: string) => void
   userName?: string
   onLogout?: () => void
@@ -32,6 +33,7 @@ export function Sidebar({
   activeId,
   onSelect,
   onNew,
+  onNewEU,
   onDelete,
   userName,
   onLogout,
@@ -75,6 +77,18 @@ export function Sidebar({
             </svg>
             Nouvelle conversation
           </button>
+          {onNewEU && (
+            <button
+              onClick={() => {
+                onNewEU()
+                onClose()
+              }}
+              className="w-full flex items-center gap-2 px-4 py-2.5 rounded-xl border border-blue-200 bg-blue-50 hover:bg-blue-100 transition-colors text-sm font-medium text-blue-700 mt-2"
+            >
+              <span className="text-base">🇪🇺</span>
+              Conversation EU sécurisée
+            </button>
+          )}
         </div>
 
         {/* Conversation list */}

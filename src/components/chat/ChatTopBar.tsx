@@ -7,11 +7,12 @@ interface ChatTopBarProps {
   title: string
   onBack: () => void
   usedModels?: string[]
+  euOnly?: boolean
 }
 
 type OpenMenu = null | 'style' | 'model'
 
-export function ChatTopBar({ title, onBack, usedModels }: ChatTopBarProps) {
+export function ChatTopBar({ title, onBack, usedModels, euOnly }: ChatTopBarProps) {
   const [currentStyle, setCurrentStyle] = useState<ResponseStyle>(getStyle)
   const [currentModel, setCurrentModel] = useState<AIModel>(getSelectedModel)
   const [openMenu, setOpenMenu] = useState<OpenMenu>(null)
@@ -132,20 +133,31 @@ export function ChatTopBar({ title, onBack, usedModels }: ChatTopBarProps) {
             </svg>
           </button>
 
-          {/* Model dropdown */}
+          {/* Model dropdown — locked if EU-only conversation */}
           <div className="relative">
-            <button
-              onClick={() => setOpenMenu(openMenu === 'model' ? null : 'model')}
-              className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium transition-colors ${
-                openMenu === 'model' ? 'bg-bubble-user text-cream' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-              }`}
-            >
-              <span>{modelOption.flag}</span>
-              <span>{modelOption.label}</span>
-              <svg width="10" height="10" viewBox="0 0 10 10" fill="none" className="ml-0.5 opacity-50">
-                <path d="M2.5 4L5 6.5L7.5 4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-              </svg>
-            </button>
+            {euOnly ? (
+              <div className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium bg-blue-100 text-blue-700">
+                <span>🇪🇺</span>
+                <span>Mistral EU</span>
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none" className="ml-0.5 opacity-50">
+                  <rect x="3" y="5" width="4" height="3.5" rx="0.5" stroke="currentColor" strokeWidth="0.8" />
+                  <path d="M4 5V3.5C4 2.67 4.67 2 5.5 2V2C6.33 2 7 2.67 7 3.5V5" stroke="currentColor" strokeWidth="0.8" strokeLinecap="round" />
+                </svg>
+              </div>
+            ) : (
+              <button
+                onClick={() => setOpenMenu(openMenu === 'model' ? null : 'model')}
+                className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium transition-colors ${
+                  openMenu === 'model' ? 'bg-bubble-user text-cream' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                <span>{modelOption.flag}</span>
+                <span>{modelOption.label}</span>
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none" className="ml-0.5 opacity-50">
+                  <path d="M2.5 4L5 6.5L7.5 4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+                </svg>
+              </button>
+            )}
 
             {openMenu === 'model' && (
               <div className="absolute top-full right-0 mt-1 bg-white rounded-xl shadow-lg border border-gray-100 py-1 z-50 min-w-[140px]">

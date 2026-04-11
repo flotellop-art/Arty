@@ -63,11 +63,15 @@ function AppContent({ onLogout, userName }: { onLogout: () => void; userName?: s
   )
 
   const handleNewConversation = useCallback(() => {
-    // Show welcome message on first-ever conversation
     const isFirstConv = conversations.length === 0
     const id = createConversation(isFirstConv)
     navigate(`/chat/${id}`)
   }, [createConversation, navigate, conversations.length])
+
+  const handleNewEUConversation = useCallback(() => {
+    const id = createConversation(false, true)
+    navigate(`/chat/${id}`)
+  }, [createConversation, navigate])
 
   const handleSelectConversation = useCallback(
     (id: string) => {
@@ -112,6 +116,7 @@ function AppContent({ onLogout, userName }: { onLogout: () => void; userName?: s
         activeId={activeId}
         onSelect={handleSelectConversation}
         onNew={handleNewConversation}
+        onNewEU={handleNewEUConversation}
         onDelete={deleteConversation}
         userName={userName}
         onLogout={onLogout}

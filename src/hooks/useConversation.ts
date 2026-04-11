@@ -29,7 +29,7 @@ export function useConversation() {
   const streaming = useStreaming({ refreshConversations })
   const fileAttachments = useFileAttachments()
 
-  const createConversation = useCallback((withWelcome?: boolean): string => {
+  const createConversation = useCallback((withWelcome?: boolean, euOnly?: boolean): string => {
     const id = generateId()
     const messages: Message[] = []
 
@@ -42,12 +42,22 @@ export function useConversation() {
       })
     }
 
+    if (euOnly) {
+      messages.push({
+        id: generateId(),
+        role: 'assistant',
+        content: `🇪🇺 **Conversation confidentielle EU**\n\nCette conversation utilise exclusivement **Mistral** (serveurs en France). Tes données ne quitteront pas l'Europe.\n\nJe peux lire tes mails, accéder à Drive et gérer ton calendrier — tout reste en EU.`,
+        timestamp: Date.now(),
+      })
+    }
+
     const conv: Conversation = {
       id,
-      title: 'Nouvelle conversation',
+      title: euOnly ? '🇪🇺 Conversation EU' : 'Nouvelle conversation',
       messages,
       createdAt: Date.now(),
       updatedAt: Date.now(),
+      ...(euOnly ? { euOnly: true, usedModels: ['mistral'] } : {}),
     }
     storage.saveConversation(conv)
     refreshConversations()
@@ -141,7 +151,10 @@ export function useConversation() {
       }
 
       const currentFiles = fileAttachments.pendingFilesRef.current
-      const provider = (currentFiles && currentFiles.length > 0) ? 'claude' as const : detectProvider(text)
+      // EU-only conversations always use Mistral (data stays in Europe)
+      const provider = conv.euOnly
+        ? 'mistral' as const
+        : (currentFiles && currentFiles.length > 0) ? 'claude' as const : detectProvider(text)
 
       // Track which models are used in this conversation
       const usedModels = conv.usedModels || []
@@ -185,10 +198,14 @@ export function useConversation() {
         })
       } else if (provider === 'mistral') {
         const apiMessages = conv.messages.map((m) => ({ role: m.role, content: m.content }))
-        controller = streamMistralMessage(apiMessages, onToken, onDone, onErr, {
+        // EU-only conversations get tools, standard conversations don't
+        const mistralOptions: { systemPrompt?: string; onToolCall?: typeof toolHandlerRef.current } = {
           systemPrompt: systemPromptRef.current,
-          onToolCall: toolHandlerRef.current,
-        })
+        }
+        if (conv.euOnly && toolHandlerRef.current) {
+          mistralOptions.onToolCall = toolHandlerRef.current
+        }
+        controller = streamMistralMessage(apiMessages, onToken, onDone, onErr, mistralOptions)
       } else {
         const apiMessages: Array<{ role: string; content: string | Array<Record<string, unknown>> }> = conv.messages.map((m) => {
           return { role: m.role, content: m.content }

@@ -43,9 +43,9 @@ export function detectProvider(message: string): AIProvider {
 
   // If user forced a specific model, use it
   if (selectedModel !== 'auto') {
-    // Mistral now has tools — allow private data on Mistral
-    // Only redirect to Claude if using Gemini (no tools)
-    if (selectedModel === 'gemini') {
+    // Exception: private data always goes to Claude (tools required)
+    // EU-only conversations handle this separately
+    if (selectedModel !== 'claude') {
       const isPrivate = PRIVATE_DATA_TRIGGERS.some((r) => r.test(message))
       if (isPrivate) return 'claude'
     }
@@ -56,7 +56,7 @@ export function detectProvider(message: string): AIProvider {
   const geminiKey = getGeminiKey()
   const mistralKey = getMistralKey()
 
-  // Private data → Claude (or Mistral if no Claude key)
+  // Private data → always Claude (needs tools)
   const isPrivate = PRIVATE_DATA_TRIGGERS.some((r) => r.test(message))
   if (isPrivate) return 'claude'
 
