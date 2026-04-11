@@ -14,15 +14,15 @@ export function setActiveKeys(anthropic: string, gemini?: string, mistral?: stri
 }
 
 export function getAnthropicKey(): string | null {
-  return _anthropicKey || import.meta.env.VITE_ANTHROPIC_API_KEY || null
+  return _anthropicKey || null
 }
 
 export function getGeminiKey(): string | null {
-  return _geminiKey || import.meta.env.VITE_GEMINI_API_KEY || null
+  return _geminiKey || null
 }
 
 export function getMistralKey(): string | null {
-  return _mistralKey || import.meta.env.VITE_MISTRAL_API_KEY || null
+  return _mistralKey || null
 }
 
 export function clearActiveKeys(): void {

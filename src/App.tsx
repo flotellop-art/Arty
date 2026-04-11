@@ -345,32 +345,18 @@ function OAuthCallbackAuth({ auth }: { auth: ReturnType<typeof useAuth> }) {
       const { getJSON } = await import('./services/scopedStorage')
       const existingKeys = getJSON<{ anthropic: string; gemini?: string; mistral?: string }>('api-keys')
 
-      // Use stored keys, or fall back to environment variables
-      const anthropicKey = existingKeys?.anthropic || import.meta.env.VITE_ANTHROPIC_API_KEY || ''
-      const geminiKey = existingKeys?.gemini || import.meta.env.VITE_GEMINI_API_KEY || ''
-      const mistralKey = existingKeys?.mistral || import.meta.env.VITE_MISTRAL_API_KEY || ''
-
-      if (anthropicKey) {
-        await auth.login('google', {
-          displayName: user.name,
-          email: user.email,
-          avatar: user.picture,
-          anthropicKey,
-          geminiKey: geminiKey || undefined,
-          mistralKey: mistralKey || undefined,
-          identifier: user.email,
-        })
-        navigate('/')
-      } else {
-        // No API key at all — save pending auth so LoginScreen can pick it up
-        sessionStorage.setItem('arty-pending-auth', JSON.stringify({
-          method: 'google',
-          displayName: user.name,
-          email: user.email,
-          avatar: user.picture,
-        }))
-        navigate('/')
-      }
+      // Use stored keys if available, otherwise login without keys
+      // (server-side proxy provides API keys)
+      await auth.login('google', {
+        displayName: user.name,
+        email: user.email,
+        avatar: user.picture,
+        anthropicKey: existingKeys?.anthropic || 'server-provided',
+        geminiKey: existingKeys?.gemini || undefined,
+        mistralKey: existingKeys?.mistral || undefined,
+        identifier: user.email,
+      })
+      navigate('/')
     } catch (err) {
       console.error('OAuth callback error:', err)
       navigate('/')

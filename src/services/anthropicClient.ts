@@ -68,20 +68,23 @@ function formatApiError(status: number, body: string): string {
 
 async function fetchWithRetry(
   requestBody: string,
-  apiKey: string,
+  apiKey: string | null,
   controller: AbortController
 ): Promise<Response> {
   let response: Response | null = null
   const maxRetries = 3
+  const headers: Record<string, string> = {
+    'content-type': 'application/json',
+    'anthropic-version': '2023-06-01',
+    'anthropic-beta': 'pdfs-2024-09-25,prompt-caching-2024-07-31',
+  }
+  if (apiKey && apiKey !== 'server-provided') {
+    headers['x-api-key'] = apiKey
+  }
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     response = await fetch(apiUrl('/api/ai/proxy'), {
       method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-beta': 'pdfs-2024-09-25,prompt-caching-2024-07-31',
-      },
+      headers,
       body: requestBody,
       signal: controller.signal,
     })

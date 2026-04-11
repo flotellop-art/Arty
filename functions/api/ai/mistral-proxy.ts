@@ -1,7 +1,10 @@
+import type { Env } from '../../env'
+
 const MISTRAL_API_URL = 'https://api.mistral.ai/v1/chat/completions'
 
-export const onRequestPost: PagesFunction = async ({ request }) => {
-  const apiKey = request.headers.get('authorization')?.replace('Bearer ', '')
+export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
+  // Use client's BYOK key, or fall back to server-side key
+  const apiKey = request.headers.get('authorization')?.replace('Bearer ', '') || env.MISTRAL_API_KEY
   if (!apiKey) {
     return Response.json({ error: 'Missing API key' }, { status: 401 })
   }

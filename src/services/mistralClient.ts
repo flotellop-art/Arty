@@ -23,17 +23,13 @@ export function streamMistralMessage(
   const controller = new AbortController()
 
   const apiKey = apiKeyOverride || getMistralKey()
-  if (!apiKey) {
-    setTimeout(() => onError(new Error('Clé API Mistral manquante')), 0)
-    return controller
-  }
 
   runMistralStream(apiKey, messages, onToken, onDone, onError, options, controller)
   return controller
 }
 
 async function runMistralStream(
-  apiKey: string,
+  apiKey: string | null,
   messages: Array<{ role: string; content: string }>,
   onToken: (text: string) => void,
   onDone: () => void,
@@ -50,12 +46,14 @@ async function runMistralStream(
       ...messages.map(m => ({ role: m.role, content: m.content })),
     ]
 
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    if (apiKey) {
+      headers['Authorization'] = `Bearer ${apiKey}`
+    }
+
     const response = await fetch(apiUrl('/api/ai/mistral-proxy'), {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-      },
+      headers,
       body: JSON.stringify({
         model: 'mistral-large-latest',
         messages: apiMessages,

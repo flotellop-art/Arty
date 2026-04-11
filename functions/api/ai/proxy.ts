@@ -2,9 +2,9 @@ import type { Env } from '../../env'
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages'
 
-export const onRequestPost: PagesFunction<Env> = async ({ request }) => {
-  // Get the API key from the request header (user's BYOK key)
-  const apiKey = request.headers.get('x-api-key')
+export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
+  // Use client's BYOK key, or fall back to server-side key
+  const apiKey = request.headers.get('x-api-key') || env.ANTHROPIC_API_KEY
   if (!apiKey) {
     return Response.json({ error: 'Missing API key' }, { status: 401 })
   }
