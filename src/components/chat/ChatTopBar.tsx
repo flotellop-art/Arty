@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { getStyle, setStyle as saveStyle, STYLE_OPTIONS, type ResponseStyle } from '../../services/responseStyles'
 import { getSelectedModel, setSelectedModel, MODEL_OPTIONS, type AIModel } from '../../services/modelSelector'
+import { SettingsGuide } from '../shared/SettingsGuide'
 
 interface ChatTopBarProps {
   title: string
@@ -13,6 +14,7 @@ export function ChatTopBar({ title, onBack }: ChatTopBarProps) {
   const [currentStyle, setCurrentStyle] = useState<ResponseStyle>(getStyle)
   const [currentModel, setCurrentModel] = useState<AIModel>(getSelectedModel)
   const [openMenu, setOpenMenu] = useState<OpenMenu>(null)
+  const [showGuide, setShowGuide] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
 
   const handleStyleChange = (style: ResponseStyle) => {
@@ -99,6 +101,19 @@ export function ChatTopBar({ title, onBack }: ChatTopBarProps) {
             )}
           </div>
 
+          {/* Info button */}
+          <button
+            onClick={() => setShowGuide(true)}
+            className="p-1 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+            aria-label="Aide tons et modèles"
+          >
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <circle cx="7" cy="7" r="6" stroke="currentColor" strokeWidth="1.2" />
+              <path d="M5.5 5.5C5.5 4.67 6.17 4 7 4C7.83 4 8.5 4.67 8.5 5.5C8.5 6.17 8 6.5 7.5 6.75C7.25 6.87 7 7.12 7 7.5V8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+              <circle cx="7" cy="9.5" r="0.5" fill="currentColor" />
+            </svg>
+          </button>
+
           {/* Model dropdown */}
           <div className="relative">
             <button
@@ -135,6 +150,8 @@ export function ChatTopBar({ title, onBack }: ChatTopBarProps) {
           </div>
         </div>
       </div>
+
+      {showGuide && <SettingsGuide onClose={() => setShowGuide(false)} />}
     </header>
   )
 }
