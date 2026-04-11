@@ -3,6 +3,7 @@ import { TopBar } from '../layout/TopBar'
 import { InputBar } from '../layout/InputBar'
 import { GoogleConnectButton } from '../google/GoogleConnectButton'
 import { GoogleStatus } from '../google/GoogleStatus'
+import { useTooltip } from '../onboarding/Tooltips'
 import type { useGoogleAuth } from '../../hooks/useGoogleAuth'
 import type { useGmail } from '../../hooks/useGmail'
 import type { useDrive } from '../../hooks/useDrive'
@@ -18,6 +19,8 @@ interface HomeScreenProps {
 }
 
 export function HomeScreen({ onMenuToggle, onSend, isStreaming, googleAuth }: HomeScreenProps) {
+  const googleTooltip = useTooltip('google')
+
   return (
     <div className="flex flex-col h-full">
       <TopBar onMenuToggle={onMenuToggle} onHistoryToggle={onMenuToggle} />
@@ -26,11 +29,15 @@ export function HomeScreen({ onMenuToggle, onSend, isStreaming, googleAuth }: Ho
         <AnimatedStar />
 
         <h1 className="font-serif text-2xl md:text-3xl font-semibold text-bubble-user text-center leading-snug">
-          Comment puis-je vous aider aujourd'hui ?
+          Comment puis-je t'aider ?
         </h1>
 
+        <p className="text-xs text-gray-400 text-center">
+          Tape <span className="font-mono bg-gray-100 px-1 rounded">/aide</span> pour voir tout ce que je sais faire
+        </p>
+
         {/* Google connection */}
-        <div className="w-full max-w-md flex flex-col items-center gap-2">
+        <div className="relative w-full max-w-md flex flex-col items-center gap-2">
           {googleAuth.isConnected ? (
             <GoogleStatus
               isConnected={googleAuth.isConnected}
@@ -38,10 +45,15 @@ export function HomeScreen({ onMenuToggle, onSend, isStreaming, googleAuth }: Ho
               onLogout={googleAuth.logout}
             />
           ) : (
-            <GoogleConnectButton
-              onConnect={googleAuth.login}
-              isLoading={googleAuth.isLoading}
-            />
+            <>
+              <GoogleConnectButton
+                onConnect={googleAuth.login}
+                isLoading={googleAuth.isLoading}
+              />
+              <div className="relative">
+                <googleTooltip.TooltipComponent />
+              </div>
+            </>
           )}
           {googleAuth.error && (
             <p className="text-xs text-red-500">{googleAuth.error}</p>

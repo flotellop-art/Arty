@@ -29,12 +29,23 @@ export function useConversation() {
   const streaming = useStreaming({ refreshConversations })
   const fileAttachments = useFileAttachments()
 
-  const createConversation = useCallback((): string => {
+  const createConversation = useCallback((withWelcome?: boolean): string => {
     const id = generateId()
+    const messages: Message[] = []
+
+    if (withWelcome) {
+      messages.push({
+        id: generateId(),
+        role: 'assistant',
+        content: `Salut ! Moi c'est **Arty**, ton assistant IA.\n\nTu peux me poser des questions, m'envoyer des photos, ou me dicter un message.\n\nEn haut à droite, tu peux changer le **ton** de mes réponses et le **modèle IA** utilisé. Appuie sur **?** pour voir les détails.\n\nSi tu connectes ton compte Google, je pourrai aussi lire tes mails, accéder à tes fichiers Drive et gérer ton agenda.\n\nQu'est-ce que je peux faire pour toi ?`,
+        timestamp: Date.now(),
+      })
+    }
+
     const conv: Conversation = {
       id,
       title: 'Nouvelle conversation',
-      messages: [],
+      messages,
       createdAt: Date.now(),
       updatedAt: Date.now(),
     }
@@ -74,6 +85,27 @@ export function useConversation() {
 
       const conv = storage.getConversation(targetId)
       if (!conv) return
+
+      // Handle /aide command
+      if (text.trim().toLowerCase() === '/aide') {
+        const helpMsg: Message = {
+          id: generateId(),
+          role: 'user',
+          content: '/aide',
+          timestamp: Date.now(),
+        }
+        const helpResponse: Message = {
+          id: generateId(),
+          role: 'assistant',
+          content: `## Aide — Arty\n\n**Ce que je sais faire :**\n- Répondre à tes questions sur tous les sujets\n- Analyser des photos et documents (bouton **+**)\n- Dicter par la voix (bouton **micro**)\n- Lire tes mails Gmail et y répondre\n- Accéder à tes fichiers Google Drive\n- Gérer ton agenda Google Calendar\n- Faire des recherches web en temps réel\n\n**Commandes :**\n- \`/aide\` — Affiche cette aide\n\n**Réglages (en haut à droite) :**\n- **Ton** — Normal, Concis, Détaillé, Formel, Technique\n- **Modèle** — Auto, Claude, Mistral EU, Gemini\n- **?** — Explication détaillée de chaque option\n\n**Astuce :** Connecte ton compte Google pour que je puisse accéder à tes mails et fichiers.`,
+          timestamp: Date.now(),
+        }
+        conv.messages.push(helpMsg, helpResponse)
+        conv.updatedAt = Date.now()
+        storage.saveConversation(conv)
+        refreshConversations()
+        return
+      }
 
       const displayContent = files?.length ? `${text}\n\n📎 ${files.map(f => f.name).join(', ')}` : text
 

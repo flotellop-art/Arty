@@ -10,6 +10,7 @@ import { ReportPage } from './components/shared/ReportPage'
 import { Sidebar } from './components/layout/Sidebar'
 import { OAuthCallback } from './components/google/OAuthCallback'
 import { LoginScreen } from './components/auth/LoginScreen'
+import { WelcomeSlides, isOnboardingDone } from './components/onboarding/WelcomeSlides'
 import type { FileAttachment } from './types'
 
 function AppContent({ onLogout, userName }: { onLogout: () => void; userName?: string }) {
@@ -61,9 +62,11 @@ function AppContent({ onLogout, userName }: { onLogout: () => void; userName?: s
   )
 
   const handleNewConversation = useCallback(() => {
-    const id = createConversation()
+    // Show welcome message on first-ever conversation
+    const isFirstConv = conversations.length === 0
+    const id = createConversation(isFirstConv)
     navigate(`/chat/${id}`)
-  }, [createConversation, navigate])
+  }, [createConversation, navigate, conversations.length])
 
   const handleSelectConversation = useCallback(
     (id: string) => {
@@ -292,7 +295,14 @@ export default function App() {
     processOAuth(deepLinkCode)
   }, [deepLinkCode, auth])
 
+  const [onboardingDone, setOnboardingDone] = useState(isOnboardingDone)
+
   if (!auth.isAuthenticated) {
+    // Show welcome slides before login (first time only)
+    if (!onboardingDone) {
+      return <WelcomeSlides onComplete={() => setOnboardingDone(true)} />
+    }
+
     return (
       <BrowserRouter>
         <Routes>
