@@ -59,7 +59,7 @@ export async function exchangeCode(code: string): Promise<GoogleTokens> {
 }
 
 async function storeTokens(tokens: GoogleTokens): Promise<void> {
-  scoped.setJSON('google-tokens', tokens)
+  scoped.secureSetJSON('google-tokens', tokens)
 }
 
 export async function refreshAccessToken(): Promise<GoogleTokens | null> {

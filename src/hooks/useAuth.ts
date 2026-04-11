@@ -90,10 +90,13 @@ export function useAuth() {
     const session = known.find(s => s.userId === userId)
     if (!session) return
 
-    // Activate this session
+    // Clear old keys BEFORE switching session to prevent cross-user leak
+    clearActiveKeys()
+
+    // Activate new session
     setActiveSession(session)
 
-    // Restore API keys
+    // Restore new user's API keys
     const keys = scoped.getJSON<{ anthropic: string; gemini?: string; mistral?: string }>('api-keys')
     if (keys?.anthropic) {
       await initCrypto(keys.anthropic)

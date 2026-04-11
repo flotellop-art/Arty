@@ -24,21 +24,6 @@ export function useApiKeys() {
     // Check if we have a key stored — try reading the raw localStorage first
     const raw = localStorage.getItem(KEYS_STORAGE)
     if (!raw) {
-      // Also check legacy env vars for migration
-      const envKey = import.meta.env.VITE_ANTHROPIC_API_KEY as string | undefined
-      if (envKey) {
-        const migrated: ApiKeys = {
-          anthropic: envKey,
-          gemini: (import.meta.env.VITE_GEMINI_API_KEY as string | undefined) || undefined,
-          mistral: (import.meta.env.VITE_MISTRAL_API_KEY as string | undefined) || undefined,
-        }
-        // Initialize crypto with this key and save
-        await initCrypto(envKey)
-        await secureSet(KEYS_STORAGE, migrated)
-        setKeys(migrated)
-        setLoading(false)
-        return
-      }
       setLoading(false)
       return
     }

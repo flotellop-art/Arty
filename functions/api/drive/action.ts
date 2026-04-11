@@ -39,9 +39,11 @@ async function handleList(token: string, body: Record<string, unknown>): Promise
     let q = 'trashed=false'
     if (folderId) q += ` and '${folderId}' in parents`
     if (query) {
-      // Sanitize: remove single quotes and backslashes entirely
-      const sanitized = query.replace(/['\\]/g, '')
-      q += ` and (fullText contains '${sanitized}')`
+      // Sanitize: keep only alphanumeric, spaces, accents, hyphens, dots
+      const sanitized = query.replace(/[^a-zA-Z0-9\s\u00C0-\u017F.\-]/g, '')
+      if (sanitized) {
+        q += ` and (fullText contains '${sanitized}')`
+      }
     }
     const params = new URLSearchParams({ q, fields: 'files(id,name,mimeType,modifiedTime,size,webViewLink,iconLink)', orderBy: 'modifiedTime desc', pageSize: '200' })
     const r = await fetch(`https://www.googleapis.com/drive/v3/files?${params}`, { headers: { Authorization: `Bearer ${token}` } })
@@ -59,7 +61,7 @@ async function handleRead(token: string, body: Record<string, unknown>): Promise
   if (!ID_RE.test(fileId)) return Response.json({ error: 'Invalid file ID' }, { status: 400 })
   try {
     const metaRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=id,name,mimeType,modifiedTime`, { headers: { Authorization: `Bearer ${token}` } })
-    if (!metaRes.ok) { const err = await metaRes.json() as { error?: { message?: string } }; return Response.json({ error: err.error?.message }, { status: metaRes.status }) }
+    if (!metaRes.ok) { const err = await metaRes.json() as { error?: { message?: string } }; return Response.json({ error: Drive operation failed }, { status: metaRes.status }) }
     const meta = await metaRes.json() as { id: string; name: string; mimeType: string; modifiedTime: string }
     let content = ''
     if (meta.mimeType === 'application/vnd.google-apps.document') {
@@ -106,7 +108,7 @@ async function handleDownload(token: string, body: Record<string, unknown>): Pro
   if (!ID_RE.test(fileId)) return Response.json({ error: 'Invalid file ID' }, { status: 400 })
   try {
     const metaRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=id,name,mimeType`, { headers: { Authorization: `Bearer ${token}` } })
-    if (!metaRes.ok) { const err = await metaRes.json() as { error?: { message?: string } }; return Response.json({ error: err.error?.message }, { status: metaRes.status }) }
+    if (!metaRes.ok) { const err = await metaRes.json() as { error?: { message?: string } }; return Response.json({ error: Drive operation failed }, { status: metaRes.status }) }
     const meta = await metaRes.json() as { id: string; name: string; mimeType: string }
 
     let dlUrl: string
@@ -147,7 +149,7 @@ async function handleCreate(token: string, body: Record<string, unknown>): Promi
     const r = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink', {
       method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': `multipart/related; boundary=${boundary}` }, body: reqBody,
     })
-    if (!r.ok) { const err = await r.json() as { error?: { message?: string } }; return Response.json({ error: err.error?.message }, { status: r.status }) }
+    if (!r.ok) { const err = await r.json() as { error?: { message?: string } }; return Response.json({ error: Drive operation failed }, { status: r.status }) }
     const result = await r.json() as { id: string; name: string; webViewLink: string }
     return Response.json({ id: result.id, name: result.name, webViewLink: result.webViewLink })
   } catch { return Response.json({ error: 'Failed to create file' }, { status: 500 }) }
@@ -172,7 +174,7 @@ async function handleUpdate(token: string, body: Record<string, unknown>): Promi
       },
       body: content,
     })
-    if (!r.ok) { const err = await r.json() as { error?: { message?: string } }; return Response.json({ error: err.error?.message }, { status: r.status }) }
+    if (!r.ok) { const err = await r.json() as { error?: { message?: string } }; return Response.json({ error: Drive operation failed }, { status: r.status }) }
     return Response.json({ success: true })
   } catch { return Response.json({ error: 'Update failed' }, { status: 500 }) }
 }
@@ -184,7 +186,7 @@ async function handleDelete(token: string, body: Record<string, unknown>): Promi
     const r = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
       method: 'DELETE', headers: { Authorization: `Bearer ${token}` },
     })
-    if (!r.ok && r.status !== 204) { const err = await r.json().catch(() => ({})) as { error?: { message?: string } }; return Response.json({ error: err.error?.message || 'Delete failed' }, { status: r.status }) }
+    if (!r.ok && r.status !== 204) { const err = await r.json().catch(() => ({})) as { error?: { message?: string } }; return Response.json({ error: Drive operation failed || 'Delete failed' }, { status: r.status }) }
     return Response.json({ success: true })
   } catch { return Response.json({ error: 'Delete failed' }, { status: 500 }) }
 }
@@ -198,7 +200,7 @@ async function handleRename(token: string, body: Record<string, unknown>): Promi
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ name }),
     })
-    if (!r.ok) { const err = await r.json() as { error?: { message?: string } }; return Response.json({ error: err.error?.message }, { status: r.status }) }
+    if (!r.ok) { const err = await r.json() as { error?: { message?: string } }; return Response.json({ error: Drive operation failed }, { status: r.status }) }
     return Response.json({ success: true, name })
   } catch { return Response.json({ error: 'Rename failed' }, { status: 500 }) }
 }
@@ -218,7 +220,7 @@ async function handleMove(token: string, body: Record<string, unknown>): Promise
       method: 'PATCH',
       headers: { Authorization: `Bearer ${token}` },
     })
-    if (!r.ok) { const err = await r.json() as { error?: { message?: string } }; return Response.json({ error: err.error?.message }, { status: r.status }) }
+    if (!r.ok) { const err = await r.json() as { error?: { message?: string } }; return Response.json({ error: Drive operation failed }, { status: r.status }) }
     return Response.json({ success: true })
   } catch { return Response.json({ error: 'Move failed' }, { status: 500 }) }
 }
@@ -238,7 +240,7 @@ async function handleCreateFolder(token: string, body: Record<string, unknown>):
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(metadata),
     })
-    if (!r.ok) { const err = await r.json() as { error?: { message?: string } }; return Response.json({ error: err.error?.message }, { status: r.status }) }
+    if (!r.ok) { const err = await r.json() as { error?: { message?: string } }; return Response.json({ error: Drive operation failed }, { status: r.status }) }
     const result = await r.json() as { id: string; name: string; webViewLink: string }
     return Response.json({ id: result.id, name: result.name, webViewLink: result.webViewLink })
   } catch { return Response.json({ error: 'Create folder failed' }, { status: 500 }) }
@@ -253,7 +255,7 @@ async function handleShare(token: string, body: Record<string, unknown>): Promis
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ type: 'user', role: role || 'reader', emailAddress: email }),
     })
-    if (!r.ok) { const err = await r.json() as { error?: { message?: string } }; return Response.json({ error: err.error?.message }, { status: r.status }) }
+    if (!r.ok) { const err = await r.json() as { error?: { message?: string } }; return Response.json({ error: Drive operation failed }, { status: r.status }) }
     return Response.json({ success: true, shared_with: email })
   } catch { return Response.json({ error: 'Share failed' }, { status: 500 }) }
 }
@@ -269,7 +271,7 @@ async function handleCopy(token: string, body: Record<string, unknown>): Promise
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(copyBody),
     })
-    if (!r.ok) { const err = await r.json() as { error?: { message?: string } }; return Response.json({ error: err.error?.message }, { status: r.status }) }
+    if (!r.ok) { const err = await r.json() as { error?: { message?: string } }; return Response.json({ error: Drive operation failed }, { status: r.status }) }
     const result = await r.json() as { id: string; name: string; webViewLink: string }
     return Response.json({ id: result.id, name: result.name, webViewLink: result.webViewLink })
   } catch { return Response.json({ error: 'Copy failed' }, { status: 500 }) }

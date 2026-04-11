@@ -22,11 +22,14 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
 
     const action = stream ? 'streamGenerateContent' : 'generateContent'
     const suffix = stream ? '?alt=sse' : ''
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:${action}${suffix}&key=${apiKey}`
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:${action}${suffix}`
 
     const response = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': apiKey,
+      },
       body: JSON.stringify(body),
     })
 
