@@ -142,6 +142,16 @@ export function useConversation() {
 
       const currentFiles = fileAttachments.pendingFilesRef.current
       const provider = (currentFiles && currentFiles.length > 0) ? 'claude' as const : detectProvider(text)
+
+      // Track which models are used in this conversation
+      const usedModels = conv.usedModels || []
+      const modelName = provider === 'hybrid' ? 'gemini' : provider
+      if (!usedModels.includes(modelName)) {
+        usedModels.push(modelName)
+        conv.usedModels = usedModels
+        storage.saveConversation(conv)
+      }
+
       let controller: AbortController
 
       if (provider === 'hybrid') {

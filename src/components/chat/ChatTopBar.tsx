@@ -6,15 +6,17 @@ import { SettingsGuide } from '../shared/SettingsGuide'
 interface ChatTopBarProps {
   title: string
   onBack: () => void
+  usedModels?: string[]
 }
 
 type OpenMenu = null | 'style' | 'model'
 
-export function ChatTopBar({ title, onBack }: ChatTopBarProps) {
+export function ChatTopBar({ title, onBack, usedModels }: ChatTopBarProps) {
   const [currentStyle, setCurrentStyle] = useState<ResponseStyle>(getStyle)
   const [currentModel, setCurrentModel] = useState<AIModel>(getSelectedModel)
   const [openMenu, setOpenMenu] = useState<OpenMenu>(null)
   const [showGuide, setShowGuide] = useState(false)
+  const [privacyWarning, setPrivacyWarning] = useState<AIModel | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
 
   const handleStyleChange = (style: ResponseStyle) => {
@@ -25,9 +27,25 @@ export function ChatTopBar({ title, onBack }: ChatTopBarProps) {
   }
 
   const handleModelChange = (model: AIModel) => {
+    // Warn if conversation used Mistral (EU) and user switches to non-EU model
+    const hadMistral = usedModels?.includes('mistral')
+    const isNonEU = model === 'claude' || model === 'gemini'
+    if (hadMistral && isNonEU) {
+      setPrivacyWarning(model)
+      setOpenMenu(null)
+      return
+    }
     setSelectedModel(model)
     setCurrentModel(model)
     setOpenMenu(null)
+  }
+
+  const confirmModelSwitch = () => {
+    if (privacyWarning) {
+      setSelectedModel(privacyWarning)
+      setCurrentModel(privacyWarning)
+      setPrivacyWarning(null)
+    }
   }
 
   // Close menu on outside click
@@ -152,6 +170,34 @@ export function ChatTopBar({ title, onBack }: ChatTopBarProps) {
       </div>
 
       {showGuide && <SettingsGuide onClose={() => setShowGuide(false)} />}
+
+      {privacyWarning && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setPrivacyWarning(null)} />
+          <div className="relative bg-white rounded-2xl shadow-xl mx-6 p-5 max-w-sm w-full">
+            <p className="text-sm font-semibold text-bubble-user mb-2">Données hors Europe</p>
+            <p className="text-xs text-gray-500 leading-relaxed mb-4">
+              Cette conversation contient des messages traités par Mistral (serveurs en Europe).
+              En passant sur {privacyWarning === 'claude' ? 'Claude' : 'Gemini'}, tout l'historique
+              sera envoyé aux États-Unis. Continuer ?
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setPrivacyWarning(null)}
+                className="flex-1 py-2 rounded-xl border border-gray-200 text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors"
+              >
+                Annuler
+              </button>
+              <button
+                onClick={confirmModelSwitch}
+                className="flex-1 py-2 rounded-xl bg-accent text-white text-xs font-medium hover:bg-accent/90 transition-colors"
+              >
+                Continuer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </header>
   )
 }
