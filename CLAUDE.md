@@ -281,3 +281,29 @@ Anthropic la rejetait comme clé invalide.
 **Règle** : Vérifier `apiKey !== 'server-provided'` avant d'ajouter
 le header. Le proxy utilise la clé serveur si aucune clé client
 n'est envoyée.
+
+### BUG 26 — registerForActivityResult() crashe dans Capacitor
+**Fichier** : `android/.../GoogleSignInPlugin.java`
+**Problème** : `registerForActivityResult()` dans `load()` crashait
+car il doit être appelé avant l'état STARTED du lifecycle Android.
+La solution finale : utiliser `ActivityResultLauncher` directement
+dans `load()` via `bridge.getActivity().registerForActivityResult()`.
+**Règle** : Ne PAS utiliser `@ActivityCallback` de Capacitor pour
+Google Sign-In. Utiliser `ActivityResultLauncher` enregistré dans
+`load()`.
+
+### BUG 27 — Google Sign-In natif ouvrait Chrome au lieu du popup
+**Fichier** : `src/hooks/useGoogleAuth.ts`
+**Problème** : Le hook `useGoogleAuth` faisait toujours
+`window.location.href = buildOAuthUrl()` même sur natif → ouvrait
+Chrome au lieu du popup Google natif.
+**Règle** : Sur `Capacitor.isNativePlatform()`, utiliser le plugin
+Java `GoogleSignInNative.signIn()`, jamais le redirect navigateur.
+
+### BUG 28 — redirect_uri=https://localhost rejeté par Google
+**Fichier** : `src/services/googleAuth.ts`
+**Problème** : L'app native a comme origin `https://localhost`.
+Google ne reconnaît pas ce redirect_uri → échec de l'échange OAuth.
+**Règle** : Sur natif, forcer `redirect_uri` vers l'URL Cloudflare
+(`https://appfacade.pages.dev/auth/callback`) ou utiliser `''` avec
+`serverAuthCode`.
