@@ -10,7 +10,7 @@ import {
   type AuthMethod,
 } from '../services/userSession'
 import { setActiveKeys, clearActiveKeys } from '../services/activeApiKey'
-import { initCrypto, migrateKey } from '../services/crypto'
+import { initCrypto } from '../services/crypto'
 import * as scoped from '../services/scopedStorage'
 
 export function useAuth() {
@@ -61,15 +61,13 @@ export function useAuth() {
     await initCrypto(credentials.anthropicKey)
 
     // Store API keys as plain JSON for sync reads (getJSON in useEffect)
-    // migrateKey handles encryption separately
+    // DO NOT encrypt with migrateKey — it overwrites plain with encrypted,
+    // making getJSON() fail on page reload (see BUG 1 in CLAUDE.md)
     scoped.setJSON('api-keys', {
       anthropic: credentials.anthropicKey,
       gemini: credentials.geminiKey,
       mistral: credentials.mistralKey,
     })
-
-    // Migrate the api-keys entry to encrypted format
-    await migrateKey(`arty-${userId}-api-keys`)
 
     // Set active keys in memory for AI clients
     setActiveKeys(credentials.anthropicKey, credentials.geminiKey, credentials.mistralKey)
