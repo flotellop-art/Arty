@@ -343,21 +343,26 @@ function OAuthCallbackAuth({ auth }: { auth: ReturnType<typeof useAuth> }) {
       // Temporarily set session to read scoped storage
       setActiveSession({ userId, authMethod: 'google', displayName: user.name, email: user.email, avatar: user.picture, createdAt: Date.now() })
       const { getJSON } = await import('./services/scopedStorage')
-      const existingKeys = getJSON<{ anthropic: string; gemini?: string }>('api-keys')
+      const existingKeys = getJSON<{ anthropic: string; gemini?: string; mistral?: string }>('api-keys')
 
-      if (existingKeys?.anthropic) {
-        // Already has keys — login directly
+      // Use stored keys, or fall back to environment variables
+      const anthropicKey = existingKeys?.anthropic || import.meta.env.VITE_ANTHROPIC_API_KEY || ''
+      const geminiKey = existingKeys?.gemini || import.meta.env.VITE_GEMINI_API_KEY || ''
+      const mistralKey = existingKeys?.mistral || import.meta.env.VITE_MISTRAL_API_KEY || ''
+
+      if (anthropicKey) {
         await auth.login('google', {
           displayName: user.name,
           email: user.email,
           avatar: user.picture,
-          anthropicKey: existingKeys.anthropic,
-          geminiKey: existingKeys.gemini,
+          anthropicKey,
+          geminiKey: geminiKey || undefined,
+          mistralKey: mistralKey || undefined,
           identifier: user.email,
         })
         navigate('/')
       } else {
-        // No API key yet — save pending auth so LoginScreen can pick it up
+        // No API key at all — save pending auth so LoginScreen can pick it up
         sessionStorage.setItem('arty-pending-auth', JSON.stringify({
           method: 'google',
           displayName: user.name,

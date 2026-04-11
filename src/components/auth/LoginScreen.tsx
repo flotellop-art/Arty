@@ -222,12 +222,17 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
                   setActiveSession({ userId, authMethod: 'google', displayName: name, email, avatar, createdAt: Date.now() })
                   const existingKeys = scoped.getJSON<{ anthropic: string; gemini?: string; mistral?: string }>('api-keys')
 
-                  if (existingKeys?.anthropic) {
+                  // Use stored keys, or fall back to environment variables
+                  const anthropicKey = existingKeys?.anthropic || import.meta.env.VITE_ANTHROPIC_API_KEY || ''
+                  const geminiKey = existingKeys?.gemini || import.meta.env.VITE_GEMINI_API_KEY || ''
+                  const mistralKey = existingKeys?.mistral || import.meta.env.VITE_MISTRAL_API_KEY || ''
+
+                  if (anthropicKey) {
                     await onLogin('google', {
                       displayName: name, email, avatar,
-                      anthropicKey: existingKeys.anthropic,
-                      geminiKey: existingKeys.gemini || undefined,
-                      mistralKey: existingKeys.mistral || undefined,
+                      anthropicKey,
+                      geminiKey: geminiKey || undefined,
+                      mistralKey: mistralKey || undefined,
                       identifier: email,
                     })
                   } else {
