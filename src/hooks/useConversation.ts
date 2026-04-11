@@ -246,6 +246,9 @@ export function useConversation() {
         messages: branchedMessages.map(m => ({ ...m, id: generateId() })),
         createdAt: Date.now(),
         updatedAt: Date.now(),
+        // Preserve EU flag and model history from parent conversation
+        ...(conv.euOnly ? { euOnly: true } : {}),
+        ...(conv.usedModels ? { usedModels: [...conv.usedModels] } : {}),
       }
       storage.saveConversation(newConv)
       refreshConversations()
