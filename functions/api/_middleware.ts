@@ -1,15 +1,13 @@
 // Security middleware for all /api/* routes
 // Runs before every API function on Cloudflare Pages
 
+// Production origins only — capacitor:// is required for native Android/iOS app
 const ALLOWED_ORIGINS = [
   'https://appfacade.pages.dev',
   'https://arty.pages.dev',
   'https://app.arty.fr',
-  'http://localhost:5173',
-  'http://localhost:3000',
-  'https://localhost',
-  'capacitor://localhost',
-  'http://localhost',
+  'capacitor://localhost',   // Capacitor native app (Android/iOS)
+  'https://localhost',       // Capacitor HTTPS on device
 ]
 
 // Simple in-memory rate limiter (per-isolate, resets on new isolate)

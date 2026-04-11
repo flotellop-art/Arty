@@ -28,22 +28,12 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
   const [emailError, setEmailError] = useState('')
 
   // Step 2 for Google/Email: ask for API key after auth
-  // Restore from sessionStorage if returning from OAuth redirect
   const [pendingAuth, setPendingAuth] = useState<{
     method: AuthMethod
     displayName: string
     email: string
     avatar?: string
-  } | null>(() => {
-    try {
-      const saved = sessionStorage.getItem('arty-pending-auth')
-      if (saved) {
-        sessionStorage.removeItem('arty-pending-auth')
-        return JSON.parse(saved)
-      }
-    } catch {}
-    return null
-  })
+  } | null>(null)
 
   const handleApiKeyLogin = useCallback(async (anthropicKey: string, geminiKey?: string, mistralKey?: string) => {
     setLoading(true)
@@ -104,7 +94,7 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
       const { generateUserId, setActiveSession } = await import('../../services/userSession')
       const userId = await generateUserId('email', email)
       setActiveSession({ userId, authMethod: 'email', displayName: email, email, createdAt: Date.now() })
-      const existingKeys = scoped.getJSON<{ anthropic: string; gemini?: string }>('api-keys')
+      const existingKeys = scoped.getJSON<{ anthropic: string; gemini?: string; mistral?: string }>('api-keys')
 
       if (existingKeys && existingKeys.anthropic) {
         // Already has keys — login directly
@@ -113,6 +103,7 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
           email,
           anthropicKey: existingKeys.anthropic,
           geminiKey: existingKeys.gemini || undefined,
+          mistralKey: existingKeys.mistral || undefined,
           identifier: email,
         })
       } else {
@@ -209,13 +200,13 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
                   const tokens = await res.json()
 
                   if (tokens.access_token) {
-                    scoped.setJSON('google-tokens', {
+                    scoped.secureSetJSON('google-tokens', {
                       access_token: tokens.access_token,
                       refresh_token: tokens.refresh_token || '',
                       expires_at: Date.now() + (tokens.expires_in || 3600) * 1000,
                     })
                   }
-                  scoped.setJSON('google-user', { email, name, picture: avatar })
+                  scoped.secureSetJSON('google-user', { email, name, picture: avatar })
 
                   const { generateUserId, setActiveSession } = await import('../../services/userSession')
                   const userId = await generateUserId('google', email)

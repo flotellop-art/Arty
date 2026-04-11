@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Capacitor, registerPlugin } from '@capacitor/core'
 import { buildOAuthUrl } from '../../services/googleAuth'
 
@@ -15,7 +16,10 @@ interface GoogleLoginTabProps {
 }
 
 export function GoogleLoginTab({ loading, onNativeGoogleLogin }: GoogleLoginTabProps) {
+  const [error, setError] = useState('')
+
   const handleGoogleLogin = async () => {
+    setError('')
     try {
       if (Capacitor.isNativePlatform() && onNativeGoogleLogin) {
         const result = await GoogleSignInNative.signIn()
@@ -30,9 +34,8 @@ export function GoogleLoginTab({ loading, onNativeGoogleLogin }: GoogleLoginTabP
         const url = buildOAuthUrl()
         window.location.href = url
       }
-    } catch (err) {
-      console.error('Google login error:', err)
-      console.error('Google login error:', err)
+    } catch {
+      setError('Connexion Google échouée. Réessaie.')
     }
   }
 
@@ -51,6 +54,8 @@ export function GoogleLoginTab({ loading, onNativeGoogleLogin }: GoogleLoginTabP
         </svg>
         <span className="text-sm font-medium text-gray-700">Se connecter avec Google</span>
       </button>
+
+      {error && <p className="text-sm text-red-500 text-center">{error}</p>}
 
       <p className="text-xs text-gray-400 text-center leading-relaxed">
         Connecte ton compte Google pour accéder à Gmail, Drive et Calendar.

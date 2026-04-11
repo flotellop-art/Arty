@@ -279,14 +279,14 @@ export default function App() {
         const { getJSON } = await import('./services/scopedStorage')
         const existingKeys = getJSON<{ anthropic: string; gemini?: string; mistral?: string }>('api-keys')
 
-        if (existingKeys?.anthropic) {
-          await auth.login('google', {
-            displayName: user.name, email: user.email, avatar: user.picture,
-            anthropicKey: existingKeys.anthropic, geminiKey: existingKeys.gemini, mistralKey: existingKeys.mistral,
-            identifier: user.email,
-          })
-        }
-        // If no API keys yet, the LoginScreen will handle it
+        // Login with existing keys or server-provided
+        await auth.login('google', {
+          displayName: user.name, email: user.email, avatar: user.picture,
+          anthropicKey: existingKeys?.anthropic || 'server-provided',
+          geminiKey: existingKeys?.gemini,
+          mistralKey: existingKeys?.mistral,
+          identifier: user.email,
+        })
       } catch (err) {
         console.error('Deep link OAuth error:', err)
       }

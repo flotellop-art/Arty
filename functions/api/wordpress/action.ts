@@ -71,6 +71,6 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
         return Response.json({ error: 'Use type: list, create, update, delete, get' }, { status: 400 })
     }
   } catch (err) {
-    return Response.json({ error: err instanceof Error ? err.message : 'WordPress API error' }, { status: 500 })
+    return Response.json({ error: 'WordPress operation failed' }, { status: 500 })
   }
 }
