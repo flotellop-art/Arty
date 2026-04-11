@@ -81,7 +81,12 @@ export function useAuth() {
   }, [])
 
   const logout = useCallback(() => {
+    // Clear API keys from memory
     clearActiveKeys()
+    // Clear Google tokens and user data
+    scoped.removeItem('google-tokens')
+    scoped.removeItem('google-user')
+    // Clear session
     clearActiveSession()
     setCurrentUser(null)
   }, [])
