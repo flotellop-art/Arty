@@ -187,60 +187,45 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
               onNativeGoogleLogin={async (email, name, avatar, serverAuthCode) => {
                 setLoading(true)
                 try {
-                  // Store user info first (always works)
-                  scoped.setJSON('google-user', { email, name, picture: avatar })
+                  // Step 1: Exchange serverAuthCode for Google tokens
+                  let googleAccessToken = ''
+                  let googleRefreshToken = ''
+                  let expiresIn = 3600
 
-                  const { generateUserId, setActiveSession } = await import('../../services/userSession')
-                  const userId = await generateUserId('google', email)
-                  setActiveSession({ userId, authMethod: 'google', displayName: name, email, avatar, createdAt: Date.now() })
-
-                  // Try to exchange serverAuthCode for real Google tokens
-                  let hasGoogleTokens = false
                   if (serverAuthCode) {
                     try {
                       const { apiUrl } = await import('../../services/apiBase')
                       const res = await fetch(apiUrl('/api/auth/token'), {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                          code: serverAuthCode,
-                          redirect_uri: '',
-                        }),
+                        body: JSON.stringify({ code: serverAuthCode, redirect_uri: '' }),
                       })
-
                       if (res.ok) {
-                        const tokens = await res.json()
-                        if (tokens.access_token) {
-                          scoped.setJSON('google-tokens', {
-                            access_token: tokens.access_token,
-                            refresh_token: tokens.refresh_token || '',
-                            expires_at: Date.now() + (tokens.expires_in || 3600) * 1000,
-                          })
-                          hasGoogleTokens = true
-                        }
+                        const data = await res.json()
+                        googleAccessToken = data.access_token || ''
+                        googleRefreshToken = data.refresh_token || ''
+                        expiresIn = data.expires_in || 3600
                       }
                     } catch {
-                      // Token exchange failed — continue without Google tokens
+                      // Token exchange failed — continue without
                     }
                   }
 
-                  // If no Google tokens, store a placeholder so the app knows Google is connected
-                  if (!hasGoogleTokens) {
-                    scoped.setJSON('google-tokens', {
-                      access_token: '',
-                      refresh_token: '',
-                      expires_at: 0,
-                    })
-                  }
-
-                  // Login with existing API keys or server-provided
-                  const existingKeys = scoped.getJSON<{ anthropic: string; gemini?: string; mistral?: string }>('api-keys')
+                  // Step 2: Login (this handles session, crypto, keys)
                   await onLogin('google', {
-                    displayName: name, email, avatar,
-                    anthropicKey: existingKeys?.anthropic || 'server-provided',
-                    geminiKey: existingKeys?.gemini || undefined,
-                    mistralKey: existingKeys?.mistral || undefined,
+                    displayName: name,
+                    email,
+                    avatar,
+                    anthropicKey: 'server-provided',
                     identifier: email,
+                  })
+
+                  // Step 3: Store Google data AFTER login (scoped storage needs userId)
+                  scoped.setJSON('google-user', { email, name, picture: avatar })
+                  scoped.setJSON('google-tokens', {
+                    access_token: googleAccessToken,
+                    refresh_token: googleRefreshToken,
+                    expires_at: Date.now() + expiresIn * 1000,
                   })
                 } catch (err) {
                   console.error('Native Google login error:', err)
