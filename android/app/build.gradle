@@ -43,20 +43,12 @@ android {
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
 
-            // Firebase App Distribution — diffusion bêta automatique
-            // La config n'est prise en compte que si le plugin App Distribution
-            // est appliqué (cf. bloc conditionnel en bas de ce fichier).
-            firebaseAppDistribution {
-                // appId est lu automatiquement depuis google-services.json,
-                // laisser vide pour utiliser celui du JSON.
-                releaseNotes = "Version bêta — test interne"
-                releaseNotesFile = "release-notes.txt"  // facultatif, prioritaire sur releaseNotes si présent
-                testersFile = "firebase-testers.txt"
-                // Alternative rapide :
-                // testers = "beta@exemple.com, testeur2@exemple.com"
-                // groups = "beta-testers"  // si tu crées un groupe dans la console
-                serviceCredentialsFile = System.getenv("FIREBASE_SERVICE_ACCOUNT") ?: ""
-            }
+            // Firebase App Distribution — décommenter après setup Firebase (voir FIREBASE-BETA.md)
+            // firebaseAppDistribution {
+            //     releaseNotesFile = "release-notes.txt"
+            //     testersFile = "firebase-testers.txt"
+            //     serviceCredentialsFile = System.getenv("FIREBASE_SERVICE_ACCOUNT") ?: ""
+            // }
         }
     }
 }
