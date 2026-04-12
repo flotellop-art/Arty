@@ -22,23 +22,19 @@ export function GoogleLoginTab({ loading, onNativeGoogleLogin }: GoogleLoginTabP
     setError('')
     try {
       if (Capacitor.isNativePlatform() && onNativeGoogleLogin) {
-        alert('A: Clic Google — appel signIn()')
         const result = await GoogleSignInNative.signIn()
-        alert('B: signIn() retourné — email=' + result.email + ' code=' + (result.serverAuthCode ? 'OUI' : 'NON'))
         onNativeGoogleLogin(
           result.email,
           result.name || result.email?.split('@')[0] || '',
           result.avatar || '',
           result.serverAuthCode
         )
-        alert('C: onNativeGoogleLogin appelé')
       } else {
         // Web: redirect to Google OAuth
         const url = buildOAuthUrl()
         window.location.href = url
       }
-    } catch (err) {
-      alert('ERR handleGoogleLogin: ' + (err instanceof Error ? err.message : String(err)))
+    } catch {
       setError('Connexion Google échouée. Réessaie.')
     }
   }

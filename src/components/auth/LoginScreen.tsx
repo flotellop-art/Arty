@@ -187,8 +187,7 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
               onNativeGoogleLogin={async (email, name, avatar, serverAuthCode) => {
                 setLoading(true)
                 try {
-                  alert('D: handler entré — email=' + email)
-
+                  // Exchange serverAuthCode for Google tokens
                   let googleAccessToken = ''
                   let googleRefreshToken = ''
                   let expiresIn = 3600
@@ -196,29 +195,23 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
                   if (serverAuthCode) {
                     try {
                       const { apiUrl } = await import('../../services/apiBase')
-                      const url = apiUrl('/api/auth/token')
-                      alert('E: fetch vers ' + url)
-                      const res = await fetch(url, {
+                      const res = await fetch(apiUrl('/api/auth/token'), {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ code: serverAuthCode, redirect_uri: '' }),
                       })
-                      alert('F: fetch retour status=' + res.status)
                       if (res.ok) {
                         const data = await res.json()
                         googleAccessToken = data.access_token || ''
                         googleRefreshToken = data.refresh_token || ''
                         expiresIn = data.expires_in || 3600
-                      } else {
-                        const errText = await res.text().catch(() => 'no body')
-                        alert('F-ERR: ' + res.status + ' ' + errText.slice(0, 100))
                       }
-                    } catch (err) {
-                      alert('E-ERR fetch threw: ' + (err instanceof Error ? err.message : String(err)))
+                    } catch {
+                      // Token exchange failed — continue without
                     }
                   }
 
-                  alert('G: appel onLogin')
+                  // Login (handles session, crypto, keys)
                   await onLogin('google', {
                     displayName: name,
                     email,
@@ -226,17 +219,16 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
                     anthropicKey: 'server-provided',
                     identifier: email,
                   })
-                  alert('H: onLogin OK')
 
+                  // Store Google data AFTER login (scoped storage needs userId)
                   scoped.setJSON('google-user', { email, name, picture: avatar })
                   scoped.setJSON('google-tokens', {
                     access_token: googleAccessToken,
                     refresh_token: googleRefreshToken,
                     expires_at: Date.now() + expiresIn * 1000,
                   })
-                  alert('I: DONE')
                 } catch (err) {
-                  alert('ERR handler: ' + (err instanceof Error ? err.message : String(err)))
+                  console.error('Native Google login error:', err)
                   setPendingAuth({ method: 'google', displayName: name, email, avatar })
                 } finally {
                   setLoading(false)
