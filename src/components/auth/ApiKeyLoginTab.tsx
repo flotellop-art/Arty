@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 interface ApiKeyLoginTabProps {
   onLogin: (anthropicKey: string, geminiKey?: string, mistralKey?: string) => void
@@ -6,6 +7,7 @@ interface ApiKeyLoginTabProps {
 }
 
 export function ApiKeyLoginTab({ onLogin, loading }: ApiKeyLoginTabProps) {
+  const { t } = useTranslation()
   const [anthropicKey, setAnthropicKey] = useState('')
   const [geminiKey, setGeminiKey] = useState('')
   const [mistralKey, setMistralKey] = useState('')
@@ -15,11 +17,11 @@ export function ApiKeyLoginTab({ onLogin, loading }: ApiKeyLoginTabProps) {
     e.preventDefault()
     const trimmed = anthropicKey.trim()
     if (!trimmed) {
-      setError('La clé API Anthropic est obligatoire')
+      setError(t('login.apiKey.errors.required'))
       return
     }
     if (!trimmed.startsWith('sk-ant-')) {
-      setError('La clé doit commencer par sk-ant-')
+      setError(t('login.apiKey.errors.invalidPrefix'))
       return
     }
     setError('')
@@ -30,7 +32,7 @@ export function ApiKeyLoginTab({ onLogin, loading }: ApiKeyLoginTabProps) {
     <form onSubmit={handleSubmit} className="space-y-4">
       <div>
         <label className="block text-xs font-medium text-gray-600 mb-1.5">
-          Clé API Anthropic *
+          {t('login.apiKey.anthropicLabel')}
         </label>
         <input
           type="password"
@@ -45,7 +47,7 @@ export function ApiKeyLoginTab({ onLogin, loading }: ApiKeyLoginTabProps) {
 
       <div>
         <label className="block text-xs font-medium text-gray-600 mb-1.5">
-          Clé API Gemini <span className="text-gray-400">(optionnel)</span>
+          {t('login.apiKey.geminiLabel')} <span className="text-gray-400">{t('login.apiKey.geminiHint')}</span>
         </label>
         <input
           type="password"
@@ -59,7 +61,7 @@ export function ApiKeyLoginTab({ onLogin, loading }: ApiKeyLoginTabProps) {
 
       <div>
         <label className="block text-xs font-medium text-gray-600 mb-1.5">
-          Clé API Mistral <span className="text-gray-400">(optionnel — données EU)</span>
+          {t('login.apiKey.mistralLabel')} <span className="text-gray-400">{t('login.apiKey.mistralHint')}</span>
         </label>
         <input
           type="password"
@@ -78,11 +80,11 @@ export function ApiKeyLoginTab({ onLogin, loading }: ApiKeyLoginTabProps) {
         disabled={loading || !anthropicKey.trim()}
         className="w-full py-2.5 rounded-xl bg-bubble-user text-cream font-medium text-sm hover:bg-gray-700 transition-colors disabled:opacity-40"
       >
-        {loading ? 'Connexion...' : 'Commencer'}
+        {loading ? t('login.apiKey.connecting') : t('login.apiKey.submit')}
       </button>
 
       <p className="text-xs text-gray-400 text-center leading-relaxed">
-        Ta clé n'est jamais envoyée à nos serveurs. Elle sert uniquement à communiquer avec l'API Anthropic.
+        {t('login.apiKey.notice')}
       </p>
     </form>
   )

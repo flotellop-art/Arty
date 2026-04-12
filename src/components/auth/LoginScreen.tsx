@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react'
+import { Trans, useTranslation } from 'react-i18next'
 import { StarIcon } from '../shared/StarIcon'
 import { ApiKeyLoginTab } from './ApiKeyLoginTab'
 import { EmailLoginTab } from './EmailLoginTab'
@@ -23,6 +24,7 @@ interface LoginScreenProps {
 }
 
 export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginScreenProps) {
+  const { t } = useTranslation()
   const [activeTab, setActiveTab] = useState<Tab>('apikey')
   const [loading, setLoading] = useState(false)
   const [emailError, setEmailError] = useState('')
@@ -79,7 +81,7 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
       const storedHash = localStorage.getItem(`arty-email-hash-${email}`)
 
       if (storedHash && storedHash !== hashHex) {
-        setEmailError('Mot de passe incorrect')
+        setEmailError(t('login.email.errors.wrongPassword'))
         setLoading(false)
         return
       }
@@ -115,11 +117,11 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
         })
       }
     } catch {
-      setEmailError('Erreur de connexion')
+      setEmailError(t('login.email.errors.generic'))
     } finally {
       setLoading(false)
     }
-  }, [onLogin])
+  }, [onLogin, t])
 
   // If pending auth, show API key form
   if (pendingAuth) {
@@ -133,8 +135,11 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
 
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
             <p className="text-sm text-gray-500 mb-4">
-              Connecté en tant que <strong>{pendingAuth.email || pendingAuth.displayName}</strong>.
-              Entre ta clé API Anthropic pour continuer.
+              <Trans
+                i18nKey="login.connectedAs"
+                values={{ name: pendingAuth.email || pendingAuth.displayName }}
+                components={{ strong: <strong /> }}
+              />
             </p>
             <ApiKeyLoginTab onLogin={handleApiKeyLogin} loading={loading} />
           </div>
@@ -153,15 +158,15 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
 
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
           <h2 className="font-serif text-lg font-semibold text-bubble-user mb-4 text-center">
-            Connexion
+            {t('login.title')}
           </h2>
 
           {/* Tabs */}
           <div className="flex gap-1 mb-5 bg-gray-100 rounded-xl p-1">
             {([
-              { id: 'apikey' as Tab, label: 'Clé API' },
-              { id: 'google' as Tab, label: 'Google' },
-              { id: 'email' as Tab, label: 'Email' },
+              { id: 'apikey' as Tab, label: t('login.tabs.apikey') },
+              { id: 'google' as Tab, label: t('login.tabs.google') },
+              { id: 'email' as Tab, label: t('login.tabs.email') },
             ]).map((tab) => (
               <button
                 key={tab.id}
@@ -244,7 +249,7 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
         {/* Known sessions */}
         {knownSessions.length > 0 && (
           <div className="mt-4 bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
-            <p className="text-xs text-gray-400 mb-2">Comptes récents</p>
+            <p className="text-xs text-gray-400 mb-2">{t('login.recentAccounts')}</p>
             {knownSessions.slice(0, 3).map((session) => (
               <button
                 key={session.userId}

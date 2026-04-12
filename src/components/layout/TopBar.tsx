@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import { getStyle, setStyle as saveStyle, STYLE_OPTIONS, type ResponseStyle } from '../../services/responseStyles'
 import { getSelectedModel, setSelectedModel, MODEL_OPTIONS, type AIModel } from '../../services/modelSelector'
 import { SettingsGuide } from '../shared/SettingsGuide'
@@ -11,11 +12,16 @@ interface TopBarProps {
 type OpenMenu = null | 'style' | 'model'
 
 export function TopBar({ onMenuToggle, onHistoryToggle }: TopBarProps) {
+  const { t } = useTranslation()
   const [currentStyle, setCurrentStyle] = useState<ResponseStyle>(getStyle)
   const [currentModel, setCurrentModel] = useState<AIModel>(getSelectedModel)
   const [openMenu, setOpenMenu] = useState<OpenMenu>(null)
   const [showGuide, setShowGuide] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
+
+  // Labels traduisibles pour les tons / modèles affichés
+  const styleLabel = (id: ResponseStyle) => t(`chat.tone.${id}`)
+  const modelLabel = (id: AIModel) => (id === 'auto' ? t('chat.model.auto') : MODEL_OPTIONS.find(o => o.id === id)?.label ?? id)
 
   const handleStyleChange = (style: ResponseStyle) => {
     saveStyle(style)
@@ -52,7 +58,7 @@ export function TopBar({ onMenuToggle, onHistoryToggle }: TopBarProps) {
         <button
           onClick={onMenuToggle}
           className="p-2 -ml-2 rounded-lg hover:bg-black/5 transition-colors"
-          aria-label="Menu"
+          aria-label={t('common.menu')}
         >
           <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
             <rect y="3" width="20" height="2" rx="1" fill="#1E1A14" />
@@ -72,7 +78,7 @@ export function TopBar({ onMenuToggle, onHistoryToggle }: TopBarProps) {
               }`}
             >
               <span>{styleOption.emoji}</span>
-              <span>{styleOption.label}</span>
+              <span>{styleLabel(styleOption.id)}</span>
               <svg width="10" height="10" viewBox="0 0 10 10" fill="none" className="ml-0.5 opacity-50">
                 <path d="M2.5 4L5 6.5L7.5 4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
               </svg>
@@ -91,7 +97,7 @@ export function TopBar({ onMenuToggle, onHistoryToggle }: TopBarProps) {
                     }`}
                   >
                     <span>{opt.emoji}</span>
-                    <span>{opt.label}</span>
+                    <span>{styleLabel(opt.id)}</span>
                   </button>
                 ))}
               </div>
@@ -102,7 +108,7 @@ export function TopBar({ onMenuToggle, onHistoryToggle }: TopBarProps) {
           <button
             onClick={() => setShowGuide(true)}
             className="p-1 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
-            aria-label="Aide tons et modèles"
+            aria-label={t('chat.topBar.aria.toneModelHelp')}
           >
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
               <circle cx="7" cy="7" r="6" stroke="currentColor" strokeWidth="1.2" />
@@ -120,7 +126,7 @@ export function TopBar({ onMenuToggle, onHistoryToggle }: TopBarProps) {
               }`}
             >
               <span>{modelOption.flag}</span>
-              <span>{modelOption.label}</span>
+              <span>{modelLabel(modelOption.id)}</span>
               <svg width="10" height="10" viewBox="0 0 10 10" fill="none" className="ml-0.5 opacity-50">
                 <path d="M2.5 4L5 6.5L7.5 4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
               </svg>
@@ -139,7 +145,7 @@ export function TopBar({ onMenuToggle, onHistoryToggle }: TopBarProps) {
                     }`}
                   >
                     <span>{opt.flag}</span>
-                    <span>{opt.label}</span>
+                    <span>{modelLabel(opt.id)}</span>
                   </button>
                 ))}
               </div>
@@ -151,7 +157,7 @@ export function TopBar({ onMenuToggle, onHistoryToggle }: TopBarProps) {
         <button
           onClick={onHistoryToggle}
           className="p-2 -mr-2 rounded-lg hover:bg-black/5 transition-colors"
-          aria-label="Historique"
+          aria-label={t('common.history')}
         >
           <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
             <rect x="3" y="2" width="14" height="16" rx="2" stroke="#1E1A14" strokeWidth="1.5" fill="none" />

@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import type { Conversation, FileAttachment } from '../../types'
 import { ChatTopBar } from './ChatTopBar'
 import { MessageList } from './MessageList'
@@ -42,12 +43,13 @@ export function ConversationScreen({
   computerActions,
   actionScreenshot,
 }: ConversationScreenProps) {
+  const { t } = useTranslation()
   return (
     <div className="flex flex-col h-full">
       <ChatTopBar title={conversation.title} onBack={onBack} usedModels={conversation.usedModels} euOnly={conversation.euOnly} />
 
-      <ActionBanner icon="📧" message="Lecture emails..." isVisible={gmail.isLoading} />
-      <ActionBanner icon="📁" message="Accès Drive..." isVisible={drive.isLoading} />
+      <ActionBanner icon="📧" message={t('chat.banners.gmailReading')} isVisible={gmail.isLoading} />
+      <ActionBanner icon="📁" message={t('chat.banners.driveAccess')} isVisible={drive.isLoading} />
       <BrowserBanner action={browserActions.currentAction} />
       <BrowserBanner action={computerActions.currentAction} />
 
@@ -63,11 +65,11 @@ export function ConversationScreen({
         <div className="mx-4 mb-2">
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
             <div className="bg-gray-50 px-3 py-1.5 border-b border-gray-100 text-xs text-gray-500">
-              Screenshot PC
+              {t('chat.banners.screenshot')}
             </div>
             <img
               src={actionScreenshot}
-              alt="Screenshot du PC"
+              alt={t('chat.banners.screenshotAlt')}
               className="w-full"
             />
           </div>

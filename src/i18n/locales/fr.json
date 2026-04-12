@@ -1,0 +1,154 @@
+{
+  "common": {
+    "appName": "Arty",
+    "cancel": "Annuler",
+    "continue": "Continuer",
+    "close": "Fermer",
+    "back": "Retour",
+    "help": "Aide",
+    "logout": "Déconnexion",
+    "menu": "Menu",
+    "history": "Historique",
+    "loading": "Chargement...",
+    "retry": "Réessayer",
+    "optional": "optionnel",
+    "required": "obligatoire"
+  },
+  "login": {
+    "title": "Connexion",
+    "connectedAs": "Connecté en tant que <strong>{{name}}</strong>. Entre ta clé API Anthropic pour continuer.",
+    "tabs": {
+      "apikey": "Clé API",
+      "google": "Google",
+      "email": "Email"
+    },
+    "apiKey": {
+      "anthropicLabel": "Clé API Anthropic *",
+      "geminiLabel": "Clé API Gemini",
+      "geminiHint": "(optionnel)",
+      "mistralLabel": "Clé API Mistral",
+      "mistralHint": "(optionnel — données EU)",
+      "connecting": "Connexion...",
+      "submit": "Commencer",
+      "errors": {
+        "required": "La clé API Anthropic est obligatoire",
+        "invalidPrefix": "La clé doit commencer par sk-ant-"
+      },
+      "notice": "Ta clé n'est jamais envoyée à nos serveurs. Elle sert uniquement à communiquer avec l'API Anthropic."
+    },
+    "google": {
+      "signIn": "Se connecter avec Google",
+      "failed": "Connexion Google échouée. Réessaie.",
+      "notice": "Connecte ton compte Google pour accéder à Gmail, Drive et Calendar."
+    },
+    "email": {
+      "label": "Email",
+      "password": "Mot de passe",
+      "placeholderEmail": "email@exemple.com",
+      "submit": "Se connecter / S'inscrire",
+      "connecting": "Connexion...",
+      "errors": {
+        "required": "Email requis",
+        "invalid": "Email invalide",
+        "passwordShort": "Mot de passe trop court (4 caractères min)",
+        "wrongPassword": "Mot de passe incorrect",
+        "generic": "Erreur de connexion"
+      },
+      "notice": "Ton compte est stocké sur cet appareil. Pas de serveur."
+    },
+    "recentAccounts": "Comptes récents"
+  },
+  "onboarding": {
+    "slides": [
+      {
+        "emoji": "✨",
+        "title": "Salut, moi c'est Arty",
+        "desc": "Ton assistant IA personnel. Pose-moi n'importe quelle question, je suis là pour t'aider."
+      },
+      {
+        "emoji": "📸",
+        "title": "Parle-moi comme tu veux",
+        "desc": "Par texte, par photo, par vocal ou en scannant un document. Je m'adapte à toi."
+      },
+      {
+        "emoji": "📧",
+        "title": "Connecte tes outils",
+        "desc": "Gmail, Drive, Calendar — connecte ton compte Google et je pourrai lire tes mails, accéder à tes fichiers et gérer ton agenda."
+      },
+      {
+        "emoji": "🎛️",
+        "title": "Personnalise les réponses",
+        "desc": "Change le ton (concis, détaillé, formel...) et le modèle IA (Claude, Mistral, Gemini) à tout moment en haut de l'écran. Appuie sur ? pour en savoir plus."
+      }
+    ],
+    "next": "Suivant",
+    "start": "C'est parti !",
+    "skip": "Passer",
+    "tooltips": {
+      "dropdowns": "Change le ton et le modèle IA ici",
+      "attach": "Envoie une photo ou un fichier",
+      "mic": "Dicte ton message",
+      "google": "Connecte Google pour accéder à tes mails et fichiers"
+    }
+  },
+  "home": {
+    "title": "Comment puis-je t'aider ?",
+    "hintHelp": "Tape <0>/aide</0> pour voir tout ce que je sais faire"
+  },
+  "chat": {
+    "topBar": {
+      "aria": {
+        "back": "Retour",
+        "toneModelHelp": "Aide tons et modèles"
+      },
+      "euBadge": "Mistral EU"
+    },
+    "banners": {
+      "gmailReading": "Lecture emails...",
+      "driveAccess": "Accès Drive...",
+      "screenshot": "Screenshot PC",
+      "screenshotAlt": "Screenshot du PC"
+    },
+    "privacyWarning": {
+      "title": "Données hors Europe",
+      "body": "Cette conversation contient des messages traités par Mistral (serveurs en Europe). En passant sur {{targetModel}}, tout l'historique sera envoyé aux États-Unis. Continuer ?"
+    },
+    "input": {
+      "placeholder": "Discuter avec Arty...",
+      "listening": "Écoute en cours...",
+      "defaultFilePrompt": "Analyse ce fichier.",
+      "aria": {
+        "attach": "Joindre un fichier",
+        "camera": "Photo",
+        "scan": "Scanner un document",
+        "micStart": "Micro",
+        "micStop": "Arrêter le micro",
+        "stop": "Arrêter",
+        "send": "Envoyer"
+      }
+    },
+    "tone": {
+      "default": "Normal",
+      "concis": "Concis",
+      "detaille": "Détaillé",
+      "formel": "Formel",
+      "technique": "Technique"
+    },
+    "model": {
+      "auto": "Auto"
+    }
+  },
+  "sidebar": {
+    "newConversation": "Nouvelle conversation",
+    "newConversationEU": "Conversation EU sécurisée",
+    "emptyList": "Aucune conversation",
+    "timeAgo": {
+      "now": "à l'instant",
+      "minutes": "il y a {{count}}min",
+      "hours": "il y a {{count}}h",
+      "days": "il y a {{count}}j"
+    },
+    "deleteAria": "Supprimer",
+    "language": "Langue"
+  }
+}

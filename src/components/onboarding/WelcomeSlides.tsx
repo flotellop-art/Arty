@@ -1,37 +1,25 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 interface WelcomeSlidesProps {
   onComplete: () => void
 }
 
-const SLIDES = [
-  {
-    emoji: '✨',
-    title: 'Salut, moi c\'est Arty',
-    desc: 'Ton assistant IA personnel. Pose-moi n\'importe quelle question, je suis là pour t\'aider.',
-  },
-  {
-    emoji: '📸',
-    title: 'Parle-moi comme tu veux',
-    desc: 'Par texte, par photo, par vocal ou en scannant un document. Je m\'adapte à toi.',
-  },
-  {
-    emoji: '📧',
-    title: 'Connecte tes outils',
-    desc: 'Gmail, Drive, Calendar — connecte ton compte Google et je pourrai lire tes mails, accéder à tes fichiers et gérer ton agenda.',
-  },
-  {
-    emoji: '🎛️',
-    title: 'Personnalise les réponses',
-    desc: 'Change le ton (concis, détaillé, formel...) et le modèle IA (Claude, Mistral, Gemini) à tout moment en haut de l\'écran. Appuie sur ? pour en savoir plus.',
-  },
-]
+interface SlideDef {
+  emoji: string
+  title: string
+  desc: string
+}
 
 export function WelcomeSlides({ onComplete }: WelcomeSlidesProps) {
+  const { t } = useTranslation()
   const [current, setCurrent] = useState(0)
 
-  const isLast = current === SLIDES.length - 1
-  const slide = SLIDES[current]!
+  // Les slides viennent du JSON i18n (tableau) — `returnObjects` pour récupérer
+  // la structure complète.
+  const slides = t('onboarding.slides', { returnObjects: true }) as SlideDef[]
+  const isLast = current === slides.length - 1
+  const slide = slides[current]!
 
   const handleNext = () => {
     if (isLast) {
@@ -65,7 +53,7 @@ export function WelcomeSlides({ onComplete }: WelcomeSlidesProps) {
 
         {/* Dots */}
         <div className="flex gap-2">
-          {SLIDES.map((_, i) => (
+          {slides.map((_, i) => (
             <div
               key={i}
               className={`w-2 h-2 rounded-full transition-colors ${
@@ -81,7 +69,7 @@ export function WelcomeSlides({ onComplete }: WelcomeSlidesProps) {
             onClick={handleNext}
             className="w-full py-3 rounded-xl bg-bubble-user text-cream font-medium text-sm hover:bg-gray-700 transition-colors"
           >
-            {isLast ? 'C\'est parti !' : 'Suivant'}
+            {isLast ? t('onboarding.start') : t('onboarding.next')}
           </button>
 
           {!isLast && (
@@ -89,7 +77,7 @@ export function WelcomeSlides({ onComplete }: WelcomeSlidesProps) {
               onClick={handleSkip}
               className="w-full py-2 text-xs text-gray-400 hover:text-gray-600 transition-colors"
             >
-              Passer
+              {t('onboarding.skip')}
             </button>
           )}
         </div>

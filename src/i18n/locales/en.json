@@ -1,0 +1,154 @@
+{
+  "common": {
+    "appName": "Arty",
+    "cancel": "Cancel",
+    "continue": "Continue",
+    "close": "Close",
+    "back": "Back",
+    "help": "Help",
+    "logout": "Log out",
+    "menu": "Menu",
+    "history": "History",
+    "loading": "Loading...",
+    "retry": "Retry",
+    "optional": "optional",
+    "required": "required"
+  },
+  "login": {
+    "title": "Sign in",
+    "connectedAs": "Signed in as <strong>{{name}}</strong>. Enter your Anthropic API key to continue.",
+    "tabs": {
+      "apikey": "API key",
+      "google": "Google",
+      "email": "Email"
+    },
+    "apiKey": {
+      "anthropicLabel": "Anthropic API key *",
+      "geminiLabel": "Gemini API key",
+      "geminiHint": "(optional)",
+      "mistralLabel": "Mistral API key",
+      "mistralHint": "(optional — EU data)",
+      "connecting": "Signing in...",
+      "submit": "Get started",
+      "errors": {
+        "required": "Anthropic API key is required",
+        "invalidPrefix": "The key must start with sk-ant-"
+      },
+      "notice": "Your key is never sent to our servers. It's only used to talk to the Anthropic API."
+    },
+    "google": {
+      "signIn": "Sign in with Google",
+      "failed": "Google sign-in failed. Please try again.",
+      "notice": "Connect your Google account to access Gmail, Drive and Calendar."
+    },
+    "email": {
+      "label": "Email",
+      "password": "Password",
+      "placeholderEmail": "email@example.com",
+      "submit": "Sign in / Sign up",
+      "connecting": "Signing in...",
+      "errors": {
+        "required": "Email required",
+        "invalid": "Invalid email",
+        "passwordShort": "Password too short (4 characters min.)",
+        "wrongPassword": "Wrong password",
+        "generic": "Connection error"
+      },
+      "notice": "Your account stays on this device. No server."
+    },
+    "recentAccounts": "Recent accounts"
+  },
+  "onboarding": {
+    "slides": [
+      {
+        "emoji": "✨",
+        "title": "Hi, I'm Arty",
+        "desc": "Your personal AI assistant. Ask me anything — I'm here to help."
+      },
+      {
+        "emoji": "📸",
+        "title": "Talk to me any way you like",
+        "desc": "By text, photo, voice or by scanning a document. I adapt to you."
+      },
+      {
+        "emoji": "📧",
+        "title": "Connect your tools",
+        "desc": "Gmail, Drive, Calendar — connect your Google account and I'll be able to read your emails, access your files and manage your calendar."
+      },
+      {
+        "emoji": "🎛️",
+        "title": "Customize the answers",
+        "desc": "Change the tone (concise, detailed, formal…) and the AI model (Claude, Mistral, Gemini) anytime from the top of the screen. Tap ? to learn more."
+      }
+    ],
+    "next": "Next",
+    "start": "Let's go!",
+    "skip": "Skip",
+    "tooltips": {
+      "dropdowns": "Change the tone and AI model here",
+      "attach": "Send a photo or a file",
+      "mic": "Dictate your message",
+      "google": "Connect Google to access your emails and files"
+    }
+  },
+  "home": {
+    "title": "How can I help you?",
+    "hintHelp": "Type <0>/help</0> to see everything I can do"
+  },
+  "chat": {
+    "topBar": {
+      "aria": {
+        "back": "Back",
+        "toneModelHelp": "Tone and model help"
+      },
+      "euBadge": "Mistral EU"
+    },
+    "banners": {
+      "gmailReading": "Reading emails...",
+      "driveAccess": "Accessing Drive...",
+      "screenshot": "PC screenshot",
+      "screenshotAlt": "PC screenshot"
+    },
+    "privacyWarning": {
+      "title": "Data leaving Europe",
+      "body": "This conversation contains messages processed by Mistral (servers in Europe). Switching to {{targetModel}} will send the whole history to the United States. Continue?"
+    },
+    "input": {
+      "placeholder": "Chat with Arty...",
+      "listening": "Listening...",
+      "defaultFilePrompt": "Analyze this file.",
+      "aria": {
+        "attach": "Attach a file",
+        "camera": "Photo",
+        "scan": "Scan a document",
+        "micStart": "Microphone",
+        "micStop": "Stop microphone",
+        "stop": "Stop",
+        "send": "Send"
+      }
+    },
+    "tone": {
+      "default": "Normal",
+      "concis": "Concise",
+      "detaille": "Detailed",
+      "formel": "Formal",
+      "technique": "Technical"
+    },
+    "model": {
+      "auto": "Auto"
+    }
+  },
+  "sidebar": {
+    "newConversation": "New conversation",
+    "newConversationEU": "Secure EU conversation",
+    "emptyList": "No conversations",
+    "timeAgo": {
+      "now": "just now",
+      "minutes": "{{count}}m ago",
+      "hours": "{{count}}h ago",
+      "days": "{{count}}d ago"
+    },
+    "deleteAria": "Delete",
+    "language": "Language"
+  }
+}
