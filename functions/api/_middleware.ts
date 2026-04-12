@@ -3,6 +3,8 @@
 
 // Production origins only — capacitor:// is required for native Android/iOS app
 const ALLOWED_ORIGINS = [
+  'https://tryarty.com',        // Nouveau domaine prod (launch Product Hunt)
+  'https://www.tryarty.com',    // Variante www
   'https://appfacade.pages.dev',
   'https://arty.pages.dev',
   'https://app.arty.fr',
