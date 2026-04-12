@@ -192,6 +192,14 @@ export function buildContextualPrompt(context?: {
 }): string {
   let prompt = SYSTEM_PROMPT
 
+  // Phase 3 i18n : injecte une directive de langue selon la locale UI choisie
+  // par l'utilisateur (clé localStorage 'arty-locale' définie par src/i18n/index.ts).
+  // Si EN → on override le "Tu réponds en français" du prompt de base.
+  const languageDirective = buildLanguageDirective()
+  if (languageDirective) {
+    prompt = `${languageDirective}\n\n${prompt}`
+  }
+
   if (context?.memorySummary) {
     prompt += context.memorySummary
   }
@@ -205,4 +213,23 @@ export function buildContextualPrompt(context?: {
   }
 
   return prompt
+}
+
+/**
+ * Lit la locale UI dans localStorage (clé 'arty-locale', posée par src/i18n/index.ts)
+ * et renvoie la directive de langue correspondante à injecter au début du prompt.
+ * Retourne '' en FR (comportement par défaut du prompt) ou hors navigateur.
+ */
+function buildLanguageDirective(): string {
+  try {
+    if (typeof localStorage === 'undefined') return ''
+    const raw = localStorage.getItem('arty-locale') || ''
+    const locale = raw.slice(0, 2).toLowerCase()
+    if (locale === 'en') {
+      return 'IMPORTANT: Always respond in English, regardless of the language used in the conversation or in the system prompt below.'
+    }
+    return ''
+  } catch {
+    return ''
+  }
 }

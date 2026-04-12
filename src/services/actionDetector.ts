@@ -38,14 +38,14 @@ Actions possibles :
 - {"action":"create_article"}
 - {"action":"none"}
 
-Règles :
-- "ouvre/lance/démarre/mets [app]" → open_app
-- "wordpress/wp/admin du site/blog" → open_app avec app=wordpress
-- "screenshot/capture/écran du pc/montre l'écran" → screenshot_pc
-- "emails/mails/courrier/boîte de réception" → read_emails
-- "drive/fichiers/documents google" → list_drive
-- "prix/tarif/coût chez fournisseur/combien coûte" → search_price
-- "article/publier/publication/blog/rédiger pour le site" → create_article
+Règles (FR + EN) :
+- FR "ouvre/lance/démarre/mets [app]"  |  EN "open/launch/start [app]" → open_app
+- FR/EN "wordpress/wp/admin du site/blog" → open_app avec app=wordpress
+- FR "screenshot/capture/écran du pc/montre l'écran"  |  EN "screenshot/capture/pc screen/show the screen" → screenshot_pc
+- FR "emails/mails/courrier/boîte de réception"  |  EN "my emails/my mail/inbox/unread emails" → read_emails
+- FR "drive/fichiers/documents google"  |  EN "my drive/my files/google docs/my documents" → list_drive
+- FR "prix/tarif/coût chez fournisseur/combien coûte"  |  EN "price/cost at supplier/how much does it cost" → search_price
+- FR "article/publier/publication/blog/rédiger pour le site"  |  EN "article/publish/post/blog/write for the site" → create_article
 - Sinon → none
 
 Message: "${text.replace(/"/g, '\\"')}"
