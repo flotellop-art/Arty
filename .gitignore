@@ -6,6 +6,9 @@ dist
 *.local
 *.tsbuildinfo
 
+# Claude Code worktrees (local only, never commit)
+.claude/worktrees/
+
 # Native build secrets
 google-services.json
 GoogleService-Info.plist
