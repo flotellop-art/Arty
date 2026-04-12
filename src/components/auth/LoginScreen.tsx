@@ -187,6 +187,8 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
               onNativeGoogleLogin={async (email, name, avatar, serverAuthCode) => {
                 setLoading(true)
                 try {
+                  console.log('[GoogleLogin] Step 1: Got result from native', { email, hasCode: !!serverAuthCode })
+
                   // Step 1: Exchange serverAuthCode for Google tokens
                   let googleAccessToken = ''
                   let googleRefreshToken = ''
@@ -195,23 +197,30 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
                   if (serverAuthCode) {
                     try {
                       const { apiUrl } = await import('../../services/apiBase')
+                      console.log('[GoogleLogin] Step 2: Exchanging code with', apiUrl('/api/auth/token'))
                       const res = await fetch(apiUrl('/api/auth/token'), {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ code: serverAuthCode, redirect_uri: '' }),
                       })
+                      console.log('[GoogleLogin] Step 3: Token exchange response', res.status)
                       if (res.ok) {
                         const data = await res.json()
                         googleAccessToken = data.access_token || ''
                         googleRefreshToken = data.refresh_token || ''
                         expiresIn = data.expires_in || 3600
+                        console.log('[GoogleLogin] Step 4: Got access token', !!googleAccessToken)
+                      } else {
+                        const errText = await res.text().catch(() => 'no body')
+                        console.error('[GoogleLogin] Token exchange failed', res.status, errText)
                       }
-                    } catch {
-                      // Token exchange failed — continue without
+                    } catch (err) {
+                      console.error('[GoogleLogin] Token exchange threw', err)
                     }
                   }
 
-                  // Step 2: Login (this handles session, crypto, keys)
+                  // Step 2: Login
+                  console.log('[GoogleLogin] Step 5: Calling onLogin')
                   await onLogin('google', {
                     displayName: name,
                     email,
@@ -219,16 +228,19 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
                     anthropicKey: 'server-provided',
                     identifier: email,
                   })
+                  console.log('[GoogleLogin] Step 6: onLogin done')
 
-                  // Step 3: Store Google data AFTER login (scoped storage needs userId)
+                  // Step 3: Store Google data AFTER login
                   scoped.setJSON('google-user', { email, name, picture: avatar })
                   scoped.setJSON('google-tokens', {
                     access_token: googleAccessToken,
                     refresh_token: googleRefreshToken,
                     expires_at: Date.now() + expiresIn * 1000,
                   })
+                  console.log('[GoogleLogin] Step 7: Google data stored — DONE')
                 } catch (err) {
-                  console.error('Native Google login error:', err)
+                  console.error('[GoogleLogin] CAUGHT ERROR:', err)
+                  alert('Erreur Google login: ' + (err instanceof Error ? err.message : String(err)))
                   setPendingAuth({ method: 'google', displayName: name, email, avatar })
                 } finally {
                   setLoading(false)
