@@ -78,24 +78,21 @@ export function useAuth() {
     return session
   }, [])
 
-  const logout = useCallback(async () => {
-    // Clear API keys from memory
+  const logout = useCallback(() => {
+    // Clear everything synchronously first
     clearActiveKeys()
-    // Clear Google tokens and user data
     scoped.removeItem('google-tokens')
     scoped.removeItem('google-user')
-    // Sign out from native Google Sign-In (clears cached account)
-    try {
-      const { Capacitor } = await import('@capacitor/core')
-      if (Capacitor.isNativePlatform()) {
-        const { registerPlugin } = await import('@capacitor/core')
-        const GoogleSignInNative = registerPlugin<{ signOut(): Promise<void> }>('GoogleSignInNative')
-        await GoogleSignInNative.signOut()
-      }
-    } catch {}
-    // Clear session
     clearActiveSession()
     setCurrentUser(null)
+
+    // Sign out from native Google Sign-In in background (don't await)
+    import('@capacitor/core').then(({ Capacitor, registerPlugin }) => {
+      if (Capacitor.isNativePlatform()) {
+        const GoogleSignInNative = registerPlugin<{ signOut(): Promise<void> }>('GoogleSignInNative')
+        GoogleSignInNative.signOut().catch(() => {})
+      }
+    }).catch(() => {})
   }, [])
 
   const switchAccount = useCallback(async (userId: string) => {
