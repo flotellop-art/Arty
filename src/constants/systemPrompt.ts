@@ -192,12 +192,18 @@ export function buildContextualPrompt(context?: {
 }): string {
   let prompt = SYSTEM_PROMPT
 
-  // Phase 3 i18n : injecte une directive de langue selon la locale UI choisie
-  // par l'utilisateur (clé localStorage 'arty-locale' définie par src/i18n/index.ts).
-  // Si EN → on override le "Tu réponds en français" du prompt de base.
-  const languageDirective = buildLanguageDirective()
-  if (languageDirective) {
-    prompt = `${languageDirective}\n\n${prompt}`
+  // Phase 3 i18n : adapte le prompt à la locale UI choisie par l'utilisateur
+  // (clé localStorage 'arty-locale' posée par src/i18n/index.ts).
+  const locale = getLocale()
+
+  if (locale === 'en') {
+    // 1. Remplacer la ligne FR qui force le français (sinon elle override tout)
+    prompt = prompt.replace(
+      '- Tu réponds en français, de façon pragmatique et concise',
+      '- You always respond in English, in a pragmatic and concise way'
+    )
+    // 2. Préfixer une directive forte en tête (double sécurité)
+    prompt = 'IMPORTANT: You always respond in English, regardless of the language used in the conversation. Never answer in French.\n\n' + prompt
   }
 
   if (context?.memorySummary) {
@@ -216,20 +222,16 @@ export function buildContextualPrompt(context?: {
 }
 
 /**
- * Lit la locale UI dans localStorage (clé 'arty-locale', posée par src/i18n/index.ts)
- * et renvoie la directive de langue correspondante à injecter au début du prompt.
- * Retourne '' en FR (comportement par défaut du prompt) ou hors navigateur.
+ * Lit la locale UI dans localStorage (clé 'arty-locale', posée par src/i18n/index.ts).
+ * Retourne 'fr' par défaut (et en cas d'erreur d'accès localStorage).
  */
-function buildLanguageDirective(): string {
+function getLocale(): 'fr' | 'en' {
   try {
-    if (typeof localStorage === 'undefined') return ''
+    if (typeof localStorage === 'undefined') return 'fr'
     const raw = localStorage.getItem('arty-locale') || ''
     const locale = raw.slice(0, 2).toLowerCase()
-    if (locale === 'en') {
-      return 'IMPORTANT: Always respond in English, regardless of the language used in the conversation or in the system prompt below.'
-    }
-    return ''
+    return locale === 'en' ? 'en' : 'fr'
   } catch {
-    return ''
+    return 'fr'
   }
 }

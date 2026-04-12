@@ -87,8 +87,13 @@ export function useAppSetup(conversation: ConversationHook) {
 
   // Update system prompt with Google context
   useEffect(() => {
+    // On appelle buildContextualPrompt même sans Google pour que la directive
+    // de langue (Phase 3 i18n) atteigne les clients IA. Sans ça, les clients
+    // tombent sur leurs constantes FR hardcodées et l'UI EN n'a aucun effet
+    // sur la langue des réponses.
     if (!googleAuth.isConnected) {
-      setSystemPrompt(undefined)
+      const prompt = buildContextualPrompt() + getStylePrompt(responseStyle)
+      setSystemPrompt(prompt)
       return
     }
 
