@@ -1,0 +1,6 @@
+# Un email par ligne — les lignes vides et celles commençant par # sont ignorées
+# Ces testeurs recevront un mail d'invitation lors de chaque upload
+#
+# Exemple :
+# test1@exemple.com
+# test2@exemple.com
