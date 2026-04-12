@@ -41,11 +41,34 @@ export function useGoogleAuth() {
         setIsLoading(true)
         const result = await GoogleSignInNative.signIn()
 
-        // Store minimal tokens so useEffect doesn't reset isConnected
+        // Exchange serverAuthCode for real Google tokens
+        let accessToken = ''
+        let refreshToken = ''
+        let expiresIn = 3600
+
+        if (result.serverAuthCode) {
+          try {
+            const { apiUrl } = await import('../services/apiBase')
+            const res = await fetch(apiUrl('/api/auth/token'), {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ code: result.serverAuthCode, redirect_uri: '' }),
+            })
+            if (res.ok) {
+              const data = await res.json()
+              accessToken = data.access_token || ''
+              refreshToken = data.refresh_token || ''
+              expiresIn = data.expires_in || 3600
+            }
+          } catch {
+            // Token exchange failed — continue without real tokens
+          }
+        }
+
         scoped.setJSON('google-tokens', {
-          access_token: 'native',
-          refresh_token: '',
-          expires_at: Date.now() + 86400000,
+          access_token: accessToken,
+          refresh_token: refreshToken,
+          expires_at: Date.now() + expiresIn * 1000,
         })
 
         const googleUser: GoogleUser = {
