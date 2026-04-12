@@ -1,10 +1,20 @@
 import type { Env } from '../../env'
+import { checkAllowedUser } from '../_lib/checkAllowedUser'
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages'
 
-export const onRequestPost: PagesFunction<Env> = async ({ request }) => {
-  // Get the API key from the request header (user's BYOK key)
-  const apiKey = request.headers.get('x-api-key')
+export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
+  // Use client's BYOK key first
+  let apiKey = request.headers.get('x-api-key')
+
+  // If no BYOK key, check if user is allowed to use server key
+  if (!apiKey && env.ANTHROPIC_API_KEY) {
+    const allowed = await checkAllowedUser(request, env)
+    if (allowed) {
+      apiKey = env.ANTHROPIC_API_KEY
+    }
+  }
+
   if (!apiKey) {
     return Response.json({ error: 'Missing API key' }, { status: 401 })
   }

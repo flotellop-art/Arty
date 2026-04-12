@@ -59,6 +59,9 @@ export async function exchangeCode(code: string): Promise<GoogleTokens> {
 }
 
 async function storeTokens(tokens: GoogleTokens): Promise<void> {
+  // Use setJSON (not secureSetJSON) — tokens must be readable synchronously
+  // by getStoredTokens() for API calls and proxy whitelist verification.
+  // Google tokens are short-lived (1h) and protected by device lock.
   scoped.setJSON('google-tokens', tokens)
 }
 
@@ -93,6 +96,9 @@ export async function refreshAccessToken(): Promise<GoogleTokens | null> {
 export async function getValidAccessToken(): Promise<string | null> {
   let tokens = getStoredTokens()
   if (!tokens) return null
+
+  // Ignore placeholder/fake tokens
+  if (!tokens.access_token || tokens.access_token === 'native') return null
 
   // Refresh if expiring within 5 minutes
   if (tokens.expires_at - Date.now() < 5 * 60 * 1000) {

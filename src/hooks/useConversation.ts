@@ -29,14 +29,35 @@ export function useConversation() {
   const streaming = useStreaming({ refreshConversations })
   const fileAttachments = useFileAttachments()
 
-  const createConversation = useCallback((): string => {
+  const createConversation = useCallback((withWelcome?: boolean, euOnly?: boolean): string => {
     const id = generateId()
+    const messages: Message[] = []
+
+    if (withWelcome) {
+      messages.push({
+        id: generateId(),
+        role: 'assistant',
+        content: `Salut ! Moi c'est **Arty**, ton assistant IA.\n\nTu peux me poser des questions, m'envoyer des photos, ou me dicter un message.\n\nEn haut à droite, tu peux changer le **ton** de mes réponses et le **modèle IA** utilisé. Appuie sur **?** pour voir les détails.\n\nSi tu connectes ton compte Google, je pourrai aussi lire tes mails, accéder à tes fichiers Drive et gérer ton agenda.\n\nQu'est-ce que je peux faire pour toi ?`,
+        timestamp: Date.now(),
+      })
+    }
+
+    if (euOnly) {
+      messages.push({
+        id: generateId(),
+        role: 'assistant',
+        content: `🇪🇺 **Conversation confidentielle EU**\n\nCette conversation utilise exclusivement **Mistral** (serveurs en France). Tes données ne quitteront pas l'Europe.\n\nJe peux lire tes mails, accéder à Drive et gérer ton calendrier — tout reste en EU.`,
+        timestamp: Date.now(),
+      })
+    }
+
     const conv: Conversation = {
       id,
-      title: 'Nouvelle conversation',
-      messages: [],
+      title: euOnly ? '🇪🇺 Conversation EU' : 'Nouvelle conversation',
+      messages,
       createdAt: Date.now(),
       updatedAt: Date.now(),
+      ...(euOnly ? { euOnly: true, usedModels: ['mistral'] } : {}),
     }
     storage.saveConversation(conv)
     refreshConversations()
@@ -75,6 +96,27 @@ export function useConversation() {
       const conv = storage.getConversation(targetId)
       if (!conv) return
 
+      // Handle /aide command
+      if (text.trim().toLowerCase() === '/aide') {
+        const helpMsg: Message = {
+          id: generateId(),
+          role: 'user',
+          content: '/aide',
+          timestamp: Date.now(),
+        }
+        const helpResponse: Message = {
+          id: generateId(),
+          role: 'assistant',
+          content: `## Aide — Arty\n\n**Ce que je sais faire :**\n- Répondre à tes questions sur tous les sujets\n- Analyser des photos et documents (bouton **+**)\n- Dicter par la voix (bouton **micro**)\n- Lire tes mails Gmail et y répondre\n- Accéder à tes fichiers Google Drive\n- Gérer ton agenda Google Calendar\n- Faire des recherches web en temps réel\n\n**Commandes :**\n- \`/aide\` — Affiche cette aide\n\n**Réglages (en haut à droite) :**\n- **Ton** — Normal, Concis, Détaillé, Formel, Technique\n- **Modèle** — Auto, Claude, Mistral EU, Gemini\n- **?** — Explication détaillée de chaque option\n\n**Astuce :** Connecte ton compte Google pour que je puisse accéder à tes mails et fichiers.`,
+          timestamp: Date.now(),
+        }
+        conv.messages.push(helpMsg, helpResponse)
+        conv.updatedAt = Date.now()
+        storage.saveConversation(conv)
+        refreshConversations()
+        return
+      }
+
       const displayContent = files?.length ? `${text}\n\n📎 ${files.map(f => f.name).join(', ')}` : text
 
       const userMessage: Message = {
@@ -109,7 +151,20 @@ export function useConversation() {
       }
 
       const currentFiles = fileAttachments.pendingFilesRef.current
-      const provider = (currentFiles && currentFiles.length > 0) ? 'claude' as const : detectProvider(text)
+      // EU-only conversations always use Mistral (data stays in Europe)
+      const provider = conv.euOnly
+        ? 'mistral' as const
+        : (currentFiles && currentFiles.length > 0) ? 'claude' as const : detectProvider(text)
+
+      // Track which models are used in this conversation
+      const usedModels = conv.usedModels || []
+      const modelName = provider === 'hybrid' ? 'gemini' : provider
+      if (!usedModels.includes(modelName)) {
+        usedModels.push(modelName)
+        conv.usedModels = usedModels
+        storage.saveConversation(conv)
+      }
+
       let controller: AbortController
 
       if (provider === 'hybrid') {
@@ -145,6 +200,7 @@ export function useConversation() {
         const apiMessages = conv.messages.map((m) => ({ role: m.role, content: m.content }))
         controller = streamMistralMessage(apiMessages, onToken, onDone, onErr, {
           systemPrompt: systemPromptRef.current,
+          onToolCall: toolHandlerRef.current,
         })
       } else {
         const apiMessages: Array<{ role: string; content: string | Array<Record<string, unknown>> }> = conv.messages.map((m) => {
@@ -190,6 +246,9 @@ export function useConversation() {
         messages: branchedMessages.map(m => ({ ...m, id: generateId() })),
         createdAt: Date.now(),
         updatedAt: Date.now(),
+        // Preserve EU flag and model history from parent conversation
+        ...(conv.euOnly ? { euOnly: true } : {}),
+        ...(conv.usedModels ? { usedModels: [...conv.usedModels] } : {}),
       }
       storage.saveConversation(newConv)
       refreshConversations()

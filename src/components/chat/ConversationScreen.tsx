@@ -44,7 +44,7 @@ export function ConversationScreen({
 }: ConversationScreenProps) {
   return (
     <div className="flex flex-col h-full">
-      <ChatTopBar title={conversation.title} onBack={onBack} />
+      <ChatTopBar title={conversation.title} onBack={onBack} usedModels={conversation.usedModels} euOnly={conversation.euOnly} />
 
       <ActionBanner icon="📧" message="Lecture emails..." isVisible={gmail.isLoading} />
       <ActionBanner icon="📁" message="Accès Drive..." isVisible={drive.isLoading} />

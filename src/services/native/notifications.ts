@@ -20,7 +20,7 @@ export async function initPushNotifications(): Promise<string | null> {
 
     return new Promise((resolve) => {
       PushNotifications.addListener('registration', (token) => {
-        console.log('Push token:', token.value)
+        // token.value intentionally not logged for security
         resolve(token.value)
       })
 

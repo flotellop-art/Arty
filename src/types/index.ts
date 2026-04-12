@@ -18,4 +18,6 @@ export interface Conversation {
   messages: Message[]
   createdAt: number
   updatedAt: number
+  usedModels?: string[]  // models used in this conversation (e.g. ['mistral', 'claude'])
+  euOnly?: boolean       // if true, locked to Mistral EU — no US model allowed
 }

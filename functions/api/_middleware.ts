@@ -1,15 +1,13 @@
 // Security middleware for all /api/* routes
 // Runs before every API function on Cloudflare Pages
 
+// Production origins only — capacitor:// is required for native Android/iOS app
 const ALLOWED_ORIGINS = [
   'https://appfacade.pages.dev',
   'https://arty.pages.dev',
   'https://app.arty.fr',
-  'http://localhost:5173',
-  'http://localhost:3000',
-  'https://localhost',
-  'capacitor://localhost',
-  'http://localhost',
+  'capacitor://localhost',   // Capacitor native app (Android/iOS)
+  'https://localhost',       // Capacitor HTTPS on device
 ]
 
 // Simple in-memory rate limiter (per-isolate, resets on new isolate)
@@ -41,7 +39,7 @@ export const onRequest: PagesFunction = async (context) => {
       headers: {
         'Access-Control-Allow-Origin': isAllowedOrigin ? (origin || '*') : '',
         'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-api-key, anthropic-version, anthropic-beta',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-api-key, x-google-token, anthropic-version, anthropic-beta',
         'Access-Control-Max-Age': '86400',
       },
     })
@@ -67,7 +65,7 @@ export const onRequest: PagesFunction = async (context) => {
   headers.set('Referrer-Policy', 'strict-origin-when-cross-origin')
   if (isAllowedOrigin && origin) {
     headers.set('Access-Control-Allow-Origin', origin)
-    headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-api-key, anthropic-version, anthropic-beta')
+    headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-api-key, x-google-token, anthropic-version, anthropic-beta')
   }
 
   return new Response(response.body, {

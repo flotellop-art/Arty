@@ -10,7 +10,7 @@ import {
   type AuthMethod,
 } from '../services/userSession'
 import { setActiveKeys, clearActiveKeys } from '../services/activeApiKey'
-import { initCrypto, migrateKey } from '../services/crypto'
+import { initCrypto } from '../services/crypto'
 import * as scoped from '../services/scopedStorage'
 
 export function useAuth() {
@@ -60,15 +60,14 @@ export function useAuth() {
     // Initialize encryption with the API key
     await initCrypto(credentials.anthropicKey)
 
-    // Store API keys — plain first (sync), then encrypted in background
-    scoped.secureSetJSON('api-keys', {
+    // Store API keys as plain JSON for sync reads (getJSON in useEffect)
+    // DO NOT encrypt with migrateKey — it overwrites plain with encrypted,
+    // making getJSON() fail on page reload (see BUG 1 in CLAUDE.md)
+    scoped.setJSON('api-keys', {
       anthropic: credentials.anthropicKey,
       gemini: credentials.geminiKey,
       mistral: credentials.mistralKey,
     })
-
-    // Migrate the api-keys entry to encrypted format
-    await migrateKey(`arty-${userId}-api-keys`)
 
     // Set active keys in memory for AI clients
     setActiveKeys(credentials.anthropicKey, credentials.geminiKey, credentials.mistralKey)
@@ -80,9 +79,20 @@ export function useAuth() {
   }, [])
 
   const logout = useCallback(() => {
+    // Clear everything synchronously first
     clearActiveKeys()
+    scoped.removeItem('google-tokens')
+    scoped.removeItem('google-user')
     clearActiveSession()
     setCurrentUser(null)
+
+    // Sign out from native Google Sign-In in background (don't await)
+    import('@capacitor/core').then(({ Capacitor, registerPlugin }) => {
+      if (Capacitor.isNativePlatform()) {
+        const GoogleSignInNative = registerPlugin<{ signOut(): Promise<void> }>('GoogleSignInNative')
+        GoogleSignInNative.signOut().catch(() => {})
+      }
+    }).catch(() => {})
   }, [])
 
   const switchAccount = useCallback(async (userId: string) => {
@@ -90,10 +100,13 @@ export function useAuth() {
     const session = known.find(s => s.userId === userId)
     if (!session) return
 
-    // Activate this session
+    // Clear old keys BEFORE switching session to prevent cross-user leak
+    clearActiveKeys()
+
+    // Activate new session
     setActiveSession(session)
 
-    // Restore API keys
+    // Restore new user's API keys
     const keys = scoped.getJSON<{ anthropic: string; gemini?: string; mistral?: string }>('api-keys')
     if (keys?.anthropic) {
       await initCrypto(keys.anthropic)

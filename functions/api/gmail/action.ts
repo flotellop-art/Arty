@@ -32,7 +32,7 @@ async function handleList(token: string, _body: Record<string, unknown>): Promis
       'https://gmail.googleapis.com/gmail/v1/users/me/messages?q=is:unread&maxResults=10',
       { headers: { Authorization: `Bearer ${token}` } }
     )
-    if (!listRes.ok) { const err = await listRes.json() as Record<string, unknown>; return Response.json({ error: (err.error as Record<string, string>)?.message }, { status: listRes.status }) }
+    if (!listRes.ok) { const err = await listRes.json() as Record<string, unknown>; return Response.json({ error: 'Gmail operation failed' }, { status: listRes.status }) }
     const listData = await listRes.json() as Record<string, unknown>
     const ids: string[] = ((listData.messages || []) as Array<{ id: string }>).map((m) => m.id)
     if (ids.length === 0) return Response.json({ messages: [] })
@@ -62,7 +62,7 @@ async function handleRead(token: string, body: Record<string, unknown>): Promise
       `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}?format=full`,
       { headers: { Authorization: `Bearer ${token}` } }
     )
-    if (!r.ok) { const err = await r.json() as Record<string, unknown>; return Response.json({ error: (err.error as Record<string, string>)?.message }, { status: r.status }) }
+    if (!r.ok) { const err = await r.json() as Record<string, unknown>; return Response.json({ error: 'Gmail operation failed' }, { status: r.status }) }
     const msg = await r.json() as Record<string, unknown>
     const payload = msg.payload as Record<string, unknown>
     const headers = (payload?.headers || []) as Array<{ name: string; value: string }>
@@ -114,7 +114,7 @@ async function handleSend(token: string, body: Record<string, unknown>): Promise
     const r = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
       method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(sendBody),
     })
-    if (!r.ok) { const err = await r.json() as Record<string, unknown>; return Response.json({ error: (err.error as Record<string, string>)?.message }, { status: r.status }) }
+    if (!r.ok) { const err = await r.json() as Record<string, unknown>; return Response.json({ error: 'Gmail operation failed' }, { status: r.status }) }
     const result = await r.json() as Record<string, unknown>
     return Response.json({ id: result.id, threadId: result.threadId })
   } catch { return Response.json({ error: 'Failed to send' }, { status: 500 }) }
@@ -129,7 +129,7 @@ async function handleSearch(token: string, body: Record<string, unknown>): Promi
       `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(query)}&maxResults=10`,
       { headers: { Authorization: `Bearer ${token}` } }
     )
-    if (!listRes.ok) { const err = await listRes.json() as Record<string, unknown>; return Response.json({ error: (err.error as Record<string, string>)?.message }, { status: listRes.status }) }
+    if (!listRes.ok) { const err = await listRes.json() as Record<string, unknown>; return Response.json({ error: 'Gmail operation failed' }, { status: listRes.status }) }
     const listData = await listRes.json() as Record<string, unknown>
     const ids: string[] = ((listData.messages || []) as Array<{ id: string }>).map((m) => m.id)
     if (ids.length === 0) return Response.json({ messages: [] })
@@ -162,7 +162,7 @@ async function handleAttachment(token: string, body: Record<string, unknown>): P
       `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}/attachments/${attachmentId}`,
       { headers: { Authorization: `Bearer ${token}` } }
     )
-    if (!r.ok) { const err = await r.json() as Record<string, unknown>; return Response.json({ error: (err.error as Record<string, string>)?.message }, { status: r.status }) }
+    if (!r.ok) { const err = await r.json() as Record<string, unknown>; return Response.json({ error: 'Gmail operation failed' }, { status: r.status }) }
     const data = await r.json() as Record<string, unknown>
 
     // Decode base64url attachment data
@@ -200,7 +200,7 @@ async function handleArchive(token: string, body: Record<string, unknown>): Prom
         body: JSON.stringify({ removeLabelIds: ['INBOX'] }),
       }
     )
-    if (!r.ok) { const err = await r.json() as Record<string, unknown>; return Response.json({ error: (err.error as Record<string, string>)?.message }, { status: r.status }) }
+    if (!r.ok) { const err = await r.json() as Record<string, unknown>; return Response.json({ error: 'Gmail operation failed' }, { status: r.status }) }
     return Response.json({ success: true })
   } catch { return Response.json({ error: 'Archive failed' }, { status: 500 }) }
 }
@@ -213,7 +213,7 @@ async function handleDelete(token: string, body: Record<string, unknown>): Promi
       `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}/trash`,
       { method: 'POST', headers: { Authorization: `Bearer ${token}` } }
     )
-    if (!r.ok) { const err = await r.json() as Record<string, unknown>; return Response.json({ error: (err.error as Record<string, string>)?.message }, { status: r.status }) }
+    if (!r.ok) { const err = await r.json() as Record<string, unknown>; return Response.json({ error: 'Gmail operation failed' }, { status: r.status }) }
     return Response.json({ success: true })
   } catch { return Response.json({ error: 'Delete failed' }, { status: 500 }) }
 }
@@ -230,7 +230,7 @@ async function handleStar(token: string, body: Record<string, unknown>): Promise
         body: JSON.stringify({ addLabelIds: ['STARRED'] }),
       }
     )
-    if (!r.ok) { const err = await r.json() as Record<string, unknown>; return Response.json({ error: (err.error as Record<string, string>)?.message }, { status: r.status }) }
+    if (!r.ok) { const err = await r.json() as Record<string, unknown>; return Response.json({ error: 'Gmail operation failed' }, { status: r.status }) }
     return Response.json({ success: true })
   } catch { return Response.json({ error: 'Star failed' }, { status: 500 }) }
 }
@@ -248,7 +248,7 @@ async function handleDraft(token: string, body: Record<string, unknown>): Promis
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ message: { raw: encoded } }),
     })
-    if (!r.ok) { const err = await r.json() as Record<string, unknown>; return Response.json({ error: (err.error as Record<string, string>)?.message }, { status: r.status }) }
+    if (!r.ok) { const err = await r.json() as Record<string, unknown>; return Response.json({ error: 'Gmail operation failed' }, { status: r.status }) }
     const result = await r.json() as Record<string, unknown>
     return Response.json({ id: result.id, success: true })
   } catch { return Response.json({ error: 'Draft failed' }, { status: 500 }) }
@@ -267,7 +267,7 @@ async function handleLabel(token: string, body: Record<string, unknown>): Promis
         body: JSON.stringify({ addLabelIds: [label.toUpperCase()] }),
       }
     )
-    if (!r.ok) { const err = await r.json() as Record<string, unknown>; return Response.json({ error: (err.error as Record<string, string>)?.message }, { status: r.status }) }
+    if (!r.ok) { const err = await r.json() as Record<string, unknown>; return Response.json({ error: 'Gmail operation failed' }, { status: r.status }) }
     return Response.json({ success: true })
   } catch { return Response.json({ error: 'Label failed' }, { status: 500 }) }
 }

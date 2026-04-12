@@ -1,4 +1,6 @@
 import { getGeminiKey } from './activeApiKey'
+import { apiUrl } from './apiBase'
+import { getValidAccessToken } from './googleAuth'
 
 // Gemini API client with streaming
 
@@ -23,17 +25,13 @@ export function streamGeminiMessage(
   const controller = new AbortController()
 
   const apiKey = apiKeyOverride || getGeminiKey()
-  if (!apiKey) {
-    setTimeout(() => onError(new Error('Clé API Gemini manquante')), 0)
-    return controller
-  }
 
   runGeminiStream(apiKey, messages, onToken, onDone, onError, options, controller)
   return controller
 }
 
 async function runGeminiStream(
-  apiKey: string,
+  apiKey: string | null,
   messages: Array<{ role: string; content: string }>,
   onToken: (text: string) => void,
   onDone: () => void,
@@ -57,7 +55,9 @@ async function runGeminiStream(
       ? [{ google_maps: {} }]
       : [{ google_search: {} }, { url_context: {} }]
 
-    const body = {
+    const requestBody = {
+      model: 'gemini-3-flash-preview',
+      stream: true,
       contents,
       systemInstruction: {
         parts: [{ text: options?.systemPrompt || GEMINI_SYSTEM }],
@@ -69,13 +69,21 @@ async function runGeminiStream(
       tools,
     }
 
-    const model = 'gemini-3-flash-preview'
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${apiKey}`
+    // Build headers — send BYOK key if available, otherwise proxy uses server key
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    if (apiKey) {
+      headers['Authorization'] = `Bearer ${apiKey}`
+    }
+    // Send Google token so proxy can verify whitelist
+    const googleToken = await getValidAccessToken()
+    if (googleToken) {
+      headers['x-google-token'] = googleToken
+    }
 
-    const response = await fetch(url, {
+    const response = await fetch(apiUrl('/api/ai/gemini-proxy'), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+      headers,
+      body: JSON.stringify(requestBody),
       signal: controller.signal,
     })
 
@@ -126,12 +134,10 @@ async function runGeminiStream(
 // Non-streaming research call — used in hybrid mode
 export async function geminiResearch(query: string, apiKeyOverride?: string): Promise<string> {
   const apiKey = apiKeyOverride || getGeminiKey()
-  if (!apiKey) return ''
 
-  const model = 'gemini-3-flash-preview'
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
-
-  const body = {
+  const requestBody = {
+    model: 'gemini-3-flash-preview',
+    stream: false,
     contents: [{
       role: 'user',
       parts: [{ text: query }],
@@ -151,11 +157,20 @@ export async function geminiResearch(query: string, apiKeyOverride?: string): Pr
     ],
   }
 
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (apiKey) {
+    headers['Authorization'] = `Bearer ${apiKey}`
+  }
+  const googleToken = await getValidAccessToken()
+  if (googleToken) {
+    headers['x-google-token'] = googleToken
+  }
+
   try {
-    const res = await fetch(url, {
+    const res = await fetch(apiUrl('/api/ai/gemini-proxy'), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+      headers,
+      body: JSON.stringify(requestBody),
     })
 
     if (!res.ok) return ''

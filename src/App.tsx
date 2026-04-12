@@ -10,6 +10,7 @@ import { ReportPage } from './components/shared/ReportPage'
 import { Sidebar } from './components/layout/Sidebar'
 import { OAuthCallback } from './components/google/OAuthCallback'
 import { LoginScreen } from './components/auth/LoginScreen'
+import { WelcomeSlides, isOnboardingDone } from './components/onboarding/WelcomeSlides'
 import type { FileAttachment } from './types'
 
 function AppContent({ onLogout, userName }: { onLogout: () => void; userName?: string }) {
@@ -48,7 +49,8 @@ function AppContent({ onLogout, userName }: { onLogout: () => void; userName?: s
   const handleSendFromHome = useCallback(
     (text: string, files?: FileAttachment[]) => {
       setActionScreenshot(null)
-      const id = createConversation()
+      const isFirstConv = conversations.length === 0
+      const id = createConversation(isFirstConv)
       if (files?.length) {
         navigate(`/chat/${id}`)
         setTimeout(() => sendMessage(text, id, files), 100)
@@ -57,11 +59,17 @@ function AppContent({ onLogout, userName }: { onLogout: () => void; userName?: s
         navigate(`/chat/${id}`)
       }
     },
-    [createConversation, sendMessage, navigate, setActionScreenshot]
+    [createConversation, sendMessage, navigate, setActionScreenshot, conversations.length]
   )
 
   const handleNewConversation = useCallback(() => {
-    const id = createConversation()
+    const isFirstConv = conversations.length === 0
+    const id = createConversation(isFirstConv)
+    navigate(`/chat/${id}`)
+  }, [createConversation, navigate, conversations.length])
+
+  const handleNewEUConversation = useCallback(() => {
+    const id = createConversation(false, true)
     navigate(`/chat/${id}`)
   }, [createConversation, navigate])
 
@@ -108,6 +116,7 @@ function AppContent({ onLogout, userName }: { onLogout: () => void; userName?: s
         activeId={activeId}
         onSelect={handleSelectConversation}
         onNew={handleNewConversation}
+        onNewEU={handleNewEUConversation}
         onDelete={deleteConversation}
         userName={userName}
         onLogout={onLogout}
@@ -275,14 +284,14 @@ export default function App() {
         const { getJSON } = await import('./services/scopedStorage')
         const existingKeys = getJSON<{ anthropic: string; gemini?: string; mistral?: string }>('api-keys')
 
-        if (existingKeys?.anthropic) {
-          await auth.login('google', {
-            displayName: user.name, email: user.email, avatar: user.picture,
-            anthropicKey: existingKeys.anthropic, geminiKey: existingKeys.gemini, mistralKey: existingKeys.mistral,
-            identifier: user.email,
-          })
-        }
-        // If no API keys yet, the LoginScreen will handle it
+        // Login with existing keys or server-provided
+        await auth.login('google', {
+          displayName: user.name, email: user.email, avatar: user.picture,
+          anthropicKey: existingKeys?.anthropic || 'server-provided',
+          geminiKey: existingKeys?.gemini,
+          mistralKey: existingKeys?.mistral,
+          identifier: user.email,
+        })
       } catch (err) {
         console.error('Deep link OAuth error:', err)
       }
@@ -292,7 +301,14 @@ export default function App() {
     processOAuth(deepLinkCode)
   }, [deepLinkCode, auth])
 
+  const [onboardingDone, setOnboardingDone] = useState(isOnboardingDone)
+
   if (!auth.isAuthenticated) {
+    // Show welcome slides before login (first time only)
+    if (!onboardingDone) {
+      return <WelcomeSlides onComplete={() => setOnboardingDone(true)} />
+    }
+
     return (
       <BrowserRouter>
         <Routes>
@@ -332,24 +348,20 @@ function OAuthCallbackAuth({ auth }: { auth: ReturnType<typeof useAuth> }) {
       // Temporarily set session to read scoped storage
       setActiveSession({ userId, authMethod: 'google', displayName: user.name, email: user.email, avatar: user.picture, createdAt: Date.now() })
       const { getJSON } = await import('./services/scopedStorage')
-      const existingKeys = getJSON<{ anthropic: string; gemini?: string }>('api-keys')
+      const existingKeys = getJSON<{ anthropic: string; gemini?: string; mistral?: string }>('api-keys')
 
-      if (existingKeys?.anthropic) {
-        // Already has keys — login directly
-        await auth.login('google', {
-          displayName: user.name,
-          email: user.email,
-          avatar: user.picture,
-          anthropicKey: existingKeys.anthropic,
-          geminiKey: existingKeys.gemini,
-          identifier: user.email,
-        })
-        navigate('/')
-      } else {
-        // Need API key — will be handled by LoginScreen pendingAuth state
-        // For now just redirect to login
-        navigate('/')
-      }
+      // Use stored keys if available, otherwise login without keys
+      // (server-side proxy provides API keys)
+      await auth.login('google', {
+        displayName: user.name,
+        email: user.email,
+        avatar: user.picture,
+        anthropicKey: existingKeys?.anthropic || 'server-provided',
+        geminiKey: existingKeys?.gemini || undefined,
+        mistralKey: existingKeys?.mistral || undefined,
+        identifier: user.email,
+      })
+      navigate('/')
     } catch (err) {
       console.error('OAuth callback error:', err)
       navigate('/')

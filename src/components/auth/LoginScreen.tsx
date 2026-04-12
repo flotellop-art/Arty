@@ -94,7 +94,7 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
       const { generateUserId, setActiveSession } = await import('../../services/userSession')
       const userId = await generateUserId('email', email)
       setActiveSession({ userId, authMethod: 'email', displayName: email, email, createdAt: Date.now() })
-      const existingKeys = scoped.getJSON<{ anthropic: string; gemini?: string }>('api-keys')
+      const existingKeys = scoped.getJSON<{ anthropic: string; gemini?: string; mistral?: string }>('api-keys')
 
       if (existingKeys && existingKeys.anthropic) {
         // Already has keys — login directly
@@ -103,6 +103,7 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
           email,
           anthropicKey: existingKeys.anthropic,
           geminiKey: existingKeys.gemini || undefined,
+          mistralKey: existingKeys.mistral || undefined,
           identifier: email,
         })
       } else {
@@ -186,43 +187,49 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
               onNativeGoogleLogin={async (email, name, avatar, serverAuthCode) => {
                 setLoading(true)
                 try {
-                  // Exchange serverAuthCode for access+refresh tokens via our API
-                  const { apiUrl } = await import('../../services/apiBase')
-                  const res = await fetch(apiUrl('/api/auth/token'), {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                      code: serverAuthCode,
-                      redirect_uri: '',
-                    }),
+                  // Exchange serverAuthCode for Google tokens
+                  let googleAccessToken = ''
+                  let googleRefreshToken = ''
+                  let expiresIn = 3600
+
+                  if (serverAuthCode) {
+                    try {
+                      const { apiUrl } = await import('../../services/apiBase')
+                      const res = await fetch(apiUrl('/api/auth/token'), {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ code: serverAuthCode, redirect_uri: '' }),
+                      })
+                      if (res.ok) {
+                        const data = await res.json()
+                        googleAccessToken = data.access_token || ''
+                        googleRefreshToken = data.refresh_token || ''
+                        expiresIn = data.expires_in || 3600
+                      }
+                    } catch {
+                      // Token exchange failed — continue without
+                    }
+                  }
+
+                  // Login (handles session, crypto, keys)
+                  await onLogin('google', {
+                    displayName: name,
+                    email,
+                    avatar,
+                    anthropicKey: 'server-provided',
+                    identifier: email,
                   })
-                  const tokens = await res.json()
 
-                  if (tokens.access_token) {
-                    scoped.setJSON('google-tokens', {
-                      access_token: tokens.access_token,
-                      refresh_token: tokens.refresh_token || '',
-                      expires_at: Date.now() + (tokens.expires_in || 3600) * 1000,
-                    })
-                  }
+                  // Store Google data AFTER login (scoped storage needs userId)
                   scoped.setJSON('google-user', { email, name, picture: avatar })
-
-                  const { generateUserId, setActiveSession } = await import('../../services/userSession')
-                  const userId = await generateUserId('google', email)
-                  setActiveSession({ userId, authMethod: 'google', displayName: name, email, avatar, createdAt: Date.now() })
-                  const existingKeys = scoped.getJSON<{ anthropic: string; gemini?: string; mistral?: string }>('api-keys')
-
-                  if (existingKeys?.anthropic) {
-                    await onLogin('google', {
-                      displayName: name, email, avatar,
-                      anthropicKey: existingKeys.anthropic,
-                      geminiKey: existingKeys.gemini || undefined,
-                      mistralKey: existingKeys.mistral || undefined,
-                      identifier: email,
-                    })
-                  } else {
-                    setPendingAuth({ method: 'google', displayName: name, email, avatar })
-                  }
+                  scoped.setJSON('google-tokens', {
+                    access_token: googleAccessToken,
+                    refresh_token: googleRefreshToken,
+                    expires_at: Date.now() + expiresIn * 1000,
+                  })
+                } catch (err) {
+                  console.error('Native Google login error:', err)
+                  setPendingAuth({ method: 'google', displayName: name, email, avatar })
                 } finally {
                   setLoading(false)
                 }

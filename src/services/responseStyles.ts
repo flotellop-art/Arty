@@ -15,7 +15,7 @@ const STYLE_PROMPTS: Record<ResponseStyle, string> = {
   concis: '\n\nSTYLE ACTIF : CONCIS — Réponses ultra-courtes. 1-3 phrases max. Pas de détail superflu. Va droit au but.',
   detaille: '\n\nSTYLE ACTIF : DÉTAILLÉ — Explique en profondeur. Développe chaque point. Donne des exemples concrets. Structure avec des sous-titres.',
   formel: '\n\nSTYLE ACTIF : FORMEL — Vouvoie l\'utilisateur. Ton professionnel et soigné. Pas d\'argot ni de familiarité. Adapté pour des échanges avec des clients.',
-  technique: '\n\nSTYLE ACTIF : TECHNIQUE — Vocabulaire technique du métier. Références aux normes (DTU, NF). Détails des matériaux, dosages, temps de séchage. Parle comme un expert du BTP.',
+  technique: '\n\nSTYLE ACTIF : TECHNIQUE — Vocabulaire technique et précis. Utilise les termes exacts du domaine concerné. Explique les mécanismes en détail. Structure logique et rigoureuse.',
 }
 
 export function getStyle(): ResponseStyle {
