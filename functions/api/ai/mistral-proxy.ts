@@ -1,22 +1,16 @@
 import type { Env } from '../../env'
-import { checkAllowedUser } from '../_lib/checkAllowedUser'
 
 const MISTRAL_API_URL = 'https://api.mistral.ai/v1/chat/completions'
 
-export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
-  // Use client's BYOK key first
-  let apiKey = request.headers.get('authorization')?.replace('Bearer ', '') || ''
-
-  // If no BYOK key, check if user is allowed to use server key
-  if (!apiKey && env.MISTRAL_API_KEY) {
-    const allowed = await checkAllowedUser(request, env)
-    if (allowed) {
-      apiKey = env.MISTRAL_API_KEY
-    }
-  }
+export const onRequestPost: PagesFunction<Env> = async ({ request }) => {
+  // BYOK obligatoire — pas de fallback sur les clés serveur
+  const apiKey = request.headers.get('authorization')?.replace('Bearer ', '') || ''
 
   if (!apiKey) {
-    return Response.json({ error: 'Missing API key' }, { status: 401 })
+    return Response.json(
+      { error: 'Clé API requise — veuillez configurer votre clé dans les paramètres' },
+      { status: 401 }
+    )
   }
 
   const body = await request.text()
@@ -31,14 +25,11 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
       body,
     })
 
-    // Forward error responses with their original status
     if (!response.ok) {
       const errorText = await response.text().catch(() => 'Unknown Mistral error')
       return new Response(errorText, {
         status: response.status,
-        headers: {
-          'content-type': 'application/json',
-        },
+        headers: { 'content-type': 'application/json' },
       })
     }
 

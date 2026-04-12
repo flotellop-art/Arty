@@ -16,11 +16,47 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    // Signing release lu depuis env vars (pour automatisation Firebase / CI).
+    // Si les vars ne sont pas définies, le buildType release ne sera pas signé
+    // par Gradle — Android Studio continuera à fonctionner normalement via le
+    // wizard "Generate Signed APK" qui override le signingConfig.
+    signingConfigs {
+        release {
+            def ksPath = System.getenv("ARTY_KEYSTORE_PATH")
+            def ksPass = System.getenv("ARTY_KEYSTORE_PASSWORD")
+            def alias  = System.getenv("ARTY_KEY_ALIAS") ?: "arty"
+            def kPass  = System.getenv("ARTY_KEY_PASSWORD") ?: ksPass
+            if (ksPath && new File(ksPath).exists()) {
+                storeFile file(ksPath)
+                storePassword ksPass
+                keyAlias alias
+                keyPassword kPass
+            }
+        }
+    }
     buildTypes {
         release {
+            if (signingConfigs.release.storeFile != null) {
+                signingConfig signingConfigs.release
+            }
             minifyEnabled true
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+
+            // Firebase App Distribution — diffusion bêta automatique
+            // La config n'est prise en compte que si le plugin App Distribution
+            // est appliqué (cf. bloc conditionnel en bas de ce fichier).
+            firebaseAppDistribution {
+                // appId est lu automatiquement depuis google-services.json,
+                // laisser vide pour utiliser celui du JSON.
+                releaseNotes = "Version bêta — test interne"
+                releaseNotesFile = "release-notes.txt"  // facultatif, prioritaire sur releaseNotes si présent
+                testersFile = "firebase-testers.txt"
+                // Alternative rapide :
+                // testers = "beta@exemple.com, testeur2@exemple.com"
+                // groups = "beta-testers"  // si tu crées un groupe dans la console
+                serviceCredentialsFile = System.getenv("FIREBASE_SERVICE_ACCOUNT") ?: ""
+            }
         }
     }
 }
@@ -50,6 +86,7 @@ try {
     def servicesJSON = file('google-services.json')
     if (servicesJSON.text) {
         apply plugin: 'com.google.gms.google-services'
+        apply plugin: 'com.google.firebase.appdistribution'
     }
 } catch(Exception e) {
     logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")

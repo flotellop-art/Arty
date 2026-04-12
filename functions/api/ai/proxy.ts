@@ -1,49 +1,38 @@
 import type { Env } from '../../env'
-import { checkAllowedUser } from '../_lib/checkAllowedUser'
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages'
 
-export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
-  // Use client's BYOK key first
-  let apiKey = request.headers.get('x-api-key')
-
-  // If no BYOK key, check if user is allowed to use server key
-  if (!apiKey && env.ANTHROPIC_API_KEY) {
-    const allowed = await checkAllowedUser(request, env)
-    if (allowed) {
-      apiKey = env.ANTHROPIC_API_KEY
-    }
-  }
+export const onRequestPost: PagesFunction<Env> = async ({ request }) => {
+  // BYOK obligatoire — pas de fallback sur les clés serveur
+  const apiKey = request.headers.get('x-api-key')
 
   if (!apiKey) {
-    return Response.json({ error: 'Missing API key' }, { status: 401 })
+    return Response.json(
+      { error: 'Clé API requise — veuillez configurer votre clé dans les paramètres' },
+      { status: 401 }
+    )
   }
 
-  // Forward the request body as-is
   const body = await request.text()
 
-  // Build headers — only include non-empty values
   const headers: Record<string, string> = {
     'content-type': 'application/json',
     'x-api-key': apiKey,
     'anthropic-version': request.headers.get('anthropic-version') || '2023-06-01',
   }
 
-  // Only add anthropic-beta if it has a value
   const beta = request.headers.get('anthropic-beta')
   if (beta) {
     headers['anthropic-beta'] = beta
   }
 
   try {
-    // Forward to AI Gateway with the user's API key
     const response = await fetch(ANTHROPIC_URL, {
       method: 'POST',
       headers,
       body,
     })
 
-    // Stream the response back to the client
     return new Response(response.body, {
       status: response.status,
       headers: {
