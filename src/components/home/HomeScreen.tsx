@@ -1,3 +1,4 @@
+import { Trans, useTranslation } from 'react-i18next'
 import { AnimatedStar } from './AnimatedStar'
 import { TopBar } from '../layout/TopBar'
 import { InputBar } from '../layout/InputBar'
@@ -19,6 +20,7 @@ interface HomeScreenProps {
 }
 
 export function HomeScreen({ onMenuToggle, onSend, isStreaming, googleAuth }: HomeScreenProps) {
+  const { t } = useTranslation()
   const googleTooltip = useTooltip('google')
 
   return (
@@ -29,11 +31,14 @@ export function HomeScreen({ onMenuToggle, onSend, isStreaming, googleAuth }: Ho
         <AnimatedStar />
 
         <h1 className="font-serif text-2xl md:text-3xl font-semibold text-bubble-user text-center leading-snug">
-          Comment puis-je t'aider ?
+          {t('home.title')}
         </h1>
 
         <p className="text-xs text-gray-400 text-center">
-          Tape <span className="font-mono bg-gray-100 px-1 rounded">/aide</span> pour voir tout ce que je sais faire
+          <Trans
+            i18nKey="home.hintHelp"
+            components={[<span className="font-mono bg-gray-100 px-1 rounded" />]}
+          />
         </p>
 
         {/* Google connection */}

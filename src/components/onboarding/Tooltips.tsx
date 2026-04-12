@@ -1,20 +1,9 @@
 import { useState, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 
 const TOOLTIP_KEY = 'arty-tooltips-seen'
 
 type TooltipId = 'dropdowns' | 'attach' | 'mic' | 'google'
-
-interface TooltipDef {
-  id: TooltipId
-  text: string
-}
-
-const ALL_TOOLTIPS: TooltipDef[] = [
-  { id: 'dropdowns', text: 'Change le ton et le modèle IA ici' },
-  { id: 'attach', text: 'Envoie une photo ou un fichier' },
-  { id: 'mic', text: 'Dicte ton message' },
-  { id: 'google', text: 'Connecte Google pour accéder à tes mails et fichiers' },
-]
 
 function getSeenTooltips(): Set<TooltipId> {
   try {
@@ -53,6 +42,7 @@ export function useTooltip(id: TooltipId): {
   dismiss: () => void
   TooltipComponent: React.FC
 } {
+  const { t } = useTranslation()
   const [isVisible, setIsVisible] = useState(false)
 
   useEffect(() => {
@@ -78,9 +68,9 @@ export function useTooltip(id: TooltipId): {
 
   const TooltipComponent = () => {
     if (!isVisible) return null
-    const def = ALL_TOOLTIPS.find(t => t.id === id)
-    if (!def) return null
-    return <TooltipBubble text={def.text} onDismiss={dismiss} />
+    const text = t(`onboarding.tooltips.${id}`)
+    if (!text) return null
+    return <TooltipBubble text={text} onDismiss={dismiss} />
   }
 
   return { isVisible, dismiss, TooltipComponent }

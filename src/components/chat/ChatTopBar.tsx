@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import { getStyle, setStyle as saveStyle, STYLE_OPTIONS, type ResponseStyle } from '../../services/responseStyles'
 import { getSelectedModel, setSelectedModel, MODEL_OPTIONS, type AIModel } from '../../services/modelSelector'
 import { SettingsGuide } from '../shared/SettingsGuide'
@@ -13,12 +14,16 @@ interface ChatTopBarProps {
 type OpenMenu = null | 'style' | 'model'
 
 export function ChatTopBar({ title, onBack, usedModels, euOnly }: ChatTopBarProps) {
+  const { t } = useTranslation()
   const [currentStyle, setCurrentStyle] = useState<ResponseStyle>(getStyle)
   const [currentModel, setCurrentModel] = useState<AIModel>(getSelectedModel)
   const [openMenu, setOpenMenu] = useState<OpenMenu>(null)
   const [showGuide, setShowGuide] = useState(false)
   const [privacyWarning, setPrivacyWarning] = useState<AIModel | null>(null)
   const menuRef = useRef<HTMLDivElement>(null)
+
+  const styleLabel = (id: ResponseStyle) => t(`chat.tone.${id}`)
+  const modelLabel = (id: AIModel) => (id === 'auto' ? t('chat.model.auto') : MODEL_OPTIONS.find(o => o.id === id)?.label ?? id)
 
   const handleStyleChange = (style: ResponseStyle) => {
     saveStyle(style)
@@ -71,7 +76,7 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly }: ChatTopBarProp
         <button
           onClick={onBack}
           className="p-2 -ml-2 rounded-lg hover:bg-black/5 transition-colors"
-          aria-label="Retour"
+          aria-label={t('chat.topBar.aria.back')}
         >
           <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
             <path d="M12 4L6 10L12 16" stroke="#1E1A14" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -94,7 +99,7 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly }: ChatTopBarProp
               }`}
             >
               <span>{styleOption.emoji}</span>
-              <span>{styleOption.label}</span>
+              <span>{styleLabel(styleOption.id)}</span>
               <svg width="10" height="10" viewBox="0 0 10 10" fill="none" className="ml-0.5 opacity-50">
                 <path d="M2.5 4L5 6.5L7.5 4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
               </svg>
@@ -113,7 +118,7 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly }: ChatTopBarProp
                     }`}
                   >
                     <span>{opt.emoji}</span>
-                    <span>{opt.label}</span>
+                    <span>{styleLabel(opt.id)}</span>
                   </button>
                 ))}
               </div>
@@ -124,7 +129,7 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly }: ChatTopBarProp
           <button
             onClick={() => setShowGuide(true)}
             className="p-1 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
-            aria-label="Aide tons et modèles"
+            aria-label={t('chat.topBar.aria.toneModelHelp')}
           >
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
               <circle cx="7" cy="7" r="6" stroke="currentColor" strokeWidth="1.2" />
@@ -138,7 +143,7 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly }: ChatTopBarProp
             {euOnly ? (
               <div className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium bg-blue-100 text-blue-700">
                 <span>🇪🇺</span>
-                <span>Mistral EU</span>
+                <span>{t('chat.topBar.euBadge')}</span>
                 <svg width="10" height="10" viewBox="0 0 10 10" fill="none" className="ml-0.5 opacity-50">
                   <rect x="3" y="5" width="4" height="3.5" rx="0.5" stroke="currentColor" strokeWidth="0.8" />
                   <path d="M4 5V3.5C4 2.67 4.67 2 5.5 2V2C6.33 2 7 2.67 7 3.5V5" stroke="currentColor" strokeWidth="0.8" strokeLinecap="round" />
@@ -152,7 +157,7 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly }: ChatTopBarProp
                 }`}
               >
                 <span>{modelOption.flag}</span>
-                <span>{modelOption.label}</span>
+                <span>{modelLabel(modelOption.id)}</span>
                 <svg width="10" height="10" viewBox="0 0 10 10" fill="none" className="ml-0.5 opacity-50">
                   <path d="M2.5 4L5 6.5L7.5 4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
                 </svg>
@@ -172,7 +177,7 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly }: ChatTopBarProp
                     }`}
                   >
                     <span>{opt.flag}</span>
-                    <span>{opt.label}</span>
+                    <span>{modelLabel(opt.id)}</span>
                   </button>
                 ))}
               </div>
@@ -187,24 +192,24 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly }: ChatTopBarProp
         <div className="fixed inset-0 z-[100] flex items-center justify-center">
           <div className="absolute inset-0 bg-black/40" onClick={() => setPrivacyWarning(null)} />
           <div className="relative bg-white rounded-2xl shadow-xl mx-6 p-5 max-w-sm w-full">
-            <p className="text-sm font-semibold text-bubble-user mb-2">Données hors Europe</p>
+            <p className="text-sm font-semibold text-bubble-user mb-2">{t('chat.privacyWarning.title')}</p>
             <p className="text-xs text-gray-500 leading-relaxed mb-4">
-              Cette conversation contient des messages traités par Mistral (serveurs en Europe).
-              En passant sur {privacyWarning === 'claude' ? 'Claude' : 'Gemini'}, tout l'historique
-              sera envoyé aux États-Unis. Continuer ?
+              {t('chat.privacyWarning.body', {
+                targetModel: privacyWarning === 'claude' ? 'Claude' : 'Gemini',
+              })}
             </p>
             <div className="flex gap-2">
               <button
                 onClick={() => setPrivacyWarning(null)}
                 className="flex-1 py-2 rounded-xl border border-gray-200 text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors"
               >
-                Annuler
+                {t('common.cancel')}
               </button>
               <button
                 onClick={confirmModelSwitch}
                 className="flex-1 py-2 rounded-xl bg-accent text-white text-xs font-medium hover:bg-accent/90 transition-colors"
               >
-                Continuer
+                {t('common.continue')}
               </button>
             </div>
           </div>

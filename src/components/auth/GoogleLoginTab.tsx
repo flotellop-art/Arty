@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Capacitor, registerPlugin } from '@capacitor/core'
 import { buildOAuthUrl } from '../../services/googleAuth'
 
@@ -16,6 +17,7 @@ interface GoogleLoginTabProps {
 }
 
 export function GoogleLoginTab({ loading, onNativeGoogleLogin }: GoogleLoginTabProps) {
+  const { t } = useTranslation()
   const [error, setError] = useState('')
 
   const handleGoogleLogin = async () => {
@@ -35,7 +37,7 @@ export function GoogleLoginTab({ loading, onNativeGoogleLogin }: GoogleLoginTabP
         window.location.href = url
       }
     } catch {
-      setError('Connexion Google échouée. Réessaie.')
+      setError(t('login.google.failed'))
     }
   }
 
@@ -52,13 +54,13 @@ export function GoogleLoginTab({ loading, onNativeGoogleLogin }: GoogleLoginTabP
           <path fill="#FBBC05" d="M4.5 10.52a4.8 4.8 0 010-3.04V5.41H1.83a8 8 0 000 7.18l2.67-2.07z"/>
           <path fill="#EA4335" d="M8.98 3.58c1.32 0 2.29.44 3.13 1.21l2.27-2.27A7.8 7.8 0 008.98 0 8 8 0 001.83 5.41L4.5 7.48a4.77 4.77 0 014.48-3.9z"/>
         </svg>
-        <span className="text-sm font-medium text-gray-700">Se connecter avec Google</span>
+        <span className="text-sm font-medium text-gray-700">{t('login.google.signIn')}</span>
       </button>
 
       {error && <p className="text-sm text-red-500 text-center">{error}</p>}
 
       <p className="text-xs text-gray-400 text-center leading-relaxed">
-        Connecte ton compte Google pour accéder à Gmail, Drive et Calendar.
+        {t('login.google.notice')}
       </p>
     </div>
   )

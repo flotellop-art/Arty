@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback, type KeyboardEvent } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { FileAttachment } from '../../types'
 import { useSpeechRecognition } from '../../hooks/useSpeechRecognition'
 import { isNative } from '../../services/native/platform'
@@ -11,6 +12,7 @@ interface InputBarProps {
 }
 
 export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
+  const { t } = useTranslation()
   const [text, setText] = useState('')
   const [files, setFiles] = useState<FileAttachment[]>([])
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -45,7 +47,7 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
     const trimmed = text.trim()
     if ((!trimmed && files.length === 0) || isStreaming) return
     if (isListening) stopListening()
-    onSend(trimmed || 'Analyse ce fichier.', files.length > 0 ? files : undefined)
+    onSend(trimmed || t('chat.input.defaultFilePrompt'), files.length > 0 ? files : undefined)
     setText('')
     setFiles([])
     if (textareaRef.current) {
@@ -166,7 +168,7 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
         <button
           onClick={() => fileInputRef.current?.click()}
           className="flex-shrink-0 p-1.5 rounded-full hover:bg-gray-100 transition-colors text-gray-400 mb-0.5"
-          aria-label="Joindre un fichier"
+          aria-label={t('chat.input.aria.attach')}
         >
           <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
             <line x1="9" y1="3" x2="9" y2="15" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
@@ -187,7 +189,7 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
           <button
             onClick={handleCamera}
             className="flex-shrink-0 p-1.5 rounded-full hover:bg-gray-100 transition-colors text-gray-400 mb-0.5"
-            aria-label="Photo"
+            aria-label={t('chat.input.aria.camera')}
           >
             <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
               <rect x="2" y="5" width="14" height="10" rx="2" stroke="currentColor" strokeWidth="1.3" />
@@ -202,7 +204,7 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
           <button
             onClick={handleScan}
             className="flex-shrink-0 p-1.5 rounded-full hover:bg-gray-100 transition-colors text-gray-400 mb-0.5"
-            aria-label="Scanner un document"
+            aria-label={t('chat.input.aria.scan')}
           >
             <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
               <rect x="3" y="2" width="12" height="14" rx="1.5" stroke="currentColor" strokeWidth="1.3" />
@@ -219,7 +221,7 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder={isListening ? 'Écoute en cours...' : 'Discuter avec Arty...'}
+          placeholder={isListening ? t('chat.input.listening') : t('chat.input.placeholder')}
           rows={1}
           className="flex-1 resize-none bg-transparent text-sm text-bubble-user placeholder-gray-400 focus:outline-none py-1.5 font-sans font-light leading-relaxed"
         />
@@ -233,7 +235,7 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
                 ? 'bg-red-100 text-red-500 hover:bg-red-200'
                 : 'hover:bg-gray-100 text-gray-400'
             }`}
-            aria-label={isListening ? 'Arrêter le micro' : 'Micro'}
+            aria-label={isListening ? t('chat.input.aria.micStop') : t('chat.input.aria.micStart')}
           >
             <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
               <rect x="6.5" y="2" width="5" height="9" rx="2.5" stroke="currentColor" strokeWidth="1.3" />
@@ -251,7 +253,7 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
           <button
             onClick={onStop}
             className="flex-shrink-0 w-8 h-8 rounded-full bg-bubble-user flex items-center justify-center hover:bg-gray-700 transition-colors mb-0.5"
-            aria-label="Arrêter"
+            aria-label={t('chat.input.aria.stop')}
           >
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
               <rect x="2" y="2" width="8" height="8" rx="1" fill="#F5F0E8" />
@@ -262,7 +264,7 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
             onClick={handleSend}
             disabled={!text.trim() && files.length === 0}
             className="flex-shrink-0 w-8 h-8 rounded-full bg-bubble-user flex items-center justify-center disabled:opacity-30 hover:bg-gray-700 transition-colors mb-0.5"
-            aria-label="Envoyer"
+            aria-label={t('chat.input.aria.send')}
           >
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
               <path

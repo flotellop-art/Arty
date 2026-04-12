@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { Capacitor } from '@capacitor/core'
 import App from './App'
 import './index.css'
+import './i18n' // initialise react-i18next (détection navigator + localStorage)
 
 // Initialize Google Sign-In on native
 if (Capacitor.isNativePlatform()) {

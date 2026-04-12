@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 interface EmailLoginTabProps {
   onLogin: (email: string, password: string) => void
@@ -7,6 +8,7 @@ interface EmailLoginTabProps {
 }
 
 export function EmailLoginTab({ onLogin, loading, error: externalError }: EmailLoginTabProps) {
+  const { t } = useTranslation()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -14,9 +16,9 @@ export function EmailLoginTab({ onLogin, loading, error: externalError }: EmailL
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     const trimmedEmail = email.trim().toLowerCase()
-    if (!trimmedEmail) { setError('Email requis'); return }
-    if (!trimmedEmail.includes('@')) { setError('Email invalide'); return }
-    if (password.length < 4) { setError('Mot de passe trop court (4 caractères min)'); return }
+    if (!trimmedEmail) { setError(t('login.email.errors.required')); return }
+    if (!trimmedEmail.includes('@')) { setError(t('login.email.errors.invalid')); return }
+    if (password.length < 4) { setError(t('login.email.errors.passwordShort')); return }
     setError('')
     onLogin(trimmedEmail, password)
   }
@@ -24,12 +26,12 @@ export function EmailLoginTab({ onLogin, loading, error: externalError }: EmailL
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div>
-        <label className="block text-xs font-medium text-gray-600 mb-1.5">Email</label>
+        <label className="block text-xs font-medium text-gray-600 mb-1.5">{t('login.email.label')}</label>
         <input
           type="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          placeholder="email@exemple.com"
+          placeholder={t('login.email.placeholderEmail')}
           className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 bg-gray-50"
           autoComplete="email"
           autoFocus
@@ -37,7 +39,7 @@ export function EmailLoginTab({ onLogin, loading, error: externalError }: EmailL
       </div>
 
       <div>
-        <label className="block text-xs font-medium text-gray-600 mb-1.5">Mot de passe</label>
+        <label className="block text-xs font-medium text-gray-600 mb-1.5">{t('login.email.password')}</label>
         <input
           type="password"
           value={password}
@@ -57,11 +59,11 @@ export function EmailLoginTab({ onLogin, loading, error: externalError }: EmailL
         disabled={loading || !email.trim() || !password}
         className="w-full py-2.5 rounded-xl bg-bubble-user text-cream font-medium text-sm hover:bg-gray-700 transition-colors disabled:opacity-40"
       >
-        {loading ? 'Connexion...' : 'Se connecter / S\'inscrire'}
+        {loading ? t('login.email.connecting') : t('login.email.submit')}
       </button>
 
       <p className="text-xs text-gray-400 text-center leading-relaxed">
-        Ton compte est stocké sur cet appareil. Pas de serveur.
+        {t('login.email.notice')}
       </p>
     </form>
   )
