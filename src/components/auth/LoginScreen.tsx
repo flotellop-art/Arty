@@ -187,9 +187,8 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
               onNativeGoogleLogin={async (email, name, avatar, serverAuthCode) => {
                 setLoading(true)
                 try {
-                  console.log('[GoogleLogin] Step 1: Got result from native', { email, hasCode: !!serverAuthCode })
+                  alert('D: handler entré — email=' + email)
 
-                  // Step 1: Exchange serverAuthCode for Google tokens
                   let googleAccessToken = ''
                   let googleRefreshToken = ''
                   let expiresIn = 3600
@@ -197,30 +196,29 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
                   if (serverAuthCode) {
                     try {
                       const { apiUrl } = await import('../../services/apiBase')
-                      console.log('[GoogleLogin] Step 2: Exchanging code with', apiUrl('/api/auth/token'))
-                      const res = await fetch(apiUrl('/api/auth/token'), {
+                      const url = apiUrl('/api/auth/token')
+                      alert('E: fetch vers ' + url)
+                      const res = await fetch(url, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ code: serverAuthCode, redirect_uri: '' }),
                       })
-                      console.log('[GoogleLogin] Step 3: Token exchange response', res.status)
+                      alert('F: fetch retour status=' + res.status)
                       if (res.ok) {
                         const data = await res.json()
                         googleAccessToken = data.access_token || ''
                         googleRefreshToken = data.refresh_token || ''
                         expiresIn = data.expires_in || 3600
-                        console.log('[GoogleLogin] Step 4: Got access token', !!googleAccessToken)
                       } else {
                         const errText = await res.text().catch(() => 'no body')
-                        console.error('[GoogleLogin] Token exchange failed', res.status, errText)
+                        alert('F-ERR: ' + res.status + ' ' + errText.slice(0, 100))
                       }
                     } catch (err) {
-                      console.error('[GoogleLogin] Token exchange threw', err)
+                      alert('E-ERR fetch threw: ' + (err instanceof Error ? err.message : String(err)))
                     }
                   }
 
-                  // Step 2: Login
-                  console.log('[GoogleLogin] Step 5: Calling onLogin')
+                  alert('G: appel onLogin')
                   await onLogin('google', {
                     displayName: name,
                     email,
@@ -228,19 +226,17 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
                     anthropicKey: 'server-provided',
                     identifier: email,
                   })
-                  console.log('[GoogleLogin] Step 6: onLogin done')
+                  alert('H: onLogin OK')
 
-                  // Step 3: Store Google data AFTER login
                   scoped.setJSON('google-user', { email, name, picture: avatar })
                   scoped.setJSON('google-tokens', {
                     access_token: googleAccessToken,
                     refresh_token: googleRefreshToken,
                     expires_at: Date.now() + expiresIn * 1000,
                   })
-                  console.log('[GoogleLogin] Step 7: Google data stored — DONE')
+                  alert('I: DONE')
                 } catch (err) {
-                  console.error('[GoogleLogin] CAUGHT ERROR:', err)
-                  alert('Erreur Google login: ' + (err instanceof Error ? err.message : String(err)))
+                  alert('ERR handler: ' + (err instanceof Error ? err.message : String(err)))
                   setPendingAuth({ method: 'google', displayName: name, email, avatar })
                 } finally {
                   setLoading(false)
