@@ -144,7 +144,7 @@ export function sendMessageStream(
         outputTokens = Math.ceil(content.length / 4)
         inputTokens = Math.ceil(JSON.stringify(messages).length / 4)
       }
-      addUsage(inputTokens, outputTokens)
+      addUsage(inputTokens, outputTokens, 'openai')
 
       onDone()
     } catch (err) {
@@ -189,7 +189,7 @@ export async function sendMessage(
     usage?: { prompt_tokens?: number; completion_tokens?: number }
   }
   if (data.usage) {
-    addUsage(data.usage.prompt_tokens || 0, data.usage.completion_tokens || 0)
+    addUsage(data.usage.prompt_tokens || 0, data.usage.completion_tokens || 0, 'openai')
   }
   return data.choices?.[0]?.message?.content || ''
 }

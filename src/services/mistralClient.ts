@@ -74,7 +74,7 @@ async function runMistralStream(
         apiKey, apiMessages, openaiTools, onToken, controller
       )
 
-      addUsage(inputTokens, outputTokens)
+      addUsage(inputTokens, outputTokens, 'mistral')
 
       // No tool calls — we're done
       if (!toolCalls || toolCalls.length === 0 || !options?.onToolCall) {

@@ -4,6 +4,8 @@ import { getStyle, setStyle as saveStyle, STYLE_OPTIONS, type ResponseStyle } fr
 import { getSelectedModel, setSelectedModel, MODEL_OPTIONS, type AIModel } from '../../services/modelSelector'
 import { SettingsGuide } from '../shared/SettingsGuide'
 import { SettingsModal } from '../settings/SettingsModal'
+import { getTheme, toggleTheme, type Theme } from '../../services/themeService'
+import { CostIndicator } from './CostIndicator'
 
 interface TopBarProps {
   onMenuToggle: () => void
@@ -19,7 +21,13 @@ export function TopBar({ onMenuToggle, onHistoryToggle }: TopBarProps) {
   const [openMenu, setOpenMenu] = useState<OpenMenu>(null)
   const [showGuide, setShowGuide] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
+  const [theme, setThemeState] = useState<Theme>(getTheme)
   const menuRef = useRef<HTMLDivElement>(null)
+
+  const handleThemeToggle = () => {
+    const next = toggleTheme()
+    setThemeState(next)
+  }
 
   // Labels traduisibles pour les tons / modèles affichés
   const styleLabel = (id: ResponseStyle) => t(`chat.tone.${id}`)
@@ -156,6 +164,19 @@ export function TopBar({ onMenuToggle, onHistoryToggle }: TopBarProps) {
         </div>
 
         <div className="flex items-center gap-1">
+          {/* Cost indicator (Feature 13) */}
+          <CostIndicator />
+
+          {/* Dark mode toggle (Feature 10) */}
+          <button
+            onClick={handleThemeToggle}
+            className="p-2 rounded-lg hover:bg-black/5 transition-colors text-base"
+            aria-label={theme === 'dark' ? 'Mode clair' : 'Mode sombre'}
+            title={theme === 'dark' ? 'Mode clair' : 'Mode sombre'}
+          >
+            {theme === 'dark' ? '☀️' : '🌙'}
+          </button>
+
           {/* Settings (gear) */}
           <button
             onClick={() => setShowSettings(true)}

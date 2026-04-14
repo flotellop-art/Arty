@@ -1,4 +1,5 @@
 import * as scoped from './scopedStorage'
+import { addTokens as addModelTokens } from './costTracker'
 
 export interface TokenUsage {
   inputTokens: number
@@ -39,7 +40,7 @@ export function resetUsage(): TokenUsage {
   return usage
 }
 
-export function addUsage(inputTokens: number, outputTokens: number): TokenUsage {
+export function addUsage(inputTokens: number, outputTokens: number, model: string = 'claude'): TokenUsage {
   const usage = getUsage()
   usage.inputTokens += inputTokens
   usage.outputTokens += outputTokens
@@ -47,6 +48,8 @@ export function addUsage(inputTokens: number, outputTokens: number): TokenUsage 
   usage.totalCost = (usage.inputTokens * INPUT_PRICE_PER_M + usage.outputTokens * OUTPUT_PRICE_PER_M) / 1_000_000
   scoped.setJSON('token-usage', usage)
   window.dispatchEvent(new CustomEvent('token-usage-updated', { detail: usage }))
+  // Track per-model cost (Feature 13)
+  try { addModelTokens(model, inputTokens, outputTokens) } catch {}
   return usage
 }
 

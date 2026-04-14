@@ -1,10 +1,13 @@
-import { useState } from 'react'
+import { useMemo, useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import type { Conversation } from '../../types'
+import type { Conversation, Message } from '../../types'
 import { StarIcon } from '../shared/StarIcon'
 import { TokenUsageBar } from '../shared/TokenUsageBar'
 import { LanguageSelector } from '../shared/LanguageSelector'
 import { SettingsModal } from '../settings/SettingsModal'
+import { TaskPanel } from '../tasks/TaskPanel'
+import { countPending } from '../../services/taskService'
+import { importConversationFromFile } from '../../services/conversationExport'
 
 interface SidebarProps {
   isOpen: boolean
@@ -17,6 +20,7 @@ interface SidebarProps {
   onDelete: (id: string) => void
   userName?: string
   onLogout?: () => void
+  onImportConversation?: (id: string) => void
 }
 
 function useTimeAgo() {
@@ -33,6 +37,27 @@ function useTimeAgo() {
   }
 }
 
+function highlight(text: string, query: string): JSX.Element {
+  if (!query) return <>{text}</>
+  const lower = text.toLowerCase()
+  const q = query.toLowerCase()
+  const idx = lower.indexOf(q)
+  if (idx === -1) return <>{text}</>
+  return (
+    <>
+      {text.slice(0, idx)}
+      <mark className="bg-yellow-200 rounded px-0.5">{text.slice(idx, idx + q.length)}</mark>
+      {text.slice(idx + q.length)}
+    </>
+  )
+}
+
+interface PinnedItem {
+  conversationId: string
+  conversationTitle: string
+  message: Message
+}
+
 export function Sidebar({
   isOpen,
   onClose,
@@ -44,10 +69,66 @@ export function Sidebar({
   onDelete,
   userName,
   onLogout,
+  onImportConversation,
 }: SidebarProps) {
   const { t } = useTranslation()
   const timeAgo = useTimeAgo()
   const [showSettings, setShowSettings] = useState(false)
+  const [showTasks, setShowTasks] = useState(false)
+  const [searchRaw, setSearchRaw] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [pendingTasks, setPendingTasks] = useState(0)
+  const importInputRef = useRef<HTMLInputElement>(null)
+
+  // Debounce search (300ms)
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchRaw.trim()), 300)
+    return () => clearTimeout(t)
+  }, [searchRaw])
+
+  // Keep pending tasks badge fresh
+  useEffect(() => {
+    const refresh = () => setPendingTasks(countPending())
+    refresh()
+    window.addEventListener('tasks-updated', refresh)
+    return () => window.removeEventListener('tasks-updated', refresh)
+  }, [])
+
+  // Collect pinned messages across all conversations
+  const pinned: PinnedItem[] = useMemo(() => {
+    const out: PinnedItem[] = []
+    for (const conv of conversations) {
+      for (const msg of conv.messages) {
+        if (msg.pinned) {
+          out.push({ conversationId: conv.id, conversationTitle: conv.title, message: msg })
+        }
+      }
+    }
+    return out
+  }, [conversations])
+
+  const filteredConversations = useMemo(() => {
+    const q = debouncedSearch.toLowerCase()
+    if (!q) return conversations
+    return conversations.filter((c) => {
+      if (c.title.toLowerCase().includes(q)) return true
+      return c.messages.some((m) => m.content.toLowerCase().includes(q))
+    })
+  }, [conversations, debouncedSearch])
+
+  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    try {
+      const id = await importConversationFromFile(file)
+      onImportConversation?.(id)
+      onClose()
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Import échoué')
+    }
+    if (importInputRef.current) importInputRef.current.value = ''
+  }
+
   return (
     <>
       {/* Backdrop */}
@@ -72,6 +153,34 @@ export function Sidebar({
           </h2>
         </div>
 
+        {/* Search */}
+        <div className="px-4 pt-3">
+          <div className="relative">
+            <input
+              type="text"
+              value={searchRaw}
+              onChange={(e) => setSearchRaw(e.target.value)}
+              placeholder="Rechercher..."
+              className="w-full pl-8 pr-8 py-1.5 rounded-lg border border-gray-200 text-xs focus:outline-none focus:border-accent bg-gray-50"
+            />
+            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs">🔍</span>
+            {searchRaw && (
+              <button
+                onClick={() => setSearchRaw('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs"
+                aria-label="Effacer"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+          {debouncedSearch && (
+            <p className="text-[10px] text-gray-400 mt-1 px-1">
+              {filteredConversations.length} résultat{filteredConversations.length !== 1 ? 's' : ''}
+            </p>
+          )}
+        </div>
+
         {/* New conversation */}
         <div className="px-4 py-3">
           <button
@@ -82,8 +191,8 @@ export function Sidebar({
             className="w-full flex items-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 hover:bg-gray-50 transition-colors text-sm font-medium text-bubble-user"
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-              <line x1="8" y1="2" x2="8" y2="14" stroke="#1E1A14" strokeWidth="1.5" strokeLinecap="round" />
-              <line x1="2" y1="8" x2="14" y2="8" stroke="#1E1A14" strokeWidth="1.5" strokeLinecap="round" />
+              <line x1="8" y1="2" x2="8" y2="14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              <line x1="2" y1="8" x2="14" y2="8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
             </svg>
             {t('sidebar.newConversation')}
           </button>
@@ -99,16 +208,74 @@ export function Sidebar({
               {t('sidebar.newConversationEU')}
             </button>
           )}
+
+          {/* Import + Tasks row */}
+          <div className="flex gap-2 mt-2">
+            <button
+              onClick={() => importInputRef.current?.click()}
+              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 text-xs text-gray-600"
+              title="Importer une conversation JSON"
+            >
+              ⬆️ Importer
+            </button>
+            <input
+              ref={importInputRef}
+              type="file"
+              accept=".json,application/json"
+              onChange={handleImport}
+              className="hidden"
+            />
+            <button
+              onClick={() => setShowTasks(true)}
+              className="relative flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 text-xs text-gray-600"
+              title="Tâches"
+            >
+              ✅ Tâches
+              {pendingTasks > 0 && (
+                <span className="absolute -top-1 -right-1 bg-accent text-white text-[9px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-1">
+                  🔔 {pendingTasks}
+                </span>
+              )}
+            </button>
+          </div>
         </div>
+
+        {/* Pinned messages (Feature 3) */}
+        {pinned.length > 0 && !debouncedSearch && (
+          <div className="px-3 pb-2">
+            <p className="text-[10px] uppercase tracking-wider text-gray-400 px-2 mb-1">
+              📌 Messages épinglés ({pinned.length})
+            </p>
+            <div className="max-h-32 overflow-y-auto">
+              {pinned.map((p) => (
+                <button
+                  key={p.message.id}
+                  onClick={() => {
+                    onSelect(p.conversationId)
+                    onClose()
+                  }}
+                  className="w-full text-left px-2 py-1.5 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  <p className="text-[10px] text-gray-400 truncate">
+                    {p.conversationTitle}
+                  </p>
+                  <p className="text-xs text-bubble-user truncate">
+                    {p.message.content.slice(0, 80)}
+                  </p>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Conversation list */}
         <nav className="flex-1 overflow-y-auto px-3 pb-4">
-          {conversations.length === 0 && (
+          {filteredConversations.length === 0 && (
             <p className="text-sm text-gray-400 text-center py-8">
-              {t('sidebar.emptyList')}
+              {debouncedSearch ? 'Aucun résultat' : t('sidebar.emptyList')}
             </p>
           )}
-          {conversations.map((conv) => (
+          {filteredConversations.map((conv) => (
             <div
               key={conv.id}
               className={`group flex items-center gap-2 px-3 py-2.5 rounded-xl mb-0.5 cursor-pointer transition-colors ${
@@ -124,7 +291,9 @@ export function Sidebar({
                 }}
                 className="flex-1 text-left min-w-0"
               >
-                <p className="text-sm truncate font-normal">{conv.title}</p>
+                <p className="text-sm truncate font-normal">
+                  {highlight(conv.title, debouncedSearch)}
+                </p>
                 <p className="text-xs text-gray-400 mt-0.5">
                   {timeAgo(conv.updatedAt)}
                 </p>
@@ -186,6 +355,7 @@ export function Sidebar({
       </aside>
 
       <SettingsModal open={showSettings} onClose={() => setShowSettings(false)} />
+      {showTasks && <TaskPanel onClose={() => setShowTasks(false)} />}
     </>
   )
 }

@@ -9,17 +9,32 @@ interface MessageItemProps {
   index: number
   onAction?: (action: string, params: Record<string, string>) => void
   onBranch?: (messageIndex: number) => void
+  onTogglePin?: (messageId: string) => void
+  onEdit?: (messageId: string, newContent: string) => void
+  isLastUserMessage?: boolean
 }
 
-const MessageItem = memo(function MessageItem({ msg, index, onAction, onBranch }: MessageItemProps) {
+const MessageItem = memo(function MessageItem({ msg, index, onAction, onBranch, onTogglePin, onEdit, isLastUserMessage }: MessageItemProps) {
   const handleBranch = useCallback(() => onBranch?.(index), [onBranch, index])
+  const handleTogglePin = useCallback(() => onTogglePin?.(msg.id), [onTogglePin, msg.id])
+  const handleEdit = useCallback((newContent: string) => onEdit?.(msg.id, newContent), [onEdit, msg.id])
 
   return (
     <div className="group relative">
       {msg.role === 'user' ? (
-        <UserBubble content={msg.content} />
+        <UserBubble
+          content={msg.content}
+          pinned={msg.pinned}
+          onTogglePin={onTogglePin ? handleTogglePin : undefined}
+          onEdit={onEdit && isLastUserMessage ? handleEdit : undefined}
+        />
       ) : (
-        <AssistantBubble content={msg.content} onAction={onAction} />
+        <AssistantBubble
+          content={msg.content}
+          onAction={onAction}
+          pinned={msg.pinned}
+          onTogglePin={onTogglePin ? handleTogglePin : undefined}
+        />
       )}
       {onBranch && index > 0 && (
         <button
@@ -44,14 +59,24 @@ interface MessageListProps {
   streamingContent: string
   onAction?: (action: string, params: Record<string, string>) => void
   onBranch?: (messageIndex: number) => void
+  onTogglePin?: (messageId: string) => void
+  onEdit?: (messageId: string, newContent: string) => void
 }
 
-export const MessageList = memo(function MessageList({ messages, isStreaming, streamingContent, onAction, onBranch }: MessageListProps) {
+export const MessageList = memo(function MessageList({ messages, isStreaming, streamingContent, onAction, onBranch, onTogglePin, onEdit }: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, streamingContent])
+
+  // Find the index of the last user message (for edit button)
+  const lastUserIndex = (() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i]?.role === 'user') return i
+    }
+    return -1
+  })()
 
   return (
     <div className="flex-1 overflow-y-auto px-4 py-4">
@@ -62,6 +87,9 @@ export const MessageList = memo(function MessageList({ messages, isStreaming, st
           index={index}
           onAction={onAction}
           onBranch={onBranch}
+          onTogglePin={onTogglePin}
+          onEdit={onEdit}
+          isLastUserMessage={index === lastUserIndex && !isStreaming}
         />
       ))}
 

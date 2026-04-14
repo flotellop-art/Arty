@@ -10,6 +10,7 @@ export interface Message {
   content: string
   timestamp: number
   files?: FileAttachment[]
+  pinned?: boolean
 }
 
 export interface Conversation {

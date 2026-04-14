@@ -11,6 +11,7 @@ import { createContactsHandlers } from './tools/contactsTools'
 import { createWordpressHandlers } from './tools/wordpressTools'
 import { createUtilityHandlers } from './tools/utilityTools'
 import { createNativeHandlers } from './tools/nativeTools'
+import { createSheetsHandlers } from './tools/sheetsTools'
 
 export type { ToolResult, ToolHandler }
 
@@ -29,6 +30,7 @@ export function createToolExecutor(
     ...createWordpressHandlers(browserActions),
     ...createUtilityHandlers(browserActions),
     ...createNativeHandlers(),
+    ...createSheetsHandlers(),
   }
 
   return async (name: string, input: Record<string, unknown>): Promise<ToolResult> => {
