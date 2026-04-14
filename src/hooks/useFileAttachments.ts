@@ -12,6 +12,9 @@ function detectMimeType(name: string, type: string): string {
     case 'gif': return 'image/gif'
     case 'webp': return 'image/webp'
     case 'bmp': return 'image/bmp'
+    case 'txt': case 'csv': case 'md': case 'json': case 'xml': case 'html': case 'htm': case 'js': case 'ts': case 'css': return 'text/plain'
+    case 'doc': case 'docx': return 'application/msword'
+    case 'xls': case 'xlsx': return 'application/vnd.ms-excel'
     default: return type || 'application/octet-stream'
   }
 }
@@ -37,6 +40,13 @@ export function buildApiMessages(messages: Message[]): Array<{ role: string; con
           type: 'image',
           source: { type: 'base64', media_type: mime, data: file.data },
         })
+      } else if (mime === 'text/plain' || mime.startsWith('text/')) {
+        // BUG 36: use decodeURIComponent(escape(atob())) for correct UTF-8 (French chars)
+        const decoded = decodeURIComponent(escape(atob(file.data)))
+        contentBlocks.push({ type: 'text', text: `[Contenu de ${file.name}]\n${decoded}` })
+      } else if (mime === 'application/msword' || mime === 'application/vnd.ms-excel') {
+        // .doc/.docx/.xls/.xlsx: binary, cannot decode client-side — inform Claude
+        contentBlocks.push({ type: 'text', text: `[Fichier joint: ${file.name} — format Office binaire, conversion serveur requise]` })
       } else {
         contentBlocks.push({ type: 'text', text: `[Fichier joint: ${file.name} (${mime}) — format non lisible directement]` })
       }
@@ -61,6 +71,13 @@ export function buildContentBlocks(text: string, files: FileAttachment[]): Array
         type: 'image',
         source: { type: 'base64', media_type: mime, data: file.data },
       })
+    } else if (mime === 'text/plain' || mime.startsWith('text/')) {
+      // BUG 36: use decodeURIComponent(escape(atob())) for correct UTF-8 (French chars)
+      const decoded = decodeURIComponent(escape(atob(file.data)))
+      contentBlocks.push({ type: 'text', text: `[Contenu de ${file.name}]\n${decoded}` })
+    } else if (mime === 'application/msword' || mime === 'application/vnd.ms-excel') {
+      // .doc/.docx/.xls/.xlsx: binary, cannot decode client-side — inform Claude
+      contentBlocks.push({ type: 'text', text: `[Fichier joint: ${file.name} — format Office binaire, conversion serveur requise]` })
     }
   }
   contentBlocks.push({ type: 'text', text: text || 'Analyse ce fichier.' })
