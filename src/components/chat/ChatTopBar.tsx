@@ -3,17 +3,21 @@ import { useTranslation } from 'react-i18next'
 import { getStyle, setStyle as saveStyle, STYLE_OPTIONS, type ResponseStyle } from '../../services/responseStyles'
 import { getSelectedModel, setSelectedModel, MODEL_OPTIONS, type AIModel } from '../../services/modelSelector'
 import { SettingsGuide } from '../shared/SettingsGuide'
+import { exportConversation, buildShareUrl } from '../../services/conversationExport'
+import type { Conversation } from '../../types'
 
 interface ChatTopBarProps {
   title: string
   onBack: () => void
   usedModels?: string[]
   euOnly?: boolean
+  conversation?: Conversation
+  onOpenSummary?: () => void
 }
 
 type OpenMenu = null | 'style' | 'model'
 
-export function ChatTopBar({ title, onBack, usedModels, euOnly }: ChatTopBarProps) {
+export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, onOpenSummary }: ChatTopBarProps) {
   const { t } = useTranslation()
   const [currentStyle, setCurrentStyle] = useState<ResponseStyle>(getStyle)
   const [currentModel, setCurrentModel] = useState<AIModel>(getSelectedModel)
@@ -87,6 +91,47 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly }: ChatTopBarProp
         <h1 className="flex-1 text-sm font-medium text-bubble-user truncate text-center">
           {title}
         </h1>
+
+        {/* Summary button (Feature 4) */}
+        {onOpenSummary && (
+          <button
+            onClick={onOpenSummary}
+            className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 transition-colors"
+            title="Résumé de la conversation"
+            aria-label="Résumé"
+          >
+            📋
+          </button>
+        )}
+
+        {/* Export button (Feature 7) */}
+        {conversation && (
+          <button
+            onClick={() => exportConversation(conversation)}
+            className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 transition-colors"
+            title="Exporter la conversation (JSON)"
+            aria-label="Exporter"
+          >
+            ⬇️
+          </button>
+        )}
+
+        {/* Share link (Feature 7) */}
+        {conversation && (
+          <button
+            onClick={async () => {
+              const url = buildShareUrl(conversation)
+              try {
+                await navigator.clipboard.writeText(url)
+              } catch {}
+            }}
+            className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 transition-colors text-xs"
+            title="Copier le lien de partage"
+            aria-label="Partager"
+          >
+            🔗
+          </button>
+        )}
 
         {/* Style + Model dropdowns */}
         <div className="flex items-center gap-1.5" ref={menuRef}>

@@ -32,6 +32,8 @@ function AppContent({ onLogout, userName }: { onLogout: () => void; userName?: s
     deleteConversation,
     branchConversation,
     stopStreaming,
+    togglePinMessage,
+    editAndResend,
   } = conversation
 
   const {
@@ -100,6 +102,14 @@ function AppContent({ onLogout, userName }: { onLogout: () => void; userName?: s
     [activeId, branchConversation, selectConversation, navigate]
   )
 
+  const handleTogglePin = useCallback(
+    (messageId: string) => {
+      if (!activeId) return
+      togglePinMessage(activeId, messageId)
+    },
+    [activeId, togglePinMessage]
+  )
+
   const handleOAuthCallback = useCallback(
     async (code: string) => {
       await googleAuth.handleCallback(code)
@@ -120,6 +130,10 @@ function AppContent({ onLogout, userName }: { onLogout: () => void; userName?: s
         onDelete={deleteConversation}
         userName={userName}
         onLogout={onLogout}
+        onImportConversation={(id) => {
+          conversation.selectConversation(id)
+          navigate(`/chat/${id}`)
+        }}
       />
 
       <Routes>
@@ -163,6 +177,10 @@ function AppContent({ onLogout, userName }: { onLogout: () => void; userName?: s
               actionScreenshot={actionScreenshot}
               onAction={handleAction}
               onBranch={handleBranch}
+              onTogglePin={handleTogglePin}
+              onEdit={editAndResend}
+              conversations={conversations}
+              onSelectConv={handleSelectConversation}
             />
           }
         />
@@ -194,6 +212,10 @@ interface ChatRouteProps {
   actionScreenshot: string | null
   onAction?: (action: string, params: Record<string, string>) => void
   onBranch?: (messageIndex: number) => void
+  onTogglePin?: (messageId: string) => void
+  onEdit?: (messageId: string, newContent: string) => void
+  conversations: ReturnType<typeof useConversation>['conversations']
+  onSelectConv: (id: string) => void
 }
 
 function ChatRoute({
@@ -212,6 +234,10 @@ function ChatRoute({
   actionScreenshot,
   onAction,
   onBranch,
+  onTogglePin,
+  onEdit,
+  conversations,
+  onSelectConv,
 }: ChatRouteProps) {
   const { id } = useParams<{ id: string }>()
 
@@ -244,6 +270,10 @@ function ChatRoute({
       actionScreenshot={actionScreenshot}
       onAction={onAction}
       onBranch={onBranch}
+      onTogglePin={onTogglePin}
+      onEdit={onEdit}
+      conversations={conversations}
+      onSelectConv={onSelectConv}
     />
   )
 }
@@ -268,6 +298,27 @@ export default function App() {
     }
     setupDeepLinks()
   }, [])
+
+  // Apply saved theme on app boot
+  useEffect(() => {
+    if (!auth.isAuthenticated) return
+    import('./services/themeService').then((m) => m.applyTheme(m.getTheme()))
+  }, [auth.isAuthenticated])
+
+  // Ask for push notification permission once after login (soft, non-blocking)
+  useEffect(() => {
+    if (!auth.isAuthenticated) return
+    const askedKey = 'arty-notif-asked'
+    if (localStorage.getItem(askedKey)) return
+    const timer = setTimeout(async () => {
+      try {
+        const { requestPermission } = await import('./services/notificationService')
+        await requestPermission()
+        localStorage.setItem(askedKey, '1')
+      } catch {}
+    }, 5000)
+    return () => clearTimeout(timer)
+  }, [auth.isAuthenticated])
 
   // Process deep link OAuth code
   useEffect(() => {

@@ -1,0 +1,118 @@
+import { useEffect, useState } from 'react'
+import type { Task } from '../../services/taskService'
+import { getTasks, addTask, toggleTask, deleteTask } from '../../services/taskService'
+
+interface TaskPanelProps {
+  onClose: () => void
+}
+
+export function TaskPanel({ onClose }: TaskPanelProps) {
+  const [tasks, setTasks] = useState<Task[]>(getTasks)
+  const [newText, setNewText] = useState('')
+
+  useEffect(() => {
+    const refresh = () => setTasks(getTasks())
+    window.addEventListener('tasks-updated', refresh)
+    return () => window.removeEventListener('tasks-updated', refresh)
+  }, [])
+
+  const handleAdd = () => {
+    const text = newText.trim()
+    if (!text) return
+    addTask(text)
+    setNewText('')
+  }
+
+  const pending = tasks.filter((t) => !t.done)
+  const done = tasks.filter((t) => t.done)
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/50" onClick={onClose}>
+      <div
+        className="bg-white rounded-t-2xl sm:rounded-2xl shadow-xl w-full sm:max-w-md max-h-[90vh] flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+          <h2 className="font-serif text-lg font-semibold text-bubble-user">✅ Tâches</h2>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500" aria-label="Fermer">
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+              <path d="M4 4L14 14M14 4L4 14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="px-5 py-3 border-b border-gray-100 flex gap-2">
+          <input
+            type="text"
+            value={newText}
+            onChange={(e) => setNewText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') { e.preventDefault(); handleAdd() }
+            }}
+            placeholder="Ajouter une tâche..."
+            className="flex-1 px-3 py-1.5 text-sm rounded-lg border border-gray-200 focus:outline-none focus:border-accent"
+          />
+          <button
+            onClick={handleAdd}
+            disabled={!newText.trim()}
+            className="px-3 py-1.5 rounded-lg bg-accent text-white text-sm disabled:opacity-30"
+          >
+            +
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-5 py-3">
+          {tasks.length === 0 && (
+            <p className="text-sm text-gray-400 text-center py-6">Aucune tâche</p>
+          )}
+
+          {pending.length > 0 && (
+            <div className="mb-4">
+              <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-1.5">En cours ({pending.length})</p>
+              {pending.map((task) => (
+                <TaskRow key={task.id} task={task} />
+              ))}
+            </div>
+          )}
+
+          {done.length > 0 && (
+            <div>
+              <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-1.5">Terminées ({done.length})</p>
+              {done.map((task) => (
+                <TaskRow key={task.id} task={task} />
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function TaskRow({ task }: { task: Task }) {
+  return (
+    <div className="flex items-center gap-2 py-1.5 group">
+      <button
+        onClick={() => toggleTask(task.id)}
+        className={`flex-shrink-0 w-5 h-5 rounded-md border flex items-center justify-center transition-colors ${
+          task.done
+            ? 'bg-accent border-accent text-white'
+            : 'border-gray-300 hover:border-accent'
+        }`}
+        aria-label={task.done ? 'Marquer comme non terminée' : 'Marquer comme terminée'}
+      >
+        {task.done && <span className="text-xs">✓</span>}
+      </button>
+      <span className={`flex-1 text-sm ${task.done ? 'text-gray-400 line-through' : 'text-bubble-user'}`}>
+        {task.text}
+      </span>
+      <button
+        onClick={() => deleteTask(task.id)}
+        className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 text-xs transition-opacity"
+        aria-label="Supprimer"
+      >
+        ✕
+      </button>
+    </div>
+  )
+}

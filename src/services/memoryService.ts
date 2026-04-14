@@ -52,6 +52,14 @@ async function updateMemoryD1(category: MemoryCategory, data: unknown): Promise<
   const userId = getActiveUserId()
   if (!userId) return { success: false, message: 'Non connecté' }
 
+  // Snapshot previous value for undo (Feature 11)
+  let previousValue: unknown
+  try {
+    previousValue = await readMemoryD1(category)
+  } catch {
+    previousValue = undefined
+  }
+
   try {
     const res = await fetch(apiUrl('/api/memory/action'), {
       method: 'POST',
@@ -59,6 +67,18 @@ async function updateMemoryD1(category: MemoryCategory, data: unknown): Promise<
       body: JSON.stringify({ type: 'write', userId, category, data }),
     })
     if (!res.ok) return { success: false, message: 'Erreur D1' }
+    // Log the change to the history
+    try {
+      const { logChange } = await import('./memoryHistory')
+      const summary = typeof data === 'string'
+        ? data.slice(0, 120)
+        : Array.isArray(data)
+          ? `${data.length} entrée(s)`
+          : JSON.stringify(data).slice(0, 120)
+      logChange(category, 'Mise à jour', summary, previousValue)
+    } catch {
+      // ignore logging failures
+    }
     return { success: true, message: `Mémoire "${category}" mise à jour.` }
   } catch (err) {
     return { success: false, message: err instanceof Error ? err.message : 'Erreur' }

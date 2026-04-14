@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import type { Conversation, Message, FileAttachment } from '../types'
 import { generateId } from '../utils/generateId'
 import { streamMessage } from '../services/anthropicClient'
@@ -10,6 +10,7 @@ import { detectProvider } from '../services/aiRouter'
 import * as storage from '../services/storage'
 import { useStreaming } from './useStreaming'
 import { useFileAttachments, buildApiMessages, buildContentBlocks } from './useFileAttachments'
+import { detectSuggestedTasks, addTask } from '../services/taskService'
 
 type ToolHandler = (name: string, input: Record<string, unknown>) => Promise<{ result: string; screenshot?: string }>
 
@@ -30,6 +31,22 @@ export function useConversation() {
 
   const streaming = useStreaming({ refreshConversations })
   const fileAttachments = useFileAttachments()
+
+  // Feature 8: detect action items in new assistant messages and suggest as tasks
+  const lastScannedRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (streaming.isStreaming) return
+    const active = conversations.find((c) => c.id === activeId)
+    if (!active || active.messages.length === 0) return
+    const last = active.messages[active.messages.length - 1]
+    if (!last || last.role !== 'assistant') return
+    if (lastScannedRef.current === last.id) return
+    lastScannedRef.current = last.id
+    const suggestions = detectSuggestedTasks(last.content)
+    for (const text of suggestions) {
+      addTask(text, active.id)
+    }
+  }, [conversations, activeId, streaming.isStreaming])
 
   const createConversation = useCallback((withWelcome?: boolean, euOnly?: boolean): string => {
     const id = generateId()
@@ -268,6 +285,47 @@ export function useConversation() {
     [refreshConversations]
   )
 
+  // Toggle pinned flag on a specific message (Feature 3)
+  const togglePinMessage = useCallback(
+    (conversationId: string, messageId: string) => {
+      const conv = storage.getConversation(conversationId)
+      if (!conv) return
+      const msg = conv.messages.find((m) => m.id === messageId)
+      if (!msg) return
+      msg.pinned = !msg.pinned
+      conv.updatedAt = Date.now()
+      storage.saveConversation(conv)
+      refreshConversations()
+    },
+    [refreshConversations]
+  )
+
+  // Edit the last message in a conversation and re-send (Feature 12)
+  const editAndResend = useCallback(
+    (messageId: string, newContent: string) => {
+      const targetId = activeId
+      if (!targetId) return
+      const conv = storage.getConversation(targetId)
+      if (!conv) return
+
+      const idx = conv.messages.findIndex((m) => m.id === messageId)
+      if (idx === -1) return
+      const msg = conv.messages[idx]
+      if (!msg || msg.role !== 'user') return
+
+      // Truncate everything after this message and update its content
+      const originalFiles = msg.files
+      conv.messages = conv.messages.slice(0, idx)
+      conv.updatedAt = Date.now()
+      storage.saveConversation(conv)
+      refreshConversations()
+
+      // Re-send the edited message
+      sendMessage(newContent, targetId, originalFiles)
+    },
+    [activeId, refreshConversations, sendMessage]
+  )
+
   return {
     conversations,
     activeConversation,
@@ -284,5 +342,7 @@ export function useConversation() {
     stopStreaming: streaming.stopStreaming,
     setSystemPrompt,
     setToolHandler,
+    togglePinMessage,
+    editAndResend,
   }
 }

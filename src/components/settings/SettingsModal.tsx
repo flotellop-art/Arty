@@ -4,6 +4,12 @@ import type { ApiKeys } from '../../hooks/useApiKeys'
 import * as scoped from '../../services/scopedStorage'
 import { setActiveKeys } from '../../services/activeApiKey'
 import { initCrypto } from '../../services/crypto'
+import {
+  areNotificationsEnabled,
+  setNotificationsEnabled,
+  requestPermission as requestNotifPermission,
+} from '../../services/notificationService'
+import { MemoryHistoryPanel } from './MemoryHistoryPanel'
 
 interface SettingsModalProps {
   open: boolean
@@ -17,12 +23,27 @@ interface SettingsModalProps {
  */
 export const SettingsModal = memo(function SettingsModal({ open, onClose }: SettingsModalProps) {
   const [initialKeys, setInitialKeys] = useState<ApiKeys | null>(null)
+  const [notifEnabled, setNotifEnabled] = useState(false)
+  const [showMemoryHistory, setShowMemoryHistory] = useState(false)
 
   useEffect(() => {
     if (!open) return
     const stored = scoped.getJSON<ApiKeys>('api-keys')
     setInitialKeys(stored ?? null)
+    setNotifEnabled(areNotificationsEnabled())
   }, [open])
+
+  const handleNotifToggle = async () => {
+    if (!notifEnabled) {
+      const perm = await requestNotifPermission()
+      if (perm !== 'granted') return
+      setNotificationsEnabled(true)
+      setNotifEnabled(true)
+    } else {
+      setNotificationsEnabled(false)
+      setNotifEnabled(false)
+    }
+  }
 
   // Close on Escape
   useEffect(() => {
@@ -77,10 +98,54 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
             </svg>
           </button>
         </div>
-        <div className="p-5">
+        <div className="p-5 space-y-5">
           <ApiKeySetup onSave={handleSave} initialKeys={initialKeys} embedded />
+
+          {/* Notifications toggle */}
+          <div className="border-t border-gray-100 pt-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-semibold text-bubble-user">🔔 Notifications</p>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Rappels RDV, emails importants
+                </p>
+              </div>
+              <button
+                onClick={handleNotifToggle}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                  notifEnabled ? 'bg-accent' : 'bg-gray-300'
+                }`}
+                aria-pressed={notifEnabled}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    notifEnabled ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
+          </div>
+
+          {/* Memory history */}
+          <div className="border-t border-gray-100 pt-5">
+            <button
+              onClick={() => setShowMemoryHistory(true)}
+              className="w-full flex items-center justify-between text-left"
+            >
+              <div>
+                <p className="text-sm font-semibold text-bubble-user">📜 Historique mémoire</p>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Voir et annuler les changements de mémoire
+                </p>
+              </div>
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="text-gray-400">
+                <path d="M5 3L9 7L5 11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+          </div>
         </div>
       </div>
+      {showMemoryHistory && <MemoryHistoryPanel onClose={() => setShowMemoryHistory(false)} />}
     </div>
   )
 })

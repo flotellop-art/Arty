@@ -2,6 +2,29 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Dark mode (Feature 10) — overrides Tailwind bg/text colors via CSS vars. */
+html.dark {
+  --arty-bg: #1a1614;
+  --arty-surface: #242120;
+  --arty-text: #F5F0E8;
+  --arty-accent: #B87743;
+  --arty-border: #3a3330;
+}
+html.dark body { background-color: #1a1614; color: #F5F0E8; }
+html.dark .bg-cream { background-color: #1a1614 !important; }
+html.dark .bg-white { background-color: #242120 !important; color: #F5F0E8 !important; }
+html.dark .bg-gray-50 { background-color: #2a2620 !important; }
+html.dark .bg-gray-100 { background-color: #2e2a23 !important; }
+html.dark .text-bubble-user { color: #F5F0E8 !important; }
+html.dark .text-gray-600 { color: #b5aea2 !important; }
+html.dark .text-gray-500 { color: #a59e92 !important; }
+html.dark .text-gray-400 { color: #857f73 !important; }
+html.dark .border-gray-100 { border-color: #3a3330 !important; }
+html.dark .border-gray-200 { border-color: #3a3330 !important; }
+html.dark .hover\:bg-gray-50:hover { background-color: #2e2a23 !important; }
+html.dark .hover\:bg-gray-100:hover { background-color: #33302a !important; }
+html.dark .bg-bubble-user { background-color: #B87743 !important; color: #F5F0E8 !important; }
+
 body {
   background-color: #F5F0E8;
   font-family: 'Inter', sans-serif;

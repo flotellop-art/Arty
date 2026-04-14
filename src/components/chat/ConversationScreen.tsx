@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { Conversation, FileAttachment } from '../../types'
 import { ChatTopBar } from './ChatTopBar'
@@ -5,6 +6,7 @@ import { MessageList } from './MessageList'
 import { InputBar } from '../layout/InputBar'
 import { ActionBanner } from '../google/ActionBanner'
 import { BrowserBanner } from '../google/BrowserBanner'
+import { ConversationSummaryModal } from './ConversationSummaryModal'
 import type { useGmail } from '../../hooks/useGmail'
 import type { useDrive } from '../../hooks/useDrive'
 import type { useBrowser } from '../../hooks/useBrowser'
@@ -20,11 +22,15 @@ interface ConversationScreenProps {
   onStop: () => void
   onAction?: (action: string, params: Record<string, string>) => void
   onBranch?: (messageIndex: number) => void
+  onTogglePin?: (messageId: string) => void
+  onEdit?: (messageId: string, newContent: string) => void
   gmail: ReturnType<typeof useGmail>
   drive: ReturnType<typeof useDrive>
   browserActions: ReturnType<typeof useBrowser>
   computerActions: ReturnType<typeof useComputer>
   actionScreenshot: string | null
+  conversations?: Conversation[]
+  onSelectConv?: (id: string) => void
 }
 
 export function ConversationScreen({
@@ -37,6 +43,8 @@ export function ConversationScreen({
   onStop,
   onAction,
   onBranch,
+  onTogglePin,
+  onEdit,
   gmail,
   drive,
   browserActions,
@@ -44,9 +52,17 @@ export function ConversationScreen({
   actionScreenshot,
 }: ConversationScreenProps) {
   const { t } = useTranslation()
+  const [showSummary, setShowSummary] = useState(false)
   return (
     <div className="flex flex-col h-full">
-      <ChatTopBar title={conversation.title} onBack={onBack} usedModels={conversation.usedModels} euOnly={conversation.euOnly} />
+      <ChatTopBar
+        title={conversation.title}
+        onBack={onBack}
+        usedModels={conversation.usedModels}
+        euOnly={conversation.euOnly}
+        conversation={conversation}
+        onOpenSummary={() => setShowSummary(true)}
+      />
 
       <ActionBanner icon="📧" message={t('chat.banners.gmailReading')} isVisible={gmail.isLoading} />
       <ActionBanner icon="📁" message={t('chat.banners.driveAccess')} isVisible={drive.isLoading} />
@@ -59,6 +75,8 @@ export function ConversationScreen({
         streamingContent={streamingContent}
         onAction={onAction}
         onBranch={onBranch}
+        onTogglePin={onTogglePin}
+        onEdit={onEdit}
       />
 
       {actionScreenshot && (
@@ -83,6 +101,13 @@ export function ConversationScreen({
       )}
 
       <InputBar onSend={onSend} isStreaming={isStreaming} onStop={onStop} />
+
+      {showSummary && (
+        <ConversationSummaryModal
+          conversation={conversation}
+          onClose={() => setShowSummary(false)}
+        />
+      )}
     </div>
   )
 }

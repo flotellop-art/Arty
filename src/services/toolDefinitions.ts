@@ -6,6 +6,7 @@ import { contactsToolDefinitions } from './tools/contactsTools'
 import { wordpressToolDefinitions } from './tools/wordpressTools'
 import { utilityToolDefinitions } from './tools/utilityTools'
 import { nativeToolDefinitions } from './tools/nativeTools'
+import { sheetsToolDefinitions } from './tools/sheetsTools'
 
 export const TOOLS = [
   ...utilityToolDefinitions,
@@ -16,6 +17,7 @@ export const TOOLS = [
   ...contactsToolDefinitions,
   ...wordpressToolDefinitions,
   ...nativeToolDefinitions,
+  ...sheetsToolDefinitions,
   // Server-side tools (handled by Anthropic API, no local executor)
   {
     type: 'web_search_20250305',
