@@ -1,5 +1,5 @@
-import { getGeminiKey, getMistralKey } from './activeApiKey'
-import { getSelectedModel } from './modelSelector'
+import { getGeminiKey, getMistralKey, getOpenAIKey } from './activeApiKey'
+import { getSelectedModel, detectOpenAIIntent } from './modelSelector'
 
 // AI Router — decides which model to use based on the query
 
@@ -62,18 +62,18 @@ const REPORT_TRIGGERS = [
   /trend[s]?\s+(of|in|for|20)/i,
 ]
 
-export type AIProvider = 'claude' | 'gemini' | 'mistral' | 'hybrid'
+export type AIProvider = 'claude' | 'gemini' | 'mistral' | 'hybrid' | 'openai'
 
 export function detectProvider(message: string): AIProvider {
   const selectedModel = getSelectedModel()
 
-  // If user forced a specific model, use it
+  // Private data → ALWAYS Claude (security rule — OpenAI/Gemini can't access tools/user data)
+  const isPrivate = PRIVATE_DATA_TRIGGERS.some((r) => r.test(message))
+
+  // If user forced a specific model, use it (but redirect private data to Claude for models without tools)
   if (selectedModel !== 'auto') {
-    // Gemini has no tools — redirect private data to Claude
-    // Claude and Mistral both have tools — respect user choice
-    if (selectedModel === 'gemini') {
-      const isPrivate = PRIVATE_DATA_TRIGGERS.some((r) => r.test(message))
-      if (isPrivate) return 'claude'
+    if (isPrivate && (selectedModel === 'gemini' || selectedModel === 'openai')) {
+      return 'claude'
     }
     return selectedModel
   }
@@ -81,10 +81,13 @@ export function detectProvider(message: string): AIProvider {
   // Auto mode — intelligent routing
   const geminiKey = getGeminiKey()
   const mistralKey = getMistralKey()
+  const openaiKey = getOpenAIKey()
 
-  // Private data → always Claude (needs tools)
-  const isPrivate = PRIVATE_DATA_TRIGGERS.some((r) => r.test(message))
+  // Private data → always Claude (needs tools + security)
   if (isPrivate) return 'claude'
+
+  // Explicit OpenAI/ChatGPT mention → OpenAI (if key available)
+  if (openaiKey && detectOpenAIIntent(message)) return 'openai'
 
   // Reports → hybrid (Gemini research + Claude writing) if Gemini available
   if (geminiKey) {

@@ -4,6 +4,8 @@ import { generateId } from '../utils/generateId'
 import { streamMessage } from '../services/anthropicClient'
 import { streamGeminiMessage, geminiResearch } from '../services/geminiClient'
 import { streamMistralMessage } from '../services/mistralClient'
+import { sendMessageStream as streamOpenAIMessage } from '../services/openaiClient'
+import { getOpenAIKey } from '../services/activeApiKey'
 import { detectProvider } from '../services/aiRouter'
 import * as storage from '../services/storage'
 import { useStreaming } from './useStreaming'
@@ -201,6 +203,15 @@ export function useConversation() {
         controller = streamMistralMessage(apiMessages, onToken, onDone, onErr, {
           systemPrompt: systemPromptRef.current,
           onToolCall: toolHandlerRef.current,
+        })
+      } else if (provider === 'openai') {
+        const openaiKey = getOpenAIKey()
+        const apiMessages = conv.messages.map((m) => ({
+          role: (m.role === 'assistant' ? 'assistant' : 'user') as 'user' | 'assistant',
+          content: typeof m.content === 'string' ? m.content : '',
+        }))
+        controller = streamOpenAIMessage(apiMessages, openaiKey || '', onToken, onDone, onErr, {
+          systemPrompt: systemPromptRef.current,
         })
       } else {
         const apiMessages: Array<{ role: string; content: string | Array<Record<string, unknown>> }> = conv.messages.map((m) => {

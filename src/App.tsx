@@ -282,7 +282,7 @@ export default function App() {
         const userId = await generateUserId('google', user.email)
         setActiveSession({ userId, authMethod: 'google', displayName: user.name, email: user.email, avatar: user.picture, createdAt: Date.now() })
         const { getJSON } = await import('./services/scopedStorage')
-        const existingKeys = getJSON<{ anthropic: string; gemini?: string; mistral?: string }>('api-keys')
+        const existingKeys = getJSON<{ anthropic: string; gemini?: string; mistral?: string; openai?: string }>('api-keys')
 
         // Login with existing keys or server-provided
         await auth.login('google', {
@@ -290,6 +290,7 @@ export default function App() {
           anthropicKey: existingKeys?.anthropic || 'server-provided',
           geminiKey: existingKeys?.gemini,
           mistralKey: existingKeys?.mistral,
+          openaiKey: existingKeys?.openai,
           identifier: user.email,
         })
       } catch (err) {
@@ -348,7 +349,7 @@ function OAuthCallbackAuth({ auth }: { auth: ReturnType<typeof useAuth> }) {
       // Temporarily set session to read scoped storage
       setActiveSession({ userId, authMethod: 'google', displayName: user.name, email: user.email, avatar: user.picture, createdAt: Date.now() })
       const { getJSON } = await import('./services/scopedStorage')
-      const existingKeys = getJSON<{ anthropic: string; gemini?: string; mistral?: string }>('api-keys')
+      const existingKeys = getJSON<{ anthropic: string; gemini?: string; mistral?: string; openai?: string }>('api-keys')
 
       // Use stored keys if available, otherwise login without keys
       // (server-side proxy provides API keys)
@@ -359,6 +360,7 @@ function OAuthCallbackAuth({ auth }: { auth: ReturnType<typeof useAuth> }) {
         anthropicKey: existingKeys?.anthropic || 'server-provided',
         geminiKey: existingKeys?.gemini || undefined,
         mistralKey: existingKeys?.mistral || undefined,
+        openaiKey: existingKeys?.openai || undefined,
         identifier: user.email,
       })
       navigate('/')

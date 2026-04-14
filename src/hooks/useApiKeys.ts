@@ -7,6 +7,7 @@ export interface ApiKeys {
   anthropic: string
   gemini?: string
   mistral?: string
+  openai?: string
 }
 
 export function useApiKeys() {

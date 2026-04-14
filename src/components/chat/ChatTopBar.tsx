@@ -35,7 +35,7 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly }: ChatTopBarProp
   const handleModelChange = (model: AIModel) => {
     // Warn if conversation used Mistral (EU) and user switches to non-EU model
     const hadMistral = usedModels?.includes('mistral')
-    const isNonEU = model === 'claude' || model === 'gemini'
+    const isNonEU = model === 'claude' || model === 'gemini' || model === 'openai'
     if (hadMistral && isNonEU) {
       setPrivacyWarning(model)
       setOpenMenu(null)
@@ -195,7 +195,14 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly }: ChatTopBarProp
             <p className="text-sm font-semibold text-bubble-user mb-2">{t('chat.privacyWarning.title')}</p>
             <p className="text-xs text-gray-500 leading-relaxed mb-4">
               {t('chat.privacyWarning.body', {
-                targetModel: privacyWarning === 'claude' ? 'Claude' : 'Gemini',
+                targetModel:
+                  privacyWarning === 'claude'
+                    ? 'Claude'
+                    : privacyWarning === 'gemini'
+                      ? 'Gemini'
+                      : privacyWarning === 'openai'
+                        ? 'ChatGPT'
+                        : privacyWarning,
               })}
             </p>
             <div className="flex gap-2">

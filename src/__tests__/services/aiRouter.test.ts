@@ -5,29 +5,33 @@ import { detectProvider } from '../../services/aiRouter'
 vi.mock('../../services/activeApiKey', () => ({
   getGeminiKey: vi.fn(),
   getMistralKey: vi.fn(),
+  getOpenAIKey: vi.fn(),
 }))
 
 vi.mock('../../services/modelSelector', () => ({
   getSelectedModel: vi.fn(),
+  detectOpenAIIntent: vi.fn(() => false),
 }))
 
-import { getGeminiKey, getMistralKey } from '../../services/activeApiKey'
+import { getGeminiKey, getMistralKey, getOpenAIKey } from '../../services/activeApiKey'
 import { getSelectedModel } from '../../services/modelSelector'
 
 const mockGetGeminiKey = vi.mocked(getGeminiKey)
 const mockGetMistralKey = vi.mocked(getMistralKey)
+const mockGetOpenAIKey = vi.mocked(getOpenAIKey)
 const mockGetSelectedModel = vi.mocked(getSelectedModel)
 
 // Helper to configure key availability
-function withKeys({ gemini = false, mistral = false } = {}) {
+function withKeys({ gemini = false, mistral = false, openai = false } = {}) {
   mockGetGeminiKey.mockReturnValue(gemini ? 'gemini-key' : null)
   mockGetMistralKey.mockReturnValue(mistral ? 'mistral-key' : null)
+  mockGetOpenAIKey.mockReturnValue(openai ? 'openai-key' : null)
 }
 
 beforeEach(() => {
   vi.clearAllMocks()
   mockGetSelectedModel.mockReturnValue('auto')
-  withKeys({ gemini: false, mistral: false })
+  withKeys({ gemini: false, mistral: false, openai: false })
 })
 
 // ──────────────────────────────────────────────

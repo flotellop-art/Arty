@@ -1,42 +1,224 @@
-import { useState } from 'react'
+import { useState, memo } from 'react'
 import { StarIcon } from '../shared/StarIcon'
 import type { ApiKeys } from '../../hooks/useApiKeys'
+import { testApiKey as testOpenAIKey } from '../../services/openaiClient'
 
 interface ApiKeySetupProps {
   onSave: (keys: ApiKeys) => Promise<void>
+  /** Existing keys (for edit mode inside the Settings modal). */
+  initialKeys?: ApiKeys | null
+  /** When inside a modal, the parent usually provides its own chrome. */
+  embedded?: boolean
 }
 
-export function ApiKeySetup({ onSave }: ApiKeySetupProps) {
+type ProviderId = 'anthropic' | 'openai' | 'gemini' | 'mistral'
+type TestStatus = 'idle' | 'testing' | 'ok' | 'ko'
+
+const PLACEHOLDERS: Record<ProviderId, string> = {
+  anthropic: 'sk-ant-...',
+  openai: 'sk-...',
+  gemini: 'AIza...',
+  mistral: '...',
+}
+
+function maskKey(key: string | undefined): string {
+  if (!key) return ''
+  if (key.length <= 8) return '••••••••'
+  return key.slice(0, 8) + '••••••••'
+}
+
+// Eye icon toggling between shown / hidden
+function EyeIcon({ visible }: { visible: boolean }) {
+  return visible ? (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
+      <path d="M1 8C1 8 3.5 3 8 3C12.5 3 15 8 15 8C15 8 12.5 13 8 13C3.5 13 1 8 1 8Z" stroke="currentColor" strokeWidth="1.2" />
+      <circle cx="8" cy="8" r="2" stroke="currentColor" strokeWidth="1.2" />
+    </svg>
+  ) : (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
+      <path d="M1 8C1 8 3.5 3 8 3C12.5 3 15 8 15 8C15 8 12.5 13 8 13C3.5 13 1 8 1 8Z" stroke="currentColor" strokeWidth="1.2" />
+      <line x1="2" y1="2" x2="14" y2="14" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+interface KeyFieldProps {
+  id: ProviderId
+  label: string
+  optional?: boolean
+  value: string
+  savedMask?: string
+  onChange: (value: string) => void
+  onTest?: () => Promise<boolean>
+}
+
+const KeyField = memo(function KeyField({ id, label, optional, value, savedMask, onChange, onTest }: KeyFieldProps) {
+  const [visible, setVisible] = useState(false)
+  const [status, setStatus] = useState<TestStatus>('idle')
+
+  const handleTest = async () => {
+    if (!onTest || !value.trim()) return
+    setStatus('testing')
+    try {
+      const ok = await onTest()
+      setStatus(ok ? 'ok' : 'ko')
+    } catch {
+      setStatus('ko')
+    }
+  }
+
+  return (
+    <div>
+      <label className="block text-xs font-medium text-gray-600 mb-1.5">
+        {label}
+        {optional && <span className="text-gray-400 ml-1">(optionnel)</span>}
+      </label>
+      <div className="flex gap-1.5">
+        <div className="relative flex-1">
+          <input
+            type={visible ? 'text' : 'password'}
+            value={value}
+            onChange={(e) => {
+              onChange(e.target.value)
+              if (status !== 'idle') setStatus('idle')
+            }}
+            placeholder={savedMask || PLACEHOLDERS[id]}
+            className="w-full pl-3 pr-9 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 bg-gray-50"
+            autoComplete="off"
+          />
+          <button
+            type="button"
+            onClick={() => setVisible((v) => !v)}
+            className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600"
+            aria-label={visible ? 'Masquer' : 'Afficher'}
+          >
+            <EyeIcon visible={visible} />
+          </button>
+        </div>
+        {onTest && (
+          <button
+            type="button"
+            onClick={handleTest}
+            disabled={status === 'testing' || !value.trim()}
+            className="px-3 py-2.5 rounded-xl bg-gray-100 text-xs font-medium text-gray-700 hover:bg-gray-200 transition-colors disabled:opacity-40"
+          >
+            {status === 'testing' ? '...' : status === 'ok' ? '✓' : status === 'ko' ? '✗' : 'Tester'}
+          </button>
+        )}
+      </div>
+      {savedMask && !value && (
+        <p className="text-xs text-gray-400 mt-1">Actuel : {savedMask}</p>
+      )}
+    </div>
+  )
+})
+
+export function ApiKeySetup({ onSave, initialKeys, embedded }: ApiKeySetupProps) {
   const [anthropicKey, setAnthropicKey] = useState('')
   const [geminiKey, setGeminiKey] = useState('')
   const [mistralKey, setMistralKey] = useState('')
+  const [openaiKey, setOpenaiKey] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
+  const editMode = !!initialKeys
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    const trimmed = anthropicKey.trim()
-    if (!trimmed) {
+
+    // In edit mode, empty fields keep the existing key
+    const anthropic = anthropicKey.trim() || initialKeys?.anthropic || ''
+    const gemini = geminiKey.trim() || initialKeys?.gemini || undefined
+    const mistral = mistralKey.trim() || initialKeys?.mistral || undefined
+    const openai = openaiKey.trim() || initialKeys?.openai || undefined
+
+    if (!anthropic) {
       setError('La clé API Anthropic est obligatoire')
       return
     }
-    if (!trimmed.startsWith('sk-ant-')) {
-      setError('La clé doit commencer par sk-ant-')
+    if (!anthropic.startsWith('sk-ant-')) {
+      setError('La clé Anthropic doit commencer par sk-ant-')
+      return
+    }
+    if (openai && (!openai.startsWith('sk-') || openai.length <= 20)) {
+      setError('La clé OpenAI doit commencer par sk- et faire plus de 20 caractères')
       return
     }
 
     setSaving(true)
     setError('')
     try {
-      await onSave({
-        anthropic: trimmed,
-        gemini: geminiKey.trim() || undefined,
-        mistral: mistralKey.trim() || undefined,
-      })
+      await onSave({ anthropic, gemini, mistral, openai })
     } catch {
       setError('Erreur lors de la sauvegarde')
       setSaving(false)
     }
+  }
+
+  const testOpenAI = async () => {
+    const key = openaiKey.trim() || initialKeys?.openai || ''
+    if (!key) return false
+    return testOpenAIKey(key)
+  }
+
+  const form = (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <KeyField
+        id="anthropic"
+        label={editMode ? 'Clé API Anthropic' : 'Clé API Anthropic *'}
+        value={anthropicKey}
+        savedMask={maskKey(initialKeys?.anthropic)}
+        onChange={setAnthropicKey}
+      />
+
+      <KeyField
+        id="openai"
+        label="Clé API OpenAI"
+        optional
+        value={openaiKey}
+        savedMask={maskKey(initialKeys?.openai)}
+        onChange={setOpenaiKey}
+        onTest={testOpenAI}
+      />
+
+      <KeyField
+        id="gemini"
+        label="Clé API Gemini"
+        optional
+        value={geminiKey}
+        savedMask={maskKey(initialKeys?.gemini)}
+        onChange={setGeminiKey}
+      />
+
+      <KeyField
+        id="mistral"
+        label="Clé API Mistral (EU)"
+        optional
+        value={mistralKey}
+        savedMask={maskKey(initialKeys?.mistral)}
+        onChange={setMistralKey}
+      />
+
+      {error && (
+        <p className="text-sm text-red-500">{error}</p>
+      )}
+
+      <button
+        type="submit"
+        disabled={saving || (!editMode && !anthropicKey.trim())}
+        className="w-full py-2.5 rounded-xl bg-bubble-user text-cream font-medium text-sm hover:bg-gray-700 transition-colors disabled:opacity-40"
+      >
+        {saving ? 'Chiffrement...' : editMode ? 'Enregistrer' : 'Commencer'}
+      </button>
+
+      <p className="text-xs text-gray-400 text-center leading-relaxed">
+        Tes clés sont chiffrées en AES-256 et stockées uniquement sur ton appareil.
+      </p>
+    </form>
+  )
+
+  if (embedded) {
+    return form
   }
 
   return (
@@ -52,69 +234,9 @@ export function ApiKeySetup({ onSave }: ApiKeySetupProps) {
             Configuration
           </h2>
           <p className="text-sm text-gray-500 mb-5">
-            Entre ta clé API pour commencer. Elle est chiffrée et stockée uniquement sur ton appareil.
+            Entre tes clés API pour commencer. Elles sont chiffrées et stockées uniquement sur ton appareil.
           </p>
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1.5">
-                Clé API Anthropic *
-              </label>
-              <input
-                type="password"
-                value={anthropicKey}
-                onChange={(e) => setAnthropicKey(e.target.value)}
-                placeholder="sk-ant-..."
-                className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 bg-gray-50"
-                autoComplete="off"
-                autoFocus
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1.5">
-                Clé API Gemini <span className="text-gray-400">(optionnel)</span>
-              </label>
-              <input
-                type="password"
-                value={geminiKey}
-                onChange={(e) => setGeminiKey(e.target.value)}
-                placeholder="AIza..."
-                className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 bg-gray-50"
-                autoComplete="off"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1.5">
-                Clé API Mistral <span className="text-gray-400">(optionnel — données EU)</span>
-              </label>
-              <input
-                type="password"
-                value={mistralKey}
-                onChange={(e) => setMistralKey(e.target.value)}
-                placeholder="..."
-                className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 bg-gray-50"
-                autoComplete="off"
-              />
-            </div>
-
-            {error && (
-              <p className="text-sm text-red-500">{error}</p>
-            )}
-
-            <button
-              type="submit"
-              disabled={saving || !anthropicKey.trim()}
-              className="w-full py-2.5 rounded-xl bg-bubble-user text-cream font-medium text-sm hover:bg-gray-700 transition-colors disabled:opacity-40"
-            >
-              {saving ? 'Chiffrement...' : 'Commencer'}
-            </button>
-          </form>
-
-          <p className="text-xs text-gray-400 mt-4 text-center leading-relaxed">
-            Ta clé n'est jamais envoyée à nos serveurs. Elle sert uniquement à communiquer directement avec l'API Anthropic depuis ton appareil.
-          </p>
+          {form}
         </div>
       </div>
     </div>
