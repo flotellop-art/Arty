@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react'
+import { memo, useCallback, useRef } from 'react'
 import { AssistantAvatar } from './AssistantAvatar'
 import { MarkdownRenderer } from '../shared/MarkdownRenderer'
 
@@ -7,7 +7,7 @@ interface AssistantBubbleProps {
   onAction?: (action: string, params: Record<string, string>) => void
 }
 
-export function AssistantBubble({ content, onAction }: AssistantBubbleProps) {
+export const AssistantBubble = memo(function AssistantBubble({ content, onAction }: AssistantBubbleProps) {
   const bubbleRef = useRef<HTMLDivElement>(null)
 
   const handleClick = useCallback((e: React.MouseEvent) => {
@@ -50,4 +50,4 @@ export function AssistantBubble({ content, onAction }: AssistantBubbleProps) {
       </div>
     </div>
   )
-}
+})

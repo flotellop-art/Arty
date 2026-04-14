@@ -1,6 +1,7 @@
+import { memo } from 'react'
 import { AssistantAvatar } from './AssistantAvatar'
 
-export function TypingIndicator() {
+export const TypingIndicator = memo(function TypingIndicator() {
   return (
     <div className="flex gap-2.5 mb-3">
       <AssistantAvatar />
@@ -11,4 +12,4 @@ export function TypingIndicator() {
       </div>
     </div>
   )
-}
+})
