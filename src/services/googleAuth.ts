@@ -2,6 +2,7 @@ import type { GoogleTokens, GoogleUser } from '../types/google'
 import { safeJson } from '../utils/safeJson'
 import * as scoped from './scopedStorage'
 import { apiUrl } from './apiBase'
+import { encrypt, decrypt, isCryptoReady } from './crypto'
 
 const SCOPES = [
   'https://www.googleapis.com/auth/gmail.readonly',
@@ -14,6 +15,22 @@ const SCOPES = [
   'https://www.googleapis.com/auth/userinfo.email',
   'https://www.googleapis.com/auth/userinfo.profile',
 ].join(' ')
+
+// ─────────────────────────────────────────────────────────────
+// In-memory cache for encrypted tokens.
+// Rationale (see CLAUDE.md BUG 1): sync readers like `getStoredTokens()`
+// can't decrypt in a Promise. We cache decrypted tokens in memory so they
+// remain sync-accessible, while at rest they are stored AES-256 encrypted
+// under `google-tokens-enc`. Legacy plain JSON at `google-tokens` is
+// migrated automatically by `bootstrapGoogleStorage()` after crypto is ready.
+// ─────────────────────────────────────────────────────────────
+let memTokens: GoogleTokens | null = null
+let memUser: GoogleUser | null = null
+
+const TOKENS_PLAIN_KEY = 'google-tokens'
+const TOKENS_ENC_KEY = 'google-tokens-enc'
+const USER_PLAIN_KEY = 'google-user'
+const USER_ENC_KEY = 'google-user-enc'
 
 export function getRedirectUri(): string {
   if (import.meta.env.VITE_GOOGLE_REDIRECT_URI) return import.meta.env.VITE_GOOGLE_REDIRECT_URI
@@ -58,11 +75,36 @@ export async function exchangeCode(code: string): Promise<GoogleTokens> {
   return tokens
 }
 
-async function storeTokens(tokens: GoogleTokens): Promise<void> {
-  // Use setJSON (not secureSetJSON) — tokens must be readable synchronously
-  // by getStoredTokens() for API calls and proxy whitelist verification.
-  // Google tokens are short-lived (1h) and protected by device lock.
-  scoped.setJSON('google-tokens', tokens)
+export async function storeTokens(tokens: GoogleTokens): Promise<void> {
+  memTokens = tokens
+  if (isCryptoReady()) {
+    try {
+      const encrypted = await encrypt(JSON.stringify(tokens))
+      scoped.setItem(TOKENS_ENC_KEY, encrypted)
+      scoped.removeItem(TOKENS_PLAIN_KEY) // drop legacy plain copy
+      return
+    } catch {
+      // fall through to plain storage
+    }
+  }
+  // Crypto not ready yet — write plain JSON so sync reads still work.
+  // Will be re-encrypted at the next `bootstrapGoogleStorage()` call.
+  scoped.setJSON(TOKENS_PLAIN_KEY, tokens)
+}
+
+async function storeUser(user: GoogleUser): Promise<void> {
+  memUser = user
+  if (isCryptoReady()) {
+    try {
+      const encrypted = await encrypt(JSON.stringify(user))
+      scoped.setItem(USER_ENC_KEY, encrypted)
+      scoped.removeItem(USER_PLAIN_KEY)
+      return
+    } catch {
+      // fall through
+    }
+  }
+  scoped.setJSON(USER_PLAIN_KEY, user)
 }
 
 export async function refreshAccessToken(): Promise<GoogleTokens | null> {
@@ -123,21 +165,73 @@ export async function fetchGoogleUser(accessToken: string): Promise<GoogleUser> 
     picture: data.picture,
   }
 
-  scoped.setJSON('google-user', user)
+  await storeUser(user)
   return user
 }
 
+/**
+ * Synchronous read of the current Google tokens.
+ * Returns the in-memory cache if populated (after boot decryption), or the
+ * legacy plain-JSON copy for unmigrated data. Returns null if not connected.
+ */
 export function getStoredTokens(): GoogleTokens | null {
-  return scoped.getJSON<GoogleTokens>('google-tokens')
+  if (memTokens) return memTokens
+  const legacy = scoped.getJSON<GoogleTokens>(TOKENS_PLAIN_KEY)
+  if (legacy) memTokens = legacy
+  return legacy
 }
 
 export function getStoredUser(): GoogleUser | null {
-  return scoped.getJSON<GoogleUser>('google-user')
+  if (memUser) return memUser
+  const legacy = scoped.getJSON<GoogleUser>(USER_PLAIN_KEY)
+  if (legacy) memUser = legacy
+  return legacy
+}
+
+/**
+ * Decrypt Google tokens/user from localStorage into the in-memory cache, and
+ * migrate any legacy plain-JSON copies to encrypted storage. Must be called
+ * after `initCrypto()` succeeds — safe to call multiple times.
+ */
+export async function bootstrapGoogleStorage(): Promise<void> {
+  if (!isCryptoReady()) return
+
+  // Tokens
+  const encTokens = scoped.getItem(TOKENS_ENC_KEY)
+  if (encTokens) {
+    try {
+      memTokens = JSON.parse(await decrypt(encTokens)) as GoogleTokens
+    } catch { /* corrupt ciphertext — ignore */ }
+  } else {
+    const plain = scoped.getJSON<GoogleTokens>(TOKENS_PLAIN_KEY)
+    if (plain) {
+      memTokens = plain
+      await storeTokens(plain) // re-encrypt & drop plain
+    }
+  }
+
+  // User
+  const encUser = scoped.getItem(USER_ENC_KEY)
+  if (encUser) {
+    try {
+      memUser = JSON.parse(await decrypt(encUser)) as GoogleUser
+    } catch { /* ignore */ }
+  } else {
+    const plain = scoped.getJSON<GoogleUser>(USER_PLAIN_KEY)
+    if (plain) {
+      memUser = plain
+      await storeUser(plain)
+    }
+  }
 }
 
 export function logout(): void {
-  scoped.removeItem('google-tokens')
-  scoped.removeItem('google-user')
+  memTokens = null
+  memUser = null
+  scoped.removeItem(TOKENS_PLAIN_KEY)
+  scoped.removeItem(TOKENS_ENC_KEY)
+  scoped.removeItem(USER_PLAIN_KEY)
+  scoped.removeItem(USER_ENC_KEY)
 }
 
 export function isConnected(): boolean {

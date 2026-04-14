@@ -1,5 +1,5 @@
 import type { ToolHandler } from './types'
-import { callGoogleApi } from '../googleApiHelper'
+import { listEvents, createEvent, updateEvent, deleteEvent } from '../calendarClient'
 
 export const calendarToolDefinitions = [
   {
@@ -58,13 +58,15 @@ export function createCalendarHandlers(): Record<string, ToolHandler> {
     list_calendar: async (input) => {
       const days = (input.days as number) || 7
       try {
-        const data = await callGoogleApi('/api/calendar/action', { type: 'list', days })
-        if (data.events && data.events.length > 0) {
-          const summary = data.events.map((e: { title: string; start: string; end: string; location: string }, i: number) => {
-            const start = new Date(e.start).toLocaleString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+        const events = await listEvents(days)
+        if (events.length > 0) {
+          const summary = events.map((e, i) => {
+            const start = new Date(e.start).toLocaleString('fr-FR', {
+              weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+            })
             return `${i + 1}. ${start} — ${e.title}${e.location ? ` (${e.location})` : ''}`
           }).join('\n')
-          return { result: `${data.events.length} événements dans les ${days} prochains jours:\n${summary}` }
+          return { result: `${events.length} événements dans les ${days} prochains jours:\n${summary}` }
         }
         return { result: `Aucun événement dans les ${days} prochains jours.` }
       } catch (err) {
@@ -73,13 +75,14 @@ export function createCalendarHandlers(): Record<string, ToolHandler> {
     },
 
     create_calendar_event: async (input) => {
-      const { title, start, end, location, description } = input as { title: string; start: string; end?: string; location?: string; description?: string }
+      const { title, start, end, location, description } = input as {
+        title: string; start: string; end?: string; location?: string; description?: string
+      }
       try {
-        const data = await callGoogleApi('/api/calendar/action', { type: 'create', title, start, end, location, description })
-        if (data.id) {
-          return { result: `RDV "${data.title}" créé le ${new Date(data.start).toLocaleString('fr-FR')}.${data.link ? ` Lien: ${data.link}` : ''}` }
+        const data = await createEvent({ title, start, end, location, description })
+        return {
+          result: `RDV "${data.title}" créé le ${new Date(data.start).toLocaleString('fr-FR')}.${data.link ? ` Lien: ${data.link}` : ''}`,
         }
-        return { result: `Erreur: ${data.error || 'création échouée'}` }
       } catch (err) {
         return { result: `Erreur: ${err instanceof Error ? err.message : 'création RDV échouée.'}` }
       }
@@ -87,8 +90,13 @@ export function createCalendarHandlers(): Record<string, ToolHandler> {
 
     update_calendar_event: async (input) => {
       try {
-        const data = await callGoogleApi('/api/calendar/action', { type: 'update', eventId: input.event_id, title: input.title, start: input.start, end: input.end, location: input.location })
-        return { result: data.success ? 'RDV modifié.' : `Erreur: ${data.error}` }
+        const data = await updateEvent(input.event_id as string, {
+          title: input.title as string | undefined,
+          start: input.start as string | undefined,
+          end: input.end as string | undefined,
+          location: input.location as string | undefined,
+        })
+        return { result: data.success ? 'RDV modifié.' : 'Erreur: modification échouée.' }
       } catch (err) {
         return { result: `Erreur: ${err instanceof Error ? err.message : 'modification RDV échouée.'}` }
       }
@@ -96,8 +104,8 @@ export function createCalendarHandlers(): Record<string, ToolHandler> {
 
     delete_calendar_event: async (input) => {
       try {
-        const data = await callGoogleApi('/api/calendar/action', { type: 'delete', eventId: input.event_id })
-        return { result: data.success ? 'RDV supprimé.' : `Erreur: ${data.error}` }
+        const data = await deleteEvent(input.event_id as string)
+        return { result: data.success ? 'RDV supprimé.' : 'Erreur: suppression échouée.' }
       } catch (err) {
         return { result: `Erreur: ${err instanceof Error ? err.message : 'suppression RDV échouée.'}` }
       }

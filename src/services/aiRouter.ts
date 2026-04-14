@@ -26,23 +26,41 @@ const GEMINI_TRIGGERS = [
 ]
 
 const PRIVATE_DATA_TRIGGERS = [
-  // FR
+  // FR — mail / drive / clients / factures
   /mes\s+(mails|emails|e-mails|courriers|messages)/i,
   /mes\s+(fichiers|documents|drive|dossiers)/i,
   /mes\s+(clients|contacts|chantiers|projets)/i,
   /mes\s+(factures|devis|contrats)/i,
-  /mon\s+(agenda|calendrier|planning)/i,
   /emails?\s+(non\s+lus|reçus|envoyés|du jour|récents)/i,
   /boîte\s+(de\s+réception|mail)/i,
   /sur\s+drive|dans\s+drive|google\s+drive/i,
-  // EN
+  // FR — agenda / calendar (needs Calendar tools → Claude only)
+  /mon\s+(agenda|calendrier|planning|emploi\s+du\s+temps)/i,
+  /rendez[\s-]?vous|rdv\s+(du|de|avec|aujourd|demain|cette|la\s+semaine)/i,
+  /(cr[ée]er?|ajoute[rz]?|planifie[rz]?|d[ée]place[rz]?|annule[rz]?|supprime[rz]?)\s+(un\s+)?(rdv|rendez[\s-]?vous|r[ée]union|meeting|\s*[ée]v[ée]nement)/i,
+  /(prochaine?|prochain[ea]s?|cette)\s+(r[ée]union|meeting|journ[ée]e|semaine)\s+(dans\s+)?(mon\s+)?(agenda|calendrier)?/i,
+  /qu['’]?\s*(y\s+a[\s-]?t[\s-]?il|ai[\s-]?je)\s+(de\s+pr[ée]vu|dans\s+(mon\s+)?(agenda|calendrier))/i,
+  // FR — contacts (needs People API tools → Claude only)
+  /(mes\s+)?contacts?\s+(google|de\s+)/i,
+  /(trouve|cherche|recherche|ajoute|cr[ée]e)\s+(un\s+)?contact/i,
+  /num[ée]ro\s+(de|du|de\s+t[ée]l[ée]phone\s+de)|t[ée]l[ée]phone\s+(de|du)\s+/i,
+  /carnet\s+(d[’']?adresses?|de\s+contacts?)/i,
+  // EN — mail / drive / clients
   /my\s+(mail|mails|email|emails|e-mails|messages|inbox)/i,
   /my\s+(files|documents|docs|drive|folders)/i,
-  /my\s+(clients|contacts|projects|jobs)/i,
+  /my\s+(clients|projects|jobs)/i,
   /my\s+(invoices|quotes|contracts)/i,
-  /my\s+(calendar|agenda|schedule)/i,
   /unread\s+emails?|received\s+emails?|sent\s+emails?|recent\s+emails?|inbox/i,
   /in\s+drive|on\s+drive|google\s+drive/i,
+  // EN — agenda / calendar
+  /my\s+(calendar|agenda|schedule|appointments?)/i,
+  /(create|add|schedule|move|cancel|delete)\s+(a\s+|an\s+)?(meeting|event|appointment)/i,
+  /(upcoming|next|this\s+week['s]*)\s+(meetings?|events?|appointments?)/i,
+  /what('?s|\s+is)\s+(on\s+|in\s+)?(my\s+)?(calendar|agenda|schedule)/i,
+  // EN — contacts
+  /my\s+contacts?\b/i,
+  /(find|search|look\s+up|add|create)\s+(a\s+)?contact/i,
+  /phone\s+number\s+of|address\s+book/i,
 ]
 
 const REPORT_TRIGGERS = [

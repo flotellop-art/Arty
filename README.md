@@ -222,7 +222,7 @@ Cliquer **Deploy**. Le build prend environ 30 secondes.
 - PWA installable sur iOS et Android
 - Design mobile-first, responsive desktop
 
-### Phase 3 — Gmail + Google Drive
+### Phase 3 — Gmail + Google Drive + Google Calendar + Google Contacts
 - Connexion OAuth Google (bouton sur l'ecran d'accueil)
 - Indicateur "Google connecte" / "Non connecte"
 - Lecture des 10 derniers emails non lus
@@ -231,9 +231,13 @@ Cliquer **Deploy**. Le build prend environ 30 secondes.
 - Liste des fichiers Google Drive
 - Lecture du contenu des Google Docs et fichiers texte
 - Creation de nouveaux documents sur Drive
+- **Google Calendar** : lister / creer / modifier / supprimer des RDV (via outils Claude)
+- **Google Contacts** : rechercher et creer des contacts (People API)
+- Apercu agenda 7 jours directement sur l'ecran d'accueil (CalendarView)
 - Bandeaux d'action dans le chat ("Lecture emails...", "Acces Drive...")
 - System prompt enrichi avec contexte Gmail/Drive
-- Suggestions contextuelles ("Lire mes emails", "Chercher un fichier Drive")
+- Suggestions contextuelles ("Lire mes mails", "Agenda de la semaine", "Planifie un RDV demain")
+- Routage IA : toute requete agenda/contacts est forcee vers Claude (seul modele avec outils)
 
 ### Phase 4 — Navigation web automatisee (Playwright)
 - Publication WordPress sur facadespollet.fr (avec confirmation obligatoire)
@@ -248,39 +252,63 @@ Cliquer **Deploy**. Le build prend environ 30 secondes.
 
 ## Securite
 
-- Le `GOOGLE_CLIENT_SECRET` n'est JAMAIS expose cote client
-- Les echanges OAuth passent par des Vercel Serverless Functions (`/api/`)
-- Aucun email n'est envoye sans double confirmation explicite de l'utilisateur
-- Aucune publication WordPress sans confirmation
-- Aucune soumission de formulaire sans confirmation
-- Detection automatique de CAPTCHA et arret immediat
-- Les identifiants WordPress (`WP_USERNAME`, `WP_PASSWORD`) restent cote serveur
-- Les tokens Google sont stockes en localStorage (access_token + refresh_token)
-- L'access_token est rafraichi automatiquement quand il expire
+- **Aucune cle API payante cote client** — jamais de `VITE_*_API_KEY` pour Anthropic/Gemini/Mistral.
+  Les cles serveur restent dans Cloudflare Pages env (sans prefixe `VITE_`) et sont utilisees
+  uniquement par les proxys (`functions/api/ai/*.ts`).
+- **Whitelist emails `ALLOWED_EMAILS`** + verification du token Google via `checkAllowedUser()`
+  avant tout usage d'une cle serveur (les utilisateurs non whitelistes doivent passer leur propre
+  cle BYOK).
+- **Chiffrement AES-256-GCM au repos** (Web Crypto API) pour les tokens Google, les cles BYOK
+  et les conversations. Cle derivee via PBKDF2 100k iterations a partir de la cle Anthropic.
+  `initCrypto()` est appele au boot dans `App.tsx` + `useAuth`.
+- **Tokens Google** : chiffres dans localStorage sous `google-tokens-enc`, cache en memoire
+  apres decryption pour conserver la lecture synchrone (voir `bootstrapGoogleStorage()`).
+- **`getValidAccessToken()`** systematique pour le header `x-google-token` — rafraichit
+  automatiquement avant expiration (bug 23).
+- **CORS/CSRF** : origines whitelistees dans `functions/api/_middleware.ts`.
+- **XSS** : `rehype-sanitize` actif sur tout rendu markdown.
+- **Sourcemaps desactives** en production (`vite.config.ts` → `build.sourcemap = false`).
+- Aucun email envoye, aucun RDV cree, aucune publication WordPress sans confirmation explicite.
+- Detection automatique de CAPTCHA et arret immediat.
 
 ---
 
-## Architecture des API routes
+## Architecture des API routes (Cloudflare Pages Functions)
 
 ```
-api/
+functions/api/
+├── _lib/
+│   └── checkAllowedUser.ts  # Whitelist email + verif token Google (oauth2/v2/userinfo)
+├── _middleware.ts           # CORS/CSRF whitelist d'origines
+├── ai/
+│   ├── proxy.ts             # Proxy Anthropic (clé serveur ou BYOK)
+│   ├── gemini-proxy.ts      # Proxy Gemini
+│   └── mistral-proxy.ts     # Proxy Mistral EU
 ├── auth/
-│   ├── token.ts       # POST — echange code OAuth → access_token + refresh_token
-│   └── refresh.ts     # POST — rafraichit un access_token expire
-├── gmail/
-│   ├── messages.ts    # GET  — liste les 10 derniers emails non lus
-│   ├── read.ts        # GET  — lit le contenu complet d'un email
-│   └── send.ts        # POST — envoie un email
-├── drive/
-│   ├── files.ts       # GET  — liste les fichiers Drive
-│   ├── read.ts        # GET  — lit le contenu d'un fichier (Docs, texte)
-│   └── create.ts      # POST — cree un nouveau document
-├── wordpress/
-│   └── publish.ts     # POST — publier/brouillon un article WordPress
-├── browser/
-│   ├── search-price.ts # POST — recherche prix fournisseurs
-│   ├── fill-form.ts    # POST — remplissage formulaire
-│   └── screenshot.ts   # POST — capture d'ecran
-└── _lib/
-    └── browser.ts      # Utilitaire partage Playwright + Chromium
+│   ├── token.ts             # Echange code OAuth → access_token + refresh_token
+│   └── refresh.ts           # Rafraichit un access_token expire
+├── gmail/action.ts          # list / read / send / search / archive / delete / star / draft / label
+├── drive/action.ts          # list / read / create (+ OCR via GOOGLE_VISION_API_KEY)
+├── calendar/action.ts       # list / create / update / delete (Google Calendar v3)
+├── contacts/action.ts       # search / create / update (People API v1)
+├── browser/action.ts        # Playwright — recherche prix / screenshot / fill-form
+├── wordpress/publish.ts     # Publication WordPress (avec confirmation)
+├── computer/action.ts       # Outils Claude computer use
+└── memory/action.ts         # Memoire long-terme (D1)
+```
+
+## Clients TypeScript cote navigateur
+
+```
+src/services/
+├── anthropicClient.ts    # Streaming SSE Claude (via proxy CF)
+├── geminiClient.ts       # Gemini (web_search + google_maps)
+├── mistralClient.ts      # Mistral EU
+├── gmailClient.ts        # list / read / send → /api/gmail/action
+├── driveClient.ts        # list / read / create → /api/drive/action
+├── calendarClient.ts     # list / create / update / delete → /api/calendar/action
+├── contactsClient.ts     # search / create / update → /api/contacts/action
+├── googleAuth.ts         # OAuth + tokens chiffres (bootstrapGoogleStorage)
+├── crypto.ts             # AES-256-GCM + PBKDF2 (Web Crypto)
+└── aiRouter.ts           # Route agenda/contacts/private → Claude, web → Gemini, report → hybrid
 ```

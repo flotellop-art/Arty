@@ -45,3 +45,35 @@ export interface DriveFile {
 export interface DriveFileContent extends DriveFile {
   content: string
 }
+
+export interface CalendarEvent {
+  id: string
+  title: string
+  start: string
+  end: string
+  location: string
+  description: string
+}
+
+export interface CalendarEventDraft {
+  title: string
+  start: string
+  end?: string
+  location?: string
+  description?: string
+}
+
+export interface Contact {
+  resourceName: string
+  name: string
+  email: string
+  phone: string
+  company: string
+}
+
+export interface ContactDraft {
+  name: string
+  email?: string
+  phone?: string
+  company?: string
+}

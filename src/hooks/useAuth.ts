@@ -11,6 +11,7 @@ import {
 } from '../services/userSession'
 import { setActiveKeys, clearActiveKeys } from '../services/activeApiKey'
 import { initCrypto } from '../services/crypto'
+import { bootstrapGoogleStorage, logout as googleLogout } from '../services/googleAuth'
 import * as scoped from '../services/scopedStorage'
 
 type StoredKeys = { anthropic: string; gemini?: string; mistral?: string; openai?: string }
@@ -19,15 +20,18 @@ export function useAuth() {
   const [currentUser, setCurrentUser] = useState<UserSession | null>(getActiveSession)
   const [knownSessions, setKnownSessions] = useState(getKnownSessions)
 
-  // Restore API keys and init crypto on mount
+  // Restore API keys and init crypto on mount.
+  // Crypto must be initialized before any sensitive data is read/written —
+  // Google tokens, conversations, etc. depend on it. After init, we bootstrap
+  // encrypted-at-rest storage for Google tokens and migrate legacy plain data.
   useEffect(() => {
-    if (currentUser) {
-      const keys = scoped.getJSON<StoredKeys>('api-keys')
-      if (keys?.anthropic) {
-        setActiveKeys(keys.anthropic, keys.gemini, keys.mistral, keys.openai)
-        initCrypto(keys.anthropic).catch(() => {})
-      }
-    }
+    if (!currentUser) return
+    const keys = scoped.getJSON<StoredKeys>('api-keys')
+    if (!keys?.anthropic) return
+    setActiveKeys(keys.anthropic, keys.gemini, keys.mistral, keys.openai)
+    initCrypto(keys.anthropic)
+      .then(() => bootstrapGoogleStorage())
+      .catch(() => {})
   }, [currentUser])
 
   const login = useCallback(async (
@@ -60,8 +64,10 @@ export function useAuth() {
     // Migrate existing data if first login after update
     migrateExistingData(userId)
 
-    // Initialize encryption with the API key
+    // Initialize encryption with the API key, then migrate any legacy
+    // plain-JSON Google tokens into encrypted storage.
     await initCrypto(credentials.anthropicKey)
+    await bootstrapGoogleStorage()
 
     // Store API keys as plain JSON for sync reads (getJSON in useEffect)
     // DO NOT encrypt with migrateKey — it overwrites plain with encrypted,
@@ -88,10 +94,9 @@ export function useAuth() {
   }, [])
 
   const logout = useCallback(() => {
-    // Clear everything synchronously first
+    // Clear everything synchronously first (both plain + encrypted copies)
     clearActiveKeys()
-    scoped.removeItem('google-tokens')
-    scoped.removeItem('google-user')
+    googleLogout()
     clearActiveSession()
     setCurrentUser(null)
 
@@ -119,6 +124,7 @@ export function useAuth() {
     const keys = scoped.getJSON<StoredKeys>('api-keys')
     if (keys?.anthropic) {
       await initCrypto(keys.anthropic)
+      await bootstrapGoogleStorage()
       setActiveKeys(keys.anthropic, keys.gemini, keys.mistral, keys.openai)
     }
 

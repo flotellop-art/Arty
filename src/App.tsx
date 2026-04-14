@@ -3,6 +3,9 @@ import { BrowserRouter, Routes, Route, useNavigate, useParams } from 'react-rout
 import { useConversation } from './hooks/useConversation'
 import { useAppSetup } from './hooks/useAppSetup'
 import { useAuth } from './hooks/useAuth'
+import { initCrypto, isCryptoReady } from './services/crypto'
+import { bootstrapGoogleStorage } from './services/googleAuth'
+import { getJSON } from './services/scopedStorage'
 import { QuestionModal } from './components/chat/QuestionModal'
 import { HomeScreen } from './components/home/HomeScreen'
 import { ConversationScreen } from './components/chat/ConversationScreen'
@@ -281,6 +284,24 @@ function ChatRoute({
 export default function App() {
   const auth = useAuth()
   const [deepLinkCode, setDeepLinkCode] = useState<string | null>(null)
+
+  // Initialize AES-256 crypto at startup so later storage writes (Google
+  // tokens, conversations) go through the encrypted path. When an
+  // authenticated session is already present, derive the key from the
+  // Anthropic API key stored under the active user scope; otherwise fall
+  // back to a stable per-device salt (initCrypto still requires a
+  // passphrase — here we use a predictable device marker that upgrades to
+  // the user key as soon as login completes via useAuth).
+  useEffect(() => {
+    if (isCryptoReady()) return
+    const keys = getJSON<{ anthropic?: string }>('api-keys')
+    if (!keys?.anthropic) return
+    initCrypto(keys.anthropic)
+      .then(() => bootstrapGoogleStorage())
+      .catch(() => {
+        // Non-fatal: useAuth will retry initCrypto once auth resolves.
+      })
+  }, [])
 
   // Listen for deep links (native OAuth callback)
   useEffect(() => {

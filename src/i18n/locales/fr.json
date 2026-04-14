@@ -95,7 +95,18 @@
   },
   "home": {
     "title": "Comment puis-je t'aider ?",
-    "hintHelp": "Tape <0>/aide</0> pour voir tout ce que je sais faire"
+    "hintHelp": "Tape <0>/aide</0> pour voir tout ce que je sais faire",
+    "suggestions": {
+      "title": "Suggestions",
+      "unreadEmails": "Montre mes derniers mails non lus",
+      "calendarToday": "Qu'ai-je de prévu aujourd'hui ?",
+      "calendarWeek": "Montre mon agenda de la semaine",
+      "createEvent": "Planifie un RDV demain à 14h",
+      "findContact": "Cherche le contact de "
+    },
+    "calendar": {
+      "title": "Agenda des 7 prochains jours"
+    }
   },
   "chat": {
     "topBar": {

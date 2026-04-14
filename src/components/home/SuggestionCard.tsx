@@ -1,9 +1,11 @@
+import { memo } from 'react'
+
 interface SuggestionCardProps {
   text: string
   onClick: () => void
 }
 
-export function SuggestionCard({ text, onClick }: SuggestionCardProps) {
+function SuggestionCardInner({ text, onClick }: SuggestionCardProps) {
   return (
     <button
       onClick={onClick}
@@ -13,3 +15,5 @@ export function SuggestionCard({ text, onClick }: SuggestionCardProps) {
     </button>
   )
 }
+
+export const SuggestionCard = memo(SuggestionCardInner)

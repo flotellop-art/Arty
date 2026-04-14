@@ -1,5 +1,5 @@
 import type { ToolHandler } from './types'
-import { callGoogleApi } from '../googleApiHelper'
+import { searchContacts, createContact } from '../contactsClient'
 
 export const contactsToolDefinitions = [
   {
@@ -31,12 +31,12 @@ export function createContactsHandlers(): Record<string, ToolHandler> {
   return {
     search_contacts: async (input) => {
       try {
-        const data = await callGoogleApi('/api/contacts/action', { type: 'search', query: input.query })
-        if (data.contacts && data.contacts.length > 0) {
-          const list = data.contacts.map((c: { name: string; email: string; phone: string; company: string }, i: number) =>
+        const contacts = await searchContacts(input.query as string)
+        if (contacts.length > 0) {
+          const list = contacts.map((c, i) =>
             `${i + 1}. ${c.name}${c.phone ? ` — ${c.phone}` : ''}${c.email ? ` — ${c.email}` : ''}${c.company ? ` (${c.company})` : ''}`
           ).join('\n')
-          return { result: `${data.contacts.length} contacts:\n${list}` }
+          return { result: `${contacts.length} contacts:\n${list}` }
         }
         return { result: 'Aucun contact trouvé.' }
       } catch (err) {
@@ -45,9 +45,12 @@ export function createContactsHandlers(): Record<string, ToolHandler> {
     },
 
     create_contact: async (input) => {
+      const { name, email, phone, company } = input as {
+        name: string; email?: string; phone?: string; company?: string
+      }
       try {
-        const data = await callGoogleApi('/api/contacts/action', { type: 'create', ...input })
-        return { result: data.success ? `Contact "${input.name}" ajouté.` : `Erreur: ${data.error}` }
+        const data = await createContact({ name, email, phone, company })
+        return { result: data.success ? `Contact "${name}" ajouté.` : 'Erreur: création échouée.' }
       } catch (err) {
         return { result: `Erreur: ${err instanceof Error ? err.message : 'création contact échouée.'}` }
       }

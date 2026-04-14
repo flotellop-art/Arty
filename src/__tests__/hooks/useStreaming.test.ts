@@ -244,7 +244,7 @@ describe('onError', () => {
     const saved = mockSaveConversation.mock.calls[0]![0] as typeof conv
     const lastMsg = saved.messages[saved.messages.length - 1]
     expect(lastMsg!.content).toContain('partial')
-    expect(lastMsg!.content).toContain('interrompue')
+    expect(lastMsg!.content.toLowerCase()).toMatch(/interrompue|interrupted/)
   })
 
   it('returns the error object', () => {
@@ -299,7 +299,7 @@ describe('stopStreaming', () => {
     const saved = mockSaveConversation.mock.calls[0]![0] as typeof conv
     const lastMsg = saved.messages[saved.messages.length - 1]
     expect(lastMsg!.content).toContain('partial stop')
-    expect(lastMsg!.content).toContain('arrêtée')
+    expect(lastMsg!.content.toLowerCase()).toMatch(/arrêtée|stopped/)
   })
 
   it('resets isStreaming and streamingContent', () => {

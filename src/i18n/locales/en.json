@@ -95,7 +95,18 @@
   },
   "home": {
     "title": "How can I help you?",
-    "hintHelp": "Type <0>/help</0> to see everything I can do"
+    "hintHelp": "Type <0>/help</0> to see everything I can do",
+    "suggestions": {
+      "title": "Suggestions",
+      "unreadEmails": "Show my latest unread emails",
+      "calendarToday": "What do I have scheduled today?",
+      "calendarWeek": "Show my calendar for the week",
+      "createEvent": "Schedule a meeting tomorrow at 2pm",
+      "findContact": "Find the contact of "
+    },
+    "calendar": {
+      "title": "Next 7 days"
+    }
   },
   "chat": {
     "topBar": {
