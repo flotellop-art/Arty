@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import { cn } from '../../utils/cn'
 import { generateId } from '../../utils/generateId'
 import { safeJson } from '../../utils/safeJson'
