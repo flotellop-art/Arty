@@ -4,6 +4,7 @@ import { apiUrl } from './apiBase'
 import { getValidAccessToken } from './googleAuth'
 import { TOOLS } from './toolDefinitions'
 import { convertToolsToOpenAI } from './tools/openaiFormat'
+import i18n from '../i18n'
 
 const MISTRAL_SYSTEM = `Tu es Arty, un assistant IA personnel.
 Tu parles comme un pote compétent — direct, cash, pas de flatterie.
@@ -172,13 +173,13 @@ async function streamOnce(
   })
 
   if (!response.ok) {
-    const err = await response.text().catch(() => 'Unknown error')
+    const err = await response.text().catch(() => '')
     if (response.status === 401) {
-      throw new Error('Clé API Mistral invalide ou expirée')
+      throw new Error(i18n.t('errors.mistralKeyInvalid'))
     } else if (response.status === 429) {
-      throw new Error('Limite de requêtes Mistral atteinte — réessaie dans quelques secondes')
+      throw new Error(i18n.t('errors.mistralRateLimit'))
     } else {
-      throw new Error(`Erreur Mistral (${response.status}): ${err}`)
+      throw new Error(i18n.t('errors.mistralError', { status: response.status, message: err.slice(0, 100) }))
     }
   }
 

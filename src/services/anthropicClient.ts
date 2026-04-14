@@ -5,13 +5,39 @@ import { compressIfNeeded } from './conversationCompressor'
 import { getAnthropicKey } from './activeApiKey'
 import { apiUrl } from './apiBase'
 import { getValidAccessToken } from './googleAuth'
+import i18n from '../i18n'
 
-type ToolHandler = (name: string, input: Record<string, unknown>) => Promise<{ result: string; screenshot?: string; fileData?: { name: string; mimeType: string; base64: string } }>
+// ── Types ────────────────────────────────────────────────────────────────────
+
+type TextBlock = { type: 'text'; text: string }
+type ToolUseBlock = { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> }
+export type ContentBlock = TextBlock | ToolUseBlock
+
+type ToolResultContent = string | Array<Record<string, unknown>>
+type ToolResultBlock = { type: 'tool_result'; tool_use_id: string; content: ToolResultContent }
+
+// Flexible message shape used in the multi-turn API loop
+type ApiMessage = { role: string; content: string | ContentBlock[] | ToolResultBlock[] }
+
+type SSEParseResult = {
+  contentBlocks: ContentBlock[]
+  inputTokens: number
+  outputTokens: number
+  cacheReadTokens: number
+  cacheCreationTokens: number
+}
+
+export type ToolHandler = (
+  name: string,
+  input: Record<string, unknown>
+) => Promise<{ result: string; screenshot?: string; fileData?: { name: string; mimeType: string; base64: string } }>
 
 interface StreamOptions {
   systemPrompt?: string
   onToolCall?: ToolHandler
 }
+
+// ── Public API ───────────────────────────────────────────────────────────────
 
 export function streamMessage(
   messages: Array<{ role: string; content: string | Array<Record<string, unknown>> }>,
@@ -25,7 +51,7 @@ export function streamMessage(
 
   const apiKey = apiKeyOverride || getAnthropicKey()
   if (!apiKey) {
-    setTimeout(() => onError(new Error('Clé API manquante — configure ta clé dans les paramètres')), 0)
+    setTimeout(() => onError(new Error(i18n.t('errors.apiKeyMissing'))), 0)
     return controller
   }
 
@@ -33,46 +59,40 @@ export function streamMessage(
   return controller
 }
 
+// ── Error formatting ─────────────────────────────────────────────────────────
+
 function formatApiError(status: number, body: string): string {
-  // Try to extract a clean message from the JSON error body
   try {
-    const parsed = JSON.parse(body)
+    const parsed = JSON.parse(body) as { error?: { type?: string; message?: string } }
     const errorType = parsed?.error?.type
-    if (errorType === 'overloaded_error') {
-      return 'Le serveur IA est temporairement surchargé. Réessai automatique...'
-    }
-    if (errorType === 'rate_limit_error') {
-      return 'Trop de requêtes envoyées. Patiente quelques secondes...'
-    }
-    if (errorType === 'authentication_error') {
-      return 'Clé API invalide ou expirée. Vérifie ta configuration.'
-    }
+    if (errorType === 'overloaded_error') return i18n.t('errors.apiOverloaded')
+    if (errorType === 'rate_limit_error') return i18n.t('errors.apiRateLimit')
+    if (errorType === 'authentication_error') return i18n.t('errors.apiKeyInvalid')
     if (errorType === 'invalid_request_error') {
-      return `Requête invalide : ${parsed?.error?.message || 'vérifie le format du message.'}`
+      return i18n.t('errors.apiInvalidRequest', { message: parsed?.error?.message || '?' })
     }
-    if (parsed?.error?.message) {
-      return parsed.error.message
-    }
+    if (parsed?.error?.message) return parsed.error.message
   } catch {
-    // Not JSON, use status-based message
+    // Not JSON — fall through to status-based messages
   }
 
   switch (status) {
-    case 401: return 'Clé API invalide. Vérifie ta configuration.'
-    case 403: return 'Accès refusé à l\'API.'
-    case 429: return 'Trop de requêtes. Patiente quelques secondes...'
-    case 500: return 'Erreur serveur chez Anthropic. Réessaie dans un instant.'
-    case 529: return 'Le serveur IA est temporairement surchargé. Réessai automatique...'
-    default: return `Erreur de connexion (${status}). Vérifie ta connexion internet.`
+    case 401: return i18n.t('errors.apiKeyInvalid')
+    case 403: return i18n.t('errors.apiAccessDenied')
+    case 429: return i18n.t('errors.apiRateLimit')
+    case 500: return i18n.t('errors.apiServer')
+    case 529: return i18n.t('errors.apiOverloaded')
+    default: return i18n.t('errors.apiConnection', { status })
   }
 }
+
+// ── HTTP fetch with exponential-backoff retry ─────────────────────────────────
 
 async function fetchWithRetry(
   requestBody: string,
   apiKey: string | null,
   controller: AbortController
 ): Promise<Response> {
-  let response: Response | null = null
   const maxRetries = 3
   const headers: Record<string, string> = {
     'content-type': 'application/json',
@@ -82,11 +102,12 @@ async function fetchWithRetry(
   if (apiKey && apiKey !== 'server-provided') {
     headers['x-api-key'] = apiKey
   }
-  // Get a valid (refreshed if needed) Google token for whitelist verification
   const googleToken = await getValidAccessToken()
   if (googleToken) {
     headers['x-google-token'] = googleToken
   }
+
+  let response: Response | null = null
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     response = await fetch(apiUrl('/api/ai/proxy'), {
       method: 'POST',
@@ -96,13 +117,10 @@ async function fetchWithRetry(
     })
 
     const isRetryable = response.status === 429 || response.status === 529 || response.status >= 500
-    if (response.ok || !isRetryable || attempt === maxRetries) {
-      break
-    }
+    if (response.ok || !isRetryable || attempt === maxRetries) break
 
     // Exponential backoff: 2s, 4s, 8s
-    const delay = Math.pow(2, attempt + 1) * 1000
-    await new Promise((resolve) => setTimeout(resolve, delay))
+    await new Promise((resolve) => setTimeout(resolve, Math.pow(2, attempt + 1) * 1000))
   }
 
   if (!response!.ok) {
@@ -113,18 +131,16 @@ async function fetchWithRetry(
   return response!
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// ── SSE stream parser ─────────────────────────────────────────────────────────
+
 async function parseSSEStream(
   response: Response,
-  onToken: (text: string) => void,
-  _controller: AbortController
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-): Promise<{ contentBlocks: any[]; inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheCreationTokens: number }> {
+  onToken: (text: string) => void
+): Promise<SSEParseResult> {
   const reader = response.body!.getReader()
   const decoder = new TextDecoder()
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const contentBlocks: any[] = []
+  const contentBlocks: ContentBlock[] = []
   let currentToolInput = ''
   let currentBlockType = ''
   let currentTextContent = ''
@@ -149,60 +165,58 @@ async function parseSSEStream(
           eventType = line.slice(7).trim()
           continue
         }
-
         if (!line.startsWith('data: ')) continue
+
         const jsonStr = line.slice(6)
         if (jsonStr === '[DONE]') continue
 
-        let data
+        let data: Record<string, unknown>
         try {
-          data = JSON.parse(jsonStr)
+          data = JSON.parse(jsonStr) as Record<string, unknown>
         } catch {
           continue
         }
 
         switch (eventType) {
-          case 'message_start':
-            if (data.message?.usage) {
-              inputTokens = data.message.usage.input_tokens || 0
-              cacheReadTokens = data.message.usage.cache_read_input_tokens || 0
-              cacheCreationTokens = data.message.usage.cache_creation_input_tokens || 0
+          case 'message_start': {
+            const usage = (data.message as { usage?: { input_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number } } | undefined)?.usage
+            if (usage) {
+              inputTokens = usage.input_tokens || 0
+              cacheReadTokens = usage.cache_read_input_tokens || 0
+              cacheCreationTokens = usage.cache_creation_input_tokens || 0
             }
             break
-
-          case 'content_block_start':
-            if (data.content_block?.type === 'text') {
+          }
+          case 'content_block_start': {
+            const block = data.content_block as { type?: string; id?: string; name?: string } | undefined
+            if (block?.type === 'text') {
               currentBlockType = 'text'
               currentTextContent = ''
-            } else if (data.content_block?.type === 'tool_use') {
+            } else if (block?.type === 'tool_use') {
               currentBlockType = 'tool_use'
               currentToolInput = ''
-              contentBlocks.push({
-                type: 'tool_use',
-                id: data.content_block.id,
-                name: data.content_block.name,
-                input: {},
-              })
-            } else if (data.content_block?.type === 'server_tool_use') {
-              // Server-side tool (web_search, web_fetch, code_execution) — handled by Anthropic
-              currentBlockType = 'server_tool_use'
-            } else if (data.content_block?.type === 'web_search_tool_result' ||
-                       data.content_block?.type === 'web_fetch_tool_result' ||
-                       data.content_block?.type === 'code_execution_tool_result') {
-              // Server tool results — Claude uses them internally, skip in stream
-              currentBlockType = 'server_tool_result'
+              contentBlocks.push({ type: 'tool_use', id: block.id || '', name: block.name || '', input: {} })
+            } else if (
+              block?.type === 'server_tool_use' ||
+              block?.type === 'web_search_tool_result' ||
+              block?.type === 'web_fetch_tool_result' ||
+              block?.type === 'code_execution_tool_result'
+            ) {
+              // Server-side tools — handled by Anthropic, skip
+              currentBlockType = 'server_tool'
             }
             break
-
-          case 'content_block_delta':
-            if (data.delta?.type === 'text_delta' && data.delta.text) {
-              onToken(data.delta.text)
-              currentTextContent += data.delta.text
-            } else if (data.delta?.type === 'input_json_delta' && data.delta.partial_json) {
-              currentToolInput += data.delta.partial_json
+          }
+          case 'content_block_delta': {
+            const delta = data.delta as { type?: string; text?: string; partial_json?: string } | undefined
+            if (delta?.type === 'text_delta' && delta.text) {
+              onToken(delta.text)
+              currentTextContent += delta.text
+            } else if (delta?.type === 'input_json_delta' && delta.partial_json) {
+              currentToolInput += delta.partial_json
             }
             break
-
+          }
           case 'content_block_stop':
             if (currentBlockType === 'text' && currentTextContent) {
               contentBlocks.push({ type: 'text', text: currentTextContent })
@@ -210,7 +224,7 @@ async function parseSSEStream(
               const lastTool = contentBlocks[contentBlocks.length - 1]
               if (lastTool?.type === 'tool_use') {
                 try {
-                  lastTool.input = JSON.parse(currentToolInput)
+                  lastTool.input = JSON.parse(currentToolInput) as Record<string, unknown>
                 } catch {
                   lastTool.input = {}
                 }
@@ -219,14 +233,15 @@ async function parseSSEStream(
             currentBlockType = ''
             break
 
-          case 'message_delta':
-            if (data.usage) {
-              outputTokens = data.usage.output_tokens || 0
-            }
+          case 'message_delta': {
+            const usage = (data as { usage?: { output_tokens?: number } }).usage
+            if (usage) outputTokens = usage.output_tokens || 0
             break
-
-          case 'error':
-            throw new Error(data.error?.message || 'Erreur streaming')
+          }
+          case 'error': {
+            const err = (data as { error?: { message?: string } }).error
+            throw new Error(err?.message || 'Streaming error')
+          }
         }
       }
     }
@@ -236,6 +251,45 @@ async function parseSSEStream(
 
   return { contentBlocks, inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens }
 }
+
+// ── Tool execution ────────────────────────────────────────────────────────────
+
+async function executeToolCalls(
+  contentBlocks: ContentBlock[],
+  onToolCall: ToolHandler
+): Promise<ToolResultBlock[]> {
+  const toolResults: ToolResultBlock[] = []
+
+  for (const block of contentBlocks) {
+    if (block.type !== 'tool_use') continue
+
+    const toolResult = await onToolCall(block.name, block.input)
+
+    if (toolResult.fileData) {
+      // Tool returned a file — send it as a native document/image block
+      const fileBlocks: Array<Record<string, unknown>> = [{ type: 'text', text: toolResult.result }]
+      const mime = toolResult.fileData.mimeType
+      if (mime === 'application/pdf') {
+        fileBlocks.push({
+          type: 'document',
+          source: { type: 'base64', media_type: 'application/pdf', data: toolResult.fileData.base64 },
+        })
+      } else if (mime?.startsWith('image/')) {
+        fileBlocks.push({
+          type: 'image',
+          source: { type: 'base64', media_type: mime, data: toolResult.fileData.base64 },
+        })
+      }
+      toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: fileBlocks })
+    } else {
+      toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: toolResult.result })
+    }
+  }
+
+  return toolResults
+}
+
+// ── Main streaming loop with tool use ────────────────────────────────────────
 
 async function runWithTools(
   apiKey: string,
@@ -247,31 +301,22 @@ async function runWithTools(
   controller: AbortController
 ) {
   try {
-    // Compress old messages if conversation is too long
     const compressed = await compressIfNeeded(
       originalMessages.map((m) => ({ role: m.role, content: m.content })),
       options?.systemPrompt,
       apiKey
     )
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const apiMessages: any[] = compressed
+    const apiMessages: ApiMessage[] = compressed as ApiMessage[]
+    const systemText = options?.systemPrompt || SYSTEM_PROMPT
+    const systemBlocks = [{ type: 'text', text: systemText, cache_control: { type: 'ephemeral' } }]
+    // Add prompt-caching hint to last tool definition
+    const cachedTools = TOOLS.map((t, i) =>
+      i === TOOLS.length - 1 ? { ...t, cache_control: { type: 'ephemeral' } } : t
+    )
 
     let maxIterations = 200
-    while (maxIterations > 0) {
-      maxIterations--
-
-      // Build system prompt with cache_control for prompt caching
-      const systemText = options?.systemPrompt || SYSTEM_PROMPT
-      const systemBlocks = [
-        { type: 'text', text: systemText, cache_control: { type: 'ephemeral' } },
-      ]
-
-      // Add cache_control to last tool for tool definitions caching
-      const cachedTools = TOOLS.map((t, i) =>
-        i === TOOLS.length - 1 ? { ...t, cache_control: { type: 'ephemeral' } } : t
-      )
-
+    while (maxIterations-- > 0) {
       const requestBody = JSON.stringify({
         model: 'claude-sonnet-4-6',
         max_tokens: 65536,
@@ -283,62 +328,16 @@ async function runWithTools(
       })
 
       const response = await fetchWithRetry(requestBody, apiKey, controller)
-      const { contentBlocks, inputTokens, outputTokens } = await parseSSEStream(
-        response,
-        onToken,
-        controller
-      )
-
-      // Track token usage
+      const { contentBlocks, inputTokens, outputTokens } = await parseSSEStream(response, onToken)
       addUsage(inputTokens, outputTokens)
 
       const hasToolUse = contentBlocks.some((b) => b.type === 'tool_use')
-
       if (!hasToolUse || !options?.onToolCall) {
         onDone()
         return
       }
 
-      // Execute tool calls
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const toolResults: any[] = []
-      for (const block of contentBlocks) {
-        if (block.type === 'tool_use') {
-          const toolResult = await options.onToolCall(block.name, block.input)
-
-          // If tool returned a file (e.g. PDF from Drive), send it as a document block
-          // so Claude can read the file natively
-          if (toolResult.fileData) {
-            const contentBlocks: Array<Record<string, unknown>> = [
-              { type: 'text', text: toolResult.result },
-            ]
-            const mime = toolResult.fileData.mimeType
-            if (mime === 'application/pdf') {
-              contentBlocks.push({
-                type: 'document',
-                source: { type: 'base64', media_type: 'application/pdf', data: toolResult.fileData.base64 },
-              })
-            } else if (mime?.startsWith('image/')) {
-              contentBlocks.push({
-                type: 'image',
-                source: { type: 'base64', media_type: mime, data: toolResult.fileData.base64 },
-              })
-            }
-            toolResults.push({
-              type: 'tool_result',
-              tool_use_id: block.id,
-              content: contentBlocks,
-            })
-          } else {
-            toolResults.push({
-              type: 'tool_result',
-              tool_use_id: block.id,
-              content: toolResult.result,
-            })
-          }
-        }
-      }
-
+      const toolResults = await executeToolCalls(contentBlocks, options.onToolCall)
       apiMessages.push({ role: 'assistant', content: contentBlocks })
       apiMessages.push({ role: 'user', content: toolResults })
     }

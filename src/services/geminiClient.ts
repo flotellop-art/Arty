@@ -1,6 +1,7 @@
 import { getGeminiKey } from './activeApiKey'
 import { apiUrl } from './apiBase'
 import { getValidAccessToken } from './googleAuth'
+import i18n from '../i18n'
 
 // Gemini API client with streaming
 
@@ -88,8 +89,7 @@ async function runGeminiStream(
     })
 
     if (!response.ok) {
-      const errText = await response.text()
-      throw new Error(`Gemini API error ${response.status}: ${errText.slice(0, 200)}`)
+      throw new Error(i18n.t('errors.geminiError', { status: response.status }))
     }
 
     const reader = response.body?.getReader()

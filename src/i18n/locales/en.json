@@ -138,6 +138,22 @@
       "auto": "Auto"
     }
   },
+  "errors": {
+    "apiKeyMissing": "API key missing — configure your key in settings",
+    "apiKeyInvalid": "Invalid or expired API key. Check your configuration.",
+    "apiAccessDenied": "API access denied.",
+    "apiRateLimit": "Too many requests. Wait a few seconds...",
+    "apiOverloaded": "The AI server is temporarily overloaded. Auto-retry...",
+    "apiServer": "Anthropic server error. Try again in a moment.",
+    "apiInvalidRequest": "Invalid request: {{message}}",
+    "apiConnection": "Connection error ({{status}}). Check your internet connection.",
+    "geminiError": "Gemini error ({{status}}). Check your key or connection.",
+    "mistralKeyInvalid": "Invalid or expired Mistral API key.",
+    "mistralRateLimit": "Mistral request limit reached — retry in a few seconds.",
+    "mistralError": "Mistral error ({{status}}): {{message}}",
+    "streamInterrupted": "Response interrupted",
+    "streamStopped": "Response stopped"
+  },
   "sidebar": {
     "newConversation": "New conversation",
     "newConversationEU": "Secure EU conversation",

@@ -138,6 +138,22 @@
       "auto": "Auto"
     }
   },
+  "errors": {
+    "apiKeyMissing": "Clé API manquante — configure ta clé dans les paramètres",
+    "apiKeyInvalid": "Clé API invalide ou expirée. Vérifie ta configuration.",
+    "apiAccessDenied": "Accès refusé à l'API.",
+    "apiRateLimit": "Trop de requêtes. Patiente quelques secondes...",
+    "apiOverloaded": "Le serveur IA est temporairement surchargé. Réessai automatique...",
+    "apiServer": "Erreur serveur chez Anthropic. Réessaie dans un instant.",
+    "apiInvalidRequest": "Requête invalide : {{message}}",
+    "apiConnection": "Erreur de connexion ({{status}}). Vérifie ta connexion internet.",
+    "geminiError": "Erreur Gemini ({{status}}). Vérifie ta clé ou ta connexion.",
+    "mistralKeyInvalid": "Clé API Mistral invalide ou expirée.",
+    "mistralRateLimit": "Limite de requêtes Mistral atteinte — réessaie dans quelques secondes.",
+    "mistralError": "Erreur Mistral ({{status}}): {{message}}",
+    "streamInterrupted": "Réponse interrompue",
+    "streamStopped": "Réponse arrêtée"
+  },
   "sidebar": {
     "newConversation": "Nouvelle conversation",
     "newConversationEU": "Conversation EU sécurisée",

@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { generateId } from '../utils/generateId'
 import * as storage from '../services/storage'
+import i18n from '../i18n'
 
 export function useStreaming(deps: {
   refreshConversations: () => void
@@ -131,7 +132,7 @@ export function useStreaming(deps: {
   const onError = useCallback((err: Error, targetId: string) => {
     const content = streamingRef.current?.accumulated
     if (content) {
-      finalize(targetId, content + '\n\n⚠️ *Réponse interrompue*')
+      finalize(targetId, content + '\n\n⚠️ *' + i18n.t('errors.streamInterrupted') + '*')
     }
     if (activeIdRef.current === targetId) {
       setIsStreaming(false)
@@ -149,7 +150,7 @@ export function useStreaming(deps: {
     const content = streamingRef.current?.accumulated
     const targetId = streamingRef.current?.targetId
     if (content && targetId) {
-      finalize(targetId, content + '\n\n⚠️ *Réponse arrêtée*')
+      finalize(targetId, content + '\n\n⚠️ *' + i18n.t('errors.streamStopped') + '*')
     }
     if (abortRef.current) {
       abortRef.current.abort()
