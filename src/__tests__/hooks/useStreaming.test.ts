@@ -140,7 +140,7 @@ describe('savePartial', () => {
     act(() => { result.current.savePartial() })
 
     expect(mockSaveConversation).toHaveBeenCalled()
-    const saved = mockSaveConversation.mock.calls[0][0] as typeof conv
+    const saved = mockSaveConversation.mock.calls[0]![0] as typeof conv
     const msg = saved.messages.find(m => m.id === 'streaming')
     expect(msg?.content).toBe('partial text')
   })
@@ -168,10 +168,10 @@ describe('savePartial', () => {
     act(() => { result.current.onToken('new content', 'conv-1') })
     act(() => { result.current.savePartial() })
 
-    const saved = mockSaveConversation.mock.calls[0][0] as typeof conv
+    const saved = mockSaveConversation.mock.calls[0]![0] as typeof conv
     const streamingMsgs = saved.messages.filter(m => m.id === 'streaming')
     expect(streamingMsgs).toHaveLength(1)
-    expect(streamingMsgs[0].content).toBe('new content')
+    expect(streamingMsgs[0]!.content).toBe('new content')
   })
 
   it('triggers automatically every 3 seconds via interval', () => {
@@ -208,7 +208,7 @@ describe('onDone', () => {
     expect(result.current.streamingRef.current).toBeNull()
     expect(refreshConversations).toHaveBeenCalled()
 
-    const saved = mockSaveConversation.mock.calls[0][0] as typeof conv
+    const saved = mockSaveConversation.mock.calls[0]![0] as typeof conv
     expect(saved.messages.some(m => m.id === 'streaming')).toBe(false)
     expect(saved.messages.some(m => m.content === 'final content')).toBe(true)
   })
@@ -241,10 +241,10 @@ describe('onError', () => {
     act(() => { result.current.onError(err, 'conv-1') })
 
     expect(result.current.isStreaming).toBe(false)
-    const saved = mockSaveConversation.mock.calls[0][0] as typeof conv
+    const saved = mockSaveConversation.mock.calls[0]![0] as typeof conv
     const lastMsg = saved.messages[saved.messages.length - 1]
-    expect(lastMsg.content).toContain('partial')
-    expect(lastMsg.content).toContain('interrompue')
+    expect(lastMsg!.content).toContain('partial')
+    expect(lastMsg!.content).toContain('interrompue')
   })
 
   it('returns the error object', () => {
@@ -296,10 +296,10 @@ describe('stopStreaming', () => {
     act(() => { result.current.onToken('partial stop', 'conv-1') })
     act(() => { result.current.stopStreaming() })
 
-    const saved = mockSaveConversation.mock.calls[0][0] as typeof conv
+    const saved = mockSaveConversation.mock.calls[0]![0] as typeof conv
     const lastMsg = saved.messages[saved.messages.length - 1]
-    expect(lastMsg.content).toContain('partial stop')
-    expect(lastMsg.content).toContain('arrêtée')
+    expect(lastMsg!.content).toContain('partial stop')
+    expect(lastMsg!.content).toContain('arrêtée')
   })
 
   it('resets isStreaming and streamingContent', () => {
