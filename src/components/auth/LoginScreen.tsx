@@ -17,6 +17,7 @@ interface LoginScreenProps {
     anthropicKey: string
     geminiKey?: string
     mistralKey?: string
+    openaiKey?: string
     identifier: string
   }) => Promise<UserSession>
   knownSessions: UserSession[]
@@ -37,7 +38,7 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
     avatar?: string
   } | null>(null)
 
-  const handleApiKeyLogin = useCallback(async (anthropicKey: string, geminiKey?: string, mistralKey?: string) => {
+  const handleApiKeyLogin = useCallback(async (anthropicKey: string, geminiKey?: string, mistralKey?: string, openaiKey?: string) => {
     setLoading(true)
     try {
       // If we have a pending Google/Email auth, complete it with the API key
@@ -49,6 +50,7 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
           anthropicKey,
           geminiKey,
           mistralKey,
+          openaiKey,
           identifier: pendingAuth.email,
         })
         setPendingAuth(null)
@@ -60,6 +62,7 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
           anthropicKey,
           geminiKey,
           mistralKey,
+          openaiKey,
           identifier: anthropicKey,
         })
       }
@@ -96,7 +99,7 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
       const { generateUserId, setActiveSession } = await import('../../services/userSession')
       const userId = await generateUserId('email', email)
       setActiveSession({ userId, authMethod: 'email', displayName: email, email, createdAt: Date.now() })
-      const existingKeys = scoped.getJSON<{ anthropic: string; gemini?: string; mistral?: string }>('api-keys')
+      const existingKeys = scoped.getJSON<{ anthropic: string; gemini?: string; mistral?: string; openai?: string }>('api-keys')
 
       if (existingKeys && existingKeys.anthropic) {
         // Already has keys — login directly
@@ -106,6 +109,7 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
           anthropicKey: existingKeys.anthropic,
           geminiKey: existingKeys.gemini || undefined,
           mistralKey: existingKeys.mistral || undefined,
+          openaiKey: existingKeys.openai || undefined,
           identifier: email,
         })
       } else {

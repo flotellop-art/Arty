@@ -6,11 +6,18 @@
 let _anthropicKey: string | null = null
 let _geminiKey: string | null = null
 let _mistralKey: string | null = null
+let _openaiKey: string | null = null
 
-export function setActiveKeys(anthropic: string, gemini?: string, mistral?: string): void {
+export function setActiveKeys(
+  anthropic: string,
+  gemini?: string,
+  mistral?: string,
+  openai?: string
+): void {
   _anthropicKey = anthropic
   _geminiKey = gemini || null
   _mistralKey = mistral || null
+  _openaiKey = openai || null
 }
 
 export function getAnthropicKey(): string | null {
@@ -25,10 +32,15 @@ export function getMistralKey(): string | null {
   return _mistralKey || null
 }
 
+export function getOpenAIKey(): string | null {
+  return _openaiKey || null
+}
+
 export function clearActiveKeys(): void {
   _anthropicKey = null
   _geminiKey = null
   _mistralKey = null
+  _openaiKey = null
 }
 
 export function hasAnthropicKey(): boolean {
@@ -37,4 +49,8 @@ export function hasAnthropicKey(): boolean {
 
 export function hasMistralKey(): boolean {
   return !!getMistralKey()
+}
+
+export function hasOpenAIKey(): boolean {
+  return !!getOpenAIKey()
 }

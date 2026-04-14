@@ -28,6 +28,8 @@
       "geminiHint": "(optionnel)",
       "mistralLabel": "Clé API Mistral",
       "mistralHint": "(optionnel — données EU)",
+      "openaiLabel": "Clé API OpenAI",
+      "openaiHint": "(optionnel — ChatGPT)",
       "connecting": "Connexion...",
       "submit": "Commencer",
       "errors": {
@@ -151,6 +153,10 @@
     "mistralKeyInvalid": "Clé API Mistral invalide ou expirée.",
     "mistralRateLimit": "Limite de requêtes Mistral atteinte — réessaie dans quelques secondes.",
     "mistralError": "Erreur Mistral ({{status}}): {{message}}",
+    "openaiKeyInvalid": "Clé OpenAI invalide",
+    "openaiRateLimit": "Quota dépassé",
+    "openaiServer": "Erreur OpenAI",
+    "openaiError": "Erreur OpenAI ({{status}})",
     "streamInterrupted": "Réponse interrompue",
     "streamStopped": "Réponse arrêtée"
   },

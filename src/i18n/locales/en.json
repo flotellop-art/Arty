@@ -28,6 +28,8 @@
       "geminiHint": "(optional)",
       "mistralLabel": "Mistral API key",
       "mistralHint": "(optional — EU data)",
+      "openaiLabel": "OpenAI API key",
+      "openaiHint": "(optional — ChatGPT)",
       "connecting": "Signing in...",
       "submit": "Get started",
       "errors": {
@@ -151,6 +153,10 @@
     "mistralKeyInvalid": "Invalid or expired Mistral API key.",
     "mistralRateLimit": "Mistral request limit reached — retry in a few seconds.",
     "mistralError": "Mistral error ({{status}}): {{message}}",
+    "openaiKeyInvalid": "Invalid OpenAI key",
+    "openaiRateLimit": "Quota exceeded",
+    "openaiServer": "OpenAI error",
+    "openaiError": "OpenAI error ({{status}})",
     "streamInterrupted": "Response interrupted",
     "streamStopped": "Response stopped"
   },

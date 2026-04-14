@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { getStyle, setStyle as saveStyle, STYLE_OPTIONS, type ResponseStyle } from '../../services/responseStyles'
 import { getSelectedModel, setSelectedModel, MODEL_OPTIONS, type AIModel } from '../../services/modelSelector'
 import { SettingsGuide } from '../shared/SettingsGuide'
+import { SettingsModal } from '../settings/SettingsModal'
 
 interface TopBarProps {
   onMenuToggle: () => void
@@ -17,6 +18,7 @@ export function TopBar({ onMenuToggle, onHistoryToggle }: TopBarProps) {
   const [currentModel, setCurrentModel] = useState<AIModel>(getSelectedModel)
   const [openMenu, setOpenMenu] = useState<OpenMenu>(null)
   const [showGuide, setShowGuide] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
 
   // Labels traduisibles pour les tons / modèles affichés
@@ -153,22 +155,42 @@ export function TopBar({ onMenuToggle, onHistoryToggle }: TopBarProps) {
           </div>
         </div>
 
-        {/* History */}
-        <button
-          onClick={onHistoryToggle}
-          className="p-2 -mr-2 rounded-lg hover:bg-black/5 transition-colors"
-          aria-label={t('common.history')}
-        >
-          <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-            <rect x="3" y="2" width="14" height="16" rx="2" stroke="#1E1A14" strokeWidth="1.5" fill="none" />
-            <line x1="6" y1="6" x2="14" y2="6" stroke="#1E1A14" strokeWidth="1.5" strokeLinecap="round" />
-            <line x1="6" y1="10" x2="14" y2="10" stroke="#1E1A14" strokeWidth="1.5" strokeLinecap="round" />
-            <line x1="6" y1="14" x2="10" y2="14" stroke="#1E1A14" strokeWidth="1.5" strokeLinecap="round" />
-          </svg>
-        </button>
+        <div className="flex items-center gap-1">
+          {/* Settings (gear) */}
+          <button
+            onClick={() => setShowSettings(true)}
+            className="p-2 rounded-lg hover:bg-black/5 transition-colors"
+            aria-label="Paramètres"
+          >
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+              <circle cx="10" cy="10" r="2.5" stroke="#1E1A14" strokeWidth="1.5" />
+              <path
+                d="M10 1.5V4M10 16V18.5M18.5 10H16M4 10H1.5M16.01 4L14.24 5.76M5.76 14.24L4 16M16.01 16L14.24 14.24M5.76 5.76L4 4"
+                stroke="#1E1A14"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+              />
+            </svg>
+          </button>
+
+          {/* History */}
+          <button
+            onClick={onHistoryToggle}
+            className="p-2 -mr-2 rounded-lg hover:bg-black/5 transition-colors"
+            aria-label={t('common.history')}
+          >
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+              <rect x="3" y="2" width="14" height="16" rx="2" stroke="#1E1A14" strokeWidth="1.5" fill="none" />
+              <line x1="6" y1="6" x2="14" y2="6" stroke="#1E1A14" strokeWidth="1.5" strokeLinecap="round" />
+              <line x1="6" y1="10" x2="14" y2="10" stroke="#1E1A14" strokeWidth="1.5" strokeLinecap="round" />
+              <line x1="6" y1="14" x2="10" y2="14" stroke="#1E1A14" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+          </button>
+        </div>
       </div>
 
       {showGuide && <SettingsGuide onClose={() => setShowGuide(false)} />}
+      <SettingsModal open={showSettings} onClose={() => setShowSettings(false)} />
     </header>
   )
 }

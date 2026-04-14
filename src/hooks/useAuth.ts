@@ -13,6 +13,8 @@ import { setActiveKeys, clearActiveKeys } from '../services/activeApiKey'
 import { initCrypto } from '../services/crypto'
 import * as scoped from '../services/scopedStorage'
 
+type StoredKeys = { anthropic: string; gemini?: string; mistral?: string; openai?: string }
+
 export function useAuth() {
   const [currentUser, setCurrentUser] = useState<UserSession | null>(getActiveSession)
   const [knownSessions, setKnownSessions] = useState(getKnownSessions)
@@ -20,9 +22,9 @@ export function useAuth() {
   // Restore API keys and init crypto on mount
   useEffect(() => {
     if (currentUser) {
-      const keys = scoped.getJSON<{ anthropic: string; gemini?: string; mistral?: string }>('api-keys')
+      const keys = scoped.getJSON<StoredKeys>('api-keys')
       if (keys?.anthropic) {
-        setActiveKeys(keys.anthropic, keys.gemini, keys.mistral)
+        setActiveKeys(keys.anthropic, keys.gemini, keys.mistral, keys.openai)
         initCrypto(keys.anthropic).catch(() => {})
       }
     }
@@ -37,6 +39,7 @@ export function useAuth() {
       anthropicKey: string
       geminiKey?: string
       mistralKey?: string
+      openaiKey?: string
       identifier: string
     }
   ) => {
@@ -67,10 +70,16 @@ export function useAuth() {
       anthropic: credentials.anthropicKey,
       gemini: credentials.geminiKey,
       mistral: credentials.mistralKey,
+      openai: credentials.openaiKey,
     })
 
     // Set active keys in memory for AI clients
-    setActiveKeys(credentials.anthropicKey, credentials.geminiKey, credentials.mistralKey)
+    setActiveKeys(
+      credentials.anthropicKey,
+      credentials.geminiKey,
+      credentials.mistralKey,
+      credentials.openaiKey
+    )
 
     setCurrentUser(session)
     setKnownSessions(getKnownSessions())
@@ -107,10 +116,10 @@ export function useAuth() {
     setActiveSession(session)
 
     // Restore new user's API keys
-    const keys = scoped.getJSON<{ anthropic: string; gemini?: string; mistral?: string }>('api-keys')
+    const keys = scoped.getJSON<StoredKeys>('api-keys')
     if (keys?.anthropic) {
       await initCrypto(keys.anthropic)
-      setActiveKeys(keys.anthropic, keys.gemini, keys.mistral)
+      setActiveKeys(keys.anthropic, keys.gemini, keys.mistral, keys.openai)
     }
 
     setCurrentUser(session)

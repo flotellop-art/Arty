@@ -1,8 +1,10 @@
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { Conversation } from '../../types'
 import { StarIcon } from '../shared/StarIcon'
 import { TokenUsageBar } from '../shared/TokenUsageBar'
 import { LanguageSelector } from '../shared/LanguageSelector'
+import { SettingsModal } from '../settings/SettingsModal'
 
 interface SidebarProps {
   isOpen: boolean
@@ -45,6 +47,7 @@ export function Sidebar({
 }: SidebarProps) {
   const { t } = useTranslation()
   const timeAgo = useTimeAgo()
+  const [showSettings, setShowSettings] = useState(false)
   return (
     <>
       {/* Backdrop */}
@@ -149,6 +152,23 @@ export function Sidebar({
         {/* Language selector */}
         <LanguageSelector />
 
+        {/* Settings */}
+        <button
+          onClick={() => setShowSettings(true)}
+          className="mx-3 mb-2 flex items-center gap-2 px-3 py-2 rounded-xl text-xs text-gray-600 hover:bg-gray-50 transition-colors"
+        >
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <circle cx="7" cy="7" r="1.75" stroke="currentColor" strokeWidth="1.2" />
+            <path
+              d="M7 1V2.5M7 11.5V13M13 7H11.5M2.5 7H1M11.24 2.76L10.18 3.82M3.82 10.18L2.76 11.24M11.24 11.24L10.18 10.18M3.82 3.82L2.76 2.76"
+              stroke="currentColor"
+              strokeWidth="1.2"
+              strokeLinecap="round"
+            />
+          </svg>
+          Paramètres — Clés API
+        </button>
+
         {/* User info + logout */}
         {userName && (
           <div className="px-5 py-3 border-t border-gray-100 flex items-center justify-between">
@@ -164,6 +184,8 @@ export function Sidebar({
           </div>
         )}
       </aside>
+
+      <SettingsModal open={showSettings} onClose={() => setShowSettings(false)} />
     </>
   )
 }
