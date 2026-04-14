@@ -179,7 +179,7 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
           ref={fileInputRef}
           type="file"
           onChange={handleFileSelect}
-          accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.txt,.csv,.doc,.docx,.xls,.xlsx"
+          accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.txt,.csv,.md,.json,.xml,.doc,.docx,.xls,.xlsx"
           multiple
           className="hidden"
         />
