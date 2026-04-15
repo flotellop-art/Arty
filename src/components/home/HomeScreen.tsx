@@ -1,7 +1,6 @@
-import { memo, useCallback } from 'react'
+import { memo } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
 import { AnimatedStar } from './AnimatedStar'
-import { SuggestionCard } from './SuggestionCard'
 import { TopBar } from '../layout/TopBar'
 import { InputBar } from '../layout/InputBar'
 import { GoogleConnectButton } from '../google/GoogleConnectButton'
@@ -25,11 +24,6 @@ interface HomeScreenProps {
 function HomeScreenInner({ onMenuToggle, onSend, isStreaming, googleAuth }: HomeScreenProps) {
   const { t } = useTranslation()
   const googleTooltip = useTooltip('google')
-
-  const sendSuggestion = useCallback(
-    (text: string) => onSend(text),
-    [onSend]
-  )
 
   return (
     <div className="flex flex-col h-full">
@@ -75,31 +69,9 @@ function HomeScreenInner({ onMenuToggle, onSend, isStreaming, googleAuth }: Home
           )}
         </div>
 
-        {/* Suggestions + agenda preview (only when Google connected) */}
+        {/* Agenda preview (only when Google connected) */}
         {googleAuth.isConnected && (
           <div className="w-full max-w-md flex flex-col gap-4">
-            <section className="flex flex-col gap-2">
-              <h2 className="text-xs uppercase tracking-wider text-gray-400">
-                {t('home.suggestions.title')}
-              </h2>
-              <SuggestionCard
-                text={t('home.suggestions.unreadEmails')}
-                onClick={() => sendSuggestion(t('home.suggestions.unreadEmails'))}
-              />
-              <SuggestionCard
-                text={t('home.suggestions.calendarToday')}
-                onClick={() => sendSuggestion(t('home.suggestions.calendarToday'))}
-              />
-              <SuggestionCard
-                text={t('home.suggestions.calendarWeek')}
-                onClick={() => sendSuggestion(t('home.suggestions.calendarWeek'))}
-              />
-              <SuggestionCard
-                text={t('home.suggestions.createEvent')}
-                onClick={() => sendSuggestion(t('home.suggestions.createEvent'))}
-              />
-            </section>
-
             <section className="flex flex-col gap-2">
               <h2 className="text-xs uppercase tracking-wider text-gray-400">
                 {t('home.calendar.title')}
