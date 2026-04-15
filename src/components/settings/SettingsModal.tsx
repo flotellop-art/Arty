@@ -10,6 +10,7 @@ import {
   requestPermission as requestNotifPermission,
 } from '../../services/notificationService'
 import { MemoryHistoryPanel } from './MemoryHistoryPanel'
+import { OrchestratorSync } from './OrchestratorSync'
 
 interface SettingsModalProps {
   open: boolean
@@ -143,6 +144,9 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
               </svg>
             </button>
           </div>
+
+          {/* Orchestrateur sync (Phase 1) — invisible si l'app desktop n'est pas lancée */}
+          <OrchestratorSync />
         </div>
       </div>
       {showMemoryHistory && <MemoryHistoryPanel onClose={() => setShowMemoryHistory(false)} />}
