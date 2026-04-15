@@ -53,6 +53,7 @@ export interface CalendarEvent {
   end: string
   location: string
   description: string
+  htmlLink?: string
 }
 
 export interface CalendarEventDraft {

@@ -1,4 +1,4 @@
-import { memo } from 'react'
+import { memo, useCallback } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
 import { AnimatedStar } from './AnimatedStar'
 import { TopBar } from '../layout/TopBar'
@@ -24,6 +24,16 @@ interface HomeScreenProps {
 function HomeScreenInner({ onMenuToggle, onSend, isStreaming, googleAuth }: HomeScreenProps) {
   const { t } = useTranslation()
   const googleTooltip = useTooltip('google')
+
+  const openEvent = useCallback(async (event: import('../../types/google').CalendarEvent) => {
+    const url = event.htmlLink || `https://calendar.google.com/calendar/r/eventedit?eid=${encodeURIComponent(event.id)}`
+    try {
+      const { Browser } = await import('@capacitor/browser')
+      await Browser.open({ url })
+    } catch {
+      window.open(url, '_blank')
+    }
+  }, [])
 
   return (
     <div className="flex flex-col h-full">
@@ -76,7 +86,7 @@ function HomeScreenInner({ onMenuToggle, onSend, isStreaming, googleAuth }: Home
               <h2 className="text-xs uppercase tracking-wider text-gray-400">
                 {t('home.calendar.title')}
               </h2>
-              <CalendarView days={7} />
+              <CalendarView days={7} onEventClick={openEvent} />
             </section>
           </div>
         )}

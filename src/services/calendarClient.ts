@@ -24,7 +24,16 @@ export async function listEvents(days = 7): Promise<CalendarEvent[]> {
   const res = await calendarFetch({ type: 'list', days })
   const data = await safeJson(res)
   if (!res.ok) throw new Error(data.error || 'Erreur agenda')
-  return (data.events || []) as CalendarEvent[]
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (data.events || []).map((e: any) => ({
+    id: e.id,
+    title: e.title || e.summary || '',
+    start: e.start,
+    end: e.end,
+    location: e.location || '',
+    description: e.description || '',
+    htmlLink: e.htmlLink,
+  })) as CalendarEvent[]
 }
 
 export async function createEvent(
