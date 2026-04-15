@@ -1,5 +1,6 @@
 import type { useComputer } from '../../hooks/useComputer'
 import type { ToolHandler } from './types'
+import { orchestrateCreateApp, type OrchestratorAppKind } from '../orchestrator'
 
 export const computerToolDefinitions = [
   {
@@ -21,6 +22,38 @@ export const computerToolDefinitions = [
     description: "Prend un screenshot de l'écran du PC.",
     input_schema: { type: 'object' as const, properties: {} },
   },
+  {
+    name: 'create_app',
+    description:
+      "Orchestrateur local (Phase 2) — crée une nouvelle instance d'application sur le PC : " +
+      "ouvre l'app, saisit éventuellement un contenu initial, puis sauvegarde sous un nom de " +
+      "fichier. Utilise cet outil quand l'utilisateur demande de créer un nouveau document, " +
+      "classeur, ou fichier (ex : « crée un classeur Excel pour le suivi chantiers »). " +
+      "Le PC doit être joignable (start-all.bat lancé + tunnel actif).",
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        app: {
+          type: 'string' as const,
+          enum: ['excel', 'word', 'bloc-notes', 'wordpress', 'chrome'],
+          description: "Application cible (miroir du whitelist de l'Orchestrateur).",
+        },
+        filename: {
+          type: 'string' as const,
+          description:
+            "Nom de fichier pour la sauvegarde (optionnel). Caractères autorisés : lettres, " +
+            "chiffres, espaces, - _ . , ' ( ). Max 120 caractères. Pas de séparateur de chemin.",
+        },
+        initialContent: {
+          type: 'string' as const,
+          description:
+            "Contenu initial à saisir dans l'application une fois ouverte (optionnel). " +
+            "Pour Excel, utilise des tabulations et retours ligne pour remplir les cellules.",
+        },
+      },
+      required: ['app'],
+    },
+  },
 ]
 
 export function createComputerHandlers(computer: ReturnType<typeof useComputer>): Record<string, ToolHandler> {
@@ -40,6 +73,31 @@ export function createComputerHandlers(computer: ReturnType<typeof useComputer>)
         return { result: 'Screenshot capturé avec succès.', screenshot: res.screenshot }
       }
       return { result: `Erreur: ${res?.error || 'PC non joignable.'}` }
+    },
+
+    create_app: async (input) => {
+      const app = (input.app as OrchestratorAppKind) || ('excel' as OrchestratorAppKind)
+      const filename = typeof input.filename === 'string' ? input.filename : undefined
+      const initialContent = typeof input.initialContent === 'string' ? input.initialContent : undefined
+
+      const result = await orchestrateCreateApp({ app, filename, initialContent })
+
+      if (result.success) {
+        const summary = [
+          `Application "${result.app}" créée via l'Orchestrateur local.`,
+          result.filename ? `Fichier : ${result.filename}` : null,
+          `${result.steps.length} étape(s) : ${result.steps.map((s) => s.label).join(' → ')}`,
+        ]
+          .filter(Boolean)
+          .join('\n')
+        return { result: summary, screenshot: result.finalScreenshot }
+      }
+
+      const failedStep = result.steps.find((s) => s.status === 'error')
+      const detail = failedStep
+        ? `Échec à l'étape "${failedStep.label}" — ${failedStep.error || 'raison inconnue'}.`
+        : result.error || 'PC non joignable ou Orchestrateur indisponible.'
+      return { result: `Erreur Orchestrateur : ${detail}`, screenshot: result.finalScreenshot }
     },
   }
 }
