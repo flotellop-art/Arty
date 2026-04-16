@@ -408,3 +408,29 @@ flux OAuth — la requête partait mais pas de retour.
 **Règle** : `logout()` DOIT supprimer `google-tokens` ET
 `google-user` via `scoped.removeItem()` en plus de `clearActiveKeys()`
 et `clearActiveSession()`.
+
+
+---
+
+## RÈGLE 6 — AUDIT SÉCURITÉ SYSTÉMATIQUE DES ENDPOINTS
+
+Chaque fois que tu crées OU modifies un endpoint serveur (fichiers sous `functions/`, `api/`, handlers Cloudflare Workers ou Pages Functions, routes D1), tu DOIS exécuter un audit sécurité en fin de tâche **avant** de rendre le code. L'audit coche 5 points obligatoires :
+
+- **Authentification** : qui peut appeler cet endpoint ? Un token valide est-il exigé ? Le `userId` vient-il d'un body/query modifiable côté client, ou d'un token vérifié côté serveur (Google `sub`) ? Si pas de vérification → **ajouter `checkAllowedUser()` ou équivalent**.
+- **Autorisation** : un user peut-il accéder aux données d'un autre user ? (userId spoofé, id d'objet deviné, IDOR). La query SQL/KV doit filtrer sur l'identité vérifiée, pas sur celle fournie par le client.
+- **Abus infra** : l'endpoint peut-il servir de relais anonyme (proxy IA gratuit, bandwidth, tunnel sortant) sur le compte Cloudflare du propriétaire ? Si oui → **feature flag + restriction au `sub` du owner** (ex : `COMPUTER_RELAY_OWNER_SUB`).
+- **Leak d'info** : les messages d'erreur révèlent-ils l'existence de ressources, de tunnels, de chemins internes, de variables d'env ? Les 401/403/404 doivent être indistinguables pour un attaquant (préférer `{"error":"Not found"}` + 404).
+- **Origin / CSRF** : pour les requêtes non-GET, le header `Origin` est-il **présent et dans la whitelist** ? L'absence du header ne doit **jamais** être traitée comme origine valide. Vérifier `functions/api/_middleware.ts`.
+
+**Sortie attendue** : une section "Audit sécu" dans le message final qui coche les 5 points pour chaque endpoint touché. Ne marque JAMAIS la tâche comme terminée tant qu'un risque identifié n'est pas traité ou explicitement accepté par écrit par l'utilisateur.
+
+**Contexte** : suite à 4 vulnérabilités critiques (CRIT-1 à CRIT-4) trouvées lors d'un audit live sur tryarty.com en avril 2026, corrigées en urgence via PR #11 (voir BUG 42). Ces 4 trous étaient tous évitables avec cet audit de 30 secondes.
+
+### BUG 42 — 4 vulnérabilités critiques live (avril 2026)
+**Fichiers** : `functions/api/memory/action.ts`, `functions/api/ai/anthropic-proxy.ts`, `functions/api/ai/mistral-proxy.ts`, `functions/api/ai/gemini-proxy.ts`, `functions/api/computer/relay.ts`, `functions/api/_middleware.ts`
+**Problème** : 4 CVEs live sur la prod :
+- **CRIT-1** — `/api/memory/action` acceptait un `userId` depuis le body → n'importe qui pouvait lire/écrire la mémoire d'un autre user.
+- **CRIT-2** — `/api/computer/relay` était ouvert sans auth → relais anonyme sur le compte Cloudflare + leak de tunnels internes dans les erreurs.
+- **CRIT-3** — Le middleware CSRF acceptait les requêtes sans header `Origin` comme valides → bypass trivial depuis un script.
+- **CRIT-4** — Les proxys IA (anthropic/mistral/gemini) n'exigeaient pas de token Google → proxy IA gratuit utilisant la clé serveur du owner.
+**Règle** : TOUTE création/modif d'endpoint DOIT passer la RÈGLE 6 ci-dessus. Voir PR #11 (merge commit `59beb8a`) pour le pattern de fix canonique : `checkAllowedUser()` + feature flag owner-only + errors uniformes 404 + `Origin` strict côté middleware.
