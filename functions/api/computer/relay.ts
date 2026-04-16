@@ -1,8 +1,44 @@
 import type { Env } from '../../env'
 
+const NOT_FOUND = { error: 'Not found' }
+const NOT_FOUND_STATUS = 404
+
+/**
+ * Verify a Google access token and return its `sub` (stable account id).
+ * Returns null if the token is missing, invalid, or Google rejects it.
+ */
+async function verifyGoogleSub(token: string): Promise<string | null> {
+  try {
+    const res = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!res.ok) return null
+    const data = await res.json() as { id?: string }
+    return data.id || null
+  } catch {
+    return null
+  }
+}
+
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
-  if (!env.TUNNEL_URL || !env.TUNNEL_SECRET) {
-    return Response.json({ error: 'Tunnel not configured (TUNNEL_URL, TUNNEL_SECRET)' }, { status: 500 })
+  // Feature flag — endpoint is hidden entirely unless explicitly enabled.
+  if (env.COMPUTER_RELAY_ENABLED !== 'true') {
+    return Response.json(NOT_FOUND, { status: NOT_FOUND_STATUS })
+  }
+
+  // Config sanity — if any piece is missing, pretend the endpoint does not exist.
+  if (!env.COMPUTER_RELAY_OWNER_SUB || !env.TUNNEL_URL || !env.TUNNEL_SECRET) {
+    return Response.json(NOT_FOUND, { status: NOT_FOUND_STATUS })
+  }
+
+  // Auth: require a Google token whose sub matches the configured owner.
+  const googleToken = request.headers.get('x-google-token')
+  if (!googleToken) {
+    return Response.json(NOT_FOUND, { status: NOT_FOUND_STATUS })
+  }
+  const sub = await verifyGoogleSub(googleToken)
+  if (!sub || sub !== env.COMPUTER_RELAY_OWNER_SUB) {
+    return Response.json(NOT_FOUND, { status: NOT_FOUND_STATUS })
   }
 
   const { action, params } = await request.json() as { action?: string; params?: Record<string, unknown> }
@@ -12,18 +48,18 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   }
 
   try {
-    // Check if PC is reachable
+    // Check if the local relay is reachable.
     const healthCheck = await fetch(`${env.TUNNEL_URL}/health`, {
       signal: AbortSignal.timeout(5000),
     }).catch(() => null)
 
     if (!healthCheck?.ok) {
-      return Response.json({
-        error: 'PC non joignable. Vérifiez que start-all.bat est lancé et le tunnel actif.',
-      }, { status: 503 })
+      // Generic — do not disclose tunnel/PC details even to the owner, since
+      // any info leakage here becomes useful to an attacker if auth is ever
+      // bypassed in the future.
+      return Response.json({ error: 'Relay unavailable' }, { status: 503 })
     }
 
-    // Relay the action to the local server
     const response = await fetch(`${env.TUNNEL_URL}/computer/action`, {
       method: 'POST',
       headers: {
@@ -44,8 +80,8 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Relay failed'
     if (message.includes('timeout') || message.includes('abort')) {
-      return Response.json({ error: 'Timeout — le PC met trop de temps à répondre' }, { status: 504 })
+      return Response.json({ error: 'Relay timeout' }, { status: 504 })
     }
-    return Response.json({ error: message }, { status: 500 })
+    return Response.json({ error: 'Relay failed' }, { status: 500 })
   }
 }

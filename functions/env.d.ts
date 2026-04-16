@@ -11,6 +11,11 @@ export interface Env {
   WP_PASSWORD: string
   TUNNEL_URL: string
   TUNNEL_SECRET: string
+  // Computer relay is owner-only. Set COMPUTER_RELAY_ENABLED='true' and
+  // COMPUTER_RELAY_OWNER_SUB to the Google `sub` of the owner to enable
+  // /api/computer/relay. When not set, the endpoint returns 404.
+  COMPUTER_RELAY_ENABLED?: string
+  COMPUTER_RELAY_OWNER_SUB?: string
   GOOGLE_VISION_API_KEY?: string
   DB: D1Database  // Cloudflare D1 binding
 }
