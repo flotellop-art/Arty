@@ -1,6 +1,16 @@
 import type { Env } from '../../env'
+import { checkAllowedUser } from '../_lib/checkAllowedUser'
 
-export const onRequestPost: PagesFunction<Env> = async ({ request }) => {
+export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
+  // Require a verified Google account — prevents anonymous relay use.
+  const email = await checkAllowedUser(request, env)
+  if (!email) {
+    return Response.json(
+      { error: 'Authentication required — please sign in with Google' },
+      { status: 401 }
+    )
+  }
+
   // BYOK obligatoire — pas de fallback sur les clés serveur
   const apiKey = request.headers.get('authorization')?.replace('Bearer ', '') || ''
 
