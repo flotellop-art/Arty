@@ -1,5 +1,4 @@
 import { memo, useEffect, useState } from 'react'
-import { useTranslation } from 'react-i18next'
 import type { CalendarEvent } from '../../types/google'
 import { listEvents } from '../../services/calendarClient'
 import {
@@ -17,7 +16,6 @@ interface Props {
 }
 
 function MorningBriefInner({ onClose, onSend, userName, isGoogleConnected }: Props) {
-  const { t } = useTranslation()
   const [events, setEvents] = useState<CalendarEvent[]>([])
   const [loading, setLoading] = useState(true)
 
