@@ -1,4 +1,5 @@
 import type { Env } from '../../env'
+import { checkAllowedUser } from '../_lib/checkAllowedUser'
 
 async function ensureTable(db: D1Database) {
   await db.prepare(`
@@ -19,6 +20,15 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     return Response.json({ error: 'Database not configured' }, { status: 500 })
   }
 
+  // Require a valid Google token. The verified email becomes the userId —
+  // the `userId` field in the request body is intentionally ignored so a
+  // caller cannot read or write another user's memory.
+  const email = await checkAllowedUser(request, env)
+  if (!email) {
+    return Response.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+  const userId = email
+
   // Auto-create table on first call
   if (!tableReady) {
     await ensureTable(env.DB)
@@ -27,11 +37,6 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
 
   const body = await request.json() as Record<string, unknown>
   const type = body.type as string
-  const userId = body.userId as string
-
-  if (!userId) {
-    return Response.json({ error: 'Missing userId' }, { status: 400 })
-  }
 
   try {
     switch (type) {
