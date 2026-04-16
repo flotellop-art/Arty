@@ -8,6 +8,13 @@ const config: CapacitorConfig = {
     androidScheme: 'https',
     iosScheme: 'https',
   },
+  android: {
+    // Force correct pixel density — prevents the WebView from scaling
+    // up/down on high-DPI screens and making the UI look too small/large.
+    // "device" uses the actual screen density (recommended for Capacitor apps).
+    initialFocus: true,
+    webContentsDebuggingEnabled: false,
+  },
   plugins: {
     SplashScreen: {
       launchAutoHide: true,
