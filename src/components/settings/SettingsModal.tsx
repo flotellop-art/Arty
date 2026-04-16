@@ -10,6 +10,7 @@ import {
   requestPermission as requestNotifPermission,
 } from '../../services/notificationService'
 import { MemoryHistoryPanel } from './MemoryHistoryPanel'
+import { MemoryViewer } from './MemoryViewer'
 import { OrchestratorSync } from './OrchestratorSync'
 
 interface SettingsModalProps {
@@ -26,6 +27,7 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
   const [initialKeys, setInitialKeys] = useState<ApiKeys | null>(null)
   const [notifEnabled, setNotifEnabled] = useState(false)
   const [showMemoryHistory, setShowMemoryHistory] = useState(false)
+  const [showMemoryViewer, setShowMemoryViewer] = useState(false)
 
   useEffect(() => {
     if (!open) return
@@ -127,6 +129,24 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
             </div>
           </div>
 
+          {/* Memory viewer */}
+          <div className="border-t border-gray-100 pt-5">
+            <button
+              onClick={() => setShowMemoryViewer(true)}
+              className="w-full flex items-center justify-between text-left"
+            >
+              <div>
+                <p className="text-sm font-semibold text-bubble-user">🧠 Mémoire d'Arty</p>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Voir et modifier ce qu'Arty sait sur vous
+                </p>
+              </div>
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="text-gray-400">
+                <path d="M5 3L9 7L5 11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+          </div>
+
           {/* Memory history */}
           <div className="border-t border-gray-100 pt-5">
             <button
@@ -150,6 +170,7 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
         </div>
       </div>
       {showMemoryHistory && <MemoryHistoryPanel onClose={() => setShowMemoryHistory(false)} />}
+      {showMemoryViewer && <MemoryViewer onClose={() => setShowMemoryViewer(false)} />}
     </div>
   )
 })

@@ -7,7 +7,9 @@ import { initCrypto, isCryptoReady } from './services/crypto'
 import { bootstrapGoogleStorage } from './services/googleAuth'
 import { getJSON } from './services/scopedStorage'
 import { QuestionModal } from './components/chat/QuestionModal'
+import { MorningBrief } from './components/home/MorningBrief'
 import { HomeScreen } from './components/home/HomeScreen'
+import { shouldShowMorningBrief } from './services/morningBriefService'
 import { ConversationScreen } from './components/chat/ConversationScreen'
 import { ReportPage } from './components/shared/ReportPage'
 import { Sidebar } from './components/layout/Sidebar'
@@ -18,6 +20,7 @@ import type { FileAttachment } from './types'
 
 function AppContent({ onLogout, userName }: { onLogout: () => void; userName?: string }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [showMorningBrief, setShowMorningBrief] = useState(false)
   const navigate = useNavigate()
 
   const conversation = useConversation()
@@ -38,6 +41,14 @@ function AppContent({ onLogout, userName }: { onLogout: () => void; userName?: s
     togglePinMessage,
     editAndResend,
   } = conversation
+
+  // Show morning brief once per day between 6h-11h
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (shouldShowMorningBrief()) setShowMorningBrief(true)
+    }, 1500) // small delay to let the app finish loading
+    return () => clearTimeout(timer)
+  }, [])
 
   const {
     googleAuth,
@@ -193,6 +204,15 @@ function AppContent({ onLogout, userName }: { onLogout: () => void; userName?: s
         <QuestionModal
           questions={questionModal.questions}
           onComplete={questionModal.resolve}
+        />
+      )}
+
+      {showMorningBrief && (
+        <MorningBrief
+          onClose={() => setShowMorningBrief(false)}
+          onSend={handleSendFromHome}
+          userName={userName}
+          isGoogleConnected={googleAuth.isConnected}
         />
       )}
     </div>
