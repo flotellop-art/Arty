@@ -20,6 +20,7 @@ import {
   type Theme,
   type ThemePreference,
 } from '../../services/themeService'
+import { Tag, Rule } from '../shared/editorial'
 
 interface SettingsModalProps {
   open: boolean
@@ -27,9 +28,8 @@ interface SettingsModalProps {
 }
 
 /**
- * Settings modal — lets the logged-in user edit their API keys in-app.
- * Reads the current keys from scoped storage, saves back (encrypted via
- * secureSet for the crypto check, plain JSON for sync reads per BUG 1).
+ * Paramètres — édition des clés API, apparence jour/nuit, notifications, mémoire.
+ * BUG 1 : api-keys reste en JSON clair (lecture synchrone via getJSON).
  */
 export const SettingsModal = memo(function SettingsModal({ open, onClose }: SettingsModalProps) {
   const [initialKeys, setInitialKeys] = useState<ApiKeys | null>(null)
@@ -82,12 +82,9 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
     }
   }
 
-  // Close on Escape
   useEffect(() => {
     if (!open) return
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
-    }
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
   }, [open, onClose])
@@ -95,67 +92,104 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
   if (!open) return null
 
   const handleSave = async (keys: ApiKeys) => {
-    // Re-initialize crypto with the (possibly new) anthropic key
     await initCrypto(keys.anthropic)
-
-    // Store as plain JSON (see BUG 1 in CLAUDE.md — must stay readable via getJSON)
     scoped.setJSON('api-keys', {
       anthropic: keys.anthropic,
       gemini: keys.gemini,
       mistral: keys.mistral,
       openai: keys.openai,
     })
-
-    // Update in-memory active keys so AI clients pick up the new values immediately
     setActiveKeys(keys.anthropic, keys.gemini, keys.mistral, keys.openai)
-
     onClose()
   }
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto"
+        className="w-full max-w-md max-h-[90vh] overflow-y-auto"
+        style={{
+          backgroundColor: 'var(--arty-bg)',
+          color: 'var(--arty-ink)',
+          borderRadius: 4,
+          border: '1px solid var(--arty-line)',
+          boxShadow: '0 40px 80px -20px rgba(0,0,0,0.45)',
+        }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 sticky top-0 bg-white rounded-t-2xl z-10">
-          <h2 className="font-serif text-lg font-semibold text-bubble-user">
-            Paramètres — Clés API
-          </h2>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500"
-            aria-label="Fermer"
-          >
-            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-              <path d="M4 4L14 14M14 4L4 14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-            </svg>
-          </button>
+        {/* Masthead — sticky */}
+        <div
+          className="sticky top-0 z-10 px-6 pt-4 pb-2"
+          style={{ backgroundColor: 'var(--arty-bg)' }}
+        >
+          <div className="flex items-center gap-3">
+            <button
+              onClick={onClose}
+              className="text-[20px] leading-none"
+              style={{ color: 'var(--arty-ink)' }}
+              aria-label="Fermer"
+            >
+              ←
+            </button>
+            <Tag>Paramètres</Tag>
+            <div className="flex-1" />
+            <button
+              onClick={onClose}
+              className="p-1.5 rounded-lg"
+              style={{ color: 'var(--arty-muted)' }}
+              aria-label="Fermer"
+            >
+              <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+                <path d="M4 4L14 14M14 4L4 14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              </svg>
+            </button>
+          </div>
+          <Rule className="mt-2" />
         </div>
-        <div className="p-5 space-y-5">
-          <ApiKeySetup onSave={handleSave} initialKeys={initialKeys} embedded />
 
-          {/* Apparence — jour/nuit (Ember/Nocturne) */}
-          <div className="border-t border-gray-100 pt-5">
-            <div className="flex items-center justify-between mb-3">
-              <div>
-                <p className="text-sm font-semibold text-bubble-user">
-                  {activeTheme === 'dark' ? '☾ Apparence — Nocturne' : '☀ Apparence — Ember'}
-                </p>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  Jour au grand jour, nuit à la bougie.
-                </p>
-              </div>
-              <DayNightToggle
-                theme={activeTheme}
-                onChange={handleThemePick}
-                size="md"
-              />
+        {/* Hero */}
+        <div className="px-6 pt-5">
+          <h1 className="font-display text-[30px] leading-[1.05] font-light tracking-[-0.02em]">
+            Règle &
+            <br />
+            <span className="italic" style={{ color: 'var(--arty-accent)' }}>réglages.</span>
+          </h1>
+        </div>
+
+        <div className="px-6 pt-5 pb-6 space-y-6">
+          {/* I · Clés API */}
+          <section>
+            <div
+              className="flex justify-between items-baseline pb-2 mb-3"
+              style={{ borderBottom: '1px solid var(--arty-ink)' }}
+            >
+              <Tag>I · Clés API</Tag>
             </div>
-            <div className="flex items-center justify-between bg-gray-50 rounded-lg p-1 gap-1">
+            <ApiKeySetup onSave={handleSave} initialKeys={initialKeys} embedded />
+          </section>
+
+          {/* II · Apparence */}
+          <section>
+            <div
+              className="flex justify-between items-baseline pb-2 mb-3"
+              style={{ borderBottom: '1px solid var(--arty-ink)' }}
+            >
+              <Tag>II · Apparence</Tag>
+              <Tag accent>{activeTheme === 'dark' ? '◈ Nocturne' : '◈ Ember'}</Tag>
+            </div>
+            <div className="flex items-center justify-between gap-4 mb-3">
+              <p className="font-serif italic text-[13px] leading-[1.5]" style={{ color: 'var(--arty-ink-soft)' }}>
+                Jour au grand jour,<br />nuit à la bougie.
+              </p>
+              <DayNightToggle theme={activeTheme} onChange={handleThemePick} size="md" />
+            </div>
+            <div
+              className="flex gap-1 p-1"
+              style={{ backgroundColor: 'var(--arty-card)', border: '1px solid var(--arty-line)', borderRadius: 2 }}
+            >
               {[
                 { k: false, l: 'Manuel' },
                 { k: true, l: 'Auto · 07→19' },
@@ -165,9 +199,12 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
                   <button
                     key={String(opt.k)}
                     onClick={() => handleAutoToggle(opt.k)}
-                    className={`flex-1 py-1.5 rounded-md text-xs font-semibold transition-colors ${
-                      active ? 'bg-bubble-user text-cream' : 'text-gray-600 hover:text-bubble-user'
-                    }`}
+                    className="flex-1 py-2 text-[11px] tracking-[0.1em] uppercase font-semibold"
+                    style={{
+                      backgroundColor: active ? 'var(--arty-ink)' : 'transparent',
+                      color: active ? 'var(--arty-bg)' : 'var(--arty-ink-soft)',
+                      borderRadius: 2,
+                    }}
                     aria-pressed={active}
                   >
                     {opt.l}
@@ -175,70 +212,93 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
                 )
               })}
             </div>
-          </div>
+          </section>
 
-          {/* Notifications toggle */}
-          <div className="border-t border-gray-100 pt-5">
-            <div className="flex items-center justify-between">
+          {/* III · Notifications */}
+          <section>
+            <div
+              className="flex justify-between items-baseline pb-2 mb-3"
+              style={{ borderBottom: '1px solid var(--arty-ink)' }}
+            >
+              <Tag>III · Notifications</Tag>
+            </div>
+            <div className="flex items-center justify-between gap-4">
               <div>
-                <p className="text-sm font-semibold text-bubble-user">🔔 Notifications</p>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  Rappels RDV, emails importants
+                <p className="font-serif text-[14px]" style={{ color: 'var(--arty-ink)' }}>
+                  Rappels silencieux
+                </p>
+                <p className="font-serif italic text-[12px] mt-0.5" style={{ color: 'var(--arty-muted)' }}>
+                  RDV à venir, mails importants.
                 </p>
               </div>
               <button
                 onClick={handleNotifToggle}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                  notifEnabled ? 'bg-accent' : 'bg-gray-300'
-                }`}
+                className="relative inline-flex h-6 w-11 items-center transition-colors"
+                style={{
+                  backgroundColor: notifEnabled ? 'var(--arty-accent)' : 'var(--arty-card-hi)',
+                  border: '1px solid var(--arty-line)',
+                  borderRadius: 100,
+                }}
                 aria-pressed={notifEnabled}
               >
                 <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                    notifEnabled ? 'translate-x-6' : 'translate-x-1'
-                  }`}
+                  className="inline-block h-4 w-4 transform transition-transform"
+                  style={{
+                    backgroundColor: 'var(--arty-bg)',
+                    borderRadius: 100,
+                    transform: notifEnabled ? 'translateX(22px)' : 'translateX(4px)',
+                  }}
                 />
               </button>
             </div>
-          </div>
+          </section>
 
-          {/* Memory viewer */}
-          <div className="border-t border-gray-100 pt-5">
+          {/* IV · Mémoire */}
+          <section>
+            <div
+              className="flex justify-between items-baseline pb-2 mb-3"
+              style={{ borderBottom: '1px solid var(--arty-ink)' }}
+            >
+              <Tag>IV · Mémoire</Tag>
+            </div>
+
             <button
               onClick={() => setShowMemoryViewer(true)}
-              className="w-full flex items-center justify-between text-left"
+              className="w-full flex items-center justify-between py-3 px-1 text-left"
+              style={{ borderBottom: '1px dotted var(--arty-line)' }}
             >
               <div>
-                <p className="text-sm font-semibold text-bubble-user">🧠 Mémoire d'Arty</p>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  Voir et modifier ce qu'Arty sait sur vous
+                <p className="font-serif text-[14px]" style={{ color: 'var(--arty-ink)' }}>
+                  Ce qu'Arty sait de toi
+                </p>
+                <p className="font-serif italic text-[12px] mt-0.5" style={{ color: 'var(--arty-muted)' }}>
+                  Voir et modifier la mémoire.
                 </p>
               </div>
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="text-gray-400">
-                <path d="M5 3L9 7L5 11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
+              <span className="font-serif italic text-[13px]" style={{ color: 'var(--arty-accent)' }}>
+                ouvrir →
+              </span>
             </button>
-          </div>
 
-          {/* Memory history */}
-          <div className="border-t border-gray-100 pt-5">
             <button
               onClick={() => setShowMemoryHistory(true)}
-              className="w-full flex items-center justify-between text-left"
+              className="w-full flex items-center justify-between py-3 px-1 text-left"
             >
               <div>
-                <p className="text-sm font-semibold text-bubble-user">📜 Historique mémoire</p>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  Voir et annuler les changements de mémoire
+                <p className="font-serif text-[14px]" style={{ color: 'var(--arty-ink)' }}>
+                  Historique des changements
+                </p>
+                <p className="font-serif italic text-[12px] mt-0.5" style={{ color: 'var(--arty-muted)' }}>
+                  Annuler une mise à jour.
                 </p>
               </div>
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="text-gray-400">
-                <path d="M5 3L9 7L5 11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
+              <span className="font-serif italic text-[13px]" style={{ color: 'var(--arty-accent)' }}>
+                voir →
+              </span>
             </button>
-          </div>
+          </section>
 
-          {/* Orchestrateur sync (Phase 1) — invisible si l'app desktop n'est pas lancée */}
+          {/* Orchestrateur — caché si pas lancé */}
           <OrchestratorSync />
         </div>
       </div>
