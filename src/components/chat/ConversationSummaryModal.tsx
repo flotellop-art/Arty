@@ -116,39 +116,97 @@ export function ConversationSummaryModal({ conversation, onClose }: Props) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-          <h2 className="font-serif text-lg font-semibold text-bubble-user">📋 Résumé de la conversation</h2>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500" aria-label="Fermer">
-            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-              <path d="M4 4L14 14M14 4L4 14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-            </svg>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-2xl max-h-[85vh] flex flex-col"
+        style={{
+          backgroundColor: 'var(--arty-bg)',
+          color: 'var(--arty-ink)',
+          border: '1px solid var(--arty-line)',
+          borderRadius: 4,
+          boxShadow: '0 40px 80px -20px rgba(0,0,0,0.45)',
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Masthead */}
+        <div className="px-5 pt-4 pb-2 flex items-center gap-3">
+          <button
+            onClick={onClose}
+            className="text-[20px] leading-none"
+            style={{ color: 'var(--arty-ink)' }}
+            aria-label="Fermer"
+          >
+            ←
+          </button>
+          <span className="text-[10px] tracking-[0.18em] uppercase font-sans font-semibold" style={{ color: 'var(--arty-muted)' }}>
+            Résumé · {conversation.title.slice(0, 40)}
+          </span>
+          <div className="flex-1" />
+          <button
+            onClick={onClose}
+            className="p-1 text-[16px]"
+            style={{ color: 'var(--arty-muted)' }}
+            aria-label="Fermer"
+          >
+            ✕
           </button>
         </div>
-        <div className="flex-1 overflow-y-auto p-5">
+        <div className="mx-5" style={{ height: 2, backgroundColor: 'var(--arty-ink)' }} />
+        <div className="mx-5 mt-[3px]" style={{ height: 1, backgroundColor: 'var(--arty-ink)' }} />
+
+        {/* Hero */}
+        <div className="px-5 pt-4 pb-2">
+          <span className="text-[10px] tracking-[0.18em] uppercase font-sans font-semibold" style={{ color: 'var(--arty-accent)' }}>
+            ◈ Synthèse
+          </span>
+          <h1 className="font-display text-[26px] leading-[1.05] font-light tracking-[-0.02em] mt-1">
+            Points clés &
+            <br />
+            <span className="italic" style={{ color: 'var(--arty-accent)' }}>décisions prises.</span>
+          </h1>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-5 pt-4 pb-2">
           {error ? (
-            <p className="text-sm text-red-500">{error}</p>
+            <p
+              className="text-[13px] font-serif italic px-3 py-2"
+              style={{
+                color: 'var(--arty-accent)',
+                backgroundColor: 'var(--arty-accent-glow)',
+                borderLeft: '2px solid var(--arty-accent)',
+                borderRadius: 2,
+              }}
+            >
+              {error}
+            </p>
           ) : summary ? (
             <MarkdownRenderer content={summary} />
           ) : (
-            <p className="text-sm text-gray-400 italic">Génération en cours...</p>
+            <p className="text-[14px] font-serif italic" style={{ color: 'var(--arty-muted)' }}>
+              Arty synthétise…
+            </p>
           )}
         </div>
-        <div className="flex gap-2 px-5 py-4 border-t border-gray-100">
+        <div className="flex gap-2 px-5 py-4" style={{ borderTop: '1px solid var(--arty-line)' }}>
           <button
             onClick={handleCopy}
             disabled={loading || !summary}
-            className="flex-1 py-2 rounded-xl border border-gray-200 text-sm font-medium text-bubble-user hover:bg-gray-50 disabled:opacity-50"
+            className="flex-1 py-2 font-serif italic text-[13px] disabled:opacity-50"
+            style={{ border: '1px solid var(--arty-line)', color: 'var(--arty-ink)', borderRadius: 2 }}
           >
-            {copied ? '✓ Copié' : '📋 Copier'}
+            {copied ? '✓ Copié' : 'Copier'}
           </button>
           <button
             onClick={handleExportPdf}
             disabled={loading || !summary}
-            className="flex-1 py-2 rounded-xl bg-accent text-white text-sm font-semibold hover:bg-accent/90 disabled:opacity-50"
+            className="flex-1 py-2 font-display italic text-[13px] font-medium disabled:opacity-50"
+            style={{ backgroundColor: 'var(--arty-ink)', color: 'var(--arty-bg)', borderRadius: 2 }}
           >
-            📄 Exporter PDF
+            Exporter PDF →
           </button>
         </div>
       </div>

@@ -9,22 +9,28 @@ interface GoogleStatusProps {
 export function GoogleStatus({ isConnected, user, onLogout }: GoogleStatusProps) {
   if (!isConnected) {
     return (
-      <div className="flex items-center gap-1.5 text-xs text-gray-400">
-        <span className="w-2 h-2 rounded-full bg-gray-300" />
+      <div className="flex items-center gap-2 text-[11px] tracking-[0.12em] uppercase font-sans font-semibold" style={{ color: 'var(--arty-muted)' }}>
+        <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: 'var(--arty-muted)' }} />
         Google non connecté
       </div>
     )
   }
 
   return (
-    <div className="flex items-center gap-2">
-      <div className="flex items-center gap-1.5 text-xs text-green-600">
-        <span className="w-2 h-2 rounded-full bg-green-500" />
-        {user?.email || 'Google connecté'}
+    <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2 text-[11px] tracking-[0.08em] font-sans font-semibold" style={{ color: 'var(--arty-accent)' }}>
+        <span
+          className="w-1.5 h-1.5 rounded-full"
+          style={{ backgroundColor: 'var(--arty-accent)', boxShadow: '0 0 8px var(--arty-accent)' }}
+        />
+        <span className="font-mono normal-case tracking-normal" style={{ color: 'var(--arty-ink-soft)' }}>
+          {user?.email || 'Google connecté'}
+        </span>
       </div>
       <button
         onClick={onLogout}
-        className="text-xs text-gray-400 hover:text-red-500 transition-colors"
+        className="text-[10px] tracking-[0.12em] uppercase font-sans font-semibold transition-opacity hover:opacity-70"
+        style={{ color: 'var(--arty-muted)' }}
       >
         Déconnecter
       </button>

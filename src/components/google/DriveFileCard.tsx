@@ -5,14 +5,14 @@ interface DriveFileCardProps {
   onClick?: () => void
 }
 
-function getMimeIcon(mimeType: string): string {
-  if (mimeType.includes('document') || mimeType.includes('text')) return '📄'
-  if (mimeType.includes('spreadsheet') || mimeType.includes('csv')) return '📊'
-  if (mimeType.includes('presentation')) return '📽️'
-  if (mimeType.includes('pdf')) return '📕'
-  if (mimeType.includes('image')) return '🖼️'
-  if (mimeType.includes('folder')) return '📁'
-  return '📎'
+function getMimeGlyph(mimeType: string): string {
+  if (mimeType.includes('document') || mimeType.includes('text')) return '◰'
+  if (mimeType.includes('spreadsheet') || mimeType.includes('csv')) return '▦'
+  if (mimeType.includes('presentation')) return '◈'
+  if (mimeType.includes('pdf')) return '◰'
+  if (mimeType.includes('image')) return '◼'
+  if (mimeType.includes('folder')) return '▤'
+  return '◯'
 }
 
 function formatDate(dateStr: string): string {
@@ -31,13 +31,22 @@ export function DriveFileCard({ file, onClick }: DriveFileCardProps) {
   return (
     <button
       onClick={onClick}
-      className="w-full text-left bg-white rounded-xl border border-gray-100 shadow-sm hover:shadow-md hover:border-accent/20 transition-all p-3 mb-2 flex items-center gap-3"
+      className="w-full text-left p-3 mb-2 flex items-center gap-3 transition-opacity hover:opacity-90"
+      style={{
+        backgroundColor: 'var(--arty-card)',
+        border: '1px solid var(--arty-line)',
+        borderRadius: 2,
+      }}
     >
-      <span className="text-xl flex-shrink-0">{getMimeIcon(file.mimeType)}</span>
+      <span className="text-lg flex-shrink-0" style={{ color: 'var(--arty-accent)' }}>
+        {getMimeGlyph(file.mimeType)}
+      </span>
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-normal text-bubble-user truncate">{file.name}</p>
-        <p className="text-xs text-gray-400 mt-0.5">
-          Modifié le {formatDate(file.modifiedTime)}
+        <p className="font-serif text-[14px] truncate" style={{ color: 'var(--arty-ink)' }}>
+          {file.name}
+        </p>
+        <p className="text-[11px] mt-0.5 font-serif italic" style={{ color: 'var(--arty-muted)' }}>
+          Modifié le <span className="font-mono not-italic">{formatDate(file.modifiedTime)}</span>
         </p>
       </div>
       {file.webViewLink && (
@@ -46,9 +55,10 @@ export function DriveFileCard({ file, onClick }: DriveFileCardProps) {
           target="_blank"
           rel="noopener noreferrer"
           onClick={(e) => e.stopPropagation()}
-          className="text-xs text-accent hover:underline flex-shrink-0"
+          className="text-[12px] font-serif italic flex-shrink-0"
+          style={{ color: 'var(--arty-accent)' }}
         >
-          Ouvrir
+          ouvrir →
         </a>
       )}
     </button>

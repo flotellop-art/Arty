@@ -1,63 +1,79 @@
 import { memo, useEffect, useState } from 'react'
 import type { CalendarEvent } from '../../types/google'
 import { listEvents } from '../../services/calendarClient'
+import { DotLine } from '../shared/editorial'
 
 interface CalendarViewProps {
   days?: number
   onEventClick?: (event: CalendarEvent) => void
 }
 
-function formatDateRange(startISO: string, endISO: string): string {
+function formatTime(startISO: string): string {
   try {
-    const start = new Date(startISO)
-    const sameDay = endISO && new Date(endISO).toDateString() === start.toDateString()
-    const dateLabel = start.toLocaleDateString('fr-FR', {
-      weekday: 'short', day: 'numeric', month: 'short',
-    })
     const hasTime = startISO.includes('T')
-    if (!hasTime) return dateLabel
-    const startLabel = start.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
-    if (!endISO) return `${dateLabel} · ${startLabel}`
-    const endLabel = new Date(endISO).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
-    return sameDay
-      ? `${dateLabel} · ${startLabel} – ${endLabel}`
-      : `${dateLabel} ${startLabel} → ${new Date(endISO).toLocaleDateString('fr-FR')} ${endLabel}`
+    if (!hasTime) return '—'
+    return new Date(startISO).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
   } catch {
     return startISO
+  }
+}
+
+function formatDay(startISO: string): string {
+  try {
+    const d = new Date(startISO)
+    const now = new Date()
+    const sameDay = d.toDateString() === now.toDateString()
+    const tomorrow = new Date(now.getTime() + 86400000)
+    if (sameDay) return "Aujourd'hui"
+    if (d.toDateString() === tomorrow.toDateString()) return 'Demain'
+    return d.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' })
+  } catch {
+    return ''
   }
 }
 
 function EventRow({
   event,
   onClick,
+  last,
 }: {
   event: CalendarEvent
   onClick?: (event: CalendarEvent) => void
+  last: boolean
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick ? () => onClick(event) : undefined}
-      className="w-full text-left bg-white rounded-xl border border-gray-100 shadow-sm hover:shadow-md hover:border-accent/20 transition-all p-3 mb-2"
-    >
-      <p className="text-sm font-medium text-bubble-user truncate">{event.title}</p>
-      <p className="text-xs text-gray-400 mt-1">{formatDateRange(event.start, event.end)}</p>
-      {event.location && (
-        <p className="text-xs text-gray-500 mt-1 truncate">📍 {event.location}</p>
-      )}
-      {event.description && (
-        <p className="text-xs text-gray-500 mt-1 line-clamp-2 leading-relaxed">
-          {event.description}
-        </p>
-      )}
-    </button>
+    <>
+      <button
+        type="button"
+        onClick={onClick ? () => onClick(event) : undefined}
+        className="w-full text-left py-3 transition-opacity hover:opacity-80"
+      >
+        <div className="flex gap-3 items-baseline">
+          <span
+            className="font-mono text-[11px] w-14 shrink-0 font-bold"
+            style={{ color: 'var(--arty-accent)' }}
+          >
+            {formatTime(event.start)}
+          </span>
+          <div className="flex-1 min-w-0">
+            <p className="font-serif text-[14px] leading-[1.25] truncate" style={{ color: 'var(--arty-ink)' }}>
+              {event.title}
+            </p>
+            <p className="text-[11px] mt-0.5" style={{ color: 'var(--arty-muted)' }}>
+              <span className="font-sans uppercase tracking-wider">{formatDay(event.start)}</span>
+              {event.location && <span className="font-serif italic ml-2">· {event.location}</span>}
+            </p>
+          </div>
+        </div>
+      </button>
+      {!last && <DotLine />}
+    </>
   )
 }
 
 /**
- * Read-only agenda preview. Fetches the next N days of events from Google
- * Calendar via the authenticated proxy and displays them as cards. Purely
- * presentational — mutations happen through the Calendar tools (Claude).
+ * Aperçu lecture seule de l'agenda. Récupère les N prochains jours via
+ * le proxy Calendar. Les mutations passent par les outils Claude.
  */
 function CalendarViewInner({ days = 7, onEventClick }: CalendarViewProps) {
   const [events, setEvents] = useState<CalendarEvent[] | null>(null)
@@ -79,22 +95,34 @@ function CalendarViewInner({ days = 7, onEventClick }: CalendarViewProps) {
   }, [days])
 
   if (loading) {
-    return <p className="text-sm text-gray-400 text-center py-4">Chargement de l'agenda…</p>
+    return <p className="font-serif italic text-[13px] text-center py-4" style={{ color: 'var(--arty-muted)' }}>Lecture de l'agenda…</p>
   }
   if (error) {
-    return <p className="text-sm text-red-500 text-center py-4">{error}</p>
+    return (
+      <p
+        className="text-[13px] font-serif italic px-3 py-2"
+        style={{
+          color: 'var(--arty-accent)',
+          backgroundColor: 'var(--arty-accent-glow)',
+          borderLeft: '2px solid var(--arty-accent)',
+          borderRadius: 2,
+        }}
+      >
+        {error}
+      </p>
+    )
   }
   if (!events || events.length === 0) {
     return (
-      <p className="text-sm text-gray-400 text-center py-4">
+      <p className="font-serif italic text-[13px] text-center py-4" style={{ color: 'var(--arty-muted)' }}>
         Aucun événement dans les {days} prochains jours.
       </p>
     )
   }
   return (
-    <div className="flex flex-col">
-      {events.map((event) => (
-        <EventRow key={event.id} event={event} onClick={onEventClick} />
+    <div>
+      {events.map((event, i) => (
+        <EventRow key={event.id} event={event} onClick={onEventClick} last={i === events.length - 1} />
       ))}
     </div>
   )
