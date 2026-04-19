@@ -24,7 +24,33 @@ export function useGoogleAuth() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Check token validity on mount
+  // Re-sync the hook state when the in-memory Google caches are populated
+  // by `bootstrapGoogleStorage()`. On a fresh page refresh, the hook's
+  // state initializers run BEFORE async crypto init + decryption finishes,
+  // so `getStoredTokens()` returns null and `isConnected` is stuck on
+  // false even though the user has valid encrypted tokens at rest.
+  // Listen to the 'google-storage-ready' event dispatched at the end of
+  // bootstrap to refresh state once the caches are ready.
+  useEffect(() => {
+    const sync = () => {
+      const tokens = getStoredTokens()
+      const nextConnected = tokens !== null
+      setIsConnected((prev) => (prev === nextConnected ? prev : nextConnected))
+      const storedUser = getStoredUser()
+      setUser((prev) => {
+        if (prev === storedUser) return prev
+        if (!prev && !storedUser) return prev
+        return storedUser
+      })
+    }
+    // Run once on mount in case bootstrap already finished before this
+    // hook mounted (e.g. late-mounted sub-tree).
+    sync()
+    window.addEventListener('google-storage-ready', sync)
+    return () => window.removeEventListener('google-storage-ready', sync)
+  }, [])
+
+  // Check token validity on mount (refresh stale access tokens).
   useEffect(() => {
     if (!isConnected) return
     getValidAccessToken().then((token) => {

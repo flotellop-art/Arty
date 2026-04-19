@@ -223,6 +223,16 @@ export async function bootstrapGoogleStorage(): Promise<void> {
       await storeUser(plain)
     }
   }
+
+  // Notify subscribers (e.g. useGoogleAuth) that the in-memory Google
+  // caches are now populated from encrypted-at-rest storage.
+  // Without this, the hook's `useState(() => getStoredTokens() !== null)`
+  // initializer runs BEFORE decryption finishes and reports "not connected"
+  // forever on a page refresh — the user sees the Google CTA despite
+  // being already authorized.
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('google-storage-ready'))
+  }
 }
 
 export function logout(): void {
