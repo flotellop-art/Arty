@@ -43,7 +43,21 @@ function HomeScreenInner({ onMenuToggle, onSend, isStreaming, googleAuth, userNa
     if (h < 18) return t('home.greetingAfternoon')
     return t('home.greetingEvening')
   }, [t])
-  const firstName = (userName || '').trim().split(/\s+/)[0] || ''
+
+  // Skip the name when the displayName is an API key preview (apikey login)
+  // or looks like an email — we only show a first name that reads like one.
+  const firstName = useMemo(() => {
+    const raw = (userName || '').trim()
+    if (!raw) return ''
+    // API key previews: "sk-ant-...", "sk-...", "gk-...", "AIza..."
+    if (/^(sk-|gk-|AIza|pk-|k-)/i.test(raw)) return ''
+    // Contains a `@` → email → skip
+    if (raw.includes('@')) return ''
+    // Too long or contains suspicious chars (punctuation, tilde, dots)
+    const firstWord = raw.split(/\s+/)[0] || ''
+    if (!firstWord || firstWord.length > 20 || /[.…~/\\]/.test(firstWord)) return ''
+    return firstWord
+  }, [userName])
 
   const openEvent = useCallback(async (event: import('../../types/google').CalendarEvent) => {
     const url = event.htmlLink || `https://calendar.google.com/calendar/r/eventedit?eid=${encodeURIComponent(event.id)}`

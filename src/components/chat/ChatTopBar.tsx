@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { getStyle, setStyle as saveStyle, STYLE_OPTIONS, type ResponseStyle } from '../../services/responseStyles'
 import { getSelectedModel, setSelectedModel, MODEL_OPTIONS, type AIModel } from '../../services/modelSelector'
 import { SettingsGuide } from '../shared/SettingsGuide'
+import { PrismMark } from '../shared/PrismMark'
 import { exportConversation, buildShareUrl } from '../../services/conversationExport'
 import type { Conversation } from '../../types'
 
@@ -168,13 +169,19 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
             ) : (
               <button
                 onClick={() => setOpenMenu(openMenu === 'model' ? null : 'model')}
-                className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium transition-colors ${
-                  openMenu === 'model' ? 'bg-theme-ink text-theme-bg' : 'bg-theme-ink/5 text-theme-ink/70 hover:bg-theme-ink/10'
+                className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-medium transition-colors border ${
+                  openMenu === 'model'
+                    ? 'bg-theme-ink text-theme-bg border-theme-ink'
+                    : 'bg-theme-accent/10 text-theme-accent border-theme-accent/25 hover:bg-theme-accent/15'
                 }`}
               >
-                <span>{modelOption.flag}</span>
+                {currentModel === 'auto' ? (
+                  <PrismMark size={11} fill />
+                ) : (
+                  <span>{modelOption.flag}</span>
+                )}
                 <span>{modelLabel(modelOption.id)}</span>
-                <svg width="10" height="10" viewBox="0 0 10 10" fill="none" className="ml-0.5 opacity-50">
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none" className="ml-0.5 opacity-60">
                   <path d="M2.5 4L5 6.5L7.5 4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
                 </svg>
               </button>
@@ -188,11 +195,15 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
                     onClick={() => handleModelChange(opt.id)}
                     className={`w-full flex items-center gap-2 px-3 py-2 text-xs transition-colors ${
                       currentModel === opt.id
-                        ? 'bg-theme-ink/10 text-theme-ink font-semibold'
+                        ? 'bg-theme-accent/10 text-theme-accent font-semibold'
                         : 'text-theme-ink/70 hover:bg-theme-ink/[0.03]'
                     }`}
                   >
-                    <span>{opt.flag}</span>
+                    {opt.id === 'auto' ? (
+                      <PrismMark size={12} fill color={currentModel === opt.id ? 'rgb(var(--theme-accent))' : 'rgb(var(--theme-ink) / 0.6)'} />
+                    ) : (
+                      <span>{opt.flag}</span>
+                    )}
                     <span>{modelLabel(opt.id)}</span>
                   </button>
                 ))}
