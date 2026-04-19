@@ -4,7 +4,8 @@ import { getStyle, setStyle as saveStyle, STYLE_OPTIONS, type ResponseStyle } fr
 import { getSelectedModel, setSelectedModel, MODEL_OPTIONS, type AIModel } from '../../services/modelSelector'
 import { SettingsGuide } from '../shared/SettingsGuide'
 import { SettingsModal } from '../settings/SettingsModal'
-import { getTheme, toggleTheme, type Theme } from '../../services/themeService'
+import { getTheme, setTheme, type Theme } from '../../services/themeService'
+import { DayNightToggle } from './DayNightToggle'
 import { CostIndicator } from './CostIndicator'
 
 interface TopBarProps {
@@ -24,8 +25,8 @@ export function TopBar({ onMenuToggle, onHistoryToggle }: TopBarProps) {
   const [theme, setThemeState] = useState<Theme>(getTheme)
   const menuRef = useRef<HTMLDivElement>(null)
 
-  const handleThemeToggle = () => {
-    const next = toggleTheme()
+  const handleThemeChange = (next: Theme) => {
+    setTheme(next)
     setThemeState(next)
   }
 
@@ -45,6 +46,13 @@ export function TopBar({ onMenuToggle, onHistoryToggle }: TopBarProps) {
     setCurrentModel(model)
     setOpenMenu(null)
   }
+
+  // Reflect external theme changes (auto mode flips, settings panel).
+  useEffect(() => {
+    const sync = () => setThemeState(getTheme())
+    window.addEventListener('theme-changed', sync)
+    return () => window.removeEventListener('theme-changed', sync)
+  }, [])
 
   // Close menu on outside click
   useEffect(() => {
@@ -167,15 +175,10 @@ export function TopBar({ onMenuToggle, onHistoryToggle }: TopBarProps) {
           {/* Cost indicator (Feature 13) */}
           <CostIndicator />
 
-          {/* Dark mode toggle (Feature 10) */}
-          <button
-            onClick={handleThemeToggle}
-            className="p-2 rounded-lg hover:bg-black/5 transition-colors text-base"
-            aria-label={theme === 'dark' ? 'Mode clair' : 'Mode sombre'}
-            title={theme === 'dark' ? 'Mode clair' : 'Mode sombre'}
-          >
-            {theme === 'dark' ? '☀️' : '🌙'}
-          </button>
+          {/* Day/Night toggle — sliding sun/moon knob */}
+          <div className="px-1">
+            <DayNightToggle theme={theme} onChange={handleThemeChange} />
+          </div>
 
           {/* Settings (gear) */}
           <button

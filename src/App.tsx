@@ -16,6 +16,7 @@ import { Sidebar } from './components/layout/Sidebar'
 import { OAuthCallback } from './components/google/OAuthCallback'
 import { LoginScreen } from './components/auth/LoginScreen'
 import { WelcomeSlides, isOnboardingDone } from './components/onboarding/WelcomeSlides'
+import { applyTheme, getTheme, startAutoThemeWatcher } from './services/themeService'
 import type { FileAttachment } from './types'
 
 function AppContent({ onLogout, userName }: { onLogout: () => void; userName?: string }) {
@@ -340,10 +341,11 @@ export default function App() {
     setupDeepLinks()
   }, [])
 
-  // Apply saved theme on app boot
+  // Apply saved theme on app boot and keep auto mode ticking (flip at 07:00/19:00).
   useEffect(() => {
     if (!auth.isAuthenticated) return
-    import('./services/themeService').then((m) => m.applyTheme(m.getTheme()))
+    applyTheme(getTheme())
+    return startAutoThemeWatcher()
   }, [auth.isAuthenticated])
 
   // Ask for push notification permission once after login (soft, non-blocking)

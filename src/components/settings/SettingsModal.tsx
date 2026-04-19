@@ -12,6 +12,14 @@ import {
 import { MemoryHistoryPanel } from './MemoryHistoryPanel'
 import { MemoryViewer } from './MemoryViewer'
 import { OrchestratorSync } from './OrchestratorSync'
+import { DayNightToggle } from '../layout/DayNightToggle'
+import {
+  getPreference,
+  setPreference,
+  getTheme,
+  type Theme,
+  type ThemePreference,
+} from '../../services/themeService'
 
 interface SettingsModalProps {
   open: boolean
@@ -28,13 +36,39 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
   const [notifEnabled, setNotifEnabled] = useState(false)
   const [showMemoryHistory, setShowMemoryHistory] = useState(false)
   const [showMemoryViewer, setShowMemoryViewer] = useState(false)
+  const [themePref, setThemePref] = useState<ThemePreference>(getPreference)
+  const [activeTheme, setActiveTheme] = useState<Theme>(getTheme)
 
   useEffect(() => {
     if (!open) return
     const stored = scoped.getJSON<ApiKeys>('api-keys')
     setInitialKeys(stored ?? null)
     setNotifEnabled(areNotificationsEnabled())
+    setThemePref(getPreference())
+    setActiveTheme(getTheme())
   }, [open])
+
+  useEffect(() => {
+    const sync = () => {
+      setThemePref(getPreference())
+      setActiveTheme(getTheme())
+    }
+    window.addEventListener('theme-changed', sync)
+    return () => window.removeEventListener('theme-changed', sync)
+  }, [])
+
+  const handleThemePick = (next: Theme) => {
+    setPreference(next)
+    setThemePref(next)
+    setActiveTheme(next)
+  }
+
+  const handleAutoToggle = (auto: boolean) => {
+    const pref: ThemePreference = auto ? 'auto' : activeTheme
+    setPreference(pref)
+    setThemePref(pref)
+    setActiveTheme(getTheme())
+  }
 
   const handleNotifToggle = async () => {
     if (!notifEnabled) {
@@ -103,6 +137,45 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
         </div>
         <div className="p-5 space-y-5">
           <ApiKeySetup onSave={handleSave} initialKeys={initialKeys} embedded />
+
+          {/* Apparence — jour/nuit (Ember/Nocturne) */}
+          <div className="border-t border-gray-100 pt-5">
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <p className="text-sm font-semibold text-bubble-user">
+                  {activeTheme === 'dark' ? '☾ Apparence — Nocturne' : '☀ Apparence — Ember'}
+                </p>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Jour au grand jour, nuit à la bougie.
+                </p>
+              </div>
+              <DayNightToggle
+                theme={activeTheme}
+                onChange={handleThemePick}
+                size="md"
+              />
+            </div>
+            <div className="flex items-center justify-between bg-gray-50 rounded-lg p-1 gap-1">
+              {[
+                { k: false, l: 'Manuel' },
+                { k: true, l: 'Auto · 07→19' },
+              ].map((opt) => {
+                const active = (themePref === 'auto') === opt.k
+                return (
+                  <button
+                    key={String(opt.k)}
+                    onClick={() => handleAutoToggle(opt.k)}
+                    className={`flex-1 py-1.5 rounded-md text-xs font-semibold transition-colors ${
+                      active ? 'bg-bubble-user text-cream' : 'text-gray-600 hover:text-bubble-user'
+                    }`}
+                    aria-pressed={active}
+                  >
+                    {opt.l}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
 
           {/* Notifications toggle */}
           <div className="border-t border-gray-100 pt-5">

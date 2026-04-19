@@ -2,28 +2,38 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Dark mode (Feature 10) — overrides Tailwind bg/text colors via CSS vars. */
+/* Day (Ember) / Night (Nocturne) theme — Night palette matches the
+   Arty v2 Day_Night design: warm cacao bg, candlelit amber accent. */
 html.dark {
-  --arty-bg: #1a1614;
-  --arty-surface: #242120;
-  --arty-text: #F5F0E8;
-  --arty-accent: #B87743;
-  --arty-border: #3a3330;
+  --arty-bg: #14100B;
+  --arty-surface: #1E1812;
+  --arty-surface-high: #28201A;
+  --arty-text: #F5E6D0;
+  --arty-text-soft: #D9C4A5;
+  --arty-text-muted: #8A7A66;
+  --arty-accent: #F59A4B;
+  --arty-accent-deep: #C4491C;
+  --arty-accent-glow: rgba(245,154,75,0.18);
+  --arty-border: rgba(245,230,208,0.08);
+  color-scheme: dark;
 }
-html.dark body { background-color: #1a1614; color: #F5F0E8; }
-html.dark .bg-cream { background-color: #1a1614 !important; }
-html.dark .bg-white { background-color: #242120 !important; color: #F5F0E8 !important; }
-html.dark .bg-gray-50 { background-color: #2a2620 !important; }
-html.dark .bg-gray-100 { background-color: #2e2a23 !important; }
-html.dark .text-bubble-user { color: #F5F0E8 !important; }
-html.dark .text-gray-600 { color: #b5aea2 !important; }
-html.dark .text-gray-500 { color: #a59e92 !important; }
-html.dark .text-gray-400 { color: #857f73 !important; }
-html.dark .border-gray-100 { border-color: #3a3330 !important; }
-html.dark .border-gray-200 { border-color: #3a3330 !important; }
-html.dark .hover\:bg-gray-50:hover { background-color: #2e2a23 !important; }
-html.dark .hover\:bg-gray-100:hover { background-color: #33302a !important; }
-html.dark .bg-bubble-user { background-color: #B87743 !important; color: #F5F0E8 !important; }
+html.dark body { background-color: #14100B; color: #F5E6D0; }
+html.dark .bg-cream { background-color: #14100B !important; }
+html.dark .bg-white { background-color: #1E1812 !important; color: #F5E6D0 !important; }
+html.dark .bg-gray-50 { background-color: #28201A !important; }
+html.dark .bg-gray-100 { background-color: #2a221C !important; }
+html.dark .text-bubble-user { color: #F5E6D0 !important; }
+html.dark .text-gray-600 { color: #D9C4A5 !important; }
+html.dark .text-gray-500 { color: #B8A78B !important; }
+html.dark .text-gray-400 { color: #8A7A66 !important; }
+html.dark .border-gray-100 { border-color: rgba(245,230,208,0.08) !important; }
+html.dark .border-gray-200 { border-color: rgba(245,230,208,0.10) !important; }
+html.dark .hover\:bg-gray-50:hover { background-color: #28201A !important; }
+html.dark .hover\:bg-gray-100:hover { background-color: #2e2620 !important; }
+html.dark .bg-bubble-user { background-color: #F59A4B !important; color: #14100B !important; }
+
+/* Cross-fade between Ember and Nocturne when the theme flips. */
+body { transition: background-color 0.5s ease, color 0.5s ease; }
 
 body {
   background-color: #F5F0E8;
