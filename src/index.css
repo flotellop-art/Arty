@@ -2,38 +2,65 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Day (Ember) / Night (Nocturne) theme — Night palette matches the
-   Arty v2 Day_Night design: warm cacao bg, candlelit amber accent. */
+/* ============================================================
+   Arty v2 — design tokens (Ember jour / Nocturne nuit)
+   ============================================================ */
+:root {
+  /* Ember — éditorial chaud (jour) */
+  --arty-bg:            #F2EBDE;
+  --arty-bg-deep:       #E8DFCE;
+  --arty-card:          #FBF6EC;
+  --arty-card-hi:       #FFFFFF;
+  --arty-ink:           #1D1813;
+  --arty-ink-soft:      #3A322A;
+  --arty-muted:         #7A6E5E;
+  --arty-line:          rgba(29,24,19,0.08);
+  --arty-accent:        #C4491C;
+  --arty-accent-deep:   #8F3210;
+  --arty-accent-glow:   rgba(196,73,28,0.12);
+  color-scheme: light;
+}
+
 html.dark {
-  --arty-bg: #14100B;
-  --arty-surface: #1E1812;
-  --arty-surface-high: #28201A;
-  --arty-text: #F5E6D0;
-  --arty-text-soft: #D9C4A5;
-  --arty-text-muted: #8A7A66;
-  --arty-accent: #F59A4B;
-  --arty-accent-deep: #C4491C;
-  --arty-accent-glow: rgba(245,154,75,0.18);
-  --arty-border: rgba(245,230,208,0.08);
+  /* Nocturne — cacao chaud, bougie ambrée (nuit) */
+  --arty-bg:            #14100B;
+  --arty-bg-deep:       #0C0906;
+  --arty-card:          #1E1812;
+  --arty-card-hi:       #28201A;
+  --arty-ink:           #F5E6D0;
+  --arty-ink-soft:      #D9C4A5;
+  --arty-muted:         #8A7A66;
+  --arty-line:          rgba(245,230,208,0.08);
+  --arty-accent:        #F59A4B;
+  --arty-accent-deep:   #C4491C;
+  --arty-accent-glow:   rgba(245,154,75,0.18);
   color-scheme: dark;
 }
-html.dark body { background-color: #14100B; color: #F5E6D0; }
-html.dark .bg-cream { background-color: #14100B !important; }
-html.dark .bg-white { background-color: #1E1812 !important; color: #F5E6D0 !important; }
-html.dark .bg-gray-50 { background-color: #28201A !important; }
-html.dark .bg-gray-100 { background-color: #2a221C !important; }
-html.dark .text-bubble-user { color: #F5E6D0 !important; }
-html.dark .text-gray-600 { color: #D9C4A5 !important; }
-html.dark .text-gray-500 { color: #B8A78B !important; }
-html.dark .text-gray-400 { color: #8A7A66 !important; }
-html.dark .border-gray-100 { border-color: rgba(245,230,208,0.08) !important; }
-html.dark .border-gray-200 { border-color: rgba(245,230,208,0.10) !important; }
-html.dark .hover\:bg-gray-50:hover { background-color: #28201A !important; }
-html.dark .hover\:bg-gray-100:hover { background-color: #2e2620 !important; }
-html.dark .bg-bubble-user { background-color: #F59A4B !important; color: #14100B !important; }
 
-/* Cross-fade between Ember and Nocturne when the theme flips. */
-body { transition: background-color 0.5s ease, color 0.5s ease; }
+/* Global ink + paper on the root — tokens flip avec html.dark. */
+body { background-color: var(--arty-bg); color: var(--arty-ink); }
+
+/* Compat legacy Tailwind classes : elles pointent maintenant sur les tokens,
+   donc les composants pas encore refondus suivent quand même le thème. */
+.bg-cream { background-color: var(--arty-bg) !important; }
+.bg-white { background-color: var(--arty-card) !important; color: var(--arty-ink) !important; }
+.bg-gray-50 { background-color: var(--arty-card-hi) !important; }
+.bg-gray-100 { background-color: var(--arty-card-hi) !important; }
+.text-bubble-user { color: var(--arty-ink) !important; }
+.text-gray-600 { color: var(--arty-ink-soft) !important; }
+.text-gray-500 { color: var(--arty-muted) !important; }
+.text-gray-400 { color: var(--arty-muted) !important; }
+.border-gray-100 { border-color: var(--arty-line) !important; }
+.border-gray-200 { border-color: var(--arty-line) !important; }
+.hover\:bg-gray-50:hover { background-color: var(--arty-card-hi) !important; }
+.hover\:bg-gray-100:hover { background-color: var(--arty-card-hi) !important; }
+.bg-bubble-user { background-color: var(--arty-accent) !important; color: var(--arty-bg) !important; }
+
+/* Cross-fade entre Ember et Nocturne quand le thème flippe. */
+html, body { transition: background-color 0.5s ease, color 0.5s ease; }
+
+/* Halo ambré Nocturne (noop en Ember grâce à la faible opacité) */
+@keyframes arty-glow-pulse { 0%, 100% { opacity: 0.9; } 50% { opacity: 0.6; } }
 
 body {
   background-color: #F5F0E8;
