@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react'
+import { Tag, Rule } from '../shared/editorial'
 
 export interface Question {
   question: string
@@ -40,35 +41,56 @@ export function QuestionModal({ questions, onComplete }: QuestionModalProps) {
 
   if (!current) return null
 
+  const progress = ((currentIndex + 1) / total) * 100
+
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/30">
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center"
+      style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}
+    >
       <div
-        className="w-full max-w-lg bg-white rounded-t-2xl shadow-xl px-5 pt-5 pb-8 animate-slide-up"
-        style={{ maxHeight: '80vh', overflowY: 'auto' }}
+        className="w-full max-w-lg animate-slide-up"
+        style={{
+          backgroundColor: 'var(--arty-bg)',
+          color: 'var(--arty-ink)',
+          border: '1px solid var(--arty-line)',
+          borderBottom: 'none',
+          borderTopLeftRadius: 4,
+          borderTopRightRadius: 4,
+          padding: '20px 20px 32px',
+          maxHeight: '80vh',
+          overflowY: 'auto',
+          boxShadow: '0 -20px 40px rgba(0,0,0,0.25)',
+        }}
       >
-        {/* Header */}
-        <div className="flex items-center justify-between mb-4">
-          <span className="text-sm text-gray-400 font-medium">
-            {currentIndex + 1} sur {total}
-          </span>
+        {/* Masthead */}
+        <div className="flex items-center justify-between mb-2">
+          <Tag>
+            Question {currentIndex + 1} / {total}
+          </Tag>
           <button
             onClick={() => onComplete(answers)}
-            className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-gray-600"
+            className="w-7 h-7 flex items-center justify-center text-[16px]"
+            style={{ color: 'var(--arty-muted)' }}
           >
             ✕
           </button>
         </div>
+        <Rule />
 
         {/* Progress bar */}
-        <div className="h-1 bg-gray-100 rounded-full mb-5">
+        <div className="h-px mt-4 mb-5 relative" style={{ backgroundColor: 'var(--arty-line)' }}>
           <div
-            className="h-1 bg-orange-400 rounded-full transition-all duration-300"
-            style={{ width: `${((currentIndex + 1) / total) * 100}%` }}
+            className="absolute inset-y-0 left-0 transition-all duration-300"
+            style={{ width: `${progress}%`, backgroundColor: 'var(--arty-accent)', height: 2, top: -0.5 }}
           />
         </div>
 
         {/* Question */}
-        <h3 className="text-lg font-semibold text-gray-800 mb-5">{current.question}</h3>
+        <h3 className="font-display text-[22px] leading-[1.2] font-light tracking-[-0.015em] mb-5">
+          {current.question}
+          <span style={{ color: 'var(--arty-accent)' }}> ?</span>
+        </h3>
 
         {/* Options */}
         {current.options && current.options.length > 0 && (
@@ -77,12 +99,21 @@ export function QuestionModal({ questions, onComplete }: QuestionModalProps) {
               <button
                 key={i}
                 onClick={() => handleSelect(option)}
-                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-gray-200 hover:border-orange-300 hover:bg-orange-50 transition-colors text-left"
+                className="w-full flex items-center gap-3 px-4 py-3 text-left transition-colors"
+                style={{
+                  backgroundColor: 'var(--arty-card)',
+                  border: '1px solid var(--arty-line)',
+                  borderRadius: 2,
+                  color: 'var(--arty-ink)',
+                }}
               >
-                <span className="w-7 h-7 flex-shrink-0 flex items-center justify-center rounded-full bg-gray-100 text-sm font-medium text-gray-500">
+                <span
+                  className="w-6 h-6 flex-shrink-0 flex items-center justify-center font-mono text-[11px] font-semibold"
+                  style={{ backgroundColor: 'var(--arty-accent-glow)', color: 'var(--arty-accent)', borderRadius: 2 }}
+                >
                   {i + 1}
                 </span>
-                <span className="text-gray-700">{option}</span>
+                <span className="font-serif italic text-[14px]">« {option} »</span>
               </button>
             ))}
           </div>
@@ -90,21 +121,31 @@ export function QuestionModal({ questions, onComplete }: QuestionModalProps) {
 
         {/* Free text input */}
         {(current.allow_free_text !== false) && (
-          <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-100">
+          <div
+            className="flex items-center gap-2 mt-3 pt-3"
+            style={{ borderTop: '1px solid var(--arty-line)' }}
+          >
             <input
               type="text"
               value={freeText}
               onChange={(e) => setFreeText(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleFreeText()}
-              placeholder="Saisissez votre propre réponse…"
-              className="flex-1 px-3 py-2.5 text-sm rounded-xl border border-gray-200 focus:outline-none focus:border-orange-300"
+              placeholder="… ou ta propre réponse"
+              className="flex-1 px-3 py-2.5 text-[14px] focus:outline-none font-serif italic"
+              style={{
+                backgroundColor: 'var(--arty-card)',
+                border: '1px solid var(--arty-line)',
+                color: 'var(--arty-ink)',
+                borderRadius: 2,
+              }}
             />
             <button
               onClick={handleFreeText}
               disabled={!freeText.trim()}
-              className="w-10 h-10 flex items-center justify-center rounded-full bg-orange-100 text-orange-500 disabled:opacity-30"
+              className="w-10 h-10 flex items-center justify-center disabled:opacity-30 transition-opacity hover:opacity-90"
+              style={{ backgroundColor: 'var(--arty-ink)', color: 'var(--arty-bg)', borderRadius: 2 }}
             >
-              ↑
+              →
             </button>
           </div>
         )}

@@ -1,14 +1,21 @@
 import { memo } from 'react'
-import { AssistantAvatar } from './AssistantAvatar'
+import { StarIcon } from '../shared/StarIcon'
+import { Tag } from '../shared/editorial'
 
 export const TypingIndicator = memo(function TypingIndicator() {
   return (
-    <div className="flex gap-2.5 mb-3">
-      <AssistantAvatar />
-      <div className="bg-white px-4 py-3 rounded-2xl rounded-tl-md shadow-sm flex items-center gap-1.5">
-        <span className="w-2 h-2 rounded-full bg-gray-400 typing-dot-1" />
-        <span className="w-2 h-2 rounded-full bg-gray-400 typing-dot-2" />
-        <span className="w-2 h-2 rounded-full bg-gray-400 typing-dot-3" />
+    <div className="mb-5 max-w-[94%]">
+      <div className="flex items-center gap-2 mb-1.5">
+        <StarIcon size={12} />
+        <Tag>Arty écrit…</Tag>
+      </div>
+      <div
+        className="flex items-center gap-1.5 py-2"
+        style={{ paddingLeft: 20, borderLeft: '2px solid var(--arty-line)' }}
+      >
+        <span className="w-1.5 h-1.5 rounded-full typing-dot-1" style={{ backgroundColor: 'var(--arty-accent)' }} />
+        <span className="w-1.5 h-1.5 rounded-full typing-dot-2" style={{ backgroundColor: 'var(--arty-accent)' }} />
+        <span className="w-1.5 h-1.5 rounded-full typing-dot-3" style={{ backgroundColor: 'var(--arty-accent)' }} />
       </div>
     </div>
   )
