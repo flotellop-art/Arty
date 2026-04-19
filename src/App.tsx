@@ -162,6 +162,8 @@ function AppContent({ onLogout, userName }: { onLogout: () => void; userName?: s
               googleAuth={googleAuth}
               gmail={gmail}
               drive={drive}
+              userName={userName}
+              onOpenBrief={() => setShowMorningBrief(true)}
             />
           }
         />
