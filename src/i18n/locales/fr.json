@@ -16,6 +16,11 @@
   },
   "login": {
     "title": "Connexion",
+    "editorialTitle": "Bon retour",
+    "editorialSubtitle": "Ton assistant, chiffré, à toi.",
+    "edition": "Édition privée · Vol. 1",
+    "privacyNote": "Chiffré localement. Rien ne quitte ton appareil sans toi.",
+    "or": "ou",
     "connectedAs": "Connecté en tant que <strong>{{name}}</strong>. Entre ta clé API Anthropic pour continuer.",
     "tabs": {
       "apikey": "Clé API",
@@ -96,6 +101,11 @@
   "home": {
     "title": "Comment puis-je t'aider ?",
     "hintHelp": "Tape <0>/aide</0> pour voir tout ce que je sais faire",
+    "greetingMorning": "Bonjour",
+    "greetingAfternoon": "Bon après-midi",
+    "greetingEvening": "Bonsoir",
+    "agendaKicker": "Agenda",
+    "intentionsKicker": "Intentions",
     "suggestions": {
       "title": "Suggestions",
       "unreadEmails": "Montre mes derniers mails non lus",
@@ -103,6 +113,12 @@
       "calendarWeek": "Montre mon agenda de la semaine",
       "createEvent": "Planifie un RDV demain à 14h",
       "findContact": "Cherche le contact de "
+    },
+    "intents": {
+      "unreadEmails": "Résume mes mails non lus",
+      "today": "Qu'ai-je de prévu aujourd'hui ?",
+      "schedule": "Planifie un RDV demain 14h",
+      "useful": "Donne-moi une idée utile"
     },
     "calendar": {
       "title": "Agenda des 7 prochains jours"

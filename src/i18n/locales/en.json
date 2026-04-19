@@ -16,6 +16,11 @@
   },
   "login": {
     "title": "Sign in",
+    "editorialTitle": "Welcome back",
+    "editorialSubtitle": "Your assistant, encrypted, yours.",
+    "edition": "Private edition · Vol. 1",
+    "privacyNote": "Encrypted locally. Nothing leaves your device without you.",
+    "or": "or",
     "connectedAs": "Signed in as <strong>{{name}}</strong>. Enter your Anthropic API key to continue.",
     "tabs": {
       "apikey": "API key",
@@ -96,6 +101,11 @@
   "home": {
     "title": "How can I help you?",
     "hintHelp": "Type <0>/help</0> to see everything I can do",
+    "greetingMorning": "Good morning",
+    "greetingAfternoon": "Good afternoon",
+    "greetingEvening": "Good evening",
+    "agendaKicker": "Agenda",
+    "intentionsKicker": "Intents",
     "suggestions": {
       "title": "Suggestions",
       "unreadEmails": "Show my latest unread emails",
@@ -103,6 +113,12 @@
       "calendarWeek": "Show my calendar for the week",
       "createEvent": "Schedule a meeting tomorrow at 2pm",
       "findContact": "Find the contact of "
+    },
+    "intents": {
+      "unreadEmails": "Summarise unread mail",
+      "today": "What's on today?",
+      "schedule": "Book a meeting tomorrow 2pm",
+      "useful": "Give me a useful idea"
     },
     "calendar": {
       "title": "Next 7 days"

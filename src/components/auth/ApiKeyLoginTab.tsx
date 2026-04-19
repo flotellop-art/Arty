@@ -35,77 +35,75 @@ export function ApiKeyLoginTab({ onLogin, loading }: ApiKeyLoginTabProps) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div>
-        <label className="block text-xs font-medium text-gray-600 mb-1.5">
-          {t('login.apiKey.anthropicLabel')}
-        </label>
-        <input
-          type="password"
-          value={anthropicKey}
-          onChange={(e) => setAnthropicKey(e.target.value)}
-          placeholder="sk-ant-..."
-          className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 bg-gray-50"
-          autoComplete="off"
-          autoFocus
-        />
-      </div>
+    <form onSubmit={handleSubmit} className="space-y-5">
+      <Field
+        label={t('login.apiKey.anthropicLabel')}
+        value={anthropicKey}
+        onChange={setAnthropicKey}
+        placeholder="sk-ant-api03-…"
+        autoFocus
+      />
+      <Field
+        label={`${t('login.apiKey.geminiLabel')} ${t('login.apiKey.geminiHint')}`}
+        value={geminiKey}
+        onChange={setGeminiKey}
+        placeholder="AIza…"
+      />
+      <Field
+        label={`${t('login.apiKey.mistralLabel')} ${t('login.apiKey.mistralHint')}`}
+        value={mistralKey}
+        onChange={setMistralKey}
+        placeholder="…"
+      />
+      <Field
+        label={`${t('login.apiKey.openaiLabel')} ${t('login.apiKey.openaiHint')}`}
+        value={openaiKey}
+        onChange={setOpenaiKey}
+        placeholder="sk-…"
+      />
 
-      <div>
-        <label className="block text-xs font-medium text-gray-600 mb-1.5">
-          {t('login.apiKey.geminiLabel')} <span className="text-gray-400">{t('login.apiKey.geminiHint')}</span>
-        </label>
-        <input
-          type="password"
-          value={geminiKey}
-          onChange={(e) => setGeminiKey(e.target.value)}
-          placeholder="AIza..."
-          className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 bg-gray-50"
-          autoComplete="off"
-        />
-      </div>
-
-      <div>
-        <label className="block text-xs font-medium text-gray-600 mb-1.5">
-          {t('login.apiKey.mistralLabel')} <span className="text-gray-400">{t('login.apiKey.mistralHint')}</span>
-        </label>
-        <input
-          type="password"
-          value={mistralKey}
-          onChange={(e) => setMistralKey(e.target.value)}
-          placeholder="..."
-          className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 bg-gray-50"
-          autoComplete="off"
-        />
-      </div>
-
-      <div>
-        <label className="block text-xs font-medium text-gray-600 mb-1.5">
-          {t('login.apiKey.openaiLabel')} <span className="text-gray-400">{t('login.apiKey.openaiHint')}</span>
-        </label>
-        <input
-          type="password"
-          value={openaiKey}
-          onChange={(e) => setOpenaiKey(e.target.value)}
-          placeholder="sk-..."
-          className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 bg-gray-50"
-          autoComplete="off"
-        />
-      </div>
-
-      {error && <p className="text-sm text-red-500">{error}</p>}
+      {error && (
+        <p className="font-sans text-xs text-theme-accent">{error}</p>
+      )}
 
       <button
         type="submit"
         disabled={loading || !anthropicKey.trim()}
-        className="w-full py-2.5 rounded-xl bg-bubble-user text-cream font-medium text-sm hover:bg-gray-700 transition-colors disabled:opacity-40"
+        className="w-full py-4 font-display italic text-base font-medium tracking-[0.02em] bg-theme-ink text-theme-bg rounded-[4px] transition-opacity hover:opacity-90 disabled:opacity-40"
       >
-        {loading ? t('login.apiKey.connecting') : t('login.apiKey.submit')}
+        {loading ? t('login.apiKey.connecting') : `${t('login.apiKey.submit')} →`}
       </button>
 
-      <p className="text-xs text-gray-400 text-center leading-relaxed">
+      <p className="font-display italic text-[11px] text-theme-muted text-center leading-relaxed">
         {t('login.apiKey.notice')}
       </p>
     </form>
+  )
+}
+
+interface FieldProps {
+  label: string
+  value: string
+  onChange: (v: string) => void
+  placeholder: string
+  autoFocus?: boolean
+}
+
+function Field({ label, value, onChange, placeholder, autoFocus }: FieldProps) {
+  return (
+    <div>
+      <label className="block font-sans text-[10px] font-semibold uppercase tracking-kicker text-theme-muted mb-1.5">
+        {label}
+      </label>
+      <input
+        type="password"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        autoComplete="off"
+        autoFocus={autoFocus}
+        className="w-full bg-transparent border-0 border-b border-theme-ink/40 py-2.5 font-mono text-sm text-theme-ink placeholder:text-theme-muted/60 focus:outline-none focus:border-theme-accent transition-colors"
+      />
+    </div>
   )
 }
