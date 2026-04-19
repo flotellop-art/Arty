@@ -8,6 +8,7 @@ import { SettingsModal } from '../settings/SettingsModal'
 import { TaskPanel } from '../tasks/TaskPanel'
 import { countPending } from '../../services/taskService'
 import { importConversationFromFile } from '../../services/conversationExport'
+import { Tag, Rule, DotLine } from '../shared/editorial'
 
 interface SidebarProps {
   isOpen: boolean
@@ -46,7 +47,12 @@ function highlight(text: string, query: string): JSX.Element {
   return (
     <>
       {text.slice(0, idx)}
-      <mark className="bg-yellow-200 rounded px-0.5">{text.slice(idx, idx + q.length)}</mark>
+      <mark
+        className="px-0.5 rounded"
+        style={{ backgroundColor: 'var(--arty-accent-glow)', color: 'var(--arty-accent)' }}
+      >
+        {text.slice(idx, idx + q.length)}
+      </mark>
       {text.slice(idx + q.length)}
     </>
   )
@@ -56,6 +62,22 @@ interface PinnedItem {
   conversationId: string
   conversationTitle: string
   message: Message
+}
+
+/** Group conversations by temporal bucket — today / yesterday / earlier. */
+function groupByDay(list: Conversation[]) {
+  const now = new Date()
+  const sod = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+  const ysod = sod - 86_400_000
+  const today: Conversation[] = []
+  const yesterday: Conversation[] = []
+  const earlier: Conversation[] = []
+  for (const c of list) {
+    if (c.updatedAt >= sod) today.push(c)
+    else if (c.updatedAt >= ysod) yesterday.push(c)
+    else earlier.push(c)
+  }
+  return { today, yesterday, earlier }
 }
 
 export function Sidebar({
@@ -80,13 +102,11 @@ export function Sidebar({
   const [pendingTasks, setPendingTasks] = useState(0)
   const importInputRef = useRef<HTMLInputElement>(null)
 
-  // Debounce search (300ms)
   useEffect(() => {
-    const t = setTimeout(() => setDebouncedSearch(searchRaw.trim()), 300)
-    return () => clearTimeout(t)
+    const id = setTimeout(() => setDebouncedSearch(searchRaw.trim()), 300)
+    return () => clearTimeout(id)
   }, [searchRaw])
 
-  // Keep pending tasks badge fresh
   useEffect(() => {
     const refresh = () => setPendingTasks(countPending())
     refresh()
@@ -94,14 +114,11 @@ export function Sidebar({
     return () => window.removeEventListener('tasks-updated', refresh)
   }, [])
 
-  // Collect pinned messages across all conversations
   const pinned: PinnedItem[] = useMemo(() => {
     const out: PinnedItem[] = []
     for (const conv of conversations) {
       for (const msg of conv.messages) {
-        if (msg.pinned) {
-          out.push({ conversationId: conv.id, conversationTitle: conv.title, message: msg })
-        }
+        if (msg.pinned) out.push({ conversationId: conv.id, conversationTitle: conv.title, message: msg })
       }
     }
     return out
@@ -116,6 +133,8 @@ export function Sidebar({
     })
   }, [conversations, debouncedSearch])
 
+  const grouped = useMemo(() => groupByDay(filteredConversations), [filteredConversations])
+
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -129,45 +148,126 @@ export function Sidebar({
     if (importInputRef.current) importInputRef.current.value = ''
   }
 
+  const ConvRow = ({ c, last }: { c: Conversation; last: boolean }) => {
+    const isActive = c.id === activeId
+    return (
+      <div className="group">
+        <div
+          className="flex items-start gap-2 px-1 py-2 cursor-pointer"
+          style={{
+            color: 'var(--arty-ink)',
+            backgroundColor: isActive ? 'var(--arty-accent-glow)' : 'transparent',
+          }}
+        >
+          <button
+            onClick={() => { onSelect(c.id); onClose() }}
+            className="flex-1 text-left min-w-0"
+          >
+            <div className="flex items-baseline justify-between gap-2">
+              <p
+                className="font-serif text-[14px] leading-[1.25] truncate"
+                style={{ color: isActive ? 'var(--arty-accent)' : 'var(--arty-ink)', fontWeight: 500 }}
+              >
+                {highlight(c.title, debouncedSearch)}
+              </p>
+              <span className="font-mono text-[10px] shrink-0" style={{ color: 'var(--arty-muted)' }}>
+                {timeAgo(c.updatedAt)}
+              </span>
+            </div>
+            {c.messages.length > 0 && (
+              <p
+                className="text-[12px] mt-0.5 italic font-serif truncate"
+                style={{ color: 'var(--arty-muted)' }}
+              >
+                {(c.messages[c.messages.length - 1]?.content || '').slice(0, 80)}
+              </p>
+            )}
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); onDelete(c.id) }}
+            className="opacity-0 group-hover:opacity-100 p-1 transition-all"
+            aria-label={t('sidebar.deleteAria')}
+            style={{ color: 'var(--arty-muted)' }}
+          >
+            <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M2 4H11L10 12H3L2 4Z M5 4V2H8V4 M1 4H12" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg>
+          </button>
+        </div>
+        {!last && <DotLine />}
+      </div>
+    )
+  }
+
+  const Section = ({ label, items }: { label: string; items: Conversation[] }) => {
+    if (items.length === 0) return null
+    return (
+      <section className="px-5 pt-4">
+        <Tag>— {label}</Tag>
+        <div className="mt-2">
+          {items.map((c, i) => (
+            <ConvRow key={c.id} c={c} last={i === items.length - 1} />
+          ))}
+        </div>
+      </section>
+    )
+  }
+
   return (
     <>
-      {/* Backdrop */}
       {isOpen && (
         <div
-          className="fixed inset-0 bg-black/40 z-40 transition-opacity"
+          className="fixed inset-0 z-40 transition-opacity"
+          style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}
           onClick={onClose}
         />
       )}
 
-      {/* Drawer */}
       <aside
-        className={`fixed top-0 left-0 h-full w-80 max-w-[85vw] bg-white z-50 shadow-xl transform transition-transform duration-300 ease-in-out flex flex-col ${
+        className={`fixed top-0 left-0 h-full w-80 max-w-[85vw] z-50 shadow-xl transform transition-transform duration-300 ease-in-out flex flex-col ${
           isOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
+        style={{
+          backgroundColor: 'var(--arty-bg)',
+          color: 'var(--arty-ink)',
+          borderRight: '1px solid var(--arty-line)',
+        }}
       >
-        {/* Header */}
-        <div className="flex items-center gap-3 px-5 py-5 border-b border-gray-100">
-          <StarIcon size={28} />
-          <h2 className="font-serif text-lg font-semibold text-bubble-user">
-            Arty
-          </h2>
+        {/* Masthead */}
+        <div className="px-5 pt-4 pb-2 flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <StarIcon size={22} />
+            <span className="font-display italic text-[22px] tracking-[-0.01em]">arty</span>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-[18px] leading-none"
+            style={{ color: 'var(--arty-ink)' }}
+            aria-label="Fermer"
+          >
+            ✕
+          </button>
         </div>
+        <Rule className="mx-5" />
 
         {/* Search */}
-        <div className="px-4 pt-3">
-          <div className="relative">
+        <div className="px-5 pt-4">
+          <div
+            className="relative flex items-center gap-2 px-3 py-2"
+            style={{ backgroundColor: 'var(--arty-card)', border: '1px solid var(--arty-line)', borderRadius: 2 }}
+          >
+            <span style={{ color: 'var(--arty-muted)' }}>⌕</span>
             <input
               type="text"
               value={searchRaw}
               onChange={(e) => setSearchRaw(e.target.value)}
-              placeholder="Rechercher..."
-              className="w-full pl-8 pr-8 py-1.5 rounded-lg border border-gray-200 text-xs focus:outline-none focus:border-accent bg-gray-50"
+              placeholder={t('sidebar.search', { defaultValue: 'Rechercher…' })}
+              className="flex-1 bg-transparent border-none focus:outline-none text-[13px] font-serif italic"
+              style={{ color: 'var(--arty-ink)' }}
             />
-            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs">🔍</span>
             {searchRaw && (
               <button
                 onClick={() => setSearchRaw('')}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs"
+                className="text-xs"
+                style={{ color: 'var(--arty-muted)' }}
                 aria-label="Effacer"
               >
                 ✕
@@ -175,37 +275,34 @@ export function Sidebar({
             )}
           </div>
           {debouncedSearch && (
-            <p className="text-[10px] text-gray-400 mt-1 px-1">
+            <p className="text-[10px] mt-1 px-1" style={{ color: 'var(--arty-muted)' }}>
               {filteredConversations.length} résultat{filteredConversations.length !== 1 ? 's' : ''}
             </p>
           )}
         </div>
 
-        {/* New conversation */}
-        <div className="px-4 py-3">
+        {/* New conversation (full-width ink italic) */}
+        <div className="px-5 pt-3">
           <button
-            onClick={() => {
-              onNew()
-              onClose()
-            }}
-            className="w-full flex items-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 hover:bg-gray-50 transition-colors text-sm font-medium text-bubble-user"
+            onClick={() => { onNew(); onClose() }}
+            className="w-full py-3 font-display italic text-[15px] font-medium flex items-center justify-center gap-2"
+            style={{ backgroundColor: 'var(--arty-ink)', color: 'var(--arty-bg)', borderRadius: 2, letterSpacing: '0.02em' }}
           >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-              <line x1="8" y1="2" x2="8" y2="14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-              <line x1="2" y1="8" x2="14" y2="8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-            </svg>
+            <span className="not-italic text-[18px] leading-none">+</span>
             {t('sidebar.newConversation')}
           </button>
           {onNewEU && (
             <button
-              onClick={() => {
-                onNewEU()
-                onClose()
+              onClick={() => { onNewEU(); onClose() }}
+              className="w-full mt-2 py-2.5 font-serif italic text-[13px]"
+              style={{
+                backgroundColor: 'var(--arty-accent-glow)',
+                color: 'var(--arty-accent)',
+                border: `1px solid var(--arty-accent)`,
+                borderRadius: 2,
               }}
-              className="w-full flex items-center gap-2 px-4 py-2.5 rounded-xl border border-blue-200 bg-blue-50 hover:bg-blue-100 transition-colors text-sm font-medium text-blue-700 mt-2"
             >
-              <span className="text-base">🇪🇺</span>
-              {t('sidebar.newConversationEU')}
+              🇪🇺 {t('sidebar.newConversationEU')}
             </button>
           )}
 
@@ -213,10 +310,15 @@ export function Sidebar({
           <div className="flex gap-2 mt-2">
             <button
               onClick={() => importInputRef.current?.click()}
-              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 text-xs text-gray-600"
+              className="flex-1 flex items-center justify-center gap-1.5 py-2 text-[11px]"
+              style={{
+                color: 'var(--arty-ink)', backgroundColor: 'var(--arty-card)',
+                border: '1px solid var(--arty-line)', borderRadius: 2,
+              }}
               title="Importer une conversation JSON"
             >
-              ⬆️ Importer
+              <span style={{ color: 'var(--arty-accent)' }}>↥</span>
+              <span className="font-serif italic">Importer</span>
             </button>
             <input
               ref={importInputRef}
@@ -227,125 +329,101 @@ export function Sidebar({
             />
             <button
               onClick={() => setShowTasks(true)}
-              className="relative flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 text-xs text-gray-600"
+              className="relative flex-1 flex items-center justify-center gap-1.5 py-2 text-[11px]"
+              style={{
+                color: 'var(--arty-ink)', backgroundColor: 'var(--arty-card)',
+                border: '1px solid var(--arty-line)', borderRadius: 2,
+              }}
               title="Tâches"
             >
-              ✅ Tâches
+              <span style={{ color: 'var(--arty-accent)' }}>✓</span>
+              <span className="font-serif italic">Tâches</span>
               {pendingTasks > 0 && (
-                <span className="absolute -top-1 -right-1 bg-accent text-white text-[9px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-1">
-                  🔔 {pendingTasks}
+                <span
+                  className="absolute -top-1 -right-1 text-[9px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-1"
+                  style={{ backgroundColor: 'var(--arty-accent)', color: 'var(--arty-bg)' }}
+                >
+                  {pendingTasks}
                 </span>
               )}
             </button>
           </div>
         </div>
 
-        {/* Pinned messages (Feature 3) */}
+        {/* Pinned messages */}
         {pinned.length > 0 && !debouncedSearch && (
-          <div className="px-3 pb-2">
-            <p className="text-[10px] uppercase tracking-wider text-gray-400 px-2 mb-1">
-              📌 Messages épinglés ({pinned.length})
-            </p>
-            <div className="max-h-32 overflow-y-auto">
-              {pinned.map((p) => (
+          <section className="px-5 pt-5">
+            <Tag accent>◈ Épinglés ({pinned.length})</Tag>
+            <div className="mt-2 max-h-32 overflow-y-auto">
+              {pinned.map((p, i) => (
                 <button
                   key={p.message.id}
-                  onClick={() => {
-                    onSelect(p.conversationId)
-                    onClose()
+                  onClick={() => { onSelect(p.conversationId); onClose() }}
+                  className="w-full text-left py-2 px-1"
+                  style={{
+                    borderTop: i === 0 ? 'none' : '1px dotted var(--arty-line)',
                   }}
-                  className="w-full text-left px-2 py-1.5 rounded-lg hover:bg-gray-50 transition-colors"
                 >
-                  <p className="text-[10px] text-gray-400 truncate">
+                  <p className="text-[10px] uppercase tracking-wider font-sans truncate" style={{ color: 'var(--arty-muted)' }}>
                     {p.conversationTitle}
                   </p>
-                  <p className="text-xs text-bubble-user truncate">
-                    {p.message.content.slice(0, 80)}
+                  <p className="font-serif italic text-[12px] mt-0.5 truncate" style={{ color: 'var(--arty-ink)' }}>
+                    « {p.message.content.slice(0, 80)} »
                   </p>
                 </button>
               ))}
             </div>
-          </div>
+          </section>
         )}
 
         {/* Conversation list */}
-        <nav className="flex-1 overflow-y-auto px-3 pb-4">
+        <nav className="flex-1 overflow-y-auto pb-4">
           {filteredConversations.length === 0 && (
-            <p className="text-sm text-gray-400 text-center py-8">
-              {debouncedSearch ? 'Aucun résultat' : t('sidebar.emptyList')}
+            <p className="font-serif italic text-[14px] text-center py-10 px-4" style={{ color: 'var(--arty-muted)' }}>
+              {debouncedSearch ? 'Aucun résultat.' : t('sidebar.emptyList')}
             </p>
           )}
-          {filteredConversations.map((conv) => (
-            <div
-              key={conv.id}
-              className={`group flex items-center gap-2 px-3 py-2.5 rounded-xl mb-0.5 cursor-pointer transition-colors ${
-                conv.id === activeId
-                  ? 'bg-accent/10 text-accent'
-                  : 'hover:bg-gray-50 text-bubble-user'
-              }`}
-            >
-              <button
-                onClick={() => {
-                  onSelect(conv.id)
-                  onClose()
-                }}
-                className="flex-1 text-left min-w-0"
-              >
-                <p className="text-sm truncate font-normal">
-                  {highlight(conv.title, debouncedSearch)}
-                </p>
-                <p className="text-xs text-gray-400 mt-0.5">
-                  {timeAgo(conv.updatedAt)}
-                </p>
-              </button>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onDelete(conv.id)
-                }}
-                className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-red-50 transition-all"
-                aria-label={t('sidebar.deleteAria')}
-              >
-                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                  <path d="M2 4H12L11 13H3L2 4Z" stroke="#EF4444" strokeWidth="1.2" />
-                  <path d="M5 4V2H9V4" stroke="#EF4444" strokeWidth="1.2" />
-                  <line x1="1" y1="4" x2="13" y2="4" stroke="#EF4444" strokeWidth="1.2" />
-                </svg>
-              </button>
-            </div>
-          ))}
+          <Section label={t('sidebar.today', { defaultValue: "Aujourd'hui" })} items={grouped.today} />
+          <Section label={t('sidebar.yesterday', { defaultValue: 'Hier' })} items={grouped.yesterday} />
+          <Section label={t('sidebar.earlier', { defaultValue: 'Plus tôt' })} items={grouped.earlier} />
         </nav>
 
         <TokenUsageBar />
 
-        {/* Language selector */}
         <LanguageSelector />
 
-        {/* Settings */}
+        {/* Settings button editorial */}
         <button
           onClick={() => setShowSettings(true)}
-          className="mx-3 mb-2 flex items-center gap-2 px-3 py-2 rounded-xl text-xs text-gray-600 hover:bg-gray-50 transition-colors"
+          className="mx-5 mb-2 flex items-center gap-2 px-3 py-2 font-serif italic text-[13px]"
+          style={{
+            color: 'var(--arty-ink)',
+            backgroundColor: 'var(--arty-card)',
+            border: '1px solid var(--arty-line)',
+            borderRadius: 2,
+          }}
         >
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ color: 'var(--arty-accent)' }}>
             <circle cx="7" cy="7" r="1.75" stroke="currentColor" strokeWidth="1.2" />
-            <path
-              d="M7 1V2.5M7 11.5V13M13 7H11.5M2.5 7H1M11.24 2.76L10.18 3.82M3.82 10.18L2.76 11.24M11.24 11.24L10.18 10.18M3.82 3.82L2.76 2.76"
-              stroke="currentColor"
-              strokeWidth="1.2"
-              strokeLinecap="round"
-            />
+            <path d="M7 1V2.5M7 11.5V13M13 7H11.5M2.5 7H1M11.24 2.76L10.18 3.82M3.82 10.18L2.76 11.24M11.24 11.24L10.18 10.18M3.82 3.82L2.76 2.76" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
           </svg>
-          Paramètres — Clés API
+          Paramètres
         </button>
 
         {/* User info + logout */}
         {userName && (
-          <div className="px-5 py-3 border-t border-gray-100 flex items-center justify-between">
-            <span className="text-xs text-gray-500 truncate">{userName}</span>
+          <div
+            className="px-5 py-3 flex items-center justify-between"
+            style={{ borderTop: '1px solid var(--arty-line)' }}
+          >
+            <span className="text-xs truncate font-serif italic" style={{ color: 'var(--arty-muted)' }}>
+              {userName}
+            </span>
             {onLogout && (
               <button
                 onClick={onLogout}
-                className="text-xs text-gray-400 hover:text-red-500 transition-colors"
+                className="text-[10px] uppercase tracking-[0.15em] font-sans font-semibold"
+                style={{ color: 'var(--arty-muted)' }}
               >
                 {t('common.logout')}
               </button>
