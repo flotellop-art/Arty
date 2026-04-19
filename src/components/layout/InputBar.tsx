@@ -313,11 +313,29 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
   }, [])
 
   return (
-    <div className="relative px-4 pb-4 pt-2 bg-cream" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 1rem))' }}>
-      {/* Slash command palette (Feature 2) */}
+    <div
+      className="relative px-4 pb-4 pt-2"
+      style={{
+        backgroundColor: 'var(--arty-bg)',
+        borderTop: '1px solid var(--arty-line)',
+        paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 1rem))',
+      }}
+    >
+      {/* Slash command palette */}
       {showSlashPalette && filteredCommands.length > 0 && (
-        <div className="absolute bottom-full left-4 right-4 mb-2 bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden z-20 animate-fade-in">
-          <div className="text-[10px] uppercase tracking-wider text-gray-400 px-3 py-2 border-b border-gray-100 bg-gray-50">
+        <div
+          className="absolute bottom-full left-4 right-4 mb-2 overflow-hidden z-20 animate-fade-in"
+          style={{
+            backgroundColor: 'var(--arty-card)',
+            border: '1px solid var(--arty-line)',
+            borderRadius: 2,
+            boxShadow: '0 20px 40px -10px rgba(0,0,0,0.2)',
+          }}
+        >
+          <div
+            className="text-[10px] uppercase tracking-[0.18em] font-sans font-semibold px-3 py-2"
+            style={{ color: 'var(--arty-muted)', borderBottom: '1px solid var(--arty-line)' }}
+          >
             Commandes
           </div>
           <div className="max-h-60 overflow-y-auto">
@@ -326,14 +344,20 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
                 key={cmd.cmd}
                 onClick={() => applySlashCommand(cmd)}
                 onMouseEnter={() => setSlashSelectedIndex(i)}
-                className={`w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors ${
-                  i === slashSelectedIndex ? 'bg-accent/10' : 'hover:bg-gray-50'
-                }`}
+                className="w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors"
+                style={{ backgroundColor: i === slashSelectedIndex ? 'var(--arty-accent-glow)' : 'transparent' }}
               >
                 <span className="text-base">{cmd.icon}</span>
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs font-mono text-bubble-user font-semibold">{cmd.cmd}</p>
-                  <p className="text-xs text-gray-500 truncate">{cmd.label}</p>
+                  <p
+                    className="text-xs font-mono font-semibold"
+                    style={{ color: i === slashSelectedIndex ? 'var(--arty-accent)' : 'var(--arty-ink)' }}
+                  >
+                    {cmd.cmd}
+                  </p>
+                  <p className="text-xs truncate font-serif italic" style={{ color: 'var(--arty-muted)' }}>
+                    {cmd.label}
+                  </p>
                 </div>
               </button>
             ))}
@@ -341,22 +365,31 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
         </div>
       )}
 
-      {/* Calendar event suggestion pill (Feature 16) */}
+      {/* Calendar event suggestion pill */}
       {calendarSuggestion && !showCalendarForm && (
-        <div className="mb-2 flex items-center gap-2 px-3 py-2 bg-accent/10 border border-accent/20 rounded-xl text-xs text-bubble-user">
-          <span>📅</span>
-          <span className="flex-1 truncate">
-            Créer un événement : <span className="font-semibold">{calendarSuggestion.text}</span>
+        <div
+          className="mb-2 flex items-center gap-2 px-3 py-2 text-xs"
+          style={{
+            backgroundColor: 'var(--arty-accent-glow)',
+            border: '1px solid var(--arty-accent)',
+            color: 'var(--arty-ink)',
+            borderRadius: 2,
+          }}
+        >
+          <span style={{ color: 'var(--arty-accent)' }}>◈</span>
+          <span className="flex-1 truncate font-serif italic">
+            Créer un événement : <span className="not-italic font-semibold">{calendarSuggestion.text}</span>
           </span>
           <button
             onClick={() => setShowCalendarForm(true)}
-            className="px-2 py-0.5 rounded-md bg-accent text-white text-[10px] font-semibold hover:bg-accent/90"
+            className="px-2 py-0.5 text-[10px] font-serif italic"
+            style={{ backgroundColor: 'var(--arty-accent)', color: 'var(--arty-bg)', borderRadius: 2 }}
           >
             Créer
           </button>
           <button
             onClick={() => setCalendarSuggestion(null)}
-            className="text-gray-400 hover:text-gray-600"
+            style={{ color: 'var(--arty-muted)' }}
             aria-label="Ignorer"
           >
             ✕
@@ -379,13 +412,20 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
           {files.map((file, i) => (
             <div
               key={i}
-              className="flex items-center gap-1.5 bg-white rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs text-gray-600 flex-shrink-0"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs flex-shrink-0"
+              style={{
+                backgroundColor: 'var(--arty-card)',
+                border: '1px solid var(--arty-line)',
+                color: 'var(--arty-ink-soft)',
+                borderRadius: 2,
+              }}
             >
-              <span>{file.type.startsWith('image/') ? '🖼️' : '📄'}</span>
-              <span className="max-w-[120px] truncate">{file.name}</span>
+              <span>{file.type.startsWith('image/') ? '◼' : '◰'}</span>
+              <span className="max-w-[120px] truncate font-serif italic">{file.name}</span>
               <button
                 onClick={() => removeFile(i)}
-                className="text-gray-400 hover:text-red-500 ml-1"
+                className="ml-1"
+                style={{ color: 'var(--arty-muted)' }}
               >
                 ✕
               </button>
@@ -396,19 +436,27 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
 
       {/* Mic error message */}
       {micError && (
-        <div className="text-xs text-red-500 mb-1 px-1">
+        <div className="text-xs mb-1 px-1 font-serif italic" style={{ color: 'var(--arty-accent)' }}>
           {micError}
         </div>
       )}
 
       {/* Interim transcript indicator */}
       {isListening && interimTranscript && (
-        <div className="text-xs text-gray-400 italic mb-1 px-1 truncate">
-          {interimTranscript}...
+        <div className="text-xs italic mb-1 px-1 truncate font-serif" style={{ color: 'var(--arty-muted)' }}>
+          « {interimTranscript}… »
         </div>
       )}
 
-      <div className="flex items-end gap-2 bg-white rounded-2xl border border-gray-200 px-3 py-2 shadow-sm">
+      <div
+        className="flex items-end gap-2 px-3 py-2"
+        style={{
+          backgroundColor: 'var(--arty-card)',
+          border: '1px solid var(--arty-line)',
+          borderRadius: 2,
+          boxShadow: '0 1px 0 rgba(0,0,0,0.04)',
+        }}
+      >
         {/* Plus button — file upload */}
         <button
           onClick={() => fileInputRef.current?.click()}
@@ -494,7 +542,8 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
           onKeyDown={handleKeyDown}
           placeholder={isListening ? t('chat.input.listening') : t('chat.input.placeholder')}
           rows={1}
-          className="flex-1 resize-none bg-transparent text-sm text-bubble-user placeholder-gray-400 focus:outline-none py-1.5 font-sans font-light leading-relaxed"
+          className="flex-1 resize-none bg-transparent text-[15px] focus:outline-none py-1.5 font-serif italic leading-[1.4]"
+          style={{ color: 'var(--arty-ink)' }}
         />
 
         {/* Whisper audio recording (Feature 15) — if OpenAI key is available */}
@@ -546,24 +595,26 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
         {isStreaming ? (
           <button
             onClick={onStop}
-            className="flex-shrink-0 w-8 h-8 rounded-full bg-bubble-user flex items-center justify-center hover:bg-gray-700 transition-colors mb-0.5"
+            className="flex-shrink-0 w-8 h-8 flex items-center justify-center transition-opacity hover:opacity-90 mb-0.5"
+            style={{ backgroundColor: 'var(--arty-ink)', color: 'var(--arty-bg)', borderRadius: 2 }}
             aria-label={t('chat.input.aria.stop')}
           >
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-              <rect x="2" y="2" width="8" height="8" rx="1" fill="#F5F0E8" />
+            <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
+              <rect x="2" y="2" width="8" height="8" rx="1" fill="currentColor" />
             </svg>
           </button>
         ) : (
           <button
             onClick={handleSend}
             disabled={!text.trim() && files.length === 0}
-            className="flex-shrink-0 w-8 h-8 rounded-full bg-bubble-user flex items-center justify-center disabled:opacity-30 hover:bg-gray-700 transition-colors mb-0.5"
+            className="flex-shrink-0 w-8 h-8 flex items-center justify-center disabled:opacity-30 transition-opacity hover:opacity-90 mb-0.5"
+            style={{ backgroundColor: 'var(--arty-ink)', color: 'var(--arty-bg)', borderRadius: 2 }}
             aria-label={t('chat.input.aria.send')}
           >
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
               <path
-                d="M7 12V2M7 2L3 6M7 2L11 6"
-                stroke="#F5F0E8"
+                d="M3 7H11M11 7L7 3M11 7L7 11"
+                stroke="currentColor"
                 strokeWidth="1.5"
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -593,34 +644,54 @@ function CalendarMiniForm({ detected, context, onConfirm, onCancel }: CalendarMi
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
   })
 
+  const fieldStyle = {
+    backgroundColor: 'var(--arty-card)',
+    color: 'var(--arty-ink)',
+    border: '1px solid var(--arty-line)',
+    borderRadius: 2,
+  } as const
+
   return (
-    <div className="mb-2 p-3 bg-white border border-accent/30 rounded-xl shadow-sm">
-      <p className="text-xs font-semibold text-bubble-user mb-2">📅 Nouvel événement</p>
+    <div
+      className="mb-2 p-3"
+      style={{
+        backgroundColor: 'var(--arty-card)',
+        border: '1px solid var(--arty-accent)',
+        borderRadius: 2,
+      }}
+    >
+      <p className="text-[10px] tracking-[0.18em] uppercase font-sans font-semibold mb-2" style={{ color: 'var(--arty-accent)' }}>
+        ◈ Nouvel événement
+      </p>
       <input
         type="text"
         value={title}
         onChange={(e) => setTitle(e.target.value)}
         placeholder="Titre"
-        className="w-full mb-2 px-2 py-1.5 text-xs border border-gray-200 rounded-lg focus:outline-none focus:border-accent"
+        className="w-full mb-2 px-2 py-1.5 text-xs font-serif italic focus:outline-none"
+        style={fieldStyle}
       />
       <input
         type="datetime-local"
         value={dateStr}
         onChange={(e) => setDateStr(e.target.value)}
-        className="w-full mb-2 px-2 py-1.5 text-xs border border-gray-200 rounded-lg focus:outline-none focus:border-accent"
+        className="w-full mb-2 px-2 py-1.5 text-xs focus:outline-none"
+        style={fieldStyle}
       />
       <div className="flex gap-2">
         <button
           onClick={onCancel}
-          className="flex-1 py-1.5 rounded-lg border border-gray-200 text-xs text-gray-600 hover:bg-gray-50"
+          className="flex-1 py-1.5 text-xs font-sans"
+          style={{ border: '1px solid var(--arty-line)', color: 'var(--arty-ink)', borderRadius: 2 }}
         >
           Annuler
         </button>
         <button
           onClick={() => onConfirm(title, new Date(dateStr))}
-          className="flex-1 py-1.5 rounded-lg bg-accent text-white text-xs font-semibold hover:bg-accent/90"
+          className="flex-1 py-1.5 text-xs font-serif italic"
+          style={{ backgroundColor: 'var(--arty-accent)', color: 'var(--arty-bg)', borderRadius: 2 }}
         >
-          Ajouter au calendrier
+          Ajouter au calendrier →
         </button>
       </div>
     </div>
