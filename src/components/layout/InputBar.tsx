@@ -461,7 +461,8 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
         {/* Plus button — file upload */}
         <button
           onClick={() => fileInputRef.current?.click()}
-          className="flex-shrink-0 p-1.5 rounded-full hover:bg-gray-100 transition-colors text-gray-400 mb-0.5"
+          className="flex-shrink-0 p-1.5 rounded-full hover:bg-black/5 transition-colors mb-0.5"
+            style={{ color: 'var(--arty-accent)' }}
           aria-label={t('chat.input.aria.attach')}
         >
           <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
@@ -482,7 +483,8 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
         {isNative && (
           <button
             onClick={handleCamera}
-            className="flex-shrink-0 p-1.5 rounded-full hover:bg-gray-100 transition-colors text-gray-400 mb-0.5"
+            className="flex-shrink-0 p-1.5 rounded-full hover:bg-black/5 transition-colors mb-0.5"
+            style={{ color: 'var(--arty-accent)' }}
             aria-label={t('chat.input.aria.camera')}
           >
             <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
@@ -497,7 +499,8 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
         {isNative && (
           <button
             onClick={handleScan}
-            className="flex-shrink-0 p-1.5 rounded-full hover:bg-gray-100 transition-colors text-gray-400 mb-0.5"
+            className="flex-shrink-0 p-1.5 rounded-full hover:bg-black/5 transition-colors mb-0.5"
+            style={{ color: 'var(--arty-accent)' }}
             aria-label={t('chat.input.aria.scan')}
           >
             <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
@@ -515,7 +518,8 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
             <button
               onClick={handleWebCamera}
               title="Analyser une façade, un document, une photo de chantier"
-              className="flex-shrink-0 p-1.5 rounded-full hover:bg-gray-100 transition-colors text-gray-400 mb-0.5"
+              className="flex-shrink-0 p-1.5 rounded-full hover:bg-black/5 transition-colors mb-0.5"
+            style={{ color: 'var(--arty-accent)' }}
               aria-label="Prendre une photo"
             >
               <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
@@ -551,11 +555,11 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
         {hasOpenAI && (
           <button
             onClick={isRecordingAudio ? stopAudioRecording : startAudioRecording}
-            className={`relative flex-shrink-0 p-1.5 rounded-full transition-colors mb-0.5 ${
-              isRecordingAudio
-                ? 'bg-red-100 text-red-500 hover:bg-red-200'
-                : 'hover:bg-gray-100 text-gray-400'
-            }`}
+            className="relative flex-shrink-0 p-1.5 rounded-full transition-colors mb-0.5 hover:bg-black/5"
+            style={{
+              color: isRecordingAudio ? '#DC2626' : 'var(--arty-accent)',
+              backgroundColor: isRecordingAudio ? 'rgba(220,38,38,0.12)' : 'transparent',
+            }}
             aria-label={isRecordingAudio ? 'Arrêter enregistrement' : 'Enregistrer audio (Whisper)'}
             title={isRecordingAudio ? `Enregistrement ${recordingDuration}s` : 'Enregistrer (Whisper)'}
           >
@@ -574,11 +578,11 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
         {isMicSupported && (
           <button
             onClick={handleMicClick}
-            className={`relative flex-shrink-0 p-1.5 rounded-full transition-colors mb-0.5 ${
-              isListening
-                ? 'bg-red-100 text-red-500 hover:bg-red-200'
-                : 'hover:bg-gray-100 text-gray-400'
-            }`}
+            className="relative flex-shrink-0 p-1.5 rounded-full transition-colors mb-0.5 hover:bg-black/5"
+            style={{
+              color: isListening ? '#DC2626' : 'var(--arty-accent)',
+              backgroundColor: isListening ? 'rgba(220,38,38,0.12)' : 'transparent',
+            }}
             aria-label={isListening ? t('chat.input.aria.micStop') : t('chat.input.aria.micStart')}
           >
             <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
