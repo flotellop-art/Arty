@@ -2,31 +2,87 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Dark mode (Feature 10) — overrides Tailwind bg/text colors via CSS vars. */
-html.dark {
-  --arty-bg: #1a1614;
-  --arty-surface: #242120;
-  --arty-text: #F5F0E8;
-  --arty-accent: #B87743;
-  --arty-border: #3a3330;
+/* ============================================================
+   THEME TOKENS — Ember (day) + Nocturne (night)
+   Driven by [data-theme="ember"|"nocturne"] on <html>.
+   Components consume via `theme-*` Tailwind utilities or
+   directly via `var(--theme-*)`.
+   Channels are space-separated RGB so Tailwind <alpha-value>
+   works (e.g. bg-theme-accent/40).
+   ============================================================ */
+:root,
+html[data-theme='ember'] {
+  --theme-bg: 250 243 231;       /* #FAF3E7 ember-paper */
+  --theme-surface: 255 255 255;  /* #FFFFFF ember-card */
+  --theme-ink: 24 22 19;         /* #181613 ember-ink */
+  --theme-muted: 143 107 77;     /* #8F6B4D ember-muted */
+  --theme-accent: 200 90 40;     /* #C85A28 ember-accent terracotta */
+  --theme-border: 232 217 191;   /* #E8D9BF ember-border */
+  --theme-cream: 245 230 208;    /* #F5E6D0 ember-cream */
+  color-scheme: light;
 }
-html.dark body { background-color: #1a1614; color: #F5F0E8; }
-html.dark .bg-cream { background-color: #1a1614 !important; }
-html.dark .bg-white { background-color: #242120 !important; color: #F5F0E8 !important; }
-html.dark .bg-gray-50 { background-color: #2a2620 !important; }
-html.dark .bg-gray-100 { background-color: #2e2a23 !important; }
-html.dark .text-bubble-user { color: #F5F0E8 !important; }
-html.dark .text-gray-600 { color: #b5aea2 !important; }
-html.dark .text-gray-500 { color: #a59e92 !important; }
-html.dark .text-gray-400 { color: #857f73 !important; }
-html.dark .border-gray-100 { border-color: #3a3330 !important; }
-html.dark .border-gray-200 { border-color: #3a3330 !important; }
-html.dark .hover\:bg-gray-50:hover { background-color: #2e2a23 !important; }
-html.dark .hover\:bg-gray-100:hover { background-color: #33302a !important; }
-html.dark .bg-bubble-user { background-color: #B87743 !important; color: #F5F0E8 !important; }
+
+html[data-theme='nocturne'] {
+  --theme-bg: 11 9 8;            /* #0B0908 nocturne-bg */
+  --theme-surface: 24 19 17;     /* #181311 nocturne-surface */
+  --theme-ink: 245 230 208;      /* #F5E6D0 nocturne-ink */
+  --theme-muted: 168 156 138;    /* #A89C8A nocturne-muted */
+  --theme-accent: 245 154 75;    /* #F59A4B nocturne-accent amber */
+  --theme-border: 245 154 75;    /* #F59A4B used at low opacity (border-theme-border/10) */
+  --theme-cream: 43 31 21;       /* #2B1F15 nocturne-deep (alt warm surface) */
+  color-scheme: dark;
+}
+
+/* Legacy `html.dark` kept as alias to nocturne for back-compat
+   (existing toggle in TopBar still works during the migration). */
+html.dark { /* fallback only — prefer data-theme="nocturne" */
+  --theme-bg: 11 9 8;
+  --theme-surface: 24 19 17;
+  --theme-ink: 245 230 208;
+  --theme-muted: 168 156 138;
+  --theme-accent: 245 154 75;
+  --theme-border: 245 154 75;
+  --theme-cream: 43 31 21;
+  color-scheme: dark;
+}
+
+/* Legacy dark-mode overrides — kept until PR2/3 migrates screens.
+   They map old color classes to the nocturne palette. */
+html.dark body,
+html[data-theme='nocturne'] body {
+  background-color: rgb(var(--theme-bg));
+  color: rgb(var(--theme-ink));
+}
+html.dark .bg-cream,
+html[data-theme='nocturne'] .bg-cream { background-color: rgb(var(--theme-bg)) !important; }
+html.dark .bg-white,
+html[data-theme='nocturne'] .bg-white { background-color: rgb(var(--theme-surface)) !important; color: rgb(var(--theme-ink)) !important; }
+html.dark .bg-gray-50,
+html[data-theme='nocturne'] .bg-gray-50 { background-color: #2a2620 !important; }
+html.dark .bg-gray-100,
+html[data-theme='nocturne'] .bg-gray-100 { background-color: #2e2a23 !important; }
+html.dark .text-bubble-user,
+html[data-theme='nocturne'] .text-bubble-user { color: rgb(var(--theme-ink)) !important; }
+html.dark .text-gray-600,
+html[data-theme='nocturne'] .text-gray-600 { color: #b5aea2 !important; }
+html.dark .text-gray-500,
+html[data-theme='nocturne'] .text-gray-500 { color: #a59e92 !important; }
+html.dark .text-gray-400,
+html[data-theme='nocturne'] .text-gray-400 { color: #857f73 !important; }
+html.dark .border-gray-100,
+html[data-theme='nocturne'] .border-gray-100 { border-color: #3a3330 !important; }
+html.dark .border-gray-200,
+html[data-theme='nocturne'] .border-gray-200 { border-color: #3a3330 !important; }
+html.dark .hover\:bg-gray-50:hover,
+html[data-theme='nocturne'] .hover\:bg-gray-50:hover { background-color: #2e2a23 !important; }
+html.dark .hover\:bg-gray-100:hover,
+html[data-theme='nocturne'] .hover\:bg-gray-100:hover { background-color: #33302a !important; }
+html.dark .bg-bubble-user,
+html[data-theme='nocturne'] .bg-bubble-user { background-color: rgb(var(--theme-accent)) !important; color: rgb(var(--theme-bg)) !important; }
 
 body {
-  background-color: #F5F0E8;
+  background-color: rgb(var(--theme-bg));
+  color: rgb(var(--theme-ink));
   font-family: 'Inter', sans-serif;
   font-weight: 300;
   margin: 0;
@@ -34,6 +90,7 @@ body {
   -moz-osx-font-smoothing: grayscale;
   /* Safe area for Android/iOS navigation bars */
   padding-bottom: env(safe-area-inset-bottom, 0px);
+  transition: background-color 320ms ease, color 320ms ease;
 }
 
 html {

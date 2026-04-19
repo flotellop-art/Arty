@@ -167,14 +167,14 @@ export function TopBar({ onMenuToggle, onHistoryToggle }: TopBarProps) {
           {/* Cost indicator (Feature 13) */}
           <CostIndicator />
 
-          {/* Dark mode toggle (Feature 10) */}
+          {/* Day/Night toggle — Ember (☀️) ↔ Nocturne (🌙) */}
           <button
             onClick={handleThemeToggle}
             className="p-2 rounded-lg hover:bg-black/5 transition-colors text-base"
-            aria-label={theme === 'dark' ? 'Mode clair' : 'Mode sombre'}
-            title={theme === 'dark' ? 'Mode clair' : 'Mode sombre'}
+            aria-label={theme === 'nocturne' ? 'Mode jour (Ember)' : 'Mode nuit (Nocturne)'}
+            title={theme === 'nocturne' ? 'Mode jour (Ember)' : 'Mode nuit (Nocturne)'}
           >
-            {theme === 'dark' ? '☀️' : '🌙'}
+            {theme === 'nocturne' ? '☀️' : '🌙'}
           </button>
 
           {/* Settings (gear) */}

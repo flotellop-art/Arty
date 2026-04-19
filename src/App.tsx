@@ -340,10 +340,14 @@ export default function App() {
     setupDeepLinks()
   }, [])
 
-  // Apply saved theme on app boot
+  // Apply saved theme on app boot + watch the clock for auto Ember/Nocturne switch.
   useEffect(() => {
     if (!auth.isAuthenticated) return
-    import('./services/themeService').then((m) => m.applyTheme(m.getTheme()))
+    let cleanup: (() => void) | undefined
+    import('./services/themeService').then((m) => {
+      cleanup = m.startThemeWatcher()
+    })
+    return () => { cleanup?.() }
   }, [auth.isAuthenticated])
 
   // Ask for push notification permission once after login (soft, non-blocking)
