@@ -6,36 +6,46 @@
    Arty v2 — design tokens (Ember jour / Nocturne nuit)
    ============================================================ */
 :root {
-  /* Ember — éditorial chaud (jour) */
-  --arty-bg:            #F2EBDE;
-  --arty-bg-deep:       #E8DFCE;
-  --arty-card:          #FBF6EC;
-  --arty-card-hi:       #FFFFFF;
-  --arty-ink:           #1D1813;
+  /* Ember — éditorial chaud (jour) — valeurs exactes du handoff */
+  --arty-bg:            #FAF3E7;
+  --arty-bg-deep:       #F5E6D0;
+  --arty-card:          #FFFFFF;
+  --arty-card-hi:       #F5E6D0;
+  --arty-ink:           #181613;
   --arty-ink-soft:      #3A322A;
-  --arty-muted:         #7A6E5E;
-  --arty-line:          rgba(29,24,19,0.08);
-  --arty-accent:        #C4491C;
+  --arty-muted:         #8F6B4D;
+  --arty-line:          #E8D9BF;
+  --arty-accent:        #C85A28;
   --arty-accent-deep:   #8F3210;
-  --arty-accent-glow:   rgba(196,73,28,0.12);
+  --arty-accent-glow:   rgba(200,90,40,0.12);
   color-scheme: light;
 }
 
 html.dark {
-  /* Nocturne — cacao chaud, bougie ambrée (nuit) */
-  --arty-bg:            #14100B;
-  --arty-bg-deep:       #0C0906;
-  --arty-card:          #1E1812;
-  --arty-card-hi:       #28201A;
+  /* Nocturne — cacao chaud, bougie ambrée (nuit) — valeurs exactes du handoff */
+  --arty-bg:            #0B0908;
+  --arty-bg-deep:       #000000;
+  --arty-card:          #181311;
+  --arty-card-hi:       #2B1F15;
   --arty-ink:           #F5E6D0;
   --arty-ink-soft:      #D9C4A5;
-  --arty-muted:         #8A7A66;
-  --arty-line:          rgba(245,230,208,0.08);
+  --arty-muted:         #A89C8A;
+  --arty-line:          rgba(245,154,75,0.08);
   --arty-accent:        #F59A4B;
   --arty-accent-deep:   #C4491C;
   --arty-accent-glow:   rgba(245,154,75,0.18);
   color-scheme: dark;
 }
+
+/* Gradient chaud partagé pour les moments "hero" (CTAs amber, pill actifs) */
+:root, html.dark {
+  --arty-warm-gradient: linear-gradient(145deg, #F59A4B 0%, #C4491C 100%);
+}
+
+/* Composer pill — s'inverse jour/nuit : pilule ink le jour, pilule amber la nuit. */
+:root       { --arty-composer-bg: #181613; --arty-composer-fg: #F5E6D0; --arty-composer-muted: rgba(245,230,208,0.55); }
+html.dark   { --arty-composer-bg: #F59A4B; --arty-composer-fg: #0B0908; --arty-composer-muted: rgba(11,9,8,0.55); }
+.composer-input::placeholder { color: var(--arty-composer-muted); }
 
 /* Global ink + paper on the root — tokens flip avec html.dark. */
 body { background-color: var(--arty-bg); color: var(--arty-ink); }
@@ -61,6 +71,21 @@ html, body { transition: background-color 0.5s ease, color 0.5s ease; }
 
 /* Halo ambré Nocturne (noop en Ember grâce à la faible opacité) */
 @keyframes arty-glow-pulse { 0%, 100% { opacity: 0.9; } 50% { opacity: 0.6; } }
+
+/* Prism idle/active — chaque moitié respire horizontalement + rotation subtile */
+@keyframes prism-breath-left {
+  0%, 100% { transform: translate(0, 0) rotate(0); }
+  50%      { transform: translate(-2px, 0) rotate(-2deg); }
+}
+@keyframes prism-breath-right {
+  0%, 100% { transform: translate(0, 0) rotate(0); }
+  50%      { transform: translate(2px, 0) rotate(2deg); }
+}
+.prism-animate .prism-left  { transform-origin: 32px 6px; animation: prism-breath-left 3.4s ease-in-out infinite alternate; }
+.prism-animate .prism-right { transform-origin: 32px 6px; animation: prism-breath-right 3.4s ease-in-out infinite alternate; }
+.prism-animate.prism-active .prism-left,
+.prism-animate.prism-active .prism-right { animation-duration: 1.2s; }
+.prism-animate.prism-active { filter: drop-shadow(0 0 8px rgba(245,154,75,0.4)); }
 
 body {
   background-color: #F5F0E8;

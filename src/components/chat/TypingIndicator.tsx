@@ -6,7 +6,7 @@ export const TypingIndicator = memo(function TypingIndicator() {
   return (
     <div className="mb-5 max-w-[94%]">
       <div className="flex items-center gap-2 mb-1.5">
-        <StarIcon size={12} />
+        <StarIcon size={14} animated active />
         <Tag>Arty écrit…</Tag>
       </div>
       <div

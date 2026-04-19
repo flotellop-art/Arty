@@ -144,7 +144,7 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
     <EditorialShell>
       <div className="px-7 pt-10 pb-2 text-center">
         <div className="inline-flex items-center gap-2.5">
-          <StarIcon size={22} />
+          <StarIcon size={22} animated />
           <span className="font-display italic text-[26px] text-ink tracking-[-0.01em]">arty</span>
         </div>
         <Rule className="my-4" />

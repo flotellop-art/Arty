@@ -234,7 +234,7 @@ export function Sidebar({
         {/* Masthead */}
         <div className="px-5 pt-4 pb-2 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <StarIcon size={22} />
+            <StarIcon size={22} animated />
             <span className="font-display italic text-[22px] tracking-[-0.01em]">arty</span>
           </div>
           <button

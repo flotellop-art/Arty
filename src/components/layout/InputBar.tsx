@@ -449,12 +449,12 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
       )}
 
       <div
-        className="flex items-end gap-2 px-3 py-2"
+        className="flex items-end gap-2 px-4 py-2"
         style={{
-          backgroundColor: 'var(--arty-card)',
-          border: '1px solid var(--arty-line)',
-          borderRadius: 2,
-          boxShadow: '0 1px 0 rgba(0,0,0,0.04)',
+          backgroundColor: 'var(--arty-composer-bg)',
+          color: 'var(--arty-composer-fg)',
+          borderRadius: 100,
+          boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
         }}
       >
         {/* Plus button — file upload */}
@@ -534,7 +534,7 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
           </>
         )}
 
-        {/* Textarea */}
+        {/* Textarea — hérite de la couleur du composer (cream en Ember, ink en Nocturne) */}
         <textarea
           ref={textareaRef}
           value={text}
@@ -542,8 +542,8 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
           onKeyDown={handleKeyDown}
           placeholder={isListening ? t('chat.input.listening') : t('chat.input.placeholder')}
           rows={1}
-          className="flex-1 resize-none bg-transparent text-[15px] focus:outline-none py-1.5 font-serif italic leading-[1.4]"
-          style={{ color: 'var(--arty-ink)' }}
+          className="flex-1 resize-none bg-transparent text-[14px] focus:outline-none py-1.5 font-sans leading-[1.4] composer-input"
+          style={{ color: 'var(--arty-composer-fg)' }}
         />
 
         {/* Whisper audio recording (Feature 15) — if OpenAI key is available */}
@@ -591,12 +591,12 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
           </button>
         )}
 
-        {/* Send / Stop button */}
+        {/* Send / Stop button — rond, amber gradient partagé */}
         {isStreaming ? (
           <button
             onClick={onStop}
-            className="flex-shrink-0 w-8 h-8 flex items-center justify-center transition-opacity hover:opacity-90 mb-0.5"
-            style={{ backgroundColor: 'var(--arty-ink)', color: 'var(--arty-bg)', borderRadius: 2 }}
+            className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center transition-opacity hover:opacity-90 mb-0.5"
+            style={{ background: 'var(--arty-warm-gradient)', color: '#0B0908' }}
             aria-label={t('chat.input.aria.stop')}
           >
             <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
@@ -607,13 +607,13 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
           <button
             onClick={handleSend}
             disabled={!text.trim() && files.length === 0}
-            className="flex-shrink-0 w-8 h-8 flex items-center justify-center disabled:opacity-30 transition-opacity hover:opacity-90 mb-0.5"
-            style={{ backgroundColor: 'var(--arty-ink)', color: 'var(--arty-bg)', borderRadius: 2 }}
+            className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center disabled:opacity-30 transition-opacity hover:opacity-90 mb-0.5"
+            style={{ background: 'var(--arty-warm-gradient)', color: '#0B0908' }}
             aria-label={t('chat.input.aria.send')}
           >
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
               <path
-                d="M3 7H11M11 7L7 3M11 7L7 11"
+                d="M7 11V3M7 3L3 7M7 3L11 7"
                 stroke="currentColor"
                 strokeWidth="1.5"
                 strokeLinecap="round"
