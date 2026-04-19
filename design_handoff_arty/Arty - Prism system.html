@@ -1,0 +1,455 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<title>Arty — Prism system</title>
+<meta name="viewport" content="width=1400" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,300..700;1,300..700&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  html, body { margin: 0; padding: 0; background: #0B0908; color: #F5E6D0; font-family: 'Inter', system-ui; min-height: 100vh; }
+  * { box-sizing: border-box; }
+  #root { min-height: 100vh; }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 100px; }
+
+  @keyframes prism-l { 0%, 100% { transform: translateX(0) rotate(0); } 50% { transform: translateX(-2px) rotate(-2deg); } }
+  @keyframes prism-r { 0%, 100% { transform: translateX(0) rotate(0); } 50% { transform: translateX(2px) rotate(2deg); } }
+  .p-l { transform-origin: 32px 30px; animation: prism-l 3.4s ease-in-out infinite; }
+  .p-r { transform-origin: 32px 30px; animation: prism-r 3.4s ease-in-out infinite; }
+  .active .p-l, .active .p-r { animation-duration: 1.2s; }
+  .active svg { filter: drop-shadow(0 0 8px rgba(245,154,75,0.4)); }
+
+  @keyframes listen-ring { 0% { box-shadow: 0 0 0 0 rgba(245,154,75,0.55); } 70% { box-shadow: 0 0 0 16px rgba(245,154,75,0); } 100% { box-shadow: 0 0 0 0 rgba(245,154,75,0); } }
+  @keyframes fade-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel" data-presets="react">
+const { useState, useEffect } = React;
+
+// ── Canonical Prism ─────────────────────────────────────────
+// Proportions: apex at (32,6), base extremes at (6,54) and (58,54), seam at (32,40).
+// Right half = full opacity primary. Left half = 0.55 opacity.
+function Prism({ size = 80, c = '#F59A4B', active = false, ratio = 0.55 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 64 64" className={active ? 'active' : ''}>
+      <path d="M32 6 L58 54 L32 40 Z" fill={c} className="p-r" />
+      <path d="M32 6 L6 54 L32 40 Z" fill={c} opacity={ratio} className="p-l" />
+    </svg>
+  );
+}
+
+// Variant: sharper apex (taller), narrower base
+function PrismTall({ size = 80, c = '#F59A4B', active = false }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 64 64" className={active ? 'active' : ''}>
+      <path d="M32 4 L54 56 L32 42 Z" fill={c} className="p-r" />
+      <path d="M32 4 L10 56 L32 42 Z" fill={c} opacity="0.55" className="p-l" />
+    </svg>
+  );
+}
+
+// Variant: softer/wider — more grounded
+function PrismWide({ size = 80, c = '#F59A4B', active = false }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 64 64" className={active ? 'active' : ''}>
+      <path d="M32 10 L60 54 L32 38 Z" fill={c} className="p-r" />
+      <path d="M32 10 L4 54 L32 38 Z" fill={c} opacity="0.55" className="p-l" />
+    </svg>
+  );
+}
+
+// Variant: outlined version
+function PrismOutline({ size = 80, c = '#F59A4B', active = false, sw = 3 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 64 64" className={active ? 'active' : ''}>
+      <path d="M32 6 L58 54 L32 40 Z" fill="none" stroke={c} strokeWidth={sw} strokeLinejoin="round" className="p-r" />
+      <path d="M32 6 L6 54 L32 40 Z" fill="none" stroke={c} strokeWidth={sw} strokeLinejoin="round" opacity="0.55" className="p-l" />
+    </svg>
+  );
+}
+
+// Variant: inverted — left solid, right faded (for mirrored pair)
+function PrismMirror({ size = 80, c = '#F59A4B', active = false }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 64 64" className={active ? 'active' : ''}>
+      <path d="M32 6 L58 54 L32 40 Z" fill={c} opacity="0.55" className="p-r" />
+      <path d="M32 6 L6 54 L32 40 Z" fill={c} className="p-l" />
+    </svg>
+  );
+}
+
+function Tag({ children, color = '#A89C8A' }) {
+  return <span style={{ fontSize: 10, letterSpacing: '0.2em', textTransform: 'uppercase', color, fontWeight: 600 }}>{children}</span>;
+}
+
+// ── Variations row ─────────────────────────────────────────
+function Variations({ active }) {
+  const variants = [
+    { L: Prism, name: 'Canonical', note: '26×48 · 0.55 gauche' },
+    { L: PrismTall, name: 'Tall', note: "Plus étiré, sommet aigu" },
+    { L: PrismWide, name: 'Wide', note: 'Plus large, ancré' },
+    { L: PrismOutline, name: 'Outline', note: 'Line-weight, app bar' },
+    { L: PrismMirror, name: 'Mirror', note: 'Inversé (pair jour/nuit)' },
+  ];
+  return (
+    <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 20, padding: 28 }}>
+      <Tag color="#F59A4B">◈ Le système Prism — 5 poids</Tag>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 14, marginTop: 18 }}>
+        {variants.map(v => {
+          const L = v.L;
+          return (
+            <div key={v.name} style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 14, padding: 20, textAlign: 'center' }}>
+              <div style={{ padding: '12px 0 16px', display: 'grid', placeItems: 'center' }}>
+                <L size={96} c="#F59A4B" active={active} />
+              </div>
+              <div style={{ fontFamily: 'Inter', fontSize: 14, fontWeight: 600 }}>{v.name}</div>
+              <div style={{ fontSize: 11, color: '#8A7A66', marginTop: 2 }}>{v.note}</div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── Scales row ─────────────────────────────────────────────
+function Scales({ active }) {
+  const sizes = [160, 96, 64, 40, 24, 16, 12];
+  return (
+    <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 20, padding: 28, marginTop: 20 }}>
+      <Tag>◈ Échelles — de l'écran d'accueil au favicon</Tag>
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 32, marginTop: 22, paddingBottom: 8 }}>
+        {sizes.map(s => (
+          <div key={s} style={{ textAlign: 'center' }}>
+            <Prism size={s} c="#F59A4B" active={active} />
+            <div style={{ fontSize: 10, color: '#5A5048', fontFamily: 'JetBrains Mono', marginTop: 10 }}>{s}px</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Color system ───────────────────────────────────────────
+function ColorSystem({ active }) {
+  const combos = [
+    { bg: '#FAF3E7', fg: '#C85A28', label: 'Ember · crème', sub: 'brief, documents' },
+    { bg: '#C85A28', fg: '#FAF3E7', label: 'Ember · terra', sub: 'app icon day' },
+    { bg: '#0B0908', fg: '#F59A4B', label: 'Nocturne · ambre', sub: 'night mode', b: '1px solid rgba(245,154,75,0.15)' },
+    { bg: '#181613', fg: '#F5E6D0', label: 'Nocturne · crème', sub: 'alt night' },
+    { bg: 'linear-gradient(145deg, #F59A4B 0%, #C4491C 100%)', fg: '#0B0908', label: 'Dégradé chaud', sub: 'hero moments' },
+    { bg: '#F5E6D0', fg: '#181613', label: 'Mono · ink', sub: 'print, legal' },
+    { bg: '#181613', fg: '#F5E6D0', label: 'Inverse · crème', sub: 'dark docs' },
+    { bg: '#2B1F15', fg: '#F59A4B', label: 'Bronze deep', sub: 'ambient night', b: '1px solid rgba(245,154,75,0.12)' },
+  ];
+  return (
+    <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 20, padding: 28, marginTop: 20 }}>
+      <Tag>◈ Couleurs — huit combinaisons validées</Tag>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginTop: 20 }}>
+        {combos.map((s, i) => (
+          <div key={i} style={{
+            background: s.bg, border: s.b, borderRadius: 14, padding: 24,
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, minHeight: 180,
+          }}>
+            <Prism size={68} c={s.fg} active={active} />
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: s.fg, opacity: 0.85 }}>{s.label}</div>
+              <div style={{ fontSize: 10, color: s.fg, opacity: 0.5, marginTop: 2 }}>{s.sub}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Lockups ────────────────────────────────────────────────
+function Lockups({ active }) {
+  return (
+    <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 20, padding: 28, marginTop: 20 }}>
+      <Tag>◈ Lockups — marque + wordmark</Tag>
+      <div style={{ display: 'grid', gap: 12, marginTop: 20 }}>
+        {[
+          { bg: '#FAF3E7', fg: '#181613', accent: '#C85A28', font: 'Fraunces', weight: 400, italic: true, label: 'Primary · Fraunces italic' },
+          { bg: '#0B0908', fg: '#F5E6D0', accent: '#F59A4B', font: 'Fraunces', weight: 400, italic: true, label: 'Night · Fraunces italic', b: '1px solid rgba(245,154,75,0.12)' },
+          { bg: '#FAF3E7', fg: '#181613', accent: '#C85A28', font: 'Inter', weight: 600, italic: false, label: 'Utility · Inter semibold' },
+        ].map((v, i) => (
+          <div key={i} style={{ background: v.bg, border: v.b, borderRadius: 12, padding: '28px 34px', display: 'flex', alignItems: 'center', gap: 22 }}>
+            <Prism size={56} c={v.accent} active={active} />
+            <div style={{ fontFamily: v.font, fontSize: 44, fontWeight: v.weight, letterSpacing: '-0.03em', color: v.fg, lineHeight: 1, fontStyle: v.italic ? 'italic' : 'normal' }}>
+              arty
+            </div>
+            <div style={{ flex: 1 }} />
+            <Tag color={v.fg === '#181613' ? '#8F6B4D' : '#8A7A66'}>{v.label}</Tag>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── App icons ──────────────────────────────────────────────
+function AppIcons({ active }) {
+  const icons = [
+    { bg: '#C85A28', fg: '#FAF3E7', label: 'Day' },
+    { bg: '#0B0908', fg: '#F59A4B', label: 'Night', b: '1px solid rgba(245,154,75,0.15)' },
+    { bg: 'linear-gradient(145deg, #F59A4B 0%, #C4491C 100%)', fg: '#0B0908', label: 'Hero' },
+    { bg: '#FAF3E7', fg: '#C85A28', label: 'Light' },
+    { bg: '#181613', fg: '#F5E6D0', label: 'Ink' },
+  ];
+  return (
+    <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 20, padding: 28, marginTop: 20 }}>
+      <Tag>◈ App icons — 5 finitions</Tag>
+      <div style={{ display: 'flex', gap: 22, marginTop: 22, flexWrap: 'wrap' }}>
+        {icons.map((v, i) => (
+          <div key={i} style={{ textAlign: 'center' }}>
+            <div style={{ width: 108, height: 108, borderRadius: 24, background: v.bg, border: v.b, display: 'grid', placeItems: 'center', boxShadow: '0 8px 24px rgba(0,0,0,0.35)' }}>
+              <Prism size={58} c={v.fg} active={active} />
+            </div>
+            <div style={{ fontSize: 10, color: '#8A7A66', marginTop: 10, textTransform: 'uppercase', letterSpacing: '0.15em' }}>{v.label}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Phone mockup — the logo in context ─────────────────────
+function PhoneFrame({ dark, children, label }) {
+  return (
+    <div style={{ textAlign: 'center' }}>
+      <div style={{
+        width: 300, height: 620, borderRadius: 42, padding: 10,
+        background: dark ? 'linear-gradient(180deg, #1C1612 0%, #0B0908 100%)' : 'linear-gradient(180deg, #2B2620 0%, #181311 100%)',
+        boxShadow: '0 20px 60px rgba(0,0,0,0.5)',
+      }}>
+        <div style={{
+          width: '100%', height: '100%', borderRadius: 34, overflow: 'hidden',
+          background: dark ? '#0B0908' : '#FAF3E7',
+          position: 'relative',
+        }}>
+          {children}
+        </div>
+      </div>
+      <div style={{ marginTop: 14 }}><Tag color={dark ? '#8A7A66' : '#8A7A66'}>{label}</Tag></div>
+    </div>
+  );
+}
+
+function SplashLight({ active }) {
+  return (
+    <div style={{ width: '100%', height: '100%', background: '#FAF3E7', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 24 }}>
+      <div style={{ width: 160, height: 160, borderRadius: '50%', display: 'grid', placeItems: 'center', animation: active ? 'listen-ring 1.4s ease-out infinite' : 'none' }}>
+        <Prism size={120} c="#C85A28" active={active} />
+      </div>
+      <div style={{ fontFamily: 'Fraunces', fontStyle: 'italic', fontSize: 44, fontWeight: 400, color: '#181613', letterSpacing: '-0.03em' }}>arty</div>
+      <div style={{ fontSize: 11, color: '#8F6B4D', letterSpacing: '0.25em', textTransform: 'uppercase', marginTop: -12 }}>Ton assistant IA</div>
+    </div>
+  );
+}
+
+function SplashDark({ active }) {
+  return (
+    <div style={{ width: '100%', height: '100%', background: '#0B0908', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 24 }}>
+      <div style={{ width: 160, height: 160, borderRadius: '50%', display: 'grid', placeItems: 'center', animation: active ? 'listen-ring 1.4s ease-out infinite' : 'none' }}>
+        <Prism size={120} c="#F59A4B" active={active} />
+      </div>
+      <div style={{ fontFamily: 'Fraunces', fontStyle: 'italic', fontSize: 44, fontWeight: 400, color: '#F5E6D0', letterSpacing: '-0.03em' }}>arty</div>
+      <div style={{ fontSize: 11, color: '#8A7A66', letterSpacing: '0.25em', textTransform: 'uppercase', marginTop: -12 }}>Ton assistant IA</div>
+    </div>
+  );
+}
+
+function HomeLight({ active }) {
+  return (
+    <div style={{ width: '100%', height: '100%', background: '#FAF3E7', padding: '28px 22px', fontFamily: 'Inter' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 28 }}>
+        <Prism size={28} c="#C85A28" active={active} />
+        <div style={{ fontFamily: 'Fraunces', fontStyle: 'italic', fontSize: 22, fontWeight: 500, color: '#181613' }}>arty</div>
+        <div style={{ flex: 1 }} />
+        <div style={{ width: 32, height: 32, borderRadius: 16, background: '#E8D9BF', display: 'grid', placeItems: 'center', fontSize: 11, color: '#8F6B4D', fontWeight: 600 }}>M</div>
+      </div>
+      <div style={{ fontSize: 11, letterSpacing: '0.2em', textTransform: 'uppercase', color: '#8F6B4D', fontWeight: 600, marginBottom: 8 }}>Mercredi 9h12</div>
+      <div style={{ fontFamily: 'Fraunces', fontSize: 28, fontWeight: 400, color: '#181613', lineHeight: 1.15, letterSpacing: '-0.02em' }}>
+        Tu as <em style={{ color: '#C85A28', fontStyle: 'italic' }}>trois choses</em> à regarder ce matin.
+      </div>
+      <div style={{ display: 'grid', gap: 10, marginTop: 28 }}>
+        {[
+          { t: 'Brief de la réunion de 10h', s: '4 points clés' },
+          { t: 'Email urgent — Léa', s: '« Peux-tu relire le deck… »' },
+          { t: 'Ton Pomodoro reprend à 9h30', s: 'Focus : rapport Q4' },
+        ].map((item, i) => (
+          <div key={i} style={{ background: '#fff', borderRadius: 14, padding: '14px 16px', border: '1px solid #E8D9BF' }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: '#181613' }}>{item.t}</div>
+            <div style={{ fontSize: 11, color: '#8F6B4D', marginTop: 2 }}>{item.s}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{ position: 'absolute', bottom: 24, left: 22, right: 22, background: '#181613', borderRadius: 100, padding: '14px 22px', display: 'flex', alignItems: 'center', gap: 12 }}>
+        <Prism size={22} c="#F59A4B" active={active} />
+        <div style={{ fontSize: 12, color: '#F5E6D0', flex: 1 }}>Demande quelque chose…</div>
+      </div>
+    </div>
+  );
+}
+
+function HomeDark({ active }) {
+  return (
+    <div style={{ width: '100%', height: '100%', background: '#0B0908', padding: '28px 22px', fontFamily: 'Inter' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 28 }}>
+        <Prism size={28} c="#F59A4B" active={active} />
+        <div style={{ fontFamily: 'Fraunces', fontStyle: 'italic', fontSize: 22, fontWeight: 500, color: '#F5E6D0' }}>arty</div>
+        <div style={{ flex: 1 }} />
+        <div style={{ width: 32, height: 32, borderRadius: 16, background: '#2B1F15', display: 'grid', placeItems: 'center', fontSize: 11, color: '#F59A4B', fontWeight: 600 }}>M</div>
+      </div>
+      <div style={{ fontSize: 11, letterSpacing: '0.2em', textTransform: 'uppercase', color: '#A89C8A', fontWeight: 600, marginBottom: 8 }}>Mercredi 22h47</div>
+      <div style={{ fontFamily: 'Fraunces', fontSize: 26, fontWeight: 400, color: '#F5E6D0', lineHeight: 1.2, letterSpacing: '-0.02em' }}>
+        Récap de ta journée — <em style={{ color: '#F59A4B', fontStyle: 'italic' }}>prêt à clore ?</em>
+      </div>
+      <div style={{ display: 'grid', gap: 10, marginTop: 26 }}>
+        {[
+          { t: 'Réunion de 10h · résumée', s: 'Léa · décisions × 3' },
+          { t: 'Deck Q4 · relu', s: '« J\'ai laissé des notes p.4 »' },
+          { t: 'Demain matin', s: 'Tu reprends à 9h, café à 8h50' },
+        ].map((item, i) => (
+          <div key={i} style={{ background: '#181311', borderRadius: 14, padding: '14px 16px', border: '1px solid rgba(245,154,75,0.08)' }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: '#F5E6D0' }}>{item.t}</div>
+            <div style={{ fontSize: 11, color: '#A89C8A', marginTop: 2 }}>{item.s}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{ position: 'absolute', bottom: 24, left: 22, right: 22, background: '#F59A4B', borderRadius: 100, padding: '14px 22px', display: 'flex', alignItems: 'center', gap: 12 }}>
+        <Prism size={22} c="#0B0908" active={active} />
+        <div style={{ fontSize: 12, color: '#0B0908', flex: 1, fontWeight: 500 }}>Bonne nuit ?</div>
+      </div>
+    </div>
+  );
+}
+
+function Phones({ active }) {
+  return (
+    <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 20, padding: 36, marginTop: 20 }}>
+      <Tag color="#F59A4B">◈ En contexte — Ember (jour) × Nocturne (nuit)</Tag>
+      <div style={{ display: 'flex', justifyContent: 'center', gap: 32, marginTop: 30, flexWrap: 'wrap' }}>
+        <PhoneFrame dark={false} label="Splash · day"><SplashLight active={active} /></PhoneFrame>
+        <PhoneFrame dark={false} label="Home · Ember"><HomeLight active={active} /></PhoneFrame>
+        <PhoneFrame dark={true} label="Home · Nocturne"><HomeDark active={active} /></PhoneFrame>
+        <PhoneFrame dark={true} label="Splash · night"><SplashDark active={active} /></PhoneFrame>
+      </div>
+    </div>
+  );
+}
+
+// ── Construction diagram ───────────────────────────────────
+function Construction({ active }) {
+  return (
+    <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 20, padding: 28, marginTop: 20 }}>
+      <Tag>◈ Construction — grille 64 × 64</Tag>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, marginTop: 20, alignItems: 'center' }}>
+        <div style={{ background: '#FAF3E7', borderRadius: 14, padding: 30, display: 'grid', placeItems: 'center' }}>
+          <svg width={360} height={360} viewBox="0 0 64 64">
+            {/* Grid */}
+            {[...Array(9)].map((_, i) => (
+              <line key={`h${i}`} x1="0" y1={i * 8} x2="64" y2={i * 8} stroke="#E8D9BF" strokeWidth="0.2" />
+            ))}
+            {[...Array(9)].map((_, i) => (
+              <line key={`v${i}`} x1={i * 8} y1="0" x2={i * 8} y2="64" stroke="#E8D9BF" strokeWidth="0.2" />
+            ))}
+            {/* Guides */}
+            <line x1="32" y1="0" x2="32" y2="64" stroke="#C85A28" strokeWidth="0.3" strokeDasharray="1 1" opacity="0.5" />
+            <line x1="0" y1="40" x2="64" y2="40" stroke="#C85A28" strokeWidth="0.3" strokeDasharray="1 1" opacity="0.5" />
+            {/* Prism */}
+            <path d="M32 6 L58 54 L32 40 Z" fill="#C85A28" />
+            <path d="M32 6 L6 54 L32 40 Z" fill="#C85A28" opacity="0.55" />
+            {/* Annotations */}
+            <circle cx="32" cy="6" r="0.8" fill="#181613" />
+            <circle cx="58" cy="54" r="0.8" fill="#181613" />
+            <circle cx="6" cy="54" r="0.8" fill="#181613" />
+            <circle cx="32" cy="40" r="0.8" fill="#181613" />
+          </svg>
+        </div>
+        <div style={{ padding: '8px 12px' }}>
+          <h3 style={{ fontFamily: 'Fraunces', fontStyle: 'italic', fontWeight: 400, fontSize: 28, letterSpacing: '-0.02em', margin: 0 }}>
+            Deux moitiés, <span style={{ color: '#F59A4B' }}>une lumière.</span>
+          </h3>
+          <div style={{ display: 'grid', gap: 16, marginTop: 24 }}>
+            {[
+              { t: 'Sommet', v: '(32, 6)', d: 'Aligné sur l\'axe vertical' },
+              { t: 'Base gauche', v: '(6, 54)', d: '26 unités à gauche du centre' },
+              { t: 'Base droite', v: '(58, 54)', d: '26 unités à droite du centre' },
+              { t: 'Couture', v: '(32, 40)', d: 'À 5/8 de la hauteur — séparation' },
+              { t: 'Opacité gauche', v: '0.55', d: 'La moitié en ombre' },
+              { t: 'Rapport hauteur/base', v: '48/52', d: 'Presque carré, équilibré' },
+            ].map((r, i) => (
+              <div key={i} style={{ display: 'grid', gridTemplateColumns: '140px 100px 1fr', gap: 14, alignItems: 'baseline', paddingBottom: 10, borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: '#F5E6D0' }}>{r.t}</div>
+                <div style={{ fontSize: 11, fontFamily: 'JetBrains Mono', color: '#F59A4B' }}>{r.v}</div>
+                <div style={{ fontSize: 11, color: '#8A7A66' }}>{r.d}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function App() {
+  const [active, setActive] = useState(false);
+  useEffect(() => {
+    const t = setInterval(() => setActive(a => !a), 3200);
+    return () => clearInterval(t);
+  }, []);
+
+  return (
+    <div style={{ padding: '48px 40px 80px', minHeight: '100vh' }}>
+      <div style={{ maxWidth: 1280, margin: '0 auto 44px' }}>
+        <Tag>Système · Prism retenu</Tag>
+        <h1 style={{ fontFamily: 'Inter', fontSize: 58, fontWeight: 700, letterSpacing: '-0.035em', lineHeight: 1, margin: '8px 0 0' }}>
+          Prism, <span style={{ color: '#F59A4B', fontFamily: 'Fraunces', fontStyle: 'italic', fontWeight: 400 }}>poussé.</span>
+        </h1>
+        <p style={{ fontSize: 15, color: '#A89C8A', margin: '14px 0 0', maxWidth: 720, lineHeight: 1.6 }}>
+          Construction canonique, cinq poids, système de couleurs, lockups, app icons, et la marque en contexte dans Ember (jour) et Nocturne (nuit). Tout anime.
+        </p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 22 }}>
+          <button
+            onClick={() => setActive(a => !a)}
+            style={{
+              background: active ? '#F59A4B' : 'rgba(255,255,255,0.05)',
+              border: `1px solid ${active ? '#F59A4B' : 'rgba(255,255,255,0.12)'}`,
+              color: active ? '#0B0908' : '#F5E6D0',
+              padding: '10px 18px', borderRadius: 100, fontSize: 12, fontWeight: 600,
+              letterSpacing: '0.05em', cursor: 'pointer', transition: 'all 0.2s',
+            }}>
+            {active ? '● Active (listening)' : '○ Idle'}
+          </button>
+          <span style={{ fontSize: 11, color: '#5A5048' }}>Auto-toggle 3,2s</span>
+        </div>
+      </div>
+
+      <div style={{ maxWidth: 1400, margin: '0 auto' }}>
+        <Variations active={active} />
+        <Construction active={active} />
+        <Scales active={active} />
+        <ColorSystem active={active} />
+        <Lockups active={active} />
+        <AppIcons active={active} />
+        <Phones active={active} />
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
