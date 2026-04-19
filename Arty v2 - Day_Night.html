@@ -1,0 +1,339 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<title>Arty — Day & Night</title>
+<meta name="viewport" content="width=1400" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,300..700;1,300..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Serif:ital,wght@0,400;0,500;1,400&family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;0,600;1,400;1,500&family=JetBrains+Mono:wght@400;500&family=Playfair+Display:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+  html, body { margin: 0; padding: 0; background: linear-gradient(180deg, #1A1510 0%, #14100B 100%); color: #F5E6D0; font-family: 'Inter', system-ui; min-height: 100vh; }
+  * { box-sizing: border-box; }
+  @keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.4; transform: scale(0.85); } }
+  @keyframes sunmove { from { transform: translateX(0); } to { transform: translateX(100%); } }
+  button { font-family: inherit; }
+  #root { min-height: 100vh; }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 100px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel" src="data.jsx"></script>
+<script type="text/babel" src="shared.jsx"></script>
+<script type="text/babel" src="direction-ember.jsx"></script>
+<script type="text/babel" src="direction-studio.jsx"></script>
+<script type="text/babel" src="direction-nocturne.jsx"></script>
+<script type="text/babel" src="direction-terracotta.jsx"></script>
+
+<script type="text/babel" data-presets="react">
+const { useState, useEffect } = React;
+
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "mode": "day",
+  "lang": "fr",
+  "screen": "home",
+  "autoTime": true
+}/*EDITMODE-END*/;
+
+const MODES = {
+  day:   { id: 'day',   label: 'Jour',   sub: 'Ember',    theme: window.EMBER,    screens: window.EmberScreens,    accent: '#C85A28', icon: '☀' },
+  night: { id: 'night', label: 'Nuit',   sub: 'Nocturne', theme: window.NOCTURNE, screens: window.NocturneScreens, accent: '#F59A4B', icon: '☾' },
+};
+
+const SCREEN_LABELS = {
+  login: '01 · Login',
+  home: '02 · Accueil',
+  brief: '03 · Brief',
+  chat: '04 · Chat',
+  sidebar: '05 · Archives',
+  tasks: '06 · Tâches',
+  report: '07 · Rapport',
+  settings: '08 · Paramètres',
+};
+const SCREENS_ORDER = ['login', 'home', 'brief', 'chat', 'sidebar', 'tasks', 'report', 'settings'];
+
+function PhoneShell({ mode, lang, screen, onOpen, scale = 1 }) {
+  const m = MODES[mode];
+  const Screen = m.screens[screen] || m.screens.home;
+  const t = window.COPY[lang] || window.COPY.fr;
+  const frameBg = m.theme.bg;
+  const statusColor = mode === 'night' ? '#F5E6D0' : '#181613';
+
+  return (
+    <div style={{
+      width: 380, height: 780,
+      background: frameBg,
+      borderRadius: 42, padding: 7,
+      boxShadow: mode === 'night'
+        ? '0 40px 80px -20px rgba(245,154,75,0.12), 0 8px 20px rgba(0,0,0,0.5), inset 0 0 0 1px rgba(255,255,255,0.06)'
+        : '0 40px 80px -20px rgba(200,90,40,0.35), 0 8px 20px rgba(40,20,10,0.2), inset 0 0 0 1px rgba(255,255,255,0.4)',
+      border: mode === 'night' ? '2px solid rgba(245,230,208,0.08)' : '2px solid rgba(0,0,0,0.15)',
+      flexShrink: 0,
+      transition: 'box-shadow 0.5s, border 0.5s, background 0.5s',
+    }}>
+      <div style={{
+        width: '100%', height: '100%',
+        borderRadius: 35, overflow: 'hidden', position: 'relative',
+        background: frameBg,
+        display: 'flex', flexDirection: 'column',
+      }}>
+        <window.StatusBar color={statusColor} />
+        <div style={{ flex: 1, overflow: 'auto', position: 'relative' }}>
+          <Screen t={t} direction={mode} lang={lang}
+            onOpen={(s) => onOpen(s)} onBack={() => onOpen('home')} />
+        </div>
+        <window.NavPill color={statusColor} />
+      </div>
+    </div>
+  );
+}
+
+// Day/Night toggle — physical switch metaphor
+function DayNightToggle({ mode, onChange }) {
+  const isNight = mode === 'night';
+  return (
+    <button onClick={() => onChange(isNight ? 'day' : 'night')} style={{
+      position: 'relative',
+      width: 180, height: 54,
+      background: isNight
+        ? 'linear-gradient(90deg, #0C0906 0%, #1E1812 100%)'
+        : 'linear-gradient(90deg, #FAF3E7 0%, #F5E4C4 100%)',
+      border: `1.5px solid ${isNight ? 'rgba(245,154,75,0.3)' : 'rgba(200,90,40,0.3)'}`,
+      borderRadius: 100,
+      cursor: 'pointer',
+      padding: 5,
+      display: 'flex',
+      alignItems: 'center',
+      transition: 'all 0.5s cubic-bezier(0.4, 0, 0.2, 1)',
+      boxShadow: isNight ? 'inset 0 2px 8px rgba(0,0,0,0.6)' : 'inset 0 2px 8px rgba(200,90,40,0.15)',
+    }}>
+      {/* track labels */}
+      <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', padding: '0 22px', pointerEvents: 'none' }}>
+        <span style={{ fontFamily: 'Fraunces', fontStyle: 'italic', fontSize: 15, color: isNight ? 'rgba(245,230,208,0.35)' : '#8F3210', opacity: isNight ? 0.5 : 1, transition: 'opacity 0.3s' }}>Jour</span>
+        <div style={{ flex: 1 }} />
+        <span style={{ fontFamily: 'Fraunces', fontStyle: 'italic', fontSize: 15, color: isNight ? '#F59A4B' : 'rgba(24,22,19,0.3)', opacity: isNight ? 1 : 0.5, transition: 'opacity 0.3s' }}>Nuit</span>
+      </div>
+      {/* sliding knob */}
+      <div style={{
+        position: 'absolute',
+        top: 5, left: isNight ? 'calc(100% - 49px)' : 5,
+        width: 44, height: 44, borderRadius: 100,
+        background: isNight
+          ? 'radial-gradient(circle at 30% 30%, #F59A4B, #C4491C)'
+          : 'radial-gradient(circle at 30% 30%, #FFE8C8, #C85A28)',
+        boxShadow: isNight
+          ? '0 0 20px rgba(245,154,75,0.6), inset 0 1px 2px rgba(255,255,255,0.2)'
+          : '0 4px 12px rgba(200,90,40,0.4), inset 0 1px 2px rgba(255,255,255,0.5)',
+        display: 'grid', placeItems: 'center',
+        color: isNight ? '#14100B' : '#FFF',
+        fontSize: 20,
+        transition: 'left 0.5s cubic-bezier(0.4, 0, 0.2, 1), background 0.5s, box-shadow 0.5s',
+      }}>
+        {isNight ? '☾' : '☀'}
+      </div>
+    </button>
+  );
+}
+
+function TweaksPanel({ open, onClose, state, setState }) {
+  if (!open) return null;
+  return (
+    <div style={{ position: 'fixed', right: 20, bottom: 20, width: 320, background: '#1A1510', color: '#F5E6D0', borderRadius: 16, padding: 18, boxShadow: '0 20px 60px rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.1)', zIndex: 100, fontFamily: 'Inter' }}>
+      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 14 }}>
+        <span style={{ fontSize: 13, fontWeight: 600, letterSpacing: '0.02em' }}>Tweaks</span>
+        <div style={{ flex: 1 }} />
+        <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#A89C8A', fontSize: 16, cursor: 'pointer' }}>✕</button>
+      </div>
+
+      <div style={{ fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#A89C8A', marginBottom: 8 }}>Mode</div>
+      <div style={{ marginBottom: 14, display: 'flex', justifyContent: 'center' }}>
+        <DayNightToggle mode={state.mode} onChange={(m) => setState({ ...state, mode: m, autoTime: false })} />
+      </div>
+
+      <div style={{ fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#A89C8A', marginBottom: 6 }}>Auto (heure locale)</div>
+      <div style={{ display: 'flex', gap: 4, marginBottom: 14, background: 'rgba(255,255,255,0.05)', padding: 3, borderRadius: 8 }}>
+        {[{k: true, l: 'Auto'}, {k: false, l: 'Manuel'}].map(o => (
+          <button key={String(o.k)} onClick={() => setState({ ...state, autoTime: o.k })} style={{ flex: 1, padding: '7px 0', background: state.autoTime === o.k ? '#F5E6D0' : 'transparent', color: state.autoTime === o.k ? '#14100B' : '#F5E6D0', border: 'none', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>{o.l}</button>
+        ))}
+      </div>
+
+      <div style={{ fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#A89C8A', marginBottom: 6 }}>Langue</div>
+      <div style={{ display: 'flex', gap: 4, marginBottom: 14, background: 'rgba(255,255,255,0.05)', padding: 3, borderRadius: 8 }}>
+        {['fr','en'].map(l => (
+          <button key={l} onClick={() => setState({ ...state, lang: l })} style={{ flex: 1, padding: '7px 0', background: state.lang === l ? '#F5E6D0' : 'transparent', color: state.lang === l ? '#14100B' : '#F5E6D0', border: 'none', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer', textTransform: 'uppercase' }}>{l}</button>
+        ))}
+      </div>
+
+      <div style={{ fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase', color: '#A89C8A', marginBottom: 6 }}>Écran focus</div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
+        {Object.entries(SCREEN_LABELS).map(([k, l]) => (
+          <button key={k} onClick={() => setState({ ...state, screen: k })} style={{ padding: '7px 8px', background: state.screen === k ? '#F5E6D0' : 'transparent', color: state.screen === k ? '#14100B' : '#F5E6D0', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6, fontSize: 10, fontWeight: 500, cursor: 'pointer', textAlign: 'left' }}>{l}</button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function App() {
+  const load = (k, d) => { try { const v = localStorage.getItem('artyv2.' + k); return v === null ? d : JSON.parse(v); } catch { return d; } };
+  const save = (k, v) => { try { localStorage.setItem('artyv2.' + k, JSON.stringify(v)); } catch {} };
+
+  const [state, _setState] = useState({
+    mode: load('mode', TWEAK_DEFAULTS.mode),
+    lang: load('lang', TWEAK_DEFAULTS.lang),
+    screen: load('screen', TWEAK_DEFAULTS.screen),
+    autoTime: load('autoTime', TWEAK_DEFAULTS.autoTime),
+  });
+  const setState = (s) => { _setState(s); save('mode', s.mode); save('lang', s.lang); save('screen', s.screen); save('autoTime', s.autoTime); };
+
+  // Auto day/night based on hour
+  useEffect(() => {
+    if (!state.autoTime) return;
+    const h = new Date().getHours();
+    const shouldBe = (h >= 7 && h < 19) ? 'day' : 'night';
+    if (shouldBe !== state.mode) _setState({ ...state, mode: shouldBe });
+  }, [state.autoTime]);
+
+  const [tweaksOpen, setTweaksOpen] = useState(false);
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.data?.type === '__activate_edit_mode') setTweaksOpen(true);
+      if (e.data?.type === '__deactivate_edit_mode') setTweaksOpen(false);
+    };
+    window.addEventListener('message', handler);
+    window.parent.postMessage({ type: '__edit_mode_available' }, '*');
+    return () => window.removeEventListener('message', handler);
+  }, []);
+
+  const m = MODES[state.mode];
+  const isNight = state.mode === 'night';
+
+  return (
+    <div style={{
+      padding: '48px 40px 80px', minHeight: '100vh',
+      background: isNight
+        ? 'radial-gradient(ellipse at top, #1E1812 0%, #0C0906 60%)'
+        : 'radial-gradient(ellipse at top, #3E2418 0%, #14100B 70%)',
+      transition: 'background 0.6s',
+    }}>
+      {/* Header */}
+      <div style={{ maxWidth: 1280, margin: '0 auto 48px' }} data-screen-label="Overview">
+        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 24 }}>
+          <div>
+            <div style={{ fontSize: 11, letterSpacing: '0.18em', textTransform: 'uppercase', color: '#A89C8A', marginBottom: 6 }}>V2 · Jour / Nuit</div>
+            <h1 style={{ fontFamily: 'Fraunces', fontSize: 56, fontWeight: 300, letterSpacing: '-0.03em', lineHeight: 0.95, margin: 0 }}>
+              Arty — <em style={{ fontStyle: 'italic', color: m.accent, transition: 'color 0.5s' }}>{isNight ? 'à la bougie.' : 'au grand jour.'}</em>
+            </h1>
+            <p style={{ fontFamily: 'Fraunces', fontSize: 16, fontStyle: 'italic', color: '#A89C8A', margin: '14px 0 0', maxWidth: 620, lineHeight: 1.5 }}>
+              Ember le matin, Nocturne le soir — même application, deux ambiances. Bascule en haut à droite, ou laisse l'heure décider.
+            </p>
+          </div>
+          <div style={{ flex: 1 }} />
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 10 }}>
+            <DayNightToggle mode={state.mode} onChange={(mm) => setState({ ...state, mode: mm, autoTime: false })} />
+            <div style={{ fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase', color: '#A89C8A' }}>
+              {state.autoTime ? '◦ auto · ' : '◦ manuel · '}
+              {isNight ? 'Nocturne' : 'Ember'}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Focus — big phone */}
+      <div style={{ maxWidth: 1280, margin: '0 auto 64px' }} data-screen-label={`Focus — ${m.label}`}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 14, marginBottom: 20 }}>
+          <span style={{ fontSize: 11, letterSpacing: '0.18em', textTransform: 'uppercase', color: '#A89C8A' }}>◈ Focus · {m.label} ({m.sub})</span>
+          <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.08)' }} />
+          <span style={{ fontSize: 11, color: '#A89C8A' }}>Écran : {SCREEN_LABELS[state.screen]}</span>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'center', padding: '20px 0' }}>
+          <div style={{ transform: 'scale(1.2)', transformOrigin: 'center top' }}>
+            <PhoneShell mode={state.mode} lang={state.lang} screen={state.screen}
+              onOpen={(s) => setState({ ...state, screen: s })} />
+          </div>
+        </div>
+      </div>
+
+      {/* Side-by-side day vs night — same screen */}
+      <div style={{ maxWidth: 1280, margin: '0 auto 64px' }} data-screen-label={`Day vs Night — ${SCREEN_LABELS[state.screen]}`}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 14, marginBottom: 20 }}>
+          <span style={{ fontSize: 11, letterSpacing: '0.18em', textTransform: 'uppercase', color: '#A89C8A' }}>◈ Le même écran · jour et nuit</span>
+          <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.08)' }} />
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 40, justifyItems: 'center' }}>
+          {['day', 'night'].map(mk => {
+            const mm = MODES[mk];
+            const active = state.mode === mk;
+            return (
+              <div key={mk} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, cursor: 'pointer' }}
+                onClick={() => setState({ ...state, mode: mk, autoTime: false })}
+                data-screen-label={`${mm.label} — ${SCREEN_LABELS[state.screen]}`}>
+                <div style={{ opacity: active ? 1 : 0.7, transition: 'opacity 0.3s' }}>
+                  <PhoneShell mode={mk} lang={state.lang} screen={state.screen} onOpen={() => setState({ ...state, mode: mk, screen: state.screen })} />
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontFamily: 'Fraunces', fontSize: 28, fontWeight: 300, letterSpacing: '-0.02em' }}>
+                    {mm.label} <em style={{ fontStyle: 'italic', color: mm.accent }}>— {mm.sub}.</em>
+                  </div>
+                  <div style={{ fontSize: 11, color: '#A89C8A', marginTop: 4, letterSpacing: '0.05em' }}>
+                    {mk === 'day' ? '07:00 – 19:00 · papier, chaud, lisible au soleil' : '19:00 – 07:00 · OLED, ambre sur cacao, repose l\'œil'}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Full flow — current mode */}
+      <div style={{ maxWidth: 1400, margin: '0 auto 64px', padding: '0 20px' }} data-screen-label={`Flow — ${m.label}`}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 14, marginBottom: 20 }}>
+          <span style={{ fontSize: 11, letterSpacing: '0.18em', textTransform: 'uppercase', color: '#A89C8A' }}>◈ Parcours complet · {m.label}</span>
+          <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.08)' }} />
+          <span style={{ fontSize: 11, color: '#A89C8A', fontStyle: 'italic', fontFamily: 'Fraunces' }}>clique pour cadrer</span>
+        </div>
+        <div style={{ display: 'flex', gap: 20, overflowX: 'auto', padding: '10px 4px 30px' }}>
+          {SCREENS_ORDER.map(s => (
+            <div key={s} onClick={() => setState({ ...state, screen: s })} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, flexShrink: 0, cursor: 'pointer', opacity: state.screen === s ? 1 : 0.8 }}
+              data-screen-label={`${SCREEN_LABELS[s]} — ${m.label}`}>
+              <div style={{ transform: 'scale(0.55)', transformOrigin: 'top center', height: 780 * 0.55 }}>
+                <PhoneShell mode={state.mode} lang={state.lang} screen={s} onOpen={() => setState({ ...state, screen: s })} />
+              </div>
+              <div style={{ fontSize: 11, letterSpacing: '0.08em', color: state.screen === s ? m.accent : '#A89C8A', textTransform: 'uppercase', fontWeight: state.screen === s ? 600 : 400 }}>{SCREEN_LABELS[s]}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Footer — transition note */}
+      <div style={{ maxWidth: 1000, margin: '40px auto 0', padding: 28, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 20 }}>
+        <div style={{ fontSize: 10, letterSpacing: '0.18em', textTransform: 'uppercase', color: m.accent, marginBottom: 8, transition: 'color 0.5s' }}>◦ Note de design</div>
+        <p style={{ fontFamily: 'Fraunces', fontSize: 17, lineHeight: 1.5, margin: 0, color: '#D9C4A5', fontStyle: 'italic' }}>
+          « L'ambre reste le fil conducteur — orangé brûlé le jour, amber candlelit la nuit. La typographie Fraunces traverse intacte, le corps de texte passe de l'ink (#181613) au crème (#F5E6D0). Le mode automatique bascule à 19 h. »
+        </p>
+      </div>
+
+      {!tweaksOpen && (
+        <button onClick={() => setTweaksOpen(true)} style={{ position: 'fixed', right: 20, bottom: 20, padding: '10px 16px', background: '#F5E6D0', color: '#14100B', border: 'none', borderRadius: 100, fontSize: 12, fontWeight: 600, cursor: 'pointer', boxShadow: '0 10px 30px rgba(0,0,0,0.4)', zIndex: 50, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ width: 8, height: 8, borderRadius: 100, background: m.accent }} />
+          Tweaks
+        </button>
+      )}
+      <TweaksPanel open={tweaksOpen} onClose={() => setTweaksOpen(false)} state={state} setState={setState} />
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
