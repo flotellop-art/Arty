@@ -172,25 +172,31 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
         </p>
 
         <div className="mt-8">
-          {/* Minimal underline tabs */}
-          <div className="flex gap-5 mb-6 border-b border-theme-ink/10">
+          {/* Minimal underline tabs — active = ink text + 2px accent rule */}
+          <div className="flex gap-6 mb-6 border-b border-theme-ink/15">
             {([
               { id: 'apikey' as Tab, label: t('login.tabs.apikey') },
               { id: 'google' as Tab, label: t('login.tabs.google') },
               { id: 'email' as Tab, label: t('login.tabs.email') },
-            ]).map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`pb-2 -mb-px text-[11px] font-semibold uppercase tracking-kicker transition-colors ${
-                  activeTab === tab.id
-                    ? 'text-theme-ink border-b border-theme-ink'
-                    : 'text-theme-muted hover:text-theme-ink'
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
+            ]).map((tab) => {
+              const isActive = activeTab === tab.id
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className="relative pb-3 text-[11px] font-semibold uppercase tracking-kicker transition-colors"
+                  style={{ color: isActive ? 'rgb(var(--theme-ink))' : 'rgb(var(--theme-muted) / 0.55)' }}
+                >
+                  {tab.label}
+                  {isActive && (
+                    <span
+                      aria-hidden
+                      className="absolute left-0 right-0 -bottom-px h-[2px] bg-theme-accent"
+                    />
+                  )}
+                </button>
+              )
+            })}
           </div>
 
           {/* Tab content */}
