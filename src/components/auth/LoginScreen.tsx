@@ -172,8 +172,8 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
         </p>
 
         <div className="mt-8">
-          {/* Minimal underline tabs — active = ink text + 2px accent rule */}
-          <div className="flex gap-6 mb-6 border-b border-theme-ink/15">
+          {/* Minimal underline tabs — active = accent terracotta + bigger */}
+          <div className="flex gap-7 mb-6 border-b border-theme-ink/15">
             {([
               { id: 'apikey' as Tab, label: t('login.tabs.apikey') },
               { id: 'google' as Tab, label: t('login.tabs.google') },
@@ -184,8 +184,11 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className="relative pb-3 text-[11px] font-semibold uppercase tracking-kicker transition-colors"
-                  style={{ color: isActive ? 'rgb(var(--theme-ink))' : 'rgb(var(--theme-muted) / 0.55)' }}
+                  className={`relative pb-3 font-semibold uppercase transition-colors ${
+                    isActive
+                      ? 'text-theme-accent text-sm tracking-[0.16em]'
+                      : 'text-theme-muted/55 text-[11px] tracking-kicker hover:text-theme-muted'
+                  }`}
                 >
                   {tab.label}
                   {isActive && (
