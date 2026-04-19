@@ -38,15 +38,15 @@ function EventRow({
     <button
       type="button"
       onClick={onClick ? () => onClick(event) : undefined}
-      className="w-full text-left bg-white rounded-xl border border-gray-100 shadow-sm hover:shadow-md hover:border-accent/20 transition-all p-3 mb-2"
+      className="w-full text-left bg-theme-surface rounded-xl border border-theme-border shadow-sm hover:shadow-md hover:border-theme-accent/20 transition-all p-3 mb-2"
     >
-      <p className="text-sm font-medium text-bubble-user truncate">{event.title}</p>
-      <p className="text-xs text-gray-400 mt-1">{formatDateRange(event.start, event.end)}</p>
+      <p className="text-sm font-medium text-theme-ink truncate">{event.title}</p>
+      <p className="text-xs text-theme-muted/70 mt-1">{formatDateRange(event.start, event.end)}</p>
       {event.location && (
-        <p className="text-xs text-gray-500 mt-1 truncate">📍 {event.location}</p>
+        <p className="text-xs text-theme-muted mt-1 truncate">📍 {event.location}</p>
       )}
       {event.description && (
-        <p className="text-xs text-gray-500 mt-1 line-clamp-2 leading-relaxed">
+        <p className="text-xs text-theme-muted mt-1 line-clamp-2 leading-relaxed">
           {event.description}
         </p>
       )}
@@ -79,14 +79,14 @@ function CalendarViewInner({ days = 7, onEventClick }: CalendarViewProps) {
   }, [days])
 
   if (loading) {
-    return <p className="text-sm text-gray-400 text-center py-4">Chargement de l'agenda…</p>
+    return <p className="text-sm text-theme-muted/70 text-center py-4">Chargement de l'agenda…</p>
   }
   if (error) {
     return <p className="text-sm text-red-500 text-center py-4">{error}</p>
   }
   if (!events || events.length === 0) {
     return (
-      <p className="text-sm text-gray-400 text-center py-4">
+      <p className="text-sm text-theme-muted/70 text-center py-4">
         Aucun événement dans les {days} prochains jours.
       </p>
     )

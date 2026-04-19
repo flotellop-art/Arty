@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
-import { StarIcon } from '../shared/StarIcon'
+import { ArtyWordmark } from '../shared/PrismMark'
 import { ApiKeyLoginTab } from './ApiKeyLoginTab'
 import { EmailLoginTab } from './EmailLoginTab'
 import { GoogleLoginTab } from './GoogleLoginTab'
@@ -130,60 +130,76 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
   // If pending auth, show API key form
   if (pendingAuth) {
     return (
-      <div className="min-h-[100dvh] bg-cream flex items-center justify-center px-6">
+      <div className="min-h-[100dvh] bg-theme-bg text-theme-ink flex items-center justify-center px-7 py-8">
         <div className="w-full max-w-md">
-          <div className="flex items-center gap-3 justify-center mb-6">
-            <StarIcon size={36} />
-            <h1 className="font-serif text-2xl font-bold text-bubble-user">Arty</h1>
-          </div>
+          <header className="flex flex-col items-center mb-10">
+            <ArtyWordmark size={22} color="rgb(var(--theme-accent))" />
+            <div className="mt-5 mb-3 h-px w-full bg-theme-ink/10" />
+            <span className="font-sans text-[10px] font-semibold uppercase tracking-kicker text-theme-muted">
+              {t('login.edition')}
+            </span>
+          </header>
 
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-            <p className="text-sm text-gray-500 mb-4">
-              <Trans
-                i18nKey="login.connectedAs"
-                values={{ name: pendingAuth.email || pendingAuth.displayName }}
-                components={{ strong: <strong /> }}
-              />
-            </p>
-            <ApiKeyLoginTab onLogin={handleApiKeyLogin} loading={loading} />
-          </div>
+          <p className="font-display italic text-theme-muted text-base leading-relaxed mb-6">
+            <Trans
+              i18nKey="login.connectedAs"
+              values={{ name: pendingAuth.email || pendingAuth.displayName }}
+              components={{ strong: <strong className="not-italic font-medium text-theme-ink" /> }}
+            />
+          </p>
+          <ApiKeyLoginTab onLogin={handleApiKeyLogin} loading={loading} />
         </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-[100dvh] bg-cream flex items-center justify-center px-6">
+    <div className="min-h-[100dvh] bg-theme-bg text-theme-ink flex items-center justify-center px-7 py-8">
       <div className="w-full max-w-md">
-        <div className="flex items-center gap-3 justify-center mb-8">
-          <StarIcon size={36} />
-          <h1 className="font-serif text-2xl font-bold text-bubble-user">Arty</h1>
-        </div>
+        <header className="flex flex-col items-center mb-10">
+          <ArtyWordmark size={22} color="rgb(var(--theme-accent))" />
+          <div className="mt-5 mb-3 h-px w-full bg-theme-ink/10" />
+          <span className="font-sans text-[10px] font-semibold uppercase tracking-kicker text-theme-muted">
+            {t('login.edition')}
+          </span>
+        </header>
 
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-          <h2 className="font-serif text-lg font-semibold text-bubble-user mb-4 text-center">
-            {t('login.title')}
-          </h2>
+        <h1 className="font-display text-[42px] leading-[1.05] font-medium -tracking-[0.025em] text-theme-ink">
+          {t('login.editorialTitle')}<span className="text-theme-accent">.</span>
+        </h1>
+        <p className="font-display italic text-theme-muted text-base mt-2">
+          {t('login.editorialSubtitle')}
+        </p>
 
-          {/* Tabs */}
-          <div className="flex gap-1 mb-5 bg-gray-100 rounded-xl p-1">
+        <div className="mt-8">
+          {/* Minimal underline tabs — active = accent terracotta + bigger */}
+          <div className="flex gap-7 mb-6 border-b border-theme-ink/15">
             {([
               { id: 'apikey' as Tab, label: t('login.tabs.apikey') },
               { id: 'google' as Tab, label: t('login.tabs.google') },
               { id: 'email' as Tab, label: t('login.tabs.email') },
-            ]).map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`flex-1 py-2 rounded-lg text-xs font-medium transition-colors ${
-                  activeTab === tab.id
-                    ? 'bg-white text-bubble-user shadow-sm'
-                    : 'text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
+            ]).map((tab) => {
+              const isActive = activeTab === tab.id
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`relative pb-3 font-semibold uppercase transition-colors ${
+                    isActive
+                      ? 'text-theme-accent text-sm tracking-[0.16em]'
+                      : 'text-theme-muted/55 text-[11px] tracking-kicker hover:text-theme-muted'
+                  }`}
+                >
+                  {tab.label}
+                  {isActive && (
+                    <span
+                      aria-hidden
+                      className="absolute left-0 right-0 -bottom-px h-[2px] bg-theme-accent"
+                    />
+                  )}
+                </button>
+              )
+            })}
           </div>
 
           {/* Tab content */}
@@ -250,28 +266,35 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
           )}
         </div>
 
+        {/* Privacy note */}
+        <p className="font-display italic text-[11px] text-theme-muted text-center mt-7 leading-relaxed">
+          {t('login.privacyNote')}
+        </p>
+
         {/* Known sessions */}
         {knownSessions.length > 0 && (
-          <div className="mt-4 bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
-            <p className="text-xs text-gray-400 mb-2">{t('login.recentAccounts')}</p>
+          <div className="mt-8 border-t border-theme-ink/10 pt-4">
+            <p className="font-sans text-[10px] font-semibold uppercase tracking-kicker text-theme-muted mb-3">
+              {t('login.recentAccounts')}
+            </p>
             {knownSessions.slice(0, 3).map((session) => (
               <button
                 key={session.userId}
                 onClick={() => onSwitchAccount(session.userId)}
-                className="w-full flex items-center gap-3 py-2 px-2 rounded-xl hover:bg-gray-50 transition-colors text-left"
+                className="w-full flex items-center gap-3 py-2.5 px-1 hover:bg-theme-ink/5 transition-colors text-left"
               >
                 {session.avatar ? (
                   <img src={session.avatar} alt="" className="w-8 h-8 rounded-full" />
                 ) : (
-                  <div className="w-8 h-8 rounded-full bg-accent/20 flex items-center justify-center text-accent text-sm font-semibold">
+                  <div className="w-8 h-8 rounded-full bg-theme-accent/15 flex items-center justify-center text-theme-accent text-sm font-semibold">
                     {(session.displayName || '?').charAt(0).toUpperCase()}
                   </div>
                 )}
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-bubble-user truncate">{session.displayName}</p>
-                  <p className="text-xs text-gray-400 truncate">{session.email || session.authMethod}</p>
+                  <p className="font-display text-sm text-theme-ink truncate">{session.displayName}</p>
+                  <p className="font-sans text-[11px] text-theme-muted truncate">{session.email || session.authMethod}</p>
                 </div>
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="text-gray-300">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" className="text-theme-muted">
                   <path d="M6 4L10 8L6 12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
                 </svg>
               </button>

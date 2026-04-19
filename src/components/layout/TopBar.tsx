@@ -62,18 +62,18 @@ export function TopBar({ onMenuToggle, onHistoryToggle }: TopBarProps) {
   const modelOption = MODEL_OPTIONS.find(o => o.id === currentModel) ?? MODEL_OPTIONS[0]!
 
   return (
-    <header className="bg-cream border-b border-gray-100">
+    <header className="bg-theme-bg border-b border-theme-ink/10">
       <div className="flex items-center justify-between px-4 py-2.5">
         {/* Hamburger */}
         <button
           onClick={onMenuToggle}
-          className="p-2 -ml-2 rounded-lg hover:bg-black/5 transition-colors"
+          className="p-2 -ml-2 rounded-lg hover:bg-theme-ink/5 transition-colors text-theme-ink"
           aria-label={t('common.menu')}
         >
           <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-            <rect y="3" width="20" height="2" rx="1" fill="#1E1A14" />
-            <rect y="9" width="20" height="2" rx="1" fill="#1E1A14" />
-            <rect y="15" width="20" height="2" rx="1" fill="#1E1A14" />
+            <rect y="3" width="20" height="2" rx="1" fill="currentColor" />
+            <rect y="9" width="20" height="2" rx="1" fill="currentColor" />
+            <rect y="15" width="20" height="2" rx="1" fill="currentColor" />
           </svg>
         </button>
 
@@ -84,7 +84,7 @@ export function TopBar({ onMenuToggle, onHistoryToggle }: TopBarProps) {
             <button
               onClick={() => setOpenMenu(openMenu === 'style' ? null : 'style')}
               className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
-                openMenu === 'style' ? 'bg-accent text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                openMenu === 'style' ? 'bg-theme-accent text-theme-bg' : 'bg-theme-ink/5 text-theme-ink/70 hover:bg-theme-ink/10'
               }`}
             >
               <span>{styleOption.emoji}</span>
@@ -95,15 +95,15 @@ export function TopBar({ onMenuToggle, onHistoryToggle }: TopBarProps) {
             </button>
 
             {openMenu === 'style' && (
-              <div className="absolute top-full left-0 mt-1 bg-white rounded-xl shadow-lg border border-gray-100 py-1 z-50 min-w-[140px]">
+              <div className="absolute top-full left-0 mt-1 bg-theme-surface rounded-xl shadow-lg border border-theme-border py-1 z-50 min-w-[140px]">
                 {STYLE_OPTIONS.map((opt) => (
                   <button
                     key={opt.id}
                     onClick={() => handleStyleChange(opt.id)}
                     className={`w-full flex items-center gap-2 px-3 py-2 text-xs transition-colors ${
                       currentStyle === opt.id
-                        ? 'bg-accent/10 text-accent font-semibold'
-                        : 'text-gray-600 hover:bg-gray-50'
+                        ? 'bg-theme-accent/10 text-theme-accent font-semibold'
+                        : 'text-theme-ink/70 hover:bg-theme-ink/5'
                     }`}
                   >
                     <span>{opt.emoji}</span>
@@ -117,7 +117,7 @@ export function TopBar({ onMenuToggle, onHistoryToggle }: TopBarProps) {
           {/* Info button */}
           <button
             onClick={() => setShowGuide(true)}
-            className="p-1 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+            className="p-1 rounded-full text-theme-muted hover:text-theme-ink hover:bg-theme-ink/5 transition-colors"
             aria-label={t('chat.topBar.aria.toneModelHelp')}
           >
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
@@ -132,7 +132,7 @@ export function TopBar({ onMenuToggle, onHistoryToggle }: TopBarProps) {
             <button
               onClick={() => setOpenMenu(openMenu === 'model' ? null : 'model')}
               className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
-                openMenu === 'model' ? 'bg-bubble-user text-cream' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                openMenu === 'model' ? 'bg-theme-ink text-theme-bg' : 'bg-theme-ink/5 text-theme-ink/70 hover:bg-theme-ink/10'
               }`}
             >
               <span>{modelOption.flag}</span>
@@ -143,15 +143,15 @@ export function TopBar({ onMenuToggle, onHistoryToggle }: TopBarProps) {
             </button>
 
             {openMenu === 'model' && (
-              <div className="absolute top-full right-0 mt-1 bg-white rounded-xl shadow-lg border border-gray-100 py-1 z-50 min-w-[140px]">
+              <div className="absolute top-full right-0 mt-1 bg-theme-surface rounded-xl shadow-lg border border-theme-border py-1 z-50 min-w-[140px]">
                 {MODEL_OPTIONS.map((opt) => (
                   <button
                     key={opt.id}
                     onClick={() => handleModelChange(opt.id)}
                     className={`w-full flex items-center gap-2 px-3 py-2 text-xs transition-colors ${
                       currentModel === opt.id
-                        ? 'bg-bubble-user/10 text-bubble-user font-semibold'
-                        : 'text-gray-600 hover:bg-gray-50'
+                        ? 'bg-theme-ink/10 text-theme-ink font-semibold'
+                        : 'text-theme-ink/70 hover:bg-theme-ink/5'
                     }`}
                   >
                     <span>{opt.flag}</span>
@@ -167,27 +167,27 @@ export function TopBar({ onMenuToggle, onHistoryToggle }: TopBarProps) {
           {/* Cost indicator (Feature 13) */}
           <CostIndicator />
 
-          {/* Dark mode toggle (Feature 10) */}
+          {/* Day/Night toggle — Ember (☀️) ↔ Nocturne (🌙) */}
           <button
             onClick={handleThemeToggle}
-            className="p-2 rounded-lg hover:bg-black/5 transition-colors text-base"
-            aria-label={theme === 'dark' ? 'Mode clair' : 'Mode sombre'}
-            title={theme === 'dark' ? 'Mode clair' : 'Mode sombre'}
+            className="p-2 rounded-lg hover:bg-theme-ink/5 transition-colors text-base"
+            aria-label={theme === 'nocturne' ? 'Mode jour (Ember)' : 'Mode nuit (Nocturne)'}
+            title={theme === 'nocturne' ? 'Mode jour (Ember)' : 'Mode nuit (Nocturne)'}
           >
-            {theme === 'dark' ? '☀️' : '🌙'}
+            {theme === 'nocturne' ? '☀️' : '🌙'}
           </button>
 
           {/* Settings (gear) */}
           <button
             onClick={() => setShowSettings(true)}
-            className="p-2 rounded-lg hover:bg-black/5 transition-colors"
+            className="p-2 rounded-lg hover:bg-theme-ink/5 transition-colors text-theme-ink"
             aria-label="Paramètres"
           >
             <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-              <circle cx="10" cy="10" r="2.5" stroke="#1E1A14" strokeWidth="1.5" />
+              <circle cx="10" cy="10" r="2.5" stroke="currentColor" strokeWidth="1.5" />
               <path
                 d="M10 1.5V4M10 16V18.5M18.5 10H16M4 10H1.5M16.01 4L14.24 5.76M5.76 14.24L4 16M16.01 16L14.24 14.24M5.76 5.76L4 4"
-                stroke="#1E1A14"
+                stroke="currentColor"
                 strokeWidth="1.5"
                 strokeLinecap="round"
               />
@@ -197,14 +197,14 @@ export function TopBar({ onMenuToggle, onHistoryToggle }: TopBarProps) {
           {/* History */}
           <button
             onClick={onHistoryToggle}
-            className="p-2 -mr-2 rounded-lg hover:bg-black/5 transition-colors"
+            className="p-2 -mr-2 rounded-lg hover:bg-theme-ink/5 transition-colors text-theme-ink"
             aria-label={t('common.history')}
           >
             <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-              <rect x="3" y="2" width="14" height="16" rx="2" stroke="#1E1A14" strokeWidth="1.5" fill="none" />
-              <line x1="6" y1="6" x2="14" y2="6" stroke="#1E1A14" strokeWidth="1.5" strokeLinecap="round" />
-              <line x1="6" y1="10" x2="14" y2="10" stroke="#1E1A14" strokeWidth="1.5" strokeLinecap="round" />
-              <line x1="6" y1="14" x2="10" y2="14" stroke="#1E1A14" strokeWidth="1.5" strokeLinecap="round" />
+              <rect x="3" y="2" width="14" height="16" rx="2" stroke="currentColor" strokeWidth="1.5" fill="none" />
+              <line x1="6" y1="6" x2="14" y2="6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              <line x1="6" y1="10" x2="14" y2="10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              <line x1="6" y1="14" x2="10" y2="14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
             </svg>
           </button>
         </div>

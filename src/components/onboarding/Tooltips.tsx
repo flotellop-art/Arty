@@ -29,10 +29,10 @@ function TooltipBubble({ text, onDismiss }: TooltipBubbleProps) {
   return (
     <div
       onClick={onDismiss}
-      className="absolute z-50 bg-bubble-user text-cream text-xs px-3 py-2 rounded-xl shadow-lg max-w-[200px] leading-relaxed cursor-pointer animate-fade-in"
+      className="absolute z-50 bg-theme-ink text-theme-bg text-xs px-3 py-2 rounded-xl shadow-lg max-w-[200px] leading-relaxed cursor-pointer animate-fade-in"
     >
       {text}
-      <div className="absolute -top-1.5 left-4 w-3 h-3 bg-bubble-user rotate-45 rounded-sm" />
+      <div className="absolute -top-1.5 left-4 w-3 h-3 bg-theme-ink rotate-45 rounded-sm" />
     </div>
   )
 }

@@ -41,18 +41,18 @@ export const AssistantBubble = memo(function AssistantBubble({ content, onAction
   }, [onAction])
 
   return (
-    <div className="group/bubble relative flex gap-2.5 mb-3">
+    <div className="group/bubble relative flex gap-2.5 mb-6">
       <AssistantAvatar />
       <div
         ref={bubbleRef}
         onClick={handleClick}
-        className={`relative max-w-[92%] bg-white text-bubble-user px-4 py-3 rounded-2xl rounded-tl-md shadow-sm leading-relaxed ${
-          pinned ? 'ring-1 ring-accent/40' : ''
+        className={`relative max-w-[92%] text-theme-ink leading-relaxed ${
+          pinned ? 'pl-3 border-l-2 border-theme-accent' : ''
         }`}
       >
         <MarkdownRenderer content={content} />
         {pinned && (
-          <span className="absolute -top-2 -left-2 bg-accent text-white text-[10px] px-1.5 py-0.5 rounded-full">📌</span>
+          <span className="absolute -top-2 -left-3 text-theme-accent text-[10px]">📌</span>
         )}
       </div>
       {onTogglePin && (
@@ -60,8 +60,8 @@ export const AssistantBubble = memo(function AssistantBubble({ content, onAction
           onClick={onTogglePin}
           className={`absolute bottom-1 right-1 p-1 rounded-md transition-all ${
             pinned
-              ? 'text-accent opacity-80'
-              : 'opacity-0 group-hover/bubble:opacity-100 text-gray-300 hover:text-accent'
+              ? 'text-theme-accent opacity-80'
+              : 'opacity-0 group-hover/bubble:opacity-100 text-theme-muted/60 hover:text-theme-accent'
           }`}
           aria-label={pinned ? 'Désépingler' : 'Épingler'}
           title={pinned ? 'Désépingler' : 'Épingler ce message'}

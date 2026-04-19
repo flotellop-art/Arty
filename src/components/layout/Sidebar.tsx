@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { Conversation, Message } from '../../types'
-import { StarIcon } from '../shared/StarIcon'
+import { ArtyWordmark } from '../shared/PrismMark'
 import { TokenUsageBar } from '../shared/TokenUsageBar'
 import { LanguageSelector } from '../shared/LanguageSelector'
 import { SettingsModal } from '../settings/SettingsModal'
@@ -46,7 +46,7 @@ function highlight(text: string, query: string): JSX.Element {
   return (
     <>
       {text.slice(0, idx)}
-      <mark className="bg-yellow-200 rounded px-0.5">{text.slice(idx, idx + q.length)}</mark>
+      <mark className="bg-theme-accent/20 text-theme-accent rounded px-0.5">{text.slice(idx, idx + q.length)}</mark>
       {text.slice(idx + q.length)}
     </>
   )
@@ -134,40 +134,46 @@ export function Sidebar({
       {/* Backdrop */}
       {isOpen && (
         <div
-          className="fixed inset-0 bg-black/40 z-40 transition-opacity"
+          className="fixed inset-0 bg-theme-ink/40 z-40 transition-opacity"
           onClick={onClose}
         />
       )}
 
       {/* Drawer */}
       <aside
-        className={`fixed top-0 left-0 h-full w-80 max-w-[85vw] bg-white z-50 shadow-xl transform transition-transform duration-300 ease-in-out flex flex-col ${
+        className={`fixed top-0 left-0 h-full w-80 max-w-[85vw] bg-theme-bg text-theme-ink z-50 shadow-xl transform transition-transform duration-300 ease-in-out flex flex-col ${
           isOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
-        {/* Header */}
-        <div className="flex items-center gap-3 px-5 py-5 border-b border-gray-100">
-          <StarIcon size={28} />
-          <h2 className="font-serif text-lg font-semibold text-bubble-user">
-            Arty
-          </h2>
+        {/* Header — Wordmark + close + double rule (Ember signature) */}
+        <div className="px-5 pt-5 pb-3 flex items-center justify-between">
+          <ArtyWordmark size={22} color="rgb(var(--theme-accent))" />
+          <button
+            onClick={onClose}
+            className="text-theme-ink p-1 hover:bg-theme-ink/5 rounded transition-colors"
+            aria-label={t('common.close')}
+          >
+            ✕
+          </button>
         </div>
+        <div className="mx-5 h-[2px] bg-theme-ink" />
+        <div className="mx-5 mt-[3px] h-px bg-theme-ink" />
 
         {/* Search */}
-        <div className="px-4 pt-3">
+        <div className="px-4 pt-4">
           <div className="relative">
             <input
               type="text"
               value={searchRaw}
               onChange={(e) => setSearchRaw(e.target.value)}
-              placeholder="Rechercher..."
-              className="w-full pl-8 pr-8 py-1.5 rounded-lg border border-gray-200 text-xs focus:outline-none focus:border-accent bg-gray-50"
+              placeholder="Rechercher…"
+              className="w-full pl-8 pr-8 py-2 rounded-sm border border-theme-border text-sm font-display italic text-theme-ink placeholder:text-theme-muted focus:outline-none focus:border-theme-accent bg-theme-surface"
             />
-            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs">🔍</span>
+            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-theme-muted text-xs">⌕</span>
             {searchRaw && (
               <button
                 onClick={() => setSearchRaw('')}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs"
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-theme-muted hover:text-theme-ink text-xs"
                 aria-label="Effacer"
               >
                 ✕
@@ -175,25 +181,22 @@ export function Sidebar({
             )}
           </div>
           {debouncedSearch && (
-            <p className="text-[10px] text-gray-400 mt-1 px-1">
+            <p className="font-mono text-[10px] text-theme-muted mt-1 px-1">
               {filteredConversations.length} résultat{filteredConversations.length !== 1 ? 's' : ''}
             </p>
           )}
         </div>
 
-        {/* New conversation */}
+        {/* New conversation — primary editorial CTA */}
         <div className="px-4 py-3">
           <button
             onClick={() => {
               onNew()
               onClose()
             }}
-            className="w-full flex items-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 hover:bg-gray-50 transition-colors text-sm font-medium text-bubble-user"
+            className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-sm bg-theme-ink text-theme-bg hover:opacity-90 transition-opacity font-display italic text-[15px]"
           >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-              <line x1="8" y1="2" x2="8" y2="14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-              <line x1="2" y1="8" x2="14" y2="8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-            </svg>
+            <span className="text-lg leading-none not-italic">+</span>
             {t('sidebar.newConversation')}
           </button>
           {onNewEU && (
@@ -202,7 +205,7 @@ export function Sidebar({
                 onNewEU()
                 onClose()
               }}
-              className="w-full flex items-center gap-2 px-4 py-2.5 rounded-xl border border-blue-200 bg-blue-50 hover:bg-blue-100 transition-colors text-sm font-medium text-blue-700 mt-2"
+              className="w-full flex items-center gap-2 px-4 py-2.5 rounded-sm border border-blue-300 bg-blue-50/70 hover:bg-blue-100/70 transition-colors text-sm font-medium text-blue-700 mt-2"
             >
               <span className="text-base">🇪🇺</span>
               {t('sidebar.newConversationEU')}
@@ -213,10 +216,10 @@ export function Sidebar({
           <div className="flex gap-2 mt-2">
             <button
               onClick={() => importInputRef.current?.click()}
-              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 text-xs text-gray-600"
+              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-sm border border-theme-border bg-theme-surface hover:bg-theme-ink/5 text-xs font-display italic text-theme-ink"
               title="Importer une conversation JSON"
             >
-              ⬆️ Importer
+              <span className="text-theme-accent not-italic">⬆</span> Importer
             </button>
             <input
               ref={importInputRef}
@@ -227,13 +230,13 @@ export function Sidebar({
             />
             <button
               onClick={() => setShowTasks(true)}
-              className="relative flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 text-xs text-gray-600"
+              className="relative flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-sm border border-theme-border bg-theme-surface hover:bg-theme-ink/5 text-xs font-display italic text-theme-ink"
               title="Tâches"
             >
-              ✅ Tâches
+              <span className="text-theme-accent not-italic">✓</span> Tâches
               {pendingTasks > 0 && (
-                <span className="absolute -top-1 -right-1 bg-accent text-white text-[9px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-1">
-                  🔔 {pendingTasks}
+                <span className="absolute -top-1 -right-1 bg-theme-accent text-theme-bg text-[9px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-1">
+                  {pendingTasks}
                 </span>
               )}
             </button>
@@ -242,9 +245,9 @@ export function Sidebar({
 
         {/* Pinned messages (Feature 3) */}
         {pinned.length > 0 && !debouncedSearch && (
-          <div className="px-3 pb-2">
-            <p className="text-[10px] uppercase tracking-wider text-gray-400 px-2 mb-1">
-              📌 Messages épinglés ({pinned.length})
+          <div className="px-4 pb-2">
+            <p className="font-sans text-[10px] font-semibold uppercase tracking-kicker text-theme-muted mb-2">
+              — Épinglés ({pinned.length})
             </p>
             <div className="max-h-32 overflow-y-auto">
               {pinned.map((p) => (
@@ -254,12 +257,12 @@ export function Sidebar({
                     onSelect(p.conversationId)
                     onClose()
                   }}
-                  className="w-full text-left px-2 py-1.5 rounded-lg hover:bg-gray-50 transition-colors"
+                  className="w-full text-left px-2 py-1.5 hover:bg-theme-ink/5 transition-colors"
                 >
-                  <p className="text-[10px] text-gray-400 truncate">
+                  <p className="font-mono text-[10px] text-theme-muted truncate">
                     {p.conversationTitle}
                   </p>
-                  <p className="text-xs text-bubble-user truncate">
+                  <p className="text-xs text-theme-ink truncate font-display italic">
                     {p.message.content.slice(0, 80)}
                   </p>
                 </button>
@@ -269,19 +272,24 @@ export function Sidebar({
         )}
 
         {/* Conversation list */}
-        <nav className="flex-1 overflow-y-auto px-3 pb-4">
+        <nav className="flex-1 overflow-y-auto px-4 pb-4">
+          {!debouncedSearch && filteredConversations.length > 0 && (
+            <p className="font-sans text-[10px] font-semibold uppercase tracking-kicker text-theme-muted mt-3 mb-2">
+              — {t('sidebar.recent', { defaultValue: 'Conversations' })}
+            </p>
+          )}
           {filteredConversations.length === 0 && (
-            <p className="text-sm text-gray-400 text-center py-8">
+            <p className="font-display italic text-sm text-theme-muted text-center py-8">
               {debouncedSearch ? 'Aucun résultat' : t('sidebar.emptyList')}
             </p>
           )}
-          {filteredConversations.map((conv) => (
+          {filteredConversations.map((conv, i) => (
             <div
               key={conv.id}
-              className={`group flex items-center gap-2 px-3 py-2.5 rounded-xl mb-0.5 cursor-pointer transition-colors ${
-                conv.id === activeId
-                  ? 'bg-accent/10 text-accent'
-                  : 'hover:bg-gray-50 text-bubble-user'
+              className={`group flex items-baseline gap-2 py-2.5 cursor-pointer transition-colors border-b border-dotted border-theme-border ${
+                i === filteredConversations.length - 1 ? 'border-b-0' : ''
+              } ${
+                conv.id === activeId ? 'opacity-100' : 'hover:bg-theme-ink/[0.03]'
               }`}
             >
               <button
@@ -291,25 +299,29 @@ export function Sidebar({
                 }}
                 className="flex-1 text-left min-w-0"
               >
-                <p className="text-sm truncate font-normal">
-                  {highlight(conv.title, debouncedSearch)}
-                </p>
-                <p className="text-xs text-gray-400 mt-0.5">
-                  {timeAgo(conv.updatedAt)}
-                </p>
+                <div className="flex items-baseline justify-between gap-2">
+                  <p className={`font-display text-[15px] truncate leading-tight ${
+                    conv.id === activeId ? 'text-theme-accent font-medium' : 'text-theme-ink'
+                  }`}>
+                    {highlight(conv.title, debouncedSearch)}
+                  </p>
+                  <p className="font-mono text-[10px] text-theme-muted shrink-0">
+                    {timeAgo(conv.updatedAt)}
+                  </p>
+                </div>
               </button>
               <button
                 onClick={(e) => {
                   e.stopPropagation()
                   onDelete(conv.id)
                 }}
-                className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-red-50 transition-all"
+                className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-theme-accent/10 transition-all text-theme-accent"
                 aria-label={t('sidebar.deleteAria')}
               >
                 <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                  <path d="M2 4H12L11 13H3L2 4Z" stroke="#EF4444" strokeWidth="1.2" />
-                  <path d="M5 4V2H9V4" stroke="#EF4444" strokeWidth="1.2" />
-                  <line x1="1" y1="4" x2="13" y2="4" stroke="#EF4444" strokeWidth="1.2" />
+                  <path d="M2 4H12L11 13H3L2 4Z" stroke="currentColor" strokeWidth="1.2" />
+                  <path d="M5 4V2H9V4" stroke="currentColor" strokeWidth="1.2" />
+                  <line x1="1" y1="4" x2="13" y2="4" stroke="currentColor" strokeWidth="1.2" />
                 </svg>
               </button>
             </div>
@@ -324,9 +336,9 @@ export function Sidebar({
         {/* Settings */}
         <button
           onClick={() => setShowSettings(true)}
-          className="mx-3 mb-2 flex items-center gap-2 px-3 py-2 rounded-xl text-xs text-gray-600 hover:bg-gray-50 transition-colors"
+          className="mx-4 mb-2 flex items-center gap-2 px-3 py-2 rounded-sm text-xs font-display italic text-theme-ink hover:bg-theme-ink/5 transition-colors"
         >
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="text-theme-accent">
             <circle cx="7" cy="7" r="1.75" stroke="currentColor" strokeWidth="1.2" />
             <path
               d="M7 1V2.5M7 11.5V13M13 7H11.5M2.5 7H1M11.24 2.76L10.18 3.82M3.82 10.18L2.76 11.24M11.24 11.24L10.18 10.18M3.82 3.82L2.76 2.76"
@@ -340,12 +352,12 @@ export function Sidebar({
 
         {/* User info + logout */}
         {userName && (
-          <div className="px-5 py-3 border-t border-gray-100 flex items-center justify-between">
-            <span className="text-xs text-gray-500 truncate">{userName}</span>
+          <div className="px-5 py-3 border-t border-theme-border flex items-center justify-between">
+            <span className="font-display italic text-xs text-theme-muted truncate">{userName}</span>
             {onLogout && (
               <button
                 onClick={onLogout}
-                className="text-xs text-gray-400 hover:text-red-500 transition-colors"
+                className="font-sans text-[10px] uppercase tracking-kicker text-theme-muted hover:text-theme-accent transition-colors"
               >
                 {t('common.logout')}
               </button>

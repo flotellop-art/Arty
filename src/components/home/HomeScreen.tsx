@@ -1,8 +1,8 @@
-import { memo, useCallback } from 'react'
-import { Trans, useTranslation } from 'react-i18next'
-import { AnimatedStar } from './AnimatedStar'
+import { memo, useCallback, useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
 import { TopBar } from '../layout/TopBar'
 import { InputBar } from '../layout/InputBar'
+import { PrismMark } from '../shared/PrismMark'
 import { GoogleConnectButton } from '../google/GoogleConnectButton'
 import { GoogleStatus } from '../google/GoogleStatus'
 import { CalendarView } from '../google/CalendarView'
@@ -19,11 +19,31 @@ interface HomeScreenProps {
   googleAuth: ReturnType<typeof useGoogleAuth>
   gmail: ReturnType<typeof useGmail>
   drive: ReturnType<typeof useDrive>
+  userName?: string
 }
 
-function HomeScreenInner({ onMenuToggle, onSend, isStreaming, googleAuth }: HomeScreenProps) {
-  const { t } = useTranslation()
+function HomeScreenInner({ onMenuToggle, onSend, isStreaming, googleAuth, userName }: HomeScreenProps) {
+  const { t, i18n } = useTranslation()
   const googleTooltip = useTooltip('google')
+
+  // Editorial kicker: "VENDREDI 19 AVRIL · VALENCE" style — locale-aware.
+  const kicker = useMemo(() => {
+    const locale = i18n.language?.startsWith('en') ? 'en-US' : 'fr-FR'
+    return new Date().toLocaleDateString(locale, {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+    })
+  }, [i18n.language])
+
+  // Fraunces hero greeting — splits first name for italic treatment.
+  const greeting = useMemo(() => {
+    const h = new Date().getHours()
+    if (h < 12) return t('home.greetingMorning')
+    if (h < 18) return t('home.greetingAfternoon')
+    return t('home.greetingEvening')
+  }, [t])
+  const firstName = (userName || '').trim().split(/\s+/)[0] || ''
 
   const openEvent = useCallback(async (event: import('../../types/google').CalendarEvent) => {
     const url = event.htmlLink || `https://calendar.google.com/calendar/r/eventedit?eid=${encodeURIComponent(event.id)}`
@@ -35,61 +55,102 @@ function HomeScreenInner({ onMenuToggle, onSend, isStreaming, googleAuth }: Home
     }
   }, [])
 
+  const intents = [
+    t('home.intents.unreadEmails'),
+    t('home.intents.today'),
+    t('home.intents.schedule'),
+    t('home.intents.useful'),
+  ]
+
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full bg-theme-bg text-theme-ink">
       <TopBar onMenuToggle={onMenuToggle} onHistoryToggle={onMenuToggle} />
 
-      <div className="flex-1 overflow-y-auto flex flex-col items-center px-6 pb-4 gap-5">
-        <div className="flex flex-col items-center gap-5 pt-6">
-          <AnimatedStar />
+      <div className="flex-1 overflow-y-auto">
+        {/* Masthead — editorial kicker + brand mark */}
+        <div className="px-6 pt-4 pb-2 flex items-center justify-between">
+          <span className="font-sans text-[10px] font-semibold uppercase tracking-kicker text-theme-muted">
+            {kicker}
+          </span>
+          <PrismMark size={22} color="rgb(var(--theme-ink))" />
+        </div>
+        {/* Editorial double rule */}
+        <div className="mx-6 h-[2px] bg-theme-ink" />
+        <div className="mx-6 mt-[3px] h-px bg-theme-ink" />
 
-          <h1 className="font-serif text-2xl md:text-3xl font-semibold text-bubble-user text-center leading-snug">
-            {t('home.title')}
+        {/* Hero */}
+        <div className="px-6 pt-6 pb-2 max-w-2xl">
+          <h1 className="font-display font-medium text-[40px] leading-[0.98] -tracking-[0.03em] text-theme-ink">
+            {greeting}
+            {firstName && (
+              <>
+                <br />
+                <span className="italic">{firstName}</span>
+                <span className="text-theme-accent">.</span>
+              </>
+            )}
           </h1>
-
-          <p className="text-xs text-gray-400 text-center">
-            <Trans
-              i18nKey="home.hintHelp"
-              components={[<span className="font-mono bg-gray-100 px-1 rounded" />]}
-            />
-          </p>
         </div>
 
-        {/* Google connection */}
-        <div className="relative w-full max-w-md flex flex-col items-center gap-2">
-          {googleAuth.isConnected ? (
+        {/* Google connect (only when not connected) */}
+        {!googleAuth.isConnected && (
+          <div className="px-6 pt-5 max-w-md">
+            <GoogleConnectButton
+              onConnect={googleAuth.login}
+              isLoading={googleAuth.isLoading}
+            />
+            <div className="relative">
+              <googleTooltip.TooltipComponent />
+            </div>
+            {googleAuth.error && (
+              <p className="mt-2 font-sans text-xs text-theme-accent">{googleAuth.error}</p>
+            )}
+          </div>
+        )}
+
+        {googleAuth.isConnected && (
+          <div className="px-6 pt-4">
             <GoogleStatus
               isConnected={googleAuth.isConnected}
               user={googleAuth.user}
               onLogout={googleAuth.logout}
             />
-          ) : (
-            <>
-              <GoogleConnectButton
-                onConnect={googleAuth.login}
-                isLoading={googleAuth.isLoading}
-              />
-              <div className="relative">
-                <googleTooltip.TooltipComponent />
-              </div>
-            </>
-          )}
-          {googleAuth.error && (
-            <p className="text-xs text-red-500">{googleAuth.error}</p>
-          )}
-        </div>
-
-        {/* Agenda preview (only when Google connected) */}
-        {googleAuth.isConnected && (
-          <div className="w-full max-w-md flex flex-col gap-4">
-            <section className="flex flex-col gap-2">
-              <h2 className="text-xs uppercase tracking-wider text-gray-400">
-                {t('home.calendar.title')}
-              </h2>
-              <CalendarView days={7} onEventClick={openEvent} />
-            </section>
           </div>
         )}
+
+        {/* Two-up: Agenda + Intentions — editorial grid */}
+        <div className="px-6 pt-8 pb-4 grid grid-cols-1 sm:grid-cols-2 gap-6 max-w-3xl">
+          {/* Agenda (only when Google connected) */}
+          {googleAuth.isConnected && (
+            <section>
+              <span className="font-sans text-[10px] font-semibold uppercase tracking-kicker text-theme-muted">
+                {t('home.agendaKicker')}
+              </span>
+              <div className="border-t border-theme-ink mt-1.5 pt-3">
+                <CalendarView days={7} onEventClick={openEvent} />
+              </div>
+            </section>
+          )}
+
+          {/* Intentions — suggestion quotes */}
+          <section className={googleAuth.isConnected ? '' : 'sm:col-span-2'}>
+            <span className="font-sans text-[10px] font-semibold uppercase tracking-kicker text-theme-muted">
+              {t('home.intentionsKicker')}
+            </span>
+            <ul className="border-t border-theme-ink mt-1.5 pt-3 flex flex-col gap-2.5">
+              {intents.map((intent) => (
+                <li key={intent}>
+                  <button
+                    onClick={() => onSend(intent)}
+                    className="block w-full text-left font-display italic text-[13px] leading-[1.25] text-theme-ink border-l-2 border-theme-accent pl-2 py-0.5 hover:bg-theme-accent/5 transition-colors"
+                  >
+                    « {intent} »
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        </div>
       </div>
 
       <InputBar onSend={onSend} isStreaming={isStreaming} />

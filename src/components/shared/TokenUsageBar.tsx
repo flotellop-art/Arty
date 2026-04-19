@@ -4,12 +4,12 @@ export function TokenUsageBar() {
   const { usage, formattedCost, formattedInput, formattedOutput, reset } = useTokenUsage()
 
   return (
-    <div className="px-5 py-3 border-t border-gray-100">
+    <div className="px-5 py-3 border-t border-theme-border">
       <div className="flex items-center justify-between mb-1.5">
-        <span className="text-xs font-medium text-gray-500">Tokens ce mois</span>
+        <span className="text-xs font-medium text-theme-muted">Tokens ce mois</span>
         <button
           onClick={reset}
-          className="text-xs text-gray-400 hover:text-red-500 transition-colors"
+          className="text-xs text-theme-muted/70 hover:text-red-500 transition-colors"
         >
           Reset
         </button>
@@ -17,20 +17,20 @@ export function TokenUsageBar() {
 
       <div className="space-y-1">
         <div className="flex justify-between text-xs">
-          <span className="text-gray-400">Requetes</span>
-          <span className="text-bubble-user font-medium">{usage.requestCount}</span>
+          <span className="text-theme-muted/70">Requetes</span>
+          <span className="text-theme-ink font-medium">{usage.requestCount}</span>
         </div>
         <div className="flex justify-between text-xs">
-          <span className="text-gray-400">Input</span>
-          <span className="text-bubble-user">{formattedInput}</span>
+          <span className="text-theme-muted/70">Input</span>
+          <span className="text-theme-ink">{formattedInput}</span>
         </div>
         <div className="flex justify-between text-xs">
-          <span className="text-gray-400">Output</span>
-          <span className="text-bubble-user">{formattedOutput}</span>
+          <span className="text-theme-muted/70">Output</span>
+          <span className="text-theme-ink">{formattedOutput}</span>
         </div>
-        <div className="flex justify-between text-xs pt-1 border-t border-gray-50">
-          <span className="text-gray-500 font-medium">Cout estimé</span>
-          <span className="text-accent font-semibold">{formattedCost}</span>
+        <div className="flex justify-between text-xs pt-1 border-t border-theme-border">
+          <span className="text-theme-muted font-medium">Cout estimé</span>
+          <span className="text-theme-accent font-semibold">{formattedCost}</span>
         </div>
       </div>
     </div>

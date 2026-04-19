@@ -116,11 +116,11 @@ export function ConversationSummaryModal({ conversation, onClose }: Props) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-          <h2 className="font-serif text-lg font-semibold text-bubble-user">📋 Résumé de la conversation</h2>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500" aria-label="Fermer">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-theme-ink/50" onClick={onClose}>
+      <div className="bg-theme-surface rounded-2xl shadow-xl w-full max-w-2xl max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-theme-border">
+          <h2 className="font-display text-lg text-theme-ink">📋 Résumé de la conversation</h2>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-theme-ink/5 text-theme-muted" aria-label="Fermer">
             <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
               <path d="M4 4L14 14M14 4L4 14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
             </svg>
@@ -132,21 +132,21 @@ export function ConversationSummaryModal({ conversation, onClose }: Props) {
           ) : summary ? (
             <MarkdownRenderer content={summary} />
           ) : (
-            <p className="text-sm text-gray-400 italic">Génération en cours...</p>
+            <p className="text-sm text-theme-muted/70 italic">Génération en cours...</p>
           )}
         </div>
-        <div className="flex gap-2 px-5 py-4 border-t border-gray-100">
+        <div className="flex gap-2 px-5 py-4 border-t border-theme-border">
           <button
             onClick={handleCopy}
             disabled={loading || !summary}
-            className="flex-1 py-2 rounded-xl border border-gray-200 text-sm font-medium text-bubble-user hover:bg-gray-50 disabled:opacity-50"
+            className="flex-1 py-2 rounded-xl border border-theme-border text-sm font-medium text-theme-ink hover:bg-theme-ink/[0.03] disabled:opacity-50"
           >
             {copied ? '✓ Copié' : '📋 Copier'}
           </button>
           <button
             onClick={handleExportPdf}
             disabled={loading || !summary}
-            className="flex-1 py-2 rounded-xl bg-accent text-white text-sm font-semibold hover:bg-accent/90 disabled:opacity-50"
+            className="flex-1 py-2 rounded-xl bg-theme-accent text-theme-bg text-sm font-semibold hover:opacity-90 disabled:opacity-50"
           >
             📄 Exporter PDF
           </button>

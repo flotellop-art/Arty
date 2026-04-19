@@ -10,29 +10,29 @@ export function SettingsGuide({ onClose }: SettingsGuideProps) {
   return (
     <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center">
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="absolute inset-0 bg-theme-ink/40" onClick={onClose} />
 
       {/* Sheet */}
-      <div className="relative w-full max-w-sm bg-white rounded-t-2xl sm:rounded-2xl shadow-xl max-h-[85vh] overflow-hidden">
+      <div className="relative w-full max-w-sm bg-theme-surface rounded-t-2xl sm:rounded-2xl shadow-xl max-h-[85vh] overflow-hidden">
         {/* Close */}
         <button
           onClick={onClose}
-          className="absolute top-3 right-3 p-1.5 rounded-full hover:bg-gray-100 transition-colors z-10"
+          className="absolute top-3 right-3 p-1.5 rounded-full hover:bg-theme-ink/5 transition-colors z-10"
           aria-label="Fermer"
         >
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-            <path d="M4 4L12 12M12 4L4 12" stroke="#666" strokeWidth="1.5" strokeLinecap="round" />
+            <path d="M4 4L12 12M12 4L4 12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
           </svg>
         </button>
 
         {/* Tabs */}
-        <div className="flex border-b border-gray-100">
+        <div className="flex border-b border-theme-border">
           <button
             onClick={() => setPage('style')}
             className={`flex-1 py-3.5 text-sm font-medium transition-colors ${
               page === 'style'
-                ? 'text-accent border-b-2 border-accent'
-                : 'text-gray-400'
+                ? 'text-theme-accent border-b-2 border-theme-accent'
+                : 'text-theme-muted/70'
             }`}
           >
             Tons
@@ -41,8 +41,8 @@ export function SettingsGuide({ onClose }: SettingsGuideProps) {
             onClick={() => setPage('model')}
             className={`flex-1 py-3.5 text-sm font-medium transition-colors ${
               page === 'model'
-                ? 'text-bubble-user border-b-2 border-bubble-user'
-                : 'text-gray-400'
+                ? 'text-theme-ink border-b-2 border-bubble-user'
+                : 'text-theme-muted/70'
             }`}
           >
             Modèles IA
@@ -61,7 +61,7 @@ export function SettingsGuide({ onClose }: SettingsGuideProps) {
 function StylePage() {
   return (
     <div className="space-y-4">
-      <p className="text-xs text-gray-400 leading-relaxed">
+      <p className="text-xs text-theme-muted/70 leading-relaxed">
         Change le ton des réponses d'Arty selon tes besoins.
       </p>
 
@@ -97,7 +97,7 @@ function StylePage() {
 function ModelPage() {
   return (
     <div className="space-y-4">
-      <p className="text-xs text-gray-400 leading-relaxed">
+      <p className="text-xs text-theme-muted/70 leading-relaxed">
         Choisis quel modèle d'IA répond. Chacun a ses forces.
       </p>
 
@@ -130,8 +130,8 @@ function GuideItem({ emoji, title, desc }: { emoji: string; title: string; desc:
     <div className="flex gap-3 items-start">
       <span className="text-lg mt-0.5 flex-shrink-0">{emoji}</span>
       <div>
-        <p className="text-sm font-semibold text-bubble-user">{title}</p>
-        <p className="text-xs text-gray-500 leading-relaxed mt-0.5">{desc}</p>
+        <p className="text-sm font-semibold text-theme-ink">{title}</p>
+        <p className="text-xs text-theme-muted leading-relaxed mt-0.5">{desc}</p>
       </div>
     </div>
   )

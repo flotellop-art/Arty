@@ -71,22 +71,22 @@ function MemoryViewerInner({ onClose }: Props) {
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50"
+      className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-theme-ink/50"
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[85vh] flex flex-col"
+        className="bg-theme-surface rounded-2xl shadow-xl w-full max-w-lg max-h-[85vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-theme-border">
           <div>
-            <h2 className="font-serif text-lg font-semibold text-bubble-user">🧠 Mémoire d'Arty</h2>
-            <p className="text-xs text-gray-400 mt-0.5">Ce qu'Arty sait sur vous — lisible et modifiable</p>
+            <h2 className="font-display text-lg text-theme-ink">🧠 Mémoire d'Arty</h2>
+            <p className="text-xs text-theme-muted/70 mt-0.5">Ce qu'Arty sait sur vous — lisible et modifiable</p>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500"
+            className="p-1.5 rounded-lg hover:bg-theme-ink/5 text-theme-muted"
             aria-label="Fermer"
           >
             <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
@@ -96,7 +96,7 @@ function MemoryViewerInner({ onClose }: Props) {
         </div>
 
         {/* Tabs */}
-        <div className="flex border-b border-gray-100 px-3">
+        <div className="flex border-b border-theme-border px-3">
           {TABS.map(tab => (
             <button
               key={tab.key}
@@ -104,7 +104,7 @@ function MemoryViewerInner({ onClose }: Props) {
               className={`flex items-center gap-1.5 px-3 py-3 text-xs font-medium border-b-2 transition-colors ${
                 activeTab === tab.key
                   ? 'border-indigo-500 text-indigo-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
+                  : 'border-transparent text-theme-muted hover:text-theme-ink/80'
               }`}
             >
               <span>{tab.icon}</span>
@@ -117,12 +117,12 @@ function MemoryViewerInner({ onClose }: Props) {
         <div className="flex-1 overflow-hidden flex flex-col p-4 gap-3">
           {loading ? (
             <div className="flex items-center justify-center h-full">
-              <p className="text-sm text-gray-400">Chargement…</p>
+              <p className="text-sm text-theme-muted/70">Chargement…</p>
             </div>
           ) : (
             <>
               <div className="flex items-center justify-between">
-                <p className="text-xs text-gray-500">
+                <p className="text-xs text-theme-muted">
                   Édite le JSON directement puis sauvegarde.
                 </p>
                 {activeTab === 'notes' && (
@@ -138,7 +138,7 @@ function MemoryViewerInner({ onClose }: Props) {
               <textarea
                 value={editValue}
                 onChange={(e) => setEditValue(e.target.value)}
-                className="flex-1 font-mono text-xs bg-gray-50 border border-gray-200 rounded-xl p-3 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-300 min-h-[200px]"
+                className="flex-1 font-mono text-xs bg-theme-ink/[0.03] border border-theme-border rounded-xl p-3 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-300 min-h-[200px]"
                 spellCheck={false}
               />
             </>
@@ -146,8 +146,8 @@ function MemoryViewerInner({ onClose }: Props) {
         </div>
 
         {/* Footer */}
-        <div className="px-4 py-3 border-t border-gray-100 flex items-center justify-between gap-3">
-          <p className="text-xs text-gray-400">
+        <div className="px-4 py-3 border-t border-theme-border flex items-center justify-between gap-3">
+          <p className="text-xs text-theme-muted/70">
             {saved ? '✅ Sauvegardé !' : 'Modifie et sauvegarde pour mettre à jour la mémoire.'}
           </p>
           <button

@@ -31,12 +31,12 @@ export function DriveFileCard({ file, onClick }: DriveFileCardProps) {
   return (
     <button
       onClick={onClick}
-      className="w-full text-left bg-white rounded-xl border border-gray-100 shadow-sm hover:shadow-md hover:border-accent/20 transition-all p-3 mb-2 flex items-center gap-3"
+      className="w-full text-left bg-theme-surface rounded-xl border border-theme-border shadow-sm hover:shadow-md hover:border-theme-accent/20 transition-all p-3 mb-2 flex items-center gap-3"
     >
       <span className="text-xl flex-shrink-0">{getMimeIcon(file.mimeType)}</span>
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-normal text-bubble-user truncate">{file.name}</p>
-        <p className="text-xs text-gray-400 mt-0.5">
+        <p className="text-sm font-normal text-theme-ink truncate">{file.name}</p>
+        <p className="text-xs text-theme-muted/70 mt-0.5">
           Modifié le {formatDate(file.modifiedTime)}
         </p>
       </div>
@@ -46,7 +46,7 @@ export function DriveFileCard({ file, onClick }: DriveFileCardProps) {
           target="_blank"
           rel="noopener noreferrer"
           onClick={(e) => e.stopPropagation()}
-          className="text-xs text-accent hover:underline flex-shrink-0"
+          className="text-xs text-theme-accent hover:underline flex-shrink-0"
         >
           Ouvrir
         </a>

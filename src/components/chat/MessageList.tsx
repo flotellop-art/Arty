@@ -39,7 +39,7 @@ const MessageItem = memo(function MessageItem({ msg, index, onAction, onBranch, 
       {onBranch && index > 0 && (
         <button
           onClick={handleBranch}
-          className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 p-1 rounded-md bg-white/80 border border-gray-200 text-gray-400 hover:text-accent hover:border-accent transition-all text-xs"
+          className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 p-1 rounded-md bg-theme-surface/80 border border-theme-border text-theme-muted/70 hover:text-theme-accent hover:border-theme-accent transition-all text-xs"
           title="Créer une branche depuis ce message"
         >
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
