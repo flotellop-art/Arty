@@ -451,11 +451,11 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
       <div
         className="flex items-end gap-2 px-4 py-2"
         style={{
-          backgroundColor: 'var(--arty-composer-bg)',
+          background: 'var(--arty-composer-bg)',
           color: 'var(--arty-composer-fg)',
           border: '1px solid var(--arty-composer-border)',
           borderRadius: 100,
-          boxShadow: '0 2px 8px rgba(24,22,19,0.06)',
+          boxShadow: 'var(--arty-composer-shadow)',
         }}
       >
         {/* Plus button — file upload */}
