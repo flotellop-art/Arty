@@ -16,12 +16,27 @@ import { Sidebar } from './components/layout/Sidebar'
 import { OAuthCallback } from './components/google/OAuthCallback'
 import { LoginScreen } from './components/auth/LoginScreen'
 import { WelcomeSlides, isOnboardingDone } from './components/onboarding/WelcomeSlides'
+import { ProfileSetupModal } from './components/onboarding/ProfileSetupModal'
+import { getUserProfile } from './services/userProfile'
 import type { FileAttachment } from './types'
 
 function AppContent({ onLogout, userName }: { onLogout: () => void; userName?: string }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [showMorningBrief, setShowMorningBrief] = useState(false)
+  const [showProfileSetup, setShowProfileSetup] = useState(() => getUserProfile() === null)
+  const [profileName, setProfileName] = useState<string | null>(() => getUserProfile()?.name || null)
   const navigate = useNavigate()
+
+  // Listen for profile updates so the Home hero refreshes without reload
+  useEffect(() => {
+    const sync = () => {
+      const profile = getUserProfile()
+      setProfileName(profile?.name || null)
+      if (profile !== null) setShowProfileSetup(false)
+    }
+    window.addEventListener('user-profile-changed', sync)
+    return () => window.removeEventListener('user-profile-changed', sync)
+  }, [])
 
   const conversation = useConversation()
   const {
@@ -142,7 +157,7 @@ function AppContent({ onLogout, userName }: { onLogout: () => void; userName?: s
         onNew={handleNewConversation}
         onNewEU={handleNewEUConversation}
         onDelete={deleteConversation}
-        userName={userName}
+        userName={profileName || userName}
         onLogout={onLogout}
         onImportConversation={(id) => {
           conversation.selectConversation(id)
@@ -161,7 +176,7 @@ function AppContent({ onLogout, userName }: { onLogout: () => void; userName?: s
               googleAuth={googleAuth}
               gmail={gmail}
               drive={drive}
-              userName={userName}
+              userName={profileName || userName}
             />
           }
         />
@@ -212,9 +227,13 @@ function AppContent({ onLogout, userName }: { onLogout: () => void; userName?: s
         <MorningBrief
           onClose={() => setShowMorningBrief(false)}
           onSend={handleSendFromHome}
-          userName={userName}
+          userName={profileName || userName}
           isGoogleConnected={googleAuth.isConnected}
         />
+      )}
+
+      {showProfileSetup && (
+        <ProfileSetupModal onClose={() => setShowProfileSetup(false)} />
       )}
     </div>
   )
