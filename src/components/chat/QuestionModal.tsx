@@ -41,26 +41,26 @@ export function QuestionModal({ questions, onComplete }: QuestionModalProps) {
   if (!current) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/30">
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-theme-ink/30">
       <div
-        className="w-full max-w-lg bg-white rounded-t-2xl shadow-xl px-5 pt-5 pb-8 animate-slide-up"
+        className="w-full max-w-lg bg-theme-surface rounded-t-2xl shadow-xl px-5 pt-5 pb-8 animate-slide-up"
         style={{ maxHeight: '80vh', overflowY: 'auto' }}
       >
         {/* Header */}
         <div className="flex items-center justify-between mb-4">
-          <span className="text-sm text-gray-400 font-medium">
+          <span className="text-sm text-theme-muted/70 font-medium">
             {currentIndex + 1} sur {total}
           </span>
           <button
             onClick={() => onComplete(answers)}
-            className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-gray-600"
+            className="w-8 h-8 flex items-center justify-center text-theme-muted/70 hover:text-theme-ink/70"
           >
             ✕
           </button>
         </div>
 
         {/* Progress bar */}
-        <div className="h-1 bg-gray-100 rounded-full mb-5">
+        <div className="h-1 bg-theme-ink/5 rounded-full mb-5">
           <div
             className="h-1 bg-orange-400 rounded-full transition-all duration-300"
             style={{ width: `${((currentIndex + 1) / total) * 100}%` }}
@@ -68,7 +68,7 @@ export function QuestionModal({ questions, onComplete }: QuestionModalProps) {
         </div>
 
         {/* Question */}
-        <h3 className="text-lg font-semibold text-gray-800 mb-5">{current.question}</h3>
+        <h3 className="text-lg font-semibold text-theme-ink mb-5">{current.question}</h3>
 
         {/* Options */}
         {current.options && current.options.length > 0 && (
@@ -77,12 +77,12 @@ export function QuestionModal({ questions, onComplete }: QuestionModalProps) {
               <button
                 key={i}
                 onClick={() => handleSelect(option)}
-                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-gray-200 hover:border-orange-300 hover:bg-orange-50 transition-colors text-left"
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-theme-border hover:border-orange-300 hover:bg-orange-50 transition-colors text-left"
               >
-                <span className="w-7 h-7 flex-shrink-0 flex items-center justify-center rounded-full bg-gray-100 text-sm font-medium text-gray-500">
+                <span className="w-7 h-7 flex-shrink-0 flex items-center justify-center rounded-full bg-theme-ink/5 text-sm font-medium text-theme-muted">
                   {i + 1}
                 </span>
-                <span className="text-gray-700">{option}</span>
+                <span className="text-theme-ink/80">{option}</span>
               </button>
             ))}
           </div>
@@ -90,14 +90,14 @@ export function QuestionModal({ questions, onComplete }: QuestionModalProps) {
 
         {/* Free text input */}
         {(current.allow_free_text !== false) && (
-          <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-100">
+          <div className="flex items-center gap-2 mt-3 pt-3 border-t border-theme-border">
             <input
               type="text"
               value={freeText}
               onChange={(e) => setFreeText(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleFreeText()}
               placeholder="Saisissez votre propre réponse…"
-              className="flex-1 px-3 py-2.5 text-sm rounded-xl border border-gray-200 focus:outline-none focus:border-orange-300"
+              className="flex-1 px-3 py-2.5 text-sm rounded-xl border border-theme-border focus:outline-none focus:border-orange-300"
             />
             <button
               onClick={handleFreeText}

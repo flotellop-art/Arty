@@ -44,26 +44,26 @@ export const UserBubble = memo(function UserBubble({ content, pinned, onTogglePi
 
   if (editing) {
     return (
-      <div className="flex justify-end mb-3">
-        <div className="max-w-[85%] w-full bg-bubble-user text-cream px-4 py-3 rounded-2xl rounded-tr-md text-sm leading-relaxed font-light">
+      <div className="flex justify-end mb-4">
+        <div className="max-w-[85%] w-full font-display italic text-base text-theme-ink leading-snug border-r-2 border-theme-accent pr-3 py-1">
           <textarea
             ref={textareaRef}
             value={value}
             onChange={(e) => setValue(e.target.value)}
             onKeyDown={handleKeyDown}
             rows={Math.min(8, Math.max(2, value.split('\n').length))}
-            className="w-full bg-transparent border-none focus:outline-none resize-none text-cream placeholder-cream/50"
+            className="w-full bg-transparent border-none focus:outline-none resize-none text-theme-ink placeholder:text-theme-muted/60 font-display italic text-base text-right"
           />
           <div className="flex gap-2 mt-2 justify-end">
             <button
               onClick={handleCancel}
-              className="px-2 py-1 rounded-md text-xs bg-white/10 hover:bg-white/20 transition-colors"
+              className="px-2.5 py-1 text-[11px] font-sans uppercase tracking-kicker text-theme-muted hover:text-theme-ink transition-colors"
             >
               Annuler
             </button>
             <button
               onClick={handleSave}
-              className="px-2 py-1 rounded-md text-xs bg-accent hover:bg-accent/90 transition-colors"
+              className="px-3 py-1 text-[11px] font-sans uppercase tracking-kicker bg-theme-accent text-theme-bg hover:opacity-90 transition-opacity rounded-sm"
             >
               ✓ Envoyer
             </button>
@@ -74,20 +74,20 @@ export const UserBubble = memo(function UserBubble({ content, pinned, onTogglePi
   }
 
   return (
-    <div className="group/user relative flex justify-end mb-3">
-      <div className={`relative max-w-[85%] bg-bubble-user text-cream px-4 py-3 rounded-2xl rounded-tr-md text-sm leading-relaxed font-light whitespace-pre-wrap ${
-        pinned ? 'ring-1 ring-accent/40' : ''
+    <div className="group/user relative flex justify-end mb-4">
+      <div className={`relative max-w-[85%] font-display italic text-base text-theme-ink leading-snug text-right border-r-2 border-theme-accent pr-3 py-1 whitespace-pre-wrap ${
+        pinned ? 'border-r-[3px]' : ''
       }`}>
-        {content}
+        « {content} »
         {pinned && (
-          <span className="absolute -top-2 -right-2 bg-accent text-white text-[10px] px-1.5 py-0.5 rounded-full">📌</span>
+          <span className="absolute -top-2 -right-3 text-theme-accent text-[10px]">📌</span>
         )}
       </div>
-      <div className="absolute bottom-1 left-[-4px] translate-x-[-100%] flex gap-1">
+      <div className="absolute bottom-0 left-[-4px] translate-x-[-100%] flex gap-1">
         {onEdit && (
           <button
             onClick={() => setEditing(true)}
-            className="opacity-0 group-hover/user:opacity-100 p-1 rounded-md text-gray-400 hover:text-accent transition-all"
+            className="opacity-0 group-hover/user:opacity-100 p-1 rounded-md text-theme-muted hover:text-theme-accent transition-all"
             aria-label="Modifier"
             title="Modifier et renvoyer"
           >
@@ -99,8 +99,8 @@ export const UserBubble = memo(function UserBubble({ content, pinned, onTogglePi
             onClick={onTogglePin}
             className={`p-1 rounded-md transition-all ${
               pinned
-                ? 'text-accent opacity-80'
-                : 'opacity-0 group-hover/user:opacity-100 text-gray-400 hover:text-accent'
+                ? 'text-theme-accent opacity-80'
+                : 'opacity-0 group-hover/user:opacity-100 text-theme-muted hover:text-theme-accent'
             }`}
             aria-label={pinned ? 'Désépingler' : 'Épingler'}
           >

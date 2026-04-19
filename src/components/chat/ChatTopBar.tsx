@@ -74,29 +74,34 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
   const modelOption = MODEL_OPTIONS.find(o => o.id === currentModel) ?? MODEL_OPTIONS[0]!
 
   return (
-    <header className="bg-cream border-b border-gray-100">
+    <header className="bg-theme-bg border-b border-theme-ink/10">
       <div className="flex items-center gap-3 px-4 py-2.5">
         {/* Back */}
         <button
           onClick={onBack}
-          className="p-2 -ml-2 rounded-lg hover:bg-black/5 transition-colors"
+          className="p-2 -ml-2 rounded-lg hover:bg-theme-ink/5 transition-colors text-theme-ink"
           aria-label={t('chat.topBar.aria.back')}
         >
           <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-            <path d="M12 4L6 10L12 16" stroke="#1E1A14" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M12 4L6 10L12 16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </button>
 
-        {/* Title */}
-        <h1 className="flex-1 text-sm font-medium text-bubble-user truncate text-center">
-          {title}
-        </h1>
+        {/* Title — editorial kicker + Fraunces italic */}
+        <div className="flex-1 min-w-0 text-center">
+          <p className="font-sans text-[10px] font-semibold uppercase tracking-kicker text-theme-muted">
+            {t('chat.topBar.kicker', { defaultValue: 'Conversation' })}
+          </p>
+          <h1 className="font-display italic text-base text-theme-ink truncate leading-tight">
+            {title}
+          </h1>
+        </div>
 
         {/* Summary button (Feature 4) */}
         {onOpenSummary && (
           <button
             onClick={onOpenSummary}
-            className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 transition-colors"
+            className="p-1.5 rounded-lg text-theme-muted hover:bg-theme-ink/5 transition-colors"
             title="Résumé de la conversation"
             aria-label="Résumé"
           >
@@ -108,7 +113,7 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
         {conversation && (
           <button
             onClick={() => exportConversation(conversation)}
-            className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 transition-colors"
+            className="p-1.5 rounded-lg text-theme-muted hover:bg-theme-ink/5 transition-colors"
             title="Exporter la conversation (JSON)"
             aria-label="Exporter"
           >
@@ -125,7 +130,7 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
                 await navigator.clipboard.writeText(url)
               } catch {}
             }}
-            className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 transition-colors text-xs"
+            className="p-1.5 rounded-lg text-theme-muted hover:bg-theme-ink/5 transition-colors text-xs"
             title="Copier le lien de partage"
             aria-label="Partager"
           >
@@ -140,7 +145,7 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
             <button
               onClick={() => setOpenMenu(openMenu === 'style' ? null : 'style')}
               className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium transition-colors ${
-                openMenu === 'style' ? 'bg-accent text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                openMenu === 'style' ? 'bg-theme-accent text-theme-bg' : 'bg-theme-ink/5 text-theme-ink/70 hover:bg-theme-ink/10'
               }`}
             >
               <span>{styleOption.emoji}</span>
@@ -151,15 +156,15 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
             </button>
 
             {openMenu === 'style' && (
-              <div className="absolute top-full right-0 mt-1 bg-white rounded-xl shadow-lg border border-gray-100 py-1 z-50 min-w-[140px]">
+              <div className="absolute top-full right-0 mt-1 bg-theme-surface rounded-xl shadow-lg border border-theme-border py-1 z-50 min-w-[140px]">
                 {STYLE_OPTIONS.map((opt) => (
                   <button
                     key={opt.id}
                     onClick={() => handleStyleChange(opt.id)}
                     className={`w-full flex items-center gap-2 px-3 py-2 text-xs transition-colors ${
                       currentStyle === opt.id
-                        ? 'bg-accent/10 text-accent font-semibold'
-                        : 'text-gray-600 hover:bg-gray-50'
+                        ? 'bg-theme-accent/10 text-theme-accent font-semibold'
+                        : 'text-theme-ink/70 hover:bg-theme-ink/[0.03]'
                     }`}
                   >
                     <span>{opt.emoji}</span>
@@ -173,7 +178,7 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
           {/* Info button */}
           <button
             onClick={() => setShowGuide(true)}
-            className="p-1 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+            className="p-1 rounded-full text-theme-muted/70 hover:text-theme-ink/70 hover:bg-theme-ink/5 transition-colors"
             aria-label={t('chat.topBar.aria.toneModelHelp')}
           >
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
@@ -198,7 +203,7 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
               <button
                 onClick={() => setOpenMenu(openMenu === 'model' ? null : 'model')}
                 className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium transition-colors ${
-                  openMenu === 'model' ? 'bg-bubble-user text-cream' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  openMenu === 'model' ? 'bg-theme-ink text-theme-bg' : 'bg-theme-ink/5 text-theme-ink/70 hover:bg-theme-ink/10'
                 }`}
               >
                 <span>{modelOption.flag}</span>
@@ -210,15 +215,15 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
             )}
 
             {openMenu === 'model' && (
-              <div className="absolute top-full right-0 mt-1 bg-white rounded-xl shadow-lg border border-gray-100 py-1 z-50 min-w-[140px]">
+              <div className="absolute top-full right-0 mt-1 bg-theme-surface rounded-xl shadow-lg border border-theme-border py-1 z-50 min-w-[140px]">
                 {MODEL_OPTIONS.map((opt) => (
                   <button
                     key={opt.id}
                     onClick={() => handleModelChange(opt.id)}
                     className={`w-full flex items-center gap-2 px-3 py-2 text-xs transition-colors ${
                       currentModel === opt.id
-                        ? 'bg-bubble-user/10 text-bubble-user font-semibold'
-                        : 'text-gray-600 hover:bg-gray-50'
+                        ? 'bg-theme-ink/10 text-theme-ink font-semibold'
+                        : 'text-theme-ink/70 hover:bg-theme-ink/[0.03]'
                     }`}
                   >
                     <span>{opt.flag}</span>
@@ -235,10 +240,10 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
 
       {privacyWarning && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setPrivacyWarning(null)} />
-          <div className="relative bg-white rounded-2xl shadow-xl mx-6 p-5 max-w-sm w-full">
-            <p className="text-sm font-semibold text-bubble-user mb-2">{t('chat.privacyWarning.title')}</p>
-            <p className="text-xs text-gray-500 leading-relaxed mb-4">
+          <div className="absolute inset-0 bg-theme-ink/40" onClick={() => setPrivacyWarning(null)} />
+          <div className="relative bg-theme-surface rounded-2xl shadow-xl mx-6 p-5 max-w-sm w-full">
+            <p className="text-sm font-semibold text-theme-ink mb-2">{t('chat.privacyWarning.title')}</p>
+            <p className="text-xs text-theme-muted leading-relaxed mb-4">
               {t('chat.privacyWarning.body', {
                 targetModel:
                   privacyWarning === 'claude'
@@ -253,13 +258,13 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
             <div className="flex gap-2">
               <button
                 onClick={() => setPrivacyWarning(null)}
-                className="flex-1 py-2 rounded-xl border border-gray-200 text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors"
+                className="flex-1 py-2 rounded-xl border border-theme-border text-xs font-medium text-theme-ink/70 hover:bg-theme-ink/[0.03] transition-colors"
               >
                 {t('common.cancel')}
               </button>
               <button
                 onClick={confirmModelSwitch}
-                className="flex-1 py-2 rounded-xl bg-accent text-white text-xs font-medium hover:bg-accent/90 transition-colors"
+                className="flex-1 py-2 rounded-xl bg-theme-accent text-theme-bg text-xs font-medium hover:opacity-90 transition-colors"
               >
                 {t('common.continue')}
               </button>

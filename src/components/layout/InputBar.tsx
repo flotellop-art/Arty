@@ -313,11 +313,11 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
   }, [])
 
   return (
-    <div className="relative px-4 pb-4 pt-2 bg-cream" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 1rem))' }}>
+    <div className="relative px-4 pb-4 pt-2 bg-theme-bg" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 1rem))' }}>
       {/* Slash command palette (Feature 2) */}
       {showSlashPalette && filteredCommands.length > 0 && (
-        <div className="absolute bottom-full left-4 right-4 mb-2 bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden z-20 animate-fade-in">
-          <div className="text-[10px] uppercase tracking-wider text-gray-400 px-3 py-2 border-b border-gray-100 bg-gray-50">
+        <div className="absolute bottom-full left-4 right-4 mb-2 bg-theme-surface rounded-xl shadow-lg border border-theme-border overflow-hidden z-20 animate-fade-in">
+          <div className="text-[10px] uppercase tracking-kicker font-semibold text-theme-muted px-3 py-2 border-b border-theme-border bg-theme-bg">
             Commandes
           </div>
           <div className="max-h-60 overflow-y-auto">
@@ -327,13 +327,13 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
                 onClick={() => applySlashCommand(cmd)}
                 onMouseEnter={() => setSlashSelectedIndex(i)}
                 className={`w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors ${
-                  i === slashSelectedIndex ? 'bg-accent/10' : 'hover:bg-gray-50'
+                  i === slashSelectedIndex ? 'bg-theme-accent/10' : 'hover:bg-theme-ink/5'
                 }`}
               >
                 <span className="text-base">{cmd.icon}</span>
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs font-mono text-bubble-user font-semibold">{cmd.cmd}</p>
-                  <p className="text-xs text-gray-500 truncate">{cmd.label}</p>
+                  <p className="text-xs font-mono text-theme-ink font-semibold">{cmd.cmd}</p>
+                  <p className="text-xs text-theme-muted truncate">{cmd.label}</p>
                 </div>
               </button>
             ))}
@@ -343,20 +343,20 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
 
       {/* Calendar event suggestion pill (Feature 16) */}
       {calendarSuggestion && !showCalendarForm && (
-        <div className="mb-2 flex items-center gap-2 px-3 py-2 bg-accent/10 border border-accent/20 rounded-xl text-xs text-bubble-user">
+        <div className="mb-2 flex items-center gap-2 px-3 py-2 bg-theme-accent/10 border border-theme-accent/20 rounded-xl text-xs text-theme-ink">
           <span>📅</span>
           <span className="flex-1 truncate">
             Créer un événement : <span className="font-semibold">{calendarSuggestion.text}</span>
           </span>
           <button
             onClick={() => setShowCalendarForm(true)}
-            className="px-2 py-0.5 rounded-md bg-accent text-white text-[10px] font-semibold hover:bg-accent/90"
+            className="px-2 py-0.5 rounded-md bg-theme-accent text-theme-bg text-[10px] font-semibold hover:opacity-90"
           >
             Créer
           </button>
           <button
             onClick={() => setCalendarSuggestion(null)}
-            className="text-gray-400 hover:text-gray-600"
+            className="text-theme-muted hover:text-theme-ink"
             aria-label="Ignorer"
           >
             ✕
@@ -379,13 +379,13 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
           {files.map((file, i) => (
             <div
               key={i}
-              className="flex items-center gap-1.5 bg-white rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs text-gray-600 flex-shrink-0"
+              className="flex items-center gap-1.5 bg-theme-surface rounded-lg border border-theme-border px-2.5 py-1.5 text-xs text-theme-ink/70 flex-shrink-0"
             >
               <span>{file.type.startsWith('image/') ? '🖼️' : '📄'}</span>
               <span className="max-w-[120px] truncate">{file.name}</span>
               <button
                 onClick={() => removeFile(i)}
-                className="text-gray-400 hover:text-red-500 ml-1"
+                className="text-theme-muted hover:text-theme-accent ml-1"
               >
                 ✕
               </button>
@@ -403,16 +403,16 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
 
       {/* Interim transcript indicator */}
       {isListening && interimTranscript && (
-        <div className="text-xs text-gray-400 italic mb-1 px-1 truncate">
+        <div className="text-xs text-theme-muted italic mb-1 px-1 truncate">
           {interimTranscript}...
         </div>
       )}
 
-      <div className="flex items-end gap-2 bg-white rounded-2xl border border-gray-200 px-3 py-2 shadow-sm">
+      <div className="flex items-end gap-2 bg-theme-surface rounded-2xl border border-theme-border px-3 py-2 shadow-sm">
         {/* Plus button — file upload */}
         <button
           onClick={() => fileInputRef.current?.click()}
-          className="flex-shrink-0 p-1.5 rounded-full hover:bg-gray-100 transition-colors text-gray-400 mb-0.5"
+          className="flex-shrink-0 p-1.5 rounded-full hover:bg-theme-ink/5 transition-colors text-theme-muted mb-0.5"
           aria-label={t('chat.input.aria.attach')}
         >
           <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
@@ -433,7 +433,7 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
         {isNative && (
           <button
             onClick={handleCamera}
-            className="flex-shrink-0 p-1.5 rounded-full hover:bg-gray-100 transition-colors text-gray-400 mb-0.5"
+            className="flex-shrink-0 p-1.5 rounded-full hover:bg-theme-ink/5 transition-colors text-theme-muted mb-0.5"
             aria-label={t('chat.input.aria.camera')}
           >
             <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
@@ -448,7 +448,7 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
         {isNative && (
           <button
             onClick={handleScan}
-            className="flex-shrink-0 p-1.5 rounded-full hover:bg-gray-100 transition-colors text-gray-400 mb-0.5"
+            className="flex-shrink-0 p-1.5 rounded-full hover:bg-theme-ink/5 transition-colors text-theme-muted mb-0.5"
             aria-label={t('chat.input.aria.scan')}
           >
             <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
@@ -466,7 +466,7 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
             <button
               onClick={handleWebCamera}
               title="Analyser une façade, un document, une photo de chantier"
-              className="flex-shrink-0 p-1.5 rounded-full hover:bg-gray-100 transition-colors text-gray-400 mb-0.5"
+              className="flex-shrink-0 p-1.5 rounded-full hover:bg-theme-ink/5 transition-colors text-theme-muted mb-0.5"
               aria-label="Prendre une photo"
             >
               <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
@@ -494,7 +494,7 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
           onKeyDown={handleKeyDown}
           placeholder={isListening ? t('chat.input.listening') : t('chat.input.placeholder')}
           rows={1}
-          className="flex-1 resize-none bg-transparent text-sm text-bubble-user placeholder-gray-400 focus:outline-none py-1.5 font-sans font-light leading-relaxed"
+          className="flex-1 resize-none bg-transparent text-sm text-theme-ink placeholder:text-theme-muted/60 focus:outline-none py-1.5 font-sans font-light leading-relaxed"
         />
 
         {/* Whisper audio recording (Feature 15) — if OpenAI key is available */}
@@ -504,7 +504,7 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
             className={`relative flex-shrink-0 p-1.5 rounded-full transition-colors mb-0.5 ${
               isRecordingAudio
                 ? 'bg-red-100 text-red-500 hover:bg-red-200'
-                : 'hover:bg-gray-100 text-gray-400'
+                : 'hover:bg-theme-ink/5 text-theme-muted'
             }`}
             aria-label={isRecordingAudio ? 'Arrêter enregistrement' : 'Enregistrer audio (Whisper)'}
             title={isRecordingAudio ? `Enregistrement ${recordingDuration}s` : 'Enregistrer (Whisper)'}
@@ -527,7 +527,7 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
             className={`relative flex-shrink-0 p-1.5 rounded-full transition-colors mb-0.5 ${
               isListening
                 ? 'bg-red-100 text-red-500 hover:bg-red-200'
-                : 'hover:bg-gray-100 text-gray-400'
+                : 'hover:bg-theme-ink/5 text-theme-muted'
             }`}
             aria-label={isListening ? t('chat.input.aria.micStop') : t('chat.input.aria.micStart')}
           >
@@ -546,24 +546,24 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
         {isStreaming ? (
           <button
             onClick={onStop}
-            className="flex-shrink-0 w-8 h-8 rounded-full bg-bubble-user flex items-center justify-center hover:bg-gray-700 transition-colors mb-0.5"
+            className="flex-shrink-0 w-8 h-8 rounded-full bg-theme-ink text-theme-bg flex items-center justify-center hover:opacity-90 transition-opacity mb-0.5"
             aria-label={t('chat.input.aria.stop')}
           >
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-              <rect x="2" y="2" width="8" height="8" rx="1" fill="#F5F0E8" />
+              <rect x="2" y="2" width="8" height="8" rx="1" fill="currentColor" />
             </svg>
           </button>
         ) : (
           <button
             onClick={handleSend}
             disabled={!text.trim() && files.length === 0}
-            className="flex-shrink-0 w-8 h-8 rounded-full bg-bubble-user flex items-center justify-center disabled:opacity-30 hover:bg-gray-700 transition-colors mb-0.5"
+            className="flex-shrink-0 w-8 h-8 rounded-full bg-theme-ink text-theme-bg flex items-center justify-center disabled:opacity-30 hover:opacity-90 transition-opacity mb-0.5"
             aria-label={t('chat.input.aria.send')}
           >
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
               <path
                 d="M7 12V2M7 2L3 6M7 2L11 6"
-                stroke="#F5F0E8"
+                stroke="currentColor"
                 strokeWidth="1.5"
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -594,31 +594,31 @@ function CalendarMiniForm({ detected, context, onConfirm, onCancel }: CalendarMi
   })
 
   return (
-    <div className="mb-2 p-3 bg-white border border-accent/30 rounded-xl shadow-sm">
-      <p className="text-xs font-semibold text-bubble-user mb-2">📅 Nouvel événement</p>
+    <div className="mb-2 p-3 bg-theme-surface border border-theme-accent/30 rounded-xl shadow-sm">
+      <p className="text-xs font-semibold text-theme-ink mb-2">📅 Nouvel événement</p>
       <input
         type="text"
         value={title}
         onChange={(e) => setTitle(e.target.value)}
         placeholder="Titre"
-        className="w-full mb-2 px-2 py-1.5 text-xs border border-gray-200 rounded-lg focus:outline-none focus:border-accent"
+        className="w-full mb-2 px-2 py-1.5 text-xs border border-theme-border rounded-lg focus:outline-none focus:border-theme-accent bg-transparent text-theme-ink"
       />
       <input
         type="datetime-local"
         value={dateStr}
         onChange={(e) => setDateStr(e.target.value)}
-        className="w-full mb-2 px-2 py-1.5 text-xs border border-gray-200 rounded-lg focus:outline-none focus:border-accent"
+        className="w-full mb-2 px-2 py-1.5 text-xs border border-theme-border rounded-lg focus:outline-none focus:border-theme-accent bg-transparent text-theme-ink"
       />
       <div className="flex gap-2">
         <button
           onClick={onCancel}
-          className="flex-1 py-1.5 rounded-lg border border-gray-200 text-xs text-gray-600 hover:bg-gray-50"
+          className="flex-1 py-1.5 rounded-lg border border-theme-border text-xs text-theme-ink/70 hover:bg-theme-ink/5"
         >
           Annuler
         </button>
         <button
           onClick={() => onConfirm(title, new Date(dateStr))}
-          className="flex-1 py-1.5 rounded-lg bg-accent text-white text-xs font-semibold hover:bg-accent/90"
+          className="flex-1 py-1.5 rounded-lg bg-theme-accent text-theme-bg text-xs font-semibold hover:opacity-90"
         >
           Ajouter au calendrier
         </button>

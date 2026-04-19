@@ -36,18 +36,18 @@ export function WelcomeSlides({ onComplete }: WelcomeSlidesProps) {
   }
 
   return (
-    <div className="min-h-[100dvh] bg-cream flex flex-col items-center justify-center px-8">
+    <div className="min-h-[100dvh] bg-theme-bg flex flex-col items-center justify-center px-8">
       <div className="w-full max-w-sm flex flex-col items-center text-center gap-6">
         {/* Emoji */}
         <span className="text-6xl">{slide.emoji}</span>
 
         {/* Title */}
-        <h1 className="font-serif text-2xl font-bold text-bubble-user">
+        <h1 className="font-display text-2xl font-bold text-theme-ink">
           {slide.title}
         </h1>
 
         {/* Description */}
-        <p className="text-sm text-gray-500 leading-relaxed">
+        <p className="text-sm text-theme-muted leading-relaxed">
           {slide.desc}
         </p>
 
@@ -57,7 +57,7 @@ export function WelcomeSlides({ onComplete }: WelcomeSlidesProps) {
             <div
               key={i}
               className={`w-2 h-2 rounded-full transition-colors ${
-                i === current ? 'bg-accent' : 'bg-gray-200'
+                i === current ? 'bg-theme-accent' : 'bg-theme-ink/10'
               }`}
             />
           ))}
@@ -67,7 +67,7 @@ export function WelcomeSlides({ onComplete }: WelcomeSlidesProps) {
         <div className="w-full flex flex-col gap-2 mt-2">
           <button
             onClick={handleNext}
-            className="w-full py-3 rounded-xl bg-bubble-user text-cream font-medium text-sm hover:bg-gray-700 transition-colors"
+            className="w-full py-3 rounded-xl bg-theme-ink text-theme-bg font-medium text-sm hover:opacity-90 transition-colors"
           >
             {isLast ? t('onboarding.start') : t('onboarding.next')}
           </button>
@@ -75,7 +75,7 @@ export function WelcomeSlides({ onComplete }: WelcomeSlidesProps) {
           {!isLast && (
             <button
               onClick={handleSkip}
-              className="w-full py-2 text-xs text-gray-400 hover:text-gray-600 transition-colors"
+              className="w-full py-2 text-xs text-theme-muted/70 hover:text-theme-ink/70 transition-colors"
             >
               {t('onboarding.skip')}
             </button>

@@ -15,8 +15,8 @@ export function ReportPage() {
 
   if (!html) {
     return (
-      <div className="flex items-center justify-center h-[100dvh] bg-cream">
-        <p className="text-gray-400">Rapport introuvable</p>
+      <div className="flex items-center justify-center h-[100dvh] bg-theme-bg">
+        <p className="text-theme-muted/70">Rapport introuvable</p>
       </div>
     )
   }

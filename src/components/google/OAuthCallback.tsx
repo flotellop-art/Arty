@@ -32,10 +32,10 @@ export function OAuthCallback({ onCallback }: OAuthCallbackProps) {
   }, [searchParams, onCallback, navigate])
 
   return (
-    <div className="flex items-center justify-center h-[100dvh] bg-cream">
+    <div className="flex items-center justify-center h-[100dvh] bg-theme-bg">
       <div className="text-center">
-        <div className="animate-spin w-8 h-8 border-2 border-accent border-t-transparent rounded-full mx-auto mb-4" />
-        <p className="text-sm text-gray-500">Connexion Google en cours...</p>
+        <div className="animate-spin w-8 h-8 border-2 border-theme-accent border-t-transparent rounded-full mx-auto mb-4" />
+        <p className="text-sm text-theme-muted">Connexion Google en cours...</p>
       </div>
     </div>
   )

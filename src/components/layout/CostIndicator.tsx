@@ -17,7 +17,7 @@ export function CostIndicator() {
     <>
       <button
         onClick={() => setShowDetails(true)}
-        className={`px-2 py-1 text-[11px] font-mono font-semibold rounded-md hover:bg-black/5 transition-colors ${color}`}
+        className={`px-2 py-1 text-[11px] font-mono font-semibold rounded-md hover:bg-theme-ink/5 transition-colors ${color}`}
         title="Coût API estimé (ce mois)"
         aria-label="Coût API"
       >
@@ -41,36 +41,36 @@ function CostModal({ onClose }: { onClose: () => void }) {
   }, [])
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/50" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-          <h2 className="font-serif text-lg font-semibold text-bubble-user">💰 Coût API</h2>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500" aria-label="Fermer">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-theme-ink/50" onClick={onClose}>
+      <div className="bg-theme-surface rounded-2xl shadow-xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-theme-border">
+          <h2 className="font-display text-lg text-theme-ink">💰 Coût API</h2>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-theme-ink/5 text-theme-muted" aria-label="Fermer">
             <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
               <path d="M4 4L14 14M14 4L4 14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
             </svg>
           </button>
         </div>
         <div className="p-5">
-          <div className="mb-4 pb-4 border-b border-gray-100">
-            <p className="text-[10px] uppercase tracking-wider text-gray-400">Total ce mois-ci</p>
-            <p className="text-3xl font-serif font-bold text-accent mt-1">${total.toFixed(4)}</p>
-            <p className="text-xs text-gray-500 mt-1">
+          <div className="mb-4 pb-4 border-b border-theme-border">
+            <p className="text-[10px] uppercase tracking-wider text-theme-muted/70">Total ce mois-ci</p>
+            <p className="text-3xl font-display font-medium text-theme-accent mt-1">${total.toFixed(4)}</p>
+            <p className="text-xs text-theme-muted mt-1">
               {totalIn.toLocaleString()} tokens entrée · {totalOut.toLocaleString()} sortie
             </p>
           </div>
 
-          <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-2">Par modèle</p>
+          <p className="text-[10px] uppercase tracking-wider text-theme-muted/70 mb-2">Par modèle</p>
           {Object.keys(costs).length === 0 ? (
-            <p className="text-sm text-gray-400 text-center py-4">Aucune utilisation ce mois-ci</p>
+            <p className="text-sm text-theme-muted/70 text-center py-4">Aucune utilisation ce mois-ci</p>
           ) : (
             <ul className="space-y-2">
               {Object.entries(costs).map(([model, c]) => (
                 <li key={model} className="flex items-center justify-between text-sm">
-                  <span className="text-bubble-user capitalize">{model}</span>
+                  <span className="text-theme-ink capitalize">{model}</span>
                   <div className="text-right">
                     <p className="font-mono font-semibold">${c.cost.toFixed(4)}</p>
-                    <p className="text-[10px] text-gray-400">
+                    <p className="text-[10px] text-theme-muted/70">
                       {c.inputTokens.toLocaleString()}↓ · {c.outputTokens.toLocaleString()}↑
                     </p>
                   </div>

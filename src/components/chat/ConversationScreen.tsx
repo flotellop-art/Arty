@@ -81,8 +81,8 @@ export function ConversationScreen({
 
       {actionScreenshot && (
         <div className="mx-4 mb-2">
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-            <div className="bg-gray-50 px-3 py-1.5 border-b border-gray-100 text-xs text-gray-500">
+          <div className="bg-theme-surface rounded-xl border border-theme-border shadow-sm overflow-hidden">
+            <div className="bg-theme-ink/[0.03] px-3 py-1.5 border-b border-theme-border text-xs text-theme-muted">
               {t('chat.banners.screenshot')}
             </div>
             <img

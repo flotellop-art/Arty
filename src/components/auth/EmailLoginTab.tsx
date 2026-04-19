@@ -26,26 +26,26 @@ export function EmailLoginTab({ onLogin, loading, error: externalError }: EmailL
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div>
-        <label className="block text-xs font-medium text-gray-600 mb-1.5">{t('login.email.label')}</label>
+        <label className="block text-xs font-medium text-theme-ink/70 mb-1.5">{t('login.email.label')}</label>
         <input
           type="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           placeholder={t('login.email.placeholderEmail')}
-          className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 bg-gray-50"
+          className="w-full px-3 py-2.5 rounded-xl border border-theme-border text-sm focus:outline-none focus:border-theme-accent focus:ring-1 focus:ring-accent/30 bg-theme-ink/[0.03]"
           autoComplete="email"
           autoFocus
         />
       </div>
 
       <div>
-        <label className="block text-xs font-medium text-gray-600 mb-1.5">{t('login.email.password')}</label>
+        <label className="block text-xs font-medium text-theme-ink/70 mb-1.5">{t('login.email.password')}</label>
         <input
           type="password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           placeholder="••••••••"
-          className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 bg-gray-50"
+          className="w-full px-3 py-2.5 rounded-xl border border-theme-border text-sm focus:outline-none focus:border-theme-accent focus:ring-1 focus:ring-accent/30 bg-theme-ink/[0.03]"
           autoComplete="current-password"
         />
       </div>
@@ -57,12 +57,12 @@ export function EmailLoginTab({ onLogin, loading, error: externalError }: EmailL
       <button
         type="submit"
         disabled={loading || !email.trim() || !password}
-        className="w-full py-2.5 rounded-xl bg-bubble-user text-cream font-medium text-sm hover:bg-gray-700 transition-colors disabled:opacity-40"
+        className="w-full py-2.5 rounded-xl bg-theme-ink text-theme-bg font-medium text-sm hover:opacity-90 transition-colors disabled:opacity-40"
       >
         {loading ? t('login.email.connecting') : t('login.email.submit')}
       </button>
 
-      <p className="text-xs text-gray-400 text-center leading-relaxed">
+      <p className="text-xs text-theme-muted/70 text-center leading-relaxed">
         {t('login.email.notice')}
       </p>
     </form>

@@ -27,21 +27,21 @@ export function TaskPanel({ onClose }: TaskPanelProps) {
   const done = tasks.filter((t) => t.done)
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/50" onClick={onClose}>
+    <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-theme-ink/50" onClick={onClose}>
       <div
-        className="bg-white rounded-t-2xl sm:rounded-2xl shadow-xl w-full sm:max-w-md max-h-[90vh] flex flex-col"
+        className="bg-theme-surface rounded-t-2xl sm:rounded-2xl shadow-xl w-full sm:max-w-md max-h-[90vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-          <h2 className="font-serif text-lg font-semibold text-bubble-user">✅ Tâches</h2>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500" aria-label="Fermer">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-theme-border">
+          <h2 className="font-display text-lg text-theme-ink">✅ Tâches</h2>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-theme-ink/5 text-theme-muted" aria-label="Fermer">
             <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
               <path d="M4 4L14 14M14 4L4 14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
             </svg>
           </button>
         </div>
 
-        <div className="px-5 py-3 border-b border-gray-100 flex gap-2">
+        <div className="px-5 py-3 border-b border-theme-border flex gap-2">
           <input
             type="text"
             value={newText}
@@ -50,12 +50,12 @@ export function TaskPanel({ onClose }: TaskPanelProps) {
               if (e.key === 'Enter') { e.preventDefault(); handleAdd() }
             }}
             placeholder="Ajouter une tâche..."
-            className="flex-1 px-3 py-1.5 text-sm rounded-lg border border-gray-200 focus:outline-none focus:border-accent"
+            className="flex-1 px-3 py-1.5 text-sm rounded-lg border border-theme-border focus:outline-none focus:border-theme-accent"
           />
           <button
             onClick={handleAdd}
             disabled={!newText.trim()}
-            className="px-3 py-1.5 rounded-lg bg-accent text-white text-sm disabled:opacity-30"
+            className="px-3 py-1.5 rounded-lg bg-theme-accent text-theme-bg text-sm disabled:opacity-30"
           >
             +
           </button>
@@ -63,12 +63,12 @@ export function TaskPanel({ onClose }: TaskPanelProps) {
 
         <div className="flex-1 overflow-y-auto px-5 py-3">
           {tasks.length === 0 && (
-            <p className="text-sm text-gray-400 text-center py-6">Aucune tâche</p>
+            <p className="text-sm text-theme-muted/70 text-center py-6">Aucune tâche</p>
           )}
 
           {pending.length > 0 && (
             <div className="mb-4">
-              <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-1.5">En cours ({pending.length})</p>
+              <p className="text-[10px] uppercase tracking-wider text-theme-muted/70 mb-1.5">En cours ({pending.length})</p>
               {pending.map((task) => (
                 <TaskRow key={task.id} task={task} />
               ))}
@@ -77,7 +77,7 @@ export function TaskPanel({ onClose }: TaskPanelProps) {
 
           {done.length > 0 && (
             <div>
-              <p className="text-[10px] uppercase tracking-wider text-gray-400 mb-1.5">Terminées ({done.length})</p>
+              <p className="text-[10px] uppercase tracking-wider text-theme-muted/70 mb-1.5">Terminées ({done.length})</p>
               {done.map((task) => (
                 <TaskRow key={task.id} task={task} />
               ))}
@@ -96,19 +96,19 @@ function TaskRow({ task }: { task: Task }) {
         onClick={() => toggleTask(task.id)}
         className={`flex-shrink-0 w-5 h-5 rounded-md border flex items-center justify-center transition-colors ${
           task.done
-            ? 'bg-accent border-accent text-white'
-            : 'border-gray-300 hover:border-accent'
+            ? 'bg-theme-accent border-theme-accent text-white'
+            : 'border-theme-border hover:border-theme-accent'
         }`}
         aria-label={task.done ? 'Marquer comme non terminée' : 'Marquer comme terminée'}
       >
         {task.done && <span className="text-xs">✓</span>}
       </button>
-      <span className={`flex-1 text-sm ${task.done ? 'text-gray-400 line-through' : 'text-bubble-user'}`}>
+      <span className={`flex-1 text-sm ${task.done ? 'text-theme-muted/70 line-through' : 'text-theme-ink'}`}>
         {task.text}
       </span>
       <button
         onClick={() => deleteTask(task.id)}
-        className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 text-xs transition-opacity"
+        className="opacity-0 group-hover:opacity-100 text-theme-muted/70 hover:text-red-500 text-xs transition-opacity"
         aria-label="Supprimer"
       >
         ✕

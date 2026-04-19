@@ -140,7 +140,7 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
             </span>
           </header>
 
-          <p className="font-serif italic text-theme-muted text-base leading-relaxed mb-6">
+          <p className="font-display italic text-theme-muted text-base leading-relaxed mb-6">
             <Trans
               i18nKey="login.connectedAs"
               values={{ name: pendingAuth.email || pendingAuth.displayName }}

@@ -132,7 +132,7 @@ function AppContent({ onLogout, userName }: { onLogout: () => void; userName?: s
   )
 
   return (
-    <div className="h-[100dvh] bg-cream font-sans font-light">
+    <div className="h-[100dvh] bg-theme-bg text-theme-ink font-sans font-light">
       <Sidebar
         isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
@@ -272,7 +272,7 @@ function ChatRoute({
 
   if (!activeConversation) {
     return (
-      <div className="flex items-center justify-center h-full text-gray-400 text-sm">
+      <div className="flex items-center justify-center h-full text-theme-muted text-sm">
         Conversation introuvable
       </div>
     )

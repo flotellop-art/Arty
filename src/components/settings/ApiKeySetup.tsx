@@ -1,5 +1,5 @@
 import { useState, memo } from 'react'
-import { StarIcon } from '../shared/StarIcon'
+import { ArtyWordmark } from '../shared/PrismMark'
 import type { ApiKeys } from '../../hooks/useApiKeys'
 import { testApiKey as testOpenAIKey } from '../../services/openaiClient'
 
@@ -69,9 +69,9 @@ const KeyField = memo(function KeyField({ id, label, optional, value, savedMask,
 
   return (
     <div>
-      <label className="block text-xs font-medium text-gray-600 mb-1.5">
+      <label className="block text-xs font-medium text-theme-ink/70 mb-1.5">
         {label}
-        {optional && <span className="text-gray-400 ml-1">(optionnel)</span>}
+        {optional && <span className="text-theme-muted/70 ml-1">(optionnel)</span>}
       </label>
       <div className="flex gap-1.5">
         <div className="relative flex-1">
@@ -83,13 +83,13 @@ const KeyField = memo(function KeyField({ id, label, optional, value, savedMask,
               if (status !== 'idle') setStatus('idle')
             }}
             placeholder={savedMask || PLACEHOLDERS[id]}
-            className="w-full pl-3 pr-9 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 bg-gray-50"
+            className="w-full pl-3 pr-9 py-2.5 rounded-xl border border-theme-border text-sm focus:outline-none focus:border-theme-accent focus:ring-1 focus:ring-theme-accent/30 bg-theme-ink/[0.03] text-theme-ink"
             autoComplete="off"
           />
           <button
             type="button"
             onClick={() => setVisible((v) => !v)}
-            className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600"
+            className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-theme-muted/70 hover:text-theme-ink/70"
             aria-label={visible ? 'Masquer' : 'Afficher'}
           >
             <EyeIcon visible={visible} />
@@ -100,14 +100,14 @@ const KeyField = memo(function KeyField({ id, label, optional, value, savedMask,
             type="button"
             onClick={handleTest}
             disabled={status === 'testing' || !value.trim()}
-            className="px-3 py-2.5 rounded-xl bg-gray-100 text-xs font-medium text-gray-700 hover:bg-gray-200 transition-colors disabled:opacity-40"
+            className="px-3 py-2.5 rounded-xl bg-theme-ink/5 text-xs font-medium text-theme-ink/80 hover:bg-theme-ink/10 transition-colors disabled:opacity-40"
           >
             {status === 'testing' ? '...' : status === 'ok' ? '✓' : status === 'ko' ? '✗' : 'Tester'}
           </button>
         )}
       </div>
       {savedMask && !value && (
-        <p className="text-xs text-gray-400 mt-1">Actuel : {savedMask}</p>
+        <p className="text-xs text-theme-muted/70 mt-1">Actuel : {savedMask}</p>
       )}
     </div>
   )
@@ -206,12 +206,12 @@ export function ApiKeySetup({ onSave, initialKeys, embedded }: ApiKeySetupProps)
       <button
         type="submit"
         disabled={saving || (!editMode && !anthropicKey.trim())}
-        className="w-full py-2.5 rounded-xl bg-bubble-user text-cream font-medium text-sm hover:bg-gray-700 transition-colors disabled:opacity-40"
+        className="w-full py-2.5 rounded-xl bg-theme-ink text-theme-bg font-medium text-sm hover:opacity-90 transition-colors disabled:opacity-40"
       >
         {saving ? 'Chiffrement...' : editMode ? 'Enregistrer' : 'Commencer'}
       </button>
 
-      <p className="text-xs text-gray-400 text-center leading-relaxed">
+      <p className="text-xs text-theme-muted/70 text-center leading-relaxed">
         Tes clés sont chiffrées en AES-256 et stockées uniquement sur ton appareil.
       </p>
     </form>
@@ -222,18 +222,17 @@ export function ApiKeySetup({ onSave, initialKeys, embedded }: ApiKeySetupProps)
   }
 
   return (
-    <div className="min-h-[100dvh] bg-cream flex items-center justify-center px-6">
+    <div className="min-h-[100dvh] bg-theme-bg flex items-center justify-center px-6">
       <div className="w-full max-w-md">
-        <div className="flex items-center gap-3 justify-center mb-8">
-          <StarIcon size={36} />
-          <h1 className="font-serif text-2xl font-bold text-bubble-user">Arty</h1>
+        <div className="flex justify-center mb-8">
+          <ArtyWordmark size={28} color="rgb(var(--theme-accent))" />
         </div>
 
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-          <h2 className="font-serif text-lg font-semibold text-bubble-user mb-1">
+        <div className="bg-theme-surface rounded-2xl shadow-sm border border-theme-border p-6">
+          <h2 className="font-display text-lg text-theme-ink mb-1">
             Configuration
           </h2>
-          <p className="text-sm text-gray-500 mb-5">
+          <p className="text-sm text-theme-muted mb-5">
             Entre tes clés API pour commencer. Elles sont chiffrées et stockées uniquement sur ton appareil.
           </p>
           {form}

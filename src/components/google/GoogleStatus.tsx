@@ -9,8 +9,8 @@ interface GoogleStatusProps {
 export function GoogleStatus({ isConnected, user, onLogout }: GoogleStatusProps) {
   if (!isConnected) {
     return (
-      <div className="flex items-center gap-1.5 text-xs text-gray-400">
-        <span className="w-2 h-2 rounded-full bg-gray-300" />
+      <div className="flex items-center gap-1.5 text-xs text-theme-muted/70">
+        <span className="w-2 h-2 rounded-full bg-theme-muted/40" />
         Google non connecté
       </div>
     )
@@ -24,7 +24,7 @@ export function GoogleStatus({ isConnected, user, onLogout }: GoogleStatusProps)
       </div>
       <button
         onClick={onLogout}
-        className="text-xs text-gray-400 hover:text-red-500 transition-colors"
+        className="text-xs text-theme-muted/70 hover:text-red-500 transition-colors"
       >
         Déconnecter
       </button>

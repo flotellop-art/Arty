@@ -15,8 +15,8 @@ export function LanguageSelector() {
   const active = (i18n.resolvedLanguage?.slice(0, 2) || getLocale()) as Locale
 
   return (
-    <div className="flex items-center justify-between px-5 py-2 border-t border-gray-100">
-      <span className="text-xs text-gray-500">{t('sidebar.language')}</span>
+    <div className="flex items-center justify-between px-5 py-2 border-t border-theme-border">
+      <span className="text-xs text-theme-muted">{t('sidebar.language')}</span>
       <div className="flex gap-1">
         {SUPPORTED_LOCALES.map((loc) => (
           <button

@@ -80,20 +80,20 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-theme-ink/50"
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto"
+        className="bg-theme-bg text-theme-ink rounded-sm shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto border border-theme-border"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 sticky top-0 bg-white rounded-t-2xl z-10">
-          <h2 className="font-serif text-lg font-semibold text-bubble-user">
-            Paramètres — Clés API
-          </h2>
+        <div className="flex items-center justify-between px-6 py-4 sticky top-0 bg-theme-bg z-10">
+          <span className="font-sans text-[10px] font-semibold uppercase tracking-kicker text-theme-muted">
+            Paramètres
+          </span>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500"
+            className="p-1.5 rounded hover:bg-theme-ink/5 text-theme-ink"
             aria-label="Fermer"
           >
             <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
@@ -101,27 +101,39 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
             </svg>
           </button>
         </div>
-        <div className="p-5 space-y-5">
+        <div className="mx-6 h-[2px] bg-theme-ink" />
+        <div className="mx-6 mt-[3px] h-px bg-theme-ink" />
+
+        <div className="px-6 pt-6 pb-2">
+          <h1 className="font-display font-medium text-[28px] leading-[1.05] -tracking-[0.02em] text-theme-ink">
+            Tes <span className="italic text-theme-accent">clés.</span>
+          </h1>
+          <p className="font-display italic text-theme-muted text-sm mt-1">
+            Stockées chiffrées sur cet appareil.
+          </p>
+        </div>
+
+        <div className="p-6 space-y-6">
           <ApiKeySetup onSave={handleSave} initialKeys={initialKeys} embedded />
 
           {/* Notifications toggle */}
-          <div className="border-t border-gray-100 pt-5">
-            <div className="flex items-center justify-between">
+          <div className="border-t border-theme-border pt-5">
+            <div className="flex items-center justify-between gap-4">
               <div>
-                <p className="text-sm font-semibold text-bubble-user">🔔 Notifications</p>
-                <p className="text-xs text-gray-500 mt-0.5">
+                <p className="font-display text-base text-theme-ink">🔔 Notifications</p>
+                <p className="font-display italic text-xs text-theme-muted mt-0.5">
                   Rappels RDV, emails importants
                 </p>
               </div>
               <button
                 onClick={handleNotifToggle}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                  notifEnabled ? 'bg-accent' : 'bg-gray-300'
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors shrink-0 ${
+                  notifEnabled ? 'bg-theme-accent' : 'bg-theme-ink/20'
                 }`}
                 aria-pressed={notifEnabled}
               >
                 <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                  className={`inline-block h-4 w-4 transform rounded-full bg-theme-bg transition-transform ${
                     notifEnabled ? 'translate-x-6' : 'translate-x-1'
                   }`}
                 />
@@ -130,36 +142,36 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
           </div>
 
           {/* Memory viewer */}
-          <div className="border-t border-gray-100 pt-5">
+          <div className="border-t border-theme-border pt-5">
             <button
               onClick={() => setShowMemoryViewer(true)}
               className="w-full flex items-center justify-between text-left"
             >
               <div>
-                <p className="text-sm font-semibold text-bubble-user">🧠 Mémoire d'Arty</p>
-                <p className="text-xs text-gray-500 mt-0.5">
+                <p className="font-display text-base text-theme-ink">🧠 Mémoire d'Arty</p>
+                <p className="font-display italic text-xs text-theme-muted mt-0.5">
                   Voir et modifier ce qu'Arty sait sur vous
                 </p>
               </div>
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="text-gray-400">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="text-theme-accent">
                 <path d="M5 3L9 7L5 11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </button>
           </div>
 
           {/* Memory history */}
-          <div className="border-t border-gray-100 pt-5">
+          <div className="border-t border-theme-border pt-5">
             <button
               onClick={() => setShowMemoryHistory(true)}
               className="w-full flex items-center justify-between text-left"
             >
               <div>
-                <p className="text-sm font-semibold text-bubble-user">📜 Historique mémoire</p>
-                <p className="text-xs text-gray-500 mt-0.5">
+                <p className="font-display text-base text-theme-ink">📜 Historique mémoire</p>
+                <p className="font-display italic text-xs text-theme-muted mt-0.5">
                   Voir et annuler les changements de mémoire
                 </p>
               </div>
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="text-gray-400">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="text-theme-accent">
                 <path d="M5 3L9 7L5 11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </button>
