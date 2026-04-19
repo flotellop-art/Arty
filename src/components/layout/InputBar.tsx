@@ -453,8 +453,9 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
         style={{
           backgroundColor: 'var(--arty-composer-bg)',
           color: 'var(--arty-composer-fg)',
+          border: '1px solid var(--arty-composer-border)',
           borderRadius: 100,
-          boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+          boxShadow: '0 2px 8px rgba(24,22,19,0.06)',
         }}
       >
         {/* Plus button — file upload */}

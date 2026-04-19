@@ -42,9 +42,22 @@ html.dark {
   --arty-warm-gradient: linear-gradient(145deg, #F59A4B 0%, #C4491C 100%);
 }
 
-/* Composer pill — s'inverse jour/nuit : pilule ink le jour, pilule amber la nuit. */
-:root       { --arty-composer-bg: #181613; --arty-composer-fg: #F5E6D0; --arty-composer-muted: rgba(245,230,208,0.55); }
-html.dark   { --arty-composer-bg: #F59A4B; --arty-composer-fg: #0B0908; --arty-composer-muted: rgba(11,9,8,0.55); }
+/* Composer pill — chaud et lisible dans les deux modes :
+   Ember : cream paper avec texte ink ; border ember discret.
+   Nocturne : surface profonde avec texte cream ; border amber discret.
+   Le bouton Send garde le gradient amber pour l'accent.  */
+:root {
+  --arty-composer-bg:     #FFFFFF;
+  --arty-composer-fg:     #181613;
+  --arty-composer-muted:  rgba(24,22,19,0.45);
+  --arty-composer-border: #E8D9BF;
+}
+html.dark {
+  --arty-composer-bg:     #181311;
+  --arty-composer-fg:     #F5E6D0;
+  --arty-composer-muted:  rgba(245,230,208,0.45);
+  --arty-composer-border: rgba(245,154,75,0.18);
+}
 .composer-input::placeholder { color: var(--arty-composer-muted); }
 
 /* Global ink + paper on the root — tokens flip avec html.dark. */
