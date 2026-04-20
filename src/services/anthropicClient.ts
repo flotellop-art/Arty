@@ -63,15 +63,24 @@ export function streamMessage(
 
 function formatApiError(status: number, body: string): string {
   try {
-    const parsed = JSON.parse(body) as { error?: { type?: string; message?: string } }
-    const errorType = parsed?.error?.type
-    if (errorType === 'overloaded_error') return i18n.t('errors.apiOverloaded')
-    if (errorType === 'rate_limit_error') return i18n.t('errors.apiRateLimit')
-    if (errorType === 'authentication_error') return i18n.t('errors.apiKeyInvalid')
-    if (errorType === 'invalid_request_error') {
-      return i18n.t('errors.apiInvalidRequest', { message: parsed?.error?.message || '?' })
+    const parsed = JSON.parse(body) as { error?: string | { type?: string; message?: string } }
+    const err = parsed?.error
+
+    // Our Cloudflare Functions return { error: 'string' } — surface it
+    // directly so users see e.g. "Authentication required — please sign
+    // in with Google" instead of the generic "Clé API invalide".
+    if (typeof err === 'string' && err) return err
+
+    if (err && typeof err === 'object') {
+      const errorType = err.type
+      if (errorType === 'overloaded_error') return i18n.t('errors.apiOverloaded')
+      if (errorType === 'rate_limit_error') return i18n.t('errors.apiRateLimit')
+      if (errorType === 'authentication_error') return i18n.t('errors.apiKeyInvalid')
+      if (errorType === 'invalid_request_error') {
+        return i18n.t('errors.apiInvalidRequest', { message: err.message || '?' })
+      }
+      if (err.message) return err.message
     }
-    if (parsed?.error?.message) return parsed.error.message
   } catch {
     // Not JSON — fall through to status-based messages
   }
