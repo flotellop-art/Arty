@@ -1,1 +1,1 @@
-Fix clavier Android : windowSoftInputMode=adjustNothing — plus de resize involontaire du layout (PR #28)
+Cleanup : suppression overlay debug, version propre pour bêta (PR #30)
