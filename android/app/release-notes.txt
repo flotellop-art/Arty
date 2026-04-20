@@ -1,1 +1,1 @@
-Fix scroll horizontal + barre du haut en 2 rangées (PR #44 + PR #47)
+Fix barre boutons 2 rangées — Row 2b conditionnelle + espacement chips/actions (PR #50)
