@@ -29,8 +29,15 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   }
 
   if (!apiKey) {
+    // Report the exact reason so admins can diagnose whitelist mismatches
+    // (typo, Gmail dot variant, wrong env scope). We leak the caller's own
+    // email back to them — not sensitive, they already know it.
+    const allowlistConfigured = !!env.ALLOWED_EMAILS
+    const message = !allowlistConfigured
+      ? "Clé API requise — whitelist ALLOWED_EMAILS non configurée côté serveur."
+      : `Clé API requise — l'email ${email} n'est pas dans la whitelist. Contactez l'admin.`
     return Response.json(
-      { error: 'Clé API requise — veuillez configurer votre clé dans les paramètres' },
+      { error: message, email },
       { status: 401 }
     )
   }
