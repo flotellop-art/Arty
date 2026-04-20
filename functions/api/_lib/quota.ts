@@ -1,6 +1,6 @@
 import type { Env } from '../../env'
 
-const DEFAULT_DAILY_LIMIT = 3000
+const DEFAULT_DAILY_LIMIT = 50
 
 export interface QuotaResult {
   /** True if the request should proceed. */
