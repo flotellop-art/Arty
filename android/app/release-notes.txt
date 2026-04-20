@@ -1,1 +1,1 @@
-Fix edge-to-edge Android : StatusBar transparent + contenu sous la barre (PR #26)
+Fix clavier Android : windowSoftInputMode=adjustNothing — plus de resize involontaire du layout (PR #28)
