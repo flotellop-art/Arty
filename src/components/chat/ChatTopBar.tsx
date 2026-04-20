@@ -213,8 +213,9 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
           </div>
       </div>
 
-      {/* Row 2b — actions, alignées à droite */}
-      <div className="flex items-center justify-end gap-0.5 px-4 pb-2.5">
+      {/* Row 2b — actions Résumé / Export / Partager (conditional: hidden when nothing to show) */}
+      {(onOpenSummary || conversation) && (
+        <div className="flex items-center justify-end gap-0.5 px-3 pb-2 pt-0.5">
           {onOpenSummary && (
             <button
               onClick={onOpenSummary}
@@ -230,7 +231,6 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
               </svg>
             </button>
           )}
-
           {conversation && (
             <button
               onClick={() => exportConversation(conversation)}
@@ -244,7 +244,6 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
               </svg>
             </button>
           )}
-
           {conversation && (
             <button
               onClick={handleShare}
@@ -258,7 +257,8 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
               </svg>
             </button>
           )}
-      </div>
+        </div>
+      )}
 
       {showGuide && <SettingsGuide onClose={() => setShowGuide(false)} />}
 
