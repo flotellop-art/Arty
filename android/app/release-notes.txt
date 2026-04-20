@@ -1,1 +1,1 @@
-Fix connexion : server whitelist fallback — l'app trouve le bon endpoint même hors config (PR #32)
+Ajout workflow CI/CD GitHub Actions — build APK automatique (PR #45)
