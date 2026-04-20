@@ -1,1 +1,1 @@
-Cleanup : suppression overlay debug, version propre pour bêta (PR #30)
+Fix connexion : server whitelist fallback — l'app trouve le bon endpoint même hors config (PR #32)
