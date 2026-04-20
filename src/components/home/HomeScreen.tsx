@@ -7,6 +7,7 @@ import { GoogleConnectButton } from '../google/GoogleConnectButton'
 import { GoogleStatus } from '../google/GoogleStatus'
 import { CalendarView } from '../google/CalendarView'
 import { useTooltip } from '../onboarding/Tooltips'
+import { cleanDisplayName } from '../../services/displayName'
 import type { useGoogleAuth } from '../../hooks/useGoogleAuth'
 import type { useGmail } from '../../hooks/useGmail'
 import type { useDrive } from '../../hooks/useDrive'
@@ -44,19 +45,16 @@ function HomeScreenInner({ onMenuToggle, onSend, isStreaming, googleAuth, userNa
     return t('home.greetingEvening')
   }, [t])
 
-  // Skip the name when the displayName is an API key preview (apikey login)
-  // or looks like an email — we only show a first name that reads like one.
+  // Show a first name only when we're sure it reads like one. The shared
+  // cleanDisplayName helper strips API key previews, raw emails, and other
+  // placeholder values so we never greet "Bonjour sk-ant-api…".
+  // Also skip the generic "Utilisateur" placeholder we store for API-key
+  // logins — it's fine in the Sidebar footer but not in a hero greeting.
   const firstName = useMemo(() => {
-    const raw = (userName || '').trim()
-    if (!raw) return ''
-    // API key previews: "sk-ant-...", "sk-...", "gk-...", "AIza..."
-    if (/^(sk-|gk-|AIza|pk-|k-)/i.test(raw)) return ''
-    // Contains a `@` → email → skip
-    if (raw.includes('@')) return ''
-    // Too long or contains suspicious chars (punctuation, tilde, dots)
-    const firstWord = raw.split(/\s+/)[0] || ''
-    if (!firstWord || firstWord.length > 20 || /[.…~/\\]/.test(firstWord)) return ''
-    return firstWord
+    const cleaned = cleanDisplayName(userName)
+    if (!cleaned) return ''
+    if (/^utilisateur$/i.test(cleaned) || /^user$/i.test(cleaned)) return ''
+    return cleaned
   }, [userName])
 
   const openEvent = useCallback(async (event: import('../../types/google').CalendarEvent) => {

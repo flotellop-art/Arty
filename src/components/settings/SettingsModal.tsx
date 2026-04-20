@@ -87,7 +87,10 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
         className="bg-theme-bg text-theme-ink rounded-sm shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto border border-theme-border"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-6 py-4 sticky top-0 bg-theme-bg z-10">
+        <div
+          className="flex items-center justify-between px-6 py-4 sticky top-0 bg-theme-bg z-10"
+          style={{ paddingTop: 'max(1rem, env(safe-area-inset-top, 1rem))' }}
+        >
           <span className="font-sans text-[10px] font-semibold uppercase tracking-kicker text-theme-muted">
             Paramètres
           </span>

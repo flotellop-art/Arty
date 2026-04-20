@@ -55,10 +55,13 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
         })
         setPendingAuth(null)
       } else {
-        // Pure API key login
-        const keyPreview = anthropicKey.slice(0, 10) + '...'
+        // Pure API key login — don't store the key prefix as displayName,
+        // it would leak into the greeting ("Bonjour sk-ant-api…") and the
+        // Sidebar footer. Use a generic label; HomeScreen + Sidebar run it
+        // through cleanDisplayName() which hides generic labels from the
+        // first-name slot but keeps it visible in the footer.
         await onLogin('apikey', {
-          displayName: keyPreview,
+          displayName: t('login.apikey.displayName', { defaultValue: 'Utilisateur' }),
           anthropicKey,
           geminiKey,
           mistralKey,

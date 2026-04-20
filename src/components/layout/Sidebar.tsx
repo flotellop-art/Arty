@@ -8,6 +8,7 @@ import { SettingsModal } from '../settings/SettingsModal'
 import { TaskPanel } from '../tasks/TaskPanel'
 import { countPending } from '../../services/taskService'
 import { importConversationFromFile } from '../../services/conversationExport'
+import { cleanDisplayName } from '../../services/displayName'
 
 interface SidebarProps {
   isOpen: boolean
@@ -146,7 +147,10 @@ export function Sidebar({
         }`}
       >
         {/* Header — Wordmark + close + double rule (Ember signature) */}
-        <div className="px-5 pt-5 pb-3 flex items-center justify-between">
+        <div
+          className="px-5 pt-5 pb-3 flex items-center justify-between"
+          style={{ paddingTop: 'max(1.25rem, env(safe-area-inset-top, 1.25rem))' }}
+        >
           <ArtyWordmark size={22} color="rgb(var(--theme-accent))" />
           <button
             onClick={onClose}
@@ -351,19 +355,28 @@ export function Sidebar({
         </button>
 
         {/* User info + logout */}
-        {userName && (
-          <div className="px-5 py-3 border-t border-theme-border flex items-center justify-between">
-            <span className="font-display italic text-xs text-theme-muted truncate">{userName}</span>
-            {onLogout && (
-              <button
-                onClick={onLogout}
-                className="font-sans text-[10px] uppercase tracking-kicker text-theme-muted hover:text-theme-accent transition-colors"
-              >
-                {t('common.logout')}
-              </button>
-            )}
-          </div>
-        )}
+        {(() => {
+          // Clean the displayName (strips "sk-ant-api…", emails, etc.) and
+          // fall back to a generic label so the footer still shows something
+          // actionable next to the logout button.
+          const cleanName = cleanDisplayName(userName) || t('sidebar.userFallback', { defaultValue: 'Utilisateur' })
+          return (
+            <div
+              className="px-5 pt-3 pb-3 border-t border-theme-border flex items-center justify-between"
+              style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom, 0.75rem))' }}
+            >
+              <span className="font-display italic text-xs text-theme-muted truncate">{cleanName}</span>
+              {onLogout && (
+                <button
+                  onClick={onLogout}
+                  className="font-sans text-[10px] uppercase tracking-kicker text-theme-muted hover:text-theme-accent transition-colors"
+                >
+                  {t('common.logout')}
+                </button>
+              )}
+            </div>
+          )
+        })()}
       </aside>
 
       <SettingsModal open={showSettings} onClose={() => setShowSettings(false)} />

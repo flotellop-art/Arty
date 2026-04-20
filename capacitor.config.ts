@@ -23,14 +23,21 @@ const config: CapacitorConfig = {
       showSpinner: false,
     },
     Keyboard: {
-      resize: 'body',
+      // 'native' resizes the WebView (Android adjustResize) so `100dvh`
+      // follows the available viewport. 'body' instead resized the <body>
+      // which left our `h-[100dvh]` roots overflowing → the InputBar
+      // appeared at the top of the screen when the keyboard opened.
+      resize: 'native',
       resizeOnFullScreen: true,
     },
     PushNotifications: {
       presentationOptions: ['badge', 'sound', 'alert'],
     },
     StatusBar: {
-      style: 'LIGHT',
+      // 'DARK' = dark-colored icons/text (for use over a light background).
+      // Our paper cream bg (#FAF3E7) needs dark icons; 'LIGHT' made them
+      // white → invisible / washed out.
+      style: 'DARK',
       backgroundColor: '#FAF3E7',
     },
   },

@@ -63,7 +63,10 @@ export function TopBar({ onMenuToggle, onHistoryToggle }: TopBarProps) {
   const modelOption = MODEL_OPTIONS.find(o => o.id === currentModel) ?? MODEL_OPTIONS[0]!
 
   return (
-    <header className="bg-theme-bg border-b border-theme-ink/10">
+    <header
+      className="bg-theme-bg border-b border-theme-ink/10"
+      style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
+    >
       <div className="flex items-center justify-between px-4 py-2.5">
         {/* Hamburger */}
         <button
