@@ -75,7 +75,8 @@ function MemoryViewerInner({ onClose }: Props) {
       onClick={onClose}
     >
       <div
-        className="bg-theme-surface rounded-2xl shadow-xl w-full max-w-lg max-h-[85vh] flex flex-col"
+        className="bg-theme-surface rounded-2xl shadow-xl w-full max-w-lg flex flex-col"
+        style={{ maxHeight: 'min(85vh, calc(100dvh - var(--kb-height, 0px) - 32px))' }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
