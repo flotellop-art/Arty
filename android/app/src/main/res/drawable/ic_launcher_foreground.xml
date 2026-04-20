@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Prism mark — Arty brand icon foreground.
+  Geometry verbatim from design_handoff_arty/shared.jsx, scaled from
+  the 64×64 design viewBox to fit the inner 80dp safe zone of Android's
+  108dp adaptive-icon canvas (offset 14 on both axes).
+
+  Original coords        → scaled + offset
+  Apex       (32, 6)    → (54, 21.5)
+  Seam       (32, 40)   → (54, 64)
+  Base right (58, 54)   → (86.5, 81.5)
+  Base left  (6, 54)    → (21.5, 81.5)
+
+  The left half is rendered at 55% alpha — refraction metaphor.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Right half (full opacity, terracotta) -->
+    <path
+        android:fillColor="#C85A28"
+        android:pathData="M54,21.5 L86.5,81.5 L54,64 Z" />
+
+    <!-- Left half (0.55 opacity) -->
+    <path
+        android:fillColor="#C85A28"
+        android:fillAlpha="0.55"
+        android:pathData="M54,21.5 L21.5,81.5 L54,64 Z" />
+</vector>
