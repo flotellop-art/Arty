@@ -85,8 +85,8 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
 
   return (
     <header style={{ backgroundColor: 'var(--arty-bg)', borderBottom: '1px solid var(--arty-line)' }}>
+      {/* Row 1 — Back + Title only */}
       <div className="flex items-center gap-3 px-4 py-2.5">
-        {/* Back */}
         <button
           onClick={onBack}
           className="p-2 -ml-2 rounded-lg transition-colors"
@@ -98,7 +98,6 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
           </svg>
         </button>
 
-        {/* Title editorial */}
         <div className="flex-1 min-w-0 leading-tight">
           <Tag>Conversation · {now}</Tag>
           <div
@@ -108,53 +107,11 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
             {title}
           </div>
         </div>
-
-        {/* Summary */}
-        {onOpenSummary && (
-          <button
-            onClick={onOpenSummary}
-            className="p-1.5 rounded-lg transition-opacity hover:opacity-80"
-            style={iconBtn}
-            title="Résumé de la conversation"
-            aria-label="Résumé"
-          >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 3h10M3 6h10M3 9h7M3 12h4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>
-          </button>
-        )}
-
-        {/* Export */}
-        {conversation && (
-          <button
-            onClick={() => exportConversation(conversation)}
-            className="p-1.5 rounded-lg transition-opacity hover:opacity-80"
-            style={iconBtn}
-            title="Exporter la conversation (JSON)"
-            aria-label="Exporter"
-          >
-            <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M7.5 1v9m0 0L4 6.5m3.5 3.5L11 6.5M2 13h11" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg>
-          </button>
-        )}
-
-        {/* Share */}
-        {conversation && (
-          <button
-            onClick={async () => {
-              const url = buildShareUrl(conversation)
-              try { await navigator.clipboard.writeText(url) } catch {}
-            }}
-            className="p-1.5 rounded-lg transition-opacity hover:opacity-80"
-            style={iconBtn}
-            title="Copier le lien de partage"
-            aria-label="Partager"
-          >
-            <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M6 9L9 6M6 6l2.5-2.5a2.5 2.5 0 113.5 3.5L9.5 9.5M9 6L6.5 8.5a2.5 2.5 0 01-3.5-3.5L5.5 2.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>
-          </button>
-        )}
       </div>
 
-      {/* Style + Model row (keeps functionality, editorial presentation) */}
+      {/* Row 2 — chips Style / Info / Modèle (flex-wrap pour les écrans étroits) */}
       <div
-        className="px-4 pb-2 flex items-center gap-1.5"
+        className="flex flex-wrap items-center gap-1.5 px-4 pt-1.5 pb-1"
         style={{ borderTop: '1px solid var(--arty-line)' }}
         ref={menuRef}
       >
@@ -264,6 +221,48 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
           )}
         </div>
       </div>
+
+      {/* Row 3 — actions Résumé / Export / Partager (droite, écran < 400px safe) */}
+      {(onOpenSummary || conversation) && (
+        <div className="flex items-center justify-end gap-0.5 px-4 pb-2">
+          {onOpenSummary && (
+            <button
+              onClick={onOpenSummary}
+              className="p-1.5 rounded-lg transition-opacity hover:opacity-80"
+              style={iconBtn}
+              title="Résumé de la conversation"
+              aria-label="Résumé"
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 3h10M3 6h10M3 9h7M3 12h4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>
+            </button>
+          )}
+          {conversation && (
+            <button
+              onClick={() => exportConversation(conversation)}
+              className="p-1.5 rounded-lg transition-opacity hover:opacity-80"
+              style={iconBtn}
+              title="Exporter la conversation (JSON)"
+              aria-label="Exporter"
+            >
+              <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M7.5 1v9m0 0L4 6.5m3.5 3.5L11 6.5M2 13h11" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            </button>
+          )}
+          {conversation && (
+            <button
+              onClick={async () => {
+                const url = buildShareUrl(conversation)
+                try { await navigator.clipboard.writeText(url) } catch {}
+              }}
+              className="p-1.5 rounded-lg transition-opacity hover:opacity-80"
+              style={iconBtn}
+              title="Copier le lien de partage"
+              aria-label="Partager"
+            >
+              <svg width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M6 9L9 6M6 6l2.5-2.5a2.5 2.5 0 113.5 3.5L9.5 9.5M9 6L6.5 8.5a2.5 2.5 0 01-3.5-3.5L5.5 2.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>
+            </button>
+          )}
+        </div>
+      )}
 
       {showGuide && <SettingsGuide onClose={() => setShowGuide(false)} />}
 
