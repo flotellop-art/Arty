@@ -24,26 +24,14 @@ if (Capacitor.isNativePlatform()) {
     })
   }).catch(() => {})
 
-  // Track software keyboard height as a CSS var so the layout can subtract
-  // it from the viewport. The Android windowSoftInputMode=adjustResize alone
-  // was unreliable across launchers (InputBar still got pushed to the top on
-  // some devices). We use the Capacitor Keyboard plugin events and set
-  // `--kb-height` on <html>; the root in App.tsx consumes it via
-  // `h-[calc(100dvh-var(--kb-height,0px))]`.
-  import('@capacitor/keyboard').then(({ Keyboard }) => {
-    const root = document.documentElement
-    Keyboard.addListener('keyboardWillShow', (info) => {
-      root.style.setProperty('--kb-height', `${info.keyboardHeight}px`)
-    })
-    Keyboard.addListener('keyboardDidShow', (info) => {
-      root.style.setProperty('--kb-height', `${info.keyboardHeight}px`)
-    })
-    Keyboard.addListener('keyboardWillHide', () => {
-      root.style.setProperty('--kb-height', '0px')
-    })
-    Keyboard.addListener('keyboardDidHide', () => {
-      root.style.setProperty('--kb-height', '0px')
-    })
+  // Force native ADJUST_RESIZE programmatically. The capacitor.config.ts
+  // value is read on plugin init but some Android ROMs/launchers reset it.
+  // setResizeMode is a no-op idempotent call that guarantees the activity
+  // is in ADJUST_RESIZE mode. Combined with `windowSoftInputMode="adjustResize"`
+  // in AndroidManifest.xml, the WebView shrinks when the keyboard opens and
+  // `100dvh` + `position: fixed inset-0` follow the available viewport.
+  import('@capacitor/keyboard').then(({ Keyboard, KeyboardResize }) => {
+    Keyboard.setResizeMode({ mode: KeyboardResize.Native }).catch(() => {})
   }).catch(() => {})
 }
 
