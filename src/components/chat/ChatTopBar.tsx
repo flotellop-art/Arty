@@ -96,7 +96,7 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
             <path d="M12 4L6 10L12 16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </button>
-        <div className="flex-1 min-w-0">
+        <div className="flex-1 min-w-0 overflow-hidden">
           <p className="font-sans text-[10px] font-semibold uppercase tracking-kicker text-theme-muted">
             {t('chat.topBar.kicker', { defaultValue: 'Conversation' })}
           </p>
@@ -113,7 +113,7 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
       {/* Row 2 — chips + actions (clean SVG icons, pas d'emoji) */}
       <div className="flex items-center gap-2 px-4 py-2.5">
         {/* Style + Model chips */}
-        <div className="flex items-center gap-1.5 flex-1 min-w-0" ref={menuRef}>
+        <div className="flex items-center gap-1.5 flex-1 min-w-0 overflow-hidden" ref={menuRef}>
           {/* Style dropdown */}
           <div className="relative">
             <button

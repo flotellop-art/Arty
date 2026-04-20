@@ -45,7 +45,7 @@ export const UserBubble = memo(function UserBubble({ content, pinned, onTogglePi
   if (editing) {
     return (
       <div className="flex justify-end mb-4">
-        <div className="max-w-[85%] w-full font-display italic text-base text-theme-ink leading-snug border-r-2 border-theme-accent pr-3 py-1">
+        <div className="max-w-[85%] w-full font-display italic text-base text-theme-ink leading-snug border-r-2 border-theme-accent pr-3 py-1 break-words">
           <textarea
             ref={textareaRef}
             value={value}
@@ -75,7 +75,7 @@ export const UserBubble = memo(function UserBubble({ content, pinned, onTogglePi
 
   return (
     <div className="group/user relative flex justify-end mb-4">
-      <div className={`relative max-w-[85%] font-display italic text-base text-theme-ink leading-snug text-right border-r-2 border-theme-accent pr-3 py-1 whitespace-pre-wrap ${
+      <div className={`relative max-w-[85%] font-display italic text-base text-theme-ink leading-snug text-right border-r-2 border-theme-accent pr-3 py-1 whitespace-pre-wrap break-words ${
         pinned ? 'border-r-[3px]' : ''
       }`}>
         « {content} »
