@@ -1,1 +1,1 @@
-Ajout workflow CI/CD GitHub Actions — build APK automatique (PR #45)
+Fix scroll horizontal + barre du haut en 2 rangées (PR #44 + PR #47)
