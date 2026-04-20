@@ -1,4 +1,1 @@
-v1.0.3 — fix root cause clavier (PR #23)
-- Root cause : double soustraction du clavier (100dvh déjà dynamique + --kb-height)
-- Passage à l'API standard visualViewport → source de vérité unique
-- Toutes les saisies texte (HomeScreen, LoginScreen, ChatScreen, modaux) devraient fonctionner
+Fix edge-to-edge Android : StatusBar transparent + contenu sous la barre (PR #26)
