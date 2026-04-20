@@ -28,6 +28,20 @@ export async function verifyGoogleUser(
 }
 
 /**
+ * Parse la valeur brute de `ALLOWED_EMAILS` en liste d'emails normalisés.
+ * Tolère plusieurs formats courants qu'on rencontre quand la variable est
+ * saisie à la main dans l'UI Cloudflare : virgules, points-virgules, sauts
+ * de ligne, espaces, et guillemets d'enveloppe ("foo@bar.com").
+ */
+export function parseAllowedEmails(raw: string | undefined): string[] {
+  if (!raw) return []
+  return raw
+    .split(/[,;\s\n]+/)
+    .map((e) => e.trim().replace(/^['"]+|['"]+$/g, '').toLowerCase())
+    .filter(Boolean)
+}
+
+/**
  * Vérifie si l'utilisateur est autorisé à utiliser les clés API côté
  * serveur (payées par le propriétaire de l'app). Retourne l'email
  * vérifié si whitelisté, null sinon.
@@ -46,15 +60,11 @@ export async function checkAllowedUser(
   request: Request,
   env: Env
 ): Promise<string | null> {
-  const allowedEmails = env.ALLOWED_EMAILS
-  if (!allowedEmails) return null // no whitelist = no server keys for anyone
+  const allowed = parseAllowedEmails(env.ALLOWED_EMAILS)
+  if (allowed.length === 0) return null // no whitelist = no server keys for anyone
 
   const email = await verifyGoogleUser(request)
   if (!email) return null
 
-  const allowed = allowedEmails
-    .split(',')
-    .map((e: string) => e.trim().toLowerCase())
-    .filter(Boolean)
   return allowed.includes(email) ? email : null
 }
