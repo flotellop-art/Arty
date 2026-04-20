@@ -84,7 +84,8 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
       onClick={onClose}
     >
       <div
-        className="bg-theme-bg text-theme-ink rounded-sm shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto border border-theme-border"
+        className="bg-theme-bg text-theme-ink rounded-sm shadow-xl w-full max-w-md overflow-y-auto border border-theme-border"
+        style={{ maxHeight: 'min(90vh, calc(100dvh - var(--kb-height, 0px) - 32px))' }}
         onClick={(e) => e.stopPropagation()}
       >
         <div

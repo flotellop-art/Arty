@@ -133,7 +133,10 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
   // If pending auth, show API key form
   if (pendingAuth) {
     return (
-      <div className="min-h-[100dvh] bg-theme-bg text-theme-ink flex items-center justify-center px-7 py-8">
+      <div
+        className="bg-theme-bg text-theme-ink flex items-center justify-center px-7 py-8"
+        style={{ minHeight: 'calc(100dvh - var(--kb-height, 0px))' }}
+      >
         <div className="w-full max-w-md">
           <header className="flex flex-col items-center mb-10">
             <ArtyWordmark size={22} color="rgb(var(--theme-accent))" />
@@ -157,7 +160,10 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
   }
 
   return (
-    <div className="min-h-[100dvh] bg-theme-bg text-theme-ink flex items-center justify-center px-7 py-8">
+    <div
+      className="bg-theme-bg text-theme-ink flex items-center justify-center px-7 py-8"
+      style={{ minHeight: 'calc(100dvh - var(--kb-height, 0px))' }}
+    >
       <div className="w-full max-w-md">
         <header className="flex flex-col items-center mb-10">
           <ArtyWordmark size={22} color="rgb(var(--theme-accent))" />
