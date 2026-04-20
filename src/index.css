@@ -64,6 +64,29 @@ body {
    ignore html padding and end up under the status bar anyway while flow
    elements get double-padded. */
 
+/* ============================================================
+   KEYBOARD AVOIDANCE — Capacitor Android
+   ============================================================
+   On Android, the system soft input mode (`adjustResize` /
+   `adjustPan`) is unreliable across ROMs / launchers. We set
+   `Keyboard.resize: 'none'` (capacitor.config.ts) and track the
+   keyboard height manually via plugin events (src/main.tsx) — the
+   value is exposed as `--kb-height` on <html>.
+
+   The App root in App.tsx already subtracts it from `100dvh`, but
+   `position: fixed inset-0` modals (ProfileSetupModal, SettingsModal,
+   QuestionModal, etc.) ignore the App root and span the full OS
+   viewport, so without this rule their content ends up behind the
+   keyboard. Injecting the keyboard height as `padding-bottom`:
+   - flex items-end → content pushes up from the bottom
+   - flex items-center → content re-centers in the smaller area
+   No component changes required; works for every modal that uses
+   the standard Tailwind `fixed inset-0` pattern.
+   ============================================================ */
+.fixed.inset-0 {
+  padding-bottom: var(--kb-height, 0px);
+}
+
 @keyframes slow-rotate {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
