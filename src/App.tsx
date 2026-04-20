@@ -17,6 +17,7 @@ import { OAuthCallback } from './components/google/OAuthCallback'
 import { LoginScreen } from './components/auth/LoginScreen'
 import { WelcomeSlides, isOnboardingDone } from './components/onboarding/WelcomeSlides'
 import { ProfileSetupModal } from './components/onboarding/ProfileSetupModal'
+import { KeyboardDebugOverlay } from './components/debug/KeyboardDebugOverlay'
 import { getUserProfile } from './services/userProfile'
 import type { FileAttachment } from './types'
 
@@ -431,6 +432,7 @@ export default function App() {
 
     return (
       <BrowserRouter>
+        <KeyboardDebugOverlay />
         <Routes>
           <Route path="/auth/callback" element={<OAuthCallbackAuth auth={auth} />} />
           <Route path="*" element={
@@ -447,6 +449,7 @@ export default function App() {
 
   return (
     <BrowserRouter>
+      <KeyboardDebugOverlay />
       <AppContent onLogout={auth.logout} userName={auth.currentUser?.displayName} />
     </BrowserRouter>
   )
