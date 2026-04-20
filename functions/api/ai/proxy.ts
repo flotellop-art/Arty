@@ -1,5 +1,5 @@
 import type { Env } from '../../env'
-import { checkAllowedUser, parseAllowedEmails, verifyGoogleUser } from '../_lib/checkAllowedUser'
+import { parseAllowedEmails, verifyGoogleUser } from '../_lib/checkAllowedUser'
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages'
 
@@ -20,26 +20,38 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   let apiKey = request.headers.get('x-api-key')
 
   // Pas de BYOK → fallback sur la clé serveur si et seulement si l'email
-  // est dans `ALLOWED_EMAILS`. Sinon 401.
-  if (!apiKey && env.ANTHROPIC_API_KEY) {
-    const allowedEmail = await checkAllowedUser(request, env)
-    if (allowedEmail) {
-      apiKey = env.ANTHROPIC_API_KEY
-    }
+  // est dans `ALLOWED_EMAILS` ET `ANTHROPIC_API_KEY` est configurée.
+  const allowed = parseAllowedEmails(env.ALLOWED_EMAILS)
+  const isWhitelisted = allowed.includes(email)
+  const hasServerKey = !!env.ANTHROPIC_API_KEY
+  if (!apiKey && hasServerKey && isWhitelisted) {
+    apiKey = env.ANTHROPIC_API_KEY
   }
 
   if (!apiKey) {
-    // Report the exact reason so admins can diagnose whitelist mismatches
-    // (typo, Gmail dot variant, wrong env scope). We leak the caller's own
-    // email back to them — not sensitive, they already know it.
-    const rawWhitelist = env.ALLOWED_EMAILS
-    const parsed = parseAllowedEmails(rawWhitelist)
-    const rawLength = rawWhitelist ? rawWhitelist.length : 0
-    const message = !rawWhitelist
-      ? "Clé API requise — whitelist ALLOWED_EMAILS non configurée côté serveur."
-      : `Clé API requise — l'email ${email} n'est pas dans la whitelist (${parsed.length} emails parsés, ${rawLength} chars raw). Contactez l'admin.`
+    // Surface the exact root cause so admins can fix their Cloudflare config
+    // without poking through server logs. Reveals only the caller's own email.
+    let message: string
+    if (!env.ALLOWED_EMAILS) {
+      message = "Clé API requise — whitelist ALLOWED_EMAILS non configurée côté serveur."
+    } else if (!hasServerKey) {
+      message = `Clé API requise — ANTHROPIC_API_KEY non configurée côté serveur (email ${email} est ${isWhitelisted ? '' : 'absent de la '}whitelist${isWhitelisted ? ' ✔' : ''}).`
+    } else if (!isWhitelisted) {
+      const rawLength = env.ALLOWED_EMAILS.length
+      const preview = allowed.map((e) => e.slice(0, 3) + '…').join(', ')
+      message = `Clé API requise — l'email ${email} n'est pas dans la whitelist (${allowed.length} emails parsés: [${preview}], ${rawLength} chars raw). Contactez l'admin.`
+    } else {
+      message = "Clé API requise — configuration serveur incomplète."
+    }
     return Response.json(
-      { error: message, email, parsedCount: parsed.length, rawLength },
+      {
+        error: message,
+        email,
+        isWhitelisted,
+        hasServerKey,
+        parsedCount: allowed.length,
+        rawLength: env.ALLOWED_EMAILS ? env.ALLOWED_EMAILS.length : 0,
+      },
       { status: 401 }
     )
   }
