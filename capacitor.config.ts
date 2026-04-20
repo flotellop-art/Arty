@@ -23,11 +23,14 @@ const config: CapacitorConfig = {
       showSpinner: false,
     },
     Keyboard: {
-      // 'native' resizes the WebView (Android adjustResize) so `100dvh`
-      // follows the available viewport. 'body' instead resized the <body>
-      // which left our `h-[100dvh]` roots overflowing → the InputBar
-      // appeared at the top of the screen when the keyboard opened.
-      resize: 'native',
+      // 'none' = we track the keyboard height manually via plugin events and
+      // expose it as a CSS var `--kb-height` (see src/main.tsx). Root layout
+      // uses `h-[calc(100dvh-var(--kb-height,0px))]` so the InputBar stays
+      // just above the keyboard regardless of the Android windowSoftInputMode.
+      // 'native' + adjustResize in the manifest was not reliable across
+      // Android launchers (InputBar still got pushed to the top on some
+      // devices). Manual handling works uniformly.
+      resize: 'none',
       resizeOnFullScreen: true,
     },
     PushNotifications: {

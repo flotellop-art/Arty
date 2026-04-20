@@ -23,6 +23,28 @@ if (Capacitor.isNativePlatform()) {
       grantOfflineAccess: true,
     })
   }).catch(() => {})
+
+  // Track software keyboard height as a CSS var so the layout can subtract
+  // it from the viewport. The Android windowSoftInputMode=adjustResize alone
+  // was unreliable across launchers (InputBar still got pushed to the top on
+  // some devices). We use the Capacitor Keyboard plugin events and set
+  // `--kb-height` on <html>; the root in App.tsx consumes it via
+  // `h-[calc(100dvh-var(--kb-height,0px))]`.
+  import('@capacitor/keyboard').then(({ Keyboard }) => {
+    const root = document.documentElement
+    Keyboard.addListener('keyboardWillShow', (info) => {
+      root.style.setProperty('--kb-height', `${info.keyboardHeight}px`)
+    })
+    Keyboard.addListener('keyboardDidShow', (info) => {
+      root.style.setProperty('--kb-height', `${info.keyboardHeight}px`)
+    })
+    Keyboard.addListener('keyboardWillHide', () => {
+      root.style.setProperty('--kb-height', '0px')
+    })
+    Keyboard.addListener('keyboardDidHide', () => {
+      root.style.setProperty('--kb-height', '0px')
+    })
+  }).catch(() => {})
 }
 
 createRoot(document.getElementById('root')!).render(

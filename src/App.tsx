@@ -147,7 +147,10 @@ function AppContent({ onLogout, userName }: { onLogout: () => void; userName?: s
   )
 
   return (
-    <div className="h-[100dvh] bg-theme-bg text-theme-ink font-sans font-light">
+    <div
+      className="bg-theme-bg text-theme-ink font-sans font-light"
+      style={{ height: 'calc(100dvh - var(--kb-height, 0px))' }}
+    >
       <Sidebar
         isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
