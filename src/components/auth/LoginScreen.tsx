@@ -135,7 +135,7 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
     return (
       <div
         className="bg-theme-bg text-theme-ink flex items-center justify-center px-7 py-8"
-        style={{ minHeight: 'calc(100dvh - var(--kb-height, 0px))' }}
+        style={{ minHeight: 'var(--viewport-h, 100dvh)' }}
       >
         <div className="w-full max-w-md">
           <header className="flex flex-col items-center mb-10">
@@ -162,7 +162,7 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
   return (
     <div
       className="bg-theme-bg text-theme-ink flex items-center justify-center px-7 py-8"
-      style={{ minHeight: 'calc(100dvh - var(--kb-height, 0px))' }}
+      style={{ minHeight: 'var(--viewport-h, 100dvh)' }}
     >
       <div className="w-full max-w-md">
         <header className="flex flex-col items-center mb-10">

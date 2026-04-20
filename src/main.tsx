@@ -24,27 +24,33 @@ if (Capacitor.isNativePlatform()) {
     })
   }).catch(() => {})
 
-  // Track software keyboard height as a CSS var so the layout can subtract
-  // it from the viewport. The Android windowSoftInputMode=adjustResize alone
-  // was unreliable across launchers (InputBar still got pushed to the top on
-  // some devices). We use the Capacitor Keyboard plugin events and set
-  // `--kb-height` on <html>; the root in App.tsx consumes it via
-  // `h-[calc(100dvh-var(--kb-height,0px))]`.
-  import('@capacitor/keyboard').then(({ Keyboard }) => {
-    const root = document.documentElement
-    Keyboard.addListener('keyboardWillShow', (info) => {
-      root.style.setProperty('--kb-height', `${info.keyboardHeight}px`)
-    })
-    Keyboard.addListener('keyboardDidShow', (info) => {
-      root.style.setProperty('--kb-height', `${info.keyboardHeight}px`)
-    })
-    Keyboard.addListener('keyboardWillHide', () => {
-      root.style.setProperty('--kb-height', '0px')
-    })
-    Keyboard.addListener('keyboardDidHide', () => {
-      root.style.setProperty('--kb-height', '0px')
-    })
-  }).catch(() => {})
+  // Track the actual visible viewport via the standard `visualViewport` API,
+  // which gives CSS pixels directly (unlike the Capacitor Keyboard plugin's
+  // `info.keyboardHeight` that returns device pixels — on a DPR=3 phone,
+  // setting `--kb-height: 1080px` for a 1080 device-px keyboard would
+  // oversubtract from `100dvh` (927 CSS px on the same phone) and collapse
+  // the App root to 0).
+  //
+  // We expose two CSS vars on <html>:
+  //   --viewport-h → visible viewport height in CSS px (App root uses this)
+  //   --kb-height  → difference with the layout viewport (modals `fixed
+  //                  inset-0` use this as padding-bottom to push content
+  //                  above the keyboard; `fixed` still spans the layout
+  //                  viewport, so subtracting from `100dvh` alone is not
+  //                  enough for fixed overlays).
+  const root = document.documentElement
+  const updateViewport = () => {
+    const vv = window.visualViewport
+    const visualH = vv?.height ?? window.innerHeight
+    const layoutH = root.clientHeight
+    const kbHeight = Math.max(0, layoutH - visualH)
+    root.style.setProperty('--viewport-h', `${visualH}px`)
+    root.style.setProperty('--kb-height', `${kbHeight}px`)
+  }
+  window.visualViewport?.addEventListener('resize', updateViewport)
+  window.visualViewport?.addEventListener('scroll', updateViewport)
+  window.addEventListener('resize', updateViewport)
+  updateViewport()
 }
 
 createRoot(document.getElementById('root')!).render(
