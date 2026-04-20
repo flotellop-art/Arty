@@ -55,15 +55,14 @@ body {
   margin: 0;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  /* Safe area for Android/iOS navigation bars */
-  padding-bottom: env(safe-area-inset-bottom, 0px);
   transition: background-color 320ms ease, color 320ms ease;
 }
 
-html {
-  /* Ensure the app respects safe areas on all sides */
-  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
-}
+/* Safe areas are applied per-component (TopBar/ChatTopBar paddingTop,
+   Sidebar footer + InputBar paddingBottom). Putting padding on <html>
+   breaks `position: fixed` children on Capacitor Android — fixed elements
+   ignore html padding and end up under the status bar anyway while flow
+   elements get double-padded. */
 
 @keyframes slow-rotate {
   from { transform: rotate(0deg); }

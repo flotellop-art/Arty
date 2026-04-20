@@ -81,7 +81,10 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
   }
 
   return (
-    <header className="bg-theme-bg">
+    <header
+      className="bg-theme-bg"
+      style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
+    >
       {/* Row 1 — back + editorial title (left-aligned, Fraunces italic with kicker) */}
       <div className="flex items-baseline gap-3 px-4 pt-3 pb-1">
         <button
