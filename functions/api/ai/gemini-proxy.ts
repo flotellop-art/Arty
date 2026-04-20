@@ -1,9 +1,9 @@
 import type { Env } from '../../env'
-import { checkAllowedUser } from '../_lib/checkAllowedUser'
+import { checkAllowedUser, verifyGoogleUser } from '../_lib/checkAllowedUser'
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
-  // Require a verified Google account — prevents anonymous relay use.
-  const email = await checkAllowedUser(request, env)
+  // Anti-relais anonyme : tout user Google authentifié est accepté (CRIT-4).
+  const email = await verifyGoogleUser(request)
   if (!email) {
     return Response.json(
       { error: 'Authentication required — please sign in with Google' },
@@ -11,8 +11,16 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     )
   }
 
-  // BYOK obligatoire — pas de fallback sur les clés serveur
-  const apiKey = request.headers.get('authorization')?.replace('Bearer ', '') || ''
+  // BYOK prioritaire
+  let apiKey = request.headers.get('authorization')?.replace('Bearer ', '') || ''
+
+  // Fallback clé serveur uniquement pour les emails whitelistés
+  if (!apiKey && env.GEMINI_API_KEY) {
+    const allowedEmail = await checkAllowedUser(request, env)
+    if (allowedEmail) {
+      apiKey = env.GEMINI_API_KEY
+    }
+  }
 
   if (!apiKey) {
     return Response.json(

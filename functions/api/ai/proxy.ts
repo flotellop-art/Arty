@@ -1,11 +1,13 @@
 import type { Env } from '../../env'
-import { checkAllowedUser } from '../_lib/checkAllowedUser'
+import { checkAllowedUser, verifyGoogleUser } from '../_lib/checkAllowedUser'
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages'
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
-  // Require a verified Google account — prevents anonymous relay use.
-  const email = await checkAllowedUser(request, env)
+  // Anti-relais anonyme : tout appel doit venir d'un user Google authentifié,
+  // même en BYOK. Empêche l'utilisation du proxy Cloudflare comme relais
+  // ouvert par n'importe qui sur Internet (CRIT-4).
+  const email = await verifyGoogleUser(request)
   if (!email) {
     return Response.json(
       { error: 'Authentication required — please sign in with Google' },
@@ -13,8 +15,18 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     )
   }
 
-  // BYOK obligatoire — pas de fallback sur les clés serveur
-  const apiKey = request.headers.get('x-api-key')
+  // BYOK prioritaire — si le client envoie sa propre clé, on l'utilise
+  // telle quelle (chaque user paie ses propres appels).
+  let apiKey = request.headers.get('x-api-key')
+
+  // Pas de BYOK → fallback sur la clé serveur si et seulement si l'email
+  // est dans `ALLOWED_EMAILS`. Sinon 401.
+  if (!apiKey && env.ANTHROPIC_API_KEY) {
+    const allowedEmail = await checkAllowedUser(request, env)
+    if (allowedEmail) {
+      apiKey = env.ANTHROPIC_API_KEY
+    }
+  }
 
   if (!apiKey) {
     return Response.json(
