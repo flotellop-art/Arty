@@ -1,5 +1,5 @@
 import type { Env } from '../../env'
-import { checkAllowedUser, verifyGoogleUser } from '../_lib/checkAllowedUser'
+import { checkAllowedUser, parseAllowedEmails, verifyGoogleUser } from '../_lib/checkAllowedUser'
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages'
 
@@ -32,12 +32,14 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     // Report the exact reason so admins can diagnose whitelist mismatches
     // (typo, Gmail dot variant, wrong env scope). We leak the caller's own
     // email back to them — not sensitive, they already know it.
-    const allowlistConfigured = !!env.ALLOWED_EMAILS
-    const message = !allowlistConfigured
+    const rawWhitelist = env.ALLOWED_EMAILS
+    const parsed = parseAllowedEmails(rawWhitelist)
+    const rawLength = rawWhitelist ? rawWhitelist.length : 0
+    const message = !rawWhitelist
       ? "Clé API requise — whitelist ALLOWED_EMAILS non configurée côté serveur."
-      : `Clé API requise — l'email ${email} n'est pas dans la whitelist. Contactez l'admin.`
+      : `Clé API requise — l'email ${email} n'est pas dans la whitelist (${parsed.length} emails parsés, ${rawLength} chars raw). Contactez l'admin.`
     return Response.json(
-      { error: message, email },
+      { error: message, email, parsedCount: parsed.length, rawLength },
       { status: 401 }
     )
   }
