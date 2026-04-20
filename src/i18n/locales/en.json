@@ -98,6 +98,19 @@
       "google": "Connect Google to access your emails and files"
     }
   },
+  "profileSetup": {
+    "kicker": "Private edition · Vol. 1",
+    "titlePart1": "Let's get to",
+    "titlePart2": "know each other",
+    "subtitle": "Just enough to personalise our chats. Stays on this device.",
+    "nameLabel": "First name",
+    "namePlaceholder": "Florent",
+    "dobLabel": "Date of birth",
+    "optional": "optional",
+    "submit": "Continue",
+    "saving": "Saving…",
+    "skip": "Skip for now"
+  },
   "home": {
     "title": "How can I help you?",
     "hintHelp": "Type <0>/help</0> to see everything I can do",

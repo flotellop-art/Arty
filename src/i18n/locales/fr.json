@@ -98,6 +98,19 @@
       "google": "Connecte Google pour accéder à tes mails et fichiers"
     }
   },
+  "profileSetup": {
+    "kicker": "Édition privée · Vol. 1",
+    "titlePart1": "Faisons",
+    "titlePart2": "connaissance",
+    "subtitle": "Juste de quoi personnaliser nos échanges. Ça reste sur cet appareil.",
+    "nameLabel": "Prénom",
+    "namePlaceholder": "Florent",
+    "dobLabel": "Date de naissance",
+    "optional": "optionnel",
+    "submit": "Continuer",
+    "saving": "Enregistrement…",
+    "skip": "Passer pour l'instant"
+  },
   "home": {
     "title": "Comment puis-je t'aider ?",
     "hintHelp": "Tape <0>/aide</0> pour voir tout ce que je sais faire",

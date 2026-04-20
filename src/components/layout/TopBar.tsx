@@ -6,6 +6,7 @@ import { SettingsGuide } from '../shared/SettingsGuide'
 import { SettingsModal } from '../settings/SettingsModal'
 import { getTheme, toggleTheme, type Theme } from '../../services/themeService'
 import { CostIndicator } from './CostIndicator'
+import { PrismMark } from '../shared/PrismMark'
 
 interface TopBarProps {
   onMenuToggle: () => void
@@ -83,8 +84,10 @@ export function TopBar({ onMenuToggle, onHistoryToggle }: TopBarProps) {
           <div className="relative">
             <button
               onClick={() => setOpenMenu(openMenu === 'style' ? null : 'style')}
-              className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
-                openMenu === 'style' ? 'bg-theme-accent text-theme-bg' : 'bg-theme-ink/5 text-theme-ink/70 hover:bg-theme-ink/10'
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium transition-colors border ${
+                openMenu === 'style'
+                  ? 'bg-theme-accent text-theme-bg border-theme-accent'
+                  : 'bg-theme-surface text-theme-ink/80 border-theme-border hover:bg-theme-ink/[0.03]'
               }`}
             >
               <span>{styleOption.emoji}</span>
@@ -114,30 +117,32 @@ export function TopBar({ onMenuToggle, onHistoryToggle }: TopBarProps) {
             )}
           </div>
 
-          {/* Info button */}
+          {/* Info help — petit cercle terracotta avec "?" (design handoff toolbar) */}
           <button
             onClick={() => setShowGuide(true)}
-            className="p-1 rounded-full text-theme-muted hover:text-theme-ink hover:bg-theme-ink/5 transition-colors"
+            className="w-6 h-6 rounded-full border border-theme-accent/40 text-theme-accent text-[11px] font-semibold hover:bg-theme-accent/10 transition-colors flex items-center justify-center shrink-0"
             aria-label={t('chat.topBar.aria.toneModelHelp')}
           >
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-              <circle cx="7" cy="7" r="6" stroke="currentColor" strokeWidth="1.2" />
-              <path d="M5.5 5.5C5.5 4.67 6.17 4 7 4C7.83 4 8.5 4.67 8.5 5.5C8.5 6.17 8 6.5 7.5 6.75C7.25 6.87 7 7.12 7 7.5V8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-              <circle cx="7" cy="9.5" r="0.5" fill="currentColor" />
-            </svg>
+            ?
           </button>
 
-          {/* Model dropdown */}
+          {/* Model dropdown — en accent terracotta avec PrismMark (design handoff) */}
           <div className="relative">
             <button
               onClick={() => setOpenMenu(openMenu === 'model' ? null : 'model')}
-              className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
-                openMenu === 'model' ? 'bg-theme-ink text-theme-bg' : 'bg-theme-ink/5 text-theme-ink/70 hover:bg-theme-ink/10'
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium transition-colors border ${
+                openMenu === 'model'
+                  ? 'bg-theme-ink text-theme-bg border-theme-ink'
+                  : 'bg-theme-accent/10 text-theme-accent border-theme-accent/25 hover:bg-theme-accent/15'
               }`}
             >
-              <span>{modelOption.flag}</span>
+              {currentModel === 'auto' ? (
+                <PrismMark size={12} fill />
+              ) : (
+                <span>{modelOption.flag}</span>
+              )}
               <span>{modelLabel(modelOption.id)}</span>
-              <svg width="10" height="10" viewBox="0 0 10 10" fill="none" className="ml-0.5 opacity-50">
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="none" className="ml-0.5 opacity-60">
                 <path d="M2.5 4L5 6.5L7.5 4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
               </svg>
             </button>
@@ -150,11 +155,15 @@ export function TopBar({ onMenuToggle, onHistoryToggle }: TopBarProps) {
                     onClick={() => handleModelChange(opt.id)}
                     className={`w-full flex items-center gap-2 px-3 py-2 text-xs transition-colors ${
                       currentModel === opt.id
-                        ? 'bg-theme-ink/10 text-theme-ink font-semibold'
-                        : 'text-theme-ink/70 hover:bg-theme-ink/5'
+                        ? 'bg-theme-accent/10 text-theme-accent font-semibold'
+                        : 'text-theme-ink/70 hover:bg-theme-ink/[0.03]'
                     }`}
                   >
-                    <span>{opt.flag}</span>
+                    {opt.id === 'auto' ? (
+                      <PrismMark size={12} fill color={currentModel === opt.id ? 'rgb(var(--theme-accent))' : 'rgb(var(--theme-ink) / 0.6)'} />
+                    ) : (
+                      <span>{opt.flag}</span>
+                    )}
                     <span>{modelLabel(opt.id)}</span>
                   </button>
                 ))}
