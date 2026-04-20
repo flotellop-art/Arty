@@ -110,10 +110,8 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
       <div className="mx-4 h-[2px] bg-theme-ink" />
       <div className="mx-4 mt-[3px] h-px bg-theme-ink" />
 
-      {/* Row 2 — chips + actions (clean SVG icons, pas d'emoji) */}
-      <div className="flex items-center gap-2 px-4 py-2.5">
-        {/* Style + Model chips */}
-        <div className="flex items-center gap-1.5 flex-1 min-w-0 overflow-hidden" ref={menuRef}>
+      {/* Row 2a — chips Style / Info / Modèle (full width, wraps if needed) */}
+      <div className="flex flex-wrap items-center gap-1.5 px-4 pt-2 pb-1" ref={menuRef}>
           {/* Style dropdown */}
           <div className="relative">
             <button
@@ -213,10 +211,10 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
               </div>
             )}
           </div>
-        </div>
+      </div>
 
-        {/* Actions — icônes SVG minimalistes, muted */}
-        <div className="flex items-center gap-0.5 shrink-0">
+      {/* Row 2b — actions, alignées à droite */}
+      <div className="flex items-center justify-end gap-0.5 px-4 pb-2.5">
           {onOpenSummary && (
             <button
               onClick={onOpenSummary}
@@ -260,7 +258,6 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
               </svg>
             </button>
           )}
-        </div>
       </div>
 
       {showGuide && <SettingsGuide onClose={() => setShowGuide(false)} />}
