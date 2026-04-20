@@ -1,1 +1,3 @@
-Version bêta — test interne
+v1.0.2 — Fix clavier complet
+
+- CSS globale + LoginScreen + SettingsModal/MemoryViewer (PR #20)
