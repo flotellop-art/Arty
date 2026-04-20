@@ -11,3 +11,13 @@ CREATE TABLE IF NOT EXISTS memory (
 
 -- Index for fast lookups
 CREATE INDEX IF NOT EXISTS idx_memory_user ON memory(user_id);
+
+-- Per-user daily quota counter for server-key usage. BYOK callers are not
+-- counted (they pay their own Anthropic bill). One row per (email, day).
+CREATE TABLE IF NOT EXISTS quota (
+  email TEXT NOT NULL,
+  day TEXT NOT NULL,           -- 'YYYY-MM-DD' UTC
+  count INTEGER NOT NULL DEFAULT 0,
+  updated_at INTEGER NOT NULL DEFAULT (unixepoch()),
+  PRIMARY KEY (email, day)
+);

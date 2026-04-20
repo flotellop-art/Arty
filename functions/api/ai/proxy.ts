@@ -1,5 +1,6 @@
 import type { Env } from '../../env'
 import { parseAllowedEmails, verifyGoogleUser } from '../_lib/checkAllowedUser'
+import { consumeDailyQuota } from '../_lib/quota'
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages'
 
@@ -16,8 +17,9 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   }
 
   // BYOK prioritaire — si le client envoie sa propre clé, on l'utilise
-  // telle quelle (chaque user paie ses propres appels).
+  // telle quelle (chaque user paie ses propres appels, donc pas de quota).
   let apiKey = request.headers.get('x-api-key')
+  const isByok = !!apiKey
 
   // Pas de BYOK → fallback sur la clé serveur si et seulement si l'email
   // est dans `ALLOWED_EMAILS` ET `ANTHROPIC_API_KEY` est configurée.
@@ -29,8 +31,6 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   }
 
   if (!apiKey) {
-    // Surface the exact root cause so admins can fix their Cloudflare config
-    // without poking through server logs. Reveals only the caller's own email.
     let message: string
     if (!env.ALLOWED_EMAILS) {
       message = "Clé API requise — whitelist ALLOWED_EMAILS non configurée côté serveur."
@@ -54,6 +54,23 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
       },
       { status: 401 }
     )
+  }
+
+  // Cap server-key usage per user per day. BYOK callers pay their own Anthropic
+  // bill and are not counted here. Protects against a stolen Google token
+  // burning through ANTHROPIC_API_KEY spend unchecked.
+  if (!isByok) {
+    const quota = await consumeDailyQuota(env, email)
+    if (!quota.allowed) {
+      return Response.json(
+        {
+          error: `Quota journalier atteint (${quota.count}/${quota.limit} appels aujourd'hui). Réessayez demain ou configurez votre propre clé API dans les paramètres.`,
+          count: quota.count,
+          limit: quota.limit,
+        },
+        { status: 429 }
+      )
+    }
   }
 
   const body = await request.text()
