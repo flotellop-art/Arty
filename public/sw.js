@@ -1,4 +1,4 @@
-const CACHE_NAME = 'arty-cache-v48'
+const CACHE_NAME = 'arty-cache-v49'
 
 // ─── Push Notifications (Web Push API) ───
 self.addEventListener('push', (event) => {

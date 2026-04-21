@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
+import { Capacitor } from '@capacitor/core'
 import i18n from '../i18n'
 
 // Web Speech API types
@@ -180,7 +181,11 @@ export function useSpeechRecognition() {
       if (err === 'aborted') return
 
       if (err === 'not-allowed' || err === 'service-not-allowed') {
-        setError('Micro refusé — autorise le micro dans les paramètres du navigateur')
+        setError(
+          Capacitor.isNativePlatform()
+            ? 'Micro refusé — Paramètres Android → Apps → Arty → Autorisations → Micro'
+            : 'Micro refusé — autorise le micro dans les paramètres du navigateur'
+        )
         wantListeningRef.current = false
         retryCountRef.current = 0
       } else if (err === 'no-speech') {
