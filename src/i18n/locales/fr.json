@@ -166,7 +166,20 @@
         "micStart": "Micro",
         "micStop": "Arrêter le micro",
         "stop": "Arrêter",
-        "send": "Envoyer"
+        "send": "Envoyer",
+        "holdToRecord": "Maintiens pour enregistrer un message vocal",
+        "autoSendOn": "Auto-envoi activé — relâche le micro pour envoyer direct",
+        "autoSendOff": "Auto-envoi désactivé — transcription ajoutée à la zone de texte"
+      },
+      "voice": {
+        "recording": "Enregistrement",
+        "swipeToCancel": "← Glisse pour annuler",
+        "releaseToCancel": "Relâche pour annuler",
+        "transcribing": "Transcription…",
+        "tooShort": "Maintiens appuyé pour enregistrer",
+        "micDenied": "Micro refusé — autorise-le dans les paramètres",
+        "transcribeFailed": "Transcription échouée — réessaie",
+        "unsupported": "Enregistrement audio non supporté sur ce navigateur"
       }
     },
     "tone": {

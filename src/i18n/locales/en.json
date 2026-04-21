@@ -166,7 +166,20 @@
         "micStart": "Microphone",
         "micStop": "Stop microphone",
         "stop": "Stop",
-        "send": "Send"
+        "send": "Send",
+        "holdToRecord": "Hold to record a voice message",
+        "autoSendOn": "Auto-send on — release the mic to send immediately",
+        "autoSendOff": "Auto-send off — transcription fills the text area"
+      },
+      "voice": {
+        "recording": "Recording",
+        "swipeToCancel": "← Slide to cancel",
+        "releaseToCancel": "Release to cancel",
+        "transcribing": "Transcribing…",
+        "tooShort": "Hold the button to record",
+        "micDenied": "Microphone denied — allow it in settings",
+        "transcribeFailed": "Transcription failed — try again",
+        "unsupported": "Audio recording not supported in this browser"
       }
     },
     "tone": {

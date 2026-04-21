@@ -8,6 +8,7 @@ import { filterSlashCommands, type SlashCommand } from '../../constants/slashCom
 import { detectDates } from '../../utils/dateDetector'
 import { getValidAccessToken } from '../../services/googleAuth'
 import { callGoogleApi } from '../../services/googleApiHelper'
+import * as scoped from '../../services/scopedStorage'
 
 interface InputBarProps {
   onSend: (text: string, files?: FileAttachment[]) => void
@@ -34,12 +35,43 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
   const [googleConnected, setGoogleConnected] = useState(false)
   const [showCalendarForm, setShowCalendarForm] = useState(false)
 
-  // Audio recording state (Feature 15)
+  // Audio recording state (Feature 15 — hold-to-record voice messages)
   const [isRecordingAudio, setIsRecordingAudio] = useState(false)
   const [recordingDuration, setRecordingDuration] = useState(0)
+  const [isSwipeCancelling, setIsSwipeCancelling] = useState(false)
+  const [isTranscribing, setIsTranscribing] = useState(false)
+  const [audioError, setAudioError] = useState<string | null>(null)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
   const recordTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const maxDurationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const cancelRecordingRef = useRef(false)
+  const wantRecordingRef = useRef(false)
+  const pointerIdRef = useRef<number | null>(null)
+  const pointerStartXRef = useRef(0)
+  const pressStartRef = useRef(0)
+
+  // Auto-send voice toggle — when ON, release-to-send sends the transcription as
+  // a message immediately (WhatsApp-style). When OFF, transcription fills the
+  // textarea so the user can review/edit before sending. Persisted per-user via
+  // scopedStorage so the preference survives refresh + account switch.
+  const [autoSendVoice, setAutoSendVoice] = useState<boolean>(() => {
+    return scoped.getJSON<boolean>('voice-autosend') === true
+  })
+  const toggleAutoSendVoice = useCallback(() => {
+    setAutoSendVoice((prev) => {
+      const next = !prev
+      scoped.setJSON('voice-autosend', next)
+      return next
+    })
+  }, [])
+
+  // Synced refs — MediaRecorder.onstop is async and captures closure values at
+  // recorder creation. Reading these via refs lets the callback see the latest
+  // toggle/draft/attachments at the moment the user releases the mic.
+  const autoSendRef = useRef(autoSendVoice)
+  const textRef = useRef('')
+  const filesRef = useRef<FileAttachment[]>([])
 
   const {
     isListening,
@@ -56,6 +88,11 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
     getValidAccessToken().then((t) => { if (active) setGoogleConnected(!!t) }).catch(() => {})
     return () => { active = false }
   }, [])
+
+  // Keep refs in sync with state for use inside MediaRecorder.onstop closure.
+  useEffect(() => { autoSendRef.current = autoSendVoice }, [autoSendVoice])
+  useEffect(() => { textRef.current = text })
+  useEffect(() => { filesRef.current = files }, [files])
 
   // Auto-resize textarea
   useEffect(() => {
@@ -97,17 +134,23 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
     })
   }, [])
 
-  const handleSend = () => {
-    const trimmed = text.trim()
-    if ((!trimmed && files.length === 0) || isStreaming) return
+  // Pure send function — takes explicit text/files rather than closing over
+  // state, so the async MediaRecorder.onstop callback can call it with fresh
+  // refs. Returns true on successful send, false if blocked (empty or streaming).
+  const sendText = useCallback((textToSend: string, filesToSend: FileAttachment[]): boolean => {
+    const trimmed = textToSend.trim()
+    if ((!trimmed && filesToSend.length === 0) || isStreaming) return false
     if (isListening) stopListening()
-    onSend(trimmed || t('chat.input.defaultFilePrompt'), files.length > 0 ? files : undefined)
+    onSend(trimmed || t('chat.input.defaultFilePrompt'), filesToSend.length > 0 ? filesToSend : undefined)
     setText('')
     setFiles([])
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto'
     }
-  }
+    return true
+  }, [isStreaming, isListening, stopListening, onSend, t])
+
+  const handleSend = () => { sendText(text, files) }
 
   const applySlashCommand = useCallback((cmd: SlashCommand) => {
     setText(cmd.prompt)
@@ -234,52 +277,269 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
     if (cameraInputRef.current) cameraInputRef.current.value = ''
   }
 
-  // Feature 15 — Whisper audio transcription (OpenAI)
-  const startAudioRecording = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' })
-      audioChunksRef.current = []
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) audioChunksRef.current.push(e.data)
-      }
-      recorder.onstop = async () => {
-        stream.getTracks().forEach((t) => t.stop())
-        const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' })
-        audioChunksRef.current = []
-        try {
-          const { transcribeAudio } = await import('../../services/whisperClient')
-          const transcription = await transcribeAudio(blob)
-          if (transcription) {
-            setText((prev) => (prev ? prev + ' ' : '') + transcription)
-          }
-        } catch (err) {
-          console.warn('Whisper transcription failed:', err)
-        }
-      }
-      mediaRecorderRef.current = recorder
-      recorder.start()
-      setIsRecordingAudio(true)
-      setRecordingDuration(0)
-      recordTimerRef.current = setInterval(() => {
-        setRecordingDuration((d) => d + 1)
-      }, 1000)
-    } catch (err) {
-      console.warn('Audio recording failed:', err)
+  // Feature 15 — Whisper voice messages (hold-to-record, WhatsApp-style)
+  // Flow: pointerDown → getUserMedia + MediaRecorder.start
+  //        pointerMove (dx < -60px) → isSwipeCancelling = true
+  //        pointerUp (cancel OR held < 500ms) → stop + discard
+  //        pointerUp (normal) → stop + transcribe via OpenAI Whisper (BYOK)
+  //        pointerCancel / unmount → stop + discard
+  // Safety: max 60s auto-stop, stream torn down on every exit path, concurrent
+  // Web-Speech listening is paused to avoid mic contention.
+
+  const HOLD_MIN_MS = 500
+  const HOLD_MAX_MS = 60_000
+  const SWIPE_CANCEL_THRESHOLD_PX = 60
+
+  const pickAudioMimeType = (): string => {
+    if (typeof MediaRecorder === 'undefined') return ''
+    const candidates = [
+      'audio/webm;codecs=opus',
+      'audio/webm',
+      'audio/mp4',
+      'audio/mpeg',
+      'audio/ogg;codecs=opus',
+    ]
+    for (const mt of candidates) {
+      if (MediaRecorder.isTypeSupported(mt)) return mt
     }
+    return ''
   }
 
-  const stopAudioRecording = () => {
-    const rec = mediaRecorderRef.current
-    if (rec && rec.state !== 'inactive') {
-      rec.stop()
-    }
+  const clearRecordingTimers = useCallback(() => {
     if (recordTimerRef.current) {
       clearInterval(recordTimerRef.current)
       recordTimerRef.current = null
     }
+    if (maxDurationTimerRef.current) {
+      clearTimeout(maxDurationTimerRef.current)
+      maxDurationTimerRef.current = null
+    }
+  }, [])
+
+  const hardResetRecording = useCallback(() => {
+    clearRecordingTimers()
+    const rec = mediaRecorderRef.current
+    mediaRecorderRef.current = null
+    // Signal onstop to discard — must be set BEFORE rec.stop() triggers the
+    // async onstop callback. onstop consumes and resets the flag itself.
+    cancelRecordingRef.current = true
+    if (rec && rec.state !== 'inactive') {
+      try { rec.stop() } catch {}
+    }
+    audioChunksRef.current = []
+    wantRecordingRef.current = false
+    pointerIdRef.current = null
     setIsRecordingAudio(false)
-  }
+    setIsSwipeCancelling(false)
+  }, [clearRecordingTimers])
+
+  const startAudioRecording = useCallback(async () => {
+    if (isRecordingAudio || mediaRecorderRef.current) return
+    setAudioError(null)
+    wantRecordingRef.current = true
+
+    if (typeof MediaRecorder === 'undefined' || !navigator.mediaDevices) {
+      wantRecordingRef.current = false
+      setAudioError(t('chat.input.voice.unsupported'))
+      return
+    }
+
+    // Pause Web Speech API if it was listening — two getUserMedia consumers on
+    // the same mic confuse Android SpeechRecognizer and iOS AVAudioSession.
+    if (isListening) {
+      try { stopListening() } catch {}
+    }
+
+    let stream: MediaStream | null = null
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    } catch (err) {
+      // If the user already released (stopAudioRecording cleared the flag),
+      // don't clobber any tooShort / swipe-cancel message they already see.
+      if (!wantRecordingRef.current) return
+      wantRecordingRef.current = false
+      const name = (err as { name?: string } | null)?.name
+      if (name === 'NotAllowedError' || name === 'PermissionDeniedError' ||
+          name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+        setAudioError(t('chat.input.voice.micDenied'))
+      } else {
+        setAudioError(t('chat.input.voice.unsupported'))
+      }
+      return
+    }
+
+    // Guard: pointerUp may have fired before getUserMedia resolved.
+    if (!wantRecordingRef.current) {
+      stream.getTracks().forEach((tr) => tr.stop())
+      return
+    }
+
+    const mimeType = pickAudioMimeType()
+    let recorder: MediaRecorder
+    try {
+      recorder = mimeType
+        ? new MediaRecorder(stream, { mimeType })
+        : new MediaRecorder(stream)
+    } catch (err) {
+      // Constructor throws on unsupported mime — release the stream NOW or the
+      // mic stays hot (the classic leak the previous audit flagged).
+      console.warn('MediaRecorder constructor failed:', err)
+      stream.getTracks().forEach((tr) => tr.stop())
+      wantRecordingRef.current = false
+      setAudioError(t('chat.input.voice.unsupported'))
+      return
+    }
+
+    audioChunksRef.current = []
+    recorder.ondataavailable = (e) => {
+      if (e.data.size > 0) audioChunksRef.current.push(e.data)
+    }
+    recorder.onerror = (e) => {
+      console.warn('MediaRecorder error:', e)
+      stream?.getTracks().forEach((tr) => tr.stop())
+      hardResetRecording()
+      setAudioError(t('chat.input.voice.unsupported'))
+    }
+    recorder.onstop = async () => {
+      stream?.getTracks().forEach((tr) => tr.stop())
+      clearRecordingTimers()
+      const chunks = audioChunksRef.current
+      audioChunksRef.current = []
+      const wasCancelled = cancelRecordingRef.current
+      cancelRecordingRef.current = false
+      mediaRecorderRef.current = null
+      setIsRecordingAudio(false)
+      setIsSwipeCancelling(false)
+      if (wasCancelled || chunks.length === 0) return
+
+      const blob = new Blob(chunks, { type: mimeType || recorder.mimeType || 'audio/webm' })
+      // Too small = near-empty chunk (<300ms of opus ≈ 0.5KB) → skip to avoid
+      // wasting a Whisper request on silence.
+      if (blob.size < 1024) return
+
+      setIsTranscribing(true)
+      try {
+        const { transcribeAudio } = await import('../../services/whisperClient')
+        const transcription = await transcribeAudio(blob)
+        if (!transcription) return
+
+        if (autoSendRef.current) {
+          // Auto-send ON — combine any draft + transcription, send straight away.
+          // If sendText is blocked (streaming in progress) fall back to the
+          // textarea so the transcription isn't silently lost.
+          const draft = textRef.current.trim()
+          const combined = draft ? draft + ' ' + transcription : transcription
+          const sent = sendText(combined, filesRef.current)
+          if (!sent) {
+            setText((prev) => (prev ? prev + ' ' : '') + transcription)
+          }
+        } else {
+          setText((prev) => (prev ? prev + ' ' : '') + transcription)
+        }
+      } catch (err) {
+        console.warn('Whisper transcription failed:', err)
+        setAudioError(t('chat.input.voice.transcribeFailed'))
+      } finally {
+        setIsTranscribing(false)
+      }
+    }
+
+    mediaRecorderRef.current = recorder
+    try {
+      recorder.start()
+    } catch (err) {
+      console.warn('MediaRecorder start failed:', err)
+      stream.getTracks().forEach((tr) => tr.stop())
+      hardResetRecording()
+      setAudioError(t('chat.input.voice.unsupported'))
+      return
+    }
+    setIsRecordingAudio(true)
+    setRecordingDuration(0)
+    recordTimerRef.current = setInterval(() => {
+      setRecordingDuration((d) => d + 1)
+    }, 1000)
+    // Safety cap — auto-stop after HOLD_MAX_MS even if pointer is stuck.
+    maxDurationTimerRef.current = setTimeout(() => {
+      const r = mediaRecorderRef.current
+      if (r && r.state === 'recording') {
+        try { r.stop() } catch {}
+      }
+    }, HOLD_MAX_MS)
+  }, [isRecordingAudio, isListening, stopListening, t, clearRecordingTimers, hardResetRecording, sendText])
+
+  const stopAudioRecording = useCallback((cancel = false) => {
+    wantRecordingRef.current = false
+    const rec = mediaRecorderRef.current
+    if (rec && rec.state === 'recording') {
+      cancelRecordingRef.current = cancel
+      try { rec.stop() } catch {}
+    } else {
+      // Nothing to stop (e.g., getUserMedia still pending, or already stopped).
+      // Keep cancel flag set so the pending start aborts via wantRecordingRef.
+      clearRecordingTimers()
+      if (!rec) {
+        setIsRecordingAudio(false)
+        setIsSwipeCancelling(false)
+      }
+    }
+  }, [clearRecordingTimers])
+
+  // Pointer handlers wired to the mic button for the hold-to-record UX.
+  const handleMicPointerDown = useCallback((e: React.PointerEvent<HTMLButtonElement>) => {
+    // Prevent the browser's long-press context menu and stop focus stealing
+    // from the textarea on desktop (pointer capture handles the rest).
+    e.preventDefault()
+    pointerIdRef.current = e.pointerId
+    pointerStartXRef.current = e.clientX
+    pressStartRef.current = Date.now()
+    setIsSwipeCancelling(false)
+    setAudioError(null)
+    try { e.currentTarget.setPointerCapture(e.pointerId) } catch {}
+    void startAudioRecording()
+  }, [startAudioRecording])
+
+  const handleMicPointerMove = useCallback((e: React.PointerEvent<HTMLButtonElement>) => {
+    if (pointerIdRef.current !== e.pointerId) return
+    const dx = e.clientX - pointerStartXRef.current
+    const cancelling = dx < -SWIPE_CANCEL_THRESHOLD_PX
+    setIsSwipeCancelling((prev) => (prev === cancelling ? prev : cancelling))
+  }, [])
+
+  const handleMicPointerUp = useCallback((e: React.PointerEvent<HTMLButtonElement>) => {
+    if (pointerIdRef.current !== e.pointerId) return
+    const heldMs = Date.now() - pressStartRef.current
+    const cancelSwipe = isSwipeCancelling
+    pointerIdRef.current = null
+    try { e.currentTarget.releasePointerCapture(e.pointerId) } catch {}
+    if (cancelSwipe) {
+      stopAudioRecording(true)
+      return
+    }
+    if (heldMs < HOLD_MIN_MS) {
+      // Too-short press — user tapped rather than held. Discard audio and
+      // show a hint. This also covers the case where they changed their mind.
+      stopAudioRecording(true)
+      setAudioError(t('chat.input.voice.tooShort'))
+      return
+    }
+    stopAudioRecording(false)
+  }, [isSwipeCancelling, stopAudioRecording, t])
+
+  const handleMicPointerCancel = useCallback((e: React.PointerEvent<HTMLButtonElement>) => {
+    if (pointerIdRef.current !== e.pointerId) return
+    pointerIdRef.current = null
+    try { e.currentTarget.releasePointerCapture(e.pointerId) } catch {}
+    stopAudioRecording(true)
+  }, [stopAudioRecording])
+
+  // Safety: tear down the recorder + stream if the component unmounts while
+  // recording. Without this the mic stays hot after navigating away.
+  // hardResetRecording handles the cancel flag + flags + state itself.
+  useEffect(() => {
+    return () => { hardResetRecording() }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Feature 16 — Create calendar event from detected date
   const handleCreateCalendarEvent = useCallback(async (title: string, date: Date) => {
@@ -394,17 +654,55 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
         </div>
       )}
 
-      {/* Mic error message */}
-      {micError && (
+      {/* Mic / audio error message (covers speech recognition + Whisper) */}
+      {(micError || audioError) && (
         <div className="text-xs text-red-500 mb-1 px-1">
-          {micError}
+          {micError || audioError}
         </div>
       )}
 
-      {/* Interim transcript indicator */}
+      {/* Interim transcript indicator (Web Speech API) */}
       {isListening && interimTranscript && (
         <div className="text-xs text-theme-muted italic mb-1 px-1 truncate">
           {interimTranscript}...
+        </div>
+      )}
+
+      {/* Voice message recording indicator (Whisper hold-to-record) */}
+      {isRecordingAudio && (
+        <div
+          className={`mb-1 px-2 py-1.5 rounded-lg text-xs flex items-center gap-2 transition-colors ${
+            isSwipeCancelling
+              ? 'bg-red-100 text-red-600 font-semibold'
+              : 'bg-theme-ink/5 text-theme-muted'
+          }`}
+        >
+          <span
+            className={`inline-block w-2 h-2 rounded-full ${
+              isSwipeCancelling ? 'bg-red-600' : 'bg-red-500 animate-pulse'
+            }`}
+          />
+          <span className="font-mono tabular-nums">
+            {recordingDuration.toString().padStart(2, '0')}s
+          </span>
+          <span className="flex-1 truncate">
+            {isSwipeCancelling
+              ? t('chat.input.voice.releaseToCancel')
+              : t('chat.input.voice.recording')}
+          </span>
+          {!isSwipeCancelling && (
+            <span className="text-[10px] opacity-70 whitespace-nowrap">
+              {t('chat.input.voice.swipeToCancel')}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Transcribing indicator (after release, while Whisper is responding) */}
+      {isTranscribing && !isRecordingAudio && (
+        <div className="text-xs text-theme-muted italic mb-1 px-1 flex items-center gap-2">
+          <span className="inline-block w-2 h-2 rounded-full bg-theme-accent animate-pulse" />
+          {t('chat.input.voice.transcribing')}
         </div>
       )}
 
@@ -497,26 +795,60 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
           className="flex-1 resize-none bg-transparent text-sm text-theme-ink placeholder:text-theme-muted/60 focus:outline-none py-1.5 font-sans font-light leading-relaxed"
         />
 
-        {/* Whisper audio recording (Feature 15) — if OpenAI key is available */}
+        {/* Auto-send toggle — when ON, the Whisper release sends the
+            transcription straight to the conversation (WhatsApp-style). When
+            OFF, it fills the textarea so the user can review/edit first. */}
         {hasOpenAI && (
           <button
-            onClick={isRecordingAudio ? stopAudioRecording : startAudioRecording}
+            type="button"
+            onClick={toggleAutoSendVoice}
+            className={`flex-shrink-0 p-1.5 rounded-full transition-colors mb-0.5 ${
+              autoSendVoice
+                ? 'text-theme-accent bg-theme-accent/10'
+                : 'text-theme-muted hover:bg-theme-ink/5'
+            }`}
+            aria-label={t(autoSendVoice ? 'chat.input.aria.autoSendOn' : 'chat.input.aria.autoSendOff')}
+            title={t(autoSendVoice ? 'chat.input.aria.autoSendOn' : 'chat.input.aria.autoSendOff')}
+            aria-pressed={autoSendVoice}
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <path
+                d="M14 2L2 7L7 9L14 2ZM14 2L9 14L7 9L14 2Z"
+                stroke="currentColor"
+                strokeWidth="1.3"
+                strokeLinejoin="round"
+                fill={autoSendVoice ? 'currentColor' : 'none'}
+                fillOpacity={autoSendVoice ? 0.2 : 0}
+              />
+            </svg>
+          </button>
+        )}
+
+        {/* Whisper voice message (Feature 15) — hold to record, release to send,
+            swipe left to cancel. BYOK OpenAI key required. */}
+        {hasOpenAI && (
+          <button
+            type="button"
+            onPointerDown={handleMicPointerDown}
+            onPointerMove={handleMicPointerMove}
+            onPointerUp={handleMicPointerUp}
+            onPointerCancel={handleMicPointerCancel}
+            onContextMenu={(e) => e.preventDefault()}
+            style={{ touchAction: 'none', WebkitUserSelect: 'none', userSelect: 'none' }}
             className={`relative flex-shrink-0 p-1.5 rounded-full transition-colors mb-0.5 ${
-              isRecordingAudio
-                ? 'bg-red-100 text-red-500 hover:bg-red-200'
+              isSwipeCancelling
+                ? 'bg-red-200 text-red-700'
+                : isRecordingAudio
+                ? 'bg-red-100 text-red-500 scale-110'
                 : 'hover:bg-theme-ink/5 text-theme-muted'
             }`}
-            aria-label={isRecordingAudio ? 'Arrêter enregistrement' : 'Enregistrer audio (Whisper)'}
-            title={isRecordingAudio ? `Enregistrement ${recordingDuration}s` : 'Enregistrer (Whisper)'}
+            aria-label={t('chat.input.aria.holdToRecord')}
+            title={t('chat.input.aria.holdToRecord')}
+            disabled={isTranscribing}
           >
             <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
               <circle cx="9" cy="9" r="5" fill="currentColor" />
             </svg>
-            {isRecordingAudio && (
-              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[8px] font-bold px-1 rounded-full">
-                {recordingDuration}s
-              </span>
-            )}
           </button>
         )}
 
