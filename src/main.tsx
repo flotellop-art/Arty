@@ -5,6 +5,31 @@ import App from './App'
 import './index.css'
 import './i18n' // initialise react-i18next (détection navigator + localStorage)
 
+// Cleanup any legacy service worker + cache left over from pre-1.0.13 APKs
+// on Capacitor native. Without this, users upgrading from 1.0.12 still have
+// the old SW serving stale assets until they manually clear app data.
+// BUG 45 — do NOT touch localStorage/IndexedDB/crypto (BUG 41, BUG 43).
+async function cleanupLegacyServiceWorker(): Promise<void> {
+  const isCapacitorNative =
+    Capacitor.isNativePlatform() ||
+    (location.protocol === 'https:' && location.hostname === 'localhost')
+  if (!isCapacitorNative || !('serviceWorker' in navigator)) return
+  try {
+    const regs = await navigator.serviceWorker.getRegistrations()
+    await Promise.all(regs.map((r) => r.unregister()))
+    if ('caches' in window) {
+      const names = await caches.keys()
+      await Promise.all(
+        names.filter((n) => n.startsWith('arty-cache-')).map((n) => caches.delete(n))
+      )
+    }
+  } catch {
+    // best-effort — never block boot
+  }
+}
+
+void cleanupLegacyServiceWorker()
+
 // Initialize Google Sign-In on native
 if (Capacitor.isNativePlatform()) {
   import('@codetrix-studio/capacitor-google-auth').then(({ GoogleAuth }) => {
