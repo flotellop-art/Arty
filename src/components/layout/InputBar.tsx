@@ -352,7 +352,13 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
 
     let stream: MediaStream | null = null
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          autoGainControl: true,
+          noiseSuppression: true,
+          echoCancellation: true,
+        },
+      })
     } catch (err) {
       // If the user already released (stopAudioRecording cleared the flag),
       // don't clobber any tooShort / swipe-cancel message they already see.
@@ -564,13 +570,16 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
   const isMobile = typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)
   const showWebCamera = !isNative && hasCameraSupport && isMobile
 
-  // Has OpenAI key (Feature 15)
+  // Has OpenAI key (Feature 15) — BYOK OR server proxy available (gated by
+  // ALLOWED_EMAILS côté serveur). Pour les testeurs sans clé, `googleConnected`
+  // suffit à révéler le bouton : le serveur rejette les non-whitelistés.
   const [hasOpenAI, setHasOpenAI] = useState(false)
   useEffect(() => {
     import('../../services/activeApiKey').then((m) => {
       setHasOpenAI(m.hasOpenAIKey())
     })
   }, [])
+  const canUseWhisper = hasOpenAI || googleConnected
 
   return (
     <div className="relative px-4 pb-4 pt-2 bg-theme-bg" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 1rem))' }}>
@@ -798,7 +807,7 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
         {/* Auto-send toggle — when ON, the Whisper release sends the
             transcription straight to the conversation (WhatsApp-style). When
             OFF, it fills the textarea so the user can review/edit first. */}
-        {hasOpenAI && (
+        {canUseWhisper && (
           <button
             type="button"
             onClick={toggleAutoSendVoice}
@@ -825,8 +834,8 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
         )}
 
         {/* Whisper voice message (Feature 15) — hold to record, release to send,
-            swipe left to cancel. BYOK OpenAI key required. */}
-        {hasOpenAI && (
+            swipe left to cancel. BYOK OpenAI key OR server proxy. */}
+        {canUseWhisper && (
           <button
             type="button"
             onPointerDown={handleMicPointerDown}

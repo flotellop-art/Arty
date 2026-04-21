@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { Capacitor } from '@capacitor/core'
 import i18n from '../i18n'
+import { muteBeep, restoreBeep, forceRestoreBeep } from '../services/native/audioBeep'
 
 // Web Speech API types
 interface SpeechRecognitionEvent {
@@ -88,6 +89,17 @@ export function useSpeechRecognition() {
   const retryCountRef = useRef(0)
   const keepAliveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastFinalTextRef = useRef<string>('')
+  // True between the user-tap mute and the final restore. Used to avoid
+  // double-mute during the auto-restart backoff loop and to know whether the
+  // session ever asked the native plugin to silence STREAM_SYSTEM.
+  const mutedRef = useRef(false)
+
+  const endBeepMute = useCallback(() => {
+    if (mutedRef.current) {
+      mutedRef.current = false
+      void restoreBeep()
+    }
+  }, [])
 
   const isSupported = typeof window !== 'undefined' &&
     ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window)
@@ -223,6 +235,7 @@ export function useSpeechRecognition() {
           wantListeningRef.current = false
           setIsListening(false)
           retryCountRef.current = 0
+          endBeepMute()
           return
         }
 
@@ -234,6 +247,7 @@ export function useSpeechRecognition() {
         setTimeout(() => {
           if (!wantListeningRef.current) {
             setIsListening(false)
+            endBeepMute()
             return
           }
 
@@ -241,11 +255,13 @@ export function useSpeechRecognition() {
           const factory = createRecognitionRef.current
           if (!factory) {
             setIsListening(false)
+            endBeepMute()
             return
           }
           const next = factory()
           if (!next) {
             setIsListening(false)
+            endBeepMute()
             return
           }
           recognitionRef.current = next
@@ -260,11 +276,12 @@ export function useSpeechRecognition() {
       } else {
         setIsListening(false)
         retryCountRef.current = 0
+        endBeepMute()
       }
     }
 
     return recognition
-  }, [isSupported, clearKeepAlive, scheduleKeepAlive])
+  }, [isSupported, clearKeepAlive, scheduleKeepAlive, endBeepMute])
 
   // Keep the ref in sync so onend can call the latest factory
   useEffect(() => {
@@ -279,10 +296,15 @@ export function useSpeechRecognition() {
       if (recognitionRef.current) {
         try { recognitionRef.current.abort() } catch {}
       }
+      // Last-resort safety net: if the consumer unmounts mid-session before
+      // onend or stopListening fired, the native plugin might still hold the
+      // mute. forceRestoreBeep is a no-op outside Android native.
+      mutedRef.current = false
+      void forceRestoreBeep()
     }
   }, [clearKeepAlive])
 
-  const startListening = useCallback((onTranscript: (text: string) => void) => {
+  const startListening = useCallback(async (onTranscript: (text: string) => void) => {
     if (!isSupported) {
       setError('Reconnaissance vocale non supportée sur ce navigateur. Utilisez Chrome ou Edge.')
       return
@@ -299,8 +321,20 @@ export function useSpeechRecognition() {
       try { recognitionRef.current.abort() } catch {}
     }
 
+    // Mute Android STREAM_SYSTEM/STREAM_MUSIC before recognition.start() so
+    // the OS-level SpeechRecognizer startup beep is suppressed (BUG 46).
+    // No-op on web/PWA/iOS. Stays muted across the auto-restart loop —
+    // only restored on the final onend / stopListening / unmount.
+    if (Capacitor.isNativePlatform() && !mutedRef.current) {
+      mutedRef.current = true
+      await muteBeep()
+    }
+
     const recognition = createRecognition()
-    if (!recognition) return
+    if (!recognition) {
+      endBeepMute()
+      return
+    }
 
     recognitionRef.current = recognition
 
@@ -310,8 +344,9 @@ export function useSpeechRecognition() {
       // Already started or blocked — report error
       setError('Impossible de démarrer le micro')
       wantListeningRef.current = false
+      endBeepMute()
     }
-  }, [isSupported, createRecognition])
+  }, [isSupported, createRecognition, endBeepMute])
 
   const stopListening = useCallback(() => {
     wantListeningRef.current = false
@@ -321,7 +356,8 @@ export function useSpeechRecognition() {
       try { recognitionRef.current.stop() } catch {}
     }
     setInterimTranscript('')
-  }, [clearKeepAlive])
+    endBeepMute()
+  }, [clearKeepAlive, endBeepMute])
 
   return {
     isListening,

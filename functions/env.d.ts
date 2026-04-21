@@ -5,6 +5,7 @@ export interface Env {
   ANTHROPIC_API_KEY?: string
   GEMINI_API_KEY?: string
   MISTRAL_API_KEY?: string
+  OPENAI_API_KEY?: string
   ALLOWED_EMAILS?: string  // comma-separated list of emails allowed to use server keys
   DAILY_QUOTA_PER_USER?: string  // daily cap on server-key proxy calls per whitelisted email (default 3000)
   WP_URL: string
