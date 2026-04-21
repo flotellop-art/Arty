@@ -67,7 +67,8 @@ export function TopBar({ onMenuToggle, onHistoryToggle }: TopBarProps) {
       className="bg-theme-bg border-b border-theme-ink/10"
       style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
     >
-      <div className="flex items-center justify-between px-4 py-2.5">
+      {/* Row 1 — hamburger (gauche) + utilitaires (droite) */}
+      <div className="flex items-center justify-between px-4 pt-2.5 pb-1">
         {/* Hamburger */}
         <button
           onClick={onMenuToggle}
@@ -81,8 +82,55 @@ export function TopBar({ onMenuToggle, onHistoryToggle }: TopBarProps) {
           </svg>
         </button>
 
-        {/* Style + Model dropdowns */}
-        <div className="flex items-center gap-2" ref={menuRef}>
+        <div className="flex items-center gap-1">
+          {/* Cost indicator (Feature 13) */}
+          <CostIndicator />
+
+          {/* Day/Night toggle — Ember (☀️) ↔ Nocturne (🌙) */}
+          <button
+            onClick={handleThemeToggle}
+            className="p-2 rounded-lg hover:bg-theme-ink/5 transition-colors text-base"
+            aria-label={theme === 'nocturne' ? 'Mode jour (Ember)' : 'Mode nuit (Nocturne)'}
+            title={theme === 'nocturne' ? 'Mode jour (Ember)' : 'Mode nuit (Nocturne)'}
+          >
+            {theme === 'nocturne' ? '☀️' : '🌙'}
+          </button>
+
+          {/* Settings (gear) */}
+          <button
+            onClick={() => setShowSettings(true)}
+            className="p-2 rounded-lg hover:bg-theme-ink/5 transition-colors text-theme-ink"
+            aria-label="Paramètres"
+          >
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+              <circle cx="10" cy="10" r="2.5" stroke="currentColor" strokeWidth="1.5" />
+              <path
+                d="M10 1.5V4M10 16V18.5M18.5 10H16M4 10H1.5M16.01 4L14.24 5.76M5.76 14.24L4 16M16.01 16L14.24 14.24M5.76 5.76L4 4"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+              />
+            </svg>
+          </button>
+
+          {/* History */}
+          <button
+            onClick={onHistoryToggle}
+            className="p-2 -mr-2 rounded-lg hover:bg-theme-ink/5 transition-colors text-theme-ink"
+            aria-label={t('common.history')}
+          >
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+              <rect x="3" y="2" width="14" height="16" rx="2" stroke="currentColor" strokeWidth="1.5" fill="none" />
+              <line x1="6" y1="6" x2="14" y2="6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              <line x1="6" y1="10" x2="14" y2="10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              <line x1="6" y1="14" x2="10" y2="14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      {/* Row 2 — chips Style / Info / Modèle */}
+      <div className="flex flex-wrap items-center gap-2 px-4 pb-2.5" ref={menuRef}>
           {/* Style dropdown */}
           <div className="relative">
             <button
@@ -173,53 +221,6 @@ export function TopBar({ onMenuToggle, onHistoryToggle }: TopBarProps) {
               </div>
             )}
           </div>
-        </div>
-
-        <div className="flex items-center gap-1">
-          {/* Cost indicator (Feature 13) */}
-          <CostIndicator />
-
-          {/* Day/Night toggle — Ember (☀️) ↔ Nocturne (🌙) */}
-          <button
-            onClick={handleThemeToggle}
-            className="p-2 rounded-lg hover:bg-theme-ink/5 transition-colors text-base"
-            aria-label={theme === 'nocturne' ? 'Mode jour (Ember)' : 'Mode nuit (Nocturne)'}
-            title={theme === 'nocturne' ? 'Mode jour (Ember)' : 'Mode nuit (Nocturne)'}
-          >
-            {theme === 'nocturne' ? '☀️' : '🌙'}
-          </button>
-
-          {/* Settings (gear) */}
-          <button
-            onClick={() => setShowSettings(true)}
-            className="p-2 rounded-lg hover:bg-theme-ink/5 transition-colors text-theme-ink"
-            aria-label="Paramètres"
-          >
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-              <circle cx="10" cy="10" r="2.5" stroke="currentColor" strokeWidth="1.5" />
-              <path
-                d="M10 1.5V4M10 16V18.5M18.5 10H16M4 10H1.5M16.01 4L14.24 5.76M5.76 14.24L4 16M16.01 16L14.24 14.24M5.76 5.76L4 4"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-              />
-            </svg>
-          </button>
-
-          {/* History */}
-          <button
-            onClick={onHistoryToggle}
-            className="p-2 -mr-2 rounded-lg hover:bg-theme-ink/5 transition-colors text-theme-ink"
-            aria-label={t('common.history')}
-          >
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-              <rect x="3" y="2" width="14" height="16" rx="2" stroke="currentColor" strokeWidth="1.5" fill="none" />
-              <line x1="6" y1="6" x2="14" y2="6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-              <line x1="6" y1="10" x2="14" y2="10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-              <line x1="6" y1="14" x2="10" y2="14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-            </svg>
-          </button>
-        </div>
       </div>
 
       {showGuide && <SettingsGuide onClose={() => setShowGuide(false)} />}
