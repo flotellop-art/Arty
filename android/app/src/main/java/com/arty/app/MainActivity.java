@@ -8,6 +8,7 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(GoogleSignInPlugin.class);
+        registerPlugin(AudioBeepMutePlugin.class);
         super.onCreate(savedInstanceState);
 
         // Edge-to-edge — fait passer la WebView sous les system bars (status

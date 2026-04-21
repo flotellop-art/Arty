@@ -1,7 +1,5 @@
-Arty 1.0.15 — Messages vocaux style WhatsApp
+Arty 1.0.16 — Plus de bip Android au micro
 
-• Nouveau : maintiens le bouton micro pour enregistrer, relâche pour transcrire, glisse à gauche pour annuler
-• Nouveau : toggle "auto-envoi" (icône avion en papier) pour envoyer direct ou relire avant d'envoyer — ta préférence est mémorisée
-• Fix : libération propre du micro quand tu quittes la conversation en plein enregistrement
-• Fix : meilleure gestion du mic sur iOS Safari et Capacitor (plus de plantages à l'appui)
-• Fix : message d'erreur visible si le micro est refusé au lieu d'un silence déroutant
+• Fix : plus de bip système Android au tap du micro (mute temporaire de STREAM_SYSTEM/STREAM_MUSIC le temps de la session)
+• Notifs et appels restent audibles pendant la dictée — seul le son UI est coupé
+• Volume restauré automatiquement à la fin, même si l'app passe en background
