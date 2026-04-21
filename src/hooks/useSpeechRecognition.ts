@@ -50,8 +50,10 @@ const isIOS = typeof navigator !== 'undefined' &&
   /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as unknown as { MSStream?: unknown }).MSStream
 const isSafari = typeof navigator !== 'undefined' &&
   /^((?!chrome|android).)*safari/i.test(navigator.userAgent)
-// iOS/Safari doesn't reliably support continuous mode
-const useSingleShot = isIOS || isSafari
+// Capacitor native (Android + iOS) + Safari/iOS browsers delegate to a
+// session-based system SpeechRecognizer — continuous mode is not reliably
+// supported and the keep-alive restart causes beeps + duplicates (BUG 46).
+const useSingleShot = isIOS || isSafari || Capacitor.isNativePlatform()
 
 // ─── Language mapping from i18n ───
 function getSpeechLang(): string {
