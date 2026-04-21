@@ -22,6 +22,13 @@ import {
   getProLicense,
   type ProLicenseState,
 } from '../../services/proLicense'
+import {
+  isPromptEnhancementEnabled,
+  setPromptEnhancementEnabled,
+  getEnhancerModel,
+  setEnhancerModel,
+  type EnhancerModel,
+} from '../../services/promptEnhancerSettings'
 import { MemoryHistoryPanel } from './MemoryHistoryPanel'
 import { MemoryViewer } from './MemoryViewer'
 import { OrchestratorSync } from './OrchestratorSync'
@@ -44,6 +51,8 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
   const [locationChecking, setLocationChecking] = useState(false)
   const [locationDebug, setLocationDebug] = useState<LocationDebugSnapshot | null>(null)
   const [showLocationDebug, setShowLocationDebug] = useState(false)
+  const [enhanceEnabled, setEnhanceEnabled] = useState(false)
+  const [enhanceModel, setEnhanceModelState] = useState<EnhancerModel>('haiku')
   const [showMemoryHistory, setShowMemoryHistory] = useState(false)
   const [showMemoryViewer, setShowMemoryViewer] = useState(false)
   const [showQuota, setShowQuota] = useState(false)
@@ -64,6 +73,8 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
     setProLicense(getProLicense())
     setLicenseError('')
     setLicenseSuccess('')
+    setEnhanceEnabled(isPromptEnhancementEnabled())
+    setEnhanceModelState(getEnhancerModel())
   }, [open])
 
   const handleActivateLicense = async (e: React.FormEvent) => {
@@ -124,6 +135,17 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
       clearLocationCache()
       setLocationEnabled(false)
     }
+  }
+
+  const handleEnhanceToggle = () => {
+    const next = !enhanceEnabled
+    setPromptEnhancementEnabled(next)
+    setEnhanceEnabled(next)
+  }
+
+  const handleEnhanceModelChange = (model: EnhancerModel) => {
+    setEnhancerModel(model)
+    setEnhanceModelState(model)
   }
 
   // Close on Escape
@@ -262,6 +284,44 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
                 >
                   Voir dernière position envoyée à Arty
                 </button>
+              </div>
+            )}
+          </div>
+
+          {/* Prompt enhancement toggle (1.0.14) */}
+          <div className="border-t border-theme-border pt-5">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="font-display text-base text-theme-ink">✨ Amélioration du prompt</p>
+                <p className="font-display italic text-xs text-theme-muted mt-0.5">
+                  Reformule ton message avant l'envoi
+                </p>
+              </div>
+              <button
+                onClick={handleEnhanceToggle}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors shrink-0 ${
+                  enhanceEnabled ? 'bg-theme-accent' : 'bg-theme-ink/20'
+                }`}
+                aria-pressed={enhanceEnabled}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-theme-bg transition-transform ${
+                    enhanceEnabled ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
+            {enhanceEnabled && (
+              <div className="mt-3 flex items-center justify-between gap-4">
+                <label className="font-display italic text-xs text-theme-muted">Modèle</label>
+                <select
+                  value={enhanceModel}
+                  onChange={(e) => handleEnhanceModelChange(e.target.value as EnhancerModel)}
+                  className="text-xs bg-theme-surface border border-theme-border rounded px-2 py-1 text-theme-ink focus:outline-none focus:border-theme-accent"
+                >
+                  <option value="haiku">Claude Haiku (US)</option>
+                  <option value="mistral">Mistral Small (EU)</option>
+                </select>
               </div>
             )}
           </div>
