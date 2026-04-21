@@ -1,5 +1,6 @@
-Arty 1.0.16 — Plus de bip Android au micro
+Arty 1.0.16 — Plus de bip Android + Whisper serveur pour les testeurs
 
 • Fix : plus de bip système Android au tap du micro (mute temporaire de STREAM_SYSTEM/STREAM_MUSIC le temps de la session)
 • Notifs et appels restent audibles pendant la dictée — seul le son UI est coupé
 • Volume restauré automatiquement à la fin, même si l'app passe en background
+• Nouveau : les testeurs autorisés peuvent utiliser le mode vocal WhatsApp (hold-to-record Whisper) sans configurer leur propre clé OpenAI — la clé serveur est utilisée pour les emails whitelistés
