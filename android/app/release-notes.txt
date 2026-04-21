@@ -1,1 +1,10 @@
-Fix barre boutons 2 rangées — Row 2b conditionnelle + espacement chips/actions (PR #50)
+Arty 1.0.13 — Micro + stabilité
+
+🎙️ Le micro fonctionne enfin — Android demande la permission
+au premier clic, plus besoin de chercher dans les paramètres.
+
+♻️ Plus besoin de "Vider les données" à chaque update — installe
+par-dessus l'ancienne version, Google reste connecté, les modifs
+apparaissent direct.
+
+Merci Mégane pour le signalement du bug micro 🙏
