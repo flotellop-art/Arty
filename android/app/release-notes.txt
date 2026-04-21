@@ -4,3 +4,4 @@ Arty 1.0.16 — Plus de bip Android + Whisper serveur pour les testeurs
 • Notifs et appels restent audibles pendant la dictée — seul le son UI est coupé
 • Volume restauré automatiquement à la fin, même si l'app passe en background
 • Nouveau : les testeurs autorisés peuvent utiliser le mode vocal WhatsApp (hold-to-record Whisper) sans configurer leur propre clé OpenAI — la clé serveur est utilisée pour les emails whitelistés
+• Transcription vocale nettement plus fidèle : passage au modèle gpt-4o-transcribe (mieux sur voix basses, accents, bruit) + filtres audio natifs (auto-gain, suppression bruit, anti-écho) activés sur le micro
