@@ -352,7 +352,13 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
 
     let stream: MediaStream | null = null
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          autoGainControl: true,
+          noiseSuppression: true,
+          echoCancellation: true,
+        },
+      })
     } catch (err) {
       // If the user already released (stopAudioRecording cleared the flag),
       // don't clobber any tooShort / swipe-cancel message they already see.

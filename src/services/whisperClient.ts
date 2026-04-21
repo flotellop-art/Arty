@@ -26,7 +26,9 @@ function pickFilename(blob: Blob): string {
 export async function transcribeAudio(audioBlob: Blob): Promise<string> {
   const formData = new FormData()
   formData.append('file', audioBlob, pickFilename(audioBlob))
-  formData.append('model', 'whisper-1')
+  // gpt-4o-transcribe : meilleure robustesse aux voix basses, accents et bruit
+  // de fond que whisper-1. Même endpoint, prix légèrement supérieur.
+  formData.append('model', 'gpt-4o-transcribe')
   const lng = (i18n.resolvedLanguage || i18n.language || 'fr').slice(0, 2)
   formData.append('language', lng)
 
