@@ -167,7 +167,9 @@
         "micStop": "Arrêter le micro",
         "stop": "Arrêter",
         "send": "Envoyer",
-        "holdToRecord": "Maintiens pour enregistrer un message vocal"
+        "holdToRecord": "Maintiens pour enregistrer un message vocal",
+        "autoSendOn": "Auto-envoi activé — relâche le micro pour envoyer direct",
+        "autoSendOff": "Auto-envoi désactivé — transcription ajoutée à la zone de texte"
       },
       "voice": {
         "recording": "Enregistrement",

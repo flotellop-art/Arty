@@ -167,7 +167,9 @@
         "micStop": "Stop microphone",
         "stop": "Stop",
         "send": "Send",
-        "holdToRecord": "Hold to record a voice message"
+        "holdToRecord": "Hold to record a voice message",
+        "autoSendOn": "Auto-send on — release the mic to send immediately",
+        "autoSendOff": "Auto-send off — transcription fills the text area"
       },
       "voice": {
         "recording": "Recording",

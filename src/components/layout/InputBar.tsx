@@ -8,6 +8,7 @@ import { filterSlashCommands, type SlashCommand } from '../../constants/slashCom
 import { detectDates } from '../../utils/dateDetector'
 import { getValidAccessToken } from '../../services/googleAuth'
 import { callGoogleApi } from '../../services/googleApiHelper'
+import * as scoped from '../../services/scopedStorage'
 
 interface InputBarProps {
   onSend: (text: string, files?: FileAttachment[]) => void
@@ -50,6 +51,28 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
   const pointerStartXRef = useRef(0)
   const pressStartRef = useRef(0)
 
+  // Auto-send voice toggle — when ON, release-to-send sends the transcription as
+  // a message immediately (WhatsApp-style). When OFF, transcription fills the
+  // textarea so the user can review/edit before sending. Persisted per-user via
+  // scopedStorage so the preference survives refresh + account switch.
+  const [autoSendVoice, setAutoSendVoice] = useState<boolean>(() => {
+    return scoped.getJSON<boolean>('voice-autosend') === true
+  })
+  const toggleAutoSendVoice = useCallback(() => {
+    setAutoSendVoice((prev) => {
+      const next = !prev
+      scoped.setJSON('voice-autosend', next)
+      return next
+    })
+  }, [])
+
+  // Synced refs — MediaRecorder.onstop is async and captures closure values at
+  // recorder creation. Reading these via refs lets the callback see the latest
+  // toggle/draft/attachments at the moment the user releases the mic.
+  const autoSendRef = useRef(autoSendVoice)
+  const textRef = useRef('')
+  const filesRef = useRef<FileAttachment[]>([])
+
   const {
     isListening,
     interimTranscript,
@@ -65,6 +88,11 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
     getValidAccessToken().then((t) => { if (active) setGoogleConnected(!!t) }).catch(() => {})
     return () => { active = false }
   }, [])
+
+  // Keep refs in sync with state for use inside MediaRecorder.onstop closure.
+  useEffect(() => { autoSendRef.current = autoSendVoice }, [autoSendVoice])
+  useEffect(() => { textRef.current = text })
+  useEffect(() => { filesRef.current = files }, [files])
 
   // Auto-resize textarea
   useEffect(() => {
@@ -106,17 +134,23 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
     })
   }, [])
 
-  const handleSend = () => {
-    const trimmed = text.trim()
-    if ((!trimmed && files.length === 0) || isStreaming) return
+  // Pure send function — takes explicit text/files rather than closing over
+  // state, so the async MediaRecorder.onstop callback can call it with fresh
+  // refs. Returns true on successful send, false if blocked (empty or streaming).
+  const sendText = useCallback((textToSend: string, filesToSend: FileAttachment[]): boolean => {
+    const trimmed = textToSend.trim()
+    if ((!trimmed && filesToSend.length === 0) || isStreaming) return false
     if (isListening) stopListening()
-    onSend(trimmed || t('chat.input.defaultFilePrompt'), files.length > 0 ? files : undefined)
+    onSend(trimmed || t('chat.input.defaultFilePrompt'), filesToSend.length > 0 ? filesToSend : undefined)
     setText('')
     setFiles([])
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto'
     }
-  }
+    return true
+  }, [isStreaming, isListening, stopListening, onSend, t])
+
+  const handleSend = () => { sendText(text, files) }
 
   const applySlashCommand = useCallback((cmd: SlashCommand) => {
     setText(cmd.prompt)
@@ -387,7 +421,19 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
       try {
         const { transcribeAudio } = await import('../../services/whisperClient')
         const transcription = await transcribeAudio(blob)
-        if (transcription) {
+        if (!transcription) return
+
+        if (autoSendRef.current) {
+          // Auto-send ON — combine any draft + transcription, send straight away.
+          // If sendText is blocked (streaming in progress) fall back to the
+          // textarea so the transcription isn't silently lost.
+          const draft = textRef.current.trim()
+          const combined = draft ? draft + ' ' + transcription : transcription
+          const sent = sendText(combined, filesRef.current)
+          if (!sent) {
+            setText((prev) => (prev ? prev + ' ' : '') + transcription)
+          }
+        } else {
           setText((prev) => (prev ? prev + ' ' : '') + transcription)
         }
       } catch (err) {
@@ -420,7 +466,7 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
         try { r.stop() } catch {}
       }
     }, HOLD_MAX_MS)
-  }, [isRecordingAudio, isListening, stopListening, t, clearRecordingTimers, hardResetRecording])
+  }, [isRecordingAudio, isListening, stopListening, t, clearRecordingTimers, hardResetRecording, sendText])
 
   const stopAudioRecording = useCallback((cancel = false) => {
     wantRecordingRef.current = false
@@ -748,6 +794,35 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
           rows={1}
           className="flex-1 resize-none bg-transparent text-sm text-theme-ink placeholder:text-theme-muted/60 focus:outline-none py-1.5 font-sans font-light leading-relaxed"
         />
+
+        {/* Auto-send toggle — when ON, the Whisper release sends the
+            transcription straight to the conversation (WhatsApp-style). When
+            OFF, it fills the textarea so the user can review/edit first. */}
+        {hasOpenAI && (
+          <button
+            type="button"
+            onClick={toggleAutoSendVoice}
+            className={`flex-shrink-0 p-1.5 rounded-full transition-colors mb-0.5 ${
+              autoSendVoice
+                ? 'text-theme-accent bg-theme-accent/10'
+                : 'text-theme-muted hover:bg-theme-ink/5'
+            }`}
+            aria-label={t(autoSendVoice ? 'chat.input.aria.autoSendOn' : 'chat.input.aria.autoSendOff')}
+            title={t(autoSendVoice ? 'chat.input.aria.autoSendOn' : 'chat.input.aria.autoSendOff')}
+            aria-pressed={autoSendVoice}
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <path
+                d="M14 2L2 7L7 9L14 2ZM14 2L9 14L7 9L14 2Z"
+                stroke="currentColor"
+                strokeWidth="1.3"
+                strokeLinejoin="round"
+                fill={autoSendVoice ? 'currentColor' : 'none'}
+                fillOpacity={autoSendVoice ? 0.2 : 0}
+              />
+            </svg>
+          </button>
+        )}
 
         {/* Whisper voice message (Feature 15) — hold to record, release to send,
             swipe left to cancel. BYOK OpenAI key required. */}
