@@ -82,11 +82,21 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
     stopListening,
   } = useSpeechRecognition()
 
-  // Check Google connection once for the calendar suggestion pill
+  // Check Google connection — re-evaluates on 'google-storage-ready' because
+  // the first mount can fire before bootstrapGoogleStorage has decrypted tokens
+  // on native (crypto is async). Without this the Whisper gate stays false
+  // even after login finishes.
   useEffect(() => {
     let active = true
-    getValidAccessToken().then((t) => { if (active) setGoogleConnected(!!t) }).catch(() => {})
-    return () => { active = false }
+    const check = () => {
+      getValidAccessToken().then((t) => { if (active) setGoogleConnected(!!t) }).catch(() => {})
+    }
+    check()
+    window.addEventListener('google-storage-ready', check)
+    return () => {
+      active = false
+      window.removeEventListener('google-storage-ready', check)
+    }
   }, [])
 
   // Keep refs in sync with state for use inside MediaRecorder.onstop closure.
