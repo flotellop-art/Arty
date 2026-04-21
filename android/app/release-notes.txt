@@ -1,1 +1,7 @@
-Arty 1.0.14 — corrections et améliorations
+Arty 1.0.15 — Messages vocaux style WhatsApp
+
+• Nouveau : maintiens le bouton micro pour enregistrer, relâche pour transcrire, glisse à gauche pour annuler
+• Nouveau : toggle "auto-envoi" (icône avion en papier) pour envoyer direct ou relire avant d'envoyer — ta préférence est mémorisée
+• Fix : libération propre du micro quand tu quittes la conversation en plein enregistrement
+• Fix : meilleure gestion du mic sur iOS Safari et Capacitor (plus de plantages à l'appui)
+• Fix : message d'erreur visible si le micro est refusé au lieu d'un silence déroutant
