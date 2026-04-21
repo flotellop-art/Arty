@@ -161,20 +161,29 @@
       "defaultFilePrompt": "Analyse ce fichier.",
       "aria": {
         "attach": "Joindre un fichier",
+        "attachMenu": "Ouvrir le menu d'ajout",
         "camera": "Photo",
         "scan": "Scanner un document",
         "micStart": "Micro",
         "micStop": "Arrêter le micro",
         "stop": "Arrêter",
         "send": "Envoyer",
-        "holdToRecord": "Maintiens pour enregistrer un message vocal",
+        "holdToRecord": "Tap pour dicter, appui long pour Whisper",
         "autoSendOn": "Auto-envoi activé — relâche le micro pour envoyer direct",
         "autoSendOff": "Auto-envoi désactivé — transcription ajoutée à la zone de texte"
+      },
+      "menu": {
+        "file": "Fichier",
+        "photo": "Photo",
+        "scan": "Scanner"
       },
       "voice": {
         "recording": "Enregistrement",
         "swipeToCancel": "← Glisse pour annuler",
         "releaseToCancel": "Relâche pour annuler",
+        "releaseToSend": "Whisper — relâche pour envoyer",
+        "tapToStop": "Écoute… tap pour terminer",
+        "artyReplying": "Arty répond…",
         "transcribing": "Transcription…",
         "tooShort": "Maintiens appuyé pour enregistrer",
         "micDenied": "Micro refusé — autorise-le dans les paramètres",
