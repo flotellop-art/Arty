@@ -161,20 +161,29 @@
       "defaultFilePrompt": "Analyze this file.",
       "aria": {
         "attach": "Attach a file",
+        "attachMenu": "Open attach menu",
         "camera": "Photo",
         "scan": "Scan a document",
         "micStart": "Microphone",
         "micStop": "Stop microphone",
         "stop": "Stop",
         "send": "Send",
-        "holdToRecord": "Hold to record a voice message",
+        "holdToRecord": "Tap to dictate, hold for Whisper",
         "autoSendOn": "Auto-send on — release the mic to send immediately",
         "autoSendOff": "Auto-send off — transcription fills the text area"
+      },
+      "menu": {
+        "file": "File",
+        "photo": "Photo",
+        "scan": "Scan"
       },
       "voice": {
         "recording": "Recording",
         "swipeToCancel": "← Slide to cancel",
         "releaseToCancel": "Release to cancel",
+        "releaseToSend": "Whisper — release to send",
+        "tapToStop": "Listening… tap to stop",
+        "artyReplying": "Arty is replying…",
         "transcribing": "Transcribing…",
         "tooShort": "Hold the button to record",
         "micDenied": "Microphone denied — allow it in settings",
