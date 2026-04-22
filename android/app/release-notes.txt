@@ -1,4 +1,5 @@
-Arty 1.0.21 — Fix connexion Google qui échoue silencieusement
+Arty 1.0.22 — Diagnostic connexion Google
 
-• Fix : quand tu cliques "Connecter Google" et que le popup s'ouvre mais que rien ne se passe, tu vois maintenant la VRAIE erreur (serverAuthCode manquant, échange de token échoué côté serveur, réponse Google sans access_token). Avant, l'app stockait des tokens vides et se marquait "connectée" sans rien dire.
-• Fix : la reconnexion Google depuis l'app (sans clear data) fonctionne enfin de manière fiable — plus de boucle "popup → rien → retry → rien".
+• Fix : si le plugin Google natif se bloque (popup s'ouvre mais ne revient jamais), un timeout de 30s force un message d'erreur au lieu de spinner pour l'éternité.
+• UI : les erreurs de connexion Google sont maintenant affichées dans un vrai banner rouge plein-largeur sous le bouton (au lieu d'un petit texte facilement raté).
+• Logs : chaque étape du flow login est loggée en console (visible via Chrome DevTools remote — chrome://inspect) pour diagnostiquer les futurs bugs.
