@@ -8,7 +8,6 @@ import { filterSlashCommands, type SlashCommand } from '../../constants/slashCom
 import { detectDates } from '../../utils/dateDetector'
 import { getValidAccessToken } from '../../services/googleAuth'
 import { callGoogleApi } from '../../services/googleApiHelper'
-import * as scoped from '../../services/scopedStorage'
 
 interface InputBarProps {
   onSend: (text: string, files?: FileAttachment[]) => void
@@ -17,6 +16,11 @@ interface InputBarProps {
   suggestion?: string | null
 }
 
+// V2 voice-first — tap = webkit speech, hold ≥ 600ms = Whisper recording.
+const HOLD_THRESHOLD_MS = 600
+const HOLD_MAX_MS = 60_000
+const SWIPE_CANCEL_THRESHOLD_PX = 60
+
 export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
   const { t } = useTranslation()
   const [text, setText] = useState('')
@@ -24,6 +28,9 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const cameraInputRef = useRef<HTMLInputElement>(null)
+
+  // Attach menu popup (replaces separate camera/scan/web-camera buttons).
+  const [showAttachMenu, setShowAttachMenu] = useState(false)
 
   // Slash command palette state
   const [showSlashPalette, setShowSlashPalette] = useState(false)
@@ -35,41 +42,35 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
   const [googleConnected, setGoogleConnected] = useState(false)
   const [showCalendarForm, setShowCalendarForm] = useState(false)
 
-  // Audio recording state (Feature 15 — hold-to-record voice messages)
+  // Audio recording state — Whisper branch (long press).
   const [isRecordingAudio, setIsRecordingAudio] = useState(false)
   const [recordingDuration, setRecordingDuration] = useState(0)
   const [isSwipeCancelling, setIsSwipeCancelling] = useState(false)
   const [isTranscribing, setIsTranscribing] = useState(false)
   const [audioError, setAudioError] = useState<string | null>(null)
+  // 0..1 during the 0–600ms hold window. Drives the progress ring SVG.
+  const [holdProgress, setHoldProgress] = useState(0)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
   const recordTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const maxDurationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const holdIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const cancelRecordingRef = useRef(false)
   const wantRecordingRef = useRef(false)
   const pointerIdRef = useRef<number | null>(null)
   const pointerStartXRef = useRef(0)
   const pressStartRef = useRef(0)
-
-  // Auto-send voice toggle — when ON, release-to-send sends the transcription as
-  // a message immediately (WhatsApp-style). When OFF, transcription fills the
-  // textarea so the user can review/edit before sending. Persisted per-user via
-  // scopedStorage so the preference survives refresh + account switch.
-  const [autoSendVoice, setAutoSendVoice] = useState<boolean>(() => {
-    return scoped.getJSON<boolean>('voice-autosend') === true
-  })
-  const toggleAutoSendVoice = useCallback(() => {
-    setAutoSendVoice((prev) => {
-      const next = !prev
-      scoped.setJSON('voice-autosend', next)
-      return next
-    })
-  }, [])
+  // Flip to true when the 600ms threshold is crossed — the visual switches to
+  // "whisper" and the release path routes through transcription instead of
+  // toggling webkit speech.
+  const crossedThresholdRef = useRef(false)
+  // Webkit listening state at pointerDown — so a short tap can intelligently
+  // toggle (start if was off, stop if was on).
+  const wasListeningAtDownRef = useRef(false)
 
   // Synced refs — MediaRecorder.onstop is async and captures closure values at
   // recorder creation. Reading these via refs lets the callback see the latest
-  // toggle/draft/attachments at the moment the user releases the mic.
-  const autoSendRef = useRef(autoSendVoice)
+  // draft/attachments at the moment the user releases the mic.
   const textRef = useRef('')
   const filesRef = useRef<FileAttachment[]>([])
 
@@ -100,7 +101,6 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
   }, [])
 
   // Keep refs in sync with state for use inside MediaRecorder.onstop closure.
-  useEffect(() => { autoSendRef.current = autoSendVoice }, [autoSendVoice])
   useEffect(() => { textRef.current = text })
   useEffect(() => { filesRef.current = files }, [files])
 
@@ -233,14 +233,6 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
     setFiles((prev) => prev.filter((_, i) => i !== index))
   }
 
-  const handleMicClick = () => {
-    if (isListening) {
-      stopListening()
-    } else {
-      startListening(handleTranscript)
-    }
-  }
-
   const handleCamera = async () => {
     const photo = await takePhoto()
     if (photo) {
@@ -287,18 +279,20 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
     if (cameraInputRef.current) cameraInputRef.current.value = ''
   }
 
-  // Feature 15 — Whisper voice messages (hold-to-record, WhatsApp-style)
-  // Flow: pointerDown → getUserMedia + MediaRecorder.start
-  //        pointerMove (dx < -60px) → isSwipeCancelling = true
-  //        pointerUp (cancel OR held < 500ms) → stop + discard
-  //        pointerUp (normal) → stop + transcribe via OpenAI Whisper (BYOK)
-  //        pointerCancel / unmount → stop + discard
-  // Safety: max 60s auto-stop, stream torn down on every exit path, concurrent
-  // Web-Speech listening is paused to avoid mic contention.
-
-  const HOLD_MIN_MS = 500
-  const HOLD_MAX_MS = 60_000
-  const SWIPE_CANCEL_THRESHOLD_PX = 60
+  // V2 voice button — tap = webkit speech toggle, hold ≥ 600ms = Whisper.
+  // Flow:
+  //   pointerDown: start 16ms interval tracking 0→1 hold progress,
+  //                start MediaRecorder silently (captures audio from t=0 so
+  //                nothing is lost when the hold crosses the threshold).
+  //   progress === 1 (at 600ms): crossedThresholdRef = true, visual flips to
+  //                "whisper" state, MediaRecorder keeps capturing.
+  //   pointerMove (dx < -60px AND crossed): isSwipeCancelling = true.
+  //   pointerUp:
+  //     if swipe-cancelled → discard audio, no webkit toggle.
+  //     if held < 600ms    → discard audio, toggle webkit listening.
+  //     if held ≥ 600ms    → stop MediaRecorder → transcribe → auto-send.
+  //   pointerCancel / unmount: discard everything.
+  // Safety: max 60s auto-stop, stream torn down on every exit path.
 
   const pickAudioMimeType = (): string => {
     if (typeof MediaRecorder === 'undefined') return ''
@@ -326,8 +320,16 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
     }
   }, [])
 
+  const clearHoldInterval = useCallback(() => {
+    if (holdIntervalRef.current) {
+      clearInterval(holdIntervalRef.current)
+      holdIntervalRef.current = null
+    }
+  }, [])
+
   const hardResetRecording = useCallback(() => {
     clearRecordingTimers()
+    clearHoldInterval()
     const rec = mediaRecorderRef.current
     mediaRecorderRef.current = null
     // Signal onstop to discard — must be set BEFORE rec.stop() triggers the
@@ -339,9 +341,11 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
     audioChunksRef.current = []
     wantRecordingRef.current = false
     pointerIdRef.current = null
+    crossedThresholdRef.current = false
     setIsRecordingAudio(false)
     setIsSwipeCancelling(false)
-  }, [clearRecordingTimers])
+    setHoldProgress(0)
+  }, [clearRecordingTimers, clearHoldInterval])
 
   const startAudioRecording = useCallback(async () => {
     if (isRecordingAudio || mediaRecorderRef.current) return
@@ -439,17 +443,12 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
         const transcription = await transcribeAudio(blob)
         if (!transcription) return
 
-        if (autoSendRef.current) {
-          // Auto-send ON — combine any draft + transcription, send straight away.
-          // If sendText is blocked (streaming in progress) fall back to the
-          // textarea so the transcription isn't silently lost.
-          const draft = textRef.current.trim()
-          const combined = draft ? draft + ' ' + transcription : transcription
-          const sent = sendText(combined, filesRef.current)
-          if (!sent) {
-            setText((prev) => (prev ? prev + ' ' : '') + transcription)
-          }
-        } else {
+        // V2 — Whisper always auto-sends (WhatsApp-style). If streaming blocks
+        // sendText we fall back to the textarea so the transcription isn't lost.
+        const draft = textRef.current.trim()
+        const combined = draft ? draft + ' ' + transcription : transcription
+        const sent = sendText(combined, filesRef.current)
+        if (!sent) {
           setText((prev) => (prev ? prev + ' ' : '') + transcription)
         }
       } catch (err) {
@@ -501,53 +500,92 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
     }
   }, [clearRecordingTimers])
 
-  // Pointer handlers wired to the mic button for the hold-to-record UX.
-  const handleMicPointerDown = useCallback((e: React.PointerEvent<HTMLButtonElement>) => {
-    // Prevent the browser's long-press context menu and stop focus stealing
-    // from the textarea on desktop (pointer capture handles the rest).
+  // V2 pointer handlers — tap toggles webkit speech, hold ≥ 600ms records Whisper.
+  const handleVoicePointerDown = useCallback((e: React.PointerEvent<HTMLButtonElement>) => {
+    // Prevent the browser's long-press context menu and stop focus stealing.
     e.preventDefault()
     pointerIdRef.current = e.pointerId
     pointerStartXRef.current = e.clientX
     pressStartRef.current = Date.now()
+    crossedThresholdRef.current = false
+    wasListeningAtDownRef.current = isListening
     setIsSwipeCancelling(false)
     setAudioError(null)
+    setHoldProgress(0)
     try { e.currentTarget.setPointerCapture(e.pointerId) } catch {}
-    void startAudioRecording()
-  }, [startAudioRecording])
 
-  const handleMicPointerMove = useCallback((e: React.PointerEvent<HTMLButtonElement>) => {
+    // Start MediaRecorder silently if Whisper is available — audio from t=0 is
+    // preserved so the full utterance is captured once threshold is crossed.
+    if (canUseWhisperRef.current) {
+      void startAudioRecording()
+    }
+
+    // Drive the progress ring (0→1 over 600ms) + flip to "whisper" at t=threshold.
+    const t0 = pressStartRef.current
+    holdIntervalRef.current = setInterval(() => {
+      const elapsed = Date.now() - t0
+      const p = Math.min(elapsed / HOLD_THRESHOLD_MS, 1)
+      setHoldProgress(p)
+      if (p >= 1 && !crossedThresholdRef.current) {
+        crossedThresholdRef.current = true
+        clearHoldInterval()
+      }
+    }, 16)
+  }, [isListening, startAudioRecording, clearHoldInterval])
+
+  const handleVoicePointerMove = useCallback((e: React.PointerEvent<HTMLButtonElement>) => {
     if (pointerIdRef.current !== e.pointerId) return
+    // Swipe-cancel only applies once the threshold is crossed (whisper mode).
+    if (!crossedThresholdRef.current) return
     const dx = e.clientX - pointerStartXRef.current
     const cancelling = dx < -SWIPE_CANCEL_THRESHOLD_PX
     setIsSwipeCancelling((prev) => (prev === cancelling ? prev : cancelling))
   }, [])
 
-  const handleMicPointerUp = useCallback((e: React.PointerEvent<HTMLButtonElement>) => {
+  const handleVoicePointerUp = useCallback((e: React.PointerEvent<HTMLButtonElement>) => {
     if (pointerIdRef.current !== e.pointerId) return
     const heldMs = Date.now() - pressStartRef.current
     const cancelSwipe = isSwipeCancelling
+    const crossed = crossedThresholdRef.current
+    const wasListening = wasListeningAtDownRef.current
     pointerIdRef.current = null
+    crossedThresholdRef.current = false
+    clearHoldInterval()
+    setHoldProgress(0)
     try { e.currentTarget.releasePointerCapture(e.pointerId) } catch {}
-    if (cancelSwipe) {
-      stopAudioRecording(true)
-      return
-    }
-    if (heldMs < HOLD_MIN_MS) {
-      // Too-short press — user tapped rather than held. Discard audio and
-      // show a hint. This also covers the case where they changed their mind.
-      stopAudioRecording(true)
-      setAudioError(t('chat.input.voice.tooShort'))
-      return
-    }
-    stopAudioRecording(false)
-  }, [isSwipeCancelling, stopAudioRecording, t])
 
-  const handleMicPointerCancel = useCallback((e: React.PointerEvent<HTMLButtonElement>) => {
+    if (cancelSwipe) {
+      // User slid left to abort the Whisper recording.
+      stopAudioRecording(true)
+      return
+    }
+
+    if (crossed && heldMs >= HOLD_THRESHOLD_MS) {
+      // Long-press release → send Whisper transcription.
+      stopAudioRecording(false)
+      return
+    }
+
+    // Short tap — discard any audio buffered during the 0→600ms window and
+    // toggle webkit speech recognition instead.
+    stopAudioRecording(true)
+    if (!isMicSupported) return
+    if (wasListening) {
+      try { stopListening() } catch {}
+    } else {
+      try { startListening(handleTranscript) } catch {}
+    }
+  }, [isSwipeCancelling, stopAudioRecording, clearHoldInterval, isMicSupported, startListening, stopListening, handleTranscript])
+
+  const handleVoicePointerCancel = useCallback((e: React.PointerEvent<HTMLButtonElement>) => {
     if (pointerIdRef.current !== e.pointerId) return
     pointerIdRef.current = null
+    crossedThresholdRef.current = false
+    clearHoldInterval()
+    setHoldProgress(0)
     try { e.currentTarget.releasePointerCapture(e.pointerId) } catch {}
     stopAudioRecording(true)
-  }, [stopAudioRecording])
+  }, [stopAudioRecording, clearHoldInterval])
 
   // Safety: tear down the recorder + stream if the component unmounts while
   // recording. Without this the mic stays hot after navigating away.
@@ -590,6 +628,10 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
     })
   }, [])
   const canUseWhisper = hasOpenAI || googleConnected
+  // Ref'd for handleVoicePointerDown — avoids re-creating the callback whenever
+  // the gate flips (e.g. when Google storage finally decrypts after mount).
+  const canUseWhisperRef = useRef(canUseWhisper)
+  useEffect(() => { canUseWhisperRef.current = canUseWhisper }, [canUseWhisper])
 
   return (
     <div className="relative px-4 pb-4 pt-2 bg-theme-bg" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 1rem))' }}>
@@ -725,18 +767,21 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
         </div>
       )}
 
-      <div className="flex items-end gap-2 bg-theme-surface rounded-2xl border border-theme-border px-3 py-2 shadow-sm">
-        {/* Plus button — file upload */}
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          className="flex-shrink-0 p-1.5 rounded-full hover:bg-theme-ink/5 transition-colors text-theme-muted mb-0.5"
-          aria-label={t('chat.input.aria.attach')}
-        >
-          <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-            <line x1="9" y1="3" x2="9" y2="15" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-            <line x1="3" y1="9" x2="15" y2="9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-          </svg>
-        </button>
+      <div className="relative flex items-end gap-1.5 bg-theme-surface rounded-2xl border border-theme-border px-3 py-2 shadow-sm">
+        {/* + menu — file upload + native camera/scan + web camera (mobile). */}
+        <AttachMenu
+          open={showAttachMenu}
+          onOpenChange={setShowAttachMenu}
+          onPickFile={() => fileInputRef.current?.click()}
+          onPickCamera={isNative ? handleCamera : (showWebCamera ? handleWebCamera : undefined)}
+          onPickScan={isNative ? handleScan : undefined}
+          ariaLabel={t('chat.input.aria.attachMenu')}
+          labels={{
+            file: t('chat.input.menu.file'),
+            photo: t('chat.input.menu.photo'),
+            scan: t('chat.input.menu.scan'),
+          }}
+        />
         <input
           ref={fileInputRef}
           type="file"
@@ -745,185 +790,295 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
           multiple
           className="hidden"
         />
-
-        {/* Camera button — native only */}
-        {isNative && (
-          <button
-            onClick={handleCamera}
-            className="flex-shrink-0 p-1.5 rounded-full hover:bg-theme-ink/5 transition-colors text-theme-muted mb-0.5"
-            aria-label={t('chat.input.aria.camera')}
-          >
-            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-              <rect x="2" y="5" width="14" height="10" rx="2" stroke="currentColor" strokeWidth="1.3" />
-              <circle cx="9" cy="10" r="3" stroke="currentColor" strokeWidth="1.3" />
-              <path d="M6 5L7 3H11L12 5" stroke="currentColor" strokeWidth="1.3" />
-            </svg>
-          </button>
-        )}
-
-        {/* Scan button — native only */}
-        {isNative && (
-          <button
-            onClick={handleScan}
-            className="flex-shrink-0 p-1.5 rounded-full hover:bg-theme-ink/5 transition-colors text-theme-muted mb-0.5"
-            aria-label={t('chat.input.aria.scan')}
-          >
-            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-              <rect x="3" y="2" width="12" height="14" rx="1.5" stroke="currentColor" strokeWidth="1.3" />
-              <line x1="6" y1="6" x2="12" y2="6" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-              <line x1="6" y1="9" x2="12" y2="9" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-              <line x1="6" y1="12" x2="10" y2="12" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-            </svg>
-          </button>
-        )}
-
-        {/* Web camera button — mobile web only (Feature 14) */}
         {showWebCamera && (
-          <>
-            <button
-              onClick={handleWebCamera}
-              title="Analyser une façade, un document, une photo de chantier"
-              className="flex-shrink-0 p-1.5 rounded-full hover:bg-theme-ink/5 transition-colors text-theme-muted mb-0.5"
-              aria-label="Prendre une photo"
-            >
-              <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-                <rect x="2" y="5" width="14" height="10" rx="2" stroke="currentColor" strokeWidth="1.3" />
-                <circle cx="9" cy="10" r="3" stroke="currentColor" strokeWidth="1.3" />
-                <path d="M6 5L7 3H11L12 5" stroke="currentColor" strokeWidth="1.3" />
-              </svg>
-            </button>
-            <input
-              ref={cameraInputRef}
-              type="file"
-              accept="image/*"
-              capture="environment"
-              onChange={handleWebCameraChange}
-              className="hidden"
-            />
-          </>
+          <input
+            ref={cameraInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            onChange={handleWebCameraChange}
+            className="hidden"
+          />
         )}
 
-        {/* Textarea */}
-        <textarea
-          ref={textareaRef}
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder={isListening ? t('chat.input.listening') : t('chat.input.placeholder')}
-          rows={1}
-          className="flex-1 resize-none bg-transparent text-sm text-theme-ink placeholder:text-theme-muted/60 focus:outline-none py-1.5 font-sans font-light leading-relaxed"
-        />
-
-        {/* Auto-send toggle — when ON, the Whisper release sends the
-            transcription straight to the conversation (WhatsApp-style). When
-            OFF, it fills the textarea so the user can review/edit first. */}
-        {canUseWhisper && (
-          <button
-            type="button"
-            onClick={toggleAutoSendVoice}
-            className={`flex-shrink-0 p-1.5 rounded-full transition-colors mb-0.5 ${
-              autoSendVoice
-                ? 'text-theme-accent bg-theme-accent/10'
-                : 'text-theme-muted hover:bg-theme-ink/5'
-            }`}
-            aria-label={t(autoSendVoice ? 'chat.input.aria.autoSendOn' : 'chat.input.aria.autoSendOff')}
-            title={t(autoSendVoice ? 'chat.input.aria.autoSendOn' : 'chat.input.aria.autoSendOff')}
-            aria-pressed={autoSendVoice}
-          >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-              <path
-                d="M14 2L2 7L7 9L14 2ZM14 2L9 14L7 9L14 2Z"
-                stroke="currentColor"
-                strokeWidth="1.3"
-                strokeLinejoin="round"
-                fill={autoSendVoice ? 'currentColor' : 'none'}
-                fillOpacity={autoSendVoice ? 0.2 : 0}
-              />
-            </svg>
-          </button>
+        {/* Textarea or voice wave — voice modes replace the textarea. */}
+        {(isListening || isRecordingAudio) ? (
+          <div className="flex-1 flex items-center px-1 py-1.5 min-h-[36px]">
+            <VoiceWave tone={isRecordingAudio ? 'danger' : 'accent'} />
+          </div>
+        ) : (
+          <textarea
+            ref={textareaRef}
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder={t('chat.input.placeholder')}
+            rows={1}
+            disabled={isStreaming}
+            className={`flex-1 resize-none bg-transparent text-sm text-theme-ink placeholder:text-theme-muted/60 focus:outline-none py-1.5 font-sans font-light leading-relaxed ${isStreaming ? 'opacity-50 italic' : ''}`}
+          />
         )}
 
-        {/* Whisper voice message (Feature 15) — hold to record, release to send,
-            swipe left to cancel. BYOK OpenAI key OR server proxy. */}
-        {canUseWhisper && (
-          <button
-            type="button"
-            onPointerDown={handleMicPointerDown}
-            onPointerMove={handleMicPointerMove}
-            onPointerUp={handleMicPointerUp}
-            onPointerCancel={handleMicPointerCancel}
-            onContextMenu={(e) => e.preventDefault()}
-            style={{ touchAction: 'none', WebkitUserSelect: 'none', userSelect: 'none' }}
-            className={`relative flex-shrink-0 p-1.5 rounded-full transition-colors mb-0.5 ${
-              isSwipeCancelling
-                ? 'bg-red-200 text-red-700'
-                : isRecordingAudio
-                ? 'bg-red-100 text-red-500 scale-110'
-                : 'hover:bg-theme-ink/5 text-theme-muted'
-            }`}
-            aria-label={t('chat.input.aria.holdToRecord')}
-            title={t('chat.input.aria.holdToRecord')}
-            disabled={isTranscribing}
-          >
-            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-              <circle cx="9" cy="9" r="5" fill="currentColor" />
-            </svg>
-          </button>
-        )}
-
-        {/* Mic button */}
-        {isMicSupported && (
-          <button
-            onClick={handleMicClick}
-            className={`relative flex-shrink-0 p-1.5 rounded-full transition-colors mb-0.5 ${
-              isListening
-                ? 'bg-red-100 text-red-500 hover:bg-red-200'
-                : 'hover:bg-theme-ink/5 text-theme-muted'
-            }`}
-            aria-label={isListening ? t('chat.input.aria.micStop') : t('chat.input.aria.micStart')}
-          >
-            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-              <rect x="6.5" y="2" width="5" height="9" rx="2.5" stroke="currentColor" strokeWidth="1.3" />
-              <path d="M4 9C4 11.76 6.24 14 9 14C11.76 14 14 11.76 14 9" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-              <line x1="9" y1="14" x2="9" y2="16" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-            </svg>
-            {isListening && (
-              <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse" />
-            )}
-          </button>
-        )}
-
-        {/* Send / Stop button */}
+        {/* Morphing CTA — Stop (streaming) / Send (text) / Voice (idle). */}
         {isStreaming ? (
           <button
             onClick={onStop}
-            className="flex-shrink-0 w-8 h-8 rounded-full bg-theme-ink text-theme-bg flex items-center justify-center hover:opacity-90 transition-opacity mb-0.5"
+            className="flex-shrink-0 w-10 h-10 rounded-full bg-theme-ink text-theme-bg flex items-center justify-center hover:opacity-90 transition-opacity mb-0.5"
             aria-label={t('chat.input.aria.stop')}
           >
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
               <rect x="2" y="2" width="8" height="8" rx="1" fill="currentColor" />
             </svg>
           </button>
-        ) : (
+        ) : (text.trim() || files.length > 0) ? (
           <button
             onClick={handleSend}
-            disabled={!text.trim() && files.length === 0}
-            className="flex-shrink-0 w-8 h-8 rounded-full bg-theme-ink text-theme-bg flex items-center justify-center disabled:opacity-30 hover:opacity-90 transition-opacity mb-0.5"
+            className="flex-shrink-0 w-10 h-10 rounded-full bg-theme-accent text-theme-bg flex items-center justify-center hover:opacity-90 transition-opacity mb-0.5 shadow-sm"
             aria-label={t('chat.input.aria.send')}
           >
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-              <path
-                d="M7 12V2M7 2L3 6M7 2L11 6"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
+              <path d="M7 12V2M7 2L3 6M7 2L11 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </button>
-        )}
+        ) : (canUseWhisper || isMicSupported) ? (
+          <VoiceButton
+            onPointerDown={handleVoicePointerDown}
+            onPointerMove={handleVoicePointerMove}
+            onPointerUp={handleVoicePointerUp}
+            onPointerCancel={handleVoicePointerCancel}
+            isListening={isListening}
+            isRecordingAudio={isRecordingAudio}
+            isSwipeCancelling={isSwipeCancelling}
+            isTranscribing={isTranscribing}
+            crossedThreshold={crossedThresholdRef.current}
+            holdProgress={holdProgress}
+            ariaLabel={t('chat.input.aria.holdToRecord')}
+          />
+        ) : null}
       </div>
     </div>
+  )
+}
+
+// ── Sub-components ────────────────────────────────────────────────────────────
+
+interface AttachMenuProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onPickFile: () => void
+  onPickCamera?: () => void
+  onPickScan?: () => void
+  ariaLabel: string
+  labels: { file: string; photo: string; scan: string }
+}
+
+function AttachMenu({ open, onOpenChange, onPickFile, onPickCamera, onPickScan, ariaLabel, labels }: AttachMenuProps) {
+  const hasMulti = !!(onPickCamera || onPickScan)
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  // Close on outside click
+  useEffect(() => {
+    if (!open) return
+    const onDown = (e: MouseEvent | TouchEvent) => {
+      if (!containerRef.current?.contains(e.target as Node)) onOpenChange(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('touchstart', onDown)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('touchstart', onDown)
+    }
+  }, [open, onOpenChange])
+
+  const handlePrimaryClick = () => {
+    if (!hasMulti) onPickFile()
+    else onOpenChange(!open)
+  }
+
+  return (
+    <div ref={containerRef} className="relative flex-shrink-0 mb-0.5">
+      <button
+        type="button"
+        onClick={handlePrimaryClick}
+        className="p-1.5 rounded-full hover:bg-theme-ink/5 transition-colors text-theme-muted"
+        aria-label={hasMulti ? ariaLabel : labels.file}
+        aria-expanded={hasMulti ? open : undefined}
+      >
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+          <line x1="9" y1="3" x2="9" y2="15" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          <line x1="3" y1="9" x2="15" y2="9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        </svg>
+      </button>
+      {hasMulti && open && (
+        <div className="absolute bottom-full left-0 mb-2 bg-theme-surface rounded-xl border border-theme-border shadow-lg overflow-hidden z-30 animate-fade-in min-w-[160px]">
+          <MenuItem
+            onClick={() => { onOpenChange(false); onPickFile() }}
+            icon={
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <path d="M13 5v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V3a2 2 0 0 1 2-2h4l4 4z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+                <path d="M9 1v4h4" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+              </svg>
+            }
+            label={labels.file}
+          />
+          {onPickCamera && (
+            <MenuItem
+              onClick={() => { onOpenChange(false); onPickCamera() }}
+              icon={
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  <rect x="1.5" y="4" width="13" height="9" rx="1.5" stroke="currentColor" strokeWidth="1.3" />
+                  <circle cx="8" cy="8.5" r="2.5" stroke="currentColor" strokeWidth="1.3" />
+                  <path d="M5 4l1-2h4l1 2" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+                </svg>
+              }
+              label={labels.photo}
+            />
+          )}
+          {onPickScan && (
+            <MenuItem
+              onClick={() => { onOpenChange(false); onPickScan() }}
+              icon={
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  <rect x="2.5" y="1.5" width="11" height="13" rx="1.5" stroke="currentColor" strokeWidth="1.3" />
+                  <line x1="5" y1="5" x2="11" y2="5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+                  <line x1="5" y1="8" x2="11" y2="8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+                  <line x1="5" y1="11" x2="9" y2="11" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+                </svg>
+              }
+              label={labels.scan}
+            />
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function MenuItem({ onClick, icon, label }: { onClick: () => void; icon: React.ReactNode; label: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="w-full flex items-center gap-2.5 px-3 py-2 text-left text-xs text-theme-ink hover:bg-theme-ink/5 transition-colors"
+    >
+      <span className="text-theme-muted">{icon}</span>
+      <span>{label}</span>
+    </button>
+  )
+}
+
+// VoiceWave — 9 animated bars used as textarea replacement while listening or
+// recording. Colour tones track the mode (accent = webkit, danger = Whisper).
+function VoiceWave({ tone, n = 9 }: { tone: 'accent' | 'danger'; n?: number }) {
+  const colour = tone === 'danger' ? 'rgb(224 75 46)' : 'rgb(var(--theme-accent))'
+  return (
+    <div className="flex items-center gap-[3px] h-5" aria-hidden="true">
+      {Array.from({ length: n }).map((_, i) => (
+        <span
+          key={i}
+          className="w-[3px] h-full rounded-sm origin-bottom"
+          style={{
+            background: colour,
+            animation: `wave ${0.75 + i * 0.05}s ease-in-out ${i * 0.06}s infinite alternate`,
+          }}
+        />
+      ))}
+    </div>
+  )
+}
+
+// Morphing voice CTA — idle / listening (webkit) / hold-progress / whisper.
+interface VoiceButtonProps {
+  onPointerDown: (e: React.PointerEvent<HTMLButtonElement>) => void
+  onPointerMove: (e: React.PointerEvent<HTMLButtonElement>) => void
+  onPointerUp: (e: React.PointerEvent<HTMLButtonElement>) => void
+  onPointerCancel: (e: React.PointerEvent<HTMLButtonElement>) => void
+  isListening: boolean
+  isRecordingAudio: boolean
+  isSwipeCancelling: boolean
+  isTranscribing: boolean
+  crossedThreshold: boolean
+  holdProgress: number
+  ariaLabel: string
+}
+
+function VoiceButton({
+  onPointerDown, onPointerMove, onPointerUp, onPointerCancel,
+  isListening, isRecordingAudio, isSwipeCancelling, isTranscribing,
+  crossedThreshold, holdProgress, ariaLabel,
+}: VoiceButtonProps) {
+  // Size morph: 40px idle, 48px active (listening or whisper).
+  const active = isListening || isRecordingAudio
+  const size = active ? 48 : 40
+  const showRing = holdProgress > 0 && holdProgress < 1 && !crossedThreshold
+  const circumference = 2 * Math.PI * 18 // r=18
+
+  let bgClass: string
+  let pulseClass = ''
+  if (isSwipeCancelling) {
+    bgClass = 'bg-red-500 text-white'
+  } else if (isRecordingAudio) {
+    bgClass = 'bg-gradient-to-br from-red-500 to-red-700 text-white'
+    pulseClass = 'animate-pulse-ring-danger'
+  } else if (isListening) {
+    bgClass = 'bg-gradient-to-br from-theme-accent to-orange-700 text-white'
+    pulseClass = 'animate-pulse-ring-accent'
+  } else {
+    bgClass = 'bg-theme-accent/15 text-theme-muted hover:bg-theme-accent/25'
+  }
+
+  return (
+    <button
+      type="button"
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerCancel}
+      onContextMenu={(e) => e.preventDefault()}
+      style={{
+        width: size,
+        height: size,
+        touchAction: 'none',
+        WebkitUserSelect: 'none',
+        userSelect: 'none',
+        transition: 'width 0.25s cubic-bezier(0.34,1.56,0.64,1), height 0.25s cubic-bezier(0.34,1.56,0.64,1)',
+      }}
+      className={`relative flex-shrink-0 rounded-full flex items-center justify-center mb-0.5 ${bgClass} ${pulseClass}`}
+      aria-label={ariaLabel}
+      disabled={isTranscribing}
+    >
+      {/* Hold-progress ring — fills 0→1 during 0-600ms hold. */}
+      {showRing && (
+        <svg
+          className="absolute inset-0 pointer-events-none"
+          style={{ transform: 'rotate(-90deg)' }}
+          width={size}
+          height={size}
+          viewBox="0 0 40 40"
+        >
+          <circle
+            cx="20"
+            cy="20"
+            r="18"
+            fill="none"
+            stroke="rgb(224 75 46)"
+            strokeWidth="3"
+            strokeDasharray={`${holdProgress * circumference} ${circumference}`}
+            strokeLinecap="round"
+          />
+        </svg>
+      )}
+      {/* Icon: "W" during Whisper, mic otherwise. */}
+      {isRecordingAudio ? (
+        <span className="font-display italic font-semibold text-lg leading-none">W</span>
+      ) : (
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+          <rect x="6.5" y="2" width="5" height="9" rx="2.5" stroke="currentColor" strokeWidth="1.5" />
+          <path d="M4 9C4 11.76 6.24 14 9 14C11.76 14 14 11.76 14 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          <line x1="9" y1="14" x2="9" y2="16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        </svg>
+      )}
+    </button>
   )
 }
 
