@@ -192,46 +192,64 @@ export function getStoredUser(): GoogleUser | null {
  * Decrypt Google tokens/user from localStorage into the in-memory cache, and
  * migrate any legacy plain-JSON copies to encrypted storage. Must be called
  * after `initCrypto()` succeeds — safe to call multiple times.
+ *
+ * Self-heals (BUG 43): if an encrypted blob can't be decrypted (typically
+ * because the user's passphrase changed between sessions — sk-ant-xxx →
+ * 'server-provided' or vice versa, or a crypto salt rotation), we WIPE the
+ * corrupt blob instead of leaving it in place. Leaving it caused "Google
+ * disconnected after update" — the app refused to dispatch the ready event
+ * and the user had to clear app data to escape the stale ciphertext.
  */
 export async function bootstrapGoogleStorage(): Promise<void> {
   if (!isCryptoReady()) return
 
-  // Tokens
-  const encTokens = scoped.getItem(TOKENS_ENC_KEY)
-  if (encTokens) {
-    try {
-      memTokens = JSON.parse(await decrypt(encTokens)) as GoogleTokens
-    } catch { /* corrupt ciphertext — ignore */ }
-  } else {
-    const plain = scoped.getJSON<GoogleTokens>(TOKENS_PLAIN_KEY)
-    if (plain) {
-      memTokens = plain
-      await storeTokens(plain) // re-encrypt & drop plain
+  try {
+    // Tokens
+    const encTokens = scoped.getItem(TOKENS_ENC_KEY)
+    if (encTokens) {
+      try {
+        memTokens = JSON.parse(await decrypt(encTokens)) as GoogleTokens
+      } catch (err) {
+        // Ciphertext unreadable with the current key → drop it. Next login
+        // will repopulate fresh blobs. Without this wipe the user is stuck
+        // until they clear app data manually.
+        console.warn('[googleAuth] tokens ciphertext unreadable, wiping:', err)
+        scoped.removeItem(TOKENS_ENC_KEY)
+        memTokens = null
+      }
+    } else {
+      const plain = scoped.getJSON<GoogleTokens>(TOKENS_PLAIN_KEY)
+      if (plain) {
+        memTokens = plain
+        await storeTokens(plain) // re-encrypt & drop plain
+      }
     }
-  }
 
-  // User
-  const encUser = scoped.getItem(USER_ENC_KEY)
-  if (encUser) {
-    try {
-      memUser = JSON.parse(await decrypt(encUser)) as GoogleUser
-    } catch { /* ignore */ }
-  } else {
-    const plain = scoped.getJSON<GoogleUser>(USER_PLAIN_KEY)
-    if (plain) {
-      memUser = plain
-      await storeUser(plain)
+    // User
+    const encUser = scoped.getItem(USER_ENC_KEY)
+    if (encUser) {
+      try {
+        memUser = JSON.parse(await decrypt(encUser)) as GoogleUser
+      } catch (err) {
+        console.warn('[googleAuth] user ciphertext unreadable, wiping:', err)
+        scoped.removeItem(USER_ENC_KEY)
+        memUser = null
+      }
+    } else {
+      const plain = scoped.getJSON<GoogleUser>(USER_PLAIN_KEY)
+      if (plain) {
+        memUser = plain
+        await storeUser(plain)
+      }
     }
-  }
-
-  // Notify subscribers (e.g. useGoogleAuth) that the in-memory Google
-  // caches are now populated from encrypted-at-rest storage.
-  // Without this, the hook's `useState(() => getStoredTokens() !== null)`
-  // initializer runs BEFORE decryption finishes and reports "not connected"
-  // forever on a page refresh — the user sees the Google CTA despite
-  // being already authorized.
-  if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('google-storage-ready'))
+  } finally {
+    // ALWAYS dispatch so the UI never stays stuck waiting — even if the
+    // bootstrap threw halfway. Without the finally, a mid-bootstrap crash
+    // left subscribers (useGoogleAuth, InputBar) thinking Google was still
+    // initialising, hiding the login button forever.
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('google-storage-ready'))
+    }
   }
 }
 
