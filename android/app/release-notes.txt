@@ -1,7 +1,4 @@
-Arty 1.0.18 — InputBar V2 voice-first
+Arty 1.0.19 — Erreurs Whisper explicites + fallback whisper-1
 
-• Nouveau : un seul bouton voix qui se transforme selon le contexte. Tap rapide = dictée webkit (toggle on/off). Appui long ≥ 600ms = Whisper (relâche pour envoyer, swipe gauche pour annuler).
-• Nouveau : menu "+" regroupe Fichier, Photo et Scanner (plus de boutons séparés). Barre allégée.
-• Nouveau : anneau de progression visuel pendant l'appui long — tu vois que tu es entré en mode Whisper.
-• Changement : Whisper auto-envoie toujours au relâchement (plus de toggle). Combine draft texte + transcription si tu avais commencé à taper.
-• UX : la zone de saisie affiche 9 barres animées (ambre en dictée, rouge en Whisper) pendant l'enregistrement.
+• Fix : quand la retranscription Whisper échoue, le banner affiche maintenant la VRAIE raison (ex : "You exceeded your current quota", "The model gpt-4o-transcribe does not exist", "email not in whitelist") au lieu du générique "Transcription échouée — réessaie".
+• Fix : fallback automatique sur whisper-1 si ton compte OpenAI n'a pas accès à gpt-4o-transcribe (restreint à certains tiers). Plus besoin d'attendre que OpenAI t'autorise le nouveau modèle.
