@@ -13,14 +13,29 @@ type CalendarEventLike = {
   location?: string
 }
 
+// Capacitor native detection — on Android APK the browser `Notification` API
+// silently returns 'denied' without showing the system dialog. Permission has
+// to be requested via the Capacitor LocalNotifications plugin so the OS
+// Android 13+ prompt actually appears. We keep the browser path for PWA.
+function isNativeApp(): boolean {
+  if (typeof window === 'undefined') return false
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const cap = (window as any).Capacitor
+  return cap?.isNativePlatform?.() === true
+}
+
 function isSupported(): boolean {
+  if (isNativeApp()) return true // native plugin handles it
   return typeof window !== 'undefined' && 'Notification' in window && 'serviceWorker' in navigator
 }
 
 /** Return true if the user has enabled notifications in settings (and granted permission). */
 export function areNotificationsEnabled(): boolean {
   if (!isSupported()) return false
-  if (Notification.permission !== 'granted') return false
+  // On native we optimistically trust the stored toggle — the plugin has
+  // its own enabled/disabled state that mirrors the OS permission, which
+  // we check at request time. On web we still gate on Notification.permission.
+  if (!isNativeApp() && Notification.permission !== 'granted') return false
   const stored = scoped.getItem(NOTIF_ENABLED_KEY)
   // Default: enabled once permission is granted
   return stored === null ? true : stored === 'true'
@@ -32,9 +47,28 @@ export function setNotificationsEnabled(enabled: boolean): void {
 
 /**
  * Ask the user for notification permission. Returns the final permission state.
+ * On Capacitor native, delegates to the LocalNotifications plugin which
+ * triggers the Android 13+ POST_NOTIFICATIONS system dialog. On web, uses
+ * the browser Notification API.
  */
 export async function requestPermission(): Promise<NotificationPermission> {
   if (!isSupported()) return 'denied'
+
+  if (isNativeApp()) {
+    try {
+      const { LocalNotifications } = await import('@capacitor/local-notifications')
+      // Try checkPermissions first so we don't prompt users who already decided.
+      const current = await LocalNotifications.checkPermissions()
+      if (current.display === 'granted') return 'granted'
+      if (current.display === 'denied') return 'denied'
+      const result = await LocalNotifications.requestPermissions()
+      return result.display === 'granted' ? 'granted' : 'denied'
+    } catch (err) {
+      console.warn('[notificationService] native permission request failed:', err)
+      return 'denied'
+    }
+  }
+
   if (Notification.permission === 'granted' || Notification.permission === 'denied') {
     return Notification.permission
   }
