@@ -24,6 +24,9 @@ export function useAuth() {
   // Crypto must be initialized before any sensitive data is read/written —
   // Google tokens, conversations, etc. depend on it. After init, we bootstrap
   // encrypted-at-rest storage for Google tokens and migrate legacy plain data.
+  // BUG 43 — we log every failure so the next "clear data to fix it" report
+  // from a tester gives us an actionable stack trace. bootstrapGoogleStorage
+  // also self-heals corrupt blobs now.
   useEffect(() => {
     if (!currentUser) return
     const keys = scoped.getJSON<StoredKeys>('api-keys')
@@ -31,7 +34,9 @@ export function useAuth() {
     setActiveKeys(keys.anthropic, keys.gemini, keys.mistral, keys.openai)
     initCrypto(keys.anthropic)
       .then(() => bootstrapGoogleStorage())
-      .catch(() => {})
+      .catch((err) => {
+        console.error('[useAuth] crypto bootstrap failed:', err)
+      })
   }, [currentUser])
 
   const login = useCallback(async (

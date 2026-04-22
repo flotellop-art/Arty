@@ -75,7 +75,12 @@ function formatApiError(status: number, body: string): string {
       const errorType = err.type
       if (errorType === 'overloaded_error') return i18n.t('errors.apiOverloaded')
       if (errorType === 'rate_limit_error') return i18n.t('errors.apiRateLimit')
-      if (errorType === 'authentication_error') return i18n.t('errors.apiKeyInvalid')
+      // Surface the Anthropic message verbatim when available — "invalid
+      // x-api-key", "your credit balance is too low", etc. — instead of the
+      // opaque "Clé API invalide ou expirée". Only fall back to i18n when
+      // the upstream gave us no message to show (pattern mirrored from the
+      // Whisper error surfacing we shipped in 1.0.19).
+      if (errorType === 'authentication_error') return err.message || i18n.t('errors.apiKeyInvalid')
       if (errorType === 'invalid_request_error') {
         return i18n.t('errors.apiInvalidRequest', { message: err.message || '?' })
       }

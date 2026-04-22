@@ -1,4 +1,5 @@
-Arty 1.0.19 — Erreurs Whisper explicites + fallback whisper-1
+Arty 1.0.20 — Fix BUG 43 : plus besoin de clear data
 
-• Fix : quand la retranscription Whisper échoue, le banner affiche maintenant la VRAIE raison (ex : "You exceeded your current quota", "The model gpt-4o-transcribe does not exist", "email not in whitelist") au lieu du générique "Transcription échouée — réessaie".
-• Fix : fallback automatique sur whisper-1 si ton compte OpenAI n'a pas accès à gpt-4o-transcribe (restreint à certains tiers). Plus besoin d'attendre que OpenAI t'autorise le nouveau modèle.
+• Fix : quand les tokens Google chiffrés deviennent illisibles (passphrase changée entre sessions, update, salt périmé), ils sont maintenant auto-wipés au lieu de rester coincés. Tu peux te reconnecter à Google sans vider les données de l'app.
+• Fix : le bootstrap dispatch toujours l'event google-storage-ready même si le déchiffrement crash — l'UI ne reste plus figée en "en attente de Google".
+• Fix : les erreurs Anthropic affichent maintenant le VRAI message ("invalid x-api-key", "credit balance too low", etc.) au lieu du générique "Clé API invalide ou expirée". Diagnostic immédiat.
