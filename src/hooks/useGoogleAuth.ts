@@ -63,38 +63,47 @@ export function useGoogleAuth() {
 
   const login = useCallback(async () => {
     if (Capacitor.isNativePlatform()) {
+      setIsLoading(true)
+      setError(null)
       try {
-        setIsLoading(true)
         const result = await GoogleSignInNative.signIn()
 
-        // Exchange serverAuthCode for real Google tokens
-        let accessToken = ''
-        let refreshToken = ''
-        let expiresIn = 3600
+        // Without a serverAuthCode we can't obtain refresh + access tokens,
+        // so the "connection" would be useless. Fail loud instead of storing
+        // empty tokens and silently marking isConnected = true.
+        if (!result.serverAuthCode) {
+          throw new Error(
+            'Google n\'a pas renvoyé de serverAuthCode — réessaye, ou vérifie que GoogleSignInOptions.requestServerAuthCode est bien configuré.',
+          )
+        }
 
-        if (result.serverAuthCode) {
+        const { apiUrl } = await import('../services/apiBase')
+        const res = await fetch(apiUrl('/api/auth/token'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code: result.serverAuthCode, redirect_uri: '' }),
+        })
+
+        if (!res.ok) {
+          const bodyText = await res.text().catch(() => '')
+          let msg = `Échange de token Google échoué (${res.status})`
           try {
-            const { apiUrl } = await import('../services/apiBase')
-            const res = await fetch(apiUrl('/api/auth/token'), {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ code: result.serverAuthCode, redirect_uri: '' }),
-            })
-            if (res.ok) {
-              const data = await res.json()
-              accessToken = data.access_token || ''
-              refreshToken = data.refresh_token || ''
-              expiresIn = data.expires_in || 3600
-            }
-          } catch {
-            // Token exchange failed — continue without real tokens
-          }
+            const parsed = JSON.parse(bodyText) as { error?: string | { message?: string } }
+            if (typeof parsed.error === 'string') msg = parsed.error
+            else if (parsed.error && typeof parsed.error === 'object' && parsed.error.message) msg = parsed.error.message
+          } catch { /* keep default */ }
+          throw new Error(msg)
+        }
+
+        const data = (await res.json()) as { access_token?: string; refresh_token?: string; expires_in?: number }
+        if (!data.access_token) {
+          throw new Error('Réponse Google sans access_token — retenter la connexion.')
         }
 
         scoped.setJSON('google-tokens', {
-          access_token: accessToken,
-          refresh_token: refreshToken,
-          expires_at: Date.now() + expiresIn * 1000,
+          access_token: data.access_token,
+          refresh_token: data.refresh_token || '',
+          expires_at: Date.now() + (data.expires_in || 3600) * 1000,
         })
 
         const googleUser: GoogleUser = {
@@ -106,6 +115,7 @@ export function useGoogleAuth() {
         setUser(googleUser)
         setIsConnected(true)
       } catch (err) {
+        console.error('[useGoogleAuth] native login failed:', err)
         setError(err instanceof Error ? err.message : 'Erreur Google Sign-In')
       } finally {
         setIsLoading(false)

@@ -1,5 +1,4 @@
-Arty 1.0.20 — Fix BUG 43 : plus besoin de clear data
+Arty 1.0.21 — Fix connexion Google qui échoue silencieusement
 
-• Fix : quand les tokens Google chiffrés deviennent illisibles (passphrase changée entre sessions, update, salt périmé), ils sont maintenant auto-wipés au lieu de rester coincés. Tu peux te reconnecter à Google sans vider les données de l'app.
-• Fix : le bootstrap dispatch toujours l'event google-storage-ready même si le déchiffrement crash — l'UI ne reste plus figée en "en attente de Google".
-• Fix : les erreurs Anthropic affichent maintenant le VRAI message ("invalid x-api-key", "credit balance too low", etc.) au lieu du générique "Clé API invalide ou expirée". Diagnostic immédiat.
+• Fix : quand tu cliques "Connecter Google" et que le popup s'ouvre mais que rien ne se passe, tu vois maintenant la VRAIE erreur (serverAuthCode manquant, échange de token échoué côté serveur, réponse Google sans access_token). Avant, l'app stockait des tokens vides et se marquait "connectée" sans rien dire.
+• Fix : la reconnexion Google depuis l'app (sans clear data) fonctionne enfin de manière fiable — plus de boucle "popup → rien → retry → rien".
