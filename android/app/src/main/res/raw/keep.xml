@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Force R8 resource shrinker to keep adaptive icon dependencies.
+     Without this, shrinkResources=true incorrectly marks
+     ic_launcher_foreground and ic_launcher_background as unreachable
+     even though they are referenced by mipmap/ic_launcher (anydpi-v26). -->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@drawable/ic_launcher_foreground,@color/ic_launcher_background" />
