@@ -23,30 +23,67 @@ function pickFilename(blob: Blob): string {
   return 'recording.webm'
 }
 
-export async function transcribeAudio(audioBlob: Blob): Promise<string> {
+// Surface the actual OpenAI / proxy error ("insufficient_quota", "model does
+// not exist", "email not whitelisted") instead of the opaque `Whisper error:
+// 400`. Callers catch and display err.message in the banner.
+function formatWhisperError(status: number, body: string): string {
+  try {
+    const parsed = JSON.parse(body) as { error?: { message?: string; code?: string } | string }
+    if (typeof parsed.error === 'string' && parsed.error) return parsed.error
+    if (parsed.error && typeof parsed.error === 'object' && parsed.error.message) {
+      return parsed.error.message
+    }
+  } catch {
+    // Not JSON — fall through.
+  }
+  return `Whisper error ${status}${body ? ` — ${body.slice(0, 200)}` : ''}`
+}
+
+async function postWhisper(url: string, headers: Record<string, string>, formData: FormData): Promise<string> {
+  const res = await fetch(url, { method: 'POST', headers, body: formData })
+  if (!res.ok) {
+    const errText = await res.text().catch(() => '')
+    throw new Error(formatWhisperError(res.status, errText))
+  }
+  const data = (await res.json()) as { text?: string }
+  return data.text || ''
+}
+
+function buildFormData(audioBlob: Blob, model: string): FormData {
   const formData = new FormData()
   formData.append('file', audioBlob, pickFilename(audioBlob))
-  // gpt-4o-transcribe : meilleure robustesse aux voix basses, accents et bruit
-  // de fond que whisper-1. Même endpoint, prix légèrement supérieur.
-  formData.append('model', 'gpt-4o-transcribe')
+  formData.append('model', model)
   const lng = (i18n.resolvedLanguage || i18n.language || 'fr').slice(0, 2)
   formData.append('language', lng)
+  return formData
+}
 
+// gpt-4o-transcribe is newer and gated by account tier — some OpenAI accounts
+// see 400/404 "model does not exist". Fall back to whisper-1 (universal paid
+// tier). Keeps the quality upgrade for accounts that have it while making the
+// feature work out of the box everywhere else.
+async function transcribeWithFallback(url: string, headers: Record<string, string>, audioBlob: Blob): Promise<string> {
+  try {
+    return await postWhisper(url, headers, buildFormData(audioBlob, 'gpt-4o-transcribe'))
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : ''
+    const modelRejected = /model|not.?found|does.?not.?exist|unknown|invalid.*model/i.test(msg)
+    if (!modelRejected) throw err
+    console.warn('[whisper] gpt-4o-transcribe rejected, retrying with whisper-1:', msg)
+    return await postWhisper(url, headers, buildFormData(audioBlob, 'whisper-1'))
+  }
+}
+
+export async function transcribeAudio(audioBlob: Blob): Promise<string> {
   const byokKey = getOpenAIKey()
 
   // BYOK : appel direct OpenAI (latence plus faible, pas de quota serveur)
   if (byokKey) {
-    const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${byokKey}` },
-      body: formData,
-    })
-    if (!res.ok) {
-      const errText = await res.text().catch(() => '')
-      throw new Error(`Whisper error: ${res.status} ${errText}`)
-    }
-    const data = (await res.json()) as { text?: string }
-    return data.text || ''
+    return transcribeWithFallback(
+      'https://api.openai.com/v1/audio/transcriptions',
+      { Authorization: `Bearer ${byokKey}` },
+      audioBlob,
+    )
   }
 
   // Fallback serveur : nécessite un token Google (whitelist côté proxy).
@@ -55,17 +92,9 @@ export async function transcribeAudio(audioBlob: Blob): Promise<string> {
     throw new Error('Clé OpenAI manquante — connecte-toi avec Google ou ajoute ta clé')
   }
 
-  const res = await fetch(apiUrl('/api/ai/whisper-proxy'), {
-    method: 'POST',
-    headers: { 'x-google-token': googleToken },
-    body: formData,
-  })
-
-  if (!res.ok) {
-    const errText = await res.text().catch(() => '')
-    throw new Error(`Whisper error: ${res.status} ${errText}`)
-  }
-
-  const data = (await res.json()) as { text?: string }
-  return data.text || ''
+  return transcribeWithFallback(
+    apiUrl('/api/ai/whisper-proxy'),
+    { 'x-google-token': googleToken },
+    audioBlob,
+  )
 }

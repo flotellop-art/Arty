@@ -453,7 +453,11 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
         }
       } catch (err) {
         console.warn('Whisper transcription failed:', err)
-        setAudioError(t('chat.input.voice.transcribeFailed'))
+        // Surface the real error from OpenAI / proxy (insufficient_quota,
+        // model not found, email not whitelisted…) instead of the generic
+        // "transcription échouée" so the user can act on it.
+        const detail = err instanceof Error && err.message ? err.message : ''
+        setAudioError(detail || t('chat.input.voice.transcribeFailed'))
       } finally {
         setIsTranscribing(false)
       }
