@@ -63,10 +63,30 @@ export function useGoogleAuth() {
 
   const login = useCallback(async () => {
     if (Capacitor.isNativePlatform()) {
+      console.log('[useGoogleAuth] login() called — native path')
       setIsLoading(true)
       setError(null)
       try {
-        const result = await GoogleSignInNative.signIn()
+        // 30s watchdog — if the native plugin's pendingCall is orphaned
+        // (activity recycled during the Google popup, a common Android
+        // lifecycle race), signIn() would hang forever. Surface a real
+        // error instead of spinning indefinitely.
+        console.log('[useGoogleAuth] calling GoogleSignInNative.signIn()...')
+        const timeoutMs = 30_000
+        const result = await Promise.race([
+          GoogleSignInNative.signIn(),
+          new Promise<never>((_, reject) =>
+            setTimeout(
+              () => reject(new Error(`Timeout Google (${timeoutMs / 1000}s) — le plugin natif n'a pas répondu. Réessaye ou redémarre l'app.`)),
+              timeoutMs,
+            ),
+          ),
+        ])
+        console.log('[useGoogleAuth] signIn resolved:', {
+          hasEmail: !!result.email,
+          hasServerAuthCode: !!result.serverAuthCode,
+          serverAuthCodeLen: result.serverAuthCode?.length || 0,
+        })
 
         // Without a serverAuthCode we can't obtain refresh + access tokens,
         // so the "connection" would be useless. Fail loud instead of storing
@@ -77,12 +97,14 @@ export function useGoogleAuth() {
           )
         }
 
+        console.log('[useGoogleAuth] exchanging code for tokens...')
         const { apiUrl } = await import('../services/apiBase')
         const res = await fetch(apiUrl('/api/auth/token'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ code: result.serverAuthCode, redirect_uri: '' }),
         })
+        console.log('[useGoogleAuth] /api/auth/token status:', res.status)
 
         if (!res.ok) {
           const bodyText = await res.text().catch(() => '')
@@ -96,6 +118,11 @@ export function useGoogleAuth() {
         }
 
         const data = (await res.json()) as { access_token?: string; refresh_token?: string; expires_in?: number }
+        console.log('[useGoogleAuth] token exchange response:', {
+          hasAccessToken: !!data.access_token,
+          hasRefreshToken: !!data.refresh_token,
+          expiresIn: data.expires_in,
+        })
         if (!data.access_token) {
           throw new Error('Réponse Google sans access_token — retenter la connexion.')
         }
@@ -114,6 +141,7 @@ export function useGoogleAuth() {
         scoped.setJSON('google-user', googleUser)
         setUser(googleUser)
         setIsConnected(true)
+        console.log('[useGoogleAuth] login success for', result.email)
       } catch (err) {
         console.error('[useGoogleAuth] native login failed:', err)
         setError(err instanceof Error ? err.message : 'Erreur Google Sign-In')
