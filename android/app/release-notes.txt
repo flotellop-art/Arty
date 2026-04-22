@@ -1,5 +1,5 @@
-Arty 1.0.22 — Diagnostic connexion Google
+Arty 1.0.23 — Notifications Android + diagnostic Google (cumule 1.0.22)
 
-• Fix : si le plugin Google natif se bloque (popup s'ouvre mais ne revient jamais), un timeout de 30s force un message d'erreur au lieu de spinner pour l'éternité.
-• UI : les erreurs de connexion Google sont maintenant affichées dans un vrai banner rouge plein-largeur sous le bouton (au lieu d'un petit texte facilement raté).
-• Logs : chaque étape du flow login est loggée en console (visible via Chrome DevTools remote — chrome://inspect) pour diagnostiquer les futurs bugs.
+• Fix : le toggle Notifications dans Paramètres utilise maintenant le plugin natif Capacitor LocalNotifications — le prompt système Android 13+ apparaît enfin quand tu actives les notifs. Avant, l'app demandait via l'API du navigateur qui renvoyait "denied" silencieusement sur l'APK.
+• Fix : le logo Arty (triangle Prism sur fond crème) devrait enfin apparaître sur l'écran d'accueil à la place du robot Android (fix R8 keep.xml sur l'adaptive icon).
+• Diag : timeout 30s sur la connexion Google + banner rouge visible si le popup se bloque (déjà dans 1.0.22, conservé).
