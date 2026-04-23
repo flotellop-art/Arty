@@ -130,10 +130,11 @@ async function getBestFixWeb(): Promise<UserLocation | null> {
   })
 }
 
-export async function getUserLocation(): Promise<UserLocation | null> {
+export async function getUserLocation(options?: { forceFresh?: boolean }): Promise<UserLocation | null> {
   if (!isLocationConsentEnabled()) return null
 
-  if (cached && Date.now() - cached.capturedAt < CACHE_TTL_MS) {
+  const forceFresh = options?.forceFresh === true
+  if (!forceFresh && cached && Date.now() - cached.capturedAt < CACHE_TTL_MS) {
     return cached
   }
 
