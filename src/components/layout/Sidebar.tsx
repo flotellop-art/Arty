@@ -2,7 +2,6 @@ import { useMemo, useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { Conversation, Message } from '../../types'
 import { ArtyWordmark } from '../shared/PrismMark'
-import { TokenUsageBar } from '../shared/TokenUsageBar'
 import { LanguageSelector } from '../shared/LanguageSelector'
 import { SettingsModal } from '../settings/SettingsModal'
 import { TaskPanel } from '../tasks/TaskPanel'
@@ -331,8 +330,6 @@ export function Sidebar({
             </div>
           ))}
         </nav>
-
-        <TokenUsageBar />
 
         {/* Language selector */}
         <LanguageSelector />

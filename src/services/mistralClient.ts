@@ -1,5 +1,4 @@
 import { getMistralKey } from './activeApiKey'
-import { addUsage } from './tokenTracker'
 import { apiUrl } from './apiBase'
 import { getValidAccessToken } from './googleAuth'
 import { TOOLS } from './toolDefinitions'
@@ -74,11 +73,9 @@ async function runMistralStream(
     while (maxIterations > 0) {
       maxIterations--
 
-      const { content, toolCalls, inputTokens, outputTokens } = await streamOnce(
+      const { content, toolCalls } = await streamOnce(
         apiKey, apiMessages, openaiTools, onToken, controller
       )
-
-      addUsage(inputTokens, outputTokens, 'mistral')
 
       // No tool calls — we're done
       if (!toolCalls || toolCalls.length === 0 || !options?.onToolCall) {
