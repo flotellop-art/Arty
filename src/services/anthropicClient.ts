@@ -5,13 +5,24 @@ import { compressIfNeeded } from './conversationCompressor'
 import { getAnthropicKey } from './activeApiKey'
 import { apiUrl } from './apiBase'
 import { getValidAccessToken } from './googleAuth'
+import { needsThinking, type ThinkingConfig } from './aiRouter'
 import i18n from '../i18n'
+
+const ANTI_HALLU_PROMPT = `
+
+Règles de vérité (prioritaires, non-négociables) :
+- Si tu n'es pas sûr à 90%+ d'un fait, dis explicitement "je ne suis pas certain" ou utilise web_search pour vérifier.
+- NE JAMAIS inventer une date, un chiffre, un nom propre, une citation ou une URL. Préfère "je ne sais pas" à un fait plausible non vérifié.
+- Pour toute affirmation factuelle (prix, norme, date, stat), cite la source (URL ou "d'après X").
+- En mode réflexion approfondie, ta longue chaîne de pensée ne remplace PAS la vérification. Elle DOIT aboutir soit à un fait sourcé, soit à un aveu d'incertitude.`
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
 type TextBlock = { type: 'text'; text: string }
 type ToolUseBlock = { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> }
-export type ContentBlock = TextBlock | ToolUseBlock
+type ThinkingBlock = { type: 'thinking'; thinking: string; signature: string }
+type RedactedThinkingBlock = { type: 'redacted_thinking'; data: string }
+export type ContentBlock = TextBlock | ToolUseBlock | ThinkingBlock | RedactedThinkingBlock
 
 type ToolResultContent = string | Array<Record<string, unknown>>
 type ToolResultBlock = { type: 'tool_result'; tool_use_id: string; content: ToolResultContent }
@@ -57,6 +68,18 @@ export function streamMessage(
 
   runWithTools(apiKey, messages, onToken, onDone, onError, options, controller)
   return controller
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+function findLastUserText(
+  messages: Array<{ role: string; content: string | Array<Record<string, unknown>> }>
+): string {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i]
+    if (m && m.role === 'user' && typeof m.content === 'string') return m.content
+  }
+  return ''
 }
 
 // ── Error formatting ─────────────────────────────────────────────────────────
@@ -105,13 +128,16 @@ function formatApiError(status: number, body: string): string {
 async function fetchWithRetry(
   requestBody: string,
   apiKey: string | null,
-  controller: AbortController
+  controller: AbortController,
+  thinkingEnabled: boolean
 ): Promise<Response> {
   const maxRetries = 3
+  const betaHeaders = ['pdfs-2024-09-25', 'prompt-caching-2024-07-31']
+  if (thinkingEnabled) betaHeaders.push('interleaved-thinking-2025-05-14')
   const headers: Record<string, string> = {
     'content-type': 'application/json',
     'anthropic-version': '2023-06-01',
-    'anthropic-beta': 'pdfs-2024-09-25,prompt-caching-2024-07-31',
+    'anthropic-beta': betaHeaders.join(','),
   }
   if (apiKey && apiKey !== 'server-provided') {
     headers['x-api-key'] = apiKey
@@ -158,6 +184,8 @@ async function parseSSEStream(
   let currentToolInput = ''
   let currentBlockType = ''
   let currentTextContent = ''
+  let currentThinkingText = ''
+  let currentThinkingSignature = ''
   let inputTokens = 0
   let outputTokens = 0
   let cacheReadTokens = 0
@@ -202,7 +230,7 @@ async function parseSSEStream(
             break
           }
           case 'content_block_start': {
-            const block = data.content_block as { type?: string; id?: string; name?: string } | undefined
+            const block = data.content_block as { type?: string; id?: string; name?: string; data?: string } | undefined
             if (block?.type === 'text') {
               currentBlockType = 'text'
               currentTextContent = ''
@@ -210,6 +238,18 @@ async function parseSSEStream(
               currentBlockType = 'tool_use'
               currentToolInput = ''
               contentBlocks.push({ type: 'tool_use', id: block.id || '', name: block.name || '', input: {} })
+            } else if (block?.type === 'thinking') {
+              // Extended thinking block — must be preserved in the conversation
+              // history when the assistant makes tool calls (Anthropic API requirement).
+              // We don't stream thinking content to the UI.
+              currentBlockType = 'thinking'
+              currentThinkingText = ''
+              currentThinkingSignature = ''
+            } else if (block?.type === 'redacted_thinking') {
+              // Encrypted thinking returned by Anthropic — push as-is; must be
+              // echoed back verbatim on the next turn.
+              contentBlocks.push({ type: 'redacted_thinking', data: block.data || '' })
+              currentBlockType = 'redacted_thinking'
             } else if (
               block?.type === 'server_tool_use' ||
               block?.type === 'web_search_tool_result' ||
@@ -222,12 +262,16 @@ async function parseSSEStream(
             break
           }
           case 'content_block_delta': {
-            const delta = data.delta as { type?: string; text?: string; partial_json?: string } | undefined
+            const delta = data.delta as { type?: string; text?: string; partial_json?: string; thinking?: string; signature?: string } | undefined
             if (delta?.type === 'text_delta' && delta.text) {
               onToken(delta.text)
               currentTextContent += delta.text
             } else if (delta?.type === 'input_json_delta' && delta.partial_json) {
               currentToolInput += delta.partial_json
+            } else if (delta?.type === 'thinking_delta' && delta.thinking) {
+              currentThinkingText += delta.thinking
+            } else if (delta?.type === 'signature_delta' && delta.signature) {
+              currentThinkingSignature += delta.signature
             }
             break
           }
@@ -243,6 +287,12 @@ async function parseSSEStream(
                   lastTool.input = {}
                 }
               }
+            } else if (currentBlockType === 'thinking' && currentThinkingSignature) {
+              contentBlocks.push({
+                type: 'thinking',
+                thinking: currentThinkingText,
+                signature: currentThinkingSignature,
+              })
             }
             currentBlockType = ''
             break
@@ -322,7 +372,12 @@ async function runWithTools(
     )
 
     const apiMessages: ApiMessage[] = compressed as ApiMessage[]
-    const systemText = options?.systemPrompt || SYSTEM_PROMPT
+
+    const lastUserText = findLastUserText(originalMessages)
+    const thinking: ThinkingConfig = needsThinking(lastUserText)
+
+    const baseSystemText = options?.systemPrompt || SYSTEM_PROMPT
+    const systemText = thinking.enabled ? baseSystemText + ANTI_HALLU_PROMPT : baseSystemText
     const systemBlocks = [{ type: 'text', text: systemText, cache_control: { type: 'ephemeral' } }]
     // Add prompt-caching hint to last tool definition
     const cachedTools = TOOLS.map((t, i) =>
@@ -334,14 +389,18 @@ async function runWithTools(
       const requestBody = JSON.stringify({
         model: 'claude-sonnet-4-6',
         max_tokens: 65536,
-        temperature: 0.7,
+        // Anthropic requires temperature=1 when extended thinking is enabled
+        temperature: thinking.enabled ? 1 : 0.7,
         stream: true,
         system: systemBlocks,
         tools: cachedTools,
         messages: apiMessages,
+        ...(thinking.enabled && {
+          thinking: { type: 'enabled', budget_tokens: thinking.budget },
+        }),
       })
 
-      const response = await fetchWithRetry(requestBody, apiKey, controller)
+      const response = await fetchWithRetry(requestBody, apiKey, controller, thinking.enabled)
       const { contentBlocks, inputTokens, outputTokens } = await parseSSEStream(response, onToken)
       addUsage(inputTokens, outputTokens)
 
