@@ -55,10 +55,12 @@ export async function getUserLocation(): Promise<UserLocation | null> {
       const perm = await Geolocation.checkPermissions()
       if (perm.location !== 'granted' && perm.coarseLocation !== 'granted') return null
 
+      // enableHighAccuracy: true forces GPS (5-20m) instead of Wi-Fi/IP (5-50km
+      // or worse). maximumAge kept short to avoid reusing a stale network fix.
       const pos = await Geolocation.getCurrentPosition({
-        enableHighAccuracy: false,
-        timeout: 8000,
-        maximumAge: CACHE_TTL_MS,
+        enableHighAccuracy: true,
+        timeout: 15000,
+        maximumAge: 60000,
       })
       cached = {
         latitude: pos.coords.latitude,
@@ -85,7 +87,7 @@ export async function getUserLocation(): Promise<UserLocation | null> {
         resolve(cached)
       },
       () => resolve(null),
-      { timeout: 8000, maximumAge: CACHE_TTL_MS }
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 }
     )
   })
 }

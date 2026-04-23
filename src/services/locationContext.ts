@@ -6,5 +6,9 @@ export async function buildLocationContext(message: string): Promise<string> {
   if (!LOCATION_QUERY_TRIGGERS.test(message)) return ''
   const pos = await getUserLocation()
   if (!pos) return ''
-  return `\n\nPosition actuelle de l'utilisateur : latitude ${pos.latitude.toFixed(5)}, longitude ${pos.longitude.toFixed(5)} (précision ~${Math.round(pos.accuracy)}m). Utilise ces coordonnées pour répondre à toute question de localisation (ville actuelle, proximité, itinéraire, météo locale).`
+  const isCoarse = pos.accuracy > 5000
+  const accuracyNote = isCoarse
+    ? ` ATTENTION : précision ~${Math.round(pos.accuracy / 1000)}km (Wi-Fi/IP, pas GPS) — la position peut être imprécise de dizaines de km. Utilise le nom de ville uniquement si l'utilisateur le confirme, sinon demande-lui sa ville.`
+    : ` (précision ~${Math.round(pos.accuracy)}m via GPS)`
+  return `\n\nPosition actuelle de l'utilisateur : latitude ${pos.latitude.toFixed(5)}, longitude ${pos.longitude.toFixed(5)}${accuracyNote}. Utilise ces coordonnées pour répondre aux questions de localisation (ville actuelle, proximité, itinéraire, météo locale).`
 }
