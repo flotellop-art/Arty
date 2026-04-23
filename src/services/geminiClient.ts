@@ -79,6 +79,7 @@ async function runGeminiStream(
       generationConfig: {
         temperature: 0.7,
         maxOutputTokens: 8192,
+        thinkingConfig: { thinkingBudget: 4096 },
       },
       tools,
     }
@@ -163,6 +164,7 @@ export async function geminiResearch(query: string, apiKeyOverride?: string): Pr
     generationConfig: {
       temperature: 0.3,
       maxOutputTokens: 4096,
+      thinkingConfig: { thinkingBudget: 2048 },
     },
     tools: [
       { google_search: {} },

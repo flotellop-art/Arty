@@ -82,6 +82,25 @@ const REPORT_TRIGGERS = [
 
 export type AIProvider = 'claude' | 'gemini' | 'mistral' | 'hybrid' | 'openai'
 
+export interface ThinkingConfig {
+  enabled: boolean
+  budget: number
+}
+
+export function needsThinking(message: string): ThinkingConfig {
+  if (REPORT_TRIGGERS.some((r) => r.test(message))) return { enabled: true, budget: 10000 }
+
+  if (/\bdebug|\bbug\b|erreur|crash|refactor|architecture|conçois|implémente|\bcode\b|fonction\s+qui|stack\s*trace/i.test(message)) {
+    return { enabled: true, budget: 10000 }
+  }
+
+  if (/analyse|compare|évalue|diagnostic|explique.*pourquoi|pourquoi\s+.*fonctionne|audit/i.test(message)) {
+    return { enabled: true, budget: 3000 }
+  }
+
+  return { enabled: false, budget: 0 }
+}
+
 export function detectProvider(message: string): AIProvider {
   const selectedModel = getSelectedModel()
 
