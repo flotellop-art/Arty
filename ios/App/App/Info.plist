@@ -57,5 +57,7 @@
 	<string>Arty enregistre les photos et documents générés dans votre galerie.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Arty utilise le micro pour la saisie vocale.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Arty utilise votre position pour les recherches de proximité (restaurants, itinéraires, météo).</string>
 </dict>
 </plist>
