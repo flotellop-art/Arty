@@ -1,4 +1,5 @@
 import { getValidAccessToken } from './googleAuth'
+import { apiUrl } from './apiBase'
 
 // Reverse geocoding via le proxy serveur /api/geo/reverse (Google Maps
 // Geocoding API). Injecté dans le system prompt par buildLocationContext()
@@ -40,7 +41,7 @@ export async function reverseGeocode(
   const timer = setTimeout(() => controller.abort(), 3500)
 
   try {
-    const resp = await fetch('/api/geo/reverse', {
+    const resp = await fetch(apiUrl('/api/geo/reverse'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
