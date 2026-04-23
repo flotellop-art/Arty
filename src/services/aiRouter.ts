@@ -23,6 +23,8 @@ const GEMINI_TRIGGERS = [
   /weather|forecast|will\s+it\s+rain|is\s+it\s+raining|temperature|rain\s+(tomorrow|today)/i,
   /competitors?\s+(near|around|in)|companies?\s+(near|in|around)/i,
   /supplier[s]?\s+(of|for)|where\s+(to\s+)?(buy|find|order)/i,
+  // Self-position queries (geoloc opt-in) — Gemini has google_maps for reverse geocoding
+  /dans\s+quelle\s+ville|quelle\s+ville\s+(je\s+suis|suis[-\s]je)|ma\s+(ville|position|localisation)(\s|\?|$|\.)|où\s+(je\s+suis|suis[-\s]je)|localise[-\s]moi|where\s+am\s+i|my\s+(location|city|town|position)|what\s+(city|town)/i,
 ]
 
 const PRIVATE_DATA_TRIGGERS = [
