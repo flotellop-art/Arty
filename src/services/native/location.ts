@@ -11,6 +11,8 @@ export interface UserLocation {
 
 const CONSENT_KEY = 'location-consent'
 const CACHE_TTL_MS = 5 * 60 * 1000
+const WATCH_TIMEOUT_MS = 10000
+const GOOD_ACCURACY_M = 50
 
 let cached: UserLocation | null = null
 
@@ -43,6 +45,91 @@ export async function requestLocationPermission(): Promise<boolean> {
   }
 }
 
+/**
+ * Collect positions over a window, keep the best (lowest accuracy radius).
+ * Android's FusedLocationProvider emits Wi-Fi fixes immediately then GPS
+ * fixes 3-10s later — taking the first fix often returns stale Wi-Fi.
+ * We wait for a GPS lock (accuracy <50m) or the 10s timeout.
+ */
+async function getBestFixNative(): Promise<UserLocation | null> {
+  return new Promise<UserLocation | null>((resolve) => {
+    let best: UserLocation | null = null
+    let settled = false
+    let watchId: string | null = null
+
+    const finish = () => {
+      if (settled) return
+      settled = true
+      if (watchId) Geolocation.clearWatch({ id: watchId }).catch(() => {})
+      resolve(best)
+    }
+
+    const timer = setTimeout(finish, WATCH_TIMEOUT_MS)
+
+    Geolocation.watchPosition(
+      { enableHighAccuracy: true, timeout: WATCH_TIMEOUT_MS, maximumAge: 0 },
+      (pos, err) => {
+        if (err || !pos) return
+        const fix: UserLocation = {
+          latitude: pos.coords.latitude,
+          longitude: pos.coords.longitude,
+          accuracy: pos.coords.accuracy,
+          capturedAt: Date.now(),
+        }
+        if (!best || fix.accuracy < best.accuracy) best = fix
+        if (fix.accuracy <= GOOD_ACCURACY_M) {
+          clearTimeout(timer)
+          finish()
+        }
+      }
+    ).then((id) => {
+      watchId = id
+      if (settled) Geolocation.clearWatch({ id }).catch(() => {})
+    }).catch(() => {
+      clearTimeout(timer)
+      finish()
+    })
+  })
+}
+
+async function getBestFixWeb(): Promise<UserLocation | null> {
+  if (!('geolocation' in navigator)) return null
+  return new Promise<UserLocation | null>((resolve) => {
+    let best: UserLocation | null = null
+    let settled = false
+
+    const finish = () => {
+      if (settled) return
+      settled = true
+      if (watchId !== null) navigator.geolocation.clearWatch(watchId)
+      resolve(best)
+    }
+
+    const timer = setTimeout(finish, WATCH_TIMEOUT_MS)
+
+    const watchId = navigator.geolocation.watchPosition(
+      (pos) => {
+        const fix: UserLocation = {
+          latitude: pos.coords.latitude,
+          longitude: pos.coords.longitude,
+          accuracy: pos.coords.accuracy,
+          capturedAt: Date.now(),
+        }
+        if (!best || fix.accuracy < best.accuracy) best = fix
+        if (fix.accuracy <= GOOD_ACCURACY_M) {
+          clearTimeout(timer)
+          finish()
+        }
+      },
+      () => {
+        clearTimeout(timer)
+        finish()
+      },
+      { enableHighAccuracy: true, timeout: WATCH_TIMEOUT_MS, maximumAge: 0 }
+    )
+  })
+}
+
 export async function getUserLocation(): Promise<UserLocation | null> {
   if (!isLocationConsentEnabled()) return null
 
@@ -54,42 +141,17 @@ export async function getUserLocation(): Promise<UserLocation | null> {
     try {
       const perm = await Geolocation.checkPermissions()
       if (perm.location !== 'granted' && perm.coarseLocation !== 'granted') return null
-
-      // enableHighAccuracy: true forces GPS (5-20m) instead of Wi-Fi/IP (5-50km
-      // or worse). maximumAge kept short to avoid reusing a stale network fix.
-      const pos = await Geolocation.getCurrentPosition({
-        enableHighAccuracy: true,
-        timeout: 15000,
-        maximumAge: 60000,
-      })
-      cached = {
-        latitude: pos.coords.latitude,
-        longitude: pos.coords.longitude,
-        accuracy: pos.coords.accuracy,
-        capturedAt: Date.now(),
-      }
-      return cached
     } catch {
       return null
     }
+    const fix = await getBestFixNative()
+    if (fix) cached = fix
+    return fix
   }
 
-  if (!('geolocation' in navigator)) return null
-  return new Promise((resolve) => {
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        cached = {
-          latitude: pos.coords.latitude,
-          longitude: pos.coords.longitude,
-          accuracy: pos.coords.accuracy,
-          capturedAt: Date.now(),
-        }
-        resolve(cached)
-      },
-      () => resolve(null),
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 }
-    )
-  })
+  const fix = await getBestFixWeb()
+  if (fix) cached = fix
+  return fix
 }
 
 export function clearLocationCache(): void {

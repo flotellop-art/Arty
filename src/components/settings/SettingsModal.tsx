@@ -14,6 +14,8 @@ import {
   setLocationConsent,
   requestLocationPermission,
   clearLocationCache,
+  getUserLocation,
+  type UserLocation,
 } from '../../services/native/location'
 import { MemoryHistoryPanel } from './MemoryHistoryPanel'
 import { MemoryViewer } from './MemoryViewer'
@@ -33,6 +35,8 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
   const [initialKeys, setInitialKeys] = useState<ApiKeys | null>(null)
   const [notifEnabled, setNotifEnabled] = useState(false)
   const [locationEnabled, setLocationEnabled] = useState(false)
+  const [locationFix, setLocationFix] = useState<UserLocation | null>(null)
+  const [locationChecking, setLocationChecking] = useState(false)
   const [showMemoryHistory, setShowMemoryHistory] = useState(false)
   const [showMemoryViewer, setShowMemoryViewer] = useState(false)
 
@@ -42,7 +46,16 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
     setInitialKeys(stored ?? null)
     setNotifEnabled(areNotificationsEnabled())
     setLocationEnabled(isLocationConsentEnabled())
+    setLocationFix(null)
   }, [open])
+
+  const checkLocationAccuracy = async () => {
+    setLocationChecking(true)
+    clearLocationCache()
+    const fix = await getUserLocation()
+    setLocationFix(fix)
+    setLocationChecking(false)
+  }
 
   const handleNotifToggle = async () => {
     if (!notifEnabled) {
@@ -189,6 +202,28 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
                 />
               </button>
             </div>
+            {locationEnabled && (
+              <div className="mt-3 flex items-center justify-between gap-3">
+                <p className="font-display italic text-xs text-theme-muted">
+                  {locationChecking
+                    ? 'Mesure en cours (peut prendre 10s)…'
+                    : locationFix
+                      ? locationFix.accuracy <= 50
+                        ? `Précision : ${Math.round(locationFix.accuracy)} m (GPS) ✓`
+                        : locationFix.accuracy <= 5000
+                          ? `Précision : ${Math.round(locationFix.accuracy)} m (moyen)`
+                          : `Précision : ~${Math.round(locationFix.accuracy / 1000)} km (Wi-Fi/IP) — imprécis`
+                      : 'Précision non mesurée'}
+                </p>
+                <button
+                  onClick={checkLocationAccuracy}
+                  disabled={locationChecking}
+                  className="font-display italic text-xs text-theme-accent hover:underline disabled:opacity-50"
+                >
+                  Tester
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Memory viewer */}
