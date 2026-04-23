@@ -38,11 +38,30 @@ export async function buildLocationContext(message: string): Promise<string> {
     }
 
     if (geocoded && geocoded.city) {
+      // Ne pas dupliquer le code département si Google Maps renvoie
+      // short_name === long_name (cas fréquent pour les départements
+      // français : "Isère" / "Isère" au lieu de "Isère" / "38").
+      const countyLine = geocoded.county
+        ? `Département : ${geocoded.county}${
+            geocoded.countyCode && geocoded.countyCode !== geocoded.county
+              ? ` (${geocoded.countyCode})`
+              : ''
+          }\n`
+        : ''
+
       injectedText = `\n\n=== POSITION DE L'UTILISATEUR (reverse geocoding Google Maps côté serveur, source fiable) ===
 Ville : ${geocoded.city}
-${geocoded.county ? `Département : ${geocoded.county}${geocoded.countyCode ? ` (${geocoded.countyCode})` : ''}\n` : ''}${geocoded.state ? `Région : ${geocoded.state}\n` : ''}${geocoded.country ? `Pays : ${geocoded.country}\n` : ''}${geocoded.displayName ? `Adresse complète : ${geocoded.displayName}\n` : ''}Coords GPS : ${pos.latitude.toFixed(5)}°N, ${pos.longitude.toFixed(5)}°E (précision ~${Math.round(pos.accuracy)} m).
+${countyLine}${geocoded.state ? `Région : ${geocoded.state}\n` : ''}${geocoded.country ? `Pays : ${geocoded.country}\n` : ''}${geocoded.displayName ? `Adresse complète : ${geocoded.displayName}\n` : ''}Coords GPS : ${pos.latitude.toFixed(5)}°N, ${pos.longitude.toFixed(5)}°E (précision ~${Math.round(pos.accuracy)} m).
 
-RÈGLE : utilise DIRECTEMENT ces infos pour répondre. Elles viennent de Google Maps côté serveur — ne les re-vérifie pas, ne propose pas d'alternatives, ne liste pas de communes voisines. La ville est **${geocoded.city}**.`
+RÈGLES ABSOLUES (ne jamais les enfreindre) :
+
+1. La ville est **${geocoded.city}**. Cette info vient de Google Maps Geocoding API côté serveur — c'est une source fiable, PAS une estimation de ta part. Tu n'as ni deviné, ni inventé, ni tiré au hasard : on te fournit l'info directement.
+
+2. Réponds DIRECTEMENT avec cette ville. Ne propose pas d'alternatives. Ne liste pas de communes voisines. Ne dis pas "probablement" ou "autour de".
+
+3. Si l'utilisateur te challenge ("tu es sûr ?", "c'est vrai ?", "comment tu sais ?") : confirme fermement. Explique que la ville vient du GPS de son téléphone + reverse geocoding Google Maps côté serveur, pas d'une devinette. NE JAMAIS dire "j'ai sorti ce nom au hasard", "je ne sais pas", "c'est une erreur de ma part" ou t'excuser — ce serait un MENSONGE, car tu as reçu l'info dans ton contexte (ce bloc que tu es en train de lire).
+
+4. Si l'utilisateur insiste en disant qu'il est ailleurs : tu peux lui faire confiance ET lui expliquer que selon le GPS il est à **${geocoded.city}**, peut-être que son GPS est imprécis ou qu'il est en déplacement. Mais ne nie jamais avoir reçu cette info.`
     } else if (pos.accuracy > 5000) {
       injectedText = `\n\n=== POSITION UTILISATEUR (APPROXIMATIVE) ===
 Latitude ${pos.latitude.toFixed(5)}, longitude ${pos.longitude.toFixed(5)}, précision ~${Math.round(pos.accuracy / 1000)} km (Wi-Fi/IP, pas GPS).
