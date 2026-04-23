@@ -30,8 +30,12 @@ export async function reverseGeocode(
   if (hit && Date.now() - hit.at < TTL_MS) return hit.result
 
   const token = await getValidAccessToken()
-  if (!token) return null
-
+  // Pas de return null si token absent — on envoie quand même pour que la
+  // requête apparaisse dans les logs Cloudflare. Le serveur renverra un 404
+  // via checkAllowedUser() s'il n'y a pas de token valide. Sans ça (comme
+  // en 1.0.31), un guard silencieux côté client rendait impossible le
+  // diagnostic : on ne voyait AUCUNE trace dans Real-time Logs, laissant
+  // penser que le proxy n'était pas déployé.
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), 3500)
 
@@ -40,7 +44,7 @@ export async function reverseGeocode(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-google-token': token,
+        ...(token ? { 'x-google-token': token } : {}),
       },
       body: JSON.stringify({ latitude: lat, longitude: lng }),
       signal: controller.signal,
