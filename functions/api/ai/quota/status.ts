@@ -45,6 +45,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
     return {
       model: m.model,
       count: m.count,
+      limit: m.limit,
       estimatedCostUsd: Number((m.count * rate).toFixed(3)),
     }
   })

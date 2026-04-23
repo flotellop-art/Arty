@@ -7,7 +7,8 @@ export interface Env {
   MISTRAL_API_KEY?: string
   OPENAI_API_KEY?: string
   ALLOWED_EMAILS?: string  // comma-separated list of emails allowed to use server keys
-  DAILY_QUOTA_PER_USER?: string  // daily cap on server-key proxy calls per whitelisted email (default 3000)
+  DAILY_QUOTA_PER_USER?: string  // daily cap on server-key proxy calls per whitelisted email (default 50)
+  DAILY_QUOTA_PER_MODEL?: string // optional JSON map { "claude-sonnet-4-6": 100, "whisper-1": 500, "default": 500 } — if set, overrides DAILY_QUOTA_PER_USER and applies per-model
   WP_URL: string
   WP_USERNAME: string
   WP_PASSWORD: string
