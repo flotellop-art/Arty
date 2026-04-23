@@ -364,19 +364,28 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
                   </p>
                 </div>
                 {quotaStatus.byModel.length > 0 ? (
-                  <div className="space-y-1">
+                  <div className="space-y-2">
                     <p className="font-display text-xs text-theme-muted">Détail par modèle :</p>
-                    {quotaStatus.byModel.map((m) => (
-                      <div
-                        key={m.model}
-                        className="flex items-center justify-between font-mono text-xs text-theme-ink"
-                      >
-                        <span className="truncate pr-2">{m.model}</span>
-                        <span>
-                          {m.count} appel{m.count > 1 ? 's' : ''} · ~${m.estimatedCostUsd.toFixed(3)}
-                        </span>
-                      </div>
-                    ))}
+                    {quotaStatus.byModel.map((m) => {
+                      const pct = Math.min(100, (m.count / Math.max(1, m.limit)) * 100)
+                      const nearLimit = pct >= 80
+                      return (
+                        <div key={m.model} className="space-y-0.5">
+                          <div className="flex items-center justify-between font-mono text-xs text-theme-ink">
+                            <span className="truncate pr-2">{m.model}</span>
+                            <span className={nearLimit ? 'text-theme-accent' : ''}>
+                              {m.count} / {m.limit} · ~${m.estimatedCostUsd.toFixed(3)}
+                            </span>
+                          </div>
+                          <div className="h-1.5 bg-theme-ink/10 rounded-sm overflow-hidden">
+                            <div
+                              className={`h-full transition-all ${nearLimit ? 'bg-red-500' : 'bg-theme-accent'}`}
+                              style={{ width: `${pct}%` }}
+                            />
+                          </div>
+                        </div>
+                      )
+                    })}
                   </div>
                 ) : (
                   <p className="font-display italic text-xs text-theme-muted">

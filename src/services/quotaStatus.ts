@@ -7,6 +7,8 @@ import { apiUrl } from './apiBase'
 export interface ModelUsage {
   model: string
   count: number
+  /** Per-model limit (from DAILY_QUOTA_PER_MODEL env, or the global default). */
+  limit: number
   estimatedCostUsd: number
 }
 
