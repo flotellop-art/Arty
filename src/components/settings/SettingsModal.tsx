@@ -9,6 +9,12 @@ import {
   setNotificationsEnabled,
   requestPermission as requestNotifPermission,
 } from '../../services/notificationService'
+import {
+  isLocationConsentEnabled,
+  setLocationConsent,
+  requestLocationPermission,
+  clearLocationCache,
+} from '../../services/native/location'
 import { MemoryHistoryPanel } from './MemoryHistoryPanel'
 import { MemoryViewer } from './MemoryViewer'
 import { OrchestratorSync } from './OrchestratorSync'
@@ -26,6 +32,7 @@ interface SettingsModalProps {
 export const SettingsModal = memo(function SettingsModal({ open, onClose }: SettingsModalProps) {
   const [initialKeys, setInitialKeys] = useState<ApiKeys | null>(null)
   const [notifEnabled, setNotifEnabled] = useState(false)
+  const [locationEnabled, setLocationEnabled] = useState(false)
   const [showMemoryHistory, setShowMemoryHistory] = useState(false)
   const [showMemoryViewer, setShowMemoryViewer] = useState(false)
 
@@ -34,6 +41,7 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
     const stored = scoped.getJSON<ApiKeys>('api-keys')
     setInitialKeys(stored ?? null)
     setNotifEnabled(areNotificationsEnabled())
+    setLocationEnabled(isLocationConsentEnabled())
   }, [open])
 
   const handleNotifToggle = async () => {
@@ -45,6 +53,19 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
     } else {
       setNotificationsEnabled(false)
       setNotifEnabled(false)
+    }
+  }
+
+  const handleLocationToggle = async () => {
+    if (!locationEnabled) {
+      const granted = await requestLocationPermission()
+      if (!granted) return
+      setLocationConsent(true)
+      setLocationEnabled(true)
+    } else {
+      setLocationConsent(false)
+      clearLocationCache()
+      setLocationEnabled(false)
     }
   }
 
@@ -139,6 +160,31 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
                 <span
                   className={`inline-block h-4 w-4 transform rounded-full bg-theme-bg transition-transform ${
                     notifEnabled ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
+          </div>
+
+          {/* Location toggle */}
+          <div className="border-t border-theme-border pt-5">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="font-display text-base text-theme-ink">📍 Localisation</p>
+                <p className="font-display italic text-xs text-theme-muted mt-0.5">
+                  Recherches de proximité (restaurants, itinéraires, météo)
+                </p>
+              </div>
+              <button
+                onClick={handleLocationToggle}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors shrink-0 ${
+                  locationEnabled ? 'bg-theme-accent' : 'bg-theme-ink/20'
+                }`}
+                aria-pressed={locationEnabled}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-theme-bg transition-transform ${
+                    locationEnabled ? 'translate-x-6' : 'translate-x-1'
                   }`}
                 />
               </button>
