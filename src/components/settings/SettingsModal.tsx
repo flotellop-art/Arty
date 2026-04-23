@@ -203,25 +203,32 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
               </button>
             </div>
             {locationEnabled && (
-              <div className="mt-3 flex items-center justify-between gap-3">
-                <p className="font-display italic text-xs text-theme-muted">
-                  {locationChecking
-                    ? 'Mesure en cours (peut prendre 10s)…'
-                    : locationFix
-                      ? locationFix.accuracy <= 50
-                        ? `Précision : ${Math.round(locationFix.accuracy)} m (GPS) ✓`
-                        : locationFix.accuracy <= 5000
-                          ? `Précision : ${Math.round(locationFix.accuracy)} m (moyen)`
-                          : `Précision : ~${Math.round(locationFix.accuracy / 1000)} km (Wi-Fi/IP) — imprécis`
-                      : 'Précision non mesurée'}
-                </p>
-                <button
-                  onClick={checkLocationAccuracy}
-                  disabled={locationChecking}
-                  className="font-display italic text-xs text-theme-accent hover:underline disabled:opacity-50"
-                >
-                  Tester
-                </button>
+              <div className="mt-3 space-y-1">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="font-display italic text-xs text-theme-muted">
+                    {locationChecking
+                      ? 'Mesure en cours (peut prendre 10s)…'
+                      : locationFix
+                        ? locationFix.accuracy <= 50
+                          ? `Précision : ${Math.round(locationFix.accuracy)} m (GPS) ✓`
+                          : locationFix.accuracy <= 5000
+                            ? `Précision : ${Math.round(locationFix.accuracy)} m (moyen)`
+                            : `Précision : ~${Math.round(locationFix.accuracy / 1000)} km (Wi-Fi/IP) — imprécis`
+                        : 'Précision non mesurée'}
+                  </p>
+                  <button
+                    onClick={checkLocationAccuracy}
+                    disabled={locationChecking}
+                    className="font-display italic text-xs text-theme-accent hover:underline disabled:opacity-50"
+                  >
+                    Tester
+                  </button>
+                </div>
+                {locationFix && !locationChecking && (
+                  <p className="font-display italic text-[11px] text-theme-muted/80">
+                    Coords : {locationFix.latitude.toFixed(5)}° N, {locationFix.longitude.toFixed(5)}° E
+                  </p>
+                )}
               </div>
             )}
           </div>

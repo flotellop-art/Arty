@@ -6,9 +6,19 @@ export async function buildLocationContext(message: string): Promise<string> {
   if (!LOCATION_QUERY_TRIGGERS.test(message)) return ''
   const pos = await getUserLocation()
   if (!pos) return ''
-  const isCoarse = pos.accuracy > 5000
-  const accuracyNote = isCoarse
-    ? ` ATTENTION : précision ~${Math.round(pos.accuracy / 1000)}km (Wi-Fi/IP, pas GPS) — la position peut être imprécise de dizaines de km. Utilise le nom de ville uniquement si l'utilisateur le confirme, sinon demande-lui sa ville.`
-    : ` (précision ~${Math.round(pos.accuracy)}m via GPS)`
-  return `\n\nPosition actuelle de l'utilisateur : latitude ${pos.latitude.toFixed(5)}, longitude ${pos.longitude.toFixed(5)}${accuracyNote}. Utilise ces coordonnées pour répondre aux questions de localisation (ville actuelle, proximité, itinéraire, météo locale).`
+
+  if (pos.accuracy > 5000) {
+    return `\n\n=== POSITION UTILISATEUR (APPROXIMATIVE) ===
+Latitude ${pos.latitude.toFixed(5)}, longitude ${pos.longitude.toFixed(5)}, précision ~${Math.round(pos.accuracy / 1000)} km (Wi-Fi/IP, pas GPS).
+Cette position peut être à dizaines de km de la vraie. NE REPONDS PAS une ville précise à partir de ces coords seuls — demande confirmation à l'utilisateur ("tu es bien à X ?") ou propose une recherche web pour reverse-geocoder.`
+  }
+
+  return `\n\n=== POSITION GPS DE L'UTILISATEUR (source fiable, à utiliser obligatoirement) ===
+Latitude : ${pos.latitude.toFixed(5)}, Longitude : ${pos.longitude.toFixed(5)} (précision ~${Math.round(pos.accuracy)} m via GPS).
+
+RÈGLES STRICTES :
+1. Pour TOUTE question de localisation ("où je suis", "quelle ville", "météo", "restaurants près de moi", "itinéraire depuis ici") : tu DOIS utiliser ces coordonnées GPS exactes.
+2. Si tu ne reconnais pas la ville avec certitude à partir de ces coords : appelle web_search (ou google_maps si disponible) avec la query "reverse geocoding latitude ${pos.latitude.toFixed(5)} longitude ${pos.longitude.toFixed(5)}" pour obtenir la vraie ville. NE DEVINE JAMAIS.
+3. IGNORE toute ville par défaut mentionnée dans les descriptions d'outils (ex: "défaut: X") — ces defaults sont obsolètes. La seule source de vérité pour la position, c'est ces coords GPS.
+4. Ne réponds JAMAIS avec une ville que tu n'as pas vérifiée via reverse geocoding ou confirmée par l'utilisateur.`
 }

@@ -16,7 +16,7 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   { cmd: '/resume', label: 'Résumer la conversation', icon: '📋', prompt: 'Résume cette conversation' },
   { cmd: '/rapport', label: 'Générer un rapport', icon: '📄', prompt: 'Génère un rapport de cette conversation' },
   { cmd: '/traduit', label: 'Traduire en anglais', icon: '🌍', prompt: 'Traduis en anglais : ' },
-  { cmd: '/meteo', label: 'Météo Valence', icon: '☁️', prompt: 'Quel temps fait-il à Valence (26) ?' },
+  { cmd: '/meteo', label: 'Météo ici', icon: '☁️', prompt: 'Quel temps fait-il ici ?' },
   { cmd: '/taches', label: 'Tâches en cours', icon: '✅', prompt: 'Quelles sont mes tâches en cours ?' },
   { cmd: '/aide', label: 'Afficher l\'aide', icon: '❓', prompt: 'Que sais-tu faire ?' },
 ]
