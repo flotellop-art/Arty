@@ -1,7 +1,17 @@
 import { getGeminiKey } from './activeApiKey'
 import { apiUrl } from './apiBase'
 import { getValidAccessToken } from './googleAuth'
+import { getUserLocation } from './native/location'
 import i18n from '../i18n'
+
+const LOCATION_TRIGGERS = /google\s*maps|itinéraire|trajet|street\s*view|restaurant|horaires?|adresse|où\s+(se\s+trouve|est|aller|trouver)|coordonnées|GPS|plan\s+(de|du)|carte|météo|quel\s+temps|prévisions?|pleuvoir|pluie|température|près\s+de\s+moi|autour\s+de\s+moi|le\s+plus\s+proche|directions|route\s+(to|from)|weather|forecast|rain|temperature|near\s+me|nearby|closest/i
+
+async function buildLocationContext(message: string): Promise<string> {
+  if (!LOCATION_TRIGGERS.test(message)) return ''
+  const pos = await getUserLocation()
+  if (!pos) return ''
+  return `\n\nPosition actuelle de l'utilisateur : latitude ${pos.latitude.toFixed(5)}, longitude ${pos.longitude.toFixed(5)} (précision ~${Math.round(pos.accuracy)}m). Utilise ces coordonnées pour toute recherche de proximité ("près de moi", restaurants, itinéraires, météo locale).`
+}
 
 // Gemini API client with streaming
 
@@ -56,12 +66,15 @@ async function runGeminiStream(
       ? [{ google_maps: {} }]
       : [{ google_search: {} }, { url_context: {} }]
 
+    const locationContext = await buildLocationContext(lastMessage)
+    const systemText = (options?.systemPrompt || GEMINI_SYSTEM) + locationContext
+
     const requestBody = {
       model: 'gemini-3-flash-preview',
       stream: true,
       contents,
       systemInstruction: {
-        parts: [{ text: options?.systemPrompt || GEMINI_SYSTEM }],
+        parts: [{ text: systemText }],
       },
       generationConfig: {
         temperature: 0.7,
