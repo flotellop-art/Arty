@@ -4,6 +4,7 @@ import { apiUrl } from './apiBase'
 import { getValidAccessToken } from './googleAuth'
 import { TOOLS } from './toolDefinitions'
 import { convertToolsToOpenAI } from './tools/openaiFormat'
+import { buildLocationContext } from './locationContext'
 import i18n from '../i18n'
 
 const MISTRAL_SYSTEM = `Tu es Arty, un assistant IA personnel.
@@ -54,7 +55,10 @@ async function runMistralStream(
   controller: AbortController
 ) {
   try {
-    const systemPrompt = options?.systemPrompt || MISTRAL_SYSTEM
+    const basePrompt = options?.systemPrompt || MISTRAL_SYSTEM
+    const lastUserText = [...originalMessages].reverse().find(m => m.role === 'user')?.content || ''
+    const locationContext = await buildLocationContext(lastUserText)
+    const systemPrompt = basePrompt + locationContext
 
     // Build messages in OpenAI format
     const apiMessages: ApiMessage[] = [

@@ -6,6 +6,7 @@ import { getAnthropicKey } from './activeApiKey'
 import { apiUrl } from './apiBase'
 import { getValidAccessToken } from './googleAuth'
 import { needsThinking, type ThinkingConfig } from './aiRouter'
+import { buildLocationContext } from './locationContext'
 import i18n from '../i18n'
 
 const ANTI_HALLU_PROMPT = `
@@ -375,9 +376,11 @@ async function runWithTools(
 
     const lastUserText = findLastUserText(originalMessages)
     const thinking: ThinkingConfig = needsThinking(lastUserText)
+    const locationContext = await buildLocationContext(lastUserText)
 
     const baseSystemText = options?.systemPrompt || SYSTEM_PROMPT
-    const systemText = thinking.enabled ? baseSystemText + ANTI_HALLU_PROMPT : baseSystemText
+    const withThinking = thinking.enabled ? baseSystemText + ANTI_HALLU_PROMPT : baseSystemText
+    const systemText = withThinking + locationContext
     const systemBlocks = [{ type: 'text', text: systemText, cache_control: { type: 'ephemeral' } }]
     // Add prompt-caching hint to last tool definition
     const cachedTools = TOOLS.map((t, i) =>
