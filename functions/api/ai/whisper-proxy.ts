@@ -36,7 +36,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
 
   // Quota quotidien uniquement pour les appels sur la clé serveur
   if (usingServerKey) {
-    const quota = await consumeDailyQuota(env, email)
+    const quota = await consumeDailyQuota(env, email, 'whisper-1')
     if (!quota.allowed) {
       return Response.json(
         { error: 'Quota quotidien atteint — réessayez demain ou ajoutez votre propre clé OpenAI' },

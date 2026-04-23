@@ -56,11 +56,26 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     )
   }
 
+  const body = await request.text()
+
+  // Extract the model name from the body so the quota breakdown in Settings
+  // knows which model was called. Defaults to 'claude' if parsing fails —
+  // the quota still works, we just lose granularity for that call.
+  let modelName = 'claude'
+  try {
+    const parsed = JSON.parse(body) as { model?: unknown }
+    if (typeof parsed.model === 'string' && parsed.model.length > 0) {
+      modelName = parsed.model
+    }
+  } catch {
+    // Leave fallback.
+  }
+
   // Cap server-key usage per user per day. BYOK callers pay their own Anthropic
   // bill and are not counted here. Protects against a stolen Google token
   // burning through ANTHROPIC_API_KEY spend unchecked.
   if (!isByok) {
-    const quota = await consumeDailyQuota(env, email)
+    const quota = await consumeDailyQuota(env, email, modelName)
     if (!quota.allowed) {
       return Response.json(
         {
@@ -72,8 +87,6 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
       )
     }
   }
-
-  const body = await request.text()
 
   const headers: Record<string, string> = {
     'content-type': 'application/json',
