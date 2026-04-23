@@ -1,0 +1,79 @@
+// Tarifs officiels des providers (USD par million de tokens, sauf indication).
+// Utilisés par trackUsage pour calculer le coût réel à partir des tokens
+// parsés dans les réponses streaming. Les prix sont indicatifs : les factures
+// officielles restent Anthropic Console / OpenAI Platform / Mistral / Google AI.
+//
+// Mettre à jour quand les providers changent leurs tarifs.
+
+export interface ModelPricing {
+  /** USD per 1M input tokens. */
+  input: number
+  /** USD per 1M output tokens. */
+  output: number
+  /** USD per 1M cache-read tokens (prompt caching). 0 if non applicable. */
+  cacheRead?: number
+  /** USD per 1M cache-creation tokens. 0 if non applicable. */
+  cacheCreation?: number
+  /** USD per audio second (Whisper). */
+  audioPerSec?: number
+}
+
+// Toutes les valeurs sont celles d'avril 2026. À ajuster si les providers
+// publient de nouveaux tarifs.
+const PRICING: Record<string, ModelPricing> = {
+  // Anthropic Claude
+  'claude-sonnet-4-6': { input: 3, output: 15, cacheRead: 0.3, cacheCreation: 3.75 },
+  'claude-opus-4-6': { input: 15, output: 75, cacheRead: 1.5, cacheCreation: 18.75 },
+  'claude-opus-4-7': { input: 15, output: 75, cacheRead: 1.5, cacheCreation: 18.75 },
+  'claude-haiku-4-5-20251001': { input: 1, output: 5, cacheRead: 0.1, cacheCreation: 1.25 },
+
+  // OpenAI
+  'whisper-1': { input: 0, output: 0, audioPerSec: 0.006 / 60 }, // $0.006 / minute
+
+  // Mistral
+  'mistral-large-latest': { input: 2, output: 6 },
+  'mistral-medium-latest': { input: 0.4, output: 2 },
+  'mistral-small-latest': { input: 0.2, output: 0.6 },
+  'mistral-tiny': { input: 0.1, output: 0.3 },
+  'codestral-latest': { input: 0.2, output: 0.6 },
+
+  // Google Gemini
+  'gemini-2.5-pro': { input: 1.25, output: 10, cacheRead: 0.31 },
+  'gemini-2.5-flash': { input: 0.075, output: 0.3, cacheRead: 0.019 },
+  'gemini-2.5-flash-lite': { input: 0.04, output: 0.15 },
+}
+
+/** Fallback pour les modèles non recensés — tarif pessimiste style Opus. */
+const FALLBACK_PRICING: ModelPricing = { input: 3, output: 15, cacheRead: 0.3 }
+
+export function getPricing(model: string): ModelPricing {
+  if (PRICING[model]) return PRICING[model]
+  // Fallback via préfixe (ex: "claude-sonnet-latest" → claude-sonnet-4-6)
+  const prefix = model.split(/[-@]/)[0] ?? ''
+  if (prefix === 'claude') return PRICING['claude-sonnet-4-6'] ?? FALLBACK_PRICING
+  if (prefix === 'gemini') return PRICING['gemini-2.5-flash'] ?? FALLBACK_PRICING
+  if (prefix === 'mistral') return PRICING['mistral-small-latest'] ?? FALLBACK_PRICING
+  return FALLBACK_PRICING
+}
+
+export interface UsageTokens {
+  inputTokens: number
+  outputTokens: number
+  cacheReadTokens: number
+  cacheCreationTokens: number
+  audioSeconds: number
+}
+
+/** Coût en micro-USD (10^-6 USD) — évite les floats dans D1. */
+export function computeCostMicroUsd(model: string, usage: UsageTokens): number {
+  const p = getPricing(model)
+  const MTOK = 1_000_000
+  // Chaque composante convertie en USD, puis en micro-USD.
+  const cost =
+    (usage.inputTokens * p.input) / MTOK +
+    (usage.outputTokens * p.output) / MTOK +
+    (usage.cacheReadTokens * (p.cacheRead ?? 0)) / MTOK +
+    (usage.cacheCreationTokens * (p.cacheCreation ?? 0)) / MTOK +
+    usage.audioSeconds * (p.audioPerSec ?? 0)
+  return Math.round(cost * 1_000_000)
+}

@@ -1,10 +1,11 @@
 import type { Env } from '../../env'
 import { parseAllowedEmails, verifyGoogleUser } from '../_lib/checkAllowedUser'
-import { consumeDailyQuota } from '../_lib/quota'
+import { consumeDailyQuota, recordUsage } from '../_lib/quota'
+import { createAnthropicParser, teeForParsing } from '../_lib/trackUsage'
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages'
 
-export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
+export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUntil }) => {
   // Anti-relais anonyme : tout appel doit venir d'un user Google authentifié,
   // même en BYOK. Empêche l'utilisation du proxy Cloudflare comme relais
   // ouvert par n'importe qui sur Internet (CRIT-4).
@@ -105,6 +106,24 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
       headers,
       body,
     })
+
+    // Ne track que les appels server-key réussis (BYOK = user paie lui-même).
+    if (!isByok && response.ok && response.body) {
+      const parser = createAnthropicParser()
+      const { clientBody, parsedUsage } = teeForParsing(
+        response.body,
+        parser.feed,
+        parser.finalize
+      )
+      waitUntil(parsedUsage.then((usage) => recordUsage(env, email, modelName, usage)))
+      return new Response(clientBody, {
+        status: response.status,
+        headers: {
+          'content-type': response.headers.get('content-type') || 'text/event-stream',
+          'cache-control': 'no-cache',
+        },
+      })
+    }
 
     return new Response(response.body, {
       status: response.status,

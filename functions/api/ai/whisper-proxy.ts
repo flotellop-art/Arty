@@ -1,10 +1,11 @@
 import type { Env } from '../../env'
 import { checkAllowedUser, verifyGoogleUser } from '../_lib/checkAllowedUser'
-import { consumeDailyQuota } from '../_lib/quota'
+import { consumeDailyQuota, recordUsage } from '../_lib/quota'
+import { parseWhisperBody } from '../_lib/trackUsage'
 
 const WHISPER_URL = 'https://api.openai.com/v1/audio/transcriptions'
 
-export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
+export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUntil }) => {
   // Anti-relais anonyme : un token Google valide est obligatoire (CRIT-4).
   const email = await verifyGoogleUser(request)
   if (!email) {
@@ -60,6 +61,15 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     })
 
     const respBody = await upstream.text()
+
+    // Tracking tokens réels : si on est sur la clé serveur et que OpenAI a
+    // répondu OK, parse la durée depuis verbose_json (ajouté côté client)
+    // et record le coût précis.
+    if (usingServerKey && upstream.ok) {
+      const usage = parseWhisperBody(respBody)
+      waitUntil(recordUsage(env, email, 'whisper-1', usage))
+    }
+
     return new Response(respBody, {
       status: upstream.status,
       headers: {

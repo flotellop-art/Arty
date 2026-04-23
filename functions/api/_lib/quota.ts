@@ -1,4 +1,6 @@
 import type { Env } from '../../env'
+import type { UsageTokens } from './pricing'
+import { computeCostMicroUsd } from './pricing'
 
 const DEFAULT_DAILY_LIMIT = 50
 
@@ -16,6 +18,18 @@ export interface ModelUsage {
   count: number
   /** Limit configured for this model (either per-model override or global default). */
   limit: number
+  /** Input tokens consumed today (summed across all calls). 0 if tracking unavailable. */
+  inputTokens: number
+  /** Output tokens produced today. 0 if tracking unavailable. */
+  outputTokens: number
+  /** Cache-read tokens (prompt caching) — 10x cheaper than input. 0 if N/A. */
+  cacheReadTokens: number
+  /** Cache-creation tokens — written to the cache for reuse. 0 if N/A. */
+  cacheCreationTokens: number
+  /** Whisper audio seconds transcribed today. 0 if N/A. */
+  audioSeconds: number
+  /** Real cost in USD — computed server-side from token pricing, not an estimate. */
+  costUsd: number
 }
 
 export interface QuotaStatus {
@@ -112,16 +126,43 @@ export async function consumeDailyQuota(
 
     // Counter par modèle — utilisé pour l'affichage détaillé ET (si
     // DAILY_QUOTA_PER_MODEL est set) pour appliquer la limite par modèle.
+    // Les colonnes tokens/coût sont ajoutées pour le tracking précis (1.0.38).
+    // CREATE IF NOT EXISTS est idempotent ; pour les BDs existantes on fait
+    // aussi des ALTER TABLE silencieux (ignore si la colonne existe déjà).
     await env.DB.prepare(
       `CREATE TABLE IF NOT EXISTS quota_model (
         email TEXT NOT NULL,
         day TEXT NOT NULL,
         model TEXT NOT NULL,
         count INTEGER NOT NULL DEFAULT 0,
+        input_tokens INTEGER NOT NULL DEFAULT 0,
+        output_tokens INTEGER NOT NULL DEFAULT 0,
+        cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+        cache_creation_tokens INTEGER NOT NULL DEFAULT 0,
+        audio_seconds INTEGER NOT NULL DEFAULT 0,
+        cost_usd_micro INTEGER NOT NULL DEFAULT 0,
         updated_at INTEGER NOT NULL,
         PRIMARY KEY (email, day, model)
       )`
     ).run()
+
+    // Migration silencieuse : ALTER TABLE ADD COLUMN pour les BDs qui
+    // existaient avant 1.0.38 avec seulement (count, updated_at). SQLite
+    // rejette l'ALTER si la colonne existe déjà — on ignore l'erreur.
+    for (const col of [
+      'input_tokens INTEGER NOT NULL DEFAULT 0',
+      'output_tokens INTEGER NOT NULL DEFAULT 0',
+      'cache_read_tokens INTEGER NOT NULL DEFAULT 0',
+      'cache_creation_tokens INTEGER NOT NULL DEFAULT 0',
+      'audio_seconds INTEGER NOT NULL DEFAULT 0',
+      'cost_usd_micro INTEGER NOT NULL DEFAULT 0',
+    ]) {
+      try {
+        await env.DB.prepare(`ALTER TABLE quota_model ADD COLUMN ${col}`).run()
+      } catch {
+        // column already exists → ignore
+      }
+    }
 
     const modelRow = await env.DB.prepare(
       `INSERT INTO quota_model (email, day, model, count, updated_at) VALUES (?1, ?2, ?3, 1, unixepoch())
@@ -174,14 +215,36 @@ export async function getDailyQuotaStatus(
     let byModel: ModelUsage[] = []
     try {
       const res = await env.DB.prepare(
-        `SELECT model, count FROM quota_model WHERE email = ?1 AND day = ?2 ORDER BY count DESC`
+        `SELECT model, count,
+                COALESCE(input_tokens, 0) AS input_tokens,
+                COALESCE(output_tokens, 0) AS output_tokens,
+                COALESCE(cache_read_tokens, 0) AS cache_read_tokens,
+                COALESCE(cache_creation_tokens, 0) AS cache_creation_tokens,
+                COALESCE(audio_seconds, 0) AS audio_seconds,
+                COALESCE(cost_usd_micro, 0) AS cost_usd_micro
+         FROM quota_model WHERE email = ?1 AND day = ?2 ORDER BY count DESC`
       )
         .bind(email, day)
-        .all<{ model: string; count: number }>()
+        .all<{
+          model: string
+          count: number
+          input_tokens: number
+          output_tokens: number
+          cache_read_tokens: number
+          cache_creation_tokens: number
+          audio_seconds: number
+          cost_usd_micro: number
+        }>()
       byModel = (res.results ?? []).map((r) => ({
         model: r.model,
         count: r.count,
         limit: getLimitForModel(env, r.model),
+        inputTokens: r.input_tokens,
+        outputTokens: r.output_tokens,
+        cacheReadTokens: r.cache_read_tokens,
+        cacheCreationTokens: r.cache_creation_tokens,
+        audioSeconds: r.audio_seconds,
+        costUsd: r.cost_usd_micro / 1_000_000,
       }))
     } catch {
       byModel = []
@@ -196,5 +259,54 @@ export async function getDailyQuotaStatus(
   } catch (err) {
     console.error('quota.getDailyQuotaStatus failed', err)
     return empty
+  }
+}
+
+/**
+ * Enregistre les tokens consommés par un appel et met à jour le coût en
+ * micro-USD. Appelé depuis les proxies IA après consumeDailyQuota() a déjà
+ * incrémenté le compteur, une fois que le stream de la réponse est entièrement
+ * parsé via trackUsage.ts.
+ *
+ * Idempotent pour les erreurs D1 : en cas d'échec, on log et on ignore (le
+ * compteur reste correct, seule la précision du coût est affectée).
+ */
+export async function recordUsage(
+  env: Env,
+  email: string,
+  model: string,
+  usage: UsageTokens
+): Promise<void> {
+  if (!env.DB) return
+
+  const cost = computeCostMicroUsd(model, usage)
+  const day = todayKey()
+
+  try {
+    await env.DB.prepare(
+      `UPDATE quota_model
+       SET input_tokens = input_tokens + ?1,
+           output_tokens = output_tokens + ?2,
+           cache_read_tokens = cache_read_tokens + ?3,
+           cache_creation_tokens = cache_creation_tokens + ?4,
+           audio_seconds = audio_seconds + ?5,
+           cost_usd_micro = cost_usd_micro + ?6,
+           updated_at = unixepoch()
+       WHERE email = ?7 AND day = ?8 AND model = ?9`
+    )
+      .bind(
+        Math.max(0, Math.round(usage.inputTokens)),
+        Math.max(0, Math.round(usage.outputTokens)),
+        Math.max(0, Math.round(usage.cacheReadTokens)),
+        Math.max(0, Math.round(usage.cacheCreationTokens)),
+        Math.max(0, Math.round(usage.audioSeconds)),
+        Math.max(0, Math.round(cost)),
+        email,
+        day,
+        model
+      )
+      .run()
+  } catch (err) {
+    console.error('quota.recordUsage failed', err)
   }
 }

@@ -55,6 +55,9 @@ function buildFormData(audioBlob: Blob, model: string): FormData {
   formData.append('model', model)
   const lng = (i18n.resolvedLanguage || i18n.language || 'fr').slice(0, 2)
   formData.append('language', lng)
+  // verbose_json : inclut toujours `text` (que le client lit) + `duration`
+  // que le proxy serveur utilise pour calculer le coût Whisper précis.
+  formData.append('response_format', 'verbose_json')
   return formData
 }
 
