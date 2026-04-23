@@ -1,4 +1,3 @@
-import { addUsage } from './tokenTracker'
 import i18n from '../i18n'
 
 // OpenAI client — direct API calls with user-provided key (BYOK).
@@ -103,8 +102,6 @@ export function sendMessageStream(
       const decoder = new TextDecoder()
       let buffer = ''
       let content = ''
-      let inputTokens = 0
-      let outputTokens = 0
 
       while (true) {
         const { done, value } = await reader.read()
@@ -122,29 +119,17 @@ export function sendMessageStream(
           try {
             const parsed = JSON.parse(data) as {
               choices?: Array<{ delta?: { content?: string } }>
-              usage?: { prompt_tokens?: number; completion_tokens?: number }
             }
             const delta = parsed.choices?.[0]?.delta?.content
             if (delta) {
               content += delta
               onChunk(delta)
             }
-            if (parsed.usage) {
-              inputTokens = parsed.usage.prompt_tokens || 0
-              outputTokens = parsed.usage.completion_tokens || 0
-            }
           } catch {
             // Skip malformed chunks
           }
         }
       }
-
-      // Estimate tokens if not provided
-      if (outputTokens === 0 && content) {
-        outputTokens = Math.ceil(content.length / 4)
-        inputTokens = Math.ceil(JSON.stringify(messages).length / 4)
-      }
-      addUsage(inputTokens, outputTokens, 'openai')
 
       onDone()
     } catch (err) {
@@ -186,10 +171,6 @@ export async function sendMessage(
 
   const data = (await response.json()) as {
     choices?: Array<{ message?: { content?: string } }>
-    usage?: { prompt_tokens?: number; completion_tokens?: number }
-  }
-  if (data.usage) {
-    addUsage(data.usage.prompt_tokens || 0, data.usage.completion_tokens || 0, 'openai')
   }
   return data.choices?.[0]?.message?.content || ''
 }

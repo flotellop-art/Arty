@@ -1,6 +1,5 @@
 import { SYSTEM_PROMPT } from '../constants/systemPrompt'
 import { TOOLS } from './toolDefinitions'
-import { addUsage } from './tokenTracker'
 import { compressIfNeeded } from './conversationCompressor'
 import { getAnthropicKey } from './activeApiKey'
 import { apiUrl } from './apiBase'
@@ -404,8 +403,7 @@ async function runWithTools(
       })
 
       const response = await fetchWithRetry(requestBody, apiKey, controller, thinking.enabled)
-      const { contentBlocks, inputTokens, outputTokens } = await parseSSEStream(response, onToken)
-      addUsage(inputTokens, outputTokens)
+      const { contentBlocks } = await parseSSEStream(response, onToken)
 
       const hasToolUse = contentBlocks.some((b) => b.type === 'tool_use')
       if (!hasToolUse || !options?.onToolCall) {
