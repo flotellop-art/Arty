@@ -4,6 +4,7 @@ import { openReport } from '../reportGenerator'
 import { updateMemory } from '../memoryService'
 import { safeJson } from '../../utils/safeJson'
 import { apiUrl } from '../apiBase'
+import { getUserLocation, isLocationConsentEnabled } from '../native/location'
 
 export const utilityToolDefinitions = [
   {
@@ -45,10 +46,11 @@ export const utilityToolDefinitions = [
   },
   {
     name: 'calculate_distance',
-    description: 'Calcule la distance et le temps de trajet depuis Valence vers une adresse de chantier.',
+    description: "Calcule la distance et le temps de trajet entre un point d'origine et une destination. Si origin est omis ET que la géolocalisation utilisateur est active, utilise sa position GPS ; sinon demande l'origine à l'utilisateur.",
     input_schema: {
       type: 'object' as const,
       properties: {
+        origin: { type: 'string' as const, description: "Point de départ (ville ou adresse). Omis = utilise la position GPS de l'utilisateur si disponible." },
         destination: { type: 'string' as const, description: 'Adresse de destination' },
       },
       required: ['destination'],
@@ -56,11 +58,11 @@ export const utilityToolDefinitions = [
   },
   {
     name: 'get_weather',
-    description: 'Obtenir la météo actuelle et prévisions 5 jours.',
+    description: "Obtenir la météo actuelle et prévisions 5 jours pour une ville. Si city est omis ET que la géolocalisation utilisateur est active, utilise sa position GPS ; sinon demande la ville à l'utilisateur.",
     input_schema: {
       type: 'object' as const,
       properties: {
-        city: { type: 'string' as const, description: 'Ville (défaut: Valence)' },
+        city: { type: 'string' as const, description: "Ville. Omis = utilise la position GPS de l'utilisateur si disponible." },
       },
     },
   },
@@ -139,22 +141,41 @@ export function createUtilityHandlers(browserActions: ReturnType<typeof useBrows
 
     calculate_distance: async (input) => {
       const dest = input.destination as string
+      let origin = (input.origin as string | undefined)?.trim() || ''
+
+      if (!origin && isLocationConsentEnabled()) {
+        const pos = await getUserLocation()
+        if (pos) origin = `latitude ${pos.latitude.toFixed(5)}, longitude ${pos.longitude.toFixed(5)}`
+      }
+      if (!origin) {
+        return { result: "Précise un point de départ (ville ou adresse). La géolocalisation n'est pas activée." }
+      }
+
       try {
         const res = await fetch(apiUrl('/api/browser/search'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ query: `distance Valence 26000 vers ${dest}` }),
+          body: JSON.stringify({ query: `distance ${origin} vers ${dest}` }),
         })
         const data = await safeJson(res)
         if (data.results && data.results.length > 0) {
-          return { result: `Recherche distance Valence → ${dest}:\n${data.results.slice(0, 3).map((r: { title: string; snippet: string }) => `${r.title}: ${r.snippet}`).join('\n')}` }
+          return { result: `Distance ${origin} → ${dest} :\n${data.results.slice(0, 3).map((r: { title: string; snippet: string }) => `${r.title}: ${r.snippet}`).join('\n')}` }
         }
-        return { result: `Impossible de calculer la distance vers ${dest}.` }
+        return { result: `Impossible de calculer la distance de ${origin} vers ${dest}.` }
       } catch { return { result: 'Erreur calcul distance.' } }
     },
 
     get_weather: async (input) => {
-      const city = (input.city as string) || 'Valence'
+      let city = (input.city as string | undefined)?.trim() || ''
+
+      if (!city && isLocationConsentEnabled()) {
+        const pos = await getUserLocation()
+        if (pos) city = `${pos.latitude.toFixed(5)},${pos.longitude.toFixed(5)}`
+      }
+      if (!city) {
+        return { result: "Précise une ville. La géolocalisation n'est pas activée." }
+      }
+
       try {
         const res = await fetch(apiUrl('/api/browser/weather'), {
           method: 'POST',
