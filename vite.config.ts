@@ -1,8 +1,16 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import pkg from './package.json'
 
 export default defineConfig({
   plugins: [react()],
+  // Inject JS bundle version + build timestamp so we can verify from the
+  // Settings modal that the APK contains a fresh bundle (and not an old
+  // cached one, as happened during the 1.0.30→1.0.32 debugging).
+  define: {
+    __APP_VERSION__: JSON.stringify(pkg.version),
+    __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
+  },
   test: {
     environment: 'jsdom',
     globals: true,

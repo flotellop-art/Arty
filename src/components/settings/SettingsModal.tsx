@@ -286,6 +286,15 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
 
           {/* Orchestrateur sync (Phase 1) — invisible si l'app desktop n'est pas lancée */}
           <OrchestratorSync />
+
+          {/* Version du bundle JS — séparée du versionName Android (qui vient
+              de build.gradle). Si les deux divergent, cowork n'a pas refait
+              `npm run build` avant `npx cap sync` lors du build APK. */}
+          <div className="border-t border-theme-border pt-5 text-center">
+            <p className="font-mono text-[10px] text-theme-muted">
+              Arty v{__APP_VERSION__} · build {__BUILD_TIME__.slice(0, 16).replace('T', ' ')}
+            </p>
+          </div>
         </div>
       </div>
       {showMemoryHistory && <MemoryHistoryPanel onClose={() => setShowMemoryHistory(false)} />}
