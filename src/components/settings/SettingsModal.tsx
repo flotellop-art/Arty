@@ -17,6 +17,10 @@ import {
   getUserLocation,
   type UserLocation,
 } from '../../services/native/location'
+import {
+  getLastLocationDebugSnapshot,
+  type LocationDebugSnapshot,
+} from '../../services/locationContext'
 import { MemoryHistoryPanel } from './MemoryHistoryPanel'
 import { MemoryViewer } from './MemoryViewer'
 import { OrchestratorSync } from './OrchestratorSync'
@@ -37,6 +41,8 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
   const [locationEnabled, setLocationEnabled] = useState(false)
   const [locationFix, setLocationFix] = useState<UserLocation | null>(null)
   const [locationChecking, setLocationChecking] = useState(false)
+  const [locationDebug, setLocationDebug] = useState<LocationDebugSnapshot | null>(null)
+  const [showLocationDebug, setShowLocationDebug] = useState(false)
   const [showMemoryHistory, setShowMemoryHistory] = useState(false)
   const [showMemoryViewer, setShowMemoryViewer] = useState(false)
 
@@ -229,6 +235,15 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
                     Coords : {locationFix.latitude.toFixed(5)}° N, {locationFix.longitude.toFixed(5)}° E
                   </p>
                 )}
+                <button
+                  onClick={() => {
+                    setLocationDebug(getLastLocationDebugSnapshot())
+                    setShowLocationDebug(true)
+                  }}
+                  className="font-display italic text-[11px] text-theme-accent/80 hover:underline mt-1"
+                >
+                  Voir dernière position envoyée à Arty
+                </button>
               </div>
             )}
           </div>
@@ -275,6 +290,49 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
       </div>
       {showMemoryHistory && <MemoryHistoryPanel onClose={() => setShowMemoryHistory(false)} />}
       {showMemoryViewer && <MemoryViewer onClose={() => setShowMemoryViewer(false)} />}
+      {showLocationDebug && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-theme-ink/50"
+          onClick={() => setShowLocationDebug(false)}
+        >
+          <div
+            className="bg-theme-bg text-theme-ink rounded-sm shadow-xl w-full max-w-md border border-theme-border p-5 space-y-3"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p className="font-display text-base text-theme-ink">Dernière position envoyée à Arty</p>
+            {locationDebug ? (
+              <>
+                <p className="font-display italic text-xs text-theme-muted">
+                  Il y a {Math.round((Date.now() - locationDebug.at) / 1000)}s — question : « {locationDebug.message.slice(0, 60)}{locationDebug.message.length > 60 ? '…' : ''} »
+                </p>
+                {locationDebug.position ? (
+                  <p className="font-mono text-xs text-theme-ink">
+                    {locationDebug.position.latitude.toFixed(5)}° N, {locationDebug.position.longitude.toFixed(5)}° E
+                    <br />
+                    Précision : {Math.round(locationDebug.position.accuracy)} m
+                  </p>
+                ) : (
+                  <p className="font-display italic text-xs text-theme-muted">Position non disponible (GPS indisponible ou trigger non matché)</p>
+                )}
+                <details className="text-[11px] text-theme-muted">
+                  <summary className="cursor-pointer">Voir le bloc complet injecté dans le prompt</summary>
+                  <pre className="mt-2 whitespace-pre-wrap font-mono text-[10px] leading-tight max-h-60 overflow-y-auto bg-theme-ink/5 p-2 rounded">
+                    {locationDebug.injectedText || '(vide — aucun texte injecté)'}
+                  </pre>
+                </details>
+              </>
+            ) : (
+              <p className="font-display italic text-xs text-theme-muted">Aucune question de localisation posée depuis le démarrage de l'app.</p>
+            )}
+            <button
+              onClick={() => setShowLocationDebug(false)}
+              className="font-display italic text-xs text-theme-accent hover:underline"
+            >
+              Fermer
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 })
