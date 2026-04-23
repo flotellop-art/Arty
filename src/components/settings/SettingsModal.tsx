@@ -1,9 +1,4 @@
 import { memo, useEffect, useState } from 'react'
-import { ApiKeySetup } from './ApiKeySetup'
-import type { ApiKeys } from '../../hooks/useApiKeys'
-import * as scoped from '../../services/scopedStorage'
-import { setActiveKeys } from '../../services/activeApiKey'
-import { initCrypto } from '../../services/crypto'
 import {
   areNotificationsEnabled,
   setNotificationsEnabled,
@@ -32,12 +27,12 @@ interface SettingsModalProps {
 }
 
 /**
- * Settings modal — lets the logged-in user edit their API keys in-app.
- * Reads the current keys from scoped storage, saves back (encrypted via
- * secureSet for the crypto check, plain JSON for sync reads per BUG 1).
+ * Modal Paramètres — notifications, géolocalisation, mémoire, historique,
+ * quota, sync orchestrateur, version du bundle.
+ *
+ * Depuis 1.0.41, les clés API sont dans une modal séparée (ApiKeysModal).
  */
 export const SettingsModal = memo(function SettingsModal({ open, onClose }: SettingsModalProps) {
-  const [initialKeys, setInitialKeys] = useState<ApiKeys | null>(null)
   const [notifEnabled, setNotifEnabled] = useState(false)
   const [locationEnabled, setLocationEnabled] = useState(false)
   const [locationFix, setLocationFix] = useState<UserLocation | null>(null)
@@ -52,8 +47,6 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
 
   useEffect(() => {
     if (!open) return
-    const stored = scoped.getJSON<ApiKeys>('api-keys')
-    setInitialKeys(stored ?? null)
     setNotifEnabled(areNotificationsEnabled())
     setLocationEnabled(isLocationConsentEnabled())
     setLocationFix(null)
@@ -112,24 +105,6 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
 
   if (!open) return null
 
-  const handleSave = async (keys: ApiKeys) => {
-    // Re-initialize crypto with the (possibly new) anthropic key
-    await initCrypto(keys.anthropic)
-
-    // Store as plain JSON (see BUG 1 in CLAUDE.md — must stay readable via getJSON)
-    scoped.setJSON('api-keys', {
-      anthropic: keys.anthropic,
-      gemini: keys.gemini,
-      mistral: keys.mistral,
-      openai: keys.openai,
-    })
-
-    // Update in-memory active keys so AI clients pick up the new values immediately
-    setActiveKeys(keys.anthropic, keys.gemini, keys.mistral, keys.openai)
-
-    onClose()
-  }
-
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-theme-ink/50"
@@ -162,18 +137,16 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
 
         <div className="px-6 pt-6 pb-2">
           <h1 className="font-display font-medium text-[28px] leading-[1.05] -tracking-[0.02em] text-theme-ink">
-            Tes <span className="italic text-theme-accent">clés.</span>
+            Tes <span className="italic text-theme-accent">préférences.</span>
           </h1>
           <p className="font-display italic text-theme-muted text-sm mt-1">
-            Stockées chiffrées sur cet appareil.
+            Notifications, localisation, mémoire, quota.
           </p>
         </div>
 
         <div className="p-6 space-y-6">
-          <ApiKeySetup onSave={handleSave} initialKeys={initialKeys} embedded />
-
           {/* Notifications toggle */}
-          <div className="border-t border-theme-border pt-5">
+          <div>
             <div className="flex items-center justify-between gap-4">
               <div>
                 <p className="font-display text-base text-theme-ink">🔔 Notifications</p>

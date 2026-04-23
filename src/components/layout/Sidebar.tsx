@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import type { Conversation, Message } from '../../types'
 import { setLocale, SUPPORTED_LOCALES, type Locale } from '../../i18n'
 import { SettingsModal } from '../settings/SettingsModal'
+import { ApiKeysModal } from '../settings/ApiKeysModal'
 import { TaskPanel } from '../tasks/TaskPanel'
 import { countPending } from '../../services/taskService'
 import { importConversationFromFile } from '../../services/conversationExport'
@@ -114,6 +115,7 @@ export function Sidebar({
   const { t, i18n } = useTranslation()
   const timeAgo = useTimeAgo()
   const [showSettings, setShowSettings] = useState(false)
+  const [showApiKeys, setShowApiKeys] = useState(false)
   const [showTasks, setShowTasks] = useState(false)
   const [searchRaw, setSearchRaw] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
@@ -461,8 +463,8 @@ export function Sidebar({
             </div>
           )}
 
-          {/* Langue + Clés API */}
-          <div className="px-[18px] py-1.5 flex items-center justify-between">
+          {/* Langue */}
+          <div className="px-[18px] py-1.5 flex items-center justify-start">
             <div className="flex gap-1.5 items-center">
               {SUPPORTED_LOCALES.map((loc) => (
                 <button
@@ -476,14 +478,33 @@ export function Sidebar({
                 </button>
               ))}
             </div>
+          </div>
+
+          {/* 2 boutons agrandis : Clés API + Paramètres */}
+          <div
+            className="px-4 pb-2 pt-2 flex gap-2"
+            style={{ borderTop: `1px solid ${DESIGN.borderWeak}` }}
+          >
             <button
-              onClick={() => setShowSettings(true)}
-              className="text-theme-muted hover:text-theme-ink text-[11px] px-1.5 py-1 rounded-md flex items-center gap-1.5 transition-colors"
+              onClick={() => setShowApiKeys(true)}
+              className="flex-1 flex items-center justify-center gap-2 py-2 rounded-[10px] text-theme-muted hover:text-theme-ink hover:bg-theme-ink/5 text-xs font-medium transition-colors"
+              style={{ border: `1px solid ${DESIGN.borderMid}` }}
             >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 2a10 10 0 110 20A10 10 0 0112 2zM12 2a15.3 15.3 0 010 20M12 2a15.3 15.3 0 000 20M2 12h20" />
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M15 7a4 4 0 11-3.465 6L8 16.535V19H5v-3l6.535-6.535A4 4 0 0115 7z" />
               </svg>
               Clés API
+            </button>
+            <button
+              onClick={() => setShowSettings(true)}
+              className="flex-1 flex items-center justify-center gap-2 py-2 rounded-[10px] text-theme-muted hover:text-theme-ink hover:bg-theme-ink/5 text-xs font-medium transition-colors"
+              style={{ border: `1px solid ${DESIGN.borderMid}` }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="3" />
+                <path d="M19.4 15a1.7 1.7 0 00.34 1.87l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.7 1.7 0 00-1.87-.34 1.7 1.7 0 00-1.03 1.56V21a2 2 0 11-4 0v-.09a1.7 1.7 0 00-1.11-1.56 1.7 1.7 0 00-1.87.34l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.7 1.7 0 00.34-1.87 1.7 1.7 0 00-1.56-1.03H3a2 2 0 110-4h.09a1.7 1.7 0 001.56-1.11 1.7 1.7 0 00-.34-1.87l-.06-.06a2 2 0 112.83-2.83l.06.06a1.7 1.7 0 001.87.34h.01A1.7 1.7 0 0010 3.09V3a2 2 0 114 0v.09a1.7 1.7 0 001.03 1.56 1.7 1.7 0 001.87-.34l.06-.06a2 2 0 112.83 2.83l-.06.06a1.7 1.7 0 00-.34 1.87v.01A1.7 1.7 0 0020.91 10H21a2 2 0 110 4h-.09a1.7 1.7 0 00-1.56 1.03z" />
+              </svg>
+              Paramètres
             </button>
           </div>
 
@@ -511,6 +532,7 @@ export function Sidebar({
       </aside>
 
       <SettingsModal open={showSettings} onClose={() => setShowSettings(false)} />
+      <ApiKeysModal open={showApiKeys} onClose={() => setShowApiKeys(false)} />
       {showTasks && <TaskPanel onClose={() => setShowTasks(false)} />}
     </>
   )
