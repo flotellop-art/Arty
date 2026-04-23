@@ -314,6 +314,17 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
                 ) : (
                   <p className="font-display italic text-xs text-theme-muted">Position non disponible (GPS indisponible ou trigger non matché)</p>
                 )}
+                {locationDebug.position && (
+                  locationDebug.geocoded?.city ? (
+                    <p className="font-display text-xs text-theme-ink">
+                      Ville reverse-geocodée : <strong>{locationDebug.geocoded.city}</strong>
+                      {locationDebug.geocoded.county && ` (${locationDebug.geocoded.county}${locationDebug.geocoded.countyCode ? `, ${locationDebug.geocoded.countyCode}` : ''})`}
+                      {locationDebug.geocoded.country && `, ${locationDebug.geocoded.country}`}
+                    </p>
+                  ) : (
+                    <p className="font-display italic text-xs text-theme-muted">Reverse geocoding : non résolu (Google Maps indisponible ou coords en mer) — Arty reçoit juste les coords</p>
+                  )
+                )}
                 <details className="text-[11px] text-theme-muted">
                   <summary className="cursor-pointer">Voir le bloc complet injecté dans le prompt</summary>
                   <pre className="mt-2 whitespace-pre-wrap font-mono text-[10px] leading-tight max-h-60 overflow-y-auto bg-theme-ink/5 p-2 rounded">
