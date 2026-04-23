@@ -360,7 +360,7 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
                     />
                   </div>
                   <p className="font-mono text-xs text-theme-ink mt-2">
-                    Coût estimé : ~${quotaStatus.totalCostUsd.toFixed(3)}
+                    Coût : ${quotaStatus.totalCostUsd.toFixed(4)} (tokens réels)
                   </p>
                 </div>
                 {quotaStatus.byModel.length > 0 ? (
@@ -374,7 +374,7 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
                           <div className="flex items-center justify-between font-mono text-xs text-theme-ink">
                             <span className="truncate pr-2">{m.model}</span>
                             <span className={nearLimit ? 'text-theme-accent' : ''}>
-                              {m.count} / {m.limit} · ~${m.estimatedCostUsd.toFixed(3)}
+                              {m.count} / {m.limit} · ${m.costUsd.toFixed(4)}
                             </span>
                           </div>
                           <div className="h-1.5 bg-theme-ink/10 rounded-sm overflow-hidden">
@@ -393,8 +393,9 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
                   </p>
                 )}
                 <p className="font-display italic text-[10px] text-theme-muted">
-                  Les coûts sont des estimations à ~20% près (prompt caching actif, usage typique).
-                  Facture réelle visible dans Anthropic Console / OpenAI Platform.
+                  Coûts calculés serveur-side à partir des tokens réels capturés dans chaque stream
+                  (précision ~3%). Facture officielle : Anthropic Console / OpenAI Platform /
+                  Mistral / Google AI Studio.
                 </p>
               </>
             ) : (
