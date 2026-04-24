@@ -222,12 +222,14 @@ export function useConversation() {
           onToolCall: toolHandlerRef.current,
         })
       } else if (provider === 'openai') {
+        // openaiKey peut être null — dans ce cas le client passe par le proxy
+        // serveur (/api/ai/openai-proxy) qui utilise env.OPENAI_API_KEY.
         const openaiKey = getOpenAIKey()
         const apiMessages = conv.messages.map((m) => ({
           role: (m.role === 'assistant' ? 'assistant' : 'user') as 'user' | 'assistant',
           content: typeof m.content === 'string' ? m.content : '',
         }))
-        controller = streamOpenAIMessage(apiMessages, openaiKey || '', onToken, onDone, onErr, {
+        controller = streamOpenAIMessage(apiMessages, openaiKey, onToken, onDone, onErr, {
           systemPrompt: systemPromptRef.current,
         })
       } else {
