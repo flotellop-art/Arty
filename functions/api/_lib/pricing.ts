@@ -30,7 +30,12 @@ const PRICING: Record<string, ModelPricing> = {
   // OpenAI (transcription)
   'whisper-1': { input: 0, output: 0, audioPerSec: 0.006 / 60 }, // $0.006 / minute
 
-  // OpenAI (chat, avril 2026 — à ajuster si OpenAI change ses tarifs)
+  // OpenAI (chat, avril 2026)
+  // GPT-5.5 sorti le 23/04/2026 — tarif officiel OpenAI $5 input / $30 output.
+  // -60% hallucinations vs GPT-5 selon OpenAI. Défault dans openaiClient.ts.
+  'gpt-5.5': { input: 5, output: 30 },
+  'gpt-5.5-mini': { input: 0.5, output: 3 },
+  // GPT-5 et dérivés (ancienne génération, conservés pour BYOK + fallback)
   'gpt-5': { input: 5, output: 20 },
   'gpt-5-mini': { input: 0.5, output: 2 },
   'gpt-5-nano': { input: 0.1, output: 0.4 },
@@ -48,6 +53,8 @@ const PRICING: Record<string, ModelPricing> = {
   'gemini-2.5-pro': { input: 1.25, output: 10, cacheRead: 0.31 },
   'gemini-2.5-flash': { input: 0.075, output: 0.3, cacheRead: 0.019 },
   'gemini-2.5-flash-lite': { input: 0.04, output: 0.15 },
+  // Gemini 3 Flash Preview (sorti décembre 2025) — tarif développé $0.50/$3
+  'gemini-3-flash-preview': { input: 0.5, output: 3 },
 }
 
 /** Fallback pour les modèles non recensés — tarif pessimiste style Opus. */
@@ -56,9 +63,9 @@ const FALLBACK_PRICING: ModelPricing = { input: 3, output: 15, cacheRead: 0.3 }
 export function getPricing(model: string): ModelPricing {
   if (PRICING[model]) return PRICING[model]
   // Fallback via préfixe (ex: "claude-sonnet-latest" → claude-sonnet-4-6)
-  const prefix = model.split(/[-@]/)[0] ?? ''
+  const prefix = model.split(/[-@.]/)[0] ?? ''
   if (prefix === 'claude') return PRICING['claude-sonnet-4-6'] ?? FALLBACK_PRICING
-  if (prefix === 'gpt') return PRICING['gpt-5-mini'] ?? FALLBACK_PRICING
+  if (prefix === 'gpt') return PRICING['gpt-5.5-mini'] ?? FALLBACK_PRICING
   if (prefix === 'gemini') return PRICING['gemini-2.5-flash'] ?? FALLBACK_PRICING
   if (prefix === 'mistral') return PRICING['mistral-small-latest'] ?? FALLBACK_PRICING
   return FALLBACK_PRICING
