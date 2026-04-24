@@ -133,7 +133,11 @@ export function sendMessageStream(
         messages: buildMessages(messages, systemPrompt),
         stream: true,
         temperature: 0.7,
-        max_tokens: 4096,
+        // gpt-5 et + : "max_tokens" a été renommé en "max_completion_tokens"
+        // (OpenAI renvoie un 400 unsupported_parameter sur max_tokens avec gpt-5).
+        // max_completion_tokens fonctionne aussi sur gpt-4o/mini donc on peut
+        // l'utiliser partout sans branchement.
+        max_completion_tokens: 4096,
         // include_usage permet au proxy serveur de capturer prompt_tokens /
         // completion_tokens dans le dernier chunk SSE pour le tracking coût.
         stream_options: { include_usage: true },
@@ -205,7 +209,7 @@ export async function sendMessage(
     model,
     messages: buildMessages(messages, systemPrompt),
     temperature: 0.7,
-    max_tokens: 4096,
+    max_completion_tokens: 4096,
   })
 
   if (!response.ok) throw formatError(response.status)
@@ -234,7 +238,7 @@ export async function testApiKey(apiKey: string): Promise<boolean> {
       body: JSON.stringify({
         model: TEST_MODEL,
         messages: [{ role: 'user', content: 'hi' }],
-        max_tokens: 1,
+        max_completion_tokens: 1,
       }),
     })
     return response.ok
