@@ -10,11 +10,15 @@ import { getValidAccessToken } from './googleAuth'
 // Pattern miroir de whisperClient.ts.
 
 const OPENAI_DIRECT_URL = 'https://api.openai.com/v1/chat/completions'
-const DEFAULT_MODEL = 'gpt-5'
-const FALLBACK_MODEL = 'gpt-5-mini'
+// GPT-5.5 sorti le 23 avril 2026, -60% hallucinations vs GPT-5 (source
+// OpenAI). Si OpenAI renvoie un 400 "model does not exist" sur un compte
+// qui n'a pas encore accès, le fallback ci-dessous bascule sur gpt-5 (dont
+// on sait qu'il fonctionne).
+const DEFAULT_MODEL = 'gpt-5.5'
+const FALLBACK_MODEL = 'gpt-5'
 // Modèle utilisé pour valider une clé BYOK saisie dans la modale — dispo
 // sur tous les comptes payants depuis 2024, évite les faux négatifs de
-// test si l'utilisateur n'a pas encore accès à gpt-5.
+// test si l'utilisateur n'a pas encore accès à gpt-5 / gpt-5.5.
 const TEST_MODEL = 'gpt-4o-mini'
 
 const OPENAI_SYSTEM = `Tu es Arty, un assistant IA personnel.
@@ -86,9 +90,10 @@ async function openaiFetch(
   })
 }
 
-// Certains comptes OpenAI n'ont pas encore accès à gpt-5 (gating par tier) —
-// on retente une fois avec gpt-5-mini si le 1er appel refuse le modèle, avant
-// même que le stream ait commencé. Pattern miroir de whisperClient:71-83.
+// Certains comptes OpenAI n'ont pas encore accès à gpt-5.5 (gating par tier
+// dans les premières semaines après release) — on retente une fois avec gpt-5
+// si le 1er appel refuse le modèle, avant même que le stream ait commencé.
+// Pattern miroir de whisperClient:71-83.
 async function startChatRequest(
   apiKey: string | null,
   payload: Record<string, unknown>,
