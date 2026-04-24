@@ -132,12 +132,12 @@ export function sendMessageStream(
         model,
         messages: buildMessages(messages, systemPrompt),
         stream: true,
-        temperature: 0.7,
-        // gpt-5 et + : "max_tokens" a été renommé en "max_completion_tokens"
-        // (OpenAI renvoie un 400 unsupported_parameter sur max_tokens avec gpt-5).
-        // max_completion_tokens fonctionne aussi sur gpt-4o/mini donc on peut
-        // l'utiliser partout sans branchement.
+        // gpt-5 / o-series : "max_tokens" renommé en "max_completion_tokens".
+        // max_completion_tokens fonctionne aussi sur gpt-4o donc pas de branchement.
         max_completion_tokens: 4096,
+        // Note : on ne set pas "temperature". gpt-5 / o-series n'acceptent que
+        // la valeur par défaut (1) — OpenAI renvoie 400 unsupported_value sur
+        // n'importe quelle autre valeur. Laisser le default évite le branchement.
         // include_usage permet au proxy serveur de capturer prompt_tokens /
         // completion_tokens dans le dernier chunk SSE pour le tracking coût.
         stream_options: { include_usage: true },
@@ -208,7 +208,6 @@ export async function sendMessage(
   const response = await startChatRequest(apiKey, {
     model,
     messages: buildMessages(messages, systemPrompt),
-    temperature: 0.7,
     max_completion_tokens: 4096,
   })
 
