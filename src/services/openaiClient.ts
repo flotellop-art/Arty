@@ -1,13 +1,21 @@
 import i18n from '../i18n'
+import { apiUrl } from './apiBase'
+import { getValidAccessToken } from './googleAuth'
 
-// OpenAI client — direct API calls with user-provided key (BYOK).
-// Uses gpt-4o by default, falls back to gpt-4o-mini on failure if requested.
-// Supports streaming via SSE and non-streaming.
-// Never stores the key — it must come from secureGet/secureSet (AES-256).
+// OpenAI client — deux chemins :
+// 1. BYOK : si l'utilisateur a saisi sa clé (getOpenAIKey) → appel direct
+//    à api.openai.com avec son Bearer. L'utilisateur paie ses propres appels.
+// 2. Serveur : sinon → passe par /api/ai/openai-proxy qui utilise
+//    env.OPENAI_API_KEY, gaté par ALLOWED_EMAILS côté Cloudflare.
+// Pattern miroir de whisperClient.ts.
 
-const OPENAI_ENDPOINT = 'https://api.openai.com/v1/chat/completions'
-const DEFAULT_MODEL = 'gpt-4o'
-const FALLBACK_MODEL = 'gpt-4o-mini'
+const OPENAI_DIRECT_URL = 'https://api.openai.com/v1/chat/completions'
+const DEFAULT_MODEL = 'gpt-5'
+const FALLBACK_MODEL = 'gpt-5-mini'
+// Modèle utilisé pour valider une clé BYOK saisie dans la modale — dispo
+// sur tous les comptes payants depuis 2024, évite les faux négatifs de
+// test si l'utilisateur n'a pas encore accès à gpt-5.
+const TEST_MODEL = 'gpt-4o-mini'
 
 const OPENAI_SYSTEM = `Tu es Arty, un assistant IA personnel.
 Tu parles comme un pote compétent — direct, cash, pas de flatterie.
@@ -44,20 +52,59 @@ function buildMessages(
   return [{ role: 'system', content: systemPrompt }, ...withoutSystem]
 }
 
+// Route : BYOK direct si clé présente, sinon proxy Cloudflare avec token Google
+// pour vérification whitelist (pattern miroir de whisperClient).
+async function resolveTarget(
+  apiKey: string | null
+): Promise<{ url: string; headers: Record<string, string> }> {
+  if (apiKey) {
+    return {
+      url: OPENAI_DIRECT_URL,
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+    }
+  }
+  const googleToken = await getValidAccessToken()
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (googleToken) headers['x-google-token'] = googleToken
+  return { url: apiUrl('/api/ai/openai-proxy'), headers }
+}
+
 async function openaiFetch(
-  apiKey: string,
+  apiKey: string | null,
   body: Record<string, unknown>,
   signal?: AbortSignal
 ): Promise<Response> {
-  return fetch(OPENAI_ENDPOINT, {
+  const { url, headers } = await resolveTarget(apiKey)
+  return fetch(url, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
+    headers,
     body: JSON.stringify(body),
     signal,
   })
+}
+
+// Certains comptes OpenAI n'ont pas encore accès à gpt-5 (gating par tier) —
+// on retente une fois avec gpt-5-mini si le 1er appel refuse le modèle, avant
+// même que le stream ait commencé. Pattern miroir de whisperClient:71-83.
+async function startChatRequest(
+  apiKey: string | null,
+  payload: Record<string, unknown>,
+  signal?: AbortSignal
+): Promise<Response> {
+  const response = await openaiFetch(apiKey, payload, signal)
+  if (response.ok) return response
+  if (payload.model !== DEFAULT_MODEL) return response
+  if (response.status !== 400 && response.status !== 404) return response
+
+  const errText = await response.clone().text().catch(() => '')
+  if (!/model|not.?found|does.?not.?exist|unknown|invalid.*model/i.test(errText)) {
+    return response
+  }
+  console.warn('[openai] DEFAULT_MODEL rejected, retrying with FALLBACK:', errText.slice(0, 120))
+  return openaiFetch(apiKey, { ...payload, model: FALLBACK_MODEL }, signal)
 }
 
 // ─── Streaming ───
@@ -65,10 +112,11 @@ async function openaiFetch(
 /**
  * Streaming message to OpenAI using SSE.
  * Returns an AbortController that can be used to cancel the request.
+ * apiKey=null fait passer la requête par le proxy serveur Cloudflare.
  */
 export function sendMessageStream(
   messages: OpenAIMessage[],
-  apiKey: string,
+  apiKey: string | null,
   onChunk: (text: string) => void,
   onDone: () => void,
   onError: (err: Error) => void,
@@ -78,10 +126,6 @@ export function sendMessageStream(
 
   const run = async () => {
     try {
-      if (!apiKey) {
-        throw new Error(i18n.t('errors.apiKeyMissing'))
-      }
-
       const systemPrompt = options?.systemPrompt || OPENAI_SYSTEM
       const model = options?.model || DEFAULT_MODEL
       const payload = {
@@ -90,10 +134,12 @@ export function sendMessageStream(
         stream: true,
         temperature: 0.7,
         max_tokens: 4096,
+        // include_usage permet au proxy serveur de capturer prompt_tokens /
+        // completion_tokens dans le dernier chunk SSE pour le tracking coût.
         stream_options: { include_usage: true },
       }
 
-      const response = await openaiFetch(apiKey, payload, controller.signal)
+      const response = await startChatRequest(apiKey, payload, controller.signal)
 
       if (!response.ok) throw formatError(response.status)
       if (!response.body) throw new Error('OpenAI: réponse vide')
@@ -101,7 +147,6 @@ export function sendMessageStream(
       const reader = response.body.getReader()
       const decoder = new TextDecoder()
       let buffer = ''
-      let content = ''
 
       while (true) {
         const { done, value } = await reader.read()
@@ -121,10 +166,7 @@ export function sendMessageStream(
               choices?: Array<{ delta?: { content?: string } }>
             }
             const delta = parsed.choices?.[0]?.delta?.content
-            if (delta) {
-              content += delta
-              onChunk(delta)
-            }
+            if (delta) onChunk(delta)
           } catch {
             // Skip malformed chunks
           }
@@ -149,18 +191,17 @@ export function sendMessageStream(
 
 /**
  * Non-streaming call to OpenAI. Returns the assistant's response text.
+ * apiKey=null fait passer la requête par le proxy serveur Cloudflare.
  */
 export async function sendMessage(
   messages: OpenAIMessage[],
-  apiKey: string,
+  apiKey: string | null,
   options?: OpenAIOptions
 ): Promise<string> {
-  if (!apiKey) throw new Error(i18n.t('errors.apiKeyMissing'))
-
   const systemPrompt = options?.systemPrompt || OPENAI_SYSTEM
   const model = options?.model || DEFAULT_MODEL
 
-  const response = await openaiFetch(apiKey, {
+  const response = await startChatRequest(apiKey, {
     model,
     messages: buildMessages(messages, systemPrompt),
     temperature: 0.7,
@@ -176,16 +217,25 @@ export async function sendMessage(
 }
 
 /**
- * Validate that an OpenAI key is accepted by the API.
- * Sends a minimal request to avoid consuming quota.
+ * Validate that an OpenAI key is accepted by the API. Toujours direct —
+ * la validation porte sur la clé BYOK de l'utilisateur, jamais sur la clé
+ * serveur. Utilise gpt-4o-mini (universellement disponible sur les comptes
+ * payants) pour éviter les faux négatifs sur les comptes sans accès gpt-5.
  */
 export async function testApiKey(apiKey: string): Promise<boolean> {
   if (!apiKey) return false
   try {
-    const response = await openaiFetch(apiKey, {
-      model: FALLBACK_MODEL,
-      messages: [{ role: 'user', content: 'hi' }],
-      max_tokens: 1,
+    const response = await fetch(OPENAI_DIRECT_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: TEST_MODEL,
+        messages: [{ role: 'user', content: 'hi' }],
+        max_tokens: 1,
+      }),
     })
     return response.ok
   } catch {

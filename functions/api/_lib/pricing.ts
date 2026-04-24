@@ -27,8 +27,15 @@ const PRICING: Record<string, ModelPricing> = {
   'claude-opus-4-7': { input: 15, output: 75, cacheRead: 1.5, cacheCreation: 18.75 },
   'claude-haiku-4-5-20251001': { input: 1, output: 5, cacheRead: 0.1, cacheCreation: 1.25 },
 
-  // OpenAI
+  // OpenAI (transcription)
   'whisper-1': { input: 0, output: 0, audioPerSec: 0.006 / 60 }, // $0.006 / minute
+
+  // OpenAI (chat, avril 2026 — à ajuster si OpenAI change ses tarifs)
+  'gpt-5': { input: 5, output: 20 },
+  'gpt-5-mini': { input: 0.5, output: 2 },
+  'gpt-5-nano': { input: 0.1, output: 0.4 },
+  'gpt-4o': { input: 2.5, output: 10 },
+  'gpt-4o-mini': { input: 0.15, output: 0.6 },
 
   // Mistral
   'mistral-large-latest': { input: 2, output: 6 },
@@ -51,6 +58,7 @@ export function getPricing(model: string): ModelPricing {
   // Fallback via préfixe (ex: "claude-sonnet-latest" → claude-sonnet-4-6)
   const prefix = model.split(/[-@]/)[0] ?? ''
   if (prefix === 'claude') return PRICING['claude-sonnet-4-6'] ?? FALLBACK_PRICING
+  if (prefix === 'gpt') return PRICING['gpt-5-mini'] ?? FALLBACK_PRICING
   if (prefix === 'gemini') return PRICING['gemini-2.5-flash'] ?? FALLBACK_PRICING
   if (prefix === 'mistral') return PRICING['mistral-small-latest'] ?? FALLBACK_PRICING
   return FALLBACK_PRICING

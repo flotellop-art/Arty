@@ -128,6 +128,11 @@ export function createMistralParser() {
   return { feed, finalize: () => usage }
 }
 
+// OpenAI Chat utilise le même format SSE que Mistral (prompt_tokens /
+// completion_tokens dans le dernier chunk quand stream_options.include_usage
+// est activé côté client). Alias exporté pour la clarté à l'import.
+export const createOpenAIParser = createMistralParser
+
 /**
  * Parser pour Gemini streaming SSE. Chaque chunk peut avoir `usageMetadata`,
  * on prend le dernier (cumul côté Google).
