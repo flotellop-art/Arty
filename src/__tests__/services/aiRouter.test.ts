@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { detectProvider } from '../../services/aiRouter'
+import { detectProvider, needsThinking, selectClaudeSubModel } from '../../services/aiRouter'
+import { getGeminiThinkingBudget } from '../../services/geminiClient'
 
 // Mock the two external dependencies
 vi.mock('../../services/activeApiKey', () => ({
@@ -88,6 +89,10 @@ describe('auto mode — report triggers → hybrid', () => {
     "Quel est l'état du marché actuel ?",
     'Benchmark des isolants du marché',
     'Tendances du bâtiment en 2024',
+    'Norme RE2020 pour la rénovation',
+    'Prix au m² pour le crépi',
+    'Comparatif PVC contre alu',
+    'Comment installer un poêle à bois',
   ]
 
   const reportsEN = [
@@ -127,7 +132,6 @@ describe('auto mode — web triggers → gemini', () => {
     'Les vidéos de la chaîne de ce youtubeur',
     'Prix chez point p pour le crépi',
     'Où acheter du sika ?',
-    'Norme RE2020 pour la rénovation',
     'Quels sont les concurrent dans ma ville ?',
   ]
 
@@ -216,6 +220,64 @@ describe('forced model selection', () => {
     mockGetSelectedModel.mockReturnValue('gemini')
     withKeys({ gemini: true })
     expect(detectProvider('Bonjour !')).toBe('gemini')
+  })
+})
+
+// ──────────────────────────────────────────────
+// needsThinking — 4-tier budget
+// ──────────────────────────────────────────────
+describe('needsThinking — 4-tier budget', () => {
+  it('strategic report → 10000', () => {
+    expect(needsThinking('rapport sur le marché').budget).toBe(10000)
+  })
+
+  it('debug → 8000', () => {
+    expect(needsThinking('debug cette erreur').budget).toBe(8000)
+  })
+
+  it('analysis → 3000', () => {
+    expect(needsThinking('analyse ce code').budget).toBe(3000)
+  })
+
+  it('greeting → disabled', () => {
+    expect(needsThinking('bonjour').enabled).toBe(false)
+  })
+})
+
+// ──────────────────────────────────────────────
+// selectClaudeSubModel — sub-model routing
+// ──────────────────────────────────────────────
+describe('selectClaudeSubModel', () => {
+  it('greeting + no thinking + no private data → haiku', () => {
+    expect(selectClaudeSubModel('bonjour', { enabled: false, budget: 0 }, false, false))
+      .toBe('claude-haiku-4-5-20251001')
+  })
+
+  it('debug + thinking → sonnet', () => {
+    expect(selectClaudeSubModel('débogue ce code', { enabled: true, budget: 3000 }, false, false))
+      .toBe('claude-sonnet-4-6')
+  })
+
+  it('strategic report + Pro + max thinking → opus', () => {
+    expect(selectClaudeSubModel('rapport stratégique détaillé', { enabled: true, budget: 10000 }, false, true))
+      .toBe('claude-opus-4-6')
+  })
+})
+
+// ──────────────────────────────────────────────
+// getGeminiThinkingBudget — request-aware thinking budget
+// ──────────────────────────────────────────────
+describe('getGeminiThinkingBudget', () => {
+  it('weather lookup → 0', () => {
+    expect(getGeminiThinkingBudget('météo Paris', false)).toBe(0)
+  })
+
+  it('map query (isMapQuery=true) → 0', () => {
+    expect(getGeminiThinkingBudget('itinéraire vers Lyon', true)).toBe(0)
+  })
+
+  it('analysis → 2048', () => {
+    expect(getGeminiThinkingBudget('analyse ce site', false)).toBe(2048)
   })
 })
 
