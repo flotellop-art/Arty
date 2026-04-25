@@ -18,6 +18,7 @@ import { LoginScreen } from './components/auth/LoginScreen'
 import { WelcomeSlides, isOnboardingDone } from './components/onboarding/WelcomeSlides'
 import { ProfileSetupModal } from './components/onboarding/ProfileSetupModal'
 import { getUserProfile } from './services/userProfile'
+import { cleanDisplayName } from './services/displayName'
 import type { FileAttachment } from './types'
 
 function AppContent({ onLogout, userName }: { onLogout: () => void; userName?: string }) {
@@ -26,6 +27,11 @@ function AppContent({ onLogout, userName }: { onLogout: () => void; userName?: s
   const [showProfileSetup, setShowProfileSetup] = useState(() => getUserProfile() === null)
   const [profileName, setProfileName] = useState<string | null>(() => getUserProfile()?.name || null)
   const navigate = useNavigate()
+
+  // Prefer the prénom from the onboarding profile. Fall back to the
+  // session displayName, but only if it's a real-looking name — never
+  // show raw API key previews ("sk-ant-api...") or emails in the UI.
+  const displayName = (profileName && profileName.trim()) || cleanDisplayName(userName)
 
   // Listen for profile updates so the Home hero refreshes without reload
   useEffect(() => {
@@ -157,7 +163,7 @@ function AppContent({ onLogout, userName }: { onLogout: () => void; userName?: s
         onNew={handleNewConversation}
         onNewEU={handleNewEUConversation}
         onDelete={deleteConversation}
-        userName={profileName || userName}
+        userName={displayName}
         onLogout={onLogout}
         onImportConversation={(id) => {
           conversation.selectConversation(id)
@@ -176,7 +182,7 @@ function AppContent({ onLogout, userName }: { onLogout: () => void; userName?: s
               googleAuth={googleAuth}
               gmail={gmail}
               drive={drive}
-              userName={profileName || userName}
+              userName={displayName}
             />
           }
         />
@@ -227,7 +233,7 @@ function AppContent({ onLogout, userName }: { onLogout: () => void; userName?: s
         <MorningBrief
           onClose={() => setShowMorningBrief(false)}
           onSend={handleSendFromHome}
-          userName={profileName || userName}
+          userName={displayName}
           isGoogleConnected={googleAuth.isConnected}
         />
       )}

@@ -144,6 +144,10 @@ export function Sidebar({
         className={`fixed top-0 left-0 h-full w-80 max-w-[85vw] bg-theme-bg text-theme-ink z-50 shadow-xl transform transition-transform duration-300 ease-in-out flex flex-col ${
           isOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
+        style={{
+          paddingTop: 'env(safe-area-inset-top, 0px)',
+          paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+        }}
       >
         {/* Header — Wordmark + close + double rule (Ember signature) */}
         <div className="px-5 pt-5 pb-3 flex items-center justify-between">
@@ -159,42 +163,14 @@ export function Sidebar({
         <div className="mx-5 h-[2px] bg-theme-ink" />
         <div className="mx-5 mt-[3px] h-px bg-theme-ink" />
 
-        {/* Search */}
+        {/* New conversation — editorial primary CTA (terracotta outline, Fraunces italic) */}
         <div className="px-4 pt-4">
-          <div className="relative">
-            <input
-              type="text"
-              value={searchRaw}
-              onChange={(e) => setSearchRaw(e.target.value)}
-              placeholder="Rechercher…"
-              className="w-full pl-8 pr-8 py-2 rounded-sm border border-theme-border text-sm font-display italic text-theme-ink placeholder:text-theme-muted focus:outline-none focus:border-theme-accent bg-theme-surface"
-            />
-            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-theme-muted text-xs">⌕</span>
-            {searchRaw && (
-              <button
-                onClick={() => setSearchRaw('')}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-theme-muted hover:text-theme-ink text-xs"
-                aria-label="Effacer"
-              >
-                ✕
-              </button>
-            )}
-          </div>
-          {debouncedSearch && (
-            <p className="font-mono text-[10px] text-theme-muted mt-1 px-1">
-              {filteredConversations.length} résultat{filteredConversations.length !== 1 ? 's' : ''}
-            </p>
-          )}
-        </div>
-
-        {/* New conversation — primary editorial CTA */}
-        <div className="px-4 py-3">
           <button
             onClick={() => {
               onNew()
               onClose()
             }}
-            className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-sm bg-theme-ink text-theme-bg hover:opacity-90 transition-opacity font-display italic text-[15px]"
+            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-sm border-2 border-theme-accent bg-transparent text-theme-accent hover:bg-theme-accent hover:text-theme-bg transition-colors font-display italic text-[15px]"
           >
             <span className="text-lg leading-none not-italic">+</span>
             {t('sidebar.newConversation')}
@@ -205,42 +181,75 @@ export function Sidebar({
                 onNewEU()
                 onClose()
               }}
-              className="w-full flex items-center gap-2 px-4 py-2.5 rounded-sm border border-blue-300 bg-blue-50/70 hover:bg-blue-100/70 transition-colors text-sm font-medium text-blue-700 mt-2"
+              className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-sm border border-theme-border bg-transparent hover:bg-theme-ink/5 transition-colors text-xs font-display italic text-theme-ink mt-2"
             >
-              <span className="text-base">🇪🇺</span>
+              <span className="font-mono text-[10px] uppercase tracking-kicker text-theme-accent not-italic">EU</span>
               {t('sidebar.newConversationEU')}
             </button>
           )}
+        </div>
 
-          {/* Import + Tasks row */}
-          <div className="flex gap-2 mt-2">
-            <button
-              onClick={() => importInputRef.current?.click()}
-              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-sm border border-theme-border bg-theme-surface hover:bg-theme-ink/5 text-xs font-display italic text-theme-ink"
-              title="Importer une conversation JSON"
-            >
-              <span className="text-theme-accent not-italic">⬆</span> Importer
-            </button>
+        {/* Search — editorial underline (no heavy box) */}
+        <div className="px-4 pt-4">
+          <div className="relative border-b border-theme-ink">
+            <span className="absolute left-0 top-1/2 -translate-y-1/2 text-theme-muted">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                <circle cx="6" cy="6" r="4.5" stroke="currentColor" strokeWidth="1.2" />
+                <path d="M9.5 9.5L13 13" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+              </svg>
+            </span>
             <input
-              ref={importInputRef}
-              type="file"
-              accept=".json,application/json"
-              onChange={handleImport}
-              className="hidden"
+              type="text"
+              value={searchRaw}
+              onChange={(e) => setSearchRaw(e.target.value)}
+              placeholder={t('sidebar.searchPlaceholder', { defaultValue: 'Rechercher…' })}
+              className="w-full pl-6 pr-6 py-2 bg-transparent border-none outline-none text-sm font-display italic text-theme-ink placeholder:text-theme-muted"
             />
-            <button
-              onClick={() => setShowTasks(true)}
-              className="relative flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-sm border border-theme-border bg-theme-surface hover:bg-theme-ink/5 text-xs font-display italic text-theme-ink"
-              title="Tâches"
-            >
-              <span className="text-theme-accent not-italic">✓</span> Tâches
-              {pendingTasks > 0 && (
-                <span className="absolute -top-1 -right-1 bg-theme-accent text-theme-bg text-[9px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-1">
-                  {pendingTasks}
-                </span>
-              )}
-            </button>
+            {searchRaw && (
+              <button
+                onClick={() => setSearchRaw('')}
+                className="absolute right-0 top-1/2 -translate-y-1/2 text-theme-muted hover:text-theme-ink text-xs"
+                aria-label="Effacer"
+              >
+                ✕
+              </button>
+            )}
           </div>
+          {debouncedSearch && (
+            <p className="font-mono text-[10px] text-theme-muted mt-1">
+              {filteredConversations.length} résultat{filteredConversations.length !== 1 ? 's' : ''}
+            </p>
+          )}
+        </div>
+
+        {/* Import + Tasks row — editorial chips */}
+        <div className="px-4 pt-3 pb-2 flex gap-2">
+          <button
+            onClick={() => importInputRef.current?.click()}
+            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 border border-theme-border bg-transparent hover:bg-theme-ink/5 text-xs font-display italic text-theme-ink rounded-sm transition-colors"
+            title="Importer une conversation JSON"
+          >
+            <span className="text-theme-accent not-italic">↓</span> Importer
+          </button>
+          <input
+            ref={importInputRef}
+            type="file"
+            accept=".json,application/json"
+            onChange={handleImport}
+            className="hidden"
+          />
+          <button
+            onClick={() => setShowTasks(true)}
+            className="relative flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 border border-theme-border bg-transparent hover:bg-theme-ink/5 text-xs font-display italic text-theme-ink rounded-sm transition-colors"
+            title="Tâches"
+          >
+            <span className="text-theme-accent not-italic">✓</span> Tâches
+            {pendingTasks > 0 && (
+              <span className="absolute -top-1 -right-1 bg-theme-accent text-theme-bg text-[9px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-1">
+                {pendingTasks}
+              </span>
+            )}
+          </button>
         </div>
 
         {/* Pinned messages (Feature 3) */}

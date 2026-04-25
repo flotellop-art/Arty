@@ -47,6 +47,12 @@ html.dark {
   color-scheme: dark;
 }
 
+html,
+body {
+  height: 100%;
+  overflow: hidden; /* The app owns its own scroll inside screens */
+}
+
 body {
   background-color: rgb(var(--theme-bg));
   color: rgb(var(--theme-ink));
@@ -55,14 +61,15 @@ body {
   margin: 0;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  /* Safe area for Android/iOS navigation bars */
+  /* Safe areas on the BODY (not html). On Capacitor Android/iOS the
+     html-level padding is unreliable, whereas body padding composes
+     cleanly with the WebView resize when the keyboard opens. */
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
   padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-left: env(safe-area-inset-left, 0px);
   transition: background-color 320ms ease, color 320ms ease;
-}
-
-html {
-  /* Ensure the app respects safe areas on all sides */
-  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  box-sizing: border-box;
 }
 
 @keyframes slow-rotate {

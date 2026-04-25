@@ -23,14 +23,20 @@ const config: CapacitorConfig = {
       showSpinner: false,
     },
     Keyboard: {
-      resize: 'body',
+      // 'native' = Capacitor resizes the WebView itself when the keyboard
+      // opens. This keeps CSS height/flex math intact (100dvh stays
+      // accurate) and prevents the composer InputBar from snapping to
+      // the top of the screen — which 'body' mode was causing.
+      resize: 'native',
       resizeOnFullScreen: true,
     },
     PushNotifications: {
       presentationOptions: ['badge', 'sound', 'alert'],
     },
     StatusBar: {
-      style: 'LIGHT',
+      // Ember paper bg is light → Android system icons must be DARK
+      // (LIGHT style paints icons white which is invisible on #FAF3E7).
+      style: 'DARK',
       backgroundColor: '#FAF3E7',
     },
   },
