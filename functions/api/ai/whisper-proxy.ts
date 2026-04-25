@@ -1,5 +1,10 @@
 import type { Env } from '../../env'
-import { checkAllowedUser, verifyGoogleUser } from '../_lib/checkAllowedUser'
+import {
+  parseAllowedEmails,
+  resolveUserPlan,
+  trialModelRestrictedResponse,
+  verifyGoogleUser,
+} from '../_lib/checkAllowedUser'
 import { consumeDailyQuota, recordUsage } from '../_lib/quota'
 import { parseWhisperBody } from '../_lib/trackUsage'
 
@@ -18,16 +23,24 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
   // BYOK prioritaire via header dédié (distinct de x-api-key utilisé par Anthropic).
   let apiKey = request.headers.get('x-openai-key') || ''
   let usingServerKey = false
-  let userPlan: 'subscription' | 'pro' | 'vip' | 'free' = 'free'
+  let userPlan: 'subscription' | 'pro' | 'vip' | 'free' | 'trial' = 'free'
 
-  // Fallback clé serveur pour les utilisateurs avec un plan actif (sub/pro/vip)
-  // ou la whitelist legacy en filet de secours.
+  // Fallback clé serveur pour les utilisateurs avec un plan actif. On n'utilise
+  // pas `checkAllowedUser` ici : Whisper n'est pas dans la liste des modèles
+  // basiques de l'essai gratuit, donc accepter un user trial décrémenterait
+  // son compteur sans valeur ajoutée. On lit le plan en read-only et on
+  // refuse explicitement les users trial.
   if (!apiKey && env.OPENAI_API_KEY) {
-    const allowedUser = await checkAllowedUser(request, env)
-    if (allowedUser) {
+    const allowedList = parseAllowedEmails(env.ALLOWED_EMAILS)
+    const isWhitelisted = allowedList.includes(email)
+    const plan = isWhitelisted ? 'vip' : await resolveUserPlan(env, email)
+    if (plan === 'trial') {
+      return trialModelRestrictedResponse()
+    }
+    if (plan === 'subscription' || plan === 'pro' || plan === 'vip') {
       apiKey = env.OPENAI_API_KEY
       usingServerKey = true
-      userPlan = allowedUser.planType
+      userPlan = plan
     }
   }
 

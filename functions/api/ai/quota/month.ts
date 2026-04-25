@@ -1,5 +1,5 @@
 import type { Env } from '../../../env'
-import { checkAllowedUser } from '../../_lib/checkAllowedUser'
+import { checkAllowedUserPeek } from '../../_lib/checkAllowedUser'
 import { getMonthlyQuotaStatus } from '../../_lib/quota'
 
 // GET /api/ai/quota/month
@@ -12,7 +12,9 @@ import { getMonthlyQuotaStatus } from '../../_lib/quota'
 // Les utilisateurs purement BYOK ne touchent pas la table `quota_model`.
 
 export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
-  const allowed = await checkAllowedUser(request, env)
+  // Peek = pas de décrément du compteur trial. Cet endpoint est read-only,
+  // afficher ses stats ne doit pas coûter un message d'essai gratuit.
+  const allowed = await checkAllowedUserPeek(request, env)
   if (!allowed) {
     return Response.json({ error: 'Not found' }, { status: 404 })
   }

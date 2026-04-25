@@ -96,6 +96,9 @@ async function runGeminiStream(
       signal: controller.signal,
     })
 
+    const { updateTrialFromResponse } = await import('./trialClient')
+    updateTrialFromResponse(response)
+
     if (!response.ok) {
       throw new Error(i18n.t('errors.geminiError', { status: response.status }))
     }
@@ -196,6 +199,9 @@ export async function geminiResearch(query: string, apiKeyOverride?: string): Pr
       headers,
       body: JSON.stringify(requestBody),
     })
+
+    const { updateTrialFromResponse } = await import('./trialClient')
+    updateTrialFromResponse(res)
 
     if (!res.ok) return ''
 

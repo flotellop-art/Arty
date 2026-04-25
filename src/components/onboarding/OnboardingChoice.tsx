@@ -1,28 +1,46 @@
 /**
- * OnboardingChoice — first-launch fork between BYOK ("J'ai ma clé API") and
- * Subscription ("9,99€/mois"). Shown once, after WelcomeSlides, before
- * LoginScreen. The chosen path is recorded under
- * `arty-onboarding-choice-done` so the screen never reappears.
+ * Onboarding screens — first-launch entry into Arty after the welcome slides.
  *
- * BYOK path: the user types an Anthropic key in a sub-form and we call
- * `auth.login('apikey', …)` directly — same flow as ApiKeyLoginTab.
- * Subscription path: opens Lemon Squeezy checkout in the in-app browser
- * (Capacitor) with a window.open fallback for web, then marks the choice
- * done so the user can come back via the regular LoginScreen (Google /
- * Email tabs) — server-side will validate the subscription on the first
- * AI call.
+ * Three components live in this file because they form a single conceptual
+ * flow (welcome → post-login splash) split across the auth boundary :
+ *
+ *   1. `OnboardingChoice` — pre-auth welcome screen. Default CTA is now
+ *      "Continuer avec Google" (free trial of 30 messages, no credit card).
+ *      Two discrete links sit below for power users : "J'ai une clé API"
+ *      (BYOK) and "J'ai déjà un abonnement" (jumps straight to the regular
+ *      LoginScreen so they can sign in via their existing path).
+ *
+ *   2. `VipSplash` — post-auth, shown for ~1.5 s when `/api/trial/init`
+ *      returned `plan: 'vip'` (i.e. the email is in `ALLOWED_EMAILS`).
+ *      Auto-dismisses to the main app via `onDone`.
+ *
+ *   3. `TrialIntro` — post-auth, shown when `plan: 'trial'`. Lists the four
+ *      basic models available during the 30-message run and waits for the
+ *      user to click "C'est parti" before unblocking the app.
+ *
+ * The Google login itself is delegated to the shared `GoogleLoginTab` so we
+ * keep a single source of truth for the native plugin / web redirect logic.
+ * The trial init call (`/api/trial/init`) lives in `services/trialClient.ts`
+ * and is invoked by all Google login paths (this onboarding, LoginScreen
+ * Google tab, deep-link callback) so the splash state is set before the
+ * splash component renders.
  */
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { Capacitor, registerPlugin } from '@capacitor/core'
 import { ArtyWordmark } from '../shared/PrismMark'
+import { buildOAuthUrl } from '../../services/googleAuth'
+import { initTrial } from '../../services/trialClient'
+import { apiUrl } from '../../services/apiBase'
 
 const CHOICE_DONE_KEY = 'arty-onboarding-choice-done'
 
-// TODO: replace with the real Lemon Squeezy variant ID once the product is
-// published. Until then we open the store landing page so the link still
-// "works" in dev/staging.
-const LEMON_SQUEEZY_CHECKOUT_URL = 'https://arty.lemonsqueezy.com/buy/'
+interface GoogleSignInNativePlugin {
+  signIn(): Promise<{ email: string; name: string; avatar: string; serverAuthCode: string }>
+  signOut(): Promise<void>
+}
+const GoogleSignInNative = registerPlugin<GoogleSignInNativePlugin>('GoogleSignInNative')
 
 export function isOnboardingChoiceDone(): boolean {
   return localStorage.getItem(CHOICE_DONE_KEY) === '1'
@@ -32,50 +50,155 @@ export function markOnboardingChoiceDone(): void {
   localStorage.setItem(CHOICE_DONE_KEY, '1')
 }
 
+// ─── 1. Welcome screen ─────────────────────────────────────────────────────
+
 interface OnboardingChoiceProps {
-  /** Called when the user submits a valid Anthropic key. The parent
-   *  performs the actual login (auth.login('apikey', …)). */
+  /** BYOK path — parent calls auth.login('apikey', …). */
   onApiKeyLogin: (anthropicKey: string) => Promise<void>
-  /** Called after the subscription checkout link has been opened so the
-   *  parent can refresh the "choice done" state and move on to LoginScreen. */
-  onSubscriptionStarted: () => void
+  /** Native Google path — parent receives the Google credentials and calls
+   *  auth.login('google', …). The trial init call has already happened by
+   *  the time this fires, so the splash state is set before unmount. */
+  onNativeGoogleLogin: (
+    email: string,
+    name: string,
+    avatar: string,
+    accessToken: string,
+    refreshToken: string,
+    expiresIn: number
+  ) => Promise<void>
+  /** Jump to the regular LoginScreen for users who already have a sub. */
+  onGoToLogin: () => void
 }
 
 type Mode = 'choice' | 'byok'
 
-export function OnboardingChoice({ onApiKeyLogin, onSubscriptionStarted }: OnboardingChoiceProps) {
+export function OnboardingChoice({
+  onApiKeyLogin,
+  onNativeGoogleLogin,
+  onGoToLogin,
+}: OnboardingChoiceProps) {
   const { t } = useTranslation()
   const [mode, setMode] = useState<Mode>('choice')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+
+  const handleGoogle = async () => {
+    if (busy) return
+    setError('')
+    setBusy(true)
+    try {
+      if (Capacitor.isNativePlatform()) {
+        const { email, name, avatar, serverAuthCode } = await GoogleSignInNative.signIn()
+        let accessToken = ''
+        let refreshToken = ''
+        let expiresIn = 3600
+        if (serverAuthCode) {
+          const res = await fetch(apiUrl('/api/auth/token'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code: serverAuthCode, redirect_uri: '' }),
+          })
+          if (res.ok) {
+            const data = (await res.json()) as {
+              access_token?: string
+              refresh_token?: string
+              expires_in?: number
+            }
+            accessToken = data.access_token || ''
+            refreshToken = data.refresh_token || ''
+            expiresIn = data.expires_in || 3600
+          }
+        }
+        // Décide du splash post-login (vip|trial|none) AVANT de finaliser
+        // l'auth — le composant va unmount dès que auth.isAuthenticated flip.
+        if (accessToken) {
+          await initTrial(accessToken)
+        }
+        markOnboardingChoiceDone()
+        await onNativeGoogleLogin(
+          email,
+          name || email.split('@')[0] || '',
+          avatar || '',
+          accessToken,
+          refreshToken,
+          expiresIn
+        )
+      } else {
+        // Web — redirect to Google. Trial init is performed in App's
+        // OAuthCallback handler once we get the access_token back.
+        markOnboardingChoiceDone()
+        window.location.href = buildOAuthUrl()
+      }
+    } catch {
+      setError(t('login.google.failed', { defaultValue: 'Connexion Google impossible.' }))
+    } finally {
+      setBusy(false)
+    }
+  }
 
   return (
     <div
       className="keyboard-aware bg-theme-bg text-theme-ink flex items-center justify-center px-6 py-10"
       style={{ minHeight: 'var(--viewport-h, 100dvh)' }}
     >
-      <div className="w-full max-w-3xl">
-        <header className="flex flex-col items-center mb-8">
-          <ArtyWordmark size={22} color="rgb(var(--theme-accent))" />
-          <div className="mt-5 mb-3 h-px w-full bg-theme-ink/10" />
-          <span className="font-sans text-[10px] font-semibold uppercase tracking-kicker text-theme-muted">
-            {t('onboardingChoice.kicker', { defaultValue: 'Édition privée · Vol. 1' })}
-          </span>
+      <div className="w-full max-w-md">
+        <header className="flex flex-col items-center mb-10">
+          <ArtyWordmark size={26} color="rgb(var(--theme-accent))" />
         </header>
 
-        <h1 className="font-display text-[36px] sm:text-[42px] leading-[1.05] font-medium -tracking-[0.025em] text-theme-ink text-center">
-          {t('onboardingChoice.title', { defaultValue: 'Comment veux-tu commencer' })}
-          <span className="text-theme-accent">?</span>
-        </h1>
-        <p className="font-display italic text-theme-muted text-base mt-2 text-center">
-          {t('onboardingChoice.subtitle', {
-            defaultValue: 'Deux portes d’entrée. Tu peux changer plus tard.',
-          })}
-        </p>
-
         {mode === 'choice' && (
-          <div className="mt-10 grid grid-cols-1 sm:grid-cols-2 gap-5">
-            <ByokCard onChoose={() => setMode('byok')} />
-            <SubscriptionCard onStarted={onSubscriptionStarted} />
-          </div>
+          <>
+            <h1 className="font-display text-[34px] sm:text-[40px] leading-[1.05] font-medium -tracking-[0.025em] text-theme-ink text-center">
+              {t('onboardingChoice.tryFree.title', { defaultValue: 'Essaie Arty gratuitement' })}
+            </h1>
+            <p className="font-display italic text-theme-muted text-base mt-3 text-center">
+              {t('onboardingChoice.tryFree.subtitle', {
+                defaultValue: '30 messages offerts. Sans carte bancaire.',
+              })}
+            </p>
+
+            <div className="mt-10 space-y-4">
+              <button
+                type="button"
+                onClick={handleGoogle}
+                disabled={busy}
+                className="w-full py-4 font-display italic text-base font-medium tracking-[0.02em] bg-theme-accent text-theme-bg rounded-sm transition-opacity hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-3"
+              >
+                <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden>
+                  <path fill="#fff" d="M16.51 8H8.98v3h4.3c-.18 1-.74 1.48-1.6 2.04v2.01h2.6a7.8 7.8 0 002.38-5.88c0-.57-.05-.99-.15-1.17z" />
+                  <path fill="#fff" d="M8.98 17c2.16 0 3.97-.72 5.3-1.94l-2.6-2a4.8 4.8 0 01-7.18-2.54H1.83v2.07A8 8 0 008.98 17z" />
+                  <path fill="#fff" d="M4.5 10.52a4.8 4.8 0 010-3.04V5.41H1.83a8 8 0 000 7.18l2.67-2.07z" />
+                  <path fill="#fff" d="M8.98 3.58c1.32 0 2.29.44 3.13 1.21l2.27-2.27A7.8 7.8 0 008.98 0 8 8 0 001.83 5.41L4.5 7.48a4.77 4.77 0 014.48-3.9z" />
+                </svg>
+                <span>
+                  {busy
+                    ? t('onboardingChoice.tryFree.googleLoading', { defaultValue: 'Connexion…' })
+                    : `${t('onboardingChoice.tryFree.googleCta', { defaultValue: 'Continuer avec Google' })} →`}
+                </span>
+              </button>
+
+              {error && (
+                <p className="font-sans text-xs text-red-500 text-center">{error}</p>
+              )}
+            </div>
+
+            <div className="mt-10 flex flex-col items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setMode('byok')}
+                className="font-display italic text-[13px] text-theme-muted hover:text-theme-ink transition-colors"
+              >
+                {t('onboardingChoice.tryFree.byokLink', { defaultValue: "J'ai une clé API" })}
+              </button>
+              <button
+                type="button"
+                onClick={onGoToLogin}
+                className="font-display italic text-[13px] text-theme-muted hover:text-theme-ink transition-colors"
+              >
+                {t('onboardingChoice.tryFree.subLink', { defaultValue: "J'ai déjà un abonnement" })}
+              </button>
+            </div>
+          </>
         )}
 
         {mode === 'byok' && (
@@ -86,198 +209,81 @@ export function OnboardingChoice({ onApiKeyLogin, onSubscriptionStarted }: Onboa
   )
 }
 
-// ─── Choice cards ───────────────────────────────────────────────────────────
+// ─── 2. VIP splash (post-auth, 1.5 s auto-dismiss) ─────────────────────────
 
-interface ByokCardProps {
-  onChoose: () => void
+interface VipSplashProps {
+  onDone: () => void
 }
 
-function ByokCard({ onChoose }: ByokCardProps) {
+export function VipSplash({ onDone }: VipSplashProps) {
   const { t } = useTranslation()
-  return (
-    <article className="flex flex-col rounded-sm border border-theme-border bg-theme-surface p-7 transition-colors hover:border-theme-accent/60">
-      <span className="text-4xl" aria-hidden>
-        🔑
-      </span>
-      <h2 className="mt-5 font-display text-[22px] leading-tight font-medium text-theme-ink">
-        {t('onboardingChoice.byok.title', { defaultValue: 'Mode Clé API' })}
-      </h2>
-      <p className="mt-2 font-sans text-sm text-theme-muted leading-relaxed flex-1">
-        {t('onboardingChoice.byok.description', {
-          defaultValue:
-            'Tu as déjà un compte Claude, OpenAI ou Gemini. Tu utilises ta propre clé, gratuit côté Arty.',
-        })}
-      </p>
-      <button
-        type="button"
-        onClick={onChoose}
-        className="mt-6 w-full py-3.5 font-display italic text-base font-medium tracking-[0.02em] bg-theme-ink text-theme-bg rounded-sm transition-opacity hover:opacity-90"
-      >
-        {t('onboardingChoice.byok.cta', { defaultValue: 'Entrer ma clé API' })} →
-      </button>
-    </article>
-  )
-}
-
-interface SubscriptionCardProps {
-  onStarted: () => void
-}
-
-type SubscriptionPhase = 'idle' | 'opening' | 'verifying' | 'active' | 'pending'
-
-interface SubscriptionStatus {
-  plan?: string
-  status?: string
-}
-
-async function fetchSubscriptionStatus(): Promise<SubscriptionStatus | null> {
-  try {
-    const { getValidAccessToken } = await import('../../services/googleAuth')
-    const token = await getValidAccessToken()
-    const headers: Record<string, string> = {}
-    if (token) headers['x-google-token'] = token
-    const res = await fetch('/api/subscription/status', { headers })
-    if (!res.ok) return null
-    return (await res.json()) as SubscriptionStatus
-  } catch {
-    return null
-  }
-}
-
-function SubscriptionCard({ onStarted }: SubscriptionCardProps) {
-  const { t } = useTranslation()
-  const [phase, setPhase] = useState<SubscriptionPhase>('idle')
-
-  // After the in-app browser closes we wait at least 3 s before calling
-  // /api/subscription/status so Lemon Squeezy has time to fire the
-  // webhook that updates the subscription record server-side. Below 3 s
-  // the call almost always returns "pending" even on a real success.
-  const verifyAndFinish = async () => {
-    setPhase('verifying')
-    const [status] = await Promise.all([
-      fetchSubscriptionStatus(),
-      new Promise<void>((r) => setTimeout(r, 3000)),
-    ])
-    const isActive = status?.plan === 'subscription' && status?.status === 'active'
-    setPhase(isActive ? 'active' : 'pending')
-    markOnboardingChoiceDone()
-    // Brief moment for the user to read the result before we hand back
-    // to the parent and unmount.
-    setTimeout(onStarted, 1200)
-  }
-
-  const handleSubscribe = async () => {
-    if (phase !== 'idle') return
-    setPhase('opening')
-    try {
-      const { Browser } = await import('@capacitor/browser')
-      // Listen once for `browserFinished` (Capacitor fires this when the
-      // in-app browser is closed by the user). On web `Browser.open` falls
-      // back to window.open and never resolves the listener, so we run the
-      // verification right after `Browser.open` resolves there.
-      let handled = false
-      const listener = await Browser.addListener('browserFinished', () => {
-        if (handled) return
-        handled = true
-        listener.remove()
-        void verifyAndFinish()
-      })
-      await Browser.open({ url: LEMON_SQUEEZY_CHECKOUT_URL })
-    } catch {
-      window.open(LEMON_SQUEEZY_CHECKOUT_URL, '_blank', 'noopener,noreferrer')
-      void verifyAndFinish()
-    }
-  }
-
-  if (phase === 'verifying' || phase === 'active' || phase === 'pending') {
-    return <SubscriptionVerifyingCard phase={phase} />
-  }
-  const opening = phase === 'opening'
+  useEffect(() => {
+    const id = setTimeout(onDone, 1500)
+    return () => clearTimeout(id)
+  }, [onDone])
 
   return (
-    <article className="relative flex flex-col rounded-sm border border-theme-accent/60 bg-theme-surface p-7 shadow-[0_2px_24px_rgba(0,0,0,0.06)]">
-      <span
-        className="absolute -top-3 right-5 px-2.5 py-1 rounded-pill bg-theme-accent text-theme-bg font-sans text-[10px] font-semibold uppercase tracking-kicker"
-      >
-        {t('onboardingChoice.subscription.badge', { defaultValue: 'Le plus simple' })}
-      </span>
-      <span className="text-4xl" aria-hidden>
-        ⚡
-      </span>
-      <h2 className="mt-5 font-display text-[22px] leading-tight font-medium text-theme-ink">
-        {t('onboardingChoice.subscription.title', { defaultValue: 'Mode Abonnement' })}
-      </h2>
-      <p className="mt-2 font-sans text-sm text-theme-muted leading-relaxed flex-1">
-        {t('onboardingChoice.subscription.description', {
-          defaultValue:
-            '9,99€/mois. Accès immédiat à Claude, GPT-5-mini, Gemini et Mistral. Sans clé API.',
-        })}
-      </p>
-      <button
-        type="button"
-        onClick={handleSubscribe}
-        disabled={opening}
-        className="mt-6 w-full py-3.5 font-display italic text-base font-medium tracking-[0.02em] bg-theme-accent text-theme-bg rounded-sm transition-opacity hover:opacity-90 disabled:opacity-50"
-      >
-        {opening
-          ? t('onboardingChoice.subscription.opening', { defaultValue: 'Ouverture…' })
-          : `${t('onboardingChoice.subscription.cta', { defaultValue: 'Démarrer l’abonnement' })} →`}
-      </button>
-    </article>
-  )
-}
-
-interface SubscriptionVerifyingCardProps {
-  phase: 'verifying' | 'active' | 'pending'
-}
-
-function SubscriptionVerifyingCard({ phase }: SubscriptionVerifyingCardProps) {
-  const { t } = useTranslation()
-  const isVerifying = phase === 'verifying'
-  const title = isVerifying
-    ? t('onboardingChoice.subscription.verifying', {
-        defaultValue: 'Vérification de ton abonnement…',
-      })
-    : phase === 'active'
-      ? t('onboardingChoice.subscription.active', {
-          defaultValue: 'Abonnement activé !',
-        })
-      : t('onboardingChoice.subscription.processing', {
-          defaultValue: 'Paiement en cours de traitement.',
-        })
-  const subtitle = isVerifying
-    ? t('onboardingChoice.subscription.verifyingHint', {
-        defaultValue: 'Cela peut prendre quelques secondes.',
-      })
-    : phase === 'active'
-      ? t('onboardingChoice.subscription.activeHint', {
-          defaultValue: 'Tu vas être redirigé.',
-        })
-      : t('onboardingChoice.subscription.processingHint', {
-          defaultValue: "L'app s'activera dans quelques minutes.",
-        })
-  return (
-    <article
-      className="relative flex flex-col items-center justify-center text-center rounded-sm border border-theme-accent/60 bg-theme-surface p-7 shadow-[0_2px_24px_rgba(0,0,0,0.06)] min-h-[260px]"
+    <div
+      className="bg-theme-bg text-theme-ink flex items-center justify-center px-6"
+      style={{ minHeight: 'var(--viewport-h, 100dvh)' }}
       role="status"
       aria-live="polite"
     >
-      {isVerifying ? (
-        <span
-          className="block h-9 w-9 rounded-full border-2 border-theme-accent border-t-transparent animate-slow-rotate"
-          style={{ animationDuration: '1s' }}
-          aria-hidden
-        />
-      ) : (
-        <span className="text-4xl" aria-hidden>
-          {phase === 'active' ? '✓' : '⏳'}
-        </span>
-      )}
-      <h2 className="mt-5 font-display text-[20px] leading-tight font-medium text-theme-ink">
-        {title}
-      </h2>
-      <p className="mt-2 font-sans text-sm text-theme-muted leading-relaxed">{subtitle}</p>
-    </article>
+      <div className="text-center">
+        <div className="text-6xl mb-6" aria-hidden>⭐</div>
+        <p className="font-display text-2xl text-theme-ink">
+          {t('onboardingChoice.vip.welcome', { defaultValue: 'Bienvenue, accès VIP activé.' })}
+        </p>
+      </div>
+    </div>
+  )
+}
+
+// ─── 3. Trial intro (post-auth, click to continue) ─────────────────────────
+
+interface TrialIntroProps {
+  onDone: () => void
+  onUpgrade: () => void
+}
+
+export function TrialIntro({ onDone, onUpgrade }: TrialIntroProps) {
+  const { t } = useTranslation()
+
+  return (
+    <div
+      className="bg-theme-bg text-theme-ink flex items-center justify-center px-6 py-10"
+      style={{ minHeight: 'var(--viewport-h, 100dvh)' }}
+    >
+      <div className="w-full max-w-md text-center">
+        <div className="text-6xl mb-6" aria-hidden>🎁</div>
+        <h1 className="font-display text-[32px] leading-tight font-medium text-theme-ink">
+          {t('onboardingChoice.trial.title', { defaultValue: '30 messages offerts !' })}
+        </h1>
+        <p className="font-display italic text-theme-muted text-base mt-3">
+          {t('onboardingChoice.trial.subtitle', {
+            defaultValue: 'Modèles disponibles : Claude Haiku, GPT-4o mini, Gemini Flash, Mistral Small',
+          })}
+        </p>
+
+        <button
+          type="button"
+          onClick={onDone}
+          className="mt-10 w-full py-4 font-display italic text-base font-medium tracking-[0.02em] bg-theme-ink text-theme-bg rounded-sm transition-opacity hover:opacity-90"
+        >
+          {t('onboardingChoice.trial.cta', { defaultValue: "C'est parti" })} →
+        </button>
+
+        <button
+          type="button"
+          onClick={onUpgrade}
+          className="mt-6 font-display italic text-[13px] text-theme-muted hover:text-theme-ink transition-colors"
+        >
+          {t('onboardingChoice.trial.upgrade', {
+            defaultValue: 'Passe à Pro ou Subscription pour débloquer tous les modèles',
+          })}
+        </button>
+      </div>
+    </div>
   )
 }
 
@@ -320,7 +326,7 @@ function ByokForm({ onBack, onApiKeyLogin }: ByokFormProps) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="mt-10 mx-auto max-w-md space-y-6">
+    <form onSubmit={handleSubmit} className="mt-4 mx-auto max-w-md space-y-6">
       <div>
         <label
           htmlFor="onboarding-apikey"

@@ -182,6 +182,9 @@ async function streamOnce(
     signal: controller.signal,
   })
 
+  const { updateTrialFromResponse } = await import('./trialClient')
+  updateTrialFromResponse(response)
+
   if (!response.ok) {
     const err = await response.text().catch(() => '')
     if (response.status === 401) {

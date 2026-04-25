@@ -83,12 +83,15 @@ async function openaiFetch(
   signal?: AbortSignal
 ): Promise<Response> {
   const { url, headers } = await resolveTarget(apiKey)
-  return fetch(url, {
+  const res = await fetch(url, {
     method: 'POST',
     headers,
     body: JSON.stringify(body),
     signal,
   })
+  const { updateTrialFromResponse } = await import('./trialClient')
+  updateTrialFromResponse(res)
+  return res
 }
 
 // Certains comptes OpenAI n'ont pas encore accès à gpt-5.5 (gating par tier

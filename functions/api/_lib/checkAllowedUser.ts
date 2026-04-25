@@ -43,34 +43,112 @@ export function parseAllowedEmails(raw: string | undefined): string[] {
     .filter(Boolean)
 }
 
-export type PlanType = 'subscription' | 'pro' | 'vip' | 'free'
+export type PlanType = 'subscription' | 'pro' | 'vip' | 'free' | 'trial'
 
 export interface AllowedUser {
   email: string
   planType: PlanType
+  /** Pour le plan trial uniquement : nombre de messages restants APRÈS décrément. */
+  trialRemaining?: number
+  /** Pour le plan trial uniquement : liste des familles de modèles autorisées. */
+  allowedModels?: string[]
+}
+
+export interface TrialExpired {
+  error: 'trial_expired'
+  email: string
+}
+
+export type CheckResult = AllowedUser | TrialExpired | null
+
+export function isTrialExpired(r: CheckResult): r is TrialExpired {
+  return r !== null && typeof r === 'object' && 'error' in r && r.error === 'trial_expired'
+}
+
+/**
+ * Modèles autorisés en essai gratuit (plan 'trial'). Liste affichée à
+ * l'utilisateur ; l'enforcement réel utilise `isModelAllowedInTrial()`
+ * pour tolérer les variantes de versionning des fournisseurs (ex :
+ * `claude-haiku-4-5-20251001` matche `claude-haiku`, `mistral-small-latest`
+ * matche `mistral-small`).
+ */
+export const TRIAL_ALLOWED_MODELS = [
+  'claude-haiku-4-5',
+  'gpt-5-mini',
+  'gemini-flash',
+  'mistral-small',
+] as const
+
+const TRIAL_INITIAL_MESSAGES = 30
+
+/** Clé KV du compteur de messages restants pour un user en trial. */
+export function trialCounterKey(email: string): string {
+  return `trial:${email}`
+}
+
+/**
+ * Vérifie si un nom de modèle est autorisé pour un user en plan trial.
+ * Matche par famille (claude→haiku, gpt→mini, gemini→flash, mistral→small)
+ * pour tolérer les suffixes de versions API. Les proxys IA étant scopés par
+ * fournisseur, le préfixe `claude-` / `gpt-` / `gemini-` / `mistral-` est
+ * implicite ; on regarde juste la sous-famille.
+ */
+export function isModelAllowedInTrial(model: string): boolean {
+  const m = model.toLowerCase()
+  if (m.startsWith('claude')) return m.includes('haiku')
+  if (m.startsWith('gpt')) return m.includes('mini')
+  if (m.startsWith('gemini')) return m.includes('flash')
+  if (m.startsWith('mistral')) return m.includes('small')
+  return false
 }
 
 /**
  * Logique d'accès :
  *   - free          : accès refusé (l'utilisateur doit s'abonner via /pricing)
+ *   - trial         : accès autorisé, 30 messages, modèles basiques uniquement
  *   - subscription  : accès autorisé, soumis aux quotas mensuels (500 msgs/mois)
  *   - pro           : accès autorisé, sans quota
  *   - vip           : accès autorisé, sans quota
  *
  * Source de vérité : la table D1 `subscriptions` (renseignée par le webhook
  * Lemon Squeezy `functions/api/webhook/lemonsqueezy.ts`) et la table `licenses`
- * (achats one-shot du plan Pro). En cas d'échec D1 (table absente, etc.) on
- * retombe sur l'ancienne whitelist `ALLOWED_EMAILS` pour ne pas casser le dev.
+ * (achats one-shot du plan Pro). Pour le plan trial, le compteur de messages
+ * restants vit dans KV (`trial:{email}`) — incrémenté côté `/api/trial/init`
+ * et décrémenté ici à chaque appel autorisé.
  *
  * Vérifie le token Google, puis cherche un abonnement/licence actif. Retourne
- * l'email + plan_type si autorisé, null sinon. Les callers existants qui
- * traitaient le retour comme truthy/falsy continuent de fonctionner — un objet
- * non-null est truthy comme l'ancienne string.
+ * `AllowedUser` si autorisé, `TrialExpired` si trial épuisé (le caller émet
+ * un 403 dédié), `null` sinon. Les callers existants traitaient le retour
+ * comme truthy/falsy — `isTrialExpired()` permet de gérer le cas trial
+ * sans casser le pattern.
  */
-export async function checkAllowedUser(
+/**
+ * Variante read-only de `checkAllowedUser` : retourne `AllowedUser` sans
+ * décrémenter le compteur trial KV. Pour les endpoints auxiliaires qui
+ * vérifient juste l'identité sans facturer un message d'essai (stats de
+ * quota, geocoding, etc.).
+ */
+export async function checkAllowedUserPeek(
   request: Request,
   env: Env
 ): Promise<AllowedUser | null> {
+  const email = await verifyGoogleUser(request)
+  if (!email) return null
+
+  const allowed = parseAllowedEmails(env.ALLOWED_EMAILS)
+  if (allowed.includes(email)) {
+    return { email, planType: 'vip' }
+  }
+
+  const plan = await resolveUserPlan(env, email)
+  if (plan === 'free') return null
+  return { email, planType: plan }
+}
+
+export async function checkAllowedUser(
+  request: Request,
+  env: Env
+): Promise<CheckResult> {
   const email = await verifyGoogleUser(request)
   if (!email) return null
 
@@ -82,17 +160,60 @@ export async function checkAllowedUser(
   }
 
   const plan = await resolveUserPlan(env, email)
-  if (plan !== 'free') return { email, planType: plan }
+  if (plan === 'subscription' || plan === 'pro' || plan === 'vip') {
+    return { email, planType: plan }
+  }
+  if (plan === 'trial') {
+    return await consumeTrialMessage(env, email)
+  }
 
   return null
 }
 
 /**
+ * Décrémente le compteur trial KV de 1. Si épuisé (<= 0), retourne
+ * `TrialExpired` — le caller émet alors un 403 `trial_expired`. Sinon
+ * retourne un `AllowedUser` enrichi avec `trialRemaining` (post-décrément)
+ * et la liste `allowedModels`.
+ *
+ * Race conditions : KV est eventually consistent. Deux appels simultanés
+ * peuvent lire la même valeur, décrémenter, et écrire la même nouvelle
+ * valeur (perte d'un cran). Acceptable pour un compteur de trial — la
+ * dérive est <= 1 message par session active.
+ */
+async function consumeTrialMessage(env: Env, email: string): Promise<CheckResult> {
+  if (!env.KV) {
+    // Sans KV on ne peut pas appliquer le quota trial → considère comme
+    // expiré pour ne pas distribuer de messages illimités.
+    return { error: 'trial_expired', email }
+  }
+
+  const key = trialCounterKey(email)
+  const raw = await env.KV.get(key)
+  const current = raw === null ? 0 : Math.max(0, parseInt(raw, 10) || 0)
+
+  if (current <= 0) {
+    return { error: 'trial_expired', email }
+  }
+
+  const next = current - 1
+  await env.KV.put(key, String(next))
+
+  return {
+    email,
+    planType: 'trial',
+    trialRemaining: next,
+    allowedModels: [...TRIAL_ALLOWED_MODELS],
+  }
+}
+
+/**
  * Détermine le plan de l'utilisateur (sans vérifier le token — l'email doit
  * déjà être validé). Priorité : license active (pro) > sub active/cancelled
- * (subscription/pro/vip) > free. La période 'cancelled' est traitée comme
- * un accès courant : Lemon Squeezy passe en 'expired' à la fin de la période,
- * donc 'cancelled' = "annulé mais accès jusqu'à la fin du mois payé".
+ * (subscription/pro/vip) > trial active > free. La période 'cancelled' est
+ * traitée comme un accès courant : Lemon Squeezy passe en 'expired' à la
+ * fin de la période, donc 'cancelled' = "annulé mais accès jusqu'à la fin
+ * du mois payé".
  *
  * Failsafe : si la table n'existe pas (DB neuve, migration pas appliquée),
  * retourne 'free' — le caller appliquera son propre fallback (ALLOWED_EMAILS).
@@ -105,7 +226,7 @@ export async function resolveUserPlan(env: Env, email: string): Promise<PlanType
       `SELECT plan_type FROM subscriptions
        WHERE user_email = ?1
          AND status IN ('active', 'cancelled')
-         AND plan_type IN ('subscription', 'pro', 'vip')
+         AND plan_type IN ('subscription', 'pro', 'vip', 'trial')
        LIMIT 1`
     )
       .bind(email)
@@ -114,6 +235,7 @@ export async function resolveUserPlan(env: Env, email: string): Promise<PlanType
     if (sub?.plan_type === 'pro') return 'pro'
     if (sub?.plan_type === 'vip') return 'vip'
     if (sub?.plan_type === 'subscription') return 'subscription'
+    if (sub?.plan_type === 'trial') return 'trial'
 
     const license = await env.DB.prepare(
       `SELECT 1 AS ok FROM licenses
@@ -147,3 +269,28 @@ export function noActiveSubscriptionResponse(): Response {
     { status: 403 }
   )
 }
+
+/** Réponse 403 standardisée pour un user trial dont le compteur est à 0. */
+export function trialExpiredResponse(): Response {
+  return Response.json(
+    {
+      error: 'trial_expired',
+      message: 'Ton essai gratuit est terminé. Choisis un plan pour continuer.',
+    },
+    { status: 403 }
+  )
+}
+
+/** Réponse 403 standardisée pour un modèle premium demandé en plan trial. */
+export function trialModelRestrictedResponse(): Response {
+  return Response.json(
+    {
+      error: 'trial_model_restricted',
+      message: 'Les modèles premium ne sont pas disponibles en essai gratuit.',
+    },
+    { status: 403 }
+  )
+}
+
+/** Initial message budget for a brand-new trial user. Exposed for tests / init endpoint. */
+export const TRIAL_INITIAL_BUDGET = TRIAL_INITIAL_MESSAGES
