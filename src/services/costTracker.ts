@@ -1,0 +1,293 @@
+/**
+ * Cost tracker — centralise le suivi des coûts d'usage IA en €.
+ *
+ * Tarifs : $ par 1M tokens, convertis en € via un taux fixe de 0.92.
+ * Les chiffres sont stockés sous la clé "cost_history" (scopée par user)
+ * et lus en synchrone via setJSON / getJSON — voir BUG 16, on garde
+ * tout sync pour ne pas casser l'affichage du dashboard.
+ */
+
+import * as scoped from './scopedStorage'
+
+// USD → EUR (taux fixe — pas besoin d'une précision boursière pour
+// estimer un coût mensuel d'API).
+const EUR_PER_USD = 0.92
+
+// $ par 1M tokens (input / output)
+export const MODEL_COSTS: Record<string, { input: number; output: number }> = {
+  'claude-haiku-4-5':  { input: 0.80,  output: 4.00 },
+  'claude-sonnet-4-6': { input: 3.00,  output: 15.00 },
+  'claude-opus-4-6':   { input: 15.00, output: 75.00 },
+  'gpt-5-mini':        { input: 0.40,  output: 1.60 },
+  'gpt-5':             { input: 2.50,  output: 10.00 },
+  'gemini-flash':      { input: 0.10,  output: 0.40 },
+  'gemini-pro':        { input: 1.25,  output: 5.00 },
+  'mistral-small':     { input: 0.20,  output: 0.60 },
+  'mistral-large':     { input: 2.00,  output: 6.00 },
+}
+
+export interface ModelStats {
+  input_tokens: number
+  output_tokens: number
+  cost_eur: number
+}
+
+export interface MonthStats {
+  total_eur: number
+  by_model: Record<string, ModelStats>
+  by_day: Record<string, number>
+}
+
+export interface AlertConfig {
+  enabled: boolean
+  amount_eur: number
+  last_warned_month?: string
+}
+
+const STORAGE_KEY = 'cost_history'
+const ALERT_KEY = 'cost_alert'
+
+// ─── Model normalisation ──────────────────────────────────────────────────────
+//
+// Les clients hardcodent des IDs précis (ex. "mistral-large-latest",
+// "gemini-3-flash-preview", "gpt-5.5") qui n'existent pas dans MODEL_COSTS.
+// On les ramène à l'entrée tarifaire la plus proche pour ne pas perdre la
+// trace du coût quand un nouveau modèle sort.
+
+const MODEL_ALIASES: Record<string, string> = {
+  'mistral-large-latest': 'mistral-large',
+  'mistral-medium-latest': 'mistral-large',
+  'mistral-small-latest': 'mistral-small',
+  'gemini-3-flash-preview': 'gemini-flash',
+  'gemini-2.5-flash': 'gemini-flash',
+  'gemini-2.5-pro': 'gemini-pro',
+  'gemini-pro-latest': 'gemini-pro',
+  // GPT-5.5 (sorti avril 2026) facturé au tarif gpt-5 en attendant qu'OpenAI
+  // publie une grille séparée.
+  'gpt-5.5': 'gpt-5',
+  'gpt-5-turbo': 'gpt-5',
+  'claude-sonnet-4-5': 'claude-sonnet-4-6',
+  'claude-opus-4-5': 'claude-opus-4-6',
+}
+
+export function normaliseModel(model: string): string {
+  if (MODEL_COSTS[model]) return model
+  if (MODEL_ALIASES[model]) return MODEL_ALIASES[model] as string
+  // Fallbacks par préfixe pour ne pas perdre les futurs modèles
+  if (model.startsWith('claude-haiku')) return 'claude-haiku-4-5'
+  if (model.startsWith('claude-sonnet')) return 'claude-sonnet-4-6'
+  if (model.startsWith('claude-opus')) return 'claude-opus-4-6'
+  if (model.startsWith('gpt-5-mini') || model.includes('mini')) return 'gpt-5-mini'
+  if (model.startsWith('gpt-')) return 'gpt-5'
+  if (model.startsWith('gemini') && model.includes('flash')) return 'gemini-flash'
+  if (model.startsWith('gemini')) return 'gemini-pro'
+  if (model.startsWith('mistral') && model.includes('small')) return 'mistral-small'
+  if (model.startsWith('mistral')) return 'mistral-large'
+  return model
+}
+
+// ─── Public API ───────────────────────────────────────────────────────────────
+
+/** Retourne le coût en € pour un modèle et un nombre de tokens. */
+export function calculateCost(
+  model: string,
+  inputTokens: number,
+  outputTokens: number
+): number {
+  const normalized = normaliseModel(model)
+  const rate = MODEL_COSTS[normalized]
+  if (!rate) return 0
+  const inputUsd = (inputTokens / 1_000_000) * rate.input
+  const outputUsd = (outputTokens / 1_000_000) * rate.output
+  return (inputUsd + outputUsd) * EUR_PER_USD
+}
+
+/** Formatte un montant en € : "< 0,01€" si < 0.005, sinon "0,03€". */
+export function formatCost(euros: number): string {
+  if (!isFinite(euros) || euros < 0) return '0,00€'
+  if (euros < 0.005) return '< 0,01€'
+  return `${euros.toFixed(2).replace('.', ',')}€`
+}
+
+/** Clé du mois courant (YYYY-MM) basée sur l'horloge locale. */
+function currentMonthKey(d = new Date()): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  return `${y}-${m}`
+}
+
+/** Clé du jour courant (YYYY-MM-DD) basée sur l'horloge locale. */
+function currentDayKey(d = new Date()): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+function readHistory(): Record<string, MonthStats> {
+  return scoped.getJSON<Record<string, MonthStats>>(STORAGE_KEY) || {}
+}
+
+function writeHistory(history: Record<string, MonthStats>): void {
+  scoped.setJSON(STORAGE_KEY, history)
+}
+
+/**
+ * Incrémente les statistiques de coût pour le mois courant.
+ * Pas d'await : doit pouvoir être appelé en fin de stream sans bloquer.
+ */
+export function recordUsage(
+  model: string,
+  inputTokens: number,
+  outputTokens: number
+): void {
+  if ((!inputTokens && !outputTokens) || !model) return
+
+  const cost = calculateCost(model, inputTokens, outputTokens)
+  const normalized = normaliseModel(model)
+  const monthKey = currentMonthKey()
+  const dayKey = currentDayKey()
+
+  const history = readHistory()
+  const month: MonthStats = history[monthKey] || {
+    total_eur: 0,
+    by_model: {},
+    by_day: {},
+  }
+
+  const current = month.by_model[normalized] || {
+    input_tokens: 0,
+    output_tokens: 0,
+    cost_eur: 0,
+  }
+  current.input_tokens += inputTokens
+  current.output_tokens += outputTokens
+  current.cost_eur += cost
+  month.by_model[normalized] = current
+
+  month.by_day[dayKey] = (month.by_day[dayKey] || 0) + cost
+  month.total_eur += cost
+
+  history[monthKey] = month
+  writeHistory(history)
+}
+
+/** Stats agrégées pour un mois. Retourne un objet vide si pas de données. */
+export function getMonthStats(monthKey: string): MonthStats {
+  const history = readHistory()
+  return (
+    history[monthKey] || {
+      total_eur: 0,
+      by_model: {},
+      by_day: {},
+    }
+  )
+}
+
+/** Liste des mois ayant au moins une entrée, du plus récent au plus ancien. */
+export function getAllMonthKeys(): string[] {
+  const history = readHistory()
+  return Object.keys(history).sort().reverse()
+}
+
+/** Clé du mois courant exposée pour l'UI. */
+export function getCurrentMonthKey(): string {
+  return currentMonthKey()
+}
+
+/** Clé du mois précédent au format YYYY-MM. */
+export function getPreviousMonthKey(monthKey: string): string {
+  const [yStr, mStr] = monthKey.split('-')
+  const y = Number(yStr)
+  const m = Number(mStr)
+  if (!y || !m) return monthKey
+  const prev = new Date(y, m - 2, 1)
+  const py = prev.getFullYear()
+  const pm = String(prev.getMonth() + 1).padStart(2, '0')
+  return `${py}-${pm}`
+}
+
+/** Renvoie les N derniers jours (YYYY-MM-DD) du plus ancien au plus récent. */
+export function getLastNDays(n: number): string[] {
+  const out: string[] = []
+  const today = new Date()
+  for (let i = n - 1; i >= 0; i--) {
+    const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() - i)
+    out.push(currentDayKey(d))
+  }
+  return out
+}
+
+/** Lit le coût d'un jour donné en cumulé tous mois confondus. */
+export function getDailyCost(day: string): number {
+  const history = readHistory()
+  // Le jour appartient à un seul mois, mais on parcourt tous les mois pour
+  // rester robuste si l'utilisateur change de fuseau.
+  let total = 0
+  for (const month of Object.values(history)) {
+    if (month.by_day[day]) total += month.by_day[day] || 0
+  }
+  return total
+}
+
+// ─── Alerte de budget ─────────────────────────────────────────────────────────
+
+export function getAlertConfig(): AlertConfig {
+  return (
+    scoped.getJSON<AlertConfig>(ALERT_KEY) || {
+      enabled: false,
+      amount_eur: 10,
+    }
+  )
+}
+
+export function setAlertConfig(config: AlertConfig): void {
+  scoped.setJSON(ALERT_KEY, config)
+}
+
+/**
+ * Renvoie un message d'alerte si le mois courant dépasse le seuil configuré
+ * et que l'utilisateur n'a pas encore été averti pour ce mois. Marque le mois
+ * comme averti côté storage pour éviter le spam à chaque lancement.
+ */
+export function checkBudgetAlert(): { triggered: boolean; spent: number; limit: number } | null {
+  const cfg = getAlertConfig()
+  if (!cfg.enabled || !cfg.amount_eur) return null
+  const monthKey = currentMonthKey()
+  const spent = getMonthStats(monthKey).total_eur
+  if (spent < cfg.amount_eur) return null
+  if (cfg.last_warned_month === monthKey) return null
+  setAlertConfig({ ...cfg, last_warned_month: monthKey })
+  return { triggered: true, spent, limit: cfg.amount_eur }
+}
+
+// ─── Export CSV ───────────────────────────────────────────────────────────────
+
+/**
+ * Construit un CSV de l'usage agrégé par mois et par modèle.
+ * Format : date (mois),modele,tokens_input,tokens_output,cout_eur
+ */
+export function buildCSV(): string {
+  const history = readHistory()
+  const rows: string[] = ['date,modele,tokens_input,tokens_output,cout_eur']
+  const months = Object.keys(history).sort()
+  for (const month of months) {
+    const stats = history[month]
+    if (!stats) continue
+    const models = Object.keys(stats.by_model).sort()
+    for (const modelId of models) {
+      const m = stats.by_model[modelId]
+      if (!m) continue
+      rows.push(
+        [
+          month,
+          modelId,
+          String(m.input_tokens),
+          String(m.output_tokens),
+          m.cost_eur.toFixed(4),
+        ].join(',')
+      )
+    }
+  }
+  return rows.join('\n')
+}

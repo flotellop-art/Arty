@@ -342,6 +342,28 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
             </button>
           </div>
 
+          {/* Dashboard coûts — local, basé sur les tokens réels capturés
+              côté client (cf. costTracker.ts). */}
+          <div className="border-t border-theme-border pt-5">
+            <button
+              onClick={() => {
+                onClose()
+                window.dispatchEvent(new CustomEvent('arty-open-costs'))
+              }}
+              className="w-full flex items-center justify-between text-left"
+            >
+              <div>
+                <p className="font-display text-base text-theme-ink">💸 Mes coûts</p>
+                <p className="font-display italic text-xs text-theme-muted mt-0.5">
+                  Dashboard mensuel, par modèle, alerte budget, export CSV
+                </p>
+              </div>
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="text-theme-accent">
+                <path d="M5 3L9 7L5 11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+          </div>
+
           {/* Orchestrateur sync (Phase 1) — invisible si l'app desktop n'est pas lancée */}
           <OrchestratorSync />
 

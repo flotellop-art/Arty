@@ -6,7 +6,10 @@ import { apiUrl } from './apiBase'
 import { getValidAccessToken } from './googleAuth'
 import { needsThinking, type ThinkingConfig } from './aiRouter'
 import { buildLocationContext } from './locationContext'
+import { recordUsage } from './costTracker'
 import i18n from '../i18n'
+
+const ANTHROPIC_MODEL = 'claude-sonnet-4-6'
 
 const ANTI_HALLU_PROMPT = `
 
@@ -389,7 +392,7 @@ async function runWithTools(
     let maxIterations = 200
     while (maxIterations-- > 0) {
       const requestBody = JSON.stringify({
-        model: 'claude-sonnet-4-6',
+        model: ANTHROPIC_MODEL,
         max_tokens: 65536,
         // Anthropic requires temperature=1 when extended thinking is enabled
         temperature: thinking.enabled ? 1 : 0.7,
@@ -403,7 +406,21 @@ async function runWithTools(
       })
 
       const response = await fetchWithRetry(requestBody, apiKey, controller, thinking.enabled)
-      const { contentBlocks } = await parseSSEStream(response, onToken)
+      const { contentBlocks, inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens } = await parseSSEStream(response, onToken)
+
+      // Track cost — input total = fresh + cached read + cached creation tokens.
+      // Anthropic facture les "cache_creation_input_tokens" comme de l'input
+      // standard ; les "cache_read_input_tokens" sont 90% moins chers mais on
+      // les compte au tarif input pour rester conservateur côté estimation.
+      try {
+        recordUsage(
+          ANTHROPIC_MODEL,
+          inputTokens + cacheReadTokens + cacheCreationTokens,
+          outputTokens
+        )
+      } catch {
+        // Le tracking ne doit jamais casser le flux de réponse.
+      }
 
       const hasToolUse = contentBlocks.some((b) => b.type === 'tool_use')
       if (!hasToolUse || !options?.onToolCall) {
