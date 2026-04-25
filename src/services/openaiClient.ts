@@ -1,6 +1,7 @@
 import i18n from '../i18n'
 import { apiUrl } from './apiBase'
 import { getValidAccessToken } from './googleAuth'
+import { recordUsage } from './costTracker'
 
 // OpenAI client — deux chemins :
 // 1. BYOK : si l'utilisateur a saisi sa clé (getOpenAIKey) → appel direct
@@ -156,6 +157,9 @@ export function sendMessageStream(
       const reader = response.body.getReader()
       const decoder = new TextDecoder()
       let buffer = ''
+      let promptTokens = 0
+      let completionTokens = 0
+      let usedModel = model
 
       while (true) {
         const { done, value } = await reader.read()
@@ -173,13 +177,29 @@ export function sendMessageStream(
           try {
             const parsed = JSON.parse(data) as {
               choices?: Array<{ delta?: { content?: string } }>
+              usage?: { prompt_tokens?: number; completion_tokens?: number }
+              model?: string
             }
             const delta = parsed.choices?.[0]?.delta?.content
             if (delta) onChunk(delta)
+            // include_usage: true dans la requête → OpenAI envoie un dernier
+            // chunk avec usage rempli. On capture aussi le model effectif au
+            // cas où le proxy serveur ait fait un fallback transparent.
+            if (parsed.usage) {
+              promptTokens = parsed.usage.prompt_tokens || promptTokens
+              completionTokens = parsed.usage.completion_tokens || completionTokens
+            }
+            if (parsed.model) usedModel = parsed.model
           } catch {
             // Skip malformed chunks
           }
         }
+      }
+
+      try {
+        recordUsage(usedModel, promptTokens, completionTokens)
+      } catch {
+        // Tracking ne doit pas casser la réponse
       }
 
       onDone()

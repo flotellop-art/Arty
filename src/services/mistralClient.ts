@@ -4,7 +4,10 @@ import { getValidAccessToken } from './googleAuth'
 import { TOOLS } from './toolDefinitions'
 import { convertToolsToOpenAI } from './tools/openaiFormat'
 import { buildLocationContext } from './locationContext'
+import { recordUsage } from './costTracker'
 import i18n from '../i18n'
+
+const MISTRAL_MODEL = 'mistral-large-latest'
 
 const MISTRAL_SYSTEM = `Tu es Arty, un assistant IA personnel.
 Tu parles comme un pote compétent — direct, cash, pas de flatterie.
@@ -73,9 +76,15 @@ async function runMistralStream(
     while (maxIterations > 0) {
       maxIterations--
 
-      const { content, toolCalls } = await streamOnce(
+      const { content, toolCalls, inputTokens, outputTokens } = await streamOnce(
         apiKey, apiMessages, openaiTools, onToken, controller
       )
+
+      try {
+        recordUsage(MISTRAL_MODEL, inputTokens, outputTokens)
+      } catch {
+        // Ne casse pas la réponse si le tracking échoue
+      }
 
       // No tool calls — we're done
       if (!toolCalls || toolCalls.length === 0 || !options?.onToolCall) {
@@ -153,7 +162,7 @@ async function streamOnce(
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const body: Record<string, any> = {
-    model: 'mistral-large-latest',
+    model: MISTRAL_MODEL,
     messages,
     stream: true,
     max_tokens: 8192,
