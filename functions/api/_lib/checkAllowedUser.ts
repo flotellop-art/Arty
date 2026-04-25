@@ -74,14 +74,15 @@ export async function checkAllowedUser(
   const email = await verifyGoogleUser(request)
   if (!email) return null
 
+  // ALLOWED_EMAILS = beta testeurs VIP, bypass du check D1
+  const allowed = parseAllowedEmails(env.ALLOWED_EMAILS)
+  if (allowed.includes(email)) {
+    console.log(`[VIP bypass] ${email.slice(0, 3)}...`)
+    return { email, planType: 'vip' }
+  }
+
   const plan = await resolveUserPlan(env, email)
   if (plan !== 'free') return { email, planType: plan }
-
-  // Fallback whitelist — TODO Supprimer en juillet 2026 après validation
-  // en prod du flux Lemon Squeezy. Garde le dev fonctionnel pendant la
-  // transition + sert de filet si la table subscriptions est down.
-  const allowed = parseAllowedEmails(env.ALLOWED_EMAILS)
-  if (allowed.includes(email)) return { email, planType: 'vip' }
 
   return null
 }
