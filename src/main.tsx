@@ -76,6 +76,28 @@ if (Capacitor.isNativePlatform()) {
   window.visualViewport?.addEventListener('scroll', updateViewport)
   window.addEventListener('resize', updateViewport)
   updateViewport()
+
+  // Capacitor Keyboard plugin — explicit show/hide events let us set a CSS
+  // var (`--keyboard-height`) consumed by `.keyboard-aware` containers (see
+  // index.css). This is more reliable than `visualViewport` on some Android
+  // ROMs where the resize event fires too late. We also hide the iOS-style
+  // accessory bar (no value on Android, harmless when missing).
+  import('@capacitor/keyboard').then(({ Keyboard }) => {
+    Keyboard.setAccessoryBarVisible({ isVisible: false }).catch(() => {})
+    Keyboard.addListener('keyboardWillShow', (info) => {
+      // info.keyboardHeight on Android is in device px. Convert to CSS px
+      // by dividing by devicePixelRatio so it matches `--viewport-h` (CSS
+      // px). On iOS the value is already in CSS px and DPR is typically
+      // ~2/3 — the same conversion gives a slightly smaller value but
+      // .keyboard-aware uses it as padding-bottom which is forgiving.
+      const dpr = window.devicePixelRatio || 1
+      const cssPx = Math.round(info.keyboardHeight / dpr)
+      root.style.setProperty('--keyboard-height', `${cssPx}px`)
+    })
+    Keyboard.addListener('keyboardWillHide', () => {
+      root.style.setProperty('--keyboard-height', '0px')
+    })
+  }).catch(() => {})
 }
 
 createRoot(document.getElementById('root')!).render(
