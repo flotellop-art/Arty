@@ -42,3 +42,44 @@ export async function fetchQuotaStatus(): Promise<QuotaStatus | null> {
     return null
   }
 }
+
+// Snapshot mensuel (somme des jours du mois courant) — alimente le badge $$
+// dans la TopBar. Même source de vérité que `fetchQuotaStatus` (table
+// `quota_model`), juste agrégé par modèle sur tout le mois UTC.
+
+export interface MonthlyModelUsage {
+  model: string
+  count: number
+  inputTokens: number
+  outputTokens: number
+  cacheReadTokens: number
+  cacheCreationTokens: number
+  audioSeconds: number
+  costUsd: number
+}
+
+export interface MonthlyQuotaStatus {
+  /** YYYY-MM en UTC. */
+  month: string
+  byModel: MonthlyModelUsage[]
+  totalCostUsd: number
+  totalInputTokens: number
+  totalOutputTokens: number
+  totalCalls: number
+}
+
+export async function fetchMonthlyQuotaStatus(): Promise<MonthlyQuotaStatus | null> {
+  const token = await getValidAccessToken()
+  if (!token) return null
+
+  try {
+    const resp = await fetch(apiUrl('/api/ai/quota/month'), {
+      method: 'GET',
+      headers: { 'x-google-token': token },
+    })
+    if (!resp.ok) return null
+    return (await resp.json()) as MonthlyQuotaStatus
+  } catch {
+    return null
+  }
+}

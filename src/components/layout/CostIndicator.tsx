@@ -1,16 +1,40 @@
-import { useEffect, useState } from 'react'
-import { getCost, getModelCosts, type ModelCost } from '../../services/costTracker'
+import { useEffect, useState, useCallback } from 'react'
+import {
+  fetchMonthlyQuotaStatus,
+  type MonthlyModelUsage,
+  type MonthlyQuotaStatus,
+} from '../../services/quotaStatus'
+
+// Refresh périodique du badge — 60s suffisent : le tracking est fait par les
+// proxies dans waitUntil(), donc le coût arrive en BDD quelques centaines de
+// ms après la fin du stream. On laisse aussi `cost-updated` (window event)
+// pour qu'un client puisse forcer un refresh immédiat à la fin d'un message.
+const REFRESH_MS = 60_000
 
 export function CostIndicator() {
-  const [cost, setCost] = useState(getCost())
+  const [data, setData] = useState<MonthlyQuotaStatus | null>(null)
   const [showDetails, setShowDetails] = useState(false)
 
-  useEffect(() => {
-    const refresh = () => setCost(getCost())
-    window.addEventListener('cost-updated', refresh)
-    return () => window.removeEventListener('cost-updated', refresh)
+  const refresh = useCallback(async () => {
+    const status = await fetchMonthlyQuotaStatus()
+    if (status) setData(status)
   }, [])
 
+  useEffect(() => {
+    refresh()
+    const interval = window.setInterval(refresh, REFRESH_MS)
+    const onCostEvent = () => { refresh() }
+    window.addEventListener('cost-updated', onCostEvent)
+    return () => {
+      window.clearInterval(interval)
+      window.removeEventListener('cost-updated', onCostEvent)
+    }
+  }, [refresh])
+
+  // Pas de données → utilisateur non whitelisté (BYOK pur), on cache le badge.
+  if (!data) return null
+
+  const cost = data.totalCostUsd
   const color = cost > 0.5 ? 'text-red-500' : cost > 0.1 ? 'text-yellow-600' : 'text-green-600'
 
   return (
@@ -18,27 +42,27 @@ export function CostIndicator() {
       <button
         onClick={() => setShowDetails(true)}
         className={`px-2 py-1 text-[11px] font-mono font-semibold rounded-md hover:bg-theme-ink/5 transition-colors ${color}`}
-        title="Coût API estimé (ce mois)"
+        title="Coût API réel (ce mois)"
         aria-label="Coût API"
       >
         ~${cost.toFixed(2)}
       </button>
-      {showDetails && <CostModal onClose={() => setShowDetails(false)} />}
+      {showDetails && <CostModal data={data} onRefresh={refresh} onClose={() => setShowDetails(false)} />}
     </>
   )
 }
 
-function CostModal({ onClose }: { onClose: () => void }) {
-  const [costs, setCosts] = useState<Record<string, ModelCost>>(getModelCosts)
-  const total = Object.values(costs).reduce((acc, c) => acc + c.cost, 0)
-  const totalIn = Object.values(costs).reduce((acc, c) => acc + c.inputTokens, 0)
-  const totalOut = Object.values(costs).reduce((acc, c) => acc + c.outputTokens, 0)
+interface CostModalProps {
+  data: MonthlyQuotaStatus
+  onRefresh: () => Promise<void>
+  onClose: () => void
+}
 
-  useEffect(() => {
-    const refresh = () => setCosts(getModelCosts())
-    window.addEventListener('cost-updated', refresh)
-    return () => window.removeEventListener('cost-updated', refresh)
-  }, [])
+function CostModal({ data, onRefresh, onClose }: CostModalProps) {
+  // Refresh à l'ouverture pour avoir le chiffre le plus frais possible.
+  useEffect(() => { onRefresh() }, [onRefresh])
+
+  const byModel: MonthlyModelUsage[] = data.byModel
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-theme-ink/50" onClick={onClose}>
@@ -53,25 +77,25 @@ function CostModal({ onClose }: { onClose: () => void }) {
         </div>
         <div className="p-5">
           <div className="mb-4 pb-4 border-b border-theme-border">
-            <p className="text-[10px] uppercase tracking-wider text-theme-muted/70">Total ce mois-ci</p>
-            <p className="text-3xl font-display font-medium text-theme-accent mt-1">${total.toFixed(4)}</p>
+            <p className="text-[10px] uppercase tracking-wider text-theme-muted/70">Total ce mois-ci ({data.month})</p>
+            <p className="text-3xl font-display font-medium text-theme-accent mt-1">${data.totalCostUsd.toFixed(4)}</p>
             <p className="text-xs text-theme-muted mt-1">
-              {totalIn.toLocaleString()} tokens entrée · {totalOut.toLocaleString()} sortie
+              {data.totalInputTokens.toLocaleString()} tokens entrée · {data.totalOutputTokens.toLocaleString()} sortie · {data.totalCalls} appels
             </p>
           </div>
 
           <p className="text-[10px] uppercase tracking-wider text-theme-muted/70 mb-2">Par modèle</p>
-          {Object.keys(costs).length === 0 ? (
+          {byModel.length === 0 ? (
             <p className="text-sm text-theme-muted/70 text-center py-4">Aucune utilisation ce mois-ci</p>
           ) : (
             <ul className="space-y-2">
-              {Object.entries(costs).map(([model, c]) => (
-                <li key={model} className="flex items-center justify-between text-sm">
-                  <span className="text-theme-ink capitalize">{model}</span>
+              {byModel.map((m) => (
+                <li key={m.model} className="flex items-center justify-between text-sm">
+                  <span className="text-theme-ink">{m.model}</span>
                   <div className="text-right">
-                    <p className="font-mono font-semibold">${c.cost.toFixed(4)}</p>
+                    <p className="font-mono font-semibold">${m.costUsd.toFixed(4)}</p>
                     <p className="text-[10px] text-theme-muted/70">
-                      {c.inputTokens.toLocaleString()}↓ · {c.outputTokens.toLocaleString()}↑
+                      {m.inputTokens.toLocaleString()}↓ · {m.outputTokens.toLocaleString()}↑ · {m.count} appels
                     </p>
                   </div>
                 </li>
