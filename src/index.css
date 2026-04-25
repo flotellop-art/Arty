@@ -19,6 +19,13 @@ html[data-theme='ember'] {
   --theme-accent: 200 90 40;     /* #C85A28 ember-accent terracotta */
   --theme-border: 232 217 191;   /* #E8D9BF ember-border */
   --theme-cream: 245 230 208;    /* #F5E6D0 ember-cream */
+  /* Sidebar surfaces — elevated tile + soft borders. In Ember = warm
+     cream / dark-on-paper at low alpha. In Nocturne = deep brown /
+     paper-on-dark at low alpha. Used by the Design C sidebar so its
+     colors flip with the theme instead of staying dark in cream mode. */
+  --surface-elev: 245 230 208;        /* matches --theme-cream */
+  --border-weak: 24 22 19 / 0.06;
+  --border-mid: 24 22 19 / 0.12;
   color-scheme: light;
 }
 
@@ -30,6 +37,9 @@ html[data-theme='nocturne'] {
   --theme-accent: 245 154 75;    /* #F59A4B nocturne-accent amber */
   --theme-border: 245 154 75;    /* #F59A4B used at low opacity (border-theme-border/10) */
   --theme-cream: 43 31 21;       /* #2B1F15 nocturne-deep (alt warm surface) */
+  --surface-elev: 28 24 18;            /* #1C1812 (original Design C card) */
+  --border-weak: 240 226 204 / 0.07;
+  --border-mid: 240 226 204 / 0.13;
   color-scheme: dark;
 }
 
@@ -44,6 +54,9 @@ html.dark {
   --theme-accent: 245 154 75;
   --theme-border: 245 154 75;
   --theme-cream: 43 31 21;
+  --surface-elev: 28 24 18;
+  --border-weak: 240 226 204 / 0.07;
+  --border-mid: 240 226 204 / 0.13;
   color-scheme: dark;
 }
 

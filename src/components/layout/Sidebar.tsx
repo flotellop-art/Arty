@@ -24,15 +24,15 @@ interface SidebarProps {
   onImportConversation?: (id: string) => void
 }
 
-// Palette issue du Design C (Claude.ai design handoff). Les couleurs
-// collent quasi pile avec le theme nocturne (index.css) ; on utilise les
-// classes theme quand elles matchent, sinon les hex directes.
+// Palette du Design C (Claude.ai handoff) — branchée sur les variables
+// CSS theme-aware définies dans index.css. En Ember, `card` devient
+// cream chaud + bordures encre à faible alpha ; en Nocturne, retour aux
+// teintes deep brown / paper-on-dark d'origine.
 const DESIGN = {
-  card: '#1C1812',
-  borderWeak: 'rgba(240,226,204,0.07)',
-  borderMid: 'rgba(240,226,204,0.13)',
-  subtle: '#1E1A13',
-  accentDk: '#C85A28',
+  card: 'rgb(var(--surface-elev))',
+  borderWeak: 'rgb(var(--border-weak))',
+  borderMid: 'rgb(var(--border-mid))',
+  accentDk: 'rgb(var(--theme-accent))',
 }
 
 const FLAGS: Record<Locale, string> = { fr: '🇫🇷', en: '🇬🇧' }
