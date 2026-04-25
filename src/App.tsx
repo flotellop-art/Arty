@@ -16,6 +16,11 @@ import { Sidebar } from './components/layout/Sidebar'
 import { OAuthCallback } from './components/google/OAuthCallback'
 import { LoginScreen } from './components/auth/LoginScreen'
 import { WelcomeSlides, isOnboardingDone } from './components/onboarding/WelcomeSlides'
+import {
+  OnboardingChoice,
+  isOnboardingChoiceDone,
+  markOnboardingChoiceDone,
+} from './components/onboarding/OnboardingChoice'
 import { ProfileSetupModal } from './components/onboarding/ProfileSetupModal'
 import { getUserProfile } from './services/userProfile'
 import type { FileAttachment } from './types'
@@ -422,11 +427,32 @@ export default function App() {
   }, [deepLinkCode, auth])
 
   const [onboardingDone, setOnboardingDone] = useState(isOnboardingDone)
+  const [choiceDone, setChoiceDone] = useState(isOnboardingChoiceDone)
 
   if (!auth.isAuthenticated) {
     // Show welcome slides before login (first time only)
     if (!onboardingDone) {
       return <WelcomeSlides onComplete={() => setOnboardingDone(true)} />
+    }
+
+    // Then ask BYOK vs Subscription, also first time only.
+    if (!choiceDone) {
+      return (
+        <OnboardingChoice
+          onApiKeyLogin={async (anthropicKey) => {
+            await auth.login('apikey', {
+              displayName: 'Utilisateur',
+              anthropicKey,
+              identifier: anthropicKey,
+            })
+            // login flips auth.isAuthenticated → this branch unmounts; mark
+            // the choice as done so a future logout doesn't replay it.
+            markOnboardingChoiceDone()
+            setChoiceDone(true)
+          }}
+          onSubscriptionStarted={() => setChoiceDone(true)}
+        />
+      )
     }
 
     return (
