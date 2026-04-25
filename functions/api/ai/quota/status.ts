@@ -14,13 +14,13 @@ import { getDailyQuotaStatus } from '../../_lib/quota'
 // propres appels et ne touchent pas la table `quota`.
 
 export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
-  const email = await checkAllowedUser(request, env)
-  if (!email) {
+  const allowed = await checkAllowedUser(request, env)
+  if (!allowed) {
     // Pas de leak d'info : 404 uniforme (RÈGLE 6)
     return Response.json({ error: 'Not found' }, { status: 404 })
   }
 
-  const status = await getDailyQuotaStatus(env, email)
+  const status = await getDailyQuotaStatus(env, allowed.email)
 
   const byModel = status.byModel.map((m) => ({
     model: m.model,

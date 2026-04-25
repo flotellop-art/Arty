@@ -1,5 +1,6 @@
 import type { Env } from '../../env'
 import { checkAllowedUser, verifyGoogleUser } from '../_lib/checkAllowedUser'
+import { checkPremiumCap, premiumCapReachedResponse } from '../_lib/checkPremiumCap'
 import { consumeDailyQuota, recordUsage } from '../_lib/quota'
 import { createOpenAIParser, teeForParsing } from '../_lib/trackUsage'
 
@@ -18,13 +19,16 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
   // BYOK prioritaire via header dédié (aligné sur whisper-proxy).
   let apiKey = request.headers.get('x-openai-key') || ''
   let usingServerKey = false
+  let userPlan: 'subscription' | 'pro' | 'vip' | 'free' = 'free'
 
-  // Fallback clé serveur uniquement pour les emails whitelistés.
+  // Fallback clé serveur pour les utilisateurs avec un plan actif (sub/pro/vip)
+  // ou la whitelist legacy en filet de secours.
   if (!apiKey && env.OPENAI_API_KEY) {
-    const allowedEmail = await checkAllowedUser(request, env)
-    if (allowedEmail) {
+    const allowedUser = await checkAllowedUser(request, env)
+    if (allowedUser) {
       apiKey = env.OPENAI_API_KEY
       usingServerKey = true
+      userPlan = allowedUser.planType
     }
   }
 
@@ -48,8 +52,10 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     // leave fallback
   }
 
-  // Quota quotidien uniquement sur la clé serveur (BYOK paye ses propres appels).
-  if (usingServerKey) {
+  // Quota quotidien uniquement sur la clé serveur ET seulement pour le plan
+  // subscription. Pro/VIP n'ont pas de quota journalier (BYOK paye ses propres
+  // appels, donc usingServerKey=false dans ce cas-là).
+  if (usingServerKey && userPlan !== 'pro' && userPlan !== 'vip') {
     const quota = await consumeDailyQuota(env, email, modelName)
     if (!quota.allowed) {
       return Response.json(
@@ -61,6 +67,12 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
         { status: 429 }
       )
     }
+  }
+
+  // Cap mensuel premium uniquement pour le plan subscription.
+  if (usingServerKey && userPlan === 'subscription') {
+    const cap = await checkPremiumCap(email, modelName, env)
+    if (!cap.allowed) return premiumCapReachedResponse()
   }
 
   try {

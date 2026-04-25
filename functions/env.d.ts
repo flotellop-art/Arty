@@ -22,4 +22,6 @@ export interface Env {
   GOOGLE_VISION_API_KEY?: string
   GOOGLE_MAPS_API_KEY?: string  // Geocoding API key — reverse geocoding server-side (BUG: Arty devinait la ville en 1.0.29)
   DB: D1Database  // Cloudflare D1 binding
+  KV: KVNamespace  // Cloudflare KV binding — premium cap counters per user/month
+  LEMONSQUEEZY_WEBHOOK_SECRET?: string  // HMAC-SHA256 secret for verifying Lemon Squeezy webhook signatures
 }

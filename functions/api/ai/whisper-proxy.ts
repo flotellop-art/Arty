@@ -18,13 +18,16 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
   // BYOK prioritaire via header dédié (distinct de x-api-key utilisé par Anthropic).
   let apiKey = request.headers.get('x-openai-key') || ''
   let usingServerKey = false
+  let userPlan: 'subscription' | 'pro' | 'vip' | 'free' = 'free'
 
-  // Fallback clé serveur uniquement pour les emails whitelistés.
+  // Fallback clé serveur pour les utilisateurs avec un plan actif (sub/pro/vip)
+  // ou la whitelist legacy en filet de secours.
   if (!apiKey && env.OPENAI_API_KEY) {
-    const allowedEmail = await checkAllowedUser(request, env)
-    if (allowedEmail) {
+    const allowedUser = await checkAllowedUser(request, env)
+    if (allowedUser) {
       apiKey = env.OPENAI_API_KEY
       usingServerKey = true
+      userPlan = allowedUser.planType
     }
   }
 
@@ -35,8 +38,8 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     )
   }
 
-  // Quota quotidien uniquement pour les appels sur la clé serveur
-  if (usingServerKey) {
+  // Quota quotidien uniquement sur la clé serveur ET pour le plan subscription.
+  if (usingServerKey && userPlan !== 'pro' && userPlan !== 'vip') {
     const quota = await consumeDailyQuota(env, email, 'whisper-1')
     if (!quota.allowed) {
       return Response.json(

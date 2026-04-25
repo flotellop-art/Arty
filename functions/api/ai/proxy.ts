@@ -1,5 +1,6 @@
 import type { Env } from '../../env'
-import { parseAllowedEmails, verifyGoogleUser } from '../_lib/checkAllowedUser'
+import { parseAllowedEmails, resolveUserPlan, verifyGoogleUser } from '../_lib/checkAllowedUser'
+import { checkPremiumCap, premiumCapReachedResponse } from '../_lib/checkPremiumCap'
 import { consumeDailyQuota, recordUsage } from '../_lib/quota'
 import { createAnthropicParser, teeForParsing } from '../_lib/trackUsage'
 
@@ -22,12 +23,15 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
   let apiKey = request.headers.get('x-api-key')
   const isByok = !!apiKey
 
-  // Pas de BYOK → fallback sur la clé serveur si et seulement si l'email
-  // est dans `ALLOWED_EMAILS` ET `ANTHROPIC_API_KEY` est configurée.
+  // Pas de BYOK → fallback sur la clé serveur si l'email a un plan actif
+  // (subscription/pro/vip via la table `subscriptions`/`licenses`) ou,
+  // en filet de secours, est dans la whitelist `ALLOWED_EMAILS`.
+  const userPlan = await resolveUserPlan(env, email)
   const allowed = parseAllowedEmails(env.ALLOWED_EMAILS)
   const isWhitelisted = allowed.includes(email)
   const hasServerKey = !!env.ANTHROPIC_API_KEY
-  if (!apiKey && hasServerKey && isWhitelisted) {
+  const hasActivePlan = userPlan !== 'free'
+  if (!apiKey && hasServerKey && (hasActivePlan || isWhitelisted)) {
     apiKey = env.ANTHROPIC_API_KEY
   }
 
@@ -73,9 +77,12 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
   }
 
   // Cap server-key usage per user per day. BYOK callers pay their own Anthropic
-  // bill and are not counted here. Protects against a stolen Google token
-  // burning through ANTHROPIC_API_KEY spend unchecked.
-  if (!isByok) {
+  // bill and are not counted here. Pro/VIP n'ont pas de quota journalier —
+  // seul le plan 'subscription' est soumis au cap quotidien (voir CLAUDE.md
+  // sur les paliers d'accès). 'free' tombe ici uniquement via whitelist legacy.
+  const enforceDailyQuota =
+    !isByok && (userPlan === 'subscription' || userPlan === 'free')
+  if (enforceDailyQuota) {
     const quota = await consumeDailyQuota(env, email, modelName)
     if (!quota.allowed) {
       return Response.json(
@@ -87,6 +94,13 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
         { status: 429 }
       )
     }
+  }
+
+  // Cap mensuel premium uniquement pour le plan subscription (Pro/VIP illimités).
+  // Les BYOK ne sont pas cappés (ils payent leur propre Anthropic bill).
+  if (!isByok && userPlan === 'subscription') {
+    const cap = await checkPremiumCap(email, modelName, env)
+    if (!cap.allowed) return premiumCapReachedResponse()
   }
 
   const headers: Record<string, string> = {
