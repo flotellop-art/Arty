@@ -25,6 +25,8 @@ import { ProfileSetupModal } from './components/onboarding/ProfileSetupModal'
 import { getUserProfile } from './services/userProfile'
 import { UpgradeScreen, type CurrentPlan } from './screens/upgrade'
 import { TemplatesScreen } from './screens/templates'
+import { CostsScreen } from './screens/costs'
+import { checkBudgetAlert, formatCost } from './services/costTracker'
 import type { FileAttachment } from './types'
 
 function AppContent({
@@ -42,6 +44,10 @@ function AppContent({
   const [showMorningBrief, setShowMorningBrief] = useState(false)
   const [showProfileSetup, setShowProfileSetup] = useState(() => getUserProfile() === null)
   const [profileName, setProfileName] = useState<string | null>(() => getUserProfile()?.name || null)
+  const [budgetAlert, setBudgetAlert] = useState<{ spent: number; limit: number } | null>(() => {
+    const res = checkBudgetAlert()
+    return res?.triggered ? { spent: res.spent, limit: res.limit } : null
+  })
   const navigate = useNavigate()
 
   // Listen for profile updates so the Home hero refreshes without reload
@@ -172,6 +178,13 @@ function AppContent({
     return () => window.removeEventListener('arty-open-upgrade', open)
   }, [navigate])
 
+  // Open the costs dashboard from Settings — same CustomEvent pattern as Upgrade.
+  useEffect(() => {
+    const open = () => navigate('/costs')
+    window.addEventListener('arty-open-costs', open)
+    return () => window.removeEventListener('arty-open-costs', open)
+  }, [navigate])
+
   useEffect(() => {
     if (!error) return
     if (error.includes('no_active_subscription')) {
@@ -188,6 +201,34 @@ function AppContent({
       className="bg-theme-bg text-theme-ink font-sans font-light"
       style={{ height: 'var(--viewport-h, 100dvh)' }}
     >
+      {budgetAlert && (
+        <div
+          className="fixed top-0 inset-x-0 z-[60] bg-theme-accent text-theme-bg px-4 py-2.5 flex items-center justify-between gap-3"
+          style={{ paddingTop: 'max(0.625rem, env(safe-area-inset-top, 0.625rem))' }}
+        >
+          <p className="font-display italic text-sm">
+            ⚠️ Budget IA dépassé — {formatCost(budgetAlert.spent)} / {formatCost(budgetAlert.limit)} ce mois-ci.
+          </p>
+          <div className="flex items-center gap-3 shrink-0">
+            <button
+              onClick={() => {
+                setBudgetAlert(null)
+                navigate('/costs')
+              }}
+              className="font-display italic text-xs underline"
+            >
+              Voir
+            </button>
+            <button
+              onClick={() => setBudgetAlert(null)}
+              className="font-display italic text-xs"
+              aria-label="Fermer l'alerte"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
       <Sidebar
         isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
@@ -245,6 +286,10 @@ function AppContent({
               currentPlan={currentPlan}
             />
           }
+        />
+        <Route
+          path="/costs"
+          element={<CostsScreen onBack={() => navigate('/')} />}
         />
         <Route
           path="/report/:id"

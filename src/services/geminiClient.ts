@@ -2,7 +2,10 @@ import { getGeminiKey } from './activeApiKey'
 import { apiUrl } from './apiBase'
 import { getValidAccessToken } from './googleAuth'
 import { buildLocationContext } from './locationContext'
+import { recordUsage } from './costTracker'
 import i18n from '../i18n'
+
+const GEMINI_MODEL = 'gemini-3-flash-preview'
 
 // Gemini API client with streaming
 
@@ -61,7 +64,7 @@ async function runGeminiStream(
     const systemText = (options?.systemPrompt || GEMINI_SYSTEM) + locationContext
 
     const requestBody = {
-      model: 'gemini-3-flash-preview',
+      model: GEMINI_MODEL,
       stream: true,
       contents,
       systemInstruction: {
@@ -102,6 +105,8 @@ async function runGeminiStream(
 
     const decoder = new TextDecoder()
     let buffer = ''
+    let promptTokens = 0
+    let candidatesTokens = 0
 
     while (true) {
       const { done, value } = await reader.read()
@@ -122,10 +127,23 @@ async function runGeminiStream(
           if (text) {
             onToken(text)
           }
+          // Gemini envoie usageMetadata sur chaque chunk avec un cumulé.
+          // On garde la dernière valeur reçue.
+          const usage = data.usageMetadata
+          if (usage) {
+            promptTokens = usage.promptTokenCount || promptTokens
+            candidatesTokens = usage.candidatesTokenCount || candidatesTokens
+          }
         } catch {
           // Skip malformed JSON chunks
         }
       }
+    }
+
+    try {
+      recordUsage(GEMINI_MODEL, promptTokens, candidatesTokens)
+    } catch {
+      // Tracking ne doit pas casser la réponse
     }
 
     onDone()
