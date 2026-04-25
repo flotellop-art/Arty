@@ -1,5 +1,12 @@
 import type { Env } from '../../env'
-import { checkAllowedUser, verifyGoogleUser } from '../_lib/checkAllowedUser'
+import {
+  checkAllowedUser,
+  isModelAllowedInTrial,
+  isTrialExpired,
+  trialExpiredResponse,
+  trialModelRestrictedResponse,
+  verifyGoogleUser,
+} from '../_lib/checkAllowedUser'
 import { checkPremiumCap, premiumCapReachedResponse } from '../_lib/checkPremiumCap'
 import { consumeDailyQuota, recordUsage } from '../_lib/quota'
 import { createGeminiParser, teeForParsing } from '../_lib/trackUsage'
@@ -17,16 +24,22 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
   // BYOK prioritaire
   let apiKey = request.headers.get('authorization')?.replace('Bearer ', '') || ''
   let usingServerKey = false
-  let userPlan: 'subscription' | 'pro' | 'vip' | 'free' = 'free'
+  let userPlan: 'subscription' | 'pro' | 'vip' | 'free' | 'trial' = 'free'
+  let trialRemaining: number | undefined
 
-  // Fallback clé serveur pour les utilisateurs avec un plan actif (sub/pro/vip)
-  // ou la whitelist legacy en filet de secours.
+  // Fallback clé serveur pour les utilisateurs avec un plan actif
+  // (sub/pro/vip/trial). `checkAllowedUser` gère aussi le bypass VIP via
+  // ALLOWED_EMAILS et le décrément automatique du compteur trial KV.
   if (!apiKey && env.GEMINI_API_KEY) {
-    const allowedUser = await checkAllowedUser(request, env)
-    if (allowedUser) {
+    const result = await checkAllowedUser(request, env)
+    if (isTrialExpired(result)) {
+      return trialExpiredResponse()
+    }
+    if (result) {
       apiKey = env.GEMINI_API_KEY
       usingServerKey = true
-      userPlan = allowedUser.planType
+      userPlan = result.planType
+      trialRemaining = result.trialRemaining
     }
   }
 
@@ -40,9 +53,15 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
   try {
     const { model, stream, ...body } = await request.json() as { model: string; stream: boolean; [key: string]: unknown }
 
+    // Trial : restriction de modèles. Le compteur a déjà été décrémenté par
+    // `checkAllowedUser` ci-dessus.
+    if (usingServerKey && userPlan === 'trial' && !isModelAllowedInTrial(model)) {
+      return trialModelRestrictedResponse()
+    }
+
     // Quota quotidien uniquement sur la clé serveur ET pour le plan subscription
-    // (Pro/VIP illimités).
-    if (usingServerKey && userPlan !== 'pro' && userPlan !== 'vip') {
+    // (Pro/VIP illimités, trial cappé par son propre compteur KV).
+    if (usingServerKey && userPlan === 'subscription') {
       const quota = await consumeDailyQuota(env, email, model)
       if (!quota.allowed) {
         return Response.json(
@@ -75,6 +94,17 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
       body: JSON.stringify(body),
     })
 
+    const responseHeaders = (): Record<string, string> => {
+      const out: Record<string, string> = {
+        'content-type': response.headers.get('content-type') || 'text/event-stream',
+        'cache-control': 'no-cache',
+      }
+      if (trialRemaining !== undefined) {
+        out['x-trial-remaining'] = String(trialRemaining)
+      }
+      return out
+    }
+
     if (!response.ok) {
       const errorText = await response.text().catch(() => 'Unknown Gemini error')
       return new Response(errorText, {
@@ -94,19 +124,13 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
       waitUntil(parsedUsage.then((usage) => recordUsage(env, email, model, usage)))
       return new Response(clientBody, {
         status: response.status,
-        headers: {
-          'content-type': response.headers.get('content-type') || 'text/event-stream',
-          'cache-control': 'no-cache',
-        },
+        headers: responseHeaders(),
       })
     }
 
     return new Response(response.body, {
       status: response.status,
-      headers: {
-        'content-type': response.headers.get('content-type') || 'text/event-stream',
-        'cache-control': 'no-cache',
-      },
+      headers: responseHeaders(),
     })
   } catch (err) {
     return Response.json(

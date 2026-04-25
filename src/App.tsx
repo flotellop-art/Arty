@@ -18,9 +18,17 @@ import { LoginScreen } from './components/auth/LoginScreen'
 import { WelcomeSlides, isOnboardingDone } from './components/onboarding/WelcomeSlides'
 import {
   OnboardingChoice,
+  TrialIntro,
+  VipSplash,
   isOnboardingChoiceDone,
   markOnboardingChoiceDone,
 } from './components/onboarding/OnboardingChoice'
+import {
+  clearOnboardingSplash,
+  getOnboardingSplash,
+  getTrialRemaining,
+  initTrial,
+} from './services/trialClient'
 import { ProfileSetupModal } from './components/onboarding/ProfileSetupModal'
 import { getUserProfile } from './services/userProfile'
 import { UpgradeScreen, type CurrentPlan } from './screens/upgrade'
@@ -229,6 +237,9 @@ function AppContent({
           </div>
         </div>
       )}
+
+      <TrialBanner onUpgrade={() => navigate('/upgrade')} />
+
       <Sidebar
         isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
@@ -342,6 +353,64 @@ function AppContent({
       {showProfileSetup && (
         <ProfileSetupModal onClose={() => setShowProfileSetup(false)} />
       )}
+    </div>
+  )
+}
+
+/**
+ * Bandeau d'essai gratuit. Lit `getTrialRemaining()` (storage localStorage)
+ * + écoute l'event `arty-trial-remaining-changed` émis par les AI clients
+ * à chaque réponse contenant le header `x-trial-remaining`. Pas de
+ * polling : se rafraîchit uniquement quand le compteur change.
+ */
+function TrialBanner({ onUpgrade }: { onUpgrade: () => void }) {
+  const [remaining, setRemaining] = useState<number | null>(() => getTrialRemaining())
+
+  useEffect(() => {
+    const sync = () => setRemaining(getTrialRemaining())
+    window.addEventListener('arty-trial-remaining-changed', sync)
+    window.addEventListener('storage', sync)
+    return () => {
+      window.removeEventListener('arty-trial-remaining-changed', sync)
+      window.removeEventListener('storage', sync)
+    }
+  }, [])
+
+  if (remaining === null) return null
+
+  if (remaining === 0) {
+    return (
+      <div
+        className="sticky top-0 z-[55] bg-theme-ink text-theme-bg px-4 py-2 flex items-center justify-between gap-3"
+        style={{ paddingTop: 'max(0.5rem, env(safe-area-inset-top, 0.5rem))' }}
+      >
+        <p className="font-display italic text-sm">
+          Essai terminé — Choisis un plan pour continuer
+        </p>
+        <button
+          onClick={onUpgrade}
+          className="font-display italic text-xs underline shrink-0"
+        >
+          Voir les plans →
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div
+      className="sticky top-0 z-[55] bg-theme-accent/15 text-theme-ink px-4 py-1.5 flex items-center justify-between gap-3"
+      style={{ paddingTop: 'max(0.375rem, env(safe-area-inset-top, 0.375rem))' }}
+    >
+      <p className="font-display italic text-xs">
+        ✨ Essai gratuit — {remaining} message{remaining > 1 ? 's' : ''} restant{remaining > 1 ? 's' : ''}
+      </p>
+      <button
+        onClick={onUpgrade}
+        className="font-display italic text-xs underline shrink-0"
+      >
+        Passer à Pro
+      </button>
     </div>
   )
 }
@@ -501,6 +570,8 @@ export default function App() {
         const { exchangeCode, fetchGoogleUser } = await import('./services/googleAuth')
         const tokens = await exchangeCode(code)
         const user = await fetchGoogleUser(tokens.access_token)
+        // Pose le splash post-login (vip|trial) AVANT de flipper l'auth.
+        await initTrial(tokens.access_token)
         const { generateUserId, setActiveSession } = await import('./services/userSession')
         const userId = await generateUserId('google', user.email)
         setActiveSession({ userId, authMethod: 'google', displayName: user.name, email: user.email, avatar: user.picture, createdAt: Date.now() })
@@ -516,6 +587,7 @@ export default function App() {
           openaiKey: existingKeys?.openai,
           identifier: user.email,
         })
+        setSplash(getOnboardingSplash())
       } catch (err) {
         console.error('Deep link OAuth error:', err)
       }
@@ -527,6 +599,7 @@ export default function App() {
 
   const [onboardingDone, setOnboardingDone] = useState(isOnboardingDone)
   const [choiceDone, setChoiceDone] = useState(isOnboardingChoiceDone)
+  const [splash, setSplash] = useState(() => getOnboardingSplash())
 
   if (!auth.isAuthenticated) {
     // Show welcome slides before login (first time only)
@@ -534,7 +607,7 @@ export default function App() {
       return <WelcomeSlides onComplete={() => setOnboardingDone(true)} />
     }
 
-    // Then ask BYOK vs Subscription, also first time only.
+    // Then show the welcome / Google / BYOK choice screen, also first time only.
     if (!choiceDone) {
       return (
         <OnboardingChoice
@@ -549,7 +622,38 @@ export default function App() {
             markOnboardingChoiceDone()
             setChoiceDone(true)
           }}
-          onSubscriptionStarted={() => setChoiceDone(true)}
+          onNativeGoogleLogin={async (
+            email,
+            name,
+            avatar,
+            accessToken,
+            refreshToken,
+            expiresIn
+          ) => {
+            await auth.login('google', {
+              displayName: name,
+              email,
+              avatar,
+              anthropicKey: 'server-provided',
+              identifier: email,
+            })
+            // After auth flips, scopedStorage is keyed to the user — store
+            // the Google credentials so the AI clients can find them.
+            const { setJSON } = await import('./services/scopedStorage')
+            setJSON('google-user', { email, name, picture: avatar })
+            setJSON('google-tokens', {
+              access_token: accessToken,
+              refresh_token: refreshToken,
+              expires_at: Date.now() + expiresIn * 1000,
+            })
+            markOnboardingChoiceDone()
+            setChoiceDone(true)
+            setSplash(getOnboardingSplash())
+          }}
+          onGoToLogin={() => {
+            markOnboardingChoiceDone()
+            setChoiceDone(true)
+          }}
         />
       )
     }
@@ -557,7 +661,10 @@ export default function App() {
     return (
       <BrowserRouter>
         <Routes>
-          <Route path="/auth/callback" element={<OAuthCallbackAuth auth={auth} />} />
+          <Route
+            path="/auth/callback"
+            element={<OAuthCallbackAuth auth={auth} onPostLogin={() => setSplash(getOnboardingSplash())} />}
+          />
           <Route path="*" element={
             <LoginScreen
               onLogin={auth.login}
@@ -567,6 +674,36 @@ export default function App() {
           } />
         </Routes>
       </BrowserRouter>
+    )
+  }
+
+  // Authenticated. If we just came back from Google with a fresh trial /
+  // VIP plan, show the matching splash before mounting the main app.
+  if (splash === 'vip') {
+    return (
+      <VipSplash
+        onDone={() => {
+          clearOnboardingSplash()
+          setSplash(null)
+        }}
+      />
+    )
+  }
+  if (splash === 'trial') {
+    return (
+      <TrialIntro
+        onDone={() => {
+          clearOnboardingSplash()
+          setSplash(null)
+        }}
+        onUpgrade={() => {
+          // Push /upgrade into history before clearing the splash so
+          // BrowserRouter picks it up on the next render.
+          window.history.pushState({}, '', '/upgrade')
+          clearOnboardingSplash()
+          setSplash(null)
+        }}
+      />
     )
   }
 
@@ -583,7 +720,13 @@ export default function App() {
 }
 
 /** Handle OAuth callback when not yet authenticated */
-function OAuthCallbackAuth({ auth }: { auth: ReturnType<typeof useAuth> }) {
+function OAuthCallbackAuth({
+  auth,
+  onPostLogin,
+}: {
+  auth: ReturnType<typeof useAuth>
+  onPostLogin?: () => void
+}) {
   const navigate = useNavigate()
 
   const handleCallback = useCallback(async (code: string) => {
@@ -591,6 +734,11 @@ function OAuthCallbackAuth({ auth }: { auth: ReturnType<typeof useAuth> }) {
       const { exchangeCode, fetchGoogleUser } = await import('./services/googleAuth')
       const tokens = await exchangeCode(code)
       const user = await fetchGoogleUser(tokens.access_token)
+
+      // Initialise (ou récupère) le statut trial AVANT de finaliser l'auth :
+      // ça pose le splash post-login en localStorage avant que le state
+      // React ne flippe et ne remonte le composant racine.
+      await initTrial(tokens.access_token)
 
       // Check if this Google user already has API keys saved
       const { generateUserId, setActiveSession } = await import('./services/userSession')
@@ -612,12 +760,13 @@ function OAuthCallbackAuth({ auth }: { auth: ReturnType<typeof useAuth> }) {
         openaiKey: existingKeys?.openai || undefined,
         identifier: user.email,
       })
+      onPostLogin?.()
       navigate('/')
     } catch (err) {
       console.error('OAuth callback error:', err)
       navigate('/')
     }
-  }, [auth, navigate])
+  }, [auth, navigate, onPostLogin])
 
   return <OAuthCallback onCallback={handleCallback} />
 }

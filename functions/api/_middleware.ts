@@ -75,6 +75,10 @@ export const onRequest: PagesFunction = async (context) => {
   if (hasValidOrigin) {
     headers.set('Access-Control-Allow-Origin', origin)
     headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-api-key, x-openai-key, x-google-token, anthropic-version, anthropic-beta')
+    // Expose les headers custom que le client lit côté navigateur (sinon
+    // CORS les masque). `x-trial-remaining` est renvoyé par les proxys IA
+    // pour mettre à jour le compteur d'essai côté front à chaque message.
+    headers.set('Access-Control-Expose-Headers', 'x-trial-remaining')
   }
 
   return new Response(response.body, {

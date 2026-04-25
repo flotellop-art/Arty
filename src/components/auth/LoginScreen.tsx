@@ -245,6 +245,14 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
                     }
                   }
 
+                  // Initialise (ou récupère) le statut trial AVANT de
+                  // finaliser l'auth : pose le splash post-login en
+                  // localStorage avant le re-render racine.
+                  if (googleAccessToken) {
+                    const { initTrial } = await import('../../services/trialClient')
+                    await initTrial(googleAccessToken)
+                  }
+
                   // Login (handles session, crypto, keys)
                   await onLogin('google', {
                     displayName: name,

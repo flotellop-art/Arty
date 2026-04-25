@@ -166,6 +166,10 @@ async function fetchWithRetry(
     await new Promise((resolve) => setTimeout(resolve, Math.pow(2, attempt + 1) * 1000))
   }
 
+  // Met à jour le compteur trial local depuis le header x-trial-remaining.
+  const { updateTrialFromResponse } = await import('./trialClient')
+  updateTrialFromResponse(response!)
+
   if (!response!.ok) {
     const body = await response!.text().catch(() => '')
     throw new Error(formatApiError(response!.status, body))

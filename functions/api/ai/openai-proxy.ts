@@ -1,5 +1,12 @@
 import type { Env } from '../../env'
-import { checkAllowedUser, verifyGoogleUser } from '../_lib/checkAllowedUser'
+import {
+  checkAllowedUser,
+  isModelAllowedInTrial,
+  isTrialExpired,
+  trialExpiredResponse,
+  trialModelRestrictedResponse,
+  verifyGoogleUser,
+} from '../_lib/checkAllowedUser'
 import { checkPremiumCap, premiumCapReachedResponse } from '../_lib/checkPremiumCap'
 import { consumeDailyQuota, recordUsage } from '../_lib/quota'
 import { createOpenAIParser, teeForParsing } from '../_lib/trackUsage'
@@ -19,16 +26,22 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
   // BYOK prioritaire via header dédié (aligné sur whisper-proxy).
   let apiKey = request.headers.get('x-openai-key') || ''
   let usingServerKey = false
-  let userPlan: 'subscription' | 'pro' | 'vip' | 'free' = 'free'
+  let userPlan: 'subscription' | 'pro' | 'vip' | 'free' | 'trial' = 'free'
+  let trialRemaining: number | undefined
 
-  // Fallback clé serveur pour les utilisateurs avec un plan actif (sub/pro/vip)
-  // ou la whitelist legacy en filet de secours.
+  // Fallback clé serveur pour les utilisateurs avec un plan actif
+  // (sub/pro/vip/trial). `checkAllowedUser` gère le bypass VIP et le
+  // décrément du compteur trial KV.
   if (!apiKey && env.OPENAI_API_KEY) {
-    const allowedUser = await checkAllowedUser(request, env)
-    if (allowedUser) {
+    const result = await checkAllowedUser(request, env)
+    if (isTrialExpired(result)) {
+      return trialExpiredResponse()
+    }
+    if (result) {
       apiKey = env.OPENAI_API_KEY
       usingServerKey = true
-      userPlan = allowedUser.planType
+      userPlan = result.planType
+      trialRemaining = result.trialRemaining
     }
   }
 
@@ -52,10 +65,14 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     // leave fallback
   }
 
+  // Trial : restriction de modèles. Compteur déjà décrémenté en amont.
+  if (usingServerKey && userPlan === 'trial' && !isModelAllowedInTrial(modelName)) {
+    return trialModelRestrictedResponse()
+  }
+
   // Quota quotidien uniquement sur la clé serveur ET seulement pour le plan
-  // subscription. Pro/VIP n'ont pas de quota journalier (BYOK paye ses propres
-  // appels, donc usingServerKey=false dans ce cas-là).
-  if (usingServerKey && userPlan !== 'pro' && userPlan !== 'vip') {
+  // subscription. Pro/VIP illimités, trial cappé par son compteur KV dédié.
+  if (usingServerKey && userPlan === 'subscription') {
     const quota = await consumeDailyQuota(env, email, modelName)
     if (!quota.allowed) {
       return Response.json(
@@ -85,6 +102,17 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
       body,
     })
 
+    const responseHeaders = (): Record<string, string> => {
+      const out: Record<string, string> = {
+        'content-type': response.headers.get('content-type') || 'text/event-stream',
+        'cache-control': 'no-cache',
+      }
+      if (trialRemaining !== undefined) {
+        out['x-trial-remaining'] = String(trialRemaining)
+      }
+      return out
+    }
+
     if (!response.ok) {
       const errorText = await response.text().catch(() => 'Unknown OpenAI error')
       return new Response(errorText, {
@@ -106,19 +134,13 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
       waitUntil(parsedUsage.then((usage) => recordUsage(env, email, modelName, usage)))
       return new Response(clientBody, {
         status: response.status,
-        headers: {
-          'content-type': response.headers.get('content-type') || 'text/event-stream',
-          'cache-control': 'no-cache',
-        },
+        headers: responseHeaders(),
       })
     }
 
     return new Response(response.body, {
       status: response.status,
-      headers: {
-        'content-type': response.headers.get('content-type') || 'text/event-stream',
-        'cache-control': 'no-cache',
-      },
+      headers: responseHeaders(),
     })
   } catch (err) {
     return Response.json(

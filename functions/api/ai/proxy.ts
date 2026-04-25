@@ -1,5 +1,13 @@
 import type { Env } from '../../env'
-import { parseAllowedEmails, resolveUserPlan, verifyGoogleUser } from '../_lib/checkAllowedUser'
+import {
+  checkAllowedUser,
+  isModelAllowedInTrial,
+  isTrialExpired,
+  parseAllowedEmails,
+  trialExpiredResponse,
+  trialModelRestrictedResponse,
+  verifyGoogleUser,
+} from '../_lib/checkAllowedUser'
 import { checkPremiumCap, premiumCapReachedResponse } from '../_lib/checkPremiumCap'
 import { consumeDailyQuota, recordUsage } from '../_lib/quota'
 import { createAnthropicParser, teeForParsing } from '../_lib/trackUsage'
@@ -19,44 +27,42 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
   }
 
   // BYOK prioritaire — si le client envoie sa propre clé, on l'utilise
-  // telle quelle (chaque user paie ses propres appels, donc pas de quota).
+  // telle quelle (chaque user paie ses propres appels, donc pas de quota
+  // ni de décrément de trial).
   let apiKey = request.headers.get('x-api-key')
   const isByok = !!apiKey
+  let userPlan: 'subscription' | 'pro' | 'vip' | 'free' | 'trial' = 'free'
+  let trialRemaining: number | undefined
 
   // Pas de BYOK → fallback sur la clé serveur si l'email a un plan actif
-  // (subscription/pro/vip via la table `subscriptions`/`licenses`) ou,
-  // en filet de secours, est dans la whitelist `ALLOWED_EMAILS`.
-  const userPlan = await resolveUserPlan(env, email)
-  const allowed = parseAllowedEmails(env.ALLOWED_EMAILS)
-  const isWhitelisted = allowed.includes(email)
-  const hasServerKey = !!env.ANTHROPIC_API_KEY
-  const hasActivePlan = userPlan !== 'free'
-  if (!apiKey && hasServerKey && (hasActivePlan || isWhitelisted)) {
-    apiKey = env.ANTHROPIC_API_KEY
+  // (subscription/pro/vip/trial via checkAllowedUser, qui gère aussi le
+  // bypass VIP via ALLOWED_EMAILS et le décrément du compteur trial KV).
+  if (!apiKey) {
+    const result = await checkAllowedUser(request, env)
+    if (isTrialExpired(result)) {
+      return trialExpiredResponse()
+    }
+    if (result && env.ANTHROPIC_API_KEY) {
+      apiKey = env.ANTHROPIC_API_KEY
+      userPlan = result.planType
+      trialRemaining = result.trialRemaining
+    }
   }
 
   if (!apiKey) {
+    const allowed = parseAllowedEmails(env.ALLOWED_EMAILS)
+    const isWhitelisted = allowed.includes(email)
+    const hasServerKey = !!env.ANTHROPIC_API_KEY
     let message: string
-    if (!env.ALLOWED_EMAILS) {
-      message = "Clé API requise — whitelist ALLOWED_EMAILS non configurée côté serveur."
-    } else if (!hasServerKey) {
-      message = `Clé API requise — ANTHROPIC_API_KEY non configurée côté serveur (email ${email} est ${isWhitelisted ? '' : 'absent de la '}whitelist${isWhitelisted ? ' ✔' : ''}).`
+    if (!hasServerKey) {
+      message = "Clé API requise — ANTHROPIC_API_KEY non configurée côté serveur."
     } else if (!isWhitelisted) {
-      const rawLength = env.ALLOWED_EMAILS.length
-      const preview = allowed.map((e) => e.slice(0, 3) + '…').join(', ')
-      message = `Clé API requise — l'email ${email} n'est pas dans la whitelist (${allowed.length} emails parsés: [${preview}], ${rawLength} chars raw). Contactez l'admin.`
+      message = `Clé API requise — abonnement requis pour utiliser la clé serveur. Démarre un essai gratuit sur /api/trial/init.`
     } else {
       message = "Clé API requise — configuration serveur incomplète."
     }
     return Response.json(
-      {
-        error: message,
-        email,
-        isWhitelisted,
-        hasServerKey,
-        parsedCount: allowed.length,
-        rawLength: env.ALLOWED_EMAILS ? env.ALLOWED_EMAILS.length : 0,
-      },
+      { error: message, email, isWhitelisted, hasServerKey },
       { status: 401 }
     )
   }
@@ -76,10 +82,19 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     // Leave fallback.
   }
 
+  // Trial : restriction de modèles. Le compteur a déjà été décrémenté par
+  // `checkAllowedUser` ci-dessus ; si le modèle n'est pas autorisé on rend
+  // l'message au client AVANT d'envoyer la requête à Anthropic, mais le
+  // décrément est conservé (anti-abuse — éviter qu'un user spam le proxy
+  // pour découvrir quels modèles sont autorisés sans payer).
+  if (!isByok && userPlan === 'trial' && !isModelAllowedInTrial(modelName)) {
+    return trialModelRestrictedResponse()
+  }
+
   // Cap server-key usage per user per day. BYOK callers pay their own Anthropic
-  // bill and are not counted here. Pro/VIP n'ont pas de quota journalier —
-  // seul le plan 'subscription' est soumis au cap quotidien (voir CLAUDE.md
-  // sur les paliers d'accès). 'free' tombe ici uniquement via whitelist legacy.
+  // bill et trial users sont déjà cappés par leur compteur KV (30 messages),
+  // donc seul le plan 'subscription' (et le legacy 'free' via whitelist) passe
+  // par le quota journalier.
   const enforceDailyQuota =
     !isByok && (userPlan === 'subscription' || userPlan === 'free')
   if (enforceDailyQuota) {
@@ -96,8 +111,8 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     }
   }
 
-  // Cap mensuel premium uniquement pour le plan subscription (Pro/VIP illimités).
-  // Les BYOK ne sont pas cappés (ils payent leur propre Anthropic bill).
+  // Cap mensuel premium uniquement pour le plan subscription (Pro/VIP/trial
+  // hors champ — Pro/VIP illimités, trial cappé par compteur dédié).
   if (!isByok && userPlan === 'subscription') {
     const cap = await checkPremiumCap(email, modelName, env)
     if (!cap.allowed) return premiumCapReachedResponse()
@@ -121,6 +136,18 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
       body,
     })
 
+    const responseHeaders = (extra: Record<string, string> = {}) => {
+      const out: Record<string, string> = {
+        'content-type': response.headers.get('content-type') || 'text/event-stream',
+        'cache-control': 'no-cache',
+        ...extra,
+      }
+      if (trialRemaining !== undefined) {
+        out['x-trial-remaining'] = String(trialRemaining)
+      }
+      return out
+    }
+
     // Ne track que les appels server-key réussis (BYOK = user paie lui-même).
     if (!isByok && response.ok && response.body) {
       const parser = createAnthropicParser()
@@ -132,19 +159,13 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
       waitUntil(parsedUsage.then((usage) => recordUsage(env, email, modelName, usage)))
       return new Response(clientBody, {
         status: response.status,
-        headers: {
-          'content-type': response.headers.get('content-type') || 'text/event-stream',
-          'cache-control': 'no-cache',
-        },
+        headers: responseHeaders(),
       })
     }
 
     return new Response(response.body, {
       status: response.status,
-      headers: {
-        'content-type': response.headers.get('content-type') || 'text/event-stream',
-        'cache-control': 'no-cache',
-      },
+      headers: responseHeaders(),
     })
   } catch (err) {
     return Response.json(

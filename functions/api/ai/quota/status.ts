@@ -1,5 +1,5 @@
 import type { Env } from '../../../env'
-import { checkAllowedUser } from '../../_lib/checkAllowedUser'
+import { checkAllowedUserPeek } from '../../_lib/checkAllowedUser'
 import { getDailyQuotaStatus } from '../../_lib/quota'
 
 // GET /api/ai/quota/status
@@ -14,7 +14,8 @@ import { getDailyQuotaStatus } from '../../_lib/quota'
 // propres appels et ne touchent pas la table `quota`.
 
 export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
-  const allowed = await checkAllowedUser(request, env)
+  // Peek = pas de décrément du compteur trial (read-only stats).
+  const allowed = await checkAllowedUserPeek(request, env)
   if (!allowed) {
     // Pas de leak d'info : 404 uniforme (RÈGLE 6)
     return Response.json({ error: 'Not found' }, { status: 404 })
