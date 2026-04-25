@@ -17,6 +17,11 @@ import {
   type LocationDebugSnapshot,
 } from '../../services/locationContext'
 import { fetchQuotaStatus, type QuotaStatus } from '../../services/quotaStatus'
+import {
+  activateLicense,
+  getProLicense,
+  type ProLicenseState,
+} from '../../services/proLicense'
 import { MemoryHistoryPanel } from './MemoryHistoryPanel'
 import { MemoryViewer } from './MemoryViewer'
 import { OrchestratorSync } from './OrchestratorSync'
@@ -44,13 +49,41 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
   const [showQuota, setShowQuota] = useState(false)
   const [quotaStatus, setQuotaStatus] = useState<QuotaStatus | null>(null)
   const [quotaLoading, setQuotaLoading] = useState(false)
+  const [proLicense, setProLicense] = useState<ProLicenseState | null>(getProLicense)
+  const [licenseKey, setLicenseKey] = useState('')
+  const [licenseEmail, setLicenseEmail] = useState('')
+  const [licenseSubmitting, setLicenseSubmitting] = useState(false)
+  const [licenseError, setLicenseError] = useState('')
+  const [licenseSuccess, setLicenseSuccess] = useState('')
 
   useEffect(() => {
     if (!open) return
     setNotifEnabled(areNotificationsEnabled())
     setLocationEnabled(isLocationConsentEnabled())
     setLocationFix(null)
+    setProLicense(getProLicense())
+    setLicenseError('')
+    setLicenseSuccess('')
   }, [open])
+
+  const handleActivateLicense = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (licenseSubmitting) return
+    setLicenseError('')
+    setLicenseSuccess('')
+    setLicenseSubmitting(true)
+    const result = await activateLicense(licenseKey, licenseEmail)
+    setLicenseSubmitting(false)
+    if (result.ok) {
+      setProLicense(result.state)
+      setLicenseSuccess(
+        'Licence activée ! Tu as maintenant accès à Arty Pro.'
+      )
+      setLicenseKey('')
+    } else {
+      setLicenseError(result.error)
+    }
+  }
 
   const checkLocationAccuracy = async () => {
     setLocationChecking(true)
@@ -290,6 +323,55 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
 
           {/* Orchestrateur sync (Phase 1) — invisible si l'app desktop n'est pas lancée */}
           <OrchestratorSync />
+
+          {/* Licence Pro */}
+          <div className="border-t border-theme-border pt-5 keyboard-aware">
+            <p className="font-display text-base text-theme-ink">⭐ Licence Pro</p>
+            <p className="font-display italic text-xs text-theme-muted mt-0.5">
+              {proLicense
+                ? `Activée pour ${proLicense.email}`
+                : 'Active une clé Arty Pro pour débloquer l’accès illimité.'}
+            </p>
+            {proLicense ? (
+              <div className="mt-3 inline-flex items-center gap-1.5 px-2 py-1 rounded-pill bg-theme-accent text-theme-bg font-sans text-[10px] font-semibold uppercase tracking-kicker">
+                Pro · activée
+              </div>
+            ) : (
+              <form onSubmit={handleActivateLicense} className="mt-3 space-y-2">
+                <input
+                  type="email"
+                  value={licenseEmail}
+                  onChange={(e) => setLicenseEmail(e.target.value)}
+                  placeholder="ton.email@exemple.com"
+                  autoComplete="email"
+                  className="w-full bg-transparent border border-theme-border rounded-sm px-3 py-2 font-sans text-sm text-theme-ink placeholder:text-theme-muted/60 focus:outline-none focus:border-theme-accent transition-colors"
+                />
+                <input
+                  type="text"
+                  value={licenseKey}
+                  onChange={(e) => setLicenseKey(e.target.value)}
+                  placeholder="Clé de licence"
+                  autoComplete="off"
+                  className="w-full bg-transparent border border-theme-border rounded-sm px-3 py-2 font-mono text-sm text-theme-ink placeholder:text-theme-muted/60 focus:outline-none focus:border-theme-accent transition-colors"
+                />
+                <button
+                  type="submit"
+                  disabled={licenseSubmitting || !licenseKey.trim() || !licenseEmail.trim()}
+                  className="w-full py-2.5 font-display italic text-sm font-medium tracking-[0.02em] bg-theme-ink text-theme-bg rounded-sm transition-opacity hover:opacity-90 disabled:opacity-40"
+                >
+                  {licenseSubmitting ? 'Activation…' : 'Activer'}
+                </button>
+                {licenseError && (
+                  <p className="font-sans text-xs text-theme-accent">{licenseError}</p>
+                )}
+                {licenseSuccess && (
+                  <p className="font-sans text-xs text-emerald-600 dark:text-emerald-400">
+                    {licenseSuccess}
+                  </p>
+                )}
+              </form>
+            )}
+          </div>
 
           {/* Version du bundle JS — séparée du versionName Android (qui vient
               de build.gradle). Si les deux divergent, cowork n'a pas refait

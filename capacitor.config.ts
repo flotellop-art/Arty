@@ -23,14 +23,16 @@ const config: CapacitorConfig = {
       showSpinner: false,
     },
     Keyboard: {
-      // 'none' = we track the keyboard height manually via plugin events and
-      // expose it as a CSS var `--kb-height` (see src/main.tsx). Root layout
-      // uses `h-[calc(100dvh-var(--kb-height,0px))]` so the InputBar stays
-      // just above the keyboard regardless of the Android windowSoftInputMode.
-      // 'native' + adjustResize in the manifest was not reliable across
-      // Android launchers (InputBar still got pushed to the top on some
-      // devices). Manual handling works uniformly.
-      resize: 'none',
+      // 'body' = Capacitor resizes the body when the keyboard appears, which
+      // keeps regular flow content above it on most Android launchers. We
+      // additionally listen to keyboardWillShow/keyboardWillHide in main.tsx
+      // and expose `--keyboard-height` (CSS px) so screens that opt-in via
+      // `.keyboard-aware` get extra padding-bottom for inputs (BYOK key in
+      // onboarding, license input in Settings). The legacy `--kb-height`
+      // (visualViewport-based, used by `.fixed.inset-0` modals) is kept as
+      // a safety net for ROMs where `resize: body` misbehaves.
+      resize: 'body',
+      style: 'dark',
       resizeOnFullScreen: true,
     },
     PushNotifications: {

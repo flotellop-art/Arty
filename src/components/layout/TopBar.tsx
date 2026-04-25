@@ -7,6 +7,7 @@ import { SettingsModal } from '../settings/SettingsModal'
 import { getTheme, toggleTheme, type Theme } from '../../services/themeService'
 import { CostIndicator } from './CostIndicator'
 import { PrismMark } from '../shared/PrismMark'
+import { isProActivated } from '../../services/proLicense'
 
 interface TopBarProps {
   onMenuToggle: () => void
@@ -23,7 +24,14 @@ export function TopBar({ onMenuToggle, onHistoryToggle }: TopBarProps) {
   const [showGuide, setShowGuide] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [theme, setThemeState] = useState<Theme>(getTheme)
+  const [proActive, setProActive] = useState<boolean>(isProActivated)
   const menuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const sync = () => setProActive(isProActivated())
+    window.addEventListener('pro-license-changed', sync)
+    return () => window.removeEventListener('pro-license-changed', sync)
+  }, [])
 
   const handleThemeToggle = () => {
     const next = toggleTheme()
@@ -83,6 +91,14 @@ export function TopBar({ onMenuToggle, onHistoryToggle }: TopBarProps) {
         </button>
 
         <div className="flex items-center gap-1">
+          {proActive && (
+            <span
+              className="px-2 py-0.5 rounded-pill bg-theme-accent text-theme-bg font-sans text-[9px] font-semibold uppercase tracking-kicker"
+              title="Licence Pro activée"
+            >
+              Pro
+            </span>
+          )}
           {/* Cost indicator (Feature 13) */}
           <CostIndicator />
 

@@ -49,7 +49,7 @@ export function OnboardingChoice({ onApiKeyLogin, onSubscriptionStarted }: Onboa
 
   return (
     <div
-      className="bg-theme-bg text-theme-ink flex items-center justify-center px-6 py-10"
+      className="keyboard-aware bg-theme-bg text-theme-ink flex items-center justify-center px-6 py-10"
       style={{ minHeight: 'var(--viewport-h, 100dvh)' }}
     >
       <div className="w-full max-w-3xl">
@@ -123,26 +123,76 @@ interface SubscriptionCardProps {
   onStarted: () => void
 }
 
+type SubscriptionPhase = 'idle' | 'opening' | 'verifying' | 'active' | 'pending'
+
+interface SubscriptionStatus {
+  plan?: string
+  status?: string
+}
+
+async function fetchSubscriptionStatus(): Promise<SubscriptionStatus | null> {
+  try {
+    const { getValidAccessToken } = await import('../../services/googleAuth')
+    const token = await getValidAccessToken()
+    const headers: Record<string, string> = {}
+    if (token) headers['x-google-token'] = token
+    const res = await fetch('/api/subscription/status', { headers })
+    if (!res.ok) return null
+    return (await res.json()) as SubscriptionStatus
+  } catch {
+    return null
+  }
+}
+
 function SubscriptionCard({ onStarted }: SubscriptionCardProps) {
   const { t } = useTranslation()
-  const [opening, setOpening] = useState(false)
+  const [phase, setPhase] = useState<SubscriptionPhase>('idle')
+
+  // After the in-app browser closes we wait at least 3 s before calling
+  // /api/subscription/status so Lemon Squeezy has time to fire the
+  // webhook that updates the subscription record server-side. Below 3 s
+  // the call almost always returns "pending" even on a real success.
+  const verifyAndFinish = async () => {
+    setPhase('verifying')
+    const [status] = await Promise.all([
+      fetchSubscriptionStatus(),
+      new Promise<void>((r) => setTimeout(r, 3000)),
+    ])
+    const isActive = status?.plan === 'subscription' && status?.status === 'active'
+    setPhase(isActive ? 'active' : 'pending')
+    markOnboardingChoiceDone()
+    // Brief moment for the user to read the result before we hand back
+    // to the parent and unmount.
+    setTimeout(onStarted, 1200)
+  }
 
   const handleSubscribe = async () => {
-    if (opening) return
-    setOpening(true)
+    if (phase !== 'idle') return
+    setPhase('opening')
     try {
-      try {
-        const { Browser } = await import('@capacitor/browser')
-        await Browser.open({ url: LEMON_SQUEEZY_CHECKOUT_URL })
-      } catch {
-        window.open(LEMON_SQUEEZY_CHECKOUT_URL, '_blank', 'noopener,noreferrer')
-      }
-      markOnboardingChoiceDone()
-      onStarted()
-    } finally {
-      setOpening(false)
+      const { Browser } = await import('@capacitor/browser')
+      // Listen once for `browserFinished` (Capacitor fires this when the
+      // in-app browser is closed by the user). On web `Browser.open` falls
+      // back to window.open and never resolves the listener, so we run the
+      // verification right after `Browser.open` resolves there.
+      let handled = false
+      const listener = await Browser.addListener('browserFinished', () => {
+        if (handled) return
+        handled = true
+        listener.remove()
+        void verifyAndFinish()
+      })
+      await Browser.open({ url: LEMON_SQUEEZY_CHECKOUT_URL })
+    } catch {
+      window.open(LEMON_SQUEEZY_CHECKOUT_URL, '_blank', 'noopener,noreferrer')
+      void verifyAndFinish()
     }
   }
+
+  if (phase === 'verifying' || phase === 'active' || phase === 'pending') {
+    return <SubscriptionVerifyingCard phase={phase} />
+  }
+  const opening = phase === 'opening'
 
   return (
     <article className="relative flex flex-col rounded-sm border border-theme-accent/60 bg-theme-surface p-7 shadow-[0_2px_24px_rgba(0,0,0,0.06)]">
@@ -173,6 +223,60 @@ function SubscriptionCard({ onStarted }: SubscriptionCardProps) {
           ? t('onboardingChoice.subscription.opening', { defaultValue: 'Ouverture…' })
           : `${t('onboardingChoice.subscription.cta', { defaultValue: 'Démarrer l’abonnement' })} →`}
       </button>
+    </article>
+  )
+}
+
+interface SubscriptionVerifyingCardProps {
+  phase: 'verifying' | 'active' | 'pending'
+}
+
+function SubscriptionVerifyingCard({ phase }: SubscriptionVerifyingCardProps) {
+  const { t } = useTranslation()
+  const isVerifying = phase === 'verifying'
+  const title = isVerifying
+    ? t('onboardingChoice.subscription.verifying', {
+        defaultValue: 'Vérification de ton abonnement…',
+      })
+    : phase === 'active'
+      ? t('onboardingChoice.subscription.active', {
+          defaultValue: 'Abonnement activé !',
+        })
+      : t('onboardingChoice.subscription.processing', {
+          defaultValue: 'Paiement en cours de traitement.',
+        })
+  const subtitle = isVerifying
+    ? t('onboardingChoice.subscription.verifyingHint', {
+        defaultValue: 'Cela peut prendre quelques secondes.',
+      })
+    : phase === 'active'
+      ? t('onboardingChoice.subscription.activeHint', {
+          defaultValue: 'Tu vas être redirigé.',
+        })
+      : t('onboardingChoice.subscription.processingHint', {
+          defaultValue: "L'app s'activera dans quelques minutes.",
+        })
+  return (
+    <article
+      className="relative flex flex-col items-center justify-center text-center rounded-sm border border-theme-accent/60 bg-theme-surface p-7 shadow-[0_2px_24px_rgba(0,0,0,0.06)] min-h-[260px]"
+      role="status"
+      aria-live="polite"
+    >
+      {isVerifying ? (
+        <span
+          className="block h-9 w-9 rounded-full border-2 border-theme-accent border-t-transparent animate-slow-rotate"
+          style={{ animationDuration: '1s' }}
+          aria-hidden
+        />
+      ) : (
+        <span className="text-4xl" aria-hidden>
+          {phase === 'active' ? '✓' : '⏳'}
+        </span>
+      )}
+      <h2 className="mt-5 font-display text-[20px] leading-tight font-medium text-theme-ink">
+        {title}
+      </h2>
+      <p className="mt-2 font-sans text-sm text-theme-muted leading-relaxed">{subtitle}</p>
     </article>
   )
 }
