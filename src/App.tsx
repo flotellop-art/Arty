@@ -23,9 +23,20 @@ import {
 } from './components/onboarding/OnboardingChoice'
 import { ProfileSetupModal } from './components/onboarding/ProfileSetupModal'
 import { getUserProfile } from './services/userProfile'
+import { UpgradeScreen, type CurrentPlan } from './screens/upgrade'
 import type { FileAttachment } from './types'
 
-function AppContent({ onLogout, userName }: { onLogout: () => void; userName?: string }) {
+function AppContent({
+  onLogout,
+  userName,
+  authMethod,
+  userEmail,
+}: {
+  onLogout: () => void
+  userName?: string
+  authMethod?: 'google' | 'email' | 'apikey'
+  userEmail?: string
+}) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [showMorningBrief, setShowMorningBrief] = useState(false)
   const [showProfileSetup, setShowProfileSetup] = useState(() => getUserProfile() === null)
@@ -151,6 +162,26 @@ function AppContent({ onLogout, userName }: { onLogout: () => void; userName?: s
     [googleAuth]
   )
 
+  // Open the upgrade screen on demand (Settings button) or after a 403
+  // `no_active_subscription` / 429 `premium_cap_reached`. We listen on a
+  // window CustomEvent so child components don't need prop drilling.
+  useEffect(() => {
+    const open = () => navigate('/upgrade')
+    window.addEventListener('arty-open-upgrade', open)
+    return () => window.removeEventListener('arty-open-upgrade', open)
+  }, [navigate])
+
+  useEffect(() => {
+    if (!error) return
+    if (error.includes('no_active_subscription')) {
+      navigate('/upgrade')
+    } else if (error.includes('premium_cap_reached')) {
+      navigate('/upgrade?scroll=premium')
+    }
+  }, [error, navigate])
+
+  const currentPlan: CurrentPlan = authMethod === 'apikey' ? 'byok' : 'unknown'
+
   return (
     <div
       className="bg-theme-bg text-theme-ink font-sans font-light"
@@ -191,6 +222,16 @@ function AppContent({ onLogout, userName }: { onLogout: () => void; userName?: s
         <Route
           path="/auth/callback"
           element={<OAuthCallback onCallback={handleOAuthCallback} />}
+        />
+        <Route
+          path="/upgrade"
+          element={
+            <UpgradeScreen
+              onBack={() => navigate('/')}
+              currentPlan={currentPlan}
+              email={userEmail}
+            />
+          }
         />
         <Route
           path="/report/:id"
@@ -473,7 +514,12 @@ export default function App() {
 
   return (
     <BrowserRouter>
-      <AppContent onLogout={auth.logout} userName={auth.currentUser?.displayName} />
+      <AppContent
+        onLogout={auth.logout}
+        userName={auth.currentUser?.displayName}
+        authMethod={auth.currentUser?.authMethod}
+        userEmail={auth.currentUser?.email}
+      />
     </BrowserRouter>
   )
 }
