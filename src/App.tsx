@@ -24,6 +24,7 @@ import {
 import { ProfileSetupModal } from './components/onboarding/ProfileSetupModal'
 import { getUserProfile } from './services/userProfile'
 import { UpgradeScreen, type CurrentPlan } from './screens/upgrade'
+import { TemplatesScreen } from './screens/templates'
 import type { FileAttachment } from './types'
 
 function AppContent({
@@ -202,6 +203,7 @@ function AppContent({
           conversation.selectConversation(id)
           navigate(`/chat/${id}`)
         }}
+        onOpenTemplates={() => navigate('/templates')}
       />
 
       <Routes>
@@ -230,6 +232,17 @@ function AppContent({
               onBack={() => navigate('/')}
               currentPlan={currentPlan}
               email={userEmail}
+            />
+          }
+        />
+        <Route
+          path="/templates"
+          element={
+            <TemplatesScreen
+              onBack={() => navigate('/')}
+              onUpgrade={() => navigate('/upgrade')}
+              onUseTemplate={(prompt) => handleSendFromHome(prompt)}
+              currentPlan={currentPlan}
             />
           }
         />
