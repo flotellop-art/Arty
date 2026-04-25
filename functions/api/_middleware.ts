@@ -56,7 +56,11 @@ export const onRequest: PagesFunction = async (context) => {
   // A missing Origin is rejected — browsers always send it on cross-origin
   // fetches, and the native Capacitor app sends `capacitor://localhost` or
   // `https://localhost` (both whitelisted above).
-  if (request.method !== 'GET' && !hasValidOrigin) {
+  // Exception : les webhooks server-to-server (ex: Lemon Squeezy) n'ont pas
+  // d'Origin et s'authentifient via signature HMAC dans le handler lui-même.
+  const url = new URL(request.url)
+  const isWebhook = url.pathname.startsWith('/api/webhook/')
+  if (request.method !== 'GET' && !hasValidOrigin && !isWebhook) {
     return Response.json({ error: 'Forbidden — invalid origin' }, { status: 403 })
   }
 

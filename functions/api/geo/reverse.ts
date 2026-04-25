@@ -8,10 +8,11 @@ import { checkAllowedUser } from '../_lib/checkAllowedUser'
 // Saint-Chamond au lieu de donner une réponse ferme).
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
-  // Auth : seuls les users whitelistés peuvent utiliser la clé Google Maps
-  // du owner (évite le relais anonyme, RÈGLE 6 / BUG 42 CRIT-4).
-  const email = await checkAllowedUser(request, env)
-  if (!email) return Response.json({ error: 'Not found' }, { status: 404 })
+  // Auth : seuls les users avec un plan actif (sub/pro/vip) ou la whitelist
+  // legacy peuvent utiliser la clé Google Maps du owner (évite le relais
+  // anonyme, RÈGLE 6 / BUG 42 CRIT-4).
+  const allowed = await checkAllowedUser(request, env)
+  if (!allowed) return Response.json({ error: 'Not found' }, { status: 404 })
 
   if (!env.GOOGLE_MAPS_API_KEY) {
     return Response.json({ error: 'Not found' }, { status: 404 })

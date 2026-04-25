@@ -1,5 +1,6 @@
 import type { Env } from '../../env'
 import { checkAllowedUser, verifyGoogleUser } from '../_lib/checkAllowedUser'
+import { checkPremiumCap, premiumCapReachedResponse } from '../_lib/checkPremiumCap'
 import { consumeDailyQuota, recordUsage } from '../_lib/quota'
 import { createMistralParser, teeForParsing } from '../_lib/trackUsage'
 
@@ -18,13 +19,16 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
   // BYOK prioritaire
   let apiKey = request.headers.get('authorization')?.replace('Bearer ', '') || ''
   let usingServerKey = false
+  let userPlan: 'subscription' | 'pro' | 'vip' | 'free' = 'free'
 
-  // Fallback clé serveur uniquement pour les emails whitelistés
+  // Fallback clé serveur pour les utilisateurs avec un plan actif (sub/pro/vip)
+  // ou la whitelist legacy en filet de secours.
   if (!apiKey && env.MISTRAL_API_KEY) {
-    const allowedEmail = await checkAllowedUser(request, env)
-    if (allowedEmail) {
+    const allowedUser = await checkAllowedUser(request, env)
+    if (allowedUser) {
       apiKey = env.MISTRAL_API_KEY
       usingServerKey = true
+      userPlan = allowedUser.planType
     }
   }
 
@@ -48,8 +52,9 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     // leave fallback
   }
 
-  // Quota quotidien uniquement sur la clé serveur (BYOK paye ses propres appels)
-  if (usingServerKey) {
+  // Quota quotidien uniquement sur la clé serveur ET pour le plan subscription
+  // (Pro/VIP illimités).
+  if (usingServerKey && userPlan !== 'pro' && userPlan !== 'vip') {
     const quota = await consumeDailyQuota(env, email, modelName)
     if (!quota.allowed) {
       return Response.json(
@@ -61,6 +66,14 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
         { status: 429 }
       )
     }
+  }
+
+  // Mistral n'a pas de modèle "premium" dans notre cap (mistral-small est
+  // standard). On laisse l'appel à checkPremiumCap pour la cohérence
+  // architecturale ; il retourne 'standard_model' immédiatement.
+  if (usingServerKey && userPlan === 'subscription') {
+    const cap = await checkPremiumCap(email, modelName, env)
+    if (!cap.allowed) return premiumCapReachedResponse()
   }
 
   try {
