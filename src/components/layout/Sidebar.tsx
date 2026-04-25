@@ -22,6 +22,7 @@ interface SidebarProps {
   userName?: string
   onLogout?: () => void
   onImportConversation?: (id: string) => void
+  onOpenTemplates?: () => void
 }
 
 // Palette du Design C (Claude.ai handoff) — branchée sur les variables
@@ -111,6 +112,7 @@ export function Sidebar({
   userName,
   onLogout,
   onImportConversation,
+  onOpenTemplates,
 }: SidebarProps) {
   const { t, i18n } = useTranslation()
   const timeAgo = useTimeAgo()
@@ -305,6 +307,32 @@ export function Sidebar({
             </button>
           )}
         </div>
+
+        {/* Templates métier (Pro) */}
+        {onOpenTemplates && (
+          <div className="px-4 pb-3 flex-shrink-0">
+            <button
+              onClick={() => {
+                onOpenTemplates()
+                onClose()
+              }}
+              className="w-full flex items-center gap-2.5 py-2.5 px-3 rounded-[10px] text-theme-muted hover:text-theme-ink hover:bg-theme-ink/5 text-[12.5px] font-medium transition-colors"
+              style={{ border: `1px solid ${DESIGN.borderMid}` }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="4" width="18" height="16" rx="2" />
+                <path d="M3 10h18M9 4v16" />
+              </svg>
+              <span className="flex-1 text-left">Templates métier</span>
+              <span
+                className="text-[9px] font-bold uppercase tracking-[0.12em] px-1.5 py-0.5 rounded"
+                style={{ background: 'rgb(var(--theme-accent) / 0.15)', color: 'rgb(var(--theme-accent))' }}
+              >
+                Pro
+              </span>
+            </button>
+          </div>
+        )}
 
         {/* Search */}
         <div className="px-4 pb-3 flex-shrink-0">
