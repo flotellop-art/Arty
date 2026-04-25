@@ -40,9 +40,31 @@ export interface QuotaStatus {
   byModel: ModelUsage[]
 }
 
+export interface MonthlyModelUsage {
+  model: string
+  count: number
+  inputTokens: number
+  outputTokens: number
+  cacheReadTokens: number
+  cacheCreationTokens: number
+  audioSeconds: number
+  costUsd: number
+}
+
+export interface MonthlyQuotaStatus {
+  /** YYYY-MM in UTC. */
+  month: string
+  byModel: MonthlyModelUsage[]
+}
+
 function todayKey(): string {
   // UTC YYYY-MM-DD — deterministic across Cloudflare regions, no DST drift.
   return new Date().toISOString().slice(0, 10)
+}
+
+function currentMonthKey(): string {
+  // UTC YYYY-MM — dérive du jour pour rester aligné avec todayKey().
+  return new Date().toISOString().slice(0, 7)
 }
 
 /**
@@ -258,6 +280,64 @@ export async function getDailyQuotaStatus(
     }
   } catch (err) {
     console.error('quota.getDailyQuotaStatus failed', err)
+    return empty
+  }
+}
+
+/**
+ * Snapshot mensuel pour `email` — somme `quota_model` sur tous les jours du
+ * mois courant (UTC), groupé par modèle. Utilisé par GET /api/ai/quota/month
+ * pour alimenter le badge $$ "coût ce mois" dans la TopBar. N'incrémente rien.
+ */
+export async function getMonthlyQuotaStatus(
+  env: Env,
+  email: string
+): Promise<MonthlyQuotaStatus> {
+  const month = currentMonthKey()
+  const empty: MonthlyQuotaStatus = { month, byModel: [] }
+  if (!env.DB) return empty
+
+  try {
+    const res = await env.DB.prepare(
+      `SELECT model,
+              SUM(count) AS calls,
+              SUM(COALESCE(input_tokens, 0)) AS input_tokens,
+              SUM(COALESCE(output_tokens, 0)) AS output_tokens,
+              SUM(COALESCE(cache_read_tokens, 0)) AS cache_read_tokens,
+              SUM(COALESCE(cache_creation_tokens, 0)) AS cache_creation_tokens,
+              SUM(COALESCE(audio_seconds, 0)) AS audio_seconds,
+              SUM(COALESCE(cost_usd_micro, 0)) AS cost_usd_micro
+       FROM quota_model
+       WHERE email = ?1 AND day LIKE ?2
+       GROUP BY model
+       ORDER BY cost_usd_micro DESC`
+    )
+      .bind(email, `${month}-%`)
+      .all<{
+        model: string
+        calls: number
+        input_tokens: number
+        output_tokens: number
+        cache_read_tokens: number
+        cache_creation_tokens: number
+        audio_seconds: number
+        cost_usd_micro: number
+      }>()
+
+    const byModel: MonthlyModelUsage[] = (res.results ?? []).map((r) => ({
+      model: r.model,
+      count: r.calls ?? 0,
+      inputTokens: r.input_tokens ?? 0,
+      outputTokens: r.output_tokens ?? 0,
+      cacheReadTokens: r.cache_read_tokens ?? 0,
+      cacheCreationTokens: r.cache_creation_tokens ?? 0,
+      audioSeconds: r.audio_seconds ?? 0,
+      costUsd: (r.cost_usd_micro ?? 0) / 1_000_000,
+    }))
+
+    return { month, byModel }
+  } catch (err) {
+    console.error('quota.getMonthlyQuotaStatus failed', err)
     return empty
   }
 }
