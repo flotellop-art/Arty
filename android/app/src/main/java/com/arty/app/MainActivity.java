@@ -1,14 +1,17 @@
 package com.arty.app;
 
+import android.content.Intent;
 import android.os.Bundle;
 import androidx.core.view.WindowCompat;
 import com.getcapacitor.BridgeActivity;
+import com.getcapacitor.PluginHandle;
 
 public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(GoogleSignInPlugin.class);
         registerPlugin(AudioBeepMutePlugin.class);
+        registerPlugin(ShareTargetPlugin.class);
         super.onCreate(savedInstanceState);
 
         // Edge-to-edge — fait passer la WebView sous les system bars (status
@@ -20,5 +23,16 @@ public class MainActivity extends BridgeActivity {
         // pour respecter visuellement les system bars, et `--kb-height` settée
         // par main.tsx via visualViewport gère le clavier en CSS.
         WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        // Relay shared content to ShareTargetPlugin when the app is already
+        // in memory (singleTask launchMode → cold start uses load() instead).
+        PluginHandle handle = getBridge().getPlugin("ShareTarget");
+        if (handle != null && handle.getInstance() instanceof ShareTargetPlugin) {
+            ((ShareTargetPlugin) handle.getInstance()).handleNewIntent(intent);
+        }
     }
 }
