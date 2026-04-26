@@ -159,6 +159,8 @@
       "placeholder": "Discuter avec Arty...",
       "listening": "Écoute en cours...",
       "defaultFilePrompt": "Analyse ce fichier.",
+      "enhanceTooltip": "Améliorer le prompt",
+      "enhancing": "Amélioration en cours...",
       "aria": {
         "attach": "Joindre un fichier",
         "attachMenu": "Ouvrir le menu d'ajout",
@@ -166,6 +168,7 @@
         "scan": "Scanner un document",
         "micStart": "Micro",
         "micStop": "Arrêter le micro",
+        "enhance": "Améliorer le prompt",
         "stop": "Arrêter",
         "send": "Envoyer",
         "holdToRecord": "Tap pour dicter, appui long pour Whisper",
@@ -220,7 +223,8 @@
     "openaiServer": "Erreur OpenAI",
     "openaiError": "Erreur OpenAI ({{status}})",
     "streamInterrupted": "Réponse interrompue",
-    "streamStopped": "Réponse arrêtée"
+    "streamStopped": "Réponse arrêtée",
+    "promptEnhancementFailed": "Impossible d'améliorer le prompt — réessaie."
   },
   "sidebar": {
     "newConversation": "Nouvelle conversation",

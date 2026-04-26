@@ -159,6 +159,8 @@
       "placeholder": "Chat with Arty...",
       "listening": "Listening...",
       "defaultFilePrompt": "Analyze this file.",
+      "enhanceTooltip": "Enhance prompt",
+      "enhancing": "Enhancing...",
       "aria": {
         "attach": "Attach a file",
         "attachMenu": "Open attach menu",
@@ -166,6 +168,7 @@
         "scan": "Scan a document",
         "micStart": "Microphone",
         "micStop": "Stop microphone",
+        "enhance": "Enhance prompt",
         "stop": "Stop",
         "send": "Send",
         "holdToRecord": "Tap to dictate, hold for Whisper",
@@ -220,7 +223,8 @@
     "openaiServer": "OpenAI error",
     "openaiError": "OpenAI error ({{status}})",
     "streamInterrupted": "Response interrupted",
-    "streamStopped": "Response stopped"
+    "streamStopped": "Response stopped",
+    "promptEnhancementFailed": "Couldn't enhance the prompt — try again."
   },
   "sidebar": {
     "newConversation": "New conversation",

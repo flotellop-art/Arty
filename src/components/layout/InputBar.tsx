@@ -8,6 +8,8 @@ import { filterSlashCommands, type SlashCommand } from '../../constants/slashCom
 import { detectDates } from '../../utils/dateDetector'
 import { getValidAccessToken } from '../../services/googleAuth'
 import { callGoogleApi } from '../../services/googleApiHelper'
+import { enhancePrompt, canEnhancePrompt } from '../../services/promptEnhancer'
+import { isPromptEnhancementEnabled } from '../../services/promptEnhancerSettings'
 
 interface InputBarProps {
   onSend: (text: string, files?: FileAttachment[]) => void
@@ -637,6 +639,29 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
   const canUseWhisperRef = useRef(canUseWhisper)
   useEffect(() => { canUseWhisperRef.current = canUseWhisper }, [canUseWhisper])
 
+  // Prompt enhancement (1.0.14) — ✨ button reformulates the prompt via Haiku/Mistral
+  const [enhanceEnabled, setEnhanceEnabled] = useState(false)
+  const [isEnhancing, setIsEnhancing] = useState(false)
+  const [enhanceError, setEnhanceError] = useState<string | null>(null)
+  useEffect(() => {
+    setEnhanceEnabled(isPromptEnhancementEnabled() && canEnhancePrompt())
+  }, [])
+
+  const handleEnhance = async () => {
+    const current = text.trim()
+    if (!current || isEnhancing) return
+    setIsEnhancing(true)
+    setEnhanceError(null)
+    try {
+      const enhanced = await enhancePrompt(current)
+      setText(enhanced)
+    } catch (err) {
+      setEnhanceError(err instanceof Error ? err.message : t('errors.promptEnhancementFailed'))
+    } finally {
+      setIsEnhancing(false)
+    }
+  }
+
   return (
     <div className="relative px-4 pb-4 pt-2 bg-theme-bg" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 1rem))' }}>
       {/* Slash command palette (Feature 2) */}
@@ -663,6 +688,21 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
               </button>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* Prompt enhancement error (1.0.14) */}
+      {enhanceError && (
+        <div className="mb-2 flex items-center gap-2 px-3 py-2 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700">
+          <span>⚠️</span>
+          <span className="flex-1 truncate">{enhanceError}</span>
+          <button
+            onClick={() => setEnhanceError(null)}
+            className="text-red-500 hover:text-red-700"
+            aria-label="Fermer"
+          >
+            ✕
+          </button>
         </div>
       )}
 
@@ -821,6 +861,60 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
             disabled={isStreaming}
             className={`flex-1 resize-none bg-transparent text-sm text-theme-ink placeholder:text-theme-muted/60 focus:outline-none py-1.5 font-sans font-light leading-relaxed ${isStreaming ? 'opacity-50 italic' : ''}`}
           />
+        )}
+
+        {/* Prompt enhancement (1.0.14) — ✨ reformulates the prompt via Haiku/Mistral */}
+        {enhanceEnabled && (
+          <button
+            onClick={handleEnhance}
+            disabled={!text.trim() || isEnhancing}
+            className={`relative flex-shrink-0 p-1.5 rounded-full transition-colors mb-0.5 ${
+              isEnhancing
+                ? 'bg-theme-accent/20 text-theme-accent'
+                : 'hover:bg-theme-ink/5 text-theme-muted disabled:opacity-30'
+            }`}
+            aria-label={t('chat.input.aria.enhance')}
+            title={isEnhancing ? t('chat.input.enhancing') : t('chat.input.enhanceTooltip')}
+          >
+            {isEnhancing ? (
+              <svg width="18" height="18" viewBox="0 0 18 18" fill="none" className="animate-spin">
+                <circle cx="9" cy="9" r="6.5" stroke="currentColor" strokeWidth="1.5" strokeDasharray="10 30" strokeLinecap="round" />
+              </svg>
+            ) : (
+              <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+                <path
+                  d="M9 2.5L10.2 6.3L14 7.5L10.2 8.7L9 12.5L7.8 8.7L4 7.5L7.8 6.3L9 2.5Z"
+                  stroke="currentColor"
+                  strokeWidth="1.3"
+                  strokeLinejoin="round"
+                />
+                <path d="M13.5 12.5L14 14L15.5 14.5L14 15L13.5 16.5L13 15L11.5 14.5L13 14L13.5 12.5Z" fill="currentColor" />
+              </svg>
+            )}
+          </button>
+        )}
+
+        {/* Whisper audio recording (Feature 15) — if OpenAI key is available */}
+        {hasOpenAI && (
+          <button
+            onClick={isRecordingAudio ? stopAudioRecording : startAudioRecording}
+            className={`relative flex-shrink-0 p-1.5 rounded-full transition-colors mb-0.5 ${
+              isRecordingAudio
+                ? 'bg-red-100 text-red-500 hover:bg-red-200'
+                : 'hover:bg-theme-ink/5 text-theme-muted'
+            }`}
+            aria-label={isRecordingAudio ? 'Arrêter enregistrement' : 'Enregistrer audio (Whisper)'}
+            title={isRecordingAudio ? `Enregistrement ${recordingDuration}s` : 'Enregistrer (Whisper)'}
+          >
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+              <circle cx="9" cy="9" r="5" fill="currentColor" />
+            </svg>
+            {isRecordingAudio && (
+              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[8px] font-bold px-1 rounded-full">
+                {recordingDuration}s
+              </span>
+            )}
+          </button>
         )}
 
         {/* Morphing CTA — Stop (streaming) / Send (text) / Voice (idle). */}
