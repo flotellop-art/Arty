@@ -4,7 +4,12 @@ import { getStyle, setStyle as saveStyle, STYLE_OPTIONS, type ResponseStyle } fr
 import { getSelectedModel, setSelectedModel, MODEL_OPTIONS, type AIModel } from '../../services/modelSelector'
 import { SettingsGuide } from '../shared/SettingsGuide'
 import { PrismMark } from '../shared/PrismMark'
-import { exportConversation, buildShareUrl } from '../../services/conversationExport'
+import {
+  exportConversation,
+  exportConversationMarkdown,
+  exportConversationPdf,
+  buildShareUrl,
+} from '../../services/conversationExport'
 import type { Conversation } from '../../types'
 
 interface ChatTopBarProps {
@@ -25,7 +30,9 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
   const [openMenu, setOpenMenu] = useState<OpenMenu>(null)
   const [showGuide, setShowGuide] = useState(false)
   const [privacyWarning, setPrivacyWarning] = useState<AIModel | null>(null)
+  const [exportMenuOpen, setExportMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
+  const exportRef = useRef<HTMLDivElement>(null)
 
   const styleLabel = (id: ResponseStyle) => t(`chat.tone.${id}`)
   const modelLabel = (id: AIModel) => (id === 'auto' ? t('chat.model.auto') : MODEL_OPTIONS.find(o => o.id === id)?.label ?? id)
@@ -70,6 +77,20 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
     document.addEventListener('mousedown', handleClick)
     return () => document.removeEventListener('mousedown', handleClick)
   }, [openMenu])
+
+  // Close export menu on outside click / touch
+  useEffect(() => {
+    if (!exportMenuOpen) return
+    const onDown = (e: MouseEvent | TouchEvent) => {
+      if (!exportRef.current?.contains(e.target as Node)) setExportMenuOpen(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('touchstart', onDown)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('touchstart', onDown)
+    }
+  }, [exportMenuOpen])
 
   const styleOption = STYLE_OPTIONS.find(o => o.id === currentStyle) ?? STYLE_OPTIONS[0]!
   const modelOption = MODEL_OPTIONS.find(o => o.id === currentModel) ?? MODEL_OPTIONS[0]!
@@ -232,17 +253,49 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
             </button>
           )}
           {conversation && (
-            <button
-              onClick={() => exportConversation(conversation)}
-              className="p-1.5 rounded text-theme-muted hover:text-theme-ink hover:bg-theme-ink/5 transition-colors"
-              title="Exporter la conversation (JSON)"
-              aria-label="Exporter"
-            >
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                <path d="M8 2V10M8 10L5 7M8 10L11 7" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
-                <path d="M3 11V13H13V11" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-              </svg>
-            </button>
+            <div ref={exportRef} className="relative">
+              <button
+                onClick={() => setExportMenuOpen((o) => !o)}
+                className="p-1.5 rounded text-theme-muted hover:text-theme-ink hover:bg-theme-ink/5 transition-colors"
+                title="Exporter la conversation"
+                aria-label="Exporter"
+                aria-haspopup="menu"
+                aria-expanded={exportMenuOpen}
+              >
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  <path d="M8 2V10M8 10L5 7M8 10L11 7" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M3 11V13H13V11" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+                </svg>
+              </button>
+              {exportMenuOpen && (
+                <div
+                  role="menu"
+                  className="absolute right-0 top-full mt-1 bg-theme-surface rounded-xl border border-theme-border shadow-lg overflow-hidden z-30 min-w-[180px]"
+                >
+                  <button
+                    role="menuitem"
+                    onClick={() => { setExportMenuOpen(false); void exportConversationMarkdown(conversation) }}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs text-theme-ink hover:bg-theme-ink/5"
+                  >
+                    <span>📄</span><span>Markdown (.md)</span>
+                  </button>
+                  <button
+                    role="menuitem"
+                    onClick={() => { setExportMenuOpen(false); void exportConversationPdf(conversation) }}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs text-theme-ink hover:bg-theme-ink/5"
+                  >
+                    <span>📑</span><span>PDF (.pdf)</span>
+                  </button>
+                  <button
+                    role="menuitem"
+                    onClick={() => { setExportMenuOpen(false); exportConversation(conversation) }}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs text-theme-ink hover:bg-theme-ink/5"
+                  >
+                    <span>📦</span><span>JSON (réimport)</span>
+                  </button>
+                </div>
+              )}
+            </div>
           )}
           {conversation && (
             <button
