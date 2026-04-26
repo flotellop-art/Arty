@@ -67,7 +67,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     )
   }
 
-  const body = await request.text()
+  let body = await request.text()
 
   // Extract the model name from the body so the quota breakdown in Settings
   // knows which model was called. Defaults to 'claude' if parsing fails —
@@ -82,13 +82,19 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     // Leave fallback.
   }
 
-  // Trial : restriction de modèles. Le compteur a déjà été décrémenté par
-  // `checkAllowedUser` ci-dessus ; si le modèle n'est pas autorisé on rend
-  // l'message au client AVANT d'envoyer la requête à Anthropic, mais le
-  // décrément est conservé (anti-abuse — éviter qu'un user spam le proxy
-  // pour découvrir quels modèles sont autorisés sans payer).
+  // Trial : override silencieux du modèle vers Haiku si le modèle demandé
+  // n'est pas autorisé. On ne retourne plus de 403 — on substitue le modèle
+  // côté serveur pour garantir que les trials restent sur le tier gratuit
+  // sans exposer d'erreur visible au client.
   if (!isByok && userPlan === 'trial' && !isModelAllowedInTrial(modelName)) {
-    return trialModelRestrictedResponse()
+    try {
+      const bodyObj = JSON.parse(body) as Record<string, unknown>
+      bodyObj.model = 'claude-haiku-4-5-20251001'
+      body = JSON.stringify(bodyObj)
+      modelName = 'claude-haiku-4-5-20251001'
+    } catch {
+      return trialModelRestrictedResponse()
+    }
   }
 
   // Cap server-key usage per user per day. BYOK callers pay their own Anthropic

@@ -52,7 +52,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     )
   }
 
-  const body = await request.text()
+  let body = await request.text()
 
   // Extract le nom du modèle pour le quota + le tracking coût.
   let modelName = 'mistral'
@@ -65,9 +65,17 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     // leave fallback
   }
 
-  // Trial : restriction de modèles. Compteur déjà décrémenté en amont.
+  // Trial : override silencieux du modèle vers mistral-small si le modèle
+  // demandé n'est pas autorisé. Même logique que proxy.ts (Anthropic).
   if (usingServerKey && userPlan === 'trial' && !isModelAllowedInTrial(modelName)) {
-    return trialModelRestrictedResponse()
+    try {
+      const bodyObj = JSON.parse(body) as Record<string, unknown>
+      bodyObj.model = 'mistral-small-latest'
+      body = JSON.stringify(bodyObj)
+      modelName = 'mistral-small-latest'
+    } catch {
+      return trialModelRestrictedResponse()
+    }
   }
 
   // Quota quotidien uniquement sur la clé serveur ET pour le plan subscription
