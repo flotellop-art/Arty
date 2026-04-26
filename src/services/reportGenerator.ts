@@ -128,8 +128,8 @@ td{padding:0.5rem 0.6rem;white-space:nowrap}
 </head>
 <body>
 <div class="report-actions">
-<button class="back-btn" onclick="history.back()" target="_self">← Retour</button>
-<button class="pdf-btn" onclick="window.print()" target="_self">📥 Télécharger PDF</button>
+<button class="back-btn" onclick="window.parent.postMessage({type:'arty-report-back'},'*')" target="_self">← Retour</button>
+<button class="pdf-btn" onclick="window.parent.postMessage({type:'arty-report-export-pdf'},'*')" target="_self">📥 Télécharger PDF</button>
 </div>
 <div class="page">
 <div class="header">

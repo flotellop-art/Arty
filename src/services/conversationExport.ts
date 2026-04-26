@@ -241,18 +241,24 @@ export function buildConversationHtml(conv: Conversation): string {
 }
 
 /**
- * Export the conversation as a downloadable PDF.
- * Uses jsPDF + html2canvas to render the styled HTML.
+ * Render an arbitrary HTML string into a styled PDF, then download
+ * (web) or share (native). Reusable by both the conversation export and
+ * the report page (window.print() doesn't work inside Android Chrome
+ * sandboxed iframes — this is the cross-platform replacement).
  *
  * jsPDF and html2canvas are heavy (~500KB combined) so they are loaded
  * lazily — only when the user actually clicks "Export PDF".
  */
-export async function exportConversationPdf(conv: Conversation): Promise<void> {
+export async function exportHtmlAsPdf(
+  html: string,
+  filenameBase: string,
+  bgColor: string = '#fdfaf5',
+): Promise<void> {
   const { jsPDF } = await import('jspdf')
   const html2canvas = (await import('html2canvas')).default
 
   const container = document.createElement('div')
-  container.innerHTML = buildConversationHtml(conv)
+  container.innerHTML = html
   container.style.position = 'fixed'
   container.style.left = '-10000px'
   container.style.top = '0'
@@ -262,7 +268,7 @@ export async function exportConversationPdf(conv: Conversation): Promise<void> {
   try {
     const canvas = await html2canvas(container, {
       scale: 2,
-      backgroundColor: '#fdfaf5',
+      backgroundColor: bgColor,
       logging: false,
     })
     const imgData = canvas.toDataURL('image/png')
@@ -286,9 +292,18 @@ export async function exportConversationPdf(conv: Conversation): Promise<void> {
     }
 
     const blob = pdf.output('blob')
-    const filename = `arty-${sanitizeFilename(conv.title)}-${Date.now()}.pdf`
+    const filename = `${filenameBase}-${Date.now()}.pdf`
     await downloadOrShare(blob, filename, 'application/pdf')
   } finally {
     document.body.removeChild(container)
   }
+}
+
+/**
+ * Export the conversation as a downloadable PDF.
+ * Wraps exportHtmlAsPdf with the conversation's styled HTML.
+ */
+export async function exportConversationPdf(conv: Conversation): Promise<void> {
+  const html = buildConversationHtml(conv)
+  await exportHtmlAsPdf(html, `arty-${sanitizeFilename(conv.title)}`)
 }
