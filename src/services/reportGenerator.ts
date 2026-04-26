@@ -31,7 +31,7 @@ const REPORT_TEMPLATE = (title: string, content: string) => `<!DOCTYPE html>
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{background:var(--c-bg-body);color:var(--c-ink);font-family:'Inter',sans-serif;font-weight:400;line-height:1.72;font-size:10.5px;-webkit-font-smoothing:antialiased}
 body::before{content:'';position:fixed;top:0;left:0;right:0;height:5px;background:linear-gradient(90deg,#7A3A1A,#9E4228,#C4623A,#E08A5A,#EAB080);z-index:100}
-.page{max-width:840px;margin:0 auto;background:var(--c-bg-page);padding:52px 72px 0}
+.page{max-width:840px;margin:0 auto;background:var(--c-bg-page);padding:max(80px, calc(env(safe-area-inset-top, 0px) + 60px)) 72px 0}
 .page+.page{margin-top:24px}
 
 /* En-tête de page */
@@ -149,7 +149,7 @@ body::before{content:'';position:fixed;top:0;left:0;right:0;height:5px;backgroun
 .divider-accent{height:2px;background:linear-gradient(90deg,var(--c-accent),transparent);margin:24px 0}
 
 /* Boutons UI (réservés, hors PDF) */
-.report-actions{position:fixed;top:max(1rem, calc(env(safe-area-inset-top, 0px) + 0.5rem));left:max(1rem, calc(env(safe-area-inset-left, 0px) + 0.5rem));display:flex;gap:8px;z-index:200}
+.report-actions{position:fixed;top:max(2.75rem, calc(env(safe-area-inset-top, 0px) + 0.5rem));left:max(1rem, calc(env(safe-area-inset-left, 0px) + 0.5rem));display:flex;gap:8px;z-index:200}
 .back-btn,.pdf-btn{font-family:'Inter',sans-serif;font-size:11px;font-weight:600;border:none;border-radius:6px;padding:8px 14px;cursor:pointer;transition:opacity 0.15s}
 .back-btn{background:var(--c-ink);color:#fff}
 .pdf-btn{background:var(--c-accent);color:#fff}
@@ -161,6 +161,9 @@ body::before{content:'';position:fixed;top:0;left:0;right:0;height:5px;backgroun
   body::before{display:none}
   .report-actions{display:none}
   .page{padding:36px 50px;max-width:none}
+}
+@media(min-width:641px){
+  .page{padding-top:52px}
 }
 @media(max-width:640px){
   .page{padding:32px 24px 0}
