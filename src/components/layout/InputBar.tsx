@@ -897,7 +897,7 @@ export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
         {/* Whisper audio recording (Feature 15) — if OpenAI key is available */}
         {hasOpenAI && (
           <button
-            onClick={isRecordingAudio ? stopAudioRecording : startAudioRecording}
+            onClick={isRecordingAudio ? () => stopAudioRecording() : startAudioRecording}
             className={`relative flex-shrink-0 p-1.5 rounded-full transition-colors mb-0.5 ${
               isRecordingAudio
                 ? 'bg-red-100 text-red-500 hover:bg-red-200'

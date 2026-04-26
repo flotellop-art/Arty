@@ -13,7 +13,7 @@ interface DayNightToggleProps {
  * a moon on the night side. Ported from the Arty v2 — Day_Night design.
  */
 export function DayNightToggle({ theme, onChange, size = 'sm', label }: DayNightToggleProps) {
-  const isNight = theme === 'dark'
+  const isNight = theme === 'nocturne'
   const isMd = size === 'md'
 
   const width = isMd ? 180 : 72
@@ -69,7 +69,7 @@ export function DayNightToggle({ theme, onChange, size = 'sm', label }: DayNight
       aria-checked={isNight}
       aria-label={ariaLabel}
       title={ariaLabel}
-      onClick={() => onChange(isNight ? 'light' : 'dark')}
+      onClick={() => onChange(isNight ? 'ember' : 'nocturne')}
       style={trackStyle}
     >
       {isMd && (
