@@ -182,7 +182,41 @@ export function OnboardingChoice({
               )}
             </div>
 
-            <div className="mt-10 flex flex-col items-center gap-3">
+                        {/* Divider */}
+            <div className="mt-6 flex items-center gap-3">
+              <div className="flex-1 h-px bg-theme-ink/15" />
+              <span className="font-display italic text-[12px] text-theme-muted">ou</span>
+              <div className="flex-1 h-px bg-theme-ink/15" />
+            </div>
+
+            {/* Cards secondaires */}
+            <div className="mt-4 grid grid-cols-2 gap-3">
+              <button type="button" onClick={onGoToLogin}
+                className="flex flex-col items-start gap-2 p-4 rounded-2xl bg-theme-ink/[0.04] border border-theme-ink/10 hover:bg-theme-ink/[0.07] transition-colors text-left">
+                <div className="w-7 h-7 rounded-lg bg-theme-accent flex items-center justify-center">
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden>
+                    <path d="M7 1L13 4V7C13 10.3 10.3 13 7 13C3.7 13 1 10.3 1 7V4L7 1Z" stroke="rgb(var(--theme-bg))" strokeWidth="1.2" fill="none"/>
+                    <path d="M4.5 7L6 8.5L9.5 5" stroke="rgb(var(--theme-bg))" strokeWidth="1.2" strokeLinecap="round"/>
+                  </svg>
+                </div>
+                <p className="font-display text-[13px] font-medium text-theme-ink leading-tight">Abonnement</p>
+                <p className="font-display italic text-[11px] text-theme-muted leading-tight -mt-1.5">Pro, illimité</p>
+              </button>
+
+              <button type="button" onClick={() => setMode('byok')}
+                className="flex flex-col items-start gap-2 p-4 rounded-2xl bg-theme-ink/[0.04] border border-theme-ink/10 hover:bg-theme-ink/[0.07] transition-colors text-left">
+                <div className="w-7 h-7 rounded-lg bg-[#7C3AED] flex items-center justify-center">
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden>
+                    <rect x="1" y="4" width="12" height="8" rx="2" stroke="white" strokeWidth="1.2" fill="none"/>
+                    <path d="M4 4V3C4 2 5 1 7 1C9 1 10 2 10 3V4" stroke="white" strokeWidth="1.2" strokeLinecap="round" fill="none"/>
+                    <circle cx="7" cy="8" r="1" fill="white"/>
+                  </svg>
+                </div>
+                <p className="font-display text-[13px] font-medium text-theme-ink leading-tight">Clé API</p>
+                <p className="font-display italic text-[11px] text-theme-muted leading-tight -mt-1.5">Votre propre clé</p>
+              </button>
+            </div>
+<div className="mt-10 flex flex-col items-center gap-3">
               <button
                 type="button"
                 onClick={() => setMode('byok')}
