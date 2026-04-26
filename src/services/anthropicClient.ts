@@ -397,9 +397,11 @@ async function runWithTools(
 
     let maxIterations = 200
     while (maxIterations-- > 0) {
+      // Haiku max output = 64000 tokens (API limit). Cap unconditionally.
+      const maxTokens = ANTHROPIC_MODEL.includes('haiku') ? 64000 : 65536
       const requestBody = JSON.stringify({
         model: ANTHROPIC_MODEL,
-        max_tokens: 65536,
+        max_tokens: maxTokens,
         // Anthropic requires temperature=1 when extended thinking is enabled
         temperature: thinking.enabled ? 1 : 0.7,
         stream: true,

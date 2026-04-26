@@ -82,6 +82,18 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     // Leave fallback.
   }
 
+  // Defense-in-depth: cap max_tokens for any Haiku request regardless of path.
+  // claude-haiku-4-5-20251001 hard limit = 64000 output tokens.
+  if (modelName.includes('haiku')) {
+    try {
+      const bodyObj = JSON.parse(body) as Record<string, unknown>
+      if (typeof bodyObj.max_tokens === 'number' && bodyObj.max_tokens > 64000) {
+        bodyObj.max_tokens = 64000
+        body = JSON.stringify(bodyObj)
+      }
+    } catch { /* ignore */ }
+  }
+
   // Trial : override silencieux du modèle vers Haiku si le modèle demandé
   // n'est pas autorisé. On ne retourne plus de 403 — on substitue le modèle
   // côté serveur pour garantir que les trials restent sur le tier gratuit
