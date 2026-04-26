@@ -90,6 +90,10 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     try {
       const bodyObj = JSON.parse(body) as Record<string, unknown>
       bodyObj.model = 'claude-haiku-4-5-20251001'
+      // Haiku max_tokens = 64000 — cap pour éviter l'erreur 400
+      if (typeof bodyObj.max_tokens === 'number' && bodyObj.max_tokens > 64000) {
+        bodyObj.max_tokens = 64000
+      }
       body = JSON.stringify(bodyObj)
       modelName = 'claude-haiku-4-5-20251001'
     } catch {
