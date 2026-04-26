@@ -11,7 +11,10 @@ import { getEnhancerModel } from './promptEnhancerSettings'
 import i18n from '../i18n'
 
 const SYSTEM_PROMPT =
-  "Tu es un expert en rédaction de prompts pour IA. Reformule ce message pour le clarifier, le rendre plus précis et plus efficace. Retourne UNIQUEMENT le texte reformulé, sans commentaire, sans guillemets, sans préfixe, dans la même langue que l'original."
+  "Ton unique tâche est de reformuler le texte brut que l'utilisateur t'envoie en un prompt plus clair et plus efficace pour une IA. " +
+  "Peu importe la nature du texte (salutation, question, ordre, phrase incomplète), tu dois TOUJOURS retourner une version améliorée de CE texte. " +
+  "Tu ne réponds JAMAIS au texte, tu ne le commentes JAMAIS, tu ne poses JAMAIS de question. " +
+  "Tu retournes UNIQUEMENT le texte reformulé, sans guillemets, sans préfixe, sans explication, dans la même langue que l'original."
 
 /**
  * Reformulates a user prompt via a cheap model (Haiku or Mistral Small).
