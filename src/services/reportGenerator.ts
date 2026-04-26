@@ -4,7 +4,7 @@ const REPORT_TEMPLATE = (title: string, content: string) => `<!DOCTYPE html>
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <base target="_blank">
 <title>${title} — Arty</title>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,300..700;1,300..700&family=Inter:wght@300;400;500;600;700&family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -96,7 +96,7 @@ hr{border:none;height:1px;background:linear-gradient(to right,transparent,rgba(3
 .severity-bar-fill.ok{background:linear-gradient(90deg,#9AB896,#6B8F64)}
 .footer{margin-top:3rem;padding-top:1.5rem;border-top:2px solid rgba(30,26,20,0.06);text-align:center;font-size:0.7rem;color:#9ca3af}
 .footer strong{color:#8F3210}
-.report-actions{position:fixed;top:1rem;left:1rem;display:flex;gap:0.5rem;z-index:10}
+.report-actions{position:fixed;top:max(1rem, calc(env(safe-area-inset-top, 0px) + 0.5rem));left:max(1rem, calc(env(safe-area-inset-left, 0px) + 0.5rem));display:flex;gap:0.5rem;z-index:10}
 .back-btn,.pdf-btn{background:#1D1813;color:#F5F0E8;border:none;border-radius:0.75rem;padding:0.5rem 1rem;font-size:0.8rem;cursor:pointer;font-family:'Inter',sans-serif;box-shadow:0 2px 8px rgba(0,0,0,0.15);transition:background 0.2s}
 .back-btn:hover,.pdf-btn:hover{background:#28201A}
 .pdf-btn{background:#C4491C}
