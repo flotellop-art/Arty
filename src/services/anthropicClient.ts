@@ -4,12 +4,11 @@ import { compressIfNeeded } from './conversationCompressor'
 import { getAnthropicKey } from './activeApiKey'
 import { apiUrl } from './apiBase'
 import { getValidAccessToken } from './googleAuth'
-import { needsThinking, type ThinkingConfig } from './aiRouter'
+import { needsThinking, selectClaudeSubModel, PRIVATE_DATA_TRIGGERS, type ThinkingConfig } from './aiRouter'
+import { isProActivated } from './proLicense'
 import { buildLocationContext } from './locationContext'
 import { recordUsage } from './costTracker'
 import i18n from '../i18n'
-
-const ANTHROPIC_MODEL = 'claude-sonnet-4-6'
 
 const ANTI_HALLU_PROMPT = `
 
@@ -382,6 +381,9 @@ async function runWithTools(
 
     const lastUserText = findLastUserText(originalMessages)
     const thinking: ThinkingConfig = needsThinking(lastUserText)
+    const isPrivateData = PRIVATE_DATA_TRIGGERS.some((r) => r.test(lastUserText))
+    const isPro = isProActivated()
+    const ANTHROPIC_MODEL = selectClaudeSubModel(lastUserText, thinking, isPrivateData, isPro)
     const locationContext = await buildLocationContext(lastUserText)
 
     const baseSystemText = options?.systemPrompt || SYSTEM_PROMPT

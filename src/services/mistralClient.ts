@@ -7,7 +7,18 @@ import { buildLocationContext } from './locationContext'
 import { recordUsage } from './costTracker'
 import i18n from '../i18n'
 
-const MISTRAL_MODEL = 'mistral-large-latest'
+/**
+ * Mistral large pour les requêtes longues ou les tâches qui demandent
+ * une vraie capacité (rédaction, analyse, code, traduction). Mistral
+ * small pour les échanges courts → moins cher + plus rapide.
+ */
+export function selectMistralModel(message: string): 'mistral-large-latest' | 'mistral-small-latest' {
+  if (message.length > 200) return 'mistral-large-latest'
+  if (/rédige|explique\s+en\s+détail|analyse|code|script|programme|traduis\s+(ce|le|la)/i.test(message)) {
+    return 'mistral-large-latest'
+  }
+  return 'mistral-small-latest'
+}
 
 const MISTRAL_SYSTEM = `Tu es Arty, un assistant IA personnel.
 Tu parles comme un pote compétent — direct, cash, pas de flatterie.
@@ -61,6 +72,7 @@ async function runMistralStream(
     const lastUserText = [...originalMessages].reverse().find(m => m.role === 'user')?.content || ''
     const locationContext = await buildLocationContext(lastUserText)
     const systemPrompt = basePrompt + locationContext
+    const model = selectMistralModel(lastUserText)
 
     // Build messages in OpenAI format
     const apiMessages: ApiMessage[] = [
@@ -77,11 +89,11 @@ async function runMistralStream(
       maxIterations--
 
       const { content, toolCalls, inputTokens, outputTokens } = await streamOnce(
-        apiKey, apiMessages, openaiTools, onToken, controller
+        apiKey, apiMessages, openaiTools, onToken, controller, model
       )
 
       try {
-        recordUsage(MISTRAL_MODEL, inputTokens, outputTokens)
+        recordUsage(model, inputTokens, outputTokens)
       } catch {
         // Ne casse pas la réponse si le tracking échoue
       }
@@ -143,7 +155,8 @@ async function streamOnce(
   messages: ApiMessage[],
   tools: ReturnType<typeof convertToolsToOpenAI>,
   onToken: (text: string) => void,
-  controller: AbortController
+  controller: AbortController,
+  model: string
 ): Promise<{
   content: string
   toolCalls: ToolCall[]
@@ -162,7 +175,7 @@ async function streamOnce(
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const body: Record<string, any> = {
-    model: MISTRAL_MODEL,
+    model,
     messages,
     stream: true,
     max_tokens: 8192,

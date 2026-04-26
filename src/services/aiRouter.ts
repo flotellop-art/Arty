@@ -27,7 +27,7 @@ const GEMINI_TRIGGERS = [
   /dans\s+quelle\s+ville|quelle\s+ville\s+(je\s+suis|suis[-\s]je)|ma\s+(ville|position|localisation)(\s|\?|$|\.)|où\s+(je\s+suis|suis[-\s]je)|localise[-\s]moi|where\s+am\s+i|my\s+(location|city|town|position)|what\s+(city|town)/i,
 ]
 
-const PRIVATE_DATA_TRIGGERS = [
+export const PRIVATE_DATA_TRIGGERS = [
   // FR — mail / drive / clients / factures
   /mes\s+(mails|emails|e-mails|courriers|messages)/i,
   /mes\s+(fichiers|documents|drive|dossiers)/i,
@@ -82,6 +82,18 @@ const REPORT_TRIGGERS = [
   /trend[s]?\s+(of|in|for|20)/i,
 ]
 
+// Hybrid mode triggers — superset of REPORT_TRIGGERS plus comparison /
+// regulation / pricing / how-to queries that benefit from Gemini research
+// followed by Claude synthesis. REPORT_TRIGGERS reste utilisé par
+// needsThinking() pour le palier 10000 (rapport stratégique uniquement).
+const HYBRID_TRIGGERS = [
+  ...REPORT_TRIGGERS,
+  /\bvs\b|versus|\bcontre\b|compare[z]?\s+(.*)\s+(et|avec|à)/i,
+  /norme[s]?\s+(RE|RT|DTU|NF)|réglementation\s+thermique|MaPrimeRénov/i,
+  /prix\s+(des?|du|au)\s+m[²2]|coût\s+(des?|du)\s+(travaux|chantier)/i,
+  /comment\s+(installer|configurer|mettre\s+en\s+place|créer\s+une?\s+entreprise)/i,
+]
+
 export type AIProvider = 'claude' | 'gemini' | 'mistral' | 'hybrid' | 'openai'
 
 export interface ThinkingConfig {
@@ -90,17 +102,56 @@ export interface ThinkingConfig {
 }
 
 export function needsThinking(message: string): ThinkingConfig {
+  // Tier 1 — strategic reports (highest budget)
   if (REPORT_TRIGGERS.some((r) => r.test(message))) return { enabled: true, budget: 10000 }
-
-  if (/\bdebug|\bbug\b|erreur|crash|refactor|architecture|conçois|implémente|\bcode\b|fonction\s+qui|stack\s*trace/i.test(message)) {
+  if (/rapport\s+stratégique|business\s+plan|étude\s+de\s+marché/i.test(message)) {
     return { enabled: true, budget: 10000 }
   }
 
-  if (/analyse|compare|évalue|diagnostic|explique.*pourquoi|pourquoi\s+.*fonctionne|audit/i.test(message)) {
+  // Tier 2 — debug / architecture / heavy code work
+  if (/debug\b|crash|refactor|architecture|implémente\s+un\b|conçois\s+un\b|stack\s+trace/i.test(message)) {
+    return { enabled: true, budget: 8000 }
+  }
+
+  // Tier 3 — analysis / comparison / code questions
+  if (/\bcode\b|fonction\s+qui|analyse|compare|évalue|pourquoi.*fonctionne/i.test(message)) {
     return { enabled: true, budget: 3000 }
   }
 
+  // Tier 4 — diagnostic / audit / explanations
+  if (/diagnostic|audit\b|explique\s+pourquoi|qu'est-ce\s+qui\s+(cause|provoque|fait)/i.test(message)) {
+    return { enabled: true, budget: 1500 }
+  }
+
   return { enabled: false, budget: 0 }
+}
+
+export type ClaudeSubModel = 'claude-haiku-4-5-20251001' | 'claude-sonnet-4-6' | 'claude-opus-4-6'
+
+/**
+ * Choisit la déclinaison de Claude la mieux adaptée à la requête :
+ * - Haiku pour les messages courts/triviaux sans données privées ni thinking
+ * - Opus pour les rapports stratégiques (Pro uniquement, thinking max)
+ * - Sonnet par défaut
+ */
+export function selectClaudeSubModel(
+  message: string,
+  thinking: ThinkingConfig,
+  isPrivateData: boolean,
+  isPro: boolean
+): ClaudeSubModel {
+  // Haiku — short, low-stakes queries (no private data, no thinking needed)
+  const isShortTrivial = message.length < 150 && /salutation|bonjour|salut|hello|merci|calcul|combien\s+font|^\d+\s*[+\-*/]\s*\d+|question\s+factuelle/i.test(message)
+  if (!isPrivateData && !thinking.enabled && isShortTrivial) {
+    return 'claude-haiku-4-5-20251001'
+  }
+
+  // Opus — strategic deep-dive reports (Pro tier + max thinking budget)
+  if (isPro && thinking.budget >= 10000 && /rapport\s+stratégique|business\s+plan|étude\s+de\s+marché/i.test(message)) {
+    return 'claude-opus-4-6'
+  }
+
+  return 'claude-sonnet-4-6'
 }
 
 export function detectProvider(message: string): AIProvider {
@@ -128,9 +179,10 @@ export function detectProvider(message: string): AIProvider {
   // Explicit OpenAI/ChatGPT mention → OpenAI (if key available)
   if (openaiKey && detectOpenAIIntent(message)) return 'openai'
 
-  // Reports → hybrid (Gemini research + Claude writing) if Gemini available
+  // Reports / comparisons / regulation / pricing / how-to → hybrid
+  // (Gemini research + Claude writing) if Gemini available
   if (geminiKey) {
-    for (const regex of REPORT_TRIGGERS) {
+    for (const regex of HYBRID_TRIGGERS) {
       if (regex.test(message)) return 'hybrid'
     }
   }

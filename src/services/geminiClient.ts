@@ -13,7 +13,30 @@ const GEMINI_SYSTEM = `Tu es Arty, un assistant IA personnel.
 Tu parles comme un pote compétent — direct, cash, pas de flatterie.
 Tutoie l'utilisateur. Phrases courtes. Pas de "Excellente question !" ni de formules creuses.
 Quand tu fais une recherche, cite tes sources avec les liens.
-Tu es utilisé spécifiquement pour les tâches nécessitant l'accès à du contenu web (YouTube, Google Maps, actus temps réel).`
+Tu es utilisé spécifiquement pour les tâches nécessitant l'accès à du contenu web (YouTube, Google Maps, actus temps réel).
+
+Règles de vérité : Cite toujours tes sources avec les URLs. Si tu n'es pas certain d'un fait (date, prix, nom), dis-le explicitement. Préfère 'je ne sais pas' à une réponse inventée.`
+
+/**
+ * Adapte le budget thinking de Gemini à la nature de la requête :
+ * - 0 pour les lookups factuels (météo, horaires, itinéraires) où la
+ *   recherche externe fournit la réponse directement
+ * - 512 pour les news / prix simples
+ * - 2048 pour les analyses / comparaisons / synthèses
+ * - 1024 par défaut
+ */
+export function getGeminiThinkingBudget(message: string, isMapQuery: boolean): number {
+  if (isMapQuery || /météo|quel\s+temps|température|horaires?|ouvert|fermé|itinéraire|trajet/i.test(message)) {
+    return 0
+  }
+  if (/prix|tarif|actualité|news|résultat|score/i.test(message)) {
+    return 512
+  }
+  if (/résumé|analyse|explique|compare|synthèse/i.test(message)) {
+    return 2048
+  }
+  return 1024
+}
 
 interface GeminiStreamOptions {
   systemPrompt?: string
@@ -73,7 +96,7 @@ async function runGeminiStream(
       generationConfig: {
         temperature: 0.7,
         maxOutputTokens: 8192,
-        thinkingConfig: { thinkingBudget: 4096 },
+        thinkingConfig: { thinkingBudget: getGeminiThinkingBudget(lastMessage, isMapQuery) },
       },
       tools,
     }
@@ -176,7 +199,7 @@ export async function geminiResearch(query: string, apiKeyOverride?: string): Pr
     generationConfig: {
       temperature: 0.3,
       maxOutputTokens: 4096,
-      thinkingConfig: { thinkingBudget: 2048 },
+      thinkingConfig: { thinkingBudget: 4096 },
     },
     tools: [
       { google_search: {} },
