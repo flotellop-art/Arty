@@ -35,6 +35,13 @@ import { UpgradeScreen, type CurrentPlan } from './screens/upgrade'
 import { TemplatesScreen } from './screens/templates'
 import { CostsScreen } from './screens/costs'
 import { checkBudgetAlert, formatCost } from './services/costTracker'
+import {
+  addShareListener,
+  buildDraftFromShare,
+  getPendingShare,
+  setPendingDraft,
+  type SharePayload,
+} from './services/shareTargetService'
 import type { FileAttachment } from './types'
 
 function AppContent({
@@ -56,6 +63,7 @@ function AppContent({
     const res = checkBudgetAlert()
     return res?.triggered ? { spent: res.spent, limit: res.limit } : null
   })
+  const [shareError, setShareError] = useState<string | null>(null)
   const navigate = useNavigate()
 
   // Listen for profile updates so the Home hero refreshes without reload
@@ -129,6 +137,49 @@ function AppContent({
     const id = createConversation(isFirstConv)
     navigate(`/chat/${id}`)
   }, [createConversation, navigate, conversations.length])
+
+  // Share-to-Arty: handles a payload coming from the Android Share menu.
+  // Creates a fresh conversation, hands the draft off to ConversationScreen
+  // via the in-memory pending draft, and never auto-sends — the user must
+  // confirm or edit the suggested prompt first.
+  const handleSharedContent = useCallback(
+    (payload: SharePayload) => {
+      if (payload.error === 'file_too_large') {
+        setShareError('Fichier trop volumineux (>10 MB), partage annulé.')
+        return
+      }
+      const draft = buildDraftFromShare(payload)
+      if (!draft) return
+      setActionScreenshot(null)
+      setPendingDraft(draft)
+      const isFirstConv = conversations.length === 0
+      const id = createConversation(isFirstConv)
+      navigate(`/chat/${id}`)
+    },
+    [conversations.length, createConversation, navigate, setActionScreenshot]
+  )
+
+  // Wire the Share intent listener once auth + the navigator are ready.
+  // - On mount, drain any cold-start share captured by the plugin's load().
+  // - Subscribe to `shareReceived` for warm-start shares (singleTask reuses
+  //   the activity instead of spawning a new one, so onNewIntent fires).
+  useEffect(() => {
+    let cleanup: (() => void) | undefined
+    let cancelled = false
+    void getPendingShare().then((payload) => {
+      if (!cancelled && payload) handleSharedContent(payload)
+    })
+    void addShareListener((payload) => {
+      handleSharedContent(payload)
+    }).then((remove) => {
+      if (cancelled) remove()
+      else cleanup = remove
+    })
+    return () => {
+      cancelled = true
+      cleanup?.()
+    }
+  }, [handleSharedContent])
 
   const handleNewEUConversation = useCallback(() => {
     const id = createConversation(false, true)
@@ -209,6 +260,22 @@ function AppContent({
       className="bg-theme-bg text-theme-ink font-sans font-light"
       style={{ height: 'var(--viewport-h, 100dvh)' }}
     >
+      {shareError && (
+        <div
+          className="fixed top-0 inset-x-0 z-[61] bg-red-600 text-white px-4 py-2.5 flex items-center justify-between gap-3"
+          style={{ paddingTop: 'max(0.625rem, env(safe-area-inset-top, 0.625rem))' }}
+        >
+          <p className="font-display italic text-sm">⚠️ {shareError}</p>
+          <button
+            onClick={() => setShareError(null)}
+            className="font-display italic text-xs"
+            aria-label="Fermer"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {budgetAlert && (
         <div
           className="fixed top-0 inset-x-0 z-[60] bg-theme-accent text-theme-bg px-4 py-2.5 flex items-center justify-between gap-3"
@@ -475,6 +542,10 @@ function ChatRoute({
 
   return (
     <ConversationScreen
+      // Force a remount on conversation switch so the share-to-Arty draft
+      // (consumed in useState init) is re-applied when navigating directly
+      // from /chat/A to /chat/B without leaving the route.
+      key={activeConversation.id}
       conversation={activeConversation}
       isStreaming={isStreaming}
       streamingContent={streamingContent}

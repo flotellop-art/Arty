@@ -16,6 +16,13 @@ interface InputBarProps {
   isStreaming: boolean
   onStop?: () => void
   suggestion?: string | null
+  // Seed value for the textarea on mount. Used by the share-to-Arty flow
+  // to pre-fill a suggested prompt. Only read once — later changes are
+  // ignored so the user's edits aren't clobbered.
+  initialText?: string
+  // Seed value for attachments on mount. Same single-shot semantics as
+  // initialText.
+  initialFiles?: FileAttachment[]
 }
 
 // V2 voice-first — tap = webkit speech, hold ≥ 600ms = Whisper recording.
@@ -23,10 +30,10 @@ const HOLD_THRESHOLD_MS = 600
 const HOLD_MAX_MS = 60_000
 const SWIPE_CANCEL_THRESHOLD_PX = 60
 
-export function InputBar({ onSend, isStreaming, onStop }: InputBarProps) {
+export function InputBar({ onSend, isStreaming, onStop, initialText, initialFiles }: InputBarProps) {
   const { t } = useTranslation()
-  const [text, setText] = useState('')
-  const [files, setFiles] = useState<FileAttachment[]>([])
+  const [text, setText] = useState(() => initialText ?? '')
+  const [files, setFiles] = useState<FileAttachment[]>(() => initialFiles ?? [])
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const cameraInputRef = useRef<HTMLInputElement>(null)

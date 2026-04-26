@@ -7,6 +7,7 @@ import { InputBar } from '../layout/InputBar'
 import { ActionBanner } from '../google/ActionBanner'
 import { BrowserBanner } from '../google/BrowserBanner'
 import { ConversationSummaryModal } from './ConversationSummaryModal'
+import { consumePendingDraft } from '../../services/shareTargetService'
 import type { useGmail } from '../../hooks/useGmail'
 import type { useDrive } from '../../hooks/useDrive'
 import type { useBrowser } from '../../hooks/useBrowser'
@@ -53,6 +54,9 @@ export function ConversationScreen({
 }: ConversationScreenProps) {
   const { t } = useTranslation()
   const [showSummary, setShowSummary] = useState(false)
+  // Drain any pending share-to-Arty draft once on mount. Single-shot — a
+  // remount or revisit must not replay the previous share.
+  const [initialDraft] = useState(() => consumePendingDraft())
   return (
     <div className="flex flex-col h-full">
       <ChatTopBar
@@ -100,7 +104,13 @@ export function ConversationScreen({
         </div>
       )}
 
-      <InputBar onSend={onSend} isStreaming={isStreaming} onStop={onStop} />
+      <InputBar
+        onSend={onSend}
+        isStreaming={isStreaming}
+        onStop={onStop}
+        initialText={initialDraft?.text}
+        initialFiles={initialDraft?.files}
+      />
 
       {showSummary && (
         <ConversationSummaryModal
