@@ -27,5 +27,6 @@ export const TOOLS = [
   {
     type: 'web_fetch_20260209',
     name: 'web_fetch',
+    allowed_callers: ['direct'],
   } as any,
 ]
