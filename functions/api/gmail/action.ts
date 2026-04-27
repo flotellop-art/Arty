@@ -166,15 +166,24 @@ async function handleAttachment(token: string, body: Record<string, unknown>): P
     const data = await r.json() as Record<string, unknown>
 
     // Decode base64url attachment data
-    const base64 = ((data.data as string) || '').replace(/-/g, '+').replace(/_/g, '/')
-    const buffer = Buffer.from(base64, 'base64')
+    const base64Std = ((data.data as string) || '').replace(/-/g, '+').replace(/_/g, '/')
+    const buffer = Buffer.from(base64Std, 'base64')
 
     // Check if it's a PDF by looking at the magic bytes
     const isPdf = buffer.length > 4 && buffer[0] === 0x25 && buffer[1] === 0x50 && buffer[2] === 0x44 && buffer[3] === 0x46
 
     if (isPdf) {
-      // PDF text extraction / OCR is not available on this platform (Workers runtime)
-      return Response.json({ content: '[PDF document — text extraction is not available on this platform]', type: 'pdf', pages: 0 })
+      // Return raw base64 — Claude reads PDFs natively via a `document`
+      // content block, so no server-side OCR is needed. Mirrors the
+      // pattern in functions/api/drive/action.ts handleRead. Without
+      // this, Gmail PDF attachments were unreadable on Cloudflare Pages
+      // Functions (pdf-parse is Node-only, doesn't run on Workers).
+      return Response.json({
+        base64: buffer.toString('base64'),
+        mimeType: 'application/pdf',
+        size: buffer.length,
+        type: 'pdf',
+      })
     }
 
     // Try plain text

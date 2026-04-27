@@ -161,6 +161,25 @@ export function createGmailHandlers(gmail: ReturnType<typeof useGmail>): Record<
       if (!messageId || !attachmentId) return { result: 'Erreur: message_id et attachment_id requis.' }
       try {
         const data = await callGoogleApi('/api/gmail/action', { type: 'attachment', message_id: messageId, attachment_id: attachmentId })
+
+        // PDF: forward raw bytes to Claude via fileData. Claude reads PDFs
+        // natively from a `document` content block — no server-side OCR
+        // needed (pdf-parse is Node-only and doesn't run on Cloudflare
+        // Pages Functions). Without this branch, Gmail PDF attachments
+        // came back as a placeholder string and Claude hallucinated about
+        // "non-standard encoding" instead of actually reading the file.
+        if (data.base64 && data.mimeType === 'application/pdf') {
+          const sizeKb = data.size ? Math.round((data.size as number) / 1024) : 0
+          return {
+            result: `Pièce jointe PDF${sizeKb ? ` (${sizeKb} Ko)` : ''} — document brut transmis pour lecture directe.`,
+            fileData: {
+              name: 'attachment.pdf',
+              mimeType: 'application/pdf',
+              base64: data.base64 as string,
+            },
+          }
+        }
+
         if (data.content) {
           return { result: `Contenu de la pièce jointe (${data.type || 'inconnu'})${data.pages ? `, ${data.pages} pages` : ''} :\n\n${data.content}` }
         }
