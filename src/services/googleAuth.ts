@@ -184,10 +184,24 @@ export async function getValidAccessToken(): Promise<string | null> {
   // Ignore placeholder/fake tokens
   if (!tokens.access_token || tokens.access_token === 'native') return null
 
-  // Refresh if expiring within 5 minutes
+  // Refresh if expiring within 5 minutes. Retry up to 3 times with backoff
+  // (0s, 1.5s, 3s) to ride out Cloudflare/network blips on cold-resume —
+  // typical scenario: app comes back from background after >1h, mobile
+  // radio re-warms (~1-3s), first refresh attempt fails, second succeeds.
+  // Stop early if the refresh path called logout() (= invalid_grant, tokens
+  // wiped definitively).
   if (tokens.expires_at - Date.now() < 5 * 60 * 1000) {
-    tokens = await refreshAccessToken()
-    if (!tokens) return null
+    const delays = [0, 1500, 3000]
+    for (const delay of delays) {
+      if (delay > 0) await new Promise((r) => setTimeout(r, delay))
+      tokens = await refreshAccessToken()
+      if (tokens) break
+      if (!getStoredTokens()) return null // logout() was called → give up
+    }
+    if (!tokens) {
+      console.warn('[googleAuth] refresh failed after retries, keeping tokens for next attempt')
+      return null
+    }
   }
 
   return tokens.access_token

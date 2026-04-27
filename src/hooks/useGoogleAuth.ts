@@ -51,14 +51,65 @@ export function useGoogleAuth() {
   }, [])
 
   // Check token validity on mount (refresh stale access tokens).
+  // We DO NOT setIsConnected(false) on transient null — BUG 47 made the
+  // refresh resilient (no wipe on 5xx), so a null here usually means a
+  // temporary network blip, not a real disconnect. Flipping isConnected
+  // would force the user back to the login screen for nothing. The hook
+  // stays "connected" while tokens exist in storage; AGENDA/Gmail will
+  // show their own retryable error if the immediate API call fails.
   useEffect(() => {
     if (!isConnected) return
-    getValidAccessToken().then((token) => {
-      if (!token) {
-        setIsConnected(false)
-        setUser(null)
+    getValidAccessToken().catch(() => {})
+  }, [isConnected])
+
+  // Proactive refresh every 30 min while the app is in the foreground.
+  // Google access_token expires in 1h, so refreshing twice within that
+  // window means the user's session is always fresh — no surprise
+  // "Non connecté à Google" when they tap on AGENDA after a long browse.
+  useEffect(() => {
+    if (!isConnected) return
+    const id = window.setInterval(() => {
+      getValidAccessToken().catch(() => {})
+    }, 30 * 60 * 1000)
+    return () => window.clearInterval(id)
+  }, [isConnected])
+
+  // Refresh on app resume. When the user comes back from another app
+  // after >1h, the stored access_token is expired. Without this, the
+  // FIRST API call (AGENDA mount, Gmail fetch) hits the cold-start
+  // window and throws "Non connecté à Google" before the user can do
+  // anything. Triggering the refresh here means the cold-start delay
+  // happens silently while the user is still looking at the home screen.
+  // On native we use Capacitor App.appStateChange; on web we fall back
+  // to the document visibility API.
+  useEffect(() => {
+    if (!isConnected) return
+    let cleanupNative: (() => void) | undefined
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        getValidAccessToken().catch(() => {})
       }
-    })
+    }
+
+    if (Capacitor.isNativePlatform()) {
+      ;(async () => {
+        try {
+          const { App: CapApp } = await import('@capacitor/app')
+          const sub = await CapApp.addListener('appStateChange', ({ isActive }) => {
+            if (isActive) getValidAccessToken().catch(() => {})
+          })
+          cleanupNative = () => sub.remove()
+        } catch { /* fall back to visibilitychange below */ }
+      })()
+    } else {
+      document.addEventListener('visibilitychange', onVisibilityChange)
+    }
+
+    return () => {
+      if (cleanupNative) cleanupNative()
+      else document.removeEventListener('visibilitychange', onVisibilityChange)
+    }
   }, [isConnected])
 
   const login = useCallback(async () => {
