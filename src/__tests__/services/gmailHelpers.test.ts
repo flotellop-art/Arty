@@ -161,8 +161,7 @@ describe('gmail/_lib — htmlToText', () => {
     expect(htmlToText('a<br>b<br/>c')).toBe('a\nb\nc')
   })
 
-  // Bug found while writing tests — see PR body.
-  it.skip('collapses <p>Hello</p><p>World</p> → "Hello\\nWorld"', () => {
+  it('collapses <p>Hello</p><p>World</p> → "Hello\\nWorld" (no extra space after \\n)', () => {
     expect(htmlToText('<p>Hello</p><p>World</p>')).toBe('Hello\nWorld')
   })
 
@@ -183,10 +182,40 @@ describe('gmail/_lib — htmlToText', () => {
     expect(htmlToText('&#233;')).toBe('é')
   })
 
-  // Hex numeric entities are not currently supported (only decimal).
-  // See PR body — tracked as a known limitation, not fixed in this PR.
-  it.skip('decodes numeric hex entities (&#x00E9; → "é")', () => {
+  it('decodes numeric hex entities (&#x00E9; → "é")', () => {
     expect(htmlToText('&#x00E9;')).toBe('é')
+  })
+
+  it('decodes supplementary-plane code points correctly (&#x1F600; → 😀)', () => {
+    // String.fromCharCode is broken above U+FFFF; safeFromCodePoint uses
+    // String.fromCodePoint so emoji and other astral chars survive.
+    expect(htmlToText('&#x1F600;')).toBe('😀')
+    expect(htmlToText('&#128512;')).toBe('😀')
+  })
+
+  it('drops out-of-range code points instead of silently masking high bits', () => {
+    // 0xFFFFFFFF > 0x10FFFF → invalid Unicode → returns ''
+    // (without the bound, fromCharCode would silently truncate to U+FFFF
+    // — a data-smuggling vector for invisible chars in plain text).
+    expect(htmlToText('a&#xFFFFFFFF;b')).toBe('ab')
+    expect(htmlToText('a&#999999999;b')).toBe('ab')
+  })
+
+  it('normalizes NBSP literals (U+00A0 from &#160;) to regular spaces', () => {
+    // Without the explicit   → ' ' pass, NBSP survives the
+    // ASCII-only [ \t]+ collapse and leaks into the output as a hard
+    // space that breaks word-wrapping downstream.
+    expect(htmlToText('a&#160;b')).toBe('a b')
+    expect(htmlToText('a&#xA0;b')).toBe('a b')
+  })
+
+  it('treats <td> and <th> closings as newlines so cells stay readable', () => {
+    const html = '<table><tr><td>A</td><td>B</td></tr><tr><td>C</td><td>D</td></tr></table>'
+    const out = htmlToText(html)
+    // Each cell on its own line, blank line between rows (</td>+</tr>
+    // each add a newline). Without this fix, cells were collapsed into
+    // "ABCD" because <td>/<th> weren't in the closing-tag regex.
+    expect(out).toBe('A\nB\n\nC\nD')
   })
 
   it('removes a realistic Outlook-style <style> block and keeps the body text', () => {

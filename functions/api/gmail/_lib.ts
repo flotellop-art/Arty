@@ -42,6 +42,22 @@ export function decodePartBody(part: MimePart): string {
 }
 
 /**
+ * Safe wrapper around `String.fromCodePoint` for HTML entity decoding.
+ * Returns '' for out-of-range or non-finite values instead of silently
+ * truncating bits (which would let an attacker smuggle invisible chars
+ * via `&#xFFFFFFFF;`). Uses `fromCodePoint` (not `fromCharCode`) so
+ * supplementary-plane characters like emoji `&#x1F600;` decode correctly.
+ */
+function safeFromCodePoint(cp: number): string {
+  if (!Number.isFinite(cp) || cp < 0 || cp > 0x10ffff) return ''
+  try {
+    return String.fromCodePoint(cp)
+  } catch {
+    return ''
+  }
+}
+
+/**
  * HTML → text that's actually useful for Claude. The previous
  * implementation kept the contents of <style> and <script> blocks
  * intact (Outlook 365 ships 3-8KB of inline CSS at the top of every
@@ -55,7 +71,9 @@ export function htmlToText(html: string): string {
     .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ' ')
     .replace(/<!--[\s\S]*?-->/g, ' ')
     .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/(p|div|li|tr|h[1-6])>/gi, '\n')
+    // Closing block tags become newlines so cells/rows/list items
+    // don't collapse into one big run-on line.
+    .replace(/<\/(p|div|li|tr|td|th|h[1-6])>/gi, '\n')
     .replace(/<[^>]+>/g, ' ')
     .replace(/&nbsp;/g, ' ')
     .replace(/&amp;/g, '&')
@@ -64,9 +82,22 @@ export function htmlToText(html: string): string {
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
     .replace(/&apos;/g, "'")
-    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
+    // Numeric entities — decimal AND hex, both via safeFromCodePoint
+    // so emoji and other supplementary-plane characters work.
+    .replace(/&#(\d+);/g, (_, n) => safeFromCodePoint(Number(n)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, n) => safeFromCodePoint(parseInt(n, 16)))
+    // Drop the few named entities we don't decode explicitly. Drops the
+    // info but at least doesn't leak the literal "&eacute;" into output.
     .replace(/&[a-z]+;/gi, ' ')
+    // NBSP literal (U+00A0) — comes from `&#160;` / `&#xA0;` decoded
+    // above. Not matched by `[ \t]+` (regex is ASCII-only) so we'd
+    // otherwise leak hard-spaces into the result.
+    .replace(/\u00A0/g, ' ')
     .replace(/[ \t]+/g, ' ')
+    // Targeted: only collapse whitespace AFTER a newline (which is
+    // typically the space we just inserted while stripping a tag).
+    // Whitespace BEFORE a newline (e.g. signature ASCII art) is kept.
+    .replace(/\n[ \t]+/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim()
 }
