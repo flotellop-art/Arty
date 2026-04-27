@@ -124,13 +124,27 @@ async function storeUser(user: GoogleUser): Promise<void> {
 
 export async function refreshAccessToken(): Promise<GoogleTokens | null> {
   const tokens = getStoredTokens()
-  if (!tokens?.refresh_token) return null
+  // No refresh_token in storage = the only path forward is re-login. Wipe
+  // and surface as "disconnected" so the UI shows "Connecter Google"
+  // instead of leaving the user stuck on stale tokens that can never
+  // refresh (BUG 48 — happened when Google didn't re-issue a
+  // refresh_token on a re-auth where the user had recently consented).
+  if (!tokens?.refresh_token) {
+    if (tokens) {
+      console.warn('[googleAuth] no refresh_token in storage, logging out')
+      logout()
+    }
+    return null
+  }
 
-  // BUG 47 — only call logout() on a definitive `invalid_grant` from Google
-  // (refresh_token revoked). A transient 5xx, network blip, Cloudflare
-  // cold-start, or 15s timeout used to wipe the user's tokens, forcing them
-  // to re-login after every long idle. Now we keep tokens on transient
-  // errors and let the user retry.
+  // BUG 47/48 — distinguish definitive auth failures (refresh_token
+  // revoked or invalid) from transient errors using the HTTP status
+  // ONLY. The proxy at functions/api/auth/refresh.ts overwrites
+  // Google's `error: "invalid_grant"` body with the `error_description`
+  // string ("Token has been expired or revoked."), so a body-content
+  // check fails to detect revocation. Status-based detection is robust:
+  //  - 4xx from /api/auth/refresh = the refresh_token is bad → logout
+  //  - 5xx or network/timeout = transient → keep tokens, return null
   const t = withTimeout(FETCH_TIMEOUT_MS)
   let res: Response
   try {
@@ -157,13 +171,15 @@ export async function refreshAccessToken(): Promise<GoogleTokens | null> {
   }
 
   if (!res.ok) {
-    const errCode = typeof data?.error === 'string' ? data.error : ''
-    if (res.status === 400 && errCode === 'invalid_grant') {
-      console.warn('[googleAuth] refresh_token revoked by Google, logging out')
+    if (res.status >= 400 && res.status < 500) {
+      // 4xx from the refresh proxy = Google rejected the refresh_token
+      // (revoked, expired, or never valid). Logout so the UI offers a
+      // "Connecter Google" CTA instead of looping on stale tokens.
+      console.warn('[googleAuth] refresh definitively rejected, logging out. status=', res.status, 'body=', data)
       logout()
       return null
     }
-    console.warn('[googleAuth] refresh transient failure, keeping tokens. status=', res.status, 'error=', errCode)
+    console.warn('[googleAuth] refresh transient failure, keeping tokens. status=', res.status)
     return null
   }
 
@@ -328,6 +344,14 @@ export function logout(): void {
   scoped.removeItem(TOKENS_ENC_KEY)
   scoped.removeItem(USER_PLAIN_KEY)
   scoped.removeItem(USER_ENC_KEY)
+  // Notify subscribers (useGoogleAuth) so the UI re-renders to "Connecter
+  // Google" without waiting for a manual refresh. Critical when logout()
+  // is called from inside refreshAccessToken() on a 4xx — the user has
+  // AGENDA open, the refresh fails, tokens are wiped, and without this
+  // dispatch the hook's `isConnected` state stays stale until next mount.
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('google-storage-ready'))
+  }
 }
 
 export function isConnected(): boolean {

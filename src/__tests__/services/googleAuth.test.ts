@@ -120,13 +120,37 @@ describe('googleAuth — storage paths', () => {
     expect(googleAuth.getStoredTokens()?.refresh_token).toBe('r')
   })
 
-  it('refreshAccessToken logs out only on definitive invalid_grant', async () => {
+  it('refreshAccessToken logs out on 400 with proxy-rewritten error description', async () => {
+    // BUG 48 — the proxy at /api/auth/refresh replaces Google's
+    // `error: "invalid_grant"` with `error_description` ("Token has
+    // been expired or revoked."), so we must detect by status, not
+    // by body content.
     await googleAuth.storeTokens({ access_token: 'old', refresh_token: 'r', expires_at: Date.now() - 1000 })
-    mockFetch({ error: 'invalid_grant' }, { ok: false, status: 400 })
+    mockFetch({ error: 'Token has been expired or revoked.' }, { ok: false, status: 400 })
 
     const result = await googleAuth.refreshAccessToken()
     expect(result).toBeNull()
-    // refresh_token revoked → tokens should be wiped
+    expect(googleAuth.getStoredTokens()).toBeNull()
+  })
+
+  it('refreshAccessToken logs out on 401 (any 4xx is definitive)', async () => {
+    await googleAuth.storeTokens({ access_token: 'old', refresh_token: 'r', expires_at: Date.now() - 1000 })
+    mockFetch({ error: 'unauthorized' }, { ok: false, status: 401 })
+
+    const result = await googleAuth.refreshAccessToken()
+    expect(result).toBeNull()
+    expect(googleAuth.getStoredTokens()).toBeNull()
+  })
+
+  it('refreshAccessToken logs out when refresh_token is missing in storage', async () => {
+    // BUG 48 — Google sometimes does not re-issue a refresh_token on a
+    // re-auth where the user has already consented recently. Stored as
+    // empty string. Without this fix, getValidAccessToken returned null
+    // forever without flipping isConnected → AGENDA stuck on error.
+    await googleAuth.storeTokens({ access_token: 'old', refresh_token: '', expires_at: Date.now() - 1000 })
+
+    const result = await googleAuth.refreshAccessToken()
+    expect(result).toBeNull()
     expect(googleAuth.getStoredTokens()).toBeNull()
   })
 
