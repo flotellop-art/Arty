@@ -12,6 +12,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(GoogleSignInPlugin.class);
         registerPlugin(AudioBeepMutePlugin.class);
         registerPlugin(ShareTargetPlugin.class);
+        registerPlugin(WidgetIntentPlugin.class);
         super.onCreate(savedInstanceState);
 
         // Edge-to-edge — fait passer la WebView sous les system bars (status
@@ -30,9 +31,15 @@ public class MainActivity extends BridgeActivity {
         super.onNewIntent(intent);
         // Relay shared content to ShareTargetPlugin when the app is already
         // in memory (singleTask launchMode → cold start uses load() instead).
-        PluginHandle handle = getBridge().getPlugin("ShareTarget");
-        if (handle != null && handle.getInstance() instanceof ShareTargetPlugin) {
-            ((ShareTargetPlugin) handle.getInstance()).handleNewIntent(intent);
+        PluginHandle shareHandle = getBridge().getPlugin("ShareTarget");
+        if (shareHandle != null && shareHandle.getInstance() instanceof ShareTargetPlugin) {
+            ((ShareTargetPlugin) shareHandle.getInstance()).handleNewIntent(intent);
+        }
+
+        // Same relay for widget-launched intents.
+        PluginHandle widgetHandle = getBridge().getPlugin("WidgetIntent");
+        if (widgetHandle != null && widgetHandle.getInstance() instanceof WidgetIntentPlugin) {
+            ((WidgetIntentPlugin) widgetHandle.getInstance()).handleNewIntent(intent);
         }
     }
 }

@@ -69,6 +69,19 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths"></meta-data>
         </provider>
+
+        <!-- Home-screen widget: tap → opens MainActivity with WIDGET_OPEN intent -->
+        <receiver
+            android:name=".ArtyWidgetProvider"
+            android:exported="true"
+            android:label="@string/app_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_arty_info" />
+        </receiver>
     </application>
 
     <!-- Permissions -->

@@ -5,4 +5,6 @@
     <string name="package_name">com.arty.app</string>
     <string name="custom_url_scheme">com.arty.app</string>
     <string name="server_client_id">794968525529-fk2k1ffpvbev4gs4ghf4gntqjroljln3.apps.googleusercontent.com</string>
+    <string name="widget_arty_description">Demande à Arty</string>
+    <string name="widget_hint">Tape ici pour parler à Arty…</string>
 </resources>
