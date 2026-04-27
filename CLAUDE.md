@@ -426,6 +426,31 @@ Chaque fois que tu crées OU modifies un endpoint serveur (fichiers sous `functi
 
 **Contexte** : suite à 4 vulnérabilités critiques (CRIT-1 à CRIT-4) trouvées lors d'un audit live sur tryarty.com en avril 2026, corrigées en urgence via PR #11 (voir BUG 42). Ces 4 trous étaient tous évitables avec cet audit de 30 secondes.
 
+---
+
+## RÈGLE 7 — WORKFLOW MULTI-AGENTS POUR LES TÂCHES NON TRIVIALES
+
+Pour toute tâche **non triviale** (refactor, fix multi-fichiers, audit, debug d'un bug remonté par l'utilisateur, design d'une nouvelle feature), Claude DOIT appliquer ce workflow :
+
+1. **Spawn au minimum 2 agents en parallèle** pour challenger le diagnostic et le plan d'action. Les agents servent à :
+   - Donner un avis indépendant (l'agent ne voit pas les conclusions de Claude → catch les biais)
+   - Auditer le code à modifier en profondeur
+   - Identifier les edge cases ratés
+   - Vérifier les régressions possibles
+   - Auditer la codebase pour des bugs similaires ailleurs
+
+2. **Les agents ne modifient JAMAIS le code**. Ils retournent uniquement des avis, audits, listes de bugs/risques, et recommandations. Claude est le seul à écrire/éditer le code.
+
+3. **Les agents doivent avoir le droit explicite de challenger le plan de Claude**. Le brief doit inclure : *« Si tu trouves un meilleur angle, dis-le. Si tu penses que mon diagnostic est faux, dis-le directement. »* Ne pas micro-manager le process — laisser l'agent utiliser son jugement.
+
+4. **Claude intègre les retours avant de coder**. Si un agent identifie un risque ou un meilleur fix, Claude doit l'évaluer et l'intégrer (ou justifier pourquoi pas). Ne pas ignorer un avis d'agent.
+
+5. **Tâches triviales exemptées** : <15 min de travail solo, fix surgical d'1-2 lignes, modifs de config, ajout d'un test isolé. Pour celles-là, Claude peut coder direct sans agent.
+
+**Contexte** : règle posée par l'utilisateur le 27 avril 2026 après une session sur les bugs auth Google (PRs #109-#113). Le pattern qui marche : agents critiques en parallèle, Claude code seul. Sans agents, Claude reste dans son tunnel cognitif et rate les bugs annexes (ex : surrogate pairs, data smuggling, dead code legacy).
+
+---
+
 ### BUG 42 — 4 vulnérabilités critiques live (avril 2026)
 **Fichiers** : `functions/api/memory/action.ts`, `functions/api/ai/anthropic-proxy.ts`, `functions/api/ai/mistral-proxy.ts`, `functions/api/ai/gemini-proxy.ts`, `functions/api/computer/relay.ts`, `functions/api/_middleware.ts`
 **Problème** : 4 CVEs live sur la prod :
