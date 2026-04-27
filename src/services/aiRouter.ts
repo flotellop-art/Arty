@@ -113,8 +113,15 @@ export function needsThinking(message: string): ThinkingConfig {
     return { enabled: true, budget: 8000 }
   }
 
-  // Tier 3 — analysis / comparison / code questions
+  // Tier 3 — analysis / comparison / code questions / purchase advice
+  // Devis et conseils d'achat ont besoin d'une analyse multi-critères
+  // (prix + qualité + adéquation usage), donc thinking activé pour
+  // éviter les contradictions du genre "option 1 = meilleure affaire"
+  // puis "évite l'option 1" dans le même fil.
   if (/\bcode\b|fonction\s+qui|analyse|compare|évalue|pourquoi.*fonctionne/i.test(message)) {
+    return { enabled: true, budget: 3000 }
+  }
+  if (/devis|conseil[s]?\s+(d['']achat|achat)|quelle?\s+(option|choix|marque|alternative|formule)|que\s+(me\s+)?conseille[s\-]?\s*tu|recomman(de|der|dation)/i.test(message)) {
     return { enabled: true, budget: 3000 }
   }
 
