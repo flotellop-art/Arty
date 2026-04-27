@@ -2,6 +2,22 @@ import type { useGmail } from '../../hooks/useGmail'
 import type { ToolHandler } from './types'
 import { callGoogleApi } from '../googleApiHelper'
 
+// Best-effort extension from a MIME type, used when the proxy/client
+// doesn't have a real filename for the attachment. Claude's API only
+// uses `name` for display, so the value is purely cosmetic.
+function guessExt(mime: string): string {
+  const m = mime.toLowerCase()
+  if (m === 'application/pdf') return 'pdf'
+  if (m.startsWith('image/')) return m.split('/')[1] || 'bin'
+  if (m.includes('wordprocessingml')) return 'docx'
+  if (m === 'application/msword') return 'doc'
+  if (m.includes('spreadsheetml')) return 'xlsx'
+  if (m === 'application/vnd.ms-excel') return 'xls'
+  if (m.includes('presentationml')) return 'pptx'
+  if (m === 'application/vnd.ms-powerpoint') return 'ppt'
+  return 'bin'
+}
+
 export const gmailToolDefinitions = [
   {
     name: 'read_emails',
@@ -21,12 +37,14 @@ export const gmailToolDefinitions = [
   },
   {
     name: 'read_email_attachment',
-    description: "Lit le contenu d'une pièce jointe d'un email (PDF, texte, etc.). Utilise les IDs obtenus via read_email qui liste les pièces jointes.",
+    description: "Lit le contenu d'une pièce jointe d'un email (PDF, Word, Excel, image, texte, etc.). Utilise les IDs et le mimeType obtenus via read_email.",
     input_schema: {
       type: 'object' as const,
       properties: {
         message_id: { type: 'string' as const, description: "ID de l'email" },
         attachment_id: { type: 'string' as const, description: "ID de la pièce jointe (obtenu via read_email)" },
+        mime_type: { type: 'string' as const, description: "MIME type de la pièce jointe (obtenu via read_email). Indispensable pour les binaires non-PDF." },
+        filename: { type: 'string' as const, description: "Nom du fichier (obtenu via read_email). Optionnel mais utile." },
       },
       required: ['message_id', 'attachment_id'],
     },
@@ -148,7 +166,7 @@ export function createGmailHandlers(gmail: ReturnType<typeof useGmail>): Record<
           result += attachments.map((a, i) =>
             `${i + 1}. ${a.filename} (${a.mimeType}, ${Math.round(a.size / 1024)}Ko) — attachment_id: ${a.id}`
           ).join('\n')
-          result += '\n\nUtilise read_email_attachment avec le message_id et attachment_id pour lire le contenu des pièces jointes.'
+          result += "\n\nPour lire une PJ : appelle read_email_attachment avec message_id, attachment_id, mime_type et filename ci-dessus. Le mime_type est obligatoire pour les fichiers binaires non-PDF (Word, Excel, image)."
         }
         return { result }
       }
@@ -158,23 +176,34 @@ export function createGmailHandlers(gmail: ReturnType<typeof useGmail>): Record<
     read_email_attachment: async (input) => {
       const messageId = input.message_id as string
       const attachmentId = input.attachment_id as string
+      const mimeTypeHint = (input.mime_type as string | undefined) || ''
+      const filenameHint = (input.filename as string | undefined) || ''
       if (!messageId || !attachmentId) return { result: 'Erreur: message_id et attachment_id requis.' }
       try {
-        const data = await callGoogleApi('/api/gmail/action', { type: 'attachment', message_id: messageId, attachment_id: attachmentId })
+        const data = await callGoogleApi('/api/gmail/action', {
+          type: 'attachment',
+          message_id: messageId,
+          attachment_id: attachmentId,
+          mimeType: mimeTypeHint,
+          filename: filenameHint,
+        })
 
-        // PDF: forward raw bytes to Claude via fileData. Claude reads PDFs
-        // natively from a `document` content block — no server-side OCR
+        // Forwardable binary (PDF, Word, Excel, PowerPoint, images): pass
+        // raw bytes to Claude via fileData. Claude reads these natively
+        // through `document`/`image` content blocks — no server-side OCR
         // needed (pdf-parse is Node-only and doesn't run on Cloudflare
-        // Pages Functions). Without this branch, Gmail PDF attachments
-        // came back as a placeholder string and Claude hallucinated about
-        // "non-standard encoding" instead of actually reading the file.
-        if (data.base64 && data.mimeType === 'application/pdf') {
+        // Pages Functions). Without this branch, attachments came back
+        // as a placeholder string and Claude hallucinated about
+        // "non-standard encoding" instead of actually reading them.
+        if (data.base64 && data.mimeType) {
           const sizeKb = data.size ? Math.round((data.size as number) / 1024) : 0
+          const name = (data.filename as string | undefined) || filenameHint || `attachment.${guessExt(data.mimeType as string)}`
+          const kind = data.type === 'image' ? 'image' : data.type === 'pdf' ? 'PDF' : 'document'
           return {
-            result: `Pièce jointe PDF${sizeKb ? ` (${sizeKb} Ko)` : ''} — document brut transmis pour lecture directe.`,
+            result: `Pièce jointe ${kind}${sizeKb ? ` (${sizeKb} Ko)` : ''} — fichier brut transmis pour lecture directe.`,
             fileData: {
-              name: 'attachment.pdf',
-              mimeType: 'application/pdf',
+              name,
+              mimeType: data.mimeType as string,
               base64: data.base64 as string,
             },
           }
