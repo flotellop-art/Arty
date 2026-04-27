@@ -455,3 +455,14 @@ Chaque fois que tu crées OU modifies un endpoint serveur (fichiers sous `functi
 **Fichier** : `src/hooks/useSpeechRecognition.ts`
 **Problème** : sur Capacitor Android, `useSingleShot` était à `false` → `scheduleKeepAlive` forçait un `recognition.stop()` toutes les 8s + `onend` relançait une nouvelle session. Résultat pour les testeurs (Mégane, 21 avril) : bip Android répété toutes les 8s, buffer audio qui chevauchait entre 2 sessions (mots dupliqués dans la textarea), sessions qui se coupaient au milieu d'une phrase → capture incohérente.
 **Règle** : sur toute plateforme où la Web Speech API délègue à un `SpeechRecognizer` système (iOS/Safari, Capacitor natif Android/iOS), forcer `useSingleShot = true`. Le mode continu (`recognition.continuous = true`) n'est fiable **que** sur Chrome desktop et dérivés qui utilisent le backend Google Cloud Speech côté Chromium, pas le `SpeechRecognizer` Android qui est session-based au niveau OS. Corollaire : aucun plugin Capacitor tiers ne peut fixer ce problème — le bip est un comportement de `SpeechRecognizer`. Un "vrai" continu sans bip nécessite soit un plugin Java custom avec `AudioManager.setStreamMute()`, soit un pipeline MediaRecorder + Whisper streaming (hors scope v1).
+
+### BUG 47 — refreshAccessToken logout sur erreurs transitoires + wipe ciphertext sans verif clé
+**Fichiers** : `src/services/googleAuth.ts`, `src/services/crypto.ts`
+**Problème** : symptôme remonté en avril 2026 — après ~1h d'idle ou après une mise à jour APK, l'utilisateur devait *kill* l'app ou se déconnecter complètement de Google avant de pouvoir se reconnecter. Trois bugs combinés :
+1. `refreshAccessToken()` appelait `logout()` (= efface tous les tokens) sur **tout** échec : 5xx Cloudflare cold-start, 502 transient, JSON parse fail, network blip. Une seule mauvaise réponse → tokens effacés → relogin forcé.
+2. Aucun timeout sur les fetch `/api/auth/refresh` et `/api/auth/token` → sur Wi-Fi qui flickère, le fetch pendait 60-120s avant que l'OS le tue → spinner figé → l'utilisateur kill l'app.
+3. `bootstrapGoogleStorage()` wipait le ciphertext dès le premier `decrypt()` failed, **sans vérifier** si la clé courante est la bonne. Race au boot entre `initCrypto(keys.anthropic)` et la lecture des blobs → décryption ratée → wipe → relogin forcé après chaque update APK.
+**Règle** :
+- `refreshAccessToken()` ne doit appeler `logout()` que sur `400 invalid_grant` explicite de Google (refresh_token vraiment révoqué). Sur tout le reste, garder les tokens et retourner `null`.
+- TOUS les fetch d'auth doivent avoir un `AbortController` avec timeout (15s par défaut) — pas de fetch sans timeout sur le chemin Google.
+- Avant tout wipe de ciphertext sur decrypt fail, vérifier `selfTestCrypto()` (= la clé en cache peut-elle décrypter `KEY_CHECK_KEY` ?). Si non → la clé courante est mauvaise, garder le blob pour la prochaine tentative avec le bon passphrase. Si oui → blob réellement corrompu, wipe ok.

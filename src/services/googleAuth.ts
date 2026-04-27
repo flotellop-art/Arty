@@ -2,7 +2,15 @@ import type { GoogleTokens, GoogleUser } from '../types/google'
 import { safeJson } from '../utils/safeJson'
 import * as scoped from './scopedStorage'
 import { apiUrl } from './apiBase'
-import { encrypt, decrypt, isCryptoReady } from './crypto'
+import { encrypt, decrypt, isCryptoReady, selfTestCrypto } from './crypto'
+
+const FETCH_TIMEOUT_MS = 15_000
+
+function withTimeout(ms: number): { signal: AbortSignal; cancel: () => void } {
+  const controller = new AbortController()
+  const id = setTimeout(() => controller.abort(), ms)
+  return { signal: controller.signal, cancel: () => clearTimeout(id) }
+}
 
 const SCOPES = [
   'https://www.googleapis.com/auth/gmail.readonly',
@@ -56,11 +64,18 @@ export function buildOAuthUrl(): string {
 }
 
 export async function exchangeCode(code: string): Promise<GoogleTokens> {
-  const res = await fetch(apiUrl('/api/auth/token'), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ code, redirect_uri: getRedirectUri() }),
-  })
+  const t = withTimeout(FETCH_TIMEOUT_MS)
+  let res: Response
+  try {
+    res = await fetch(apiUrl('/api/auth/token'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code, redirect_uri: getRedirectUri() }),
+      signal: t.signal,
+    })
+  } finally {
+    t.cancel()
+  }
 
   const data = await safeJson(res)
   if (!res.ok) throw new Error((data.error as string) || 'Token exchange failed')
@@ -111,17 +126,44 @@ export async function refreshAccessToken(): Promise<GoogleTokens | null> {
   const tokens = getStoredTokens()
   if (!tokens?.refresh_token) return null
 
-  const res = await fetch(apiUrl('/api/auth/refresh'), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ refresh_token: tokens.refresh_token }),
-  })
+  // BUG 47 — only call logout() on a definitive `invalid_grant` from Google
+  // (refresh_token revoked). A transient 5xx, network blip, Cloudflare
+  // cold-start, or 15s timeout used to wipe the user's tokens, forcing them
+  // to re-login after every long idle. Now we keep tokens on transient
+  // errors and let the user retry.
+  const t = withTimeout(FETCH_TIMEOUT_MS)
+  let res: Response
+  try {
+    res = await fetch(apiUrl('/api/auth/refresh'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: tokens.refresh_token }),
+      signal: t.signal,
+    })
+  } catch (err) {
+    console.warn('[googleAuth] refresh fetch failed (network/timeout, keeping tokens):', err)
+    return null
+  } finally {
+    t.cancel()
+  }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let data: any
-  try { data = await safeJson(res) } catch { logout(); return null }
+  try {
+    data = await safeJson(res)
+  } catch (err) {
+    console.warn('[googleAuth] refresh response unreadable, keeping tokens. status=', res.status, err)
+    return null
+  }
+
   if (!res.ok) {
-    logout()
+    const errCode = typeof data?.error === 'string' ? data.error : ''
+    if (res.status === 400 && errCode === 'invalid_grant') {
+      console.warn('[googleAuth] refresh_token revoked by Google, logging out')
+      logout()
+      return null
+    }
+    console.warn('[googleAuth] refresh transient failure, keeping tokens. status=', res.status, 'error=', errCode)
     return null
   }
 
@@ -210,12 +252,19 @@ export async function bootstrapGoogleStorage(): Promise<void> {
       try {
         memTokens = JSON.parse(await decrypt(encTokens)) as GoogleTokens
       } catch (err) {
-        // Ciphertext unreadable with the current key → drop it. Next login
-        // will repopulate fresh blobs. Without this wipe the user is stuck
-        // until they clear app data manually.
-        console.warn('[googleAuth] tokens ciphertext unreadable, wiping:', err)
-        scoped.removeItem(TOKENS_ENC_KEY)
-        memTokens = null
+        // BUG 47 — distinguish "blob genuinely corrupt" (key OK, decrypt
+        // fails) from "wrong passphrase loaded" (key mismatch). Only wipe
+        // in the first case. The second happens transiently on cold boot
+        // when initCrypto runs with a stale or wrong api-keys snapshot,
+        // and used to force-relogin after every APK update.
+        const keyOk = await selfTestCrypto()
+        if (keyOk) {
+          console.warn('[googleAuth] tokens ciphertext corrupt (key self-test passed), wiping:', err)
+          scoped.removeItem(TOKENS_ENC_KEY)
+          memTokens = null
+        } else {
+          console.warn('[googleAuth] tokens decrypt failed AND key self-test failed → keeping blob, expecting passphrase fix:', err)
+        }
       }
     } else {
       const plain = scoped.getJSON<GoogleTokens>(TOKENS_PLAIN_KEY)
@@ -231,9 +280,14 @@ export async function bootstrapGoogleStorage(): Promise<void> {
       try {
         memUser = JSON.parse(await decrypt(encUser)) as GoogleUser
       } catch (err) {
-        console.warn('[googleAuth] user ciphertext unreadable, wiping:', err)
-        scoped.removeItem(USER_ENC_KEY)
-        memUser = null
+        const keyOk = await selfTestCrypto()
+        if (keyOk) {
+          console.warn('[googleAuth] user ciphertext corrupt (key self-test passed), wiping:', err)
+          scoped.removeItem(USER_ENC_KEY)
+          memUser = null
+        } else {
+          console.warn('[googleAuth] user decrypt failed AND key self-test failed → keeping blob:', err)
+        }
       }
     } else {
       const plain = scoped.getJSON<GoogleUser>(USER_PLAIN_KEY)
