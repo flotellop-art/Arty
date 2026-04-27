@@ -27,7 +27,16 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     const data = await response.json() as Record<string, unknown>
 
     if (!response.ok) {
-      return Response.json({ error: data.error_description || data.error }, { status: response.status })
+      // Preserve Google's original `error` code AND the description.
+      // Same fix as /api/auth/refresh — used to overwrite `error` with
+      // the human-readable description, breaking client-side detection.
+      return Response.json(
+        {
+          error: data.error,
+          error_description: data.error_description,
+        },
+        { status: response.status },
+      )
     }
 
     return Response.json({

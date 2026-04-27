@@ -26,7 +26,17 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     const data = await response.json() as Record<string, unknown>
 
     if (!response.ok) {
-      return Response.json({ error: data.error_description || data.error }, { status: response.status })
+      // Preserve Google's original `error` code (e.g. "invalid_grant") AND
+      // the human-readable description. Earlier this returned only the
+      // description as `error`, which broke client-side detection of
+      // revoked refresh tokens (BUG 48).
+      return Response.json(
+        {
+          error: data.error,
+          error_description: data.error_description,
+        },
+        { status: response.status },
+      )
     }
 
     return Response.json({
