@@ -23,6 +23,20 @@ function isForwardableBinary(mimeType: string): boolean {
   return false
 }
 
+// Convert Uint8Array to base64 efficiently. Chunk by 8KB and use apply()
+// instead of the naïve per-byte fromCharCode loop, which is O(n²) due to
+// string concatenation and crashes on Cloudflare Workers (128MB RAM, 30s
+// timeout) for attachments > ~2MB. (BUG 50)
+function bytesToBase64(bytes: Uint8Array): string {
+  const CHUNK = 0x8000 // 32KB
+  const parts: string[] = []
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    const slice = bytes.subarray(i, Math.min(i + CHUNK, bytes.length))
+    parts.push(String.fromCharCode.apply(null, Array.from(slice)))
+  }
+  return btoa(parts.join(''))
+}
+
 export const onRequestPost: PagesFunction<Env> = async ({ request }) => {
   const token = request.headers.get('authorization')?.replace('Bearer ', '')
   if (!token) return Response.json({ error: 'Missing authorization token' }, { status: 401 })
@@ -201,7 +215,16 @@ async function handleAttachment(token: string, body: Record<string, unknown>): P
       `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}/attachments/${attachmentId}`,
       { headers: { Authorization: `Bearer ${token}` } }
     )
-    if (!r.ok) { const err = await r.json() as Record<string, unknown>; return Response.json({ error: 'Gmail operation failed' }, { status: r.status }) }
+    if (!r.ok) {
+      // Surface Gmail's actual error message instead of a generic string
+      // so the model can decide what to do (retry, skip, ask user).
+      let detail = `HTTP ${r.status}`
+      try {
+        const err = await r.json() as { error?: { message?: string } }
+        if (err.error?.message) detail = err.error.message
+      } catch { /* non-JSON body, keep status code */ }
+      return Response.json({ error: `Gmail attachment fetch failed: ${detail}` }, { status: r.status })
+    }
     const data = await r.json() as Record<string, unknown>
 
     const bytes = decodeBase64Url((data.data as string) || '')
@@ -217,10 +240,8 @@ async function handleAttachment(token: string, body: Record<string, unknown>): P
       // Forward raw bytes — Claude reads PDFs/Office/images natively
       // via document/image content blocks, no server-side OCR needed.
       // pdf-parse is Node-only and doesn't run on Workers anyway.
-      let bin = ''
-      for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i])
       return Response.json({
-        base64: btoa(bin),
+        base64: bytesToBase64(bytes),
         mimeType: detectedMime,
         filename: hintName || undefined,
         size: bytes.length,
