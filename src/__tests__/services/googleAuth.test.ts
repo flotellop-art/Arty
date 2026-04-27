@@ -99,4 +99,65 @@ describe('googleAuth — storage paths', () => {
     const call = fetchMock.mock.calls[0]
     expect(call?.[0]).toBe('/api/auth/token')
   })
+
+  it('refreshAccessToken keeps tokens on 5xx (transient cold-start)', async () => {
+    await googleAuth.storeTokens({ access_token: 'old', refresh_token: 'r', expires_at: Date.now() - 1000 })
+    mockFetch({ error: 'Bad gateway' }, { ok: false, status: 502 })
+
+    const result = await googleAuth.refreshAccessToken()
+    expect(result).toBeNull()
+    // CRITICAL: tokens MUST still be present
+    expect(googleAuth.getStoredTokens()?.access_token).toBe('old')
+    expect(googleAuth.getStoredTokens()?.refresh_token).toBe('r')
+  })
+
+  it('refreshAccessToken keeps tokens on network failure', async () => {
+    await googleAuth.storeTokens({ access_token: 'old', refresh_token: 'r', expires_at: Date.now() - 1000 })
+    global.fetch = vi.fn().mockRejectedValue(new Error('Network down')) as unknown as typeof fetch
+
+    const result = await googleAuth.refreshAccessToken()
+    expect(result).toBeNull()
+    expect(googleAuth.getStoredTokens()?.refresh_token).toBe('r')
+  })
+
+  it('refreshAccessToken logs out only on definitive invalid_grant', async () => {
+    await googleAuth.storeTokens({ access_token: 'old', refresh_token: 'r', expires_at: Date.now() - 1000 })
+    mockFetch({ error: 'invalid_grant' }, { ok: false, status: 400 })
+
+    const result = await googleAuth.refreshAccessToken()
+    expect(result).toBeNull()
+    // refresh_token revoked → tokens should be wiped
+    expect(googleAuth.getStoredTokens()).toBeNull()
+  })
+
+  it('bootstrapGoogleStorage keeps ciphertext when key self-test fails', async () => {
+    // Arrange: write encrypted blob with passphrase A
+    await crypto.initCrypto('sk-ant-A')
+    await googleAuth.storeTokens({ access_token: 'kept', refresh_token: 'r', expires_at: Date.now() + 3600_000 })
+    const encBefore = scoped.getItem('google-tokens-enc')
+    expect(encBefore).toBeTruthy()
+
+    // Reset modules so memTokens cache is cleared and KEY_CHECK_KEY is overwritten
+    vi.resetModules()
+    const cryptoFresh = await import('../../services/crypto')
+    const googleAuthFresh = await import('../../services/googleAuth')
+
+    // Act: re-init crypto with WRONG passphrase B → KEY_CHECK_KEY now matches B,
+    // but the existing google-tokens-enc was encrypted with A → decrypt fails.
+    // selfTestCrypto() returns true (KEY_CHECK_KEY was rewritten with B) so the
+    // blob is wiped. THIS test exercises the inverse: simulate the case where
+    // KEY_CHECK_KEY was NOT rewritten (e.g. corrupted cache) → selfTest fails →
+    // blob preserved.
+    localStorage.removeItem('arty-crypto-check') // simulate corrupted check value
+    await cryptoFresh.initCrypto('sk-ant-A')
+    // Manually corrupt KEY_CHECK_KEY so selfTest fails
+    localStorage.setItem('arty-crypto-check', 'GARBAGE')
+
+    // Now corrupt the blob in a way that decrypt throws
+    scoped.setItem('google-tokens-enc', 'INVALID_BASE64_!@#')
+    await googleAuthFresh.bootstrapGoogleStorage()
+
+    // Assert: blob preserved (because selfTest also failed → can't be sure key is right)
+    expect(scoped.getItem('google-tokens-enc')).toBe('INVALID_BASE64_!@#')
+  })
 })

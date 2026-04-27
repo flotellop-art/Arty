@@ -85,6 +85,24 @@ export function isCryptoReady(): boolean {
 }
 
 /**
+ * Returns true if the currently cached key can decrypt KEY_CHECK_KEY.
+ * Used by callers (bootstrapGoogleStorage) to distinguish "blob genuinely
+ * corrupt" (key OK, decrypt fails) from "wrong passphrase loaded" (key
+ * mismatch, decrypt fails on every blob). The latter must NOT trigger a
+ * destructive wipe — see BUG 43.
+ */
+export async function selfTestCrypto(): Promise<boolean> {
+  if (!cachedKey) return false
+  const check = localStorage.getItem(KEY_CHECK_KEY)
+  if (!check) return true
+  try {
+    return (await decrypt(check)) === 'arty-ok'
+  } catch {
+    return false
+  }
+}
+
+/**
  * Encrypt a string value. Returns a base64-encoded ciphertext.
  */
 export async function encrypt(plaintext: string): Promise<string> {
