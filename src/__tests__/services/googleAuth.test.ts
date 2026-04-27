@@ -130,6 +130,31 @@ describe('googleAuth — storage paths', () => {
     expect(googleAuth.getStoredTokens()).toBeNull()
   })
 
+  it('getValidAccessToken retries refresh on transient 5xx and succeeds on attempt 2', async () => {
+    await googleAuth.storeTokens({ access_token: 'old', refresh_token: 'r', expires_at: Date.now() - 1000 })
+
+    let calls = 0
+    global.fetch = vi.fn().mockImplementation(async () => {
+      calls++
+      if (calls === 1) {
+        return {
+          ok: false,
+          status: 502,
+          text: async () => JSON.stringify({ error: 'Bad gateway' }),
+        } as unknown as Response
+      }
+      return {
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ access_token: 'fresh', expires_in: 3600 }),
+      } as unknown as Response
+    }) as unknown as typeof fetch
+
+    const token = await googleAuth.getValidAccessToken()
+    expect(token).toBe('fresh')
+    expect(calls).toBe(2)
+  }, 10_000)
+
   it('bootstrapGoogleStorage keeps ciphertext when key self-test fails', async () => {
     // Arrange: write encrypted blob with passphrase A
     await crypto.initCrypto('sk-ant-A')
