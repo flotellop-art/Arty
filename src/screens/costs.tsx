@@ -6,7 +6,7 @@
  * configuration de l'alerte budget, export CSV.
  */
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Capacitor } from '@capacitor/core'
 import {
   buildCSV,
@@ -69,10 +69,27 @@ function shortDay(day: string): string {
 
 export function CostsScreen({ onBack }: CostsScreenProps) {
   const monthKey = getCurrentMonthKey()
-  const stats = useMemo(() => getMonthStats(monthKey), [monthKey])
-  const prevStats = useMemo(() => getMonthStats(getPreviousMonthKey(monthKey)), [monthKey])
-  const last7 = useMemo(() => getLastNDays(7), [])
-  const dailyCosts = useMemo(() => last7.map((day) => ({ day, cost: getDailyCost(day) })), [last7])
+
+  // Refresh à chaud : recordUsage() dispatche `cost-updated` à la fin de
+  // chaque stream IA. On bump un tick pour forcer les useMemo à recomputer.
+  // Sans ça, les chiffres restent figés à l'ouverture du dashboard.
+  const [refreshTick, setRefreshTick] = useState(0)
+  useEffect(() => {
+    const handler = () => setRefreshTick((n) => n + 1)
+    window.addEventListener('cost-updated', handler)
+    return () => window.removeEventListener('cost-updated', handler)
+  }, [])
+
+  const stats = useMemo(() => getMonthStats(monthKey), [monthKey, refreshTick])
+  const prevStats = useMemo(
+    () => getMonthStats(getPreviousMonthKey(monthKey)),
+    [monthKey, refreshTick],
+  )
+  const last7 = useMemo(() => getLastNDays(7), [refreshTick])
+  const dailyCosts = useMemo(
+    () => last7.map((day) => ({ day, cost: getDailyCost(day) })),
+    [last7, refreshTick],
+  )
 
   const [alert, setAlert] = useState<AlertConfig>(() => getAlertConfig())
 

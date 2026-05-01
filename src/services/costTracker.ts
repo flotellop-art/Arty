@@ -170,6 +170,18 @@ export function recordUsage(
 
   history[monthKey] = month
   writeHistory(history)
+
+  // Notifie les composants UI (CostIndicator, CostsScreen) pour qu'ils
+  // rafraîchissent leurs chiffres immédiatement plutôt que d'attendre le
+  // poll 60s ou un re-mount. Wrappé dans try-catch pour ne jamais casser
+  // le tracking si on tourne dans un contexte sans `window` (tests, SSR).
+  try {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('cost-updated'))
+    }
+  } catch {
+    // Tracking ne doit jamais throw — ignore.
+  }
 }
 
 /** Stats agrégées pour un mois. Retourne un objet vide si pas de données. */
