@@ -164,27 +164,58 @@ describe('auto mode — web triggers → gemini', () => {
 })
 
 // ──────────────────────────────────────────────
-// AUTO MODE — simple chat fallback
+// AUTO MODE — default routing (Gemini par défaut + trivial chat fast-path)
 // ──────────────────────────────────────────────
-describe('auto mode — simple chat fallback', () => {
-  it('→ mistral when Mistral key available', () => {
+describe('auto mode — trivial chat fast-path', () => {
+  // Trivial chat (salutations, merci, calculs) bypasse la recherche web
+  it('greeting → mistral when Mistral key available', () => {
     withKeys({ mistral: true })
     expect(detectProvider('Bonjour, comment ça va ?')).toBe('mistral')
   })
 
-  it('→ claude when neither Gemini nor Mistral key', () => {
-    withKeys({})
-    expect(detectProvider('Bonjour, comment ça va ?')).toBe('claude')
-  })
-
-  it('→ claude when only Gemini key and no web trigger', () => {
-    withKeys({ gemini: true })
-    expect(detectProvider('Explique-moi la loi de Moore')).toBe('claude')
-  })
-
-  it('→ mistral when Gemini + Mistral, no triggers', () => {
+  it('greeting → mistral even when Gemini available (skip web search)', () => {
     withKeys({ gemini: true, mistral: true })
-    expect(detectProvider('Raconte-moi une blague')).toBe('mistral')
+    expect(detectProvider('Salut !')).toBe('mistral')
+  })
+
+  it('greeting → claude when no Mistral key', () => {
+    withKeys({ gemini: true })
+    expect(detectProvider('Bonjour')).toBe('claude')
+  })
+
+  it('thank you → mistral fast-path', () => {
+    withKeys({ gemini: true, mistral: true })
+    expect(detectProvider('merci beaucoup')).toBe('mistral')
+  })
+
+  it('arithmetic → mistral fast-path', () => {
+    withKeys({ gemini: true, mistral: true })
+    expect(detectProvider('combien font 12 + 7')).toBe('mistral')
+  })
+})
+
+describe('auto mode — non-trivial defaults to Gemini (web search by default)', () => {
+  // Toute question factuelle/générale doit bénéficier de google_search
+  // (gratuit côté Gemini) pour des données 2026 à jour, vu que les LLM
+  // ont une mémoire limitée à leur date d'entraînement.
+  it('factual question → gemini when Gemini key available', () => {
+    withKeys({ gemini: true })
+    expect(detectProvider('Explique-moi la loi de Moore')).toBe('gemini')
+  })
+
+  it('open question → gemini even when Mistral also available', () => {
+    withKeys({ gemini: true, mistral: true })
+    expect(detectProvider('Quelles sont les nouveautés en IA cette année')).toBe('gemini')
+  })
+
+  it('no Gemini key → mistral fallback', () => {
+    withKeys({ mistral: true })
+    expect(detectProvider('Explique-moi la loi de Moore')).toBe('mistral')
+  })
+
+  it('no key at all → claude fallback', () => {
+    withKeys({})
+    expect(detectProvider('Explique-moi la loi de Moore')).toBe('claude')
   })
 })
 

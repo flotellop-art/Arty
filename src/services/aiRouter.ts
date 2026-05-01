@@ -1,31 +1,14 @@
 import { getGeminiKey, getMistralKey, getOpenAIKey } from './activeApiKey'
 import { getSelectedModel, detectOpenAIIntent } from './modelSelector'
 
-// AI Router — decides which model to use based on the query
-
-const GEMINI_TRIGGERS = [
-  // FR
-  /youtube|youtubeur|youtubeuse|chaîne\s+(de|du|d')|vidéo[s]?\s+(de|du|d')|dernières\s+vidéos|résumé.*vidéo/i,
-  /google\s*maps|itinéraire|trajet\s+(vers|de|entre)|temps\s+de\s+(route|trajet)|street\s*view|restaurant[s]?\s+(à|près|autour)|avis\s+(sur|google|client)|horaires?\s+(de|du|d')|ouvert\s+(aujourd|demain|lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche)/i,
-  /résultats?\s+(du|de)\s+(match|élection|vote)|score\s+(du|de)|classement\s+(ligue|championnat)|actu(alité)?s?\s+(du jour|récentes?)/i,
-  /résumé\s+(du|de\s+l[a'])\s+(site|page|article|blog)\s/i,
-  /https?:\/\//i,
-  /météo|quel\s+temps|prévisions?\s+(météo|pour)|pleuvoi?r|pluie\s+(demain|cette|ce)|température/i,
-  /concurrent[s]?\s+(à|près|dans|autour)|entreprise[s]?\s+(de|du|près)/i,
-  /norme[s]?\s+(RE|RT|DTU|NF)|RE\s*20[2-3][0-9]|réglementation\s+(thermique|énergétique)|MaPrimeRénov|aide[s]?\s+(de l'état|gouvernement|anah|rénovation)/i,
-  /prix\s+(de|du|chez)\s+.*(weber|parex|prb|punto|sika|mapei|point\s*p|gedimat|bigmat|cedeo)/i,
-  /fournisseur[s]?\s+(de|d'|pour)|où\s+(acheter|trouver|commander)/i,
-  // EN
-  /youtube\s+(channel|video[s]?)|latest\s+videos?|video\s+summary/i,
-  /google\s*maps|directions|route\s+(to|from)|travel\s+time|street\s*view|restaurants?\s+(near|around|nearby)|reviews?\s+(on|about|google)|opening\s+hours|open\s+(today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday)/i,
-  /match\s+results?|election\s+results?|standings|sports?\s+(news|scores?)|latest\s+news/i,
-  /summary\s+of\s+(the\s+)?(site|page|article|blog)/i,
-  /weather|forecast|will\s+it\s+rain|is\s+it\s+raining|temperature|rain\s+(tomorrow|today)/i,
-  /competitors?\s+(near|around|in)|companies?\s+(near|in|around)/i,
-  /supplier[s]?\s+(of|for)|where\s+(to\s+)?(buy|find|order)/i,
-  // Self-position queries (geoloc opt-in) — Gemini has google_maps for reverse geocoding
-  /dans\s+quelle\s+ville|quelle\s+ville\s+(je\s+suis|suis[-\s]je)|ma\s+(ville|position|localisation)(\s|\?|$|\.)|où\s+(je\s+suis|suis[-\s]je)|localise[-\s]moi|where\s+am\s+i|my\s+(location|city|town|position)|what\s+(city|town)/i,
-]
+// AI Router — decides which model to use based on the query.
+// Routage en mode auto: Gemini par défaut (google_search activé, gratuit)
+// pour bénéficier de données à jour 2026+. Les exceptions sont:
+// - PRIVATE_DATA_TRIGGERS → Claude (tools natifs Gmail/Drive/Calendar)
+// - HYBRID_TRIGGERS → Hybrid (Gemini research + Claude synthesis)
+// - TRIVIAL_CHAT_REGEX → Mistral/Claude (pas de search inutile)
+// - euOnly conversations → forcé Mistral en amont (useConversation.ts)
+// - fichiers attachés → forcé Claude en amont (useConversation.ts)
 
 export const PRIVATE_DATA_TRIGGERS = [
   // FR — mail / drive / clients / factures
@@ -94,6 +77,12 @@ const HYBRID_TRIGGERS = [
   /comment\s+(installer|configurer|mettre\s+en\s+place|créer\s+une?\s+entreprise)/i,
 ]
 
+// Trivial chat — salutations, remerciements, calculs simples, suivis très
+// courts. Ces messages n'ont pas besoin de recherche web (latence + tokens
+// gaspillés) et restent sur le chemin rapide (Mistral/Haiku).
+// Partagé entre detectProvider() et selectClaudeSubModel().
+export const TRIVIAL_CHAT_REGEX = /^(salut|bonjour|bonsoir|coucou|hello|hi|hey|yo|merci|thanks?|thx|ok|okay|d'accord|super|cool|parfait|nickel|top|génial|bien|bien sûr|ouais|oui|non|nope)\b|^(\s*[\d+\-*/().\s]+\s*=?\s*\?*\s*)$|^(combien\s+font?\s+\d|how\s+much\s+is\s+\d)/i
+
 export type AIProvider = 'claude' | 'gemini' | 'mistral' | 'hybrid' | 'openai'
 
 export interface ThinkingConfig {
@@ -148,7 +137,7 @@ export function selectClaudeSubModel(
   isPro: boolean
 ): ClaudeSubModel {
   // Haiku — short, low-stakes queries (no private data, no thinking needed)
-  const isShortTrivial = message.length < 150 && /salutation|bonjour|salut|hello|merci|calcul|combien\s+font|^\d+\s*[+\-*/]\s*\d+|question\s+factuelle/i.test(message)
+  const isShortTrivial = message.length < 150 && TRIVIAL_CHAT_REGEX.test(message)
   if (!isPrivateData && !thinking.enabled && isShortTrivial) {
     return 'claude-haiku-4-5-20251001'
   }
@@ -194,16 +183,21 @@ export function detectProvider(message: string): AIProvider {
     }
   }
 
-  // Web/Maps/YouTube triggers → Gemini if available
-  if (geminiKey) {
-    for (const regex of GEMINI_TRIGGERS) {
-      if (regex.test(message)) return 'gemini'
-    }
+  // Trivial chat (salutations, merci, calculs, "ok") → fast path without
+  // web search. Mistral if available (cheap + EU), sinon Claude (Haiku via
+  // selectClaudeSubModel). Évite la latence/coût d'une recherche inutile.
+  const isTrivial = message.length < 150 && TRIVIAL_CHAT_REGEX.test(message)
+  if (isTrivial) {
+    return mistralKey ? 'mistral' : 'claude'
   }
 
-  // Simple chat → Mistral if available (cheaper + EU)
-  if (mistralKey) return 'mistral'
+  // Default → Gemini avec google_search activé (gratuit + données 2026
+  // à jour). Couvre toute question factuelle/générale au-delà de la
+  // mémoire d'entraînement des modèles. Voir geminiClient.ts:82-84
+  // qui active google_search + url_context par défaut.
+  if (geminiKey) return 'gemini'
 
-  // Default → Claude
+  // Pas de clé Gemini → fallback Mistral (EU, pas de search) sinon Claude
+  if (mistralKey) return 'mistral'
   return 'claude'
 }
