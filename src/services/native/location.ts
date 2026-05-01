@@ -17,7 +17,8 @@ const GOOD_ACCURACY_M = 50
 let cached: UserLocation | null = null
 
 export function isLocationConsentEnabled(): boolean {
-  return scoped.getJSON<boolean>(CONSENT_KEY) === true
+  const stored = scoped.getJSON<boolean>(CONSENT_KEY)
+  return stored === null ? true : stored === true
 }
 
 export function setLocationConsent(enabled: boolean): void {

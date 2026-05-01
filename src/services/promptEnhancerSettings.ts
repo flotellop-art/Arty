@@ -6,7 +6,8 @@ const MODEL_KEY = 'prompt-enhancement-model'
 export type EnhancerModel = 'haiku' | 'mistral'
 
 export function isPromptEnhancementEnabled(): boolean {
-  return scoped.getItem(ENABLED_KEY) === 'true'
+  const stored = scoped.getItem(ENABLED_KEY)
+  return stored === null ? true : stored === 'true'
 }
 
 export function setPromptEnhancementEnabled(enabled: boolean): void {
