@@ -26,9 +26,43 @@ export function setLocationConsent(enabled: boolean): void {
   if (!enabled) cached = null
 }
 
+export type GeolocationPermissionState = 'granted' | 'denied' | 'prompt' | 'unsupported'
+
+/**
+ * État réel de la permission géolocalisation côté navigateur, sans déclencher
+ * de prompt. Permet à l'UI de distinguer :
+ * - 'granted' : tout va bien
+ * - 'prompt'  : pas encore demandé, le prochain getCurrentPosition prompera
+ * - 'denied'  : bloqué par le navigateur (l'user doit aller dans les
+ *               paramètres du site pour réautoriser, le prompt n'apparaîtra
+ *               plus jamais)
+ * - 'unsupported' : Permissions API non disponible (anciens navigateurs)
+ */
+export async function getGeolocationPermissionState(): Promise<GeolocationPermissionState> {
+  if (typeof navigator === 'undefined' || !navigator.permissions?.query) {
+    return 'unsupported'
+  }
+  try {
+    const status = await navigator.permissions.query({
+      name: 'geolocation' as PermissionName,
+    })
+    return status.state as GeolocationPermissionState
+  } catch {
+    return 'unsupported'
+  }
+}
+
 export async function requestLocationPermission(): Promise<boolean> {
   if (!isNative) {
     if (!('geolocation' in navigator)) return false
+
+    // Si le navigateur a déjà bloqué la permission (refus précédent + Chrome
+    // ajoute le site à une blocklist silencieuse), getCurrentPosition() ne
+    // déclenche AUCUN prompt et timeout après 10s. On évite le délai inutile
+    // en interrogeant l'état préalable.
+    const state = await getGeolocationPermissionState()
+    if (state === 'denied') return false
+
     return new Promise((resolve) => {
       navigator.geolocation.getCurrentPosition(
         () => resolve(true),

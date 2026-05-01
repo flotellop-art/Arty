@@ -10,7 +10,9 @@ import {
   requestLocationPermission,
   clearLocationCache,
   getUserLocation,
+  getGeolocationPermissionState,
   type UserLocation,
+  type GeolocationPermissionState,
 } from '../../services/native/location'
 import { isNative } from '../../services/native/platform'
 import {
@@ -66,6 +68,9 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
   const [licenseError, setLicenseError] = useState('')
   const [licenseSuccess, setLicenseSuccess] = useState('')
 
+  const [browserPermState, setBrowserPermState] =
+    useState<GeolocationPermissionState | null>(null)
+
   useEffect(() => {
     if (!open) return
     setNotifEnabled(areNotificationsEnabled())
@@ -76,6 +81,11 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
     setLicenseSuccess('')
     setEnhanceEnabled(isPromptEnhancementEnabled())
     setEnhanceModelState(getEnhancerModel())
+    // L'état réel de la permission browser géoloc — peut être 'denied' alors
+    // que le toggle Arty est ON (cas Chrome qui bloque silencieusement).
+    if (!isNative) {
+      getGeolocationPermissionState().then(setBrowserPermState)
+    }
   }, [open])
 
   const handleActivateLicense = async (e: React.FormEvent) => {
@@ -145,6 +155,11 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
       setLocationConsent(false)
       clearLocationCache()
       setLocationEnabled(false)
+    }
+    // Re-query l'état réel après l'action pour mettre à jour le warning UI.
+    if (!isNative) {
+      const state = await getGeolocationPermissionState()
+      setBrowserPermState(state)
     }
   }
 
@@ -285,6 +300,18 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
                   <p className="font-display italic text-[11px] text-theme-muted/80">
                     Coords : {locationFix.latitude.toFixed(5)}° N, {locationFix.longitude.toFixed(5)}° E
                   </p>
+                )}
+                {!isNative && locationEnabled && browserPermState === 'denied' && (
+                  <div className="mt-2 p-3 rounded-sm bg-red-500/10 border border-red-500/30">
+                    <p className="font-display italic text-xs text-red-700 dark:text-red-400">
+                      ⚠️ Ton navigateur a bloqué la géolocalisation pour ce site.
+                      Le toggle est ON dans Arty mais Chrome ne va pas demander.
+                    </p>
+                    <p className="font-display italic text-[11px] text-red-600/90 dark:text-red-300/80 mt-1.5">
+                      Pour réautoriser : tape l'icône cadenas (à gauche de l'URL Chrome)
+                      → Paramètres du site → Localisation → Autoriser. Puis recharge la page.
+                    </p>
+                  </div>
                 )}
                 <button
                   onClick={() => {
