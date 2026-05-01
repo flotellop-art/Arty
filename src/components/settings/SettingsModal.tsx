@@ -12,6 +12,7 @@ import {
   getUserLocation,
   type UserLocation,
 } from '../../services/native/location'
+import { isNative } from '../../services/native/platform'
 import {
   getLastLocationDebugSnapshot,
   type LocationDebugSnapshot,
@@ -127,7 +128,17 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
   const handleLocationToggle = async () => {
     if (!locationEnabled) {
       const granted = await requestLocationPermission()
-      if (!granted) return
+      // Sur natif (APK Capacitor), un refus système est définitif tant que
+      // l'utilisateur n'ouvre pas les Paramètres Android — on garde le
+      // toggle OFF pour refléter l'état réel.
+      // Sur web, en revanche, getCurrentPosition() peut retourner false
+      // silencieusement (timeout, permission Chrome dans un état ambigu)
+      // sans qu'on puisse distinguer un vrai refus d'un blip réseau —
+      // bloquer le toggle dans ce cas crée un cul-de-sac (le user clique
+      // ON, ça reste OFF). On active le consent applicatif quand même :
+      // si le navigateur a réellement bloqué, le user peut réautoriser
+      // via l'icône cadenas Chrome.
+      if (!granted && isNative) return
       setLocationConsent(true)
       setLocationEnabled(true)
     } else {
