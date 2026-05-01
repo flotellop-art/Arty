@@ -98,6 +98,7 @@ async function getBestFixWeb(): Promise<UserLocation | null> {
   return new Promise<UserLocation | null>((resolve) => {
     let best: UserLocation | null = null
     let settled = false
+    let watchId: number | null = null
 
     const finish = () => {
       if (settled) return
@@ -108,7 +109,12 @@ async function getBestFixWeb(): Promise<UserLocation | null> {
 
     const timer = setTimeout(finish, WATCH_TIMEOUT_MS)
 
-    const watchId = navigator.geolocation.watchPosition(
+    // getCurrentPosition() first — its prompt is more reliable on Chrome
+    // Android than watchPosition() in PWA contexts (some users never see
+    // the permission dialog when watchPosition is the only call). Once the
+    // user grants permission and we have a first fix, watchPosition takes
+    // over to refine accuracy until GOOD_ACCURACY_M or timeout.
+    navigator.geolocation.getCurrentPosition(
       (pos) => {
         const fix: UserLocation = {
           latitude: pos.coords.latitude,
@@ -116,11 +122,33 @@ async function getBestFixWeb(): Promise<UserLocation | null> {
           accuracy: pos.coords.accuracy,
           capturedAt: Date.now(),
         }
-        if (!best || fix.accuracy < best.accuracy) best = fix
+        best = fix
         if (fix.accuracy <= GOOD_ACCURACY_M) {
           clearTimeout(timer)
           finish()
+          return
         }
+
+        watchId = navigator.geolocation.watchPosition(
+          (pos2) => {
+            const fix2: UserLocation = {
+              latitude: pos2.coords.latitude,
+              longitude: pos2.coords.longitude,
+              accuracy: pos2.coords.accuracy,
+              capturedAt: Date.now(),
+            }
+            if (!best || fix2.accuracy < best.accuracy) best = fix2
+            if (fix2.accuracy <= GOOD_ACCURACY_M) {
+              clearTimeout(timer)
+              finish()
+            }
+          },
+          () => {
+            // Watch errors after initial fix are non-fatal — keep the
+            // initial fix and let the timer settle the promise.
+          },
+          { enableHighAccuracy: true, timeout: WATCH_TIMEOUT_MS, maximumAge: 0 }
+        )
       },
       () => {
         clearTimeout(timer)
