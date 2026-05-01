@@ -75,9 +75,12 @@ async function runGeminiStream(
     }))
 
     // Detect if query is map/location related — google_maps and google_search
-    // cannot be combined in the same Gemini request
+    // cannot be combined in the same Gemini request (cf. CLAUDE.md BUG 5).
+    // Couvre les formulations naturelles FR/EN d'itinéraire et de distance:
+    // "combien de temps pour aller à X", "temps qu'il faut pour aller",
+    // "à quelle distance", "distance entre Y et X", "aller à X", etc.
     const lastMessage = messages[messages.length - 1]?.content || ''
-    const isMapQuery = /google\s*maps|itinéraire|trajet|street\s*view|restaurant|horaires?|adresse|où\s+(se\s+trouve|est|aller|trouver)|coordonnées|GPS|plan\s+(de|du)|carte/i.test(lastMessage)
+    const isMapQuery = /google\s*maps|itinéraire|trajet|street\s*view|restaurant|horaires?|adresse|où\s+(se\s+trouve|est|aller|trouver)|coordonnées|GPS|plan\s+(de|du)|carte|combien\s+(de\s+)?(temps|km|kilomètres?|minutes?|heures?)\s+(pour|jusqu|en\s+voiture|d['’]aller|de\s+route|de\s+trajet)|temps\s+(qu['’]il\s+)?(faut|pour)\s+(pour\s+)?aller|aller\s+(à|jusqu['’]?\s*à|en)|distance\s+(entre|jusqu|pour|de)|à\s+quelle\s+distance|how\s+(far|long)\s+(is|to|from)|driving\s+(time|distance)|directions?\s+(to|from)/i.test(lastMessage)
 
     const tools = isMapQuery
       ? [{ google_maps: {} }]
