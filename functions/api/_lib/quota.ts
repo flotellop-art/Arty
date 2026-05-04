@@ -348,6 +348,13 @@ export async function getMonthlyQuotaStatus(
  * incrémenté le compteur, une fois que le stream de la réponse est entièrement
  * parsé via trackUsage.ts.
  *
+ * BUG 50 — INSERT...ON CONFLICT DO UPDATE plutôt que UPDATE seul. Les VIP
+ * (whitelist ALLOWED_EMAILS) et les trial bypassent consumeDailyQuota, donc
+ * leur ligne (email, day, model) n'existe pas avant ce recordUsage. Un UPDATE
+ * pur faisait silencieusement zéro modif → leurs tokens et coûts étaient perdus
+ * et la console D1 ne montrait jamais leur activité (Mégane utilisait Arty le
+ * matin du 04/05 mais sa dernière trace dans `quota_model` datait du 24/04).
+ *
  * Idempotent pour les erreurs D1 : en cas d'échec, on log et on ignore (le
  * compteur reste correct, seule la précision du coût est affectée).
  */
@@ -364,15 +371,19 @@ export async function recordUsage(
 
   try {
     await env.DB.prepare(
-      `UPDATE quota_model
-       SET input_tokens = input_tokens + ?1,
-           output_tokens = output_tokens + ?2,
-           cache_read_tokens = cache_read_tokens + ?3,
-           cache_creation_tokens = cache_creation_tokens + ?4,
-           audio_seconds = audio_seconds + ?5,
-           cost_usd_micro = cost_usd_micro + ?6,
-           updated_at = unixepoch()
-       WHERE email = ?7 AND day = ?8 AND model = ?9`
+      `INSERT INTO quota_model (
+         email, day, model, count, input_tokens, output_tokens,
+         cache_read_tokens, cache_creation_tokens, audio_seconds,
+         cost_usd_micro, updated_at
+       ) VALUES (?7, ?8, ?9, 1, ?1, ?2, ?3, ?4, ?5, ?6, unixepoch())
+       ON CONFLICT (email, day, model) DO UPDATE SET
+         input_tokens = input_tokens + ?1,
+         output_tokens = output_tokens + ?2,
+         cache_read_tokens = cache_read_tokens + ?3,
+         cache_creation_tokens = cache_creation_tokens + ?4,
+         audio_seconds = audio_seconds + ?5,
+         cost_usd_micro = cost_usd_micro + ?6,
+         updated_at = unixepoch()`
     )
       .bind(
         Math.max(0, Math.round(usage.inputTokens)),
