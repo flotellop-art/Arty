@@ -551,7 +551,7 @@ Dernier audit : **4 mai 2026** (PR #127 + PR #128).
 - `logout()` DOIT dispatcher `'google-storage-ready'` pour forcer le re-render du hook `useGoogleAuth` (sinon UI stuck).
 
 ### BUG 49 — Gmail proxy : 4 bugs combinés rendaient les mails Outlook illisibles
-**Fichiers** : `functions/api/gmail/action.ts`, `functions/api/gmail/_lib.ts` (PR #112, commit `22508e6`)
+**Fichiers** : `functions/api/gmail/action.ts`, `src/services/tools/gmailTools.ts` (PR #112, commit `22508e6`). Helpers (`getCharset()`, `htmlToText()`, `b64urlDecode()`) extraits dans `functions/api/gmail/_lib.ts` plus tard en PR #113.
 **Problème** : les mails de logiciels dérivés Outlook (garage, ERP, CRM) arrivaient illisibles ou pollués dans Arty. 4 bugs combinés dans le proxy Gmail Cloudflare :
 1. Charset ignoré → mails `windows-1252` / `ISO-8859-1` décodés en UTF-8 → accents en `U+FFFD`. Fix : `getCharset()` + `TextDecoder` natif.
 2. `stripHTML` qui gardait le contenu de `<style>` / `<script>` → 5KB de CSS Outlook polluaient les 5000 premiers chars. Fix : `htmlToText()` qui drop les blocs entiers.
@@ -592,7 +592,7 @@ Dernier audit : **4 mai 2026** (PR #127 + PR #128).
 **Fichiers** : `src/App.tsx` (deeplink listener), `src/components/google/OAuthCallback.tsx` (PR #128 + hotfix commit `fee9144`)
 **Problème** : dans la PR initiale d'ajout du `state` CSRF, `verifyOAuthState()` était appelé à 2 endroits — le listener Capacitor `appUrlOpen` ET le composant React `<OAuthCallback>`. Sur Capacitor avec Universal Links actifs, les deux peuvent fire pour la même URL `appfacade.pages.dev/auth/callback?code=...&state=...`. Or `verifyOAuthState()` est **single-use** (clear le `sessionStorage` avant retour). Le second appel échoue → login cassé silencieusement.
 **Règle** :
-- Toute vérification single-use (state nonce, OTP, token JIT) DOIT être appelée à un seul endroit du code-path. Si plusieurs handlers peuvent fire, choisir le **dernier dans la chaîne** (généralement la route React, pas le listener bas-niveau).
+- Toute vérification single-use (state nonce, OTP, token JIT) DOIT être appelée à un seul endroit du code-path. Le piège : `verifyOAuthState()` clear le sessionStorage AVANT de retourner — le second appel pour la même URL trouve sessionStorage vide et échoue silencieusement. Si plusieurs handlers peuvent fire (deeplink + React route), choisir le **dernier dans la chaîne** (généralement la route React, pas le listener bas-niveau).
 - Pour Arty : `verifyOAuthState()` est appelé UNIQUEMENT dans `OAuthCallback.tsx`. Le deeplink Capacitor ne vérifie pas — la sécurité du chemin est assurée par les **Universal Links Android** (`assetlinks.json` côté domaine + vérification OS) qui empêchent qu'une URL malveillante atteigne le listener sans contrôler `appfacade.pages.dev`.
 - Si tu ajoutes une nouvelle voie de callback OAuth (ex: deeplink iOS, web extension), DOCUMENTE-LA ici et choisis explicitement où vit le check single-use.
 
@@ -603,4 +603,24 @@ Dernier audit : **4 mai 2026** (PR #127 + PR #128).
 2. `CostsScreen` utilisait `useMemo([monthKey])` : tant que le mois ne changeait pas, le calcul était caché.
 **Règle** :
 - Toute écriture dans un store partagé (localStorage, IndexedDB) qui sert à plusieurs vues DOIT dispatcher un `CustomEvent` window correspondant (`'cost-updated'`, `'tokens-updated'`, etc.) à la fin de l'écriture, en `try/catch` pour tolérer les contextes sans `window` (tests, SSR).
-- Les vues qui consomment ces stores DOIVENT écouter cet event ET avoir `monthKey` (ou équivalent) hors de la dep array `useMemo`/`useCallback` quand on veut un refresh sur changement de données — sinon `useMemo` cache à travers les updates intra-mois.
+- Les vues qui consomment ces stores DOIVENT écouter cet event via `addEventListener`. Le piège `useMemo([monthKey])` : tant que `monthKey` ne change pas (mois en cours stable), le calcul mémoïsé ne se rafraîchit JAMAIS, même si le localStorage change sous-jacent. Solution : utiliser un `useState` incrémenté par le listener, et l'inclure dans les deps du `useMemo`.
+
+### BUG 55 — Géoloc PWA : prompt navigateur jamais déclenché + cul-de-sac toggle web
+**Fichiers** : `src/services/native/location.ts`, `src/components/settings/SettingsModal.tsx` (PR #120, commit `5c8c9a3`)
+**Problème** : remonté en test live sur PWA Chrome Android. Deux bugs reliés :
+1. "Localisation" n'apparaissait JAMAIS dans les permissions du site alors que le toggle Arty était ON. Cause : `getBestFixWeb()` utilisait UNIQUEMENT `navigator.geolocation.watchPosition()` qui ne déclenche pas le prompt Chrome de façon fiable en contexte PWA. Conséquence : pas de prompt → permission jamais demandée → géoloc non fonctionnelle, sans erreur visible.
+2. Toggle Localisation OFF puis ON ne réactivait plus rien : `requestLocationPermission()` retournait false sur timeout/refus silencieux Chrome → `handleLocationToggle` return early → toggle restait visiblement OFF malgré le clic. Cul-de-sac UX, l'utilisateur ne pouvait plus rien réactiver.
+**Règle** :
+- Sur web/PWA, le 1er appel géoloc DOIT être `navigator.geolocation.getCurrentPosition()` (qui prompte fiablement, comportement standard W3C), AVANT tout `watchPosition()` qui sert seulement à raffiner la précision. L'inverse est silencieux sur Chrome PWA.
+- Découpler "permission navigateur" de "consent applicatif". Sur web, si la permission navigateur est ambiguë/timeout, activer le consent applicatif quand même — l'utilisateur peut réautoriser via le cadenas Chrome. Sur Capacitor natif, garder le strict 1:1 (refus système = toggle OFF).
+
+### BUG 56 — Regex de triggers ratant les phrasings naturels indirects
+**Fichiers** : `src/services/locationContext.ts` (`LOCATION_QUERY_TRIGGERS`), `src/services/geminiClient.ts` (`isMapQuery`) (PRs #118 + #119, commits `7ecad74` + `1345a16`)
+**Problème** : remonté en live par Noah Wallet sur PWA iOS — 4 questions itinéraire d'affilée toutes ratées. Les phrasings naturels INDIRECTS du type "à combien de km de X", "temps pour aller à Y", "à combien de temps en voiture je me situe de Z" ne matchaient pas les regex de détection :
+- `LOCATION_QUERY_TRIGGERS` ratait → `getUserLocation()` jamais appelé → `navigator.geolocation` jamais sollicité → pas de prompt permission → l'IA répond "je n'ai pas accès à ta position".
+- `isMapQuery` ratait → Gemini activait `google_search` à la place de `google_maps` → pas de calcul d'itinéraire réel → l'IA estime à la louche et hallucine type "l'outil de calcul bloque" alors qu'elle n'a juste pas le tool.
+**Règle** : toute regex de détection de domaine (location, maps, currency, météo, devis…) DOIT être testée avec un PANEL de phrasings INDIRECTS naturels, pas seulement les phrasings directs. À ajouter quand un user remonte un cas qui rate :
+- FR : `combien de (temps|km|kilomètres|minutes|heures)`, `temps qu'il faut pour aller`, `temps pour aller`, `aller à`, `aller jusqu'à`, `aller en`, `distance (entre|jusqu'à|pour|de)`, `à quelle distance`, `je suis à`, `je me situe`.
+- EN : `how far`, `how long`, `driving time`, `driving distance`, `directions to`, `directions from`.
+
+La maintenance des triggers est un **work-in-progress permanent**, pas un final state. Chaque cas raté remonté → ajouter le pattern à la regex ET ajouter un test de non-régression (sinon la prochaine refacto cassera).
