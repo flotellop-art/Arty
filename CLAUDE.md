@@ -538,3 +538,89 @@ Dernier audit : **4 mai 2026** (PR #127 + PR #128).
 - `refreshAccessToken()` ne doit appeler `logout()` que sur `400 invalid_grant` explicite de Google (refresh_token vraiment révoqué). Sur tout le reste, garder les tokens et retourner `null`.
 - TOUS les fetch d'auth doivent avoir un `AbortController` avec timeout (15s par défaut) — pas de fetch sans timeout sur le chemin Google.
 - Avant tout wipe de ciphertext sur decrypt fail, vérifier `selfTestCrypto()` (= la clé en cache peut-elle décrypter `KEY_CHECK_KEY` ?). Si non → la clé courante est mauvaise, garder le blob pour la prochaine tentative avec le bon passphrase. Si oui → blob réellement corrompu, wipe ok.
+
+### BUG 48 — Détection refresh_token révoqué via body au lieu du status HTTP
+**Fichiers** : `src/services/googleAuth.ts`, `functions/api/auth/refresh.ts`, `functions/api/auth/token.ts` (PR #111, commit `73162d1`)
+**Problème** : symptôme persistant après PR #109+#110 — AGENDA stuck sur "Non connecté à Google" même après les retries de refresh. Triple bug :
+1. Les proxys `refresh.ts` et `token.ts` écrasaient `error: "invalid_grant"` (code Google) par `error: error_description` ("Token has been expired or revoked." en prose).
+2. Le client matchait `errCode === 'invalid_grant'` qui ne matchait jamais → toujours branche transient → tokens morts conservés → retry infini.
+3. Quand Google ne re-émettait pas de `refresh_token` sur un re-auth récent, l'ancien code laissait l'utilisateur en limbo "isConnected mais inutilisable".
+**Règle** :
+- La détection "refresh_token révoqué définitivement" se fait sur le **status HTTP** du proxy (`4xx = définitif → logout`, `5xx ou network = transient → garder tokens`), pas sur le body. C'est robuste face à toute réécriture de message côté proxy.
+- Les proxys `auth/{token,refresh}.ts` DOIVENT préserver `data.error` ET `data.error_description` séparément, pas les fusionner.
+- `logout()` DOIT dispatcher `'google-storage-ready'` pour forcer le re-render du hook `useGoogleAuth` (sinon UI stuck).
+
+### BUG 49 — Gmail proxy : 4 bugs combinés rendaient les mails Outlook illisibles
+**Fichiers** : `functions/api/gmail/action.ts`, `src/services/tools/gmailTools.ts` (PR #112, commit `22508e6`). Helpers (`getCharset()`, `htmlToText()`, `b64urlDecode()`) extraits dans `functions/api/gmail/_lib.ts` plus tard en PR #113.
+**Problème** : les mails de logiciels dérivés Outlook (garage, ERP, CRM) arrivaient illisibles ou pollués dans Arty. 4 bugs combinés dans le proxy Gmail Cloudflare :
+1. Charset ignoré → mails `windows-1252` / `ISO-8859-1` décodés en UTF-8 → accents en `U+FFFD`. Fix : `getCharset()` + `TextDecoder` natif.
+2. `stripHTML` qui gardait le contenu de `<style>` / `<script>` → 5KB de CSS Outlook polluaient les 5000 premiers chars. Fix : `htmlToText()` qui drop les blocs entiers.
+3. `base64url` pas garanti sur Workers `nodejs_compat`. Fix : décodage manuel via `atob()` après remplacement `-` → `+` et `_` → `/`.
+4. `mimeType` comparé case-sensitive alors que RFC 2045 dit case-insensitive. Fix : `.toLowerCase()` avant compare.
++ fallback sur `msg.snippet` si l'extraction de body échoue, truncation 5000 → 8000 chars.
+**Règle** :
+- Tout parsing MIME/email DOIT respecter le charset annoncé (`Content-Type: charset=...`) — utiliser `TextDecoder(charset)`, pas un décodage UTF-8 par défaut.
+- Pour stripper du HTML en texte, drop les blocs `<script>`, `<style>`, `<head>` AVANT de retirer les tags, sinon le contenu pollué reste.
+- Toute comparaison de `mimeType`, `Content-Type`, etc. DOIT être case-insensitive.
+- Le décodage `base64url` sur Cloudflare Workers DOIT passer par `atob()` après remplacement `-` → `+` et `_` → `/` + padding `=` — ne pas dépendre de `Buffer.from(..., 'base64url')` qui n'est pas garanti.
+
+### BUG 50 — bytesToBase64 en O(n²) crashait sur gros PDFs
+**Fichier** : `functions/api/gmail/action.ts` (commit `84dc4a0`)
+**Problème** : sur un mail avec PJ PDF >2MB, le proxy Gmail crashait silencieusement (timeout Worker). Cause : `bytesToBase64` faisait une boucle qui concaténait `String.fromCharCode(byte)` à une string accumulée → reallocation à chaque itération → complexité O(n²). Sur 2MB = 2M itérations × copie de 1MB de string = effondrement.
+**Règle** : pour convertir des bytes en base64 sur Cloudflare Workers, utiliser un **chunking** (8192 bytes par chunk via `String.fromCharCode.apply(null, chunk)`) puis concaténer 1 fois à la fin. Ne JAMAIS accumuler char par char dans une string. Surface aussi les erreurs Gmail API (`error.message` détaillé) au lieu d'un générique 500 — sans ça on ne sait pas pourquoi ça plante.
+
+### BUG 51 — Refresh_token Google jamais re-émis + écrasé en empty string sur re-auth
+**Fichiers** : `src/hooks/useGoogleAuth.ts`, `android/.../GoogleSignInPlugin.java`, `src/services/googleAuth.ts` (PR #126, commit `e198c43` — labellisé `BUG 49` par erreur dans le commit alors que `BUG 49` était déjà pris)
+**Problème** : l'utilisateur se faisait déconnecter de Google "au bout d'un moment" sur APK ET sur web. Multi-cause :
+1. **APK** : `GoogleSignInOptions` appelait `requestServerAuthCode(serverClientId)` SANS le second argument `forceCodeForRefreshToken=true`. Conséquence : après le premier consentement, Google ne ré-émet PLUS de `refresh_token` sur les sign-in suivants — il renvoie juste un access_token de 1h.
+2. **Client** : `useGoogleAuth.login` stockait `refresh_token: data.refresh_token || ''`. Quand Google n'en envoyait pas (cas ci-dessus), le `''` empty écrasait un `refresh_token` valide existant dans le storage. 30 min plus tard, le refresh proactif voyait `!tokens.refresh_token` falsy → logout silencieux.
+3. **Web** : double cause — le bug ci-dessus + éviction `localStorage` par Chrome (storage "best-effort" sur un site visité dans un seul onglet sporadique).
+**Règle** :
+- `GoogleSignInOptions` côté Java DOIT appeler `requestServerAuthCode(serverClientId, true)` — le second arg `forceCodeForRefreshToken=true` force Google à toujours renvoyer un nouveau refresh_token, même sur re-auth récents.
+- Côté client, lors du store des tokens : préserver le `refresh_token` existant si Google n'en renvoie pas. Pattern : `refresh_token: data.refresh_token || existing?.refresh_token || ''` (jamais d'écrasement par empty).
+- Côté web, appeler `navigator.storage.persist()` au boot pour demander à Chrome de garder le storage tant que l'utilisateur n'efface pas explicitement les données. No-op sur Capacitor natif.
+
+### BUG 52 — Anthropic SSE droppait les blocs vides → décalage d'index → "thinking blocks cannot be modified"
+**Fichier** : `src/services/anthropicClient.ts` (PR #123, commit `49b86c6`)
+**Problème** : sur les conversations multi-turn avec tool use, l'API Anthropic rejetait avec « thinking blocks cannot be modified ». Pas une vraie modification — un **mismatch d'index** : le parser SSE droppait silencieusement les blocs `text` vides et les blocs `thinking` sans `signature` (perçus comme "déchets"). Quand la boucle tool-use renvoyait l'assistant turn complet à Anthropic, les indices ne correspondaient plus à ce que le serveur attendait → 400.
+**Règle** :
+- Le parser SSE Anthropic DOIT pousser **tous** les blocs reçus (texte vide inclus) sans filtrage cosmétique. Ne JAMAIS « nettoyer » les blocs `text: ''` ou `thinking` perçus comme incomplets — l'API les attend tels quels.
+- Avant tout resend (multi-turn / retry), valider l'intégrité des blocs : `signature` présente sur les blocs `thinking`, `data` non vide sur les blocs `redacted_thinking`. Si invalide → throw une erreur claire au lieu de laisser le 400 obscur fuiter.
+- Le marker "Réponse interrompue" NE doit PAS être injecté en markdown dans le contenu (pollue le re-prompt) — utiliser un flag persistant `Message.interrupted` rendu en bandeau UI.
+
+### BUG 53 — Vérification state OAuth dans le deeplink + OAuthCallback = double-fire = login cassé
+**Fichiers** : `src/App.tsx` (deeplink listener), `src/components/google/OAuthCallback.tsx` (PR #128 + hotfix commit `fee9144`)
+**Problème** : dans la PR initiale d'ajout du `state` CSRF, `verifyOAuthState()` était appelé à 2 endroits — le listener Capacitor `appUrlOpen` ET le composant React `<OAuthCallback>`. Sur Capacitor avec Universal Links actifs, les deux peuvent fire pour la même URL `appfacade.pages.dev/auth/callback?code=...&state=...`. Or `verifyOAuthState()` est **single-use** (clear le `sessionStorage` avant retour). Le second appel échoue → login cassé silencieusement.
+**Règle** :
+- Toute vérification single-use (state nonce, OTP, token JIT) DOIT être appelée à un seul endroit du code-path. Le piège : `verifyOAuthState()` clear le sessionStorage AVANT de retourner — le second appel pour la même URL trouve sessionStorage vide et échoue silencieusement. Si plusieurs handlers peuvent fire (deeplink + React route), choisir le **dernier dans la chaîne** (généralement la route React, pas le listener bas-niveau).
+- Pour Arty : `verifyOAuthState()` est appelé UNIQUEMENT dans `OAuthCallback.tsx`. Le deeplink Capacitor ne vérifie pas — la sécurité du chemin est assurée par les **Universal Links Android** (`assetlinks.json` côté domaine + vérification OS) qui empêchent qu'une URL malveillante atteigne le listener sans contrôler `appfacade.pages.dev`.
+- Si tu ajoutes une nouvelle voie de callback OAuth (ex: deeplink iOS, web extension), DOCUMENTE-LA ici et choisis explicitement où vit le check single-use.
+
+### BUG 54 — Compteurs de coûts ne se rafraîchissaient pas en live
+**Fichiers** : `src/services/costTracker.ts`, `src/screens/costs.tsx`, badge `CostIndicator` (PR #121, commit `9057585`)
+**Problème** : les compteurs tokens/coûts/coûts du mois ne bougeaient pas après chaque message envoyé. L'utilisateur devait fermer/rouvrir le dashboard pour voir les nouvelles valeurs. Deux bouts cassés :
+1. `recordUsage()` écrivait en `localStorage` mais ne dispatchait aucun event → le badge `CostIndicator` ne se mettait à jour que via son `setInterval(60s)` → personne ne savait quand les chiffres changeaient.
+2. `CostsScreen` utilisait `useMemo([monthKey])` : tant que le mois ne changeait pas, le calcul était caché.
+**Règle** :
+- Toute écriture dans un store partagé (localStorage, IndexedDB) qui sert à plusieurs vues DOIT dispatcher un `CustomEvent` window correspondant (`'cost-updated'`, `'tokens-updated'`, etc.) à la fin de l'écriture, en `try/catch` pour tolérer les contextes sans `window` (tests, SSR).
+- Les vues qui consomment ces stores DOIVENT écouter cet event via `addEventListener`. Le piège `useMemo([monthKey])` : tant que `monthKey` ne change pas (mois en cours stable), le calcul mémoïsé ne se rafraîchit JAMAIS, même si le localStorage change sous-jacent. Solution : utiliser un `useState` incrémenté par le listener, et l'inclure dans les deps du `useMemo`.
+
+### BUG 55 — Géoloc PWA : prompt navigateur jamais déclenché + cul-de-sac toggle web
+**Fichiers** : `src/services/native/location.ts`, `src/components/settings/SettingsModal.tsx` (PR #120, commit `5c8c9a3`)
+**Problème** : remonté en test live sur PWA Chrome Android. Deux bugs reliés :
+1. "Localisation" n'apparaissait JAMAIS dans les permissions du site alors que le toggle Arty était ON. Cause : `getBestFixWeb()` utilisait UNIQUEMENT `navigator.geolocation.watchPosition()` qui ne déclenche pas le prompt Chrome de façon fiable en contexte PWA. Conséquence : pas de prompt → permission jamais demandée → géoloc non fonctionnelle, sans erreur visible.
+2. Toggle Localisation OFF puis ON ne réactivait plus rien : `requestLocationPermission()` retournait false sur timeout/refus silencieux Chrome → `handleLocationToggle` return early → toggle restait visiblement OFF malgré le clic. Cul-de-sac UX, l'utilisateur ne pouvait plus rien réactiver.
+**Règle** :
+- Sur web/PWA, le 1er appel géoloc DOIT être `navigator.geolocation.getCurrentPosition()` (qui prompte fiablement, comportement standard W3C), AVANT tout `watchPosition()` qui sert seulement à raffiner la précision. L'inverse est silencieux sur Chrome PWA.
+- Découpler "permission navigateur" de "consent applicatif". Sur web, si la permission navigateur est ambiguë/timeout, activer le consent applicatif quand même — l'utilisateur peut réautoriser via le cadenas Chrome. Sur Capacitor natif, garder le strict 1:1 (refus système = toggle OFF).
+
+### BUG 56 — Regex de triggers ratant les phrasings naturels indirects
+**Fichiers** : `src/services/locationContext.ts` (`LOCATION_QUERY_TRIGGERS`), `src/services/geminiClient.ts` (`isMapQuery`) (PRs #118 + #119, commits `7ecad74` + `1345a16`)
+**Problème** : remonté en live par Noah Wallet sur PWA iOS — 4 questions itinéraire d'affilée toutes ratées. Les phrasings naturels INDIRECTS du type "à combien de km de X", "temps pour aller à Y", "à combien de temps en voiture je me situe de Z" ne matchaient pas les regex de détection :
+- `LOCATION_QUERY_TRIGGERS` ratait → `getUserLocation()` jamais appelé → `navigator.geolocation` jamais sollicité → pas de prompt permission → l'IA répond "je n'ai pas accès à ta position".
+- `isMapQuery` ratait → Gemini activait `google_search` à la place de `google_maps` → pas de calcul d'itinéraire réel → l'IA estime à la louche et hallucine type "l'outil de calcul bloque" alors qu'elle n'a juste pas le tool.
+**Règle** : toute regex de détection de domaine (location, maps, currency, météo, devis…) DOIT être testée avec un PANEL de phrasings INDIRECTS naturels, pas seulement les phrasings directs. À ajouter quand un user remonte un cas qui rate :
+- FR : `combien de (temps|km|kilomètres|minutes|heures)`, `temps qu'il faut pour aller`, `temps pour aller`, `aller à`, `aller jusqu'à`, `aller en`, `distance (entre|jusqu'à|pour|de)`, `à quelle distance`, `je suis à`, `je me situe`.
+- EN : `how far`, `how long`, `driving time`, `driving distance`, `directions to`, `directions from`.
+
+La maintenance des triggers est un **work-in-progress permanent**, pas un final state. Chaque cas raté remonté → ajouter le pattern à la regex ET ajouter un test de non-régression (sinon la prochaine refacto cassera).
