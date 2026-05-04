@@ -607,6 +607,13 @@ export default function App() {
   }, [])
 
   // Listen for deep links (native OAuth callback)
+  // CSRF state check intentionally NOT done here — `verifyOAuthState()` is
+  // single-use and would consume the nonce before `OAuthCallback` (React
+  // route) gets a chance to validate it on platforms where both fire. The
+  // deeplink is only invokable through an Android Universal Link tied to
+  // appfacade.pages.dev (assetlinks.json), so a remote attacker can't forge
+  // a malicious callback URL through this path. State verification stays
+  // centralized in `OAuthCallback.tsx` for the web/SPA path.
   useEffect(() => {
     async function setupDeepLinks() {
       try {

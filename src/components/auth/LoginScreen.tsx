@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { Trans, useTranslation } from 'react-i18next'
 import { ArtyWordmark } from '../shared/PrismMark'
 import { ApiKeyLoginTab } from './ApiKeyLoginTab'
@@ -6,6 +6,7 @@ import { EmailLoginTab } from './EmailLoginTab'
 import { GoogleLoginTab } from './GoogleLoginTab'
 import type { UserSession, AuthMethod } from '../../services/userSession'
 import * as scoped from '../../services/scopedStorage'
+import { clearOAuthState } from '../../services/googleAuth'
 
 type Tab = 'apikey' | 'google' | 'email'
 
@@ -29,6 +30,14 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
   const [activeTab, setActiveTab] = useState<Tab>('apikey')
   const [loading, setLoading] = useState(false)
   const [emailError, setEmailError] = useState('')
+
+  // Drop any stale OAuth state nonce from a previous attempt that the user
+  // abandoned (closed Google tab, killed app mid-redirect…). Without this,
+  // a leftover state would never be cleared and the next attempt could
+  // surface as an unexpected "state mismatch" rejection.
+  useEffect(() => {
+    clearOAuthState()
+  }, [])
 
   // Step 2 for Google/Email: ask for API key after auth
   const [pendingAuth, setPendingAuth] = useState<{

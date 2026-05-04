@@ -47,9 +47,50 @@ export function getRedirectUri(): string {
   return `${window.location.origin}/auth/callback`
 }
 
+// ─────────────────────────────────────────────────────────────
+// OAuth `state` (CSRF protection)
+// Random nonce sent to Google with the auth request and verified at the
+// callback. Prevents an attacker from forging a `/auth/callback?code=…`
+// request that injects their account into the user's session, or from
+// replaying a stolen code in a different browser context. Stored in
+// `sessionStorage` (same pattern as the BUG 24 fix for `pendingAuth`),
+// because React state is destroyed by the OAuth redirect round-trip.
+// ─────────────────────────────────────────────────────────────
+const OAUTH_STATE_KEY = 'arty-oauth-state'
+
+function generateOAuthState(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(24))
+  let bin = ''
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]!)
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+}
+
+/**
+ * Single-use verification of the `state` parameter returned by Google.
+ * Always clears the stored state to prevent replay, even on failure.
+ * Returns false if no state was stored (= we never started a web OAuth
+ * flow via `buildOAuthUrl`) or if the values don't match.
+ */
+export function verifyOAuthState(received: string | null | undefined): boolean {
+  let expected: string | null = null
+  try { expected = sessionStorage.getItem(OAUTH_STATE_KEY) } catch {}
+  try { sessionStorage.removeItem(OAUTH_STATE_KEY) } catch {}
+  if (!expected || !received) return false
+  return expected === received
+}
+
+/** Defensive cleanup: drops any pending OAuth state. Called at LoginScreen
+ * mount and at logout to avoid stale state breaking the next attempt. */
+export function clearOAuthState(): void {
+  try { sessionStorage.removeItem(OAUTH_STATE_KEY) } catch {}
+}
+
 export function buildOAuthUrl(): string {
   const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID
   if (!clientId) throw new Error('VITE_GOOGLE_CLIENT_ID manquant')
+
+  const state = generateOAuthState()
+  try { sessionStorage.setItem(OAUTH_STATE_KEY, state) } catch {}
 
   const params = new URLSearchParams({
     client_id: clientId,
@@ -58,6 +99,7 @@ export function buildOAuthUrl(): string {
     scope: SCOPES,
     access_type: 'offline',
     prompt: 'consent',
+    state,
   })
 
   return `https://accounts.google.com/o/oauth2/v2/auth?${params}`
