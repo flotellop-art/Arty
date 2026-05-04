@@ -141,7 +141,8 @@ export async function checkAllowedUserPeek(
   }
 
   const plan = await resolveUserPlan(env, email)
-  if (plan === 'free') return null
+  // Plan 'free' = OK pour les endpoints peek (status, geocoding, etc.) ;
+  // les proxies IA appliqueront leurs quotas free spécifiques.
   return { email, planType: plan }
 }
 
@@ -167,7 +168,10 @@ export async function checkAllowedUser(
     return await consumeTrialMessage(env, email)
   }
 
-  return null
+  // Plan 'free' : tous les users Google authentifiés sans abonnement payant
+  // ont droit aux quotas free quotidiens (10 Haiku + 5 Mistral). Le proxy
+  // appellera consumeFreeDailyQuota() pour décrémenter le bon compteur.
+  return { email, planType: 'free' }
 }
 
 /**

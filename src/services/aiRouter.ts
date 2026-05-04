@@ -126,6 +126,7 @@ export type ClaudeSubModel = 'claude-haiku-4-5-20251001' | 'claude-sonnet-4-6' |
 
 /**
  * Choisit la déclinaison de Claude la mieux adaptée à la requête :
+ * - Free → Haiku TOUJOURS (le proxy refuse Sonnet/Opus pour ce plan)
  * - Haiku pour les messages courts/triviaux sans données privées ni thinking
  * - Opus pour les rapports stratégiques (Pro uniquement, thinking max)
  * - Sonnet par défaut
@@ -136,6 +137,15 @@ export function selectClaudeSubModel(
   isPrivateData: boolean,
   isPro: boolean
 ): ClaudeSubModel {
+  // Plan free : Haiku uniquement, sans exception. Évite le 403 model_locked
+  // serveur-side. Le plan est mis en cache par usePlanStatus dans
+  // localStorage 'arty-plan-cache' à chaque /api/subscription/status.
+  let cachedPlan: string | null = null
+  try { cachedPlan = localStorage.getItem('arty-plan-cache') } catch {}
+  if (cachedPlan === 'free') {
+    return 'claude-haiku-4-5-20251001'
+  }
+
   // Haiku — short, low-stakes queries (no private data, no thinking needed)
   const isShortTrivial = message.length < 150 && TRIVIAL_CHAT_REGEX.test(message)
   if (!isPrivateData && !thinking.enabled && isShortTrivial) {

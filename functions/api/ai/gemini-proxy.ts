@@ -9,6 +9,7 @@ import {
 } from '../_lib/checkAllowedUser'
 import { checkPremiumCap, premiumCapReachedResponse } from '../_lib/checkPremiumCap'
 import { consumeDailyQuota, recordUsage } from '../_lib/quota'
+import { freeModelLockedResponse } from '../_lib/freeQuota'
 import { createGeminiParser, teeForParsing } from '../_lib/trackUsage'
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUntil }) => {
@@ -52,6 +53,14 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
 
   try {
     const { model, stream, ...body } = await request.json() as { model: string; stream: boolean; [key: string]: unknown }
+
+    // Free : Gemini intégralement verrouillé. Pour l'instant les utilisateurs
+    // free n'ont accès qu'à Claude Haiku et Mistral Small. Si on souhaite
+    // ouvrir Gemini Flash plus tard, il suffira d'ajouter une famille
+    // gemini-flash dans freeQuota.ts et d'appeler consumeFreeDailyQuota ici.
+    if (usingServerKey && userPlan === 'free') {
+      return freeModelLockedResponse(model)
+    }
 
     // Trial : restriction de modèles. Le compteur a déjà été décrémenté par
     // `checkAllowedUser` ci-dessus.

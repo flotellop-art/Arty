@@ -1,4 +1,29 @@
 import type { Env } from '../../env'
+import { parseAllowedEmails } from '../_lib/checkAllowedUser'
+import {
+  FREE_DAILY_LIMITS,
+  peekFreeDailyRemaining,
+  type ModelFamily,
+} from '../_lib/freeQuota'
+
+// Familles de modèles + leurs labels UI. La whitelist d'accès dépend du plan.
+const ALL_FAMILIES = [
+  'claude-haiku',
+  'claude-sonnet',
+  'claude-opus',
+  'mistral-small',
+  'mistral-medium',
+  'gemini-flash',
+  'gemini-pro',
+  'gpt-mini',
+  'gpt-full',
+] as const
+
+type Family = (typeof ALL_FAMILIES)[number]
+
+const FREE_FAMILIES: Family[] = ['claude-haiku', 'mistral-small']
+// Pro/VIP/Subscription débloquent tout sans distinction.
+const PAID_FAMILIES: Family[] = [...ALL_FAMILIES]
 
 interface StatusResponse {
   email: string
@@ -7,6 +32,13 @@ interface StatusResponse {
   current_period_end: string | null
   premium_pack_remaining: number
   has_active_license: boolean
+  // Modèles autorisés / verrouillés pour le frontend (sélecteur de modèle).
+  allowed_families: Family[]
+  locked_families: Family[]
+  // Quotas restants pour les utilisateurs free (par famille). null pour les
+  // plans payants (illimité).
+  daily_remaining: Partial<Record<ModelFamily, number>> | null
+  daily_limits: Partial<Record<ModelFamily, number>> | null
 }
 
 const FREE_RESPONSE: StatusResponse = {
@@ -16,6 +48,10 @@ const FREE_RESPONSE: StatusResponse = {
   current_period_end: null,
   premium_pack_remaining: 0,
   has_active_license: false,
+  allowed_families: FREE_FAMILIES,
+  locked_families: ALL_FAMILIES.filter((f) => !FREE_FAMILIES.includes(f)),
+  daily_remaining: { 'claude-haiku': FREE_DAILY_LIMITS['claude-haiku'], 'mistral-small': FREE_DAILY_LIMITS['mistral-small'] },
+  daily_limits: { 'claude-haiku': FREE_DAILY_LIMITS['claude-haiku'], 'mistral-small': FREE_DAILY_LIMITS['mistral-small'] },
 }
 
 const STATUS_HEADERS = {
@@ -90,8 +126,32 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
   const email = await verifyTokenViaTokeninfo(token)
   if (!email) return jsonStatus(FREE_RESPONSE)
 
+  // ALLOWED_EMAILS = bypass VIP : reflète le runtime de checkAllowedUser pour
+  // que l'UI affiche "VIP · ∞" même quand la ligne D1 dit autre chose
+  // (c'était le bug où Noah voyait "trial" alors qu'il était whitelist VIP).
+  const allowed = parseAllowedEmails(env.ALLOWED_EMAILS)
+  if (allowed.includes(email)) {
+    return jsonStatus({
+      email,
+      plan: 'vip',
+      status: 'active',
+      current_period_end: null,
+      premium_pack_remaining: 0,
+      has_active_license: false,
+      allowed_families: PAID_FAMILIES,
+      locked_families: [],
+      daily_remaining: null,
+      daily_limits: null,
+    })
+  }
+
   if (!env.DB) {
-    return jsonStatus({ ...FREE_RESPONSE, email })
+    const remaining = await peekFreeDailyRemaining(env, email)
+    return jsonStatus({
+      ...FREE_RESPONSE,
+      email,
+      daily_remaining: remaining,
+    })
   }
 
   // Tables may not exist if no Lemon Squeezy webhook has fired yet — treat
@@ -150,6 +210,21 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
     ? 'active'
     : normalizeStatus(sub?.status)
 
+  // Construit l'allowlist de familles + le quota restant. Free → familles
+  // limitées + compteurs KV, payant → tout illimité.
+  const isFree = plan === 'free'
+  const allowedFamilies = isFree ? FREE_FAMILIES : PAID_FAMILIES
+  const lockedFamilies = isFree
+    ? ALL_FAMILIES.filter((f) => !FREE_FAMILIES.includes(f))
+    : []
+  const dailyRemaining = isFree ? await peekFreeDailyRemaining(env, email) : null
+  const dailyLimits = isFree
+    ? {
+        'claude-haiku': FREE_DAILY_LIMITS['claude-haiku'],
+        'mistral-small': FREE_DAILY_LIMITS['mistral-small'],
+      }
+    : null
+
   return jsonStatus({
     email,
     plan,
@@ -157,5 +232,9 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
     current_period_end: sub?.current_period_end ?? null,
     premium_pack_remaining: remaining,
     has_active_license: hasActiveLicense,
+    allowed_families: allowedFamilies,
+    locked_families: lockedFamilies,
+    daily_remaining: dailyRemaining,
+    daily_limits: dailyLimits,
   })
 }

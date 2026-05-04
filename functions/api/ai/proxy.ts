@@ -10,6 +10,11 @@ import {
 } from '../_lib/checkAllowedUser'
 import { checkPremiumCap, premiumCapReachedResponse } from '../_lib/checkPremiumCap'
 import { consumeDailyQuota, recordUsage } from '../_lib/quota'
+import {
+  consumeFreeDailyQuota,
+  freeModelLockedResponse,
+  freeQuotaExhaustedResponse,
+} from '../_lib/freeQuota'
 import { createAnthropicParser, teeForParsing } from '../_lib/trackUsage'
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages'
@@ -110,6 +115,19 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
       modelName = 'claude-haiku-4-5-20251001'
     } catch {
       return trialModelRestrictedResponse()
+    }
+  }
+
+  // Free : Haiku uniquement avec quota 10/jour. Si modèle non-Haiku
+  // demandé → 403 model_locked (le frontend doit auto-forcer Haiku, ce 403
+  // est un filet de sécurité). Si quota épuisé → 429 free_quota_exhausted.
+  if (!isByok && userPlan === 'free') {
+    if (!modelName.toLowerCase().includes('haiku')) {
+      return freeModelLockedResponse(modelName)
+    }
+    const free = await consumeFreeDailyQuota(env, email, modelName)
+    if (!free.allowed) {
+      return freeQuotaExhaustedResponse('claude-haiku', free.limit)
     }
   }
 

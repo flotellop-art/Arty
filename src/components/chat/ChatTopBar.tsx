@@ -4,6 +4,9 @@ import { getStyle, setStyle as saveStyle, STYLE_OPTIONS, type ResponseStyle } fr
 import { getSelectedModel, setSelectedModel, MODEL_OPTIONS, type AIModel } from '../../services/modelSelector'
 import { SettingsGuide } from '../shared/SettingsGuide'
 import { PrismMark } from '../shared/PrismMark'
+import { PlanBadge } from './PlanBadge'
+import { UpgradePromptModal } from './UpgradePromptModal'
+import { usePlanStatus, type ModelFamily } from '../../hooks/usePlanStatus'
 import {
   exportConversation,
   exportConversationMarkdown,
@@ -11,6 +14,16 @@ import {
   buildShareUrl,
 } from '../../services/conversationExport'
 import type { Conversation } from '../../types'
+
+// Mapping provider → famille primaire (la moins chère). Le proxy gère
+// le routage Haiku/Sonnet/Opus dans la famille Claude. Pour le lock UI,
+// on regarde si la famille primaire est dispo dans le plan.
+const PROVIDER_TO_FAMILY: Record<Exclude<AIModel, 'auto'>, ModelFamily> = {
+  claude: 'claude-haiku',
+  mistral: 'mistral-small',
+  gemini: 'gemini-flash',
+  openai: 'gpt-mini',
+}
 
 interface ChatTopBarProps {
   title: string
@@ -25,14 +38,22 @@ type OpenMenu = null | 'style' | 'model'
 
 export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, onOpenSummary }: ChatTopBarProps) {
   const { t } = useTranslation()
+  const planStatus = usePlanStatus()
   const [currentStyle, setCurrentStyle] = useState<ResponseStyle>(getStyle)
   const [currentModel, setCurrentModel] = useState<AIModel>(getSelectedModel)
   const [openMenu, setOpenMenu] = useState<OpenMenu>(null)
   const [showGuide, setShowGuide] = useState(false)
   const [privacyWarning, setPrivacyWarning] = useState<AIModel | null>(null)
+  const [upgradePrompt, setUpgradePrompt] = useState<string | null>(null)
   const [exportMenuOpen, setExportMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
   const exportRef = useRef<HTMLDivElement>(null)
+
+  const isProviderLocked = (id: AIModel): boolean => {
+    if (id === 'auto') return false
+    const family = PROVIDER_TO_FAMILY[id]
+    return planStatus.lockedFamilies.includes(family)
+  }
 
   const styleLabel = (id: ResponseStyle) => t(`chat.tone.${id}`)
   const modelLabel = (id: AIModel) => (id === 'auto' ? t('chat.model.auto') : MODEL_OPTIONS.find(o => o.id === id)?.label ?? id)
@@ -45,6 +66,15 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
   }
 
   const handleModelChange = (model: AIModel) => {
+    // Lock check : si modèle réservé aux Pro et user free → modal upgrade,
+    // pas de changement de selectedModel.
+    if (isProviderLocked(model)) {
+      const label = MODEL_OPTIONS.find((o) => o.id === model)?.label ?? model
+      setUpgradePrompt(label)
+      setOpenMenu(null)
+      return
+    }
+
     // Warn if conversation used Mistral (EU) and user switches to non-EU model
     const hadMistral = usedModels?.includes('mistral')
     const isNonEU = model === 'claude' || model === 'gemini' || model === 'openai'
@@ -210,14 +240,18 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
             )}
 
             {openMenu === 'model' && (
-              <div className="absolute top-full left-0 mt-1 bg-theme-surface rounded-xl shadow-lg border border-theme-border py-1 z-50 min-w-[140px]">
-                {MODEL_OPTIONS.map((opt) => (
+              <div className="absolute top-full left-0 mt-1 bg-theme-surface rounded-xl shadow-lg border border-theme-border py-1 z-50 min-w-[160px]">
+                {MODEL_OPTIONS.map((opt) => {
+                  const locked = isProviderLocked(opt.id)
+                  return (
                   <button
                     key={opt.id}
                     onClick={() => handleModelChange(opt.id)}
                     className={`w-full flex items-center gap-2 px-3 py-2 text-xs transition-colors ${
                       currentModel === opt.id
                         ? 'bg-theme-accent/10 text-theme-accent font-semibold'
+                        : locked
+                        ? 'text-theme-muted/60 hover:bg-theme-ink/[0.03]'
                         : 'text-theme-ink/70 hover:bg-theme-ink/[0.03]'
                     }`}
                   >
@@ -226,13 +260,26 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
                     ) : (
                       <span>{opt.flag}</span>
                     )}
-                    <span>{modelLabel(opt.id)}</span>
+                    <span className="flex-1 text-left">{modelLabel(opt.id)}</span>
+                    {locked && <span className="text-[10px] opacity-70">🔒</span>}
                   </button>
-                ))}
+                  )
+                })}
               </div>
             )}
           </div>
+          {/* Plan badge (Free quotas / Pro ∞) — toujours visible côté droit */}
+          <div className="ml-auto mr-3">
+            <PlanBadge />
+          </div>
       </div>
+
+      {upgradePrompt && (
+        <UpgradePromptModal
+          modelLabel={upgradePrompt}
+          onClose={() => setUpgradePrompt(null)}
+        />
+      )}
 
       {/* Row 2b — actions Résumé / Export / Partager (conditional: hidden when nothing to show) */}
       {(onOpenSummary || conversation) && (

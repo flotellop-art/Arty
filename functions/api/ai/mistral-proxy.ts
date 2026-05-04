@@ -9,6 +9,11 @@ import {
 } from '../_lib/checkAllowedUser'
 import { checkPremiumCap, premiumCapReachedResponse } from '../_lib/checkPremiumCap'
 import { consumeDailyQuota, recordUsage } from '../_lib/quota'
+import {
+  consumeFreeDailyQuota,
+  freeModelLockedResponse,
+  freeQuotaExhaustedResponse,
+} from '../_lib/freeQuota'
 import { createMistralParser, teeForParsing } from '../_lib/trackUsage'
 
 const MISTRAL_API_URL = 'https://api.mistral.ai/v1/chat/completions'
@@ -75,6 +80,18 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
       modelName = 'mistral-small-latest'
     } catch {
       return trialModelRestrictedResponse()
+    }
+  }
+
+  // Free : Mistral Small uniquement avec quota 5/jour. Modèle non-Small
+  // demandé → 403 model_locked. Quota épuisé → 429 free_quota_exhausted.
+  if (usingServerKey && userPlan === 'free') {
+    if (!modelName.toLowerCase().includes('small')) {
+      return freeModelLockedResponse(modelName)
+    }
+    const free = await consumeFreeDailyQuota(env, email, modelName)
+    if (!free.allowed) {
+      return freeQuotaExhaustedResponse('mistral-small', free.limit)
     }
   }
 

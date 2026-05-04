@@ -9,6 +9,7 @@ import {
 } from '../_lib/checkAllowedUser'
 import { checkPremiumCap, premiumCapReachedResponse } from '../_lib/checkPremiumCap'
 import { consumeDailyQuota, recordUsage } from '../_lib/quota'
+import { freeModelLockedResponse } from '../_lib/freeQuota'
 import { createOpenAIParser, teeForParsing } from '../_lib/trackUsage'
 
 const OPENAI_CHAT_URL = 'https://api.openai.com/v1/chat/completions'
@@ -63,6 +64,11 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     }
   } catch {
     // leave fallback
+  }
+
+  // Free : OpenAI intégralement verrouillé (modèles US, coûts élevés).
+  if (usingServerKey && userPlan === 'free') {
+    return freeModelLockedResponse(modelName)
   }
 
   // Trial : restriction de modèles. Compteur déjà décrémenté en amont.
