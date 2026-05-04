@@ -12,6 +12,7 @@ import {
 import { setActiveKeys, clearActiveKeys } from '../services/activeApiKey'
 import { initCrypto } from '../services/crypto'
 import { bootstrapGoogleStorage, logout as googleLogout } from '../services/googleAuth'
+import { wipeFileStorage, bootstrapFileStorage } from '../services/secureFileStorage'
 import * as scoped from '../services/scopedStorage'
 
 type StoredKeys = { anthropic: string; gemini?: string; mistral?: string; openai?: string }
@@ -33,7 +34,7 @@ export function useAuth() {
     if (!keys?.anthropic) return
     setActiveKeys(keys.anthropic, keys.gemini, keys.mistral, keys.openai)
     initCrypto(keys.anthropic)
-      .then(() => bootstrapGoogleStorage())
+      .then(() => Promise.all([bootstrapGoogleStorage(), bootstrapFileStorage()]))
       .catch((err) => {
         console.error('[useAuth] crypto bootstrap failed:', err)
       })
@@ -73,6 +74,7 @@ export function useAuth() {
     // plain-JSON Google tokens into encrypted storage.
     await initCrypto(credentials.anthropicKey)
     await bootstrapGoogleStorage()
+    bootstrapFileStorage().catch(() => {})
 
     // Store API keys as plain JSON for sync reads (getJSON in useEffect)
     // DO NOT encrypt with migrateKey — it overwrites plain with encrypted,
@@ -102,6 +104,9 @@ export function useAuth() {
     // Clear everything synchronously first (both plain + encrypted copies)
     clearActiveKeys()
     googleLogout()
+    // Wipe les fichiers chiffrés du user actif (BUG 41 — éviter qu'un autre
+    // user ne récupère les fichiers du précédent). Async, fire-and-forget.
+    wipeFileStorage().catch(() => {})
     clearActiveSession()
     setCurrentUser(null)
 
@@ -130,6 +135,7 @@ export function useAuth() {
     if (keys?.anthropic) {
       await initCrypto(keys.anthropic)
       await bootstrapGoogleStorage()
+      bootstrapFileStorage().catch(() => {})
       setActiveKeys(keys.anthropic, keys.gemini, keys.mistral, keys.openai)
     }
 

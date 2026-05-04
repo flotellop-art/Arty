@@ -1,7 +1,9 @@
 export interface FileAttachment {
+  id: string // UUID stable, clé dans IndexedDB
   name: string
   type: string // 'application/pdf', 'image/jpeg', etc.
-  data: string // base64
+  data?: string // base64 — présent en RAM avant send, absent après persistance
+  size?: number // octets, après compression éventuelle
 }
 
 export interface Message {

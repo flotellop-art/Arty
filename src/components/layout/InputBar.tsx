@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback, type KeyboardEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { FileAttachment } from '../../types'
+import { generateId } from '../../utils/generateId'
 import { useSpeechRecognition } from '../../hooks/useSpeechRecognition'
 import { isNative } from '../../services/native/platform'
 import { takePhoto, scanDocument } from '../../services/native/camera'
@@ -228,9 +229,11 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
       })
 
       newFiles.push({
+        id: generateId(),
         name: f.name,
         type: f.type || 'application/octet-stream',
         data: base64,
+        size: f.size,
       })
     }
 
@@ -246,6 +249,7 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
     const photo = await takePhoto()
     if (photo) {
       setFiles((prev) => [...prev, {
+        id: generateId(),
         name: `photo_${Date.now()}.${photo.mimeType.split('/')[1] || 'jpeg'}`,
         type: photo.mimeType,
         data: photo.base64,
@@ -257,6 +261,7 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
     const doc = await scanDocument()
     if (doc) {
       setFiles((prev) => [...prev, {
+        id: generateId(),
         name: `scan_${Date.now()}.${doc.mimeType.split('/')[1] || 'jpeg'}`,
         type: doc.mimeType,
         data: doc.base64,
@@ -281,9 +286,11 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
       reader.readAsDataURL(f)
     })
     setFiles((prev) => [...prev, {
+      id: generateId(),
       name: f.name || `photo_${Date.now()}.jpg`,
       type: f.type || 'image/jpeg',
       data: base64,
+      size: f.size,
     }])
     if (cameraInputRef.current) cameraInputRef.current.value = ''
   }

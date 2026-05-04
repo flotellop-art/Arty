@@ -1,5 +1,6 @@
 import { useRef } from 'react'
 import type { FileAttachment, Message } from '../types'
+import { getFile } from '../services/secureFileStorage'
 
 // Detect MIME type from filename if browser didn't set it
 function detectMimeType(name: string, type: string): string {
@@ -19,69 +20,94 @@ function detectMimeType(name: string, type: string): string {
   }
 }
 
-// Build API messages with file attachments as content blocks
-export function buildApiMessages(messages: Message[]): Array<{ role: string; content: string | Array<Record<string, unknown>> }> {
-  return messages.map((m) => {
-    if (!m.files || m.files.length === 0) {
-      return { role: m.role, content: m.content }
-    }
-
-    const contentBlocks: Array<Record<string, unknown>> = []
-
-    for (const file of m.files) {
-      const mime = detectMimeType(file.name, file.type)
-      if (mime === 'application/pdf') {
-        contentBlocks.push({
-          type: 'document',
-          source: { type: 'base64', media_type: 'application/pdf', data: file.data },
-        })
-      } else if (mime.startsWith('image/')) {
-        contentBlocks.push({
-          type: 'image',
-          source: { type: 'base64', media_type: mime, data: file.data },
-        })
-      } else if (mime === 'text/plain' || mime.startsWith('text/')) {
-        // BUG 36: use decodeURIComponent(escape(atob())) for correct UTF-8 (French chars)
-        const decoded = decodeURIComponent(escape(atob(file.data)))
-        contentBlocks.push({ type: 'text', text: `[Contenu de ${file.name}]\n${decoded}` })
-      } else if (mime === 'application/msword' || mime === 'application/vnd.ms-excel') {
-        // .doc/.docx/.xls/.xlsx: binary, cannot decode client-side — inform Claude
-        contentBlocks.push({ type: 'text', text: `[Fichier joint: ${file.name} — format Office binaire, conversion serveur requise]` })
-      } else {
-        contentBlocks.push({ type: 'text', text: `[Fichier joint: ${file.name} (${mime}) — format non lisible directement]` })
-      }
-    }
-
-    contentBlocks.push({ type: 'text', text: m.content })
-    return { role: m.role, content: contentBlocks }
-  })
+// Hydrate files: si f.data manque, le recharger depuis IndexedDB. Si null
+// (blob purgé par OS / quota dépassé), retourner un placeholder qui produira
+// un texte "[Image indisponible — recharge la conversation]" plutôt qu'un crash.
+async function hydrateFiles(files: FileAttachment[]): Promise<FileAttachment[]> {
+  return Promise.all(
+    files.map(async (f) => {
+      if (f.data) return f
+      const loaded = await getFile(f.id)
+      return loaded ?? f // f sans data → traité comme indisponible plus bas
+    })
+  )
 }
 
-export function buildContentBlocks(text: string, files: FileAttachment[]): Array<Record<string, unknown>> {
-  const contentBlocks: Array<Record<string, unknown>> = []
+function buildBlocksFromFiles(files: FileAttachment[]): Array<Record<string, unknown>> {
+  const blocks: Array<Record<string, unknown>> = []
   for (const file of files) {
     const mime = detectMimeType(file.name, file.type)
+    if (!file.data) {
+      blocks.push({ type: 'text', text: `[Fichier '${file.name}' indisponible — recharge la conversation]` })
+      continue
+    }
     if (mime === 'application/pdf') {
-      contentBlocks.push({
+      blocks.push({
         type: 'document',
         source: { type: 'base64', media_type: 'application/pdf', data: file.data },
       })
     } else if (mime.startsWith('image/')) {
-      contentBlocks.push({
+      blocks.push({
         type: 'image',
         source: { type: 'base64', media_type: mime, data: file.data },
       })
     } else if (mime === 'text/plain' || mime.startsWith('text/')) {
       // BUG 36: use decodeURIComponent(escape(atob())) for correct UTF-8 (French chars)
       const decoded = decodeURIComponent(escape(atob(file.data)))
-      contentBlocks.push({ type: 'text', text: `[Contenu de ${file.name}]\n${decoded}` })
+      blocks.push({ type: 'text', text: `[Contenu de ${file.name}]\n${decoded}` })
     } else if (mime === 'application/msword' || mime === 'application/vnd.ms-excel') {
-      // .doc/.docx/.xls/.xlsx: binary, cannot decode client-side — inform Claude
-      contentBlocks.push({ type: 'text', text: `[Fichier joint: ${file.name} — format Office binaire, conversion serveur requise]` })
+      blocks.push({ type: 'text', text: `[Fichier joint: ${file.name} — format Office binaire, conversion serveur requise]` })
+    } else {
+      blocks.push({ type: 'text', text: `[Fichier joint: ${file.name} (${mime}) — format non lisible directement]` })
     }
   }
-  contentBlocks.push({ type: 'text', text: text || 'Analyse ce fichier.' })
-  return contentBlocks
+  return blocks
+}
+
+// Build API messages with file attachments as content blocks.
+// Async because past messages need to hydrate their files from IndexedDB.
+export async function buildApiMessages(
+  messages: Message[]
+): Promise<Array<{ role: string; content: string | Array<Record<string, unknown>> }>> {
+  return Promise.all(
+    messages.map(async (m) => {
+      if (!m.files || m.files.length === 0) {
+        return { role: m.role, content: m.content }
+      }
+      const hydrated = await hydrateFiles(m.files)
+      const blocks = buildBlocksFromFiles(hydrated)
+      blocks.push({ type: 'text', text: m.content })
+      return { role: m.role, content: blocks }
+    })
+  )
+}
+
+// Variant for text-only providers (Mistral, OpenAI, Gemini text-mode):
+// remplace les fichiers attachés par une mention textuelle plutôt que des
+// content blocks binaires. Garde la trace dans l'historique sans envoyer
+// les bytes (qui ne seraient pas traités).
+export async function buildTextOnlyMessages(
+  messages: Message[]
+): Promise<Array<{ role: string; content: string }>> {
+  return messages.map((m) => {
+    if (!m.files || m.files.length === 0) {
+      return { role: m.role, content: m.content }
+    }
+    const fileNotes = m.files.map((f) => `[Fichier joint: ${f.name}]`).join('\n')
+    return { role: m.role, content: `${fileNotes}\n${m.content}`.trim() }
+  })
+}
+
+// Build content blocks for the current outgoing message (files have data
+// in RAM, no IndexedDB roundtrip needed).
+export async function buildContentBlocks(
+  text: string,
+  files: FileAttachment[]
+): Promise<Array<Record<string, unknown>>> {
+  const hydrated = await hydrateFiles(files)
+  const blocks = buildBlocksFromFiles(hydrated)
+  blocks.push({ type: 'text', text: text || 'Analyse ce fichier.' })
+  return blocks
 }
 
 export function useFileAttachments() {

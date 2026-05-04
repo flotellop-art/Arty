@@ -26,6 +26,7 @@ const MessageItem = memo(function MessageItem({ msg, index, onAction, onBranch, 
       {msg.role === 'user' ? (
         <UserBubble
           content={msg.content}
+          files={msg.files}
           pinned={msg.pinned}
           onTogglePin={onTogglePin ? handleTogglePin : undefined}
           onEdit={onEdit && isLastUserMessage ? handleEdit : undefined}
