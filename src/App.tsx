@@ -232,6 +232,17 @@ function AppContent({
   // Open the upgrade screen on demand (Settings button) or after a 403
   // `no_active_subscription` / 429 `premium_cap_reached`. We listen on a
   // window CustomEvent so child components don't need prop drilling.
+  // Demande à Chrome web de garder le storage persistant (BUG 49 — sur web,
+  // localStorage peut être évincé sous pression mémoire/disque, ce qui purge
+  // les tokens Google et force la reconnexion. Avec persist(), Chrome garde
+  // le storage tant que l'utilisateur n'efface pas explicitement les
+  // données. No-op sur Capacitor natif (pas d'éviction).
+  useEffect(() => {
+    if (typeof navigator !== 'undefined' && navigator.storage?.persist) {
+      navigator.storage.persist().catch(() => {})
+    }
+  }, [])
+
   useEffect(() => {
     const open = () => navigate('/upgrade')
     window.addEventListener('arty-open-upgrade', open)

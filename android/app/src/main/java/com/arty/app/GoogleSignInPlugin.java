@@ -42,7 +42,14 @@ public class GoogleSignInPlugin extends Plugin {
             GoogleSignInOptions gso = new GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
                     .requestEmail()
                     .requestProfile()
-                    .requestServerAuthCode(serverClientId)
+                    // BUG 49 — `forceCodeForRefreshToken=true` force Google à
+                    // émettre un NOUVEAU refresh_token à chaque sign-in. Sans
+                    // ce flag, après le 1er consentement Google ne renvoie plus
+                    // que des access_tokens éphémères (1h) — les re-sign-in
+                    // ultérieurs renvoient `refresh_token: undefined`, qui
+                    // écrasait le refresh_token valide du 1er login → logout
+                    // silencieux 30 min plus tard.
+                    .requestServerAuthCode(serverClientId, true)
                     .requestScopes(
                         new Scope("https://www.googleapis.com/auth/gmail.readonly"),
                         new Scope("https://www.googleapis.com/auth/gmail.send"),

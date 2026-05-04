@@ -80,9 +80,13 @@ export async function exchangeCode(code: string): Promise<GoogleTokens> {
   const data = await safeJson(res)
   if (!res.ok) throw new Error((data.error as string) || 'Token exchange failed')
 
+  // BUG 49 — préserver le refresh_token existant si Google n'en renvoie pas
+  // (re-consent récent). Sans ça, le refresh_token valide se ferait écraser
+  // par undefined → logout silencieux après expiration de l'access_token.
+  const existing = getStoredTokens()
   const tokens: GoogleTokens = {
     access_token: data.access_token,
-    refresh_token: data.refresh_token,
+    refresh_token: data.refresh_token || existing?.refresh_token || '',
     expires_at: Date.now() + data.expires_in * 1000,
   }
 
