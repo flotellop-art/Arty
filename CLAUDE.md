@@ -451,6 +451,53 @@ Pour toute tâche **non triviale** (refactor, fix multi-fichiers, audit, debug d
 
 ---
 
+## ROUTINE D'AUDIT SÉCURITÉ
+
+Slash command **`/audit-secu`** (défini dans `.claude/commands/audit-secu.md`) lance un audit complet via 3 agents Explore en parallèle (backend, crypto+auth, frontend+Capacitor) puis produit un rapport priorisé.
+
+**Quand l'invoquer** :
+- Avant chaque release Play Store (obligatoire — RÈGLE 4)
+- Mensuel (routine de maintenance)
+- Après tout refactor majeur sur auth, crypto, ou endpoints serveur
+- Après tout incident sécurité (BUG 42 = exemple historique)
+
+### TODO Sécurité — prochain audit
+
+Dernier audit : **4 mai 2026** (PR #127 + PR #128).
+
+À traiter en priorité quand on relance un cycle sécurité :
+
+**PR à venir (planifiées)** :
+- [ ] **PR 2 — PKCE OAuth** : ajout du `code_verifier` + `code_challenge` au flow Google web. Stratégie en 2 PRs validée le 4 mai (state CSRF d'abord en PR #128, PKCE ensuite). Coût ~2h, confiance 80%. Touche `googleAuth.ts:buildOAuthUrl()` (devient async), `OAuthCallback.tsx`, `functions/api/auth/token.ts` (forward `code_verifier` à Google). Suivre les patterns du callback double (web + deeplink) déjà éprouvés en PR #128.
+- [ ] **Chiffrement des conversations en localStorage** : aujourd'hui en clair (BUG 16 a forcé `saveConversation` synchrone, le chiffrement async cassait l'UI). Solution propre = Web Worker pour chiffrer en arrière-plan sans bloquer le main thread. Coût ~1 jour. Risque = ouverture d'un téléphone volé permet de lire toutes les conversations (mais pas de faire des requêtes — tokens chiffrés).
+
+**HIGH backend non traités (audit du 4 mai)** :
+- [ ] **License expiration jamais vérifiée** dans `functions/api/subscription/status.ts:117-128` — query `licenses WHERE status = 'active'` sans `expires_at > NOW()`. Risque = perte de revenu, pas sécu directe.
+- [ ] **Premium cap non-atomique** dans `functions/api/_lib/checkPremiumCap.ts` — KV décrément vulnérable à la concurrence, quota bypass possible (CAP=150 → 300+).
+- [ ] **DELETE memory sans filtre `WHERE user_id = ?` strict** dans `functions/api/memory/action.ts` — défense en profondeur (déjà protégé par auth mais à durcir).
+
+**MED non traités** :
+- [ ] **PBKDF2 itérations à 100k** dans `crypto.ts:38-44` — OWASP 2024 recommande 200k+. Bump simple (+100ms au login).
+- [ ] **`storeTokens()` réécrit le plain en fallback** après chaque refresh dans `googleAuth.ts:93-108` — devrait laisser le chiffré en place au lieu de revenir en plain.
+- [ ] **Email lowercasing inconsistant** entre `trial/init.ts:41` et `subscription/status.ts:44` — risque de fragmentation user.
+- [ ] **`tokeninfo` au lieu de `userinfo`** pour vérifier les tokens dans `trial/init.ts:34-44` — moins fiable.
+- [ ] **Pas de rate limit sur `/api/auth/token`** — brute force possible sur les codes OAuth volés.
+
+**LOW à nettoyer avant Play Store** :
+- [ ] **Debug `console.log` avec emails** dans `useGoogleAuth.ts:117-195` — wrap en `if (import.meta.env.DEV)`.
+- [ ] **Trial counter peut overflow** silencieusement vers 0 dans `trial/init.ts:51-52`.
+- [ ] **Re-vérifier `webContentsDebuggingEnabled: false`** en prod sur `capacitor.config.ts`.
+
+**Faux positifs / déjà mitigé** (à NE PAS retraiter) :
+- ✅ `secureSetJSON` race (BUG 1) — `useAuth` utilise `setJSON()` direct sur les tokens, race évitée
+- ✅ RECORD_AUDIO (BUG 44) — vérifié présent dans AndroidManifest
+- ✅ exchangeCode timeout — `withTimeout()` enveloppe le fetch
+- ✅ Frontend XSS — `rehype-sanitize` actif, aucun `dangerouslySetInnerHTML`
+- ✅ Service Worker (BUG 45) — registration conditionnelle, cleanup boot, CACHE bumpé
+- ✅ iOS Info.plist — privacy descriptions complètes (BUG 34)
+
+---
+
 ### BUG 42 — 4 vulnérabilités critiques live (avril 2026)
 **Fichiers** : `functions/api/memory/action.ts`, `functions/api/ai/anthropic-proxy.ts`, `functions/api/ai/mistral-proxy.ts`, `functions/api/ai/gemini-proxy.ts`, `functions/api/computer/relay.ts`, `functions/api/_middleware.ts`
 **Problème** : 4 CVEs live sur la prod :
