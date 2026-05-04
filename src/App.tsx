@@ -611,10 +611,19 @@ export default function App() {
     async function setupDeepLinks() {
       try {
         const { App: CapApp } = await import('@capacitor/app')
+        const { verifyOAuthState } = await import('./services/googleAuth')
         CapApp.addListener('appUrlOpen', (event) => {
           const url = new URL(event.url)
           if (url.pathname === '/auth/callback') {
             const code = url.searchParams.get('code')
+            const state = url.searchParams.get('state')
+            // CSRF: same single-use nonce check as the React OAuthCallback
+            // route. verifyOAuthState() always clears the stored value so a
+            // failed deeplink can't be replayed.
+            if (!verifyOAuthState(state)) {
+              console.warn('[App] OAuth state mismatch on deeplink — rejected')
+              return
+            }
             if (code) setDeepLinkCode(code)
           }
         })

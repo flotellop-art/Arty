@@ -11,7 +11,7 @@ import {
 } from '../services/userSession'
 import { setActiveKeys, clearActiveKeys } from '../services/activeApiKey'
 import { initCrypto } from '../services/crypto'
-import { bootstrapGoogleStorage, logout as googleLogout } from '../services/googleAuth'
+import { bootstrapGoogleStorage, logout as googleLogout, clearOAuthState } from '../services/googleAuth'
 import { wipeFileStorage, bootstrapFileStorage } from '../services/secureFileStorage'
 import * as scoped from '../services/scopedStorage'
 
@@ -104,6 +104,15 @@ export function useAuth() {
     // Clear everything synchronously first (both plain + encrypted copies)
     clearActiveKeys()
     googleLogout()
+    // Wipe usage metrics scoped to the leaving user — these are pure
+    // counters/configs with no UX value to keep across a logout, and
+    // they leak usage patterns on a shared device. Conversations and
+    // pinned messages are intentionally kept (user request).
+    scoped.removeItem('cost_history')
+    scoped.removeItem('cost_alert')
+    // Drop any pending OAuth state nonce (e.g. user clicked Google then
+    // logged out before completing the redirect).
+    clearOAuthState()
     // Wipe les fichiers chiffrés du user actif (BUG 41 — éviter qu'un autre
     // user ne récupère les fichiers du précédent). Async, fire-and-forget.
     wipeFileStorage().catch(() => {})

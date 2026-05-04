@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import { verifyOAuthState } from '../../services/googleAuth'
 
 interface OAuthCallbackProps {
   onCallback: (code: string) => Promise<void>
@@ -16,8 +17,18 @@ export function OAuthCallback({ onCallback }: OAuthCallbackProps) {
 
     const code = searchParams.get('code')
     const error = searchParams.get('error')
+    const state = searchParams.get('state')
 
     if (error) {
+      navigate('/', { replace: true })
+      return
+    }
+
+    // CSRF: reject any callback that doesn't carry our `state` nonce.
+    // verifyOAuthState() also single-use-clears the stored value to
+    // prevent replay (even if the check fails).
+    if (!verifyOAuthState(state)) {
+      console.warn('[OAuthCallback] state mismatch — rejecting callback')
       navigate('/', { replace: true })
       return
     }
