@@ -184,7 +184,12 @@ export function useConversation() {
 
       const onToken = (token: string) => streaming.onToken(token, targetId)
 
-      const onDone = () => streaming.onDone(targetId)
+      const onDone = () => {
+        streaming.onDone(targetId)
+        // Signale au PlanBadge de rafraîchir ses compteurs free quotidiens
+        // (haiku/mistral). Pour les payants c'est un no-op côté hook.
+        try { window.dispatchEvent(new CustomEvent('arty-message-sent')) } catch {}
+      }
 
       const onErr = (err: Error) => {
         streaming.onError(err, targetId)
