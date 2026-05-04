@@ -1,7 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { generateId } from '../utils/generateId'
 import * as storage from '../services/storage'
-import i18n from '../i18n'
 
 export function useStreaming(deps: {
   refreshConversations: () => void
@@ -44,7 +43,7 @@ export function useStreaming(deps: {
   }, [])
 
   // Finalize: replace partial with final message
-  const finalize = useCallback((targetId: string, content: string) => {
+  const finalize = useCallback((targetId: string, content: string, interrupted?: boolean) => {
     const conv = storage.getConversation(targetId)
     if (!conv) return
 
@@ -54,6 +53,7 @@ export function useStreaming(deps: {
       role: 'assistant',
       content,
       timestamp: Date.now(),
+      ...(interrupted ? { interrupted: true } : {}),
     })
     conv.updatedAt = Date.now()
     storage.saveConversation(conv)
@@ -132,7 +132,7 @@ export function useStreaming(deps: {
   const onError = useCallback((err: Error, targetId: string) => {
     const content = streamingRef.current?.accumulated
     if (content) {
-      finalize(targetId, content + '\n\n⚠️ *' + i18n.t('errors.streamInterrupted') + '*')
+      finalize(targetId, content, true)
     }
     if (activeIdRef.current === targetId) {
       setIsStreaming(false)
@@ -150,7 +150,7 @@ export function useStreaming(deps: {
     const content = streamingRef.current?.accumulated
     const targetId = streamingRef.current?.targetId
     if (content && targetId) {
-      finalize(targetId, content + '\n\n⚠️ *' + i18n.t('errors.streamStopped') + '*')
+      finalize(targetId, content, true)
     }
     if (abortRef.current) {
       abortRef.current.abort()

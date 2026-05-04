@@ -94,6 +94,7 @@ function AppContent({
     stopStreaming,
     togglePinMessage,
     editAndResend,
+    retryMessage,
   } = conversation
 
   // Show morning brief once per day between 6h-11h
@@ -394,6 +395,7 @@ function AppContent({
               onBranch={handleBranch}
               onTogglePin={handleTogglePin}
               onEdit={editAndResend}
+              onRetry={retryMessage}
               conversations={conversations}
               onSelectConv={handleSelectConversation}
             />
@@ -500,6 +502,7 @@ interface ChatRouteProps {
   onBranch?: (messageIndex: number) => void
   onTogglePin?: (messageId: string) => void
   onEdit?: (messageId: string, newContent: string) => void
+  onRetry?: (messageId: string) => void
   conversations: ReturnType<typeof useConversation>['conversations']
   onSelectConv: (id: string) => void
 }
@@ -522,6 +525,7 @@ function ChatRoute({
   onBranch,
   onTogglePin,
   onEdit,
+  onRetry,
   conversations,
   onSelectConv,
 }: ChatRouteProps) {
@@ -562,6 +566,7 @@ function ChatRoute({
       onBranch={onBranch}
       onTogglePin={onTogglePin}
       onEdit={onEdit}
+      onRetry={onRetry}
       conversations={conversations}
       onSelectConv={onSelectConv}
     />

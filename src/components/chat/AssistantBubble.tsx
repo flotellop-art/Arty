@@ -1,4 +1,5 @@
 import { memo, useCallback, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 import { AssistantAvatar } from './AssistantAvatar'
 import { MarkdownRenderer } from '../shared/MarkdownRenderer'
 
@@ -7,9 +8,12 @@ interface AssistantBubbleProps {
   onAction?: (action: string, params: Record<string, string>) => void
   pinned?: boolean
   onTogglePin?: () => void
+  interrupted?: boolean
+  onRetry?: () => void
 }
 
-export const AssistantBubble = memo(function AssistantBubble({ content, onAction, pinned, onTogglePin }: AssistantBubbleProps) {
+export const AssistantBubble = memo(function AssistantBubble({ content, onAction, pinned, onTogglePin, interrupted, onRetry }: AssistantBubbleProps) {
+  const { t } = useTranslation()
   const bubbleRef = useRef<HTMLDivElement>(null)
 
   const handleClick = useCallback((e: React.MouseEvent) => {
@@ -53,6 +57,19 @@ export const AssistantBubble = memo(function AssistantBubble({ content, onAction
         <MarkdownRenderer content={content} />
         {pinned && (
           <span className="absolute -top-2 -left-3 text-theme-accent text-[10px]">📌</span>
+        )}
+        {interrupted && (
+          <div className="mt-2 flex items-center gap-2 text-xs">
+            <span className="text-amber-600">⚠️ {t('errors.streamInterrupted')}</span>
+            {onRetry && (
+              <button
+                onClick={onRetry}
+                className="px-2 py-0.5 rounded-md border border-theme-border text-theme-muted hover:text-theme-accent hover:border-theme-accent transition-colors"
+              >
+                {t('common.retry')}
+              </button>
+            )}
+          </div>
         )}
       </div>
       {onTogglePin && (

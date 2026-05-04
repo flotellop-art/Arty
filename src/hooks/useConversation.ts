@@ -302,6 +302,36 @@ export function useConversation() {
     [refreshConversations]
   )
 
+  // Retry an interrupted assistant message: find the user message right
+  // before it, drop everything from there on, and resend that user message.
+  // Reuses editAndResend's truncation logic.
+  const retryMessage = useCallback(
+    (assistantMessageId: string) => {
+      const targetId = activeId
+      if (!targetId) return
+      const conv = storage.getConversation(targetId)
+      if (!conv) return
+
+      const idx = conv.messages.findIndex((m) => m.id === assistantMessageId)
+      if (idx <= 0) return
+      // Walk backwards to find the most recent user message
+      let userIdx = idx - 1
+      while (userIdx >= 0 && conv.messages[userIdx]?.role !== 'user') userIdx--
+      if (userIdx < 0) return
+      const userMsg = conv.messages[userIdx]
+      if (!userMsg) return
+
+      const originalFiles = userMsg.files
+      conv.messages = conv.messages.slice(0, userIdx)
+      conv.updatedAt = Date.now()
+      storage.saveConversation(conv)
+      refreshConversations()
+
+      sendMessage(userMsg.content, targetId, originalFiles)
+    },
+    [activeId, refreshConversations, sendMessage]
+  )
+
   // Edit the last message in a conversation and re-send (Feature 12)
   const editAndResend = useCallback(
     (messageId: string, newContent: string) => {
@@ -346,5 +376,6 @@ export function useConversation() {
     setToolHandler,
     togglePinMessage,
     editAndResend,
+    retryMessage,
   }
 }

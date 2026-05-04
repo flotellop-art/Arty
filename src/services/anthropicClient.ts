@@ -282,7 +282,13 @@ async function parseSSEStream(
             break
           }
           case 'content_block_stop':
-            if (currentBlockType === 'text' && currentTextContent) {
+            // Toujours pousser les blocs reçus, même vides — Anthropic conserve
+            // tous les blocs de la réponse côté serveur. Si on en drop un, les
+            // index décalent au tour suivant et l'API rejette avec
+            // « thinking blocks cannot be modified ». La validation d'intégrité
+            // (signature présente, etc.) est faite par assertContentBlocksValid
+            // avant le resend dans la boucle tool-use.
+            if (currentBlockType === 'text') {
               contentBlocks.push({ type: 'text', text: currentTextContent })
             } else if (currentBlockType === 'tool_use' && currentToolInput) {
               const lastTool = contentBlocks[contentBlocks.length - 1]
@@ -293,7 +299,7 @@ async function parseSSEStream(
                   lastTool.input = {}
                 }
               }
-            } else if (currentBlockType === 'thinking' && currentThinkingSignature) {
+            } else if (currentBlockType === 'thinking') {
               contentBlocks.push({
                 type: 'thinking',
                 thinking: currentThinkingText,
@@ -320,6 +326,23 @@ async function parseSSEStream(
   }
 
   return { contentBlocks, inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens }
+}
+
+// ── Content blocks validation ────────────────────────────────────────────────
+
+// Anthropic rejette le resend si un bloc thinking arrive sans signature ou si
+// un bloc redacted_thinking a un data vide. Plutôt que laisser le 400 fuir
+// dans l'UI, on lève une erreur claire qui sera transformée en message
+// utilisateur via formatApiError → onError.
+function assertContentBlocksValid(blocks: ContentBlock[]): void {
+  for (const b of blocks) {
+    if (b.type === 'thinking' && !b.signature) {
+      throw new Error(i18n.t('errors.responseIncomplete'))
+    }
+    if (b.type === 'redacted_thinking' && !b.data) {
+      throw new Error(i18n.t('errors.responseIncomplete'))
+    }
+  }
 }
 
 // ── Tool execution ────────────────────────────────────────────────────────────
@@ -435,6 +458,11 @@ async function runWithTools(
         onDone()
         return
       }
+
+      // Avant de renvoyer l'assistant turn à Anthropic pour exécuter les tools,
+      // s'assurer que chaque bloc est intègre (signature thinking présente,
+      // data redacted_thinking non vide). Si non, on abort la boucle proprement.
+      assertContentBlocksValid(contentBlocks)
 
       const toolResults = await executeToolCalls(contentBlocks, options.onToolCall)
       apiMessages.push({ role: 'assistant', content: contentBlocks })
