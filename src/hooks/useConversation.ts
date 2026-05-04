@@ -9,7 +9,8 @@ import { getOpenAIKey } from '../services/activeApiKey'
 import { detectProvider } from '../services/aiRouter'
 import * as storage from '../services/storage'
 import { useStreaming } from './useStreaming'
-import { useFileAttachments, buildApiMessages, buildContentBlocks } from './useFileAttachments'
+import { useFileAttachments, buildApiMessages, buildContentBlocks, buildTextOnlyMessages } from './useFileAttachments'
+import { putFile } from '../services/secureFileStorage'
 import { detectSuggestedTasks, addTask } from '../services/taskService'
 
 type ToolHandler = (name: string, input: Record<string, unknown>) => Promise<{ result: string; screenshot?: string }>
@@ -106,7 +107,7 @@ export function useConversation() {
   }, [])
 
   const sendMessage = useCallback(
-    (text: string, conversationId?: string, files?: FileAttachment[]) => {
+    async (text: string, conversationId?: string, files?: FileAttachment[]) => {
       const targetId = conversationId ?? activeId
       if (!targetId) return
 
@@ -136,13 +137,36 @@ export function useConversation() {
         return
       }
 
-      const displayContent = files?.length ? `${text}\n\n📎 ${files.map(f => f.name).join(', ')}` : text
+      // Persiste les binaires dans IndexedDB chiffré AVANT de sauvegarder le
+      // Message. On garde uniquement {id, name, type, size} sur le Message —
+      // le binaire est rechargé à la volée par buildApiMessages au moment de
+      // l'envoi API. Si putFile throw (quota dépassé), on continue avec les
+      // fichiers en RAM uniquement (perdus au refresh, mais le tour courant
+      // marche).
+      let persistedFiles: FileAttachment[] | undefined
+      if (files && files.length > 0) {
+        persistedFiles = await Promise.all(
+          files.map(async (f) => {
+            // Si f.data est absent (cas retry/edit : déjà persisté),
+            // on garde la référence telle quelle.
+            if (!f.data) return f
+            try {
+              const id = await putFile(f)
+              return { id, name: f.name, type: f.type, size: f.size }
+            } catch (err) {
+              if (import.meta.env.DEV) console.warn('putFile failed:', err)
+              return f
+            }
+          })
+        )
+      }
 
       const userMessage: Message = {
         id: generateId(),
         role: 'user',
-        content: displayContent,
+        content: text,
         timestamp: Date.now(),
+        ...(persistedFiles ? { files: persistedFiles } : {}),
       }
 
       conv.messages.push(userMessage)
@@ -188,11 +212,7 @@ export function useConversation() {
 
       if (provider === 'hybrid') {
         streaming.setStreamingContent('🔍 Recherche en cours (Gemini)...')
-        geminiResearch(text).then((research) => {
-          const enrichedMessages = conv.messages.map((m) => ({
-            role: m.role,
-            content: m.content,
-          }))
+        Promise.all([geminiResearch(text), buildApiMessages(conv.messages)]).then(([research, enrichedMessages]) => {
           if (research) {
             enrichedMessages[enrichedMessages.length - 1] = {
               role: 'user',
@@ -211,12 +231,14 @@ export function useConversation() {
         }).catch(onErr)
         controller = new AbortController()
       } else if (provider === 'gemini') {
-        const apiMessages = buildApiMessages(conv.messages)
-        controller = streamGeminiMessage(apiMessages as Array<{ role: string; content: string }>, onToken, onDone, onErr, {
+        // Gemini text-only pour l'instant — le multimodal Gemini sera dans
+        // une PR future (formats parts/inlineData différents de Claude).
+        const apiMessages = await buildTextOnlyMessages(conv.messages)
+        controller = streamGeminiMessage(apiMessages, onToken, onDone, onErr, {
           systemPrompt: systemPromptRef.current,
         })
       } else if (provider === 'mistral') {
-        const apiMessages = conv.messages.map((m) => ({ role: m.role, content: m.content }))
+        const apiMessages = await buildTextOnlyMessages(conv.messages)
         controller = streamMistralMessage(apiMessages, onToken, onDone, onErr, {
           systemPrompt: systemPromptRef.current,
           onToolCall: toolHandlerRef.current,
@@ -225,19 +247,22 @@ export function useConversation() {
         // openaiKey peut être null — dans ce cas le client passe par le proxy
         // serveur (/api/ai/openai-proxy) qui utilise env.OPENAI_API_KEY.
         const openaiKey = getOpenAIKey()
-        const apiMessages = conv.messages.map((m) => ({
+        const textOnly = await buildTextOnlyMessages(conv.messages)
+        const apiMessages = textOnly.map((m) => ({
           role: (m.role === 'assistant' ? 'assistant' : 'user') as 'user' | 'assistant',
-          content: typeof m.content === 'string' ? m.content : '',
+          content: m.content,
         }))
         controller = streamOpenAIMessage(apiMessages, openaiKey, onToken, onDone, onErr, {
           systemPrompt: systemPromptRef.current,
         })
       } else {
-        const apiMessages: Array<{ role: string; content: string | Array<Record<string, unknown>> }> = conv.messages.map((m) => {
-          return { role: m.role, content: m.content }
-        })
+        // Claude path — historique complet avec content blocks pour les images
+        // et PDFs des tours précédents (rechargés depuis IndexedDB via
+        // buildApiMessages/hydrateFiles). Plus de bug de fichier oublié au
+        // tour suivant.
+        const apiMessages = await buildApiMessages(conv.messages)
         if (currentFiles && currentFiles.length > 0) {
-          apiMessages[apiMessages.length - 1] = { role: 'user', content: buildContentBlocks(text, currentFiles) }
+          apiMessages[apiMessages.length - 1] = { role: 'user', content: await buildContentBlocks(text, currentFiles) }
           fileAttachments.setPendingFiles(null)
         }
         controller = streamMessage(apiMessages, onToken, onDone, onErr, {

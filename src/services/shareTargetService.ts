@@ -1,5 +1,6 @@
 import { registerPlugin } from '@capacitor/core'
 import type { FileAttachment } from '../types'
+import { generateId } from '../utils/generateId'
 
 interface ShareFile {
   name: string
@@ -58,6 +59,7 @@ export async function addShareListener(
 // can consume it without changes.
 export function shareFileToAttachment(file: ShareFile): FileAttachment {
   return {
+    id: generateId(),
     name: file.name,
     type: file.mimeType,
     data: file.base64,
