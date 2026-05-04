@@ -178,9 +178,17 @@ export function useGoogleAuth() {
           throw new Error('Réponse Google sans access_token — retenter la connexion.')
         }
 
+        // BUG 49 — Google ne ré-émet pas systématiquement de refresh_token
+        // sur un re-sign-in (sauf si forceCodeForRefreshToken=true côté
+        // plugin Java, fix simultané). Si le serveur renvoie undefined ici,
+        // ne JAMAIS écraser un refresh_token valide existant : on garderait
+        // sinon access_token + refresh_token='' → logout silencieux après
+        // expiration de l'access_token (1h).
+        const existing = scoped.getJSON<{ refresh_token?: string }>('google-tokens')
+        const preservedRefresh = data.refresh_token || existing?.refresh_token || ''
         scoped.setJSON('google-tokens', {
           access_token: data.access_token,
-          refresh_token: data.refresh_token || '',
+          refresh_token: preservedRefresh,
           expires_at: Date.now() + (data.expires_in || 3600) * 1000,
         })
 
