@@ -25,6 +25,7 @@ interface ConversationScreenProps {
   onBranch?: (messageIndex: number) => void
   onTogglePin?: (messageId: string) => void
   onEdit?: (messageId: string, newContent: string) => void
+  onRetry?: (messageId: string) => void
   gmail: ReturnType<typeof useGmail>
   drive: ReturnType<typeof useDrive>
   browserActions: ReturnType<typeof useBrowser>
@@ -46,6 +47,7 @@ export function ConversationScreen({
   onBranch,
   onTogglePin,
   onEdit,
+  onRetry,
   gmail,
   drive,
   browserActions,
@@ -81,6 +83,7 @@ export function ConversationScreen({
         onBranch={onBranch}
         onTogglePin={onTogglePin}
         onEdit={onEdit}
+        onRetry={onRetry}
       />
 
       {actionScreenshot && (

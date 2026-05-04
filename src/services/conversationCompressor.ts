@@ -9,9 +9,11 @@ function estimateMessagesTokens(messages: Array<{ role: string; content: string 
   return messages.reduce((total, m) => total + estimateTokens(m.content) + 10, 0)
 }
 
-// Max tokens before compression kicks in (~60k chars = ~15k tokens)
-const COMPRESSION_THRESHOLD = 12000 // tokens
-const KEEP_RECENT = 6 // always keep last N messages uncompressed
+// Sonnet 4.6 a un contexte de 200k tokens : on peut largement attendre 80k
+// avant de compresser. Plus on garde de messages verbatim, plus Claude
+// préserve les chiffres et nuances (devis, calculs, contexte client).
+const COMPRESSION_THRESHOLD = 80000 // tokens
+const KEEP_RECENT = 20 // garde les 20 derniers messages intacts (~10 échanges)
 
 interface ApiMessage {
   role: string
@@ -40,11 +42,12 @@ export async function compressIfNeeded(
   const oldMessages = messages.slice(0, -KEEP_RECENT)
   const recentMessages = messages.slice(-KEEP_RECENT)
 
-  // Build summary of old messages
+  // Build summary of old messages — 2000 chars per message au lieu de 500,
+  // pour donner au résumeur assez de matière sur les longues conversations.
   const oldText = oldMessages.map(m => {
     const content = typeof m.content === 'string' ? m.content : '[contenu multimédia]'
     const role = m.role === 'user' ? 'Utilisateur' : 'Arty'
-    return `${role}: ${content.slice(0, 500)}`
+    return `${role}: ${content.slice(0, 2000)}`
   }).join('\n')
 
   // Ask Claude to summarize (non-streaming, fast)
@@ -57,11 +60,14 @@ export async function compressIfNeeded(
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 1024,
+        // Sonnet plutôt que Haiku : la compression ne se déclenche qu'au-delà
+        // de 80k tokens, donc rare. À ce stade la conversation contient
+        // souvent des chiffres/décisions critiques que Haiku perdait.
+        model: 'claude-sonnet-4-6',
+        max_tokens: 2048,
         messages: [{
           role: 'user',
-          content: `Résume cette conversation en gardant les infos clés (noms, chiffres, décisions, fichiers mentionnés). Maximum 500 mots, en français.\n\n${oldText}`,
+          content: `Résume cette conversation en gardant TOUTES les infos clés : noms, chiffres précis (montants, taux, dates), décisions prises, fichiers mentionnés, contexte client/projet. Préserve les nombres exacts. Maximum 1500 mots, en français.\n\n${oldText}`,
         }],
       }),
     })

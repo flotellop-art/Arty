@@ -11,13 +11,15 @@ interface MessageItemProps {
   onBranch?: (messageIndex: number) => void
   onTogglePin?: (messageId: string) => void
   onEdit?: (messageId: string, newContent: string) => void
+  onRetry?: (messageId: string) => void
   isLastUserMessage?: boolean
 }
 
-const MessageItem = memo(function MessageItem({ msg, index, onAction, onBranch, onTogglePin, onEdit, isLastUserMessage }: MessageItemProps) {
+const MessageItem = memo(function MessageItem({ msg, index, onAction, onBranch, onTogglePin, onEdit, onRetry, isLastUserMessage }: MessageItemProps) {
   const handleBranch = useCallback(() => onBranch?.(index), [onBranch, index])
   const handleTogglePin = useCallback(() => onTogglePin?.(msg.id), [onTogglePin, msg.id])
   const handleEdit = useCallback((newContent: string) => onEdit?.(msg.id, newContent), [onEdit, msg.id])
+  const handleRetry = useCallback(() => onRetry?.(msg.id), [onRetry, msg.id])
 
   return (
     <div className="group relative">
@@ -34,6 +36,8 @@ const MessageItem = memo(function MessageItem({ msg, index, onAction, onBranch, 
           onAction={onAction}
           pinned={msg.pinned}
           onTogglePin={onTogglePin ? handleTogglePin : undefined}
+          interrupted={msg.interrupted}
+          onRetry={onRetry ? handleRetry : undefined}
         />
       )}
       {onBranch && index > 0 && (
@@ -61,9 +65,10 @@ interface MessageListProps {
   onBranch?: (messageIndex: number) => void
   onTogglePin?: (messageId: string) => void
   onEdit?: (messageId: string, newContent: string) => void
+  onRetry?: (messageId: string) => void
 }
 
-export const MessageList = memo(function MessageList({ messages, isStreaming, streamingContent, onAction, onBranch, onTogglePin, onEdit }: MessageListProps) {
+export const MessageList = memo(function MessageList({ messages, isStreaming, streamingContent, onAction, onBranch, onTogglePin, onEdit, onRetry }: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -89,6 +94,7 @@ export const MessageList = memo(function MessageList({ messages, isStreaming, st
           onBranch={onBranch}
           onTogglePin={onTogglePin}
           onEdit={onEdit}
+          onRetry={onRetry}
           isLastUserMessage={index === lastUserIndex && !isStreaming}
         />
       ))}

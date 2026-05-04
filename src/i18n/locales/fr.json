@@ -224,6 +224,7 @@
     "openaiError": "Erreur OpenAI ({{status}})",
     "streamInterrupted": "Réponse interrompue",
     "streamStopped": "Réponse arrêtée",
+    "responseIncomplete": "Réponse incomplète, réessaie ta question.",
     "promptEnhancementFailed": "Impossible d'améliorer le prompt — réessaie."
   },
   "sidebar": {

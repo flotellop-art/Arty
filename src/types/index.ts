@@ -11,6 +11,7 @@ export interface Message {
   timestamp: number
   files?: FileAttachment[]
   pinned?: boolean
+  interrupted?: boolean
 }
 
 export interface Conversation {
