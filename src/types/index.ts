@@ -10,6 +10,11 @@ export interface FactCheckClaim {
   claim: string
   verdict: 'verified' | 'uncertain' | 'wrong'
   explanation: string
+  // Renseignés uniquement pour verdict='wrong' quand le fact-checker connaît
+  // la bonne réponse. Permet d'auto-corriger la réponse affichée via
+  // find/replace de originalText par correction.
+  originalText?: string
+  correction?: string
 }
 
 export interface FactCheckResult {
@@ -17,6 +22,11 @@ export interface FactCheckResult {
   claims: FactCheckClaim[]
   modelLabel: string
   checkedAt: number
+  // Si au moins 1 claim a été corrigé, on stocke le texte original
+  // ici pour permettre à l'UI d'afficher le diff dans le dropdown.
+  // La réponse affichée (Message.content) est déjà le texte corrigé.
+  originalContent?: string
+  appliedCorrections?: number // count des corrections appliquées
 }
 
 export interface Message {

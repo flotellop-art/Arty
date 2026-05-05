@@ -54,14 +54,20 @@ export function selectFactCheckerModel(
   return SENSITIVE_TOPIC_REGEX.test(text) ? 'sonnet' : 'haiku'
 }
 
-const SYSTEM_PROMPT = `Tu es un fact-checker rigoureux. On te donne une question d'utilisateur et une réponse d'IA. Ton job : identifier les claims factuels VÉRIFIABLES (chiffres précis, dates, noms propres, prix, scores, statistiques, citations) et donner ton verdict pour CHACUN.
+const SYSTEM_PROMPT = `Tu es un fact-checker rigoureux. On te donne une question d'utilisateur et une réponse d'IA. Ton job : identifier les claims factuels VÉRIFIABLES (chiffres précis, dates, noms propres, prix, scores, statistiques, citations), donner un verdict pour CHACUN, et PROPOSER UNE CORRECTION quand tu es confiant que c'est faux.
 
 Verdicts possibles :
 - "verified" : tu es très confiant que le claim est exact (info stable, largement connue, ou logiquement déductible)
 - "uncertain" : tu n'as pas assez d'info pour confirmer (recommande à l'utilisateur de vérifier)
-- "wrong" : tu es très confiant que le claim est faux
+- "wrong" : tu es très confiant que le claim est faux ET tu connais la version correcte
 
-Sois CONSERVATEUR : préfère "uncertain" à "verified" quand tu doutes. Ignore les claims évidents ("Paris est en France"), les opinions ("c'est joli"), et les conseils généraux. Concentre-toi sur ce qui est risqué : chiffres, dates, attributions.
+Pour les claims "wrong", AJOUTE deux champs :
+- "originalText" : le passage EXACT de la réponse à corriger (substring verbatim, pour qu'on puisse faire un find/replace)
+- "correction" : le texte qui doit le remplacer dans la réponse
+
+Si tu sais que le claim est faux MAIS tu ne connais pas la bonne réponse, marque-le "uncertain" plutôt que "wrong" et omet "correction".
+
+Sois CONSERVATEUR : préfère "uncertain" à "wrong" quand tu doutes. Ignore les claims évidents ("Paris est en France"), les opinions ("c'est joli"), et les conseils généraux.
 
 Si la réponse contient ZÉRO claim factuel risqué, retourne "claims": [] et "overall_confidence": "high".
 
@@ -69,9 +75,11 @@ RÉPONDS UNIQUEMENT EN JSON VALIDE, sans texte avant ou après, sans backticks, 
 {
   "overall_confidence": "high" | "medium" | "low",
   "claims": [
-    { "claim": "string", "verdict": "verified" | "uncertain" | "wrong", "explanation": "string courte" }
+    { "claim": "string", "verdict": "verified" | "uncertain" | "wrong", "explanation": "string courte", "originalText": "...", "correction": "..." }
   ]
 }
+
+Les champs "originalText" et "correction" ne sont REQUIS que pour les verdicts "wrong" où tu es certain de la bonne réponse.
 
 Échelle overall_confidence :
 - "high" : 0 claim risqué OU tous "verified"
@@ -148,18 +156,28 @@ export async function factCheckResponse(
 
   const rawClaims = Array.isArray(parsed.claims) ? parsed.claims : []
   const claims: FactCheckClaim[] = rawClaims
-    .filter((c): c is { claim?: unknown; verdict?: unknown; explanation?: unknown } =>
-      typeof c === 'object' && c !== null
-    )
+    .filter((c): c is Record<string, unknown> => typeof c === 'object' && c !== null)
     .map((c) => {
       const verdict = c.verdict === 'verified' || c.verdict === 'uncertain' || c.verdict === 'wrong'
         ? c.verdict
         : 'uncertain'
-      return {
+      const claim: FactCheckClaim = {
         claim: String(c.claim || '').slice(0, 500),
         verdict: verdict as Verdict,
         explanation: String(c.explanation || '').slice(0, 500),
       }
+      // Correction proposée — uniquement pour 'wrong' avec originalText et
+      // correction présents. Le fact-checker doit fournir le passage
+      // EXACT à remplacer pour qu'on puisse faire un find/replace fiable.
+      if (verdict === 'wrong' && typeof c.originalText === 'string' && typeof c.correction === 'string') {
+        const orig = c.originalText.trim()
+        const corr = c.correction.trim()
+        if (orig.length > 0 && orig.length < 500 && corr.length > 0 && corr.length < 500) {
+          claim.originalText = orig
+          claim.correction = corr
+        }
+      }
+      return claim
     })
     .filter((c) => c.claim.length > 0)
     .slice(0, 10) // cap à 10 claims max pour éviter une explosion UI
@@ -211,8 +229,29 @@ export async function runFactCheckOnLatest(
   // Skip si déjà fact-checké (idempotent)
   if (assistantMsg.factCheck) return
 
-  const result = await factCheckResponse(userMsg.content, assistantMsg.content, mode)
+  const originalContent = assistantMsg.content
+  const result = await factCheckResponse(userMsg.content, originalContent, mode)
   if (!result) return
+
+  // Applique les corrections trouvées par find/replace direct dans le
+  // contenu. On garde l'original dans factCheck.originalContent pour que
+  // le dropdown puisse afficher le diff.
+  let correctedContent = originalContent
+  let appliedCount = 0
+  for (const c of result.claims) {
+    if (c.verdict === 'wrong' && c.originalText && c.correction) {
+      // Remplacement uniquement si le passage exact est trouvé. Sinon on
+      // n'altère pas la réponse — on laisse le claim flagger via badge.
+      if (correctedContent.includes(c.originalText)) {
+        correctedContent = correctedContent.replace(c.originalText, c.correction)
+        appliedCount++
+      }
+    }
+  }
+  if (appliedCount > 0) {
+    result.originalContent = originalContent
+    result.appliedCorrections = appliedCount
+  }
 
   // Re-lit la conv (peut avoir changé pendant l'await) et update le message
   // exact via son ID.
@@ -220,6 +259,7 @@ export async function runFactCheckOnLatest(
   if (!freshConv) return
   const target = freshConv.messages.find((m) => m.id === assistantMsg.id)
   if (!target) return
+  target.content = correctedContent
   target.factCheck = result
   freshConv.updatedAt = Date.now()
   storage.saveConversation(freshConv)
