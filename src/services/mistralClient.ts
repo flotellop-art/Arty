@@ -8,14 +8,27 @@ import { recordUsage } from './costTracker'
 import i18n from '../i18n'
 
 /**
- * Mistral large pour les requêtes longues ou les tâches qui demandent
- * une vraie capacité (rédaction, analyse, code, traduction). Mistral
- * small pour les échanges courts → moins cher + plus rapide.
+ * Sélection du modèle Mistral selon le plan utilisateur :
+ * - Free / trial → `mistral-small-latest` toujours (le proxy refuse medium
+ *   pour ces plans, ce check côté client évite le 403).
+ * - Payant (subscription/pro/vip) ou EU-only → `mistral-medium-latest`
+ *   (Medium 3.5 unifie reasoning + coding + vision en un seul modèle, deux
+ *   fois moins cher que Sonnet pour des perfs proches sur SWE-Bench).
+ *
+ * Le plan est mis en cache par usePlanStatus dans localStorage
+ * 'arty-plan-cache' à chaque appel à /api/subscription/status.
  */
-export function selectMistralModel(message: string): 'mistral-large-latest' | 'mistral-small-latest' {
-  if (message.length > 200) return 'mistral-large-latest'
-  if (/rédige|explique\s+en\s+détail|analyse|code|script|programme|traduis\s+(ce|le|la)/i.test(message)) {
-    return 'mistral-large-latest'
+export function selectMistralModel(message: string): 'mistral-medium-latest' | 'mistral-small-latest' {
+  let cachedPlan: string | null = null
+  try { cachedPlan = localStorage.getItem('arty-plan-cache') } catch {}
+
+  // Free/trial : Small obligatoire (gating proxy + cap quota free)
+  if (cachedPlan === 'free') return 'mistral-small-latest'
+
+  // Payant : on peut piocher Medium 3.5 quand la requête le justifie
+  if (message.length > 200) return 'mistral-medium-latest'
+  if (/rédige|explique\s+en\s+détail|analyse|code|script|programme|traduis\s+(ce|le|la)|rapport|stratég/i.test(message)) {
+    return 'mistral-medium-latest'
   }
   return 'mistral-small-latest'
 }
@@ -33,8 +46,19 @@ interface MistralStreamOptions {
   onToolCall?: ToolHandler
 }
 
+// Mistral content blocks pour le multimodal (image_url + text). Format
+// OpenAI-compatible — Medium 3.5 a une vision native, donc l'image est
+// passée directement avec un data URL base64. Pas de support PDF natif
+// chez Mistral à ce jour : les PDFs sont convertis en texte côté
+// useFileAttachments avant d'arriver ici.
+export type MistralContentBlock =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string } }
+
+export type MistralMessageContent = string | MistralContentBlock[]
+
 export function streamMistralMessage(
-  messages: Array<{ role: string; content: string }>,
+  messages: Array<{ role: string; content: MistralMessageContent }>,
   onToken: (text: string) => void,
   onDone: () => void,
   onError: (error: Error) => void,
@@ -51,7 +75,7 @@ export function streamMistralMessage(
 
 // OpenAI-format message types for the tool loop
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-type ApiMessage = { role: string; content?: string | null; tool_calls?: any[]; tool_call_id?: string; name?: string }
+type ApiMessage = { role: string; content?: MistralMessageContent | null; tool_calls?: any[]; tool_call_id?: string; name?: string }
 
 interface ToolCall {
   id: string
@@ -60,7 +84,7 @@ interface ToolCall {
 
 async function runMistralStream(
   apiKey: string | null,
-  originalMessages: Array<{ role: string; content: string }>,
+  originalMessages: Array<{ role: string; content: MistralMessageContent }>,
   onToken: (text: string) => void,
   onDone: () => void,
   onError: (error: Error) => void,
@@ -69,7 +93,13 @@ async function runMistralStream(
 ) {
   try {
     const basePrompt = options?.systemPrompt || MISTRAL_SYSTEM
-    const lastUserText = [...originalMessages].reverse().find(m => m.role === 'user')?.content || ''
+    // Récupère le texte du dernier message user pour le routing (location,
+    // sélection du modèle). Si le contenu est multimodal (array), on extrait
+    // les blocs text uniquement.
+    const lastUserMsg = [...originalMessages].reverse().find(m => m.role === 'user')
+    const lastUserText = typeof lastUserMsg?.content === 'string'
+      ? lastUserMsg.content
+      : (lastUserMsg?.content || []).filter((b): b is { type: 'text'; text: string } => b.type === 'text').map(b => b.text).join(' ')
     const locationContext = await buildLocationContext(lastUserText)
     const systemPrompt = basePrompt + locationContext
     const model = selectMistralModel(lastUserText)
