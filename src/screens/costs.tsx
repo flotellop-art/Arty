@@ -10,6 +10,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Capacitor } from '@capacitor/core'
 import {
   buildCSV,
+  EUR_PER_USD,
   formatCost,
   getAlertConfig,
   getCurrentMonthKey,
@@ -17,10 +18,13 @@ import {
   getLastNDays,
   getMonthStats,
   getPreviousMonthKey,
+  normaliseModel,
   setAlertConfig,
   type AlertConfig,
+  type MonthStats,
 } from '../services/costTracker'
 import { MODEL_OPTIONS } from '../services/modelSelector'
+import { fetchMonthlyQuotaStatus, type MonthlyQuotaStatus } from '../services/quotaStatus'
 
 interface CostsScreenProps {
   onBack: () => void
@@ -67,12 +71,47 @@ function shortDay(day: string): string {
   return d && m ? `${d}/${m}` : day
 }
 
+// Convertit la réponse serveur (USD) en MonthStats local (EUR). Permet de
+// réutiliser tel quel le rendu du dashboard, qui était construit pour le
+// shape stocké en localStorage. Les modèles sont normalisés via
+// `normaliseModel` pour éviter les doublons quand le serveur log un id
+// brut (ex: "mistral-large-latest" → "mistral-large").
+function serverToMonthStats(remote: MonthlyQuotaStatus): MonthStats {
+  const by_model: Record<string, MonthStats['by_model'][string]> = {}
+  for (const m of remote.byModel) {
+    const id = normaliseModel(m.model)
+    const existing = by_model[id]
+    const costEur = m.costUsd * EUR_PER_USD
+    if (existing) {
+      existing.input_tokens += m.inputTokens
+      existing.output_tokens += m.outputTokens
+      existing.cost_eur += costEur
+    } else {
+      by_model[id] = {
+        input_tokens: m.inputTokens,
+        output_tokens: m.outputTokens,
+        cost_eur: costEur,
+      }
+    }
+  }
+  const by_day: Record<string, number> = {}
+  for (const [day, costUsd] of Object.entries(remote.byDay)) {
+    by_day[day] = costUsd * EUR_PER_USD
+  }
+  return {
+    total_eur: remote.totalCostUsd * EUR_PER_USD,
+    by_model,
+    by_day,
+  }
+}
+
 export function CostsScreen({ onBack }: CostsScreenProps) {
   const monthKey = getCurrentMonthKey()
 
   // Refresh à chaud : recordUsage() dispatche `cost-updated` à la fin de
-  // chaque stream IA. On bump un tick pour forcer les useMemo à recomputer.
-  // Sans ça, les chiffres restent figés à l'ouverture du dashboard.
+  // chaque stream IA. On bump un tick pour forcer les useMemo à recomputer
+  // ET re-fetch les stats serveur. Sans ça, les chiffres restent figés à
+  // l'ouverture du dashboard.
   const [refreshTick, setRefreshTick] = useState(0)
   useEffect(() => {
     const handler = () => setRefreshTick((n) => n + 1)
@@ -80,15 +119,43 @@ export function CostsScreen({ onBack }: CostsScreenProps) {
     return () => window.removeEventListener('cost-updated', handler)
   }, [])
 
-  const stats = useMemo(() => getMonthStats(monthKey), [monthKey, refreshTick])
+  // Source de vérité primaire : le serveur D1 (table `quota_model`). Les
+  // tokens sont capturés côté proxy depuis le stream → précision exacte vs
+  // facture officielle, et cohérent entre devices. L'historique local
+  // (cost_history) reste comme fallback : pas d'auth Google, BYOK pur, ou
+  // panne réseau.
+  const [serverStatus, setServerStatus] = useState<MonthlyQuotaStatus | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    fetchMonthlyQuotaStatus().then((s) => {
+      if (cancelled) return
+      setServerStatus(s)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [refreshTick])
+
+  const stats = useMemo<MonthStats>(() => {
+    if (serverStatus) return serverToMonthStats(serverStatus)
+    return getMonthStats(monthKey)
+  }, [monthKey, refreshTick, serverStatus])
   const prevStats = useMemo(
     () => getMonthStats(getPreviousMonthKey(monthKey)),
     [monthKey, refreshTick],
   )
   const last7 = useMemo(() => getLastNDays(7), [refreshTick])
   const dailyCosts = useMemo(
-    () => last7.map((day) => ({ day, cost: getDailyCost(day) })),
-    [last7, refreshTick],
+    () =>
+      last7.map((day) => ({
+        day,
+        // Si on a le serveur → utiliser son agrégat journalier (exact).
+        // Sinon → tomber sur l'historique local.
+        cost: serverStatus
+          ? (serverStatus.byDay[day] ?? 0) * EUR_PER_USD
+          : getDailyCost(day),
+      })),
+    [last7, refreshTick, serverStatus],
   )
 
   const [alert, setAlert] = useState<AlertConfig>(() => getAlertConfig())
@@ -215,8 +282,9 @@ export function CostsScreen({ onBack }: CostsScreenProps) {
         <ExportSection onExport={handleExport} disabled={isEmpty} />
 
         <p className="font-display italic text-[11px] text-theme-muted text-center pt-4">
-          Données stockées localement, jamais envoyées à un serveur.
-          Estimation basée sur les tokens réels — précision ~3% vs facture officielle.
+          Source : tokens réels capturés côté serveur (table `quota_model`),
+          fallback historique local si hors-ligne. Précision exacte vs facture
+          officielle.
         </p>
       </div>
     </div>
