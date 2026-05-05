@@ -6,6 +6,19 @@ export interface FileAttachment {
   size?: number // octets, après compression éventuelle
 }
 
+export interface FactCheckClaim {
+  claim: string
+  verdict: 'verified' | 'uncertain' | 'wrong'
+  explanation: string
+}
+
+export interface FactCheckResult {
+  overallConfidence: 'high' | 'medium' | 'low'
+  claims: FactCheckClaim[]
+  modelLabel: string
+  checkedAt: number
+}
+
 export interface Message {
   id: string
   role: 'user' | 'assistant'
@@ -14,6 +27,7 @@ export interface Message {
   files?: FileAttachment[]
   pinned?: boolean
   interrupted?: boolean
+  factCheck?: FactCheckResult
 }
 
 export interface Conversation {

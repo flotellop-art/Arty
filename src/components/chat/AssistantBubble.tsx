@@ -2,6 +2,8 @@ import { memo, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AssistantAvatar } from './AssistantAvatar'
 import { MarkdownRenderer } from '../shared/MarkdownRenderer'
+import { FactCheckBadge } from './FactCheckBadge'
+import type { FactCheckResult } from '../../types'
 
 interface AssistantBubbleProps {
   content: string
@@ -10,9 +12,10 @@ interface AssistantBubbleProps {
   onTogglePin?: () => void
   interrupted?: boolean
   onRetry?: () => void
+  factCheck?: FactCheckResult
 }
 
-export const AssistantBubble = memo(function AssistantBubble({ content, onAction, pinned, onTogglePin, interrupted, onRetry }: AssistantBubbleProps) {
+export const AssistantBubble = memo(function AssistantBubble({ content, onAction, pinned, onTogglePin, interrupted, onRetry, factCheck }: AssistantBubbleProps) {
   const { t } = useTranslation()
   const bubbleRef = useRef<HTMLDivElement>(null)
 
@@ -71,6 +74,7 @@ export const AssistantBubble = memo(function AssistantBubble({ content, onAction
             )}
           </div>
         )}
+        {factCheck && <FactCheckBadge result={factCheck} />}
       </div>
       {onTogglePin && (
         <button
