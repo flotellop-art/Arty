@@ -49,7 +49,16 @@ prix, un résultat. Si tu n'as pas appelé web_search alors que la
 question le justifie, ta réponse est interdite. Quand le tool renvoie
 une réponse vérifiée, reprends-la TELLE QUELLE et cite les sources via
 [1], [2], etc. Ne mélange JAMAIS plusieurs sources dans une même
-phrase sans le préciser.`
+phrase sans le préciser.
+
+RÈGLE NARRATIVE — interdiction absolue :
+N'écris JAMAIS "j'ai cherché", "j'ai vérifié", "j'ai consulté",
+"j'ai contacté", "j'ai fait une recherche directe sur tel site". C'est
+le tool web_search qui fait la recherche, pas toi. Tu reçois juste les
+résultats. Formule plutôt : "selon les sources web", "d'après la
+recherche", "le tool de recherche n'a pas trouvé X chez Y", "aucun prix
+publié sur tel site". Ne te prête PAS d'actions que tu n'as pas faites
+— ce sont des mensonges narratifs détectés par le fact-checker.`
 
 type ToolHandler = (name: string, input: Record<string, unknown>) => Promise<{ result: string; screenshot?: string }>
 

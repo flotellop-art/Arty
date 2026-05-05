@@ -18,22 +18,40 @@ import type { FactCheckResult, FactCheckClaim } from '../types'
 export type Verdict = FactCheckClaim['verdict']
 export type { FactCheckResult, FactCheckClaim }
 
-export type FactCheckMode = 'off' | 'haiku' | 'sonnet'
+export type FactCheckMode = 'off' | 'auto' | 'haiku' | 'sonnet'
 
 const SETTING_KEY = 'fact-check-mode'
 
 export function getFactCheckMode(): FactCheckMode {
   const v = scoped.getItem(SETTING_KEY)
-  if (v === 'off' || v === 'sonnet' || v === 'haiku') return v
-  // Défaut : Haiku pour les payants, off pour les free (cap quota).
+  if (v === 'off' || v === 'sonnet' || v === 'haiku' || v === 'auto') return v
+  // Défaut : 'auto' pour les payants (Haiku rapide / Sonnet sur sujets
+  // sensibles), 'off' pour les free (cap quota).
   let plan: string | null = null
   try { plan = localStorage.getItem('arty-plan-cache') } catch {}
-  return plan === 'free' ? 'off' : 'haiku'
+  return plan === 'free' ? 'off' : 'auto'
 }
 
 export function setFactCheckMode(mode: FactCheckMode): void {
   scoped.setItem(SETTING_KEY, mode)
   try { window.dispatchEvent(new CustomEvent('fact-check-mode-changed', { detail: mode })) } catch {}
+}
+
+// Détecte les sujets "à risque" qui justifient le passage à Sonnet 4.6
+// (plus rigoureux, attrape les mensonges narratifs et sources douteuses).
+// Pour le reste, Haiku 4.5 suffit (3x moins cher, 2x plus rapide).
+//
+// Mots-clés couvrent : finance, santé, juridique, devis pro, médicaments,
+// data techniques précises (puissance kW, taux %, RGE/RT/RE 20XX, etc.).
+const SENSITIVE_TOPIC_REGEX =
+  /\b(prix|tarif|devis|coût|coute|euros?|€|investiss|rendement|taux|crédit|emprunt|prêt|placement|fiscal|impôt|tva|économ|patrimoine|finance|m[ée]dic|sympt|dose|posologie|m[ée]decin|ordonnance|maladie|santé|juridi|avocat|contrat|loi|article\s+\d|tribunal|condamn|jurisprudence|rgpd|kwh?|cv|ampèr|volts?|puissance|garanti|assurance|certificat|norme\s+|RT\s*20\d{2}|RE\s*20\d{2}|RGE)\b/i
+
+export function selectFactCheckerModel(
+  question: string,
+  response: string
+): 'haiku' | 'sonnet' {
+  const text = (question + ' ' + response).toLowerCase()
+  return SENSITIVE_TOPIC_REGEX.test(text) ? 'sonnet' : 'haiku'
 }
 
 const SYSTEM_PROMPT = `Tu es un fact-checker rigoureux. On te donne une question d'utilisateur et une réponse d'IA. Ton job : identifier les claims factuels VÉRIFIABLES (chiffres précis, dates, noms propres, prix, scores, statistiques, citations) et donner ton verdict pour CHACUN.
@@ -67,8 +85,14 @@ export async function factCheckResponse(
 ): Promise<FactCheckResult | null> {
   if (mode === 'off' || !response || response.length < 80) return null
 
-  const model = mode === 'sonnet' ? 'claude-sonnet-4-6' : 'claude-haiku-4-5-20251001'
-  const modelLabel = mode === 'sonnet' ? 'Sonnet 4.6' : 'Haiku 4.5'
+  // Mode 'auto' : route vers Sonnet sur sujets sensibles, Haiku sinon.
+  const effectiveMode: 'haiku' | 'sonnet' =
+    mode === 'auto'
+      ? selectFactCheckerModel(question, response)
+      : mode
+
+  const model = effectiveMode === 'sonnet' ? 'claude-sonnet-4-6' : 'claude-haiku-4-5-20251001'
+  const modelLabel = effectiveMode === 'sonnet' ? 'Sonnet 4.6' : 'Haiku 4.5'
 
   const userMessage = `Question utilisateur :\n${question.slice(0, 2000)}\n\nRéponse à vérifier :\n${response.slice(0, 6000)}`
 

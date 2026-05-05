@@ -390,13 +390,16 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
                 className="text-xs bg-theme-surface border border-theme-border rounded px-2 py-1 text-theme-ink focus:outline-none focus:border-theme-accent shrink-0"
               >
                 <option value="off">Désactivé</option>
-                <option value="haiku">Rapide (Haiku 4.5)</option>
-                <option value="sonnet">Strict (Sonnet 4.6)</option>
+                <option value="auto">Auto (recommandé)</option>
+                <option value="haiku">Toujours rapide (Haiku 4.5)</option>
+                <option value="sonnet">Toujours strict (Sonnet 4.6)</option>
               </select>
             </div>
             {factCheckMode !== 'off' && (
               <p className="font-display italic text-[11px] text-theme-muted/70 mt-2">
-                {factCheckMode === 'haiku'
+                {factCheckMode === 'auto'
+                  ? 'Haiku rapide par défaut, Sonnet strict sur les sujets sensibles (prix, devis, médical, juridique). ~$0.0005-0.0015/message.'
+                  : factCheckMode === 'haiku'
                   ? '~$0.0005/message · ajoute 1-2s après chaque réponse'
                   : '~$0.0015/message · ajoute 3-5s · meilleur sur les nuances'}
               </p>
