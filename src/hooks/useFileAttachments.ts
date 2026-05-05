@@ -82,7 +82,7 @@ export async function buildApiMessages(
   )
 }
 
-// Variant for text-only providers (Mistral, OpenAI, Gemini text-mode):
+// Variant for text-only providers (OpenAI, Gemini text-mode) :
 // remplace les fichiers attachés par une mention textuelle plutôt que des
 // content blocks binaires. Garde la trace dans l'historique sans envoyer
 // les bytes (qui ne seraient pas traités).
@@ -96,6 +96,55 @@ export async function buildTextOnlyMessages(
     const fileNotes = m.files.map((f) => `[Fichier joint: ${f.name}]`).join('\n')
     return { role: m.role, content: `${fileNotes}\n${m.content}`.trim() }
   })
+}
+
+// Variant pour Mistral (Medium 3.5 a une vision native, format OpenAI-like
+// `image_url: {url: 'data:image/...;base64,...'}`). Les PDFs ne sont PAS
+// supportés nativement par Mistral, on les convertit en mention textuelle.
+// Permet aux conversations euOnly d'analyser des images sans passer par
+// Claude/Gemini US.
+export type MistralBlock =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string } }
+
+export async function buildMistralMessages(
+  messages: Message[]
+): Promise<Array<{ role: string; content: string | MistralBlock[] }>> {
+  return Promise.all(
+    messages.map(async (m) => {
+      if (!m.files || m.files.length === 0) {
+        return { role: m.role, content: m.content }
+      }
+      const hydrated = await hydrateFiles(m.files)
+      const blocks: MistralBlock[] = []
+      const textNotes: string[] = []
+      for (const file of hydrated) {
+        const mime = detectMimeType(file.name, file.type)
+        if (mime.startsWith('image/') && file.data) {
+          blocks.push({
+            type: 'image_url',
+            image_url: { url: `data:${mime};base64,${file.data}` },
+          })
+        } else if (file.data && (mime === 'text/plain' || mime.startsWith('text/'))) {
+          // Inline le contenu text dans le prompt pour que Mistral le voit
+          try {
+            const decoded = decodeURIComponent(escape(atob(file.data)))
+            textNotes.push(`[Contenu de ${file.name}]\n${decoded}`)
+          } catch {
+            textNotes.push(`[Fichier ${file.name} non décodable]`)
+          }
+        } else if (mime === 'application/pdf') {
+          // Mistral ne lit pas les PDFs nativement → mention textuelle
+          textNotes.push(`[PDF joint: ${file.name} — Mistral ne lit pas les PDFs nativement, conversion serveur recommandée]`)
+        } else {
+          textNotes.push(`[Fichier joint: ${file.name}]`)
+        }
+      }
+      const fullText = [...textNotes, m.content].filter(Boolean).join('\n')
+      blocks.push({ type: 'text', text: fullText })
+      return { role: m.role, content: blocks }
+    })
+  )
 }
 
 // Build content blocks for the current outgoing message (files have data

@@ -9,7 +9,7 @@ import { getOpenAIKey } from '../services/activeApiKey'
 import { detectProvider } from '../services/aiRouter'
 import * as storage from '../services/storage'
 import { useStreaming } from './useStreaming'
-import { useFileAttachments, buildApiMessages, buildContentBlocks, buildTextOnlyMessages } from './useFileAttachments'
+import { useFileAttachments, buildApiMessages, buildContentBlocks, buildTextOnlyMessages, buildMistralMessages } from './useFileAttachments'
 import { putFile } from '../services/secureFileStorage'
 import { detectSuggestedTasks, addTask } from '../services/taskService'
 
@@ -243,7 +243,11 @@ export function useConversation() {
           systemPrompt: systemPromptRef.current,
         })
       } else if (provider === 'mistral') {
-        const apiMessages = await buildTextOnlyMessages(conv.messages)
+        // Mistral Medium 3.5 a une vision native → on utilise le builder
+        // multimodal pour passer les images en image_url. Indispensable pour
+        // que les conversations euOnly puissent analyser des images sans
+        // sortir d'EU vers Claude/Gemini.
+        const apiMessages = await buildMistralMessages(conv.messages)
         controller = streamMistralMessage(apiMessages, onToken, onDone, onErr, {
           systemPrompt: systemPromptRef.current,
           onToolCall: toolHandlerRef.current,
