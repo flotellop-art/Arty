@@ -31,8 +31,13 @@ export const FactCheckBadge = memo(function FactCheckBadge({ result }: Props) {
   const uncertainCount = result.claims.filter((c) => c.verdict === 'uncertain').length
   const verifiedCount = result.claims.filter((c) => c.verdict === 'verified').length
   const totalRisky = wrongCount + uncertainCount
+  const corrected = result.appliedCorrections || 0
 
   const summary = (() => {
+    if (corrected > 0) {
+      const rest = uncertainCount > 0 ? ` · ${uncertainCount} à vérifier` : ''
+      return `✏️ ${corrected} ${corrected > 1 ? 'corrections appliquées' : 'correction appliquée'}${rest}`
+    }
     if (result.overallConfidence === 'high' && totalRisky === 0) {
       return verifiedCount > 0
         ? `✓ ${verifiedCount} ${verifiedCount > 1 ? 'claims vérifiés' : 'claim vérifié'}`
@@ -45,7 +50,9 @@ export const FactCheckBadge = memo(function FactCheckBadge({ result }: Props) {
   })()
 
   const summaryColor =
-    result.overallConfidence === 'low'
+    corrected > 0
+      ? 'text-blue-700 dark:text-blue-400'
+      : result.overallConfidence === 'low'
       ? 'text-red-700 dark:text-red-400'
       : result.overallConfidence === 'medium'
       ? 'text-amber-700 dark:text-amber-400'
@@ -71,21 +78,39 @@ export const FactCheckBadge = memo(function FactCheckBadge({ result }: Props) {
         <div className="mt-2 pl-3 border-l-2 border-theme-border space-y-2">
           <p className="text-[10px] uppercase tracking-kicker text-theme-muted">
             Vérifié par {result.modelLabel}
+            {corrected > 0 && (
+              <span className="ml-2 text-blue-700 dark:text-blue-400">
+                · {corrected} correction{corrected > 1 ? 's' : ''} appliquée{corrected > 1 ? 's' : ''} dans la réponse
+              </span>
+            )}
           </p>
           {result.claims.length === 0 ? (
             <p className="text-theme-muted italic">Aucun claim factuel risqué identifié.</p>
           ) : (
-            result.claims.map((c, i) => (
-              <div key={i} className="text-theme-ink/80">
-                <div className={`flex items-start gap-1.5 ${VERDICT_STYLE[c.verdict] || ''}`}>
-                  <span className="shrink-0 mt-px">{VERDICT_ICON[c.verdict] || '•'}</span>
-                  <span className="font-medium">{c.claim}</span>
+            result.claims.map((c, i) => {
+              const wasCorrected = c.verdict === 'wrong' && c.originalText && c.correction
+              return (
+                <div key={i} className="text-theme-ink/80">
+                  <div className={`flex items-start gap-1.5 ${VERDICT_STYLE[c.verdict] || ''}`}>
+                    <span className="shrink-0 mt-px">{wasCorrected ? '✏️' : VERDICT_ICON[c.verdict] || '•'}</span>
+                    <span className="font-medium">{c.claim}</span>
+                  </div>
+                  {wasCorrected && (
+                    <div className="ml-5 mt-1 space-y-0.5">
+                      <p className="text-red-700 dark:text-red-400 line-through">
+                        {c.originalText}
+                      </p>
+                      <p className="text-emerald-700 dark:text-emerald-400">
+                        → {c.correction}
+                      </p>
+                    </div>
+                  )}
+                  {c.explanation && (
+                    <p className="ml-5 mt-0.5 text-theme-muted">{c.explanation}</p>
+                  )}
                 </div>
-                {c.explanation && (
-                  <p className="ml-5 mt-0.5 text-theme-muted">{c.explanation}</p>
-                )}
-              </div>
-            ))
+              )
+            })
           )}
         </div>
       )}
