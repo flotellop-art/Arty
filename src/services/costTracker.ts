@@ -11,7 +11,7 @@ import * as scoped from './scopedStorage'
 
 // USD → EUR (taux fixe — pas besoin d'une précision boursière pour
 // estimer un coût mensuel d'API).
-const EUR_PER_USD = 0.92
+export const EUR_PER_USD = 0.92
 
 // $ par 1M tokens (input / output)
 export const MODEL_COSTS: Record<string, { input: number; output: number }> = {

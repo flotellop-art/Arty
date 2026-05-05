@@ -19,7 +19,6 @@ import {
   getLastLocationDebugSnapshot,
   type LocationDebugSnapshot,
 } from '../../services/locationContext'
-import { fetchQuotaStatus, type QuotaStatus } from '../../services/quotaStatus'
 import {
   activateLicense,
   getProLicense,
@@ -64,9 +63,6 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
   const [factCheckMode, setFactCheckModeState] = useState<FactCheckMode>(getFactCheckMode)
   const [showMemoryHistory, setShowMemoryHistory] = useState(false)
   const [showMemoryViewer, setShowMemoryViewer] = useState(false)
-  const [showQuota, setShowQuota] = useState(false)
-  const [quotaStatus, setQuotaStatus] = useState<QuotaStatus | null>(null)
-  const [quotaLoading, setQuotaLoading] = useState(false)
   const [proLicense, setProLicense] = useState<ProLicenseState | null>(getProLicense)
   const [licenseKey, setLicenseKey] = useState('')
   const [licenseEmail, setLicenseEmail] = useState('')
@@ -119,14 +115,6 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
     const fix = await getUserLocation()
     setLocationFix(fix)
     setLocationChecking(false)
-  }
-
-  const openQuotaModal = async () => {
-    setShowQuota(true)
-    setQuotaLoading(true)
-    const status = await fetchQuotaStatus()
-    setQuotaStatus(status)
-    setQuotaLoading(false)
   }
 
   const handleNotifToggle = async () => {
@@ -463,27 +451,9 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
             </button>
           </div>
 
-          {/* Quota journalier par modèle (uniquement pour users whitelistés
-              qui utilisent la clé serveur) */}
-          <div className="border-t border-theme-border pt-5">
-            <button
-              onClick={openQuotaModal}
-              className="w-full flex items-center justify-between text-left"
-            >
-              <div>
-                <p className="font-display text-base text-theme-ink">📊 Mon quota du jour</p>
-                <p className="font-display italic text-xs text-theme-muted mt-0.5">
-                  Appels par modèle et coût estimé
-                </p>
-              </div>
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="text-theme-accent">
-                <path d="M5 3L9 7L5 11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </button>
-          </div>
-
-          {/* Dashboard coûts — local, basé sur les tokens réels capturés
-              côté client (cf. costTracker.ts). */}
+          {/* Dashboard coûts — agrégé serveur (table `quota_model`) avec
+              fallback local. Remplace l'ancien "Mon quota du jour" qui faisait
+              double emploi avec le panel sidebar de l'écran d'accueil. */}
           <div className="border-t border-theme-border pt-5">
             <button
               onClick={() => {
@@ -568,89 +538,6 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
       </div>
       {showMemoryHistory && <MemoryHistoryPanel onClose={() => setShowMemoryHistory(false)} />}
       {showMemoryViewer && <MemoryViewer onClose={() => setShowMemoryViewer(false)} />}
-      {showQuota && (
-        <div
-          className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-theme-ink/50"
-          onClick={() => setShowQuota(false)}
-        >
-          <div
-            className="bg-theme-bg text-theme-ink rounded-sm shadow-xl w-full max-w-md border border-theme-border p-5 space-y-3"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <p className="font-display text-base text-theme-ink">📊 Mon quota du jour</p>
-            {quotaLoading ? (
-              <p className="font-display italic text-xs text-theme-muted">Chargement…</p>
-            ) : quotaStatus ? (
-              <>
-                <p className="font-display italic text-xs text-theme-muted">
-                  {quotaStatus.day} (UTC) — reset à minuit UTC
-                </p>
-                <div className="border border-theme-border rounded-sm p-3 bg-theme-ink/5">
-                  <p className="font-display text-sm text-theme-ink">
-                    <strong>{quotaStatus.total}</strong> / {quotaStatus.limit} appels aujourd'hui
-                  </p>
-                  <div className="mt-2 h-2 bg-theme-ink/10 rounded-sm overflow-hidden">
-                    <div
-                      className="h-full bg-theme-accent transition-all"
-                      style={{
-                        width: `${Math.min(100, (quotaStatus.total / Math.max(1, quotaStatus.limit)) * 100)}%`,
-                      }}
-                    />
-                  </div>
-                  <p className="font-mono text-xs text-theme-ink mt-2">
-                    Coût : ${quotaStatus.totalCostUsd.toFixed(4)} (tokens réels)
-                  </p>
-                </div>
-                {quotaStatus.byModel.length > 0 ? (
-                  <div className="space-y-2">
-                    <p className="font-display text-xs text-theme-muted">Détail par modèle :</p>
-                    {quotaStatus.byModel.map((m) => {
-                      const pct = Math.min(100, (m.count / Math.max(1, m.limit)) * 100)
-                      const nearLimit = pct >= 80
-                      return (
-                        <div key={m.model} className="space-y-0.5">
-                          <div className="flex items-center justify-between font-mono text-xs text-theme-ink">
-                            <span className="truncate pr-2">{m.model}</span>
-                            <span className={nearLimit ? 'text-theme-accent' : ''}>
-                              {m.count} / {m.limit} · ${m.costUsd.toFixed(4)}
-                            </span>
-                          </div>
-                          <div className="h-1.5 bg-theme-ink/10 rounded-sm overflow-hidden">
-                            <div
-                              className={`h-full transition-all ${nearLimit ? 'bg-red-500' : 'bg-theme-accent'}`}
-                              style={{ width: `${pct}%` }}
-                            />
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                ) : (
-                  <p className="font-display italic text-xs text-theme-muted">
-                    Aucun appel facturé aujourd'hui (ou tu utilises une clé BYOK, non comptée).
-                  </p>
-                )}
-                <p className="font-display italic text-[10px] text-theme-muted">
-                  Coûts calculés serveur-side à partir des tokens réels capturés dans chaque stream
-                  (précision ~3%). Facture officielle : Anthropic Console / OpenAI Platform /
-                  Mistral / Google AI Studio.
-                </p>
-              </>
-            ) : (
-              <p className="font-display italic text-xs text-theme-muted">
-                Quota non disponible (tu n'es peut-être pas whitelisté pour la clé serveur, ou tu
-                utilises une clé BYOK).
-              </p>
-            )}
-            <button
-              onClick={() => setShowQuota(false)}
-              className="font-display italic text-xs text-theme-accent hover:underline"
-            >
-              Fermer
-            </button>
-          </div>
-        </div>
-      )}
       {showLocationDebug && (
         <div
           className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-theme-ink/50"

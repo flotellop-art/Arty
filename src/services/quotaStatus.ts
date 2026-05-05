@@ -62,6 +62,9 @@ export interface MonthlyQuotaStatus {
   /** YYYY-MM en UTC. */
   month: string
   byModel: MonthlyModelUsage[]
+  /** Map jour (YYYY-MM-DD UTC) → coût USD agrégé tous modèles ce jour-là.
+   * Vide si le serveur n'a pas pu agréger (le client tombe alors sur l'historique local). */
+  byDay: Record<string, number>
   totalCostUsd: number
   totalInputTokens: number
   totalOutputTokens: number

@@ -55,6 +55,10 @@ export interface MonthlyQuotaStatus {
   /** YYYY-MM in UTC. */
   month: string
   byModel: MonthlyModelUsage[]
+  /** Map jour (YYYY-MM-DD) → coût USD agrégé sur tous modèles ce jour-là.
+   * Permet de tracer le graphique « 7 derniers jours » de la page Coûts
+   * sans se baser sur le cost_history local (qui peut diverger du serveur). */
+  byDay: Record<string, number>
 }
 
 function todayKey(): string {
@@ -294,7 +298,7 @@ export async function getMonthlyQuotaStatus(
   email: string
 ): Promise<MonthlyQuotaStatus> {
   const month = currentMonthKey()
-  const empty: MonthlyQuotaStatus = { month, byModel: [] }
+  const empty: MonthlyQuotaStatus = { month, byModel: [], byDay: {} }
   if (!env.DB) return empty
 
   try {
@@ -335,7 +339,26 @@ export async function getMonthlyQuotaStatus(
       costUsd: (r.cost_usd_micro ?? 0) / 1_000_000,
     }))
 
-    return { month, byModel }
+    // Aggregate by day for the "7 derniers jours" chart on the Costs page.
+    // Same source de vérité que byModel mais groupé sur (day) au lieu de (model).
+    const byDay: Record<string, number> = {}
+    try {
+      const dayRes = await env.DB.prepare(
+        `SELECT day, SUM(COALESCE(cost_usd_micro, 0)) AS cost_usd_micro
+         FROM quota_model
+         WHERE email = ?1 AND day LIKE ?2
+         GROUP BY day`
+      )
+        .bind(email, `${month}-%`)
+        .all<{ day: string; cost_usd_micro: number }>()
+      for (const row of dayRes.results ?? []) {
+        byDay[row.day] = (row.cost_usd_micro ?? 0) / 1_000_000
+      }
+    } catch {
+      // garde byDay vide — le client tombera sur l'historique local
+    }
+
+    return { month, byModel, byDay }
   } catch (err) {
     console.error('quota.getMonthlyQuotaStatus failed', err)
     return empty
