@@ -327,11 +327,30 @@ export async function runFactCheckOnLatest(
       break
     }
   }
-  if (!userMsg) return
+  if (!userMsg) {
+    console.warn('[factChecker] no user msg before assistant idx', lastAssistantIdx)
+    return
+  }
 
   const assistantMsg = conv.messages[lastAssistantIdx]!
-  // Skip si déjà fact-checké (idempotent)
-  if (assistantMsg.factCheck) return
+  // Skip si déjà fact-checké ET ce n'est PAS le placeholder pending
+  // (sinon on ne pourrait jamais finaliser).
+  if (assistantMsg.factCheck && assistantMsg.factCheck.modelLabel !== 'Vérification en cours…') {
+    console.info('[factChecker] already fact-checked, skipping')
+    return
+  }
+
+  // Marqueur PENDING immédiat — visible dans l'UI même si le fact-check
+  // prend 2-5s. Permet à l'utilisateur de voir que la vérif est active
+  // dès la fin du stream. Sera remplacé par le vrai résultat plus bas.
+  assistantMsg.factCheck = {
+    overallConfidence: 'high',
+    claims: [],
+    modelLabel: 'Vérification en cours…',
+    checkedAt: Date.now(),
+  }
+  storage.saveConversation(conv)
+  refreshConversations()
 
   const originalContent = assistantMsg.content
   // Récupère le contexte de recherche capturé pendant la génération
@@ -344,7 +363,26 @@ export async function runFactCheckOnLatest(
   // le fact-check échoue ou si l'IA ne lance pas de search.
   clearSearchContext()
   const result = await factCheckResponse(userMsg.content, originalContent, mode, ctx)
-  if (!result) return
+  if (!result) {
+    console.warn('[factChecker] factCheckResponse returned null')
+    // Update le placeholder pour montrer l'échec à l'user (au lieu de
+    // laisser "Vérification en cours…" éternellement)
+    const conv2 = storage.getConversation(conversationId)
+    if (conv2) {
+      const target2 = conv2.messages.find((m) => m.id === assistantMsg.id)
+      if (target2) {
+        target2.factCheck = {
+          overallConfidence: 'medium',
+          claims: [],
+          modelLabel: '⚠ Fact-check indisponible',
+          checkedAt: Date.now(),
+        }
+        storage.saveConversation(conv2)
+        refreshConversations()
+      }
+    }
+    return
+  }
 
   // Applique les corrections trouvées par find/replace direct dans le
   // contenu. On garde l'original dans factCheck.originalContent pour que
