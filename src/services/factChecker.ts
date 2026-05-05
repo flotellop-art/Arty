@@ -120,6 +120,15 @@ Si tu sais que le claim est faux MAIS tu ne connais pas la bonne réponse (ni da
 
 Sois CONSERVATEUR : préfère "uncertain" à "wrong" quand tu doutes. Ignore les claims évidents ("Paris est en France"), les opinions ("c'est joli"), et les conseils généraux.
 
+URLs ET LIENS — règle stricte :
+- N'ALTÈRE JAMAIS un markdown link [...](URL) sauf si tu es CERTAIN que l'URL est dangereuse (phishing, malware) ou trompeusement attribuée (ex : citée comme "source officielle Apple" alors que c'est un blog).
+- Les domaines suivants sont les domaines de l'app Arty elle-même (deep-links internes vers des features comme les rapports comparatifs, les exports PDF, les conversations partagées) — ne les considère JAMAIS comme suspects ou tiers :
+  * appfacade.pages.dev (toutes routes : /report/, /chat/, /upgrade, etc.)
+  * tryarty.com (toutes routes)
+  * claude-fix-arty-error-vzjfz.appfacade.pages.dev (preview branch)
+  * *.appfacade.pages.dev (previews Cloudflare)
+- Une URL inconnue n'est PAS automatiquement fausse. Préfère "uncertain" plutôt que de la supprimer.
+
 Si la réponse contient ZÉRO claim factuel risqué, retourne "claims": [] et "overall_confidence": "high".
 
 RÉPONDS UNIQUEMENT EN JSON VALIDE, sans texte avant ou après, sans backticks, format strict :
