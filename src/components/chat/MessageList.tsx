@@ -40,6 +40,7 @@ const MessageItem = memo(function MessageItem({ msg, index, onAction, onBranch, 
           onTogglePin={onTogglePin ? handleTogglePin : undefined}
           interrupted={msg.interrupted}
           onRetry={onRetry ? handleRetry : undefined}
+          factCheck={msg.factCheck}
         />
       )}
       {onBranch && index > 0 && (

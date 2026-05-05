@@ -32,6 +32,11 @@ import {
   setEnhancerModel,
   type EnhancerModel,
 } from '../../services/promptEnhancerSettings'
+import {
+  getFactCheckMode,
+  setFactCheckMode,
+  type FactCheckMode,
+} from '../../services/factChecker'
 import { MemoryHistoryPanel } from './MemoryHistoryPanel'
 import { MemoryViewer } from './MemoryViewer'
 import { OrchestratorSync } from './OrchestratorSync'
@@ -56,6 +61,7 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
   const [showLocationDebug, setShowLocationDebug] = useState(false)
   const [enhanceEnabled, setEnhanceEnabled] = useState(false)
   const [enhanceModel, setEnhanceModelState] = useState<EnhancerModel>('haiku')
+  const [factCheckMode, setFactCheckModeState] = useState<FactCheckMode>(getFactCheckMode)
   const [showMemoryHistory, setShowMemoryHistory] = useState(false)
   const [showMemoryViewer, setShowMemoryViewer] = useState(false)
   const [showQuota, setShowQuota] = useState(false)
@@ -172,6 +178,11 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
   const handleEnhanceModelChange = (model: EnhancerModel) => {
     setEnhancerModel(model)
     setEnhanceModelState(model)
+  }
+
+  const handleFactCheckModeChange = (mode: FactCheckMode) => {
+    setFactCheckMode(mode)
+    setFactCheckModeState(mode)
   }
 
   // Close on Escape
@@ -361,6 +372,34 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
                   <option value="mistral">Mistral Small (EU)</option>
                 </select>
               </div>
+            )}
+          </div>
+
+          {/* Fact-checker toggle */}
+          <div className="border-t border-theme-border pt-5">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="font-display text-base text-theme-ink">🔎 Fact-checker</p>
+                <p className="font-display italic text-xs text-theme-muted mt-0.5">
+                  Vérifie les claims factuels de chaque réponse
+                </p>
+              </div>
+              <select
+                value={factCheckMode}
+                onChange={(e) => handleFactCheckModeChange(e.target.value as FactCheckMode)}
+                className="text-xs bg-theme-surface border border-theme-border rounded px-2 py-1 text-theme-ink focus:outline-none focus:border-theme-accent shrink-0"
+              >
+                <option value="off">Désactivé</option>
+                <option value="haiku">Rapide (Haiku 4.5)</option>
+                <option value="sonnet">Strict (Sonnet 4.6)</option>
+              </select>
+            </div>
+            {factCheckMode !== 'off' && (
+              <p className="font-display italic text-[11px] text-theme-muted/70 mt-2">
+                {factCheckMode === 'haiku'
+                  ? '~$0.0005/message · ajoute 1-2s après chaque réponse'
+                  : '~$0.0015/message · ajoute 3-5s · meilleur sur les nuances'}
+              </p>
             )}
           </div>
 

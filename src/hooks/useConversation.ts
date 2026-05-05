@@ -11,6 +11,7 @@ import * as storage from '../services/storage'
 import { useStreaming } from './useStreaming'
 import { useFileAttachments, buildApiMessages, buildContentBlocks, buildTextOnlyMessages, buildMistralMessages } from './useFileAttachments'
 import { putFile } from '../services/secureFileStorage'
+import { runFactCheckOnLatest } from '../services/factChecker'
 import { detectSuggestedTasks, addTask } from '../services/taskService'
 
 type ToolHandler = (name: string, input: Record<string, unknown>) => Promise<{ result: string; screenshot?: string }>
@@ -189,6 +190,11 @@ export function useConversation() {
         // Signale au PlanBadge de rafraîchir ses compteurs free quotidiens
         // (haiku/mistral). Pour les payants c'est un no-op côté hook.
         try { window.dispatchEvent(new CustomEvent('arty-message-sent')) } catch {}
+        // Lance le fact-checker en arrière-plan (1-2s, async, ne bloque
+        // pas l'affichage). Le résultat est attaché à Message.factCheck
+        // et déclenche un re-render via refreshConversations.
+        // No-op si mode='off' (par défaut pour les free users).
+        void runFactCheckOnLatest(targetId, refreshConversations)
       }
 
       const onErr = (err: Error) => {
