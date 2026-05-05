@@ -18,6 +18,51 @@ import type { FactCheckResult, FactCheckClaim } from '../types'
 export type Verdict = FactCheckClaim['verdict']
 export type { FactCheckResult, FactCheckClaim }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Search context — résultats des recherches web faites pendant la génération
+// de la réponse (Mistral via Linkup, Claude via web_search natif Anthropic,
+// Gemini via google_search). Le fact-checker utilise ces sources fraîches
+// pour vérifier les claims plutôt que de se reposer sur son cutoff de
+// connaissance — c'est la différence majeure v1 → v2 du fact-checker.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface SearchContextSource {
+  title: string
+  url: string
+  snippet: string
+}
+
+export interface SearchContext {
+  provider: string
+  query: string
+  // Réponse synthétisée par le provider (Linkup sourcedAnswer)
+  answer?: string
+  // Résultats simples (single-source)
+  results?: SearchContextSource[]
+  // Résultats multi-source (Option A : bricodepot.fr → ..., cedeo.fr → ...)
+  bySource?: Record<string, { answer?: string; results: SearchContextSource[] }>
+}
+
+// Module-level — Arty est mono-user dans un onglet, pas de race possible
+// entre conversations. setSearchContext est appelé par les clients AI au
+// moment de l'appel à un tool de recherche, getSearchContext est lu par
+// runFactCheckOnLatest puis clearSearchContext reset pour le prochain tour.
+let activeSearchContext: SearchContext | null = null
+
+export function setSearchContext(ctx: SearchContext): void {
+  activeSearchContext = ctx
+}
+
+export function getSearchContext(): SearchContext | null {
+  return activeSearchContext
+}
+
+export function clearSearchContext(): void {
+  activeSearchContext = null
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 export type FactCheckMode = 'off' | 'auto' | 'haiku' | 'sonnet'
 
 const SETTING_KEY = 'fact-check-mode'
@@ -54,18 +99,24 @@ export function selectFactCheckerModel(
   return SENSITIVE_TOPIC_REGEX.test(text) ? 'sonnet' : 'haiku'
 }
 
-const SYSTEM_PROMPT = `Tu es un fact-checker rigoureux. On te donne une question d'utilisateur et une réponse d'IA. Ton job : identifier les claims factuels VÉRIFIABLES (chiffres précis, dates, noms propres, prix, scores, statistiques, citations), donner un verdict pour CHACUN, et PROPOSER UNE CORRECTION quand tu es confiant que c'est faux.
+const SYSTEM_PROMPT = `Tu es un fact-checker rigoureux. On te donne une question d'utilisateur, une réponse d'IA à vérifier, ET (si disponible) les SOURCES WEB CONSULTÉES par l'IA pendant sa réponse. Ton job : identifier les claims factuels VÉRIFIABLES (chiffres précis, dates, noms propres, prix, scores, statistiques, citations), donner un verdict pour CHACUN, et PROPOSER UNE CORRECTION quand tu es confiant que c'est faux.
 
 Verdicts possibles :
-- "verified" : tu es très confiant que le claim est exact (info stable, largement connue, ou logiquement déductible)
-- "uncertain" : tu n'as pas assez d'info pour confirmer (recommande à l'utilisateur de vérifier)
-- "wrong" : tu es très confiant que le claim est faux ET tu connais la version correcte
+- "verified" : tu es très confiant que le claim est exact. Si SOURCES présentes, le claim est confirmé par au moins une source. Sinon, info stable connue (ex: "Paris est la capitale de la France").
+- "uncertain" : tu n'as pas assez d'info pour confirmer. Si SOURCES présentes : aucune ne confirme ni ne contredit le claim. Sinon : tu hésites.
+- "wrong" : tu es très confiant que le claim est faux ET tu connais la version correcte. Si SOURCES présentes, tu peux extraire la bonne réponse de leurs snippets.
+
+UTILISATION DES SOURCES (si fournies) :
+Quand des sources web sont fournies, tu DOIS les utiliser comme vérité prioritaire (elles sont fraîches, ton training data peut être obsolète). Pour chaque claim, cherche dans les sources :
+- Si claim explicitement confirmé par 1+ sources → "verified"
+- Si claim explicitement contredit par 1+ sources → "wrong" + extraire la bonne valeur des sources comme "correction"
+- Si claim non mentionné dans les sources → "uncertain" (les sources couvraient juste partiellement le sujet)
 
 Pour les claims "wrong", AJOUTE deux champs :
 - "originalText" : le passage EXACT de la réponse à corriger (substring verbatim, pour qu'on puisse faire un find/replace)
-- "correction" : le texte qui doit le remplacer dans la réponse
+- "correction" : le texte qui doit le remplacer dans la réponse, basé sur les sources si fournies
 
-Si tu sais que le claim est faux MAIS tu ne connais pas la bonne réponse, marque-le "uncertain" plutôt que "wrong" et omet "correction".
+Si tu sais que le claim est faux MAIS tu ne connais pas la bonne réponse (ni dans tes données ni dans les sources), marque-le "uncertain" plutôt que "wrong" et omet "correction".
 
 Sois CONSERVATEUR : préfère "uncertain" à "wrong" quand tu doutes. Ignore les claims évidents ("Paris est en France"), les opinions ("c'est joli"), et les conseils généraux.
 
@@ -86,23 +137,57 @@ Les champs "originalText" et "correction" ne sont REQUIS que pour les verdicts "
 - "medium" : claims "uncertain" présents
 - "low" : au moins 1 "wrong" OU plusieurs "uncertain" critiques`
 
+function formatSearchContext(ctx: SearchContext | null): string {
+  if (!ctx) return ''
+  const parts: string[] = ['\n\nSOURCES WEB CONSULTÉES :', `Provider: ${ctx.provider}`, `Query: ${ctx.query}`]
+  if (ctx.answer) {
+    parts.push(`Réponse synthétisée: ${ctx.answer.slice(0, 2000)}`)
+  }
+  if (ctx.results && ctx.results.length > 0) {
+    parts.push('Sources :')
+    ctx.results.slice(0, 8).forEach((r, i) => {
+      parts.push(`[${i + 1}] ${r.title}\n  URL: ${r.url}\n  Extrait: ${r.snippet.slice(0, 400)}`)
+    })
+  }
+  if (ctx.bySource) {
+    parts.push('Recherche multi-source :')
+    for (const [source, entry] of Object.entries(ctx.bySource).slice(0, 6)) {
+      parts.push(`### ${source}`)
+      if (entry.answer) parts.push(`Synthèse: ${entry.answer.slice(0, 1000)}`)
+      entry.results.slice(0, 4).forEach((r, i) => {
+        parts.push(`  [${i + 1}] ${r.title} — ${r.url}\n    ${r.snippet.slice(0, 300)}`)
+      })
+    }
+  }
+  return parts.join('\n')
+}
+
 export async function factCheckResponse(
   question: string,
   response: string,
-  mode: FactCheckMode = getFactCheckMode()
+  mode: FactCheckMode = getFactCheckMode(),
+  searchContext: SearchContext | null = null
 ): Promise<FactCheckResult | null> {
   if (mode === 'off' || !response || response.length < 80) return null
 
   // Mode 'auto' : route vers Sonnet sur sujets sensibles, Haiku sinon.
+  // ET passer en Sonnet si on a un searchContext riche, car la
+  // comparaison aux sources demande plus de finesse que Haiku.
+  const hasRichContext = searchContext !== null && (
+    !!searchContext.answer ||
+    (searchContext.results && searchContext.results.length > 0) ||
+    !!searchContext.bySource
+  )
   const effectiveMode: 'haiku' | 'sonnet' =
     mode === 'auto'
-      ? selectFactCheckerModel(question, response)
+      ? hasRichContext ? 'sonnet' : selectFactCheckerModel(question, response)
       : mode
 
   const model = effectiveMode === 'sonnet' ? 'claude-sonnet-4-6' : 'claude-haiku-4-5-20251001'
   const modelLabel = effectiveMode === 'sonnet' ? 'Sonnet 4.6' : 'Haiku 4.5'
 
-  const userMessage = `Question utilisateur :\n${question.slice(0, 2000)}\n\nRéponse à vérifier :\n${response.slice(0, 6000)}`
+  const sourcesBlock = formatSearchContext(searchContext)
+  const userMessage = `Question utilisateur :\n${question.slice(0, 2000)}\n\nRéponse à vérifier :\n${response.slice(0, 6000)}${sourcesBlock}`
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -230,7 +315,16 @@ export async function runFactCheckOnLatest(
   if (assistantMsg.factCheck) return
 
   const originalContent = assistantMsg.content
-  const result = await factCheckResponse(userMsg.content, originalContent, mode)
+  // Récupère le contexte de recherche capturé pendant la génération
+  // (Mistral via setSearchContext dans executeMistralWebSearch). Permet
+  // au fact-checker de comparer les claims aux SOURCES RÉELLES plutôt
+  // que de se reposer sur son cutoff de connaissance — c'est la
+  // différence v1 → v2.
+  const ctx = getSearchContext()
+  // On clear immédiatement pour ne pas pollluer le prochain message si
+  // le fact-check échoue ou si l'IA ne lance pas de search.
+  clearSearchContext()
+  const result = await factCheckResponse(userMsg.content, originalContent, mode, ctx)
   if (!result) return
 
   // Applique les corrections trouvées par find/replace direct dans le
