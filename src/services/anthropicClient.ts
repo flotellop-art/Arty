@@ -407,6 +407,9 @@ async function runWithTools(
     const isPrivateData = PRIVATE_DATA_TRIGGERS.some((r) => r.test(lastUserText))
     const isPro = isProActivated()
     const ANTHROPIC_MODEL = selectClaudeSubModel(lastUserText, thinking, isPrivateData, isPro)
+    // Notifie l'UI du modèle exact appelé pour qu'elle puisse l'afficher
+    // sous le sélecteur (ChatTopBar > ModelDescriptor).
+    try { window.dispatchEvent(new CustomEvent('arty-model-used', { detail: { model: ANTHROPIC_MODEL, provider: 'claude' } })) } catch {}
     const locationContext = await buildLocationContext(lastUserText)
 
     const baseSystemText = options?.systemPrompt || SYSTEM_PROMPT

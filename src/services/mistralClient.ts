@@ -5,6 +5,7 @@ import { TOOLS } from './toolDefinitions'
 import { convertToolsToOpenAI } from './tools/openaiFormat'
 import { buildLocationContext } from './locationContext'
 import { recordUsage } from './costTracker'
+import { dispatchModelUsed } from './modelLabels'
 import i18n from '../i18n'
 
 /**
@@ -103,6 +104,7 @@ async function runMistralStream(
     const locationContext = await buildLocationContext(lastUserText)
     const systemPrompt = basePrompt + locationContext
     const model = selectMistralModel(lastUserText)
+    dispatchModelUsed({ model, provider: 'mistral' })
 
     // Build messages in OpenAI format
     const apiMessages: ApiMessage[] = [

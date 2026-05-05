@@ -7,6 +7,7 @@ import { PrismMark } from '../shared/PrismMark'
 import { PlanBadge } from './PlanBadge'
 import { UpgradePromptModal } from './UpgradePromptModal'
 import { usePlanStatus, type ModelFamily } from '../../hooks/usePlanStatus'
+import { formatModelName, type ModelUsedEvent } from '../../services/modelLabels'
 import {
   exportConversation,
   exportConversationMarkdown,
@@ -45,9 +46,22 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
   const [showGuide, setShowGuide] = useState(false)
   const [privacyWarning, setPrivacyWarning] = useState<AIModel | null>(null)
   const [upgradePrompt, setUpgradePrompt] = useState<string | null>(null)
+  const [lastUsedModel, setLastUsedModel] = useState<string | null>(null)
   const [exportMenuOpen, setExportMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
   const exportRef = useRef<HTMLDivElement>(null)
+
+  // Écoute le dernier modèle effectivement appelé (dispatché par les
+  // clients AI avant l'envoi). Permet d'afficher "Mistral Medium 3.5" sous
+  // le sélecteur, plutôt que juste "Mistral" générique.
+  useEffect(() => {
+    const onModelUsed = (e: Event) => {
+      const detail = (e as CustomEvent<ModelUsedEvent>).detail
+      if (detail?.model) setLastUsedModel(detail.model)
+    }
+    window.addEventListener('arty-model-used', onModelUsed)
+    return () => window.removeEventListener('arty-model-used', onModelUsed)
+  }, [])
 
   const isProviderLocked = (id: AIModel): boolean => {
     if (id === 'auto') return false
@@ -273,6 +287,15 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
             <PlanBadge />
           </div>
       </div>
+
+      {/* Sous-titre : modèle exact du dernier appel (ex. "Mistral Medium 3.5").
+          Permet de vérifier en un coup d'œil ce qui a réellement répondu,
+          sans aller dans D1 ou DevTools. */}
+      {lastUsedModel && (
+        <div className="px-3 pb-1 text-[10px] font-sans uppercase tracking-kicker text-theme-muted/70">
+          Dernier appel : {formatModelName(lastUsedModel)}
+        </div>
+      )}
 
       {upgradePrompt && (
         <UpgradePromptModal
