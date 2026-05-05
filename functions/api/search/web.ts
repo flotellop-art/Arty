@@ -14,6 +14,14 @@ import { checkAllowedUserPeek, isTrialExpired } from '../_lib/checkAllowedUser'
 interface SearchRequest {
   query: string
   maxResults?: number
+  // Liste optionnelle de domaines à interroger SÉPARÉMENT (ex:
+  // ["bricodepot.fr", "cedeo.fr"]). Quand fournie, le proxy fait un appel
+  // par source avec l'opérateur `site:`, agrège, et retourne les résultats
+  // organisés par source — pour les requêtes de comparaison où une
+  // synthèse globale perd l'attribution. C'est le fix Option A après que
+  // Mistral ait halluciné en mélangeant les revendeurs sur un comparatif
+  // PAC (mai 2026).
+  sources?: string[]
 }
 
 interface NormalisedResult {
@@ -22,7 +30,8 @@ interface NormalisedResult {
   snippet: string
 }
 
-interface SearchResponse {
+// Réponse pour 1 source unique (cas standard, ou Brave).
+interface SingleSourceResponse {
   provider: 'linkup' | 'brave'
   // Réponse synthétisée par le provider (Linkup uniquement). Quand présent,
   // c'est la donnée la plus fiable à injecter dans le contexte Mistral —
@@ -32,6 +41,16 @@ interface SearchResponse {
   query: string
 }
 
+// Réponse multi-source (Option A). Chaque source est une clé du dict avec
+// SA propre answer + sources, garantissant l'attribution per-source.
+interface MultiSourceResponse {
+  provider: 'linkup' | 'brave'
+  query: string
+  bySource: Record<string, { answer?: string; results: NormalisedResult[] }>
+}
+
+type SearchResponse = SingleSourceResponse | MultiSourceResponse
+
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   // Auth obligatoire — anti-relais anonyme (RÈGLE 6 / CRIT-4).
   const user = await checkAllowedUserPeek(request, env)
@@ -39,7 +58,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     return Response.json({ error: 'Authentication required' }, { status: 401 })
   }
 
-  const { query, maxResults = 5 } = (await request.json()) as SearchRequest
+  const { query, maxResults = 5, sources } = (await request.json()) as SearchRequest
   if (!query || typeof query !== 'string' || query.length < 2) {
     return Response.json({ error: 'Query missing or too short' }, { status: 400 })
   }
@@ -47,6 +66,48 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   const provider: 'linkup' | 'brave' = (env.SEARCH_PROVIDER as 'linkup' | 'brave') || 'linkup'
 
   try {
+    // Mode multi-source (Option A) — appels parallèles avec opérateur site:
+    // pour chaque domaine demandé. Garantit une réponse par source distincte
+    // au lieu d'une synthèse globale qui mélange l'attribution.
+    if (sources && sources.length > 0) {
+      const cleaned = sources
+        .map((s) => s.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, ''))
+        .filter((s) => /^[a-z0-9.-]+\.[a-z]{2,}$/.test(s))
+        .slice(0, 6) // cap à 6 sources max pour éviter d'exploser le quota Linkup
+
+      const perSource = await Promise.all(
+        cleaned.map(async (source) => {
+          const sourcedQuery = `${query} site:${source}`
+          try {
+            const linkup = await searchLinkup(env.LINKUP_API_KEY, sourcedQuery, maxResults)
+            return { source, answer: linkup.answer, results: linkup.results }
+          } catch (err) {
+            return {
+              source,
+              answer: undefined,
+              results: [],
+              error: err instanceof Error ? err.message : 'search failed',
+            }
+          }
+        })
+      )
+
+      const bySource: MultiSourceResponse['bySource'] = {}
+      for (const r of perSource) {
+        bySource[r.source] = { answer: r.answer, results: r.results }
+      }
+      const response: MultiSourceResponse = { provider, query, bySource }
+      return Response.json(response, {
+        status: 200,
+        headers: {
+          'content-type': 'application/json',
+          'x-search-provider': provider,
+          'x-search-mode': 'multi-source',
+        },
+      })
+    }
+
+    // Mode standard — une seule recherche
     let answer: string | undefined
     let results: NormalisedResult[]
     if (provider === 'brave') {
@@ -56,7 +117,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
       answer = linkupResp.answer
       results = linkupResp.results
     }
-    const response: SearchResponse = { provider, answer, results, query }
+    const response: SingleSourceResponse = { provider, answer, results, query }
     return Response.json(response, {
       status: 200,
       headers: {

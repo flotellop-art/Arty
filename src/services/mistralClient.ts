@@ -102,13 +102,13 @@ async function executeMistralWebSearch(args: Record<string, unknown>): Promise<{
   const query = String(args.query || '').trim()
   if (!query) return { result: 'Erreur: paramètre `query` manquant.' }
   const maxResults = typeof args.maxResults === 'number' ? Math.min(10, Math.max(1, args.maxResults)) : 5
+  const sources = Array.isArray(args.sources)
+    ? (args.sources as unknown[]).filter((s): s is string => typeof s === 'string').slice(0, 6)
+    : undefined
 
   const googleToken = await getValidAccessToken()
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   if (googleToken) headers['x-google-token'] = googleToken
-  // checkAllowedUserPeek attend un Authorization header pour identifier
-  // l'utilisateur. Comme ce proxy partage la même logique, on envoie aussi
-  // le Bearer token.
   if (googleToken) headers['Authorization'] = `Bearer ${googleToken}`
 
   let response: Response
@@ -116,7 +116,7 @@ async function executeMistralWebSearch(args: Record<string, unknown>): Promise<{
     response = await fetch(apiUrl('/api/search/web'), {
       method: 'POST',
       headers,
-      body: JSON.stringify({ query, maxResults }),
+      body: JSON.stringify({ query, maxResults, ...(sources ? { sources } : {}) }),
     })
   } catch (err) {
     return { result: `Erreur réseau de recherche : ${err instanceof Error ? err.message : 'inconnue'}` }
@@ -127,23 +127,47 @@ async function executeMistralWebSearch(args: Record<string, unknown>): Promise<{
     return { result: `Recherche échouée (${response.status}) : ${body.slice(0, 200)}` }
   }
 
-  const data = (await response.json()) as {
-    provider: string
-    answer?: string
-    results: Array<{ title: string; url: string; snippet: string }>
-  }
+  const data = (await response.json()) as
+    | {
+        provider: string
+        answer?: string
+        results: Array<{ title: string; url: string; snippet: string }>
+      }
+    | {
+        provider: string
+        bySource: Record<string, { answer?: string; results: Array<{ title: string; url: string; snippet: string }> }>
+      }
 
-  // Notifie l'UI du provider qui a répondu (Linkup ou Brave) — le badge
-  // sous le sélecteur affichera "🔍 Linkup" en plus du modèle.
+  // Notifie l'UI du provider qui a répondu (Linkup ou Brave).
   try {
     window.dispatchEvent(new CustomEvent('arty-search-used', { detail: { provider: data.provider } }))
   } catch {}
 
-  // Linkup en mode 'sourcedAnswer' renvoie une réponse synthétisée +
-  // sources. On donne LA RÉPONSE en premier au modèle pour qu'il la
-  // reprenne directement plutôt que de re-parser des snippets bruts (cas
-  // de l'hallucination sur le score OL-Rennes où Mistral mélangeait les
-  // résultats individuels).
+  // Multi-source response (Option A) : retour structuré par source avec
+  // attribution garantie. On formate de façon à ce que Mistral voie clairement
+  // "voici ce qu'il y a chez X / chez Y / chez Z" sans risque de mélanger.
+  if ('bySource' in data) {
+    const sections: string[] = []
+    for (const [source, entry] of Object.entries(data.bySource)) {
+      if (entry.answer) {
+        sections.push(`### Chez ${source}\n${entry.answer}`)
+      } else if (entry.results.length > 0) {
+        const refs = entry.results
+          .map((r) => `- ${r.title}\n  ${r.snippet}\n  Source: ${r.url}`)
+          .join('\n')
+        sections.push(`### Chez ${source}\n${refs}`)
+      } else {
+        sections.push(`### Chez ${source}\nAucun résultat pertinent.`)
+      }
+    }
+    return {
+      result:
+        `Recherche multi-source (${data.provider}) pour "${query}" :\n\n${sections.join('\n\n')}\n\n` +
+        `IMPORTANT : chaque section ci-dessus correspond À UNE SOURCE PRÉCISE. NE MÉLANGE JAMAIS les données entre sources. Si une source dit X et une autre Y, mentionne les deux. Cite via [Brico Dépôt: prix X], [Cedeo: prix Y], etc.`,
+    }
+  }
+
+  // Single-source — Linkup `sourcedAnswer` ou Brave snippets bruts.
   const sourcesBlock = data.results && data.results.length > 0
     ? '\n\nSources:\n' + data.results.map((r, i) => `[${i + 1}] ${r.title} — ${r.url}`).join('\n')
     : ''
@@ -156,8 +180,6 @@ async function executeMistralWebSearch(args: Record<string, unknown>): Promise<{
     }
   }
 
-  // Fallback (Brave ou Linkup sans réponse synthétisée) : on injecte les
-  // snippets bruts. Le modèle doit les parser lui-même — moins fiable.
   if (!data.results || data.results.length === 0) {
     return { result: `Aucun résultat trouvé pour "${query}".` }
   }
@@ -211,12 +233,19 @@ async function runMistralStream(
         type: 'function' as const,
         function: {
           name: 'web_search',
-          description: 'Recherche web en temps réel. À utiliser dès que la requête de l\'utilisateur dépend de données récentes (actualité, prix, événements, sorties produits, données 2026+) que tu ne peux pas connaître par toi-même.',
+          description: `Recherche web en temps réel. OBLIGATOIRE pour toute donnée récente (actualité, prix, événements, sorties produits, scores sportifs, météo, données 2025+).
+
+Pour les COMPARAISONS multi-sites/multi-revendeurs (ex: "compare prix X chez Brico Dépôt, Cedeo, Mr Bricolage"), tu DOIS utiliser le paramètre 'sources' avec la liste des domaines (ex: ["bricodepot.fr", "cedeo.fr", "mrbricolage.fr"]). Le serveur fait UN APPEL PAR SOURCE et te retourne les résultats organisés par source — l'attribution est ainsi garantie. NE FAIS JAMAIS une seule recherche générique pour comparer plusieurs sources : tu mélangeras inévitablement les données.`,
           parameters: {
             type: 'object',
             properties: {
-              query: { type: 'string', description: 'La requête à rechercher, en français de préférence' },
-              maxResults: { type: 'integer', description: 'Nombre max de résultats (défaut 5, max 10)' },
+              query: { type: 'string', description: 'La requête à rechercher (ex: "prix Daikin Altherma 3"). PAS d\'opérateur site: ici — utilise le paramètre `sources` à la place.' },
+              maxResults: { type: 'integer', description: 'Nombre max de résultats par source (défaut 5, max 10)' },
+              sources: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'OBLIGATOIRE pour les comparaisons multi-sites : liste des domaines à interroger séparément. Ex: ["bricodepot.fr", "cedeo.fr"]. Le serveur fait un appel par source. Cap à 6 sources max.',
+              },
             },
             required: ['query'],
           },
