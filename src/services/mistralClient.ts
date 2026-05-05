@@ -6,6 +6,7 @@ import { convertToolsToOpenAI } from './tools/openaiFormat'
 import { buildLocationContext } from './locationContext'
 import { recordUsage } from './costTracker'
 import { dispatchModelUsed } from './modelLabels'
+import { setSearchContext } from './factChecker'
 import i18n from '../i18n'
 
 /**
@@ -158,6 +159,25 @@ async function executeMistralWebSearch(args: Record<string, unknown>): Promise<{
   try {
     window.dispatchEvent(new CustomEvent('arty-search-used', { detail: { provider: data.provider } }))
   } catch {}
+
+  // Capture le contexte de recherche pour que le fact-checker puisse
+  // VRAIMENT vérifier les claims contre les sources (v2 du fact-checker).
+  // Sans ça, Haiku/Sonnet ne peuvent que se reposer sur leur cutoff de
+  // connaissance — incapables de valider les claims actualité.
+  if ('bySource' in data) {
+    setSearchContext({
+      provider: data.provider,
+      query,
+      bySource: data.bySource,
+    })
+  } else {
+    setSearchContext({
+      provider: data.provider,
+      query,
+      answer: data.answer,
+      results: data.results,
+    })
+  }
 
   // Multi-source response (Option A) : retour structuré par source avec
   // attribution garantie. On formate de façon à ce que Mistral voie clairement
