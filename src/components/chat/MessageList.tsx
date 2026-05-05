@@ -1,4 +1,4 @@
-import { memo, useRef, useEffect, useCallback, useState } from 'react'
+import { memo, useRef, useEffect, useCallback } from 'react'
 import type { Message } from '../../types'
 import { UserBubble } from './UserBubble'
 import { AssistantBubble } from './AssistantBubble'
@@ -23,7 +23,7 @@ const MessageItem = memo(function MessageItem({ msg, index, onAction, onBranch, 
   const handleRetry = useCallback(() => onRetry?.(msg.id), [onRetry, msg.id])
 
   return (
-    <div className="group relative">
+    <div className="group relative" data-msg-id={msg.id} data-msg-role={msg.role}>
       {msg.role === 'user' ? (
         <UserBubble
           content={msg.content}
@@ -70,53 +70,53 @@ interface MessageListProps {
   onRetry?: (messageId: string) => void
 }
 
-// Seuil en pixels pour considérer que l'utilisateur est "en bas". Si la
-// distance entre scrollTop et le fond dépasse ce seuil, on ne suit plus le
-// flux automatiquement (l'utilisateur a scrollé pour relire). Un bouton
-// "↓ Descendre" apparaît tant qu'il y a du nouveau contenu.
-const STICK_TO_BOTTOM_THRESHOLD = 120
+// Comportement type ChatGPT / Claude.ai : quand un nouveau message user
+// est envoyé, on aligne SA bulle en HAUT du viewport. La réponse Arty se
+// déroule en dessous SANS scroll automatique pendant le streaming.
+// L'utilisateur peut relire ce qu'il a tapé en restant à sa position,
+// ou scroller manuellement pour suivre la réponse en cours.
+//
+// Différent du comportement antérieur qui suivait le bas en permanence
+// — ça forçait à descendre à chaque token et empêchait de naviguer.
 
 export const MessageList = memo(function MessageList({ messages, isStreaming, streamingContent, onAction, onBranch, onTogglePin, onEdit, onRetry }: MessageListProps) {
-  const bottomRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
-  const [userScrolledUp, setUserScrolledUp] = useState(false)
   const prevMessagesCount = useRef(messages.length)
 
-  const isAtBottom = useCallback(() => {
-    const el = scrollRef.current
-    if (!el) return true
-    const distance = el.scrollHeight - el.scrollTop - el.clientHeight
-    return distance <= STICK_TO_BOTTOM_THRESHOLD
-  }, [])
-
-  const handleScroll = useCallback(() => {
-    setUserScrolledUp(!isAtBottom())
-  }, [isAtBottom])
-
-  // Nouveau message (typiquement le user qui envoie) : on revient toujours
-  // en bas, peu importe l'état du scroll. Comportement attendu de tout
-  // chat : le tour qu'on vient d'envoyer doit être visible.
+  // Quand un nouveau message arrive (typiquement le user envoie),
+  // scroll de manière à ce que SA bulle soit alignée en HAUT du viewport.
+  // Pendant que la réponse Arty stream en dessous, on ne touche plus à
+  // la position — l'utilisateur reste sur sa question + voit la réponse
+  // se construire dessous. S'il veut suivre les tokens en bas, il scroll
+  // manuellement.
   useEffect(() => {
     const isNewMessage = messages.length > prevMessagesCount.current
     prevMessagesCount.current = messages.length
-    if (isNewMessage) {
-      bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-      setUserScrolledUp(false)
-    }
-  }, [messages.length])
+    if (!isNewMessage) return
 
-  // Pendant le streaming : on ne suit que si l'utilisateur est resté en
-  // bas. S'il a scrollé pour relire, on respecte sa position.
-  useEffect(() => {
-    if (!streamingContent) return
-    if (!userScrolledUp) {
-      bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    // Trouve la dernière bulle user (celle qu'on vient d'envoyer)
+    let lastUserMsg: Message | undefined
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i]?.role === 'user') {
+        lastUserMsg = messages[i]
+        break
+      }
     }
-  }, [streamingContent, userScrolledUp])
+    if (!lastUserMsg) return
+
+    // Aligne en haut du viewport — block: 'start'. Smooth pour un ressenti
+    // soigné. Petit défer via requestAnimationFrame pour laisser React
+    // rendre la nouvelle bulle avant de scroller.
+    requestAnimationFrame(() => {
+      const el = scrollRef.current?.querySelector(`[data-msg-id="${lastUserMsg!.id}"]`)
+      if (el) (el as HTMLElement).scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
+  }, [messages.length, messages])
 
   const scrollToBottom = useCallback(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-    setUserScrolledUp(false)
+    const el = scrollRef.current
+    if (!el) return
+    el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
   }, [])
 
   // Find the index of the last user message (for edit button)
@@ -129,7 +129,7 @@ export const MessageList = memo(function MessageList({ messages, isStreaming, st
 
   return (
     <div className="relative flex-1 overflow-hidden">
-      <div ref={scrollRef} onScroll={handleScroll} className="absolute inset-0 overflow-y-auto px-4 py-4">
+      <div ref={scrollRef} className="absolute inset-0 overflow-y-auto px-4 py-4">
         {messages.map((msg, index) => (
           <MessageItem
             key={msg.id}
@@ -154,11 +154,12 @@ export const MessageList = memo(function MessageList({ messages, isStreaming, st
         {isStreaming && !streamingContent && (
           <TypingIndicator />
         )}
-
-        <div ref={bottomRef} />
       </div>
 
-      {isStreaming && userScrolledUp && (
+      {/* Pendant le streaming, propose toujours un bouton "↓ Descendre" :
+          comme on ne suit plus automatiquement le bas, l'utilisateur peut
+          en avoir besoin pour voir où la réponse s'arrête. */}
+      {isStreaming && (
         <button
           onClick={scrollToBottom}
           className="absolute bottom-4 left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-full bg-theme-accent text-theme-bg text-xs font-sans uppercase tracking-kicker shadow-lg hover:opacity-90 transition-opacity flex items-center gap-1.5 z-10"

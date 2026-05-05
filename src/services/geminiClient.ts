@@ -89,6 +89,10 @@ async function runGeminiStream(
     const locationContext = await buildLocationContext(lastMessage)
     const systemText = (options?.systemPrompt || GEMINI_SYSTEM) + locationContext
 
+    // Notifie l'UI du modèle exact appelé pour qu'elle puisse l'afficher
+    // sous le sélecteur (ChatTopBar > ModelDescriptor).
+    try { window.dispatchEvent(new CustomEvent('arty-model-used', { detail: { model: GEMINI_MODEL, provider: 'gemini' } })) } catch {}
+
     const requestBody = {
       model: GEMINI_MODEL,
       stream: true,

@@ -5,6 +5,7 @@ import { TOOLS } from './toolDefinitions'
 import { convertToolsToOpenAI } from './tools/openaiFormat'
 import { buildLocationContext } from './locationContext'
 import { recordUsage } from './costTracker'
+import { dispatchModelUsed } from './modelLabels'
 import i18n from '../i18n'
 
 /**
@@ -82,6 +83,60 @@ interface ToolCall {
   function: { name: string; arguments: string }
 }
 
+// Appelle le proxy /api/search/web pour exécuter une recherche web depuis
+// Mistral. Le proxy route vers Linkup (par défaut) ou Brave selon la
+// variable env SEARCH_PROVIDER côté Cloudflare. Retourne un texte formaté
+// que Mistral injecte dans son prochain message comme contexte.
+async function executeMistralWebSearch(args: Record<string, unknown>): Promise<{ result: string }> {
+  const query = String(args.query || '').trim()
+  if (!query) return { result: 'Erreur: paramètre `query` manquant.' }
+  const maxResults = typeof args.maxResults === 'number' ? Math.min(10, Math.max(1, args.maxResults)) : 5
+
+  const googleToken = await getValidAccessToken()
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (googleToken) headers['x-google-token'] = googleToken
+  // checkAllowedUserPeek attend un Authorization header pour identifier
+  // l'utilisateur. Comme ce proxy partage la même logique, on envoie aussi
+  // le Bearer token.
+  if (googleToken) headers['Authorization'] = `Bearer ${googleToken}`
+
+  let response: Response
+  try {
+    response = await fetch(apiUrl('/api/search/web'), {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ query, maxResults }),
+    })
+  } catch (err) {
+    return { result: `Erreur réseau de recherche : ${err instanceof Error ? err.message : 'inconnue'}` }
+  }
+
+  if (!response.ok) {
+    const body = await response.text().catch(() => '')
+    return { result: `Recherche échouée (${response.status}) : ${body.slice(0, 200)}` }
+  }
+
+  const data = (await response.json()) as {
+    provider: string
+    results: Array<{ title: string; url: string; snippet: string }>
+  }
+
+  // Notifie l'UI du provider qui a répondu (Linkup ou Brave) — le badge
+  // sous le sélecteur affichera "🔍 Linkup" en plus du modèle.
+  try {
+    window.dispatchEvent(new CustomEvent('arty-search-used', { detail: { provider: data.provider } }))
+  } catch {}
+
+  if (!data.results || data.results.length === 0) {
+    return { result: `Aucun résultat trouvé pour "${query}".` }
+  }
+
+  const formatted = data.results
+    .map((r, i) => `${i + 1}. **${r.title}**\n${r.snippet}\nSource: ${r.url}`)
+    .join('\n\n')
+  return { result: `Résultats de recherche (${data.provider}) pour "${query}" :\n\n${formatted}` }
+}
+
 async function runMistralStream(
   apiKey: string | null,
   originalMessages: Array<{ role: string; content: MistralMessageContent }>,
@@ -103,6 +158,7 @@ async function runMistralStream(
     const locationContext = await buildLocationContext(lastUserText)
     const systemPrompt = basePrompt + locationContext
     const model = selectMistralModel(lastUserText)
+    dispatchModelUsed({ model, provider: 'mistral' })
 
     // Build messages in OpenAI format
     const apiMessages: ApiMessage[] = [
@@ -110,8 +166,29 @@ async function runMistralStream(
       ...originalMessages.map(m => ({ role: m.role, content: m.content })),
     ]
 
-    // Convert tools to OpenAI format
-    const openaiTools = options?.onToolCall ? convertToolsToOpenAI(TOOLS) : []
+    // Convert tools to OpenAI format. On y ajoute une définition `web_search`
+    // spécifique Mistral — Mistral n'a pas de tool web search natif comme
+    // Anthropic ou Gemini, donc on lui en fournit un qui appelle notre proxy
+    // /api/search/web (route vers Linkup ou Brave selon SEARCH_PROVIDER).
+    const baseTools = options?.onToolCall ? convertToolsToOpenAI(TOOLS) : []
+    const openaiTools = [
+      ...baseTools,
+      {
+        type: 'function' as const,
+        function: {
+          name: 'web_search',
+          description: 'Recherche web en temps réel. À utiliser dès que la requête de l\'utilisateur dépend de données récentes (actualité, prix, événements, sorties produits, données 2026+) que tu ne peux pas connaître par toi-même.',
+          parameters: {
+            type: 'object',
+            properties: {
+              query: { type: 'string', description: 'La requête à rechercher, en français de préférence' },
+              maxResults: { type: 'integer', description: 'Nombre max de résultats (défaut 5, max 10)' },
+            },
+            required: ['query'],
+          },
+        },
+      },
+    ]
 
     let maxIterations = 20
 
@@ -149,7 +226,16 @@ async function runMistralStream(
       for (const tc of toolCalls) {
         try {
           const args = JSON.parse(tc.function.arguments)
-          const result = await options.onToolCall(tc.function.name, args)
+          // web_search est intercepté ici plutôt que routé vers onToolCall :
+          // il appelle notre proxy /api/search/web qui route vers Linkup ou
+          // Brave selon SEARCH_PROVIDER. Pas besoin d'enregistrer un handler
+          // global — c'est spécifique au flow Mistral.
+          let result: { result: string }
+          if (tc.function.name === 'web_search') {
+            result = await executeMistralWebSearch(args)
+          } else {
+            result = await options.onToolCall(tc.function.name, args)
+          }
           apiMessages.push({
             role: 'tool',
             tool_call_id: tc.id,

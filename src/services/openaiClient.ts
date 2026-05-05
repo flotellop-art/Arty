@@ -232,6 +232,7 @@ export async function sendMessage(
 ): Promise<string> {
   const systemPrompt = options?.systemPrompt || OPENAI_SYSTEM
   const model = options?.model || DEFAULT_MODEL
+  try { window.dispatchEvent(new CustomEvent('arty-model-used', { detail: { model, provider: 'openai' } })) } catch {}
 
   const response = await startChatRequest(apiKey, {
     model,
