@@ -1,4 +1,4 @@
-import { memo, useRef, useEffect, useCallback } from 'react'
+import { memo, useRef, useEffect, useCallback, useState } from 'react'
 import type { Message } from '../../types'
 import { UserBubble } from './UserBubble'
 import { AssistantBubble } from './AssistantBubble'
@@ -83,6 +83,30 @@ interface MessageListProps {
 export const MessageList = memo(function MessageList({ messages, isStreaming, streamingContent, onAction, onBranch, onTogglePin, onEdit, onRetry }: MessageListProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const prevMessagesCount = useRef(messages.length)
+  // Tracks if there's still content scrollable below — drives the
+  // visibility of the "↓ Descendre" button. Disparaît quand l'utilisateur
+  // est en bas, réapparaît dès qu'il y a à nouveau quelque chose à voir
+  // plus bas (pendant un stream qui grandit, ou s'il scroll manuellement
+  // vers le haut).
+  const [canScrollDown, setCanScrollDown] = useState(false)
+
+  const updateCanScrollDown = useCallback(() => {
+    const el = scrollRef.current
+    if (!el) {
+      setCanScrollDown(false)
+      return
+    }
+    // Tolérance 8 px — sub-pixel rounding sur certains navigateurs mobile.
+    const remaining = el.scrollHeight - el.scrollTop - el.clientHeight
+    setCanScrollDown(remaining > 8)
+  }, [])
+
+  // Re-évalue à chaque tick de streaming (le contenu grandit) et au
+  // mount des nouveaux messages. Le scroll handler natif maintient
+  // l'état à jour quand l'user scroll manuellement.
+  useEffect(() => {
+    updateCanScrollDown()
+  }, [streamingContent, messages.length, updateCanScrollDown])
 
   // Quand un nouveau message arrive (typiquement le user envoie),
   // scroll de manière à ce que SA bulle soit alignée en HAUT du viewport.
@@ -130,7 +154,7 @@ export const MessageList = memo(function MessageList({ messages, isStreaming, st
 
   return (
     <div className="relative flex-1 overflow-hidden">
-      <div ref={scrollRef} className="absolute inset-0 overflow-y-auto px-4 py-4">
+      <div ref={scrollRef} onScroll={updateCanScrollDown} className="absolute inset-0 overflow-y-auto px-4 py-4">
         {messages.map((msg, index) => (
           <MessageItem
             key={msg.id}
@@ -157,10 +181,11 @@ export const MessageList = memo(function MessageList({ messages, isStreaming, st
         )}
       </div>
 
-      {/* Pendant le streaming, propose toujours un bouton "↓ Descendre" :
-          comme on ne suit plus automatiquement le bas, l'utilisateur peut
-          en avoir besoin pour voir où la réponse s'arrête. */}
-      {isStreaming && (
+      {/* Bouton "↓ Descendre" : visible UNIQUEMENT si on peut encore
+          scroller vers le bas (= contenu hors viewport). Disparaît dès
+          qu'on atteint le bas, réapparaît si du nouveau contenu arrive
+          (stream qui grandit) ou si l'user remonte manuellement. */}
+      {canScrollDown && (
         <button
           onClick={scrollToBottom}
           className="absolute bottom-4 left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-full bg-theme-accent text-theme-bg text-xs font-sans uppercase tracking-kicker shadow-lg hover:opacity-90 transition-opacity flex items-center gap-1.5 z-10"
