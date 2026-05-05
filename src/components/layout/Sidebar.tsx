@@ -8,7 +8,6 @@ import { TaskPanel } from '../tasks/TaskPanel'
 import { countPending } from '../../services/taskService'
 import { importConversationFromFile } from '../../services/conversationExport'
 import { cleanDisplayName } from '../../services/displayName'
-import { fetchQuotaStatus, type QuotaStatus } from '../../services/quotaStatus'
 
 interface SidebarProps {
   isOpen: boolean
@@ -122,8 +121,6 @@ export function Sidebar({
   const [searchRaw, setSearchRaw] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [pendingTasks, setPendingTasks] = useState(0)
-  const [statsOpen, setStatsOpen] = useState(false)
-  const [quota, setQuota] = useState<QuotaStatus | null>(null)
   const importInputRef = useRef<HTMLInputElement>(null)
 
   // Debounce search (300ms)
@@ -139,13 +136,6 @@ export function Sidebar({
     window.addEventListener('tasks-updated', refresh)
     return () => window.removeEventListener('tasks-updated', refresh)
   }, [])
-
-  // Fetch quota au 1er open, rafraîchi quand statsOpen toggle.
-  // Pas de polling — l'utilisateur doit rouvrir ou toggler pour rafraîchir.
-  useEffect(() => {
-    if (!isOpen) return
-    fetchQuotaStatus().then(setQuota).catch(() => setQuota(null))
-  }, [isOpen, statsOpen])
 
   // Pinned messages across all conversations
   const pinned: PinnedItem[] = useMemo(() => {
@@ -184,20 +174,6 @@ export function Sidebar({
 
   const activeLocale = (i18n.resolvedLanguage?.slice(0, 2) || 'fr') as Locale
   const cleanName = cleanDisplayName(userName) || t('sidebar.userFallback', { defaultValue: 'Utilisateur' })
-
-  // Stats footer : utilise les vrais totaux serveur (tokens réels capturés
-  // dans les streams par les proxies). Si le quota n'est pas encore chargé
-  // (ou user non whitelisté), on affiche "—".
-  const tokenLabel = quota ? `$${quota.totalCostUsd.toFixed(3)}` : '—'
-  const totalInput = quota?.byModel.reduce((s, m) => s + m.inputTokens + m.cacheReadTokens + m.cacheCreationTokens, 0) ?? 0
-  const totalOutput = quota?.byModel.reduce((s, m) => s + m.outputTokens, 0) ?? 0
-  const totalRequests = quota?.total ?? 0
-
-  const formatK = (n: number): string => {
-    if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
-    if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`
-    return String(n)
-  }
 
   return (
     <>
@@ -448,49 +424,6 @@ export function Sidebar({
 
         {/* Footer */}
         <div className="flex-shrink-0" style={{ borderTop: `1px solid ${DESIGN.borderWeak}` }}>
-          {/* Stats toggle — "Tokens ce mois — $X.XX" */}
-          <button
-            onClick={() => setStatsOpen((o) => !o)}
-            className="w-full flex items-center gap-2 px-[18px] py-2.5 bg-transparent hover:bg-theme-ink/[0.04] transition-colors"
-          >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" className="text-theme-muted">
-              <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
-            </svg>
-            <span className="text-theme-muted text-[11px] flex-1 text-left">
-              {t('sidebar.tokensThisMonth', { defaultValue: 'Tokens ce jour' })} — <span className="text-theme-accent font-semibold">{tokenLabel}</span>
-            </span>
-            <svg
-              width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"
-              className="text-theme-muted flex-shrink-0 transition-transform"
-              style={{ transform: statsOpen ? 'rotate(180deg)' : 'rotate(0)' }}
-            >
-              <path d="M6 9l6 6 6-6" />
-            </svg>
-          </button>
-
-          {/* Stats expanded : Requêtes / Input / Output */}
-          {statsOpen && (
-            <div
-              className="px-[14px] pb-2.5 grid gap-1.5"
-              style={{ gridTemplateColumns: '1fr 1fr 1fr', animation: 'fadeIn 0.18s ease' }}
-            >
-              {[
-                ['Requêtes', String(totalRequests)],
-                ['Input', formatK(totalInput)],
-                ['Output', formatK(totalOutput)],
-              ].map(([label, value]) => (
-                <div
-                  key={label}
-                  className="rounded-lg px-2.5 py-2"
-                  style={{ background: DESIGN.card, border: `1px solid ${DESIGN.borderWeak}` }}
-                >
-                  <div className="text-theme-muted text-[9px] mb-0.5 tracking-[0.06em] uppercase">{label}</div>
-                  <div className="text-theme-ink text-[13px] font-semibold">{value}</div>
-                </div>
-              ))}
-            </div>
-          )}
-
           {/* Langue */}
           <div className="px-[18px] py-1.5 flex items-center justify-start">
             <div className="flex gap-1.5 items-center">
