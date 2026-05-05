@@ -24,7 +24,17 @@ type TextBlock = { type: 'text'; text: string }
 type ToolUseBlock = { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> }
 type ThinkingBlock = { type: 'thinking'; thinking: string; signature: string }
 type RedactedThinkingBlock = { type: 'redacted_thinking'; data: string }
-export type ContentBlock = TextBlock | ToolUseBlock | ThinkingBlock | RedactedThinkingBlock
+// Server-side tools (web_search, web_fetch, code_execution) sont gérés
+// par Anthropic en interne. Ils apparaissent dans la response stream et
+// DOIVENT être renvoyés verbatim dans l'assistant turn suivant — sinon
+// Anthropic détecte une "modification" et rejette avec 400 « thinking
+// blocks cannot be modified » (BUG 52 variante : pas un thinking corrompu
+// mais un index décalé parce qu'on droppait les blocs server tool).
+type ServerToolUseBlock = { type: 'server_tool_use'; id: string; name: string; input: Record<string, unknown> }
+type WebSearchResultBlock = { type: 'web_search_tool_result'; tool_use_id: string; content: unknown }
+type WebFetchResultBlock = { type: 'web_fetch_tool_result'; tool_use_id: string; content: unknown }
+type CodeExecResultBlock = { type: 'code_execution_tool_result'; tool_use_id: string; content: unknown }
+export type ContentBlock = TextBlock | ToolUseBlock | ThinkingBlock | RedactedThinkingBlock | ServerToolUseBlock | WebSearchResultBlock | WebFetchResultBlock | CodeExecResultBlock
 
 type ToolResultContent = string | Array<Record<string, unknown>>
 type ToolResultBlock = { type: 'tool_result'; tool_use_id: string; content: ToolResultContent }
@@ -256,14 +266,30 @@ async function parseSSEStream(
               // echoed back verbatim on the next turn.
               contentBlocks.push({ type: 'redacted_thinking', data: block.data || '' })
               currentBlockType = 'redacted_thinking'
+            } else if (block?.type === 'server_tool_use') {
+              // server_tool_use (web_search, web_fetch côté Anthropic).
+              // L'input est typiquement streamé via input_json_delta comme
+              // un tool_use classique → on push le bloc ici avec input
+              // vide, on accumulera dans currentToolInput puis on
+              // finalisera au content_block_stop.
+              currentBlockType = 'server_tool_use'
+              currentToolInput = ''
+              contentBlocks.push({
+                type: 'server_tool_use',
+                id: block.id || '',
+                name: block.name || '',
+                input: {},
+              } as ContentBlock)
             } else if (
-              block?.type === 'server_tool_use' ||
               block?.type === 'web_search_tool_result' ||
               block?.type === 'web_fetch_tool_result' ||
               block?.type === 'code_execution_tool_result'
             ) {
-              // Server-side tools — handled by Anthropic, skip
-              currentBlockType = 'server_tool'
+              // Tool results côté Anthropic — viennent COMPLETS dans le
+              // content_block_start (pas streamés). On push le bloc tel
+              // quel pour qu'il soit renvoyé verbatim au tour suivant.
+              currentBlockType = 'server_tool_result'
+              contentBlocks.push(block as unknown as ContentBlock)
             }
             break
           }
@@ -297,6 +323,16 @@ async function parseSSEStream(
                   lastTool.input = JSON.parse(currentToolInput) as Record<string, unknown>
                 } catch {
                   lastTool.input = {}
+                }
+              }
+            } else if (currentBlockType === 'server_tool_use' && currentToolInput) {
+              // Finalise l'input du dernier server_tool_use poussé au start.
+              const last = contentBlocks[contentBlocks.length - 1] as { type?: string; input?: unknown } | undefined
+              if (last?.type === 'server_tool_use') {
+                try {
+                  ;(last as { input: unknown }).input = JSON.parse(currentToolInput)
+                } catch {
+                  ;(last as { input: unknown }).input = {}
                 }
               }
             } else if (currentBlockType === 'thinking') {
