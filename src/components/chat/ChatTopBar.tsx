@@ -47,6 +47,7 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
   const [privacyWarning, setPrivacyWarning] = useState<AIModel | null>(null)
   const [upgradePrompt, setUpgradePrompt] = useState<string | null>(null)
   const [lastUsedModel, setLastUsedModel] = useState<string | null>(null)
+  const [lastSearchProvider, setLastSearchProvider] = useState<string | null>(null)
   const [exportMenuOpen, setExportMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
   const exportRef = useRef<HTMLDivElement>(null)
@@ -57,10 +58,23 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
   useEffect(() => {
     const onModelUsed = (e: Event) => {
       const detail = (e as CustomEvent<ModelUsedEvent>).detail
-      if (detail?.model) setLastUsedModel(detail.model)
+      if (detail?.model) {
+        setLastUsedModel(detail.model)
+        // Reset le provider search quand un nouveau modèle est appelé : on
+        // ne sait pas encore si la requête utilisera le tool web_search.
+        setLastSearchProvider(null)
+      }
+    }
+    const onSearchUsed = (e: Event) => {
+      const detail = (e as CustomEvent<{ provider: string }>).detail
+      if (detail?.provider) setLastSearchProvider(detail.provider)
     }
     window.addEventListener('arty-model-used', onModelUsed)
-    return () => window.removeEventListener('arty-model-used', onModelUsed)
+    window.addEventListener('arty-search-used', onSearchUsed)
+    return () => {
+      window.removeEventListener('arty-model-used', onModelUsed)
+      window.removeEventListener('arty-search-used', onSearchUsed)
+    }
   }, [])
 
   const isProviderLocked = (id: AIModel): boolean => {
@@ -294,6 +308,11 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
       {lastUsedModel && (
         <div className="px-3 pb-1 text-[10px] font-sans uppercase tracking-kicker text-theme-muted/70">
           Dernier appel : {formatModelName(lastUsedModel)}
+          {lastSearchProvider && (
+            <span className="ml-1 text-theme-accent">
+              · 🔍 {lastSearchProvider.charAt(0).toUpperCase() + lastSearchProvider.slice(1)}
+            </span>
+          )}
         </div>
       )}
 
