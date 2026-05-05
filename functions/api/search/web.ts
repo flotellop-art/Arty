@@ -24,6 +24,10 @@ interface NormalisedResult {
 
 interface SearchResponse {
   provider: 'linkup' | 'brave'
+  // Réponse synthétisée par le provider (Linkup uniquement). Quand présent,
+  // c'est la donnée la plus fiable à injecter dans le contexte Mistral —
+  // pas besoin de re-parser les snippets bruts qui amènent des hallucinations.
+  answer?: string
   results: NormalisedResult[]
   query: string
 }
@@ -43,13 +47,16 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   const provider: 'linkup' | 'brave' = (env.SEARCH_PROVIDER as 'linkup' | 'brave') || 'linkup'
 
   try {
+    let answer: string | undefined
     let results: NormalisedResult[]
     if (provider === 'brave') {
       results = await searchBrave(env.BRAVE_SEARCH_API_KEY, query, maxResults)
     } else {
-      results = await searchLinkup(env.LINKUP_API_KEY, query, maxResults)
+      const linkupResp = await searchLinkup(env.LINKUP_API_KEY, query, maxResults)
+      answer = linkupResp.answer
+      results = linkupResp.results
     }
-    const response: SearchResponse = { provider, results, query }
+    const response: SearchResponse = { provider, answer, results, query }
     return Response.json(response, {
       status: 200,
       headers: {
@@ -70,14 +77,19 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   }
 }
 
-// Linkup — API LLM-native, hostée EU (france). Format:
-// POST https://api.linkup.so/v1/search { q, depth: 'standard'|'deep', outputType: 'searchResults' }
-// Auth : Bearer token
+// Linkup — API LLM-native, hostée EU (france). Mode 'sourcedAnswer' :
+// Linkup synthétise la réponse à partir des sources et nous renvoie une
+// réponse pré-mâchée + les sources. Bien plus fiable que les search results
+// bruts pour éviter les hallucinations Mistral (problème vu sur le score
+// d'un match OL-Rennes où Mistral mélangeait les snippets).
+//
+// Format réponse :
+//   { answer: "OL mène 2-1 à la mi-temps...", sources: [{name, url, snippet}] }
 async function searchLinkup(
   apiKey: string | undefined,
   query: string,
   maxResults: number
-): Promise<NormalisedResult[]> {
+): Promise<{ answer?: string; results: NormalisedResult[] }> {
   if (!apiKey) throw new Error('LINKUP_API_KEY not configured')
 
   const res = await fetch('https://api.linkup.so/v1/search', {
@@ -89,19 +101,26 @@ async function searchLinkup(
     body: JSON.stringify({
       q: query,
       depth: 'standard',
-      outputType: 'searchResults',
+      outputType: 'sourcedAnswer',
+      includeImages: false,
     }),
   })
   if (!res.ok) {
     const body = await res.text().catch(() => '')
     throw new Error(`Linkup ${res.status}: ${body.slice(0, 200)}`)
   }
-  const data = (await res.json()) as { results?: Array<{ name?: string; url?: string; content?: string }> }
-  return (data.results || []).slice(0, maxResults).map((r) => ({
-    title: r.name || '',
-    url: r.url || '',
-    snippet: r.content || '',
-  }))
+  const data = (await res.json()) as {
+    answer?: string
+    sources?: Array<{ name?: string; url?: string; snippet?: string }>
+  }
+  return {
+    answer: data.answer,
+    results: (data.sources || []).slice(0, maxResults).map((r) => ({
+      title: r.name || '',
+      url: r.url || '',
+      snippet: r.snippet || '',
+    })),
+  }
 }
 
 // Brave Search — API SERP indépendante. Format:

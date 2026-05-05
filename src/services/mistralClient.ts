@@ -38,7 +38,18 @@ const MISTRAL_SYSTEM = `Tu es Arty, un assistant IA personnel.
 Tu parles comme un pote compétent — direct, cash, pas de flatterie.
 Tutoie l'utilisateur. Phrases courtes. Pas de "Excellente question !" ni de formules creuses.
 Si l'utilisateur a tort, dis-le clairement. Sois cash mais respectueux.
-Adapte ton vocabulaire au métier de l'utilisateur si tu le connais.`
+Adapte ton vocabulaire au métier de l'utilisateur si tu le connais.
+
+RÈGLE TEMPS RÉEL — non négociable :
+Pour TOUTE question portant sur des données qui changent dans le temps
+(actualité, sport, score, météo, prix, cours de bourse, événements en
+cours, sorties produits, données 2025+), tu DOIS appeler le tool
+web_search AVANT de répondre. Ne devine JAMAIS un score, une date, un
+prix, un résultat. Si tu n'as pas appelé web_search alors que la
+question le justifie, ta réponse est interdite. Quand le tool renvoie
+une réponse vérifiée, reprends-la TELLE QUELLE et cite les sources via
+[1], [2], etc. Ne mélange JAMAIS plusieurs sources dans une même
+phrase sans le préciser.`
 
 type ToolHandler = (name: string, input: Record<string, unknown>) => Promise<{ result: string; screenshot?: string }>
 
@@ -118,6 +129,7 @@ async function executeMistralWebSearch(args: Record<string, unknown>): Promise<{
 
   const data = (await response.json()) as {
     provider: string
+    answer?: string
     results: Array<{ title: string; url: string; snippet: string }>
   }
 
@@ -127,14 +139,36 @@ async function executeMistralWebSearch(args: Record<string, unknown>): Promise<{
     window.dispatchEvent(new CustomEvent('arty-search-used', { detail: { provider: data.provider } }))
   } catch {}
 
+  // Linkup en mode 'sourcedAnswer' renvoie une réponse synthétisée +
+  // sources. On donne LA RÉPONSE en premier au modèle pour qu'il la
+  // reprenne directement plutôt que de re-parser des snippets bruts (cas
+  // de l'hallucination sur le score OL-Rennes où Mistral mélangeait les
+  // résultats individuels).
+  const sourcesBlock = data.results && data.results.length > 0
+    ? '\n\nSources:\n' + data.results.map((r, i) => `[${i + 1}] ${r.title} — ${r.url}`).join('\n')
+    : ''
+
+  if (data.answer) {
+    return {
+      result:
+        `Réponse vérifiée (${data.provider}) à "${query}" :\n\n${data.answer}\n\n` +
+        `IMPORTANT : reprends ces données telles quelles, ne devine pas, cite les sources via [1], [2], etc.${sourcesBlock}`,
+    }
+  }
+
+  // Fallback (Brave ou Linkup sans réponse synthétisée) : on injecte les
+  // snippets bruts. Le modèle doit les parser lui-même — moins fiable.
   if (!data.results || data.results.length === 0) {
     return { result: `Aucun résultat trouvé pour "${query}".` }
   }
-
   const formatted = data.results
-    .map((r, i) => `${i + 1}. **${r.title}**\n${r.snippet}\nSource: ${r.url}`)
+    .map((r, i) => `[${i + 1}] **${r.title}**\n${r.snippet}\nSource: ${r.url}`)
     .join('\n\n')
-  return { result: `Résultats de recherche (${data.provider}) pour "${query}" :\n\n${formatted}` }
+  return {
+    result:
+      `Résultats de recherche (${data.provider}) pour "${query}" :\n\n${formatted}\n\n` +
+      `IMPORTANT : ne devine pas, ne mélange pas les sources, cite via [1], [2], etc.`,
+  }
 }
 
 async function runMistralStream(
