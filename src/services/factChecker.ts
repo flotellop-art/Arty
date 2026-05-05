@@ -208,30 +208,42 @@ export async function factCheckResponse(
         messages: [{ role: 'user', content: userMessage }],
       }),
     })
-  } catch {
+  } catch (err) {
+    console.warn('[factChecker] fetch failed:', err)
     return null
   }
 
-  if (!res.ok) return null
+  if (!res.ok) {
+    console.warn('[factChecker] proxy returned non-ok:', res.status, await res.text().catch(() => ''))
+    return null
+  }
 
   let text = ''
   try {
     const data = (await res.json()) as { content?: Array<{ type?: string; text?: string }> }
     text = data.content?.find((c) => c.type === 'text')?.text || ''
-  } catch {
+  } catch (err) {
+    console.warn('[factChecker] response.json() failed:', err)
     return null
   }
-  if (!text) return null
+  if (!text) {
+    console.warn('[factChecker] no text in response')
+    return null
+  }
 
   // Le LLM peut wrapper le JSON dans des backticks ou ajouter du texte.
   // On extrait le premier objet JSON valide qu'on trouve.
   const jsonMatch = text.match(/\{[\s\S]*\}/)
-  if (!jsonMatch) return null
+  if (!jsonMatch) {
+    console.warn('[factChecker] no JSON found in response text:', text.slice(0, 200))
+    return null
+  }
 
   let parsed: { overall_confidence?: unknown; claims?: unknown }
   try {
     parsed = JSON.parse(jsonMatch[0])
-  } catch {
+  } catch (err) {
+    console.warn('[factChecker] JSON.parse failed:', err, 'raw:', jsonMatch[0].slice(0, 200))
     return null
   }
 
@@ -284,10 +296,17 @@ export async function runFactCheckOnLatest(
   refreshConversations: () => void
 ): Promise<void> {
   const mode = getFactCheckMode()
-  if (mode === 'off') return
+  if (mode === 'off') {
+    console.info('[factChecker] skipped (mode=off)')
+    return
+  }
+  console.info('[factChecker] starting (mode=' + mode + ')')
 
   const conv = storage.getConversation(conversationId)
-  if (!conv) return
+  if (!conv) {
+    console.warn('[factChecker] conv not found:', conversationId)
+    return
+  }
 
   // Trouver le dernier message assistant non-streaming
   let lastAssistantIdx = -1

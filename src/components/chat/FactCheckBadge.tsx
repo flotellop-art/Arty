@@ -58,11 +58,10 @@ export const FactCheckBadge = memo(function FactCheckBadge({ result }: Props) {
       ? 'text-amber-700 dark:text-amber-400'
       : 'text-emerald-700 dark:text-emerald-400'
 
-  // Si rien d'intéressant à montrer (high + 0 claim), on cache complètement
-  // pour ne pas polluer chaque bulle avec un badge inutile.
-  if (result.overallConfidence === 'high' && result.claims.length === 0) {
-    return null
-  }
+  // Toujours afficher le badge quand le fact-check a tourné — même si
+  // 0 claim risqué. Permet à l'utilisateur de voir que la vérif est
+  // active. Sinon impossible de distinguer "fact-check pas activé" de
+  // "fact-check activé mais rien à signaler".
 
   return (
     <div className="mt-2 text-xs font-sans">
