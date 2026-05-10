@@ -4,7 +4,7 @@ import { compressIfNeeded } from './conversationCompressor'
 import { getAnthropicKey } from './activeApiKey'
 import { apiUrl } from './apiBase'
 import { getValidAccessToken } from './googleAuth'
-import { needsThinking, selectClaudeSubModel, PRIVATE_DATA_TRIGGERS, type ThinkingConfig } from './aiRouter'
+import { needsThinking, selectClaudeSubModel, PRIVATE_DATA_TRIGGERS, shouldUseWebSearch, type ThinkingConfig } from './aiRouter'
 import { isProActivated } from './proLicense'
 import { buildLocationContext } from './locationContext'
 import { recordUsage } from './costTracker'
@@ -17,6 +17,30 @@ Règles de vérité (prioritaires, non-négociables) :
 - NE JAMAIS inventer une date, un chiffre, un nom propre, une citation ou une URL. Préfère "je ne sais pas" à un fait plausible non vérifié.
 - Pour toute affirmation factuelle (prix, norme, date, stat), cite la source (URL ou "d'après X").
 - En mode réflexion approfondie, ta longue chaîne de pensée ne remplace PAS la vérification. Elle DOIT aboutir soit à un fait sourcé, soit à un aveu d'incertitude.`
+
+// Injecté dans le system prompt quand shouldUseWebSearch() retourne true.
+// Force le modèle à toujours appeler web_search avant de répondre — y compris
+// quand un fichier est attaché (analyse du fichier + recherche internet pour
+// répondre à la question). Décliné en BUG 12 : désactivé pour les requêtes
+// sur données privées (Gmail/Drive/Calendar/Contacts) où les tools natifs
+// récupèrent les vraies données et web_search ne ferait qu'halluciner.
+const FORCE_WEB_SEARCH_PROMPT = `
+
+RECHERCHE WEB OBLIGATOIRE — non négociable :
+Pour CE message utilisateur, tu DOIS appeler le tool \`web_search\` AVANT
+de formuler ta réponse, même si tu penses connaître la réponse. La
+recherche web prime sur ta mémoire d'entraînement (qui est forcément en
+retard sur la date du jour).
+
+- Reformule la question en 1-3 mots-clés pertinents pour le tool.
+- Si un fichier est attaché, analyse-le ET fais une recherche web :
+  la question peut nécessiter du contexte externe pour répondre
+  (norme citée dans le PDF, prix marché à comparer, événement actuel, etc.).
+- Si le tool retourne peu/pas de résultats, réessaie 1 fois avec une
+  reformulation différente avant de répondre sans search.
+- Cite les sources web utilisées (URL ou domaine) dans ta réponse.
+- Ne dis JAMAIS "j'ai cherché" — c'est le tool qui cherche, pas toi.
+  Formule : "selon les sources web", "d'après la recherche".`
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -450,7 +474,12 @@ async function runWithTools(
 
     const baseSystemText = options?.systemPrompt || SYSTEM_PROMPT
     const withThinking = thinking.enabled ? baseSystemText + ANTI_HALLU_PROMPT : baseSystemText
-    const systemText = withThinking + locationContext
+    // Force web_search sur toute requête non-privée et non-triviale (règle
+    // user du 10 mai 2026). Les requêtes "mes mails / mon Drive / agenda"
+    // sont exclues car les tools natifs Gmail/Drive/Calendar récupèrent les
+    // vraies données — web_search ne ferait qu'halluciner (cf. BUG 12).
+    const webSearchHint = shouldUseWebSearch(lastUserText) ? FORCE_WEB_SEARCH_PROMPT : ''
+    const systemText = withThinking + locationContext + webSearchHint
     const systemBlocks = [{ type: 'text', text: systemText, cache_control: { type: 'ephemeral' } }]
     // Add prompt-caching hint to last tool definition
     const cachedTools = TOOLS.map((t, i) =>

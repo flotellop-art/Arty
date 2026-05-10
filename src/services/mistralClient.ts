@@ -7,6 +7,7 @@ import { buildLocationContext } from './locationContext'
 import { recordUsage } from './costTracker'
 import { dispatchModelUsed } from './modelLabels'
 import { setSearchContext } from './factChecker'
+import { shouldUseWebSearch } from './aiRouter'
 import i18n from '../i18n'
 
 /**
@@ -248,7 +249,15 @@ async function runMistralStream(
       ? lastUserMsg.content
       : (lastUserMsg?.content || []).filter((b): b is { type: 'text'; text: string } => b.type === 'text').map(b => b.text).join(' ')
     const locationContext = await buildLocationContext(lastUserText)
-    const systemPrompt = basePrompt + locationContext
+    // Force web_search systématique sauf données privées/triviales (règle
+    // user du 10 mai 2026). La RÈGLE TEMPS RÉEL du prompt de base est
+    // conditionnelle ("pour TOUTE question portant sur des données qui
+    // changent"), donc on durcit en injectant une consigne sans condition
+    // sur les requêtes éligibles.
+    const forceWebHint = shouldUseWebSearch(lastUserText)
+      ? `\n\nRECHERCHE WEB OBLIGATOIRE — non négociable :\nPour CE message utilisateur, tu DOIS appeler le tool web_search AVANT de répondre, même si tu penses connaître la réponse. La recherche web prime sur ta mémoire d'entraînement. Si un fichier est attaché, analyse-le ET fais une recherche web. Cite les sources via [1], [2]. Ne dis JAMAIS "j'ai cherché" — c'est le tool qui cherche.`
+      : ''
+    const systemPrompt = basePrompt + locationContext + forceWebHint
     const model = selectMistralModel(lastUserText)
     dispatchModelUsed({ model, provider: 'mistral' })
 
