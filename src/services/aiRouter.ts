@@ -83,6 +83,26 @@ const HYBRID_TRIGGERS = [
 // Partagé entre detectProvider() et selectClaudeSubModel().
 export const TRIVIAL_CHAT_REGEX = /^(salut|bonjour|bonsoir|coucou|hello|hi|hey|yo|merci|thanks?|thx|ok|okay|d'accord|super|cool|parfait|nickel|top|génial|bien|bien sûr|ouais|oui|non|nope)\b|^(\s*[\d+\-*/().\s]+\s*=?\s*\?*\s*)$|^(combien\s+font?\s+\d|how\s+much\s+is\s+\d)/i
 
+/**
+ * Décide si une requête utilisateur doit déclencher une recherche web forcée.
+ * Règle posée par l'utilisateur le 10 mai 2026 : recherche internet par défaut
+ * sur la plupart des requêtes, SAUF :
+ * - Données privées (mails, Drive, calendar, contacts) — BUG 12 : Gemini
+ *   hallucine sur des données privées inaccessibles ; les tools natifs
+ *   Gmail/Drive/Calendar récupèrent les vraies données, web search inutile.
+ * - Salutations / micro-réponses (TRIVIAL_CHAT_REGEX) — gaspillage de tokens.
+ *
+ * Les fichiers attachés (PDF, image) ne désactivent PAS la recherche web :
+ * l'utilisateur veut explicitement "analyser le fichier ET chercher sur
+ * internet la réponse à la question" (cf. demande du 10 mai 2026).
+ */
+export function shouldUseWebSearch(message: string): boolean {
+  if (!message || !message.trim()) return false
+  if (PRIVATE_DATA_TRIGGERS.some((r) => r.test(message))) return false
+  if (message.length < 150 && TRIVIAL_CHAT_REGEX.test(message)) return false
+  return true
+}
+
 export type AIProvider = 'claude' | 'gemini' | 'mistral' | 'hybrid' | 'openai'
 
 export interface ThinkingConfig {
