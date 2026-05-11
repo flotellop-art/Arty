@@ -542,8 +542,18 @@ function ChatRoute({
 }: ChatRouteProps) {
   const { id } = useParams<{ id: string }>()
 
+  // CRIT-9 (audit étape 6) — onSelect doit être appelé dans un useEffect,
+  // pas directement pendant le render. Sinon React 18 warning "Cannot
+  // update a component from inside the function body of a different
+  // component" + risque de loop infinie. Le `null` early return reste
+  // pendant la transition.
+  useEffect(() => {
+    if (id && (!activeConversation || activeConversation.id !== id)) {
+      onSelect(id)
+    }
+  }, [id, activeConversation, onSelect])
+
   if (id && (!activeConversation || activeConversation.id !== id)) {
-    onSelect(id)
     return null
   }
 

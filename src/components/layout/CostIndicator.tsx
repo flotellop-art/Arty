@@ -5,11 +5,11 @@ import {
   type MonthlyQuotaStatus,
 } from '../../services/quotaStatus'
 
-// Refresh périodique du badge — 60s suffisent : le tracking est fait par les
-// proxies dans waitUntil(), donc le coût arrive en BDD quelques centaines de
-// ms après la fin du stream. On laisse aussi `cost-updated` (window event)
-// pour qu'un client puisse forcer un refresh immédiat à la fin d'un message.
-const REFRESH_MS = 60_000
+// Refresh périodique du badge. MED (audit étape 6) — 60s était trop fréquent :
+// l'event 'cost-updated' (BUG 54) fire à chaque recordUsage local, ce qui
+// couvre 99% des cas. L'interval ne sert plus qu'au sync multi-device
+// (autre onglet/tel du même user consomme), 5 min suffit largement.
+const REFRESH_MS = 5 * 60_000
 
 export function CostIndicator() {
   const [data, setData] = useState<MonthlyQuotaStatus | null>(null)

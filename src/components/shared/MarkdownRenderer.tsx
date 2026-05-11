@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeRaw from 'rehype-raw'
@@ -145,7 +146,12 @@ const components: Components = {
   ),
 }
 
-export function MarkdownRenderer({ content }: MarkdownRendererProps) {
+// CRIT-8 (audit étape 6) — memo'ed pour éviter le reparse markdown à chaque
+// re-render de la liste pendant le streaming. Avant : à chaque token reçu, TOUS
+// les anciens messages (qui ont un `content` stable) étaient reparsés
+// (remark+rehype+sanitize). Combiné à CRIT-7 (1000 setState par stream),
+// c'était O(n_messages × n_tokens) parses sur mobile.
+export const MarkdownRenderer = memo(function MarkdownRenderer({ content }: MarkdownRendererProps) {
   return (
     <div className="max-w-none text-sm text-theme-ink/90 leading-relaxed report-content">
       <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw, [rehypeSanitize, sanitizeSchema]]} components={components}>
@@ -153,4 +159,4 @@ export function MarkdownRenderer({ content }: MarkdownRendererProps) {
       </ReactMarkdown>
     </div>
   )
-}
+})
