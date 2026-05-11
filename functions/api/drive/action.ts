@@ -3,6 +3,24 @@ import { verifyGoogleUser, notFoundResponse } from '../_lib/checkAllowedUser'
 
 const ID_RE = /^[a-zA-Z0-9_-]+$/
 
+// Cap downloads at 25MB. Claude API accepte au max 20MB par attachment ;
+// 25MB laisse une marge pour la base64 encoding (4/3 du binaire). Évite
+// les OOM Worker sur les gros PDFs / images.
+const MAX_DOWNLOAD_BYTES = 25 * 1024 * 1024
+
+// Convert Uint8Array → base64 efficacement. Boucle naïve `binary += String.fromCharCode(b)`
+// est O(n²) (concaténation de string) et crashe le Worker sur >2MB (BUG 50).
+// Chunk de 32KB + fromCharCode.apply, comme dans gmail/action.ts.
+function bytesToBase64(bytes: Uint8Array): string {
+  const CHUNK = 0x8000
+  const parts: string[] = []
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    const slice = bytes.subarray(i, Math.min(i + CHUNK, bytes.length))
+    parts.push(String.fromCharCode.apply(null, Array.from(slice)))
+  }
+  return btoa(parts.join(''))
+}
+
 export const onRequestPost: PagesFunction<Env> = async ({ request }) => {
   // CRIT-4 (audit étape 2) — exiger un user Google identifié.
   const email = await verifyGoogleUser(request)
@@ -87,13 +105,16 @@ async function handleRead(token: string, body: Record<string, unknown>): Promise
         // Native PDF — return raw base64 for frontend to handle via Claude's native PDF support
         const dlRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, { headers: { Authorization: `Bearer ${token}` } })
         if (dlRes.ok) {
-          const arrayBuf = await dlRes.arrayBuffer()
-          const bytes = new Uint8Array(arrayBuf)
-          let binary = ''
-          for (let i = 0; i < bytes.length; i++) {
-            binary += String.fromCharCode(bytes[i])
+          // Size cap pour éviter l'OOM Worker (BUG 50 + cap explicite).
+          const contentLength = Number(dlRes.headers.get('content-length') || '0')
+          if (contentLength > MAX_DOWNLOAD_BYTES) {
+            return Response.json({ error: 'File too large (max 25MB)' }, { status: 413 })
           }
-          const base64 = btoa(binary)
+          const arrayBuf = await dlRes.arrayBuffer()
+          if (arrayBuf.byteLength > MAX_DOWNLOAD_BYTES) {
+            return Response.json({ error: 'File too large (max 25MB)' }, { status: 413 })
+          }
+          const base64 = bytesToBase64(new Uint8Array(arrayBuf))
           return Response.json({
             id: meta.id, name: meta.name, mimeType: meta.mimeType, modifiedTime: meta.modifiedTime,
             content: '', base64Pdf: base64,
@@ -128,13 +149,15 @@ async function handleDownload(token: string, body: Record<string, unknown>): Pro
     const dlRes = await fetch(dlUrl, { headers: { Authorization: `Bearer ${token}` } })
     if (!dlRes.ok) return Response.json({ error: 'Download failed' }, { status: dlRes.status })
 
-    const arrayBuf = await dlRes.arrayBuffer()
-    const bytes = new Uint8Array(arrayBuf)
-    let binary = ''
-    for (let i = 0; i < bytes.length; i++) {
-      binary += String.fromCharCode(bytes[i])
+    const contentLength = Number(dlRes.headers.get('content-length') || '0')
+    if (contentLength > MAX_DOWNLOAD_BYTES) {
+      return Response.json({ error: 'File too large (max 25MB)' }, { status: 413 })
     }
-    const base64 = btoa(binary)
+    const arrayBuf = await dlRes.arrayBuffer()
+    if (arrayBuf.byteLength > MAX_DOWNLOAD_BYTES) {
+      return Response.json({ error: 'File too large (max 25MB)' }, { status: 413 })
+    }
+    const base64 = bytesToBase64(new Uint8Array(arrayBuf))
     const mimeType = meta.mimeType?.startsWith('application/vnd.google-apps.') ? 'application/pdf' : meta.mimeType
 
     return Response.json({ id: meta.id, name: meta.name, mimeType, base64, size: arrayBuf.byteLength })
@@ -170,6 +193,7 @@ async function handleCreate(token: string, body: Record<string, unknown>): Promi
 async function handleUpdate(token: string, body: Record<string, unknown>): Promise<Response> {
   const { id, content } = body as { id?: string; content?: string }
   if (!id || content === undefined) return Response.json({ error: 'Missing id or content' }, { status: 400 })
+  if (!ID_RE.test(id)) return Response.json({ error: 'Invalid file ID' }, { status: 400 })
   try {
     // Check if it's a Google Doc (need special handling)
     const metaRes = await fetch(`https://www.googleapis.com/drive/v3/files/${id}?fields=mimeType`, {
@@ -194,6 +218,7 @@ async function handleUpdate(token: string, body: Record<string, unknown>): Promi
 async function handleDelete(token: string, body: Record<string, unknown>): Promise<Response> {
   const fileId = body.id as string
   if (!fileId) return Response.json({ error: 'Missing id' }, { status: 400 })
+  if (!ID_RE.test(fileId)) return Response.json({ error: 'Invalid file ID' }, { status: 400 })
   try {
     const r = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
       method: 'DELETE', headers: { Authorization: `Bearer ${token}` },
@@ -206,6 +231,7 @@ async function handleDelete(token: string, body: Record<string, unknown>): Promi
 async function handleRename(token: string, body: Record<string, unknown>): Promise<Response> {
   const { id, name } = body as { id?: string; name?: string }
   if (!id || !name) return Response.json({ error: 'Missing id or name' }, { status: 400 })
+  if (!ID_RE.test(id)) return Response.json({ error: 'Invalid file ID' }, { status: 400 })
   try {
     const r = await fetch(`https://www.googleapis.com/drive/v3/files/${id}`, {
       method: 'PATCH',
@@ -220,6 +246,7 @@ async function handleRename(token: string, body: Record<string, unknown>): Promi
 async function handleMove(token: string, body: Record<string, unknown>): Promise<Response> {
   const { id, folderId } = body as { id?: string; folderId?: string }
   if (!id || !folderId) return Response.json({ error: 'Missing id or folderId' }, { status: 400 })
+  if (!ID_RE.test(id) || !ID_RE.test(folderId)) return Response.json({ error: 'Invalid ID' }, { status: 400 })
   try {
     // Get current parents
     const getRes = await fetch(`https://www.googleapis.com/drive/v3/files/${id}?fields=parents`, {
@@ -240,6 +267,7 @@ async function handleMove(token: string, body: Record<string, unknown>): Promise
 async function handleCreateFolder(token: string, body: Record<string, unknown>): Promise<Response> {
   const { name, parentId } = body as { name?: string; parentId?: string }
   if (!name) return Response.json({ error: 'Missing name' }, { status: 400 })
+  if (parentId && !ID_RE.test(parentId)) return Response.json({ error: 'Invalid parent ID' }, { status: 400 })
   try {
     const metadata: { name: string; mimeType: string; parents?: string[] } = {
       name,
@@ -261,6 +289,7 @@ async function handleCreateFolder(token: string, body: Record<string, unknown>):
 async function handleShare(token: string, body: Record<string, unknown>): Promise<Response> {
   const { id, email, role } = body as { id?: string; email?: string; role?: string }
   if (!id || !email) return Response.json({ error: 'Missing id or email' }, { status: 400 })
+  if (!ID_RE.test(id)) return Response.json({ error: 'Invalid file ID' }, { status: 400 })
   try {
     const r = await fetch(`https://www.googleapis.com/drive/v3/files/${id}/permissions`, {
       method: 'POST',
@@ -275,6 +304,7 @@ async function handleShare(token: string, body: Record<string, unknown>): Promis
 async function handleCopy(token: string, body: Record<string, unknown>): Promise<Response> {
   const { id, name } = body as { id?: string; name?: string }
   if (!id) return Response.json({ error: 'Missing id' }, { status: 400 })
+  if (!ID_RE.test(id)) return Response.json({ error: 'Invalid file ID' }, { status: 400 })
   try {
     const copyBody: Record<string, string> = {}
     if (name) copyBody.name = name
