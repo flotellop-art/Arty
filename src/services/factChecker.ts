@@ -366,7 +366,11 @@ export async function factCheckContent(
   for (const c of result.claims) {
     if (c.verdict === 'wrong' && c.originalText && c.correction) {
       if (correctedContent.includes(c.originalText)) {
-        correctedContent = correctedContent.replace(c.originalText, c.correction)
+        // split/join pour remplacer TOUTES les occurrences (équivalent
+        // replaceAll, qui est ES2021 et donc absent de la lib TS ES2020
+        // cible du projet). Sinon "Opus 4.7" dans le titre ET le corps
+        // d'un message ne serait corrigé qu'au premier hit.
+        correctedContent = correctedContent.split(c.originalText).join(c.correction)
         appliedCount++
       }
     }
@@ -482,10 +486,14 @@ export async function runFactCheckOnLatest(
   let appliedCount = 0
   for (const c of result.claims) {
     if (c.verdict === 'wrong' && c.originalText && c.correction) {
-      // Remplacement uniquement si le passage exact est trouvé. Sinon on
-      // n'altère pas la réponse — on laisse le claim flagger via badge.
+      // Remplacement de TOUTES les occurrences si le passage exact est
+      // trouvé (via split/join, équivalent replaceAll en lib ES2020).
+      // Sinon on n'altère pas la réponse — on laisse le claim flagger
+      // via badge. Le find/replace .replace() précédent ne corrigeait
+      // que la première occurrence → titre corrigé mais corps non, ou
+      // l'inverse selon l'ordre.
       if (correctedContent.includes(c.originalText)) {
-        correctedContent = correctedContent.replace(c.originalText, c.correction)
+        correctedContent = correctedContent.split(c.originalText).join(c.correction)
         appliedCount++
       }
     }
