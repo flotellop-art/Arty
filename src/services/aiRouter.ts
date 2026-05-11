@@ -30,6 +30,10 @@ export const PRIVATE_DATA_TRIGGERS = [
   /(trouve|cherche|recherche|ajoute|cr[ée]e)\s+(un\s+)?contact/i,
   /num[ée]ro\s+(de|du|de\s+t[ée]l[ée]phone\s+de)|t[ée]l[ée]phone\s+(de|du)\s+/i,
   /carnet\s+(d[’']?adresses?|de\s+contacts?)/i,
+  // FR — Tasks / Notes / Reminders (étape 12 audit, BUG 56 extension)
+  /mes\s+(rappels?|reminders?)|cr[ée]e[rz]?\s+un\s+rappel/i,
+  /mes\s+(t[âa]ches?|tasks?)\s+(google|du|de)?/i,
+  /mes\s+(notes?|keep)\s+(google)?/i,
   // EN — mail / drive / clients
   /my\s+(mail|mails|email|emails|e-mails|messages|inbox)/i,
   /my\s+(files|documents|docs|drive|folders)/i,
@@ -46,6 +50,9 @@ export const PRIVATE_DATA_TRIGGERS = [
   /my\s+contacts?\b/i,
   /(find|search|look\s+up|add|create)\s+(a\s+)?contact/i,
   /phone\s+number\s+of|address\s+book/i,
+  // EN — Tasks / Notes / Reminders (étape 12 audit)
+  /my\s+(reminders?|tasks?|notes?)\b/i,
+  /(create|add|set)\s+(a\s+)?(reminder|task|note)/i,
 ]
 
 const REPORT_TRIGGERS = [
