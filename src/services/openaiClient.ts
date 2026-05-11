@@ -164,39 +164,45 @@ export function sendMessageStream(
       let completionTokens = 0
       let usedModel = model
 
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
+      // H-AI-2 — releaseLock en try/finally pour éviter le leak du reader
+      // sur erreur (le body n'était jamais GC autrement).
+      try {
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
 
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop() || ''
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split('\n')
+          buffer = lines.pop() || ''
 
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue
-          const data = line.slice(6).trim()
-          if (!data || data === '[DONE]') continue
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue
+            const data = line.slice(6).trim()
+            if (!data || data === '[DONE]') continue
 
-          try {
-            const parsed = JSON.parse(data) as {
-              choices?: Array<{ delta?: { content?: string } }>
-              usage?: { prompt_tokens?: number; completion_tokens?: number }
-              model?: string
+            try {
+              const parsed = JSON.parse(data) as {
+                choices?: Array<{ delta?: { content?: string } }>
+                usage?: { prompt_tokens?: number; completion_tokens?: number }
+                model?: string
+              }
+              const delta = parsed.choices?.[0]?.delta?.content
+              if (delta) onChunk(delta)
+              // include_usage: true dans la requête → OpenAI envoie un dernier
+              // chunk avec usage rempli. On capture aussi le model effectif au
+              // cas où le proxy serveur ait fait un fallback transparent.
+              if (parsed.usage) {
+                promptTokens = parsed.usage.prompt_tokens || promptTokens
+                completionTokens = parsed.usage.completion_tokens || completionTokens
+              }
+              if (parsed.model) usedModel = parsed.model
+            } catch {
+              // Skip malformed chunks
             }
-            const delta = parsed.choices?.[0]?.delta?.content
-            if (delta) onChunk(delta)
-            // include_usage: true dans la requête → OpenAI envoie un dernier
-            // chunk avec usage rempli. On capture aussi le model effectif au
-            // cas où le proxy serveur ait fait un fallback transparent.
-            if (parsed.usage) {
-              promptTokens = parsed.usage.prompt_tokens || promptTokens
-              completionTokens = parsed.usage.completion_tokens || completionTokens
-            }
-            if (parsed.model) usedModel = parsed.model
-          } catch {
-            // Skip malformed chunks
           }
         }
+      } finally {
+        try { reader.releaseLock() } catch { /* already released */ }
       }
 
       try {
