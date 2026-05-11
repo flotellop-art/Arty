@@ -337,6 +337,47 @@ export async function factCheckResponse(
   }
 }
 
+// Pure variant — prend (question, content, mode) et retourne le résultat
+// du fact-check + le contenu corrigé (find/replace des claims "wrong"
+// appliqué). Aucun side-effect sur le storage. Utilisé par le flow
+// "publish-after-fact-check" où on retient la bulle assistant tant que
+// la vérif n'a pas fini, pour éviter de montrer le contenu non vérifié.
+export interface FactCheckContentOutput {
+  correctedContent: string
+  result: FactCheckResult
+  appliedCorrections: number
+}
+
+export async function factCheckContent(
+  question: string,
+  content: string,
+  mode: FactCheckMode = getFactCheckMode()
+): Promise<FactCheckContentOutput | null> {
+  // Récupère le contexte de recherche capturé pendant la génération
+  // (Mistral via setSearchContext) puis clear immédiatement pour ne pas
+  // polluer le prochain message si le fact-check échoue.
+  const ctx = getSearchContext()
+  clearSearchContext()
+  const result = await factCheckResponse(question, content, mode, ctx)
+  if (!result) return null
+
+  let correctedContent = content
+  let appliedCount = 0
+  for (const c of result.claims) {
+    if (c.verdict === 'wrong' && c.originalText && c.correction) {
+      if (correctedContent.includes(c.originalText)) {
+        correctedContent = correctedContent.replace(c.originalText, c.correction)
+        appliedCount++
+      }
+    }
+  }
+  if (appliedCount > 0) {
+    result.originalContent = content
+    result.appliedCorrections = appliedCount
+  }
+  return { correctedContent, result, appliedCorrections: appliedCount }
+}
+
 // Helper end-to-end : trouve le dernier (question, réponse) dans une
 // conversation, lance le fact-check, attache le résultat à Message.factCheck
 // et persiste. À appeler après chaque onDone d'une réponse assistant.
