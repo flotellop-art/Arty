@@ -91,7 +91,11 @@ const components: Components = {
     </li>
   ),
   strong: ({ children }) => (
-    <strong className="font-semibold text-theme-ink">{children}</strong>
+    // text-inherit (pas text-theme-ink) pour que les **bold** dans un
+    // contexte avec couleur inversée (ex : thead bg-theme-ink) restent
+    // lisibles. Avec text-theme-ink hardcodé, **texte** dans un header
+    // de tableau devenait texte clair sur fond clair = invisible.
+    <strong className="font-semibold text-inherit">{children}</strong>
   ),
   em: ({ children }) => (
     <em className="text-theme-accent not-italic font-medium">{children}</em>
