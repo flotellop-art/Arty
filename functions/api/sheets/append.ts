@@ -2,12 +2,21 @@
  * Google Sheets — append row or create spreadsheet (Feature 9).
  * Uses the user's Google token from the x-google-token header.
  */
+import { verifyGoogleUser, notFoundResponse } from '../_lib/checkAllowedUser'
 
 export const onRequestPost: PagesFunction = async ({ request }) => {
+  // CRIT-4 (audit étape 2) — exiger un user Google identifié.
+  const email = await verifyGoogleUser(request)
+  if (!email) return notFoundResponse()
+
   const token = request.headers.get('x-google-token') || request.headers.get('authorization')?.replace('Bearer ', '') || ''
-  if (!token) return Response.json({ error: 'Missing Google token' }, { status: 401 })
+  if (!token) return notFoundResponse()
 
   const body = await request.json() as Record<string, unknown>
+  // H-Back-5 — borner la taille des champs string pour éviter l'amplification.
+  if (typeof body.title === 'string' && body.title.length > 500) {
+    return Response.json({ error: 'Title too long (max 500)' }, { status: 400 })
+  }
   const action = (body.action as string) || 'append'
 
   try {
@@ -34,8 +43,7 @@ async function handleCreate(token: string, body: Record<string, unknown>): Promi
     body: JSON.stringify({ properties: { title } }),
   })
   if (!createRes.ok) {
-    const err = await createRes.text()
-    return Response.json({ error: `Sheets create failed: ${err}` }, { status: createRes.status })
+    return Response.json({ error: 'Sheets create failed' }, { status: createRes.status })
   }
   const sheet = await createRes.json() as { spreadsheetId?: string; spreadsheetUrl?: string }
   const spreadsheetId = sheet.spreadsheetId
@@ -56,8 +64,7 @@ async function handleCreate(token: string, body: Record<string, unknown>): Promi
       }
     )
     if (!writeRes.ok) {
-      const err = await writeRes.text()
-      return Response.json({ error: `Header write failed: ${err}`, spreadsheetId }, { status: writeRes.status })
+      return Response.json({ error: 'Header write failed', spreadsheetId }, { status: writeRes.status })
     }
   }
 
@@ -92,8 +99,7 @@ async function handleAppend(token: string, body: Record<string, unknown>): Promi
   })
 
   if (!res.ok) {
-    const err = await res.text()
-    return Response.json({ error: `Append failed: ${err}` }, { status: res.status })
+    return Response.json({ error: 'Append failed' }, { status: res.status })
   }
 
   const data = await res.json() as { updates?: { updatedRange?: string; updatedRows?: number } }

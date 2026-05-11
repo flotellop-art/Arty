@@ -12,6 +12,11 @@ export interface Env {
   WP_URL: string
   WP_USERNAME: string
   WP_PASSWORD: string
+  // WordPress utilise un seul jeu d'identifiants partagé. Restriction aux
+  // emails listés (séparés par virgule/espace) pour éviter que tout user
+  // authentifié puisse écrire/supprimer des posts. Si vide, fallback sur
+  // ALLOWED_EMAILS.
+  WORDPRESS_OWNER_EMAILS?: string
   TUNNEL_URL: string
   TUNNEL_SECRET: string
   // Computer relay is owner-only. Set COMPUTER_RELAY_ENABLED='true' and

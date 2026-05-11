@@ -1,5 +1,6 @@
 import type { Env } from '../../env'
 import { decodeBase64Url, decodePartBody, htmlToText, type MimePart } from './_lib'
+import { verifyGoogleUser, notFoundResponse } from '../_lib/checkAllowedUser'
 
 // MIME types that Claude can read natively as document/image content
 // blocks. Forwarded as base64 to the client tool wrapper, which packs
@@ -38,10 +39,18 @@ function bytesToBase64(bytes: Uint8Array): string {
 }
 
 export const onRequestPost: PagesFunction<Env> = async ({ request }) => {
+  // CRIT-4 (audit étape 2) — exiger un user Google identifié.
+  const email = await verifyGoogleUser(request)
+  if (!email) return notFoundResponse()
+
   const token = request.headers.get('authorization')?.replace('Bearer ', '')
-  if (!token) return Response.json({ error: 'Missing authorization token' }, { status: 401 })
+  if (!token) return notFoundResponse()
 
   const body = await request.json() as Record<string, unknown>
+  // H-Back-5 — borner les champs string longs (query Gmail search).
+  if (typeof body.query === 'string' && body.query.length > 500) {
+    return Response.json({ error: 'Query too long (max 500)' }, { status: 400 })
+  }
   const type = body.type as string | undefined
 
   const handlers: Record<string, (token: string, body: Record<string, unknown>) => Promise<Response>> = {

@@ -1,6 +1,15 @@
+import { verifyGoogleUser, notFoundResponse } from '../_lib/checkAllowedUser'
+
+const ID_RE = /^[a-zA-Z0-9_@.+\-=]+$/
+
 export const onRequestPost: PagesFunction = async ({ request }) => {
+  // CRIT-4 (audit étape 2) — exiger un user Google identifié pour éviter
+  // le proxy ouvert Google API (un token Google volé ne suffit plus).
+  const email = await verifyGoogleUser(request)
+  if (!email) return notFoundResponse()
+
   const token = request.headers.get('authorization')?.replace('Bearer ', '') || ''
-  if (!token) return Response.json({ error: 'Missing access token' }, { status: 401 })
+  if (!token) return notFoundResponse()
 
   const body = await request.json() as Record<string, unknown>
   const type = body.type as string | undefined
@@ -92,6 +101,8 @@ async function handleUpdate(token: string, body: Record<string, unknown>): Promi
     eventId?: string; title?: string; start?: string; end?: string; location?: string; description?: string
   }
   if (!eventId) return Response.json({ error: 'Missing eventId' }, { status: 400 })
+  // BUG 32 — valider eventId pour éviter l'injection dans l'URL Google API.
+  if (!ID_RE.test(eventId)) return Response.json({ error: 'Invalid eventId' }, { status: 400 })
 
   try {
     const update: Record<string, unknown> = {}
@@ -114,6 +125,8 @@ async function handleUpdate(token: string, body: Record<string, unknown>): Promi
 async function handleDelete(token: string, body: Record<string, unknown>): Promise<Response> {
   const eventId = body.eventId as string
   if (!eventId) return Response.json({ error: 'Missing eventId' }, { status: 400 })
+  // BUG 32 — valider eventId pour éviter l'injection dans l'URL Google API.
+  if (!ID_RE.test(eventId)) return Response.json({ error: 'Invalid eventId' }, { status: 400 })
 
   try {
     const r = await fetch(
