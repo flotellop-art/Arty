@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, useNavigate, useParams } from 'react-router-dom'
 import { useConversation } from './hooks/useConversation'
 import { useAppSetup } from './hooks/useAppSetup'
@@ -31,9 +31,23 @@ import {
 } from './services/trialClient'
 import { ProfileSetupModal } from './components/onboarding/ProfileSetupModal'
 import { getUserProfile } from './services/userProfile'
-import { UpgradeScreen, type CurrentPlan } from './screens/upgrade'
-import { TemplatesScreen } from './screens/templates'
-import { CostsScreen } from './screens/costs'
+// H-Perf-2 (audit étape 7) — lazy-load des screens hors chemin critique.
+// Avant : main chunk 514KB incluait tout, même pour afficher juste le login.
+// `CurrentPlan` reste un import type-only (pas de runtime cost).
+import type { CurrentPlan } from './screens/upgrade'
+const UpgradeScreen = lazy(() => import('./screens/upgrade').then((m) => ({ default: m.UpgradeScreen })))
+const TemplatesScreen = lazy(() => import('./screens/templates').then((m) => ({ default: m.TemplatesScreen })))
+const CostsScreen = lazy(() => import('./screens/costs').then((m) => ({ default: m.CostsScreen })))
+
+// Fallback pendant le chargement des chunks lazy — petit splash neutre,
+// disparaît dès que le chunk arrive (<200ms en pratique sur 4G).
+function LazyFallback() {
+  return (
+    <div className="flex items-center justify-center h-full text-theme-muted text-sm">
+      Chargement…
+    </div>
+  )
+}
 import { checkBudgetAlert, formatCost } from './services/costTracker'
 import {
   addShareListener,
@@ -359,27 +373,35 @@ function AppContent({
         <Route
           path="/upgrade"
           element={
-            <UpgradeScreen
-              onBack={() => navigate('/')}
-              currentPlan={currentPlan}
-              email={userEmail}
-            />
+            <Suspense fallback={<LazyFallback />}>
+              <UpgradeScreen
+                onBack={() => navigate('/')}
+                currentPlan={currentPlan}
+                email={userEmail}
+              />
+            </Suspense>
           }
         />
         <Route
           path="/templates"
           element={
-            <TemplatesScreen
-              onBack={() => navigate('/')}
-              onUpgrade={() => navigate('/upgrade')}
-              onUseTemplate={(prompt) => handleSendFromHome(prompt)}
-              currentPlan={currentPlan}
-            />
+            <Suspense fallback={<LazyFallback />}>
+              <TemplatesScreen
+                onBack={() => navigate('/')}
+                onUpgrade={() => navigate('/upgrade')}
+                onUseTemplate={(prompt) => handleSendFromHome(prompt)}
+                currentPlan={currentPlan}
+              />
+            </Suspense>
           }
         />
         <Route
           path="/costs"
-          element={<CostsScreen onBack={() => navigate('/')} />}
+          element={
+            <Suspense fallback={<LazyFallback />}>
+              <CostsScreen onBack={() => navigate('/')} />
+            </Suspense>
+          }
         />
         <Route
           path="/report/:id"
