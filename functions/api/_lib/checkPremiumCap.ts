@@ -179,6 +179,15 @@ export async function checkPremiumCap(
     console.error('checkPremiumCap: KV.put failed (still allowing call)', err)
   }
 
+  // H-Back-1 (audit étape 5) — TODO atomicité : KV n'a pas de CAS natif.
+  // La séquence get→check→put est vulnérable aux courses concurrentes
+  // (2 requêtes simultanées peuvent passer le cap). À migrer vers une
+  // table D1 `premium_caps (user_email, month_key, bucket, count)` avec
+  // pattern `UPDATE ... WHERE count < cap RETURNING count` atomique +
+  // fallback INSERT ON CONFLICT DO NOTHING RETURNING count. Reporté car
+  // nécessite migration data des compteurs KV existants (les utilisateurs
+  // en milieu de mois ne doivent pas avoir leur compteur reset à 0).
+
   return {
     allowed: true,
     reason: 'monthly_cap',

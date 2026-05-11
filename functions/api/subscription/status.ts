@@ -70,15 +70,29 @@ function jsonStatus(body: StatusResponse): Response {
   })
 }
 
-async function verifyTokenViaTokeninfo(token: string): Promise<string | null> {
+async function verifyTokenViaTokeninfo(token: string, expectedAud: string | undefined): Promise<string | null> {
   try {
     const res = await fetch(
       `https://oauth2.googleapis.com/tokeninfo?access_token=${encodeURIComponent(token)}`
     )
     if (!res.ok) return null
-    const info = (await res.json()) as { email?: string; email_verified?: string | boolean }
+    const info = (await res.json()) as {
+      email?: string
+      email_verified?: string | boolean
+      aud?: string
+      azp?: string
+    }
     const email = info.email?.toLowerCase()
     if (!email) return null
+    // H-Plan-2 (audit étape 5) — vérifier que le token vient bien de NOTRE
+    // application (aud == GOOGLE_CLIENT_ID) ET que l'email est vérifié.
+    // Sinon un token Google d'une autre app pouvait passer le check et créer
+    // une ligne subscriptions/license au nom de cet email.
+    const verified = info.email_verified === 'true' || info.email_verified === true
+    if (!verified) return null
+    if (expectedAud && info.aud && info.aud !== expectedAud && info.azp !== expectedAud) {
+      return null
+    }
     return email
   } catch {
     return null
@@ -123,7 +137,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
   const token = match?.[1]?.trim()
   if (!token) return jsonStatus(FREE_RESPONSE)
 
-  const email = await verifyTokenViaTokeninfo(token)
+  const email = await verifyTokenViaTokeninfo(token, env.GOOGLE_CLIENT_ID)
   if (!email) return jsonStatus(FREE_RESPONSE)
 
   // ALLOWED_EMAILS = bypass VIP : reflète le runtime de checkAllowedUser pour
@@ -175,10 +189,16 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
   }
 
   try {
+    // H-Plan-1 (audit étape 5) — vérifier l'expiration. Une license avec
+    // status='active' mais expires_at dépassé restait active → perte de
+    // revenu. `expires_at IS NULL` = license perpétuelle (cas Pro one-shot
+    // sans expiration), gardée active.
     license = await env.DB.prepare(
       `SELECT 1 AS ok
          FROM licenses
-        WHERE user_email = ?1 AND status = 'active'
+        WHERE user_email = ?1
+          AND status = 'active'
+          AND (expires_at IS NULL OR expires_at > unixepoch())
         LIMIT 1`
     )
       .bind(email)
