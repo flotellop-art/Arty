@@ -11,6 +11,7 @@ import { getValidAccessToken } from '../../services/googleAuth'
 import { callGoogleApi } from '../../services/googleApiHelper'
 import { enhancePrompt, canEnhancePrompt } from '../../services/promptEnhancer'
 import { isPromptEnhancementEnabled } from '../../services/promptEnhancerSettings'
+import { hasUrl } from '../../services/aiRouter'
 
 interface InputBarProps {
   onSend: (text: string, files?: FileAttachment[]) => void
@@ -24,6 +25,12 @@ interface InputBarProps {
   // Seed value for attachments on mount. Same single-shot semantics as
   // initialText.
   initialFiles?: FileAttachment[]
+  // Conversation flag — quand true, on est en mode EU-only (Mistral forcé,
+  // données restent en Europe). Mistral n'a pas de tool web_fetch natif et
+  // hallucine sur les URLs collées (citations inventées, sources [1][2][3]
+  // fictives). On affiche alors un bandeau qui invite l'utilisateur à
+  // coller le texte de l'article plutôt que l'URL.
+  euOnly?: boolean
 }
 
 // V2 voice-first — tap = webkit speech, hold ≥ 600ms = Whisper recording.
@@ -89,7 +96,7 @@ function PendingFilePreview({ file, onRemove }: { file: FileAttachment; onRemove
   )
 }
 
-export function InputBar({ onSend, isStreaming, onStop, initialText, initialFiles }: InputBarProps) {
+export function InputBar({ onSend, isStreaming, onStop, initialText, initialFiles, euOnly }: InputBarProps) {
   const { t } = useTranslation()
   const [text, setText] = useState(() => initialText ?? '')
   const [files, setFiles] = useState<FileAttachment[]>(() => initialFiles ?? [])
@@ -808,6 +815,19 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
           onConfirm={handleCreateCalendarEvent}
           onCancel={() => setShowCalendarForm(false)}
         />
+      )}
+
+      {/* URL hint banner — Mistral ne peut pas lire les URLs (pas de tool
+          web_fetch natif). Affiché en mode EU-only quand une URL est
+          détectée dans la draft. Les conversations non-EU sont auto-routées
+          vers Claude (web_fetch) dans aiRouter.detectProvider(). */}
+      {euOnly && hasUrl(text) && (
+        <div className="mb-2 flex items-start gap-2 px-3 py-2 bg-theme-accent/10 border border-theme-accent/20 rounded-xl text-xs text-theme-ink">
+          <span className="mt-0.5">💡</span>
+          <span className="flex-1">
+            Mistral ne peut pas ouvrir les liens (mode EU). Pour analyser le contenu, colle directement le texte de l'article ou de la vidéo ici.
+          </span>
+        </div>
       )}
 
       {/* File previews */}
