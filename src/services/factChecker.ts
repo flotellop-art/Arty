@@ -82,22 +82,15 @@ export function setFactCheckMode(mode: FactCheckMode): void {
   try { window.dispatchEvent(new CustomEvent('fact-check-mode-changed', { detail: mode })) } catch {}
 }
 
-// Détecte les sujets "à risque" qui justifient le passage à Sonnet 4.6
-// (plus rigoureux, attrape les mensonges narratifs et sources douteuses).
-// Pour le reste, Haiku 4.5 suffit (3x moins cher, 2x plus rapide).
+// Le mode 'auto' route TOUS les fact-checks vers Sonnet 4.6 (avec
+// web_search). Décision du 11 mai 2026 : Haiku 4.5 hallucine trop
+// souvent sur les sujets post-cutoff (modèles AI récents, actualité
+// tech, comparatifs produits) et ne supporte pas web_search_20250305.
+// Pour gagner en fiabilité, on accepte le coût supplémentaire.
 //
-// Mots-clés couvrent : finance, santé, juridique, devis pro, médicaments,
-// data techniques précises (puissance kW, taux %, RGE/RT/RE 20XX, etc.).
-const SENSITIVE_TOPIC_REGEX =
-  /\b(prix|tarif|devis|coût|coute|euros?|€|investiss|rendement|taux|crédit|emprunt|prêt|placement|fiscal|impôt|tva|économ|patrimoine|finance|m[ée]dic|sympt|dose|posologie|m[ée]decin|ordonnance|maladie|santé|juridi|avocat|contrat|loi|article\s+\d|tribunal|condamn|jurisprudence|rgpd|kwh?|cv|ampèr|volts?|puissance|garanti|assurance|certificat|norme\s+|RT\s*20\d{2}|RE\s*20\d{2}|RGE)\b/i
-
-export function selectFactCheckerModel(
-  question: string,
-  response: string
-): 'haiku' | 'sonnet' {
-  const text = (question + ' ' + response).toLowerCase()
-  return SENSITIVE_TOPIC_REGEX.test(text) ? 'sonnet' : 'haiku'
-}
+// Si tu veux forcer Haiku (rapide, gratuit, pas de web), passer en
+// mode 'haiku' explicite dans les settings — réservé aux cas où la
+// fiabilité ne prime pas (chat trivial, brainstorming).
 
 const SYSTEM_PROMPT = `Tu es un fact-checker rigoureux. On te donne une question d'utilisateur, une réponse d'IA à vérifier, ET (si disponible) les SOURCES WEB CONSULTÉES par l'IA pendant sa réponse. Ton job : identifier les claims factuels VÉRIFIABLES (chiffres précis, dates, noms propres, prix, scores, statistiques, citations), donner un verdict pour CHACUN, et PROPOSER UNE CORRECTION quand tu es confiant que c'est faux.
 
@@ -182,18 +175,11 @@ export async function factCheckResponse(
 ): Promise<FactCheckResult | null> {
   if (mode === 'off' || !response || response.length < 80) return null
 
-  // Mode 'auto' : route vers Sonnet sur sujets sensibles, Haiku sinon.
-  // ET passer en Sonnet si on a un searchContext riche, car la
-  // comparaison aux sources demande plus de finesse que Haiku.
-  const hasRichContext = searchContext !== null && (
-    !!searchContext.answer ||
-    (searchContext.results && searchContext.results.length > 0) ||
-    !!searchContext.bySource
-  )
+  // Mode 'auto' : toujours Sonnet 4.6 + web_search. Haiku 4.5 reste
+  // disponible mais uniquement en mode explicite (settings → 'haiku')
+  // pour ceux qui priorisent vitesse/coût sur fiabilité.
   const effectiveMode: 'haiku' | 'sonnet' =
-    mode === 'auto'
-      ? hasRichContext ? 'sonnet' : selectFactCheckerModel(question, response)
-      : mode
+    mode === 'auto' ? 'sonnet' : mode
 
   const model = effectiveMode === 'sonnet' ? 'claude-sonnet-4-6' : 'claude-haiku-4-5-20251001'
   const modelLabel = effectiveMode === 'sonnet' ? 'Sonnet 4.6' : 'Haiku 4.5'
