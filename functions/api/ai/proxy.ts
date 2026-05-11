@@ -3,7 +3,6 @@ import {
   checkAllowedUser,
   isModelAllowedInTrial,
   isTrialExpired,
-  parseAllowedEmails,
   trialExpiredResponse,
   trialModelRestrictedResponse,
   verifyGoogleUser,
@@ -55,19 +54,12 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
   }
 
   if (!apiKey) {
-    const allowed = parseAllowedEmails(env.ALLOWED_EMAILS)
-    const isWhitelisted = allowed.includes(email)
-    const hasServerKey = !!env.ANTHROPIC_API_KEY
-    let message: string
-    if (!hasServerKey) {
-      message = "Clé API requise — ANTHROPIC_API_KEY non configurée côté serveur."
-    } else if (!isWhitelisted) {
-      message = `Clé API requise — abonnement requis pour utiliser la clé serveur. Démarre un essai gratuit sur /api/trial/init.`
-    } else {
-      message = "Clé API requise — configuration serveur incomplète."
-    }
+    // LOW (audit étape 13) — message d'erreur uniforme. Avant : on exposait
+    // `email`, `isWhitelisted`, `hasServerKey` dans la réponse → oracle pour
+    // énumérer la whitelist (test d'emails arbitraires → différence de body).
+    // Maintenant : message générique sans révéler l'état serveur.
     return Response.json(
-      { error: message, email, isWhitelisted, hasServerKey },
+      { error: "Clé API requise — abonnement Pro requis ou fournir une clé BYOK." },
       { status: 401 }
     )
   }

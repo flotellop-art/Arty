@@ -243,6 +243,15 @@ async function parseSSEStream(
       buffer = lines.pop() || ''
 
       for (const line of lines) {
+        // LOW (audit étape 13) — reset eventType sur ligne vide. SSE spec :
+        // chaque event est séparé par un blank line, et eventType devrait
+        // se reset entre events. Sans ça, un data sans `event: ` aurait
+        // attribué l'eventType de l'event précédent (en pratique l'API
+        // Anthropic est bien formée donc pas vu, mais defense en profondeur).
+        if (line === '') {
+          eventType = ''
+          continue
+        }
         if (line.startsWith('event: ')) {
           eventType = line.slice(7).trim()
           continue

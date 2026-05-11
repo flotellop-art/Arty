@@ -36,16 +36,27 @@ export function createNativeHandlers(): Record<string, ToolHandler> {
     },
 
     save_local_file: async (input) => {
-      const path = input.path as string
+      const rawPath = input.path as string
       const content = input.content as string
       const encoding = (input.encoding as 'utf8' | 'base64') || 'utf8'
-      if (!path || !content) return { result: 'Chemin et contenu requis.' }
+      if (!rawPath || !content) return { result: 'Chemin et contenu requis.' }
 
-      const uri = await writeLocalFile(path, content, encoding)
+      // LOW (audit étape 13) — sanitize path traversal. Si Claude (ou un
+      // prompt malveillant) tente `save_local_file({ path: '../../secret' })`,
+      // Capacitor Filesystem peut écrire en dehors de Documents/. On retire
+      // toute composante `..` ou path absolu, on ne garde que le basename
+      // + extension. Suffisant pour l'usage légitime (sauver un PDF, un
+      // export JSON) sans permettre la navigation arbitraire.
+      const safePath = rawPath.split(/[/\\]/).pop() || ''
+      if (!safePath || safePath === '..' || safePath.startsWith('.')) {
+        return { result: 'Nom de fichier invalide.' }
+      }
+
+      const uri = await writeLocalFile(safePath, content, encoding)
       if (uri) {
         return { result: `Fichier sauvegardé : ${uri}` }
       }
-      return { result: `Fichier téléchargé : ${path}` }
+      return { result: `Fichier téléchargé : ${safePath}` }
     },
 
     delete_local_file: async (input) => {

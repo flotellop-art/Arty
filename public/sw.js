@@ -1,4 +1,4 @@
-const CACHE_NAME = 'arty-cache-v49'
+const CACHE_NAME = 'arty-cache-v50'
 
 // ─── Push Notifications (Web Push API) ───
 self.addEventListener('push', (event) => {
@@ -82,6 +82,14 @@ self.addEventListener('fetch', (event) => {
 
   // Never cache API calls
   if (url.hostname === 'api.anthropic.com' || url.hostname === 'gateway.ai.cloudflare.com') {
+    return
+  }
+
+  // BUG 45 partiel (audit étape 13) — never cache Cloudflare Pages Functions.
+  // Sans ça, le SW peut servir une réponse mise en cache (souvent une erreur
+  // CORS ou un 5xx) sur /api/ai/proxy, /api/gmail/action, /api/auth/token, etc.
+  // → l'app croit que le proxy est cassé alors qu'il marche.
+  if (url.pathname.startsWith('/api/')) {
     return
   }
 
