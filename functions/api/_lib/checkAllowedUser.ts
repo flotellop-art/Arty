@@ -255,9 +255,14 @@ export async function resolveUserPlan(env: Env, email: string): Promise<PlanType
     if (sub?.plan_type === 'subscription') return 'subscription'
     if (sub?.plan_type === 'trial') return 'trial'
 
+    // H-Plan-1 (audit étape 5) — vérifier l'expiration. Une license expirée
+    // ne doit plus donner accès Pro même si status='active' (cas où Lemon
+    // Squeezy n'a pas encore push le webhook expired).
     const license = await env.DB.prepare(
       `SELECT 1 AS ok FROM licenses
-       WHERE user_email = ?1 AND status = 'active'
+       WHERE user_email = ?1
+         AND status = 'active'
+         AND (expires_at IS NULL OR expires_at > unixepoch())
        LIMIT 1`
     )
       .bind(email)

@@ -72,6 +72,12 @@ export async function consumeFreeDailyQuota(
   // long-terme. La clé du jour suivant sera créée à zéro automatiquement.
   await env.KV.put(key, String(next), { expirationTtl: 48 * 3600 })
 
+  // H-Back-2 (audit étape 5) — TODO atomicité : même problème que premium cap.
+  // KV get→check→put non atomique → 2 requêtes simultanées peuvent passer le
+  // quota free. À migrer vers D1 `free_daily_quotas (user_email, day_key,
+  // family, count)` avec UPDATE atomique. Reporté pour ne pas reset les
+  // compteurs en cours.
+
   return { allowed: true, remaining: limit - next, limit, family }
 }
 

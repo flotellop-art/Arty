@@ -85,7 +85,17 @@ export function usePlanStatus(): PlanStatus & { refresh: () => void } {
     // (après un login Google → refetch avec le nouveau token).
     const events = ['arty-message-sent', 'google-storage-ready']
     events.forEach((e) => window.addEventListener(e, refresh))
-    return () => events.forEach((e) => window.removeEventListener(e, refresh))
+    // H-Plan-3 (audit étape 5) — refresh au focus de la window. Cas typique :
+    // user se logge free, achète Pro dans un autre onglet (webhook Lemon
+    // Squeezy update D1), revient sur Arty → sans cette ligne le cache
+    // 'arty-plan-cache' reste à 'free' jusqu'au prochain message, et le
+    // 1er message est servi en Haiku au lieu de Sonnet (cf. selectClaudeSubModel).
+    const handleFocus = () => void refresh()
+    window.addEventListener('focus', handleFocus)
+    return () => {
+      events.forEach((e) => window.removeEventListener(e, refresh))
+      window.removeEventListener('focus', handleFocus)
+    }
   }, [refresh])
 
   return { ...state, refresh }
