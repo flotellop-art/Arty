@@ -4,7 +4,9 @@
     "target": {
       "namespace": "android_app",
       "package_name": "com.arty.app",
-      "sha256_cert_fingerprints": ["*"]
+      "sha256_cert_fingerprints": [
+        "26:56:E0:01:A8:BC:BB:65:04:BB:BB:7A:2B:64:16:E6:37:1D:21:D0:B8:67:13:D0:45:F5:BC:A2:25:27:A2:E0"
+      ]
     }
   }
 ]
