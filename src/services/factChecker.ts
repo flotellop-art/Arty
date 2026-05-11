@@ -131,6 +131,9 @@ URLs ET LIENS — règle stricte :
 
 Si la réponse contient ZÉRO claim factuel risqué, retourne "claims": [] et "overall_confidence": "high".
 
+OUTIL WEB_SEARCH (si disponible) :
+Si le tool web_search est mis à ta disposition, tu PEUX l'appeler pour vérifier un claim que les sources fournies ne couvrent PAS — exemples : existence d'un produit/modèle/personne, dates de sortie, tarifs officiels, scores benchmarks, citations exactes. Préfère 1 à 2 recherches ciblées (max 2) plutôt que 0 — c'est ce qui te permet de passer "uncertain" à "verified" ou "wrong" sur des claims vérifiables en ligne. N'appelle PAS web_search pour les claims déjà confirmés/contredits par les sources fournies, ni pour les opinions ou conseils. Après tes recherches, retourne ton JSON final dans un dernier bloc texte.
+
 RÉPONDS UNIQUEMENT EN JSON VALIDE, sans texte avant ou après, sans backticks, format strict :
 {
   "overall_confidence": "high" | "medium" | "low",
@@ -195,6 +198,13 @@ export async function factCheckResponse(
   const model = effectiveMode === 'sonnet' ? 'claude-sonnet-4-6' : 'claude-haiku-4-5-20251001'
   const modelLabel = effectiveMode === 'sonnet' ? 'Sonnet 4.6' : 'Haiku 4.5'
 
+  // Web search natif Anthropic : activé uniquement sur Sonnet (Haiku 4.5 ne
+  // supporte pas web_search_20250305 → 400 si on l'envoie). Permet au
+  // fact-checker de vérifier des claims que les sources Linkup/Anthropic
+  // ramenées par le modèle d'origine ne couvrent pas — résout le paradoxe
+  // où Sonnet 4.6 marquait "uncertain" sur l'existence de "Sonnet 4.6"
+  // faute d'avoir l'info dans son training. `max_uses: 2` limite le coût.
+  const useWebSearch = effectiveMode === 'sonnet'
   const sourcesBlock = formatSearchContext(searchContext)
   const userMessage = `Question utilisateur :\n${question.slice(0, 2000)}\n\nRéponse à vérifier :\n${response.slice(0, 6000)}${sourcesBlock}`
 
@@ -205,22 +215,52 @@ export async function factCheckResponse(
   const googleToken = await getValidAccessToken()
   if (googleToken) headers['x-google-token'] = googleToken
 
+  // Timeout 20s : avec web_search activé, Anthropic peut prendre 5-10s à
+  // exécuter ses 1-2 recherches + synthèse JSON. Sans timeout, un appel
+  // qui pend laisserait le placeholder "Vérification en cours…" gelé
+  // indéfiniment.
+  const controller = new AbortController()
+  const timeoutMs = useWebSearch ? 20_000 : 10_000
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+
+  type RequestBody = {
+    model: string
+    max_tokens: number
+    system: string
+    messages: Array<{ role: 'user'; content: string }>
+    tools?: Array<{ type: string; name: string; max_uses?: number }>
+  }
+  const reqBody: RequestBody = {
+    model,
+    // Sonnet + web_search : bump max_tokens pour accommoder les blocs
+    // server_tool_use + web_search_tool_result + texte intermédiaire +
+    // JSON final. 1024 ne suffit plus quand le modèle fait 2 recherches.
+    max_tokens: useWebSearch ? 2500 : 1024,
+    system: SYSTEM_PROMPT,
+    messages: [{ role: 'user', content: userMessage }],
+  }
+  if (useWebSearch) {
+    reqBody.tools = [{ type: 'web_search_20250305', name: 'web_search', max_uses: 2 }]
+  }
+
   let res: Response
   try {
     res = await fetch(apiUrl('/api/ai/proxy'), {
       method: 'POST',
       headers,
-      body: JSON.stringify({
-        model,
-        max_tokens: 1024,
-        system: SYSTEM_PROMPT,
-        messages: [{ role: 'user', content: userMessage }],
-      }),
+      body: JSON.stringify(reqBody),
+      signal: controller.signal,
     })
   } catch (err) {
-    console.warn('[factChecker] fetch failed:', err)
+    clearTimeout(timeoutId)
+    if (err instanceof Error && err.name === 'AbortError') {
+      console.warn('[factChecker] timeout after', timeoutMs, 'ms')
+    } else {
+      console.warn('[factChecker] fetch failed:', err)
+    }
     return null
   }
+  clearTimeout(timeoutId)
 
   if (!res.ok) {
     console.warn('[factChecker] proxy returned non-ok:', res.status, await res.text().catch(() => ''))
@@ -230,7 +270,20 @@ export async function factCheckResponse(
   let text = ''
   try {
     const data = (await res.json()) as { content?: Array<{ type?: string; text?: string }> }
-    text = data.content?.find((c) => c.type === 'text')?.text || ''
+    // On cherche le DERNIER bloc text. Avec web_search activé, la réponse
+    // contient [server_tool_use, web_search_tool_result, text (commentaire),
+    //  server_tool_use, web_search_tool_result, text (JSON final)] — il
+    // faut prendre le dernier, qui porte le JSON. Sans web_search, il n'y
+    // a qu'un seul bloc text → le résultat est le même. Boucle inverse
+    // plutôt que `.findLast()` parce que la lib TS cible ES2020.
+    const blocks = data.content || []
+    for (let i = blocks.length - 1; i >= 0; i--) {
+      const b = blocks[i]
+      if (b && b.type === 'text' && b.text) {
+        text = b.text
+        break
+      }
+    }
   } catch (err) {
     console.warn('[factChecker] response.json() failed:', err)
     return null
