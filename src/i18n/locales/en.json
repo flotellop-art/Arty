@@ -189,7 +189,8 @@
         "artyReplying": "Arty is replying…",
         "transcribing": "Transcribing…",
         "tooShort": "Hold the button to record",
-        "micDenied": "Microphone denied — allow it in settings",
+        "micDenied": "Microphone denied — allow it in browser settings",
+        "micDeniedNative": "Microphone denied — allow it in Settings → Apps → Arty → Permissions",
         "transcribeFailed": "Transcription failed — try again",
         "unsupported": "Audio recording not supported in this browser"
       }

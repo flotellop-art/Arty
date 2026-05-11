@@ -189,7 +189,8 @@
         "artyReplying": "Arty répond…",
         "transcribing": "Transcription…",
         "tooShort": "Maintiens appuyé pour enregistrer",
-        "micDenied": "Micro refusé — autorise-le dans les paramètres",
+        "micDenied": "Micro refusé — autorise-le dans les paramètres du navigateur",
+        "micDeniedNative": "Micro refusé — autorise-le dans Paramètres → Apps → Arty → Autorisations",
         "transcribeFailed": "Transcription échouée — réessaie",
         "unsupported": "Enregistrement audio non supporté sur ce navigateur"
       }

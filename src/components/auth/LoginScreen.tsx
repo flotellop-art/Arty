@@ -30,6 +30,23 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
   const [activeTab, setActiveTab] = useState<Tab>('apikey')
   const [loading, setLoading] = useState(false)
   const [emailError, setEmailError] = useState('')
+  // H-React-1 (audit étape 8) — message d'erreur visible si le login échoue.
+  // Avant : try/finally sans catch avalait silencieusement les erreurs,
+  // le spinner disparaissait mais aucune indication ne s'affichait
+  // (BUG 22 régressé partiellement).
+  const [loginError, setLoginError] = useState(() => {
+    // Drain l'erreur OAuth callback stashée dans sessionStorage (cf. App.tsx
+    // OAuthCallbackAuth.catch). Single-shot : on clear après lecture pour
+    // ne pas re-afficher au reload.
+    try {
+      const stashed = sessionStorage.getItem('arty-login-error')
+      if (stashed) {
+        sessionStorage.removeItem('arty-login-error')
+        return stashed
+      }
+    } catch { /* sessionStorage indisponible */ }
+    return ''
+  })
 
   // Drop any stale OAuth state nonce from a previous attempt that the user
   // abandoned (closed Google tab, killed app mid-redirect…). Without this,
@@ -49,6 +66,7 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
 
   const handleApiKeyLogin = useCallback(async (anthropicKey: string, geminiKey?: string, mistralKey?: string, openaiKey?: string) => {
     setLoading(true)
+    setLoginError('')
     try {
       // If we have a pending Google/Email auth, complete it with the API key
       if (pendingAuth) {
@@ -78,10 +96,15 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
           identifier: anthropicKey,
         })
       }
+    } catch (err) {
+      // H-React-1 — BUG 22 : sans catch, le spinner disparaît et l'user
+      // ne sait pas pourquoi le login a échoué.
+      const msg = err instanceof Error ? err.message : t('login.apikey.errorGeneric', { defaultValue: 'Échec de la connexion' })
+      setLoginError(msg)
     } finally {
       setLoading(false)
     }
-  }, [onLogin, pendingAuth])
+  }, [onLogin, pendingAuth, t])
 
   const handleEmailLogin = useCallback(async (email: string, password: string) => {
     setLoading(true)
@@ -162,6 +185,11 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
               components={{ strong: <strong className="not-italic font-medium text-theme-ink" /> }}
             />
           </p>
+          {loginError && (
+            <div className="mb-3 px-3 py-2 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">
+              {loginError}
+            </div>
+          )}
           <ApiKeyLoginTab onLogin={handleApiKeyLogin} loading={loading} />
         </div>
       </div>
