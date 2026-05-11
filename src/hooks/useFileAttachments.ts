@@ -120,35 +120,46 @@ export async function buildMistralMessages(
         return { role: m.role, content: m.content }
       }
       const hydrated = await hydrateFiles(m.files)
-      const blocks: MistralBlock[] = []
-      const textNotes: string[] = []
-      for (const file of hydrated) {
-        const mime = detectMimeType(file.name, file.type)
-        if (mime.startsWith('image/') && file.data) {
-          blocks.push({
-            type: 'image_url',
-            image_url: { url: `data:${mime};base64,${file.data}` },
-          })
-        } else if (file.data && (mime === 'text/plain' || mime.startsWith('text/'))) {
-          // Inline le contenu text dans le prompt pour que Mistral le voit
-          try {
-            const decoded = decodeURIComponent(escape(atob(file.data)))
-            textNotes.push(`[Contenu de ${file.name}]\n${decoded}`)
-          } catch {
-            textNotes.push(`[Fichier ${file.name} non décodable]`)
-          }
-        } else if (mime === 'application/pdf') {
-          // Mistral ne lit pas les PDFs nativement → mention textuelle
-          textNotes.push(`[PDF joint: ${file.name} — Mistral ne lit pas les PDFs nativement, conversion serveur recommandée]`)
-        } else {
-          textNotes.push(`[Fichier joint: ${file.name}]`)
-        }
-      }
-      const fullText = [...textNotes, m.content].filter(Boolean).join('\n')
-      blocks.push({ type: 'text', text: fullText })
+      const blocks = buildMistralBlocks(m.content, hydrated)
       return { role: m.role, content: blocks }
     })
   )
+}
+
+// Construit les content blocks Mistral pour le message courant à partir des
+// fichiers en RAM. Permet de bypasser l'IndexedDB roundtrip pour un fichier
+// qui vient d'être uploadé (cas où putFile a échoué silencieusement OU
+// race au commit IndexedDB → getFile retourne null → image perdue côté
+// Mistral). Symétrique de buildContentBlocks() pour Claude.
+export function buildMistralBlocks(
+  text: string,
+  files: FileAttachment[]
+): MistralBlock[] {
+  const blocks: MistralBlock[] = []
+  const textNotes: string[] = []
+  for (const file of files) {
+    const mime = detectMimeType(file.name, file.type)
+    if (mime.startsWith('image/') && file.data) {
+      blocks.push({
+        type: 'image_url',
+        image_url: { url: `data:${mime};base64,${file.data}` },
+      })
+    } else if (file.data && (mime === 'text/plain' || mime.startsWith('text/'))) {
+      try {
+        const decoded = decodeURIComponent(escape(atob(file.data)))
+        textNotes.push(`[Contenu de ${file.name}]\n${decoded}`)
+      } catch {
+        textNotes.push(`[Fichier ${file.name} non décodable]`)
+      }
+    } else if (mime === 'application/pdf') {
+      textNotes.push(`[PDF joint: ${file.name} — Mistral ne lit pas les PDFs nativement, conversion serveur recommandée]`)
+    } else {
+      textNotes.push(`[Fichier joint: ${file.name}]`)
+    }
+  }
+  const fullText = [...textNotes, text].filter(Boolean).join('\n')
+  blocks.push({ type: 'text', text: fullText || 'Analyse ce fichier.' })
+  return blocks
 }
 
 // Build content blocks for the current outgoing message (files have data
