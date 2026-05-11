@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 
 export interface Question {
   question: string
@@ -12,6 +13,7 @@ interface QuestionModalProps {
 }
 
 export function QuestionModal({ questions, onComplete }: QuestionModalProps) {
+  const { t } = useTranslation()
   const [currentIndex, setCurrentIndex] = useState(0)
   const [answers, setAnswers] = useState<string[]>([])
   const [freeText, setFreeText] = useState('')
@@ -63,7 +65,7 @@ export function QuestionModal({ questions, onComplete }: QuestionModalProps) {
         {/* Header */}
         <div className="flex items-center justify-between mb-4">
           <span className="text-sm text-theme-muted/70 font-medium">
-            {currentIndex + 1} sur {total}
+            {t('chat.questionModal.progress', { current: currentIndex + 1, total })}
           </span>
           <button
             onClick={() => onComplete(answers)}
@@ -111,7 +113,7 @@ export function QuestionModal({ questions, onComplete }: QuestionModalProps) {
               value={freeText}
               onChange={(e) => setFreeText(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleFreeText()}
-              placeholder="Saisissez votre propre réponse…"
+              placeholder={t('chat.questionModal.freeTextPlaceholder')}
               className="flex-1 px-3 py-2.5 text-sm rounded-xl border border-theme-border focus:outline-none focus:border-orange-300"
             />
             <button
