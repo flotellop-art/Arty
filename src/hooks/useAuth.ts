@@ -110,6 +110,11 @@ export function useAuth() {
     // pinned messages are intentionally kept (user request).
     scoped.removeItem('cost_history')
     scoped.removeItem('cost_alert')
+    // BUG 41 fix (étape 9 audit) — `api-keys` stocké en clair dans
+    // localStorage. Le laissait au logout faisait que la passphrase
+    // crypto du user partant restait dispo pour le prochain user qui
+    // se logge sur le même appareil. Wipe explicite.
+    scoped.removeItem('api-keys')
     // Drop any pending OAuth state nonce (e.g. user clicked Google then
     // logged out before completing the redirect).
     clearOAuthState()

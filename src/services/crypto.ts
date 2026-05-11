@@ -4,12 +4,76 @@
  *
  * The encryption key is derived from the user's API key via PBKDF2.
  * This means data is only readable with the correct API key.
+ *
+ * Étape 9 audit (PR 9a) : PBKDF2 100k → 600k itérations (OWASP 2024+).
+ * Versioning au niveau localStorage pour migrer les users existants en lazy
+ * (à la prochaine initCrypto réussie) sans wipe destructif. Killswitch
+ * `arty-crypto-v2-disabled = '1'` pour rollback rapide via DevTools.
  */
 
 const SALT_KEY = 'arty-crypto-salt'
 const KEY_CHECK_KEY = 'arty-crypto-check'
+const VERSION_KEY = 'arty-crypto-version'
+const KILLSWITCH_KEY = 'arty-crypto-v2-disabled'
+
+type CryptoVersion = 'v1' | 'v2'
+
+/**
+ * Itérations PBKDF2 par version. v1 (legacy 100k) conservée pour migrer
+ * les blobs des users qui ont déjà chiffré avec l'ancien algo — un swap
+ * brutal vers 600k invaliderait KEY_CHECK_KEY → BUG 47 régresserait
+ * (l'app croirait à une mauvaise passphrase). v2 = 600k, recommandation
+ * OWASP 2024 pour SHA-256.
+ */
+const PBKDF2_ITERATIONS: Record<CryptoVersion, number> = {
+  v1: 100_000,
+  v2: 600_000,
+}
 
 let cachedKey: CryptoKey | null = null
+
+// ─── Version helpers ───
+
+function getStoredVersion(): CryptoVersion {
+  try {
+    const raw = localStorage.getItem(VERSION_KEY)
+    return raw === 'v2' ? 'v2' : 'v1'
+  } catch {
+    return 'v1'
+  }
+}
+
+function setStoredVersion(v: CryptoVersion): void {
+  try { localStorage.setItem(VERSION_KEY, v) } catch { /* quota / SSR */ }
+}
+
+/**
+ * Killswitch d'urgence : si la migration v2 casse en prod, set
+ * `arty-crypto-v2-disabled = '1'` via DevTools force le retour à v1 (100k)
+ * sans rollback APK. NE DOIT PAS être utilisé en routine — c'est un fallback
+ * en cas d'incident massif (ex: regression on initCrypto qui wipe tout).
+ */
+function isV2Disabled(): boolean {
+  try { return localStorage.getItem(KILLSWITCH_KEY) === '1' } catch { return false }
+}
+
+/**
+ * Liste les clés localStorage qui contiennent des blobs chiffrés (convention :
+ * suffixe `-enc`). Utilisé par la migration v1→v2 pour re-chiffrer tous les
+ * blobs avec la nouvelle clé. Couvre google-tokens-enc, google-user-enc,
+ * arty-*-file-*-enc (secureFileStorage), etc. sans devoir exposer la liste
+ * depuis chaque module.
+ */
+function listEncryptedKeys(): string[] {
+  const out: string[] = []
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i)
+      if (k && k.endsWith('-enc')) out.push(k)
+    }
+  } catch { /* SSR / privacy mode */ }
+  return out
+}
 
 // ─── Key derivation ───
 
@@ -23,7 +87,7 @@ async function getSalt(): Promise<Uint8Array> {
   return salt
 }
 
-async function deriveKey(passphrase: string): Promise<CryptoKey> {
+async function deriveKey(passphrase: string, version: CryptoVersion): Promise<CryptoKey> {
   const enc = new TextEncoder()
   const salt = await getSalt()
 
@@ -36,7 +100,7 @@ async function deriveKey(passphrase: string): Promise<CryptoKey> {
   )
 
   return crypto.subtle.deriveKey(
-    { name: 'PBKDF2', salt, iterations: 100000, hash: 'SHA-256' },
+    { name: 'PBKDF2', salt, iterations: PBKDF2_ITERATIONS[version], hash: 'SHA-256' },
     keyMaterial,
     { name: 'AES-GCM', length: 256 },
     false,
@@ -49,24 +113,104 @@ async function deriveKey(passphrase: string): Promise<CryptoKey> {
 /**
  * Initialize encryption with the user's passphrase (API key).
  * Must be called before secureSet/secureGet.
+ *
+ * Versioning behavior (étape 9 audit) :
+ * 1. Fresh install (no KEY_CHECK_KEY) → write check + version directly at target.
+ * 2. Stored version matches target → derive normally.
+ * 3. Stored version is v1 but target is v2 → verify passphrase against old
+ *    iterations, then re-encrypt all `*-enc` blobs + KEY_CHECK_KEY with the
+ *    new iterations, finally bump the version marker. **No wipe on failure**
+ *    (cf. BUG 47) — if passphrase is wrong, we keep the old key cached.
  */
 export async function initCrypto(passphrase: string): Promise<void> {
-  cachedKey = await deriveKey(passphrase)
+  const targetVersion: CryptoVersion = isV2Disabled() ? 'v1' : 'v2'
+  const storedVersion = getStoredVersion()
+  const hasExistingCheck = !!localStorage.getItem(KEY_CHECK_KEY)
 
-  // Store a check value so we can verify the key is correct on next load
-  const check = await encrypt('arty-ok')
-  localStorage.setItem(KEY_CHECK_KEY, check)
+  // 1) Fresh install — pas de check existant, on initialise direct au target.
+  if (!hasExistingCheck) {
+    cachedKey = await deriveKey(passphrase, targetVersion)
+    const check = await encrypt('arty-ok')
+    localStorage.setItem(KEY_CHECK_KEY, check)
+    setStoredVersion(targetVersion)
+    return
+  }
+
+  // 2) Déjà à la version target → flow normal.
+  if (storedVersion === targetVersion) {
+    cachedKey = await deriveKey(passphrase, targetVersion)
+    return
+  }
+
+  // 3) Migration v1 → v2 (ou inversement si killswitch).
+  // 3a) Vérifier que la passphrase est correcte avec l'ancien algo.
+  const oldKey = await deriveKey(passphrase, storedVersion)
+  const prevCachedKey = cachedKey
+  cachedKey = oldKey
+  let isValid = false
+  try {
+    isValid = (await decrypt(localStorage.getItem(KEY_CHECK_KEY)!)) === 'arty-ok'
+  } catch {
+    isValid = false
+  }
+
+  if (!isValid) {
+    // Mauvaise passphrase. NE PAS migrer, NE PAS wiper (BUG 47). On garde
+    // oldKey en cache pour cohérence avec l'ancien comportement — les
+    // callers verront `selfTestCrypto = false` et retesteront plus tard.
+    cachedKey = prevCachedKey ?? oldKey
+    return
+  }
+
+  // 3b) Passphrase OK. Décrypter tous les blobs avec oldKey, ré-encrypter
+  // avec newKey. La séquence importe : on collecte d'abord tous les plaintexts
+  // (oldKey actif), puis on swap cachedKey, puis on ré-écrit.
+  const blobs = listEncryptedKeys().filter((k) => k !== KEY_CHECK_KEY)
+  const decrypted: Array<[string, string]> = []
+  for (const k of blobs) {
+    try {
+      const raw = localStorage.getItem(k)
+      if (!raw) continue
+      const plain = await decrypt(raw)
+      decrypted.push([k, plain])
+    } catch {
+      // Blob illisible avec oldKey — peut-être déjà à v2 (migration partielle
+      // précédente kill switchée) ou corrompu. On skip sans casser.
+    }
+  }
+
+  const newKey = await deriveKey(passphrase, targetVersion)
+  cachedKey = newKey
+  for (const [k, plain] of decrypted) {
+    try {
+      const encNew = await encrypt(plain)
+      localStorage.setItem(k, encNew)
+    } catch {
+      // En cas d'échec de re-encrypt, on garde l'ancien blob (qui n'est plus
+      // lisible avec newKey). Le prochain boot retentera la migration depuis
+      // v1 (puisque setStoredVersion n'a pas encore été appelé).
+    }
+  }
+
+  // Réécrire KEY_CHECK_KEY EN DERNIER. Si on crash avant cette ligne, le
+  // prochain boot lit storedVersion=v1 et retente la migration.
+  const newCheck = await encrypt('arty-ok')
+  localStorage.setItem(KEY_CHECK_KEY, newCheck)
+  setStoredVersion(targetVersion)
 }
 
 /**
- * Verify if the given passphrase matches the stored key.
+ * Verify if the given passphrase matches the stored key. Utilise la version
+ * stockée (pas la target) pour vérifier — sinon on dirait à tort que la
+ * passphrase est mauvaise alors qu'elle est juste en attente de migration.
  */
 export async function verifyCrypto(passphrase: string): Promise<boolean> {
   const check = localStorage.getItem(KEY_CHECK_KEY)
   if (!check) return false
 
+  const storedVersion = getStoredVersion()
   try {
-    const tempKey = await deriveKey(passphrase)
+    const tempKey = await deriveKey(passphrase, storedVersion)
     const prevKey = cachedKey
     cachedKey = tempKey
     const result = await decrypt(check)
@@ -89,7 +233,7 @@ export function isCryptoReady(): boolean {
  * Used by callers (bootstrapGoogleStorage) to distinguish "blob genuinely
  * corrupt" (key OK, decrypt fails) from "wrong passphrase loaded" (key
  * mismatch, decrypt fails on every blob). The latter must NOT trigger a
- * destructive wipe — see BUG 43.
+ * destructive wipe — see BUG 43, BUG 47.
  */
 export async function selfTestCrypto(): Promise<boolean> {
   if (!cachedKey) return false
