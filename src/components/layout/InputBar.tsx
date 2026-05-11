@@ -17,7 +17,6 @@ interface InputBarProps {
   onSend: (text: string, files?: FileAttachment[]) => void
   isStreaming: boolean
   onStop?: () => void
-  suggestion?: string | null
   // Seed value for the textarea on mount. Used by the share-to-Arty flow
   // to pre-fill a suggested prompt. Only read once — later changes are
   // ignored so the user's edits aren't clobbered.
@@ -176,7 +175,7 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
   }, [])
 
   // Keep refs in sync with state for use inside MediaRecorder.onstop closure.
-  useEffect(() => { textRef.current = text })
+  useEffect(() => { textRef.current = text }, [text])
   useEffect(() => { filesRef.current = files }, [files])
 
   // Auto-resize textarea
@@ -462,7 +461,10 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
       const name = (err as { name?: string } | null)?.name
       if (name === 'NotAllowedError' || name === 'PermissionDeniedError' ||
           name === 'NotFoundError' || name === 'DevicesNotFoundError') {
-        setAudioError(t('chat.input.voice.micDenied'))
+        // CRIT-10 (audit étape 8) — BUG 44 partiel : sur Capacitor natif il
+        // n'y a pas de "paramètres du navigateur" visibles. Le message
+        // doit pointer vers Paramètres Android → Apps → Arty → Autorisations.
+        setAudioError(isNative ? t('chat.input.voice.micDeniedNative') : t('chat.input.voice.micDenied'))
       } else {
         setAudioError(t('chat.input.voice.unsupported'))
       }
@@ -834,8 +836,12 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
       {files.length > 0 && (
         <div className="flex gap-2 mb-2 overflow-x-auto pb-1">
           {files.map((file, i) => (
+            // MED (audit étape 8) — key stable basée sur (name + size + index).
+            // Avant : key={i} sur une liste mutable (removeFile). Si l'user
+            // supprime un fichier au milieu, React recycle le DOM node — le
+            // blob URL du preview pointait vers le mauvais fichier.
             <PendingFilePreview
-              key={i}
+              key={`${file.name}-${file.size ?? 0}-${i}`}
               file={file}
               onRemove={() => removeFile(i)}
             />

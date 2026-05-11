@@ -889,7 +889,15 @@ function OAuthCallbackAuth({
       onPostLogin?.()
       navigate('/')
     } catch (err) {
+      // LOW (audit étape 8) — au lieu d'absorber silencieusement et rediriger
+      // (l'user ne sait pas pourquoi rien ne s'est passé), on stash l'erreur
+      // dans sessionStorage. LoginScreen la lit + clear au mount pour
+      // l'afficher dans le bandeau d'erreur (cf. handleApiKeyLogin).
       console.error('OAuth callback error:', err)
+      try {
+        const msg = err instanceof Error ? err.message : 'Échec de la connexion Google'
+        sessionStorage.setItem('arty-login-error', msg)
+      } catch { /* sessionStorage indisponible (mode privé), tant pis */ }
       navigate('/')
     }
   }, [auth, navigate, onPostLogin])

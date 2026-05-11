@@ -1,4 +1,4 @@
-import { memo, useEffect, useState } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
 import {
   areNotificationsEnabled,
   setNotificationsEnabled,
@@ -73,6 +73,15 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
   const [browserPermState, setBrowserPermState] =
     useState<GeolocationPermissionState | null>(null)
 
+  // H-React-3 (audit étape 8) — mounted ref pour éviter les setState
+  // post-unmount dans handleActivateLicense (le fetch peut prendre
+  // plusieurs secondes, l'user peut fermer la modal entre temps).
+  const isMountedRef = useRef(true)
+  useEffect(() => {
+    isMountedRef.current = true
+    return () => { isMountedRef.current = false }
+  }, [])
+
   useEffect(() => {
     if (!open) return
     setNotifEnabled(areNotificationsEnabled())
@@ -97,6 +106,10 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
     setLicenseSuccess('')
     setLicenseSubmitting(true)
     const result = await activateLicense(licenseKey, licenseEmail)
+    // H-React-3 — guard contre setState post-unmount (modal fermée pendant
+    // la requête réseau). Le résultat est perdu si user a fermé entre temps,
+    // c'est OK : la licence sera lue depuis le storage à la prochaine ouverture.
+    if (!isMountedRef.current) return
     setLicenseSubmitting(false)
     if (result.ok) {
       setProLicense(result.state)

@@ -7,6 +7,7 @@ import { InputBar } from '../layout/InputBar'
 import { ActionBanner } from '../google/ActionBanner'
 import { BrowserBanner } from '../google/BrowserBanner'
 import { ConversationSummaryModal } from './ConversationSummaryModal'
+import { ErrorBoundary } from '../shared/ErrorBoundary'
 import { consumePendingDraft } from '../../services/shareTargetService'
 import type { useGmail } from '../../hooks/useGmail'
 import type { useDrive } from '../../hooks/useDrive'
@@ -75,16 +76,18 @@ export function ConversationScreen({
       <BrowserBanner action={browserActions.currentAction} />
       <BrowserBanner action={computerActions.currentAction} />
 
-      <MessageList
-        messages={conversation.messages}
-        isStreaming={isStreaming}
-        streamingContent={streamingContent}
-        onAction={onAction}
-        onBranch={onBranch}
-        onTogglePin={onTogglePin}
-        onEdit={onEdit}
-        onRetry={onRetry}
-      />
+      <ErrorBoundary>
+        <MessageList
+          messages={conversation.messages}
+          isStreaming={isStreaming}
+          streamingContent={streamingContent}
+          onAction={onAction}
+          onBranch={onBranch}
+          onTogglePin={onTogglePin}
+          onEdit={onEdit}
+          onRetry={onRetry}
+        />
+      </ErrorBoundary>
 
       {actionScreenshot && (
         <div className="mx-4 mb-2">
