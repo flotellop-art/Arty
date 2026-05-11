@@ -1,4 +1,4 @@
-import { memo, useRef, useEffect, useCallback, useState } from 'react'
+import { memo, useRef, useEffect, useCallback, useState, useMemo } from 'react'
 import type { Message } from '../../types'
 import { UserBubble } from './UserBubble'
 import { AssistantBubble } from './AssistantBubble'
@@ -90,15 +90,23 @@ export const MessageList = memo(function MessageList({ messages, isStreaming, st
   // vers le haut).
   const [canScrollDown, setCanScrollDown] = useState(false)
 
+  // H-Perf-3 (audit étape 6) — scroll throttling via RAF. Avant : setState
+  // à chaque event scroll natif (continu sur iOS) → re-render de la liste
+  // entière à chaque pixel. Maintenant : 1 setState max par frame.
+  const scrollRafRef = useRef<number | null>(null)
   const updateCanScrollDown = useCallback(() => {
-    const el = scrollRef.current
-    if (!el) {
-      setCanScrollDown(false)
-      return
-    }
-    // Tolérance 8 px — sub-pixel rounding sur certains navigateurs mobile.
-    const remaining = el.scrollHeight - el.scrollTop - el.clientHeight
-    setCanScrollDown(remaining > 8)
+    if (scrollRafRef.current !== null) return
+    scrollRafRef.current = requestAnimationFrame(() => {
+      scrollRafRef.current = null
+      const el = scrollRef.current
+      if (!el) {
+        setCanScrollDown(false)
+        return
+      }
+      // Tolérance 8 px — sub-pixel rounding sur certains navigateurs mobile.
+      const remaining = el.scrollHeight - el.scrollTop - el.clientHeight
+      setCanScrollDown(remaining > 8)
+    })
   }, [])
 
   // Re-évalue à chaque tick de streaming (le contenu grandit) et au
@@ -144,13 +152,15 @@ export const MessageList = memo(function MessageList({ messages, isStreaming, st
     el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
   }, [])
 
-  // Find the index of the last user message (for edit button)
-  const lastUserIndex = (() => {
+  // H-React-2 (audit étape 6) — mémo'ed. Avant : IIFE recalculait à chaque
+  // render (qui fire pour chaque token de streaming, ~10×/sec sur 50+ msgs).
+  // Maintenant : recompute uniquement quand le tableau messages change.
+  const lastUserIndex = useMemo(() => {
     for (let i = messages.length - 1; i >= 0; i--) {
       if (messages[i]?.role === 'user') return i
     }
     return -1
-  })()
+  }, [messages])
 
   return (
     <div className="relative flex-1 overflow-hidden">

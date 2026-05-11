@@ -30,6 +30,21 @@ export function useStreaming(deps: {
   // Track active conversation in ref for streaming callbacks
   const activeIdRef = useRef<string | null>(null)
 
+  // CRIT-7 (audit étape 6) — throttle des setState par token via RAF.
+  // Avant : 1000 tokens = 1000 setState = 1000 re-renders React + 1000
+  // reparse Markdown (avec MarkdownRenderer non mémo'ed). Sur Pixel 6A
+  // ou iPhone 11, le chat freezait visiblement pendant les longues réponses.
+  // Maintenant : on accumule dans le ref, et on flush au max 1× par frame
+  // (~16ms = ~60fps) avec la valeur accumulée la plus récente.
+  const pendingFlushRef = useRef<number | null>(null)
+
+  const cancelPendingFlush = useCallback(() => {
+    if (pendingFlushRef.current !== null) {
+      cancelAnimationFrame(pendingFlushRef.current)
+      pendingFlushRef.current = null
+    }
+  }, [])
+
   // Save partial response to storage
   const savePartial = useCallback(() => {
     const s = streamingRef.current
@@ -76,11 +91,12 @@ export function useStreaming(deps: {
     if (streamingRef.current?.saveInterval) {
       clearInterval(streamingRef.current.saveInterval)
     }
+    cancelPendingFlush()
     streamingRef.current = null
     setIsStreaming(false)
     setStreamingContent('')
     abortRef.current = null
-  }, [])
+  }, [cancelPendingFlush])
 
   // Save partial on app close / page hide
   useEffect(() => {
@@ -121,9 +137,19 @@ export function useStreaming(deps: {
     if (streamingRef.current) {
       streamingRef.current.accumulated += token
     }
-    if (activeIdRef.current === targetId && !hideContentRef.current) {
-      setStreamingContent((prev) => prev + token)
-    }
+    if (activeIdRef.current !== targetId || hideContentRef.current) return
+    // CRIT-7 — schedule un flush RAF si pas déjà pending. Le flush lit
+    // streamingRef.accumulated (toujours frais) au moment de la frame,
+    // pas la valeur au moment du schedule → on coalesce plusieurs tokens
+    // en un seul setState par frame.
+    if (pendingFlushRef.current !== null) return
+    pendingFlushRef.current = requestAnimationFrame(() => {
+      pendingFlushRef.current = null
+      const s = streamingRef.current
+      if (s && activeIdRef.current === targetId && !hideContentRef.current) {
+        setStreamingContent(s.accumulated)
+      }
+    })
   }, [])
 
   // Marque la fin du stream SANS finalize. Garde le placeholder `streaming`
@@ -136,12 +162,13 @@ export function useStreaming(deps: {
       clearInterval(streamingRef.current.saveInterval)
       streamingRef.current.saveInterval = null
     }
+    cancelPendingFlush()
     if (activeIdRef.current === targetId) {
       setStreamingContent('')
     }
     abortRef.current = null
     return content
-  }, [])
+  }, [cancelPendingFlush])
 
   // Cleanup final après publish manuel (finalize appelé par le caller).
   // Reset isStreaming et streamingRef. À appeler après markStreamDone +
@@ -165,9 +192,10 @@ export function useStreaming(deps: {
     if (streamingRef.current?.saveInterval) {
       clearInterval(streamingRef.current.saveInterval)
     }
+    cancelPendingFlush()
     streamingRef.current = null
     abortRef.current = null
-  }, [finalize])
+  }, [finalize, cancelPendingFlush])
 
   const onError = useCallback((err: Error, targetId: string) => {
     const content = streamingRef.current?.accumulated
@@ -181,10 +209,11 @@ export function useStreaming(deps: {
     if (streamingRef.current?.saveInterval) {
       clearInterval(streamingRef.current.saveInterval)
     }
+    cancelPendingFlush()
     streamingRef.current = null
     abortRef.current = null
     return err
-  }, [finalize])
+  }, [finalize, cancelPendingFlush])
 
   const stopStreaming = useCallback(() => {
     const content = streamingRef.current?.accumulated
