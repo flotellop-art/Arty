@@ -158,14 +158,16 @@ export const UserBubble = memo(function UserBubble({ content, files, pinned, onT
         </div>
       )}
       <div className="relative w-full flex justify-end">
-        <div className={`relative max-w-[85%] font-display italic text-base text-theme-ink leading-snug text-right border-r-2 border-theme-accent pr-3 py-1 whitespace-pre-wrap break-words ${
-          pinned ? 'border-r-[3px]' : ''
-        }`}>
-          « {content} »
-          {pinned && (
-            <span className="absolute -top-2 -right-3 text-theme-accent text-[10px]">📌</span>
-          )}
-        </div>
+        {(content.trim() || !hasFiles) && (
+          <div className={`relative max-w-[85%] font-display italic text-base text-theme-ink leading-snug text-right border-r-2 border-theme-accent pr-3 py-1 whitespace-pre-wrap break-words ${
+            pinned ? 'border-r-[3px]' : ''
+          }`}>
+            « {content} »
+            {pinned && (
+              <span className="absolute -top-2 -right-3 text-theme-accent text-[10px]">📌</span>
+            )}
+          </div>
+        )}
         <div className="absolute bottom-0 left-[-4px] translate-x-[-100%] flex gap-1">
           {onEdit && (
             <button

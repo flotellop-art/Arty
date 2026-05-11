@@ -76,7 +76,11 @@ export async function buildApiMessages(
       }
       const hydrated = await hydrateFiles(m.files)
       const blocks = buildBlocksFromFiles(hydrated)
-      blocks.push({ type: 'text', text: m.content })
+      // Un bloc text vide est rejeté par l'API Anthropic ("text content blocks
+      // must contain non-whitespace text"). Pour un message image-only,
+      // injecter un texte de relais pour que l'historique reste valide.
+      const trailingText = m.content.trim() || 'Analyse ce fichier.'
+      blocks.push({ type: 'text', text: trailingText })
       return { role: m.role, content: blocks }
     })
   )

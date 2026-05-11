@@ -55,13 +55,28 @@ export function ConversationSummaryModal({ conversation, onClose }: Props) {
   const [copied, setCopied] = useState(false)
 
   useEffect(() => {
-    // Build a compact transcript (truncate long messages)
+    // Build a compact transcript (truncate long messages). Inclut une mention
+    // des pièces jointes (photos, PDFs…) pour qu'un message image-only ne soit
+    // pas perçu comme "vide" par le résumé — les binaires ne sont pas chargés,
+    // juste leurs noms/types pour donner du contexte au modèle.
+    const describeFiles = (files: { name: string; type: string }[]) =>
+      files
+        .map((f) => {
+          if (f.type.startsWith('image/')) return `[photo: ${f.name}]`
+          if (f.type === 'application/pdf') return `[PDF: ${f.name}]`
+          return `[fichier: ${f.name}]`
+        })
+        .join(' ')
+
     const transcript = conversation.messages
       .filter((m) => m.role === 'user' || m.role === 'assistant')
       .map((m) => {
-        const txt = m.content.length > 2000 ? m.content.slice(0, 2000) + '...' : m.content
-        return `${m.role === 'user' ? 'Utilisateur' : 'Arty'}: ${txt}`
+        const rawText = m.content.length > 2000 ? m.content.slice(0, 2000) + '...' : m.content
+        const fileNote = m.files && m.files.length > 0 ? describeFiles(m.files) : ''
+        const body = [fileNote, rawText].filter(Boolean).join(' ')
+        return `${m.role === 'user' ? 'Utilisateur' : 'Arty'}: ${body}`
       })
+      .filter((line) => line.replace(/^(Utilisateur|Arty):\s*/, '').length > 0)
       .join('\n\n')
 
     const prompt = [
