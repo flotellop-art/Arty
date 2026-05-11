@@ -138,6 +138,22 @@
     }
   },
   "chat": {
+    "upgradeModal": {
+      "title": "{{model}} réservé aux Pro",
+      "body": "En gratuit tu as accès à <0>Claude Haiku (10/jour)</0> et <1>Mistral (5/jour)</1>. Pour débloquer Sonnet, Opus, Gemini Pro et GPT, passe à Pro.",
+      "later": "Plus tard",
+      "seePlans": "Voir les plans"
+    },
+    "questionModal": {
+      "progress": "{{current}} sur {{total}}",
+      "freeTextPlaceholder": "Saisissez votre propre réponse…"
+    },
+    "streaming": {
+      "writing": "Arty écrit…"
+    },
+    "input": {
+      "euOnlyUrlHint": "Mistral ne peut pas ouvrir les liens (mode EU). Pour analyser le contenu, colle directement le texte de l'article ou de la vidéo ici."
+    },
     "topBar": {
       "aria": {
         "back": "Retour",

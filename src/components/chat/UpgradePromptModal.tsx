@@ -3,6 +3,7 @@
 
 import { memo, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useTranslation, Trans } from 'react-i18next'
 
 interface UpgradePromptModalProps {
   modelLabel: string
@@ -14,6 +15,7 @@ export const UpgradePromptModal = memo(function UpgradePromptModal({
   onClose,
 }: UpgradePromptModalProps) {
   const navigate = useNavigate()
+  const { t } = useTranslation()
 
   // H-UX-7 (audit étape 10) — Escape ferme la modale.
   useEffect(() => {
@@ -43,24 +45,28 @@ export const UpgradePromptModal = memo(function UpgradePromptModal({
       >
         <div className="flex items-center gap-2 mb-3">
           <span className="text-2xl" aria-hidden="true">🔒</span>
-          <h3 id="upgrade-modal-title" className="font-display text-xl text-theme-ink">{modelLabel} réservé aux Pro</h3>
+          <h3 id="upgrade-modal-title" className="font-display text-xl text-theme-ink">
+            {t('chat.upgradeModal.title', { model: modelLabel })}
+          </h3>
         </div>
         <p className="text-sm text-theme-muted mb-5 leading-relaxed">
-          En gratuit tu as accès à <strong className="text-theme-ink">Claude Haiku (10/jour)</strong> et <strong className="text-theme-ink">Mistral (5/jour)</strong>.
-          Pour débloquer Sonnet, Opus, Gemini Pro et GPT, passe à Pro.
+          <Trans
+            i18nKey="chat.upgradeModal.body"
+            components={{ 0: <strong className="text-theme-ink" />, 1: <strong className="text-theme-ink" /> }}
+          />
         </p>
         <div className="flex gap-2 justify-end">
           <button
             onClick={onClose}
             className="px-3 py-1.5 text-xs font-sans uppercase tracking-kicker text-theme-muted hover:text-theme-ink transition-colors"
           >
-            Plus tard
+            {t('chat.upgradeModal.later')}
           </button>
           <button
             onClick={handleUpgrade}
             className="px-4 py-1.5 text-xs font-sans uppercase tracking-kicker bg-theme-accent text-theme-bg hover:opacity-90 rounded-md transition-opacity"
           >
-            Voir les plans
+            {t('chat.upgradeModal.seePlans')}
           </button>
         </div>
       </div>

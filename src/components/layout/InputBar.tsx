@@ -826,9 +826,7 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
       {euOnly && hasUrl(text) && (
         <div className="mb-2 flex items-start gap-2 px-3 py-2 bg-theme-accent/10 border border-theme-accent/20 rounded-xl text-xs text-theme-ink">
           <span className="mt-0.5">💡</span>
-          <span className="flex-1">
-            Mistral ne peut pas ouvrir les liens (mode EU). Pour analyser le contenu, colle directement le texte de l'article ou de la vidéo ici.
-          </span>
+          <span className="flex-1">{t('chat.input.euOnlyUrlHint')}</span>
         </div>
       )}
 

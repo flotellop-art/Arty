@@ -1,10 +1,12 @@
 import { memo } from 'react'
+import { useTranslation } from 'react-i18next'
 
 // Petit badge "Arty écrit..." affiché EN DESSOUS de la bulle streaming
 // (tant que le streaming dure). Différent de TypingIndicator qui ne sert
 // qu'au tout début, avant le premier token. Ici l'utilisateur voit que la
 // génération continue même s'il a scrollé en arrière pour relire.
 export const StreamingIndicator = memo(function StreamingIndicator() {
+  const { t } = useTranslation()
   return (
     <div
       // H-UX-1 (audit étape 10) — aria-live='polite' pour que les lecteurs
@@ -19,7 +21,7 @@ export const StreamingIndicator = memo(function StreamingIndicator() {
         <span className="w-1.5 h-1.5 rounded-full bg-theme-accent typing-dot-2" />
         <span className="w-1.5 h-1.5 rounded-full bg-theme-accent typing-dot-3" />
       </span>
-      <span className="font-sans uppercase tracking-kicker">Arty écrit…</span>
+      <span className="font-sans uppercase tracking-kicker">{t('chat.streaming.writing')}</span>
     </div>
   )
 })

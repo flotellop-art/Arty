@@ -138,6 +138,22 @@
     }
   },
   "chat": {
+    "upgradeModal": {
+      "title": "{{model}} is Pro-only",
+      "body": "On the free plan you get access to <0>Claude Haiku (10/day)</0> and <1>Mistral (5/day)</1>. To unlock Sonnet, Opus, Gemini Pro and GPT, upgrade to Pro.",
+      "later": "Later",
+      "seePlans": "See plans"
+    },
+    "questionModal": {
+      "progress": "{{current}} of {{total}}",
+      "freeTextPlaceholder": "Type your own answer…"
+    },
+    "streaming": {
+      "writing": "Arty is writing…"
+    },
+    "input": {
+      "euOnlyUrlHint": "Mistral can't open links (EU mode). To analyze the content, paste the article or video text directly here."
+    },
     "topBar": {
       "aria": {
         "back": "Back",
