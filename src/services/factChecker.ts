@@ -215,12 +215,14 @@ export async function factCheckResponse(
   const googleToken = await getValidAccessToken()
   if (googleToken) headers['x-google-token'] = googleToken
 
-  // Timeout 20s : avec web_search activé, Anthropic peut prendre 5-10s à
-  // exécuter ses 1-2 recherches + synthèse JSON. Sans timeout, un appel
-  // qui pend laisserait le placeholder "Vérification en cours…" gelé
-  // indéfiniment.
+  // Timeout : avec web_search en mode non-streamé, Anthropic accumule
+  // toute la réponse côté serveur (2 recherches + synthèse JSON) avant
+  // de répondre. Mesuré en prod : 25-30s typique sur des sujets denses,
+  // d'où 35s comme garde-fou pour couvrir les 95e percentile sans geler
+  // le placeholder "Vérification en cours…" indéfiniment. 10s suffit
+  // pour Haiku sans web_search.
   const controller = new AbortController()
-  const timeoutMs = useWebSearch ? 20_000 : 10_000
+  const timeoutMs = useWebSearch ? 35_000 : 10_000
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
 
   type RequestBody = {
