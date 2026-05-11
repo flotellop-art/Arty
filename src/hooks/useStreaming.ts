@@ -9,6 +9,17 @@ export function useStreaming(deps: {
   const [streamingContent, setStreamingContent] = useState('')
   const abortRef = useRef<AbortController | null>(null)
 
+  // Si true, onToken accumule en background mais N'AFFICHE PAS les tokens
+  // en live. Utilisé par le flow "publish-after-fact-check" pour cacher
+  // la réponse non vérifiée jusqu'à la fin du fact-check — on garde
+  // l'accumulation pour savePartial et pour le finalize final.
+  const hideContentRef = useRef(false)
+
+  const setHideContent = useCallback((hide: boolean) => {
+    hideContentRef.current = hide
+    if (hide) setStreamingContent('')
+  }, [])
+
   // Track active streaming state in refs (survives navigation)
   const streamingRef = useRef<{
     targetId: string
@@ -110,9 +121,38 @@ export function useStreaming(deps: {
     if (streamingRef.current) {
       streamingRef.current.accumulated += token
     }
-    if (activeIdRef.current === targetId) {
+    if (activeIdRef.current === targetId && !hideContentRef.current) {
       setStreamingContent((prev) => prev + token)
     }
+  }, [])
+
+  // Marque la fin du stream SANS finalize. Garde le placeholder `streaming`
+  // en place, garde isStreaming=true pour que l'UI continue à montrer un
+  // loader (TypingIndicator). Le caller fera le finalize après le fact-check.
+  // Différent de onDone qui finalize immédiatement.
+  const markStreamDone = useCallback((targetId: string): string => {
+    const content = streamingRef.current?.accumulated || ''
+    if (streamingRef.current?.saveInterval) {
+      clearInterval(streamingRef.current.saveInterval)
+      streamingRef.current.saveInterval = null
+    }
+    if (activeIdRef.current === targetId) {
+      setStreamingContent('')
+    }
+    abortRef.current = null
+    return content
+  }, [])
+
+  // Cleanup final après publish manuel (finalize appelé par le caller).
+  // Reset isStreaming et streamingRef. À appeler après markStreamDone +
+  // finalize manuel pour libérer l'état de streaming.
+  const completeStreaming = useCallback((targetId: string) => {
+    if (activeIdRef.current === targetId) {
+      setIsStreaming(false)
+      setStreamingContent('')
+    }
+    streamingRef.current = null
+    hideContentRef.current = false
   }, [])
 
   const onDone = useCallback((targetId: string) => {
@@ -174,5 +214,8 @@ export function useStreaming(deps: {
     savePartial,
     finalize,
     cleanupStreaming,
+    setHideContent,
+    markStreamDone,
+    completeStreaming,
   }
 }

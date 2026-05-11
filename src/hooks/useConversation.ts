@@ -11,7 +11,7 @@ import * as storage from '../services/storage'
 import { useStreaming } from './useStreaming'
 import { useFileAttachments, buildApiMessages, buildContentBlocks, buildTextOnlyMessages, buildMistralMessages } from './useFileAttachments'
 import { putFile } from '../services/secureFileStorage'
-import { runFactCheckOnLatest } from '../services/factChecker'
+import { runFactCheckOnLatest, factCheckContent, getFactCheckMode } from '../services/factChecker'
 import { detectSuggestedTasks, addTask } from '../services/taskService'
 
 type ToolHandler = (name: string, input: Record<string, unknown>) => Promise<{ result: string; screenshot?: string }>
@@ -181,20 +181,92 @@ export function useConversation() {
 
       fileAttachments.setPendingFiles((files && files.length > 0) ? files : null)
 
+      // Mode "publish-after-fact-check" : si fact-check actif, on cache
+      // les tokens en live (TypingIndicator au lieu de bulle stream) et on
+      // retarde le finalize jusqu'à la fin du fact-check. Évite à
+      // l'utilisateur de voir la version non vérifiée. Mode 'off' garde
+      // l'ancien flow streaming visible + fact-check async.
+      const factCheckMode = getFactCheckMode()
+      const deferPublish = factCheckMode !== 'off'
+
+      streaming.setHideContent(deferPublish)
       streaming.startStream(targetId)
 
       const onToken = (token: string) => streaming.onToken(token, targetId)
 
-      const onDone = () => {
-        streaming.onDone(targetId)
-        // Signale au PlanBadge de rafraîchir ses compteurs free quotidiens
-        // (haiku/mistral). Pour les payants c'est un no-op côté hook.
+      const onDone = async () => {
+        // Signale au PlanBadge de rafraîchir ses compteurs free quotidiens.
         try { window.dispatchEvent(new CustomEvent('arty-message-sent')) } catch {}
-        // Lance le fact-checker en arrière-plan (1-2s, async, ne bloque
-        // pas l'affichage). Le résultat est attaché à Message.factCheck
-        // et déclenche un re-render via refreshConversations.
-        // No-op si mode='off' (par défaut pour les free users).
-        void runFactCheckOnLatest(targetId, refreshConversations)
+
+        if (!deferPublish) {
+          // Mode 'off' : publication immédiate, pas de fact-check.
+          streaming.onDone(targetId)
+          return
+        }
+
+        // Mode fact-check actif : retient le placeholder, lance la vérif,
+        // puis publie la bulle finale avec contenu corrigé d'un coup.
+        const content = streaming.markStreamDone(targetId)
+
+        // Trouve le user message qui précède pour le fact-check.
+        const conv = storage.getConversation(targetId)
+        type Msg = NonNullable<typeof conv>['messages'][number]
+        let userMsg: Msg | undefined
+        if (conv) {
+          for (let i = conv.messages.length - 1; i >= 0; i--) {
+            const m = conv.messages[i]
+            if (m && m.role === 'user') {
+              userMsg = m
+              break
+            }
+          }
+        }
+
+        // Fallback : si pas de content ou pas de user msg, on publie ce
+        // qu'on a et on tente le fact-check après (ancien flow).
+        if (!content || !userMsg) {
+          streaming.finalize(targetId, content)
+          streaming.completeStreaming(targetId)
+          if (content) void runFactCheckOnLatest(targetId, refreshConversations)
+          return
+        }
+
+        const fc = await factCheckContent(userMsg.content, content, factCheckMode)
+        const finalContent = fc?.correctedContent || content
+
+        // Publie la bulle finale. finalize crée un message avec un nouvel
+        // ID — on attache le factCheck juste après via une lecture/écriture
+        // de la conv.
+        streaming.finalize(targetId, finalContent)
+        if (fc?.result) {
+          const fresh = storage.getConversation(targetId)
+          if (fresh) {
+            const last = fresh.messages[fresh.messages.length - 1]
+            if (last && last.role === 'assistant') {
+              last.factCheck = fc.result
+              storage.saveConversation(fresh)
+              refreshConversations()
+            }
+          }
+        } else {
+          // Fact-check a échoué / timeout — publie quand même avec un badge
+          // d'indisponibilité pour pas laisser le placeholder gelé.
+          const fresh = storage.getConversation(targetId)
+          if (fresh) {
+            const last = fresh.messages[fresh.messages.length - 1]
+            if (last && last.role === 'assistant') {
+              last.factCheck = {
+                overallConfidence: 'medium',
+                claims: [],
+                modelLabel: '⚠ Fact-check indisponible',
+                checkedAt: Date.now(),
+              }
+              storage.saveConversation(fresh)
+              refreshConversations()
+            }
+          }
+        }
+        streaming.completeStreaming(targetId)
       }
 
       const onErr = (err: Error) => {
