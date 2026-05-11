@@ -447,9 +447,14 @@ Pour toute tâche **non triviale** (refactor, fix multi-fichiers, audit, debug d
 
 5. **Tâches triviales exemptées** : <15 min de travail solo, fix surgical d'1-2 lignes, modifs de config, ajout d'un test isolé. Pour celles-là, Claude peut coder direct sans agent.
 
-6. **Toujours spécifier le modèle des agents**. Claude DOIT passer explicitement le paramètre `model` (sonnet / opus / haiku) à chaque spawn d'agent ET mentionner le modèle dans le message qui annonce le spawn — sans ça, l'utilisateur ne peut pas savoir quelle qualité de raisonnement a produit l'avis. Défaut : `sonnet` (suffit pour 95% des audits / recherches). `opus` pour les audits sécu profonds (RÈGLE 6), les plans d'architecture critiques, ou les diagnostics de bug subtils. `haiku` réservé aux tâches très simples et répétitives (rare en agent — souvent plus efficace en direct).
+6. **Modèle des agents : Sonnet par défaut, Opus pour les cas critiques, Haiku INTERDIT**. Claude DOIT passer explicitement le paramètre `model` à chaque spawn d'agent ET mentionner le modèle dans le message qui annonce le spawn — sans ça, l'utilisateur ne peut pas savoir quelle qualité de raisonnement a produit l'avis. Règles strictes :
+   - **`sonnet`** : défaut obligatoire pour TOUS les agents (audits, recherches, challenges, exploration codebase). Override le défaut Haiku de `Explore` si nécessaire.
+   - **`opus`** : pour les audits sécu profonds (RÈGLE 6), les plans d'architecture critiques, les diagnostics de bug subtils, ou tout cas où le raisonnement profond prime.
+   - **`haiku`** : **INTERDIT pour tout agent**. Trop limité pour les tâches d'audit / analyse / challenge qui justifient un spawn d'agent dans cette codebase. Si une tâche est assez simple pour Haiku, elle est aussi assez simple pour que Claude la fasse en direct sans spawn d'agent.
 
-**Contexte** : règle posée par l'utilisateur le 27 avril 2026 après une session sur les bugs auth Google (PRs #109-#113). Le pattern qui marche : agents critiques en parallèle, Claude code seul. Sans agents, Claude reste dans son tunnel cognitif et rate les bugs annexes (ex : surrogate pairs, data smuggling, dead code legacy). Point 6 ajouté le 11 mai 2026 après une session sur l'hallucination Mistral sur URLs (PR #162) où Claude n'avait pas spécifié le modèle des 3 agents lancés.
+   ⚠️ **Piège connu** : `Explore` est par défaut en Haiku côté Claude Code. TOUJOURS l'override avec `model: 'sonnet'` (ou `opus`) explicite.
+
+**Contexte** : règle posée par l'utilisateur le 27 avril 2026 après une session sur les bugs auth Google (PRs #109-#113). Le pattern qui marche : agents critiques en parallèle, Claude code seul. Sans agents, Claude reste dans son tunnel cognitif et rate les bugs annexes (ex : surrogate pairs, data smuggling, dead code legacy). Point 6 ajouté le 11 mai 2026 après une session sur l'hallucination Mistral sur URLs (PR #162) où Claude n'avait pas spécifié le modèle des 3 agents lancés — l'audit sécu était en Haiku (défaut Explore) sans que personne ne le sache, dégradant la qualité du diagnostic. Durci le 11 mai 2026 (PR #163) pour interdire Haiku totalement et imposer Sonnet minimum.
 
 ---
 
