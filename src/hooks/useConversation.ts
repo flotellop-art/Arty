@@ -9,7 +9,8 @@ import { getOpenAIKey } from '../services/activeApiKey'
 import { detectProvider } from '../services/aiRouter'
 import * as storage from '../services/storage'
 import { useStreaming } from './useStreaming'
-import { useFileAttachments, buildApiMessages, buildContentBlocks, buildTextOnlyMessages, buildMistralMessages } from './useFileAttachments'
+import { useFileAttachments, buildApiMessages, buildContentBlocks, buildTextOnlyMessages, buildMistralMessages, buildMistralBlocks } from './useFileAttachments'
+import { getSelectedModel } from '../services/modelSelector'
 import { putFile } from '../services/secureFileStorage'
 import { runFactCheckOnLatest, factCheckContent, getFactCheckMode } from '../services/factChecker'
 import { detectSuggestedTasks, addTask } from '../services/taskService'
@@ -281,10 +282,29 @@ export function useConversation() {
       }
 
       const currentFiles = fileAttachments.pendingFilesRef.current
-      // EU-only conversations always use Mistral (data stays in Europe)
-      const provider = conv.euOnly
-        ? 'mistral' as const
-        : (currentFiles && currentFiles.length > 0) ? 'claude' as const : detectProvider(text)
+      const hasFiles = !!(currentFiles && currentFiles.length > 0)
+      const hasPdf = hasFiles && currentFiles!.some((f) => f.type === 'application/pdf')
+      const selectedModel = getSelectedModel()
+      // EU-only conversations always use Mistral (data stays in Europe).
+      // Sinon : si fichiers attachés, on choisit le provider selon ce que
+      // le modèle sélectionné peut gérer. Mistral Medium 3.5 a une vision
+      // native depuis avril → on respecte le choix de l'utilisateur s'il
+      // a explicitement choisi Mistral et qu'aucun PDF n'est attaché (PDF
+      // pas supporté nativement par Mistral). Gemini/OpenAI multimodal
+      // non câblés ici → fallback Claude pour ces cas. Sans ça, l'app
+      // forçait Sonnet même quand l'utilisateur avait sélectionné Mistral.
+      let provider: ReturnType<typeof detectProvider> | 'mistral' | 'claude'
+      if (conv.euOnly) {
+        provider = 'mistral'
+      } else if (hasFiles) {
+        if (selectedModel === 'mistral' && !hasPdf) {
+          provider = 'mistral'
+        } else {
+          provider = 'claude'
+        }
+      } else {
+        provider = detectProvider(text)
+      }
 
       // Track which models are used in this conversation
       const usedModels = conv.usedModels || []
@@ -330,6 +350,15 @@ export function useConversation() {
         // que les conversations euOnly puissent analyser des images sans
         // sortir d'EU vers Claude/Gemini.
         const apiMessages = await buildMistralMessages(conv.messages)
+        // Pour le message courant, on ré-injecte les fichiers depuis la RAM
+        // (pendingFilesRef) : ça bypass l'IndexedDB roundtrip et garantit
+        // que Mistral voit l'image même si putFile a échoué silencieusement
+        // ou si le commit IndexedDB n'a pas encore été visible côté lecture.
+        // Symétrique du path Claude (voir plus bas).
+        if (currentFiles && currentFiles.length > 0) {
+          apiMessages[apiMessages.length - 1] = { role: 'user', content: buildMistralBlocks(text, currentFiles) }
+          fileAttachments.setPendingFiles(null)
+        }
         controller = streamMistralMessage(apiMessages, onToken, onDone, onErr, {
           systemPrompt: systemPromptRef.current,
           onToolCall: toolHandlerRef.current,
