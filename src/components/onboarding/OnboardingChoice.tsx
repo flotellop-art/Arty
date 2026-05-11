@@ -295,7 +295,7 @@ export function TrialIntro({ onDone, onUpgrade }: TrialIntroProps) {
         </h1>
         <p className="font-display italic text-theme-muted text-base mt-3">
           {t('onboardingChoice.trial.subtitle', {
-            defaultValue: 'Modèles disponibles : Claude Haiku, GPT-4o mini, Gemini Flash, Mistral Small',
+            defaultValue: 'Modèles disponibles : Claude Haiku, GPT-4o mini, Gemini Flash, Mistral Medium',
           })}
         </p>
 

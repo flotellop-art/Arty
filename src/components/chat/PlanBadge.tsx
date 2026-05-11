@@ -1,6 +1,7 @@
 // Petit badge en haut de l'écran qui indique le plan actuel et les quotas
-// restants. Pour les free users : affiche le minimum entre Haiku et Mistral
-// pour signaler la contrainte la plus serrée. Pour les payants : "∞".
+// restants. Pour les free users : affiche le quota Haiku restant
+// (Mistral n'est plus accessible aux free depuis la dépréciation de Small).
+// Pour les payants : "∞".
 //
 // Click → ouvre la page upgrade pour les free, no-op pour les payants.
 
@@ -23,13 +24,12 @@ export const PlanBadge = memo(function PlanBadge() {
 
   const isFree = status.plan === 'free'
   const haikuLeft = status.dailyRemaining?.['claude-haiku'] ?? 0
-  const mistralLeft = status.dailyRemaining?.['mistral-small'] ?? 0
 
   const label = isFree
-    ? `${PLAN_LABEL.free} · ${haikuLeft}🤖 ${mistralLeft}🇪🇺`
+    ? `${PLAN_LABEL.free} · ${haikuLeft}🤖`
     : `${PLAN_LABEL[status.plan] ?? 'Pro'} · ∞`
 
-  const isAlmostExhausted = isFree && haikuLeft <= 2 && mistralLeft <= 1
+  const isAlmostExhausted = isFree && haikuLeft <= 2
 
   return (
     <button
@@ -43,7 +43,7 @@ export const PlanBadge = memo(function PlanBadge() {
       }`}
       title={
         isFree
-          ? `Plan gratuit · ${haikuLeft}/${status.dailyLimits?.['claude-haiku']} Haiku, ${mistralLeft}/${status.dailyLimits?.['mistral-small']} Mistral aujourd'hui. Click pour upgrader.`
+          ? `Plan gratuit · ${haikuLeft}/${status.dailyLimits?.['claude-haiku']} Haiku aujourd'hui. Click pour upgrader et débloquer Sonnet, Opus, Mistral, Gemini et GPT.`
           : `Plan ${PLAN_LABEL[status.plan]} · accès illimité`
       }
     >

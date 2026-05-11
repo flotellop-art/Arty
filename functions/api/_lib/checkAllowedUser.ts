@@ -69,14 +69,14 @@ export function isTrialExpired(r: CheckResult): r is TrialExpired {
  * Modèles autorisés en essai gratuit (plan 'trial'). Liste affichée à
  * l'utilisateur ; l'enforcement réel utilise `isModelAllowedInTrial()`
  * pour tolérer les variantes de versionning des fournisseurs (ex :
- * `claude-haiku-4-5-20251001` matche `claude-haiku`, `mistral-small-latest`
- * matche `mistral-small`).
+ * `claude-haiku-4-5-20251001` matche `claude-haiku`, `mistral-medium-latest`
+ * matche `mistral-medium`). Mistral Small déprécié mai 2026.
  */
 export const TRIAL_ALLOWED_MODELS = [
   'claude-haiku-4-5',
   'gpt-5-mini',
   'gemini-flash',
-  'mistral-small',
+  'mistral-medium',
 ] as const
 
 const TRIAL_INITIAL_MESSAGES = 30

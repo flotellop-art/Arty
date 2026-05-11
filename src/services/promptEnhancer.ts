@@ -17,7 +17,7 @@ const SYSTEM_PROMPT =
   "Tu retournes UNIQUEMENT le texte reformulé, sans guillemets, sans préfixe, sans explication, dans la même langue que l'original."
 
 /**
- * Reformulates a user prompt via a cheap model (Haiku or Mistral Small).
+ * Reformulates a user prompt via a cheap model (Haiku or Mistral Medium).
  * Used by the ✨ button in InputBar. Returns the enhanced text on success,
  * throws with an i18n error message on failure.
  */
@@ -95,7 +95,7 @@ async function enhanceViaMistral(text: string): Promise<string> {
     method: 'POST',
     headers,
     body: JSON.stringify({
-      model: 'mistral-small-latest',
+      model: 'mistral-medium-latest',
       max_tokens: 500,
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },

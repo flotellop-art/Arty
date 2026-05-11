@@ -9,11 +9,7 @@ import {
 } from '../_lib/checkAllowedUser'
 import { checkPremiumCap, premiumCapReachedResponse } from '../_lib/checkPremiumCap'
 import { consumeDailyQuota, recordUsage } from '../_lib/quota'
-import {
-  consumeFreeDailyQuota,
-  freeModelLockedResponse,
-  freeQuotaExhaustedResponse,
-} from '../_lib/freeQuota'
+import { freeModelLockedResponse } from '../_lib/freeQuota'
 import { createMistralParser, teeForParsing } from '../_lib/trackUsage'
 
 const MISTRAL_API_URL = 'https://api.mistral.ai/v1/chat/completions'
@@ -70,29 +66,24 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     // leave fallback
   }
 
-  // Trial : override silencieux du modèle vers mistral-small si le modèle
-  // demandé n'est pas autorisé. Même logique que proxy.ts (Anthropic).
+  // Trial : override silencieux vers mistral-medium-latest si le modèle
+  // demandé n'est pas autorisé en trial. Même logique que proxy.ts
+  // (Anthropic). Plus de Mistral Small (déprécié mai 2026).
   if (usingServerKey && userPlan === 'trial' && !isModelAllowedInTrial(modelName)) {
     try {
       const bodyObj = JSON.parse(body) as Record<string, unknown>
-      bodyObj.model = 'mistral-small-latest'
+      bodyObj.model = 'mistral-medium-latest'
       body = JSON.stringify(bodyObj)
-      modelName = 'mistral-small-latest'
+      modelName = 'mistral-medium-latest'
     } catch {
       return trialModelRestrictedResponse()
     }
   }
 
-  // Free : Mistral Small uniquement avec quota 5/jour. Modèle non-Small
-  // demandé → 403 model_locked. Quota épuisé → 429 free_quota_exhausted.
+  // Free : Mistral n'est plus accessible en free depuis la dépréciation
+  // de Small (mai 2026). Medium est trop coûteux pour le tier gratuit.
   if (usingServerKey && userPlan === 'free') {
-    if (!modelName.toLowerCase().includes('small')) {
-      return freeModelLockedResponse(modelName)
-    }
-    const free = await consumeFreeDailyQuota(env, email, modelName)
-    if (!free.allowed) {
-      return freeQuotaExhaustedResponse('mistral-small', free.limit)
-    }
+    return freeModelLockedResponse(modelName)
   }
 
   // Quota quotidien uniquement sur la clé serveur ET pour le plan subscription

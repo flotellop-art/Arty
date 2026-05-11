@@ -7,11 +7,11 @@ import {
 } from '../_lib/freeQuota'
 
 // Familles de modèles + leurs labels UI. La whitelist d'accès dépend du plan.
+// Mistral est désormais réservé aux payants (Medium uniquement, mai 2026).
 const ALL_FAMILIES = [
   'claude-haiku',
   'claude-sonnet',
   'claude-opus',
-  'mistral-small',
   'mistral-medium',
   'gemini-flash',
   'gemini-pro',
@@ -21,7 +21,7 @@ const ALL_FAMILIES = [
 
 type Family = (typeof ALL_FAMILIES)[number]
 
-const FREE_FAMILIES: Family[] = ['claude-haiku', 'mistral-small']
+const FREE_FAMILIES: Family[] = ['claude-haiku']
 // Pro/VIP/Subscription débloquent tout sans distinction.
 const PAID_FAMILIES: Family[] = [...ALL_FAMILIES]
 
@@ -50,8 +50,8 @@ const FREE_RESPONSE: StatusResponse = {
   has_active_license: false,
   allowed_families: FREE_FAMILIES,
   locked_families: ALL_FAMILIES.filter((f) => !FREE_FAMILIES.includes(f)),
-  daily_remaining: { 'claude-haiku': FREE_DAILY_LIMITS['claude-haiku'], 'mistral-small': FREE_DAILY_LIMITS['mistral-small'] },
-  daily_limits: { 'claude-haiku': FREE_DAILY_LIMITS['claude-haiku'], 'mistral-small': FREE_DAILY_LIMITS['mistral-small'] },
+  daily_remaining: { 'claude-haiku': FREE_DAILY_LIMITS['claude-haiku'] },
+  daily_limits: { 'claude-haiku': FREE_DAILY_LIMITS['claude-haiku'] },
 }
 
 const STATUS_HEADERS = {
@@ -221,7 +221,6 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
   const dailyLimits = isFree
     ? {
         'claude-haiku': FREE_DAILY_LIMITS['claude-haiku'],
-        'mistral-small': FREE_DAILY_LIMITS['mistral-small'],
       }
     : null
 

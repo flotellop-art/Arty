@@ -22,7 +22,6 @@ export const MODEL_COSTS: Record<string, { input: number; output: number }> = {
   'gpt-5':             { input: 2.50,  output: 10.00 },
   'gemini-flash':      { input: 0.10,  output: 0.40 },
   'gemini-pro':        { input: 1.25,  output: 5.00 },
-  'mistral-small':     { input: 0.20,  output: 0.60 },
   'mistral-medium':    { input: 1.50,  output: 7.50 }, // Medium 3.5 (avril 2026)
   'mistral-large':     { input: 2.00,  output: 6.00 }, // legacy, déprécié au profit de medium
 }
@@ -59,7 +58,6 @@ const MODEL_ALIASES: Record<string, string> = {
   'mistral-large-latest': 'mistral-large',
   'mistral-medium-latest': 'mistral-medium',
   'mistral-medium-3.5': 'mistral-medium',
-  'mistral-small-latest': 'mistral-small',
   'gemini-3-flash-preview': 'gemini-flash',
   'gemini-2.5-flash': 'gemini-flash',
   'gemini-2.5-pro': 'gemini-pro',
@@ -83,9 +81,10 @@ export function normaliseModel(model: string): string {
   if (model.startsWith('gpt-')) return 'gpt-5'
   if (model.startsWith('gemini') && model.includes('flash')) return 'gemini-flash'
   if (model.startsWith('gemini')) return 'gemini-pro'
-  if (model.startsWith('mistral') && model.includes('small')) return 'mistral-small'
+  // Mistral Small déprécié mai 2026 — tout fallback Mistral va sur Medium.
   if (model.startsWith('mistral') && model.includes('medium')) return 'mistral-medium'
-  if (model.startsWith('mistral')) return 'mistral-large'
+  if (model.startsWith('mistral') && model.includes('large')) return 'mistral-large'
+  if (model.startsWith('mistral')) return 'mistral-medium'
   return model
 }
 
