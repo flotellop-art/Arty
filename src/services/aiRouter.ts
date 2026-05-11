@@ -83,6 +83,22 @@ const HYBRID_TRIGGERS = [
 // Partagé entre detectProvider() et selectClaudeSubModel().
 export const TRIVIAL_CHAT_REGEX = /^(salut|bonjour|bonsoir|coucou|hello|hi|hey|yo|merci|thanks?|thx|ok|okay|d'accord|super|cool|parfait|nickel|top|génial|bien|bien sûr|ouais|oui|non|nope)\b|^(\s*[\d+\-*/().\s]+\s*=?\s*\?*\s*)$|^(combien\s+font?\s+\d|how\s+much\s+is\s+\d)/i
 
+// URL detection — Mistral n'a pas de tool web_fetch natif, seulement
+// web_search qui renvoie des SNIPPETS d'index, pas le contenu d'une page.
+// Résultat : Mistral hallucine le contenu d'un article/vidéo dont on lui
+// colle l'URL (citations inventées, sources [1][2][3] fictives). Claude
+// (web_fetch natif Anthropic) et Gemini (url_context natif) lisent
+// réellement la page. En mode auto, on route donc vers Claude dès qu'une
+// URL est détectée. Les conversations euOnly restent forcées Mistral en
+// amont (useConversation.ts) et un bandeau UrlPasteHint guide alors
+// l'utilisateur à coller le texte plutôt que l'URL.
+export const URL_REGEX = /\bhttps?:\/\/[^\s<>"'`]+|\b(?:www\.)?(?:youtu\.be|youtube\.com)\/[^\s<>"'`]+/i
+
+export function hasUrl(message: string): boolean {
+  if (!message) return false
+  return URL_REGEX.test(message)
+}
+
 /**
  * Décide si une requête utilisateur doit déclencher une recherche web forcée.
  * Règle posée par l'utilisateur le 10 mai 2026 : recherche internet par défaut
@@ -201,6 +217,12 @@ export function detectProvider(message: string): AIProvider {
 
   // Private data → always Claude (needs tools + security)
   if (isPrivate) return 'claude'
+
+  // URL détectée → Claude (web_fetch natif Anthropic). Mistral hallucine
+  // sur les URLs (cf. commentaire URL_REGEX) et Gemini url_context est
+  // moins fiable que web_fetch. Priorité sur OpenAI/hybrid car la
+  // fiabilité du contenu prime sur l'intent explicite ChatGPT.
+  if (hasUrl(message)) return 'claude'
 
   // Explicit OpenAI/ChatGPT mention → OpenAI (if key available)
   if (openaiKey && detectOpenAIIntent(message)) return 'openai'

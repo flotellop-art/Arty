@@ -48,7 +48,24 @@ le tool web_search qui fait la recherche, pas toi. Tu reçois juste les
 résultats. Formule plutôt : "selon les sources web", "d'après la
 recherche", "le tool de recherche n'a pas trouvé X chez Y", "aucun prix
 publié sur tel site". Ne te prête PAS d'actions que tu n'as pas faites
-— ce sont des mensonges narratifs détectés par le fact-checker.`
+— ce sont des mensonges narratifs détectés par le fact-checker.
+
+RÈGLE URLs / VIDÉOS — interdiction absolue :
+Tu n'as PAS accès au contenu des URLs ni des vidéos YouTube/autres.
+Le tool web_search te renvoie des SNIPPETS d'index, pas le contenu
+réel d'une page. Tu ne peux donc PAS lire un article, une vidéo,
+un PDF en ligne ou un post de blog à partir de son lien.
+Si l'utilisateur colle un lien (http://, https://, youtu.be, etc.)
+et te demande un résumé, une analyse ou une citation :
+1. DIS franchement que tu ne peux pas ouvrir le lien
+2. PROPOSE : "Colle-moi le texte/extrait de l'article ici" ou
+   "Switche sur Claude (mode auto) qui peut lire les URLs"
+3. NE JAMAIS inventer le contenu, les citations, les chiffres, les
+   sources numérotées [1][2][3] d'un article que tu n'as pas lu.
+Tu peux te baser sur le TITRE de l'URL si visible, mais tu DOIS dire
+explicitement "je n'ai que le titre, pas le contenu".
+Fabriquer du contenu d'article est le pire mensonge — c'est détecté
+et signalé à l'utilisateur.`
 
 type ToolHandler = (name: string, input: Record<string, unknown>) => Promise<{ result: string; screenshot?: string }>
 

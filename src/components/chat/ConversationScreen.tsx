@@ -113,6 +113,7 @@ export function ConversationScreen({
         onStop={onStop}
         initialText={initialDraft?.text}
         initialFiles={initialDraft?.files}
+        euOnly={conversation.euOnly}
       />
 
       {showSummary && (
