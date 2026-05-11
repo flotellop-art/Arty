@@ -1,10 +1,15 @@
 import type { Env } from '../../env'
+import { verifyGoogleUser, notFoundResponse } from '../_lib/checkAllowedUser'
 
 const ID_RE = /^[a-zA-Z0-9_-]+$/
 
 export const onRequestPost: PagesFunction<Env> = async ({ request }) => {
+  // CRIT-4 (audit étape 2) — exiger un user Google identifié.
+  const email = await verifyGoogleUser(request)
+  if (!email) return notFoundResponse()
+
   const token = request.headers.get('authorization')?.replace('Bearer ', '')
-  if (!token) return Response.json({ error: 'Missing token' }, { status: 401 })
+  if (!token) return notFoundResponse()
 
   const body = await request.json() as Record<string, unknown>
   const type = body.type as string | undefined
@@ -144,7 +149,14 @@ async function handleCreate(token: string, body: Record<string, unknown>): Promi
     const metadata: { name: string; mimeType?: string; parents?: string[] } = { name }
     if (isGoogleDoc) metadata.mimeType = 'application/vnd.google-apps.document'
     if (folderId) metadata.parents = [folderId]
-    const boundary = 'fp_boundary'
+    // H-Back-3 (audit étape 2) — random boundary UUID + rejet si le content
+    // ou le name contient le boundary (défense en profondeur). Sans ça, un
+    // contenu malicieux comme `\r\n--fp_boundary\r\nContent-Type: …` pouvait
+    // forger des parts MIME additionnelles dans la requête Drive.
+    const boundary = `fp_${crypto.randomUUID().replace(/-/g, '')}`
+    if (name.includes(boundary) || content.includes(boundary)) {
+      return Response.json({ error: 'Invalid content' }, { status: 400 })
+    }
     const reqBody = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n--${boundary}\r\nContent-Type: ${isGoogleDoc ? 'text/plain' : mimeType || 'text/plain'}\r\n\r\n${content}\r\n--${boundary}--`
     const r = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink', {
       method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': `multipart/related; boundary=${boundary}` }, body: reqBody,

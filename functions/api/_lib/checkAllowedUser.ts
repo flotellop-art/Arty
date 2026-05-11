@@ -1,9 +1,11 @@
 import type { Env } from '../../env'
 
 /**
- * Vérifie le token Google passé dans le header `x-google-token` auprès
- * de l'API userinfo de Google. Retourne l'email vérifié (en minuscules)
- * si le token est valide, null sinon.
+ * Vérifie le token Google passé dans `x-google-token` (ou dans
+ * `Authorization: Bearer …` en fallback pour les endpoints Google API
+ * qui forwardent directement le token user) auprès de l'API userinfo
+ * de Google. Retourne l'email vérifié (en minuscules) si le token est
+ * valide, null sinon.
  *
  * Usage : gate d'authentification pour les endpoints qui acceptent tout
  * utilisateur Google (BYOK inclus). Empêche le relais anonyme via un
@@ -12,7 +14,10 @@ import type { Env } from '../../env'
 export async function verifyGoogleUser(
   request: Request
 ): Promise<string | null> {
-  const googleToken = request.headers.get('x-google-token')
+  const googleToken =
+    request.headers.get('x-google-token') ||
+    request.headers.get('authorization')?.replace(/^Bearer\s+/i, '') ||
+    ''
   if (!googleToken) return null
 
   try {
@@ -25,6 +30,15 @@ export async function verifyGoogleUser(
   } catch {
     return null
   }
+}
+
+/**
+ * Réponse 404 uniforme pour les requêtes non autorisées. Ne révèle pas
+ * l'existence de l'endpoint à un attaquant (pas de 401/403 distinct).
+ * Utilisé par les endpoints qui exigent un user Google identifié.
+ */
+export function notFoundResponse(): Response {
+  return Response.json({ error: 'Not found' }, { status: 404 })
 }
 
 /**

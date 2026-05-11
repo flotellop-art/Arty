@@ -32,7 +32,10 @@ export const onRequest: PagesFunction = async (context) => {
   const { request } = context
   const ip = request.headers.get('cf-connecting-ip') || 'unknown'
   const origin = request.headers.get('origin') || ''
-  const hasValidOrigin = !!origin && ALLOWED_ORIGINS.some((a) => origin.startsWith(a))
+  // MED (audit étape 2) — égalité stricte au lieu de startsWith. Évite
+  // qu'un Origin comme `https://tryarty.com:8080` ou `https://tryarty.com.evil`
+  // matche par préfixe.
+  const hasValidOrigin = !!origin && ALLOWED_ORIGINS.includes(origin)
 
   // Handle CORS preflight (OPTIONS)
   if (request.method === 'OPTIONS') {

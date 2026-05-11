@@ -1,8 +1,22 @@
-export const onRequestPost: PagesFunction = async ({ request }) => {
+import type { Env } from '../../env'
+import { checkAllowedUserPeek, notFoundResponse } from '../_lib/checkAllowedUser'
+
+export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
+  // CRIT-3 (audit étape 2) — exigeait un user Google identifié pour
+  // éviter le relais SSRF/bandwidth anonyme via le compte CF du owner.
+  // `checkAllowedUserPeek` ne décrémente pas le compteur trial — la
+  // météo est légitime à utiliser pour tous les plans (y compris free).
+  const user = await checkAllowedUserPeek(request, env)
+  if (!user) return notFoundResponse()
+
   const { city } = await request.json() as { city?: string }
   const location = (city || '').trim()
   if (!location) {
     return Response.json({ error: 'Paramètre city requis' }, { status: 400 })
+  }
+  // Borne la taille de l'input pour éviter l'amplification (BUG audit).
+  if (location.length > 100) {
+    return Response.json({ error: 'Paramètre city trop long (max 100)' }, { status: 400 })
   }
 
   try {

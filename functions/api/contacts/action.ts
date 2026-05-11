@@ -1,8 +1,18 @@
+import { verifyGoogleUser, notFoundResponse } from '../_lib/checkAllowedUser'
+
 export const onRequestPost: PagesFunction = async ({ request }) => {
+  // CRIT-4 (audit étape 2) — exiger un user Google identifié.
+  const email = await verifyGoogleUser(request)
+  if (!email) return notFoundResponse()
+
   const token = request.headers.get('authorization')?.replace('Bearer ', '') || ''
-  if (!token) return Response.json({ error: 'Missing access token' }, { status: 401 })
+  if (!token) return notFoundResponse()
 
   const body = await request.json() as Record<string, unknown>
+  // H-Back-5 — borner la taille de query pour éviter l'amplification People API.
+  if (typeof body.query === 'string' && body.query.length > 500) {
+    return Response.json({ error: 'Query too long (max 500)' }, { status: 400 })
+  }
   const type = body.type as string | undefined
 
   switch (type) {

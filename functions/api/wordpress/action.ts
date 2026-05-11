@@ -1,6 +1,16 @@
 import type { Env } from '../../env'
+import { verifyGoogleUser, parseAllowedEmails, notFoundResponse } from '../_lib/checkAllowedUser'
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
+  // CRIT-4 + H-Back-4 (audit étape 2) — WordPress utilise un seul jeu d'identifiants
+  // partagé (WP_USERNAME / WP_PASSWORD). Sans gate, chaque user authentifié
+  // pouvait lister / créer / supprimer des posts WP en tant que owner. Restreint
+  // aux emails dans WORDPRESS_OWNER_EMAILS (fallback ALLOWED_EMAILS).
+  const email = await verifyGoogleUser(request)
+  if (!email) return notFoundResponse()
+  const ownerEmails = parseAllowedEmails(env.WORDPRESS_OWNER_EMAILS || env.ALLOWED_EMAILS)
+  if (!ownerEmails.includes(email)) return notFoundResponse()
+
   const { WP_URL: wpUrl, WP_USERNAME: wpUser, WP_PASSWORD: wpPass } = env
   if (!wpUrl || !wpUser || !wpPass) return Response.json({ error: 'WordPress not configured' }, { status: 500 })
 
