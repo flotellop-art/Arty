@@ -1,5 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
-    <external-path name="my_images" path="." />
-    <cache-path name="my_cache_images" path="." />
+    <!-- Cache de l'app : sandboxé par Android (/data/data/<pkg>/cache/), inaccessible
+         aux autres apps sans root. Nécessaire pour Capacitor Camera qui écrit ses
+         captures temporaires ici avant de passer l'Uri à l'intent caméra. -->
+    <cache-path name="cache_camera" path="." />
+
+    <!-- App-private external dir : /storage/emulated/0/Android/data/<pkg>/files/
+         sandboxé à l'app (auto-nettoyé à l'uninstall). Safe à exposer. -->
+    <external-files-path name="external_files" path="." />
+
+    <!-- External storage : restreint au sous-dossier Documents/ où l'app écrit
+         (cf. src/services/native/filesystem.ts qui utilise Directory.Documents
+         pour writeFile / mkdir / deleteFile). Évite d'exposer la racine sdcard. -->
+    <external-path name="documents_share" path="Documents/" />
 </paths>
