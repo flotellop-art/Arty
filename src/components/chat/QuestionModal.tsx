@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 
 export interface Question {
   question: string
@@ -18,6 +18,17 @@ export function QuestionModal({ questions, onComplete }: QuestionModalProps) {
 
   const current = questions[currentIndex]
   const total = questions.length
+
+  // H-UX-7 (audit étape 10) — Escape key ferme la modale (équivalent
+  // du bouton ✕). Précédemment, aucune sortie clavier autre que cliquer
+  // le ✕ sans aria-label.
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onComplete(answers)
+    }
+    document.addEventListener('keydown', handleKey)
+    return () => document.removeEventListener('keydown', handleKey)
+  }, [answers, onComplete])
 
   const handleSelect = useCallback(
     (value: string) => {
@@ -43,6 +54,9 @@ export function QuestionModal({ questions, onComplete }: QuestionModalProps) {
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-theme-ink/30">
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="question-modal-title"
         className="w-full max-w-lg bg-theme-surface rounded-t-2xl shadow-xl px-5 pt-5 pb-8 animate-slide-up"
         style={{ maxHeight: '80vh', overflowY: 'auto' }}
       >
@@ -53,6 +67,7 @@ export function QuestionModal({ questions, onComplete }: QuestionModalProps) {
           </span>
           <button
             onClick={() => onComplete(answers)}
+            aria-label="Fermer"
             className="w-8 h-8 flex items-center justify-center text-theme-muted/70 hover:text-theme-ink/70"
           >
             ✕
@@ -68,7 +83,7 @@ export function QuestionModal({ questions, onComplete }: QuestionModalProps) {
         </div>
 
         {/* Question */}
-        <h3 className="text-lg font-semibold text-theme-ink mb-5">{current.question}</h3>
+        <h3 id="question-modal-title" className="text-lg font-semibold text-theme-ink mb-5">{current.question}</h3>
 
         {/* Options */}
         {current.options && current.options.length > 0 && (

@@ -249,6 +249,7 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
               </div>
               <button
                 onClick={handleNotifToggle}
+                aria-label="Activer ou désactiver les notifications"
                 className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors shrink-0 ${
                   notifEnabled ? 'bg-theme-accent' : 'bg-theme-ink/20'
                 }`}
@@ -274,6 +275,7 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
               </div>
               <button
                 onClick={handleLocationToggle}
+                aria-label="Activer ou désactiver la localisation"
                 className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors shrink-0 ${
                   locationEnabled ? 'bg-theme-accent' : 'bg-theme-ink/20'
                 }`}

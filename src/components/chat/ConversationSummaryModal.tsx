@@ -110,6 +110,16 @@ export function ConversationSummaryModal({ conversation, onClose }: Props) {
     }
   }, [conversation])
 
+  // H-UX-7 (audit étape 10) — Escape ferme la modale (équivalent du clic
+  // sur le fond ou du bouton ✕).
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', handleKey)
+    return () => document.removeEventListener('keydown', handleKey)
+  }, [onClose])
+
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(summary)
@@ -132,9 +142,15 @@ export function ConversationSummaryModal({ conversation, onClose }: Props) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-theme-ink/50" onClick={onClose}>
-      <div className="bg-theme-surface rounded-2xl shadow-xl w-full max-w-2xl max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="conv-summary-title"
+        className="bg-theme-surface rounded-2xl shadow-xl w-full max-w-2xl max-h-[85vh] flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex items-center justify-between px-5 py-4 border-b border-theme-border">
-          <h2 className="font-display text-lg text-theme-ink">📋 Résumé de la conversation</h2>
+          <h2 id="conv-summary-title" className="font-display text-lg text-theme-ink">📋 Résumé de la conversation</h2>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-theme-ink/5 text-theme-muted" aria-label="Fermer">
             <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
               <path d="M4 4L14 14M14 4L4 14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />

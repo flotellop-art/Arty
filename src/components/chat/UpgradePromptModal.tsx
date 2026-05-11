@@ -1,7 +1,7 @@
 // Modale qui apparaît quand un user free clique un modèle payant (Sonnet,
 // Opus, Gemini, GPT). Explique la limite et propose un CTA "Voir les plans".
 
-import { memo } from 'react'
+import { memo, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 interface UpgradePromptModalProps {
@@ -15,6 +15,15 @@ export const UpgradePromptModal = memo(function UpgradePromptModal({
 }: UpgradePromptModalProps) {
   const navigate = useNavigate()
 
+  // H-UX-7 (audit étape 10) — Escape ferme la modale.
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', handleKey)
+    return () => document.removeEventListener('keydown', handleKey)
+  }, [onClose])
+
   const handleUpgrade = () => {
     onClose()
     navigate('/upgrade')
@@ -26,12 +35,15 @@ export const UpgradePromptModal = memo(function UpgradePromptModal({
       onClick={onClose}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="upgrade-modal-title"
         className="bg-theme-bg border border-theme-border rounded-2xl shadow-xl max-w-sm w-[90%] mx-4 p-6"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center gap-2 mb-3">
-          <span className="text-2xl">🔒</span>
-          <h3 className="font-display text-xl text-theme-ink">{modelLabel} réservé aux Pro</h3>
+          <span className="text-2xl" aria-hidden="true">🔒</span>
+          <h3 id="upgrade-modal-title" className="font-display text-xl text-theme-ink">{modelLabel} réservé aux Pro</h3>
         </div>
         <p className="text-sm text-theme-muted mb-5 leading-relaxed">
           En gratuit tu as accès à <strong className="text-theme-ink">Claude Haiku (10/jour)</strong> et <strong className="text-theme-ink">Mistral (5/jour)</strong>.

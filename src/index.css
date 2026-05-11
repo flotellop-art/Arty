@@ -136,6 +136,29 @@ body {
   animation: slide-up 0.3s ease-out;
 }
 
+/* H-UX-5 (audit étape 10) — respect prefers-reduced-motion.
+   Désactive les animations permanentes (typing dots, slow rotate, pulse,
+   shimmer) et raccourcit les transitions de modale à 0.01s pour les
+   utilisateurs ayant activé "Réduire les animations" dans leur OS
+   (vertige, épilepsie, trouble vestibulaire). Les transitions de page
+   restent fonctionnelles mais quasi-instantanées. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .typing-dot-1,
+  .typing-dot-2,
+  .typing-dot-3,
+  .slow-rotate {
+    animation: none !important;
+  }
+}
+
 ::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: #d1ccc4; border-radius: 2px; }
