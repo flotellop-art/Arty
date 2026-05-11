@@ -238,6 +238,12 @@ async function handleAttachment(token: string, body: Record<string, unknown>): P
 
     const bytes = decodeBase64Url((data.data as string) || '')
 
+    // Size cap : Claude API attachment limit = 20MB. Au-delà, on rejette
+    // pour éviter l'OOM Worker + une réponse base64 inutilisable.
+    if (bytes.length > 20 * 1024 * 1024) {
+      return Response.json({ error: 'Attachment too large (max 20MB)' }, { status: 413 })
+    }
+
     // PDF detection by magic bytes (works even when the client didn't
     // pass a hint mimeType).
     const isPdf = bytes.length > 4 && bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46
@@ -272,6 +278,7 @@ async function handleAttachment(token: string, body: Record<string, unknown>): P
 async function handleArchive(token: string, body: Record<string, unknown>): Promise<Response> {
   const messageId = body.id as string
   if (!messageId) return Response.json({ error: 'Missing id' }, { status: 400 })
+  if (!/^[a-zA-Z0-9_-]+$/.test(messageId)) return Response.json({ error: 'Invalid message ID' }, { status: 400 })
 
   try {
     const r = await fetch(
@@ -290,6 +297,7 @@ async function handleArchive(token: string, body: Record<string, unknown>): Prom
 async function handleDelete(token: string, body: Record<string, unknown>): Promise<Response> {
   const messageId = body.id as string
   if (!messageId) return Response.json({ error: 'Missing id' }, { status: 400 })
+  if (!/^[a-zA-Z0-9_-]+$/.test(messageId)) return Response.json({ error: 'Invalid message ID' }, { status: 400 })
   try {
     const r = await fetch(
       `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}/trash`,
@@ -303,6 +311,7 @@ async function handleDelete(token: string, body: Record<string, unknown>): Promi
 async function handleStar(token: string, body: Record<string, unknown>): Promise<Response> {
   const messageId = body.id as string
   if (!messageId) return Response.json({ error: 'Missing id' }, { status: 400 })
+  if (!/^[a-zA-Z0-9_-]+$/.test(messageId)) return Response.json({ error: 'Invalid message ID' }, { status: 400 })
   try {
     const r = await fetch(
       `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}/modify`,
@@ -340,6 +349,7 @@ async function handleLabel(token: string, body: Record<string, unknown>): Promis
   const messageId = body.id as string
   const label = body.label as string
   if (!messageId || !label) return Response.json({ error: 'Missing id or label' }, { status: 400 })
+  if (!/^[a-zA-Z0-9_-]+$/.test(messageId)) return Response.json({ error: 'Invalid message ID' }, { status: 400 })
   try {
     const r = await fetch(
       `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}/modify`,

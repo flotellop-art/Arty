@@ -67,6 +67,10 @@ function safeFromCodePoint(cp: number): string {
  */
 export function htmlToText(html: string): string {
   return html
+    // Drop <head>...</head> en bloc — il contient typiquement <meta>, <link>,
+    // et parfois des <style>/<title>/<base> qui polluent le texte extrait
+    // si on les laisse passer la phase "<[^>]+>" individuelle. Defense in depth.
+    .replace(/<head\b[^>]*>[\s\S]*?<\/head>/gi, ' ')
     .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, ' ')
     .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ' ')
     .replace(/<!--[\s\S]*?-->/g, ' ')
