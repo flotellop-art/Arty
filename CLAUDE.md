@@ -463,38 +463,49 @@ Slash command **`/audit-secu`** (défini dans `.claude/commands/audit-secu.md`) 
 
 ### TODO Sécurité — prochain audit
 
-Dernier audit : **4 mai 2026** (PR #127 + PR #128).
+Dernier audit : **11 mai 2026** (rapport `/audit-secu`, 3 agents parallèles).
 
 À traiter en priorité quand on relance un cycle sécurité :
+
+**CRIT à traiter immédiatement** :
+- [ ] **assetlinks.json `["*"]`** dans `public/.well-known/assetlinks.json:7` — sha256_cert_fingerprints invalide (`"*"` n'est pas un wildcard Android valide), Android ne peut pas vérifier que l'app Arty est propriétaire du domaine tryarty.com → toute app peut intercepter les deeplinks OAuth. Fix : remplacer par le vrai SHA-256 du keystore de prod (`keytool -list -v -keystore arty-prod.keystore`). Invalide la protection décrite en BUG 53.
 
 **PR à venir (planifiées)** :
 - [ ] **PR 2 — PKCE OAuth** : ajout du `code_verifier` + `code_challenge` au flow Google web. Stratégie en 2 PRs validée le 4 mai (state CSRF d'abord en PR #128, PKCE ensuite). Coût ~2h, confiance 80%. Touche `googleAuth.ts:buildOAuthUrl()` (devient async), `OAuthCallback.tsx`, `functions/api/auth/token.ts` (forward `code_verifier` à Google). Suivre les patterns du callback double (web + deeplink) déjà éprouvés en PR #128.
 - [ ] **Chiffrement des conversations en localStorage** : aujourd'hui en clair (BUG 16 a forcé `saveConversation` synchrone, le chiffrement async cassait l'UI). Solution propre = Web Worker pour chiffrer en arrière-plan sans bloquer le main thread. Coût ~1 jour. Risque = ouverture d'un téléphone volé permet de lire toutes les conversations (mais pas de faire des requêtes — tokens chiffrés).
 
-**HIGH backend non traités (audit du 4 mai)** :
-- [ ] **License expiration jamais vérifiée** dans `functions/api/subscription/status.ts:117-128` — query `licenses WHERE status = 'active'` sans `expires_at > NOW()`. Risque = perte de revenu, pas sécu directe.
+**HIGH backend non traités** :
+- [ ] **Token Google dans l'URL (tokeninfo)** dans `trial/init.ts:37` et `subscription/status.ts:76` — `?access_token=TOKEN` loggé par CDN Cloudflare. Migrer vers `checkAllowedUser()` déjà disponible, ou au minimum passer via `Authorization: Bearer` sur userinfo. Aussi : asserter `email_verified === true` (lu ligne 40 mais jamais vérifié dans trial/init.ts).
+- [ ] **Subscription `current_period_end` jamais vérifié** dans `functions/api/_lib/checkAllowedUser.ts:232` — query `status IN ('active','cancelled')` sans check temporel → user expiré garde accès si webhook manqué. Ajouter `AND (current_period_end IS NULL OR datetime(current_period_end) > datetime('now'))`. Idem pour les licenses.
 - [ ] **Premium cap non-atomique** dans `functions/api/_lib/checkPremiumCap.ts` — KV décrément vulnérable à la concurrence, quota bypass possible (CAP=150 → 300+).
 - [ ] **DELETE memory sans filtre `WHERE user_id = ?` strict** dans `functions/api/memory/action.ts` — défense en profondeur (déjà protégé par auth mais à durcir).
+- [ ] **Fetch natif sans timeout** dans `src/hooks/useGoogleAuth.ts:153` — le fetch `/api/auth/token` (échange serverAuthCode natif) n'a pas d'AbortController. BUG 47 a fixé les autres fetch d'auth mais a raté ce path. Envelopper dans `withTimeout(15_000)`.
 
 **MED non traités** :
 - [ ] **PBKDF2 itérations à 100k** dans `crypto.ts:38-44` — OWASP 2024 recommande 200k+. Bump simple (+100ms au login).
 - [ ] **`storeTokens()` réécrit le plain en fallback** après chaque refresh dans `googleAuth.ts:93-108` — devrait laisser le chiffré en place au lieu de revenir en plain.
 - [ ] **Email lowercasing inconsistant** entre `trial/init.ts:41` et `subscription/status.ts:44` — risque de fragmentation user.
-- [ ] **`tokeninfo` au lieu de `userinfo`** pour vérifier les tokens dans `trial/init.ts:34-44` — moins fiable.
 - [ ] **Pas de rate limit sur `/api/auth/token`** — brute force possible sur les codes OAuth volés.
 
 **LOW à nettoyer avant Play Store** :
-- [ ] **Debug `console.log` avec emails** dans `useGoogleAuth.ts:117-195` — wrap en `if (import.meta.env.DEV)`.
+- [ ] **Debug `console.log` avec emails** dans `useGoogleAuth.ts:203` — `console.log('[useGoogleAuth] login success for', result.email)` — wrap en `if (import.meta.env.DEV)`.
+- [ ] **`email_verified` non asserté** dans `trial/init.ts:40-41` — lu dans la réponse tokeninfo mais jamais vérifié (`=== true`).
 - [ ] **Trial counter peut overflow** silencieusement vers 0 dans `trial/init.ts:51-52`.
-- [ ] **Re-vérifier `webContentsDebuggingEnabled: false`** en prod sur `capacitor.config.ts`.
+- [ ] **`.env.example`** liste `VITE_ANTHROPIC_API_KEY` / `VITE_GEMINI_API_KEY` — jamais utilisés dans le code mais trompe les devs. Ajouter `# JAMAIS VITE_ pour clés payantes — voir RÈGLE 1`.
 
 **Faux positifs / déjà mitigé** (à NE PAS retraiter) :
 - ✅ `secureSetJSON` race (BUG 1) — `useAuth` utilise `setJSON()` direct sur les tokens, race évitée
 - ✅ RECORD_AUDIO (BUG 44) — vérifié présent dans AndroidManifest
-- ✅ exchangeCode timeout — `withTimeout()` enveloppe le fetch
+- ✅ exchangeCode timeout (web path) — `withTimeout()` enveloppe le fetch web (path natif : voir TODO HIGH ci-dessus)
 - ✅ Frontend XSS — `rehype-sanitize` actif, aucun `dangerouslySetInnerHTML`
 - ✅ Service Worker (BUG 45) — registration conditionnelle, cleanup boot, CACHE bumpé
 - ✅ iOS Info.plist — privacy descriptions complètes (BUG 34)
+- ✅ anthropic-beta header vide — `if (beta)` en place à `proxy.ts:168` (BUG 18)
+- ✅ redirect_uri injection — Google valide côté serveur, URI non enregistré rejeté (BUG 2)
+- ✅ Logout incomplet — `googleLogout()` appelé + dispatch `google-storage-ready` (BUGs 41, 48)
+- ✅ API keys plaintext — tradeoff documenté BUG 1, `setJSON` intentionnel pour sync
+- ✅ IDOR webhook Lemon Squeezy — HMAC signature validée avant tout traitement
+- ✅ webContentsDebuggingEnabled — `false` confirmé dans capacitor.config.ts
 
 ---
 
