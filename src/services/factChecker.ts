@@ -13,6 +13,7 @@ import { apiUrl } from './apiBase'
 import { getValidAccessToken } from './googleAuth'
 import * as scoped from './scopedStorage'
 import * as storage from './storage'
+import { recordUsage } from './costTracker'
 import type { FactCheckResult, FactCheckClaim } from '../types'
 
 export type Verdict = FactCheckClaim['verdict']
@@ -257,7 +258,10 @@ export async function factCheckResponse(
 
   let text = ''
   try {
-    const data = (await res.json()) as { content?: Array<{ type?: string; text?: string }> }
+    const data = (await res.json()) as {
+      content?: Array<{ type?: string; text?: string }>
+      usage?: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number }
+    }
     // On cherche le DERNIER bloc text. Avec web_search activé, la réponse
     // contient [server_tool_use, web_search_tool_result, text (commentaire),
     //  server_tool_use, web_search_tool_result, text (JSON final)] — il
@@ -271,6 +275,16 @@ export async function factCheckResponse(
         text = b.text
         break
       }
+    }
+    // H-AI-4 (audit étape 4) — recordUsage manquant : Sonnet 4.6 + web_search
+    // ≈ 5000 tokens × N fact-checks par conversation → 20-30% du coût total
+    // était invisible dans le dashboard. On track ici (in/out, sans cache).
+    if (data.usage) {
+      try {
+        const inputT = (data.usage.input_tokens || 0) + (data.usage.cache_read_input_tokens || 0)
+        const outputT = data.usage.output_tokens || 0
+        recordUsage(model, inputT, outputT)
+      } catch { /* tracking doit pas casser */ }
     }
   } catch (err) {
     console.warn('[factChecker] response.json() failed:', err)

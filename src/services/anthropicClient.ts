@@ -486,7 +486,11 @@ async function runWithTools(
       i === TOOLS.length - 1 ? { ...t, cache_control: { type: 'ephemeral' } } : t
     )
 
-    let maxIterations = 200
+    // H-AI-3 (audit étape 4) — Mistral est à 20 itérations max. 200 ici était
+    // trop permissif : un bug dans un tool (boucle d'appels) pouvait consommer
+    // des dizaines de $ silencieusement. 30 reste large pour des chaînes de
+    // tool calls complexes (read_email → analyze → search → write_doc).
+    let maxIterations = 30
     while (maxIterations-- > 0) {
       // Haiku max output = 64000 tokens (API limit). Cap unconditionally.
       const maxTokens = ANTHROPIC_MODEL.includes('haiku') ? 64000 : 65536

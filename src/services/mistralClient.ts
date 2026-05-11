@@ -127,15 +127,22 @@ async function executeMistralWebSearch(args: Record<string, unknown>): Promise<{
   if (googleToken) headers['x-google-token'] = googleToken
   if (googleToken) headers['Authorization'] = `Bearer ${googleToken}`
 
+  // CRIT-5 — Timeout 30s sur web_search pour éviter les blocages
+  // sur cold-start Cloudflare ou réseau flaky.
+  const searchCtrl = new AbortController()
+  const searchTimeoutId = setTimeout(() => searchCtrl.abort(new DOMException('Timeout', 'AbortError')), 30_000)
   let response: Response
   try {
     response = await fetch(apiUrl('/api/search/web'), {
       method: 'POST',
       headers,
       body: JSON.stringify({ query, maxResults, ...(sources ? { sources } : {}) }),
+      signal: searchCtrl.signal,
     })
   } catch (err) {
     return { result: `Erreur réseau de recherche : ${err instanceof Error ? err.message : 'inconnue'}` }
+  } finally {
+    clearTimeout(searchTimeoutId)
   }
 
   if (!response.ok) {
@@ -410,12 +417,27 @@ async function streamOnce(
     body.tool_choice = 'auto'
   }
 
-  const response = await fetch(apiUrl('/api/ai/mistral-proxy'), {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(body),
-    signal: controller.signal,
-  })
+  // CRIT-5 — Timeout 60s sur le stream Mistral. Cold-start Cloudflare ou
+  // réseau flaky peuvent laisser pendre 60-90s sinon. Compose avec le
+  // controller externe (annulation utilisateur) pour les deux raisons.
+  const timeoutCtrl = new AbortController()
+  const timeoutId = setTimeout(() => timeoutCtrl.abort(new DOMException('Timeout', 'AbortError')), 60_000)
+  const onExternalAbort = () => timeoutCtrl.abort(controller.signal.reason)
+  if (controller.signal.aborted) timeoutCtrl.abort(controller.signal.reason)
+  else controller.signal.addEventListener('abort', onExternalAbort)
+
+  let response: Response
+  try {
+    response = await fetch(apiUrl('/api/ai/mistral-proxy'), {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+      signal: timeoutCtrl.signal,
+    })
+  } finally {
+    clearTimeout(timeoutId)
+    controller.signal.removeEventListener('abort', onExternalAbort)
+  }
 
   const { updateTrialFromResponse } = await import('./trialClient')
   updateTrialFromResponse(response)
@@ -445,60 +467,66 @@ async function streamOnce(
   // Accumulate partial tool calls by index
   const partialToolCalls = new Map<number, { id: string; name: string; args: string }>()
 
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
+  // H-AI-1 (étendu Mistral) — releaseLock en try/finally pour éviter
+  // le leak du reader sur erreur.
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
 
-    buffer += decoder.decode(value, { stream: true })
-    const lines = buffer.split('\n')
-    buffer = lines.pop() || ''
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || ''
 
-    for (const line of lines) {
-      if (!line.startsWith('data: ')) continue
-      const data = line.slice(6).trim()
-      if (data === '[DONE]') break
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue
+        const data = line.slice(6).trim()
+        if (data === '[DONE]') break
 
-      try {
-        const parsed = JSON.parse(data)
-        const delta = parsed.choices?.[0]?.delta
+        try {
+          const parsed = JSON.parse(data)
+          const delta = parsed.choices?.[0]?.delta
 
-        // Text content
-        if (delta?.content) {
-          content += delta.content
-          onToken(delta.content)
-        }
+          // Text content
+          if (delta?.content) {
+            content += delta.content
+            onToken(delta.content)
+          }
 
-        // Tool calls (streamed incrementally)
-        if (delta?.tool_calls) {
-          for (const tc of delta.tool_calls) {
-            const idx = tc.index ?? 0
-            if (tc.id) {
-              // New tool call starting
-              partialToolCalls.set(idx, {
-                id: tc.id,
-                name: tc.function?.name || '',
-                args: tc.function?.arguments || '',
-              })
-            } else {
-              // Continue accumulating arguments
-              const existing = partialToolCalls.get(idx)
-              if (existing) {
-                if (tc.function?.name) existing.name += tc.function.name
-                if (tc.function?.arguments) existing.args += tc.function.arguments
+          // Tool calls (streamed incrementally)
+          if (delta?.tool_calls) {
+            for (const tc of delta.tool_calls) {
+              const idx = tc.index ?? 0
+              if (tc.id) {
+                // New tool call starting
+                partialToolCalls.set(idx, {
+                  id: tc.id,
+                  name: tc.function?.name || '',
+                  args: tc.function?.arguments || '',
+                })
+              } else {
+                // Continue accumulating arguments
+                const existing = partialToolCalls.get(idx)
+                if (existing) {
+                  if (tc.function?.name) existing.name += tc.function.name
+                  if (tc.function?.arguments) existing.args += tc.function.arguments
+                }
               }
             }
           }
-        }
 
-        // Usage
-        if (parsed.usage) {
-          inputTokens = parsed.usage.prompt_tokens || 0
-          outputTokens = parsed.usage.completion_tokens || 0
+          // Usage
+          if (parsed.usage) {
+            inputTokens = parsed.usage.prompt_tokens || 0
+            outputTokens = parsed.usage.completion_tokens || 0
+          }
+        } catch {
+          continue
         }
-      } catch {
-        continue
       }
     }
+  } finally {
+    try { reader.releaseLock() } catch { /* already released */ }
   }
 
   // Finalize tool calls

@@ -3,9 +3,74 @@ import { apiUrl } from './apiBase'
 import { getValidAccessToken } from './googleAuth'
 import { buildLocationContext } from './locationContext'
 import { recordUsage } from './costTracker'
+import { dispatchModelUsed } from './modelLabels'
 import i18n from '../i18n'
 
 const GEMINI_MODEL = 'gemini-3-flash-preview'
+
+// CRIT-5 — Sans timeout, un Cloudflare cold-start ou un réseau flaky peut
+// laisser pendre une requête 60-90s. Force un cap explicite.
+const GEMINI_TIMEOUT_MS = 60_000
+
+// CRIT-6 — Retry transient errors (429, 5xx). Gemini preview model est
+// particulièrement exposé aux ratelimits. Backoff exponentiel.
+const RETRY_DELAYS_MS = [1000, 2000, 4000]
+function shouldRetry(status: number): boolean {
+  return status === 429 || (status >= 500 && status < 600)
+}
+
+/**
+ * fetch + timeout via AbortController. Compose avec un controller externe
+ * si fourni (pour permettre l'annulation côté caller).
+ */
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number,
+  externalSignal?: AbortSignal,
+): Promise<Response> {
+  const ctrl = new AbortController()
+  const timeoutId = setTimeout(() => ctrl.abort(new DOMException('Timeout', 'AbortError')), timeoutMs)
+  // Lien avec le signal externe si présent
+  const onExternalAbort = () => ctrl.abort(externalSignal?.reason)
+  if (externalSignal) {
+    if (externalSignal.aborted) ctrl.abort(externalSignal.reason)
+    else externalSignal.addEventListener('abort', onExternalAbort)
+  }
+  try {
+    return await fetch(url, { ...init, signal: ctrl.signal })
+  } finally {
+    clearTimeout(timeoutId)
+    if (externalSignal) externalSignal.removeEventListener('abort', onExternalAbort)
+  }
+}
+
+/**
+ * fetch + retry exponentiel sur 429/5xx + erreurs réseau transient.
+ * Préserve les erreurs d'abort utilisateur (pas de retry sur AbortError).
+ */
+async function fetchWithRetry(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number,
+  externalSignal?: AbortSignal,
+): Promise<Response> {
+  let lastError: unknown
+  for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
+    try {
+      const res = await fetchWithTimeout(url, init, timeoutMs, externalSignal)
+      if (!shouldRetry(res.status) || attempt === RETRY_DELAYS_MS.length) return res
+      lastError = new Error(`HTTP ${res.status}`)
+    } catch (err) {
+      // Abort utilisateur = on ne retry pas
+      if (externalSignal?.aborted) throw err
+      lastError = err
+      if (attempt === RETRY_DELAYS_MS.length) throw err
+    }
+    await new Promise((r) => setTimeout(r, RETRY_DELAYS_MS[attempt]))
+  }
+  throw lastError instanceof Error ? lastError : new Error('Retry exhausted')
+}
 
 // Gemini API client with streaming
 
@@ -119,12 +184,12 @@ async function runGeminiStream(
       headers['x-google-token'] = googleToken
     }
 
-    const response = await fetch(apiUrl('/api/ai/gemini-proxy'), {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(requestBody),
-      signal: controller.signal,
-    })
+    const response = await fetchWithRetry(
+      apiUrl('/api/ai/gemini-proxy'),
+      { method: 'POST', headers, body: JSON.stringify(requestBody) },
+      GEMINI_TIMEOUT_MS,
+      controller.signal,
+    )
 
     const { updateTrialFromResponse } = await import('./trialClient')
     updateTrialFromResponse(response)
@@ -133,44 +198,53 @@ async function runGeminiStream(
       throw new Error(i18n.t('errors.geminiError', { status: response.status }))
     }
 
+    // H-AI-5 — notify UI que ce message est servi par Gemini (mêmes infos
+    // que les autres clients pour cohérence des badges).
+    dispatchModelUsed({ model: GEMINI_MODEL, provider: 'gemini' })
+
     const reader = response.body?.getReader()
     if (!reader) throw new Error('No response body')
 
+    // H-AI-1 — releaseLock() en try/finally pour éviter le leak du lock
+    // sur erreur (le reader reste lock-ed, le body n'est jamais GC).
     const decoder = new TextDecoder()
     let buffer = ''
     let promptTokens = 0
     let candidatesTokens = 0
+    try {
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
 
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ''
 
-      buffer += decoder.decode(value, { stream: true })
-      const lines = buffer.split('\n')
-      buffer = lines.pop() || ''
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue
+          const jsonStr = line.slice(6).trim()
+          if (!jsonStr || jsonStr === '[DONE]') continue
 
-      for (const line of lines) {
-        if (!line.startsWith('data: ')) continue
-        const jsonStr = line.slice(6).trim()
-        if (!jsonStr || jsonStr === '[DONE]') continue
-
-        try {
-          const data = JSON.parse(jsonStr)
-          const text = data.candidates?.[0]?.content?.parts?.[0]?.text
-          if (text) {
-            onToken(text)
+          try {
+            const data = JSON.parse(jsonStr)
+            const text = data.candidates?.[0]?.content?.parts?.[0]?.text
+            if (text) {
+              onToken(text)
+            }
+            // Gemini envoie usageMetadata sur chaque chunk avec un cumulé.
+            // On garde la dernière valeur reçue.
+            const usage = data.usageMetadata
+            if (usage) {
+              promptTokens = usage.promptTokenCount || promptTokens
+              candidatesTokens = usage.candidatesTokenCount || candidatesTokens
+            }
+          } catch {
+            // Skip malformed JSON chunks
           }
-          // Gemini envoie usageMetadata sur chaque chunk avec un cumulé.
-          // On garde la dernière valeur reçue.
-          const usage = data.usageMetadata
-          if (usage) {
-            promptTokens = usage.promptTokenCount || promptTokens
-            candidatesTokens = usage.candidatesTokenCount || candidatesTokens
-          }
-        } catch {
-          // Skip malformed JSON chunks
         }
       }
+    } finally {
+      try { reader.releaseLock() } catch { /* already released */ }
     }
 
     try {
@@ -224,11 +298,11 @@ export async function geminiResearch(query: string, apiKeyOverride?: string): Pr
   }
 
   try {
-    const res = await fetch(apiUrl('/api/ai/gemini-proxy'), {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(requestBody),
-    })
+    const res = await fetchWithRetry(
+      apiUrl('/api/ai/gemini-proxy'),
+      { method: 'POST', headers, body: JSON.stringify(requestBody) },
+      GEMINI_TIMEOUT_MS,
+    )
 
     const { updateTrialFromResponse } = await import('./trialClient')
     updateTrialFromResponse(res)
