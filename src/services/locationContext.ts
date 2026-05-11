@@ -1,7 +1,14 @@
 import { getUserLocation, type UserLocation } from './native/location'
 import { reverseGeocode, type ReverseGeocodeResult } from './reverseGeocode'
 
-export const LOCATION_QUERY_TRIGGERS = /google\s*maps|itinéraire|trajet|street\s*view|restaurant|horaires?|adresse|où\s+(se\s+trouve|est|aller|trouver|je\s+suis|suis[-\s]je)|où\s+suis[-\s]je|coordonnées|GPS|plan\s+(de|du)|carte|météo|quel\s+temps|prévisions?|pleuvoir|pluie|température|près\s+de\s+moi|autour\s+de\s+moi|le\s+plus\s+proche|dans\s+quelle\s+ville|quelle\s+ville\s+je|ma\s+(ville|position|localisation)|mes\s+coordonnées|localise[-\s]moi|je\s+suis\s+(à|où)|combien\s+(de\s+)?(temps|km|kilomètres?|minutes?|heures?)\s+(pour|jusqu|en\s+voiture|d['’]aller|de\s+route|de\s+trajet|de)|temps\s+(qu['’]il\s+)?(faut|pour)\s+(pour\s+)?aller|aller\s+(à|jusqu['’]?\s*à|en)|distance\s+(entre|jusqu|pour|de)|à\s+quelle\s+distance|directions|route\s+(to|from)|weather|forecast|rain|temperature|near\s+me|nearby|closest|where\s+am\s+i|my\s+(location|city|town|position)|what\s+(city|town)|how\s+(far|long)\s+(is|to|from)|driving\s+(time|distance)/i
+// Étape 12 audit — patterns indirects ajoutés après remontées users
+// (cf. BUG 56 partiel) :
+//   FR : "je suis à combien (de…)", "partir d'ici (pour…)", "pour rejoindre",
+//        "pour me rendre à", "depuis (ma position|chez moi|ici)"
+//   EN : "on foot", "navigate to", "directions from here", "from my location"
+// Le regex est un seul énorme alternatif pour éviter le coût de N appels
+// `.test()` sur des regex séparées (cf. M3 audit perf).
+export const LOCATION_QUERY_TRIGGERS = /google\s*maps|itinéraire|trajet|street\s*view|restaurant|horaires?|adresse|où\s+(se\s+trouve|est|aller|trouver|je\s+suis|suis[-\s]je)|où\s+suis[-\s]je|coordonnées|GPS|plan\s+(de|du)|carte|météo|quel\s+temps|prévisions?|pleuvoir|pluie|température|près\s+de\s+moi|autour\s+de\s+moi|le\s+plus\s+proche|dans\s+quelle\s+ville|quelle\s+ville\s+je|ma\s+(ville|position|localisation)|mes\s+coordonnées|localise[-\s]moi|je\s+suis\s+(à|où)|je\s+suis\s+à\s+combien|combien\s+(de\s+)?(temps|km|kilomètres?|minutes?|heures?)\s+(pour|jusqu|en\s+voiture|d['’]aller|de\s+route|de\s+trajet|de)|temps\s+(qu['’]il\s+)?(faut|pour)\s+(pour\s+)?aller|aller\s+(à|jusqu['’]?\s*à|en)|partir\s+d['’]?ici|pour\s+rejoindre|pour\s+me\s+rendre\s+(à|au|en)|depuis\s+(ici|ma\s+position|chez\s+moi)|distance\s+(entre|jusqu|pour|de)|à\s+quelle\s+distance|directions|directions\s+from\s+here|route\s+(to|from)|navigate\s+to|on\s+foot|from\s+my\s+location|weather|forecast|rain|temperature|near\s+me|nearby|closest|where\s+am\s+i|my\s+(location|city|town|position)|what\s+(city|town)|how\s+(far|long)\s+(is|to|from)|driving\s+(time|distance)/i
 
 export interface LocationDebugSnapshot {
   at: number

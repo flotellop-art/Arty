@@ -35,18 +35,16 @@ export function formatModelName(model: string): string {
   }
 
   if (m.startsWith('claude')) {
-    if (m.includes('haiku')) {
-      const ver = m.match(/(\d+(?:[-.]\d+)?)/)?.[1]?.replace('-', '.')
-      return ver ? `Claude Haiku ${ver}` : 'Claude Haiku'
-    }
-    if (m.includes('sonnet')) {
-      const ver = m.match(/(\d+(?:[-.]\d+)?)/)?.[1]?.replace('-', '.')
-      return ver ? `Claude Sonnet ${ver}` : 'Claude Sonnet'
-    }
-    if (m.includes('opus')) {
-      const ver = m.match(/(\d+(?:[-.]\d+)?)/)?.[1]?.replace('-', '.')
-      return ver ? `Claude Opus ${ver}` : 'Claude Opus'
-    }
+    // Étape 12 audit — extraire la version Anthropic format `-X-Y-` entre
+    // tirets. Avant : regex `(\d+(?:[-.]\d+)?)` matchait juste le premier
+    // groupe de chiffres et pouvait s'arrêter à `4` sur `claude-haiku-4-5-20251001`
+    // selon la position. Maintenant : pattern explicite `(\d+)-(\d+)` après
+    // le nom de famille, plus robuste.
+    const verMatch = m.match(/-(haiku|sonnet|opus)-(\d+)-(\d+)/)
+    const ver = verMatch ? `${verMatch[2]}.${verMatch[3]}` : null
+    if (m.includes('haiku')) return ver ? `Claude Haiku ${ver}` : 'Claude Haiku'
+    if (m.includes('sonnet')) return ver ? `Claude Sonnet ${ver}` : 'Claude Sonnet'
+    if (m.includes('opus')) return ver ? `Claude Opus ${ver}` : 'Claude Opus'
     return 'Claude'
   }
 
