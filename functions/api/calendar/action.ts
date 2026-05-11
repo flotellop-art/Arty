@@ -41,7 +41,7 @@ async function handleList(token: string, body: Record<string, unknown>): Promise
       `https://www.googleapis.com/calendar/v3/calendars/primary/events?${params}`,
       { headers: { Authorization: `Bearer ${token}` } }
     )
-    if (!r.ok) { const err = await r.json() as Record<string, unknown>; return Response.json({ error: (err.error as Record<string, string>)?.message }, { status: r.status }) }
+    if (!r.ok) return Response.json({ error: 'Calendar operation failed' }, { status: r.status })
 
     const data = await r.json() as { items?: Array<Record<string, unknown>> }
     const events = (data.items || []).map((e) => ({
@@ -82,7 +82,7 @@ async function handleCreate(token: string, body: Record<string, unknown>): Promi
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(event),
     })
-    if (!r.ok) { const err = await r.json() as Record<string, unknown>; return Response.json({ error: (err.error as Record<string, string>)?.message }, { status: r.status }) }
+    if (!r.ok) return Response.json({ error: 'Calendar operation failed' }, { status: r.status })
 
     const result = await r.json() as Record<string, unknown>
     return Response.json({
@@ -116,7 +116,7 @@ async function handleUpdate(token: string, body: Record<string, unknown>): Promi
       `https://www.googleapis.com/calendar/v3/calendars/primary/events/${eventId}`,
       { method: 'PATCH', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(update) }
     )
-    if (!r.ok) { const err = await r.json() as Record<string, unknown>; return Response.json({ error: (err.error as Record<string, string>)?.message }, { status: r.status }) }
+    if (!r.ok) return Response.json({ error: 'Calendar operation failed' }, { status: r.status })
     const result = await r.json() as Record<string, unknown>
     return Response.json({ success: true, title: result.summary })
   } catch { return Response.json({ error: 'Update failed' }, { status: 500 }) }
