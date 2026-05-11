@@ -490,6 +490,9 @@ Dernier audit : **4 mai 2026** (PR #127 + PR #128).
 - [ ] **`tokeninfo` au lieu de `userinfo`** pour vérifier les tokens dans `trial/init.ts:34-44` — moins fiable.
 - [ ] **Pas de rate limit sur `/api/auth/token`** — brute force possible sur les codes OAuth volés.
 
+**HIGH a11y non traités (audit du 11 mai)** :
+- [ ] **Contrastes `text-theme-muted/70` sur `bg-theme-bg`** (mode Ember) = ratio ≈ 2.8:1, WCAG AA exige 4.5:1 pour texte normal. ~190 occurrences. Fix nécessite une refonte du design system (changer `--theme-muted` ou interdire le `/70`). Hors scope d'une PR auto — nécessite validation design.
+
 **LOW à nettoyer avant Play Store** :
 - [ ] **Debug `console.log` avec emails** dans `useGoogleAuth.ts:117-195` — wrap en `if (import.meta.env.DEV)`.
 - [ ] **Trial counter peut overflow** silencieusement vers 0 dans `trial/init.ts:51-52`.

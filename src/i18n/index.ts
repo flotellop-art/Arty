@@ -34,6 +34,27 @@ i18n
     returnNull: false,
   })
 
+/**
+ * Synchronise l'attribut `<html lang>` avec la locale courante. Sans ça :
+ * - les lecteurs d'écran prononcent le texte avec l'accent du `lang` initial
+ *   (hardcodé `fr` dans index.html), même quand l'user a basculé en anglais ;
+ * - Chrome propose "Traduire cette page" depuis le mauvais source ;
+ * - les feuilles de style `:lang()` ne matchent pas correctement.
+ * H-UX-6 (audit étape 10). Fire au boot (via `initialized`) ET sur chaque
+ * changement (via `languageChanged`) — couvre les 2 cas sans race.
+ */
+function syncHtmlLang(lng: string): void {
+  try {
+    const locale = lng.slice(0, 2)
+    document.documentElement.lang = (SUPPORTED_LOCALES as readonly string[]).includes(locale)
+      ? locale
+      : 'fr'
+  } catch { /* SSR / no document */ }
+}
+
+i18n.on('languageChanged', syncHtmlLang)
+i18n.on('initialized', () => syncHtmlLang(i18n.language || 'fr'))
+
 /** Change la langue courante et persiste en localStorage. */
 export function setLocale(locale: Locale): void {
   i18n.changeLanguage(locale)

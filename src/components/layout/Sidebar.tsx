@@ -187,6 +187,13 @@ export function Sidebar({
 
       {/* Drawer — Design C */}
       <aside
+        // H-UX-3 (audit étape 10) — aria-hidden conditionnel sur drawer fermé.
+        // Sans ça, les lecteurs d'écran annoncent les conversations + boutons
+        // même quand le drawer est invisible.
+        // `inert` attribute serait idéal pour bloquer aussi le Tab focus, mais
+        // pas encore typé dans React 18. Migration future : React 19 +
+        // @types/react 19 le supporteront proprement.
+        aria-hidden={!isOpen}
         className={`fixed top-0 left-0 h-full w-80 max-w-[85vw] bg-theme-surface text-theme-ink z-50 shadow-xl transform transition-transform duration-300 ease-in-out flex flex-col ${
           isOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
