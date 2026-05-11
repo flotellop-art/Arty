@@ -21,7 +21,7 @@ import type { Conversation } from '../../types'
 // on regarde si la famille primaire est dispo dans le plan.
 const PROVIDER_TO_FAMILY: Record<Exclude<AIModel, 'auto'>, ModelFamily> = {
   claude: 'claude-haiku',
-  mistral: 'mistral-small',
+  mistral: 'mistral-medium',
   gemini: 'gemini-flash',
   openai: 'gpt-mini',
 }

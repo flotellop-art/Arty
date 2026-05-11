@@ -42,11 +42,9 @@ const PRICING: Record<string, ModelPricing> = {
   'gpt-4o': { input: 2.5, output: 10 },
   'gpt-4o-mini': { input: 0.15, output: 0.6 },
 
-  // Mistral
+  // Mistral (Small déprécié mai 2026, Medium 3.5 est le standard)
   'mistral-large-latest': { input: 2, output: 6 },
   'mistral-medium-latest': { input: 0.4, output: 2 },
-  'mistral-small-latest': { input: 0.2, output: 0.6 },
-  'mistral-tiny': { input: 0.1, output: 0.3 },
   'codestral-latest': { input: 0.2, output: 0.6 },
 
   // Google Gemini
@@ -67,7 +65,7 @@ export function getPricing(model: string): ModelPricing {
   if (prefix === 'claude') return PRICING['claude-sonnet-4-6'] ?? FALLBACK_PRICING
   if (prefix === 'gpt') return PRICING['gpt-5.5-mini'] ?? FALLBACK_PRICING
   if (prefix === 'gemini') return PRICING['gemini-2.5-flash'] ?? FALLBACK_PRICING
-  if (prefix === 'mistral') return PRICING['mistral-small-latest'] ?? FALLBACK_PRICING
+  if (prefix === 'mistral') return PRICING['mistral-medium-latest'] ?? FALLBACK_PRICING
   return FALLBACK_PRICING
 }
 

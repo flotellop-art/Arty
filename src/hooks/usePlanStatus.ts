@@ -12,7 +12,6 @@ export type ModelFamily =
   | 'claude-haiku'
   | 'claude-sonnet'
   | 'claude-opus'
-  | 'mistral-small'
   | 'mistral-medium'
   | 'gemini-flash'
   | 'gemini-pro'
@@ -38,10 +37,10 @@ interface ApiResponse {
 
 const DEFAULT_STATUS: PlanStatus = {
   plan: 'free',
-  allowedFamilies: ['claude-haiku', 'mistral-small'],
+  allowedFamilies: ['claude-haiku'],
   lockedFamilies: ['claude-sonnet', 'claude-opus', 'mistral-medium', 'gemini-flash', 'gemini-pro', 'gpt-mini', 'gpt-full'],
-  dailyRemaining: { 'claude-haiku': 10, 'mistral-small': 5 },
-  dailyLimits: { 'claude-haiku': 10, 'mistral-small': 5 },
+  dailyRemaining: { 'claude-haiku': 10 },
+  dailyLimits: { 'claude-haiku': 10 },
   loading: true,
 }
 

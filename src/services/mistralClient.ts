@@ -11,35 +11,16 @@ import { shouldUseWebSearch } from './aiRouter'
 import i18n from '../i18n'
 
 /**
- * Sélection du modèle Mistral selon le plan utilisateur :
- * - Free / trial → `mistral-small-latest` toujours (le proxy refuse medium
- *   pour ces plans, ce check côté client évite le 403).
- * - Payant (subscription/pro/vip) ou EU-only → `mistral-medium-latest`
- *   par défaut. Small uniquement pour les très courts messages purement
- *   conversationnels ("ok", "merci", "salut bien"). Dès qu'il y a une vraie
- *   question (>=80 chars OU mot-clé interrogatif/recherche), Medium 3.5
- *   est utilisé : meilleure qualité, fact-check plus fiable, et la
- *   différence de coût est minime sur le volume Arty actuel.
+ * Sélection du modèle Mistral. Depuis mai 2026, Mistral Small est déprécié
+ * et tout le trafic Mistral passe par Medium 3.5 — meilleure qualité, vision
+ * native, fact-check plus fiable. Mistral n'est plus accessible aux free
+ * users (Medium trop coûteux pour le tier gratuit), le proxy renvoie un
+ * 403 model_locked dans ce cas.
  *
- * Le plan est mis en cache par usePlanStatus dans localStorage
- * 'arty-plan-cache' à chaque appel à /api/subscription/status.
+ * Signature conservée (prend `message`) pour compat avec les appelants
+ * existants — l'argument est ignoré.
  */
-export function selectMistralModel(message: string): 'mistral-medium-latest' | 'mistral-small-latest' {
-  let cachedPlan: string | null = null
-  try { cachedPlan = localStorage.getItem('arty-plan-cache') } catch {}
-
-  // Free/trial : Small obligatoire (gating proxy + cap quota free)
-  if (cachedPlan === 'free') return 'mistral-small-latest'
-
-  // Small UNIQUEMENT pour les très courts messages conversationnels (small
-  // talk, remerciements, accusés réception). Couvre les regex « bonjour »,
-  // « ok merci », « pas mal », etc.
-  if (message.length < 80 && !/\?|prix|date|combien|quand|qui|où|comment|quoi|liste|patches?|version|score|compare|détail|recherche|cherche|trouve|donne|explique|analyse|rédige|code|script|programme|traduis|rapport|stratég|actualit|aujourd|hier|demain|mois|année|2025|2026/i.test(message)) {
-    return 'mistral-small-latest'
-  }
-
-  // Tout le reste → Medium 3.5 (qualité supérieure, vision native, mieux
-  // sur les comparaisons et les claims factuels)
+export function selectMistralModel(_message: string): 'mistral-medium-latest' {
   return 'mistral-medium-latest'
 }
 

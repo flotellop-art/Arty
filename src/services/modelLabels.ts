@@ -30,9 +30,8 @@ export function formatModelName(model: string): string {
 
   if (m.startsWith('mistral')) {
     if (m.includes('medium')) return 'Mistral Medium 3.5'
-    if (m.includes('small')) return 'Mistral Small'
     if (m.includes('large')) return 'Mistral Large'
-    return 'Mistral'
+    return 'Mistral Medium 3.5'
   }
 
   if (m.startsWith('claude')) {

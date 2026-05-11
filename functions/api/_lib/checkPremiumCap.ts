@@ -4,7 +4,7 @@ import type { Env } from '../../env'
  * Cap mensuel sur les modèles "premium" pour le plan subscription
  * (500 messages/mois dont 150 Sonnet + 100 GPT-5 + 80 Gemini Pro).
  *
- * Les modèles "standard" (gpt-5-mini, gemini-flash, mistral-small) ne sont
+ * Les modèles "standard" (gpt-5-mini, gemini-flash, mistral-*) ne sont
  * jamais cappés — ils tombent sur la voie consumeDailyQuota classique.
  * Quand le cap mensuel est atteint, on regarde si l'user a un Pack Premium
  * acheté (table `premium_packs`) qui peut compenser.
@@ -39,7 +39,7 @@ interface PremiumCapEntry {
  * - gpt-5.5 (et variantes non-mini)  → 100/mois (bucket gpt5)
  * - gemini-pro* (toute variante)     → 80/mois
  *
- * Standards (retourne null) : gpt-5-mini, gemini-flash*, mistral-small.
+ * Standards (retourne null) : gpt-5-mini, gemini-flash*, mistral-*.
  */
 function classifyModel(model: string): PremiumCapEntry | null {
   const m = model.toLowerCase()
@@ -47,7 +47,7 @@ function classifyModel(model: string): PremiumCapEntry | null {
   // Standards en premier — pour ne pas être attrapé par les patterns premium.
   if (m.startsWith('gpt-5-mini')) return null
   if (m.startsWith('gemini-flash') || m.includes('-flash')) return null
-  if (m.startsWith('mistral-small')) return null
+  if (m.startsWith('mistral')) return null
 
   if (m.startsWith('claude-sonnet') || m.startsWith('claude-opus')) {
     return { bucket: 'claude-sonnet', cap: 150 }

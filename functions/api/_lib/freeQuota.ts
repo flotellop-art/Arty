@@ -1,31 +1,29 @@
-// Free daily quotas — 10 Haiku/jour + 5 Mistral Small/jour, perpétuel.
-// KV-backed, séparé par famille de modèle pour permettre à l'utilisateur
-// d'épuiser un compteur sans bloquer l'autre.
+// Free daily quotas — 10 Haiku/jour, perpétuel.
+// KV-backed, une seule famille (claude-haiku) depuis la dépréciation de
+// Mistral Small (mai 2026). Mistral est désormais réservé aux payants —
+// Medium est plus coûteux et ne s'inscrit pas dans l'économie du tier free.
 //
 // Différent du compteur trial (`trial:{email}` à vie 30 messages) : ici
 // chaque clé inclut la date `free:{email}:{YYYY-MM-DD}:{family}` et expire
-// naturellement (KV TTL 24h pour faciliter le cleanup).
+// naturellement (KV TTL 48h pour faciliter le cleanup).
 
 import type { Env } from '../../env'
 
-export type ModelFamily = 'claude-haiku' | 'mistral-small'
+export type ModelFamily = 'claude-haiku'
 
 export const FREE_DAILY_LIMITS: Record<ModelFamily, number> = {
   'claude-haiku': 10,
-  'mistral-small': 5,
 }
 
 // Familles de modèles que les utilisateurs free peuvent appeler. Tout le
-// reste (Sonnet, Opus, Gemini Pro, GPT-4, etc.) est verrouillé → 403.
+// reste (Sonnet, Opus, Mistral, Gemini, GPT) est verrouillé → 403.
 export const FREE_ALLOWED_MODELS: ReadonlyArray<string> = [
   'claude-haiku-4-5-20251001',
-  'mistral-small-latest',
 ]
 
 export function modelFamilyFor(model: string): ModelFamily | null {
   const m = model.toLowerCase()
   if (m.startsWith('claude') && m.includes('haiku')) return 'claude-haiku'
-  if (m.startsWith('mistral') && m.includes('small')) return 'mistral-small'
   return null
 }
 
@@ -86,11 +84,10 @@ export async function peekFreeDailyRemaining(
 ): Promise<Record<ModelFamily, number>> {
   const result: Record<ModelFamily, number> = {
     'claude-haiku': FREE_DAILY_LIMITS['claude-haiku'],
-    'mistral-small': FREE_DAILY_LIMITS['mistral-small'],
   }
   if (!env.KV) return result
 
-  const families: ModelFamily[] = ['claude-haiku', 'mistral-small']
+  const families: ModelFamily[] = ['claude-haiku']
   for (const family of families) {
     const raw = await env.KV.get(freeCounterKey(email, family))
     const used = raw === null ? 0 : Math.max(0, parseInt(raw, 10) || 0)
@@ -103,7 +100,7 @@ export function freeModelLockedResponse(model: string): Response {
   return Response.json(
     {
       error: 'model_locked',
-      message: `Le modèle ${model} est réservé aux abonnés Pro. Choisissez Claude (Haiku) ou Mistral, ou passez à Pro pour débloquer Sonnet, Opus, Gemini et GPT.`,
+      message: `Le modèle ${model} est réservé aux abonnés Pro. Choisissez Claude Haiku, ou passez à Pro pour débloquer Sonnet, Opus, Mistral, Gemini et GPT.`,
       lockedModel: model,
     },
     { status: 403 }
@@ -111,11 +108,10 @@ export function freeModelLockedResponse(model: string): Response {
 }
 
 export function freeQuotaExhaustedResponse(family: ModelFamily, limit: number): Response {
-  const familyLabel = family === 'claude-haiku' ? 'Claude Haiku' : 'Mistral'
   return Response.json(
     {
       error: 'free_quota_exhausted',
-      message: `Quota gratuit ${familyLabel} atteint (${limit}/${limit} aujourd'hui). Réessayez demain ou passez à Pro pour un accès illimité.`,
+      message: `Quota gratuit Claude Haiku atteint (${limit}/${limit} aujourd'hui). Réessayez demain ou passez à Pro pour un accès illimité.`,
       family,
       limit,
     },
