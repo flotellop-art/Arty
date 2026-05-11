@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Force HTTPS partout. Pas de cleartext traffic en prod (aucun fallback
+  HTTP autorisé). Si un service tiers requiert HTTP, ajouter une
+  exception <domain-config cleartextTrafficPermitted="true"> explicite.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>
