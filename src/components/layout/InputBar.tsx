@@ -31,6 +31,64 @@ const HOLD_THRESHOLD_MS = 600
 const HOLD_MAX_MS = 60_000
 const SWIPE_CANCEL_THRESHOLD_PX = 60
 
+// Vignette d'aperçu d'un fichier en attente d'envoi. Pour les images, affiche
+// la photo réelle via blob URL (le base64 est en RAM, pas encore persisté).
+// Sans ça, l'utilisateur voit juste un emoji "🖼️" et a l'impression que la
+// photo n'a pas été chargée.
+function PendingFilePreview({ file, onRemove }: { file: FileAttachment; onRemove: () => void }) {
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const isImage = file.type.startsWith('image/')
+
+  useEffect(() => {
+    if (!isImage || !file.data) return
+    let urlToRevoke: string | null = null
+    try {
+      const byteString = atob(file.data)
+      const arr = new Uint8Array(byteString.length)
+      for (let i = 0; i < byteString.length; i++) arr[i] = byteString.charCodeAt(i)
+      const blob = new Blob([arr], { type: file.type })
+      urlToRevoke = URL.createObjectURL(blob)
+      setPreviewUrl(urlToRevoke)
+    } catch {
+      // ignore, fallback to icon
+    }
+    return () => { if (urlToRevoke) URL.revokeObjectURL(urlToRevoke) }
+  }, [file.data, file.type, isImage])
+
+  if (isImage && previewUrl) {
+    return (
+      <div className="relative flex-shrink-0">
+        <img
+          src={previewUrl}
+          alt={file.name}
+          className="w-[64px] h-[64px] object-cover rounded-lg border border-theme-border"
+          title={file.name}
+        />
+        <button
+          onClick={onRemove}
+          aria-label="Retirer"
+          className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-theme-surface border border-theme-border text-theme-muted hover:text-theme-accent text-[10px] leading-none flex items-center justify-center shadow-sm"
+        >
+          ✕
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex items-center gap-1.5 bg-theme-surface rounded-lg border border-theme-border px-2.5 py-1.5 text-xs text-theme-ink/70 flex-shrink-0">
+      <span>{isImage ? '🖼️' : '📄'}</span>
+      <span className="max-w-[120px] truncate">{file.name}</span>
+      <button
+        onClick={onRemove}
+        className="text-theme-muted hover:text-theme-accent ml-1"
+      >
+        ✕
+      </button>
+    </div>
+  )
+}
+
 export function InputBar({ onSend, isStreaming, onStop, initialText, initialFiles }: InputBarProps) {
   const { t } = useTranslation()
   const [text, setText] = useState(() => initialText ?? '')
@@ -756,19 +814,11 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
       {files.length > 0 && (
         <div className="flex gap-2 mb-2 overflow-x-auto pb-1">
           {files.map((file, i) => (
-            <div
+            <PendingFilePreview
               key={i}
-              className="flex items-center gap-1.5 bg-theme-surface rounded-lg border border-theme-border px-2.5 py-1.5 text-xs text-theme-ink/70 flex-shrink-0"
-            >
-              <span>{file.type.startsWith('image/') ? '🖼️' : '📄'}</span>
-              <span className="max-w-[120px] truncate">{file.name}</span>
-              <button
-                onClick={() => removeFile(i)}
-                className="text-theme-muted hover:text-theme-accent ml-1"
-              >
-                ✕
-              </button>
-            </div>
+              file={file}
+              onRemove={() => removeFile(i)}
+            />
           ))}
         </div>
       )}

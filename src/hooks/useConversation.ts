@@ -156,7 +156,11 @@ export function useConversation() {
               return { id, name: f.name, type: f.type, size: f.size }
             } catch (err) {
               if (import.meta.env.DEV) console.warn('putFile failed:', err)
-              return f
+              // Ne PAS retourner l'objet avec data — saveConversation écrirait
+              // le base64 en localStorage et risquerait la limite 5 MB (BUG 11).
+              // Le tour courant marche via pendingFilesRef qui contient encore
+              // les data en RAM. Les renders futurs verront "Image indispo".
+              return { id: f.id, name: f.name, type: f.type, size: f.size }
             }
           })
         )

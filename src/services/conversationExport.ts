@@ -266,29 +266,75 @@ export async function exportHtmlAsPdf(
   document.body.appendChild(container)
 
   try {
+    const SCALE = 2
     const canvas = await html2canvas(container, {
-      scale: 2,
+      scale: SCALE,
       backgroundColor: bgColor,
       logging: false,
     })
-    const imgData = canvas.toDataURL('image/png')
 
     const pdf = new jsPDF({ unit: 'pt', format: 'a4', compress: true })
     const pdfWidth = pdf.internal.pageSize.getWidth()
     const pdfHeight = pdf.internal.pageSize.getHeight()
-    const imgWidth = pdfWidth
-    const imgHeight = (canvas.height * imgWidth) / canvas.width
+    const pxPerPdfPt = canvas.width / pdfWidth
+    const pageHeightPx = pdfHeight * pxPerPdfPt
 
-    // Multi-page support: if image is taller than one page, split it.
-    let heightLeft = imgHeight
-    let position = 0
-    pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight)
-    heightLeft -= pdfHeight
-    while (heightLeft > 0) {
-      position = heightLeft - imgHeight
-      pdf.addPage()
-      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight)
-      heightLeft -= pdfHeight
+    // Collecte des Y "sûrs" où couper sans traverser une ligne de texte :
+    // top de chaque élément (= début d'un bloc / d'une ligne wrappée par
+    // <br>) et bottom des <br>/<hr> (= début de la ligne suivante). Avant ce
+    // fix, le canvas était découpé à intervalle fixe pdfHeight → coupure
+    // possible au milieu d'une ligne (ex. "...comme un" + "...époux" sur 2
+    // pages).
+    const containerRect = container.getBoundingClientRect()
+    const breakPoints = new Set<number>([0, canvas.height])
+    const walk = (el: Element) => {
+      const r = el.getBoundingClientRect()
+      breakPoints.add(Math.round((r.top - containerRect.top) * SCALE))
+      if (el.tagName === 'BR' || el.tagName === 'HR') {
+        breakPoints.add(Math.round((r.bottom - containerRect.top) * SCALE))
+      }
+      for (let i = 0; i < el.children.length; i++) {
+        const child = el.children.item(i)
+        if (child) walk(child)
+      }
+    }
+    walk(container)
+    const sortedBreaks = Array.from(breakPoints).sort((a, b) => a - b)
+
+    let yStart = 0
+    let firstPage = true
+    while (yStart < canvas.height) {
+      const idealEnd = yStart + pageHeightPx
+      let yEnd = Math.min(idealEnd, canvas.height)
+      for (let i = sortedBreaks.length - 1; i >= 0; i--) {
+        const bp = sortedBreaks[i]
+        if (bp !== undefined && bp > yStart && bp <= idealEnd) {
+          yEnd = bp
+          break
+        }
+      }
+      // Garde anti-boucle infinie : si aucun breakpoint utilisable n'est
+      // trouvé (long bloc atomique de texte > 1 page), on force un saut
+      // de la taille d'une page complète et on accepte la coupe.
+      if (yEnd <= yStart) yEnd = Math.min(yStart + pageHeightPx, canvas.height)
+
+      const sliceHeight = Math.max(1, yEnd - yStart)
+      const slice = document.createElement('canvas')
+      slice.width = canvas.width
+      slice.height = sliceHeight
+      const ctx = slice.getContext('2d')
+      if (ctx) {
+        ctx.fillStyle = bgColor
+        ctx.fillRect(0, 0, slice.width, slice.height)
+        ctx.drawImage(canvas, 0, -yStart)
+      }
+      const sliceData = slice.toDataURL('image/png')
+      const sliceHeightPt = sliceHeight / pxPerPdfPt
+
+      if (!firstPage) pdf.addPage()
+      pdf.addImage(sliceData, 'PNG', 0, 0, pdfWidth, sliceHeightPt)
+      firstPage = false
+      yStart = yEnd
     }
 
     const blob = pdf.output('blob')
