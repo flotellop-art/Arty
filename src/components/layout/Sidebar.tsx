@@ -382,10 +382,27 @@ export function Sidebar({
           )}
           {filteredConversations.map((conv) => {
             const isActive = conv.id === activeId
+            // Roadmap UI Phase 3 #5 — cards riches.
+            // Avant : ligne fine titre + timestamp uniquement.
+            // Maintenant : 2 lignes (titre + aperçu) + badges contextuels
+            // (EU lock + modèle dominant). Plus rapide à retrouver visuellement
+            // une conversation parmi 50+.
+            const preview = (() => {
+              // Dernier message non-user (réponse Arty) pour l'aperçu — plus
+              // informatif que la dernière question utilisateur sur ce qu'a
+              // été produit. Fallback sur dernier message si pas de réponse.
+              for (let i = conv.messages.length - 1; i >= 0; i--) {
+                const m = conv.messages[i]
+                if (m?.role === 'assistant' && m.content) return m.content
+              }
+              return conv.messages[conv.messages.length - 1]?.content ?? ''
+            })()
+            const previewClean = preview.replace(/[#*_`~]/g, '').replace(/\s+/g, ' ').trim().slice(0, 80)
+            const dominantModel = conv.usedModels?.[0]
             return (
               <div
                 key={conv.id}
-                className="group flex items-center gap-2.5 px-2.5 py-2.5 rounded-[10px] cursor-pointer transition-colors mb-0.5"
+                className="group flex items-start gap-2.5 px-2.5 py-2 rounded-[10px] cursor-pointer transition-colors mb-0.5"
                 style={{ background: isActive ? DESIGN.card : 'transparent' }}
                 onClick={() => {
                   onSelect(conv.id)
@@ -394,28 +411,51 @@ export function Sidebar({
                 onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = 'rgba(240,226,204,0.05)' }}
                 onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = 'transparent' }}
               >
-                {/* Dot */}
+                {/* Dot — top-aligned vs centered for 2-line layout */}
                 <div
-                  className="w-[7px] h-[7px] rounded-full flex-shrink-0"
+                  className="w-[7px] h-[7px] rounded-full flex-shrink-0 mt-[6px]"
                   style={{
                     background: isActive ? 'rgb(var(--theme-accent))' : 'transparent',
                     border: isActive ? 'none' : `1.5px solid ${DESIGN.borderMid}`,
                   }}
                 />
-                <span
-                  className={`text-[13px] flex-1 truncate transition-colors ${isActive ? 'text-theme-ink font-medium' : 'text-theme-ink/80'}`}
-                >
-                  {highlight(conv.title, debouncedSearch)}
-                </span>
-                <span className="text-theme-muted text-[10px] flex-shrink-0">
-                  {timeAgo(conv.updatedAt)}
-                </span>
+                <div className="flex-1 min-w-0">
+                  {/* Ligne 1 — titre + timestamp */}
+                  <div className="flex items-baseline justify-between gap-2">
+                    <span
+                      className={`text-[13px] truncate transition-colors ${isActive ? 'text-theme-ink font-medium' : 'text-theme-ink/80'}`}
+                    >
+                      {highlight(conv.title, debouncedSearch)}
+                    </span>
+                    <span className="text-theme-muted text-[10px] flex-shrink-0">
+                      {timeAgo(conv.updatedAt)}
+                    </span>
+                  </div>
+                  {/* Ligne 2 — aperçu + badges contextuels */}
+                  {(previewClean || conv.euOnly || dominantModel) && (
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      {conv.euOnly && (
+                        <span className="text-[9px] flex-shrink-0" title="Mode Europe — données restées en France">🇪🇺</span>
+                      )}
+                      {previewClean && (
+                        <span className="text-[11px] text-theme-muted italic truncate">
+                          {previewClean}
+                        </span>
+                      )}
+                      {dominantModel && !previewClean && (
+                        <span className="text-[9px] uppercase tracking-kicker text-theme-muted/80 flex-shrink-0">
+                          {dominantModel}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
                 <button
                   onClick={(e) => {
                     e.stopPropagation()
                     onDelete(conv.id)
                   }}
-                  className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-theme-accent/10 transition-all text-theme-accent flex-shrink-0"
+                  className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-theme-accent/10 transition-all text-theme-accent flex-shrink-0 mt-1"
                   aria-label={t('sidebar.deleteAria')}
                 >
                   <svg width="12" height="12" viewBox="0 0 14 14" fill="none">
