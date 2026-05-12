@@ -102,7 +102,7 @@ function Field({ label, value, onChange, placeholder, autoFocus }: FieldProps) {
         placeholder={placeholder}
         autoComplete="off"
         autoFocus={autoFocus}
-        className="w-full bg-transparent border-0 border-b border-theme-ink/40 py-2.5 font-mono text-sm text-theme-ink placeholder:text-theme-muted/60 focus:outline-none focus:border-theme-accent transition-colors"
+        className="w-full bg-transparent border-0 border-b border-theme-ink/40 py-2.5 font-mono text-sm text-theme-ink placeholder:text-theme-muted focus:outline-none focus:border-theme-accent transition-colors"
       />
     </div>
   )

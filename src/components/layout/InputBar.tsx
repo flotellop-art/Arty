@@ -83,7 +83,7 @@ function PendingFilePreview({ file, onRemove }: { file: FileAttachment; onRemove
   }
 
   return (
-    <div className="flex items-center gap-1.5 bg-theme-surface rounded-lg border border-theme-border px-2.5 py-1.5 text-xs text-theme-ink/70 flex-shrink-0">
+    <div className="flex items-center gap-1.5 bg-theme-surface rounded-lg border border-theme-border px-2.5 py-1.5 text-xs text-theme-ink/80 flex-shrink-0">
       <span>{isImage ? '🖼️' : '📄'}</span>
       <span className="max-w-[120px] truncate">{file.name}</span>
       <button
@@ -951,7 +951,7 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
             placeholder={t('chat.input.placeholder')}
             rows={1}
             disabled={isStreaming}
-            className={`flex-1 resize-none bg-transparent text-sm text-theme-ink placeholder:text-theme-muted/60 focus:outline-none py-1.5 font-sans font-light leading-relaxed ${isStreaming ? 'opacity-50 italic' : ''}`}
+            className={`flex-1 resize-none bg-transparent text-sm text-theme-ink placeholder:text-theme-muted focus:outline-none py-1.5 font-sans font-light leading-relaxed ${isStreaming ? 'opacity-50 italic' : ''}`}
           />
         )}
 
@@ -1308,7 +1308,7 @@ function CalendarMiniForm({ detected, context, onConfirm, onCancel }: CalendarMi
       <div className="flex gap-2">
         <button
           onClick={onCancel}
-          className="flex-1 py-1.5 rounded-lg border border-theme-border text-xs text-theme-ink/70 hover:bg-theme-ink/5"
+          className="flex-1 py-1.5 rounded-lg border border-theme-border text-xs text-theme-ink/80 hover:bg-theme-ink/5"
         >
           Annuler
         </button>

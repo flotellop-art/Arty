@@ -32,7 +32,7 @@ export function SettingsGuide({ onClose }: SettingsGuideProps) {
             className={`flex-1 py-3.5 text-sm font-medium transition-colors ${
               page === 'style'
                 ? 'text-theme-accent border-b-2 border-theme-accent'
-                : 'text-theme-muted/70'
+                : 'text-theme-muted'
             }`}
           >
             Tons
@@ -42,7 +42,7 @@ export function SettingsGuide({ onClose }: SettingsGuideProps) {
             className={`flex-1 py-3.5 text-sm font-medium transition-colors ${
               page === 'model'
                 ? 'text-theme-ink border-b-2 border-bubble-user'
-                : 'text-theme-muted/70'
+                : 'text-theme-muted'
             }`}
           >
             Modèles IA
@@ -61,7 +61,7 @@ export function SettingsGuide({ onClose }: SettingsGuideProps) {
 function StylePage() {
   return (
     <div className="space-y-4">
-      <p className="text-xs text-theme-muted/70 leading-relaxed">
+      <p className="text-xs text-theme-muted leading-relaxed">
         Change le ton des réponses d'Arty selon tes besoins.
       </p>
 
@@ -97,7 +97,7 @@ function StylePage() {
 function ModelPage() {
   return (
     <div className="space-y-4">
-      <p className="text-xs text-theme-muted/70 leading-relaxed">
+      <p className="text-xs text-theme-muted leading-relaxed">
         Choisis quel modèle d'IA répond. Chacun a ses forces.
       </p>
 

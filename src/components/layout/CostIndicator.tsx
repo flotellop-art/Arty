@@ -77,16 +77,16 @@ function CostModal({ data, onRefresh, onClose }: CostModalProps) {
         </div>
         <div className="p-5">
           <div className="mb-4 pb-4 border-b border-theme-border">
-            <p className="text-[10px] uppercase tracking-wider text-theme-muted/70">Total ce mois-ci ({data.month})</p>
+            <p className="text-[10px] uppercase tracking-wider text-theme-muted">Total ce mois-ci ({data.month})</p>
             <p className="text-3xl font-display font-medium text-theme-accent mt-1">${data.totalCostUsd.toFixed(4)}</p>
             <p className="text-xs text-theme-muted mt-1">
               {data.totalInputTokens.toLocaleString()} tokens entrée · {data.totalOutputTokens.toLocaleString()} sortie · {data.totalCalls} appels
             </p>
           </div>
 
-          <p className="text-[10px] uppercase tracking-wider text-theme-muted/70 mb-2">Par modèle</p>
+          <p className="text-[10px] uppercase tracking-wider text-theme-muted mb-2">Par modèle</p>
           {byModel.length === 0 ? (
-            <p className="text-sm text-theme-muted/70 text-center py-4">Aucune utilisation ce mois-ci</p>
+            <p className="text-sm text-theme-muted text-center py-4">Aucune utilisation ce mois-ci</p>
           ) : (
             <ul className="space-y-2">
               {byModel.map((m) => (
@@ -94,7 +94,7 @@ function CostModal({ data, onRefresh, onClose }: CostModalProps) {
                   <span className="text-theme-ink">{m.model}</span>
                   <div className="text-right">
                     <p className="font-mono font-semibold">${m.costUsd.toFixed(4)}</p>
-                    <p className="text-[10px] text-theme-muted/70">
+                    <p className="text-[10px] text-theme-muted">
                       {m.inputTokens.toLocaleString()}↓ · {m.outputTokens.toLocaleString()}↑ · {m.count} appels
                     </p>
                   </div>

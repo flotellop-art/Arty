@@ -403,7 +403,7 @@ export function Sidebar({
                   }}
                 />
                 <span
-                  className={`text-[13px] flex-1 truncate transition-colors ${isActive ? 'text-theme-ink font-medium' : 'text-theme-ink/60'}`}
+                  className={`text-[13px] flex-1 truncate transition-colors ${isActive ? 'text-theme-ink font-medium' : 'text-theme-ink/80'}`}
                 >
                   {highlight(conv.title, debouncedSearch)}
                 </span>

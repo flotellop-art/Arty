@@ -311,7 +311,7 @@ function TemplateFormModal({ template, onCancel, onSubmit }: TemplateFormModalPr
                     placeholder={field.placeholder}
                     rows={4}
                     autoFocus={idx === 0}
-                    className="w-full bg-transparent border border-theme-ink/20 rounded-sm py-2 px-3 font-display text-[15px] text-theme-ink placeholder:text-theme-muted/50 placeholder:font-display placeholder:italic focus:outline-none focus:border-theme-accent transition-colors resize-y"
+                    className="w-full bg-transparent border border-theme-ink/20 rounded-sm py-2 px-3 font-display text-[15px] text-theme-ink placeholder:text-theme-muted placeholder:font-display placeholder:italic focus:outline-none focus:border-theme-accent transition-colors resize-y"
                   />
                 ) : (
                   <input
@@ -321,7 +321,7 @@ function TemplateFormModal({ template, onCancel, onSubmit }: TemplateFormModalPr
                     onChange={(e) => handleChange(field.key, e.target.value)}
                     placeholder={field.placeholder}
                     autoFocus={idx === 0}
-                    className="w-full bg-transparent border-0 border-b border-theme-ink/40 py-2 font-display text-[16px] text-theme-ink placeholder:text-theme-muted/50 placeholder:font-display placeholder:italic focus:outline-none focus:border-theme-accent transition-colors"
+                    className="w-full bg-transparent border-0 border-b border-theme-ink/40 py-2 font-display text-[16px] text-theme-ink placeholder:text-theme-muted placeholder:font-display placeholder:italic focus:outline-none focus:border-theme-accent transition-colors"
                   />
                 )}
               </div>

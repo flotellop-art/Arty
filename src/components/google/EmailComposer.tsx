@@ -31,7 +31,7 @@ export function EmailComposer({ draft, onConfirmSend, onCancel, isSending }: Ema
         </h3>
         <button
           onClick={onCancel}
-          className="text-xs text-theme-muted/70 hover:text-red-500 transition-colors"
+          className="text-xs text-theme-muted hover:text-red-500 transition-colors"
         >
           Annuler
         </button>

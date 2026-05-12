@@ -53,7 +53,7 @@ const MessageItem = memo(function MessageItem({ msg, index, onAction, onBranch, 
           // Roadmap UI #4 — bouton branche visible sur mobile. `group-hover` ne
           // se déclenche jamais sur touch → invisible sur téléphone. Maintenant
           // 50 % opacity permanent sur mobile, 100 % au hover desktop.
-          className="absolute top-2 right-2 opacity-50 md:opacity-0 md:group-hover:opacity-100 p-1 rounded-md bg-theme-surface/80 border border-theme-border text-theme-muted/70 hover:text-theme-accent hover:border-theme-accent transition-all text-xs"
+          className="absolute top-2 right-2 opacity-50 md:opacity-0 md:group-hover:opacity-100 p-1 rounded-md bg-theme-surface/80 border border-theme-border text-theme-muted hover:text-theme-accent hover:border-theme-accent transition-all text-xs"
           title="Créer une branche depuis ce message"
           aria-label="Créer une branche depuis ce message"
         >

@@ -233,7 +233,7 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
                   className={`relative pb-3 font-semibold uppercase transition-colors ${
                     isActive
                       ? 'text-theme-accent text-sm tracking-[0.16em]'
-                      : 'text-theme-muted/55 text-[11px] tracking-kicker hover:text-theme-muted'
+                      : 'text-theme-muted text-[11px] tracking-kicker hover:text-theme-muted'
                   }`}
                 >
                   {tab.label}

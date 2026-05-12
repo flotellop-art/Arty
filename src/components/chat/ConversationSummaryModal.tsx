@@ -163,7 +163,7 @@ export function ConversationSummaryModal({ conversation, onClose }: Props) {
           ) : summary ? (
             <MarkdownRenderer content={summary} />
           ) : (
-            <p className="text-sm text-theme-muted/70 italic">Génération en cours...</p>
+            <p className="text-sm text-theme-muted italic">Génération en cours...</p>
           )}
         </div>
         <div className="flex gap-2 px-5 py-4 border-t border-theme-border">

@@ -110,7 +110,7 @@ function ProfileSetupModalInner({ onClose }: ProfileSetupModalProps) {
               placeholder={t('profileSetup.namePlaceholder', { defaultValue: 'Florent' })}
               autoComplete="given-name"
               autoFocus
-              className="w-full bg-transparent border-0 border-b border-theme-ink/40 py-2.5 font-display text-[17px] text-theme-ink placeholder:text-theme-muted/50 placeholder:font-display placeholder:italic focus:outline-none focus:border-theme-accent transition-colors"
+              className="w-full bg-transparent border-0 border-b border-theme-ink/40 py-2.5 font-display text-[17px] text-theme-ink placeholder:text-theme-muted placeholder:font-display placeholder:italic focus:outline-none focus:border-theme-accent transition-colors"
             />
           </div>
 
@@ -120,7 +120,7 @@ function ProfileSetupModalInner({ onClose }: ProfileSetupModalProps) {
               className="block font-sans text-[10px] font-semibold uppercase tracking-kicker text-theme-muted mb-1.5"
             >
               {t('profileSetup.dobLabel', { defaultValue: 'Date de naissance' })}
-              <span className="ml-2 font-display italic text-theme-muted/70 normal-case tracking-normal">
+              <span className="ml-2 font-display italic text-theme-muted normal-case tracking-normal">
                 {t('profileSetup.optional', { defaultValue: 'optionnel' })}
               </span>
             </label>
@@ -130,7 +130,7 @@ function ProfileSetupModalInner({ onClose }: ProfileSetupModalProps) {
               value={dob}
               onChange={(e) => setDob(e.target.value)}
               autoComplete="bday"
-              className="w-full bg-transparent border-0 border-b border-theme-ink/40 py-2.5 font-mono text-sm text-theme-ink placeholder:text-theme-muted/50 focus:outline-none focus:border-theme-accent transition-colors [color-scheme:inherit]"
+              className="w-full bg-transparent border-0 border-b border-theme-ink/40 py-2.5 font-mono text-sm text-theme-ink placeholder:text-theme-muted focus:outline-none focus:border-theme-accent transition-colors [color-scheme:inherit]"
             />
           </div>
 

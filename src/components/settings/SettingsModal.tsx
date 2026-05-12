@@ -311,7 +311,7 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
                   </button>
                 </div>
                 {locationFix && !locationChecking && (
-                  <p className="font-display italic text-[11px] text-theme-muted/80">
+                  <p className="font-display italic text-[11px] text-theme-muted">
                     Coords : {locationFix.latitude.toFixed(5)}° N, {locationFix.longitude.toFixed(5)}° E
                   </p>
                 )}
@@ -399,7 +399,7 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
               </select>
             </div>
             {factCheckMode !== 'off' && (
-              <p className="font-display italic text-[11px] text-theme-muted/70 mt-2">
+              <p className="font-display italic text-[11px] text-theme-muted mt-2">
                 {factCheckMode === 'auto'
                   ? 'Haiku rapide par défaut, Sonnet strict sur les sujets sensibles (prix, devis, médical, juridique). ~$0.0005-0.0015/message.'
                   : factCheckMode === 'haiku'
@@ -512,7 +512,7 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
                   onChange={(e) => setLicenseEmail(e.target.value)}
                   placeholder="ton.email@exemple.com"
                   autoComplete="email"
-                  className="w-full bg-transparent border border-theme-border rounded-sm px-3 py-2 font-sans text-sm text-theme-ink placeholder:text-theme-muted/60 focus:outline-none focus:border-theme-accent transition-colors"
+                  className="w-full bg-transparent border border-theme-border rounded-sm px-3 py-2 font-sans text-sm text-theme-ink placeholder:text-theme-muted focus:outline-none focus:border-theme-accent transition-colors"
                 />
                 <input
                   type="text"
@@ -520,7 +520,7 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
                   onChange={(e) => setLicenseKey(e.target.value)}
                   placeholder="Clé de licence"
                   autoComplete="off"
-                  className="w-full bg-transparent border border-theme-border rounded-sm px-3 py-2 font-mono text-sm text-theme-ink placeholder:text-theme-muted/60 focus:outline-none focus:border-theme-accent transition-colors"
+                  className="w-full bg-transparent border border-theme-border rounded-sm px-3 py-2 font-mono text-sm text-theme-ink placeholder:text-theme-muted focus:outline-none focus:border-theme-accent transition-colors"
                 />
                 <button
                   type="submit"

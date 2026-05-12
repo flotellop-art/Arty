@@ -26,7 +26,7 @@ export function EmailLoginTab({ onLogin, loading, error: externalError }: EmailL
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div>
-        <label className="block text-xs font-medium text-theme-ink/70 mb-1.5">{t('login.email.label')}</label>
+        <label className="block text-xs font-medium text-theme-ink/80 mb-1.5">{t('login.email.label')}</label>
         <input
           type="email"
           value={email}
@@ -39,7 +39,7 @@ export function EmailLoginTab({ onLogin, loading, error: externalError }: EmailL
       </div>
 
       <div>
-        <label className="block text-xs font-medium text-theme-ink/70 mb-1.5">{t('login.email.password')}</label>
+        <label className="block text-xs font-medium text-theme-ink/80 mb-1.5">{t('login.email.password')}</label>
         <input
           type="password"
           value={password}
@@ -62,7 +62,7 @@ export function EmailLoginTab({ onLogin, loading, error: externalError }: EmailL
         {loading ? t('login.email.connecting') : t('login.email.submit')}
       </button>
 
-      <p className="text-xs text-theme-muted/70 text-center leading-relaxed">
+      <p className="text-xs text-theme-muted text-center leading-relaxed">
         {t('login.email.notice')}
       </p>
     </form>

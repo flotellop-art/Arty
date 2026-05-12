@@ -39,7 +39,7 @@ export function MemoryHistoryPanel({ onClose }: Props) {
 
         <div className="flex-1 overflow-y-auto p-5">
           {entries.length === 0 ? (
-            <p className="text-sm text-theme-muted/70 text-center py-8">Aucun changement enregistré</p>
+            <p className="text-sm text-theme-muted text-center py-8">Aucun changement enregistré</p>
           ) : (
             <ul className="space-y-2">
               {entries.map((e) => (
@@ -48,11 +48,11 @@ export function MemoryHistoryPanel({ onClose }: Props) {
                     <span className="text-xs font-semibold text-theme-ink">
                       {e.action} · {e.category}
                     </span>
-                    <span className="text-[10px] text-theme-muted/70">
+                    <span className="text-[10px] text-theme-muted">
                       {new Date(e.timestamp).toLocaleString('fr-FR')}
                     </span>
                   </div>
-                  <p className="text-xs text-theme-ink/70 break-words">{e.details}</p>
+                  <p className="text-xs text-theme-ink/80 break-words">{e.details}</p>
                   <div className="mt-2 flex justify-end">
                     <button
                       onClick={() => handleUndo(e.category)}

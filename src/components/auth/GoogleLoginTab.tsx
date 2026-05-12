@@ -59,7 +59,7 @@ export function GoogleLoginTab({ loading, onNativeGoogleLogin }: GoogleLoginTabP
 
       {error && <p className="text-sm text-red-500 text-center">{error}</p>}
 
-      <p className="text-xs text-theme-muted/70 text-center leading-relaxed">
+      <p className="text-xs text-theme-muted text-center leading-relaxed">
         {t('login.google.notice')}
       </p>
     </div>

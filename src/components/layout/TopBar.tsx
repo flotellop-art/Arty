@@ -173,7 +173,7 @@ export function TopBar({ onMenuToggle, onHistoryToggle }: TopBarProps) {
                     className={`w-full flex items-center gap-2 px-3 py-2 text-xs transition-colors ${
                       currentStyle === opt.id
                         ? 'bg-theme-accent/10 text-theme-accent font-semibold'
-                        : 'text-theme-ink/70 hover:bg-theme-ink/5'
+                        : 'text-theme-ink/80 hover:bg-theme-ink/5'
                     }`}
                   >
                     <span>{opt.emoji}</span>
@@ -223,7 +223,7 @@ export function TopBar({ onMenuToggle, onHistoryToggle }: TopBarProps) {
                     className={`w-full flex items-center gap-2 px-3 py-2 text-xs transition-colors ${
                       currentModel === opt.id
                         ? 'bg-theme-accent/10 text-theme-accent font-semibold'
-                        : 'text-theme-ink/70 hover:bg-theme-ink/[0.03]'
+                        : 'text-theme-ink/80 hover:bg-theme-ink/[0.03]'
                     }`}
                   >
                     {opt.id === 'auto' ? (
