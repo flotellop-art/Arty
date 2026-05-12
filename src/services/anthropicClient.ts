@@ -384,8 +384,15 @@ async function parseSSEStream(
             break
           }
           case 'error': {
-            const err = (data as { error?: { message?: string } }).error
-            throw new Error(err?.message || 'Streaming error')
+            // Erreurs en milieu de stream (l'API a accepté la requête HTTP
+            // mais Anthropic rencontre un problème pendant la génération :
+            // surcharge, rate limit, etc.). On passe par formatApiError
+            // pour traduire les types connus (overloaded_error,
+            // rate_limit_error...) en messages utilisateur clairs. Sans
+            // ça, le user voit "Overloaded" brut au lieu du message i18n.
+            const err = (data as { error?: { type?: string; message?: string } }).error
+            const errorBody = JSON.stringify({ error: err })
+            throw new Error(formatApiError(529, errorBody))
           }
         }
       }
