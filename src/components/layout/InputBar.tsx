@@ -328,6 +328,17 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
   const handleScan = async () => {
     const doc = await scanDocument()
     if (doc) {
+      // Roadmap Phase 2 D — quand l'utilisateur lance un scan ET que le
+      // champ texte est vide, pré-remplir un prompt OCR utile par défaut.
+      // 90% des scans ont pour but d'extraire les infos clés (facture,
+      // ticket, formulaire, recette). Si le user veut juste attacher le
+      // scan pour discuter, il a déjà tapé sa question → on ne touche pas.
+      setText((prev) => {
+        if (prev.trim().length > 0) return prev
+        return t('chat.input.scanPrompt', {
+          defaultValue: "Extrais les informations clés de ce document : montants, dates, expéditeur, destinataire, sujet, et tout point notable.",
+        })
+      })
       setFiles((prev) => [...prev, {
         id: generateId(),
         name: `scan_${Date.now()}.${doc.mimeType.split('/')[1] || 'jpeg'}`,
