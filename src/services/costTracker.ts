@@ -58,6 +58,7 @@ const MODEL_ALIASES: Record<string, string> = {
   'mistral-large-latest': 'mistral-large',
   'mistral-medium-latest': 'mistral-medium',
   'mistral-medium-3.5': 'mistral-medium',
+  'gemini-3-flash': 'gemini-flash',
   'gemini-3-flash-preview': 'gemini-flash',
   'gemini-2.5-flash': 'gemini-flash',
   'gemini-2.5-pro': 'gemini-pro',
