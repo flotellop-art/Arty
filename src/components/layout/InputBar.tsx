@@ -12,6 +12,7 @@ import { callGoogleApi } from '../../services/googleApiHelper'
 import { enhancePrompt, canEnhancePrompt } from '../../services/promptEnhancer'
 import { isPromptEnhancementEnabled } from '../../services/promptEnhancerSettings'
 import { hasUrl } from '../../services/aiRouter'
+import { haptic } from '../../utils/haptic'
 
 interface InputBarProps {
   onSend: (text: string, files?: FileAttachment[]) => void
@@ -225,6 +226,9 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
     const trimmed = textToSend.trim()
     if ((!trimmed && filesToSend.length === 0) || isStreaming) return false
     if (isListening) stopListening()
+    // Roadmap UI Phase 1 #6 — retour haptique léger sur envoi. Confirme
+    // l'action même en bruit de fond / poche / écran non regardé.
+    haptic('light').catch(() => {})
     onSend(trimmed || t('chat.input.defaultFilePrompt'), filesToSend.length > 0 ? filesToSend : undefined)
     setText('')
     setFiles([])
