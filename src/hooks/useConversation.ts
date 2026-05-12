@@ -345,6 +345,19 @@ export function useConversation() {
         storage.saveConversation(conv)
       }
 
+      // Roadmap PR 12.1 — déclenche la reconstruction du system prompt avec
+      // le user message courant. useAppSetup écoute cet event de manière
+      // synchrone (dispatchEvent → handler → setSystemPrompt → ref updated)
+      // donc systemPromptRef.current est à jour quand on appelle le LLM
+      // ci-dessous. Sans cet event : fallback legacy = mémoire complète
+      // injectée (5k tokens parasites sur "salut"). Avec : profil minimal
+      // si le message ne touche pas à la mémoire.
+      try {
+        window.dispatchEvent(
+          new CustomEvent('arty-rebuild-prompt', { detail: { userMessage: text } })
+        )
+      } catch { /* SSR / test env */ }
+
       let controller: AbortController
 
       if (provider === 'hybrid') {

@@ -34,9 +34,12 @@ export function useMemory() {
     []
   )
 
-  const getPromptContext = useCallback(() => {
+  // Roadmap PR 12.1 — injection conditionnelle. Si userMessage fourni,
+  // on injecte le profil minimal uniquement quand le message ne touche
+  // pas à la mémoire (économie ~95% des tokens). Sinon fallback legacy.
+  const getPromptContext = useCallback((userMessage?: string) => {
     if (!memory) return ''
-    return formatMemoryForPrompt(memory)
+    return formatMemoryForPrompt(memory, userMessage)
   }, [memory])
 
   return {

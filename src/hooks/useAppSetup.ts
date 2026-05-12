@@ -115,9 +115,28 @@ export function useAppSetup(conversation: ConversationHook) {
           .join('\n')
     }
 
-    const memorySummary = memoryHook.getPromptContext()
-    const prompt = buildContextualPrompt({ gmailSummary, driveSummary, memorySummary }) + getStylePrompt(responseStyle)
-    setSystemPrompt(prompt)
+    // Roadmap PR 12.1 — injection mémoire conditionnelle.
+    // Au boot et aux changements Google/Drive, on construit un prompt avec
+    // mémoire COMPLÈTE (fallback legacy safe). Mais quand sendMessage dispatch
+    // l'event 'arty-rebuild-prompt' juste avant un appel LLM, on reconstruit
+    // avec le user message → mémoire filtrée (économie ~95% des tokens sur
+    // requêtes type "salut", "merci", "comment ça va").
+    const buildPrompt = (userMessage?: string) => {
+      const memorySummary = memoryHook.getPromptContext(userMessage)
+      const prompt = buildContextualPrompt({ gmailSummary, driveSummary, memorySummary }) + getStylePrompt(responseStyle)
+      setSystemPrompt(prompt)
+    }
+    buildPrompt()
+
+    // Listener synchrone — dispatchEvent appelle les handlers en série avant
+    // de retourner. Donc systemPromptRef est à jour quand useConversation
+    // poursuit après dispatch().
+    const onRebuild = (e: Event) => {
+      const detail = (e as CustomEvent<{ userMessage?: string }>).detail
+      buildPrompt(detail?.userMessage)
+    }
+    window.addEventListener('arty-rebuild-prompt', onRebuild)
+    return () => window.removeEventListener('arty-rebuild-prompt', onRebuild)
   }, [googleAuth.isConnected, gmail.messages, drive.files, memoryHook.getPromptContext, setSystemPrompt, responseStyle])
 
   // Handle action buttons clicked in reports

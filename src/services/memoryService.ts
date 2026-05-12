@@ -115,39 +115,110 @@ export async function updateMemory(
   return updateMemoryD1(category, data)
 }
 
-export function formatMemoryForPrompt(memory: MemoryData): string {
+/**
+ * Patterns qui déclenchent l'injection des entités (clients/chantiers/notes).
+ * Si le message user contient un de ces mots/phrases, on injecte la mémoire
+ * complète. Sinon, on n'injecte QUE le profil minimal.
+ *
+ * Volontairement conservatif : en cas de doute, on injecte tout (fallback
+ * safe = comportement actuel). Mieux vaut consommer 5k tokens parasites
+ * une fois que de rater une référence à "ma cliente Marie".
+ *
+ * Roadmap PR 12.1 — injection conditionnelle.
+ */
+const MEMORY_INJECTION_TRIGGERS = /\b(mon|ma|mes|notre|nos|client|clients|chantier|chantiers|projet|projets|fournisseur|fournisseurs|contact|contacts|adresse|adresses|note|notes|rappelle|souvient|souviens|mémoire|enregistre|sais|connais|appelle|nommé|nommée|nommés|nommées|qui\s+est|qu['']est-ce\s+que|où\s+est|où\s+habite)\b/i
+
+/**
+ * Extrait un mini-profil pour le Tier 0 (toujours injecté). Hard-capé à
+ * ~150 tokens : prénom, métier, style de communication. Le reste du profil
+ * (préférences détaillées, habitudes, fournisseurs) attend le Tier 1.
+ */
+function extractMinimalProfil(profil: Record<string, unknown>): Record<string, unknown> | null {
+  if (!profil || typeof profil !== 'object') return null
+  const minimal: Record<string, unknown> = {}
+  // Whitelist des clés essentielles. Évite d'injecter tous les attributs
+  // potentiellement gros (historique, fournisseurs, etc.).
+  const ESSENTIAL_KEYS = ['prenom', 'nom', 'metier', 'style_communication', 'tutoiement']
+  for (const key of ESSENTIAL_KEYS) {
+    if (key in profil) minimal[key] = profil[key]
+  }
+  // Préférences résumées seulement
+  const prefs = profil.preferences as Record<string, unknown> | undefined
+  if (prefs && typeof prefs === 'object') {
+    const prefKeys = Object.keys(prefs).slice(0, 3)
+    if (prefKeys.length > 0) {
+      minimal.preferences = Object.fromEntries(prefKeys.map((k) => [k, prefs[k]]))
+    }
+  }
+  return Object.keys(minimal).length > 0 ? minimal : null
+}
+
+/**
+ * Formate la mémoire pour injection dans le system prompt.
+ *
+ * @param memory   Toute la mémoire chargée depuis D1
+ * @param userMessage   Optionnel — message utilisateur courant. Si fourni,
+ *                      active l'injection conditionnelle (Tier 0 vs Tier 1).
+ *                      Si omis, fallback comportement legacy (tout injecter).
+ *
+ * Sans userMessage : compatible avec les appelants existants, aucune
+ * régression.
+ * Avec userMessage : si pas de pattern mémoire dans le message → injection
+ * minimale (profil essentiel seulement). Économie typique ~95% des tokens
+ * sur les requêtes type "salut", "merci", "comment ça va".
+ */
+export function formatMemoryForPrompt(memory: MemoryData, userMessage?: string): string {
   const parts: string[] = []
 
-  // Profil
+  // Décide si on est en mode conditionnel ou en mode complet.
+  // Mode complet (legacy fallback) si pas de userMessage OU si le message
+  // matche un trigger mémoire.
+  const conditionalMode = !!userMessage
+  const shouldInjectFullMemory =
+    !conditionalMode || MEMORY_INJECTION_TRIGGERS.test(userMessage)
+
+  // Profil — toujours injecté (Tier 0), mais minimal en mode conditionnel
+  // sans trigger, complet sinon.
   if (memory.profil && Object.keys(memory.profil).length > 0) {
-    parts.push(`PROFIL UTILISATEUR :\n${JSON.stringify(memory.profil, null, 2)}`)
+    if (shouldInjectFullMemory) {
+      parts.push(`PROFIL UTILISATEUR :\n${JSON.stringify(memory.profil, null, 2)}`)
+    } else {
+      const minimal = extractMinimalProfil(memory.profil)
+      if (minimal) {
+        parts.push(`PROFIL UTILISATEUR (résumé) :\n${JSON.stringify(minimal, null, 2)}`)
+      }
+    }
   }
 
-  // Clients
-  if (memory.clients && memory.clients.length > 0) {
-    const clientSummary = memory.clients
-      .slice(0, 20)
-      .map((c) => `- ${c.nom || 'Inconnu'}: ${c.resume || JSON.stringify(c)}`)
-      .join('\n')
-    parts.push(`CLIENTS CONNUS (${memory.clients.length}) :\n${clientSummary}`)
-  }
+  // Tier 1 — clients/chantiers/notes : injectés uniquement si trigger
+  // matche, ou si mode legacy (pas de userMessage fourni).
+  if (shouldInjectFullMemory) {
+    // Clients
+    if (memory.clients && memory.clients.length > 0) {
+      const clientSummary = memory.clients
+        .slice(0, 20)
+        .map((c) => `- ${c.nom || 'Inconnu'}: ${c.resume || JSON.stringify(c)}`)
+        .join('\n')
+      parts.push(`CLIENTS CONNUS (${memory.clients.length}) :\n${clientSummary}`)
+    }
 
-  // Chantiers
-  if (memory.chantiers && memory.chantiers.length > 0) {
-    const chantierSummary = memory.chantiers
-      .slice(0, 20)
-      .map((ch) => `- ${ch.adresse || ch.nom || 'Inconnu'}: ${ch.resume || JSON.stringify(ch)}`)
-      .join('\n')
-    parts.push(`CHANTIERS (${memory.chantiers.length}) :\n${chantierSummary}`)
-  }
+    // Chantiers
+    if (memory.chantiers && memory.chantiers.length > 0) {
+      const chantierSummary = memory.chantiers
+        .slice(0, 20)
+        .map((ch) => `- ${ch.adresse || ch.nom || 'Inconnu'}: ${ch.resume || JSON.stringify(ch)}`)
+        .join('\n')
+      parts.push(`CHANTIERS (${memory.chantiers.length}) :\n${chantierSummary}`)
+    }
 
-  // Notes
-  if (memory.notes && memory.notes.length > 0) {
-    parts.push(`NOTES :\n${memory.notes.slice(-10).map((n) => `- ${n}`).join('\n')}`)
+    // Notes
+    if (memory.notes && memory.notes.length > 0) {
+      parts.push(`NOTES :\n${memory.notes.slice(-10).map((n) => `- ${n}`).join('\n')}`)
+    }
   }
 
   if (parts.length === 0) return ''
-  return `\n\nMÉMOIRE PERSISTANTE (stockée sur Drive, mise à jour auto) :\n${parts.join('\n\n')}`
+  return `\n\nMÉMOIRE PERSISTANTE :\n${parts.join('\n\n')}`
 }
 
 /** Reset (call on logout) */
