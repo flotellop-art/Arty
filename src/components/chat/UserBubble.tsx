@@ -127,7 +127,7 @@ export const UserBubble = memo(function UserBubble({ content, files, pinned, onT
             onChange={(e) => setValue(e.target.value)}
             onKeyDown={handleKeyDown}
             rows={Math.min(8, Math.max(2, value.split('\n').length))}
-            className="w-full bg-transparent border-none focus:outline-none resize-none text-theme-ink placeholder:text-theme-muted/60 font-display italic text-base text-right"
+            className="w-full bg-transparent border-none focus:outline-none resize-none text-theme-ink placeholder:text-theme-muted font-display italic text-base text-right"
           />
           <div className="flex gap-2 mt-2 justify-end">
             <button

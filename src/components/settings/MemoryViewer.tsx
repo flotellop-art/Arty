@@ -83,7 +83,7 @@ function MemoryViewerInner({ onClose }: Props) {
         <div className="flex items-center justify-between px-5 py-4 border-b border-theme-border">
           <div>
             <h2 className="font-display text-lg text-theme-ink">🧠 Mémoire d'Arty</h2>
-            <p className="text-xs text-theme-muted/70 mt-0.5">Ce qu'Arty sait sur vous — lisible et modifiable</p>
+            <p className="text-xs text-theme-muted mt-0.5">Ce qu'Arty sait sur vous — lisible et modifiable</p>
           </div>
           <button
             onClick={onClose}
@@ -118,7 +118,7 @@ function MemoryViewerInner({ onClose }: Props) {
         <div className="flex-1 overflow-hidden flex flex-col p-4 gap-3">
           {loading ? (
             <div className="flex items-center justify-center h-full">
-              <p className="text-sm text-theme-muted/70">Chargement…</p>
+              <p className="text-sm text-theme-muted">Chargement…</p>
             </div>
           ) : (
             <>
@@ -148,7 +148,7 @@ function MemoryViewerInner({ onClose }: Props) {
 
         {/* Footer */}
         <div className="px-4 py-3 border-t border-theme-border flex items-center justify-between gap-3">
-          <p className="text-xs text-theme-muted/70">
+          <p className="text-xs text-theme-muted">
             {saved ? '✅ Sauvegardé !' : 'Modifie et sauvegarde pour mettre à jour la mémoire.'}
           </p>
           <button

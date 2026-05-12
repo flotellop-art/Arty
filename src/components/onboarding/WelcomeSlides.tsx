@@ -75,7 +75,7 @@ export function WelcomeSlides({ onComplete }: WelcomeSlidesProps) {
           {!isLast && (
             <button
               onClick={handleSkip}
-              className="w-full py-2 text-xs text-theme-muted/70 hover:text-theme-ink/70 transition-colors"
+              className="w-full py-2 text-xs text-theme-muted hover:text-theme-ink/80 transition-colors"
             >
               {t('onboarding.skip')}
             </button>

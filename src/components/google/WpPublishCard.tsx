@@ -25,7 +25,7 @@ export function WpPublishCard({
         </h3>
         <button
           onClick={onCancel}
-          className="text-xs text-theme-muted/70 hover:text-red-500 transition-colors"
+          className="text-xs text-theme-muted hover:text-red-500 transition-colors"
         >
           Annuler
         </button>
@@ -59,7 +59,7 @@ export function WpPublishCard({
             else setConfirmed(true)
           }}
           disabled={isLoading}
-          className="flex-1 py-2 rounded-lg border border-theme-border text-theme-ink/70 text-sm font-medium hover:bg-theme-ink/[0.03] transition-colors disabled:opacity-50"
+          className="flex-1 py-2 rounded-lg border border-theme-border text-theme-ink/80 text-sm font-medium hover:bg-theme-ink/[0.03] transition-colors disabled:opacity-50"
         >
           {isLoading ? '...' : 'Brouillon'}
         </button>

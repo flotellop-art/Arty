@@ -69,9 +69,9 @@ const KeyField = memo(function KeyField({ id, label, optional, value, savedMask,
 
   return (
     <div>
-      <label className="block text-xs font-medium text-theme-ink/70 mb-1.5">
+      <label className="block text-xs font-medium text-theme-ink/80 mb-1.5">
         {label}
-        {optional && <span className="text-theme-muted/70 ml-1">(optionnel)</span>}
+        {optional && <span className="text-theme-muted ml-1">(optionnel)</span>}
       </label>
       <div className="flex gap-1.5">
         <div className="relative flex-1">
@@ -89,7 +89,7 @@ const KeyField = memo(function KeyField({ id, label, optional, value, savedMask,
           <button
             type="button"
             onClick={() => setVisible((v) => !v)}
-            className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-theme-muted/70 hover:text-theme-ink/70"
+            className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-theme-muted hover:text-theme-ink/80"
             aria-label={visible ? 'Masquer' : 'Afficher'}
           >
             <EyeIcon visible={visible} />
@@ -107,7 +107,7 @@ const KeyField = memo(function KeyField({ id, label, optional, value, savedMask,
         )}
       </div>
       {savedMask && !value && (
-        <p className="text-xs text-theme-muted/70 mt-1">Actuel : {savedMask}</p>
+        <p className="text-xs text-theme-muted mt-1">Actuel : {savedMask}</p>
       )}
     </div>
   )
@@ -211,7 +211,7 @@ export function ApiKeySetup({ onSave, initialKeys, embedded }: ApiKeySetupProps)
         {saving ? 'Chiffrement...' : editMode ? 'Enregistrer' : 'Commencer'}
       </button>
 
-      <p className="text-xs text-theme-muted/70 text-center leading-relaxed">
+      <p className="text-xs text-theme-muted text-center leading-relaxed">
         Tes clés sont chiffrées en AES-256 et stockées uniquement sur ton appareil.
       </p>
     </form>

@@ -63,12 +63,12 @@ export function TaskPanel({ onClose }: TaskPanelProps) {
 
         <div className="flex-1 overflow-y-auto px-5 py-3">
           {tasks.length === 0 && (
-            <p className="text-sm text-theme-muted/70 text-center py-6">Aucune tâche</p>
+            <p className="text-sm text-theme-muted text-center py-6">Aucune tâche</p>
           )}
 
           {pending.length > 0 && (
             <div className="mb-4">
-              <p className="text-[10px] uppercase tracking-wider text-theme-muted/70 mb-1.5">En cours ({pending.length})</p>
+              <p className="text-[10px] uppercase tracking-wider text-theme-muted mb-1.5">En cours ({pending.length})</p>
               {pending.map((task) => (
                 <TaskRow key={task.id} task={task} />
               ))}
@@ -77,7 +77,7 @@ export function TaskPanel({ onClose }: TaskPanelProps) {
 
           {done.length > 0 && (
             <div>
-              <p className="text-[10px] uppercase tracking-wider text-theme-muted/70 mb-1.5">Terminées ({done.length})</p>
+              <p className="text-[10px] uppercase tracking-wider text-theme-muted mb-1.5">Terminées ({done.length})</p>
               {done.map((task) => (
                 <TaskRow key={task.id} task={task} />
               ))}
@@ -103,12 +103,12 @@ function TaskRow({ task }: { task: Task }) {
       >
         {task.done && <span className="text-xs">✓</span>}
       </button>
-      <span className={`flex-1 text-sm ${task.done ? 'text-theme-muted/70 line-through' : 'text-theme-ink'}`}>
+      <span className={`flex-1 text-sm ${task.done ? 'text-theme-muted line-through' : 'text-theme-ink'}`}>
         {task.text}
       </span>
       <button
         onClick={() => deleteTask(task.id)}
-        className="opacity-0 group-hover:opacity-100 text-theme-muted/70 hover:text-red-500 text-xs transition-opacity"
+        className="opacity-0 group-hover:opacity-100 text-theme-muted hover:text-red-500 text-xs transition-opacity"
         aria-label="Supprimer"
       >
         ✕

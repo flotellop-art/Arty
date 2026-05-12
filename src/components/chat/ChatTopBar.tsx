@@ -196,7 +196,7 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
             <button
               onClick={() => setOpenMenu(openMenu === 'style' ? null : 'style')}
               className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium transition-colors ${
-                openMenu === 'style' ? 'bg-theme-accent text-theme-bg' : 'bg-theme-ink/5 text-theme-ink/70 hover:bg-theme-ink/10'
+                openMenu === 'style' ? 'bg-theme-accent text-theme-bg' : 'bg-theme-ink/5 text-theme-ink/80 hover:bg-theme-ink/10'
               }`}
             >
               <span>{styleOption.emoji}</span>
@@ -215,7 +215,7 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
                     className={`w-full flex items-center gap-2 px-3 py-2 text-xs transition-colors ${
                       currentStyle === opt.id
                         ? 'bg-theme-accent/10 text-theme-accent font-semibold'
-                        : 'text-theme-ink/70 hover:bg-theme-ink/[0.03]'
+                        : 'text-theme-ink/80 hover:bg-theme-ink/[0.03]'
                     }`}
                   >
                     <span>{opt.emoji}</span>
@@ -279,8 +279,8 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
                       currentModel === opt.id
                         ? 'bg-theme-accent/10 text-theme-accent font-semibold'
                         : locked
-                        ? 'text-theme-muted/60 hover:bg-theme-ink/[0.03]'
-                        : 'text-theme-ink/70 hover:bg-theme-ink/[0.03]'
+                        ? 'text-theme-muted hover:bg-theme-ink/[0.03]'
+                        : 'text-theme-ink/80 hover:bg-theme-ink/[0.03]'
                     }`}
                   >
                     {opt.id === 'auto' ? (
@@ -306,7 +306,7 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
           Permet de vérifier en un coup d'œil ce qui a réellement répondu,
           sans aller dans D1 ou DevTools. */}
       {lastUsedModel && (
-        <div className="px-3 pb-1 text-[10px] font-sans uppercase tracking-kicker text-theme-muted/70">
+        <div className="px-3 pb-1 text-[10px] font-sans uppercase tracking-kicker text-theme-muted">
           Dernier appel : {formatModelName(lastUsedModel)}
           {lastSearchProvider && (
             <span className="ml-1 text-theme-accent">
@@ -424,7 +424,7 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
             <div className="flex gap-2">
               <button
                 onClick={() => setPrivacyWarning(null)}
-                className="flex-1 py-2 rounded-xl border border-theme-border text-xs font-medium text-theme-ink/70 hover:bg-theme-ink/[0.03] transition-colors"
+                className="flex-1 py-2 rounded-xl border border-theme-border text-xs font-medium text-theme-ink/80 hover:bg-theme-ink/[0.03] transition-colors"
               >
                 {t('common.cancel')}
               </button>

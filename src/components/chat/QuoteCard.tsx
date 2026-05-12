@@ -29,7 +29,7 @@ export function QuoteCard({ title, client, lines, totalHT, tva, totalTTC }: Quot
             <div className="flex-1">
               <span className="text-theme-ink">{line.description}</span>
               {line.surface && (
-                <span className="text-theme-muted/70 ml-1.5 text-xs">{line.surface}</span>
+                <span className="text-theme-muted ml-1.5 text-xs">{line.surface}</span>
               )}
             </div>
             <span className="font-medium text-theme-ink ml-4">{line.price}</span>

@@ -36,7 +36,7 @@ export function DriveFileCard({ file, onClick }: DriveFileCardProps) {
       <span className="text-xl flex-shrink-0">{getMimeIcon(file.mimeType)}</span>
       <div className="min-w-0 flex-1">
         <p className="text-sm font-normal text-theme-ink truncate">{file.name}</p>
-        <p className="text-xs text-theme-muted/70 mt-0.5">
+        <p className="text-xs text-theme-muted mt-0.5">
           Modifié le {formatDate(file.modifiedTime)}
         </p>
       </div>

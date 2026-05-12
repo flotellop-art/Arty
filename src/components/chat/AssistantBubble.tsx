@@ -82,7 +82,7 @@ export const AssistantBubble = memo(function AssistantBubble({ content, onAction
           className={`absolute bottom-1 right-1 p-1 rounded-md transition-all ${
             pinned
               ? 'text-theme-accent opacity-80'
-              : 'opacity-0 group-hover/bubble:opacity-100 text-theme-muted/60 hover:text-theme-accent'
+              : 'opacity-0 group-hover/bubble:opacity-100 text-theme-muted hover:text-theme-accent'
           }`}
           aria-label={pinned ? 'Désépingler' : 'Épingler'}
           title={pinned ? 'Désépingler' : 'Épingler ce message'}

@@ -18,9 +18,9 @@ export function PriceTable({ query, results }: PriceTableProps) {
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-theme-ink/[0.03] border-b border-theme-border">
-              <th className="text-left px-4 py-2 font-medium text-theme-ink/70">Fournisseur</th>
-              <th className="text-left px-4 py-2 font-medium text-theme-ink/70">Produit</th>
-              <th className="text-right px-4 py-2 font-medium text-theme-ink/70">Prix</th>
+              <th className="text-left px-4 py-2 font-medium text-theme-ink/80">Fournisseur</th>
+              <th className="text-left px-4 py-2 font-medium text-theme-ink/80">Produit</th>
+              <th className="text-right px-4 py-2 font-medium text-theme-ink/80">Prix</th>
             </tr>
           </thead>
           <tbody>
@@ -36,7 +36,7 @@ export function PriceTable({ query, results }: PriceTableProps) {
       </div>
 
       <div className="px-4 py-2 border-t border-theme-border">
-        <p className="text-xs text-theme-muted/70">
+        <p className="text-xs text-theme-muted">
           Prix indicatifs — vérifiez sur les sites fournisseurs
         </p>
       </div>

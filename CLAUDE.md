@@ -490,8 +490,10 @@ Dernier audit : **4 mai 2026** (PR #127 + PR #128).
 - [ ] **`tokeninfo` au lieu de `userinfo`** pour vérifier les tokens dans `trial/init.ts:34-44` — moins fiable.
 - [ ] **Pas de rate limit sur `/api/auth/token`** — brute force possible sur les codes OAuth volés.
 
-**HIGH a11y non traités (audit du 11 mai)** :
-- [ ] **Contrastes `text-theme-muted/70` sur `bg-theme-bg`** (mode Ember) = ratio ≈ 2.8:1, WCAG AA exige 4.5:1 pour texte normal. ~190 occurrences. Fix nécessite une refonte du design system (changer `--theme-muted` ou interdire le `/70`). Hors scope d'une PR auto — nécessite validation design.
+**HIGH a11y traités (12 mai)** :
+- ✅ **Contrastes `text-theme-muted/X`** : retrait des 56 opacités (`/50`, `/60`, `/70`, `/80`) sur `text-theme-muted` → utilisation de la couleur pleine (PR roadmap). Ratio passe de 2.8:1 à ≥4.5:1 sur fond clair.
+- ✅ **Contrastes `text-theme-ink/60` et `/70`** remontés à `/80` (29 occurrences) pour respecter WCAG AA tout en gardant le rôle "texte secondaire". `/80`+ et `/90` conservés.
+- [ ] À monitorer : vérifier visuellement sur APK + PWA que le rendu n'est pas "trop dur" — certains designs intentionnels (hover state grisé, placeholder) peuvent avoir besoin d'un ajustement fin. Ouvrir une PR de polish si besoin.
 
 **MED i18n restant à migrer (audit du 11 mai, étape 11 partielle)** :
 - [ ] **Sidebar.tsx** : "Importer", "Tâches", "EU sécurisé", "Clés API", "Paramètres", "Épinglés (n)", "Aucun résultat" hardcodés FR

@@ -64,13 +64,13 @@ export function QuestionModal({ questions, onComplete }: QuestionModalProps) {
       >
         {/* Header */}
         <div className="flex items-center justify-between mb-4">
-          <span className="text-sm text-theme-muted/70 font-medium">
+          <span className="text-sm text-theme-muted font-medium">
             {t('chat.questionModal.progress', { current: currentIndex + 1, total })}
           </span>
           <button
             onClick={() => onComplete(answers)}
             aria-label="Fermer"
-            className="w-8 h-8 flex items-center justify-center text-theme-muted/70 hover:text-theme-ink/70"
+            className="w-8 h-8 flex items-center justify-center text-theme-muted hover:text-theme-ink/80"
           >
             ✕
           </button>
