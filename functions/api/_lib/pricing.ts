@@ -51,7 +51,10 @@ const PRICING: Record<string, ModelPricing> = {
   'gemini-2.5-pro': { input: 1.25, output: 10, cacheRead: 0.31 },
   'gemini-2.5-flash': { input: 0.075, output: 0.3, cacheRead: 0.019 },
   'gemini-2.5-flash-lite': { input: 0.04, output: 0.15 },
-  // Gemini 3 Flash Preview (sorti décembre 2025) — tarif développé $0.50/$3
+  // Gemini 3 Flash (GA mai 2026, ex-preview décembre 2025) — tarif $0.50/$3.
+  // Architecture identique entre preview et GA, juste le nom du modèle change.
+  // On garde l'ancien nom comme alias pour les logs/coûts historiques.
+  'gemini-3-flash': { input: 0.5, output: 3 },
   'gemini-3-flash-preview': { input: 0.5, output: 3 },
 }
 

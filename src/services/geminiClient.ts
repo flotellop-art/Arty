@@ -6,7 +6,11 @@ import { recordUsage } from './costTracker'
 import { dispatchModelUsed } from './modelLabels'
 import i18n from '../i18n'
 
-const GEMINI_MODEL = 'gemini-3-flash-preview'
+// Version GA stable (mai 2026). Avant : gemini-3-flash-preview. Les versions
+// "preview" sont systématiquement dépréciées par Google une fois la GA
+// disponible (cf. mail Google AI Studio du 12 mai 2026 sur gemini-3.1-flash-lite).
+// Architecture identique entre preview et GA, juste le nom change.
+const GEMINI_MODEL = 'gemini-3-flash'
 
 // CRIT-5 — Sans timeout, un Cloudflare cold-start ou un réseau flaky peut
 // laisser pendre une requête 60-90s. Force un cap explicite.
@@ -266,7 +270,7 @@ export async function geminiResearch(query: string, apiKeyOverride?: string): Pr
   const apiKey = apiKeyOverride || getGeminiKey()
 
   const requestBody = {
-    model: 'gemini-3-flash-preview',
+    model: 'gemini-3-flash',
     stream: false,
     contents: [{
       role: 'user',
