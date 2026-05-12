@@ -33,6 +33,32 @@ interface InputBarProps {
   euOnly?: boolean
 }
 
+// Roadmap UI Phase 3 #4 — Quick Actions chips contextuelles. Affichées
+// sous l'input quand celui-ci est vide. Évoluent selon l'heure pour rester
+// pertinents. Volontairement polyvalents (résumé, traduction, rédaction,
+// explication) — pas de feature métier nichée. Pour ne pas pénaliser les
+// utilisateurs sans Google connecté.
+function getQuickActionChips(): Array<{ label: string; prompt: string; icon: string }> {
+  const hour = new Date().getHours()
+  // Variant matin : commencer la journée avec un brief / résumé
+  // Variant après-midi / soir : actions productives génériques
+  const morning = hour < 11
+  if (morning) {
+    return [
+      { icon: '☀️', label: 'Brief du jour', prompt: "Donne-moi un brief de ma journée — ce que je dois savoir, les choses importantes à ne pas oublier." },
+      { icon: '✍️', label: 'Rédiger un email', prompt: "Aide-moi à rédiger un email " },
+      { icon: '📝', label: 'Résumer un texte', prompt: "Résume-moi ce texte : " },
+      { icon: '🌍', label: 'Traduire', prompt: "Traduis ce texte en anglais : " },
+    ]
+  }
+  return [
+    { icon: '📝', label: 'Résumer', prompt: "Résume-moi ce texte : " },
+    { icon: '✍️', label: 'Rédiger', prompt: "Aide-moi à rédiger " },
+    { icon: '🌍', label: 'Traduire', prompt: "Traduis ce texte : " },
+    { icon: '💡', label: 'Expliquer', prompt: "Explique-moi simplement : " },
+  ]
+}
+
 // V2 voice-first — tap = webkit speech, hold ≥ 600ms = Whisper recording.
 const HOLD_THRESHOLD_MS = 600
 const HOLD_MAX_MS = 60_000
@@ -791,6 +817,27 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
         </div>
       )}
 
+      {/* Quick Actions chips — affichées sous l'input quand celui-ci est
+          vide ET pas de fichier attaché ET pas en train de streamer/écouter.
+          Roadmap UI Phase 3 #4 — suggestions contextuelles à 1 tap, utile pour
+          les utilisateurs qui ne savent pas quoi taper. Le set évolue selon
+          l'heure pour rester pertinent (matin = brief, soir = résumé). */}
+      {!text.trim() && files.length === 0 && !isStreaming && !isListening && !isRecordingAudio && (
+        <div className="mb-2 flex flex-wrap gap-1.5 px-1">
+          {getQuickActionChips().map((chip) => (
+            <button
+              key={chip.label}
+              type="button"
+              onClick={() => onSend(chip.prompt)}
+              className="px-3 py-1.5 text-xs rounded-full bg-theme-surface border border-theme-border text-theme-ink hover:border-theme-accent hover:text-theme-accent transition-colors"
+              aria-label={`Suggestion : ${chip.label}`}
+            >
+              {chip.icon} {chip.label}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Calendar event suggestion pill (Feature 16) */}
       {calendarSuggestion && !showCalendarForm && (
         <div className="mb-2 flex items-center gap-2 px-3 py-2 bg-theme-accent/10 border border-theme-accent/20 rounded-xl text-xs text-theme-ink">
@@ -1009,24 +1056,26 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
           </button>
         )}
 
-        {/* Morphing CTA — Stop (streaming) / Send (text) / Voice (idle). */}
+        {/* Morphing CTA — Stop (streaming) / Send (text) / Voice (idle).
+            Roadmap UI Phase 3 #7 — bouton agrandi 40px → 52px (WCAG 2.2
+            "Target Size Minimum" recommande 44px, 52px = confort terrain). */}
         {isStreaming ? (
           <button
             onClick={onStop}
-            className="flex-shrink-0 w-10 h-10 rounded-full bg-theme-ink text-theme-bg flex items-center justify-center hover:opacity-90 transition-opacity mb-0.5"
+            className="flex-shrink-0 w-[52px] h-[52px] rounded-full bg-theme-ink text-theme-bg flex items-center justify-center hover:opacity-90 transition-opacity"
             aria-label={t('chat.input.aria.stop')}
           >
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+            <svg width="14" height="14" viewBox="0 0 12 12" fill="none">
               <rect x="2" y="2" width="8" height="8" rx="1" fill="currentColor" />
             </svg>
           </button>
         ) : (text.trim() || files.length > 0) ? (
           <button
             onClick={handleSend}
-            className="flex-shrink-0 w-10 h-10 rounded-full bg-theme-accent text-theme-bg flex items-center justify-center hover:opacity-90 transition-opacity mb-0.5 shadow-sm"
+            className="flex-shrink-0 w-[52px] h-[52px] rounded-full bg-theme-accent text-theme-bg flex items-center justify-center hover:opacity-90 transition-opacity shadow-sm"
             aria-label={t('chat.input.aria.send')}
           >
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <svg width="18" height="18" viewBox="0 0 14 14" fill="none">
               <path d="M7 12V2M7 2L3 6M7 2L11 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </button>
@@ -1197,9 +1246,11 @@ function VoiceButton({
   isListening, isRecordingAudio, isSwipeCancelling, isTranscribing,
   crossedThreshold, holdProgress, ariaLabel,
 }: VoiceButtonProps) {
-  // Size morph: 40px idle, 48px active (listening or whisper).
+  // Size morph: 52px idle, 56px active (listening or whisper). Roadmap UI
+  // Phase 3 #7 — WCAG 2.2 "Target Size Minimum" + confort terrain (gants,
+  // mains mouillées, lumière variable). Avant : 40px/48px.
   const active = isListening || isRecordingAudio
-  const size = active ? 48 : 40
+  const size = active ? 56 : 52
   const showRing = holdProgress > 0 && holdProgress < 1 && !crossedThreshold
   const circumference = 2 * Math.PI * 18 // r=18
 
