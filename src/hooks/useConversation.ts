@@ -14,6 +14,7 @@ import { getSelectedModel } from '../services/modelSelector'
 import { putFile } from '../services/secureFileStorage'
 import { runFactCheckOnLatest, factCheckContent, getFactCheckMode } from '../services/factChecker'
 import { detectSuggestedTasks, addTask } from '../services/taskService'
+import { detectReminderIntent, createReminder } from '../services/reminderService'
 
 type ToolHandler = (name: string, input: Record<string, unknown>) => Promise<{ result: string; screenshot?: string }>
 
@@ -117,6 +118,35 @@ export function useConversation() {
 
       const conv = storage.getConversation(targetId)
       if (!conv) return
+
+      // Roadmap Phase 2 C — détection d'intent rappel.
+      // Avant l'envoi LLM, on check si le message demande un rappel
+      // ("rappelle-moi mardi à 9h de répondre à Marie"). Si oui, on crée
+      // la tâche + notification planifiée, on répond par un faux message
+      // assistant, et on ne consomme PAS de quota LLM.
+      // Détection conservative : trigger explicite + date claire + body
+      // non vide. Si ambigu, on laisse passer au LLM.
+      const reminderIntent = detectReminderIntent(text)
+      if (reminderIntent) {
+        const userMsg: Message = {
+          id: generateId(),
+          role: 'user',
+          content: text,
+          timestamp: Date.now(),
+        }
+        const label = await createReminder(reminderIntent, targetId)
+        const reminderResponse: Message = {
+          id: generateId(),
+          role: 'assistant',
+          content: label,
+          timestamp: Date.now(),
+        }
+        conv.messages.push(userMsg, reminderResponse)
+        conv.updatedAt = Date.now()
+        storage.saveConversation(conv)
+        refreshConversations()
+        return
+      }
 
       // Handle /aide command
       if (text.trim().toLowerCase() === '/aide') {
