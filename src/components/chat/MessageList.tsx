@@ -1,4 +1,4 @@
-import { memo, useRef, useEffect, useCallback, useState, useMemo } from 'react'
+import { memo, useRef, useEffect, useCallback, useState } from 'react'
 import type { Message } from '../../types'
 import { UserBubble } from './UserBubble'
 import { AssistantBubble } from './AssistantBubble'
@@ -13,10 +13,9 @@ interface MessageItemProps {
   onTogglePin?: (messageId: string) => void
   onEdit?: (messageId: string, newContent: string) => void
   onRetry?: (messageId: string) => void
-  isLastUserMessage?: boolean
 }
 
-const MessageItem = memo(function MessageItem({ msg, index, onAction, onBranch, onTogglePin, onEdit, onRetry, isLastUserMessage }: MessageItemProps) {
+const MessageItem = memo(function MessageItem({ msg, index, onAction, onBranch, onTogglePin, onEdit, onRetry }: MessageItemProps) {
   const handleBranch = useCallback(() => onBranch?.(index), [onBranch, index])
   const handleTogglePin = useCallback(() => onTogglePin?.(msg.id), [onTogglePin, msg.id])
   const handleEdit = useCallback((newContent: string) => onEdit?.(msg.id, newContent), [onEdit, msg.id])
@@ -30,7 +29,12 @@ const MessageItem = memo(function MessageItem({ msg, index, onAction, onBranch, 
           files={msg.files}
           pinned={msg.pinned}
           onTogglePin={onTogglePin ? handleTogglePin : undefined}
-          onEdit={onEdit && isLastUserMessage ? handleEdit : undefined}
+          // Roadmap UI #5 — édition autorisée sur TOUS les messages user, plus
+          // seulement le dernier. `editAndResend` tronque déjà tout ce qui suit
+          // le message édité, donc la logique gère correctement les messages
+          // au milieu de la conversation. Avant : l'utilisateur devait
+          // dupliquer sa question pour la corriger → pollue le fil.
+          onEdit={onEdit ? handleEdit : undefined}
         />
       ) : (
         <AssistantBubble
@@ -46,8 +50,12 @@ const MessageItem = memo(function MessageItem({ msg, index, onAction, onBranch, 
       {onBranch && index > 0 && (
         <button
           onClick={handleBranch}
-          className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 p-1 rounded-md bg-theme-surface/80 border border-theme-border text-theme-muted/70 hover:text-theme-accent hover:border-theme-accent transition-all text-xs"
+          // Roadmap UI #4 — bouton branche visible sur mobile. `group-hover` ne
+          // se déclenche jamais sur touch → invisible sur téléphone. Maintenant
+          // 50 % opacity permanent sur mobile, 100 % au hover desktop.
+          className="absolute top-2 right-2 opacity-50 md:opacity-0 md:group-hover:opacity-100 p-1 rounded-md bg-theme-surface/80 border border-theme-border text-theme-muted/70 hover:text-theme-accent hover:border-theme-accent transition-all text-xs"
           title="Créer une branche depuis ce message"
+          aria-label="Créer une branche depuis ce message"
         >
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
             <path d="M3 2V8M3 8C3 9.1 3.9 10 5 10H8M11 12V6M11 6C11 4.9 10.1 4 9 4H8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
@@ -152,16 +160,6 @@ export const MessageList = memo(function MessageList({ messages, isStreaming, st
     el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
   }, [])
 
-  // H-React-2 (audit étape 6) — mémo'ed. Avant : IIFE recalculait à chaque
-  // render (qui fire pour chaque token de streaming, ~10×/sec sur 50+ msgs).
-  // Maintenant : recompute uniquement quand le tableau messages change.
-  const lastUserIndex = useMemo(() => {
-    for (let i = messages.length - 1; i >= 0; i--) {
-      if (messages[i]?.role === 'user') return i
-    }
-    return -1
-  }, [messages])
-
   return (
     <div className="relative flex-1 overflow-hidden">
       <div ref={scrollRef} onScroll={updateCanScrollDown} className="absolute inset-0 overflow-y-auto px-4 py-4">
@@ -175,7 +173,6 @@ export const MessageList = memo(function MessageList({ messages, isStreaming, st
             onTogglePin={onTogglePin}
             onEdit={onEdit}
             onRetry={onRetry}
-            isLastUserMessage={index === lastUserIndex && !isStreaming}
           />
         ))}
 
