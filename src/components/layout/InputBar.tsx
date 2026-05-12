@@ -298,6 +298,16 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
     }
 
     if (e.key === 'Enter' && !e.shiftKey) {
+      // Bug remonté en live : sur mobile, le bouton retour-ligne du clavier
+      // soft envoyait le message au lieu de faire un saut de ligne (le
+      // clavier n'a pas de touche Shift accessible facilement). Maintenant :
+      // sur mobile (natif Capacitor OU media query pointer:coarse = écran
+      // tactile), Enter laisse passer le retour ligne naturel. Sur desktop,
+      // comportement chat standard (Enter envoie, Shift+Enter saute ligne).
+      const isMobile =
+        isNative ||
+        (typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches)
+      if (isMobile) return
       e.preventDefault()
       handleSend()
     }
@@ -694,16 +704,38 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
       return
     }
 
-    // Short tap — discard any audio buffered during the 0→600ms window and
-    // toggle webkit speech recognition instead.
+    // Short tap (< 600ms threshold). Deux cas :
+    //
+    // A) On était DÉJÀ en train d'enregistrer en mode continu (tap-pour-stop)
+    //    → arrête et envoie via Whisper. Marche sur toutes plateformes.
+    //
+    // B) On démarre un nouvel enregistrement. Sur natif (Android/iOS) on
+    //    utilise Whisper en mode continu — la dictée Android native fait
+    //    des bips à chaque session de 8s et perd des mots (BUG 46). Sur web
+    //    desktop, Web Speech (Chrome/Firefox) marche bien sans bip → on
+    //    garde le comportement legacy toggle.
+    if (isRecordingAudio) {
+      // L'audio buffer dépasse les 600ms (sinon on serait passé par
+      // crossed=true ci-dessus). On envoie via Whisper.
+      stopAudioRecording(false)
+      return
+    }
+
     stopAudioRecording(true)
+    if (isNative) {
+      // Démarrage Whisper continu (silencieux, fiable). Re-tap pour stop.
+      void startAudioRecording()
+      return
+    }
+
+    // Web desktop — Web Speech API legacy (Chrome/Firefox sans bip).
     if (!isMicSupported) return
     if (wasListening) {
       try { stopListening() } catch {}
     } else {
       try { startListening(handleTranscript) } catch {}
     }
-  }, [isSwipeCancelling, stopAudioRecording, clearHoldInterval, isMicSupported, startListening, stopListening, handleTranscript])
+  }, [isSwipeCancelling, isRecordingAudio, stopAudioRecording, startAudioRecording, clearHoldInterval, isMicSupported, startListening, stopListening, handleTranscript])
 
   const handleVoicePointerCancel = useCallback((e: React.PointerEvent<HTMLButtonElement>) => {
     if (pointerIdRef.current !== e.pointerId) return
