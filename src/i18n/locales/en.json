@@ -131,7 +131,11 @@
       "unreadEmails": "Summarise unread mail",
       "today": "What's on today?",
       "schedule": "Book a meeting tomorrow 2pm",
-      "useful": "Give me a useful idea"
+      "useful": "Give me a useful idea",
+      "summarize": "Summarise this text…",
+      "translate": "Translate to French…",
+      "writeEmail": "Help me draft an email",
+      "explain": "Explain a concept simply"
     },
     "calendar": {
       "title": "Next 7 days"
