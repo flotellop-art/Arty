@@ -37,6 +37,36 @@ interface ChatTopBarProps {
 
 type OpenMenu = null | 'style' | 'model'
 
+/**
+ * Explication courte de pourquoi tel modèle a été utilisé. Mappée sur le
+ * modelId réel renvoyé par le routeur. Volontairement générique — ne reflète
+ * pas LES triggers exacts (URL détectée, mémoire, etc.), juste le rôle global
+ * du modèle. Suffisant pour la transparence utilisateur sans dupliquer la
+ * logique du routeur (cf. roadmap UI Phase 1 #3).
+ */
+function getModelExplanation(modelId: string): string {
+  const m = modelId.toLowerCase()
+  if (m.includes('mistral')) {
+    return 'Mistral est utilisé en mode Europe (serveurs en France) — idéal pour les données qui doivent rester en Europe : mails, fichiers, infos clients. Pas de recherche web ni d\'ouverture de liens.'
+  }
+  if (m.includes('gemini')) {
+    return 'Gemini est utilisé pour les recherches web en temps réel, les questions sur l\'actualité et les requêtes Google Maps. Données traitées hors Europe.'
+  }
+  if (m.includes('haiku')) {
+    return 'Claude Haiku est utilisé pour les conversations rapides et courtes. Modèle gratuit (10/jour).'
+  }
+  if (m.includes('opus')) {
+    return 'Claude Opus est utilisé pour les analyses approfondies, les tâches complexes et les raisonnements multi-étapes. Modèle Pro.'
+  }
+  if (m.includes('claude')) {
+    return 'Claude est utilisé par défaut : fichiers attachés, données privées (mes mails, mes fichiers), URLs à ouvrir, ou requêtes nécessitant des tools (Gmail, Drive, Calendar).'
+  }
+  if (m.includes('gpt') || m.includes('openai')) {
+    return 'GPT (OpenAI) est utilisé quand tu le sélectionnes manuellement. Données traitées hors Europe.'
+  }
+  return 'Modèle sélectionné automatiquement selon le contenu de ta requête.'
+}
+
 export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, onOpenSummary }: ChatTopBarProps) {
   const { t } = useTranslation()
   const planStatus = usePlanStatus()
@@ -47,6 +77,10 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
   const [privacyWarning, setPrivacyWarning] = useState<AIModel | null>(null)
   const [upgradePrompt, setUpgradePrompt] = useState<string | null>(null)
   const [lastUsedModel, setLastUsedModel] = useState<string | null>(null)
+  // Roadmap UI Phase 1 #3 — tap sur le badge "Dernier appel : X" → tooltip
+  // expliquant pourquoi ce modèle a été choisi. Améliore la transparence
+  // du routeur IA, qui était jusqu'ici opaque (auto sélection invisible).
+  const [showModelExplain, setShowModelExplain] = useState(false)
   const [lastSearchProvider, setLastSearchProvider] = useState<string | null>(null)
   const [exportMenuOpen, setExportMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -303,15 +337,28 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
       </div>
 
       {/* Sous-titre : modèle exact du dernier appel (ex. "Mistral Medium 3.5").
-          Permet de vérifier en un coup d'œil ce qui a réellement répondu,
-          sans aller dans D1 ou DevTools. */}
+          Tap → tooltip "Pourquoi ce modèle ?" (roadmap UI Phase 1 #3). */}
       {lastUsedModel && (
         <div className="px-3 pb-1 text-[10px] font-sans uppercase tracking-kicker text-theme-muted">
-          Dernier appel : {formatModelName(lastUsedModel)}
+          <button
+            type="button"
+            onClick={() => setShowModelExplain((v) => !v)}
+            className="hover:text-theme-ink transition-colors underline-offset-2 hover:underline cursor-pointer"
+            aria-label="Pourquoi ce modèle ?"
+            aria-expanded={showModelExplain}
+          >
+            Dernier appel : {formatModelName(lastUsedModel)}
+          </button>
           {lastSearchProvider && (
             <span className="ml-1 text-theme-accent">
               · 🔍 {lastSearchProvider.charAt(0).toUpperCase() + lastSearchProvider.slice(1)}
             </span>
+          )}
+          {showModelExplain && (
+            <div className="mt-1.5 px-2.5 py-2 bg-theme-surface border border-theme-border rounded-lg normal-case tracking-normal text-[11px] text-theme-ink leading-relaxed max-w-md">
+              <p className="font-semibold mb-1">Pourquoi ce modèle ?</p>
+              <p className="text-theme-ink/80">{getModelExplanation(lastUsedModel)}</p>
+            </div>
           )}
         </div>
       )}
