@@ -131,7 +131,11 @@
       "unreadEmails": "Résume mes mails non lus",
       "today": "Qu'ai-je de prévu aujourd'hui ?",
       "schedule": "Planifie un RDV demain 14h",
-      "useful": "Donne-moi une idée utile"
+      "useful": "Donne-moi une idée utile",
+      "summarize": "Résume-moi ce texte…",
+      "translate": "Traduis en anglais…",
+      "writeEmail": "Aide-moi à rédiger un email",
+      "explain": "Explique-moi un concept simplement"
     },
     "calendar": {
       "title": "Agenda des 7 prochains jours"

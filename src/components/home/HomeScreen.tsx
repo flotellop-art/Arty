@@ -67,12 +67,26 @@ function HomeScreenInner({ onMenuToggle, onSend, isStreaming, googleAuth, userNa
     }
   }, [])
 
-  const intents = [
-    t('home.intents.unreadEmails'),
-    t('home.intents.today'),
-    t('home.intents.schedule'),
-    t('home.intents.useful'),
-  ]
+  // Roadmap UI Phase 1 #1 — Page d'accueil intelligente.
+  // Avant : 4 intents codés en dur. 3/4 supposent Google connecté
+  // ("Tes mails non lus", "Ce qu'il y a aujourd'hui", "Trouve-moi un créneau")
+  // → un user qui n'a pas connecté Google clique l'intent, l'IA répond
+  // "je n'ai pas accès à tes mails" et l'utilisateur ferme l'app.
+  // Maintenant : si Google connecté → intents Google. Sinon → intents
+  // polyvalents universels (résumé, traduction, rédaction, explication).
+  const intents = googleAuth.isConnected
+    ? [
+        t('home.intents.unreadEmails'),
+        t('home.intents.today'),
+        t('home.intents.schedule'),
+        t('home.intents.useful'),
+      ]
+    : [
+        t('home.intents.summarize'),
+        t('home.intents.translate'),
+        t('home.intents.writeEmail'),
+        t('home.intents.explain'),
+      ]
 
   return (
     <div className="flex flex-col h-full bg-theme-bg text-theme-ink">
