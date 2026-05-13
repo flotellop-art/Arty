@@ -168,13 +168,23 @@ function formatSearchContext(ctx: SearchContext | null): string {
   return parts.join('\n')
 }
 
+/**
+ * Résultat de factCheckResponse. En cas d'échec, on capture la raison
+ * (timeout/401/parse fail/…) pour afficher dans le badge UI au lieu d'un
+ * générique "indisponible". Permet le diagnostic en prod sans logs.
+ */
+export type FactCheckOutcome =
+  | { result: FactCheckResult }
+  | { result: null; reason: string }
+
 export async function factCheckResponse(
   question: string,
   response: string,
   mode: FactCheckMode = getFactCheckMode(),
   searchContext: SearchContext | null = null
-): Promise<FactCheckResult | null> {
-  if (mode === 'off' || !response || response.length < 80) return null
+): Promise<FactCheckOutcome> {
+  if (mode === 'off') return { result: null, reason: 'désactivé' }
+  if (!response || response.length < 80) return { result: null, reason: 'réponse trop courte' }
 
   // Mode 'auto' : toujours Sonnet 4.6 + web_search. Haiku 4.5 reste
   // disponible mais uniquement en mode explicite (settings → 'haiku')
@@ -244,16 +254,18 @@ export async function factCheckResponse(
     clearTimeout(timeoutId)
     if (err instanceof Error && err.name === 'AbortError') {
       console.warn('[factChecker] timeout after', timeoutMs, 'ms')
-    } else {
-      console.warn('[factChecker] fetch failed:', err)
+      return { result: null, reason: `timeout ${timeoutMs / 1000}s` }
     }
-    return null
+    console.warn('[factChecker] fetch failed:', err)
+    const msg = err instanceof Error ? err.message : 'erreur réseau'
+    return { result: null, reason: `réseau (${msg.slice(0, 60)})` }
   }
   clearTimeout(timeoutId)
 
   if (!res.ok) {
-    console.warn('[factChecker] proxy returned non-ok:', res.status, await res.text().catch(() => ''))
-    return null
+    const errBody = await res.text().catch(() => '')
+    console.warn('[factChecker] proxy returned non-ok:', res.status, errBody)
+    return { result: null, reason: `proxy ${res.status}${errBody ? ' ' + errBody.slice(0, 60) : ''}` }
   }
 
   let text = ''
@@ -288,11 +300,11 @@ export async function factCheckResponse(
     }
   } catch (err) {
     console.warn('[factChecker] response.json() failed:', err)
-    return null
+    return { result: null, reason: 'parse JSON HTTP fail' }
   }
   if (!text) {
     console.warn('[factChecker] no text in response')
-    return null
+    return { result: null, reason: 'réponse vide' }
   }
 
   // Le LLM peut wrapper le JSON dans des backticks ou ajouter du texte.
@@ -300,7 +312,7 @@ export async function factCheckResponse(
   const jsonMatch = text.match(/\{[\s\S]*\}/)
   if (!jsonMatch) {
     console.warn('[factChecker] no JSON found in response text:', text.slice(0, 200))
-    return null
+    return { result: null, reason: 'pas de JSON dans la réponse LLM' }
   }
 
   let parsed: { overall_confidence?: unknown; claims?: unknown }
@@ -308,7 +320,7 @@ export async function factCheckResponse(
     parsed = JSON.parse(jsonMatch[0])
   } catch (err) {
     console.warn('[factChecker] JSON.parse failed:', err, 'raw:', jsonMatch[0].slice(0, 200))
-    return null
+    return { result: null, reason: 'JSON malformé' }
   }
 
   const overall = parsed.overall_confidence
@@ -344,10 +356,12 @@ export async function factCheckResponse(
     .slice(0, 10) // cap à 10 claims max pour éviter une explosion UI
 
   return {
-    overallConfidence,
-    claims,
-    modelLabel,
-    checkedAt: Date.now(),
+    result: {
+      overallConfidence,
+      claims,
+      modelLabel,
+      checkedAt: Date.now(),
+    },
   }
 }
 
@@ -372,8 +386,9 @@ export async function factCheckContent(
   // polluer le prochain message si le fact-check échoue.
   const ctx = getSearchContext()
   clearSearchContext()
-  const result = await factCheckResponse(question, content, mode, ctx)
-  if (!result) return null
+  const outcome = await factCheckResponse(question, content, mode, ctx)
+  if (!outcome.result) return null
+  const result = outcome.result
 
   let correctedContent = content
   let appliedCount = 0
@@ -471,11 +486,13 @@ export async function runFactCheckOnLatest(
   // On clear immédiatement pour ne pas pollluer le prochain message si
   // le fact-check échoue ou si l'IA ne lance pas de search.
   clearSearchContext()
-  const result = await factCheckResponse(userMsg.content, originalContent, mode, ctx)
-  if (!result) {
-    console.warn('[factChecker] factCheckResponse returned null')
+  const outcome = await factCheckResponse(userMsg.content, originalContent, mode, ctx)
+  if (!outcome.result) {
+    console.warn('[factChecker] factCheckResponse returned null —', outcome.reason)
     // Update le placeholder pour montrer l'échec à l'user (au lieu de
-    // laisser "Vérification en cours…" éternellement)
+    // laisser "Vérification en cours…" éternellement). On embarque la
+    // raison dans le modelLabel pour qu'elle s'affiche dans le badge
+    // (visible côté utilisateur sans avoir à ouvrir DevTools).
     const conv2 = storage.getConversation(conversationId)
     if (conv2) {
       const target2 = conv2.messages.find((m) => m.id === assistantMsg.id)
@@ -483,7 +500,7 @@ export async function runFactCheckOnLatest(
         target2.factCheck = {
           overallConfidence: 'medium',
           claims: [],
-          modelLabel: '⚠ Fact-check indisponible',
+          modelLabel: `⚠ Fact-check indisponible (${outcome.reason})`,
           checkedAt: Date.now(),
         }
         storage.saveConversation(conv2)
@@ -492,6 +509,7 @@ export async function runFactCheckOnLatest(
     }
     return
   }
+  const result = outcome.result
 
   // Applique les corrections trouvées par find/replace direct dans le
   // contenu. On garde l'original dans factCheck.originalContent pour que
