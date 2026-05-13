@@ -27,6 +27,15 @@ const VERDICT_ICON: Record<string, string> = {
 export const FactCheckBadge = memo(function FactCheckBadge({ result }: Props) {
   const [expanded, setExpanded] = useState(false)
 
+  // Bug remonté (screenshot 13 mai 2026) : quand factCheckResponse retourne
+  // null (timeout, 401, parse fail), factChecker.ts crée un placeholder
+  // avec modelLabel='⚠ Fact-check indisponible' + claims=[] + confidence=
+  // 'medium'. Le badge affichait alors "⚠️ 0 points à vérifier" + "Aucun
+  // claim factuel risqué identifié" — totalement contradictoire avec
+  // "INDISPONIBLE". Maintenant : détecter explicitement et afficher un
+  // état "indisponible" cohérent sans mentir sur les claims.
+  const isUnavailable = result.modelLabel?.includes('indisponible')
+
   const wrongCount = result.claims.filter((c) => c.verdict === 'wrong').length
   const uncertainCount = result.claims.filter((c) => c.verdict === 'uncertain').length
   const verifiedCount = result.claims.filter((c) => c.verdict === 'verified').length
@@ -34,6 +43,7 @@ export const FactCheckBadge = memo(function FactCheckBadge({ result }: Props) {
   const corrected = result.appliedCorrections || 0
 
   const summary = (() => {
+    if (isUnavailable) return '❓ Fact-check indisponible'
     if (corrected > 0) {
       const rest = uncertainCount > 0 ? ` · ${uncertainCount} à vérifier` : ''
       return `✏️ ${corrected} ${corrected > 1 ? 'corrections appliquées' : 'correction appliquée'}${rest}`
@@ -46,11 +56,13 @@ export const FactCheckBadge = memo(function FactCheckBadge({ result }: Props) {
     if (wrongCount > 0) {
       return `❌ ${wrongCount} ${wrongCount > 1 ? 'erreurs détectées' : 'erreur détectée'}${uncertainCount > 0 ? ` · ${uncertainCount} à vérifier` : ''}`
     }
+    if (uncertainCount === 0) return '✓ Aucun claim risqué'
     return `⚠️ ${uncertainCount} ${uncertainCount > 1 ? 'points à vérifier' : 'point à vérifier'}`
   })()
 
-  const summaryColor =
-    corrected > 0
+  const summaryColor = isUnavailable
+    ? 'text-theme-muted'
+    : corrected > 0
       ? 'text-blue-700 dark:text-blue-400'
       : result.overallConfidence === 'low'
       ? 'text-red-700 dark:text-red-400'
@@ -83,7 +95,12 @@ export const FactCheckBadge = memo(function FactCheckBadge({ result }: Props) {
               </span>
             )}
           </p>
-          {result.claims.length === 0 ? (
+          {isUnavailable ? (
+            <p className="text-theme-muted italic">
+              La vérification factuelle n'a pas pu aboutir (timeout, surcharge ou réseau).
+              La réponse ci-dessus n'a pas été vérifiée — relis-la avec un œil critique.
+            </p>
+          ) : result.claims.length === 0 ? (
             <p className="text-theme-muted italic">Aucun claim factuel risqué identifié.</p>
           ) : (
             result.claims.map((c, i) => {
