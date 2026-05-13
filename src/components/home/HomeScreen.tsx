@@ -90,7 +90,7 @@ function HomeScreenInner({ onMenuToggle, onSend, isStreaming, googleAuth, userNa
 
   return (
     <div className="flex flex-col h-full bg-theme-bg text-theme-ink">
-      <TopBar onMenuToggle={onMenuToggle} onHistoryToggle={onMenuToggle} />
+      <TopBar onMenuToggle={onMenuToggle} />
 
       <div className="flex-1 overflow-y-auto">
         {/* Masthead — editorial kicker + brand mark */}
