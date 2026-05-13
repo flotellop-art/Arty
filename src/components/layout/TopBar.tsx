@@ -11,12 +11,11 @@ import { isProActivated } from '../../services/proLicense'
 
 interface TopBarProps {
   onMenuToggle: () => void
-  onHistoryToggle: () => void
 }
 
 type OpenMenu = null | 'style' | 'model'
 
-export function TopBar({ onMenuToggle, onHistoryToggle }: TopBarProps) {
+export function TopBar({ onMenuToggle }: TopBarProps) {
   const { t } = useTranslation()
   const [currentStyle, setCurrentStyle] = useState<ResponseStyle>(getStyle)
   const [currentModel, setCurrentModel] = useState<AIModel>(getSelectedModel)
@@ -129,19 +128,10 @@ export function TopBar({ onMenuToggle, onHistoryToggle }: TopBarProps) {
             </svg>
           </button>
 
-          {/* History */}
-          <button
-            onClick={onHistoryToggle}
-            className="p-2 -mr-2 rounded-lg hover:bg-theme-ink/5 transition-colors text-theme-ink"
-            aria-label={t('common.history')}
-          >
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-              <rect x="3" y="2" width="14" height="16" rx="2" stroke="currentColor" strokeWidth="1.5" fill="none" />
-              <line x1="6" y1="6" x2="14" y2="6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-              <line x1="6" y1="10" x2="14" y2="10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-              <line x1="6" y1="14" x2="10" y2="14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-            </svg>
-          </button>
+          {/* Bouton History supprimé — faisait doublon avec le burger menu à
+              gauche qui ouvre déjà la même sidebar (cf. HomeScreen.tsx ligne 79
+              qui passait onHistoryToggle={onMenuToggle}). Doublon confondant
+              pour l'utilisateur. */}
         </div>
       </div>
 
