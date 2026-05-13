@@ -1,5 +1,6 @@
 import { getActiveUserId } from './userSession'
 import { apiUrl } from './apiBase'
+import { getValidAccessToken } from './googleAuth'
 
 const MEMORY_CATEGORIES = ['profil', 'clients', 'chantiers', 'notes'] as const
 type MemoryCategory = typeof MEMORY_CATEGORIES[number]
@@ -36,9 +37,17 @@ async function readMemoryD1(category: MemoryCategory): Promise<unknown> {
   if (!userId) return getDefaultData(category)
 
   try {
+    // BUG critical (mai 2026) — l'endpoint /api/memory/action exige
+    // x-google-token depuis l'audit étape 2 (PR #165 verifyGoogleUser).
+    // Sans ce header → 401 → toutes les lectures retournaient null → Arty
+    // pensait que la mémoire était vide à chaque conversation.
+    // getValidAccessToken() rafraîchit auto si expiré (cf. BUG 23).
+    const googleToken = await getValidAccessToken()
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    if (googleToken) headers['x-google-token'] = googleToken
     const res = await fetch(apiUrl('/api/memory/action'), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({ type: 'read', userId, category }),
     })
     const result = await res.json() as { data: unknown }
@@ -61,12 +70,21 @@ async function updateMemoryD1(category: MemoryCategory, data: unknown): Promise<
   }
 
   try {
+    // BUG critical — header x-google-token obligatoire depuis PR #165.
+    // Sans ça toutes les écritures retournaient 401 silencieusement → Arty
+    // ne mémorisait JAMAIS rien. getValidAccessToken() rafraîchit auto.
+    const googleToken = await getValidAccessToken()
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    if (googleToken) headers['x-google-token'] = googleToken
     const res = await fetch(apiUrl('/api/memory/action'), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({ type: 'write', userId, category, data }),
     })
-    if (!res.ok) return { success: false, message: 'Erreur D1' }
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '')
+      return { success: false, message: `Erreur D1 (${res.status}) ${errText}`.trim() }
+    }
     // Log the change to the history
     try {
       const { logChange } = await import('./memoryHistory')
