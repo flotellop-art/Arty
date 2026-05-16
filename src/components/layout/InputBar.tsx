@@ -99,7 +99,7 @@ function PendingFilePreview({ file, onRemove }: { file: FileAttachment; onRemove
         />
         <button
           onClick={onRemove}
-          aria-label="Retirer"
+          aria-label={`Retirer ${file.name}`}
           className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-theme-surface border border-theme-border text-theme-muted hover:text-theme-accent text-[10px] leading-none flex items-center justify-center shadow-sm"
         >
           ✕
@@ -114,7 +114,8 @@ function PendingFilePreview({ file, onRemove }: { file: FileAttachment; onRemove
       <span className="max-w-[120px] truncate">{file.name}</span>
       <button
         onClick={onRemove}
-        className="text-theme-muted hover:text-theme-accent ml-1"
+        aria-label={`Retirer ${file.name}`}
+        className="text-theme-muted hover:text-theme-accent ml-1 p-1 leading-none"
       >
         ✕
       </button>

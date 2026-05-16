@@ -263,7 +263,7 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
           {/* Info button — terracotta ? circle */}
           <button
             onClick={() => setShowGuide(true)}
-            className="w-5 h-5 rounded-full border border-theme-accent/40 text-theme-accent text-[10px] font-semibold hover:bg-theme-accent/10 transition-colors flex items-center justify-center shrink-0"
+            className="w-7 h-7 rounded-full border border-theme-accent/40 text-theme-accent text-[10px] font-semibold hover:bg-theme-accent/10 transition-colors flex items-center justify-center shrink-0"
             aria-label={t('chat.topBar.aria.toneModelHelp')}
           >
             ?

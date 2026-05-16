@@ -455,7 +455,7 @@ export function Sidebar({
                     e.stopPropagation()
                     onDelete(conv.id)
                   }}
-                  className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-theme-accent/10 transition-all text-theme-accent flex-shrink-0 mt-1"
+                  className="opacity-0 group-hover:opacity-100 p-2 rounded hover:bg-theme-accent/10 transition-all text-theme-accent flex-shrink-0 mt-1"
                   aria-label={t('sidebar.deleteAria')}
                 >
                   <svg width="12" height="12" viewBox="0 0 14 14" fill="none">
