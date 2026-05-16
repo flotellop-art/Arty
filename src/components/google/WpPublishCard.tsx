@@ -47,7 +47,7 @@ export function WpPublishCard({
       </div>
 
       {confirmed && (
-        <div className="mx-4 mb-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700">
+        <div className="mx-4 mb-2 px-3 py-2 bg-amber-500/10 border border-amber-500/30 rounded-lg text-xs text-amber-700 dark:text-amber-400">
           Confirmez-vous la publication sur WordPress ?
         </div>
       )}

@@ -186,7 +186,7 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
             />
           </p>
           {loginError && (
-            <div className="mb-3 px-3 py-2 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">
+            <div className="mb-3 px-3 py-2 bg-red-500/10 border border-red-500/30 rounded-xl text-sm text-red-700 dark:text-red-400">
               {loginError}
             </div>
           )}

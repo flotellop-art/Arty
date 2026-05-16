@@ -104,7 +104,7 @@ function MemoryViewerInner({ onClose }: Props) {
               onClick={() => setActiveTab(tab.key)}
               className={`flex items-center gap-1.5 px-3 py-3 text-xs font-medium border-b-2 transition-colors ${
                 activeTab === tab.key
-                  ? 'border-indigo-500 text-indigo-600'
+                  ? 'border-theme-accent text-theme-accent'
                   : 'border-transparent text-theme-muted hover:text-theme-ink/80'
               }`}
             >
@@ -129,7 +129,7 @@ function MemoryViewerInner({ onClose }: Props) {
                 {activeTab === 'notes' && (
                   <button
                     onClick={handleAddNote}
-                    className="text-xs px-2.5 py-1.5 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-100 font-medium"
+                    className="text-xs px-2.5 py-1.5 bg-theme-accent/10 text-theme-accent rounded-lg hover:bg-theme-accent/20 font-medium transition-colors"
                   >
                     + Ajouter une note
                   </button>
@@ -139,7 +139,7 @@ function MemoryViewerInner({ onClose }: Props) {
               <textarea
                 value={editValue}
                 onChange={(e) => setEditValue(e.target.value)}
-                className="flex-1 font-mono text-xs bg-theme-ink/[0.03] border border-theme-border rounded-xl p-3 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-300 min-h-[200px]"
+                className="flex-1 font-mono text-xs bg-theme-ink/[0.03] border border-theme-border rounded-xl p-3 resize-none focus:outline-none focus:ring-2 focus:ring-theme-accent/40 min-h-[200px]"
                 spellCheck={false}
               />
             </>
@@ -154,7 +154,7 @@ function MemoryViewerInner({ onClose }: Props) {
           <button
             onClick={handleSave}
             disabled={saving || loading}
-            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-sm font-medium rounded-xl transition-colors"
+            className="px-4 py-2 bg-theme-accent hover:opacity-90 disabled:opacity-50 text-theme-bg text-sm font-medium rounded-xl transition-opacity"
           >
             {saving ? 'Sauvegarde…' : 'Sauvegarder'}
           </button>
