@@ -2,6 +2,7 @@ import { Capacitor } from '@capacitor/core'
 import type { Conversation } from '../types'
 import { generateId } from '../utils/generateId'
 import * as storage from './storage'
+import { getDateLocale } from '../utils/formatDate'
 
 /**
  * Download a conversation as a JSON file (Feature 7).
@@ -64,7 +65,7 @@ function sanitizeFilename(title: string | undefined): string {
 }
 
 function formatDate(ts: number): string {
-  return new Date(ts).toLocaleString('fr-FR', {
+  return new Date(ts).toLocaleString(getDateLocale(), {
     year: 'numeric', month: '2-digit', day: '2-digit',
     hour: '2-digit', minute: '2-digit',
   })

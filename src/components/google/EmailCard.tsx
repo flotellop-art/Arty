@@ -1,4 +1,5 @@
 import type { GmailMessage } from '../../types/google'
+import { getDateLocale } from '../../utils/formatDate'
 
 interface EmailCardProps {
   email: GmailMessage
@@ -17,7 +18,7 @@ function formatDate(dateStr: string): string {
     const diffH = (now.getTime() - d.getTime()) / (1000 * 60 * 60)
     if (diffH < 1) return "à l'instant"
     if (diffH < 24) return `il y a ${Math.floor(diffH)}h`
-    return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
+    return d.toLocaleDateString(getDateLocale(), { day: 'numeric', month: 'short' })
   } catch {
     return ''
   }

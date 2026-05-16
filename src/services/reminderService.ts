@@ -1,3 +1,5 @@
+import { getDateLocale } from '../utils/formatDate'
+
 /**
  * Reminder service (roadmap Phase 2 C — tâches planifiées par prompt).
  *
@@ -117,7 +119,7 @@ export async function createReminder(
 
 function formatReminderLabel(intent: ReminderIntent): string {
   const d = intent.date
-  const fmt = new Intl.DateTimeFormat('fr-FR', {
+  const fmt = new Intl.DateTimeFormat(getDateLocale(), {
     weekday: 'long',
     day: 'numeric',
     month: 'long',

@@ -1,4 +1,5 @@
 import type { DriveFile } from '../../types/google'
+import { getDateLocale } from '../../utils/formatDate'
 
 interface DriveFileCardProps {
   file: DriveFile
@@ -17,7 +18,7 @@ function getMimeIcon(mimeType: string): string {
 
 function formatDate(dateStr: string): string {
   try {
-    return new Date(dateStr).toLocaleDateString('fr-FR', {
+    return new Date(dateStr).toLocaleDateString(getDateLocale(), {
       day: 'numeric',
       month: 'short',
       year: 'numeric',

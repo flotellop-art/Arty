@@ -1,3 +1,5 @@
+import { getDateLocale } from '../utils/formatDate'
+
 /**
  * Morning Brief Service
  * Gère le brief quotidien du matin : vérification, données, notification planifiée.
@@ -65,7 +67,7 @@ export function formatEventTime(isoStart: string): string {
     if (isNaN(d.getTime())) return ''
     // All-day events have no time component
     if (!isoStart.includes('T')) return 'Toute la journée'
-    return d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+    return d.toLocaleTimeString(getDateLocale(), { hour: '2-digit', minute: '2-digit' })
   } catch {
     return ''
   }

@@ -1,5 +1,6 @@
 import type { ToolHandler } from './types'
 import { listEvents, createEvent, updateEvent, deleteEvent } from '../calendarClient'
+import { getDateLocale } from '../../utils/formatDate'
 
 export const calendarToolDefinitions = [
   {
@@ -61,7 +62,7 @@ export function createCalendarHandlers(): Record<string, ToolHandler> {
         const events = await listEvents(days)
         if (events.length > 0) {
           const summary = events.map((e, i) => {
-            const start = new Date(e.start).toLocaleString('fr-FR', {
+            const start = new Date(e.start).toLocaleString(getDateLocale(), {
               weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
             })
             return `${i + 1}. ${start} — ${e.title}${e.location ? ` (${e.location})` : ''}`
@@ -81,7 +82,7 @@ export function createCalendarHandlers(): Record<string, ToolHandler> {
       try {
         const data = await createEvent({ title, start, end, location, description })
         return {
-          result: `RDV "${data.title}" créé le ${new Date(data.start).toLocaleString('fr-FR')}.${data.link ? ` Lien: ${data.link}` : ''}`,
+          result: `RDV "${data.title}" créé le ${new Date(data.start).toLocaleString(getDateLocale())}.${data.link ? ` Lien: ${data.link}` : ''}`,
         }
       } catch (err) {
         return { result: `Erreur: ${err instanceof Error ? err.message : 'création RDV échouée.'}` }

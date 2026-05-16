@@ -155,9 +155,6 @@
     "streaming": {
       "writing": "Arty écrit…"
     },
-    "input": {
-      "euOnlyUrlHint": "Mistral ne peut pas ouvrir les liens (mode EU). Pour analyser le contenu, colle directement le texte de l'article ou de la vidéo ici."
-    },
     "topBar": {
       "aria": {
         "back": "Retour",
@@ -176,6 +173,7 @@
       "body": "Cette conversation contient des messages traités par Mistral (serveurs en Europe). En passant sur {{targetModel}}, tout l'historique sera envoyé aux États-Unis. Continuer ?"
     },
     "input": {
+      "euOnlyUrlHint": "Mistral ne peut pas ouvrir les liens (mode EU). Pour analyser le contenu, colle directement le texte de l'article ou de la vidéo ici.",
       "placeholder": "Discuter avec Arty...",
       "listening": "Écoute en cours...",
       "defaultFilePrompt": "Analyse ce fichier.",

@@ -7,6 +7,7 @@ import {
   getGreeting,
   formatEventTime,
 } from '../../services/morningBriefService'
+import { getDateLocale } from '../../utils/formatDate'
 
 interface Props {
   onClose: () => void
@@ -34,7 +35,7 @@ function MorningBriefInner({ onClose, onSend, userName, isGoogleConnected }: Pro
       .finally(() => setLoading(false))
   }, [isGoogleConnected, userName])
 
-  const today = new Date().toLocaleDateString('fr-FR', {
+  const today = new Date().toLocaleDateString(getDateLocale(), {
     weekday: 'long', day: 'numeric', month: 'long',
   })
 
