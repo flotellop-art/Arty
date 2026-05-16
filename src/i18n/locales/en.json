@@ -12,7 +12,8 @@
     "loading": "Loading...",
     "retry": "Retry",
     "optional": "optional",
-    "required": "required"
+    "required": "required",
+    "connecting": "Connecting..."
   },
   "login": {
     "title": "Sign in",
@@ -139,7 +140,9 @@
     },
     "calendar": {
       "title": "Next 7 days"
-    }
+    },
+    "connectGoogle": "Connect Google",
+    "googleConnectError": "Google connection error:"
   },
   "chat": {
     "upgradeModal": {
@@ -298,5 +301,32 @@
     "byModel": "By model",
     "noUsage": "No usage this month",
     "modelLine": "{{input}}↓ · {{output}}↑ · {{count}} calls"
+  },
+  "morningBrief": {
+    "kicker": "Daily brief · ",
+    "heroLine1": "The day",
+    "heroLine2": "starts strong.",
+    "eventCount_one": "{{count}} appointment",
+    "eventCount_other": "{{count}} appointments",
+    "noEvents": "No events today.",
+    "connectGoogle": "Connect Google to see your calendar and emails in the brief.",
+    "startDay": "Start the day",
+    "allDay": "All day",
+    "notificationTitle": "Good morning{{name}} 👋",
+    "notificationBody": "Your morning brief is ready — calendar, emails, and more.",
+    "actions": {
+      "unreadEmails": { "label": "Summarise unread emails", "prompt": "Summarise my important unread emails" },
+      "today": { "label": "What's on today?", "prompt": "What appointments do I have today?" },
+      "priorities": { "label": "Organise my priorities", "prompt": "Help me organise my priorities for today" },
+      "idea": { "label": "Give me a useful idea", "prompt": "Give me a useful idea or tip for my day" }
+    }
+  },
+  "summary": {
+    "title": "Conversation summary",
+    "generating": "Generating...",
+    "copy": "Copy",
+    "copied": "Copied",
+    "exportPdf": "Export PDF",
+    "reportTitle": "Summary — {{title}}"
   }
 }

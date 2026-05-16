@@ -1,3 +1,4 @@
+import i18n from '../i18n'
 import { getDateLocale } from '../utils/formatDate'
 
 /**
@@ -37,10 +38,11 @@ export async function scheduleMorningNotification(userName?: string): Promise<vo
     )
     const delayMs = tomorrow8h.getTime() - now.getTime()
 
-    const greeting = userName ? `Bonjour ${userName.split(' ')[0]} 👋` : 'Bonjour 👋'
+    const firstName = userName ? userName.split(' ')[0] : ''
+    const greeting = i18n.t('morningBrief.notificationTitle', { name: firstName ? ` ${firstName}` : '' })
     await scheduleNotification(
       greeting,
-      'Votre brief du matin est prêt — agenda, emails, et plus.',
+      i18n.t('morningBrief.notificationBody'),
       delayMs,
       'morning-brief'
     )
@@ -55,9 +57,9 @@ export function getGreeting(name?: string): string {
   const firstName = name?.split(' ')[0] || ''
   const suffix = firstName ? `, ${firstName}` : ''
 
-  if (hour < 12) return `Bonjour${suffix} 👋`
-  if (hour < 18) return `Bon après-midi${suffix}`
-  return `Bonsoir${suffix}`
+  if (hour < 12) return `${i18n.t('home.greetingMorning')}${suffix} 👋`
+  if (hour < 18) return `${i18n.t('home.greetingAfternoon')}${suffix}`
+  return `${i18n.t('home.greetingEvening')}${suffix}`
 }
 
 /** Formate une date ISO en heure lisible */
@@ -66,7 +68,7 @@ export function formatEventTime(isoStart: string): string {
     const d = new Date(isoStart)
     if (isNaN(d.getTime())) return ''
     // All-day events have no time component
-    if (!isoStart.includes('T')) return 'Toute la journée'
+    if (!isoStart.includes('T')) return i18n.t('morningBrief.allDay')
     return d.toLocaleTimeString(getDateLocale(), { hour: '2-digit', minute: '2-digit' })
   } catch {
     return ''

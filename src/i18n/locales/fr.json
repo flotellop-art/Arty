@@ -12,7 +12,8 @@
     "loading": "Chargement...",
     "retry": "Réessayer",
     "optional": "optionnel",
-    "required": "obligatoire"
+    "required": "obligatoire",
+    "connecting": "Connexion..."
   },
   "login": {
     "title": "Connexion",
@@ -139,7 +140,9 @@
     },
     "calendar": {
       "title": "Agenda des 7 prochains jours"
-    }
+    },
+    "connectGoogle": "Connecter Google",
+    "googleConnectError": "Erreur connexion Google :"
   },
   "chat": {
     "upgradeModal": {
@@ -298,5 +301,32 @@
     "byModel": "Par modèle",
     "noUsage": "Aucune utilisation ce mois-ci",
     "modelLine": "{{input}}↓ · {{output}}↑ · {{count}} appels"
+  },
+  "morningBrief": {
+    "kicker": "Le brief · ",
+    "heroLine1": "La journée",
+    "heroLine2": "commence fort.",
+    "eventCount_one": "{{count}} rendez-vous",
+    "eventCount_other": "{{count}} rendez-vous",
+    "noEvents": "Aucun événement aujourd'hui.",
+    "connectGoogle": "Connecte Google pour voir ton agenda et tes emails dans le brief.",
+    "startDay": "Commencer la journée",
+    "allDay": "Toute la journée",
+    "notificationTitle": "Bonjour{{name}} 👋",
+    "notificationBody": "Votre brief du matin est prêt — agenda, emails, et plus.",
+    "actions": {
+      "unreadEmails": { "label": "Résume mes emails non lus", "prompt": "Résume mes emails non lus importants" },
+      "today": { "label": "Qu'ai-je de prévu aujourd'hui ?", "prompt": "Quels sont mes rendez-vous aujourd'hui ?" },
+      "priorities": { "label": "Organise mes priorités", "prompt": "Aide-moi à organiser mes priorités pour aujourd'hui" },
+      "idea": { "label": "Donne-moi une idée utile", "prompt": "Donne-moi une idée ou conseil utile pour ma journée" }
+    }
+  },
+  "summary": {
+    "title": "Résumé de la conversation",
+    "generating": "Génération en cours...",
+    "copy": "Copier",
+    "copied": "Copié",
+    "exportPdf": "Exporter PDF",
+    "reportTitle": "Résumé — {{title}}"
   }
 }
