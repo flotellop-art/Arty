@@ -474,6 +474,21 @@ Dernier audit : **4 mai 2026** (PR #127 + PR #128).
 
 À traiter en priorité quand on relance un cycle sécurité :
 
+**Analyse 16 mai 2026 — chiffrement at-rest (cadrage par 2 audits Opus)** :
+Un audit avait classé « chiffrement inopérant pour les users Google sans BYOK »
+(clé crypto dérivée de la constante publique `'server-provided'`) comme bloquant
+publication. Le cadrage approfondi le **reclasse non-bloquant** : le `localStorage`
+de la WebView est isolé par la sandbox OS (Android/iOS) — aucune app tierce ne peut
+le lire. L'exposition réelle est étroite (appareil rooté, extraction forensique,
+backups). Le fix « secret aléatoire + rotation de clé » a été **REJETÉ** : la
+rotation est la source des BUG 43/47/48, 6 edge-cases critiques identifiés, gain
+quasi nul (le secret cohabiterait avec les blobs qu'il protège). Fix propre si on
+y revient = `CryptoKey` non-extractible (`crypto.subtle.generateKey`,
+`extractable: false`) en IndexedDB — supprime passphrase/PBKDF2/salt et toute la
+classe de bugs de rotation. Différé. ⚠️ Le même raisonnement (sandbox OS) allège le
+point « Chiffrement des conversations en localStorage » ci-dessous : le ré-examiner
+avant de le traiter comme un bloquant critique.
+
 **PR à venir (planifiées)** :
 - [ ] **PR 2 — PKCE OAuth** : ajout du `code_verifier` + `code_challenge` au flow Google web. Stratégie en 2 PRs validée le 4 mai (state CSRF d'abord en PR #128, PKCE ensuite). Coût ~2h, confiance 80%. Touche `googleAuth.ts:buildOAuthUrl()` (devient async), `OAuthCallback.tsx`, `functions/api/auth/token.ts` (forward `code_verifier` à Google). Suivre les patterns du callback double (web + deeplink) déjà éprouvés en PR #128.
 - [ ] **Chiffrement des conversations en localStorage** : aujourd'hui en clair (BUG 16 a forcé `saveConversation` synchrone, le chiffrement async cassait l'UI). Solution propre = Web Worker pour chiffrer en arrière-plan sans bloquer le main thread. Coût ~1 jour. Risque = ouverture d'un téléphone volé permet de lire toutes les conversations (mais pas de faire des requêtes — tokens chiffrés).
