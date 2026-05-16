@@ -82,7 +82,7 @@ export const driveToolDefinitions = [
   },
   {
     name: 'create_drive_folder',
-    description: 'Crée un dossier sur Google Drive (pour organiser par client/chantier).',
+    description: 'Crée un dossier sur Google Drive (pour organiser par client/projet).',
     input_schema: {
       type: 'object' as const,
       properties: {

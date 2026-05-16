@@ -28,7 +28,7 @@ export const computerToolDefinitions = [
       "Orchestrateur local (Phase 2) — crée une nouvelle instance d'application sur le PC : " +
       "ouvre l'app, saisit éventuellement un contenu initial, puis sauvegarde sous un nom de " +
       "fichier. Utilise cet outil quand l'utilisateur demande de créer un nouveau document, " +
-      "classeur, ou fichier (ex : « crée un classeur Excel pour le suivi chantiers »). " +
+      "classeur, ou fichier (ex : « crée un classeur Excel pour le suivi du budget »). " +
       "Le PC doit être joignable (start-all.bat lancé + tunnel actif).",
     input_schema: {
       type: 'object' as const,

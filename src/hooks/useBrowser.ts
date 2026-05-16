@@ -32,7 +32,7 @@ export function useBrowser() {
 
   const searchPrices = useCallback(async (query: string): Promise<PriceSearchResponse | null> => {
     setIsLoading(true)
-    setCurrentAction(`Recherche prix "${query}" chez les fournisseurs...`)
+    setCurrentAction(`Recherche du prix "${query}" en ligne...`)
     setError(null)
     try {
       const result = await browser.searchPrices(query)

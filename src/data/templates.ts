@@ -1,5 +1,4 @@
 export type TemplateCategory =
-  | 'artisanat'
   | 'freelance'
   | 'admin'
   | 'juridique'
@@ -24,7 +23,6 @@ export interface Template {
 }
 
 export const CATEGORY_LABELS: Record<TemplateCategory, { label: string; icon: string }> = {
-  artisanat: { label: 'Artisanat', icon: '🔨' },
   freelance: { label: 'Freelance', icon: '💼' },
   admin: { label: 'Admin', icon: '📋' },
   juridique: { label: 'Juridique', icon: '⚖️' },
@@ -33,37 +31,22 @@ export const CATEGORY_LABELS: Record<TemplateCategory, { label: string; icon: st
 }
 
 export const TEMPLATES: Template[] = [
-  // ─── Artisanat ────────────────────────────────────────────────────────────
+  // ─── Freelance ────────────────────────────────────────────────────────────
   {
-    id: 'artisanat-devis-travaux',
-    category: 'artisanat',
-    title: 'Rédiger un devis travaux',
-    description: 'Devis professionnel détaillé avec matériaux, main d’œuvre, TVA et conditions de paiement.',
-    icon: '📝',
-    fields: [
-      { key: 'nom_client', label: 'Nom du client', placeholder: 'Mme Dupont' },
-      { key: 'adresse_chantier', label: 'Adresse du chantier', placeholder: '12 rue des Lilas, 75011 Paris' },
-      { key: 'description_travaux', label: 'Description des travaux', placeholder: 'Rénovation salle de bain', multiline: true },
-      { key: 'superficie', label: 'Superficie', placeholder: '8 m²' },
-      { key: 'délai', label: 'Délai estimé', placeholder: '2 semaines' },
-    ],
-    prompt: `Rédige un devis professionnel pour {{nom_client}} concernant des travaux de {{description_travaux}} au {{adresse_chantier}}. Surface : {{superficie}}. Délai estimé : {{délai}}. Inclure : descriptif détaillé, liste des matériaux, main d’œuvre, TVA 10%, conditions de paiement (30% à la commande, solde à la fin).`,
-  },
-  {
-    id: 'artisanat-avis-google',
-    category: 'artisanat',
+    id: 'freelance-avis-google',
+    category: 'freelance',
     title: 'Répondre à un avis Google négatif',
     description: 'Réponse calme et constructive à un avis négatif, sans être défensif.',
     icon: '💬',
     fields: [
       { key: 'texte_avis', label: 'Texte de l’avis', placeholder: 'Collez ici l’avis négatif…', multiline: true },
-      { key: 'problème_évoqué', label: 'Problème évoqué', placeholder: 'Retard de chantier, malfaçon…' },
+      { key: 'problème_évoqué', label: 'Problème évoqué', placeholder: 'Délai non tenu, qualité décevante…' },
     ],
     prompt: `Rédige une réponse professionnelle et empathique à cet avis Google négatif : '{{texte_avis}}'. Le problème évoqué est : {{problème_évoqué}}. Ton : calme, constructif, sans être défensif. Max 5 phrases.`,
   },
   {
-    id: 'artisanat-relance-impaye',
-    category: 'artisanat',
+    id: 'freelance-relance-impaye',
+    category: 'freelance',
     title: 'Relance client impayé (amiable)',
     description: 'Email de relance amiable avec ton cordial mais ferme et nouveau délai de 8 jours.',
     icon: '📧',
@@ -77,23 +60,8 @@ export const TEMPLATES: Template[] = [
     prompt: `Rédige un email de relance amiable pour la facture {{numéro_facture}} de {{montant}}€ émise le {{date_facture}}, échue le {{date_échéance}}, adressée à {{nom_client}}. Ton cordial mais ferme. Proposer un délai de paiement de 8 jours.`,
   },
   {
-    id: 'artisanat-realisation-site',
-    category: 'artisanat',
-    title: 'Description d’une réalisation pour le site web',
-    description: 'Descriptif engageant 100-150 mots style blog artisan pour mettre en valeur un chantier.',
-    icon: '🏗️',
-    fields: [
-      { key: 'type_travaux', label: 'Type de travaux', placeholder: 'Pose de parquet massif' },
-      { key: 'lieu', label: 'Lieu', placeholder: 'Maison ancienne à Bordeaux' },
-      { key: 'matériaux', label: 'Matériaux utilisés', placeholder: 'Chêne français huilé' },
-      { key: 'durée', label: 'Durée du chantier', placeholder: '5 jours' },
-      { key: 'résultat', label: 'Résultat', placeholder: 'Sol chaleureux et durable' },
-    ],
-    prompt: `Rédige une description engageante de 100-150 mots pour illustrer une réalisation : {{type_travaux}} à {{lieu}}, matériaux utilisés : {{matériaux}}, durée du chantier : {{durée}}, résultat : {{résultat}}. Ton professionnel et accessible, style blog artisan.`,
-  },
-  {
-    id: 'artisanat-confirmation-rdv',
-    category: 'artisanat',
+    id: 'freelance-confirmation-rdv',
+    category: 'freelance',
     title: 'Email de confirmation de rendez-vous',
     description: 'Confirmation de RDV avec ce qu’il faut prévoir et numéro de contact pour modifier.',
     icon: '📅',
@@ -102,12 +70,10 @@ export const TEMPLATES: Template[] = [
       { key: 'date_rdv', label: 'Date du rendez-vous', placeholder: 'lundi 28 avril' },
       { key: 'heure_rdv', label: 'Heure', placeholder: '14h30' },
       { key: 'adresse', label: 'Adresse', placeholder: '5 avenue de la République' },
-      { key: 'objet_rdv', label: 'Objet du rendez-vous', placeholder: 'Devis pose carrelage' },
+      { key: 'objet_rdv', label: 'Objet du rendez-vous', placeholder: 'Présentation de l’offre' },
     ],
     prompt: `Rédige un email de confirmation de rendez-vous pour {{nom_client}}, le {{date_rdv}} à {{heure_rdv}}, à l’adresse {{adresse}}, objet : {{objet_rdv}}. Inclure ce qu’il faut prévoir et un numéro de contact pour modifier.`,
   },
-
-  // ─── Freelance ────────────────────────────────────────────────────────────
   {
     id: 'freelance-proposition',
     category: 'freelance',

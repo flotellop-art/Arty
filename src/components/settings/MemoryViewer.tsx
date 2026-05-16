@@ -6,12 +6,12 @@ interface Props {
   onClose: () => void
 }
 
-type Tab = 'profil' | 'clients' | 'chantiers' | 'notes'
+type Tab = 'profil' | 'clients' | 'projets' | 'notes'
 
 const TABS: { key: Tab; label: string; icon: string }[] = [
   { key: 'profil', label: 'Profil', icon: '👤' },
-  { key: 'clients', label: 'Clients', icon: '🏠' },
-  { key: 'chantiers', label: 'Chantiers', icon: '🔧' },
+  { key: 'clients', label: 'Clients', icon: '👥' },
+  { key: 'projets', label: 'Projets', icon: '📁' },
   { key: 'notes', label: 'Notes', icon: '📝' },
 ]
 
