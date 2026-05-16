@@ -8,9 +8,9 @@ import {
   getStoredTokens,
   getStoredUser,
   getValidAccessToken,
+  storeUser,
   logout as googleLogout,
 } from '../services/googleAuth'
-import * as scoped from '../services/scopedStorage'
 
 interface GoogleSignInNativePlugin {
   signIn(): Promise<{ email: string; name: string; avatar: string; serverAuthCode: string }>
@@ -151,55 +151,19 @@ export function useGoogleAuth() {
         }
 
         if (import.meta.env.DEV) console.log('[useGoogleAuth] exchanging code for tokens...')
-        const { apiUrl } = await import('../services/apiBase')
-        const res = await fetch(apiUrl('/api/auth/token'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ code: result.serverAuthCode, redirect_uri: '' }),
-        })
-        if (import.meta.env.DEV) console.log('[useGoogleAuth] /api/auth/token status:', res.status)
-
-        if (!res.ok) {
-          const bodyText = await res.text().catch(() => '')
-          let msg = `Échange de token Google échoué (${res.status})`
-          try {
-            const parsed = JSON.parse(bodyText) as { error?: string | { message?: string } }
-            if (typeof parsed.error === 'string') msg = parsed.error
-            else if (parsed.error && typeof parsed.error === 'object' && parsed.error.message) msg = parsed.error.message
-          } catch { /* keep default */ }
-          throw new Error(msg)
-        }
-
-        const data = (await res.json()) as { access_token?: string; refresh_token?: string; expires_in?: number }
-        if (import.meta.env.DEV) console.log('[useGoogleAuth] token exchange response:', {
-          hasAccessToken: !!data.access_token,
-          hasRefreshToken: !!data.refresh_token,
-          expiresIn: data.expires_in,
-        })
-        if (!data.access_token) {
-          throw new Error('Réponse Google sans access_token — retenter la connexion.')
-        }
-
-        // BUG 49 — Google ne ré-émet pas systématiquement de refresh_token
-        // sur un re-sign-in (sauf si forceCodeForRefreshToken=true côté
-        // plugin Java, fix simultané). Si le serveur renvoie undefined ici,
-        // ne JAMAIS écraser un refresh_token valide existant : on garderait
-        // sinon access_token + refresh_token='' → logout silencieux après
-        // expiration de l'access_token (1h).
-        const existing = scoped.getJSON<{ refresh_token?: string }>('google-tokens')
-        const preservedRefresh = data.refresh_token || existing?.refresh_token || ''
-        scoped.setJSON('google-tokens', {
-          access_token: data.access_token,
-          refresh_token: preservedRefresh,
-          expires_at: Date.now() + (data.expires_in || 3600) * 1000,
-        })
+        // Native serverAuthCode → exchange via the shared exchangeCode():
+        // gives the 15s timeout, refresh_token preservation (BUG 49) and
+        // encrypted-at-rest storage. redirect_uri MUST be '' for a native
+        // serverAuthCode (BUG 2/28). exchangeCode throws on failure → the
+        // catch below surfaces the error instead of a silent broken session.
+        await exchangeCode(result.serverAuthCode, '')
 
         const googleUser: GoogleUser = {
           email: result.email,
           name: result.name || result.email?.split('@')[0] || '',
           picture: result.avatar || '',
         }
-        scoped.setJSON('google-user', googleUser)
+        await storeUser(googleUser)
         setUser(googleUser)
         setIsConnected(true)
         if (import.meta.env.DEV) console.log('[useGoogleAuth] login success for', result.email)

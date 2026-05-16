@@ -6,7 +6,7 @@ import { EmailLoginTab } from './EmailLoginTab'
 import { GoogleLoginTab } from './GoogleLoginTab'
 import type { UserSession, AuthMethod } from '../../services/userSession'
 import * as scoped from '../../services/scopedStorage'
-import { clearOAuthState } from '../../services/googleAuth'
+import { clearOAuthState, withTimeout, storeTokens, storeUser, getStoredTokens } from '../../services/googleAuth'
 
 type Tab = 'apikey' | 'google' | 'email'
 
@@ -257,38 +257,44 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
               loading={loading}
               onNativeGoogleLogin={async (email, name, avatar, serverAuthCode) => {
                 setLoading(true)
+                setLoginError('')
                 try {
-                  // Exchange serverAuthCode for Google tokens
-                  let googleAccessToken = ''
-                  let googleRefreshToken = ''
-                  let expiresIn = 3600
-
-                  if (serverAuthCode) {
-                    try {
-                      const { apiUrl } = await import('../../services/apiBase')
-                      const res = await fetch(apiUrl('/api/auth/token'), {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ code: serverAuthCode, redirect_uri: '' }),
-                      })
-                      if (res.ok) {
-                        const data = await res.json()
-                        googleAccessToken = data.access_token || ''
-                        googleRefreshToken = data.refresh_token || ''
-                        expiresIn = data.expires_in || 3600
-                      }
-                    } catch {
-                      // Token exchange failed — continue without
-                    }
+                  if (!serverAuthCode) {
+                    throw new Error("Google n'a pas renvoyé de code d'autorisation — réessaie.")
+                  }
+                  // Exchange serverAuthCode for Google tokens. redirect_uri
+                  // MUST be '' for a native serverAuthCode (BUG 2/28). The
+                  // fetch carries a 15s timeout so a flaky network can't
+                  // freeze the spinner for minutes (BUG 47).
+                  const { apiUrl } = await import('../../services/apiBase')
+                  const t = withTimeout(15_000)
+                  let res: Response
+                  try {
+                    res = await fetch(apiUrl('/api/auth/token'), {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ code: serverAuthCode, redirect_uri: '' }),
+                      signal: t.signal,
+                    })
+                  } finally {
+                    t.cancel()
+                  }
+                  if (!res.ok) {
+                    throw new Error(`Échange de token Google échoué (${res.status})`)
+                  }
+                  const data = await res.json() as { access_token?: string; refresh_token?: string; expires_in?: number }
+                  // Fail loud instead of marking the user "connected" with an
+                  // empty token — that left AGENDA/Gmail permanently broken
+                  // with no error shown (CRITIQUE-2 audit du 16 mai).
+                  if (!data.access_token) {
+                    throw new Error('Réponse Google sans access_token — réessaie la connexion.')
                   }
 
                   // Initialise (ou récupère) le statut trial AVANT de
                   // finaliser l'auth : pose le splash post-login en
                   // localStorage avant le re-render racine.
-                  if (googleAccessToken) {
-                    const { initTrial } = await import('../../services/trialClient')
-                    await initTrial(googleAccessToken)
-                  }
+                  const { initTrial } = await import('../../services/trialClient')
+                  await initTrial(data.access_token)
 
                   // Login (handles session, crypto, keys)
                   await onLogin('google', {
@@ -299,15 +305,21 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
                     identifier: email,
                   })
 
-                  // Store Google data AFTER login (scoped storage needs userId)
-                  scoped.setJSON('google-user', { email, name, picture: avatar })
-                  scoped.setJSON('google-tokens', {
-                    access_token: googleAccessToken,
-                    refresh_token: googleRefreshToken,
-                    expires_at: Date.now() + expiresIn * 1000,
+                  // Store Google data AFTER login — scoped storage needs the
+                  // userId, and storeTokens/storeUser encrypt at rest.
+                  // BUG 49 — never overwrite an existing refresh_token with ''.
+                  const existing = getStoredTokens()
+                  await storeTokens({
+                    access_token: data.access_token,
+                    refresh_token: data.refresh_token || existing?.refresh_token || '',
+                    expires_at: Date.now() + (data.expires_in || 3600) * 1000,
                   })
+                  await storeUser({ email, name, picture: avatar || '' })
                 } catch (err) {
                   console.error('Native Google login error:', err)
+                  // Fall back to the API-key screen (recoverable) AND surface
+                  // the error — the pendingAuth screen renders loginError.
+                  setLoginError(err instanceof Error ? err.message : 'Échec de la connexion Google')
                   setPendingAuth({ method: 'google', displayName: name, email, avatar })
                 } finally {
                   setLoading(false)

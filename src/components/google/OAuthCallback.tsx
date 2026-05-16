@@ -34,9 +34,9 @@ export function OAuthCallback({ onCallback }: OAuthCallbackProps) {
     }
 
     if (code) {
-      onCallback(code).then(() => {
-        navigate('/', { replace: true })
-      })
+      onCallback(code)
+        .then(() => navigate('/', { replace: true }))
+        .catch(() => navigate('/', { replace: true }))
     } else {
       navigate('/', { replace: true })
     }

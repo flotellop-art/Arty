@@ -715,7 +715,16 @@ export default function App() {
         })
         setSplash(getOnboardingSplash())
       } catch (err) {
+        // Stash the error so LoginScreen surfaces it (it drains
+        // 'arty-login-error' on mount) — without this a failed deeplink
+        // login left the user on the login screen with no explanation.
         console.error('Deep link OAuth error:', err)
+        try {
+          sessionStorage.setItem(
+            'arty-login-error',
+            err instanceof Error ? err.message : 'Échec de la connexion Google',
+          )
+        } catch { /* sessionStorage indisponible */ }
       }
       setDeepLinkCode(null)
     }

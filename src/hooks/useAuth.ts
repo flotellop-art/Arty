@@ -11,7 +11,7 @@ import {
 } from '../services/userSession'
 import { setActiveKeys, clearActiveKeys } from '../services/activeApiKey'
 import { initCrypto } from '../services/crypto'
-import { bootstrapGoogleStorage, logout as googleLogout, clearOAuthState } from '../services/googleAuth'
+import { bootstrapGoogleStorage, logout as googleLogout, clearOAuthState, resetGoogleMemCache } from '../services/googleAuth'
 import { wipeFileStorage, bootstrapFileStorage } from '../services/secureFileStorage'
 import * as scoped from '../services/scopedStorage'
 
@@ -138,8 +138,11 @@ export function useAuth() {
     const session = known.find(s => s.userId === userId)
     if (!session) return
 
-    // Clear old keys BEFORE switching session to prevent cross-user leak
+    // Clear old keys AND the in-memory Google token cache BEFORE switching
+    // session — otherwise getStoredTokens() returns the previous account's
+    // tokens during the switch window, before bootstrap repopulates them.
     clearActiveKeys()
+    resetGoogleMemCache()
 
     // Activate new session
     setActiveSession(session)
