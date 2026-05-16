@@ -105,7 +105,7 @@ export function ConversationScreen({
       )}
 
       {(error || browserActions.error || computerActions.error) && (
-        <div className="mx-4 mb-2 px-4 py-2 bg-red-50 border border-red-200 rounded-xl text-sm text-red-600">
+        <div className="mx-4 mb-2 px-4 py-2 bg-red-500/10 border border-red-500/30 rounded-xl text-sm text-red-700 dark:text-red-400">
           {error || browserActions.error || computerActions.error}
         </div>
       )}

@@ -850,12 +850,12 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
 
       {/* Prompt enhancement error (1.0.14) */}
       {enhanceError && (
-        <div className="mb-2 flex items-center gap-2 px-3 py-2 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700">
+        <div className="mb-2 flex items-center gap-2 px-3 py-2 bg-red-500/10 border border-red-500/30 rounded-xl text-xs text-red-700 dark:text-red-400">
           <span>⚠️</span>
           <span className="flex-1 truncate">{enhanceError}</span>
           <button
             onClick={() => setEnhanceError(null)}
-            className="text-red-500 hover:text-red-700"
+            className="text-red-700 dark:text-red-400 hover:opacity-70 transition-opacity"
             aria-label={t('common.close')}
           >
             ✕
@@ -963,7 +963,7 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
         <div
           className={`mb-1 px-2 py-1.5 rounded-lg text-xs flex items-center gap-2 transition-colors ${
             isSwipeCancelling
-              ? 'bg-red-100 text-red-600 font-semibold'
+              ? 'bg-red-500/15 text-red-700 dark:text-red-400 font-semibold'
               : 'bg-theme-ink/5 text-theme-muted'
           }`}
         >

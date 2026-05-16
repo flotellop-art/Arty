@@ -101,14 +101,20 @@ export function TopBar({ onMenuToggle }: TopBarProps) {
           {/* Cost indicator (Feature 13) */}
           <CostIndicator />
 
-          {/* Day/Night toggle — Ember (☀️) ↔ Nocturne (🌙) */}
+          {/* Day/Night toggle — half-filled circle, the standard
+              "appearance" icon. A sun/moon would collide with the settings
+              icon next to it (itself a sunburst); the split circle reads as
+              light/dark unambiguously and matches the line-icon toolbar. */}
           <button
             onClick={handleThemeToggle}
-            className="p-2 rounded-lg hover:bg-theme-ink/5 transition-colors text-base"
+            className="p-2 rounded-lg hover:bg-theme-ink/5 transition-colors text-theme-ink"
             aria-label={theme === 'nocturne' ? 'Mode jour (Ember)' : 'Mode nuit (Nocturne)'}
             title={theme === 'nocturne' ? 'Mode jour (Ember)' : 'Mode nuit (Nocturne)'}
           >
-            {theme === 'nocturne' ? '☀️' : '🌙'}
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+              <circle cx="10" cy="10" r="7.25" stroke="currentColor" strokeWidth="1.5" />
+              <path d="M10 2.75A7.25 7.25 0 0 1 10 17.25Z" fill="currentColor" />
+            </svg>
           </button>
 
           {/* Settings (gear) */}

@@ -36,7 +36,7 @@ export const PlanBadge = memo(function PlanBadge() {
       onClick={() => isFree && navigate('/upgrade')}
       className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] uppercase tracking-kicker font-sans transition-colors ${
         isAlmostExhausted
-          ? 'bg-amber-100 text-amber-800 hover:bg-amber-200'
+          ? 'bg-theme-accent/15 text-theme-accent hover:bg-theme-accent/25'
           : isFree
           ? 'bg-theme-surface text-theme-muted hover:bg-theme-bg hover:text-theme-ink border border-theme-border'
           : 'bg-theme-accent/10 text-theme-accent'

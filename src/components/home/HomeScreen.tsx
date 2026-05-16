@@ -129,9 +129,9 @@ function HomeScreenInner({ onMenuToggle, onSend, isStreaming, googleAuth, userNa
               <googleTooltip.TooltipComponent />
             </div>
             {googleAuth.error && (
-              <div className="mt-3 p-3 bg-red-50 border border-red-300 rounded-lg">
-                <p className="font-sans text-xs text-red-700 font-semibold">{t('home.googleConnectError')}</p>
-                <p className="font-sans text-xs text-red-600 mt-1 break-words">{googleAuth.error}</p>
+              <div className="mt-3 p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
+                <p className="font-sans text-xs text-red-700 dark:text-red-400 font-semibold">{t('home.googleConnectError')}</p>
+                <p className="font-sans text-xs text-red-600 dark:text-red-300/80 mt-1 break-words">{googleAuth.error}</p>
               </div>
             )}
           </div>
