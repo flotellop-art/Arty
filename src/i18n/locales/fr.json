@@ -214,6 +214,23 @@
         "micDeniedNative": "Micro refusé — autorise-le dans Paramètres → Apps → Arty → Autorisations",
         "transcribeFailed": "Transcription échouée — réessaie",
         "unsupported": "Enregistrement audio non supporté sur ce navigateur"
+      },
+      "slashPaletteHeader": "Commandes",
+      "removeFile": "Retirer {{name}}",
+      "chipSuggestion": "Suggestion : {{label}}",
+      "whisperStop": "Arrêter enregistrement",
+      "whisperStart": "Enregistrer audio (Whisper)",
+      "recordingWithDuration": "Enregistrement {{duration}}s",
+      "whisperTooltip": "Enregistrer (Whisper)",
+      "chips": {
+        "brief": { "label": "Brief du jour", "prompt": "Donne-moi un brief de ma journée — ce que je dois savoir, les choses importantes à ne pas oublier." },
+        "writeEmail": { "label": "Rédiger un email", "prompt": "Aide-moi à rédiger un email " },
+        "summarizeText": { "label": "Résumer un texte", "prompt": "Résume-moi ce texte : " },
+        "translateToEn": { "label": "Traduire", "prompt": "Traduis ce texte en anglais : " },
+        "summarize": { "label": "Résumer", "prompt": "Résume-moi ce texte : " },
+        "write": { "label": "Rédiger", "prompt": "Aide-moi à rédiger " },
+        "translate": { "label": "Traduire", "prompt": "Traduis ce texte : " },
+        "explain": { "label": "Expliquer", "prompt": "Explique-moi simplement : " }
       }
     },
     "tone": {
@@ -328,5 +345,14 @@
     "copied": "Copié",
     "exportPdf": "Exporter PDF",
     "reportTitle": "Résumé — {{title}}"
+  },
+  "calendar": {
+    "suggestionPillPrefix": "Créer un événement : ",
+    "create": "Créer",
+    "dismissSuggestion": "Ignorer",
+    "defaultEventTitle": "Événement {{text}}",
+    "newEvent": "Nouvel événement",
+    "eventTitlePlaceholder": "Titre",
+    "addToCalendar": "Ajouter au calendrier"
   }
 }

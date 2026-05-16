@@ -214,6 +214,23 @@
         "micDeniedNative": "Microphone denied — allow it in Settings → Apps → Arty → Permissions",
         "transcribeFailed": "Transcription failed — try again",
         "unsupported": "Audio recording not supported in this browser"
+      },
+      "slashPaletteHeader": "Commands",
+      "removeFile": "Remove {{name}}",
+      "chipSuggestion": "Suggestion: {{label}}",
+      "whisperStop": "Stop recording",
+      "whisperStart": "Record audio (Whisper)",
+      "recordingWithDuration": "Recording {{duration}}s",
+      "whisperTooltip": "Record (Whisper)",
+      "chips": {
+        "brief": { "label": "Daily brief", "prompt": "Give me a brief of my day — what I should know, the important things not to forget." },
+        "writeEmail": { "label": "Draft an email", "prompt": "Help me draft an email " },
+        "summarizeText": { "label": "Summarize text", "prompt": "Summarize this text: " },
+        "translateToEn": { "label": "Translate", "prompt": "Translate this text to French: " },
+        "summarize": { "label": "Summarize", "prompt": "Summarize this text: " },
+        "write": { "label": "Draft", "prompt": "Help me draft " },
+        "translate": { "label": "Translate", "prompt": "Translate this text: " },
+        "explain": { "label": "Explain", "prompt": "Explain simply: " }
       }
     },
     "tone": {
@@ -328,5 +345,14 @@
     "copied": "Copied",
     "exportPdf": "Export PDF",
     "reportTitle": "Summary — {{title}}"
+  },
+  "calendar": {
+    "suggestionPillPrefix": "Create event: ",
+    "create": "Create",
+    "dismissSuggestion": "Dismiss",
+    "defaultEventTitle": "Event {{text}}",
+    "newEvent": "New event",
+    "eventTitlePlaceholder": "Title",
+    "addToCalendar": "Add to calendar"
   }
 }
