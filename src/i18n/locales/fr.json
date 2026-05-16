@@ -354,5 +354,83 @@
     "newEvent": "Nouvel événement",
     "eventTitlePlaceholder": "Titre",
     "addToCalendar": "Ajouter au calendrier"
+  },
+  "settings": {
+    "kicker": "Paramètres",
+    "titleMain": "Tes",
+    "titleAccent": "préférences.",
+    "subtitle": "Notifications, localisation, mémoire, quota.",
+    "notifications": {
+      "title": "Notifications",
+      "description": "Rappels RDV, emails importants",
+      "toggleAria": "Activer ou désactiver les notifications"
+    },
+    "location": {
+      "title": "Localisation",
+      "description": "Recherches de proximité (restaurants, itinéraires, météo)",
+      "toggleAria": "Activer ou désactiver la localisation",
+      "measuring": "Mesure en cours (peut prendre 10s)…",
+      "accuracyGps": "Précision : {{m}} m (GPS) ✓",
+      "accuracyMedium": "Précision : {{m}} m (moyen)",
+      "accuracyPoor": "Précision : ~{{km}} km (Wi-Fi/IP) — imprécis",
+      "accuracyUnknown": "Précision non mesurée",
+      "test": "Tester",
+      "coords": "Coords : {{lat}}° N, {{lon}}° E",
+      "blockedLine1": "⚠️ Ton navigateur a bloqué la géolocalisation pour ce site. Le toggle est ON dans Arty mais Chrome ne va pas demander.",
+      "blockedLine2": "Pour réautoriser : tape l'icône cadenas (à gauche de l'URL Chrome) → Paramètres du site → Localisation → Autoriser. Puis recharge la page.",
+      "viewLastPosition": "Voir dernière position envoyée à Arty"
+    },
+    "enhance": {
+      "title": "Amélioration du prompt",
+      "description": "Reformule ton message avant l'envoi",
+      "modelLabel": "Modèle"
+    },
+    "factChecker": {
+      "description": "Vérifie les claims factuels de chaque réponse",
+      "off": "Désactivé",
+      "auto": "Auto (recommandé)",
+      "haiku": "Toujours rapide (Haiku 4.5)",
+      "sonnet": "Toujours strict (Sonnet 4.6)",
+      "costAuto": "Haiku rapide par défaut, Sonnet strict sur les sujets sensibles (prix, devis, médical, juridique). ~$0.0005-0.0015/message.",
+      "costHaiku": "~$0.0005/message · ajoute 1-2s après chaque réponse",
+      "costSonnet": "~$0.0015/message · ajoute 3-5s · meilleur sur les nuances"
+    },
+    "upgrade": {
+      "description": "Pro à vie, abonnement, pack +100 messages"
+    },
+    "memory": {
+      "title": "Mémoire d'Arty",
+      "description": "Voir et modifier ce qu'Arty sait sur vous"
+    },
+    "memoryHistory": {
+      "title": "Historique mémoire",
+      "description": "Voir et annuler les changements de mémoire"
+    },
+    "costs": {
+      "title": "Mes coûts",
+      "description": "Dashboard mensuel, par modèle, alerte budget, export CSV"
+    },
+    "license": {
+      "title": "Licence Pro",
+      "activatedFor": "Activée pour {{email}}",
+      "prompt": "Active une clé Arty Pro pour débloquer l'accès illimité.",
+      "badge": "Pro · activée",
+      "emailPlaceholder": "ton.email@exemple.com",
+      "keyPlaceholder": "Clé de licence",
+      "activate": "Activer",
+      "activating": "Activation…",
+      "success": "Licence activée ! Tu as maintenant accès à Arty Pro."
+    },
+    "debug": {
+      "title": "Dernière position envoyée à Arty",
+      "snapshot": "Il y a {{seconds}}s — question : « {{message}} »",
+      "accuracy": "Précision : {{m}} m",
+      "noPosition": "Position non disponible (GPS indisponible ou trigger non matché)",
+      "geocodedLabel": "Ville reverse-geocodée :",
+      "geocodingFailed": "Reverse geocoding : non résolu (Google Maps indisponible ou coords en mer) — Arty reçoit juste les coords",
+      "viewBlock": "Voir le bloc complet injecté dans le prompt",
+      "emptyInjected": "(vide — aucun texte injecté)",
+      "noQuery": "Aucune question de localisation posée depuis le démarrage de l'app."
+    }
   }
 }
