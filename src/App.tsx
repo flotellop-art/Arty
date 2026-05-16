@@ -5,6 +5,7 @@ import { useAppSetup } from './hooks/useAppSetup'
 import { useAuth } from './hooks/useAuth'
 import { initCrypto, isCryptoReady } from './services/crypto'
 import { bootstrapGoogleStorage } from './services/googleAuth'
+import { bootstrapConversationStorage } from './services/storage'
 import { getJSON } from './services/scopedStorage'
 import { QuestionModal } from './components/chat/QuestionModal'
 import { MorningBrief } from './components/home/MorningBrief'
@@ -632,7 +633,7 @@ export default function App() {
     const keys = getJSON<{ anthropic?: string }>('api-keys')
     if (!keys?.anthropic) return
     initCrypto(keys.anthropic)
-      .then(() => bootstrapGoogleStorage())
+      .then(() => Promise.all([bootstrapGoogleStorage(), bootstrapConversationStorage()]))
       .catch(() => {
         // Non-fatal: useAuth will retry initCrypto once auth resolves.
       })

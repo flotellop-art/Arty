@@ -36,6 +36,16 @@ export function useConversation() {
   const streaming = useStreaming({ refreshConversations })
   const fileAttachments = useFileAttachments()
 
+  // Conversations are encrypted at rest and decrypted asynchronously after
+  // crypto init. The useState initializer above runs before that finishes,
+  // so on a fresh boot it returns an empty list. Re-read once the decrypted
+  // cache is ready (BUG 43 pattern — listen for the ready event).
+  useEffect(() => {
+    const onReady = () => setConversations(storage.getConversations())
+    window.addEventListener('conversations-storage-ready', onReady)
+    return () => window.removeEventListener('conversations-storage-ready', onReady)
+  }, [])
+
   // Feature 8: detect action items in new assistant messages and suggest as tasks
   const lastScannedRef = useRef<string | null>(null)
   useEffect(() => {
