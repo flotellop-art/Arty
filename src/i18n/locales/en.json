@@ -222,6 +222,10 @@
     },
     "model": {
       "auto": "Auto"
+    },
+    "messageList": {
+      "branch": "Branch from this message",
+      "scrollDown": "Scroll down"
     }
   },
   "errors": {
@@ -257,6 +261,42 @@
       "days": "{{count}}d ago"
     },
     "deleteAria": "Delete",
-    "language": "Language"
+    "language": "Language",
+    "userFallback": "User",
+    "importConversation": "Import a JSON conversation",
+    "importFailed": "Import failed",
+    "searchPlaceholder": "Search...",
+    "searchResults": "Results",
+    "recent": "Recent",
+    "chipImport": "Import",
+    "chipTasks": "Tasks",
+    "chipEU": "Secure EU",
+    "templates": "Industry templates",
+    "clearSearch": "Clear",
+    "pinned": "Pinned ({{count}})",
+    "noResults": "No results",
+    "euTooltip": "Europe mode — data kept in France",
+    "apiKeys": "API keys",
+    "settings": "Settings"
+  },
+  "tasks": {
+    "title": "Tasks",
+    "addPlaceholder": "Add a task...",
+    "empty": "No tasks",
+    "pending": "In progress ({{count}})",
+    "done": "Done ({{count}})",
+    "markDone": "Mark as done",
+    "markUndone": "Mark as not done",
+    "delete": "Delete"
+  },
+  "costs": {
+    "badgeTitle": "Real API cost (this month)",
+    "badgeAria": "API cost",
+    "modalTitle": "API cost",
+    "totalThisMonth": "Total this month ({{month}})",
+    "tokensLine": "{{input}} input tokens · {{output}} output · {{calls}} calls",
+    "byModel": "By model",
+    "noUsage": "No usage this month",
+    "modelLine": "{{input}}↓ · {{output}}↑ · {{count}} calls"
   }
 }

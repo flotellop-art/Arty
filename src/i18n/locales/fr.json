@@ -222,6 +222,10 @@
     },
     "model": {
       "auto": "Auto"
+    },
+    "messageList": {
+      "branch": "Créer une branche depuis ce message",
+      "scrollDown": "Descendre"
     }
   },
   "errors": {
@@ -257,6 +261,42 @@
       "days": "il y a {{count}}j"
     },
     "deleteAria": "Supprimer",
-    "language": "Langue"
+    "language": "Langue",
+    "userFallback": "Utilisateur",
+    "importConversation": "Importer une conversation JSON",
+    "importFailed": "Import échoué",
+    "searchPlaceholder": "Rechercher...",
+    "searchResults": "Résultats",
+    "recent": "Récent",
+    "chipImport": "Importer",
+    "chipTasks": "Tâches",
+    "chipEU": "EU sécurisé",
+    "templates": "Templates métier",
+    "clearSearch": "Effacer",
+    "pinned": "Épinglés ({{count}})",
+    "noResults": "Aucun résultat",
+    "euTooltip": "Mode Europe — données restées en France",
+    "apiKeys": "Clés API",
+    "settings": "Paramètres"
+  },
+  "tasks": {
+    "title": "Tâches",
+    "addPlaceholder": "Ajouter une tâche...",
+    "empty": "Aucune tâche",
+    "pending": "En cours ({{count}})",
+    "done": "Terminées ({{count}})",
+    "markDone": "Marquer comme terminée",
+    "markUndone": "Marquer comme non terminée",
+    "delete": "Supprimer"
+  },
+  "costs": {
+    "badgeTitle": "Coût API réel (ce mois)",
+    "badgeAria": "Coût API",
+    "modalTitle": "Coût API",
+    "totalThisMonth": "Total ce mois-ci ({{month}})",
+    "tokensLine": "{{input}} tokens entrée · {{output}} sortie · {{calls}} appels",
+    "byModel": "Par modèle",
+    "noUsage": "Aucune utilisation ce mois-ci",
+    "modelLine": "{{input}}↓ · {{output}}↑ · {{count}} appels"
   }
 }

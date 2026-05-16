@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   fetchMonthlyQuotaStatus,
   type MonthlyModelUsage,
@@ -12,6 +13,7 @@ import {
 const REFRESH_MS = 5 * 60_000
 
 export function CostIndicator() {
+  const { t } = useTranslation()
   const [data, setData] = useState<MonthlyQuotaStatus | null>(null)
   const [showDetails, setShowDetails] = useState(false)
 
@@ -42,8 +44,8 @@ export function CostIndicator() {
       <button
         onClick={() => setShowDetails(true)}
         className={`px-2 py-1 text-[11px] font-mono font-semibold rounded-md hover:bg-theme-ink/5 transition-colors ${color}`}
-        title="Coût API réel (ce mois)"
-        aria-label="Coût API"
+        title={t('costs.badgeTitle')}
+        aria-label={t('costs.badgeAria')}
       >
         ~${cost.toFixed(2)}
       </button>
@@ -59,6 +61,7 @@ interface CostModalProps {
 }
 
 function CostModal({ data, onRefresh, onClose }: CostModalProps) {
+  const { t } = useTranslation()
   // Refresh à l'ouverture pour avoir le chiffre le plus frais possible.
   useEffect(() => { onRefresh() }, [onRefresh])
 
@@ -68,8 +71,8 @@ function CostModal({ data, onRefresh, onClose }: CostModalProps) {
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-theme-ink/50" onClick={onClose}>
       <div className="bg-theme-surface rounded-2xl shadow-xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-theme-border">
-          <h2 className="font-display text-lg text-theme-ink">💰 Coût API</h2>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-theme-ink/5 text-theme-muted" aria-label="Fermer">
+          <h2 className="font-display text-lg text-theme-ink">💰 {t('costs.modalTitle')}</h2>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-theme-ink/5 text-theme-muted" aria-label={t('common.close')}>
             <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
               <path d="M4 4L14 14M14 4L4 14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
             </svg>
@@ -77,16 +80,16 @@ function CostModal({ data, onRefresh, onClose }: CostModalProps) {
         </div>
         <div className="p-5">
           <div className="mb-4 pb-4 border-b border-theme-border">
-            <p className="text-[10px] uppercase tracking-wider text-theme-muted">Total ce mois-ci ({data.month})</p>
+            <p className="text-[10px] uppercase tracking-wider text-theme-muted">{t('costs.totalThisMonth', { month: data.month })}</p>
             <p className="text-3xl font-display font-medium text-theme-accent mt-1">${data.totalCostUsd.toFixed(4)}</p>
             <p className="text-xs text-theme-muted mt-1">
-              {data.totalInputTokens.toLocaleString()} tokens entrée · {data.totalOutputTokens.toLocaleString()} sortie · {data.totalCalls} appels
+              {t('costs.tokensLine', { input: data.totalInputTokens.toLocaleString(), output: data.totalOutputTokens.toLocaleString(), calls: data.totalCalls })}
             </p>
           </div>
 
-          <p className="text-[10px] uppercase tracking-wider text-theme-muted mb-2">Par modèle</p>
+          <p className="text-[10px] uppercase tracking-wider text-theme-muted mb-2">{t('costs.byModel')}</p>
           {byModel.length === 0 ? (
-            <p className="text-sm text-theme-muted text-center py-4">Aucune utilisation ce mois-ci</p>
+            <p className="text-sm text-theme-muted text-center py-4">{t('costs.noUsage')}</p>
           ) : (
             <ul className="space-y-2">
               {byModel.map((m) => (
@@ -95,7 +98,7 @@ function CostModal({ data, onRefresh, onClose }: CostModalProps) {
                   <div className="text-right">
                     <p className="font-mono font-semibold">${m.costUsd.toFixed(4)}</p>
                     <p className="text-[10px] text-theme-muted">
-                      {m.inputTokens.toLocaleString()}↓ · {m.outputTokens.toLocaleString()}↑ · {m.count} appels
+                      {t('costs.modelLine', { input: m.inputTokens.toLocaleString(), output: m.outputTokens.toLocaleString(), count: m.count })}
                     </p>
                   </div>
                 </li>

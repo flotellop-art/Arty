@@ -167,7 +167,7 @@ export function Sidebar({
       onImportConversation?.(id)
       onClose()
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Import échoué')
+      alert(err instanceof Error ? err.message : t('sidebar.importFailed'))
     }
     if (importInputRef.current) importInputRef.current.value = ''
   }
@@ -251,7 +251,7 @@ export function Sidebar({
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
               <path d="M12 15l-3.5-3.5h2.5V4h2v7.5H15zM4 17h16" />
             </svg>
-            Importer
+            {t('sidebar.chipImport')}
           </button>
           <input
             ref={importInputRef}
@@ -268,7 +268,7 @@ export function Sidebar({
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
               <path d="M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" />
             </svg>
-            Tâches
+            {t('sidebar.chipTasks')}
             {pendingTasks > 0 && (
               <span className="absolute top-1 right-1 bg-theme-accent text-theme-bg text-[9px] font-bold rounded-full min-w-[14px] h-3.5 flex items-center justify-center px-1">
                 {pendingTasks}
@@ -286,7 +286,7 @@ export function Sidebar({
               title={t('sidebar.newConversationEU')}
             >
               <span className="text-sm leading-none">🇪🇺</span>
-              EU sécurisé
+              {t('sidebar.chipEU')}
             </button>
           )}
         </div>
@@ -306,7 +306,7 @@ export function Sidebar({
                 <rect x="3" y="4" width="18" height="16" rx="2" />
                 <path d="M3 10h18M9 4v16" />
               </svg>
-              <span className="flex-1 text-left">Templates métier</span>
+              <span className="flex-1 text-left">{t('sidebar.templates')}</span>
               <span
                 className="text-[9px] font-bold uppercase tracking-[0.12em] px-1.5 py-0.5 rounded"
                 style={{ background: 'rgb(var(--theme-accent) / 0.15)', color: 'rgb(var(--theme-accent))' }}
@@ -336,7 +336,7 @@ export function Sidebar({
               <button
                 onClick={() => setSearchRaw('')}
                 className="text-theme-muted hover:text-theme-ink text-xs"
-                aria-label="Effacer"
+                aria-label={t('sidebar.clearSearch')}
               >
                 ✕
               </button>
@@ -348,7 +348,7 @@ export function Sidebar({
         {pinned.length > 0 && !debouncedSearch && (
           <div className="px-4 pb-2 flex-shrink-0">
             <p className="text-[9.5px] font-bold uppercase tracking-[0.12em] text-theme-muted mb-1.5 px-2">
-              Épinglés ({pinned.length})
+              {t('sidebar.pinned', { count: pinned.length })}
             </p>
             <div className="max-h-24 overflow-y-auto">
               {pinned.map((p) => (
@@ -377,7 +377,7 @@ export function Sidebar({
           </div>
           {filteredConversations.length === 0 && (
             <div className="px-3 py-5 text-center text-theme-muted text-xs">
-              {debouncedSearch ? 'Aucun résultat' : t('sidebar.emptyList')}
+              {debouncedSearch ? t('sidebar.noResults') : t('sidebar.emptyList')}
             </div>
           )}
           {filteredConversations.map((conv) => {
@@ -435,7 +435,7 @@ export function Sidebar({
                   {(previewClean || conv.euOnly || dominantModel) && (
                     <div className="flex items-center gap-1.5 mt-0.5">
                       {conv.euOnly && (
-                        <span className="text-[9px] flex-shrink-0" title="Mode Europe — données restées en France">🇪🇺</span>
+                        <span className="text-[9px] flex-shrink-0" title={t('sidebar.euTooltip')}>🇪🇺</span>
                       )}
                       {previewClean && (
                         <span className="text-[11px] text-theme-muted italic truncate">
@@ -501,7 +501,7 @@ export function Sidebar({
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M15 7a4 4 0 11-3.465 6L8 16.535V19H5v-3l6.535-6.535A4 4 0 0115 7z" />
               </svg>
-              Clés API
+              {t('sidebar.apiKeys')}
             </button>
             <button
               onClick={() => setShowSettings(true)}
@@ -512,7 +512,7 @@ export function Sidebar({
                 <circle cx="12" cy="12" r="3" />
                 <path d="M19.4 15a1.7 1.7 0 00.34 1.87l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.7 1.7 0 00-1.87-.34 1.7 1.7 0 00-1.03 1.56V21a2 2 0 11-4 0v-.09a1.7 1.7 0 00-1.11-1.56 1.7 1.7 0 00-1.87.34l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.7 1.7 0 00.34-1.87 1.7 1.7 0 00-1.56-1.03H3a2 2 0 110-4h.09a1.7 1.7 0 001.56-1.11 1.7 1.7 0 00-.34-1.87l-.06-.06a2 2 0 112.83-2.83l.06.06a1.7 1.7 0 001.87.34h.01A1.7 1.7 0 0010 3.09V3a2 2 0 114 0v.09a1.7 1.7 0 001.03 1.56 1.7 1.7 0 001.87-.34l.06-.06a2 2 0 112.83 2.83l-.06.06a1.7 1.7 0 00-.34 1.87v.01A1.7 1.7 0 0020.91 10H21a2 2 0 110 4h-.09a1.7 1.7 0 00-1.56 1.03z" />
               </svg>
-              Paramètres
+              {t('sidebar.settings')}
             </button>
           </div>
 
