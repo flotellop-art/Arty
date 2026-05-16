@@ -485,13 +485,12 @@ rotation est la source des BUG 43/47/48, 6 edge-cases critiques identifiés, gai
 quasi nul (le secret cohabiterait avec les blobs qu'il protège). Fix propre si on
 y revient = `CryptoKey` non-extractible (`crypto.subtle.generateKey`,
 `extractable: false`) en IndexedDB — supprime passphrase/PBKDF2/salt et toute la
-classe de bugs de rotation. Différé. ⚠️ Le même raisonnement (sandbox OS) allège le
-point « Chiffrement des conversations en localStorage » ci-dessous : le ré-examiner
-avant de le traiter comme un bloquant critique.
+classe de bugs de rotation. Différé. Le même raisonnement (sandbox OS) a servi aussi à cadrer le chiffrement
+des conversations — implémenté le 16 mai, voir « PR à venir » ci-dessous.
 
 **PR à venir (planifiées)** :
 - [ ] **PR 2 — PKCE OAuth** : ajout du `code_verifier` + `code_challenge` au flow Google web. Stratégie en 2 PRs validée le 4 mai (state CSRF d'abord en PR #128, PKCE ensuite). Coût ~2h, confiance 80%. Touche `googleAuth.ts:buildOAuthUrl()` (devient async), `OAuthCallback.tsx`, `functions/api/auth/token.ts` (forward `code_verifier` à Google). Suivre les patterns du callback double (web + deeplink) déjà éprouvés en PR #128.
-- [ ] **Chiffrement des conversations en localStorage** : aujourd'hui en clair (BUG 16 a forcé `saveConversation` synchrone, le chiffrement async cassait l'UI). Solution propre = Web Worker pour chiffrer en arrière-plan sans bloquer le main thread. Coût ~1 jour. Risque = ouverture d'un téléphone volé permet de lire toutes les conversations (mais pas de faire des requêtes — tokens chiffrés).
+- [x] **Chiffrement des conversations en localStorage** — FAIT (16 mai). Chiffrées AES-256 sous `conversations-enc` ; cache mémoire déchiffré pour garder `saveConversation` synchrone (BUG 16), write-through avec filet clair synchrone, migration auto des conversations en clair, JAMAIS de wipe sur échec de déchiffrement, killswitch `arty-conv-encryption-disabled`. PAS de Web Worker — le diagnostic « le chiffrement async cassait l'UI » était faux : c'est rendre `saveConversation` lui-même async qui cassait l'UI ; le cache mémoire (pattern memTokens) résout ça. Round-trip vérifié en navigateur réel.
 
 **HIGH backend non traités (audit du 4 mai)** :
 - [ ] **License expiration jamais vérifiée** dans `functions/api/subscription/status.ts:117-128` — query `licenses WHERE status = 'active'` sans `expires_at > NOW()`. Risque = perte de revenu, pas sécu directe.
@@ -510,16 +509,9 @@ avant de le traiter comme un bloquant critique.
 - ✅ **Contrastes `text-theme-ink/60` et `/70`** remontés à `/80` (29 occurrences) pour respecter WCAG AA tout en gardant le rôle "texte secondaire". `/80`+ et `/90` conservés.
 - [ ] À monitorer : vérifier visuellement sur APK + PWA que le rendu n'est pas "trop dur" — certains designs intentionnels (hover state grisé, placeholder) peuvent avoir besoin d'un ajustement fin. Ouvrir une PR de polish si besoin.
 
-**MED i18n restant à migrer (audit du 11 mai, étape 11 partielle)** :
-- [ ] **Sidebar.tsx** : "Importer", "Tâches", "EU sécurisé", "Clés API", "Paramètres", "Épinglés (n)", "Aucun résultat" hardcodés FR
-- [ ] **ConversationSummaryModal.tsx** : titre, états loading/copied, boutons, prompt système LLM
-- [ ] **MessageList.tsx** : "↓ Descendre", "Créer une branche depuis ce message"
-- [ ] **SettingsModal.tsx** : "Paramètres" header, descriptions sections, guidance géoloc/notifs
-- [ ] **CostIndicator.tsx** : "Total ce mois-ci", "Par modèle", "appels"
-- [ ] **TaskPanel.tsx** : "Aucune tâche", placeholders
-- [ ] **CalendarMiniForm** (dans InputBar) : entièrement FR
-- [ ] **EmailCard / CalendarView / DriveFileCard / MorningBrief** : remplacer `toLocaleDateString('fr-FR')` par `formatDate()` du helper `src/utils/formatDate.ts`
-- [ ] **calendarTools / conversationExport / reportGenerator** : pareil, locale hardcodée
+**i18n — migration anglaise : FAITE (16 mai)** :
+- ✅ Toute l'UI visible est bilingue FR/EN, vérifiée écran par écran en captures Chromium : dates locale-aware (`getDateLocale()`), Sidebar, TaskPanel, CostIndicator, MessageList, MorningBrief, ConversationSummaryModal, GoogleConnectButton, SettingsModal, InputBar (chips / mini-form calendrier / Whisper), écrans Coûts et Upgrade.
+- [ ] Hors scope (décision utilisateur) : les ~80 chaînes `result:` des services outils — renvoyées au LLM comme contexte, jamais affichées à l'utilisateur, aucun impact observable.
 
 **LOW à nettoyer avant Play Store** :
 - [ ] **Debug `console.log` avec emails** dans `useGoogleAuth.ts:117-195` — wrap en `if (import.meta.env.DEV)`.
