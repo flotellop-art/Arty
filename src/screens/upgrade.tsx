@@ -10,6 +10,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { openCheckout, type CheckoutPlan } from '../services/checkout'
 import { getValidAccessToken, getStoredUser } from '../services/googleAuth'
@@ -37,6 +38,7 @@ interface SubscriptionStatusResponse {
 }
 
 export function UpgradeScreen({ onBack, currentPlan, email }: UpgradeScreenProps) {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const [params] = useSearchParams()
   const scrollToPremiumPack = params.get('scroll') === 'premium'
@@ -65,7 +67,7 @@ export function UpgradeScreen({ onBack, currentPlan, email }: UpgradeScreenProps
     try {
       const token = await getValidAccessToken()
       if (!token) {
-        setStatus({ kind: 'error', message: 'Connecte-toi avec Google pour vérifier ton abonnement.' })
+        setStatus({ kind: 'error', message: t('upgrade.errorNoToken') })
         return
       }
       const res = await fetch(apiUrl('/api/subscription/status'), {
@@ -91,7 +93,7 @@ export function UpgradeScreen({ onBack, currentPlan, email }: UpgradeScreenProps
     if (!resolvedEmail) {
       setStatus({
         kind: 'error',
-        message: "Aucun email trouvé. Connecte-toi avec Google d'abord.",
+        message: t('upgrade.errorNoEmail'),
       })
       return
     }
@@ -118,7 +120,7 @@ export function UpgradeScreen({ onBack, currentPlan, email }: UpgradeScreenProps
         <button
           type="button"
           onClick={onBack}
-          aria-label="Retour"
+          aria-label={t('upgrade.back')}
           className="p-2 -ml-2 rounded hover:bg-theme-ink/5 text-theme-ink"
         >
           <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
@@ -132,17 +134,17 @@ export function UpgradeScreen({ onBack, currentPlan, email }: UpgradeScreenProps
           </svg>
         </button>
         <span className="font-sans text-[10px] font-semibold uppercase tracking-kicker text-theme-muted">
-          Mise à niveau
+          {t('upgrade.headerTitle')}
         </span>
       </header>
 
       <div className="max-w-3xl mx-auto px-5 pt-8 pb-12 space-y-6">
         <div>
           <h1 className="font-display font-medium text-[32px] sm:text-[38px] leading-[1.05] -tracking-[0.02em] text-theme-ink">
-            Choisis ta <span className="italic text-theme-accent">formule.</span>
+            {t('upgrade.heroMain')} <span className="italic text-theme-accent">{t('upgrade.heroAccent')}</span>
           </h1>
           <p className="font-display italic text-theme-muted text-base mt-2">
-            Pas d'engagement. Tu peux changer plus tard.
+            {t('upgrade.heroSubtitle')}
           </p>
         </div>
 
@@ -167,7 +169,7 @@ export function UpgradeScreen({ onBack, currentPlan, email }: UpgradeScreenProps
         )}
 
         <p className="font-display italic text-[11px] text-theme-muted text-center pt-4">
-          Paiement sécurisé via Lemon Squeezy. TVA incluse.
+          {t('upgrade.legal')}
         </p>
       </div>
     </div>
@@ -177,6 +179,7 @@ export function UpgradeScreen({ onBack, currentPlan, email }: UpgradeScreenProps
 // ─── Status banner ──────────────────────────────────────────────────────────
 
 function StatusBanner({ status }: { status: StatusResult }) {
+  const { t } = useTranslation()
   if (status.kind === 'idle') return null
 
   if (status.kind === 'checking') {
@@ -184,7 +187,7 @@ function StatusBanner({ status }: { status: StatusResult }) {
       <div className="rounded-sm border border-theme-border bg-theme-surface px-4 py-3 flex items-center gap-3">
         <Spinner />
         <span className="font-display italic text-sm text-theme-muted">
-          Vérification de ton abonnement…
+          {t('upgrade.statusChecking')}
         </span>
       </div>
     )
@@ -194,7 +197,7 @@ function StatusBanner({ status }: { status: StatusResult }) {
     return (
       <div className="rounded-sm border border-theme-accent/60 bg-theme-surface px-4 py-3">
         <p className="font-display text-sm text-theme-ink">
-          ✓ Abonnement activé&nbsp;!
+          {t('upgrade.statusActive')}
           <span className="font-display italic text-theme-muted ml-2">({status.plan})</span>
         </p>
       </div>
@@ -204,9 +207,9 @@ function StatusBanner({ status }: { status: StatusResult }) {
   if (status.kind === 'pending') {
     return (
       <div className="rounded-sm border border-theme-border bg-theme-surface px-4 py-3">
-        <p className="font-display text-sm text-theme-ink">En attente</p>
+        <p className="font-display text-sm text-theme-ink">{t('upgrade.statusPendingTitle')}</p>
         <p className="font-display italic text-xs text-theme-muted mt-0.5">
-          La confirmation peut prendre une minute. Reviens dans quelques instants.
+          {t('upgrade.statusPendingBody')}
         </p>
       </div>
     )
@@ -261,14 +264,15 @@ interface FreeBYOKCardProps {
 }
 
 function FreeBYOKCard({ isCurrent, onClick }: FreeBYOKCardProps) {
+  const { t } = useTranslation()
   return (
     <CardShell>
       <h2 className="font-display text-[22px] leading-tight font-medium text-theme-ink">
         Free / BYOK
       </h2>
-      <p className="mt-2 font-display text-2xl text-theme-ink">Gratuit</p>
+      <p className="mt-2 font-display text-2xl text-theme-ink">{t('upgrade.byokPrice')}</p>
       <p className="mt-3 font-sans text-sm text-theme-muted leading-relaxed">
-        Ta propre clé API · Tous les modèles · Stockage local
+        {t('upgrade.byokDescription')}
       </p>
       <button
         type="button"
@@ -276,7 +280,7 @@ function FreeBYOKCard({ isCurrent, onClick }: FreeBYOKCardProps) {
         disabled={isCurrent}
         className="mt-6 w-full py-3.5 font-display italic text-base font-medium tracking-[0.02em] bg-theme-ink text-theme-bg rounded-sm transition-opacity hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
       >
-        {isCurrent ? 'Mode actuel' : 'Passer en BYOK'}
+        {isCurrent ? t('upgrade.currentPlan') : t('upgrade.byokCta')}
       </button>
     </CardShell>
   )
@@ -288,15 +292,16 @@ interface ProCardProps {
 }
 
 function ProCard({ isCurrent, onBuy }: ProCardProps) {
+  const { t } = useTranslation()
   return (
-    <CardShell highlight badge="Populaire">
+    <CardShell highlight badge={t('upgrade.proBadge')}>
       <h2 className="font-display text-[22px] leading-tight font-medium text-theme-ink">
         Arty Pro
       </h2>
-      <p className="mt-2 font-display text-2xl text-theme-ink">39€ une fois</p>
-      <p className="font-display italic text-xs text-theme-muted mt-1">À vie, 3 appareils</p>
+      <p className="mt-2 font-display text-2xl text-theme-ink">{t('upgrade.proPrice')}</p>
+      <p className="font-display italic text-xs text-theme-muted mt-1">{t('upgrade.proTagline')}</p>
       <p className="mt-3 font-sans text-sm text-theme-muted leading-relaxed">
-        Tout le Free · Templates métier · Support prioritaire · Pas d'abonnement
+        {t('upgrade.proDescription')}
       </p>
       <button
         type="button"
@@ -304,7 +309,7 @@ function ProCard({ isCurrent, onBuy }: ProCardProps) {
         disabled={isCurrent}
         className="mt-6 w-full py-3.5 font-display italic text-base font-medium tracking-[0.02em] bg-theme-accent text-theme-bg rounded-sm transition-opacity hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
       >
-        {isCurrent ? 'Mode actuel' : 'Acheter Arty Pro'}
+        {isCurrent ? t('upgrade.currentPlan') : t('upgrade.proCta')}
       </button>
     </CardShell>
   )
@@ -316,14 +321,15 @@ interface SubscriptionCardProps {
 }
 
 function SubscriptionCard({ isCurrent, onSubscribe }: SubscriptionCardProps) {
+  const { t } = useTranslation()
   return (
     <CardShell>
       <h2 className="font-display text-[22px] leading-tight font-medium text-theme-ink">
         Arty Subscription
       </h2>
-      <p className="mt-2 font-display text-2xl text-theme-ink">9,99€/mois</p>
+      <p className="mt-2 font-display text-2xl text-theme-ink">{t('upgrade.subscriptionPrice')}</p>
       <p className="mt-3 font-sans text-sm text-theme-muted leading-relaxed">
-        Sans clé API · 500 messages/mois · Claude, GPT-5-mini, Gemini, Mistral
+        {t('upgrade.subscriptionDescription')}
       </p>
       <button
         type="button"
@@ -331,7 +337,7 @@ function SubscriptionCard({ isCurrent, onSubscribe }: SubscriptionCardProps) {
         disabled={isCurrent}
         className="mt-6 w-full py-3.5 font-display italic text-base font-medium tracking-[0.02em] bg-theme-ink text-theme-bg rounded-sm transition-opacity hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
       >
-        {isCurrent ? 'Mode actuel' : "S'abonner"}
+        {isCurrent ? t('upgrade.currentPlan') : t('upgrade.subscriptionCta')}
       </button>
     </CardShell>
   )
@@ -342,24 +348,25 @@ interface PremiumPackCardProps {
 }
 
 function PremiumPackCard({ onBuy }: PremiumPackCardProps) {
+  const { t } = useTranslation()
   return (
     <CardShell>
       <span className="font-sans text-[10px] font-semibold uppercase tracking-kicker text-theme-muted">
-        Quota dépassé ?
+        {t('upgrade.premiumPackEyebrow')}
       </span>
       <h2 className="mt-2 font-display text-[20px] leading-tight font-medium text-theme-ink">
-        Pack +100 messages premium
+        {t('upgrade.premiumPackTitle')}
       </h2>
-      <p className="mt-2 font-display text-xl text-theme-ink">1,99€</p>
+      <p className="mt-2 font-display text-xl text-theme-ink">{t('upgrade.premiumPackPrice')}</p>
       <p className="mt-3 font-sans text-sm text-theme-muted leading-relaxed">
-        Pour les utilisateurs Subscription qui ont atteint leur quota mensuel.
+        {t('upgrade.premiumPackDescription')}
       </p>
       <button
         type="button"
         onClick={onBuy}
         className="mt-6 w-full py-3 font-display italic text-base font-medium tracking-[0.02em] bg-theme-accent text-theme-bg rounded-sm transition-opacity hover:opacity-90"
       >
-        Acheter 100 messages
+        {t('upgrade.premiumPackCta')}
       </button>
     </CardShell>
   )
