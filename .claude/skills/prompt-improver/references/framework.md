@@ -68,9 +68,9 @@ Six principles for transforming prompts:
 - Include what to avoid (negative prompting)
 - Reference specific artists/styles if needed
 
-## 7. Aristotelian First Principles (Optional)
+## 7. Aristotelian First Principles (Always Active)
 
-When the user requests "Aristotelian", "first principles", or "proof-based" mode, the improved prompt **instructs the receiving LLM to reason from first principles** during task execution. See references/aristotelian.md for the full methodology.
+Every improved prompt **instructs the receiving LLM to reason from first principles** during task execution. The six principles above shape the *content quality* of the prompt; the Aristotelian structure is the *scaffold* that content is always delivered in. See references/aristotelian.md for the full methodology.
 
 **Core idea:** Instead of just improving surface-level clarity, produce a prompt that tells the LLM to decompose the task into atomic truths, verify them, and build its entire solution deductively from those truths. The prompt-improver bakes in known context (system capabilities, tools, domain constraints) as given axioms so the LLM does not hallucinate them.
 

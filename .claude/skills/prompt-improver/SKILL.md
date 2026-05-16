@@ -1,6 +1,6 @@
 ---
 name: prompt-improver
-description: Optimize prompts for better AI responses. Use when user asks to improve a prompt, refine a prompt, make a prompt better, optimize prompting, "Aristotelian", "first principles", or "proof-based" , review their prompt, or says "/improve-prompt". Transforms vague requests into clear, specific, actionable, logic-based prompts.
+description: Optimize prompts for better AI responses. Use when the user asks to improve, refine, review, or optimize a prompt — in English ("improve a prompt", "refine a prompt", "make a prompt better", "optimize prompting", "Aristotelian", "first principles", "proof-based", "review my prompt", "/improve-prompt") or in French ("améliore ce prompt", "améliore mon prompt", "optimise ce prompt", "affine ce prompt", "rends ce prompt meilleur", "revois mon prompt", "premiers principes", "aristotélicien", "raisonnement par premiers principes"). Transforms vague requests into clear, specific, actionable, logic-based prompts.
 ---
 
 # Prompt Improver
@@ -21,7 +21,7 @@ Transform vague prompts into clear, specific, actionable ones for better AI resp
 
 ## Aristotelian Mode (First Principles)
 
-Always actived. produce a prompt that **instructs the receiving LLM to reason from first principles** when executing the task.
+Always activated. The skill always produces a prompt that **instructs the receiving LLM to reason from first principles** when executing the task.
 
 The prompt-improver does NOT do the Aristotelian reasoning itself. It crafts a prompt that tells the LLM to:
 

@@ -1,5 +1,7 @@
 # Before/After Examples
 
+Examples 1-5 isolate the *clarity* transformation — how vague content becomes specific, scoped, and testable. The skill always delivers that improved content inside the Aristotelian structure (reasoning directive, given axioms, task, method, verification) shown in Example 6 and detailed in references/aristotelian.md.
+
 ## Example 1: Vague to Specific
 
 **Before:**

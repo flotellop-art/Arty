@@ -1,6 +1,6 @@
 # Aristotelian First Principles Mode
 
-A prompt design methodology that instructs the **receiving LLM** to reason from first principles when executing a task. Rooted in Aristotle's *Posterior Analytics*. Activated only when the user explicitly requests "Aristotelian reasoning" or "first principles mode".
+A prompt design methodology that instructs the **receiving LLM** to reason from first principles when executing a task. Rooted in Aristotle's *Posterior Analytics*. This mode is always active — every prompt the skill produces is built with it.
 
 ## Core Concept
 
@@ -111,16 +111,12 @@ Embedding first-principles reasoning instructions in prompts works because:
 - **Structures attention**: The hierarchical axiom-then-deduction structure helps the model focus on relevant context per step
 - **Prevents drift**: Without first principles, LLMs tend to drift toward "most likely" patterns from training; axioms anchor the reasoning to the specific task
 
-## When to Use This Mode
+## Scaling the Structure to the Task
 
-- Tasks where precision and correctness matter more than speed
-- Complex multi-step work where a wrong foundation cascades into failure
-- When the user wants the LLM to show its reasoning and justify every decision
-- Infrastructure, deployment, security, or data integrity tasks
-- When the user explicitly says "Aristotelian", "first principles", or "proof-based"
+This mode is always active, but the *depth* of the structure scales with the task:
 
-## When NOT to Use This Mode
+- **Complex, high-stakes work** — infrastructure, deployment, security, data integrity, or multi-step tasks where a wrong foundation cascades into failure — uses the full structure: axiom discovery, interrogation, deductive build, and verification.
+- **Simple prompts** (a single function, a quick fix) keep the structure lightweight: a short reasoning directive and two or three given axioms are enough. Do not pad with ceremony.
+- **Creative or open-ended tasks** use axioms to frame constraints and goals, not to over-constrain the creative space.
 
-- Simple prompt improvements (use the standard framework)
-- Creative/open-ended tasks where rigid logical structure over-constrains
-- Quick mode requests
+In every case the prompt still tells the LLM to reason from first principles and trace each decision to a stated axiom.
