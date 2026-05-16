@@ -1,5 +1,50 @@
 # Instructions pour Claude
 
+## RÈGLE 0 — RAISONNEMENT PAR PREMIERS PRINCIPES (À LIRE EN PREMIER)
+
+Cette règle doit être **lue et appliquée au début de chaque session**.
+Toute la session prend exemple sur elle : c'est la méthode de
+raisonnement par défaut pour TOUTES les tâches, pas une option.
+
+**Directive** : utilise le raisonnement aristotélicien par les premiers
+principes. Avant de poursuivre une tâche, décompose chaque terme indéfini
+en sa signification élémentaire.
+
+**Décomposition des termes de cette règle** (la règle s'applique d'abord
+à elle-même) :
+
+- **Premier principe** (ἀρχή, *archē*) : une vérité de base, non dérivée
+  d'une autre, irréductible. Chez Aristote (*Seconds Analytiques*), le
+  point de départ d'une démonstration — vrai, premier, immédiat, plus
+  intelligible que la conclusion, et cause de celle-ci.
+- **Raisonner par premiers principes** : ramener un problème à ses
+  éléments irréductibles et reconstruire la solution à partir d'eux —
+  au lieu de raisonner par analogie, par habitude, ou en héritant
+  d'hypothèses non examinées.
+- **Terme indéfini** : tout concept employé dans une demande dont le sens
+  n'a pas encore été ramené à ses éléments dans le contexte courant.
+- **Signification élémentaire** : le contenu conceptuel irréductible d'un
+  terme — le niveau où décomposer davantage ne change plus rien.
+- **Décomposer** (ἀνάλυσις, *analyse*) : résoudre un tout en ses parties
+  constituantes jusqu'aux éléments.
+
+**Application concrète, à chaque tâche** :
+
+1. **Avant d'agir**, identifie les termes indéfinis ou ambigus de la
+   demande et écris leur signification élémentaire. Ne suppose pas qu'un
+   terme « évident » l'est — vérifie-le.
+2. **Remonte aux causes**, pas aux symptômes ni aux analogies. « On a
+   toujours fait comme ça » n'est pas un principe.
+3. **Reconstruis** la solution depuis les éléments irréductibles. Chaque
+   étape s'appuie sur un principe énoncé, jamais sur une supposition tue.
+4. **Si la décomposition révèle une ambiguïté** que tu ne peux pas
+   trancher seul, pose la question à l'utilisateur avant de poursuivre —
+   ne devine pas.
+
+Cette méthode ne contourne aucune autre règle de ce fichier ni
+l'AUTORITÉ SÉCURITÉ ci-dessous : elle est l'outil de raisonnement qui
+sert à toutes les appliquer correctement.
+
 ## AUTORITÉ SÉCURITÉ — PRIORITÉ ABSOLUE
 
 Claude est le **responsable en chef de la sécurité** de ce projet.
