@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback, type KeyboardEvent } from 'react'
 import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import type { FileAttachment } from '../../types'
 import { generateId } from '../../utils/generateId'
 import { useSpeechRecognition } from '../../hooks/useSpeechRecognition'
@@ -38,24 +39,24 @@ interface InputBarProps {
 // pertinents. Volontairement polyvalents (résumé, traduction, rédaction,
 // explication) — pas de feature métier nichée. Pour ne pas pénaliser les
 // utilisateurs sans Google connecté.
-function getQuickActionChips(): Array<{ label: string; prompt: string; icon: string }> {
+function getQuickActionChips(t: TFunction): Array<{ label: string; prompt: string; icon: string }> {
   const hour = new Date().getHours()
   // Variant matin : commencer la journée avec un brief / résumé
   // Variant après-midi / soir : actions productives génériques
   const morning = hour < 11
   if (morning) {
     return [
-      { icon: '☀️', label: 'Brief du jour', prompt: "Donne-moi un brief de ma journée — ce que je dois savoir, les choses importantes à ne pas oublier." },
-      { icon: '✍️', label: 'Rédiger un email', prompt: "Aide-moi à rédiger un email " },
-      { icon: '📝', label: 'Résumer un texte', prompt: "Résume-moi ce texte : " },
-      { icon: '🌍', label: 'Traduire', prompt: "Traduis ce texte en anglais : " },
+      { icon: '☀️', label: t('chat.input.chips.brief.label'), prompt: t('chat.input.chips.brief.prompt') },
+      { icon: '✍️', label: t('chat.input.chips.writeEmail.label'), prompt: t('chat.input.chips.writeEmail.prompt') },
+      { icon: '📝', label: t('chat.input.chips.summarizeText.label'), prompt: t('chat.input.chips.summarizeText.prompt') },
+      { icon: '🌍', label: t('chat.input.chips.translateToEn.label'), prompt: t('chat.input.chips.translateToEn.prompt') },
     ]
   }
   return [
-    { icon: '📝', label: 'Résumer', prompt: "Résume-moi ce texte : " },
-    { icon: '✍️', label: 'Rédiger', prompt: "Aide-moi à rédiger " },
-    { icon: '🌍', label: 'Traduire', prompt: "Traduis ce texte : " },
-    { icon: '💡', label: 'Expliquer', prompt: "Explique-moi simplement : " },
+    { icon: '📝', label: t('chat.input.chips.summarize.label'), prompt: t('chat.input.chips.summarize.prompt') },
+    { icon: '✍️', label: t('chat.input.chips.write.label'), prompt: t('chat.input.chips.write.prompt') },
+    { icon: '🌍', label: t('chat.input.chips.translate.label'), prompt: t('chat.input.chips.translate.prompt') },
+    { icon: '💡', label: t('chat.input.chips.explain.label'), prompt: t('chat.input.chips.explain.prompt') },
   ]
 }
 
@@ -69,6 +70,7 @@ const SWIPE_CANCEL_THRESHOLD_PX = 60
 // Sans ça, l'utilisateur voit juste un emoji "🖼️" et a l'impression que la
 // photo n'a pas été chargée.
 function PendingFilePreview({ file, onRemove }: { file: FileAttachment; onRemove: () => void }) {
+  const { t } = useTranslation()
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const isImage = file.type.startsWith('image/')
 
@@ -99,7 +101,7 @@ function PendingFilePreview({ file, onRemove }: { file: FileAttachment; onRemove
         />
         <button
           onClick={onRemove}
-          aria-label="Retirer"
+          aria-label={t('chat.input.removeFile', { name: file.name })}
           className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-theme-surface border border-theme-border text-theme-muted hover:text-theme-accent text-[10px] leading-none flex items-center justify-center shadow-sm"
         >
           ✕
@@ -114,7 +116,8 @@ function PendingFilePreview({ file, onRemove }: { file: FileAttachment; onRemove
       <span className="max-w-[120px] truncate">{file.name}</span>
       <button
         onClick={onRemove}
-        className="text-theme-muted hover:text-theme-accent ml-1"
+        aria-label={`Retirer ${file.name}`}
+        className="text-theme-muted hover:text-theme-accent ml-1 p-1 leading-none"
       >
         ✕
       </button>
@@ -822,7 +825,7 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
       {showSlashPalette && filteredCommands.length > 0 && (
         <div className="absolute bottom-full left-4 right-4 mb-2 bg-theme-surface rounded-xl shadow-lg border border-theme-border overflow-hidden z-20 animate-fade-in">
           <div className="text-[10px] uppercase tracking-kicker font-semibold text-theme-muted px-3 py-2 border-b border-theme-border bg-theme-bg">
-            Commandes
+            {t('chat.input.slashPaletteHeader')}
           </div>
           <div className="max-h-60 overflow-y-auto">
             {filteredCommands.map((cmd, i) => (
@@ -853,7 +856,7 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
           <button
             onClick={() => setEnhanceError(null)}
             className="text-red-500 hover:text-red-700"
-            aria-label="Fermer"
+            aria-label={t('common.close')}
           >
             ✕
           </button>
@@ -867,13 +870,13 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
           l'heure pour rester pertinent (matin = brief, soir = résumé). */}
       {!text.trim() && files.length === 0 && !isStreaming && !isListening && !isRecordingAudio && (
         <div className="mb-2 flex flex-wrap gap-1.5 px-1">
-          {getQuickActionChips().map((chip) => (
+          {getQuickActionChips(t).map((chip) => (
             <button
               key={chip.label}
               type="button"
               onClick={() => onSend(chip.prompt)}
               className="px-3 py-1.5 text-xs rounded-full bg-theme-surface border border-theme-border text-theme-ink hover:border-theme-accent hover:text-theme-accent transition-colors"
-              aria-label={`Suggestion : ${chip.label}`}
+              aria-label={t('chat.input.chipSuggestion', { label: chip.label })}
             >
               {chip.icon} {chip.label}
             </button>
@@ -886,18 +889,18 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
         <div className="mb-2 flex items-center gap-2 px-3 py-2 bg-theme-accent/10 border border-theme-accent/20 rounded-xl text-xs text-theme-ink">
           <span>📅</span>
           <span className="flex-1 truncate">
-            Créer un événement : <span className="font-semibold">{calendarSuggestion.text}</span>
+            {t('calendar.suggestionPillPrefix')}<span className="font-semibold">{calendarSuggestion.text}</span>
           </span>
           <button
             onClick={() => setShowCalendarForm(true)}
             className="px-2 py-0.5 rounded-md bg-theme-accent text-theme-bg text-[10px] font-semibold hover:opacity-90"
           >
-            Créer
+            {t('calendar.create')}
           </button>
           <button
             onClick={() => setCalendarSuggestion(null)}
             className="text-theme-muted hover:text-theme-ink"
-            aria-label="Ignorer"
+            aria-label={t('calendar.dismissSuggestion')}
           >
             ✕
           </button>
@@ -1085,8 +1088,8 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
                 ? 'bg-red-100 text-red-500 hover:bg-red-200'
                 : 'hover:bg-theme-ink/5 text-theme-muted'
             }`}
-            aria-label={isRecordingAudio ? 'Arrêter enregistrement' : 'Enregistrer audio (Whisper)'}
-            title={isRecordingAudio ? `Enregistrement ${recordingDuration}s` : 'Enregistrer (Whisper)'}
+            aria-label={isRecordingAudio ? t('chat.input.whisperStop') : t('chat.input.whisperStart')}
+            title={isRecordingAudio ? t('chat.input.recordingWithDuration', { duration: recordingDuration }) : t('chat.input.whisperTooltip')}
           >
             <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
               <circle cx="9" cy="9" r="5" fill="currentColor" />
@@ -1375,7 +1378,8 @@ interface CalendarMiniFormProps {
 }
 
 function CalendarMiniForm({ detected, context, onConfirm, onCancel }: CalendarMiniFormProps) {
-  const defaultTitle = context.trim().slice(0, 80) || `Événement ${detected.text}`
+  const { t } = useTranslation()
+  const defaultTitle = context.trim().slice(0, 80) || t('calendar.defaultEventTitle', { text: detected.text })
   const [title, setTitle] = useState(defaultTitle)
   const [dateStr, setDateStr] = useState(() => {
     const d = detected.date
@@ -1385,12 +1389,12 @@ function CalendarMiniForm({ detected, context, onConfirm, onCancel }: CalendarMi
 
   return (
     <div className="mb-2 p-3 bg-theme-surface border border-theme-accent/30 rounded-xl shadow-sm">
-      <p className="text-xs font-semibold text-theme-ink mb-2">📅 Nouvel événement</p>
+      <p className="text-xs font-semibold text-theme-ink mb-2">📅 {t('calendar.newEvent')}</p>
       <input
         type="text"
         value={title}
         onChange={(e) => setTitle(e.target.value)}
-        placeholder="Titre"
+        placeholder={t('calendar.eventTitlePlaceholder')}
         className="w-full mb-2 px-2 py-1.5 text-xs border border-theme-border rounded-lg focus:outline-none focus:border-theme-accent bg-transparent text-theme-ink"
       />
       <input
@@ -1404,13 +1408,13 @@ function CalendarMiniForm({ detected, context, onConfirm, onCancel }: CalendarMi
           onClick={onCancel}
           className="flex-1 py-1.5 rounded-lg border border-theme-border text-xs text-theme-ink/80 hover:bg-theme-ink/5"
         >
-          Annuler
+          {t('common.cancel')}
         </button>
         <button
           onClick={() => onConfirm(title, new Date(dateStr))}
           className="flex-1 py-1.5 rounded-lg bg-theme-accent text-theme-bg text-xs font-semibold hover:opacity-90"
         >
-          Ajouter au calendrier
+          {t('calendar.addToCalendar')}
         </button>
       </div>
     </div>

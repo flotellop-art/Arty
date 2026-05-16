@@ -130,7 +130,7 @@ function HomeScreenInner({ onMenuToggle, onSend, isStreaming, googleAuth, userNa
             </div>
             {googleAuth.error && (
               <div className="mt-3 p-3 bg-red-50 border border-red-300 rounded-lg">
-                <p className="font-sans text-xs text-red-700 font-semibold">Erreur connexion Google :</p>
+                <p className="font-sans text-xs text-red-700 font-semibold">{t('home.googleConnectError')}</p>
                 <p className="font-sans text-xs text-red-600 mt-1 break-words">{googleAuth.error}</p>
               </div>
             )}

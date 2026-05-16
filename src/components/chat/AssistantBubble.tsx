@@ -106,7 +106,7 @@ export const AssistantBubble = memo(function AssistantBubble({ content, onAction
         {isTtsSupported() && content && (
           <button
             onClick={toggleSpeak}
-            className={`p-1 rounded-md transition-all ${
+            className={`p-2 rounded-md transition-all ${
               isSpeaking
                 ? 'text-theme-accent opacity-100'
                 : 'opacity-50 md:opacity-0 md:group-hover/bubble:opacity-100 text-theme-muted hover:text-theme-accent'
@@ -131,7 +131,7 @@ export const AssistantBubble = memo(function AssistantBubble({ content, onAction
         {onTogglePin && (
           <button
             onClick={onTogglePin}
-            className={`p-1 rounded-md transition-all ${
+            className={`p-2 rounded-md transition-all ${
               pinned
                 ? 'text-theme-accent opacity-80'
                 : 'opacity-0 group-hover/bubble:opacity-100 text-theme-muted hover:text-theme-accent'

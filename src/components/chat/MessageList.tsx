@@ -1,4 +1,5 @@
 import { memo, useRef, useEffect, useCallback, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { Message } from '../../types'
 import { UserBubble } from './UserBubble'
 import { AssistantBubble } from './AssistantBubble'
@@ -16,6 +17,7 @@ interface MessageItemProps {
 }
 
 const MessageItem = memo(function MessageItem({ msg, index, onAction, onBranch, onTogglePin, onEdit, onRetry }: MessageItemProps) {
+  const { t } = useTranslation()
   const handleBranch = useCallback(() => onBranch?.(index), [onBranch, index])
   const handleTogglePin = useCallback(() => onTogglePin?.(msg.id), [onTogglePin, msg.id])
   const handleEdit = useCallback((newContent: string) => onEdit?.(msg.id, newContent), [onEdit, msg.id])
@@ -53,9 +55,9 @@ const MessageItem = memo(function MessageItem({ msg, index, onAction, onBranch, 
           // Roadmap UI #4 — bouton branche visible sur mobile. `group-hover` ne
           // se déclenche jamais sur touch → invisible sur téléphone. Maintenant
           // 50 % opacity permanent sur mobile, 100 % au hover desktop.
-          className="absolute top-2 right-2 opacity-50 md:opacity-0 md:group-hover:opacity-100 p-1 rounded-md bg-theme-surface/80 border border-theme-border text-theme-muted hover:text-theme-accent hover:border-theme-accent transition-all text-xs"
-          title="Créer une branche depuis ce message"
-          aria-label="Créer une branche depuis ce message"
+          className="absolute top-2 right-2 opacity-50 md:opacity-0 md:group-hover:opacity-100 p-2 rounded-md bg-theme-surface/80 border border-theme-border text-theme-muted hover:text-theme-accent hover:border-theme-accent transition-all text-xs"
+          title={t('chat.messageList.branch')}
+          aria-label={t('chat.messageList.branch')}
         >
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
             <path d="M3 2V8M3 8C3 9.1 3.9 10 5 10H8M11 12V6M11 6C11 4.9 10.1 4 9 4H8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
@@ -89,6 +91,7 @@ interface MessageListProps {
 // — ça forçait à descendre à chaque token et empêchait de naviguer.
 
 export const MessageList = memo(function MessageList({ messages, isStreaming, streamingContent, onAction, onBranch, onTogglePin, onEdit, onRetry }: MessageListProps) {
+  const { t } = useTranslation()
   const scrollRef = useRef<HTMLDivElement>(null)
   const prevMessagesCount = useRef(messages.length)
   // Tracks if there's still content scrollable below — drives the
@@ -196,10 +199,10 @@ export const MessageList = memo(function MessageList({ messages, isStreaming, st
         <button
           onClick={scrollToBottom}
           className="absolute bottom-4 left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-full bg-theme-accent text-theme-bg text-xs font-sans uppercase tracking-kicker shadow-lg hover:opacity-90 transition-opacity flex items-center gap-1.5 z-10"
-          aria-label="Descendre"
+          aria-label={t('chat.messageList.scrollDown')}
         >
           <span>↓</span>
-          <span>Descendre</span>
+          <span>{t('chat.messageList.scrollDown')}</span>
         </button>
       )}
     </div>

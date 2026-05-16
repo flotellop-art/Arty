@@ -247,6 +247,20 @@ export async function selfTestCrypto(): Promise<boolean> {
 }
 
 /**
+ * Base64-encode bytes by 8 KB chunks. A naive `String.fromCharCode(...bytes)`
+ * spreads the whole array into call arguments → RangeError on large payloads
+ * (conversation blobs sont de l'ordre du Mo). Cf. BUG 50.
+ */
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = ''
+  const CHUNK = 0x8000
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK))
+  }
+  return btoa(binary)
+}
+
+/**
  * Encrypt a string value. Returns a base64-encoded ciphertext.
  */
 export async function encrypt(plaintext: string): Promise<string> {
@@ -265,7 +279,7 @@ export async function encrypt(plaintext: string): Promise<string> {
   packed.set(iv)
   packed.set(new Uint8Array(ciphertext), iv.length)
 
-  return btoa(String.fromCharCode(...packed))
+  return bytesToBase64(packed)
 }
 
 /**

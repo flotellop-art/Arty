@@ -1,6 +1,7 @@
 import { memo, useEffect, useMemo, useState } from 'react'
 import type { CalendarEvent } from '../../types/google'
 import { listEvents } from '../../services/calendarClient'
+import { getDateLocale } from '../../utils/formatDate'
 
 interface CalendarViewProps {
   days?: number
@@ -27,8 +28,8 @@ function isTomorrow(d: Date): boolean {
 function eventTimeLabel(startISO: string): string {
   const start = new Date(startISO)
   const hasTime = startISO.includes('T')
-  if (!hasTime) return start.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })
-  return start.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }).replace(':', 'h')
+  if (!hasTime) return start.toLocaleDateString(getDateLocale(), { day: '2-digit', month: 'short' })
+  return start.toLocaleTimeString(getDateLocale(), { hour: '2-digit', minute: '2-digit' })
 }
 
 /** Small meta line under the title (duration + location). */
@@ -56,7 +57,7 @@ function sectionLabel(date: Date): string {
   const today = startOfDay(new Date())
   if (isSameDay(date, today)) return "Aujourd'hui"
   if (isTomorrow(date)) return 'Demain'
-  return date.toLocaleDateString('fr-FR', {
+  return date.toLocaleDateString(getDateLocale(), {
     weekday: 'long',
     day: 'numeric',
     month: 'long',

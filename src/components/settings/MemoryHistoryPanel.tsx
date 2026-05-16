@@ -5,6 +5,7 @@ import {
   clearMemoryHistory,
   type MemoryHistoryEntry,
 } from '../../services/memoryHistory'
+import { getDateLocale } from '../../utils/formatDate'
 
 interface Props {
   onClose: () => void
@@ -49,7 +50,7 @@ export function MemoryHistoryPanel({ onClose }: Props) {
                       {e.action} · {e.category}
                     </span>
                     <span className="text-[10px] text-theme-muted">
-                      {new Date(e.timestamp).toLocaleString('fr-FR')}
+                      {new Date(e.timestamp).toLocaleString(getDateLocale())}
                     </span>
                   </div>
                   <p className="text-xs text-theme-ink/80 break-words">{e.details}</p>

@@ -6,7 +6,7 @@ import { encrypt, decrypt, isCryptoReady, selfTestCrypto } from './crypto'
 
 const FETCH_TIMEOUT_MS = 15_000
 
-function withTimeout(ms: number): { signal: AbortSignal; cancel: () => void } {
+export function withTimeout(ms: number): { signal: AbortSignal; cancel: () => void } {
   const controller = new AbortController()
   const id = setTimeout(() => controller.abort(), ms)
   return { signal: controller.signal, cancel: () => clearTimeout(id) }
@@ -105,14 +105,18 @@ export function buildOAuthUrl(): string {
   return `https://accounts.google.com/o/oauth2/v2/auth?${params}`
 }
 
-export async function exchangeCode(code: string): Promise<GoogleTokens> {
+export async function exchangeCode(code: string, redirectUriOverride?: string): Promise<GoogleTokens> {
+  // Native Google Sign-In returns a serverAuthCode that must be exchanged
+  // with redirect_uri='' (BUG 2/28); web codes use getRedirectUri(). The
+  // override can legitimately be '' — test `=== undefined`, not falsiness.
+  const redirectUri = redirectUriOverride !== undefined ? redirectUriOverride : getRedirectUri()
   const t = withTimeout(FETCH_TIMEOUT_MS)
   let res: Response
   try {
     res = await fetch(apiUrl('/api/auth/token'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code, redirect_uri: getRedirectUri() }),
+      body: JSON.stringify({ code, redirect_uri: redirectUri }),
       signal: t.signal,
     })
   } finally {
@@ -153,7 +157,7 @@ export async function storeTokens(tokens: GoogleTokens): Promise<void> {
   scoped.setJSON(TOKENS_PLAIN_KEY, tokens)
 }
 
-async function storeUser(user: GoogleUser): Promise<void> {
+export async function storeUser(user: GoogleUser): Promise<void> {
   memUser = user
   if (isCryptoReady()) {
     try {
@@ -270,9 +274,16 @@ export async function getValidAccessToken(): Promise<string | null> {
 }
 
 export async function fetchGoogleUser(accessToken: string): Promise<GoogleUser> {
-  const res = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  })
+  const t = withTimeout(FETCH_TIMEOUT_MS)
+  let res: Response
+  try {
+    res = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      signal: t.signal,
+    })
+  } finally {
+    t.cancel()
+  }
 
   if (!res.ok) throw new Error('Failed to fetch user info')
   const data = await safeJson(res)
@@ -398,6 +409,17 @@ export function logout(): void {
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('google-storage-ready'))
   }
+}
+
+/**
+ * Drop the in-memory token/user cache WITHOUT touching localStorage.
+ * Used on account switch: memTokens/memUser are module-level, so they
+ * would otherwise keep the previous account's data — and leak it to sync
+ * readers (getStoredTokens) — until bootstrapGoogleStorage() repopulates.
+ */
+export function resetGoogleMemCache(): void {
+  memTokens = null
+  memUser = null
 }
 
 export function isConnected(): boolean {

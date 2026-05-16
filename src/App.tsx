@@ -5,6 +5,7 @@ import { useAppSetup } from './hooks/useAppSetup'
 import { useAuth } from './hooks/useAuth'
 import { initCrypto, isCryptoReady } from './services/crypto'
 import { bootstrapGoogleStorage } from './services/googleAuth'
+import { bootstrapConversationStorage } from './services/storage'
 import { getJSON } from './services/scopedStorage'
 import { QuestionModal } from './components/chat/QuestionModal'
 import { MorningBrief } from './components/home/MorningBrief'
@@ -632,7 +633,7 @@ export default function App() {
     const keys = getJSON<{ anthropic?: string }>('api-keys')
     if (!keys?.anthropic) return
     initCrypto(keys.anthropic)
-      .then(() => bootstrapGoogleStorage())
+      .then(() => Promise.all([bootstrapGoogleStorage(), bootstrapConversationStorage()]))
       .catch(() => {
         // Non-fatal: useAuth will retry initCrypto once auth resolves.
       })
@@ -715,7 +716,16 @@ export default function App() {
         })
         setSplash(getOnboardingSplash())
       } catch (err) {
+        // Stash the error so LoginScreen surfaces it (it drains
+        // 'arty-login-error' on mount) — without this a failed deeplink
+        // login left the user on the login screen with no explanation.
         console.error('Deep link OAuth error:', err)
+        try {
+          sessionStorage.setItem(
+            'arty-login-error',
+            err instanceof Error ? err.message : 'Échec de la connexion Google',
+          )
+        } catch { /* sessionStorage indisponible */ }
       }
       setDeepLinkCode(null)
     }

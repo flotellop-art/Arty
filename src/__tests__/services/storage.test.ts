@@ -20,6 +20,9 @@ function makeConv(id: string, overrides: Partial<Conversation> = {}): Conversati
 
 beforeEach(() => {
   localStorage.clear()
+  // The in-memory conversation cache is module state — localStorage.clear()
+  // does not reset it. Drop it so each test starts from a clean slate.
+  storage.resetConversationMemCache()
 })
 
 describe('storage', () => {
@@ -65,5 +68,32 @@ describe('storage', () => {
     // messages only render after a full reload (see CLAUDE.md BUG 16).
     const ret = storage.saveConversation(makeConv('a')) as unknown
     expect(ret).toBeUndefined()
+  })
+
+  it('bootstrap migrates a legacy plain conversations blob into the cache', async () => {
+    // Simulate an existing (pre-encryption) install: plain JSON at rest.
+    localStorage.setItem('arty-user-test-conversations', JSON.stringify([makeConv('legacy')]))
+    storage.resetConversationMemCache()
+    await storage.bootstrapConversationStorage()
+    expect(storage.getConversations().map((c) => c.id)).toEqual(['legacy'])
+  })
+
+  it('saveConversation is skipped (no clobber) when encrypted history is not yet loaded', () => {
+    // A ciphertext blob exists but bootstrap has not run — the in-memory
+    // cache does not reflect the real history. saveConversation must NOT
+    // persist a partial list, and must NOT wipe the blob.
+    localStorage.setItem('arty-user-test-conversations-enc', 'ciphertext-blob')
+    storage.resetConversationMemCache()
+    storage.saveConversation(makeConv('new'))
+    expect(storage.getConversations()).toEqual([])
+    expect(localStorage.getItem('arty-user-test-conversations-enc')).toBe('ciphertext-blob')
+  })
+
+  it('killswitch keeps conversations as plain JSON, no ciphertext', () => {
+    localStorage.setItem('arty-conv-encryption-disabled', '1')
+    storage.resetConversationMemCache()
+    storage.saveConversation(makeConv('a'))
+    expect(localStorage.getItem('arty-user-test-conversations')).toContain('"id":"a"')
+    expect(localStorage.getItem('arty-user-test-conversations-enc')).toBeNull()
   })
 })

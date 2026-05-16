@@ -11,8 +11,9 @@ import {
 } from '../services/userSession'
 import { setActiveKeys, clearActiveKeys } from '../services/activeApiKey'
 import { initCrypto } from '../services/crypto'
-import { bootstrapGoogleStorage, logout as googleLogout, clearOAuthState } from '../services/googleAuth'
+import { bootstrapGoogleStorage, logout as googleLogout, clearOAuthState, resetGoogleMemCache } from '../services/googleAuth'
 import { wipeFileStorage, bootstrapFileStorage } from '../services/secureFileStorage'
+import { bootstrapConversationStorage, resetConversationMemCache } from '../services/storage'
 import * as scoped from '../services/scopedStorage'
 
 type StoredKeys = { anthropic: string; gemini?: string; mistral?: string; openai?: string }
@@ -34,7 +35,7 @@ export function useAuth() {
     if (!keys?.anthropic) return
     setActiveKeys(keys.anthropic, keys.gemini, keys.mistral, keys.openai)
     initCrypto(keys.anthropic)
-      .then(() => Promise.all([bootstrapGoogleStorage(), bootstrapFileStorage()]))
+      .then(() => Promise.all([bootstrapGoogleStorage(), bootstrapFileStorage(), bootstrapConversationStorage()]))
       .catch((err) => {
         console.error('[useAuth] crypto bootstrap failed:', err)
       })
@@ -74,6 +75,7 @@ export function useAuth() {
     // plain-JSON Google tokens into encrypted storage.
     await initCrypto(credentials.anthropicKey)
     await bootstrapGoogleStorage()
+    bootstrapConversationStorage().catch(() => {})
     bootstrapFileStorage().catch(() => {})
 
     // Store API keys as plain JSON for sync reads (getJSON in useEffect)
@@ -121,6 +123,7 @@ export function useAuth() {
     // Wipe les fichiers chiffrés du user actif (BUG 41 — éviter qu'un autre
     // user ne récupère les fichiers du précédent). Async, fire-and-forget.
     wipeFileStorage().catch(() => {})
+    resetConversationMemCache()
     clearActiveSession()
     setCurrentUser(null)
 
@@ -138,8 +141,12 @@ export function useAuth() {
     const session = known.find(s => s.userId === userId)
     if (!session) return
 
-    // Clear old keys BEFORE switching session to prevent cross-user leak
+    // Clear old keys AND the in-memory Google token cache BEFORE switching
+    // session — otherwise getStoredTokens() returns the previous account's
+    // tokens during the switch window, before bootstrap repopulates them.
     clearActiveKeys()
+    resetGoogleMemCache()
+    resetConversationMemCache()
 
     // Activate new session
     setActiveSession(session)
@@ -149,6 +156,7 @@ export function useAuth() {
     if (keys?.anthropic) {
       await initCrypto(keys.anthropic)
       await bootstrapGoogleStorage()
+      bootstrapConversationStorage().catch(() => {})
       bootstrapFileStorage().catch(() => {})
       setActiveKeys(keys.anthropic, keys.gemini, keys.mistral, keys.openai)
     }

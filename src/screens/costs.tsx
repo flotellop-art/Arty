@@ -7,6 +7,7 @@
  */
 
 import { useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Capacitor } from '@capacitor/core'
 import {
   buildCSV,
@@ -49,7 +50,7 @@ function providerOf(modelId: string): { label: string; flag: string; provider: s
   if (modelId.startsWith('gpt')) return matchOption('openai', 'OpenAI')
   if (modelId.startsWith('gemini')) return matchOption('gemini', 'Gemini')
   if (modelId.startsWith('mistral')) return matchOption('mistral', 'Mistral')
-  return { label: 'Autre', flag: '🤖', provider: 'other' }
+  return { label: 'other', flag: '🤖', provider: 'other' }
 }
 
 function matchOption(id: string, fallback: string) {
@@ -106,6 +107,7 @@ function serverToMonthStats(remote: MonthlyQuotaStatus): MonthStats {
 }
 
 export function CostsScreen({ onBack }: CostsScreenProps) {
+  const { t } = useTranslation()
   const monthKey = getCurrentMonthKey()
 
   // Refresh à chaud : recordUsage() dispatche `cost-updated` à la fin de
@@ -197,10 +199,10 @@ export function CostsScreen({ onBack }: CostsScreenProps) {
           directory: Directory.Cache,
         })
         await Share.share({
-          title: 'Export coûts Arty',
-          text: `Coûts Arty — ${monthKey}`,
+          title: t('costsScreen.shareTitle'),
+          text: t('costsScreen.shareText', { monthKey }),
           url: uriRes.uri,
-          dialogTitle: 'Partager le CSV',
+          dialogTitle: t('costsScreen.shareDialogTitle'),
         })
         return
       } catch {
@@ -232,7 +234,7 @@ export function CostsScreen({ onBack }: CostsScreenProps) {
         <button
           type="button"
           onClick={onBack}
-          aria-label="Retour"
+          aria-label={t('costsScreen.back')}
           className="p-2 -ml-2 rounded hover:bg-theme-ink/5 text-theme-ink"
         >
           <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
@@ -246,17 +248,17 @@ export function CostsScreen({ onBack }: CostsScreenProps) {
           </svg>
         </button>
         <span className="font-sans text-[10px] font-semibold uppercase tracking-kicker text-theme-muted">
-          Mes coûts
+          {t('costsScreen.headerTitle')}
         </span>
       </header>
 
       <div className="max-w-3xl mx-auto px-5 pt-8 pb-12 space-y-8">
         <div>
           <h1 className="font-display font-medium text-[32px] sm:text-[38px] leading-[1.05] -tracking-[0.02em] text-theme-ink">
-            Tes <span className="italic text-theme-accent">coûts.</span>
+            {t('costsScreen.heroMain')} <span className="italic text-theme-accent">{t('costsScreen.heroAccent')}</span>
           </h1>
           <p className="font-display italic text-theme-muted text-base mt-2">
-            Suivi local de l'usage IA, basé sur les tokens réels.
+            {t('costsScreen.heroSubtitle')}
           </p>
         </div>
 
@@ -282,9 +284,7 @@ export function CostsScreen({ onBack }: CostsScreenProps) {
         <ExportSection onExport={handleExport} disabled={isEmpty} />
 
         <p className="font-display italic text-[11px] text-theme-muted text-center pt-4">
-          Source : tokens réels capturés côté serveur (table `quota_model`),
-          fallback historique local si hors-ligne. Précision exacte vs facture
-          officielle.
+          {t('costsScreen.sourceNote')}
         </p>
       </div>
     </div>
@@ -301,6 +301,7 @@ interface SummarySectionProps {
 }
 
 function SummarySection({ total, tier, monthDelta, alert }: SummarySectionProps) {
+  const { t } = useTranslation()
   const color = TIER_HEX[tier]
   const pctOfBudget =
     alert.enabled && alert.amount_eur > 0
@@ -310,7 +311,7 @@ function SummarySection({ total, tier, monthDelta, alert }: SummarySectionProps)
   return (
     <section className="rounded-sm border border-theme-border bg-theme-surface p-6">
       <p className="font-sans text-[10px] font-semibold uppercase tracking-kicker text-theme-muted">
-        Ce mois-ci
+        {t('costsScreen.summaryTitle')}
       </p>
       <div className="mt-3 flex items-baseline gap-3 flex-wrap">
         <span
@@ -325,7 +326,7 @@ function SummarySection({ total, tier, monthDelta, alert }: SummarySectionProps)
               monthDelta.up ? 'text-red-500' : 'text-emerald-600'
             }`}
             aria-label={
-              monthDelta.up ? 'En hausse vs mois précédent' : 'En baisse vs mois précédent'
+              monthDelta.up ? t('costsScreen.deltaUp') : t('costsScreen.deltaDown')
             }
           >
             {monthDelta.up ? '▲' : '▼'} {monthDelta.pct}%
@@ -333,13 +334,13 @@ function SummarySection({ total, tier, monthDelta, alert }: SummarySectionProps)
         )}
       </div>
       <p className="font-display italic text-xs text-theme-muted mt-2">
-        vs mois précédent
+        {t('costsScreen.vsPrevMonth')}
       </p>
 
       {alert.enabled && alert.amount_eur > 0 && (
         <div className="mt-5">
           <div className="flex items-center justify-between font-sans text-[11px] text-theme-muted">
-            <span>Budget {formatCost(alert.amount_eur)}</span>
+            <span>{t('costsScreen.budget', { amount: formatCost(alert.amount_eur) })}</span>
             <span>{Math.round(pctOfBudget)}%</span>
           </div>
           <div className="mt-1.5 h-2 bg-theme-ink/10 rounded-sm overflow-hidden">
@@ -373,11 +374,12 @@ interface DailyChartProps {
 }
 
 function DailyChart({ days, max, tier }: DailyChartProps) {
+  const { t } = useTranslation()
   const color = TIER_HEX[tier]
   return (
     <section>
       <p className="font-sans text-[10px] font-semibold uppercase tracking-kicker text-theme-muted">
-        7 derniers jours
+        {t('costsScreen.chartTitle')}
       </p>
       <div className="mt-4 flex items-end gap-2 h-40">
         {days.map(({ day, cost }) => {
@@ -391,7 +393,7 @@ function DailyChart({ days, max, tier }: DailyChartProps) {
                     height: `${heightPct}%`,
                     backgroundColor: cost > 0 ? color : 'rgb(var(--theme-ink) / 0.1)',
                   }}
-                  aria-label={`${shortDay(day)} — ${formatCost(cost)}`}
+                  aria-label={t('costsScreen.barAria', { date: shortDay(day), cost: formatCost(cost) })}
                 />
               </div>
               <span className="font-mono text-[10px] text-theme-muted truncate w-full text-center">
@@ -415,15 +417,17 @@ interface ModelBreakdownProps {
 }
 
 function ModelBreakdown({ models }: ModelBreakdownProps) {
+  const { t } = useTranslation()
   if (models.length === 0) return null
   return (
     <section>
       <p className="font-sans text-[10px] font-semibold uppercase tracking-kicker text-theme-muted">
-        Par modèle
+        {t('costsScreen.modelsTitle')}
       </p>
       <ul className="mt-4 space-y-2">
         {models.map((m) => {
           const provider = providerOf(m.id)
+          const providerLabel = provider.provider === 'other' ? t('costsScreen.providerOther') : provider.label
           const total = m.input_tokens + m.output_tokens
           return (
             <li
@@ -436,7 +440,7 @@ function ModelBreakdown({ models }: ModelBreakdownProps) {
               <div className="flex-1 min-w-0">
                 <p className="font-display text-sm text-theme-ink truncate">{m.id}</p>
                 <p className="font-mono text-[11px] text-theme-muted">
-                  {formatTokens(total)} tokens · {provider.label}
+                  {t('costsScreen.modelTokens', { tokens: formatTokens(total), provider: providerLabel })}
                 </p>
               </div>
               <span className="font-display text-sm text-theme-ink shrink-0">
@@ -460,6 +464,7 @@ interface AlertSectionProps {
 const SUGGESTED_AMOUNTS = [5, 10, 20, 50]
 
 function AlertSection({ alert, onChange }: AlertSectionProps) {
+  const { t } = useTranslation()
   const [draft, setDraft] = useState<string>(String(alert.amount_eur))
 
   const commitAmount = (value: number) => {
@@ -472,9 +477,9 @@ function AlertSection({ alert, onChange }: AlertSectionProps) {
     <section className="rounded-sm border border-theme-border bg-theme-surface p-5">
       <div className="flex items-center justify-between gap-4">
         <div>
-          <p className="font-display text-base text-theme-ink">🔔 M'alerter si je dépasse…</p>
+          <p className="font-display text-base text-theme-ink">🔔 {t('costsScreen.alertTitle')}</p>
           <p className="font-display italic text-xs text-theme-muted mt-0.5">
-            Bannière au prochain lancement quand le mois courant dépasse le seuil.
+            {t('costsScreen.alertDescription')}
           </p>
         </div>
         <button
@@ -506,9 +511,9 @@ function AlertSection({ alert, onChange }: AlertSectionProps) {
               onChange={(e) => setDraft(e.target.value)}
               onBlur={() => commitAmount(Number(draft) || 0)}
               className="flex-1 bg-transparent border border-theme-border rounded-sm px-3 py-2 font-mono text-sm text-theme-ink focus:outline-none focus:border-theme-accent transition-colors"
-              aria-label="Seuil d'alerte en euros"
+              aria-label={t('costsScreen.alertThresholdAria')}
             />
-            <span className="font-display text-sm text-theme-muted">€ / mois</span>
+            <span className="font-display text-sm text-theme-muted">€ {t('costsScreen.perMonth')}</span>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             {SUGGESTED_AMOUNTS.map((amt) => (
@@ -534,6 +539,7 @@ function AlertSection({ alert, onChange }: AlertSectionProps) {
 // ─── Section 5 — Export CSV ──────────────────────────────────────────────────
 
 function ExportSection({ onExport, disabled }: { onExport: () => void; disabled: boolean }) {
+  const { t } = useTranslation()
   return (
     <section>
       <button
@@ -541,10 +547,10 @@ function ExportSection({ onExport, disabled }: { onExport: () => void; disabled:
         disabled={disabled}
         className="w-full py-3 font-display italic text-sm font-medium tracking-[0.02em] bg-theme-ink text-theme-bg rounded-sm transition-opacity hover:opacity-90 disabled:opacity-40"
       >
-        Exporter CSV
+        {t('costsScreen.exportButton')}
       </button>
       <p className="font-display italic text-[11px] text-theme-muted text-center mt-2">
-        Colonnes : date, modele, tokens_input, tokens_output, cout_eur
+        {t('costsScreen.exportColumns')}
       </p>
     </section>
   )
@@ -553,10 +559,11 @@ function ExportSection({ onExport, disabled }: { onExport: () => void; disabled:
 // ─── Empty state ─────────────────────────────────────────────────────────────
 
 function EmptyState() {
+  const { t } = useTranslation()
   return (
     <div className="rounded-sm border border-theme-border bg-theme-surface p-8 text-center">
       <p className="font-display italic text-base text-theme-muted">
-        Commence à chatter pour voir tes coûts ici 💬
+        {t('costsScreen.empty')}
       </p>
     </div>
   )

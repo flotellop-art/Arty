@@ -172,7 +172,7 @@ export const UserBubble = memo(function UserBubble({ content, files, pinned, onT
           {onEdit && (
             <button
               onClick={() => setEditing(true)}
-              className="opacity-0 group-hover/user:opacity-100 p-1 rounded-md text-theme-muted hover:text-theme-accent transition-all"
+              className="opacity-0 group-hover/user:opacity-100 p-2 rounded-md text-theme-muted hover:text-theme-accent transition-all"
               aria-label="Modifier"
               title="Modifier et renvoyer"
             >
@@ -182,7 +182,7 @@ export const UserBubble = memo(function UserBubble({ content, files, pinned, onT
           {onTogglePin && (
             <button
               onClick={onTogglePin}
-              className={`p-1 rounded-md transition-all ${
+              className={`p-2 rounded-md transition-all ${
                 pinned
                   ? 'text-theme-accent opacity-80'
                   : 'opacity-0 group-hover/user:opacity-100 text-theme-muted hover:text-theme-accent'

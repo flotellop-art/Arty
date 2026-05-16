@@ -1,6 +1,7 @@
 import type { useBrowser } from '../../hooks/useBrowser'
 import type { ToolHandler } from './types'
 import { callApi } from '../googleApiHelper'
+import { getDateLocale } from '../../utils/formatDate'
 
 export const wordpressToolDefinitions = [
   {
@@ -68,7 +69,7 @@ export function createWordpressHandlers(browserActions: ReturnType<typeof useBro
         const data = await callApi('/api/wordpress/action', { type: 'list', status: input.status })
         if (data.posts && data.posts.length > 0) {
           const list = data.posts.map((p: { id: number; title: string; status: string; date: string; link: string }, i: number) =>
-            `${i + 1}. [ID:${p.id}] ${p.title} (${p.status}) — ${new Date(p.date).toLocaleDateString('fr-FR')}`
+            `${i + 1}. [ID:${p.id}] ${p.title} (${p.status}) — ${new Date(p.date).toLocaleDateString(getDateLocale())}`
           ).join('\n')
           return { result: `${data.posts.length} articles:\n${list}` }
         }

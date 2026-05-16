@@ -12,7 +12,8 @@
     "loading": "Loading...",
     "retry": "Retry",
     "optional": "optional",
-    "required": "required"
+    "required": "required",
+    "connecting": "Connecting..."
   },
   "login": {
     "title": "Sign in",
@@ -139,7 +140,9 @@
     },
     "calendar": {
       "title": "Next 7 days"
-    }
+    },
+    "connectGoogle": "Connect Google",
+    "googleConnectError": "Google connection error:"
   },
   "chat": {
     "upgradeModal": {
@@ -154,9 +157,6 @@
     },
     "streaming": {
       "writing": "Arty is writing…"
-    },
-    "input": {
-      "euOnlyUrlHint": "Mistral can't open links (EU mode). To analyze the content, paste the article or video text directly here."
     },
     "topBar": {
       "aria": {
@@ -176,6 +176,7 @@
       "body": "This conversation contains messages processed by Mistral (servers in Europe). Switching to {{targetModel}} will send the whole history to the United States. Continue?"
     },
     "input": {
+      "euOnlyUrlHint": "Mistral can't open links (EU mode). To analyze the content, paste the article or video text directly here.",
       "placeholder": "Chat with Arty...",
       "listening": "Listening...",
       "defaultFilePrompt": "Analyze this file.",
@@ -213,6 +214,23 @@
         "micDeniedNative": "Microphone denied — allow it in Settings → Apps → Arty → Permissions",
         "transcribeFailed": "Transcription failed — try again",
         "unsupported": "Audio recording not supported in this browser"
+      },
+      "slashPaletteHeader": "Commands",
+      "removeFile": "Remove {{name}}",
+      "chipSuggestion": "Suggestion: {{label}}",
+      "whisperStop": "Stop recording",
+      "whisperStart": "Record audio (Whisper)",
+      "recordingWithDuration": "Recording {{duration}}s",
+      "whisperTooltip": "Record (Whisper)",
+      "chips": {
+        "brief": { "label": "Daily brief", "prompt": "Give me a brief of my day — what I should know, the important things not to forget." },
+        "writeEmail": { "label": "Draft an email", "prompt": "Help me draft an email " },
+        "summarizeText": { "label": "Summarize text", "prompt": "Summarize this text: " },
+        "translateToEn": { "label": "Translate", "prompt": "Translate this text to French: " },
+        "summarize": { "label": "Summarize", "prompt": "Summarize this text: " },
+        "write": { "label": "Draft", "prompt": "Help me draft " },
+        "translate": { "label": "Translate", "prompt": "Translate this text: " },
+        "explain": { "label": "Explain", "prompt": "Explain simply: " }
       }
     },
     "tone": {
@@ -224,6 +242,10 @@
     },
     "model": {
       "auto": "Auto"
+    },
+    "messageList": {
+      "branch": "Branch from this message",
+      "scrollDown": "Scroll down"
     }
   },
   "errors": {
@@ -259,6 +281,215 @@
       "days": "{{count}}d ago"
     },
     "deleteAria": "Delete",
-    "language": "Language"
+    "language": "Language",
+    "userFallback": "User",
+    "importConversation": "Import a JSON conversation",
+    "importFailed": "Import failed",
+    "searchPlaceholder": "Search...",
+    "searchResults": "Results",
+    "recent": "Recent",
+    "chipImport": "Import",
+    "chipTasks": "Tasks",
+    "chipEU": "Secure EU",
+    "templates": "Industry templates",
+    "clearSearch": "Clear",
+    "pinned": "Pinned ({{count}})",
+    "noResults": "No results",
+    "euTooltip": "Europe mode — data kept in France",
+    "apiKeys": "API keys",
+    "settings": "Settings"
+  },
+  "tasks": {
+    "title": "Tasks",
+    "addPlaceholder": "Add a task...",
+    "empty": "No tasks",
+    "pending": "In progress ({{count}})",
+    "done": "Done ({{count}})",
+    "markDone": "Mark as done",
+    "markUndone": "Mark as not done",
+    "delete": "Delete"
+  },
+  "costs": {
+    "badgeTitle": "Real API cost (this month)",
+    "badgeAria": "API cost",
+    "modalTitle": "API cost",
+    "totalThisMonth": "Total this month ({{month}})",
+    "tokensLine": "{{input}} input tokens · {{output}} output · {{calls}} calls",
+    "byModel": "By model",
+    "noUsage": "No usage this month",
+    "modelLine": "{{input}}↓ · {{output}}↑ · {{count}} calls"
+  },
+  "morningBrief": {
+    "kicker": "Daily brief · ",
+    "heroLine1": "The day",
+    "heroLine2": "starts strong.",
+    "eventCount_one": "{{count}} appointment",
+    "eventCount_other": "{{count}} appointments",
+    "noEvents": "No events today.",
+    "connectGoogle": "Connect Google to see your calendar and emails in the brief.",
+    "startDay": "Start the day",
+    "allDay": "All day",
+    "notificationTitle": "Good morning{{name}} 👋",
+    "notificationBody": "Your morning brief is ready — calendar, emails, and more.",
+    "actions": {
+      "unreadEmails": { "label": "Summarise unread emails", "prompt": "Summarise my important unread emails" },
+      "today": { "label": "What's on today?", "prompt": "What appointments do I have today?" },
+      "priorities": { "label": "Organise my priorities", "prompt": "Help me organise my priorities for today" },
+      "idea": { "label": "Give me a useful idea", "prompt": "Give me a useful idea or tip for my day" }
+    }
+  },
+  "summary": {
+    "title": "Conversation summary",
+    "generating": "Generating...",
+    "copy": "Copy",
+    "copied": "Copied",
+    "exportPdf": "Export PDF",
+    "reportTitle": "Summary — {{title}}"
+  },
+  "calendar": {
+    "suggestionPillPrefix": "Create event: ",
+    "create": "Create",
+    "dismissSuggestion": "Dismiss",
+    "defaultEventTitle": "Event {{text}}",
+    "newEvent": "New event",
+    "eventTitlePlaceholder": "Title",
+    "addToCalendar": "Add to calendar"
+  },
+  "settings": {
+    "kicker": "Settings",
+    "titleMain": "Your",
+    "titleAccent": "preferences.",
+    "subtitle": "Notifications, location, memory, quota.",
+    "notifications": {
+      "title": "Notifications",
+      "description": "Appointment reminders, important emails",
+      "toggleAria": "Enable or disable notifications"
+    },
+    "location": {
+      "title": "Location",
+      "description": "Nearby searches (restaurants, directions, weather)",
+      "toggleAria": "Enable or disable location",
+      "measuring": "Measuring accuracy (may take 10s)…",
+      "accuracyGps": "Accuracy: {{m}} m (GPS) ✓",
+      "accuracyMedium": "Accuracy: {{m}} m (medium)",
+      "accuracyPoor": "Accuracy: ~{{km}} km (Wi-Fi/IP) — imprecise",
+      "accuracyUnknown": "Accuracy not measured",
+      "test": "Test",
+      "coords": "Coords: {{lat}}° N, {{lon}}° E",
+      "blockedLine1": "⚠️ Your browser has blocked geolocation for this site. The toggle is ON in Arty but Chrome won't prompt you.",
+      "blockedLine2": "To re-enable: tap the lock icon (left of Chrome's address bar) → Site settings → Location → Allow. Then reload the page.",
+      "viewLastPosition": "View last position sent to Arty"
+    },
+    "enhance": {
+      "title": "Prompt enhancement",
+      "description": "Rephrases your message before sending",
+      "modelLabel": "Model"
+    },
+    "factChecker": {
+      "description": "Verifies the factual claims in each response",
+      "off": "Disabled",
+      "auto": "Auto (recommended)",
+      "haiku": "Always fast (Haiku 4.5)",
+      "sonnet": "Always strict (Sonnet 4.6)",
+      "costAuto": "Fast Haiku by default, strict Sonnet on sensitive topics (prices, quotes, medical, legal). ~$0.0005-0.0015/message.",
+      "costHaiku": "~$0.0005/message · adds 1-2s after each response",
+      "costSonnet": "~$0.0015/message · adds 3-5s · better for nuance"
+    },
+    "upgrade": {
+      "description": "Lifetime Pro, subscription, +100 messages pack"
+    },
+    "memory": {
+      "title": "Arty's memory",
+      "description": "View and edit what Arty knows about you"
+    },
+    "memoryHistory": {
+      "title": "Memory history",
+      "description": "View and undo memory changes"
+    },
+    "costs": {
+      "title": "My costs",
+      "description": "Monthly dashboard, by model, budget alert, CSV export"
+    },
+    "license": {
+      "title": "Pro license",
+      "activatedFor": "Activated for {{email}}",
+      "prompt": "Activate an Arty Pro key to unlock unlimited access.",
+      "badge": "Pro · active",
+      "emailPlaceholder": "your.email@example.com",
+      "keyPlaceholder": "License key",
+      "activate": "Activate",
+      "activating": "Activating…",
+      "success": "License activated! You now have access to Arty Pro."
+    },
+    "debug": {
+      "title": "Last position sent to Arty",
+      "snapshot": "{{seconds}}s ago — query: « {{message}} »",
+      "accuracy": "Accuracy: {{m}} m",
+      "noPosition": "Position unavailable (GPS unavailable or trigger not matched)",
+      "geocodedLabel": "Reverse-geocoded city:",
+      "geocodingFailed": "Reverse geocoding: unresolved (Google Maps unavailable or coords at sea) — Arty receives coords only",
+      "viewBlock": "View the full block injected into the prompt",
+      "emptyInjected": "(empty — no text injected)",
+      "noQuery": "No location query made since the app started."
+    }
+  },
+  "costsScreen": {
+    "back": "Back",
+    "headerTitle": "My costs",
+    "heroMain": "Your",
+    "heroAccent": "costs.",
+    "heroSubtitle": "Local tracking of AI usage, based on real tokens.",
+    "sourceNote": "Source: real tokens captured server-side (table `quota_model`), local history fallback when offline. Exact accuracy vs. official invoice.",
+    "summaryTitle": "This month",
+    "deltaUp": "Up vs previous month",
+    "deltaDown": "Down vs previous month",
+    "vsPrevMonth": "vs previous month",
+    "budget": "Budget {{amount}}",
+    "chartTitle": "Last 7 days",
+    "barAria": "{{date}} — {{cost}}",
+    "modelsTitle": "By model",
+    "modelTokens": "{{tokens}} tokens · {{provider}}",
+    "providerOther": "Other",
+    "alertTitle": "Alert me if I exceed…",
+    "alertDescription": "Banner on next launch when the current month exceeds the threshold.",
+    "alertThresholdAria": "Alert threshold in euros",
+    "perMonth": "/ mo",
+    "exportButton": "Export CSV",
+    "exportColumns": "Columns: date, model, tokens_input, tokens_output, cost_eur",
+    "empty": "Start chatting to see your costs here 💬",
+    "shareTitle": "Arty cost export",
+    "shareText": "Arty costs — {{monthKey}}",
+    "shareDialogTitle": "Share CSV"
+  },
+  "upgrade": {
+    "back": "Back",
+    "headerTitle": "Upgrade",
+    "heroMain": "Choose your",
+    "heroAccent": "plan.",
+    "heroSubtitle": "No commitment. You can change later.",
+    "legal": "Secure payment via Lemon Squeezy. VAT included.",
+    "statusChecking": "Checking your subscription…",
+    "statusActive": "✓ Subscription activated!",
+    "statusPendingTitle": "Pending",
+    "statusPendingBody": "Confirmation can take a minute. Check back in a moment.",
+    "errorNoToken": "Sign in with Google to check your subscription.",
+    "errorNoEmail": "No email found. Sign in with Google first.",
+    "currentPlan": "Current plan",
+    "byokPrice": "Free",
+    "proPrice": "€39 one-time",
+    "subscriptionPrice": "€9.99/mo",
+    "premiumPackPrice": "€1.99",
+    "byokDescription": "Your own API key · All models · Local storage",
+    "byokCta": "Switch to BYOK",
+    "proBadge": "Popular",
+    "proTagline": "Lifetime, 3 devices",
+    "proDescription": "Everything in Free · Business templates · Priority support · No subscription",
+    "proCta": "Buy Arty Pro",
+    "subscriptionDescription": "No API key · 500 messages/month · Claude, GPT-5-mini, Gemini, Mistral",
+    "subscriptionCta": "Subscribe",
+    "premiumPackEyebrow": "Quota exceeded?",
+    "premiumPackTitle": "+100 premium messages pack",
+    "premiumPackDescription": "For Subscription users who have reached their monthly quota.",
+    "premiumPackCta": "Buy 100 messages"
   }
 }

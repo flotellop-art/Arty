@@ -1,3 +1,5 @@
+import { getDateLocale } from '../utils/formatDate'
+
 const REPORT_STORAGE_KEY = 'arty-report-'
 
 // Palette + composants conformes à la spec "Rapport Arty Premium v3 finale".
@@ -194,7 +196,7 @@ body::before{content:'';position:fixed;top:0;left:0;right:0;height:5px;backgroun
       arty
     </div>
     <div class="doc-title">${title.replace(/[<>]/g, '')}</div>
-    <div class="doc-date">${new Date().toLocaleDateString('fr-FR', { year: 'numeric', month: 'long', day: 'numeric' })}</div>
+    <div class="doc-date">${new Date().toLocaleDateString(getDateLocale(), { year: 'numeric', month: 'long', day: 'numeric' })}</div>
   </div>
 
   <div class="cover">
@@ -202,7 +204,7 @@ body::before{content:'';position:fixed;top:0;left:0;right:0;height:5px;backgroun
     <h1 class="cover-title">${title}</h1>
     <div class="cover-sep"></div>
     <div class="cover-meta">
-      <span>Généré le ${new Date().toLocaleDateString('fr-FR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
+      <span>Généré le ${new Date().toLocaleDateString(getDateLocale(), { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
       <span>Arty</span>
     </div>
   </div>

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { Task } from '../../services/taskService'
 import { getTasks, addTask, toggleTask, deleteTask } from '../../services/taskService'
 
@@ -7,6 +8,7 @@ interface TaskPanelProps {
 }
 
 export function TaskPanel({ onClose }: TaskPanelProps) {
+  const { t } = useTranslation()
   const [tasks, setTasks] = useState<Task[]>(getTasks)
   const [newText, setNewText] = useState('')
 
@@ -33,8 +35,8 @@ export function TaskPanel({ onClose }: TaskPanelProps) {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-5 py-4 border-b border-theme-border">
-          <h2 className="font-display text-lg text-theme-ink">✅ Tâches</h2>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-theme-ink/5 text-theme-muted" aria-label="Fermer">
+          <h2 className="font-display text-lg text-theme-ink">✅ {t('tasks.title')}</h2>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-theme-ink/5 text-theme-muted" aria-label={t('common.close')}>
             <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
               <path d="M4 4L14 14M14 4L4 14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
             </svg>
@@ -49,7 +51,7 @@ export function TaskPanel({ onClose }: TaskPanelProps) {
             onKeyDown={(e) => {
               if (e.key === 'Enter') { e.preventDefault(); handleAdd() }
             }}
-            placeholder="Ajouter une tâche..."
+            placeholder={t('tasks.addPlaceholder')}
             className="flex-1 px-3 py-1.5 text-sm rounded-lg border border-theme-border focus:outline-none focus:border-theme-accent"
           />
           <button
@@ -63,12 +65,12 @@ export function TaskPanel({ onClose }: TaskPanelProps) {
 
         <div className="flex-1 overflow-y-auto px-5 py-3">
           {tasks.length === 0 && (
-            <p className="text-sm text-theme-muted text-center py-6">Aucune tâche</p>
+            <p className="text-sm text-theme-muted text-center py-6">{t('tasks.empty')}</p>
           )}
 
           {pending.length > 0 && (
             <div className="mb-4">
-              <p className="text-[10px] uppercase tracking-wider text-theme-muted mb-1.5">En cours ({pending.length})</p>
+              <p className="text-[10px] uppercase tracking-wider text-theme-muted mb-1.5">{t('tasks.pending', { count: pending.length })}</p>
               {pending.map((task) => (
                 <TaskRow key={task.id} task={task} />
               ))}
@@ -77,7 +79,7 @@ export function TaskPanel({ onClose }: TaskPanelProps) {
 
           {done.length > 0 && (
             <div>
-              <p className="text-[10px] uppercase tracking-wider text-theme-muted mb-1.5">Terminées ({done.length})</p>
+              <p className="text-[10px] uppercase tracking-wider text-theme-muted mb-1.5">{t('tasks.done', { count: done.length })}</p>
               {done.map((task) => (
                 <TaskRow key={task.id} task={task} />
               ))}
@@ -90,6 +92,7 @@ export function TaskPanel({ onClose }: TaskPanelProps) {
 }
 
 function TaskRow({ task }: { task: Task }) {
+  const { t } = useTranslation()
   return (
     <div className="flex items-center gap-2 py-1.5 group">
       <button
@@ -99,7 +102,7 @@ function TaskRow({ task }: { task: Task }) {
             ? 'bg-theme-accent border-theme-accent text-white'
             : 'border-theme-border hover:border-theme-accent'
         }`}
-        aria-label={task.done ? 'Marquer comme non terminée' : 'Marquer comme terminée'}
+        aria-label={task.done ? t('tasks.markUndone') : t('tasks.markDone')}
       >
         {task.done && <span className="text-xs">✓</span>}
       </button>
@@ -109,7 +112,7 @@ function TaskRow({ task }: { task: Task }) {
       <button
         onClick={() => deleteTask(task.id)}
         className="opacity-0 group-hover:opacity-100 text-theme-muted hover:text-red-500 text-xs transition-opacity"
-        aria-label="Supprimer"
+        aria-label={t('tasks.delete')}
       >
         ✕
       </button>
