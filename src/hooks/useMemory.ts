@@ -23,7 +23,7 @@ export function useMemory() {
   }, [memory])
 
   const saveMemory = useCallback(
-    async (category: 'profil' | 'clients' | 'chantiers' | 'notes', data: unknown) => {
+    async (category: 'profil' | 'clients' | 'projets' | 'notes', data: unknown) => {
       const result = await updateMemory(category, data)
       if (result.success) {
         // Refresh local state

@@ -15,14 +15,14 @@ export const calendarToolDefinitions = [
   },
   {
     name: 'create_calendar_event',
-    description: 'Créer un RDV dans Google Calendar (chantier, réunion, relance client).',
+    description: 'Créer un RDV dans Google Calendar (réunion, rendez-vous, rappel).',
     input_schema: {
       type: 'object' as const,
       properties: {
         title: { type: 'string' as const, description: "Titre de l'événement" },
         start: { type: 'string' as const, description: 'Date/heure début (ISO 8601, ex: 2026-04-15T09:00:00)' },
         end: { type: 'string' as const, description: 'Date/heure fin (optionnel)' },
-        location: { type: 'string' as const, description: 'Lieu (adresse du chantier, etc.)' },
+        location: { type: 'string' as const, description: 'Lieu (adresse ou salle, etc.)' },
         description: { type: 'string' as const, description: 'Notes' },
       },
       required: ['title', 'start'],

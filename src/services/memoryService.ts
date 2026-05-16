@@ -2,13 +2,13 @@ import { getActiveUserId } from './userSession'
 import { apiUrl } from './apiBase'
 import { getValidAccessToken } from './googleAuth'
 
-const MEMORY_CATEGORIES = ['profil', 'clients', 'chantiers', 'notes'] as const
+const MEMORY_CATEGORIES = ['profil', 'clients', 'projets', 'notes'] as const
 type MemoryCategory = typeof MEMORY_CATEGORIES[number]
 
 export interface MemoryData {
   profil: Record<string, unknown>
   clients: Record<string, unknown>[]
-  chantiers: Record<string, unknown>[]
+  projets: Record<string, unknown>[]
   notes: string[]
 }
 
@@ -18,12 +18,11 @@ function getDefaultData(category: MemoryCategory): unknown {
       return {
         preferences: {},
         habitudes: {},
-        fournisseurs: {},
         derniereMAJ: new Date().toISOString(),
       }
     case 'clients':
       return []
-    case 'chantiers':
+    case 'projets':
       return []
     case 'notes':
       return []
@@ -111,17 +110,17 @@ export async function readMemory(category: MemoryCategory): Promise<unknown> {
 }
 
 export async function readAllMemory(): Promise<MemoryData> {
-  const [profil, clients, chantiers, notes] = await Promise.all([
+  const [profil, clients, projets, notes] = await Promise.all([
     readMemory('profil'),
     readMemory('clients'),
-    readMemory('chantiers'),
+    readMemory('projets'),
     readMemory('notes'),
   ])
 
   return {
     profil: profil as Record<string, unknown>,
     clients: clients as Record<string, unknown>[],
-    chantiers: chantiers as Record<string, unknown>[],
+    projets: projets as Record<string, unknown>[],
     notes: notes as string[],
   }
 }
@@ -134,7 +133,7 @@ export async function updateMemory(
 }
 
 /**
- * Patterns qui déclenchent l'injection des entités (clients/chantiers/notes).
+ * Patterns qui déclenchent l'injection des entités (clients/projets/notes).
  * Si le message user contient un de ces mots/phrases, on injecte la mémoire
  * complète. Sinon, on n'injecte QUE le profil minimal.
  *
@@ -144,18 +143,18 @@ export async function updateMemory(
  *
  * Roadmap PR 12.1 — injection conditionnelle.
  */
-const MEMORY_INJECTION_TRIGGERS = /\b(mon|ma|mes|notre|nos|client|clients|chantier|chantiers|projet|projets|fournisseur|fournisseurs|contact|contacts|adresse|adresses|note|notes|rappelle|souvient|souviens|mémoire|enregistre|sais|connais|appelle|nommé|nommée|nommés|nommées|qui\s+est|qu['']est-ce\s+que|où\s+est|où\s+habite)\b/i
+const MEMORY_INJECTION_TRIGGERS = /\b(mon|ma|mes|notre|nos|client|clients|projet|projets|contact|contacts|adresse|adresses|note|notes|rappelle|souvient|souviens|mémoire|enregistre|sais|connais|appelle|nommé|nommée|nommés|nommées|qui\s+est|qu['']est-ce\s+que|où\s+est|où\s+habite)\b/i
 
 /**
  * Extrait un mini-profil pour le Tier 0 (toujours injecté). Hard-capé à
  * ~150 tokens : prénom, métier, style de communication. Le reste du profil
- * (préférences détaillées, habitudes, fournisseurs) attend le Tier 1.
+ * (préférences détaillées, habitudes) attend le Tier 1.
  */
 function extractMinimalProfil(profil: Record<string, unknown>): Record<string, unknown> | null {
   if (!profil || typeof profil !== 'object') return null
   const minimal: Record<string, unknown> = {}
   // Whitelist des clés essentielles. Évite d'injecter tous les attributs
-  // potentiellement gros (historique, fournisseurs, etc.).
+  // potentiellement gros (historique, préférences détaillées, etc.).
   const ESSENTIAL_KEYS = ['prenom', 'nom', 'metier', 'style_communication', 'tutoiement']
   for (const key of ESSENTIAL_KEYS) {
     if (key in profil) minimal[key] = profil[key]
@@ -208,7 +207,7 @@ export function formatMemoryForPrompt(memory: MemoryData, userMessage?: string):
     }
   }
 
-  // Tier 1 — clients/chantiers/notes : injectés uniquement si trigger
+  // Tier 1 — clients/projets/notes : injectés uniquement si trigger
   // matche, ou si mode legacy (pas de userMessage fourni).
   if (shouldInjectFullMemory) {
     // Clients
@@ -220,13 +219,13 @@ export function formatMemoryForPrompt(memory: MemoryData, userMessage?: string):
       parts.push(`CLIENTS CONNUS (${memory.clients.length}) :\n${clientSummary}`)
     }
 
-    // Chantiers
-    if (memory.chantiers && memory.chantiers.length > 0) {
-      const chantierSummary = memory.chantiers
+    // Projets
+    if (memory.projets && memory.projets.length > 0) {
+      const projetSummary = memory.projets
         .slice(0, 20)
-        .map((ch) => `- ${ch.adresse || ch.nom || 'Inconnu'}: ${ch.resume || JSON.stringify(ch)}`)
+        .map((p) => `- ${p.nom || p.titre || 'Inconnu'}: ${p.resume || JSON.stringify(p)}`)
         .join('\n')
-      parts.push(`CHANTIERS (${memory.chantiers.length}) :\n${chantierSummary}`)
+      parts.push(`PROJETS (${memory.projets.length}) :\n${projetSummary}`)
     }
 
     // Notes

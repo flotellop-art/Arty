@@ -32,7 +32,6 @@ type FilterValue = 'all' | TemplateCategory
 
 const FILTERS: Array<{ value: FilterValue; label: string; icon?: string }> = [
   { value: 'all', label: 'Tous' },
-  { value: 'artisanat', label: CATEGORY_LABELS.artisanat.label, icon: CATEGORY_LABELS.artisanat.icon },
   { value: 'freelance', label: CATEGORY_LABELS.freelance.label, icon: CATEGORY_LABELS.freelance.icon },
   { value: 'admin', label: CATEGORY_LABELS.admin.label, icon: CATEGORY_LABELS.admin.icon },
   { value: 'juridique', label: CATEGORY_LABELS.juridique.label, icon: CATEGORY_LABELS.juridique.icon },

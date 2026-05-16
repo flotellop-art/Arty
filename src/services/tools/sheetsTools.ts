@@ -14,12 +14,12 @@ export const sheetsToolDefinitions = [
     },
   },
   {
-    name: 'export_chantiers_to_sheets',
-    description: 'Exporter tous les chantiers vers un nouveau Google Sheet. Colonnes : adresse, client, statut, date, résumé.',
+    name: 'export_projets_to_sheets',
+    description: 'Exporter tous les projets vers un nouveau Google Sheet. Colonnes : nom, statut, date, résumé.',
     input_schema: {
       type: 'object' as const,
       properties: {
-        title: { type: 'string' as const, description: 'Titre du document (défaut: "Chantiers Arty").' },
+        title: { type: 'string' as const, description: 'Titre du document (défaut: "Projets Arty").' },
       },
     },
   },
@@ -55,24 +55,23 @@ export function createSheetsHandlers(): Record<string, ToolHandler> {
       }
     },
 
-    export_chantiers_to_sheets: async (input) => {
-      const title = (input.title as string) || 'Chantiers Arty'
-      const chantiers = await readMemory('chantiers') as Array<Record<string, unknown>>
-      if (!Array.isArray(chantiers) || chantiers.length === 0) {
-        return { result: 'Aucun chantier à exporter.' }
+    export_projets_to_sheets: async (input) => {
+      const title = (input.title as string) || 'Projets Arty'
+      const projets = await readMemory('projets') as Array<Record<string, unknown>>
+      if (!Array.isArray(projets) || projets.length === 0) {
+        return { result: 'Aucun projet à exporter.' }
       }
-      const headers = ['Adresse', 'Client', 'Statut', 'Date', 'Résumé']
+      const headers = ['Nom', 'Statut', 'Date', 'Résumé']
       try {
         const { spreadsheetId, url } = await createSheet(title, headers)
-        const rows = chantiers.map((c) => [
-          escape(c.adresse || c.nom),
-          escape(c.client),
-          escape(c.statut || c.status),
-          escape(c.date),
-          escape(c.resume),
+        const rows = projets.map((p) => [
+          escape(p.nom || p.titre || p.adresse),
+          escape(p.statut || p.status),
+          escape(p.date),
+          escape(p.resume),
         ])
         await appendRow(spreadsheetId, 'Feuille 1', rows as unknown as string[])
-        return { result: `✅ ${chantiers.length} chantier(s) exportés vers Google Sheets.\nLien : ${url}` }
+        return { result: `✅ ${projets.length} projet(s) exportés vers Google Sheets.\nLien : ${url}` }
       } catch (err) {
         return { result: `Erreur: ${err instanceof Error ? err.message : 'export échoué'}` }
       }

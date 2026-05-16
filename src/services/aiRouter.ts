@@ -14,7 +14,7 @@ export const PRIVATE_DATA_TRIGGERS = [
   // FR — mail / drive / clients / factures
   /mes\s+(mails|emails|e-mails|courriers|messages)/i,
   /mes\s+(fichiers|documents|drive|dossiers)/i,
-  /mes\s+(clients|contacts|chantiers|projets)/i,
+  /mes\s+(clients|contacts|projets)/i,
   /mes\s+(factures|devis|contrats)/i,
   /emails?\s+(non\s+lus|reçus|envoyés|du jour|récents)/i,
   /boîte\s+(de\s+réception|mail)/i,
@@ -80,7 +80,7 @@ const HYBRID_TRIGGERS = [
   ...REPORT_TRIGGERS,
   /\bvs\b|versus|\bcontre\b|compare[z]?\s+(.*)\s+(et|avec|à)/i,
   /norme[s]?\s+(RE|RT|DTU|NF)|réglementation\s+thermique|MaPrimeRénov/i,
-  /prix\s+(des?|du|au)\s+m[²2]|coût\s+(des?|du)\s+(travaux|chantier)/i,
+  /prix\s+(des?|du|au)\s+m[²2]|coût\s+(des?|du)\s+travaux/i,
   /comment\s+(installer|configurer|mettre\s+en\s+place|créer\s+une?\s+entreprise)/i,
 ]
 

@@ -82,7 +82,7 @@ export const gmailToolDefinitions = [
     input_schema: {
       type: 'object' as const,
       properties: {
-        query: { type: 'string' as const, description: 'Recherche Gmail (ex: "from:client@email.com" ou "devis facade")' },
+        query: { type: 'string' as const, description: 'Recherche Gmail (ex: "from:client@email.com" ou "facture mars")' },
       },
       required: ['query'],
     },

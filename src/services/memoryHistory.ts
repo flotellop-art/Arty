@@ -59,7 +59,10 @@ export async function revertLastChange(category: string): Promise<boolean> {
   const entry = history[idx]!
   try {
     const { updateMemory } = await import('./memoryService')
-    await updateMemory(entry.category as 'profil' | 'clients' | 'chantiers' | 'notes', entry.previousValue)
+    // Legacy history entries may still carry the old 'chantiers' category
+    // (renamed to 'projets') — remap so the revert lands in the right bucket.
+    const category = entry.category === 'chantiers' ? 'projets' : entry.category
+    await updateMemory(category as 'profil' | 'clients' | 'projets' | 'notes', entry.previousValue)
     // Remove the reverted entry from history
     history.splice(idx, 1)
     scoped.setJSON(KEY, history)

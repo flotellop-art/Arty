@@ -20,31 +20,6 @@ export const utilityToolDefinitions = [
     },
   },
   {
-    name: 'calculate_quote',
-    description: 'Calcule un chiffrage/devis. Surface × tarif + TVA.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        items: { type: 'string' as const, description: 'Liste des postes au format JSON: [{"label":"Prestation","surface":120,"price_per_m2":45},...]' },
-        tva_rate: { type: 'number' as const, description: 'Taux TVA en % (10 ou 20)' },
-        client_name: { type: 'string' as const, description: 'Nom du client' },
-      },
-      required: ['items', 'tva_rate'],
-    },
-  },
-  {
-    name: 'calculate_surface',
-    description: 'Calcule une surface (largeur × hauteur - ouvertures).',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        walls: { type: 'string' as const, description: 'Murs JSON: [{"width":10,"height":3},...]' },
-        openings: { type: 'string' as const, description: 'Ouvertures JSON: [{"width":1.2,"height":1.5,"count":3},...]' },
-      },
-      required: ['walls'],
-    },
-  },
-  {
     name: 'calculate_distance',
     description: "Calcule la distance et le temps de trajet entre un point d'origine et une destination. Si origin est omis ET que la géolocalisation utilisateur est active, utilise sa position GPS ; sinon demande l'origine à l'utilisateur.",
     input_schema: {
@@ -91,19 +66,19 @@ export const utilityToolDefinitions = [
   },
   {
     name: 'update_memory',
-    description: "Met à jour la mémoire persistante. Catégories : profil (préférences utilisateur), clients (fiches clients), chantiers (historique chantiers), notes (infos diverses). Envoie le JSON COMPLET de la catégorie (pas un diff).",
+    description: "Met à jour la mémoire persistante. Catégories : profil (préférences utilisateur), clients (fiches contacts), projets (projets et dossiers suivis), notes (infos diverses). Envoie le JSON COMPLET de la catégorie (pas un diff).",
     input_schema: {
       type: 'object' as const,
       properties: {
-        category: { type: 'string' as const, enum: ['profil', 'clients', 'chantiers', 'notes'], description: 'Catégorie à mettre à jour' },
-        data: { description: 'Données complètes (JSON). Pour clients/chantiers: tableau. Pour profil: objet. Pour notes: tableau de strings.' },
+        category: { type: 'string' as const, enum: ['profil', 'clients', 'projets', 'notes'], description: 'Catégorie à mettre à jour' },
+        data: { description: 'Données complètes (JSON). Pour clients/projets: tableau. Pour profil: objet. Pour notes: tableau de strings.' },
       },
       required: ['category', 'data'],
     },
   },
   {
     name: 'search_price',
-    description: 'Recherche prix chez fournisseurs BTP (Point P, Gedimat).',
+    description: "Recherche le prix d'un produit chez des marchands en ligne.",
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -121,22 +96,6 @@ export function createUtilityHandlers(browserActions: ReturnType<typeof useBrows
       const content = input.content as string
       const reportId = openReport(title, content)
       return { result: `Rapport "${title}" prêt. Lien : [📄 Ouvrir le rapport](${window.location.origin}/report/${reportId})` }
-    },
-
-    calculate_surface: async (input) => {
-      try {
-        const walls = JSON.parse(input.walls as string) as Array<{ width: number; height: number }>
-        const openings = input.openings ? JSON.parse(input.openings as string) as Array<{ width: number; height: number; count: number }> : []
-
-        let totalWall = 0
-        walls.forEach(w => { totalWall += w.width * w.height })
-
-        let totalOpenings = 0
-        openings.forEach(o => { totalOpenings += o.width * o.height * (o.count || 1) })
-
-        const net = totalWall - totalOpenings
-        return { result: `Surface brute : ${totalWall.toFixed(2)} m²\nOuvertures : ${totalOpenings.toFixed(2)} m²\nSurface nette : ${net.toFixed(2)} m²` }
-      } catch { return { result: 'Erreur: format JSON invalide.' } }
     },
 
     calculate_distance: async (input) => {
@@ -194,35 +153,8 @@ export function createUtilityHandlers(browserActions: ReturnType<typeof useBrows
       } catch { return { result: 'Erreur météo.' } }
     },
 
-    calculate_quote: async (input) => {
-      try {
-        const items = JSON.parse(input.items as string) as Array<{ label: string; surface: number; price_per_m2: number }>
-        const tvaRate = (input.tva_rate as number) || 10
-        const clientName = (input.client_name as string) || ''
-
-        let totalHT = 0
-        const lines = items.map(item => {
-          const lineTotal = item.surface * item.price_per_m2
-          totalHT += lineTotal
-          return `${item.label} : ${item.surface} m² × ${item.price_per_m2}€ = ${lineTotal.toFixed(2)}€ HT`
-        })
-
-        const tva = totalHT * tvaRate / 100
-        const ttc = totalHT + tva
-
-        let result = `DEVIS${clientName ? ` — ${clientName}` : ''}\n${'='.repeat(40)}\n`
-        result += lines.join('\n')
-        result += `\n${'—'.repeat(40)}`
-        result += `\nTotal HT : ${totalHT.toFixed(2)}€`
-        result += `\nTVA ${tvaRate}% : ${tva.toFixed(2)}€`
-        result += `\nTotal TTC : ${ttc.toFixed(2)}€`
-
-        return { result }
-      } catch { return { result: 'Erreur: format items invalide.' } }
-    },
-
     update_memory: async (input) => {
-      const category = input.category as 'profil' | 'clients' | 'chantiers' | 'notes'
+      const category = input.category as 'profil' | 'clients' | 'projets' | 'notes'
       const data = input.data
       if (!category || !data) return { result: 'Erreur: catégorie ou données manquantes.' }
       const res = await updateMemory(category, data)
