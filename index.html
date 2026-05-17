@@ -69,30 +69,8 @@
     </div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
-    <script>
-      // Bandeau pre-launch : actif UNIQUEMENT sur le domaine public web.
-      // On detecte par hostname (plus fiable que Capacitor.isNativePlatform qui
-      // peut retourner true meme en web selon la config Capacitor).
-      // Stocke le "dismiss" en localStorage pour ne pas l'afficher 2x au meme visiteur.
-      (function() {
-        var host = (location.hostname || "").toLowerCase();
-        var isPublicWeb = host === "tryarty.com" || host === "www.tryarty.com" || host.endsWith(".pages.dev");
-        if (!isPublicWeb) return;
-        var dismissed = false;
-        try { dismissed = localStorage.getItem('arty-prelaunch-banner-dismissed') === '1'; } catch(e) {}
-        if (dismissed) return;
-        var b = document.getElementById('arty-prelaunch-banner');
-        if (!b) return;
-        b.style.display = 'block';
-        document.body.classList.add('arty-banner-visible');
-        var btn = document.getElementById('arty-prelaunch-banner-close');
-        if (btn) btn.addEventListener('click', function() {
-          b.style.display = 'none';
-          document.body.classList.remove('arty-banner-visible');
-          try { localStorage.setItem('arty-prelaunch-banner-dismissed', '1'); } catch(e) {}
-        });
-      })();
-    </script>
+    <!-- Bandeau pre-launch : script externe (CSP refuse inline). -->
+    <script src="/arty-banner.js"></script>
     <script>
       // Skip SW registration on Capacitor native — the SW persists across APK
       // updates and serves stale JS/CSS, forcing users to clear app data.
