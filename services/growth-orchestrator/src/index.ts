@@ -30,6 +30,8 @@ export interface Env {
   DISCORD_BOT_TOKEN: string;
   TALLY_API_KEY: string;
   GITHUB_TOKEN: string;
+  GOOGLE_CLIENT_ID: string;
+  GOOGLE_CLIENT_SECRET: string;
   RESEND_API_KEY?: string;
 
   // Vars publiques
@@ -1433,6 +1435,426 @@ async function deliverSessionResultToDiscord(
 }
 
 // ===========================================================================
+// 6.6 GOOGLE OAUTH + MCP GMAIL
+// ===========================================================================
+
+const GOOGLE_OAUTH_AUTHORIZE = "https://accounts.google.com/o/oauth2/v2/auth";
+const GOOGLE_OAUTH_TOKEN = "https://oauth2.googleapis.com/token";
+const GMAIL_SCOPES = [
+  "https://www.googleapis.com/auth/gmail.readonly",
+  "https://www.googleapis.com/auth/gmail.compose",
+];
+const GMAIL_API = "https://gmail.googleapis.com/gmail/v1";
+
+/**
+ * Demarre le flow OAuth Google : redirige Florent vers le consent screen.
+ * Audit secu : on genere un state random anti-CSRF stocke en KV TTL 10 min.
+ */
+async function handleGoogleOAuthStart(env: Env, request: Request): Promise<Response> {
+  // Auth simple : on utilise le TRIGGER_SECRET dans l'URL pour eviter qu'un attaquant declenche un flow OAuth
+  const url = new URL(request.url);
+  const auth = url.searchParams.get("secret");
+  if (!env.TRIGGER_SECRET || !auth || auth !== env.TRIGGER_SECRET) {
+    return new Response("Not Found", { status: 404 });
+  }
+
+  // Genere un state random pour anti-CSRF
+  const stateBytes = new Uint8Array(16);
+  crypto.getRandomValues(stateBytes);
+  const state = Array.from(stateBytes).map((b) => b.toString(16).padStart(2, "0")).join("");
+  await env.INTERACTIONS.put(`oauth:google:state:${state}`, "1", { expirationTtl: 600 });
+
+  const redirectUri = `${url.origin}/oauth/google/callback`;
+  const params = new URLSearchParams({
+    client_id: env.GOOGLE_CLIENT_ID,
+    redirect_uri: redirectUri,
+    response_type: "code",
+    scope: GMAIL_SCOPES.join(" "),
+    access_type: "offline",
+    prompt: "consent", // garantit un refresh_token a chaque flow
+    state,
+  });
+  return Response.redirect(`${GOOGLE_OAUTH_AUTHORIZE}?${params}`, 302);
+}
+
+async function handleGoogleOAuthCallback(env: Env, request: Request): Promise<Response> {
+  const url = new URL(request.url);
+  const code = url.searchParams.get("code");
+  const state = url.searchParams.get("state");
+  const error = url.searchParams.get("error");
+
+  if (error) {
+    return new Response(`OAuth error: ${error}`, { status: 400 });
+  }
+  if (!code || !state) {
+    return new Response("Missing code or state", { status: 400 });
+  }
+
+  // Verifie le state anti-CSRF
+  const stateOk = await env.INTERACTIONS.get(`oauth:google:state:${state}`);
+  if (!stateOk) {
+    return new Response("Invalid or expired state", { status: 400 });
+  }
+  await env.INTERACTIONS.delete(`oauth:google:state:${state}`);
+
+  // Echange le code contre tokens
+  const redirectUri = `${url.origin}/oauth/google/callback`;
+  const body = new URLSearchParams({
+    code,
+    client_id: env.GOOGLE_CLIENT_ID,
+    client_secret: env.GOOGLE_CLIENT_SECRET,
+    redirect_uri: redirectUri,
+    grant_type: "authorization_code",
+  });
+  const tokRes = await fetch(GOOGLE_OAUTH_TOKEN, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: body.toString(),
+  });
+  if (!tokRes.ok) {
+    const err = await tokRes.text();
+    console.error(`[oauth-google] token exchange failed ${tokRes.status}: ${err.slice(0, 200)}`);
+    return new Response(`Token exchange failed: ${err.slice(0, 200)}`, { status: 400 });
+  }
+  const tokens = (await tokRes.json()) as {
+    access_token?: string;
+    refresh_token?: string;
+    expires_in?: number;
+    scope?: string;
+  };
+  if (!tokens.refresh_token) {
+    return new Response("No refresh_token returned. Re-try and ensure prompt=consent.", { status: 400 });
+  }
+
+  // Stocke le refresh_token en KV. Pas d'expiration (les refresh tokens Google sont valides jusqu'a revocation).
+  await env.INTERACTIONS.put("google:refresh_token", tokens.refresh_token);
+  // Optionnel : stocker l'access_token courant + son expiry pour reuse
+  if (tokens.access_token && tokens.expires_in) {
+    const expiresAt = Date.now() + (tokens.expires_in - 60) * 1000; // -60s marge securite
+    await env.INTERACTIONS.put(
+      "google:access_token",
+      JSON.stringify({ token: tokens.access_token, expiresAt }),
+      { expirationTtl: tokens.expires_in },
+    );
+  }
+
+  console.log(`[oauth-google] success, scopes=${tokens.scope}`);
+  return new Response(
+    `<html><body style="font-family:system-ui;max-width:600px;margin:40px auto;padding:0 20px;">
+      <h1>OAuth Google : succes</h1>
+      <p>Tu peux fermer cet onglet. Le DG aura maintenant acces a Gmail (readonly + compose) via le MCP.</p>
+      <p><small>Refresh token stocke en KV. Tu peux refaire ce flow a tout moment via /oauth/google/start?secret=...</small></p>
+    </body></html>`,
+    {
+      status: 200,
+      headers: { "Content-Type": "text/html; charset=utf-8" },
+    },
+  );
+}
+
+/**
+ * Obtient un access_token Google valide (refresh si besoin via le refresh_token KV).
+ */
+async function getGoogleAccessToken(env: Env): Promise<{ ok: true; token: string } | { ok: false; err: string }> {
+  // 1. Check si on a un access_token cache encore valide
+  const cached = await env.INTERACTIONS.get("google:access_token");
+  if (cached) {
+    try {
+      const { token, expiresAt } = JSON.parse(cached) as { token: string; expiresAt: number };
+      if (Date.now() < expiresAt) return { ok: true, token };
+    } catch {}
+  }
+
+  // 2. Refresh via le refresh_token
+  const refreshToken = await env.INTERACTIONS.get("google:refresh_token");
+  if (!refreshToken) {
+    return { ok: false, err: "No google:refresh_token in KV. Run /oauth/google/start first." };
+  }
+  const body = new URLSearchParams({
+    refresh_token: refreshToken,
+    client_id: env.GOOGLE_CLIENT_ID,
+    client_secret: env.GOOGLE_CLIENT_SECRET,
+    grant_type: "refresh_token",
+  });
+  const res = await fetch(GOOGLE_OAUTH_TOKEN, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: body.toString(),
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    return { ok: false, err: `Google refresh ${res.status}: ${err.slice(0, 200)}` };
+  }
+  const data = (await res.json()) as { access_token?: string; expires_in?: number };
+  if (!data.access_token) return { ok: false, err: "No access_token in refresh response" };
+
+  // Cache le nouveau access_token
+  if (data.expires_in) {
+    const expiresAt = Date.now() + (data.expires_in - 60) * 1000;
+    await env.INTERACTIONS.put(
+      "google:access_token",
+      JSON.stringify({ token: data.access_token, expiresAt }),
+      { expirationTtl: data.expires_in },
+    );
+  }
+  return { ok: true, token: data.access_token };
+}
+
+/**
+ * MCP server endpoint pour Gmail. Implemente le protocole JSON-RPC 2.0.
+ * Tools exposes :
+ *   - gmail_search : liste de messages matching une query Gmail
+ *   - gmail_get_message : detail d'un message (subject, from, body)
+ *   - gmail_draft : cree un brouillon
+ *
+ * Audit secu :
+ *   - L'URL inclut le TRIGGER_SECRET en query string pour eviter qu'un attaquant tape directement
+ *   - Pas de scope d'envoi : le DG peut juste lire et drafter (Florent valide depuis Gmail UI)
+ */
+async function handleMcpGmail(request: Request, env: Env): Promise<Response> {
+  const url = new URL(request.url);
+  const auth = url.searchParams.get("secret");
+  if (!env.TRIGGER_SECRET || !auth || auth !== env.TRIGGER_SECRET) {
+    return new Response(JSON.stringify({ jsonrpc: "2.0", error: { code: -32001, message: "Unauthorized" } }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  let req: { jsonrpc?: string; method?: string; params?: any; id?: string | number };
+  try {
+    req = await request.json();
+  } catch {
+    return new Response(
+      JSON.stringify({ jsonrpc: "2.0", error: { code: -32700, message: "Parse error" } }),
+      { status: 400, headers: { "Content-Type": "application/json" } },
+    );
+  }
+  const reqId = req.id ?? null;
+
+  if (req.method === "initialize") {
+    return mcpResult(reqId, {
+      protocolVersion: "2024-11-05",
+      capabilities: { tools: {} },
+      serverInfo: { name: "arty-gmail-mcp", version: "1.0" },
+    });
+  }
+
+  if (req.method === "tools/list") {
+    return mcpResult(reqId, {
+      tools: [
+        {
+          name: "gmail_search",
+          description: "Cherche dans les emails de Florent. Utilise la syntaxe de recherche Gmail (ex: 'from:korben.info', 'is:unread', 'subject:arty', 'after:2026/05/10'). Retourne une liste de messages avec id, subject, from, snippet.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              query: { type: "string", description: "Query Gmail (syntaxe standard Gmail search)" },
+              max_results: { type: "integer", description: "Max messages a retourner (defaut 10, max 50)", default: 10 },
+            },
+            required: ["query"],
+          },
+        },
+        {
+          name: "gmail_get_message",
+          description: "Recupere le contenu complet d'un email par son id. Retourne subject, from, to, date, body.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              message_id: { type: "string", description: "Id du message (obtenu via gmail_search)" },
+            },
+            required: ["message_id"],
+          },
+        },
+        {
+          name: "gmail_draft",
+          description: "Cree un brouillon de mail dans la boite Gmail de Florent (PAS d'envoi). Florent verra le draft dans Gmail UI et pourra l'envoyer ou le modifier.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              to: { type: "string", description: "Destinataire (email)" },
+              subject: { type: "string", description: "Sujet" },
+              body: { type: "string", description: "Corps du mail en texte brut" },
+              in_reply_to_message_id: { type: "string", description: "(optionnel) Id du message auquel on repond, pour thread Gmail proprement" },
+            },
+            required: ["to", "subject", "body"],
+          },
+        },
+      ],
+    });
+  }
+
+  if (req.method === "tools/call") {
+    const name = req.params?.name;
+    const args = req.params?.arguments || {};
+
+    const tokenResult = await getGoogleAccessToken(env);
+    if (!tokenResult.ok) {
+      return mcpResult(reqId, {
+        content: [{ type: "text", text: `Erreur Gmail auth : ${tokenResult.err}` }],
+        isError: true,
+      });
+    }
+    const accessToken = tokenResult.token;
+
+    try {
+      if (name === "gmail_search") {
+        const query = String(args.query || "");
+        const max = Math.min(parseInt(String(args.max_results || "10"), 10) || 10, 50);
+        const listRes = await fetch(
+          `${GMAIL_API}/users/me/messages?q=${encodeURIComponent(query)}&maxResults=${max}`,
+          { headers: { Authorization: `Bearer ${accessToken}` } },
+        );
+        if (!listRes.ok) throw new Error(`Gmail list ${listRes.status}: ${(await listRes.text()).slice(0, 200)}`);
+        const list = (await listRes.json()) as { messages?: Array<{ id: string }> };
+        const ids = (list.messages || []).slice(0, max);
+
+        // Pour chaque id, fetch metadata
+        const details = await Promise.all(
+          ids.map(async (m) => {
+            const r = await fetch(
+              `${GMAIL_API}/users/me/messages/${m.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date`,
+              { headers: { Authorization: `Bearer ${accessToken}` } },
+            );
+            if (!r.ok) return { id: m.id, error: `fetch ${r.status}` };
+            const md = (await r.json()) as any;
+            const headers = md.payload?.headers || [];
+            const get = (n: string) => headers.find((h: any) => h.name === n)?.value || "";
+            return {
+              id: m.id,
+              subject: get("Subject"),
+              from: get("From"),
+              date: get("Date"),
+              snippet: md.snippet || "",
+            };
+          }),
+        );
+        return mcpResult(reqId, {
+          content: [{ type: "text", text: JSON.stringify(details, null, 2) }],
+        });
+      }
+
+      if (name === "gmail_get_message") {
+        const id = String(args.message_id || "");
+        const r = await fetch(`${GMAIL_API}/users/me/messages/${id}?format=full`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+        if (!r.ok) throw new Error(`Gmail get ${r.status}: ${(await r.text()).slice(0, 200)}`);
+        const msg = (await r.json()) as any;
+        const headers = msg.payload?.headers || [];
+        const get = (n: string) => headers.find((h: any) => h.name === n)?.value || "";
+
+        // Extract body (text/plain prefer)
+        let body = "";
+        const findPart = (parts: any[]): any => {
+          for (const p of parts) {
+            if (p.mimeType === "text/plain" && p.body?.data) return p;
+            if (p.parts) {
+              const sub = findPart(p.parts);
+              if (sub) return sub;
+            }
+          }
+          return null;
+        };
+        const part = msg.payload?.parts ? findPart(msg.payload.parts) : msg.payload;
+        if (part?.body?.data) {
+          body = atob(part.body.data.replace(/-/g, "+").replace(/_/g, "/"));
+        }
+
+        return mcpResult(reqId, {
+          content: [{
+            type: "text",
+            text: JSON.stringify({
+              id,
+              subject: get("Subject"),
+              from: get("From"),
+              to: get("To"),
+              date: get("Date"),
+              body: body.slice(0, 5000),
+              snippet: msg.snippet || "",
+            }, null, 2),
+          }],
+        });
+      }
+
+      if (name === "gmail_draft") {
+        const to = String(args.to || "");
+        const subject = String(args.subject || "");
+        const bodyText = String(args.body || "");
+        const inReplyTo = args.in_reply_to_message_id ? String(args.in_reply_to_message_id) : "";
+
+        // Construire le message RFC 2822
+        const lines = [
+          `To: ${to}`,
+          `Subject: ${subject}`,
+          inReplyTo ? `In-Reply-To: ${inReplyTo}` : "",
+          "Content-Type: text/plain; charset=utf-8",
+          "",
+          bodyText,
+        ].filter(Boolean);
+        const raw = lines.join("\r\n");
+        const encoded = btoa(unescape(encodeURIComponent(raw)))
+          .replace(/\+/g, "-")
+          .replace(/\//g, "_")
+          .replace(/=+$/, "");
+
+        const draftBody: any = { message: { raw: encoded } };
+        if (inReplyTo) {
+          // Pour threading, on a besoin du threadId
+          const tr = await fetch(`${GMAIL_API}/users/me/messages/${inReplyTo}?format=metadata`, {
+            headers: { Authorization: `Bearer ${accessToken}` },
+          });
+          if (tr.ok) {
+            const tmsg = (await tr.json()) as { threadId?: string };
+            if (tmsg.threadId) draftBody.message.threadId = tmsg.threadId;
+          }
+        }
+        const r = await fetch(`${GMAIL_API}/users/me/drafts`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+          body: JSON.stringify(draftBody),
+        });
+        if (!r.ok) throw new Error(`Gmail draft ${r.status}: ${(await r.text()).slice(0, 200)}`);
+        const draft = (await r.json()) as { id?: string };
+        return mcpResult(reqId, {
+          content: [{
+            type: "text",
+            text: `Brouillon cree : id=${draft.id}. Florent peut le valider et l'envoyer depuis Gmail UI > Drafts.`,
+          }],
+        });
+      }
+
+      return mcpResult(reqId, {
+        content: [{ type: "text", text: `Tool ${name} inconnu` }],
+        isError: true,
+      });
+    } catch (err) {
+      console.error(`[mcp-gmail] err in ${name}: ${err}`);
+      return mcpResult(reqId, {
+        content: [{ type: "text", text: `Erreur execution ${name} : ${err}` }],
+        isError: true,
+      });
+    }
+  }
+
+  return new Response(
+    JSON.stringify({
+      jsonrpc: "2.0",
+      id: reqId,
+      error: { code: -32601, message: `Method not found: ${req.method}` },
+    }),
+    { status: 200, headers: { "Content-Type": "application/json" } },
+  );
+}
+
+function mcpResult(id: string | number | null, result: any): Response {
+  return new Response(
+    JSON.stringify({ jsonrpc: "2.0", id, result }),
+    { status: 200, headers: { "Content-Type": "application/json" } },
+  );
+}
+
+// ===========================================================================
 // 7. EXPORT HANDLERS
 // ===========================================================================
 
@@ -1513,6 +1935,21 @@ export default {
     // /anthropic/webhook : reception des events Anthropic (session.status_idled)
     if (url.pathname === "/anthropic/webhook" && request.method === "POST") {
       return handleAnthropicWebhook(request, env, ctx);
+    }
+
+    // /oauth/google/start : initie le OAuth flow Google (Florent navigue dessus 1 fois)
+    if (url.pathname === "/oauth/google/start" && request.method === "GET") {
+      return handleGoogleOAuthStart(env, request);
+    }
+
+    // /oauth/google/callback : Google nous redirige ici apres consent
+    if (url.pathname === "/oauth/google/callback" && request.method === "GET") {
+      return handleGoogleOAuthCallback(env, request);
+    }
+
+    // /mcp/gmail : MCP server endpoint (consomme par l'agent DG via mcp_servers config)
+    if (url.pathname === "/mcp/gmail" && request.method === "POST") {
+      return handleMcpGmail(request, env);
     }
 
     // /discord/interactions : webhook Discord
