@@ -3,11 +3,19 @@ main = "src/index.ts"
 compatibility_date = "2024-12-01"
 compatibility_flags = ["nodejs_compat"]
 
+# CPU time limit max sur Standard plan (5 min). Necessaire car le DG peut prendre
+# 30s-2min pour une question ad-hoc, et 5-10min pour un cycle hebdo complet.
+# Le defaut Cloudflare est 30s, ce qui faisait timeout les /dg.
+# Necessite plan Workers Paid (5$/mois) - non supporte sur Free.
+[limits]
+cpu_ms = 300000
+
 # Cron trigger : tous les dimanches a 18h00 UTC (20h Paris l'ete, 19h l'hiver).
 # Permet de produire le digest hebdo en fin de week-end, lisible par Florent
 # le lundi matin.
+# Note : Cloudflare exige le day-of-week en nom court (SUN) ou en 7 (pas 0).
 [triggers]
-crons = ["0 18 * * 0"]
+crons = ["0 18 * * SUN"]
 
 # Logs : conserver les invocations pour debug
 [observability]
@@ -23,14 +31,46 @@ DIGEST_FROM_EMAIL = "digest@tryarty.com"
 DIGEST_FROM_NAME = "Arty Growth Inc."
 
 # IDs des agents managed sur platform.claude.com (workspace Appfacade)
+AGENT_DG_ID = "agent_01USsT8aHKqp1t2nBWAj9KCE"
 AGENT_GROWTH_FR_ID = "agent_01GxjQaNBVXQ6nJcUr4LTSLC"
 AGENT_CONTENT_FR_ID = "agent_01Et2rx4MCjVmBwzYBVGBDC8"
 AGENT_ANALYTICS_ID = "agent_01XRvTLBdHLWmn8WNvV2TbY8"
 
-# Workspace + environment ids (a confirmer en doc API)
+# Workspace + environment ids (confirmes via GET /v1/environments)
+# Le workspace est implicite via l'API key, on garde l'ID pour debug.
 ANTHROPIC_WORKSPACE_ID = "wrkspc_01H3ruuiyXxKTdN1DGELBeDi"
-ANTHROPIC_ENV_ID = "general-purpose-env"
+ANTHROPIC_ENV_ID = "env_0171H3zqE4PaL95poNDMP7kv"
+
+# Memory store partage entre les 4 agents (DG + 3 sub-agents)
+# Monte dans le container a /mnt/memory/arty/ (= name du store)
+# Cree le 17/05/2026, contient le contexte, l historique, les decisions, l outreach.
+MEMORY_STORE_ID = "memstore_01GuxXQSHxzxKQCMCpJtP8ss"
+MEMORY_STORE_NAME = "arty"
+
+# Discord (IDs publics, non sensibles)
+DISCORD_APPLICATION_ID = "1505556745463009460"
+DISCORD_PUBLIC_KEY = "c397a287d99e703b174ce8b438445fdee25e8a91bc6ff629a7b6a199b1ae6281"
+DISCORD_GUILD_ID = "1505556266724884510"
+DISCORD_CHANNEL_ID = "1505556448468406352"
 
 # Timeout par session (en ms). Sonnet 4.6 = typiquement 3-8 min par session.
 SESSION_TIMEOUT_MS = "600000"
-SESSION_POLL_INTERVAL_MS = "10000"
+SESSION_POLL_INTERVAL_MS = "30000"
+
+# Tally : formulaire waitlist "Arty - Waitlist"
+# Public URL : https://tally.so/r/LZaY01
+# API key : secret TALLY_API_KEY
+TALLY_FORM_ID = "LZaY01"
+
+# Repo GitHub Arty (prive). Le DG l'a en mount dans /workspace/arty/ a chaque session.
+# PAT : secret GITHUB_TOKEN (fine-grained, repo flotellop-art/Arty, Contents:Read)
+GITHUB_REPO_URL = "https://github.com/flotellop-art/Arty"
+GITHUB_REPO_MOUNT = "/workspace/arty"
+
+# KV namespace pour les interactions Discord en attente.
+# On y stocke session_id -> {interaction_token, type} avec TTL 14 min.
+# Quand Anthropic ping le webhook pour session.status_idled, on retrouve
+# l'interaction et on PATCH le message Discord avec la reponse du DG.
+[[kv_namespaces]]
+binding = "INTERACTIONS"
+id = "fd0e1b08577b4399b88f1cfa6f0db920"
