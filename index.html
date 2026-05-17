@@ -16,8 +16,81 @@
     <title>Arty</title>
   </head>
   <body>
+    <!-- Pre-launch waitlist banner.
+         Affiche uniquement en mode web (pas Capacitor native), au-dessus de l'app preview.
+         Permet aux visiteurs de tryarty.com de rejoindre la waitlist depuis l'app preview.
+         Sera retire au lancement public juillet 2026. -->
+    <style>
+      #arty-prelaunch-banner {
+        position: fixed;
+        top: 0; left: 0; right: 0;
+        z-index: 9999;
+        background: #0D0D0D;
+        color: #FAF3E7;
+        padding: calc(10px + env(safe-area-inset-top, 0px)) 48px 10px 16px;
+        text-align: center;
+        font-family: 'Inter', system-ui, -apple-system, sans-serif;
+        font-size: 14px;
+        line-height: 1.4;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        display: none;
+      }
+      #arty-prelaunch-banner a {
+        color: #C85A28;
+        font-weight: 600;
+        text-decoration: none;
+        margin-left: 6px;
+        white-space: nowrap;
+      }
+      #arty-prelaunch-banner a:hover { text-decoration: underline; }
+      #arty-prelaunch-banner-close {
+        position: absolute;
+        right: 10px;
+        top: calc(50% + env(safe-area-inset-top, 0px) / 2);
+        transform: translateY(-50%);
+        background: none;
+        border: none;
+        color: #FAF3E7;
+        font-size: 22px;
+        line-height: 1;
+        cursor: pointer;
+        padding: 4px 8px;
+        opacity: 0.6;
+      }
+      #arty-prelaunch-banner-close:hover { opacity: 1; }
+      body.arty-banner-visible #root {
+        padding-top: calc(44px + env(safe-area-inset-top, 0px));
+      }
+    </style>
+    <div id="arty-prelaunch-banner" role="region" aria-label="Annonce pre-launch Arty">
+      Arty arrive en juillet.
+      <a href="/waitlist">Rejoindre la waitlist →</a>
+      <button id="arty-prelaunch-banner-close" aria-label="Fermer">×</button>
+    </div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <script>
+      // Bandeau pre-launch : actif uniquement en mode web (pas Capacitor native).
+      // Stocke le "dismiss" en localStorage pour ne pas l'afficher 2x au meme visiteur.
+      (function() {
+        var isCapNative =
+          (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform() === true);
+        if (isCapNative) return;
+        var dismissed = false;
+        try { dismissed = localStorage.getItem('arty-prelaunch-banner-dismissed') === '1'; } catch(e) {}
+        if (dismissed) return;
+        var b = document.getElementById('arty-prelaunch-banner');
+        if (!b) return;
+        b.style.display = 'block';
+        document.body.classList.add('arty-banner-visible');
+        var btn = document.getElementById('arty-prelaunch-banner-close');
+        if (btn) btn.addEventListener('click', function() {
+          b.style.display = 'none';
+          document.body.classList.remove('arty-banner-visible');
+          try { localStorage.setItem('arty-prelaunch-banner-dismissed', '1'); } catch(e) {}
+        });
+      })();
+    </script>
     <script>
       // Skip SW registration on Capacitor native — the SW persists across APK
       // updates and serves stale JS/CSS, forcing users to clear app data.
