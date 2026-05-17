@@ -70,12 +70,14 @@
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
     <script>
-      // Bandeau pre-launch : actif uniquement en mode web (pas Capacitor native).
+      // Bandeau pre-launch : actif UNIQUEMENT sur le domaine public web.
+      // On detecte par hostname (plus fiable que Capacitor.isNativePlatform qui
+      // peut retourner true meme en web selon la config Capacitor).
       // Stocke le "dismiss" en localStorage pour ne pas l'afficher 2x au meme visiteur.
       (function() {
-        var isCapNative =
-          (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform() === true);
-        if (isCapNative) return;
+        var host = (location.hostname || "").toLowerCase();
+        var isPublicWeb = host === "tryarty.com" || host === "www.tryarty.com" || host.endsWith(".pages.dev");
+        if (!isPublicWeb) return;
         var dismissed = false;
         try { dismissed = localStorage.getItem('arty-prelaunch-banner-dismissed') === '1'; } catch(e) {}
         if (dismissed) return;
