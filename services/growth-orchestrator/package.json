@@ -1,0 +1,19 @@
+{
+  "name": "arty-growth-orchestrator",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Cloudflare Worker scheduled : orchestre les agents Arty (Growth FR, Content FR, Analytics) chaque dimanche 18h UTC, consolide en digest, envoie par email via Resend.",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "trigger": "wrangler triggers deploy",
+    "tail": "wrangler tail",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20240419.0",
+    "typescript": "^5.4.0",
+    "wrangler": "^3.50.0"
+  }
+}

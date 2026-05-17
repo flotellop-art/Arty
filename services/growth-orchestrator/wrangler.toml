@@ -1,0 +1,36 @@
+name = "arty-growth-orchestrator"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Cron trigger : tous les dimanches a 18h00 UTC (20h Paris l'ete, 19h l'hiver).
+# Permet de produire le digest hebdo en fin de week-end, lisible par Florent
+# le lundi matin.
+[triggers]
+crons = ["0 18 * * 0"]
+
+# Logs : conserver les invocations pour debug
+[observability]
+enabled = true
+
+# Variables non secretes uniquement.
+# Les secrets ANTHROPIC_API_KEY et RESEND_API_KEY sont configures via :
+#   wrangler secret put ANTHROPIC_API_KEY
+#   wrangler secret put RESEND_API_KEY
+[vars]
+DIGEST_TO_EMAIL = "flotellop@gmail.com"
+DIGEST_FROM_EMAIL = "digest@tryarty.com"
+DIGEST_FROM_NAME = "Arty Growth Inc."
+
+# IDs des agents managed sur platform.claude.com (workspace Appfacade)
+AGENT_GROWTH_FR_ID = "agent_01GxjQaNBVXQ6nJcUr4LTSLC"
+AGENT_CONTENT_FR_ID = "agent_01Et2rx4MCjVmBwzYBVGBDC8"
+AGENT_ANALYTICS_ID = "agent_01XRvTLBdHLWmn8WNvV2TbY8"
+
+# Workspace + environment ids (a confirmer en doc API)
+ANTHROPIC_WORKSPACE_ID = "wrkspc_01H3ruuiyXxKTdN1DGELBeDi"
+ANTHROPIC_ENV_ID = "general-purpose-env"
+
+# Timeout par session (en ms). Sonnet 4.6 = typiquement 3-8 min par session.
+SESSION_TIMEOUT_MS = "600000"
+SESSION_POLL_INTERVAL_MS = "10000"
