@@ -563,33 +563,72 @@ async function extractScreenshots(
   env: Env,
 ): Promise<{ cleanText: string; attachments: ScreenshotAttachment[] }> {
   const attachments: ScreenshotAttachment[] = [];
-  const regex = /<screenshot\s+path="([^"]+)"(?:\s+caption="([^"]*)")?\s*\/?>/g;
+  // Format : <screenshot path="..." [parts="3"] [caption="..."] [type="jpeg|png"] />
+  const regex = /<screenshot\s+([^>]+?)\s*\/?>/g;
   const replacements: Array<[string, string]> = [];
   let match: RegExpExecArray | null;
   let idx = 0;
 
   while ((match = regex.exec(text)) !== null) {
-    const path = match[1];
-    const caption = (match[2] || "").trim();
+    const attrs = match[1];
     const full = match[0];
     idx++;
 
+    // Parser les attributs
+    const path = (attrs.match(/path="([^"]+)"/) || [])[1];
+    const caption = ((attrs.match(/caption="([^"]*)"/) || [])[1] || "").trim();
+    const partsAttr = (attrs.match(/parts="(\d+)"/) || [])[1];
+    const partsCount = partsAttr ? parseInt(partsAttr, 10) : 1;
+    const typeHint = ((attrs.match(/type="([^"]+)"/) || [])[1] || "png").toLowerCase();
+
+    if (!path) {
+      replacements.push([full, `[screenshot ${idx} : path manquant]`]);
+      continue;
+    }
+
     try {
-      const b64Content = await fetchMemoryByPath(env, path);
-      if (!b64Content) {
-        replacements.push([full, `[screenshot ${idx} : fichier introuvable ${path}]`]);
-        continue;
+      let b64Content = "";
+
+      if (partsCount > 1) {
+        // Multi-part : recuperer chaque part {base}-part-{a,b,c...}
+        const dot = path.lastIndexOf(".");
+        const base = dot > 0 ? path.slice(0, dot) : path;
+        const ext = dot > 0 ? path.slice(dot) : "";
+        const letters = ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"];
+        const parts: string[] = [];
+        for (let i = 0; i < partsCount; i++) {
+          const partPath = `${base}-part-${letters[i]}${ext}`;
+          const partContent = await fetchMemoryByPath(env, partPath);
+          if (partContent === null) {
+            console.error(`[screenshot] part ${i + 1}/${partsCount} introuvable : ${partPath}`);
+            break;
+          }
+          parts.push(partContent.replace(/\s/g, ""));
+        }
+        if (parts.length !== partsCount) {
+          replacements.push([full, `[screenshot ${idx} : ${parts.length}/${partsCount} parts trouvees]`]);
+          continue;
+        }
+        b64Content = parts.join("");
+      } else {
+        const fetched = await fetchMemoryByPath(env, path);
+        if (!fetched) {
+          replacements.push([full, `[screenshot ${idx} : fichier introuvable ${path}]`]);
+          continue;
+        }
+        b64Content = fetched.replace(/\s/g, "");
       }
-      // Le contenu peut avoir des espaces / newlines, on nettoie
-      const clean = b64Content.replace(/\s/g, "");
-      const binary = atob(clean);
+
+      const binary = atob(b64Content);
       const bytes = new Uint8Array(binary.length);
       for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
 
       const baseName = path.split("/").pop() || `screenshot-${idx}`;
-      const filename = baseName.replace(/\.b64$/, "").endsWith(".png")
-        ? baseName.replace(/\.b64$/, "")
-        : `${baseName.replace(/\.b64$/, "")}.png`;
+      const stripped = baseName.replace(/\.b64$/, "");
+      const ext = typeHint === "jpeg" || typeHint === "jpg" ? ".jpg" : ".png";
+      const filename = stripped.endsWith(".png") || stripped.endsWith(".jpg") || stripped.endsWith(".jpeg")
+        ? stripped
+        : `${stripped}${ext}`;
 
       attachments.push({ filename, data: bytes, caption });
       replacements.push([full, caption ? `📸 ${caption}` : `📸 (piece jointe ${filename})`]);
@@ -612,24 +651,67 @@ async function extractScreenshots(
 
 const DISCORD_API = "https://discord.com/api/v10";
 
-async function discordPostMessage(env: Env, content: string): Promise<void> {
+async function discordPostMessage(
+  env: Env,
+  content: string,
+  attachments: ScreenshotAttachment[] = [],
+): Promise<void> {
   // Limite Discord : 2000 chars / message. On split intelligemment sur les sauts de ligne.
   const chunks = splitForDiscord(content, 1900);
-  for (const chunk of chunks) {
-    const res = await fetch(`${DISCORD_API}/channels/${env.DISCORD_CHANNEL_ID}/messages`, {
+  const url = `${DISCORD_API}/channels/${env.DISCORD_CHANNEL_ID}/messages`;
+
+  // 1er chunk : avec attachments si applicable (multipart)
+  if (attachments.length > 0) {
+    const form = new FormData();
+    form.append(
+      "payload_json",
+      JSON.stringify({
+        content: chunks[0],
+        attachments: attachments.map((a, i) => ({ id: i, filename: a.filename })),
+      }),
+    );
+    for (let i = 0; i < attachments.length; i++) {
+      const a = attachments[i];
+      form.append(`files[${i}]`, new Blob([a.data], { type: "image/png" }), a.filename);
+    }
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { Authorization: `Bot ${env.DISCORD_BOT_TOKEN}` },
+      body: form,
+    });
+    if (!res.ok) {
+      console.error(`[discord] post (with attachments) failed ${res.status}: ${(await res.text()).slice(0, 200)}`);
+    } else {
+      console.log(`[discord] post OK avec ${attachments.length} piece(s) jointe(s)`);
+    }
+  } else {
+    const res = await fetch(url, {
       method: "POST",
       headers: {
         Authorization: `Bot ${env.DISCORD_BOT_TOKEN}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ content: chunk }),
+      body: JSON.stringify({ content: chunks[0] }),
     });
     if (!res.ok) {
-      const err = await res.text();
-      console.error(`[discord] post failed ${res.status}: ${err.slice(0, 200)}`);
-      // On continue quand meme les chunks suivants
+      console.error(`[discord] post failed ${res.status}: ${(await res.text()).slice(0, 200)}`);
     }
-    // Petite pause pour respecter le rate limit Discord (5 req/sec channel)
+  }
+  await sleep(300);
+
+  // Chunks suivants : POST text only
+  for (let i = 1; i < chunks.length; i++) {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bot ${env.DISCORD_BOT_TOKEN}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ content: chunks[i] }),
+    });
+    if (!res.ok) {
+      console.error(`[discord] post follow chunk ${i} failed ${res.status}`);
+    }
     await sleep(300);
   }
 }
@@ -1318,8 +1400,19 @@ async function deliverSessionResultToDiscord(
       const { cleanText, attachments } = await extractScreenshots(baseText, env);
       console.log(`[webhook] adhoc : ${attachments.length} screenshot(s) extrait(s)`);
 
-      await patchDiscordOriginal(env, pending.interactionToken, cleanText, attachments);
-      console.log(`[webhook] adhoc delivered to Discord (sess=${sessionId}, attachments=${attachments.length})`);
+      // Limite Discord : interaction.token expire apres 15 min.
+      // Si la session a dure > 13 min (marge securite), on poste un NOUVEAU message
+      // dans le canal via le bot token (pas de limite de temps) au lieu de PATCH.
+      const ageMs = Date.now() - pending.createdAt;
+      const FIFTEEN_MIN_BUDGET = 13 * 60 * 1000;
+      if (ageMs > FIFTEEN_MIN_BUDGET) {
+        const prefix = `**Reponse differee du DG** (session de ${(ageMs / 60000).toFixed(1)} min, token interaction expire) :\n\n`;
+        console.log(`[webhook] adhoc fallback bot post (age=${(ageMs / 60000).toFixed(1)} min)`);
+        await discordPostMessage(env, prefix + cleanText, attachments);
+      } else {
+        await patchDiscordOriginal(env, pending.interactionToken, cleanText, attachments);
+      }
+      console.log(`[webhook] adhoc delivered to Discord (sess=${sessionId}, attachments=${attachments.length}, age=${(ageMs / 60000).toFixed(1)}min)`);
       return;
     }
 
