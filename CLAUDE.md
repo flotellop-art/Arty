@@ -515,7 +515,7 @@ Slash command **`/audit-secu`** (défini dans `.claude/commands/audit-secu.md`) 
 
 ### TODO Sécurité — prochain audit
 
-Dernier audit : **4 mai 2026** (PR #127 + PR #128).
+Dernier audit : **18 mai 2026** (3 agents Opus+Sonnet — rapport ci-dessous).
 
 À traiter en priorité quand on relance un cycle sécurité :
 
@@ -533,20 +533,32 @@ y revient = `CryptoKey` non-extractible (`crypto.subtle.generateKey`,
 classe de bugs de rotation. Différé. Le même raisonnement (sandbox OS) a servi aussi à cadrer le chiffrement
 des conversations — implémenté le 16 mai, voir « PR à venir » ci-dessous.
 
+**CRIT à traiter en urgence (nouveaux — audit 18 mai)** :
+- [ ] **Exécution d'outil arbitraire via `data-action` sans whitelist** — `src/hooks/useAppSetup.ts:175-176` : `default: await executor(action, params)` permet à du HTML généré par l'IA (prompt injection) de déclencher n'importe quel outil enregistré (send_email, delete_drive_file…) si l'utilisateur clique le bouton. Supprimer le `default:`, whitelist stricte des actions + validation des params.
+- [ ] **XSS via `data:` URI dans les images IA** — `src/components/shared/MarkdownRenderer.tsx:30` : `src: ['http', 'https', 'data']` autorise `<img src="data:image/svg+xml,<svg onload=alert(1)>">` → exécution JS dans la WebView. Retirer `'data'` des protocoles autorisés dans `src`.
+
 **PR à venir (planifiées)** :
 - [ ] **PR 2 — PKCE OAuth** : ajout du `code_verifier` + `code_challenge` au flow Google web. Stratégie en 2 PRs validée le 4 mai (state CSRF d'abord en PR #128, PKCE ensuite). Coût ~2h, confiance 80%. Touche `googleAuth.ts:buildOAuthUrl()` (devient async), `OAuthCallback.tsx`, `functions/api/auth/token.ts` (forward `code_verifier` à Google). Suivre les patterns du callback double (web + deeplink) déjà éprouvés en PR #128.
 - [x] **Chiffrement des conversations en localStorage** — FAIT (16 mai). Chiffrées AES-256 sous `conversations-enc` ; cache mémoire déchiffré pour garder `saveConversation` synchrone (BUG 16), write-through avec filet clair synchrone, migration auto des conversations en clair, JAMAIS de wipe sur échec de déchiffrement, killswitch `arty-conv-encryption-disabled`. PAS de Web Worker — le diagnostic « le chiffrement async cassait l'UI » était faux : c'est rendre `saveConversation` lui-même async qui cassait l'UI ; le cache mémoire (pattern memTokens) résout ça. Round-trip vérifié en navigateur réel.
 
-**HIGH backend non traités (audit du 4 mai)** :
-- [ ] **License expiration jamais vérifiée** dans `functions/api/subscription/status.ts:117-128` — query `licenses WHERE status = 'active'` sans `expires_at > NOW()`. Risque = perte de revenu, pas sécu directe.
-- [ ] **Premium cap non-atomique** dans `functions/api/_lib/checkPremiumCap.ts` — KV décrément vulnérable à la concurrence, quota bypass possible (CAP=150 → 300+).
-- [ ] **DELETE memory sans filtre `WHERE user_id = ?` strict** dans `functions/api/memory/action.ts` — défense en profondeur (déjà protégé par auth mais à durcir).
+**HIGH non traités** :
+- [ ] **SHA-256 non salé pour l'auth email locale** — `src/components/auth/LoginScreen.tsx:115` : `crypto.subtle.digest('SHA-256', password+email)` stocké en localStorage → attaque par dictionnaire GPU en quelques secondes. Remplacer par PBKDF2 (200k itérations, sel aléatoire) ou supprimer l'onglet email au profit du Google Login uniquement.
+- [ ] **`innerHTML` non sanitisé dans l'export HTML** — `src/services/conversationExport.ts:262` : `container.innerHTML = html` après escape() seulement (regex markdown appliqués post-escape → contournements possibles). Remplacer par DOMPurify ou construction DOM programmatique.
+- [ ] **`window.open` avec params non validés** — `src/hooks/useAppSetup.ts:170-173` : `params.url` et `params.phone` passés directement (vecteur `javascript:`, `data:`). Valider `params.url` via `new URL()` + whitelist `http:`/`https:`; `params.phone` via regex E.164.
+- [ ] **`verifyGoogleUser` utilise `userinfo` sans vérifier `aud`** — `functions/api/_lib/checkAllowedUser.ts:24` : un token Google émis pour une **autre app** OAuth (même user) est accepté → confused-deputy. Passer sur `tokeninfo` + vérifier `aud === GOOGLE_CLIENT_ID` et `email_verified` (pattern déjà présent dans `status.ts:73`).
+- [ ] **`redirect_uri` non whitelisté côté serveur** — `functions/api/auth/token.ts:4-22` : valeur transmise telle quelle à Google. Whitelist stricte `['', 'https://appfacade.pages.dev/auth/callback', 'https://tryarty.com/auth/callback']`.
+- [ ] **Premium cap non-atomique** dans `functions/api/_lib/checkPremiumCap.ts` — KV décrément vulnérable à la concurrence, quota bypass possible (CAP=150 → 300+). Migrer vers D1 `UPDATE ... WHERE count < cap RETURNING count`.
 
 **MED non traités** :
-- [ ] **PBKDF2 itérations à 100k** dans `crypto.ts:38-44` — OWASP 2024 recommande 200k+. Bump simple (+100ms au login).
-- [ ] **`storeTokens()` réécrit le plain en fallback** après chaque refresh dans `googleAuth.ts:93-108` — devrait laisser le chiffré en place au lieu de revenir en plain.
+- [ ] **`storeTokens()` réécrit le plain en fallback** après chaque refresh dans `googleAuth.ts:143-158` — devrait garder uniquement `memTokens` en RAM si crypto n'est pas prêt, ne pas persister en clair.
+- [ ] **Logs Android exposent l'email** — `android/.../GoogleSignInPlugin.java:40,81,84` : `Log.d(TAG, account.getEmail())` sans `BuildConfig.DEBUG` → lisible en logcat sur APK release. Wrapper dans `if (BuildConfig.DEBUG)`.
+- [ ] **`migrateKey()` peut migrer `api-keys`** — `src/services/crypto.ts:351-365` : fonction générique exportée sans blacklist → si appelée sur `api-keys`, chiffrerait la passphrase PBKDF2 → lock-out total (BUG 1). Blacklister `api-keys` explicitement ou supprimer si plus utilisée.
+- [ ] **Attribut `style` autorisé globalement dans rehype-sanitize** — `src/components/shared/MarkdownRenderer.tsx:18` : `'*': ['className', 'class', 'style']` → clickjacking / exfiltration CSS. Retirer `style` de `'*'` ou le limiter aux props CSS sûres sur `span` uniquement.
+- [ ] **CSP `img-src https:` trop permissive** — `public/_headers:6` : autorise le chargement d'images depuis n'importe quel domaine HTTPS → exfiltration de données via pixel-tracking. Restreindre à `lh3.googleusercontent.com` + `fonts.gstatic.com` + `'self'`.
+- [ ] **Filet plain des conversations toujours actif** — `src/services/storage.ts:74` : `scoped.setJSON(PLAIN_KEY, list)` à chaque save → conversations en clair si crypto indisponible. Ne pas écrire le plain si `isCryptoReady()` est vrai.
+- [ ] **`getRedirectUri()` utilise `.includes('localhost')`** — `src/services/googleAuth.ts:43-48` : fragile, matche `localhost.evil.com`. Remplacer par égalité stricte `origin === 'https://localhost'`.
+- [ ] **WordPress `postId` non validé** — `functions/api/wordpress/action.ts:55,63,70` : interpolé dans l'URL sans regex → path traversal sur l'endpoint WP (owner-only, risque borné). Valider avec `/^[0-9]+$/`.
 - [ ] **Email lowercasing inconsistant** entre `trial/init.ts:41` et `subscription/status.ts:44` — risque de fragmentation user.
-- [ ] **`tokeninfo` au lieu de `userinfo`** pour vérifier les tokens dans `trial/init.ts:34-44` — moins fiable.
 - [ ] **Pas de rate limit sur `/api/auth/token`** — brute force possible sur les codes OAuth volés.
 
 **HIGH a11y traités (12 mai)** :
@@ -555,21 +567,33 @@ des conversations — implémenté le 16 mai, voir « PR à venir » ci-dessous.
 - [ ] À monitorer : vérifier visuellement sur APK + PWA que le rendu n'est pas "trop dur" — certains designs intentionnels (hover state grisé, placeholder) peuvent avoir besoin d'un ajustement fin. Ouvrir une PR de polish si besoin.
 
 **i18n — migration anglaise : FAITE (16 mai)** :
-- ✅ Toute l'UI visible est bilingue FR/EN, vérifiée écran par écran en captures Chromium : dates locale-aware (`getDateLocale()`), Sidebar, TaskPanel, CostIndicator, MessageList, MorningBrief, ConversationSummaryModal, GoogleConnectButton, SettingsModal, InputBar (chips / mini-form calendrier / Whisper), écrans Coûts et Upgrade.
-- [ ] Hors scope (décision utilisateur) : les ~80 chaînes `result:` des services outils — renvoyées au LLM comme contexte, jamais affichées à l'utilisateur, aucun impact observable.
+- ✅ Toute l'UI visible est bilingue FR/EN, vérifiée écran par écran en captures Chromium.
+- [ ] Hors scope (décision utilisateur) : les ~80 chaînes `result:` des services outils — renvoyées au LLM comme contexte, jamais affichées à l'utilisateur.
 
 **LOW à nettoyer avant Play Store** :
-- [ ] **Debug `console.log` avec emails** dans `useGoogleAuth.ts:117-195` — wrap en `if (import.meta.env.DEV)`.
 - [ ] **Trial counter peut overflow** silencieusement vers 0 dans `trial/init.ts:51-52`.
-- [ ] **Re-vérifier `webContentsDebuggingEnabled: false`** en prod sur `capacitor.config.ts`.
+- [ ] **`code_execution` dans le prompt système mais pas dans TOOLS** — `src/constants/systemPrompt.ts:133` : incohérence → Claude croit avoir le tool mais l'API ne l'injecte pas → hallucination silencieuse. Retirer la mention du prompt ou aligner.
+- [ ] **`MODIFY_AUDIO_SETTINGS` permission Android non justifiée** — `android/app/src/main/AndroidManifest.xml:83` : au-delà de `RECORD_AUDIO`. Retirer si aucune lib ne l'utilise.
+- [ ] **CSP absente sur la WebView native Capacitor** — les headers `public/_headers` ne s'appliquent pas sur l'APK. Injecter via `<meta http-equiv="Content-Security-Policy">` dans `index.html`.
+- [ ] **Sel PBKDF2 partagé entre tous les users du même device** — `src/services/crypto.ts:80-88` : `arty-crypto-salt` non scopé par userId. Pré-calcul cross-compte possible (faible impact). Scopper via `scopedStorage`.
+- [ ] **`data-action` reply sans limite de longueur** — `src/hooks/useAppSetup.ts:148` : `params.text` injecté tel quel → DoS soft / coût API massif. Limiter à 2000 chars.
 
 **Faux positifs / déjà mitigé** (à NE PAS retraiter) :
 - ✅ `secureSetJSON` race (BUG 1) — `useAuth` utilise `setJSON()` direct sur les tokens, race évitée
 - ✅ RECORD_AUDIO (BUG 44) — vérifié présent dans AndroidManifest
 - ✅ exchangeCode timeout — `withTimeout()` enveloppe le fetch
-- ✅ Frontend XSS — `rehype-sanitize` actif, aucun `dangerouslySetInnerHTML`
+- ✅ `rehype-sanitize` actif — XSS `<script>`, `onerror=`, `javascript:` bloqués (attention : nouvelles failles data: URI et style, voir CRITs/MEDs ci-dessus)
 - ✅ Service Worker (BUG 45) — registration conditionnelle, cleanup boot, CACHE bumpé
 - ✅ iOS Info.plist — privacy descriptions complètes (BUG 34)
+- ✅ PBKDF2 600k itérations — conforme OWASP 2024 (était 100k, corrigé entre les audits)
+- ✅ License expiration — vérifiée dans `checkAllowedUser.ts:265` et `status.ts:201` (`expires_at IS NULL OR expires_at > unixepoch()`)
+- ✅ DELETE memory userId — protégé par auth (`userId = email` extrait du token, body ignoré)
+- ✅ VITE_*_API_KEY — aucune clé payante avec ce préfixe dans `src/`
+- ✅ `res.ok` avant `res.json()` — présent dans `LoginScreen.tsx:283-284`
+- ✅ `webContentsDebuggingEnabled: false` — confirmé dans `capacitor.config.ts`
+- ✅ Source maps off en prod — `vite.config.ts:28` `sourcemap: false`
+- ✅ OpenAI BYOK direct — by design documenté (user paie ses propres appels, sandbox OS)
+- ✅ `console.log` avec emails dans `useGoogleAuth.ts` — déjà gatté `if (import.meta.env.DEV)`
 
 ---
 
