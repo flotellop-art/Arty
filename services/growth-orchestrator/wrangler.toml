@@ -21,15 +21,18 @@ crons = ["0 18 * * SUN"]
 [observability]
 enabled = true
 
-# Variables non secretes uniquement.
-# Les secrets ANTHROPIC_API_KEY et RESEND_API_KEY sont configures via :
-#   wrangler secret put ANTHROPIC_API_KEY
-#   wrangler secret put RESEND_API_KEY
+# Variables non secretes uniquement. Les 9 secrets sont configures via
+# `wrangler secret put <NOM>` (voir README, section Setup) :
+#   ANTHROPIC_API_KEY            cle API Anthropic Console
+#   ANTHROPIC_WEBHOOK_SIGNING_KEY  cle de signature du webhook (whsec_...)
+#   TRIGGER_SECRET               protege /trigger, /admin/*, /oauth/google/start
+#   MCP_AUTH_TOKEN               protege /mcp/gmail (header Authorization: Bearer)
+#   DISCORD_BOT_TOKEN            token du bot Discord
+#   TALLY_API_KEY                cle API Tally (waitlist)
+#   GITHUB_TOKEN                 PAT fine-grained, repo flotellop-art/Arty, Contents:Read
+#   GOOGLE_CLIENT_ID             OAuth client id (Gmail)
+#   GOOGLE_CLIENT_SECRET         OAuth client secret (Gmail)
 [vars]
-DIGEST_TO_EMAIL = "flotellop@gmail.com"
-DIGEST_FROM_EMAIL = "digest@tryarty.com"
-DIGEST_FROM_NAME = "Arty Growth Inc."
-
 # IDs des agents managed sur platform.claude.com (workspace Appfacade)
 AGENT_DG_ID = "agent_01USsT8aHKqp1t2nBWAj9KCE"
 AGENT_GROWTH_FR_ID = "agent_01GxjQaNBVXQ6nJcUr4LTSLC"
@@ -53,9 +56,11 @@ DISCORD_PUBLIC_KEY = "c397a287d99e703b174ce8b438445fdee25e8a91bc6ff629a7b6a199b1
 DISCORD_GUILD_ID = "1505556266724884510"
 DISCORD_CHANNEL_ID = "1505556448468406352"
 
-# Timeout par session (en ms). Sonnet 4.6 = typiquement 3-8 min par session.
-SESSION_TIMEOUT_MS = "600000"
-SESSION_POLL_INTERVAL_MS = "30000"
+# Allowlist des IDs utilisateur Discord autorises a lancer /dg (CSV).
+# Un ID Discord n'est pas un secret. Mettre ici l'ID de Florent (et tout
+# co-equipier autorise). Pour recuperer un ID : Discord > Parametres >
+# Avance > Mode developpeur, puis clic droit sur l'utilisateur > Copier l'ID.
+DISCORD_ALLOWED_USER_IDS = ""
 
 # Tally : formulaire waitlist "Arty - Waitlist"
 # Public URL : https://tally.so/r/LZaY01
@@ -67,10 +72,10 @@ TALLY_FORM_ID = "LZaY01"
 GITHUB_REPO_URL = "https://github.com/flotellop-art/Arty"
 GITHUB_REPO_MOUNT = "/workspace/arty"
 
-# KV namespace pour les interactions Discord en attente.
-# On y stocke session_id -> {interaction_token, type} avec TTL 14 min.
-# Quand Anthropic ping le webhook pour session.status_idled, on retrouve
-# l'interaction et on PATCH le message Discord avec la reponse du DG.
+# KV namespace : sessions Anthropic en attente + etat des cycles hebdo.
+# On y stocke `sess:{id}` -> {type, role, ...} (TTL 14 min pour les /dg ad-hoc,
+# 24h pour le flow hebdo) et les cles `cycle:{id}:*`. Quand Anthropic ping le
+# webhook (session.status_idled), on retrouve l'entree et on livre sur Discord.
 [[kv_namespaces]]
 binding = "INTERACTIONS"
 id = "fd0e1b08577b4399b88f1cfa6f0db920"

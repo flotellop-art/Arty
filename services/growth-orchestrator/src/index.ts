@@ -8,18 +8,27 @@
  *   2) Arty DG : agent qui consolide les 3 outputs et prend les decisions
  *   3) Interface Florent : Discord (canal #dg), pas d'email
  *
- * Cycle hebdo automatique : dimanche 18h UTC.
- * Cycle manuel : POST /trigger avec X-Trigger-Secret.
- * Interactions Discord : POST /discord/interactions (signature ed25519 verifiee).
+ * Cycle hebdo automatique : cron dimanche 18h UTC.
+ * Cycle manuel : POST /trigger (header X-Trigger-Secret).
+ *
+ * 8 routes HTTP (voir le handler fetch en bas de fichier) :
+ *   GET  /                        healthcheck public
+ *   POST /trigger                 run manuel         - header X-Trigger-Secret
+ *   POST /admin/register-commands enregistre /dg     - header X-Trigger-Secret
+ *   POST /admin/post-test         test bot Discord   - header X-Trigger-Secret
+ *   POST /anthropic/webhook       events de session  - signature HMAC SHA256
+ *   POST /oauth/google/start      setup OAuth (1x)   - header X-Trigger-Secret
+ *   GET  /oauth/google/callback   retour Google      - state nonce anti-CSRF
+ *   POST /mcp/gmail               MCP server Gmail   - header Authorization: Bearer
+ *   POST /discord/interactions    slash command /dg  - signature Ed25519
  *
  * Audit secu (CLAUDE.md RÈGLE 6) :
- *  - /trigger : auth header X-Trigger-Secret (secret CF), pas d'IDOR, retour 404 si invalide.
- *  - /discord/interactions : signature Ed25519 verifiee via Web Crypto, secret cle = DISCORD_PUBLIC_KEY (publique).
- *    Sans verification, un attaquant pourrait faire executer des commandes DG en se faisant passer pour Discord.
- *  - Pas de leak d'info dans les reponses d'erreur.
- *  - Bot token Discord en secret CF, jamais en log.
- *  - Cle Anthropic en secret CF, jamais en log.
- *  - Aucun PII Florent dans les responses publiques.
+ *  - Aucun secret en query string (BUG 7) : tous les secrets transitent par header.
+ *  - Comparaisons de secrets constant-time (timingSafeEqual).
+ *  - /dg : allowlist d'IDs Discord (DISCORD_ALLOWED_USER_IDS) + canal verifie.
+ *  - IDs Gmail valides par regex avant toute URL d'API (BUG 32).
+ *  - Reponses d'erreur uniformes, sans leak du motif (motif garde en console.warn).
+ *  - Tous les secrets en secret CF, jamais en log.
  */
 
 export interface Env {
@@ -27,12 +36,14 @@ export interface Env {
   ANTHROPIC_API_KEY: string;
   ANTHROPIC_WEBHOOK_SIGNING_KEY: string;
   TRIGGER_SECRET: string;
+  // Token dedie au seul endpoint /mcp/gmail. Isole de TRIGGER_SECRET car il est
+  // necessairement partage avec la config mcp_servers de l'agent Anthropic.
+  MCP_AUTH_TOKEN: string;
   DISCORD_BOT_TOKEN: string;
   TALLY_API_KEY: string;
   GITHUB_TOKEN: string;
   GOOGLE_CLIENT_ID: string;
   GOOGLE_CLIENT_SECRET: string;
-  RESEND_API_KEY?: string;
 
   // Vars publiques
   ANTHROPIC_WORKSPACE_ID: string;
@@ -50,16 +61,11 @@ export interface Env {
   DISCORD_PUBLIC_KEY: string;
   DISCORD_GUILD_ID: string;
   DISCORD_CHANNEL_ID: string;
-  SESSION_TIMEOUT_MS: string;
-  SESSION_POLL_INTERVAL_MS: string;
+  // CSV d'IDs utilisateur Discord autorises a lancer la slash command /dg.
+  DISCORD_ALLOWED_USER_IDS: string;
 
   // KV pour le tracking des interactions Discord en attente
   INTERACTIONS: KVNamespace;
-
-  // Legacy email (optionnel, garde-fou)
-  DIGEST_TO_EMAIL?: string;
-  DIGEST_FROM_EMAIL?: string;
-  DIGEST_FROM_NAME?: string;
 }
 
 // Entry stockee en KV pour relier une session Anthropic a une action de delivery.
@@ -161,19 +167,6 @@ async function sendUserMessage(
   return { ok: true };
 }
 
-async function getSessionStatus(
-  apiKey: string,
-  sessionId: string,
-): Promise<{ status: string } | null> {
-  const res = await fetch(`${ANTHROPIC_BASE}/sessions/${sessionId}`, {
-    method: "GET",
-    headers: anthropicHeaders(apiKey),
-  });
-  if (!res.ok) return null;
-  const data = (await res.json()) as { status?: string };
-  return { status: (data.status ?? "").toLowerCase() };
-}
-
 async function fetchAgentText(apiKey: string, sessionId: string): Promise<string> {
   const res = await fetch(`${ANTHROPIC_BASE}/sessions/${sessionId}/events?limit=500`, {
     method: "GET",
@@ -193,82 +186,146 @@ async function fetchAgentText(apiKey: string, sessionId: string): Promise<string
   return texts.join("\n\n");
 }
 
-/**
- * Recupere le premier user.message d'une session (la question initiale de Florent).
- * Utilise pour memoriser le contexte d'une interaction /dg.
- */
-async function getUserMessageFromSession(apiKey: string, sessionId: string): Promise<string> {
-  const res = await fetch(`${ANTHROPIC_BASE}/sessions/${sessionId}/events?limit=20`, {
-    method: "GET",
-    headers: anthropicHeaders(apiKey),
-  });
-  if (!res.ok) return "";
-  const data = (await res.json()) as {
-    data?: Array<{ type?: string; content?: Array<{ type?: string; text?: string }> }>;
-  };
-  for (const ev of data.data ?? []) {
-    if (ev.type !== "user.message") continue;
-    for (const b of ev.content ?? []) {
-      if (b.type === "text" && b.text) {
-        // Le brief contient toujours "Message :\n<vrai message>\n\n---"
-        // On extrait juste la partie utile
-        const m = b.text.match(/## Message de Florent\n([\s\S]*?)\n\n---/);
-        if (m) return m[1].trim();
-        const m2 = b.text.match(/Message :\n([\s\S]*?)\n\n---/);
-        if (m2) return m2[1].trim();
-        return b.text.slice(0, 300);
-      }
-    }
-  }
-  return "";
-}
-
-/**
- * Lance une session pour un agent, envoie le brief, attend la fin, retourne le texte.
- * Polling reduit a 30s pour menager le CPU budget du Worker (3 sessions en parallele
- * sur des cycles de 5-10min = beaucoup de subrequests sinon).
- */
-async function runAgent(
-  env: Env,
-  agentId: string,
-  brief: string,
-  title: string,
-  pollOverrideMs?: number,
-): Promise<{ ok: boolean; text: string; err?: string; sessionId?: string }> {
-  const apiKey = env.ANTHROPIC_API_KEY;
-  const timeoutMs = parseInt(env.SESSION_TIMEOUT_MS || "600000", 10);
-  const pollMs = pollOverrideMs ?? parseInt(env.SESSION_POLL_INTERVAL_MS || "30000", 10);
-
-  const created = await createSession(apiKey, agentId, env.ANTHROPIC_ENV_ID, title);
-  if (!created.ok) return { ok: false, text: "", err: created.err };
-  const sessionId = created.id;
-
-  const sent = await sendUserMessage(apiKey, sessionId, brief);
-  if (!sent.ok) return { ok: false, text: "", err: sent.err, sessionId };
-
-  const start = Date.now();
-  let sawRunning = false;
-  while (Date.now() - start < timeoutMs) {
-    await sleep(pollMs);
-    const status = await getSessionStatus(apiKey, sessionId);
-    if (!status) continue;
-    if (status.status === "running" || status.status === "rescheduling") {
-      sawRunning = true;
-      continue;
-    }
-    if (status.status === "terminated") {
-      return { ok: false, text: "", err: "Session terminated", sessionId };
-    }
-    if (status.status === "idle" && sawRunning) {
-      const text = await fetchAgentText(apiKey, sessionId);
-      return { ok: true, text, sessionId };
-    }
-  }
-  return { ok: false, text: "", err: `Timeout ${timeoutMs / 1000}s`, sessionId };
-}
-
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+// ===========================================================================
+// 0. UTILS — secrets, parsing, decodage
+// ===========================================================================
+
+// TTL des cles KV du cycle hebdo. Une session Anthropic peut etre lente ou
+// re-schedulee ; 24h laisse une marge confortable avant expiration (le cycle
+// dure normalement < 30 min). Les cles `sess:` ad-hoc gardent un TTL court
+// distinct (lie a l'expiration du token d'interaction Discord, 15 min).
+const WEEKLY_KV_TTL = 24 * 3600;
+
+/**
+ * Comparaison de secrets constant-time. On HMAC les deux valeurs avec une cle
+ * aleatoire par appel : comparer les digests (longueur fixe) ne revele aucune
+ * info de timing sur les entrees. Evite les timing attacks sur les `===`.
+ */
+async function timingSafeEqual(a: string, b: string): Promise<boolean> {
+  const enc = new TextEncoder();
+  const keyData = crypto.getRandomValues(new Uint8Array(32));
+  const key = await crypto.subtle.importKey(
+    "raw",
+    keyData,
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const ha = new Uint8Array(await crypto.subtle.sign("HMAC", key, enc.encode(a)));
+  const hb = new Uint8Array(await crypto.subtle.sign("HMAC", key, enc.encode(b)));
+  let diff = 0;
+  for (let i = 0; i < ha.length; i++) diff |= ha[i]! ^ hb[i]!;
+  return diff === 0;
+}
+
+/** Verifie un secret fourni (header) contre le secret attendu, constant-time. */
+async function checkSecret(provided: string | null, expected: string | undefined): Promise<boolean> {
+  if (!expected || !provided) return false;
+  return timingSafeEqual(provided, expected);
+}
+
+/** Extrait le token d'un header `Authorization: Bearer xxx`. */
+function bearerToken(header: string | null): string | null {
+  if (!header) return null;
+  const m = header.match(/^Bearer\s+(.+)$/i);
+  return m ? m[1]!.trim() : null;
+}
+
+/** JSON.parse defensif : retourne null au lieu de throw sur entree corrompue. */
+function safeParse<T>(s: string | null | undefined): T | null {
+  if (!s) return null;
+  try {
+    return JSON.parse(s) as T;
+  } catch {
+    return null;
+  }
+}
+
+/** Un id Gmail valide ne contient que [a-zA-Z0-9_-] (BUG 32 : anti-injection d'URL). */
+function isValidGmailId(id: string): boolean {
+  return id.length > 0 && id.length <= 256 && /^[a-zA-Z0-9_-]+$/.test(id);
+}
+
+/** base64url -> bytes (Workers' Buffer ne gere pas toujours 'base64url'). */
+function decodeBase64Url(data: string): Uint8Array {
+  const b64 = data.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = b64.padEnd(Math.ceil(b64.length / 4) * 4, "=");
+  const bin = atob(padded);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+
+/** Charset declare dans le header Content-Type d'une part MIME (defaut utf-8). */
+function charsetOfPart(part: { headers?: Array<{ name?: string; value?: string }> }): string {
+  const ct =
+    (part.headers ?? []).find((h) => (h.name ?? "").toLowerCase() === "content-type")?.value ?? "";
+  const m = /charset\s*=\s*"?([^";]+)"?/i.exec(ct);
+  return (m?.[1] ?? "utf-8").toLowerCase();
+}
+
+/**
+ * Decode le body d'une part MIME en respectant le charset annonce (BUG 36/49 :
+ * `atob()` seul casse l'UTF-8 et ignore windows-1252/ISO-8859-1 des mails Outlook).
+ */
+function decodePartBody(part: {
+  body?: { data?: string };
+  headers?: Array<{ name?: string; value?: string }>;
+}): string {
+  if (!part.body?.data) return "";
+  const bytes = decodeBase64Url(part.body.data);
+  const charset = charsetOfPart(part);
+  // TextDecoder est non-fatal par defaut (les octets invalides -> U+FFFD).
+  try {
+    return new TextDecoder(charset).decode(bytes);
+  } catch {
+    // Charset inconnu (label non reconnu) : fallback utf-8.
+    return new TextDecoder("utf-8").decode(bytes);
+  }
+}
+
+/** Code point -> string, sans truncation silencieuse (anti data-smuggling). */
+function safeFromCodePoint(cp: number): string {
+  if (!Number.isFinite(cp) || cp < 0 || cp > 0x10ffff) return "";
+  try {
+    return String.fromCodePoint(cp);
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * HTML -> texte lisible. Drop les blocs <head>/<style>/<script> AVANT de
+ * retirer les tags (sinon le CSS Outlook pollue le texte extrait — BUG 49).
+ */
+function htmlToText(html: string): string {
+  return html
+    .replace(/<head\b[^>]*>[\s\S]*?<\/head>/gi, " ")
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ")
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
+    .replace(/<!--[\s\S]*?-->/g, " ")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|div|li|tr|td|th|h[1-6])>/gi, "\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&#(\d+);/g, (_, n) => safeFromCodePoint(Number(n)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, n) => safeFromCodePoint(parseInt(n, 16)))
+    .replace(/&[a-z]+;/gi, " ")
+    .replace(/ /g, " ")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n[ \t]+/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 // ===========================================================================
@@ -587,6 +644,13 @@ async function extractScreenshots(
       replacements.push([full, `[screenshot ${idx} : path manquant]`]);
       continue;
     }
+    // Anti path-traversal : `path` vient du texte de l'agent, potentiellement
+    // influence par du contenu lu (ex : un mail). On le restreint au dossier
+    // /livraisons/ et a un charset sur. Empeche de lire d'autres memories.
+    if (path.includes("..") || !/^\/?livraisons\/[a-zA-Z0-9._/-]+$/.test(path)) {
+      replacements.push([full, `[screenshot ${idx} : path refuse]`]);
+      continue;
+    }
 
     try {
       let b64Content = "";
@@ -721,36 +785,47 @@ async function discordPostMessage(
 function splitForDiscord(text: string, max: number): string[] {
   if (text.length <= max) return [text];
   const chunks: string[] = [];
-  const paragraphs = text.split(/\n\n+/);
   let current = "";
-  for (const p of paragraphs) {
-    if ((current + "\n\n" + p).length > max) {
-      if (current) chunks.push(current);
-      // Si un paragraphe lui-meme depasse, on split sur les lignes
-      if (p.length > max) {
-        const lines = p.split("\n");
-        let buf = "";
-        for (const line of lines) {
-          if ((buf + "\n" + line).length > max) {
-            if (buf) chunks.push(buf);
-            buf = line.length > max ? line.slice(0, max) : line;
-          } else {
-            buf = buf ? buf + "\n" + line : line;
-          }
-        }
-        if (buf) {
-          current = buf;
-        } else {
-          current = "";
-        }
-      } else {
-        current = p;
-      }
-    } else {
+
+  // Decoupe dure d'une chaine trop longue en morceaux <= max (aucune perte).
+  const hardSplit = (s: string): string[] => {
+    const out: string[] = [];
+    for (let i = 0; i < s.length; i += max) out.push(s.slice(i, i + max));
+    return out;
+  };
+  const flush = () => {
+    if (current) chunks.push(current);
+    current = "";
+  };
+
+  for (const p of text.split(/\n\n+/)) {
+    if ((current + "\n\n" + p).length <= max) {
       current = current ? current + "\n\n" + p : p;
+      continue;
+    }
+    flush();
+    if (p.length <= max) {
+      current = p;
+      continue;
+    }
+    // Paragraphe trop long : on split ligne par ligne.
+    for (const line of p.split("\n")) {
+      if ((current + "\n" + line).length <= max) {
+        current = current ? current + "\n" + line : line;
+        continue;
+      }
+      flush();
+      if (line.length <= max) {
+        current = line;
+        continue;
+      }
+      // Ligne unique trop longue : decoupe dure, le reste n'est pas perdu.
+      const pieces = hardSplit(line);
+      for (let i = 0; i < pieces.length - 1; i++) chunks.push(pieces[i]!);
+      current = pieces[pieces.length - 1]!;
     }
   }
-  if (current) chunks.push(current);
+  flush();
   return chunks;
 }
 
@@ -817,7 +892,7 @@ async function runWeeklyCycle(env: Env): Promise<void> {
     weekEnd: end.toISOString(),
   };
   await env.INTERACTIONS.put(`cycle:${cycleId}:meta`, JSON.stringify(meta), {
-    expirationTtl: 4 * 3600,
+    expirationTtl: WEEKLY_KV_TTL,
   });
 
   // 2. Lance les 3 sub-agents en parallele
@@ -830,7 +905,7 @@ async function runWeeklyCycle(env: Env): Promise<void> {
   // Fetch les stats Tally UNE fois pour l'ensemble du cycle (les 3 sub-agents partagent)
   const tallyBlock = await fetchTallyStats(env);
   // Stocker les stats dans la cycle meta pour les re-injecter dans le brief DG plus tard
-  await env.INTERACTIONS.put(`cycle:${cycleId}:tally`, tallyBlock, { expirationTtl: 4 * 3600 });
+  await env.INTERACTIONS.put(`cycle:${cycleId}:tally`, tallyBlock, { expirationTtl: WEEKLY_KV_TTL });
 
   await Promise.all(
     (Object.entries(roleAgentMap) as Array<["analytics" | "growth" | "content", string]>).map(
@@ -855,7 +930,7 @@ async function runWeeklyCycle(env: Env): Promise<void> {
           createdAt: Date.now(),
         };
         await env.INTERACTIONS.put(`sess:${created.id}`, JSON.stringify(pending), {
-          expirationTtl: 4 * 3600,
+          expirationTtl: WEEKLY_KV_TTL,
         });
         console.log(`[cycle] ${role} session ${created.id} launched`);
       },
@@ -866,10 +941,17 @@ async function runWeeklyCycle(env: Env): Promise<void> {
 }
 
 /**
- * Une session sub-agent est terminee : on stocke son output, on check si tous les 3
- * roles sont la, et si oui on declenche la session DG.
+ * Une session sub-agent est terminee (idle ou terminated) : on stocke son output
+ * — ou un placeholder d'erreur si elle a echoue — puis on tente de lancer le DG.
+ * `overrideText` sert au cas `terminated` : sans lui, fetchAgentText renverrait ""
+ * et le cycle pourrait se figer faute d'atteindre les 3 sub-agents.
  */
-async function handleSubAgentDone(env: Env, pending: PendingInteraction, sessionId: string): Promise<void> {
+async function handleSubAgentDone(
+  env: Env,
+  pending: PendingInteraction,
+  sessionId: string,
+  overrideText?: string,
+): Promise<void> {
   if (!pending.role || !pending.cycleId) {
     console.error(`[cycle] sub-agent webhook with missing role/cycleId`);
     return;
@@ -877,45 +959,50 @@ async function handleSubAgentDone(env: Env, pending: PendingInteraction, session
   const cycleId = pending.cycleId;
   const role = pending.role;
 
-  // 1. Recuperer le texte de la session
-  const text = await fetchAgentText(env.ANTHROPIC_API_KEY, sessionId);
-
-  // Stocker l'output (pour ce cycle, court TTL). Le sub-agent l'a aussi ecrit
-  // dans /mnt/memory/arty/historique/cycles/ pour la memoire long terme.
-  await env.INTERACTIONS.put(`cycle:${cycleId}:${role}`, text, { expirationTtl: 4 * 3600 });
+  // Texte de la session, ou placeholder fourni (cas session terminated). Le
+  // sub-agent a aussi ecrit dans /mnt/memory/arty/historique/cycles/ si OK.
+  const text = overrideText ?? (await fetchAgentText(env.ANTHROPIC_API_KEY, sessionId));
+  await env.INTERACTIONS.put(`cycle:${cycleId}:${role}`, text, { expirationTtl: WEEKLY_KV_TTL });
   console.log(`[cycle] ${role} output stored (${text.length} chars) for cycle ${cycleId}`);
 
-  // 3. Check si les 3 sub-agents sont tous done
-  const expected = ["analytics", "growth", "content"];
+  await maybeLaunchDG(env, cycleId);
+}
+
+/**
+ * Verifie si les 3 sub-agents ont livre ; si oui, lance la session DG.
+ * Lock best-effort : KV n'a pas de compare-and-set, donc deux webhooks
+ * quasi-simultanes peuvent en theorie lancer 2 sessions DG. Le garde
+ * d'idempotence `cycle:{id}:digest-posted` (handleWeeklyDgDone) borne l'impact
+ * a une session DG en trop, jamais a deux digests postes.
+ */
+async function maybeLaunchDG(env: Env, cycleId: string): Promise<void> {
+  const expected: Array<"analytics" | "growth" | "content"> = ["analytics", "growth", "content"];
   const results = await Promise.all(
     expected.map((r) => env.INTERACTIONS.get(`cycle:${cycleId}:${r}`)),
   );
   const present = results.filter((r) => r !== null && r !== undefined);
   if (present.length < expected.length) {
-    console.log(`[cycle] ${role} done, ${present.length}/${expected.length} sub-agents received`);
+    console.log(`[cycle] ${present.length}/${expected.length} sub-agents recus pour ${cycleId}`);
     return;
   }
 
-  // 4. Lock pour eviter le double-lancement du DG (race possible si 2 webhooks arrivent en parallele)
+  // Lock best-effort anti double-lancement du DG.
   const lockKey = `cycle:${cycleId}:dg-lock`;
-  const lockExisting = await env.INTERACTIONS.get(lockKey);
-  if (lockExisting) {
-    console.log(`[cycle] DG already launched by another handler, skipping`);
+  if (await env.INTERACTIONS.get(lockKey)) {
+    console.log(`[cycle] DG deja lance par un autre handler, skip`);
     return;
   }
-  await env.INTERACTIONS.put(lockKey, new Date().toISOString(), { expirationTtl: 4 * 3600 });
+  await env.INTERACTIONS.put(lockKey, new Date().toISOString(), { expirationTtl: WEEKLY_KV_TTL });
 
-  // 5. Recuperer la meta + lancer le DG
-  const metaStr = await env.INTERACTIONS.get(`cycle:${cycleId}:meta`);
-  if (!metaStr) {
-    console.error(`[cycle] meta missing for ${cycleId}`);
+  const meta = safeParse<CycleMeta>(await env.INTERACTIONS.get(`cycle:${cycleId}:meta`));
+  if (!meta) {
+    console.error(`[cycle] meta manquante/corrompue pour ${cycleId}`);
+    await discordPostMessage(env, `Erreur cycle ${cycleId} : metadata introuvable, DG non lance.`);
     return;
   }
-  const meta: CycleMeta = JSON.parse(metaStr);
   const [analytics, growth, content] = results;
-  // Recuperer les stats Tally stockees au lancement du cycle (ou re-fetch si manquant)
-  const tallyStored = await env.INTERACTIONS.get(`cycle:${cycleId}:tally`);
-  const tallyBlock = tallyStored || (await fetchTallyStats(env));
+  const tallyBlock =
+    (await env.INTERACTIONS.get(`cycle:${cycleId}:tally`)) || (await fetchTallyStats(env));
 
   const dgBrief = buildBriefDG(
     new Date(meta.weekStart),
@@ -954,7 +1041,7 @@ async function handleSubAgentDone(env: Env, pending: PendingInteraction, session
     role: "dg",
     createdAt: Date.now(),
   };
-  await env.INTERACTIONS.put(`sess:${created.id}`, JSON.stringify(dgPending), { expirationTtl: 4 * 3600 });
+  await env.INTERACTIONS.put(`sess:${created.id}`, JSON.stringify(dgPending), { expirationTtl: WEEKLY_KV_TTL });
   console.log(`[cycle] DG session ${created.id} launched for cycle ${cycleId}`);
 }
 
@@ -967,9 +1054,18 @@ async function handleWeeklyDgDone(env: Env, pending: PendingInteraction, session
     return;
   }
   const cycleId = pending.cycleId;
+
+  // Idempotence : si le digest a deja ete poste (race double-DG), ne pas reposter.
+  if (await env.INTERACTIONS.get(`cycle:${cycleId}:digest-posted`)) {
+    console.log(`[cycle] digest deja poste pour ${cycleId}, skip`);
+    return;
+  }
+  await env.INTERACTIONS.put(`cycle:${cycleId}:digest-posted`, new Date().toISOString(), {
+    expirationTtl: WEEKLY_KV_TTL,
+  });
+
   const text = await fetchAgentText(env.ANTHROPIC_API_KEY, sessionId);
-  const metaStr = await env.INTERACTIONS.get(`cycle:${cycleId}:meta`);
-  const meta: CycleMeta | null = metaStr ? JSON.parse(metaStr) : null;
+  const meta = safeParse<CycleMeta>(await env.INTERACTIONS.get(`cycle:${cycleId}:meta`));
 
   const start = meta ? new Date(meta.weekStart) : new Date();
   const end = meta ? new Date(meta.weekEnd) : new Date();
@@ -1041,6 +1137,29 @@ async function registerDiscordCommands(env: Env): Promise<{ ok: boolean; detail:
   return { ok: true, detail: `Registered ${commands.length} command(s)` };
 }
 
+/**
+ * Verifie que l'utilisateur Discord est dans l'allowlist DISCORD_ALLOWED_USER_IDS.
+ * La signature Ed25519 prouve que la requete vient de Discord, pas QUI l'a lancee :
+ * sans cette verif, tout membre du serveur pourrait interroger le DG (qui a le repo
+ * prive Arty + le memory store strategie/decisions monte).
+ */
+function isAuthorizedDiscordUser(interaction: DiscordInteraction, env: Env): boolean {
+  const userId = interaction.member?.user?.id ?? interaction.user?.id ?? "";
+  if (!userId) return false;
+  const allow = (env.DISCORD_ALLOWED_USER_IDS || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return allow.includes(userId);
+}
+
+function discordEphemeral(content: string): Response {
+  return new Response(
+    JSON.stringify({ type: 4, data: { content, flags: 64 } }),
+    { headers: { "Content-Type": "application/json" } },
+  );
+}
+
 async function handleDiscordInteraction(
   interaction: DiscordInteraction,
   env: Env,
@@ -1055,6 +1174,21 @@ async function handleDiscordInteraction(
 
   // Slash command /dg <texte>
   if (interaction.type === 2 && interaction.data?.name === "dg") {
+    // Autorisation : seuls les IDs Discord de l'allowlist peuvent parler au DG.
+    if (!isAuthorizedDiscordUser(interaction, env)) {
+      console.warn(
+        `[discord] /dg refuse, user=${interaction.member?.user?.id ?? interaction.user?.id ?? "?"}`,
+      );
+      return discordEphemeral("Tu n'es pas autorise a utiliser cette commande.");
+    }
+    // Defense en profondeur : /dg seulement dans le canal #dg dedie.
+    if (
+      env.DISCORD_CHANNEL_ID &&
+      interaction.channel_id &&
+      interaction.channel_id !== env.DISCORD_CHANNEL_ID
+    ) {
+      return discordEphemeral("Utilise `/dg` dans le canal #dg dedie.");
+    }
     const userMessage = interaction.data.options?.find((o) => o.name === "message")?.value || "";
 
     // Reponse differee (le DG peut prendre 30s a 3 min) : on repond type 5 (DEFERRED_CHANNEL_MESSAGE)
@@ -1298,8 +1432,7 @@ async function verifyAnthropicWebhook(
   for (const part of parts) {
     const m = part.match(/^v1,(.+)$/);
     if (!m) continue;
-    const provided = m[1];
-    if (provided === expectedB64) {
+    if (await timingSafeEqual(m[1]!, expectedB64)) {
       return { ok: true };
     }
   }
@@ -1308,11 +1441,12 @@ async function verifyAnthropicWebhook(
 
 /**
  * Webhook Anthropic. Audit secu :
- *  - Authentification : signature HMAC SHA256 verifiee avec ANTHROPIC_WEBHOOK_SIGNING_KEY.
+ *  - Authentification : signature HMAC SHA256 verifiee avec ANTHROPIC_WEBHOOK_SIGNING_KEY,
+ *    comparaison constant-time, anti-replay 5 min.
  *  - Autorisation : on filtre que sur les sessions trackees en KV (creees par nous).
  *    Session inconnue -> 200 silent (pas de leak d'info).
  *  - Abus : retry de Anthropic est at-least-once, on dedup via le KV (delete apres delivery).
- *  - Leak : reponses 200/400 sans details.
+ *  - Leak : 401 nu cote reponse, motif d'echec uniquement en console.warn.
  *  - Stocke en KV : juste interactionToken + type, pas de PII.
  */
 async function handleAnthropicWebhook(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -1329,8 +1463,10 @@ async function handleAnthropicWebhook(request: Request, env: Env, ctx: Execution
     env.ANTHROPIC_WEBHOOK_SIGNING_KEY,
   );
   if (!verif.ok) {
+    // Motif garde en log seulement : une reponse detaillee aiderait un attaquant
+    // a calibrer (timestamp stale vs signature mismatch vs header manquant).
     console.warn(`[webhook] sig FAIL: ${verif.reason}`);
-    return new Response(`signature error: ${verif.reason}`, { status: 401 });
+    return new Response("Unauthorized", { status: 401 });
   }
 
   let event: any;
@@ -1357,7 +1493,14 @@ async function handleAnthropicWebhook(request: Request, env: Env, ctx: Execution
     console.log(`[webhook] session ${sessionId} non trackee, ignore`);
     return new Response("not tracked", { status: 200 });
   }
-  const pending: PendingInteraction = JSON.parse(stored);
+  const pending = safeParse<PendingInteraction>(stored);
+  if (!pending) {
+    // Entree KV corrompue : on la supprime et on renvoie 200 pour stopper les
+    // retries at-least-once d'Anthropic (sinon boucle de 500).
+    console.error(`[webhook] entree KV corrompue pour ${kvKey}, suppression`);
+    await env.INTERACTIONS.delete(kvKey);
+    return new Response("corrupt entry", { status: 200 });
+  }
 
   // Delete tout de suite pour eviter les double-delivery (Anthropic retries at-least-once)
   await env.INTERACTIONS.delete(kvKey);
@@ -1375,11 +1518,21 @@ async function deliverSessionResultToDiscord(
   eventType: string,
 ): Promise<void> {
   try {
-    // Cas terminated : notifier l'erreur selon le type
+    // Cas terminated : session echouee cote Anthropic.
     if (eventType === "session.status_terminated") {
       const msg = `Erreur : la session s'est terminee anormalement cote Anthropic. Type=${pending.type}, role=${pending.role ?? "?"}, session=${sessionId}.`;
       console.error(`[webhook] terminated: ${msg}`);
-      if (pending.type === "adhoc" && pending.interactionToken) {
+      if (pending.type === "weekly_subagent") {
+        // Stocker un placeholder pour ne PAS figer le cycle : maybeLaunchDG doit
+        // pouvoir atteindre le compte de 3 sub-agents meme si l'un a echoue. Le
+        // brief DG signale deja le gap ("Pas d'output disponible").
+        await handleSubAgentDone(
+          env,
+          pending,
+          sessionId,
+          `(Session ${pending.role ?? "?"} terminee anormalement cote Anthropic, aucun livrable.)`,
+        );
+      } else if (pending.type === "adhoc" && pending.interactionToken) {
         await patchDiscordOriginal(env, pending.interactionToken, msg);
       } else {
         await discordPostMessage(env, msg);
@@ -1447,17 +1600,17 @@ const GMAIL_SCOPES = [
 const GMAIL_API = "https://gmail.googleapis.com/gmail/v1";
 
 /**
- * Demarre le flow OAuth Google : redirige Florent vers le consent screen.
- * Audit secu : on genere un state random anti-CSRF stocke en KV TTL 10 min.
+ * Demarre le flow OAuth Google. Auth : header X-Trigger-Secret (BUG 7 : aucun
+ * secret en query string). Renvoie l'URL de consentement Google en JSON — Florent
+ * l'appelle une fois en curl puis ouvre `authorize_url` dans un navigateur. Le
+ * state anti-CSRF est genere ici (KV, TTL 10 min) et verifie par le callback.
  */
 async function handleGoogleOAuthStart(env: Env, request: Request): Promise<Response> {
-  // Auth simple : on utilise le TRIGGER_SECRET dans l'URL pour eviter qu'un attaquant declenche un flow OAuth
-  const url = new URL(request.url);
-  const auth = url.searchParams.get("secret");
-  if (!env.TRIGGER_SECRET || !auth || auth !== env.TRIGGER_SECRET) {
+  if (!(await checkSecret(request.headers.get("X-Trigger-Secret"), env.TRIGGER_SECRET))) {
     return new Response("Not Found", { status: 404 });
   }
 
+  const url = new URL(request.url);
   // Genere un state random pour anti-CSRF
   const stateBytes = new Uint8Array(16);
   crypto.getRandomValues(stateBytes);
@@ -1474,7 +1627,13 @@ async function handleGoogleOAuthStart(env: Env, request: Request): Promise<Respo
     prompt: "consent", // garantit un refresh_token a chaque flow
     state,
   });
-  return Response.redirect(`${GOOGLE_OAUTH_AUTHORIZE}?${params}`, 302);
+  return new Response(
+    JSON.stringify({
+      authorize_url: `${GOOGLE_OAUTH_AUTHORIZE}?${params}`,
+      note: "Ouvre authorize_url dans un navigateur sous 10 min (validite du state).",
+    }),
+    { status: 200, headers: { "Content-Type": "application/json" } },
+  );
 }
 
 async function handleGoogleOAuthCallback(env: Env, request: Request): Promise<Response> {
@@ -1543,7 +1702,7 @@ async function handleGoogleOAuthCallback(env: Env, request: Request): Promise<Re
     `<html><body style="font-family:system-ui;max-width:600px;margin:40px auto;padding:0 20px;">
       <h1>OAuth Google : succes</h1>
       <p>Tu peux fermer cet onglet. Le DG aura maintenant acces a Gmail (readonly + compose) via le MCP.</p>
-      <p><small>Refresh token stocke en KV. Tu peux refaire ce flow a tout moment via /oauth/google/start?secret=...</small></p>
+      <p><small>Refresh token stocke en KV. Pour refaire ce flow : POST /oauth/google/start avec le header X-Trigger-Secret.</small></p>
     </body></html>`,
     {
       status: 200,
@@ -1608,13 +1767,15 @@ async function getGoogleAccessToken(env: Env): Promise<{ ok: true; token: string
  *   - gmail_draft : cree un brouillon
  *
  * Audit secu :
- *   - L'URL inclut le TRIGGER_SECRET en query string pour eviter qu'un attaquant tape directement
- *   - Pas de scope d'envoi : le DG peut juste lire et drafter (Florent valide depuis Gmail UI)
+ *   - Auth : header `Authorization: Bearer <MCP_AUTH_TOKEN>` (BUG 7 : pas de
+ *     secret en query string). Comparaison constant-time.
+ *   - Le DG n'expose que search/get/draft via MCP (aucun tool d'envoi). Note :
+ *     le scope OAuth `gmail.compose` permet techniquement l'envoi — Google n'a
+ *     pas de scope draft-only. Risque accepte (voir README, section Securite).
+ *   - IDs Gmail valides par regex avant toute URL d'API (BUG 32).
  */
 async function handleMcpGmail(request: Request, env: Env): Promise<Response> {
-  const url = new URL(request.url);
-  const auth = url.searchParams.get("secret");
-  if (!env.TRIGGER_SECRET || !auth || auth !== env.TRIGGER_SECRET) {
+  if (!(await checkSecret(bearerToken(request.headers.get("Authorization")), env.MCP_AUTH_TOKEN))) {
     return new Response(JSON.stringify({ jsonrpc: "2.0", error: { code: -32001, message: "Unauthorized" } }), {
       status: 401,
       headers: { "Content-Type": "application/json" },
@@ -1736,30 +1897,43 @@ async function handleMcpGmail(request: Request, env: Env): Promise<Response> {
 
       if (name === "gmail_get_message") {
         const id = String(args.message_id || "");
+        if (!isValidGmailId(id)) {
+          return mcpResult(reqId, {
+            content: [{ type: "text", text: "message_id invalide (attendu [a-zA-Z0-9_-])." }],
+            isError: true,
+          });
+        }
         const r = await fetch(`${GMAIL_API}/users/me/messages/${id}?format=full`, {
           headers: { Authorization: `Bearer ${accessToken}` },
         });
         if (!r.ok) throw new Error(`Gmail get ${r.status}: ${(await r.text()).slice(0, 200)}`);
         const msg = (await r.json()) as any;
         const headers = msg.payload?.headers || [];
-        const get = (n: string) => headers.find((h: any) => h.name === n)?.value || "";
+        // Comparaison de header insensible a la casse (RFC 2822 — BUG 49).
+        const get = (n: string) =>
+          headers.find((h: any) => (h.name || "").toLowerCase() === n.toLowerCase())?.value || "";
 
-        // Extract body (text/plain prefer)
-        let body = "";
-        const findPart = (parts: any[]): any => {
-          for (const p of parts) {
-            if (p.mimeType === "text/plain" && p.body?.data) return p;
-            if (p.parts) {
-              const sub = findPart(p.parts);
-              if (sub) return sub;
-            }
+        // Body : text/plain en priorite, sinon text/html -> texte. Le charset
+        // declare est respecte (BUG 36/49 : atob() seul casse l'UTF-8 et le
+        // windows-1252 des mails Outlook -> accents en U+FFFD).
+        const findByMime = (node: any, mime: string): any => {
+          if (!node) return null;
+          if ((node.mimeType || "").toLowerCase() === mime && node.body?.data) return node;
+          for (const p of node.parts || []) {
+            const sub = findByMime(p, mime);
+            if (sub) return sub;
           }
           return null;
         };
-        const part = msg.payload?.parts ? findPart(msg.payload.parts) : msg.payload;
-        if (part?.body?.data) {
-          body = atob(part.body.data.replace(/-/g, "+").replace(/_/g, "/"));
+        let body = "";
+        const plainPart = findByMime(msg.payload, "text/plain");
+        if (plainPart) {
+          body = decodePartBody(plainPart);
+        } else {
+          const htmlPart = findByMime(msg.payload, "text/html");
+          if (htmlPart) body = htmlToText(decodePartBody(htmlPart));
         }
+        if (!body) body = msg.snippet || "";
 
         return mcpResult(reqId, {
           content: [{
@@ -1770,7 +1944,7 @@ async function handleMcpGmail(request: Request, env: Env): Promise<Response> {
               from: get("From"),
               to: get("To"),
               date: get("Date"),
-              body: body.slice(0, 5000),
+              body: body.slice(0, 8000),
               snippet: msg.snippet || "",
             }, null, 2),
           }],
@@ -1782,6 +1956,12 @@ async function handleMcpGmail(request: Request, env: Env): Promise<Response> {
         const subject = String(args.subject || "");
         const bodyText = String(args.body || "");
         const inReplyTo = args.in_reply_to_message_id ? String(args.in_reply_to_message_id) : "";
+        if (inReplyTo && !isValidGmailId(inReplyTo)) {
+          return mcpResult(reqId, {
+            content: [{ type: "text", text: "in_reply_to_message_id invalide (attendu [a-zA-Z0-9_-])." }],
+            isError: true,
+          });
+        }
 
         // Construire le message RFC 2822
         const lines = [
@@ -1867,10 +2047,8 @@ export default {
   },
 
   /**
-   * HTTP : 3 routes.
-   *   POST /trigger : run manuel (auth X-Trigger-Secret)
-   *   POST /discord/interactions : webhook Discord (auth Ed25519)
-   *   GET  /        : healthcheck
+   * HTTP : 8 routes (detail en tete de fichier). Auth par header uniquement,
+   * jamais en query string (BUG 7).
    */
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
@@ -1889,8 +2067,7 @@ export default {
 
     // /trigger : run manuel
     if (url.pathname === "/trigger" && request.method === "POST") {
-      const auth = request.headers.get("X-Trigger-Secret");
-      if (!env.TRIGGER_SECRET || !auth || auth !== env.TRIGGER_SECRET) {
+      if (!(await checkSecret(request.headers.get("X-Trigger-Secret"), env.TRIGGER_SECRET))) {
         return new Response("Not Found", { status: 404 });
       }
       ctx.waitUntil(runWeeklyCycle(env));
@@ -1902,8 +2079,7 @@ export default {
 
     // /admin/register-commands : enregistre la slash command /dg sur le guild Discord
     if (url.pathname === "/admin/register-commands" && request.method === "POST") {
-      const auth = request.headers.get("X-Trigger-Secret");
-      if (!env.TRIGGER_SECRET || !auth || auth !== env.TRIGGER_SECRET) {
+      if (!(await checkSecret(request.headers.get("X-Trigger-Secret"), env.TRIGGER_SECRET))) {
         return new Response("Not Found", { status: 404 });
       }
       const result = await registerDiscordCommands(env);
@@ -1915,8 +2091,7 @@ export default {
 
     // /admin/post-test : poste un message de test sur Discord pour valider le canal/bot
     if (url.pathname === "/admin/post-test" && request.method === "POST") {
-      const auth = request.headers.get("X-Trigger-Secret");
-      if (!env.TRIGGER_SECRET || !auth || auth !== env.TRIGGER_SECRET) {
+      if (!(await checkSecret(request.headers.get("X-Trigger-Secret"), env.TRIGGER_SECRET))) {
         return new Response("Not Found", { status: 404 });
       }
       try {
@@ -1937,8 +2112,9 @@ export default {
       return handleAnthropicWebhook(request, env, ctx);
     }
 
-    // /oauth/google/start : initie le OAuth flow Google (Florent navigue dessus 1 fois)
-    if (url.pathname === "/oauth/google/start" && request.method === "GET") {
+    // /oauth/google/start : initie le OAuth flow Google (setup one-shot par Florent).
+    // POST + header X-Trigger-Secret ; renvoie l'URL de consentement en JSON.
+    if (url.pathname === "/oauth/google/start" && request.method === "POST") {
       return handleGoogleOAuthStart(env, request);
     }
 
