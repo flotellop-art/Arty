@@ -150,43 +150,73 @@ Dans la config de l'agent DG (`mcp_servers`), ajouter un serveur MCP HTTP :
 L'agent dispose alors des outils `gmail_search`, `gmail_get_message`,
 `gmail_draft`.
 
-### 8. (Optionnel) Activer la veille infra
+### 8. (Optionnel) Activer l'équipe de veille
 
-Le cron `0 12 * * WED` est déjà déclaré dans `wrangler.toml`. Pour l'activer
-vraiment, créer les 2 watchers sur la console Anthropic :
+Quatre crons (`WED`, `THU`, `FRI`, `SAT` à 12h UTC) sont déjà déclarés dans
+`wrangler.toml`. L'équipe veille = **10 watchers** au total (configurés dans
+`WATCHERS_CONFIG` de `src/index.ts`). Chacun est un Managed Agent Anthropic à
+créer une fois sur la console.
 
-1. Sur `platform.claude.com`, workspace Appfacade, créer 2 nouveaux agents :
-   - **Arty Watcher — MCP Tunnels** : coller le system prompt de
-     [`agents/watcher-mcp-tunnels.md`](agents/watcher-mcp-tunnels.md).
-   - **Arty Watcher — Self-Hosted Sandboxes** : coller le system prompt de
-     [`agents/watcher-self-hosted-sandbox.md`](agents/watcher-self-hosted-sandbox.md).
+**Cycle mercredi — outils & infra (7 watchers)** :
+| Watcher | Var wrangler | System prompt | Repo monté |
+|---|---|---|---|
+| MCP Tunnels | `AGENT_WATCHER_MCP_TUNNELS_ID` | [watcher-mcp-tunnels.md](agents/watcher-mcp-tunnels.md) | oui |
+| Self-Hosted Sandboxes | `AGENT_WATCHER_SHS_ID` | [watcher-self-hosted-sandbox.md](agents/watcher-self-hosted-sandbox.md) | oui |
+| IA (Claude/Gemini/Mistral/GPT) | `AGENT_WATCHER_AI_MODELS_ID` | [watcher-ai-models.md](agents/watcher-ai-models.md) | non |
+| Cloudflare | `AGENT_WATCHER_CLOUDFLARE_ID` | [watcher-cloudflare.md](agents/watcher-cloudflare.md) | non |
+| Google APIs | `AGENT_WATCHER_GOOGLE_APIS_ID` | [watcher-google-apis.md](agents/watcher-google-apis.md) | non |
+| Mobile (Capacitor + OS) | `AGENT_WATCHER_MOBILE_ID` | [watcher-mobile-native.md](agents/watcher-mobile-native.md) | non |
+| Comms/Growth/Payments | `AGENT_WATCHER_COMMS_ID` | [watcher-comms-growth.md](agents/watcher-comms-growth.md) | non |
 
-   Tier Sonnet pour les deux, web access activé, memory store `arty` monté,
-   repo `flotellop-art/Arty` monté en read-only.
-2. Récupérer les 2 `agent_id` et les coller dans `wrangler.toml` (vars
-   `AGENT_WATCHER_MCP_TUNNELS_ID` et `AGENT_WATCHER_SHS_ID`). Redéployer.
-3. (Optionnel mais recommandé) Seed manuel d'un `etat.md` minimal dans le
-   memory store pour chaque watcher, via la console memory Anthropic :
-   - chemin `/watch/mcp-tunnels/etat.md` → contenu : `Statut initial inconnu.
-     Source d'amorçage : InfoQ 19/05/2026. À compléter au prochain cycle.`
-   - chemin `/watch/self-hosted-sandbox/etat.md` → idem.
+**Cycle jeudi — marché & voix users (2 watchers)** :
+| Watcher | Var wrangler | System prompt | Repo monté |
+|---|---|---|---|
+| Marché concurrents | `AGENT_WATCHER_MARKET_ID` | [watcher-market-competitors.md](agents/watcher-market-competitors.md) | non |
+| Voix users | `AGENT_WATCHER_USERS_VOICE_ID` | [watcher-users-voice.md](agents/watcher-users-voice.md) | non |
 
-   Sans ce seed, le 1er cycle produira un résumé "je découvre tout". Pas
-   bloquant.
-4. Lancer un cycle manuel pour vérifier :
-   `curl -X POST -H "X-Trigger-Secret: ..." https://<worker>/admin/trigger-watch`.
-   Un mini-digest "Watch infra" doit apparaître sur Discord sous ~5 min.
+**Cycle vendredi — recherche docs/tutos (1 watcher)** :
+| Watcher | Var wrangler | System prompt | Repo monté |
+|---|---|---|---|
+| Recherche | `AGENT_WATCHER_RESEARCH_ID` | [watcher-research.md](agents/watcher-research.md) | oui (lit `agents/watch-topics.md`) |
 
-Tant que `AGENT_WATCHER_*_ID` sont vides, le cron du mercredi tourne mais skip
-les watchers concernés (log d'erreur, pas de crash).
+**Cycle samedi — manager (1 watcher)** :
+| Watcher | Var wrangler | System prompt | Repo monté | Web access |
+|---|---|---|---|---|
+| Manager veille | `AGENT_WATCHER_MANAGER_ID` | [watcher-manager.md](agents/watcher-manager.md) | oui | **NON** (lit seulement le memory store) |
+
+Procédure pour activer (10-30 min) :
+
+1. Sur `platform.claude.com`, workspace Appfacade, créer 10 nouveaux agents
+   selon les tableaux ci-dessus (tier **Sonnet**, memory store `arty` monté
+   sur `/mnt/memory/arty/`, web access **on sauf pour le manager**).
+2. Coller les 10 `agent_id` dans les vars correspondantes de `wrangler.toml`.
+3. (Optionnel) Seed manuel d'un `etat.md` minimal pour chaque watcher dans le
+   memory store, chemin `/watch/<key>/etat.md`. Sans seed, le 1er cycle
+   produira un résumé "je découvre tout" — non bloquant.
+4. Le watcher **research** lit `agents/watch-topics.md` (la liste des sujets
+   à surveiller). Éditer cette liste par PR Git, jamais directement dans le
+   memory store.
+5. Redéployer : `npx wrangler deploy`.
+6. Tester chaque slot :
+   ```bash
+   curl -X POST -H "X-Trigger-Secret: ..." 'https://<worker>/admin/trigger-watch?slot=wed'
+   curl -X POST -H "X-Trigger-Secret: ..." 'https://<worker>/admin/trigger-watch?slot=thu'
+   curl -X POST -H "X-Trigger-Secret: ..." 'https://<worker>/admin/trigger-watch?slot=fri'
+   curl -X POST -H "X-Trigger-Secret: ..." 'https://<worker>/admin/trigger-watch?slot=sat'
+   ```
+   Un digest distinct doit arriver sur Discord pour chaque slot sous ~5-10 min.
+
+Tant que les `AGENT_WATCHER_*_ID` sont vides, les crons tournent mais skipent
+les watchers concernés (log d'erreur, pas de crash). Tu peux donc déployer
+maintenant et activer les watchers progressivement.
 
 ### 9. Test de bout en bout
 
 - `/dg ping` dans le canal Discord `#dg` → le DG répond.
 - `curl -X POST -H "X-Trigger-Secret: ..." https://<worker>/trigger` → lance un
   cycle growth manuel.
-- `curl -X POST -H "X-Trigger-Secret: ..." https://<worker>/admin/trigger-watch`
-  → lance un cycle de veille infra manuel.
+- `curl -X POST -H "X-Trigger-Secret: ..." 'https://<worker>/admin/trigger-watch?slot=wed'`
+  → lance un cycle de veille manuel (slot mercredi).
 
 ## Sécurité (CLAUDE.md, RÈGLE 6)
 

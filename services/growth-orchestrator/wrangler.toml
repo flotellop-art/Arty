@@ -13,12 +13,16 @@ cpu_ms = 300000
 # Crons :
 #  - dimanche 18h UTC : cycle hebdo growth (3 sous-agents + DG).
 #    Le digest est lu par Florent le lundi matin.
-#  - mercredi 12h UTC : cycle hebdo veille infra (2 watchers MCP Tunnels +
-#    Self-Hosted Sandboxes). Decouple du cycle growth pour ne pas mixer les
-#    concerns ; le dispatch se fait dans `scheduled` sur `event.cron`.
-# Note : Cloudflare exige le day-of-week en nom court (SUN/WED) ou en 7 (pas 0).
+#  - mercredi 12h UTC : veille outils/infra (7 watchers, slot wed).
+#  - jeudi    12h UTC : veille marche & voix users (2 watchers, slot thu).
+#  - vendredi 12h UTC : veille recherche docs/tutos (1 watcher, slot fri).
+#  - samedi   12h UTC : meta-digest du manager de l'equipe veille (slot sat).
+# Le dispatch se fait dans `scheduled` sur `event.cron` ; chaque cron filtre
+# WATCHERS_CONFIG par cycleSlot. Quatre digests Discord distincts (titres clairs)
+# au lieu d'un mur de 10 sections.
+# Note : Cloudflare exige le day-of-week en nom court (SUN/WED/THU/FRI/SAT).
 [triggers]
-crons = ["0 18 * * SUN", "0 12 * * WED"]
+crons = ["0 18 * * SUN", "0 12 * * WED", "0 12 * * THU", "0 12 * * FRI", "0 12 * * SAT"]
 
 # Logs : conserver les invocations pour debug
 [observability]
@@ -42,12 +46,26 @@ AGENT_GROWTH_FR_ID = "agent_01GxjQaNBVXQ6nJcUr4LTSLC"
 AGENT_CONTENT_FR_ID = "agent_01Et2rx4MCjVmBwzYBVGBDC8"
 AGENT_ANALYTICS_ID = "agent_01XRvTLBdHLWmn8WNvV2TbY8"
 
-# Agents de veille infra (cron mercredi 12h UTC). A creer sur la console
-# Anthropic avec les system prompts de `agents/watcher-mcp-tunnels.md` et
-# `agents/watcher-self-hosted-sandbox.md`, puis coller les agent_id ici.
-# Tant que vides, runInfraWatchCycle logge une erreur et skip le watcher concerne.
+# Agents de veille (10 au total, repartis sur 4 crons). A creer sur la console
+# Anthropic avec les system prompts dans `agents/watcher-*.md`, puis coller les
+# agent_id ici. Tant que vides, runWatchCycle logge une erreur et skip le
+# watcher concerne (les autres tournent normalement).
+#
+# Mercredi (outils/infra) :
 AGENT_WATCHER_MCP_TUNNELS_ID = ""
 AGENT_WATCHER_SHS_ID = ""
+AGENT_WATCHER_AI_MODELS_ID = ""
+AGENT_WATCHER_CLOUDFLARE_ID = ""
+AGENT_WATCHER_GOOGLE_APIS_ID = ""
+AGENT_WATCHER_MOBILE_ID = ""
+AGENT_WATCHER_COMMS_ID = ""
+# Jeudi (marche & voix users) :
+AGENT_WATCHER_MARKET_ID = ""
+AGENT_WATCHER_USERS_VOICE_ID = ""
+# Vendredi (recherche docs/tutos) :
+AGENT_WATCHER_RESEARCH_ID = ""
+# Samedi (meta-digest manager) :
+AGENT_WATCHER_MANAGER_ID = ""
 
 # Workspace + environment ids (confirmes via GET /v1/environments)
 # Le workspace est implicite via l'API key, on garde l'ID pour debug.

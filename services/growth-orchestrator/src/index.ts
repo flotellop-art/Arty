@@ -9,9 +9,14 @@
  *   3) Interface Florent : Discord (canal #dg), pas d'email
  *
  * Cycle hebdo growth : cron dimanche 18h UTC.
- * Cycle hebdo veille infra : cron mercredi 12h UTC (2 watchers : MCP Tunnels +
- * Self-Hosted Sandboxes ; voir agents/watcher-*.md pour les system prompts).
- * Cycle manuel : POST /trigger (growth) ou /admin/trigger-watch (veille).
+ * Cycles hebdo veille (4 slots, 10 watchers au total — voir WATCHERS_CONFIG) :
+ *   mercredi 12h UTC : 7 watchers outils/infra (slot wed).
+ *   jeudi    12h UTC : 2 watchers marche/voix users (slot thu).
+ *   vendredi 12h UTC : 1 watcher recherche docs/tutos (slot fri).
+ *   samedi   12h UTC : 1 watcher manager qui meta-synthetise la semaine (slot sat).
+ * System prompts dans agents/watcher-*.md, liste topics research dans
+ * agents/watch-topics.md.
+ * Cycle manuel : POST /trigger (growth) ou /admin/trigger-watch?slot=wed|thu|fri|sat.
  *
  * 9 routes HTTP (voir le handler fetch en bas de fichier) :
  *   GET  /                        healthcheck public
@@ -66,10 +71,20 @@ export interface Env {
   DISCORD_CHANNEL_ID: string;
   // CSV d'IDs utilisateur Discord autorises a lancer la slash command /dg.
   DISCORD_ALLOWED_USER_IDS: string;
-  // Agents de veille infra (cron mercredi 12h UTC). Vides au depart ;
-  // une fois crees sur la console Anthropic, coller les IDs dans wrangler.toml.
+  // Agents de veille (4 crons : mer outils/infra, jeu users, ven research, sam manager).
+  // Vides au depart ; une fois crees sur la console Anthropic, coller les IDs dans wrangler.toml.
+  // Liste complete et leur slot defini dans WATCHERS_CONFIG (src/index.ts).
   AGENT_WATCHER_MCP_TUNNELS_ID: string;
   AGENT_WATCHER_SHS_ID: string;
+  AGENT_WATCHER_AI_MODELS_ID: string;
+  AGENT_WATCHER_CLOUDFLARE_ID: string;
+  AGENT_WATCHER_GOOGLE_APIS_ID: string;
+  AGENT_WATCHER_MOBILE_ID: string;
+  AGENT_WATCHER_COMMS_ID: string;
+  AGENT_WATCHER_MARKET_ID: string;
+  AGENT_WATCHER_USERS_VOICE_ID: string;
+  AGENT_WATCHER_RESEARCH_ID: string;
+  AGENT_WATCHER_MANAGER_ID: string;
 
   // KV pour le tracking des interactions Discord en attente
   INTERACTIONS: KVNamespace;
@@ -84,7 +99,9 @@ interface PendingInteraction {
   type: "adhoc" | "weekly_subagent" | "weekly_dg" | "infra_watch";
   interactionToken?: string;                  // utilise pour adhoc
   role?: "analytics" | "growth" | "content" | "dg";
-  watcher?: "mcp-tunnels" | "self-hosted-sandbox"; // utilise pour infra_watch
+  // Cle du watcher pour infra_watch. Valeurs valides dans WATCHERS_CONFIG.
+  // Type string (pas union) car la liste est config-driven et croit avec le temps.
+  watcher?: string;
   cycleId?: string;                            // pour weekly_* et infra_watch
   createdAt: number;
 }
@@ -176,8 +193,8 @@ async function sendUserMessage(
   return { ok: true };
 }
 
-async function fetchAgentText(apiKey: string, sessionId: string): Promise<string> {
-  const res = await fetch(`${ANTHROPIC_BASE}/sessions/${sessionId}/events?limit=500`, {
+async function fetchAgentText(apiKey: string, sessionId: string, limit = 500): Promise<string> {
+  const res = await fetch(`${ANTHROPIC_BASE}/sessions/${sessionId}/events?limit=${limit}`, {
     method: "GET",
     headers: anthropicHeaders(apiKey),
   });
@@ -1097,93 +1114,185 @@ async function handleWeeklyDgDone(env: Env, pending: PendingInteraction, session
 }
 
 // ===========================================================================
-// 5.5 CYCLE DE VEILLE INFRA (cron mercredi 12h UTC)
+// 5.5 CYCLES DE VEILLE (4 slots : mer outils/infra, jeu users, ven research, sam manager)
 // ===========================================================================
+//
+// 10 watchers au total, repartis sur 4 crons. Chaque cron filtre WATCHERS_CONFIG
+// par cycleSlot et lance le sous-ensemble. Quand tous les watchers du slot ont
+// livre, un digest specifique au slot est poste sur Discord. Le manager (samedi)
+// lit les journaux memory store des 9 autres watchers pour produire un meta-digest.
+//
+// Pattern webhook-driven identique au cycle growth (Anthropic notifie l'idle, le
+// Worker collecte et delivre). Idempotence via watch:{cycleId}:digest-posted.
+// KV n'a pas de CAS atomique : double-post theorique possible sur webhooks
+// strictement simultanes (acceptable au volume, sinon migration Durable Object).
 
-type WatcherKey = "mcp-tunnels" | "self-hosted-sandbox";
+type CycleSlot = "wed" | "thu" | "fri" | "sat";
+type BriefTemplate = "verdict" | "users" | "research" | "manager";
 
 interface WatcherConfig {
-  key: WatcherKey;
-  agentId: string;
+  key: string;
+  envVar: keyof Env;
   label: string;
+  cycleSlot: CycleSlot;
+  mountRepo: boolean;      // false pour les watchers qui n'ont pas besoin du code Arty
+  briefTemplate: BriefTemplate;
 }
 
-function listWatchers(env: Env): WatcherConfig[] {
-  return [
-    { key: "mcp-tunnels", agentId: env.AGENT_WATCHER_MCP_TUNNELS_ID, label: "MCP Tunnels" },
-    { key: "self-hosted-sandbox", agentId: env.AGENT_WATCHER_SHS_ID, label: "Self-Hosted Sandboxes" },
-  ];
+const WATCHERS_CONFIG: readonly WatcherConfig[] = [
+  // --- mercredi : outils & infra (7 watchers, dont les 2 existants) ---
+  { key: "mcp-tunnels",         envVar: "AGENT_WATCHER_MCP_TUNNELS_ID", label: "MCP Tunnels",                            cycleSlot: "wed", mountRepo: true,  briefTemplate: "verdict" },
+  { key: "self-hosted-sandbox", envVar: "AGENT_WATCHER_SHS_ID",         label: "Self-Hosted Sandboxes",                  cycleSlot: "wed", mountRepo: true,  briefTemplate: "verdict" },
+  { key: "ai-models",           envVar: "AGENT_WATCHER_AI_MODELS_ID",   label: "Veille IA (Claude/Gemini/Mistral/GPT)",  cycleSlot: "wed", mountRepo: false, briefTemplate: "verdict" },
+  { key: "cloudflare",          envVar: "AGENT_WATCHER_CLOUDFLARE_ID",  label: "Veille Cloudflare",                      cycleSlot: "wed", mountRepo: false, briefTemplate: "verdict" },
+  { key: "google-apis",         envVar: "AGENT_WATCHER_GOOGLE_APIS_ID", label: "Veille Google APIs",                     cycleSlot: "wed", mountRepo: false, briefTemplate: "verdict" },
+  { key: "mobile-native",       envVar: "AGENT_WATCHER_MOBILE_ID",      label: "Veille Mobile (Capacitor + OS)",         cycleSlot: "wed", mountRepo: false, briefTemplate: "verdict" },
+  { key: "comms-growth",        envVar: "AGENT_WATCHER_COMMS_ID",       label: "Veille Comms/Growth/Payments",           cycleSlot: "wed", mountRepo: false, briefTemplate: "verdict" },
+  // --- jeudi : marche & voix users (2 watchers) ---
+  { key: "market-competitors",  envVar: "AGENT_WATCHER_MARKET_ID",      label: "Veille marche concurrents",              cycleSlot: "thu", mountRepo: false, briefTemplate: "users" },
+  { key: "users-voice",         envVar: "AGENT_WATCHER_USERS_VOICE_ID", label: "Voix users (Reddit, HN, PH)",            cycleSlot: "thu", mountRepo: false, briefTemplate: "users" },
+  // --- vendredi : recherche docs/tutos (1 watcher) ---
+  { key: "research",            envVar: "AGENT_WATCHER_RESEARCH_ID",    label: "Recherche docs & tutos",                 cycleSlot: "fri", mountRepo: true,  briefTemplate: "research" },
+  // --- samedi : meta-digest manager (1 watcher) ---
+  { key: "manager",             envVar: "AGENT_WATCHER_MANAGER_ID",     label: "Manager veille",                         cycleSlot: "sat", mountRepo: true,  briefTemplate: "manager" },
+];
+
+function watchersForSlot(slot: CycleSlot): WatcherConfig[] {
+  return WATCHERS_CONFIG.filter((w) => w.cycleSlot === slot);
+}
+
+function findWatcher(key: string): WatcherConfig | undefined {
+  return WATCHERS_CONFIG.find((w) => w.key === key);
 }
 
 /**
- * Brief envoye a chaque watcher. Tres court : tout le detail (sources, format,
- * critereres de verdict) vit dans le system prompt de l'agent sur la console
- * Anthropic. Le brief sert juste a dater le cycle et a rappeler le contrat.
+ * Dates des 3 cycles sous-watchers de la SEMAINE courante (vue depuis samedi).
+ * Utilise pour le brief du manager : il lit les journaux du mer/jeu/ven.
  */
-function buildBriefWatcher(label: string, key: WatcherKey, today: string): string {
-  return [
-    `# Cycle de veille — ${label} — ${today}`,
+function getCurrentWeekWatchDates(saturday: Date): { wed: string; thu: string; fri: string } {
+  // saturday = 6 (UTC). mercredi = 3 -> -3 jours.
+  const wed = new Date(saturday);
+  wed.setUTCDate(saturday.getUTCDate() - 3);
+  const thu = new Date(wed);
+  thu.setUTCDate(wed.getUTCDate() + 1);
+  const fri = new Date(thu);
+  fri.setUTCDate(thu.getUTCDate() + 1);
+  const iso = (d: Date) => d.toISOString().slice(0, 10);
+  return { wed: iso(wed), thu: iso(thu), fri: iso(fri) };
+}
+
+/**
+ * Brief envoye a un watcher classique (verdict / users / research). Tres court :
+ * tout le detail (sources, format) vit dans le system prompt sur la console.
+ */
+function buildBriefWatcher(w: WatcherConfig, today: string): string {
+  const baseLines = [
+    `# Cycle de veille — ${w.label} — ${today}`,
     ``,
-    `C'est ton cycle hebdo de veille (mercredi). Suis ton system prompt :`,
-    `1. Lis /mnt/memory/arty/watch/${key}/etat.md + les 3 derniers journaux.`,
-    `2. Visite tes sources officielles (8 fetch web max), identifie les nouveautes depuis le dernier journal.`,
-    `3. Ecris le journal du jour, mets a jour etat.md et verdict.md uniquement si necessaire.`,
-    `4. Renvoie ton resume Discord entre les marqueurs === DISCORD_SUMMARY === et === END ===.`,
+    `C'est ton cycle hebdo. Suis ton system prompt :`,
+    `1. Lis /mnt/memory/arty/watch/${w.key}/etat.md + les 3 derniers journaux.`,
+  ];
+  if (w.briefTemplate === "research") {
+    baseLines.push(
+      `2. Lis aussi /workspace/arty/services/growth-orchestrator/agents/watch-topics.md (la liste des sujets a suivre, editee par PR).`,
+      `3. Pour chaque sujet, verifie tes sources (8 fetch web max au total), produis ton entry de format research.`,
+    );
+  } else {
+    baseLines.push(
+      `2. Visite tes sources officielles (8 fetch web max), identifie les nouveautes depuis le dernier journal.`,
+    );
+  }
+  baseLines.push(
+    `${w.briefTemplate === "research" ? "4" : "3"}. Ecris le journal du jour dans /mnt/memory/arty/watch/${w.key}/journal/${today}.md, mets a jour etat.md et verdict.md uniquement si necessaire.`,
+    `${w.briefTemplate === "research" ? "5" : "4"}. Renvoie ton resume Discord entre les marqueurs === DISCORD_SUMMARY === et === END ===.`,
+    ``,
+    `Date d'aujourd'hui : ${today}. Cycle id : watch-${today}.`,
+  );
+  return baseLines.join("\n");
+}
+
+/**
+ * Brief specifique du manager (samedi). Il liste explicitement les fichiers
+ * journaux a lire pour les 9 sous-watchers de la semaine courante. Pas de fetch
+ * web (web access doit etre desactive cote console pour cet agent).
+ */
+function buildBriefManager(today: string): string {
+  const dates = getCurrentWeekWatchDates(new Date(today + "T12:00:00Z"));
+  const subs = WATCHERS_CONFIG.filter((w) => w.cycleSlot !== "sat");
+  const journalLines = subs.map((w) => {
+    const date = w.cycleSlot === "wed" ? dates.wed : w.cycleSlot === "thu" ? dates.thu : dates.fri;
+    return `- ${w.label} : /mnt/memory/arty/watch/${w.key}/journal/${date}.md (+ verdict.md si applicable)`;
+  });
+  return [
+    `# Cycle de synthese manager — ${today}`,
+    ``,
+    `Tu es le manager de l'equipe veille. Tu lis les journaux de la semaine ` +
+      `(mer ${dates.wed}, jeu ${dates.thu}, ven ${dates.fri}) et tu produis un ` +
+      `meta-digest executif pour Florent. Tu ne fais AUCUN fetch web.`,
+    ``,
+    `## Journaux a lire`,
+    ``,
+    ...journalLines,
+    ``,
+    `Si un fichier est introuvable, note "watcher non lance cette semaine" dans tes Alertes qualite.`,
+    ``,
+    `## Cycle de travail`,
+    `1. Lis tous les journaux ci-dessus. Lis aussi les verdict.md pour les watchers de type verdict (W1, W2, W3-W6).`,
+    `2. Identifie les croisements (signal user qui matche une feature observee par un watcher techno, etc.).`,
+    `3. Produis le meta-digest selon ton system prompt (TL;DR, Signaux forts, Verdicts a action, Voix users prioritaires, Alertes qualite, Topics suggeres).`,
+    `4. Renvoie le digest entre les marqueurs === DISCORD_SUMMARY === et === END ===.`,
     ``,
     `Date d'aujourd'hui : ${today}. Cycle id : watch-${today}.`,
   ].join("\n");
 }
 
 /**
- * Lance le cycle de veille en mode webhook-driven.
- *  1. Cree 2 sessions Anthropic (une par watcher), envoie les briefs.
+ * Lance un cycle de veille pour un slot donne en mode webhook-driven.
+ *  1. Cree N sessions Anthropic (une par watcher du slot), envoie les briefs.
  *  2. Stocke chaque session -> {type: infra_watch, watcher, cycleId} en KV.
  *  3. Retourne. Anthropic ping le webhook quand chaque watcher est idle ;
- *     handleInfraWatchDone extrait le resume entre les marqueurs et stocke en KV.
- *  4. Quand les 2 watchers sont la, maybePostWatchDigest poste un mini-digest
- *     sur Discord et cleanup les cles.
+ *     handleWatchDone extrait le resume entre les marqueurs et stocke en KV.
+ *  4. Quand tous les watchers du slot ont livre, maybePostWatchDigest poste
+ *     le digest specifique au slot sur Discord et cleanup les cles.
  */
-async function runInfraWatchCycle(env: Env): Promise<void> {
+async function runWatchCycle(env: Env, slot: CycleSlot): Promise<void> {
   const today = new Date().toISOString().slice(0, 10);
   const cycleId = `watch-${today}`;
-  console.log(`[watch] launching cycle ${cycleId}`);
+  const slotWatchers = watchersForSlot(slot);
+  console.log(`[watch:${slot}] launching cycle ${cycleId} (${slotWatchers.length} watcher(s))`);
 
   await env.INTERACTIONS.put(
     `watch:${cycleId}:meta`,
-    JSON.stringify({ cycleId, date: today }),
+    JSON.stringify({ cycleId, date: today, slot }),
     { expirationTtl: WEEKLY_KV_TTL },
   );
 
   await Promise.all(
-    listWatchers(env).map(async (w) => {
-      if (!w.agentId) {
-        // Agent pas encore cree sur la console : on log mais on ne crashe pas.
-        const varName = w.key === "mcp-tunnels"
-          ? "AGENT_WATCHER_MCP_TUNNELS_ID"
-          : "AGENT_WATCHER_SHS_ID";
-        console.error(`[watch] ${w.key} : agent_id manquant (configure ${varName} dans wrangler.toml)`);
+    slotWatchers.map(async (w) => {
+      const agentId = (env as unknown as Record<string, string>)[w.envVar] || "";
+      if (!agentId) {
+        console.error(`[watch:${slot}] ${w.key} : agent_id manquant (configure ${w.envVar} dans wrangler.toml)`);
         return;
       }
-      const brief = buildBriefWatcher(w.label, w.key, today);
+      const brief = w.briefTemplate === "manager" ? buildBriefManager(today) : buildBriefWatcher(w, today);
+      const repo = w.mountRepo
+        ? { url: env.GITHUB_REPO_URL, mountPath: env.GITHUB_REPO_MOUNT, token: env.GITHUB_TOKEN }
+        : undefined;
       const created = await createSession(
         env.ANTHROPIC_API_KEY,
-        w.agentId,
+        agentId,
         env.ANTHROPIC_ENV_ID,
         `Watch ${w.label} ${today}`,
         env.MEMORY_STORE_ID,
-        {
-          url: env.GITHUB_REPO_URL,
-          mountPath: env.GITHUB_REPO_MOUNT,
-          token: env.GITHUB_TOKEN,
-        },
+        repo,
       );
       if (!created.ok) {
-        console.error(`[watch] create ${w.key} failed: ${created.err}`);
+        console.error(`[watch:${slot}] create ${w.key} failed: ${created.err}`);
         return;
       }
       const sent = await sendUserMessage(env.ANTHROPIC_API_KEY, created.id, brief);
       if (!sent.ok) {
-        console.error(`[watch] send ${w.key} failed: ${sent.err}`);
+        console.error(`[watch:${slot}] send ${w.key} failed: ${sent.err}`);
         return;
       }
       const pending: PendingInteraction = {
@@ -1195,11 +1304,11 @@ async function runInfraWatchCycle(env: Env): Promise<void> {
       await env.INTERACTIONS.put(`sess:${created.id}`, JSON.stringify(pending), {
         expirationTtl: WEEKLY_KV_TTL,
       });
-      console.log(`[watch] ${w.key} session ${created.id} launched`);
+      console.log(`[watch:${slot}] ${w.key} session ${created.id} launched`);
     }),
   );
 
-  console.log(`[watch] watchers launched. Waiting for webhooks.`);
+  console.log(`[watch:${slot}] watchers launched. Waiting for webhooks.`);
 }
 
 /**
@@ -1214,9 +1323,9 @@ function extractDiscordSummary(text: string): string {
 
 /**
  * Un watcher est idle (ou terminated) : on extrait son resume, on stocke en KV,
- * et on tente de poster le digest si les 2 watchers sont la.
+ * et on tente de poster le digest si tous les watchers du slot sont la.
  */
-async function handleInfraWatchDone(
+async function handleWatchDone(
   env: Env,
   pending: PendingInteraction,
   sessionId: string,
@@ -1227,69 +1336,89 @@ async function handleInfraWatchDone(
     return;
   }
   const cycleId = pending.cycleId;
-  const watcher = pending.watcher;
+  const watcherKey = pending.watcher;
+  const watcher = findWatcher(watcherKey);
+  if (!watcher) {
+    console.error(`[watch] watcher inconnu : ${watcherKey}`);
+    return;
+  }
 
   let summary: string;
   if (overrideSummary !== undefined) {
     summary = overrideSummary;
   } else {
-    const rawText = await fetchAgentText(env.ANTHROPIC_API_KEY, sessionId);
+    // limit=2000 (vs 500 par defaut) : les watchers font plus de tool calls
+    // (fetch web + memory store I/O) que les agents adhoc, donc plus d'events.
+    const rawText = await fetchAgentText(env.ANTHROPIC_API_KEY, sessionId, 2000);
     const parsed = extractDiscordSummary(rawText);
     if (parsed) {
       summary = parsed;
     } else {
-      // Pas de marqueurs : on fallback sur un snippet brut pour avoir au moins
-      // un signal sur Discord et pouvoir debugger.
       const snippet = rawText.trim().slice(0, 400);
-      summary = `(${watcher} — resume sans marqueurs DISCORD_SUMMARY ; snippet brut : ${snippet || "vide"}…)`;
+      summary = `(${watcherKey} — resume sans marqueurs DISCORD_SUMMARY ; snippet brut : ${snippet || "vide"}…)`;
     }
   }
 
-  await env.INTERACTIONS.put(`watch:${cycleId}:${watcher}`, summary, {
+  await env.INTERACTIONS.put(`watch:${cycleId}:${watcherKey}`, summary, {
     expirationTtl: WEEKLY_KV_TTL,
   });
-  console.log(`[watch] ${watcher} summary stored (${summary.length} chars) for ${cycleId}`);
+  console.log(`[watch:${watcher.cycleSlot}] ${watcherKey} summary stored (${summary.length} chars) for ${cycleId}`);
 
-  await maybePostWatchDigest(env, cycleId);
+  await maybePostWatchDigest(env, cycleId, watcher.cycleSlot);
 }
 
 /**
- * Verifie si les 2 watchers ont livre ; si oui, poste le mini-digest sur Discord
- * (idempotent via watch:{cycleId}:digest-posted) puis cleanup les cles.
+ * Header du digest specifique au slot. Reflete l'intention de chaque cycle.
  */
-async function maybePostWatchDigest(env: Env, cycleId: string): Promise<void> {
-  const expected: WatcherKey[] = ["mcp-tunnels", "self-hosted-sandbox"];
+function watchDigestHeader(slot: CycleSlot, dateStr: string): string {
+  switch (slot) {
+    case "wed":
+      return `# Veille infra & outils — ${dateStr}\n_Anthropic + IA + Cloudflare + Google APIs + Mobile + Comms._\n\n---\n\n`;
+    case "thu":
+      return `# Veille marche & users — ${dateStr}\n_Concurrents IA personnels + voix users._\n\n---\n\n`;
+    case "fri":
+      return `# Veille recherche docs/tutos — ${dateStr}\n_Suivi de sujets pre-definis (watch-topics.md)._\n\n---\n\n`;
+    case "sat":
+      return `# Synthese manager veille — ${dateStr}\n_Meta-digest executif de la semaine de veille._\n\n---\n\n`;
+  }
+}
+
+/**
+ * Verifie si tous les watchers du slot ont livre ; si oui, poste le digest
+ * sur Discord (idempotent via watch:{cycleId}:digest-posted:{slot}) puis cleanup.
+ */
+async function maybePostWatchDigest(env: Env, cycleId: string, slot: CycleSlot): Promise<void> {
+  const slotWatchers = watchersForSlot(slot);
+  const expected = slotWatchers.map((w) => w.key);
   const results = await Promise.all(
-    expected.map((w) => env.INTERACTIONS.get(`watch:${cycleId}:${w}`)),
+    expected.map((key) => env.INTERACTIONS.get(`watch:${cycleId}:${key}`)),
   );
-  if (results.some((r) => r === null || r === undefined)) {
-    const got = results.filter((r) => r !== null && r !== undefined).length;
-    console.log(`[watch] ${got}/${expected.length} watchers recus pour ${cycleId}`);
+  const got = results.filter((r) => r !== null && r !== undefined).length;
+  if (got < expected.length) {
+    console.log(`[watch:${slot}] ${got}/${expected.length} watchers recus pour ${cycleId}`);
     return;
   }
 
-  // Idempotence anti double-post (cas race ou retry webhook).
-  if (await env.INTERACTIONS.get(`watch:${cycleId}:digest-posted`)) {
-    console.log(`[watch] digest deja poste pour ${cycleId}, skip`);
+  // Idempotence anti double-post. Clef incluant le slot car un meme cycleId
+  // peut servir plusieurs slots de la meme date si triggers manuels overlap.
+  const postedKey = `watch:${cycleId}:digest-posted:${slot}`;
+  if (await env.INTERACTIONS.get(postedKey)) {
+    console.log(`[watch:${slot}] digest deja poste pour ${cycleId}, skip`);
     return;
   }
-  await env.INTERACTIONS.put(`watch:${cycleId}:digest-posted`, new Date().toISOString(), {
+  await env.INTERACTIONS.put(postedKey, new Date().toISOString(), {
     expirationTtl: WEEKLY_KV_TTL,
   });
 
-  const [tunnels, shs] = results;
   const dateStr = cycleId.replace(/^watch-/, "");
-  const header = `# Watch infra — ${dateStr}\n_Veille hebdo : MCP Tunnels + Self-Hosted Sandboxes._\n\n---\n\n`;
-  const body =
-    `## MCP Tunnels\n\n${tunnels || "(aucun resume)"}\n\n---\n\n` +
-    `## Self-Hosted Sandboxes\n\n${shs || "(aucun resume)"}`;
-  await discordPostMessage(env, header + body);
-  console.log(`[watch] digest poste pour ${cycleId}`);
+  const sections = slotWatchers.map((w, i) => `## ${w.label}\n\n${results[i] || "(aucun resume)"}`);
+  const body = sections.join("\n\n---\n\n");
+  await discordPostMessage(env, watchDigestHeader(slot, dateStr) + body);
+  console.log(`[watch:${slot}] digest poste pour ${cycleId}`);
 
   // Cleanup. digest-posted reste (TTL 24h) pour l'idempotence.
   await Promise.all([
-    env.INTERACTIONS.delete(`watch:${cycleId}:mcp-tunnels`),
-    env.INTERACTIONS.delete(`watch:${cycleId}:self-hosted-sandbox`),
+    ...expected.map((key) => env.INTERACTIONS.delete(`watch:${cycleId}:${key}`)),
     env.INTERACTIONS.delete(`watch:${cycleId}:meta`),
   ]);
 }
@@ -1740,9 +1869,9 @@ async function deliverSessionResultToDiscord(
           `(Session ${pending.role ?? "?"} terminee anormalement cote Anthropic, aucun livrable.)`,
         );
       } else if (pending.type === "infra_watch") {
-        // Meme logique pour la veille : ne pas figer le digest infra hebdo si
-        // un watcher echoue. On stocke un placeholder et on tente de poster.
-        await handleInfraWatchDone(
+        // Meme logique pour la veille : ne pas figer le digest si un watcher
+        // echoue. On stocke un placeholder et on tente de poster le digest du slot.
+        await handleWatchDone(
           env,
           pending,
           sessionId,
@@ -1798,7 +1927,7 @@ async function deliverSessionResultToDiscord(
     }
 
     if (pending.type === "infra_watch") {
-      await handleInfraWatchDone(env, pending, sessionId);
+      await handleWatchDone(env, pending, sessionId);
       return;
     }
 
@@ -2263,14 +2392,24 @@ export default {
   /**
    * Crons :
    *  - "0 18 * * SUN" : cycle hebdo growth (3 sous-agents + DG).
-   *  - "0 12 * * WED" : cycle hebdo veille infra (2 watchers).
-   * On dispatch sur `event.cron` pour ne pas mixer les deux flux.
+   *  - "0 12 * * WED" : veille outils/infra (7 watchers, slot wed).
+   *  - "0 12 * * THU" : veille marche/users (2 watchers, slot thu).
+   *  - "0 12 * * FRI" : veille recherche docs/tutos (1 watcher, slot fri).
+   *  - "0 12 * * SAT" : meta-digest du manager veille (1 watcher, slot sat).
+   * On dispatch sur `event.cron` pour ne pas mixer les flux.
    */
   async scheduled(event: ScheduledEvent, env: Env, _ctx: ExecutionContext): Promise<void> {
-    if (event.cron === "0 12 * * WED") {
-      await runInfraWatchCycle(env);
-    } else {
-      await runWeeklyCycle(env);
+    switch (event.cron) {
+      case "0 12 * * WED":
+        await runWatchCycle(env, "wed"); return;
+      case "0 12 * * THU":
+        await runWatchCycle(env, "thu"); return;
+      case "0 12 * * FRI":
+        await runWatchCycle(env, "fri"); return;
+      case "0 12 * * SAT":
+        await runWatchCycle(env, "sat"); return;
+      default:
+        await runWeeklyCycle(env);
     }
   },
 
@@ -2305,13 +2444,23 @@ export default {
       });
     }
 
-    // /admin/trigger-watch : run manuel du cycle de veille infra (mercredi)
+    // /admin/trigger-watch?slot=wed|thu|fri|sat : run manuel d'un cycle de veille.
+    // Slot par defaut : "wed" (cycle outils/infra).
     if (url.pathname === "/admin/trigger-watch" && request.method === "POST") {
       if (!(await checkSecret(request.headers.get("X-Trigger-Secret"), env.TRIGGER_SECRET))) {
         return new Response("Not Found", { status: 404 });
       }
-      ctx.waitUntil(runInfraWatchCycle(env));
-      return new Response(JSON.stringify({ status: "watch-triggered", at: new Date().toISOString() }), {
+      const slotParam = (url.searchParams.get("slot") || "wed").toLowerCase();
+      const validSlots: CycleSlot[] = ["wed", "thu", "fri", "sat"];
+      if (!validSlots.includes(slotParam as CycleSlot)) {
+        return new Response(
+          JSON.stringify({ error: `slot invalide. Attendu : ${validSlots.join(", ")}.` }),
+          { status: 400, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      const slot = slotParam as CycleSlot;
+      ctx.waitUntil(runWatchCycle(env, slot));
+      return new Response(JSON.stringify({ status: "watch-triggered", slot, at: new Date().toISOString() }), {
         status: 202,
         headers: { "Content-Type": "application/json" },
       });
