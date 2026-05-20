@@ -1,13 +1,21 @@
 # Arty Growth Orchestrator (v2)
 
-Worker Cloudflare qui orchestre une petite "équipe IA" pour la growth d'Arty,
-via des **Anthropic Managed Agents** (4 agents : DG, Growth FR, Content FR,
-Analytics) et une interface **Discord**.
+Worker Cloudflare qui orchestre une "équipe IA" pour Arty, via des **Anthropic
+Managed Agents** et une interface **Discord**. Deux équipes :
 
-Deux modes de fonctionnement :
+- **Growth** : 4 agents (DG, Growth FR, Content FR, Analytics).
+- **Veille infra** : 2 watchers (MCP Tunnels, Self-Hosted Sandboxes).
+  System prompts dans `agents/watcher-*.md`.
 
-- **Cycle hebdo** (cron, dimanche 18h UTC) : lance les 3 sous-agents, le DG
-  consolide leurs livrables, le digest est posté sur le canal Discord `#dg`.
+Trois modes de fonctionnement :
+
+- **Cycle hebdo growth** (cron, dimanche 18h UTC) : lance les 3 sous-agents, le
+  DG consolide, le digest est posté sur le canal Discord `#dg`.
+- **Cycle hebdo veille infra** (cron, mercredi 12h UTC) : lance les 2 watchers
+  en parallèle. Chacun lit la doc Anthropic/Cloudflare, met à jour son journal
+  dans le memory store, et renvoie un résumé entre des marqueurs
+  `=== DISCORD_SUMMARY === ... === END ===`. Quand les 2 ont livré, un mini
+  digest "Watch infra" est posté sur Discord.
 - **Ad-hoc** : la slash command Discord `/dg <message>` interroge le DG à la
   demande.
 
@@ -33,7 +41,8 @@ Discord /dg ─► /discord/interactions ─► handleDGAdhoc ─► session DG
 | Route | Méthode | Auth |
 |---|---|---|
 | `/` | GET | aucune (healthcheck public) |
-| `/trigger` | POST | header `X-Trigger-Secret` |
+| `/trigger` | POST | header `X-Trigger-Secret` (run growth) |
+| `/admin/trigger-watch` | POST | header `X-Trigger-Secret` (run veille infra) |
 | `/admin/register-commands` | POST | header `X-Trigger-Secret` |
 | `/admin/post-test` | POST | header `X-Trigger-Secret` |
 | `/anthropic/webhook` | POST | signature HMAC SHA256 (Standard Webhooks) |
@@ -141,15 +150,47 @@ Dans la config de l'agent DG (`mcp_servers`), ajouter un serveur MCP HTTP :
 L'agent dispose alors des outils `gmail_search`, `gmail_get_message`,
 `gmail_draft`.
 
-### 8. Test de bout en bout
+### 8. (Optionnel) Activer la veille infra
+
+Le cron `0 12 * * WED` est déjà déclaré dans `wrangler.toml`. Pour l'activer
+vraiment, créer les 2 watchers sur la console Anthropic :
+
+1. Sur `platform.claude.com`, workspace Appfacade, créer 2 nouveaux agents :
+   - **Arty Watcher — MCP Tunnels** : coller le system prompt de
+     [`agents/watcher-mcp-tunnels.md`](agents/watcher-mcp-tunnels.md).
+   - **Arty Watcher — Self-Hosted Sandboxes** : coller le system prompt de
+     [`agents/watcher-self-hosted-sandbox.md`](agents/watcher-self-hosted-sandbox.md).
+
+   Tier Sonnet pour les deux, web access activé, memory store `arty` monté,
+   repo `flotellop-art/Arty` monté en read-only.
+2. Récupérer les 2 `agent_id` et les coller dans `wrangler.toml` (vars
+   `AGENT_WATCHER_MCP_TUNNELS_ID` et `AGENT_WATCHER_SHS_ID`). Redéployer.
+3. (Optionnel mais recommandé) Seed manuel d'un `etat.md` minimal dans le
+   memory store pour chaque watcher, via la console memory Anthropic :
+   - chemin `/watch/mcp-tunnels/etat.md` → contenu : `Statut initial inconnu.
+     Source d'amorçage : InfoQ 19/05/2026. À compléter au prochain cycle.`
+   - chemin `/watch/self-hosted-sandbox/etat.md` → idem.
+
+   Sans ce seed, le 1er cycle produira un résumé "je découvre tout". Pas
+   bloquant.
+4. Lancer un cycle manuel pour vérifier :
+   `curl -X POST -H "X-Trigger-Secret: ..." https://<worker>/admin/trigger-watch`.
+   Un mini-digest "Watch infra" doit apparaître sur Discord sous ~5 min.
+
+Tant que `AGENT_WATCHER_*_ID` sont vides, le cron du mercredi tourne mais skip
+les watchers concernés (log d'erreur, pas de crash).
+
+### 9. Test de bout en bout
 
 - `/dg ping` dans le canal Discord `#dg` → le DG répond.
 - `curl -X POST -H "X-Trigger-Secret: ..." https://<worker>/trigger` → lance un
-  cycle hebdo manuel.
+  cycle growth manuel.
+- `curl -X POST -H "X-Trigger-Secret: ..." https://<worker>/admin/trigger-watch`
+  → lance un cycle de veille infra manuel.
 
 ## Sécurité (CLAUDE.md, RÈGLE 6)
 
-Audit des 8 routes HTTP exposées.
+Audit des 9 routes HTTP exposées.
 
 | Endpoint | Authentification | Autorisation | Abus infra | Leak | Origin/CSRF |
 |---|---|---|---|---|---|

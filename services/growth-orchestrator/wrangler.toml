@@ -10,12 +10,15 @@ compatibility_flags = ["nodejs_compat"]
 [limits]
 cpu_ms = 300000
 
-# Cron trigger : tous les dimanches a 18h00 UTC (20h Paris l'ete, 19h l'hiver).
-# Permet de produire le digest hebdo en fin de week-end, lisible par Florent
-# le lundi matin.
-# Note : Cloudflare exige le day-of-week en nom court (SUN) ou en 7 (pas 0).
+# Crons :
+#  - dimanche 18h UTC : cycle hebdo growth (3 sous-agents + DG).
+#    Le digest est lu par Florent le lundi matin.
+#  - mercredi 12h UTC : cycle hebdo veille infra (2 watchers MCP Tunnels +
+#    Self-Hosted Sandboxes). Decouple du cycle growth pour ne pas mixer les
+#    concerns ; le dispatch se fait dans `scheduled` sur `event.cron`.
+# Note : Cloudflare exige le day-of-week en nom court (SUN/WED) ou en 7 (pas 0).
 [triggers]
-crons = ["0 18 * * SUN"]
+crons = ["0 18 * * SUN", "0 12 * * WED"]
 
 # Logs : conserver les invocations pour debug
 [observability]
@@ -38,6 +41,13 @@ AGENT_DG_ID = "agent_01USsT8aHKqp1t2nBWAj9KCE"
 AGENT_GROWTH_FR_ID = "agent_01GxjQaNBVXQ6nJcUr4LTSLC"
 AGENT_CONTENT_FR_ID = "agent_01Et2rx4MCjVmBwzYBVGBDC8"
 AGENT_ANALYTICS_ID = "agent_01XRvTLBdHLWmn8WNvV2TbY8"
+
+# Agents de veille infra (cron mercredi 12h UTC). A creer sur la console
+# Anthropic avec les system prompts de `agents/watcher-mcp-tunnels.md` et
+# `agents/watcher-self-hosted-sandbox.md`, puis coller les agent_id ici.
+# Tant que vides, runInfraWatchCycle logge une erreur et skip le watcher concerne.
+AGENT_WATCHER_MCP_TUNNELS_ID = ""
+AGENT_WATCHER_SHS_ID = ""
 
 # Workspace + environment ids (confirmes via GET /v1/environments)
 # Le workspace est implicite via l'API key, on garde l'ID pour debug.
