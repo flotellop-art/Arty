@@ -202,7 +202,18 @@ async function sendUserMessage(
 }
 
 async function fetchAgentText(apiKey: string, sessionId: string, limit = 500): Promise<string> {
-  const res = await fetch(`${ANTHROPIC_BASE}/sessions/${sessionId}/events?limit=${limit}`, {
+  // order=desc : l'API renvoie les events les plus RECENTS en premier. C'est
+  // crucial quand la session a > limit events : sans ce param, on recupere les
+  // PREMIERS events et on perd le dernier agent.message (qui contient les
+  // marqueurs DISCORD_SUMMARY pour les watchers, ou la reponse finale pour le
+  // DG). L'API plafonne limit a 1000 (HTTP 400 sinon), donc on doit choisir
+  // quelle fenetre prendre. On veut toujours la fenetre la plus recente.
+  //
+  // On inverse ensuite cote code (data.data.reverse()) pour retrouver l'ordre
+  // chronologique dans le texte concatene, ce qui preserve la lisibilite pour
+  // les usages /dg ou un long raisonnement multi-message est restitue dans
+  // l'ordre naturel.
+  const res = await fetch(`${ANTHROPIC_BASE}/sessions/${sessionId}/events?limit=${limit}&order=desc`, {
     method: "GET",
     headers: anthropicHeaders(apiKey),
   });
@@ -210,8 +221,9 @@ async function fetchAgentText(apiKey: string, sessionId: string, limit = 500): P
   const data = (await res.json()) as {
     data?: Array<{ type?: string; content?: Array<{ type?: string; text?: string }> }>;
   };
+  const events = (data.data ?? []).slice().reverse();
   const texts: string[] = [];
-  for (const ev of data.data ?? []) {
+  for (const ev of events) {
     if (ev.type !== "agent.message") continue;
     for (const b of ev.content ?? []) {
       if (b.type === "text" && b.text) texts.push(b.text);
