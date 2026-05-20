@@ -1,126 +1,319 @@
-# Arty Growth Orchestrator
+# Arty Growth Orchestrator (v2)
 
-Worker Cloudflare qui orchestre l'équipe d'agents Arty (Growth FR v6, Content FR, Analytics) chaque dimanche à 18h UTC. Consolide leurs livrables en un digest hebdo et l'envoie par email à Florent.
+Worker Cloudflare qui orchestre une "équipe IA" pour Arty, via des **Anthropic
+Managed Agents** et une interface **Discord**. Deux équipes :
 
-## Architecture en 1 schéma
+- **Growth** : 4 agents (DG, Growth FR, Content FR, Analytics).
+- **Veille infra** : 2 watchers (MCP Tunnels, Self-Hosted Sandboxes).
+  System prompts dans `agents/watcher-*.md`.
+
+Trois modes de fonctionnement :
+
+- **Cycle hebdo growth** (cron, dimanche 18h UTC) : lance les 3 sous-agents, le
+  DG consolide, le digest est posté sur le canal Discord `#dg`.
+- **Cycle hebdo veille infra** (cron, mercredi 12h UTC) : lance les 2 watchers
+  en parallèle. Chacun lit la doc Anthropic/Cloudflare, met à jour son journal
+  dans le memory store, et renvoie un résumé entre des marqueurs
+  `=== DISCORD_SUMMARY === ... === END ===`. Quand les 2 ont livré, un mini
+  digest "Watch infra" est posté sur Discord.
+- **Ad-hoc** : la slash command Discord `/dg <message>` interroge le DG à la
+  demande.
+
+Le flux est **webhook-driven** : le Worker crée les sessions Anthropic puis rend
+la main. Anthropic notifie `/anthropic/webhook` quand une session devient `idle`
+ou `terminated`, ce qui déclenche la suite (consolidation, post Discord).
 
 ```
-Dimanche 18h UTC
-       │
-       ▼
-[Cloudflare Worker scheduled]
-       │
-       ├──► API Anthropic Agents : session Arty Analytics
-       ├──► API Anthropic Agents : session Arty Growth FR (parallèle)
-       └──► API Anthropic Agents : session Arty Content FR (parallèle)
-                  │
-                  ▼
-       [Attente complétion, max 10 min par session]
-                  │
-                  ▼
-       [Consolidation Markdown unique]
-                  │
-                  ▼
-       [Conversion HTML]
-                  │
-                  ▼
-       [POST API Resend → email à flotellop@gmail.com]
-                  │
-                  ▼
-       Florent lit lundi matin (~5 min)
+Cron dim. 18h ─┐
+/trigger ──────┴─► runWeeklyCycle ─► 3 sessions sous-agents (KV: cycle:{id}:*)
+                                          │  (le Worker rend la main)
+              Anthropic ─webhook─► /anthropic/webhook ─► handleSubAgentDone
+                                          │  quand les 3 sont là ─► session DG
+              Anthropic ─webhook─► /anthropic/webhook ─► handleWeeklyDgDone
+                                          └─► digest posté sur Discord #dg
+
+Discord /dg ─► /discord/interactions ─► handleDGAdhoc ─► session DG
+              Anthropic ─webhook─► /anthropic/webhook ─► réponse PATCH sur Discord
 ```
 
-## Setup (à faire une fois par Florent)
+## Routes HTTP
 
-### 1. Installer les dépendances
+| Route | Méthode | Auth |
+|---|---|---|
+| `/` | GET | aucune (healthcheck public) |
+| `/trigger` | POST | header `X-Trigger-Secret` (run growth) |
+| `/admin/trigger-watch` | POST | header `X-Trigger-Secret` (run veille infra) |
+| `/admin/register-commands` | POST | header `X-Trigger-Secret` |
+| `/admin/post-test` | POST | header `X-Trigger-Secret` |
+| `/anthropic/webhook` | POST | signature HMAC SHA256 (Standard Webhooks) |
+| `/oauth/google/start` | POST | header `X-Trigger-Secret` |
+| `/oauth/google/callback` | GET | nonce `state` anti-CSRF |
+| `/mcp/gmail` | POST | header `Authorization: Bearer <MCP_AUTH_TOKEN>` |
+| `/discord/interactions` | POST | signature Ed25519 (Discord) |
+
+Aucun secret ne transite en query string (CLAUDE.md, BUG 7).
+
+## Setup (à faire une fois)
+
+### 1. Dépendances
 
 ```bash
 cd services/growth-orchestrator
 npm install
 ```
 
-### 2. Créer un compte Resend (gratuit, < 5 min)
-
-1. Aller sur https://resend.com et créer un compte avec ton email perso
-2. Dashboard → API Keys → Create API Key avec accès "Send"
-3. Garder la clé sous la main pour l'étape 3
-
-**Domaine d'envoi** : par défaut Resend impose un domaine sandbox `onresend.dev` (gratuit, sans config DNS). Pour envoyer depuis `digest@tryarty.com`, il faut valider le domaine `tryarty.com` dans Resend (ajouter 3 enregistrements DNS chez Cloudflare). Au début, change `DIGEST_FROM_EMAIL` dans `wrangler.toml` vers `onboarding@resend.dev` pour le 1er test.
-
-### 3. Configurer les secrets Cloudflare
+### 2. Configurer les 9 secrets Cloudflare
 
 ```bash
-cd services/growth-orchestrator
 npx wrangler secret put ANTHROPIC_API_KEY
-# (paste ta clé API Anthropic Console)
-
-npx wrangler secret put RESEND_API_KEY
-# (paste la clé Resend de l'étape 2)
+npx wrangler secret put ANTHROPIC_WEBHOOK_SIGNING_KEY   # whsec_... (étape 4)
+npx wrangler secret put TRIGGER_SECRET                  # chaîne aléatoire ≥ 32 chars
+npx wrangler secret put MCP_AUTH_TOKEN                  # chaîne aléatoire ≥ 32 chars, distincte
+npx wrangler secret put DISCORD_BOT_TOKEN
+npx wrangler secret put TALLY_API_KEY
+npx wrangler secret put GITHUB_TOKEN                    # PAT fine-grained, repo Arty, Contents:Read
+npx wrangler secret put GOOGLE_CLIENT_ID
+npx wrangler secret put GOOGLE_CLIENT_SECRET
 ```
 
-### 4. Déployer le Worker
+Générer un secret aléatoire : `openssl rand -hex 32`.
+
+`TRIGGER_SECRET` et `MCP_AUTH_TOKEN` doivent être **distincts** : `MCP_AUTH_TOKEN`
+est nécessairement partagé avec la config de l'agent Anthropic, on l'isole donc
+des routes d'admin.
+
+### 3. Variables non secrètes
+
+Éditer `wrangler.toml` → `[vars]` :
+
+- `DISCORD_ALLOWED_USER_IDS` : l'ID Discord de Florent (CSV si plusieurs).
+  Récupérer l'ID via Discord → Paramètres → Avancé → Mode développeur, puis
+  clic droit sur l'utilisateur → Copier l'ID.
+
+Les IDs d'agents, du memory store, du workspace et de Discord sont déjà remplis.
+
+### 4. Déployer + configurer le webhook Anthropic
 
 ```bash
 npx wrangler deploy
 ```
 
-Le Worker se déploie sur le compte Cloudflare de Florent. Le cron trigger `0 18 * * 0` est créé automatiquement.
+Note l'URL du Worker (`https://arty-growth-orchestrator.<compte>.workers.dev`).
 
-### 5. Tester manuellement avant le premier dimanche
+Sur la console Anthropic, créer un **webhook** pointant vers
+`https://<worker>/anthropic/webhook`, abonné aux événements
+`session.status_idled` et `session.status_terminated`. Récupérer la **signing
+key** (`whsec_...`) et la configurer en secret `ANTHROPIC_WEBHOOK_SIGNING_KEY`
+(étape 2), puis re-déployer. **Sans ce webhook, rien ne se déclenche après le
+lancement des sessions.**
+
+### 5. Enregistrer la slash command Discord
+
+Dans le portail développeur Discord, renseigner l'**Interactions Endpoint URL** :
+`https://<worker>/discord/interactions`. Discord valide l'endpoint par un PING
+(le Worker répond automatiquement). Puis enregistrer la commande `/dg` :
 
 ```bash
-npx wrangler dev --test-scheduled
+curl -X POST -H "X-Trigger-Secret: <TRIGGER_SECRET>" \
+  https://<worker>/admin/register-commands
 ```
 
-Puis dans un autre terminal :
+Tester le bot :
 
 ```bash
-curl "http://localhost:8787/__scheduled?cron=0+18+*+*+0"
+curl -X POST -H "X-Trigger-Secret: <TRIGGER_SECRET>" \
+  https://<worker>/admin/post-test
 ```
 
-Ça déclenche le scheduled handler en local. Tu devrais recevoir un email digest dans ta boîte (avec des contenus de test).
+### 6. Connecter Gmail (OAuth Google)
+
+Le DG peut lire les mails de Florent et créer des brouillons via le serveur MCP
+Gmail. Démarrer le flux OAuth (one-shot) :
+
+```bash
+curl -X POST -H "X-Trigger-Secret: <TRIGGER_SECRET>" \
+  https://<worker>/oauth/google/start
+```
+
+La réponse contient `authorize_url` : l'ouvrir dans un navigateur **sous 10 min**,
+se connecter avec le compte Google de Florent, accepter. Le `refresh_token` est
+stocké en KV.
+
+### 7. Déclarer le serveur MCP Gmail dans l'agent DG
+
+Dans la config de l'agent DG (`mcp_servers`), ajouter un serveur MCP HTTP :
+
+- URL : `https://<worker>/mcp/gmail`
+- Authorization token : la valeur de `MCP_AUTH_TOKEN` (envoyée en header
+  `Authorization: Bearer`).
+
+L'agent dispose alors des outils `gmail_search`, `gmail_get_message`,
+`gmail_draft`.
+
+### 8. (Optionnel) Activer l'équipe de veille
+
+Quatre crons (`WED`, `THU`, `FRI`, `SAT` à 12h UTC) sont déjà déclarés dans
+`wrangler.toml`. L'équipe veille = **10 watchers** au total (configurés dans
+`WATCHERS_CONFIG` de `src/index.ts`). Chacun est un Managed Agent Anthropic à
+créer une fois sur la console.
+
+**Cycle mercredi — outils & infra (7 watchers)** :
+| Watcher | Var wrangler | System prompt | Repo monté |
+|---|---|---|---|
+| MCP Tunnels | `AGENT_WATCHER_MCP_TUNNELS_ID` | [watcher-mcp-tunnels.md](agents/watcher-mcp-tunnels.md) | oui |
+| Self-Hosted Sandboxes | `AGENT_WATCHER_SHS_ID` | [watcher-self-hosted-sandbox.md](agents/watcher-self-hosted-sandbox.md) | oui |
+| IA (Claude/Gemini/Mistral/GPT) | `AGENT_WATCHER_AI_MODELS_ID` | [watcher-ai-models.md](agents/watcher-ai-models.md) | non |
+| Cloudflare | `AGENT_WATCHER_CLOUDFLARE_ID` | [watcher-cloudflare.md](agents/watcher-cloudflare.md) | non |
+| Google APIs | `AGENT_WATCHER_GOOGLE_APIS_ID` | [watcher-google-apis.md](agents/watcher-google-apis.md) | non |
+| Mobile (Capacitor + OS) | `AGENT_WATCHER_MOBILE_ID` | [watcher-mobile-native.md](agents/watcher-mobile-native.md) | non |
+| Comms/Growth/Payments | `AGENT_WATCHER_COMMS_ID` | [watcher-comms-growth.md](agents/watcher-comms-growth.md) | non |
+
+**Cycle jeudi — marché & voix users (2 watchers)** :
+| Watcher | Var wrangler | System prompt | Repo monté |
+|---|---|---|---|
+| Marché concurrents | `AGENT_WATCHER_MARKET_ID` | [watcher-market-competitors.md](agents/watcher-market-competitors.md) | non |
+| Voix users | `AGENT_WATCHER_USERS_VOICE_ID` | [watcher-users-voice.md](agents/watcher-users-voice.md) | non |
+
+**Cycle vendredi — recherche docs/tutos (1 watcher)** :
+| Watcher | Var wrangler | System prompt | Repo monté |
+|---|---|---|---|
+| Recherche | `AGENT_WATCHER_RESEARCH_ID` | [watcher-research.md](agents/watcher-research.md) | oui (lit `agents/watch-topics.md`) |
+
+**Cycle samedi — manager (1 watcher)** :
+| Watcher | Var wrangler | System prompt | Repo monté | Web access |
+|---|---|---|---|---|
+| Manager veille | `AGENT_WATCHER_MANAGER_ID` | [watcher-manager.md](agents/watcher-manager.md) | oui | **NON** (lit seulement le memory store) |
+
+Procédure pour activer (10-30 min) :
+
+1. Sur `platform.claude.com`, workspace Appfacade, créer 10 nouveaux agents
+   selon les tableaux ci-dessus (tier **Sonnet**, memory store `arty` monté
+   sur `/mnt/memory/arty/`, web access **on sauf pour le manager**).
+2. Coller les 10 `agent_id` dans les vars correspondantes de `wrangler.toml`.
+3. (Optionnel) Seed manuel d'un `etat.md` minimal pour chaque watcher dans le
+   memory store, chemin `/watch/<key>/etat.md`. Sans seed, le 1er cycle
+   produira un résumé "je découvre tout" — non bloquant.
+4. Le watcher **research** lit `agents/watch-topics.md` (la liste des sujets
+   à surveiller). Éditer cette liste par PR Git, jamais directement dans le
+   memory store.
+5. Redéployer : `npx wrangler deploy`.
+6. Tester chaque slot :
+   ```bash
+   curl -X POST -H "X-Trigger-Secret: ..." 'https://<worker>/admin/trigger-watch?slot=wed'
+   curl -X POST -H "X-Trigger-Secret: ..." 'https://<worker>/admin/trigger-watch?slot=thu'
+   curl -X POST -H "X-Trigger-Secret: ..." 'https://<worker>/admin/trigger-watch?slot=fri'
+   curl -X POST -H "X-Trigger-Secret: ..." 'https://<worker>/admin/trigger-watch?slot=sat'
+   ```
+   Un digest distinct doit arriver sur Discord pour chaque slot sous ~5-10 min.
+
+Tant que les `AGENT_WATCHER_*_ID` sont vides, les crons tournent mais skipent
+les watchers concernés (log d'erreur, pas de crash). Tu peux donc déployer
+maintenant et activer les watchers progressivement.
+
+### 9. Test de bout en bout
+
+- `/dg ping` dans le canal Discord `#dg` → le DG répond.
+- `curl -X POST -H "X-Trigger-Secret: ..." https://<worker>/trigger` → lance un
+  cycle growth manuel.
+- `curl -X POST -H "X-Trigger-Secret: ..." 'https://<worker>/admin/trigger-watch?slot=wed'`
+  → lance un cycle de veille manuel (slot mercredi).
+
+## Sécurité (CLAUDE.md, RÈGLE 6)
+
+Audit des 9 routes HTTP exposées.
+
+| Endpoint | Authentification | Autorisation | Abus infra | Leak | Origin/CSRF |
+|---|---|---|---|---|---|
+| `GET /` | aucune | n/a | n/a | version/ts seulement | n/a |
+| `POST /trigger` | `X-Trigger-Secret`, constant-time | n/a | secret requis | 404 nu | n/a (secret header) |
+| `POST /admin/*` | `X-Trigger-Secret`, constant-time | n/a | secret requis | 404 nu | n/a |
+| `POST /anthropic/webhook` | HMAC SHA256 + anti-replay 5 min | sessions trackées en KV | dedup KV | 401 nu | signature = origine |
+| `POST /oauth/google/start` | `X-Trigger-Secret`, constant-time | n/a | secret requis | 404 nu | n/a |
+| `GET /oauth/google/callback` | nonce `state` (KV, single-use, TTL 10 min) | n/a | n/a | erreur Google brute (flux Florent) | state anti-CSRF |
+| `POST /mcp/gmail` | `Authorization: Bearer`, constant-time | refresh_token unique (1 user) | token requis | 401 nu | n/a |
+| `POST /discord/interactions` | signature Ed25519 | allowlist `DISCORD_ALLOWED_USER_IDS` + canal vérifié | n/a | 401 nu | signature = origine |
+
+Autres mesures : aucun secret en query string (BUG 7), comparaisons de secrets
+constant-time, IDs Gmail validés par regex avant toute URL d'API (BUG 32),
+`path` des screenshots restreint au dossier `/livraisons/` (anti path-traversal).
+
+### Risques acceptés (décision écrite)
+
+- **Scope OAuth `gmail.compose`** : Google ne fournit pas de scope « brouillon
+  uniquement » ; ce scope autorise techniquement l'envoi. Mitigation : le serveur
+  MCP n'expose **aucun** outil d'envoi (search / get / draft seulement) et le
+  token est isolé en KV. Le risque résiduel est une fuite du `refresh_token`.
+- **`refresh_token` Google en KV** : stocké sans chiffrement applicatif (KV est
+  chiffré at-rest par Cloudflare). Le chiffrer placerait la clé dans le même
+  coffre de secrets CF → gain marginal. Accepté.
+- **Race double-DG** : KV n'a pas de compare-and-set ; deux webhooks
+  quasi-simultanés peuvent en théorie lancer 2 sessions DG. Le garde
+  d'idempotence `cycle:{id}:digest-posted` borne l'impact à une session
+  Anthropic en trop (~0,30 $, rare), jamais deux digests postés.
+- **Pas de rate limiting** sur `/trigger` (secret) et `/dg` (allowlist) :
+  surfaces déjà protégées.
+
+## Récap email (Resend + Haiku)
+
+Chaque digest posté sur Discord déclenche aussi un email récap vers
+`EMAIL_TO`. Le contenu est **vulgarisé par Haiku** (appel synchrone direct,
+pas une session managed) en HTML simple sans jargon, lisible par un novice.
+
+Activation : configurer le secret `RESEND_API_KEY` et la var `EMAIL_TO`
+(défaut `flotellop@gmail.com`). Si `RESEND_API_KEY` est vide, l'envoi est
+skippé sans erreur (Discord reste fonctionnel).
+
+```bash
+npx wrangler secret put RESEND_API_KEY
+```
+
+Compte Resend : https://resend.com (free tier 100 emails/jour, 3 000/mois —
+largement suffisant pour 5 emails/semaine).
+
+Domaine d'envoi (`EMAIL_FROM`) :
+- Par défaut : `onboarding@resend.dev` (sandbox Resend, zéro config DNS).
+- Pour passer à `digest@tryarty.com`, valider `tryarty.com` dans Resend
+  (3 entrées DNS chez Cloudflare).
+
+Sujets des emails :
+- mer : `Recap outils & tech — semaine du <date>`
+- jeu : `Recap concurrence & users — semaine du <date>`
+- ven : `Recap recherche & nouveautes — semaine du <date>`
+- sam : `Synthese hebdo de l'equipe IA — <date>`
+- dim : `Recap growth — cycle #<N> (<date>)`
+
+Si la traduction Haiku échoue ou si Resend rejette, l'erreur est loggée et
+le pipeline continue. Le Discord est le canal de référence ; l'email est un
+récap lisible « café du matin ».
 
 ## Coûts
 
-- **Cloudflare Workers** : gratuit jusqu'à 100k requêtes/jour. Notre Worker s'exécute 1×/semaine donc négligeable.
-- **API Anthropic** : ~0,30 $ × 3 sessions = 0,90 $/semaine = ~4 $/mois.
-- **Resend** : gratuit jusqu'à 100 emails/jour, 3 000/mois. Largement suffisant.
+- **Cloudflare Workers** : plan Workers Paid (5 $/mois) requis pour `cpu_ms`
+  étendu. Quelques exécutions/semaine, négligeable.
+- **API Anthropic** : ~3 $/semaine pour les 10 watchers + 4 sessions growth.
+- **Haiku traductions** : 5 emails/semaine × ~5k tokens = ~0,03 $/semaine.
+- **Resend** : gratuit (free tier).
+- **Tally / Discord / Gmail** : gratuit aux volumes utilisés.
 
-**Total : ~4 $/mois.**
+Total : ~17 $/mois.
 
 ## Logs et debug
 
-Voir les logs en temps réel pendant l'exécution :
-
 ```bash
-npx wrangler tail
+npx wrangler tail        # logs en temps réel
+npx tsc --noEmit         # typecheck (obligatoire avant deploy — CLAUDE.md BUG 13)
+npx wrangler deploy --dry-run   # valide le build sans déployer
 ```
 
-Voir l'historique des invocations dans le dashboard Cloudflare : Workers → arty-growth-orchestrator → Logs.
+Historique des invocations : dashboard Cloudflare → Workers →
+`arty-growth-orchestrator` → Logs (observability activée).
 
-## Sécurité (cf RÈGLE 6 du CLAUDE.md racine du repo)
+## Limites connues (v2)
 
-Audit sécu de ce Worker :
-
-- **Authentification** : pas d'endpoint fetch exposé aux users. Uniquement `scheduled` triggered par Cloudflare lui-même. Aucune surface d'attaque user-facing.
-- **Autorisation** : non applicable (pas de user concept).
-- **Abus infra** : non applicable (pas de relais possible).
-- **Leak d'info** : les API keys sont des secrets Cloudflare (pas en clair). Les logs ne contiennent ni les clés ni le contenu sensible des emails reçus en clair (seulement statuts ok/erreur).
-- **Origin / CSRF** : non applicable (pas de requête entrante non-cron).
-
-Conclusion : ce Worker est **safe by design** car il n'expose aucune surface aux users. La seule surface d'attaque serait la compromission des secrets Cloudflare ou de l'API key Anthropic.
-
-## Limites connues (v1)
-
-- L'API Anthropic Agents évolue. Si les conventions de session (endpoint, statut, format de message) changent, il faudra adapter `runAgentSession` dans `src/index.ts`.
-- Pas de retry automatique si une session échoue. Le digest signale juste "Échec session" et continue. v2 : retry exponentiel.
-- Pas de stockage persistant du journal cumulatif. Chaque agent repart "à zéro" chaque dimanche, sauf si l'orchestrateur lui passe l'historique en context. v2 : Cloudflare D1 pour stocker les journaux.
-- Pas d'accès direct au Google Sheet waitlist. L'agent Analytics doit donc faire avec ce que Florent reporte dans le feedback. v2 : intégration Google Sheets API ou export CSV via webhook.
-
-## Évolution prévue (v2, après validation traction FR au 31 mai)
-
-- Ajouter Cloudflare D1 pour persister le journal cumulatif entre cycles
-- Ajouter un agent Arty Growth EN (Reddit, HN, Product Hunt, X EN)
-- Ajouter un trigger quotidien (lundi-vendredi 7h) pour un mini-briefing du matin
-- Ajouter un endpoint webhook pour que Tally pousse les nouvelles inscriptions waitlist en temps réel et déclenche un email de notif "Bravo, X inscriptions ce matin"
-- Connecter Google Sheets API pour lire en direct le compteur waitlist
+- **Pas de watchdog** : si une session Anthropic n'émet jamais `idle` ni
+  `terminated`, le cycle reste incomplet ; les clés KV expirent après 24h.
+- **Tally paginé à 50** : `fetchTallyStats` ne lit que la 1ʳᵉ page. À paginer
+  quand le total dépasse ~50 inscriptions sur une fenêtre courte.
+- **Pas de retry** automatique sur échec de création de session.
+- Le journal long terme vit dans le **memory store Anthropic**
+  (`/mnt/memory/arty/`), pas en D1.
