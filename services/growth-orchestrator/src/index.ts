@@ -1403,6 +1403,18 @@ async function runWatchCycle(env: Env, slot: CycleSlot): Promise<void> {
   const slotWatchers = watchersForSlot(slot);
   console.log(`[watch:${slot}] launching cycle ${cycleId} (${slotWatchers.length} watcher(s))`);
 
+  // Reset des cles KV du slot avant relance. Le cleanup en fin de cycle
+  // (maybePostWatchDigest) garde le drapeau `digest-posted:{slot}` pendant 24h
+  // pour bloquer les double-posts cause webhook livre en double. Mais en cas de
+  // re-trigger manuel via /admin (ou de cron + manuel le meme jour), ce drapeau
+  // empechait le nouveau cycle de poster (bug observe le 2026-05-20). On nettoie
+  // donc les cles du slot ici, en debut de cycle. Pas de risque pour le cron
+  // normal : a 12h UTC, aucun cycle precedent ne tourne plus.
+  await Promise.all([
+    env.INTERACTIONS.delete(`watch:${cycleId}:digest-posted:${slot}`),
+    ...slotWatchers.map((w) => env.INTERACTIONS.delete(`watch:${cycleId}:${w.key}`)),
+  ]);
+
   await env.INTERACTIONS.put(
     `watch:${cycleId}:meta`,
     JSON.stringify({ cycleId, date: today, slot }),
