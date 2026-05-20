@@ -48,7 +48,7 @@ Une sous-section "rien à signaler" tient en 1 ligne : `Discord : pas d'évoluti
 
 1. https://discord.com/developers/docs/change-log — changelog Discord API.
 2. https://tally.so/help/changelog ou https://tally.so/blog — Tally.
-3. https://docs.lemonsqueezy.com/help/changelog — Lemon Squeezy.
+3. https://github.com/lmsqueezy/lemonsqueezy.js/releases — Lemon Squeezy (changelog du SDK officiel, suit les evolutions API). NOTE : `docs.lemonsqueezy.com` est une SPA JavaScript non accessible via fetch HTTP simple — ne pas la tenter, le contenu retournera vide. Pour les annonces produit + integration Stripe Managed Payments, voir aussi https://www.lemonsqueezy.com/changelog (peut etre SPA aussi, fallback sur GitHub si vide).
 4. https://docs.linkup.so/ — Linkup changelog.
 5. https://api-dashboard.search.brave.com/ — Brave Search.
 6. https://developer.wordpress.org/rest-api/ + https://make.wordpress.org/core/changelog/ — WordPress REST.
