@@ -54,21 +54,20 @@ AGENT_ANALYTICS_ID = "agent_01XRvTLBdHLWmn8WNvV2TbY8"
 # watcher concerne (les autres tournent normalement).
 #
 # Mercredi (outils/infra) :
-AGENT_WATCHER_MCP_TUNNELS_ID = ""
-AGENT_WATCHER_SHS_ID = ""
-AGENT_WATCHER_AI_MODELS_ID = ""
-AGENT_WATCHER_CLOUDFLARE_ID = ""
-AGENT_WATCHER_GOOGLE_APIS_ID = ""
-AGENT_WATCHER_MOBILE_ID = ""
-AGENT_WATCHER_COMMS_ID = ""
+AGENT_WATCHER_MCP_TUNNELS_ID = "agent_01FWfua4dvsxGGVRhWR7oKxR"
+AGENT_WATCHER_SHS_ID = "agent_01FsMVxwRVESAGHXXsqZMyp1"
+AGENT_WATCHER_AI_MODELS_ID = "agent_013DvHUFoUkJQAFQtaT4U8Z8"
+AGENT_WATCHER_CLOUDFLARE_ID = "agent_014wzrVpfmW35GvWDGYEUVYS"
+AGENT_WATCHER_GOOGLE_APIS_ID = "agent_012cSpB9mhSC3EWLwDkNnZdE"
+AGENT_WATCHER_MOBILE_ID = "agent_01Vm9Trhod74SdEZRxX6636c"
+AGENT_WATCHER_COMMS_ID = "agent_01GayJpJdHbYtebCq1TbAKt8"
 # Jeudi (marche & voix users) :
-AGENT_WATCHER_MARKET_ID = ""
-AGENT_WATCHER_USERS_VOICE_ID = ""
+AGENT_WATCHER_MARKET_ID = "agent_015DacHSjpCzkegDXXD7TMC5"
+AGENT_WATCHER_USERS_VOICE_ID = "agent_012Tg5cXStAgFfSwvBjjo9st"
 # Vendredi (recherche docs/tutos) :
-AGENT_WATCHER_RESEARCH_ID = ""
+AGENT_WATCHER_RESEARCH_ID = "agent_01PFhgq2U9kHHbzUrQ4o9ECe"
 # Samedi (meta-digest manager) :
-AGENT_WATCHER_MANAGER_ID = ""
-
+AGENT_WATCHER_MANAGER_ID = "agent_0138FMUj2wjqLZPx79prnWyR"
 # Workspace + environment ids (confirmes via GET /v1/environments)
 # Le workspace est implicite via l'API key, on garde l'ID pour debug.
 ANTHROPIC_WORKSPACE_ID = "wrkspc_01H3ruuiyXxKTdN1DGELBeDi"
