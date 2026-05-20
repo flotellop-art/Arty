@@ -1477,9 +1477,12 @@ async function handleWatchDone(
   if (overrideSummary !== undefined) {
     summary = overrideSummary;
   } else {
-    // limit=2000 (vs 500 par defaut) : les watchers font plus de tool calls
-    // (fetch web + memory store I/O) que les agents adhoc, donc plus d'events.
-    const rawText = await fetchAgentText(env.ANTHROPIC_API_KEY, sessionId, 2000);
+    // limit=1000 (max API ; vs 500 par defaut) : les watchers font plus de tool
+    // calls (fetch web + memory store I/O) que les agents adhoc, donc plus
+    // d'events. L'API rejette > 1000 avec HTTP 400 ("limit: ... less than or
+    // equal to 1000"), ce qui faisait remonter un snippet vide sur tous les
+    // watchers au premier deploy (BUG fix 2026-05-20).
+    const rawText = await fetchAgentText(env.ANTHROPIC_API_KEY, sessionId, 1000);
     const parsed = extractDiscordSummary(rawText);
     if (parsed) {
       summary = parsed;
