@@ -253,14 +253,49 @@ constant-time, IDs Gmail validés par regex avant toute URL d'API (BUG 32),
 - **Pas de rate limiting** sur `/trigger` (secret) et `/dg` (allowlist) :
   surfaces déjà protégées.
 
+## Récap email (Resend + Haiku)
+
+Chaque digest posté sur Discord déclenche aussi un email récap vers
+`EMAIL_TO`. Le contenu est **vulgarisé par Haiku** (appel synchrone direct,
+pas une session managed) en HTML simple sans jargon, lisible par un novice.
+
+Activation : configurer le secret `RESEND_API_KEY` et la var `EMAIL_TO`
+(défaut `flotellop@gmail.com`). Si `RESEND_API_KEY` est vide, l'envoi est
+skippé sans erreur (Discord reste fonctionnel).
+
+```bash
+npx wrangler secret put RESEND_API_KEY
+```
+
+Compte Resend : https://resend.com (free tier 100 emails/jour, 3 000/mois —
+largement suffisant pour 5 emails/semaine).
+
+Domaine d'envoi (`EMAIL_FROM`) :
+- Par défaut : `onboarding@resend.dev` (sandbox Resend, zéro config DNS).
+- Pour passer à `digest@tryarty.com`, valider `tryarty.com` dans Resend
+  (3 entrées DNS chez Cloudflare).
+
+Sujets des emails :
+- mer : `Recap outils & tech — semaine du <date>`
+- jeu : `Recap concurrence & users — semaine du <date>`
+- ven : `Recap recherche & nouveautes — semaine du <date>`
+- sam : `Synthese hebdo de l'equipe IA — <date>`
+- dim : `Recap growth — cycle #<N> (<date>)`
+
+Si la traduction Haiku échoue ou si Resend rejette, l'erreur est loggée et
+le pipeline continue. Le Discord est le canal de référence ; l'email est un
+récap lisible « café du matin ».
+
 ## Coûts
 
 - **Cloudflare Workers** : plan Workers Paid (5 $/mois) requis pour `cpu_ms`
   étendu. Quelques exécutions/semaine, négligeable.
-- **API Anthropic** : ~0,30 $/session × ~4 sessions/cycle ≈ 1,2 $/semaine.
+- **API Anthropic** : ~3 $/semaine pour les 10 watchers + 4 sessions growth.
+- **Haiku traductions** : 5 emails/semaine × ~5k tokens = ~0,03 $/semaine.
+- **Resend** : gratuit (free tier).
 - **Tally / Discord / Gmail** : gratuit aux volumes utilisés.
 
-Total : ~10 $/mois.
+Total : ~17 $/mois.
 
 ## Logs et debug
 

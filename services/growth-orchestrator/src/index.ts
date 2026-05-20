@@ -52,6 +52,9 @@ export interface Env {
   GITHUB_TOKEN: string;
   GOOGLE_CLIENT_ID: string;
   GOOGLE_CLIENT_SECRET: string;
+  // Resend : envoie chaque digest (growth + 4 cycles veille) par email a Florent,
+  // version vulgarisee par Haiku. Optionnel : si vide, on poste seulement sur Discord.
+  RESEND_API_KEY?: string;
 
   // Vars publiques
   ANTHROPIC_WORKSPACE_ID: string;
@@ -71,6 +74,11 @@ export interface Env {
   DISCORD_CHANNEL_ID: string;
   // CSV d'IDs utilisateur Discord autorises a lancer la slash command /dg.
   DISCORD_ALLOWED_USER_IDS: string;
+  // Destinataire et expediteur des emails recap (RESEND_API_KEY). Si vides,
+  // l'envoi email est skip et seul Discord est utilise.
+  EMAIL_TO: string;
+  EMAIL_FROM: string;
+  EMAIL_FROM_NAME: string;
   // Agents de veille (4 crons : mer outils/infra, jeu users, ven research, sam manager).
   // Vides au depart ; une fois crees sur la console Anthropic, coller les IDs dans wrangler.toml.
   // Liste complete et leur slot defini dans WATCHERS_CONFIG (src/index.ts).
@@ -856,6 +864,124 @@ function splitForDiscord(text: string, max: number): string[] {
 }
 
 // ===========================================================================
+// 3.5 EMAIL RECAP (Resend + vulgarisation Haiku synchrone)
+// ===========================================================================
+
+/**
+ * Transforme un digest Discord (technique, jargonneux) en HTML simple destine
+ * a un novice (pas de termes tech, phrases courtes). Appel synchrone a Haiku
+ * via l'API Anthropic Messages (pas une session managed agent : moins cher,
+ * pas de webhook a attendre, ~5-10s par appel).
+ */
+async function translateForNovice(env: Env, technicalContent: string): Promise<string> {
+  const systemPrompt = [
+    "Tu recois un rapport technique en francais destine a des developpeurs.",
+    "Tu le reecris en francais simple pour un novice qui ne connait rien a la tech.",
+    "",
+    "Regles strictes :",
+    "- Aucun jargon : pas de 'API', 'endpoint', 'watcher', 'cycle', 'KV', 'webhook', 'agent', 'workflow', 'session', noms d'outils techniques inconnus du grand public.",
+    "- Phrases courtes, vocabulaire du quotidien.",
+    "- Structure : 1 paragraphe d'intro qui resume la semaine, puis 2 a 4 points cles en bullets simples.",
+    "- Ton : amical, comme a un ami non-tech qui demande 'alors quoi de neuf cette semaine ?'.",
+    "- Longueur max : 250 mots.",
+    "- Sortie en HTML simple uniquement : <h2>, <p>, <ul>, <li>, <strong>, <em>. Pas de markdown, pas de code, pas de liens.",
+    "- Si tu cites une entreprise tres connue (Anthropic, Google, Cloudflare, Discord, Apple, Microsoft, OpenAI), tu peux la nommer mais ajoute une mini-glose entre parentheses la 1ere fois : 'Anthropic (le createur de Claude)', 'Cloudflare (l'hebergeur du site)', etc.",
+    "- Si rien d'important cette semaine, dis-le clairement : 'Semaine calme cote veille, rien de notable.'",
+    "- Pas de tirets cadratins.",
+    "- Pas de questions retoriques.",
+    "- Pas d'emoji.",
+  ].join("\n");
+
+  try {
+    const res = await fetch(`${ANTHROPIC_BASE}/messages`, {
+      method: "POST",
+      headers: {
+        "anthropic-version": "2023-06-01",
+        "x-api-key": env.ANTHROPIC_API_KEY,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 1024,
+        system: systemPrompt,
+        messages: [{ role: "user", content: technicalContent }],
+      }),
+    });
+    if (!res.ok) {
+      console.error(`[email] translate failed ${res.status}: ${(await res.text()).slice(0, 200)}`);
+      return "";
+    }
+    const data = (await res.json()) as { content?: Array<{ type?: string; text?: string }> };
+    const text = (data.content ?? [])
+      .filter((b) => b.type === "text" && b.text)
+      .map((b) => b.text)
+      .join("\n");
+    return text.trim();
+  } catch (err) {
+    console.error(`[email] translate exception: ${err}`);
+    return "";
+  }
+}
+
+/**
+ * Envoie un email via Resend (free tier 100/jour, 3000/mois — largement
+ * suffisant a notre volume de 5 emails/semaine). Echec silencieux : si Resend
+ * pete, le digest Discord est deja parti, on log et on continue.
+ */
+async function sendEmail(env: Env, subject: string, htmlBody: string): Promise<void> {
+  if (!env.RESEND_API_KEY || !env.EMAIL_TO || !env.EMAIL_FROM) {
+    console.log(`[email] config incomplete (RESEND_API_KEY / EMAIL_TO / EMAIL_FROM), skip`);
+    return;
+  }
+  try {
+    const from = env.EMAIL_FROM_NAME
+      ? `${env.EMAIL_FROM_NAME} <${env.EMAIL_FROM}>`
+      : env.EMAIL_FROM;
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${env.RESEND_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from,
+        to: env.EMAIL_TO,
+        subject,
+        html: htmlBody,
+      }),
+    });
+    if (!res.ok) {
+      console.error(`[email] send failed ${res.status}: ${(await res.text()).slice(0, 200)}`);
+      return;
+    }
+    console.log(`[email] sent "${subject}" to ${env.EMAIL_TO}`);
+  } catch (err) {
+    console.error(`[email] send exception: ${err}`);
+  }
+}
+
+/**
+ * Helper combine : vulgarise le contenu Discord avec Haiku, l'enveloppe dans
+ * un HTML simple, envoie via Resend. Echec silencieux a chaque etape.
+ */
+async function sendNoviceEmail(env: Env, subject: string, technicalContent: string): Promise<void> {
+  const novice = await translateForNovice(env, technicalContent);
+  if (!novice) {
+    console.warn(`[email] translation vide, email "${subject}" non envoye`);
+    return;
+  }
+  const html = [
+    `<!DOCTYPE html>`,
+    `<html><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:600px;margin:24px auto;padding:0 16px;color:#222;line-height:1.5;">`,
+    novice,
+    `<hr style="border:none;border-top:1px solid #eee;margin:32px 0 16px;">`,
+    `<p style="color:#888;font-size:12px;">Recap genere automatiquement par l'equipe IA d'Arty. Le detail technique est sur Discord #dg.</p>`,
+    `</body></html>`,
+  ].join("\n");
+  await sendEmail(env, subject, html);
+}
+
+// ===========================================================================
 // 4. DISCORD INTERACTION SIGNATURE VERIFICATION (Ed25519)
 // ===========================================================================
 
@@ -1101,8 +1227,12 @@ async function handleWeeklyDgDone(env: Env, pending: PendingInteraction, session
   // dans /mnt/memory/arty/historique/cycles/ pendant sa session).
 
   const header = `# Digest Arty - cycle #${cycleN} (${fmtDate(start)} au ${fmtDate(end)})\n_Genere automatiquement le ${new Date().toLocaleString("fr-FR")} par Arty DG._\n\n---\n\n`;
-  await discordPostMessage(env, header + (text || "Le DG a fini sa session mais n'a renvoye aucun texte."));
+  const fullDigest = header + (text || "Le DG a fini sa session mais n'a renvoye aucun texte.");
+  await discordPostMessage(env, fullDigest);
   console.log(`[cycle] digest poste sur Discord pour cycle ${cycleId}`);
+
+  // Email recap vulgarise (echec silencieux, ne bloque pas le cleanup).
+  await sendNoviceEmail(env, `Recap growth — cycle #${cycleN} (${fmtDate(end)})`, fullDigest);
 
   // Cleanup : supprimer les outputs sub-agents et la meta (laisser le lock expirer naturellement)
   await Promise.all([
@@ -1413,14 +1543,36 @@ async function maybePostWatchDigest(env: Env, cycleId: string, slot: CycleSlot):
   const dateStr = cycleId.replace(/^watch-/, "");
   const sections = slotWatchers.map((w, i) => `## ${w.label}\n\n${results[i] || "(aucun resume)"}`);
   const body = sections.join("\n\n---\n\n");
-  await discordPostMessage(env, watchDigestHeader(slot, dateStr) + body);
+  const fullDigest = watchDigestHeader(slot, dateStr) + body;
+  await discordPostMessage(env, fullDigest);
   console.log(`[watch:${slot}] digest poste pour ${cycleId}`);
+
+  // Email recap vulgarise (echec silencieux, ne bloque pas le cleanup).
+  const subject = watchEmailSubject(slot, dateStr);
+  await sendNoviceEmail(env, subject, fullDigest);
 
   // Cleanup. digest-posted reste (TTL 24h) pour l'idempotence.
   await Promise.all([
     ...expected.map((key) => env.INTERACTIONS.delete(`watch:${cycleId}:${key}`)),
     env.INTERACTIONS.delete(`watch:${cycleId}:meta`),
   ]);
+}
+
+/**
+ * Sujet de l'email recap pour chaque slot. Vulgarise au lieu de "Veille infra"
+ * etc. pour rester lisible dans l'inbox.
+ */
+function watchEmailSubject(slot: CycleSlot, dateStr: string): string {
+  switch (slot) {
+    case "wed":
+      return `Recap outils & tech — semaine du ${dateStr}`;
+    case "thu":
+      return `Recap concurrence & users — semaine du ${dateStr}`;
+    case "fri":
+      return `Recap recherche & nouveautes — semaine du ${dateStr}`;
+    case "sat":
+      return `Synthese hebdo de l'equipe IA — ${dateStr}`;
+  }
 }
 
 // ===========================================================================

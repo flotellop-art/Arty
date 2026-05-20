@@ -28,7 +28,7 @@ crons = ["0 18 * * SUN", "0 12 * * WED", "0 12 * * THU", "0 12 * * FRI", "0 12 *
 [observability]
 enabled = true
 
-# Variables non secretes uniquement. Les 9 secrets sont configures via
+# Variables non secretes uniquement. Les 10 secrets sont configures via
 # `wrangler secret put <NOM>` (voir README, section Setup) :
 #   ANTHROPIC_API_KEY            cle API Anthropic Console
 #   ANTHROPIC_WEBHOOK_SIGNING_KEY  cle de signature du webhook (whsec_...)
@@ -39,6 +39,8 @@ enabled = true
 #   GITHUB_TOKEN                 PAT fine-grained, repo flotellop-art/Arty, Contents:Read
 #   GOOGLE_CLIENT_ID             OAuth client id (Gmail)
 #   GOOGLE_CLIENT_SECRET         OAuth client secret (Gmail)
+#   RESEND_API_KEY               (optionnel) Resend pour envoi des emails recap
+#                                 vulgarises. Vide = pas d'email, seulement Discord.
 [vars]
 # IDs des agents managed sur platform.claude.com (workspace Appfacade)
 AGENT_DG_ID = "agent_01USsT8aHKqp1t2nBWAj9KCE"
@@ -89,6 +91,15 @@ DISCORD_CHANNEL_ID = "1505556448468406352"
 # co-equipier autorise). Pour recuperer un ID : Discord > Parametres >
 # Avance > Mode developpeur, puis clic droit sur l'utilisateur > Copier l'ID.
 DISCORD_ALLOWED_USER_IDS = ""
+
+# Emails recap (apres chaque digest Discord, Haiku traduit en francais simple
+# et Resend envoie). Si RESEND_API_KEY est vide, l'envoi est skip sans erreur.
+# EMAIL_FROM : pour demarrer utilise `onboarding@resend.dev` (sandbox Resend,
+# zero config DNS). Pour envoyer depuis `digest@tryarty.com`, valider le
+# domaine `tryarty.com` dans Resend (3 entrees DNS chez Cloudflare).
+EMAIL_TO = "flotellop@gmail.com"
+EMAIL_FROM = "onboarding@resend.dev"
+EMAIL_FROM_NAME = "Arty Veille"
 
 # Tally : formulaire waitlist "Arty - Waitlist"
 # Public URL : https://tally.so/r/LZaY01
