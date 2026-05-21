@@ -120,6 +120,11 @@
     "greetingEvening": "Bonsoir",
     "agendaKicker": "Agenda",
     "intentionsKicker": "Intentions",
+    "discover": {
+      "label": "Découvrir",
+      "description": "Un résumé de tout ce que je peux faire, avec des exemples.",
+      "prompt": "Présente-moi un résumé clair et concis de tout ce que tu sais faire, organisé par domaine (mes mails, mon agenda, mes fichiers Drive, rédaction de texte et d'emails, recherche et résumé d'informations sur le web, analyse de documents et d'images). Pour chaque domaine, donne 1 à 2 exemples concrets de phrases que je pourrais t'écrire. Reste concis et accueillant."
+    },
     "suggestions": {
       "title": "Suggestions",
       "unreadEmails": "Montre mes derniers mails non lus",

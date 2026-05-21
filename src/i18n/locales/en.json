@@ -120,6 +120,11 @@
     "greetingEvening": "Good evening",
     "agendaKicker": "Agenda",
     "intentionsKicker": "Intents",
+    "discover": {
+      "label": "Discover",
+      "description": "A summary of everything I can do, with examples.",
+      "prompt": "Give me a clear, concise summary of everything you can do, organised by area (my email, my calendar, my Drive files, writing text and emails, searching and summarising info from the web, analysing documents and images). For each area, give 1-2 concrete example sentences I could write to you. Keep it concise and welcoming."
+    },
     "suggestions": {
       "title": "Suggestions",
       "unreadEmails": "Show my latest unread emails",

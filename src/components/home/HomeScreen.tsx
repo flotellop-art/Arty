@@ -147,6 +147,32 @@ function HomeScreenInner({ onMenuToggle, onSend, isStreaming, googleAuth, userNa
           </div>
         )}
 
+        {/* Discover — one click sends a capabilities summary prompt through the
+            normal chat pipeline. Shown to everyone (no Google needed): it's an
+            overview of what Arty can do, with concrete example requests. */}
+        <div className="px-6 pt-7 max-w-3xl">
+          <button
+            onClick={() => onSend(t('home.discover.prompt'))}
+            disabled={isStreaming}
+            aria-label={t('home.discover.label')}
+            className="group w-full flex items-center gap-3.5 rounded-[14px] px-4 py-3.5 text-left transition-transform hover:-translate-y-[1px] disabled:opacity-50 disabled:hover:translate-y-0"
+            style={{
+              background: 'linear-gradient(150deg, rgb(var(--theme-accent)) 0%, rgb(var(--theme-accent) / 0.82) 100%)',
+              color: '#1C0E06',
+              boxShadow: '0 6px 24px rgba(245,154,75,0.22), 0 1px 0 rgba(255,255,255,0.12) inset',
+            }}
+          >
+            <PrismMark size={22} fill color="#1C0E06" />
+            <span className="flex-1 min-w-0">
+              <span className="block font-display font-medium text-[16px] leading-tight">{t('home.discover.label')}</span>
+              <span className="block font-sans text-[11px] leading-snug opacity-75 mt-0.5">{t('home.discover.description')}</span>
+            </span>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1C0E06" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 transition-transform group-hover:translate-x-0.5">
+              <path d="M5 12h14M13 6l6 6-6 6" />
+            </svg>
+          </button>
+        </div>
+
         {/* Two-up: Agenda + Intentions — editorial grid */}
         <div className="px-6 pt-8 pb-4 grid grid-cols-1 sm:grid-cols-2 gap-6 max-w-3xl">
           {/* Agenda (only when Google connected) */}
