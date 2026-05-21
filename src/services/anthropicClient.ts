@@ -4,7 +4,7 @@ import { compressIfNeeded } from './conversationCompressor'
 import { getAnthropicKey } from './activeApiKey'
 import { apiUrl } from './apiBase'
 import { getValidAccessToken } from './googleAuth'
-import { needsThinking, selectClaudeSubModel, PRIVATE_DATA_TRIGGERS, shouldUseWebSearch, type ThinkingConfig } from './aiRouter'
+import { needsThinking, selectClaudeSubModel, PRIVATE_DATA_TRIGGERS, shouldUseWebSearch, type ThinkingConfig, type ClaudeSubModel } from './aiRouter'
 import { isProActivated } from './proLicense'
 import { buildLocationContext } from './locationContext'
 import { recordUsage } from './costTracker'
@@ -82,6 +82,15 @@ export type ToolHandler = (
 interface StreamOptions {
   systemPrompt?: string
   onToolCall?: ToolHandler
+  // Restreint l'ensemble d'outils exposé au modèle (ex: brief proactif =
+  // lecture seule). Par défaut tous les TOOLS sont disponibles. Retirer un
+  // outil de cet ensemble est la SEULE garantie qu'il ne sera pas appelé —
+  // un prompt "demande confirmation" est contournable par injection.
+  tools?: typeof TOOLS
+  // Force une déclinaison Claude précise (ex: Haiku pour un brief de fond,
+  // pour ne pas consommer le quota premium Sonnet). Désactive aussi le
+  // thinking auto : un appel à modèle imposé contrôle son propre coût.
+  model?: ClaudeSubModel
 }
 
 // ── Public API ───────────────────────────────────────────────────────────────
@@ -479,10 +488,12 @@ async function runWithTools(
     const apiMessages: ApiMessage[] = compressed as ApiMessage[]
 
     const lastUserText = findLastUserText(originalMessages)
-    const thinking: ThinkingConfig = needsThinking(lastUserText)
+    // Modèle imposé (brief proactif, etc.) → on coupe le thinking auto pour
+    // garder l'appel court et bon marché.
+    const thinking: ThinkingConfig = options?.model ? { enabled: false, budget: 0 } : needsThinking(lastUserText)
     const isPrivateData = PRIVATE_DATA_TRIGGERS.some((r) => r.test(lastUserText))
     const isPro = isProActivated()
-    const ANTHROPIC_MODEL = selectClaudeSubModel(lastUserText, thinking, isPrivateData, isPro)
+    const ANTHROPIC_MODEL = options?.model || selectClaudeSubModel(lastUserText, thinking, isPrivateData, isPro)
     // Notifie l'UI du modèle exact appelé pour qu'elle puisse l'afficher
     // sous le sélecteur (ChatTopBar > ModelDescriptor).
     try { window.dispatchEvent(new CustomEvent('arty-model-used', { detail: { model: ANTHROPIC_MODEL, provider: 'claude' } })) } catch {}
@@ -494,12 +505,17 @@ async function runWithTools(
     // user du 10 mai 2026). Les requêtes "mes mails / mon Drive / agenda"
     // sont exclues car les tools natifs Gmail/Drive/Calendar récupèrent les
     // vraies données — web_search ne ferait qu'halluciner (cf. BUG 12).
-    const webSearchHint = shouldUseWebSearch(lastUserText) ? FORCE_WEB_SEARCH_PROMPT : ''
+    // Pas de forçage web_search sur un appel à modèle imposé (ex: brief
+    // proactif) : son jeu d'outils est restreint et n'inclut pas web_search,
+    // donc pousser le modèle à l'appeler n'aurait aucun sens.
+    const webSearchHint = (!options?.model && shouldUseWebSearch(lastUserText)) ? FORCE_WEB_SEARCH_PROMPT : ''
     const systemText = withThinking + locationContext + webSearchHint
     const systemBlocks = [{ type: 'text', text: systemText, cache_control: { type: 'ephemeral' } }]
-    // Add prompt-caching hint to last tool definition
-    const cachedTools = TOOLS.map((t, i) =>
-      i === TOOLS.length - 1 ? { ...t, cache_control: { type: 'ephemeral' } } : t
+    // Add prompt-caching hint to last tool definition. L'ensemble d'outils
+    // peut être restreint via options.tools (brief proactif = lecture seule).
+    const toolSet = options?.tools ?? TOOLS
+    const cachedTools = toolSet.map((t, i) =>
+      i === toolSet.length - 1 ? { ...t, cache_control: { type: 'ephemeral' } } : t
     )
 
     // H-AI-3 (audit étape 4) — Mistral est à 20 itérations max. 200 ici était
