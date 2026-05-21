@@ -6,7 +6,8 @@ import { streamGeminiMessage, geminiResearch } from '../services/geminiClient'
 import { streamMistralMessage } from '../services/mistralClient'
 import { sendMessageStream as streamOpenAIMessage } from '../services/openaiClient'
 import { getOpenAIKey } from '../services/activeApiKey'
-import { detectProvider } from '../services/aiRouter'
+import { detectProvider, extractPdfUrls } from '../services/aiRouter'
+import { fetchPdfMarkdowns } from '../services/pdfUrlFetch'
 import * as storage from '../services/storage'
 import { useStreaming } from './useStreaming'
 import { useFileAttachments, buildApiMessages, buildContentBlocks, buildTextOnlyMessages, buildMistralMessages, buildMistralBlocks } from './useFileAttachments'
@@ -370,6 +371,29 @@ export function useConversation() {
 
       let controller: AbortController
 
+      // URLs de PDF public collées : ni `web_fetch`/`url_context` (Claude/
+      // Gemini n'avalent pas un PDF binaire) ni Mistral (aucune lecture d'URL)
+      // ne savent les lire. On convertit chaque PDF en Markdown via Linkup
+      // (/api/fetch/url) et on l'inline dans le message courant, quel que soit
+      // le provider. Échec = on laisse passer tel quel. Linkup est déjà dans
+      // le chemin de données euOnly (recherche web Mistral via /api/search/web)
+      // et hébergé en EU → compatible avec la promesse "données EU".
+      let outgoingText = text
+      if (provider !== 'hybrid') {
+        const pdfUrls = extractPdfUrls(text)
+        if (pdfUrls.length > 0) {
+          streaming.setStreamingContent('📄 Lecture du PDF...')
+          const pdfSections = await fetchPdfMarkdowns(pdfUrls)
+          if (pdfSections) {
+            outgoingText = `${text}\n\n${pdfSections}`
+          }
+          if (streaming.streamingRef.current) {
+            streaming.streamingRef.current.accumulated = ''
+          }
+          streaming.setStreamingContent('')
+        }
+      }
+
       if (provider === 'hybrid') {
         streaming.setStreamingContent('🔍 Recherche en cours (Gemini)...')
         Promise.all([geminiResearch(text), buildApiMessages(conv.messages)]).then(([research, enrichedMessages]) => {
@@ -394,6 +418,9 @@ export function useConversation() {
         // Gemini text-only pour l'instant — le multimodal Gemini sera dans
         // une PR future (formats parts/inlineData différents de Claude).
         const apiMessages = await buildTextOnlyMessages(conv.messages)
+        if (outgoingText !== text) {
+          apiMessages[apiMessages.length - 1] = { role: 'user', content: outgoingText }
+        }
         controller = streamGeminiMessage(apiMessages, onToken, onDone, onErr, {
           systemPrompt: systemPromptRef.current,
         })
@@ -409,8 +436,10 @@ export function useConversation() {
         // ou si le commit IndexedDB n'a pas encore été visible côté lecture.
         // Symétrique du path Claude (voir plus bas).
         if (currentFiles && currentFiles.length > 0) {
-          apiMessages[apiMessages.length - 1] = { role: 'user', content: buildMistralBlocks(text, currentFiles) }
+          apiMessages[apiMessages.length - 1] = { role: 'user', content: buildMistralBlocks(outgoingText, currentFiles) }
           fileAttachments.setPendingFiles(null)
+        } else if (outgoingText !== text) {
+          apiMessages[apiMessages.length - 1] = { role: 'user', content: outgoingText }
         }
         controller = streamMistralMessage(apiMessages, onToken, onDone, onErr, {
           systemPrompt: systemPromptRef.current,
@@ -425,6 +454,9 @@ export function useConversation() {
           role: (m.role === 'assistant' ? 'assistant' : 'user') as 'user' | 'assistant',
           content: m.content,
         }))
+        if (outgoingText !== text && apiMessages.length > 0) {
+          apiMessages[apiMessages.length - 1] = { role: 'user', content: outgoingText }
+        }
         controller = streamOpenAIMessage(apiMessages, openaiKey, onToken, onDone, onErr, {
           systemPrompt: systemPromptRef.current,
         })
@@ -435,8 +467,10 @@ export function useConversation() {
         // tour suivant.
         const apiMessages = await buildApiMessages(conv.messages)
         if (currentFiles && currentFiles.length > 0) {
-          apiMessages[apiMessages.length - 1] = { role: 'user', content: await buildContentBlocks(text, currentFiles) }
+          apiMessages[apiMessages.length - 1] = { role: 'user', content: await buildContentBlocks(outgoingText, currentFiles) }
           fileAttachments.setPendingFiles(null)
+        } else if (outgoingText !== text) {
+          apiMessages[apiMessages.length - 1] = { role: 'user', content: outgoingText }
         }
         controller = streamMessage(apiMessages, onToken, onDone, onErr, {
           systemPrompt: systemPromptRef.current,

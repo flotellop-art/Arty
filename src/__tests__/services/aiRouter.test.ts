@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { detectProvider, needsThinking, selectClaudeSubModel } from '../../services/aiRouter'
+import { detectProvider, needsThinking, selectClaudeSubModel, extractPdfUrls } from '../../services/aiRouter'
 import { getGeminiThinkingBudget } from '../../services/geminiClient'
 
 // Mock the two external dependencies
@@ -329,5 +329,46 @@ describe('private data beats other triggers', () => {
 
   it('private + weather → claude not gemini', () => {
     expect(detectProvider('Quelle météo pour mon agenda demain ?')).toBe('claude')
+  })
+})
+
+describe('extractPdfUrls', () => {
+  it('extracts a basic .pdf URL', () => {
+    expect(extractPdfUrls('Lis ça : https://example.com/rapport.pdf')).toEqual([
+      'https://example.com/rapport.pdf',
+    ])
+  })
+
+  it('matches .pdf with a query string or hash', () => {
+    expect(extractPdfUrls('https://x.com/a.pdf?download=1')).toEqual(['https://x.com/a.pdf?download=1'])
+    expect(extractPdfUrls('https://x.com/a.pdf#page=2')).toEqual(['https://x.com/a.pdf#page=2'])
+  })
+
+  it('strips trailing sentence punctuation', () => {
+    expect(extractPdfUrls('Regarde https://example.com/doc.pdf.')).toEqual([
+      'https://example.com/doc.pdf',
+    ])
+  })
+
+  it('ignores non-PDF URLs', () => {
+    expect(extractPdfUrls('https://example.com/article')).toEqual([])
+    expect(extractPdfUrls('https://www.youtube.com/watch?v=abc')).toEqual([])
+  })
+
+  it('extracts only the PDF URLs when mixed with HTML URLs', () => {
+    expect(
+      extractPdfUrls('Compare https://example.com/page et https://example.com/spec.pdf')
+    ).toEqual(['https://example.com/spec.pdf'])
+  })
+
+  it('deduplicates repeated PDF URLs', () => {
+    expect(
+      extractPdfUrls('https://x.com/a.pdf puis encore https://x.com/a.pdf')
+    ).toEqual(['https://x.com/a.pdf'])
+  })
+
+  it('returns [] for empty or URL-less input', () => {
+    expect(extractPdfUrls('')).toEqual([])
+    expect(extractPdfUrls('aucun lien ici')).toEqual([])
   })
 })
