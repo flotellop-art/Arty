@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { TopBar } from '../layout/TopBar'
 import { InputBar } from '../layout/InputBar'
 import { PrismMark } from '../shared/PrismMark'
+import { ProactiveBriefCard } from './ProactiveBriefCard'
 import { GoogleConnectButton } from '../google/GoogleConnectButton'
 import { GoogleStatus } from '../google/GoogleStatus'
 import { CalendarView } from '../google/CalendarView'
@@ -21,9 +22,12 @@ interface HomeScreenProps {
   gmail: ReturnType<typeof useGmail>
   drive: ReturnType<typeof useDrive>
   userName?: string
+  proactiveBrief?: string | null
+  briefLoading?: boolean
+  onDismissBrief?: () => void
 }
 
-function HomeScreenInner({ onMenuToggle, onSend, isStreaming, googleAuth, userName }: HomeScreenProps) {
+function HomeScreenInner({ onMenuToggle, onSend, isStreaming, googleAuth, userName, proactiveBrief, briefLoading, onDismissBrief }: HomeScreenProps) {
   const { t, i18n } = useTranslation()
   const googleTooltip = useTooltip('google')
 
@@ -146,6 +150,14 @@ function HomeScreenInner({ onMenuToggle, onSend, isStreaming, googleAuth, userNa
             />
           </div>
         )}
+
+        {/* Proactive brief — auto-generated on app open/resume (read-only,
+            Haiku, deduped). Renders here on the Home screen. */}
+        <ProactiveBriefCard
+          brief={proactiveBrief ?? null}
+          loading={!!briefLoading}
+          onDismiss={onDismissBrief ?? (() => {})}
+        />
 
         {/* Discover — one click sends a capabilities summary prompt through the
             normal chat pipeline. Shown to everyone (no Google needed): it's an

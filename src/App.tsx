@@ -11,6 +11,8 @@ import { QuestionModal } from './components/chat/QuestionModal'
 import { MorningBrief } from './components/home/MorningBrief'
 import { HomeScreen } from './components/home/HomeScreen'
 import { shouldShowMorningBrief } from './services/morningBriefService'
+import { useProactiveBrief } from './hooks/useProactiveBrief'
+import { isProactiveBriefEnabled } from './services/proactiveBriefSettings'
 import { ConversationScreen } from './components/chat/ConversationScreen'
 import { ReportPage } from './components/shared/ReportPage'
 import { Sidebar } from './components/layout/Sidebar'
@@ -112,10 +114,12 @@ function AppContent({
     retryMessage,
   } = conversation
 
-  // Show morning brief once per day between 6h-11h
+  // Show legacy morning brief once per day between 6h-11h — sauf si le brief
+  // proactif (IA, à chaque ouverture) est actif : il le remplace pour éviter
+  // deux briefs concurrents.
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (shouldShowMorningBrief()) setShowMorningBrief(true)
+      if (!isProactiveBriefEnabled() && shouldShowMorningBrief()) setShowMorningBrief(true)
     }, 1500) // small delay to let the app finish loading
     return () => clearTimeout(timer)
   }, [])
@@ -131,6 +135,14 @@ function AppContent({
     questionModal,
     handleAction,
   } = useAppSetup(conversation)
+
+  // Brief proactif : généré tout seul à l'ouverture / au retour dans l'app
+  // (lecture seule, modèle Haiku, anti-doublon). Rendu sur l'accueil.
+  const proactiveBrief = useProactiveBrief({
+    gmail,
+    isGoogleConnected: googleAuth.isConnected,
+    userName: profileName || userName,
+  })
 
   const handleSendFromHome = useCallback(
     (text: string, files?: FileAttachment[]) => {
@@ -364,6 +376,9 @@ function AppContent({
               gmail={gmail}
               drive={drive}
               userName={profileName || userName}
+              proactiveBrief={proactiveBrief.brief}
+              briefLoading={proactiveBrief.loading}
+              onDismissBrief={proactiveBrief.dismiss}
             />
           }
         />

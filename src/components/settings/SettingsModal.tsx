@@ -37,6 +37,10 @@ import {
   setFactCheckMode,
   type FactCheckMode,
 } from '../../services/factChecker'
+import {
+  isProactiveBriefEnabled,
+  setProactiveBriefEnabled,
+} from '../../services/proactiveBriefSettings'
 import { MemoryHistoryPanel } from './MemoryHistoryPanel'
 import { MemoryViewer } from './MemoryViewer'
 import { OrchestratorSync } from './OrchestratorSync'
@@ -62,6 +66,7 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
   const [showLocationDebug, setShowLocationDebug] = useState(false)
   const [enhanceEnabled, setEnhanceEnabled] = useState(false)
   const [enhanceModel, setEnhanceModelState] = useState<EnhancerModel>('haiku')
+  const [briefEnabled, setBriefEnabled] = useState(false)
   const [factCheckMode, setFactCheckModeState] = useState<FactCheckMode>(getFactCheckMode)
   const [showMemoryHistory, setShowMemoryHistory] = useState(false)
   const [showMemoryViewer, setShowMemoryViewer] = useState(false)
@@ -94,6 +99,7 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
     setLicenseSuccess('')
     setEnhanceEnabled(isPromptEnhancementEnabled())
     setEnhanceModelState(getEnhancerModel())
+    setBriefEnabled(isProactiveBriefEnabled())
     // L'état réel de la permission browser géoloc — peut être 'denied' alors
     // que le toggle Arty est ON (cas Chrome qui bloque silencieusement).
     if (!isNative) {
@@ -174,6 +180,22 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
     const next = !enhanceEnabled
     setPromptEnhancementEnabled(next)
     setEnhanceEnabled(next)
+  }
+
+  const handleBriefToggle = async () => {
+    const next = !briefEnabled
+    setProactiveBriefEnabled(next)
+    setBriefEnabled(next)
+    // À l'activation, on propose les notifs pour que le rappel quotidien
+    // (nudge 8h) puisse fonctionner. Refus = le brief marche quand même,
+    // juste sans notification.
+    if (next && !notifEnabled) {
+      const perm = await requestNotifPermission()
+      if (perm === 'granted') {
+        setNotificationsEnabled(true)
+        setNotifEnabled(true)
+      }
+    }
   }
 
   const handleEnhanceModelChange = (model: EnhancerModel) => {
@@ -258,6 +280,32 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
                 <span
                   className={`inline-block h-4 w-4 transform rounded-full bg-theme-bg transition-transform ${
                     notifEnabled ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
+          </div>
+
+          {/* Proactive brief toggle */}
+          <div className="border-t border-theme-border pt-5">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="font-display text-base text-theme-ink">🗞️ {t('settings.proactiveBrief.title')}</p>
+                <p className="font-display italic text-xs text-theme-muted mt-0.5">
+                  {t('settings.proactiveBrief.description')}
+                </p>
+              </div>
+              <button
+                onClick={handleBriefToggle}
+                aria-label={t('settings.proactiveBrief.toggleAria')}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors shrink-0 ${
+                  briefEnabled ? 'bg-theme-accent' : 'bg-theme-ink/20'
+                }`}
+                aria-pressed={briefEnabled}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-theme-bg transition-transform ${
+                    briefEnabled ? 'translate-x-6' : 'translate-x-1'
                   }`}
                 />
               </button>
