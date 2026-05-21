@@ -6,7 +6,8 @@ import { streamGeminiMessage, geminiResearch } from '../services/geminiClient'
 import { streamMistralMessage } from '../services/mistralClient'
 import { sendMessageStream as streamOpenAIMessage } from '../services/openaiClient'
 import { getOpenAIKey } from '../services/activeApiKey'
-import { detectProvider } from '../services/aiRouter'
+import { detectProvider, extractPdfUrls } from '../services/aiRouter'
+import { fetchPdfMarkdowns } from '../services/pdfUrlFetch'
 import * as storage from '../services/storage'
 import { useStreaming } from './useStreaming'
 import { useFileAttachments, buildApiMessages, buildContentBlocks, buildTextOnlyMessages, buildMistralMessages, buildMistralBlocks } from './useFileAttachments'
@@ -434,9 +435,31 @@ export function useConversation() {
         // buildApiMessages/hydrateFiles). Plus de bug de fichier oublié au
         // tour suivant.
         const apiMessages = await buildApiMessages(conv.messages)
+
+        // URLs de PDF public collées : `web_fetch` de Claude ne lit pas les
+        // PDF binaires. On les convertit en Markdown via Linkup (/api/fetch/url)
+        // et on les inline dans le message courant. Échec = on laisse passer
+        // tel quel (Claude tentera web_fetch). euOnly route vers Mistral en
+        // amont, donc ce chemin ne concerne que le mode auto/Claude.
+        let outgoingText = text
+        const pdfUrls = extractPdfUrls(text)
+        if (pdfUrls.length > 0) {
+          streaming.setStreamingContent('📄 Lecture du PDF...')
+          const pdfSections = await fetchPdfMarkdowns(pdfUrls)
+          if (pdfSections) {
+            outgoingText = `${text}\n\n${pdfSections}`
+          }
+          if (streaming.streamingRef.current) {
+            streaming.streamingRef.current.accumulated = ''
+          }
+          streaming.setStreamingContent('')
+        }
+
         if (currentFiles && currentFiles.length > 0) {
-          apiMessages[apiMessages.length - 1] = { role: 'user', content: await buildContentBlocks(text, currentFiles) }
+          apiMessages[apiMessages.length - 1] = { role: 'user', content: await buildContentBlocks(outgoingText, currentFiles) }
           fileAttachments.setPendingFiles(null)
+        } else if (outgoingText !== text) {
+          apiMessages[apiMessages.length - 1] = { role: 'user', content: outgoingText }
         }
         controller = streamMessage(apiMessages, onToken, onDone, onErr, {
           systemPrompt: systemPromptRef.current,

@@ -106,6 +106,37 @@ export function hasUrl(message: string): boolean {
   return URL_REGEX.test(message)
 }
 
+// Variante globale pour extraire TOUTES les URLs d'un message (URL_REGEX
+// reste sans flag `g` car utilisée en .test() — un `g` rendrait .test()
+// stateful via lastIndex).
+const URL_REGEX_GLOBAL = /\bhttps?:\/\/[^\s<>"'`]+|\b(?:www\.)?(?:youtu\.be|youtube\.com)\/[^\s<>"'`]+/gi
+
+/**
+ * Extrait les URLs pointant vers un PDF public (`.pdf` dans le chemin).
+ * Claude `web_fetch` et Gemini `url_context` ne lisent pas les PDF binaires —
+ * ces URLs sont récupérées via Linkup /fetch (→ Markdown) puis injectées
+ * dans le contexte. Scope V1 : extension `.pdf` uniquement (un PDF servi via
+ * Content-Type sans extension n'est pas détectable côté client).
+ */
+export function extractPdfUrls(message: string): string[] {
+  if (!message) return []
+  const matches = message.match(URL_REGEX_GLOBAL)
+  if (!matches) return []
+  const out: string[] = []
+  for (const raw of matches) {
+    // Retire la ponctuation de fin que la regex peut happer (ex: "voir x.pdf.")
+    const cleaned = raw.replace(/[).,;!?]+$/, '')
+    try {
+      const u = new URL(cleaned)
+      if (u.protocol !== 'https:' && u.protocol !== 'http:') continue
+      if (/\.pdf$/i.test(u.pathname)) out.push(cleaned)
+    } catch {
+      // Match non parseable (ex: www.youtube.com sans protocole) → ignoré.
+    }
+  }
+  return [...new Set(out)]
+}
+
 /**
  * Décide si une requête utilisateur doit déclencher une recherche web forcée.
  * Règle posée par l'utilisateur le 10 mai 2026 : recherche internet par défaut
