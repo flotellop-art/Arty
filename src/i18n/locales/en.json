@@ -120,6 +120,11 @@
     "greetingEvening": "Good evening",
     "agendaKicker": "Agenda",
     "intentionsKicker": "Intents",
+    "spark": {
+      "label": "Spark",
+      "description": "Your proactive brief: mail, agenda and next actions.",
+      "prompt": "Give me a full briefing now: summarise my important unread emails and flag the ones awaiting a reply, list my agenda for today and tomorrow, then suggest up to 3 concrete actions to take. Do not perform any action (send, delete, create) without asking me for confirmation first."
+    },
     "suggestions": {
       "title": "Suggestions",
       "unreadEmails": "Show my latest unread emails",

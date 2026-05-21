@@ -120,6 +120,11 @@
     "greetingEvening": "Bonsoir",
     "agendaKicker": "Agenda",
     "intentionsKicker": "Intentions",
+    "spark": {
+      "label": "Spark",
+      "description": "Ton brief proactif : mails, agenda et actions à faire.",
+      "prompt": "Fais-moi un point complet maintenant : résume mes emails non lus importants en signalant ceux qui attendent une réponse, liste mon agenda d'aujourd'hui et de demain, puis propose-moi jusqu'à 3 actions concrètes à faire. Ne réalise aucune action (envoi, suppression, création) sans me demander confirmation d'abord."
+    },
     "suggestions": {
       "title": "Suggestions",
       "unreadEmails": "Montre mes derniers mails non lus",
