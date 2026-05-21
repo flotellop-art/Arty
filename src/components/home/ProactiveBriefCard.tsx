@@ -2,15 +2,18 @@ import { memo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { MarkdownRenderer } from '../shared/MarkdownRenderer'
 import { PrismMark } from '../shared/PrismMark'
+import { getDateLocale } from '../../utils/formatDate'
 import { recordBriefFeedback } from '../../services/proactiveBriefSettings'
-import { ACTION_LABEL_KEY, type BriefItem, type BriefAction } from '../../services/proactiveBriefActions'
+import { ACTION_LABEL_KEY, type BriefActionType, type BriefItem, type BriefAction } from '../../services/proactiveBriefActions'
 
 type BriefState = { items: BriefItem[] } | { text: string } | null
 
 interface Props {
   brief: BriefState
   loading: boolean
+  generatedAt?: number | null
   onDismiss: () => void
+  onRefresh: () => void
   onAction: (action: BriefAction, item: BriefItem) => 'task' | 'chat' | null
   isStreaming?: boolean
 }
@@ -19,34 +22,26 @@ function hasItems(b: BriefState): b is { items: BriefItem[] } {
   return !!b && 'items' in b
 }
 
-function ProactiveBriefCardInner({ brief, loading, onDismiss, onAction, isStreaming }: Props) {
+// Petites icônes par type d'action — réduit la largeur des chips et améliore la
+// scannabilité sur mobile (retour QA).
+function ActionIcon({ type }: { type: BriefActionType }) {
+  const common = { width: 12, height: 12, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const }
+  switch (type) {
+    case 'view_email':
+      return <svg {...common}><rect x="2" y="4" width="20" height="16" rx="2" /><path d="m22 7-10 5L2 7" /></svg>
+    case 'reply':
+      return <svg {...common}><polyline points="9 17 4 12 9 7" /><path d="M20 18v-2a4 4 0 0 0-4-4H4" /></svg>
+    case 'reminder':
+      return <svg {...common}><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
+    case 'schedule':
+      return <svg {...common}><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" /></svg>
+    default:
+      return null
+  }
+}
+
+function BriefSkeleton() {
   const { t } = useTranslation()
-  const [feedback, setFeedback] = useState<null | 'up' | 'down'>(null)
-  // Clés "itemIndex:actionType" des rappels créés, pour afficher un ✓.
-  const [doneActions, setDoneActions] = useState<Set<string>>(new Set())
-
-  // Spinner uniquement quand AUCUNE carte n'est encore affichée (un refresh au
-  // retour dans l'app ne doit pas masquer une carte en cours de lecture).
-  if (loading && !brief) {
-    return (
-      <div className="px-6 pt-7 max-w-3xl">
-        <div className="rounded-[14px] border border-theme-border bg-theme-surface px-4 py-3.5 flex items-center gap-2.5 text-theme-muted">
-          <span className="inline-block h-3.5 w-3.5 rounded-full border-2 border-theme-accent border-t-transparent animate-spin" />
-          <span className="font-display italic text-sm">{t('proactiveBrief.loading')}</span>
-        </div>
-      </div>
-    )
-  }
-  if (!brief) return null
-
-  const handleAction = (action: BriefAction, item: BriefItem, key: string) => {
-    if (isStreaming) return
-    const kind = onAction(action, item)
-    if (kind === 'task') {
-      setDoneActions((prev) => new Set(prev).add(key))
-    }
-  }
-
   return (
     <div className="px-6 pt-7 max-w-3xl">
       <div className="rounded-[14px] border border-theme-border bg-theme-surface overflow-hidden">
@@ -57,15 +52,82 @@ function ProactiveBriefCardInner({ brief, loading, onDismiss, onAction, isStream
               {t('proactiveBrief.title')}
             </span>
           </span>
-          <button
-            onClick={onDismiss}
-            aria-label={t('common.close')}
-            className="text-theme-muted hover:text-theme-ink rounded p-1 transition-colors"
-          >
-            <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
-              <path d="M3 3L13 13M13 3L3 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-            </svg>
-          </button>
+          <span className="font-display italic text-[11px] text-theme-muted">{t('proactiveBrief.loading')}</span>
+        </div>
+        <div className="mx-4 h-px bg-theme-border" />
+        <div className="px-4 py-3.5 space-y-3" aria-hidden="true">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="space-y-1.5">
+              <div className="h-3.5 bg-theme-ink/10 rounded animate-pulse" style={{ width: `${80 - i * 12}%` }} />
+              <div className="flex gap-1.5">
+                <div className="h-4 w-16 bg-theme-ink/5 rounded-md animate-pulse" />
+                <div className="h-4 w-14 bg-theme-ink/5 rounded-md animate-pulse" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ProactiveBriefCardInner({ brief, loading, generatedAt, onDismiss, onRefresh, onAction, isStreaming }: Props) {
+  const { t } = useTranslation()
+  const [feedback, setFeedback] = useState<null | 'up' | 'down'>(null)
+  const [doneActions, setDoneActions] = useState<Set<string>>(new Set())
+
+  // Skeleton uniquement quand AUCUNE carte n'est encore affichée (un refresh ne
+  // doit pas masquer une carte en cours de lecture).
+  if (loading && !brief) return <BriefSkeleton />
+  if (!brief) return null
+
+  const updatedLabel = generatedAt
+    ? new Date(generatedAt).toLocaleTimeString(getDateLocale(), { hour: '2-digit', minute: '2-digit' })
+    : null
+
+  const handleAction = (action: BriefAction, item: BriefItem, key: string) => {
+    if (isStreaming) return
+    if (onAction(action, item) === 'task') {
+      setDoneActions((prev) => new Set(prev).add(key))
+    }
+  }
+
+  return (
+    <div className="px-6 pt-7 max-w-3xl">
+      <div className="rounded-[14px] border border-theme-border bg-theme-surface overflow-hidden">
+        <div className="flex items-center justify-between px-4 pt-3.5 pb-2">
+          <span className="flex items-center gap-2 min-w-0">
+            <PrismMark size={16} color="rgb(var(--theme-accent))" />
+            <span className="font-sans text-[10px] font-semibold uppercase tracking-kicker text-theme-muted">
+              {t('proactiveBrief.title')}
+            </span>
+            {updatedLabel && (
+              <span className="font-sans text-[10px] text-theme-muted/80 truncate">
+                · {t('proactiveBrief.updatedAt', { time: updatedLabel })}
+              </span>
+            )}
+          </span>
+          <span className="flex items-center gap-0.5 shrink-0">
+            <button
+              onClick={onRefresh}
+              disabled={loading}
+              aria-label={t('proactiveBrief.refresh')}
+              className="text-theme-muted hover:text-theme-accent rounded p-1 transition-colors disabled:opacity-50"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={loading ? 'animate-spin' : ''}>
+                <path d="M3 12a9 9 0 0 1 9-9 9 9 0 0 1 6.7 3L21 8M21 3v5h-5M21 12a9 9 0 0 1-9 9 9 9 0 0 1-6.7-3L3 16M3 21v-5h5" />
+              </svg>
+            </button>
+            <button
+              onClick={onDismiss}
+              aria-label={t('common.close')}
+              className="text-theme-muted hover:text-theme-ink rounded p-1 transition-colors"
+            >
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+                <path d="M3 3L13 13M13 3L3 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              </svg>
+            </button>
+          </span>
         </div>
         <div className="mx-4 h-px bg-theme-border" />
 
@@ -88,9 +150,10 @@ function ProactiveBriefCardInner({ brief, loading, onDismiss, onAction, isStream
                             key={j}
                             onClick={() => handleAction(action, item, key)}
                             disabled={isStreaming || done}
-                            className="font-sans text-[11px] px-2 py-0.5 rounded-md border border-theme-border text-theme-muted hover:text-theme-accent hover:border-theme-accent transition-colors disabled:opacity-50"
+                            className="inline-flex items-center gap-1 font-sans text-[11px] px-2 py-0.5 rounded-md border border-theme-border text-theme-muted hover:text-theme-accent hover:border-theme-accent transition-colors disabled:opacity-50"
                           >
-                            {done ? `✓ ${t('proactiveBrief.actions.reminderDone')}` : t(ACTION_LABEL_KEY[action.type])}
+                            <ActionIcon type={action.type} />
+                            {done ? t('proactiveBrief.actions.reminderDone') : t(ACTION_LABEL_KEY[action.type])}
                           </button>
                         )
                       })}

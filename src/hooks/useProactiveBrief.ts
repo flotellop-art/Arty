@@ -56,6 +56,7 @@ export function useProactiveBrief({ gmail, isGoogleConnected, userName, onSend }
   const [brief, setBrief] = useState<BriefState>(null)
   const [loading, setLoading] = useState(false)
   const [dismissed, setDismissed] = useState(false)
+  const [generatedAt, setGeneratedAt] = useState<number | null>(null)
 
   const runningRef = useRef(false)
   const abortRef = useRef<AbortController | null>(null)
@@ -66,16 +67,17 @@ export function useProactiveBrief({ gmail, isGoogleConnected, userName, onSend }
   const onSendRef = useRef(onSend)
   onSendRef.current = onSend
 
-  const runBrief = useCallback(async () => {
+  const runBrief = useCallback(async (force = false) => {
     if (runningRef.current) return
     if (!isProactiveBriefEnabled() || !isGoogleConnected) return
-    if (!isBriefDue()) return
+    if (!force && !isBriefDue()) return
 
     runningRef.current = true
     setDismissed(false)
     setLoading(true)
     // On NE vide PAS `brief` : si une carte est déjà affichée (ex: refresh au
-    // retour dans l'app), elle reste lisible jusqu'à ce que la nouvelle soit prête.
+    // retour dans l'app ou rafraîchissement manuel), elle reste lisible jusqu'à
+    // ce que la nouvelle soit prête.
 
     try {
       // Pré-check GRATUIT (API Google, pas Claude) : sans mail non lu ni
@@ -94,6 +96,7 @@ export function useProactiveBrief({ gmail, isGoogleConnected, userName, onSend }
       const hasEvents = Array.isArray(events) && events.length > 0
       if (!hasMail && !hasEvents) {
         setBrief({ text: i18n.t('proactiveBrief.calm') })
+        setGeneratedAt(Date.now())
         return
       }
 
@@ -164,6 +167,7 @@ export function useProactiveBrief({ gmail, isGoogleConnected, userName, onSend }
       if (captured.data && captured.data.items.length) setBrief({ items: captured.data.items })
       else if (acc.trim()) setBrief({ text: acc.trim() })
       else setBrief({ text: i18n.t('proactiveBrief.calm') })
+      setGeneratedAt(Date.now())
     } catch {
       // On garde une éventuelle carte déjà affichée plutôt que de la vider.
     } finally {
@@ -210,6 +214,10 @@ export function useProactiveBrief({ gmail, isGoogleConnected, userName, onSend }
     abortRef.current?.abort()
   }, [])
 
+  // Rafraîchissement manuel : force la régénération même si on est dans la
+  // fenêtre anti-doublon. Le garde runningRef empêche les clics répétés.
+  const refresh = useCallback(() => { void runBrief(true) }, [runBrief])
+
   // Exécute une action de chip. Le routage est construit côté client (jamais par
   // le modèle) : reminder = tâche locale ; le reste passe par le chat (humain
   // dans la boucle), routé par message_id validé.
@@ -227,7 +235,9 @@ export function useProactiveBrief({ gmail, isGoogleConnected, userName, onSend }
   return {
     brief: dismissed ? null : brief,
     loading: dismissed ? false : loading,
+    generatedAt: dismissed ? null : generatedAt,
     dismiss,
+    refresh,
     runAction,
   }
 }

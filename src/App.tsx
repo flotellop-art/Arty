@@ -411,7 +411,9 @@ function AppContent({
               userName={profileName || userName}
               proactiveBrief={proactiveBrief.brief}
               briefLoading={proactiveBrief.loading}
+              briefGeneratedAt={proactiveBrief.generatedAt}
               onDismissBrief={proactiveBrief.dismiss}
+              onRefreshBrief={proactiveBrief.refresh}
               onBriefAction={proactiveBrief.runAction}
             />
           }

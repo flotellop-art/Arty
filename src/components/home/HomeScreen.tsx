@@ -25,11 +25,13 @@ interface HomeScreenProps {
   userName?: string
   proactiveBrief?: { items: BriefItem[] } | { text: string } | null
   briefLoading?: boolean
+  briefGeneratedAt?: number | null
   onDismissBrief?: () => void
+  onRefreshBrief?: () => void
   onBriefAction?: (action: BriefAction, item: BriefItem) => 'task' | 'chat' | null
 }
 
-function HomeScreenInner({ onMenuToggle, onSend, isStreaming, googleAuth, userName, proactiveBrief, briefLoading, onDismissBrief, onBriefAction }: HomeScreenProps) {
+function HomeScreenInner({ onMenuToggle, onSend, isStreaming, googleAuth, userName, proactiveBrief, briefLoading, briefGeneratedAt, onDismissBrief, onRefreshBrief, onBriefAction }: HomeScreenProps) {
   const { t, i18n } = useTranslation()
   const googleTooltip = useTooltip('google')
 
@@ -158,7 +160,9 @@ function HomeScreenInner({ onMenuToggle, onSend, isStreaming, googleAuth, userNa
         <ProactiveBriefCard
           brief={proactiveBrief ?? null}
           loading={!!briefLoading}
+          generatedAt={briefGeneratedAt ?? null}
           onDismiss={onDismissBrief ?? (() => {})}
+          onRefresh={onRefreshBrief ?? (() => {})}
           onAction={onBriefAction ?? (() => null)}
           isStreaming={isStreaming}
         />
