@@ -120,10 +120,10 @@
     "greetingEvening": "Bonsoir",
     "agendaKicker": "Agenda",
     "intentionsKicker": "Intentions",
-    "spark": {
-      "label": "Spark",
-      "description": "Ton brief proactif : mails, agenda et actions à faire.",
-      "prompt": "Fais-moi un point complet maintenant : résume mes emails non lus importants en signalant ceux qui attendent une réponse, liste mon agenda d'aujourd'hui et de demain, puis propose-moi jusqu'à 3 actions concrètes à faire. Ne réalise aucune action (envoi, suppression, création) sans me demander confirmation d'abord."
+    "discover": {
+      "label": "Découvrir",
+      "description": "Un résumé de tout ce que je peux faire, avec des exemples.",
+      "prompt": "Présente-moi un résumé clair et concis de tout ce que tu sais faire, organisé par domaine (mes mails, mon agenda, mes fichiers Drive, rédaction de texte et d'emails, recherche et résumé d'informations sur le web, analyse de documents et d'images). Pour chaque domaine, donne 1 à 2 exemples concrets de phrases que je pourrais t'écrire. Reste concis et accueillant."
     },
     "suggestions": {
       "title": "Suggestions",

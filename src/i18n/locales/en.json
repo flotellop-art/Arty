@@ -120,10 +120,10 @@
     "greetingEvening": "Good evening",
     "agendaKicker": "Agenda",
     "intentionsKicker": "Intents",
-    "spark": {
-      "label": "Spark",
-      "description": "Your proactive brief: mail, agenda and next actions.",
-      "prompt": "Give me a full briefing now: summarise my important unread emails and flag the ones awaiting a reply, list my agenda for today and tomorrow, then suggest up to 3 concrete actions to take. Do not perform any action (send, delete, create) without asking me for confirmation first."
+    "discover": {
+      "label": "Discover",
+      "description": "A summary of everything I can do, with examples.",
+      "prompt": "Give me a clear, concise summary of everything you can do, organised by area (my email, my calendar, my Drive files, writing text and emails, searching and summarising info from the web, analysing documents and images). For each area, give 1-2 concrete example sentences I could write to you. Keep it concise and welcoming."
     },
     "suggestions": {
       "title": "Suggestions",
