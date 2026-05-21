@@ -136,14 +136,6 @@ function AppContent({
     handleAction,
   } = useAppSetup(conversation)
 
-  // Brief proactif : généré tout seul à l'ouverture / au retour dans l'app
-  // (lecture seule, modèle Haiku, anti-doublon). Rendu sur l'accueil.
-  const proactiveBrief = useProactiveBrief({
-    gmail,
-    isGoogleConnected: googleAuth.isConnected,
-    userName: profileName || userName,
-  })
-
   const handleSendFromHome = useCallback(
     (text: string, files?: FileAttachment[]) => {
       setActionScreenshot(null)
@@ -159,6 +151,17 @@ function AppContent({
     },
     [createConversation, sendMessage, navigate, setActionScreenshot, conversations.length]
   )
+
+  // Brief proactif (façon "Daily Brief") : généré tout seul à l'ouverture / au
+  // retour dans l'app (lecture seule, Haiku, anti-doublon, cadence matin). Les
+  // chips d'action passent par handleSendFromHome (humain dans la boucle) ou une
+  // tâche locale. Rendu sur l'accueil.
+  const proactiveBrief = useProactiveBrief({
+    gmail,
+    isGoogleConnected: googleAuth.isConnected,
+    userName: profileName || userName,
+    onSend: handleSendFromHome,
+  })
 
   const handleNewConversation = useCallback(() => {
     const isFirstConv = conversations.length === 0
@@ -379,6 +382,7 @@ function AppContent({
               proactiveBrief={proactiveBrief.brief}
               briefLoading={proactiveBrief.loading}
               onDismissBrief={proactiveBrief.dismiss}
+              onBriefAction={proactiveBrief.runAction}
             />
           }
         />

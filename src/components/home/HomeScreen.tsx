@@ -4,6 +4,7 @@ import { TopBar } from '../layout/TopBar'
 import { InputBar } from '../layout/InputBar'
 import { PrismMark } from '../shared/PrismMark'
 import { ProactiveBriefCard } from './ProactiveBriefCard'
+import type { BriefItem, BriefAction } from '../../services/proactiveBriefActions'
 import { GoogleConnectButton } from '../google/GoogleConnectButton'
 import { GoogleStatus } from '../google/GoogleStatus'
 import { CalendarView } from '../google/CalendarView'
@@ -22,12 +23,13 @@ interface HomeScreenProps {
   gmail: ReturnType<typeof useGmail>
   drive: ReturnType<typeof useDrive>
   userName?: string
-  proactiveBrief?: string | null
+  proactiveBrief?: { items: BriefItem[] } | { text: string } | null
   briefLoading?: boolean
   onDismissBrief?: () => void
+  onBriefAction?: (action: BriefAction, item: BriefItem) => 'task' | 'chat' | null
 }
 
-function HomeScreenInner({ onMenuToggle, onSend, isStreaming, googleAuth, userName, proactiveBrief, briefLoading, onDismissBrief }: HomeScreenProps) {
+function HomeScreenInner({ onMenuToggle, onSend, isStreaming, googleAuth, userName, proactiveBrief, briefLoading, onDismissBrief, onBriefAction }: HomeScreenProps) {
   const { t, i18n } = useTranslation()
   const googleTooltip = useTooltip('google')
 
@@ -157,6 +159,8 @@ function HomeScreenInner({ onMenuToggle, onSend, isStreaming, googleAuth, userNa
           brief={proactiveBrief ?? null}
           loading={!!briefLoading}
           onDismiss={onDismissBrief ?? (() => {})}
+          onAction={onBriefAction ?? (() => null)}
+          isStreaming={isStreaming}
         />
 
         {/* Discover — one click sends a capabilities summary prompt through the

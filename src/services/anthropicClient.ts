@@ -505,7 +505,10 @@ async function runWithTools(
     // user du 10 mai 2026). Les requêtes "mes mails / mon Drive / agenda"
     // sont exclues car les tools natifs Gmail/Drive/Calendar récupèrent les
     // vraies données — web_search ne ferait qu'halluciner (cf. BUG 12).
-    const webSearchHint = shouldUseWebSearch(lastUserText) ? FORCE_WEB_SEARCH_PROMPT : ''
+    // Pas de forçage web_search sur un appel à modèle imposé (ex: brief
+    // proactif) : son jeu d'outils est restreint et n'inclut pas web_search,
+    // donc pousser le modèle à l'appeler n'aurait aucun sens.
+    const webSearchHint = (!options?.model && shouldUseWebSearch(lastUserText)) ? FORCE_WEB_SEARCH_PROMPT : ''
     const systemText = withThinking + locationContext + webSearchHint
     const systemBlocks = [{ type: 'text', text: systemText, cache_control: { type: 'ephemeral' } }]
     // Add prompt-caching hint to last tool definition. L'ensemble d'outils
