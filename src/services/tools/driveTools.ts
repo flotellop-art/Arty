@@ -160,7 +160,9 @@ export function createDriveHandlers(drive: ReturnType<typeof useDrive>): Record<
       const fileId = input.file_id as string
       if (!fileId) return { result: 'Erreur: ID fichier manquant.' }
       try {
-        // 1. Try text extraction (pdf-parse + OCR)
+        // 1. Try a text read first (Google Docs export to text). PDFs come
+        //    back with empty content → flagged unreadable below → native
+        //    download fallback. No server-side pdf-parse/OCR anymore.
         const data = await callGoogleApi('/api/drive/action', { type: 'read', id: fileId })
         if (data.error) return { result: `Erreur lecture: ${data.error}` }
 
