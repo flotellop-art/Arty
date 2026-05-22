@@ -89,7 +89,7 @@ DISCORD_CHANNEL_ID = "1505556448468406352"
 # Un ID Discord n'est pas un secret. Mettre ici l'ID de Florent (et tout
 # co-equipier autorise). Pour recuperer un ID : Discord > Parametres >
 # Avance > Mode developpeur, puis clic droit sur l'utilisateur > Copier l'ID.
-DISCORD_ALLOWED_USER_IDS = ""
+DISCORD_ALLOWED_USER_IDS = "1304823077259182091"
 
 # Emails recap (apres chaque digest Discord, Haiku traduit en francais simple
 # et Resend envoie). Si RESEND_API_KEY est vide, l'envoi est skip sans erreur.
