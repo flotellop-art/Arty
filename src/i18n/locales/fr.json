@@ -360,9 +360,7 @@
       "loading": "Génération de l'audio...",
       "connectGoogleToListen": "Connecte Google pour écouter",
       "error401": "Session Google expirée. Reconnecte Google.",
-      "errorOpenAiRequired": "Abonnement ou clé OpenAI requis pour la synthèse vocale.",
-      "error403": "Synthèse vocale non disponible en essai gratuit.",
-      "error429": "Quota quotidien de synthèse vocale atteint. Réessaie demain.",
+      "error429": "Limite quotidienne de voix gratuite atteinte. Réessaie demain ou passe à Pro pour la voix illimitée.",
       "error502": "Erreur du service vocal. Réessaie.",
       "errorGeneric": "Erreur de synthèse vocale."
     }

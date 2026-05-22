@@ -124,31 +124,14 @@ function MorningBriefInner({ onClose, onSend, userName, isGoogleConnected }: Pro
       })
 
       if (!res.ok) {
-        let errorMsg = ''
-        try {
-          const errData = await res.json()
-          errorMsg = errData.error || ''
-        } catch {}
-
+        setAudioStatus('error')
         if (res.status === 401) {
-          if (errorMsg.includes('Clé OpenAI requise') || errorMsg.includes('OpenAI key required')) {
-            setAudioStatus('error')
-            setAudioError(t('morningBrief.player.errorOpenAiRequired'))
-          } else {
-            setAudioStatus('error')
-            setAudioError(t('morningBrief.player.error401'))
-          }
-        } else if (res.status === 403) {
-          setAudioStatus('error')
-          setAudioError(t('morningBrief.player.error403'))
+          setAudioError(t('morningBrief.player.error401'))
         } else if (res.status === 429) {
-          setAudioStatus('error')
           setAudioError(t('morningBrief.player.error429'))
         } else if (res.status === 502) {
-          setAudioStatus('error')
           setAudioError(t('morningBrief.player.error502'))
         } else {
-          setAudioStatus('error')
           setAudioError(t('morningBrief.player.errorGeneric'))
         }
         return

@@ -360,9 +360,7 @@
       "loading": "Generating audio...",
       "connectGoogleToListen": "Connect Google to listen",
       "error401": "Google session expired. Reconnect Google.",
-      "errorOpenAiRequired": "Subscription or OpenAI key required for text-to-speech.",
-      "error403": "Text-to-speech not available during free trial.",
-      "error429": "Daily text-to-speech quota reached. Try again tomorrow.",
+      "error429": "Daily free voice limit reached. Try again tomorrow or upgrade to Pro for unlimited voice.",
       "error502": "Voice service error. Try again.",
       "errorGeneric": "Text-to-speech error."
     }
