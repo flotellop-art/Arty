@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#FAF3E7" />
+<title>Politique de confidentialité — Arty</title>
+<meta name="description" content="Politique de confidentialité Arty : quelles données nous traitons, à quelles fins, vos droits RGPD, et les fournisseurs auxquels nous transmettons votre contenu." />
+<meta property="og:title" content="Politique de confidentialité — Arty" />
+<meta property="og:description" content="Quelles données nous traitons, à quelles fins, et vos droits." />
+<meta property="og:type" content="article" />
+<meta property="og:url" content="https://tryarty.com/privacy" />
+<link rel="canonical" href="https://tryarty.com/privacy" />
+<link rel="alternate" hreflang="fr" href="https://tryarty.com/privacy" />
+<link rel="alternate" hreflang="en" href="https://tryarty.com/privacy/en" />
+<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400;0,500;0,700;1,400&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --cream: #FAF3E7;
+    --ink: #0D0D0D;
+    --orange: #C85A28;
+    --muted: #6B6B6B;
+    --line: #E5DED0;
+    --bg-soft: #F3EBDB;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-font-smoothing: antialiased; }
+  html, body { background: var(--cream); color: var(--ink); font-family: 'Instrument Sans', system-ui, sans-serif; font-feature-settings: 'kern' 1, 'liga' 1; }
+  body { min-height: 100vh; display: flex; flex-direction: column; }
+  .page { max-width: 760px; margin: 0 auto; padding: 64px 32px 96px; flex: 1; width: 100%; }
+  .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 32px; font-size: 14px; }
+  .topbar a { color: var(--muted); text-decoration: none; padding: 4px 0; }
+  .topbar a:hover { color: var(--ink); }
+  .lang-switch a { font-family: 'JetBrains Mono', monospace; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; }
+  .lang-switch a.active { color: var(--ink); border-bottom: 1.5px solid var(--orange); padding-bottom: 2px; }
+  .badge { display: inline-flex; align-items: center; gap: 8px; font-family: 'JetBrains Mono', monospace; font-size: 13px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--muted); margin-bottom: 16px; }
+  .badge::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--orange); }
+  h1 { font-family: 'Instrument Sans', sans-serif; font-weight: 700; font-size: clamp(34px, 5.5vw, 48px); line-height: 1.1; letter-spacing: -0.02em; margin-bottom: 20px; }
+  h2 { font-family: 'Instrument Sans', sans-serif; font-weight: 700; font-size: clamp(20px, 2.5vw, 24px); line-height: 1.25; margin-top: 48px; margin-bottom: 16px; letter-spacing: -0.01em; }
+  h2:first-of-type { margin-top: 32px; }
+  p { font-size: 16px; line-height: 1.65; margin-bottom: 16px; }
+  p.lede { font-size: clamp(17px, 2vw, 19px); line-height: 1.55; color: var(--ink); margin-bottom: 24px; }
+  p.lede em { font-family: 'Instrument Serif', serif; font-style: italic; }
+  strong { font-weight: 700; }
+  a { color: var(--orange); text-decoration: underline; text-underline-offset: 3px; }
+  a:hover { color: var(--ink); }
+  ul, ol { margin: 0 0 16px 24px; }
+  li { font-size: 16px; line-height: 1.65; margin-bottom: 6px; }
+  .meta { background: var(--bg-soft); border-left: 3px solid var(--orange); padding: 16px 20px; margin-bottom: 24px; font-size: 15px; line-height: 1.6; border-radius: 0 6px 6px 0; }
+  .meta strong { display: inline-block; min-width: 130px; }
+  .meta div { margin-bottom: 4px; }
+  .meta div:last-child { margin-bottom: 0; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 24px; font-size: 14.5px; line-height: 1.5; }
+  th { text-align: left; padding: 12px 14px; background: var(--bg-soft); border-bottom: 2px solid var(--line); font-weight: 700; }
+  td { padding: 12px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  td code { font-family: 'JetBrains Mono', monospace; font-size: 13px; background: var(--bg-soft); padding: 1px 5px; border-radius: 3px; }
+  code { font-family: 'JetBrains Mono', monospace; font-size: 14px; background: var(--bg-soft); padding: 1px 5px; border-radius: 3px; }
+  hr { border: none; border-top: 1px solid var(--line); margin: 48px 0; }
+  .footer { font-size: 13px; color: var(--muted); padding: 32px; text-align: center; border-top: 1px solid var(--line); }
+  .footer a { color: var(--muted); text-decoration: underline; text-underline-offset: 3px; }
+  @media (max-width: 640px) {
+    .page { padding: 40px 20px 64px; }
+    table { font-size: 13.5px; }
+    th, td { padding: 10px 10px; }
+    h2 { margin-top: 36px; }
+    .meta strong { display: block; min-width: 0; margin-bottom: 2px; }
+  }
+</style>
+</head>
+<body>
+<main class="page">
+  <div class="topbar">
+    <a href="/">← tryarty.com</a>
+    <div class="lang-switch">
+      <a class="active" href="/privacy">FR</a> · <a href="/privacy/en">EN</a>
+    </div>
+  </div>
+
+  <div class="badge">Politique de confidentialité</div>
+  <h1>Vos données, vos droits.</h1>
+
+  <div class="meta">
+    <div><strong>Dernière mise à jour :</strong> 22 mai 2026</div>
+    <div><strong>Éditeur :</strong> Florent Pollet, personne physique, domicilié 884 chemin de la Prairie, 38270 Beaufort, France. Aucune entreprise n'est immatriculée à ce jour ; un SIREN sera ajouté à cette politique dès l'enregistrement de l'activité, prévu avant le lancement public et les premiers paiements.</div>
+    <div><strong>Contact :</strong> <a href="mailto:flotellop@gmail.com">flotellop@gmail.com</a></div>
+  </div>
+
+  <p class="lede">Arty est un assistant IA personnel (application mobile Android et application web <code>tryarty.com</code>). La présente politique explique quelles données personnelles nous traitons, à quelles fins, sur quelles bases légales, à qui nous les transmettons, combien de temps nous les conservons, et quels sont vos droits.</p>
+
+  <h2>1. Responsable de traitement</h2>
+  <p>Le responsable de traitement au sens du RGPD est Florent Pollet, personne physique (coordonnées ci-dessus). Aucun délégué à la protection des données (DPO) n'est désigné, car l'activité ne remplit pas les critères de l'article 37 RGPD.</p>
+
+  <h2>2. Données que nous traitons</h2>
+  <table>
+    <thead><tr><th>Catégorie</th><th>Données</th><th>Source</th></tr></thead>
+    <tbody>
+      <tr><td>Identité de connexion</td><td>Email, nom complet, photo de profil</td><td>Connexion Google (OAuth)</td></tr>
+      <tr><td>Contenu utilisateur</td><td>Messages, fichiers et pièces jointes envoyés à l'assistant</td><td>Vous</td></tr>
+      <tr><td>Données Google Workspace</td><td>Selon les fonctionnalités utilisées : envoi d'emails (Gmail), lecture et création d'événements (Calendar), contacts (Contacts)</td><td>Vos comptes Google, sur votre demande explicite</td></tr>
+      <tr><td>Localisation</td><td>Position géographique approximative</td><td>Capteur GPS de votre appareil, uniquement si activé</td></tr>
+      <tr><td>Données de paiement</td><td>Email + transaction, sans coordonnées bancaires</td><td>Vous + Lemon Squeezy</td></tr>
+      <tr><td>Inscription waitlist</td><td>Email (pré-lancement uniquement)</td><td>Formulaire Tally</td></tr>
+    </tbody>
+  </table>
+  <p>Nous ne traçons pas votre navigation à des fins publicitaires et n'utilisons aucun profilage commercial.</p>
+
+  <h2>3. Finalités et bases légales</h2>
+  <table>
+    <thead><tr><th>Finalité</th><th>Base légale (RGPD article 6)</th></tr></thead>
+    <tbody>
+      <tr><td>Authentification et fourniture du service (compte, conversations, IA, connecteurs Google)</td><td>Exécution du contrat — vos conditions d'utilisation</td></tr>
+      <tr><td>Réponses géolocalisées</td><td>Consentement explicite (vous activez la localisation)</td></tr>
+      <tr><td>Paiements (abonnement Pro)</td><td>Exécution du contrat + obligation légale comptable</td></tr>
+      <tr><td>Lutte contre la fraude et sécurité du service (logs techniques, kill-switch chiffrement)</td><td>Intérêt légitime</td></tr>
+      <tr><td>Communication pré-lancement (waitlist)</td><td>Consentement (inscription volontaire au formulaire)</td></tr>
+    </tbody>
+  </table>
+
+  <h2>4. Partage avec des tiers (sous-traitants RGPD article 28)</h2>
+  <p>Vos données sont transmises, <strong>uniquement pour les finalités ci-dessus</strong>, aux prestataires suivants :</p>
+  <table>
+    <thead><tr><th>Prestataire</th><th>Rôle</th><th>Localisation</th><th>Garantie</th></tr></thead>
+    <tbody>
+      <tr><td>Cloudflare</td><td>Hébergement Workers, Pages, KV (proxy API, stockage clés non sensibles, distribution du site)</td><td>UE + monde (CDN)</td><td>Standard Contractual Clauses (SCC), DPA Cloudflare</td></tr>
+      <tr><td>Anthropic (Claude)</td><td>Génération de réponses IA</td><td>États-Unis</td><td>SCC + EU-US Data Privacy Framework</td></tr>
+      <tr><td>OpenAI</td><td>Génération de réponses IA (selon le modèle choisi)</td><td>États-Unis</td><td>SCC + EU-US Data Privacy Framework</td></tr>
+      <tr><td>Google (Gemini + Workspace)</td><td>Génération de réponses IA + connecteurs Gmail/Calendar/Contacts</td><td>UE + États-Unis</td><td>SCC + EU-US Data Privacy Framework</td></tr>
+      <tr><td>Mistral AI</td><td>Génération de réponses IA</td><td>France (UE)</td><td>Hébergement UE direct</td></tr>
+      <tr><td>Lemon Squeezy (Stripe)</td><td>Traitement des paiements abonnement Pro</td><td>États-Unis</td><td>SCC + EU-US Data Privacy Framework, gestion PCI-DSS</td></tr>
+      <tr><td>Resend</td><td>Envoi d'emails transactionnels (notifications, récap)</td><td>UE</td><td>DPA Resend</td></tr>
+      <tr><td>Tally</td><td>Formulaire de waitlist (pré-lancement)</td><td>UE</td><td>DPA Tally</td></tr>
+    </tbody>
+  </table>
+  <p><strong>Aucun partage à des fins publicitaires. Aucune revente. Aucun courtage de données.</strong></p>
+  <p>Pour obtenir une copie des SCC signées avec un prestataire, contactez <a href="mailto:flotellop@gmail.com">flotellop@gmail.com</a>.</p>
+
+  <h2>5. Conformité Google API (Limited Use)</h2>
+  <p>L'utilisation par Arty des données reçues des API Google, et leur transfert vers toute autre application, respectent la <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>, y compris les exigences <strong>Limited Use</strong> :</p>
+  <ul>
+    <li>l'accès à vos données Google se fait uniquement pour vous fournir les fonctionnalités que vous demandez ;</li>
+    <li>nous n'utilisons pas ces données à des fins publicitaires ;</li>
+    <li>nous ne les vendons pas ;</li>
+    <li>nous ne les utilisons pas pour entraîner des modèles d'IA généralistes ;</li>
+    <li>aucun humain n'accède à ces données, sauf accord explicite de votre part, pour des raisons de sécurité documentées, ou si la loi l'exige.</li>
+  </ul>
+
+  <h2>6. Sécurité</h2>
+  <ul>
+    <li><strong>Chiffrement au repos sur l'appareil :</strong> vos conversations, vos pièces jointes (IndexedDB) et vos clés API personnelles (BYOK) sont chiffrées en AES-256-GCM via la Web Crypto API. La clé de chiffrement est dérivée localement et ne quitte jamais votre appareil.</li>
+    <li><strong>Chiffrement en transit :</strong> toutes les communications utilisent HTTPS (TLS 1.2+).</li>
+    <li><strong>Serveur :</strong> nous ne stockons côté serveur que l'email d'authentification et le jeton OAuth Google nécessaire à la fourniture du service. Les conversations, pièces jointes et clés API ne sont jamais stockées sur nos serveurs.</li>
+    <li><strong>Clés API serveur :</strong> jamais exposées dans l'application cliente. Stockées en secrets Cloudflare Workers.</li>
+  </ul>
+
+  <h2>7. Stockage local sur votre appareil</h2>
+  <p>Pour fonctionner, l'application stocke localement (sur votre appareil, jamais envoyé serveur) :</p>
+  <ul>
+    <li><strong>localStorage :</strong> préférences (langue, onboarding, plan), identifiant d'appareil non personnel, hash de votre email pour la reconnexion, clés API personnelles BYOK chiffrées, état trial.</li>
+    <li><strong>sessionStorage :</strong> état OAuth Google (protection CSRF), messages d'erreur transitoires.</li>
+    <li><strong>IndexedDB :</strong> pièces jointes (images, PDFs) chiffrées AES-256.</li>
+  </ul>
+  <p>Ces stockages sont <strong>strictement nécessaires au service</strong> au sens de l'article 82 de la loi Informatique et Libertés (transposition de la directive ePrivacy) — leur consentement n'est donc pas requis.</p>
+  <p>Nous n'utilisons <strong>aucun cookie</strong> de tracking ni d'analyse. Le chargement des polices d'écriture peut entraîner des requêtes vers <code>fonts.googleapis.com</code> (Google Fonts), susceptibles de poser un cookie tiers de session lié à Google ; nous prévoyons de basculer en auto-hébergement de ces polices avant le lancement public.</p>
+
+  <h2>8. Conservation des données</h2>
+  <table>
+    <thead><tr><th>Catégorie</th><th>Durée</th></tr></thead>
+    <tbody>
+      <tr><td>Compte (email + jeton OAuth)</td><td>Tant que votre compte est actif. Suppression sous 30 jours après votre demande.</td></tr>
+      <tr><td>Conversations et pièces jointes</td><td>Stockées uniquement sur votre appareil. Effacées par « déconnexion + effacement » dans l'application.</td></tr>
+      <tr><td>Données de paiement</td><td>10 ans (obligation légale comptable, article L123-22 Code de commerce).</td></tr>
+      <tr><td>Logs techniques serveur (Cloudflare Workers, anti-abus)</td><td>12 mois maximum.</td></tr>
+      <tr><td>Email waitlist (pré-lancement)</td><td>Jusqu'au lancement de l'application + 12 mois, ou désinscription, selon la première éventualité.</td></tr>
+      <tr><td>Contenu transmis aux fournisseurs d'IA</td><td>Non conservé sur nos serveurs au-delà du traitement de la requête. Conservation chez le fournisseur selon sa propre politique (Anthropic 30 j, OpenAI 30 j, Google variable, Mistral 30 j).</td></tr>
+    </tbody>
+  </table>
+
+  <h2>9. Vos droits (RGPD)</h2>
+  <p>Vous disposez des droits suivants sur vos données personnelles :</p>
+  <ul>
+    <li><strong>Accès :</strong> obtenir copie de vos données.</li>
+    <li><strong>Rectification :</strong> corriger des données inexactes.</li>
+    <li><strong>Suppression</strong> (« droit à l'oubli ») : supprimer vos données.</li>
+    <li><strong>Limitation :</strong> restreindre temporairement le traitement.</li>
+    <li><strong>Opposition :</strong> refuser un traitement fondé sur l'intérêt légitime.</li>
+    <li><strong>Portabilité :</strong> récupérer vos données dans un format structuré.</li>
+    <li><strong>Retrait du consentement :</strong> à tout moment, sans effet rétroactif.</li>
+  </ul>
+  <p>Pour exercer vos droits : <a href="mailto:flotellop@gmail.com">flotellop@gmail.com</a>. Réponse sous 30 jours maximum.</p>
+  <p><strong>Droit de réclamation :</strong> si vous estimez que vos droits ne sont pas respectés, vous pouvez introduire une réclamation auprès de la CNIL : <a href="https://www.cnil.fr/fr/plaintes">www.cnil.fr/fr/plaintes</a>.</p>
+
+  <h2>10. Mineurs</h2>
+  <p>Arty n'est pas destiné aux personnes de moins de 16 ans en France ni de moins de 13 ans dans les juridictions appliquant COPPA (États-Unis). Si vous découvrez qu'un mineur a créé un compte, écrivez-nous à <a href="mailto:flotellop@gmail.com">flotellop@gmail.com</a> et le compte sera supprimé.</p>
+
+  <h2>11. Modifications de cette politique</h2>
+  <p>Cette politique peut évoluer. Toute modification substantielle vous sera notifiée par email au moins <strong>30 jours avant son entrée en vigueur</strong>. La date de dernière mise à jour figure en tête de page. La version archivée des politiques précédentes est disponible sur demande à <a href="mailto:flotellop@gmail.com">flotellop@gmail.com</a>.</p>
+
+</main>
+<footer class="footer">
+  Arty arrive en juillet 2026. <a href="/waitlist">Rejoindre la waitlist</a> · <a href="/privacy/en">English version</a>
+</footer>
+</body>
+</html>
