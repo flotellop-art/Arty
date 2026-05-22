@@ -103,11 +103,15 @@ function MorningBriefInner({ onClose, onSend, userName, isGoogleConnected }: Pro
     setAudioError(null)
 
     try {
-      const text = await buildBriefSpeechText(userName, isGoogleConnected)
+      let text = await buildBriefSpeechText(userName, isGoogleConnected)
       if (!text || !text.trim()) {
         setAudioStatus('error')
         setAudioError(t('morningBrief.player.errorGeneric'))
         return
+      }
+
+      if (text.length > 4096) {
+        text = text.slice(0, 4096)
       }
 
       const res = await fetch(apiUrl('/api/ai/tts'), {
@@ -120,12 +124,29 @@ function MorningBriefInner({ onClose, onSend, userName, isGoogleConnected }: Pro
       })
 
       if (!res.ok) {
-        if (res.status === 401 || res.status === 403) {
+        let errorMsg = ''
+        try {
+          const errData = await res.json()
+          errorMsg = errData.error || ''
+        } catch {}
+
+        if (res.status === 401) {
+          if (errorMsg.includes('Clé OpenAI requise') || errorMsg.includes('OpenAI key required')) {
+            setAudioStatus('error')
+            setAudioError(t('morningBrief.player.errorOpenAiRequired'))
+          } else {
+            setAudioStatus('error')
+            setAudioError(t('morningBrief.player.error401'))
+          }
+        } else if (res.status === 403) {
           setAudioStatus('error')
-          setAudioError(t('morningBrief.player.error401'))
+          setAudioError(t('morningBrief.player.error403'))
         } else if (res.status === 429) {
           setAudioStatus('error')
           setAudioError(t('morningBrief.player.error429'))
+        } else if (res.status === 502) {
+          setAudioStatus('error')
+          setAudioError(t('morningBrief.player.error502'))
         } else {
           setAudioStatus('error')
           setAudioError(t('morningBrief.player.errorGeneric'))
