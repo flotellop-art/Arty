@@ -105,13 +105,41 @@ export async function scheduleNotification(
     return showNotification(title, body, tag)
   }
 
+  // Natif (APK) : planifier via le scheduler OS (LocalNotifications). C'est le
+  // SEUL chemin fiable pour qu'un rappel futur se déclenche même app fermée.
+  // Le setTimeout / Service Worker ne survivent pas à la fermeture (le SW est
+  // tué par l'OS après quelques secondes). `at` accepte une date future.
+  if (isNativeApp()) {
+    try {
+      const { LocalNotifications } = await import('@capacitor/local-notifications')
+      await LocalNotifications.schedule({
+        notifications: [
+          {
+            // id doit tenir sur un int32 positif (contrainte Android).
+            id: Math.floor(Date.now() % 2_000_000_000),
+            title,
+            body,
+            schedule: { at: new Date(Date.now() + delayMs) },
+            smallIcon: 'ic_stat_icon',
+          },
+        ],
+      })
+      return
+    } catch (err) {
+      console.warn('[notificationService] native schedule failed, fallback setTimeout:', err)
+      // on retombe sur le setTimeout ci-dessous
+    }
+  }
+
+  // Web : on tente le Service Worker, sinon setTimeout (best-effort, tab ouvert).
+  // Limite connue PWA : aucun des deux ne survit de façon fiable à la fermeture
+  // pour un délai long (le SW est tué). Une vraie planification web nécessiterait
+  // un push serveur — voir ROADMAP.md (v2).
   const reg = await getRegistration()
   if (reg && reg.active) {
     reg.active.postMessage({ type: 'schedule-notification', title, body, delayMs, tag })
     return
   }
-
-  // Fallback: setTimeout (only fires while the tab is open)
   setTimeout(() => { void showNotification(title, body, tag) }, delayMs)
 }
 
