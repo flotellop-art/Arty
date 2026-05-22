@@ -35,12 +35,31 @@ Donc **on ne peut PAS simplement "rétrécir" ces scopes sans supprimer des fonc
 
 **Conséquence** : publier en grand public avec ces fonctionnalités impose la vérification Google la plus lourde, dont un **audit de sécurité annuel par un labo agréé (CASA)** — payant (souvent plusieurs centaines à quelques milliers de $/an) et long.
 
-**Trois options** (décision produit) :
-- **A — Tout garder** : on assume la vérification + CASA. Coût + délai, mais Arty garde toutes ses capacités Gmail/Drive.
-- **B — v1 sans Gmail-lecture ni Drive-parcours** : on retire `gmail.readonly`, `gmail.modify`, `drive` pour la v1. On garde `gmail.send`/compose, `calendar`, `contacts` (tous sensibles → **pas de CASA**). Lancement plus rapide, moins de features. On rajoute le reste en v2 une fois le CASA fait.
-- **C — Hybride** : garder la lecture Gmail (CASA Gmail) mais passer Drive en `drive.file` (perd le parcours Drive, mais réduit la surface).
+### ✅ Décision prise : Option B — v1 allégée (pas de CASA)
 
-> Statut : **EN ATTENTE de décision Florent.** Tant que non tranché, on ne touche pas à `SCOPES`.
+Pour le **lancement public**, on retire les 3 scopes restreints (`gmail.readonly`,
+`gmail.modify`, `drive`). Scopes v1 conservés (tous **sensibles ou basiques →
+pas de CASA**) :
+- `gmail.send` (+ `gmail.compose` si on garde la création de brouillons),
+- `calendar`, `calendar.events`,
+- `contacts`,
+- `userinfo.email`, `userinfo.profile`.
+
+Fonctionnalités **retirées de la v1** : lecture/résumé des mails, archive/
+corbeille/étoile/label, parcours et gestion du Drive. À réintroduire en v2
+une fois la vérification + CASA passés.
+
+> **Nuance calendrier** : pendant la **beta fermée (< 100 utilisateurs)**, Google
+> n'exige ni vérification ni CASA → on peut garder TOUTES les fonctions pendant
+> la beta. Le retrait des scopes restreints + le masquage des features associées
+> ne doit être effectif que **pour le lancement public**. Donc pas d'urgence ;
+> on prépare la version allégée en parallèle de la beta.
+
+> **Implémentation** (frontend, zone Gemini) : éditer `SCOPES` dans
+> `src/services/googleAuth.ts`, masquer l'UI Gmail-lecture/gestion + Drive, et
+> retirer les tool definitions IA correspondantes pour ne pas laisser de boutons
+> qui renvoient 403. Le tout dans une seule PR (pas de fenêtre prod cassée).
+> Revue sécu par Claude (changement de scopes).
 
 ### Justifications par scope (texte EN à coller dans la vérification OAuth)
 
