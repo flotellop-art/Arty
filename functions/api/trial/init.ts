@@ -1,7 +1,7 @@
 import type { Env } from '../../env'
 import {
   parseAllowedEmails,
-  trialCounterKey,
+  ensureTrialTable,
   TRIAL_INITIAL_BUDGET,
 } from '../_lib/checkAllowedUser'
 
@@ -22,7 +22,8 @@ import {
  *   4. Sinon, regarde si une ligne `subscriptions` existe déjà :
  *        - trial active  → retourne le compteur courant
  *        - autre plan    → retourne le plan tel quel
- *   5. Sinon (nouveau user) → INSERT 'trial' active + KV `trial:{email}` = 30
+ *   5. Sinon (nouveau user) → INSERT 'trial' active. Le compteur D1 `trial_usage`
+ *      est créé au 1er message (absence de ligne = 0 consommé = 30 restants).
  *      → retourne `{ plan: 'trial', trial_messages_remaining: 30 }`.
  */
 
@@ -59,12 +60,21 @@ async function verifyTokenViaTokeninfo(token: string, expectedAud: string | unde
   }
 }
 
-async function readTrialCounter(env: Env, email: string): Promise<number> {
-  if (!env.KV) return 0
-  const raw = await env.KV.get(trialCounterKey(email))
-  if (raw === null) return 0
-  const n = parseInt(raw, 10)
-  return Number.isFinite(n) ? Math.max(0, n) : 0
+async function readTrialRemaining(env: Env, email: string): Promise<number> {
+  if (!env.DB) return TRIAL_INITIAL_BUDGET
+  try {
+    await ensureTrialTable(env)
+    const row = await env.DB.prepare(
+      `SELECT used FROM trial_usage WHERE email = ?1`
+    )
+      .bind(email)
+      .first<{ used: number }>()
+    const used = row?.used ?? 0
+    return Math.max(0, TRIAL_INITIAL_BUDGET - used)
+  } catch (err) {
+    console.error('[trial/init] read remaining failed', err)
+    return TRIAL_INITIAL_BUDGET
+  }
 }
 
 function jsonOk(body: TrialInitResponse): Response {
@@ -126,7 +136,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
 
   if (existing) {
     if (existing.plan_type === 'trial' && existing.status === 'active') {
-      const remaining = await readTrialCounter(env, email)
+      const remaining = await readTrialRemaining(env, email)
       return jsonOk({ plan: 'trial', trial_messages_remaining: remaining })
     }
     // Plan non-trial déjà en place → retourne tel quel sans créer de trial.
@@ -154,10 +164,8 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     return Response.json({ error: 'database_error' }, { status: 503 })
   }
 
-  if (env.KV) {
-    await env.KV.put(trialCounterKey(email), String(TRIAL_INITIAL_BUDGET))
-  }
-
+  // Pas d'init de compteur : la table D1 trial_usage est créée au 1er message
+  // (absence de ligne = 0 consommé = budget plein).
   return jsonOk({
     plan: 'trial',
     trial_messages_remaining: TRIAL_INITIAL_BUDGET,
