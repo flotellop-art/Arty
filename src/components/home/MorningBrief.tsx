@@ -1,4 +1,4 @@
-import { memo, useEffect, useState } from 'react'
+import { memo, useEffect, useState, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { CalendarEvent } from '../../types/google'
 import { listEvents } from '../../services/calendarClient'
@@ -7,8 +7,11 @@ import {
   scheduleMorningNotification,
   getGreeting,
   formatEventTime,
+  buildBriefSpeechText,
 } from '../../services/morningBriefService'
 import { getDateLocale } from '../../utils/formatDate'
+import { getValidAccessToken } from '../../services/googleAuth'
+import { apiUrl } from '../../services/apiBase'
 
 interface Props {
   onClose: () => void
@@ -21,6 +24,24 @@ function MorningBriefInner({ onClose, onSend, userName, isGoogleConnected }: Pro
   const { t } = useTranslation()
   const [events, setEvents] = useState<CalendarEvent[]>([])
   const [loading, setLoading] = useState(true)
+
+  const [audioStatus, setAudioStatus] = useState<'idle' | 'loading' | 'playing' | 'paused' | 'error'>('idle')
+  const [audioError, setAudioError] = useState<string | null>(null)
+  const [audioUrl, setAudioUrl] = useState<string | null>(null)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+
+  const stopAudio = () => {
+    if (audioRef.current) {
+      audioRef.current.pause()
+      audioRef.current.src = ''
+      audioRef.current = null
+    }
+    if (audioUrl) {
+      URL.revokeObjectURL(audioUrl)
+      setAudioUrl(null)
+    }
+    setAudioStatus('idle')
+  }
 
   useEffect(() => {
     markBriefShown()
@@ -37,19 +58,136 @@ function MorningBriefInner({ onClose, onSend, userName, isGoogleConnected }: Pro
       .finally(() => setLoading(false))
   }, [isGoogleConnected, userName])
 
+  useEffect(() => {
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause()
+        audioRef.current.src = ''
+      }
+      if (audioUrl) {
+        URL.revokeObjectURL(audioUrl)
+      }
+    }
+  }, [audioUrl])
+
+  const handlePlayPause = async () => {
+    if (audioStatus === 'playing') {
+      audioRef.current?.pause()
+      return
+    }
+
+    if (audioStatus === 'paused' && audioRef.current) {
+      try {
+        await audioRef.current.play()
+      } catch (e) {
+        setAudioStatus('error')
+        setAudioError(t('morningBrief.player.errorGeneric'))
+      }
+      return
+    }
+
+    let token: string | null = null
+    try {
+      token = await getValidAccessToken()
+    } catch {
+      // Ignored
+    }
+
+    if (!token) {
+      setAudioStatus('error')
+      setAudioError(t('morningBrief.player.connectGoogleToListen'))
+      return
+    }
+
+    setAudioStatus('loading')
+    setAudioError(null)
+
+    try {
+      const text = await buildBriefSpeechText(userName, isGoogleConnected)
+      if (!text || !text.trim()) {
+        setAudioStatus('error')
+        setAudioError(t('morningBrief.player.errorGeneric'))
+        return
+      }
+
+      const res = await fetch(apiUrl('/api/ai/tts'), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-google-token': token,
+        },
+        body: JSON.stringify({ text, voice: 'alloy' }),
+      })
+
+      if (!res.ok) {
+        if (res.status === 401 || res.status === 403) {
+          setAudioStatus('error')
+          setAudioError(t('morningBrief.player.error401'))
+        } else if (res.status === 429) {
+          setAudioStatus('error')
+          setAudioError(t('morningBrief.player.error429'))
+        } else {
+          setAudioStatus('error')
+          setAudioError(t('morningBrief.player.errorGeneric'))
+        }
+        return
+      }
+
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+
+      if (audioRef.current) {
+        audioRef.current.pause()
+        audioRef.current.src = ''
+      }
+      if (audioUrl) {
+        URL.revokeObjectURL(audioUrl)
+      }
+
+      setAudioUrl(url)
+
+      const audio = new Audio(url)
+      audioRef.current = audio
+
+      audio.addEventListener('playing', () => setAudioStatus('playing'))
+      audio.addEventListener('pause', () => setAudioStatus('paused'))
+      audio.addEventListener('ended', () => {
+        setAudioStatus('idle')
+        URL.revokeObjectURL(url)
+        setAudioUrl(null)
+      })
+      audio.addEventListener('error', () => {
+        setAudioStatus('error')
+        setAudioError(t('morningBrief.player.errorGeneric'))
+      })
+
+      await audio.play()
+    } catch (e) {
+      setAudioStatus('error')
+      setAudioError(t('morningBrief.player.errorGeneric'))
+    }
+  }
+
+  const handleClose = () => {
+    stopAudio()
+    onClose()
+  }
+
   const today = new Date().toLocaleDateString(getDateLocale(), {
     weekday: 'long', day: 'numeric', month: 'long',
   })
 
   const handleQuickAction = (text: string) => {
+    stopAudio()
     onClose()
     setTimeout(() => onSend(text), 150)
   }
 
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-theme-ink/40 backdrop-blur-sm"
-      onClick={onClose}
+      onClick={handleClose}
     >
       <div
         className="bg-theme-bg text-theme-ink w-full sm:max-w-md rounded-t-3xl sm:rounded-sm shadow-2xl overflow-hidden border border-theme-border"
@@ -62,7 +200,7 @@ function MorningBriefInner({ onClose, onSend, userName, isGoogleConnected }: Pro
               {t('morningBrief.kicker')}<span className="capitalize">{today}</span>
             </span>
             <button
-              onClick={onClose}
+              onClick={handleClose}
               className="text-theme-ink hover:bg-theme-ink/5 rounded p-1 transition-colors"
               aria-label={t('common.close')}
             >
@@ -80,10 +218,66 @@ function MorningBriefInner({ onClose, onSend, userName, isGoogleConnected }: Pro
             {t('morningBrief.heroLine1')}<br />
             <span className="italic text-theme-accent">{t('morningBrief.heroLine2')}</span>
           </h1>
-          <p className="font-display italic text-theme-muted text-sm mt-2">
-            {getGreeting(userName)}
-          </p>
+          <div className="flex items-center justify-between mt-3 gap-2">
+            <p className="font-display italic text-theme-muted text-sm">
+              {getGreeting(userName)}
+            </p>
+            <div className="flex items-center">
+              {!isGoogleConnected ? (
+                <button
+                  disabled
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-theme-border text-theme-muted font-sans text-[11px] cursor-not-allowed opacity-60"
+                  title={t('morningBrief.player.connectGoogleToListen')}
+                >
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"/>
+                  </svg>
+                  <span>{t('morningBrief.player.listen')}</span>
+                </button>
+              ) : (
+                <button
+                  onClick={handlePlayPause}
+                  disabled={audioStatus === 'loading'}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-theme-ink text-theme-bg hover:opacity-90 active:scale-95 transition-all font-sans text-[11px] font-medium shadow-sm"
+                >
+                  {audioStatus === 'loading' ? (
+                    <>
+                      <span className="w-3 h-3 border-2 border-theme-bg border-t-transparent rounded-full animate-spin" />
+                      <span>{t('morningBrief.player.loading')}</span>
+                    </>
+                  ) : audioStatus === 'playing' ? (
+                    <>
+                      <div className="flex items-end gap-0.5 h-3 w-3 py-0.5">
+                        <span className="w-[1.5px] bg-theme-bg rounded-full animate-wave-bar-1" />
+                        <span className="w-[1.5px] bg-theme-bg rounded-full animate-wave-bar-2" />
+                        <span className="w-[1.5px] bg-theme-bg rounded-full animate-wave-bar-3" />
+                      </div>
+                      <span>{t('morningBrief.player.pause')}</span>
+                    </>
+                  ) : (
+                    <>
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M8 5v14l11-7z" />
+                      </svg>
+                      <span>{t('morningBrief.player.listen')}</span>
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
+          </div>
         </div>
+
+        {audioError && (
+          <div className="mx-6 mt-2 px-4 py-2 bg-red-500/10 border border-red-500/20 text-red-700 dark:text-red-400 rounded-sm text-xs font-sans flex items-center justify-between">
+            <span>{audioError}</span>
+            <button onClick={() => setAudioError(null)} className="text-red-700/70 dark:text-red-400/70 hover:text-red-700 p-0.5 ml-2">
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+                <path d="M3 3L13 13M13 3L3 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              </svg>
+            </button>
+          </div>
+        )}
 
         <div className="px-6 py-5 space-y-6 max-h-[55vh] overflow-y-auto">
 
@@ -114,7 +308,7 @@ function MorningBriefInner({ onClose, onSend, userName, isGoogleConnected }: Pro
                 <ul>
                   {events.map((event, i) => (
                     <li
-                      key={event.id}
+                       key={event.id}
                       className={`flex gap-4 py-2.5 ${
                         i === events.length - 1 ? '' : 'border-b border-dotted border-theme-border'
                       }`}
@@ -171,7 +365,7 @@ function MorningBriefInner({ onClose, onSend, userName, isGoogleConnected }: Pro
         {/* Editorial CTA */}
         <div className="px-6 pb-6 pt-2">
           <button
-            onClick={onClose}
+            onClick={handleClose}
             className="w-full bg-theme-ink text-theme-bg font-display italic text-[17px] font-medium tracking-[0.02em] rounded-sm py-4 hover:opacity-90 transition-opacity"
           >
             {t('morningBrief.startDay')} →

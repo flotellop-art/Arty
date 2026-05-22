@@ -341,6 +341,27 @@
       "today": { "label": "Qu'ai-je de prévu aujourd'hui ?", "prompt": "Quels sont mes rendez-vous aujourd'hui ?" },
       "priorities": { "label": "Organise mes priorités", "prompt": "Aide-moi à organiser mes priorités pour aujourd'hui" },
       "idea": { "label": "Donne-moi une idée utile", "prompt": "Donne-moi une idée ou conseil utile pour ma journée" }
+    },
+    "speech": {
+      "todayIs": "Aujourd'hui, nous sommes {{date}}.",
+      "weather": "La météo à {{city}} est {{condition}} avec {{temp}} degrés.",
+      "weatherError": "Je n'ai pas pu récupérer la météo.",
+      "noEvents": "Vous n'avez aucun événement prévu aujourd'hui.",
+      "eventsIntro": "Vous avez {{count}} rendez-vous aujourd'hui : {{eventsList}}.",
+      "atTimePrefix": "à {{time}}",
+      "allDayPrefix": "toute la journée",
+      "noEmails": "Vous n'avez aucun e-mail non lu.",
+      "emailsIntro_one": "Vous avez {{count}} e-mail non lu de {{senders}}.",
+      "emailsIntro_other": "Vous avez {{count}} e-mails non lus, notamment de la part de : {{senders}}."
+    },
+    "player": {
+      "listen": "Écouter le brief",
+      "pause": "Pause",
+      "loading": "Génération de l'audio...",
+      "connectGoogleToListen": "Connecte Google pour écouter",
+      "error401": "Session Google expirée. Reconnecte Google.",
+      "error429": "Limite de synthèse atteinte. Réessaie plus tard.",
+      "errorGeneric": "Erreur de synthèse vocale."
     }
   },
   "proactiveBrief": {
