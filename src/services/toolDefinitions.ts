@@ -7,17 +7,22 @@ import { wordpressToolDefinitions } from './tools/wordpressTools'
 import { utilityToolDefinitions } from './tools/utilityTools'
 import { nativeToolDefinitions } from './tools/nativeTools'
 import { sheetsToolDefinitions } from './tools/sheetsTools'
+import { ENABLE_RESTRICTED_GOOGLE_FEATURES } from '../config'
+
+const filteredGmailTools = ENABLE_RESTRICTED_GOOGLE_FEATURES
+  ? gmailToolDefinitions
+  : gmailToolDefinitions.filter((t) => t.name === 'send_email')
 
 export const TOOLS = [
   ...utilityToolDefinitions,
   ...computerToolDefinitions,
-  ...gmailToolDefinitions,
-  ...driveToolDefinitions,
+  ...filteredGmailTools,
+  ...(ENABLE_RESTRICTED_GOOGLE_FEATURES ? driveToolDefinitions : []),
   ...calendarToolDefinitions,
   ...contactsToolDefinitions,
   ...wordpressToolDefinitions,
   ...nativeToolDefinitions,
-  ...sheetsToolDefinitions,
+  ...(ENABLE_RESTRICTED_GOOGLE_FEATURES ? sheetsToolDefinitions : []),
   // Server-side tools (handled by Anthropic API, no local executor)
   {
     type: 'web_search_20250305',

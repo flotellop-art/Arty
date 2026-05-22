@@ -5,6 +5,7 @@ import { listUnreadEmails } from './gmailClient'
 import { getUserLocation, isLocationConsentEnabled } from './native/location'
 import { apiUrl } from './apiBase'
 import { safeJson } from '../utils/safeJson'
+import { ENABLE_RESTRICTED_GOOGLE_FEATURES } from '../config'
 
 /**
  * Morning Brief Service
@@ -162,7 +163,7 @@ export async function buildBriefSpeechText(
 
   // 5. Emails non lus
   let emailSpeech = ''
-  if (isGoogleConnected) {
+  if (isGoogleConnected && ENABLE_RESTRICTED_GOOGLE_FEATURES) {
     try {
       const emails = await listUnreadEmails()
       if (emails.length === 0) {

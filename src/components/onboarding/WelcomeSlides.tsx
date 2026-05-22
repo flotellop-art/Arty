@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
+import { ENABLE_RESTRICTED_GOOGLE_FEATURES } from '../../config'
 
 interface WelcomeSlidesProps {
   onComplete: () => void
@@ -12,12 +13,29 @@ interface SlideDef {
 }
 
 export function WelcomeSlides({ onComplete }: WelcomeSlidesProps) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const [current, setCurrent] = useState(0)
 
   // Les slides viennent du JSON i18n (tableau) — `returnObjects` pour récupérer
   // la structure complète.
-  const slides = t('onboarding.slides', { returnObjects: true }) as SlideDef[]
+  const rawSlides = t('onboarding.slides', { returnObjects: true }) as SlideDef[]
+  const slides = useMemo(() => {
+    if (ENABLE_RESTRICTED_GOOGLE_FEATURES) return rawSlides
+    return rawSlides.map((slide) => {
+      if (slide.emoji === '📧') {
+        const isEn = i18n.language?.startsWith('en')
+        return {
+          ...slide,
+          title: isEn ? 'Connect your tools' : 'Connecte tes outils',
+          desc: isEn
+            ? "Gmail, Calendar, Contacts — connect your Google account and I'll be able to send emails, manage your calendar and contacts."
+            : "Gmail, Calendar, Contacts — connecte ton compte Google et je pourrai envoyer des e-mails, gérer ton agenda et tes contacts.",
+        }
+      }
+      return slide
+    })
+  }, [rawSlides, i18n.language])
+
   const isLast = current === slides.length - 1
   const slide = slides[current]!
 

@@ -13,6 +13,7 @@ import type { useGmail } from '../../hooks/useGmail'
 import type { useDrive } from '../../hooks/useDrive'
 import type { useBrowser } from '../../hooks/useBrowser'
 import type { useComputer } from '../../hooks/useComputer'
+import { ENABLE_RESTRICTED_GOOGLE_FEATURES } from '../../config'
 
 interface ConversationScreenProps {
   conversation: Conversation
@@ -71,8 +72,8 @@ export function ConversationScreen({
         onOpenSummary={() => setShowSummary(true)}
       />
 
-      <ActionBanner icon="📧" message={t('chat.banners.gmailReading')} isVisible={gmail.isLoading} />
-      <ActionBanner icon="📁" message={t('chat.banners.driveAccess')} isVisible={drive.isLoading} />
+      <ActionBanner icon="📧" message={t('chat.banners.gmailReading')} isVisible={ENABLE_RESTRICTED_GOOGLE_FEATURES && gmail.isLoading} />
+      <ActionBanner icon="📁" message={t('chat.banners.driveAccess')} isVisible={ENABLE_RESTRICTED_GOOGLE_FEATURES && drive.isLoading} />
       <BrowserBanner action={browserActions.currentAction} />
       <BrowserBanner action={computerActions.currentAction} />
 

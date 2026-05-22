@@ -4,6 +4,7 @@ import { Capacitor } from '@capacitor/core'
 import App from './App'
 import './index.css'
 import './i18n' // initialise react-i18next (détection navigator + localStorage)
+import { ENABLE_RESTRICTED_GOOGLE_FEATURES } from './config'
 
 // Cleanup any legacy service worker + cache left over from pre-1.0.13 APKs
 // on Capacitor native. Without this, users upgrading from 1.0.12 still have
@@ -37,10 +38,12 @@ if (Capacitor.isNativePlatform()) {
       clientId: '794968525529-fk2k1ffpvbev4gs4ghf4gntqjroljln3.apps.googleusercontent.com',
       scopes: [
         'email', 'profile',
-        'https://www.googleapis.com/auth/gmail.readonly',
+        ...(ENABLE_RESTRICTED_GOOGLE_FEATURES ? [
+          'https://www.googleapis.com/auth/gmail.readonly',
+          'https://www.googleapis.com/auth/gmail.modify',
+          'https://www.googleapis.com/auth/drive',
+        ] : []),
         'https://www.googleapis.com/auth/gmail.send',
-        'https://www.googleapis.com/auth/gmail.modify',
-        'https://www.googleapis.com/auth/drive',
         'https://www.googleapis.com/auth/calendar',
         'https://www.googleapis.com/auth/calendar.events',
         'https://www.googleapis.com/auth/contacts',

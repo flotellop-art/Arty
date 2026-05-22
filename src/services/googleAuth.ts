@@ -3,6 +3,7 @@ import { safeJson } from '../utils/safeJson'
 import * as scoped from './scopedStorage'
 import { apiUrl } from './apiBase'
 import { encrypt, decrypt, isCryptoReady, selfTestCrypto } from './crypto'
+import { ENABLE_RESTRICTED_GOOGLE_FEATURES } from '../config'
 
 const FETCH_TIMEOUT_MS = 15_000
 
@@ -12,17 +13,21 @@ export function withTimeout(ms: number): { signal: AbortSignal; cancel: () => vo
   return { signal: controller.signal, cancel: () => clearTimeout(id) }
 }
 
-const SCOPES = [
-  'https://www.googleapis.com/auth/gmail.readonly',
+const SCOPES_ARRAY = [
+  ...(ENABLE_RESTRICTED_GOOGLE_FEATURES ? [
+    'https://www.googleapis.com/auth/gmail.readonly',
+    'https://www.googleapis.com/auth/gmail.modify',
+    'https://www.googleapis.com/auth/drive',
+  ] : []),
   'https://www.googleapis.com/auth/gmail.send',
-  'https://www.googleapis.com/auth/gmail.modify',
-  'https://www.googleapis.com/auth/drive',
   'https://www.googleapis.com/auth/calendar',
   'https://www.googleapis.com/auth/calendar.events',
   'https://www.googleapis.com/auth/contacts',
   'https://www.googleapis.com/auth/userinfo.email',
   'https://www.googleapis.com/auth/userinfo.profile',
-].join(' ')
+]
+
+const SCOPES = SCOPES_ARRAY.join(' ')
 
 // ─────────────────────────────────────────────────────────────
 // In-memory cache for encrypted tokens.

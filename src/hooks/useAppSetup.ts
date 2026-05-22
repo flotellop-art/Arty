@@ -10,6 +10,7 @@ import { createToolExecutor } from '../services/toolExecutor'
 import { getStyle, setStyle, getStylePrompt, STYLE_OPTIONS, type ResponseStyle } from '../services/responseStyles'
 import type { Question } from '../components/chat/QuestionModal'
 import type { GmailMessage } from '../types/google'
+import { ENABLE_RESTRICTED_GOOGLE_FEATURES } from '../config'
 
 interface ConversationHook {
   activeId: string | null
@@ -78,8 +79,10 @@ export function useAppSetup(conversation: ConversationHook) {
   // Auto-fetch Gmail, Drive, and Memory when Google is connected
   useEffect(() => {
     if (googleAuth.isConnected) {
-      gmail.fetchMessages()
-      drive.fetchFiles()
+      if (ENABLE_RESTRICTED_GOOGLE_FEATURES) {
+        gmail.fetchMessages()
+        drive.fetchFiles()
+      }
       memoryHook.loadMemory()
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -98,7 +101,7 @@ export function useAppSetup(conversation: ConversationHook) {
     }
 
     let gmailSummary: string | undefined
-    if (gmail.messages.length > 0) {
+    if (ENABLE_RESTRICTED_GOOGLE_FEATURES && gmail.messages.length > 0) {
       gmailSummary = `${gmail.messages.length} emails non lus :\n` +
         gmail.messages
           .slice(0, 5)
@@ -107,7 +110,7 @@ export function useAppSetup(conversation: ConversationHook) {
     }
 
     let driveSummary: string | undefined
-    if (drive.files.length > 0) {
+    if (ENABLE_RESTRICTED_GOOGLE_FEATURES && drive.files.length > 0) {
       driveSummary = `Fichiers récents sur Drive :\n` +
         drive.files
           .slice(0, 5)
@@ -155,7 +158,9 @@ export function useAppSetup(conversation: ConversationHook) {
           await executor('send_email', params)
           break
         case 'save_drive':
-          await executor('create_drive_file', { name: params.name || 'Document', content: params.content || '' })
+          if (ENABLE_RESTRICTED_GOOGLE_FEATURES) {
+            await executor('create_drive_file', { name: params.name || 'Document', content: params.content || '' })
+          }
           break
         case 'create_event':
           await executor('create_calendar_event', params)

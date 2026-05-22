@@ -12,8 +12,20 @@ import { createWordpressHandlers } from './tools/wordpressTools'
 import { createUtilityHandlers } from './tools/utilityTools'
 import { createNativeHandlers } from './tools/nativeTools'
 import { createSheetsHandlers } from './tools/sheetsTools'
+import { ENABLE_RESTRICTED_GOOGLE_FEATURES } from '../config'
 
 export type { ToolResult, ToolHandler }
+
+const RESTRICTED_TOOLS = new Set([
+  // Gmail (except send_email)
+  'read_emails', 'read_email', 'read_email_attachment', 'reply_email', 'search_emails',
+  'archive_email', 'delete_email', 'star_email', 'create_draft_email', 'label_email',
+  // Drive
+  'list_drive', 'search_drive', 'read_drive_file', 'create_drive_file', 'delete_drive_file',
+  'rename_drive_file', 'move_drive_file', 'create_drive_folder', 'share_drive_file', 'copy_drive_file',
+  // Sheets
+  'export_clients_to_sheets', 'export_projets_to_sheets'
+])
 
 export function createToolExecutor(
   computer: ReturnType<typeof useComputer>,
@@ -34,6 +46,9 @@ export function createToolExecutor(
   }
 
   return async (name: string, input: Record<string, unknown>): Promise<ToolResult> => {
+    if (!ENABLE_RESTRICTED_GOOGLE_FEATURES && RESTRICTED_TOOLS.has(name)) {
+      return { result: `Outil indisponible dans cette version d'Arty: ${name}` }
+    }
     const handler = handlers[name]
     if (!handler) return { result: `Outil inconnu: ${name}` }
     try {

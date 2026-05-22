@@ -14,6 +14,7 @@ import type { useGoogleAuth } from '../../hooks/useGoogleAuth'
 import type { useGmail } from '../../hooks/useGmail'
 import type { useDrive } from '../../hooks/useDrive'
 import type { FileAttachment } from '../../types'
+import { ENABLE_RESTRICTED_GOOGLE_FEATURES } from '../../config'
 
 interface HomeScreenProps {
   onMenuToggle: () => void
@@ -81,12 +82,19 @@ function HomeScreenInner({ onMenuToggle, onSend, isStreaming, googleAuth, userNa
   // Maintenant : si Google connecté → intents Google. Sinon → intents
   // polyvalents universels (résumé, traduction, rédaction, explication).
   const intents = googleAuth.isConnected
-    ? [
-        t('home.intents.unreadEmails'),
-        t('home.intents.today'),
-        t('home.intents.schedule'),
-        t('home.intents.useful'),
-      ]
+    ? (ENABLE_RESTRICTED_GOOGLE_FEATURES
+        ? [
+            t('home.intents.unreadEmails'),
+            t('home.intents.today'),
+            t('home.intents.schedule'),
+            t('home.intents.useful'),
+          ]
+        : [
+            t('home.intents.writeEmail'),
+            t('home.intents.today'),
+            t('home.intents.schedule'),
+            t('home.intents.useful'),
+          ])
     : [
         t('home.intents.summarize'),
         t('home.intents.translate'),
@@ -168,7 +176,15 @@ function HomeScreenInner({ onMenuToggle, onSend, isStreaming, googleAuth, userNa
             overview of what Arty can do, with concrete example requests. */}
         <div className="px-6 pt-7 max-w-3xl">
           <button
-            onClick={() => onSend(t('home.discover.prompt'))}
+            onClick={() => {
+              const raw = t('home.discover.prompt')
+              const prompt = ENABLE_RESTRICTED_GOOGLE_FEATURES
+                ? raw
+                : raw
+                    .replace('mes mails, mon agenda, mes fichiers Drive', "l'envoi d'e-mails, mon agenda, mes contacts")
+                    .replace('my email, my calendar, my Drive files', 'sending emails, my calendar, my contacts')
+              onSend(prompt)
+            }}
             disabled={isStreaming}
             aria-label={t('home.discover.label')}
             className="group w-full flex items-center gap-3.5 rounded-[14px] px-4 py-3.5 text-left transition-transform hover:-translate-y-[1px] disabled:opacity-50 disabled:hover:translate-y-0"

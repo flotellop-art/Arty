@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
+import { ENABLE_RESTRICTED_GOOGLE_FEATURES } from '../../config'
 
 const TOOLTIP_KEY = 'arty-tooltips-seen'
 
@@ -42,7 +43,7 @@ export function useTooltip(id: TooltipId): {
   dismiss: () => void
   TooltipComponent: React.FC
 } {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const [isVisible, setIsVisible] = useState(false)
 
   useEffect(() => {
@@ -68,7 +69,13 @@ export function useTooltip(id: TooltipId): {
 
   const TooltipComponent = () => {
     if (!isVisible) return null
-    const text = t(`onboarding.tooltips.${id}`)
+    let text = t(`onboarding.tooltips.${id}`)
+    if (id === 'google' && !ENABLE_RESTRICTED_GOOGLE_FEATURES) {
+      const isEn = i18n.language?.startsWith('en')
+      text = isEn
+        ? 'Connect Google to send emails and manage calendar'
+        : 'Connecte Google pour envoyer des e-mails et gérer ton agenda'
+    }
     if (!text) return null
     return <TooltipBubble text={text} onDismiss={dismiss} />
   }
