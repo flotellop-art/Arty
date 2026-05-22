@@ -1,4 +1,5 @@
 import type { Env } from '../../env'
+import { consumeCapAtomic } from './atomicQuota'
 
 /**
  * Vérifie le token Google passé dans `x-google-token` (ou dans
@@ -95,9 +96,27 @@ export const TRIAL_ALLOWED_MODELS = [
 
 const TRIAL_INITIAL_MESSAGES = 30
 
-/** Clé KV du compteur de messages restants pour un user en trial. */
-export function trialCounterKey(email: string): string {
-  return `trial:${email}`
+/**
+ * Crée la table D1 du compteur trial si absente. Exporté car réutilisé par
+ * /api/trial/init (lecture du restant). Idempotent.
+ *
+ * Modèle "used" (incrémente) plutôt que "remaining" (décrémente) : permet
+ * l'upsert conditionnel atomique `WHERE used < cap`. Un nouvel user trial sans
+ * ligne = used 0 = 30 messages restants (pas besoin de pré-init).
+ */
+export async function ensureTrialTable(env: Env): Promise<void> {
+  if (!env.DB) return
+  try {
+    await env.DB.prepare(
+      `CREATE TABLE IF NOT EXISTS trial_usage (
+        email TEXT PRIMARY KEY,
+        used INTEGER NOT NULL DEFAULT 0,
+        updated_at INTEGER NOT NULL
+      )`
+    ).run()
+  } catch (err) {
+    console.error('[trial] ensure table failed', err)
+  }
 }
 
 /**
@@ -127,8 +146,8 @@ export function isModelAllowedInTrial(model: string): boolean {
  * Source de vérité : la table D1 `subscriptions` (renseignée par le webhook
  * Lemon Squeezy `functions/api/webhook/lemonsqueezy.ts`) et la table `licenses`
  * (achats one-shot du plan Pro). Pour le plan trial, le compteur de messages
- * restants vit dans KV (`trial:{email}`) — incrémenté côté `/api/trial/init`
- * et décrémenté ici à chaque appel autorisé.
+ * consommés vit dans la table D1 `trial_usage` (cap 30) — incrémenté ici à
+ * chaque appel autorisé via un upsert conditionnel atomique.
  *
  * Vérifie le token Google, puis cherche un abonnement/licence actif. Retourne
  * `AllowedUser` si autorisé, `TrialExpired` si trial épuisé (le caller émet
@@ -183,44 +202,62 @@ export async function checkAllowedUser(
   }
 
   // Plan 'free' : tous les users Google authentifiés sans abonnement payant
-  // ont droit aux quotas free quotidiens (10 Haiku + 5 Mistral). Le proxy
-  // appellera consumeFreeDailyQuota() pour décrémenter le bon compteur.
+  // ont droit au quota free quotidien (10 Haiku/jour). Le proxy appellera
+  // consumeFreeDailyQuota() pour décrémenter le compteur.
   return { email, planType: 'free' }
 }
 
 /**
- * Décrémente le compteur trial KV de 1. Si épuisé (<= 0), retourne
- * `TrialExpired` — le caller émet alors un 403 `trial_expired`. Sinon
- * retourne un `AllowedUser` enrichi avec `trialRemaining` (post-décrément)
- * et la liste `allowedModels`.
+ * Consomme 1 message d'essai via le compteur D1 atomique `trial_usage`
+ * (incrément conditionnel `WHERE used < 30`). Si épuisé, retourne
+ * `TrialExpired` (le caller émet un 403 `trial_expired`). Sinon retourne un
+ * `AllowedUser` avec `trialRemaining` (= 30 - used post-incrément).
  *
- * Race conditions : KV est eventually consistent. Deux appels simultanés
- * peuvent lire la même valeur, décrémenter, et écrire la même nouvelle
- * valeur (perte d'un cran). Acceptable pour un compteur de trial — la
- * dérive est <= 1 message par session active.
+ * Migré depuis KV (mai 2026) : le pattern KV get→décrémente→put n'était pas
+ * atomique. D1 ferme la course. Fail-open sur incident D1 (modèles trial =
+ * cheap, impact négligeable) plutôt que de bloquer un user.
  */
 async function consumeTrialMessage(env: Env, email: string): Promise<CheckResult> {
-  if (!env.KV) {
-    // Sans KV on ne peut pas appliquer le quota trial → considère comme
-    // expiré pour ne pas distribuer de messages illimités.
-    return { error: 'trial_expired', email }
+  if (!env.DB) {
+    // Sans D1, fail-open : on autorise (les modèles trial sont cheap), on ne
+    // peut juste pas décrémenter. Ne devrait pas arriver en prod.
+    return {
+      email,
+      planType: 'trial',
+      trialRemaining: TRIAL_INITIAL_MESSAGES,
+      allowedModels: [...TRIAL_ALLOWED_MODELS],
+    }
   }
 
-  const key = trialCounterKey(email)
-  const raw = await env.KV.get(key)
-  const current = raw === null ? 0 : Math.max(0, parseInt(raw, 10) || 0)
+  await ensureTrialTable(env)
 
-  if (current <= 0) {
+  const outcome = await consumeCapAtomic(
+    env,
+    `INSERT INTO trial_usage (email, used, updated_at)
+     VALUES (?1, 1, unixepoch())
+     ON CONFLICT (email) DO UPDATE SET used = used + 1, updated_at = unixepoch()
+       WHERE trial_usage.used < ?2
+     RETURNING used AS count`,
+    [email, TRIAL_INITIAL_MESSAGES]
+  )
+
+  if (outcome.status === 'cap_reached') {
     return { error: 'trial_expired', email }
   }
-
-  const next = current - 1
-  await env.KV.put(key, String(next))
-
+  if (outcome.status === 'fail_open') {
+    // D1 lent/down → on laisse passer sans connaître le restant exact.
+    return {
+      email,
+      planType: 'trial',
+      trialRemaining: 1,
+      allowedModels: [...TRIAL_ALLOWED_MODELS],
+    }
+  }
+  // consumed : outcome.count = `used` post-incrément.
   return {
     email,
     planType: 'trial',
-    trialRemaining: next,
+    trialRemaining: Math.max(0, TRIAL_INITIAL_MESSAGES - outcome.count),
     allowedModels: [...TRIAL_ALLOWED_MODELS],
   }
 }

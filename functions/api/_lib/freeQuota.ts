@@ -1,13 +1,16 @@
 // Free daily quotas — 10 Haiku/jour, perpétuel.
-// KV-backed, une seule famille (claude-haiku) depuis la dépréciation de
-// Mistral Small (mai 2026). Mistral est désormais réservé aux payants —
-// Medium est plus coûteux et ne s'inscrit pas dans l'économie du tier free.
+// D1-backed (table `free_daily_quota`), atomique. Migré depuis KV (mai 2026) :
+// le pattern KV get→check→put n'était pas atomique (2 requêtes simultanées, ou
+// 2 POPs avec KV eventually-consistent, pouvaient dépasser le quota). D1
+// (SQLite, primaire unique) sérialise les écritures → upsert conditionnel
+// atomique, jamais de dépassement. Voir functions/api/_lib/atomicQuota.ts.
 //
-// Différent du compteur trial (`trial:{email}` à vie 30 messages) : ici
-// chaque clé inclut la date `free:{email}:{YYYY-MM-DD}:{family}` et expire
-// naturellement (KV TTL 48h pour faciliter le cleanup).
+// Une seule famille (claude-haiku) depuis la dépréciation de Mistral Small
+// (mai 2026). Mistral est désormais réservé aux payants — Medium est plus
+// coûteux et ne s'inscrit pas dans l'économie du tier free.
 
 import type { Env } from '../../env'
+import { consumeCapAtomic, maybeCleanup } from './atomicQuota'
 
 export type ModelFamily = 'claude-haiku'
 
@@ -28,11 +31,7 @@ export function modelFamilyFor(model: string): ModelFamily | null {
 }
 
 function todayKey(): string {
-  return new Date().toISOString().slice(0, 10) // YYYY-MM-DD
-}
-
-function freeCounterKey(email: string, family: ModelFamily): string {
-  return `free:${email}:${todayKey()}:${family}`
+  return new Date().toISOString().slice(0, 10) // YYYY-MM-DD (UTC)
 }
 
 export interface FreeQuotaResult {
@@ -42,9 +41,30 @@ export interface FreeQuotaResult {
   family: ModelFamily | null
 }
 
-// Décrémente le compteur free pour la famille de modèle. Retourne `allowed:
+async function ensureFreeTable(env: Env): Promise<void> {
+  if (!env.DB) return
+  try {
+    await env.DB.prepare(
+      `CREATE TABLE IF NOT EXISTS free_daily_quota (
+        email TEXT NOT NULL,
+        day TEXT NOT NULL,
+        family TEXT NOT NULL,
+        count INTEGER NOT NULL DEFAULT 0,
+        updated_at INTEGER NOT NULL,
+        PRIMARY KEY (email, day, family)
+      )`
+    ).run()
+  } catch (err) {
+    console.error('[freeQuota] ensure table failed', err)
+  }
+}
+
+// Incrémente le compteur free pour la famille de modèle. Retourne `allowed:
 // false` si le quota est atteint OU si le modèle n'est pas dans la liste
 // autorisée (cas Sonnet/Opus/Gemini Pro pour un free).
+//
+// Fail-open sur incident D1 (cohérent quota.ts) : on autorise plutôt que de
+// bloquer un user — l'impact financier du free (Haiku) est négligeable.
 export async function consumeFreeDailyQuota(
   env: Env,
   email: string,
@@ -54,36 +74,39 @@ export async function consumeFreeDailyQuota(
   if (!family) {
     return { allowed: false, remaining: 0, limit: 0, family: null }
   }
-  if (!env.KV) {
-    return { allowed: false, remaining: 0, limit: FREE_DAILY_LIMITS[family], family }
+  const limit = FREE_DAILY_LIMITS[family]
+  if (!env.DB) {
+    // Pas de binding D1 : fail-open. Ne devrait pas arriver en prod.
+    return { allowed: true, remaining: limit, limit, family }
   }
 
-  const key = freeCounterKey(email, family)
-  const raw = await env.KV.get(key)
-  const used = raw === null ? 0 : Math.max(0, parseInt(raw, 10) || 0)
-  const limit = FREE_DAILY_LIMITS[family]
+  const day = todayKey()
+  await ensureFreeTable(env)
+  // GC paresseux des jours passés (D1 n'a pas de TTL comme KV).
+  await maybeCleanup(env, `DELETE FROM free_daily_quota WHERE day < ?1`, [day])
 
-  if (used >= limit) {
+  const outcome = await consumeCapAtomic(
+    env,
+    `INSERT INTO free_daily_quota (email, day, family, count, updated_at)
+     VALUES (?1, ?2, ?3, 1, unixepoch())
+     ON CONFLICT (email, day, family) DO UPDATE SET count = count + 1, updated_at = unixepoch()
+       WHERE free_daily_quota.count < ?4
+     RETURNING count`,
+    [email, day, family, limit]
+  )
+
+  if (outcome.status === 'fail_open') {
+    return { allowed: true, remaining: limit, limit, family }
+  }
+  if (outcome.status === 'cap_reached') {
     return { allowed: false, remaining: 0, limit, family }
   }
-
-  const next = used + 1
-  // TTL 48h = la clé expire au pire après-demain, garantit pas de fuite
-  // long-terme. La clé du jour suivant sera créée à zéro automatiquement.
-  await env.KV.put(key, String(next), { expirationTtl: 48 * 3600 })
-
-  // H-Back-2 (audit étape 5) — TODO atomicité : même problème que premium cap.
-  // KV get→check→put non atomique → 2 requêtes simultanées peuvent passer le
-  // quota free. À migrer vers D1 `free_daily_quotas (user_email, day_key,
-  // family, count)` avec UPDATE atomique. Reporté pour ne pas reset les
-  // compteurs en cours.
-
-  return { allowed: true, remaining: limit - next, limit, family }
+  return { allowed: true, remaining: Math.max(0, limit - outcome.count), limit, family }
 }
 
 // Read-only : retourne combien de messages restent à un user free aujourd'hui
 // pour chaque famille. Utilisé par /api/subscription/status pour afficher
-// le badge dans l'UI sans facturer.
+// le badge dans l'UI sans facturer. Ne décrémente rien.
 export async function peekFreeDailyRemaining(
   env: Env,
   email: string
@@ -91,15 +114,50 @@ export async function peekFreeDailyRemaining(
   const result: Record<ModelFamily, number> = {
     'claude-haiku': FREE_DAILY_LIMITS['claude-haiku'],
   }
-  if (!env.KV) return result
+  if (!env.DB) return result
 
-  const families: ModelFamily[] = ['claude-haiku']
-  for (const family of families) {
-    const raw = await env.KV.get(freeCounterKey(email, family))
-    const used = raw === null ? 0 : Math.max(0, parseInt(raw, 10) || 0)
-    result[family] = Math.max(0, FREE_DAILY_LIMITS[family] - used)
+  try {
+    const day = todayKey()
+    const row = await env.DB.prepare(
+      `SELECT count FROM free_daily_quota WHERE email = ?1 AND day = ?2 AND family = ?3`
+    )
+      .bind(email, day, 'claude-haiku')
+      .first<{ count: number }>()
+    const used = row?.count ?? 0
+    result['claude-haiku'] = Math.max(0, FREE_DAILY_LIMITS['claude-haiku'] - used)
+  } catch {
+    // Table pas encore créée (aucun appel free aujourd'hui) → reste par défaut.
   }
   return result
+}
+
+// Quota voix (TTS) gratuit : N lectures/jour pour les users free ET trial.
+// Décision produit : la voix du brief matinal est gratuite pour tous, mais
+// plafonnée côté gratuit pour borner le coût de la clé OpenAI serveur. Les
+// plans payants ne passent pas par ici (voix illimitée). Réutilise la table
+// free_daily_quota avec une "famille" dédiée 'tts' (isolée de claude-haiku).
+export const TTS_FREE_DAILY_LIMIT = 5
+
+export async function consumeTtsFreeQuota(
+  env: Env,
+  email: string
+): Promise<{ allowed: boolean; remaining: number }> {
+  if (!env.DB) return { allowed: true, remaining: TTS_FREE_DAILY_LIMIT }
+  const day = todayKey()
+  await ensureFreeTable(env)
+  await maybeCleanup(env, `DELETE FROM free_daily_quota WHERE day < ?1`, [day])
+  const outcome = await consumeCapAtomic(
+    env,
+    `INSERT INTO free_daily_quota (email, day, family, count, updated_at)
+     VALUES (?1, ?2, 'tts', 1, unixepoch())
+     ON CONFLICT (email, day, family) DO UPDATE SET count = count + 1, updated_at = unixepoch()
+       WHERE free_daily_quota.count < ?3
+     RETURNING count`,
+    [email, day, TTS_FREE_DAILY_LIMIT]
+  )
+  if (outcome.status === 'fail_open') return { allowed: true, remaining: TTS_FREE_DAILY_LIMIT }
+  if (outcome.status === 'cap_reached') return { allowed: false, remaining: 0 }
+  return { allowed: true, remaining: Math.max(0, TTS_FREE_DAILY_LIMIT - outcome.count) }
 }
 
 export function freeModelLockedResponse(model: string): Response {

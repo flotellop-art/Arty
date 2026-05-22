@@ -1,4 +1,5 @@
 import type { Env } from '../../env'
+import { consumeCapAtomic, maybeCleanup } from './atomicQuota'
 
 /**
  * Cap mensuel sur les modèles "premium" pour le plan subscription
@@ -63,20 +64,27 @@ function classifyModel(model: string): PremiumCapEntry | null {
   return null
 }
 
-/** YYYY-MM en UTC pour la clé KV — aligné sur quota.ts. */
+/** YYYY-MM en UTC — aligné sur quota.ts. */
 function currentMonthKey(): string {
   return new Date().toISOString().slice(0, 7)
 }
 
-/**
- * Secondes restantes jusqu'au 1er du mois suivant à 00:00 UTC.
- * Utilisé comme TTL sur la clé KV pour qu'elle expire automatiquement
- * en début de mois (pas besoin de garbage-collect).
- */
-function secondsUntilNextMonthUtc(): number {
-  const now = new Date()
-  const next = Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1, 0, 0, 0, 0)
-  return Math.max(60, Math.floor((next - now.getTime()) / 1000))
+async function ensurePremiumTable(env: Env): Promise<void> {
+  if (!env.DB) return
+  try {
+    await env.DB.prepare(
+      `CREATE TABLE IF NOT EXISTS premium_cap (
+        email TEXT NOT NULL,
+        month TEXT NOT NULL,
+        bucket TEXT NOT NULL,
+        count INTEGER NOT NULL DEFAULT 0,
+        updated_at INTEGER NOT NULL,
+        PRIMARY KEY (email, month, bucket)
+      )`
+    ).run()
+  } catch (err) {
+    console.error('[premiumCap] ensure table failed', err)
+  }
 }
 
 async function consumePremiumPack(env: Env, email: string): Promise<boolean> {
@@ -135,9 +143,16 @@ async function consumePremiumPack(env: Env, email: string): Promise<boolean> {
  *        - Pack consommé → allowed=true, reason='premium_pack'
  *        - Aucun pack    → allowed=false, reason='cap_reached', remaining=0
  *
- * Le KV expire automatiquement le 1er du mois suivant via TTL.
- * Failsafe : en cas d'erreur KV/DB, on autorise (fail-open) — on préfère un
- * léger dépassement à un blocage utilisateur sur incident infra.
+ * Compteur en D1 (table `premium_cap`), atomique : upsert conditionnel
+ * `... DO UPDATE SET count = count + 1 WHERE count < cap RETURNING count`
+ * (voir atomicQuota.ts). Migré depuis KV (mai 2026) car KV n'a pas de CAS →
+ * 2 requêtes simultanées pouvaient passer le cap (impact € réel sur les
+ * modèles chers). Le pattern conditionnel ne dépasse JAMAIS le cap.
+ *
+ * Failsafe : en cas d'erreur/timeout D1, on autorise (fail-open) — on préfère
+ * un dépassement rare à un blocage utilisateur sur incident infra. Le fail-open
+ * sur le cap premium est loggé distinctement (`[premium-cap] FAIL-OPEN`) pour
+ * pouvoir alerter (modèles chers).
  */
 export async function checkPremiumCap(
   email: string,
@@ -147,52 +162,48 @@ export async function checkPremiumCap(
   const entry = classifyModel(model)
   if (!entry) return { allowed: true, reason: 'standard_model' }
 
-  if (!env.KV) {
-    // KV pas configuré : fail-open mais log — l'admin doit binder KV.
-    console.error('checkPremiumCap: KV binding missing, failing open')
+  if (!env.DB) {
+    // D1 pas bindé : fail-open mais log — l'admin doit binder DB.
+    console.error('[premium-cap] FAIL-OPEN: DB binding missing')
     return { allowed: true, reason: 'standard_model' }
   }
 
   const month = currentMonthKey()
-  const key = `premium_cap:${email}:${month}:${entry.bucket}`
+  await ensurePremiumTable(env)
+  // GC paresseux des mois passés (D1 n'a pas de TTL comme KV).
+  await maybeCleanup(env, `DELETE FROM premium_cap WHERE month < ?1`, [month])
 
-  let count = 0
-  try {
-    const raw = await env.KV.get(key)
-    count = raw ? parseInt(raw, 10) || 0 : 0
-  } catch (err) {
-    console.error('checkPremiumCap: KV.get failed, failing open', err)
-    return { allowed: true, reason: 'standard_model' }
+  const outcome = await consumeCapAtomic(
+    env,
+    `INSERT INTO premium_cap (email, month, bucket, count, updated_at)
+     VALUES (?1, ?2, ?3, 1, unixepoch())
+     ON CONFLICT (email, month, bucket) DO UPDATE SET count = count + 1, updated_at = unixepoch()
+       WHERE premium_cap.count < ?4
+     RETURNING count`,
+    [email, month, entry.bucket, entry.cap]
+  )
+
+  if (outcome.status === 'consumed') {
+    return {
+      allowed: true,
+      reason: 'monthly_cap',
+      remaining: Math.max(0, entry.cap - outcome.count),
+    }
   }
 
-  if (count >= entry.cap) {
-    const packConsumed = await consumePremiumPack(env, email)
-    if (packConsumed) return { allowed: true, reason: 'premium_pack' }
-    return { allowed: false, reason: 'cap_reached', remaining: 0 }
+  if (outcome.status === 'fail_open') {
+    // Alerte : fail-open sur un modèle premium (cher). Log distinctif greppable
+    // dans `wrangler tail` / dashboard. (Hook d'alerte externe possible plus tard.)
+    console.error(
+      `[premium-cap] FAIL-OPEN bucket=${entry.bucket} email=${email.slice(0, 3)}... (D1 lent/down, requête laissée passer)`
+    )
+    return { allowed: true, reason: 'monthly_cap' }
   }
 
-  try {
-    await env.KV.put(key, String(count + 1), {
-      expirationTtl: secondsUntilNextMonthUtc(),
-    })
-  } catch (err) {
-    console.error('checkPremiumCap: KV.put failed (still allowing call)', err)
-  }
-
-  // H-Back-1 (audit étape 5) — TODO atomicité : KV n'a pas de CAS natif.
-  // La séquence get→check→put est vulnérable aux courses concurrentes
-  // (2 requêtes simultanées peuvent passer le cap). À migrer vers une
-  // table D1 `premium_caps (user_email, month_key, bucket, count)` avec
-  // pattern `UPDATE ... WHERE count < cap RETURNING count` atomique +
-  // fallback INSERT ON CONFLICT DO NOTHING RETURNING count. Reporté car
-  // nécessite migration data des compteurs KV existants (les utilisateurs
-  // en milieu de mois ne doivent pas avoir leur compteur reset à 0).
-
-  return {
-    allowed: true,
-    reason: 'monthly_cap',
-    remaining: Math.max(0, entry.cap - count - 1),
-  }
+  // cap_reached → tenter un Pack Premium acheté (table premium_packs, déjà atomique).
+  const packConsumed = await consumePremiumPack(env, email)
+  if (packConsumed) return { allowed: true, reason: 'premium_pack' }
+  return { allowed: false, reason: 'cap_reached', remaining: 0 }
 }
 
 /**
