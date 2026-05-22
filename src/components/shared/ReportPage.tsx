@@ -56,11 +56,22 @@ export function ReportPage() {
 
   return (
     <>
+      {/*
+        SÉCURITÉ : `html` est généré par l'IA et peut contenir du contenu hostile
+        (prompt injection via un mail/une page lue). On NE met JAMAIS
+        `allow-same-origin` avec `allow-scripts` sur un srcDoc : la combinaison
+        permet à un script injecté d'accéder au localStorage/DOM du parent
+        (exfiltration des tokens/clés). Sans `allow-same-origin`, l'iframe a une
+        origine opaque : les scripts tournent (rapports interactifs) et les boutons
+        relaient toujours par postMessage (cross-origin OK), mais ne peuvent plus
+        toucher le parent. On retire aussi `allow-top-navigation` et
+        `allow-popups-to-escape-sandbox` (redirection phishing + évasion sandbox).
+      */}
       <iframe
         srcDoc={html}
         className="w-full h-[100dvh] border-0"
         title="Rapport"
-        sandbox="allow-same-origin allow-scripts allow-popups allow-popups-to-escape-sandbox allow-top-navigation allow-top-navigation-by-user-activation"
+        sandbox="allow-scripts allow-popups"
       />
       {exporting && (
         <div
