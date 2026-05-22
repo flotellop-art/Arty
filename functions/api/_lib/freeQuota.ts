@@ -131,6 +131,35 @@ export async function peekFreeDailyRemaining(
   return result
 }
 
+// Quota voix (TTS) gratuit : N lectures/jour pour les users free ET trial.
+// Décision produit : la voix du brief matinal est gratuite pour tous, mais
+// plafonnée côté gratuit pour borner le coût de la clé OpenAI serveur. Les
+// plans payants ne passent pas par ici (voix illimitée). Réutilise la table
+// free_daily_quota avec une "famille" dédiée 'tts' (isolée de claude-haiku).
+export const TTS_FREE_DAILY_LIMIT = 5
+
+export async function consumeTtsFreeQuota(
+  env: Env,
+  email: string
+): Promise<{ allowed: boolean; remaining: number }> {
+  if (!env.DB) return { allowed: true, remaining: TTS_FREE_DAILY_LIMIT }
+  const day = todayKey()
+  await ensureFreeTable(env)
+  await maybeCleanup(env, `DELETE FROM free_daily_quota WHERE day < ?1`, [day])
+  const outcome = await consumeCapAtomic(
+    env,
+    `INSERT INTO free_daily_quota (email, day, family, count, updated_at)
+     VALUES (?1, ?2, 'tts', 1, unixepoch())
+     ON CONFLICT (email, day, family) DO UPDATE SET count = count + 1, updated_at = unixepoch()
+       WHERE free_daily_quota.count < ?3
+     RETURNING count`,
+    [email, day, TTS_FREE_DAILY_LIMIT]
+  )
+  if (outcome.status === 'fail_open') return { allowed: true, remaining: TTS_FREE_DAILY_LIMIT }
+  if (outcome.status === 'cap_reached') return { allowed: false, remaining: 0 }
+  return { allowed: true, remaining: Math.max(0, TTS_FREE_DAILY_LIMIT - outcome.count) }
+}
+
 export function freeModelLockedResponse(model: string): Response {
   return Response.json(
     {

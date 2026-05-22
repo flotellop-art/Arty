@@ -2,16 +2,18 @@ import type { Env } from '../../env'
 import {
   parseAllowedEmails,
   resolveUserPlan,
-  trialModelRestrictedResponse,
   verifyGoogleUser,
 } from '../_lib/checkAllowedUser'
-import { consumeDailyQuota } from '../_lib/quota'
+import { consumeTtsFreeQuota, TTS_FREE_DAILY_LIMIT } from '../_lib/freeQuota'
 
 // Proxy TTS (text-to-speech) pour le brief vocal matinal. Calqué sur
 // whisper-proxy.ts. La clé OpenAI reste côté serveur (RÈGLE 1) ; un token
-// Google valide est obligatoire (anti-relais anonyme, CRIT-4). La synthèse
-// vocale (clé serveur du owner) est réservée aux plans payants — les autres
-// fournissent leur propre clé OpenAI (BYOK via header x-openai-key).
+// Google valide est obligatoire (anti-relais anonyme, CRIT-4).
+//
+// Décision produit : la voix est GRATUITE pour tous, mais plafonnée pour les
+// comptes free/essai (TTS_FREE_DAILY_LIMIT/jour) pour borner le coût de la clé
+// OpenAI serveur. Les plans payants (subscription/pro/vip) ont la voix
+// illimitée. BYOK (header x-openai-key) = pas de plafond (l'utilisateur paie).
 //
 // Le frontend (src/components/home/MorningBrief.tsx) POST { text, voice } et
 // reçoit du binaire audio/mpeg (MP3) à jouer.
@@ -54,44 +56,37 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     ? requestedVoice
     : 'alloy'
 
-  // BYOK prioritaire via header dédié (même convention que whisper-proxy).
+  // BYOK prioritaire (l'utilisateur paie sa propre clé → aucun plafond serveur).
   let apiKey = request.headers.get('x-openai-key') || ''
-  let usingServerKey = false
-  let userPlan: 'subscription' | 'pro' | 'vip' | 'free' | 'trial' = 'free'
 
-  // Fallback clé serveur réservé aux plans payants. On lit le plan en read-only
-  // (pas checkAllowedUser) pour ne pas décrémenter le compteur trial : la voix
-  // n'est pas un modèle d'essai, on refuse explicitement les users trial.
   if (!apiKey && env.OPENAI_API_KEY) {
+    // Voix gratuite pour tous via la clé serveur. Free/essai : plafond
+    // quotidien. Payants : illimité.
     const allowedList = parseAllowedEmails(env.ALLOWED_EMAILS)
-    const isWhitelisted = allowedList.includes(email)
-    const plan = isWhitelisted ? 'vip' : await resolveUserPlan(env, email)
-    if (plan === 'trial') {
-      return trialModelRestrictedResponse()
+    const plan = allowedList.includes(email) ? 'vip' : await resolveUserPlan(env, email)
+    const isPaidPlan = plan === 'subscription' || plan === 'pro' || plan === 'vip'
+
+    if (!isPaidPlan) {
+      const quota = await consumeTtsFreeQuota(env, email)
+      if (!quota.allowed) {
+        return Response.json(
+          {
+            error: `Limite voix gratuite atteinte (${TTS_FREE_DAILY_LIMIT}/jour). Réessaie demain ou passe à Pro pour la voix illimitée.`,
+            limit: TTS_FREE_DAILY_LIMIT,
+          },
+          { status: 429 }
+        )
+      }
     }
-    if (plan === 'subscription' || plan === 'pro' || plan === 'vip') {
-      apiKey = env.OPENAI_API_KEY
-      usingServerKey = true
-      userPlan = plan
-    }
+    apiKey = env.OPENAI_API_KEY
   }
 
   if (!apiKey) {
+    // Ni BYOK, ni clé serveur configurée (cas config owner). Edge case.
     return Response.json(
-      { error: 'Clé OpenAI requise — passez à Pro ou configurez votre clé dans les paramètres' },
-      { status: 401 }
+      { error: 'Service vocal indisponible — ajoute ta clé OpenAI dans les paramètres' },
+      { status: 503 }
     )
-  }
-
-  // Quota quotidien sur la clé serveur (sauf pro/vip illimités), comme whisper.
-  if (usingServerKey && userPlan !== 'pro' && userPlan !== 'vip') {
-    const quota = await consumeDailyQuota(env, email, TTS_MODEL)
-    if (!quota.allowed) {
-      return Response.json(
-        { error: 'Quota quotidien atteint — réessayez demain ou ajoutez votre propre clé OpenAI' },
-        { status: 429 }
-      )
-    }
   }
 
   try {
@@ -110,7 +105,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     })
 
     if (!upstream.ok) {
-      // Erreur OpenAI : on relaie le message (texte) sans exposer la clé.
+      // Erreur OpenAI : on relaie le status sans exposer la clé.
       const errText = (await upstream.text()).slice(0, 300)
       return Response.json(
         { error: `TTS upstream ${upstream.status}: ${errText}` },
@@ -118,7 +113,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
       )
     }
 
-    // Succès : on renvoie le binaire audio tel quel.
+    // Succès : binaire audio relayé tel quel.
     return new Response(upstream.body, {
       status: 200,
       headers: {
