@@ -1,5 +1,10 @@
 import i18n from '../i18n'
 import { getDateLocale } from '../utils/formatDate'
+import { listEvents } from './calendarClient'
+import { listUnreadEmails } from './gmailClient'
+import { getUserLocation, isLocationConsentEnabled } from './native/location'
+import { apiUrl } from './apiBase'
+import { safeJson } from '../utils/safeJson'
 
 /**
  * Morning Brief Service
@@ -74,3 +79,120 @@ export function formatEventTime(isoStart: string): string {
     return ''
   }
 }
+
+/**
+ * Construit le texte brut du brief pour la synthèse vocale.
+ * Combine la salutation, la date, la météo (si position consentie), l'agenda et les emails non lus.
+ */
+export async function buildBriefSpeechText(
+  userName?: string,
+  isGoogleConnected?: boolean
+): Promise<string> {
+  // 1. Salutation (sans emoji)
+  const hour = new Date().getHours()
+  const firstName = userName?.split(' ')[0] || ''
+  const suffix = firstName ? `, ${firstName}` : ''
+  let greeting = ''
+  if (hour < 12) {
+    greeting = `${i18n.t('home.greetingMorning')}${suffix}.`
+  } else if (hour < 18) {
+    greeting = `${i18n.t('home.greetingAfternoon')}${suffix}.`
+  } else {
+    greeting = `${i18n.t('home.greetingEvening')}${suffix}.`
+  }
+
+  // 2. Date du jour
+  const todayStr = new Date().toLocaleDateString(getDateLocale(), {
+    weekday: 'long', day: 'numeric', month: 'long',
+  })
+  const dateSpeech = i18n.t('morningBrief.speech.todayIs', { date: todayStr })
+
+  // 3. Météo
+  let weatherSpeech = ''
+  if (isLocationConsentEnabled()) {
+    try {
+      const pos = await getUserLocation()
+      if (pos) {
+        const city = `${pos.latitude.toFixed(5)},${pos.longitude.toFixed(5)}`
+        const res = await fetch(apiUrl('/api/browser/weather'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ city }),
+        })
+        if (res.ok) {
+          const data = await safeJson(res)
+          if (data && data.current) {
+            weatherSpeech = i18n.t('morningBrief.speech.weather', {
+              city: data.city || '',
+              condition: data.current.condition,
+              temp: Math.round(data.current.temperature),
+            })
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Speech weather fetch error:', e)
+    }
+  }
+
+  // 4. Agenda
+  let calendarSpeech = ''
+  if (isGoogleConnected) {
+    try {
+      const events = await listEvents(1)
+      if (events.length === 0) {
+        calendarSpeech = i18n.t('morningBrief.speech.noEvents')
+      } else {
+        const eventsList = events.map(e => {
+          const time = formatEventTime(e.start)
+          const timePrefix = time === i18n.t('morningBrief.allDay')
+            ? i18n.t('morningBrief.speech.allDayPrefix')
+            : i18n.t('morningBrief.speech.atTimePrefix', { time })
+          return `${timePrefix}, ${e.title}`
+        }).join('. ')
+        calendarSpeech = i18n.t('morningBrief.speech.eventsIntro', {
+          count: events.length,
+          eventsList,
+        })
+      }
+    } catch (e) {
+      console.warn('Speech calendar fetch error:', e)
+    }
+  }
+
+  // 5. Emails non lus
+  let emailSpeech = ''
+  if (isGoogleConnected) {
+    try {
+      const emails = await listUnreadEmails()
+      if (emails.length === 0) {
+        emailSpeech = i18n.t('morningBrief.speech.noEmails')
+      } else {
+        const cleanSender = (fromStr: string): string => {
+          let name = (fromStr.split('<')[0] || '').trim()
+          if (!name && fromStr.includes('@')) {
+            name = (fromStr.split('@')[0] || '').trim()
+          }
+          name = name.replace(/^"+|"+$/g, '')
+          return name || fromStr
+        }
+        const uniqueSenders = Array.from(new Set(emails.map(e => cleanSender(e.from)))).slice(0, 5)
+        const sendersList = uniqueSenders.join(', ')
+        emailSpeech = i18n.t(
+          emails.length === 1 ? 'morningBrief.speech.emailsIntro_one' : 'morningBrief.speech.emailsIntro_other',
+          { count: emails.length, senders: sendersList }
+        )
+      }
+    } catch (e) {
+      console.warn('Speech email fetch error:', e)
+    }
+  }
+
+  const speechParts = [greeting, dateSpeech]
+  if (weatherSpeech) speechParts.push(weatherSpeech)
+  if (calendarSpeech) speechParts.push(calendarSpeech)
+  if (emailSpeech) speechParts.push(emailSpeech)
+
+  return speechParts.filter(Boolean).join(' ')
+}
+

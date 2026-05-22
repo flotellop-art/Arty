@@ -121,40 +121,54 @@ describe('auto mode — report triggers → hybrid', () => {
 // ──────────────────────────────────────────────
 // AUTO MODE — web/maps/YouTube → gemini
 // ──────────────────────────────────────────────
-describe('auto mode — web triggers → gemini', () => {
+describe('auto mode — web triggers → gemini/claude', () => {
   beforeEach(() => withKeys({ gemini: true }))
 
-  const webFR = [
+  const webFRWithoutUrls = [
     'Quelle est la météo demain ?',
     'Cherche sur google maps un restaurant',
     'Dernier résultat du match PSG',
-    'Résumé de la page https://example.com',
     'Les vidéos de la chaîne de ce youtubeur',
     'Prix chez point p pour le crépi',
     'Où acheter du sika ?',
     'Quels sont les concurrent dans ma ville ?',
   ]
 
-  const webEN = [
+  const webFRWithUrls = [
+    'Résumé de la page https://example.com',
+  ]
+
+  const webENWithoutUrls = [
     'What is the weather forecast?',
     'Google maps directions to Paris',
     'Latest match results Premier League',
-    'Summary of the blog post https://example.com',
     'YouTube channel latest videos',
     'Where to buy insulation materials?',
     'Competitors near Lyon',
   ]
 
-  it.each(webFR)('FR web "%s" → gemini', (msg) => {
+  const webENWithUrls = [
+    'Summary of the blog post https://example.com',
+  ]
+
+  it.each(webFRWithoutUrls)('FR web "%s" → gemini', (msg) => {
     expect(detectProvider(msg)).toBe('gemini')
   })
 
-  it.each(webEN)('EN web "%s" → gemini', (msg) => {
+  it.each(webFRWithUrls)('FR web URL "%s" → claude', (msg) => {
+    expect(detectProvider(msg)).toBe('claude')
+  })
+
+  it.each(webENWithoutUrls)('EN web "%s" → gemini', (msg) => {
     expect(detectProvider(msg)).toBe('gemini')
   })
 
-  it('URL trigger → gemini', () => {
-    expect(detectProvider('Résume https://example.com/article')).toBe('gemini')
+  it.each(webENWithUrls)('EN web URL "%s" → claude', (msg) => {
+    expect(detectProvider(msg)).toBe('claude')
+  })
+
+  it('URL trigger → claude', () => {
+    expect(detectProvider('Résume https://example.com/article')).toBe('claude')
   })
 
   it('web trigger → claude when no Gemini key', () => {

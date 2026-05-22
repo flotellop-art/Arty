@@ -341,6 +341,28 @@
       "today": { "label": "What's on today?", "prompt": "What appointments do I have today?" },
       "priorities": { "label": "Organise my priorities", "prompt": "Help me organise my priorities for today" },
       "idea": { "label": "Give me a useful idea", "prompt": "Give me a useful idea or tip for my day" }
+    },
+    "speech": {
+      "todayIs": "Today is {{date}}.",
+      "weather": "The weather in {{city}} is {{condition}} with {{temp}} degrees.",
+      "weatherError": "I couldn't retrieve the weather.",
+      "noEvents": "You have no events scheduled today.",
+      "eventsIntro": "You have {{count}} appointments today: {{eventsList}}.",
+      "atTimePrefix": "at {{time}}",
+      "allDayPrefix": "all day",
+      "noEmails": "You have no unread emails.",
+      "emailsIntro_one": "You have {{count}} unread email from {{senders}}.",
+      "emailsIntro_other": "You have {{count}} unread emails, notably from: {{senders}}."
+    },
+    "player": {
+      "listen": "Listen to brief",
+      "pause": "Pause",
+      "loading": "Generating audio...",
+      "connectGoogleToListen": "Connect Google to listen",
+      "error401": "Google session expired. Reconnect Google.",
+      "error429": "Daily free voice limit reached. Try again tomorrow or upgrade to Pro for unlimited voice.",
+      "error502": "Voice service error. Try again.",
+      "errorGeneric": "Text-to-speech error."
     }
   },
   "proactiveBrief": {

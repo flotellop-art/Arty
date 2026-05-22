@@ -124,11 +124,12 @@ describe('shareTargetService — buildDraftFromShare', () => {
     })
     expect(draft?.text).toBe('Analyse cette image.')
     expect(draft?.files).toHaveLength(1)
-    expect(draft?.files[0]).toEqual({
+    expect(draft?.files[0]).toEqual(expect.objectContaining({
       name: 'photo.jpg',
       type: 'image/jpeg',
       data: 'AAAA',
-    })
+    }))
+    expect(draft?.files[0]?.id).toEqual(expect.any(String))
   })
 
   it('builds a PDF draft with the default summary prompt', () => {
@@ -192,10 +193,11 @@ describe('shareTargetService — shareFileToAttachment', () => {
       base64: 'JVBERi0=',
       sizeBytes: 6,
     })
-    expect(att).toEqual({
+    expect(att).toEqual(expect.objectContaining({
       name: 'a.pdf',
       type: 'application/pdf',
       data: 'JVBERi0=',
-    })
+    }))
+    expect(att.id).toEqual(expect.any(String))
   })
 })

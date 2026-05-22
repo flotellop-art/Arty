@@ -136,6 +136,30 @@ body {
   animation: slide-up 0.3s ease-out;
 }
 
+@keyframes wave-bar-1 {
+  0%, 100% { height: 4px; }
+  50% { height: 14px; }
+}
+@keyframes wave-bar-2 {
+  0%, 100% { height: 14px; }
+  50% { height: 4px; }
+}
+@keyframes wave-bar-3 {
+  0%, 100% { height: 8px; }
+  50% { height: 16px; }
+}
+
+.animate-wave-bar-1 {
+  animation: wave-bar-1 0.8s ease-in-out infinite;
+}
+.animate-wave-bar-2 {
+  animation: wave-bar-2 0.6s ease-in-out infinite;
+}
+.animate-wave-bar-3 {
+  animation: wave-bar-3 0.7s ease-in-out infinite;
+}
+
+
 /* H-UX-5 (audit étape 10) — respect prefers-reduced-motion.
    Désactive les animations permanentes (typing dots, slow rotate, pulse,
    shimmer) et raccourcit les transitions de modale à 0.01s pour les

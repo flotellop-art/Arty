@@ -113,6 +113,9 @@ describe('onToken', () => {
     act(() => {
       result.current.onToken('World', 'conv-1')
     })
+    act(() => {
+      vi.advanceTimersByTime(50)
+    })
     expect(result.current.streamingContent).toBe('World')
   })
 
@@ -244,7 +247,7 @@ describe('onError', () => {
     const saved = mockSaveConversation.mock.calls[0]![0] as typeof conv
     const lastMsg = saved.messages[saved.messages.length - 1]
     expect(lastMsg!.content).toContain('partial')
-    expect(lastMsg!.content.toLowerCase()).toMatch(/interrompue|interrupted/)
+    expect((lastMsg as any).interrupted).toBe(true)
   })
 
   it('returns the error object', () => {
@@ -299,7 +302,7 @@ describe('stopStreaming', () => {
     const saved = mockSaveConversation.mock.calls[0]![0] as typeof conv
     const lastMsg = saved.messages[saved.messages.length - 1]
     expect(lastMsg!.content).toContain('partial stop')
-    expect(lastMsg!.content.toLowerCase()).toMatch(/arrêtée|stopped/)
+    expect((lastMsg as any).interrupted).toBe(true)
   })
 
   it('resets isStreaming and streamingContent', () => {
