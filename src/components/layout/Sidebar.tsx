@@ -122,6 +122,15 @@ export function Sidebar({
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [pendingTasks, setPendingTasks] = useState(0)
   const importInputRef = useRef<HTMLInputElement>(null)
+  const drawerRef = useRef<HTMLElement>(null)
+
+  // A11y : quand le drawer est fermé, `inert` retire tout le sous-arbre du
+  // focus clavier ET de l'arbre d'accessibilité (subsume aria-hidden). Réglé
+  // via ref car la prop JSX `inert` n'est typée qu'à partir de React 19.
+  useEffect(() => {
+    const el = drawerRef.current
+    if (el) el.inert = !isOpen
+  }, [isOpen])
 
   // Debounce search (300ms)
   useEffect(() => {
@@ -187,12 +196,10 @@ export function Sidebar({
 
       {/* Drawer — Design C */}
       <aside
-        // H-UX-3 (audit étape 10) — aria-hidden conditionnel sur drawer fermé.
-        // Sans ça, les lecteurs d'écran annoncent les conversations + boutons
-        // même quand le drawer est invisible.
-        // `inert` attribute serait idéal pour bloquer aussi le Tab focus, mais
-        // pas encore typé dans React 18. Migration future : React 19 +
-        // @types/react 19 le supporteront proprement.
+        ref={drawerRef}
+        // Drawer fermé : `inert` (réglé via drawerRef ci-dessus) bloque le Tab
+        // focus ET retire du lecteur d'écran. On garde aria-hidden en repli
+        // pour les WebViews anciennes sans support `inert`.
         aria-hidden={!isOpen}
         className={`fixed top-0 left-0 h-full w-80 max-w-[85vw] bg-theme-surface text-theme-ink z-50 shadow-xl transform transition-transform duration-300 ease-in-out flex flex-col ${
           isOpen ? 'translate-x-0' : '-translate-x-full'

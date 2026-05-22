@@ -397,6 +397,10 @@ export function useConversation() {
       if (provider === 'hybrid') {
         streaming.setStreamingContent('🔍 Recherche en cours (Gemini)...')
         Promise.all([geminiResearch(text), buildApiMessages(conv.messages)]).then(([research, enrichedMessages]) => {
+          // Si l'utilisateur a cliqué Stop PENDANT la recherche Gemini,
+          // stopStreaming() a déjà nettoyé streamingRef. Sans ce garde, le .then
+          // démarrerait quand même une génération Claude "zombie" après le Stop.
+          if (!streaming.streamingRef.current) return
           if (research) {
             enrichedMessages[enrichedMessages.length - 1] = {
               role: 'user',
