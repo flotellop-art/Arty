@@ -165,21 +165,23 @@ async function runGeminiStream(
     // "à quelle distance", "distance entre Y et X", "aller à X", etc.
     const lastMessage = messages[messages.length - 1]?.content || ''
 
-    // Vidéo YouTube : Gemini la lit nativement si on lui passe l'URL canonique
-    // dans une part `fileData` (et non comme du texte + url_context, qui ne lit
-    // que la page web, pas la vidéo). On normalise via extractYouTubeUrls
-    // (watch?v=ID) et on injecte la/les part(s) vidéo sur le dernier message
-    // user uniquement — la vidéo n'est facturée qu'au tour où elle est collée.
-    const youtubeUrls = extractYouTubeUrls(lastMessage)
-    const hasVideo = youtubeUrls.length > 0
-    if (hasVideo) {
-      const last = contents[contents.length - 1]
-      if (last) {
-        last.parts = [
-          ...youtubeUrls.map((fileUri) => ({ fileData: { fileUri } })),
-          ...last.parts,
-        ]
+    // Vidéo YouTube : Gemini la lit nativement via une part `fileData` (frames
+    // 1/s + audio), pas comme du texte + url_context (qui ne lit que la page).
+    // On prend la vidéo la PLUS RÉCENTE de la conversation — souvent collée
+    // dans un message PRÉCÉDENT puis discutée sur plusieurs tours — et on
+    // l'injecte dans SON message pour que Gemini la garde en contexte sur les
+    // questions de suivi. Une seule vidéo (la plus récente) pour borner le
+    // coût ; elle est ré-envoyée à chaque tour Gemini tant qu'on en parle.
+    let hasVideo = false
+    for (let i = contents.length - 1; i >= 0; i--) {
+      const urls = extractYouTubeUrls(messages[i]?.content || '')
+      if (urls.length === 0) continue
+      const turn = contents[i]
+      if (turn) {
+        turn.parts = [...urls.map((fileUri) => ({ fileData: { fileUri } })), ...turn.parts]
       }
+      hasVideo = true
+      break
     }
 
     const isMapQuery = /google\s*maps|itinéraire|trajet|street\s*view|restaurant|horaires?|adresse|où\s+(se\s+trouve|est|aller|trouver)|coordonnées|GPS|plan\s+(de|du)|carte|combien\s+(de\s+)?(temps|km|kilomètres?|minutes?|heures?)\s+(pour|jusqu|en\s+voiture|d['’]aller|de\s+route|de\s+trajet)|temps\s+(qu['’]il\s+)?(faut|pour)\s+(pour\s+)?aller|aller\s+(à|jusqu['’]?\s*à|en)|distance\s+(entre|jusqu|pour|de)|à\s+quelle\s+distance|how\s+(far|long)\s+(is|to|from)|driving\s+(time|distance)|directions?\s+(to|from)/i.test(lastMessage)
