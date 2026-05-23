@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { detectProvider, needsThinking, selectClaudeSubModel, extractPdfUrls } from '../../services/aiRouter'
+import { detectProvider, needsThinking, selectClaudeSubModel, extractPdfUrls, extractYouTubeUrls, hasYouTubeUrl } from '../../services/aiRouter'
 import { getGeminiThinkingBudget } from '../../services/geminiClient'
 
 // Mock the two external dependencies
@@ -174,6 +174,56 @@ describe('auto mode — web triggers → gemini/claude', () => {
   it('web trigger → claude when no Gemini key', () => {
     withKeys({ gemini: false })
     expect(detectProvider('Météo demain ?')).toBe('claude')
+  })
+
+  // YouTube → Gemini (lecture vidéo native via fileData). Les liens YouTube
+  // doivent aller à Gemini, PAS à Claude comme les autres URLs.
+  const youtubeUrls = [
+    'https://youtu.be/VMUDRIYRoQs?is=tdfxuh9N9JOgzBnj',
+    'https://www.youtube.com/watch?v=VMUDRIYRoQs',
+    'Résume cette vidéo https://youtu.be/dQw4w9WgXcQ',
+    'https://www.youtube.com/shorts/abc123DEF45',
+  ]
+  it.each(youtubeUrls)('YouTube "%s" → gemini', (msg) => {
+    expect(detectProvider(msg)).toBe('gemini')
+  })
+
+  it('YouTube URL → claude when no Gemini key (fallback)', () => {
+    withKeys({ gemini: false })
+    expect(detectProvider('https://youtu.be/VMUDRIYRoQs')).toBe('claude')
+  })
+})
+
+// ──────────────────────────────────────────────
+// YouTube extraction / normalisation
+// ──────────────────────────────────────────────
+describe('extractYouTubeUrls / hasYouTubeUrl', () => {
+  it('normalise youtu.be + strip params de tracking', () => {
+    expect(extractYouTubeUrls('https://youtu.be/VMUDRIYRoQs?is=tdfxuh9N9JOgzBnj'))
+      .toEqual(['https://www.youtube.com/watch?v=VMUDRIYRoQs'])
+  })
+
+  it('extrait watch?v= et déduplique', () => {
+    expect(extractYouTubeUrls('a https://www.youtube.com/watch?v=dQw4w9WgXcQ b youtu.be/dQw4w9WgXcQ'))
+      .toEqual(['https://www.youtube.com/watch?v=dQw4w9WgXcQ'])
+  })
+
+  it('extrait plusieurs vidéos distinctes', () => {
+    expect(extractYouTubeUrls('https://youtu.be/aaaaaaaaaaa et https://youtu.be/bbbbbbbbbbb'))
+      .toEqual([
+        'https://www.youtube.com/watch?v=aaaaaaaaaaa',
+        'https://www.youtube.com/watch?v=bbbbbbbbbbb',
+      ])
+  })
+
+  it('ignore les URLs non-YouTube', () => {
+    expect(extractYouTubeUrls('https://example.com/watch?v=abc')).toEqual([])
+    expect(hasYouTubeUrl('https://example.com/article')).toBe(false)
+  })
+
+  it('hasYouTubeUrl détecte les liens, pas le texte', () => {
+    expect(hasYouTubeUrl('Les vidéos de ce youtubeur')).toBe(false)
+    expect(hasYouTubeUrl('https://youtu.be/VMUDRIYRoQs')).toBe(true)
   })
 })
 

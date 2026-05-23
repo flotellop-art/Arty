@@ -106,6 +106,36 @@ export function hasUrl(message: string): boolean {
   return URL_REGEX.test(message)
 }
 
+// YouTube — détection + extraction. Gemini lit nativement une vidéo YouTube si
+// on lui passe l'URL canonique `watch?v=ID` dans une part fileData (cf.
+// geminiClient.ts). On normalise vers cette forme : l'API rejette parfois les
+// liens courts youtu.be et les paramètres de tracking (?si=…). Les IDs vidéo
+// font 11 caractères [A-Za-z0-9_-]. Deux regex (test non-global / extraction
+// global) pour éviter le piège lastIndex stateful (cf. URL_REGEX ci-dessus).
+const YOUTUBE_ID_REGEX = /(?:youtube\.com\/(?:watch\?(?:[^\s]*&)?v=|shorts\/|embed\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/i
+const YOUTUBE_ID_REGEX_GLOBAL = /(?:youtube\.com\/(?:watch\?(?:[^\s]*&)?v=|shorts\/|embed\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/gi
+
+export function hasYouTubeUrl(message: string): boolean {
+  if (!message) return false
+  return YOUTUBE_ID_REGEX.test(message)
+}
+
+/**
+ * Extrait et normalise les URLs YouTube d'un message vers la forme canonique
+ * `https://www.youtube.com/watch?v=ID` (dédupliquées). Utilisé par geminiClient
+ * pour passer la vidéo à Gemini en part fileData.
+ */
+export function extractYouTubeUrls(message: string): string[] {
+  if (!message) return []
+  const out: string[] = []
+  YOUTUBE_ID_REGEX_GLOBAL.lastIndex = 0
+  let m: RegExpExecArray | null
+  while ((m = YOUTUBE_ID_REGEX_GLOBAL.exec(message)) !== null) {
+    if (m[1]) out.push(`https://www.youtube.com/watch?v=${m[1]}`)
+  }
+  return [...new Set(out)]
+}
+
 // Variante globale pour extraire TOUTES les URLs d'un message (URL_REGEX
 // reste sans flag `g` car utilisée en .test() — un `g` rendrait .test()
 // stateful via lastIndex).
@@ -256,10 +286,12 @@ export function detectProvider(message: string): AIProvider {
   // Private data → always Claude (needs tools + security)
   if (isPrivate) return 'claude'
 
-  // URL détectée → Claude (web_fetch natif Anthropic). Mistral hallucine
-  // sur les URLs (cf. commentaire URL_REGEX) et Gemini url_context est
-  // moins fiable que web_fetch. Priorité sur OpenAI/hybrid car la
-  // fiabilité du contenu prime sur l'intent explicite ChatGPT.
+  // URL YouTube → Gemini : il lit la vidéo nativement (part fileData, cf.
+  // geminiClient.ts). Sans clé Gemini, fallback Claude (qui ne lit pas la
+  // vidéo non plus, mais c'est le comportement historique). Les AUTRES URL →
+  // Claude (web_fetch natif Anthropic ; Mistral hallucine sur les URLs, cf.
+  // commentaire URL_REGEX). La fiabilité du contenu prime sur l'intent ChatGPT.
+  if (hasYouTubeUrl(message)) return geminiKey ? 'gemini' : 'claude'
   if (hasUrl(message)) return 'claude'
 
   // Explicit OpenAI/ChatGPT mention → OpenAI (if key available)
