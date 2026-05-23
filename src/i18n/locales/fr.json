@@ -263,6 +263,7 @@
     "apiInvalidRequest": "Requête invalide : {{message}}",
     "apiConnection": "Erreur de connexion ({{status}}). Vérifie ta connexion internet.",
     "geminiError": "Erreur Gemini ({{status}}). Vérifie ta clé ou ta connexion.",
+    "geminiModelNotFound": "Modèle Gemini indisponible ({{status}}). L'app doit être mise à jour — réessaie avec Claude en attendant.",
     "mistralKeyInvalid": "Clé API Mistral invalide ou expirée.",
     "mistralRateLimit": "Limite de requêtes Mistral atteinte — réessaie dans quelques secondes.",
     "mistralError": "Erreur Mistral ({{status}}): {{message}}",

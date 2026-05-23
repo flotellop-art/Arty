@@ -6,11 +6,15 @@ import { recordUsage } from './costTracker'
 import { dispatchModelUsed } from './modelLabels'
 import i18n from '../i18n'
 
-// Version GA stable (mai 2026). Avant : gemini-3-flash-preview. Les versions
-// "preview" sont systématiquement dépréciées par Google une fois la GA
-// disponible (cf. mail Google AI Studio du 12 mai 2026 sur gemini-3.1-flash-lite).
-// Architecture identique entre preview et GA, juste le nom change.
-const GEMINI_MODEL = 'gemini-3-flash'
+// Modèle Flash GA stable. `gemini-3-flash` (sans suffixe) renvoyait un 404 :
+// ce nom n'existe pas côté API Google — pour cette génération seul
+// `gemini-3-flash-preview` existait, et les "preview" sont dépréciées sans
+// préavis. On pointe donc sur la GA `gemini-3.5-flash` (= ce que résout
+// l'alias `gemini-flash-latest`). Si Google renomme encore, le 404 affiche
+// désormais un message explicite (errors.geminiModelNotFound) au lieu
+// d'envoyer l'utilisateur vérifier sa clé. Liste des noms valides :
+// GET https://generativelanguage.googleapis.com/v1beta/models
+const GEMINI_MODEL = 'gemini-3.5-flash'
 
 // CRIT-5 — Sans timeout, un Cloudflare cold-start ou un réseau flaky peut
 // laisser pendre une requête 60-90s. Force un cap explicite.
@@ -199,7 +203,10 @@ async function runGeminiStream(
     updateTrialFromResponse(response)
 
     if (!response.ok) {
-      throw new Error(i18n.t('errors.geminiError', { status: response.status }))
+      // 404 = modèle/endpoint introuvable (renommage Google), pas un problème
+      // de clé — message dédié pour ne pas envoyer l'utilisateur vérifier sa clé.
+      const key = response.status === 404 ? 'errors.geminiModelNotFound' : 'errors.geminiError'
+      throw new Error(i18n.t(key, { status: response.status }))
     }
 
     // H-AI-5 — notify UI que ce message est servi par Gemini (mêmes infos
@@ -270,7 +277,7 @@ export async function geminiResearch(query: string, apiKeyOverride?: string): Pr
   const apiKey = apiKeyOverride || getGeminiKey()
 
   const requestBody = {
-    model: 'gemini-3-flash',
+    model: GEMINI_MODEL,
     stream: false,
     contents: [{
       role: 'user',
