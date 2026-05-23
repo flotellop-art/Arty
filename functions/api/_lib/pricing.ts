@@ -51,10 +51,12 @@ const PRICING: Record<string, ModelPricing> = {
   'gemini-2.5-pro': { input: 1.25, output: 10, cacheRead: 0.31 },
   'gemini-2.5-flash': { input: 0.075, output: 0.3, cacheRead: 0.019 },
   'gemini-2.5-flash-lite': { input: 0.04, output: 0.15 },
-  // Gemini Flash GA — tarif $0.50/$3. `gemini-3.5-flash` est le modèle servi
-  // (cf. geminiClient.ts). On garde `gemini-3-flash`/`-preview` comme alias
-  // pour les coûts déjà enregistrés sous ces noms.
-  'gemini-3.5-flash': { input: 0.5, output: 3 },
+  // Gemini Flash. `gemini-3.5-flash` (GA, modèle réellement servi cf.
+  // geminiClient.ts) : $1.50/$9, cache $0.15 — source ai.google.dev/gemini-api/
+  // docs/pricing. ATTENTION : ~3× plus cher que le preview. Le preview
+  // `gemini-3-flash-preview` ($0.50/$3) et l'ancien nom GA jamais sorti
+  // `gemini-3-flash` sont gardés comme alias pour les coûts historiques.
+  'gemini-3.5-flash': { input: 1.5, output: 9, cacheRead: 0.15 },
   'gemini-3-flash': { input: 0.5, output: 3 },
   'gemini-3-flash-preview': { input: 0.5, output: 3 },
 }
