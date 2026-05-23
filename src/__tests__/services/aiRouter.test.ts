@@ -176,21 +176,29 @@ describe('auto mode — web triggers → gemini/claude', () => {
     expect(detectProvider('Météo demain ?')).toBe('claude')
   })
 
-  // YouTube → Gemini (lecture vidéo native via fileData). Les liens YouTube
-  // doivent aller à Gemini, PAS à Claude comme les autres URLs.
-  const youtubeUrls = [
+  // YouTube : lien SEUL → Gemini lit la vidéo et répond direct ; lien + TEXTE
+  // → hybride vidéo (Gemini regarde, Claude rédige). Jamais Claude seul (sauf
+  // sans clé Gemini).
+  const bareYouTube = [
     'https://youtu.be/VMUDRIYRoQs?is=tdfxuh9N9JOgzBnj',
     'https://www.youtube.com/watch?v=VMUDRIYRoQs',
-    'Résume cette vidéo https://youtu.be/dQw4w9WgXcQ',
     'https://www.youtube.com/shorts/abc123DEF45',
   ]
-  it.each(youtubeUrls)('YouTube "%s" → gemini', (msg) => {
+  it.each(bareYouTube)('YouTube seul "%s" → gemini', (msg) => {
     expect(detectProvider(msg)).toBe('gemini')
   })
 
-  it('YouTube URL → claude when no Gemini key (fallback)', () => {
+  const youtubeWithText = [
+    'Résume cette vidéo https://youtu.be/dQw4w9WgXcQ',
+    "https://www.youtube.com/watch?v=VMUDRIYRoQs explique ce qu'il raconte",
+  ]
+  it.each(youtubeWithText)('YouTube + texte "%s" → hybrid-video', (msg) => {
+    expect(detectProvider(msg)).toBe('hybrid-video')
+  })
+
+  it('YouTube → claude when no Gemini key (fallback)', () => {
     withKeys({ gemini: false })
-    expect(detectProvider('https://youtu.be/VMUDRIYRoQs')).toBe('claude')
+    expect(detectProvider('Résume https://youtu.be/VMUDRIYRoQs')).toBe('claude')
   })
 })
 

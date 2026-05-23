@@ -22,6 +22,10 @@ const GEMINI_MODEL = 'gemini-3.5-flash'
 // laisser pendre une requête 60-90s. Force un cap explicite.
 const GEMINI_TIMEOUT_MS = 60_000
 
+// Compréhension vidéo (non-streaming) : l'échantillonnage frames + audio peut
+// prendre nettement plus longtemps que du texte. Timeout plus large.
+const GEMINI_VIDEO_TIMEOUT_MS = 120_000
+
 // CRIT-6 — Retry transient errors (429, 5xx). Gemini preview model est
 // particulièrement exposé aux ratelimits. Backoff exponentiel.
 const RETRY_DELAYS_MS = [1000, 2000, 4000]
@@ -349,6 +353,74 @@ export async function geminiResearch(query: string, apiKeyOverride?: string): Pr
       { method: 'POST', headers, body: JSON.stringify(requestBody) },
       GEMINI_TIMEOUT_MS,
     )
+    updateTrialFromResponse(res)
+
+    if (!res.ok) return ''
+
+    const data = await res.json()
+    const parts = data.candidates?.[0]?.content?.parts || []
+    return parts.map((p: { text?: string }) => p.text || '').join('\n')
+  } catch {
+    return ''
+  }
+}
+
+// Compréhension vidéo non-streaming — utilisée par le mode hybride vidéo.
+// Gemini regarde la/les vidéo(s) YouTube (parts fileData) et produit une
+// MATIÈRE BRUTE (transcription + visuels + citations), PAS un résumé : c'est
+// Claude qui rédige ensuite à partir de cette matière. Aucun outil de
+// grounding (incompatible avec une entrée multimodale → 400). Retourne ''
+// en cas d'échec (vidéo privée/indispo/timeout) → le handler hybride bascule
+// alors sur un message d'erreur clair.
+export async function geminiVideoUnderstand(youtubeUrls: string[], query: string): Promise<string> {
+  if (youtubeUrls.length === 0) return ''
+  const apiKey = getGeminiKey()
+
+  const requestBody = {
+    model: GEMINI_MODEL,
+    stream: false,
+    contents: [{
+      role: 'user',
+      parts: [
+        ...youtubeUrls.map((fileUri) => ({ fileData: { fileUri } })),
+        { text: `Documente le contenu de cette vidéo de façon FACTUELLE et EXHAUSTIVE, sans résumer ni interpréter :
+- Transcription des propos importants avec timestamps approximatifs (mm:ss).
+- Description séquentielle de ce qui est montré à l'écran (visuels clés, environ toutes les 30 s).
+- Citations directes marquantes.
+- Texte / chiffres / noms affichés à l'écran.
+Ne tire AUCUNE conclusion, ne reformule pas, ne donne pas ton avis : tu produis la matière première qu'un autre assistant utilisera pour répondre à : "${query}"` },
+      ],
+    }],
+    systemInstruction: {
+      parts: [{
+        text: `Tu observes et transcris des vidéos fidèlement. Tu ne synthétises pas, tu ne conclus pas. Si un détail n'est pas visible/audible, ne l'invente pas — écris "non visible" plutôt que de deviner.`,
+      }],
+    },
+    generationConfig: {
+      temperature: 0.2,
+      maxOutputTokens: 8192,
+      thinkingConfig: { thinkingBudget: 2048 },
+    },
+    // PAS d'outils : entrée multimodale (vidéo) incompatible avec le grounding.
+  }
+
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (apiKey) {
+    headers['Authorization'] = `Bearer ${apiKey}`
+  }
+  const googleToken = await getValidAccessToken()
+  if (googleToken) {
+    headers['x-google-token'] = googleToken
+  }
+
+  try {
+    const res = await fetchWithRetry(
+      apiUrl('/api/ai/gemini-proxy'),
+      { method: 'POST', headers, body: JSON.stringify(requestBody) },
+      GEMINI_VIDEO_TIMEOUT_MS,
+    )
+
+    const { updateTrialFromResponse } = await import('./trialClient')
     updateTrialFromResponse(res)
 
     if (!res.ok) return ''

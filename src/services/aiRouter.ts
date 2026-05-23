@@ -142,6 +142,18 @@ export function extractYouTubeUrls(message: string): string[] {
 const URL_REGEX_GLOBAL = /\bhttps?:\/\/[^\s<>"'`]+|\b(?:www\.)?(?:youtu\.be|youtube\.com)\/[^\s<>"'`]+/gi
 
 /**
+ * Le message contient-il une vraie demande EN PLUS du/des lien(s) ? Sert à
+ * distinguer un lien YouTube collé seul (→ Gemini lit la vidéo et répond,
+ * rapide) d'un lien accompagné d'une instruction (→ hybride vidéo : Gemini
+ * regarde, Claude rédige). On retire les URLs et on regarde ce qui reste.
+ */
+export function hasTextBesidesUrls(message: string): boolean {
+  if (!message) return false
+  const stripped = message.replace(URL_REGEX_GLOBAL, ' ').replace(/\s+/g, ' ').trim()
+  return stripped.length >= 3
+}
+
+/**
  * Extrait les URLs pointant vers un PDF public (`.pdf` dans le chemin).
  * Claude `web_fetch` et Gemini `url_context` ne lisent pas les PDF binaires —
  * ces URLs sont récupérées via Linkup /fetch (→ Markdown) puis injectées
@@ -187,7 +199,7 @@ export function shouldUseWebSearch(message: string): boolean {
   return true
 }
 
-export type AIProvider = 'claude' | 'gemini' | 'mistral' | 'hybrid' | 'openai'
+export type AIProvider = 'claude' | 'gemini' | 'mistral' | 'hybrid' | 'hybrid-video' | 'openai'
 
 export interface ThinkingConfig {
   enabled: boolean
@@ -286,12 +298,16 @@ export function detectProvider(message: string): AIProvider {
   // Private data → always Claude (needs tools + security)
   if (isPrivate) return 'claude'
 
-  // URL YouTube → Gemini : il lit la vidéo nativement (part fileData, cf.
-  // geminiClient.ts). Sans clé Gemini, fallback Claude (qui ne lit pas la
-  // vidéo non plus, mais c'est le comportement historique). Les AUTRES URL →
-  // Claude (web_fetch natif Anthropic ; Mistral hallucine sur les URLs, cf.
-  // commentaire URL_REGEX). La fiabilité du contenu prime sur l'intent ChatGPT.
-  if (hasYouTubeUrl(message)) return geminiKey ? 'gemini' : 'claude'
+  // URL YouTube → Gemini voit la vidéo nativement (part fileData). Avec une
+  // vraie demande à côté (texte) : hybride vidéo — Gemini regarde la vidéo et
+  // en produit une analyse, puis Claude rédige la réponse (meilleure synthèse).
+  // Lien seul → Gemini répond direct (plus rapide, pas de 2e appel). Sans clé
+  // Gemini → Claude (qui ne voit pas la vidéo, comportement historique). Les
+  // AUTRES URL → Claude (web_fetch natif ; Mistral hallucine sur les URLs).
+  if (hasYouTubeUrl(message)) {
+    if (!geminiKey) return 'claude'
+    return hasTextBesidesUrls(message) ? 'hybrid-video' : 'gemini'
+  }
   if (hasUrl(message)) return 'claude'
 
   // Explicit OpenAI/ChatGPT mention → OpenAI (if key available)
