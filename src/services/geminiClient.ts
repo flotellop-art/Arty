@@ -4,6 +4,7 @@ import { getValidAccessToken } from './googleAuth'
 import { buildLocationContext } from './locationContext'
 import { recordUsage } from './costTracker'
 import { dispatchModelUsed } from './modelLabels'
+import { extractYouTubeUrls } from './aiRouter'
 import i18n from '../i18n'
 
 // Modèle Flash GA stable. `gemini-3-flash` (sans suffixe) renvoyait un 404 :
@@ -142,7 +143,8 @@ async function runGeminiStream(
 ) {
   try {
     // Convert messages to Gemini format
-    const contents = messages.map((m) => ({
+    type GeminiPart = { text: string } | { fileData: { fileUri: string } }
+    const contents: Array<{ role: string; parts: GeminiPart[] }> = messages.map((m) => ({
       role: m.role === 'assistant' ? 'model' : 'user',
       parts: [{ text: m.content }],
     }))
@@ -153,11 +155,35 @@ async function runGeminiStream(
     // "combien de temps pour aller à X", "temps qu'il faut pour aller",
     // "à quelle distance", "distance entre Y et X", "aller à X", etc.
     const lastMessage = messages[messages.length - 1]?.content || ''
+
+    // Vidéo YouTube : Gemini la lit nativement si on lui passe l'URL canonique
+    // dans une part `fileData` (et non comme du texte + url_context, qui ne lit
+    // que la page web, pas la vidéo). On normalise via extractYouTubeUrls
+    // (watch?v=ID) et on injecte la/les part(s) vidéo sur le dernier message
+    // user uniquement — la vidéo n'est facturée qu'au tour où elle est collée.
+    const youtubeUrls = extractYouTubeUrls(lastMessage)
+    const hasVideo = youtubeUrls.length > 0
+    if (hasVideo) {
+      const last = contents[contents.length - 1]
+      if (last) {
+        last.parts = [
+          ...youtubeUrls.map((fileUri) => ({ fileData: { fileUri } })),
+          ...last.parts,
+        ]
+      }
+    }
+
     const isMapQuery = /google\s*maps|itinéraire|trajet|street\s*view|restaurant|horaires?|adresse|où\s+(se\s+trouve|est|aller|trouver)|coordonnées|GPS|plan\s+(de|du)|carte|combien\s+(de\s+)?(temps|km|kilomètres?|minutes?|heures?)\s+(pour|jusqu|en\s+voiture|d['’]aller|de\s+route|de\s+trajet)|temps\s+(qu['’]il\s+)?(faut|pour)\s+(pour\s+)?aller|aller\s+(à|jusqu['’]?\s*à|en)|distance\s+(entre|jusqu|pour|de)|à\s+quelle\s+distance|how\s+(far|long)\s+(is|to|from)|driving\s+(time|distance)|directions?\s+(to|from)/i.test(lastMessage)
 
-    const tools = isMapQuery
-      ? [{ google_maps: {} }]
-      : [{ google_search: {} }, { url_context: {} }]
+    // Le grounding (google_search/url_context/google_maps) n'est PAS supporté
+    // avec une entrée multimodale (vidéo) → risque de rejet 400. Quand une
+    // vidéo YouTube est présente, on n'envoie aucun outil : la vidéo se suffit.
+    // `tools: undefined` est retiré du JSON par JSON.stringify.
+    const tools = hasVideo
+      ? undefined
+      : isMapQuery
+        ? [{ google_maps: {} }]
+        : [{ google_search: {} }, { url_context: {} }]
 
     const locationContext = await buildLocationContext(lastMessage)
     const systemText = (options?.systemPrompt || GEMINI_SYSTEM) + locationContext
