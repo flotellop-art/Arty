@@ -78,3 +78,21 @@ export async function secureGetJSON<T>(baseKey: string): Promise<T | null> {
     return null
   }
 }
+
+/**
+ * Supprime TOUTES les clés localStorage du user actif (suppression de compte).
+ * Ne touche qu'au préfixe `arty-{userId}-` : les données des autres comptes
+ * présents sur le même appareil sont préservées (cf. BUG 45). No-op si aucun
+ * user actif (on ne wipe jamais en aveugle les clés globales `arty-*`).
+ */
+export function clearAllForActiveUser(): void {
+  const userId = getActiveUserId()
+  if (!userId) return
+  const prefix = `arty-${userId}-`
+  const toRemove: string[] = []
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i)
+    if (k && k.startsWith(prefix)) toRemove.push(k)
+  }
+  toRemove.forEach((k) => localStorage.removeItem(k))
+}

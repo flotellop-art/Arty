@@ -621,5 +621,16 @@
       "error": "erreur",
       "aborted": "annulé"
     }
+  },
+  "account": {
+    "dangerZone": "Zone de danger",
+    "delete": "Supprimer mon compte",
+    "deleteDescription": "Efface définitivement ta mémoire, tes conversations et tes données — sur cet appareil et sur nos serveurs.",
+    "confirmTitle": "Supprimer définitivement ton compte ?",
+    "confirmBody": "Action irréversible. Tes conversations, ta mémoire et tes réglages seront effacés de cet appareil, et tes données personnelles supprimées de nos serveurs. Tes éventuelles factures sont conservées (obligation légale).",
+    "confirmCta": "Oui, supprimer définitivement",
+    "cancel": "Annuler",
+    "deleting": "Suppression…",
+    "error": "La suppression a échoué. Réessaie ou contacte le support."
   }
 }
