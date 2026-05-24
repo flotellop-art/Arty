@@ -6,6 +6,7 @@ import { useBrowser } from './useBrowser'
 import { useComputer } from './useComputer'
 import { useMemory } from './useMemory'
 import { buildContextualPrompt } from '../constants/systemPrompt'
+import { buildLocalMemoryPrompt } from '../services/localMemoryService'
 import { createToolExecutor } from '../services/toolExecutor'
 import { getStyle, setStyle, getStylePrompt, STYLE_OPTIONS, type ResponseStyle } from '../services/responseStyles'
 import type { Question } from '../components/chat/QuestionModal'
@@ -92,7 +93,7 @@ export function useAppSetup(conversation: ConversationHook) {
     // tombent sur leurs constantes FR hardcodées et l'UI EN n'a aucun effet
     // sur la langue des réponses.
     if (!googleAuth.isConnected) {
-      const prompt = buildContextualPrompt() + getStylePrompt(responseStyle)
+      const prompt = buildLocalMemoryPrompt() + buildContextualPrompt() + getStylePrompt(responseStyle)
       setSystemPrompt(prompt)
       return
     }
@@ -123,7 +124,7 @@ export function useAppSetup(conversation: ConversationHook) {
     // requêtes type "salut", "merci", "comment ça va").
     const buildPrompt = (userMessage?: string) => {
       const memorySummary = memoryHook.getPromptContext(userMessage)
-      const prompt = buildContextualPrompt({ gmailSummary, driveSummary, memorySummary }) + getStylePrompt(responseStyle)
+      const prompt = buildLocalMemoryPrompt() + buildContextualPrompt({ gmailSummary, driveSummary, memorySummary }) + getStylePrompt(responseStyle)
       setSystemPrompt(prompt)
     }
     buildPrompt()

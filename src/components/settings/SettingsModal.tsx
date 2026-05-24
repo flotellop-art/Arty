@@ -44,6 +44,8 @@ import {
 import { MemoryHistoryPanel } from './MemoryHistoryPanel'
 import { MemoryViewer } from './MemoryViewer'
 import { OrchestratorSync } from './OrchestratorSync'
+import { getStreakData, setVacationMode, type StreakData } from '../../services/streakService'
+import { LocalMemoryModal } from './LocalMemoryModal'
 
 interface SettingsModalProps {
   open: boolean
@@ -70,6 +72,8 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
   const [factCheckMode, setFactCheckModeState] = useState<FactCheckMode>(getFactCheckMode)
   const [showMemoryHistory, setShowMemoryHistory] = useState(false)
   const [showMemoryViewer, setShowMemoryViewer] = useState(false)
+  const [streakData, setStreakDataState] = useState<StreakData>(getStreakData)
+  const [showLocalMemory, setShowLocalMemory] = useState(false)
   const [proLicense, setProLicense] = useState<ProLicenseState | null>(getProLicense)
   const [licenseKey, setLicenseKey] = useState('')
   const [licenseEmail, setLicenseEmail] = useState('')
@@ -455,6 +459,48 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
             )}
           </div>
 
+          {/* Streak / régularité (F-004) */}
+          <div className="border-t border-theme-border pt-5">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="font-display text-base text-theme-ink">
+                  {streakData.vacationMode ? '⏸' : '🔥'} {t('streak.settings.title')}
+                </p>
+                <p className="font-display italic text-xs text-theme-muted mt-0.5">
+                  {streakData.currentStreak <= 1
+                    ? t('streak.settings.empty')
+                    : streakData.vacationMode
+                      ? t('streak.settings.vacation', { count: streakData.currentStreak })
+                      : t('streak.settings.current', { count: streakData.currentStreak })}
+                </p>
+                {streakData.longestStreak > 1 && (
+                  <p className="font-display italic text-[11px] text-theme-muted mt-0.5">
+                    {t('streak.settings.record', { count: streakData.longestStreak })}
+                  </p>
+                )}
+              </div>
+              <div className="flex flex-col items-end gap-1 shrink-0">
+                <button
+                  onClick={() => setStreakDataState(setVacationMode(!streakData.vacationMode))}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                    streakData.vacationMode ? 'bg-theme-accent' : 'bg-theme-ink/20'
+                  }`}
+                  aria-label={streakData.vacationMode ? t('streak.settings.vacationResumeAria') : t('streak.settings.vacationToggleAria')}
+                  aria-pressed={streakData.vacationMode}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-theme-bg transition-transform ${
+                      streakData.vacationMode ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+                <span className="font-display italic text-[10px] text-theme-muted">
+                  {streakData.vacationMode ? t('streak.settings.vacationResume') : t('streak.settings.vacationToggle')}
+                </span>
+              </div>
+            </div>
+          </div>
+
           {/* Upgrade entry */}
           <div className="border-t border-theme-border pt-5">
             <button
@@ -486,6 +532,24 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
                 <p className="font-display text-base text-theme-ink">🧠 {t('settings.memory.title')}</p>
                 <p className="font-display italic text-xs text-theme-muted mt-0.5">
                   {t('settings.memory.description')}
+                </p>
+              </div>
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="text-theme-accent">
+                <path d="M5 3L9 7L5 11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Mémoire locale (F-001) */}
+          <div className="border-t border-theme-border pt-5">
+            <button
+              onClick={() => setShowLocalMemory(true)}
+              className="w-full flex items-center justify-between text-left"
+            >
+              <div>
+                <p className="font-display text-base text-theme-ink">📌 {t('localMemory.settings.title')}</p>
+                <p className="font-display italic text-xs text-theme-muted mt-0.5">
+                  {t('localMemory.settings.description')}
                 </p>
               </div>
               <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="text-theme-accent">
@@ -599,6 +663,7 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
       </div>
       {showMemoryHistory && <MemoryHistoryPanel onClose={() => setShowMemoryHistory(false)} />}
       {showMemoryViewer && <MemoryViewer onClose={() => setShowMemoryViewer(false)} />}
+      {showLocalMemory && <LocalMemoryModal onClose={() => setShowLocalMemory(false)} />}
       {showLocationDebug && (
         <div
           className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-theme-ink/50"
