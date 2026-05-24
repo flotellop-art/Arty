@@ -621,5 +621,16 @@
       "error": "error",
       "aborted": "cancelled"
     }
+  },
+  "account": {
+    "dangerZone": "Danger zone",
+    "delete": "Delete my account",
+    "deleteDescription": "Permanently erases your memory, conversations and data — on this device and our servers.",
+    "confirmTitle": "Permanently delete your account?",
+    "confirmBody": "This can't be undone. Your conversations, memory and settings will be erased from this device, and your personal data deleted from our servers. Any invoices are kept (legal requirement).",
+    "confirmCta": "Yes, delete permanently",
+    "cancel": "Cancel",
+    "deleting": "Deleting…",
+    "error": "Deletion failed. Try again or contact support."
   }
 }
