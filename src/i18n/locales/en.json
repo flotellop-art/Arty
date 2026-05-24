@@ -589,5 +589,37 @@
       "limitReached": "Limit reached ({{max}} facts maximum)",
       "close": "Close"
     }
+  },
+  "compare": {
+    "title": "Comparator",
+    "panels": "{{count}} / {{max}} panels",
+    "addPanel": "Add",
+    "addPanelAria": "Add a panel",
+    "removePanelAria": "Close the {{provider}} panel",
+    "back": "Back",
+    "provider": "Provider",
+    "model": "Model",
+    "promptLabel": "Prompt sent to all models",
+    "promptPlaceholder": "Your prompt — Ctrl/Cmd+Enter to send to all models",
+    "send": "Send",
+    "sendAria": "Send the prompt to all models",
+    "stop": "Stop",
+    "stopAria": "Cancel responses in progress (Esc)",
+    "help": "Ctrl/Cmd+Enter sends to all models · Esc cancels.",
+    "waiting": "Waiting for a prompt…",
+    "errorPrefix": "Error:",
+    "metricFirstToken": "First token",
+    "metricTotal": "Total",
+    "metricCost": "Est. cost",
+    "metricTokens": "{{in}} in / {{out}} out tokens (estimated)",
+    "settingsEntry": "Comparator",
+    "settingsDescription": "Compare 2–4 models side by side",
+    "status": {
+      "idle": "ready",
+      "streaming": "running",
+      "done": "done",
+      "error": "error",
+      "aborted": "cancelled"
+    }
   }
 }

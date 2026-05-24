@@ -589,5 +589,37 @@
       "limitReached": "Limite atteinte ({{max}} faits maximum)",
       "close": "Fermer"
     }
+  },
+  "compare": {
+    "title": "Comparateur",
+    "panels": "{{count}} / {{max}} panneaux",
+    "addPanel": "Ajouter",
+    "addPanelAria": "Ajouter un panneau",
+    "removePanelAria": "Fermer le panneau {{provider}}",
+    "back": "Retour",
+    "provider": "Fournisseur",
+    "model": "Modèle",
+    "promptLabel": "Prompt envoyé à tous les modèles",
+    "promptPlaceholder": "Ton prompt — Ctrl/Cmd+Entrée pour l'envoyer à tous les modèles",
+    "send": "Envoyer",
+    "sendAria": "Envoyer le prompt à tous les modèles",
+    "stop": "Stop",
+    "stopAria": "Annuler les réponses en cours (Échap)",
+    "help": "Ctrl/Cmd+Entrée envoie à tous les modèles · Échap annule.",
+    "waiting": "En attente d'un prompt…",
+    "errorPrefix": "Erreur :",
+    "metricFirstToken": "1er token",
+    "metricTotal": "Total",
+    "metricCost": "Coût est.",
+    "metricTokens": "{{in}} in / {{out}} out tokens (estimés)",
+    "settingsEntry": "Comparateur",
+    "settingsDescription": "Compare la réponse de 2 à 4 modèles côte à côte",
+    "status": {
+      "idle": "prêt",
+      "streaming": "en cours",
+      "done": "terminé",
+      "error": "erreur",
+      "aborted": "annulé"
+    }
   }
 }

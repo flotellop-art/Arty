@@ -41,6 +41,7 @@ import type { CurrentPlan } from './screens/upgrade'
 const UpgradeScreen = lazy(() => import('./screens/upgrade').then((m) => ({ default: m.UpgradeScreen })))
 const TemplatesScreen = lazy(() => import('./screens/templates').then((m) => ({ default: m.TemplatesScreen })))
 const CostsScreen = lazy(() => import('./screens/costs').then((m) => ({ default: m.CostsScreen })))
+const ComparatorScreen = lazy(() => import('./screens/compare').then((m) => ({ default: m.ComparatorScreen })))
 
 // Fallback pendant le chargement des chunks lazy — petit splash neutre,
 // disparaît dès que le chunk arrive (<200ms en pratique sur 4G).
@@ -279,6 +280,12 @@ function AppContent({
     return () => window.removeEventListener('arty-open-upgrade', open)
   }, [navigate])
 
+  useEffect(() => {
+    const open = () => navigate('/compare')
+    window.addEventListener('arty-open-compare', open)
+    return () => window.removeEventListener('arty-open-compare', open)
+  }, [navigate])
+
   // Open the costs dashboard from Settings — same CustomEvent pattern as Upgrade.
   useEffect(() => {
     const open = () => navigate('/costs')
@@ -420,6 +427,14 @@ function AppContent({
           element={
             <Suspense fallback={<LazyFallback />}>
               <CostsScreen onBack={() => navigate('/')} />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/compare"
+          element={
+            <Suspense fallback={<LazyFallback />}>
+              <ComparatorScreen onBack={() => navigate('/')} />
             </Suspense>
           }
         />
