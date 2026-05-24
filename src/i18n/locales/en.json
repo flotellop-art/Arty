@@ -542,5 +542,52 @@
     "premiumPackTitle": "+100 premium messages pack",
     "premiumPackDescription": "For Subscription users who have reached their monthly quota.",
     "premiumPackCta": "Buy 100 messages"
+  },
+  "streak": {
+    "badge": {
+      "ariaLabel_one": "{{count}} day streak",
+      "ariaLabel_other": "{{count}} day streak",
+      "vacationAriaLabel_one": "{{count}}-day streak — on vacation pause",
+      "vacationAriaLabel_other": "{{count}}-day streak — on vacation pause"
+    },
+    "settings": {
+      "title": "Consistency",
+      "current_one": "{{count}} day in a row",
+      "current_other": "{{count}} days in a row",
+      "record_one": "Personal best: {{count}} day",
+      "record_other": "Personal best: {{count}} days",
+      "empty": "Come back tomorrow to start your streak!",
+      "vacation_one": "{{count}}-day streak — paused",
+      "vacation_other": "{{count}}-day streak — paused",
+      "vacationToggle": "Vacation pause",
+      "vacationResume": "Resume",
+      "vacationToggleAria": "Pause streak (vacation)",
+      "vacationResumeAria": "Resume streak"
+    }
+  },
+  "localMemory": {
+    "settings": {
+      "title": "Local memory",
+      "description": "Facts Arty remembers about you · 100% on your device"
+    },
+    "modal": {
+      "title": "Local memory",
+      "counter": "{{count}} / {{max}}",
+      "privacyNotice": "These facts are stored only on this device, encrypted (AES-256). They personalise Arty's responses without being saved server-side.",
+      "searchPlaceholder": "Search…",
+      "empty": "No facts memorised yet.",
+      "emptySearch": "No results",
+      "addPlaceholder": "e.g. I'm vegetarian, my project is called Arty…",
+      "addAria": "Add this fact",
+      "addHint": "Enter to add · Shift+Enter for a new line",
+      "editAria": "Edit: {{content}}",
+      "editFieldAria": "Edit this fact",
+      "deleteAria": "Delete this fact",
+      "confirmDeleteAria": "Confirm delete",
+      "clearAll": "Clear all",
+      "clearAllConfirm": "Delete all memorised facts?",
+      "limitReached": "Limit reached ({{max}} facts maximum)",
+      "close": "Close"
+    }
   }
 }

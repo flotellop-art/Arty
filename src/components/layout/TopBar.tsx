@@ -8,6 +8,7 @@ import { getTheme, toggleTheme, type Theme } from '../../services/themeService'
 import { CostIndicator } from './CostIndicator'
 import { PrismMark } from '../shared/PrismMark'
 import { isProActivated } from '../../services/proLicense'
+import { StreakBadge } from './StreakBadge'
 
 interface TopBarProps {
   onMenuToggle: () => void
@@ -100,6 +101,9 @@ export function TopBar({ onMenuToggle }: TopBarProps) {
           )}
           {/* Cost indicator (Feature 13) */}
           <CostIndicator />
+
+          {/* Streak discret (F-004) — visible seulement >= 2 jours */}
+          <StreakBadge />
 
           {/* Day/Night toggle — half-filled circle, the standard
               "appearance" icon. A sun/moon would collide with the settings

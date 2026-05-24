@@ -542,5 +542,52 @@
     "premiumPackTitle": "Pack +100 messages premium",
     "premiumPackDescription": "Pour les utilisateurs Subscription qui ont atteint leur quota mensuel.",
     "premiumPackCta": "Acheter 100 messages"
+  },
+  "streak": {
+    "badge": {
+      "ariaLabel_one": "{{count}} jour consécutif",
+      "ariaLabel_other": "{{count}} jours consécutifs",
+      "vacationAriaLabel_one": "Série de {{count}} jour — en pause vacances",
+      "vacationAriaLabel_other": "Série de {{count}} jours — en pause vacances"
+    },
+    "settings": {
+      "title": "Régularité",
+      "current_one": "{{count}} jour consécutif",
+      "current_other": "{{count}} jours consécutifs",
+      "record_one": "Record : {{count}} jour",
+      "record_other": "Record : {{count}} jours",
+      "empty": "Reviens demain pour commencer ta série !",
+      "vacation_one": "Série de {{count}} jour — en pause vacances",
+      "vacation_other": "Série de {{count}} jours — en pause vacances",
+      "vacationToggle": "Pause vacances",
+      "vacationResume": "Reprendre",
+      "vacationToggleAria": "Mettre la série en pause (vacances)",
+      "vacationResumeAria": "Reprendre la série"
+    }
+  },
+  "localMemory": {
+    "settings": {
+      "title": "Mémoire locale",
+      "description": "Faits qu'Arty retient sur toi · 100% sur ton appareil"
+    },
+    "modal": {
+      "title": "Mémoire locale",
+      "counter": "{{count}} / {{max}}",
+      "privacyNotice": "Ces faits sont stockés uniquement sur cet appareil, chiffrés (AES-256). Ils personnalisent les réponses d'Arty sans être sauvegardés côté serveur.",
+      "searchPlaceholder": "Rechercher…",
+      "empty": "Aucun fait mémorisé pour l'instant.",
+      "emptySearch": "Aucun résultat",
+      "addPlaceholder": "ex : je suis végétarien, mon projet s'appelle Arty…",
+      "addAria": "Ajouter ce fait",
+      "addHint": "Entrée pour ajouter · Shift+Entrée pour aller à la ligne",
+      "editAria": "Modifier : {{content}}",
+      "editFieldAria": "Modifier ce fait",
+      "deleteAria": "Supprimer ce fait",
+      "confirmDeleteAria": "Confirmer la suppression",
+      "clearAll": "Tout effacer",
+      "clearAllConfirm": "Supprimer tous les faits mémorisés ?",
+      "limitReached": "Limite atteinte ({{max}} faits maximum)",
+      "close": "Fermer"
+    }
   }
 }
