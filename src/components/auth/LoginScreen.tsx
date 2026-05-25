@@ -165,7 +165,7 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
   // If pending auth, show API key form
   if (pendingAuth) {
     return (
-      <div
+      <main
         className="bg-theme-bg text-theme-ink flex items-center justify-center px-7 py-8"
         style={{ minHeight: 'var(--viewport-h, 100dvh)' }}
       >
@@ -192,12 +192,12 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
           )}
           <ApiKeyLoginTab onLogin={handleApiKeyLogin} loading={loading} />
         </div>
-      </div>
+      </main>
     )
   }
 
   return (
-    <div
+    <main
       className="bg-theme-bg text-theme-ink flex items-center justify-center px-7 py-8"
       style={{ minHeight: 'var(--viewport-h, 100dvh)' }}
     >
@@ -368,6 +368,6 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
           </div>
         )}
       </div>
-    </div>
+    </main>
   )
 }

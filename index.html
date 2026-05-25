@@ -2,18 +2,30 @@
 <html lang="fr">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#FAF3E7" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-    <meta name="description" content="Arty — Assistant IA personnel" />
+    <meta name="description" content="Arty réunit Claude, Gemini et Mistral dans une seule app, connectée à ton Gmail, Drive et Agenda. Ton assistant IA personnel, privé et sécurisé." />
+    <link rel="canonical" href="https://tryarty.com/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Arty" />
+    <meta property="og:url" content="https://tryarty.com/" />
+    <meta property="og:title" content="Arty — Assistant IA personnel connecté à ton Google" />
+    <meta property="og:description" content="Arty réunit Claude, Gemini et Mistral dans une seule app, connectée à ton Gmail, Drive et Agenda. Ton assistant IA personnel, privé et sécurisé." />
+    <meta property="og:image" content="https://tryarty.com/icons/icon-512x512.png" />
+    <meta property="og:locale" content="fr_FR" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Arty — Assistant IA personnel connecté à ton Google" />
+    <meta name="twitter:description" content="Arty réunit Claude, Gemini et Mistral dans une seule app, connectée à tes données Google." />
+    <meta name="twitter:image" content="https://tryarty.com/icons/icon-512x512.png" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..700&family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&family=Lora:wght@400;600;700&display=swap" rel="stylesheet" />
-    <title>Arty</title>
+    <title>Arty — Assistant IA personnel connecté à ton Google</title>
   </head>
   <body>
     <!-- Pre-launch waitlist banner.
@@ -71,18 +83,7 @@
     <script type="module" src="/src/main.tsx"></script>
     <!-- Bandeau pre-launch : script externe (CSP refuse inline). -->
     <script src="/arty-banner.js"></script>
-    <script>
-      // Skip SW registration on Capacitor native — the SW persists across APK
-      // updates and serves stale JS/CSS, forcing users to clear app data.
-      // See BUG 45 in CLAUDE.md.
-      var isCapacitorNative =
-        (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform() === true)
-        || (location.protocol === 'https:' && location.hostname === 'localhost');
-      if ('serviceWorker' in navigator && !isCapacitorNative) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js').catch(() => {});
-        });
-      }
-    </script>
+    <!-- SW registration : script externe (la CSP script-src 'self' refuse l'inline, comme arty-banner.js). Voir BUG 45. -->
+    <script src="/sw-register.js"></script>
   </body>
 </html>

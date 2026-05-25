@@ -36,7 +36,7 @@ export function WelcomeSlides({ onComplete }: WelcomeSlidesProps) {
   }
 
   return (
-    <div className="min-h-[100dvh] bg-theme-bg flex flex-col items-center justify-center px-8">
+    <main className="min-h-[100dvh] bg-theme-bg flex flex-col items-center justify-center px-8">
       <div className="w-full max-w-sm flex flex-col items-center text-center gap-6">
         {/* Emoji */}
         <span className="text-6xl">{slide.emoji}</span>
@@ -82,7 +82,7 @@ export function WelcomeSlides({ onComplete }: WelcomeSlidesProps) {
           )}
         </div>
       </div>
-    </div>
+    </main>
   )
 }
 
