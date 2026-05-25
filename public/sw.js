@@ -1,4 +1,4 @@
-const CACHE_NAME = 'arty-cache-v50'
+const CACHE_NAME = 'arty-cache-v51'
 
 // ─── Push Notifications (Web Push API) ───
 self.addEventListener('push', (event) => {
@@ -93,23 +93,14 @@ self.addEventListener('fetch', (event) => {
     return
   }
 
-  // Never cache Google Fonts CSS (let browser handle)
-  if (url.hostname === 'fonts.googleapis.com') {
-    return
-  }
-
-  // Cache-first for Google Fonts woff2
-  if (url.hostname === 'fonts.gstatic.com') {
-    event.respondWith(
-      caches.match(request).then((cached) => {
-        if (cached) return cached
-        return fetch(request).then((response) => {
-          const clone = response.clone()
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone))
-          return response
-        })
-      })
-    )
+  // Laisse le navigateur gérer NATIVEMENT toutes les requêtes cross-origin
+  // (Google Fonts, avatars, n'importe quel CDN). Un fetch() lancé par le SW
+  // s'exécute sous le connect-src de la page, qui est volontairement strict :
+  // intercepter une requête cross-origin la re-fetch sous connect-src et la
+  // fait bloquer par la CSP. C'est ce qui cassait fonts.gstatic.com (woff2)
+  // une fois le SW réellement enregistré sur le web. Le chargement natif passe
+  // par font-src / img-src (qui, eux, autorisent ces origines).
+  if (url.origin !== self.location.origin) {
     return
   }
 
