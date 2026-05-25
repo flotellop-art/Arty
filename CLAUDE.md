@@ -515,7 +515,7 @@ Slash command **`/audit-secu`** (défini dans `.claude/commands/audit-secu.md`) 
 
 ### TODO Sécurité — prochain audit
 
-Dernier audit : **4 mai 2026** (PR #127 + PR #128).
+Dernier audit : **25 mai 2026** (3 agents Sonnet en parallèle).
 
 À traiter en priorité quand on relance un cycle sécurité :
 
@@ -537,17 +537,38 @@ des conversations — implémenté le 16 mai, voir « PR à venir » ci-dessous.
 - [ ] **PR 2 — PKCE OAuth** : ajout du `code_verifier` + `code_challenge` au flow Google web. Stratégie en 2 PRs validée le 4 mai (state CSRF d'abord en PR #128, PKCE ensuite). Coût ~2h, confiance 80%. Touche `googleAuth.ts:buildOAuthUrl()` (devient async), `OAuthCallback.tsx`, `functions/api/auth/token.ts` (forward `code_verifier` à Google). Suivre les patterns du callback double (web + deeplink) déjà éprouvés en PR #128.
 - [x] **Chiffrement des conversations en localStorage** — FAIT (16 mai). Chiffrées AES-256 sous `conversations-enc` ; cache mémoire déchiffré pour garder `saveConversation` synchrone (BUG 16), write-through avec filet clair synchrone, migration auto des conversations en clair, JAMAIS de wipe sur échec de déchiffrement, killswitch `arty-conv-encryption-disabled`. PAS de Web Worker — le diagnostic « le chiffrement async cassait l'UI » était faux : c'est rendre `saveConversation` lui-même async qui cassait l'UI ; le cache mémoire (pattern memTokens) résout ça. Round-trip vérifié en navigateur réel.
 
+**CRIT actifs (audit 25 mai) — traiter immédiatement** :
+- [ ] **`.env.example:1-2`** — renommer `VITE_ANTHROPIC_API_KEY` / `VITE_GEMINI_API_KEY` → sans préfixe `VITE_`. Viole explicitement RÈGLE 1 (5 min).
+- [ ] **`src/hooks/useAppSetup.ts:174`** — valider `params.url` avec `/^https?:\/\//i` avant `window.open`. Vecteur open redirect / prompt injection (15 min).
+- [ ] **`functions/api/license/activate.ts`** — ajouter `checkAllowedUser()`, utiliser l'email du token Google vérifié plutôt que celui du body. Élévation de privilège possible (30 min).
+
+**HIGH actifs (audit 25 mai)** :
+- [ ] **`src/services/conversationExport.ts:262`** — `DOMPurify.sanitize(html)` avant `container.innerHTML`. XSS via export PDF (30 min).
+- [ ] **`src/components/shared/MarkdownRenderer.tsx:18`** — retirer `style` de `'*'` dans le schema sanitize, retirer `'data'` de `protocols.src`. CSS exfiltration possible (15 min).
+- [ ] **`src/services/googleAuth.ts:228`** — wrapper `console.warn('body=', data)` dans `if (import.meta.env.DEV)`. Log sensible en prod (5 min).
+- [ ] **`src/components/shared/ReportPage.tsx:26`** — ajouter `if (e.origin !== 'null' && e.origin !== window.location.origin) return;` dans le listener `postMessage` (15 min).
+- [ ] **`src/App.tsx:738,917`** — appeler `clearActiveKeys()` avant `setActiveSession()`. BUG 6 résiduel sur les flows login directs dans App.tsx (30 min).
+- [ ] **`functions/api/contacts/action.ts:89`** — valider `resourceName` avec `/^people\/[a-zA-Z0-9_-]+$/` avant usage dans URL (15 min).
+- [ ] **`functions/api/wordpress/action.ts:50`** — valider `postId` avec `/^\d+$/` (15 min).
+- [ ] **`functions/api/search/web.ts:131`** — retourner `{ error: 'Search failed' }` générique au lieu de propager les messages Linkup (10 min).
+- [ ] **`functions/api/trial/init.ts:38`** — migrer vers `verifyGoogleUser()` (`userinfo`) au lieu de `tokeninfo` déprécié (1h).
+
 **HIGH backend non traités (audit du 4 mai)** :
 - [ ] **License expiration jamais vérifiée** dans `functions/api/subscription/status.ts:117-128` — query `licenses WHERE status = 'active'` sans `expires_at > NOW()`. Risque = perte de revenu, pas sécu directe.
 - [ ] **Premium cap non-atomique** dans `functions/api/_lib/checkPremiumCap.ts` — KV décrément vulnérable à la concurrence, quota bypass possible (CAP=150 → 300+).
 - [ ] **DELETE memory sans filtre `WHERE user_id = ?` strict** dans `functions/api/memory/action.ts` — défense en profondeur (déjà protégé par auth mais à durcir).
 
 **MED non traités** :
-- [ ] **PBKDF2 itérations à 100k** dans `crypto.ts:38-44` — OWASP 2024 recommande 200k+. Bump simple (+100ms au login).
-- [ ] **`storeTokens()` réécrit le plain en fallback** après chaque refresh dans `googleAuth.ts:93-108` — devrait laisser le chiffré en place au lieu de revenir en plain.
+- [ ] **PKCE OAuth** — PR 2 planifiée (voir ci-dessus).
+- [ ] **Rate limit persistent** sur `/api/auth/token` et `/api/auth/refresh` — le rate limit en mémoire est contournable par requêtes multi-isolates Cloudflare. Remplacer par KV ou D1.
+- [ ] **`refreshAccessToken()` logout sur tout 4xx** (`src/services/googleAuth.ts:223`) — 429 et 401 transitoires déclenchent un logout permanent. Restreindre à `res.status === 400 && data?.error === 'invalid_grant'` uniquement.
+- [ ] **Rapports HTML en clair dans localStorage** (`src/services/reportGenerator.ts:228`) — utiliser `secureSet` ou TTL explicite.
+- [ ] **CSP manquante sur les réponses API** (`functions/api/_middleware.ts`) — ajouter `Content-Security-Policy: default-src 'none'` pour les routes `/api/*`.
+- [ ] **Amplification multi-source search** (`/api/search/web`) — un user peut générer 6 appels Linkup parallèles sans rate limit dédié. Ajouter rate limit par user en D1.
 - [ ] **Email lowercasing inconsistant** entre `trial/init.ts:41` et `subscription/status.ts:44` — risque de fragmentation user.
-- [ ] **`tokeninfo` au lieu de `userinfo`** pour vérifier les tokens dans `trial/init.ts:34-44` — moins fiable.
-- [ ] **Pas de rate limit sur `/api/auth/token`** — brute force possible sur les codes OAuth volés.
+
+**MED traités (audit 25 mai)** :
+- ✅ **PBKDF2 100k → 600k** (v2) — conforme OWASP 2024, confirmé audit.
 
 **HIGH a11y traités (12 mai)** :
 - ✅ **Contrastes `text-theme-muted/X`** : retrait des 56 opacités (`/50`, `/60`, `/70`, `/80`) sur `text-theme-muted` → utilisation de la couleur pleine (PR roadmap). Ratio passe de 2.8:1 à ≥4.5:1 sur fond clair.
@@ -561,15 +582,29 @@ des conversations — implémenté le 16 mai, voir « PR à venir » ci-dessous.
 **LOW à nettoyer avant Play Store** :
 - [ ] **Debug `console.log` avec emails** dans `useGoogleAuth.ts:117-195` — wrap en `if (import.meta.env.DEV)`.
 - [ ] **Trial counter peut overflow** silencieusement vers 0 dans `trial/init.ts:51-52`.
-- [ ] **Re-vérifier `webContentsDebuggingEnabled: false`** en prod sur `capacitor.config.ts`.
+- [ ] **Service worker guard** : simplifier `index.html:79` à `window.Capacitor?.isNativePlatform()` uniquement — la branche `https://localhost` est logiquement morte (localhost ne sert pas en HTTPS).
+- [ ] **Salt PBKDF2** : passer de 16 → 32 bytes (`crypto.ts:85`). Non-bloquant avec 600k itérations mais non conforme OWASP recommendation complète.
+- [ ] **`anthropic-beta` header** client-contrôlé sans whitelist dans `proxy.ts:159` — ajouter une allowlist des valeurs autorisées.
 
 **Faux positifs / déjà mitigé** (à NE PAS retraiter) :
-- ✅ `secureSetJSON` race (BUG 1) — `useAuth` utilise `setJSON()` direct sur les tokens, race évitée
+- ✅ API keys + tokens Google en localStorage non-chiffré — intentionnel, non-bloquant (sandbox WebView OS, analyse Opus 16 mai 2026 dans cette section)
+- ✅ `secureSetJSON` race (BUG 1) — design intentionnel documenté, `useAuth` utilise `setJSON()` direct
 - ✅ RECORD_AUDIO (BUG 44) — vérifié présent dans AndroidManifest
 - ✅ exchangeCode timeout — `withTimeout()` enveloppe le fetch
-- ✅ Frontend XSS — `rehype-sanitize` actif, aucun `dangerouslySetInnerHTML`
+- ✅ `rehype-sanitize` actif — pipeline correcte (risque résiduel `style` attr traité dans HIGH ci-dessus)
 - ✅ Service Worker (BUG 45) — registration conditionnelle, cleanup boot, CACHE bumpé
 - ✅ iOS Info.plist — privacy descriptions complètes (BUG 34)
+- ✅ `forceCodeForRefreshToken=true` — présent dans `GoogleSignInPlugin.java:52`
+- ✅ `getValidAccessToken()` — utilisé partout dans les clients AI (pas de lecture brute)
+- ✅ `selfTestCrypto()` avant tout wipe — conforme BUG 47
+- ✅ IV AES-GCM unique par chiffrement — `getRandomValues(12 bytes)` à chaque `encrypt()`
+- ✅ State CSRF OAuth — 24 bytes aléatoires, sessionStorage, single-use dans `OAuthCallback` (PR #128)
+- ✅ `logout()` dispatche `google-storage-ready` + supprime `google-tokens` ET `google-user` (plain + enc) — conforme BUG 41
+- ✅ `webContentsDebuggingEnabled: false` — confirmé OFF
+- ✅ `android:allowBackup="false"` — confirmé
+- ✅ Network security config Android — `cleartextTrafficPermitted="false"` global, aucune exception HTTP
+- ✅ `build.sourcemap: false` en production
+- ✅ iOS ATS — aucun `NSAllowsArbitraryLoads`
 
 ---
 
