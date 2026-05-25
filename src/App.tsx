@@ -374,6 +374,7 @@ function AppContent({
         onOpenTemplates={() => navigate('/templates')}
       />
 
+      <main className="h-full">
       <Routes>
         <Route
           path="/"
@@ -470,6 +471,7 @@ function AppContent({
           }
         />
       </Routes>
+      </main>
 
       {questionModal && (
         <QuestionModal

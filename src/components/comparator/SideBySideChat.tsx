@@ -75,7 +75,7 @@ export function SideBySideChat({ factories, onBack, initialPanels = DEFAULT_PANE
   }
 
   return (
-    <main
+    <div
       className="flex flex-col bg-theme-bg text-theme-ink"
       style={{ height: '100dvh', paddingTop: 'env(safe-area-inset-top, 0px)' }}
     >
@@ -157,6 +157,6 @@ export function SideBySideChat({ factories, onBack, initialPanels = DEFAULT_PANE
         </form>
         <p className="mx-auto mt-1 max-w-4xl text-[11px] text-theme-muted">{t('compare.help')}</p>
       </footer>
-    </main>
+    </div>
   )
 }
