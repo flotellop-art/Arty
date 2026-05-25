@@ -9,6 +9,9 @@ dist
 # Claude Code worktrees (local only, never commit)
 .claude/worktrees/
 
+# Playwright MCP artifacts (snapshots / console logs, local only)
+.playwright-mcp/
+
 # Native build secrets
 google-services.json
 GoogleService-Info.plist
