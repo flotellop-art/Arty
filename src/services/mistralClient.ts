@@ -259,7 +259,12 @@ async function runMistralStream(
     // conditionnelle ("pour TOUTE question portant sur des données qui
     // changent"), donc on durcit en injectant une consigne sans condition
     // sur les requêtes éligibles.
-    const forceWebHint = shouldUseWebSearch(lastUserText)
+    // ATTENTION : pas de forceWebHint si `options.onToolCall` est absent
+    // (ex: comparateur de modèles) — pousser Mistral à appeler web_search
+    // alors qu'on n'a pas de handler pour l'exécuter résulte en un panneau
+    // vide (toolCalls détectés → onDone direct sans streamer de texte).
+    // Symétrique du fix Anthropic dans le wiring du comparateur (compare.tsx).
+    const forceWebHint = (options?.onToolCall && shouldUseWebSearch(lastUserText))
       ? `\n\nRECHERCHE WEB OBLIGATOIRE — non négociable :\nPour CE message utilisateur, tu DOIS appeler le tool web_search AVANT de répondre, même si tu penses connaître la réponse. La recherche web prime sur ta mémoire d'entraînement. Si un fichier est attaché, analyse-le ET fais une recherche web. Cite les sources via [1], [2]. Ne dis JAMAIS "j'ai cherché" — c'est le tool qui cherche.`
       : ''
     const systemPrompt = basePrompt + locationContext + forceWebHint
@@ -276,32 +281,40 @@ async function runMistralStream(
     // spécifique Mistral — Mistral n'a pas de tool web search natif comme
     // Anthropic ou Gemini, donc on lui en fournit un qui appelle notre proxy
     // /api/search/web (route vers Linkup ou Brave selon SEARCH_PROVIDER).
+    //
+    // SAUF si `options.onToolCall` est absent (ex: comparateur de modèles) :
+    // dans ce cas on ne fournit AUCUN tool, car la boucle ligne ~322
+    // appelle onDone() dès qu'un toolCall est détecté sans handler côté
+    // client → panneau vide avec 0 token streamé. Symétrique du fix
+    // Anthropic dans le wiring du comparateur (compare.tsx).
     const baseTools = options?.onToolCall ? convertToolsToOpenAI(TOOLS) : []
-    const openaiTools = [
-      ...baseTools,
-      {
-        type: 'function' as const,
-        function: {
-          name: 'web_search',
-          description: `Recherche web en temps réel. OBLIGATOIRE pour toute donnée récente (actualité, prix, événements, sorties produits, scores sportifs, météo, données 2025+).
+    const openaiTools = options?.onToolCall
+      ? [
+          ...baseTools,
+          {
+            type: 'function' as const,
+            function: {
+              name: 'web_search',
+              description: `Recherche web en temps réel. OBLIGATOIRE pour toute donnée récente (actualité, prix, événements, sorties produits, scores sportifs, météo, données 2025+).
 
 Pour les COMPARAISONS multi-sites/multi-revendeurs (ex: "compare prix X chez Brico Dépôt, Cedeo, Mr Bricolage"), tu DOIS utiliser le paramètre 'sources' avec la liste des domaines (ex: ["bricodepot.fr", "cedeo.fr", "mrbricolage.fr"]). Le serveur fait UN APPEL PAR SOURCE et te retourne les résultats organisés par source — l'attribution est ainsi garantie. NE FAIS JAMAIS une seule recherche générique pour comparer plusieurs sources : tu mélangeras inévitablement les données.`,
-          parameters: {
-            type: 'object',
-            properties: {
-              query: { type: 'string', description: 'La requête à rechercher (ex: "prix Daikin Altherma 3"). PAS d\'opérateur site: ici — utilise le paramètre `sources` à la place.' },
-              maxResults: { type: 'integer', description: 'Nombre max de résultats par source (défaut 5, max 10)' },
-              sources: {
-                type: 'array',
-                items: { type: 'string' },
-                description: 'OBLIGATOIRE pour les comparaisons multi-sites : liste des domaines à interroger séparément. Ex: ["bricodepot.fr", "cedeo.fr"]. Le serveur fait un appel par source. Cap à 6 sources max.',
+              parameters: {
+                type: 'object',
+                properties: {
+                  query: { type: 'string', description: 'La requête à rechercher (ex: "prix Daikin Altherma 3"). PAS d\'opérateur site: ici — utilise le paramètre `sources` à la place.' },
+                  maxResults: { type: 'integer', description: 'Nombre max de résultats par source (défaut 5, max 10)' },
+                  sources: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    description: 'OBLIGATOIRE pour les comparaisons multi-sites : liste des domaines à interroger séparément. Ex: ["bricodepot.fr", "cedeo.fr"]. Le serveur fait un appel par source. Cap à 6 sources max.',
+                  },
+                },
+                required: ['query'],
               },
             },
-            required: ['query'],
           },
-        },
-      },
-    ]
+        ]
+      : []
 
     let maxIterations = 20
 
