@@ -533,7 +533,13 @@ async function runWithTools(
         temperature: thinking.enabled ? 1 : 0.7,
         stream: true,
         system: systemBlocks,
-        tools: cachedTools,
+        // N'inclus le champ `tools` que s'il est non-vide. La doc Anthropic
+        // attend un array non-vide OU pas de champ. Envoyer `tools: []` est
+        // toléré mais peut combiner avec un SYSTEM_PROMPT orienté tools pour
+        // produire des réponses vides (Claude "refuse" parce que le SP lui
+        // dit d'appeler web_search/gmail/drive qu'on ne lui fournit pas).
+        // Cas d'usage légitime de tools=[] : le comparateur de modèles.
+        ...(cachedTools.length > 0 && { tools: cachedTools }),
         messages: apiMessages,
         ...(thinking.enabled && {
           thinking: { type: 'enabled', budget_tokens: thinking.budget },
