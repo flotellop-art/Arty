@@ -372,8 +372,15 @@ export async function factCheckResponse(
 // la vérif n'a pas fini, pour éviter de montrer le contenu non vérifié.
 export interface FactCheckContentOutput {
   correctedContent: string
-  result: FactCheckResult
+  result: FactCheckResult | null
   appliedCorrections: number
+  // Si result null, raison du fail (timeout, parse, réseau, etc.). Présent
+  // uniquement quand le fact-check a vraiment été tenté mais a échoué.
+  // ABSENT quand on a skippé intentionnellement (mode off ou réponse
+  // triviale) — dans ce cas factCheckContent retourne null tout court.
+  // L'appelant utilise cette distinction pour décider d'afficher ou non
+  // le badge "⚠ Fact-check indisponible".
+  failReason?: string
 }
 
 export async function factCheckContent(
@@ -387,7 +394,17 @@ export async function factCheckContent(
   const ctx = getSearchContext()
   clearSearchContext()
   const outcome = await factCheckResponse(question, content, mode, ctx)
-  if (!outcome.result) return null
+  if (!outcome.result) {
+    // Skip intentionnel (mode off, réponse triviale type "Salut !") →
+    // pas la peine d'afficher un badge à l'utilisateur. Return null.
+    if (outcome.reason === 'désactivé' || outcome.reason === 'réponse trop courte') {
+      return null
+    }
+    // Fail réel (timeout, réseau, parse) → on remonte le fail pour que
+    // l'appelant affiche le badge "indisponible" et informe l'utilisateur
+    // que la vérif n'a pas tourné.
+    return { correctedContent: content, result: null, appliedCorrections: 0, failReason: outcome.reason }
+  }
   const result = outcome.result
 
   let correctedContent = content
@@ -461,6 +478,16 @@ export async function runFactCheckOnLatest(
   // (sinon on ne pourrait jamais finaliser).
   if (assistantMsg.factCheck && assistantMsg.factCheck.modelLabel !== 'Vérification en cours…') {
     console.info('[factChecker] already fact-checked, skipping')
+    return
+  }
+
+  // Skip silencieux si la réponse est trop courte pour valoir un fact-check
+  // (salutations, "ok", "merci", etc.). Même seuil que factCheckResponse.
+  // Sans cet early-return, le placeholder "Vérification en cours…" serait
+  // setté puis remplacé par "⚠ Fact-check indisponible (réponse trop courte)"
+  // sur des bulles triviales — bruit UI inutile pour l'utilisateur.
+  if (!assistantMsg.content || assistantMsg.content.length < 80) {
+    console.info('[factChecker] skipping (réponse trop courte)')
     return
   }
 

@@ -295,6 +295,7 @@ export function useConversation() {
         // de la conv.
         streaming.finalize(targetId, finalContent)
         if (fc?.result) {
+          // Succès : attache le résultat normal.
           const fresh = storage.getConversation(targetId)
           if (fresh) {
             const last = fresh.messages[fresh.messages.length - 1]
@@ -304,9 +305,10 @@ export function useConversation() {
               refreshConversations()
             }
           }
-        } else {
-          // Fact-check a échoué / timeout — publie quand même avec un badge
-          // d'indisponibilité pour pas laisser le placeholder gelé.
+        } else if (fc) {
+          // fc.result === null mais fc !== null → fact-check a vraiment été
+          // tenté et a échoué (timeout/parse/réseau). Affiche le badge pour
+          // que l'utilisateur sache que la réponse n'est pas vérifiée.
           const fresh = storage.getConversation(targetId)
           if (fresh) {
             const last = fresh.messages[fresh.messages.length - 1]
@@ -314,7 +316,7 @@ export function useConversation() {
               last.factCheck = {
                 overallConfidence: 'medium',
                 claims: [],
-                modelLabel: '⚠ Fact-check indisponible',
+                modelLabel: `⚠ Fact-check indisponible${fc.failReason ? ` (${fc.failReason})` : ''}`,
                 checkedAt: Date.now(),
               }
               storage.saveConversation(fresh)
@@ -322,6 +324,8 @@ export function useConversation() {
             }
           }
         }
+        // fc === null → skip intentionnel (mode off ou réponse triviale)
+        // → on n'attache pas de factCheck du tout, pas de badge visible.
         streaming.completeStreaming(targetId)
       }
 
