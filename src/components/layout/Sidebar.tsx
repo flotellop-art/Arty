@@ -14,6 +14,9 @@ interface SidebarProps {
   onClose: () => void
   conversations: Conversation[]
   activeId: string | null
+  // Convs avec un stream LLM en cours. Affichées avec un dot pulsant pour
+  // signaler à l'utilisateur qu'Arty "réfléchit" dans cette conv en arrière-plan.
+  streamingConvIds?: ReadonlySet<string>
   onSelect: (id: string) => void
   onNew: () => void
   onNewEU?: () => void
@@ -104,6 +107,7 @@ export function Sidebar({
   onClose,
   conversations,
   activeId,
+  streamingConvIds,
   onSelect,
   onNew,
   onNewEU,
@@ -389,6 +393,7 @@ export function Sidebar({
           )}
           {filteredConversations.map((conv) => {
             const isActive = conv.id === activeId
+            const isStreaming = streamingConvIds?.has(conv.id) ?? false
             // Roadmap UI Phase 3 #5 — cards riches.
             // Avant : ligne fine titre + timestamp uniquement.
             // Maintenant : 2 lignes (titre + aperçu) + badges contextuels
@@ -418,13 +423,17 @@ export function Sidebar({
                 onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = 'rgba(240,226,204,0.05)' }}
                 onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = 'transparent' }}
               >
-                {/* Dot — top-aligned vs centered for 2-line layout */}
+                {/* Dot — top-aligned vs centered for 2-line layout. Si la
+                    conv stream en arrière-plan, le dot pulse (orange plein
+                    avec animation) pour signaler "Arty réfléchit ici". */}
                 <div
-                  className="w-[7px] h-[7px] rounded-full flex-shrink-0 mt-[6px]"
+                  className={`w-[7px] h-[7px] rounded-full flex-shrink-0 mt-[6px] ${isStreaming ? 'animate-pulse' : ''}`}
                   style={{
-                    background: isActive ? 'rgb(var(--theme-accent))' : 'transparent',
-                    border: isActive ? 'none' : `1.5px solid ${DESIGN.borderMid}`,
+                    background: isStreaming || isActive ? 'rgb(var(--theme-accent))' : 'transparent',
+                    border: isStreaming || isActive ? 'none' : `1.5px solid ${DESIGN.borderMid}`,
+                    boxShadow: isStreaming ? '0 0 8px rgb(var(--theme-accent) / 0.6)' : undefined,
                   }}
+                  title={isStreaming ? 'Réflexion en cours' : undefined}
                 />
                 <div className="flex-1 min-w-0">
                   {/* Ligne 1 — titre + timestamp */}

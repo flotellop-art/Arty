@@ -95,19 +95,20 @@ export function useConversation() {
     }
     storage.saveConversation(conv)
     refreshConversations()
+    streaming.setActiveStream(id)
     setActiveId(id)
     setError(null)
     return id
-  }, [refreshConversations])
+  }, [refreshConversations, streaming])
 
   const selectConversation = useCallback((id: string) => {
-    streaming.activeIdRef.current = id
+    streaming.setActiveStream(id)
     setActiveId(id)
     setError(null)
   }, [streaming])
 
   const clearActive = useCallback(() => {
-    streaming.activeIdRef.current = null
+    streaming.setActiveStream(null)
     setActiveId(null)
     setError(null)
   }, [streaming])
@@ -129,6 +130,14 @@ export function useConversation() {
 
       const conv = storage.getConversation(targetId)
       if (!conv) return
+
+      // Cap multi-conv : refuse l'envoi si le cap de streams concurrents est
+      // atteint. La check est faite AVANT d'ajouter le user message pour ne
+      // pas laisser un message orphelin sans réponse.
+      if (!streaming.canStart(targetId)) {
+        setError('Trop de conversations en cours en parallèle. Attends qu\'une réponse se termine.')
+        return
+      }
 
       // Roadmap Phase 2 C — détection d'intent rappel.
       // Avant l'envoi LLM, on check si le message demande un rappel
@@ -223,6 +232,7 @@ export function useConversation() {
       conv.updatedAt = Date.now()
       storage.saveConversation(conv)
       refreshConversations()
+      streaming.setActiveStream(targetId)
       setActiveId(targetId)
 
       fileAttachments.setPendingFiles((files && files.length > 0) ? files : null)
@@ -235,8 +245,8 @@ export function useConversation() {
       const factCheckMode = getFactCheckMode()
       const deferPublish = factCheckMode !== 'off'
 
-      streaming.setHideContent(deferPublish)
       streaming.startStream(targetId)
+      streaming.setHideContent(deferPublish, targetId)
 
       const onToken = (token: string) => streaming.onToken(token, targetId)
 
@@ -382,40 +392,36 @@ export function useConversation() {
       if (provider !== 'hybrid') {
         const pdfUrls = extractPdfUrls(text)
         if (pdfUrls.length > 0) {
-          streaming.setStreamingContent('📄 Lecture du PDF...')
+          streaming.setProgressContent('📄 Lecture du PDF...', targetId)
           const pdfSections = await fetchPdfMarkdowns(pdfUrls)
           if (pdfSections) {
             outgoingText = `${text}\n\n${pdfSections}`
           }
-          if (streaming.streamingRef.current) {
-            streaming.streamingRef.current.accumulated = ''
-          }
-          streaming.setStreamingContent('')
+          streaming.resetAccumulated(targetId)
+          streaming.setProgressContent('', targetId)
         }
       }
 
       if (provider === 'hybrid') {
-        streaming.setStreamingContent('🔍 Recherche en cours (Gemini)...')
+        streaming.setProgressContent('🔍 Recherche en cours (Gemini)...', targetId)
         Promise.all([geminiResearch(text), buildApiMessages(conv.messages)]).then(([research, enrichedMessages]) => {
           // Si l'utilisateur a cliqué Stop PENDANT la recherche Gemini,
-          // stopStreaming() a déjà nettoyé streamingRef. Sans ce garde, le .then
+          // stopStreaming() a déjà nettoyé le stream. Sans ce garde, le .then
           // démarrerait quand même une génération Claude "zombie" après le Stop.
-          if (!streaming.streamingRef.current) return
+          if (!streaming.hasStream(targetId)) return
           if (research) {
             enrichedMessages[enrichedMessages.length - 1] = {
               role: 'user',
               content: `${text}\n\n--- RECHERCHE WEB (données Gemini, à jour) ---\n${research}\n--- FIN RECHERCHE ---\n\nUtilise ces données pour ton rapport. Cite les sources trouvées.`,
             }
           }
-          if (streaming.streamingRef.current) {
-            streaming.streamingRef.current.accumulated = ''
-          }
-          streaming.setStreamingContent('')
+          streaming.resetAccumulated(targetId)
+          streaming.setProgressContent('', targetId)
           controller = streamMessage(enrichedMessages, onToken, onDone, onErr, {
             systemPrompt: systemPromptRef.current,
             onToolCall: toolHandlerRef.current,
           })
-          streaming.abortRef.current = controller
+          streaming.setAbortController(targetId, controller)
         }).catch(onErr)
         controller = new AbortController()
       } else if (provider === 'gemini') {
@@ -482,20 +488,26 @@ export function useConversation() {
         })
       }
 
-      streaming.abortRef.current = controller
+      streaming.setAbortController(targetId, controller)
     },
     [activeId, refreshConversations, streaming, fileAttachments]
   )
 
   const deleteConv = useCallback(
     (id: string) => {
+      // Si la conv supprimée a un stream en cours, l'arrêter d'abord pour
+      // libérer son saveInterval et abort le fetch en cours. Sinon l'interval
+      // continuerait à essayer de sauver dans une conv qui n'existe plus.
+      if (streaming.hasStream(id)) {
+        streaming.stopStreaming(id)
+      }
       storage.deleteConversation(id)
       refreshConversations()
       if (activeId === id) {
         setActiveId(null)
       }
     },
-    [activeId, refreshConversations]
+    [activeId, refreshConversations, streaming]
   )
 
   // Branch a conversation from a specific message index
@@ -600,6 +612,8 @@ export function useConversation() {
     activeId,
     isStreaming: streaming.isStreaming,
     streamingContent: streaming.streamingContent,
+    streamingConvIds: streaming.streamingConvIds,
+    isStreamingFor: streaming.isStreamingFor,
     error,
     createConversation,
     selectConversation,
