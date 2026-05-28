@@ -109,15 +109,22 @@ export function SideBySideChat({ factories, onBack, initialPanels = DEFAULT_PANE
         </button>
       </header>
 
-      {/* Grille de panneaux */}
-      <div className={`grid flex-1 gap-3 overflow-hidden p-3 ${gridColsClass(panels.length)}`}>
+      {/* Grille de panneaux.
+          Mobile (cols-1) : la grille scrolle verticalement, chaque panneau prend
+          une hauteur minimale lisible (60vh) — sans ça les panneaux empilés
+          dépassaient l'écran et `overflow-hidden` les coupait sans permettre
+          de scroller (bug : "impossible de scroller").
+          Desktop (md+, cols-2+) : grille à hauteur fixe (overflow-hidden),
+          chaque panneau scrolle dans son propre `overflow-y-auto` interne. */}
+      <div className={`grid flex-1 gap-3 overflow-y-auto md:overflow-hidden p-3 ${gridColsClass(panels.length)}`}>
         {panels.map((panel: PanelState) => (
-          <ProviderPanel
-            key={panel.id}
-            panel={panel}
-            onChangeConfig={(next) => updatePanelConfig(panel.id, next)}
-            onRemove={panels.length > MIN_PANELS ? () => removePanel(panel.id) : undefined}
-          />
+          <div key={panel.id} className="min-h-[60vh] md:min-h-0 flex">
+            <ProviderPanel
+              panel={panel}
+              onChangeConfig={(next) => updatePanelConfig(panel.id, next)}
+              onRemove={panels.length > MIN_PANELS ? () => removePanel(panel.id) : undefined}
+            />
+          </div>
         ))}
       </div>
 
