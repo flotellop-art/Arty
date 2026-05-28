@@ -2,40 +2,46 @@ import { useState, useCallback, useRef, useEffect } from 'react'
 import { generateId } from '../utils/generateId'
 import * as storage from '../services/storage'
 
+// Cap de streams concurrents — protège des coûts d'abus (8 convs ouvertes en
+// même temps = 8 appels LLM en // sur le compte du proprio). 3 suffit largement
+// pour l'usage "je lance un long brief pendant que je discute autre part".
+export const MAX_CONCURRENT_STREAMS = 3
+
+type StreamState = {
+  targetId: string
+  accumulated: string
+  saveInterval: ReturnType<typeof setInterval> | null
+  abortController: AbortController | null
+  // Mode "publish-after-fact-check" : tokens accumulés mais cachés en live.
+  // Le caller fera le finalize après le fact-check.
+  hideContent: boolean
+}
+
 export function useStreaming(deps: {
   refreshConversations: () => void
 }) {
+  // L'UI ne montre QUE la conversation active. isStreaming et streamingContent
+  // reflètent l'état de la conv actuellement affichée (via activeIdRef). Les
+  // autres streams en cours continuent en arrière-plan dans streamsRef.
   const [isStreaming, setIsStreaming] = useState(false)
   const [streamingContent, setStreamingContent] = useState('')
-  const abortRef = useRef<AbortController | null>(null)
 
-  // Si true, onToken accumule en background mais N'AFFICHE PAS les tokens
-  // en live. Utilisé par le flow "publish-after-fact-check" pour cacher
-  // la réponse non vérifiée jusqu'à la fin du fact-check — on garde
-  // l'accumulation pour savePartial et pour le finalize final.
-  const hideContentRef = useRef(false)
+  // Set des convIds en cours de streaming — exposé pour la Sidebar (indicateur
+  // "en cours de réflexion" sur chaque conv concernée).
+  const [streamingConvIds, setStreamingConvIds] = useState<ReadonlySet<string>>(() => new Set())
 
-  const setHideContent = useCallback((hide: boolean) => {
-    hideContentRef.current = hide
-    if (hide) setStreamingContent('')
-  }, [])
+  // Map de tous les streams en cours, indexée par convId. Stocke l'accumulé,
+  // l'interval de savePartial, l'AbortController et le flag fact-check par conv.
+  // Hors React state pour éviter un re-render de toute l'app à chaque token.
+  const streamsRef = useRef<Map<string, StreamState>>(new Map())
 
-  // Track active streaming state in refs (survives navigation)
-  const streamingRef = useRef<{
-    targetId: string
-    accumulated: string
-    saveInterval: ReturnType<typeof setInterval> | null
-  } | null>(null)
-
-  // Track active conversation in ref for streaming callbacks
+  // Conv actuellement affichée. Synchronisée par setActiveStream depuis
+  // selectConversation/clearActive. Indique quel stream rendre dans l'UI live.
   const activeIdRef = useRef<string | null>(null)
 
-  // CRIT-7 (audit étape 6) — throttle des setState par token via RAF.
-  // Avant : 1000 tokens = 1000 setState = 1000 re-renders React + 1000
-  // reparse Markdown (avec MarkdownRenderer non mémo'ed). Sur Pixel 6A
-  // ou iPhone 11, le chat freezait visiblement pendant les longues réponses.
-  // Maintenant : on accumule dans le ref, et on flush au max 1× par frame
-  // (~16ms = ~60fps) avec la valeur accumulée la plus récente.
+  // CRIT-7 (audit) — throttle des setState par token via RAF. Un seul RAF
+  // pending pour la conv active. Les streams non-affichés n'allouent pas de
+  // RAF (leur accumulé continue d'arriver dans le ref, sans re-render).
   const pendingFlushRef = useRef<number | null>(null)
 
   const cancelPendingFlush = useCallback(() => {
@@ -45,11 +51,10 @@ export function useStreaming(deps: {
     }
   }, [])
 
-  // Save partial response to storage
-  const savePartial = useCallback(() => {
-    const s = streamingRef.current
-    if (!s || !s.accumulated) return
-
+  // Sauvegarde partielle d'un stream précis (appelé périodiquement par
+  // saveInterval, et au beforeunload pour tous les streams ouverts).
+  const savePartialFor = useCallback((s: StreamState) => {
+    if (!s.accumulated) return
     const conv = storage.getConversation(s.targetId)
     if (!conv) return
 
@@ -68,7 +73,14 @@ export function useStreaming(deps: {
     storage.saveConversation(conv)
   }, [])
 
-  // Finalize: replace partial with final message
+  // Backward-compat : savePartial sans args flush tous les streams actifs.
+  const savePartialAll = useCallback(() => {
+    for (const s of streamsRef.current.values()) {
+      savePartialFor(s)
+    }
+  }, [savePartialFor])
+
+  // Finalise une conv : remplace le placeholder `streaming` par le message final.
   const finalize = useCallback((targetId: string, content: string, interrupted?: boolean) => {
     const conv = storage.getConversation(targetId)
     if (!conv) return
@@ -86,28 +98,41 @@ export function useStreaming(deps: {
     deps.refreshConversations()
   }, [deps])
 
-  // Clean up streaming state
-  const cleanupStreaming = useCallback(() => {
-    if (streamingRef.current?.saveInterval) {
-      clearInterval(streamingRef.current.saveInterval)
-    }
-    cancelPendingFlush()
-    streamingRef.current = null
-    setIsStreaming(false)
-    setStreamingContent('')
-    abortRef.current = null
-  }, [cancelPendingFlush])
+  // Retire un convId du Set des streams actifs (déclenche re-render Sidebar).
+  const removeFromStreamingSet = useCallback((targetId: string) => {
+    setStreamingConvIds((prev) => {
+      if (!prev.has(targetId)) return prev
+      const next = new Set(prev)
+      next.delete(targetId)
+      return next
+    })
+  }, [])
 
-  // Save partial on app close / page hide
+  // Nettoyage d'un stream : clearInterval, suppression du ref, et reset UI
+  // si la conv concernée était celle affichée.
+  const teardownStream = useCallback((targetId: string) => {
+    const s = streamsRef.current.get(targetId)
+    if (s?.saveInterval) {
+      clearInterval(s.saveInterval)
+      s.saveInterval = null
+    }
+    streamsRef.current.delete(targetId)
+    removeFromStreamingSet(targetId)
+    if (activeIdRef.current === targetId) {
+      cancelPendingFlush()
+      setIsStreaming(false)
+      setStreamingContent('')
+    }
+  }, [cancelPendingFlush, removeFromStreamingSet])
+
+  // Save partial on app close / page hide — flush TOUS les streams ouverts,
+  // pas juste la conv active. Sans ça, fermer l'onglet pendant qu'un stream
+  // tournait en arrière-plan perdrait son contenu accumulé.
   useEffect(() => {
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'hidden') {
-        savePartial()
-      }
+      if (document.visibilityState === 'hidden') savePartialAll()
     }
-    const handleBeforeUnload = () => {
-      savePartial()
-    }
+    const handleBeforeUnload = () => savePartialAll()
 
     document.addEventListener('visibilitychange', handleVisibilityChange)
     window.addEventListener('beforeunload', handleBeforeUnload)
@@ -115,136 +140,208 @@ export function useStreaming(deps: {
       document.removeEventListener('visibilitychange', handleVisibilityChange)
       window.removeEventListener('beforeunload', handleBeforeUnload)
     }
-  }, [savePartial])
+  }, [savePartialAll])
 
-  const startStream = useCallback((targetId: string) => {
-    activeIdRef.current = targetId
-    setIsStreaming(true)
-    setStreamingContent('')
+  // Démarre un nouveau stream pour une conv. Retourne false si le cap de
+  // concurrence est atteint — le caller doit alors annuler son envoi.
+  const startStream = useCallback((targetId: string): boolean => {
+    if (streamsRef.current.has(targetId)) {
+      // Stream déjà en cours pour cette conv → impossible d'en démarrer un
+      // second (l'UI bloque déjà via isStreaming, mais défense en profondeur).
+      return false
+    }
+    if (streamsRef.current.size >= MAX_CONCURRENT_STREAMS) {
+      return false
+    }
 
-    streamingRef.current = {
+    const s: StreamState = {
       targetId,
       accumulated: '',
-      saveInterval: setInterval(() => savePartial(), 3000),
+      saveInterval: setInterval(() => {
+        const cur = streamsRef.current.get(targetId)
+        if (cur) savePartialFor(cur)
+      }, 3000),
+      abortController: null,
+      hideContent: false,
     }
-  }, [savePartial])
+    streamsRef.current.set(targetId, s)
+    setStreamingConvIds((prev) => {
+      const next = new Set(prev)
+      next.add(targetId)
+      return next
+    })
+    if (activeIdRef.current === targetId) {
+      setIsStreaming(true)
+      setStreamingContent('')
+    }
+    return true
+  }, [savePartialFor])
+
+  // Synchronise la conv affichée avec son stream en cours (ou avec l'absence
+  // de stream). Appelé depuis selectConversation/clearActive.
+  const setActiveStream = useCallback((id: string | null) => {
+    activeIdRef.current = id
+    cancelPendingFlush()
+    if (id) {
+      const s = streamsRef.current.get(id)
+      if (s) {
+        setIsStreaming(true)
+        setStreamingContent(s.hideContent ? '' : s.accumulated)
+        return
+      }
+    }
+    setIsStreaming(false)
+    setStreamingContent('')
+  }, [cancelPendingFlush])
 
   const isActive = useCallback((targetId: string) => {
     return activeIdRef.current === targetId
   }, [])
 
+  const isStreamingFor = useCallback((id: string | null) => {
+    return id ? streamingConvIds.has(id) : false
+  }, [streamingConvIds])
+
   const onToken = useCallback((token: string, targetId: string) => {
-    if (streamingRef.current) {
-      streamingRef.current.accumulated += token
-    }
-    if (activeIdRef.current !== targetId || hideContentRef.current) return
-    // CRIT-7 — schedule un flush RAF si pas déjà pending. Le flush lit
-    // streamingRef.accumulated (toujours frais) au moment de la frame,
-    // pas la valeur au moment du schedule → on coalesce plusieurs tokens
-    // en un seul setState par frame.
+    const s = streamsRef.current.get(targetId)
+    if (!s) return
+    s.accumulated += token
+    if (s.hideContent) return
+    if (activeIdRef.current !== targetId) return
+    // Throttle RAF : on coalesce les tokens en 1 setState par frame, lu
+    // depuis le ref (toujours frais) au moment du flush.
     if (pendingFlushRef.current !== null) return
     pendingFlushRef.current = requestAnimationFrame(() => {
       pendingFlushRef.current = null
-      const s = streamingRef.current
-      if (s && activeIdRef.current === targetId && !hideContentRef.current) {
-        setStreamingContent(s.accumulated)
+      const cur = streamsRef.current.get(targetId)
+      if (cur && activeIdRef.current === targetId && !cur.hideContent) {
+        setStreamingContent(cur.accumulated)
       }
     })
   }, [])
 
   // Marque la fin du stream SANS finalize. Garde le placeholder `streaming`
-  // en place, garde isStreaming=true pour que l'UI continue à montrer un
-  // loader (TypingIndicator). Le caller fera le finalize après le fact-check.
+  // en place, garde le stream dans streamsRef pour que isStreaming reste true.
   // Différent de onDone qui finalize immédiatement.
   const markStreamDone = useCallback((targetId: string): string => {
-    const content = streamingRef.current?.accumulated || ''
-    if (streamingRef.current?.saveInterval) {
-      clearInterval(streamingRef.current.saveInterval)
-      streamingRef.current.saveInterval = null
+    const s = streamsRef.current.get(targetId)
+    const content = s?.accumulated || ''
+    if (s?.saveInterval) {
+      clearInterval(s.saveInterval)
+      s.saveInterval = null
     }
-    cancelPendingFlush()
+    if (s) s.abortController = null
     if (activeIdRef.current === targetId) {
+      cancelPendingFlush()
       setStreamingContent('')
     }
-    abortRef.current = null
     return content
   }, [cancelPendingFlush])
 
-  // Cleanup final après publish manuel (finalize appelé par le caller).
-  // Reset isStreaming et streamingRef. À appeler après markStreamDone +
+  // Cleanup final après publish manuel. À appeler après markStreamDone +
   // finalize manuel pour libérer l'état de streaming.
   const completeStreaming = useCallback((targetId: string) => {
-    if (activeIdRef.current === targetId) {
-      setIsStreaming(false)
-      setStreamingContent('')
-    }
-    streamingRef.current = null
-    hideContentRef.current = false
-  }, [])
+    teardownStream(targetId)
+  }, [teardownStream])
 
   const onDone = useCallback((targetId: string) => {
-    const content = streamingRef.current?.accumulated || ''
+    const s = streamsRef.current.get(targetId)
+    const content = s?.accumulated || ''
     finalize(targetId, content)
-    if (activeIdRef.current === targetId) {
-      setIsStreaming(false)
-      setStreamingContent('')
-    }
-    if (streamingRef.current?.saveInterval) {
-      clearInterval(streamingRef.current.saveInterval)
-    }
-    cancelPendingFlush()
-    streamingRef.current = null
-    abortRef.current = null
-  }, [finalize, cancelPendingFlush])
+    teardownStream(targetId)
+  }, [finalize, teardownStream])
 
   const onError = useCallback((err: Error, targetId: string) => {
-    const content = streamingRef.current?.accumulated
-    if (content) {
-      finalize(targetId, content, true)
-    }
-    if (activeIdRef.current === targetId) {
-      setIsStreaming(false)
-      setStreamingContent('')
-    }
-    if (streamingRef.current?.saveInterval) {
-      clearInterval(streamingRef.current.saveInterval)
-    }
-    cancelPendingFlush()
-    streamingRef.current = null
-    abortRef.current = null
+    const s = streamsRef.current.get(targetId)
+    const content = s?.accumulated
+    if (content) finalize(targetId, content, true)
+    teardownStream(targetId)
     return err
-  }, [finalize, cancelPendingFlush])
+  }, [finalize, teardownStream])
 
-  const stopStreaming = useCallback(() => {
-    const content = streamingRef.current?.accumulated
-    const targetId = streamingRef.current?.targetId
-    if (content && targetId) {
-      finalize(targetId, content, true)
+  // Stoppe un stream précis (par convId) ou la conv active si non précisé.
+  // Le bouton Stop dans InputBar concerne toujours la conv affichée.
+  const stopStreaming = useCallback((targetId?: string) => {
+    const id = targetId ?? activeIdRef.current
+    if (!id) return
+    const s = streamsRef.current.get(id)
+    if (!s) return
+    if (s.accumulated) finalize(id, s.accumulated, true)
+    if (s.abortController) {
+      try { s.abortController.abort() } catch { /* déjà aborté */ }
     }
-    if (abortRef.current) {
-      abortRef.current.abort()
-    }
-    cleanupStreaming()
-  }, [finalize, cleanupStreaming])
+    teardownStream(id)
+  }, [finalize, teardownStream])
+
+  // Setters indexés par convId — exposés en remplacement des accès directs
+  // aux refs depuis useConversation.
+
+  const setHideContent = useCallback((hide: boolean, targetId: string) => {
+    const s = streamsRef.current.get(targetId)
+    if (s) s.hideContent = hide
+    if (hide && activeIdRef.current === targetId) setStreamingContent('')
+  }, [])
+
+  // Affiche un message de progression dans la bulle live (ex: "📄 Lecture du
+  // PDF..."). Ne touche PAS à `accumulated` — c'est ephémère, juste pour l'UI.
+  const setProgressContent = useCallback((content: string, targetId: string) => {
+    if (activeIdRef.current === targetId) setStreamingContent(content)
+  }, [])
+
+  const setAbortController = useCallback((targetId: string, controller: AbortController) => {
+    const s = streamsRef.current.get(targetId)
+    if (s) s.abortController = controller
+  }, [])
+
+  // Reset l'accumulé d'une conv (utilisé après avoir affiché un marker
+  // temporaire type "Recherche Gemini..." avant de démarrer le vrai stream).
+  const resetAccumulated = useCallback((targetId: string) => {
+    const s = streamsRef.current.get(targetId)
+    if (s) s.accumulated = ''
+  }, [])
+
+  // Indique si une conv a un stream en cours (lecture brute du ref, hors
+  // React state). Utilisé par les flows hybrid Gemini pour détecter un Stop
+  // utilisateur pendant la phase de recherche.
+  const hasStream = useCallback((targetId: string) => {
+    return streamsRef.current.has(targetId)
+  }, [])
+
+  // Peut-on démarrer un stream pour cette conv ? Faux si déjà en cours ou si
+  // on a atteint le cap. Utilisé par useConversation pour rejeter un envoi
+  // AVANT d'ajouter le user message à la conv.
+  const canStart = useCallback((targetId: string) => {
+    if (streamsRef.current.has(targetId)) return false
+    return streamsRef.current.size < MAX_CONCURRENT_STREAMS
+  }, [])
 
   return {
+    // État pour l'UI de la conv active
     isStreaming,
     streamingContent,
-    abortRef,
-    activeIdRef,
-    streamingRef,
+    // État multi-conv (Sidebar et autres)
+    streamingConvIds,
+    isStreamingFor,
+    hasStream,
+    canStart,
+    // Lifecycle d'un stream
     startStream,
-    isActive,
     onToken,
     onDone,
     onError,
-    stopStreaming,
-    setStreamingContent,
-    savePartial,
-    finalize,
-    cleanupStreaming,
-    setHideContent,
     markStreamDone,
     completeStreaming,
+    stopStreaming,
+    // Sync avec la conv affichée
+    setActiveStream,
+    isActive,
+    // Setters indexés (remplacent les accès directs aux refs)
+    setHideContent,
+    setProgressContent,
+    setAbortController,
+    resetAccumulated,
+    // Utilitaires
+    finalize,
+    savePartialAll,
   }
 }

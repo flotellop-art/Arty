@@ -102,6 +102,7 @@ function AppContent({
     activeId,
     isStreaming,
     streamingContent,
+    streamingConvIds,
     error,
     createConversation,
     selectConversation,
@@ -361,6 +362,7 @@ function AppContent({
         onClose={() => setSidebarOpen(false)}
         conversations={conversations}
         activeId={activeId}
+        streamingConvIds={streamingConvIds}
         onSelect={handleSelectConversation}
         onNew={handleNewConversation}
         onNewEU={handleNewEUConversation}
