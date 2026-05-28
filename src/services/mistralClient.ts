@@ -72,6 +72,9 @@ type ToolHandler = (name: string, input: Record<string, unknown>) => Promise<{ r
 interface MistralStreamOptions {
   systemPrompt?: string
   onToolCall?: ToolHandler
+  // Force un modèle précis (utilisé par le comparateur multi-modèles).
+  // Si absent, fallback sur selectMistralModel (défaut Arty : medium).
+  model?: string
 }
 
 // Mistral content blocks pour le multimodal (image_url + text). Format
@@ -268,7 +271,10 @@ async function runMistralStream(
       ? `\n\nRECHERCHE WEB OBLIGATOIRE — non négociable :\nPour CE message utilisateur, tu DOIS appeler le tool web_search AVANT de répondre, même si tu penses connaître la réponse. La recherche web prime sur ta mémoire d'entraînement. Si un fichier est attaché, analyse-le ET fais une recherche web. Cite les sources via [1], [2]. Ne dis JAMAIS "j'ai cherché" — c'est le tool qui cherche.`
       : ''
     const systemPrompt = basePrompt + locationContext + forceWebHint
-    const model = selectMistralModel(lastUserText)
+    // Modèle effectif : `options.model` (forcé par le comparateur) ou
+    // selectMistralModel (auto-sélection Arty pour le chat normal — par
+    // défaut Mistral Medium 3.5 depuis mai 2026).
+    const model = options?.model || selectMistralModel(lastUserText)
     dispatchModelUsed({ model, provider: 'mistral' })
 
     // Build messages in OpenAI format

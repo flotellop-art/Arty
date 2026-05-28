@@ -21,9 +21,11 @@ export const MODEL_COSTS: Record<string, { input: number; output: number }> = {
   'gpt-5-mini':        { input: 0.40,  output: 1.60 },
   'gpt-5':             { input: 2.50,  output: 10.00 },
   'gemini-flash':      { input: 0.10,  output: 0.40 },
+  'gemini-flash-lite': { input: 0.05,  output: 0.20 }, // gemini-3.1-flash-lite, gemini-2.5-flash-lite
   'gemini-pro':        { input: 1.25,  output: 5.00 },
+  'mistral-small':     { input: 0.15,  output: 0.45 }, // Small 4 (mars 2026, multimodal+reasoning)
   'mistral-medium':    { input: 1.50,  output: 7.50 }, // Medium 3.5 (avril 2026)
-  'mistral-large':     { input: 2.00,  output: 6.00 }, // legacy, déprécié au profit de medium
+  'mistral-large':     { input: 2.00,  output: 6.00 }, // Large 3 (décembre 2025, MoE)
 }
 
 export interface ModelStats {
@@ -58,8 +60,13 @@ const MODEL_ALIASES: Record<string, string> = {
   'mistral-large-latest': 'mistral-large',
   'mistral-medium-latest': 'mistral-medium',
   'mistral-medium-3.5': 'mistral-medium',
+  'mistral-small-latest': 'mistral-small',
+  'mistral-small-4': 'mistral-small',
+  'gemini-3.5-flash': 'gemini-flash',
+  'gemini-3.1-flash-lite': 'gemini-flash-lite',
   'gemini-3-flash': 'gemini-flash',
   'gemini-3-flash-preview': 'gemini-flash',
+  'gemini-2.5-flash-lite': 'gemini-flash-lite',
   'gemini-2.5-flash': 'gemini-flash',
   'gemini-2.5-pro': 'gemini-pro',
   'gemini-pro-latest': 'gemini-pro',
@@ -80,11 +87,13 @@ export function normaliseModel(model: string): string {
   if (model.startsWith('claude-opus')) return 'claude-opus-4-6'
   if (model.startsWith('gpt-5-mini') || model.includes('mini')) return 'gpt-5-mini'
   if (model.startsWith('gpt-')) return 'gpt-5'
+  if (model.startsWith('gemini') && model.includes('flash-lite')) return 'gemini-flash-lite'
   if (model.startsWith('gemini') && model.includes('flash')) return 'gemini-flash'
   if (model.startsWith('gemini')) return 'gemini-pro'
-  // Mistral Small déprécié mai 2026 — tout fallback Mistral va sur Medium.
+  if (model.startsWith('mistral') && model.includes('small')) return 'mistral-small'
   if (model.startsWith('mistral') && model.includes('medium')) return 'mistral-medium'
   if (model.startsWith('mistral') && model.includes('large')) return 'mistral-large'
+  if (model.startsWith('ministral')) return 'mistral-small'
   if (model.startsWith('mistral')) return 'mistral-medium'
   return model
 }
