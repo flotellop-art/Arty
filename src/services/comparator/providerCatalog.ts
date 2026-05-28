@@ -40,19 +40,29 @@ export const PROVIDER_CATALOG: ProviderDescriptor[] = [
   {
     id: 'gemini',
     label: 'Google Gemini',
+    // Modèles GA en mai 2026 (vérifiés sur ai.google.dev/gemini-api/docs/models).
+    // Note : gemini-3.5-pro est ANNONCÉ pour juin 2026 mais pas encore dispo,
+    // donc absent de la liste. Le reasoning-first récent est en preview only
+    // (gemini-3.1-pro-preview) — exclu pour la stabilité du comparateur.
     models: [
-      { modelId: 'gemini-3.5-pro', costKey: 'gemini-pro', label: 'Gemini 3.5 Pro' },
       { modelId: 'gemini-3.5-flash', costKey: 'gemini-flash', label: 'Gemini 3.5 Flash' },
+      { modelId: 'gemini-3.1-flash-lite', costKey: 'gemini-flash-lite', label: 'Gemini 3.1 Flash Lite' },
       { modelId: 'gemini-2.5-pro', costKey: 'gemini-pro', label: 'Gemini 2.5 Pro' },
       { modelId: 'gemini-2.5-flash', costKey: 'gemini-flash', label: 'Gemini 2.5 Flash' },
+      { modelId: 'gemini-2.5-flash-lite', costKey: 'gemini-flash-lite', label: 'Gemini 2.5 Flash Lite' },
     ],
   },
   {
     id: 'mistral',
     label: 'Mistral',
+    // Mistral expose des aliases "-latest" stables. Small 4 (mars 2026)
+    // a fusionné Magistral+Pixtral+Devstral et propose un reasoning_effort
+    // configurable, multimodal natif, à $0.15/M input — bon rapport
+    // qualité/prix pour le comparateur.
     models: [
+      { modelId: 'mistral-large-latest', costKey: 'mistral-large', label: 'Mistral Large 3' },
       { modelId: 'mistral-medium-latest', costKey: 'mistral-medium', label: 'Mistral Medium 3.5' },
-      { modelId: 'mistral-large-latest', costKey: 'mistral-large', label: 'Mistral Large' },
+      { modelId: 'mistral-small-latest', costKey: 'mistral-small', label: 'Mistral Small 4' },
     ],
   },
   {
