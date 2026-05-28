@@ -114,6 +114,9 @@ export function getGeminiThinkingBudget(message: string, isMapQuery: boolean): n
 
 interface GeminiStreamOptions {
   systemPrompt?: string
+  // Force un modèle précis (utilisé par le comparateur multi-modèles).
+  // Si absent, fallback sur GEMINI_MODEL (défaut Arty).
+  model?: string
 }
 
 export function streamGeminiMessage(
@@ -141,6 +144,11 @@ async function runGeminiStream(
   options: GeminiStreamOptions | undefined,
   controller: AbortController
 ) {
+  // Modèle effectif : `options.model` (forcé par le comparateur) ou
+  // GEMINI_MODEL (défaut Arty pour le chat normal). Résolu UNE fois
+  // au début pour que l'event "model-used", la requête, et le tracking
+  // de coût remontent tous le même nom.
+  const model = options?.model || GEMINI_MODEL
   try {
     // Convert messages to Gemini format
     type GeminiPart = { text: string } | { fileData: { fileUri: string } }
@@ -190,10 +198,10 @@ async function runGeminiStream(
 
     // Notifie l'UI du modèle exact appelé pour qu'elle puisse l'afficher
     // sous le sélecteur (ChatTopBar > ModelDescriptor).
-    try { window.dispatchEvent(new CustomEvent('arty-model-used', { detail: { model: GEMINI_MODEL, provider: 'gemini' } })) } catch {}
+    try { window.dispatchEvent(new CustomEvent('arty-model-used', { detail: { model, provider: 'gemini' } })) } catch {}
 
     const requestBody = {
-      model: GEMINI_MODEL,
+      model,
       stream: true,
       contents,
       systemInstruction: {
@@ -237,7 +245,7 @@ async function runGeminiStream(
 
     // H-AI-5 — notify UI que ce message est servi par Gemini (mêmes infos
     // que les autres clients pour cohérence des badges).
-    dispatchModelUsed({ model: GEMINI_MODEL, provider: 'gemini' })
+    dispatchModelUsed({ model, provider: 'gemini' })
 
     const reader = response.body?.getReader()
     if (!reader) throw new Error('No response body')
@@ -285,7 +293,7 @@ async function runGeminiStream(
     }
 
     try {
-      recordUsage(GEMINI_MODEL, promptTokens, candidatesTokens)
+      recordUsage(model, promptTokens, candidatesTokens)
     } catch {
       // Tracking ne doit pas casser la réponse
     }

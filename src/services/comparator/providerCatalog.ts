@@ -1,10 +1,12 @@
 /**
  * Catalogue des providers + modèles du comparateur.
  *
- * IMPORTANT — réalité des clients Arty (vérifié) :
- *  - anthropic + openai RESPECTENT `options.model` -> on peut comparer leurs sous-modèles.
- *  - gemini + mistral utilisent un modèle FIXE (ignorent options.model) -> un seul
- *    modèle exposé par provider, pour que le coût estimé reste honnête.
+ * IMPORTANT — réalité des clients Arty (vérifié, après la PR multi-modèles
+ * Gemini/Mistral) :
+ *  - anthropic + openai RESPECTENT `options.model` -> on peut comparer
+ *    leurs sous-modèles.
+ *  - gemini + mistral RESPECTENT aussi `options.model` (le fallback est
+ *    la constante hardcodée du client si aucun model n'est passé).
  *
  * `costKey` = clé dans costTracker.MODEL_COSTS (peut différer du modelId client).
  */
@@ -12,7 +14,7 @@
 export type ProviderId = 'anthropic' | 'gemini' | 'mistral' | 'openai'
 
 export interface ModelDescriptor {
-  /** ID passé au client via `options.model` (anthropic/openai uniquement). */
+  /** ID passé au client via `options.model`. */
   modelId: string
   /** Clé dans costTracker.MODEL_COSTS pour le coût estimé. */
   costKey: string
@@ -38,17 +40,19 @@ export const PROVIDER_CATALOG: ProviderDescriptor[] = [
   {
     id: 'gemini',
     label: 'Google Gemini',
-    // Le client gemini utilise un modèle fixe ; un seul exposé.
     models: [
+      { modelId: 'gemini-3.5-pro', costKey: 'gemini-pro', label: 'Gemini 3.5 Pro' },
       { modelId: 'gemini-3.5-flash', costKey: 'gemini-flash', label: 'Gemini 3.5 Flash' },
+      { modelId: 'gemini-2.5-pro', costKey: 'gemini-pro', label: 'Gemini 2.5 Pro' },
+      { modelId: 'gemini-2.5-flash', costKey: 'gemini-flash', label: 'Gemini 2.5 Flash' },
     ],
   },
   {
     id: 'mistral',
     label: 'Mistral',
-    // Le client mistral auto-sélectionne ; un seul exposé.
     models: [
       { modelId: 'mistral-medium-latest', costKey: 'mistral-medium', label: 'Mistral Medium 3.5' },
+      { modelId: 'mistral-large-latest', costKey: 'mistral-large', label: 'Mistral Large' },
     ],
   },
   {
