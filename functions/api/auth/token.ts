@@ -1,10 +1,29 @@
 import type { Env } from '../../env'
 
+// Durcissement (audit 29 mai) — un redirect_uri valide est soit '' (app native
+// qui échange via serverAuthCode, BUG 2/28), soit une URL http(s) dont le path
+// est exactement /auth/callback. Bloque les schemes exotiques (javascript:,
+// data:) et les path/query injectés. Google revérifie la correspondance
+// code↔redirect_uri — défense en profondeur.
+function isValidRedirectUri(uri: string): boolean {
+  if (uri === '') return true
+  try {
+    const u = new URL(uri)
+    return (u.protocol === 'https:' || u.protocol === 'http:') && u.pathname === '/auth/callback'
+  } catch {
+    return false
+  }
+}
+
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   const { code, redirect_uri } = await request.json() as { code?: string; redirect_uri?: string }
 
   if (!code || redirect_uri === undefined || redirect_uri === null) {
     return Response.json({ error: 'Missing code or redirect_uri' }, { status: 400 })
+  }
+
+  if (!isValidRedirectUri(redirect_uri)) {
+    return Response.json({ error: 'Invalid redirect_uri' }, { status: 400 })
   }
 
   if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET) {

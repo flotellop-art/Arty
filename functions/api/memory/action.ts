@@ -25,7 +25,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   // caller cannot read or write another user's memory. Pas besoin de
   // whitelist ici : la mémoire est scopée par user (chaque user n'a accès
   // qu'à la sienne), aucun coût d'API tiers impliqué.
-  const email = await verifyGoogleUser(request)
+  const email = await verifyGoogleUser(request, env)
   if (!email) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -99,9 +99,9 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
         return Response.json({ error: 'Use type: read, write, readAll, delete' }, { status: 400 })
     }
   } catch (err) {
-    return Response.json(
-      { error: err instanceof Error ? err.message : 'Database error' },
-      { status: 500 }
-    )
+    // Ne pas exposer le message D1/SQL au client (peut révéler le schéma) —
+    // log serveur uniquement (audit 29 mai, leak).
+    console.error('[memory] DB error', err)
+    return Response.json({ error: 'Database error' }, { status: 500 })
   }
 }

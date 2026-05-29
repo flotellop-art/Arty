@@ -1,11 +1,12 @@
+import type { Env } from '../../env'
 import { verifyGoogleUser, notFoundResponse } from '../_lib/checkAllowedUser'
 
 const ID_RE = /^[a-zA-Z0-9_@.+\-=]+$/
 
-export const onRequestPost: PagesFunction = async ({ request }) => {
+export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   // CRIT-4 (audit étape 2) — exiger un user Google identifié pour éviter
   // le proxy ouvert Google API (un token Google volé ne suffit plus).
-  const email = await verifyGoogleUser(request)
+  const email = await verifyGoogleUser(request, env)
   if (!email) return notFoundResponse()
 
   const token = request.headers.get('authorization')?.replace('Bearer ', '') || ''

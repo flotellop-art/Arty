@@ -22,7 +22,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
   // Anti-relais anonyme : tout appel doit venir d'un user Google authentifié,
   // même en BYOK. Empêche l'utilisation du proxy Cloudflare comme relais
   // ouvert par n'importe qui sur Internet (CRIT-4).
-  const email = await verifyGoogleUser(request)
+  const email = await verifyGoogleUser(request, env)
   if (!email) {
     return Response.json(
       { error: 'Authentication required — please sign in with Google' },

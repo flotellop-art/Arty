@@ -26,7 +26,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     return Response.json({ error: 'Database not configured' }, { status: 500 })
   }
 
-  const email = await verifyGoogleUser(request)
+  const email = await verifyGoogleUser(request, env)
   if (!email) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 })
   }

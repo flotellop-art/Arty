@@ -14,7 +14,7 @@ import { createGeminiParser, teeForParsing } from '../_lib/trackUsage'
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUntil }) => {
   // Anti-relais anonyme : tout user Google authentifié est accepté (CRIT-4).
-  const email = await verifyGoogleUser(request)
+  const email = await verifyGoogleUser(request, env)
   if (!email) {
     return Response.json(
       { error: 'Authentication required — please sign in with Google' },
