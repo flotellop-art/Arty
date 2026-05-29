@@ -4,7 +4,8 @@ import { useConversation } from './hooks/useConversation'
 import { useAppSetup } from './hooks/useAppSetup'
 import { useAuth } from './hooks/useAuth'
 import { initCrypto, isCryptoReady } from './services/crypto'
-import { bootstrapGoogleStorage } from './services/googleAuth'
+import { bootstrapGoogleStorage, storeTokens, storeUser } from './services/googleAuth'
+import { clearActiveKeys } from './services/activeApiKey'
 import { bootstrapConversationStorage } from './services/storage'
 import { getJSON } from './services/scopedStorage'
 import { QuestionModal } from './components/chat/QuestionModal'
@@ -788,6 +789,10 @@ export default function App() {
         await initTrial(tokens.access_token)
         const { generateUserId, setActiveSession } = await import('./services/userSession')
         const userId = await generateUserId('google', user.email)
+        // BUG 6 — purger les clés API en mémoire du compte précédent AVANT de
+        // repointer le scopedStorage (sinon fenêtre de course : clés de l'ancien
+        // compte encore en mémoire pendant que le storage pointe vers le nouveau).
+        clearActiveKeys()
         setActiveSession({ userId, authMethod: 'google', displayName: user.name, email: user.email, avatar: user.picture, createdAt: Date.now() })
         const { getJSON } = await import('./services/scopedStorage')
         const existingKeys = getJSON<{ anthropic: string; gemini?: string; mistral?: string; openai?: string }>('api-keys')
@@ -860,11 +865,12 @@ export default function App() {
               anthropicKey: 'server-provided',
               identifier: email,
             })
-            // After auth flips, scopedStorage is keyed to the user — store
-            // the Google credentials so the AI clients can find them.
-            const { setJSON } = await import('./services/scopedStorage')
-            setJSON('google-user', { email, name, picture: avatar })
-            setJSON('google-tokens', {
+            // After auth flips, scopedStorage is keyed to the user — store the
+            // Google credentials. storeTokens/storeUser chiffrent au repos et
+            // droppent la copie en clair une fois la crypto prête (RÈGLE 5) —
+            // contrairement à setJSON qui laissait le refresh_token en clair.
+            await storeUser({ email, name, picture: avatar })
+            await storeTokens({
               access_token: accessToken,
               refresh_token: refreshToken,
               expires_at: Date.now() + expiresIn * 1000,
@@ -973,6 +979,9 @@ function OAuthCallbackAuth({
       // Check if this Google user already has API keys saved
       const { generateUserId, setActiveSession } = await import('./services/userSession')
       const userId = await generateUserId('google', user.email)
+      // BUG 6 — purger les clés API en mémoire du compte précédent AVANT de
+      // repointer le scopedStorage (fenêtre de course sinon).
+      clearActiveKeys()
       // Temporarily set session to read scoped storage
       setActiveSession({ userId, authMethod: 'google', displayName: user.name, email: user.email, avatar: user.picture, createdAt: Date.now() })
       const { getJSON } = await import('./services/scopedStorage')

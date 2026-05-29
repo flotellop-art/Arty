@@ -167,14 +167,32 @@ export function useAppSetup(conversation: ConversationHook) {
         case 'search_web':
           await executor('web_search', { query: params.query || '' })
           break
-        case 'call':
-          window.open(`tel:${params.phone}`, '_self')
+        case 'call': {
+          // params.phone est AI-contrôlé (data-phone) → ne garder que +/chiffres
+          // avant de construire l'URI tel:.
+          const phone = (params.phone || '').replace(/[^+0-9]/g, '')
+          if (phone) window.open(`tel:${phone}`, '_self')
           break
-        case 'link':
-          window.open(params.url, '_blank')
+        }
+        case 'link': {
+          // params.url est AI-contrôlé (data-url) → n'ouvrir QUE du http(s).
+          // Bloque javascript:/data:/tel:/etc. (open redirect + exécution de
+          // script via prompt injection — CRIT audit 29 mai).
+          try {
+            const u = new URL(params.url || '')
+            if (u.protocol === 'https:' || u.protocol === 'http:') {
+              window.open(u.href, '_blank', 'noopener,noreferrer')
+            }
+          } catch { /* URL invalide → ignorer */ }
           break
+        }
         default:
-          await executor(action, params)
+          // Whitelist stricte : seules les actions ci-dessus (toutes documentées
+          // dans le system prompt) sont exécutées. Un nom d'action inconnu vient
+          // forcément d'une injection (le markdown vient du LLM, nourri d'emails
+          // et de pages web non fiables) → ne JAMAIS le router vers le
+          // toolExecutor, ce serait une exécution d'outil arbitraire. CRIT 29 mai.
+          console.warn('[handleAction] action non autorisée, ignorée:', action)
       }
     },
     [activeId, sendMessage]
