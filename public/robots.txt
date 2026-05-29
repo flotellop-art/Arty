@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+
+# Pas de contenu indexable dans l'app elle-même
+Disallow: /app/
+
+Sitemap: https://tryarty.com/sitemap.xml

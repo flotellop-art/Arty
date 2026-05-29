@@ -1,0 +1,16 @@
+[build]
+  publish = "dist"
+  command = "npm run build"
+
+# Redirect www → non-www (301 permanent)
+[[redirects]]
+  from = "https://www.tryarty.com/*"
+  to   = "https://tryarty.com/:splat"
+  status = 301
+  force  = true
+
+# SPA fallback — toutes les routes React servent index.html
+[[redirects]]
+  from   = "/*"
+  to     = "/index.html"
+  status = 200
