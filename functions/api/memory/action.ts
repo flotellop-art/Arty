@@ -62,6 +62,10 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
           return Response.json({ error: 'Missing category or data' }, { status: 400 })
         }
 
+        if (JSON.stringify(data).length > 65536) {
+          return Response.json({ error: 'Data too large' }, { status: 400 })
+        }
+
         await env.DB.prepare(
           `INSERT INTO memory (user_id, category, data, updated_at)
            VALUES (?, ?, ?, unixepoch())

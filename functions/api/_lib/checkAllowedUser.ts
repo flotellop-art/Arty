@@ -189,7 +189,7 @@ export async function checkAllowedUser(
   // ALLOWED_EMAILS = beta testeurs VIP, bypass du check D1
   const allowed = parseAllowedEmails(env.ALLOWED_EMAILS)
   if (allowed.includes(email)) {
-    console.log(`[VIP bypass] ${email.slice(0, 3)}...`)
+    if (env.DEBUG) console.log(`[VIP bypass] ${email.slice(0, 3)}...`)
     return { email, planType: 'vip' }
   }
 

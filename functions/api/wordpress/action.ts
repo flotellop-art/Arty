@@ -48,6 +48,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
 
       case 'update': {
         if (!body.postId) return Response.json({ error: 'Missing postId' }, { status: 400 })
+        if (!/^\d+$/.test(String(body.postId))) return Response.json({ error: 'Invalid postId' }, { status: 400 })
         const payload: Record<string, unknown> = {}
         if (body.title) payload.title = body.title
         if (body.content) payload.content = body.content
@@ -60,6 +61,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
 
       case 'delete': {
         if (!body.postId) return Response.json({ error: 'Missing postId' }, { status: 400 })
+        if (!/^\d+$/.test(String(body.postId))) return Response.json({ error: 'Invalid postId' }, { status: 400 })
         const r = await fetch(`${apiBase}/posts/${body.postId}`, { method: 'DELETE', headers })
         if (!r.ok) return Response.json({ error: 'Delete failed' }, { status: r.status })
         return Response.json({ success: true })
@@ -67,6 +69,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
 
       case 'get': {
         if (!body.postId) return Response.json({ error: 'Missing postId' }, { status: 400 })
+        if (!/^\d+$/.test(String(body.postId))) return Response.json({ error: 'Invalid postId' }, { status: 400 })
         const r = await fetch(`${apiBase}/posts/${body.postId}`, { headers })
         if (!r.ok) return Response.json({ error: 'Not found' }, { status: r.status })
         const post = await r.json() as Record<string, unknown>

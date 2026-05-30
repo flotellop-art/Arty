@@ -167,12 +167,29 @@ export function useAppSetup(conversation: ConversationHook) {
         case 'search_web':
           await executor('web_search', { query: params.query || '' })
           break
-        case 'call':
-          window.open(`tel:${params.phone}`, '_self')
+        case 'call': {
+          // Sécurité : le numéro provient d'un attribut data-* généré par le LLM.
+          // On ne garde que les caractères d'un numéro valide avant `tel:`.
+          const phone = String(params.phone ?? '').replace(/[^0-9+().\- ]/g, '').trim()
+          if (phone) window.open(`tel:${phone}`, '_self')
           break
-        case 'link':
-          window.open(params.url, '_blank')
+        }
+        case 'link': {
+          // Sécurité : l'URL provient d'un data-* généré par le LLM, que
+          // rehype-sanitize n'assainit pas. On n'ouvre QUE http(s) pour bloquer
+          // javascript:/data:/intent: (exécution de protocole arbitraire).
+          const raw = String(params.url ?? '')
+          let safeUrl: string | null = null
+          try {
+            const u = new URL(raw)
+            if (u.protocol === 'http:' || u.protocol === 'https:') safeUrl = u.href
+          } catch {
+            safeUrl = null
+          }
+          if (safeUrl) window.open(safeUrl, '_blank', 'noopener,noreferrer')
+          else console.warn('[useAppSetup] Lien ignoré (protocole non autorisé):', raw)
           break
+        }
         default:
           await executor(action, params)
       }
