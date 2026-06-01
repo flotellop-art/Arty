@@ -515,7 +515,7 @@ Slash command **`/audit-secu`** (défini dans `.claude/commands/audit-secu.md`) 
 
 ### TODO Sécurité — prochain audit
 
-Dernier audit : **4 mai 2026** (PR #127 + PR #128).
+Dernier audit : **1er juin 2026** (3 agents Opus parallèles — backend, crypto/auth, frontend/Capacitor).
 
 À traiter en priorité quand on relance un cycle sécurité :
 
@@ -537,17 +537,19 @@ des conversations — implémenté le 16 mai, voir « PR à venir » ci-dessous.
 - [ ] **PR 2 — PKCE OAuth** : ajout du `code_verifier` + `code_challenge` au flow Google web. Stratégie en 2 PRs validée le 4 mai (state CSRF d'abord en PR #128, PKCE ensuite). Coût ~2h, confiance 80%. Touche `googleAuth.ts:buildOAuthUrl()` (devient async), `OAuthCallback.tsx`, `functions/api/auth/token.ts` (forward `code_verifier` à Google). Suivre les patterns du callback double (web + deeplink) déjà éprouvés en PR #128.
 - [x] **Chiffrement des conversations en localStorage** — FAIT (16 mai). Chiffrées AES-256 sous `conversations-enc` ; cache mémoire déchiffré pour garder `saveConversation` synchrone (BUG 16), write-through avec filet clair synchrone, migration auto des conversations en clair, JAMAIS de wipe sur échec de déchiffrement, killswitch `arty-conv-encryption-disabled`. PAS de Web Worker — le diagnostic « le chiffrement async cassait l'UI » était faux : c'est rendre `saveConversation` lui-même async qui cassait l'UI ; le cache mémoire (pattern memTokens) résout ça. Round-trip vérifié en navigateur réel.
 
-**HIGH backend non traités (audit du 4 mai)** :
-- [ ] **License expiration jamais vérifiée** dans `functions/api/subscription/status.ts:117-128` — query `licenses WHERE status = 'active'` sans `expires_at > NOW()`. Risque = perte de revenu, pas sécu directe.
-- [ ] **Premium cap non-atomique** dans `functions/api/_lib/checkPremiumCap.ts` — KV décrément vulnérable à la concurrence, quota bypass possible (CAP=150 → 300+).
-- [ ] **DELETE memory sans filtre `WHERE user_id = ?` strict** dans `functions/api/memory/action.ts` — défense en profondeur (déjà protégé par auth mais à durcir).
+**HIGH actifs (audit 1er juin 2026)** :
+- [ ] **`contacts/action.ts:95,106` — `resourceName` non validé** : interpolé directement dans l'URL People API sans regex, contrairement à tous les autres endpoints Google. Fix : valider avec `/^people\/[a-zA-Z0-9_-]+$/` avant tout usage.
+- [ ] **`useAppSetup.ts:174` — `window.open(params.url)` sans validation de protocole** : la valeur `data-url` vient d'une réponse IA, traverse `rehype-sanitize` (qui autorise `data*` sur `button`/`div`) intact. Sur Android WebView, les schemes `intent://`, `file://` sont interprétés par l'OS → ouverture d'apps tierces. Fix : `const u = new URL(params.url); if (!['http:','https:'].includes(u.protocol)) return`. Sur web, `javascript:` dans `window.open` est neutralisé par les navigateurs modernes — le risque est principalement natif.
+- [ ] **PKCE absent du flux OAuth web** (`googleAuth.ts:88-106`) : aucun `code_challenge`/`code_verifier` dans tout `src/`. Vecteur : code OAuth intercepté (extension, history) → échangeable sans verifier. Fix planifié en PR 2 ci-dessus, coût ~2h.
 
-**MED non traités** :
-- [ ] **PBKDF2 itérations à 100k** dans `crypto.ts:38-44` — OWASP 2024 recommande 200k+. Bump simple (+100ms au login).
-- [ ] **`storeTokens()` réécrit le plain en fallback** après chaque refresh dans `googleAuth.ts:93-108` — devrait laisser le chiffré en place au lieu de revenir en plain.
+**MED actifs (audit 1er juin 2026)** :
+- [ ] **BUG 25 régression** dans `conversationCompressor.ts:59` + `actionDetector.ts:60` : `'server-provided'` envoyé littéralement dans `x-api-key` → proxy traite comme BYOK → contourne quota → 401 Anthropic pour tous les users serveur-provided. Fix : ajouter `&& apiKey !== 'server-provided'` avant d'envoyer le header (pattern déjà dans `anthropicClient.ts:187`).
+- [ ] **`verifyGoogleUser` utilise `userinfo` sans vérif `aud`** (`checkAllowedUser.ts:25`) : le hot-path IA (proxys Anthropic/Mistral/Gemini/OpenAI) vérifie que le token est un token Google valide mais pas qu'il a été émis pour NOTRE `GOOGLE_CLIENT_ID`. Un token Google valide d'une autre appli peut consommer le quota serveur. Fix : aligner sur `tokeninfo` + check `aud === GOOGLE_CLIENT_ID` + `email_verified` (comme `subscription/status.ts` et `trial/init.ts`).
+- [ ] **Actions IA à effets de bord sans confirmation des params** (`useAppSetup.ts:155-166`) : `send_email`, `save_drive`, `create_event`, `publish_wp` déclenchés au clic d'un bouton généré par l'IA avec des `params` (destinataire, contenu) également générés par l'IA. L'utilisateur ne voit que le label du bouton. Fix : modale de confirmation affichant les paramètres réels avant exécution.
+- [ ] **`license/activate.ts` — rate limit en mémoire seulement** : 60 req/min/IP en mémoire du Worker (trivial à contourner via IPs distribuées). Fix : rate limit persistant en D1/KV par email+IP.
+- [ ] **`useAppSetup.ts:171` — `tel:${params.phone}` sans validation** : `data-phone` de l'IA non validé. Fix : `/^[0-9+()\s-]+$/`.
 - [ ] **Email lowercasing inconsistant** entre `trial/init.ts:41` et `subscription/status.ts:44` — risque de fragmentation user.
-- [ ] **`tokeninfo` au lieu de `userinfo`** pour vérifier les tokens dans `trial/init.ts:34-44` — moins fiable.
-- [ ] **Pas de rate limit sur `/api/auth/token`** — brute force possible sur les codes OAuth volés.
+- [ ] **Pas de rate limit persistant sur `/api/auth/token`** — brute force possible sur les codes OAuth volés.
 
 **HIGH a11y traités (12 mai)** :
 - ✅ **Contrastes `text-theme-muted/X`** : retrait des 56 opacités (`/50`, `/60`, `/70`, `/80`) sur `text-theme-muted` → utilisation de la couleur pleine (PR roadmap). Ratio passe de 2.8:1 à ≥4.5:1 sur fond clair.
@@ -561,15 +563,27 @@ des conversations — implémenté le 16 mai, voir « PR à venir » ci-dessous.
 **LOW à nettoyer avant Play Store** :
 - [ ] **Debug `console.log` avec emails** dans `useGoogleAuth.ts:117-195` — wrap en `if (import.meta.env.DEV)`.
 - [ ] **Trial counter peut overflow** silencieusement vers 0 dans `trial/init.ts:51-52`.
-- [ ] **Re-vérifier `webContentsDebuggingEnabled: false`** en prod sur `capacitor.config.ts`.
+- [ ] **`GoogleSignInPlugin.java:40,81,87` — logs prod sans `BuildConfig.DEBUG`** — email et server_client_id loggés en clair en prod.
+- [ ] **`tts.ts:111` — corps d'erreur OpenAI leaké au client** (300 chars) — remplacer par message générique + log serveur.
 
 **Faux positifs / déjà mitigé** (à NE PAS retraiter) :
 - ✅ `secureSetJSON` race (BUG 1) — `useAuth` utilise `setJSON()` direct sur les tokens, race évitée
 - ✅ RECORD_AUDIO (BUG 44) — vérifié présent dans AndroidManifest
 - ✅ exchangeCode timeout — `withTimeout()` enveloppe le fetch
-- ✅ Frontend XSS — `rehype-sanitize` actif, aucun `dangerouslySetInnerHTML`
 - ✅ Service Worker (BUG 45) — registration conditionnelle, cleanup boot, CACHE bumpé
 - ✅ iOS Info.plist — privacy descriptions complètes (BUG 34)
+- ✅ PBKDF2 — v2 = 600 000 itérations (confirmé audit juin 2026, > 200k OWASP 2024)
+- ✅ Premium cap — atomique via D1 upsert conditionnel (`WHERE count < cap RETURNING count`) dans `atomicQuota.ts`
+- ✅ License expiration — `expires_at > unixepoch()` vérifié dans `resolveUserPlan` (checkAllowedUser.ts) ET `subscription/status.ts`
+- ✅ Memory DELETE — toujours scopé `WHERE user_id = ?` (email du token vérifié, jamais du body)
+- ✅ `storeTokens()` préserve le refresh_token existant si Google n'en renvoie pas (BUG 51 — `existing?.refresh_token` pattern)
+- ✅ `webContentsDebuggingEnabled: false` — vérifié dans capacitor.config.ts
+- ✅ `verifyOAuthState` single callsite (BUG 53) — uniquement dans OAuthCallback.tsx
+- ✅ XSS markdown — `rehype-sanitize` actif, aucun `dangerouslySetInnerHTML` ; NOTE: `data*` autorisé sur button/div (nécessaire aux boutons d'action) mais le risque est dans l'action `link` non validée (HIGH ci-dessus)
+- ✅ `tokeninfo` avec check `aud` — vérifié sur `trial/init.ts` ET `subscription/status.ts` ; le MED restant concerne `verifyGoogleUser` (proxys IA hot-path)
+- ✅ computer/relay — protégé feature-flag + `sub` owner + 404 uniforme
+- ✅ SSRF fetch/url.ts — anti-SSRF correct (rejet IP, ports, localhost)
+- ✅ androidManifest — permissions complètes (CAMERA, RECORD_AUDIO, READ_MEDIA_IMAGES, POST_NOTIFICATIONS), `android:exported` correct, network_security_config cleartext=false, allowBackup=false
 
 ---
 
