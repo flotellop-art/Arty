@@ -17,7 +17,8 @@ export const EUR_PER_USD = 0.92
 export const MODEL_COSTS: Record<string, { input: number; output: number }> = {
   'claude-haiku-4-5':  { input: 0.80,  output: 4.00 },
   'claude-sonnet-4-6': { input: 3.00,  output: 15.00 },
-  'claude-opus-4-6':   { input: 15.00, output: 75.00 },
+  'claude-opus-4-6':   { input: 15.00, output: 75.00 }, // legacy — conservé pour les coûts historiques
+  'claude-opus-4-8':   { input: 15.00, output: 75.00 }, // opus actif (GA 28/05/2026, même tarif que 4.6/4.7)
   'gpt-5-mini':        { input: 0.40,  output: 1.60 },
   'gpt-5':             { input: 2.50,  output: 10.00 },
   'gemini-flash':      { input: 0.10,  output: 0.40 },
@@ -84,7 +85,7 @@ export function normaliseModel(model: string): string {
   // Fallbacks par préfixe pour ne pas perdre les futurs modèles
   if (model.startsWith('claude-haiku')) return 'claude-haiku-4-5'
   if (model.startsWith('claude-sonnet')) return 'claude-sonnet-4-6'
-  if (model.startsWith('claude-opus')) return 'claude-opus-4-6'
+  if (model.startsWith('claude-opus')) return 'claude-opus-4-8'
   if (model.startsWith('gpt-5-mini') || model.includes('mini')) return 'gpt-5-mini'
   if (model.startsWith('gpt-')) return 'gpt-5'
   if (model.startsWith('gemini') && model.includes('flash-lite')) return 'gemini-flash-lite'

@@ -355,7 +355,7 @@ describe('selectClaudeSubModel', () => {
 
   it('strategic report + Pro + max thinking → opus', () => {
     expect(selectClaudeSubModel('rapport stratégique détaillé', { enabled: true, budget: 10000 }, false, true))
-      .toBe('claude-opus-4-6')
+      .toBe('claude-opus-4-8')
   })
 })
 

@@ -25,6 +25,7 @@ const PRICING: Record<string, ModelPricing> = {
   'claude-sonnet-4-6': { input: 3, output: 15, cacheRead: 0.3, cacheCreation: 3.75 },
   'claude-opus-4-6': { input: 15, output: 75, cacheRead: 1.5, cacheCreation: 18.75 },
   'claude-opus-4-7': { input: 15, output: 75, cacheRead: 1.5, cacheCreation: 18.75 },
+  'claude-opus-4-8': { input: 15, output: 75, cacheRead: 1.5, cacheCreation: 18.75 }, // GA 28/05/2026, même tarif
   'claude-haiku-4-5-20251001': { input: 1, output: 5, cacheRead: 0.1, cacheCreation: 1.25 },
 
   // OpenAI (transcription)
