@@ -26,7 +26,7 @@ Surveiller en continu les évolutions des **APIs des fournisseurs IA utilisés p
 ## Contexte projet à connaître
 
 Arty utilise actuellement :
-- **Anthropic Claude** : modèles `claude-haiku-4-5-20251001`, `claude-sonnet-4-6`, `claude-opus-4-6`. API REST directe avec beta header `managed-agents-2026-04-01`. LLM principal + 4 agents managés (DG, Growth FR, Content FR, Analytics).
+- **Anthropic Claude** : modèles `claude-haiku-4-5-20251001`, `claude-sonnet-4-6`, `claude-opus-4-8`. API REST directe avec beta header `managed-agents-2026-04-01`. LLM principal + 4 agents managés (DG, Growth FR, Content FR, Analytics).
 - **Google Gemini** : `gemini-3-flash`. Grounding natif via `google_search` + `url_context`. Routing alternatif vers `google_maps` pour les requêtes localisation.
 - **Mistral** : `mistral-medium-latest`. LLM EU (RGPD-friendly, pas de modale consentement). Web search via Linkup.
 - **OpenAI** : `gpt-5.5` (défaut), fallback `gpt-5`. Whisper `gpt-4o-transcribe` (fallback `whisper-1`). Principalement BYOK.

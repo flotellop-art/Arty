@@ -226,7 +226,7 @@ export function needsThinking(message: string): ThinkingConfig {
   return { enabled: false, budget: 0 }
 }
 
-export type ClaudeSubModel = 'claude-haiku-4-5-20251001' | 'claude-sonnet-4-6' | 'claude-opus-4-6'
+export type ClaudeSubModel = 'claude-haiku-4-5-20251001' | 'claude-sonnet-4-6' | 'claude-opus-4-8'
 
 /**
  * Choisit la déclinaison de Claude la mieux adaptée à la requête :
@@ -258,7 +258,7 @@ export function selectClaudeSubModel(
 
   // Opus — strategic deep-dive reports (Pro tier + max thinking budget)
   if (isPro && thinking.budget >= 10000 && /rapport\s+stratégique|business\s+plan|étude\s+de\s+marché/i.test(message)) {
-    return 'claude-opus-4-6'
+    return 'claude-opus-4-8'
   }
 
   return 'claude-sonnet-4-6'
