@@ -467,6 +467,56 @@ async function executeToolCalls(
   return toolResults
 }
 
+// ── Prompt caching de l'historique ────────────────────────────────────────────
+
+// Pose un breakpoint de cache (`cache_control: ephemeral`) sur le dernier bloc
+// du dernier message. Effet : le préfixe accumulé (système + outils + tout
+// l'historique) est relu depuis le cache Anthropic (~0,1× du tarif input) au
+// lieu d'être renvoyé plein tarif. Sans ça, seuls système+outils étaient cachés
+// (lignes systemBlocks/cachedTools) ; tout l'historique de conversation ET la
+// boucle d'outils repartaient à chaque fois en input neuf.
+//
+// À appeler à CHAQUE itération de la boucle d'outils (pas une fois par tour
+// utilisateur) : le lookback de cache remonte au plus 20 blocs pour retrouver
+// l'entrée précédente, or une chaîne d'outils longue (thinking + N tool_use +
+// N tool_result) dépasse vite 20 blocs entre deux tours → cache miss silencieux
+// + réécriture (1,25×) = optim négative. Re-poser le marqueur par itération
+// garde la distance < 20 blocs.
+//
+// Idempotent : retire tout marqueur de message déjà posé avant d'en poser un
+// nouveau. Sinon on empile les breakpoints au fil de la boucle et on dépasse la
+// limite API de 4 (système + dernier outil + ce marqueur = 3). On ne balaye que
+// les messages `user` : un marqueur n'est jamais posé ailleurs, et toucher un
+// message `assistant` (blocs thinking à signature intègre) risquerait le 400
+// « thinking blocks cannot be modified » (BUG 52).
+function markLastBlockForCaching(messages: ApiMessage[]): void {
+  for (const m of messages) {
+    if (m.role === 'assistant' || typeof m.content === 'string') continue
+    for (const block of m.content as unknown as Array<Record<string, unknown>>) {
+      if (block && 'cache_control' in block) delete block.cache_control
+    }
+  }
+
+  const last = messages[messages.length - 1]
+  // Garde BUG 52 : ne jamais réécrire un message assistant. En pratique le
+  // dernier message est toujours un `user` (question d'origine ou tool_results).
+  if (!last || last.role === 'assistant') return
+
+  if (typeof last.content === 'string') {
+    // user à contenu string → on le transforme en un bloc text porteur du
+    // marqueur (cache_control va sur un bloc, pas sur une string brute).
+    last.content = [
+      { type: 'text', text: last.content, cache_control: { type: 'ephemeral' } },
+    ] as unknown as ContentBlock[]
+  } else {
+    const blocks = last.content as unknown as Array<Record<string, unknown>>
+    const lastBlock = blocks[blocks.length - 1]
+    // tool_result (ou text) : le cache_control va sur l'OBJET bloc lui-même,
+    // jamais en transformant son `content`.
+    if (lastBlock) lastBlock.cache_control = { type: 'ephemeral' }
+  }
+}
+
 // ── Main streaming loop with tool use ────────────────────────────────────────
 
 async function runWithTools(
@@ -526,6 +576,9 @@ async function runWithTools(
     while (maxIterations-- > 0) {
       // Haiku max output = 64000 tokens (API limit). Cap unconditionally.
       const maxTokens = ANTHROPIC_MODEL.includes('haiku') ? 64000 : 65536
+      // Cache de l'historique : (re)pose le marqueur sur le dernier bloc à
+      // CHAQUE itération (cf. lookback 20 blocs dans markLastBlockForCaching).
+      markLastBlockForCaching(apiMessages)
       const requestBody = JSON.stringify({
         model: ANTHROPIC_MODEL,
         max_tokens: maxTokens,
@@ -549,18 +602,31 @@ async function runWithTools(
       const response = await fetchWithRetry(requestBody, apiKey, controller, thinking.enabled)
       const { contentBlocks, inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens } = await parseSSEStream(response, onToken)
 
-      // Track cost — input total = fresh + cached read + cached creation tokens.
-      // Anthropic facture les "cache_creation_input_tokens" comme de l'input
-      // standard ; les "cache_read_input_tokens" sont 90% moins chers mais on
-      // les compte au tarif input pour rester conservateur côté estimation.
+      // Track cost. Anthropic facture les "cache_creation_input_tokens" comme
+      // de l'input standard (en réalité ~1,25× — on garde 1× = légère
+      // sous-estimation bornée) et les "cache_read_input_tokens" à ~0,1× du
+      // tarif input. Depuis qu'on cache l'historique (markLastBlockForCaching),
+      // les lectures de cache deviennent volumineuses : les compter plein tarif
+      // ferait paraître l'optimisation PLUS chère qu'avant (faux signal vers
+      // l'écran Coûts / CostIndicator, cf. BUG 54). On pondère donc les reads
+      // à 0,1× pour rester proche du coût réel facturé.
       try {
         recordUsage(
           ANTHROPIC_MODEL,
-          inputTokens + cacheReadTokens + cacheCreationTokens,
+          inputTokens + cacheCreationTokens + Math.ceil(cacheReadTokens * 0.1),
           outputTokens
         )
       } catch {
         // Le tracking ne doit jamais casser le flux de réponse.
+      }
+
+      // Dev only : vérifier que le cache mord réellement. Si cacheReadTokens
+      // reste à 0 sur des tours répétés, c'est un lookup raté (>20 blocs) ou un
+      // invalidateur silencieux du préfixe — pas l'optim qui marche.
+      if (import.meta.env.DEV) {
+        console.log(
+          `[anthropic cache] read=${cacheReadTokens} creation=${cacheCreationTokens} fresh=${inputTokens}`
+        )
       }
 
       const hasToolUse = contentBlocks.some((b) => b.type === 'tool_use')
