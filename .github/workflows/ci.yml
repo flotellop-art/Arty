@@ -1,0 +1,42 @@
+name: CI
+
+# Garde-fou PR : typecheck (src + functions) + tests unitaires.
+# Cf. BUG 13 — les erreurs TypeScript cassent le déploiement Cloudflare
+# silencieusement. Cette CI les attrape AVANT le merge. Elle exécute aussi
+# vitest, qui n'était jamais lancé automatiquement (16 tests avaient pourri
+# sans que personne ne le voie).
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Annule les runs obsolètes quand on push à nouveau sur la même branche/PR.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  typecheck-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      # .npmrc fixe legacy-peer-deps=true (BUG 37 — Capacitor 8 vs plugins).
+      - name: Install dependencies
+        run: npm ci
+
+      # tsc sur src/ ET functions/ (les Pages Functions n'étaient pas typées).
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test
