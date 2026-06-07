@@ -197,28 +197,28 @@ export function useSpeechRecognition() {
       if (err === 'not-allowed' || err === 'service-not-allowed') {
         setError(
           Capacitor.isNativePlatform()
-            ? 'Micro refusé — Paramètres Android → Apps → Arty → Autorisations → Micro'
-            : 'Micro refusé — autorise le micro dans les paramètres du navigateur'
+            ? i18n.t('errors.micDeniedNative')
+            : i18n.t('errors.micDeniedWeb')
         )
         wantListeningRef.current = false
         retryCountRef.current = 0
       } else if (err === 'no-speech') {
         // Normal — user paused; onend will auto-restart
       } else if (err === 'audio-capture') {
-        setError('Aucun micro détecté — vérifie ton matériel')
+        setError(i18n.t('errors.micNotDetected'))
         wantListeningRef.current = false
         retryCountRef.current = 0
       } else if (err === 'network') {
         // Retry with exponential backoff
         if (retryCountRef.current >= MAX_RETRIES) {
-          setError('Erreur réseau — vérifie ta connexion')
+          setError(i18n.t('errors.micNetwork'))
           wantListeningRef.current = false
           retryCountRef.current = 0
         }
         // Otherwise onend will handle the retry
       } else {
         if (retryCountRef.current >= MAX_RETRIES) {
-          setError(`Erreur micro: ${err}`)
+          setError(i18n.t('errors.micError', { error: err }))
           wantListeningRef.current = false
           retryCountRef.current = 0
         }
@@ -306,7 +306,7 @@ export function useSpeechRecognition() {
 
   const startListening = useCallback(async (onTranscript: (text: string) => void) => {
     if (!isSupported) {
-      setError('Reconnaissance vocale non supportée sur ce navigateur. Utilisez Chrome ou Edge.')
+      setError(i18n.t('errors.speechNotSupported'))
       return
     }
 
@@ -342,7 +342,7 @@ export function useSpeechRecognition() {
       recognition.start()
     } catch {
       // Already started or blocked — report error
-      setError('Impossible de démarrer le micro')
+      setError(i18n.t('errors.micCannotStart'))
       wantListeningRef.current = false
       endBeepMute()
     }

@@ -274,7 +274,15 @@
     "streamInterrupted": "Réponse interrompue",
     "streamStopped": "Réponse arrêtée",
     "responseIncomplete": "Réponse incomplète, réessaie ta question.",
-    "promptEnhancementFailed": "Impossible d'améliorer le prompt — réessaie."
+    "promptEnhancementFailed": "Impossible d'améliorer le prompt — réessaie.",
+    "tooManyConcurrentStreams": "Trop de conversations en cours en parallèle. Attends qu'une réponse se termine.",
+    "micDeniedNative": "Micro refusé — Paramètres Android → Apps → Arty → Autorisations → Micro",
+    "micDeniedWeb": "Micro refusé — autorise le micro dans les paramètres du navigateur",
+    "micNotDetected": "Aucun micro détecté — vérifie ton matériel",
+    "micNetwork": "Erreur réseau — vérifie ta connexion",
+    "micError": "Erreur micro : {{error}}",
+    "micCannotStart": "Impossible de démarrer le micro",
+    "speechNotSupported": "Reconnaissance vocale non supportée sur ce navigateur. Utilisez Chrome ou Edge."
   },
   "sidebar": {
     "newConversation": "Nouvelle conversation",

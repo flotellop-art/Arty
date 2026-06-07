@@ -8,6 +8,7 @@ import { recordUsage } from './costTracker'
 import { dispatchModelUsed } from './modelLabels'
 import { setSearchContext } from './factChecker'
 import { shouldUseWebSearch } from './aiRouter'
+import { updateTrialFromResponse } from './trialClient'
 import i18n from '../i18n'
 
 /**
@@ -127,8 +128,10 @@ async function executeMistralWebSearch(args: Record<string, unknown>): Promise<{
 
   const googleToken = await getValidAccessToken()
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  // Le proxy /api/search/web authentifie via x-google-token (checkAllowedUser).
+  // PAS d'Authorization ici : ce header n'est pas une clé Mistral, juste le
+  // token Google — l'envoyer en double était redondant et trompeur.
   if (googleToken) headers['x-google-token'] = googleToken
-  if (googleToken) headers['Authorization'] = `Bearer ${googleToken}`
 
   // CRIT-5 — Timeout 30s sur web_search pour éviter les blocages
   // sur cold-start Cloudflare ou réseau flaky.
@@ -458,7 +461,6 @@ async function streamOnce(
     controller.signal.removeEventListener('abort', onExternalAbort)
   }
 
-  const { updateTrialFromResponse } = await import('./trialClient')
   updateTrialFromResponse(response)
 
   if (!response.ok) {

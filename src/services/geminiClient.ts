@@ -5,6 +5,7 @@ import { buildLocationContext } from './locationContext'
 import { recordUsage } from './costTracker'
 import { dispatchModelUsed } from './modelLabels'
 import { extractYouTubeUrls } from './aiRouter'
+import { updateTrialFromResponse } from './trialClient'
 import i18n from '../i18n'
 
 // Modèle Flash GA stable. `gemini-3-flash` (sans suffixe) renvoyait un 404 :
@@ -232,8 +233,6 @@ async function runGeminiStream(
       GEMINI_TIMEOUT_MS,
       controller.signal,
     )
-
-    const { updateTrialFromResponse } = await import('./trialClient')
     updateTrialFromResponse(response)
 
     if (!response.ok) {
@@ -348,8 +347,6 @@ export async function geminiResearch(query: string, apiKeyOverride?: string): Pr
       { method: 'POST', headers, body: JSON.stringify(requestBody) },
       GEMINI_TIMEOUT_MS,
     )
-
-    const { updateTrialFromResponse } = await import('./trialClient')
     updateTrialFromResponse(res)
 
     if (!res.ok) return ''

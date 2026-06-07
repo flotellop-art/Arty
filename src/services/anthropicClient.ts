@@ -8,6 +8,7 @@ import { needsThinking, selectClaudeSubModel, PRIVATE_DATA_TRIGGERS, shouldUseWe
 import { isProActivated } from './proLicense'
 import { buildLocationContext } from './locationContext'
 import { recordUsage } from './costTracker'
+import { updateTrialFromResponse } from './trialClient'
 import i18n from '../i18n'
 
 const ANTI_HALLU_PROMPT = `
@@ -209,7 +210,6 @@ async function fetchWithRetry(
   }
 
   // Met à jour le compteur trial local depuis le header x-trial-remaining.
-  const { updateTrialFromResponse } = await import('./trialClient')
   updateTrialFromResponse(response!)
 
   if (!response!.ok) {
