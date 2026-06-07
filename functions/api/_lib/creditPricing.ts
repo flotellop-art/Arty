@@ -63,15 +63,28 @@ export function applyMarkup(providerCostMicro: number, model: string, modality: 
   return Math.max(marked, rule.minChargeMicro)
 }
 
+/** Coerce un compteur de tokens en entier fini >= 0 (parsing SSE foireux, BUG 52). */
+const safeCount = (n: number): number => (Number.isFinite(n) && n > 0 ? n : 0)
+
 /**
  * SETTLE texte : montant réel à débiter, markupé, à partir de l'usage mesuré
  * en fin de stream. providerCost exposé séparément pour le ledger (marge).
+ * L'usage est assaini : un compteur NaN/négatif (stream tronqué) ne doit JAMAIS
+ * produire un chargeMicro NaN qui ferait `balance_micro = NULL` côté D1.
  */
 export function chargeForUsageMicro(
   model: string,
   usage: UsageTokens,
 ): { chargeMicro: number; providerCostMicro: number } {
-  const providerCostMicro = computeCostMicroUsd(model, usage)
+  const safe: UsageTokens = {
+    inputTokens: safeCount(usage.inputTokens),
+    outputTokens: safeCount(usage.outputTokens),
+    cacheReadTokens: safeCount(usage.cacheReadTokens),
+    cacheCreationTokens: safeCount(usage.cacheCreationTokens),
+    audioSeconds: safeCount(usage.audioSeconds),
+  }
+  const providerCostMicro = computeCostMicroUsd(model, safe)
+  // applyMarkup plancher à minChargeMicro > 0 → chargeMicro toujours fini et >= plancher.
   return { chargeMicro: applyMarkup(providerCostMicro, model, 'text'), providerCostMicro }
 }
 
@@ -81,7 +94,7 @@ export function chargeForUsageMicro(
  * sous-réserver et laisser le solde plonger.
  */
 export function estimateReserveMicro(model: string, maxTokens: number | undefined): number {
-  if (!maxTokens || maxTokens <= 0) return DEFAULT_RESERVE_TEXT_MICRO
+  if (!maxTokens || maxTokens <= 0 || !Number.isFinite(maxTokens)) return DEFAULT_RESERVE_TEXT_MICRO
   const p = getPricing(model)
   // µ$ = tokens × ($/Mtok) : les deux facteurs 1e6 (par-million ÷, micro ×) s'annulent.
   const outputCostMicro = Math.round(maxTokens * p.output)

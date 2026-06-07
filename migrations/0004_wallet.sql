@@ -119,9 +119,13 @@ CREATE TABLE IF NOT EXISTS reservation (
   modality TEXT,
     -- 'text' | 'image'
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    -- heartbeat : l'appelant le rafraîchit pendant un stream long. Le sweeper
+    -- balaie sur updated_at (pas created_at) → un stream légitime de plus de
+    -- 60 min n'est PAS voided en vol (sinon débit perdu après paiement upstream).
   settled_at TEXT
 );
 
--- Pour le sweeper : retrouver les réservations 'open' trop anciennes.
+-- Pour le sweeper : retrouver les réservations 'open' inactives depuis longtemps.
 CREATE INDEX IF NOT EXISTS idx_reservation_sweep
-  ON reservation(status, created_at);
+  ON reservation(status, updated_at);

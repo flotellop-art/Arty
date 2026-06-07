@@ -9,52 +9,50 @@ import type { UsageTokens } from './pricing'
 // IA, on règle le coût RÉEL APRÈS le stream. `wallet` est le cache atomique du
 // hot path ; `credit_ledger` (append-only) est la vérité comptable.
 //
-// Invariants tenus ici :
-//   I1 — Pas d'overspend concurrent : la réserve est un UPDATE conditionnel
-//        atomique `WHERE (balance - reserved) >= est`. D1/SQLite sérialise les
-//        écritures sur la primary → deux requêtes concurrentes ne peuvent pas
-//        réserver le même disponible (même garantie que consumeCapAtomic).
-//   I2 — settle ⊕ void exclusifs : le flip de `reservation.status`
-//        'open' → 'settled' | 'voided' via UPDATE conditionnel RETURNING est le
-//        mutex. Le perdant voit 0 ligne et s'abstient → jamais de double-mouvement.
-//   I3 — Idempotence top-up : crédit puis claim de l'event dans une SEULE
-//        transaction `batch`, le crédit étant gardé par NOT EXISTS webhook_event.
-//        Un replay d'event signé ne re-crédite donc pas.
+// PRINCIPE DE CORRECTION (revue RÈGLE 7, 2 agents Opus) : CHAQUE mouvement
+// d'argent est une SEULE transaction `batch()` (D1 = transaction tout-ou-rien,
+// statements vus en séquence) qui est AUSSI idempotente. L'idempotence vient
+// du statut de la réservation ('open' gardant settle/void) ou de NOT EXISTS
+// webhook_event (event_id OU order_id) pour les top-ups. Conséquence : un retry
+// — même après un commit "perdu" côté réseau — ne re-débite ni ne re-crédite
+// jamais. Pas de séquence non-transactionnelle de 2 écritures (la source des
+// doubles-débits/crédits trouvés en revue).
 //
-// Décisions (cf. plan crédits, 7 juin 2026) :
-//   - Échec D1 sur la réserve → renvoie 'db_unavailable'. PAS de fail-open
-//     implicite (contrairement à consumeCapAtomic) : sur de l'argent, c'est au
-//     CALLER d'appliquer la politique fail-closed graduée par modalité.
-//   - Settle → 3 écritures séquentielles (flip, débit wallet, ligne ledger) hors
-//     du chemin de latence client (waitUntil), avec un retry court ; le résiduel
-//     rarissime (~1 appel) est rattrapé par la réconciliation nocturne.
+// Invariants :
+//   I1 — Pas d'overspend concurrent : le hold est `WHERE (balance-reserved)>=est`.
+//   I2 — settle ⊕ void exclusifs : le flip 'open'→X est le mutex ; le perdant
+//        voit le statut ≠ 'open' et n'applique aucun mouvement.
+//   I3 — Idempotence top-up : garde NOT EXISTS sur (event_id OU order_id).
+//   I4 — Réservation présente ⟺ hold pris : réserve = batch couplé (résa + hold
+//        gardés par la MÊME condition de solde) → jamais de résa orpheline.
 //
-// ⚠️ Sémantique SQLite load-bearing (à ne pas "simplifier") :
-//   - `ON CONFLICT(col) DO UPDATE SET ... WHERE <expr>` : le WHERE conditionne
-//     l'UPDATE de conflit.
-//   - `INSERT ... SELECT ... WHERE NOT EXISTS (...)` : insert conditionnel.
-//   - Dans un `batch`, les statements s'exécutent en séquence dans UNE
-//     transaction ; un statement voit les effets des précédents, pas des suivants.
+// Décisions (plan crédits, 7 juin 2026) :
+//   - Échec D1 sur la réserve → 'db_unavailable' (PAS de fail-open implicite) ;
+//     le CALLER applique la politique fail-closed graduée par modalité.
+//   - Settle : batch idempotent + retry court ; résiduel rattrapé par la
+//     réconciliation nocturne (requêtes documentées en bas de fichier).
+//
+// CONTRAT SÉCURITÉ : `email` est TOUJOURS l'email du token Google VÉRIFIÉ côté
+// serveur (sub), JAMAIS un champ de body/query (sinon IDOR, cf. CRIT-1). Pour
+// creditWallet, email/amount/event viennent du payload webhook SIGNÉ + table
+// produits figée — voir le câblage webhook (à venir).
 // ─────────────────────────────────────────────────────────────────────
 
 const D1_TIMEOUT_MS = 250
-const RESERVATION_STALE_MINUTES = 10 // au-delà, le sweeper void une réservation 'open'
+// Seuil sweeper : au-delà de cette INACTIVITÉ (updated_at), une réservation
+// 'open' est considérée orpheline. 60 min > durée max plausible d'un stream IA
+// long (gros max_tokens + raisonnement + retries) → on ne void pas en vol.
+const RESERVATION_STALE_MINUTES = 60
 
 let tablesEnsured = false
 
-export type ReserveResult =
-  | { status: 'reserved'; availableAfterMicro: number }
-  | { status: 'insufficient' }
-  | { status: 'db_unavailable' }
-
+export type ReserveResult = { status: 'reserved' | 'insufficient' | 'db_unavailable' }
 export type SettleResult =
   | { status: 'settled'; chargedMicro: number }
-  | { status: 'already_finalized' } // déjà settled ou voided (idempotent)
+  | { status: 'already_finalized' }
   | { status: 'error' }
-
 export type VoidResult = { status: 'voided' | 'already_finalized' | 'error' }
-
-export type CreditResult = { status: 'credited' | 'duplicate' | 'error'; balanceAfterMicro?: number }
+export type CreditResult = { status: 'credited' | 'duplicate' | 'error' }
 
 export interface WalletBalance {
   balanceMicro: number
@@ -62,17 +60,16 @@ export interface WalletBalance {
   availableMicro: number
 }
 
-/** Race une requête D1 contre un timeout. Pour borner la latence du hot path. */
+/** Race une requête D1 contre un timeout, pour borner la latence du hot path. */
 async function raceTimeout<T>(p: Promise<T>, ms: number): Promise<T | '__timeout__'> {
   const t = new Promise<'__timeout__'>((resolve) => setTimeout(() => resolve('__timeout__'), ms))
   return Promise.race([p, t])
 }
 
 /**
- * Crée les tables wallet en lazy si absentes (BUG 38 : une table non créée au
- * 1er appel = 500). DDL en miroir de migrations/0004_wallet.sql ; la migration
- * reste la source pour les déploiements propres, ceci est le filet runtime.
- * Idempotent + mémoïsé par worker chaud.
+ * Crée les tables wallet en lazy si absentes (BUG 38). DDL en miroir EXACT de
+ * migrations/0004_wallet.sql (la migration reste la source pour les déploiements
+ * propres, ceci est le filet runtime). Idempotent + mémoïsé par worker chaud.
  */
 export async function ensureWalletTables(env: Env): Promise<void> {
   if (tablesEnsured || !env.DB) return
@@ -127,12 +124,13 @@ export async function ensureWalletTables(env: Env): Promise<void> {
            id TEXT PRIMARY KEY, user_email TEXT NOT NULL,
            reserved_micro INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'open',
            model TEXT, modality TEXT,
-           created_at TEXT NOT NULL DEFAULT (datetime('now')), settled_at TEXT
+           created_at TEXT NOT NULL DEFAULT (datetime('now')),
+           updated_at TEXT NOT NULL DEFAULT (datetime('now')), settled_at TEXT
          )`,
       ),
       env.DB.prepare(
         `CREATE INDEX IF NOT EXISTS idx_reservation_sweep
-           ON reservation(status, created_at)`,
+           ON reservation(status, updated_at)`,
       ),
     ])
     tablesEnsured = true
@@ -159,11 +157,12 @@ export async function getWalletBalance(env: Env, email: string): Promise<WalletB
 }
 
 /**
- * RÉSERVE (hot path, AVANT l'appel IA).
- * Ordre choisi : on insère d'abord la réservation 'open' (le settle en aura
- * besoin pour son flip), PUIS on prend le hold conditionnel. Si le hold échoue
- * (fonds insuffisants / D1 indispo), on annule la réservation tout juste créée.
- * Garantit qu'un statut 'reserved' implique TOUJOURS hold pris + ligne présente.
+ * RÉSERVE (hot path, AVANT l'appel IA). Batch couplé atomique (I4) :
+ *   stmt0 — INSERT réservation 'open' SI le solde suffit ;
+ *   stmt1 — prend le hold (reserved += est) SI le solde suffit (même condition).
+ * stmt0 ne touche pas le wallet → les deux voient le même solde → soit les deux
+ * s'appliquent, soit aucun. Pas de discard, pas de résa orpheline (fix P3).
+ * On lit `meta.changes` du hold (stmt1) pour le verdict.
  */
 export async function reserveCredits(
   env: Env,
@@ -173,62 +172,44 @@ export async function reserveCredits(
   if (!env.DB) return { status: 'db_unavailable' }
   await ensureWalletTables(env)
   try {
-    // 1. Journal de la réservation (le sweeper et le settle s'appuient dessus).
-    await env.DB.prepare(
-      `INSERT INTO reservation (id, user_email, reserved_micro, status, model, modality)
-       VALUES (?1, ?2, ?3, 'open', ?4, ?5)`,
+    const raced = await raceTimeout(
+      env.DB.batch([
+        env.DB.prepare(
+          `INSERT INTO reservation (id, user_email, reserved_micro, status, model, modality)
+           SELECT ?1, ?2, ?3, 'open', ?4, ?5
+           WHERE EXISTS (SELECT 1 FROM wallet WHERE user_email = ?2 AND (balance_micro - reserved_micro) >= ?3)`,
+        ).bind(resId, email, estMicro, model, modality),
+        env.DB.prepare(
+          `UPDATE wallet SET reserved_micro = reserved_micro + ?2, updated_at = datetime('now')
+           WHERE user_email = ?1 AND (balance_micro - reserved_micro) >= ?2`,
+        ).bind(email, estMicro),
+      ]),
+      D1_TIMEOUT_MS,
     )
-      .bind(resId, email, estMicro, model, modality)
-      .run()
-
-    // 2. Hold conditionnel atomique (l'autorité anti-overspend), borné en latence.
-    const holdQuery = env.DB.prepare(
-      `UPDATE wallet SET reserved_micro = reserved_micro + ?2, updated_at = datetime('now')
-       WHERE user_email = ?1 AND (balance_micro - reserved_micro) >= ?2
-       RETURNING (balance_micro - reserved_micro) AS available_after`,
-    )
-      .bind(email, estMicro)
-      .first<{ available_after: number }>()
-    const raced = await raceTimeout(holdQuery, D1_TIMEOUT_MS)
-
     if (raced === '__timeout__') {
-      // Le timeout n'annule pas la requête D1 : l'UPDATE peut s'appliquer côté
-      // serveur APRÈS coup. Ne PAS discard (un hold pris fuiterait) — laisser la
-      // réservation 'open' pour que le sweeper rende l'éventuel hold.
-      console.error('[wallet] hold D1 timeout — réservation laissée au sweeper')
+      // Le batch est atomique : commit complet (résa+hold couplés, le sweeper
+      // rendra) ou rien. Dans les deux cas, aucun leak. On refuse côté caller.
+      console.error('[wallet] reserve D1 timeout')
       return { status: 'db_unavailable' }
     }
-    const row = raced as { available_after: number } | null
-    if (!row) {
-      // Réponse définitive : le WHERE était faux → aucun hold pris → discard sûr.
-      await discardReservation(env, resId)
-      return { status: 'insufficient' }
-    }
-    return { status: 'reserved', availableAfterMicro: row.available_after }
+    const held = raced[1]?.meta?.changes ?? 0
+    return held > 0 ? { status: 'reserved' } : { status: 'insufficient' }
   } catch (err) {
-    // Exception ambiguë : impossible de savoir si le hold a appliqué → ne pas
-    // discard, laisser le sweeper rendre un hold orphelin éventuel.
-    console.error('[wallet] reserve erreur — réservation laissée au sweeper', err)
+    console.error('[wallet] reserve erreur', err)
     return { status: 'db_unavailable' }
   }
 }
 
-/** Supprime une réservation jamais "tenue" (aucun hold pris). Best-effort. */
-async function discardReservation(env: Env, resId: string): Promise<void> {
-  try {
-    await env.DB.prepare(`DELETE FROM reservation WHERE id = ?1 AND status = 'open'`).bind(resId).run()
-  } catch (err) {
-    console.error('[wallet] discardReservation ignoré', err)
-  }
-}
-
 /**
- * SETTLE (après le stream, dans waitUntil — hors latence client).
- * 1) flip mutex 'open'→'settled' (RETURNING le montant réservé) ; si 0 ligne,
- *    la réservation a déjà été settled ou voided → no-op idempotent.
- * 2) rend le hold (reserved -= réservé) et débite le coût réel (balance -= réel).
- * 3) écrit la ligne ledger 'debit' (ON CONFLICT DO NOTHING = filet anti-doublon).
- * Étapes 2-3 retentées une fois ; au pire la réconciliation nocturne rattrape.
+ * SETTLE (après le stream, dans waitUntil — hors latence client). UNE seule
+ * transaction atomique idempotente (fix P2 + double-débit B1) :
+ *   stmt0 — rend le hold + débite le coût réel, gardé par EXISTS(résa 'open') ;
+ *   stmt1 — écrit la ligne ledger 'debit', même garde + ON CONFLICT ;
+ *   stmt2 — flip 'open'→'settled' (mutex settle/void).
+ * Tant que la résa est 'open', les 3 s'appliquent ensemble ; sur un re-run
+ * (déjà 'settled' ou 'voided'), EXISTS('open') est faux partout → no-op total.
+ * Donc le retry est SÛR (jamais de double-débit). On lit le flip (stmt2) pour
+ * distinguer settled vs already_finalized.
  */
 export async function settleCredits(
   env: Env,
@@ -236,25 +217,8 @@ export async function settleCredits(
 ): Promise<SettleResult> {
   const { resId, email, model, modality, usage } = params
   if (!env.DB) return { status: 'error' }
+  // chargeForUsageMicro assainit l'usage → chargeMicro toujours fini et > 0 (fix P6).
   const { chargeMicro, providerCostMicro } = chargeForUsageMicro(model, usage)
-
-  // 1. Mutex : seul le gagnant du flip applique le mouvement.
-  let claim: { reserved_micro: number } | null
-  try {
-    claim = await env.DB.prepare(
-      `UPDATE reservation SET status = 'settled', settled_at = datetime('now')
-       WHERE id = ?1 AND status = 'open'
-       RETURNING reserved_micro`,
-    )
-      .bind(resId)
-      .first<{ reserved_micro: number }>()
-  } catch (err) {
-    console.error('[wallet] settle flip erreur', err)
-    return { status: 'error' }
-  }
-  if (!claim) return { status: 'already_finalized' }
-  const reservedMicro = claim.reserved_micro
-
   const meta = JSON.stringify({
     input: usage.inputTokens,
     output: usage.outputTokens,
@@ -262,60 +226,65 @@ export async function settleCredits(
     cacheCreation: usage.cacheCreationTokens,
   })
 
-  // 2-3. Mouvement money + ledger, avec un retry court (settle hors latence).
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      const walletRow = await env.DB.prepare(
-        `UPDATE wallet SET reserved_micro = MAX(0, reserved_micro - ?2),
-           balance_micro = balance_micro - ?3, updated_at = datetime('now')
-         WHERE user_email = ?1
-         RETURNING balance_micro`,
-      )
-        .bind(email, reservedMicro, chargeMicro)
-        .first<{ balance_micro: number }>()
-      const balanceAfter = walletRow?.balance_micro ?? null
-
-      await env.DB.prepare(
-        `INSERT INTO credit_ledger
-           (user_email, amount_micro, kind, ref_type, ref_id, provider_cost_micro, model, modality, meta, balance_after)
-         VALUES (?1, ?2, 'debit', 'reservation', ?3, ?4, ?5, ?6, ?7, ?8)
-         ON CONFLICT DO NOTHING`,
-      )
-        .bind(email, -chargeMicro, resId, providerCostMicro, model, modality, meta, balanceAfter)
-        .run()
-
-      return { status: 'settled', chargedMicro: chargeMicro }
+      const res = await env.DB.batch([
+        env.DB.prepare(
+          `UPDATE wallet SET
+             reserved_micro = MAX(0, reserved_micro - (SELECT reserved_micro FROM reservation WHERE id = ?1 AND status = 'open')),
+             balance_micro = balance_micro - ?2,
+             updated_at = datetime('now')
+           WHERE user_email = ?3 AND EXISTS (SELECT 1 FROM reservation WHERE id = ?1 AND status = 'open')`,
+        ).bind(resId, chargeMicro, email),
+        env.DB.prepare(
+          `INSERT INTO credit_ledger
+             (user_email, amount_micro, kind, ref_type, ref_id, provider_cost_micro, model, modality, meta)
+           SELECT ?1, ?2, 'debit', 'reservation', ?3, ?4, ?5, ?6, ?7
+           WHERE EXISTS (SELECT 1 FROM reservation WHERE id = ?3 AND status = 'open')
+           ON CONFLICT DO NOTHING`,
+        ).bind(email, -chargeMicro, resId, providerCostMicro, model, modality, meta),
+        env.DB.prepare(
+          `UPDATE reservation SET status = 'settled', settled_at = datetime('now')
+           WHERE id = ?1 AND status = 'open'`,
+        ).bind(resId),
+      ])
+      const flipped = res[2]?.meta?.changes ?? 0
+      return flipped > 0 ? { status: 'settled', chargedMicro: chargeMicro } : { status: 'already_finalized' }
     } catch (err) {
-      console.error(`[wallet] settle mouvement échec (tentative ${attempt + 1})`, err)
+      console.error(`[wallet] settle échec (tentative ${attempt + 1})`, err)
     }
   }
-  // La réservation est 'settled' mais le mouvement n'a pas abouti → drift que la
-  // réconciliation nocturne détecte (SUM(ledger) vs wallet). Résiduel accepté.
+  // Le batch n'a jamais abouti → la résa reste 'open', le sweeper la voidera (le
+  // débit de CET appel est perdu = résiduel rarissime accepté). Détectable aussi
+  // par la requête de réconciliation (voir bas de fichier).
   return { status: 'error' }
 }
 
 /**
- * VOID — rend intégralement le hold (appel échoué côté upstream, ou sweeper).
- * Même mutex que settle : flip 'open'→'voided' ; le perdant s'abstient.
+ * VOID — rend intégralement le hold (appel upstream échoué, ou sweeper). UNE
+ * transaction atomique idempotente (fix B4) :
+ *   stmt0 — rend le hold, gardé par EXISTS(résa 'open') ;
+ *   stmt1 — flip 'open'→'voided' (mutex).
+ * Re-run → EXISTS('open') faux → no-op. Si settle a déjà gagné le flip, void
+ * est un no-op (et inversement).
  */
 export async function voidReservation(env: Env, resId: string, email: string): Promise<VoidResult> {
   if (!env.DB) return { status: 'error' }
   try {
-    const claim = await env.DB.prepare(
-      `UPDATE reservation SET status = 'voided', settled_at = datetime('now')
-       WHERE id = ?1 AND status = 'open'
-       RETURNING reserved_micro`,
-    )
-      .bind(resId)
-      .first<{ reserved_micro: number }>()
-    if (!claim) return { status: 'already_finalized' }
-    await env.DB.prepare(
-      `UPDATE wallet SET reserved_micro = MAX(0, reserved_micro - ?2), updated_at = datetime('now')
-       WHERE user_email = ?1`,
-    )
-      .bind(email, claim.reserved_micro)
-      .run()
-    return { status: 'voided' }
+    const res = await env.DB.batch([
+      env.DB.prepare(
+        `UPDATE wallet SET
+           reserved_micro = MAX(0, reserved_micro - (SELECT reserved_micro FROM reservation WHERE id = ?1 AND status = 'open')),
+           updated_at = datetime('now')
+         WHERE user_email = ?2 AND EXISTS (SELECT 1 FROM reservation WHERE id = ?1 AND status = 'open')`,
+      ).bind(resId, email),
+      env.DB.prepare(
+        `UPDATE reservation SET status = 'voided', settled_at = datetime('now')
+         WHERE id = ?1 AND status = 'open'`,
+      ).bind(resId),
+    ])
+    const flipped = res[1]?.meta?.changes ?? 0
+    return flipped > 0 ? { status: 'voided' } : { status: 'already_finalized' }
   } catch (err) {
     console.error('[wallet] void erreur', err)
     return { status: 'error' }
@@ -323,16 +292,16 @@ export async function voidReservation(env: Env, resId: string, email: string): P
 }
 
 /**
- * SWEEPER — void les réservations 'open' trop anciennes (crash entre réserve et
- * settle). Best-effort, à appeler en probabiliste (maybeCleanup-style) et/ou Cron.
- * Rend les holds un par un pour garder la comptabilité par-utilisateur exacte.
+ * SWEEPER — void les réservations 'open' inactives depuis plus de RESERVATION_STALE_MINUTES
+ * (crash entre réserve et settle). Balaie sur `updated_at` (heartbeat) pour ne
+ * pas tuer un stream long en vol (fix P1). Best-effort, probabiliste + Cron.
  */
 export async function sweepStaleReservations(env: Env, limit = 50): Promise<number> {
   if (!env.DB) return 0
   try {
     const stale = await env.DB.prepare(
       `SELECT id, user_email FROM reservation
-       WHERE status = 'open' AND created_at < datetime('now', ?1)
+       WHERE status = 'open' AND updated_at < datetime('now', ?1)
        LIMIT ?2`,
     )
       .bind(`-${RESERVATION_STALE_MINUTES} minutes`, limit)
@@ -349,13 +318,34 @@ export async function sweepStaleReservations(env: Env, limit = 50): Promise<numb
   }
 }
 
+/** Heartbeat d'une réservation pendant un stream long (repousse le sweeper). */
+export async function touchReservation(env: Env, resId: string): Promise<void> {
+  if (!env.DB) return
+  try {
+    await env.DB.prepare(
+      `UPDATE reservation SET updated_at = datetime('now') WHERE id = ?1 AND status = 'open'`,
+    )
+      .bind(resId)
+      .run()
+  } catch (err) {
+    console.error('[wallet] touchReservation ignoré', err)
+  }
+}
+
 /**
  * TOP-UP — crédite le wallet de façon IDEMPOTENTE (appelé par le webhook MoR
- * APRÈS vérification de signature + paiement réellement capturé).
- * Crédit gardé par NOT EXISTS webhook_event, puis claim de l'event, le tout dans
- * UNE transaction `batch`. Un replay d'event signé ne re-crédite pas (I3).
- * Le montant vient du payload SIGNÉ (recoupé table produits côté caller),
- * jamais d'un champ libre.
+ * APRÈS vérif de signature + paiement réellement capturé). UNE transaction :
+ *   stmt0 — garantit la ligne wallet à 0 (ON CONFLICT DO NOTHING) → le crédit
+ *           passe TOUJOURS par l'UPDATE gardé, jamais un INSERT non gardé, et
+ *           deux events concurrents sur wallet neuf ne se court-circuitent plus
+ *           (fix P4) ; un wallet neuf ne naît jamais négatif (fix B3) ;
+ *   stmt1 — crédite, gardé par NOT EXISTS (event_id OU order_id) (fix B2 :
+ *           un retry MoR avec nouvel event_id mais MÊME order_id ne re-crédite plus) ;
+ *   stmt2 — ligne ledger, même garde ;
+ *   stmt3 — claim de l'event (ON CONFLICT DO NOTHING).
+ * ⚠️ Convention de signe : pour un chargeback/refund sortant, le CALLER passe un
+ *    amountMicro NÉGATIF (le SET additionne toujours). Le câblage webhook impose
+ *    le signe selon le type d'event — ne jamais laisser un champ libre décider.
  */
 export async function creditWallet(
   env: Env,
@@ -368,36 +358,59 @@ export async function creditWallet(
     kind?: 'topup' | 'refund' | 'chargeback'
   },
 ): Promise<CreditResult> {
-  const { provider, eventId, orderId, email, amountMicro, kind = 'topup' } = params
+  const { provider, eventId, email, amountMicro, kind = 'topup' } = params
+  const orderId = params.orderId ?? null
   if (!env.DB) return { status: 'error' }
   await ensureWalletTables(env)
   try {
-    const results = await env.DB.batch([
-      // 1. Crédit du solde, uniquement si l'event n'a pas déjà été traité.
+    const res = await env.DB.batch([
       env.DB.prepare(
-        `INSERT INTO wallet (user_email, balance_micro, currency)
-         VALUES (?1, ?2, 'USD')
-         ON CONFLICT(user_email) DO UPDATE SET
-           balance_micro = balance_micro + ?2, updated_at = datetime('now')
-           WHERE NOT EXISTS (SELECT 1 FROM webhook_event WHERE provider = ?3 AND event_id = ?4)`,
-      ).bind(email, amountMicro, provider, eventId),
-      // 2. Ligne ledger correspondante, même garde.
+        `INSERT INTO wallet (user_email, balance_micro, currency) VALUES (?1, 0, 'USD')
+         ON CONFLICT(user_email) DO NOTHING`,
+      ).bind(email),
+      env.DB.prepare(
+        `UPDATE wallet SET balance_micro = balance_micro + ?2, updated_at = datetime('now')
+         WHERE user_email = ?1
+           AND NOT EXISTS (SELECT 1 FROM webhook_event
+                           WHERE provider = ?3 AND (event_id = ?4 OR (?5 IS NOT NULL AND order_id = ?5)))`,
+      ).bind(email, amountMicro, provider, eventId, orderId),
       env.DB.prepare(
         `INSERT INTO credit_ledger (user_email, amount_micro, kind, ref_type, ref_id)
          SELECT ?1, ?2, ?3, 'mor_order', ?4
-         WHERE NOT EXISTS (SELECT 1 FROM webhook_event WHERE provider = ?5 AND event_id = ?6)`,
-      ).bind(email, amountMicro, kind, orderId ?? eventId, provider, eventId),
-      // 3. Claim de l'event (marque "traité"). ON CONFLICT = replay → no-op.
+         WHERE NOT EXISTS (SELECT 1 FROM webhook_event
+                           WHERE provider = ?5 AND (event_id = ?6 OR (?7 IS NOT NULL AND order_id = ?7)))`,
+      ).bind(email, amountMicro, kind, orderId ?? eventId, provider, eventId, orderId),
       env.DB.prepare(
         `INSERT INTO webhook_event (provider, event_id, order_id, user_email, amount_micro, kind)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6) ON CONFLICT DO NOTHING`,
-      ).bind(provider, eventId, orderId ?? null, email, amountMicro, kind),
+      ).bind(provider, eventId, orderId, email, amountMicro, kind),
     ])
-    // Le statement 3 n'a inséré une ligne que si l'event était nouveau.
-    const claimChanges = results?.[2]?.meta?.changes ?? 0
-    return { status: claimChanges > 0 ? 'credited' : 'duplicate' }
+    const claimed = res[3]?.meta?.changes ?? 0
+    return { status: claimed > 0 ? 'credited' : 'duplicate' }
   } catch (err) {
     console.error('[wallet] creditWallet erreur', err)
     return { status: 'error' }
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────
+// RÉCONCILIATION (job nocturne — à brancher sur Cron). Le ledger append-only
+// n'a de valeur que si on l'utilise pour détecter les dérives silencieuses.
+// Requêtes de contrôle (à exécuter et alerter sur résultat non vide) :
+//
+//   1) Solde cohérent :   SUM(credit_ledger.amount_micro) par user
+//      DOIT égaler wallet.balance_micro (au reserved en vol près).
+//
+//   2) Settle perdu (résa 'settled' sans ligne ledger 'debit' — fenêtre de
+//      crash du settle) :
+//        SELECT r.id, r.user_email, r.reserved_micro FROM reservation r
+//        WHERE r.status='settled'
+//          AND NOT EXISTS (SELECT 1 FROM credit_ledger l
+//                          WHERE l.ref_type='reservation' AND l.ref_id=r.id AND l.kind='debit');
+//      → reserved gelé : re-jouer settleCredits est idempotent (mais l'usage
+//        réel est perdu → débiter au montant réservé, ou void selon politique).
+//
+//   3) Reserved gelé (réservations 'open' anciennes que le sweeper aurait dû
+//      void) : SELECT id FROM reservation WHERE status='open'
+//              AND updated_at < datetime('now','-1 day');
+// ─────────────────────────────────────────────────────────────────────
