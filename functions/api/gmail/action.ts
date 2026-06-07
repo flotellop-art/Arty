@@ -149,7 +149,7 @@ async function handleRead(token: string, body: Record<string, unknown>): Promise
     // S/MIME body, exotic encoding, etc.) — Gmail always returns a
     // ~200-char preview. Truncated at 8000 chars (was 5000) to fit
     // longer business mails.
-    const finalBody = (msgBody || msg.snippet || '').slice(0, 8000)
+    const finalBody = (msgBody || (typeof msg.snippet === 'string' ? msg.snippet : '')).slice(0, 8000)
 
     return Response.json({ id: msg.id, threadId: msg.threadId, from: h('From'), to: h('To'), subject: h('Subject'), date: h('Date'), body: finalBody, snippet: msg.snippet || '', attachments })
   } catch { return Response.json({ error: 'Failed to read message' }, { status: 500 }) }
@@ -266,7 +266,7 @@ async function handleAttachment(token: string, body: Record<string, unknown>): P
 
     // Try plain text (charset detection isn't possible without the
     // parent part headers, so we default to UTF-8).
-    const text = new TextDecoder('utf-8', { fatal: false }).decode(bytes)
+    const text = new TextDecoder('utf-8', { fatal: false, ignoreBOM: false }).decode(bytes)
     if (text && !text.includes('\x00')) {
       return Response.json({ content: text.slice(0, 10000), type: 'text' })
     }

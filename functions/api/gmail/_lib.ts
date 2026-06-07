@@ -35,9 +35,9 @@ export function decodePartBody(part: MimePart): string {
   const bytes = decodeBase64Url(part.body.data)
   const charset = getCharset(part)
   try {
-    return new TextDecoder(charset, { fatal: false }).decode(bytes)
+    return new TextDecoder(charset, { fatal: false, ignoreBOM: false }).decode(bytes)
   } catch {
-    return new TextDecoder('utf-8', { fatal: false }).decode(bytes)
+    return new TextDecoder('utf-8', { fatal: false, ignoreBOM: false }).decode(bytes)
   }
 }
 
