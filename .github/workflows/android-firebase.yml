@@ -64,14 +64,14 @@ jobs:
         env:
           GOOGLE_SERVICES_JSON_B64: ${{ secrets.GOOGLE_SERVICES_JSON_B64 }}
         run: |
-          echo "$GOOGLE_SERVICES_JSON_B64" | base64 -d > android/app/google-services.json
+          echo "$GOOGLE_SERVICES_JSON_B64" | base64 --decode --ignore-garbage > android/app/google-services.json
           test -s android/app/google-services.json
 
       - name: Decode release keystore
         env:
           ANDROID_KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
         run: |
-          echo "$ANDROID_KEYSTORE_B64" | base64 -d > android/app/arty-release.keystore
+          echo "$ANDROID_KEYSTORE_B64" | base64 --decode --ignore-garbage > android/app/arty-release.keystore
           test -s android/app/arty-release.keystore
 
       - name: Write release notes
