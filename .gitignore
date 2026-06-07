@@ -12,6 +12,9 @@ dist
 # Playwright MCP artifacts (snapshots / console logs, local only)
 .playwright-mcp/
 
+# Computer-use relay runtime logs (local tooling, never commit)
+local/*.log
+
 # Native build secrets
 google-services.json
 GoogleService-Info.plist

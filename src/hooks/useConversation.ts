@@ -16,6 +16,7 @@ import { putFile } from '../services/secureFileStorage'
 import { runFactCheckOnLatest, factCheckContent, getFactCheckMode } from '../services/factChecker'
 import { detectSuggestedTasks, addTask } from '../services/taskService'
 import { detectReminderIntent, createReminder } from '../services/reminderService'
+import i18n from '../i18n'
 
 type ToolHandler = (name: string, input: Record<string, unknown>) => Promise<{ result: string; screenshot?: string }>
 
@@ -135,7 +136,7 @@ export function useConversation() {
       // atteint. La check est faite AVANT d'ajouter le user message pour ne
       // pas laisser un message orphelin sans réponse.
       if (!streaming.canStart(targetId)) {
-        setError('Trop de conversations en cours en parallèle. Attends qu\'une réponse se termine.')
+        setError(i18n.t('errors.tooManyConcurrentStreams'))
         return
       }
 

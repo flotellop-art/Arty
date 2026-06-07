@@ -515,7 +515,13 @@ Slash command **`/audit-secu`** (défini dans `.claude/commands/audit-secu.md`) 
 
 ### TODO Sécurité — prochain audit
 
-Dernier audit : **4 mai 2026** (PR #127 + PR #128).
+Dernier audit : **7 juin 2026** (3 agents parallèles + vérif manuelle). Précédent : 4 mai 2026 (PR #127 + #128).
+
+> **MAJ 7 juin 2026** — Audit (3 agents : backend Opus, frontend Sonnet, tests/deps
+> Sonnet + recon manuelle). Constat : **la quasi-totalité des items backend ci-dessous
+> étaient déjà corrigés** dans le code mais jamais cochés ici (TODO en retard sur le
+> code). Statuts remis à jour avec preuves file:line vérifiées. 2 findings résiduels
+> ajoutés (N-1 `aud`, N-2 fuite `/api/search/web`).
 
 À traiter en priorité quand on relance un cycle sécurité :
 
@@ -537,17 +543,21 @@ des conversations — implémenté le 16 mai, voir « PR à venir » ci-dessous.
 - [ ] **PR 2 — PKCE OAuth** : ajout du `code_verifier` + `code_challenge` au flow Google web. Stratégie en 2 PRs validée le 4 mai (state CSRF d'abord en PR #128, PKCE ensuite). Coût ~2h, confiance 80%. Touche `googleAuth.ts:buildOAuthUrl()` (devient async), `OAuthCallback.tsx`, `functions/api/auth/token.ts` (forward `code_verifier` à Google). Suivre les patterns du callback double (web + deeplink) déjà éprouvés en PR #128.
 - [x] **Chiffrement des conversations en localStorage** — FAIT (16 mai). Chiffrées AES-256 sous `conversations-enc` ; cache mémoire déchiffré pour garder `saveConversation` synchrone (BUG 16), write-through avec filet clair synchrone, migration auto des conversations en clair, JAMAIS de wipe sur échec de déchiffrement, killswitch `arty-conv-encryption-disabled`. PAS de Web Worker — le diagnostic « le chiffrement async cassait l'UI » était faux : c'est rendre `saveConversation` lui-même async qui cassait l'UI ; le cache mémoire (pattern memTokens) résout ça. Round-trip vérifié en navigateur réel.
 
-**HIGH backend non traités (audit du 4 mai)** :
-- [ ] **License expiration jamais vérifiée** dans `functions/api/subscription/status.ts:117-128` — query `licenses WHERE status = 'active'` sans `expires_at > NOW()`. Risque = perte de revenu, pas sécu directe.
-- [ ] **Premium cap non-atomique** dans `functions/api/_lib/checkPremiumCap.ts` — KV décrément vulnérable à la concurrence, quota bypass possible (CAP=150 → 300+).
-- [ ] **DELETE memory sans filtre `WHERE user_id = ?` strict** dans `functions/api/memory/action.ts` — défense en profondeur (déjà protégé par auth mais à durcir).
+**HIGH backend — ✅ tous corrigés (vérifié file:line le 7 juin)** :
+- [x] **License expiration** — `checkAllowedUser.ts:302` (+ `subscription/status.ts`) : `AND (expires_at IS NULL OR expires_at > unixepoch())` (H-Plan-1).
+- [x] **Premium cap atomique** — `checkPremiumCap.ts:176-184` : `consumeCapAtomic` (upsert D1 conditionnel `WHERE count < cap RETURNING`). Migré KV→D1, ne dépasse plus le cap.
+- [x] **DELETE memory filtré** — `memory/action.ts:92` : `DELETE FROM memory WHERE user_id = ? AND category = ?` ; `user_id` = email du token vérifié, jamais du body.
 
-**MED non traités** :
-- [ ] **PBKDF2 itérations à 100k** dans `crypto.ts:38-44` — OWASP 2024 recommande 200k+. Bump simple (+100ms au login).
-- [ ] **`storeTokens()` réécrit le plain en fallback** après chaque refresh dans `googleAuth.ts:93-108` — devrait laisser le chiffré en place au lieu de revenir en plain.
-- [ ] **Email lowercasing inconsistant** entre `trial/init.ts:41` et `subscription/status.ts:44` — risque de fragmentation user.
-- [ ] **`tokeninfo` au lieu de `userinfo`** pour vérifier les tokens dans `trial/init.ts:34-44` — moins fiable.
-- [ ] **Pas de rate limit sur `/api/auth/token`** — brute force possible sur les codes OAuth volés.
+**MED** :
+- [x] **PBKDF2 600k** — `crypto.ts:30` : v2 = `600_000` (> OWASP 200k+), migration lazy v1→v2 versionnée.
+- [x] **`storeTokens()`** — `googleAuth.ts:149` : écrit `*-enc` ET `removeItem` du plain quand crypto prêt ; plain écrit UNIQUEMENT si crypto pas encore prêt (exigence BUG 43). Conforme.
+- [x] **Email lowercasing** — cohérent partout : `trial/init.ts`, `subscription/status.ts`, `checkAllowedUser.ts:30`, `lemonsqueezy.ts`, `license/activate.ts`.
+- [x] **`tokeninfo` vs `userinfo`** (requalifié) — `status.ts`/`init.ts` durcis avec `aud` + `email_verified` → plus fiable que `userinfo`. Le vrai maillon faible est l'inverse : voir **N-1** ci-dessous.
+- [ ] **Pas de rate limit sur `/api/auth/token`** — TOUJOURS présent, requalifié **LOW** : exploit quasi nul (exige le `client_secret` owner + codes OAuth single-use / TTL court). Durcissement anti-bruteforce de `refresh_token` volés seulement.
+
+**Nouveaux findings résiduels (audit 7 juin)** :
+- [ ] **N-1 (MED) — `verifyGoogleUser` ne valide pas `aud`** dans `checkAllowedUser.ts:24-33` (`oauth2/v2/userinfo`). Un token Google d'audience étrangère passe le gate → abus borné ~10 Haiku/j sur la clé owner (PAS de vol de données : les endpoints Google reforwardent le même token). Fix : passer par `tokeninfo`, rejeter si `aud !== GOOGLE_CLIENT_ID && azp !== GOOGLE_CLIENT_ID`. ⚠️ touche le gate d'auth universel — tester web ET natif (les tokens `requestServerAuthCode` natifs peuvent avoir un `aud` différent, BUG 21/51). **PR sécu dédiée.**
+- [ ] **N-2 (MED) — fuite status/body upstream** dans `search/web.ts:130-138,171,209` : renvoie le status + 200 chars de Linkup/Brave au client. Fix : message générique (`{error:'Search failed'}`, 502) + détail en `console.error`.
 
 **HIGH a11y traités (12 mai)** :
 - ✅ **Contrastes `text-theme-muted/X`** : retrait des 56 opacités (`/50`, `/60`, `/70`, `/80`) sur `text-theme-muted` → utilisation de la couleur pleine (PR roadmap). Ratio passe de 2.8:1 à ≥4.5:1 sur fond clair.
@@ -559,9 +569,9 @@ des conversations — implémenté le 16 mai, voir « PR à venir » ci-dessous.
 - [ ] Hors scope (décision utilisateur) : les ~80 chaînes `result:` des services outils — renvoyées au LLM comme contexte, jamais affichées à l'utilisateur, aucun impact observable.
 
 **LOW à nettoyer avant Play Store** :
-- [ ] **Debug `console.log` avec emails** dans `useGoogleAuth.ts:117-195` — wrap en `if (import.meta.env.DEV)`.
-- [ ] **Trial counter peut overflow** silencieusement vers 0 dans `trial/init.ts:51-52`.
-- [ ] **Re-vérifier `webContentsDebuggingEnabled: false`** en prod sur `capacitor.config.ts`.
+- [x] **`console.log` avec emails** — `useGoogleAuth.ts` : toutes les occurrences sont derrière `if (import.meta.env.DEV)` (vérifié 7 juin).
+- [x] **`webContentsDebuggingEnabled: false`** — confirmé dans `capacitor.config.ts` (vérifié 7 juin).
+- [ ] **Trial counter peut overflow** vers 0 dans `trial/init.ts:51-52` — backend ; le client (`trialClient.ts`) est déjà protégé par `Math.max(0, n)` / `Number.isFinite`.
 
 **Faux positifs / déjà mitigé** (à NE PAS retraiter) :
 - ✅ `secureSetJSON` race (BUG 1) — `useAuth` utilise `setJSON()` direct sur les tokens, race évitée

@@ -88,7 +88,7 @@ const HYBRID_TRIGGERS = [
 // courts. Ces messages n'ont pas besoin de recherche web (latence + tokens
 // gaspillés) et restent sur le chemin rapide (Mistral/Haiku).
 // Partagé entre detectProvider() et selectClaudeSubModel().
-export const TRIVIAL_CHAT_REGEX = /^(salut|bonjour|bonsoir|coucou|hello|hi|hey|yo|merci|thanks?|thx|ok|okay|d'accord|super|cool|parfait|nickel|top|génial|bien|bien sûr|ouais|oui|non|nope)\b|^(\s*[\d+\-*/().\s]+\s*=?\s*\?*\s*)$|^(combien\s+font?\s+\d|how\s+much\s+is\s+\d)/i
+const TRIVIAL_CHAT_REGEX = /^(salut|bonjour|bonsoir|coucou|hello|hi|hey|yo|merci|thanks?|thx|ok|okay|d'accord|super|cool|parfait|nickel|top|génial|bien|bien sûr|ouais|oui|non|nope)\b|^(\s*[\d+\-*/().\s]+\s*=?\s*\?*\s*)$|^(combien\s+font?\s+\d|how\s+much\s+is\s+\d)/i
 
 // URL detection — Mistral n'a pas de tool web_fetch natif, seulement
 // web_search qui renvoie des SNIPPETS d'index, pas le contenu d'une page.
@@ -99,7 +99,7 @@ export const TRIVIAL_CHAT_REGEX = /^(salut|bonjour|bonsoir|coucou|hello|hi|hey|y
 // URL est détectée. Les conversations euOnly restent forcées Mistral en
 // amont (useConversation.ts) et un bandeau UrlPasteHint guide alors
 // l'utilisateur à coller le texte plutôt que l'URL.
-export const URL_REGEX = /\bhttps?:\/\/[^\s<>"'`]+|\b(?:www\.)?(?:youtu\.be|youtube\.com)\/[^\s<>"'`]+/i
+const URL_REGEX = /\bhttps?:\/\/[^\s<>"'`]+|\b(?:www\.)?(?:youtu\.be|youtube\.com)\/[^\s<>"'`]+/i
 
 export function hasUrl(message: string): boolean {
   if (!message) return false

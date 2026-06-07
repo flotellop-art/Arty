@@ -2,6 +2,7 @@ import i18n from '../i18n'
 import { apiUrl } from './apiBase'
 import { getValidAccessToken } from './googleAuth'
 import { recordUsage } from './costTracker'
+import { updateTrialFromResponse } from './trialClient'
 
 // OpenAI client — deux chemins :
 // 1. BYOK : si l'utilisateur a saisi sa clé (getOpenAIKey) → appel direct
@@ -89,7 +90,6 @@ async function openaiFetch(
     body: JSON.stringify(body),
     signal,
   })
-  const { updateTrialFromResponse } = await import('./trialClient')
   updateTrialFromResponse(res)
   return res
 }
@@ -223,35 +223,6 @@ export function sendMessageStream(
 
   run()
   return controller
-}
-
-// ─── Non-streaming ───
-
-/**
- * Non-streaming call to OpenAI. Returns the assistant's response text.
- * apiKey=null fait passer la requête par le proxy serveur Cloudflare.
- */
-export async function sendMessage(
-  messages: OpenAIMessage[],
-  apiKey: string | null,
-  options?: OpenAIOptions
-): Promise<string> {
-  const systemPrompt = options?.systemPrompt || OPENAI_SYSTEM
-  const model = options?.model || DEFAULT_MODEL
-  try { window.dispatchEvent(new CustomEvent('arty-model-used', { detail: { model, provider: 'openai' } })) } catch {}
-
-  const response = await startChatRequest(apiKey, {
-    model,
-    messages: buildMessages(messages, systemPrompt),
-    max_completion_tokens: 4096,
-  })
-
-  if (!response.ok) throw formatError(response.status)
-
-  const data = (await response.json()) as {
-    choices?: Array<{ message?: { content?: string } }>
-  }
-  return data.choices?.[0]?.message?.content || ''
 }
 
 /**

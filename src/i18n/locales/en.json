@@ -274,7 +274,15 @@
     "streamInterrupted": "Response interrupted",
     "streamStopped": "Response stopped",
     "responseIncomplete": "Incomplete response, please retry.",
-    "promptEnhancementFailed": "Couldn't enhance the prompt — try again."
+    "promptEnhancementFailed": "Couldn't enhance the prompt — try again.",
+    "tooManyConcurrentStreams": "Too many conversations streaming at once. Wait for one to finish.",
+    "micDeniedNative": "Mic denied — Settings → Apps → Arty → Permissions → Microphone",
+    "micDeniedWeb": "Mic denied — allow the microphone in your browser settings",
+    "micNotDetected": "No microphone detected — check your hardware",
+    "micNetwork": "Network error — check your connection",
+    "micError": "Microphone error: {{error}}",
+    "micCannotStart": "Couldn't start the microphone",
+    "speechNotSupported": "Speech recognition isn't supported in this browser. Use Chrome or Edge."
   },
   "sidebar": {
     "newConversation": "New conversation",
