@@ -60,6 +60,15 @@ jobs:
       - name: Sync Capacitor Android
         run: npx cap sync android
 
+      # JCenter a fermé en 2021 ; le plugin capacitor-google-auth déclare encore
+      # `jcenter()`, ce qui provoque un timeout réseau aléatoire qui casse le
+      # build quand le cache Gradle est froid. Les artefacts requis (AGP,
+      # google-services) sont sur google()/mavenCentral(), toujours déclarés —
+      # on retire juste le dépôt mort pour qu'il ne soit jamais interrogé.
+      - name: Strip defunct JCenter from plugins
+        run: |
+          grep -rl 'jcenter()' node_modules android --include=build.gradle 2>/dev/null | xargs -r sed -i '/jcenter()/d' || true
+
       - name: Decode google-services.json
         env:
           GOOGLE_SERVICES_JSON_B64: ${{ secrets.GOOGLE_SERVICES_JSON_B64 }}
