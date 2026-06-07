@@ -82,12 +82,11 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
             const linkup = await searchLinkup(env.LINKUP_API_KEY, sourcedQuery, maxResults)
             return { source, answer: linkup.answer, results: linkup.results }
           } catch (err) {
-            return {
-              source,
-              answer: undefined,
-              results: [],
-              error: err instanceof Error ? err.message : 'search failed',
-            }
+            // Idem N-2 : on n'embarque pas le message d'erreur du provider dans
+            // la réponse (il n'était de toute façon pas propagé à bySource). Le
+            // détail est loggé côté serveur uniquement.
+            console.error('[search/web] source failed', source, err)
+            return { source, answer: undefined, results: [] }
           }
         })
       )
@@ -128,13 +127,12 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
       },
     })
   } catch (err) {
-    return Response.json(
-      {
-        error: err instanceof Error ? err.message : 'Search failed',
-        provider,
-      },
-      { status: 502 }
-    )
+    // N-2 — ne pas exposer au client le status/body du provider (Linkup/Brave).
+    // Ce sont des détails internes (codes d'erreur, structure de réponse, état
+    // du compte search du owner). Le détail reste côté serveur pour le debug ;
+    // le client ne reçoit qu'un message générique indistinguable.
+    console.error('[search/web] provider error', provider, err)
+    return Response.json({ error: 'Search failed' }, { status: 502 })
   }
 }
 
