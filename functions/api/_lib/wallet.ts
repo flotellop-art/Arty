@@ -138,20 +138,38 @@ export async function ensureWalletTables(env: Env): Promise<void> {
   }
 }
 
-/** Lit le solde. null si l'utilisateur n'a pas de wallet (jamais rechargé). */
+/**
+ * Lit le solde. null si l'utilisateur n'a pas de wallet (jamais rechargé) OU si
+ * D1 est indisponible/lent. RÉSILIENT par conception : cette lecture est sur le
+ * hot path de TOUS les users sans abo (y compris ceux sans wallet) ; un incident
+ * D1 ne doit JAMAIS faire planter leur requête — on retombe sur 'pas de wallet'
+ * (→ tier gratuit), comme avant l'arrivée des crédits. (La RÉSERVE, elle, reste
+ * fail-closed : pas de premium gratuit pendant un incident.)
+ */
 export async function getWalletBalance(env: Env, email: string): Promise<WalletBalance | null> {
   if (!env.DB) return null
   await ensureWalletTables(env)
-  const row = await env.DB.prepare(
-    `SELECT balance_micro, reserved_micro FROM wallet WHERE user_email = ?1`,
-  )
-    .bind(email)
-    .first<{ balance_micro: number; reserved_micro: number }>()
-  if (!row) return null
-  return {
-    balanceMicro: row.balance_micro,
-    reservedMicro: row.reserved_micro,
-    availableMicro: row.balance_micro - row.reserved_micro,
+  try {
+    const query = env.DB.prepare(
+      `SELECT balance_micro, reserved_micro FROM wallet WHERE user_email = ?1`,
+    )
+      .bind(email)
+      .first<{ balance_micro: number; reserved_micro: number }>()
+    const raced = await raceTimeout(query, D1_TIMEOUT_MS)
+    if (raced === '__timeout__') {
+      console.error('[wallet] getWalletBalance D1 timeout — traité comme pas de wallet')
+      return null
+    }
+    const row = raced as { balance_micro: number; reserved_micro: number } | null
+    if (!row) return null
+    return {
+      balanceMicro: row.balance_micro,
+      reservedMicro: row.reserved_micro,
+      availableMicro: row.balance_micro - row.reserved_micro,
+    }
+  } catch (err) {
+    console.error('[wallet] getWalletBalance erreur — traité comme pas de wallet', err)
+    return null
   }
 }
 
