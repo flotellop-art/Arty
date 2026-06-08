@@ -425,6 +425,63 @@ export async function creditWallet(
   }
 }
 
+export interface ReconcileReport {
+  staleSwept: number
+  /** wallet.balance ≠ SUM(credit_ledger) → dérive (ne devrait jamais arriver). */
+  balanceDrift: { email: string; balanceMicro: number; ledgerMicro: number }[]
+  /** réservations 'settled' sans ligne 'debit' (impossible avec le settle atomique). */
+  settledWithoutDebit: number
+}
+
+/**
+ * RÉCONCILIATION — à déclencher par un Cron externe via /api/billing/reconcile
+ * (Cloudflare Pages n'a pas de scheduled handler). Trois contrôles :
+ *  1) balaie les réservations orphelines (rend les holds gelés) — sûr, idempotent ;
+ *  2) détecte les dérives de solde : wallet.balance ≠ SUM(credit_ledger) ;
+ *  3) sanity check : réservations 'settled' sans 'debit' (le settle atomique
+ *     l'interdit ; non vide = alerte rouge).
+ * Ne corrige PAS automatiquement les dérives de SOLDE (de l'argent) — il les
+ * REMONTE pour intervention humaine. Seul le sweep mute (sûr).
+ */
+export async function reconcileWallet(env: Env): Promise<ReconcileReport> {
+  const report: ReconcileReport = { staleSwept: 0, balanceDrift: [], settledWithoutDebit: 0 }
+  if (!env.DB) return report
+
+  report.staleSwept = await sweepStaleReservations(env, { limit: 500 })
+
+  try {
+    const drift = await env.DB.prepare(
+      `SELECT w.user_email AS email, w.balance_micro AS balance_micro,
+              COALESCE((SELECT SUM(amount_micro) FROM credit_ledger l WHERE l.user_email = w.user_email), 0) AS ledger_micro
+       FROM wallet w
+       WHERE w.balance_micro != COALESCE(
+               (SELECT SUM(amount_micro) FROM credit_ledger l WHERE l.user_email = w.user_email), 0)
+       LIMIT 200`,
+    ).all<{ email: string; balance_micro: number; ledger_micro: number }>()
+    report.balanceDrift = (drift.results ?? []).map((r) => ({
+      email: r.email,
+      balanceMicro: r.balance_micro,
+      ledgerMicro: r.ledger_micro,
+    }))
+  } catch (err) {
+    console.error('[wallet] reconcile — requête dérive échouée', err)
+  }
+
+  try {
+    const lost = await env.DB.prepare(
+      `SELECT COUNT(*) AS n FROM reservation r
+       WHERE r.status = 'settled'
+         AND NOT EXISTS (SELECT 1 FROM credit_ledger l
+                         WHERE l.ref_type = 'reservation' AND l.ref_id = r.id AND l.kind = 'debit')`,
+    ).first<{ n: number }>()
+    report.settledWithoutDebit = lost?.n ?? 0
+  } catch (err) {
+    console.error('[wallet] reconcile — requête settled-sans-debit échouée', err)
+  }
+
+  return report
+}
+
 // ─────────────────────────────────────────────────────────────────────
 // RÉCONCILIATION (job nocturne — à brancher sur Cron). Le ledger append-only
 // n'a de valeur que si on l'utilise pour détecter les dérives silencieuses.

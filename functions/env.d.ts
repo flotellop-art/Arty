@@ -30,6 +30,7 @@ export interface Env {
   KV: KVNamespace  // Cloudflare KV binding — premium cap counters per user/month
   LEMONSQUEEZY_WEBHOOK_SECRET?: string  // HMAC-SHA256 secret for verifying Lemon Squeezy webhook signatures
   CREEM_WEBHOOK_SECRET?: string  // HMAC-SHA256 secret (hex) pour vérifier les webhooks Creem (crédits prépayés)
+  RECONCILE_SECRET?: string  // secret partagé pour déclencher GET /api/billing/reconcile depuis un Cron externe (owner-only)
   // Web search proxy (utilisé par Mistral via /api/search/web pour ajouter
   // une capacité recherche en temps réel — Anthropic et Gemini ont déjà
   // leurs tools natifs). 'linkup' par défaut, 'brave' en alternative.
