@@ -12,6 +12,8 @@
  */
 
 import { Capacitor } from '@capacitor/core'
+import { getValidAccessToken } from './googleAuth'
+import { apiUrl } from './apiBase'
 
 export type CheckoutPlan = 'subscription' | 'pro' | 'premium_pack'
 
@@ -53,8 +55,17 @@ export async function openCheckout(
   options: OpenCheckoutOptions = {}
 ): Promise<void> {
   const url = buildCheckoutUrl(plan, email)
-  const { onReturn } = options
+  await openExternalUrl(url, options.onReturn)
+}
 
+/**
+ * Open an external checkout URL: in-app Capacitor browser on native (with a
+ * one-shot `browserFinished` listener wired to `onReturn`), a new tab on web
+ * (where tab-closure isn't observable, so `onReturn` fires immediately).
+ * Shared by the Lemon Squeezy (`openCheckout`) and Creem (`openCreemCheckout`)
+ * flows — the only difference between them is how the URL is obtained.
+ */
+async function openExternalUrl(url: string, onReturn?: () => void): Promise<void> {
   if (Capacitor.isNativePlatform()) {
     const { Browser } = await import('@capacitor/browser')
 
@@ -79,6 +90,50 @@ export async function openCheckout(
   window.open(url, '_blank', 'noopener,noreferrer')
   // Best-effort on web: fire the callback so the caller can poll the status
   // endpoint. The user may finish checkout in a separate tab and never come
-  // back — that's fine, the next API call will surface the new status.
+  // back — that's fine, the next API call will surface the new state.
   if (onReturn) onReturn()
+}
+
+/**
+ * Buy prepaid credits via Creem (dynamic checkout). Unlike the static Lemon
+ * Squeezy links, this POSTs to our server endpoint, which stamps the verified
+ * Google email into `metadata.app_user_email` so the webhook credits the right
+ * wallet no matter what email the buyer types on Creem's page. Returns the
+ * hosted `checkout_url`, which we open like any other checkout.
+ *
+ * The credit itself is asynchronous (Creem webhook → D1), so the caller should
+ * refresh the balance in `onReturn` (poll, since the webhook may land after the
+ * browser closes). BUG 4: check `res.ok` before `json()`. BUG 23: take the
+ * token via `getValidAccessToken()` (auto-refreshed), never the raw stored one.
+ *
+ * @returns `true` if the checkout opened, `false` on any failure (no token,
+ *          endpoint error, missing URL) — the caller surfaces the error.
+ */
+export async function openCreemCheckout(
+  pack: string,
+  options: OpenCheckoutOptions = {}
+): Promise<boolean> {
+  const token = await getValidAccessToken()
+  if (!token) return false
+
+  let url: string
+  try {
+    const res = await fetch(apiUrl('/api/checkout/creem'), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-google-token': token,
+      },
+      body: JSON.stringify({ pack }),
+    })
+    if (!res.ok) return false
+    const data = (await res.json()) as { url?: string }
+    if (!data.url) return false
+    url = data.url
+  } catch {
+    return false
+  }
+
+  await openExternalUrl(url, options.onReturn)
+  return true
 }

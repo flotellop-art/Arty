@@ -563,7 +563,15 @@
     "premiumPackEyebrow": "Quota exceeded?",
     "premiumPackTitle": "+100 premium messages pack",
     "premiumPackDescription": "For Subscription users who have reached their monthly quota.",
-    "premiumPackCta": "Buy 100 messages"
+    "premiumPackCta": "Buy 100 messages",
+    "creditsTitle": "Prepaid credits",
+    "creditsPrice": "€10 = 1,000 credits",
+    "creditsTagline": "Pay as you go · No subscription",
+    "creditsDescription": "Top up once, spend across every model. No monthly commitment — credits don't expire.",
+    "creditsCta": "Buy credits",
+    "creditsBusy": "Opening checkout…",
+    "creditsError": "Couldn't start the checkout. Please try again.",
+    "creditsAdded": "Credits added — your balance is up to date."
   },
   "streak": {
     "badge": {

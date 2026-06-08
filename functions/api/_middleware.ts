@@ -28,14 +28,32 @@ function checkRateLimit(ip: string): boolean {
   return entry.count <= RATE_LIMIT
 }
 
+// Origin autorisé = liste prod en égalité STRICTE, OU un sous-domaine de
+// preview du projet Cloudflare Pages (`*.appfacade.pages.dev`). Ces previews
+// sont owner-only : seul le propriétaire du projet peut y déployer, donc aucun
+// attaquant externe ne peut héberger une page sur ce host pour forger un POST
+// cross-origin. On parse l'hostname via `new URL` (jamais de regex sur la
+// string brute — évite les bypass userinfo `@`, backslash, suffixe `.evil.com`)
+// et on exige le POINT de tête + https (sinon `xappfacade.pages.dev` passerait).
+function isAllowedOrigin(origin: string): boolean {
+  if (!origin) return false
+  if (ALLOWED_ORIGINS.includes(origin)) return true
+  try {
+    const u = new URL(origin)
+    return u.protocol === 'https:' && u.hostname.endsWith('.appfacade.pages.dev')
+  } catch {
+    return false
+  }
+}
+
 export const onRequest: PagesFunction = async (context) => {
   const { request } = context
   const ip = request.headers.get('cf-connecting-ip') || 'unknown'
   const origin = request.headers.get('origin') || ''
   // MED (audit étape 2) — égalité stricte au lieu de startsWith. Évite
   // qu'un Origin comme `https://tryarty.com:8080` ou `https://tryarty.com.evil`
-  // matche par préfixe.
-  const hasValidOrigin = !!origin && ALLOWED_ORIGINS.includes(origin)
+  // matche par préfixe. + previews owner-only `*.appfacade.pages.dev`.
+  const hasValidOrigin = isAllowedOrigin(origin)
 
   // Handle CORS preflight (OPTIONS)
   if (request.method === 'OPTIONS') {

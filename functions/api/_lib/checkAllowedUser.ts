@@ -34,6 +34,46 @@ export async function verifyGoogleUser(
 }
 
 /**
+ * Vérifie un access token Google via l'endpoint `tokeninfo` et valide en plus
+ * que le token a été émis POUR notre application (`aud`/`azp == expectedAud`)
+ * ET que l'email est vérifié. Plus strict que `verifyGoogleUser` (qui passe
+ * par `userinfo` sans contrôle d'audience — finding N-1) : à utiliser pour les
+ * endpoints sensibles (paiement, écriture d'abonnement/licence) où un token
+ * d'une autre app ne doit JAMAIS passer le gate.
+ *
+ * Retourne l'email vérifié (minuscules) ou null. Source unique réutilisée par
+ * `subscription/status.ts` et `checkout/creem.ts`.
+ */
+export async function verifyTokenViaTokeninfo(
+  token: string,
+  expectedAud: string | undefined
+): Promise<string | null> {
+  if (!token) return null
+  try {
+    const res = await fetch(
+      `https://oauth2.googleapis.com/tokeninfo?access_token=${encodeURIComponent(token)}`
+    )
+    if (!res.ok) return null
+    const info = (await res.json()) as {
+      email?: string
+      email_verified?: string | boolean
+      aud?: string
+      azp?: string
+    }
+    const email = info.email?.toLowerCase()
+    if (!email) return null
+    const verified = info.email_verified === 'true' || info.email_verified === true
+    if (!verified) return null
+    if (expectedAud && info.aud && info.aud !== expectedAud && info.azp !== expectedAud) {
+      return null
+    }
+    return email
+  } catch {
+    return null
+  }
+}
+
+/**
  * Réponse 404 uniforme pour les requêtes non autorisées. Ne révèle pas
  * l'existence de l'endpoint à un attaquant (pas de 401/403 distinct).
  * Utilisé par les endpoints qui exigent un user Google identifié.

@@ -23,13 +23,17 @@ export function WalletBadge() {
   useEffect(() => {
     refresh()
     const interval = window.setInterval(refresh, REFRESH_MS)
-    const onCostEvent = () => {
+    const onRefreshEvent = () => {
       refresh()
     }
-    window.addEventListener('cost-updated', onCostEvent)
+    // 'cost-updated' (BUG 54) après chaque message ; 'wallet-updated' après un
+    // achat de crédits (retour de checkout Creem) pour màj instantanée du solde.
+    window.addEventListener('cost-updated', onRefreshEvent)
+    window.addEventListener('wallet-updated', onRefreshEvent)
     return () => {
       window.clearInterval(interval)
-      window.removeEventListener('cost-updated', onCostEvent)
+      window.removeEventListener('cost-updated', onRefreshEvent)
+      window.removeEventListener('wallet-updated', onRefreshEvent)
     }
   }, [refresh])
 

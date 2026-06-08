@@ -41,6 +41,12 @@ interface CreemObject {
   order?: CreemOrder
   product?: { id?: string; name?: string }
   customer?: { id?: string; email?: string }
+  // `metadata` est ré-émis tel quel par Creem depuis la création du checkout.
+  // `app_user_email` y est posé CÔTÉ SERVEUR par /api/checkout/creem à partir
+  // du token Google vérifié → non-éditable par l'acheteur (contrairement à
+  // customer.email, modifiable sur la page de paiement Creem).
+  metadata?: { app_user_email?: string; pack?: string }
+  request_id?: string
 }
 interface CreemWebhookPayload {
   id?: string
@@ -89,7 +95,20 @@ async function handleCheckoutCompleted(env: Env, payload: CreemWebhookPayload): 
   const eventId = payload.id
   const obj = payload.object ?? {}
   const order = obj.order ?? {}
-  const email = obj.customer?.email?.toLowerCase()
+  // Email à créditer : l'AUTORITÉ est `metadata.app_user_email`, posé côté
+  // serveur par /api/checkout/creem depuis un token Google vérifié → non
+  // modifiable par l'acheteur. `customer.email` (éditable sur la page de
+  // paiement Creem, jamais vérifié côté serveur) n'est qu'un FALLBACK pour les
+  // checkouts créés hors de notre endpoint (ex. lien statique). On logue une
+  // anomalie quand on l'utilise : en flux normal, metadata est toujours présent.
+  const trustedEmail = obj.metadata?.app_user_email?.toLowerCase()
+  const fallbackEmail = obj.customer?.email?.toLowerCase()
+  const email = trustedEmail ?? fallbackEmail
+  if (!trustedEmail && fallbackEmail) {
+    console.warn(
+      `[creem] checkout sans metadata.app_user_email — crédit via customer.email non vérifié, order=${order.id ?? '<none>'}`
+    )
+  }
   const productId = obj.product?.id ?? order.product
   const orderId = order.id
 
