@@ -110,6 +110,23 @@ export function estimateReserveMicro(model: string, maxTokens: number | undefine
   return applyMarkup(outputCostMicro, model, 'text')
 }
 
+/**
+ * Estime le coût CRÉDITS (markupé) d'un usage AGRÉGÉ d'un modèle sur une période,
+ * pour le conseiller de facturation. Approxime le plancher PAR APPEL
+ * (minChargeMicro) via le nombre d'appels — sinon on sous-estime les gros
+ * volumes de petits appels (le markup sur l'agrégat raterait le plancher).
+ */
+export function estimateCreditsMicro(
+  model: string,
+  providerCostMicro: number,
+  callCount: number,
+): number {
+  const marked = applyMarkup(Math.max(0, providerCostMicro), model, 'text')
+  const rule = ruleFor(model, 'text')
+  const floor = Math.max(0, callCount) * rule.minChargeMicro
+  return Math.max(marked, floor)
+}
+
 // NOTE IMAGE : la génération d'image n'existe pas encore comme appel serveur
 // facturé dans functions/ (les refs "image" actuelles = tool-use Gemini, pas de
 // génération). Quand le path image sera construit (appel unaire, coût connu
