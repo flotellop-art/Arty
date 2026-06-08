@@ -323,6 +323,11 @@
     "markUndone": "Marquer comme non terminée",
     "delete": "Supprimer"
   },
+  "wallet": {
+    "badge": "{{credits}} crédits",
+    "badgeTitle": "Crédits prépayés restants",
+    "badgeAria": "Solde de crédits"
+  },
   "costs": {
     "badgeTitle": "Coût API réel (ce mois)",
     "badgeAria": "Coût API",

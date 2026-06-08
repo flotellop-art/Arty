@@ -6,6 +6,7 @@ import { SettingsGuide } from '../shared/SettingsGuide'
 import { SettingsModal } from '../settings/SettingsModal'
 import { getTheme, toggleTheme, type Theme } from '../../services/themeService'
 import { CostIndicator } from './CostIndicator'
+import { WalletBadge } from './WalletBadge'
 import { PrismMark } from '../shared/PrismMark'
 import { isProActivated } from '../../services/proLicense'
 import { StreakBadge } from './StreakBadge'
@@ -99,6 +100,8 @@ export function TopBar({ onMenuToggle }: TopBarProps) {
               Pro
             </span>
           )}
+          {/* Solde de crédits prépayés (visible seulement si l'user a un wallet) */}
+          <WalletBadge />
           {/* Cost indicator (Feature 13) */}
           <CostIndicator />
 
