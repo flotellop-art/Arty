@@ -11,6 +11,12 @@ import { checkPremiumCap, premiumCapReachedResponse } from '../_lib/checkPremium
 import { consumeDailyQuota, recordUsage } from '../_lib/quota'
 import { freeModelLockedResponse } from '../_lib/freeQuota'
 import { createGeminiParser, teeForParsing } from '../_lib/trackUsage'
+import {
+  beginWalletBilling,
+  extractMaxOutputTokens,
+  settleWalletBilling,
+  voidWalletBilling,
+} from '../_lib/walletBilling'
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUntil }) => {
   // Anti-relais anonyme : tout user Google authentifié est accepté (CRIT-4).
@@ -51,15 +57,22 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     )
   }
 
+  // Déclaré HORS du try pour rester visible dans le catch (rendre la réserve).
+  let walletResId: string | undefined
   try {
     const { model, stream, ...body } = await request.json() as { model: string; stream: boolean; [key: string]: unknown }
 
-    // Free : Gemini intégralement verrouillé. Pour l'instant les utilisateurs
-    // free n'ont accès qu'à Claude Haiku et Mistral Small. Si on souhaite
-    // ouvrir Gemini Flash plus tard, il suffira d'ajouter une famille
-    // gemini-flash dans freeQuota.ts et d'appeler consumeFreeDailyQuota ici.
+    // Sans abo : si l'utilisateur a des crédits → wallet (n'importe quel modèle,
+    // payé à l'usage) ; sinon Gemini reste verrouillé en gratuit.
     if (usingServerKey && userPlan === 'free') {
-      return freeModelLockedResponse(model)
+      const maxOut = extractMaxOutputTokens('gemini', body)
+      const start = await beginWalletBilling(env, waitUntil, { email, model, maxOutputTokens: maxOut })
+      if (start.mode === 'refuse') return start.response
+      if (start.mode === 'wallet') {
+        walletResId = start.resId
+      } else {
+        return freeModelLockedResponse(model)
+      }
     }
 
     // Trial : restriction de modèles. Le compteur a déjà été décrémenté par
@@ -116,13 +129,15 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => 'Unknown Gemini error')
+      if (walletResId) waitUntil(voidWalletBilling(env, walletResId, email))
       return new Response(errorText, {
         status: response.status,
         headers: { 'content-type': 'application/json' },
       })
     }
 
-    // Tracking tokens réels côté serveur uniquement.
+    // Tracking tokens réels côté serveur — un seul tee, deux consommateurs
+    // (analytics + débit wallet sur le chemin wallet).
     if (usingServerKey && response.body) {
       const parser = createGeminiParser()
       const { clientBody, parsedUsage } = teeForParsing(
@@ -130,18 +145,28 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
         parser.feed,
         parser.finalize
       )
-      waitUntil(parsedUsage.then((usage) => recordUsage(env, email, model, usage)))
+      const rid = walletResId
+      waitUntil(
+        parsedUsage.then((usage) =>
+          Promise.allSettled([
+            recordUsage(env, email, model, usage),
+            ...(rid ? [settleWalletBilling(env, { resId: rid, email, model }, usage)] : []),
+          ])
+        )
+      )
       return new Response(clientBody, {
         status: response.status,
         headers: responseHeaders(),
       })
     }
 
+    if (walletResId) waitUntil(voidWalletBilling(env, walletResId, email))
     return new Response(response.body, {
       status: response.status,
       headers: responseHeaders(),
     })
   } catch (err) {
+    if (walletResId) waitUntil(voidWalletBilling(env, walletResId, email))
     return Response.json(
       { error: err instanceof Error ? err.message : 'Gemini proxy error' },
       { status: 502 }
