@@ -365,6 +365,65 @@ export async function getMonthlyQuotaStatus(
   }
 }
 
+export interface WindowModelUsage {
+  model: string
+  count: number
+  /** Coût fournisseur agrégé (USD micro) sur la fenêtre. */
+  providerCostMicro: number
+}
+export interface UsageWindow {
+  byModel: WindowModelUsage[]
+  /** Coût fournisseur (USD micro) par jour, pour jours actifs + détection de pic. */
+  byDayCostMicro: Record<string, number>
+}
+
+/**
+ * Usage de `email` sur une FENÊTRE GLISSANTE de `days` jours (par modèle :
+ * appels + coût fournisseur ; + coût par jour). Alimente le conseiller de
+ * facturation. N'incrémente rien. Fenêtre glissante (pas le mois courant) pour
+ * éviter le biais de début de mois.
+ */
+export async function getUsageWindow(env: Env, email: string, days: number): Promise<UsageWindow> {
+  const empty: UsageWindow = { byModel: [], byDayCostMicro: {} }
+  if (!env.DB) return empty
+  const cutoff = `-${Math.max(1, Math.floor(days))} days`
+  try {
+    const res = await env.DB.prepare(
+      `SELECT model, SUM(count) AS calls, SUM(COALESCE(cost_usd_micro, 0)) AS cost_micro
+       FROM quota_model
+       WHERE email = ?1 AND day >= date('now', ?2)
+       GROUP BY model`
+    )
+      .bind(email, cutoff)
+      .all<{ model: string; calls: number; cost_micro: number }>()
+    const byModel: WindowModelUsage[] = (res.results ?? []).map((r) => ({
+      model: r.model,
+      count: r.calls ?? 0,
+      providerCostMicro: r.cost_micro ?? 0,
+    }))
+    const byDayCostMicro: Record<string, number> = {}
+    try {
+      const dayRes = await env.DB.prepare(
+        `SELECT day, SUM(COALESCE(cost_usd_micro, 0)) AS cost_micro
+         FROM quota_model
+         WHERE email = ?1 AND day >= date('now', ?2)
+         GROUP BY day`
+      )
+        .bind(email, cutoff)
+        .all<{ day: string; cost_micro: number }>()
+      for (const row of dayRes.results ?? []) {
+        byDayCostMicro[row.day] = row.cost_micro ?? 0
+      }
+    } catch {
+      // garde byDayCostMicro vide
+    }
+    return { byModel, byDayCostMicro }
+  } catch (err) {
+    console.error('quota.getUsageWindow failed', err)
+    return empty
+  }
+}
+
 /**
  * Enregistre les tokens consommés par un appel et met à jour le coût en
  * micro-USD. Appelé depuis les proxies IA après consumeDailyQuota() a déjà
