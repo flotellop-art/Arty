@@ -23,7 +23,10 @@ import { creditWallet } from '../_lib/wallet'
 // FIXE défini ici. Ex : un pack vendu 10 € donnant « 10 $ de crédits » = 10_000_000.
 // Tant que cette table est vide, aucun checkout.completed n'est crédité (no-op sûr).
 const CREEM_CREDIT_PRODUCTS: Record<string, number> = {
-  // 'prod_xxxxxxxxxxxxxxxxxxxxx': 10_000_000,
+  // ⚠️ IDs de mode TEST — à remplacer par les prod_ LIVE au go-live.
+  // Clé = object.product.id du webhook ; valeur = crédits accordés (micro-USD).
+  // 1 crédit affiché = 10 000 µ$ (1 cent US) → 1000 crédits = 10 000 000 µ$.
+  'prod_5ba1P24WLXkcXUnbZytWm7': 10_000_000, // Pack 10 € = 1000 crédits
 }
 
 interface CreemOrder {
