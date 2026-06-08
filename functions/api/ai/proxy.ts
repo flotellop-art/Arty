@@ -15,6 +15,12 @@ import {
   freeQuotaExhaustedResponse,
 } from '../_lib/freeQuota'
 import { createAnthropicParser, teeForParsing } from '../_lib/trackUsage'
+import {
+  beginWalletBilling,
+  extractMaxOutputTokens,
+  settleWalletBilling,
+  voidWalletBilling,
+} from '../_lib/walletBilling'
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages'
 
@@ -110,16 +116,33 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     }
   }
 
-  // Free : Haiku uniquement avec quota 10/jour. Si modèle non-Haiku
-  // demandé → 403 model_locked (le frontend doit auto-forcer Haiku, ce 403
-  // est un filet de sécurité). Si quota épuisé → 429 free_quota_exhausted.
+  // Sans abo : si l'utilisateur a des crédits, il passe par son WALLET (n'importe
+  // quel modèle, payé à l'usage) ; sinon le tier gratuit Haiku 10/jour (inchangé).
+  let walletResId: string | undefined
   if (!isByok && userPlan === 'free') {
-    if (!modelName.toLowerCase().includes('haiku')) {
-      return freeModelLockedResponse(modelName)
+    let maxOut: number | undefined
+    try {
+      maxOut = extractMaxOutputTokens('anthropic', JSON.parse(body) as Record<string, unknown>)
+    } catch {
+      /* maxOut undefined → réserve au plafond */
     }
-    const free = await consumeFreeDailyQuota(env, email, modelName)
-    if (!free.allowed) {
-      return freeQuotaExhaustedResponse('claude-haiku', free.limit)
+    const start = await beginWalletBilling(env, waitUntil, {
+      email,
+      model: modelName,
+      maxOutputTokens: maxOut,
+    })
+    if (start.mode === 'refuse') return start.response
+    if (start.mode === 'wallet') {
+      walletResId = start.resId
+    } else {
+      // Pas de crédits → tier gratuit Haiku 10/jour (filet 403 si non-Haiku).
+      if (!modelName.toLowerCase().includes('haiku')) {
+        return freeModelLockedResponse(modelName)
+      }
+      const free = await consumeFreeDailyQuota(env, email, modelName)
+      if (!free.allowed) {
+        return freeQuotaExhaustedResponse('claude-haiku', free.limit)
+      }
     }
   }
 
@@ -127,8 +150,10 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
   // bill et trial users sont déjà cappés par leur compteur KV (30 messages),
   // donc seul le plan 'subscription' (et le legacy 'free' via whitelist) passe
   // par le quota journalier.
+  // Le chemin wallet est déjà facturé à l'usage → il SAUTE le quota journalier
+  // global (sinon un user crédité se prendrait un 429 au 51e message malgré ses crédits).
   const enforceDailyQuota =
-    !isByok && (userPlan === 'subscription' || userPlan === 'free')
+    !isByok && !walletResId && (userPlan === 'subscription' || userPlan === 'free')
   if (enforceDailyQuota) {
     const quota = await consumeDailyQuota(env, email, modelName)
     if (!quota.allowed) {
@@ -188,18 +213,33 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
         parser.feed,
         parser.finalize
       )
-      waitUntil(parsedUsage.then((usage) => recordUsage(env, email, modelName, usage)))
+      // UN seul tee, deux consommateurs sur le MÊME usage réel : analytics
+      // (recordUsage, coût provider) + débit wallet (settle, prix markupé). Le
+      // settle n'a lieu que sur le chemin wallet (walletResId défini).
+      const rid = walletResId
+      waitUntil(
+        parsedUsage.then((usage) =>
+          Promise.allSettled([
+            recordUsage(env, email, modelName, usage),
+            ...(rid ? [settleWalletBilling(env, { resId: rid, email, model: modelName }, usage)] : []),
+          ])
+        )
+      )
       return new Response(clientBody, {
         status: response.status,
         headers: responseHeaders(),
       })
     }
 
+    // Upstream KO (ou pas de body streamable) : rendre la réserve éventuelle.
+    if (walletResId) waitUntil(voidWalletBilling(env, walletResId, email))
     return new Response(response.body, {
       status: response.status,
       headers: responseHeaders(),
     })
   } catch (err) {
+    // Échec réseau/exception après réserve → rendre la réserve.
+    if (walletResId) waitUntil(voidWalletBilling(env, walletResId, email))
     return Response.json(
       { error: err instanceof Error ? err.message : 'Proxy error' },
       { status: 502 }
