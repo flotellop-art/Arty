@@ -155,13 +155,19 @@ export function createGeminiParser() {
           usageMetadata?: {
             promptTokenCount?: number
             candidatesTokenCount?: number
+            thoughtsTokenCount?: number
             cachedContentTokenCount?: number
           }
         }
         if (data.usageMetadata) {
           const m = data.usageMetadata
           if (typeof m.promptTokenCount === 'number') usage.inputTokens = m.promptTokenCount
-          if (typeof m.candidatesTokenCount === 'number') usage.outputTokens = m.candidatesTokenCount
+          // Output = jetons visibles (candidates) + jetons de "réflexion" (thoughts),
+          // tous deux facturés au tarif output. Sans thoughtsTokenCount on
+          // sous-facture les requêtes à gros raisonnement (Gemini 2.5/3.x thinking).
+          if (m.candidatesTokenCount != null || m.thoughtsTokenCount != null) {
+            usage.outputTokens = (m.candidatesTokenCount ?? 0) + (m.thoughtsTokenCount ?? 0)
+          }
           if (typeof m.cachedContentTokenCount === 'number') usage.cacheReadTokens = m.cachedContentTokenCount
         }
       } catch {

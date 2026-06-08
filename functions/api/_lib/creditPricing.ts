@@ -42,8 +42,12 @@ const MARKUP_IMAGE_DEFAULT: MarkupRule = { markupBps: 30000, minChargeMicro: 800
 const MARKUP_BY_MODEL_PREFIX: Record<string, MarkupRule> = {}
 // ------------------------------------------------------------------------
 
-/** Réserve forfaitaire (µ$) quand on ne peut pas estimer (max_tokens absent). */
-const DEFAULT_RESERVE_TEXT_MICRO = 50_000 // 0.05 $ plafond pessimiste
+/** Plafond de tokens output pour l'ESTIMATION de réserve. On ne réserve JAMAIS
+ *  plus que ce budget, même si max_tokens vaut 65536 — sinon un tour Opus
+ *  réserverait ~7$ et bloquerait un solde modeste alors que le coût réel est en
+ *  centimes. La sous-réserve éventuelle est rattrapée au settle (coût réel) ;
+ *  un solde légèrement négatif borné est toléré (politique explicite). */
+const RESERVE_OUTPUT_TOKEN_CAP = 8192
 
 function ruleFor(model: string, modality: Modality): MarkupRule {
   if (modality === 'image') return MARKUP_IMAGE_DEFAULT
@@ -94,10 +98,15 @@ export function chargeForUsageMicro(
  * sous-réserver et laisser le solde plonger.
  */
 export function estimateReserveMicro(model: string, maxTokens: number | undefined): number {
-  if (!maxTokens || maxTokens <= 0 || !Number.isFinite(maxTokens)) return DEFAULT_RESERVE_TEXT_MICRO
+  // On réserve sur un budget output PLAFONNÉ (jamais max_tokens brut) ; le coût
+  // réel est prélevé au settle. Si max_tokens est absent, on prend le plafond.
+  const tokens =
+    Number.isFinite(maxTokens) && (maxTokens as number) > 0
+      ? Math.min(maxTokens as number, RESERVE_OUTPUT_TOKEN_CAP)
+      : RESERVE_OUTPUT_TOKEN_CAP
   const p = getPricing(model)
   // µ$ = tokens × ($/Mtok) : les deux facteurs 1e6 (par-million ÷, micro ×) s'annulent.
-  const outputCostMicro = Math.round(maxTokens * p.output)
+  const outputCostMicro = Math.round(tokens * p.output)
   return applyMarkup(outputCostMicro, model, 'text')
 }
 

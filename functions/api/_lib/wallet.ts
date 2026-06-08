@@ -42,9 +42,10 @@ import type { UsageTokens } from './pricing'
 
 const D1_TIMEOUT_MS = 250
 // Seuil sweeper : au-delà de cette INACTIVITÉ (updated_at), une réservation
-// 'open' est considérée orpheline. 60 min > durée max plausible d'un stream IA
-// long (gros max_tokens + raisonnement + retries) → on ne void pas en vol.
-const RESERVATION_STALE_MINUTES = 60
+// 'open' est considérée orpheline. Une réservation = UN tour HTTP (jamais > ~10
+// min, timeouts providers) → 15 min ne void jamais un appel en vol, tout en
+// récupérant vite les réserves gelées par un settle/void raté (auto-soin).
+const RESERVATION_STALE_MINUTES = 15
 
 let tablesEnsured = false
 
@@ -299,16 +300,26 @@ export async function voidReservation(env: Env, resId: string, email: string): P
  * (crash entre réserve et settle). Balaie sur `updated_at` (heartbeat) pour ne
  * pas tuer un stream long en vol (fix P1). Best-effort, probabiliste + Cron.
  */
-export async function sweepStaleReservations(env: Env, limit = 50): Promise<number> {
+export async function sweepStaleReservations(
+  env: Env,
+  opts: { email?: string; limit?: number } = {},
+): Promise<number> {
   if (!env.DB) return 0
+  const { email, limit = 50 } = opts
+  const interval = `-${RESERVATION_STALE_MINUTES} minutes`
   try {
-    const stale = await env.DB.prepare(
-      `SELECT id, user_email FROM reservation
-       WHERE status = 'open' AND updated_at < datetime('now', ?1)
-       LIMIT ?2`,
-    )
-      .bind(`-${RESERVATION_STALE_MINUTES} minutes`, limit)
-      .all<{ id: string; user_email: string }>()
+    const stale = await (email
+      ? env.DB.prepare(
+          `SELECT id, user_email FROM reservation
+           WHERE status = 'open' AND updated_at < datetime('now', ?1) AND user_email = ?3
+           LIMIT ?2`,
+        ).bind(interval, limit, email)
+      : env.DB.prepare(
+          `SELECT id, user_email FROM reservation
+           WHERE status = 'open' AND updated_at < datetime('now', ?1)
+           LIMIT ?2`,
+        ).bind(interval, limit)
+    ).all<{ id: string; user_email: string }>()
     let swept = 0
     for (const r of stale.results ?? []) {
       const res = await voidReservation(env, r.id, r.user_email)
