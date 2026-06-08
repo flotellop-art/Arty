@@ -26,6 +26,7 @@ import {
 } from '../services/costTracker'
 import { MODEL_OPTIONS } from '../services/modelSelector'
 import { fetchMonthlyQuotaStatus, type MonthlyQuotaStatus } from '../services/quotaStatus'
+import { BillingAdvisorCard } from '../components/billing/BillingAdvisorCard'
 
 interface CostsScreenProps {
   onBack: () => void
@@ -261,6 +262,8 @@ export function CostsScreen({ onBack }: CostsScreenProps) {
             {t('costsScreen.heroSubtitle')}
           </p>
         </div>
+
+        <BillingAdvisorCard />
 
         {isEmpty ? (
           <EmptyState />
