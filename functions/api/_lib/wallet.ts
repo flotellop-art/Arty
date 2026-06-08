@@ -210,6 +210,11 @@ export async function reserveCredits(
  * (déjà 'settled' ou 'voided'), EXISTS('open') est faux partout → no-op total.
  * Donc le retry est SÛR (jamais de double-débit). On lit le flip (stmt2) pour
  * distinguer settled vs already_finalized.
+ *
+ * ⚠️ INVARIANT CRITIQUE : ces 3 statements DOIVENT rester dans le même batch().
+ * Leur atomicité transactionnelle EST le fix du double-débit (BUG B1). Les
+ * séparer en écritures séquentielles RÉINTRODUIT B1 (vérifié en revue Opus,
+ * juin 2026). Idem pour void (2 statements) et creditWallet (4 statements).
  */
 export async function settleCredits(
   env: Env,
