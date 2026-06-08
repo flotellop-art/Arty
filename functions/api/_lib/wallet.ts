@@ -116,10 +116,6 @@ export async function ensureWalletTables(env: Env): Promise<void> {
          )`,
       ),
       env.DB.prepare(
-        `CREATE UNIQUE INDEX IF NOT EXISTS idx_webhook_event_order
-           ON webhook_event(provider, order_id) WHERE order_id IS NOT NULL`,
-      ),
-      env.DB.prepare(
         `CREATE TABLE IF NOT EXISTS reservation (
            id TEXT PRIMARY KEY, user_email TEXT NOT NULL,
            reserved_micro INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'open',
@@ -344,10 +340,12 @@ export async function touchReservation(env: Env, resId: string): Promise<void> {
  *           passe TOUJOURS par l'UPDATE gardé, jamais un INSERT non gardé, et
  *           deux events concurrents sur wallet neuf ne se court-circuitent plus
  *           (fix P4) ; un wallet neuf ne naît jamais négatif (fix B3) ;
- *   stmt1 — crédite, gardé par NOT EXISTS (event_id OU order_id) (fix B2 :
- *           un retry MoR avec nouvel event_id mais MÊME order_id ne re-crédite plus) ;
+ *   stmt1 — crédite, gardé par NOT EXISTS (provider, event_id) ;
  *   stmt2 — ligne ledger, même garde ;
  *   stmt3 — claim de l'event (ON CONFLICT DO NOTHING).
+ * Idempotence par event_id seul : Creem renvoie un event_id stable (evt_…) à
+ * l'identique sur retry. On NE dédoublonne PAS sur order_id — un refund/dispute
+ * partage l'order_id du top-up et doit être traité comme un event distinct.
  * ⚠️ Convention de signe : pour un chargeback/refund sortant, le CALLER passe un
  *    amountMicro NÉGATIF (le SET additionne toujours). Le câblage webhook impose
  *    le signe selon le type d'event — ne jamais laisser un champ libre décider.
@@ -376,15 +374,13 @@ export async function creditWallet(
       env.DB.prepare(
         `UPDATE wallet SET balance_micro = balance_micro + ?2, updated_at = datetime('now')
          WHERE user_email = ?1
-           AND NOT EXISTS (SELECT 1 FROM webhook_event
-                           WHERE provider = ?3 AND (event_id = ?4 OR (?5 IS NOT NULL AND order_id = ?5)))`,
-      ).bind(email, amountMicro, provider, eventId, orderId),
+           AND NOT EXISTS (SELECT 1 FROM webhook_event WHERE provider = ?3 AND event_id = ?4)`,
+      ).bind(email, amountMicro, provider, eventId),
       env.DB.prepare(
         `INSERT INTO credit_ledger (user_email, amount_micro, kind, ref_type, ref_id)
          SELECT ?1, ?2, ?3, 'mor_order', ?4
-         WHERE NOT EXISTS (SELECT 1 FROM webhook_event
-                           WHERE provider = ?5 AND (event_id = ?6 OR (?7 IS NOT NULL AND order_id = ?7)))`,
-      ).bind(email, amountMicro, kind, orderId ?? eventId, provider, eventId, orderId),
+         WHERE NOT EXISTS (SELECT 1 FROM webhook_event WHERE provider = ?5 AND event_id = ?6)`,
+      ).bind(email, amountMicro, kind, orderId ?? eventId, provider, eventId),
       env.DB.prepare(
         `INSERT INTO webhook_event (provider, event_id, order_id, user_email, amount_micro, kind)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6) ON CONFLICT DO NOTHING`,

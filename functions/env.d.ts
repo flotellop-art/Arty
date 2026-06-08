@@ -29,6 +29,7 @@ export interface Env {
   DB: D1Database  // Cloudflare D1 binding
   KV: KVNamespace  // Cloudflare KV binding — premium cap counters per user/month
   LEMONSQUEEZY_WEBHOOK_SECRET?: string  // HMAC-SHA256 secret for verifying Lemon Squeezy webhook signatures
+  CREEM_WEBHOOK_SECRET?: string  // HMAC-SHA256 secret (hex) pour vérifier les webhooks Creem (crédits prépayés)
   // Web search proxy (utilisé par Mistral via /api/search/web pour ajouter
   // une capacité recherche en temps réel — Anthropic et Gemini ont déjà
   // leurs tools natifs). 'linkup' par défaut, 'brave' en alternative.

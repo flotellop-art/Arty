@@ -94,12 +94,11 @@ CREATE TABLE IF NOT EXISTS webhook_event (
   PRIMARY KEY (provider, event_id)
 );
 
--- Filet : certains MoR ré-émettent un retry avec un nouvel event_id mais le
--- même order_id (LS n'expose pas d'event_id stable → l'idempotence porte alors
--- sur order_id).
-CREATE UNIQUE INDEX IF NOT EXISTS idx_webhook_event_order
-  ON webhook_event(provider, order_id)
-  WHERE order_id IS NOT NULL;
+-- Idempotence = (provider, event_id) (la PK ci-dessus). Creem émet des event_id
+-- stables (evt_…) renvoyés à l'identique sur retry → event_id suffit. PAS
+-- d'unicité sur order_id : des events DISTINCTS (checkout.completed puis
+-- refund.created / dispute.created) partagent le même order_id et doivent TOUS
+-- être traités. order_id reste stocké pour la traçabilité + le lien de refund.
 
 -- =====================================================================
 -- TABLE 4 : reservation
