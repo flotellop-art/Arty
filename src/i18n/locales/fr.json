@@ -333,7 +333,9 @@
     "recommend_subscription": "Sur tes 30 derniers jours, le forfait ({{subscription}} €) reviendrait moins cher que tes crédits ({{credits}} €) — tu économiserais ~{{savings}} €/mois.",
     "recommend_byok": "Sur tes 30 derniers jours, apporter ta propre clé reviendrait à ~{{byok}} €/mois (vs {{current}} €), rentabilisé en ~{{payback}} mois — ensuite tu ne paies que le coût fournisseur.",
     "recommend_credits": "Sur tes 30 derniers jours, le paiement à l'usage (~{{credits}} €) reviendrait moins cher que ton forfait — ~{{savings}} €/mois d'économie.",
-    "threeNumbers": "Crédits {{credits}} € · Forfait {{subscription}} € · Ta clé {{byok}} €"
+    "threeNumbers": "Crédits {{credits}} € · Forfait {{subscription}} € · Ta clé {{byok}} €",
+    "optOut": "Ne plus me suggérer d'optimisation",
+    "ctaSubscribe": "Passer au forfait"
   },
   "costs": {
     "badgeTitle": "Coût API réel (ce mois)",

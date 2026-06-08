@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { fetchBillingUsage } from '../../services/billingClient'
 import { decideBillingAdvice, type BillingAdvice } from '../../services/billingAdvisor'
+import { getStoredUser } from '../../services/googleAuth'
+import { openCheckout } from '../../services/checkout'
 
 // Carte « suggestion » du conseiller de facturation. Affichée seulement quand le
 // cerveau a une reco CONFIANTE (sinon rien). Déterministe, zéro appel IA.
@@ -24,6 +26,16 @@ function readDismissed(): Dismissed | null {
   }
 }
 
+// Kill-switch : coupe DÉFINITIVEMENT toutes les suggestions de facturation.
+const OPTOUT_KEY = 'billing-advice-optout'
+function isOptedOut(): boolean {
+  try {
+    return localStorage.getItem(OPTOUT_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
 export function BillingAdvisorCard() {
   const { t } = useTranslation()
   const [advice, setAdvice] = useState<BillingAdvice | null>(null)
@@ -39,7 +51,7 @@ export function BillingAdvisorCard() {
     }
   }, [])
 
-  if (hidden || !advice || !advice.recommend) return null
+  if (hidden || isOptedOut() || !advice || !advice.recommend) return null
 
   // Refus mémorisé pour la même cible → re-montrer seulement si l'économie a doublé.
   const dismissed = readDismissed()
@@ -63,6 +75,23 @@ export function BillingAdvisorCard() {
     setHidden(true)
   }
 
+  const onOptOut = () => {
+    try {
+      localStorage.setItem(OPTOUT_KEY, '1')
+    } catch {
+      /* ignore */
+    }
+    setHidden(true)
+  }
+
+  // Seul le forfait a un parcours d'achat prêt (Lemon Squeezy). BYOK = configurer
+  // sa clé dans les réglages ; crédits = achat Creem à venir → ces cas informent
+  // sans bouton tant que le parcours n'existe pas.
+  const onSubscribe = () => {
+    const email = getStoredUser()?.email ?? ''
+    if (email) void openCheckout('subscription', email)
+  }
+
   const vars = {
     credits: advice.creditsEur.toFixed(2),
     subscription: advice.subscriptionEur.toFixed(2),
@@ -80,6 +109,22 @@ export function BillingAdvisorCard() {
           <p className="text-sm text-theme-ink mt-1">{t(`advisor.${advice.reasonCode}`, vars)}</p>
           {/* Transparence : les 3 chiffres, toujours, pour que la reco soit vérifiable. */}
           <p className="text-[11px] text-theme-muted mt-2 font-mono">{t('advisor.threeNumbers', vars)}</p>
+          {advice.recommend === 'subscription' && (
+            <div className="mt-3">
+              <button
+                onClick={onSubscribe}
+                className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-theme-accent text-white hover:opacity-90"
+              >
+                {t('advisor.ctaSubscribe')}
+              </button>
+            </div>
+          )}
+          <button
+            onClick={onOptOut}
+            className="text-[10px] text-theme-muted underline hover:text-theme-ink mt-2"
+          >
+            {t('advisor.optOut')}
+          </button>
         </div>
         <button
           onClick={onDismiss}

@@ -333,7 +333,9 @@
     "recommend_subscription": "Over your last 30 days, the flat plan ({{subscription}} €) would cost less than your credits ({{credits}} €) — you'd save ~{{savings}} €/mo.",
     "recommend_byok": "Over your last 30 days, bringing your own key would cost ~{{byok}} €/mo (vs {{current}} €), paid back in ~{{payback}} months — then you only pay provider cost.",
     "recommend_credits": "Over your last 30 days, pay-as-you-go (~{{credits}} €) would cost less than your flat plan — ~{{savings}} €/mo saved.",
-    "threeNumbers": "Credits {{credits}} € · Flat {{subscription}} € · Your key {{byok}} €"
+    "threeNumbers": "Credits {{credits}} € · Flat {{subscription}} € · Your key {{byok}} €",
+    "optOut": "Stop suggesting optimizations",
+    "ctaSubscribe": "Switch to the flat plan"
   },
   "costs": {
     "badgeTitle": "Real API cost (this month)",
