@@ -126,9 +126,9 @@ async function handleCheckoutCompleted(env: Env, payload: CreemWebhookPayload): 
  * commande remboursée/contestée (anti-fraude : payer, recevoir, chargeback,
  * garder les crédits). On retrouve le top-up d'origine par order_id et on
  * débite le même montant. Idempotent sur l'event_id du refund/dispute.
- * ⚠️ Le chemin exact de l'order_id dans ces payloads est à CONFIRMER sur la doc
- *    Creem avant de s'y fier en prod (échec = "commande inconnue", débit non
- *    appliqué — sûr mais incomplet). Débite le pack ENTIER (pas le partiel).
+ * order_id = object.order.id (confirmé sur la doc Creem). Si absent → no-op sûr
+ * (jamais de débit sur le mauvais wallet). Débite le pack ENTIER : un refund
+ * PARTIEL sur-débiterait — lire object.refund.amount si tu actives le partiel.
  */
 async function handleRefundOrDispute(
   env: Env,
@@ -137,7 +137,7 @@ async function handleRefundOrDispute(
 ): Promise<void> {
   const eventId = payload.id
   const obj = payload.object ?? {}
-  const orderId = obj.order?.id ?? obj.id
+  const orderId = obj.order?.id
   if (!eventId || !orderId || !env.DB) {
     console.warn(`[creem] ${kind} : event_id/order_id manquant — ignoré`)
     return

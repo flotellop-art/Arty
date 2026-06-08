@@ -13,7 +13,7 @@ import type { UsageTokens } from './pricing'
 // d'argent est une SEULE transaction `batch()` (D1 = transaction tout-ou-rien,
 // statements vus en séquence) qui est AUSSI idempotente. L'idempotence vient
 // du statut de la réservation ('open' gardant settle/void) ou de NOT EXISTS
-// webhook_event (event_id OU order_id) pour les top-ups. Conséquence : un retry
+// webhook_event (par event_id seul) pour les top-ups. Conséquence : un retry
 // — même après un commit "perdu" côté réseau — ne re-débite ni ne re-crédite
 // jamais. Pas de séquence non-transactionnelle de 2 écritures (la source des
 // doubles-débits/crédits trouvés en revue).
@@ -22,7 +22,9 @@ import type { UsageTokens } from './pricing'
 //   I1 — Pas d'overspend concurrent : le hold est `WHERE (balance-reserved)>=est`.
 //   I2 — settle ⊕ void exclusifs : le flip 'open'→X est le mutex ; le perdant
 //        voit le statut ≠ 'open' et n'applique aucun mouvement.
-//   I3 — Idempotence top-up : garde NOT EXISTS sur (event_id OU order_id).
+//   I3 — Idempotence top-up : garde NOT EXISTS sur (provider, event_id) seul.
+//        Creem émet des event_id stables ; PAS de dédoublonnage order_id (un
+//        refund partage l'order_id du top-up et doit passer comme event distinct).
 //   I4 — Réservation présente ⟺ hold pris : réserve = batch couplé (résa + hold
 //        gardés par la MÊME condition de solde) → jamais de résa orpheline.
 //
