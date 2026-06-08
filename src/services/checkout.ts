@@ -134,6 +134,16 @@ export async function openCreemCheckout(
     return false
   }
 
-  await openExternalUrl(url, options.onReturn)
+  if (Capacitor.isNativePlatform()) {
+    // Natif : navigateur in-app Capacitor + browserFinished → refresh via onReturn.
+    await openExternalUrl(url, options.onReturn)
+  } else {
+    // Web : redirection plein écran. window.open() APRÈS des await (token +
+    // fetch endpoint) est bloqué par les bloqueurs de pop-up mobiles — le geste
+    // du clic est « consommé » par les await → « rien ne se passe ». Une
+    // navigation same-tab n'est JAMAIS bloquée ; Creem renvoie sur success_url
+    // après paiement et le badge se rafraîchit au rechargement de retour.
+    window.location.assign(url)
+  }
   return true
 }
