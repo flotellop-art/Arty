@@ -248,6 +248,13 @@
     "model": {
       "auto": "Auto"
     },
+    "level": {
+      "label": "Niveau",
+      "auto": "Auto",
+      "fast": "Rapide",
+      "balanced": "Équilibré",
+      "powerful": "Puissant"
+    },
     "messageList": {
       "branch": "Créer une branche depuis ce message",
       "scrollDown": "Descendre"

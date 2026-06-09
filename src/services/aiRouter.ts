@@ -1,5 +1,5 @@
 import { getGeminiKey, getMistralKey, getOpenAIKey } from './activeApiKey'
-import { getSelectedModel, detectOpenAIIntent } from './modelSelector'
+import { getSelectedModel, getSelectedLevel, detectOpenAIIntent } from './modelSelector'
 import { creditsCoverPremium } from './walletClient'
 
 // AI Router — decides which model to use based on the query.
@@ -254,6 +254,15 @@ export function selectClaudeSubModel(
     return 'claude-haiku-4-5-20251001'
   }
 
+  // Niveau d'effort MANUEL (curseur Rapide/Équilibré/Puissant) : override le
+  // routage auto. À ce stade l'utilisateur a le droit au premium (payant, ou
+  // free+crédits — le pin ci-dessus a déjà filtré les free sans crédits).
+  const level = getSelectedLevel()
+  if (level === 'fast') return 'claude-haiku-4-5-20251001'
+  if (level === 'balanced') return 'claude-sonnet-4-6'
+  if (level === 'powerful') return 'claude-opus-4-8'
+
+  // level === 'auto' → routage automatique selon la requête :
   // Haiku — short, low-stakes queries (no private data, no thinking needed)
   const isShortTrivial = message.length < 150 && TRIVIAL_CHAT_REGEX.test(message)
   if (!isPrivateData && !thinking.enabled && isShortTrivial) {

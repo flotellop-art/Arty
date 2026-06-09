@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { getStyle, setStyle as saveStyle, STYLE_OPTIONS, type ResponseStyle } from '../../services/responseStyles'
-import { getSelectedModel, setSelectedModel, MODEL_OPTIONS, type AIModel } from '../../services/modelSelector'
+import { getSelectedModel, setSelectedModel, getSelectedLevel, setSelectedLevel, MODEL_OPTIONS, type AIModel, type ModelLevel } from '../../services/modelSelector'
 import { SettingsGuide } from '../shared/SettingsGuide'
 import { PrismMark } from '../shared/PrismMark'
 import { PlanBadge } from './PlanBadge'
@@ -24,6 +24,13 @@ const PROVIDER_TO_FAMILY: Record<Exclude<AIModel, 'auto'>, ModelFamily> = {
   mistral: 'mistral-medium',
   gemini: 'gemini-flash',
   openai: 'gpt-mini',
+}
+
+// Curseur d'effort (Design D). N'affecte réellement que Claude (seul provider
+// multi-tiers : Haiku/Sonnet/Opus) — Gemini/Mistral/GPT ont un seul modèle.
+const LEVELS: ModelLevel[] = ['auto', 'fast', 'balanced', 'powerful']
+const LEVEL_ICON: Record<ModelLevel, string> = {
+  auto: '⚡', fast: '🟢', balanced: '🔵', powerful: '🟣',
 }
 
 interface ChatTopBarProps {
@@ -72,6 +79,7 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
   const planStatus = usePlanStatus()
   const [currentStyle, setCurrentStyle] = useState<ResponseStyle>(getStyle)
   const [currentModel, setCurrentModel] = useState<AIModel>(getSelectedModel)
+  const [currentLevel, setCurrentLevel] = useState<ModelLevel>(getSelectedLevel)
   const [openMenu, setOpenMenu] = useState<OpenMenu>(null)
   const [showGuide, setShowGuide] = useState(false)
   const [privacyWarning, setPrivacyWarning] = useState<AIModel | null>(null)
@@ -115,6 +123,25 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
     if (id === 'auto') return false
     const family = PROVIDER_TO_FAMILY[id]
     return planStatus.lockedFamilies.includes(family)
+  }
+
+  // Niveau premium (Équilibré=Sonnet, Puissant=Opus) verrouillé pour un free
+  // sans crédits. usePlanStatus débloque les familles si l'user a des crédits.
+  const isLevelLocked = (lv: ModelLevel): boolean => {
+    if (lv === 'balanced') return planStatus.lockedFamilies.includes('claude-sonnet')
+    if (lv === 'powerful') return planStatus.lockedFamilies.includes('claude-opus')
+    return false
+  }
+
+  const handleLevelChange = (lv: ModelLevel, locked: boolean) => {
+    if (locked) {
+      setUpgradePrompt(t(`chat.level.${lv}`))
+      setOpenMenu(null)
+      return
+    }
+    setSelectedLevel(lv)
+    setCurrentLevel(lv)
+    setOpenMenu(null)
   }
 
   const styleLabel = (id: ResponseStyle) => t(`chat.tone.${id}`)
@@ -302,7 +329,7 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
             )}
 
             {openMenu === 'model' && (
-              <div className="absolute top-full left-0 mt-1 bg-theme-surface rounded-xl shadow-lg border border-theme-border py-1 z-50 min-w-[160px]">
+              <div className="absolute top-full left-0 mt-1 bg-theme-surface rounded-xl shadow-lg border border-theme-border py-1 z-50 min-w-[236px]">
                 {MODEL_OPTIONS.map((opt) => {
                   const locked = isProviderLocked(opt.id)
                   return (
@@ -327,6 +354,32 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
                   </button>
                   )
                 })}
+                {/* Curseur d'effort (Design D) — n'agit que sur Claude (multi-tiers). */}
+                <div className="border-t border-theme-border mt-1 pt-1.5">
+                  <div className="px-3 pb-1 text-[9px] uppercase tracking-wider text-theme-muted">
+                    {t('chat.level.label')}
+                  </div>
+                  <div className="flex gap-0.5 px-1.5 pb-1.5">
+                    {LEVELS.map((lv) => {
+                      const lk = isLevelLocked(lv)
+                      const active = currentLevel === lv
+                      return (
+                        <button
+                          key={lv}
+                          onClick={() => handleLevelChange(lv, lk)}
+                          className={`flex-1 flex flex-col items-center gap-0.5 py-1.5 rounded-lg text-[10px] leading-tight transition-colors ${
+                            active
+                              ? 'bg-theme-accent/15 text-theme-accent font-semibold'
+                              : 'text-theme-ink/70 hover:bg-theme-ink/[0.03]'
+                          }`}
+                        >
+                          <span className="text-[12px]">{LEVEL_ICON[lv]}</span>
+                          <span>{t(`chat.level.${lv}`)}{lk ? ' 🔒' : ''}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
               </div>
             )}
           </div>

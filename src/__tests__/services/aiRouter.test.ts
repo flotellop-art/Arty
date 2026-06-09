@@ -11,6 +11,7 @@ vi.mock('../../services/activeApiKey', () => ({
 
 vi.mock('../../services/modelSelector', () => ({
   getSelectedModel: vi.fn(),
+  getSelectedLevel: vi.fn(() => 'auto'),
   detectOpenAIIntent: vi.fn(() => false),
 }))
 

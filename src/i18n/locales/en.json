@@ -248,6 +248,13 @@
     "model": {
       "auto": "Auto"
     },
+    "level": {
+      "label": "Level",
+      "auto": "Auto",
+      "fast": "Fast",
+      "balanced": "Balanced",
+      "powerful": "Powerful"
+    },
     "messageList": {
       "branch": "Branch from this message",
       "scrollDown": "Scroll down"

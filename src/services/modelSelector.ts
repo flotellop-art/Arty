@@ -29,3 +29,19 @@ export function getSelectedModel(): AIModel {
 export function setSelectedModel(model: AIModel): void {
   scoped.setItem('ai-model', model)
 }
+
+// Niveau d'effort (curseur Rapide/Équilibré/Puissant). N'a un effet RÉEL que sur
+// Claude (seul provider multi-tiers : Haiku/Sonnet/Opus) — Gemini/Mistral/GPT
+// n'ont qu'un modèle. 'auto' = le routeur choisit (défaut, comportement actuel).
+// 'balanced'/'powerful' sont des modèles premium → gating crédits côté UI.
+export type ModelLevel = 'auto' | 'fast' | 'balanced' | 'powerful'
+
+export function getSelectedLevel(): ModelLevel {
+  const saved = scoped.getItem('ai-level')
+  if (saved === 'fast' || saved === 'balanced' || saved === 'powerful') return saved
+  return 'auto'
+}
+
+export function setSelectedLevel(level: ModelLevel): void {
+  scoped.setItem('ai-level', level)
+}
