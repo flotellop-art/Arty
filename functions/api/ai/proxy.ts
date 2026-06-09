@@ -43,6 +43,9 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
   const isByok = !!apiKey
   let userPlan: 'subscription' | 'pro' | 'vip' | 'free' | 'trial' = 'free'
   let trialRemaining: number | undefined
+  // Essai épuisé routé vers le wallet (crédits) : on mémorise l'origine pour
+  // rendre un 403 trial_expired (et non le tier gratuit Haiku) si pas de crédits.
+  let wasTrialExhausted = false
 
   // Pas de BYOK → fallback sur la clé serveur si l'email a un plan actif
   // (subscription/pro/vip/trial via checkAllowedUser, qui gère aussi le
@@ -50,9 +53,19 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
   if (!apiKey) {
     const result = await checkAllowedUser(request, env)
     if (isTrialExpired(result)) {
-      return trialExpiredResponse()
-    }
-    if (result && env.ANTHROPIC_API_KEY) {
+      // Essai épuisé : au lieu d'un 403 sec, on tente le wallet (crédits achetés).
+      // `cap_reached` n'a PAS décrémenté le compteur (garantie atomique) → ce
+      // message n'a rien consommé côté essai, donc le router vers le wallet ne
+      // double-facture jamais. On route comme 'free' ; sans crédits, le fallback
+      // du bloc wallet rend trial_expired (pas le tier Haiku gratuit).
+      if (env.ANTHROPIC_API_KEY) {
+        apiKey = env.ANTHROPIC_API_KEY
+        userPlan = 'free'
+        wasTrialExhausted = true
+      } else {
+        return trialExpiredResponse()
+      }
+    } else if (result && env.ANTHROPIC_API_KEY) {
       apiKey = env.ANTHROPIC_API_KEY
       userPlan = result.planType
       trialRemaining = result.trialRemaining
@@ -135,7 +148,11 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     if (start.mode === 'wallet') {
       walletResId = start.resId
     } else {
-      // Pas de crédits → tier gratuit Haiku 10/jour (filet 403 si non-Haiku).
+      // Pas de crédits. Essai ÉPUISÉ → 403 trial_expired : le tier Haiku gratuit
+      // est réservé aux vrais 'free' (qui n'ont jamais eu d'essai), pas aux
+      // essais déjà consommés.
+      if (wasTrialExhausted) return trialExpiredResponse()
+      // Vrai 'free' → tier gratuit Haiku 10/jour (filet 403 si non-Haiku).
       if (!modelName.toLowerCase().includes('haiku')) {
         return freeModelLockedResponse(modelName)
       }

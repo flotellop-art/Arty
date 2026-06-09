@@ -35,6 +35,9 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
   let usingServerKey = false
   let userPlan: 'subscription' | 'pro' | 'vip' | 'free' | 'trial' = 'free'
   let trialRemaining: number | undefined
+  // Essai épuisé routé vers le wallet (crédits) : mémorise l'origine pour rendre
+  // un 403 trial_expired si pas de crédits (pas de tier gratuit OpenAI).
+  let wasTrialExhausted = false
 
   // Fallback clé serveur pour les utilisateurs avec un plan actif
   // (sub/pro/vip/trial). `checkAllowedUser` gère le bypass VIP et le
@@ -42,9 +45,14 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
   if (!apiKey && env.OPENAI_API_KEY) {
     const result = await checkAllowedUser(request, env)
     if (isTrialExpired(result)) {
-      return trialExpiredResponse()
-    }
-    if (result) {
+      // Essai épuisé → wallet (crédits) au lieu d'un 403 sec. `cap_reached` n'a
+      // pas décrémenté le compteur → pas de double-débit. On route comme 'free' ;
+      // sans crédits, le bloc wallet rend trial_expired.
+      apiKey = env.OPENAI_API_KEY
+      usingServerKey = true
+      userPlan = 'free'
+      wasTrialExhausted = true
+    } else if (result) {
       apiKey = env.OPENAI_API_KEY
       usingServerKey = true
       userPlan = result.planType
@@ -91,6 +99,8 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     if (start.mode === 'wallet') {
       walletResId = start.resId
     } else {
+      // Essai épuisé sans crédits → 403 trial_expired ; sinon OpenAI verrouillé.
+      if (wasTrialExhausted) return trialExpiredResponse()
       return freeModelLockedResponse(modelName)
     }
   }
