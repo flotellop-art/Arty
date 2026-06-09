@@ -9,6 +9,7 @@ import { listEvents } from '../services/calendarClient'
 import { areNotificationsEnabled } from '../services/notificationService'
 import { scheduleMorningNotification } from '../services/morningBriefService'
 import { getTasks, addTask } from '../services/taskService'
+import { getTrialRemaining } from '../services/trialClient'
 import { readAllMemory, formatMemoryForPrompt } from '../services/memoryService'
 import {
   isProactiveBriefEnabled,
@@ -69,6 +70,15 @@ export function useProactiveBrief({ gmail, isGoogleConnected, userName, onSend }
   const runBrief = useCallback(async () => {
     if (runningRef.current) return
     if (!isProactiveBriefEnabled() || !isGoogleConnected) return
+    // Ne PAS dépenser le quota d'essai (limité, 30 msgs) pour un brief auto que
+    // l'utilisateur n'a pas demandé : ça grillait 1 message/jour à chaque
+    // connexion (bug remonté). Le brief reste actif pour les plans payants. On
+    // détecte le trial de façon synchrone via le compteur trial mis en cache
+    // (`getTrialRemaining`) OU le plan caché par usePlanStatus — deux signaux
+    // qui ne valent JAMAIS "trial" par défaut, donc aucun faux blocage des payants.
+    let cachedPlan: string | null = null
+    try { cachedPlan = localStorage.getItem('arty-plan-cache') } catch { /* noop */ }
+    if (getTrialRemaining() !== null || cachedPlan === 'trial') return
     if (!isBriefDue()) return
 
     runningRef.current = true
