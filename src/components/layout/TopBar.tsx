@@ -10,6 +10,9 @@ import { WalletBadge } from './WalletBadge'
 import { PrismMark } from '../shared/PrismMark'
 import { isProActivated } from '../../services/proLicense'
 import { StreakBadge } from './StreakBadge'
+import { usePlanStatus } from '../../hooks/usePlanStatus'
+import { UpgradePromptModal } from '../chat/UpgradePromptModal'
+import { ModelLevelSlider } from '../chat/ModelLevelSlider'
 
 interface TopBarProps {
   onMenuToggle: () => void
@@ -19,9 +22,11 @@ type OpenMenu = null | 'style' | 'model'
 
 export function TopBar({ onMenuToggle }: TopBarProps) {
   const { t } = useTranslation()
+  const planStatus = usePlanStatus()
   const [currentStyle, setCurrentStyle] = useState<ResponseStyle>(getStyle)
   const [currentModel, setCurrentModel] = useState<AIModel>(getSelectedModel)
   const [openMenu, setOpenMenu] = useState<OpenMenu>(null)
+  const [upgradePrompt, setUpgradePrompt] = useState<string | null>(null)
   const [showGuide, setShowGuide] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [theme, setThemeState] = useState<Theme>(getTheme)
@@ -218,7 +223,7 @@ export function TopBar({ onMenuToggle }: TopBarProps) {
             </button>
 
             {openMenu === 'model' && (
-              <div className="absolute top-full right-0 mt-1 bg-theme-surface rounded-xl shadow-lg border border-theme-border py-1 z-50 min-w-[140px]">
+              <div className="absolute top-full right-0 mt-1 bg-theme-surface rounded-xl shadow-lg border border-theme-border py-1 z-50 min-w-[236px]">
                 {MODEL_OPTIONS.map((opt) => (
                   <button
                     key={opt.id}
@@ -237,12 +242,23 @@ export function TopBar({ onMenuToggle }: TopBarProps) {
                     <span>{modelLabel(opt.id)}</span>
                   </button>
                 ))}
+                {/* Curseur d'effort partagé (slider) — dispo aussi en accueil. */}
+                <div className="border-t border-theme-border mt-1">
+                  <ModelLevelSlider
+                    lockedFamilies={planStatus.lockedFamilies}
+                    onLocked={(label) => { setUpgradePrompt(label); setOpenMenu(null) }}
+                    onPick={() => setOpenMenu(null)}
+                  />
+                </div>
               </div>
             )}
           </div>
       </div>
 
       {showGuide && <SettingsGuide onClose={() => setShowGuide(false)} />}
+      {upgradePrompt && (
+        <UpgradePromptModal modelLabel={upgradePrompt} onClose={() => setUpgradePrompt(null)} />
+      )}
       <SettingsModal open={showSettings} onClose={() => setShowSettings(false)} />
     </header>
   )
