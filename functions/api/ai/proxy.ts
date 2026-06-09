@@ -62,6 +62,9 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
         apiKey = env.ANTHROPIC_API_KEY
         userPlan = 'free'
         wasTrialExhausted = true
+        // Informe le client que l'essai est épuisé (header x-trial-remaining:0)
+        // → débloque les modèles premium via crédits côté UI (creditsCoverPremium).
+        trialRemaining = 0
       } else {
         return trialExpiredResponse()
       }

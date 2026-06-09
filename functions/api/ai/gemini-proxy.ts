@@ -50,6 +50,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
       usingServerKey = true
       userPlan = 'free'
       wasTrialExhausted = true
+      trialRemaining = 0 // header x-trial-remaining:0 → débloque le premium via crédits (UI)
     } else if (result) {
       apiKey = env.GEMINI_API_KEY
       usingServerKey = true
