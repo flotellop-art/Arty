@@ -130,7 +130,12 @@ export async function openCreemCheckout(
       },
       body: JSON.stringify({ pack }),
     })
-    if (!res.ok) { diag('endpoint HTTP ' + res.status); return false }
+    if (!res.ok) {
+      let d = ''
+      try { d = ((await res.json()) as { _diag?: string })._diag ?? '' } catch { /* noop */ }
+      diag('endpoint HTTP ' + res.status + (d ? ' — ' + d : ''))
+      return false
+    }
     const data = (await res.json()) as { url?: string }
     if (!data.url) { diag('réponse 200 sans url'); return false }
     url = data.url
