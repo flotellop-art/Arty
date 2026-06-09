@@ -1,5 +1,6 @@
 import { getGeminiKey, getMistralKey, getOpenAIKey } from './activeApiKey'
 import { getSelectedModel, detectOpenAIIntent } from './modelSelector'
+import { creditsCoverPremium } from './walletClient'
 
 // AI Router — decides which model to use based on the query.
 // Routage en mode auto: Gemini par défaut (google_search activé, gratuit)
@@ -246,7 +247,10 @@ export function selectClaudeSubModel(
   // localStorage 'arty-plan-cache' à chaque /api/subscription/status.
   let cachedPlan: string | null = null
   try { cachedPlan = localStorage.getItem('arty-plan-cache') } catch {}
-  if (cachedPlan === 'free') {
+  // Plan free SANS crédits utilisables → Haiku only (évite le 403 model_locked
+  // serveur). AVEC des crédits (essai épuisé ou vrai free) → on laisse la
+  // sélection normale choisir Sonnet/Opus : le wallet paie n'importe quel modèle.
+  if (cachedPlan === 'free' && !creditsCoverPremium()) {
     return 'claude-haiku-4-5-20251001'
   }
 
