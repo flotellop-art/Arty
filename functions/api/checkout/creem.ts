@@ -180,33 +180,22 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
       }),
       signal: controller.signal,
     })
-    const mode = base.indexOf('test-') >= 0 ? 'test' : 'live'
     if (!resp.ok) {
+      // Ne JAMAIS refléter le status/body Creem au client (RÈGLE 6 leak / N-2).
       const detail = await resp.text().catch(() => '')
       console.error(`[checkout] Creem ${resp.status}: ${detail.slice(0, 300)}`)
-      // DIAG TEMP (preview) — remonter la cause Creem au client pour identifier
-      // le 502. À RETIRER (RÈGLE 6 leak / N-2 : ne pas refléter l'upstream).
-      return Response.json(
-        { error: 'Checkout failed', _diag: `creem ${mode} HTTP ${resp.status}: ${detail.slice(0, 160)}` },
-        { status: 502 }
-      )
+      return Response.json({ error: 'Checkout failed' }, { status: 502 })
     }
     const data = (await resp.json()) as { checkout_url?: string; url?: string }
     const url = data.checkout_url ?? data.url
     if (!url) {
       console.error('[checkout] Creem: pas de checkout_url dans la réponse')
-      return Response.json(
-        { error: 'Checkout failed', _diag: `creem ${mode} 200 sans checkout_url: ${JSON.stringify(data).slice(0, 160)}` },
-        { status: 502 }
-      )
+      return Response.json({ error: 'Checkout failed' }, { status: 502 })
     }
     return Response.json({ url })
   } catch (err) {
     console.error('[checkout] Creem fetch failed', err)
-    return Response.json(
-      { error: 'Checkout failed', _diag: `fetch ${String(err).slice(0, 160)}` },
-      { status: 502 }
-    )
+    return Response.json({ error: 'Checkout failed' }, { status: 502 })
   } finally {
     clearTimeout(timer)
   }

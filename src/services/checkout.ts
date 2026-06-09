@@ -113,12 +113,8 @@ export async function openCreemCheckout(
   pack: string,
   options: OpenCheckoutOptions = {}
 ): Promise<boolean> {
-  // DIAG TEMP (preview) — alert() à chaque issue : invisible-proof, à retirer
-  // une fois la cause du « rien ne se passe » identifiée.
-  const diag = (m: string) => { try { window.alert('Arty diag — ' + m) } catch { /* noop */ } }
-
   const token = await getValidAccessToken()
-  if (!token) { diag('pas de token Google'); return false }
+  if (!token) return false
 
   let url: string
   try {
@@ -130,17 +126,11 @@ export async function openCreemCheckout(
       },
       body: JSON.stringify({ pack }),
     })
-    if (!res.ok) {
-      let d = ''
-      try { d = ((await res.json()) as { _diag?: string })._diag ?? '' } catch { /* noop */ }
-      diag('endpoint HTTP ' + res.status + (d ? ' — ' + d : ''))
-      return false
-    }
+    if (!res.ok) return false
     const data = (await res.json()) as { url?: string }
-    if (!data.url) { diag('réponse 200 sans url'); return false }
+    if (!data.url) return false
     url = data.url
-  } catch (e) {
-    diag('fetch a échoué: ' + e)
+  } catch {
     return false
   }
 
@@ -153,7 +143,6 @@ export async function openCreemCheckout(
     // du clic est « consommé » par les await → « rien ne se passe ». Une
     // navigation same-tab n'est JAMAIS bloquée ; Creem renvoie sur success_url
     // après paiement et le badge se rafraîchit au rechargement de retour.
-    diag('ouverture Creem: ' + String(url).slice(0, 90))
     window.location.assign(url)
   }
   return true
