@@ -178,6 +178,12 @@ async function runGeminiStream(
     // coût ; elle est ré-envoyée à chaque tour Gemini tant qu'on en parle.
     let hasVideo = false
     for (let i = contents.length - 1; i >= 0; i--) {
+      // Ne scanner que les tours UTILISATEUR (review 10 juin) : le system
+      // prompt impose à Gemini de citer ses sources → la réponse assistant
+      // re-cite quasi toujours l'URL watch?v=. Sans ce filtre, le scan
+      // partant de la fin trouvait l'URL dans la réponse et injectait le
+      // fileData dans un tour role:'model' → requête rejetée au 2e tour.
+      if (messages[i]?.role !== 'user') continue
       const urls = extractYouTubeUrls(messages[i]?.content || '')
       if (urls.length === 0) continue
       const turn = contents[i]
@@ -413,14 +419,21 @@ Ne tire AUCUNE conclusion, ne reformule pas, ne donne pas ton avis : tu produis 
     headers['x-google-token'] = googleToken
   }
 
+  // PAS de retry sur le chemin vidéo (review 10 juin) : avec fetchWithRetry,
+  // un timeout interne (AbortError non-utilisateur) relançait jusqu'à 4
+  // tentatives de 120 s chacune — ~8 min de requêtes vidéo fantômes
+  // facturées. Un seul essai borné ; l'échec bascule proprement sur la note
+  // système côté Claude.
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), GEMINI_VIDEO_TIMEOUT_MS)
   try {
-    const res = await fetchWithRetry(
-      apiUrl('/api/ai/gemini-proxy'),
-      { method: 'POST', headers, body: JSON.stringify(requestBody) },
-      GEMINI_VIDEO_TIMEOUT_MS,
-    )
+    const res = await fetch(apiUrl('/api/ai/gemini-proxy'), {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(requestBody),
+      signal: controller.signal,
+    })
 
-    const { updateTrialFromResponse } = await import('./trialClient')
     updateTrialFromResponse(res)
 
     if (!res.ok) return ''
@@ -430,5 +443,7 @@ Ne tire AUCUNE conclusion, ne reformule pas, ne donne pas ton avis : tu produis 
     return parts.map((p: { text?: string }) => p.text || '').join('\n')
   } catch {
     return ''
+  } finally {
+    clearTimeout(timer)
   }
 }

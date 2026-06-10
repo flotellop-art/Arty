@@ -489,27 +489,28 @@ export function useConversation() {
         // Hybride vidéo : Gemini regarde la/les vidéo(s) YouTube et en produit
         // une analyse textuelle (matière brute), puis Claude rédige la réponse
         // à partir de cette analyse. Claude ne voit pas la vidéo lui-même.
-        streaming.setStreamingContent('🎬 Gemini regarde la vidéo...')
+        // Adapté à l'API multi-stream post-#239 (review 10 juin) : progression
+        // et abort indexés par targetId, garde Stop per-conv via hasStream.
+        setProgressContent('🎬 Gemini regarde la vidéo...', targetId)
         const videoUrls = extractYouTubeUrls(text)
         Promise.all([geminiVideoUnderstand(videoUrls, text), buildApiMessages(conv.messages)]).then(([analysis, enrichedMessages]) => {
           // Garde Stop : si l'utilisateur a interrompu pendant l'analyse Gemini,
-          // streamingRef est nettoyé → ne pas démarrer une génération zombie.
-          if (!streaming.streamingRef.current) return
+          // stopStreaming() a démonté le stream → ne pas démarrer une
+          // génération Claude zombie (même pattern que le bloc hybrid).
+          if (!hasStream(targetId)) return
           enrichedMessages[enrichedMessages.length - 1] = {
             role: 'user',
             content: analysis
               ? `${text}\n\n--- ANALYSE DE LA VIDÉO (par Gemini, qui l'a regardée — images + audio) ---\n${analysis}\n--- FIN ANALYSE ---\n\nRéponds à la demande en t'appuyant sur cette analyse. Tu n'as pas vu la vidéo toi-même : ne prétends pas l'avoir regardée, base-toi sur l'analyse ci-dessus.`
               : `${text}\n\n(Note système : l'analyse de la vidéo a échoué — vidéo privée, indisponible ou trop longue. Dis-le clairement à l'utilisateur, ne prétends pas avoir vu la vidéo.)`,
           }
-          if (streaming.streamingRef.current) {
-            streaming.streamingRef.current.accumulated = ''
-          }
-          streaming.setStreamingContent('✍️ Claude rédige...')
+          resetAccumulated(targetId)
+          setProgressContent('✍️ Claude rédige...', targetId)
           controller = streamMessage(enrichedMessages, onToken, onDone, onErr, {
             systemPrompt: systemPromptRef.current,
             onToolCall: toolHandlerRef.current,
           })
-          streaming.abortRef.current = controller
+          setAbortController(targetId, controller)
         }).catch(onErr)
         controller = new AbortController()
       } else if (provider === 'gemini') {
