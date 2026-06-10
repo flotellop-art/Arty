@@ -366,15 +366,14 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
       setFileError(t('chat.input.fileTooLarge', { names: rejectedNames.join(', ') }))
     }
 
-    setFiles((prev) => {
-      const next = [...prev, ...newFiles]
-      // Cap UI : au-delà, l'API rejette avec une erreur incompréhensible.
-      if (next.length > MAX_ATTACHED_FILES) {
-        setFileError(t('chat.input.tooManyFiles', { max: MAX_ATTACHED_FILES }))
-        return next.slice(0, MAX_ATTACHED_FILES)
-      }
-      return next
-    })
+    // Cap UI : au-delà, l'API rejette avec une erreur incompréhensible.
+    // Side-effects (setFileError) hors de l'updater setFiles — un updater
+    // doit rester pur (double exécution en StrictMode).
+    const next = [...files, ...newFiles]
+    if (next.length > MAX_ATTACHED_FILES) {
+      setFileError(t('chat.input.tooManyFiles', { max: MAX_ATTACHED_FILES }))
+    }
+    setFiles(next.slice(0, MAX_ATTACHED_FILES))
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 

@@ -259,10 +259,11 @@ export function useConversation() {
       // `messages.length === 1` ne matchait jamais quand la conv démarrait
       // avec un message de bienvenue ou le préambule EU (length === 2 au
       // premier message user) → titre "Nouvelle conversation" pour toujours.
+      // Pas de préfixe 🇪🇺 dans le titre : la Sidebar affiche déjà le badge EU
+      // sur la ligne d'aperçu (doublon relevé en relecture).
       const userMessageCount = conv.messages.filter((m) => m.role === 'user').length
       if (userMessageCount === 1) {
-        const titled = text.trim().slice(0, 50) + (text.trim().length > 50 ? '...' : '')
-        conv.title = conv.euOnly ? `🇪🇺 ${titled}` : titled
+        conv.title = text.trim().slice(0, 50) + (text.trim().length > 50 ? '...' : '')
       }
       conv.updatedAt = Date.now()
       storage.saveConversation(conv)
@@ -280,7 +281,14 @@ export function useConversation() {
       const factCheckMode = getFactCheckMode()
       const deferPublish = factCheckMode !== 'off'
 
-      startStream(targetId)
+      // Relecture (audit) — canStart est vérifié plus haut mais des `await`
+      // (putFile, createReminder) s'intercalent : le cap peut être atteint
+      // entre-temps. Ignorer ce retour lançait un appel LLM orphelin dont le
+      // onDone finalisait une bulle assistant VIDE.
+      if (!startStream(targetId)) {
+        setError(i18n.t('errors.tooManyConcurrentStreams'))
+        return
+      }
       setHideContent(deferPublish, targetId)
 
       const onToken = (token: string) => streamToken(token, targetId)

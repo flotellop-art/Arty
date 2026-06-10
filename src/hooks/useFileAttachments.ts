@@ -1,4 +1,4 @@
-import { useRef } from 'react'
+import { useCallback, useMemo, useRef } from 'react'
 import type { FileAttachment, Message } from '../types'
 import { getFile } from '../services/secureFileStorage'
 
@@ -184,8 +184,14 @@ export async function buildContentBlocks(
 export function useFileAttachments() {
   const pendingFilesRef = useRef<FileAttachment[] | null>(null)
 
-  return {
-    pendingFilesRef,
-    setPendingFiles: (files: FileAttachment[] | null) => { pendingFilesRef.current = files },
-  }
+  // H2 (audit frontend, relecture) — identités STABLES obligatoires :
+  // setPendingFiles est dans les deps de sendMessage (useConversation). Une
+  // arrow recréée à chaque render recréait sendMessage → editAndResend /
+  // retryMessage → onEdit/onRetry de MessageItem à chaque frame de streaming
+  // → memo court-circuité, exactement ce que H2 corrige.
+  const setPendingFiles = useCallback((files: FileAttachment[] | null) => {
+    pendingFilesRef.current = files
+  }, [])
+
+  return useMemo(() => ({ pendingFilesRef, setPendingFiles }), [setPendingFiles])
 }

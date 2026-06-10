@@ -1,10 +1,10 @@
 import { memo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeRaw from 'rehype-raw'
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize'
 import type { Components } from 'react-markdown'
-import i18n from '../../i18n'
 
 // Custom sanitize schema: allow Arty CSS classes + data-* attributes for action buttons
 // Block: <script>, <iframe>, onerror, onload, javascript: URIs
@@ -42,10 +42,16 @@ interface MarkdownRendererProps {
 // absent ici). Pas de coloration syntaxique pour l'instant : ajouter
 // prism/shiki = nouvelle dépendance lourde, différé volontairement.
 function CodeBlock({ className, children, ...props }: { className?: string; children?: React.ReactNode }) {
+  // useTranslation (pas i18n.t direct) : abonne le composant au changement de
+  // langue — MarkdownRenderer est memo'é sur `content` et ne re-rendrait pas.
+  const { t } = useTranslation()
   const [copied, setCopied] = useState(false)
   const handleCopy = async () => {
     try {
-      await navigator.clipboard.writeText(String(children).replace(/\n$/, ''))
+      // children peut être un tableau de nœuds texte — String([]) joindrait
+      // avec des virgules et corromprait la copie (relecture audit).
+      const code = (Array.isArray(children) ? children.join('') : String(children ?? '')).replace(/\n$/, '')
+      await navigator.clipboard.writeText(code)
       setCopied(true)
       setTimeout(() => setCopied(false), 1500)
     } catch { /* clipboard indisponible */ }
@@ -59,9 +65,9 @@ function CodeBlock({ className, children, ...props }: { className?: string; chil
             ? 'bg-theme-accent text-theme-bg border-transparent opacity-100'
             : 'bg-theme-bg/15 text-theme-bg/80 border-theme-bg/20 opacity-60 hover:opacity-100 md:opacity-0 md:group-hover/code:opacity-100 focus-visible:opacity-100'
         }`}
-        aria-label={copied ? i18n.t('chat.bubble.codeCopied') : i18n.t('chat.bubble.copyCode')}
+        aria-label={copied ? t('chat.bubble.codeCopied') : t('chat.bubble.copyCode')}
       >
-        {copied ? `✓ ${i18n.t('chat.bubble.codeCopied')}` : i18n.t('chat.bubble.copyCode')}
+        {copied ? `✓ ${t('chat.bubble.codeCopied')}` : t('chat.bubble.copyCode')}
       </button>
       <pre className="bg-theme-ink text-theme-bg rounded-xl p-4 overflow-x-auto text-sm leading-relaxed shadow-sm">
         <code className={className} {...props}>{children}</code>
