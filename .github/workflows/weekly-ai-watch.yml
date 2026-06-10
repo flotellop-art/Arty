@@ -1,0 +1,58 @@
+name: Weekly AI Watch
+
+# Veille IA hebdomadaire pour Arty : relit le code, fait la veille des
+# nouveautés IA + des demandes users, et envoie un rapport PDF par email.
+# Lance le Managed Agent défini dans managed-agents/ (créé une fois via setup.ts).
+
+on:
+  schedule:
+    - cron: "0 9 * * 1" # tous les lundis à 09:00 UTC
+  workflow_dispatch: {} # bouton "Run workflow" pour tester à la demande
+
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # Le script n'a besoin que du SDK + tsx (pas des deps lourdes d'Arty).
+      - run: npm install --no-save @anthropic-ai/sdk tsx
+
+      - name: Run weekly research
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          AGENT_ID: ${{ secrets.CMA_AGENT_ID }}
+          ENV_ID: ${{ secrets.CMA_ENV_ID }}
+          GITHUB_PAT: ${{ secrets.CMA_GITHUB_PAT }}
+        run: npx tsx managed-agents/run.ts
+
+      # Toujours archiver ce qui a été produit, même en cas d'échec partiel.
+      - name: Upload report artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-watch-report
+          path: reports-out/
+          if-no-files-found: ignore
+
+      - name: Email report
+        if: success()
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          secure: true
+          username: ${{ secrets.MAIL_USERNAME }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          subject: "Veille IA Arty — rapport hebdomadaire"
+          to: flotellop@gmail.com
+          from: Arty AI Watch <${{ secrets.MAIL_USERNAME }}>
+          body: |
+            Rapport de veille IA hebdomadaire en pièce jointe (PDF + Markdown).
+            Recommandations concrètes à implémenter dans Arty.
+          attachments: reports-out/*.pdf,reports-out/*.md

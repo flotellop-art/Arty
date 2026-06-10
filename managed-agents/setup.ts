@@ -1,72 +1,57 @@
 // setup.ts — à exécuter UNE SEULE FOIS.
 //
-// Crée l'environnement, l'agent (réutilisable + versionné) et le vault qui
-// porte le credential du serveur MCP GitHub. Imprime 3 lignes `export ...`
-// à coller dans ton terminal — ce sont les IDs utilisés par run.ts.
+// Crée l'environnement et l'agent (réutilisable + versionné) de veille IA
+// hebdomadaire d'Arty. Imprime 2 lignes `export ...` à stocker en GitHub
+// Secrets (CMA_AGENT_ID / CMA_ENV_ID) pour le workflow planifié.
 //
-// Prérequis :
-//   export ANTHROPIC_API_KEY=sk-ant-...
-//   export GITHUB_PAT=ghp_...            (ton PAT GitHub)
+// Plus de vault ni de MCP : l'agent lit le code d'Arty via le dépôt monté
+// dans la session (voir run.ts), qui prend le PAT directement comme token
+// de clone.
 //
-// Lancer :  npx tsx managed-agents/setup.ts
+// Prérequis :  export ANTHROPIC_API_KEY=sk-ant-...
+// Lancer    :  npx tsx managed-agents/setup.ts
 
 import Anthropic from "@anthropic-ai/sdk";
 
 const client = new Anthropic();
 
-// 1) Environnement : le conteneur sandboxé où s'exécutent les outils.
 const env = await client.beta.environments.create({
-  name: "research-env",
+  name: "arty-ai-watch-env",
   config: { type: "cloud", networking: { type: "unrestricted" } },
 });
 
-// 2) Agent : modèle + prompt système + outils + skills. Créé une fois,
-//    référencé par ID à chaque run.
 const agent = await client.beta.agents.create({
-  name: "Research Agent",
+  name: "Arty AI Watch",
   model: "claude-opus-4-8",
   system: [
-    "Tu es un agent de recherche. Tu produis des rapports factuels et cités.",
+    "Tu es l'agent de veille IA hebdomadaire d'Arty — une application de chat IA",
+    "(routing multi-modèles Claude/Gemini/Mistral, intégrations Gmail/Drive/Calendar,",
+    "déployée sur Cloudflare Pages).",
     "",
-    "Méthode :",
-    "- Pour toute question dont la réponse dépend d'infos récentes ou",
-    "  spécifiques, lance web_search AVANT de répondre — ne réponds pas de mémoire.",
-    "- Utilise web_fetch pour lire en profondeur les sources les plus pertinentes.",
-    "- Quand la question porte sur du code, des dépôts, des issues ou des PR,",
-    '  utilise les outils GitHub (serveur MCP "github").',
-    "- Chaque affirmation clé ou chiffre DOIT être accompagné de sa source (URL).",
+    "Le dépôt Arty est monté dans /workspace/Arty. LIS-LE avant toute recommandation",
+    "pour savoir ce qui est DÉJÀ implémenté. Concentre-toi sur :",
+    "  - src/services/ (aiRouter.ts, modelSelector.ts, *Client.ts)",
+    "  - functions/api/ai/ (proxys serveur)",
+    "  - CLAUDE.md (règles, bugs résolus, modèles supportés)",
     "",
-    "Livrable :",
-    "- Rédige un rapport structuré (résumé, corps, sources, limites/incertitudes).",
-    '- Génère le rapport final en PDF (skill "pdf") dans /mnt/session/outputs/.',
-    "  Écris aussi une version Markdown à côté.",
+    "Ta mission, en 3 temps :",
+    "1. RELECTURE CODE — résume l'état actuel des capacités IA d'Arty (modèles,",
+    "   routing, outils, fonctionnalités) à partir du code monté.",
+    "2. VEILLE IA — cherche sur le web les nouveautés récentes (modèles, APIs,",
+    "   capacités) RÉELLEMENT implémentables dans Arty. Écarte ce qui n'est pas",
+    "   applicable à l'archi actuelle.",
+    "3. VEILLE USERS — cherche ce que les utilisateurs de chatbots IA demandent /",
+    "   réclament en ce moment (Reddit, HN, forums, changelogs concurrents).",
+    "",
+    "Livrable : un rapport PRIORISÉ de recommandations CONCRÈTES à implémenter dans",
+    "Arty. Pour chacune : description, pertinence pour Arty (référence au fichier/au",
+    "code existant), effort estimé, et sources (URL). Chaque affirmation factuelle a",
+    'une source. Génère le rapport en PDF (skill "pdf") dans /mnt/session/outputs/',
+    "et une version Markdown à côté.",
   ].join("\n"),
-  mcp_servers: [
-    { type: "url", name: "github", url: "https://api.githubcopilot.com/mcp/" },
-  ],
-  tools: [
-    { type: "agent_toolset_20260401" },
-    { type: "mcp_toolset", mcp_server_name: "github" },
-  ],
+  tools: [{ type: "agent_toolset_20260401" }],
   skills: [{ type: "anthropic", skill_id: "pdf" }],
-});
-
-// 3) Vault : porte le credential MCP GitHub. PAT = access_token, SANS bloc
-//    refresh (un PAT n'a pas de refresh_token). Le PAT n'entre jamais dans le
-//    conteneur — Anthropic l'injecte côté proxy après la sortie du sandbox.
-const vault = await client.beta.vaults.create({ name: "github-mcp" });
-await client.beta.vaults.credentials.create(vault.id, {
-  display_name: "GitHub MCP (PAT)",
-  auth: {
-    type: "mcp_oauth",
-    mcp_server_url: "https://api.githubcopilot.com/mcp/", // doit matcher l'URL de l'agent
-    access_token: process.env.GITHUB_PAT!,
-    // Pas de refresh pour un PAT. expires_at = expiry réelle du PAT, ou
-    // une date lointaine s'il n'expire pas (évite toute tentative de refresh).
-    expires_at: process.env.GITHUB_PAT_EXPIRES_AT ?? "2099-12-31T00:00:00Z",
-  },
 });
 
 console.log("export AGENT_ID=" + agent.id);
 console.log("export ENV_ID=" + env.id);
-console.log("export VAULT_ID=" + vault.id);
