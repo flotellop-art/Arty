@@ -166,18 +166,28 @@ export const MessageList = memo(function MessageList({ messages, isStreaming, st
   return (
     <div className="relative flex-1 overflow-hidden">
       <div ref={scrollRef} onScroll={updateCanScrollDown} className="absolute inset-0 overflow-y-auto px-4 py-4">
-        {messages.map((msg, index) => (
-          <MessageItem
-            key={msg.id}
-            msg={msg}
-            index={index}
-            onAction={onAction}
-            onBranch={onBranch}
-            onTogglePin={onTogglePin}
-            onEdit={onEdit}
-            onRetry={onRetry}
-          />
-        ))}
+        {messages.map((msg, index) => {
+          // H3 (audit frontend) — pendant un stream, savePartialFor écrit
+          // toutes les 3 s un placeholder `id: 'streaming'` dans la conv
+          // (filet anti-perte au kill de l'app). Le rendre ICI en plus de la
+          // bulle live ci-dessous afficherait le contenu partiel en double.
+          // Hors streaming (recovery après crash), on le rend normalement.
+          // On garde la map entière (pas de filter) pour que `index` reste
+          // aligné sur conv.messages — onBranch en dépend.
+          if (isStreaming && msg.id === 'streaming') return null
+          return (
+            <MessageItem
+              key={msg.id}
+              msg={msg}
+              index={index}
+              onAction={onAction}
+              onBranch={onBranch}
+              onTogglePin={onTogglePin}
+              onEdit={onEdit}
+              onRetry={onRetry}
+            />
+          )
+        })}
 
         {isStreaming && streamingContent && (
           <>

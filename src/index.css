@@ -60,6 +60,26 @@ html.dark {
   color-scheme: dark;
 }
 
+/* Alias `--arty-*` consommés par BrowserBanner et shared/editorial.tsx.
+   Ces variables n'étaient définies NULLE PART (audit design 10 juin 2026) —
+   le banner "navigation en cours" s'affichait sans fond ni spinner visible.
+   Définies en fonction des tokens thème : elles flippent automatiquement
+   Ember/Nocturne. */
+:root {
+  --arty-card: rgb(var(--theme-surface));
+  --arty-line: rgb(var(--theme-border) / 0.5);
+  --arty-accent: rgb(var(--theme-accent));
+  --arty-accent-glow: rgb(var(--theme-accent) / 0.18);
+  --arty-ink: rgb(var(--theme-ink));
+  --arty-ink-soft: rgb(var(--theme-ink) / 0.78);
+  --arty-muted: rgb(var(--theme-muted));
+}
+
+html {
+  /* iOS Safari : empêche le gonflement automatique des polices en rotation. */
+  -webkit-text-size-adjust: 100%;
+}
+
 body {
   background-color: rgb(var(--theme-bg));
   color: rgb(var(--theme-ink));
@@ -70,6 +90,11 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   transition: background-color 320ms ease, color 320ms ease;
+  /* Audit mobile 10 juin 2026 — supprime le flash gris Android WebView à
+     chaque tap, et le rubber-band / pull-to-refresh accidentel sur les
+     listes (l'app gère ses propres scrolls internes). */
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: none;
 }
 
 /* Safe areas are applied per-component (TopBar/ChatTopBar paddingTop,
@@ -185,7 +210,34 @@ body {
 
 ::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #d1ccc4; border-radius: 2px; }
+/* Thumb thématisé — le #d1ccc4 fixe était clair-sur-clair en Ember et
+   criard en Nocturne. */
+::-webkit-scrollbar-thumb { background: rgb(var(--theme-muted) / 0.45); border-radius: 2px; }
+* { scrollbar-width: thin; scrollbar-color: rgb(var(--theme-muted) / 0.45) transparent; }
+
+/* ============================================================
+   MARQUEURS DE LISTES MARKDOWN (MarkdownRenderer)
+   Le renderer li émet un <span class="md-marker"> vide ; le contenu
+   vient d'ici : ● dans un <ul>, compteur "1." dans un <ol>. Les
+   sélecteurs enfant direct gèrent les listes imbriquées.
+   ============================================================ */
+.report-content ol.md-list { counter-reset: md-item; }
+.report-content ol.md-list > li { counter-increment: md-item; }
+.report-content ul.md-list > li > .md-marker::before { content: '●'; font-size: 0.7em; }
+.report-content ol.md-list > li > .md-marker::before {
+  content: counter(md-item) '.';
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Voice wave de l'InputBar — keyframe consommé par un style inline
+   (`animation: wave …`). Le déclarer uniquement dans tailwind.config ne
+   suffit pas : Tailwind n'émet un @keyframes que si une utility animate-*
+   le référence → les barres restaient figées (audit design 10 juin 2026). */
+@keyframes wave {
+  from { transform: scaleY(0.35); }
+  to { transform: scaleY(1.2); }
+}
 
 /* ============================================================
    DESIGN SYSTEM — RAPPORTS PREMIUM
@@ -700,4 +752,67 @@ body {
   padding: 0.35rem 0.75rem;
   font-size: 0.7rem;
   border-radius: 0.5rem;
+}
+
+/* ============================================================
+   RAPPORTS — OVERRIDES NOCTURNE (audit design 10 juin 2026)
+   Le design system rapports ci-dessus est light-only (fonds blancs/cream
+   en dur). En Nocturne, le texte hérité est crème (--theme-ink) → crème
+   sur carte blanche = illisible dès que l'IA émet une .card. On rebascule
+   les surfaces claires sur les tokens thème. Les cartes déjà sombres
+   (.card-dark, .card-accent, .stat-card) et les badges colorés restent
+   tels quels — lisibles dans les deux thèmes.
+   ============================================================ */
+html[data-theme='nocturne'] .report-content .card,
+html.dark .report-content .card {
+  background: rgb(var(--theme-surface));
+  border-color: rgb(var(--theme-border) / 0.18);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35), 0 4px 12px rgba(0, 0, 0, 0.25);
+}
+html[data-theme='nocturne'] .report-content .card:hover,
+html.dark .report-content .card:hover {
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+html[data-theme='nocturne'] .report-content .card-cream,
+html.dark .report-content .card-cream {
+  background: linear-gradient(135deg, rgb(var(--theme-cream)), rgb(var(--theme-surface)));
+  border-color: rgb(var(--theme-border) / 0.18);
+}
+html[data-theme='nocturne'] .report-content .card-glass,
+html.dark .report-content .card-glass {
+  background: rgb(var(--theme-surface) / 0.7);
+  border-color: rgb(var(--theme-border) / 0.2);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.35);
+}
+html[data-theme='nocturne'] .report-content .btn-secondary,
+html.dark .report-content .btn-secondary {
+  background: rgb(var(--theme-surface));
+  color: rgb(var(--theme-ink));
+  border-color: rgb(var(--theme-border) / 0.25);
+}
+html[data-theme='nocturne'] .report-content .progress-bar,
+html.dark .report-content .progress-bar {
+  background: rgb(var(--theme-ink) / 0.12);
+}
+html[data-theme='nocturne'] .report-content .shimmer,
+html.dark .report-content .shimmer {
+  background: linear-gradient(
+    90deg,
+    rgb(var(--theme-ink) / 0.08) 25%,
+    rgb(var(--theme-ink) / 0.16) 50%,
+    rgb(var(--theme-ink) / 0.08) 75%
+  );
+  background-size: 200% 100%;
+}
+html[data-theme='nocturne'] .report-content .timeline-item,
+html.dark .report-content .timeline-item {
+  border-left-color: rgb(var(--theme-ink) / 0.18);
+}
+html[data-theme='nocturne'] .report-content .timeline-item::before,
+html.dark .report-content .timeline-item::before {
+  border-color: rgb(var(--theme-bg));
+}
+html[data-theme='nocturne'] .report-content .metric-row,
+html.dark .report-content .metric-row {
+  border-bottom-color: rgb(var(--theme-ink) / 0.12);
 }

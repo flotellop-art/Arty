@@ -27,6 +27,10 @@ interface ConversationScreenProps {
   onTogglePin?: (messageId: string) => void
   onEdit?: (messageId: string, newContent: string) => void
   onRetry?: (messageId: string) => void
+  // Bandeau d'erreur API (audit UX) : rejouer le dernier message user sans
+  // le retaper, et fermer le bandeau qui ne disparaissait jamais.
+  onRetryError?: () => void
+  onDismissError?: () => void
   gmail: ReturnType<typeof useGmail>
   drive: ReturnType<typeof useDrive>
   browserActions: ReturnType<typeof useBrowser>
@@ -49,6 +53,8 @@ export function ConversationScreen({
   onTogglePin,
   onEdit,
   onRetry,
+  onRetryError,
+  onDismissError,
   gmail,
   drive,
   browserActions,
@@ -105,8 +111,32 @@ export function ConversationScreen({
       )}
 
       {(error || browserActions.error || computerActions.error) && (
-        <div className="mx-4 mb-2 px-4 py-2 bg-red-500/10 border border-red-500/30 rounded-xl text-sm text-red-700 dark:text-red-400">
-          {error || browserActions.error || computerActions.error}
+        <div
+          role="alert"
+          className="mx-4 mb-2 px-4 py-2 bg-red-500/10 border border-red-500/30 rounded-xl text-sm text-red-700 dark:text-red-400 flex items-center gap-2"
+        >
+          <span className="flex-1 min-w-0 break-words">
+            {error || browserActions.error || computerActions.error}
+          </span>
+          {error && onRetryError && !isStreaming && (
+            <button
+              onClick={onRetryError}
+              className="flex-shrink-0 px-2.5 py-1 rounded-md border border-red-500/40 font-medium hover:bg-red-500/10 transition-colors"
+            >
+              {t('common.retry')}
+            </button>
+          )}
+          {error && onDismissError && (
+            <button
+              onClick={onDismissError}
+              className="flex-shrink-0 p-1.5 rounded-md hover:bg-red-500/10 transition-colors"
+              aria-label={t('common.close')}
+            >
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                <path d="M2 2L10 10M10 2L2 10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              </svg>
+            </button>
+          )}
         </div>
       )}
 

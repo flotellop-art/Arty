@@ -21,8 +21,13 @@ import i18n from '../i18n'
 type ToolHandler = (name: string, input: Record<string, unknown>) => Promise<{ result: string; screenshot?: string }>
 
 export function useConversation() {
+  // H1 (audit frontend) — storage.getConversations() retourne la RÉFÉRENCE du
+  // cache mémoire, muté en place par saveConversation. La repasser telle
+  // quelle à setState ferait bail-out React (même identité → pas de
+  // re-render : pin invisible, rappels qui n'apparaissent pas). On copie
+  // le tableau à chaque lecture pour garantir une identité neuve.
   const [conversations, setConversations] = useState<Conversation[]>(() =>
-    storage.getConversations()
+    [...storage.getConversations()]
   )
   const [activeId, setActiveId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -32,18 +37,30 @@ export function useConversation() {
   const activeConversation = conversations.find((c) => c.id === activeId) ?? null
 
   const refreshConversations = useCallback(() => {
-    setConversations(storage.getConversations())
+    setConversations([...storage.getConversations()])
   }, [])
 
   const streaming = useStreaming({ refreshConversations })
   const fileAttachments = useFileAttachments()
+  // H2 (audit frontend) — identités stables extraites une fois. L'objet
+  // `streaming` porte streamingContent → il change à chaque frame pendant un
+  // stream. L'utiliser comme dep des callbacks ci-dessous les recréerait à
+  // 60 fps et casserait les memo de MessageItem/Sidebar. Les fonctions,
+  // elles, sont stables (useCallback à deps stables dans useStreaming).
+  const {
+    canStart, startStream, setActiveStream, setHideContent, markStreamDone,
+    finalize: finalizeStream, completeStreaming, onToken: streamToken,
+    onDone: streamDone, onError: streamError, setProgressContent,
+    setAbortController, resetAccumulated, hasStream, isActive, stopStreaming,
+  } = streaming
+  const { setPendingFiles, pendingFilesRef } = fileAttachments
 
   // Conversations are encrypted at rest and decrypted asynchronously after
   // crypto init. The useState initializer above runs before that finishes,
   // so on a fresh boot it returns an empty list. Re-read once the decrypted
   // cache is ready (BUG 43 pattern — listen for the ready event).
   useEffect(() => {
-    const onReady = () => setConversations(storage.getConversations())
+    const onReady = () => setConversations([...storage.getConversations()])
     window.addEventListener('conversations-storage-ready', onReady)
     return () => window.removeEventListener('conversations-storage-ready', onReady)
   }, [])
@@ -96,23 +113,25 @@ export function useConversation() {
     }
     storage.saveConversation(conv)
     refreshConversations()
-    streaming.setActiveStream(id)
+    setActiveStream(id)
     setActiveId(id)
     setError(null)
     return id
-  }, [refreshConversations, streaming])
+  }, [refreshConversations, setActiveStream])
 
   const selectConversation = useCallback((id: string) => {
-    streaming.setActiveStream(id)
+    setActiveStream(id)
     setActiveId(id)
     setError(null)
-  }, [streaming])
+  }, [setActiveStream])
 
   const clearActive = useCallback(() => {
-    streaming.setActiveStream(null)
+    setActiveStream(null)
     setActiveId(null)
     setError(null)
-  }, [streaming])
+  }, [setActiveStream])
+
+  const clearError = useCallback(() => setError(null), [])
 
   const setSystemPrompt = useCallback((prompt: string | undefined) => {
     systemPromptRef.current = prompt
@@ -130,12 +149,21 @@ export function useConversation() {
       setError(null)
 
       const conv = storage.getConversation(targetId)
-      if (!conv) return
+      if (!conv) {
+        // H5 (audit frontend) — fenêtre de boot : l'historique chiffré n'est
+        // pas encore déchiffré, saveConversation est no-op, la conv créée
+        // n'existe pas → l'envoi serait silencieusement perdu. On affiche une
+        // erreur au lieu de dropper l'action de l'utilisateur.
+        if (!storage.isCacheReady()) {
+          setError(i18n.t('errors.storageNotReady'))
+        }
+        return
+      }
 
       // Cap multi-conv : refuse l'envoi si le cap de streams concurrents est
       // atteint. La check est faite AVANT d'ajouter le user message pour ne
       // pas laisser un message orphelin sans réponse.
-      if (!streaming.canStart(targetId)) {
+      if (!canStart(targetId)) {
         setError(i18n.t('errors.tooManyConcurrentStreams'))
         return
       }
@@ -227,16 +255,22 @@ export function useConversation() {
       }
 
       conv.messages.push(userMessage)
-      if (conv.messages.length === 1) {
-        conv.title = text.slice(0, 50) + (text.length > 50 ? '...' : '')
+      // Titre auto au PREMIER message utilisateur. L'ancienne condition
+      // `messages.length === 1` ne matchait jamais quand la conv démarrait
+      // avec un message de bienvenue ou le préambule EU (length === 2 au
+      // premier message user) → titre "Nouvelle conversation" pour toujours.
+      const userMessageCount = conv.messages.filter((m) => m.role === 'user').length
+      if (userMessageCount === 1) {
+        const titled = text.trim().slice(0, 50) + (text.trim().length > 50 ? '...' : '')
+        conv.title = conv.euOnly ? `🇪🇺 ${titled}` : titled
       }
       conv.updatedAt = Date.now()
       storage.saveConversation(conv)
       refreshConversations()
-      streaming.setActiveStream(targetId)
+      setActiveStream(targetId)
       setActiveId(targetId)
 
-      fileAttachments.setPendingFiles((files && files.length > 0) ? files : null)
+      setPendingFiles((files && files.length > 0) ? files : null)
 
       // Mode "publish-after-fact-check" : si fact-check actif, on cache
       // les tokens en live (TypingIndicator au lieu de bulle stream) et on
@@ -246,10 +280,10 @@ export function useConversation() {
       const factCheckMode = getFactCheckMode()
       const deferPublish = factCheckMode !== 'off'
 
-      streaming.startStream(targetId)
-      streaming.setHideContent(deferPublish, targetId)
+      startStream(targetId)
+      setHideContent(deferPublish, targetId)
 
-      const onToken = (token: string) => streaming.onToken(token, targetId)
+      const onToken = (token: string) => streamToken(token, targetId)
 
       const onDone = async () => {
         // Signale au PlanBadge de rafraîchir ses compteurs free quotidiens.
@@ -257,13 +291,13 @@ export function useConversation() {
 
         if (!deferPublish) {
           // Mode 'off' : publication immédiate, pas de fact-check.
-          streaming.onDone(targetId)
+          streamDone(targetId)
           return
         }
 
         // Mode fact-check actif : retient le placeholder, lance la vérif,
         // puis publie la bulle finale avec contenu corrigé d'un coup.
-        const content = streaming.markStreamDone(targetId)
+        const content = markStreamDone(targetId)
 
         // Trouve le user message qui précède pour le fact-check.
         const conv = storage.getConversation(targetId)
@@ -282,19 +316,26 @@ export function useConversation() {
         // Fallback : si pas de content ou pas de user msg, on publie ce
         // qu'on a et on tente le fact-check après (ancien flow).
         if (!content || !userMsg) {
-          streaming.finalize(targetId, content)
-          streaming.completeStreaming(targetId)
+          finalizeStream(targetId, content)
+          completeStreaming(targetId)
           if (content) void runFactCheckOnLatest(targetId, refreshConversations)
           return
         }
 
         const fc = await factCheckContent(userMsg.content, content, factCheckMode)
+
+        // H4 (audit frontend) — si l'utilisateur a cliqué Stop PENDANT le
+        // fact-check, stopStreaming() a déjà finalisé (bulle "interrompue")
+        // et démonté le stream. Re-finaliser ici pousserait une DEUXIÈME
+        // bulle assistant persistée. Le stream absent = stop déjà traité.
+        if (!hasStream(targetId)) return
+
         const finalContent = fc?.correctedContent || content
 
         // Publie la bulle finale. finalize crée un message avec un nouvel
         // ID — on attache le factCheck juste après via une lecture/écriture
         // de la conv.
-        streaming.finalize(targetId, finalContent)
+        finalizeStream(targetId, finalContent)
         if (fc?.result) {
           // Succès : attache le résultat normal.
           const fresh = storage.getConversation(targetId)
@@ -327,17 +368,17 @@ export function useConversation() {
         }
         // fc === null → skip intentionnel (mode off ou réponse triviale)
         // → on n'attache pas de factCheck du tout, pas de badge visible.
-        streaming.completeStreaming(targetId)
+        completeStreaming(targetId)
       }
 
       const onErr = (err: Error) => {
-        streaming.onError(err, targetId)
-        if (streaming.isActive(targetId)) {
+        streamError(err, targetId)
+        if (isActive(targetId)) {
           setError(err.message)
         }
       }
 
-      const currentFiles = fileAttachments.pendingFilesRef.current
+      const currentFiles = pendingFilesRef.current
       const hasFiles = !!(currentFiles && currentFiles.length > 0)
       const hasPdf = hasFiles && currentFiles!.some((f) => f.type === 'application/pdf')
       const selectedModel = getSelectedModel()
@@ -386,6 +427,13 @@ export function useConversation() {
 
       let controller: AbortController
 
+      // M1 (audit frontend) — try/catch global sur toute la phase de
+      // préparation + dispatch. Sans lui, un throw après startStream (atob sur
+      // base64 corrompu, reject IndexedDB, builder qui explose) laissait le
+      // stream fantôme dans streamsRef : bouton Stop permanent, textarea
+      // bloquée, quota de streams consommé jusqu'au reload.
+      try {
+
       // URLs de PDF public collées : ni `web_fetch`/`url_context` (Claude/
       // Gemini n'avalent pas un PDF binaire) ni Mistral (aucune lecture d'URL)
       // ne savent les lire. On convertit chaque PDF en Markdown via Linkup
@@ -397,36 +445,36 @@ export function useConversation() {
       if (provider !== 'hybrid') {
         const pdfUrls = extractPdfUrls(text)
         if (pdfUrls.length > 0) {
-          streaming.setProgressContent('📄 Lecture du PDF...', targetId)
+          setProgressContent('📄 Lecture du PDF...', targetId)
           const pdfSections = await fetchPdfMarkdowns(pdfUrls)
           if (pdfSections) {
             outgoingText = `${text}\n\n${pdfSections}`
           }
-          streaming.resetAccumulated(targetId)
-          streaming.setProgressContent('', targetId)
+          resetAccumulated(targetId)
+          setProgressContent('', targetId)
         }
       }
 
       if (provider === 'hybrid') {
-        streaming.setProgressContent('🔍 Recherche en cours (Gemini)...', targetId)
+        setProgressContent('🔍 Recherche en cours (Gemini)...', targetId)
         Promise.all([geminiResearch(text), buildApiMessages(conv.messages)]).then(([research, enrichedMessages]) => {
           // Si l'utilisateur a cliqué Stop PENDANT la recherche Gemini,
           // stopStreaming() a déjà nettoyé le stream. Sans ce garde, le .then
           // démarrerait quand même une génération Claude "zombie" après le Stop.
-          if (!streaming.hasStream(targetId)) return
+          if (!hasStream(targetId)) return
           if (research) {
             enrichedMessages[enrichedMessages.length - 1] = {
               role: 'user',
               content: `${text}\n\n--- RECHERCHE WEB (données Gemini, à jour) ---\n${research}\n--- FIN RECHERCHE ---\n\nUtilise ces données pour ton rapport. Cite les sources trouvées.`,
             }
           }
-          streaming.resetAccumulated(targetId)
-          streaming.setProgressContent('', targetId)
+          resetAccumulated(targetId)
+          setProgressContent('', targetId)
           controller = streamMessage(enrichedMessages, onToken, onDone, onErr, {
             systemPrompt: systemPromptRef.current,
             onToolCall: toolHandlerRef.current,
           })
-          streaming.setAbortController(targetId, controller)
+          setAbortController(targetId, controller)
         }).catch(onErr)
         controller = new AbortController()
       } else if (provider === 'gemini') {
@@ -452,7 +500,7 @@ export function useConversation() {
         // Symétrique du path Claude (voir plus bas).
         if (currentFiles && currentFiles.length > 0) {
           apiMessages[apiMessages.length - 1] = { role: 'user', content: buildMistralBlocks(outgoingText, currentFiles) }
-          fileAttachments.setPendingFiles(null)
+          setPendingFiles(null)
         } else if (outgoingText !== text) {
           apiMessages[apiMessages.length - 1] = { role: 'user', content: outgoingText }
         }
@@ -483,7 +531,7 @@ export function useConversation() {
         const apiMessages = await buildApiMessages(conv.messages)
         if (currentFiles && currentFiles.length > 0) {
           apiMessages[apiMessages.length - 1] = { role: 'user', content: await buildContentBlocks(outgoingText, currentFiles) }
-          fileAttachments.setPendingFiles(null)
+          setPendingFiles(null)
         } else if (outgoingText !== text) {
           apiMessages[apiMessages.length - 1] = { role: 'user', content: outgoingText }
         }
@@ -493,9 +541,21 @@ export function useConversation() {
         })
       }
 
-      streaming.setAbortController(targetId, controller)
+      setAbortController(targetId, controller)
+
+      } catch (err) {
+        // onErr finalize ce qui a été accumulé, démonte le stream et affiche
+        // l'erreur — exactement comme une erreur réseau du client LLM.
+        onErr(err instanceof Error ? err : new Error(String(err)))
+      }
     },
-    [activeId, refreshConversations, streaming, fileAttachments]
+    [
+      activeId, refreshConversations, canStart, startStream, setActiveStream,
+      setHideContent, markStreamDone, finalizeStream, completeStreaming,
+      streamToken, streamDone, streamError, setProgressContent,
+      setAbortController, resetAccumulated, hasStream, isActive,
+      setPendingFiles, pendingFilesRef,
+    ]
   )
 
   const deleteConv = useCallback(
@@ -503,8 +563,8 @@ export function useConversation() {
       // Si la conv supprimée a un stream en cours, l'arrêter d'abord pour
       // libérer son saveInterval et abort le fetch en cours. Sinon l'interval
       // continuerait à essayer de sauver dans une conv qui n'existe plus.
-      if (streaming.hasStream(id)) {
-        streaming.stopStreaming(id)
+      if (hasStream(id)) {
+        stopStreaming(id)
       }
       storage.deleteConversation(id)
       refreshConversations()
@@ -512,7 +572,22 @@ export function useConversation() {
         setActiveId(null)
       }
     },
-    [activeId, refreshConversations, streaming]
+    [activeId, refreshConversations, hasStream, stopStreaming]
+  )
+
+  // Renommage manuel d'une conversation depuis la Sidebar (audit UX — le
+  // titre auto tronqué n'était ni régénéré ni éditable).
+  const renameConversation = useCallback(
+    (id: string, title: string) => {
+      const trimmed = title.trim()
+      if (!trimmed) return
+      const conv = storage.getConversation(id)
+      if (!conv) return
+      conv.title = trimmed.slice(0, 80)
+      storage.saveConversation(conv)
+      refreshConversations()
+    },
+    [refreshConversations]
   )
 
   // Branch a conversation from a specific message index
@@ -547,7 +622,13 @@ export function useConversation() {
       if (!conv) return
       const msg = conv.messages.find((m) => m.id === messageId)
       if (!msg) return
-      msg.pinned = !msg.pinned
+      // H1 (audit frontend) — remplacement IMMUTABLE du message. Muter
+      // msg.pinned en place laissait la même référence d'objet → le memo de
+      // MessageItem ne voyait aucun changement → l'épingle n'apparaissait
+      // qu'au prochain remount de la conversation.
+      conv.messages = conv.messages.map((m) =>
+        m.id === messageId ? { ...m, pinned: !m.pinned } : m
+      )
       conv.updatedAt = Date.now()
       storage.saveConversation(conv)
       refreshConversations()
@@ -611,6 +692,30 @@ export function useConversation() {
     [activeId, refreshConversations, sendMessage]
   )
 
+  // Retry depuis le bandeau d'erreur (audit UX) : quand l'appel échoue AVANT
+  // le premier token, aucun message assistant `interrupted` n'existe → pas de
+  // bouton retry inline. Celui-ci rejoue le DERNIER message utilisateur de la
+  // conversation active sans que l'utilisateur ait à le retaper.
+  const retryLastUserMessage = useCallback(() => {
+    const targetId = activeId
+    if (!targetId) return
+    const conv = storage.getConversation(targetId)
+    if (!conv) return
+    let userIdx = conv.messages.length - 1
+    while (userIdx >= 0 && conv.messages[userIdx]?.role !== 'user') userIdx--
+    if (userIdx < 0) return
+    const userMsg = conv.messages[userIdx]
+    if (!userMsg) return
+
+    const originalFiles = userMsg.files
+    conv.messages = conv.messages.slice(0, userIdx)
+    conv.updatedAt = Date.now()
+    storage.saveConversation(conv)
+    refreshConversations()
+
+    sendMessage(userMsg.content, targetId, originalFiles)
+  }, [activeId, refreshConversations, sendMessage])
+
   return {
     conversations,
     activeConversation,
@@ -620,17 +725,20 @@ export function useConversation() {
     streamingConvIds: streaming.streamingConvIds,
     isStreamingFor: streaming.isStreamingFor,
     error,
+    clearError,
     createConversation,
     selectConversation,
     clearActive,
     sendMessage,
     deleteConversation: deleteConv,
+    renameConversation,
     branchConversation,
-    stopStreaming: streaming.stopStreaming,
+    stopStreaming,
     setSystemPrompt,
     setToolHandler,
     togglePinMessage,
     editAndResend,
     retryMessage,
+    retryLastUserMessage,
   }
 }

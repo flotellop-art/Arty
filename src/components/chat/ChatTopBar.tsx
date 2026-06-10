@@ -12,8 +12,9 @@ import {
   exportConversation,
   exportConversationMarkdown,
   exportConversationPdf,
-  buildShareUrl,
+  buildConversationMarkdown,
 } from '../../services/conversationExport'
+import { toast } from '../../services/toast'
 import type { Conversation } from '../../types'
 
 // Mapping provider → famille primaire (la moins chère). Le proxy gère
@@ -187,10 +188,31 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
   const styleOption = STYLE_OPTIONS.find(o => o.id === currentStyle) ?? STYLE_OPTIONS[0]!
   const modelOption = MODEL_OPTIONS.find(o => o.id === currentModel) ?? MODEL_OPTIONS[0]!
 
+  // Audit UX 10 juin 2026 — l'ancien partage copiait une URI
+  // `data:application/json;base64,…` : incollable dans une messagerie,
+  // bloquée par les navigateurs en navigation top-level, et copiée sans
+  // aucun feedback. Maintenant : Web Share API (feuille de partage native)
+  // avec le markdown de la conversation, fallback copie presse-papier +
+  // toast de confirmation.
   const handleShare = async () => {
     if (!conversation) return
-    const url = buildShareUrl(conversation)
-    try { await navigator.clipboard.writeText(url) } catch {}
+    const md = buildConversationMarkdown(conversation)
+    if (typeof navigator.share === 'function') {
+      try {
+        await navigator.share({ title: conversation.title, text: md })
+        return
+      } catch (err) {
+        // L'utilisateur a fermé la feuille de partage → pas un échec.
+        if (err instanceof DOMException && err.name === 'AbortError') return
+        // Autre erreur (pas de cible, WebView sans support) → fallback copie.
+      }
+    }
+    try {
+      await navigator.clipboard.writeText(md)
+      toast(t('chat.topBar.shareCopied'), 'success')
+    } catch {
+      toast(t('chat.topBar.shareFailed'), 'error')
+    }
   }
 
   return (
@@ -393,8 +415,8 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
               <button
                 onClick={() => setExportMenuOpen((o) => !o)}
                 className="p-1.5 rounded text-theme-muted hover:text-theme-ink hover:bg-theme-ink/5 transition-colors"
-                title="Exporter la conversation"
-                aria-label="Exporter"
+                title={t('chat.topBar.exportTitle')}
+                aria-label={t('chat.topBar.aria.export')}
                 aria-haspopup="menu"
                 aria-expanded={exportMenuOpen}
               >
@@ -437,8 +459,8 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
             <button
               onClick={handleShare}
               className="p-1.5 rounded text-theme-muted hover:text-theme-ink hover:bg-theme-ink/5 transition-colors"
-              title="Copier le lien de partage"
-              aria-label="Partager"
+              title={t('chat.topBar.shareTitle')}
+              aria-label={t('chat.topBar.aria.share')}
             >
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                 <path d="M7 5L5.5 6.5C4.5 7.5 4.5 9.1 5.5 10.1C6.5 11.1 8.1 11.1 9.1 10.1L10.5 8.7" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />

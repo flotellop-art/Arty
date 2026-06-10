@@ -64,6 +64,10 @@ function getQuickActionChips(t: TFunction): Array<{ label: string; prompt: strin
 const HOLD_THRESHOLD_MS = 600
 const HOLD_MAX_MS = 60_000
 const SWIPE_CANCEL_THRESHOLD_PX = 60
+// Cap d'attachements par message — l'API Anthropic plafonne (~20 images,
+// 5 PDFs) avec une erreur brute ; on borne plus bas côté UI avec un message
+// clair (audit UX 10 juin 2026).
+const MAX_ATTACHED_FILES = 10
 
 // Vignette d'aperçu d'un fichier en attente d'envoi. Pour les images, affiche
 // la photo réelle via blob URL (le base64 est en RAM, pas encore persisté).
@@ -152,6 +156,13 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
   const [isSwipeCancelling, setIsSwipeCancelling] = useState(false)
   const [isTranscribing, setIsTranscribing] = useState(false)
   const [audioError, setAudioError] = useState<string | null>(null)
+  // Feedback fichiers refusés (>10 MB / trop nombreux) — auto-effacé après 6 s.
+  const [fileError, setFileError] = useState<string | null>(null)
+  useEffect(() => {
+    if (!fileError) return
+    const id = setTimeout(() => setFileError(null), 6000)
+    return () => clearTimeout(id)
+  }, [fileError])
   // 0..1 during the 0–600ms hold window. Drives the progress ring SVG.
   const [holdProgress, setHoldProgress] = useState(0)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
@@ -320,11 +331,18 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
     const selectedFiles = e.target.files
     if (!selectedFiles) return
 
+    setFileError(null)
     const newFiles: FileAttachment[] = []
+    // Audit UX — avant : les fichiers >10 MB étaient silencieusement ignorés
+    // (`continue` sans feedback), l'utilisateur croyait son fichier attaché.
+    const rejectedNames: string[] = []
     for (let i = 0; i < selectedFiles.length; i++) {
       const f = selectedFiles.item(i)
       if (!f) continue
-      if (f.size > 10 * 1024 * 1024) continue
+      if (f.size > 10 * 1024 * 1024) {
+        rejectedNames.push(f.name)
+        continue
+      }
 
       const base64 = await new Promise<string>((resolve) => {
         const reader = new FileReader()
@@ -344,7 +362,19 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
       })
     }
 
-    setFiles((prev) => [...prev, ...newFiles])
+    if (rejectedNames.length > 0) {
+      setFileError(t('chat.input.fileTooLarge', { names: rejectedNames.join(', ') }))
+    }
+
+    setFiles((prev) => {
+      const next = [...prev, ...newFiles]
+      // Cap UI : au-delà, l'API rejette avec une erreur incompréhensible.
+      if (next.length > MAX_ATTACHED_FILES) {
+        setFileError(t('chat.input.tooManyFiles', { max: MAX_ATTACHED_FILES }))
+        return next.slice(0, MAX_ATTACHED_FILES)
+      }
+      return next
+    })
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
@@ -944,10 +974,10 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
         </div>
       )}
 
-      {/* Mic / audio error message (covers speech recognition + Whisper) */}
-      {(micError || audioError) && (
-        <div className="text-xs text-red-500 mb-1 px-1">
-          {micError || audioError}
+      {/* Mic / audio / file error message (speech recognition + Whisper + attachements) */}
+      {(micError || audioError || fileError) && (
+        <div className="text-xs text-red-500 mb-1 px-1" role="alert">
+          {micError || audioError || fileError}
         </div>
       )}
 
@@ -1043,8 +1073,11 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
             onKeyDown={handleKeyDown}
             placeholder={t('chat.input.placeholder')}
             rows={1}
-            disabled={isStreaming}
-            className={`flex-1 resize-none bg-transparent text-sm text-theme-ink placeholder:text-theme-muted focus:outline-none py-1.5 font-sans font-light leading-relaxed ${isStreaming ? 'opacity-50 italic' : ''}`}
+            // Audit UX — plus de `disabled={isStreaming}` : on peut composer le
+            // message suivant pendant que la réponse arrive (comme claude.ai).
+            // sendText garde le verrou d'ENVOI pendant le stream ; sur mobile,
+            // le clavier ne se referme plus à chaque envoi.
+            className="flex-1 resize-none bg-transparent text-sm text-theme-ink placeholder:text-theme-muted focus:outline-none py-1.5 font-sans font-light leading-relaxed"
           />
         )}
 

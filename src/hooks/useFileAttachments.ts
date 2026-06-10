@@ -53,8 +53,15 @@ function buildBlocksFromFiles(files: FileAttachment[]): Array<Record<string, unk
       })
     } else if (mime === 'text/plain' || mime.startsWith('text/')) {
       // BUG 36: use decodeURIComponent(escape(atob())) for correct UTF-8 (French chars)
-      const decoded = decodeURIComponent(escape(atob(file.data)))
-      blocks.push({ type: 'text', text: `[Contenu de ${file.name}]\n${decoded}` })
+      // M1 (audit frontend) — atob/decodeURIComponent throwent sur base64
+      // corrompu. Non catché, ça remontait dans sendMessage et laissait un
+      // stream fantôme (le variant Mistral plus bas catchait déjà, lui).
+      try {
+        const decoded = decodeURIComponent(escape(atob(file.data)))
+        blocks.push({ type: 'text', text: `[Contenu de ${file.name}]\n${decoded}` })
+      } catch {
+        blocks.push({ type: 'text', text: `[Fichier '${file.name}' illisible — contenu corrompu]` })
+      }
     } else if (mime === 'application/msword' || mime === 'application/vnd.ms-excel') {
       blocks.push({ type: 'text', text: `[Fichier joint: ${file.name} — format Office binaire, conversion serveur requise]` })
     } else {

@@ -1,4 +1,5 @@
 import { memo, useState, useRef, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { FileAttachment } from '../../types'
 import { getFile } from '../../services/secureFileStorage'
 
@@ -14,6 +15,7 @@ interface UserBubbleProps {
 // ou icône PDF/document. Cleanup blob URL au démontage pour éviter les fuites
 // mémoire (chaque createObjectURL doit être pairé avec un revokeObjectURL).
 const FileThumbnail = memo(function FileThumbnail({ file }: { file: FileAttachment }) {
+  const { t } = useTranslation()
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [unavailable, setUnavailable] = useState(false)
   const isImage = file.type.startsWith('image/')
@@ -51,7 +53,7 @@ const FileThumbnail = memo(function FileThumbnail({ file }: { file: FileAttachme
     if (unavailable) {
       return (
         <div className="w-[100px] h-[100px] rounded-md border border-theme-border bg-theme-surface flex items-center justify-center text-[10px] text-theme-muted text-center px-2">
-          Image indispo
+          {t('chat.userBubble.imageUnavailable')}
         </div>
       )
     }
@@ -81,6 +83,7 @@ const FileThumbnail = memo(function FileThumbnail({ file }: { file: FileAttachme
 })
 
 export const UserBubble = memo(function UserBubble({ content, files, pinned, onTogglePin, onEdit }: UserBubbleProps) {
+  const { t } = useTranslation()
   const [editing, setEditing] = useState(false)
   const [value, setValue] = useState(content)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -134,13 +137,13 @@ export const UserBubble = memo(function UserBubble({ content, files, pinned, onT
               onClick={handleCancel}
               className="px-2.5 py-1 text-[11px] font-sans uppercase tracking-kicker text-theme-muted hover:text-theme-ink transition-colors"
             >
-              Annuler
+              {t('common.cancel')}
             </button>
             <button
               onClick={handleSave}
               className="px-3 py-1 text-[11px] font-sans uppercase tracking-kicker bg-theme-accent text-theme-bg hover:opacity-90 transition-opacity rounded-sm"
             >
-              ✓ Envoyer
+              ✓ {t('chat.userBubble.send')}
             </button>
           </div>
         </div>
@@ -169,12 +172,16 @@ export const UserBubble = memo(function UserBubble({ content, files, pinned, onT
           </div>
         )}
         <div className="absolute bottom-0 left-[-4px] translate-x-[-100%] flex gap-1">
+          {/* Audit UX — `opacity-0 group-hover` seul = boutons invisibles sur
+              tactile (pas de hover) ET au clavier. Pattern validé ailleurs
+              (MessageList branche, AssistantBubble speak) : 50% permanent sur
+              mobile, hover desktop, focus-visible pour le clavier. */}
           {onEdit && (
             <button
               onClick={() => setEditing(true)}
-              className="opacity-0 group-hover/user:opacity-100 p-2 rounded-md text-theme-muted hover:text-theme-accent transition-all"
-              aria-label="Modifier"
-              title="Modifier et renvoyer"
+              className="opacity-50 md:opacity-0 md:group-hover/user:opacity-100 focus-visible:opacity-100 p-2 rounded-md text-theme-muted hover:text-theme-accent transition-all"
+              aria-label={t('chat.userBubble.edit')}
+              title={t('chat.userBubble.editTitle')}
             >
               ✏️
             </button>
@@ -185,9 +192,9 @@ export const UserBubble = memo(function UserBubble({ content, files, pinned, onT
               className={`p-2 rounded-md transition-all ${
                 pinned
                   ? 'text-theme-accent opacity-80'
-                  : 'opacity-0 group-hover/user:opacity-100 text-theme-muted hover:text-theme-accent'
+                  : 'opacity-50 md:opacity-0 md:group-hover/user:opacity-100 focus-visible:opacity-100 text-theme-muted hover:text-theme-accent'
               }`}
-              aria-label={pinned ? 'Désépingler' : 'Épingler'}
+              aria-label={pinned ? t('chat.bubble.unpin') : t('chat.bubble.pin')}
             >
               📌
             </button>

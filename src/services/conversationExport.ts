@@ -20,17 +20,6 @@ export function exportConversation(conv: Conversation): void {
 }
 
 /**
- * Build a data: URL embedding the conversation as base64-encoded JSON.
- */
-export function buildShareUrl(conv: Conversation): string {
-  const payload = { version: 1, conversation: conv }
-  const json = JSON.stringify(payload)
-  // Handle UTF-8 safely in base64
-  const b64 = btoa(unescape(encodeURIComponent(json)))
-  return `data:application/json;base64,${b64}`
-}
-
-/**
  * Import a conversation from a JSON file.
  * Returns the new conversation ID (generated to avoid collisions).
  */
