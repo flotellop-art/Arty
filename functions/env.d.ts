@@ -24,7 +24,7 @@ export interface Env {
   // /api/computer/relay. When not set or not matching, the endpoint returns 404.
   COMPUTER_RELAY_ENABLED?: string
   COMPUTER_RELAY_OWNER_SUB?: string
-  GOOGLE_VISION_API_KEY?: string
+  GOOGLE_VISION_API_KEY?: string  // DEAD CONFIG — plus aucun code ne la lit (OCR Vision retiré, PDF lus nativement par Claude). Conservée le temps de retirer la var sur Cloudflare.
   GOOGLE_MAPS_API_KEY?: string  // Geocoding API key — reverse geocoding server-side (BUG: Arty devinait la ville en 1.0.29)
   DB: D1Database  // Cloudflare D1 binding
   KV: KVNamespace  // Cloudflare KV binding — premium cap counters per user/month

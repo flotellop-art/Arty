@@ -237,14 +237,22 @@ locale pouvait appeler les proxys.
 **Règle** : TOUJOURS vérifier `npx tsc --noEmit` AVANT de push. Les erreurs TS bloquent le déploiement SANS notification visible dans l'app
 
 ### BUG 14 — pdf-parse retourne du garbage sur PDFs compressés
-**Fichiers** : `api/_lib/pdfExtraction.ts`, `api/drive/action.ts`
-**Problème** : pdf-parse retournait du texte binaire/garbage sur les PDFs FlateDecode → le test `length > 20` passait quand même → Claude recevait du garbage illisible
-**Règle** : Vérifier la LISIBILITÉ du texte extrait (>50% de caractères lisibles, >50 chars). Si illisible, passer au fallback OCR (Google Vision API avec `GOOGLE_VISION_API_KEY`)
+**⚠️ PIPELINE RETIRÉ (mai 2026)** : Arty ne fait PLUS d'extraction PDF côté
+serveur. Les PDF (pièces jointes Gmail/Drive, fichiers collés) sont transmis
+en base64 et lus NATIVEMENT par Claude (content blocks `document`/`pdf`). Il
+n'y a plus de `pdf-parse`, plus de fallback OCR Google Vision, et le fichier
+`api/_lib/pdfExtraction.ts` mentionné ci-dessous N'EXISTE PAS. La leçon reste
+valable UNIQUEMENT si on réintroduit un jour une extraction texte côté serveur.
+**Problème (historique)** : pdf-parse retournait du texte binaire/garbage sur les PDFs FlateDecode → le test `length > 20` passait quand même → Claude recevait du garbage illisible
+**Règle (si réintroduit)** : Vérifier la LISIBILITÉ du texte extrait (>50% de caractères lisibles, >50 chars) avant de le passer au LLM.
 
 ### BUG 15 — Google Vision OCR scope OAuth impossible sur comptes perso
-**Fichiers** : `src/services/googleAuth.ts`, `api/_lib/pdfExtraction.ts`
-**Problème** : Les scopes `cloud-vision` et `cloud-platform` ne sont pas disponibles dans le flux OAuth pour comptes Gmail personnels → impossible de se reconnecter
-**Règle** : Utiliser une clé API serveur (`GOOGLE_VISION_API_KEY` dans env) pour Vision OCR, PAS le token OAuth utilisateur
+**⚠️ OBSOLÈTE (mai 2026)** : voir BUG 14 — l'OCR Google Vision n'est plus
+utilisé nulle part. `GOOGLE_VISION_API_KEY` est de la **config morte** (encore
+déclarée dans `functions/env.d.ts` mais lue par aucun code). Leçon conservée
+pour mémoire.
+**Problème (historique)** : Les scopes `cloud-vision` et `cloud-platform` ne sont pas disponibles dans le flux OAuth pour comptes Gmail personnels → impossible de se reconnecter
+**Règle (si réintroduit)** : Utiliser une clé API serveur, PAS le token OAuth utilisateur, pour tout service Google Cloud type Vision.
 
 ### BUG 16 — saveConversation async casse le UI
 **Fichier** : `src/services/storage.ts`
