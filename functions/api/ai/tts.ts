@@ -25,7 +25,7 @@ const ALLOWED_VOICES = ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer'] as 
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   // Anti-relais anonyme : un token Google valide est obligatoire (CRIT-4).
-  const email = await verifyGoogleUser(request)
+  const email = await verifyGoogleUser(request, env)
   if (!email) {
     return Response.json(
       { error: 'Authentication required — please sign in with Google' },
@@ -105,10 +105,12 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     })
 
     if (!upstream.ok) {
-      // Erreur OpenAI : on relaie le status sans exposer la clé.
+      // Erreur OpenAI : log serveur, message générique au client (ne pas
+      // relayer le body upstream — audit 29 mai, leak).
       const errText = (await upstream.text()).slice(0, 300)
+      console.error(`[tts] upstream ${upstream.status}:`, errText)
       return Response.json(
-        { error: `TTS upstream ${upstream.status}: ${errText}` },
+        { error: 'Service vocal temporairement indisponible' },
         { status: upstream.status === 429 ? 429 : 502 }
       )
     }
@@ -122,9 +124,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
       },
     })
   } catch (err) {
-    return Response.json(
-      { error: err instanceof Error ? err.message : 'TTS proxy error' },
-      { status: 502 }
-    )
+    console.error('[tts] proxy error', err)
+    return Response.json({ error: 'TTS proxy error' }, { status: 502 })
   }
 }

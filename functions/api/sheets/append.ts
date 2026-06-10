@@ -2,11 +2,12 @@
  * Google Sheets — append row or create spreadsheet (Feature 9).
  * Uses the user's Google token from the x-google-token header.
  */
+import type { Env } from '../../env'
 import { verifyGoogleUser, notFoundResponse } from '../_lib/checkAllowedUser'
 
-export const onRequestPost: PagesFunction = async ({ request }) => {
+export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   // CRIT-4 (audit étape 2) — exiger un user Google identifié.
-  const email = await verifyGoogleUser(request)
+  const email = await verifyGoogleUser(request, env)
   if (!email) return notFoundResponse()
 
   const token = request.headers.get('x-google-token') || request.headers.get('authorization')?.replace('Bearer ', '') || ''

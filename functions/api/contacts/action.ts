@@ -1,8 +1,9 @@
+import type { Env } from '../../env'
 import { verifyGoogleUser, notFoundResponse } from '../_lib/checkAllowedUser'
 
-export const onRequestPost: PagesFunction = async ({ request }) => {
+export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   // CRIT-4 (audit étape 2) — exiger un user Google identifié.
-  const email = await verifyGoogleUser(request)
+  const email = await verifyGoogleUser(request, env)
   if (!email) return notFoundResponse()
 
   const token = request.headers.get('authorization')?.replace('Bearer ', '') || ''
@@ -89,6 +90,12 @@ async function handleCreate(token: string, body: Record<string, unknown>): Promi
 async function handleUpdate(token: string, body: Record<string, unknown>): Promise<Response> {
   const { resourceName, email, phone } = body as { resourceName?: string; email?: string; phone?: string }
   if (!resourceName) return Response.json({ error: 'Missing resourceName' }, { status: 400 })
+  // BUG 32 — valider le resourceName (forme `people/c123`) avant de l'injecter
+  // dans l'URL People API. Sans ça, un `?`/`#`/`/` réécrit le path/query de
+  // l'appel Google (path/query injection vers l'API).
+  if (!/^people\/[a-zA-Z0-9_-]+$/.test(resourceName)) {
+    return Response.json({ error: 'Invalid resourceName' }, { status: 400 })
+  }
 
   try {
     const getRes = await fetch(

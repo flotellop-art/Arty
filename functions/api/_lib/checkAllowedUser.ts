@@ -2,35 +2,66 @@ import type { Env } from '../../env'
 import { consumeCapAtomic } from './atomicQuota'
 
 /**
- * Vérifie le token Google passé dans `x-google-token` (ou dans
- * `Authorization: Bearer …` en fallback pour les endpoints Google API
- * qui forwardent directement le token user) auprès de l'API userinfo
- * de Google. Retourne l'email vérifié (en minuscules) si le token est
- * valide, null sinon.
+ * Vérifie un access token Google brut via `oauth2.googleapis.com/tokeninfo`
+ * (PAS `userinfo`) : c'est le seul endpoint qui expose `aud`/`azp` et
+ * `email_verified`. Retourne l'email vérifié (minuscules) si le token est
+ * valide ET émis pour NOTRE client OAuth, null sinon.
  *
- * Usage : gate d'authentification pour les endpoints qui acceptent tout
- * utilisateur Google (BYOK inclus). Empêche le relais anonyme via un
- * header forgé — Google est la source de vérité.
+ * H-Auth (audit 29 mai) — sans le check `aud`/`azp`, un access token émis
+ * pour une AUTRE application (scope `email`) serait accepté comme identité
+ * Arty → usurpation sur tous les endpoints gatés (memory, account/delete,
+ * quotas, proxys IA). `userinfo` n'expose pas `aud`, d'où le passage à
+ * `tokeninfo`. Logique factorisée ici (et réutilisée par `trial/init.ts`)
+ * pour éviter qu'un durcissement appliqué à un seul endroit laisse l'autre
+ * vulnérable — c'était la cause racine du trou.
+ */
+export async function verifyGoogleToken(
+  token: string,
+  expectedAud: string | undefined
+): Promise<string | null> {
+  if (!token) return null
+  try {
+    const res = await fetch(
+      `https://oauth2.googleapis.com/tokeninfo?access_token=${encodeURIComponent(token)}`
+    )
+    if (!res.ok) return null
+    const info = (await res.json()) as {
+      email?: string
+      email_verified?: string | boolean
+      aud?: string
+      azp?: string
+    }
+    const email = info.email?.toLowerCase()
+    if (!email) return null
+    const verified = info.email_verified === 'true' || info.email_verified === true
+    if (!verified) return null
+    // `aud` OU `azp` doit correspondre à NOTRE client OAuth. Permissif
+    // uniquement si GOOGLE_CLIENT_ID n'est pas configuré — auquel cas le
+    // flow OAuth (auth/token.ts) est déjà cassé, donc pas de régression.
+    if (expectedAud && info.aud !== expectedAud && info.azp !== expectedAud) {
+      return null
+    }
+    return email
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Gate d'authentification pour les endpoints qui acceptent tout utilisateur
+ * Google identifié. Lit le token dans `x-google-token` (ou `Authorization:
+ * Bearer …` en fallback) et le vérifie auprès de Google — empêche le relais
+ * anonyme via un header forgé. Exige `env` pour valider l'`aud` du token.
  */
 export async function verifyGoogleUser(
-  request: Request
+  request: Request,
+  env: Env
 ): Promise<string | null> {
   const googleToken =
     request.headers.get('x-google-token') ||
     request.headers.get('authorization')?.replace(/^Bearer\s+/i, '') ||
     ''
-  if (!googleToken) return null
-
-  try {
-    const res = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
-      headers: { Authorization: `Bearer ${googleToken}` },
-    })
-    if (!res.ok) return null
-    const userInfo = (await res.json()) as { email?: string }
-    return userInfo.email?.toLowerCase() ?? null
-  } catch {
-    return null
-  }
+  return verifyGoogleToken(googleToken, env.GOOGLE_CLIENT_ID)
 }
 
 /**
@@ -165,7 +196,7 @@ export async function checkAllowedUserPeek(
   request: Request,
   env: Env
 ): Promise<AllowedUser | null> {
-  const email = await verifyGoogleUser(request)
+  const email = await verifyGoogleUser(request, env)
   if (!email) return null
 
   const allowed = parseAllowedEmails(env.ALLOWED_EMAILS)
@@ -183,7 +214,7 @@ export async function checkAllowedUser(
   request: Request,
   env: Env
 ): Promise<CheckResult> {
-  const email = await verifyGoogleUser(request)
+  const email = await verifyGoogleUser(request, env)
   if (!email) return null
 
   // ALLOWED_EMAILS = beta testeurs VIP, bypass du check D1

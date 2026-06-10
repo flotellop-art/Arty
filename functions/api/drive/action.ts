@@ -21,9 +21,9 @@ function bytesToBase64(bytes: Uint8Array): string {
   return btoa(parts.join(''))
 }
 
-export const onRequestPost: PagesFunction<Env> = async ({ request }) => {
+export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   // CRIT-4 (audit étape 2) — exiger un user Google identifié.
-  const email = await verifyGoogleUser(request)
+  const email = await verifyGoogleUser(request, env)
   if (!email) return notFoundResponse()
 
   const token = request.headers.get('authorization')?.replace('Bearer ', '')

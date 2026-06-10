@@ -6,7 +6,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   // partagé (WP_USERNAME / WP_PASSWORD). Sans gate, chaque user authentifié
   // pouvait lister / créer / supprimer des posts WP en tant que owner. Restreint
   // aux emails dans WORDPRESS_OWNER_EMAILS (fallback ALLOWED_EMAILS).
-  const email = await verifyGoogleUser(request)
+  const email = await verifyGoogleUser(request, env)
   if (!email) return notFoundResponse()
   const ownerEmails = parseAllowedEmails(env.WORDPRESS_OWNER_EMAILS || env.ALLOWED_EMAILS)
   if (!ownerEmails.includes(email)) return notFoundResponse()
@@ -48,6 +48,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
 
       case 'update': {
         if (!body.postId) return Response.json({ error: 'Missing postId' }, { status: 400 })
+        if (!/^\d+$/.test(String(body.postId))) return Response.json({ error: 'Invalid postId' }, { status: 400 })
         const payload: Record<string, unknown> = {}
         if (body.title) payload.title = body.title
         if (body.content) payload.content = body.content
@@ -60,6 +61,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
 
       case 'delete': {
         if (!body.postId) return Response.json({ error: 'Missing postId' }, { status: 400 })
+        if (!/^\d+$/.test(String(body.postId))) return Response.json({ error: 'Invalid postId' }, { status: 400 })
         const r = await fetch(`${apiBase}/posts/${body.postId}`, { method: 'DELETE', headers })
         if (!r.ok) return Response.json({ error: 'Delete failed' }, { status: r.status })
         return Response.json({ success: true })
@@ -67,6 +69,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
 
       case 'get': {
         if (!body.postId) return Response.json({ error: 'Missing postId' }, { status: 400 })
+        if (!/^\d+$/.test(String(body.postId))) return Response.json({ error: 'Invalid postId' }, { status: 400 })
         const r = await fetch(`${apiBase}/posts/${body.postId}`, { headers })
         if (!r.ok) return Response.json({ error: 'Not found' }, { status: r.status })
         const post = await r.json() as Record<string, unknown>
