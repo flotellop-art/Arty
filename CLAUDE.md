@@ -723,3 +723,29 @@ des conversations — implémenté le 16 mai, voir « PR à venir » ci-dessous.
 - EN : `how far`, `how long`, `driving time`, `driving distance`, `directions to`, `directions from`.
 
 La maintenance des triggers est un **work-in-progress permanent**, pas un final state. Chaque cas raté remonté → ajouter le pattern à la regex ET ajouter un test de non-régression (sinon la prochaine refacto cassera).
+
+
+### BUG 57 — Fact-checker supprimait les liens vers les rapports Arty (domaines internes flaggés comme suspects)
+**Fichier** : `src/services/factChecker.ts` (PR #145, commit `93c7c78`)
+**Problème** : sur les réponses contenant un markdown link `[Voir le rapport](https://appfacade.pages.dev/...)` ou `tryarty.com/...`, le fact-checker classait l'URL comme « suspecte » (heuristique générique : domaine non-listé dans une whitelist d'autorités) et la supprimait de la réponse délivrée. Conséquence : l'utilisateur perdait l'accès à ses propres rapports générés par Arty. Remonté en live le 5 mai après PR #144.
+**Règle** : tout module qui valide/filtre des URLs sortantes (fact-checker, sanitizer, link rewriter) DOIT contenir une **whitelist explicite des domaines Arty propriétaires** (`appfacade.pages.dev`, `tryarty.com`, `*.appfacade.pages.dev`) en court-circuit AVANT toute heuristique « suspect/safe ». Pattern : early-return `whitelisted ? keep : applyHeuristic`. Sans ça, chaque heuristique qui se durcit casse les liens internes en silence.
+
+### BUG 58 — Mistral Small choisi par défaut pour des questions techniques (routing inversé)
+**Fichier** : `src/services/mistralClient.ts` ou `aiRouter.ts` (PR #140, commit `9334621`)
+**Problème** : le routing Mistral envoyait par défaut vers Mistral Small (pour économiser) et n'escaladait à Medium 3.5 que sur quelques heuristiques. Conséquence : des questions complexes type « Cloudflare Workers patches d'avril 2026 » partaient sur Small qui répondait à côté ou hallucinait. L'utilisateur s'attendait à du Medium 3.5 par défaut sur un compte payant.
+**Règle** : pour Mistral chez les utilisateurs **payants/whitelistés**, **Medium 3.5 = défaut**, Small = exception réservée au **small talk court** (< ~30 chars, pas de mots techniques, pas de fichiers attachés). Inverser systématiquement la logique de routing : default = modèle capable, opt-in vers le moins cher uniquement quand on est SÛR que la requête est triviale. Trial/free utilisateurs gardent Small par défaut (cap quota).
+
+### BUG 59 — Fact-check badge invisible et debug impossible sur mobile
+**Fichiers** : `src/components/chat/FactCheckBadge.tsx`, `src/hooks/useConversation.ts`, `src/services/factChecker.ts` (PRs #143 + #144, commits `f438ff3` + `8062812`)
+**Problème** : le badge fact-check ne s'affichait que si le résultat contenait au moins 1 claim risqué. Conséquences :
+1. L'utilisateur ne savait jamais si le fact-check était activé ou pas (« j'ai mis le toggle ON mais je vois rien »).
+2. Sur mobile (Capacitor APK + PWA), pas d'accès à la console F12 pour vérifier que le service tournait. Les `console.log('[factCheck] start...')` étaient invisibles.
+3. Si le check échouait (timeout, 400, JSON malformé), l'erreur était avalée silencieusement sans aucune trace UI.
+**Règle** :
+- Tout overlay automatique (fact-check, enhancer, summarizer) qui tourne en arrière-plan DOIT exposer un **état visible 4-states** : `pending` (placeholder gris « vérification… »), `success-empty` (✓ aucun claim risqué), `success-with-claims` (badge expandable), `failed` (⚠️ avec raison courte). Sans ça, l'utilisateur ne distingue pas « pas activé » de « activé mais cassé ».
+- Pour le debug terrain mobile : préfixer tous les logs critiques d'un tag (`[factCheck]`, `[stream]`, `[oauth]`) ET les surfacer dans un screen `Settings → Debug logs` (lecture du dernier ring buffer en mémoire). Console.log seul est inutile sur mobile.
+
+### BUG 60 — Compteur de coûts divergeait entre local (cost_history) et serveur D1
+**Fichiers** : `src/screens/costs.tsx`, `src/services/quotaStatus.ts`, `functions/api/_lib/quota.ts`, `functions/api/ai/quota/month.ts` (PR #147, commit `ee10138`)
+**Problème** : la page « 💸 Mes coûts » lisait `cost_history` depuis localStorage uniquement. Le tracker local manquait régulièrement des appels (multi-device, switch de tab pendant un stream, event `cost-updated` raté à cause d'un crash JS, BYOK switch). Divergence visible : l'utilisateur voyait `0,26€` (sonnet uniquement) côté local pendant que le serveur D1 totalisait `$1.2578` tous modèles. Inacceptable pour un dashboard financier.
+**Règle** : tout dashboard d'**usage facturable** (coûts API, quotas, tokens) DOIT lire le **serveur comme source primaire** (table `quota_model` agrégée par jour ET par modèle), avec fallback local pour BYOK pur ou hors-ligne. Pour étendre `getMonthlyQuotaStatus` à de nouveaux dashboards : ajouter les agrégats nécessaires (`byDay`, `byHour`, etc.) dans la même fonction et forwarder via `/api/ai/quota/month`. Ne JAMAIS faire confiance au localStorage seul pour des montants comparés à une facture officielle — l'écart finira par devenir visible et casser la confiance de l'utilisateur.
