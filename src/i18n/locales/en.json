@@ -443,6 +443,8 @@
   "proactiveBrief": {
     "title": "Your brief",
     "loading": "Preparing your brief…",
+    "updatedAt": "Updated at {{time}}",
+    "refresh": "Refresh brief",
     "calm": "Nothing urgent in your mail or calendar. Have a great day!",
     "feedbackPrompt": "Useful?",
     "feedbackThanks": "Thanks, I'll adjust.",
