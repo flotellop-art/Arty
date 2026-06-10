@@ -22,6 +22,10 @@ const GEMINI_MODEL = 'gemini-3.5-flash'
 // laisser pendre une requête 60-90s. Force un cap explicite.
 const GEMINI_TIMEOUT_MS = 60_000
 
+// Compréhension vidéo (non-streaming) : l'échantillonnage frames + audio peut
+// prendre nettement plus longtemps que du texte. Timeout plus large.
+const GEMINI_VIDEO_TIMEOUT_MS = 120_000
+
 // CRIT-6 — Retry transient errors (429, 5xx). Gemini preview model est
 // particulièrement exposé aux ratelimits. Backoff exponentiel.
 const RETRY_DELAYS_MS = [1000, 2000, 4000]
@@ -165,21 +169,29 @@ async function runGeminiStream(
     // "à quelle distance", "distance entre Y et X", "aller à X", etc.
     const lastMessage = messages[messages.length - 1]?.content || ''
 
-    // Vidéo YouTube : Gemini la lit nativement si on lui passe l'URL canonique
-    // dans une part `fileData` (et non comme du texte + url_context, qui ne lit
-    // que la page web, pas la vidéo). On normalise via extractYouTubeUrls
-    // (watch?v=ID) et on injecte la/les part(s) vidéo sur le dernier message
-    // user uniquement — la vidéo n'est facturée qu'au tour où elle est collée.
-    const youtubeUrls = extractYouTubeUrls(lastMessage)
-    const hasVideo = youtubeUrls.length > 0
-    if (hasVideo) {
-      const last = contents[contents.length - 1]
-      if (last) {
-        last.parts = [
-          ...youtubeUrls.map((fileUri) => ({ fileData: { fileUri } })),
-          ...last.parts,
-        ]
+    // Vidéo YouTube : Gemini la lit nativement via une part `fileData` (frames
+    // 1/s + audio), pas comme du texte + url_context (qui ne lit que la page).
+    // On prend la vidéo la PLUS RÉCENTE de la conversation — souvent collée
+    // dans un message PRÉCÉDENT puis discutée sur plusieurs tours — et on
+    // l'injecte dans SON message pour que Gemini la garde en contexte sur les
+    // questions de suivi. Une seule vidéo (la plus récente) pour borner le
+    // coût ; elle est ré-envoyée à chaque tour Gemini tant qu'on en parle.
+    let hasVideo = false
+    for (let i = contents.length - 1; i >= 0; i--) {
+      // Ne scanner que les tours UTILISATEUR (review 10 juin) : le system
+      // prompt impose à Gemini de citer ses sources → la réponse assistant
+      // re-cite quasi toujours l'URL watch?v=. Sans ce filtre, le scan
+      // partant de la fin trouvait l'URL dans la réponse et injectait le
+      // fileData dans un tour role:'model' → requête rejetée au 2e tour.
+      if (messages[i]?.role !== 'user') continue
+      const urls = extractYouTubeUrls(messages[i]?.content || '')
+      if (urls.length === 0) continue
+      const turn = contents[i]
+      if (turn) {
+        turn.parts = [...urls.map((fileUri) => ({ fileData: { fileUri } })), ...turn.parts]
       }
+      hasVideo = true
+      break
     }
 
     const isMapQuery = /google\s*maps|itinéraire|trajet|street\s*view|restaurant|horaires?|adresse|où\s+(se\s+trouve|est|aller|trouver)|coordonnées|GPS|plan\s+(de|du)|carte|combien\s+(de\s+)?(temps|km|kilomètres?|minutes?|heures?)\s+(pour|jusqu|en\s+voiture|d['’]aller|de\s+route|de\s+trajet)|temps\s+(qu['’]il\s+)?(faut|pour)\s+(pour\s+)?aller|aller\s+(à|jusqu['’]?\s*à|en)|distance\s+(entre|jusqu|pour|de)|à\s+quelle\s+distance|how\s+(far|long)\s+(is|to|from)|driving\s+(time|distance)|directions?\s+(to|from)/i.test(lastMessage)
@@ -356,5 +368,82 @@ export async function geminiResearch(query: string, apiKeyOverride?: string): Pr
     return parts.map((p: { text?: string }) => p.text || '').join('\n')
   } catch {
     return ''
+  }
+}
+
+// Compréhension vidéo non-streaming — utilisée par le mode hybride vidéo.
+// Gemini regarde la/les vidéo(s) YouTube (parts fileData) et produit une
+// MATIÈRE BRUTE (transcription + visuels + citations), PAS un résumé : c'est
+// Claude qui rédige ensuite à partir de cette matière. Aucun outil de
+// grounding (incompatible avec une entrée multimodale → 400). Retourne ''
+// en cas d'échec (vidéo privée/indispo/timeout) → le handler hybride bascule
+// alors sur un message d'erreur clair.
+export async function geminiVideoUnderstand(youtubeUrls: string[], query: string): Promise<string> {
+  if (youtubeUrls.length === 0) return ''
+  const apiKey = getGeminiKey()
+
+  const requestBody = {
+    model: GEMINI_MODEL,
+    stream: false,
+    contents: [{
+      role: 'user',
+      parts: [
+        ...youtubeUrls.map((fileUri) => ({ fileData: { fileUri } })),
+        { text: `Documente le contenu de cette vidéo de façon FACTUELLE et EXHAUSTIVE, sans résumer ni interpréter :
+- Transcription des propos importants avec timestamps approximatifs (mm:ss).
+- Description séquentielle de ce qui est montré à l'écran (visuels clés, environ toutes les 30 s).
+- Citations directes marquantes.
+- Texte / chiffres / noms affichés à l'écran.
+Ne tire AUCUNE conclusion, ne reformule pas, ne donne pas ton avis : tu produis la matière première qu'un autre assistant utilisera pour répondre à : "${query}"` },
+      ],
+    }],
+    systemInstruction: {
+      parts: [{
+        text: `Tu observes et transcris des vidéos fidèlement. Tu ne synthétises pas, tu ne conclus pas. Si un détail n'est pas visible/audible, ne l'invente pas — écris "non visible" plutôt que de deviner.`,
+      }],
+    },
+    generationConfig: {
+      temperature: 0.2,
+      maxOutputTokens: 8192,
+      thinkingConfig: { thinkingBudget: 2048 },
+    },
+    // PAS d'outils : entrée multimodale (vidéo) incompatible avec le grounding.
+  }
+
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (apiKey) {
+    headers['Authorization'] = `Bearer ${apiKey}`
+  }
+  const googleToken = await getValidAccessToken()
+  if (googleToken) {
+    headers['x-google-token'] = googleToken
+  }
+
+  // PAS de retry sur le chemin vidéo (review 10 juin) : avec fetchWithRetry,
+  // un timeout interne (AbortError non-utilisateur) relançait jusqu'à 4
+  // tentatives de 120 s chacune — ~8 min de requêtes vidéo fantômes
+  // facturées. Un seul essai borné ; l'échec bascule proprement sur la note
+  // système côté Claude.
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), GEMINI_VIDEO_TIMEOUT_MS)
+  try {
+    const res = await fetch(apiUrl('/api/ai/gemini-proxy'), {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(requestBody),
+      signal: controller.signal,
+    })
+
+    updateTrialFromResponse(res)
+
+    if (!res.ok) return ''
+
+    const data = await res.json()
+    const parts = data.candidates?.[0]?.content?.parts || []
+    return parts.map((p: { text?: string }) => p.text || '').join('\n')
+  } catch {
+    return ''
+  } finally {
+    clearTimeout(timer)
   }
 }

@@ -2,11 +2,11 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import type { Conversation, Message, FileAttachment } from '../types'
 import { generateId } from '../utils/generateId'
 import { streamMessage } from '../services/anthropicClient'
-import { streamGeminiMessage, geminiResearch } from '../services/geminiClient'
+import { streamGeminiMessage, geminiResearch, geminiVideoUnderstand } from '../services/geminiClient'
 import { streamMistralMessage } from '../services/mistralClient'
 import { sendMessageStream as streamOpenAIMessage } from '../services/openaiClient'
 import { getOpenAIKey } from '../services/activeApiKey'
-import { detectProvider, extractPdfUrls } from '../services/aiRouter'
+import { detectProvider, extractPdfUrls, extractYouTubeUrls } from '../services/aiRouter'
 import { fetchPdfMarkdowns } from '../services/pdfUrlFetch'
 import * as storage from '../services/storage'
 import { useStreaming } from './useStreaming'
@@ -413,7 +413,7 @@ export function useConversation() {
 
       // Track which models are used in this conversation
       const usedModels = conv.usedModels || []
-      const modelName = provider === 'hybrid' ? 'gemini' : provider
+      const modelName = (provider === 'hybrid' || provider === 'hybrid-video') ? 'gemini' : provider
       if (!usedModels.includes(modelName)) {
         usedModels.push(modelName)
         conv.usedModels = usedModels
@@ -450,7 +450,7 @@ export function useConversation() {
       // le chemin de données euOnly (recherche web Mistral via /api/search/web)
       // et hébergé en EU → compatible avec la promesse "données EU".
       let outgoingText = text
-      if (provider !== 'hybrid') {
+      if (provider !== 'hybrid' && provider !== 'hybrid-video') {
         const pdfUrls = extractPdfUrls(text)
         if (pdfUrls.length > 0) {
           setProgressContent('📄 Lecture du PDF...', targetId)
@@ -478,6 +478,34 @@ export function useConversation() {
           }
           resetAccumulated(targetId)
           setProgressContent('', targetId)
+          controller = streamMessage(enrichedMessages, onToken, onDone, onErr, {
+            systemPrompt: systemPromptRef.current,
+            onToolCall: toolHandlerRef.current,
+          })
+          setAbortController(targetId, controller)
+        }).catch(onErr)
+        controller = new AbortController()
+      } else if (provider === 'hybrid-video') {
+        // Hybride vidéo : Gemini regarde la/les vidéo(s) YouTube et en produit
+        // une analyse textuelle (matière brute), puis Claude rédige la réponse
+        // à partir de cette analyse. Claude ne voit pas la vidéo lui-même.
+        // Adapté à l'API multi-stream post-#239 (review 10 juin) : progression
+        // et abort indexés par targetId, garde Stop per-conv via hasStream.
+        setProgressContent('🎬 Gemini regarde la vidéo...', targetId)
+        const videoUrls = extractYouTubeUrls(text)
+        Promise.all([geminiVideoUnderstand(videoUrls, text), buildApiMessages(conv.messages)]).then(([analysis, enrichedMessages]) => {
+          // Garde Stop : si l'utilisateur a interrompu pendant l'analyse Gemini,
+          // stopStreaming() a démonté le stream → ne pas démarrer une
+          // génération Claude zombie (même pattern que le bloc hybrid).
+          if (!hasStream(targetId)) return
+          enrichedMessages[enrichedMessages.length - 1] = {
+            role: 'user',
+            content: analysis
+              ? `${text}\n\n--- ANALYSE DE LA VIDÉO (par Gemini, qui l'a regardée — images + audio) ---\n${analysis}\n--- FIN ANALYSE ---\n\nRéponds à la demande en t'appuyant sur cette analyse. Tu n'as pas vu la vidéo toi-même : ne prétends pas l'avoir regardée, base-toi sur l'analyse ci-dessus.`
+              : `${text}\n\n(Note système : l'analyse de la vidéo a échoué — vidéo privée, indisponible ou trop longue. Dis-le clairement à l'utilisateur, ne prétends pas avoir vu la vidéo.)`,
+          }
+          resetAccumulated(targetId)
+          setProgressContent('✍️ Claude rédige...', targetId)
           controller = streamMessage(enrichedMessages, onToken, onDone, onErr, {
             systemPrompt: systemPromptRef.current,
             onToolCall: toolHandlerRef.current,
