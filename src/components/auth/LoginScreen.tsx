@@ -217,6 +217,20 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
           {t('login.editorialSubtitle')}
         </p>
 
+        {/* Audit UX 10 juin 2026 — loginError n'était rendu QUE dans la
+            branche pendingAuth. Sur cet écran principal, un échec OAuth
+            (deeplink natif, redirect web) ou de login par clé était drainé
+            de sessionStorage… puis jamais affiché. L'utilisateur restait
+            devant un spinner qui disparaissait sans explication. */}
+        {loginError && (
+          <div
+            role="alert"
+            className="mt-4 px-3 py-2 bg-red-500/10 border border-red-500/30 rounded-xl text-sm text-red-700 dark:text-red-400"
+          >
+            {loginError}
+          </div>
+        )}
+
         <div className="mt-8">
           {/* Minimal underline tabs — active = accent terracotta + bigger */}
           <div className="flex gap-7 mb-6 border-b border-theme-ink/15">

@@ -43,6 +43,14 @@ function encryptionDisabled(): boolean {
   }
 }
 
+// True once the in-memory cache reflects the real history (plain read or
+// async decrypt done). While false, saveConversation() is a silent no-op —
+// callers that create/append messages must check this to surface a
+// "still loading" error instead of dropping the user's action (audit H5).
+export function isCacheReady(): boolean {
+  return cacheReady
+}
+
 export function getConversations(): Conversation[] {
   if (memConversations) return memConversations
   // Cold read before bootstrap. A plain copy is a migration leftover or a

@@ -166,9 +166,15 @@
     "topBar": {
       "aria": {
         "back": "Back",
-        "toneModelHelp": "Tone and model help"
+        "toneModelHelp": "Tone and model help",
+        "share": "Share",
+        "export": "Export"
       },
-      "euBadge": "Mistral EU"
+      "euBadge": "Mistral EU",
+      "shareCopied": "Conversation copied — paste it anywhere",
+      "shareFailed": "Could not share the conversation",
+      "shareTitle": "Share conversation",
+      "exportTitle": "Export conversation"
     },
     "banners": {
       "gmailReading": "Reading emails...",
@@ -228,15 +234,41 @@
       "recordingWithDuration": "Recording {{duration}}s",
       "whisperTooltip": "Record (Whisper)",
       "chips": {
-        "brief": { "label": "Daily brief", "prompt": "Give me a brief of my day — what I should know, the important things not to forget." },
-        "writeEmail": { "label": "Draft an email", "prompt": "Help me draft an email " },
-        "summarizeText": { "label": "Summarize text", "prompt": "Summarize this text: " },
-        "translateToEn": { "label": "Translate", "prompt": "Translate this text to French: " },
-        "summarize": { "label": "Summarize", "prompt": "Summarize this text: " },
-        "write": { "label": "Draft", "prompt": "Help me draft " },
-        "translate": { "label": "Translate", "prompt": "Translate this text: " },
-        "explain": { "label": "Explain", "prompt": "Explain simply: " }
-      }
+        "brief": {
+          "label": "Daily brief",
+          "prompt": "Give me a brief of my day — what I should know, the important things not to forget."
+        },
+        "writeEmail": {
+          "label": "Draft an email",
+          "prompt": "Help me draft an email "
+        },
+        "summarizeText": {
+          "label": "Summarize text",
+          "prompt": "Summarize this text: "
+        },
+        "translateToEn": {
+          "label": "Translate",
+          "prompt": "Translate this text to French: "
+        },
+        "summarize": {
+          "label": "Summarize",
+          "prompt": "Summarize this text: "
+        },
+        "write": {
+          "label": "Draft",
+          "prompt": "Help me draft "
+        },
+        "translate": {
+          "label": "Translate",
+          "prompt": "Translate this text: "
+        },
+        "explain": {
+          "label": "Explain",
+          "prompt": "Explain simply: "
+        }
+      },
+      "fileTooLarge": "File too large (max 10 MB): {{names}}",
+      "tooManyFiles": "Maximum {{max}} files per message"
     },
     "tone": {
       "default": "Normal",
@@ -251,6 +283,24 @@
     "messageList": {
       "branch": "Branch from this message",
       "scrollDown": "Scroll down"
+    },
+    "bubble": {
+      "copy": "Copy response",
+      "copied": "Copied!",
+      "copyCode": "Copy code",
+      "codeCopied": "Code copied!",
+      "listen": "Read aloud",
+      "stopListening": "Stop reading",
+      "pin": "Pin this message",
+      "unpin": "Unpin",
+      "actionPending": "⏳ Working...",
+      "actionDone": "✅ Done!"
+    },
+    "userBubble": {
+      "edit": "Edit",
+      "editTitle": "Edit and resend",
+      "send": "Send",
+      "imageUnavailable": "Image unavailable"
     }
   },
   "errors": {
@@ -282,7 +332,8 @@
     "micNetwork": "Network error — check your connection",
     "micError": "Microphone error: {{error}}",
     "micCannotStart": "Couldn't start the microphone",
-    "speechNotSupported": "Speech recognition isn't supported in this browser. Use Chrome or Edge."
+    "speechNotSupported": "Speech recognition isn't supported in this browser. Use Chrome or Edge.",
+    "storageNotReady": "Your conversations are still loading — try again in a second."
   },
   "sidebar": {
     "newConversation": "New conversation",
@@ -311,7 +362,10 @@
     "noResults": "No results",
     "euTooltip": "Europe mode — data kept in France",
     "apiKeys": "API keys",
-    "settings": "Settings"
+    "settings": "Settings",
+    "confirmDelete": "Tap again to delete",
+    "renameAria": "Rename conversation",
+    "importSuccess": "Conversation imported"
   },
   "tasks": {
     "title": "Tasks",
@@ -346,10 +400,22 @@
     "notificationTitle": "Good morning{{name}} 👋",
     "notificationBody": "Your morning brief is ready — calendar, emails, and more.",
     "actions": {
-      "unreadEmails": { "label": "Summarise unread emails", "prompt": "Summarise my important unread emails" },
-      "today": { "label": "What's on today?", "prompt": "What appointments do I have today?" },
-      "priorities": { "label": "Organise my priorities", "prompt": "Help me organise my priorities for today" },
-      "idea": { "label": "Give me a useful idea", "prompt": "Give me a useful idea or tip for my day" }
+      "unreadEmails": {
+        "label": "Summarise unread emails",
+        "prompt": "Summarise my important unread emails"
+      },
+      "today": {
+        "label": "What's on today?",
+        "prompt": "What appointments do I have today?"
+      },
+      "priorities": {
+        "label": "Organise my priorities",
+        "prompt": "Help me organise my priorities for today"
+      },
+      "idea": {
+        "label": "Give me a useful idea",
+        "prompt": "Give me a useful idea or tip for my day"
+      }
     },
     "speech": {
       "todayIs": "Today is {{date}}.",

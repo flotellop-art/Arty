@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect, useRef } from 'react'
+import { memo, useMemo, useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { Conversation, Message } from '../../types'
 import { setLocale, SUPPORTED_LOCALES, type Locale } from '../../i18n'
@@ -8,6 +8,7 @@ import { TaskPanel } from '../tasks/TaskPanel'
 import { countPending } from '../../services/taskService'
 import { importConversationFromFile } from '../../services/conversationExport'
 import { cleanDisplayName } from '../../services/displayName'
+import { toast } from '../../services/toast'
 
 interface SidebarProps {
   isOpen: boolean
@@ -21,6 +22,7 @@ interface SidebarProps {
   onNew: () => void
   onNewEU?: () => void
   onDelete: (id: string) => void
+  onRename?: (id: string, title: string) => void
   userName?: string
   onLogout?: () => void
   onImportConversation?: (id: string) => void
@@ -102,7 +104,10 @@ function Avatar({ name, size = 28 }: { name: string; size?: number }) {
   )
 }
 
-export function Sidebar({
+// memo (audit perf H2) — sans ça, la Sidebar (liste complète + previewClean
+// recalculés) re-rendait à CHAQUE frame de streaming via AppContent. Les
+// props callbacks sont stabilisées côté App/useConversation.
+export const Sidebar = memo(function Sidebar({
   isOpen,
   onClose,
   conversations,
@@ -112,6 +117,7 @@ export function Sidebar({
   onNew,
   onNewEU,
   onDelete,
+  onRename,
   userName,
   onLogout,
   onImportConversation,
@@ -125,8 +131,29 @@ export function Sidebar({
   const [searchRaw, setSearchRaw] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [pendingTasks, setPendingTasks] = useState(0)
+  // Suppression en 2 temps (audit UX) : 1er tap arme le bouton (rouge), 2e tap
+  // supprime. Désarmé après 3 s ou si on arme une autre conv. Évite la
+  // suppression irréversible à 1 clic sans introduire de modale.
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  // Renommage inline (audit UX — aucun moyen de renommer une conversation).
+  const [renamingId, setRenamingId] = useState<string | null>(null)
+  const [renameValue, setRenameValue] = useState('')
   const importInputRef = useRef<HTMLInputElement>(null)
   const drawerRef = useRef<HTMLElement>(null)
+
+  useEffect(() => {
+    if (!confirmDeleteId) return
+    const id = setTimeout(() => setConfirmDeleteId(null), 3000)
+    return () => clearTimeout(id)
+  }, [confirmDeleteId])
+
+  const commitRename = () => {
+    if (renamingId && renameValue.trim()) {
+      onRename?.(renamingId, renameValue)
+    }
+    setRenamingId(null)
+    setRenameValue('')
+  }
 
   // A11y : quand le drawer est fermé, `inert` retire tout le sous-arbre du
   // focus clavier ET de l'arbre d'accessibilité (subsume aria-hidden). Réglé
@@ -178,9 +205,10 @@ export function Sidebar({
     try {
       const id = await importConversationFromFile(file)
       onImportConversation?.(id)
+      toast(t('sidebar.importSuccess'), 'success')
       onClose()
     } catch (err) {
-      alert(err instanceof Error ? err.message : t('sidebar.importFailed'))
+      toast(err instanceof Error ? err.message : t('sidebar.importFailed'), 'error')
     }
     if (importInputRef.current) importInputRef.current.value = ''
   }
@@ -436,13 +464,29 @@ export function Sidebar({
                   title={isStreaming ? 'Réflexion en cours' : undefined}
                 />
                 <div className="flex-1 min-w-0">
-                  {/* Ligne 1 — titre + timestamp */}
+                  {/* Ligne 1 — titre (ou input de renommage) + timestamp */}
                   <div className="flex items-baseline justify-between gap-2">
-                    <span
-                      className={`text-[13px] truncate transition-colors ${isActive ? 'text-theme-ink font-medium' : 'text-theme-ink/80'}`}
-                    >
-                      {highlight(conv.title, debouncedSearch)}
-                    </span>
+                    {renamingId === conv.id ? (
+                      <input
+                        value={renameValue}
+                        onChange={(e) => setRenameValue(e.target.value)}
+                        onClick={(e) => e.stopPropagation()}
+                        onBlur={commitRename}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') { e.preventDefault(); commitRename() }
+                          if (e.key === 'Escape') { e.preventDefault(); setRenamingId(null); setRenameValue('') }
+                        }}
+                        autoFocus
+                        aria-label={t('sidebar.renameAria')}
+                        className="flex-1 min-w-0 bg-transparent border-b border-theme-accent text-[13px] text-theme-ink outline-none"
+                      />
+                    ) : (
+                      <span
+                        className={`text-[13px] truncate transition-colors ${isActive ? 'text-theme-ink font-medium' : 'text-theme-ink/80'}`}
+                      >
+                        {highlight(conv.title, debouncedSearch)}
+                      </span>
+                    )}
                     <span className="text-theme-muted text-[10px] flex-shrink-0">
                       {timeAgo(conv.updatedAt)}
                     </span>
@@ -466,13 +510,43 @@ export function Sidebar({
                     </div>
                   )}
                 </div>
+                {/* Audit UX — `opacity-0 group-hover` rendait ces actions
+                    INVISIBLES sur tactile (pas de hover) : impossible de
+                    supprimer une conv sur mobile. Pattern validé ailleurs :
+                    50% permanent mobile, hover desktop, focus-visible clavier. */}
+                {onRename && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setRenamingId(conv.id)
+                      setRenameValue(conv.title)
+                    }}
+                    className="opacity-50 md:opacity-0 md:group-hover:opacity-100 focus-visible:opacity-100 p-2 rounded hover:bg-theme-ink/5 transition-all text-theme-muted hover:text-theme-ink flex-shrink-0 mt-1"
+                    aria-label={t('sidebar.renameAria')}
+                    title={t('sidebar.renameAria')}
+                  >
+                    <svg width="12" height="12" viewBox="0 0 14 14" fill="none">
+                      <path d="M9.5 2.5L11.5 4.5L5 11H3V9L9.5 2.5Z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
+                    </svg>
+                  </button>
+                )}
                 <button
                   onClick={(e) => {
                     e.stopPropagation()
-                    onDelete(conv.id)
+                    if (confirmDeleteId === conv.id) {
+                      setConfirmDeleteId(null)
+                      onDelete(conv.id)
+                    } else {
+                      setConfirmDeleteId(conv.id)
+                    }
                   }}
-                  className="opacity-0 group-hover:opacity-100 p-2 rounded hover:bg-theme-accent/10 transition-all text-theme-accent flex-shrink-0 mt-1"
-                  aria-label={t('sidebar.deleteAria')}
+                  className={`p-2 rounded transition-all flex-shrink-0 mt-1 focus-visible:opacity-100 ${
+                    confirmDeleteId === conv.id
+                      ? 'opacity-100 bg-red-500/15 text-red-500 hover:bg-red-500/25'
+                      : 'opacity-50 md:opacity-0 md:group-hover:opacity-100 hover:bg-theme-accent/10 text-theme-accent'
+                  }`}
+                  aria-label={confirmDeleteId === conv.id ? t('sidebar.confirmDelete') : t('sidebar.deleteAria')}
+                  title={confirmDeleteId === conv.id ? t('sidebar.confirmDelete') : t('sidebar.deleteAria')}
                 >
                   <svg width="12" height="12" viewBox="0 0 14 14" fill="none">
                     <path d="M2 4H12L11 13H3L2 4Z" stroke="currentColor" strokeWidth="1.2" />
@@ -560,4 +634,4 @@ export function Sidebar({
       {showTasks && <TaskPanel onClose={() => setShowTasks(false)} />}
     </>
   )
-}
+})

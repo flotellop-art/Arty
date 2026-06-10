@@ -166,9 +166,15 @@
     "topBar": {
       "aria": {
         "back": "Retour",
-        "toneModelHelp": "Aide tons et modèles"
+        "toneModelHelp": "Aide tons et modèles",
+        "share": "Partager",
+        "export": "Exporter"
       },
-      "euBadge": "Mistral EU"
+      "euBadge": "Mistral EU",
+      "shareCopied": "Conversation copiée — colle-la où tu veux",
+      "shareFailed": "Impossible de partager la conversation",
+      "shareTitle": "Partager la conversation",
+      "exportTitle": "Exporter la conversation"
     },
     "banners": {
       "gmailReading": "Lecture emails...",
@@ -228,15 +234,41 @@
       "recordingWithDuration": "Enregistrement {{duration}}s",
       "whisperTooltip": "Enregistrer (Whisper)",
       "chips": {
-        "brief": { "label": "Brief du jour", "prompt": "Donne-moi un brief de ma journée — ce que je dois savoir, les choses importantes à ne pas oublier." },
-        "writeEmail": { "label": "Rédiger un email", "prompt": "Aide-moi à rédiger un email " },
-        "summarizeText": { "label": "Résumer un texte", "prompt": "Résume-moi ce texte : " },
-        "translateToEn": { "label": "Traduire", "prompt": "Traduis ce texte en anglais : " },
-        "summarize": { "label": "Résumer", "prompt": "Résume-moi ce texte : " },
-        "write": { "label": "Rédiger", "prompt": "Aide-moi à rédiger " },
-        "translate": { "label": "Traduire", "prompt": "Traduis ce texte : " },
-        "explain": { "label": "Expliquer", "prompt": "Explique-moi simplement : " }
-      }
+        "brief": {
+          "label": "Brief du jour",
+          "prompt": "Donne-moi un brief de ma journée — ce que je dois savoir, les choses importantes à ne pas oublier."
+        },
+        "writeEmail": {
+          "label": "Rédiger un email",
+          "prompt": "Aide-moi à rédiger un email "
+        },
+        "summarizeText": {
+          "label": "Résumer un texte",
+          "prompt": "Résume-moi ce texte : "
+        },
+        "translateToEn": {
+          "label": "Traduire",
+          "prompt": "Traduis ce texte en anglais : "
+        },
+        "summarize": {
+          "label": "Résumer",
+          "prompt": "Résume-moi ce texte : "
+        },
+        "write": {
+          "label": "Rédiger",
+          "prompt": "Aide-moi à rédiger "
+        },
+        "translate": {
+          "label": "Traduire",
+          "prompt": "Traduis ce texte : "
+        },
+        "explain": {
+          "label": "Expliquer",
+          "prompt": "Explique-moi simplement : "
+        }
+      },
+      "fileTooLarge": "Fichier trop volumineux (max 10 MB) : {{names}}",
+      "tooManyFiles": "Maximum {{max}} fichiers par message"
     },
     "tone": {
       "default": "Normal",
@@ -251,6 +283,24 @@
     "messageList": {
       "branch": "Créer une branche depuis ce message",
       "scrollDown": "Descendre"
+    },
+    "bubble": {
+      "copy": "Copier la réponse",
+      "copied": "Copié !",
+      "copyCode": "Copier le code",
+      "codeCopied": "Code copié !",
+      "listen": "Lire à voix haute",
+      "stopListening": "Arrêter la lecture",
+      "pin": "Épingler ce message",
+      "unpin": "Désépingler",
+      "actionPending": "⏳ En cours...",
+      "actionDone": "✅ Fait !"
+    },
+    "userBubble": {
+      "edit": "Modifier",
+      "editTitle": "Modifier et renvoyer",
+      "send": "Envoyer",
+      "imageUnavailable": "Image indispo"
     }
   },
   "errors": {
@@ -282,7 +332,8 @@
     "micNetwork": "Erreur réseau — vérifie ta connexion",
     "micError": "Erreur micro : {{error}}",
     "micCannotStart": "Impossible de démarrer le micro",
-    "speechNotSupported": "Reconnaissance vocale non supportée sur ce navigateur. Utilisez Chrome ou Edge."
+    "speechNotSupported": "Reconnaissance vocale non supportée sur ce navigateur. Utilisez Chrome ou Edge.",
+    "storageNotReady": "Tes conversations sont encore en cours de chargement — réessaie dans une seconde."
   },
   "sidebar": {
     "newConversation": "Nouvelle conversation",
@@ -311,7 +362,10 @@
     "noResults": "Aucun résultat",
     "euTooltip": "Mode Europe — données restées en France",
     "apiKeys": "Clés API",
-    "settings": "Paramètres"
+    "settings": "Paramètres",
+    "confirmDelete": "Appuie à nouveau pour supprimer",
+    "renameAria": "Renommer la conversation",
+    "importSuccess": "Conversation importée"
   },
   "tasks": {
     "title": "Tâches",
@@ -346,10 +400,22 @@
     "notificationTitle": "Bonjour{{name}} 👋",
     "notificationBody": "Votre brief du matin est prêt — agenda, emails, et plus.",
     "actions": {
-      "unreadEmails": { "label": "Résume mes emails non lus", "prompt": "Résume mes emails non lus importants" },
-      "today": { "label": "Qu'ai-je de prévu aujourd'hui ?", "prompt": "Quels sont mes rendez-vous aujourd'hui ?" },
-      "priorities": { "label": "Organise mes priorités", "prompt": "Aide-moi à organiser mes priorités pour aujourd'hui" },
-      "idea": { "label": "Donne-moi une idée utile", "prompt": "Donne-moi une idée ou conseil utile pour ma journée" }
+      "unreadEmails": {
+        "label": "Résume mes emails non lus",
+        "prompt": "Résume mes emails non lus importants"
+      },
+      "today": {
+        "label": "Qu'ai-je de prévu aujourd'hui ?",
+        "prompt": "Quels sont mes rendez-vous aujourd'hui ?"
+      },
+      "priorities": {
+        "label": "Organise mes priorités",
+        "prompt": "Aide-moi à organiser mes priorités pour aujourd'hui"
+      },
+      "idea": {
+        "label": "Donne-moi une idée utile",
+        "prompt": "Donne-moi une idée ou conseil utile pour ma journée"
+      }
     },
     "speech": {
       "todayIs": "Aujourd'hui, nous sommes {{date}}.",

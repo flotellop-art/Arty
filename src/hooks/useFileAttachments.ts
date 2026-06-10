@@ -1,4 +1,4 @@
-import { useRef } from 'react'
+import { useCallback, useMemo, useRef } from 'react'
 import type { FileAttachment, Message } from '../types'
 import { getFile } from '../services/secureFileStorage'
 
@@ -53,8 +53,15 @@ function buildBlocksFromFiles(files: FileAttachment[]): Array<Record<string, unk
       })
     } else if (mime === 'text/plain' || mime.startsWith('text/')) {
       // BUG 36: use decodeURIComponent(escape(atob())) for correct UTF-8 (French chars)
-      const decoded = decodeURIComponent(escape(atob(file.data)))
-      blocks.push({ type: 'text', text: `[Contenu de ${file.name}]\n${decoded}` })
+      // M1 (audit frontend) — atob/decodeURIComponent throwent sur base64
+      // corrompu. Non catché, ça remontait dans sendMessage et laissait un
+      // stream fantôme (le variant Mistral plus bas catchait déjà, lui).
+      try {
+        const decoded = decodeURIComponent(escape(atob(file.data)))
+        blocks.push({ type: 'text', text: `[Contenu de ${file.name}]\n${decoded}` })
+      } catch {
+        blocks.push({ type: 'text', text: `[Fichier '${file.name}' illisible — contenu corrompu]` })
+      }
     } else if (mime === 'application/msword' || mime === 'application/vnd.ms-excel') {
       blocks.push({ type: 'text', text: `[Fichier joint: ${file.name} — format Office binaire, conversion serveur requise]` })
     } else {
@@ -177,8 +184,14 @@ export async function buildContentBlocks(
 export function useFileAttachments() {
   const pendingFilesRef = useRef<FileAttachment[] | null>(null)
 
-  return {
-    pendingFilesRef,
-    setPendingFiles: (files: FileAttachment[] | null) => { pendingFilesRef.current = files },
-  }
+  // H2 (audit frontend, relecture) — identités STABLES obligatoires :
+  // setPendingFiles est dans les deps de sendMessage (useConversation). Une
+  // arrow recréée à chaque render recréait sendMessage → editAndResend /
+  // retryMessage → onEdit/onRetry de MessageItem à chaque frame de streaming
+  // → memo court-circuité, exactement ce que H2 corrige.
+  const setPendingFiles = useCallback((files: FileAttachment[] | null) => {
+    pendingFilesRef.current = files
+  }, [])
+
+  return useMemo(() => ({ pendingFilesRef, setPendingFiles }), [setPendingFiles])
 }

@@ -1,4 +1,5 @@
-import { memo } from 'react'
+import { memo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeRaw from 'rehype-raw'
@@ -35,6 +36,44 @@ const sanitizeSchema = {
 
 interface MarkdownRendererProps {
   content: string
+}
+
+// Bloc de code avec bouton "copier" (audit UX — standard claude.ai/ChatGPT,
+// absent ici). Pas de coloration syntaxique pour l'instant : ajouter
+// prism/shiki = nouvelle dépendance lourde, différé volontairement.
+function CodeBlock({ className, children, ...props }: { className?: string; children?: React.ReactNode }) {
+  // useTranslation (pas i18n.t direct) : abonne le composant au changement de
+  // langue — MarkdownRenderer est memo'é sur `content` et ne re-rendrait pas.
+  const { t } = useTranslation()
+  const [copied, setCopied] = useState(false)
+  const handleCopy = async () => {
+    try {
+      // children peut être un tableau de nœuds texte — String([]) joindrait
+      // avec des virgules et corromprait la copie (relecture audit).
+      const code = (Array.isArray(children) ? children.join('') : String(children ?? '')).replace(/\n$/, '')
+      await navigator.clipboard.writeText(code)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch { /* clipboard indisponible */ }
+  }
+  return (
+    <div className="relative group/code my-3">
+      <button
+        onClick={handleCopy}
+        className={`absolute top-2 right-2 px-2 py-1 rounded-md text-[10px] font-sans uppercase tracking-wider transition-all border ${
+          copied
+            ? 'bg-theme-accent text-theme-bg border-transparent opacity-100'
+            : 'bg-theme-bg/15 text-theme-bg/80 border-theme-bg/20 opacity-60 hover:opacity-100 md:opacity-0 md:group-hover/code:opacity-100 focus-visible:opacity-100'
+        }`}
+        aria-label={copied ? t('chat.bubble.codeCopied') : t('chat.bubble.copyCode')}
+      >
+        {copied ? `✓ ${t('chat.bubble.codeCopied')}` : t('chat.bubble.copyCode')}
+      </button>
+      <pre className="bg-theme-ink text-theme-bg rounded-xl p-4 overflow-x-auto text-sm leading-relaxed shadow-sm">
+        <code className={className} {...props}>{children}</code>
+      </pre>
+    </div>
+  )
 }
 
 const components: Components = {
@@ -79,15 +118,19 @@ const components: Components = {
   hr: () => (
     <hr className="my-4 border-0 h-px bg-gradient-to-r from-transparent via-theme-muted/40 to-transparent" />
   ),
+  // Listes : le marqueur est rendu par CSS (index.css `.md-marker::before`) —
+  // puce ● dans un <ul>, compteur "1." dans un <ol>. Avant, le ● était
+  // hardcodé dans le renderer li → les listes numérotées de l'IA perdaient
+  // leur numérotation (audit UX).
   ul: ({ children }) => (
-    <ul className="my-2 space-y-1">{children}</ul>
+    <ul className="my-2 space-y-1 md-list">{children}</ul>
   ),
   ol: ({ children }) => (
-    <ol className="my-2 space-y-1 list-none counter-reset-[item]">{children}</ol>
+    <ol className="my-2 space-y-1 md-list">{children}</ol>
   ),
   li: ({ children }) => (
     <li className="flex gap-2 items-start">
-      <span className="text-theme-accent mt-1 text-xs flex-shrink-0">●</span>
+      <span className="md-marker text-theme-accent mt-1 text-xs flex-shrink-0" aria-hidden />
       <span className="flex-1">{children}</span>
     </li>
   ),
@@ -124,11 +167,7 @@ const components: Components = {
   code: ({ className, children, ...props }) => {
     const isBlock = className?.startsWith('language-')
     if (isBlock) {
-      return (
-        <pre className="bg-theme-ink text-theme-bg rounded-xl p-4 overflow-x-auto my-3 text-sm leading-relaxed shadow-sm">
-          <code className={className} {...props}>{children}</code>
-        </pre>
-      )
+      return <CodeBlock className={className} {...props}>{children}</CodeBlock>
     }
     return (
       <code className="bg-theme-accent/10 text-theme-accent px-1.5 py-0.5 rounded-md text-sm font-medium" {...props}>

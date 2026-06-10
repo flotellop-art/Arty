@@ -61,15 +61,26 @@ export const AssistantBubble = memo(function AssistantBubble({ content, onAction
       btn.style.pointerEvents = 'none'
     } else {
       btn.style.opacity = '0.6'
-      btn.textContent = '⏳ En cours...'
+      btn.textContent = t('chat.bubble.actionPending')
       setTimeout(() => {
         btn.style.opacity = '1'
-        btn.textContent = '✅ Fait !'
+        btn.textContent = t('chat.bubble.actionDone')
       }, 2000)
     }
 
     onAction(action, params)
-  }, [onAction])
+  }, [onAction, t])
+
+  // Audit UX — bouton "copier la réponse" (action la plus fréquente d'un chat
+  // IA, présente sur claude.ai/ChatGPT, absente ici jusqu'au 10 juin 2026).
+  const [copied, setCopied] = useState(false)
+  const handleCopy = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(content)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch { /* clipboard indisponible (permissions WebView) */ }
+  }, [content])
 
   return (
     <div className="group/bubble relative flex gap-2.5 mb-6">
@@ -100,20 +111,44 @@ export const AssistantBubble = memo(function AssistantBubble({ content, onAction
         )}
         {factCheck && <FactCheckBadge result={factCheck} />}
       </div>
-      {/* Actions bar : speak + pin. Speak permanent à 50% opacity sur mobile,
-          hover desktop (cohérent avec branche button PR 1). */}
+      {/* Actions bar : copier + speak + pin. Visible à 50% opacity sur mobile,
+          hover desktop (cohérent avec branche button PR 1) + focus-visible
+          pour la navigation clavier. */}
       <div className="absolute bottom-1 right-1 flex items-center gap-0.5">
+        {content && (
+          <button
+            onClick={handleCopy}
+            className={`p-2 rounded-md transition-all ${
+              copied
+                ? 'text-theme-accent opacity-100'
+                : 'opacity-50 md:opacity-0 md:group-hover/bubble:opacity-100 focus-visible:opacity-100 text-theme-muted hover:text-theme-accent'
+            }`}
+            aria-label={copied ? t('chat.bubble.copied') : t('chat.bubble.copy')}
+            title={copied ? t('chat.bubble.copied') : t('chat.bubble.copy')}
+          >
+            {copied ? (
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <path d="M3 8.5L6.5 12L13 4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            ) : (
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <rect x="5.5" y="5.5" width="8" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.2" />
+                <path d="M10.5 5.5V4a1.5 1.5 0 00-1.5-1.5H4A1.5 1.5 0 002.5 4v5A1.5 1.5 0 004 10.5h1.5" stroke="currentColor" strokeWidth="1.2" />
+              </svg>
+            )}
+          </button>
+        )}
         {isTtsSupported() && content && (
           <button
             onClick={toggleSpeak}
             className={`p-2 rounded-md transition-all ${
               isSpeaking
                 ? 'text-theme-accent opacity-100'
-                : 'opacity-50 md:opacity-0 md:group-hover/bubble:opacity-100 text-theme-muted hover:text-theme-accent'
+                : 'opacity-50 md:opacity-0 md:group-hover/bubble:opacity-100 focus-visible:opacity-100 text-theme-muted hover:text-theme-accent'
             }`}
-            aria-label={isSpeaking ? 'Arrêter la lecture' : 'Lire à voix haute'}
+            aria-label={isSpeaking ? t('chat.bubble.stopListening') : t('chat.bubble.listen')}
             aria-pressed={isSpeaking}
-            title={isSpeaking ? 'Arrêter la lecture' : 'Lire à voix haute'}
+            title={isSpeaking ? t('chat.bubble.stopListening') : t('chat.bubble.listen')}
           >
             {isSpeaking ? (
               <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
@@ -134,10 +169,10 @@ export const AssistantBubble = memo(function AssistantBubble({ content, onAction
             className={`p-2 rounded-md transition-all ${
               pinned
                 ? 'text-theme-accent opacity-80'
-                : 'opacity-0 group-hover/bubble:opacity-100 text-theme-muted hover:text-theme-accent'
+                : 'opacity-50 md:opacity-0 md:group-hover/bubble:opacity-100 focus-visible:opacity-100 text-theme-muted hover:text-theme-accent'
             }`}
-            aria-label={pinned ? 'Désépingler' : 'Épingler'}
-            title={pinned ? 'Désépingler' : 'Épingler ce message'}
+            aria-label={pinned ? t('chat.bubble.unpin') : t('chat.bubble.pin')}
+            title={pinned ? t('chat.bubble.unpin') : t('chat.bubble.pin')}
           >
             📌
           </button>
