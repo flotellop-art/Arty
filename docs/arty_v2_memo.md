@@ -375,6 +375,31 @@ Structure validée avec prix exacts et répartition des features :
 
 ---
 
+## 📡 VEILLE MARCHÉ : SIGNAUX RÉCURRENTS
+
+Journal des cycles de veille (concurrents IA personnels + voix users Reddit/HN/PH). Chaque entrée datée, pas de réécriture rétroactive, pour traçabilité.
+
+### Cycle 2026-05-28
+
+**Concurrent : Google Gemini Spark beta live (US Ultra)** (signal neuf)
+- Spark passé de "annoncé I/O" à "actif en beta" pour les abonnés Google AI Ultra US, 99,99 USD/mois.
+- Toujours US-only, English-only, aucune timeline EU annoncée.
+- Point clé : obligations "agents" de l'EU AI Act entrent en vigueur le **2 août 2026**. Spark ne peut pas structurellement arriver en France avant cette date.
+- Calendrier Arty : sortie Play Store **juillet 2026**. Fenêtre FR/EU réelle et datée.
+- align-roadmap : oui
+- Action proposée : exploiter cet angle dans la comm pre-launch (blog/Insta) "l'agent IA personnel connecté à Gmail arrive en France, avant Gemini Spark."
+
+**Status hebdo des autres concurrents** : OpenAI personal, Anthropic consumer, Mistral Le Chat, Perplexity, Pi : rien de neuf depuis le 21/05.
+
+**Voix users : $40/mois double-abo devient norme Reddit** (vague récurrente)
+- Citation source : "Most serious AI users in 2026 are paying for both. $40/month for ChatGPT Plus + Claude Pro gives you the best of both worlds, volume from ChatGPT, quality from Claude."
+- Consensus documenté sur r/ClaudeAI, r/ChatGPT, r/DataScience. Plusieurs agrégateurs mai 2026 convergent.
+- Source : https://betonai.net/reddit-thinks-claude-ai-vs-chatgpt-2026/
+- Action proposée Arty : pitch direct "arrête de payer deux abos". Claude + Gemini + Mistral dans Arty = alternative financièrement mesurable au double-abo à 40 USD/mois.
+- align-roadmap : oui (cohérent avec positionnement validé 14 avril "power users fatigués des subscriptions")
+
+---
+
 ## 📌 SIGNATURE DE FIN
 
 Ce mémo a été créé le 14 avril 2026 au matin à la demande de Florent pour servir de référence dans une nouvelle conversation ou en cas de compaction de transcript. Il doit être maintenu à jour à chaque grande décision ou fin de phase.
@@ -383,5 +408,6 @@ Ce mémo a été créé le 14 avril 2026 au matin à la demande de Florent pour 
 - 14 avril 2026 matin : création initiale
 - 14 avril 2026 après-midi : ajout analyse Play Store, roadmap v2, décision Option A validée
 - 14 avril 2026 soir : scope 3 versions validé (Free / Pro 39€ / Subscription 9,99€/mois, 500 msg)
+- 28 mai 2026 : ouverture section "Veille marché : signaux récurrents" (cycle hebdo concurrents + voix users)
 
 **Prochaine mise à jour prévue** : à la fin de l'objectif 3 de Phase 1 (outils techniques confirmés).
