@@ -62,3 +62,19 @@ export function formatModelName(model: string): string {
 
   return model
 }
+
+// Clé i18n de l'explication « pourquoi ce modèle ? » pour un modelId réel.
+// Extraite de ChatTopBar (PR B) où elle vivait en chaînes FR en dur :
+// désormais partagée entre l'ancien header et ChatOptionsSheet, et bilingue.
+// Volontairement générique — ne reflète pas les triggers exacts du routeur,
+// juste le rôle global du modèle (transparence sans dupliquer aiRouter).
+export function getModelExplanationKey(modelId: string): string {
+  const m = modelId.toLowerCase()
+  if (m.includes('mistral')) return 'chat.modelExplain.mistral'
+  if (m.includes('gemini')) return 'chat.modelExplain.gemini'
+  if (m.includes('haiku')) return 'chat.modelExplain.haiku'
+  if (m.includes('opus')) return 'chat.modelExplain.opus'
+  if (m.includes('claude')) return 'chat.modelExplain.claude'
+  if (m.includes('gpt') || m.includes('openai')) return 'chat.modelExplain.openai'
+  return 'chat.modelExplain.fallback'
+}

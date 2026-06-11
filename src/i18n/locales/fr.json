@@ -168,13 +168,47 @@
         "back": "Retour",
         "toneModelHelp": "Aide tons et modèles",
         "share": "Partager",
-        "export": "Exporter"
+        "export": "Exporter",
+        "summary": "Résumé"
       },
       "euBadge": "Mistral EU",
       "shareCopied": "Conversation copiée — colle-la où tu veux",
       "shareFailed": "Impossible de partager la conversation",
       "shareTitle": "Partager la conversation",
-      "exportTitle": "Exporter la conversation"
+      "exportTitle": "Exporter la conversation",
+      "lastCall": "Dernier appel : {{model}}",
+      "whyModel": "Pourquoi ce modèle ?",
+      "exportJson": "JSON (réimport)"
+    },
+    "optionsSheet": {
+      "title": "Cette conversation",
+      "open": "Options de la conversation",
+      "sectionModel": "Modèle",
+      "sectionStyle": "Style de réponse",
+      "sectionActions": "Actions",
+      "modelDesc": {
+        "auto": "Arty choisit le meilleur modèle",
+        "claude": "Fichiers, analyses, Gmail / Drive / Calendar",
+        "mistral": "Données traitées en Europe — mails, fichiers, clients",
+        "gemini": "Recherche web temps réel, actus, itinéraires",
+        "openai": "Sélection manuelle uniquement"
+      },
+      "euNote": "Cette conversation contient des données EU (Mistral). Choisir un modèle 🇺🇸 demandera une confirmation avant d'envoyer son contenu hors Europe.",
+      "euLocked": "Conversation verrouillée Europe — Mistral uniquement",
+      "proLock": "Pro",
+      "summarize": "Résumer la conversation",
+      "exportLabel": "Exporter",
+      "share": "Partager",
+      "help": "Aide tons & modèles"
+    },
+    "modelExplain": {
+      "mistral": "Mistral est utilisé en mode Europe (serveurs en France) — idéal pour les données qui doivent rester en Europe : mails, fichiers, infos clients. Pas de recherche web ni d'ouverture de liens.",
+      "gemini": "Gemini est utilisé pour les recherches web en temps réel, les questions sur l'actualité et les requêtes Google Maps. Données traitées hors Europe.",
+      "haiku": "Claude Haiku est utilisé pour les conversations rapides et courtes. Modèle gratuit (10/jour).",
+      "opus": "Claude Opus est utilisé pour les analyses approfondies, les tâches complexes et les raisonnements multi-étapes. Modèle Pro.",
+      "claude": "Claude est utilisé par défaut : fichiers attachés, données privées (mes mails, mes fichiers), URLs à ouvrir, ou requêtes nécessitant des tools (Gmail, Drive, Calendar).",
+      "openai": "GPT (OpenAI) est utilisé quand tu le sélectionnes manuellement. Données traitées hors Europe.",
+      "fallback": "Modèle sélectionné automatiquement selon le contenu de ta requête."
     },
     "banners": {
       "gmailReading": "Lecture emails...",
