@@ -33,6 +33,7 @@ double filet, guillemets français sur les bulles utilisateur, prisme, kickers m
 2. `02-mobile-chat-ember.html` — chat mobile, header 1 ligne, Stop flottant, actions 44px, chips scrollables.
 3. `03-mobile-sheet-nocturne.html` — bottom sheet « ⋯ » : modèle (unique) + style + actions de conversation.
 4. `04-mobile-home-nocturne.html` — accueil allégé : header 3 zones, brief, agenda, intentions, « Reprendre ».
+5. `04b-mobile-home-ember.html` — le même accueil en Ember (jour), pour valider la déclinaison des deux thèmes.
 
 Ces maquettes sont des **propositions de design**, pas du code applicatif :
 rien dans `src/` n'est modifié.
