@@ -105,6 +105,10 @@ interface MistralStreamOptions {
   // supplémentaire inutile, dos à dos avec la synthèse, qui tapait le
   // rate limit upstream de la clé serveur.
   urlContentInlined?: boolean
+  // Conversation verrouillée EU : neutralise le conseil « passe sur Claude »
+  // de MISTRAL_RULES (impossible ici — le modèle est verrouillé). Bug live
+  // 11 juin : Mistral conseillait un switch impossible sur un article paywall.
+  euOnly?: boolean
 }
 
 // Décision « forcer web_search au 1er tour » — pure et exportée pour test.
@@ -333,11 +337,16 @@ async function runMistralStream(
     const dateLine = `\n\nDate du jour : ${new Date().toLocaleDateString('fr-FR', {
       weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
     })}.`
+    // En conv EU, neutralise le « passe sur Claude » de MISTRAL_RULES :
+    // le modèle est verrouillé, ce conseil est impossible à suivre.
+    const euOverride = options?.euOnly
+      ? `\n\nMODE EUROPE — cette conversation est VERROUILLÉE sur Mistral. Ne propose JAMAIS de "passer sur Claude" ni de changer de modèle/d'IA : c'est impossible ici. Si tu ne peux pas lire un lien, propose UNIQUEMENT à l'utilisateur de coller le texte directement.`
+      : ''
     // MISTRAL_RULES TOUJOURS appendées (même avec le prompt contextuel app —
     // voir commentaire de la constante). Les règles déclarent primer sur les
     // instructions précédentes pour neutraliser les mentions web_fetch du
     // prompt générique.
-    const systemPrompt = basePrompt + MISTRAL_RULES + dateLine + locationContext + forceWebHint
+    const systemPrompt = basePrompt + MISTRAL_RULES + euOverride + dateLine + locationContext + forceWebHint
     // Température basse quand la requête est factuelle (recherche web
     // déclenchée) : 0.7 favorisait la variabilité, donc l'hallucination de
     // chiffres/dates (audit, cause n°4). Conversationnel : 0.7 conservé.
