@@ -3,6 +3,9 @@ import { useTranslation } from 'react-i18next'
 import { getStyle, setStyle as saveStyle, STYLE_OPTIONS, type ResponseStyle } from '../../services/responseStyles'
 import { setSelectedModel, MODEL_OPTIONS, type AIModel } from '../../services/modelSelector'
 import { useSelectedModel } from '../../hooks/useSelectedModel'
+import { useReflectionLevel } from '../../hooks/useReflectionLevel'
+import { setReflectionLevel, reflectionSupported, isReflectionLevelLocked, type ReflectionLevel } from '../../services/reflectionLevel'
+import { ReflectionControl } from './ReflectionControl'
 import { SettingsGuide } from '../shared/SettingsGuide'
 import { PrismMark } from '../shared/PrismMark'
 import { PlanBadge } from './PlanBadge'
@@ -63,6 +66,11 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
   const planStatus = usePlanStatus()
   const [currentStyle, setCurrentStyle] = useState<ResponseStyle>(getStyle)
   const currentModel = useSelectedModel()
+  const currentReflection = useReflectionLevel()
+  // « Pro » = tout plan payant (subscription/pro/vip). Pendant le chargement,
+  // planStatus défaut = 'free' → « Max » verrouillé puis débloqué au refresh.
+  const isProUser = planStatus.plan !== 'free'
+  const showReflection = reflectionSupported(currentModel, euOnly)
   const [openMenu, setOpenMenu] = useState<OpenMenu>(null)
   const [showGuide, setShowGuide] = useState(false)
   const [privacyWarning, setPrivacyWarning] = useState<AIModel | null>(null)
@@ -158,6 +166,19 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
       setSelectedModel(privacyWarning)
       setPrivacyWarning(null)
     }
+  }
+
+  const handleReflectionChange = (level: ReflectionLevel) => {
+    // « Max » réservé aux comptes Pro : tap hors Pro → modale d'upgrade,
+    // pas de changement de niveau (même pattern que le lock modèle).
+    if (isReflectionLevelLocked(level, isProUser)) {
+      setUpgradePrompt(t('chat.reflection.maxUpgradeLabel'))
+      setSheetOpen(false)
+      return
+    }
+    // setReflectionLevel dispatche 'reflection-level-changed' → useReflectionLevel
+    // resynchronise currentReflection (barre + sheet) sans setState local.
+    setReflectionLevel(level)
   }
 
   // Close menu on outside click
@@ -301,6 +322,22 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
       {/* Editorial double rule */}
       <div className="mx-4 h-[2px] bg-theme-ink" />
       <div className="mx-4 mt-[3px] h-px bg-theme-ink" />
+
+      {/* Réflexion — « curseur » de profondeur, toujours visible au niveau du
+          chat (pas enterré derrière « ⋯ »). Masqué pour les modèles sans
+          réflexion (Mistral/ChatGPT) et les conversations EU. */}
+      {sheetV2 && showReflection && (
+        <div className="px-4 pt-2 pb-1">
+          <span className="block font-sans text-[10px] font-semibold uppercase tracking-kicker text-theme-muted mb-1">
+            {t('chat.reflection.label')}
+          </span>
+          <ReflectionControl
+            level={currentReflection}
+            onSelect={handleReflectionChange}
+            maxLocked={!isProUser}
+          />
+        </div>
+      )}
 
       {/* ===== Ancien header complet (killswitch arty-chat-sheet-v2 = '0') —
           conservé tel quel pour rollback sans rebuild. À supprimer une fois
@@ -547,6 +584,10 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
           onClose={() => setSheetOpen(false)}
           currentModel={currentModel}
           currentStyle={currentStyle}
+          currentReflection={currentReflection}
+          showReflection={showReflection}
+          maxReflectionLocked={!isProUser}
+          onSelectReflection={handleReflectionChange}
           euOnly={euOnly}
           hasMistralData={!!usedModels?.includes('mistral') && !euOnly}
           lastUsedModel={lastUsedModel}

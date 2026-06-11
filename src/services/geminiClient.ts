@@ -6,6 +6,7 @@ import { recordUsage } from './costTracker'
 import { dispatchModelUsed } from './modelLabels'
 import { extractYouTubeUrls } from './aiRouter'
 import { updateTrialFromResponse } from './trialClient'
+import type { ReflectionLevel } from './reflectionLevel'
 import i18n from '../i18n'
 
 // Modèle Flash GA stable. `gemini-3-flash` (sans suffixe) renvoyait un 404 :
@@ -113,11 +114,33 @@ export function getGeminiThinkingBudget(message: string, isMapQuery: boolean): n
   return 1024
 }
 
+/**
+ * Applique le niveau de réflexion choisi par l'utilisateur au budget Gemini.
+ *  - rapide          → 0 (réflexion coupée)
+ *  - approfondi/max  → 2048 (palier « profond » de Gemini Flash)
+ *  - auto            → heuristique par message (getGeminiThinkingBudget)
+ * Gemini Flash n'expose qu'un budget de pensée (pas de niveaux d'effort comme
+ * Claude) ; « approfondi » et « max » convergent donc vers le même palier.
+ */
+export function resolveGeminiThinkingBudget(
+  message: string,
+  isMapQuery: boolean,
+  level: ReflectionLevel
+): number {
+  if (level === 'rapide') return 0
+  if (level === 'approfondi' || level === 'max') return 2048
+  return getGeminiThinkingBudget(message, isMapQuery)
+}
+
 interface GeminiStreamOptions {
   systemPrompt?: string
   // Force un modèle précis (utilisé par le comparateur multi-modèles).
   // Si absent, fallback sur GEMINI_MODEL (défaut Arty).
   model?: string
+  // Niveau de réflexion utilisateur (réglage global). Passé uniquement par le
+  // vrai chat Gemini (useConversation) — jamais par le comparateur. Absent ⇒
+  // 'auto' (heuristique par message). Voir reflectionLevel.ts.
+  reflectionLevel?: ReflectionLevel
 }
 
 export function streamGeminiMessage(
@@ -211,7 +234,7 @@ async function runGeminiStream(
       generationConfig: {
         temperature: 0.7,
         maxOutputTokens: 8192,
-        thinkingConfig: { thinkingBudget: getGeminiThinkingBudget(lastMessage, isMapQuery) },
+        thinkingConfig: { thinkingBudget: resolveGeminiThinkingBudget(lastMessage, isMapQuery, options?.reflectionLevel ?? 'auto') },
       },
       tools,
     }

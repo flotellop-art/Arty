@@ -186,6 +186,7 @@
       "title": "This conversation",
       "open": "Conversation options",
       "sectionModel": "Model",
+      "sectionReflection": "Reasoning",
       "sectionStyle": "Response style",
       "sectionActions": "Actions",
       "modelDesc": {
@@ -319,6 +320,15 @@
       "detaille": "Detailed",
       "formel": "Formal",
       "technique": "Technical"
+    },
+    "reflection": {
+      "label": "Reasoning",
+      "auto": "Auto",
+      "rapide": "Fast",
+      "approfondi": "Deep",
+      "max": "Max",
+      "hint": "More reasoning = more thorough but slower answers. \"Auto\" lets Arty decide per question.",
+      "maxUpgradeLabel": "Max reasoning"
     },
     "model": {
       "auto": "Auto"
