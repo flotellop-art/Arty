@@ -167,6 +167,32 @@ export function extractPdfUrls(message: string): string[] {
   return [...new Set(out)]
 }
 
+// Lot C (audit Mistral, juin 2026) — toutes les URLs http(s) lisibles d'un
+// message, pour le fetch Linkup des conversations euOnly (Mistral n'a aucune
+// lecture d'URL native). Exclut les plateformes vidéo : Linkup n'en extrait
+// pas le contenu (pas de transcript), autant laisser Mistral déclarer
+// honnêtement la limite plutôt qu'injecter une page de garde inutile.
+const VIDEO_HOSTS = /(^|\.)(youtube\.com|youtu\.be|vimeo\.com|dailymotion\.com|twitch\.tv|tiktok\.com)$/i
+
+export function extractWebUrls(message: string): string[] {
+  if (!message) return []
+  const matches = message.match(URL_REGEX_GLOBAL)
+  if (!matches) return []
+  const out: string[] = []
+  for (const raw of matches) {
+    const cleaned = raw.replace(/[).,;!?]+$/, '')
+    try {
+      const u = new URL(cleaned)
+      if (u.protocol !== 'https:' && u.protocol !== 'http:') continue
+      if (VIDEO_HOSTS.test(u.hostname)) continue
+      out.push(cleaned)
+    } catch {
+      // Match non parseable → ignoré.
+    }
+  }
+  return [...new Set(out)]
+}
+
 /**
  * Décide si une requête utilisateur doit déclencher une recherche web forcée.
  * Règle posée par l'utilisateur le 10 mai 2026 : recherche internet par défaut
