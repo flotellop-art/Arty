@@ -15,6 +15,12 @@ export interface FactCheckClaim {
   // find/replace de originalText par correction.
   originalText?: string
   correction?: string
+  // true si la substitution a RÉELLEMENT eu lieu dans le contenu du message.
+  // Sans ce flag, le badge affichait « barré → corrigé » pour toute
+  // correction proposée, même quand le find/replace avait raté (passage cité
+  // ≠ texte réel : markdown, apostrophes…) — bug live du 11 juin 2026.
+  // Optionnel : résultats persistés avant l'ajout → undefined = rétro-compat.
+  applied?: boolean
 }
 
 export interface FactCheckResult {
