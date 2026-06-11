@@ -280,6 +280,25 @@
     "model": {
       "auto": "Auto"
     },
+    "factCheck": {
+      "pending": "Vérification…",
+      "pendingDetail": "La réponse est en cours de vérification factuelle — le résultat s'affichera ici.",
+      "unavailable": "Fact-check indisponible",
+      "unavailableDetail": "La vérification factuelle n'a pas pu aboutir (timeout, surcharge ou réseau). La réponse ci-dessus n'a pas été vérifiée — relis-la avec un œil critique.",
+      "verifiedBy": "Vérifié par {{model}}",
+      "noRisky": "Aucun claim risqué",
+      "noRiskyDetail": "Aucun claim factuel risqué identifié.",
+      "verifiedOne": "{{count}} claim vérifié",
+      "verifiedMany": "{{count}} claims vérifiés",
+      "correctionOne": "{{count}} correction appliquée",
+      "correctionMany": "{{count}} corrections appliquées",
+      "correctionsInResponse": "appliquée(s) dans la réponse",
+      "errorOne": "{{count}} erreur détectée",
+      "errorMany": "{{count}} erreurs détectées",
+      "toVerifyOne": "{{count}} point à vérifier",
+      "toVerifyMany": "{{count}} points à vérifier",
+      "toVerifySuffix": "{{count}} à vérifier"
+    },
     "messageList": {
       "branch": "Créer une branche depuis ce message",
       "scrollDown": "Descendre"

@@ -361,6 +361,11 @@ export async function factCheckResponse(
       claims,
       modelLabel,
       checkedAt: Date.now(),
+      // BUG 59 — status structuré : succès "vide" = aucun claim risqué
+      // (wrong/uncertain), succès "avec claims" = au moins un à signaler.
+      status: claims.some((c) => c.verdict !== 'verified')
+        ? 'success-with-claims'
+        : 'success-empty',
     },
   }
 }
@@ -497,8 +502,12 @@ export async function runFactCheckOnLatest(
   assistantMsg.factCheck = {
     overallConfidence: 'high',
     claims: [],
+    // Le modelLabel exact 'Vérification en cours…' reste load-bearing :
+    // le skip-guard plus haut compare cette string pour autoriser la
+    // finalisation. status est la source UI (BUG 59), le label le backup.
     modelLabel: 'Vérification en cours…',
     checkedAt: Date.now(),
+    status: 'pending',
   }
   storage.saveConversation(conv)
   refreshConversations()
@@ -529,6 +538,7 @@ export async function runFactCheckOnLatest(
           claims: [],
           modelLabel: `⚠ Fact-check indisponible (${outcome.reason})`,
           checkedAt: Date.now(),
+          status: 'failed',
         }
         storage.saveConversation(conv2)
         refreshConversations()

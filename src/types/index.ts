@@ -22,6 +22,11 @@ export interface FactCheckResult {
   claims: FactCheckClaim[]
   modelLabel: string
   checkedAt: number
+  // Statut structuré du cycle de vie (BUG 59 — 4 états distincts visibles).
+  // Optionnel : les résultats persistés avant l'ajout de ce champ n'en ont
+  // pas — l'UI dérive alors l'état des magic strings du modelLabel
+  // (rétro-compat, voir deriveStatus dans FactCheckBadge).
+  status?: 'pending' | 'success-empty' | 'success-with-claims' | 'failed'
   // Si au moins 1 claim a été corrigé, on stocke le texte original
   // ici pour permettre à l'UI d'afficher le diff dans le dropdown.
   // La réponse affichée (Message.content) est déjà le texte corrigé.
