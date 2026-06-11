@@ -73,7 +73,7 @@ function AppContent({
 }: {
   onLogout: () => void
   userName?: string
-  authMethod?: 'google' | 'email' | 'apikey'
+  authMethod?: 'google' | 'email' | 'apikey' | 'demo'
   userEmail?: string
 }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -973,6 +973,17 @@ export default function App() {
           userEmail={auth.currentUser?.email}
         />
       </ErrorBoundary>
+      {/* Bannière mode démo preview — pill discrète, non bloquante
+          (pointer-events-none), pour ne jamais masquer le design relu.
+          Détecté via authMethod (pas d'import du module démo → reste hors
+          du bundle de prod). */}
+      {auth.currentUser?.authMethod === 'demo' && (
+        <div className="fixed bottom-3 left-1/2 -translate-x-1/2 z-[70] pointer-events-none">
+          <span className="px-3 py-1 rounded-full bg-theme-ink/85 text-theme-bg text-[11px] font-sans font-medium shadow-lg">
+            🔍 Mode aperçu · données d'exemple
+          </span>
+        </div>
+      )}
       <Toaster />
     </BrowserRouter>
   )
