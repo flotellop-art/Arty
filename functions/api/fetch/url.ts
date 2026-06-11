@@ -1,8 +1,13 @@
-// Proxy Cloudflare pour convertir une URL de PDF PUBLIC en Markdown via
-// l'endpoint Linkup /v1/fetch. Comble le trou où ni `web_fetch` (Claude)
-// ni `url_context` (Gemini) ne savent lire un PDF binaire collé en chat —
-// les deux attendent du HTML. Linkup renvoie du Markdown propre quel que
-// soit le format. Réutilise LINKUP_API_KEY (déjà utilisée par /api/search/web).
+// Proxy Cloudflare pour convertir une URL PUBLIQUE (PDF ou page web) en
+// Markdown via l'endpoint Linkup /v1/fetch. Deux usages :
+//  - PDF collés en chat : ni `web_fetch` (Claude) ni `url_context` (Gemini)
+//    n'avalent un PDF binaire — Linkup renvoie du Markdown propre.
+//  - Pages web pour les conversations euOnly (lot C audit Mistral, juin
+//    2026) : Mistral n'a aucune lecture d'URL ; Linkup (hébergé EU) lit la
+//    page et le contenu est inliné dans le message — les données restent
+//    en Europe. Avant : restriction PDF-only → les liens collés en conv EU
+//    partaient dans le vide (hallucinations PR #162).
+// Réutilise LINKUP_API_KEY (déjà utilisée par /api/search/web).
 //
 // Sécurité (RÈGLE 6) :
 //  - Auth obligatoire (checkAllowedUserPeek) — anti relais anonyme (CRIT-4).
@@ -11,7 +16,11 @@
 //    ci-dessous évite quand même d'être un vecteur d'abus vers des hosts
 //    internes via l'infra Linkup. Redirects + DNS rebinding non maîtrisables
 //    côté Arty (acceptés explicitement).
-//  - PDF-only + cap de sortie : limite l'abus de quota Linkup.
+//  - Levée du PDF-only (lot C) : l'abus de quota Linkup reste borné par
+//    l'auth whitelist/abonnés, le cap de sortie, et le cap client
+//    (3 fetch max par message). Risque accepté : un utilisateur authentifié
+//    peut fetcher des pages arbitraires sur le quota Linkup du owner — même
+//    exposition que web_search qui lui est déjà ouvert sans restriction.
 //  - Erreurs opaques : ne JAMAIS propager le body/status Linkup (Leak).
 //  - Origin/CSRF : géré globalement par functions/api/_middleware.ts.
 
@@ -67,9 +76,12 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     return Response.json({ error: 'Invalid URL' }, { status: 400 })
   }
 
-  // PDF uniquement — c'est la seule valeur ajoutée vs les tools natifs.
-  if (!/\.pdf$/i.test(parsed.pathname)) {
-    return Response.json({ error: 'Only PDF URLs are supported' }, { status: 400 })
+  // Lot C (audit Mistral) : PDF ET pages web acceptés — voir l'en-tête pour
+  // l'analyse sécurité de la levée du PDF-only. On refuse seulement les
+  // extensions binaires évidentes que Linkup ne convertira pas en texte
+  // utile (médias, archives, exécutables) pour ne pas brûler du quota.
+  if (/\.(mp4|webm|avi|mov|mp3|wav|ogg|zip|rar|7z|tar|gz|exe|dmg|apk|iso|img|bin)$/i.test(parsed.pathname)) {
+    return Response.json({ error: 'Unsupported file type' }, { status: 400 })
   }
 
   if (!env.LINKUP_API_KEY) {

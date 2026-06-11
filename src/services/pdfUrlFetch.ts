@@ -46,3 +46,32 @@ export async function fetchPdfMarkdowns(urls: string[]): Promise<string | null> 
     .map((r) => `--- CONTENU DU PDF (${r.url}) ---\n${r.markdown}\n--- FIN DU PDF ---`)
     .join('\n\n')
 }
+
+// Lot C (audit Mistral, juin 2026) — pages web pour les conversations euOnly.
+// Une page d'article peut être très longue : on borne chaque page côté client
+// pour ne pas noyer le contexte Mistral (les PDF gardent le cap serveur seul,
+// un PDF métier mérite d'entrer entier).
+const MAX_PAGE_CHARS = 12_000
+
+/**
+ * Récupère le Markdown de pages web (via Linkup, hébergé EU) et renvoie un
+ * bloc prêt à injecter dans le message, ou `null` si rien n'a pu être lu.
+ * Utilisé pour les conversations euOnly : Mistral n'a aucune lecture d'URL —
+ * sans ce fetch, un lien collé partait dans le vide (hallucinations PR #162).
+ */
+export async function fetchUrlMarkdowns(urls: string[]): Promise<string | null> {
+  if (!urls.length) return null
+  const token = await getValidAccessToken()
+  const picked = urls.slice(0, MAX_PDFS_PER_MESSAGE)
+  const results = await Promise.all(picked.map((u) => fetchOne(u, token)))
+  const ok = results.filter((r): r is { url: string; markdown: string } => r !== null)
+  if (!ok.length) return null
+  return ok
+    .map((r) => {
+      const md = r.markdown.length > MAX_PAGE_CHARS
+        ? r.markdown.slice(0, MAX_PAGE_CHARS) + '\n[… contenu tronqué]'
+        : r.markdown
+      return `--- CONTENU DE LA PAGE (${r.url}) — récupéré via Linkup (EU) ---\n${md}\n--- FIN DE LA PAGE ---`
+    })
+    .join('\n\n')
+}

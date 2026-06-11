@@ -6,8 +6,8 @@ import { streamGeminiMessage, geminiResearch } from '../services/geminiClient'
 import { streamMistralMessage } from '../services/mistralClient'
 import { sendMessageStream as streamOpenAIMessage } from '../services/openaiClient'
 import { getOpenAIKey } from '../services/activeApiKey'
-import { detectProvider, extractPdfUrls } from '../services/aiRouter'
-import { fetchPdfMarkdowns } from '../services/pdfUrlFetch'
+import { detectProvider, extractPdfUrls, extractWebUrls } from '../services/aiRouter'
+import { fetchPdfMarkdowns, fetchUrlMarkdowns } from '../services/pdfUrlFetch'
 import * as storage from '../services/storage'
 import { useStreaming } from './useStreaming'
 import { useFileAttachments, buildApiMessages, buildContentBlocks, buildTextOnlyMessages, buildMistralMessages, buildMistralBlocks } from './useFileAttachments'
@@ -467,6 +467,26 @@ export function useConversation() {
           }
           resetAccumulated(targetId)
           setProgressContent('', targetId)
+        }
+
+        // Lot C (audit Mistral) — conversations euOnly : Mistral n'a aucune
+        // lecture d'URL native ; hors EU, une URL route vers Claude
+        // (web_fetch), mais le verrou euOnly court-circuite ce garde-fou.
+        // On récupère donc le contenu des pages via Linkup (hébergé EU,
+        // même chemin que les PDF ci-dessus) et on l'inline — les données
+        // ne quittent pas l'Europe. Échec = on laisse passer tel quel,
+        // MISTRAL_RULES fait déclarer la limite honnêtement.
+        if (conv.euOnly) {
+          const webUrls = extractWebUrls(text).filter((u) => !pdfUrls.includes(u))
+          if (webUrls.length > 0) {
+            setProgressContent('🔗 Lecture du lien (EU)...', targetId)
+            const pageSections = await fetchUrlMarkdowns(webUrls)
+            if (pageSections) {
+              outgoingText = `${outgoingText}\n\n${pageSections}`
+            }
+            resetAccumulated(targetId)
+            setProgressContent('', targetId)
+          }
         }
       }
 

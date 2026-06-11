@@ -225,7 +225,7 @@
       "body": "This conversation contains messages processed by Mistral (servers in Europe). Switching to {{targetModel}} will send the whole history to the United States. Continue?"
     },
     "input": {
-      "euOnlyUrlHint": "Mistral can't open links (EU mode). To analyze the content, paste the article or video text directly here.",
+      "euOnlyUrlHint": "Link detected — its content will be fetched in Europe (Linkup) and given to Mistral. Videos (YouTube…) cannot be read.",
       "placeholder": "Chat with Arty...",
       "listening": "Listening...",
       "defaultFilePrompt": "Analyze this file.",

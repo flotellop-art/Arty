@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { detectProvider, needsThinking, selectClaudeSubModel, extractPdfUrls, extractYouTubeUrls, hasYouTubeUrl } from '../../services/aiRouter'
+import { detectProvider, needsThinking, selectClaudeSubModel, extractPdfUrls, extractWebUrls, extractYouTubeUrls, hasYouTubeUrl } from '../../services/aiRouter'
 import { getGeminiThinkingBudget } from '../../services/geminiClient'
 
 // Mock the two external dependencies
@@ -434,5 +434,29 @@ describe('extractPdfUrls', () => {
   it('returns [] for empty or URL-less input', () => {
     expect(extractPdfUrls('')).toEqual([])
     expect(extractPdfUrls('aucun lien ici')).toEqual([])
+  })
+})
+
+// Lot C (audit Mistral) — URLs lisibles pour le fetch Linkup des convs euOnly.
+describe('extractWebUrls', () => {
+  it('extrait les URLs http(s) et nettoie la ponctuation de fin', () => {
+    expect(extractWebUrls('regarde https://example.com/article, et dis-moi')).toEqual([
+      'https://example.com/article',
+    ])
+  })
+
+  it('exclut les plateformes vidéo (Linkup ne lit pas les transcripts)', () => {
+    expect(extractWebUrls('https://www.youtube.com/watch?v=x et https://youtu.be/y')).toEqual([])
+    expect(extractWebUrls('https://vimeo.com/123')).toEqual([])
+  })
+
+  it('inclut les PDF (filtrés ensuite par l\'appelant) et déduplique', () => {
+    const out = extractWebUrls('https://a.fr/doc.pdf https://a.fr/doc.pdf https://b.fr/page')
+    expect(out).toEqual(['https://a.fr/doc.pdf', 'https://b.fr/page'])
+  })
+
+  it('retourne [] sans URL', () => {
+    expect(extractWebUrls('')).toEqual([])
+    expect(extractWebUrls('pas de lien')).toEqual([])
   })
 })
