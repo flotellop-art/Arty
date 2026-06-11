@@ -376,14 +376,34 @@ Pour les COMPARAISONS multi-sites/multi-revendeurs (ex: "compare prix X chez Bri
         ]
       : []
 
+    // Lot D — forçage du tool web_search au PREMIER tour uniquement quand
+    // la recherche est requise. Les tours suivants repassent en 'auto'
+    // (sinon Mistral relancerait une recherche à chaque itération).
+    let forceSearchNext = forceWebHint !== '' && openaiTools.length > 0
+
     let maxIterations = 20
 
     while (maxIterations > 0) {
       maxIterations--
 
-      const { content, toolCalls, inputTokens, outputTokens } = await streamOnce(
-        apiKey, apiMessages, openaiTools, onToken, controller, model, temperature
-      )
+      let once: Awaited<ReturnType<typeof streamOnce>>
+      const wantForce = forceSearchNext
+      forceSearchNext = false
+      try {
+        once = await streamOnce(
+          apiKey, apiMessages, openaiTools, onToken, controller, model, temperature, wantForce
+        )
+      } catch (err) {
+        // Repli défensif : si l'appel FORCÉ échoue (ex : l'API rejette la
+        // forme nommée du tool_choice), on retente UNE fois en 'auto' — la
+        // consigne prompt reste alors le seul levier. Jamais de retry sur
+        // un abort (Stop utilisateur / timeout).
+        if (!wantForce || (err as Error).name === 'AbortError') throw err
+        once = await streamOnce(
+          apiKey, apiMessages, openaiTools, onToken, controller, model, temperature, false
+        )
+      }
+      const { content, toolCalls, inputTokens, outputTokens } = once
 
       try {
         recordUsage(model, inputTokens, outputTokens)
@@ -470,7 +490,8 @@ async function streamOnce(
   onToken: (text: string) => void,
   controller: AbortController,
   model: string,
-  temperature: number
+  temperature: number,
+  forceSearchTool: boolean
 ): Promise<{
   content: string
   toolCalls: ToolCall[]
@@ -499,7 +520,15 @@ async function streamOnce(
   // Only include tools if we have some
   if (tools.length > 0) {
     body.tools = tools
-    body.tool_choice = 'auto'
+    // Lot D (audit Mistral) — quand la recherche web est requise, 'auto'
+    // laissait Mistral libre d'ignorer la consigne prompt « RECHERCHE WEB
+    // OBLIGATOIRE » et de répondre de mémoire (cutoff) sur de l'actualité.
+    // Le forçage API est contraignant, lui. Format OpenAI-compatible
+    // supporté par l'API Mistral ; un repli 'auto' est gérén par l'appelant
+    // si jamais l'API rejetait la forme nommée.
+    body.tool_choice = forceSearchTool
+      ? { type: 'function', function: { name: 'web_search' } }
+      : 'auto'
   }
 
   // CRIT-5 — Timeout 60s sur le stream Mistral. Cold-start Cloudflare ou

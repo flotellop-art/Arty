@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { detectProvider, needsThinking, selectClaudeSubModel, extractPdfUrls, extractWebUrls, extractYouTubeUrls, hasYouTubeUrl } from '../../services/aiRouter'
+import { detectProvider, needsThinking, selectClaudeSubModel, extractPdfUrls, extractWebUrls, extractYouTubeUrls, hasYouTubeUrl, shouldUseWebSearch } from '../../services/aiRouter'
 import { getGeminiThinkingBudget } from '../../services/geminiClient'
 
 // Mock the two external dependencies
@@ -458,5 +458,33 @@ describe('extractWebUrls', () => {
   it('retourne [] sans URL', () => {
     expect(extractWebUrls('')).toEqual([])
     expect(extractWebUrls('pas de lien')).toEqual([])
+  })
+})
+
+// Lot D (audit Mistral) — la gate de recherche web. Défaut permissif (BUG 56 :
+// les phrasings indirects doivent passer), exclusions données privées (BUG 12)
+// et small talk. Verrouillé par tests pour que la prochaine refacto ne
+// réintroduise pas une regex restrictive.
+describe('shouldUseWebSearch', () => {
+  it('phrasings indirects factuels → true', () => {
+    expect(shouldUseWebSearch('à combien est le cours du cuivre')).toBe(true)
+    expect(shouldUseWebSearch("c'est quoi la dernière version de Node ?")).toBe(true)
+    expect(shouldUseWebSearch('il sort quand le prochain iPhone')).toBe(true)
+    expect(shouldUseWebSearch('quel temps demain à Voiron')).toBe(true)
+  })
+
+  it('données privées → false (BUG 12 — tools natifs, pas de web)', () => {
+    expect(shouldUseWebSearch('fais un rapport sur mes mails')).toBe(false)
+    expect(shouldUseWebSearch('cherche dans mon drive le devis')).toBe(false)
+  })
+
+  it('small talk court → false', () => {
+    expect(shouldUseWebSearch('salut ça va ?')).toBe(false)
+    expect(shouldUseWebSearch('merci !')).toBe(false)
+  })
+
+  it('message vide → false', () => {
+    expect(shouldUseWebSearch('')).toBe(false)
+    expect(shouldUseWebSearch('   ')).toBe(false)
   })
 })
