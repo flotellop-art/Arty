@@ -99,6 +99,23 @@ interface MistralStreamOptions {
   // Force un modèle précis (utilisé par le comparateur multi-modèles).
   // Si absent, fallback sur selectMistralModel (défaut Arty : medium).
   model?: string
+  // Fix 429 (11 juin 2026) — true quand useConversation a déjà inliné le
+  // contenu d'URL/PDF (lot C) dans le dernier message : la recherche web
+  // forcée (lot D) serait alors contre-productive — un appel Mistral
+  // supplémentaire inutile, dos à dos avec la synthèse, qui tapait le
+  // rate limit upstream de la clé serveur.
+  urlContentInlined?: boolean
+}
+
+// Décision « forcer web_search au 1er tour » — pure et exportée pour test.
+// Forcer N'A PAS de sens quand le contenu d'URL est déjà dans le contexte :
+// le résumé d'un article inliné ne nécessite aucune recherche.
+export function shouldForceSearch(
+  lastUserText: string,
+  hasToolHandler: boolean,
+  urlContentInlined: boolean
+): boolean {
+  return hasToolHandler && !urlContentInlined && shouldUseWebSearch(lastUserText)
 }
 
 // Mistral content blocks pour le multimodal (image_url + text). Format
@@ -306,7 +323,7 @@ async function runMistralStream(
     // alors qu'on n'a pas de handler pour l'exécuter résulte en un panneau
     // vide (toolCalls détectés → onDone direct sans streamer de texte).
     // Symétrique du fix Anthropic dans le wiring du comparateur (compare.tsx).
-    const forceWebHint = (options?.onToolCall && shouldUseWebSearch(lastUserText))
+    const forceWebHint = shouldForceSearch(lastUserText, !!options?.onToolCall, !!options?.urlContentInlined)
       ? `\n\nRECHERCHE WEB OBLIGATOIRE — non négociable :\nPour CE message utilisateur, tu DOIS appeler le tool web_search AVANT de répondre, même si tu penses connaître la réponse. La recherche web prime sur ta mémoire d'entraînement. Si un fichier est attaché, analyse-le ET fais une recherche web. Cite les sources via [1], [2]. Ne dis JAMAIS "j'ai cherché" — c'est le tool qui cherche.`
       : ''
     // Date du jour — sans elle, Mistral ne sait pas se situer par rapport à
@@ -397,8 +414,11 @@ Pour les COMPARAISONS multi-sites/multi-revendeurs (ex: "compare prix X chez Bri
         // Repli défensif : si l'appel FORCÉ échoue (ex : l'API rejette la
         // forme nommée du tool_choice), on retente UNE fois en 'auto' — la
         // consigne prompt reste alors le seul levier. Jamais de retry sur
-        // un abort (Stop utilisateur / timeout).
-        if (!wantForce || (err as Error).name === 'AbortError') throw err
+        // un abort (Stop utilisateur / timeout) NI sur un rate limit (le
+        // backoff de streamOnce a déjà retenté ; ré-attaquer immédiatement
+        // enfonçait le 429 — bug live du 11 juin, article Figaro en EU).
+        const name = (err as Error).name
+        if (!wantForce || name === 'AbortError' || name === 'RateLimitError') throw err
         once = await streamOnce(
           apiKey, apiMessages, openaiTools, onToken, controller, model, temperature, false
         )
@@ -531,26 +551,60 @@ async function streamOnce(
       : 'auto'
   }
 
-  // CRIT-5 — Timeout 60s sur le stream Mistral. Cold-start Cloudflare ou
-  // réseau flaky peuvent laisser pendre 60-90s sinon. Compose avec le
-  // controller externe (annulation utilisateur) pour les deux raisons.
-  const timeoutCtrl = new AbortController()
-  const timeoutId = setTimeout(() => timeoutCtrl.abort(new DOMException('Timeout', 'AbortError')), 60_000)
-  const onExternalAbort = () => timeoutCtrl.abort(controller.signal.reason)
-  if (controller.signal.aborted) timeoutCtrl.abort(controller.signal.reason)
-  else controller.signal.addEventListener('abort', onExternalAbort)
+  // Fix 429 (11 juin 2026) — Mistral était le SEUL client sans backoff
+  // (anthropicClient et geminiClient ont chacun leur fetchWithRetry). Sur
+  // 429 : on respecte Retry-After si le proxy le forwarde, sinon backoff
+  // court (2s puis 4s), max 2 retentatives, abortable par le Stop
+  // utilisateur. Le retry se fait AVANT toute lecture du stream — sûr.
+  let response!: Response
+  for (let attempt = 0; ; attempt++) {
+    // CRIT-5 — Timeout 60s sur le stream Mistral. Cold-start Cloudflare ou
+    // réseau flaky peuvent laisser pendre 60-90s sinon. Compose avec le
+    // controller externe (annulation utilisateur) pour les deux raisons.
+    const timeoutCtrl = new AbortController()
+    const timeoutId = setTimeout(() => timeoutCtrl.abort(new DOMException('Timeout', 'AbortError')), 60_000)
+    const onExternalAbort = () => timeoutCtrl.abort(controller.signal.reason)
+    if (controller.signal.aborted) timeoutCtrl.abort(controller.signal.reason)
+    else controller.signal.addEventListener('abort', onExternalAbort)
 
-  let response: Response
-  try {
-    response = await fetch(apiUrl('/api/ai/mistral-proxy'), {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(body),
-      signal: timeoutCtrl.signal,
+    try {
+      response = await fetch(apiUrl('/api/ai/mistral-proxy'), {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+        signal: timeoutCtrl.signal,
+      })
+    } finally {
+      clearTimeout(timeoutId)
+      controller.signal.removeEventListener('abort', onExternalAbort)
+    }
+
+    if (response.status !== 429 || attempt >= 2) break
+
+    const errBody = await response.text().catch(() => '')
+    // Quota journalier du proxy (body { error, count, limit }) : définitif
+    // pour aujourd'hui — inutile de retenter, on surface le message précis
+    // du proxy au lieu du générique « réessaie dans quelques secondes ».
+    try {
+      const parsed = JSON.parse(errBody) as { error?: string; count?: number; limit?: number }
+      if (typeof parsed.count === 'number' && typeof parsed.limit === 'number') {
+        throw Object.assign(new Error(parsed.error || i18n.t('errors.mistralRateLimit')), { name: 'RateLimitError' })
+      }
+    } catch (e) {
+      if ((e as Error).name === 'RateLimitError') throw e
+      // body non-JSON → rate limit upstream, on retente
+    }
+    const retryAfterRaw = response.headers.get('retry-after')
+    const retryAfterMs = retryAfterRaw && Number.isFinite(Number(retryAfterRaw))
+      ? Math.min(10_000, Math.max(500, Number(retryAfterRaw) * 1000))
+      : 2_000 * (attempt + 1)
+    await new Promise<void>((resolve, reject) => {
+      const t = setTimeout(resolve, retryAfterMs)
+      controller.signal.addEventListener('abort', () => {
+        clearTimeout(t)
+        reject(new DOMException('Aborted', 'AbortError'))
+      }, { once: true })
     })
-  } finally {
-    clearTimeout(timeoutId)
-    controller.signal.removeEventListener('abort', onExternalAbort)
   }
 
   updateTrialFromResponse(response)
@@ -560,7 +614,9 @@ async function streamOnce(
     if (response.status === 401) {
       throw new Error(i18n.t('errors.mistralKeyInvalid'))
     } else if (response.status === 429) {
-      throw new Error(i18n.t('errors.mistralRateLimit'))
+      // Toujours 429 après les retentatives — typé pour que la boucle tool
+      // (repli tool_choice) ne ré-attaque PAS immédiatement.
+      throw Object.assign(new Error(i18n.t('errors.mistralRateLimit')), { name: 'RateLimitError' })
     } else {
       throw new Error(i18n.t('errors.mistralError', { status: response.status, message: err.slice(0, 100) }))
     }

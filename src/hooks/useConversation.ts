@@ -542,6 +542,10 @@ export function useConversation() {
         controller = streamMistralMessage(apiMessages, onToken, onDone, onErr, {
           systemPrompt: systemPromptRef.current,
           onToolCall: toolHandlerRef.current,
+          // Fix 429 — outgoingText ≠ text ⇔ du contenu d'URL/PDF a été
+          // inliné (lot C) : la recherche forcée serait un appel Mistral
+          // de plus pour rien, dos à dos avec la synthèse (rate limit).
+          urlContentInlined: outgoingText !== text,
         })
       } else if (provider === 'openai') {
         // openaiKey peut être null — dans ce cas le client passe par le proxy
