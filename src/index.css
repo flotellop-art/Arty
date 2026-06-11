@@ -15,7 +15,10 @@ html[data-theme='ember'] {
   --theme-bg: 250 243 231;       /* #FAF3E7 ember-paper */
   --theme-surface: 255 255 255;  /* #FFFFFF ember-card */
   --theme-ink: 24 22 19;         /* #181613 ember-ink */
-  --theme-muted: 143 107 77;     /* #8F6B4D ember-muted */
+  /* #7A5A3C — 4.6:1 sur ember-paper (WCAG AA petit texte). L'ancien
+     #8F6B4D (143 107 77) plafonnait à ~3.2:1, insuffisant pour les
+     nombreux usages en text-xs/text-[10px] (kickers, timestamps). */
+  --theme-muted: 122 90 60;
   --theme-accent: 200 90 40;     /* #C85A28 ember-accent terracotta */
   --theme-border: 232 217 191;   /* #E8D9BF ember-border */
   --theme-cream: 245 230 208;    /* #F5E6D0 ember-cream */
@@ -815,4 +818,24 @@ html.dark .report-content .timeline-item::before {
 html[data-theme='nocturne'] .report-content .metric-row,
 html.dark .report-content .metric-row {
   border-bottom-color: rgb(var(--theme-ink) / 0.12);
+}
+
+/* ============================================================
+   A11Y — ANNEAU DE FOCUS CLAVIER GLOBAL
+   Beaucoup de composants font `focus:outline-none` sans alternative
+   visible. Placée APRÈS @tailwind utilities, cette règle (même
+   spécificité 0,2,0 que `.focus\:outline-none:focus`) gagne par ordre
+   de cascade et rend la navigation clavier visible. `:focus-visible`
+   ne s'active pas au tap/clic — le rendu tactile et souris est
+   inchangé. Les champs texte sont exclus : leur feedback de focus
+   passe par la bordure (focus:border-theme-accent), un anneau sur le
+   textarea du chat serait intrusif à chaque tap.
+   ============================================================ */
+button:focus-visible,
+a:focus-visible,
+select:focus-visible,
+[role='button']:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid rgb(var(--theme-accent) / 0.8);
+  outline-offset: 2px;
 }
