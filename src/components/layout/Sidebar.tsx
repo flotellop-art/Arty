@@ -27,6 +27,15 @@ interface SidebarProps {
   onLogout?: () => void
   onImportConversation?: (id: string) => void
   onOpenTemplates?: () => void
+  // PR D — navigation directe : Coûts / Comparateur étaient enfouis dans
+  // SettingsModal (2 niveaux + event). Même pattern que onOpenTemplates.
+  onOpenCosts?: () => void
+  onOpenCompare?: () => void
+  // PR D — l'ApiKeysModal remonte au niveau App (un seul propriétaire,
+  // ouvrable aussi depuis l'écran Upgrade via 'arty-open-api-keys').
+  // La rendre ICI la plaçait dans le containing block du drawer transformé
+  // (translate-x) → positionnement fixed cassé si ouverte drawer fermé.
+  onOpenApiKeys?: () => void
 }
 
 // Palette du Design C (Claude.ai handoff) — branchée sur les variables
@@ -122,10 +131,14 @@ export const Sidebar = memo(function Sidebar({
   onLogout,
   onImportConversation,
   onOpenTemplates,
+  onOpenCosts,
+  onOpenCompare,
+  onOpenApiKeys,
 }: SidebarProps) {
   const { t, i18n } = useTranslation()
   const timeAgo = useTimeAgo()
   const [showSettings, setShowSettings] = useState(false)
+  // Fallback local si App ne fournit pas onOpenApiKeys (rétro-compat).
   const [showApiKeys, setShowApiKeys] = useState(false)
   const [showTasks, setShowTasks] = useState(false)
   const [searchRaw, setSearchRaw] = useState('')
@@ -353,6 +366,39 @@ export const Sidebar = memo(function Sidebar({
                 Pro
               </span>
             </button>
+          </div>
+        )}
+
+        {/* PR D — navigation directe Coûts / Comparateur (étaient enfouis
+            sous Paramètres → SettingsModal → event). Même pattern Templates. */}
+        {(onOpenCosts || onOpenCompare) && (
+          <div className="px-4 pb-3 flex-shrink-0 flex gap-2">
+            {onOpenCosts && (
+              <button
+                onClick={() => {
+                  onOpenCosts()
+                  onClose()
+                }}
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-[10px] text-theme-muted hover:text-theme-ink hover:bg-theme-ink/5 text-[12.5px] font-medium transition-colors"
+                style={{ border: `1px solid ${DESIGN.borderMid}` }}
+              >
+                <span aria-hidden="true">💸</span>
+                <span>{t('settings.costs.title')}</span>
+              </button>
+            )}
+            {onOpenCompare && (
+              <button
+                onClick={() => {
+                  onOpenCompare()
+                  onClose()
+                }}
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-[10px] text-theme-muted hover:text-theme-ink hover:bg-theme-ink/5 text-[12.5px] font-medium transition-colors"
+                style={{ border: `1px solid ${DESIGN.borderMid}` }}
+              >
+                <span aria-hidden="true">⚖️</span>
+                <span>{t('compare.settingsEntry')}</span>
+              </button>
+            )}
           </div>
         )}
 
@@ -584,7 +630,7 @@ export const Sidebar = memo(function Sidebar({
             style={{ borderTop: `1px solid ${DESIGN.borderWeak}` }}
           >
             <button
-              onClick={() => setShowApiKeys(true)}
+              onClick={() => (onOpenApiKeys ? onOpenApiKeys() : setShowApiKeys(true))}
               className="flex-1 flex items-center justify-center gap-2 py-2 rounded-[10px] text-theme-muted hover:text-theme-ink hover:bg-theme-ink/5 text-xs font-medium transition-colors"
               style={{ border: `1px solid ${DESIGN.borderMid}` }}
             >
@@ -630,7 +676,9 @@ export const Sidebar = memo(function Sidebar({
       </aside>
 
       <SettingsModal open={showSettings} onClose={() => setShowSettings(false)} />
-      <ApiKeysModal open={showApiKeys} onClose={() => setShowApiKeys(false)} />
+      {/* Fallback uniquement quand App ne possède pas la modale (onOpenApiKeys
+          absent) — sinon double instance (audit PR D, R6). */}
+      {!onOpenApiKeys && <ApiKeysModal open={showApiKeys} onClose={() => setShowApiKeys(false)} />}
       {showTasks && <TaskPanel onClose={() => setShowTasks(false)} />}
     </>
   )

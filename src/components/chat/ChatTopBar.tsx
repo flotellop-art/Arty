@@ -8,6 +8,7 @@ import { PrismMark } from '../shared/PrismMark'
 import { PlanBadge } from './PlanBadge'
 import { UpgradePromptModal } from './UpgradePromptModal'
 import { ChatOptionsSheet } from './ChatOptionsSheet'
+import { ConversationSwitcherSheet } from './ConversationSwitcherSheet'
 import { usePlanStatus, type ModelFamily } from '../../hooks/usePlanStatus'
 import { formatModelName, getModelExplanationKey, type ModelUsedEvent } from '../../services/modelLabels'
 import {
@@ -36,6 +37,10 @@ interface ChatTopBarProps {
   euOnly?: boolean
   conversation?: Conversation
   onOpenSummary?: () => void
+  /** PR D — switcher : titre tappable ▾ ouvrant la liste des conversations.
+      Le ▾ ne s'affiche que si ≥ 2 conversations ET callback fourni. */
+  conversations?: Conversation[]
+  onSelectConversation?: (id: string) => void
 }
 
 type OpenMenu = null | 'style' | 'model'
@@ -53,7 +58,7 @@ function chatSheetV2Enabled(): boolean {
   }
 }
 
-export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, onOpenSummary }: ChatTopBarProps) {
+export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, onOpenSummary, conversations, onSelectConversation }: ChatTopBarProps) {
   const { t } = useTranslation()
   const planStatus = usePlanStatus()
   const [currentStyle, setCurrentStyle] = useState<ResponseStyle>(getStyle)
@@ -70,6 +75,10 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
   const [lastSearchProvider, setLastSearchProvider] = useState<string | null>(null)
   const [exportMenuOpen, setExportMenuOpen] = useState(false)
   const [sheetOpen, setSheetOpen] = useState(false)
+  const [switcherOpen, setSwitcherOpen] = useState(false)
+  // Switcher visible seulement s'il y a un choix à faire. Jamais ouvert en
+  // même temps que le sheet « ⋯ » (déclencheurs distincts, même z-[90]).
+  const canSwitch = !!onSelectConversation && (conversations?.length ?? 0) > 1
   const menuRef = useRef<HTMLDivElement>(null)
   const exportRef = useRef<HTMLDivElement>(null)
   // Évalué à chaque render (lecture localStorage triviale) : un testeur peut
@@ -225,14 +234,36 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
             <path d="M12 4L6 10L12 16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </button>
-        <div className="flex-1 min-w-0 overflow-hidden">
-          <p className="font-sans text-[10px] font-semibold uppercase tracking-kicker text-theme-muted">
-            {t('chat.topBar.kicker', { defaultValue: 'Conversation' })}
-          </p>
-          <h1 className="font-display italic text-[17px] text-theme-ink truncate leading-tight">
-            {title}
-          </h1>
-        </div>
+        {/* Bloc titre COMMUN v1/v2 (hors branche sheetV2) : le switcher
+            survit au rollback du killswitch arty-chat-sheet-v2 (PR D). */}
+        {canSwitch ? (
+          <button
+            onClick={() => setSwitcherOpen(true)}
+            className="flex-1 min-w-0 overflow-hidden text-left rounded hover:bg-theme-ink/[0.03] transition-colors"
+            aria-haspopup="dialog"
+            aria-expanded={switcherOpen}
+            aria-label={t('chat.switcher.open')}
+          >
+            <p className="font-sans text-[10px] font-semibold uppercase tracking-kicker text-theme-muted">
+              {t('chat.topBar.kicker', { defaultValue: 'Conversation' })}
+            </p>
+            <h1 className="font-display italic text-[17px] text-theme-ink truncate leading-tight">
+              {title}
+              <svg width="11" height="11" viewBox="0 0 10 10" fill="none" className="inline-block ml-1.5 opacity-50" aria-hidden="true">
+                <path d="M2.5 4L5 6.5L7.5 4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+              </svg>
+            </h1>
+          </button>
+        ) : (
+          <div className="flex-1 min-w-0 overflow-hidden">
+            <p className="font-sans text-[10px] font-semibold uppercase tracking-kicker text-theme-muted">
+              {t('chat.topBar.kicker', { defaultValue: 'Conversation' })}
+            </p>
+            <h1 className="font-display italic text-[17px] text-theme-ink truncate leading-tight">
+              {title}
+            </h1>
+          </div>
+        )}
         {sheetV2 && (
           <>
             {euOnly ? (
@@ -530,6 +561,16 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
           onExportJson={() => { setSheetOpen(false); if (conversation) exportConversation(conversation) }}
           onShare={() => { setSheetOpen(false); void handleShare() }}
           onOpenGuide={() => { setSheetOpen(false); setShowGuide(true) }}
+        />
+      )}
+
+      {canSwitch && conversations && (
+        <ConversationSwitcherSheet
+          open={switcherOpen}
+          onClose={() => setSwitcherOpen(false)}
+          conversations={conversations}
+          activeId={conversation?.id}
+          onSelect={onSelectConversation!}
         />
       )}
 

@@ -201,6 +201,10 @@
       "share": "Share",
       "help": "Tones & models help"
     },
+    "switcher": {
+      "title": "Switch conversation",
+      "open": "Switch conversation"
+    },
     "modelExplain": {
       "mistral": "Mistral runs in Europe mode (servers in France) — ideal for data that must stay in Europe: emails, files, client info. No web search or link opening.",
       "gemini": "Gemini handles real-time web search, news questions and Google Maps queries. Data processed outside Europe.",

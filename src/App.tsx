@@ -18,6 +18,7 @@ import { ReportPage } from './components/shared/ReportPage'
 import { ErrorBoundary } from './components/shared/ErrorBoundary'
 import { Toaster } from './components/shared/Toaster'
 import { Sidebar } from './components/layout/Sidebar'
+import { ApiKeysModal } from './components/settings/ApiKeysModal'
 import { OAuthCallback } from './components/google/OAuthCallback'
 import { LoginScreen } from './components/auth/LoginScreen'
 import { WelcomeSlides, isOnboardingDone } from './components/onboarding/WelcomeSlides'
@@ -76,6 +77,8 @@ function AppContent({
   userEmail?: string
 }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  // PR D — propriétaire unique de l'ApiKeysModal (Sidebar + écran Upgrade).
+  const [showApiKeys, setShowApiKeys] = useState(false)
   const [showMorningBrief, setShowMorningBrief] = useState(false)
   const [showProfileSetup, setShowProfileSetup] = useState(() => getUserProfile() === null)
   const [profileName, setProfileName] = useState<string | null>(() => getUserProfile()?.name || null)
@@ -245,6 +248,12 @@ function AppContent({
     [selectConversation, navigate]
   )
   const handleOpenTemplates = useCallback(() => navigate('/templates'), [navigate])
+  // PR D — entrées de navigation directes de la Sidebar. useCallback stables
+  // obligatoires : Sidebar est memo, un littéral inline casserait le memo à
+  // chaque frame de streaming (audit PR D, R4).
+  const handleOpenCosts = useCallback(() => navigate('/costs'), [navigate])
+  const handleOpenCompare = useCallback(() => navigate('/compare'), [navigate])
+  const handleOpenApiKeys = useCallback(() => setShowApiKeys(true), [])
   const handleSendInChat = useCallback(
     (text: string, files?: FileAttachment[]) => sendMessage(text, undefined, files),
     [sendMessage]
@@ -315,6 +324,17 @@ function AppContent({
     window.addEventListener('arty-open-costs', open)
     return () => window.removeEventListener('arty-open-costs', open)
   }, [navigate])
+
+  // PR D — fix bug orphelin : upgrade.tsx dispatche 'arty-open-api-keys'
+  // (bouton « Configurer mes clés API ») mais aucun listener n'existait.
+  // L'ApiKeysModal est désormais possédée ici (un seul propriétaire — la
+  // rendre dans la Sidebar la plaçait dans le containing block du drawer
+  // transformé, fixed cassé drawer fermé).
+  useEffect(() => {
+    const open = () => setShowApiKeys(true)
+    window.addEventListener('arty-open-api-keys', open)
+    return () => window.removeEventListener('arty-open-api-keys', open)
+  }, [])
 
   useEffect(() => {
     if (!error) return
@@ -394,7 +414,12 @@ function AppContent({
         onLogout={onLogout}
         onImportConversation={handleImportConversation}
         onOpenTemplates={handleOpenTemplates}
+        onOpenCosts={handleOpenCosts}
+        onOpenCompare={handleOpenCompare}
+        onOpenApiKeys={handleOpenApiKeys}
       />
+
+      <ApiKeysModal open={showApiKeys} onClose={() => setShowApiKeys(false)} />
 
       <main className="h-full">
       <Routes>
