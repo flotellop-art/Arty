@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="fr" data-theme="nocturne">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Arty — Maquette bottom sheet « ⋯ » (Nocturne)</title>
+
+
+<link href="fonts/google.css" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0B0908; --surface:#181311; --ink:#F5E6D0; --muted:#A89C8A;
+    --accent:#F59A4B; --border:rgba(245,154,75,.14); --cream:#2B1F15;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%}
+  body{font-family:'Inter',sans-serif;font-weight:300;background:var(--bg);color:var(--ink);
+       height:100dvh;overflow:hidden;font-size:14px;position:relative}
+  .kicker{font-size:9.5px;font-weight:600;letter-spacing:.2em;text-transform:uppercase;color:var(--muted)}
+  .mono{font-family:'JetBrains Mono',monospace}
+
+  /* chat estompé derrière */
+  .chat-bg{position:absolute;inset:0;padding:14px 16px;filter:brightness(.85)}
+  .head-row{display:flex;align-items:center;gap:8px}
+  .back,.more{width:44px;height:44px;border:none;background:transparent;color:var(--ink);font-size:19px;
+              border-radius:12px;display:flex;align-items:center;justify-content:center}
+  .more{border:1px solid var(--border);background:var(--surface)}
+  .head-titles{flex:1;min-width:0;text-align:center}
+  .head-title{font-family:'Fraunces',serif;font-style:italic;font-size:16.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .rule{margin-top:10px}.rule .r1{height:2px;background:var(--ink)}.rule .r2{height:1px;background:var(--ink);margin-top:3px}
+  .msg-user{display:flex;justify-content:flex-end;margin-top:22px}
+  .msg-user .txt{max-width:85%;font-family:'Fraunces';font-style:italic;font-size:15px;line-height:1.45;
+                 text-align:right;border-right:2px solid var(--accent);padding:3px 12px 3px 0}
+  .msg-ai{display:flex;gap:10px;margin-top:20px}
+  .msg-ai .body{line-height:1.6;font-size:13.5px}
+
+  /* scrim + sheet */
+  .scrim{position:absolute;inset:0;background:rgba(11,9,8,.62)}
+  .sheet{position:absolute;left:0;right:0;bottom:0;background:var(--surface);
+         border-radius:22px 22px 0 0;border:1px solid var(--border);border-bottom:none;
+         padding:10px 18px 26px;box-shadow:0 -16px 48px rgba(0,0,0,.5)}
+  .grab{width:38px;height:4px;border-radius:2px;background:rgba(245,230,208,.22);margin:0 auto 14px}
+  .sheet h2{font-family:'Fraunces',serif;font-style:italic;font-weight:400;font-size:17px;margin-bottom:14px}
+  .section{margin-bottom:16px}
+  .section .kicker{display:block;margin-bottom:9px}
+
+  /* sélecteur de modèle — source unique, EU/US expliqué inline (non bloquant) */
+  .model{display:flex;align-items:center;gap:11px;padding:11px 12px;border-radius:13px;
+         border:1px solid transparent;min-height:48px}
+  .model.sel{border-color:rgba(245,154,75,.4);background:rgba(245,154,75,.08)}
+  .model .flag{width:26px;text-align:center;font-size:15px;flex-shrink:0}
+  .model .name{font-weight:500;font-size:13.5px}
+  .model .desc{font-size:11px;color:var(--muted);margin-top:1px}
+  .model .check{margin-left:auto;color:var(--accent);font-size:15px}
+  .model .lock{margin-left:auto;color:var(--muted);font-size:11px;display:flex;gap:5px;align-items:center}
+  .eu-note{display:flex;gap:8px;margin-top:8px;padding:9px 12px;border-radius:11px;
+           background:rgba(245,154,75,.07);border:1px solid rgba(245,154,75,.18);
+           font-size:11px;line-height:1.5;color:var(--muted)}
+  .last-call{font-family:'JetBrains Mono';font-size:9.5px;letter-spacing:.05em;text-transform:uppercase;
+             color:var(--muted);margin-top:9px;padding-left:2px}
+
+  /* styles de réponse */
+  .styles{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none}
+  .styles::-webkit-scrollbar{display:none}
+  .style-chip{flex-shrink:0;padding:9px 15px;border-radius:999px;border:1px solid var(--border);
+              font-size:12px;color:var(--ink);white-space:nowrap;min-height:40px;display:flex;align-items:center}
+  .style-chip.sel{background:var(--accent);color:#1C0E06;border-color:var(--accent);font-weight:500}
+
+  /* actions — rangées 48px */
+  .action{display:flex;align-items:center;gap:12px;min-height:48px;padding:0 6px;border-radius:12px;font-size:13.5px}
+  .action .ic{width:24px;text-align:center}
+  .action .right{margin-left:auto;color:var(--muted);font-size:11px}
+  .divider{height:1px;background:var(--border);margin:2px 6px}
+</style>
+</head>
+<body>
+
+<!-- chat derrière -->
+<div class="chat-bg">
+  <div class="head-row">
+    <button class="back">←</button>
+    <div class="head-titles">
+      <div class="kicker">Mer 11 juin · Auto</div>
+      <div class="head-title">Devis Garage Martin</div>
+    </div>
+    <button class="more">⋯</button>
+  </div>
+  <div class="rule"><div class="r1"></div><div class="r2"></div></div>
+  <div class="msg-user"><div class="txt">« Relis le devis du Garage Martin dans mon Drive… »</div></div>
+  <div class="msg-ai">
+    <svg width="20" height="20" viewBox="0 0 64 64" style="flex-shrink:0;margin-top:3px"><polygon points="32,6 6,54 32,40" fill="#F59A4B" opacity=".55"/><polygon points="32,6 58,54 32,40" fill="#F59A4B"/></svg>
+    <div class="body">J’ai retrouvé « GarageMartin_devis_2026-118.pdf » dans ton Drive (30 mai, 2 340 € TTC)…</div>
+  </div>
+</div>
+
+<div class="scrim"></div>
+
+<!-- BOTTOM SHEET "⋯" : modèle + style + actions regroupés (remplace les 2 rangées de chips du header) -->
+<div class="sheet">
+  <div class="grab"></div>
+  <h2>Cette conversation</h2>
+
+  <div class="section">
+    <span class="kicker">Modèle</span>
+    <div class="model sel">
+      <span class="flag"><svg width="16" height="16" viewBox="0 0 64 64"><polygon points="32,6 6,54 32,40" fill="#F59A4B" opacity=".55"/><polygon points="32,6 58,54 32,40" fill="#F59A4B"/></svg></span>
+      <span><span class="name">Auto</span><div class="desc">Arty choisit le meilleur modèle · dernier appel : Claude Opus 4.8</div></span>
+      <span class="check">✓</span>
+    </div>
+    <div class="model">
+      <span class="flag">🇪🇺</span>
+      <span><span class="name">Mistral</span><div class="desc">Données traitées en Europe — mails, fichiers, clients</div></span>
+    </div>
+    <div class="model">
+      <span class="flag">🇺🇸</span>
+      <span><span class="name">Claude</span><div class="desc">Fichiers, analyses, Gmail / Drive / Calendar</div></span>
+    </div>
+    <div class="model">
+      <span class="flag">🇺🇸</span>
+      <span><span class="name">Gemini</span><div class="desc">Recherche web temps réel, actus, itinéraires</div></span>
+    </div>
+    <div class="model">
+      <span class="flag">🇺🇸</span>
+      <span><span class="name">ChatGPT</span><div class="desc">Sélection manuelle uniquement</div></span>
+      <span class="lock">🔒 Pro</span>
+    </div>
+    <div class="eu-note">🛡 <span>Cette conversation contient des données <strong>EU</strong> (Mistral). Choisir un modèle 🇺🇸 enverra son contenu hors Europe — à toi de décider, rien n’est bloqué.</span></div>
+    <div class="last-call">Pourquoi Opus ? Fichier joint → routage Claude</div>
+  </div>
+
+  <div class="section">
+    <span class="kicker">Style de réponse</span>
+    <div class="styles">
+      <span class="style-chip sel">💬 Normal</span>
+      <span class="style-chip">⚡ Concis</span>
+      <span class="style-chip">📝 Détaillé</span>
+      <span class="style-chip">👔 Formel</span>
+      <span class="style-chip">⚙️ Technique</span>
+    </div>
+  </div>
+
+  <div class="section" style="margin-bottom:0">
+    <span class="kicker">Actions</span>
+    <div class="action"><span class="ic">✦</span> Résumer la conversation</div>
+    <div class="divider"></div>
+    <div class="action"><span class="ic">⇩</span> Exporter <span class="right">PDF · Markdown · TXT</span></div>
+    <div class="divider"></div>
+    <div class="action"><span class="ic">⇗</span> Partager</div>
+    <div class="divider"></div>
+    <div class="action"><span class="ic">⑂</span> Créer une branche <span class="right">garde le contexte EU</span></div>
+  </div>
+</div>
+
+</body>
+</html>
