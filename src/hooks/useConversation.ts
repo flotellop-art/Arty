@@ -480,9 +480,17 @@ export function useConversation() {
           const webUrls = extractWebUrls(text).filter((u) => !pdfUrls.includes(u))
           if (webUrls.length > 0) {
             setProgressContent('🔗 Lecture du lien (EU)...', targetId)
-            const pageSections = await fetchUrlMarkdowns(webUrls)
-            if (pageSections) {
-              outgoingText = `${outgoingText}\n\n${pageSections}`
+            const { block, unreadable } = await fetchUrlMarkdowns(webUrls)
+            if (block) {
+              outgoingText = `${outgoingText}\n\n${block}`
+            }
+            // Page protégée (paywall) / illisible : sans ce marqueur, Mistral
+            // retombait sur son fallback générique « je ne peux pas lire,
+            // passe sur Claude » — faux ET impossible en mode EU. On lui dit
+            // précisément quoi répondre (bug live 11 juin, article Figaro).
+            if (unreadable.length > 0) {
+              outgoingText =
+                `${outgoingText}\n\n[Note système : le contenu de ${unreadable.join(', ')} n'a pas pu être récupéré (page protégée par un abonnement/paywall ou non extractible). Dis-le clairement à l'utilisateur et demande-lui de coller le texte de l'article ici. Ne propose PAS de changer de modèle ou de "passer sur Claude" — cette conversation est verrouillée en mode Europe.]`
             }
             resetAccumulated(targetId)
             setProgressContent('', targetId)
@@ -546,6 +554,7 @@ export function useConversation() {
           // inliné (lot C) : la recherche forcée serait un appel Mistral
           // de plus pour rien, dos à dos avec la synthèse (rate limit).
           urlContentInlined: outgoingText !== text,
+          euOnly: conv.euOnly,
         })
       } else if (provider === 'openai') {
         // openaiKey peut être null — dans ce cas le client passe par le proxy
