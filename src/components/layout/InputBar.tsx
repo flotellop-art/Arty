@@ -14,6 +14,7 @@ import { enhancePrompt, canEnhancePrompt } from '../../services/promptEnhancer'
 import { isPromptEnhancementEnabled } from '../../services/promptEnhancerSettings'
 import { hasUrl } from '../../services/aiRouter'
 import { haptic } from '../../utils/haptic'
+import { InputContextSlot } from './InputContextSlot'
 
 interface InputBarProps {
   onSend: (text: string, files?: FileAttachment[]) => void
@@ -64,6 +65,18 @@ function getQuickActionChips(t: TFunction): Array<{ label: string; prompt: strin
 const HOLD_THRESHOLD_MS = 600
 const HOLD_MAX_MS = 60_000
 const SWIPE_CANCEL_THRESHOLD_PX = 60
+
+// Killswitch PR C (même pattern que arty-chat-sheet-v2, ChatTopBar.tsx) :
+// slot contextuel unique + chips scrollables + micro unique actifs par
+// défaut ; `arty-inputbar-v2 = '0'` dans localStorage restaure l'ancien
+// empilement de bandeaux sans rebuild. Clé GLOBALE hors scopedStorage.
+function inputBarV2Enabled(): boolean {
+  try {
+    return localStorage.getItem('arty-inputbar-v2') !== '0'
+  } catch {
+    return true
+  }
+}
 // Cap d'attachements par message — l'API Anthropic plafonne (~20 images,
 // 5 PDFs) avec une erreur brute ; on borne plus bas côté UI avec un message
 // clair (audit UX 10 juin 2026).
@@ -131,6 +144,9 @@ function PendingFilePreview({ file, onRemove }: { file: FileAttachment; onRemove
 
 export function InputBar({ onSend, isStreaming, onStop, initialText, initialFiles, euOnly }: InputBarProps) {
   const { t } = useTranslation()
+  // Évalué à chaque render (lecture localStorage triviale) — un testeur peut
+  // poser le killswitch en DevTools et le voir s'appliquer immédiatement.
+  const v2 = inputBarV2Enabled()
   const [text, setText] = useState(() => initialText ?? '')
   const [files, setFiles] = useState<FileAttachment[]>(() => initialFiles ?? [])
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -877,8 +893,11 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
         </div>
       )}
 
+      {/* ===== Rendu hérité (killswitch arty-inputbar-v2 = '0') — bandeaux
+          empilables conservés tels quels pour rollback sans rebuild. En v2,
+          ces blocs sont remplacés par <InputContextSlot> plus bas. ===== */}
       {/* Prompt enhancement error (1.0.14) */}
-      {enhanceError && (
+      {!v2 && enhanceError && (
         <div className="mb-2 flex items-center gap-2 px-3 py-2 bg-red-500/10 border border-red-500/30 rounded-xl text-xs text-red-700 dark:text-red-400">
           <span>⚠️</span>
           <span className="flex-1 truncate">{enhanceError}</span>
@@ -897,7 +916,7 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
           Roadmap UI Phase 3 #4 — suggestions contextuelles à 1 tap, utile pour
           les utilisateurs qui ne savent pas quoi taper. Le set évolue selon
           l'heure pour rester pertinent (matin = brief, soir = résumé). */}
-      {!text.trim() && files.length === 0 && !isStreaming && !isListening && !isRecordingAudio && (
+      {!v2 && !text.trim() && files.length === 0 && !isStreaming && !isListening && !isRecordingAudio && (
         <div className="mb-2 flex flex-wrap gap-1.5 px-1">
           {getQuickActionChips(t).map((chip) => (
             <button
@@ -914,7 +933,7 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
       )}
 
       {/* Calendar event suggestion pill (Feature 16) */}
-      {calendarSuggestion && !showCalendarForm && (
+      {!v2 && calendarSuggestion && !showCalendarForm && (
         <div className="mb-2 flex items-center gap-2 px-3 py-2 bg-theme-accent/10 border border-theme-accent/20 rounded-xl text-xs text-theme-ink">
           <span>📅</span>
           <span className="flex-1 truncate">
@@ -973,22 +992,45 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
         </div>
       )}
 
+      {/* Slot contextuel v2 — UNE zone à priorité (voix > erreur > calendrier
+          > chips) au lieu des bandeaux empilés. Les aperçus fichiers et le
+          hint EU restent au-dessus, hors du slot : ce sont des données
+          d'entrée / un conseil, pas un état contextuel (audit PR C, R4). */}
+      {v2 && (
+        <InputContextSlot
+          error={micError || audioError || fileError || enhanceError}
+          onDismissError={enhanceError && !micError && !audioError && !fileError ? () => setEnhanceError(null) : undefined}
+          isRecordingAudio={isRecordingAudio}
+          recordingDuration={recordingDuration}
+          isSwipeCancelling={isSwipeCancelling}
+          isTranscribing={isTranscribing}
+          isListening={isListening}
+          interimTranscript={interimTranscript}
+          calendarSuggestion={showCalendarForm ? null : calendarSuggestion}
+          onCreateCalendarEvent={() => setShowCalendarForm(true)}
+          onDismissCalendar={() => setCalendarSuggestion(null)}
+          showChips={!text.trim() && files.length === 0 && !isStreaming && !isListening && !isRecordingAudio}
+          chips={getQuickActionChips(t)}
+          onChipClick={(prompt) => onSend(prompt)}
+        />
+      )}
+
       {/* Mic / audio / file error message (speech recognition + Whisper + attachements) */}
-      {(micError || audioError || fileError) && (
+      {!v2 && (micError || audioError || fileError) && (
         <div className="text-xs text-red-500 mb-1 px-1" role="alert">
           {micError || audioError || fileError}
         </div>
       )}
 
       {/* Interim transcript indicator (Web Speech API) */}
-      {isListening && interimTranscript && (
+      {!v2 && isListening && interimTranscript && (
         <div className="text-xs text-theme-muted italic mb-1 px-1 truncate">
           {interimTranscript}...
         </div>
       )}
 
       {/* Voice message recording indicator (Whisper hold-to-record) */}
-      {isRecordingAudio && (
+      {!v2 && isRecordingAudio && (
         <div
           className={`mb-1 px-2 py-1.5 rounded-lg text-xs flex items-center gap-2 transition-colors ${
             isSwipeCancelling
@@ -1018,7 +1060,7 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
       )}
 
       {/* Transcribing indicator (after release, while Whisper is responding) */}
-      {isTranscribing && !isRecordingAudio && (
+      {!v2 && isTranscribing && !isRecordingAudio && (
         <div className="text-xs text-theme-muted italic mb-1 px-1 flex items-center gap-2">
           <span className="inline-block w-2 h-2 rounded-full bg-theme-accent animate-pulse" />
           {t('chat.input.voice.transcribing')}
@@ -1111,8 +1153,11 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
           </button>
         )}
 
-        {/* Whisper audio recording (Feature 15) — if OpenAI key is available */}
-        {hasOpenAI && (
+        {/* Whisper audio recording (Feature 15) — if OpenAI key is available.
+            v2 : retiré — le hold du VoiceButton couvre Whisper, deux boutons
+            micro aux gestes contradictoires (toggle vs hold) brouillaient
+            l'affordance (audit PR C, R5). Le killswitch le restaure. */}
+        {!v2 && hasOpenAI && (
           <button
             onClick={isRecordingAudio ? () => stopAudioRecording() : startAudioRecording}
             className={`relative flex-shrink-0 p-1.5 rounded-full transition-colors mb-0.5 ${
@@ -1170,9 +1215,18 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
             crossedThreshold={crossedThresholdRef.current}
             holdProgress={holdProgress}
             ariaLabel={t('chat.input.aria.holdToRecord')}
+            showIdleRing={v2 && canUseWhisper}
           />
         ) : null}
       </div>
+
+      {/* Hint dictée/Whisper (v2) — le hold 600ms était indécouvrable sans
+          indication (constat beta). Affiché à l'idle uniquement. */}
+      {v2 && !isStreaming && !isListening && !isRecordingAudio && !isTranscribing && !text.trim() && files.length === 0 && (canUseWhisper || isMicSupported) && (
+        <p className="text-center text-[10px] font-sans text-theme-muted mt-2">
+          {canUseWhisper ? t('chat.input.voice.hint') : t('chat.input.voice.hintTapOnly')}
+        </p>
+      )}
     </div>
   )
 }
@@ -1317,12 +1371,14 @@ interface VoiceButtonProps {
   crossedThreshold: boolean
   holdProgress: number
   ariaLabel: string
+  /** v2 : anneau pointillé statique à l'idle — hint « ce bouton se maintient ». */
+  showIdleRing?: boolean
 }
 
 function VoiceButton({
   onPointerDown, onPointerMove, onPointerUp, onPointerCancel,
   isListening, isRecordingAudio, isSwipeCancelling, isTranscribing,
-  crossedThreshold, holdProgress, ariaLabel,
+  crossedThreshold, holdProgress, ariaLabel, showIdleRing,
 }: VoiceButtonProps) {
   // Size morph: 52px idle, 56px active (listening or whisper). Roadmap UI
   // Phase 3 #7 — WCAG 2.2 "Target Size Minimum" + confort terrain (gants,
@@ -1366,6 +1422,17 @@ function VoiceButton({
       aria-label={ariaLabel}
       disabled={isTranscribing}
     >
+      {/* Anneau pointillé idle (v2) — purement décoratif, élément SÉPARÉ de
+          l'anneau de progression : ne touche ni showRing ni holdProgress
+          (frontière BUG 46, audit PR C R2). Masqué dès que le bouton est
+          actif ou qu'un hold démarre. */}
+      {showIdleRing && !active && !showRing && (
+        <span
+          aria-hidden="true"
+          className="absolute rounded-full border-2 border-dashed border-theme-accent/35 pointer-events-none"
+          style={{ inset: -3 }}
+        />
+      )}
       {/* Hold-progress ring — fills 0→1 during 0-600ms hold. */}
       {showRing && (
         <svg

@@ -258,7 +258,9 @@
         "micDenied": "Microphone denied — allow it in browser settings",
         "micDeniedNative": "Microphone denied — allow it in Settings → Apps → Arty → Permissions",
         "transcribeFailed": "Transcription failed — try again",
-        "unsupported": "Audio recording not supported in this browser"
+        "unsupported": "Audio recording not supported in this browser",
+        "hint": "Tap 🎙 = quick dictation · hold = Whisper",
+        "hintTapOnly": "Tap 🎙 = quick dictation"
       },
       "slashPaletteHeader": "Commands",
       "removeFile": "Remove {{name}}",
@@ -302,7 +304,8 @@
         }
       },
       "fileTooLarge": "File too large (max 10 MB): {{names}}",
-      "tooManyFiles": "Maximum {{max}} files per message"
+      "tooManyFiles": "Maximum {{max}} files per message",
+      "scanPrompt": "Extract the key information from this document: amounts, dates, sender, recipient, subject, and anything notable."
     },
     "tone": {
       "default": "Normal",
