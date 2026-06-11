@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="fr" data-theme="ember">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Arty — Maquette Accueil (ergonomique)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..700&family=Inter:wght@300;400;500;600;700&family=Lora:wght@400;600&display=swap" rel="stylesheet" />
+<link href="tokens.css" rel="stylesheet" />
+<style>
+  body { display:flex; flex-direction:column; align-items:center; gap:14px; padding:28px 12px; min-height:100vh; }
+  .toolbar { display:flex; gap:8px; align-items:center; }
+  .toolbar button {
+    font-family:'Inter',sans-serif; font-size:12px; font-weight:600; cursor:pointer;
+    padding:8px 14px; border-radius:100px; border:1px solid rgb(var(--theme-border));
+    background:rgb(var(--theme-surface)); color:rgb(var(--theme-ink));
+  }
+  .screen { flex:1; display:flex; flex-direction:column; overflow:hidden; }
+  .scroll { flex:1; overflow-y:auto; }
+
+  /* ── TopBar simplifiée : hamburger + 2 utilitaires seulement ── */
+  .topbar {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:calc(14px + 8px) 12px 8px; /* simule safe-area */
+  }
+  .iconbtn {
+    display:flex; align-items:center; justify-content:center;
+    width:44px; height:44px; border-radius:12px; border:none; background:transparent;
+    color:rgb(var(--theme-ink)); cursor:pointer;
+  }
+  .iconbtn:active { background:rgb(var(--theme-ink)/0.06); }
+  .topbar-right { display:flex; align-items:center; gap:2px; }
+  .cost-pill {
+    display:flex; align-items:center; gap:5px; height:32px; padding:0 10px;
+    border-radius:100px; background:rgb(var(--theme-ink)/0.05);
+    font-family:'Inter'; font-size:12px; font-weight:600; color:rgb(var(--theme-muted));
+  }
+
+  /* ── Masthead éditorial ── */
+  .masthead { display:flex; align-items:center; justify-content:space-between; padding:2px 20px 6px; }
+  .rule2 { margin:0 20px; height:2px; background:rgb(var(--theme-ink)); }
+  .rule1 { margin:3px 20px 0; height:1px; background:rgb(var(--theme-ink)); }
+  .hero { padding:18px 20px 4px; }
+  .hero h1 { margin:0; font-family:'Fraunces',serif; font-weight:500; font-size:38px; line-height:0.98; letter-spacing:-0.03em; }
+  .hero .name { font-style:italic; }
+  .hero .dot { color:rgb(var(--theme-accent)); }
+
+  /* ── Tâches : accès direct (1 tap) en haut, plus enterré dans le tiroir ── */
+  .task-strip {
+    display:flex; align-items:center; gap:10px; margin:14px 20px 0;
+    padding:12px 14px; min-height:52px; border-radius:14px;
+    background:rgb(var(--surface-elev)); border:1px solid rgb(var(--border-weak));
+    cursor:pointer;
+  }
+  .task-strip .badge {
+    width:26px; height:26px; border-radius:8px; background:rgb(var(--theme-accent));
+    color:#1C0E06; font-family:'Inter'; font-weight:700; font-size:13px;
+    display:flex; align-items:center; justify-content:center; flex-shrink:0;
+  }
+  .task-strip .label { font-family:'Inter'; font-size:13.5px; font-weight:500; flex:1; }
+  .task-strip .sub { font-family:'Inter'; font-size:11.5px; color:rgb(var(--theme-muted)); }
+  .chev { color:rgb(var(--theme-muted)); flex-shrink:0; }
+
+  /* ── CTA Découvrir ── */
+  .discover {
+    display:flex; align-items:center; gap:14px; margin:14px 20px 0;
+    padding:14px 16px; border-radius:14px; cursor:pointer; min-height:56px;
+    background:linear-gradient(150deg, rgb(var(--theme-accent)) 0%, rgb(var(--theme-accent)/0.82) 100%);
+    color:#1C0E06; box-shadow:0 6px 24px rgba(245,154,75,0.22);
+  }
+  .discover .t1 { font-family:'Fraunces',serif; font-weight:500; font-size:16px; }
+  .discover .t2 { font-family:'Inter'; font-size:11px; opacity:0.78; margin-top:2px; }
+
+  /* ── Section intentions : VRAIS boutons (44px, chevron) ── */
+  .section { margin:22px 20px 0; }
+  .section > .kicker { display:block; margin-bottom:8px; }
+  .section .hdrline { border-top:1px solid rgb(var(--theme-ink)); padding-top:4px; }
+  .intent {
+    display:flex; align-items:center; gap:10px; width:100%; text-align:left;
+    min-height:46px; padding:8px 6px; border:none; background:transparent; cursor:pointer;
+    border-bottom:1px solid rgb(var(--border-weak));
+    font-family:'Fraunces',serif; font-style:italic; font-size:15px; color:rgb(var(--theme-ink));
+  }
+  .intent .bar { flex:0 0 3px; align-self:stretch; border-radius:2px; background:rgb(var(--theme-accent)); }
+  .intent > span:not(.bar) { flex:1; }
+  .intent:active { background:rgb(var(--theme-accent)/0.06); }
+
+  /* ── Conversations récentes (NOUVEAU — absentes de l'app actuelle) ── */
+  .recent-item {
+    display:flex; align-items:center; gap:11px; width:100%; text-align:left;
+    min-height:54px; padding:9px 6px; border:none; background:transparent; cursor:pointer;
+    border-bottom:1px solid rgb(var(--border-weak));
+  }
+  .recent-dot { width:8px; height:8px; border-radius:50%; background:rgb(var(--theme-accent)); flex-shrink:0; }
+  .recent-dot.off { background:transparent; border:1.5px solid rgb(var(--border-mid)); }
+  .recent-body { flex:1; min-width:0; }
+  .recent-title { font-family:'Inter'; font-size:13.5px; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .recent-prev { font-family:'Inter'; font-size:11.5px; color:rgb(var(--theme-muted)); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-style:italic; }
+  .recent-time { font-family:'Inter'; font-size:10.5px; color:rgb(var(--theme-muted)); flex-shrink:0; }
+
+  /* ── InputBar (primaire) ── */
+  .inputbar { padding:8px 16px calc(8px + 6px); }
+  .inputrow {
+    display:flex; align-items:center; gap:8px;
+    background:rgb(var(--theme-surface)); border:1px solid rgb(var(--theme-border));
+    border-radius:18px; padding:6px 8px 6px 12px; box-shadow:0 1px 2px rgba(0,0,0,0.04);
+  }
+  .inputrow .plus { width:40px; height:40px; }
+  .inputrow .field { flex:1; font-family:'Inter'; font-weight:300; font-size:14px; color:rgb(var(--theme-muted)); }
+  .voice {
+    width:44px; height:44px; border-radius:50%; border:none; cursor:pointer;
+    background:rgb(var(--theme-accent)/0.15); color:rgb(var(--theme-muted));
+    display:flex; align-items:center; justify-content:center;
+  }
+
+  .annot {
+    max-width:390px; font-family:'Inter'; font-size:12.5px; line-height:1.5;
+    color:#444; background:#fffdf8; border:1px solid #eadfca; border-radius:12px; padding:12px 14px;
+  }
+  .annot b { color:#C85A28; }
+  .annot ul { margin:6px 0 0; padding-left:18px; }
+  .annot li { margin:3px 0; }
+</style>
+</head>
+<body>
+  <div class="toolbar">
+    <a href="index.html" style="text-decoration:none;color:#C85A28;font-family:Inter;font-size:12px;font-weight:600;">← Galerie</a>
+    <button onclick="tog()">◐ Ember / Nocturne</button>
+    <a href="chat.html" style="text-decoration:none;"><button>Conversation →</button></a>
+  </div>
+
+  <div class="phone">
+    <div class="phone-notch"></div>
+    <div class="screen">
+      <!-- TopBar minimaliste : seulement hamburger + coûts(EUR) + thème -->
+      <div class="topbar">
+        <button class="iconbtn" aria-label="Menu">
+          <svg width="22" height="22" viewBox="0 0 20 20" fill="none"><rect y="3" width="20" height="2" rx="1" fill="currentColor"/><rect y="9" width="20" height="2" rx="1" fill="currentColor"/><rect y="15" width="20" height="2" rx="1" fill="currentColor"/></svg>
+        </button>
+        <div class="topbar-right">
+          <span class="cost-pill" title="Consommation du mois (EUR)">≈ 0,21 €</span>
+          <button class="iconbtn" aria-label="Thème" onclick="tog()">
+            <svg width="22" height="22" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="7.25" stroke="currentColor" stroke-width="1.5"/><path d="M10 2.75A7.25 7.25 0 0 1 10 17.25Z" fill="currentColor"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="scroll">
+        <div class="masthead">
+          <span class="kicker">Jeudi 11 juin · Valence</span>
+          <svg width="22" height="22" viewBox="0 0 64 64" fill="none"><path d="M32 6 L58 54 L32 40 Z" fill="rgb(var(--theme-accent))"/><path d="M32 6 L6 54 L32 40 Z" fill="rgb(var(--theme-accent))" opacity="0.45"/></svg>
+        </div>
+        <div class="rule2"></div><div class="rule1"></div>
+
+        <div class="hero">
+          <h1>Bonjour<br><span class="name">Florent</span><span class="dot">.</span></h1>
+        </div>
+
+        <!-- Tâches accessibles en 1 tap (au lieu de 4) + badge visible -->
+        <div class="task-strip" role="button">
+          <span class="badge">3</span>
+          <div class="label">Tâches en attente
+            <div class="sub">Relancer le garage · Devis Mégane · +1</div>
+          </div>
+          <svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+
+        <div class="discover" role="button">
+          <svg width="22" height="22" viewBox="0 0 64 64" fill="none"><path d="M32 6 L58 54 L32 40 Z" fill="#1C0E06"/><path d="M32 6 L6 54 L32 40 Z" fill="#1C0E06" opacity="0.5"/></svg>
+          <div style="flex:1">
+            <div class="t1">Découvrir Arty</div>
+            <div class="t2">Ce qu'Arty peut faire, avec des exemples</div>
+          </div>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1C0E06" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+        </div>
+
+        <!-- Intentions = vrais boutons 46px avec chevron (plus des "citations") -->
+        <div class="section">
+          <span class="kicker">Pour démarrer</span>
+          <div class="hdrline"></div>
+          <button class="intent"><span class="bar"></span><span>Tes mails non lus</span><svg class="chev" width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+          <button class="intent"><span class="bar"></span><span>Ce qu'il y a aujourd'hui</span><svg class="chev" width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+          <button class="intent"><span class="bar"></span><span>Trouve-moi un créneau libre</span><svg class="chev" width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+        </div>
+
+        <!-- Conversations récentes directement sur l'accueil (n'existait pas) -->
+        <div class="section" style="margin-bottom:18px">
+          <span class="kicker">Récent</span>
+          <div class="hdrline"></div>
+          <button class="recent-item">
+            <span class="recent-dot"></span>
+            <span class="recent-body">
+              <span class="recent-title">Devis carrosserie Clio</span>
+              <span class="recent-prev">Voici un récapitulatif des trois devis…</span>
+            </span>
+            <span class="recent-time">2 h</span>
+          </button>
+          <button class="recent-item">
+            <span class="recent-dot off"></span>
+            <span class="recent-body">
+              <span class="recent-title">🇪🇺 Synthèse mails clients</span>
+              <span class="recent-prev">J'ai trié 12 mails par priorité…</span>
+            </span>
+            <span class="recent-time">hier</span>
+          </button>
+          <button class="recent-item">
+            <span class="recent-dot off"></span>
+            <span class="recent-body">
+              <span class="recent-title">Traduction contrat EN</span>
+              <span class="recent-prev">Traduction fidèle, termes juridiques…</span>
+            </span>
+            <span class="recent-time">2 j</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- InputBar : action primaire, conservée en bas (chat-first) -->
+      <div class="inputbar">
+        <div class="inputrow">
+          <button class="iconbtn plus" aria-label="Joindre">
+            <svg width="20" height="20" viewBox="0 0 18 18" fill="none"><line x1="9" y1="3" x2="9" y2="15" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><line x1="3" y1="9" x2="15" y2="9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+          </button>
+          <span class="field">Écris ou demande à Arty…</span>
+          <button class="voice" aria-label="Dicter (tap) ou Whisper (maintenir)">
+            <svg width="20" height="20" viewBox="0 0 18 18" fill="none"><rect x="6.5" y="2" width="5" height="9" rx="2.5" stroke="currentColor" stroke-width="1.6"/><path d="M4 9C4 11.76 6.24 14 9 14C11.76 14 14 11.76 14 9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><line x1="9" y1="14" x2="9" y2="16" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="annot">
+    <b>Accueil — améliorations ergonomiques</b>
+    <ul>
+      <li><b>Tâches en 1 tap</b> (au lieu de 4) : bandeau dédié + badge visible, plus enterré dans le tiroir.</li>
+      <li><b>Conversations récentes</b> directement sur l'accueil — absentes de l'app actuelle.</li>
+      <li><b>Intentions = vrais boutons ≥46px</b> avec chevron, plus des citations à l'affordance ambiguë.</li>
+      <li><b>TopBar allégée</b> : hamburger + coûts (en €) + thème. Réglages retirés (doublon) → uniquement dans le tiroir.</li>
+      <li>Toutes les cibles tactiles ≥44px (WCAG 2.2).</li>
+    </ul>
+  </div>
+
+<script>
+  function tog(){
+    var h=document.documentElement;
+    h.dataset.theme = h.dataset.theme==='ember' ? 'nocturne' : 'ember';
+    try{localStorage.setItem('arty-mock-theme',h.dataset.theme)}catch(e){}
+  }
+  try{var t=localStorage.getItem('arty-mock-theme'); if(t)document.documentElement.dataset.theme=t;}catch(e){}
+</script>
+</body>
+</html>
