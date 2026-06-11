@@ -201,6 +201,10 @@
       "share": "Partager",
       "help": "Aide tons & modèles"
     },
+    "switcher": {
+      "title": "Changer de conversation",
+      "open": "Changer de conversation"
+    },
     "modelExplain": {
       "mistral": "Mistral est utilisé en mode Europe (serveurs en France) — idéal pour les données qui doivent rester en Europe : mails, fichiers, infos clients. Pas de recherche web ni d'ouverture de liens.",
       "gemini": "Gemini est utilisé pour les recherches web en temps réel, les questions sur l'actualité et les requêtes Google Maps. Données traitées hors Europe.",

@@ -60,6 +60,8 @@ export function ConversationScreen({
   browserActions,
   computerActions,
   actionScreenshot,
+  conversations,
+  onSelectConv,
 }: ConversationScreenProps) {
   const { t } = useTranslation()
   const [showSummary, setShowSummary] = useState(false)
@@ -75,6 +77,8 @@ export function ConversationScreen({
         euOnly={conversation.euOnly}
         conversation={conversation}
         onOpenSummary={() => setShowSummary(true)}
+        conversations={conversations}
+        onSelectConversation={onSelectConv}
       />
 
       <ActionBanner icon="📧" message={t('chat.banners.gmailReading')} isVisible={gmail.isLoading} />
