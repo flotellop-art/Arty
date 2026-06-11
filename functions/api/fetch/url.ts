@@ -9,13 +9,22 @@
 //    partaient dans le vide (hallucinations PR #162).
 // Réutilise LINKUP_API_KEY (déjà utilisée par /api/search/web).
 //
+// Liens de partage Android (share.google…) : Linkup ne suit pas leur
+// interstitiel JS sans `renderJs`. On l'active conditionnellement pour ces
+// hôtes (audit 11 juin). DÉCISION D'ARCHI : on NE résout PAS la redirection
+// nous-mêmes côté Worker — 4 audits agents ont montré qu'un fetch de
+// résolution réintroduirait un vrai SSRF (contournements nip.io, trailing
+// dot, DNS rebinding non maîtrisable sur Workers). C'est toujours Linkup qui
+// fetche : l'invariant ci-dessous reste vrai.
+//
 // Sécurité (RÈGLE 6) :
 //  - Auth obligatoire (checkAllowedUserPeek) — anti relais anonyme (CRIT-4).
 //  - C'est Linkup qui fait le fetch sortant, PAS notre Worker : le SSRF
 //    classique contre l'infra Cloudflare n'existe pas. La validation d'URL
 //    ci-dessous évite quand même d'être un vecteur d'abus vers des hosts
-//    internes via l'infra Linkup. Redirects + DNS rebinding non maîtrisables
-//    côté Arty (acceptés explicitement).
+//    internes via l'infra Linkup. `isSafePublicUrl` durcie (11 juin) :
+//    trailing dot normalisé + IPv4 embarquée (nip.io) rejetée. DNS rebinding
+//    pur non maîtrisable côté Arty (accepté ; borné à l'infra Linkup).
 //  - Levée du PDF-only (lot C) : l'abus de quota Linkup reste borné par
 //    l'auth whitelist/abonnés, le cap de sortie, et le cap client
 //    (3 fetch max par message). Risque accepté : un utilisateur authentifié
@@ -26,24 +35,10 @@
 
 import type { Env } from '../../env'
 import { checkAllowedUserPeek } from '../_lib/checkAllowedUser'
+import { isSafePublicUrl, isShortLinkHost } from '../_lib/urlSafety'
 
 const MAX_URL_LEN = 2048
 const MAX_MARKDOWN_CHARS = 200_000
-
-function isSafePublicUrl(u: URL): boolean {
-  if (u.protocol !== 'https:' && u.protocol !== 'http:') return false
-  if (u.username || u.password) return false
-  if (u.port && u.port !== '80' && u.port !== '443') return false
-  const h = u.hostname.toLowerCase()
-  // Refuse les IP littérales (v4/v6) — un PDF public est servi par un nom de
-  // domaine, jamais une IP brute. Couvre loopback/privé/link-local/metadata.
-  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(h)) return false
-  if (h.includes(':')) return false
-  // Refuse les hostnames internes / sans TLD.
-  if (h === 'localhost' || h.endsWith('.localhost') || h.endsWith('.internal') || h.endsWith('.local')) return false
-  if (!h.includes('.')) return false
-  return true
-}
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   // Peek : vérifie l'identité Google sans décrémenter le trial (endpoint
@@ -88,6 +83,9 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     return Response.json({ error: 'Fetch unavailable' }, { status: 503 })
   }
 
+  // renderJs uniquement pour les liens de partage Google (interstitiel JS).
+  const renderJs = isShortLinkHost(parsed.hostname)
+
   try {
     const res = await fetch('https://api.linkup.so/v1/fetch', {
       method: 'POST',
@@ -99,6 +97,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
         url: parsed.toString(),
         includeRawHtml: false,
         extractImages: false,
+        ...(renderJs ? { renderJs: true } : {}),
       }),
     })
     if (!res.ok) {
