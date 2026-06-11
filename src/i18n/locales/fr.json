@@ -334,7 +334,9 @@
       "errorMany": "{{count}} erreurs détectées",
       "toVerifyOne": "{{count}} point à vérifier",
       "toVerifyMany": "{{count}} points à vérifier",
-      "toVerifySuffix": "{{count}} à vérifier"
+      "toVerifySuffix": "{{count}} à vérifier",
+      "correctValue": "valeur correcte :",
+      "notAppliedHint": "La réponse n'a pas pu être corrigée automatiquement — le passage cité n'y figure pas tel quel. Tiens compte de la valeur ci-dessus."
     },
     "messageList": {
       "branch": "Créer une branche depuis ce message",

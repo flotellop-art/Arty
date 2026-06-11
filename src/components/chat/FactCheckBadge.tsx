@@ -148,7 +148,12 @@ export const FactCheckBadge = memo(function FactCheckBadge({ result }: Props) {
             <p className="text-theme-muted italic">{t('chat.factCheck.noRiskyDetail')}</p>
           ) : (
             result.claims.map((c, i) => {
-              const wasCorrected = c.verdict === 'wrong' && c.originalText && c.correction
+              const hasCorrection = c.verdict === 'wrong' && !!c.originalText && !!c.correction
+              // `applied` = la substitution a RÉELLEMENT eu lieu dans la
+              // réponse. Rétro-compat : résultats persistés avant ce champ
+              // (undefined) traités comme appliqués, sinon on dégraderait
+              // rétroactivement les diffs des anciennes conversations.
+              const wasCorrected = hasCorrection && c.applied !== false
               return (
                 <div key={i} className="text-theme-ink/80">
                   <div className={`flex items-start gap-1.5 ${VERDICT_STYLE[c.verdict] || ''}`}>
@@ -162,6 +167,16 @@ export const FactCheckBadge = memo(function FactCheckBadge({ result }: Props) {
                       </p>
                       <p className="text-emerald-700 dark:text-emerald-400">
                         → {c.correction}
+                      </p>
+                    </div>
+                  )}
+                  {hasCorrection && !wasCorrected && (
+                    <div className="ml-5 mt-1 space-y-0.5">
+                      <p className="text-emerald-700 dark:text-emerald-400">
+                        → {t('chat.factCheck.correctValue')} {c.correction}
+                      </p>
+                      <p className="text-theme-muted italic text-[10px]">
+                        {t('chat.factCheck.notAppliedHint')}
                       </p>
                     </div>
                   )}

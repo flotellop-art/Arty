@@ -334,7 +334,9 @@
       "errorMany": "{{count}} errors detected",
       "toVerifyOne": "{{count}} point to verify",
       "toVerifyMany": "{{count}} points to verify",
-      "toVerifySuffix": "{{count}} to verify"
+      "toVerifySuffix": "{{count}} to verify",
+      "correctValue": "correct value:",
+      "notAppliedHint": "The response could not be corrected automatically — the quoted passage no longer appears verbatim. Rely on the value above."
     },
     "messageList": {
       "branch": "Branch from this message",
