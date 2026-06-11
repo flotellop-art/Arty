@@ -258,7 +258,9 @@
         "micDenied": "Micro refusé — autorise-le dans les paramètres du navigateur",
         "micDeniedNative": "Micro refusé — autorise-le dans Paramètres → Apps → Arty → Autorisations",
         "transcribeFailed": "Transcription échouée — réessaie",
-        "unsupported": "Enregistrement audio non supporté sur ce navigateur"
+        "unsupported": "Enregistrement audio non supporté sur ce navigateur",
+        "hint": "Tap 🎙 = dictée rapide · maintenir = Whisper",
+        "hintTapOnly": "Tap 🎙 = dictée rapide"
       },
       "slashPaletteHeader": "Commandes",
       "removeFile": "Retirer {{name}}",
@@ -302,7 +304,8 @@
         }
       },
       "fileTooLarge": "Fichier trop volumineux (max 10 MB) : {{names}}",
-      "tooManyFiles": "Maximum {{max}} fichiers par message"
+      "tooManyFiles": "Maximum {{max}} fichiers par message",
+      "scanPrompt": "Extrais les informations clés de ce document : montants, dates, expéditeur, destinataire, sujet, et tout point notable."
     },
     "tone": {
       "default": "Normal",

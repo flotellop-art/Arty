@@ -405,6 +405,7 @@ function AppContent({
               onMenuToggle={() => setSidebarOpen((o) => !o)}
               onSend={handleSendFromHome}
               isStreaming={isStreaming}
+              onStop={stopStreaming}
               googleAuth={googleAuth}
               gmail={gmail}
               drive={drive}

@@ -19,6 +19,10 @@ interface HomeScreenProps {
   onMenuToggle: () => void
   onSend: (text: string, files?: FileAttachment[]) => void
   isStreaming: boolean
+  /** Stop du stream actif. Sans lui, le bouton Stop affiché quand un stream
+      tourne en arrière-plan (retour Home pendant une réponse) est un no-op
+      silencieux — bug relevé par PLAN.md (PR C). */
+  onStop?: () => void
   googleAuth: ReturnType<typeof useGoogleAuth>
   gmail: ReturnType<typeof useGmail>
   drive: ReturnType<typeof useDrive>
@@ -29,7 +33,7 @@ interface HomeScreenProps {
   onBriefAction?: (action: BriefAction, item: BriefItem) => 'task' | 'chat' | null
 }
 
-function HomeScreenInner({ onMenuToggle, onSend, isStreaming, googleAuth, userName, proactiveBrief, briefLoading, onDismissBrief, onBriefAction }: HomeScreenProps) {
+function HomeScreenInner({ onMenuToggle, onSend, isStreaming, onStop, googleAuth, userName, proactiveBrief, briefLoading, onDismissBrief, onBriefAction }: HomeScreenProps) {
   const { t, i18n } = useTranslation()
   const googleTooltip = useTooltip('google')
 
@@ -224,7 +228,7 @@ function HomeScreenInner({ onMenuToggle, onSend, isStreaming, googleAuth, userNa
         </div>
       </div>
 
-      <InputBar onSend={onSend} isStreaming={isStreaming} />
+      <InputBar onSend={onSend} isStreaming={isStreaming} onStop={onStop} />
     </div>
   )
 }
