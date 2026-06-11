@@ -194,7 +194,7 @@
         "openai": "Sélection manuelle uniquement"
       },
       "euNote": "Cette conversation contient des données EU (Mistral). Choisir un modèle 🇺🇸 demandera une confirmation avant d'envoyer son contenu hors Europe.",
-      "euLocked": "Conversation verrouillée Europe — Mistral uniquement",
+      "euLocked": "Conversation verrouillée Europe — Mistral uniquement · fact-check désactivé (il sortirait d'Europe)",
       "proLock": "Pro",
       "summarize": "Résumer la conversation",
       "exportLabel": "Exporter",
@@ -395,7 +395,8 @@
     "micError": "Erreur micro : {{error}}",
     "micCannotStart": "Impossible de démarrer le micro",
     "speechNotSupported": "Reconnaissance vocale non supportée sur ce navigateur. Utilisez Chrome ou Edge.",
-    "storageNotReady": "Tes conversations sont encore en cours de chargement — réessaie dans une seconde."
+    "storageNotReady": "Tes conversations sont encore en cours de chargement — réessaie dans une seconde.",
+    "mistralTimeout": "Mistral n'a pas répondu à temps (60 s) — réseau lent ou service surchargé. Réessaie."
   },
   "sidebar": {
     "newConversation": "Nouvelle conversation",
