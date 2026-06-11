@@ -278,7 +278,13 @@ export function useConversation() {
       // retarde le finalize jusqu'à la fin du fact-check. Évite à
       // l'utilisateur de voir la version non vérifiée. Mode 'off' garde
       // l'ancien flow streaming visible + fact-check async.
-      const factCheckMode = getFactCheckMode()
+      // RGPD (RÈGLE 5.3) — audit Mistral 11 juin 2026 : le fact-checker
+      // tourne sur Claude (Anthropic, serveurs US). L'exécuter sur une
+      // conversation euOnly enverrait question + réponse (jusqu'à 8 000
+      // chars, mails/Drive inclus) hors Europe — violation silencieuse de
+      // la promesse « tes données ne quitteront pas l'Europe ». Fact-check
+      // désactivé sur les convs EU ; le sheet « ⋯ » l'indique (euLocked).
+      const factCheckMode = conv.euOnly ? 'off' : getFactCheckMode()
       const deferPublish = factCheckMode !== 'off'
 
       // Relecture (audit) — canStart est vérifié plus haut mais des `await`

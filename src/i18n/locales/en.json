@@ -194,7 +194,7 @@
         "openai": "Manual selection only"
       },
       "euNote": "This conversation contains EU data (Mistral). Picking a 🇺🇸 model will ask for confirmation before sending its content outside Europe.",
-      "euLocked": "Europe-locked conversation — Mistral only",
+      "euLocked": "Europe-locked conversation — Mistral only · fact-check disabled (it would leave Europe)",
       "proLock": "Pro",
       "summarize": "Summarize the conversation",
       "exportLabel": "Export",
@@ -395,7 +395,8 @@
     "micError": "Microphone error: {{error}}",
     "micCannotStart": "Couldn't start the microphone",
     "speechNotSupported": "Speech recognition isn't supported in this browser. Use Chrome or Edge.",
-    "storageNotReady": "Your conversations are still loading — try again in a second."
+    "storageNotReady": "Your conversations are still loading — try again in a second.",
+    "mistralTimeout": "Mistral did not answer in time (60 s) — slow network or busy service. Try again."
   },
   "sidebar": {
     "newConversation": "New conversation",
