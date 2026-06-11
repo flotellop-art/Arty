@@ -421,7 +421,10 @@ function AppContent({
 
       <ApiKeysModal open={showApiKeys} onClose={() => setShowApiKeys(false)} />
 
-      <main className="h-full">
+      {/* PR E — desktop ≥1024px : la sidebar persistante (fixed, toujours
+          visible) occupe lg:w-72 à gauche ; on décale le contenu d'autant.
+          Aucune restructuration flex de la racine → mobile inchangé. */}
+      <main className="h-full lg:pl-72">
       <Routes>
         <Route
           path="/"
