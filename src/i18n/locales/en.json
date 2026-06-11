@@ -168,13 +168,47 @@
         "back": "Back",
         "toneModelHelp": "Tone and model help",
         "share": "Share",
-        "export": "Export"
+        "export": "Export",
+        "summary": "Summary"
       },
       "euBadge": "Mistral EU",
       "shareCopied": "Conversation copied — paste it anywhere",
       "shareFailed": "Could not share the conversation",
       "shareTitle": "Share conversation",
-      "exportTitle": "Export conversation"
+      "exportTitle": "Export conversation",
+      "lastCall": "Last call: {{model}}",
+      "whyModel": "Why this model?",
+      "exportJson": "JSON (re-import)"
+    },
+    "optionsSheet": {
+      "title": "This conversation",
+      "open": "Conversation options",
+      "sectionModel": "Model",
+      "sectionStyle": "Response style",
+      "sectionActions": "Actions",
+      "modelDesc": {
+        "auto": "Arty picks the best model",
+        "claude": "Files, analysis, Gmail / Drive / Calendar",
+        "mistral": "Data processed in Europe — emails, files, clients",
+        "gemini": "Real-time web search, news, directions",
+        "openai": "Manual selection only"
+      },
+      "euNote": "This conversation contains EU data (Mistral). Picking a 🇺🇸 model will ask for confirmation before sending its content outside Europe.",
+      "euLocked": "Europe-locked conversation — Mistral only",
+      "proLock": "Pro",
+      "summarize": "Summarize the conversation",
+      "exportLabel": "Export",
+      "share": "Share",
+      "help": "Tones & models help"
+    },
+    "modelExplain": {
+      "mistral": "Mistral runs in Europe mode (servers in France) — ideal for data that must stay in Europe: emails, files, client info. No web search or link opening.",
+      "gemini": "Gemini handles real-time web search, news questions and Google Maps queries. Data processed outside Europe.",
+      "haiku": "Claude Haiku handles quick, short conversations. Free model (10/day).",
+      "opus": "Claude Opus handles deep analysis, complex tasks and multi-step reasoning. Pro model.",
+      "claude": "Claude is the default: attached files, private data (my emails, my files), URLs to open, or requests needing tools (Gmail, Drive, Calendar).",
+      "openai": "GPT (OpenAI) is used when you select it manually. Data processed outside Europe.",
+      "fallback": "Model picked automatically based on your request."
     },
     "banners": {
       "gmailReading": "Reading emails...",

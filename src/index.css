@@ -839,3 +839,10 @@ select:focus-visible,
   outline: 2px solid rgb(var(--theme-accent) / 0.8);
   outline-offset: 2px;
 }
+
+/* BottomSheet (PR B) — glissement d'entrée. La sortie est un unmount sec :
+   pas d'animation de sortie pour ne pas retarder la restauration du focus. */
+@keyframes sheet-up {
+  from { transform: translateY(24px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
