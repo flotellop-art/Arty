@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { getStyle, setStyle as saveStyle, STYLE_OPTIONS, type ResponseStyle } from '../../services/responseStyles'
-import { getSelectedModel, setSelectedModel, MODEL_OPTIONS, type AIModel } from '../../services/modelSelector'
+import { setSelectedModel, MODEL_OPTIONS, type AIModel } from '../../services/modelSelector'
+import { useSelectedModel } from '../../hooks/useSelectedModel'
 import { SettingsGuide } from '../shared/SettingsGuide'
 import { PrismMark } from '../shared/PrismMark'
 import { PlanBadge } from './PlanBadge'
@@ -72,7 +73,7 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
   const { t } = useTranslation()
   const planStatus = usePlanStatus()
   const [currentStyle, setCurrentStyle] = useState<ResponseStyle>(getStyle)
-  const [currentModel, setCurrentModel] = useState<AIModel>(getSelectedModel)
+  const currentModel = useSelectedModel()
   const [openMenu, setOpenMenu] = useState<OpenMenu>(null)
   const [showGuide, setShowGuide] = useState(false)
   const [privacyWarning, setPrivacyWarning] = useState<AIModel | null>(null)
@@ -146,15 +147,15 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
       setOpenMenu(null)
       return
     }
+    // L'event 'model-changed' dispatché par setSelectedModel resynchronise
+    // currentModel via useSelectedModel — pas de setState local.
     setSelectedModel(model)
-    setCurrentModel(model)
     setOpenMenu(null)
   }
 
   const confirmModelSwitch = () => {
     if (privacyWarning) {
       setSelectedModel(privacyWarning)
-      setCurrentModel(privacyWarning)
       setPrivacyWarning(null)
     }
   }

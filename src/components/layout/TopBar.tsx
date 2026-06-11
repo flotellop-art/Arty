@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { getStyle, setStyle as saveStyle, STYLE_OPTIONS, type ResponseStyle } from '../../services/responseStyles'
-import { getSelectedModel, setSelectedModel, MODEL_OPTIONS, type AIModel } from '../../services/modelSelector'
+import { setSelectedModel, MODEL_OPTIONS, type AIModel } from '../../services/modelSelector'
+import { useSelectedModel } from '../../hooks/useSelectedModel'
 import { SettingsGuide } from '../shared/SettingsGuide'
 import { SettingsModal } from '../settings/SettingsModal'
 import { getTheme, toggleTheme, type Theme } from '../../services/themeService'
@@ -19,7 +20,7 @@ type OpenMenu = null | 'style' | 'model'
 export function TopBar({ onMenuToggle }: TopBarProps) {
   const { t } = useTranslation()
   const [currentStyle, setCurrentStyle] = useState<ResponseStyle>(getStyle)
-  const [currentModel, setCurrentModel] = useState<AIModel>(getSelectedModel)
+  const currentModel = useSelectedModel()
   const [openMenu, setOpenMenu] = useState<OpenMenu>(null)
   const [showGuide, setShowGuide] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
@@ -50,8 +51,9 @@ export function TopBar({ onMenuToggle }: TopBarProps) {
   }
 
   const handleModelChange = (model: AIModel) => {
+    // L'event 'model-changed' dispatché par setSelectedModel resynchronise
+    // currentModel via useSelectedModel — pas de setState local.
     setSelectedModel(model)
-    setCurrentModel(model)
     setOpenMenu(null)
   }
 
