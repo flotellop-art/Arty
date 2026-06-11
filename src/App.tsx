@@ -442,6 +442,8 @@ function AppContent({
               briefLoading={proactiveBrief.loading}
               onDismissBrief={proactiveBrief.dismiss}
               onBriefAction={proactiveBrief.runAction}
+              conversations={conversations}
+              onSelectConv={handleSelectConversation}
             />
           }
         />

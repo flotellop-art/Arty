@@ -3,6 +3,10 @@ import { useTranslation } from 'react-i18next'
 import type { Conversation, Message } from '../../types'
 import { setLocale, SUPPORTED_LOCALES, type Locale } from '../../i18n'
 import { useMediaQuery } from '../../hooks/useMediaQuery'
+import { CostIndicator } from './CostIndicator'
+import { StreakBadge } from './StreakBadge'
+import { getTheme, toggleTheme, type Theme } from '../../services/themeService'
+import { homeV2Enabled } from '../../services/homeV2'
 import { SettingsModal } from '../settings/SettingsModal'
 import { ApiKeysModal } from '../settings/ApiKeysModal'
 import { TaskPanel } from '../tasks/TaskPanel'
@@ -158,6 +162,10 @@ export const Sidebar = memo(function Sidebar({
   // PR E — desktop ≥1024px : sidebar persistante (dans le flux, pas overlay).
   // matchMedia (événement discret) → pas de re-render au resize continu.
   const isPersistent = useMediaQuery('(min-width: 1024px)')
+  // PR G — coût/série/thème déplacés du header vers le pied (flag partagé
+  // avec TopBar pour ne pas dupliquer). État thème local pour l'icône.
+  const homeV2 = homeV2Enabled()
+  const [theme, setThemeState] = useState<Theme>(getTheme)
 
   useEffect(() => {
     if (!confirmDeleteId) return
@@ -637,8 +645,11 @@ export const Sidebar = memo(function Sidebar({
 
         {/* Footer */}
         <div className="flex-shrink-0" style={{ borderTop: `1px solid ${DESIGN.borderWeak}` }}>
-          {/* Langue */}
-          <div className="px-[18px] py-1.5 flex items-center justify-start">
+          {/* PR G — utilitaires déplacés du header accueil : coût (live) +
+              série + bascule thème. Flag partagé avec TopBar (homeV2) pour
+              éviter le doublon. CostIndicator/StreakBadge rendent null si
+              non pertinents → la rangée reste propre (langue à gauche). */}
+          <div className="px-[18px] py-1.5 flex items-center justify-between gap-2">
             <div className="flex gap-1.5 items-center">
               {SUPPORTED_LOCALES.map((loc) => (
                 <button
@@ -652,6 +663,23 @@ export const Sidebar = memo(function Sidebar({
                 </button>
               ))}
             </div>
+            {homeV2 && (
+              <div className="flex items-center gap-1">
+                <CostIndicator />
+                <StreakBadge />
+                <button
+                  onClick={() => setThemeState(toggleTheme())}
+                  className="p-1.5 rounded-lg hover:bg-theme-ink/5 transition-colors text-theme-ink"
+                  aria-label={theme === 'nocturne' ? 'Mode jour (Ember)' : 'Mode nuit (Nocturne)'}
+                  title={theme === 'nocturne' ? 'Mode jour' : 'Mode nuit'}
+                >
+                  <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                    <circle cx="10" cy="10" r="7.25" stroke="currentColor" strokeWidth="1.5" />
+                    <path d="M10 2.75A7.25 7.25 0 0 1 10 17.25Z" fill="currentColor" />
+                  </svg>
+                </button>
+              </div>
+            )}
           </div>
 
           {/* 2 boutons agrandis : Clés API + Paramètres */}

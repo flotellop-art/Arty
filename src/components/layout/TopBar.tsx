@@ -10,6 +10,19 @@ import { CostIndicator } from './CostIndicator'
 import { PrismMark } from '../shared/PrismMark'
 import { isProActivated } from '../../services/proLicense'
 import { StreakBadge } from './StreakBadge'
+import { ChatOptionsSheet } from '../chat/ChatOptionsSheet'
+import { UpgradePromptModal } from '../chat/UpgradePromptModal'
+import { usePlanStatus, type ModelFamily } from '../../hooks/usePlanStatus'
+import { homeV2Enabled } from '../../services/homeV2'
+
+// Mapping provider → famille (identique à ChatTopBar) pour le lock Pro du
+// sélecteur de modèle de l'accueil v2.
+const PROVIDER_TO_FAMILY: Record<Exclude<AIModel, 'auto'>, ModelFamily> = {
+  claude: 'claude-haiku',
+  mistral: 'mistral-medium',
+  gemini: 'gemini-flash',
+  openai: 'gpt-mini',
+}
 
 interface TopBarProps {
   onMenuToggle: () => void
@@ -27,6 +40,25 @@ export function TopBar({ onMenuToggle }: TopBarProps) {
   const [theme, setThemeState] = useState<Theme>(getTheme)
   const [proActive, setProActive] = useState<boolean>(isProActivated)
   const menuRef = useRef<HTMLDivElement>(null)
+  // PR G — accueil v2 : header 3 zones, modèle/style via le sheet « ⋯ ».
+  const homeV2 = homeV2Enabled()
+  const [sheetOpen, setSheetOpen] = useState(false)
+  const [upgradePrompt, setUpgradePrompt] = useState<string | null>(null)
+  const planStatus = usePlanStatus()
+  const isProviderLocked = (id: AIModel): boolean => {
+    if (id === 'auto') return false
+    return planStatus.lockedFamilies.includes(PROVIDER_TO_FAMILY[id])
+  }
+  // Variante v2 du changement de modèle : lock Pro → modale upgrade
+  // (l'accueil n'a pas de conversation, donc pas de confirmation EU/US).
+  const handleModelChangeV2 = (model: AIModel) => {
+    if (isProviderLocked(model)) {
+      setUpgradePrompt(MODEL_OPTIONS.find((o) => o.id === model)?.label ?? model)
+      setSheetOpen(false)
+      return
+    }
+    setSelectedModel(model)
+  }
 
   useEffect(() => {
     const sync = () => setProActive(isProActivated())
@@ -71,6 +103,78 @@ export function TopBar({ onMenuToggle }: TopBarProps) {
 
   const styleOption = STYLE_OPTIONS.find(o => o.id === currentStyle) ?? STYLE_OPTIONS[0]!
   const modelOption = MODEL_OPTIONS.find(o => o.id === currentModel) ?? MODEL_OPTIONS[0]!
+
+  // ===== Header v2 (PR G) : 3 zones ☰ / wordmark Arty / ⋯ ⚙. Coût, série,
+  // thème, badge Pro et chips style/modèle quittent le header (cf. pied de
+  // sidebar + sheet « ⋯ »). Killswitch arty-home-v2='0' → header v1 ci-dessous.
+  if (homeV2) {
+    return (
+      <header
+        className="bg-theme-bg"
+        style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
+      >
+        <div className="flex items-center px-4 pt-2.5 pb-2 gap-2">
+          <button
+            onClick={onMenuToggle}
+            className="p-2 -ml-2 rounded-lg hover:bg-theme-ink/5 transition-colors text-theme-ink lg:hidden"
+            aria-label={t('common.menu')}
+          >
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+              <rect y="3" width="20" height="2" rx="1" fill="currentColor" />
+              <rect y="9" width="20" height="2" rx="1" fill="currentColor" />
+              <rect y="15" width="20" height="2" rx="1" fill="currentColor" />
+            </svg>
+          </button>
+          <div className="flex-1 flex items-center justify-center gap-2">
+            <PrismMark size={18} fill />
+            <span className="font-display italic text-[19px] text-theme-ink">Arty</span>
+          </div>
+          <button
+            onClick={() => setSheetOpen(true)}
+            className="w-9 h-9 rounded-xl text-theme-ink text-lg leading-none hover:bg-theme-ink/5 transition-colors shrink-0 flex items-center justify-center"
+            aria-label={t('chat.optionsSheet.open')}
+            aria-haspopup="dialog"
+          >
+            ⋯
+          </button>
+          <button
+            onClick={() => setShowSettings(true)}
+            className="p-2 rounded-lg hover:bg-theme-ink/5 transition-colors text-theme-ink shrink-0"
+            aria-label={t('sidebar.settings')}
+          >
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+              <circle cx="10" cy="10" r="2.5" stroke="currentColor" strokeWidth="1.5" />
+              <path d="M10 1.5V4M10 16V18.5M18.5 10H16M4 10H1.5M16.01 4L14.24 5.76M5.76 14.24L4 16M16.01 16L14.24 14.24M5.76 5.76L4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+          </button>
+        </div>
+
+        <ChatOptionsSheet
+          open={sheetOpen}
+          onClose={() => setSheetOpen(false)}
+          title={t('home.optionsSheetTitle', { defaultValue: 'Réglages' })}
+          currentModel={currentModel}
+          currentStyle={currentStyle}
+          lastUsedModel={null}
+          lastSearchProvider={null}
+          isProviderLocked={isProviderLocked}
+          onSelectModel={handleModelChangeV2}
+          onSelectStyle={handleStyleChange}
+          hasConversation={false}
+          onExportMarkdown={() => {}}
+          onExportPdf={() => {}}
+          onExportJson={() => {}}
+          onShare={() => {}}
+          onOpenGuide={() => { setSheetOpen(false); setShowGuide(true) }}
+        />
+        {showGuide && <SettingsGuide onClose={() => setShowGuide(false)} />}
+        <SettingsModal open={showSettings} onClose={() => setShowSettings(false)} />
+        {upgradePrompt && (
+          <UpgradePromptModal modelLabel={upgradePrompt} onClose={() => setUpgradePrompt(null)} />
+        )}
+      </header>
+    )
+  }
 
   return (
     <header

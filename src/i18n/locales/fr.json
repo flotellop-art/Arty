@@ -147,7 +147,9 @@
       "title": "Agenda des 7 prochains jours"
     },
     "connectGoogle": "Connecter Google",
-    "googleConnectError": "Erreur connexion Google :"
+    "googleConnectError": "Erreur connexion Google :",
+    "resumeKicker": "Reprendre",
+    "optionsSheetTitle": "Réglages"
   },
   "chat": {
     "upgradeModal": {
