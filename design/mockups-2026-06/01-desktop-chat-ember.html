@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="fr" data-theme="ember">
+<head>
+<meta charset="UTF-8">
+<title>Arty — Maquette desktop chat (Ember)</title>
+
+
+<link href="fonts/google.css" rel="stylesheet">
+<style>
+  :root{
+    --bg:#FAF3E7; --surface:#FFFFFF; --ink:#181613; --muted:#7A5A3C;
+    --accent:#C85A28; --border:#E8D9BF; --cream:#F5E6D0; --elev:#F5E6D0;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:'Inter',sans-serif;font-weight:300;background:var(--bg);color:var(--ink);
+       height:100vh;display:flex;overflow:hidden;font-size:14px}
+  .kicker{font-family:'Inter';font-size:10px;font-weight:600;letter-spacing:.2em;
+          text-transform:uppercase;color:var(--muted)}
+  .mono{font-family:'JetBrains Mono',monospace}
+  .display{font-family:'Fraunces',serif}
+
+  /* ====== SIDEBAR PERSISTANTE (desktop) ====== */
+  aside{width:296px;flex-shrink:0;background:var(--elev);border-right:1px solid var(--border);
+        display:flex;flex-direction:column;height:100vh}
+  .side-head{display:flex;align-items:center;gap:10px;padding:18px 18px 12px}
+  .wordmark{font-family:'Fraunces';font-style:italic;font-size:21px;letter-spacing:-.01em}
+  .collapse{margin-left:auto;width:32px;height:32px;border:none;background:transparent;color:var(--muted);
+            border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px}
+  .new-conv{margin:4px 14px 10px;display:flex;align-items:center;gap:9px;background:var(--accent);
+            color:var(--bg);border:none;border-radius:12px;padding:11px 14px;font-family:'Fraunces';
+            font-style:italic;font-size:15px;cursor:pointer;box-shadow:0 4px 16px rgba(200,90,40,.20)}
+  .search{margin:0 14px 14px;display:flex;align-items:center;gap:8px;background:rgba(24,22,19,.05);
+          border:1px solid transparent;border-radius:10px;padding:8px 11px;color:var(--muted);font-size:12.5px}
+  .side-scroll{flex:1;overflow-y:auto;padding:0 8px}
+  .side-section{padding:10px 10px 4px}
+  .conv{display:flex;flex-direction:column;gap:2px;padding:9px 11px;border-radius:10px;cursor:pointer;
+        border-left:2px solid transparent;margin-bottom:1px}
+  .conv:hover{background:rgba(24,22,19,.04)}
+  .conv.active{background:var(--surface);border-left:2px solid var(--accent);
+               box-shadow:0 1px 4px rgba(24,22,19,.05)}
+  .conv-title{font-size:13px;font-weight:500;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .conv-meta{font-size:10.5px;color:var(--muted);display:flex;gap:6px;align-items:center}
+  .dot{width:3px;height:3px;border-radius:50%;background:var(--muted);display:inline-block}
+  /* nav directe : coûts / comparateur / templates remontés depuis Settings */
+  .side-nav{border-top:1px solid var(--border);padding:10px 14px 6px}
+  .nav-item{display:flex;align-items:center;gap:10px;padding:9px 8px;border-radius:9px;font-size:13px;
+            font-weight:400;color:var(--ink);cursor:pointer}
+  .nav-item:hover{background:rgba(24,22,19,.04)}
+  .nav-item .right{margin-left:auto;font-size:11px;color:var(--muted)}
+  .side-foot{border-top:1px solid var(--border);padding:12px 16px;display:flex;align-items:center;gap:10px}
+  .avatar{width:30px;height:30px;border-radius:50%;background:var(--accent);color:var(--bg);
+          display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600}
+  .foot-name{font-size:12.5px;font-weight:500}
+  .foot-plan{font-size:10px;color:var(--muted)}
+  .icon-btn{width:34px;height:34px;border-radius:9px;border:none;background:transparent;color:var(--muted);
+            display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:15px}
+  .icon-btn:hover{background:rgba(24,22,19,.05)}
+
+  /* ====== COLONNE CHAT ====== */
+  main{flex:1;display:flex;flex-direction:column;height:100vh;min-width:0}
+  /* Header UNIFIÉ : une seule ligne — tout le secondaire vit dans "…" */
+  header{padding:14px 28px 0}
+  .head-row{display:flex;align-items:center;gap:14px}
+  .head-titles{min-width:0}
+  .head-kicker{display:flex;gap:8px;align-items:center}
+  .head-title{font-family:'Fraunces';font-style:italic;font-size:19px;display:flex;align-items:center;gap:7px;
+              cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .head-title .chev{font-size:11px;color:var(--muted);font-style:normal}
+  .head-right{margin-left:auto;display:flex;align-items:center;gap:8px}
+  .model-pill{display:flex;align-items:center;gap:7px;border:1px solid rgba(200,90,40,.25);
+              background:rgba(200,90,40,.08);color:var(--accent);border-radius:999px;
+              padding:7px 13px;font-size:11.5px;font-weight:500;cursor:pointer}
+  .more-btn{width:38px;height:38px;border-radius:10px;border:1px solid var(--border);background:var(--surface);
+            color:var(--ink);font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+  .rule{margin-top:11px}
+  .rule .r1{height:2px;background:var(--ink)}
+  .rule .r2{height:1px;background:var(--ink);margin-top:3px}
+
+  /* messages */
+  .messages{flex:1;overflow-y:auto;padding:26px 0}
+  .thread{max-width:760px;margin:0 auto;padding:0 28px}
+  .msg-user{display:flex;flex-direction:column;align-items:flex-end;margin-bottom:26px}
+  .msg-user .txt{max-width:78%;font-family:'Fraunces';font-style:italic;font-size:16px;line-height:1.45;
+                 text-align:right;border-right:2px solid var(--accent);padding:4px 13px 4px 0}
+  .msg-user .time{font-family:'JetBrains Mono';font-size:10px;color:var(--muted);margin-top:5px;padding-right:15px}
+  .msg-ai{display:flex;gap:12px;margin-bottom:30px}
+  .prism{flex-shrink:0;margin-top:3px}
+  .msg-ai .body{max-width:92%;line-height:1.65;font-size:14.5px}
+  .msg-ai p{margin-bottom:10px}
+  .msg-ai strong{font-weight:600}
+  /* méta sous la bulle : transparence modèle + fact-check + actions 44px */
+  .msg-meta{display:flex;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap}
+  .fc{display:inline-flex;align-items:center;gap:6px;font-size:11px;border-radius:999px;padding:5px 11px;
+      border:1px solid;cursor:pointer;font-weight:500}
+  .fc.ok{color:#3D7A3D;border-color:rgba(61,122,61,.3);background:rgba(61,122,61,.07)}
+  .fc.warn{color:#A05E00;border-color:rgba(160,94,0,.35);background:rgba(160,94,0,.08)}
+  .fc.off{color:var(--muted);border-color:var(--border);background:transparent;border-style:dashed}
+  .model-tag{font-family:'JetBrains Mono';font-size:10px;letter-spacing:.06em;text-transform:uppercase;
+             color:var(--muted);cursor:pointer}
+  .msg-actions{margin-left:auto;display:flex;gap:2px;opacity:.55}
+  .msg-actions button{width:36px;height:36px;border-radius:9px;border:none;background:transparent;
+                      color:var(--muted);cursor:pointer;font-size:14px}
+  .msg-actions button:hover{background:rgba(24,22,19,.05);color:var(--ink)}
+
+  /* claim expandable */
+  .claim{margin-top:9px;border:1px solid rgba(160,94,0,.25);background:rgba(160,94,0,.05);
+         border-radius:11px;padding:10px 13px;font-size:12.5px;line-height:1.5;max-width:560px}
+  .claim .src{font-family:'JetBrains Mono';font-size:10px;color:var(--muted);margin-top:5px}
+
+  /* ====== INPUT ====== */
+  .input-zone{padding:6px 28px 22px}
+  .input-inner{max-width:760px;margin:0 auto}
+  /* slot contextuel UNIQUE : une seule rangée, scroll horizontal, jamais d'empilement */
+  .chips{display:flex;gap:8px;overflow-x:auto;padding:2px 2px 10px;scrollbar-width:none}
+  .chip{flex-shrink:0;display:flex;align-items:center;gap:6px;background:var(--surface);
+        border:1px solid var(--border);border-radius:999px;padding:8px 14px;font-size:12px;
+        color:var(--ink);cursor:pointer;white-space:nowrap}
+  .chip:hover{border-color:var(--accent);color:var(--accent)}
+  .bar{display:flex;align-items:flex-end;gap:8px;background:var(--surface);border:1px solid var(--border);
+       border-radius:18px;padding:9px 10px 9px 8px;box-shadow:0 2px 10px rgba(24,22,19,.05)}
+  .bar .tool{width:40px;height:40px;border-radius:50%;border:none;background:transparent;color:var(--muted);
+             font-size:17px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center}
+  .bar .tool:hover{background:rgba(24,22,19,.05)}
+  .bar textarea{flex:1;border:none;background:transparent;resize:none;font-family:'Inter';font-weight:300;
+                font-size:14px;line-height:1.6;padding:9px 4px;color:var(--ink);outline:none;height:40px}
+  .bar textarea::placeholder{color:var(--muted)}
+  .send{width:52px;height:52px;border-radius:50%;border:none;background:var(--accent);color:var(--bg);
+        font-size:19px;cursor:pointer;flex-shrink:0;box-shadow:0 3px 12px rgba(200,90,40,.3)}
+  .hint{text-align:center;font-size:10.5px;color:var(--muted);margin-top:9px}
+  ::-webkit-scrollbar{width:4px;height:0}
+  ::-webkit-scrollbar-thumb{background:rgba(122,90,60,.45);border-radius:2px}
+</style>
+</head>
+<body>
+
+<aside>
+  <div class="side-head">
+    <svg width="24" height="24" viewBox="0 0 64 64"><polygon points="32,6 6,54 32,40" fill="#C85A28" opacity=".55"/><polygon points="32,6 58,54 32,40" fill="#C85A28"/></svg>
+    <span class="wordmark">Arty</span>
+    <button class="collapse" title="Replier">⟨⟨</button>
+  </div>
+
+  <button class="new-conv">
+    <span style="font-size:16px;font-style:normal">+</span> Nouvelle conversation
+  </button>
+  <div class="search">⌕ &nbsp;Rechercher… <span class="mono" style="margin-left:auto;font-size:10px">⌘K</span></div>
+
+  <div class="side-scroll">
+    <div class="side-section kicker">Aujourd’hui</div>
+    <div class="conv active">
+      <div class="conv-title">Devis Garage Martin — relance client</div>
+      <div class="conv-meta">🇪🇺 EU <span class="dot"></span> 14 messages <span class="dot"></span> 10h12</div>
+    </div>
+    <div class="conv">
+      <div class="conv-title">Synthèse des mails de la semaine</div>
+      <div class="conv-meta">Claude <span class="dot"></span> 9h05</div>
+    </div>
+    <div class="conv">
+      <div class="conv-title">Itinéraire Valence → Lyon vendredi</div>
+      <div class="conv-meta">Gemini <span class="dot"></span> 8h47</div>
+    </div>
+
+    <div class="side-section kicker">Hier</div>
+    <div class="conv">
+      <div class="conv-title">Préparer l’entretien annuel de Mégane</div>
+      <div class="conv-meta">Claude <span class="dot"></span> épinglée ★</div>
+    </div>
+    <div class="conv">
+      <div class="conv-title">Comparatif mutuelles pro 2026</div>
+      <div class="conv-meta">Hybride <span class="dot"></span> rapport généré</div>
+    </div>
+    <div class="conv">
+      <div class="conv-title">Idées cadeau fête des pères</div>
+      <div class="conv-meta">Haiku</div>
+    </div>
+  </div>
+
+  <!-- Coûts / Comparateur / Templates : sortis de Settings, navigation directe -->
+  <div class="side-nav">
+    <div class="nav-item">💸 Mes coûts <span class="right mono">$0.84 / mois</span></div>
+    <div class="nav-item">⚖️ Comparateur</div>
+    <div class="nav-item">📋 Templates</div>
+  </div>
+
+  <div class="side-foot">
+    <div class="avatar">F</div>
+    <div>
+      <div class="foot-name">Florent</div>
+      <div class="foot-plan">Plan Pro · 🔥 7 jours</div>
+    </div>
+    <div style="margin-left:auto;display:flex">
+      <button class="icon-btn" title="Thème">◐</button>
+      <button class="icon-btn" title="Réglages">⚙</button>
+    </div>
+  </div>
+</aside>
+
+<main>
+  <header>
+    <div class="head-row">
+      <div class="head-titles">
+        <div class="head-kicker">
+          <span class="kicker">Conversation · Mer 11 juin</span>
+        </div>
+        <!-- titre tappable → switcher de conversations sans quitter le chat -->
+        <div class="head-title">Devis Garage Martin — relance client <span class="chev">▾</span></div>
+      </div>
+      <div class="head-right">
+        <button class="model-pill">
+          <svg width="12" height="12" viewBox="0 0 64 64"><polygon points="32,6 6,54 32,40" fill="currentColor" opacity=".55"/><polygon points="32,6 58,54 32,40" fill="currentColor"/></svg>
+          Auto · Claude Opus
+        </button>
+        <button class="more-btn">⋯</button>
+      </div>
+    </div>
+    <div class="rule"><div class="r1"></div><div class="r2"></div></div>
+  </header>
+
+  <div class="messages">
+    <div class="thread">
+
+      <div class="msg-user">
+        <div class="txt">« Relis le devis du Garage Martin dans mon Drive et prépare un mail de relance poli — il n’a pas répondu depuis 12 jours. »</div>
+        <div class="time">10:07</div>
+      </div>
+
+      <div class="msg-ai">
+        <svg class="prism" width="20" height="20" viewBox="0 0 64 64"><polygon points="32,6 6,54 32,40" fill="#C85A28" opacity=".55"/><polygon points="32,6 58,54 32,40" fill="#C85A28"/></svg>
+        <div class="body">
+          <p>J’ai retrouvé le devis <strong>« GarageMartin_devis_2026-118.pdf »</strong> dans ton Drive (envoyé le 30 mai, 2 340 € TTC). Voici un brouillon de relance, courtois mais qui pose une échéance :</p>
+          <p style="border-left:2px solid var(--border);padding-left:14px;color:var(--ink);font-size:14px">Bonjour M. Martin,<br>Je me permets de revenir vers vous au sujet du devis n°2026-118 transmis le 30 mai…</p>
+          <div class="msg-meta">
+            <span class="fc ok">✓ Vérifié · 2 sources</span>
+            <span class="model-tag">Claude Opus 4.8 · drive_search · $0.014 · pourquoi ?</span>
+            <span class="msg-actions">
+              <button title="Copier">⧉</button><button title="Écouter">▷</button><button title="Épingler">☆</button>
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div class="msg-user">
+        <div class="txt">« Parfait. Et c’est quoi le délai légal de validité d’un devis signé ? »</div>
+        <div class="time">10:11</div>
+      </div>
+
+      <div class="msg-ai">
+        <svg class="prism" width="20" height="20" viewBox="0 0 64 64"><polygon points="32,6 6,54 32,40" fill="#C85A28" opacity=".55"/><polygon points="32,6 58,54 32,40" fill="#C85A28"/></svg>
+        <div class="body">
+          <p>Un devis signé vaut engagement contractuel. Sa durée de validité est <strong>celle indiquée sur le document</strong> — généralement 3 mois. Sans mention, la jurisprudence retient un « délai raisonnable ».</p>
+          <div class="claim">
+            ⚠ <strong>1 point à vérifier</strong> — « délai raisonnable » : l’interprétation varie selon les tribunaux ; pour ton devis, la mention « validité : 60 jours » figure en bas de page, c’est elle qui s’applique.
+            <div class="src">SOURCES · service-public.fr · legifrance.gouv.fr</div>
+          </div>
+          <div class="msg-meta">
+            <span class="fc warn">⚠ 1 claim à vérifier</span>
+            <span class="model-tag">Claude Opus 4.8 · web_search · $0.011 · pourquoi ?</span>
+            <span class="msg-actions">
+              <button title="Copier">⧉</button><button title="Écouter">▷</button><button title="Épingler">☆</button>
+            </span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="input-zone">
+    <div class="input-inner">
+      <div class="chips">
+        <span class="chip">✉️ Envoyer la relance</span>
+        <span class="chip">📅 Rappel dans 5 jours</span>
+        <span class="chip">📄 Exporter en PDF</span>
+        <span class="chip">🗂 Ranger dans Drive</span>
+      </div>
+      <div class="bar">
+        <button class="tool" title="Joindre">+</button>
+        <textarea placeholder="Écris, dicte (maintenir = Whisper), ou tape / pour une commande…"></textarea>
+        <button class="tool" title="Améliorer">✦</button>
+        <button class="tool" title="Dicter">🎙</button>
+        <button class="send" title="Envoyer">↑</button>
+      </div>
+      <div class="hint">Arty peut se tromper — les réponses sensibles sont fact-checkées automatiquement.</div>
+    </div>
+  </div>
+</main>
+
+</body>
+</html>
