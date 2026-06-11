@@ -17,6 +17,9 @@ import { formatModelName, getModelExplanationKey } from '../../services/modelLab
 interface ChatOptionsSheetProps {
   open: boolean
   onClose: () => void
+  /** Titre du sheet — défaut « Cette conversation ». L'accueil (PR G) passe
+      un titre neutre (pas de conversation encore). */
+  title?: string
   currentModel: AIModel
   currentStyle: ResponseStyle
   euOnly?: boolean
@@ -39,6 +42,7 @@ interface ChatOptionsSheetProps {
 export function ChatOptionsSheet({
   open,
   onClose,
+  title,
   currentModel,
   currentStyle,
   euOnly,
@@ -65,7 +69,7 @@ export function ChatOptionsSheet({
     <BottomSheet
       open={open}
       onClose={onClose}
-      title={t('chat.optionsSheet.title')}
+      title={title ?? t('chat.optionsSheet.title')}
       titleAside={<PlanBadge />}
     >
       {/* ===== Modèle ===== */}
