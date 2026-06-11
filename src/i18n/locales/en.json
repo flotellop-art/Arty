@@ -280,6 +280,25 @@
     "model": {
       "auto": "Auto"
     },
+    "factCheck": {
+      "pending": "Checking…",
+      "pendingDetail": "The answer is being fact-checked — the result will show up here.",
+      "unavailable": "Fact-check unavailable",
+      "unavailableDetail": "The factual check could not complete (timeout, overload or network). The answer above has NOT been verified — read it with a critical eye.",
+      "verifiedBy": "Checked by {{model}}",
+      "noRisky": "No risky claim",
+      "noRiskyDetail": "No risky factual claim identified.",
+      "verifiedOne": "{{count}} claim verified",
+      "verifiedMany": "{{count}} claims verified",
+      "correctionOne": "{{count}} correction applied",
+      "correctionMany": "{{count}} corrections applied",
+      "correctionsInResponse": "applied in the answer",
+      "errorOne": "{{count}} error detected",
+      "errorMany": "{{count}} errors detected",
+      "toVerifyOne": "{{count}} point to verify",
+      "toVerifyMany": "{{count}} points to verify",
+      "toVerifySuffix": "{{count}} to verify"
+    },
     "messageList": {
       "branch": "Branch from this message",
       "scrollDown": "Scroll down"

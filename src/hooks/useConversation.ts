@@ -368,6 +368,7 @@ export function useConversation() {
                 claims: [],
                 modelLabel: `⚠ Fact-check indisponible${fc.failReason ? ` (${fc.failReason})` : ''}`,
                 checkedAt: Date.now(),
+                status: 'failed',
               }
               storage.saveConversation(fresh)
               refreshConversations()

@@ -4,12 +4,38 @@
 //
 // Cliquable → expand pour voir les claims un par un avec leur verdict
 // et l'explication du fact-checker.
+//
+// BUG 59 — le badge expose 4 états VISUELLEMENT distincts :
+//   pending             ◌ gris pulsé « Vérification… »
+//   success-empty       ✓ vert « Aucun claim risqué »
+//   success-with-claims ✏️/❌/⚠️ + compteurs (expandable)
+//   failed              ❓ pilule pointillée neutre (≠ d'un succès)
+// Sans ça l'utilisateur ne distingue pas « pas activé » / « activé mais
+// cassé » / « vérifié et clean ». Le pending affichait même à tort
+// « ✓ Aucun claim risqué » (claims vides + confidence high du placeholder).
 
 import { memo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { FactCheckResult } from '../../types'
 
 interface Props {
   result: FactCheckResult
+}
+
+type FactCheckStatus = NonNullable<FactCheckResult['status']>
+
+// Rétro-compat : les résultats persistés (conversations chiffrées) avant
+// l'ajout du champ status n'en ont pas — on dérive l'état des magic
+// strings historiques du modelLabel. Ces strings restent posées par
+// factChecker.ts (le skip-guard de runFactCheckOnLatest compare
+// 'Vérification en cours…') : ne pas les supprimer côté service.
+function deriveStatus(result: FactCheckResult): FactCheckStatus {
+  if (result.status) return result.status
+  if (result.modelLabel === 'Vérification en cours…') return 'pending'
+  if (result.modelLabel?.includes('indisponible')) return 'failed'
+  return result.claims.some((c) => c.verdict !== 'verified')
+    ? 'success-with-claims'
+    : 'success-empty'
 }
 
 const VERDICT_STYLE: Record<string, string> = {
@@ -25,50 +51,65 @@ const VERDICT_ICON: Record<string, string> = {
 }
 
 export const FactCheckBadge = memo(function FactCheckBadge({ result }: Props) {
+  const { t } = useTranslation()
   const [expanded, setExpanded] = useState(false)
 
-  // Bug remonté (screenshot 13 mai 2026) : quand factCheckResponse retourne
-  // null (timeout, 401, parse fail), factChecker.ts crée un placeholder
-  // avec modelLabel='⚠ Fact-check indisponible' + claims=[] + confidence=
-  // 'medium'. Le badge affichait alors "⚠️ 0 points à vérifier" + "Aucun
-  // claim factuel risqué identifié" — totalement contradictoire avec
-  // "INDISPONIBLE". Maintenant : détecter explicitement et afficher un
-  // état "indisponible" cohérent sans mentir sur les claims.
-  const isUnavailable = result.modelLabel?.includes('indisponible')
+  const status = deriveStatus(result)
 
   const wrongCount = result.claims.filter((c) => c.verdict === 'wrong').length
   const uncertainCount = result.claims.filter((c) => c.verdict === 'uncertain').length
   const verifiedCount = result.claims.filter((c) => c.verdict === 'verified').length
-  const totalRisky = wrongCount + uncertainCount
   const corrected = result.appliedCorrections || 0
 
+  const plural = (count: number, oneKey: string, manyKey: string) =>
+    t(count > 1 ? manyKey : oneKey, { count })
+
   const summary = (() => {
-    if (isUnavailable) return '❓ Fact-check indisponible'
-    if (corrected > 0) {
-      const rest = uncertainCount > 0 ? ` · ${uncertainCount} à vérifier` : ''
-      return `✏️ ${corrected} ${corrected > 1 ? 'corrections appliquées' : 'correction appliquée'}${rest}`
+    switch (status) {
+      case 'pending':
+        return `◌ ${t('chat.factCheck.pending')}`
+      case 'failed':
+        return `❓ ${t('chat.factCheck.unavailable')}`
+      case 'success-empty':
+        return verifiedCount > 0
+          ? `✓ ${plural(verifiedCount, 'chat.factCheck.verifiedOne', 'chat.factCheck.verifiedMany')}`
+          : `✓ ${t('chat.factCheck.noRisky')}`
+      case 'success-with-claims': {
+        if (corrected > 0) {
+          const rest = uncertainCount > 0
+            ? ` · ${t('chat.factCheck.toVerifySuffix', { count: uncertainCount })}`
+            : ''
+          return `✏️ ${plural(corrected, 'chat.factCheck.correctionOne', 'chat.factCheck.correctionMany')}${rest}`
+        }
+        if (wrongCount > 0) {
+          const rest = uncertainCount > 0
+            ? ` · ${t('chat.factCheck.toVerifySuffix', { count: uncertainCount })}`
+            : ''
+          return `❌ ${plural(wrongCount, 'chat.factCheck.errorOne', 'chat.factCheck.errorMany')}${rest}`
+        }
+        return `⚠️ ${plural(uncertainCount, 'chat.factCheck.toVerifyOne', 'chat.factCheck.toVerifyMany')}`
+      }
     }
-    if (result.overallConfidence === 'high' && totalRisky === 0) {
-      return verifiedCount > 0
-        ? `✓ ${verifiedCount} ${verifiedCount > 1 ? 'claims vérifiés' : 'claim vérifié'}`
-        : `✓ Aucun claim risqué`
-    }
-    if (wrongCount > 0) {
-      return `❌ ${wrongCount} ${wrongCount > 1 ? 'erreurs détectées' : 'erreur détectée'}${uncertainCount > 0 ? ` · ${uncertainCount} à vérifier` : ''}`
-    }
-    if (uncertainCount === 0) return '✓ Aucun claim risqué'
-    return `⚠️ ${uncertainCount} ${uncertainCount > 1 ? 'points à vérifier' : 'point à vérifier'}`
   })()
 
-  const summaryColor = isUnavailable
-    ? 'text-theme-muted'
-    : corrected > 0
-      ? 'text-blue-700 dark:text-blue-400'
-      : result.overallConfidence === 'low'
-      ? 'text-red-700 dark:text-red-400'
-      : result.overallConfidence === 'medium'
-      ? 'text-amber-700 dark:text-amber-400'
-      : 'text-emerald-700 dark:text-emerald-400'
+  // Chaque état a son traitement visuel propre — pas seulement une couleur
+  // de texte : pending pulse, failed = pilule pointillée neutre.
+  const summaryClass = (() => {
+    switch (status) {
+      case 'pending':
+        return 'text-theme-muted animate-pulse'
+      case 'failed':
+        return 'text-theme-muted border border-dashed border-theme-border rounded-full px-2 py-0.5'
+      case 'success-empty':
+        return 'text-emerald-700 dark:text-emerald-400'
+      case 'success-with-claims':
+        return corrected > 0
+          ? 'text-blue-700 dark:text-blue-400'
+          : wrongCount > 0 || result.overallConfidence === 'low'
+            ? 'text-red-700 dark:text-red-400'
+            : 'text-amber-700 dark:text-amber-400'
+    }
+  })()
 
   // Toujours afficher le badge quand le fact-check a tourné — même si
   // 0 claim risqué. Permet à l'utilisateur de voir que la vérif est
@@ -79,29 +120,32 @@ export const FactCheckBadge = memo(function FactCheckBadge({ result }: Props) {
     <div className="mt-2 text-xs font-sans">
       <button
         onClick={() => setExpanded((e) => !e)}
-        className={`inline-flex items-center gap-1.5 hover:opacity-80 transition-opacity ${summaryColor}`}
-        title={`Fact-check par ${result.modelLabel}`}
+        className={`inline-flex items-center gap-1.5 hover:opacity-80 transition-opacity ${summaryClass}`}
+        title={t('chat.factCheck.verifiedBy', { model: result.modelLabel })}
+        aria-expanded={expanded}
       >
         <span>{summary}</span>
         <span className="opacity-60 text-[10px]">{expanded ? '▲' : '▼'}</span>
       </button>
       {expanded && (
         <div className="mt-2 pl-3 border-l-2 border-theme-border space-y-2">
-          <p className="text-[10px] uppercase tracking-kicker text-theme-muted">
-            Vérifié par {result.modelLabel}
-            {corrected > 0 && (
-              <span className="ml-2 text-blue-700 dark:text-blue-400">
-                · {corrected} correction{corrected > 1 ? 's' : ''} appliquée{corrected > 1 ? 's' : ''} dans la réponse
-              </span>
-            )}
-          </p>
-          {isUnavailable ? (
-            <p className="text-theme-muted italic">
-              La vérification factuelle n'a pas pu aboutir (timeout, surcharge ou réseau).
-              La réponse ci-dessus n'a pas été vérifiée — relis-la avec un œil critique.
+          {status !== 'pending' && (
+            <p className="text-[10px] uppercase tracking-kicker text-theme-muted">
+              {t('chat.factCheck.verifiedBy', { model: result.modelLabel })}
+              {corrected > 0 && (
+                <span className="ml-2 text-blue-700 dark:text-blue-400 normal-case tracking-normal">
+                  · {plural(corrected, 'chat.factCheck.correctionOne', 'chat.factCheck.correctionMany')}{' '}
+                  {t('chat.factCheck.correctionsInResponse')}
+                </span>
+              )}
             </p>
+          )}
+          {status === 'pending' ? (
+            <p className="text-theme-muted italic">{t('chat.factCheck.pendingDetail')}</p>
+          ) : status === 'failed' ? (
+            <p className="text-theme-muted italic">{t('chat.factCheck.unavailableDetail')}</p>
           ) : result.claims.length === 0 ? (
-            <p className="text-theme-muted italic">Aucun claim factuel risqué identifié.</p>
+            <p className="text-theme-muted italic">{t('chat.factCheck.noRiskyDetail')}</p>
           ) : (
             result.claims.map((c, i) => {
               const wasCorrected = c.verdict === 'wrong' && c.originalText && c.correction
