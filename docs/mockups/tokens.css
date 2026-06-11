@@ -1,0 +1,92 @@
+/* ============================================================
+   ARTY — Maquettes ergonomiques · design tokens partagés
+   Repris fidèlement de src/index.css (Ember jour / Nocturne nuit)
+   pour que les maquettes restent à l'identité de marque.
+   Bascule via [data-theme="ember"|"nocturne"] sur <html>.
+   ============================================================ */
+
+:root,
+html[data-theme='ember'] {
+  --theme-bg: 250 243 231;       /* #FAF3E7 ember-paper */
+  --theme-surface: 255 255 255;  /* #FFFFFF ember-card */
+  --theme-ink: 24 22 19;         /* #181613 ember-ink */
+  --theme-muted: 143 107 77;     /* #8F6B4D ember-muted */
+  --theme-accent: 200 90 40;     /* #C85A28 ember-accent terracotta */
+  --theme-border: 232 217 191;   /* #E8D9BF ember-border */
+  --theme-cream: 245 230 208;    /* #F5E6D0 ember-cream */
+  --surface-elev: 245 230 208;
+  --border-weak: 24 22 19 / 0.06;
+  --border-mid: 24 22 19 / 0.12;
+  color-scheme: light;
+}
+
+html[data-theme='nocturne'] {
+  --theme-bg: 11 9 8;            /* #0B0908 */
+  --theme-surface: 24 19 17;     /* #181311 */
+  --theme-ink: 245 230 208;      /* #F5E6D0 */
+  --theme-muted: 168 156 138;    /* #A89C8A */
+  --theme-accent: 245 154 75;    /* #F59A4B amber */
+  --theme-border: 245 154 75;
+  --theme-cream: 43 31 21;       /* #2B1F15 */
+  --surface-elev: 28 24 18;
+  --border-weak: 240 226 204 / 0.07;
+  --border-mid: 240 226 204 / 0.13;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: rgb(var(--theme-bg));
+  color: rgb(var(--theme-ink));
+  font-family: 'Inter', system-ui, sans-serif;
+  font-weight: 300;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Helpers couleur */
+.bg          { background: rgb(var(--theme-bg)); }
+.surface     { background: rgb(var(--theme-surface)); }
+.elev        { background: rgb(var(--surface-elev)); }
+.ink         { color: rgb(var(--theme-ink)); }
+.muted       { color: rgb(var(--theme-muted)); }
+.accent      { color: rgb(var(--theme-accent)); }
+.bg-accent   { background: rgb(var(--theme-accent)); }
+.border      { border: 1px solid rgb(var(--theme-border)); }
+
+/* Type */
+.display { font-family: 'Fraunces', 'Lora', serif; }
+.serif   { font-family: 'Lora', serif; }
+.kicker  {
+  font-size: 10px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.2em; color: rgb(var(--theme-muted));
+}
+
+/* Cible tactile minimale WCAG 2.2 (44px) — appliquée par défaut aux
+   boutons interactifs des maquettes pour matérialiser la règle. */
+.tap { min-width: 44px; min-height: 44px; }
+
+/* Anneau de focus visible cohérent (manquant dans l'app actuelle) */
+:where(button, a, [tabindex], input, textarea):focus-visible {
+  outline: 2px solid rgb(var(--theme-accent));
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+/* Cadre téléphone pour la galerie de maquettes */
+.phone {
+  width: 390px; height: 844px;
+  background: rgb(var(--theme-bg));
+  border-radius: 44px;
+  border: 10px solid #0d0d0d;
+  box-shadow: 0 30px 80px rgba(0,0,0,0.35);
+  overflow: hidden;
+  position: relative;
+  display: flex; flex-direction: column;
+}
+.phone-notch {
+  position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+  width: 150px; height: 26px; background: #0d0d0d;
+  border-radius: 0 0 16px 16px; z-index: 60;
+}
