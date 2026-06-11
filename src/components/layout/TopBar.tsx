@@ -79,10 +79,10 @@ export function TopBar({ onMenuToggle }: TopBarProps) {
     >
       {/* Row 1 — hamburger (gauche) + utilitaires (droite) */}
       <div className="flex items-center justify-between px-4 pt-2.5 pb-1">
-        {/* Hamburger */}
+        {/* Hamburger — masqué en desktop (la sidebar y est persistante, PR E) */}
         <button
           onClick={onMenuToggle}
-          className="p-2 -ml-2 rounded-lg hover:bg-theme-ink/5 transition-colors text-theme-ink"
+          className="p-2 -ml-2 rounded-lg hover:bg-theme-ink/5 transition-colors text-theme-ink lg:hidden"
           aria-label={t('common.menu')}
         >
           <svg width="20" height="20" viewBox="0 0 20 20" fill="none">

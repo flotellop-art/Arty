@@ -2,6 +2,7 @@ import { memo, useMemo, useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { Conversation, Message } from '../../types'
 import { setLocale, SUPPORTED_LOCALES, type Locale } from '../../i18n'
+import { useMediaQuery } from '../../hooks/useMediaQuery'
 import { SettingsModal } from '../settings/SettingsModal'
 import { ApiKeysModal } from '../settings/ApiKeysModal'
 import { TaskPanel } from '../tasks/TaskPanel'
@@ -153,6 +154,10 @@ export const Sidebar = memo(function Sidebar({
   const [renameValue, setRenameValue] = useState('')
   const importInputRef = useRef<HTMLInputElement>(null)
   const drawerRef = useRef<HTMLElement>(null)
+  const searchInputRef = useRef<HTMLInputElement>(null)
+  // PR E — desktop ≥1024px : sidebar persistante (dans le flux, pas overlay).
+  // matchMedia (événement discret) → pas de re-render au resize continu.
+  const isPersistent = useMediaQuery('(min-width: 1024px)')
 
   useEffect(() => {
     if (!confirmDeleteId) return
@@ -173,8 +178,25 @@ export const Sidebar = memo(function Sidebar({
   // via ref car la prop JSX `inert` n'est typée qu'à partir de React 19.
   useEffect(() => {
     const el = drawerRef.current
-    if (el) el.inert = !isOpen
-  }, [isOpen])
+    // En mode persistant (desktop) la sidebar est toujours visible et
+    // interactive → jamais inerte, quel que soit isOpen.
+    if (el) el.inert = !isOpen && !isPersistent
+  }, [isOpen, isPersistent])
+
+  // ⌘K / Ctrl+K (desktop) → focus la recherche de conversations. Inactif en
+  // mobile (pas de persistant) pour ne pas voler le focus sur un clavier
+  // matériel branché à un téléphone.
+  useEffect(() => {
+    if (!isPersistent) return
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault()
+        searchInputRef.current?.focus()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [isPersistent])
 
   // Debounce search (300ms)
   useEffect(() => {
@@ -231,22 +253,25 @@ export const Sidebar = memo(function Sidebar({
 
   return (
     <>
-      {/* Backdrop */}
-      {isOpen && (
+      {/* Backdrop — overlay mobile uniquement. En persistant (desktop) la
+          sidebar est dans le flux : pas de scrim, sinon couche cliquable. */}
+      {isOpen && !isPersistent && (
         <div
           className="fixed inset-0 bg-theme-ink/40 z-40 transition-opacity"
           onClick={onClose}
         />
       )}
 
-      {/* Drawer — Design C */}
+      {/* Drawer — Design C. lg: la sidebar passe dans le flux (static), pleine
+          hauteur, sans ombre/scrim ni cap de largeur. < 1024px : overlay
+          strictement identique à avant (garde-fou absolu PR E). */}
       <aside
         ref={drawerRef}
         // Drawer fermé : `inert` (réglé via drawerRef ci-dessus) bloque le Tab
         // focus ET retire du lecteur d'écran. On garde aria-hidden en repli
         // pour les WebViews anciennes sans support `inert`.
-        aria-hidden={!isOpen}
-        className={`fixed top-0 left-0 h-full w-80 max-w-[85vw] bg-theme-surface text-theme-ink z-50 shadow-xl transform transition-transform duration-300 ease-in-out flex flex-col ${
+        aria-hidden={!isOpen && !isPersistent}
+        className={`fixed top-0 left-0 h-full w-80 max-w-[85vw] bg-theme-surface text-theme-ink z-50 shadow-xl transform transition-transform duration-300 ease-in-out flex flex-col lg:translate-x-0 lg:w-72 lg:max-w-none lg:shadow-none lg:border-r lg:border-theme-border ${
           isOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
         style={{ fontFamily: 'Inter, system-ui, sans-serif' }}
@@ -262,7 +287,7 @@ export const Sidebar = memo(function Sidebar({
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg text-theme-muted hover:text-theme-ink transition-colors"
+            className="p-1.5 rounded-lg text-theme-muted hover:text-theme-ink transition-colors lg:hidden"
             aria-label={t('common.close')}
           >
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round">
@@ -412,11 +437,16 @@ export const Sidebar = memo(function Sidebar({
               <path d="M21 21l-4.35-4.35M17 11A6 6 0 115 11a6 6 0 0112 0z" />
             </svg>
             <input
+              ref={searchInputRef}
               value={searchRaw}
               onChange={(e) => setSearchRaw(e.target.value)}
               placeholder={t('sidebar.searchPlaceholder', { defaultValue: 'Rechercher...' })}
               className="flex-1 bg-transparent border-0 outline-none text-theme-ink text-xs placeholder:text-theme-muted"
             />
+            {/* Indice ⌘K — desktop uniquement. */}
+            {!searchRaw && isPersistent && (
+              <span className="text-[10px] font-mono text-theme-muted/70 select-none">⌘K</span>
+            )}
             {searchRaw && (
               <button
                 onClick={() => setSearchRaw('')}
