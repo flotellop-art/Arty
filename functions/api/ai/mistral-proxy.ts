@@ -133,9 +133,16 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => 'Unknown Mistral error')
+      // Fix 429 (11 juin 2026) — forwarder Retry-After d'upstream pour que
+      // le backoff client attende le bon délai au lieu d'un délai aveugle.
+      // Header de réponse recopié tel quel : aucune surface d'auth modifiée.
+      const retryAfter = response.headers.get('retry-after')
       return new Response(errorText, {
         status: response.status,
-        headers: { 'content-type': 'application/json' },
+        headers: {
+          'content-type': 'application/json',
+          ...(retryAfter ? { 'retry-after': retryAfter } : {}),
+        },
       })
     }
 
