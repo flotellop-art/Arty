@@ -28,4 +28,13 @@ export function getSelectedModel(): AIModel {
 
 export function setSelectedModel(model: AIModel): void {
   scoped.setItem('ai-model', model)
+  // BUG 54 — toute écriture dans un store partagé entre plusieurs vues doit
+  // notifier via CustomEvent, sinon les vues non remontées affichent une
+  // valeur périmée (désynchro TopBar Home ↔ ChatTopBar). try/catch pour
+  // tolérer les contextes sans window (tests, SSR).
+  try {
+    window.dispatchEvent(new CustomEvent<AIModel>('model-changed', { detail: model }))
+  } catch {
+    // contexte sans window — l'écriture storage reste effective
+  }
 }
