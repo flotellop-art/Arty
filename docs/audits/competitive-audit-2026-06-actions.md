@@ -78,10 +78,13 @@ unique sous 20 $/mois). Pas par la largeur de catalogue. Volume = distribution
   quota JOURNALIER (`consumeDailyQuota`, défaut 50/j) s'applique au plan subscription
   sur tous les modèles. Formulation honnête retenue : « sans plafond mensuel » +
   mention de la limite journalière. Clés quota.* du P0.6 corrigées en conséquence.
-  **Actions Florent (hors code)** : (1) vérifier dans le dashboard Lemon Squeezy que
-  les prix sont configurés TTC (sinon la promesse « TTC » est fausse au checkout) ;
-  (2) vérifier la valeur prod de `DAILY_QUOTA_PER_USER`/`DAILY_QUOTA_PER_MODEL`
-  (défaut 50/j si absente — dimensionner pour les abonnés).
+  **Actions Florent (hors code)** : (1) [ ] vérifier dans le dashboard Lemon Squeezy
+  que les prix sont configurés TTC (sinon la promesse « TTC » est fausse au checkout) ;
+  (2) [x] `DAILY_QUOTA_PER_USER = 500` confirmé en prod (Florent, 12 juin) — limite
+  anti-abus généreuse, la formulation « sans plafond mensuel » est juste. Chiffre
+  volontairement absent du copy (variable d'env → éviter la divergence). Note vigie
+  whales : 500/j est le plafond théorique d'un abonné (≈ 15 000 msg standards/mois
+  dans l'absolu) — surveiller via la vigie économique trimestrielle.
 
 ## P1 — Combler les attentes standard 2026
 
