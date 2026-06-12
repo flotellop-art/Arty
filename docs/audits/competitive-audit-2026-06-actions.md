@@ -78,8 +78,11 @@ unique sous 20 $/mois). Pas par la largeur de catalogue. Volume = distribution
   quota JOURNALIER (`consumeDailyQuota`, défaut 50/j) s'applique au plan subscription
   sur tous les modèles. Formulation honnête retenue : « sans plafond mensuel » +
   mention de la limite journalière. Clés quota.* du P0.6 corrigées en conséquence.
-  **Actions Florent (hors code)** : (1) [ ] vérifier dans le dashboard Lemon Squeezy
-  que les prix sont configurés TTC (sinon la promesse « TTC » est fausse au checkout) ;
+  **Actions Florent (hors code)** : (1) [x] « Tax-inclusive pricing » ACTIVÉ dans
+  Lemon Squeezy (Settings → General, Florent, 12 juin) — le défaut LS est HT, le
+  toggle était nécessaire pour que « TTC » soit vrai au checkout. Note marge : la TVA
+  est absorbée (net FR ≈ 8,32 € sur 9,99 €) — cohérent stratégie confiance. Reste à
+  faire un checkout test depuis une adresse FR pour confirmer le total à 9,99 € ;
   (2) [x] `DAILY_QUOTA_PER_USER = 500` confirmé en prod (Florent, 12 juin) — limite
   anti-abus généreuse, la formulation « sans plafond mensuel » est juste. Chiffre
   volontairement absent du copy (variable d'env → éviter la divergence). Note vigie
