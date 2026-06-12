@@ -11,11 +11,13 @@ import { apiUrl } from './apiBase'
 import { getValidAccessToken } from './googleAuth'
 import { getOpenAIKey } from './activeApiKey'
 
+export type ImageProvider = 'openai' | 'flux'
+
 export type ImageGenResult =
   | { ok: true; base64: string; mimeType: string }
-  | { ok: false; code: 'plan_locked' | 'cap_reached' | 'auth' | 'failed' }
+  | { ok: false; code: 'plan_locked' | 'cap_reached' | 'auth' | 'unavailable' | 'failed' }
 
-export async function generateImage(prompt: string): Promise<ImageGenResult> {
+export async function generateImage(prompt: string, provider: ImageProvider = 'openai'): Promise<ImageGenResult> {
   const token = await getValidAccessToken()
   if (!token) return { ok: false, code: 'auth' }
 
@@ -31,7 +33,7 @@ export async function generateImage(prompt: string): Promise<ImageGenResult> {
     res = await fetch(apiUrl('/api/ai/image-gen'), {
       method: 'POST',
       headers,
-      body: JSON.stringify({ prompt }),
+      body: JSON.stringify({ prompt, provider }),
     })
   } catch {
     return { ok: false, code: 'failed' }
@@ -41,6 +43,8 @@ export async function generateImage(prompt: string): Promise<ImageGenResult> {
     if (res.status === 403) return { ok: false, code: 'plan_locked' }
     if (res.status === 429) return { ok: false, code: 'cap_reached' }
     if (res.status === 401) return { ok: false, code: 'auth' }
+    // 503 = provider non configuré côté serveur (ex : BFL_API_KEY absente).
+    if (res.status === 503) return { ok: false, code: 'unavailable' }
     return { ok: false, code: 'failed' }
   }
 

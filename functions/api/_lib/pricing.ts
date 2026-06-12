@@ -52,6 +52,9 @@ const PRICING: Record<string, ModelPricing> = {
   // Génération d'images (P1.3). Coût fixe par image (qualité medium 1024²
   // ≈ $0.04). Pas de tokens — le coût passe par imagePerUnit.
   'gpt-image-1': { input: 0, output: 0, imagePerUnit: 0.04 },
+  // FLUX (Black Forest Labs) — coût par image 1024² (P1.3-FLUX).
+  'flux-2-klein-9b': { input: 0, output: 0, imagePerUnit: 0.015 },
+  'flux-2-pro': { input: 0, output: 0, imagePerUnit: 0.03 },
 
   // Mistral (Small déprécié mai 2026, Medium 3.5 est le standard)
   'mistral-large-latest': { input: 2, output: 6 },
@@ -83,6 +86,7 @@ export function getPricing(model: string): ModelPricing {
   if (prefix === 'gpt') return PRICING['gpt-5.5-mini'] ?? FALLBACK_PRICING
   if (prefix === 'gemini') return PRICING['gemini-2.5-flash'] ?? FALLBACK_PRICING
   if (prefix === 'mistral') return PRICING['mistral-medium-latest'] ?? FALLBACK_PRICING
+  if (prefix === 'flux') return PRICING['flux-2-klein-9b'] ?? FALLBACK_PRICING
   return FALLBACK_PRICING
 }
 
