@@ -120,6 +120,16 @@ export function applyExtraction(result: ExtractionResult, existing: LocalMemoryF
 
 // ── Extraction principale ────────────────────────────────────────────────────
 
+/**
+ * Promesse EU : une conversation euOnly — ou qui a simplement touché Mistral
+ * (même sémantique que `hasMistralData` dans ChatTopBar, qui déclenche la
+ * modale de consentement EU→US) — ne part JAMAIS vers Claude US pour
+ * l'extraction mémoire : il n'existe aucun chemin de consentement ici.
+ */
+export function hasEuData(conv: Pick<Conversation, 'euOnly' | 'usedModels'>): boolean {
+  return !!conv.euOnly || !!conv.usedModels?.includes('mistral')
+}
+
 let inFlight = false
 
 /**
@@ -130,8 +140,7 @@ export async function maybeExtractMemory(conv: Conversation | null | undefined):
   try {
     if (!conv || inFlight) return
     if (!isAutoMemoryEnabled()) return
-    // Promesse EU : la conversation ne part JAMAIS vers Claude US.
-    if (conv.euOnly) return
+    if (hasEuData(conv)) return
     // Trial débutant : pas d'extraction avant l'engagement (~5 messages).
     const trial = getTrialRemaining()
     if (trial !== null && trial > 25) return

@@ -479,6 +479,22 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
             )}
           </div>
 
+          {/* Résidence des données — transparence (renforcement EU) */}
+          <div className="border-t border-theme-border pt-5">
+            <p className="font-display text-base text-theme-ink">🌍 {t('settings.dataResidency.title')}</p>
+            <p className="font-display italic text-xs text-theme-muted mt-0.5">
+              {t('settings.dataResidency.description')}
+            </p>
+            <ul className="mt-3 space-y-1.5">
+              {(['conversations', 'account', 'euConv', 'usModels', 'search'] as const).map((k) => (
+                <li key={k} className="font-display text-xs text-theme-ink/80 flex gap-2">
+                  <span className="text-theme-accent shrink-0">•</span>
+                  <span>{t(`settings.dataResidency.${k}`)}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+
           {/* Streak / régularité (F-004) */}
           <div className="border-t border-theme-border pt-5">
             <div className="flex items-center justify-between gap-4">

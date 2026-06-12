@@ -198,7 +198,7 @@
         "openai": "Manual selection only"
       },
       "euNote": "This conversation contains EU data (Mistral). Picking a 🇺🇸 model will ask for confirmation before sending its content outside Europe.",
-      "euLocked": "Europe-locked conversation — Mistral only · fact-check disabled (it would leave Europe)",
+      "euLocked": "Europe-locked conversation — Mistral only, voice dictation included (Voxtral 🇫🇷) · fact-check disabled (it would leave Europe)",
       "proLock": "Pro",
       "summarize": "Summarize the conversation",
       "exportLabel": "Export",
@@ -245,7 +245,7 @@
         "enhance": "Enhance prompt",
         "stop": "Stop",
         "send": "Send",
-        "holdToRecord": "Tap to dictate, hold for Whisper",
+        "holdToRecord": "Tap to dictate, hold for AI transcription",
         "autoSendOn": "Auto-send on — release the mic to send immediately",
         "autoSendOff": "Auto-send off — transcription fills the text area"
       },
@@ -258,7 +258,7 @@
         "recording": "Recording",
         "swipeToCancel": "← Slide to cancel",
         "releaseToCancel": "Release to cancel",
-        "releaseToSend": "Whisper — release to send",
+        "releaseToSend": "Dictation — release to send",
         "tapToStop": "Listening… tap to stop",
         "artyReplying": "Arty is replying…",
         "transcribing": "Transcribing…",
@@ -266,17 +266,18 @@
         "micDenied": "Microphone denied — allow it in browser settings",
         "micDeniedNative": "Microphone denied — allow it in Settings → Apps → Arty → Permissions",
         "transcribeFailed": "Transcription failed — try again",
+        "euAuthRequired": "Sign in with Google to use voice dictation in an EU conversation",
         "unsupported": "Audio recording not supported in this browser",
-        "hint": "Tap 🎙 = quick dictation · hold = Whisper",
+        "hint": "Tap 🎙 = quick dictation · hold = AI transcription",
         "hintTapOnly": "Tap 🎙 = quick dictation"
       },
       "slashPaletteHeader": "Commands",
       "removeFile": "Remove {{name}}",
       "chipSuggestion": "Suggestion: {{label}}",
       "whisperStop": "Stop recording",
-      "whisperStart": "Record audio (Whisper)",
+      "whisperStart": "Record audio (AI transcription)",
       "recordingWithDuration": "Recording {{duration}}s",
-      "whisperTooltip": "Record (Whisper)",
+      "whisperTooltip": "Record (AI transcription)",
       "chips": {
         "brief": {
           "label": "Daily brief",
@@ -586,6 +587,15 @@
       "title": "Prompt enhancement",
       "description": "Rephrases your message before sending",
       "modelLabel": "Model"
+    },
+    "dataResidency": {
+      "title": "Where your data is processed",
+      "description": "Transparency, line by line",
+      "conversations": "Your conversations: on your device, encrypted (AES-256) — never on our servers",
+      "account": "Your account (quotas, subscription): Europe — Cloudflare database, EU jurisdiction guaranteed",
+      "euConv": "🇪🇺 EU conversations: Mistral (France) — text and voice dictation (Voxtral)",
+      "usModels": "Claude, Gemini, GPT: United States — processed on request, never stored by Arty",
+      "search": "Web search: Linkup (France) first"
     },
     "factChecker": {
       "description": "Verifies the factual claims in each response",

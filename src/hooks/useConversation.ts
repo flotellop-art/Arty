@@ -100,7 +100,7 @@ export function useConversation() {
       messages.push({
         id: generateId(),
         role: 'assistant',
-        content: `🇪🇺 **Conversation confidentielle EU**\n\nCette conversation utilise exclusivement **Mistral** (serveurs en France). Tes données ne quitteront pas l'Europe.\n\nJe peux lire tes mails, accéder à Drive et gérer ton calendrier — tout reste en EU.`,
+        content: `🇪🇺 **Conversation confidentielle EU**\n\nLe traitement IA de cette conversation se fait exclusivement chez **Mistral** (serveurs en France) — rien n'est envoyé à Claude, Gemini ou OpenAI, dictée vocale comprise. Tes messages restent stockés sur ton appareil, chiffrés.\n\nJe peux lire tes mails, accéder à Drive et gérer ton calendrier (ces données restent hébergées chez Google).`,
         timestamp: Date.now(),
       })
     }

@@ -31,6 +31,11 @@ const PRICING: Record<string, ModelPricing> = {
   // OpenAI (transcription)
   'whisper-1': { input: 0, output: 0, audioPerSec: 0.006 / 60 }, // $0.006 / minute
 
+  // Mistral (transcription EU — dictée des conversations euOnly)
+  // Facturé à la minute ; les prompt/completion_tokens de la réponse ne sont
+  // PAS comptés (le tarif officiel est uniquement par minute d'audio).
+  'voxtral-mini-latest': { input: 0, output: 0, audioPerSec: 0.003 / 60 }, // $0.003 / minute
+
   // OpenAI (chat, avril 2026)
   // GPT-5.5 sorti le 23/04/2026 — tarif officiel OpenAI $5 input / $30 output.
   // -60% hallucinations vs GPT-5 selon OpenAI. Défault dans openaiClient.ts.

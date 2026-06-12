@@ -198,7 +198,7 @@
         "openai": "Sélection manuelle uniquement"
       },
       "euNote": "Cette conversation contient des données EU (Mistral). Choisir un modèle 🇺🇸 demandera une confirmation avant d'envoyer son contenu hors Europe.",
-      "euLocked": "Conversation verrouillée Europe — Mistral uniquement · fact-check désactivé (il sortirait d'Europe)",
+      "euLocked": "Conversation verrouillée Europe — Mistral uniquement, dictée vocale comprise (Voxtral 🇫🇷) · fact-check désactivé (il sortirait d'Europe)",
       "proLock": "Pro",
       "summarize": "Résumer la conversation",
       "exportLabel": "Exporter",
@@ -245,7 +245,7 @@
         "enhance": "Améliorer le prompt",
         "stop": "Arrêter",
         "send": "Envoyer",
-        "holdToRecord": "Tap pour dicter, appui long pour Whisper",
+        "holdToRecord": "Tap pour dicter, appui long pour la transcription IA",
         "autoSendOn": "Auto-envoi activé — relâche le micro pour envoyer direct",
         "autoSendOff": "Auto-envoi désactivé — transcription ajoutée à la zone de texte"
       },
@@ -258,7 +258,7 @@
         "recording": "Enregistrement",
         "swipeToCancel": "← Glisse pour annuler",
         "releaseToCancel": "Relâche pour annuler",
-        "releaseToSend": "Whisper — relâche pour envoyer",
+        "releaseToSend": "Dictée — relâche pour envoyer",
         "tapToStop": "Écoute… tap pour terminer",
         "artyReplying": "Arty répond…",
         "transcribing": "Transcription…",
@@ -266,17 +266,18 @@
         "micDenied": "Micro refusé — autorise-le dans les paramètres du navigateur",
         "micDeniedNative": "Micro refusé — autorise-le dans Paramètres → Apps → Arty → Autorisations",
         "transcribeFailed": "Transcription échouée — réessaie",
+        "euAuthRequired": "Connecte-toi avec Google pour utiliser la dictée en conversation EU",
         "unsupported": "Enregistrement audio non supporté sur ce navigateur",
-        "hint": "Tap 🎙 = dictée rapide · maintenir = Whisper",
+        "hint": "Tap 🎙 = dictée rapide · maintenir = transcription IA",
         "hintTapOnly": "Tap 🎙 = dictée rapide"
       },
       "slashPaletteHeader": "Commandes",
       "removeFile": "Retirer {{name}}",
       "chipSuggestion": "Suggestion : {{label}}",
       "whisperStop": "Arrêter enregistrement",
-      "whisperStart": "Enregistrer audio (Whisper)",
+      "whisperStart": "Enregistrer audio (transcription IA)",
       "recordingWithDuration": "Enregistrement {{duration}}s",
-      "whisperTooltip": "Enregistrer (Whisper)",
+      "whisperTooltip": "Enregistrer (transcription IA)",
       "chips": {
         "brief": {
           "label": "Brief du jour",
@@ -586,6 +587,15 @@
       "title": "Amélioration du prompt",
       "description": "Reformule ton message avant l'envoi",
       "modelLabel": "Modèle"
+    },
+    "dataResidency": {
+      "title": "Où sont traitées tes données",
+      "description": "Transparence, ligne par ligne",
+      "conversations": "Tes conversations : sur ton appareil, chiffrées (AES-256) — jamais sur nos serveurs",
+      "account": "Ton compte (quotas, abonnement) : Europe — base Cloudflare, juridiction EU garantie",
+      "euConv": "Conversations 🇪🇺 EU : Mistral (France) — texte et dictée vocale (Voxtral)",
+      "usModels": "Claude, Gemini, GPT : États-Unis — traités à la demande, jamais stockés par Arty",
+      "search": "Recherche web : Linkup (France) en priorité"
     },
     "factChecker": {
       "description": "Vérifie les claims factuels de chaque réponse",

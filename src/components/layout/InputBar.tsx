@@ -623,7 +623,8 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
       setIsTranscribing(true)
       try {
         const { transcribeAudio } = await import('../../services/whisperClient')
-        const transcription = await transcribeAudio(blob)
+        // Conversation EU : dictée via Voxtral (Mistral, France), jamais OpenAI US.
+        const transcription = await transcribeAudio(blob, { euOnly })
         if (!transcription) return
 
         // V2 — Whisper always auto-sends (WhatsApp-style). If streaming blocks
@@ -668,7 +669,7 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
         try { r.stop() } catch {}
       }
     }, HOLD_MAX_MS)
-  }, [isRecordingAudio, isListening, stopListening, t, clearRecordingTimers, hardResetRecording, sendText])
+  }, [isRecordingAudio, isListening, stopListening, t, clearRecordingTimers, hardResetRecording, sendText, euOnly])
 
   const stopAudioRecording = useCallback((cancel = false) => {
     wantRecordingRef.current = false

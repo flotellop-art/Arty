@@ -1,11 +1,16 @@
 /**
- * OpenAI Whisper audio transcription client.
- * Prefers the user's BYOK OpenAI key (direct to OpenAI). Falls back to the
- * server proxy `/api/ai/whisper-proxy`, which uses the owner's OPENAI_API_KEY
- * if the caller's Google email is in ALLOWED_EMAILS.
+ * Audio transcription client.
+ *
+ * Route standard : OpenAI Whisper — BYOK direct, sinon proxy serveur
+ * `/api/ai/whisper-proxy` (clé OPENAI_API_KEY du owner, whitelist/plan).
+ *
+ * Route EU (`euOnly`) : Mistral Voxtral (serveurs en France) via le proxy
+ * `/api/ai/voxtral-proxy` — l'audio d'une conversation EU ne part JAMAIS
+ * chez OpenAI (US). Toujours via le proxy, jamais en direct navigateur
+ * (BUG 30 : même contrat que mistralClient, BYOK forwardé en Bearer).
  */
 
-import { getOpenAIKey } from './activeApiKey'
+import { getMistralKey, getOpenAIKey } from './activeApiKey'
 import { apiUrl } from './apiBase'
 import { getValidAccessToken } from './googleAuth'
 import i18n from '../i18n'
@@ -28,15 +33,20 @@ function pickFilename(blob: Blob): string {
 // 400`. Callers catch and display err.message in the banner.
 function formatWhisperError(status: number, body: string): string {
   try {
-    const parsed = JSON.parse(body) as { error?: { message?: string; code?: string } | string }
+    const parsed = JSON.parse(body) as {
+      error?: { message?: string; code?: string } | string
+      // Forme d'erreur Mistral (Voxtral) : message au top-level.
+      message?: string
+    }
     if (typeof parsed.error === 'string' && parsed.error) return parsed.error
     if (parsed.error && typeof parsed.error === 'object' && parsed.error.message) {
       return parsed.error.message
     }
+    if (typeof parsed.message === 'string' && parsed.message) return parsed.message
   } catch {
     // Not JSON — fall through.
   }
-  return `Whisper error ${status}${body ? ` — ${body.slice(0, 200)}` : ''}`
+  return `Transcription error ${status}${body ? ` — ${body.slice(0, 200)}` : ''}`
 }
 
 async function postWhisper(url: string, headers: Record<string, string>, formData: FormData): Promise<string> {
@@ -49,15 +59,18 @@ async function postWhisper(url: string, headers: Record<string, string>, formDat
   return data.text || ''
 }
 
-function buildFormData(audioBlob: Blob, model: string): FormData {
+function buildFormData(audioBlob: Blob, model: string, opts?: { verboseJson?: boolean }): FormData {
   const formData = new FormData()
   formData.append('file', audioBlob, pickFilename(audioBlob))
   formData.append('model', model)
   const lng = (i18n.resolvedLanguage || i18n.language || 'fr').slice(0, 2)
   formData.append('language', lng)
-  // verbose_json : inclut toujours `text` (que le client lit) + `duration`
-  // que le proxy serveur utilise pour calculer le coût Whisper précis.
-  formData.append('response_format', 'verbose_json')
+  if (opts?.verboseJson) {
+    // verbose_json (OpenAI uniquement) : inclut toujours `text` + `duration`
+    // que le proxy serveur utilise pour calculer le coût Whisper précis.
+    // Voxtral n'a pas ce champ — la durée arrive dans usage.prompt_audio_seconds.
+    formData.append('response_format', 'verbose_json')
+  }
   return formData
 }
 
@@ -67,17 +80,43 @@ function buildFormData(audioBlob: Blob, model: string): FormData {
 // feature work out of the box everywhere else.
 async function transcribeWithFallback(url: string, headers: Record<string, string>, audioBlob: Blob): Promise<string> {
   try {
-    return await postWhisper(url, headers, buildFormData(audioBlob, 'gpt-4o-transcribe'))
+    return await postWhisper(url, headers, buildFormData(audioBlob, 'gpt-4o-transcribe', { verboseJson: true }))
   } catch (err) {
     const msg = err instanceof Error ? err.message : ''
     const modelRejected = /model|not.?found|does.?not.?exist|unknown|invalid.*model/i.test(msg)
     if (!modelRejected) throw err
     console.warn('[whisper] gpt-4o-transcribe rejected, retrying with whisper-1:', msg)
-    return await postWhisper(url, headers, buildFormData(audioBlob, 'whisper-1'))
+    return await postWhisper(url, headers, buildFormData(audioBlob, 'whisper-1', { verboseJson: true }))
   }
 }
 
-export async function transcribeAudio(audioBlob: Blob): Promise<string> {
+/** Dictée EU : Voxtral (Mistral, France) via le proxy. Jamais OpenAI. */
+async function transcribeAudioEU(audioBlob: Blob): Promise<string> {
+  const googleToken = await getValidAccessToken()
+  if (!googleToken) {
+    throw new Error(i18n.t('chat.input.voice.euAuthRequired'))
+  }
+
+  const headers: Record<string, string> = { 'x-google-token': googleToken }
+  // BYOK Mistral forwardé en Bearer — le proxy l'utilise à la place de la
+  // clé serveur (même contrat que mistral-proxy).
+  const byokKey = getMistralKey()
+  if (byokKey) headers['Authorization'] = `Bearer ${byokKey}`
+
+  return postWhisper(
+    apiUrl('/api/ai/voxtral-proxy'),
+    headers,
+    buildFormData(audioBlob, 'voxtral-mini-latest'),
+  )
+}
+
+export async function transcribeAudio(audioBlob: Blob, opts?: { euOnly?: boolean }): Promise<string> {
+  // Promesse EU : l'audio d'une conversation euOnly ne part jamais chez
+  // OpenAI (US) — transcription Mistral Voxtral (serveurs en France).
+  if (opts?.euOnly) {
+    return transcribeAudioEU(audioBlob)
+  }
+
   const byokKey = getOpenAIKey()
 
   // BYOK : appel direct OpenAI (latence plus faible, pas de quota serveur)
