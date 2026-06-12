@@ -486,7 +486,7 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
               {t('settings.dataResidency.description')}
             </p>
             <ul className="mt-3 space-y-1.5">
-              {(['conversations', 'account', 'euConv', 'usModels', 'search'] as const).map((k) => (
+              {(['conversations', 'account', 'euConv', 'usModels', 'dictation', 'search'] as const).map((k) => (
                 <li key={k} className="font-display text-xs text-theme-ink/80 flex gap-2">
                   <span className="text-theme-accent shrink-0">•</span>
                   <span>{t(`settings.dataResidency.${k}`)}</span>

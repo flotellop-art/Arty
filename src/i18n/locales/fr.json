@@ -266,7 +266,7 @@
         "micDenied": "Micro refusé — autorise-le dans les paramètres du navigateur",
         "micDeniedNative": "Micro refusé — autorise-le dans Paramètres → Apps → Arty → Autorisations",
         "transcribeFailed": "Transcription échouée — réessaie",
-        "euAuthRequired": "Connecte-toi avec Google pour utiliser la dictée en conversation EU",
+        "googleRequired": "Connecte-toi avec Google pour utiliser la dictée vocale",
         "unsupported": "Enregistrement audio non supporté sur ce navigateur",
         "hint": "Tap 🎙 = dictée rapide · maintenir = transcription IA",
         "hintTapOnly": "Tap 🎙 = dictée rapide"
@@ -595,6 +595,7 @@
       "account": "Ton compte (quotas, abonnement) : Europe — base Cloudflare, juridiction EU garantie",
       "euConv": "Conversations 🇪🇺 EU : Mistral (France) — texte et dictée vocale (Voxtral)",
       "usModels": "Claude, Gemini, GPT : États-Unis — traités à la demande, jamais stockés par Arty",
+      "dictation": "Dictée vocale : Voxtral (France) par défaut — Whisper (US) seulement en secours ou sur ta clé OpenAI perso",
       "search": "Recherche web : Linkup (France) en priorité"
     },
     "factChecker": {

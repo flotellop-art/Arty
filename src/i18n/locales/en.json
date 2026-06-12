@@ -266,7 +266,7 @@
         "micDenied": "Microphone denied — allow it in browser settings",
         "micDeniedNative": "Microphone denied — allow it in Settings → Apps → Arty → Permissions",
         "transcribeFailed": "Transcription failed — try again",
-        "euAuthRequired": "Sign in with Google to use voice dictation in an EU conversation",
+        "googleRequired": "Sign in with Google to use voice dictation",
         "unsupported": "Audio recording not supported in this browser",
         "hint": "Tap 🎙 = quick dictation · hold = AI transcription",
         "hintTapOnly": "Tap 🎙 = quick dictation"
@@ -595,6 +595,7 @@
       "account": "Your account (quotas, subscription): Europe — Cloudflare database, EU jurisdiction guaranteed",
       "euConv": "🇪🇺 EU conversations: Mistral (France) — text and voice dictation (Voxtral)",
       "usModels": "Claude, Gemini, GPT: United States — processed on request, never stored by Arty",
+      "dictation": "Voice dictation: Voxtral (France) by default — Whisper (US) only as a backup or on your own OpenAI key",
       "search": "Web search: Linkup (France) first"
     },
     "factChecker": {

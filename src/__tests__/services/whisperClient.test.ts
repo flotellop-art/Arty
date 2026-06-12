@@ -1,6 +1,8 @@
-// Renforcement EU — routage de la transcription vocale : une conversation
-// euOnly ne doit JAMAIS envoyer l'audio chez OpenAI (US). La dictée EU passe
-// par le proxy Voxtral (Mistral, France).
+// Routage de la transcription vocale.
+// - euOnly : Voxtral strict (Mistral, France), JAMAIS OpenAI, pas de fallback.
+// - Défaut hors EU : Voxtral (clé serveur ou BYOK Mistral), filet de secours
+//   Whisper sur incident Mistral (5xx/réseau) uniquement.
+// - BYOK OpenAI sans clé Mistral : direct OpenAI (comportement historique).
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 vi.mock('../../services/googleAuth', () => ({
@@ -70,11 +72,50 @@ describe('transcribeAudio — routage EU/US', () => {
     expect(form.get('response_format')).toBe('verbose_json')
   })
 
-  it('hors EU sans BYOK : proxy Whisper avec token Google', async () => {
+  it('hors EU sans BYOK : Voxtral par défaut (clé serveur)', async () => {
     await transcribeAudio(blob)
 
     const { url, init } = lastCall()
-    expect(url).toContain('/api/ai/whisper-proxy')
+    expect(url).toContain('/api/ai/voxtral-proxy')
     expect((init.headers as Record<string, string>)['x-google-token']).toBe('g-token')
+  })
+
+  it('hors EU avec BYOK Mistral : Voxtral sur SA clé (Bearer)', async () => {
+    setActiveKeys('anthropic-key', undefined, 'mistral-byok')
+    await transcribeAudio(blob)
+
+    const { url, init } = lastCall()
+    expect(url).toContain('/api/ai/voxtral-proxy')
+    expect((init.headers as Record<string, string>)['Authorization']).toBe('Bearer mistral-byok')
+  })
+
+  it('hors EU : incident Voxtral (502) → filet de secours proxy Whisper', async () => {
+    fetchMock.mockImplementationOnce(async () =>
+      new Response(JSON.stringify({ error: 'Transcription failed' }), { status: 502 })
+    )
+    const text = await transcribeAudio(blob)
+    expect(text).toBe('salut')
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    const { url } = lastCall()
+    expect(url).toContain('/api/ai/whisper-proxy')
+  })
+
+  it('hors EU : erreur définitive Voxtral (429 quota) → surface, pas de fallback', async () => {
+    fetchMock.mockImplementationOnce(async () =>
+      new Response(JSON.stringify({ error: 'Quota quotidien atteint' }), { status: 429 })
+    )
+    await expect(transcribeAudio(blob)).rejects.toThrow(/quota/i)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('euOnly : incident Voxtral (502) → AUCUN fallback US, erreur surfacée', async () => {
+    fetchMock.mockImplementationOnce(async () =>
+      new Response(JSON.stringify({ error: 'Transcription failed' }), { status: 502 })
+    )
+    await expect(transcribeAudio(blob, { euOnly: true })).rejects.toThrow()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(lastCall().url).not.toContain('whisper')
+    expect(lastCall().url).not.toContain('openai')
   })
 })
