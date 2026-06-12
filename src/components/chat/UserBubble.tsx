@@ -9,6 +9,8 @@ interface UserBubbleProps {
   pinned?: boolean
   onTogglePin?: () => void
   onEdit?: (newContent: string) => void
+  /** Créer une branche de la conversation depuis ce message (barre d'actions). */
+  onBranch?: () => void
 }
 
 // Thumbnail d'un fichier attaché : preview image lazy-loadée depuis IndexedDB,
@@ -82,7 +84,7 @@ const FileThumbnail = memo(function FileThumbnail({ file }: { file: FileAttachme
   )
 })
 
-export const UserBubble = memo(function UserBubble({ content, files, pinned, onTogglePin, onEdit }: UserBubbleProps) {
+export const UserBubble = memo(function UserBubble({ content, files, pinned, onTogglePin, onEdit, onBranch }: UserBubbleProps) {
   const { t } = useTranslation()
   const [editing, setEditing] = useState(false)
   const [value, setValue] = useState(content)
@@ -219,6 +221,20 @@ export const UserBubble = memo(function UserBubble({ content, files, pinned, onT
               title={t('chat.userBubble.editTitle')}
             >
               ✏️
+            </button>
+          )}
+          {onBranch && (
+            <button
+              onClick={onBranch}
+              className="opacity-50 md:opacity-0 md:group-hover/user:opacity-100 focus-visible:opacity-100 p-2 rounded-md text-theme-muted hover:text-theme-accent transition-all"
+              aria-label={t('chat.messageList.branch')}
+              title={t('chat.messageList.branch')}
+            >
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                <path d="M3 2V8M3 8C3 9.1 3.9 10 5 10H8M11 12V6M11 6C11 4.9 10.1 4 9 4H8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+                <circle cx="3" cy="2" r="1.5" stroke="currentColor" strokeWidth="1.2" />
+                <circle cx="11" cy="12" r="1.5" stroke="currentColor" strokeWidth="1.2" />
+              </svg>
             </button>
           )}
           {onTogglePin && (
