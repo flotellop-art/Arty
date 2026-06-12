@@ -86,6 +86,7 @@ export function ChatOptionsSheet({
     'claude-sonnet': 'Claude Sonnet/Opus',
     'gpt-5': 'GPT-5',
     'gemini-pro': 'Gemini Pro',
+    'gpt-image': 'Images',
   }
 
   return (

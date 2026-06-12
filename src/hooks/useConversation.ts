@@ -17,6 +17,8 @@ import { getReflectionLevel } from '../services/reflectionLevel'
 import { putFile } from '../services/secureFileStorage'
 import { runFactCheckOnLatest, factCheckContent, getFactCheckMode } from '../services/factChecker'
 import { detectSuggestedTasks, addTask } from '../services/taskService'
+import { TOOLS } from '../services/toolDefinitions'
+import { wantsImageGeneration, generateImageToolDefinition } from '../services/tools/imageTools'
 import { detectReminderIntent, createReminder } from '../services/reminderService'
 import i18n from '../i18n'
 
@@ -609,10 +611,18 @@ export function useConversation() {
         } else if (outgoingText !== text) {
           apiMessages[apiMessages.length - 1] = { role: 'user', content: outgoingText }
         }
+        // P1.3 — le tool generate_image n'est EXPOSÉ au modèle que si
+        // l'utilisateur demande explicitement une image (seule garantie
+        // anti-faux-déclenchement, cf. imageTools). euOnly n'atteint jamais ce
+        // chemin (forcé sur Mistral) → génération naturellement bloquée en EU.
+        const imageTools = wantsImageGeneration(text)
+          ? [...TOOLS, generateImageToolDefinition]
+          : undefined
         controller = streamMessage(apiMessages, onToken, onDone, onErr, {
           systemPrompt: systemPromptRef.current,
           onToolCall: toolHandlerRef.current,
           reflectionLevel: getReflectionLevel(),
+          ...(imageTools ? { tools: imageTools as typeof TOOLS } : {}),
         })
       }
 

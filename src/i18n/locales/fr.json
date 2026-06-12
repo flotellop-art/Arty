@@ -856,5 +856,12 @@
       "upgradeCta": "Passer à Pro",
       "seePlans": "Voir les plans →"
     }
+  },
+  "image": {
+    "errorNoPrompt": "Aucune description d'image fournie.",
+    "errorPlanLocked": "La génération d'images est réservée aux abonnés. L'utilisateur peut s'abonner pour en profiter.",
+    "errorCapReached": "Limite mensuelle d'images atteinte (10/mois). Réinitialisée le 1er du mois.",
+    "errorAuth": "Connexion Google requise pour générer des images.",
+    "errorFailed": "La génération d'image a échoué. Réessaie dans un moment."
   }
 }

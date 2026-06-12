@@ -16,6 +16,8 @@ export interface ModelPricing {
   cacheCreation?: number
   /** USD per audio second (Whisper). */
   audioPerSec?: number
+  /** USD per generated image (gpt-image-1). */
+  imagePerUnit?: number
 }
 
 // Toutes les valeurs sont celles d'avril 2026. À ajuster si les providers
@@ -47,6 +49,9 @@ const PRICING: Record<string, ModelPricing> = {
   'gpt-5-nano': { input: 0.1, output: 0.4 },
   'gpt-4o': { input: 2.5, output: 10 },
   'gpt-4o-mini': { input: 0.15, output: 0.6 },
+  // Génération d'images (P1.3). Coût fixe par image (qualité medium 1024²
+  // ≈ $0.04). Pas de tokens — le coût passe par imagePerUnit.
+  'gpt-image-1': { input: 0, output: 0, imagePerUnit: 0.04 },
 
   // Mistral (Small déprécié mai 2026, Medium 3.5 est le standard)
   'mistral-large-latest': { input: 2, output: 6 },
@@ -87,6 +92,8 @@ export interface UsageTokens {
   cacheReadTokens: number
   cacheCreationTokens: number
   audioSeconds: number
+  /** Nombre d'images générées (gpt-image-1). Optionnel, défaut 0. */
+  images?: number
 }
 
 /** Coût en micro-USD (10^-6 USD) — évite les floats dans D1. */
@@ -99,6 +106,7 @@ export function computeCostMicroUsd(model: string, usage: UsageTokens): number {
     (usage.outputTokens * p.output) / MTOK +
     (usage.cacheReadTokens * (p.cacheRead ?? 0)) / MTOK +
     (usage.cacheCreationTokens * (p.cacheCreation ?? 0)) / MTOK +
-    usage.audioSeconds * (p.audioPerSec ?? 0)
+    usage.audioSeconds * (p.audioPerSec ?? 0) +
+    (usage.images ?? 0) * (p.imagePerUnit ?? 0)
   return Math.round(cost * 1_000_000)
 }
