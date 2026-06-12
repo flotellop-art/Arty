@@ -2,7 +2,7 @@
 // transcript borné). La logique réseau/storage est volontairement hors scope
 // (fire-and-forget, garde-fous testés via le comportement des helpers).
 import { describe, it, expect } from 'vitest'
-import { hasSubstance, buildTranscript, EXTRACT_EVERY_N_USER_MSGS } from '../../services/autoMemory'
+import { hasSubstance, buildTranscript, hasEuData, EXTRACT_EVERY_N_USER_MSGS } from '../../services/autoMemory'
 
 describe('autoMemory helpers', () => {
   it('rejette les conversations sans substance (ok / merci)', () => {
@@ -28,5 +28,21 @@ describe('autoMemory helpers', () => {
 
   it('le debounce est de 3 messages user (contrat du design P1.1)', () => {
     expect(EXTRACT_EVERY_N_USER_MSGS).toBe(3)
+  })
+})
+
+describe('hasEuData — garde EU de l\'extraction mémoire', () => {
+  it('bloque les conversations euOnly', () => {
+    expect(hasEuData({ euOnly: true })).toBe(true)
+  })
+
+  it('bloque les conversations mixtes ayant touché Mistral (même sans euOnly)', () => {
+    expect(hasEuData({ euOnly: false, usedModels: ['claude', 'mistral'] })).toBe(true)
+    expect(hasEuData({ usedModels: ['mistral'] })).toBe(true)
+  })
+
+  it('laisse passer les conversations sans données EU', () => {
+    expect(hasEuData({})).toBe(false)
+    expect(hasEuData({ euOnly: false, usedModels: ['claude', 'gemini'] })).toBe(false)
   })
 })

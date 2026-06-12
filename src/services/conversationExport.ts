@@ -208,7 +208,7 @@ export function buildConversationHtml(conv: Conversation): string {
     `
   }).join('')
 
-  const euLine = conv.euOnly ? '🇪🇺 Conversation EU (Mistral)<br>' : ''
+  const euLine = conv.euOnly ? '🇪🇺 Conversation EU — traitement IA Mistral (France)<br>' : ''
   const modelsLine = conv.usedModels?.length
     ? `Modèles : ${escape(conv.usedModels.join(', '))}<br>`
     : ''

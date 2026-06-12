@@ -189,3 +189,22 @@ export function parseWhisperBody(raw: string): UsageTokens {
   }
   return usage
 }
+
+/**
+ * Parser pour Voxtral (transcription Mistral, non-streaming). La durée est
+ * dans `usage.prompt_audio_seconds`. Les prompt/completion_tokens ne sont pas
+ * repris : la facturation Voxtral est à la minute d'audio uniquement.
+ */
+export function parseVoxtralBody(raw: string): UsageTokens {
+  const usage = { ...EMPTY }
+  try {
+    const data = JSON.parse(raw) as { usage?: { prompt_audio_seconds?: number } }
+    const secs = data.usage?.prompt_audio_seconds
+    if (typeof secs === 'number' && secs > 0) {
+      usage.audioSeconds = secs
+    }
+  } catch {
+    // skip
+  }
+  return usage
+}
