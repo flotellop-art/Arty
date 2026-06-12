@@ -511,6 +511,24 @@ Pour toute tâche **non triviale** (refactor, fix multi-fichiers, audit, debug d
 
 ---
 
+## ROADMAP PRODUIT — PLAN D'ACTION CONCURRENTIEL (à consulter)
+
+**Avant toute tâche produit / UX / pricing / monétisation**, lire
+`docs/audits/competitive-audit-2026-06-actions.md` (plan d'action priorisé
+P0/P1/P2 + anti-objectifs, issu de l'audit concurrentiel du 12 juin 2026 —
+rapport complet : `docs/audits/competitive-audit-2026-06.md`, PR #262).
+
+Règles de maintenance :
+- Toute PR qui traite un item du plan DOIT cocher la case correspondante
+  (date + numéro de PR) dans le fichier actions.
+- Ne pas implémenter une feature listée en « Anti-objectifs » sans décision
+  écrite de l'utilisateur.
+- Stratégie en une ligne : gagner par la **confiance** (limites lisibles,
+  jamais de bascule silencieuse, essai sans CB) + l'**exclusivité Google**
+  (Gmail/Drive/Calendar dans Claude/Mistral) — pas par la largeur de catalogue.
+
+---
+
 ## ROUTINE D'AUDIT SÉCURITÉ
 
 Slash command **`/audit-secu`** (défini dans `.claude/commands/audit-secu.md`) lance un audit complet via 3 agents Explore en parallèle (backend, crypto+auth, frontend+Capacitor) puis produit un rapport priorisé.
