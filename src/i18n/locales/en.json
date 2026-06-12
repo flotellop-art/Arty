@@ -678,21 +678,24 @@
     "errorNoEmail": "No email found. Sign in with Google first.",
     "currentPlan": "Current plan",
     "byokPrice": "Free",
-    "proPrice": "€39 one-time",
-    "subscriptionPrice": "€9.99/mo",
-    "premiumPackPrice": "€1.99",
+    "proPrice": "€39 one-time · VAT incl.",
+    "subscriptionPrice": "€9.99/mo · VAT incl.",
+    "premiumPackPrice": "€1.99 · VAT incl.",
     "byokDescription": "Your own API key · All models · Local storage",
     "byokCta": "Switch to BYOK",
     "proBadge": "Popular",
     "proTagline": "Lifetime, 3 devices",
     "proDescription": "Everything in Free · Business templates · Priority support · No subscription",
     "proCta": "Buy Arty Pro",
-    "subscriptionDescription": "No API key · 500 messages/month · Claude, GPT-5-mini, Gemini, Mistral",
+    "subscriptionDescription": "No API key · 150 Claude Sonnet/Opus + 100 GPT-5 + 80 Gemini Pro per month · Haiku, Flash and Mistral with no monthly cap",
     "subscriptionCta": "Subscribe",
     "premiumPackEyebrow": "Quota exceeded?",
     "premiumPackTitle": "+100 premium messages pack",
     "premiumPackDescription": "For Subscription users who have reached their monthly quota.",
-    "premiumPackCta": "Buy 100 messages"
+    "premiumPackCta": "Buy 100 messages",
+    "transparency": "Our limits are stated in plain messages — no “credits” or “points”. The price shown is the final price, VAT included. A daily anti-abuse limit applies to all plans.",
+    "manageSubscription": "Manage my subscription (cancel online)",
+    "trialCallout": "🎁 New here? Try it free first: 30 messages, no credit card."
   },
   "streak": {
     "badge": {
@@ -786,15 +789,49 @@
   },
   "quota": {
     "sheetTitle": "This month's quota",
-    "sheetFooter": "Premium messages left this month. Standard models (Haiku, Flash, Mistral) are unlimited. Resets on the 1st.",
-    "sheetFooterWithPack": "Premium messages left this month + {{pack}} Pack messages. Standard models stay unlimited.",
+    "sheetFooter": "Premium messages left this month. Standard models (Haiku, Flash, Mistral) have no monthly cap. Resets on the 1st.",
+    "sheetFooterWithPack": "Premium messages left this month + {{pack}} Pack messages. Standard models have no monthly cap.",
     "premiumModels": "premium models",
     "capReachedTitle": "Monthly limit reached",
     "capReachedBody": "You've used your {{cap}} {{model}} messages for this month.",
     "capReachedBodyNoCount": "You've used all your {{model}} messages for this month.",
-    "capReachedHint": "Standard models (Haiku, Flash, Mistral) stay unlimited — resend your message in standard mode. Your premium quota resets on {{date}}.",
+    "capReachedHint": "Standard models (Haiku, Flash, Mistral) have no monthly cap — resend your message in standard mode. Your premium quota resets on {{date}}.",
     "buyPack": "+100 premium messages — €1.99",
     "continueStandard": "Continue with standard models",
     "later": "Later"
+  },
+  "onboardingChoice": {
+    "tryFree": {
+      "title": "Try Arty for free",
+      "subtitle": "30 free messages. No credit card.",
+      "googleCta": "Continue with Google",
+      "googleSub": "30 free messages · no credit card",
+      "googleLoading": "Signing in…",
+      "byokLink": "I have an API key",
+      "subLink": "I already have a subscription"
+    },
+    "trial": {
+      "title": "30 free messages!",
+      "subtitle": "Available models: Claude Haiku, GPT-5 mini, Gemini Flash, Mistral Medium",
+      "cta": "Let's go",
+      "upgrade": "Upgrade to Pro or Subscription to unlock all models"
+    },
+    "vip": {
+      "welcome": "Welcome!"
+    },
+    "byok": {
+      "back": "Back",
+      "showHelp": "How do I get a key?",
+      "hideHelp": "Hide help"
+    }
+  },
+  "trial": {
+    "banner": {
+      "remaining_one": "✨ Free trial — {{count}} message left",
+      "remaining_other": "✨ Free trial — {{count}} messages left",
+      "ended": "Trial over — pick a plan to continue",
+      "upgradeCta": "Upgrade",
+      "seePlans": "See plans →"
+    }
   }
 }

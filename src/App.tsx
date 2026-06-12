@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef, lazy, Suspense } from 'react'
+import { useTranslation } from 'react-i18next'
 import { BrowserRouter, Routes, Route, useNavigate, useParams } from 'react-router-dom'
 import { useConversation } from './hooks/useConversation'
 import { useAppSetup } from './hooks/useAppSetup'
@@ -562,6 +563,8 @@ function AppContent({
  * polling : se rafraîchit uniquement quand le compteur change.
  */
 function TrialBanner({ onUpgrade }: { onUpgrade: () => void }) {
+  // P0.10 — textes via i18n (étaient hardcodés FR → bannière cassée en EN).
+  const { t } = useTranslation()
   const [remaining, setRemaining] = useState<number | null>(() => getTrialRemaining())
 
   useEffect(() => {
@@ -583,13 +586,13 @@ function TrialBanner({ onUpgrade }: { onUpgrade: () => void }) {
         style={{ paddingTop: 'max(0.5rem, env(safe-area-inset-top, 0.5rem))' }}
       >
         <p className="font-display italic text-sm">
-          Essai terminé — Choisis un plan pour continuer
+          {t('trial.banner.ended')}
         </p>
         <button
           onClick={onUpgrade}
           className="font-display italic text-xs underline shrink-0"
         >
-          Voir les plans →
+          {t('trial.banner.seePlans')}
         </button>
       </div>
     )
@@ -601,13 +604,13 @@ function TrialBanner({ onUpgrade }: { onUpgrade: () => void }) {
       style={{ paddingTop: 'max(0.375rem, env(safe-area-inset-top, 0.375rem))' }}
     >
       <p className="font-display italic text-xs">
-        ✨ Essai gratuit — {remaining} message{remaining > 1 ? 's' : ''} restant{remaining > 1 ? 's' : ''}
+        {t('trial.banner.remaining', { count: remaining })}
       </p>
       <button
         onClick={onUpgrade}
         className="font-display italic text-xs underline shrink-0"
       >
-        Passer à Pro
+        {t('trial.banner.upgradeCta')}
       </button>
     </div>
   )
