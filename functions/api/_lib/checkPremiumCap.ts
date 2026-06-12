@@ -64,7 +64,9 @@ function classifyModel(model: string): PremiumCapEntry | null {
   const m = model.toLowerCase()
 
   // Génération d'images (P1.3) — bucket dédié, avant les patterns gpt-*.
-  if (m.startsWith('gpt-image')) {
+  // Les modèles FLUX (P1.3-FLUX) partagent le MÊME bucket : « 10 images/mois »
+  // toutes images confondues, quel que soit le provider.
+  if (m.startsWith('gpt-image') || m.startsWith('flux-') || m.startsWith('flux.')) {
     return { bucket: 'gpt-image', cap: PREMIUM_BUCKET_CAPS['gpt-image']! }
   }
 

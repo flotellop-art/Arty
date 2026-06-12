@@ -140,17 +140,28 @@ unique sous 20 $/mois). Pas par la largeur de catalogue. Volume = distribution
   **FLUX (Black Forest Labs)** = chemin d'évolution documenté — Flux Flex ~0,01 $/img
   (cap ×3-4 à budget égal, argument face aux 40-60 img/mois de Mammouth) ou FLUX.1
   schnell via Cloudflare Workers AI (compte existant, quasi gratuit, qualité moindre).
-  **Routage automatique selon la demande (décision Florent, 12 juin)** quand FLUX
-  arrive : (a) conversation euOnly + demande d'image → FLUX via l'**API directe
-  Black Forest Labs (société ALLEMANDE, Fribourg)** — étendrait la génération
-  d'images aux convs EU, aujourd'hui structurellement exclues (gpt-image = OpenAI
-  US) ; (b) conversation standard → routage par style : gpt-image-1 pour
-  logos/texte/instructions, FLUX pour le photoréalisme. S'emboîte dans
-  l'architecture livrée (injection conditionnelle du tool → le handler route).
-  ⚠️ Vérifications DUES avant toute promesse EU (rigueur « standards illimités ») :
-  localisation réelle de l'inférence BFL (société allemande ≠ GPU en Europe) +
-  DPA/rétention. Et ne PAS vendre FLUX-sur-Workers-AI comme « EU » : Cloudflare =
-  société US (CLOUD Act). Pas d'édition/variations en v1.
+  **FLUX/BFL IMPLÉMENTÉ (12 juin, PR P1.3-FLUX)** — routage par style livré pour
+  les conversations standard : `selectImageProvider` (logos/texte → gpt-image-1
+  [priment], photoréalisme → flux-2-klein-9b ~0,015 $/img), proxy multi-provider
+  (`provider` validé serveur), endpoint RÉGIONAL `api.eu.bfl.ai` par défaut, flow
+  asynchrone BFL (submit→poll borné 40×1 s [limite sous-requêtes Workers]→download,
+  base64 chunké BUG 50, garde SSRF domaine *.bfl.ai), cap PARTAGÉ bucket gpt-image
+  (« 10 images/mois » toutes images), pricing flux + fallback préfixe, fallback
+  flux→openai UNIQUEMENT hors EU (le handler n'est jamais injecté en euOnly).
+  **Chemin euOnly : GATED** — verdict recherche BFL = INCERTAIN : endpoint EU
+  documenté « GDPR compliant » + société allemande + SCC + SOC2/ISO27001, MAIS
+  les API Terms autorisent l'ENTRAÎNEMENT sur les prompts, DPA sur demande
+  uniquement, GPU non confirmés. Activer euOnly avec ça = mensonge « confidentiel ».
+  Activation = injecter le tool dans le chemin Mistral (la boucle d'outils Mistral
+  EXISTE, mistralClient.ts:376-487 — vérifié) + MAJ du texte d'accueil EU
+  (useConversation.ts:101, promesse « rien n'est envoyé à... » à amender).
+  **Actions Florent** : (1) [ ] créer la clé sur dashboard.bfl.ai (crédits
+  prépayés ~10-20 $) et l'ajouter en `BFL_API_KEY` sur Cloudflare — sans elle,
+  fallback gpt-image transparent ; (2) [ ] demander à dpo@blackforestlabs.ai /
+  bfl.ai/enterprise : DPA + clause NO-TRAINING + confirmation inférence EU sur
+  api.eu.bfl.ai → condition d'activation du chemin euOnly.
+  Suivi : pas d'édition/variations en v1 ; trial perd 1 message sur tentative
+  d'image (checkAllowedUser décrémente avant le 403 — préexistant, mineur).
 - [ ] **P1.4 Modèle open-weights quasi gratuit** (DeepSeek V4-Flash ~0,28 $/M output, ou
   Llama) pour un « illimité sur les modèles standards » **honnête** — l'argument
   commercial du segment, sans le mensonge de Merlin.

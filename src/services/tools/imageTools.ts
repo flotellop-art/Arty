@@ -56,13 +56,38 @@ export function wantsImageGeneration(text: string): boolean {
   return IMAGE_CREATE_VERBS.test(text) && IMAGE_NOUNS.test(text)
 }
 
+// ── Routage par style (P1.3-FLUX, décision Florent 12 juin) ──────────────────
+// gpt-image-1 excelle sur les logos/texte/instructions précises ; FLUX (Black
+// Forest Labs) sur le photoréalisme — et coûte ~2,5× moins cher. Les mots-clés
+// logo/texte PRIMENT (le rendu de texte est la force de gpt-image) ; défaut =
+// openai (toujours configuré, alors que FLUX exige BFL_API_KEY).
+const FLUX_STYLE =
+  /\b(photo|photographie|photographique|photor[eé]aliste|photorealistic|r[eé]aliste|realistic|portrait|paysage|landscape|cin[eé]matique|cinematic|golden hour|bokeh|macro|nature|wildlife)\b/i
+const OPENAI_STYLE =
+  /\b(logo|logos|texte|text|typographie|typography|police|font|lettres|lettering|ic[oô]ne|icon|banni[eè]re|banner|affiche|poster|sch[eé]ma|diagram|infographie|infographic)\b/i
+
+/** Choisit le provider selon le style demandé. Exporté pour les tests. */
+export function selectImageProvider(prompt: string): 'openai' | 'flux' {
+  if (OPENAI_STYLE.test(prompt)) return 'openai'
+  if (FLUX_STYLE.test(prompt)) return 'flux'
+  return 'openai'
+}
+
 export function createImageHandlers(): Record<string, ToolHandler> {
   return {
     generate_image: async (input): Promise<ToolResult> => {
       const prompt = typeof input.prompt === 'string' ? input.prompt.trim() : ''
       if (!prompt) return { result: i18n.t('image.errorNoPrompt') }
 
-      const res = await generateImage(prompt)
+      const provider = selectImageProvider(prompt)
+      let res = await generateImage(prompt, provider)
+      // Fallback flux→openai autorisé ICI uniquement parce que ce handler
+      // n'est JAMAIS injecté en conversation euOnly (forcée sur Mistral, tool
+      // non exposé). Le jour où le chemin euOnly s'active (DPA BFL signé),
+      // son code dédié ne devra PAS avoir ce fallback (promesse EU).
+      if (!res.ok && provider === 'flux' && (res.code === 'unavailable' || res.code === 'failed' || res.code === 'plan_locked')) {
+        res = await generateImage(prompt, 'openai')
+      }
       if (!res.ok) {
         // Message destiné à Claude (qui le relaiera à l'utilisateur). Jamais
         // de génération silencieuse ni de cap brûlé sans explication.
