@@ -190,7 +190,7 @@ Prix API juin 2026 (vérifiés) : Haiku 4.5 $1/$5 par Mtok ; Sonnet 4.6 $3/$15 ;
 
 - **Ne pas courir après le catalogue de Mammouth** (20+ modèles, vidéo) : coût de maintenance énorme, différenciation nulle, et la vidéo (Sora/Veo/Kling) ruinerait l'économie du plan.
 - **Ne pas vendre « Claude moins cher »** : risque ToS Anthropic + course perdue. Vendre « l'assistant qui connaît ton Google ».
-- **Ne pas passer aux crédits/points** : c'est LE repoussoir du marché. Rester en messages.
+- **Ne pas passer aux crédits/points OPAQUES** : ce que le marché rejette (Poe, Abacus, Monica), c'est l'unité abstraite au coût imprévisible (1 requête Opus = 4 000 points), l'expiration mensuelle et l'absence de compteur. Le **wallet prépayé transparent de la PR #238** (1 crédit = 1 centime, jamais d'expiration, badge de solde, billingAdvisor honnête) est l'autre famille — celle d'OpenRouter, appréciée — et résout en prime le problème des whales. Trois conditions pour qu'il le reste : (1) coût affiché par message dans le chat (« ce message : 3 crédits ») + estimation avant envoi sur les modèles premium + maîtrise du contexte en conversation longue (croissance quadratique = le « mes crédits ont fondu » d'Abacus) ; (2) les crédits = porte d'entrée et débordement, l'abonnement reste le défaut grand public (token anxiety documentée) ; (3) markup +50 % assumé publiquement — la transparence économique comme marque.
 - **Ne pas promettre « unlimited »** sur les modèles premium : c'est le mensonge de Merlin, il se voit toujours.
 - **Ne pas mettre le comparateur en avant-vitrine** : feature de power user, pas d'onboarding.
 - **Ne pas faire de la privacy l'argument n°1 B2C** : c'est un tie-breaker. L'argument qui convertit : « gagne du temps sur tes mails / ton agenda ».
@@ -208,6 +208,7 @@ Le pricing actuel est presque bon — c'est sa **présentation** qui est en reta
 | Free | Haiku 10 msg/j | + modèle open-weights illimité lent (option) ; sert d'aimant |
 | Subscription 9,99 €/mois | « 500 msg/mois » + caps premium internes | Reformuler en clair : « **150 Claude Sonnet + 100 GPT + 80 Gemini Pro + illimité standard** » + compteurs visibles. TTC affiché (Mammouth affiche HT — différenciation facile) |
 | Pack +100 premium à 1,99 € | OK | Inchangé — c'est le « débordement » transparent que Poe fait payer 30 $/M points |
+| Crédits prépayés 10 € = 1 000 (PR #238, branche) | Wallet Creem, 1 crédit = 1 centime, sans expiration, markup texte +50 %/image +300 %, advisor 3-modes | **Garder** — c'est le modèle OpenRouter (transparent), pas le modèle Poe (opaque). Conditions : coût par message affiché dans le chat, estimation avant envoi premium, abonnement reste le défaut grand public. Argument frontal vs Mammouth : « tes crédits n'expirent jamais » |
 | Pro 39 € lifetime | Accès à vie, 3 appareils | **À recadrer** : le lifetime sur clés serveur = passif perpétuel (problème ChatPlayground). Le repositionner « licence app à vie + BYOK » ou le réserver aux early adopters en série limitée |
 | (Optionnel) Entrée 4,99 €/mois | n'existe pas | À tester plus tard : ~50 premium/mois. Casse le prix d'appel sous T3 Chat, marge ~60 % mais fragile — seulement après les caps par appel (P0.5) |
 
