@@ -53,10 +53,19 @@ unique sous 20 $/mois). Pas par la largeur de catalogue. Volume = distribution
   migré au pattern `opacity-50 md:opacity-0` (PR #239) ; corrigé le dernier `opacity-0`
   pur restant (`TaskPanel.tsx` bouton supprimer une tâche). Reste OUVERT en suivi :
   cibles ~30px < 44px WCAG (`p-2` partout) — amélioration séparée, non bloquante.
-- [ ] **P0.9 Caps par appel sur les tools à gros contexte** (Gmail/Drive) : nombre de mails
-  injectés, taille de PDF, contexte total par appel. Protection économique vitale
-  (leçon T3 Chat : un seul tool à contexte massif a failli les couler ; « analyse mes
-  200 mails » = 0,50–2 $ l'appel). `gmailTools.ts`, `driveTools.ts`, proxys.
+- [x] **P0.9 Caps par appel sur les tools à gros contexte** — FAIT (12 juin 2026).
+  Constat d'audit (2 agents) : maxResults Gmail déjà cappé à 10 ; le vrai danger était
+  les BINAIRES (PJ Gmail 20 MB / download Drive 25 MB ≈ 6-8 M tokens ≈ 20-25 $/itération
+  de boucle) et le system prompt qui ordonnait « lis CHAQUE mail, NON NÉGOCIABLE ».
+  Corrigé : (1) budgets explicites dans le system prompt (5 read_email + 3
+  read_drive_file par réponse, recherches/listings illimités) ; (2) caps binaires
+  serveur 8 MB (Gmail PJ + Drive download) + pageSize Drive 200→50 ; (3) garde client
+  base64 + budget de contexte cumulé ~150 K tokens/message dans la boucle d'outils
+  (au-delà : le modèle synthétise, message explicite — cohérent P0.7).
+  Conservé délibérément : 8000 chars/mail (fix BUG 49) — le budget de lectures fait le
+  travail sans dégrader le différenciateur. Suivis ouverts : fichiers Office
+  silencieusement droppés dans executeToolCalls (feature cassée, pas un coût) ;
+  caps différenciés par plan (BYOK assoupli) si la vigie whales le justifie.
 - [ ] **P0.10 Landing/pricing transparentes** : trial 30 msg **sans CB** en bouton principal
   (la plainte n°1 anti-Mammouth devient l'argument n°1) ; caps affichés en messages
   (« 150 Sonnet + 100 GPT + 80 Gemini Pro + standards illimités ») ; prix TTC

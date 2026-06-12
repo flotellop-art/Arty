@@ -460,6 +460,34 @@ function assertContentBlocksValid(blocks: ContentBlock[]): void {
 
 // ── Tool execution ────────────────────────────────────────────────────────────
 
+// P0.9 — bornes économiques de la boucle d'outils. Les tool_results (texte +
+// base64 des documents) s'accumulent dans apiMessages et sont RENVOYÉS à
+// l'API à chaque itération de la boucle (jusqu'à 30) : sans budget, un seul
+// message peut coûter plusieurs dollars (leçon T3 Chat).
+// - MAX_TOOL_FILE_BASE64_CHARS : ~8 MB binaire (défense en profondeur — les
+//   proxys Gmail/Drive cappent déjà à 8 MB côté serveur).
+// - TOOL_CONTEXT_BUDGET_CHARS : ~150 K tokens de tool_results cumulés par
+//   message. Au-delà, on n'exécute plus les tools : le modèle est invité à
+//   synthétiser avec ce qu'il a déjà lu (transparent, jamais silencieux).
+const MAX_TOOL_FILE_BASE64_CHARS = 11_000_000
+const TOOL_CONTEXT_BUDGET_CHARS = 600_000
+
+function toolResultSize(results: ToolResultBlock[]): number {
+  let total = 0
+  for (const r of results) {
+    if (typeof r.content === 'string') {
+      total += r.content.length
+    } else if (Array.isArray(r.content)) {
+      for (const block of r.content as Array<Record<string, unknown>>) {
+        if (typeof block.text === 'string') total += block.text.length
+        const source = block.source as { data?: string } | undefined
+        if (typeof source?.data === 'string') total += source.data.length
+      }
+    }
+  }
+  return total
+}
+
 async function executeToolCalls(
   contentBlocks: ContentBlock[],
   onToolCall: ToolHandler
@@ -472,6 +500,18 @@ async function executeToolCalls(
     const toolResult = await onToolCall(block.name, block.input)
 
     if (toolResult.fileData) {
+      // P0.9 — garde taille : un document trop gros ferait exploser le coût
+      // de chaque itération suivante (1 char base64 ≈ 1/3 token). Résultat
+      // explicite pour que le modèle s'adapte (page précise, extrait…).
+      if (toolResult.fileData.base64.length > MAX_TOOL_FILE_BASE64_CHARS) {
+        const sizeMb = Math.round((toolResult.fileData.base64.length * 0.75) / 1024 / 1024)
+        toolResults.push({
+          type: 'tool_result',
+          tool_use_id: block.id,
+          content: `Fichier trop volumineux pour être injecté dans la conversation (~${sizeMb} MB, max 8 MB). Demande à l'utilisateur un extrait, une version allégée ou une page précise.`,
+        })
+        continue
+      }
       // Tool returned a file — send it as a native document/image block
       const fileBlocks: Array<Record<string, unknown>> = [{ type: 'text', text: toolResult.result }]
       const mime = toolResult.fileData.mimeType
@@ -618,6 +658,8 @@ async function runWithTools(
     // des dizaines de $ silencieusement. 30 reste large pour des chaînes de
     // tool calls complexes (read_email → analyze → search → write_doc).
     let maxIterations = 30
+    // P0.9 — cumul des chars de tool_results de CE message (texte + base64).
+    let toolContextChars = 0
     while (maxIterations-- > 0) {
       // Haiku max output = 64000 tokens (API limit). Cap unconditionally.
       const maxTokens = isHaiku ? 64000 : 65536
@@ -691,7 +733,25 @@ async function runWithTools(
       // data redacted_thinking non vide). Si non, on abort la boucle proprement.
       assertContentBlocksValid(contentBlocks)
 
-      const toolResults = await executeToolCalls(contentBlocks, options.onToolCall)
+      // P0.9 — budget de contexte par message. Une fois le budget consommé,
+      // on n'exécute PLUS les tools : chaque tool_use reçoit un résultat
+      // explicite demandant la synthèse. Le modèle conclut au lieu de
+      // continuer à accumuler (et l'utilisateur n'est jamais bloqué en
+      // silence — cohérent P0.7).
+      let toolResults: ToolResultBlock[]
+      if (toolContextChars >= TOOL_CONTEXT_BUDGET_CHARS) {
+        toolResults = contentBlocks
+          .filter((b): b is ToolUseBlock => b.type === 'tool_use')
+          .map((b) => ({
+            type: 'tool_result' as const,
+            tool_use_id: b.id,
+            content:
+              'Budget de contexte de ce message atteint — n\'appelle plus d\'outils. Synthétise ta réponse avec les données déjà lues, et propose à l\'utilisateur de continuer dans un message suivant si besoin.',
+          }))
+      } else {
+        toolResults = await executeToolCalls(contentBlocks, options.onToolCall)
+        toolContextChars += toolResultSize(toolResults)
+      }
       apiMessages.push({ role: 'assistant', content: contentBlocks })
       apiMessages.push({ role: 'user', content: toolResults })
     }
