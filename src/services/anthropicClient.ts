@@ -6,6 +6,7 @@ import { apiUrl } from './apiBase'
 import { getValidAccessToken } from './googleAuth'
 import { resolveClaudeThinking, selectClaudeSubModel, PRIVATE_DATA_TRIGGERS, shouldUseWebSearch, type ClaudeThinkingDirective, type ClaudeSubModel } from './aiRouter'
 import { isProActivated } from './proLicense'
+import { dispatchModelUsed } from './modelLabels'
 import type { ReflectionLevel } from './reflectionLevel'
 import { buildLocationContext } from './locationContext'
 import { recordUsage } from './costTracker'
@@ -567,9 +568,9 @@ async function runWithTools(
     const isHaiku = ANTHROPIC_MODEL.includes('haiku')
     const effortActive = thinking.enabled && !isHaiku
     const effort = effortActive ? thinking.effort : null
-    // Notifie l'UI du modèle exact appelé pour qu'elle puisse l'afficher
-    // sous le sélecteur (ChatTopBar > ModelDescriptor).
-    try { window.dispatchEvent(new CustomEvent('arty-model-used', { detail: { model: ANTHROPIC_MODEL, provider: 'claude' } })) } catch {}
+    // Notifie l'UI du modèle exact appelé (ChatTopBar) + si la réflexion est
+    // active (StreamingIndicator affiche « réflexion approfondie »).
+    dispatchModelUsed({ model: ANTHROPIC_MODEL, provider: 'claude', reflecting: effortActive })
     const locationContext = await buildLocationContext(lastUserText)
 
     const baseSystemText = options?.systemPrompt || SYSTEM_PROMPT

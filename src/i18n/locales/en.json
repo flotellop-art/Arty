@@ -163,7 +163,8 @@
       "freeTextPlaceholder": "Type your own answer…"
     },
     "streaming": {
-      "writing": "Arty is writing…"
+      "writing": "Arty is writing…",
+      "reflecting": "deep reasoning"
     },
     "topBar": {
       "aria": {

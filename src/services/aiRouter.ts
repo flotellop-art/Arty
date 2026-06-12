@@ -279,13 +279,23 @@ export function resolveClaudeThinking(
   level: ReflectionLevel,
   isPro: boolean
 ): ClaudeThinkingDirective {
+  // NOTE — le niveau influe AUSSI sur le sous-modèle Claude, pas seulement
+  // sur l'effort : selectClaudeSubModel lit enabled/budget. Conséquences
+  // assumées (audit fonctionnel 12 juin) :
+  //  - « bonjour » en approfondi → Sonnet (plus Haiku) : plus de réflexion
+  //    demandée = modèle capable de réfléchir.
+  //  - « rapport stratégique » en rapide → Sonnet sans thinking (plus
+  //    d'Opus) : rapide = vite et pas cher, quoi qu'il arrive.
   switch (level) {
     case 'rapide':
       // Réflexion coupée — réponse la plus rapide / la moins chère.
       return { enabled: false, budget: 0, effort: null }
     case 'approfondi':
-      // Réflexion forcée élevée. budget ≥ 8000 garde la sélection cohérente
-      // sans franchir le seuil Opus (10000 + regex rapport).
+      // Réflexion forcée élevée. Math.max garde le budget needsThinking s'il
+      // est plus haut : sur un rapport stratégique (10000), le routage Opus
+      // (Pro) reste donc IDENTIQUE au mode auto — approfondi ne downgrade
+      // jamais le modèle qu'auto aurait choisi, il part alors sur Opus avec
+      // effort high (vs max au niveau « max »).
       return { enabled: true, budget: Math.max(needsThinking(message).budget, 8000), effort: 'high' }
     case 'max':
       // Réflexion maximale (Pro). Hors Pro (l'UI bloque déjà le tap), on

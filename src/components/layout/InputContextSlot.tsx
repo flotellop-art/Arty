@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
 // Slot contextuel unique au-dessus de l'InputBar (PR C, design/mockups-2026-06/
@@ -37,6 +38,12 @@ interface InputContextSlotProps {
   showChips: boolean
   chips: ContextChip[]
   onChipClick: (prompt: string) => void
+  /** Pastille Réflexion (ReflectionPill) rendue SOUS la rangée de chips,
+      uniquement à l'idle — même cycle de vie que les chips : visible quand
+      le textarea est vide, disparaît dès la frappe (« ne gêne pas lors de
+      la saisie », audit UX 12 juin). Hors de la rangée scrollable pour que
+      son popover ne soit pas rogné par l'overflow-x. */
+  reflectionSlot?: ReactNode
 }
 
 export function InputContextSlot({
@@ -54,6 +61,7 @@ export function InputContextSlot({
   showChips,
   chips,
   onChipClick,
+  reflectionSlot,
 }: InputContextSlotProps) {
   const { t } = useTranslation()
 
@@ -145,22 +153,25 @@ export function InputContextSlot({
           </button>
         </div>
       ) : !error && showChips ? (
-        <div
-          className="mb-2 flex flex-nowrap overflow-x-auto gap-1.5 px-1 pb-0.5"
-          style={{ scrollbarWidth: 'none' }}
-        >
-          {chips.map((chip) => (
-            <button
-              key={chip.label}
-              type="button"
-              onClick={() => onChipClick(chip.prompt)}
-              className="shrink-0 whitespace-nowrap px-3 py-1.5 text-xs rounded-full bg-theme-surface border border-theme-border text-theme-ink hover:border-theme-accent hover:text-theme-accent transition-colors"
-              aria-label={t('chat.input.chipSuggestion', { label: chip.label })}
-            >
-              {chip.icon} {chip.label}
-            </button>
-          ))}
-        </div>
+        <>
+          <div
+            className="mb-2 flex flex-nowrap overflow-x-auto gap-1.5 px-1 pb-0.5"
+            style={{ scrollbarWidth: 'none' }}
+          >
+            {chips.map((chip) => (
+              <button
+                key={chip.label}
+                type="button"
+                onClick={() => onChipClick(chip.prompt)}
+                className="shrink-0 whitespace-nowrap px-3 py-1.5 text-xs rounded-full bg-theme-surface border border-theme-border text-theme-ink hover:border-theme-accent hover:text-theme-accent transition-colors"
+                aria-label={t('chat.input.chipSuggestion', { label: chip.label })}
+              >
+                {chip.icon} {chip.label}
+              </button>
+            ))}
+          </div>
+          {reflectionSlot && <div className="mb-1.5 px-1 -mt-0.5">{reflectionSlot}</div>}
+        </>
       ) : null}
     </>
   )

@@ -220,9 +220,12 @@ async function runGeminiStream(
     const locationContext = await buildLocationContext(lastMessage)
     const systemText = (options?.systemPrompt || GEMINI_SYSTEM) + locationContext
 
-    // Notifie l'UI du modèle exact appelé pour qu'elle puisse l'afficher
-    // sous le sélecteur (ChatTopBar > ModelDescriptor).
-    try { window.dispatchEvent(new CustomEvent('arty-model-used', { detail: { model, provider: 'gemini' } })) } catch {}
+    const thinkingBudget = resolveGeminiThinkingBudget(lastMessage, isMapQuery, options?.reflectionLevel ?? 'auto')
+
+    // Notifie l'UI du modèle exact appelé (ChatTopBar) + si la réflexion est
+    // active. Seuil 2048 = palier « profond » de Gemini Flash (le 512/1024
+    // par défaut est du micro-raisonnement, pas une réflexion à signaler).
+    dispatchModelUsed({ model, provider: 'gemini', reflecting: thinkingBudget >= 2048 })
 
     const requestBody = {
       model,
@@ -234,7 +237,7 @@ async function runGeminiStream(
       generationConfig: {
         temperature: 0.7,
         maxOutputTokens: 8192,
-        thinkingConfig: { thinkingBudget: resolveGeminiThinkingBudget(lastMessage, isMapQuery, options?.reflectionLevel ?? 'auto') },
+        thinkingConfig: { thinkingBudget },
       },
       tools,
     }
@@ -329,7 +332,11 @@ async function runGeminiStream(
 }
 
 // Non-streaming research call — used in hybrid mode
-export async function geminiResearch(query: string, apiKeyOverride?: string): Promise<string> {
+export async function geminiResearch(
+  query: string,
+  apiKeyOverride?: string,
+  reflectionLevel?: ReflectionLevel
+): Promise<string> {
   const apiKey = apiKeyOverride || getGeminiKey()
 
   const requestBody = {
@@ -347,7 +354,11 @@ export async function geminiResearch(query: string, apiKeyOverride?: string): Pr
     generationConfig: {
       temperature: 0.3,
       maxOutputTokens: 4096,
-      thinkingConfig: { thinkingBudget: 4096 },
+      // Cohérence avec le niveau de réflexion (audit fonctionnel 12 juin) :
+      // en « rapide », la recherche hybride ne doit pas brûler 4096 tokens de
+      // pensée — on garde un budget réduit (la qualité de recherche reste
+      // portée par google_search, pas par le raisonnement).
+      thinkingConfig: { thinkingBudget: reflectionLevel === 'rapide' ? 1024 : 4096 },
     },
     tools: [
       { google_search: {} },

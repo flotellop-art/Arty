@@ -5,7 +5,6 @@ import { setSelectedModel, MODEL_OPTIONS, type AIModel } from '../../services/mo
 import { useSelectedModel } from '../../hooks/useSelectedModel'
 import { useReflectionLevel } from '../../hooks/useReflectionLevel'
 import { setReflectionLevel, reflectionSupported, isReflectionLevelLocked, type ReflectionLevel } from '../../services/reflectionLevel'
-import { ReflectionControl } from './ReflectionControl'
 import { SettingsGuide } from '../shared/SettingsGuide'
 import { PrismMark } from '../shared/PrismMark'
 import { PlanBadge } from './PlanBadge'
@@ -322,22 +321,10 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
       {/* Editorial double rule */}
       <div className="mx-4 h-[2px] bg-theme-ink" />
       <div className="mx-4 mt-[3px] h-px bg-theme-ink" />
-
-      {/* Réflexion — « curseur » de profondeur, toujours visible au niveau du
-          chat (pas enterré derrière « ⋯ »). Masqué pour les modèles sans
-          réflexion (Mistral/ChatGPT) et les conversations EU. */}
-      {sheetV2 && showReflection && (
-        <div className="px-4 pt-2 pb-1">
-          <span className="block font-sans text-[10px] font-semibold uppercase tracking-kicker text-theme-muted mb-1">
-            {t('chat.reflection.label')}
-          </span>
-          <ReflectionControl
-            level={currentReflection}
-            onSelect={handleReflectionChange}
-            maxLocked={!isProUser}
-          />
-        </div>
-      )}
+      {/* Le contrôle Réflexion visible vit désormais en bas, dans une
+          pastille au-dessus de la barre de saisie (ReflectionPill, audit UX
+          12 juin) — le strip segmenté ici a été jugé pas assez discret.
+          Le réglage complet reste dans le sheet « ⋯ » ci-dessous. */}
 
       {/* ===== Ancien header complet (killswitch arty-chat-sheet-v2 = '0') —
           conservé tel quel pour rollback sans rebuild. À supprimer une fois
