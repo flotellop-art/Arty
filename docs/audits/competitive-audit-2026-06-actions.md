@@ -123,10 +123,22 @@ unique sous 20 $/mois). Pas par la largeur de catalogue. Volume = distribution
   `Conversation` est transparent au déchiffrement (cast nu, champ optionnel) — aucune
   migration. Le couplage `arty-rebuild-prompt`↔conversation active (pour d'éventuelles
   instructions par tag) est la complexité à éviter : ne PAS le faire en v1.
-- [ ] **P1.3 Génération d'images** : GPT-Image mini (~0,005 $) ou Flux (~0,01 $) via proxy
-  Cloudflare — suivre ROADMAP v2 §3 + RÈGLE 3 (8 étapes) + RÈGLE 6. Cap 50–100 img/mois
-  (~0,50 $/user max). Markup image +300 % déjà prévu (`creditPricing.ts`, PR #238).
-  Devenue « attendue par défaut » en 2026.
+- [x] **P1.3 Génération d'images** — FAIT (12 juin 2026). gpt-image-1 via proxy dédié
+  `/api/ai/image-gen` (RÈGLE 3) — réutilise l'`OPENAI_API_KEY` serveur existante, ZÉRO
+  nouvelle clé. Déclenchement par tool `generate_image` injecté CONDITIONNELLEMENT
+  (`wantsImageGeneration` : verbe de création + nom visuel, exclusions « décris/
+  imagine/ressemblerait ») — jamais dans TOOLS par défaut : seule garantie
+  anti-faux-déclenchement (un faux positif brûle le cap = frustration n°1 du marché).
+  Cap recalibré par l'agent challenge : **10 img/mois qualité medium** (~0,40 $
+  worst-case), bucket `gpt-image` dans `PREMIUM_BUCKET_CAPS` → compteur auto-visible
+  (PlanBadge « Images 8/10 », section Quota du sheet). free/trial=0 (upsell explicite),
+  pro/vip illimités, BYOK OpenAI sans cap. Anti-BUG 11 : l'image va en IndexedDB
+  chiffré (putFile), référencée `arty-img://fileId` dans le markdown, résolue en
+  blob: URL au rendu — jamais de base64 dans la conversation. euOnly : jamais atteint
+  (conversation forcée Mistral → le tool n'est pas injecté). Coût tracké via
+  `imagePerUnit` dans pricing.ts. Suivis : monter le cap après vigie 1 mois ;
+  Flux EU (Cloudflare Workers AI) pour les conversations EU = v2 ; pas d'édition/
+  variations en v1.
 - [ ] **P1.4 Modèle open-weights quasi gratuit** (DeepSeek V4-Flash ~0,28 $/M output, ou
   Llama) pour un « illimité sur les modèles standards » **honnête** — l'argument
   commercial du segment, sans le mensonge de Merlin.

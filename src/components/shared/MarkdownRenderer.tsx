@@ -1,4 +1,4 @@
-import { memo, useState } from 'react'
+import { memo, useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -7,6 +7,39 @@ import rehypeHighlight from 'rehype-highlight'
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize'
 import type { Components } from 'react-markdown'
 import { isValidElement } from 'react'
+import { getFile } from '../../services/secureFileStorage'
+
+// P1.3 — image générée référencée par `arty-img://<fileId>`. Charge le binaire
+// depuis IndexedDB chiffré et le rend via un blob: URL (révoqué au démontage).
+function GeneratedImage({ fileId, alt }: { fileId: string; alt?: string }) {
+  const [url, setUrl] = useState<string | null>(null)
+  const [failed, setFailed] = useState(false)
+  useEffect(() => {
+    let cancelled = false
+    let revoke: string | null = null
+    getFile(fileId)
+      .then((f) => {
+        if (cancelled) return
+        if (!f?.data) { setFailed(true); return }
+        const bin = atob(f.data)
+        const bytes = new Uint8Array(bin.length)
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+        revoke = URL.createObjectURL(new Blob([bytes], { type: f.type }))
+        setUrl(revoke)
+      })
+      .catch(() => { if (!cancelled) setFailed(true) })
+    return () => { cancelled = true; if (revoke) URL.revokeObjectURL(revoke) }
+  }, [fileId])
+
+  if (failed) return null
+  if (!url) {
+    return <div className="w-full aspect-square max-w-sm rounded-xl border border-theme-border my-3 bg-theme-surface animate-pulse" />
+  }
+  return (
+    <img src={url} alt={alt || 'Image générée'}
+      className="w-full max-w-sm rounded-xl border border-theme-border my-3 shadow-sm" />
+  )
+}
 
 // Custom sanitize schema: allow Arty CSS classes + data-* attributes for action buttons
 // Block: <script>, <iframe>, onerror, onload, javascript: URIs
@@ -30,7 +63,10 @@ const sanitizeSchema = {
   protocols: {
     ...defaultSchema.protocols,
     href: ['http', 'https', 'mailto', 'tel'],
-    src: ['http', 'https', 'data'],
+    // `arty-img` (P1.3) : référence vers une image générée stockée en
+    // IndexedDB chiffré. Sûr — aucune ressource réseau, résolu localement en
+    // blob: URL par le composant img (anti-BUG 11 : pas de base64 persisté).
+    src: ['http', 'https', 'data', 'arty-img'],
   },
   // Strip dangerous elements entirely
   strip: ['script', 'iframe', 'object', 'embed', 'form', 'input', 'textarea'],
@@ -123,10 +159,16 @@ const components: Components = {
       {children}
     </a>
   ),
-  img: ({ src, alt }) => (
-    <img src={src} alt={alt || 'Image'}
-      className="w-full rounded-xl border border-theme-border my-3 shadow-sm" />
-  ),
+  img: ({ src, alt }) => {
+    // P1.3 — image générée stockée en IndexedDB : résolue en blob: URL.
+    if (typeof src === 'string' && src.startsWith('arty-img://')) {
+      return <GeneratedImage fileId={src.slice('arty-img://'.length)} alt={alt} />
+    }
+    return (
+      <img src={src} alt={alt || 'Image'}
+        className="w-full rounded-xl border border-theme-border my-3 shadow-sm" />
+    )
+  },
   blockquote: ({ children }) => (
     <blockquote className="my-3 pl-4 border-l-4 border-theme-accent bg-theme-accent/5 rounded-r-xl py-3 pr-4 italic text-theme-ink/80">
       {children}

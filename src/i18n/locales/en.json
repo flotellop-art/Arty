@@ -856,5 +856,12 @@
       "upgradeCta": "Upgrade",
       "seePlans": "See plans →"
     }
+  },
+  "image": {
+    "errorNoPrompt": "No image description provided.",
+    "errorPlanLocked": "Image generation is for subscribers only. The user can subscribe to use it.",
+    "errorCapReached": "Monthly image limit reached (10/month). Resets on the 1st.",
+    "errorAuth": "Google sign-in required to generate images.",
+    "errorFailed": "Image generation failed. Try again in a moment."
   }
 }

@@ -37,6 +37,9 @@ export const PREMIUM_BUCKET_CAPS: Record<string, number> = {
   'claude-sonnet': 150,
   'gpt-5': 100,
   'gemini-pro': 80,
+  // P1.3 — génération d'images. Cap volontairement bas (chaque image = coût
+  // fixe ~$0.04) ; tunable après une vigie d'un mois.
+  'gpt-image': 10,
 }
 
 interface PremiumCapEntry {
@@ -59,6 +62,11 @@ interface PremiumCapEntry {
  */
 function classifyModel(model: string): PremiumCapEntry | null {
   const m = model.toLowerCase()
+
+  // Génération d'images (P1.3) — bucket dédié, avant les patterns gpt-*.
+  if (m.startsWith('gpt-image')) {
+    return { bucket: 'gpt-image', cap: PREMIUM_BUCKET_CAPS['gpt-image']! }
+  }
 
   // Standards en premier — pour ne pas être attrapé par les patterns premium.
   if (m.startsWith('gpt-5-mini')) return null

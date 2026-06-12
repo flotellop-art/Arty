@@ -20,6 +20,7 @@ const BUCKET_SHORT: Record<string, string> = {
   'claude-sonnet': 'Sonnet',
   'gpt-5': 'GPT-5',
   'gemini-pro': 'G-Pro',
+  'gpt-image': 'Images',
 }
 
 export const PlanBadge = memo(function PlanBadge() {
