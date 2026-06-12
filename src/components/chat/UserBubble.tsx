@@ -108,6 +108,16 @@ export const UserBubble = memo(function UserBubble({ content, files, pinned, onT
     setEditing(false)
   }
 
+  // Copie du texte brut du message (jamais de markdown côté user).
+  const [copied, setCopied] = useState(false)
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(content)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch { /* clipboard indisponible (permissions WebView) */ }
+  }
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
@@ -176,6 +186,31 @@ export const UserBubble = memo(function UserBubble({ content, files, pinned, onT
               tactile (pas de hover) ET au clavier. Pattern validé ailleurs
               (MessageList branche, AssistantBubble speak) : 50% permanent sur
               mobile, hover desktop, focus-visible pour le clavier. */}
+          {/* Copier le message user — P0.2 du plan d'action : l'assistant
+              avait son bouton copier, pas l'utilisateur. */}
+          {content.trim() && (
+            <button
+              onClick={handleCopy}
+              className={`p-2 rounded-md transition-all ${
+                copied
+                  ? 'text-theme-accent opacity-100'
+                  : 'opacity-50 md:opacity-0 md:group-hover/user:opacity-100 focus-visible:opacity-100 text-theme-muted hover:text-theme-accent'
+              }`}
+              aria-label={copied ? t('chat.bubble.copied') : t('chat.bubble.copy')}
+              title={copied ? t('chat.bubble.copied') : t('chat.bubble.copy')}
+            >
+              {copied ? (
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                  <path d="M3 8.5L6.5 12L13 4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              ) : (
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                  <rect x="5.5" y="5.5" width="8" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.2" />
+                  <path d="M10.5 5.5V4a1.5 1.5 0 00-1.5-1.5H4A1.5 1.5 0 002.5 4v5A1.5 1.5 0 004 10.5h1.5" stroke="currentColor" strokeWidth="1.2" />
+                </svg>
+              )}
+            </button>
+          )}
           {onEdit && (
             <button
               onClick={() => setEditing(true)}

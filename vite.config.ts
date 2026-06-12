@@ -39,7 +39,7 @@ export default defineConfig({
       output: {
         manualChunks: {
           vendor: ['react', 'react-dom', 'react-router-dom'],
-          markdown: ['react-markdown', 'rehype-raw', 'rehype-sanitize', 'remark-gfm'],
+          markdown: ['react-markdown', 'rehype-raw', 'rehype-highlight', 'rehype-sanitize', 'remark-gfm'],
         },
       },
     },

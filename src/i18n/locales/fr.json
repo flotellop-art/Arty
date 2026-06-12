@@ -369,7 +369,8 @@
       "pin": "Épingler ce message",
       "unpin": "Désépingler",
       "actionPending": "⏳ En cours...",
-      "actionDone": "✅ Fait !"
+      "actionDone": "✅ Fait !",
+      "regenerate": "Régénérer la réponse"
     },
     "userBubble": {
       "edit": "Modifier",

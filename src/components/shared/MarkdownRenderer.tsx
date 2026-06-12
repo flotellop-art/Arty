@@ -3,8 +3,10 @@ import { useTranslation } from 'react-i18next'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeRaw from 'rehype-raw'
+import rehypeHighlight from 'rehype-highlight'
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize'
 import type { Components } from 'react-markdown'
+import { isValidElement } from 'react'
 
 // Custom sanitize schema: allow Arty CSS classes + data-* attributes for action buttons
 // Block: <script>, <iframe>, onerror, onload, javascript: URIs
@@ -38,38 +40,53 @@ interface MarkdownRendererProps {
   content: string
 }
 
-// Bloc de code avec bouton "copier" (audit UX — standard claude.ai/ChatGPT,
-// absent ici). Pas de coloration syntaxique pour l'instant : ajouter
-// prism/shiki = nouvelle dépendance lourde, différé volontairement.
+// Extraction récursive du texte des nœuds React. Indispensable depuis la
+// coloration syntaxique : rehype-highlight enveloppe les tokens dans des
+// <span class="hljs-*"> → `children` n'est plus un tableau de strings, et
+// `children.join('')` produirait "[object Object]…" dans le presse-papier.
+function extractText(node: React.ReactNode): string {
+  if (node == null || typeof node === 'boolean') return ''
+  if (typeof node === 'string' || typeof node === 'number') return String(node)
+  if (Array.isArray(node)) return node.map(extractText).join('')
+  if (isValidElement(node)) return extractText((node.props as { children?: React.ReactNode }).children)
+  return ''
+}
+
+// Bloc de code avec header (langage + bouton copier) et coloration syntaxique
+// via rehype-highlight — standard claude.ai/ChatGPT (plan d'action P0.1/P0.2).
 function CodeBlock({ className, children, ...props }: { className?: string; children?: React.ReactNode }) {
   // useTranslation (pas i18n.t direct) : abonne le composant au changement de
   // langue — MarkdownRenderer est memo'é sur `content` et ne re-rendrait pas.
   const { t } = useTranslation()
   const [copied, setCopied] = useState(false)
+  const lang = /language-([\w+-]+)/.exec(className ?? '')?.[1] ?? ''
   const handleCopy = async () => {
     try {
-      // children peut être un tableau de nœuds texte — String([]) joindrait
-      // avec des virgules et corromprait la copie (relecture audit).
-      const code = (Array.isArray(children) ? children.join('') : String(children ?? '')).replace(/\n$/, '')
+      const code = extractText(children).replace(/\n$/, '')
       await navigator.clipboard.writeText(code)
       setCopied(true)
       setTimeout(() => setCopied(false), 1500)
     } catch { /* clipboard indisponible */ }
   }
   return (
-    <div className="relative group/code my-3">
-      <button
-        onClick={handleCopy}
-        className={`absolute top-2 right-2 px-2 py-1 rounded-md text-[10px] font-sans uppercase tracking-wider transition-all border ${
-          copied
-            ? 'bg-theme-accent text-theme-bg border-transparent opacity-100'
-            : 'bg-theme-bg/15 text-theme-bg/80 border-theme-bg/20 opacity-60 hover:opacity-100 md:opacity-0 md:group-hover/code:opacity-100 focus-visible:opacity-100'
-        }`}
-        aria-label={copied ? t('chat.bubble.codeCopied') : t('chat.bubble.copyCode')}
-      >
-        {copied ? `✓ ${t('chat.bubble.codeCopied')}` : t('chat.bubble.copyCode')}
-      </button>
-      <pre className="bg-theme-ink text-theme-bg rounded-xl p-4 overflow-x-auto text-sm leading-relaxed shadow-sm">
+    <div className="my-3 rounded-xl overflow-hidden shadow-sm bg-theme-ink">
+      <div className="flex items-center justify-between px-4 py-1.5 border-b border-theme-bg/10">
+        <span className="text-[10px] font-sans uppercase tracking-wider text-theme-bg/60">
+          {lang || 'code'}
+        </span>
+        <button
+          onClick={handleCopy}
+          className={`px-2 py-1 rounded-md text-[10px] font-sans uppercase tracking-wider transition-all ${
+            copied
+              ? 'bg-theme-accent text-theme-bg'
+              : 'text-theme-bg/70 hover:text-theme-bg hover:bg-theme-bg/10 focus-visible:bg-theme-bg/10'
+          }`}
+          aria-label={copied ? t('chat.bubble.codeCopied') : t('chat.bubble.copyCode')}
+        >
+          {copied ? `✓ ${t('chat.bubble.codeCopied')}` : t('chat.bubble.copyCode')}
+        </button>
+      </div>
+      <pre className="text-theme-bg p-4 overflow-x-auto text-sm leading-relaxed">
         <code className={className} {...props}>{children}</code>
       </pre>
     </div>
@@ -165,7 +182,11 @@ const components: Components = {
     <td className="px-4 py-2.5">{children}</td>
   ),
   code: ({ className, children, ...props }) => {
-    const isBlock = className?.startsWith('language-')
+    // Après rehype-highlight, la classe devient "hljs language-x" → un simple
+    // startsWith('language-') raterait tous les blocs colorés. Les blocs SANS
+    // langage (``` nu) n'ont aucune classe : on les détecte au saut de ligne
+    // (un code inline n'en contient jamais) — fix du bug "bloc rendu en inline".
+    const isBlock = /language-|hljs/.test(className ?? '') || extractText(children).includes('\n')
     if (isBlock) {
       return <CodeBlock className={className} {...props}>{children}</CodeBlock>
     }
@@ -193,7 +214,12 @@ const components: Components = {
 export const MarkdownRenderer = memo(function MarkdownRenderer({ content }: MarkdownRendererProps) {
   return (
     <div className="max-w-none text-sm text-theme-ink/90 leading-relaxed report-content">
-      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw, [rehypeSanitize, sanitizeSchema]]} components={components}>
+      {/* Ordre des plugins IMPÉRATIF : highlight AVANT sanitize, pour que les
+          <span class="hljs-*"> ajoutés soient validés par le schema (le
+          wildcard '*': ['className'] les laisse passer). L'inverse poserait
+          du contenu non vérifié après la sanitisation (BUG 20 : sanitize
+          reste TOUJOURS actif, en dernier). */}
+      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw, rehypeHighlight, [rehypeSanitize, sanitizeSchema]]} components={components}>
         {content}
       </ReactMarkdown>
     </div>

@@ -233,6 +233,85 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* ============================================================
+   COLORATION SYNTAXIQUE (rehype-highlight → classes hljs-*)
+   Le fond du bloc est `bg-theme-ink` : SOMBRE en Ember (ink #181613),
+   CLAIR en Nocturne (ink #F5E6D0). Un seul thème hljs serait illisible
+   dans l'un des deux → deux palettes scopées par [data-theme].
+   Pas d'import de CSS hljs externe : palette minimale maîtrisée,
+   alignée sur les tokens du design system.
+   ============================================================ */
+.report-content code.hljs { background: transparent; padding: 0; }
+
+/* Ember (et fallback) : bloc sombre → tokens clairs */
+.report-content .hljs-comment,
+.report-content .hljs-quote { color: rgb(250 243 231 / 0.45); font-style: italic; }
+.report-content .hljs-keyword,
+.report-content .hljs-selector-tag,
+.report-content .hljs-meta { color: #e8a87c; }
+.report-content .hljs-string,
+.report-content .hljs-regexp,
+.report-content .hljs-addition { color: #a8c987; }
+.report-content .hljs-number,
+.report-content .hljs-literal,
+.report-content .hljs-symbol { color: #d4a5d8; }
+.report-content .hljs-title,
+.report-content .hljs-section,
+.report-content .hljs-name,
+.report-content .hljs-built_in { color: #8fc1e3; }
+.report-content .hljs-attr,
+.report-content .hljs-attribute,
+.report-content .hljs-variable,
+.report-content .hljs-template-variable,
+.report-content .hljs-type { color: #e3c78f; }
+.report-content .hljs-deletion { color: #e38f8f; }
+.report-content .hljs-emphasis { font-style: italic; }
+.report-content .hljs-strong { font-weight: 600; }
+
+/* Nocturne : bloc clair (ink crème) → tokens foncés */
+html[data-theme='nocturne'] .report-content .hljs-comment,
+html[data-theme='nocturne'] .report-content .hljs-quote,
+html.dark .report-content .hljs-comment,
+html.dark .report-content .hljs-quote { color: rgb(11 9 8 / 0.5); }
+html[data-theme='nocturne'] .report-content .hljs-keyword,
+html[data-theme='nocturne'] .report-content .hljs-selector-tag,
+html[data-theme='nocturne'] .report-content .hljs-meta,
+html.dark .report-content .hljs-keyword,
+html.dark .report-content .hljs-selector-tag,
+html.dark .report-content .hljs-meta { color: #a8430f; }
+html[data-theme='nocturne'] .report-content .hljs-string,
+html[data-theme='nocturne'] .report-content .hljs-regexp,
+html[data-theme='nocturne'] .report-content .hljs-addition,
+html.dark .report-content .hljs-string,
+html.dark .report-content .hljs-regexp,
+html.dark .report-content .hljs-addition { color: #3f6e1f; }
+html[data-theme='nocturne'] .report-content .hljs-number,
+html[data-theme='nocturne'] .report-content .hljs-literal,
+html[data-theme='nocturne'] .report-content .hljs-symbol,
+html.dark .report-content .hljs-number,
+html.dark .report-content .hljs-literal,
+html.dark .report-content .hljs-symbol { color: #7a3b8f; }
+html[data-theme='nocturne'] .report-content .hljs-title,
+html[data-theme='nocturne'] .report-content .hljs-section,
+html[data-theme='nocturne'] .report-content .hljs-name,
+html[data-theme='nocturne'] .report-content .hljs-built_in,
+html.dark .report-content .hljs-title,
+html.dark .report-content .hljs-section,
+html.dark .report-content .hljs-name,
+html.dark .report-content .hljs-built_in { color: #1f5a8a; }
+html[data-theme='nocturne'] .report-content .hljs-attr,
+html[data-theme='nocturne'] .report-content .hljs-attribute,
+html[data-theme='nocturne'] .report-content .hljs-variable,
+html[data-theme='nocturne'] .report-content .hljs-template-variable,
+html[data-theme='nocturne'] .report-content .hljs-type,
+html.dark .report-content .hljs-attr,
+html.dark .report-content .hljs-attribute,
+html.dark .report-content .hljs-variable,
+html.dark .report-content .hljs-template-variable,
+html.dark .report-content .hljs-type { color: #8a6d1f; }
+html[data-theme='nocturne'] .report-content .hljs-deletion,
+html.dark .report-content .hljs-deletion { color: #a8281f; }
+
 /* Voice wave de l'InputBar — keyframe consommé par un style inline
    (`animation: wave …`). Le déclarer uniquement dans tailwind.config ne
    suffit pas : Tailwind n'émet un @keyframes que si une utility animate-*
