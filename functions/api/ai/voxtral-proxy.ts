@@ -14,6 +14,11 @@ import { parseVoxtralBody } from '../_lib/trackUsage'
 const VOXTRAL_URL = 'https://api.mistral.ai/v1/audio/transcriptions'
 const VOXTRAL_MODEL = 'voxtral-mini-latest'
 
+// Borne anti-abus (audit V-1/V-2) : une dictée légitime fait < 1 MB ; 10 MB
+// couvrent > 1 h d'opus. Comme Voxtral facture à la minute, ce cap borne
+// aussi le coût par appel sur la clé serveur du owner.
+const MAX_BODY_BYTES = 10 * 1024 * 1024
+
 export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUntil }) => {
   // Anti-relais anonyme : un token Google valide est obligatoire (CRIT-4).
   const email = await verifyGoogleUser(request)
@@ -24,8 +29,18 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     )
   }
 
+  // Taille bornée AVANT toute consommation de quota (audit V-1). Les
+  // navigateurs envoient toujours Content-Length avec un body FormData.
+  const bodyLen = Number(request.headers.get('content-length') || '0')
+  if (!bodyLen || bodyLen > MAX_BODY_BYTES) {
+    return Response.json({ error: 'Audio missing or too large' }, { status: 413 })
+  }
+
   // BYOK prioritaire via Authorization Bearer (même contrat que mistral-proxy).
-  let apiKey = request.headers.get('authorization')?.replace('Bearer ', '') || ''
+  // Strip en regex insensible casse/espaces (audit V-3) — `.replace('Bearer ')`
+  // littéral corromprait la clé sur `bearer x` et basculerait en silence sur
+  // la clé serveur.
+  let apiKey = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '') || ''
   let usingServerKey = false
   let userPlan: 'subscription' | 'pro' | 'vip' | 'free' | 'trial' = 'free'
 
@@ -79,6 +94,15 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     })
 
     const respBody = await upstream.text()
+
+    // Leak d'info (audit V-4, même classe que N-2) : sur la clé serveur, ne
+    // jamais renvoyer l'erreur Mistral brute (elle révèle l'état de la clé
+    // owner : invalide / épuisée / rate-limited). Passthrough conservé pour
+    // le BYOK — le message aide le user à diagnostiquer SA clé.
+    if (!upstream.ok && usingServerKey) {
+      console.error('[voxtral] upstream error', upstream.status, respBody.slice(0, 300))
+      return Response.json({ error: 'Transcription failed' }, { status: 502 })
+    }
 
     // Tracking coût réel : durée audio depuis usage.prompt_audio_seconds.
     if (usingServerKey && upstream.ok) {
