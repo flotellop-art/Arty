@@ -310,6 +310,13 @@ export function TrialIntro({ onDone, onUpgrade }: TrialIntroProps) {
             defaultValue: 'Modèles disponibles : Claude Haiku, GPT-5 mini, Gemini Flash, Mistral Medium',
           })}
         </p>
+        {/* P1.1 — obligation de transparence de la mémoire auto (ON par défaut). */}
+        <p className="font-display italic text-theme-muted text-xs mt-3">
+          🧠 {t('onboardingChoice.trial.memoryNote', {
+            defaultValue:
+              'Arty mémorise discrètement ce qui compte pour toi — tout reste chiffré sur ton appareil, modifiable dans les Paramètres.',
+          })}
+        </p>
 
         <button
           type="button"
