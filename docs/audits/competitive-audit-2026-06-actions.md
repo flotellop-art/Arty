@@ -16,13 +16,21 @@ unique sous 20 $/mois). Pas par la largeur de catalogue. Volume = distribution
 
 ## P0 — Fondamentaux & confiance (avant tout le reste)
 
-- [ ] **P0.1 Coloration syntaxique des blocs de code** — table stakes absent.
-  `src/components/shared/MarkdownRenderer.tsx`. ⚠️ Garder `rehype-sanitize` (BUG 20) :
-  étendre le schema aux classes de highlight, ne JAMAIS désactiver la sanitisation.
-- [ ] **P0.2 Bouton « Copier »** sur chaque message ET chaque bloc de code — l'action la
-  plus fréquente d'un chat IA. `MessageList.tsx` / `AssistantBubble.tsx`.
-- [ ] **P0.3 Listes numérotées cassées** (`ol` sans compteur) — fix CSS/renderer.
-- [ ] **P0.4 Bouton « Régénérer »** (retry) sur les réponses IA.
+- [x] **P0.1 Coloration syntaxique des blocs de code** — FAIT (12 juin 2026, PR P0
+  fondamentaux). `rehype-highlight` ordre `raw → highlight → sanitize` (sanitize
+  TOUJOURS actif en dernier, BUG 20), palettes hljs par thème dans `index.css`
+  (Ember = bloc sombre/tokens clairs, Nocturne = bloc clair/tokens foncés),
+  header de langage sur les blocs, fix blocs sans langage rendus en inline.
+- [x] **P0.2 Bouton « Copier »** — FAIT. Assistant + blocs de code existaient déjà
+  (PR #239 du 10 juin) ; ajouté le manquant : copier sur les messages USER
+  (`UserBubble.tsx`) + extraction texte récursive pour la copie des blocs colorés.
+- [x] **P0.3 Listes numérotées** — DÉJÀ FAIT (PR #239 du 10 juin, `index.css:227`
+  compteurs CSS `md-marker`). Constaté lors de l'implémentation : le plan datait
+  de l'audit du 10 juin, antérieur au fix.
+- [x] **P0.4 Bouton « Régénérer »** — FAIT (12 juin 2026). `retryMessage()` existait
+  (`useConversation.ts:696`) mais n'était exposé que sur `interrupted` ; ajouté le
+  bouton proactif sur la DERNIÈRE réponse assistant (props `isLast`/`isStreaming`),
+  actions masquées pendant le stream (copier/TTS apparaissaient dès le 1er token).
 - [ ] **P0.5 Titres de conversation auto cassés** (1re conversation + conversations EU
   restent « Nouvelle conversation »). `useConversation.ts`.
 - [ ] **P0.6 Compteur de quota visible** : « 132/150 Sonnet restants ce mois » dans l'UI.
@@ -32,8 +40,10 @@ unique sous 20 $/mois). Pas par la largeur de catalogue. Volume = distribution
 - [ ] **P0.7 Jamais de bascule silencieuse** : cap atteint → toast explicite + choix
   (« continuer en Haiku / +100 messages 1,99 € / crédits / attendre »). La plainte n°1
   contre Mammouth, Poe, Abacus.
-- [ ] **P0.8 Actions tactiles invisibles** : supprimer les `opacity-0 group-hover` sur
-  mobile (suppression conv, branche — `MessageList.tsx:55`, Sidebar). Arty est mobile-first.
+- [x] **P0.8 Actions tactiles invisibles** — FAIT (12 juin 2026). L'essentiel était déjà
+  migré au pattern `opacity-50 md:opacity-0` (PR #239) ; corrigé le dernier `opacity-0`
+  pur restant (`TaskPanel.tsx` bouton supprimer une tâche). Reste OUVERT en suivi :
+  cibles ~30px < 44px WCAG (`p-2` partout) — amélioration séparée, non bloquante.
 - [ ] **P0.9 Caps par appel sur les tools à gros contexte** (Gmail/Drive) : nombre de mails
   injectés, taille de PDF, contexte total par appel. Protection économique vitale
   (leçon T3 Chat : un seul tool à contexte massif a failli les couler ; « analyse mes

@@ -14,9 +14,10 @@ interface MessageItemProps {
   onTogglePin?: (messageId: string) => void
   onEdit?: (messageId: string, newContent: string) => void
   onRetry?: (messageId: string) => void
+  isLast?: boolean
 }
 
-const MessageItem = memo(function MessageItem({ msg, index, onAction, onBranch, onTogglePin, onEdit, onRetry }: MessageItemProps) {
+const MessageItem = memo(function MessageItem({ msg, index, onAction, onBranch, onTogglePin, onEdit, onRetry, isLast }: MessageItemProps) {
   const { t } = useTranslation()
   const handleBranch = useCallback(() => onBranch?.(index), [onBranch, index])
   const handleTogglePin = useCallback(() => onTogglePin?.(msg.id), [onTogglePin, msg.id])
@@ -47,6 +48,7 @@ const MessageItem = memo(function MessageItem({ msg, index, onAction, onBranch, 
           interrupted={msg.interrupted}
           onRetry={onRetry ? handleRetry : undefined}
           factCheck={msg.factCheck}
+          isLast={isLast}
         />
       )}
       {onBranch && index > 0 && (
@@ -163,6 +165,18 @@ export const MessageList = memo(function MessageList({ messages, isStreaming, st
     el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
   }, [])
 
+  // Index de la dernière réponse assistant — la seule à porter « Régénérer »
+  // (le placeholder `id: 'streaming'` est exclu : c'est un filet anti-perte,
+  // pas une vraie réponse).
+  let lastAssistantIdx = -1
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i]
+    if (m && m.role === 'assistant' && m.id !== 'streaming') {
+      lastAssistantIdx = i
+      break
+    }
+  }
+
   return (
     <div className="relative flex-1 overflow-hidden">
       <div ref={scrollRef} onScroll={updateCanScrollDown} className="absolute inset-0 overflow-y-auto px-4 py-4">
@@ -185,13 +199,16 @@ export const MessageList = memo(function MessageList({ messages, isStreaming, st
               onTogglePin={onTogglePin}
               onEdit={onEdit}
               onRetry={onRetry}
+              // « Régénérer » uniquement sur la dernière réponse assistant,
+              // et jamais pendant qu'un stream est en cours (P0.4).
+              isLast={!isStreaming && index === lastAssistantIdx}
             />
           )
         })}
 
         {isStreaming && streamingContent && (
           <>
-            <AssistantBubble content={streamingContent} onAction={onAction} />
+            <AssistantBubble content={streamingContent} onAction={onAction} isStreaming />
             <StreamingIndicator />
           </>
         )}

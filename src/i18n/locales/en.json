@@ -369,7 +369,8 @@
       "pin": "Pin this message",
       "unpin": "Unpin",
       "actionPending": "⏳ Working...",
-      "actionDone": "✅ Done!"
+      "actionDone": "✅ Done!",
+      "regenerate": "Regenerate response"
     },
     "userBubble": {
       "edit": "Edit",

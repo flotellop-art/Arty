@@ -14,9 +14,15 @@ interface AssistantBubbleProps {
   interrupted?: boolean
   onRetry?: () => void
   factCheck?: FactCheckResult
+  /** Bulle live pendant le stream : masque les actions (copier une réponse
+      à mi-stream copie un fragment, TTS lirait un texte incomplet). */
+  isStreaming?: boolean
+  /** Dernière réponse assistant de la conversation : seule à exposer
+      « Régénérer » (pattern claude.ai/ChatGPT — P0.4 du plan d'action). */
+  isLast?: boolean
 }
 
-export const AssistantBubble = memo(function AssistantBubble({ content, onAction, pinned, onTogglePin, interrupted, onRetry, factCheck }: AssistantBubbleProps) {
+export const AssistantBubble = memo(function AssistantBubble({ content, onAction, pinned, onTogglePin, interrupted, onRetry, factCheck, isStreaming, isLast }: AssistantBubbleProps) {
   const { t } = useTranslation()
   const bubbleRef = useRef<HTMLDivElement>(null)
 
@@ -115,7 +121,23 @@ export const AssistantBubble = memo(function AssistantBubble({ content, onAction
           hover desktop (cohérent avec branche button PR 1) + focus-visible
           pour la navigation clavier. */}
       <div className="absolute bottom-1 right-1 flex items-center gap-0.5">
-        {content && (
+        {/* Régénérer proactif — distinct du bandeau `interrupted` (retry de
+            récupération) : ici c'est « j'aime pas la réponse, relance ».
+            Uniquement sur la dernière réponse, jamais pendant un stream. */}
+        {isLast && !isStreaming && !interrupted && onRetry && (
+          <button
+            onClick={onRetry}
+            className="opacity-50 md:opacity-0 md:group-hover/bubble:opacity-100 focus-visible:opacity-100 p-2 rounded-md text-theme-muted hover:text-theme-accent transition-all"
+            aria-label={t('chat.bubble.regenerate')}
+            title={t('chat.bubble.regenerate')}
+          >
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <path d="M13.5 8a5.5 5.5 0 11-1.61-3.89" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+              <path d="M13.5 1.5v3h-3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+        )}
+        {content && !isStreaming && (
           <button
             onClick={handleCopy}
             className={`p-2 rounded-md transition-all ${
@@ -138,7 +160,7 @@ export const AssistantBubble = memo(function AssistantBubble({ content, onAction
             )}
           </button>
         )}
-        {isTtsSupported() && content && (
+        {isTtsSupported() && content && !isStreaming && (
           <button
             onClick={toggleSpeak}
             className={`p-2 rounded-md transition-all ${
