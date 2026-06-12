@@ -197,6 +197,7 @@ export function buildContextualPrompt(context?: {
   gmailSummary?: string
   driveSummary?: string
   memorySummary?: string
+  customInstructions?: string
 }): string {
   let prompt = SYSTEM_PROMPT
 
@@ -212,6 +213,17 @@ export function buildContextualPrompt(context?: {
     )
     // 2. Préfixer une directive forte en tête (double sécurité)
     prompt = 'IMPORTANT: You always respond in English, regardless of the language used in the conversation. Never answer in French.\n\n' + prompt
+  }
+
+  // P1.2 — instructions personnalisées de l'utilisateur. Injectées EN TÊTE,
+  // avant tout le reste : l'explicite (ce que l'user déclare) doit primer sur
+  // l'implicite (mémoire auto P1.1, style, comportements par défaut). Valent
+  // pour tous les providers via systemPromptRef ; pas de garde euOnly (l'user
+  // écrit ses propres instructions, comme responseStyle/locale).
+  if (context?.customInstructions) {
+    prompt =
+      `INSTRUCTIONS PERSONNALISÉES DE L'UTILISATEUR — PRIORITÉ ABSOLUE. Elles l'emportent sur les faits mémorisés et sur les comportements par défaut. En cas de contradiction, suis ces instructions :\n${context.customInstructions.trim()}\n\n` +
+      prompt
   }
 
   if (context?.memorySummary) {

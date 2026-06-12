@@ -639,6 +639,11 @@
       "description": "Arty retient discrètement ce qui compte pour toi (préférences, projets, contexte). Tout reste chiffré sur ton appareil — consulte et modifie dans « Mémoire locale ».",
       "toggleAria": "Activer ou désactiver la mémoire automatique",
       "updated": "🧠 Mémoire mise à jour — voir Paramètres → Mémoire locale"
+    },
+    "customInstructions": {
+      "title": "Instructions personnalisées",
+      "description": "Dis à Arty comment te parler et ce qu'il doit toujours savoir. Appliqué à tous les modèles, en priorité. Reste chiffré sur ton appareil.",
+      "placeholder": "Ex : Je suis garagiste à Lyon. Réponds de façon directe, sans jargon. Vouvoie-moi."
     }
   },
   "costsScreen": {
