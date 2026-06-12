@@ -137,7 +137,12 @@ unique sous 20 $/mois). Pas par la largeur de catalogue. Volume = distribution
   blob: URL au rendu — jamais de base64 dans la conversation. euOnly : jamais atteint
   (conversation forcée Mistral → le tool n'est pas injecté). Coût tracké via
   `imagePerUnit` dans pricing.ts. Suivis : monter le cap après vigie 1 mois ;
-  Flux EU (Cloudflare Workers AI) pour les conversations EU = v2 ; pas d'édition/
+  **FLUX (Black Forest Labs)** = chemin d'évolution documenté — Flux Flex ~0,01 $/img
+  (cap ×3-4 à budget égal, argument face aux 40-60 img/mois de Mammouth) ou FLUX.1
+  schnell via Cloudflare Workers AI (compte existant, quasi gratuit, qualité moindre) ;
+  routage par style possible en v2 (FLUX photoréalisme / gpt-image logos+texte).
+  ⚠️ Ne PAS vendre FLUX-sur-Workers-AI comme « EU » : Cloudflare = société US
+  (CLOUD Act), pas au niveau de la promesse euOnly (Mistral France). Pas d'édition/
   variations en v1.
 - [ ] **P1.4 Modèle open-weights quasi gratuit** (DeepSeek V4-Flash ~0,28 $/M output, ou
   Llama) pour un « illimité sur les modèles standards » **honnête** — l'argument
