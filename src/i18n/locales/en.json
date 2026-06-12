@@ -650,6 +650,11 @@
       "description": "Arty quietly remembers what matters to you (preferences, projects, context). Everything stays encrypted on your device — view and edit in “Local memory”.",
       "toggleAria": "Toggle automatic memory",
       "updated": "🧠 Memory updated — see Settings → Local memory"
+    },
+    "customInstructions": {
+      "title": "Custom instructions",
+      "description": "Tell Arty how to talk to you and what it should always know. Applied to every model, with priority. Stays encrypted on your device.",
+      "placeholder": "E.g. I'm a mechanic in Lyon. Answer directly, no jargon. Be formal with me."
     }
   },
   "costsScreen": {

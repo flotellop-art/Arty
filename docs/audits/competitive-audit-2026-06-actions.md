@@ -105,9 +105,24 @@ unique sous 20 $/mois). Pas par la largeur de catalogue. Volume = distribution
   Suivis ouverts : sync multi-device des faits locaux (v2, chiffrement bout-en-bout
   avant upload — noté ROADMAP), tiering d'injection si MAX_FACTS doit monter,
   le brief proactif consomme toujours le quota (même piège, fix séparé).
-- [ ] **P1.2 Custom instructions** (champ global utilisateur injecté au system prompt —
-  aujourd'hui fixe dans `systemPrompt.ts`) **+ dossiers/projets légers** avec instructions
-  par dossier. Standard partout (ChatGPT, Claude, Gemini, Mammouth « Mammouths », Poe).
+- [x] **P1.2 Custom instructions** — FAIT (12 juin 2026). Champ global (cap 500 chars
+  ~130 tokens), stocké LOCAL chiffré (`customInstructions.ts`), injecté EN TÊTE du
+  system prompt via `buildContextualPrompt` avec label « PRIORITÉ ABSOLUE » (l'explicite
+  prime sur la mémoire auto P1.1 et les défauts — résout le conflit « je vouvoie » déclaré
+  vs « tutoie » extrait). Vaut pour TOUS les providers (`systemPromptRef` unifié), euOnly
+  inclus (l'user écrit ses propres instructions, comme `responseStyle`/`locale`). Pas de
+  toggle (rempli=actif), sauvegarde au blur, compteur de chars. Textarea dans Settings.
+  **Dossiers/projets DIFFÉRÉS** (verdict agent challenge RÈGLE 7) : la Sidebar est déjà à
+  sa limite (288 px), l'arborescence est un piège desktop, et les instructions par
+  dossier = 4-6 blocs de contexte en compétition (sur-engineering v1). Reclassés → P1.8
+  ci-dessous sous forme de **tags** (filtrables via la search existante), pas
+  d'arborescence, sans instructions par dossier.
+- [ ] **P1.8 Tags de conversation** (ex-dossiers, reclassé le 12 juin) : 1-2 chips
+  colorés sous le titre, filtrables via la recherche Sidebar existante. PAS d'arborescence
+  (piège mobile), PAS d'instructions par tag (sur-engineering). `folderId?`/`tags?` sur
+  `Conversation` est transparent au déchiffrement (cast nu, champ optionnel) — aucune
+  migration. Le couplage `arty-rebuild-prompt`↔conversation active (pour d'éventuelles
+  instructions par tag) est la complexité à éviter : ne PAS le faire en v1.
 - [ ] **P1.3 Génération d'images** : GPT-Image mini (~0,005 $) ou Flux (~0,01 $) via proxy
   Cloudflare — suivre ROADMAP v2 §3 + RÈGLE 3 (8 étapes) + RÈGLE 6. Cap 50–100 img/mois
   (~0,50 $/user max). Markup image +300 % déjà prévu (`creditPricing.ts`, PR #238).

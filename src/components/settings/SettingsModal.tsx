@@ -46,6 +46,7 @@ import { MemoryViewer } from './MemoryViewer'
 import { OrchestratorSync } from './OrchestratorSync'
 import { getStreakData, setVacationMode, type StreakData } from '../../services/streakService'
 import { isAutoMemoryEnabled, setAutoMemoryEnabled } from '../../services/autoMemory'
+import { getCustomInstructions, setCustomInstructions, MAX_CUSTOM_INSTRUCTIONS_CHARS } from '../../services/customInstructions'
 import { LocalMemoryModal } from './LocalMemoryModal'
 import { deleteAccount } from '../../services/accountService'
 
@@ -72,6 +73,7 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
   const [enhanceModel, setEnhanceModelState] = useState<EnhancerModel>('haiku')
   const [briefEnabled, setBriefEnabled] = useState(false)
   const [autoMemOn, setAutoMemOn] = useState(true)
+  const [customInstructions, setCustomInstructionsState] = useState('')
   const [factCheckMode, setFactCheckModeState] = useState<FactCheckMode>(getFactCheckMode)
   const [showMemoryHistory, setShowMemoryHistory] = useState(false)
   const [showMemoryViewer, setShowMemoryViewer] = useState(false)
@@ -124,6 +126,7 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
     setEnhanceModelState(getEnhancerModel())
     setBriefEnabled(isProactiveBriefEnabled())
     setAutoMemOn(isAutoMemoryEnabled())
+    setCustomInstructionsState(getCustomInstructions())
     // L'état réel de la permission browser géoloc — peut être 'denied' alors
     // que le toggle Arty est ON (cas Chrome qui bloque silencieusement).
     if (!isNative) {
@@ -609,6 +612,28 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
                 />
               </button>
             </div>
+          </div>
+
+          {/* Instructions personnalisées (P1.2) — champ global injecté en tête
+              du system prompt, priorité absolue. Vide = inactif (pas de toggle),
+              sauvegarde chiffrée au blur. Vaut pour tous les modèles. */}
+          <div className="border-t border-theme-border pt-5">
+            <p className="font-display text-base text-theme-ink">📝 {t('settings.customInstructions.title')}</p>
+            <p className="font-display italic text-xs text-theme-muted mt-0.5">
+              {t('settings.customInstructions.description')}
+            </p>
+            <textarea
+              value={customInstructions}
+              onChange={(e) => setCustomInstructionsState(e.target.value.slice(0, MAX_CUSTOM_INSTRUCTIONS_CHARS))}
+              onBlur={() => setCustomInstructions(customInstructions)}
+              rows={3}
+              maxLength={MAX_CUSTOM_INSTRUCTIONS_CHARS}
+              placeholder={t('settings.customInstructions.placeholder')}
+              className="mt-2 w-full rounded-xl border border-theme-border bg-theme-bg px-3 py-2 text-sm text-theme-ink placeholder:text-theme-muted/60 focus:outline-none focus:border-theme-accent transition-colors resize-none"
+            />
+            <p className="text-right font-mono text-[10px] text-theme-muted mt-0.5">
+              {customInstructions.length}/{MAX_CUSTOM_INSTRUCTIONS_CHARS}
+            </p>
           </div>
 
           {/* Memory viewer */}
