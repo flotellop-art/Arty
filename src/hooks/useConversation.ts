@@ -12,6 +12,7 @@ import * as storage from '../services/storage'
 import { useStreaming } from './useStreaming'
 import { useFileAttachments, buildApiMessages, buildContentBlocks, buildTextOnlyMessages, buildMistralMessages, buildMistralBlocks } from './useFileAttachments'
 import { getSelectedModel } from '../services/modelSelector'
+import { getReflectionLevel } from '../services/reflectionLevel'
 import { putFile } from '../services/secureFileStorage'
 import { runFactCheckOnLatest, factCheckContent, getFactCheckMode } from '../services/factChecker'
 import { detectSuggestedTasks, addTask } from '../services/taskService'
@@ -500,7 +501,7 @@ export function useConversation() {
 
       if (provider === 'hybrid') {
         setProgressContent('🔍 Recherche en cours (Gemini)...', targetId)
-        Promise.all([geminiResearch(text), buildApiMessages(conv.messages)]).then(([research, enrichedMessages]) => {
+        Promise.all([geminiResearch(text, undefined, getReflectionLevel()), buildApiMessages(conv.messages)]).then(([research, enrichedMessages]) => {
           // Si l'utilisateur a cliqué Stop PENDANT la recherche Gemini,
           // stopStreaming() a déjà nettoyé le stream. Sans ce garde, le .then
           // démarrerait quand même une génération Claude "zombie" après le Stop.
@@ -516,6 +517,9 @@ export function useConversation() {
           controller = streamMessage(enrichedMessages, onToken, onDone, onErr, {
             systemPrompt: systemPromptRef.current,
             onToolCall: toolHandlerRef.current,
+            // Niveau de réflexion utilisateur (chat réel uniquement — jamais
+            // sur les appels imposés type comparateur/brief). Cf. anthropicClient.
+            reflectionLevel: getReflectionLevel(),
           })
           setAbortController(targetId, controller)
         }).catch(onErr)
@@ -529,6 +533,7 @@ export function useConversation() {
         }
         controller = streamGeminiMessage(apiMessages, onToken, onDone, onErr, {
           systemPrompt: systemPromptRef.current,
+          reflectionLevel: getReflectionLevel(),
         })
       } else if (provider === 'mistral') {
         // Mistral Medium 3.5 a une vision native → on utilise le builder
@@ -586,6 +591,7 @@ export function useConversation() {
         controller = streamMessage(apiMessages, onToken, onDone, onErr, {
           systemPrompt: systemPromptRef.current,
           onToolCall: toolHandlerRef.current,
+          reflectionLevel: getReflectionLevel(),
         })
       }
 

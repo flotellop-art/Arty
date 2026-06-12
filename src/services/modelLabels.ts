@@ -10,9 +10,24 @@
 export interface ModelUsedEvent {
   model: string
   provider: 'claude' | 'mistral' | 'gemini' | 'openai'
+  /** Réflexion étendue active sur cet appel (effort Claude / gros budget
+      Gemini). Permet à l'UI (StreamingIndicator) de signaler que le modèle
+      réfléchit — sans ça, le niveau de réflexion est 100 % imperceptible
+      à l'écran (audit fonctionnel 12 juin, reco #2). */
+  reflecting?: boolean
+}
+
+// Cache module du dernier appel : l'indicateur de streaming peut se monter
+// juste APRÈS le dispatch (course au premier render) — il s'initialise sur
+// ce cache puis suit les events.
+let lastModelUsed: ModelUsedEvent | null = null
+
+export function getLastModelUsed(): ModelUsedEvent | null {
+  return lastModelUsed
 }
 
 export function dispatchModelUsed(event: ModelUsedEvent): void {
+  lastModelUsed = event
   try {
     window.dispatchEvent(new CustomEvent<ModelUsedEvent>('arty-model-used', { detail: event }))
   } catch {

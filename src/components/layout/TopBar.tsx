@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next'
 import { getStyle, setStyle as saveStyle, STYLE_OPTIONS, type ResponseStyle } from '../../services/responseStyles'
 import { setSelectedModel, MODEL_OPTIONS, type AIModel } from '../../services/modelSelector'
 import { useSelectedModel } from '../../hooks/useSelectedModel'
+import { useReflectionLevel } from '../../hooks/useReflectionLevel'
+import { setReflectionLevel, reflectionSupported, isReflectionLevelLocked, type ReflectionLevel } from '../../services/reflectionLevel'
 import { SettingsGuide } from '../shared/SettingsGuide'
 import { SettingsModal } from '../settings/SettingsModal'
 import { getTheme, toggleTheme, type Theme } from '../../services/themeService'
@@ -89,6 +91,15 @@ export function TopBar({ onMenuToggle }: TopBarProps) {
     setOpenMenu(null)
   }
 
+  const handleReflectionChange = (level: ReflectionLevel) => {
+    if (isReflectionLevelLocked(level, planStatus.plan !== 'free')) {
+      setUpgradePrompt(t('chat.reflection.maxUpgradeLabel'))
+      setSheetOpen(false)
+      return
+    }
+    setReflectionLevel(level)
+  }
+
   // Close menu on outside click
   useEffect(() => {
     if (!openMenu) return
@@ -103,6 +114,11 @@ export function TopBar({ onMenuToggle }: TopBarProps) {
 
   const styleOption = STYLE_OPTIONS.find(o => o.id === currentStyle) ?? STYLE_OPTIONS[0]!
   const modelOption = MODEL_OPTIONS.find(o => o.id === currentModel) ?? MODEL_OPTIONS[0]!
+  // Réflexion : réglage global, modifiable depuis l'accueil aussi (s'applique à
+  // la prochaine conversation). Masquée pour Mistral/ChatGPT (pas d'euOnly ici).
+  const currentReflection = useReflectionLevel()
+  const showReflection = reflectionSupported(currentModel, false)
+  const isProUser = planStatus.plan !== 'free'
 
   // ===== Header v2 (PR G) : 3 zones ☰ / wordmark Arty / ⋯ ⚙. Coût, série,
   // thème, badge Pro et chips style/modèle quittent le header (cf. pied de
@@ -155,6 +171,10 @@ export function TopBar({ onMenuToggle }: TopBarProps) {
           title={t('home.optionsSheetTitle', { defaultValue: 'Réglages' })}
           currentModel={currentModel}
           currentStyle={currentStyle}
+          currentReflection={currentReflection}
+          showReflection={showReflection}
+          maxReflectionLocked={!isProUser}
+          onSelectReflection={handleReflectionChange}
           lastUsedModel={null}
           lastSearchProvider={null}
           isProviderLocked={isProviderLocked}

@@ -5,6 +5,8 @@ import { PrismMark } from '../shared/PrismMark'
 import { PlanBadge } from './PlanBadge'
 import { MODEL_OPTIONS, type AIModel } from '../../services/modelSelector'
 import { STYLE_OPTIONS, type ResponseStyle } from '../../services/responseStyles'
+import { type ReflectionLevel } from '../../services/reflectionLevel'
+import { ReflectionControl } from './ReflectionControl'
 import { formatModelName, getModelExplanationKey } from '../../services/modelLabels'
 
 // Sheet « ⋯ » de la conversation (PR B) — regroupe modèle / style / actions
@@ -22,6 +24,12 @@ interface ChatOptionsSheetProps {
   title?: string
   currentModel: AIModel
   currentStyle: ResponseStyle
+  currentReflection: ReflectionLevel
+  /** Réflexion supportée par le modèle courant (section masquée sinon —
+      Mistral / ChatGPT / conversation EU). */
+  showReflection: boolean
+  maxReflectionLocked?: boolean
+  onSelectReflection: (level: ReflectionLevel) => void
   euOnly?: boolean
   /** Conversation mixte ayant utilisé Mistral (≠ euOnly) → note EU informative. */
   hasMistralData?: boolean
@@ -45,6 +53,10 @@ export function ChatOptionsSheet({
   title,
   currentModel,
   currentStyle,
+  currentReflection,
+  showReflection,
+  maxReflectionLocked,
+  onSelectReflection,
   euOnly,
   hasMistralData,
   lastUsedModel,
@@ -147,6 +159,21 @@ export function ChatOptionsSheet({
           </div>
         )}
       </section>
+
+      {/* ===== Réflexion ===== (masquée pour Mistral/ChatGPT/EU) */}
+      {showReflection && (
+        <section className="mb-4">
+          <span className={kicker}>{t('chat.optionsSheet.sectionReflection')}</span>
+          <ReflectionControl
+            level={currentReflection}
+            onSelect={onSelectReflection}
+            maxLocked={maxReflectionLocked}
+          />
+          <p className="mt-1.5 text-[11px] text-theme-muted leading-snug">
+            {t('chat.reflection.hint')}
+          </p>
+        </section>
+      )}
 
       {/* ===== Style de réponse ===== */}
       <section className="mb-4">

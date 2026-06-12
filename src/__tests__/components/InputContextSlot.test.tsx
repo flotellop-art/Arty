@@ -32,6 +32,31 @@ const baseProps = {
   onChipClick: () => {},
 }
 
+describe('InputContextSlot — reflectionSlot (pastille Réflexion)', () => {
+  const pill = <span data-testid="pill">PILL-REFLEXION</span>
+
+  it('rendu avec les chips (idle)', () => {
+    const html = renderToStaticMarkup(
+      <InputContextSlot {...baseProps} showChips={true} reflectionSlot={pill} />
+    )
+    expect(html).toContain('PILL-REFLEXION')
+  })
+
+  it('PAS rendu pendant la frappe (showChips=false) — « ne gêne pas la saisie »', () => {
+    const html = renderToStaticMarkup(
+      <InputContextSlot {...baseProps} showChips={false} reflectionSlot={pill} />
+    )
+    expect(html).not.toContain('PILL-REFLEXION')
+  })
+
+  it('PAS rendu quand la voix est active (priorité voix)', () => {
+    const html = renderToStaticMarkup(
+      <InputContextSlot {...baseProps} showChips={true} isRecordingAudio={true} reflectionSlot={pill} />
+    )
+    expect(html).not.toContain('PILL-REFLEXION')
+  })
+})
+
 describe('InputContextSlot — priorité voix > erreur > calendrier > chips', () => {
   it('CRITIQUE (R1) : erreur + enregistrement → les DEUX visibles, jamais l\'un sans l\'autre', () => {
     const html = renderToStaticMarkup(

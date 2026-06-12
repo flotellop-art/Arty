@@ -15,6 +15,7 @@ import { isPromptEnhancementEnabled } from '../../services/promptEnhancerSetting
 import { hasUrl } from '../../services/aiRouter'
 import { haptic } from '../../utils/haptic'
 import { InputContextSlot } from './InputContextSlot'
+import { ReflectionPill } from '../chat/ReflectionPill'
 
 interface InputBarProps {
   onSend: (text: string, files?: FileAttachment[]) => void
@@ -1012,6 +1013,7 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
           showChips={!text.trim() && files.length === 0 && !isStreaming && !isListening && !isRecordingAudio}
           chips={getQuickActionChips(t)}
           onChipClick={(prompt) => onSend(prompt)}
+          reflectionSlot={<ReflectionPill euOnly={euOnly} />}
         />
       )}
 

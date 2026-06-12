@@ -163,7 +163,8 @@
       "freeTextPlaceholder": "Saisissez votre propre réponse…"
     },
     "streaming": {
-      "writing": "Arty écrit…"
+      "writing": "Arty écrit…",
+      "reflecting": "réflexion approfondie"
     },
     "topBar": {
       "aria": {
@@ -186,6 +187,7 @@
       "title": "Cette conversation",
       "open": "Options de la conversation",
       "sectionModel": "Modèle",
+      "sectionReflection": "Réflexion",
       "sectionStyle": "Style de réponse",
       "sectionActions": "Actions",
       "modelDesc": {
@@ -319,6 +321,15 @@
       "detaille": "Détaillé",
       "formel": "Formel",
       "technique": "Technique"
+    },
+    "reflection": {
+      "label": "Réflexion",
+      "auto": "Auto",
+      "rapide": "Rapide",
+      "approfondi": "Approfondi",
+      "max": "Max",
+      "hint": "Plus de réflexion = réponses plus fouillées mais plus lentes. « Auto » laisse Arty doser selon la question.",
+      "maxUpgradeLabel": "Réflexion Max"
     },
     "model": {
       "auto": "Auto"
