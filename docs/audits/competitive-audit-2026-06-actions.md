@@ -139,11 +139,18 @@ unique sous 20 $/mois). Pas par la largeur de catalogue. Volume = distribution
   `imagePerUnit` dans pricing.ts. Suivis : monter le cap après vigie 1 mois ;
   **FLUX (Black Forest Labs)** = chemin d'évolution documenté — Flux Flex ~0,01 $/img
   (cap ×3-4 à budget égal, argument face aux 40-60 img/mois de Mammouth) ou FLUX.1
-  schnell via Cloudflare Workers AI (compte existant, quasi gratuit, qualité moindre) ;
-  routage par style possible en v2 (FLUX photoréalisme / gpt-image logos+texte).
-  ⚠️ Ne PAS vendre FLUX-sur-Workers-AI comme « EU » : Cloudflare = société US
-  (CLOUD Act), pas au niveau de la promesse euOnly (Mistral France). Pas d'édition/
-  variations en v1.
+  schnell via Cloudflare Workers AI (compte existant, quasi gratuit, qualité moindre).
+  **Routage automatique selon la demande (décision Florent, 12 juin)** quand FLUX
+  arrive : (a) conversation euOnly + demande d'image → FLUX via l'**API directe
+  Black Forest Labs (société ALLEMANDE, Fribourg)** — étendrait la génération
+  d'images aux convs EU, aujourd'hui structurellement exclues (gpt-image = OpenAI
+  US) ; (b) conversation standard → routage par style : gpt-image-1 pour
+  logos/texte/instructions, FLUX pour le photoréalisme. S'emboîte dans
+  l'architecture livrée (injection conditionnelle du tool → le handler route).
+  ⚠️ Vérifications DUES avant toute promesse EU (rigueur « standards illimités ») :
+  localisation réelle de l'inférence BFL (société allemande ≠ GPU en Europe) +
+  DPA/rétention. Et ne PAS vendre FLUX-sur-Workers-AI comme « EU » : Cloudflare =
+  société US (CLOUD Act). Pas d'édition/variations en v1.
 - [ ] **P1.4 Modèle open-weights quasi gratuit** (DeepSeek V4-Flash ~0,28 $/M output, ou
   Llama) pour un « illimité sur les modèles standards » **honnête** — l'argument
   commercial du segment, sans le mensonge de Merlin.
