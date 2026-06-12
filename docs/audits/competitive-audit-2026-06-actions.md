@@ -66,10 +66,22 @@ unique sous 20 $/mois). Pas par la largeur de catalogue. Volume = distribution
   travail sans dégrader le différenciateur. Suivis ouverts : fichiers Office
   silencieusement droppés dans executeToolCalls (feature cassée, pas un coût) ;
   caps différenciés par plan (BYOK assoupli) si la vigie whales le justifie.
-- [ ] **P0.10 Landing/pricing transparentes** : trial 30 msg **sans CB** en bouton principal
-  (la plainte n°1 anti-Mammouth devient l'argument n°1) ; caps affichés en messages
-  (« 150 Sonnet + 100 GPT + 80 Gemini Pro + standards illimités ») ; prix TTC
-  (Mammouth affiche HT → surprise TVA, plainte récurrente).
+- [x] **P0.10 Landing/pricing transparentes** — FAIT (12 juin 2026). Trial « 30 messages
+  gratuits · sans carte bancaire » DANS le bouton Google (OnboardingChoice) + callout
+  sur /upgrade pour les visiteurs directs ; carte Subscription détaillée en messages
+  (« 150 Sonnet/Opus + 100 GPT-5 + 80 Gemini Pro + Haiku/Flash/Mistral sans plafond
+  mensuel ») ; « · TTC » sur les 3 prix + ligne transparence (« limites en clair, pas
+  de crédits/points ; limite journalière anti-abus ») ; lien « Gérer mon abonnement »
+  (portail Lemon Squeezy) ; TrialBanner i18n (était hardcodée FR) ; clés
+  onboardingChoice.* ajoutées aux JSONs ; « GPT-4o mini » obsolète corrigé.
+  ⚠️ GARDE-FOU (agent challenge) : « standards ILLIMITÉS » serait un mensonge — le
+  quota JOURNALIER (`consumeDailyQuota`, défaut 50/j) s'applique au plan subscription
+  sur tous les modèles. Formulation honnête retenue : « sans plafond mensuel » +
+  mention de la limite journalière. Clés quota.* du P0.6 corrigées en conséquence.
+  **Actions Florent (hors code)** : (1) vérifier dans le dashboard Lemon Squeezy que
+  les prix sont configurés TTC (sinon la promesse « TTC » est fausse au checkout) ;
+  (2) vérifier la valeur prod de `DAILY_QUOTA_PER_USER`/`DAILY_QUOTA_PER_MODEL`
+  (défaut 50/j si absente — dimensionner pour les abonnés).
 
 ## P1 — Combler les attentes standard 2026
 

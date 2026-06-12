@@ -164,6 +164,15 @@ export function UpgradeScreen({ onBack, currentPlan: currentPlanProp, email }: U
 
         {status.kind !== 'idle' && <StatusBanner status={status} />}
 
+        {/* P0.10 — un visiteur qui arrive sur /upgrade par lien direct ne
+            voyait le trial nulle part. La plainte n°1 contre le concurrent
+            direct = pas d'essai gratuit ; le nôtre existe, on le montre. */}
+        {currentPlan !== 'subscription' && currentPlan !== 'pro' && (
+          <p className="px-3 py-2.5 rounded-xl bg-theme-accent/10 text-theme-ink text-sm font-display text-center">
+            {t('upgrade.trialCallout')}
+          </p>
+        )}
+
         <div className="grid grid-cols-1 gap-4">
           <FreeBYOKCard isCurrent={currentPlan === 'byok'} onClick={handleByokClick} />
           <ProCard
@@ -182,7 +191,25 @@ export function UpgradeScreen({ onBack, currentPlan: currentPlanProp, email }: U
           </div>
         )}
 
-        <p className="font-display italic text-[11px] text-theme-muted text-center pt-4">
+        {/* P0.10 — annulation accessible depuis l'app (portail Lemon Squeezy).
+            Sans ce lien, « annulable en ligne » serait une promesse creuse. */}
+        {currentPlan === 'subscription' && (
+          <a
+            href="https://app.lemonsqueezy.com/billing"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="block font-display italic text-[12px] text-theme-muted hover:text-theme-ink underline underline-offset-2 text-center pt-2 transition-colors"
+          >
+            {t('upgrade.manageSubscription')}
+          </a>
+        )}
+
+        {/* P0.10 — la transparence comme argument de vente (audit concurrentiel :
+            la plainte la plus virale du segment = limites opaques). */}
+        <p className="font-display italic text-[11px] text-theme-muted text-center pt-4 leading-relaxed">
+          {t('upgrade.transparency')}
+        </p>
+        <p className="font-display italic text-[11px] text-theme-muted text-center pt-1">
           {t('upgrade.legal')}
         </p>
       </div>
