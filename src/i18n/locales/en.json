@@ -633,6 +633,12 @@
       "viewBlock": "View the full block injected into the prompt",
       "emptyInjected": "(empty — no text injected)",
       "noQuery": "No location query made since the app started."
+    },
+    "autoMemory": {
+      "title": "Automatic memory",
+      "description": "Arty quietly remembers what matters to you (preferences, projects, context). Everything stays encrypted on your device — view and edit in “Local memory”.",
+      "toggleAria": "Toggle automatic memory",
+      "updated": "🧠 Memory updated — see Settings → Local memory"
     }
   },
   "costsScreen": {
@@ -814,7 +820,8 @@
       "title": "30 free messages!",
       "subtitle": "Available models: Claude Haiku, GPT-5 mini, Gemini Flash, Mistral Medium",
       "cta": "Let's go",
-      "upgrade": "Upgrade to Pro or Subscription to unlock all models"
+      "upgrade": "Upgrade to Pro or Subscription to unlock all models",
+      "memoryNote": "Arty quietly remembers what matters to you — everything stays encrypted on your device, editable in Settings."
     },
     "vip": {
       "welcome": "Welcome!"

@@ -14,7 +14,11 @@
 import * as scoped from './scopedStorage'
 
 const STORAGE_KEY = 'local-memory-facts'
-export const MAX_FACTS = 50
+// 80 (était 50) depuis la mémoire automatique (P1.1) : l'extraction remplit
+// la liste plus vite qu'une saisie manuelle. ⚠️ Chaque fait est injecté au
+// system prompt de CHAQUE message (buildLocalMemoryPrompt) — monter plus haut
+// exige un tiering d'injection type mémoire D1 (Tier 0/1), pas juste un cap.
+export const MAX_FACTS = 80
 
 export interface LocalMemoryFact {
   id: string

@@ -9,6 +9,7 @@ import { getOpenAIKey } from '../services/activeApiKey'
 import { detectProvider, extractPdfUrls, extractWebUrls } from '../services/aiRouter'
 import { fetchPdfMarkdowns, fetchUrlMarkdowns } from '../services/pdfUrlFetch'
 import * as storage from '../services/storage'
+import { maybeExtractMemory } from '../services/autoMemory'
 import { useStreaming } from './useStreaming'
 import { useFileAttachments, buildApiMessages, buildContentBlocks, buildTextOnlyMessages, buildMistralMessages, buildMistralBlocks } from './useFileAttachments'
 import { getSelectedModel } from '../services/modelSelector'
@@ -303,6 +304,13 @@ export function useConversation() {
       const onDone = async () => {
         // Signale au PlanBadge de rafraîchir ses compteurs free quotidiens.
         try { window.dispatchEvent(new CustomEvent('arty-message-sent')) } catch {}
+
+        // P1.1 — mémoire automatique : extraction asynchrone des faits durables
+        // depuis les messages USER (déjà persistés à ce stade — aucune course
+        // avec la finalisation du stream). Fire-and-forget, jamais bloquant,
+        // tous les garde-fous (toggle, euOnly, trial, debounce) sont dans le
+        // service.
+        void maybeExtractMemory(storage.getConversation(targetId))
 
         if (!deferPublish) {
           // Mode 'off' : publication immédiate, pas de fact-check.

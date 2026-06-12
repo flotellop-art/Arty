@@ -91,9 +91,20 @@ unique sous 20 $/mois). Pas par la largeur de catalogue. Volume = distribution
 
 ## P1 — Combler les attentes standard 2026
 
-- [ ] **P1.1 Mémoire automatique** : extraction post-conversation (Haiku, asynchrone,
-  ~0,001 $/conv) au lieu d'attendre que l'IA appelle `update_memory`. Visible/éditable
-  (le `MemoryViewer` existe). **Facteur de rétention n°1 du marché.**
+- [x] **P1.1 Mémoire automatique** — FAIT (12 juin 2026). Extraction asynchrone des
+  faits durables depuis les messages USER (debounce 3 messages + filtre de substance),
+  via endpoint dédié `/api/ai/memory-extract` **hors quota utilisateur** (le piège
+  « brief proactif mange le trial » est documenté et évité), Haiku forcé + rate-limit
+  propre 20/j. Prompt serveur anti-hallucination (faits explicites uniquement +
+  citation source) + exclusion des données sensibles (santé, politique, intime,
+  finances, tiers). Stockage : mémoire LOCALE chiffrée uniquement (jamais D1),
+  dédup/remplacement par Haiku avec la liste existante fournie, éviction FIFO au cap
+  (bug addFact→null silencieux corrigé côté auto), `MAX_FACTS` 50→80. ON par défaut
+  + 3 obligations de confiance : toggle Settings, toast « mémoire mise à jour »,
+  phrase d'onboarding. euOnly → jamais d'extraction (promesse EU).
+  Suivis ouverts : sync multi-device des faits locaux (v2, chiffrement bout-en-bout
+  avant upload — noté ROADMAP), tiering d'injection si MAX_FACTS doit monter,
+  le brief proactif consomme toujours le quota (même piège, fix séparé).
 - [ ] **P1.2 Custom instructions** (champ global utilisateur injecté au system prompt —
   aujourd'hui fixe dans `systemPrompt.ts`) **+ dossiers/projets légers** avec instructions
   par dossier. Standard partout (ChatGPT, Claude, Gemini, Mammouth « Mammouths », Poe).

@@ -45,6 +45,7 @@ import { MemoryHistoryPanel } from './MemoryHistoryPanel'
 import { MemoryViewer } from './MemoryViewer'
 import { OrchestratorSync } from './OrchestratorSync'
 import { getStreakData, setVacationMode, type StreakData } from '../../services/streakService'
+import { isAutoMemoryEnabled, setAutoMemoryEnabled } from '../../services/autoMemory'
 import { LocalMemoryModal } from './LocalMemoryModal'
 import { deleteAccount } from '../../services/accountService'
 
@@ -70,6 +71,7 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
   const [enhanceEnabled, setEnhanceEnabled] = useState(false)
   const [enhanceModel, setEnhanceModelState] = useState<EnhancerModel>('haiku')
   const [briefEnabled, setBriefEnabled] = useState(false)
+  const [autoMemOn, setAutoMemOn] = useState(true)
   const [factCheckMode, setFactCheckModeState] = useState<FactCheckMode>(getFactCheckMode)
   const [showMemoryHistory, setShowMemoryHistory] = useState(false)
   const [showMemoryViewer, setShowMemoryViewer] = useState(false)
@@ -121,6 +123,7 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
     setEnhanceEnabled(isPromptEnhancementEnabled())
     setEnhanceModelState(getEnhancerModel())
     setBriefEnabled(isProactiveBriefEnabled())
+    setAutoMemOn(isAutoMemoryEnabled())
     // L'état réel de la permission browser géoloc — peut être 'denied' alors
     // que le toggle Arty est ON (cas Chrome qui bloque silencieusement).
     if (!isNative) {
@@ -558,6 +561,38 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
                 <path d="M5 3L9 7L5 11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </button>
+          </div>
+
+          {/* Mémoire automatique (P1.1) — extraction de faits en arrière-plan,
+              stockés en LOCAL chiffré uniquement. ON par défaut (rétention) +
+              toast à chaque mise à jour (transparence). */}
+          <div className="border-t border-theme-border pt-5">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="font-display text-base text-theme-ink">🧠 {t('settings.autoMemory.title')}</p>
+                <p className="font-display italic text-xs text-theme-muted mt-0.5">
+                  {t('settings.autoMemory.description')}
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  const next = !autoMemOn
+                  setAutoMemoryEnabled(next)
+                  setAutoMemOn(next)
+                }}
+                aria-label={t('settings.autoMemory.toggleAria')}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors shrink-0 ${
+                  autoMemOn ? 'bg-theme-accent' : 'bg-theme-ink/20'
+                }`}
+                aria-pressed={autoMemOn}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-theme-bg transition-transform ${
+                    autoMemOn ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
           </div>
 
           {/* Memory viewer */}

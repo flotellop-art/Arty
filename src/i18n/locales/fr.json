@@ -633,6 +633,12 @@
       "viewBlock": "Voir le bloc complet injecté dans le prompt",
       "emptyInjected": "(vide — aucun texte injecté)",
       "noQuery": "Aucune question de localisation posée depuis le démarrage de l'app."
+    },
+    "autoMemory": {
+      "title": "Mémoire automatique",
+      "description": "Arty retient discrètement ce qui compte pour toi (préférences, projets, contexte). Tout reste chiffré sur ton appareil — consulte et modifie dans « Mémoire locale ».",
+      "toggleAria": "Activer ou désactiver la mémoire automatique",
+      "updated": "🧠 Mémoire mise à jour — voir Paramètres → Mémoire locale"
     }
   },
   "costsScreen": {
@@ -814,7 +820,8 @@
       "title": "30 messages offerts !",
       "subtitle": "Modèles disponibles : Claude Haiku, GPT-5 mini, Gemini Flash, Mistral Medium",
       "cta": "C'est parti",
-      "upgrade": "Passe à Pro ou Subscription pour débloquer tous les modèles"
+      "upgrade": "Passe à Pro ou Subscription pour débloquer tous les modèles",
+      "memoryNote": "Arty mémorise discrètement ce qui compte pour toi — tout reste chiffré sur ton appareil, modifiable dans les Paramètres."
     },
     "vip": {
       "welcome": "Bienvenue !"
