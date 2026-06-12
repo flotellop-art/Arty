@@ -238,10 +238,12 @@ async function handleAttachment(token: string, body: Record<string, unknown>): P
 
     const bytes = decodeBase64Url((data.data as string) || '')
 
-    // Size cap : Claude API attachment limit = 20MB. Au-delà, on rejette
-    // pour éviter l'OOM Worker + une réponse base64 inutilisable.
-    if (bytes.length > 20 * 1024 * 1024) {
-      return Response.json({ error: 'Attachment too large (max 20MB)' }, { status: 413 })
+    // Size cap 8MB (P0.9 — protection économique). Un PDF de 20MB en base64
+    // ≈ 6,7M tokens injectés dans la boucle d'outils (~20$/itération sur
+    // Sonnet) — le coût catastrophe type T3 Chat. 8MB couvre les rapports
+    // PDF réels (3-5MB) tout en bornant le pire cas à ~2,7M tokens.
+    if (bytes.length > 8 * 1024 * 1024) {
+      return Response.json({ error: 'Attachment too large (max 8MB) — demande un extrait ou une version allégée' }, { status: 413 })
     }
 
     // PDF detection by magic bytes (works even when the client didn't
