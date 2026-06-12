@@ -19,6 +19,7 @@ import { ErrorBoundary } from './components/shared/ErrorBoundary'
 import { Toaster } from './components/shared/Toaster'
 import { Sidebar } from './components/layout/Sidebar'
 import { ApiKeysModal } from './components/settings/ApiKeysModal'
+import { CapReachedModal } from './components/chat/CapReachedModal'
 import { OAuthCallback } from './components/google/OAuthCallback'
 import { LoginScreen } from './components/auth/LoginScreen'
 import { WelcomeSlides, isOnboardingDone } from './components/onboarding/WelcomeSlides'
@@ -340,9 +341,10 @@ function AppContent({
     if (!error) return
     if (error.includes('no_active_subscription')) {
       navigate('/upgrade')
-    } else if (error.includes('premium_cap_reached')) {
-      navigate('/upgrade?scroll=premium')
     }
+    // `premium_cap_reached` ne passe plus par ici : useConversation dispatche
+    // `arty-cap-reached` → CapReachedModal propose un choix explicite (P0.7),
+    // au lieu de l'ancien redirect muet qui éjectait l'utilisateur du fil.
   }, [error, navigate])
 
   const currentPlan: CurrentPlan = authMethod === 'apikey' ? 'byok' : 'unknown'
@@ -420,6 +422,8 @@ function AppContent({
       />
 
       <ApiKeysModal open={showApiKeys} onClose={() => setShowApiKeys(false)} />
+      {/* P0.7 — modale de choix au cap premium atteint (event arty-cap-reached). */}
+      <CapReachedModal />
 
       {/* PR E — desktop ≥1024px : la sidebar persistante (fixed, toujours
           visible) occupe lg:w-72 à gauche ; on décale le contenu d'autant.

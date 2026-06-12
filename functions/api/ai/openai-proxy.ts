@@ -95,7 +95,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
   // Cap mensuel premium uniquement pour le plan subscription.
   if (usingServerKey && userPlan === 'subscription') {
     const cap = await checkPremiumCap(email, modelName, env)
-    if (!cap.allowed) return premiumCapReachedResponse()
+    if (!cap.allowed) return premiumCapReachedResponse(cap)
   }
 
   try {

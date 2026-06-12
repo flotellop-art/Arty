@@ -154,7 +154,23 @@ export function sendMessageStream(
 
       const response = await startChatRequest(apiKey, payload, controller.signal)
 
-      if (!response.ok) throw formatError(response.status)
+      if (!response.ok) {
+        // P0.7 — cap premium mensuel : code structuré surfacé tel quel (la
+        // modale de choix l'intercepte), au lieu du « Trop de requêtes »
+        // générique qui masquait totalement le cap.
+        const errBody = await response.clone().text().catch(() => '')
+        try {
+          const parsed = JSON.parse(errBody) as { error?: string; bucket?: string; cap?: number }
+          if (parsed?.error === 'premium_cap_reached') {
+            const e = new Error('premium_cap_reached')
+            Object.assign(e, { capBucket: parsed.bucket, capLimit: parsed.cap })
+            throw e
+          }
+        } catch (e) {
+          if ((e as Error).message === 'premium_cap_reached') throw e
+        }
+        throw formatError(response.status)
+      }
       if (!response.body) throw new Error('OpenAI: réponse vide')
 
       const reader = response.body.getReader()

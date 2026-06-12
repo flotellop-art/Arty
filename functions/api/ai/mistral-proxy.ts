@@ -107,7 +107,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
   // architecturale ; il retourne 'standard_model' immédiatement.
   if (usingServerKey && userPlan === 'subscription') {
     const cap = await checkPremiumCap(email, modelName, env)
-    if (!cap.allowed) return premiumCapReachedResponse()
+    if (!cap.allowed) return premiumCapReachedResponse(cap)
   }
 
   try {

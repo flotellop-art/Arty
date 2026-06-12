@@ -71,6 +71,13 @@ async function fetchWithRetry(
     try {
       const res = await fetchWithTimeout(url, init, timeoutMs, externalSignal)
       if (!shouldRetry(res.status) || attempt === RETRY_DELAYS_MS.length) return res
+      // P0.7 — 429 cap premium mensuel = définitif, ne pas retenter 7 s.
+      if (res.status === 429) {
+        const peek = await res.clone().text().catch(() => '')
+        try {
+          if ((JSON.parse(peek) as { error?: string })?.error === 'premium_cap_reached') return res
+        } catch { /* body non-JSON → rate limit upstream, retry normal */ }
+      }
       lastError = new Error(`HTTP ${res.status}`)
     } catch (err) {
       // Abort utilisateur = on ne retry pas
@@ -262,6 +269,20 @@ async function runGeminiStream(
     updateTrialFromResponse(response)
 
     if (!response.ok) {
+      // P0.7 — cap premium mensuel : code structuré surfacé tel quel (la
+      // modale de choix l'intercepte), au lieu du générique « Gemini error ».
+      const errBody = await response.clone().text().catch(() => '')
+      try {
+        const parsed = JSON.parse(errBody) as { error?: string; bucket?: string; cap?: number }
+        if (parsed?.error === 'premium_cap_reached') {
+          const e = new Error('premium_cap_reached')
+          Object.assign(e, { capBucket: parsed.bucket, capLimit: parsed.cap })
+          throw e
+        }
+      } catch (e) {
+        if ((e as Error).message === 'premium_cap_reached') throw e
+        // body non-JSON → erreur générique ci-dessous
+      }
       // 404 = modèle/endpoint introuvable (renommage Google), pas un problème
       // de clé — message dédié pour ne pas envoyer l'utilisateur vérifier sa clé.
       const key = response.status === 404 ? 'errors.geminiModelNotFound' : 'errors.geminiError'

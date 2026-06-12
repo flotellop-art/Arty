@@ -214,6 +214,16 @@ async function fetchWithRetry(
     const isRetryable = response.status === 429 || response.status === 529 || response.status >= 500
     if (response.ok || !isRetryable || attempt === maxRetries) break
 
+    // P0.7 — le 429 `premium_cap_reached` est DÉFINITIF jusqu'au mois
+    // prochain : retenter 3 fois (24 s de backoff) ne sert à rien et fige
+    // l'UI. On le distingue du 429 rate-limit transient en lisant le body.
+    if (response.status === 429) {
+      const peek = await response.clone().text().catch(() => '')
+      try {
+        if ((JSON.parse(peek) as { error?: string })?.error === 'premium_cap_reached') break
+      } catch { /* body non-JSON → rate limit upstream, retry normal */ }
+    }
+
     // Exponential backoff: 2s, 4s, 8s
     await new Promise((resolve) => setTimeout(resolve, Math.pow(2, attempt + 1) * 1000))
   }
@@ -223,7 +233,16 @@ async function fetchWithRetry(
 
   if (!response!.ok) {
     const body = await response!.text().catch(() => '')
-    throw new Error(formatApiError(response!.status, body))
+    const error = new Error(formatApiError(response!.status, body))
+    // Cap premium : attache bucket/cap pour que la modale de choix (P0.7)
+    // affiche « 150/150 Sonnet utilisés » avec précision.
+    try {
+      const parsed = JSON.parse(body) as { error?: string; bucket?: string; cap?: number }
+      if (parsed?.error === 'premium_cap_reached') {
+        Object.assign(error, { capBucket: parsed.bucket, capLimit: parsed.cap })
+      }
+    } catch { /* body non-JSON */ }
+    throw error
   }
 
   return response!
