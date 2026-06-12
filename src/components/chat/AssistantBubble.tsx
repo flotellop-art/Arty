@@ -20,9 +20,13 @@ interface AssistantBubbleProps {
   /** Dernière réponse assistant de la conversation : seule à exposer
       « Régénérer » (pattern claude.ai/ChatGPT — P0.4 du plan d'action). */
   isLast?: boolean
+  /** Créer une branche de la conversation depuis ce message. Dans la barre
+      d'actions — l'ancien bouton flottant top-right chevauchait le header
+      des blocs de code. */
+  onBranch?: () => void
 }
 
-export const AssistantBubble = memo(function AssistantBubble({ content, onAction, pinned, onTogglePin, interrupted, onRetry, factCheck, isStreaming, isLast }: AssistantBubbleProps) {
+export const AssistantBubble = memo(function AssistantBubble({ content, onAction, pinned, onTogglePin, interrupted, onRetry, factCheck, isStreaming, isLast, onBranch }: AssistantBubbleProps) {
   const { t } = useTranslation()
   const bubbleRef = useRef<HTMLDivElement>(null)
 
@@ -183,6 +187,20 @@ export const AssistantBubble = memo(function AssistantBubble({ content, onAction
                 <path d="M11 5.5c1 1 1 4 0 5M13 4c2 2 2 6 0 8" stroke="currentColor" strokeWidth="1" strokeLinecap="round" fill="none" />
               </svg>
             )}
+          </button>
+        )}
+        {onBranch && !isStreaming && (
+          <button
+            onClick={onBranch}
+            className="opacity-50 md:opacity-0 md:group-hover/bubble:opacity-100 focus-visible:opacity-100 p-2 rounded-md text-theme-muted hover:text-theme-accent transition-all"
+            aria-label={t('chat.messageList.branch')}
+            title={t('chat.messageList.branch')}
+          >
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+              <path d="M3 2V8M3 8C3 9.1 3.9 10 5 10H8M11 12V6M11 6C11 4.9 10.1 4 9 4H8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+              <circle cx="3" cy="2" r="1.5" stroke="currentColor" strokeWidth="1.2" />
+              <circle cx="11" cy="12" r="1.5" stroke="currentColor" strokeWidth="1.2" />
+            </svg>
           </button>
         )}
         {onTogglePin && (
