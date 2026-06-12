@@ -31,15 +31,24 @@ unique sous 20 $/mois). Pas par la largeur de catalogue. Volume = distribution
   (`useConversation.ts:696`) mais n'était exposé que sur `interrupted` ; ajouté le
   bouton proactif sur la DERNIÈRE réponse assistant (props `isLast`/`isStreaming`),
   actions masquées pendant le stream (copier/TTS apparaissaient dès le 1er token).
-- [ ] **P0.5 Titres de conversation auto cassés** (1re conversation + conversations EU
-  restent « Nouvelle conversation »). `useConversation.ts`.
-- [ ] **P0.6 Compteur de quota visible** : « 132/150 Sonnet restants ce mois » dans l'UI.
-  Données déjà en D1 (`checkPremiumCap.ts`, `quota.ts`) — exposer via endpoint (RÈGLE 6 !)
-  + badge type `CostIndicator`/`WalletBadge`. **Différenciateur n°1 du marché entier**
-  (même Claude Pro/ChatGPT Plus n'en ont pas — plainte massive depuis oct. 2025).
-- [ ] **P0.7 Jamais de bascule silencieuse** : cap atteint → toast explicite + choix
-  (« continuer en Haiku / +100 messages 1,99 € / crédits / attendre »). La plainte n°1
-  contre Mammouth, Poe, Abacus.
+- [x] **P0.5 Titres de conversation auto** — VÉRIFIÉ DÉJÀ CORRIGÉ (12 juin, diagnostic
+  agent) : `useConversation.ts` pose le titre sur `userMessageCount === 1` (couvre la
+  1re conv avec welcome ET les conversations EU). L'audit du 10 juin était antérieur
+  au fix. Suivi ouvert (qualité, non-P0) : titre = troncature 50 chars, pas une
+  génération LLM — si on l'ajoute un jour, guard `conv.euOnly` OBLIGATOIRE (titre EU
+  via Mistral, jamais Claude US).
+- [x] **P0.6 Compteur de quota visible** — FAIT (12 juin 2026). `/api/subscription/status`
+  expose `monthly_cap` (lecture seule de `premium_cap`, par bucket) ; `usePlanStatus`
+  le porte ; `PlanBadge` affiche « Sonnet 132/150 » (bucket le plus entamé) ; section
+  « Quota du mois » avec barres de progression dans `ChatOptionsSheet`.
+- [x] **P0.7 Jamais de blocage muet** — FAIT (12 juin 2026). Constat d'audit : pas de
+  bascule silencieuse (le proxy bloquait déjà en 429) mais UX cassée — retry inutile
+  de 24 s (anthropicClient), message générique « trop de requêtes » sur OpenAI/Gemini,
+  redirect muet vers /upgrade qui éjectait du fil, scroll pack cassé. Corrigé : le 429
+  `premium_cap_reached` court-circuite les retries (anthropic/gemini/openai), payload
+  429 enrichi (bucket/cap), `CapReachedModal` de choix explicite dans le fil (+100 à
+  1,99 € / continuer en standard / plus tard), plan résolu via `usePlanStatus` sur
+  l'écran upgrade (le `?scroll=premium` fonctionne enfin).
 - [x] **P0.8 Actions tactiles invisibles** — FAIT (12 juin 2026). L'essentiel était déjà
   migré au pattern `opacity-50 md:opacity-0` (PR #239) ; corrigé le dernier `opacity-0`
   pur restant (`TaskPanel.tsx` bouton supprimer une tâche). Reste OUVERT en suivi :

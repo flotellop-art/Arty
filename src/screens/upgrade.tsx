@@ -15,6 +15,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { openCheckout, type CheckoutPlan } from '../services/checkout'
 import { getValidAccessToken, getStoredUser } from '../services/googleAuth'
 import { apiUrl } from '../services/apiBase'
+import { usePlanStatus } from '../hooks/usePlanStatus'
 
 export type CurrentPlan = 'byok' | 'pro' | 'subscription' | 'unknown'
 
@@ -37,7 +38,7 @@ interface SubscriptionStatusResponse {
   plan?: string
 }
 
-export function UpgradeScreen({ onBack, currentPlan, email }: UpgradeScreenProps) {
+export function UpgradeScreen({ onBack, currentPlan: currentPlanProp, email }: UpgradeScreenProps) {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const [params] = useSearchParams()
@@ -45,17 +46,30 @@ export function UpgradeScreen({ onBack, currentPlan, email }: UpgradeScreenProps
   const premiumPackRef = useRef<HTMLDivElement | null>(null)
   const [status, setStatus] = useState<StatusResult>({ kind: 'idle' })
 
+  // Bug P0.7 (audit) : App.tsx ne sait dériver que 'byok' | 'unknown' depuis
+  // authMethod — un abonné connecté en Google arrivait toujours en 'unknown',
+  // le PremiumPackCard n'était jamais rendu et le `?scroll=premium` tombait
+  // dans le vide. On résout le plan réel via /api/subscription/status.
+  const planStatus = usePlanStatus()
+  const currentPlan: CurrentPlan =
+    currentPlanProp !== 'unknown'
+      ? currentPlanProp
+      : planStatus.plan === 'subscription' || planStatus.plan === 'pro'
+        ? planStatus.plan
+        : 'unknown'
+
   const resolvedEmail = email ?? getStoredUser()?.email ?? ''
 
   useEffect(() => {
     if (!scrollToPremiumPack) return
-    // The premium pack card is only rendered for subscribers, but we still
-    // attempt the scroll — the ref is null otherwise and the call is a no-op.
+    // The premium pack card is only rendered for subscribers — `currentPlan`
+    // est dans les deps pour re-tenter le scroll quand le plan résolu en
+    // async (usePlanStatus) fait apparaître la carte après le mount.
     const t = window.setTimeout(() => {
       premiumPackRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }, 50)
     return () => window.clearTimeout(t)
-  }, [scrollToPremiumPack])
+  }, [scrollToPremiumPack, currentPlan])
 
   const refreshStatus = async () => {
     setStatus({ kind: 'checking' })

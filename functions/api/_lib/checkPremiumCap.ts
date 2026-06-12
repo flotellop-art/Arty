@@ -20,8 +20,23 @@ export interface PremiumCapResult {
    * - 'cap_reached'    : cap atteint et aucun pack disponible
    */
   reason: 'standard_model' | 'monthly_cap' | 'premium_pack' | 'cap_reached'
-  /** Messages premium restants ce mois pour ce modèle (uniquement si reason='monthly_cap'). */
+  /** Messages premium restants ce mois pour ce bucket (0 si cap atteint). */
   remaining?: number
+  /** Bucket premium concerné — absent pour les modèles standard. */
+  bucket?: string
+  /** Cap mensuel du bucket — absent pour les modèles standard. */
+  cap?: number
+}
+
+/**
+ * Caps mensuels par bucket premium (plan subscription). Source de vérité
+ * unique — consommée aussi par /api/subscription/status pour exposer les
+ * compteurs au client (P0.6 du plan d'action concurrentiel).
+ */
+export const PREMIUM_BUCKET_CAPS: Record<string, number> = {
+  'claude-sonnet': 150,
+  'gpt-5': 100,
+  'gemini-pro': 80,
 }
 
 interface PremiumCapEntry {
@@ -51,14 +66,14 @@ function classifyModel(model: string): PremiumCapEntry | null {
   if (m.startsWith('mistral')) return null
 
   if (m.startsWith('claude-sonnet') || m.startsWith('claude-opus')) {
-    return { bucket: 'claude-sonnet', cap: 150 }
+    return { bucket: 'claude-sonnet', cap: PREMIUM_BUCKET_CAPS['claude-sonnet']! }
   }
   if (m === 'gpt-5' || m.startsWith('gpt-5.') || m.startsWith('gpt-5-')) {
     // gpt-5-mini déjà filtré plus haut. gpt-5, gpt-5.5, gpt-5-turbo, etc. → 100.
-    return { bucket: 'gpt-5', cap: 100 }
+    return { bucket: 'gpt-5', cap: PREMIUM_BUCKET_CAPS['gpt-5']! }
   }
   if (m.startsWith('gemini-pro') || m.includes('gemini-1.5-pro') || m.includes('gemini-2-pro')) {
-    return { bucket: 'gemini-pro', cap: 80 }
+    return { bucket: 'gemini-pro', cap: PREMIUM_BUCKET_CAPS['gemini-pro']! }
   }
 
   return null
@@ -188,6 +203,8 @@ export async function checkPremiumCap(
       allowed: true,
       reason: 'monthly_cap',
       remaining: Math.max(0, entry.cap - outcome.count),
+      bucket: entry.bucket,
+      cap: entry.cap,
     }
   }
 
@@ -197,27 +214,34 @@ export async function checkPremiumCap(
     console.error(
       `[premium-cap] FAIL-OPEN bucket=${entry.bucket} email=${email.slice(0, 3)}... (D1 lent/down, requête laissée passer)`
     )
-    return { allowed: true, reason: 'monthly_cap' }
+    return { allowed: true, reason: 'monthly_cap', bucket: entry.bucket, cap: entry.cap }
   }
 
   // cap_reached → tenter un Pack Premium acheté (table premium_packs, déjà atomique).
   const packConsumed = await consumePremiumPack(env, email)
-  if (packConsumed) return { allowed: true, reason: 'premium_pack' }
-  return { allowed: false, reason: 'cap_reached', remaining: 0 }
+  if (packConsumed) {
+    return { allowed: true, reason: 'premium_pack', remaining: 0, bucket: entry.bucket, cap: entry.cap }
+  }
+  return { allowed: false, reason: 'cap_reached', remaining: 0, bucket: entry.bucket, cap: entry.cap }
 }
 
 /**
  * Réponse 429 standardisée à renvoyer aux clients quand le cap est atteint
  * et qu'aucun pack n'est disponible. Le flag `upsell` permet au front
- * d'afficher la modale d'achat d'un Pack Premium.
+ * d'afficher la modale de choix (P0.7 — jamais de blocage muet) ; `bucket`
+ * et `cap` permettent d'afficher « 150/150 Sonnet utilisés » avec précision.
+ * Le `message` FR est un fallback — le client intercepte le code
+ * `premium_cap_reached` et affiche sa propre UI i18n.
  */
-export function premiumCapReachedResponse(): Response {
+export function premiumCapReachedResponse(cap?: PremiumCapResult): Response {
   return Response.json(
     {
       error: 'premium_cap_reached',
       message:
         'Tu as atteint ta limite mensuelle pour ce modèle. Achète un Pack Premium pour continuer.',
       upsell: true,
+      bucket: cap?.bucket,
+      cap: cap?.cap,
     },
     { status: 429 }
   )

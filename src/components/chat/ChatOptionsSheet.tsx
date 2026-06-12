@@ -8,6 +8,7 @@ import { STYLE_OPTIONS, type ResponseStyle } from '../../services/responseStyles
 import { type ReflectionLevel } from '../../services/reflectionLevel'
 import { ReflectionControl } from './ReflectionControl'
 import { formatModelName, getModelExplanationKey } from '../../services/modelLabels'
+import { usePlanStatus } from '../../hooks/usePlanStatus'
 
 // Sheet « ⋯ » de la conversation (PR B) — regroupe modèle / style / actions
 // qui occupaient 2 rangées de chips dans ChatTopBar. Composant volontairement
@@ -74,8 +75,18 @@ export function ChatOptionsSheet({
 }: ChatOptionsSheetProps) {
   const { t } = useTranslation()
   const [showExplain, setShowExplain] = useState(false)
+  // P0.6 — compteurs mensuels premium (plan subscription). Transparence des
+  // limites = différenciateur n°1 de l'audit concurrentiel : l'utilisateur
+  // voit exactement où il en est, jamais de surprise.
+  const planStatus = usePlanStatus()
 
   const kicker = 'block font-sans text-[10px] font-semibold uppercase tracking-kicker text-theme-muted mb-2'
+
+  const QUOTA_LABELS: Record<string, string> = {
+    'claude-sonnet': 'Claude Sonnet/Opus',
+    'gpt-5': 'GPT-5',
+    'gemini-pro': 'Gemini Pro',
+  }
 
   return (
     <BottomSheet
@@ -159,6 +170,41 @@ export function ChatOptionsSheet({
           </div>
         )}
       </section>
+
+      {/* ===== Quota du mois (P0.6, plan subscription uniquement) ===== */}
+      {planStatus.plan === 'subscription' && planStatus.monthlyCap && (
+        <section className="mb-4">
+          <span className={kicker}>{t('quota.sheetTitle')}</span>
+          <div className="px-3 py-2.5 rounded-[13px] border border-theme-border space-y-2.5">
+            {Object.entries(planStatus.monthlyCap).map(([bucket, c]) => {
+              const ratio = c.limit > 0 ? c.remaining / c.limit : 0
+              const barColor =
+                ratio <= 0 ? 'bg-red-500/70' : ratio < 0.2 ? 'bg-theme-accent' : 'bg-theme-accent/60'
+              return (
+                <div key={bucket}>
+                  <div className="flex items-baseline justify-between text-[11px] mb-1">
+                    <span className="text-theme-ink">{QUOTA_LABELS[bucket] ?? bucket}</span>
+                    <span className="font-mono text-theme-muted">
+                      {c.remaining}/{c.limit}
+                    </span>
+                  </div>
+                  <div className="h-1 rounded-full bg-theme-ink/10 overflow-hidden">
+                    <div
+                      className={`h-full rounded-full ${barColor}`}
+                      style={{ width: `${Math.max(0, Math.min(100, ratio * 100))}%` }}
+                    />
+                  </div>
+                </div>
+              )
+            })}
+            <p className="text-[10px] text-theme-muted leading-relaxed pt-0.5">
+              {planStatus.premiumPackRemaining > 0
+                ? t('quota.sheetFooterWithPack', { pack: planStatus.premiumPackRemaining })
+                : t('quota.sheetFooter')}
+            </p>
+          </div>
+        </section>
+      )}
 
       {/* ===== Réflexion ===== (masquée pour Mistral/ChatGPT/EU) */}
       {showReflection && (

@@ -783,5 +783,18 @@
     "cancel": "Cancel",
     "deleting": "Deleting…",
     "error": "Deletion failed. Try again or contact support."
+  },
+  "quota": {
+    "sheetTitle": "This month's quota",
+    "sheetFooter": "Premium messages left this month. Standard models (Haiku, Flash, Mistral) are unlimited. Resets on the 1st.",
+    "sheetFooterWithPack": "Premium messages left this month + {{pack}} Pack messages. Standard models stay unlimited.",
+    "premiumModels": "premium models",
+    "capReachedTitle": "Monthly limit reached",
+    "capReachedBody": "You've used your {{cap}} {{model}} messages for this month.",
+    "capReachedBodyNoCount": "You've used all your {{model}} messages for this month.",
+    "capReachedHint": "Standard models (Haiku, Flash, Mistral) stay unlimited — resend your message in standard mode. Your premium quota resets on {{date}}.",
+    "buyPack": "+100 premium messages — €1.99",
+    "continueStandard": "Continue with standard models",
+    "later": "Later"
   }
 }

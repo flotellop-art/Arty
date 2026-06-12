@@ -389,6 +389,19 @@ export function useConversation() {
 
       const onErr = (err: Error) => {
         streamError(err, targetId)
+        // P0.7 — cap premium atteint : pas de bandeau rouge ni de redirect
+        // muet vers /upgrade. On dispatche un event que CapReachedModal
+        // (App.tsx) écoute pour proposer un CHOIX explicite : continuer en
+        // standard / +100 messages / attendre le mois prochain.
+        if (err.message.includes('premium_cap_reached')) {
+          const capErr = err as Error & { capBucket?: string; capLimit?: number }
+          try {
+            window.dispatchEvent(new CustomEvent('arty-cap-reached', {
+              detail: { bucket: capErr.capBucket, cap: capErr.capLimit },
+            }))
+          } catch { /* contexte sans window (tests) */ }
+          return
+        }
         if (isActive(targetId)) {
           setError(err.message)
         }

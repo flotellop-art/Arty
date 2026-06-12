@@ -783,5 +783,18 @@
     "cancel": "Annuler",
     "deleting": "Suppression…",
     "error": "La suppression a échoué. Réessaie ou contacte le support."
+  },
+  "quota": {
+    "sheetTitle": "Quota du mois",
+    "sheetFooter": "Messages premium restants ce mois. Les modèles standards (Haiku, Flash, Mistral) sont illimités. Réinitialisé le 1er du mois.",
+    "sheetFooterWithPack": "Messages premium restants ce mois + {{pack}} messages de Pack. Les modèles standards restent illimités.",
+    "premiumModels": "modèles premium",
+    "capReachedTitle": "Limite mensuelle atteinte",
+    "capReachedBody": "Tu as utilisé tes {{cap}} messages {{model}} de ce mois.",
+    "capReachedBodyNoCount": "Tu as utilisé tous tes messages {{model}} de ce mois.",
+    "capReachedHint": "Les modèles standards (Haiku, Flash, Mistral) restent illimités — renvoie ton message en mode standard. Ton quota premium se réinitialise le {{date}}.",
+    "buyPack": "+100 messages premium — 1,99 €",
+    "continueStandard": "Continuer avec les modèles standards",
+    "later": "Plus tard"
   }
 }

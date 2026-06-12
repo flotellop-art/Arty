@@ -18,12 +18,24 @@ export type ModelFamily =
   | 'gpt-mini'
   | 'gpt-full'
 
+/** Compteur mensuel d'un bucket premium (plan subscription) — P0.6. */
+export interface MonthlyCapEntry {
+  used: number
+  limit: number
+  remaining: number
+}
+
 export interface PlanStatus {
   plan: PlanType
   allowedFamilies: ModelFamily[]
   lockedFamilies: ModelFamily[]
   dailyRemaining: Partial<Record<ModelFamily, number>> | null
   dailyLimits: Partial<Record<ModelFamily, number>> | null
+  /** Compteurs mensuels premium par bucket ('claude-sonnet' | 'gpt-5' |
+      'gemini-pro'). null hors plan subscription. */
+  monthlyCap: Record<string, MonthlyCapEntry> | null
+  /** Solde du Pack Premium (+100 messages) acheté, 0 sinon. */
+  premiumPackRemaining: number
   loading: boolean
 }
 
@@ -33,6 +45,8 @@ interface ApiResponse {
   locked_families: ModelFamily[]
   daily_remaining: Partial<Record<ModelFamily, number>> | null
   daily_limits: Partial<Record<ModelFamily, number>> | null
+  monthly_cap?: Record<string, MonthlyCapEntry> | null
+  premium_pack_remaining?: number
 }
 
 const DEFAULT_STATUS: PlanStatus = {
@@ -41,6 +55,8 @@ const DEFAULT_STATUS: PlanStatus = {
   lockedFamilies: ['claude-sonnet', 'claude-opus', 'mistral-medium', 'gemini-flash', 'gemini-pro', 'gpt-mini', 'gpt-full'],
   dailyRemaining: { 'claude-haiku': 10 },
   dailyLimits: { 'claude-haiku': 10 },
+  monthlyCap: null,
+  premiumPackRemaining: 0,
   loading: true,
 }
 
@@ -68,6 +84,8 @@ export function usePlanStatus(): PlanStatus & { refresh: () => void } {
         lockedFamilies: data.locked_families,
         dailyRemaining: data.daily_remaining,
         dailyLimits: data.daily_limits,
+        monthlyCap: data.monthly_cap ?? null,
+        premiumPackRemaining: data.premium_pack_remaining ?? 0,
         loading: false,
       })
       // Cache le plan en localStorage pour que les services non-React
