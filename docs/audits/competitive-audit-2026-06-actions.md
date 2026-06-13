@@ -162,9 +162,29 @@ unique sous 20 $/mois). Pas par la largeur de catalogue. Volume = distribution
   api.eu.bfl.ai → condition d'activation du chemin euOnly.
   Suivi : pas d'édition/variations en v1 ; trial perd 1 message sur tentative
   d'image (checkAllowedUser décrémente avant le 403 — préexistant, mineur).
-- [ ] **P1.4 Modèle open-weights quasi gratuit** (DeepSeek V4-Flash ~0,28 $/M output, ou
-  Llama) pour un « illimité sur les modèles standards » **honnête** — l'argument
-  commercial du segment, sans le mensonge de Merlin.
+- [~] **P1.4 Modèle open-weights quasi gratuit** — ÉCARTÉ (13 juin 2026, 2 agents
+  RÈGLE 7, décision Florent). Verdict : pas maintenant. (1) Gain économique négligeable
+  à l'échelle actuelle : ~7 ¢/user/mois (le « standard » Mistral Medium/Gemini Flash/
+  Haiku coûte déjà 0,12–0,36 $/user/mois à usage réel, marge ~97 %) ; le claim « sans
+  plafond mensuel » tient déjà. (2) Risque qualité FR = BUG 58 bis (Llama 8B/distill
+  < Mistral Medium en français). (3) DeepSeek direct = serveurs Chine, rédhibitoire
+  (positionnement EU/privacy). Si repris à l'échelle (~5-10k abonnés) : **Cloudflare
+  Workers AI** (Qwen3-30B, binding `env.AI` sur le compte existant, 10k neurons/j
+  gratuits, zéro nouveau vendor) — PAS DeepSeek. Format non-OpenAI (`env.AI.run()`),
+  euOnly déjà bloqué en amont (useConversation.ts:442).
+  ➡️ **REMPLACÉ par une optimisation à vrai gain — FAIT (13 juin 2026, PR à venir).**
+  Le défaut CHAT bascule de `gemini-3.5-flash` ($1,50/$9 par M) vers `gemini-2.5-flash`
+  (tarif GA réel **$0,30/$2,50** — ~5× moins en input, ~3,6× en output ; + grounding
+  facturé PAR PROMPT vs par requête sur 3.x). Vérifié par agent recherche (RÈGLE 7) :
+  `google_search`, `url_context`, `google_maps` et function calling sont TOUS supportés
+  sur 2.5-flash (function calling même amélioré), aucune perte de qualité recherche web,
+  et qualité FR équivalente pour le chat grand public (Global-MMLU multilingue 88,4 %).
+  La moitié RECHERCHE du mode hybride (`geminiResearch`) GARDE `gemini-3.5-flash` (là où
+  le saut agentique/long-horizon sert vraiment). Killswitch `arty-gemini-cheap-disabled='1'`
+  (localStorage) repasse le chat sur 3.5 sans redéploiement. **Bug de tracking corrigé au
+  passage** : prix `gemini-2.5-flash` stale ($0,075/$0,30 = ancien tarif preview) →
+  $0,30/$2,50 dans `pricing.ts` + `costTracker.ts` (sinon le dashboard sous-estimait ~4-8×).
+  Vigie : le gain ne concerne que les abonnés sur clé serveur (sans BYOK).
 - [x] **P1.5 Partage de conversation par lien public** — FAIT (13 juin 2026).
   (Constat : le data: URI cassé était DÉJÀ réparé le 10 juin ; P1.5 = création du
   lien public permanent, inexistant.) Endpoint `POST /api/share` (auth Google,

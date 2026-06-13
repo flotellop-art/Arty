@@ -9,15 +9,40 @@ import { updateTrialFromResponse } from './trialClient'
 import type { ReflectionLevel } from './reflectionLevel'
 import i18n from '../i18n'
 
-// Modèle Flash GA stable. `gemini-3-flash` (sans suffixe) renvoyait un 404 :
-// ce nom n'existe pas côté API Google — pour cette génération seul
-// `gemini-3-flash-preview` existait, et les "preview" sont dépréciées sans
-// préavis. On pointe donc sur la GA `gemini-3.5-flash` (= ce que résout
-// l'alias `gemini-flash-latest`). Si Google renomme encore, le 404 affiche
-// désormais un message explicite (errors.geminiModelNotFound) au lieu
-// d'envoyer l'utilisateur vérifier sa clé. Liste des noms valides :
-// GET https://generativelanguage.googleapis.com/v1beta/models
-const GEMINI_MODEL = 'gemini-3.5-flash'
+// Modèle Flash par défaut du CHAT (gros volume). gemini-2.5-flash coûte
+// ~5× moins en input ($0.30 vs $1.50) et ~3.6× moins en output ($2.50 vs $9)
+// que gemini-3.5-flash, et supporte AUSSI BIEN google_search, url_context,
+// google_maps et le function calling (vérifié juin 2026 — function calling
+// même *amélioré* sur le refresh 2.5). Pour le chat grand public (Q/R,
+// rédaction, réponses web-grounded en français) la qualité est équivalente :
+// le saut 3.5 ne paie que du raisonnement agentique/code que ce chemin
+// n'exerce pas. Le grounding 2.5 est facturé PAR PROMPT (vs par requête sur
+// 3.x), souvent moins cher pour un chat où beaucoup de tours déclenchent une
+// recherche. Si Google renomme, le 404 affiche errors.geminiModelNotFound.
+// Noms valides : GET https://generativelanguage.googleapis.com/v1beta/models
+const GEMINI_CHAT_MODEL = 'gemini-2.5-flash'
+
+// Modèle de la moitié RECHERCHE du mode hybride (geminiResearch). On garde
+// 3.5-flash : c'est l'orchestration multi-étapes / synthèse longue qui
+// alimente le rapport rédigé ensuite par Claude — exactement là où le saut
+// 3.5 (agentique, long-horizon) apporte quelque chose. Volume faible,
+// qualité sensible → pas d'économie ici.
+const GEMINI_RESEARCH_MODEL = 'gemini-3.5-flash'
+
+// Killswitch : `arty-gemini-cheap-disabled = '1'` (DevTools / localStorage)
+// repasse le CHAT sur 3.5-flash sans redéploiement, si une régression est
+// observée en prod. Ne touche pas la recherche hybride (déjà sur 3.5).
+const GEMINI_CHEAP_KILLSWITCH = 'arty-gemini-cheap-disabled'
+function geminiChatModel(): string {
+  try {
+    if (localStorage.getItem(GEMINI_CHEAP_KILLSWITCH) === '1') {
+      return GEMINI_RESEARCH_MODEL
+    }
+  } catch {
+    // localStorage indispo (tests/SSR) — garder le défaut éco.
+  }
+  return GEMINI_CHAT_MODEL
+}
 
 // CRIT-5 — Sans timeout, un Cloudflare cold-start ou un réseau flaky peut
 // laisser pendre une requête 60-90s. Force un cap explicite.
@@ -142,7 +167,7 @@ export function resolveGeminiThinkingBudget(
 interface GeminiStreamOptions {
   systemPrompt?: string
   // Force un modèle précis (utilisé par le comparateur multi-modèles).
-  // Si absent, fallback sur GEMINI_MODEL (défaut Arty).
+  // Si absent, fallback sur geminiChatModel() (défaut Arty).
   model?: string
   // Niveau de réflexion utilisateur (réglage global). Passé uniquement par le
   // vrai chat Gemini (useConversation) — jamais par le comparateur. Absent ⇒
@@ -176,10 +201,10 @@ async function runGeminiStream(
   controller: AbortController
 ) {
   // Modèle effectif : `options.model` (forcé par le comparateur) ou
-  // GEMINI_MODEL (défaut Arty pour le chat normal). Résolu UNE fois
+  // geminiChatModel() (défaut Arty pour le chat normal). Résolu UNE fois
   // au début pour que l'event "model-used", la requête, et le tracking
   // de coût remontent tous le même nom.
-  const model = options?.model || GEMINI_MODEL
+  const model = options?.model || geminiChatModel()
   try {
     // Convert messages to Gemini format
     type GeminiPart = { text: string } | { fileData: { fileUri: string } }
@@ -361,7 +386,7 @@ export async function geminiResearch(
   const apiKey = apiKeyOverride || getGeminiKey()
 
   const requestBody = {
-    model: GEMINI_MODEL,
+    model: GEMINI_RESEARCH_MODEL,
     stream: false,
     contents: [{
       role: 'user',
