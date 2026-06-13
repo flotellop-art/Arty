@@ -137,13 +137,23 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
       // le backoff client attende le bon délai au lieu d'un délai aveugle.
       // Header de réponse recopié tel quel : aucune surface d'auth modifiée.
       const retryAfter = response.headers.get('retry-after')
-      return new Response(errorText, {
-        status: response.status,
-        headers: {
-          'content-type': 'application/json',
-          ...(retryAfter ? { 'retry-after': retryAfter } : {}),
-        },
-      })
+      const headers: Record<string, string> = {
+        'content-type': 'application/json',
+        ...(retryAfter ? { 'retry-after': retryAfter } : {}),
+      }
+      // Leak d'info (N-2) : sur la clé serveur, masquer l'erreur Mistral brute
+      // (état de la clé owner). Status + retry-after préservés : le backoff
+      // client et le typage 401/429 s'appuient sur le STATUS, pas sur le body.
+      // Le quota journalier ({count,limit}) et premium_cap_reached sont émis
+      // avant le fetch upstream, donc non concernés. Passthrough gardé en BYOK.
+      if (usingServerKey) {
+        console.error('[mistral] upstream error', response.status, errorText.slice(0, 300))
+        return new Response(JSON.stringify({ error: 'AI service error' }), {
+          status: response.status,
+          headers,
+        })
+      }
+      return new Response(errorText, { status: response.status, headers })
     }
 
     // Tracking tokens réels côté serveur uniquement.

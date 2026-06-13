@@ -58,6 +58,10 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
 
   // BYOK prioritaire (l'utilisateur paie sa propre clé → aucun plafond serveur).
   let apiKey = request.headers.get('x-openai-key') || ''
+  // Pas de BYOK ⇒ on tombera sur la clé serveur (bloc ci-dessous). Sert à
+  // masquer l'erreur upstream sur la clé owner (leak N-2) sans casser le
+  // diagnostic BYOK.
+  const usingServerKey = !apiKey
 
   if (!apiKey && env.OPENAI_API_KEY) {
     // Voix gratuite pour tous via la clé serveur. Free/essai : plafond
@@ -105,12 +109,16 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     })
 
     if (!upstream.ok) {
-      // Erreur OpenAI : on relaie le status sans exposer la clé.
       const errText = (await upstream.text()).slice(0, 300)
-      return Response.json(
-        { error: `TTS upstream ${upstream.status}: ${errText}` },
-        { status: upstream.status === 429 ? 429 : 502 }
-      )
+      const status = upstream.status === 429 ? 429 : 502
+      // Leak d'info (N-2) : sur la clé serveur, ne pas renvoyer le body OpenAI
+      // brut (révèle l'état de la clé owner). Status préservé (429 → backoff).
+      // BYOK : passthrough pour aider l'utilisateur à diagnostiquer SA clé.
+      if (usingServerKey) {
+        console.error('[tts] upstream error', upstream.status, errText)
+        return Response.json({ error: 'Voice service error' }, { status })
+      }
+      return Response.json({ error: `TTS upstream ${upstream.status}: ${errText}` }, { status })
     }
 
     // Succès : binaire audio relayé tel quel.

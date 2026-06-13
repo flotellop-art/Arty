@@ -116,6 +116,17 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => 'Unknown Gemini error')
+      // Leak d'info (N-2) : sur la clé serveur, ne JAMAIS renvoyer l'erreur
+      // Gemini brute (elle révèle l'état de la clé owner : quota, projet,
+      // modèles). Le status est préservé : le retry/backoff client (shouldRetry
+      // sur 429/5xx) et le message 404 → errors.geminiModelNotFound s'appuient
+      // sur le STATUS, pas sur le body. Le code premium_cap_reached est émis
+      // plus haut (avant le fetch upstream), donc non concerné. Passthrough
+      // conservé pour le BYOK : le message aide le user à diagnostiquer SA clé.
+      if (usingServerKey) {
+        console.error('[gemini] upstream error', response.status, errorText.slice(0, 300))
+        return Response.json({ error: 'AI service error' }, { status: response.status })
+      }
       return new Response(errorText, {
         status: response.status,
         headers: { 'content-type': 'application/json' },
