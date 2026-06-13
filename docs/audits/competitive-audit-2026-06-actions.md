@@ -172,12 +172,19 @@ unique sous 20 $/mois). Pas par la largeur de catalogue. Volume = distribution
   Workers AI** (Qwen3-30B, binding `env.AI` sur le compte existant, 10k neurons/j
   gratuits, zéro nouveau vendor) — PAS DeepSeek. Format non-OpenAI (`env.AI.run()`),
   euOnly déjà bloqué en amont (useConversation.ts:442).
-  ➡️ **REMPLACÉ par une optimisation à vrai gain** (en cours) : le tier « standard »
-  par défaut est servi par `gemini-3.5-flash` ($1,50/$9 par M — output 1,8× Haiku) sur
-  la CLÉ SERVEUR (= coût Florent pour tous les abonnés sans clé perso). Évaluer une
-  bascule vers une variante moins chère (`gemini-2.5-flash` $0,075/$0,30, ou
-  `flash-lite`) SANS dégrader qualité ni la recherche web intégrée (tools google_search/
-  maps). Vigie : confirmer le % d'abonnés sur clé serveur (le gain ne concerne qu'eux).
+  ➡️ **REMPLACÉ par une optimisation à vrai gain — FAIT (13 juin 2026, PR à venir).**
+  Le défaut CHAT bascule de `gemini-3.5-flash` ($1,50/$9 par M) vers `gemini-2.5-flash`
+  (tarif GA réel **$0,30/$2,50** — ~5× moins en input, ~3,6× en output ; + grounding
+  facturé PAR PROMPT vs par requête sur 3.x). Vérifié par agent recherche (RÈGLE 7) :
+  `google_search`, `url_context`, `google_maps` et function calling sont TOUS supportés
+  sur 2.5-flash (function calling même amélioré), aucune perte de qualité recherche web,
+  et qualité FR équivalente pour le chat grand public (Global-MMLU multilingue 88,4 %).
+  La moitié RECHERCHE du mode hybride (`geminiResearch`) GARDE `gemini-3.5-flash` (là où
+  le saut agentique/long-horizon sert vraiment). Killswitch `arty-gemini-cheap-disabled='1'`
+  (localStorage) repasse le chat sur 3.5 sans redéploiement. **Bug de tracking corrigé au
+  passage** : prix `gemini-2.5-flash` stale ($0,075/$0,30 = ancien tarif preview) →
+  $0,30/$2,50 dans `pricing.ts` + `costTracker.ts` (sinon le dashboard sous-estimait ~4-8×).
+  Vigie : le gain ne concerne que les abonnés sur clé serveur (sans BYOK).
 - [x] **P1.5 Partage de conversation par lien public** — FAIT (13 juin 2026).
   (Constat : le data: URI cassé était DÉJÀ réparé le 10 juin ; P1.5 = création du
   lien public permanent, inexistant.) Endpoint `POST /api/share` (auth Google,

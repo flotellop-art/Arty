@@ -45,7 +45,7 @@ export const PROVIDER_CATALOG: ProviderDescriptor[] = [
     // donc absent de la liste. Le reasoning-first récent est en preview only
     // (gemini-3.1-pro-preview) — exclu pour la stabilité du comparateur.
     models: [
-      { modelId: 'gemini-3.5-flash', costKey: 'gemini-flash', label: 'Gemini 3.5 Flash' },
+      { modelId: 'gemini-3.5-flash', costKey: 'gemini-flash-pro', label: 'Gemini 3.5 Flash' },
       { modelId: 'gemini-3.1-flash-lite', costKey: 'gemini-flash-lite', label: 'Gemini 3.1 Flash Lite' },
       { modelId: 'gemini-2.5-pro', costKey: 'gemini-pro', label: 'Gemini 2.5 Pro' },
       { modelId: 'gemini-2.5-flash', costKey: 'gemini-flash', label: 'Gemini 2.5 Flash' },

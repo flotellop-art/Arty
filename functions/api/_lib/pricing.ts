@@ -63,7 +63,11 @@ const PRICING: Record<string, ModelPricing> = {
 
   // Google Gemini
   'gemini-2.5-pro': { input: 1.25, output: 10, cacheRead: 0.31 },
-  'gemini-2.5-flash': { input: 0.075, output: 0.3, cacheRead: 0.019 },
+  // gemini-2.5-flash — défaut CHAT depuis juin 2026 (cf. geminiClient.ts).
+  // Tarif GA réel $0.30/$2.50 (source ai.google.dev/gemini-api/docs/pricing).
+  // L'ancienne valeur $0.075/$0.30 était le tarif preview/lite et sous-estimait
+  // ~4-8× le coût réel — bug de tracking corrigé indépendamment du switch.
+  'gemini-2.5-flash': { input: 0.3, output: 2.5, cacheRead: 0.075 },
   'gemini-2.5-flash-lite': { input: 0.04, output: 0.15 },
   // Gemini Flash. `gemini-3.5-flash` (GA, modèle réellement servi cf.
   // geminiClient.ts) : $1.50/$9, cache $0.15 — source ai.google.dev/gemini-api/
