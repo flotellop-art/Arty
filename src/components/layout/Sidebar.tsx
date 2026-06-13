@@ -545,7 +545,7 @@ export const Sidebar = memo(function Sidebar({
                     border: isStreaming || isActive ? 'none' : `1.5px solid ${DESIGN.borderMid}`,
                     boxShadow: isStreaming ? '0 0 8px rgb(var(--theme-accent) / 0.6)' : undefined,
                   }}
-                  title={isStreaming ? 'Réflexion en cours' : undefined}
+                  title={isStreaming ? t('sidebar.streamingTitle') : undefined}
                 />
                 <div className="flex-1 min-w-0">
                   {/* Ligne 1 — titre (ou input de renommage) + timestamp */}
@@ -670,8 +670,8 @@ export const Sidebar = memo(function Sidebar({
                 <button
                   onClick={() => setThemeState(toggleTheme())}
                   className="p-1.5 rounded-lg hover:bg-theme-ink/5 transition-colors text-theme-ink"
-                  aria-label={theme === 'nocturne' ? 'Mode jour (Ember)' : 'Mode nuit (Nocturne)'}
-                  title={theme === 'nocturne' ? 'Mode jour' : 'Mode nuit'}
+                  aria-label={theme === 'nocturne' ? t('topBar.themeDay') : t('topBar.themeNight')}
+                  title={theme === 'nocturne' ? t('topBar.themeDay') : t('topBar.themeNight')}
                 >
                   <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
                     <circle cx="10" cy="10" r="7.25" stroke="currentColor" strokeWidth="1.5" />

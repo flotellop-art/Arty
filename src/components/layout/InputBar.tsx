@@ -134,7 +134,7 @@ function PendingFilePreview({ file, onRemove }: { file: FileAttachment; onRemove
       <span className="max-w-[120px] truncate">{file.name}</span>
       <button
         onClick={onRemove}
-        aria-label={`Retirer ${file.name}`}
+        aria-label={t('chat.input.removeFile', { name: file.name })}
         className="text-theme-muted hover:text-theme-accent ml-1 p-1 leading-none"
       >
         ✕

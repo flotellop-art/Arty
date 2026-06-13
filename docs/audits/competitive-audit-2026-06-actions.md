@@ -184,8 +184,21 @@ unique sous 20 $/mois). Pas par la largeur de catalogue. Volume = distribution
   automatique, comme /chat/:id). Suivis : OG/meta tags serveur pour de jolis
   aperçus de lien (booste le viral) = follow-up ; lien « signaler » + renouvellement
   d'expiration = v2.
-- [ ] **P1.6 i18n EN complète** : ~15 composants en FR hardcodé (liste exhaustive dans
-  `docs/audits/frontend-audit-2026-06-10.md:135`). Préalable au volume hors France.
+- [x] **P1.6 i18n EN complète** — FAIT (13 juin 2026). Inventaire par 2 agents
+  (périmètres non chevauchants) : ~90 chaînes user-visibles encore en FR dur dans
+  17 composants (l'UI principale était déjà bilingue depuis le 16 mai ; restaient les
+  écrans/modales secondaires + ceux ajoutés récemment dont SharedConversationView que
+  j'avais écrit en FR). Tout extrait vers fr.json/en.json (parité 100 % vérifiée, 0 clé
+  orpheline). Composants i18nisés : SharedConversationView, PlanBadge, templates,
+  ApiKeySetup, ApiKeysModal, MemoryViewer, MemoryHistoryPanel, OrchestratorSync,
+  CalendarView, EmailCard, DriveFileCard, GoogleStatus, OAuthCallback, LoginScreen
+  (erreurs OAuth + fix mismatch clé `login.apikey`), TopBar, Sidebar, InputBar, App.tsx
+  (bannière budget + erreur partage + LazyFallback), OnboardingChoice (cartes).
+  Hors scope (décision déjà actée) : les ~80 chaînes `result:` des services tools
+  (renvoyées au LLM, jamais affichées). Bug annexe corrigé : variable locale `t`
+  (withTimeout) masquait le `t` i18n dans LoginScreen → renommée `timeout`.
+  Suivi : les labels de catégories de templates vivent dans `data/templates.ts`
+  (couche données, encore FR) — à i18niser si on vise sérieusement l'anglophone.
 - [ ] **P1.7 Crédits — visibilité du coût par message** (suite PR #238) : « ce message :
   3 crédits » sous chaque réponse (données du settle existantes), estimation avant envoi
   sur modèles premium, maîtrise du contexte en conversation longue (croissance

@@ -15,7 +15,8 @@
     "required": "obligatoire",
     "connecting": "Connexion...",
     "ok": "OK",
-    "done": "Terminé"
+    "done": "Terminé",
+    "or": "ou"
   },
   "login": {
     "title": "Connexion",
@@ -66,7 +67,17 @@
       },
       "notice": "Ton compte est stocké sur cet appareil. Pas de serveur."
     },
-    "recentAccounts": "Comptes récents"
+    "recentAccounts": "Comptes récents",
+    "apikey": {
+      "displayName": "Utilisateur",
+      "errorGeneric": "Échec de la connexion"
+    },
+    "errors": {
+      "noAuthCode": "Google n'a pas renvoyé de code d'autorisation — réessaie.",
+      "tokenExchangeFailed": "Échange de token Google échoué ({{status}})",
+      "noAccessToken": "Réponse Google sans access_token — réessaie la connexion.",
+      "googleFailed": "Échec de la connexion Google"
+    }
   },
   "onboarding": {
     "slides": [
@@ -183,7 +194,10 @@
       "exportTitle": "Exporter la conversation",
       "lastCall": "Dernier appel : {{model}}",
       "whyModel": "Pourquoi ce modèle ?",
-      "exportJson": "JSON (réimport)"
+      "exportJson": "JSON (réimport)",
+      "kicker": "Conversation",
+      "exportMarkdown": "Markdown (.md)",
+      "exportPdf": "PDF (.pdf)"
     },
     "optionsSheet": {
       "title": "Cette conversation",
@@ -380,6 +394,19 @@
       "editTitle": "Modifier et renvoyer",
       "send": "Envoyer",
       "imageUnavailable": "Image indispo"
+    },
+    "planBadge": {
+      "labelFree": "Gratuit",
+      "labelSub": "Sub",
+      "labelPro": "Pro",
+      "labelVip": "VIP",
+      "bucketSonnet": "Sonnet",
+      "bucketGpt5": "GPT-5",
+      "bucketGeminiPro": "G-Pro",
+      "bucketImages": "Images",
+      "titleFree": "Plan gratuit · {{haiku}}/{{limit}} Haiku aujourd'hui. Clique pour débloquer Sonnet, Opus, Mistral, Gemini et GPT.",
+      "titleSub": "Messages premium restants ce mois — {{detail}}",
+      "titlePro": "Plan {{plan}} · accès illimité"
     }
   },
   "errors": {
@@ -445,7 +472,8 @@
     "settings": "Paramètres",
     "confirmDelete": "Appuie à nouveau pour supprimer",
     "renameAria": "Renommer la conversation",
-    "importSuccess": "Conversation importée"
+    "importSuccess": "Conversation importée",
+    "streamingTitle": "Réflexion en cours"
   },
   "tasks": {
     "title": "Tâches",
@@ -553,7 +581,14 @@
     "defaultEventTitle": "Événement {{text}}",
     "newEvent": "Nouvel événement",
     "eventTitlePlaceholder": "Titre",
-    "addToCalendar": "Ajouter au calendrier"
+    "addToCalendar": "Ajouter au calendrier",
+    "today": "Aujourd'hui",
+    "tomorrow": "Demain",
+    "loading": "Chargement de l'agenda…",
+    "empty": "Rien de prévu dans les {{days}} prochains jours.",
+    "errors": {
+      "fetchFailed": "Erreur agenda"
+    }
   },
   "settings": {
     "kicker": "Paramètres",
@@ -848,6 +883,16 @@
       "back": "Retour",
       "showHelp": "Comment obtenir une clé ?",
       "hideHelp": "Masquer l'aide"
+    },
+    "cards": {
+      "subscription": {
+        "title": "Abonnement",
+        "subtitle": "Pro, illimité"
+      },
+      "apiKey": {
+        "title": "Clé API",
+        "subtitle": "Ta propre clé"
+      }
     }
   },
   "trial": {
@@ -883,6 +928,129 @@
     "errorTooLarge": "Cette conversation est trop longue pour être partagée.",
     "errorEu": "Conversation EU : partage public non autorisé.",
     "errorAuth": "Connecte-toi avec Google pour partager.",
-    "errorFailed": "Le partage a échoué. Réessaie dans un moment."
+    "errorFailed": "Le partage a échoué. Réessaie dans un moment.",
+    "view": {
+      "ctaHeader": "Essayer Arty — gratuit",
+      "notFoundTitle": "Conversation introuvable",
+      "notFoundBody": "Ce lien a expiré, a été retiré, ou n'existe pas.",
+      "notFoundCta": "Découvrir Arty",
+      "footerText": "Cette conversation a été créée avec Arty, l'assistant IA qui réunit Claude, GPT, Gemini et Mistral — avec ton Gmail, ton Drive et ton agenda.",
+      "footerCta": "Essayer gratuitement — sans carte bancaire"
+    }
+  },
+  "app": {
+    "shareError": {
+      "fileTooLarge": "Fichier trop volumineux (>10 Mo), partage annulé."
+    },
+    "budgetAlert": {
+      "message": "⚠️ Budget IA dépassé — {{spent}} / {{limit}} ce mois-ci.",
+      "view": "Voir",
+      "closeAria": "Fermer l'alerte"
+    },
+    "loading": "Chargement…"
+  },
+  "topBar": {
+    "proBadgeTitle": "Licence Pro activée",
+    "themeDay": "Mode jour (Ember)",
+    "themeNight": "Mode nuit (Nocturne)"
+  },
+  "googleStatus": {
+    "connected": "Google connecté",
+    "disconnected": "Google non connecté",
+    "logout": "Déconnecter"
+  },
+  "oauthCallback": {
+    "loading": "Connexion Google en cours…"
+  },
+  "driveFileCard": {
+    "modifiedAt": "Modifié le {{date}}",
+    "open": "Ouvrir"
+  },
+  "emailCard": {
+    "timeJustNow": "à l'instant",
+    "timeHoursAgo": "il y a {{hours}} h"
+  },
+  "apiKeySetup": {
+    "pageTitle": "Configuration",
+    "pageSubtitle": "Entre tes clés API pour commencer. Elles sont chiffrées et stockées uniquement sur ton appareil.",
+    "optional": "(optionnel)",
+    "hideKey": "Masquer",
+    "showKey": "Afficher",
+    "test": "Tester",
+    "currentKey": "Actuel : {{mask}}",
+    "saving": "Chiffrement…",
+    "save": "Enregistrer",
+    "start": "Commencer",
+    "encryptionNotice": "Tes clés sont chiffrées en AES-256 et stockées uniquement sur ton appareil.",
+    "labels": {
+      "anthropic": "Clé API Anthropic",
+      "openai": "Clé API OpenAI",
+      "gemini": "Clé API Gemini",
+      "mistral": "Clé API Mistral (EU)"
+    },
+    "errors": {
+      "anthropicRequired": "La clé API Anthropic est obligatoire",
+      "anthropicPrefix": "La clé Anthropic doit commencer par sk-ant-",
+      "openaiFormat": "La clé OpenAI doit commencer par sk- et faire plus de 20 caractères",
+      "saveFailed": "Erreur lors de la sauvegarde"
+    }
+  },
+  "apiKeysModal": {
+    "kicker": "Clés API",
+    "titleLead": "Tes ",
+    "titleAccent": "clés.",
+    "subtitle": "Chiffrées en AES-256 et stockées uniquement sur ton appareil."
+  },
+  "memoryViewer": {
+    "title": "🧠 Mémoire d'Arty",
+    "subtitle": "Ce qu'Arty sait sur toi — lisible et modifiable",
+    "tabs": {
+      "profil": "Profil",
+      "clients": "Clients",
+      "projets": "Projets",
+      "notes": "Notes"
+    },
+    "editHint": "Édite le JSON directement puis sauvegarde.",
+    "addNote": "+ Ajouter une note",
+    "savedConfirm": "✅ Sauvegardé !",
+    "saveHint": "Modifie et sauvegarde pour mettre à jour la mémoire.",
+    "saving": "Sauvegarde…",
+    "save": "Sauvegarder",
+    "promptNote": "Nouvelle note :",
+    "errors": {
+      "invalidJson": "JSON invalide — vérifie la syntaxe."
+    }
+  },
+  "memoryHistory": {
+    "title": "📜 Historique mémoire",
+    "empty": "Aucun changement enregistré",
+    "undoChange": "↩ Annuler ce changement",
+    "clearAll": "Effacer tout l'historique"
+  },
+  "orchestratorSync": {
+    "title": "Orchestrateur détecté",
+    "description": "L'app desktop Orchestrateur est active en local. Synchronise ta clé Anthropic pour qu'elle génère des applications Flask sans configuration manuelle.",
+    "syncing": "Synchronisation…",
+    "sync": "Synchroniser la clé →",
+    "success": "Clé synchronisée",
+    "errors": {
+      "noKey": "Aucune clé Anthropic active",
+      "syncFailed": "Échec de la synchronisation"
+    }
+  },
+  "templates": {
+    "filterAll": "Tous",
+    "headerKicker": "Bibliothèque · Pro",
+    "heroMain": "Templates ",
+    "heroAccent": "métier.",
+    "heroSubtitle": "Des gabarits prêts à l'emploi pour démarrer une conversation en 10 secondes.",
+    "proBannerEyebrow": "Feature Pro",
+    "proBannerTitleLead": "Débloque ",
+    "proBannerTitleAccent": "Arty Pro",
+    "proBannerTitleTail": " pour utiliser les templates.",
+    "proBannerSubtitle": "39 € à vie · 3 appareils · Tous les gabarits inclus.",
+    "emptyCategory": "Aucun template dans cette catégorie.",
+    "lockedTitle": "Réservé aux comptes Pro",
+    "modalSubmit": "Utiliser ce template →"
   }
 }

@@ -8,6 +8,7 @@
  */
 
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useParams } from 'react-router-dom'
 import { MarkdownRenderer } from '../shared/MarkdownRenderer'
 import { ArtyWordmark } from '../shared/PrismMark'
@@ -28,6 +29,7 @@ type State =
   | { kind: 'ready'; data: SharedData }
 
 export function SharedConversationView() {
+  const { t } = useTranslation()
   const { id } = useParams<{ id: string }>()
   const [state, setState] = useState<State>({ kind: 'loading' })
 
@@ -51,7 +53,7 @@ export function SharedConversationView() {
         </a>
         <a href="/"
           className="px-3 py-1.5 text-xs font-sans uppercase tracking-kicker bg-theme-accent text-theme-bg rounded-md hover:opacity-90 transition-opacity">
-          Essayer Arty — gratuit
+          {t('share.view.ctaHeader')}
         </a>
       </header>
 
@@ -66,12 +68,12 @@ export function SharedConversationView() {
 
         {state.kind === 'notfound' && (
           <div className="text-center py-20">
-            <p className="font-display text-xl text-theme-ink mb-2">Conversation introuvable</p>
+            <p className="font-display text-xl text-theme-ink mb-2">{t('share.view.notFoundTitle')}</p>
             <p className="font-display italic text-sm text-theme-muted mb-6">
-              Ce lien a expiré, a été retiré, ou n'existe pas.
+              {t('share.view.notFoundBody')}
             </p>
             <a href="/" className="inline-block px-4 py-2 text-xs font-sans uppercase tracking-kicker bg-theme-accent text-theme-bg rounded-md">
-              Découvrir Arty
+              {t('share.view.notFoundCta')}
             </a>
           </div>
         )}
@@ -96,10 +98,10 @@ export function SharedConversationView() {
             </div>
             <footer className="mt-10 pt-6 border-t border-theme-border text-center">
               <p className="font-display italic text-sm text-theme-muted mb-3">
-                Cette conversation a été créée avec Arty, l'assistant IA qui réunit Claude, GPT, Gemini et Mistral — avec ton Gmail, ton Drive et ton agenda.
+                {t('share.view.footerText')}
               </p>
               <a href="/" className="inline-block px-4 py-2 text-xs font-sans uppercase tracking-kicker bg-theme-accent text-theme-bg rounded-md">
-                Essayer gratuitement — sans carte bancaire
+                {t('share.view.footerCta')}
               </a>
             </footer>
           </>

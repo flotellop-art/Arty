@@ -510,14 +510,14 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
                     onClick={() => { setExportMenuOpen(false); void exportConversationMarkdown(conversation) }}
                     className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs text-theme-ink hover:bg-theme-ink/5"
                   >
-                    <span>📄</span><span>Markdown (.md)</span>
+                    <span>📄</span><span>{t('chat.topBar.exportMarkdown')}</span>
                   </button>
                   <button
                     role="menuitem"
                     onClick={() => { setExportMenuOpen(false); void exportConversationPdf(conversation) }}
                     className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs text-theme-ink hover:bg-theme-ink/5"
                   >
-                    <span>📑</span><span>PDF (.pdf)</span>
+                    <span>📑</span><span>{t('chat.topBar.exportPdf')}</span>
                   </button>
                   <button
                     role="menuitem"

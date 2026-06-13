@@ -15,7 +15,8 @@
     "required": "required",
     "connecting": "Connecting...",
     "ok": "OK",
-    "done": "Done"
+    "done": "Done",
+    "or": "or"
   },
   "login": {
     "title": "Sign in",
@@ -66,7 +67,17 @@
       },
       "notice": "Your account stays on this device. No server."
     },
-    "recentAccounts": "Recent accounts"
+    "recentAccounts": "Recent accounts",
+    "apikey": {
+      "displayName": "User",
+      "errorGeneric": "Sign-in failed"
+    },
+    "errors": {
+      "noAuthCode": "Google didn't return an authorization code — try again.",
+      "tokenExchangeFailed": "Google token exchange failed ({{status}})",
+      "noAccessToken": "Google response without access_token — try signing in again.",
+      "googleFailed": "Google sign-in failed"
+    }
   },
   "onboarding": {
     "slides": [
@@ -183,7 +194,10 @@
       "exportTitle": "Export conversation",
       "lastCall": "Last call: {{model}}",
       "whyModel": "Why this model?",
-      "exportJson": "JSON (re-import)"
+      "exportJson": "JSON (re-import)",
+      "kicker": "Conversation",
+      "exportMarkdown": "Markdown (.md)",
+      "exportPdf": "PDF (.pdf)"
     },
     "optionsSheet": {
       "title": "This conversation",
@@ -380,6 +394,19 @@
       "editTitle": "Edit and resend",
       "send": "Send",
       "imageUnavailable": "Image unavailable"
+    },
+    "planBadge": {
+      "labelFree": "Free",
+      "labelSub": "Sub",
+      "labelPro": "Pro",
+      "labelVip": "VIP",
+      "bucketSonnet": "Sonnet",
+      "bucketGpt5": "GPT-5",
+      "bucketGeminiPro": "G-Pro",
+      "bucketImages": "Images",
+      "titleFree": "Free plan · {{haiku}}/{{limit}} Haiku today. Tap to unlock Sonnet, Opus, Mistral, Gemini and GPT.",
+      "titleSub": "Premium messages left this month — {{detail}}",
+      "titlePro": "{{plan}} plan · unlimited access"
     }
   },
   "errors": {
@@ -445,7 +472,8 @@
     "settings": "Settings",
     "confirmDelete": "Tap again to delete",
     "renameAria": "Rename conversation",
-    "importSuccess": "Conversation imported"
+    "importSuccess": "Conversation imported",
+    "streamingTitle": "Thinking"
   },
   "tasks": {
     "title": "Tasks",
@@ -553,7 +581,14 @@
     "defaultEventTitle": "Event {{text}}",
     "newEvent": "New event",
     "eventTitlePlaceholder": "Title",
-    "addToCalendar": "Add to calendar"
+    "addToCalendar": "Add to calendar",
+    "today": "Today",
+    "tomorrow": "Tomorrow",
+    "loading": "Loading calendar…",
+    "empty": "Nothing planned in the next {{days}} days.",
+    "errors": {
+      "fetchFailed": "Calendar error"
+    }
   },
   "settings": {
     "kicker": "Settings",
@@ -848,6 +883,16 @@
       "back": "Back",
       "showHelp": "How do I get a key?",
       "hideHelp": "Hide help"
+    },
+    "cards": {
+      "subscription": {
+        "title": "Subscription",
+        "subtitle": "Pro, unlimited"
+      },
+      "apiKey": {
+        "title": "API key",
+        "subtitle": "Your own key"
+      }
     }
   },
   "trial": {
@@ -883,6 +928,129 @@
     "errorTooLarge": "This conversation is too long to share.",
     "errorEu": "EU conversation: public sharing not allowed.",
     "errorAuth": "Sign in with Google to share.",
-    "errorFailed": "Sharing failed. Try again in a moment."
+    "errorFailed": "Sharing failed. Try again in a moment.",
+    "view": {
+      "ctaHeader": "Try Arty — free",
+      "notFoundTitle": "Conversation not found",
+      "notFoundBody": "This link has expired, was removed, or doesn't exist.",
+      "notFoundCta": "Discover Arty",
+      "footerText": "This conversation was created with Arty, the AI assistant that brings together Claude, GPT, Gemini and Mistral — with your Gmail, Drive and calendar.",
+      "footerCta": "Try it free — no credit card"
+    }
+  },
+  "app": {
+    "shareError": {
+      "fileTooLarge": "File too large (>10 MB), sharing cancelled."
+    },
+    "budgetAlert": {
+      "message": "⚠️ AI budget exceeded — {{spent}} / {{limit}} this month.",
+      "view": "View",
+      "closeAria": "Dismiss alert"
+    },
+    "loading": "Loading…"
+  },
+  "topBar": {
+    "proBadgeTitle": "Pro license active",
+    "themeDay": "Day mode (Ember)",
+    "themeNight": "Night mode (Nocturne)"
+  },
+  "googleStatus": {
+    "connected": "Google connected",
+    "disconnected": "Google not connected",
+    "logout": "Disconnect"
+  },
+  "oauthCallback": {
+    "loading": "Signing in with Google…"
+  },
+  "driveFileCard": {
+    "modifiedAt": "Modified on {{date}}",
+    "open": "Open"
+  },
+  "emailCard": {
+    "timeJustNow": "just now",
+    "timeHoursAgo": "{{hours}} h ago"
+  },
+  "apiKeySetup": {
+    "pageTitle": "Setup",
+    "pageSubtitle": "Enter your API keys to get started. They are encrypted and stored only on your device.",
+    "optional": "(optional)",
+    "hideKey": "Hide",
+    "showKey": "Show",
+    "test": "Test",
+    "currentKey": "Current: {{mask}}",
+    "saving": "Encrypting…",
+    "save": "Save",
+    "start": "Start",
+    "encryptionNotice": "Your keys are encrypted with AES-256 and stored only on your device.",
+    "labels": {
+      "anthropic": "Anthropic API key",
+      "openai": "OpenAI API key",
+      "gemini": "Gemini API key",
+      "mistral": "Mistral API key (EU)"
+    },
+    "errors": {
+      "anthropicRequired": "The Anthropic API key is required",
+      "anthropicPrefix": "The Anthropic key must start with sk-ant-",
+      "openaiFormat": "The OpenAI key must start with sk- and be over 20 characters",
+      "saveFailed": "Error while saving"
+    }
+  },
+  "apiKeysModal": {
+    "kicker": "API keys",
+    "titleLead": "Your ",
+    "titleAccent": "keys.",
+    "subtitle": "Encrypted with AES-256 and stored only on your device."
+  },
+  "memoryViewer": {
+    "title": "🧠 Arty's memory",
+    "subtitle": "What Arty knows about you — readable and editable",
+    "tabs": {
+      "profil": "Profile",
+      "clients": "Clients",
+      "projets": "Projects",
+      "notes": "Notes"
+    },
+    "editHint": "Edit the JSON directly then save.",
+    "addNote": "+ Add a note",
+    "savedConfirm": "✅ Saved!",
+    "saveHint": "Edit and save to update the memory.",
+    "saving": "Saving…",
+    "save": "Save",
+    "promptNote": "New note:",
+    "errors": {
+      "invalidJson": "Invalid JSON — check the syntax."
+    }
+  },
+  "memoryHistory": {
+    "title": "📜 Memory history",
+    "empty": "No changes recorded",
+    "undoChange": "↩ Undo this change",
+    "clearAll": "Clear all history"
+  },
+  "orchestratorSync": {
+    "title": "Orchestrator detected",
+    "description": "The Orchestrator desktop app is running locally. Sync your Anthropic key so it can generate Flask apps without manual setup.",
+    "syncing": "Syncing…",
+    "sync": "Sync the key →",
+    "success": "Key synced",
+    "errors": {
+      "noKey": "No active Anthropic key",
+      "syncFailed": "Sync failed"
+    }
+  },
+  "templates": {
+    "filterAll": "All",
+    "headerKicker": "Library · Pro",
+    "heroMain": "Business ",
+    "heroAccent": "templates.",
+    "heroSubtitle": "Ready-made prompts to start a conversation in 10 seconds.",
+    "proBannerEyebrow": "Pro feature",
+    "proBannerTitleLead": "Unlock ",
+    "proBannerTitleAccent": "Arty Pro",
+    "proBannerTitleTail": " to use templates.",
+    "proBannerSubtitle": "€39 lifetime · 3 devices · All templates included.",
+    "emptyCategory": "No template in this category.",
+    "lockedTitle": "Pro accounts only",
+    "modalSubmit": "Use this template →"
   }
 }
