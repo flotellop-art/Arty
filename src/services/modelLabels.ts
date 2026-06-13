@@ -78,6 +78,18 @@ export function formatModelName(model: string): string {
   return model
 }
 
+// Région d'hébergement du modèle qui traite la requête, affichée à
+// l'utilisateur (« où part ma donnée ? »). Mapping STATIQUE de présentation —
+// JAMAIS dérivé d'une variable d'env, d'une URL de proxy ou d'un endpoint
+// serveur (RÈGLE 6 : aucune fuite d'infra). Mistral (chat + Voxtral) =
+// France/UE ; tout le reste (Claude, Gemini, GPT) = serveurs US. Défaut = US :
+// on ne revendique JAMAIS « UE » par erreur, ce qui casserait la promesse.
+export function getModelRegion(model: string): { flag: string; key: string } {
+  return model.toLowerCase().startsWith('mistral')
+    ? { flag: '🇪🇺', key: 'chat.region.eu' }
+    : { flag: '🇺🇸', key: 'chat.region.us' }
+}
+
 // Clé i18n de l'explication « pourquoi ce modèle ? » pour un modelId réel.
 // Extraite de ChatTopBar (PR B) où elle vivait en chaînes FR en dur :
 // désormais partagée entre l'ancien header et ChatOptionsSheet, et bilingue.

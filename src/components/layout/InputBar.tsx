@@ -857,7 +857,7 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
     setIsEnhancing(true)
     setEnhanceError(null)
     try {
-      const enhanced = await enhancePrompt(current)
+      const enhanced = await enhancePrompt(current, { euOnly })
       setText(enhanced)
     } catch (err) {
       setEnhanceError(err instanceof Error ? err.message : t('errors.promptEnhancementFailed'))

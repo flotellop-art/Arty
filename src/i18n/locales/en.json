@@ -230,9 +230,14 @@
       "gemini": "Gemini handles real-time web search, news questions and Google Maps queries. Data processed outside Europe.",
       "haiku": "Claude Haiku handles quick, short conversations. Free model (10/day).",
       "opus": "Claude Opus handles deep analysis, complex tasks and multi-step reasoning. Pro model.",
-      "claude": "Claude is the default: attached files, private data (my emails, my files), URLs to open, or requests needing tools (Gmail, Drive, Calendar).",
+      "claude": "Claude is the default: attached files, private data (my emails, my files), URLs to open, or requests needing tools (Gmail, Drive, Calendar). Data processed in the United States (Anthropic).",
       "openai": "GPT (OpenAI) is used when you select it manually. Data processed outside Europe.",
       "fallback": "Model picked automatically based on your request."
+    },
+    "region": {
+      "eu": "France",
+      "us": "United States",
+      "title": "Region where this model processes your request"
     },
     "banners": {
       "gmailReading": "Reading emails...",
@@ -633,7 +638,8 @@
       "euConv": "🇪🇺 EU conversations: Mistral (France) — text and voice dictation (Voxtral)",
       "usModels": "Claude, Gemini, GPT: United States — processed on request, never stored by Arty",
       "dictation": "Voice dictation: Voxtral (France) by default — Whisper (US) only as a backup or on your own OpenAI key",
-      "search": "Web search: Linkup (France) first"
+      "search": "Web search: Linkup (France) first",
+      "serverLine": "App server: {{host}} — Cloudflare relay (EU); it doesn't store your conversations and doesn't decide the model's region (see the chat)"
     },
     "factChecker": {
       "description": "Verifies the factual claims in each response",

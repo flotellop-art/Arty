@@ -12,7 +12,7 @@ import { UpgradePromptModal } from './UpgradePromptModal'
 import { ChatOptionsSheet } from './ChatOptionsSheet'
 import { ConversationSwitcherSheet } from './ConversationSwitcherSheet'
 import { usePlanStatus, type ModelFamily } from '../../hooks/usePlanStatus'
-import { formatModelName, getModelExplanationKey, type ModelUsedEvent } from '../../services/modelLabels'
+import { formatModelName, getModelExplanationKey, getModelRegion, type ModelUsedEvent } from '../../services/modelLabels'
 import {
   exportConversation,
   exportConversationMarkdown,
@@ -444,6 +444,9 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
           >
             {t('chat.topBar.lastCall', { model: formatModelName(lastUsedModel) })}
           </button>
+          <span className="ml-1" title={t('chat.region.title')}>
+            · {getModelRegion(lastUsedModel).flag} {t(getModelRegion(lastUsedModel).key)}
+          </span>
           {lastSearchProvider && (
             <span className="ml-1 text-theme-accent">
               · 🔍 {lastSearchProvider.charAt(0).toUpperCase() + lastSearchProvider.slice(1)}

@@ -496,6 +496,15 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
                 </li>
               ))}
             </ul>
+            {/* Serveur backend de l'app (≠ serveur du modèle IA, montré par
+                message dans le chat). Calculé côté client, sans appel réseau :
+                hardcodé tryarty.com sur natif, origine courante sur web (utile
+                aux testeurs pour distinguer prod / preview / dev). */}
+            <p className="mt-3 font-mono text-[10px] text-theme-muted">
+              {t('settings.dataResidency.serverLine', {
+                host: isNative ? 'tryarty.com' : window.location.host,
+              })}
+            </p>
           </div>
 
           {/* Streak / régularité (F-004) */}
