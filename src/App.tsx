@@ -23,6 +23,7 @@ import { ApiKeysModal } from './components/settings/ApiKeysModal'
 import { CapReachedModal } from './components/chat/CapReachedModal'
 import { OAuthCallback } from './components/google/OAuthCallback'
 import { LoginScreen } from './components/auth/LoginScreen'
+import { SharedConversationView } from './components/share/SharedConversationView'
 import { WelcomeSlides, isOnboardingDone } from './components/onboarding/WelcomeSlides'
 import {
   OnboardingChoice,
@@ -456,6 +457,8 @@ function AppContent({
           path="/auth/callback"
           element={<OAuthCallback onCallback={handleOAuthCallback} />}
         />
+        {/* P1.5 — un utilisateur connecté peut aussi ouvrir un lien de partage. */}
+        <Route path="/share/:id" element={<SharedConversationView />} />
         <Route
           path="/upgrade"
           element={
@@ -926,6 +929,8 @@ export default function App() {
             path="/auth/callback"
             element={<OAuthCallbackAuth auth={auth} onPostLogin={() => setSplash(getOnboardingSplash())} />}
           />
+          {/* P1.5 — partage public lisible SANS compte (canal d'acquisition). */}
+          <Route path="/share/:id" element={<SharedConversationView />} />
           <Route path="*" element={
             <LoginScreen
               onLogin={auth.login}

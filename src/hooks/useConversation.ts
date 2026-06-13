@@ -24,6 +24,15 @@ import i18n from '../i18n'
 
 type ToolHandler = (name: string, input: Record<string, unknown>) => Promise<{ result: string; screenshot?: string }>
 
+// P1.5 — outils Google qui font ENTRER du contenu (mail, fichier, agenda,
+// contact) dans le contexte → la réponse peut en contenir. Sert à flaguer
+// `hasGoogleData` pour l'avertissement renforcé avant un partage public.
+const GOOGLE_TOOL_NAMES = new Set([
+  'read_emails', 'read_email', 'read_email_attachment', 'search_emails',
+  'list_drive', 'search_drive', 'read_drive_file',
+  'list_calendar', 'search_contacts',
+])
+
 export function useConversation() {
   // H1 (audit frontend) — storage.getConversations() retourne la RÉFÉRENCE du
   // cache mémoire, muté en place par saveConversation. La repasser telle
@@ -464,6 +473,23 @@ export function useConversation() {
         )
       } catch { /* SSR / test env */ }
 
+      // P1.5 — flag les conversations contenant des données Google. Le texte
+      // des réponses peut intégrer le contenu d'un mail/fichier lu par un tool ;
+      // ce flag déclenche l'avertissement renforcé avant un partage public.
+      // Wrappe le handler global pour capter le targetId (que le handler n'a
+      // pas) au moment exact de l'appel.
+      const trackedToolHandler: ToolHandler = async (name, input) => {
+        if (GOOGLE_TOOL_NAMES.has(name)) {
+          const c = storage.getConversation(targetId)
+          if (c && !c.hasGoogleData) {
+            c.hasGoogleData = true
+            storage.saveConversation(c)
+          }
+        }
+        const handler = toolHandlerRef.current
+        return handler ? handler(name, input) : { result: '' }
+      }
+
       let controller: AbortController
 
       // M1 (audit frontend) — try/catch global sur toute la phase de
@@ -539,7 +565,7 @@ export function useConversation() {
           setProgressContent('', targetId)
           controller = streamMessage(enrichedMessages, onToken, onDone, onErr, {
             systemPrompt: systemPromptRef.current,
-            onToolCall: toolHandlerRef.current,
+            onToolCall: trackedToolHandler,
             // Niveau de réflexion utilisateur (chat réel uniquement — jamais
             // sur les appels imposés type comparateur/brief). Cf. anthropicClient.
             reflectionLevel: getReflectionLevel(),
@@ -577,7 +603,7 @@ export function useConversation() {
         }
         controller = streamMistralMessage(apiMessages, onToken, onDone, onErr, {
           systemPrompt: systemPromptRef.current,
-          onToolCall: toolHandlerRef.current,
+          onToolCall: trackedToolHandler,
           // Fix 429 — outgoingText ≠ text ⇔ du contenu d'URL/PDF a été
           // inliné (lot C) : la recherche forcée serait un appel Mistral
           // de plus pour rien, dos à dos avec la synthèse (rate limit).
@@ -620,7 +646,7 @@ export function useConversation() {
           : undefined
         controller = streamMessage(apiMessages, onToken, onDone, onErr, {
           systemPrompt: systemPromptRef.current,
-          onToolCall: toolHandlerRef.current,
+          onToolCall: trackedToolHandler,
           reflectionLevel: getReflectionLevel(),
           ...(imageTools ? { tools: imageTools as typeof TOOLS } : {}),
         })

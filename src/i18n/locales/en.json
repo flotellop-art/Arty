@@ -13,7 +13,9 @@
     "retry": "Retry",
     "optional": "optional",
     "required": "required",
-    "connecting": "Connecting..."
+    "connecting": "Connecting...",
+    "ok": "OK",
+    "done": "Done"
   },
   "login": {
     "title": "Sign in",
@@ -863,5 +865,24 @@
     "errorCapReached": "Monthly image limit reached (10/month). Resets on the 1st.",
     "errorAuth": "Google sign-in required to generate images.",
     "errorFailed": "Image generation failed. Try again in a moment."
+  },
+  "share": {
+    "title": "Share this conversation",
+    "warning": "A public link will be created: anyone with the link can read this conversation (for 30 days). Make sure it contains nothing private.",
+    "googleWarning": "This conversation used your Google data (emails, files or calendar) — their content may appear in the replies. Review before publishing.",
+    "consent": "I understand: this conversation will be readable by anyone with the link.",
+    "publish": "Publish and copy link",
+    "publishing": "Publishing…",
+    "success": "Link created! Share it anywhere.",
+    "expiry": "The link expires in 30 days. You can remove it anytime.",
+    "copyLink": "Copy link",
+    "copied": "Link copied",
+    "dialogTitle": "Share conversation",
+    "euBlocked": "Confidential 🇪🇺 conversations cannot be shared publicly — their data must stay on your device.",
+    "errorRateLimit": "You've reached today's share limit (5). Try again tomorrow.",
+    "errorTooLarge": "This conversation is too long to share.",
+    "errorEu": "EU conversation: public sharing not allowed.",
+    "errorAuth": "Sign in with Google to share.",
+    "errorFailed": "Sharing failed. Try again in a moment."
   }
 }

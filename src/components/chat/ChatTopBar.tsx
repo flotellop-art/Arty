@@ -17,9 +17,8 @@ import {
   exportConversation,
   exportConversationMarkdown,
   exportConversationPdf,
-  buildConversationMarkdown,
 } from '../../services/conversationExport'
-import { toast } from '../../services/toast'
+import { ShareModal } from './ShareModal'
 import type { Conversation } from '../../types'
 
 // Mapping provider → famille primaire (la moins chère). Le proxy gère
@@ -83,6 +82,7 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
   const [exportMenuOpen, setExportMenuOpen] = useState(false)
   const [sheetOpen, setSheetOpen] = useState(false)
   const [switcherOpen, setSwitcherOpen] = useState(false)
+  const [shareModalOpen, setShareModalOpen] = useState(false)
   // Switcher visible seulement s'il y a un choix à faire. Jamais ouvert en
   // même temps que le sheet « ⋯ » (déclencheurs distincts, même z-[90]).
   const canSwitch = !!onSelectConversation && (conversations?.length ?? 0) > 1
@@ -215,25 +215,12 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
   // aucun feedback. Maintenant : Web Share API (feuille de partage native)
   // avec le markdown de la conversation, fallback copie presse-papier +
   // toast de confirmation.
-  const handleShare = async () => {
+  // P1.5 — « Partager » ouvre la modale de publication d'un LIEN public
+  // (acte explicite + avertissement). L'export texte markdown/PDF/JSON reste
+  // disponible via « Exporter » dans le sheet.
+  const handleShare = () => {
     if (!conversation) return
-    const md = buildConversationMarkdown(conversation)
-    if (typeof navigator.share === 'function') {
-      try {
-        await navigator.share({ title: conversation.title, text: md })
-        return
-      } catch (err) {
-        // L'utilisateur a fermé la feuille de partage → pas un échec.
-        if (err instanceof DOMException && err.name === 'AbortError') return
-        // Autre erreur (pas de cible, WebView sans support) → fallback copie.
-      }
-    }
-    try {
-      await navigator.clipboard.writeText(md)
-      toast(t('chat.topBar.shareCopied'), 'success')
-    } catch {
-      toast(t('chat.topBar.shareFailed'), 'error')
-    }
+    setShareModalOpen(true)
   }
 
   return (
@@ -603,6 +590,8 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
       )}
 
       {showGuide && <SettingsGuide onClose={() => setShowGuide(false)} />}
+
+      <ShareModal conversation={conversation ?? null} open={shareModalOpen} onClose={() => setShareModalOpen(false)} />
 
       {privacyWarning && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center">

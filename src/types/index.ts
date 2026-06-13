@@ -59,4 +59,10 @@ export interface Conversation {
   updatedAt: number
   usedModels?: string[]  // models used in this conversation (e.g. ['mistral', 'claude'])
   euOnly?: boolean       // if true, locked to Mistral EU — no US model allowed
+  // P1.5 — vrai dès qu'un outil Gmail/Drive/Calendar/Contacts a été appelé :
+  // le texte des réponses peut alors contenir des données Google (résumé de
+  // mail, contenu de fichier). Sert à l'avertissement renforcé avant un
+  // partage public. Détecté à l'appel (les tool_use ne sont pas persistés
+  // dans `content`, donc indétectable a posteriori).
+  hasGoogleData?: boolean
 }

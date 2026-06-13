@@ -13,7 +13,9 @@
     "retry": "Réessayer",
     "optional": "optionnel",
     "required": "obligatoire",
-    "connecting": "Connexion..."
+    "connecting": "Connexion...",
+    "ok": "OK",
+    "done": "Terminé"
   },
   "login": {
     "title": "Connexion",
@@ -863,5 +865,24 @@
     "errorCapReached": "Limite mensuelle d'images atteinte (10/mois). Réinitialisée le 1er du mois.",
     "errorAuth": "Connexion Google requise pour générer des images.",
     "errorFailed": "La génération d'image a échoué. Réessaie dans un moment."
+  },
+  "share": {
+    "title": "Partager cette conversation",
+    "warning": "Un lien public sera créé : toute personne disposant du lien pourra lire cette conversation (pendant 30 jours). Vérifie qu'elle ne contient rien de personnel.",
+    "googleWarning": "Cette conversation a utilisé tes données Google (mails, fichiers ou agenda) — leur contenu peut apparaître dans les réponses. Relis avant de publier.",
+    "consent": "J'ai compris : cette conversation deviendra accessible à toute personne ayant le lien.",
+    "publish": "Publier et copier le lien",
+    "publishing": "Publication…",
+    "success": "Lien créé ! Partage-le où tu veux.",
+    "expiry": "Le lien expire dans 30 jours. Tu peux le retirer à tout moment.",
+    "copyLink": "Copier le lien",
+    "copied": "Lien copié",
+    "dialogTitle": "Partager la conversation",
+    "euBlocked": "Les conversations confidentielles 🇪🇺 ne peuvent pas être partagées publiquement — leurs données doivent rester sur ton appareil.",
+    "errorRateLimit": "Tu as atteint la limite de partages du jour (5). Réessaie demain.",
+    "errorTooLarge": "Cette conversation est trop longue pour être partagée.",
+    "errorEu": "Conversation EU : partage public non autorisé.",
+    "errorAuth": "Connecte-toi avec Google pour partager.",
+    "errorFailed": "Le partage a échoué. Réessaie dans un moment."
   }
 }
