@@ -287,6 +287,13 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
               >
                 {currentModel === 'auto' ? <PrismMark size={11} fill /> : <span>{modelOption.flag}</span>}
                 <span>{modelLabel(modelOption.id)}</span>
+                {/* En « Auto », l'icône 🔄 ne dit rien de la région : dès qu'un
+                    modèle a répondu, on affiche SON drapeau (🇪🇺/🇺🇸) = la vraie
+                    destination de la donnée, et il reste visible. Pour un modèle
+                    forcé, modelOption.flag le montre déjà (cf. MODEL_OPTIONS). */}
+                {currentModel === 'auto' && lastUsedModel && (
+                  <span title={t('chat.region.title')}>{getModelRegion(lastUsedModel).flag}</span>
+                )}
                 <svg width="10" height="10" viewBox="0 0 10 10" fill="none" className="ml-0.5 opacity-60">
                   <path d="M2.5 4L5 6.5L7.5 4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
                 </svg>
