@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import type { DriveFile } from '../../types/google'
 import { getDateLocale } from '../../utils/formatDate'
 
@@ -29,6 +30,7 @@ function formatDate(dateStr: string): string {
 }
 
 export function DriveFileCard({ file, onClick }: DriveFileCardProps) {
+  const { t } = useTranslation()
   return (
     <button
       onClick={onClick}
@@ -38,7 +40,7 @@ export function DriveFileCard({ file, onClick }: DriveFileCardProps) {
       <div className="min-w-0 flex-1">
         <p className="text-sm font-normal text-theme-ink truncate">{file.name}</p>
         <p className="text-xs text-theme-muted mt-0.5">
-          Modifié le {formatDate(file.modifiedTime)}
+          {t('driveFileCard.modifiedAt', { date: formatDate(file.modifiedTime) })}
         </p>
       </div>
       {file.webViewLink && (
@@ -49,7 +51,7 @@ export function DriveFileCard({ file, onClick }: DriveFileCardProps) {
           onClick={(e) => e.stopPropagation()}
           className="text-xs text-theme-accent hover:underline flex-shrink-0"
         >
-          Ouvrir
+          {t('driveFileCard.open')}
         </a>
       )}
     </button>

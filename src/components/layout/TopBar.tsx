@@ -220,7 +220,7 @@ export function TopBar({ onMenuToggle }: TopBarProps) {
           {proActive && (
             <span
               className="px-2 py-0.5 rounded-pill bg-theme-accent text-theme-bg font-sans text-[9px] font-semibold uppercase tracking-kicker"
-              title="Licence Pro activée"
+              title={t('topBar.proBadgeTitle')}
             >
               Pro
             </span>
@@ -238,8 +238,8 @@ export function TopBar({ onMenuToggle }: TopBarProps) {
           <button
             onClick={handleThemeToggle}
             className="p-2 rounded-lg hover:bg-theme-ink/5 transition-colors text-theme-ink"
-            aria-label={theme === 'nocturne' ? 'Mode jour (Ember)' : 'Mode nuit (Nocturne)'}
-            title={theme === 'nocturne' ? 'Mode jour (Ember)' : 'Mode nuit (Nocturne)'}
+            aria-label={theme === 'nocturne' ? t('topBar.themeDay') : t('topBar.themeNight')}
+            title={theme === 'nocturne' ? t('topBar.themeDay') : t('topBar.themeNight')}
           >
             <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
               <circle cx="10" cy="10" r="7.25" stroke="currentColor" strokeWidth="1.5" />
@@ -251,7 +251,7 @@ export function TopBar({ onMenuToggle }: TopBarProps) {
           <button
             onClick={() => setShowSettings(true)}
             className="p-2 rounded-lg hover:bg-theme-ink/5 transition-colors text-theme-ink"
-            aria-label="Paramètres"
+            aria-label={t('sidebar.settings')}
           >
             <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
               <circle cx="10" cy="10" r="2.5" stroke="currentColor" strokeWidth="1.5" />

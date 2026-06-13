@@ -6,28 +6,33 @@
 // Click → ouvre la page upgrade pour les free, no-op pour les payants.
 
 import { memo } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 import { usePlanStatus } from '../../hooks/usePlanStatus'
 
-const PLAN_LABEL: Record<string, string> = {
-  free: 'Gratuit',
-  subscription: 'Sub',
-  pro: 'Pro',
-  vip: 'VIP',
+// Clés i18n des labels de plan et des abréviations de bucket (P1.6).
+const PLAN_LABEL_KEY: Record<string, string> = {
+  free: 'chat.planBadge.labelFree',
+  subscription: 'chat.planBadge.labelSub',
+  pro: 'chat.planBadge.labelPro',
+  vip: 'chat.planBadge.labelVip',
 }
-
-const BUCKET_SHORT: Record<string, string> = {
-  'claude-sonnet': 'Sonnet',
-  'gpt-5': 'GPT-5',
-  'gemini-pro': 'G-Pro',
-  'gpt-image': 'Images',
+const BUCKET_KEY: Record<string, string> = {
+  'claude-sonnet': 'chat.planBadge.bucketSonnet',
+  'gpt-5': 'chat.planBadge.bucketGpt5',
+  'gemini-pro': 'chat.planBadge.bucketGeminiPro',
+  'gpt-image': 'chat.planBadge.bucketImages',
 }
 
 export const PlanBadge = memo(function PlanBadge() {
+  const { t } = useTranslation()
   const status = usePlanStatus()
   const navigate = useNavigate()
 
   if (status.loading) return null
+
+  const planLabel = (p: string) => t(PLAN_LABEL_KEY[p] ?? 'chat.planBadge.labelPro')
+  const bucketLabel = (b: string) => (BUCKET_KEY[b] ? t(BUCKET_KEY[b]!) : b)
 
   const isFree = status.plan === 'free'
   const isSub = status.plan === 'subscription'
@@ -37,7 +42,7 @@ export const PlanBadge = memo(function PlanBadge() {
   // le bucket le plus entamé (ratio restant le plus faible) — c'est celui
   // qui bloquera en premier. Le détail des 3 buckets vit dans le tooltip
   // et dans la section Quota du ChatOptionsSheet.
-  let subLabel = `${PLAN_LABEL.subscription} · ∞`
+  let subLabel = `${planLabel('subscription')} · ∞`
   let subTitle = ''
   let subExhausted = false
   if (isSub && status.monthlyCap) {
@@ -47,10 +52,10 @@ export const PlanBadge = memo(function PlanBadge() {
         cur[1].remaining / cur[1].limit < min[1].remaining / min[1].limit ? cur : min
       )
       const [bucket, c] = tightest
-      subLabel = `${BUCKET_SHORT[bucket] ?? bucket} ${c.remaining}/${c.limit}`
+      subLabel = `${bucketLabel(bucket)} ${c.remaining}/${c.limit}`
       subExhausted = c.remaining <= 0 && status.premiumPackRemaining <= 0
       subTitle = entries
-        .map(([b, e]) => `${BUCKET_SHORT[b] ?? b} : ${e.remaining}/${e.limit}`)
+        .map(([b, e]) => `${bucketLabel(b)} : ${e.remaining}/${e.limit}`)
         .join(' · ')
       if (status.premiumPackRemaining > 0) {
         subTitle += ` · Pack : ${status.premiumPackRemaining}`
@@ -59,10 +64,10 @@ export const PlanBadge = memo(function PlanBadge() {
   }
 
   const label = isFree
-    ? `${PLAN_LABEL.free} · ${haikuLeft}🤖`
+    ? `${planLabel('free')} · ${haikuLeft}🤖`
     : isSub
     ? subLabel
-    : `${PLAN_LABEL[status.plan] ?? 'Pro'} · ∞`
+    : `${planLabel(status.plan)} · ∞`
 
   const isAlmostExhausted = (isFree && haikuLeft <= 2) || subExhausted
 
@@ -81,10 +86,10 @@ export const PlanBadge = memo(function PlanBadge() {
       }`}
       title={
         isFree
-          ? `Plan gratuit · ${haikuLeft}/${status.dailyLimits?.['claude-haiku']} Haiku aujourd'hui. Click pour upgrader et débloquer Sonnet, Opus, Mistral, Gemini et GPT.`
+          ? t('chat.planBadge.titleFree', { haiku: haikuLeft, limit: status.dailyLimits?.['claude-haiku'] })
           : isSub && subTitle
-          ? `Messages premium restants ce mois — ${subTitle}`
-          : `Plan ${PLAN_LABEL[status.plan]} · accès illimité`
+          ? t('chat.planBadge.titleSub', { detail: subTitle })
+          : t('chat.planBadge.titlePro', { plan: planLabel(status.plan) })
       }
     >
       {label}

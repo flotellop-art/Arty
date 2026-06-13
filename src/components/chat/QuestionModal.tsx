@@ -69,7 +69,7 @@ export function QuestionModal({ questions, onComplete }: QuestionModalProps) {
           </span>
           <button
             onClick={() => onComplete(answers)}
-            aria-label="Fermer"
+            aria-label={t('common.close')}
             className="w-8 h-8 flex items-center justify-center text-theme-muted hover:text-theme-ink/80"
           >
             ✕

@@ -1,4 +1,5 @@
 import { memo, useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { ApiKeySetup } from './ApiKeySetup'
 import type { ApiKeys } from '../../hooks/useApiKeys'
 import * as scoped from '../../services/scopedStorage'
@@ -22,6 +23,7 @@ interface ApiKeysModalProps {
  * setActiveKeys(), puis fermeture.
  */
 export const ApiKeysModal = memo(function ApiKeysModal({ open, onClose }: ApiKeysModalProps) {
+  const { t } = useTranslation()
   const [initialKeys, setInitialKeys] = useState<ApiKeys | null>(null)
 
   useEffect(() => {
@@ -68,12 +70,12 @@ export const ApiKeysModal = memo(function ApiKeysModal({ open, onClose }: ApiKey
           style={{ paddingTop: 'max(1rem, env(safe-area-inset-top, 1rem))' }}
         >
           <span className="font-sans text-[10px] font-semibold uppercase tracking-kicker text-theme-muted">
-            Clés API
+            {t('apiKeysModal.kicker')}
           </span>
           <button
             onClick={onClose}
             className="p-1.5 rounded hover:bg-theme-ink/5 text-theme-ink"
-            aria-label="Fermer"
+            aria-label={t('common.close')}
           >
             <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
               <path d="M4 4L14 14M14 4L4 14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
@@ -85,10 +87,10 @@ export const ApiKeysModal = memo(function ApiKeysModal({ open, onClose }: ApiKey
 
         <div className="px-6 pt-6 pb-2">
           <h1 className="font-display font-medium text-[28px] leading-[1.05] -tracking-[0.02em] text-theme-ink">
-            Tes <span className="italic text-theme-accent">clés.</span>
+            {t('apiKeysModal.titleLead')}<span className="italic text-theme-accent">{t('apiKeysModal.titleAccent')}</span>
           </h1>
           <p className="font-display italic text-theme-muted text-sm mt-1">
-            Chiffrées en AES-256 et stockées uniquement sur ton appareil.
+            {t('apiKeysModal.subtitle')}
           </p>
         </div>
 

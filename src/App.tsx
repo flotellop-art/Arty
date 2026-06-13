@@ -52,9 +52,10 @@ const ComparatorScreen = lazy(() => import('./screens/compare').then((m) => ({ d
 // Fallback pendant le chargement des chunks lazy — petit splash neutre,
 // disparaît dès que le chunk arrive (<200ms en pratique sur 4G).
 function LazyFallback() {
+  const { t } = useTranslation()
   return (
     <div className="flex items-center justify-center h-full text-theme-muted text-sm">
-      Chargement…
+      {t('common.loading')}
     </div>
   )
 }
@@ -91,6 +92,7 @@ function AppContent({
   })
   const [shareError, setShareError] = useState<string | null>(null)
   const navigate = useNavigate()
+  const { t } = useTranslation()
 
   // Listen for profile updates so the Home hero refreshes without reload
   useEffect(() => {
@@ -189,7 +191,7 @@ function AppContent({
   const handleSharedContent = useCallback(
     (payload: SharePayload) => {
       if (payload.error === 'file_too_large') {
-        setShareError('Fichier trop volumineux (>10 MB), partage annulé.')
+        setShareError(t('app.shareError.fileTooLarge'))
         return
       }
       const draft = buildDraftFromShare(payload)
@@ -378,7 +380,7 @@ function AppContent({
           style={{ paddingTop: 'max(0.625rem, env(safe-area-inset-top, 0.625rem))' }}
         >
           <p className="font-display italic text-sm">
-            ⚠️ Budget IA dépassé — {formatCost(budgetAlert.spent)} / {formatCost(budgetAlert.limit)} ce mois-ci.
+            {t('app.budgetAlert.message', { spent: formatCost(budgetAlert.spent), limit: formatCost(budgetAlert.limit) })}
           </p>
           <div className="flex items-center gap-3 shrink-0">
             <button
@@ -388,12 +390,12 @@ function AppContent({
               }}
               className="font-display italic text-xs underline"
             >
-              Voir
+              {t('app.budgetAlert.view')}
             </button>
             <button
               onClick={() => setBudgetAlert(null)}
               className="font-display italic text-xs"
-              aria-label="Fermer l'alerte"
+              aria-label={t('app.budgetAlert.closeAria')}
             >
               ✕
             </button>

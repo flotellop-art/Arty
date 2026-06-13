@@ -195,7 +195,7 @@ export function OnboardingChoice({
                         {/* Divider */}
             <div className="mt-6 flex items-center gap-3">
               <div className="flex-1 h-px bg-theme-ink/15" />
-              <span className="font-display italic text-[12px] text-theme-muted">ou</span>
+              <span className="font-display italic text-[12px] text-theme-muted">{t('common.or')}</span>
               <div className="flex-1 h-px bg-theme-ink/15" />
             </div>
 
@@ -209,8 +209,8 @@ export function OnboardingChoice({
                     <path d="M4.5 7L6 8.5L9.5 5" stroke="rgb(var(--theme-bg))" strokeWidth="1.2" strokeLinecap="round"/>
                   </svg>
                 </div>
-                <p className="font-display text-[13px] font-medium text-theme-ink leading-tight">Abonnement</p>
-                <p className="font-display italic text-[11px] text-theme-muted leading-tight -mt-1.5">Pro, illimité</p>
+                <p className="font-display text-[13px] font-medium text-theme-ink leading-tight">{t('onboardingChoice.cards.subscription.title')}</p>
+                <p className="font-display italic text-[11px] text-theme-muted leading-tight -mt-1.5">{t('onboardingChoice.cards.subscription.subtitle')}</p>
               </button>
 
               <button type="button" onClick={() => setMode('byok')}
@@ -222,8 +222,8 @@ export function OnboardingChoice({
                     <circle cx="7" cy="8" r="1" fill="white"/>
                   </svg>
                 </div>
-                <p className="font-display text-[13px] font-medium text-theme-ink leading-tight">Clé API</p>
-                <p className="font-display italic text-[11px] text-theme-muted leading-tight -mt-1.5">Votre propre clé</p>
+                <p className="font-display text-[13px] font-medium text-theme-ink leading-tight">{t('onboardingChoice.cards.apiKey.title')}</p>
+                <p className="font-display italic text-[11px] text-theme-muted leading-tight -mt-1.5">{t('onboardingChoice.cards.apiKey.subtitle')}</p>
               </button>
             </div>
 <div className="mt-10 flex flex-col items-center gap-3">

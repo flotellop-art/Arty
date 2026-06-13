@@ -12,6 +12,7 @@
  */
 
 import { memo, useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   CATEGORY_LABELS,
   TEMPLATES,
@@ -40,6 +41,7 @@ const FILTERS: Array<{ value: FilterValue; label: string; icon?: string }> = [
 ]
 
 function TemplatesScreenInner({ onBack, onUpgrade, onUseTemplate, currentPlan }: TemplatesScreenProps) {
+  const { t } = useTranslation()
   const [filter, setFilter] = useState<FilterValue>('all')
   const [selected, setSelected] = useState<Template | null>(null)
 
@@ -76,7 +78,7 @@ function TemplatesScreenInner({ onBack, onUpgrade, onUseTemplate, currentPlan }:
         <button
           type="button"
           onClick={onBack}
-          aria-label="Retour"
+          aria-label={t('common.back')}
           className="p-2 -ml-2 rounded hover:bg-theme-ink/5 text-theme-ink"
         >
           <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
@@ -84,7 +86,7 @@ function TemplatesScreenInner({ onBack, onUpgrade, onUseTemplate, currentPlan }:
           </svg>
         </button>
         <span className="font-sans text-[10px] font-semibold uppercase tracking-kicker text-theme-muted">
-          Bibliothèque · Pro
+          {t('templates.headerKicker')}
         </span>
       </header>
 
@@ -92,10 +94,10 @@ function TemplatesScreenInner({ onBack, onUpgrade, onUseTemplate, currentPlan }:
         {/* Hero */}
         <div className="mb-5">
           <h1 className="font-display font-medium text-[32px] sm:text-[38px] leading-[1.05] -tracking-[0.02em] text-theme-ink">
-            Templates <span className="italic text-theme-accent">métier.</span>
+            {t('templates.heroMain')}<span className="italic text-theme-accent">{t('templates.heroAccent')}</span>
           </h1>
           <p className="font-display italic text-theme-muted text-base mt-2">
-            Des gabarits prêts à l'emploi pour démarrer une conversation en 10 secondes.
+            {t('templates.heroSubtitle')}
           </p>
         </div>
 
@@ -108,13 +110,13 @@ function TemplatesScreenInner({ onBack, onUpgrade, onUseTemplate, currentPlan }:
           >
             <div>
               <p className="font-sans text-[10px] font-semibold uppercase tracking-kicker text-theme-accent">
-                Feature Pro
+                {t('templates.proBannerEyebrow')}
               </p>
               <p className="font-display text-base text-theme-ink mt-1">
-                Débloque <span className="italic">Arty Pro</span> pour utiliser les templates.
+                {t('templates.proBannerTitleLead')}<span className="italic">{t('templates.proBannerTitleAccent')}</span>{t('templates.proBannerTitleTail')}
               </p>
               <p className="font-display italic text-xs text-theme-muted mt-0.5">
-                39 € à vie · 3 appareils · Tous les gabarits inclus.
+                {t('templates.proBannerSubtitle')}
               </p>
             </div>
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="text-theme-accent flex-shrink-0">
@@ -141,7 +143,7 @@ function TemplatesScreenInner({ onBack, onUpgrade, onUseTemplate, currentPlan }:
                   aria-pressed={active}
                 >
                   {f.icon && <span className="text-[13px] leading-none">{f.icon}</span>}
-                  <span>{f.label}</span>
+                  <span>{f.value === 'all' ? t('templates.filterAll') : f.label}</span>
                 </button>
               )
             })}
@@ -162,7 +164,7 @@ function TemplatesScreenInner({ onBack, onUpgrade, onUseTemplate, currentPlan }:
 
         {visibleTemplates.length === 0 && (
           <p className="text-center text-theme-muted text-sm py-12">
-            Aucun template dans cette catégorie.
+            {t('templates.emptyCategory')}
           </p>
         )}
       </div>
@@ -187,6 +189,7 @@ interface TemplateCardProps {
 }
 
 function TemplateCard({ template, locked, onClick }: TemplateCardProps) {
+  const { t } = useTranslation()
   const cat = CATEGORY_LABELS[template.category]
   return (
     <button
@@ -197,7 +200,7 @@ function TemplateCard({ template, locked, onClick }: TemplateCardProps) {
       <div className="flex items-center justify-between w-full mb-2">
         <span className="text-[22px] leading-none">{template.icon}</span>
         {locked && (
-          <span aria-label="Pro" title="Réservé aux comptes Pro" className="text-theme-muted">
+          <span aria-label="Pro" title={t('templates.lockedTitle')} className="text-theme-muted">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
               <rect x="4" y="11" width="16" height="9" rx="1.5" />
               <path d="M8 11V8a4 4 0 018 0v3" />
@@ -228,6 +231,7 @@ interface TemplateFormModalProps {
 }
 
 function TemplateFormModal({ template, onCancel, onSubmit }: TemplateFormModalProps) {
+  const { t } = useTranslation()
   const [values, setValues] = useState<Record<string, string>>(() =>
     Object.fromEntries(template.fields.map((f) => [f.key, '']))
   )
@@ -268,7 +272,7 @@ function TemplateFormModal({ template, onCancel, onSubmit }: TemplateFormModalPr
           <button
             onClick={onCancel}
             className="text-theme-muted hover:text-theme-ink rounded p-1 transition-colors"
-            aria-label="Fermer"
+            aria-label={t('common.close')}
           >
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
               <path d="M3 3L13 13M13 3L3 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
@@ -336,14 +340,14 @@ function TemplateFormModal({ template, onCancel, onSubmit }: TemplateFormModalPr
               type="submit"
               className="w-full py-3.5 font-display italic text-base font-medium tracking-[0.02em] bg-theme-ink text-theme-bg rounded-sm transition-opacity hover:opacity-90"
             >
-              Utiliser ce template →
+              {t('templates.modalSubmit')}
             </button>
             <button
               type="button"
               onClick={onCancel}
               className="w-full font-display italic text-[13px] text-theme-muted hover:text-theme-ink transition-colors text-center"
             >
-              Annuler
+              {t('common.cancel')}
             </button>
           </div>
         </form>
