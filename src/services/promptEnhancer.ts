@@ -20,10 +20,24 @@ const SYSTEM_PROMPT =
  * Reformulates a user prompt via a cheap model (Haiku or Mistral Medium).
  * Used by the ✨ button in InputBar. Returns the enhanced text on success,
  * throws with an i18n error message on failure.
+ *
+ * `euOnly` : dans une conversation verrouillée Europe, l'amélioration DOIT
+ * passer par Mistral (France) — jamais par Haiku (Claude, US). Sans ce garde,
+ * taper ✨ exfiltrait silencieusement le texte hors d'Europe avant même
+ * l'envoi à Mistral (fuite trouvée à l'audit du 13 juin 2026). Mistral marche
+ * même sans clé BYOK : le proxy retombe sur la clé serveur (utilisateurs
+ * whitelistés), comme le chat euOnly lui-même.
  */
-export async function enhancePrompt(text: string): Promise<string> {
+export async function enhancePrompt(
+  text: string,
+  opts?: { euOnly?: boolean }
+): Promise<string> {
   const trimmed = text.trim()
   if (!trimmed) return text
+
+  if (opts?.euOnly) {
+    return enhanceViaMistral(trimmed)
+  }
 
   const model = getEnhancerModel()
   if (model === 'mistral' && hasMistralKey()) {

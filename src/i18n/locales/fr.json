@@ -230,9 +230,14 @@
       "gemini": "Gemini est utilisé pour les recherches web en temps réel, les questions sur l'actualité et les requêtes Google Maps. Données traitées hors Europe.",
       "haiku": "Claude Haiku est utilisé pour les conversations rapides et courtes. Modèle gratuit (10/jour).",
       "opus": "Claude Opus est utilisé pour les analyses approfondies, les tâches complexes et les raisonnements multi-étapes. Modèle Pro.",
-      "claude": "Claude est utilisé par défaut : fichiers attachés, données privées (mes mails, mes fichiers), URLs à ouvrir, ou requêtes nécessitant des tools (Gmail, Drive, Calendar).",
+      "claude": "Claude est utilisé par défaut : fichiers attachés, données privées (mes mails, mes fichiers), URLs à ouvrir, ou requêtes nécessitant des tools (Gmail, Drive, Calendar). Données traitées aux États-Unis (Anthropic).",
       "openai": "GPT (OpenAI) est utilisé quand tu le sélectionnes manuellement. Données traitées hors Europe.",
       "fallback": "Modèle sélectionné automatiquement selon le contenu de ta requête."
+    },
+    "region": {
+      "eu": "France",
+      "us": "États-Unis",
+      "title": "Région où ce modèle traite ta demande"
     },
     "banners": {
       "gmailReading": "Lecture emails...",
@@ -633,7 +638,8 @@
       "euConv": "Conversations 🇪🇺 EU : Mistral (France) — texte et dictée vocale (Voxtral)",
       "usModels": "Claude, Gemini, GPT : États-Unis — traités à la demande, jamais stockés par Arty",
       "dictation": "Dictée vocale : Voxtral (France) par défaut — Whisper (US) seulement en secours ou sur ta clé OpenAI perso",
-      "search": "Recherche web : Linkup (France) en priorité"
+      "search": "Recherche web : Linkup (France) en priorité",
+      "serverLine": "Serveur de l'app : {{host}} — relais Cloudflare (UE) ; il ne stocke pas tes conversations et ne décide pas de la région du modèle (voir le chat)"
     },
     "factChecker": {
       "description": "Vérifie les claims factuels de chaque réponse",

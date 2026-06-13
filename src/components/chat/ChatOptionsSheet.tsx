@@ -7,7 +7,7 @@ import { MODEL_OPTIONS, type AIModel } from '../../services/modelSelector'
 import { STYLE_OPTIONS, type ResponseStyle } from '../../services/responseStyles'
 import { type ReflectionLevel } from '../../services/reflectionLevel'
 import { ReflectionControl } from './ReflectionControl'
-import { formatModelName, getModelExplanationKey } from '../../services/modelLabels'
+import { formatModelName, getModelExplanationKey, getModelRegion } from '../../services/modelLabels'
 import { usePlanStatus } from '../../hooks/usePlanStatus'
 
 // Sheet « ⋯ » de la conversation (PR B) — regroupe modèle / style / actions
@@ -156,6 +156,9 @@ export function ChatOptionsSheet({
               className="font-mono text-[9.5px] uppercase tracking-wider text-theme-muted hover:text-theme-ink transition-colors underline-offset-2 hover:underline"
             >
               {t('chat.topBar.lastCall', { model: formatModelName(lastUsedModel) })}
+              <span className="ml-1">
+                · {getModelRegion(lastUsedModel).flag} {t(getModelRegion(lastUsedModel).key)}
+              </span>
               {lastSearchProvider && (
                 <span className="ml-1 text-theme-accent normal-case">
                   · 🔍 {lastSearchProvider.charAt(0).toUpperCase() + lastSearchProvider.slice(1)}
