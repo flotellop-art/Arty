@@ -165,9 +165,25 @@ unique sous 20 $/mois). Pas par la largeur de catalogue. Volume = distribution
 - [ ] **P1.4 Modèle open-weights quasi gratuit** (DeepSeek V4-Flash ~0,28 $/M output, ou
   Llama) pour un « illimité sur les modèles standards » **honnête** — l'argument
   commercial du segment, sans le mensonge de Merlin.
-- [ ] **P1.5 Partage de conversation par lien public** (`tryarty.com/share/:id`) : répare la
-  feature cassée (data: URI incollable) ET crée le canal d'acquisition virale —
-  indispensable à la stratégie volume. RÈGLE 6 sur l'endpoint (lecture publique = surface).
+- [x] **P1.5 Partage de conversation par lien public** — FAIT (13 juin 2026).
+  (Constat : le data: URI cassé était DÉJÀ réparé le 10 juin ; P1.5 = création du
+  lien public permanent, inexistant.) Endpoint `POST /api/share` (auth Google,
+  euOnly REFUSÉ, taille ≤50 K chars, rate-limit 5/j via bg_quota, max 20 actifs/user,
+  TTL 30 j) ; `GET /api/share/:id` PUBLIC (sans auth, 404 indistinguable si
+  introuvable/expiré/révoqué, cache CDN 5 min) ; `DELETE` owner (soft delete, id
+  jamais réutilisé). Route React `/share/:id` montée HORS auth (bloc non-connecté
+  + bloc authentifié), vue légère `SharedConversationView` (réutilise
+  MarkdownRenderer) avec bandeau d'acquisition « Essayer Arty — gratuit ».
+  Sérialisation : texte uniquement — EXCLUT fichiers/base64, factCheck, pinned,
+  interrupted ; NEUTRALISE les réf. d'images locales `arty-img://`. **Privacy =
+  acte explicite** : modale bloquante (case à cocher non pré-cochée) + avertissement
+  RENFORCÉ si `hasGoogleData` (nouveau flag Conversation, posé au moment de l'appel
+  d'un tool Gmail/Drive/Calendar/Contacts — car le contenu Google est dans le TEXTE
+  des réponses, indétectable a posteriori). euOnly bloqué UI + serveur.
+  ⚠️ PAS de `public/_redirects` (réintroduirait BUG 40 — SPA fallback Cloudflare
+  automatique, comme /chat/:id). Suivis : OG/meta tags serveur pour de jolis
+  aperçus de lien (booste le viral) = follow-up ; lien « signaler » + renouvellement
+  d'expiration = v2.
 - [ ] **P1.6 i18n EN complète** : ~15 composants en FR hardcodé (liste exhaustive dans
   `docs/audits/frontend-audit-2026-06-10.md:135`). Préalable au volume hors France.
 - [ ] **P1.7 Crédits — visibilité du coût par message** (suite PR #238) : « ce message :
