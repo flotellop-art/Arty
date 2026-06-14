@@ -14,9 +14,19 @@ interface AssistantBubbleProps {
   interrupted?: boolean
   onRetry?: () => void
   factCheck?: FactCheckResult
+  /** Bulle live pendant le stream : masque les actions (copier une réponse
+      à mi-stream copie un fragment, TTS lirait un texte incomplet). */
+  isStreaming?: boolean
+  /** Dernière réponse assistant de la conversation : seule à exposer
+      « Régénérer » (pattern claude.ai/ChatGPT — P0.4 du plan d'action). */
+  isLast?: boolean
+  /** Créer une branche de la conversation depuis ce message. Dans la barre
+      d'actions — l'ancien bouton flottant top-right chevauchait le header
+      des blocs de code. */
+  onBranch?: () => void
 }
 
-export const AssistantBubble = memo(function AssistantBubble({ content, onAction, pinned, onTogglePin, interrupted, onRetry, factCheck }: AssistantBubbleProps) {
+export const AssistantBubble = memo(function AssistantBubble({ content, onAction, pinned, onTogglePin, interrupted, onRetry, factCheck, isStreaming, isLast, onBranch }: AssistantBubbleProps) {
   const { t } = useTranslation()
   const bubbleRef = useRef<HTMLDivElement>(null)
 
@@ -61,15 +71,26 @@ export const AssistantBubble = memo(function AssistantBubble({ content, onAction
       btn.style.pointerEvents = 'none'
     } else {
       btn.style.opacity = '0.6'
-      btn.textContent = '⏳ En cours...'
+      btn.textContent = t('chat.bubble.actionPending')
       setTimeout(() => {
         btn.style.opacity = '1'
-        btn.textContent = '✅ Fait !'
+        btn.textContent = t('chat.bubble.actionDone')
       }, 2000)
     }
 
     onAction(action, params)
-  }, [onAction])
+  }, [onAction, t])
+
+  // Audit UX — bouton "copier la réponse" (action la plus fréquente d'un chat
+  // IA, présente sur claude.ai/ChatGPT, absente ici jusqu'au 10 juin 2026).
+  const [copied, setCopied] = useState(false)
+  const handleCopy = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(content)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch { /* clipboard indisponible (permissions WebView) */ }
+  }, [content])
 
   return (
     <div className="group/bubble relative flex gap-2.5 mb-6">
@@ -100,20 +121,60 @@ export const AssistantBubble = memo(function AssistantBubble({ content, onAction
         )}
         {factCheck && <FactCheckBadge result={factCheck} />}
       </div>
-      {/* Actions bar : speak + pin. Speak permanent à 50% opacity sur mobile,
-          hover desktop (cohérent avec branche button PR 1). */}
+      {/* Actions bar : copier + speak + pin. Visible à 50% opacity sur mobile,
+          hover desktop (cohérent avec branche button PR 1) + focus-visible
+          pour la navigation clavier. */}
       <div className="absolute bottom-1 right-1 flex items-center gap-0.5">
-        {isTtsSupported() && content && (
+        {/* Régénérer proactif — distinct du bandeau `interrupted` (retry de
+            récupération) : ici c'est « j'aime pas la réponse, relance ».
+            Uniquement sur la dernière réponse, jamais pendant un stream. */}
+        {isLast && !isStreaming && !interrupted && onRetry && (
+          <button
+            onClick={onRetry}
+            className="opacity-50 md:opacity-0 md:group-hover/bubble:opacity-100 focus-visible:opacity-100 p-2 rounded-md text-theme-muted hover:text-theme-accent transition-all"
+            aria-label={t('chat.bubble.regenerate')}
+            title={t('chat.bubble.regenerate')}
+          >
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <path d="M13.5 8a5.5 5.5 0 11-1.61-3.89" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+              <path d="M13.5 1.5v3h-3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+        )}
+        {content && !isStreaming && (
+          <button
+            onClick={handleCopy}
+            className={`p-2 rounded-md transition-all ${
+              copied
+                ? 'text-theme-accent opacity-100'
+                : 'opacity-50 md:opacity-0 md:group-hover/bubble:opacity-100 focus-visible:opacity-100 text-theme-muted hover:text-theme-accent'
+            }`}
+            aria-label={copied ? t('chat.bubble.copied') : t('chat.bubble.copy')}
+            title={copied ? t('chat.bubble.copied') : t('chat.bubble.copy')}
+          >
+            {copied ? (
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <path d="M3 8.5L6.5 12L13 4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            ) : (
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <rect x="5.5" y="5.5" width="8" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.2" />
+                <path d="M10.5 5.5V4a1.5 1.5 0 00-1.5-1.5H4A1.5 1.5 0 002.5 4v5A1.5 1.5 0 004 10.5h1.5" stroke="currentColor" strokeWidth="1.2" />
+              </svg>
+            )}
+          </button>
+        )}
+        {isTtsSupported() && content && !isStreaming && (
           <button
             onClick={toggleSpeak}
             className={`p-2 rounded-md transition-all ${
               isSpeaking
                 ? 'text-theme-accent opacity-100'
-                : 'opacity-50 md:opacity-0 md:group-hover/bubble:opacity-100 text-theme-muted hover:text-theme-accent'
+                : 'opacity-50 md:opacity-0 md:group-hover/bubble:opacity-100 focus-visible:opacity-100 text-theme-muted hover:text-theme-accent'
             }`}
-            aria-label={isSpeaking ? 'Arrêter la lecture' : 'Lire à voix haute'}
+            aria-label={isSpeaking ? t('chat.bubble.stopListening') : t('chat.bubble.listen')}
             aria-pressed={isSpeaking}
-            title={isSpeaking ? 'Arrêter la lecture' : 'Lire à voix haute'}
+            title={isSpeaking ? t('chat.bubble.stopListening') : t('chat.bubble.listen')}
           >
             {isSpeaking ? (
               <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
@@ -128,16 +189,30 @@ export const AssistantBubble = memo(function AssistantBubble({ content, onAction
             )}
           </button>
         )}
+        {onBranch && !isStreaming && (
+          <button
+            onClick={onBranch}
+            className="opacity-50 md:opacity-0 md:group-hover/bubble:opacity-100 focus-visible:opacity-100 p-2 rounded-md text-theme-muted hover:text-theme-accent transition-all"
+            aria-label={t('chat.messageList.branch')}
+            title={t('chat.messageList.branch')}
+          >
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+              <path d="M3 2V8M3 8C3 9.1 3.9 10 5 10H8M11 12V6M11 6C11 4.9 10.1 4 9 4H8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+              <circle cx="3" cy="2" r="1.5" stroke="currentColor" strokeWidth="1.2" />
+              <circle cx="11" cy="12" r="1.5" stroke="currentColor" strokeWidth="1.2" />
+            </svg>
+          </button>
+        )}
         {onTogglePin && (
           <button
             onClick={onTogglePin}
             className={`p-2 rounded-md transition-all ${
               pinned
                 ? 'text-theme-accent opacity-80'
-                : 'opacity-0 group-hover/bubble:opacity-100 text-theme-muted hover:text-theme-accent'
+                : 'opacity-50 md:opacity-0 md:group-hover/bubble:opacity-100 focus-visible:opacity-100 text-theme-muted hover:text-theme-accent'
             }`}
-            aria-label={pinned ? 'Désépingler' : 'Épingler'}
-            title={pinned ? 'Désépingler' : 'Épingler ce message'}
+            aria-label={pinned ? t('chat.bubble.unpin') : t('chat.bubble.pin')}
+            title={pinned ? t('chat.bubble.unpin') : t('chat.bubble.pin')}
           >
             📌
           </button>

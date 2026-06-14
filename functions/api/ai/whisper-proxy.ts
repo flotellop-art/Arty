@@ -10,6 +10,11 @@ import { parseWhisperBody } from '../_lib/trackUsage'
 
 const WHISPER_URL = 'https://api.openai.com/v1/audio/transcriptions'
 
+// Borne anti-abus (audit V-1, partagée avec voxtral-proxy) : une dictée
+// légitime fait < 1 MB ; borne la bande passante et le coût par appel
+// (facturation à la minute) sur la clé serveur du owner.
+const MAX_BODY_BYTES = 10 * 1024 * 1024
+
 export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUntil }) => {
   // Anti-relais anonyme : un token Google valide est obligatoire (CRIT-4).
   const email = await verifyGoogleUser(request)
@@ -18,6 +23,13 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
       { error: 'Authentication required — please sign in with Google' },
       { status: 401 }
     )
+  }
+
+  // Taille bornée AVANT toute consommation de quota. Les navigateurs
+  // envoient toujours Content-Length avec un body FormData.
+  const bodyLen = Number(request.headers.get('content-length') || '0')
+  if (!bodyLen || bodyLen > MAX_BODY_BYTES) {
+    return Response.json({ error: 'Audio missing or too large' }, { status: 413 })
   }
 
   // BYOK prioritaire via header dédié (distinct de x-api-key utilisé par Anthropic).
@@ -77,6 +89,25 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     })
 
     const respBody = await upstream.text()
+
+    // Leak d'info (audit V-4, même classe que N-2) : sur la clé serveur, ne
+    // pas renvoyer l'erreur OpenAI brute (révèle l'état de la clé owner).
+    // EXCEPTION : le rejet de modèle doit rester détectable — le client
+    // (whisperClient.transcribeWithFallback) s'en sert pour retomber de
+    // gpt-4o-transcribe sur whisper-1. On renvoie un code stable qui matche
+    // sa regex, sans exposer le message OpenAI.
+    if (!upstream.ok && usingServerKey) {
+      console.error('[whisper] upstream error', upstream.status, respBody.slice(0, 300))
+      const modelRejected =
+        /model/i.test(respBody) && /not.?found|does.?not.?exist|unknown|invalid/i.test(respBody)
+      if (modelRejected) {
+        return Response.json(
+          { error: { message: 'model_not_supported', code: 'model_not_supported' } },
+          { status: 400 }
+        )
+      }
+      return Response.json({ error: 'Transcription failed' }, { status: 502 })
+    }
 
     // Tracking tokens réels : si on est sur la clé serveur et que OpenAI a
     // répondu OK, parse la durée depuis verbose_json (ajouté côté client)

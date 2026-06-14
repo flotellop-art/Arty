@@ -1,13 +1,21 @@
-import { useMemo, useState, useEffect, useRef } from 'react'
+import { memo, useMemo, useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { Conversation, Message } from '../../types'
 import { setLocale, SUPPORTED_LOCALES, type Locale } from '../../i18n'
+import { useMediaQuery } from '../../hooks/useMediaQuery'
+import { CostIndicator } from './CostIndicator'
+import { StreakBadge } from './StreakBadge'
+import { getTheme, toggleTheme, type Theme } from '../../services/themeService'
+import { homeV2Enabled } from '../../services/homeV2'
 import { SettingsModal } from '../settings/SettingsModal'
 import { ApiKeysModal } from '../settings/ApiKeysModal'
 import { TaskPanel } from '../tasks/TaskPanel'
 import { countPending } from '../../services/taskService'
 import { importConversationFromFile } from '../../services/conversationExport'
 import { cleanDisplayName } from '../../services/displayName'
+import { toast } from '../../services/toast'
+import { resolveTag } from '../../services/conversationTags'
+import { ConversationTagsModal } from './ConversationTagsModal'
 
 interface SidebarProps {
   isOpen: boolean
@@ -21,10 +29,22 @@ interface SidebarProps {
   onNew: () => void
   onNewEU?: () => void
   onDelete: (id: string) => void
+  onRename?: (id: string, title: string) => void
+  // P1.8 — pose les étiquettes d'une conversation (édition via la modale tags).
+  onSetTags?: (id: string, tags: string[]) => void
   userName?: string
   onLogout?: () => void
   onImportConversation?: (id: string) => void
   onOpenTemplates?: () => void
+  // PR D — navigation directe : Coûts / Comparateur étaient enfouis dans
+  // SettingsModal (2 niveaux + event). Même pattern que onOpenTemplates.
+  onOpenCosts?: () => void
+  onOpenCompare?: () => void
+  // PR D — l'ApiKeysModal remonte au niveau App (un seul propriétaire,
+  // ouvrable aussi depuis l'écran Upgrade via 'arty-open-api-keys').
+  // La rendre ICI la plaçait dans le containing block du drawer transformé
+  // (translate-x) → positionnement fixed cassé si ouverte drawer fermé.
+  onOpenApiKeys?: () => void
 }
 
 // Palette du Design C (Claude.ai handoff) — branchée sur les variables
@@ -102,7 +122,10 @@ function Avatar({ name, size = 28 }: { name: string; size?: number }) {
   )
 }
 
-export function Sidebar({
+// memo (audit perf H2) — sans ça, la Sidebar (liste complète + previewClean
+// recalculés) re-rendait à CHAQUE frame de streaming via AppContent. Les
+// props callbacks sont stabilisées côté App/useConversation.
+export const Sidebar = memo(function Sidebar({
   isOpen,
   onClose,
   conversations,
@@ -112,29 +135,83 @@ export function Sidebar({
   onNew,
   onNewEU,
   onDelete,
+  onRename,
+  onSetTags,
   userName,
   onLogout,
   onImportConversation,
   onOpenTemplates,
+  onOpenCosts,
+  onOpenCompare,
+  onOpenApiKeys,
 }: SidebarProps) {
   const { t, i18n } = useTranslation()
   const timeAgo = useTimeAgo()
   const [showSettings, setShowSettings] = useState(false)
+  // Fallback local si App ne fournit pas onOpenApiKeys (rétro-compat).
   const [showApiKeys, setShowApiKeys] = useState(false)
   const [showTasks, setShowTasks] = useState(false)
   const [searchRaw, setSearchRaw] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [pendingTasks, setPendingTasks] = useState(0)
+  // Suppression en 2 temps (audit UX) : 1er tap arme le bouton (rouge), 2e tap
+  // supprime. Désarmé après 3 s ou si on arme une autre conv. Évite la
+  // suppression irréversible à 1 clic sans introduire de modale.
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  // Renommage inline (audit UX — aucun moyen de renommer une conversation).
+  const [renamingId, setRenamingId] = useState<string | null>(null)
+  const [renameValue, setRenameValue] = useState('')
+  // P1.8 — id de la conversation dont on édite les étiquettes (ouvre la modale).
+  const [editingTagsId, setEditingTagsId] = useState<string | null>(null)
   const importInputRef = useRef<HTMLInputElement>(null)
   const drawerRef = useRef<HTMLElement>(null)
+  const searchInputRef = useRef<HTMLInputElement>(null)
+  // PR E — desktop ≥1024px : sidebar persistante (dans le flux, pas overlay).
+  // matchMedia (événement discret) → pas de re-render au resize continu.
+  const isPersistent = useMediaQuery('(min-width: 1024px)')
+  // PR G — coût/série/thème déplacés du header vers le pied (flag partagé
+  // avec TopBar pour ne pas dupliquer). État thème local pour l'icône.
+  const homeV2 = homeV2Enabled()
+  const [theme, setThemeState] = useState<Theme>(getTheme)
+
+  useEffect(() => {
+    if (!confirmDeleteId) return
+    const id = setTimeout(() => setConfirmDeleteId(null), 3000)
+    return () => clearTimeout(id)
+  }, [confirmDeleteId])
+
+  const commitRename = () => {
+    if (renamingId && renameValue.trim()) {
+      onRename?.(renamingId, renameValue)
+    }
+    setRenamingId(null)
+    setRenameValue('')
+  }
 
   // A11y : quand le drawer est fermé, `inert` retire tout le sous-arbre du
   // focus clavier ET de l'arbre d'accessibilité (subsume aria-hidden). Réglé
   // via ref car la prop JSX `inert` n'est typée qu'à partir de React 19.
   useEffect(() => {
     const el = drawerRef.current
-    if (el) el.inert = !isOpen
-  }, [isOpen])
+    // En mode persistant (desktop) la sidebar est toujours visible et
+    // interactive → jamais inerte, quel que soit isOpen.
+    if (el) el.inert = !isOpen && !isPersistent
+  }, [isOpen, isPersistent])
+
+  // ⌘K / Ctrl+K (desktop) → focus la recherche de conversations. Inactif en
+  // mobile (pas de persistant) pour ne pas voler le focus sur un clavier
+  // matériel branché à un téléphone.
+  useEffect(() => {
+    if (!isPersistent) return
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault()
+        searchInputRef.current?.focus()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [isPersistent])
 
   // Debounce search (300ms)
   useEffect(() => {
@@ -168,9 +245,12 @@ export function Sidebar({
     if (!q) return conversations
     return conversations.filter((c) => {
       if (c.title.toLowerCase().includes(q)) return true
+      // P1.8 — filtre par étiquette : on matche le LIBELLÉ résolu (un tag
+      // prédéfini est stocké par id 'work' mais cherché par « travail »/« work »).
+      if (c.tags?.some((tag) => resolveTag(tag, t).label.toLowerCase().includes(q))) return true
       return c.messages.some((m) => m.content.toLowerCase().includes(q))
     })
-  }, [conversations, debouncedSearch])
+  }, [conversations, debouncedSearch, t])
 
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -178,9 +258,10 @@ export function Sidebar({
     try {
       const id = await importConversationFromFile(file)
       onImportConversation?.(id)
+      toast(t('sidebar.importSuccess'), 'success')
       onClose()
     } catch (err) {
-      alert(err instanceof Error ? err.message : t('sidebar.importFailed'))
+      toast(err instanceof Error ? err.message : t('sidebar.importFailed'), 'error')
     }
     if (importInputRef.current) importInputRef.current.value = ''
   }
@@ -190,22 +271,25 @@ export function Sidebar({
 
   return (
     <>
-      {/* Backdrop */}
-      {isOpen && (
+      {/* Backdrop — overlay mobile uniquement. En persistant (desktop) la
+          sidebar est dans le flux : pas de scrim, sinon couche cliquable. */}
+      {isOpen && !isPersistent && (
         <div
           className="fixed inset-0 bg-theme-ink/40 z-40 transition-opacity"
           onClick={onClose}
         />
       )}
 
-      {/* Drawer — Design C */}
+      {/* Drawer — Design C. lg: la sidebar passe dans le flux (static), pleine
+          hauteur, sans ombre/scrim ni cap de largeur. < 1024px : overlay
+          strictement identique à avant (garde-fou absolu PR E). */}
       <aside
         ref={drawerRef}
         // Drawer fermé : `inert` (réglé via drawerRef ci-dessus) bloque le Tab
         // focus ET retire du lecteur d'écran. On garde aria-hidden en repli
         // pour les WebViews anciennes sans support `inert`.
-        aria-hidden={!isOpen}
-        className={`fixed top-0 left-0 h-full w-80 max-w-[85vw] bg-theme-surface text-theme-ink z-50 shadow-xl transform transition-transform duration-300 ease-in-out flex flex-col ${
+        aria-hidden={!isOpen && !isPersistent}
+        className={`fixed top-0 left-0 h-full w-80 max-w-[85vw] bg-theme-surface text-theme-ink z-50 shadow-xl transform transition-transform duration-300 ease-in-out flex flex-col lg:translate-x-0 lg:w-72 lg:max-w-none lg:shadow-none lg:border-r lg:border-theme-border ${
           isOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
         style={{ fontFamily: 'Inter, system-ui, sans-serif' }}
@@ -221,7 +305,7 @@ export function Sidebar({
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg text-theme-muted hover:text-theme-ink transition-colors"
+            className="p-1.5 rounded-lg text-theme-muted hover:text-theme-ink transition-colors lg:hidden"
             aria-label={t('common.close')}
           >
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round">
@@ -328,6 +412,39 @@ export function Sidebar({
           </div>
         )}
 
+        {/* PR D — navigation directe Coûts / Comparateur (étaient enfouis
+            sous Paramètres → SettingsModal → event). Même pattern Templates. */}
+        {(onOpenCosts || onOpenCompare) && (
+          <div className="px-4 pb-3 flex-shrink-0 flex gap-2">
+            {onOpenCosts && (
+              <button
+                onClick={() => {
+                  onOpenCosts()
+                  onClose()
+                }}
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-[10px] text-theme-muted hover:text-theme-ink hover:bg-theme-ink/5 text-[12.5px] font-medium transition-colors"
+                style={{ border: `1px solid ${DESIGN.borderMid}` }}
+              >
+                <span aria-hidden="true">💸</span>
+                <span>{t('settings.costs.title')}</span>
+              </button>
+            )}
+            {onOpenCompare && (
+              <button
+                onClick={() => {
+                  onOpenCompare()
+                  onClose()
+                }}
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-[10px] text-theme-muted hover:text-theme-ink hover:bg-theme-ink/5 text-[12.5px] font-medium transition-colors"
+                style={{ border: `1px solid ${DESIGN.borderMid}` }}
+              >
+                <span aria-hidden="true">⚖️</span>
+                <span>{t('compare.settingsEntry')}</span>
+              </button>
+            )}
+          </div>
+        )}
+
         {/* Search */}
         <div className="px-4 pb-3 flex-shrink-0">
           <div
@@ -338,11 +455,16 @@ export function Sidebar({
               <path d="M21 21l-4.35-4.35M17 11A6 6 0 115 11a6 6 0 0112 0z" />
             </svg>
             <input
+              ref={searchInputRef}
               value={searchRaw}
               onChange={(e) => setSearchRaw(e.target.value)}
               placeholder={t('sidebar.searchPlaceholder', { defaultValue: 'Rechercher...' })}
               className="flex-1 bg-transparent border-0 outline-none text-theme-ink text-xs placeholder:text-theme-muted"
             />
+            {/* Indice ⌘K — desktop uniquement. */}
+            {!searchRaw && isPersistent && (
+              <span className="text-[10px] font-mono text-theme-muted/70 select-none">⌘K</span>
+            )}
             {searchRaw && (
               <button
                 onClick={() => setSearchRaw('')}
@@ -433,25 +555,59 @@ export function Sidebar({
                     border: isStreaming || isActive ? 'none' : `1.5px solid ${DESIGN.borderMid}`,
                     boxShadow: isStreaming ? '0 0 8px rgb(var(--theme-accent) / 0.6)' : undefined,
                   }}
-                  title={isStreaming ? 'Réflexion en cours' : undefined}
+                  title={isStreaming ? t('sidebar.streamingTitle') : undefined}
                 />
                 <div className="flex-1 min-w-0">
-                  {/* Ligne 1 — titre + timestamp */}
+                  {/* Ligne 1 — titre (ou input de renommage) + timestamp */}
                   <div className="flex items-baseline justify-between gap-2">
-                    <span
-                      className={`text-[13px] truncate transition-colors ${isActive ? 'text-theme-ink font-medium' : 'text-theme-ink/80'}`}
-                    >
-                      {highlight(conv.title, debouncedSearch)}
-                    </span>
+                    {renamingId === conv.id ? (
+                      <input
+                        value={renameValue}
+                        onChange={(e) => setRenameValue(e.target.value)}
+                        onClick={(e) => e.stopPropagation()}
+                        onBlur={commitRename}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') { e.preventDefault(); commitRename() }
+                          if (e.key === 'Escape') { e.preventDefault(); setRenamingId(null); setRenameValue('') }
+                        }}
+                        autoFocus
+                        aria-label={t('sidebar.renameAria')}
+                        className="flex-1 min-w-0 bg-transparent border-b border-theme-accent text-[13px] text-theme-ink outline-none"
+                      />
+                    ) : (
+                      <span
+                        className={`text-[13px] truncate transition-colors ${isActive ? 'text-theme-ink font-medium' : 'text-theme-ink/80'}`}
+                      >
+                        {highlight(conv.title, debouncedSearch)}
+                      </span>
+                    )}
                     <span className="text-theme-muted text-[10px] flex-shrink-0">
                       {timeAgo(conv.updatedAt)}
                     </span>
                   </div>
                   {/* Ligne 2 — aperçu + badges contextuels */}
-                  {(previewClean || conv.euOnly || dominantModel) && (
+                  {(previewClean || conv.euOnly || dominantModel || conv.tags?.length) && (
                     <div className="flex items-center gap-1.5 mt-0.5">
                       {conv.euOnly && (
                         <span className="text-[9px] flex-shrink-0" title={t('sidebar.euTooltip')}>🇪🇺</span>
+                      )}
+                      {/* P1.8 — chips d'étiquettes (pastille colorée + libellé), max 2
+                          affichés pour ne pas charger la ligne ; le reste en « +N ». */}
+                      {conv.tags?.slice(0, 2).map((tag) => {
+                        const r = resolveTag(tag, t)
+                        return (
+                          <span
+                            key={tag}
+                            className="flex items-center gap-0.5 flex-shrink-0 text-[9px] text-theme-muted max-w-[80px]"
+                            title={r.label}
+                          >
+                            <span aria-hidden style={{ color: r.color }}>●</span>
+                            <span className="truncate">{r.label}</span>
+                          </span>
+                        )
+                      })}
+                      {conv.tags && conv.tags.length > 2 && (
+                        <span className="text-[9px] text-theme-muted/70 flex-shrink-0">+{conv.tags.length - 2}</span>
                       )}
                       {previewClean && (
                         <span className="text-[11px] text-theme-muted italic truncate">
@@ -466,13 +622,59 @@ export function Sidebar({
                     </div>
                   )}
                 </div>
+                {/* Audit UX — `opacity-0 group-hover` rendait ces actions
+                    INVISIBLES sur tactile (pas de hover) : impossible de
+                    supprimer une conv sur mobile. Pattern validé ailleurs :
+                    50% permanent mobile, hover desktop, focus-visible clavier. */}
+                {onSetTags && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setEditingTagsId(conv.id)
+                    }}
+                    className="opacity-50 md:opacity-0 md:group-hover:opacity-100 focus-visible:opacity-100 p-2 rounded hover:bg-theme-ink/5 transition-all text-theme-muted hover:text-theme-ink flex-shrink-0 mt-1"
+                    aria-label={t('sidebar.tagsAria')}
+                    title={t('sidebar.tagsAria')}
+                  >
+                    <svg width="12" height="12" viewBox="0 0 14 14" fill="none">
+                      <path d="M2 2.5h4.5L12 8l-4.5 4.5L2 7V2.5Z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
+                      <circle cx="4.5" cy="5" r="0.9" fill="currentColor" />
+                    </svg>
+                  </button>
+                )}
+                {onRename && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setRenamingId(conv.id)
+                      setRenameValue(conv.title)
+                    }}
+                    className="opacity-50 md:opacity-0 md:group-hover:opacity-100 focus-visible:opacity-100 p-2 rounded hover:bg-theme-ink/5 transition-all text-theme-muted hover:text-theme-ink flex-shrink-0 mt-1"
+                    aria-label={t('sidebar.renameAria')}
+                    title={t('sidebar.renameAria')}
+                  >
+                    <svg width="12" height="12" viewBox="0 0 14 14" fill="none">
+                      <path d="M9.5 2.5L11.5 4.5L5 11H3V9L9.5 2.5Z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
+                    </svg>
+                  </button>
+                )}
                 <button
                   onClick={(e) => {
                     e.stopPropagation()
-                    onDelete(conv.id)
+                    if (confirmDeleteId === conv.id) {
+                      setConfirmDeleteId(null)
+                      onDelete(conv.id)
+                    } else {
+                      setConfirmDeleteId(conv.id)
+                    }
                   }}
-                  className="opacity-0 group-hover:opacity-100 p-2 rounded hover:bg-theme-accent/10 transition-all text-theme-accent flex-shrink-0 mt-1"
-                  aria-label={t('sidebar.deleteAria')}
+                  className={`p-2 rounded transition-all flex-shrink-0 mt-1 focus-visible:opacity-100 ${
+                    confirmDeleteId === conv.id
+                      ? 'opacity-100 bg-red-500/15 text-red-500 hover:bg-red-500/25'
+                      : 'opacity-50 md:opacity-0 md:group-hover:opacity-100 hover:bg-theme-accent/10 text-theme-accent'
+                  }`}
+                  aria-label={confirmDeleteId === conv.id ? t('sidebar.confirmDelete') : t('sidebar.deleteAria')}
+                  title={confirmDeleteId === conv.id ? t('sidebar.confirmDelete') : t('sidebar.deleteAria')}
                 >
                   <svg width="12" height="12" viewBox="0 0 14 14" fill="none">
                     <path d="M2 4H12L11 13H3L2 4Z" stroke="currentColor" strokeWidth="1.2" />
@@ -487,8 +689,11 @@ export function Sidebar({
 
         {/* Footer */}
         <div className="flex-shrink-0" style={{ borderTop: `1px solid ${DESIGN.borderWeak}` }}>
-          {/* Langue */}
-          <div className="px-[18px] py-1.5 flex items-center justify-start">
+          {/* PR G — utilitaires déplacés du header accueil : coût (live) +
+              série + bascule thème. Flag partagé avec TopBar (homeV2) pour
+              éviter le doublon. CostIndicator/StreakBadge rendent null si
+              non pertinents → la rangée reste propre (langue à gauche). */}
+          <div className="px-[18px] py-1.5 flex items-center justify-between gap-2">
             <div className="flex gap-1.5 items-center">
               {SUPPORTED_LOCALES.map((loc) => (
                 <button
@@ -502,6 +707,23 @@ export function Sidebar({
                 </button>
               ))}
             </div>
+            {homeV2 && (
+              <div className="flex items-center gap-1">
+                <CostIndicator />
+                <StreakBadge />
+                <button
+                  onClick={() => setThemeState(toggleTheme())}
+                  className="p-1.5 rounded-lg hover:bg-theme-ink/5 transition-colors text-theme-ink"
+                  aria-label={theme === 'nocturne' ? t('topBar.themeDay') : t('topBar.themeNight')}
+                  title={theme === 'nocturne' ? t('topBar.themeDay') : t('topBar.themeNight')}
+                >
+                  <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                    <circle cx="10" cy="10" r="7.25" stroke="currentColor" strokeWidth="1.5" />
+                    <path d="M10 2.75A7.25 7.25 0 0 1 10 17.25Z" fill="currentColor" />
+                  </svg>
+                </button>
+              </div>
+            )}
           </div>
 
           {/* 2 boutons agrandis : Clés API + Paramètres */}
@@ -510,7 +732,7 @@ export function Sidebar({
             style={{ borderTop: `1px solid ${DESIGN.borderWeak}` }}
           >
             <button
-              onClick={() => setShowApiKeys(true)}
+              onClick={() => (onOpenApiKeys ? onOpenApiKeys() : setShowApiKeys(true))}
               className="flex-1 flex items-center justify-center gap-2 py-2 rounded-[10px] text-theme-muted hover:text-theme-ink hover:bg-theme-ink/5 text-xs font-medium transition-colors"
               style={{ border: `1px solid ${DESIGN.borderMid}` }}
             >
@@ -556,8 +778,22 @@ export function Sidebar({
       </aside>
 
       <SettingsModal open={showSettings} onClose={() => setShowSettings(false)} />
-      <ApiKeysModal open={showApiKeys} onClose={() => setShowApiKeys(false)} />
+      {/* Fallback uniquement quand App ne possède pas la modale (onOpenApiKeys
+          absent) — sinon double instance (audit PR D, R6). */}
+      {!onOpenApiKeys && <ApiKeysModal open={showApiKeys} onClose={() => setShowApiKeys(false)} />}
       {showTasks && <TaskPanel onClose={() => setShowTasks(false)} />}
+      {/* P1.8 — modale d'édition des étiquettes de la conversation choisie. */}
+      {editingTagsId && onSetTags && (() => {
+        const conv = conversations.find((c) => c.id === editingTagsId)
+        if (!conv) return null
+        return (
+          <ConversationTagsModal
+            tags={conv.tags ?? []}
+            onSave={(tags) => { onSetTags(editingTagsId, tags); setEditingTagsId(null) }}
+            onClose={() => setEditingTagsId(null)}
+          />
+        )
+      })()}
     </>
   )
-}
+})

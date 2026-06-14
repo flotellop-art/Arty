@@ -4,8 +4,10 @@ import { compressIfNeeded } from './conversationCompressor'
 import { getAnthropicKey } from './activeApiKey'
 import { apiUrl } from './apiBase'
 import { getValidAccessToken } from './googleAuth'
-import { needsThinking, selectClaudeSubModel, PRIVATE_DATA_TRIGGERS, shouldUseWebSearch, type ThinkingConfig, type ClaudeSubModel } from './aiRouter'
+import { resolveClaudeThinking, selectClaudeSubModel, PRIVATE_DATA_TRIGGERS, shouldUseWebSearch, type ClaudeThinkingDirective, type ClaudeSubModel } from './aiRouter'
 import { isProActivated } from './proLicense'
+import { dispatchModelUsed } from './modelLabels'
+import type { ReflectionLevel } from './reflectionLevel'
 import { buildLocationContext } from './locationContext'
 import { recordUsage } from './costTracker'
 import { updateTrialFromResponse } from './trialClient'
@@ -92,6 +94,12 @@ interface StreamOptions {
   // pour ne pas consommer le quota premium Sonnet). Désactive aussi le
   // thinking auto : un appel à modèle imposé contrôle son propre coût.
   model?: ClaudeSubModel
+  // Niveau de réflexion choisi par l'utilisateur (réglage global). Passé
+  // UNIQUEMENT par les vrais appels de chat (useConversation) — jamais par le
+  // comparateur / brief / résumé, qui imposent `model` et gardent leur coût
+  // sous contrôle. Absent ⇒ 'auto' (heuristique par message, comportement
+  // historique). Sans effet si le modèle résolu est Haiku (effort non supporté).
+  reflectionLevel?: ReflectionLevel
 }
 
 // ── Public API ───────────────────────────────────────────────────────────────
@@ -174,12 +182,13 @@ function formatApiError(status: number, body: string): string {
 async function fetchWithRetry(
   requestBody: string,
   apiKey: string | null,
-  controller: AbortController,
-  thinkingEnabled: boolean
+  controller: AbortController
 ): Promise<Response> {
   const maxRetries = 3
+  // `interleaved-thinking-2025-05-14` retiré : obsolète avec le thinking
+  // adaptatif (GA sur Opus 4.8/4.7 et Sonnet 4.6). Le header n'est plus requis,
+  // et BUG 18 interdit d'envoyer un header beta inutile.
   const betaHeaders = ['pdfs-2024-09-25', 'prompt-caching-2024-07-31']
-  if (thinkingEnabled) betaHeaders.push('interleaved-thinking-2025-05-14')
   const headers: Record<string, string> = {
     'content-type': 'application/json',
     'anthropic-version': '2023-06-01',
@@ -205,6 +214,16 @@ async function fetchWithRetry(
     const isRetryable = response.status === 429 || response.status === 529 || response.status >= 500
     if (response.ok || !isRetryable || attempt === maxRetries) break
 
+    // P0.7 — le 429 `premium_cap_reached` est DÉFINITIF jusqu'au mois
+    // prochain : retenter 3 fois (24 s de backoff) ne sert à rien et fige
+    // l'UI. On le distingue du 429 rate-limit transient en lisant le body.
+    if (response.status === 429) {
+      const peek = await response.clone().text().catch(() => '')
+      try {
+        if ((JSON.parse(peek) as { error?: string })?.error === 'premium_cap_reached') break
+      } catch { /* body non-JSON → rate limit upstream, retry normal */ }
+    }
+
     // Exponential backoff: 2s, 4s, 8s
     await new Promise((resolve) => setTimeout(resolve, Math.pow(2, attempt + 1) * 1000))
   }
@@ -214,7 +233,16 @@ async function fetchWithRetry(
 
   if (!response!.ok) {
     const body = await response!.text().catch(() => '')
-    throw new Error(formatApiError(response!.status, body))
+    const error = new Error(formatApiError(response!.status, body))
+    // Cap premium : attache bucket/cap pour que la modale de choix (P0.7)
+    // affiche « 150/150 Sonnet utilisés » avec précision.
+    try {
+      const parsed = JSON.parse(body) as { error?: string; bucket?: string; cap?: number }
+      if (parsed?.error === 'premium_cap_reached') {
+        Object.assign(error, { capBucket: parsed.bucket, capLimit: parsed.cap })
+      }
+    } catch { /* body non-JSON */ }
+    throw error
   }
 
   return response!
@@ -432,6 +460,34 @@ function assertContentBlocksValid(blocks: ContentBlock[]): void {
 
 // ── Tool execution ────────────────────────────────────────────────────────────
 
+// P0.9 — bornes économiques de la boucle d'outils. Les tool_results (texte +
+// base64 des documents) s'accumulent dans apiMessages et sont RENVOYÉS à
+// l'API à chaque itération de la boucle (jusqu'à 30) : sans budget, un seul
+// message peut coûter plusieurs dollars (leçon T3 Chat).
+// - MAX_TOOL_FILE_BASE64_CHARS : ~8 MB binaire (défense en profondeur — les
+//   proxys Gmail/Drive cappent déjà à 8 MB côté serveur).
+// - TOOL_CONTEXT_BUDGET_CHARS : ~150 K tokens de tool_results cumulés par
+//   message. Au-delà, on n'exécute plus les tools : le modèle est invité à
+//   synthétiser avec ce qu'il a déjà lu (transparent, jamais silencieux).
+const MAX_TOOL_FILE_BASE64_CHARS = 11_000_000
+const TOOL_CONTEXT_BUDGET_CHARS = 600_000
+
+function toolResultSize(results: ToolResultBlock[]): number {
+  let total = 0
+  for (const r of results) {
+    if (typeof r.content === 'string') {
+      total += r.content.length
+    } else if (Array.isArray(r.content)) {
+      for (const block of r.content as Array<Record<string, unknown>>) {
+        if (typeof block.text === 'string') total += block.text.length
+        const source = block.source as { data?: string } | undefined
+        if (typeof source?.data === 'string') total += source.data.length
+      }
+    }
+  }
+  return total
+}
+
 async function executeToolCalls(
   contentBlocks: ContentBlock[],
   onToolCall: ToolHandler
@@ -444,6 +500,18 @@ async function executeToolCalls(
     const toolResult = await onToolCall(block.name, block.input)
 
     if (toolResult.fileData) {
+      // P0.9 — garde taille : un document trop gros ferait exploser le coût
+      // de chaque itération suivante (1 char base64 ≈ 1/3 token). Résultat
+      // explicite pour que le modèle s'adapte (page précise, extrait…).
+      if (toolResult.fileData.base64.length > MAX_TOOL_FILE_BASE64_CHARS) {
+        const sizeMb = Math.round((toolResult.fileData.base64.length * 0.75) / 1024 / 1024)
+        toolResults.push({
+          type: 'tool_result',
+          tool_use_id: block.id,
+          content: `Fichier trop volumineux pour être injecté dans la conversation (~${sizeMb} MB, max 8 MB). Demande à l'utilisateur un extrait, une version allégée ou une page précise.`,
+        })
+        continue
+      }
       // Tool returned a file — send it as a native document/image block
       const fileBlocks: Array<Record<string, unknown>> = [{ type: 'text', text: toolResult.result }]
       const mime = toolResult.fileData.mimeType
@@ -538,19 +606,36 @@ async function runWithTools(
     const apiMessages: ApiMessage[] = compressed as ApiMessage[]
 
     const lastUserText = findLastUserText(originalMessages)
-    // Modèle imposé (brief proactif, etc.) → on coupe le thinking auto pour
-    // garder l'appel court et bon marché.
-    const thinking: ThinkingConfig = options?.model ? { enabled: false, budget: 0 } : needsThinking(lastUserText)
     const isPrivateData = PRIVATE_DATA_TRIGGERS.some((r) => r.test(lastUserText))
     const isPro = isProActivated()
+    // Réflexion (thinking étendu) :
+    //  - Appel à modèle imposé (brief proactif, comparateur, résumé) → coupée :
+    //    ces appels contrôlent leur propre coût et ne doivent JAMAIS hériter du
+    //    réglage global de l'utilisateur (sinon le comparateur comparerait un
+    //    Claude « dopé » au lieu du comportement par défaut).
+    //  - Chat réel → niveau passé explicitement via options.reflectionLevel
+    //    (depuis useConversation). Absent ⇒ 'auto' = heuristique par message.
+    const thinking: ClaudeThinkingDirective = options?.model
+      ? { enabled: false, budget: 0, effort: null }
+      : resolveClaudeThinking(lastUserText, options?.reflectionLevel ?? 'auto', isPro)
     const ANTHROPIC_MODEL = options?.model || selectClaudeSubModel(lastUserText, thinking, isPrivateData, isPro)
-    // Notifie l'UI du modèle exact appelé pour qu'elle puisse l'afficher
-    // sous le sélecteur (ChatTopBar > ModelDescriptor).
-    try { window.dispatchEvent(new CustomEvent('arty-model-used', { detail: { model: ANTHROPIC_MODEL, provider: 'claude' } })) } catch {}
+    // Garde-fou Haiku : effort/adaptive thinking renvoient 400 sur Haiku 4.5.
+    // selectClaudeSubModel ne renvoie Haiku QUE si thinking.enabled est false
+    // (message trivial) OU si le plan est free (verrouillé Haiku). Dans le 1er
+    // cas effort est déjà null ; le garde couvre le seul cas résiduel (un user
+    // free qui a réglé « Approfondi/Max ») → réflexion ignorée silencieusement.
+    const isHaiku = ANTHROPIC_MODEL.includes('haiku')
+    const effortActive = thinking.enabled && !isHaiku
+    const effort = effortActive ? thinking.effort : null
+    // Notifie l'UI du modèle exact appelé (ChatTopBar) + si la réflexion est
+    // active (StreamingIndicator affiche « réflexion approfondie »).
+    dispatchModelUsed({ model: ANTHROPIC_MODEL, provider: 'claude', reflecting: effortActive })
     const locationContext = await buildLocationContext(lastUserText)
 
     const baseSystemText = options?.systemPrompt || SYSTEM_PROMPT
-    const withThinking = thinking.enabled ? baseSystemText + ANTI_HALLU_PROMPT : baseSystemText
+    // ANTI_HALLU parle de « ta longue chaîne de pensée » → ne l'ajouter que
+    // quand la réflexion est réellement active (pas sur Haiku, où effort est off).
+    const withThinking = effortActive ? baseSystemText + ANTI_HALLU_PROMPT : baseSystemText
     // Force web_search sur toute requête non-privée et non-triviale (règle
     // user du 10 mai 2026). Les requêtes "mes mails / mon Drive / agenda"
     // sont exclues car les tools natifs Gmail/Drive/Calendar récupèrent les
@@ -573,17 +658,22 @@ async function runWithTools(
     // des dizaines de $ silencieusement. 30 reste large pour des chaînes de
     // tool calls complexes (read_email → analyze → search → write_doc).
     let maxIterations = 30
+    // P0.9 — cumul des chars de tool_results de CE message (texte + base64).
+    let toolContextChars = 0
     while (maxIterations-- > 0) {
       // Haiku max output = 64000 tokens (API limit). Cap unconditionally.
-      const maxTokens = ANTHROPIC_MODEL.includes('haiku') ? 64000 : 65536
+      const maxTokens = isHaiku ? 64000 : 65536
       // Cache de l'historique : (re)pose le marqueur sur le dernier bloc à
       // CHAQUE itération (cf. lookback 20 blocs dans markLastBlockForCaching).
       markLastBlockForCaching(apiMessages)
       const requestBody = JSON.stringify({
         model: ANTHROPIC_MODEL,
         max_tokens: maxTokens,
-        // Anthropic requires temperature=1 when extended thinking is enabled
-        temperature: thinking.enabled ? 1 : 0.7,
+        // temperature/top_p/top_k ont été RETIRÉS de l'API de réflexion
+        // moderne : les envoyer à Opus 4.8/4.7 (et Sonnet 4.6) renvoie 400.
+        // On ne les garde que pour Haiku, qui n'a pas de réflexion et accepte
+        // encore le sampling (modèle du plan free — comportement inchangé).
+        ...(isHaiku && { temperature: 0.7 }),
         stream: true,
         system: systemBlocks,
         // N'inclus le champ `tools` que s'il est non-vide. La doc Anthropic
@@ -594,12 +684,15 @@ async function runWithTools(
         // Cas d'usage légitime de tools=[] : le comparateur de modèles.
         ...(cachedTools.length > 0 && { tools: cachedTools }),
         messages: apiMessages,
-        ...(thinking.enabled && {
-          thinking: { type: 'enabled', budget_tokens: thinking.budget },
-        }),
+        // Réflexion moderne : thinking adaptatif + niveau d'effort. Remplace
+        // l'ancien thinking:{type:'enabled', budget_tokens} (déprécié → 400 sur
+        // Opus 4.8/4.7). Jamais sur Haiku (effort non supporté → 400, garde
+        // effortActive). budget_tokens n'est plus envoyé du tout.
+        ...(effortActive && { thinking: { type: 'adaptive' } }),
+        ...(effort && { output_config: { effort } }),
       })
 
-      const response = await fetchWithRetry(requestBody, apiKey, controller, thinking.enabled)
+      const response = await fetchWithRetry(requestBody, apiKey, controller)
       const { contentBlocks, inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens } = await parseSSEStream(response, onToken)
 
       // Track cost. Anthropic facture les "cache_creation_input_tokens" comme
@@ -640,7 +733,25 @@ async function runWithTools(
       // data redacted_thinking non vide). Si non, on abort la boucle proprement.
       assertContentBlocksValid(contentBlocks)
 
-      const toolResults = await executeToolCalls(contentBlocks, options.onToolCall)
+      // P0.9 — budget de contexte par message. Une fois le budget consommé,
+      // on n'exécute PLUS les tools : chaque tool_use reçoit un résultat
+      // explicite demandant la synthèse. Le modèle conclut au lieu de
+      // continuer à accumuler (et l'utilisateur n'est jamais bloqué en
+      // silence — cohérent P0.7).
+      let toolResults: ToolResultBlock[]
+      if (toolContextChars >= TOOL_CONTEXT_BUDGET_CHARS) {
+        toolResults = contentBlocks
+          .filter((b): b is ToolUseBlock => b.type === 'tool_use')
+          .map((b) => ({
+            type: 'tool_result' as const,
+            tool_use_id: b.id,
+            content:
+              'Budget de contexte de ce message atteint — n\'appelle plus d\'outils. Synthétise ta réponse avec les données déjà lues, et propose à l\'utilisateur de continuer dans un message suivant si besoin.',
+          }))
+      } else {
+        toolResults = await executeToolCalls(contentBlocks, options.onToolCall)
+        toolContextChars += toolResultSize(toolResults)
+      }
       apiMessages.push({ role: 'assistant', content: contentBlocks })
       apiMessages.push({ role: 'user', content: toolResults })
     }

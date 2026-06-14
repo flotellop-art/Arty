@@ -1,6 +1,7 @@
 import { getGeminiKey, getMistralKey, getOpenAIKey } from './activeApiKey'
-import { getSelectedModel, getSelectedLevel, detectOpenAIIntent } from './modelSelector'
+import { getSelectedModel, detectOpenAIIntent } from './modelSelector'
 import { creditsCoverPremium } from './walletClient'
+import type { ReflectionLevel } from './reflectionLevel'
 
 // AI Router — decides which model to use based on the query.
 // Routage en mode auto: Gemini par défaut (google_search activé, gratuit)
@@ -168,6 +169,32 @@ export function extractPdfUrls(message: string): string[] {
   return [...new Set(out)]
 }
 
+// Lot C (audit Mistral, juin 2026) — toutes les URLs http(s) lisibles d'un
+// message, pour le fetch Linkup des conversations euOnly (Mistral n'a aucune
+// lecture d'URL native). Exclut les plateformes vidéo : Linkup n'en extrait
+// pas le contenu (pas de transcript), autant laisser Mistral déclarer
+// honnêtement la limite plutôt qu'injecter une page de garde inutile.
+const VIDEO_HOSTS = /(^|\.)(youtube\.com|youtu\.be|vimeo\.com|dailymotion\.com|twitch\.tv|tiktok\.com)$/i
+
+export function extractWebUrls(message: string): string[] {
+  if (!message) return []
+  const matches = message.match(URL_REGEX_GLOBAL)
+  if (!matches) return []
+  const out: string[] = []
+  for (const raw of matches) {
+    const cleaned = raw.replace(/[).,;!?]+$/, '')
+    try {
+      const u = new URL(cleaned)
+      if (u.protocol !== 'https:' && u.protocol !== 'http:') continue
+      if (VIDEO_HOSTS.test(u.hostname)) continue
+      out.push(cleaned)
+    } catch {
+      // Match non parseable → ignoré.
+    }
+  }
+  return [...new Set(out)]
+}
+
 /**
  * Décide si une requête utilisateur doit déclencher une recherche web forcée.
  * Règle posée par l'utilisateur le 10 mai 2026 : recherche internet par défaut
@@ -227,6 +254,68 @@ export function needsThinking(message: string): ThinkingConfig {
   return { enabled: false, budget: 0 }
 }
 
+// ── Réflexion : niveau utilisateur → directive API moderne ───────────────────
+// L'API thinking d'Anthropic a changé : `thinking:{type:'enabled', budget_tokens}`
+// est DÉPRÉCIÉ et renvoie 400 sur Opus 4.8/4.7. Le remplaçant est
+// `thinking:{type:'adaptive'}` + `output_config:{effort}`. On traduit donc le
+// niveau de réflexion choisi par l'utilisateur (reflectionLevel.ts) en un
+// effort. `enabled`/`budget` sont conservés UNIQUEMENT pour la sélection de
+// modèle (selectClaudeSubModel garde Opus pour les rapports à gros budget) —
+// ils ne sont PAS envoyés à l'API.
+//
+// Niveaux d'effort valides : low/medium/high/max sur Opus 4.5→4.8 ET Sonnet 4.6.
+// `xhigh` n'existe que sur Opus 4.7/4.8 → on l'évite pour rester compatible
+// Sonnet. Haiku 4.5 ne supporte AUCUN effort (400) → le garde-fou est côté
+// anthropicClient (n'envoie jamais d'effort si le modèle résolu est Haiku).
+export type ClaudeEffort = 'low' | 'medium' | 'high' | 'max'
+
+export interface ClaudeThinkingDirective {
+  enabled: boolean
+  budget: number
+  effort: ClaudeEffort | null
+}
+
+export function resolveClaudeThinking(
+  message: string,
+  level: ReflectionLevel,
+  isPro: boolean
+): ClaudeThinkingDirective {
+  // NOTE — le niveau influe AUSSI sur le sous-modèle Claude, pas seulement
+  // sur l'effort : selectClaudeSubModel lit enabled/budget. Conséquences
+  // assumées (audit fonctionnel 12 juin) :
+  //  - « bonjour » en approfondi → Sonnet (plus Haiku) : plus de réflexion
+  //    demandée = modèle capable de réfléchir.
+  //  - « rapport stratégique » en rapide → Sonnet sans thinking (plus
+  //    d'Opus) : rapide = vite et pas cher, quoi qu'il arrive.
+  switch (level) {
+    case 'rapide':
+      // Réflexion coupée — réponse la plus rapide / la moins chère.
+      return { enabled: false, budget: 0, effort: null }
+    case 'approfondi':
+      // Réflexion forcée élevée. Math.max garde le budget needsThinking s'il
+      // est plus haut : sur un rapport stratégique (10000), le routage Opus
+      // (Pro) reste donc IDENTIQUE au mode auto — approfondi ne downgrade
+      // jamais le modèle qu'auto aurait choisi, il part alors sur Opus avec
+      // effort high (vs max au niveau « max »).
+      return { enabled: true, budget: Math.max(needsThinking(message).budget, 8000), effort: 'high' }
+    case 'max':
+      // Réflexion maximale (Pro). Hors Pro (l'UI bloque déjà le tap), on
+      // retombe sur « approfondi » plutôt que de facturer un effort premium.
+      return isPro
+        ? { enabled: true, budget: Math.max(needsThinking(message).budget, 10000), effort: 'max' }
+        : { enabled: true, budget: Math.max(needsThinking(message).budget, 8000), effort: 'high' }
+    case 'auto':
+    default: {
+      // Comportement historique : l'heuristique par message décide. On traduit
+      // le budget en effort (l'API moderne ne prend plus budget_tokens).
+      const t = needsThinking(message)
+      if (!t.enabled) return { enabled: false, budget: 0, effort: null }
+      const effort: ClaudeEffort = t.budget >= 8000 ? 'high' : t.budget >= 3000 ? 'medium' : 'low'
+      return { enabled: true, budget: t.budget, effort }
+    }
+  }
+}
+
 export type ClaudeSubModel = 'claude-haiku-4-5-20251001' | 'claude-sonnet-4-6' | 'claude-opus-4-8'
 
 /**
@@ -254,15 +343,8 @@ export function selectClaudeSubModel(
     return 'claude-haiku-4-5-20251001'
   }
 
-  // Niveau d'effort MANUEL (curseur Rapide/Équilibré/Puissant) : override le
-  // routage auto. À ce stade l'utilisateur a le droit au premium (payant, ou
-  // free+crédits — le pin ci-dessus a déjà filtré les free sans crédits).
-  const level = getSelectedLevel()
-  if (level === 'fast') return 'claude-haiku-4-5-20251001'
-  if (level === 'balanced') return 'claude-sonnet-4-6'
-  if (level === 'powerful') return 'claude-opus-4-8'
-
-  // level === 'auto' → routage automatique selon la requête :
+  // Routage automatique selon la requête (un utilisateur premium / avec crédits
+  // a déjà passé le pin Haiku ci-dessus) :
   // Haiku — short, low-stakes queries (no private data, no thinking needed)
   const isShortTrivial = message.length < 150 && TRIVIAL_CHAT_REGEX.test(message)
   if (!isPrivateData && !thinking.enabled && isShortTrivial) {

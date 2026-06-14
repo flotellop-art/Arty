@@ -16,6 +16,7 @@ import { openCheckout, openCreemCheckout, type CheckoutPlan } from '../services/
 import { getValidAccessToken, getStoredUser } from '../services/googleAuth'
 import { fetchWalletBalance } from '../services/walletClient'
 import { apiUrl } from '../services/apiBase'
+import { usePlanStatus } from '../hooks/usePlanStatus'
 
 export type CurrentPlan = 'byok' | 'pro' | 'subscription' | 'unknown'
 
@@ -39,7 +40,7 @@ interface SubscriptionStatusResponse {
   plan?: string
 }
 
-export function UpgradeScreen({ onBack, currentPlan, email }: UpgradeScreenProps) {
+export function UpgradeScreen({ onBack, currentPlan: currentPlanProp, email }: UpgradeScreenProps) {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const [params] = useSearchParams()
@@ -48,17 +49,30 @@ export function UpgradeScreen({ onBack, currentPlan, email }: UpgradeScreenProps
   const [status, setStatus] = useState<StatusResult>({ kind: 'idle' })
   const [creditsBusy, setCreditsBusy] = useState(false)
 
+  // Bug P0.7 (audit) : App.tsx ne sait dériver que 'byok' | 'unknown' depuis
+  // authMethod — un abonné connecté en Google arrivait toujours en 'unknown',
+  // le PremiumPackCard n'était jamais rendu et le `?scroll=premium` tombait
+  // dans le vide. On résout le plan réel via /api/subscription/status.
+  const planStatus = usePlanStatus()
+  const currentPlan: CurrentPlan =
+    currentPlanProp !== 'unknown'
+      ? currentPlanProp
+      : planStatus.plan === 'subscription' || planStatus.plan === 'pro'
+        ? planStatus.plan
+        : 'unknown'
+
   const resolvedEmail = email ?? getStoredUser()?.email ?? ''
 
   useEffect(() => {
     if (!scrollToPremiumPack) return
-    // The premium pack card is only rendered for subscribers, but we still
-    // attempt the scroll — the ref is null otherwise and the call is a no-op.
+    // The premium pack card is only rendered for subscribers — `currentPlan`
+    // est dans les deps pour re-tenter le scroll quand le plan résolu en
+    // async (usePlanStatus) fait apparaître la carte après le mount.
     const t = window.setTimeout(() => {
       premiumPackRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }, 50)
     return () => window.clearTimeout(t)
-  }, [scrollToPremiumPack])
+  }, [scrollToPremiumPack, currentPlan])
 
   const refreshStatus = async () => {
     setStatus({ kind: 'checking' })
@@ -191,6 +205,15 @@ export function UpgradeScreen({ onBack, currentPlan, email }: UpgradeScreenProps
 
         {status.kind !== 'idle' && <StatusBanner status={status} />}
 
+        {/* P0.10 — un visiteur qui arrive sur /upgrade par lien direct ne
+            voyait le trial nulle part. La plainte n°1 contre le concurrent
+            direct = pas d'essai gratuit ; le nôtre existe, on le montre. */}
+        {currentPlan !== 'subscription' && currentPlan !== 'pro' && (
+          <p className="px-3 py-2.5 rounded-xl bg-theme-accent/10 text-theme-ink text-sm font-display text-center">
+            {t('upgrade.trialCallout')}
+          </p>
+        )}
+
         <div className="grid grid-cols-1 gap-4">
           <FreeBYOKCard isCurrent={currentPlan === 'byok'} onClick={handleByokClick} />
           <ProCard
@@ -210,7 +233,30 @@ export function UpgradeScreen({ onBack, currentPlan, email }: UpgradeScreenProps
           </div>
         )}
 
-        <p className="font-display italic text-[11px] text-theme-muted text-center pt-4">
+        {/* P0.10 — annulation accessible depuis l'app (portail Lemon Squeezy).
+            Sans ce lien, « annulable en ligne » serait une promesse creuse. */}
+        {currentPlan === 'subscription' && (
+          <a
+            href="https://app.lemonsqueezy.com/billing"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="block font-display italic text-[12px] text-theme-muted hover:text-theme-ink underline underline-offset-2 text-center pt-2 transition-colors"
+          >
+            {t('upgrade.manageSubscription')}
+          </a>
+        )}
+
+        {/* P2.4 — « pourquoi c'est moins cher » : on assume le modèle éco
+            (routage intelligent + marge faible) pour désarmer le « trop beau
+            pour être vrai ». La transparence économique devient la marque. */}
+        <WhyCheaperSection />
+
+        {/* P0.10 — la transparence comme argument de vente (audit concurrentiel :
+            la plainte la plus virale du segment = limites opaques). */}
+        <p className="font-display italic text-[11px] text-theme-muted text-center pt-4 leading-relaxed">
+          {t('upgrade.transparency')}
+        </p>
+        <p className="font-display italic text-[11px] text-theme-muted text-center pt-1">
           {t('upgrade.legal')}
         </p>
       </div>
@@ -381,6 +427,12 @@ function SubscriptionCard({ isCurrent, onSubscribe }: SubscriptionCardProps) {
       <p className="mt-3 font-sans text-sm text-theme-muted leading-relaxed">
         {t('upgrade.subscriptionDescription')}
       </p>
+      {/* P2.3 — rassurance AVANT de s'abonner : l'annulation facile lève le
+          frein n°1 à l'abonnement. Affichée même aux non-abonnés (le lien
+          « gérer » plus bas ne s'affiche qu'aux abonnés actifs). */}
+      <p className="mt-2 font-display italic text-[12px] text-theme-accent leading-relaxed">
+        {t('upgrade.subscriptionReassurance')}
+      </p>
       <button
         type="button"
         onClick={onSubscribe}
@@ -421,6 +473,52 @@ function CreditsCard({ busy, onBuy }: CreditsCardProps) {
         {busy ? t('upgrade.creditsBusy') : t('upgrade.creditsCta')}
       </button>
     </CardShell>
+  )
+}
+
+// P2.4 — section dépliable « Pourquoi c'est moins cher ? ». Placée sur la page
+// pricing, là où naît le doute « trop beau pour être vrai ». Contenu volontairement
+// concret : routage intelligent, marge faible assumée, limites lisibles, BYOK.
+function WhyCheaperSection() {
+  const { t } = useTranslation()
+  const [open, setOpen] = useState(false)
+  const items = ['whyRouting', 'whyMargin', 'whyTransparency', 'whyByok'] as const
+  return (
+    <div className="rounded-sm border border-theme-border bg-theme-surface overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-theme-ink/[0.02] transition-colors"
+      >
+        <span className="font-display text-[15px] font-medium text-theme-ink">
+          {t('upgrade.whyTitle')}
+        </span>
+        <svg
+          width="12"
+          height="12"
+          viewBox="0 0 10 10"
+          fill="none"
+          aria-hidden
+          className={`opacity-60 transition-transform ${open ? 'rotate-180' : ''}`}
+        >
+          <path d="M2.5 4L5 6.5L7.5 4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+        </svg>
+      </button>
+      {open && (
+        <div className="px-5 pb-5 space-y-2.5">
+          <p className="font-display italic text-sm text-theme-muted">{t('upgrade.whyIntro')}</p>
+          <ul className="space-y-2">
+            {items.map((k) => (
+              <li key={k} className="font-sans text-sm text-theme-ink/80 flex gap-2 leading-relaxed">
+                <span className="text-theme-accent shrink-0">•</span>
+                <span>{t(`upgrade.${k}`)}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
   )
 }
 

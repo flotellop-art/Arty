@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import {
   getMemoryHistory,
   revertLastChange,
@@ -12,6 +13,7 @@ interface Props {
 }
 
 export function MemoryHistoryPanel({ onClose }: Props) {
+  const { t } = useTranslation()
   const [entries, setEntries] = useState<MemoryHistoryEntry[]>([])
 
   useEffect(() => {
@@ -30,8 +32,8 @@ export function MemoryHistoryPanel({ onClose }: Props) {
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-theme-ink/50" onClick={onClose}>
       <div className="bg-theme-surface rounded-2xl shadow-xl w-full max-w-lg max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-theme-border">
-          <h2 className="font-display text-lg text-theme-ink">📜 Historique mémoire</h2>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-theme-ink/5 text-theme-muted" aria-label="Fermer">
+          <h2 className="font-display text-lg text-theme-ink">{t('memoryHistory.title')}</h2>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-theme-ink/5 text-theme-muted" aria-label={t('common.close')}>
             <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
               <path d="M4 4L14 14M14 4L4 14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
             </svg>
@@ -40,7 +42,7 @@ export function MemoryHistoryPanel({ onClose }: Props) {
 
         <div className="flex-1 overflow-y-auto p-5">
           {entries.length === 0 ? (
-            <p className="text-sm text-theme-muted text-center py-8">Aucun changement enregistré</p>
+            <p className="text-sm text-theme-muted text-center py-8">{t('memoryHistory.empty')}</p>
           ) : (
             <ul className="space-y-2">
               {entries.map((e) => (
@@ -59,7 +61,7 @@ export function MemoryHistoryPanel({ onClose }: Props) {
                       onClick={() => handleUndo(e.category)}
                       className="text-[11px] px-2 py-1 rounded-md border border-theme-border hover:bg-theme-ink/[0.03] text-theme-ink/80"
                     >
-                      ↩ Annuler ce changement
+                      {t('memoryHistory.undoChange')}
                     </button>
                   </div>
                 </li>
@@ -77,7 +79,7 @@ export function MemoryHistoryPanel({ onClose }: Props) {
               }}
               className="w-full text-xs py-2 rounded-lg border border-theme-border hover:bg-theme-ink/[0.03] text-theme-muted"
             >
-              Effacer tout l'historique
+              {t('memoryHistory.clearAll')}
             </button>
           </div>
         )}

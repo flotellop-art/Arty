@@ -217,6 +217,20 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
           {t('login.editorialSubtitle')}
         </p>
 
+        {/* Audit UX 10 juin 2026 — loginError n'était rendu QUE dans la
+            branche pendingAuth. Sur cet écran principal, un échec OAuth
+            (deeplink natif, redirect web) ou de login par clé était drainé
+            de sessionStorage… puis jamais affiché. L'utilisateur restait
+            devant un spinner qui disparaissait sans explication. */}
+        {loginError && (
+          <div
+            role="alert"
+            className="mt-4 px-3 py-2 bg-red-500/10 border border-red-500/30 rounded-xl text-sm text-red-700 dark:text-red-400"
+          >
+            {loginError}
+          </div>
+        )}
+
         <div className="mt-8">
           {/* Minimal underline tabs — active = accent terracotta + bigger */}
           <div className="flex gap-7 mb-6 border-b border-theme-ink/15">
@@ -260,34 +274,34 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
                 setLoginError('')
                 try {
                   if (!serverAuthCode) {
-                    throw new Error("Google n'a pas renvoyé de code d'autorisation — réessaie.")
+                    throw new Error(t('login.errors.noAuthCode'))
                   }
                   // Exchange serverAuthCode for Google tokens. redirect_uri
                   // MUST be '' for a native serverAuthCode (BUG 2/28). The
                   // fetch carries a 15s timeout so a flaky network can't
                   // freeze the spinner for minutes (BUG 47).
                   const { apiUrl } = await import('../../services/apiBase')
-                  const t = withTimeout(15_000)
+                  const timeout = withTimeout(15_000)
                   let res: Response
                   try {
                     res = await fetch(apiUrl('/api/auth/token'), {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({ code: serverAuthCode, redirect_uri: '' }),
-                      signal: t.signal,
+                      signal: timeout.signal,
                     })
                   } finally {
-                    t.cancel()
+                    timeout.cancel()
                   }
                   if (!res.ok) {
-                    throw new Error(`Échange de token Google échoué (${res.status})`)
+                    throw new Error(t('login.errors.tokenExchangeFailed', { status: res.status }))
                   }
                   const data = await res.json() as { access_token?: string; refresh_token?: string; expires_in?: number }
                   // Fail loud instead of marking the user "connected" with an
                   // empty token — that left AGENDA/Gmail permanently broken
                   // with no error shown (CRITIQUE-2 audit du 16 mai).
                   if (!data.access_token) {
-                    throw new Error('Réponse Google sans access_token — réessaie la connexion.')
+                    throw new Error(t('login.errors.noAccessToken'))
                   }
 
                   // Initialise (ou récupère) le statut trial AVANT de
@@ -319,7 +333,7 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
                   console.error('Native Google login error:', err)
                   // Fall back to the API-key screen (recoverable) AND surface
                   // the error — the pendingAuth screen renders loginError.
-                  setLoginError(err instanceof Error ? err.message : 'Échec de la connexion Google')
+                  setLoginError(err instanceof Error ? err.message : t('login.errors.googleFailed'))
                   setPendingAuth({ method: 'google', displayName: name, email, avatar })
                 } finally {
                   setLoading(false)

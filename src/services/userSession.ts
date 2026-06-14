@@ -6,7 +6,7 @@
 const ACTIVE_SESSION_KEY = 'arty-active-session'
 const KNOWN_SESSIONS_KEY = 'arty-known-sessions'
 
-export type AuthMethod = 'google' | 'email' | 'apikey'
+export type AuthMethod = 'google' | 'email' | 'apikey' | 'demo'
 
 export interface UserSession {
   userId: string

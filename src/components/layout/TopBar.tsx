@@ -1,7 +1,10 @@
 import { useState, useRef, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { getStyle, setStyle as saveStyle, STYLE_OPTIONS, type ResponseStyle } from '../../services/responseStyles'
-import { getSelectedModel, setSelectedModel, MODEL_OPTIONS, type AIModel } from '../../services/modelSelector'
+import { setSelectedModel, MODEL_OPTIONS, type AIModel } from '../../services/modelSelector'
+import { useSelectedModel } from '../../hooks/useSelectedModel'
+import { useReflectionLevel } from '../../hooks/useReflectionLevel'
+import { setReflectionLevel, reflectionSupported, isReflectionLevelLocked, type ReflectionLevel } from '../../services/reflectionLevel'
 import { SettingsGuide } from '../shared/SettingsGuide'
 import { SettingsModal } from '../settings/SettingsModal'
 import { getTheme, toggleTheme, type Theme } from '../../services/themeService'
@@ -10,9 +13,19 @@ import { WalletBadge } from './WalletBadge'
 import { PrismMark } from '../shared/PrismMark'
 import { isProActivated } from '../../services/proLicense'
 import { StreakBadge } from './StreakBadge'
-import { usePlanStatus } from '../../hooks/usePlanStatus'
+import { ChatOptionsSheet } from '../chat/ChatOptionsSheet'
 import { UpgradePromptModal } from '../chat/UpgradePromptModal'
-import { ModelLevelSlider } from '../chat/ModelLevelSlider'
+import { usePlanStatus, type ModelFamily } from '../../hooks/usePlanStatus'
+import { homeV2Enabled } from '../../services/homeV2'
+
+// Mapping provider → famille (identique à ChatTopBar) pour le lock Pro du
+// sélecteur de modèle de l'accueil v2.
+const PROVIDER_TO_FAMILY: Record<Exclude<AIModel, 'auto'>, ModelFamily> = {
+  claude: 'claude-haiku',
+  mistral: 'mistral-medium',
+  gemini: 'gemini-flash',
+  openai: 'gpt-mini',
+}
 
 interface TopBarProps {
   onMenuToggle: () => void
@@ -22,16 +35,33 @@ type OpenMenu = null | 'style' | 'model'
 
 export function TopBar({ onMenuToggle }: TopBarProps) {
   const { t } = useTranslation()
-  const planStatus = usePlanStatus()
   const [currentStyle, setCurrentStyle] = useState<ResponseStyle>(getStyle)
-  const [currentModel, setCurrentModel] = useState<AIModel>(getSelectedModel)
+  const currentModel = useSelectedModel()
   const [openMenu, setOpenMenu] = useState<OpenMenu>(null)
-  const [upgradePrompt, setUpgradePrompt] = useState<string | null>(null)
   const [showGuide, setShowGuide] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [theme, setThemeState] = useState<Theme>(getTheme)
   const [proActive, setProActive] = useState<boolean>(isProActivated)
   const menuRef = useRef<HTMLDivElement>(null)
+  // PR G — accueil v2 : header 3 zones, modèle/style via le sheet « ⋯ ».
+  const homeV2 = homeV2Enabled()
+  const [sheetOpen, setSheetOpen] = useState(false)
+  const [upgradePrompt, setUpgradePrompt] = useState<string | null>(null)
+  const planStatus = usePlanStatus()
+  const isProviderLocked = (id: AIModel): boolean => {
+    if (id === 'auto') return false
+    return planStatus.lockedFamilies.includes(PROVIDER_TO_FAMILY[id])
+  }
+  // Variante v2 du changement de modèle : lock Pro → modale upgrade
+  // (l'accueil n'a pas de conversation, donc pas de confirmation EU/US).
+  const handleModelChangeV2 = (model: AIModel) => {
+    if (isProviderLocked(model)) {
+      setUpgradePrompt(MODEL_OPTIONS.find((o) => o.id === model)?.label ?? model)
+      setSheetOpen(false)
+      return
+    }
+    setSelectedModel(model)
+  }
 
   useEffect(() => {
     const sync = () => setProActive(isProActivated())
@@ -56,9 +86,19 @@ export function TopBar({ onMenuToggle }: TopBarProps) {
   }
 
   const handleModelChange = (model: AIModel) => {
+    // L'event 'model-changed' dispatché par setSelectedModel resynchronise
+    // currentModel via useSelectedModel — pas de setState local.
     setSelectedModel(model)
-    setCurrentModel(model)
     setOpenMenu(null)
+  }
+
+  const handleReflectionChange = (level: ReflectionLevel) => {
+    if (isReflectionLevelLocked(level, planStatus.plan !== 'free')) {
+      setUpgradePrompt(t('chat.reflection.maxUpgradeLabel'))
+      setSheetOpen(false)
+      return
+    }
+    setReflectionLevel(level)
   }
 
   // Close menu on outside click
@@ -75,6 +115,87 @@ export function TopBar({ onMenuToggle }: TopBarProps) {
 
   const styleOption = STYLE_OPTIONS.find(o => o.id === currentStyle) ?? STYLE_OPTIONS[0]!
   const modelOption = MODEL_OPTIONS.find(o => o.id === currentModel) ?? MODEL_OPTIONS[0]!
+  // Réflexion : réglage global, modifiable depuis l'accueil aussi (s'applique à
+  // la prochaine conversation). Masquée pour Mistral/ChatGPT (pas d'euOnly ici).
+  const currentReflection = useReflectionLevel()
+  const showReflection = reflectionSupported(currentModel, false)
+  const isProUser = planStatus.plan !== 'free'
+
+  // ===== Header v2 (PR G) : 3 zones ☰ / wordmark Arty / ⋯ ⚙. Coût, série,
+  // thème, badge Pro et chips style/modèle quittent le header (cf. pied de
+  // sidebar + sheet « ⋯ »). Killswitch arty-home-v2='0' → header v1 ci-dessous.
+  if (homeV2) {
+    return (
+      <header
+        className="bg-theme-bg"
+        style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
+      >
+        <div className="flex items-center px-4 pt-2.5 pb-2 gap-2">
+          <button
+            onClick={onMenuToggle}
+            className="p-2 -ml-2 rounded-lg hover:bg-theme-ink/5 transition-colors text-theme-ink lg:hidden"
+            aria-label={t('common.menu')}
+          >
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+              <rect y="3" width="20" height="2" rx="1" fill="currentColor" />
+              <rect y="9" width="20" height="2" rx="1" fill="currentColor" />
+              <rect y="15" width="20" height="2" rx="1" fill="currentColor" />
+            </svg>
+          </button>
+          <div className="flex-1 flex items-center justify-center gap-2">
+            <PrismMark size={18} fill />
+            <span className="font-display italic text-[19px] text-theme-ink">Arty</span>
+          </div>
+          <button
+            onClick={() => setSheetOpen(true)}
+            className="w-9 h-9 rounded-xl text-theme-ink text-lg leading-none hover:bg-theme-ink/5 transition-colors shrink-0 flex items-center justify-center"
+            aria-label={t('chat.optionsSheet.open')}
+            aria-haspopup="dialog"
+          >
+            ⋯
+          </button>
+          <button
+            onClick={() => setShowSettings(true)}
+            className="p-2 rounded-lg hover:bg-theme-ink/5 transition-colors text-theme-ink shrink-0"
+            aria-label={t('sidebar.settings')}
+          >
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+              <circle cx="10" cy="10" r="2.5" stroke="currentColor" strokeWidth="1.5" />
+              <path d="M10 1.5V4M10 16V18.5M18.5 10H16M4 10H1.5M16.01 4L14.24 5.76M5.76 14.24L4 16M16.01 16L14.24 14.24M5.76 5.76L4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+          </button>
+        </div>
+
+        <ChatOptionsSheet
+          open={sheetOpen}
+          onClose={() => setSheetOpen(false)}
+          title={t('home.optionsSheetTitle', { defaultValue: 'Réglages' })}
+          currentModel={currentModel}
+          currentStyle={currentStyle}
+          currentReflection={currentReflection}
+          showReflection={showReflection}
+          maxReflectionLocked={!isProUser}
+          onSelectReflection={handleReflectionChange}
+          lastUsedModel={null}
+          lastSearchProvider={null}
+          isProviderLocked={isProviderLocked}
+          onSelectModel={handleModelChangeV2}
+          onSelectStyle={handleStyleChange}
+          hasConversation={false}
+          onExportMarkdown={() => {}}
+          onExportPdf={() => {}}
+          onExportJson={() => {}}
+          onShare={() => {}}
+          onOpenGuide={() => { setSheetOpen(false); setShowGuide(true) }}
+        />
+        {showGuide && <SettingsGuide onClose={() => setShowGuide(false)} />}
+        <SettingsModal open={showSettings} onClose={() => setShowSettings(false)} />
+        {upgradePrompt && (
+          <UpgradePromptModal modelLabel={upgradePrompt} onClose={() => setUpgradePrompt(null)} />
+        )}
+      </header>
+    )
+  }
 
   return (
     <header
@@ -83,10 +204,10 @@ export function TopBar({ onMenuToggle }: TopBarProps) {
     >
       {/* Row 1 — hamburger (gauche) + utilitaires (droite) */}
       <div className="flex items-center justify-between px-4 pt-2.5 pb-1">
-        {/* Hamburger */}
+        {/* Hamburger — masqué en desktop (la sidebar y est persistante, PR E) */}
         <button
           onClick={onMenuToggle}
-          className="p-2 -ml-2 rounded-lg hover:bg-theme-ink/5 transition-colors text-theme-ink"
+          className="p-2 -ml-2 rounded-lg hover:bg-theme-ink/5 transition-colors text-theme-ink lg:hidden"
           aria-label={t('common.menu')}
         >
           <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
@@ -100,7 +221,7 @@ export function TopBar({ onMenuToggle }: TopBarProps) {
           {proActive && (
             <span
               className="px-2 py-0.5 rounded-pill bg-theme-accent text-theme-bg font-sans text-[9px] font-semibold uppercase tracking-kicker"
-              title="Licence Pro activée"
+              title={t('topBar.proBadgeTitle')}
             >
               Pro
             </span>
@@ -120,8 +241,8 @@ export function TopBar({ onMenuToggle }: TopBarProps) {
           <button
             onClick={handleThemeToggle}
             className="p-2 rounded-lg hover:bg-theme-ink/5 transition-colors text-theme-ink"
-            aria-label={theme === 'nocturne' ? 'Mode jour (Ember)' : 'Mode nuit (Nocturne)'}
-            title={theme === 'nocturne' ? 'Mode jour (Ember)' : 'Mode nuit (Nocturne)'}
+            aria-label={theme === 'nocturne' ? t('topBar.themeDay') : t('topBar.themeNight')}
+            title={theme === 'nocturne' ? t('topBar.themeDay') : t('topBar.themeNight')}
           >
             <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
               <circle cx="10" cy="10" r="7.25" stroke="currentColor" strokeWidth="1.5" />
@@ -133,7 +254,7 @@ export function TopBar({ onMenuToggle }: TopBarProps) {
           <button
             onClick={() => setShowSettings(true)}
             className="p-2 rounded-lg hover:bg-theme-ink/5 transition-colors text-theme-ink"
-            aria-label="Paramètres"
+            aria-label={t('sidebar.settings')}
           >
             <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
               <circle cx="10" cy="10" r="2.5" stroke="currentColor" strokeWidth="1.5" />
@@ -242,14 +363,6 @@ export function TopBar({ onMenuToggle }: TopBarProps) {
                     <span>{modelLabel(opt.id)}</span>
                   </button>
                 ))}
-                {/* Curseur d'effort partagé (slider) — dispo aussi en accueil. */}
-                <div className="border-t border-theme-border mt-1">
-                  <ModelLevelSlider
-                    lockedFamilies={planStatus.lockedFamilies}
-                    onLocked={(label) => { setUpgradePrompt(label); setOpenMenu(null) }}
-                    onPick={() => setOpenMenu(null)}
-                  />
-                </div>
               </div>
             )}
           </div>

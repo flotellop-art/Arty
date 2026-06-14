@@ -12,6 +12,7 @@ import { createWordpressHandlers } from './tools/wordpressTools'
 import { createUtilityHandlers } from './tools/utilityTools'
 import { createNativeHandlers } from './tools/nativeTools'
 import { createSheetsHandlers } from './tools/sheetsTools'
+import { createImageHandlers } from './tools/imageTools'
 
 export type { ToolResult, ToolHandler }
 
@@ -31,6 +32,9 @@ export function createToolExecutor(
     ...createUtilityHandlers(browserActions),
     ...createNativeHandlers(),
     ...createSheetsHandlers(),
+    // P1.3 — toujours enregistré, mais le tool n'est exposé au modèle que
+    // conditionnellement (cf. wantsImageGeneration dans useConversation).
+    ...createImageHandlers(),
   }
 
   return async (name: string, input: Record<string, unknown>): Promise<ToolResult> => {

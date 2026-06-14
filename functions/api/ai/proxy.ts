@@ -193,7 +193,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
   // hors champ — Pro/VIP illimités, trial cappé par compteur dédié).
   if (!isByok && userPlan === 'subscription') {
     const cap = await checkPremiumCap(email, modelName, env)
-    if (!cap.allowed) return premiumCapReachedResponse()
+    if (!cap.allowed) return premiumCapReachedResponse(cap)
   }
 
   const headers: Record<string, string> = {

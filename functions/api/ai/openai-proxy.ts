@@ -131,7 +131,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
   // Cap mensuel premium uniquement pour le plan subscription.
   if (usingServerKey && userPlan === 'subscription') {
     const cap = await checkPremiumCap(email, modelName, env)
-    if (!cap.allowed) return premiumCapReachedResponse()
+    if (!cap.allowed) return premiumCapReachedResponse(cap)
   }
 
   try {
@@ -157,7 +157,27 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => 'Unknown OpenAI error')
+      // Le fetch upstream a échoué → libère la réserve wallet en vol (PR #281).
       if (walletResId) waitUntil(voidWalletBilling(env, walletResId, email))
+      // Leak d'info (N-2) : sur la clé serveur, masquer l'erreur OpenAI brute
+      // (état de la clé owner). EXCEPTION : le rejet de modèle doit rester
+      // détectable — le client (startChatRequest) s'en sert pour retomber de
+      // DEFAULT_MODEL sur FALLBACK_MODEL. On renvoie un code stable contenant
+      // « model_not_supported » qui matche sa regex, sans exposer le message
+      // OpenAI. premium_cap_reached est émis avant le fetch (non concerné).
+      // Passthrough conservé pour le BYOK.
+      if (usingServerKey) {
+        console.error('[openai] upstream error', response.status, errorText.slice(0, 300))
+        const modelRejected =
+          /model/i.test(errorText) && /not.?found|does.?not.?exist|unknown|invalid/i.test(errorText)
+        if (modelRejected) {
+          return Response.json(
+            { error: { message: 'model_not_supported', code: 'model_not_supported' } },
+            { status: 400 }
+          )
+        }
+        return Response.json({ error: 'AI service error' }, { status: response.status })
+      }
       return new Response(errorText, {
         status: response.status,
         headers: { 'content-type': 'application/json' },

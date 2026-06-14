@@ -45,6 +45,8 @@ import { MemoryHistoryPanel } from './MemoryHistoryPanel'
 import { MemoryViewer } from './MemoryViewer'
 import { OrchestratorSync } from './OrchestratorSync'
 import { getStreakData, setVacationMode, type StreakData } from '../../services/streakService'
+import { isAutoMemoryEnabled, setAutoMemoryEnabled } from '../../services/autoMemory'
+import { getCustomInstructions, setCustomInstructions, MAX_CUSTOM_INSTRUCTIONS_CHARS } from '../../services/customInstructions'
 import { LocalMemoryModal } from './LocalMemoryModal'
 import { deleteAccount } from '../../services/accountService'
 
@@ -70,6 +72,8 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
   const [enhanceEnabled, setEnhanceEnabled] = useState(false)
   const [enhanceModel, setEnhanceModelState] = useState<EnhancerModel>('haiku')
   const [briefEnabled, setBriefEnabled] = useState(false)
+  const [autoMemOn, setAutoMemOn] = useState(true)
+  const [customInstructions, setCustomInstructionsState] = useState('')
   const [factCheckMode, setFactCheckModeState] = useState<FactCheckMode>(getFactCheckMode)
   const [showMemoryHistory, setShowMemoryHistory] = useState(false)
   const [showMemoryViewer, setShowMemoryViewer] = useState(false)
@@ -121,6 +125,8 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
     setEnhanceEnabled(isPromptEnhancementEnabled())
     setEnhanceModelState(getEnhancerModel())
     setBriefEnabled(isProactiveBriefEnabled())
+    setAutoMemOn(isAutoMemoryEnabled())
+    setCustomInstructionsState(getCustomInstructions())
     // L'état réel de la permission browser géoloc — peut être 'denied' alors
     // que le toggle Arty est ON (cas Chrome qui bloque silencieusement).
     if (!isNative) {
@@ -476,6 +482,31 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
             )}
           </div>
 
+          {/* Résidence des données — transparence (renforcement EU) */}
+          <div className="border-t border-theme-border pt-5">
+            <p className="font-display text-base text-theme-ink">🌍 {t('settings.dataResidency.title')}</p>
+            <p className="font-display italic text-xs text-theme-muted mt-0.5">
+              {t('settings.dataResidency.description')}
+            </p>
+            <ul className="mt-3 space-y-1.5">
+              {(['conversations', 'account', 'euConv', 'usModels', 'dictation', 'search'] as const).map((k) => (
+                <li key={k} className="font-display text-xs text-theme-ink/80 flex gap-2">
+                  <span className="text-theme-accent shrink-0">•</span>
+                  <span>{t(`settings.dataResidency.${k}`)}</span>
+                </li>
+              ))}
+            </ul>
+            {/* Serveur backend de l'app (≠ serveur du modèle IA, montré par
+                message dans le chat). Calculé côté client, sans appel réseau :
+                hardcodé tryarty.com sur natif, origine courante sur web (utile
+                aux testeurs pour distinguer prod / preview / dev). */}
+            <p className="mt-3 font-mono text-[10px] text-theme-muted">
+              {t('settings.dataResidency.serverLine', {
+                host: isNative ? 'tryarty.com' : window.location.host,
+              })}
+            </p>
+          </div>
+
           {/* Streak / régularité (F-004) */}
           <div className="border-t border-theme-border pt-5">
             <div className="flex items-center justify-between gap-4">
@@ -558,6 +589,60 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
                 <path d="M5 3L9 7L5 11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </button>
+          </div>
+
+          {/* Mémoire automatique (P1.1) — extraction de faits en arrière-plan,
+              stockés en LOCAL chiffré uniquement. ON par défaut (rétention) +
+              toast à chaque mise à jour (transparence). */}
+          <div className="border-t border-theme-border pt-5">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="font-display text-base text-theme-ink">🧠 {t('settings.autoMemory.title')}</p>
+                <p className="font-display italic text-xs text-theme-muted mt-0.5">
+                  {t('settings.autoMemory.description')}
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  const next = !autoMemOn
+                  setAutoMemoryEnabled(next)
+                  setAutoMemOn(next)
+                }}
+                aria-label={t('settings.autoMemory.toggleAria')}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors shrink-0 ${
+                  autoMemOn ? 'bg-theme-accent' : 'bg-theme-ink/20'
+                }`}
+                aria-pressed={autoMemOn}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-theme-bg transition-transform ${
+                    autoMemOn ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
+          </div>
+
+          {/* Instructions personnalisées (P1.2) — champ global injecté en tête
+              du system prompt, priorité absolue. Vide = inactif (pas de toggle),
+              sauvegarde chiffrée au blur. Vaut pour tous les modèles. */}
+          <div className="border-t border-theme-border pt-5">
+            <p className="font-display text-base text-theme-ink">📝 {t('settings.customInstructions.title')}</p>
+            <p className="font-display italic text-xs text-theme-muted mt-0.5">
+              {t('settings.customInstructions.description')}
+            </p>
+            <textarea
+              value={customInstructions}
+              onChange={(e) => setCustomInstructionsState(e.target.value.slice(0, MAX_CUSTOM_INSTRUCTIONS_CHARS))}
+              onBlur={() => setCustomInstructions(customInstructions)}
+              rows={3}
+              maxLength={MAX_CUSTOM_INSTRUCTIONS_CHARS}
+              placeholder={t('settings.customInstructions.placeholder')}
+              className="mt-2 w-full rounded-xl border border-theme-border bg-theme-bg px-3 py-2 text-sm text-theme-ink placeholder:text-theme-muted/60 focus:outline-none focus:border-theme-accent transition-colors resize-none"
+            />
+            <p className="text-right font-mono text-[10px] text-theme-muted mt-0.5">
+              {customInstructions.length}/{MAX_CUSTOM_INSTRUCTIONS_CHARS}
+            </p>
           </div>
 
           {/* Memory viewer */}

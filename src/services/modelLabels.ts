@@ -10,9 +10,24 @@
 export interface ModelUsedEvent {
   model: string
   provider: 'claude' | 'mistral' | 'gemini' | 'openai'
+  /** Réflexion étendue active sur cet appel (effort Claude / gros budget
+      Gemini). Permet à l'UI (StreamingIndicator) de signaler que le modèle
+      réfléchit — sans ça, le niveau de réflexion est 100 % imperceptible
+      à l'écran (audit fonctionnel 12 juin, reco #2). */
+  reflecting?: boolean
+}
+
+// Cache module du dernier appel : l'indicateur de streaming peut se monter
+// juste APRÈS le dispatch (course au premier render) — il s'initialise sur
+// ce cache puis suit les events.
+let lastModelUsed: ModelUsedEvent | null = null
+
+export function getLastModelUsed(): ModelUsedEvent | null {
+  return lastModelUsed
 }
 
 export function dispatchModelUsed(event: ModelUsedEvent): void {
+  lastModelUsed = event
   try {
     window.dispatchEvent(new CustomEvent<ModelUsedEvent>('arty-model-used', { detail: event }))
   } catch {
@@ -61,4 +76,32 @@ export function formatModelName(model: string): string {
   }
 
   return model
+}
+
+// Région d'hébergement du modèle qui traite la requête, affichée à
+// l'utilisateur (« où part ma donnée ? »). Mapping STATIQUE de présentation —
+// JAMAIS dérivé d'une variable d'env, d'une URL de proxy ou d'un endpoint
+// serveur (RÈGLE 6 : aucune fuite d'infra). Mistral (chat + Voxtral) =
+// France/UE ; tout le reste (Claude, Gemini, GPT) = serveurs US. Défaut = US :
+// on ne revendique JAMAIS « UE » par erreur, ce qui casserait la promesse.
+export function getModelRegion(model: string): { flag: string; key: string } {
+  return model.toLowerCase().startsWith('mistral')
+    ? { flag: '🇪🇺', key: 'chat.region.eu' }
+    : { flag: '🇺🇸', key: 'chat.region.us' }
+}
+
+// Clé i18n de l'explication « pourquoi ce modèle ? » pour un modelId réel.
+// Extraite de ChatTopBar (PR B) où elle vivait en chaînes FR en dur :
+// désormais partagée entre l'ancien header et ChatOptionsSheet, et bilingue.
+// Volontairement générique — ne reflète pas les triggers exacts du routeur,
+// juste le rôle global du modèle (transparence sans dupliquer aiRouter).
+export function getModelExplanationKey(modelId: string): string {
+  const m = modelId.toLowerCase()
+  if (m.includes('mistral')) return 'chat.modelExplain.mistral'
+  if (m.includes('gemini')) return 'chat.modelExplain.gemini'
+  if (m.includes('haiku')) return 'chat.modelExplain.haiku'
+  if (m.includes('opus')) return 'chat.modelExplain.opus'
+  if (m.includes('claude')) return 'chat.modelExplain.claude'
+  if (m.includes('gpt') || m.includes('openai')) return 'chat.modelExplain.openai'
+  return 'chat.modelExplain.fallback'
 }

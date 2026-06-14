@@ -14,14 +14,19 @@ interface MessageItemProps {
   onTogglePin?: (messageId: string) => void
   onEdit?: (messageId: string, newContent: string) => void
   onRetry?: (messageId: string) => void
+  isLast?: boolean
 }
 
-const MessageItem = memo(function MessageItem({ msg, index, onAction, onBranch, onTogglePin, onEdit, onRetry }: MessageItemProps) {
-  const { t } = useTranslation()
+const MessageItem = memo(function MessageItem({ msg, index, onAction, onBranch, onTogglePin, onEdit, onRetry, isLast }: MessageItemProps) {
   const handleBranch = useCallback(() => onBranch?.(index), [onBranch, index])
   const handleTogglePin = useCallback(() => onTogglePin?.(msg.id), [onTogglePin, msg.id])
   const handleEdit = useCallback((newContent: string) => onEdit?.(msg.id, newContent), [onEdit, msg.id])
   const handleRetry = useCallback(() => onRetry?.(msg.id), [onRetry, msg.id])
+
+  // Branche : pas sur le tout premier message (une branche vide n'a pas de sens).
+  // Le bouton vit DANS la barre d'actions des bulles — l'ancien bouton flottant
+  // `absolute top-2 right-2` chevauchait le header des blocs de code (PR #263).
+  const branchHandler = onBranch && index > 0 ? handleBranch : undefined
 
   return (
     <div className="group relative" data-msg-id={msg.id} data-msg-role={msg.role}>
@@ -37,6 +42,7 @@ const MessageItem = memo(function MessageItem({ msg, index, onAction, onBranch, 
           // au milieu de la conversation. Avant : l'utilisateur devait
           // dupliquer sa question pour la corriger → pollue le fil.
           onEdit={onEdit ? handleEdit : undefined}
+          onBranch={branchHandler}
         />
       ) : (
         <AssistantBubble
@@ -47,24 +53,9 @@ const MessageItem = memo(function MessageItem({ msg, index, onAction, onBranch, 
           interrupted={msg.interrupted}
           onRetry={onRetry ? handleRetry : undefined}
           factCheck={msg.factCheck}
+          isLast={isLast}
+          onBranch={branchHandler}
         />
-      )}
-      {onBranch && index > 0 && (
-        <button
-          onClick={handleBranch}
-          // Roadmap UI #4 — bouton branche visible sur mobile. `group-hover` ne
-          // se déclenche jamais sur touch → invisible sur téléphone. Maintenant
-          // 50 % opacity permanent sur mobile, 100 % au hover desktop.
-          className="absolute top-2 right-2 opacity-50 md:opacity-0 md:group-hover:opacity-100 p-2 rounded-md bg-theme-surface/80 border border-theme-border text-theme-muted hover:text-theme-accent hover:border-theme-accent transition-all text-xs"
-          title={t('chat.messageList.branch')}
-          aria-label={t('chat.messageList.branch')}
-        >
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-            <path d="M3 2V8M3 8C3 9.1 3.9 10 5 10H8M11 12V6M11 6C11 4.9 10.1 4 9 4H8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-            <circle cx="3" cy="2" r="1.5" stroke="currentColor" strokeWidth="1.2" />
-            <circle cx="11" cy="12" r="1.5" stroke="currentColor" strokeWidth="1.2" />
-          </svg>
-        </button>
       )}
     </div>
   )
@@ -163,25 +154,50 @@ export const MessageList = memo(function MessageList({ messages, isStreaming, st
     el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
   }, [])
 
+  // Index de la dernière réponse assistant — la seule à porter « Régénérer »
+  // (le placeholder `id: 'streaming'` est exclu : c'est un filet anti-perte,
+  // pas une vraie réponse).
+  let lastAssistantIdx = -1
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i]
+    if (m && m.role === 'assistant' && m.id !== 'streaming') {
+      lastAssistantIdx = i
+      break
+    }
+  }
+
   return (
     <div className="relative flex-1 overflow-hidden">
       <div ref={scrollRef} onScroll={updateCanScrollDown} className="absolute inset-0 overflow-y-auto px-4 py-4">
-        {messages.map((msg, index) => (
-          <MessageItem
-            key={msg.id}
-            msg={msg}
-            index={index}
-            onAction={onAction}
-            onBranch={onBranch}
-            onTogglePin={onTogglePin}
-            onEdit={onEdit}
-            onRetry={onRetry}
-          />
-        ))}
+        {messages.map((msg, index) => {
+          // H3 (audit frontend) — pendant un stream, savePartialFor écrit
+          // toutes les 3 s un placeholder `id: 'streaming'` dans la conv
+          // (filet anti-perte au kill de l'app). Le rendre ICI en plus de la
+          // bulle live ci-dessous afficherait le contenu partiel en double.
+          // Hors streaming (recovery après crash), on le rend normalement.
+          // On garde la map entière (pas de filter) pour que `index` reste
+          // aligné sur conv.messages — onBranch en dépend.
+          if (isStreaming && msg.id === 'streaming') return null
+          return (
+            <MessageItem
+              key={msg.id}
+              msg={msg}
+              index={index}
+              onAction={onAction}
+              onBranch={onBranch}
+              onTogglePin={onTogglePin}
+              onEdit={onEdit}
+              onRetry={onRetry}
+              // « Régénérer » uniquement sur la dernière réponse assistant,
+              // et jamais pendant qu'un stream est en cours (P0.4).
+              isLast={!isStreaming && index === lastAssistantIdx}
+            />
+          )
+        })}
 
         {isStreaming && streamingContent && (
           <>
-            <AssistantBubble content={streamingContent} onAction={onAction} />
+            <AssistantBubble content={streamingContent} onAction={onAction} isStreaming />
             <StreamingIndicator />
           </>
         )}

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { detectProvider, needsThinking, selectClaudeSubModel, extractPdfUrls, extractYouTubeUrls, hasYouTubeUrl } from '../../services/aiRouter'
-import { getGeminiThinkingBudget } from '../../services/geminiClient'
+import { detectProvider, needsThinking, resolveClaudeThinking, selectClaudeSubModel, extractPdfUrls, extractWebUrls, extractYouTubeUrls, hasYouTubeUrl, shouldUseWebSearch } from '../../services/aiRouter'
+import { getGeminiThinkingBudget, resolveGeminiThinkingBudget } from '../../services/geminiClient'
 
 // Mock the two external dependencies
 vi.mock('../../services/activeApiKey', () => ({
@@ -11,7 +11,6 @@ vi.mock('../../services/activeApiKey', () => ({
 
 vi.mock('../../services/modelSelector', () => ({
   getSelectedModel: vi.fn(),
-  getSelectedLevel: vi.fn(() => 'auto'),
   detectOpenAIIntent: vi.fn(() => false),
 }))
 
@@ -341,6 +340,49 @@ describe('needsThinking — 4-tier budget', () => {
 })
 
 // ──────────────────────────────────────────────
+// resolveClaudeThinking — niveau de réflexion → effort (API moderne)
+// budget_tokens est mort (400 sur Opus 4.8/4.7) → on émet un `effort`.
+// ──────────────────────────────────────────────
+describe('resolveClaudeThinking — niveau → effort', () => {
+  it('rapide → réflexion coupée (pas d\'effort)', () => {
+    const r = resolveClaudeThinking('analyse ce code', 'rapide', true)
+    expect(r.enabled).toBe(false)
+    expect(r.effort).toBeNull()
+  })
+
+  it('approfondi → effort high même sur un message trivial', () => {
+    const r = resolveClaudeThinking('bonjour', 'approfondi', true)
+    expect(r.enabled).toBe(true)
+    expect(r.effort).toBe('high')
+    expect(r.budget).toBeGreaterThanOrEqual(8000)
+  })
+
+  it('max (Pro) → effort max', () => {
+    expect(resolveClaudeThinking('bonjour', 'max', true).effort).toBe('max')
+  })
+
+  it('max hors Pro → retombe sur high (garde-fou, jamais d\'effort facturé)', () => {
+    expect(resolveClaudeThinking('bonjour', 'max', false).effort).toBe('high')
+  })
+
+  it('auto → suit needsThinking : rapport = high', () => {
+    const r = resolveClaudeThinking('rapport sur le marché', 'auto', true)
+    expect(r.enabled).toBe(true)
+    expect(r.effort).toBe('high')
+  })
+
+  it('auto → analyse = medium (budget 3000)', () => {
+    expect(resolveClaudeThinking('analyse ce code', 'auto', true).effort).toBe('medium')
+  })
+
+  it('auto → message trivial = pas de réflexion', () => {
+    const r = resolveClaudeThinking('bonjour', 'auto', true)
+    expect(r.enabled).toBe(false)
+    expect(r.effort).toBeNull()
+  })
+})
+
+// ──────────────────────────────────────────────
 // selectClaudeSubModel — sub-model routing
 // ──────────────────────────────────────────────
 describe('selectClaudeSubModel', () => {
@@ -374,6 +416,28 @@ describe('getGeminiThinkingBudget', () => {
 
   it('analysis → 2048', () => {
     expect(getGeminiThinkingBudget('analyse ce site', false)).toBe(2048)
+  })
+})
+
+// ──────────────────────────────────────────────
+// resolveGeminiThinkingBudget — niveau de réflexion utilisateur
+// ──────────────────────────────────────────────
+describe('resolveGeminiThinkingBudget — niveau utilisateur', () => {
+  it('rapide → 0 (réflexion coupée), même sur une requête d\'analyse', () => {
+    expect(resolveGeminiThinkingBudget('analyse ce site', false, 'rapide')).toBe(0)
+  })
+
+  it('approfondi → 2048, même sur un lookup factuel', () => {
+    expect(resolveGeminiThinkingBudget('météo Paris', false, 'approfondi')).toBe(2048)
+  })
+
+  it('max → 2048 (Gemini Flash n\'a pas de palier au-delà)', () => {
+    expect(resolveGeminiThinkingBudget('météo Paris', false, 'max')).toBe(2048)
+  })
+
+  it('auto → délègue à getGeminiThinkingBudget', () => {
+    expect(resolveGeminiThinkingBudget('météo Paris', false, 'auto')).toBe(0)
+    expect(resolveGeminiThinkingBudget('analyse ce site', false, 'auto')).toBe(2048)
   })
 })
 
@@ -435,5 +499,57 @@ describe('extractPdfUrls', () => {
   it('returns [] for empty or URL-less input', () => {
     expect(extractPdfUrls('')).toEqual([])
     expect(extractPdfUrls('aucun lien ici')).toEqual([])
+  })
+})
+
+// Lot C (audit Mistral) — URLs lisibles pour le fetch Linkup des convs euOnly.
+describe('extractWebUrls', () => {
+  it('extrait les URLs http(s) et nettoie la ponctuation de fin', () => {
+    expect(extractWebUrls('regarde https://example.com/article, et dis-moi')).toEqual([
+      'https://example.com/article',
+    ])
+  })
+
+  it('exclut les plateformes vidéo (Linkup ne lit pas les transcripts)', () => {
+    expect(extractWebUrls('https://www.youtube.com/watch?v=x et https://youtu.be/y')).toEqual([])
+    expect(extractWebUrls('https://vimeo.com/123')).toEqual([])
+  })
+
+  it('inclut les PDF (filtrés ensuite par l\'appelant) et déduplique', () => {
+    const out = extractWebUrls('https://a.fr/doc.pdf https://a.fr/doc.pdf https://b.fr/page')
+    expect(out).toEqual(['https://a.fr/doc.pdf', 'https://b.fr/page'])
+  })
+
+  it('retourne [] sans URL', () => {
+    expect(extractWebUrls('')).toEqual([])
+    expect(extractWebUrls('pas de lien')).toEqual([])
+  })
+})
+
+// Lot D (audit Mistral) — la gate de recherche web. Défaut permissif (BUG 56 :
+// les phrasings indirects doivent passer), exclusions données privées (BUG 12)
+// et small talk. Verrouillé par tests pour que la prochaine refacto ne
+// réintroduise pas une regex restrictive.
+describe('shouldUseWebSearch', () => {
+  it('phrasings indirects factuels → true', () => {
+    expect(shouldUseWebSearch('à combien est le cours du cuivre')).toBe(true)
+    expect(shouldUseWebSearch("c'est quoi la dernière version de Node ?")).toBe(true)
+    expect(shouldUseWebSearch('il sort quand le prochain iPhone')).toBe(true)
+    expect(shouldUseWebSearch('quel temps demain à Voiron')).toBe(true)
+  })
+
+  it('données privées → false (BUG 12 — tools natifs, pas de web)', () => {
+    expect(shouldUseWebSearch('fais un rapport sur mes mails')).toBe(false)
+    expect(shouldUseWebSearch('cherche dans mon drive le devis')).toBe(false)
+  })
+
+  it('small talk court → false', () => {
+    expect(shouldUseWebSearch('salut ça va ?')).toBe(false)
+    expect(shouldUseWebSearch('merci !')).toBe(false)
+  })
+
+  it('message vide → false', () => {
+    expect(shouldUseWebSearch('')).toBe(false)
+    expect(shouldUseWebSearch('   ')).toBe(false)
   })
 })

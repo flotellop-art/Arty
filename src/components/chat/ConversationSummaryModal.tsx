@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import type { Conversation } from '../../types'
 import { MarkdownRenderer } from '../shared/MarkdownRenderer'
 import { streamMessage } from '../../services/anthropicClient'
+import { streamMistralMessage } from '../../services/mistralClient'
 import { openReport } from '../../services/reportGenerator'
 
 // Minimal markdown → HTML conversion for PDF export.
@@ -88,7 +89,12 @@ export function ConversationSummaryModal({ conversation, onClose }: Props) {
     let cancelled = false
     let accumulated = ''
 
-    const controller = streamMessage(
+    // Audit UX 10 juin 2026 — une conversation euOnly promet « tes données ne
+    // quitteront pas l'Europe ». Le résumé passait quand même par Claude
+    // (Anthropic, US). On respecte le flag : Mistral (France) pour les convs EU.
+    const streamFn = conversation.euOnly ? streamMistralMessage : streamMessage
+
+    const controller = streamFn(
       prompt as Array<{ role: string; content: string }>,
       (token) => {
         if (cancelled) return

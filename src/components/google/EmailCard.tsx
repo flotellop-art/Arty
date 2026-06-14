@@ -1,3 +1,5 @@
+import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import type { GmailMessage } from '../../types/google'
 import { getDateLocale } from '../../utils/formatDate'
 
@@ -11,13 +13,13 @@ function formatSender(from: string): string {
   return match ? match[1]!.replace(/"/g, '') : from
 }
 
-function formatDate(dateStr: string): string {
+function formatDate(dateStr: string, t: TFunction): string {
   try {
     const d = new Date(dateStr)
     const now = new Date()
     const diffH = (now.getTime() - d.getTime()) / (1000 * 60 * 60)
-    if (diffH < 1) return "à l'instant"
-    if (diffH < 24) return `il y a ${Math.floor(diffH)}h`
+    if (diffH < 1) return t('emailCard.timeJustNow')
+    if (diffH < 24) return t('emailCard.timeHoursAgo', { hours: Math.floor(diffH) })
     return d.toLocaleDateString(getDateLocale(), { day: 'numeric', month: 'short' })
   } catch {
     return ''
@@ -25,6 +27,7 @@ function formatDate(dateStr: string): string {
 }
 
 export function EmailCard({ email, onClick }: EmailCardProps) {
+  const { t } = useTranslation()
   return (
     <button
       onClick={onClick}
@@ -43,7 +46,7 @@ export function EmailCard({ email, onClick }: EmailCardProps) {
           </p>
         </div>
         <span className="text-xs text-theme-muted flex-shrink-0 mt-0.5">
-          {formatDate(email.date)}
+          {formatDate(email.date, t)}
         </span>
       </div>
     </button>

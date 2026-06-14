@@ -1,20 +1,24 @@
 import { useState, useRef, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { getStyle, setStyle as saveStyle, STYLE_OPTIONS, type ResponseStyle } from '../../services/responseStyles'
-import { getSelectedModel, setSelectedModel, MODEL_OPTIONS, type AIModel } from '../../services/modelSelector'
-import { ModelLevelSlider } from './ModelLevelSlider'
+import { setSelectedModel, MODEL_OPTIONS, type AIModel } from '../../services/modelSelector'
+import { useSelectedModel } from '../../hooks/useSelectedModel'
+import { useReflectionLevel } from '../../hooks/useReflectionLevel'
+import { setReflectionLevel, reflectionSupported, isReflectionLevelLocked, type ReflectionLevel } from '../../services/reflectionLevel'
 import { SettingsGuide } from '../shared/SettingsGuide'
 import { PrismMark } from '../shared/PrismMark'
 import { PlanBadge } from './PlanBadge'
 import { UpgradePromptModal } from './UpgradePromptModal'
+import { ChatOptionsSheet } from './ChatOptionsSheet'
+import { ConversationSwitcherSheet } from './ConversationSwitcherSheet'
 import { usePlanStatus, type ModelFamily } from '../../hooks/usePlanStatus'
-import { formatModelName, type ModelUsedEvent } from '../../services/modelLabels'
+import { formatModelName, getModelExplanationKey, getModelRegion, type ModelUsedEvent } from '../../services/modelLabels'
 import {
   exportConversation,
   exportConversationMarkdown,
   exportConversationPdf,
-  buildShareUrl,
 } from '../../services/conversationExport'
+import { ShareModal } from './ShareModal'
 import type { Conversation } from '../../types'
 
 // Mapping provider → famille primaire (la moins chère). Le proxy gère
@@ -34,45 +38,37 @@ interface ChatTopBarProps {
   euOnly?: boolean
   conversation?: Conversation
   onOpenSummary?: () => void
+  /** PR D — switcher : titre tappable ▾ ouvrant la liste des conversations.
+      Le ▾ ne s'affiche que si ≥ 2 conversations ET callback fourni. */
+  conversations?: Conversation[]
+  onSelectConversation?: (id: string) => void
 }
 
 type OpenMenu = null | 'style' | 'model'
 
-/**
- * Explication courte de pourquoi tel modèle a été utilisé. Mappée sur le
- * modelId réel renvoyé par le routeur. Volontairement générique — ne reflète
- * pas LES triggers exacts (URL détectée, mémoire, etc.), juste le rôle global
- * du modèle. Suffisant pour la transparence utilisateur sans dupliquer la
- * logique du routeur (cf. roadmap UI Phase 1 #3).
- */
-function getModelExplanation(modelId: string): string {
-  const m = modelId.toLowerCase()
-  if (m.includes('mistral')) {
-    return 'Mistral est utilisé en mode Europe (serveurs en France) — idéal pour les données qui doivent rester en Europe : mails, fichiers, infos clients. Pas de recherche web ni d\'ouverture de liens.'
+// Killswitch PR B (pattern arty-conv-encryption-disabled, storage.ts:38-44) :
+// header 1 ligne + sheet « ⋯ » actifs par défaut, `arty-chat-sheet-v2 = '0'`
+// dans localStorage rebascule sur l'ancien header complet sans rebuild.
+// Clé GLOBALE volontairement hors scopedStorage/chiffrement (BUG 43) :
+// un flag de secours doit rester lisible même si la crypto est cassée.
+function chatSheetV2Enabled(): boolean {
+  try {
+    return localStorage.getItem('arty-chat-sheet-v2') !== '0'
+  } catch {
+    return true
   }
-  if (m.includes('gemini')) {
-    return 'Gemini est utilisé pour les recherches web en temps réel, les questions sur l\'actualité et les requêtes Google Maps. Données traitées hors Europe.'
-  }
-  if (m.includes('haiku')) {
-    return 'Claude Haiku est utilisé pour les conversations rapides et courtes. Modèle gratuit (10/jour).'
-  }
-  if (m.includes('opus')) {
-    return 'Claude Opus est utilisé pour les analyses approfondies, les tâches complexes et les raisonnements multi-étapes. Modèle Pro.'
-  }
-  if (m.includes('claude')) {
-    return 'Claude est utilisé par défaut : fichiers attachés, données privées (mes mails, mes fichiers), URLs à ouvrir, ou requêtes nécessitant des tools (Gmail, Drive, Calendar).'
-  }
-  if (m.includes('gpt') || m.includes('openai')) {
-    return 'GPT (OpenAI) est utilisé quand tu le sélectionnes manuellement. Données traitées hors Europe.'
-  }
-  return 'Modèle sélectionné automatiquement selon le contenu de ta requête.'
 }
 
-export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, onOpenSummary }: ChatTopBarProps) {
+export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, onOpenSummary, conversations, onSelectConversation }: ChatTopBarProps) {
   const { t } = useTranslation()
   const planStatus = usePlanStatus()
   const [currentStyle, setCurrentStyle] = useState<ResponseStyle>(getStyle)
-  const [currentModel, setCurrentModel] = useState<AIModel>(getSelectedModel)
+  const currentModel = useSelectedModel()
+  const currentReflection = useReflectionLevel()
+  // « Pro » = tout plan payant (subscription/pro/vip). Pendant le chargement,
+  // planStatus défaut = 'free' → « Max » verrouillé puis débloqué au refresh.
+  const isProUser = planStatus.plan !== 'free'
+  const showReflection = reflectionSupported(currentModel, euOnly)
   const [openMenu, setOpenMenu] = useState<OpenMenu>(null)
   const [showGuide, setShowGuide] = useState(false)
   const [privacyWarning, setPrivacyWarning] = useState<AIModel | null>(null)
@@ -84,8 +80,17 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
   const [showModelExplain, setShowModelExplain] = useState(false)
   const [lastSearchProvider, setLastSearchProvider] = useState<string | null>(null)
   const [exportMenuOpen, setExportMenuOpen] = useState(false)
+  const [sheetOpen, setSheetOpen] = useState(false)
+  const [switcherOpen, setSwitcherOpen] = useState(false)
+  const [shareModalOpen, setShareModalOpen] = useState(false)
+  // Switcher visible seulement s'il y a un choix à faire. Jamais ouvert en
+  // même temps que le sheet « ⋯ » (déclencheurs distincts, même z-[90]).
+  const canSwitch = !!onSelectConversation && (conversations?.length ?? 0) > 1
   const menuRef = useRef<HTMLDivElement>(null)
   const exportRef = useRef<HTMLDivElement>(null)
+  // Évalué à chaque render (lecture localStorage triviale) : un testeur peut
+  // poser le flag en DevTools et le voir s'appliquer au prochain render.
+  const sheetV2 = chatSheetV2Enabled()
 
   // Écoute le dernier modèle effectivement appelé (dispatché par les
   // clients AI avant l'envoi). Permet d'afficher "Mistral Medium 3.5" sous
@@ -135,6 +140,9 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
       const label = MODEL_OPTIONS.find((o) => o.id === model)?.label ?? model
       setUpgradePrompt(label)
       setOpenMenu(null)
+      // UpgradePromptModal est z-50 < sheet z-[90] : fermer le sheet avant
+      // d'afficher la modale, sinon elle apparaît sous le backdrop.
+      setSheetOpen(false)
       return
     }
 
@@ -146,17 +154,30 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
       setOpenMenu(null)
       return
     }
+    // L'event 'model-changed' dispatché par setSelectedModel resynchronise
+    // currentModel via useSelectedModel — pas de setState local.
     setSelectedModel(model)
-    setCurrentModel(model)
     setOpenMenu(null)
   }
 
   const confirmModelSwitch = () => {
     if (privacyWarning) {
       setSelectedModel(privacyWarning)
-      setCurrentModel(privacyWarning)
       setPrivacyWarning(null)
     }
+  }
+
+  const handleReflectionChange = (level: ReflectionLevel) => {
+    // « Max » réservé aux comptes Pro : tap hors Pro → modale d'upgrade,
+    // pas de changement de niveau (même pattern que le lock modèle).
+    if (isReflectionLevelLocked(level, isProUser)) {
+      setUpgradePrompt(t('chat.reflection.maxUpgradeLabel'))
+      setSheetOpen(false)
+      return
+    }
+    // setReflectionLevel dispatche 'reflection-level-changed' → useReflectionLevel
+    // resynchronise currentReflection (barre + sheet) sans setState local.
+    setReflectionLevel(level)
   }
 
   // Close menu on outside click
@@ -188,10 +209,18 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
   const styleOption = STYLE_OPTIONS.find(o => o.id === currentStyle) ?? STYLE_OPTIONS[0]!
   const modelOption = MODEL_OPTIONS.find(o => o.id === currentModel) ?? MODEL_OPTIONS[0]!
 
-  const handleShare = async () => {
+  // Audit UX 10 juin 2026 — l'ancien partage copiait une URI
+  // `data:application/json;base64,…` : incollable dans une messagerie,
+  // bloquée par les navigateurs en navigation top-level, et copiée sans
+  // aucun feedback. Maintenant : Web Share API (feuille de partage native)
+  // avec le markdown de la conversation, fallback copie presse-papier +
+  // toast de confirmation.
+  // P1.5 — « Partager » ouvre la modale de publication d'un LIEN public
+  // (acte explicite + avertissement). L'export texte markdown/PDF/JSON reste
+  // disponible via « Exporter » dans le sheet.
+  const handleShare = () => {
     if (!conversation) return
-    const url = buildShareUrl(conversation)
-    try { await navigator.clipboard.writeText(url) } catch {}
+    setShareModalOpen(true)
   }
 
   return (
@@ -199,31 +228,103 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
       className="bg-theme-bg"
       style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
     >
-      {/* Row 1 — back + editorial title (left-aligned, Fraunces italic with kicker) */}
-      <div className="flex items-baseline gap-3 px-4 pt-3 pb-1">
+      {/* Row 1 — back + editorial title (left-aligned, Fraunces italic with
+          kicker). En v2 (sheet) : + pilule modèle + « ⋯ », et c'est la SEULE
+          rangée — les chips style/modèle et les actions vivent dans le sheet. */}
+      <div className={`flex gap-3 px-4 pt-3 ${sheetV2 ? 'items-center pb-2' : 'items-baseline pb-1'}`}>
         <button
           onClick={onBack}
-          className="p-1 -ml-1 rounded text-theme-ink hover:bg-theme-ink/5 transition-colors shrink-0 self-start mt-0.5"
+          className={`p-1 -ml-1 rounded text-theme-ink hover:bg-theme-ink/5 transition-colors shrink-0 ${sheetV2 ? '' : 'self-start mt-0.5'}`}
           aria-label={t('chat.topBar.aria.back')}
         >
           <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
             <path d="M12 4L6 10L12 16" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </button>
-        <div className="flex-1 min-w-0 overflow-hidden">
-          <p className="font-sans text-[10px] font-semibold uppercase tracking-kicker text-theme-muted">
-            {t('chat.topBar.kicker', { defaultValue: 'Conversation' })}
-          </p>
-          <h1 className="font-display italic text-[17px] text-theme-ink truncate leading-tight">
-            {title}
-          </h1>
-        </div>
+        {/* Bloc titre COMMUN v1/v2 (hors branche sheetV2) : le switcher
+            survit au rollback du killswitch arty-chat-sheet-v2 (PR D). */}
+        {canSwitch ? (
+          <button
+            onClick={() => setSwitcherOpen(true)}
+            className="flex-1 min-w-0 overflow-hidden text-left rounded hover:bg-theme-ink/[0.03] transition-colors"
+            aria-haspopup="dialog"
+            aria-expanded={switcherOpen}
+            aria-label={t('chat.switcher.open')}
+          >
+            <p className="font-sans text-[10px] font-semibold uppercase tracking-kicker text-theme-muted">
+              {t('chat.topBar.kicker', { defaultValue: 'Conversation' })}
+            </p>
+            <h1 className="font-display italic text-[17px] text-theme-ink truncate leading-tight">
+              {title}
+              <svg width="11" height="11" viewBox="0 0 10 10" fill="none" className="inline-block ml-1.5 opacity-50" aria-hidden="true">
+                <path d="M2.5 4L5 6.5L7.5 4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+              </svg>
+            </h1>
+          </button>
+        ) : (
+          <div className="flex-1 min-w-0 overflow-hidden">
+            <p className="font-sans text-[10px] font-semibold uppercase tracking-kicker text-theme-muted">
+              {t('chat.topBar.kicker', { defaultValue: 'Conversation' })}
+            </p>
+            <h1 className="font-display italic text-[17px] text-theme-ink truncate leading-tight">
+              {title}
+            </h1>
+          </div>
+        )}
+        {sheetV2 && (
+          <>
+            {euOnly ? (
+              <div className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium bg-theme-accent/10 text-theme-accent shrink-0">
+                <span>🇪🇺</span>
+                <span>{t('chat.topBar.euBadge')}</span>
+              </div>
+            ) : (
+              <button
+                onClick={() => setSheetOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-medium bg-theme-accent/10 text-theme-accent border border-theme-accent/25 hover:bg-theme-accent/15 transition-colors shrink-0"
+                aria-haspopup="dialog"
+                aria-expanded={sheetOpen}
+              >
+                {currentModel === 'auto' ? <PrismMark size={11} fill /> : <span>{modelOption.flag}</span>}
+                <span>{modelLabel(modelOption.id)}</span>
+                {/* En « Auto », l'icône 🔄 ne dit rien de la région : dès qu'un
+                    modèle a répondu, on affiche SON drapeau (🇪🇺/🇺🇸) = la vraie
+                    destination de la donnée, et il reste visible. Pour un modèle
+                    forcé, modelOption.flag le montre déjà (cf. MODEL_OPTIONS). */}
+                {currentModel === 'auto' && lastUsedModel && (
+                  <span title={t('chat.region.title')}>{getModelRegion(lastUsedModel).flag}</span>
+                )}
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none" className="ml-0.5 opacity-60">
+                  <path d="M2.5 4L5 6.5L7.5 4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+                </svg>
+              </button>
+            )}
+            <button
+              onClick={() => setSheetOpen(true)}
+              className="w-9 h-9 rounded-xl border border-theme-border bg-theme-surface text-theme-ink text-lg leading-none hover:bg-theme-ink/5 transition-colors shrink-0 flex items-center justify-center"
+              aria-label={t('chat.optionsSheet.open')}
+              aria-haspopup="dialog"
+              aria-expanded={sheetOpen}
+            >
+              ⋯
+            </button>
+          </>
+        )}
       </div>
 
       {/* Editorial double rule */}
       <div className="mx-4 h-[2px] bg-theme-ink" />
       <div className="mx-4 mt-[3px] h-px bg-theme-ink" />
+      {/* Le contrôle Réflexion visible vit désormais en bas, dans une
+          pastille au-dessus de la barre de saisie (ReflectionPill, audit UX
+          12 juin) — le strip segmenté ici a été jugé pas assez discret.
+          Le réglage complet reste dans le sheet « ⋯ » ci-dessous. */}
 
+      {/* ===== Ancien header complet (killswitch arty-chat-sheet-v2 = '0') —
+          conservé tel quel pour rollback sans rebuild. À supprimer une fois
+          le sheet validé en beta (garde-fou PLAN.md, risque R2). ===== */}
+      {!sheetV2 && (
+        <>
       {/* Row 2a — chips Style / Info / Modèle (full width, wraps if needed) */}
       <div className="flex flex-wrap items-center gap-1.5 px-4 pt-2 pb-1" ref={menuRef}>
           {/* Style dropdown */}
@@ -328,14 +429,6 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
                   </button>
                   )
                 })}
-                {/* Curseur d'effort partagé (slider) — n'agit que sur Claude. */}
-                <div className="border-t border-theme-border mt-1">
-                  <ModelLevelSlider
-                    lockedFamilies={planStatus.lockedFamilies}
-                    onLocked={(label) => { setUpgradePrompt(label); setOpenMenu(null) }}
-                    onPick={() => setOpenMenu(null)}
-                  />
-                </div>
               </div>
             )}
           </div>
@@ -353,11 +446,14 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
             type="button"
             onClick={() => setShowModelExplain((v) => !v)}
             className="hover:text-theme-ink transition-colors underline-offset-2 hover:underline cursor-pointer"
-            aria-label="Pourquoi ce modèle ?"
+            aria-label={t('chat.topBar.whyModel')}
             aria-expanded={showModelExplain}
           >
-            Dernier appel : {formatModelName(lastUsedModel)}
+            {t('chat.topBar.lastCall', { model: formatModelName(lastUsedModel) })}
           </button>
+          <span className="ml-1" title={t('chat.region.title')}>
+            · {getModelRegion(lastUsedModel).flag} {t(getModelRegion(lastUsedModel).key)}
+          </span>
           {lastSearchProvider && (
             <span className="ml-1 text-theme-accent">
               · 🔍 {lastSearchProvider.charAt(0).toUpperCase() + lastSearchProvider.slice(1)}
@@ -365,11 +461,13 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
           )}
           {showModelExplain && (
             <div className="mt-1.5 px-2.5 py-2 bg-theme-surface border border-theme-border rounded-lg normal-case tracking-normal text-[11px] text-theme-ink leading-relaxed max-w-md">
-              <p className="font-semibold mb-1">Pourquoi ce modèle ?</p>
-              <p className="text-theme-ink/80">{getModelExplanation(lastUsedModel)}</p>
+              <p className="font-semibold mb-1">{t('chat.topBar.whyModel')}</p>
+              <p className="text-theme-ink/80">{t(getModelExplanationKey(lastUsedModel))}</p>
             </div>
           )}
         </div>
+      )}
+        </>
       )}
 
       {upgradePrompt && (
@@ -380,14 +478,14 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
       )}
 
       {/* Row 2b — actions Résumé / Export / Partager (conditional: hidden when nothing to show) */}
-      {(onOpenSummary || conversation) && (
+      {!sheetV2 && (onOpenSummary || conversation) && (
         <div className="flex items-center justify-end gap-0.5 px-3 pb-2 pt-0.5">
           {onOpenSummary && (
             <button
               onClick={onOpenSummary}
               className="p-1.5 rounded text-theme-muted hover:text-theme-ink hover:bg-theme-ink/5 transition-colors"
-              title="Résumé de la conversation"
-              aria-label="Résumé"
+              title={t('chat.optionsSheet.summarize')}
+              aria-label={t('chat.topBar.aria.summary')}
             >
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                 <rect x="4" y="2" width="8" height="12" rx="1" stroke="currentColor" strokeWidth="1.2" />
@@ -402,8 +500,8 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
               <button
                 onClick={() => setExportMenuOpen((o) => !o)}
                 className="p-1.5 rounded text-theme-muted hover:text-theme-ink hover:bg-theme-ink/5 transition-colors"
-                title="Exporter la conversation"
-                aria-label="Exporter"
+                title={t('chat.topBar.exportTitle')}
+                aria-label={t('chat.topBar.aria.export')}
                 aria-haspopup="menu"
                 aria-expanded={exportMenuOpen}
               >
@@ -422,21 +520,21 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
                     onClick={() => { setExportMenuOpen(false); void exportConversationMarkdown(conversation) }}
                     className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs text-theme-ink hover:bg-theme-ink/5"
                   >
-                    <span>📄</span><span>Markdown (.md)</span>
+                    <span>📄</span><span>{t('chat.topBar.exportMarkdown')}</span>
                   </button>
                   <button
                     role="menuitem"
                     onClick={() => { setExportMenuOpen(false); void exportConversationPdf(conversation) }}
                     className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs text-theme-ink hover:bg-theme-ink/5"
                   >
-                    <span>📑</span><span>PDF (.pdf)</span>
+                    <span>📑</span><span>{t('chat.topBar.exportPdf')}</span>
                   </button>
                   <button
                     role="menuitem"
                     onClick={() => { setExportMenuOpen(false); exportConversation(conversation) }}
                     className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs text-theme-ink hover:bg-theme-ink/5"
                   >
-                    <span>📦</span><span>JSON (réimport)</span>
+                    <span>📦</span><span>{t('chat.topBar.exportJson')}</span>
                   </button>
                 </div>
               )}
@@ -446,8 +544,8 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
             <button
               onClick={handleShare}
               className="p-1.5 rounded text-theme-muted hover:text-theme-ink hover:bg-theme-ink/5 transition-colors"
-              title="Copier le lien de partage"
-              aria-label="Partager"
+              title={t('chat.topBar.shareTitle')}
+              aria-label={t('chat.topBar.aria.share')}
             >
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                 <path d="M7 5L5.5 6.5C4.5 7.5 4.5 9.1 5.5 10.1C6.5 11.1 8.1 11.1 9.1 10.1L10.5 8.7" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
@@ -458,7 +556,52 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
         </div>
       )}
 
+      {/* Sheet « ⋯ » (v2). Présentationnel : la logique (lock Pro, EU/US,
+          partage, listeners arty-model-used) reste ici, monté en permanence.
+          Les actions ferment le sheet AVANT d'ouvrir leur modale/flux
+          (collision d'overlays, audit PR B R3/R7). La sélection modèle/style
+          laisse le sheet ouvert : l'utilisateur voit le ✓ se déplacer ; la
+          confirmation EU/US (z-[100]) s'affiche par-dessus si déclenchée. */}
+      {sheetV2 && (
+        <ChatOptionsSheet
+          open={sheetOpen}
+          onClose={() => setSheetOpen(false)}
+          currentModel={currentModel}
+          currentStyle={currentStyle}
+          currentReflection={currentReflection}
+          showReflection={showReflection}
+          maxReflectionLocked={!isProUser}
+          onSelectReflection={handleReflectionChange}
+          euOnly={euOnly}
+          hasMistralData={!!usedModels?.includes('mistral') && !euOnly}
+          lastUsedModel={lastUsedModel}
+          lastSearchProvider={lastSearchProvider}
+          isProviderLocked={isProviderLocked}
+          onSelectModel={handleModelChange}
+          onSelectStyle={handleStyleChange}
+          onOpenSummary={onOpenSummary ? () => { setSheetOpen(false); onOpenSummary() } : undefined}
+          hasConversation={!!conversation}
+          onExportMarkdown={() => { setSheetOpen(false); if (conversation) void exportConversationMarkdown(conversation) }}
+          onExportPdf={() => { setSheetOpen(false); if (conversation) void exportConversationPdf(conversation) }}
+          onExportJson={() => { setSheetOpen(false); if (conversation) exportConversation(conversation) }}
+          onShare={() => { setSheetOpen(false); void handleShare() }}
+          onOpenGuide={() => { setSheetOpen(false); setShowGuide(true) }}
+        />
+      )}
+
+      {canSwitch && conversations && (
+        <ConversationSwitcherSheet
+          open={switcherOpen}
+          onClose={() => setSwitcherOpen(false)}
+          conversations={conversations}
+          activeId={conversation?.id}
+          onSelect={onSelectConversation!}
+        />
+      )}
+
       {showGuide && <SettingsGuide onClose={() => setShowGuide(false)} />}
+
+      <ShareModal conversation={conversation ?? null} open={shareModalOpen} onClose={() => setShareModalOpen(false)} />
 
       {privacyWarning && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center">

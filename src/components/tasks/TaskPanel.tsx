@@ -111,7 +111,10 @@ function TaskRow({ task }: { task: Task }) {
       </span>
       <button
         onClick={() => deleteTask(task.id)}
-        className="opacity-0 group-hover:opacity-100 text-theme-muted hover:text-red-500 text-xs transition-opacity"
+        // P0.8 — `opacity-0 group-hover` seul = invisible sur tactile (pas de
+        // hover). Pattern standard de la codebase : 50% permanent mobile,
+        // hover desktop, focus-visible clavier.
+        className="opacity-50 md:opacity-0 md:group-hover:opacity-100 focus-visible:opacity-100 p-2 -m-1 text-theme-muted hover:text-red-500 text-xs transition-opacity"
         aria-label={t('tasks.delete')}
       >
         ✕

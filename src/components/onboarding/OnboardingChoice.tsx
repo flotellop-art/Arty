@@ -151,7 +151,10 @@ export function OnboardingChoice({
             <h1 className="font-display text-[34px] sm:text-[40px] leading-[1.05] font-medium -tracking-[0.025em] text-theme-ink text-center">
               {t('onboardingChoice.tryFree.title', { defaultValue: 'Essaie Arty gratuitement' })}
             </h1>
-            <p className="font-display italic text-theme-muted text-base mt-3 text-center">
+            {/* P0.10 — la promesse trial n'est plus atténuée (était text-theme-muted
+                italic) : c'est l'argument n°1 face au marché (la plainte la plus
+                fréquente contre le concurrent direct = pas d'essai gratuit). */}
+            <p className="font-display text-theme-ink text-base mt-3 text-center">
               {t('onboardingChoice.tryFree.subtitle', {
                 defaultValue: '30 messages offerts. Sans carte bancaire.',
               })}
@@ -162,19 +165,26 @@ export function OnboardingChoice({
                 type="button"
                 onClick={handleGoogle}
                 disabled={busy}
-                className="w-full py-4 font-display italic text-base font-medium tracking-[0.02em] bg-theme-accent text-theme-bg rounded-sm transition-opacity hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-3"
+                className="w-full py-3.5 font-display italic text-base font-medium tracking-[0.02em] bg-theme-accent text-theme-bg rounded-sm transition-opacity hover:opacity-90 disabled:opacity-50 flex flex-col items-center justify-center gap-0.5"
               >
-                <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden>
-                  <path fill="#fff" d="M16.51 8H8.98v3h4.3c-.18 1-.74 1.48-1.6 2.04v2.01h2.6a7.8 7.8 0 002.38-5.88c0-.57-.05-.99-.15-1.17z" />
-                  <path fill="#fff" d="M8.98 17c2.16 0 3.97-.72 5.3-1.94l-2.6-2a4.8 4.8 0 01-7.18-2.54H1.83v2.07A8 8 0 008.98 17z" />
-                  <path fill="#fff" d="M4.5 10.52a4.8 4.8 0 010-3.04V5.41H1.83a8 8 0 000 7.18l2.67-2.07z" />
-                  <path fill="#fff" d="M8.98 3.58c1.32 0 2.29.44 3.13 1.21l2.27-2.27A7.8 7.8 0 008.98 0 8 8 0 001.83 5.41L4.5 7.48a4.77 4.77 0 014.48-3.9z" />
-                </svg>
-                <span>
-                  {busy
-                    ? t('onboardingChoice.tryFree.googleLoading', { defaultValue: 'Connexion…' })
-                    : `${t('onboardingChoice.tryFree.googleCta', { defaultValue: 'Continuer avec Google' })} →`}
+                <span className="flex items-center justify-center gap-3">
+                  <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden>
+                    <path fill="#fff" d="M16.51 8H8.98v3h4.3c-.18 1-.74 1.48-1.6 2.04v2.01h2.6a7.8 7.8 0 002.38-5.88c0-.57-.05-.99-.15-1.17z" />
+                    <path fill="#fff" d="M8.98 17c2.16 0 3.97-.72 5.3-1.94l-2.6-2a4.8 4.8 0 01-7.18-2.54H1.83v2.07A8 8 0 008.98 17z" />
+                    <path fill="#fff" d="M4.5 10.52a4.8 4.8 0 010-3.04V5.41H1.83a8 8 0 000 7.18l2.67-2.07z" />
+                    <path fill="#fff" d="M8.98 3.58c1.32 0 2.29.44 3.13 1.21l2.27-2.27A7.8 7.8 0 008.98 0 8 8 0 001.83 5.41L4.5 7.48a4.77 4.77 0 014.48-3.9z" />
+                  </svg>
+                  <span>
+                    {busy
+                      ? t('onboardingChoice.tryFree.googleLoading', { defaultValue: 'Connexion…' })
+                      : `${t('onboardingChoice.tryFree.googleCta', { defaultValue: 'Continuer avec Google' })} →`}
+                  </span>
                 </span>
+                {!busy && (
+                  <span className="font-sans not-italic text-[11px] font-normal opacity-80 tracking-normal">
+                    {t('onboardingChoice.tryFree.googleSub', { defaultValue: '30 messages gratuits · sans carte bancaire' })}
+                  </span>
+                )}
               </button>
 
               {error && (
@@ -185,7 +195,7 @@ export function OnboardingChoice({
                         {/* Divider */}
             <div className="mt-6 flex items-center gap-3">
               <div className="flex-1 h-px bg-theme-ink/15" />
-              <span className="font-display italic text-[12px] text-theme-muted">ou</span>
+              <span className="font-display italic text-[12px] text-theme-muted">{t('common.or')}</span>
               <div className="flex-1 h-px bg-theme-ink/15" />
             </div>
 
@@ -199,8 +209,8 @@ export function OnboardingChoice({
                     <path d="M4.5 7L6 8.5L9.5 5" stroke="rgb(var(--theme-bg))" strokeWidth="1.2" strokeLinecap="round"/>
                   </svg>
                 </div>
-                <p className="font-display text-[13px] font-medium text-theme-ink leading-tight">Abonnement</p>
-                <p className="font-display italic text-[11px] text-theme-muted leading-tight -mt-1.5">Pro, illimité</p>
+                <p className="font-display text-[13px] font-medium text-theme-ink leading-tight">{t('onboardingChoice.cards.subscription.title')}</p>
+                <p className="font-display italic text-[11px] text-theme-muted leading-tight -mt-1.5">{t('onboardingChoice.cards.subscription.subtitle')}</p>
               </button>
 
               <button type="button" onClick={() => setMode('byok')}
@@ -212,8 +222,8 @@ export function OnboardingChoice({
                     <circle cx="7" cy="8" r="1" fill="white"/>
                   </svg>
                 </div>
-                <p className="font-display text-[13px] font-medium text-theme-ink leading-tight">Clé API</p>
-                <p className="font-display italic text-[11px] text-theme-muted leading-tight -mt-1.5">Votre propre clé</p>
+                <p className="font-display text-[13px] font-medium text-theme-ink leading-tight">{t('onboardingChoice.cards.apiKey.title')}</p>
+                <p className="font-display italic text-[11px] text-theme-muted leading-tight -mt-1.5">{t('onboardingChoice.cards.apiKey.subtitle')}</p>
               </button>
             </div>
 <div className="mt-10 flex flex-col items-center gap-3">
@@ -295,7 +305,16 @@ export function TrialIntro({ onDone, onUpgrade }: TrialIntroProps) {
         </h1>
         <p className="font-display italic text-theme-muted text-base mt-3">
           {t('onboardingChoice.trial.subtitle', {
-            defaultValue: 'Modèles disponibles : Claude Haiku, GPT-4o mini, Gemini Flash, Mistral Medium',
+            // « GPT-4o mini » était obsolète — la source de vérité (checkAllowedUser)
+            // liste gpt-5-mini. Aligné aussi avec la carte pricing.
+            defaultValue: 'Modèles disponibles : Claude Haiku, GPT-5 mini, Gemini Flash, Mistral Medium',
+          })}
+        </p>
+        {/* P1.1 — obligation de transparence de la mémoire auto (ON par défaut). */}
+        <p className="font-display italic text-theme-muted text-xs mt-3">
+          🧠 {t('onboardingChoice.trial.memoryNote', {
+            defaultValue:
+              'Arty mémorise discrètement ce qui compte pour toi — tout reste chiffré sur ton appareil, modifiable dans les Paramètres.',
           })}
         </p>
 

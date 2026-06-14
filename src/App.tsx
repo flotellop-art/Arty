@@ -1,4 +1,5 @@
-import { useState, useCallback, useEffect, lazy, Suspense } from 'react'
+import { useState, useCallback, useEffect, useRef, lazy, Suspense } from 'react'
+import { useTranslation } from 'react-i18next'
 import { BrowserRouter, Routes, Route, useNavigate, useParams } from 'react-router-dom'
 import { useConversation } from './hooks/useConversation'
 import { useAppSetup } from './hooks/useAppSetup'
@@ -15,9 +16,14 @@ import { useProactiveBrief } from './hooks/useProactiveBrief'
 import { isProactiveBriefEnabled } from './services/proactiveBriefSettings'
 import { ConversationScreen } from './components/chat/ConversationScreen'
 import { ReportPage } from './components/shared/ReportPage'
+import { ErrorBoundary } from './components/shared/ErrorBoundary'
+import { Toaster } from './components/shared/Toaster'
 import { Sidebar } from './components/layout/Sidebar'
+import { ApiKeysModal } from './components/settings/ApiKeysModal'
+import { CapReachedModal } from './components/chat/CapReachedModal'
 import { OAuthCallback } from './components/google/OAuthCallback'
 import { LoginScreen } from './components/auth/LoginScreen'
+import { SharedConversationView } from './components/share/SharedConversationView'
 import { WelcomeSlides, isOnboardingDone } from './components/onboarding/WelcomeSlides'
 import {
   OnboardingChoice,
@@ -46,9 +52,10 @@ const ComparatorScreen = lazy(() => import('./screens/compare').then((m) => ({ d
 // Fallback pendant le chargement des chunks lazy — petit splash neutre,
 // disparaît dès que le chunk arrive (<200ms en pratique sur 4G).
 function LazyFallback() {
+  const { t } = useTranslation()
   return (
     <div className="flex items-center justify-center h-full text-theme-muted text-sm">
-      Chargement…
+      {t('common.loading')}
     </div>
   )
 }
@@ -70,10 +77,12 @@ function AppContent({
 }: {
   onLogout: () => void
   userName?: string
-  authMethod?: 'google' | 'email' | 'apikey'
+  authMethod?: 'google' | 'email' | 'apikey' | 'demo'
   userEmail?: string
 }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  // PR D — propriétaire unique de l'ApiKeysModal (Sidebar + écran Upgrade).
+  const [showApiKeys, setShowApiKeys] = useState(false)
   const [showMorningBrief, setShowMorningBrief] = useState(false)
   const [showProfileSetup, setShowProfileSetup] = useState(() => getUserProfile() === null)
   const [profileName, setProfileName] = useState<string | null>(() => getUserProfile()?.name || null)
@@ -83,6 +92,7 @@ function AppContent({
   })
   const [shareError, setShareError] = useState<string | null>(null)
   const navigate = useNavigate()
+  const { t } = useTranslation()
 
   // Listen for profile updates so the Home hero refreshes without reload
   useEffect(() => {
@@ -114,6 +124,10 @@ function AppContent({
     togglePinMessage,
     editAndResend,
     retryMessage,
+    retryLastUserMessage,
+    renameConversation,
+    setConversationTags,
+    clearError,
   } = conversation
 
   // Show legacy morning brief once per day between 6h-11h — sauf si le brief
@@ -178,7 +192,7 @@ function AppContent({
   const handleSharedContent = useCallback(
     (payload: SharePayload) => {
       if (payload.error === 'file_too_large') {
-        setShareError('Fichier trop volumineux (>10 MB), partage annulé.')
+        setShareError(t('app.shareError.fileTooLarge'))
         return
       }
       const draft = buildDraftFromShare(payload)
@@ -226,6 +240,29 @@ function AppContent({
       navigate(`/chat/${id}`)
     },
     [selectConversation, navigate, setActionScreenshot]
+  )
+
+  // Callbacks stables pour la Sidebar (memo) et ChatRoute — les littéraux
+  // inline recréés à chaque render court-circuitaient le memo pendant le
+  // streaming (audit perf H2).
+  const closeSidebar = useCallback(() => setSidebarOpen(false), [])
+  const handleImportConversation = useCallback(
+    (id: string) => {
+      selectConversation(id)
+      navigate(`/chat/${id}`)
+    },
+    [selectConversation, navigate]
+  )
+  const handleOpenTemplates = useCallback(() => navigate('/templates'), [navigate])
+  // PR D — entrées de navigation directes de la Sidebar. useCallback stables
+  // obligatoires : Sidebar est memo, un littéral inline casserait le memo à
+  // chaque frame de streaming (audit PR D, R4).
+  const handleOpenCosts = useCallback(() => navigate('/costs'), [navigate])
+  const handleOpenCompare = useCallback(() => navigate('/compare'), [navigate])
+  const handleOpenApiKeys = useCallback(() => setShowApiKeys(true), [])
+  const handleSendInChat = useCallback(
+    (text: string, files?: FileAttachment[]) => sendMessage(text, undefined, files),
+    [sendMessage]
   )
 
   const handleBack = useCallback(() => {
@@ -294,13 +331,25 @@ function AppContent({
     return () => window.removeEventListener('arty-open-costs', open)
   }, [navigate])
 
+  // PR D — fix bug orphelin : upgrade.tsx dispatche 'arty-open-api-keys'
+  // (bouton « Configurer mes clés API ») mais aucun listener n'existait.
+  // L'ApiKeysModal est désormais possédée ici (un seul propriétaire — la
+  // rendre dans la Sidebar la plaçait dans le containing block du drawer
+  // transformé, fixed cassé drawer fermé).
+  useEffect(() => {
+    const open = () => setShowApiKeys(true)
+    window.addEventListener('arty-open-api-keys', open)
+    return () => window.removeEventListener('arty-open-api-keys', open)
+  }, [])
+
   useEffect(() => {
     if (!error) return
     if (error.includes('no_active_subscription')) {
       navigate('/upgrade')
-    } else if (error.includes('premium_cap_reached')) {
-      navigate('/upgrade?scroll=premium')
     }
+    // `premium_cap_reached` ne passe plus par ici : useConversation dispatche
+    // `arty-cap-reached` → CapReachedModal propose un choix explicite (P0.7),
+    // au lieu de l'ancien redirect muet qui éjectait l'utilisateur du fil.
   }, [error, navigate])
 
   const currentPlan: CurrentPlan = authMethod === 'apikey' ? 'byok' : 'unknown'
@@ -332,7 +381,7 @@ function AppContent({
           style={{ paddingTop: 'max(0.625rem, env(safe-area-inset-top, 0.625rem))' }}
         >
           <p className="font-display italic text-sm">
-            ⚠️ Budget IA dépassé — {formatCost(budgetAlert.spent)} / {formatCost(budgetAlert.limit)} ce mois-ci.
+            {t('app.budgetAlert.message', { spent: formatCost(budgetAlert.spent), limit: formatCost(budgetAlert.limit) })}
           </p>
           <div className="flex items-center gap-3 shrink-0">
             <button
@@ -342,12 +391,12 @@ function AppContent({
               }}
               className="font-display italic text-xs underline"
             >
-              Voir
+              {t('app.budgetAlert.view')}
             </button>
             <button
               onClick={() => setBudgetAlert(null)}
               className="font-display italic text-xs"
-              aria-label="Fermer l'alerte"
+              aria-label={t('app.budgetAlert.closeAria')}
             >
               ✕
             </button>
@@ -359,7 +408,7 @@ function AppContent({
 
       <Sidebar
         isOpen={sidebarOpen}
-        onClose={() => setSidebarOpen(false)}
+        onClose={closeSidebar}
         conversations={conversations}
         activeId={activeId}
         streamingConvIds={streamingConvIds}
@@ -367,16 +416,25 @@ function AppContent({
         onNew={handleNewConversation}
         onNewEU={handleNewEUConversation}
         onDelete={deleteConversation}
+        onRename={renameConversation}
+        onSetTags={setConversationTags}
         userName={profileName || userName}
         onLogout={onLogout}
-        onImportConversation={(id) => {
-          conversation.selectConversation(id)
-          navigate(`/chat/${id}`)
-        }}
-        onOpenTemplates={() => navigate('/templates')}
+        onImportConversation={handleImportConversation}
+        onOpenTemplates={handleOpenTemplates}
+        onOpenCosts={handleOpenCosts}
+        onOpenCompare={handleOpenCompare}
+        onOpenApiKeys={handleOpenApiKeys}
       />
 
-      <main className="h-full">
+      <ApiKeysModal open={showApiKeys} onClose={() => setShowApiKeys(false)} />
+      {/* P0.7 — modale de choix au cap premium atteint (event arty-cap-reached). */}
+      <CapReachedModal />
+
+      {/* PR E — desktop ≥1024px : la sidebar persistante (fixed, toujours
+          visible) occupe lg:w-72 à gauche ; on décale le contenu d'autant.
+          Aucune restructuration flex de la racine → mobile inchangé. */}
+      <main className="h-full lg:pl-72">
       <Routes>
         <Route
           path="/"
@@ -385,6 +443,7 @@ function AppContent({
               onMenuToggle={() => setSidebarOpen((o) => !o)}
               onSend={handleSendFromHome}
               isStreaming={isStreaming}
+              onStop={stopStreaming}
               googleAuth={googleAuth}
               gmail={gmail}
               drive={drive}
@@ -393,6 +452,8 @@ function AppContent({
               briefLoading={proactiveBrief.loading}
               onDismissBrief={proactiveBrief.dismiss}
               onBriefAction={proactiveBrief.runAction}
+              conversations={conversations}
+              onSelectConv={handleSelectConversation}
             />
           }
         />
@@ -400,6 +461,8 @@ function AppContent({
           path="/auth/callback"
           element={<OAuthCallback onCallback={handleOAuthCallback} />}
         />
+        {/* P1.5 — un utilisateur connecté peut aussi ouvrir un lien de partage. */}
+        <Route path="/share/:id" element={<SharedConversationView />} />
         <Route
           path="/upgrade"
           element={
@@ -454,7 +517,7 @@ function AppContent({
               streamingContent={streamingContent}
               error={error}
               onBack={handleBack}
-              onSend={(text, files) => sendMessage(text, undefined, files)}
+              onSend={handleSendInChat}
               onStop={stopStreaming}
               onSelect={selectConversation}
               gmail={gmail}
@@ -467,6 +530,8 @@ function AppContent({
               onTogglePin={handleTogglePin}
               onEdit={editAndResend}
               onRetry={retryMessage}
+              onRetryError={retryLastUserMessage}
+              onDismissError={clearError}
               conversations={conversations}
               onSelectConv={handleSelectConversation}
             />
@@ -505,6 +570,8 @@ function AppContent({
  * polling : se rafraîchit uniquement quand le compteur change.
  */
 function TrialBanner({ onUpgrade }: { onUpgrade: () => void }) {
+  // P0.10 — textes via i18n (étaient hardcodés FR → bannière cassée en EN).
+  const { t } = useTranslation()
   const [remaining, setRemaining] = useState<number | null>(() => getTrialRemaining())
 
   useEffect(() => {
@@ -526,13 +593,13 @@ function TrialBanner({ onUpgrade }: { onUpgrade: () => void }) {
         style={{ paddingTop: 'max(0.5rem, env(safe-area-inset-top, 0.5rem))' }}
       >
         <p className="font-display italic text-sm">
-          Essai terminé — Choisis un plan pour continuer
+          {t('trial.banner.ended')}
         </p>
         <button
           onClick={onUpgrade}
           className="font-display italic text-xs underline shrink-0"
         >
-          Voir les plans →
+          {t('trial.banner.seePlans')}
         </button>
       </div>
     )
@@ -544,13 +611,13 @@ function TrialBanner({ onUpgrade }: { onUpgrade: () => void }) {
       style={{ paddingTop: 'max(0.375rem, env(safe-area-inset-top, 0.375rem))' }}
     >
       <p className="font-display italic text-xs">
-        ✨ Essai gratuit — {remaining} message{remaining > 1 ? 's' : ''} restant{remaining > 1 ? 's' : ''}
+        {t('trial.banner.remaining', { count: remaining })}
       </p>
       <button
         onClick={onUpgrade}
         className="font-display italic text-xs underline shrink-0"
       >
-        Passer à Pro
+        {t('trial.banner.upgradeCta')}
       </button>
     </div>
   )
@@ -575,6 +642,8 @@ interface ChatRouteProps {
   onTogglePin?: (messageId: string) => void
   onEdit?: (messageId: string, newContent: string) => void
   onRetry?: (messageId: string) => void
+  onRetryError?: () => void
+  onDismissError?: () => void
   conversations: ReturnType<typeof useConversation>['conversations']
   onSelectConv: (id: string) => void
 }
@@ -598,6 +667,8 @@ function ChatRoute({
   onTogglePin,
   onEdit,
   onRetry,
+  onRetryError,
+  onDismissError,
   conversations,
   onSelectConv,
 }: ChatRouteProps) {
@@ -649,6 +720,8 @@ function ChatRoute({
       onTogglePin={onTogglePin}
       onEdit={onEdit}
       onRetry={onRetry}
+      onRetryError={onRetryError}
+      onDismissError={onDismissError}
       conversations={conversations}
       onSelectConv={onSelectConv}
     />
@@ -658,6 +731,14 @@ function ChatRoute({
 export default function App() {
   const auth = useAuth()
   const [deepLinkCode, setDeepLinkCode] = useState<string | null>(null)
+  // M3 (audit frontend) — `auth` est un objet neuf à chaque render. L'avoir
+  // dans les deps de l'effet processOAuth re-déclenchait l'effet pendant le
+  // login (auth.login → re-render) → DEUXIÈME exchangeCode avec un code
+  // OAuth single-use déjà consommé → erreur Google stockée alors que le
+  // login avait réussi. Lecture via ref + garde sur le code déjà traité.
+  const authRef = useRef(auth)
+  authRef.current = auth
+  const processedDeepLinkRef = useRef<string | null>(null)
 
   // Initialize AES-256 crypto at startup so later storage writes (Google
   // tokens, conversations) go through the encrypted path. When an
@@ -686,19 +767,29 @@ export default function App() {
   // a malicious callback URL through this path. State verification stays
   // centralized in `OAuthCallback.tsx` for the web/SPA path.
   useEffect(() => {
+    let cancelled = false
+    let remove: (() => void) | undefined
     async function setupDeepLinks() {
       try {
         const { App: CapApp } = await import('@capacitor/app')
-        CapApp.addListener('appUrlOpen', (event) => {
+        const handle = await CapApp.addListener('appUrlOpen', (event) => {
           const url = new URL(event.url)
           if (url.pathname === '/auth/callback') {
             const code = url.searchParams.get('code')
             if (code) setDeepLinkCode(code)
           }
         })
+        // M3 (audit frontend) — cleanup du listener. Sans lui, StrictMode
+        // (dev) et tout remount empilaient des listeners en double.
+        if (cancelled) void handle.remove()
+        else remove = () => { void handle.remove() }
       } catch {}
     }
     setupDeepLinks()
+    return () => {
+      cancelled = true
+      remove?.()
+    }
   }, [])
 
   // Apply saved theme on app boot + watch the clock for auto Ember/Nocturne switch.
@@ -729,6 +820,9 @@ export default function App() {
   // Process deep link OAuth code
   useEffect(() => {
     if (!deepLinkCode) return
+    // Garde anti double-fire : un code OAuth Google est single-use.
+    if (processedDeepLinkRef.current === deepLinkCode) return
+    processedDeepLinkRef.current = deepLinkCode
 
     async function processOAuth(code: string) {
       try {
@@ -744,7 +838,7 @@ export default function App() {
         const existingKeys = getJSON<{ anthropic: string; gemini?: string; mistral?: string; openai?: string }>('api-keys')
 
         // Login with existing keys or server-provided
-        await auth.login('google', {
+        await authRef.current.login('google', {
           displayName: user.name, email: user.email, avatar: user.picture,
           anthropicKey: existingKeys?.anthropic || 'server-provided',
           geminiKey: existingKeys?.gemini,
@@ -769,7 +863,7 @@ export default function App() {
     }
 
     processOAuth(deepLinkCode)
-  }, [deepLinkCode, auth])
+  }, [deepLinkCode])
 
   const [onboardingDone, setOnboardingDone] = useState(isOnboardingDone)
   const [choiceDone, setChoiceDone] = useState(isOnboardingChoiceDone)
@@ -839,6 +933,8 @@ export default function App() {
             path="/auth/callback"
             element={<OAuthCallbackAuth auth={auth} onPostLogin={() => setSplash(getOnboardingSplash())} />}
           />
+          {/* P1.5 — partage public lisible SANS compte (canal d'acquisition). */}
+          <Route path="/share/:id" element={<SharedConversationView />} />
           <Route path="*" element={
             <LoginScreen
               onLogin={auth.login}
@@ -847,6 +943,7 @@ export default function App() {
             />
           } />
         </Routes>
+        <Toaster />
       </BrowserRouter>
     )
   }
@@ -883,12 +980,29 @@ export default function App() {
 
   return (
     <BrowserRouter>
-      <AppContent
-        onLogout={auth.logout}
-        userName={auth.currentUser?.displayName}
-        authMethod={auth.currentUser?.authMethod}
-        userEmail={auth.currentUser?.email}
-      />
+      {/* M8 (audit frontend) — boundary RACINE. La seule boundary existante
+          entourait MessageList : un crash dans Sidebar, InputBar ou un screen
+          lazy = écran blanc total sans message. */}
+      <ErrorBoundary>
+        <AppContent
+          onLogout={auth.logout}
+          userName={auth.currentUser?.displayName}
+          authMethod={auth.currentUser?.authMethod}
+          userEmail={auth.currentUser?.email}
+        />
+      </ErrorBoundary>
+      {/* Bannière mode démo preview — pill discrète, non bloquante
+          (pointer-events-none), pour ne jamais masquer le design relu.
+          Détecté via authMethod (pas d'import du module démo → reste hors
+          du bundle de prod). */}
+      {auth.currentUser?.authMethod === 'demo' && (
+        <div className="fixed bottom-3 left-1/2 -translate-x-1/2 z-[70] pointer-events-none">
+          <span className="px-3 py-1 rounded-full bg-theme-ink/85 text-theme-bg text-[11px] font-sans font-medium shadow-lg">
+            🔍 Mode aperçu · données d'exemple
+          </span>
+        </div>
+      )}
+      <Toaster />
     </BrowserRouter>
   )
 }

@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="fr" data-theme="ember">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Arty — Maquette mobile accueil (Ember — jour)</title>
+
+
+<link href="fonts/google.css" rel="stylesheet">
+<style>
+  :root{
+    --bg:#FAF3E7; --surface:#FFFFFF; --ink:#181613; --muted:#7A5A3C;
+    --accent:#C85A28; --border:#E8D9BF; --cream:#F5E6D0;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%}
+  body{font-family:'Inter',sans-serif;font-weight:300;background:var(--bg);color:var(--ink);
+       display:flex;flex-direction:column;height:100dvh;overflow:hidden;font-size:14px}
+  .kicker{font-size:9.5px;font-weight:600;letter-spacing:.2em;text-transform:uppercase;color:var(--muted)}
+  .mono{font-family:'JetBrains Mono',monospace}
+
+  /* ====== HEADER ALLÉGÉ : 3 zones max (coût + streak déplacés dans la sidebar) ====== */
+  header{display:flex;align-items:center;padding:14px 12px 6px;flex-shrink:0}
+  .h-btn{width:44px;height:44px;border:none;background:transparent;color:var(--ink);font-size:18px;
+         border-radius:12px;display:flex;align-items:center;justify-content:center}
+  .wordmark{flex:1;text-align:center;font-family:'Fraunces',serif;font-style:italic;font-size:19px;
+            display:flex;align-items:center;justify-content:center;gap:8px}
+
+  .scroll{flex:1;overflow-y:auto;padding:8px 20px 14px}
+
+  /* héros éditorial */
+  .hero-kicker{margin:8px 0 8px}
+  h1{font-family:'Fraunces',serif;font-weight:500;font-size:34px;line-height:1.02;letter-spacing:-.03em;margin-bottom:5px}
+  h1 em{font-style:italic}
+  h1 .dot{color:var(--accent)}
+  .hero-sub{color:var(--muted);font-size:13.5px;line-height:1.55;margin-bottom:12px}
+  .rule{margin:2px 0 14px}.rule .r1{height:2px;background:var(--ink)}.rule .r2{height:1px;background:var(--ink);margin-top:3px}
+
+  /* carte brief */
+  .brief{background:linear-gradient(135deg, rgba(200,90,40,.10), rgba(200,90,40,.04));
+         border:1px solid rgba(200,90,40,.25);border-radius:16px;padding:12px 14px;margin-bottom:11px;
+         display:flex;align-items:center;gap:13px}
+  .brief .play{width:44px;height:44px;border-radius:50%;background:var(--accent);color:#FFF8EF;border:none;
+               font-size:15px;flex-shrink:0;display:flex;align-items:center;justify-content:center}
+  .brief .t{font-family:'Fraunces';font-style:italic;font-size:15.5px}
+  .brief .s{font-size:11.5px;color:var(--muted);margin-top:2px}
+
+  /* agenda / intentions */
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:11px 14px;margin-bottom:10px}
+  .card .kicker{display:block;margin-bottom:10px}
+  .evt{display:flex;gap:11px;align-items:baseline;padding:4px 0}
+  .evt .h{font-family:'JetBrains Mono';font-size:11px;color:var(--accent);flex-shrink:0;width:42px}
+  .evt .n{font-size:13px;line-height:1.4}
+  .evt .n small{display:block;color:var(--muted);font-size:11px}
+  .intent{font-family:'Fraunces';font-style:italic;font-size:13.5px;border-left:2px solid var(--accent);
+          padding:2px 0 2px 10px;margin:5px 0;line-height:1.45}
+  .intent.done{opacity:.45;text-decoration:line-through}
+
+  /* reprendre une conversation : raccourci direct, plus besoin d'ouvrir la sidebar */
+  .resume{display:flex;gap:9px;overflow-x:auto;padding-bottom:4px;scrollbar-width:none;margin-bottom:8px}
+  .resume::-webkit-scrollbar{display:none}
+  .r-card{flex-shrink:0;width:172px;background:var(--surface);border:1px solid var(--border);
+          border-radius:13px;padding:11px 13px}
+  .r-card .t{font-size:12.5px;font-weight:500;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;
+             -webkit-box-orient:vertical;overflow:hidden}
+  .r-card .m{font-size:10px;color:var(--muted);margin-top:6px;display:flex;gap:5px;align-items:center}
+
+  /* ====== INPUT DOCKÉ ====== */
+  .input-zone{padding:8px 14px 18px;flex-shrink:0}
+  .bar{display:flex;align-items:flex-end;gap:6px;background:var(--surface);border:1px solid var(--border);
+       border-radius:18px;padding:8px 8px 8px 6px;box-shadow:0 4px 18px rgba(24,22,19,.10)}
+  .bar .tool{width:44px;height:44px;border-radius:50%;border:none;background:transparent;color:var(--muted);
+             font-size:18px;flex-shrink:0;display:flex;align-items:center;justify-content:center}
+  .bar textarea{flex:1;border:none;background:transparent;resize:none;font-family:'Inter';font-weight:300;
+                font-size:14px;line-height:1.5;padding:11px 2px;color:var(--ink);outline:none;height:44px;min-width:0}
+  .bar textarea::placeholder{color:var(--muted)}
+  .mic{width:52px;height:52px;border-radius:50%;border:none;background:rgba(200,90,40,.12);color:var(--accent);
+       font-size:19px;flex-shrink:0}
+</style>
+</head>
+<body>
+
+<header>
+  <button class="h-btn" title="Menu">☰</button>
+  <div class="wordmark">
+    <svg width="20" height="20" viewBox="0 0 64 64"><polygon points="32,6 6,54 32,40" fill="#C85A28" opacity=".55"/><polygon points="32,6 58,54 32,40" fill="#C85A28"/></svg>
+    Arty
+  </div>
+  <button class="h-btn" title="Réglages">⚙</button>
+</header>
+
+<div class="scroll">
+  <div class="kicker hero-kicker">Jeudi 11 juin · 8h05 · Valence</div>
+  <h1>Bonjour <em>Florent</em><span class="dot">.</span></h1>
+  <p class="hero-sub">Deux choses à boucler avant demain — et M. Martin a répondu à ta relance.</p>
+  <div class="rule"><div class="r1"></div><div class="r2"></div></div>
+
+  <div class="brief">
+    <button class="play">▶</button>
+    <div>
+      <div class="t">Ton brief du matin</div>
+      <div class="s">3 mails importants · 3 rendez-vous aujourd’hui · 1 min d’écoute</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <span class="kicker">I · Agenda aujourd’hui</span>
+    <div class="evt"><span class="h">09:00</span><span class="n">Rappel — relance Garage Martin <small>créé hier par Arty</small></span></div>
+    <div class="evt"><span class="h">11:30</span><span class="n">Point équipe — visio <small>Google Meet · 45 min</small></span></div>
+    <div class="evt"><span class="h">14:00</span><span class="n">Entretien annuel Mégane <small>préparation épinglée 📌</small></span></div>
+  </div>
+
+  <div class="card">
+    <span class="kicker">II · Intentions</span>
+    <div class="intent done">Envoyer la relance Garage Martin</div>
+    <div class="intent">Finaliser le comparatif mutuelles</div>
+    <div class="intent">Réserver le resto de vendredi</div>
+  </div>
+
+  <span class="kicker" style="display:block;margin:10px 0 8px">Reprendre</span>
+  <div class="resume">
+    <div class="r-card">
+      <div class="t">Devis Garage Martin — relance client</div>
+      <div class="m">🇪🇺 EU · il y a 2 h</div>
+    </div>
+    <div class="r-card">
+      <div class="t">Comparatif mutuelles pro 2026</div>
+      <div class="m">rapport généré · hier</div>
+    </div>
+    <div class="r-card">
+      <div class="t">Entretien annuel de Mégane</div>
+      <div class="m">épinglée ★ · hier</div>
+    </div>
+  </div>
+</div>
+
+<div class="input-zone">
+  <div class="bar">
+    <button class="tool" title="Joindre">+</button>
+    <textarea placeholder="Demande quelque chose à Arty…"></textarea>
+    <button class="mic" title="Dicter">🎙</button>
+  </div>
+</div>
+
+</body>
+</html>

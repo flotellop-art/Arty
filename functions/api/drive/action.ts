@@ -3,10 +3,11 @@ import { verifyGoogleUser, notFoundResponse } from '../_lib/checkAllowedUser'
 
 const ID_RE = /^[a-zA-Z0-9_-]+$/
 
-// Cap downloads at 25MB. Claude API accepte au max 20MB par attachment ;
-// 25MB laisse une marge pour la base64 encoding (4/3 du binaire). Évite
-// les OOM Worker sur les gros PDFs / images.
-const MAX_DOWNLOAD_BYTES = 25 * 1024 * 1024
+// Cap downloads at 8MB (P0.9 — protection économique, aligné sur le cap
+// Gmail attachment). Un PDF de 25MB en base64 ≈ 8M tokens injectés dans la
+// boucle d'outils (~25$/itération sur Sonnet). 8MB couvre les documents
+// réels tout en bornant le pire cas. Évite aussi l'OOM Worker (BUG 50).
+const MAX_DOWNLOAD_BYTES = 8 * 1024 * 1024
 
 // Convert Uint8Array → base64 efficacement. Boucle naïve `binary += String.fromCharCode(b)`
 // est O(n²) (concaténation de string) et crashe le Worker sur >2MB (BUG 50).
@@ -68,7 +69,7 @@ async function handleList(token: string, body: Record<string, unknown>): Promise
         q += ` and (fullText contains '${sanitized}')`
       }
     }
-    const params = new URLSearchParams({ q, fields: 'files(id,name,mimeType,modifiedTime,size,webViewLink,iconLink)', orderBy: 'modifiedTime desc', pageSize: '200' })
+    const params = new URLSearchParams({ q, fields: 'files(id,name,mimeType,modifiedTime,size,webViewLink,iconLink)', orderBy: 'modifiedTime desc', pageSize: '50' })
     const r = await fetch(`https://www.googleapis.com/drive/v3/files?${params}`, { headers: { Authorization: `Bearer ${token}` } })
     if (!r.ok) {
       return Response.json({ error: 'Drive API error' }, { status: r.status })
@@ -108,11 +109,11 @@ async function handleRead(token: string, body: Record<string, unknown>): Promise
           // Size cap pour éviter l'OOM Worker (BUG 50 + cap explicite).
           const contentLength = Number(dlRes.headers.get('content-length') || '0')
           if (contentLength > MAX_DOWNLOAD_BYTES) {
-            return Response.json({ error: 'File too large (max 25MB)' }, { status: 413 })
+            return Response.json({ error: 'File too large (max 8MB) — demande un extrait ou une version allégée' }, { status: 413 })
           }
           const arrayBuf = await dlRes.arrayBuffer()
           if (arrayBuf.byteLength > MAX_DOWNLOAD_BYTES) {
-            return Response.json({ error: 'File too large (max 25MB)' }, { status: 413 })
+            return Response.json({ error: 'File too large (max 8MB) — demande un extrait ou une version allégée' }, { status: 413 })
           }
           const base64 = bytesToBase64(new Uint8Array(arrayBuf))
           return Response.json({
@@ -151,11 +152,11 @@ async function handleDownload(token: string, body: Record<string, unknown>): Pro
 
     const contentLength = Number(dlRes.headers.get('content-length') || '0')
     if (contentLength > MAX_DOWNLOAD_BYTES) {
-      return Response.json({ error: 'File too large (max 25MB)' }, { status: 413 })
+      return Response.json({ error: 'File too large (max 8MB) — demande un extrait ou une version allégée' }, { status: 413 })
     }
     const arrayBuf = await dlRes.arrayBuffer()
     if (arrayBuf.byteLength > MAX_DOWNLOAD_BYTES) {
-      return Response.json({ error: 'File too large (max 25MB)' }, { status: 413 })
+      return Response.json({ error: 'File too large (max 8MB) — demande un extrait ou une version allégée' }, { status: 413 })
     }
     const base64 = bytesToBase64(new Uint8Array(arrayBuf))
     const mimeType = meta.mimeType?.startsWith('application/vnd.google-apps.') ? 'application/pdf' : meta.mimeType

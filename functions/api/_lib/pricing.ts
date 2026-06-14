@@ -16,6 +16,8 @@ export interface ModelPricing {
   cacheCreation?: number
   /** USD per audio second (Whisper). */
   audioPerSec?: number
+  /** USD per generated image (gpt-image-1). */
+  imagePerUnit?: number
 }
 
 // Toutes les valeurs sont celles d'avril 2026. À ajuster si les providers
@@ -31,6 +33,11 @@ const PRICING: Record<string, ModelPricing> = {
   // OpenAI (transcription)
   'whisper-1': { input: 0, output: 0, audioPerSec: 0.006 / 60 }, // $0.006 / minute
 
+  // Mistral (transcription EU — dictée des conversations euOnly)
+  // Facturé à la minute ; les prompt/completion_tokens de la réponse ne sont
+  // PAS comptés (le tarif officiel est uniquement par minute d'audio).
+  'voxtral-mini-latest': { input: 0, output: 0, audioPerSec: 0.003 / 60 }, // $0.003 / minute
+
   // OpenAI (chat, avril 2026)
   // GPT-5.5 sorti le 23/04/2026 — tarif officiel OpenAI $5 input / $30 output.
   // -60% hallucinations vs GPT-5 selon OpenAI. Défault dans openaiClient.ts.
@@ -42,6 +49,12 @@ const PRICING: Record<string, ModelPricing> = {
   'gpt-5-nano': { input: 0.1, output: 0.4 },
   'gpt-4o': { input: 2.5, output: 10 },
   'gpt-4o-mini': { input: 0.15, output: 0.6 },
+  // Génération d'images (P1.3). Coût fixe par image (qualité medium 1024²
+  // ≈ $0.04). Pas de tokens — le coût passe par imagePerUnit.
+  'gpt-image-1': { input: 0, output: 0, imagePerUnit: 0.04 },
+  // FLUX (Black Forest Labs) — coût par image 1024² (P1.3-FLUX).
+  'flux-2-klein-9b': { input: 0, output: 0, imagePerUnit: 0.015 },
+  'flux-2-pro': { input: 0, output: 0, imagePerUnit: 0.03 },
 
   // Mistral (Small déprécié mai 2026, Medium 3.5 est le standard)
   'mistral-large-latest': { input: 2, output: 6 },
@@ -50,7 +63,11 @@ const PRICING: Record<string, ModelPricing> = {
 
   // Google Gemini
   'gemini-2.5-pro': { input: 1.25, output: 10, cacheRead: 0.31 },
-  'gemini-2.5-flash': { input: 0.075, output: 0.3, cacheRead: 0.019 },
+  // gemini-2.5-flash — défaut CHAT depuis juin 2026 (cf. geminiClient.ts).
+  // Tarif GA réel $0.30/$2.50 (source ai.google.dev/gemini-api/docs/pricing).
+  // L'ancienne valeur $0.075/$0.30 était le tarif preview/lite et sous-estimait
+  // ~4-8× le coût réel — bug de tracking corrigé indépendamment du switch.
+  'gemini-2.5-flash': { input: 0.3, output: 2.5, cacheRead: 0.075 },
   'gemini-2.5-flash-lite': { input: 0.04, output: 0.15 },
   // Gemini Flash. `gemini-3.5-flash` (GA, modèle réellement servi cf.
   // geminiClient.ts) : $1.50/$9, cache $0.15 — source ai.google.dev/gemini-api/
@@ -73,6 +90,7 @@ export function getPricing(model: string): ModelPricing {
   if (prefix === 'gpt') return PRICING['gpt-5.5-mini'] ?? FALLBACK_PRICING
   if (prefix === 'gemini') return PRICING['gemini-2.5-flash'] ?? FALLBACK_PRICING
   if (prefix === 'mistral') return PRICING['mistral-medium-latest'] ?? FALLBACK_PRICING
+  if (prefix === 'flux') return PRICING['flux-2-klein-9b'] ?? FALLBACK_PRICING
   return FALLBACK_PRICING
 }
 
@@ -82,6 +100,8 @@ export interface UsageTokens {
   cacheReadTokens: number
   cacheCreationTokens: number
   audioSeconds: number
+  /** Nombre d'images générées (gpt-image-1). Optionnel, défaut 0. */
+  images?: number
 }
 
 /** Coût en micro-USD (10^-6 USD) — évite les floats dans D1. */
@@ -94,6 +114,7 @@ export function computeCostMicroUsd(model: string, usage: UsageTokens): number {
     (usage.outputTokens * p.output) / MTOK +
     (usage.cacheReadTokens * (p.cacheRead ?? 0)) / MTOK +
     (usage.cacheCreationTokens * (p.cacheCreation ?? 0)) / MTOK +
-    usage.audioSeconds * (p.audioPerSec ?? 0)
+    usage.audioSeconds * (p.audioPerSec ?? 0) +
+    (usage.images ?? 0) * (p.imagePerUnit ?? 0)
   return Math.round(cost * 1_000_000)
 }

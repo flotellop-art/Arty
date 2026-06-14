@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="fr" data-theme="ember">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Arty — Maquette mobile chat (Ember)</title>
+
+
+<link href="fonts/google.css" rel="stylesheet">
+<style>
+  :root{
+    --bg:#FAF3E7; --surface:#FFFFFF; --ink:#181613; --muted:#7A5A3C;
+    --accent:#C85A28; --border:#E8D9BF; --cream:#F5E6D0;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%}
+  body{font-family:'Inter',sans-serif;font-weight:300;background:var(--bg);color:var(--ink);
+       display:flex;flex-direction:column;height:100dvh;overflow:hidden;font-size:14px}
+  .kicker{font-size:9.5px;font-weight:600;letter-spacing:.2em;text-transform:uppercase;color:var(--muted)}
+  .mono{font-family:'JetBrains Mono',monospace}
+
+  /* ====== HEADER 1 LIGNE — tout le secondaire dans "…" ====== */
+  header{padding:14px 16px 0;flex-shrink:0}
+  .head-row{display:flex;align-items:center;gap:8px}
+  /* cibles tactiles 44px partout */
+  .back,.more{width:44px;height:44px;border:none;background:transparent;color:var(--ink);
+              font-size:19px;border-radius:12px;flex-shrink:0;display:flex;align-items:center;justify-content:center}
+  .more{border:1px solid var(--border);background:var(--surface)}
+  .head-titles{flex:1;min-width:0;text-align:center}
+  /* titre tappable → switcher de conversations (bottom sheet) */
+  .head-title{font-family:'Fraunces',serif;font-style:italic;font-size:16.5px;white-space:nowrap;
+              overflow:hidden;text-overflow:ellipsis}
+  .head-title .chev{font-size:10px;color:var(--muted);font-style:normal}
+  .rule{margin-top:10px}
+  .rule .r1{height:2px;background:var(--ink)}
+  .rule .r2{height:1px;background:var(--ink);margin-top:3px}
+
+  /* ====== MESSAGES ====== */
+  .messages{flex:1;overflow-y:auto;padding:18px 16px 8px;position:relative}
+  .msg-user{display:flex;flex-direction:column;align-items:flex-end;margin-bottom:22px}
+  .msg-user .txt{max-width:85%;font-family:'Fraunces';font-style:italic;font-size:15.5px;line-height:1.45;
+                 text-align:right;border-right:2px solid var(--accent);padding:3px 12px 3px 0}
+  .msg-user .time{font-family:'JetBrains Mono';font-size:9.5px;color:var(--muted);margin-top:4px;padding-right:14px}
+  .msg-ai{display:flex;gap:10px;margin-bottom:24px}
+  .prism{flex-shrink:0;margin-top:3px}
+  .msg-ai .body{max-width:92%;line-height:1.62;font-size:14px;min-width:0}
+  .msg-ai p{margin-bottom:9px}
+  .msg-ai strong{font-weight:600}
+  .msg-meta{display:flex;align-items:center;gap:8px;margin-top:9px;flex-wrap:wrap}
+  .fc{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;border-radius:999px;padding:5px 10px;
+      border:1px solid;font-weight:500}
+  .fc.ok{color:#3D7A3D;border-color:rgba(61,122,61,.3);background:rgba(61,122,61,.07)}
+  .fc.pending{color:var(--muted);border-color:var(--border);background:rgba(24,22,19,.03)}
+  .model-tag{font-family:'JetBrains Mono';font-size:9px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+  /* actions 44px en rangée, visibles, pas en overlay 32px à 50% d'opacité */
+  .msg-actions{display:flex;gap:4px;margin-top:6px}
+  .msg-actions button{width:44px;height:44px;border-radius:12px;border:1px solid var(--border);
+                      background:var(--surface);color:var(--muted);font-size:15px}
+
+  /* streaming */
+  .typing{display:inline-flex;gap:4px;align-items:center;padding:4px 0}
+  .typing i{width:6px;height:6px;border-radius:50%;background:var(--accent);display:inline-block;opacity:.5}
+  .typing i:nth-child(2){opacity:.75}.typing i:nth-child(3){opacity:1}
+  /* bouton Stop flottant : visible même si on scrolle pour relire */
+  .stop-float{position:absolute;right:16px;bottom:14px;display:flex;align-items:center;gap:8px;
+              background:var(--ink);color:var(--bg);border:none;border-radius:999px;padding:11px 17px;
+              font-size:12.5px;font-weight:500;box-shadow:0 6px 20px rgba(24,22,19,.3)}
+  .stop-float .sq{width:9px;height:9px;background:var(--bg);border-radius:2px;display:inline-block}
+
+  /* ====== INPUT — slot contextuel unique ====== */
+  .input-zone{padding:6px 14px 18px;flex-shrink:0;background:var(--bg)}
+  .chips{display:flex;gap:8px;overflow-x:auto;padding:2px 2px 9px;flex-wrap:nowrap;scrollbar-width:none}
+  .chips::-webkit-scrollbar{display:none}
+  .chip{flex-shrink:0;display:flex;align-items:center;gap:6px;background:var(--surface);
+        border:1px solid var(--border);border-radius:999px;padding:9px 14px;font-size:12px;white-space:nowrap}
+  .bar{display:flex;align-items:flex-end;gap:6px;background:var(--surface);border:1px solid var(--border);
+       border-radius:18px;padding:8px 8px 8px 6px;box-shadow:0 2px 10px rgba(24,22,19,.05)}
+  .bar .tool{width:44px;height:44px;border-radius:50%;border:none;background:transparent;color:var(--muted);
+             font-size:18px;flex-shrink:0;display:flex;align-items:center;justify-content:center}
+  .bar textarea{flex:1;border:none;background:transparent;resize:none;font-family:'Inter';font-weight:300;
+                font-size:14px;line-height:1.5;padding:11px 2px;color:var(--ink);outline:none;height:44px;min-width:0}
+  .bar textarea::placeholder{color:var(--muted)}
+  .mic{width:52px;height:52px;border-radius:50%;border:none;background:rgba(200,90,40,.14);color:var(--accent);
+       font-size:19px;flex-shrink:0;position:relative}
+  /* indication hold = Whisper, découvrable sans gesture cachée */
+  .mic .hold{position:absolute;inset:-3px;border-radius:50%;border:2px dashed rgba(200,90,40,.35)}
+  .hint{text-align:center;font-size:10px;color:var(--muted);margin-top:8px}
+  ::-webkit-scrollbar{width:4px}
+  ::-webkit-scrollbar-thumb{background:rgba(122,90,60,.45);border-radius:2px}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="head-row">
+    <button class="back">←</button>
+    <div class="head-titles">
+      <div class="kicker">Mer 11 juin · Auto</div>
+      <div class="head-title">Devis Garage Martin <span class="chev">▾</span></div>
+    </div>
+    <button class="more">⋯</button>
+  </div>
+  <div class="rule"><div class="r1"></div><div class="r2"></div></div>
+</header>
+
+<div class="messages">
+
+  <div class="msg-user">
+    <div class="txt">« Relis le devis du Garage Martin dans mon Drive et prépare un mail de relance poli. »</div>
+    <div class="time">10:07</div>
+  </div>
+
+  <div class="msg-ai">
+    <svg class="prism" width="20" height="20" viewBox="0 0 64 64"><polygon points="32,6 6,54 32,40" fill="#C85A28" opacity=".55"/><polygon points="32,6 58,54 32,40" fill="#C85A28"/></svg>
+    <div class="body">
+      <p>J’ai retrouvé <strong>« GarageMartin_devis_2026-118.pdf »</strong> (30 mai, 2 340 € TTC). Voici un brouillon de relance courtois :</p>
+      <p style="border-left:2px solid var(--border);padding-left:12px;font-size:13.5px">Bonjour M. Martin,<br>Je me permets de revenir vers vous au sujet du devis n°2026-118…</p>
+      <div class="msg-meta">
+        <span class="fc ok">✓ Vérifié</span>
+        <span class="model-tag">Opus 4.8 · drive_search</span>
+      </div>
+      <div class="msg-actions">
+        <button title="Copier">⧉</button>
+        <button title="Écouter">▷</button>
+        <button title="Épingler">☆</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="msg-user">
+    <div class="txt">« Envoie-le et mets-moi un rappel vendredi s’il n’a pas répondu. »</div>
+    <div class="time">10:14</div>
+  </div>
+
+  <div class="msg-ai">
+    <svg class="prism" width="20" height="20" viewBox="0 0 64 64"><polygon points="32,6 6,54 32,40" fill="#C85A28" opacity=".55"/><polygon points="32,6 58,54 32,40" fill="#C85A28"/></svg>
+    <div class="body">
+      <p>Mail envoyé à <strong>contact@garage-martin.fr</strong> ✓. Je crée le rappel pour vendredi 14 juin à 9h00…</p>
+      <div class="typing"><i></i><i></i><i></i></div>
+      <div class="msg-meta">
+        <span class="fc pending">◌ Vérification…</span>
+        <span class="model-tag">Opus 4.8 · calendar</span>
+      </div>
+    </div>
+  </div>
+
+  <button class="stop-float"><span class="sq"></span> Stop</button>
+</div>
+
+<div class="input-zone">
+  <div class="chips">
+    <span class="chip">📅 Voir le rappel</span>
+    <span class="chip">✉️ Suivre la boîte mail</span>
+    <span class="chip">📄 Export PDF</span>
+    <span class="chip">⚖️ Comparer les devis</span>
+  </div>
+  <div class="bar">
+    <button class="tool" title="Joindre">+</button>
+    <textarea placeholder="Écris ou dicte…"></textarea>
+    <button class="mic" title="Tap : dictée · Maintenir : Whisper"><span class="hold"></span>🎙</button>
+  </div>
+  <div class="hint">Tap 🎙 = dictée rapide · maintenir = Whisper</div>
+</div>
+
+</body>
+</html>

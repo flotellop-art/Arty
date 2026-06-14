@@ -29,7 +29,20 @@ const MISTRAL_SYSTEM = `Tu es Arty, un assistant IA personnel.
 Tu parles comme un pote compétent — direct, cash, pas de flatterie.
 Tutoie l'utilisateur. Phrases courtes. Pas de "Excellente question !" ni de formules creuses.
 Si l'utilisateur a tort, dis-le clairement. Sois cash mais respectueux.
-Adapte ton vocabulaire au métier de l'utilisateur si tu le connais.
+Adapte ton vocabulaire au métier de l'utilisateur si tu le connais.`
+
+// Règles SPÉCIFIQUES Mistral — TOUJOURS appendées au prompt, y compris quand
+// l'app fournit son prompt contextuel (audit Mistral 11 juin 2026 : avant,
+// ces règles ne s'appliquaient QUE dans le comparateur — en chat réel,
+// Mistral recevait le prompt générique écrit pour Claude, qui mentionne
+// web_fetch (outil qu'il n'a PAS) → c'était la porte ouverte aux
+// hallucinations d'URLs que PR #162 croyait avoir fermée).
+const MISTRAL_RULES = `
+
+CONTEXTE MISTRAL — ces règles PRIMENT sur toute instruction précédente :
+Tu tournes sur Mistral (mode Europe). Tu n'as PAS l'outil web_fetch.
+Ignore toute instruction précédente mentionnant web_fetch ou la lecture
+directe d'URLs — elle ne s'applique pas à toi.
 
 RÈGLE TEMPS RÉEL — non négociable :
 Pour TOUTE question portant sur des données qui changent dans le temps
@@ -66,7 +79,17 @@ et te demande un résumé, une analyse ou une citation :
 Tu peux te baser sur le TITRE de l'URL si visible, mais tu DOIS dire
 explicitement "je n'ai que le titre, pas le contenu".
 Fabriquer du contenu d'article est le pire mensonge — c'est détecté
-et signalé à l'utilisateur.`
+et signalé à l'utilisateur.
+EXCEPTION : si le message contient un bloc « CONTENU DE LA PAGE (url) »
+ou « CONTENU DU PDF (url) », ce contenu a été récupéré POUR TOI (via
+Linkup, hébergé en Europe). Utilise-le comme source fiable, cite l'URL,
+et ne dis PAS que tu ne peux pas lire le lien — tu as son contenu.
+
+RÈGLE INCERTITUDE :
+Si tu n'es pas certain d'une information et qu'aucun résultat web ne la
+confirme, dis-le explicitement — « Je ne suis pas certain, à vérifier » —
+au lieu de présenter une estimation comme un fait. Une incertitude
+assumée vaut toujours mieux qu'une réponse fausse donnée avec aplomb.`
 
 type ToolHandler = (name: string, input: Record<string, unknown>) => Promise<{ result: string; screenshot?: string }>
 
@@ -76,6 +99,27 @@ interface MistralStreamOptions {
   // Force un modèle précis (utilisé par le comparateur multi-modèles).
   // Si absent, fallback sur selectMistralModel (défaut Arty : medium).
   model?: string
+  // Fix 429 (11 juin 2026) — true quand useConversation a déjà inliné le
+  // contenu d'URL/PDF (lot C) dans le dernier message : la recherche web
+  // forcée (lot D) serait alors contre-productive — un appel Mistral
+  // supplémentaire inutile, dos à dos avec la synthèse, qui tapait le
+  // rate limit upstream de la clé serveur.
+  urlContentInlined?: boolean
+  // Conversation verrouillée EU : neutralise le conseil « passe sur Claude »
+  // de MISTRAL_RULES (impossible ici — le modèle est verrouillé). Bug live
+  // 11 juin : Mistral conseillait un switch impossible sur un article paywall.
+  euOnly?: boolean
+}
+
+// Décision « forcer web_search au 1er tour » — pure et exportée pour test.
+// Forcer N'A PAS de sens quand le contenu d'URL est déjà dans le contexte :
+// le résumé d'un article inliné ne nécessite aucune recherche.
+export function shouldForceSearch(
+  lastUserText: string,
+  hasToolHandler: boolean,
+  urlContentInlined: boolean
+): boolean {
+  return hasToolHandler && !urlContentInlined && shouldUseWebSearch(lastUserText)
 }
 
 // Mistral content blocks pour le multimodal (image_url + text). Format
@@ -118,10 +162,23 @@ interface ToolCall {
 // Mistral. Le proxy route vers Linkup (par défaut) ou Brave selon la
 // variable env SEARCH_PROVIDER côté Cloudflare. Retourne un texte formaté
 // que Mistral injecte dans son prochain message comme contexte.
+// Bornes d'injection des résultats de recherche dans le contexte Mistral.
+// Sans cap, une sourcedAnswer Linkup de plusieurs kB entrait entière à
+// chaque tour → contexte qui enfle → le modèle « comble » par extrapolation
+// sur les conversations longues (audit Mistral 11 juin 2026, cause n°3a).
+const MAX_ANSWER_CHARS = 2000
+const MAX_SNIPPET_CHARS = 600
+
+function clip(text: string, max: number): string {
+  return text.length > max ? text.slice(0, max) + ' […]' : text
+}
+
 async function executeMistralWebSearch(args: Record<string, unknown>): Promise<{ result: string }> {
   const query = String(args.query || '').trim()
   if (!query) return { result: 'Erreur: paramètre `query` manquant.' }
-  const maxResults = typeof args.maxResults === 'number' ? Math.min(10, Math.max(1, args.maxResults)) : 5
+  // Défaut 5 → 8 : sur les requêtes type rapport/comparatif, 5 snippets ne
+  // suffisaient pas face au corpus Gemini/Claude (audit, cause n°2a).
+  const maxResults = typeof args.maxResults === 'number' ? Math.min(10, Math.max(1, args.maxResults)) : 8
   const sources = Array.isArray(args.sources)
     ? (args.sources as unknown[]).filter((s): s is string => typeof s === 'string').slice(0, 6)
     : undefined
@@ -198,10 +255,10 @@ async function executeMistralWebSearch(args: Record<string, unknown>): Promise<{
     const sections: string[] = []
     for (const [source, entry] of Object.entries(data.bySource)) {
       if (entry.answer) {
-        sections.push(`### Chez ${source}\n${entry.answer}`)
+        sections.push(`### Chez ${source}\n${clip(entry.answer, MAX_ANSWER_CHARS)}`)
       } else if (entry.results.length > 0) {
         const refs = entry.results
-          .map((r) => `- ${r.title}\n  ${r.snippet}\n  Source: ${r.url}`)
+          .map((r) => `- ${r.title}\n  ${clip(r.snippet, MAX_SNIPPET_CHARS)}\n  Source: ${r.url}`)
           .join('\n')
         sections.push(`### Chez ${source}\n${refs}`)
       } else {
@@ -223,7 +280,7 @@ async function executeMistralWebSearch(args: Record<string, unknown>): Promise<{
   if (data.answer) {
     return {
       result:
-        `Réponse vérifiée (${data.provider}) à "${query}" :\n\n${data.answer}\n\n` +
+        `Réponse vérifiée (${data.provider}) à "${query}" :\n\n${clip(data.answer, MAX_ANSWER_CHARS)}\n\n` +
         `IMPORTANT : reprends ces données telles quelles, ne devine pas, cite les sources via [1], [2], etc.${sourcesBlock}`,
     }
   }
@@ -232,7 +289,7 @@ async function executeMistralWebSearch(args: Record<string, unknown>): Promise<{
     return { result: `Aucun résultat trouvé pour "${query}".` }
   }
   const formatted = data.results
-    .map((r, i) => `[${i + 1}] **${r.title}**\n${r.snippet}\nSource: ${r.url}`)
+    .map((r, i) => `[${i + 1}] **${r.title}**\n${clip(r.snippet, MAX_SNIPPET_CHARS)}\nSource: ${r.url}`)
     .join('\n\n')
   return {
     result:
@@ -270,10 +327,30 @@ async function runMistralStream(
     // alors qu'on n'a pas de handler pour l'exécuter résulte en un panneau
     // vide (toolCalls détectés → onDone direct sans streamer de texte).
     // Symétrique du fix Anthropic dans le wiring du comparateur (compare.tsx).
-    const forceWebHint = (options?.onToolCall && shouldUseWebSearch(lastUserText))
+    const forceWebHint = shouldForceSearch(lastUserText, !!options?.onToolCall, !!options?.urlContentInlined)
       ? `\n\nRECHERCHE WEB OBLIGATOIRE — non négociable :\nPour CE message utilisateur, tu DOIS appeler le tool web_search AVANT de répondre, même si tu penses connaître la réponse. La recherche web prime sur ta mémoire d'entraînement. Si un fichier est attaché, analyse-le ET fais une recherche web. Cite les sources via [1], [2]. Ne dis JAMAIS "j'ai cherché" — c'est le tool qui cherche.`
       : ''
-    const systemPrompt = basePrompt + locationContext + forceWebHint
+    // Date du jour — sans elle, Mistral ne sait pas se situer par rapport à
+    // son cutoff d'entraînement → erreurs systématiques sur tout le récent
+    // (audit Mistral 11 juin 2026, cause n°1). Claude reçoit son contexte
+    // par ailleurs ; ici on l'injecte côté client à chaque appel.
+    const dateLine = `\n\nDate du jour : ${new Date().toLocaleDateString('fr-FR', {
+      weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+    })}.`
+    // En conv EU, neutralise le « passe sur Claude » de MISTRAL_RULES :
+    // le modèle est verrouillé, ce conseil est impossible à suivre.
+    const euOverride = options?.euOnly
+      ? `\n\nMODE EUROPE — cette conversation est VERROUILLÉE sur Mistral. Ne propose JAMAIS de "passer sur Claude" ni de changer de modèle/d'IA : c'est impossible ici. Si tu ne peux pas lire un lien, propose UNIQUEMENT à l'utilisateur de coller le texte directement.`
+      : ''
+    // MISTRAL_RULES TOUJOURS appendées (même avec le prompt contextuel app —
+    // voir commentaire de la constante). Les règles déclarent primer sur les
+    // instructions précédentes pour neutraliser les mentions web_fetch du
+    // prompt générique.
+    const systemPrompt = basePrompt + MISTRAL_RULES + euOverride + dateLine + locationContext + forceWebHint
+    // Température basse quand la requête est factuelle (recherche web
+    // déclenchée) : 0.7 favorisait la variabilité, donc l'hallucination de
+    // chiffres/dates (audit, cause n°4). Conversationnel : 0.7 conservé.
+    const temperature = forceWebHint ? 0.3 : 0.7
     // Modèle effectif : `options.model` (forcé par le comparateur) ou
     // selectMistralModel (auto-sélection Arty pour le chat normal — par
     // défaut Mistral Medium 3.5 depuis mai 2026).
@@ -325,14 +402,37 @@ Pour les COMPARAISONS multi-sites/multi-revendeurs (ex: "compare prix X chez Bri
         ]
       : []
 
+    // Lot D — forçage du tool web_search au PREMIER tour uniquement quand
+    // la recherche est requise. Les tours suivants repassent en 'auto'
+    // (sinon Mistral relancerait une recherche à chaque itération).
+    let forceSearchNext = forceWebHint !== '' && openaiTools.length > 0
+
     let maxIterations = 20
 
     while (maxIterations > 0) {
       maxIterations--
 
-      const { content, toolCalls, inputTokens, outputTokens } = await streamOnce(
-        apiKey, apiMessages, openaiTools, onToken, controller, model
-      )
+      let once: Awaited<ReturnType<typeof streamOnce>>
+      const wantForce = forceSearchNext
+      forceSearchNext = false
+      try {
+        once = await streamOnce(
+          apiKey, apiMessages, openaiTools, onToken, controller, model, temperature, wantForce
+        )
+      } catch (err) {
+        // Repli défensif : si l'appel FORCÉ échoue (ex : l'API rejette la
+        // forme nommée du tool_choice), on retente UNE fois en 'auto' — la
+        // consigne prompt reste alors le seul levier. Jamais de retry sur
+        // un abort (Stop utilisateur / timeout) NI sur un rate limit (le
+        // backoff de streamOnce a déjà retenté ; ré-attaquer immédiatement
+        // enfonçait le 429 — bug live du 11 juin, article Figaro en EU).
+        const name = (err as Error).name
+        if (!wantForce || name === 'AbortError' || name === 'RateLimitError') throw err
+        once = await streamOnce(
+          apiKey, apiMessages, openaiTools, onToken, controller, model, temperature, false
+        )
+      }
+      const { content, toolCalls, inputTokens, outputTokens } = once
 
       try {
         recordUsage(model, inputTokens, outputTokens)
@@ -390,7 +490,18 @@ Pour les COMPARAISONS multi-sites/multi-revendeurs (ex: "compare prix X chez Bri
     onDone()
   } catch (err) {
     if ((err as Error).name === 'AbortError') {
-      onDone()
+      // Deux abandons distincts (audit Mistral 11 juin 2026) :
+      // - Stop UTILISATEUR → controller externe aborté → publier le partiel
+      //   via onDone() est correct.
+      // - TIMEOUT interne (60s stream / 30s search) → le controller externe
+      //   n'est PAS aborté. Avant : onDone() publiait une bulle assistant
+      //   VIDE sans aucun signal — l'utilisateur voyait Arty « répondre »
+      //   du néant. Maintenant : vraie erreur, bandeau + bouton Réessayer.
+      if (controller.signal.aborted) {
+        onDone()
+        return
+      }
+      onError(new Error(i18n.t('errors.mistralTimeout')))
       return
     }
     onError(err instanceof Error ? err : new Error('Mistral streaming failed'))
@@ -407,7 +518,9 @@ async function streamOnce(
   tools: ReturnType<typeof convertToolsToOpenAI>,
   onToken: (text: string) => void,
   controller: AbortController,
-  model: string
+  model: string,
+  temperature: number,
+  forceSearchTool: boolean
 ): Promise<{
   content: string
   toolCalls: ToolCall[]
@@ -430,35 +543,77 @@ async function streamOnce(
     messages,
     stream: true,
     max_tokens: 8192,
-    temperature: 0.7,
+    temperature,
   }
 
   // Only include tools if we have some
   if (tools.length > 0) {
     body.tools = tools
-    body.tool_choice = 'auto'
+    // Lot D (audit Mistral) — quand la recherche web est requise, 'auto'
+    // laissait Mistral libre d'ignorer la consigne prompt « RECHERCHE WEB
+    // OBLIGATOIRE » et de répondre de mémoire (cutoff) sur de l'actualité.
+    // Le forçage API est contraignant, lui. Format OpenAI-compatible
+    // supporté par l'API Mistral ; un repli 'auto' est gérén par l'appelant
+    // si jamais l'API rejetait la forme nommée.
+    body.tool_choice = forceSearchTool
+      ? { type: 'function', function: { name: 'web_search' } }
+      : 'auto'
   }
 
-  // CRIT-5 — Timeout 60s sur le stream Mistral. Cold-start Cloudflare ou
-  // réseau flaky peuvent laisser pendre 60-90s sinon. Compose avec le
-  // controller externe (annulation utilisateur) pour les deux raisons.
-  const timeoutCtrl = new AbortController()
-  const timeoutId = setTimeout(() => timeoutCtrl.abort(new DOMException('Timeout', 'AbortError')), 60_000)
-  const onExternalAbort = () => timeoutCtrl.abort(controller.signal.reason)
-  if (controller.signal.aborted) timeoutCtrl.abort(controller.signal.reason)
-  else controller.signal.addEventListener('abort', onExternalAbort)
+  // Fix 429 (11 juin 2026) — Mistral était le SEUL client sans backoff
+  // (anthropicClient et geminiClient ont chacun leur fetchWithRetry). Sur
+  // 429 : on respecte Retry-After si le proxy le forwarde, sinon backoff
+  // court (2s puis 4s), max 2 retentatives, abortable par le Stop
+  // utilisateur. Le retry se fait AVANT toute lecture du stream — sûr.
+  let response!: Response
+  for (let attempt = 0; ; attempt++) {
+    // CRIT-5 — Timeout 60s sur le stream Mistral. Cold-start Cloudflare ou
+    // réseau flaky peuvent laisser pendre 60-90s sinon. Compose avec le
+    // controller externe (annulation utilisateur) pour les deux raisons.
+    const timeoutCtrl = new AbortController()
+    const timeoutId = setTimeout(() => timeoutCtrl.abort(new DOMException('Timeout', 'AbortError')), 60_000)
+    const onExternalAbort = () => timeoutCtrl.abort(controller.signal.reason)
+    if (controller.signal.aborted) timeoutCtrl.abort(controller.signal.reason)
+    else controller.signal.addEventListener('abort', onExternalAbort)
 
-  let response: Response
-  try {
-    response = await fetch(apiUrl('/api/ai/mistral-proxy'), {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(body),
-      signal: timeoutCtrl.signal,
+    try {
+      response = await fetch(apiUrl('/api/ai/mistral-proxy'), {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+        signal: timeoutCtrl.signal,
+      })
+    } finally {
+      clearTimeout(timeoutId)
+      controller.signal.removeEventListener('abort', onExternalAbort)
+    }
+
+    if (response.status !== 429 || attempt >= 2) break
+
+    const errBody = await response.text().catch(() => '')
+    // Quota journalier du proxy (body { error, count, limit }) : définitif
+    // pour aujourd'hui — inutile de retenter, on surface le message précis
+    // du proxy au lieu du générique « réessaie dans quelques secondes ».
+    try {
+      const parsed = JSON.parse(errBody) as { error?: string; count?: number; limit?: number }
+      if (typeof parsed.count === 'number' && typeof parsed.limit === 'number') {
+        throw Object.assign(new Error(parsed.error || i18n.t('errors.mistralRateLimit')), { name: 'RateLimitError' })
+      }
+    } catch (e) {
+      if ((e as Error).name === 'RateLimitError') throw e
+      // body non-JSON → rate limit upstream, on retente
+    }
+    const retryAfterRaw = response.headers.get('retry-after')
+    const retryAfterMs = retryAfterRaw && Number.isFinite(Number(retryAfterRaw))
+      ? Math.min(10_000, Math.max(500, Number(retryAfterRaw) * 1000))
+      : 2_000 * (attempt + 1)
+    await new Promise<void>((resolve, reject) => {
+      const t = setTimeout(resolve, retryAfterMs)
+      controller.signal.addEventListener('abort', () => {
+        clearTimeout(t)
+        reject(new DOMException('Aborted', 'AbortError'))
+      }, { once: true })
     })
-  } finally {
-    clearTimeout(timeoutId)
-    controller.signal.removeEventListener('abort', onExternalAbort)
   }
 
   updateTrialFromResponse(response)
@@ -468,7 +623,9 @@ async function streamOnce(
     if (response.status === 401) {
       throw new Error(i18n.t('errors.mistralKeyInvalid'))
     } else if (response.status === 429) {
-      throw new Error(i18n.t('errors.mistralRateLimit'))
+      // Toujours 429 après les retentatives — typé pour que la boucle tool
+      // (repli tool_choice) ne ré-attaque PAS immédiatement.
+      throw Object.assign(new Error(i18n.t('errors.mistralRateLimit')), { name: 'RateLimitError' })
     } else {
       throw new Error(i18n.t('errors.mistralError', { status: response.status, message: err.slice(0, 100) }))
     }

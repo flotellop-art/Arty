@@ -21,11 +21,22 @@ export const MODEL_COSTS: Record<string, { input: number; output: number }> = {
   'claude-opus-4-8':   { input: 15.00, output: 75.00 }, // opus actif (GA 28/05/2026, même tarif que 4.6/4.7)
   'gpt-5-mini':        { input: 0.40,  output: 1.60 },
   'gpt-5':             { input: 2.50,  output: 10.00 },
-  'gemini-flash':      { input: 0.10,  output: 0.40 },
+  // Défaut CHAT (gros volume) = gemini-2.5-flash, tarif GA réel $0.30/$2.50
+  // (ai.google.dev). L'ancienne valeur $0.10/$0.40 était une estimation
+  // intermédiaire qui sous-estimait le coût. Source primaire des montants =
+  // serveur D1 (BUG 60) ; ce bucket sert au fallback BYOK/offline.
+  'gemini-flash':      { input: 0.30,  output: 2.50 },
+  // gemini-3.5-flash — moitié recherche du mode hybride uniquement. $1.50/$9.
+  'gemini-flash-pro':  { input: 1.50,  output: 9.00 },
   'gemini-flash-lite': { input: 0.05,  output: 0.20 }, // gemini-3.1-flash-lite, gemini-2.5-flash-lite
   'gemini-pro':        { input: 1.25,  output: 5.00 },
   'mistral-small':     { input: 0.15,  output: 0.45 }, // Small 4 (mars 2026, multimodal+reasoning)
-  'mistral-medium':    { input: 1.50,  output: 7.50 }, // Medium 3.5 (avril 2026)
+  // Medium 3.5 — aligné sur functions/api/_lib/pricing.ts ($0.40/$2.00).
+  // L'ancienne valeur (1.50/7.50) surestimait ~3.75× les coûts Mistral du
+  // dashboard local (audit Mistral 11 juin 2026). N'affecte que la
+  // valorisation locale future ; le serveur D1 reste la source primaire
+  // des montants (BUG 60).
+  'mistral-medium':    { input: 0.40,  output: 2.00 },
   'mistral-large':     { input: 2.00,  output: 6.00 }, // Large 3 (décembre 2025, MoE)
 }
 
@@ -63,12 +74,12 @@ const MODEL_ALIASES: Record<string, string> = {
   'mistral-medium-3.5': 'mistral-medium',
   'mistral-small-latest': 'mistral-small',
   'mistral-small-4': 'mistral-small',
-  'gemini-3.5-flash': 'gemini-flash',
+  'gemini-3.5-flash': 'gemini-flash-pro', // recherche hybride premium ($1.50/$9)
   'gemini-3.1-flash-lite': 'gemini-flash-lite',
-  'gemini-3-flash': 'gemini-flash',
-  'gemini-3-flash-preview': 'gemini-flash',
+  'gemini-3-flash': 'gemini-flash-pro',
+  'gemini-3-flash-preview': 'gemini-flash-pro',
   'gemini-2.5-flash-lite': 'gemini-flash-lite',
-  'gemini-2.5-flash': 'gemini-flash',
+  'gemini-2.5-flash': 'gemini-flash', // défaut chat éco ($0.30/$2.50)
   'gemini-2.5-pro': 'gemini-pro',
   'gemini-pro-latest': 'gemini-pro',
   // GPT-5.5 (sorti avril 2026) facturé au tarif gpt-5 en attendant qu'OpenAI

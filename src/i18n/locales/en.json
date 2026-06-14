@@ -13,7 +13,10 @@
     "retry": "Retry",
     "optional": "optional",
     "required": "required",
-    "connecting": "Connecting..."
+    "connecting": "Connecting...",
+    "ok": "OK",
+    "done": "Done",
+    "or": "or"
   },
   "login": {
     "title": "Sign in",
@@ -64,7 +67,17 @@
       },
       "notice": "Your account stays on this device. No server."
     },
-    "recentAccounts": "Recent accounts"
+    "recentAccounts": "Recent accounts",
+    "apikey": {
+      "displayName": "User",
+      "errorGeneric": "Sign-in failed"
+    },
+    "errors": {
+      "noAuthCode": "Google didn't return an authorization code — try again.",
+      "tokenExchangeFailed": "Google token exchange failed ({{status}})",
+      "noAccessToken": "Google response without access_token — try signing in again.",
+      "googleFailed": "Google sign-in failed"
+    }
   },
   "onboarding": {
     "slides": [
@@ -147,7 +160,9 @@
       "title": "Next 7 days"
     },
     "connectGoogle": "Connect Google",
-    "googleConnectError": "Google connection error:"
+    "googleConnectError": "Google connection error:",
+    "resumeKicker": "Resume",
+    "optionsSheetTitle": "Settings"
   },
   "chat": {
     "upgradeModal": {
@@ -161,14 +176,68 @@
       "freeTextPlaceholder": "Type your own answer…"
     },
     "streaming": {
-      "writing": "Arty is writing…"
+      "writing": "Arty is writing…",
+      "reflecting": "deep reasoning"
     },
     "topBar": {
       "aria": {
         "back": "Back",
-        "toneModelHelp": "Tone and model help"
+        "toneModelHelp": "Tone and model help",
+        "share": "Share",
+        "export": "Export",
+        "summary": "Summary"
       },
-      "euBadge": "Mistral EU"
+      "euBadge": "Mistral EU",
+      "shareCopied": "Conversation copied — paste it anywhere",
+      "shareFailed": "Could not share the conversation",
+      "shareTitle": "Share conversation",
+      "exportTitle": "Export conversation",
+      "lastCall": "Last call: {{model}}",
+      "whyModel": "Why this model?",
+      "exportJson": "JSON (re-import)",
+      "kicker": "Conversation",
+      "exportMarkdown": "Markdown (.md)",
+      "exportPdf": "PDF (.pdf)"
+    },
+    "optionsSheet": {
+      "title": "This conversation",
+      "open": "Conversation options",
+      "sectionModel": "Model",
+      "sectionReflection": "Reasoning",
+      "sectionStyle": "Response style",
+      "sectionActions": "Actions",
+      "modelDesc": {
+        "auto": "Arty picks the best model",
+        "claude": "Files, analysis, Gmail / Drive / Calendar",
+        "mistral": "Data processed in Europe — emails, files, clients",
+        "gemini": "Real-time web search, news, directions",
+        "openai": "Manual selection only"
+      },
+      "euNote": "This conversation contains EU data (Mistral). Picking a 🇺🇸 model will ask for confirmation before sending its content outside Europe.",
+      "euLocked": "Europe-locked conversation — Mistral only, voice dictation included (Voxtral 🇫🇷) · fact-check disabled (it would leave Europe)",
+      "proLock": "Pro",
+      "summarize": "Summarize the conversation",
+      "exportLabel": "Export",
+      "share": "Share",
+      "help": "Tones & models help"
+    },
+    "switcher": {
+      "title": "Switch conversation",
+      "open": "Switch conversation"
+    },
+    "modelExplain": {
+      "mistral": "Mistral runs in Europe mode (servers in France) — ideal for data that must stay in Europe: emails, files, client info. No web search or link opening.",
+      "gemini": "Gemini handles real-time web search, news questions and Google Maps queries. Data processed outside Europe.",
+      "haiku": "Claude Haiku handles quick, short conversations. Free model (10/day).",
+      "opus": "Claude Opus handles deep analysis, complex tasks and multi-step reasoning. Pro model.",
+      "claude": "Claude is the default: attached files, private data (my emails, my files), URLs to open, or requests needing tools (Gmail, Drive, Calendar). Data processed in the United States (Anthropic).",
+      "openai": "GPT (OpenAI) is used when you select it manually. Data processed outside Europe.",
+      "fallback": "Model picked automatically based on your request."
+    },
+    "region": {
+      "eu": "France",
+      "us": "United States",
+      "title": "Region where this model processes your request"
     },
     "banners": {
       "gmailReading": "Reading emails...",
@@ -181,7 +250,7 @@
       "body": "This conversation contains messages processed by Mistral (servers in Europe). Switching to {{targetModel}} will send the whole history to the United States. Continue?"
     },
     "input": {
-      "euOnlyUrlHint": "Mistral can't open links (EU mode). To analyze the content, paste the article or video text directly here.",
+      "euOnlyUrlHint": "Link detected — its content will be fetched in Europe (Linkup) and given to Mistral. Videos (YouTube…) cannot be read.",
       "placeholder": "Chat with Arty...",
       "listening": "Listening...",
       "defaultFilePrompt": "Analyze this file.",
@@ -197,7 +266,7 @@
         "enhance": "Enhance prompt",
         "stop": "Stop",
         "send": "Send",
-        "holdToRecord": "Tap to dictate, hold for Whisper",
+        "holdToRecord": "Tap to dictate, hold for AI transcription",
         "autoSendOn": "Auto-send on — release the mic to send immediately",
         "autoSendOff": "Auto-send off — transcription fills the text area"
       },
@@ -210,7 +279,7 @@
         "recording": "Recording",
         "swipeToCancel": "← Slide to cancel",
         "releaseToCancel": "Release to cancel",
-        "releaseToSend": "Whisper — release to send",
+        "releaseToSend": "Dictation — release to send",
         "tapToStop": "Listening… tap to stop",
         "artyReplying": "Arty is replying…",
         "transcribing": "Transcribing…",
@@ -218,25 +287,55 @@
         "micDenied": "Microphone denied — allow it in browser settings",
         "micDeniedNative": "Microphone denied — allow it in Settings → Apps → Arty → Permissions",
         "transcribeFailed": "Transcription failed — try again",
-        "unsupported": "Audio recording not supported in this browser"
+        "googleRequired": "Sign in with Google to use voice dictation",
+        "unsupported": "Audio recording not supported in this browser",
+        "hint": "Tap 🎙 = quick dictation · hold = AI transcription",
+        "hintTapOnly": "Tap 🎙 = quick dictation"
       },
       "slashPaletteHeader": "Commands",
       "removeFile": "Remove {{name}}",
       "chipSuggestion": "Suggestion: {{label}}",
       "whisperStop": "Stop recording",
-      "whisperStart": "Record audio (Whisper)",
+      "whisperStart": "Record audio (AI transcription)",
       "recordingWithDuration": "Recording {{duration}}s",
-      "whisperTooltip": "Record (Whisper)",
+      "whisperTooltip": "Record (AI transcription)",
       "chips": {
-        "brief": { "label": "Daily brief", "prompt": "Give me a brief of my day — what I should know, the important things not to forget." },
-        "writeEmail": { "label": "Draft an email", "prompt": "Help me draft an email " },
-        "summarizeText": { "label": "Summarize text", "prompt": "Summarize this text: " },
-        "translateToEn": { "label": "Translate", "prompt": "Translate this text to French: " },
-        "summarize": { "label": "Summarize", "prompt": "Summarize this text: " },
-        "write": { "label": "Draft", "prompt": "Help me draft " },
-        "translate": { "label": "Translate", "prompt": "Translate this text: " },
-        "explain": { "label": "Explain", "prompt": "Explain simply: " }
-      }
+        "brief": {
+          "label": "Daily brief",
+          "prompt": "Give me a brief of my day — what I should know, the important things not to forget."
+        },
+        "writeEmail": {
+          "label": "Draft an email",
+          "prompt": "Help me draft an email "
+        },
+        "summarizeText": {
+          "label": "Summarize text",
+          "prompt": "Summarize this text: "
+        },
+        "translateToEn": {
+          "label": "Translate",
+          "prompt": "Translate this text to French: "
+        },
+        "summarize": {
+          "label": "Summarize",
+          "prompt": "Summarize this text: "
+        },
+        "write": {
+          "label": "Draft",
+          "prompt": "Help me draft "
+        },
+        "translate": {
+          "label": "Translate",
+          "prompt": "Translate this text: "
+        },
+        "explain": {
+          "label": "Explain",
+          "prompt": "Explain simply: "
+        }
+      },
+      "fileTooLarge": "File too large (max 10 MB): {{names}}",
+      "tooManyFiles": "Maximum {{max}} files per message",
+      "scanPrompt": "Extract the key information from this document: amounts, dates, sender, recipient, subject, and anything notable."
     },
     "tone": {
       "default": "Normal",
@@ -245,19 +344,74 @@
       "formel": "Formal",
       "technique": "Technical"
     },
+    "reflection": {
+      "label": "Reasoning",
+      "auto": "Auto",
+      "rapide": "Fast",
+      "approfondi": "Deep",
+      "max": "Max",
+      "hint": "More reasoning = more thorough but slower answers. \"Auto\" lets Arty decide per question.",
+      "maxUpgradeLabel": "Max reasoning"
+    },
     "model": {
       "auto": "Auto"
     },
-    "level": {
-      "label": "Level",
-      "auto": "Auto",
-      "fast": "Fast",
-      "balanced": "Balanced",
-      "powerful": "Powerful"
+    "factCheck": {
+      "pending": "Checking…",
+      "pendingDetail": "The answer is being fact-checked — the result will show up here.",
+      "unavailable": "Fact-check unavailable",
+      "unavailableDetail": "The factual check could not complete (timeout, overload or network). The answer above has NOT been verified — read it with a critical eye.",
+      "verifiedBy": "Checked by {{model}}",
+      "noRisky": "No risky claim",
+      "noRiskyDetail": "No risky factual claim identified.",
+      "verifiedOne": "{{count}} claim verified",
+      "verifiedMany": "{{count}} claims verified",
+      "correctionOne": "{{count}} correction applied",
+      "correctionMany": "{{count}} corrections applied",
+      "correctionsInResponse": "applied in the answer",
+      "errorOne": "{{count}} error detected",
+      "errorMany": "{{count}} errors detected",
+      "toVerifyOne": "{{count}} point to verify",
+      "toVerifyMany": "{{count}} points to verify",
+      "toVerifySuffix": "{{count}} to verify",
+      "correctValue": "correct value:",
+      "notAppliedHint": "The response could not be corrected automatically — the quoted passage no longer appears verbatim. Rely on the value above."
     },
     "messageList": {
       "branch": "Branch from this message",
       "scrollDown": "Scroll down"
+    },
+    "bubble": {
+      "copy": "Copy response",
+      "copied": "Copied!",
+      "copyCode": "Copy code",
+      "codeCopied": "Code copied!",
+      "listen": "Read aloud",
+      "stopListening": "Stop reading",
+      "pin": "Pin this message",
+      "unpin": "Unpin",
+      "actionPending": "⏳ Working...",
+      "actionDone": "✅ Done!",
+      "regenerate": "Regenerate response"
+    },
+    "userBubble": {
+      "edit": "Edit",
+      "editTitle": "Edit and resend",
+      "send": "Send",
+      "imageUnavailable": "Image unavailable"
+    },
+    "planBadge": {
+      "labelFree": "Free",
+      "labelSub": "Sub",
+      "labelPro": "Pro",
+      "labelVip": "VIP",
+      "bucketSonnet": "Sonnet",
+      "bucketGpt5": "GPT-5",
+      "bucketGeminiPro": "G-Pro",
+      "bucketImages": "Images",
+      "titleFree": "Free plan · {{haiku}}/{{limit}} Haiku today. Tap to unlock Sonnet, Opus, Mistral, Gemini and GPT.",
+      "titleSub": "Premium messages left this month — {{detail}}",
+      "titlePro": "{{plan}} plan · unlimited access"
     }
   },
   "errors": {
@@ -289,7 +443,9 @@
     "micNetwork": "Network error — check your connection",
     "micError": "Microphone error: {{error}}",
     "micCannotStart": "Couldn't start the microphone",
-    "speechNotSupported": "Speech recognition isn't supported in this browser. Use Chrome or Edge."
+    "speechNotSupported": "Speech recognition isn't supported in this browser. Use Chrome or Edge.",
+    "storageNotReady": "Your conversations are still loading — try again in a second.",
+    "mistralTimeout": "Mistral did not answer in time (60 s) — slow network or busy service. Try again."
   },
   "sidebar": {
     "newConversation": "New conversation",
@@ -318,7 +474,29 @@
     "noResults": "No results",
     "euTooltip": "Europe mode — data kept in France",
     "apiKeys": "API keys",
-    "settings": "Settings"
+    "settings": "Settings",
+    "confirmDelete": "Tap again to delete",
+    "renameAria": "Rename conversation",
+    "tagsAria": "Tags",
+    "importSuccess": "Conversation imported",
+    "streamingTitle": "Thinking"
+  },
+  "tags": {
+    "modalTitle": "Tags",
+    "modalHint": "Organize this conversation (max {{max}}). Type a word in search to filter by tag.",
+    "customPlaceholder": "Custom tag…",
+    "add": "Add",
+    "remove": "Remove {{tag}}",
+    "save": "Save",
+    "cancel": "Cancel",
+    "predefined": {
+      "work": "Work",
+      "personal": "Personal",
+      "clients": "Clients",
+      "finance": "Finance",
+      "admin": "Admin",
+      "ideas": "Ideas"
+    }
   },
   "tasks": {
     "title": "Tasks",
@@ -367,10 +545,22 @@
     "notificationTitle": "Good morning{{name}} 👋",
     "notificationBody": "Your morning brief is ready — calendar, emails, and more.",
     "actions": {
-      "unreadEmails": { "label": "Summarise unread emails", "prompt": "Summarise my important unread emails" },
-      "today": { "label": "What's on today?", "prompt": "What appointments do I have today?" },
-      "priorities": { "label": "Organise my priorities", "prompt": "Help me organise my priorities for today" },
-      "idea": { "label": "Give me a useful idea", "prompt": "Give me a useful idea or tip for my day" }
+      "unreadEmails": {
+        "label": "Summarise unread emails",
+        "prompt": "Summarise my important unread emails"
+      },
+      "today": {
+        "label": "What's on today?",
+        "prompt": "What appointments do I have today?"
+      },
+      "priorities": {
+        "label": "Organise my priorities",
+        "prompt": "Help me organise my priorities for today"
+      },
+      "idea": {
+        "label": "Give me a useful idea",
+        "prompt": "Give me a useful idea or tip for my day"
+      }
     },
     "speech": {
       "todayIs": "Today is {{date}}.",
@@ -428,7 +618,14 @@
     "defaultEventTitle": "Event {{text}}",
     "newEvent": "New event",
     "eventTitlePlaceholder": "Title",
-    "addToCalendar": "Add to calendar"
+    "addToCalendar": "Add to calendar",
+    "today": "Today",
+    "tomorrow": "Tomorrow",
+    "loading": "Loading calendar…",
+    "empty": "Nothing planned in the next {{days}} days.",
+    "errors": {
+      "fetchFailed": "Calendar error"
+    }
   },
   "settings": {
     "kicker": "Settings",
@@ -464,6 +661,17 @@
       "title": "Prompt enhancement",
       "description": "Rephrases your message before sending",
       "modelLabel": "Model"
+    },
+    "dataResidency": {
+      "title": "Where your data is processed",
+      "description": "Transparency, line by line",
+      "conversations": "Your conversations: on your device, encrypted (AES-256) — never on our servers",
+      "account": "Your account (quotas, subscription): Europe — Cloudflare database, EU jurisdiction guaranteed",
+      "euConv": "🇪🇺 EU conversations: Mistral (France) — text and voice dictation (Voxtral)",
+      "usModels": "Claude, Gemini, GPT: United States — processed on request, never stored by Arty",
+      "dictation": "Voice dictation: Voxtral (France) by default — Whisper (US) only as a backup or on your own OpenAI key",
+      "search": "Web search: Linkup (France) first",
+      "serverLine": "App server: {{host}} — Cloudflare relay (EU); it doesn't store your conversations and doesn't decide the model's region (see the chat)"
     },
     "factChecker": {
       "description": "Verifies the factual claims in each response",
@@ -511,6 +719,17 @@
       "viewBlock": "View the full block injected into the prompt",
       "emptyInjected": "(empty — no text injected)",
       "noQuery": "No location query made since the app started."
+    },
+    "autoMemory": {
+      "title": "Automatic memory",
+      "description": "Arty quietly remembers what matters to you (preferences, projects, context). Everything stays encrypted on your device — view and edit in “Local memory”.",
+      "toggleAria": "Toggle automatic memory",
+      "updated": "🧠 Memory updated — see Settings → Local memory"
+    },
+    "customInstructions": {
+      "title": "Custom instructions",
+      "description": "Tell Arty how to talk to you and what it should always know. Applied to every model, with priority. Stays encrypted on your device.",
+      "placeholder": "E.g. I'm a mechanic in Lyon. Answer directly, no jargon. Be formal with me."
     }
   },
   "costsScreen": {
@@ -556,16 +775,16 @@
     "errorNoEmail": "No email found. Sign in with Google first.",
     "currentPlan": "Current plan",
     "byokPrice": "Free",
-    "proPrice": "€39 one-time",
-    "subscriptionPrice": "€9.99/mo",
-    "premiumPackPrice": "€1.99",
+    "proPrice": "€39 one-time · VAT incl.",
+    "subscriptionPrice": "€9.99/mo · VAT incl.",
+    "premiumPackPrice": "€1.99 · VAT incl.",
     "byokDescription": "Your own API key · All models · Local storage",
     "byokCta": "Switch to BYOK",
     "proBadge": "Popular",
-    "proTagline": "Lifetime, 3 devices",
-    "proDescription": "Everything in Free · Business templates · Priority support · No subscription",
+    "proTagline": "Lifetime license · your own key",
+    "proDescription": "One-time payment, app for life · You use your own API key (BYOK) · Business templates · Priority support · No subscription",
     "proCta": "Buy Arty Pro",
-    "subscriptionDescription": "No API key · 500 messages/month · Claude, GPT-5-mini, Gemini, Mistral",
+    "subscriptionDescription": "No API key · 150 Claude Sonnet/Opus + 100 GPT-5 + 80 Gemini Pro per month · Haiku, Flash and Mistral with no monthly cap",
     "subscriptionCta": "Subscribe",
     "premiumPackEyebrow": "Quota exceeded?",
     "premiumPackTitle": "+100 premium messages pack",
@@ -578,7 +797,17 @@
     "creditsCta": "Buy credits",
     "creditsBusy": "Opening checkout…",
     "creditsError": "Couldn't start the checkout. Please try again.",
-    "creditsAdded": "Credits added — your balance is up to date."
+    "creditsAdded": "Credits added — your balance is up to date.",
+    "transparency": "Our limits are stated in plain messages — no “credits” or “points”. The price shown is the final price, VAT included. A daily anti-abuse limit applies to all plans.",
+    "manageSubscription": "Manage my subscription (cancel online)",
+    "subscriptionReassurance": "✓ Cancel in one click, anytime — pause available. No commitment.",
+    "whyTitle": "Why is it cheaper?",
+    "whyIntro": "No magic — just an economic model we own up to:",
+    "whyRouting": "Smart routing: each question goes to the model that's just good enough, not always the priciest one. Less compute paid = cheaper for you.",
+    "whyMargin": "Low margin, on purpose: a small markup over the real cost, not a 3x price like elsewhere.",
+    "whyTransparency": "Limits stated in plain messages (not opaque “credits”) and the final price shown, VAT included.",
+    "whyByok": "And you can always plug in your own API key (BYOK) to pay cost price.",
+    "trialCallout": "🎁 New here? Try it free first: 30 messages, no credit card."
   },
   "streak": {
     "badge": {
@@ -669,5 +898,212 @@
     "cancel": "Cancel",
     "deleting": "Deleting…",
     "error": "Deletion failed. Try again or contact support."
+  },
+  "quota": {
+    "sheetTitle": "This month's quota",
+    "sheetFooter": "Premium messages left this month. Standard models (Haiku, Flash, Mistral) have no monthly cap. Resets on the 1st.",
+    "sheetFooterWithPack": "Premium messages left this month + {{pack}} Pack messages. Standard models have no monthly cap.",
+    "premiumModels": "premium models",
+    "capReachedTitle": "Monthly limit reached",
+    "capReachedBody": "You've used your {{cap}} {{model}} messages for this month.",
+    "capReachedBodyNoCount": "You've used all your {{model}} messages for this month.",
+    "capReachedHint": "Standard models (Haiku, Flash, Mistral) have no monthly cap — resend your message in standard mode. Your premium quota resets on {{date}}.",
+    "buyPack": "+100 premium messages — €1.99",
+    "continueStandard": "Continue with standard models",
+    "later": "Later"
+  },
+  "onboardingChoice": {
+    "tryFree": {
+      "title": "Try Arty for free",
+      "subtitle": "30 free messages. No credit card.",
+      "googleCta": "Continue with Google",
+      "googleSub": "30 free messages · no credit card",
+      "googleLoading": "Signing in…",
+      "byokLink": "I have an API key",
+      "subLink": "I already have a subscription"
+    },
+    "trial": {
+      "title": "30 free messages!",
+      "subtitle": "Available models: Claude Haiku, GPT-5 mini, Gemini Flash, Mistral Medium",
+      "cta": "Let's go",
+      "upgrade": "Upgrade to Pro or Subscription to unlock all models",
+      "memoryNote": "Arty quietly remembers what matters to you — everything stays encrypted on your device, editable in Settings."
+    },
+    "vip": {
+      "welcome": "Welcome!"
+    },
+    "byok": {
+      "back": "Back",
+      "showHelp": "How do I get a key?",
+      "hideHelp": "Hide help"
+    },
+    "cards": {
+      "subscription": {
+        "title": "Subscription",
+        "subtitle": "Pro, unlimited"
+      },
+      "apiKey": {
+        "title": "API key",
+        "subtitle": "Your own key"
+      }
+    }
+  },
+  "trial": {
+    "banner": {
+      "remaining_one": "✨ Free trial — {{count}} message left",
+      "remaining_other": "✨ Free trial — {{count}} messages left",
+      "ended": "Trial over — pick a plan to continue",
+      "upgradeCta": "Upgrade",
+      "seePlans": "See plans →"
+    }
+  },
+  "image": {
+    "errorNoPrompt": "No image description provided.",
+    "errorPlanLocked": "Image generation is for subscribers only. The user can subscribe to use it.",
+    "errorCapReached": "Monthly image limit reached (10/month). Resets on the 1st.",
+    "errorAuth": "Google sign-in required to generate images.",
+    "errorFailed": "Image generation failed. Try again in a moment."
+  },
+  "share": {
+    "title": "Share this conversation",
+    "warning": "A public link will be created: anyone with the link can read this conversation (for 30 days). Make sure it contains nothing private.",
+    "googleWarning": "This conversation used your Google data (emails, files or calendar) — their content may appear in the replies. Review before publishing.",
+    "consent": "I understand: this conversation will be readable by anyone with the link.",
+    "publish": "Publish and copy link",
+    "publishing": "Publishing…",
+    "success": "Link created! Share it anywhere.",
+    "expiry": "The link expires in 30 days. You can remove it anytime.",
+    "copyLink": "Copy link",
+    "copied": "Link copied",
+    "dialogTitle": "Share conversation",
+    "euBlocked": "Confidential 🇪🇺 conversations cannot be shared publicly — their data must stay on your device.",
+    "errorRateLimit": "You've reached today's share limit (5). Try again tomorrow.",
+    "errorTooLarge": "This conversation is too long to share.",
+    "errorEu": "EU conversation: public sharing not allowed.",
+    "errorAuth": "Sign in with Google to share.",
+    "errorFailed": "Sharing failed. Try again in a moment.",
+    "view": {
+      "ctaHeader": "Try Arty — free",
+      "notFoundTitle": "Conversation not found",
+      "notFoundBody": "This link has expired, was removed, or doesn't exist.",
+      "notFoundCta": "Discover Arty",
+      "footerText": "This conversation was created with Arty, the AI assistant that brings together Claude, GPT, Gemini and Mistral — with your Gmail, Drive and calendar.",
+      "footerCta": "Try it free — no credit card"
+    }
+  },
+  "app": {
+    "shareError": {
+      "fileTooLarge": "File too large (>10 MB), sharing cancelled."
+    },
+    "budgetAlert": {
+      "message": "⚠️ AI budget exceeded — {{spent}} / {{limit}} this month.",
+      "view": "View",
+      "closeAria": "Dismiss alert"
+    },
+    "loading": "Loading…"
+  },
+  "topBar": {
+    "proBadgeTitle": "Pro license active",
+    "themeDay": "Day mode (Ember)",
+    "themeNight": "Night mode (Nocturne)"
+  },
+  "googleStatus": {
+    "connected": "Google connected",
+    "disconnected": "Google not connected",
+    "logout": "Disconnect"
+  },
+  "oauthCallback": {
+    "loading": "Signing in with Google…"
+  },
+  "driveFileCard": {
+    "modifiedAt": "Modified on {{date}}",
+    "open": "Open"
+  },
+  "emailCard": {
+    "timeJustNow": "just now",
+    "timeHoursAgo": "{{hours}} h ago"
+  },
+  "apiKeySetup": {
+    "pageTitle": "Setup",
+    "pageSubtitle": "Enter your API keys to get started. They are encrypted and stored only on your device.",
+    "optional": "(optional)",
+    "hideKey": "Hide",
+    "showKey": "Show",
+    "test": "Test",
+    "currentKey": "Current: {{mask}}",
+    "saving": "Encrypting…",
+    "save": "Save",
+    "start": "Start",
+    "encryptionNotice": "Your keys are encrypted with AES-256 and stored only on your device.",
+    "labels": {
+      "anthropic": "Anthropic API key",
+      "openai": "OpenAI API key",
+      "gemini": "Gemini API key",
+      "mistral": "Mistral API key (EU)"
+    },
+    "errors": {
+      "anthropicRequired": "The Anthropic API key is required",
+      "anthropicPrefix": "The Anthropic key must start with sk-ant-",
+      "openaiFormat": "The OpenAI key must start with sk- and be over 20 characters",
+      "saveFailed": "Error while saving"
+    }
+  },
+  "apiKeysModal": {
+    "kicker": "API keys",
+    "titleLead": "Your ",
+    "titleAccent": "keys.",
+    "subtitle": "Encrypted with AES-256 and stored only on your device."
+  },
+  "memoryViewer": {
+    "title": "🧠 Arty's memory",
+    "subtitle": "What Arty knows about you — readable and editable",
+    "tabs": {
+      "profil": "Profile",
+      "clients": "Clients",
+      "projets": "Projects",
+      "notes": "Notes"
+    },
+    "editHint": "Edit the JSON directly then save.",
+    "addNote": "+ Add a note",
+    "savedConfirm": "✅ Saved!",
+    "saveHint": "Edit and save to update the memory.",
+    "saving": "Saving…",
+    "save": "Save",
+    "promptNote": "New note:",
+    "errors": {
+      "invalidJson": "Invalid JSON — check the syntax."
+    }
+  },
+  "memoryHistory": {
+    "title": "📜 Memory history",
+    "empty": "No changes recorded",
+    "undoChange": "↩ Undo this change",
+    "clearAll": "Clear all history"
+  },
+  "orchestratorSync": {
+    "title": "Orchestrator detected",
+    "description": "The Orchestrator desktop app is running locally. Sync your Anthropic key so it can generate Flask apps without manual setup.",
+    "syncing": "Syncing…",
+    "sync": "Sync the key →",
+    "success": "Key synced",
+    "errors": {
+      "noKey": "No active Anthropic key",
+      "syncFailed": "Sync failed"
+    }
+  },
+  "templates": {
+    "filterAll": "All",
+    "headerKicker": "Library · Pro",
+    "heroMain": "Business ",
+    "heroAccent": "templates.",
+    "heroSubtitle": "Ready-made prompts to start a conversation in 10 seconds.",
+    "proBannerEyebrow": "Pro feature",
+    "proBannerTitleLead": "Unlock ",
+    "proBannerTitleAccent": "Arty Pro",
+    "proBannerTitleTail": " to use templates.",
+    "proBannerSubtitle": "€39 lifetime · 3 devices · All templates included.",
+    "emptyCategory": "No template in this category.",
+    "lockedTitle": "Pro accounts only",
+    "modalSubmit": "Use this template →"
   }
 }

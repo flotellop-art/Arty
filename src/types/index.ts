@@ -15,6 +15,12 @@ export interface FactCheckClaim {
   // find/replace de originalText par correction.
   originalText?: string
   correction?: string
+  // true si la substitution a RÉELLEMENT eu lieu dans le contenu du message.
+  // Sans ce flag, le badge affichait « barré → corrigé » pour toute
+  // correction proposée, même quand le find/replace avait raté (passage cité
+  // ≠ texte réel : markdown, apostrophes…) — bug live du 11 juin 2026.
+  // Optionnel : résultats persistés avant l'ajout → undefined = rétro-compat.
+  applied?: boolean
 }
 
 export interface FactCheckResult {
@@ -22,6 +28,11 @@ export interface FactCheckResult {
   claims: FactCheckClaim[]
   modelLabel: string
   checkedAt: number
+  // Statut structuré du cycle de vie (BUG 59 — 4 états distincts visibles).
+  // Optionnel : les résultats persistés avant l'ajout de ce champ n'en ont
+  // pas — l'UI dérive alors l'état des magic strings du modelLabel
+  // (rétro-compat, voir deriveStatus dans FactCheckBadge).
+  status?: 'pending' | 'success-empty' | 'success-with-claims' | 'failed'
   // Si au moins 1 claim a été corrigé, on stocke le texte original
   // ici pour permettre à l'UI d'afficher le diff dans le dropdown.
   // La réponse affichée (Message.content) est déjà le texte corrigé.
@@ -48,4 +59,14 @@ export interface Conversation {
   updatedAt: number
   usedModels?: string[]  // models used in this conversation (e.g. ['mistral', 'claude'])
   euOnly?: boolean       // if true, locked to Mistral EU — no US model allowed
+  // P1.5 — vrai dès qu'un outil Gmail/Drive/Calendar/Contacts a été appelé :
+  // le texte des réponses peut alors contenir des données Google (résumé de
+  // mail, contenu de fichier). Sert à l'avertissement renforcé avant un
+  // partage public. Détecté à l'appel (les tool_use ne sont pas persistés
+  // dans `content`, donc indétectable a posteriori).
+  hasGoogleData?: boolean
+  // P1.8 — étiquettes (tags) libres/prédéfinies pour ranger les conversations,
+  // filtrables depuis la Sidebar. Champ optionnel → transparent au
+  // déchiffrement (cast nu), aucune migration. Privé : exclu du partage public.
+  tags?: string[]
 }

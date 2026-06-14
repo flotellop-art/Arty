@@ -10,6 +10,15 @@ export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
     __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
+    // Mode démo preview (revue design sans login Google) — BARRIÈRE
+    // BUILD-TIME : vrai UNIQUEMENT sur les déploiements de PREVIEW Cloudflare
+    // (CF_PAGES=1 et branche ≠ prod). Sur le build de prod (branche main),
+    // c'est `false` figé → le tree-shaking de Vite élimine entièrement le code
+    // démo du bundle : le bypass de login n'EXISTE PAS en prod (audit sécu
+    // red-team Opus). Le runtime ajoute une 2e barrière (hostname + natif).
+    __DEMO_ALLOWED__: JSON.stringify(
+      process.env.CF_PAGES === '1' && process.env.CF_PAGES_BRANCH !== 'main'
+    ),
   },
   test: {
     environment: 'jsdom',
@@ -30,7 +39,7 @@ export default defineConfig({
       output: {
         manualChunks: {
           vendor: ['react', 'react-dom', 'react-router-dom'],
-          markdown: ['react-markdown', 'rehype-raw', 'rehype-sanitize', 'remark-gfm'],
+          markdown: ['react-markdown', 'rehype-raw', 'rehype-highlight', 'rehype-sanitize', 'remark-gfm'],
         },
       },
     },

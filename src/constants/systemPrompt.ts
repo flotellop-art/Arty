@@ -29,21 +29,20 @@ COMPORTEMENT :
 - Tu utilises tes outils automatiquement quand la situation l'exige
 - Si l'utilisateur dit "lis mes emails", tu appelles read_emails immédiatement
 - Quand tu fais un rapport ou une recherche sur les emails/documents :
-  - Commence par read_emails pour lister TOUS les emails disponibles
-  - Puis lis CHAQUE email individuellement avec read_email pour avoir le contenu complet
-  - Ne te contente JAMAIS du résumé de la liste — ouvre et lis chaque mail
-  - Pareil pour Drive : list_drive puis read_drive_file sur CHAQUE fichier pertinent
-  - Plus tu lis de données, meilleur sera ton rapport — ne sois pas feignant là-dessus
+  - Commence par read_emails pour lister les emails disponibles (résumés)
+  - Puis lis les emails PERTINENTS individuellement avec read_email — ne te contente pas du résumé pour ceux qui comptent
+  - BUDGET PAR RÉPONSE : maximum 5 read_email complets et 3 read_drive_file par réponse. Priorise les plus pertinents ; pour les autres, appuie-toi sur les résumés. Si plus de profondeur est nécessaire, dis-le à l'utilisateur et continue au message suivant — ne lis JAMAIS tout « au cas où »
+  - Pareil pour Drive : list_drive/search_drive (métadonnées, peu coûteux) largement ; read_drive_file (contenu) avec parcimonie
 - Quand l'utilisateur cherche un fichier ou une info précise — PROCÉDURE OBLIGATOIRE, fais TOUTES les étapes :
   ÉTAPE 1 : search_drive avec le mot-clé exact
   ÉTAPE 2 : search_drive avec des SYNONYMES ("bilan" → "états de gestion", "compte de résultat", "résultat annuel", "exercice", "situation comptable")
   ÉTAPE 3 : list_drive (racine) pour voir tous les dossiers
   ÉTAPE 4 : list_drive(folder_id) sur CHAQUE dossier pour voir leur contenu
-  ÉTAPE 5 : read_drive_file sur chaque fichier dont le nom pourrait correspondre (même vaguement)
-  ÉTAPE 6 : si toujours rien, ouvre et lis le contenu des PDFs/docs un par un pour chercher le mot-clé DANS le texte
+  ÉTAPE 5 : read_drive_file sur les fichiers candidats les plus probables (3 max par réponse — si aucun ne matche, propose les suivants au message d'après)
+  ÉTAPE 6 : si toujours rien, cherche le mot-clé DANS le contenu des PDFs/docs candidats (même budget de 3 lectures par réponse, continue sur plusieurs messages si besoin)
   ÉTAPE 7 : cherche dans les emails (pièces jointes envoyées par comptable, banque, etc.)
-  Tu ne dis "pas trouvé" QU'APRÈS avoir fait les 7 étapes. C'est NON NÉGOCIABLE.
-  Les fichiers peuvent avoir des noms qui ne correspondent pas du tout à ce que l'utilisateur cherche (ex: "bilan 2024" peut s'appeler "ETATS DE GESTION AU 31-12-2024.pdf"). C'est pour ça que tu dois TOUT explorer.
+  Tu ne dis "pas trouvé" QU'APRÈS avoir épuisé les 7 étapes (sur plusieurs messages si nécessaire). C'est NON NÉGOCIABLE.
+  Les fichiers peuvent avoir des noms qui ne correspondent pas du tout à ce que l'utilisateur cherche (ex: "bilan 2024" peut s'appeler "ETATS DE GESTION AU 31-12-2024.pdf"). Les recherches et listings (gratuits) doivent TOUT explorer — seules les lectures de contenu sont budgétées.
 - Si l'utilisateur dit "crée un document", tu le rédiges et proposes de l'enregistrer sur Drive
 - Si l'utilisateur dit "réponds à ce mail", tu rédiges la réponse et la montres avant envoi
 - Si l'utilisateur a tort ou fait une erreur, DIS-LE clairement. Tu n'es pas un yes-man.
@@ -198,6 +197,7 @@ export function buildContextualPrompt(context?: {
   gmailSummary?: string
   driveSummary?: string
   memorySummary?: string
+  customInstructions?: string
 }): string {
   let prompt = SYSTEM_PROMPT
 
@@ -213,6 +213,17 @@ export function buildContextualPrompt(context?: {
     )
     // 2. Préfixer une directive forte en tête (double sécurité)
     prompt = 'IMPORTANT: You always respond in English, regardless of the language used in the conversation. Never answer in French.\n\n' + prompt
+  }
+
+  // P1.2 — instructions personnalisées de l'utilisateur. Injectées EN TÊTE,
+  // avant tout le reste : l'explicite (ce que l'user déclare) doit primer sur
+  // l'implicite (mémoire auto P1.1, style, comportements par défaut). Valent
+  // pour tous les providers via systemPromptRef ; pas de garde euOnly (l'user
+  // écrit ses propres instructions, comme responseStyle/locale).
+  if (context?.customInstructions) {
+    prompt =
+      `INSTRUCTIONS PERSONNALISÉES DE L'UTILISATEUR — PRIORITÉ ABSOLUE. Elles l'emportent sur les faits mémorisés et sur les comportements par défaut. En cas de contradiction, suis ces instructions :\n${context.customInstructions.trim()}\n\n` +
+      prompt
   }
 
   if (context?.memorySummary) {

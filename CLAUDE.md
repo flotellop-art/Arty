@@ -237,14 +237,22 @@ locale pouvait appeler les proxys.
 **Règle** : TOUJOURS vérifier `npx tsc --noEmit` AVANT de push. Les erreurs TS bloquent le déploiement SANS notification visible dans l'app
 
 ### BUG 14 — pdf-parse retourne du garbage sur PDFs compressés
-**Fichiers** : `api/_lib/pdfExtraction.ts`, `api/drive/action.ts`
-**Problème** : pdf-parse retournait du texte binaire/garbage sur les PDFs FlateDecode → le test `length > 20` passait quand même → Claude recevait du garbage illisible
-**Règle** : Vérifier la LISIBILITÉ du texte extrait (>50% de caractères lisibles, >50 chars). Si illisible, passer au fallback OCR (Google Vision API avec `GOOGLE_VISION_API_KEY`)
+**⚠️ PIPELINE RETIRÉ (mai 2026)** : Arty ne fait PLUS d'extraction PDF côté
+serveur. Les PDF (pièces jointes Gmail/Drive, fichiers collés) sont transmis
+en base64 et lus NATIVEMENT par Claude (content blocks `document`/`pdf`). Il
+n'y a plus de `pdf-parse`, plus de fallback OCR Google Vision, et le fichier
+`api/_lib/pdfExtraction.ts` mentionné ci-dessous N'EXISTE PAS. La leçon reste
+valable UNIQUEMENT si on réintroduit un jour une extraction texte côté serveur.
+**Problème (historique)** : pdf-parse retournait du texte binaire/garbage sur les PDFs FlateDecode → le test `length > 20` passait quand même → Claude recevait du garbage illisible
+**Règle (si réintroduit)** : Vérifier la LISIBILITÉ du texte extrait (>50% de caractères lisibles, >50 chars) avant de le passer au LLM.
 
 ### BUG 15 — Google Vision OCR scope OAuth impossible sur comptes perso
-**Fichiers** : `src/services/googleAuth.ts`, `api/_lib/pdfExtraction.ts`
-**Problème** : Les scopes `cloud-vision` et `cloud-platform` ne sont pas disponibles dans le flux OAuth pour comptes Gmail personnels → impossible de se reconnecter
-**Règle** : Utiliser une clé API serveur (`GOOGLE_VISION_API_KEY` dans env) pour Vision OCR, PAS le token OAuth utilisateur
+**⚠️ OBSOLÈTE (mai 2026)** : voir BUG 14 — l'OCR Google Vision n'est plus
+utilisé nulle part. `GOOGLE_VISION_API_KEY` est de la **config morte** (encore
+déclarée dans `functions/env.d.ts` mais lue par aucun code). Leçon conservée
+pour mémoire.
+**Problème (historique)** : Les scopes `cloud-vision` et `cloud-platform` ne sont pas disponibles dans le flux OAuth pour comptes Gmail personnels → impossible de se reconnecter
+**Règle (si réintroduit)** : Utiliser une clé API serveur, PAS le token OAuth utilisateur, pour tout service Google Cloud type Vision.
 
 ### BUG 16 — saveConversation async casse le UI
 **Fichier** : `src/services/storage.ts`
@@ -503,6 +511,24 @@ Pour toute tâche **non triviale** (refactor, fix multi-fichiers, audit, debug d
 
 ---
 
+## ROADMAP PRODUIT — PLAN D'ACTION CONCURRENTIEL (à consulter)
+
+**Avant toute tâche produit / UX / pricing / monétisation**, lire
+`docs/audits/competitive-audit-2026-06-actions.md` (plan d'action priorisé
+P0/P1/P2 + anti-objectifs, issu de l'audit concurrentiel du 12 juin 2026 —
+rapport complet : `docs/audits/competitive-audit-2026-06.md`, PR #262).
+
+Règles de maintenance :
+- Toute PR qui traite un item du plan DOIT cocher la case correspondante
+  (date + numéro de PR) dans le fichier actions.
+- Ne pas implémenter une feature listée en « Anti-objectifs » sans décision
+  écrite de l'utilisateur.
+- Stratégie en une ligne : gagner par la **confiance** (limites lisibles,
+  jamais de bascule silencieuse, essai sans CB) + l'**exclusivité Google**
+  (Gmail/Drive/Calendar dans Claude/Mistral) — pas par la largeur de catalogue.
+
+---
+
 ## ROUTINE D'AUDIT SÉCURITÉ
 
 Slash command **`/audit-secu`** (défini dans `.claude/commands/audit-secu.md`) lance un audit complet via 3 agents Explore en parallèle (backend, crypto+auth, frontend+Capacitor) puis produit un rapport priorisé.
@@ -543,6 +569,12 @@ des conversations — implémenté le 16 mai, voir « PR à venir » ci-dessous.
 - [ ] **PR 2 — PKCE OAuth** : ajout du `code_verifier` + `code_challenge` au flow Google web. Stratégie en 2 PRs validée le 4 mai (state CSRF d'abord en PR #128, PKCE ensuite). Coût ~2h, confiance 80%. Touche `googleAuth.ts:buildOAuthUrl()` (devient async), `OAuthCallback.tsx`, `functions/api/auth/token.ts` (forward `code_verifier` à Google). Suivre les patterns du callback double (web + deeplink) déjà éprouvés en PR #128.
 - [x] **Chiffrement des conversations en localStorage** — FAIT (16 mai). Chiffrées AES-256 sous `conversations-enc` ; cache mémoire déchiffré pour garder `saveConversation` synchrone (BUG 16), write-through avec filet clair synchrone, migration auto des conversations en clair, JAMAIS de wipe sur échec de déchiffrement, killswitch `arty-conv-encryption-disabled`. PAS de Web Worker — le diagnostic « le chiffrement async cassait l'UI » était faux : c'est rendre `saveConversation` lui-même async qui cassait l'UI ; le cache mémoire (pattern memTokens) résout ça. Round-trip vérifié en navigateur réel.
 
+**Veille infra 3 juin 2026 — chantiers ouverts (différés, décision Florent)** :
+- [x] **Migration Claude Opus 4.6 → 4.8** — FAIT (3 juin, PR #231). Type `ClaudeSubModel` + `selectClaudeSubModel()` (aiRouter), tables de coût (`costTracker.ts` + `functions/api/_lib/pricing.ts`) avec ajout de l'entrée 4.8 sans supprimer 4.6/4.7 (préserve la valorisation historique localStorage/D1), fallback préfixe `claude-opus` → 4.8, test + doc watcher. Prix gardé $15/$75 (le « $5/$25 » de la veille = tarif Sonnet, écarté). Header `anthropic-beta` non touché (feature-flags, pas lié à la version). Vérifié : `tsc --noEmit` OK, suite aiRouter 98/98.
+- [ ] **Sortir Google Auth du RC codetrix** (`@codetrix-studio/capacitor-google-auth@^3.4.0-rc.4`). Constat 3 juin : codetrix ne sert qu'à `GoogleAuth.initialize()` au boot (`main.tsx:35`) ; le sign-in natif réel passe déjà par le plugin Java custom `GoogleSignInPlugin.java` (BUG 27). Cible = option A (`@capawesome/capacitor-google-sign-in`, sans Firebase — Arty n'a pas de FCM runtime, seulement Firebase App Distribution pour la beta). RISQUE ÉLEVÉ : zone auth native (BUG 21/26/27/51), exige un test sur APK réel. PR dédiée, jamais en lot avec autre chose.
+- [ ] **Identité user : email → `sub` Google** (alerte veille `OAUTH-USERNAME-2026-04`). Constat 3 juin : l'email minuscule est la clé primaire partout (`memory.user_id`, `trial_usage.email`, `subscriptions.user_email`) et la whitelist `ALLOWED_EMAILS` est email-based par design. Le lowercasing est cohérent (extraction + parse whitelist) — déjà OK. Passer au `sub` = migration de données D1 (orpheline les lignes existantes) + refonte whitelist. Défense en profondeur, bénéfice faible (les adresses Gmail ne changent quasi jamais). À ne lancer qu'avec un plan de migration D1 explicite.
+- [x] **Ops (hors code, Florent) — QUOTA-2026-05** : activer la facturation GCP du projet OAuth (n° 794968525529) avant ~1er juillet 2026, sinon coupure Gmail/Drive/Calendar à l'expiration de la fenêtre de grâce. Vérifier aussi les quotas des 3 API. **FAIT (confirmé par Florent le 12 juin 2026)** : compte de facturation actif sur le projet. Quotas des 3 API : à garder dans la routine d'audit mensuelle.
+
 **HIGH backend — ✅ tous corrigés (vérifié file:line le 7 juin)** :
 - [x] **License expiration** — `checkAllowedUser.ts:302` (+ `subscription/status.ts`) : `AND (expires_at IS NULL OR expires_at > unixepoch())` (H-Plan-1).
 - [x] **Premium cap atomique** — `checkPremiumCap.ts:176-184` : `consumeCapAtomic` (upsert D1 conditionnel `WHERE count < cap RETURNING`). Migré KV→D1, ne dépasse plus le cap.
@@ -557,7 +589,8 @@ des conversations — implémenté le 16 mai, voir « PR à venir » ci-dessous.
 
 **Nouveaux findings résiduels (audit 7 juin)** :
 - [ ] **N-1 (MED) — `verifyGoogleUser` ne valide pas `aud`** dans `checkAllowedUser.ts:24-33` (`oauth2/v2/userinfo`). Un token Google d'audience étrangère passe le gate → abus borné ~10 Haiku/j sur la clé owner (PAS de vol de données : les endpoints Google reforwardent le même token). Fix : passer par `tokeninfo`, rejeter si `aud !== GOOGLE_CLIENT_ID && azp !== GOOGLE_CLIENT_ID`. ⚠️ touche le gate d'auth universel — tester web ET natif (les tokens `requestServerAuthCode` natifs peuvent avoir un `aud` différent, BUG 21/51). **PR sécu dédiée.**
-- [ ] **N-2 (MED) — fuite status/body upstream** dans `search/web.ts:130-138,171,209` : renvoie le status + 200 chars de Linkup/Brave au client. Fix : message générique (`{error:'Search failed'}`, 502) + détail en `console.error`.
+- [ ] **N-2 (MED) — fuite status/body upstream** dans `search/web.ts:130-138,171,209` : renvoie le status + 200 chars de Linkup/Brave au client. Fix : message générique (`{error:'Search failed'}`, 502) + détail en `console.error`. **MAJ 12 juin (PR #269)** : la même classe est corrigée sur les proxys de transcription (`whisper-proxy.ts`, `voxtral-proxy.ts` — erreurs upstream masquées sur clé serveur, passthrough BYOK conservé, fallback modèle préservé via code stable `model_not_supported`). `search/web.ts` reste à faire.
+- [ ] **V-2 (MED, différé — audit PR #269 du 12 juin) — quota transcription par appel, pas par durée** : `consumeDailyQuota` compte les appels alors que Voxtral/Whisper facturent à la minute (`audio_seconds`). Mitigé en PR #269 par le cap body 10 MB sur les deux proxys (borne le coût par appel) + quota journalier existant. Fix propre = quota journalier en secondes d'audio (évolution D1 + gate avant forward dans les proxys). À traiter si la vigie whales montre un abus de dictée.
 
 **HIGH a11y traités (12 mai)** :
 - ✅ **Contrastes `text-theme-muted/X`** : retrait des 56 opacités (`/50`, `/60`, `/70`, `/80`) sur `text-theme-muted` → utilisation de la couleur pleine (PR roadmap). Ratio passe de 2.8:1 à ≥4.5:1 sur fond clair.
@@ -709,3 +742,29 @@ des conversations — implémenté le 16 mai, voir « PR à venir » ci-dessous.
 - EN : `how far`, `how long`, `driving time`, `driving distance`, `directions to`, `directions from`.
 
 La maintenance des triggers est un **work-in-progress permanent**, pas un final state. Chaque cas raté remonté → ajouter le pattern à la regex ET ajouter un test de non-régression (sinon la prochaine refacto cassera).
+
+
+### BUG 57 — Fact-checker supprimait les liens vers les rapports Arty (domaines internes flaggés comme suspects)
+**Fichier** : `src/services/factChecker.ts` (PR #145, commit `93c7c78`)
+**Problème** : sur les réponses contenant un markdown link `[Voir le rapport](https://appfacade.pages.dev/...)` ou `tryarty.com/...`, le fact-checker classait l'URL comme « suspecte » (heuristique générique : domaine non-listé dans une whitelist d'autorités) et la supprimait de la réponse délivrée. Conséquence : l'utilisateur perdait l'accès à ses propres rapports générés par Arty. Remonté en live le 5 mai après PR #144.
+**Règle** : tout module qui valide/filtre des URLs sortantes (fact-checker, sanitizer, link rewriter) DOIT contenir une **whitelist explicite des domaines Arty propriétaires** (`appfacade.pages.dev`, `tryarty.com`, `*.appfacade.pages.dev`) en court-circuit AVANT toute heuristique « suspect/safe ». Pattern : early-return `whitelisted ? keep : applyHeuristic`. Sans ça, chaque heuristique qui se durcit casse les liens internes en silence.
+
+### BUG 58 — Mistral Small choisi par défaut pour des questions techniques (routing inversé)
+**Fichier** : `src/services/mistralClient.ts` ou `aiRouter.ts` (PR #140, commit `9334621`)
+**Problème** : le routing Mistral envoyait par défaut vers Mistral Small (pour économiser) et n'escaladait à Medium 3.5 que sur quelques heuristiques. Conséquence : des questions complexes type « Cloudflare Workers patches d'avril 2026 » partaient sur Small qui répondait à côté ou hallucinait. L'utilisateur s'attendait à du Medium 3.5 par défaut sur un compte payant.
+**Règle** : pour Mistral chez les utilisateurs **payants/whitelistés**, **Medium 3.5 = défaut**, Small = exception réservée au **small talk court** (< ~30 chars, pas de mots techniques, pas de fichiers attachés). Inverser systématiquement la logique de routing : default = modèle capable, opt-in vers le moins cher uniquement quand on est SÛR que la requête est triviale. Trial/free utilisateurs gardent Small par défaut (cap quota).
+
+### BUG 59 — Fact-check badge invisible et debug impossible sur mobile
+**Fichiers** : `src/components/chat/FactCheckBadge.tsx`, `src/hooks/useConversation.ts`, `src/services/factChecker.ts` (PRs #143 + #144, commits `f438ff3` + `8062812`)
+**Problème** : le badge fact-check ne s'affichait que si le résultat contenait au moins 1 claim risqué. Conséquences :
+1. L'utilisateur ne savait jamais si le fact-check était activé ou pas (« j'ai mis le toggle ON mais je vois rien »).
+2. Sur mobile (Capacitor APK + PWA), pas d'accès à la console F12 pour vérifier que le service tournait. Les `console.log('[factCheck] start...')` étaient invisibles.
+3. Si le check échouait (timeout, 400, JSON malformé), l'erreur était avalée silencieusement sans aucune trace UI.
+**Règle** :
+- Tout overlay automatique (fact-check, enhancer, summarizer) qui tourne en arrière-plan DOIT exposer un **état visible 4-states** : `pending` (placeholder gris « vérification… »), `success-empty` (✓ aucun claim risqué), `success-with-claims` (badge expandable), `failed` (⚠️ avec raison courte). Sans ça, l'utilisateur ne distingue pas « pas activé » de « activé mais cassé ».
+- Pour le debug terrain mobile : préfixer tous les logs critiques d'un tag (`[factCheck]`, `[stream]`, `[oauth]`) ET les surfacer dans un screen `Settings → Debug logs` (lecture du dernier ring buffer en mémoire). Console.log seul est inutile sur mobile.
+
+### BUG 60 — Compteur de coûts divergeait entre local (cost_history) et serveur D1
+**Fichiers** : `src/screens/costs.tsx`, `src/services/quotaStatus.ts`, `functions/api/_lib/quota.ts`, `functions/api/ai/quota/month.ts` (PR #147, commit `ee10138`)
+**Problème** : la page « 💸 Mes coûts » lisait `cost_history` depuis localStorage uniquement. Le tracker local manquait régulièrement des appels (multi-device, switch de tab pendant un stream, event `cost-updated` raté à cause d'un crash JS, BYOK switch). Divergence visible : l'utilisateur voyait `0,26€` (sonnet uniquement) côté local pendant que le serveur D1 totalisait `$1.2578` tous modèles. Inacceptable pour un dashboard financier.
+**Règle** : tout dashboard d'**usage facturable** (coûts API, quotas, tokens) DOIT lire le **serveur comme source primaire** (table `quota_model` agrégée par jour ET par modèle), avec fallback local pour BYOK pur ou hors-ligne. Pour étendre `getMonthlyQuotaStatus` à de nouveaux dashboards : ajouter les agrégats nécessaires (`byDay`, `byHour`, etc.) dans la même fonction et forwarder via `/api/ai/quota/month`. Ne JAMAIS faire confiance au localStorage seul pour des montants comparés à une facture officielle — l'écart finira par devenir visible et casser la confiance de l'utilisateur.

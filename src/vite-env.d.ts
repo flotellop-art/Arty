@@ -15,3 +15,6 @@ interface ImportMeta {
 // versionName which comes from build.gradle).
 declare const __APP_VERSION__: string
 declare const __BUILD_TIME__: string
+// true uniquement sur les builds de preview Cloudflare (jamais en prod) —
+// barrière build-time du mode démo (voir vite.config.ts + previewDemo.ts).
+declare const __DEMO_ALLOWED__: boolean

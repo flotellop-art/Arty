@@ -1,9 +1,45 @@
-import { memo } from 'react'
+import { memo, useState, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeRaw from 'rehype-raw'
+import rehypeHighlight from 'rehype-highlight'
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize'
 import type { Components } from 'react-markdown'
+import { isValidElement } from 'react'
+import { getFile } from '../../services/secureFileStorage'
+
+// P1.3 — image générée référencée par `arty-img://<fileId>`. Charge le binaire
+// depuis IndexedDB chiffré et le rend via un blob: URL (révoqué au démontage).
+function GeneratedImage({ fileId, alt }: { fileId: string; alt?: string }) {
+  const [url, setUrl] = useState<string | null>(null)
+  const [failed, setFailed] = useState(false)
+  useEffect(() => {
+    let cancelled = false
+    let revoke: string | null = null
+    getFile(fileId)
+      .then((f) => {
+        if (cancelled) return
+        if (!f?.data) { setFailed(true); return }
+        const bin = atob(f.data)
+        const bytes = new Uint8Array(bin.length)
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+        revoke = URL.createObjectURL(new Blob([bytes], { type: f.type }))
+        setUrl(revoke)
+      })
+      .catch(() => { if (!cancelled) setFailed(true) })
+    return () => { cancelled = true; if (revoke) URL.revokeObjectURL(revoke) }
+  }, [fileId])
+
+  if (failed) return null
+  if (!url) {
+    return <div className="w-full aspect-square max-w-sm rounded-xl border border-theme-border my-3 bg-theme-surface animate-pulse" />
+  }
+  return (
+    <img src={url} alt={alt || 'Image générée'}
+      className="w-full max-w-sm rounded-xl border border-theme-border my-3 shadow-sm" />
+  )
+}
 
 // Custom sanitize schema: allow Arty CSS classes + data-* attributes for action buttons
 // Block: <script>, <iframe>, onerror, onload, javascript: URIs
@@ -27,7 +63,10 @@ const sanitizeSchema = {
   protocols: {
     ...defaultSchema.protocols,
     href: ['http', 'https', 'mailto', 'tel'],
-    src: ['http', 'https', 'data'],
+    // `arty-img` (P1.3) : référence vers une image générée stockée en
+    // IndexedDB chiffré. Sûr — aucune ressource réseau, résolu localement en
+    // blob: URL par le composant img (anti-BUG 11 : pas de base64 persisté).
+    src: ['http', 'https', 'data', 'arty-img'],
   },
   // Strip dangerous elements entirely
   strip: ['script', 'iframe', 'object', 'embed', 'form', 'input', 'textarea'],
@@ -35,6 +74,59 @@ const sanitizeSchema = {
 
 interface MarkdownRendererProps {
   content: string
+}
+
+// Extraction récursive du texte des nœuds React. Indispensable depuis la
+// coloration syntaxique : rehype-highlight enveloppe les tokens dans des
+// <span class="hljs-*"> → `children` n'est plus un tableau de strings, et
+// `children.join('')` produirait "[object Object]…" dans le presse-papier.
+function extractText(node: React.ReactNode): string {
+  if (node == null || typeof node === 'boolean') return ''
+  if (typeof node === 'string' || typeof node === 'number') return String(node)
+  if (Array.isArray(node)) return node.map(extractText).join('')
+  if (isValidElement(node)) return extractText((node.props as { children?: React.ReactNode }).children)
+  return ''
+}
+
+// Bloc de code avec header (langage + bouton copier) et coloration syntaxique
+// via rehype-highlight — standard claude.ai/ChatGPT (plan d'action P0.1/P0.2).
+function CodeBlock({ className, children, ...props }: { className?: string; children?: React.ReactNode }) {
+  // useTranslation (pas i18n.t direct) : abonne le composant au changement de
+  // langue — MarkdownRenderer est memo'é sur `content` et ne re-rendrait pas.
+  const { t } = useTranslation()
+  const [copied, setCopied] = useState(false)
+  const lang = /language-([\w+-]+)/.exec(className ?? '')?.[1] ?? ''
+  const handleCopy = async () => {
+    try {
+      const code = extractText(children).replace(/\n$/, '')
+      await navigator.clipboard.writeText(code)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch { /* clipboard indisponible */ }
+  }
+  return (
+    <div className="my-3 rounded-xl overflow-hidden shadow-sm bg-theme-ink">
+      <div className="flex items-center justify-between px-4 py-1.5 border-b border-theme-bg/10">
+        <span className="text-[10px] font-sans uppercase tracking-wider text-theme-bg/60">
+          {lang || 'code'}
+        </span>
+        <button
+          onClick={handleCopy}
+          className={`px-2 py-1 rounded-md text-[10px] font-sans uppercase tracking-wider transition-all ${
+            copied
+              ? 'bg-theme-accent text-theme-bg'
+              : 'text-theme-bg/70 hover:text-theme-bg hover:bg-theme-bg/10 focus-visible:bg-theme-bg/10'
+          }`}
+          aria-label={copied ? t('chat.bubble.codeCopied') : t('chat.bubble.copyCode')}
+        >
+          {copied ? `✓ ${t('chat.bubble.codeCopied')}` : t('chat.bubble.copyCode')}
+        </button>
+      </div>
+      <pre className="text-theme-bg p-4 overflow-x-auto text-sm leading-relaxed">
+        <code className={className} {...props}>{children}</code>
+      </pre>
+    </div>
+  )
 }
 
 const components: Components = {
@@ -67,10 +159,16 @@ const components: Components = {
       {children}
     </a>
   ),
-  img: ({ src, alt }) => (
-    <img src={src} alt={alt || 'Image'}
-      className="w-full rounded-xl border border-theme-border my-3 shadow-sm" />
-  ),
+  img: ({ src, alt }) => {
+    // P1.3 — image générée stockée en IndexedDB : résolue en blob: URL.
+    if (typeof src === 'string' && src.startsWith('arty-img://')) {
+      return <GeneratedImage fileId={src.slice('arty-img://'.length)} alt={alt} />
+    }
+    return (
+      <img src={src} alt={alt || 'Image'}
+        className="w-full rounded-xl border border-theme-border my-3 shadow-sm" />
+    )
+  },
   blockquote: ({ children }) => (
     <blockquote className="my-3 pl-4 border-l-4 border-theme-accent bg-theme-accent/5 rounded-r-xl py-3 pr-4 italic text-theme-ink/80">
       {children}
@@ -79,15 +177,19 @@ const components: Components = {
   hr: () => (
     <hr className="my-4 border-0 h-px bg-gradient-to-r from-transparent via-theme-muted/40 to-transparent" />
   ),
+  // Listes : le marqueur est rendu par CSS (index.css `.md-marker::before`) —
+  // puce ● dans un <ul>, compteur "1." dans un <ol>. Avant, le ● était
+  // hardcodé dans le renderer li → les listes numérotées de l'IA perdaient
+  // leur numérotation (audit UX).
   ul: ({ children }) => (
-    <ul className="my-2 space-y-1">{children}</ul>
+    <ul className="my-2 space-y-1 md-list">{children}</ul>
   ),
   ol: ({ children }) => (
-    <ol className="my-2 space-y-1 list-none counter-reset-[item]">{children}</ol>
+    <ol className="my-2 space-y-1 md-list">{children}</ol>
   ),
   li: ({ children }) => (
     <li className="flex gap-2 items-start">
-      <span className="text-theme-accent mt-1 text-xs flex-shrink-0">●</span>
+      <span className="md-marker text-theme-accent mt-1 text-xs flex-shrink-0" aria-hidden />
       <span className="flex-1">{children}</span>
     </li>
   ),
@@ -122,13 +224,13 @@ const components: Components = {
     <td className="px-4 py-2.5">{children}</td>
   ),
   code: ({ className, children, ...props }) => {
-    const isBlock = className?.startsWith('language-')
+    // Après rehype-highlight, la classe devient "hljs language-x" → un simple
+    // startsWith('language-') raterait tous les blocs colorés. Les blocs SANS
+    // langage (``` nu) n'ont aucune classe : on les détecte au saut de ligne
+    // (un code inline n'en contient jamais) — fix du bug "bloc rendu en inline".
+    const isBlock = /language-|hljs/.test(className ?? '') || extractText(children).includes('\n')
     if (isBlock) {
-      return (
-        <pre className="bg-theme-ink text-theme-bg rounded-xl p-4 overflow-x-auto my-3 text-sm leading-relaxed shadow-sm">
-          <code className={className} {...props}>{children}</code>
-        </pre>
-      )
+      return <CodeBlock className={className} {...props}>{children}</CodeBlock>
     }
     return (
       <code className="bg-theme-accent/10 text-theme-accent px-1.5 py-0.5 rounded-md text-sm font-medium" {...props}>
@@ -154,7 +256,12 @@ const components: Components = {
 export const MarkdownRenderer = memo(function MarkdownRenderer({ content }: MarkdownRendererProps) {
   return (
     <div className="max-w-none text-sm text-theme-ink/90 leading-relaxed report-content">
-      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw, [rehypeSanitize, sanitizeSchema]]} components={components}>
+      {/* Ordre des plugins IMPÉRATIF : highlight AVANT sanitize, pour que les
+          <span class="hljs-*"> ajoutés soient validés par le schema (le
+          wildcard '*': ['className'] les laisse passer). L'inverse poserait
+          du contenu non vérifié après la sanitisation (BUG 20 : sanitize
+          reste TOUJOURS actif, en dernier). */}
+      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw, rehypeHighlight, [rehypeSanitize, sanitizeSchema]]} components={components}>
         {content}
       </ReactMarkdown>
     </div>

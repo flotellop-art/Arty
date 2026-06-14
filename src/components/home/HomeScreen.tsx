@@ -13,12 +13,17 @@ import { cleanDisplayName } from '../../services/displayName'
 import type { useGoogleAuth } from '../../hooks/useGoogleAuth'
 import type { useGmail } from '../../hooks/useGmail'
 import type { useDrive } from '../../hooks/useDrive'
-import type { FileAttachment } from '../../types'
+import type { FileAttachment, Conversation } from '../../types'
+import { homeV2Enabled } from '../../services/homeV2'
 
 interface HomeScreenProps {
   onMenuToggle: () => void
   onSend: (text: string, files?: FileAttachment[]) => void
   isStreaming: boolean
+  /** Stop du stream actif. Sans lui, le bouton Stop affiché quand un stream
+      tourne en arrière-plan (retour Home pendant une réponse) est un no-op
+      silencieux — bug relevé par PLAN.md (PR C). */
+  onStop?: () => void
   googleAuth: ReturnType<typeof useGoogleAuth>
   gmail: ReturnType<typeof useGmail>
   drive: ReturnType<typeof useDrive>
@@ -27,9 +32,12 @@ interface HomeScreenProps {
   briefLoading?: boolean
   onDismissBrief?: () => void
   onBriefAction?: (action: BriefAction, item: BriefItem) => 'task' | 'chat' | null
+  /** PR G — widget « Reprendre » : conversations récentes cliquables. */
+  conversations?: Conversation[]
+  onSelectConv?: (id: string) => void
 }
 
-function HomeScreenInner({ onMenuToggle, onSend, isStreaming, googleAuth, userName, proactiveBrief, briefLoading, onDismissBrief, onBriefAction }: HomeScreenProps) {
+function HomeScreenInner({ onMenuToggle, onSend, isStreaming, onStop, googleAuth, userName, proactiveBrief, briefLoading, onDismissBrief, onBriefAction, conversations, onSelectConv }: HomeScreenProps) {
   const { t, i18n } = useTranslation()
   const googleTooltip = useTooltip('google')
 
@@ -99,12 +107,13 @@ function HomeScreenInner({ onMenuToggle, onSend, isStreaming, googleAuth, userNa
       <TopBar onMenuToggle={onMenuToggle} />
 
       <div className="flex-1 overflow-y-auto">
-        {/* Masthead — editorial kicker + brand mark */}
+        {/* Masthead — editorial kicker + brand mark. En v2 (PR G) le logo est
+            déjà dans le header (wordmark) → on ne garde que le kicker date. */}
         <div className="px-6 pt-4 pb-2 flex items-center justify-between">
           <span className="font-sans text-[10px] font-semibold uppercase tracking-kicker text-theme-muted">
             {kicker}
           </span>
-          <PrismMark size={22} color="rgb(var(--theme-ink))" />
+          {!homeV2Enabled() && <PrismMark size={22} color="rgb(var(--theme-ink))" />}
         </div>
         {/* Editorial double rule */}
         <div className="mx-6 h-[2px] bg-theme-ink" />
@@ -222,9 +231,39 @@ function HomeScreenInner({ onMenuToggle, onSend, isStreaming, googleAuth, userNa
             </ul>
           </section>
         </div>
+
+        {/* PR G — « Reprendre » : les 5 conversations les plus récentes, en
+            scroll horizontal. Additif et derrière le flag accueil v2. */}
+        {homeV2Enabled() && onSelectConv && (conversations?.length ?? 0) > 0 && (
+          <div className="px-6 pb-4 max-w-3xl">
+            <span className="font-sans text-[10px] font-semibold uppercase tracking-kicker text-theme-muted">
+              {t('home.resumeKicker', { defaultValue: 'Reprendre' })}
+            </span>
+            <div className="flex gap-2.5 overflow-x-auto pt-3 pb-1" style={{ scrollbarWidth: 'none' }}>
+              {[...conversations!]
+                .sort((a, b) => b.updatedAt - a.updatedAt)
+                .slice(0, 5)
+                .map((conv) => (
+                  <button
+                    key={conv.id}
+                    onClick={() => onSelectConv(conv.id)}
+                    className="shrink-0 w-[172px] text-left bg-theme-surface border border-theme-border rounded-[13px] px-3.5 py-3 hover:border-theme-accent transition-colors"
+                  >
+                    <span className="block text-[12.5px] font-medium text-theme-ink leading-tight line-clamp-2">
+                      {conv.title}
+                    </span>
+                    <span className="block text-[10px] text-theme-muted mt-1.5">
+                      {conv.euOnly && <span className="mr-1">🇪🇺</span>}
+                      {new Date(conv.updatedAt).toLocaleDateString(i18n.language?.startsWith('en') ? 'en-US' : 'fr-FR', { day: 'numeric', month: 'short' })}
+                    </span>
+                  </button>
+                ))}
+            </div>
+          </div>
+        )}
       </div>
 
-      <InputBar onSend={onSend} isStreaming={isStreaming} />
+      <InputBar onSend={onSend} isStreaming={isStreaming} onStop={onStop} />
     </div>
   )
 }

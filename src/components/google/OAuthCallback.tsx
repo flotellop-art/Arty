@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { verifyOAuthState } from '../../services/googleAuth'
 
@@ -7,6 +8,7 @@ interface OAuthCallbackProps {
 }
 
 export function OAuthCallback({ onCallback }: OAuthCallbackProps) {
+  const { t } = useTranslation()
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const handled = useRef(false)
@@ -46,7 +48,7 @@ export function OAuthCallback({ onCallback }: OAuthCallbackProps) {
     <div className="flex items-center justify-center h-[100dvh] bg-theme-bg">
       <div className="text-center">
         <div className="animate-spin w-8 h-8 border-2 border-theme-accent border-t-transparent rounded-full mx-auto mb-4" />
-        <p className="text-sm text-theme-muted">Connexion Google en cours...</p>
+        <p className="text-sm text-theme-muted">{t('oauthCallback.loading')}</p>
       </div>
     </div>
   )

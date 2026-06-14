@@ -100,8 +100,23 @@ if (Capacitor.isNativePlatform()) {
   }).catch(() => {})
 }
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <App />
-  </StrictMode>
-)
+function renderApp() {
+  createRoot(document.getElementById('root')!).render(
+    <StrictMode>
+      <App />
+    </StrictMode>
+  )
+}
+
+// Mode démo preview : pose la session factice AVANT le render (pour que
+// getActiveSession() la voie au 1er mount). `__DEMO_ALLOWED__` est `false`
+// figé en prod → ce bloc + l'import() dynamique sont éliminés par Vite :
+// le module previewDemo n'est même pas dans le bundle de prod.
+if (__DEMO_ALLOWED__) {
+  import('./services/previewDemo')
+    .then((m) => { m.setupPreviewDemo() })
+    .catch(() => {})
+    .finally(renderApp)
+} else {
+  renderApp()
+}

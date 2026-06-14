@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { generateId } from '../utils/generateId'
 import * as storage from '../services/storage'
 
@@ -20,6 +20,13 @@ type StreamState = {
 export function useStreaming(deps: {
   refreshConversations: () => void
 }) {
+  // H2 (audit frontend) — `deps` est un objet littéral recréé à chaque render
+  // par l'appelant. S'il entrait dans les deps de `finalize`, toute la chaîne
+  // de callbacks (onDone, onError, stopStreaming…) changerait d'identité à
+  // chaque frame de streaming → les memo de MessageItem/Sidebar seraient
+  // court-circuités. On le lit via une ref toujours fraîche à la place.
+  const depsRef = useRef(deps)
+  depsRef.current = deps
   // L'UI ne montre QUE la conversation active. isStreaming et streamingContent
   // reflètent l'état de la conv actuellement affichée (via activeIdRef). Les
   // autres streams en cours continuent en arrière-plan dans streamsRef.
@@ -95,8 +102,8 @@ export function useStreaming(deps: {
     })
     conv.updatedAt = Date.now()
     storage.saveConversation(conv)
-    deps.refreshConversations()
-  }, [deps])
+    depsRef.current.refreshConversations()
+  }, [])
 
   // Retire un convId du Set des streams actifs (déclenche re-render Sidebar).
   const removeFromStreamingSet = useCallback((targetId: string) => {
@@ -315,7 +322,11 @@ export function useStreaming(deps: {
     return streamsRef.current.size < MAX_CONCURRENT_STREAMS
   }, [])
 
-  return {
+  // H2 (audit frontend) — retour mémoïsé. Toutes les fonctions ci-dessous ont
+  // une identité stable (useCallback à deps stables) ; l'objet ne change donc
+  // que quand l'état UI (isStreaming/streamingContent/streamingConvIds) change,
+  // au lieu d'être un littéral neuf à chaque render.
+  return useMemo(() => ({
     // État pour l'UI de la conv active
     isStreaming,
     streamingContent,
@@ -343,5 +354,11 @@ export function useStreaming(deps: {
     // Utilitaires
     finalize,
     savePartialAll,
-  }
+  }), [
+    isStreaming, streamingContent, streamingConvIds, isStreamingFor, hasStream,
+    canStart, startStream, onToken, onDone, onError, markStreamDone,
+    completeStreaming, stopStreaming, setActiveStream, isActive, setHideContent,
+    setProgressContent, setAbortController, resetAccumulated, finalize,
+    savePartialAll,
+  ])
 }

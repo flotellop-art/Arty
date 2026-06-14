@@ -10,12 +10,14 @@
  * mémoire alimenté au login et au save des paramètres).
  */
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { detectOrchestrator, syncApiKey } from '../../services/orchestrateurClient'
 import { getAnthropicKey } from '../../services/activeApiKey'
 
 type SyncStatus = 'idle' | 'success' | 'error'
 
 export function OrchestratorSync(): JSX.Element | null {
+  const { t } = useTranslation()
   const [isDetected, setIsDetected] = useState<boolean>(false)
   const [isSyncing, setIsSyncing] = useState<boolean>(false)
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle')
@@ -44,7 +46,7 @@ export function OrchestratorSync(): JSX.Element | null {
     const apiKey = getAnthropicKey()
     if (!apiKey) {
       setSyncStatus('error')
-      setErrorMessage('Aucune clé Anthropic active')
+      setErrorMessage(t('orchestratorSync.errors.noKey'))
       setIsSyncing(false)
       return
     }
@@ -61,12 +63,10 @@ export function OrchestratorSync(): JSX.Element | null {
   return (
     <section className="mt-6 rounded-lg border border-slate-700 bg-slate-800/50 p-4">
       <h3 className="mb-1 text-sm font-semibold text-slate-100">
-        Orchestrateur détecté
+        {t('orchestratorSync.title')}
       </h3>
       <p className="mb-3 text-xs text-slate-400">
-        L'app desktop Orchestrateur est active en local. Synchronisez votre
-        clé Anthropic pour qu'elle génère des applications Flask sans
-        configuration manuelle.
+        {t('orchestratorSync.description')}
       </p>
       <div className="flex items-center gap-3">
         <button
@@ -77,16 +77,16 @@ export function OrchestratorSync(): JSX.Element | null {
           disabled={isSyncing}
           className="rounded-md bg-orange-500 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {isSyncing ? 'Synchronisation…' : 'Synchroniser la clé →'}
+          {isSyncing ? t('orchestratorSync.syncing') : t('orchestratorSync.sync')}
         </button>
         {syncStatus === 'success' && (
           <span className="rounded-full bg-emerald-500/15 px-2.5 py-1 text-xs font-semibold text-emerald-400">
-            Clé synchronisée
+            {t('orchestratorSync.success')}
           </span>
         )}
         {syncStatus === 'error' && (
           <span className="text-xs font-medium text-red-400">
-            {errorMessage || 'Échec de la synchronisation'}
+            {errorMessage || t('orchestratorSync.errors.syncFailed')}
           </span>
         )}
       </div>

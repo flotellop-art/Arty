@@ -28,20 +28,13 @@ export function getSelectedModel(): AIModel {
 
 export function setSelectedModel(model: AIModel): void {
   scoped.setItem('ai-model', model)
-}
-
-// Niveau d'effort (curseur Rapide/Équilibré/Puissant). N'a un effet RÉEL que sur
-// Claude (seul provider multi-tiers : Haiku/Sonnet/Opus) — Gemini/Mistral/GPT
-// n'ont qu'un modèle. 'auto' = le routeur choisit (défaut, comportement actuel).
-// 'balanced'/'powerful' sont des modèles premium → gating crédits côté UI.
-export type ModelLevel = 'auto' | 'fast' | 'balanced' | 'powerful'
-
-export function getSelectedLevel(): ModelLevel {
-  const saved = scoped.getItem('ai-level')
-  if (saved === 'fast' || saved === 'balanced' || saved === 'powerful') return saved
-  return 'auto'
-}
-
-export function setSelectedLevel(level: ModelLevel): void {
-  scoped.setItem('ai-level', level)
+  // BUG 54 — toute écriture dans un store partagé entre plusieurs vues doit
+  // notifier via CustomEvent, sinon les vues non remontées affichent une
+  // valeur périmée (désynchro TopBar Home ↔ ChatTopBar). try/catch pour
+  // tolérer les contextes sans window (tests, SSR).
+  try {
+    window.dispatchEvent(new CustomEvent<AIModel>('model-changed', { detail: model }))
+  } catch {
+    // contexte sans window — l'écriture storage reste effective
+  }
 }

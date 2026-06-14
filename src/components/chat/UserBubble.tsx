@@ -1,4 +1,5 @@
 import { memo, useState, useRef, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { FileAttachment } from '../../types'
 import { getFile } from '../../services/secureFileStorage'
 
@@ -8,12 +9,15 @@ interface UserBubbleProps {
   pinned?: boolean
   onTogglePin?: () => void
   onEdit?: (newContent: string) => void
+  /** Créer une branche de la conversation depuis ce message (barre d'actions). */
+  onBranch?: () => void
 }
 
 // Thumbnail d'un fichier attaché : preview image lazy-loadée depuis IndexedDB,
 // ou icône PDF/document. Cleanup blob URL au démontage pour éviter les fuites
 // mémoire (chaque createObjectURL doit être pairé avec un revokeObjectURL).
 const FileThumbnail = memo(function FileThumbnail({ file }: { file: FileAttachment }) {
+  const { t } = useTranslation()
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [unavailable, setUnavailable] = useState(false)
   const isImage = file.type.startsWith('image/')
@@ -51,7 +55,7 @@ const FileThumbnail = memo(function FileThumbnail({ file }: { file: FileAttachme
     if (unavailable) {
       return (
         <div className="w-[100px] h-[100px] rounded-md border border-theme-border bg-theme-surface flex items-center justify-center text-[10px] text-theme-muted text-center px-2">
-          Image indispo
+          {t('chat.userBubble.imageUnavailable')}
         </div>
       )
     }
@@ -80,7 +84,8 @@ const FileThumbnail = memo(function FileThumbnail({ file }: { file: FileAttachme
   )
 })
 
-export const UserBubble = memo(function UserBubble({ content, files, pinned, onTogglePin, onEdit }: UserBubbleProps) {
+export const UserBubble = memo(function UserBubble({ content, files, pinned, onTogglePin, onEdit, onBranch }: UserBubbleProps) {
+  const { t } = useTranslation()
   const [editing, setEditing] = useState(false)
   const [value, setValue] = useState(content)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -103,6 +108,16 @@ export const UserBubble = memo(function UserBubble({ content, files, pinned, onT
   const handleCancel = () => {
     setValue(content)
     setEditing(false)
+  }
+
+  // Copie du texte brut du message (jamais de markdown côté user).
+  const [copied, setCopied] = useState(false)
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(content)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch { /* clipboard indisponible (permissions WebView) */ }
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -134,13 +149,13 @@ export const UserBubble = memo(function UserBubble({ content, files, pinned, onT
               onClick={handleCancel}
               className="px-2.5 py-1 text-[11px] font-sans uppercase tracking-kicker text-theme-muted hover:text-theme-ink transition-colors"
             >
-              Annuler
+              {t('common.cancel')}
             </button>
             <button
               onClick={handleSave}
               className="px-3 py-1 text-[11px] font-sans uppercase tracking-kicker bg-theme-accent text-theme-bg hover:opacity-90 transition-opacity rounded-sm"
             >
-              ✓ Envoyer
+              ✓ {t('chat.userBubble.send')}
             </button>
           </div>
         </div>
@@ -169,14 +184,57 @@ export const UserBubble = memo(function UserBubble({ content, files, pinned, onT
           </div>
         )}
         <div className="absolute bottom-0 left-[-4px] translate-x-[-100%] flex gap-1">
+          {/* Audit UX — `opacity-0 group-hover` seul = boutons invisibles sur
+              tactile (pas de hover) ET au clavier. Pattern validé ailleurs
+              (MessageList branche, AssistantBubble speak) : 50% permanent sur
+              mobile, hover desktop, focus-visible pour le clavier. */}
+          {/* Copier le message user — P0.2 du plan d'action : l'assistant
+              avait son bouton copier, pas l'utilisateur. */}
+          {content.trim() && (
+            <button
+              onClick={handleCopy}
+              className={`p-2 rounded-md transition-all ${
+                copied
+                  ? 'text-theme-accent opacity-100'
+                  : 'opacity-50 md:opacity-0 md:group-hover/user:opacity-100 focus-visible:opacity-100 text-theme-muted hover:text-theme-accent'
+              }`}
+              aria-label={copied ? t('chat.bubble.copied') : t('chat.bubble.copy')}
+              title={copied ? t('chat.bubble.copied') : t('chat.bubble.copy')}
+            >
+              {copied ? (
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                  <path d="M3 8.5L6.5 12L13 4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              ) : (
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                  <rect x="5.5" y="5.5" width="8" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.2" />
+                  <path d="M10.5 5.5V4a1.5 1.5 0 00-1.5-1.5H4A1.5 1.5 0 002.5 4v5A1.5 1.5 0 004 10.5h1.5" stroke="currentColor" strokeWidth="1.2" />
+                </svg>
+              )}
+            </button>
+          )}
           {onEdit && (
             <button
               onClick={() => setEditing(true)}
-              className="opacity-0 group-hover/user:opacity-100 p-2 rounded-md text-theme-muted hover:text-theme-accent transition-all"
-              aria-label="Modifier"
-              title="Modifier et renvoyer"
+              className="opacity-50 md:opacity-0 md:group-hover/user:opacity-100 focus-visible:opacity-100 p-2 rounded-md text-theme-muted hover:text-theme-accent transition-all"
+              aria-label={t('chat.userBubble.edit')}
+              title={t('chat.userBubble.editTitle')}
             >
               ✏️
+            </button>
+          )}
+          {onBranch && (
+            <button
+              onClick={onBranch}
+              className="opacity-50 md:opacity-0 md:group-hover/user:opacity-100 focus-visible:opacity-100 p-2 rounded-md text-theme-muted hover:text-theme-accent transition-all"
+              aria-label={t('chat.messageList.branch')}
+              title={t('chat.messageList.branch')}
+            >
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                <path d="M3 2V8M3 8C3 9.1 3.9 10 5 10H8M11 12V6M11 6C11 4.9 10.1 4 9 4H8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+                <circle cx="3" cy="2" r="1.5" stroke="currentColor" strokeWidth="1.2" />
+                <circle cx="11" cy="12" r="1.5" stroke="currentColor" strokeWidth="1.2" />
+              </svg>
             </button>
           )}
           {onTogglePin && (
@@ -185,9 +243,9 @@ export const UserBubble = memo(function UserBubble({ content, files, pinned, onT
               className={`p-2 rounded-md transition-all ${
                 pinned
                   ? 'text-theme-accent opacity-80'
-                  : 'opacity-0 group-hover/user:opacity-100 text-theme-muted hover:text-theme-accent'
+                  : 'opacity-50 md:opacity-0 md:group-hover/user:opacity-100 focus-visible:opacity-100 text-theme-muted hover:text-theme-accent'
               }`}
-              aria-label={pinned ? 'Désépingler' : 'Épingler'}
+              aria-label={pinned ? t('chat.bubble.unpin') : t('chat.bubble.pin')}
             >
               📌
             </button>

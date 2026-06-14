@@ -107,8 +107,8 @@ Quand des sources web sont fournies, tu DOIS les utiliser comme vérité priorit
 - Si claim non mentionné dans les sources → "uncertain" (les sources couvraient juste partiellement le sujet)
 
 Pour les claims "wrong", AJOUTE deux champs :
-- "originalText" : le passage EXACT de la réponse à corriger (substring verbatim, pour qu'on puisse faire un find/replace)
-- "correction" : le texte qui doit le remplacer dans la réponse, basé sur les sources si fournies
+- "originalText" : le passage EXACT de la réponse à corriger, copié VERBATIM caractère par caractère — Y COMPRIS le markdown (**gras**, _italique_), la ponctuation, les apostrophes et les espaces tels qu'ils apparaissent dans la réponse. Si tu omets le markdown ou modifies un caractère, le remplacement automatique échoue.
+- "correction" : le texte qui doit le remplacer dans la réponse, basé sur les sources si fournies. Une VALEUR de remplacement du même format que l'original (ex : une plage de températures remplace une plage de températures) — l'explication du pourquoi va dans "explanation", PAS dans "correction".
 
 Si tu sais que le claim est faux MAIS tu ne connais pas la bonne réponse (ni dans tes données ni dans les sources), marque-le "uncertain" plutôt que "wrong" et omet "correction".
 
@@ -361,6 +361,11 @@ export async function factCheckResponse(
       claims,
       modelLabel,
       checkedAt: Date.now(),
+      // BUG 59 — status structuré : succès "vide" = aucun claim risqué
+      // (wrong/uncertain), succès "avec claims" = au moins un à signaler.
+      status: claims.some((c) => c.verdict !== 'verified')
+        ? 'success-with-claims'
+        : 'success-empty',
     },
   }
 }
@@ -381,6 +386,91 @@ export interface FactCheckContentOutput {
   // L'appelant utilise cette distinction pour décider d'afficher ou non
   // le badge "⚠ Fact-check indisponible".
   failReason?: string
+}
+
+// ---------------------------------------------------------------------------
+// Application des corrections — partagée par factCheckContent (flow
+// deferPublish, chemin normal) et runFactCheckOnLatest (fallback async).
+// Bug live du 11 juin 2026 : le remplacement était un `includes()` verbatim
+// qui ratait silencieusement dès que le fact-checker citait le passage sans
+// son markdown (**gras**), avec une apostrophe droite là où la réponse en a
+// une courbe, un espace insécable, un tiret différent… et le badge affichait
+// quand même « barré → corrigé ». Stratégie :
+//   1) match exact → remplace TOUTES les occurrences (comportement
+//      historique, équivalent replaceAll absent de la cible ES2020) ;
+//   2) sinon match TOLÉRANT sur une version normalisée (markdown */_ ignoré,
+//      apostrophes/tirets/degrés/espaces unifiés, casse pliée) avec table
+//      d'index pour remplacer le passage RÉEL dans le texte original.
+//      Garde-fous anti sur-remplacement : passage ≥ 10 chars et exactement
+//      1 occurrence normalisée, sinon abandon.
+// Chaque claim reçoit `applied` pour que le badge dise la vérité (un claim
+// peut matcher pendant qu'un autre rate dans le même message).
+
+interface NormalizedText {
+  norm: string
+  /** map[i] = index, dans le texte original, du i-ème caractère de norm. */
+  map: number[]
+}
+
+function normalizeForMatch(text: string): NormalizedText {
+  const norm: string[] = []
+  const map: number[] = []
+  let lastWasSpace = false
+  for (let i = 0; i < text.length; i++) {
+    let ch = text.charAt(i)
+    if (ch === '*' || ch === '_') continue // emphase markdown — ignorée
+    if (ch === '’' || ch === '‘') ch = "'" // apostrophes courbes
+    else if (ch === 'º') ch = '°' // º ordinal → ° degré
+    else if (ch === '–' || ch === '—') ch = '-' // – — → -
+    if (/\s/.test(ch)) {
+      if (lastWasSpace) continue // espaces consécutifs (insécables inclus) pliés
+      ch = ' '
+      lastWasSpace = true
+    } else {
+      lastWasSpace = false
+    }
+    norm.push(ch.toLowerCase())
+    map.push(i)
+  }
+  return { norm: norm.join(''), map }
+}
+
+const MIN_FUZZY_MATCH_LENGTH = 10
+
+export function applyClaimCorrections(
+  content: string,
+  claims: FactCheckClaim[],
+): { correctedContent: string; appliedCount: number } {
+  let corrected = content
+  let appliedCount = 0
+  for (const c of claims) {
+    if (c.verdict !== 'wrong' || !c.originalText || !c.correction) continue
+    c.applied = false
+
+    if (corrected.includes(c.originalText)) {
+      corrected = corrected.split(c.originalText).join(c.correction)
+      c.applied = true
+      appliedCount++
+      continue
+    }
+
+    if (c.originalText.length < MIN_FUZZY_MATCH_LENGTH) continue
+    const { norm, map } = normalizeForMatch(corrected)
+    const target = normalizeForMatch(c.originalText).norm
+    if (target.length === 0) continue
+    const first = norm.indexOf(target)
+    if (first === -1 || norm.indexOf(target, first + 1) !== -1) continue
+    const start = map[first]
+    const last = map[first + target.length - 1]
+    if (start === undefined || last === undefined) continue
+    // Le span original couvre aussi les caractères ignorés intérieurs
+    // (**, espaces doublés). Les ** encadrants restent en place : remplacer
+    // l'intérieur d'un **…** conserve le gras, balancé.
+    corrected = corrected.slice(0, start) + c.correction + corrected.slice(last + 1)
+    c.applied = true
+    appliedCount++
+  }
+  return { correctedContent: corrected, appliedCount }
 }
 
 export async function factCheckContent(
@@ -407,20 +497,7 @@ export async function factCheckContent(
   }
   const result = outcome.result
 
-  let correctedContent = content
-  let appliedCount = 0
-  for (const c of result.claims) {
-    if (c.verdict === 'wrong' && c.originalText && c.correction) {
-      if (correctedContent.includes(c.originalText)) {
-        // split/join pour remplacer TOUTES les occurrences (équivalent
-        // replaceAll, qui est ES2021 et donc absent de la lib TS ES2020
-        // cible du projet). Sinon "Opus 4.7" dans le titre ET le corps
-        // d'un message ne serait corrigé qu'au premier hit.
-        correctedContent = correctedContent.split(c.originalText).join(c.correction)
-        appliedCount++
-      }
-    }
-  }
+  const { correctedContent, appliedCount } = applyClaimCorrections(content, result.claims)
   if (appliedCount > 0) {
     result.originalContent = content
     result.appliedCorrections = appliedCount
@@ -497,8 +574,12 @@ export async function runFactCheckOnLatest(
   assistantMsg.factCheck = {
     overallConfidence: 'high',
     claims: [],
+    // Le modelLabel exact 'Vérification en cours…' reste load-bearing :
+    // le skip-guard plus haut compare cette string pour autoriser la
+    // finalisation. status est la source UI (BUG 59), le label le backup.
     modelLabel: 'Vérification en cours…',
     checkedAt: Date.now(),
+    status: 'pending',
   }
   storage.saveConversation(conv)
   refreshConversations()
@@ -529,6 +610,7 @@ export async function runFactCheckOnLatest(
           claims: [],
           modelLabel: `⚠ Fact-check indisponible (${outcome.reason})`,
           checkedAt: Date.now(),
+          status: 'failed',
         }
         storage.saveConversation(conv2)
         refreshConversations()
@@ -538,25 +620,10 @@ export async function runFactCheckOnLatest(
   }
   const result = outcome.result
 
-  // Applique les corrections trouvées par find/replace direct dans le
-  // contenu. On garde l'original dans factCheck.originalContent pour que
-  // le dropdown puisse afficher le diff.
-  let correctedContent = originalContent
-  let appliedCount = 0
-  for (const c of result.claims) {
-    if (c.verdict === 'wrong' && c.originalText && c.correction) {
-      // Remplacement de TOUTES les occurrences si le passage exact est
-      // trouvé (via split/join, équivalent replaceAll en lib ES2020).
-      // Sinon on n'altère pas la réponse — on laisse le claim flagger
-      // via badge. Le find/replace .replace() précédent ne corrigeait
-      // que la première occurrence → titre corrigé mais corps non, ou
-      // l'inverse selon l'ordre.
-      if (correctedContent.includes(c.originalText)) {
-        correctedContent = correctedContent.split(c.originalText).join(c.correction)
-        appliedCount++
-      }
-    }
-  }
+  // Applique les corrections (helper partagé avec factCheckContent — même
+  // matching exact + tolérant, mêmes flags claim.applied). On garde
+  // l'original dans factCheck.originalContent pour le diff du dropdown.
+  const { correctedContent, appliedCount } = applyClaimCorrections(originalContent, result.claims)
   if (appliedCount > 0) {
     result.originalContent = originalContent
     result.appliedCorrections = appliedCount

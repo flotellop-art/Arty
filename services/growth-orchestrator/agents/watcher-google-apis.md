@@ -25,7 +25,7 @@ Arty utilise actuellement :
 - **People** : scope `contacts`. Lecture contacts.
 - **Sheets** : append de données.
 - **Maps Geocoding** : reverse geocoding GPS côté serveur.
-- **Vision** : clé API serveur `GOOGLE_VISION_API_KEY` pour OCR (fallback PDF illisibles, BUG 15 du CLAUDE.md).
+- **Vision** : non utilisé (retiré mai 2026). Historiquement `GOOGLE_VISION_API_KEY` servait de fallback OCR pour PDF illisibles ; aujourd'hui les PDF sont lus nativement par Claude. Variable = config morte.
 - **Google Sign-In natif (Android)** : `serverAuthCode` flow, plugin Capacitor `@codetrix-studio/capacitor-google-auth` (RC, fragile).
 
 ## Sources officielles (à consulter chaque cycle)

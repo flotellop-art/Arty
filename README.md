@@ -288,7 +288,7 @@ functions/api/
 │   ├── token.ts             # Echange code OAuth → access_token + refresh_token
 │   └── refresh.ts           # Rafraichit un access_token expire
 ├── gmail/action.ts          # list / read / send / search / archive / delete / star / draft / label
-├── drive/action.ts          # list / read / create (+ OCR via GOOGLE_VISION_API_KEY)
+├── drive/action.ts          # list / read / download / create (PDF/images → base64, lus nativement par Claude)
 ├── calendar/action.ts       # list / create / update / delete (Google Calendar v3)
 ├── contacts/action.ts       # search / create / update (People API v1)
 ├── browser/action.ts        # Playwright — recherche prix / screenshot / fill-form

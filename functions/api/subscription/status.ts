@@ -1,5 +1,6 @@
 import type { Env } from '../../env'
 import { parseAllowedEmails, verifyTokenViaTokeninfo } from '../_lib/checkAllowedUser'
+import { PREMIUM_BUCKET_CAPS } from '../_lib/checkPremiumCap'
 import {
   FREE_DAILY_LIMITS,
   peekFreeDailyRemaining,
@@ -39,6 +40,10 @@ interface StatusResponse {
   // plans payants (illimité).
   daily_remaining: Partial<Record<ModelFamily, number>> | null
   daily_limits: Partial<Record<ModelFamily, number>> | null
+  // P0.6 (plan d'action concurrentiel) — compteurs mensuels premium du plan
+  // subscription, par bucket (lecture seule de premium_cap, jamais
+  // d'incrément ici). null pour les autres plans (pas de cap).
+  monthly_cap: Record<string, { used: number; limit: number; remaining: number }> | null
 }
 
 const FREE_RESPONSE: StatusResponse = {
@@ -52,6 +57,7 @@ const FREE_RESPONSE: StatusResponse = {
   locked_families: ALL_FAMILIES.filter((f) => !FREE_FAMILIES.includes(f)),
   daily_remaining: { 'claude-haiku': FREE_DAILY_LIMITS['claude-haiku'] },
   daily_limits: { 'claude-haiku': FREE_DAILY_LIMITS['claude-haiku'] },
+  monthly_cap: null,
 }
 
 const STATUS_HEADERS = {
@@ -127,6 +133,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
       locked_families: [],
       daily_remaining: null,
       daily_limits: null,
+      monthly_cap: null,
     })
   }
 
@@ -215,6 +222,33 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
       }
     : null
 
+  // P0.6 — compteurs mensuels premium, plan subscription uniquement (les
+  // autres plans n'ont pas de cap). Lecture seule de premium_cap, une seule
+  // requête, jamais d'incrément ici (checkPremiumCap reste le seul écrivain).
+  // L'identité (email) vient du token vérifié ci-dessus, jamais du client.
+  let monthlyCap: StatusResponse['monthly_cap'] = null
+  if (plan === 'subscription') {
+    const month = new Date().toISOString().slice(0, 7)
+    const used: Record<string, number> = {}
+    try {
+      const rows = await env.DB.prepare(
+        `SELECT bucket, count FROM premium_cap WHERE email = ?1 AND month = ?2`
+      )
+        .bind(email, month)
+        .all<{ bucket: string; count: number }>()
+      for (const r of rows.results ?? []) used[r.bucket] = r.count
+    } catch (err) {
+      // Table absente au premier mois (créée au premier appel premium) —
+      // tous les compteurs sont alors à 0, ce qui est correct.
+      console.error('[subscription/status] premium_cap query failed', err)
+    }
+    monthlyCap = {}
+    for (const [bucket, limit] of Object.entries(PREMIUM_BUCKET_CAPS)) {
+      const u = Math.min(used[bucket] ?? 0, limit)
+      monthlyCap[bucket] = { used: u, limit, remaining: limit - u }
+    }
+  }
+
   return jsonStatus({
     email,
     plan,
@@ -226,5 +260,6 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
     locked_families: lockedFamilies,
     daily_remaining: dailyRemaining,
     daily_limits: dailyLimits,
+    monthly_cap: monthlyCap,
   })
 }

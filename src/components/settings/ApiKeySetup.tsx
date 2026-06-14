@@ -1,4 +1,5 @@
 import { useState, memo } from 'react'
+import { useTranslation } from 'react-i18next'
 import { ArtyWordmark } from '../shared/PrismMark'
 import type { ApiKeys } from '../../hooks/useApiKeys'
 import { testApiKey as testOpenAIKey } from '../../services/openaiClient'
@@ -53,6 +54,7 @@ interface KeyFieldProps {
 }
 
 const KeyField = memo(function KeyField({ id, label, optional, value, savedMask, onChange, onTest }: KeyFieldProps) {
+  const { t } = useTranslation()
   const [visible, setVisible] = useState(false)
   const [status, setStatus] = useState<TestStatus>('idle')
 
@@ -71,7 +73,7 @@ const KeyField = memo(function KeyField({ id, label, optional, value, savedMask,
     <div>
       <label className="block text-xs font-medium text-theme-ink/80 mb-1.5">
         {label}
-        {optional && <span className="text-theme-muted ml-1">(optionnel)</span>}
+        {optional && <span className="text-theme-muted ml-1">{t('apiKeySetup.optional')}</span>}
       </label>
       <div className="flex gap-1.5">
         <div className="relative flex-1">
@@ -90,7 +92,7 @@ const KeyField = memo(function KeyField({ id, label, optional, value, savedMask,
             type="button"
             onClick={() => setVisible((v) => !v)}
             className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-theme-muted hover:text-theme-ink/80"
-            aria-label={visible ? 'Masquer' : 'Afficher'}
+            aria-label={visible ? t('apiKeySetup.hideKey') : t('apiKeySetup.showKey')}
           >
             <EyeIcon visible={visible} />
           </button>
@@ -102,18 +104,19 @@ const KeyField = memo(function KeyField({ id, label, optional, value, savedMask,
             disabled={status === 'testing' || !value.trim()}
             className="px-3 py-2.5 rounded-xl bg-theme-ink/5 text-xs font-medium text-theme-ink/80 hover:bg-theme-ink/10 transition-colors disabled:opacity-40"
           >
-            {status === 'testing' ? '...' : status === 'ok' ? '✓' : status === 'ko' ? '✗' : 'Tester'}
+            {status === 'testing' ? '...' : status === 'ok' ? '✓' : status === 'ko' ? '✗' : t('apiKeySetup.test')}
           </button>
         )}
       </div>
       {savedMask && !value && (
-        <p className="text-xs text-theme-muted mt-1">Actuel : {savedMask}</p>
+        <p className="text-xs text-theme-muted mt-1">{t('apiKeySetup.currentKey', { mask: savedMask })}</p>
       )}
     </div>
   )
 })
 
 export function ApiKeySetup({ onSave, initialKeys, embedded }: ApiKeySetupProps) {
+  const { t } = useTranslation()
   const [anthropicKey, setAnthropicKey] = useState('')
   const [geminiKey, setGeminiKey] = useState('')
   const [mistralKey, setMistralKey] = useState('')
@@ -133,15 +136,15 @@ export function ApiKeySetup({ onSave, initialKeys, embedded }: ApiKeySetupProps)
     const openai = openaiKey.trim() || initialKeys?.openai || undefined
 
     if (!anthropic) {
-      setError('La clé API Anthropic est obligatoire')
+      setError(t('apiKeySetup.errors.anthropicRequired'))
       return
     }
     if (!anthropic.startsWith('sk-ant-')) {
-      setError('La clé Anthropic doit commencer par sk-ant-')
+      setError(t('apiKeySetup.errors.anthropicPrefix'))
       return
     }
     if (openai && (!openai.startsWith('sk-') || openai.length <= 20)) {
-      setError('La clé OpenAI doit commencer par sk- et faire plus de 20 caractères')
+      setError(t('apiKeySetup.errors.openaiFormat'))
       return
     }
 
@@ -150,7 +153,7 @@ export function ApiKeySetup({ onSave, initialKeys, embedded }: ApiKeySetupProps)
     try {
       await onSave({ anthropic, gemini, mistral, openai })
     } catch {
-      setError('Erreur lors de la sauvegarde')
+      setError(t('apiKeySetup.errors.saveFailed'))
       setSaving(false)
     }
   }
@@ -165,7 +168,7 @@ export function ApiKeySetup({ onSave, initialKeys, embedded }: ApiKeySetupProps)
     <form onSubmit={handleSubmit} className="space-y-4">
       <KeyField
         id="anthropic"
-        label={editMode ? 'Clé API Anthropic' : 'Clé API Anthropic *'}
+        label={editMode ? t('apiKeySetup.labels.anthropic') : `${t('apiKeySetup.labels.anthropic')} *`}
         value={anthropicKey}
         savedMask={maskKey(initialKeys?.anthropic)}
         onChange={setAnthropicKey}
@@ -173,7 +176,7 @@ export function ApiKeySetup({ onSave, initialKeys, embedded }: ApiKeySetupProps)
 
       <KeyField
         id="openai"
-        label="Clé API OpenAI"
+        label={t('apiKeySetup.labels.openai')}
         optional
         value={openaiKey}
         savedMask={maskKey(initialKeys?.openai)}
@@ -183,7 +186,7 @@ export function ApiKeySetup({ onSave, initialKeys, embedded }: ApiKeySetupProps)
 
       <KeyField
         id="gemini"
-        label="Clé API Gemini"
+        label={t('apiKeySetup.labels.gemini')}
         optional
         value={geminiKey}
         savedMask={maskKey(initialKeys?.gemini)}
@@ -192,7 +195,7 @@ export function ApiKeySetup({ onSave, initialKeys, embedded }: ApiKeySetupProps)
 
       <KeyField
         id="mistral"
-        label="Clé API Mistral (EU)"
+        label={t('apiKeySetup.labels.mistral')}
         optional
         value={mistralKey}
         savedMask={maskKey(initialKeys?.mistral)}
@@ -208,11 +211,11 @@ export function ApiKeySetup({ onSave, initialKeys, embedded }: ApiKeySetupProps)
         disabled={saving || (!editMode && !anthropicKey.trim())}
         className="w-full py-2.5 rounded-xl bg-theme-ink text-theme-bg font-medium text-sm hover:opacity-90 transition-colors disabled:opacity-40"
       >
-        {saving ? 'Chiffrement...' : editMode ? 'Enregistrer' : 'Commencer'}
+        {saving ? t('apiKeySetup.saving') : editMode ? t('apiKeySetup.save') : t('apiKeySetup.start')}
       </button>
 
       <p className="text-xs text-theme-muted text-center leading-relaxed">
-        Tes clés sont chiffrées en AES-256 et stockées uniquement sur ton appareil.
+        {t('apiKeySetup.encryptionNotice')}
       </p>
     </form>
   )
@@ -230,10 +233,10 @@ export function ApiKeySetup({ onSave, initialKeys, embedded }: ApiKeySetupProps)
 
         <div className="bg-theme-surface rounded-2xl shadow-sm border border-theme-border p-6">
           <h2 className="font-display text-lg text-theme-ink mb-1">
-            Configuration
+            {t('apiKeySetup.pageTitle')}
           </h2>
           <p className="text-sm text-theme-muted mb-5">
-            Entre tes clés API pour commencer. Elles sont chiffrées et stockées uniquement sur ton appareil.
+            {t('apiKeySetup.pageSubtitle')}
           </p>
           {form}
         </div>

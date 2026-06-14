@@ -1,4 +1,6 @@
 import { memo, useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import type { CalendarEvent } from '../../types/google'
 import { listEvents } from '../../services/calendarClient'
 import { getDateLocale } from '../../utils/formatDate'
@@ -53,10 +55,10 @@ function eventMeta(event: CalendarEvent): string {
 }
 
 /** Section label ("AUJOURD'HUI", "DEMAIN", "LUN. 22 AVR."). */
-function sectionLabel(date: Date): string {
+function sectionLabel(date: Date, t: TFunction): string {
   const today = startOfDay(new Date())
-  if (isSameDay(date, today)) return "Aujourd'hui"
-  if (isTomorrow(date)) return 'Demain'
+  if (isSameDay(date, today)) return t('calendar.today')
+  if (isTomorrow(date)) return t('calendar.tomorrow')
   return date.toLocaleDateString(getDateLocale(), {
     weekday: 'long',
     day: 'numeric',
@@ -111,6 +113,7 @@ interface EventGroup {
  * presentational — mutations happen through the Calendar tools (Claude).
  */
 function CalendarViewInner({ days = 7, onEventClick }: CalendarViewProps) {
+  const { t } = useTranslation()
   const [events, setEvents] = useState<CalendarEvent[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -122,7 +125,7 @@ function CalendarViewInner({ days = 7, onEventClick }: CalendarViewProps) {
       .then((list) => { if (alive) { setEvents(list); setError(null) } })
       .catch((err: unknown) => {
         if (!alive) return
-        setError(err instanceof Error ? err.message : 'Erreur agenda')
+        setError(err instanceof Error ? err.message : t('calendar.errors.fetchFailed'))
         setEvents([])
       })
       .finally(() => { if (alive) setLoading(false) })
@@ -143,7 +146,7 @@ function CalendarViewInner({ days = 7, onEventClick }: CalendarViewProps) {
   }, [events])
 
   if (loading) {
-    return <p className="font-display italic text-sm text-theme-muted text-center py-4">Chargement de l'agenda…</p>
+    return <p className="font-display italic text-sm text-theme-muted text-center py-4">{t('calendar.loading')}</p>
   }
   if (error) {
     return <p className="font-sans text-xs text-theme-accent text-center py-4">{error}</p>
@@ -151,7 +154,7 @@ function CalendarViewInner({ days = 7, onEventClick }: CalendarViewProps) {
   if (groups.length === 0) {
     return (
       <p className="font-display italic text-sm text-theme-muted py-3">
-        Rien de prévu dans les {days} prochains jours.
+        {t('calendar.empty', { days })}
       </p>
     )
   }
@@ -160,7 +163,7 @@ function CalendarViewInner({ days = 7, onEventClick }: CalendarViewProps) {
       {groups.map((group) => (
         <section key={group.date.toISOString()}>
           <p className="font-sans text-[10px] font-semibold uppercase tracking-kicker text-theme-muted mb-1">
-            — <span className="capitalize">{sectionLabel(group.date)}</span>
+            — <span className="capitalize">{sectionLabel(group.date, t)}</span>
           </p>
           <div>
             {group.events.map((event, i) => (
