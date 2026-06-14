@@ -232,13 +232,19 @@ unique sous 20 $/mois). Pas par la largeur de catalogue. Volume = distribution
   Info.plist (BUG 34), compte développeur, process de review.
 - [ ] **P2.2 Onboarding commercial** : remplacer les 4 slides emojis par 3 démos
   différenciantes (mail → réponse rédigée ; agenda → brief du matin ; PDF → analyse).
-- [ ] **P2.3 Afficher « annulation en 1 clic, pause possible »** sur la page pricing
-  (82 % plus enclins à s'abonner si l'annulation est facile).
-- [ ] **P2.4 Page « pourquoi c'est moins cher »** : assumer publiquement le modèle
+- [x] **P2.3 Afficher « annulation en 1 clic, pause possible »** sur la page pricing
+  (82 % plus enclins à s'abonner si l'annulation est facile). FAIT 14 juin 2026 (PR #280) :
+  ligne de rassurance sur la carte Subscription, visible aussi aux non-abonnés. ⚠️ « pause »
+  suppose l'option activée côté portail Lemon Squeezy (à confirmer ops).
+- [x] **P2.4 Page « pourquoi c'est moins cher »** : assumer publiquement le modèle
   (routage intelligent, markup +50 %, marge faible) — désarme le « trop beau pour être
-  vrai » et fait de la transparence économique la marque.
-- [ ] **P2.5 Recadrer Arty Pro 39 € lifetime** : « licence app à vie + BYOK », pas accès
-  serveur illimité à vie (passif perpétuel — le doute qui plombe ChatPlayground).
+  vrai » et fait de la transparence économique la marque. FAIT 14 juin 2026 (PR #280) :
+  section dépliable `WhyCheaperSection` sur /upgrade (pas une page séparée — placée là où
+  naît le doute, au moment de l'achat).
+- [x] **P2.5 Recadrer Arty Pro 39 € lifetime** : « licence app à vie + BYOK », pas accès
+  serveur illimité à vie (passif perpétuel — le doute qui plombe ChatPlayground). FAIT
+  14 juin 2026 (PR #280) : `proTagline`/`proDescription` recadrées (« Licence à vie · ta
+  propre clé » + « Paiement unique, app à vie · Tu utilises ta clé API (BYOK) »).
 
 ## Anti-objectifs — à NE PAS faire (pièges documentés)
 
