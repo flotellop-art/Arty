@@ -7,6 +7,7 @@ import { InputBar } from '../layout/InputBar'
 import { ActionBanner } from '../google/ActionBanner'
 import { BrowserBanner } from '../google/BrowserBanner'
 import { ConversationSummaryModal } from './ConversationSummaryModal'
+import { ContextCompressedBanner } from './ContextCompressedBanner'
 import { ErrorBoundary } from '../shared/ErrorBoundary'
 import { consumePendingDraft } from '../../services/shareTargetService'
 import type { useGmail } from '../../hooks/useGmail'
@@ -31,6 +32,7 @@ interface ConversationScreenProps {
   // le retaper, et fermer le bandeau qui ne disparaissait jamais.
   onRetryError?: () => void
   onDismissError?: () => void
+  onNewConversation?: () => void
   gmail: ReturnType<typeof useGmail>
   drive: ReturnType<typeof useDrive>
   browserActions: ReturnType<typeof useBrowser>
@@ -55,6 +57,7 @@ export function ConversationScreen({
   onRetry,
   onRetryError,
   onDismissError,
+  onNewConversation,
   gmail,
   drive,
   browserActions,
@@ -143,6 +146,8 @@ export function ConversationScreen({
           )}
         </div>
       )}
+
+      <ContextCompressedBanner onNewConversation={onNewConversation} />
 
       <InputBar
         onSend={onSend}

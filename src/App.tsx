@@ -531,6 +531,7 @@ function AppContent({
               onRetry={retryMessage}
               onRetryError={retryLastUserMessage}
               onDismissError={clearError}
+              onNewConversation={handleNewConversation}
               conversations={conversations}
               onSelectConv={handleSelectConversation}
             />
@@ -643,6 +644,7 @@ interface ChatRouteProps {
   onRetry?: (messageId: string) => void
   onRetryError?: () => void
   onDismissError?: () => void
+  onNewConversation?: () => void
   conversations: ReturnType<typeof useConversation>['conversations']
   onSelectConv: (id: string) => void
 }
@@ -668,6 +670,7 @@ function ChatRoute({
   onRetry,
   onRetryError,
   onDismissError,
+  onNewConversation,
   conversations,
   onSelectConv,
 }: ChatRouteProps) {
@@ -721,6 +724,7 @@ function ChatRoute({
       onRetry={onRetry}
       onRetryError={onRetryError}
       onDismissError={onDismissError}
+      onNewConversation={onNewConversation}
       conversations={conversations}
       onSelectConv={onSelectConv}
     />

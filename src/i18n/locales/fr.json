@@ -245,6 +245,10 @@
       "screenshot": "Screenshot PC",
       "screenshotAlt": "Screenshot du PC"
     },
+    "contextCompressed": {
+      "message": "Cette conversation est longue : j'ai résumé le début pour continuer. Pour des réponses plus nettes (et moins de crédits), démarre une nouvelle conversation.",
+      "newConv": "Nouvelle conversation"
+    },
     "privacyWarning": {
       "title": "Données hors Europe",
       "body": "Cette conversation contient des messages traités par Mistral (serveurs en Europe). En passant sur {{targetModel}}, tout l'historique sera envoyé aux États-Unis. Continuer ?"
