@@ -14,6 +14,8 @@ import { countPending } from '../../services/taskService'
 import { importConversationFromFile } from '../../services/conversationExport'
 import { cleanDisplayName } from '../../services/displayName'
 import { toast } from '../../services/toast'
+import { resolveTag } from '../../services/conversationTags'
+import { ConversationTagsModal } from './ConversationTagsModal'
 
 interface SidebarProps {
   isOpen: boolean
@@ -28,6 +30,8 @@ interface SidebarProps {
   onNewEU?: () => void
   onDelete: (id: string) => void
   onRename?: (id: string, title: string) => void
+  // P1.8 — pose les étiquettes d'une conversation (édition via la modale tags).
+  onSetTags?: (id: string, tags: string[]) => void
   userName?: string
   onLogout?: () => void
   onImportConversation?: (id: string) => void
@@ -132,6 +136,7 @@ export const Sidebar = memo(function Sidebar({
   onNewEU,
   onDelete,
   onRename,
+  onSetTags,
   userName,
   onLogout,
   onImportConversation,
@@ -156,6 +161,8 @@ export const Sidebar = memo(function Sidebar({
   // Renommage inline (audit UX — aucun moyen de renommer une conversation).
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
+  // P1.8 — id de la conversation dont on édite les étiquettes (ouvre la modale).
+  const [editingTagsId, setEditingTagsId] = useState<string | null>(null)
   const importInputRef = useRef<HTMLInputElement>(null)
   const drawerRef = useRef<HTMLElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
@@ -238,9 +245,12 @@ export const Sidebar = memo(function Sidebar({
     if (!q) return conversations
     return conversations.filter((c) => {
       if (c.title.toLowerCase().includes(q)) return true
+      // P1.8 — filtre par étiquette : on matche le LIBELLÉ résolu (un tag
+      // prédéfini est stocké par id 'work' mais cherché par « travail »/« work »).
+      if (c.tags?.some((tag) => resolveTag(tag, t).label.toLowerCase().includes(q))) return true
       return c.messages.some((m) => m.content.toLowerCase().includes(q))
     })
-  }, [conversations, debouncedSearch])
+  }, [conversations, debouncedSearch, t])
 
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -576,10 +586,28 @@ export const Sidebar = memo(function Sidebar({
                     </span>
                   </div>
                   {/* Ligne 2 — aperçu + badges contextuels */}
-                  {(previewClean || conv.euOnly || dominantModel) && (
+                  {(previewClean || conv.euOnly || dominantModel || conv.tags?.length) && (
                     <div className="flex items-center gap-1.5 mt-0.5">
                       {conv.euOnly && (
                         <span className="text-[9px] flex-shrink-0" title={t('sidebar.euTooltip')}>🇪🇺</span>
+                      )}
+                      {/* P1.8 — chips d'étiquettes (pastille colorée + libellé), max 2
+                          affichés pour ne pas charger la ligne ; le reste en « +N ». */}
+                      {conv.tags?.slice(0, 2).map((tag) => {
+                        const r = resolveTag(tag, t)
+                        return (
+                          <span
+                            key={tag}
+                            className="flex items-center gap-0.5 flex-shrink-0 text-[9px] text-theme-muted max-w-[80px]"
+                            title={r.label}
+                          >
+                            <span aria-hidden style={{ color: r.color }}>●</span>
+                            <span className="truncate">{r.label}</span>
+                          </span>
+                        )
+                      })}
+                      {conv.tags && conv.tags.length > 2 && (
+                        <span className="text-[9px] text-theme-muted/70 flex-shrink-0">+{conv.tags.length - 2}</span>
                       )}
                       {previewClean && (
                         <span className="text-[11px] text-theme-muted italic truncate">
@@ -598,6 +626,22 @@ export const Sidebar = memo(function Sidebar({
                     INVISIBLES sur tactile (pas de hover) : impossible de
                     supprimer une conv sur mobile. Pattern validé ailleurs :
                     50% permanent mobile, hover desktop, focus-visible clavier. */}
+                {onSetTags && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setEditingTagsId(conv.id)
+                    }}
+                    className="opacity-50 md:opacity-0 md:group-hover:opacity-100 focus-visible:opacity-100 p-2 rounded hover:bg-theme-ink/5 transition-all text-theme-muted hover:text-theme-ink flex-shrink-0 mt-1"
+                    aria-label={t('sidebar.tagsAria')}
+                    title={t('sidebar.tagsAria')}
+                  >
+                    <svg width="12" height="12" viewBox="0 0 14 14" fill="none">
+                      <path d="M2 2.5h4.5L12 8l-4.5 4.5L2 7V2.5Z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
+                      <circle cx="4.5" cy="5" r="0.9" fill="currentColor" />
+                    </svg>
+                  </button>
+                )}
                 {onRename && (
                   <button
                     onClick={(e) => {
@@ -738,6 +782,18 @@ export const Sidebar = memo(function Sidebar({
           absent) — sinon double instance (audit PR D, R6). */}
       {!onOpenApiKeys && <ApiKeysModal open={showApiKeys} onClose={() => setShowApiKeys(false)} />}
       {showTasks && <TaskPanel onClose={() => setShowTasks(false)} />}
+      {/* P1.8 — modale d'édition des étiquettes de la conversation choisie. */}
+      {editingTagsId && onSetTags && (() => {
+        const conv = conversations.find((c) => c.id === editingTagsId)
+        if (!conv) return null
+        return (
+          <ConversationTagsModal
+            tags={conv.tags ?? []}
+            onSave={(tags) => { onSetTags(editingTagsId, tags); setEditingTagsId(null) }}
+            onClose={() => setEditingTagsId(null)}
+          />
+        )
+      })()}
     </>
   )
 })

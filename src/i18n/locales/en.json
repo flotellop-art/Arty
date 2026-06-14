@@ -477,8 +477,26 @@
     "settings": "Settings",
     "confirmDelete": "Tap again to delete",
     "renameAria": "Rename conversation",
+    "tagsAria": "Tags",
     "importSuccess": "Conversation imported",
     "streamingTitle": "Thinking"
+  },
+  "tags": {
+    "modalTitle": "Tags",
+    "modalHint": "Organize this conversation (max {{max}}). Type a word in search to filter by tag.",
+    "customPlaceholder": "Custom tag…",
+    "add": "Add",
+    "remove": "Remove {{tag}}",
+    "save": "Save",
+    "cancel": "Cancel",
+    "predefined": {
+      "work": "Work",
+      "personal": "Personal",
+      "clients": "Clients",
+      "finance": "Finance",
+      "admin": "Admin",
+      "ideas": "Ideas"
+    }
   },
   "tasks": {
     "title": "Tasks",

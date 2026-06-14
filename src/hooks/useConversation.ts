@@ -701,6 +701,20 @@ export function useConversation() {
     [refreshConversations]
   )
 
+  // P1.8 — pose/retire les étiquettes d'une conversation. Liste vide → on
+  // stocke `undefined` (pas de tableau vide qui traîne). Même pattern de
+  // persistance que renameConversation (save synchrone + refresh).
+  const setConversationTags = useCallback(
+    (id: string, tags: string[]) => {
+      const conv = storage.getConversation(id)
+      if (!conv) return
+      conv.tags = tags.length > 0 ? tags : undefined
+      storage.saveConversation(conv)
+      refreshConversations()
+    },
+    [refreshConversations]
+  )
+
   // Branch a conversation from a specific message index
   const branchConversation = useCallback(
     (fromConvId: string, messageIndex: number): string | null => {
@@ -715,9 +729,11 @@ export function useConversation() {
         messages: branchedMessages.map(m => ({ ...m, id: generateId() })),
         createdAt: Date.now(),
         updatedAt: Date.now(),
-        // Preserve EU flag and model history from parent conversation
+        // Preserve EU flag, model history AND tags from parent conversation
+        // (une branche hérite du contexte d'organisation — P1.8).
         ...(conv.euOnly ? { euOnly: true } : {}),
         ...(conv.usedModels ? { usedModels: [...conv.usedModels] } : {}),
+        ...(conv.tags ? { tags: [...conv.tags] } : {}),
       }
       storage.saveConversation(newConv)
       refreshConversations()
@@ -843,6 +859,7 @@ export function useConversation() {
     sendMessage,
     deleteConversation: deleteConv,
     renameConversation,
+    setConversationTags,
     branchConversation,
     stopStreaming,
     setSystemPrompt,

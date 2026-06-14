@@ -65,4 +65,8 @@ export interface Conversation {
   // partage public. Détecté à l'appel (les tool_use ne sont pas persistés
   // dans `content`, donc indétectable a posteriori).
   hasGoogleData?: boolean
+  // P1.8 — étiquettes (tags) libres/prédéfinies pour ranger les conversations,
+  // filtrables depuis la Sidebar. Champ optionnel → transparent au
+  // déchiffrement (cast nu), aucune migration. Privé : exclu du partage public.
+  tags?: string[]
 }

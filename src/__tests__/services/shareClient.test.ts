@@ -56,4 +56,12 @@ describe('buildSharePayload', () => {
     expect(buildSharePayload(conv({ hasGoogleData: true })).hasGoogleData).toBe(true)
     expect(buildSharePayload(conv()).euOnly).toBe(false)
   })
+
+  // P1.8 — les étiquettes sont des métadonnées privées : JAMAIS dans le partage.
+  it('EXCLUT les tags (privés)', () => {
+    const json = JSON.stringify(buildSharePayload(conv({ tags: ['clients', 'Secret-NDA'] })))
+    expect(json).not.toContain('clients')
+    expect(json).not.toContain('Secret-NDA')
+    expect(json).not.toContain('tags')
+  })
 })

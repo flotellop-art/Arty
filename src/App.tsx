@@ -126,6 +126,7 @@ function AppContent({
     retryMessage,
     retryLastUserMessage,
     renameConversation,
+    setConversationTags,
     clearError,
   } = conversation
 
@@ -416,6 +417,7 @@ function AppContent({
         onNewEU={handleNewEUConversation}
         onDelete={deleteConversation}
         onRename={renameConversation}
+        onSetTags={setConversationTags}
         userName={profileName || userName}
         onLogout={onLogout}
         onImportConversation={handleImportConversation}
