@@ -12,12 +12,23 @@ export function withTimeout(ms: number): { signal: AbortSignal; cancel: () => vo
   return { signal: controller.signal, cancel: () => clearTimeout(id) }
 }
 
+// Scopes Google demandés au consentement. Réduits le 14 juin 2026 (décision
+// Florent) pour la stratégie « confiance » + alléger le dossier de validation
+// OAuth/CASA :
+//   - `drive` (accès TOTAL) → `drive.readonly` (lecture/recherche de TOUT le
+//     Drive) + `drive.file` (Arty ne crée/gère QUE ses propres fichiers — il ne
+//     modifie/supprime/partage JAMAIS les fichiers préexistants de l'utilisateur).
+//   - `calendar` (complet) supprimé : doublon de `calendar.events`, qui couvre
+//     déjà lecture/création/modif/suppression d'événements (seul besoin réel).
+// `gmail.readonly` (lecture du corps des mails = différenciateur) reste le seul
+// scope restricted incontournable → palier CASA inchangé (Tier 3), mais
+// l'écran de consentement est bien moins anxiogène et le dossier plus défendable.
 const SCOPES = [
   'https://www.googleapis.com/auth/gmail.readonly',
   'https://www.googleapis.com/auth/gmail.send',
   'https://www.googleapis.com/auth/gmail.modify',
-  'https://www.googleapis.com/auth/drive',
-  'https://www.googleapis.com/auth/calendar',
+  'https://www.googleapis.com/auth/drive.readonly',
+  'https://www.googleapis.com/auth/drive.file',
   'https://www.googleapis.com/auth/calendar.events',
   'https://www.googleapis.com/auth/contacts',
   'https://www.googleapis.com/auth/userinfo.email',

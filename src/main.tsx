@@ -35,13 +35,16 @@ if (Capacitor.isNativePlatform()) {
   import('@codetrix-studio/capacitor-google-auth').then(({ GoogleAuth }) => {
     GoogleAuth.initialize({
       clientId: '794968525529-fk2k1ffpvbev4gs4ghf4gntqjroljln3.apps.googleusercontent.com',
+      // Scopes réduits le 14 juin 2026 — doivent rester alignés avec SCOPES
+      // dans src/services/googleAuth.ts ET requestScopes() dans
+      // GoogleSignInPlugin.java (sinon consentement incohérent web vs natif).
       scopes: [
         'email', 'profile',
         'https://www.googleapis.com/auth/gmail.readonly',
         'https://www.googleapis.com/auth/gmail.send',
         'https://www.googleapis.com/auth/gmail.modify',
-        'https://www.googleapis.com/auth/drive',
-        'https://www.googleapis.com/auth/calendar',
+        'https://www.googleapis.com/auth/drive.readonly',
+        'https://www.googleapis.com/auth/drive.file',
         'https://www.googleapis.com/auth/calendar.events',
         'https://www.googleapis.com/auth/contacts',
       ],

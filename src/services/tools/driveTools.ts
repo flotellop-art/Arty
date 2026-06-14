@@ -49,7 +49,7 @@ export const driveToolDefinitions = [
   },
   {
     name: 'delete_drive_file',
-    description: 'Supprime un fichier de Google Drive. CONFIRMATION OBLIGATOIRE.',
+    description: "Supprime un fichier que Arty a lui-même créé sur Drive. Arty ne peut PAS supprimer les fichiers préexistants de l'utilisateur (accès en lecture seule sur le reste du Drive). CONFIRMATION OBLIGATOIRE.",
     input_schema: {
       type: 'object' as const,
       properties: { file_id: { type: 'string' as const } },
@@ -58,7 +58,7 @@ export const driveToolDefinitions = [
   },
   {
     name: 'rename_drive_file',
-    description: 'Renomme un fichier sur Google Drive.',
+    description: "Renomme un fichier que Arty a lui-même créé sur Drive. Ne fonctionne pas sur les fichiers préexistants de l'utilisateur (lecture seule).",
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -70,7 +70,7 @@ export const driveToolDefinitions = [
   },
   {
     name: 'move_drive_file',
-    description: 'Déplace un fichier dans un dossier Drive.',
+    description: "Déplace un fichier que Arty a lui-même créé dans un dossier Drive. Ne fonctionne pas sur les fichiers préexistants de l'utilisateur (lecture seule).",
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -94,7 +94,7 @@ export const driveToolDefinitions = [
   },
   {
     name: 'share_drive_file',
-    description: 'Partage un fichier Drive avec une adresse email.',
+    description: "Partage avec une adresse email un fichier que Arty a lui-même créé. Ne fonctionne pas sur les fichiers préexistants de l'utilisateur (lecture seule).",
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -107,7 +107,7 @@ export const driveToolDefinitions = [
   },
   {
     name: 'copy_drive_file',
-    description: 'Copie un fichier Drive.',
+    description: "Copie un fichier Drive vers un nouveau fichier appartenant à Arty (la lecture de la source marche sur tout le Drive ; la copie créée appartient à Arty).",
     input_schema: {
       type: 'object' as const,
       properties: {
