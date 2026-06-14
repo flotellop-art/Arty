@@ -541,13 +541,28 @@ Slash command **`/audit-secu`** (défini dans `.claude/commands/audit-secu.md`) 
 
 ### TODO Sécurité — prochain audit
 
-Dernier audit : **7 juin 2026** (3 agents parallèles + vérif manuelle). Précédent : 4 mai 2026 (PR #127 + #128).
+Dernier audit : **14 juin 2026** (3 agents : backend Opus, crypto+auth Opus, frontend Sonnet + vérif terrain + requêtes D1 prod). Précédent : 7 juin 2026. Avant : 4 mai 2026 (PR #127 + #128).
 
-> **MAJ 7 juin 2026** — Audit (3 agents : backend Opus, frontend Sonnet, tests/deps
-> Sonnet + recon manuelle). Constat : **la quasi-totalité des items backend ci-dessous
-> étaient déjà corrigés** dans le code mais jamais cochés ici (TODO en retard sur le
-> code). Statuts remis à jour avec preuves file:line vérifiées. 2 findings résiduels
-> ajoutés (N-1 `aud`, N-2 fuite `/api/search/web`).
+> **MAJ 14 juin 2026** — Audit complet `/audit-secu` (3 agents) déclenché après une
+> comparaison aux failles d'Odysseus (l'assistant de PewDiePie). **Verdict : aucun CRIT,
+> aucun HIGH exploitable** ; Arty n'a AUCUNE des failles d'Odysseus (pas de RCE/shell au
+> LLM, SSRF nul, IDOR nul, pas de fuite de clé, auth présente). **Corrigé cette session
+> (PR à venir, lot « priorités sûres »)** :
+> - **Boutons d'action en liste blanche** (`useAppSetup.ts` : `default → executor(action)`
+>   supprimé) + **confirmation** sur send_email/save_drive/create_event/publish_wp +
+>   validation `tel:`/`url` + `noopener`. Ferme le vecteur prompt-injection → action en 1 clic.
+> - **Sanitize markdown durci** : wildcard `data*` → allowlist explicite (props camelCase
+>   hast), `data:` retiré de `protocols.src` (XSS SVG WebView). Tests de non-régression ajoutés.
+> - **Expiration des abonnements** (`checkAllowedUser.ts` + `subscription/status.ts`) : un abo
+>   `cancelled` au-delà de `current_period_end` ne donne plus accès (fuite de revenu si le
+>   webhook `expired` est manqué). `active` reste inconditionnel (pas de lockout sur renew lag).
+> - **PII en logs** : `googleAuth.ts` ne logge plus le body complet de la réponse refresh.
+> - **Pro = BYOK** (PR #287, même session) : un compte Pro sans BYOK ne récupère plus la clé serveur.
+>
+> **Findings 7 juin (N-1 `aud`, N-2 search/web) : statut au 14 juin** — N-2 search/web
+> est **déjà corrigé** dans le code (`web.ts` renvoie `{error:'Search failed'}` 502) → COCHÉ
+> ci-dessous. N-1 (`aud`) toujours actif, voir ci-dessous. Reste aussi des leaks N-2 sur
+> `wordpress`/`contacts` (MED, à faire).
 
 À traiter en priorité quand on relance un cycle sécurité :
 
@@ -589,8 +604,24 @@ des conversations — implémenté le 16 mai, voir « PR à venir » ci-dessous.
 
 **Nouveaux findings résiduels (audit 7 juin)** :
 - [ ] **N-1 (MED) — `verifyGoogleUser` ne valide pas `aud`** dans `checkAllowedUser.ts:24-33` (`oauth2/v2/userinfo`). Un token Google d'audience étrangère passe le gate → abus borné ~10 Haiku/j sur la clé owner (PAS de vol de données : les endpoints Google reforwardent le même token). Fix : passer par `tokeninfo`, rejeter si `aud !== GOOGLE_CLIENT_ID && azp !== GOOGLE_CLIENT_ID`. ⚠️ touche le gate d'auth universel — tester web ET natif (les tokens `requestServerAuthCode` natifs peuvent avoir un `aud` différent, BUG 21/51). **PR sécu dédiée.**
-- [ ] **N-2 (MED) — fuite status/body upstream** dans `search/web.ts:130-138,171,209` : renvoie le status + 200 chars de Linkup/Brave au client. Fix : message générique (`{error:'Search failed'}`, 502) + détail en `console.error`. **MAJ 12 juin (PR #269)** : la même classe est corrigée sur les proxys de transcription (`whisper-proxy.ts`, `voxtral-proxy.ts` — erreurs upstream masquées sur clé serveur, passthrough BYOK conservé, fallback modèle préservé via code stable `model_not_supported`). `search/web.ts` reste à faire.
+- [x] **N-2 (MED) — fuite status/body upstream `search/web.ts`** : VÉRIFIÉ CORRIGÉ le 14 juin — `web.ts` renvoie déjà `{error:'Search failed'}` 502, l'`err.message` upstream n'est pas propagé (le TODO était périmé). La même classe sur transcription a été faite en PR #269. **Reste à faire (MED, audit 14 juin)** : `wordpress/action.ts` et `contacts/action.ts` propagent encore `r.status`/`err.error.message` Google au client → message générique + détail en `console.error`.
 - [ ] **V-2 (MED, différé — audit PR #269 du 12 juin) — quota transcription par appel, pas par durée** : `consumeDailyQuota` compte les appels alors que Voxtral/Whisper facturent à la minute (`audio_seconds`). Mitigé en PR #269 par le cap body 10 MB sur les deux proxys (borne le coût par appel) + quota journalier existant. Fix propre = quota journalier en secondes d'audio (évolution D1 + gate avant forward dans les proxys). À traiter si la vigie whales montre un abus de dictée.
+
+**Nouveaux findings résiduels (audit 14 juin) — NON corrigés (hors lot « priorités sûres »)** :
+- [ ] **MED — `contacts/action.ts:90-106` : `resourceName` non validé/encodé** — seul endpoint Google qui casse la baseline « IDs validés par regex ». Query-string injection dans l'URL People (bornée : compte de l'appelant, pas de cross-user). Fix : `^people\/[a-zA-Z0-9_-]+$` + `encodeURIComponent`.
+- [ ] **MED — `/api/license/activate` sans token Google** (`activate.ts:38`) — identité du body, prouvée seulement par la paire secrète (clé+email). Impact RÉDUIT par Pro=BYOK (PR #287 : un faux Pro ne donne plus d'IA serveur). Fix : exiger `verifyTokenViaTokeninfo` + `email == body.email`. Pas de rate-limit dédié (in-memory par isolat).
+- [ ] **MED — sel PBKDF2 global + migration sans filtre userId** (`crypto.ts:14,67-76`) — sur appareil multi-comptes SANS BYOK, couplage de données (même passphrase publique + même sel → même clé). Borné. À regrouper avec le chantier IndexedDB `CryptoKey` non-extractible (qui supprime sel/passphrase/PBKDF2).
+- [ ] **MED — N-1 `aud`** : voir ci-dessus, toujours actif, PR sécu dédiée (test web+natif).
+- [ ] **MED — météo/géoloc accessibles aux comptes Google `free`** (`weather.ts:9`, `geo/reverse.ts:15` via `checkAllowedUserPeek`) — abus possible de la clé Google Maps owner. Fix : gater sur un plan payant (vérifier d'abord l'usage pré-connexion / brief matin).
+- [ ] **LOW — `computer/relay` forwarde une action arbitraire** + `local/computer-use-server.js` exécute type/key/click sans allowlist (owner-only, PC de l'owner). Fix : allowlist d'actions au relay + rejet des `key` hors `keyMap`.
+- [ ] **LOW — permissions Android sur-déclarées** (`READ_MEDIA_AUDIO/VIDEO`, `MODIFY_AUDIO_SETTINGS`) + `gemini-proxy` `model` non format-vérifié + `drive` `previousParents` non encodé + pas de timeout serveur→Google. Nettoyage avant Play Store.
+- [ ] **⚠️ GO-LIVE (pas une faille) — IDs produits Creem en mode TEST dans le code prod** (`checkout/creem.ts:34`, `webhook/creem.ts:29`). Fail-closed (dérive test/live du préfixe de clé) mais avec une clé LIVE + ces IDs test → checkout cassé/mis-crédité. Remplacer au lancement (TODO `⚠️ replace at go-live` présent).
+
+**Corrigé le 14 juin (lot « priorités sûres », PR à venir)** :
+- [x] **Boutons d'action en liste blanche + confirmation** (`useAppSetup.ts`) — `default → executor(action)` supprimé ; confirm sur send_email/save_drive/create_event/publish_wp ; `tel:`/`url` validés + `noopener`.
+- [x] **Sanitize markdown** — `data*` → allowlist explicite (props camelCase) + `data:` retiré de `protocols.src` (`MarkdownRenderer.tsx`). Tests ajoutés.
+- [x] **Expiration des abonnements** — `checkAllowedUser.ts` + `subscription/status.ts` (cancelled au-delà de `current_period_end` → plus d'accès ; active inconditionnel).
+- [x] **PII en logs** — `googleAuth.ts` ne logge plus le body complet de la réponse refresh.
 
 **HIGH a11y traités (12 mai)** :
 - ✅ **Contrastes `text-theme-muted/X`** : retrait des 56 opacités (`/50`, `/60`, `/70`, `/80`) sur `text-theme-muted` → utilisation de la couleur pleine (PR roadmap). Ratio passe de 2.8:1 à ≥4.5:1 sur fond clair.
