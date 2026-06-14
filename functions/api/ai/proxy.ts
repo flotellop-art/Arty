@@ -3,6 +3,7 @@ import {
   checkAllowedUser,
   isModelAllowedInTrial,
   isTrialExpired,
+  proKeyRequiredResponse,
   trialExpiredResponse,
   trialModelRestrictedResponse,
   verifyGoogleUser,
@@ -68,6 +69,9 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
       } else {
         return trialExpiredResponse()
       }
+    } else if (result && result.planType === 'pro') {
+      // Pro = BYOK (P2.5) : la licence donne l'app à vie, pas la clé serveur.
+      return proKeyRequiredResponse()
     } else if (result && env.ANTHROPIC_API_KEY) {
       apiKey = env.ANTHROPIC_API_KEY
       userPlan = result.planType

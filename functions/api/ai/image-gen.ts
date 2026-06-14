@@ -2,6 +2,7 @@ import type { Env } from '../../env'
 import {
   checkAllowedUser,
   isTrialExpired,
+  proKeyRequiredResponse,
   trialExpiredResponse,
   verifyGoogleUser,
 } from '../_lib/checkAllowedUser'
@@ -122,6 +123,10 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
   if (!apiKey && env.OPENAI_API_KEY) {
     const result = await checkAllowedUser(request, env)
     if (isTrialExpired(result)) return trialExpiredResponse()
+    if (result && result.planType === 'pro') {
+      // Pro = BYOK (P2.5) : la licence donne l'app à vie, pas la clé serveur.
+      return proKeyRequiredResponse()
+    }
     if (result) {
       apiKey = env.OPENAI_API_KEY
       usingServerKey = true
@@ -140,7 +145,8 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
   }
   // subscription : cap mensuel dédié (bucket gpt-image, PARTAGÉ entre les
   // providers — « 10 images/mois » toutes images confondues, lisible).
-  // pro/vip illimités. Le modèle flux est classifié dans le même bucket.
+  // vip illimité. pro = BYOK (intercepté plus haut, jamais sur la clé serveur).
+  // Le modèle flux est classifié dans le même bucket.
   if (usingServerKey && userPlan === 'subscription') {
     const cap = await checkPremiumCap(email, IMAGE_MODEL, env)
     if (!cap.allowed) return premiumCapReachedResponse(cap)

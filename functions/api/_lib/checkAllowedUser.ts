@@ -392,5 +392,28 @@ export function trialModelRestrictedResponse(): Response {
   )
 }
 
+/**
+ * Pro (licence à vie 39 €) = BYOK. La licence donne l'accès à l'APP à vie, PAS
+ * l'accès à la clé serveur d'Arty (recadrage P2.5 du plan concurrentiel). Un
+ * compte Pro DOIT fournir sa propre clé API. Les plans subscription/vip/trial/
+ * free gardent l'accès clé serveur (soumis à leurs quotas respectifs).
+ * Source de vérité partagée par les 4 proxys IA — sans ce gate, un achat unique
+ * à 39 € donnerait un accès serveur illimité à vie (trou de marge, vigie 14 juin).
+ */
+export function planUsesServerKey(plan: PlanType): boolean {
+  return plan !== 'pro'
+}
+
+/** 403 : licence Pro active mais aucune clé BYOK fournie (Pro = BYOK, P2.5). */
+export function proKeyRequiredResponse(): Response {
+  return Response.json(
+    {
+      error: 'pro_byok_required',
+      message: 'Licence Pro active : ajoute ta propre clé API (BYOK) pour utiliser l’IA.',
+    },
+    { status: 403 }
+  )
+}
+
 /** Initial message budget for a brand-new trial user. Exposed for tests / init endpoint. */
 export const TRIAL_INITIAL_BUDGET = TRIAL_INITIAL_MESSAGES
