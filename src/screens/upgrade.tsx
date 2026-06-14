@@ -204,6 +204,11 @@ export function UpgradeScreen({ onBack, currentPlan: currentPlanProp, email }: U
           </a>
         )}
 
+        {/* P2.4 — « pourquoi c'est moins cher » : on assume le modèle éco
+            (routage intelligent + marge faible) pour désarmer le « trop beau
+            pour être vrai ». La transparence économique devient la marque. */}
+        <WhyCheaperSection />
+
         {/* P0.10 — la transparence comme argument de vente (audit concurrentiel :
             la plainte la plus virale du segment = limites opaques). */}
         <p className="font-display italic text-[11px] text-theme-muted text-center pt-4 leading-relaxed">
@@ -372,6 +377,12 @@ function SubscriptionCard({ isCurrent, onSubscribe }: SubscriptionCardProps) {
       <p className="mt-3 font-sans text-sm text-theme-muted leading-relaxed">
         {t('upgrade.subscriptionDescription')}
       </p>
+      {/* P2.3 — rassurance AVANT de s'abonner : l'annulation facile lève le
+          frein n°1 à l'abonnement. Affichée même aux non-abonnés (le lien
+          « gérer » plus bas ne s'affiche qu'aux abonnés actifs). */}
+      <p className="mt-2 font-display italic text-[12px] text-theme-accent leading-relaxed">
+        {t('upgrade.subscriptionReassurance')}
+      </p>
       <button
         type="button"
         onClick={onSubscribe}
@@ -381,6 +392,52 @@ function SubscriptionCard({ isCurrent, onSubscribe }: SubscriptionCardProps) {
         {isCurrent ? t('upgrade.currentPlan') : t('upgrade.subscriptionCta')}
       </button>
     </CardShell>
+  )
+}
+
+// P2.4 — section dépliable « Pourquoi c'est moins cher ? ». Placée sur la page
+// pricing, là où naît le doute « trop beau pour être vrai ». Contenu volontairement
+// concret : routage intelligent, marge faible assumée, limites lisibles, BYOK.
+function WhyCheaperSection() {
+  const { t } = useTranslation()
+  const [open, setOpen] = useState(false)
+  const items = ['whyRouting', 'whyMargin', 'whyTransparency', 'whyByok'] as const
+  return (
+    <div className="rounded-sm border border-theme-border bg-theme-surface overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-theme-ink/[0.02] transition-colors"
+      >
+        <span className="font-display text-[15px] font-medium text-theme-ink">
+          {t('upgrade.whyTitle')}
+        </span>
+        <svg
+          width="12"
+          height="12"
+          viewBox="0 0 10 10"
+          fill="none"
+          aria-hidden
+          className={`opacity-60 transition-transform ${open ? 'rotate-180' : ''}`}
+        >
+          <path d="M2.5 4L5 6.5L7.5 4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+        </svg>
+      </button>
+      {open && (
+        <div className="px-5 pb-5 space-y-2.5">
+          <p className="font-display italic text-sm text-theme-muted">{t('upgrade.whyIntro')}</p>
+          <ul className="space-y-2">
+            {items.map((k) => (
+              <li key={k} className="font-sans text-sm text-theme-ink/80 flex gap-2 leading-relaxed">
+                <span className="text-theme-accent shrink-0">•</span>
+                <span>{t(`upgrade.${k}`)}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
   )
 }
 
