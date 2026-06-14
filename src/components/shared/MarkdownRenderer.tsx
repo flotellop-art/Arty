@@ -52,8 +52,24 @@ const sanitizeSchema = {
   attributes: {
     ...defaultSchema.attributes,
     '*': ['className', 'class', 'style'],
-    button: ['className', 'class', 'data*'],
-    div: ['className', 'class', 'style', 'data*'],
+    // SÉCURITÉ (audit 14 juin) : liste BLANCHE explicite au lieu du wildcard
+    // `data*`. Le wildcard laissait l'IA injecter n'importe quel data-attribut ;
+    // couplé au dispatch des boutons, il amplifiait le vecteur de prompt-injection.
+    // hast-util-sanitize matche les noms de PROPRIÉTÉ hast (camelCase :
+    // `data-action` → `dataAction`). Seuls les params des actions connues
+    // (handleAction + systemPrompt) sont autorisés.
+    button: [
+      'className', 'class',
+      'dataAction', 'dataTo', 'dataSubject', 'dataBody', 'dataText', 'dataValue',
+      'dataName', 'dataContent', 'dataTitle', 'dataStart', 'dataEnd',
+      'dataLocation', 'dataStatus', 'dataPhone', 'dataUrl', 'dataQuery', 'dataSummary',
+    ],
+    div: [
+      'className', 'class', 'style',
+      'dataAction', 'dataTo', 'dataSubject', 'dataBody', 'dataText', 'dataValue',
+      'dataName', 'dataContent', 'dataTitle', 'dataStart', 'dataEnd',
+      'dataLocation', 'dataStatus', 'dataPhone', 'dataUrl', 'dataQuery', 'dataSummary',
+    ],
     span: ['className', 'class', 'style'],
     a: ['href', 'target', 'rel', 'className'],
     img: ['src', 'alt', 'className', 'width', 'height'],
@@ -66,7 +82,10 @@ const sanitizeSchema = {
     // `arty-img` (P1.3) : référence vers une image générée stockée en
     // IndexedDB chiffré. Sûr — aucune ressource réseau, résolu localement en
     // blob: URL par le composant img (anti-BUG 11 : pas de base64 persisté).
-    src: ['http', 'https', 'data', 'arty-img'],
+    // SÉCURITÉ (audit 14 juin) : `data:` RETIRÉ — un `data:image/svg+xml,...`
+    // peut porter du script exécuté dans la WebView Capacitor. Aucune feature
+    // Arty ne pose de data: URI (les images passent par arty-img → blob:).
+    src: ['http', 'https', 'arty-img'],
   },
   // Strip dangerous elements entirely
   strip: ['script', 'iframe', 'object', 'embed', 'form', 'input', 'textarea'],

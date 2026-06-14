@@ -198,15 +198,25 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
     console.error('[subscription/status] premium_packs query failed', err)
   }
 
+  // Expiration des abonnements (audit 14 juin) — cohérent avec resolveUserPlan :
+  // un abo `cancelled` dont la période est dépassée n'est plus actif (même si le
+  // webhook `expired` a été manqué). `active` reste valide (renouvellement en
+  // cours). Évite d'afficher un plan premium à un compte qui n'y a plus droit.
+  const subExpired =
+    sub?.status === 'cancelled' &&
+    !!sub.current_period_end &&
+    new Date(sub.current_period_end).getTime() < Date.now()
+  const effectiveSub = subExpired ? null : sub
+
   // License active overrides subscription plan to 'pro' (one-shot purchase
   // grants Pro access regardless of any prior sub state).
   const hasActiveLicense = !!license
   const plan: StatusResponse['plan'] = hasActiveLicense
     ? 'pro'
-    : normalizePlan(sub?.plan_type)
+    : normalizePlan(effectiveSub?.plan_type)
   const status: StatusResponse['status'] = hasActiveLicense
     ? 'active'
-    : normalizeStatus(sub?.status)
+    : normalizeStatus(effectiveSub?.status)
 
   // Construit l'allowlist de familles + le quota restant. Free → familles
   // limitées + compteurs KV, payant → tout illimité.

@@ -42,6 +42,29 @@ describe('MarkdownRenderer', () => {
     expect(container.querySelector('script')).toBeNull()
   })
 
+  it('conserve les data-* des boutons d\'action connus (allowlist, pas wildcard)', () => {
+    const { container } = render(
+      <MarkdownRenderer
+        content={'<button data-action="send_email" data-to="a@b.com" data-evil="x">Envoyer</button>'}
+      />
+    )
+    const btn = container.querySelector('button[data-action]')
+    expect(btn).toBeTruthy()
+    expect(btn!.getAttribute('data-action')).toBe('send_email')
+    expect(btn!.getAttribute('data-to')).toBe('a@b.com')
+    // Un data-* hors allowlist est strippé par la sanitisation
+    expect(btn!.getAttribute('data-evil')).toBeNull()
+  })
+
+  it('strippe les data: URI dans src (XSS SVG sur WebView)', () => {
+    const { container } = render(
+      <MarkdownRenderer content={'<img src="data:image/svg+xml,<svg onload=alert(1)>" alt="x" />'} />
+    )
+    const img = container.querySelector('img')
+    // src data: retiré par la sanitisation (protocols.src sans 'data')
+    expect(img?.getAttribute('src') ?? '').not.toContain('data:')
+  })
+
   it('numérote les listes ordonnées via les marqueurs CSS (structure md-list)', () => {
     const { container } = render(<MarkdownRenderer content={'1. premier\n2. second'} />)
     const ol = container.querySelector('ol.md-list')

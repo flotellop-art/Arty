@@ -245,6 +245,12 @@
       "screenshot": "PC screenshot",
       "screenshotAlt": "PC screenshot"
     },
+    "actionConfirm": {
+      "email": "Send an email to {{to}}?",
+      "drive": "Create the file \"{{name}}\" on your Drive?",
+      "event": "Add \"{{title}}\" to your calendar?",
+      "wp": "Publish \"{{title}}\" on your site?"
+    },
     "contextCompressed": {
       "message": "This conversation is long: I summarized the beginning to keep going. For sharper answers (and fewer credits), start a new conversation.",
       "newConv": "New conversation"

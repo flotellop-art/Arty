@@ -238,7 +238,9 @@ export async function refreshAccessToken(): Promise<GoogleTokens | null> {
       // 4xx from the refresh proxy = Google rejected the refresh_token
       // (revoked, expired, or never valid). Logout so the UI offers a
       // "Connecter Google" CTA instead of looping on stale tokens.
-      console.warn('[googleAuth] refresh definitively rejected, logging out. status=', res.status, 'body=', data)
+      // Ne PAS logger le body complet (PII potentielle dans les crash reports) ;
+      // le code d'erreur suffit au diagnostic (audit 14 juin).
+      console.warn('[googleAuth] refresh definitively rejected, logging out. status=', res.status, 'error=', data?.error)
       logout()
       return null
     }

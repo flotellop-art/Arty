@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useGoogleAuth } from './useGoogleAuth'
 import { useGmail } from './useGmail'
 import { useDrive } from './useDrive'
@@ -23,6 +24,7 @@ interface ConversationHook {
 export function useAppSetup(conversation: ConversationHook) {
   const { activeId, sendMessage, setSystemPrompt, setToolHandler } = conversation
 
+  const { t } = useTranslation()
   const googleAuth = useGoogleAuth()
   const gmail = useGmail()
   const drive = useDrive()
@@ -154,31 +156,59 @@ export function useAppSetup(conversation: ConversationHook) {
           break
         }
         case 'send_email':
+          // Confirmation avant un envoi externe : un bouton issu d'un contenu
+          // tiers (email/page lu par Arty, prompt-injection) ne doit jamais
+          // exfiltrer en 1 clic. On montre le destinataire pour qu'il soit lisible.
+          if (!window.confirm(t('chat.actionConfirm.email', { to: params.to || '?' }))) break
           await executor('send_email', params)
           break
         case 'save_drive':
+          if (!window.confirm(t('chat.actionConfirm.drive', { name: params.name || 'Document' }))) break
           await executor('create_drive_file', { name: params.name || 'Document', content: params.content || '' })
           break
         case 'create_event':
+          if (!window.confirm(t('chat.actionConfirm.event', { title: params.title || params.summary || '?' }))) break
           await executor('create_calendar_event', params)
           break
         case 'publish_wp':
+          if (!window.confirm(t('chat.actionConfirm.wp', { title: params.title || '?' }))) break
           await executor('wp_create_post', { title: params.title || '', content: params.content || '', status: params.status || 'draft' })
           break
         case 'search_web':
           await executor('web_search', { query: params.query || '' })
           break
-        case 'call':
-          window.open(`tel:${params.phone}`, '_self')
+        case 'call': {
+          // Valide le numéro avant d'ouvrir le composeur : un `tel:` injecté
+          // pourrait être un numéro surtaxé (prompt-injection sur natif).
+          const phone = params.phone || ''
+          if (/^\+?[\d\s().-]{7,20}$/.test(phone)) {
+            window.open(`tel:${phone}`, '_self')
+          }
           break
-        case 'link':
-          window.open(params.url, '_blank')
+        }
+        case 'link': {
+          // http/https uniquement + noopener (la fenêtre ouverte ne doit pas
+          // accéder à window.opener). `params.url` vient du LLM.
+          try {
+            const u = new URL(params.url || '')
+            if (u.protocol === 'http:' || u.protocol === 'https:') {
+              window.open(u.href, '_blank', 'noopener,noreferrer')
+            }
+          } catch {
+            /* URL invalide → ignorer */
+          }
           break
+        }
         default:
-          await executor(action, params)
+          // SÉCURITÉ (audit 14 juin) : NE JAMAIS passer une action arbitraire au
+          // toolExecutor. Sans ce garde, un bouton injecté via prompt-injection
+          // (email/page lu par Arty) pouvait déclencher n'importe quel outil en
+          // 1 clic. Seules les actions explicites ci-dessus sont autorisées
+          // depuis un bouton généré par l'IA.
+          console.warn('[action] action de bouton inconnue ignorée:', action)
       }
     },
-    [activeId, sendMessage]
+    [activeId, sendMessage, t]
   )
 
   const changeStyle = useCallback((style: ResponseStyle) => {

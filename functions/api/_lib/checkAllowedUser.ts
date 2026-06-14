@@ -317,11 +317,25 @@ export async function resolveUserPlan(env: Env, email: string): Promise<PlanType
   if (!env.DB) return 'free'
 
   try {
+    // Expiration des abonnements (audit 14 juin) — symétrie avec le garde des
+    // licences plus bas. `active` = unconditionnel (un renouvellement en cours
+    // dont le webhook traîne ne doit PAS éjecter un payeur). `cancelled` = accès
+    // conservé JUSQU'À la fin de période (current_period_end, stocké en ISO-8601
+    // par le webhook Lemon Squeezy `renews_at`) ; au-delà → plus d'accès, même
+    // si le webhook `expired` n'est jamais arrivé (sinon fuite de revenu :
+    // premium indéfini sur un abo annulé). `unixepoch(ISO)` parse bien le format
+    // (vérifié sur D1). period_end NULL sur un cancelled = anomalie → fail-open
+    // (on garde l'accès plutôt que d'éjecter à tort).
     const sub = await env.DB.prepare(
       `SELECT plan_type FROM subscriptions
        WHERE user_email = ?1
-         AND status IN ('active', 'cancelled')
          AND plan_type IN ('subscription', 'pro', 'vip', 'trial')
+         AND (
+           status = 'active'
+           OR (status = 'cancelled'
+               AND (current_period_end IS NULL
+                    OR unixepoch(current_period_end) > unixepoch()))
+         )
        LIMIT 1`
     )
       .bind(email)
