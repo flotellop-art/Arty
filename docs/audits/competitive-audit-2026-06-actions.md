@@ -287,11 +287,22 @@ unique sous 20 $/mois). Pas par la largeur de catalogue. Volume = distribution
 
 ## Vigies économiques (à re-vérifier chaque trimestre)
 
-- [ ] Marges réelles vs prix affichés (le changement de tokenizer Anthropic d'avril 2026
-  a gonflé les factures de ~+27 % à tarif inchangé). Comparer factures réelles / `pricing.ts`.
-- [ ] ToS Anthropic/OpenAI sur les wrappers — surveiller (veille existante `docs/veille/`).
-- [ ] Distribution whales : part des 5 % d'utilisateurs les plus actifs dans le coût total
-  (données `quota_model` D1). Si > 60 %, durcir les caps par appel (P0.9).
+> **Vigie faite le 14 juin 2026** — rapport complet : `docs/audits/vigie-eco-2026-06.md`
+> (RÈGLE 7 : 3 agents + requêtes D1 prod). Synthèse : plan rentable ~76–78 % sur profil
+> médian, à perte sur l'abonné qui maxe ; le seul vrai trou = **bucket Claude Sonnet+Opus
+> partagé** (sous-quota Opus à arbitrer, décision Florent). Le « +27 % tokenizer » est
+> **déjà capturé au settle** (tokens issus de l'API) → ne rien re-multiplier.
+
+- [x] **Marges réelles vs prix affichés** — VÉRIFIÉ 14 juin (voir rapport). +27 % tokenizer
+  requalifié non-pertinent pour le settle ; donnée prod : coût réel Sonnet ~0,36 $/msg gonflé
+  par le cold-cache de test (caching correct, contexte lourd). Action ouverte : alléger le
+  contexte Gmail/Drive injecté (suite BUG 49) ; réconcilier Console Anthropic vs D1 (Florent).
+- [x] **ToS Anthropic/OpenAI sur les wrappers** — angle mort comblé : doc de veille créée
+  `docs/veille/2026-06-tos-wrappers.md` (revue trimestrielle). BYOK = sans risque ; zone grise
+  = clé serveur owner pour users whitelistés. Signal réel = email « enterprise agreement ».
+- [~] **Distribution whales** — SANS OBJET (n=2 users, pré-lancement) ; requêtes SQL prêtes
+  dans le rapport. Pièges notés : BYOK absent de `quota_model`, `count` figé pour les VIPs
+  (classer par `cost_usd_micro`, jamais par `count`). À relancer à >40 users actifs/30 j.
 
 ---
 
