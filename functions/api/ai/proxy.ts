@@ -17,7 +17,7 @@ import {
 import { createAnthropicParser, teeForParsing } from '../_lib/trackUsage'
 import {
   beginWalletBilling,
-  extractMaxOutputTokens,
+  makeReservationHeartbeat,
   settleWalletBilling,
   voidWalletBilling,
 } from '../_lib/walletBilling'
@@ -136,16 +136,17 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
   // quel modèle, payé à l'usage) ; sinon le tier gratuit Haiku 10/jour (inchangé).
   let walletResId: string | undefined
   if (!isByok && userPlan === 'free') {
-    let maxOut: number | undefined
+    let parsedBody: Record<string, unknown> = {}
     try {
-      maxOut = extractMaxOutputTokens('anthropic', JSON.parse(body) as Record<string, unknown>)
+      parsedBody = JSON.parse(body) as Record<string, unknown>
     } catch {
-      /* maxOut undefined → réserve au plafond */
+      /* body illisible → réserve au plafond (estimation input = 0) */
     }
     const start = await beginWalletBilling(env, waitUntil, {
       email,
       model: modelName,
-      maxOutputTokens: maxOut,
+      provider: 'anthropic',
+      body: parsedBody,
     })
     if (start.mode === 'refuse') return start.response
     if (start.mode === 'wallet') {
@@ -231,7 +232,8 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
       const { clientBody, parsedUsage } = teeForParsing(
         response.body,
         parser.feed,
-        parser.finalize
+        parser.finalize,
+        makeReservationHeartbeat(env, walletResId)
       )
       // UN seul tee, deux consommateurs sur le MÊME usage réel : analytics
       // (recordUsage, coût provider) + débit wallet (settle, prix markupé). Le

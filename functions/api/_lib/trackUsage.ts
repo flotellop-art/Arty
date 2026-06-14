@@ -27,7 +27,11 @@ const EMPTY: UsageTokens = {
 export function teeForParsing(
   upstream: ReadableStream<Uint8Array>,
   parser: (chunk: string) => void,
-  finalize: () => UsageTokens
+  finalize: () => UsageTokens,
+  // Appelé à chaque chunk parsé (le parseSide draine indépendamment du client).
+  // Sert au heartbeat de réservation wallet pour les streams longs (fix F-B) :
+  // best-effort, throttlé par l'appelant, ne doit jamais throw.
+  onActivity?: () => void
 ): { clientBody: ReadableStream<Uint8Array>; parsedUsage: Promise<UsageTokens> } {
   const [clientSide, parseSide] = upstream.tee()
 
@@ -38,7 +42,12 @@ export function teeForParsing(
       while (true) {
         const { done, value } = await reader.read()
         if (done) break
-        if (value) parser(decoder.decode(value, { stream: true }))
+        if (value) {
+          parser(decoder.decode(value, { stream: true }))
+          if (onActivity) {
+            try { onActivity() } catch { /* heartbeat best-effort */ }
+          }
+        }
       }
       parser(decoder.decode()) // flush
     } catch {

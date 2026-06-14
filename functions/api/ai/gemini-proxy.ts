@@ -13,7 +13,7 @@ import { freeModelLockedResponse } from '../_lib/freeQuota'
 import { createGeminiParser, teeForParsing } from '../_lib/trackUsage'
 import {
   beginWalletBilling,
-  extractMaxOutputTokens,
+  makeReservationHeartbeat,
   settleWalletBilling,
   voidWalletBilling,
 } from '../_lib/walletBilling'
@@ -74,8 +74,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     // Sans abo : si l'utilisateur a des crédits → wallet (n'importe quel modèle,
     // payé à l'usage) ; sinon Gemini reste verrouillé en gratuit.
     if (usingServerKey && userPlan === 'free') {
-      const maxOut = extractMaxOutputTokens('gemini', body)
-      const start = await beginWalletBilling(env, waitUntil, { email, model, maxOutputTokens: maxOut })
+      const start = await beginWalletBilling(env, waitUntil, { email, model, provider: 'gemini', body })
       if (start.mode === 'refuse') return start.response
       if (start.mode === 'wallet') {
         walletResId = start.resId
@@ -154,7 +153,8 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
       const { clientBody, parsedUsage } = teeForParsing(
         response.body,
         parser.feed,
-        parser.finalize
+        parser.finalize,
+        makeReservationHeartbeat(env, walletResId)
       )
       const rid = walletResId
       waitUntil(
