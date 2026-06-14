@@ -477,8 +477,26 @@
     "settings": "Paramètres",
     "confirmDelete": "Appuie à nouveau pour supprimer",
     "renameAria": "Renommer la conversation",
+    "tagsAria": "Étiquettes",
     "importSuccess": "Conversation importée",
     "streamingTitle": "Réflexion en cours"
+  },
+  "tags": {
+    "modalTitle": "Étiquettes",
+    "modalHint": "Range cette conversation (max {{max}}). Tape un mot dans la recherche pour filtrer par étiquette.",
+    "customPlaceholder": "Étiquette perso…",
+    "add": "Ajouter",
+    "remove": "Retirer {{tag}}",
+    "save": "Enregistrer",
+    "cancel": "Annuler",
+    "predefined": {
+      "work": "Travail",
+      "personal": "Perso",
+      "clients": "Clients",
+      "finance": "Finance",
+      "admin": "Admin",
+      "ideas": "Idées"
+    }
   },
   "tasks": {
     "title": "Tâches",

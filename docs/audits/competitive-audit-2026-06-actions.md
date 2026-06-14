@@ -117,12 +117,17 @@ unique sous 20 $/mois). Pas par la largeur de catalogue. Volume = distribution
   dossier = 4-6 blocs de contexte en compétition (sur-engineering v1). Reclassés → P1.8
   ci-dessous sous forme de **tags** (filtrables via la search existante), pas
   d'arborescence, sans instructions par dossier.
-- [ ] **P1.8 Tags de conversation** (ex-dossiers, reclassé le 12 juin) : 1-2 chips
-  colorés sous le titre, filtrables via la recherche Sidebar existante. PAS d'arborescence
-  (piège mobile), PAS d'instructions par tag (sur-engineering). `folderId?`/`tags?` sur
-  `Conversation` est transparent au déchiffrement (cast nu, champ optionnel) — aucune
-  migration. Le couplage `arty-rebuild-prompt`↔conversation active (pour d'éventuelles
-  instructions par tag) est la complexité à éviter : ne PAS le faire en v1.
+- [x] **P1.8 Tags de conversation** — FAIT 14 juin 2026 (PR à venir), version SÛRE
+  (audit RÈGLE 7 : 2 agents). `tags?: string[]` sur `Conversation` (transparent au
+  déchiffrement, AUCUNE migration). Le challenge a écarté le texte libre pur (doublons
+  casse, FR/EN, couleur hash) → **jeu prédéfini fermé** (6 tags : Travail/Perso/Clients/
+  Finance/Admin/Idées, id stable + libellé i18n + couleur fixe en pastille ●) **+ 1 tag
+  perso normalisé** (trim, dédup insensible casse, plafond 4 tags/conv, 24 char). Chips
+  affichés dans la Sidebar (ligne 2, après 🇪🇺), filtrables via la recherche existante
+  (matche le LIBELLÉ résolu, pas l'id), édition via une modale ouverte depuis l'item
+  Sidebar (PAS de prop-drilling vers ChatTopBar, PAS d'arborescence, PAS d'instructions
+  par tag). **Tags exclus du partage public** (privés — test de non-régression ajouté).
+  branchConversation hérite des tags. Tests : conversationTags + shareClient.
 - [x] **P1.3 Génération d'images** — FAIT (12 juin 2026). gpt-image-1 via proxy dédié
   `/api/ai/image-gen` (RÈGLE 3) — réutilise l'`OPENAI_API_KEY` serveur existante, ZÉRO
   nouvelle clé. Déclenchement par tool `generate_image` injecté CONDITIONNELLEMENT
