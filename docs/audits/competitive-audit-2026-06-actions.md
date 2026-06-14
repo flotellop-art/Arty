@@ -269,6 +269,10 @@ unique sous 20 $/mois). Pas par la largeur de catalogue. Volume = distribution
   serveur illimité à vie (passif perpétuel — le doute qui plombe ChatPlayground). FAIT
   14 juin 2026 (PR #280) : `proTagline`/`proDescription` recadrées (« Licence à vie · ta
   propre clé » + « Paiement unique, app à vie · Tu utilises ta clé API (BYOK) »).
+  **MAJ 14 juin (PR à venir)** — le CODE enforce désormais la promesse : un compte Pro
+  sans BYOK ne récupère plus la clé serveur (`planUsesServerKey`, 403 `pro_byok_required`
+  sur les 5 endpoints clé serveur). Découvert via la vigie éco (le passif perpétuel
+  existait réellement dans le code). Détail : `docs/audits/vigie-eco-2026-06.md` (addendum).
 
 ## Anti-objectifs — à NE PAS faire (pièges documentés)
 

@@ -3,6 +3,7 @@ import {
   checkAllowedUser,
   isModelAllowedInTrial,
   isTrialExpired,
+  proKeyRequiredResponse,
   trialExpiredResponse,
   trialModelRestrictedResponse,
   verifyGoogleUser,
@@ -51,6 +52,9 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
       userPlan = 'free'
       wasTrialExhausted = true
       trialRemaining = 0 // header x-trial-remaining:0 → débloque le premium via crédits (UI)
+    } else if (result && result.planType === 'pro') {
+      // Pro = BYOK (P2.5) : la licence donne l'app à vie, pas la clé serveur.
+      return proKeyRequiredResponse()
     } else if (result) {
       apiKey = env.GEMINI_API_KEY
       usingServerKey = true

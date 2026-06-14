@@ -152,8 +152,36 @@ FROM user_cost, grand g ORDER BY cost_micro DESC LIMIT 10;
 | 4 | Fallbacks `getPricing()` pessimistes | Code (défensif, nul aujourd'hui) | Claude, si ajout de modèle |
 | 5 | Re-lancer la vigie whales à >40 users actifs | Routine | trimestriel |
 
-**Aucun changement de code dans cette vigie** : c'est une analyse. Les leviers
-(quota Opus, markup) sont des décisions business à arbitrer, pas des fixes.
+**Aucun changement de code dans la vigie elle-même** : c'est une analyse. Les
+leviers (quota Opus, markup) sont des décisions business à arbitrer, pas des fixes.
+
+---
+
+## Addendum 14 juin — suite « sous-quota Opus » (audit RÈGLE 7, 2 agents)
+
+L'arbitrage « 150 Claude dont 30 Opus » a été **abandonné** après audit : Opus
+n'est auto-sélectionné (`selectClaudeSubModel`, aiRouter.ts:354) que si
+`isPro && thinking.budget >= 10000 && /rapport stratégique|business plan|étude de
+marché/`. Or `isPro` = **licence Pro** (pas l'abonnement), et le cap 150 ne
+s'applique qu'au plan **subscription** (proxy.ts:194). Les deux populations ne se
+recoupent pas → le sous-cap Opus aurait gardé une porte déjà murée (code mort).
+
+**Le vrai trou découvert** : un compte **Pro (licence à vie 39 €) sans BYOK
+récupérait la clé serveur, non plafonné** (`checkAllowedUser` → planType 'pro' →
+proxy fallback clé serveur, cap subscription-only), et pouvait déclencher Opus →
+accès IA serveur illimité à vie pour 39 €. **Contradiction avec P2.5** (« Pro =
+licence + ta propre clé »). 0 licence Pro en base → corrigé sans casser personne.
+
+**Fix livré (décision Florent : Pro = BYOK uniquement)** : `planUsesServerKey(plan)`
+= `plan !== 'pro'` ; les 5 endpoints clé serveur (proxy anthropic/openai/mistral/
+gemini + image-gen) interceptent `planType === 'pro'` sans BYOK et renvoient
+`proKeyRequiredResponse()` (403 `pro_byok_required`). subscription/vip/trial/free
+gardent l'accès serveur (leurs quotas inchangés). Test de non-régression
+`proServerKeyGate.test.ts`. Le code colle enfin à la promesse pricing P2.5.
+
+**Suivi ouvert** : handler client dédié pour `pro_byok_required` (afficher « ajoute
+ta clé » au lieu d'une erreur générique) — non urgent (0 user Pro, le 403 porte
+déjà un message lisible).
 
 *Sources : agents RÈGLE 7 (Opus×2, Sonnet) + requêtes D1 prod `arty-db` (EU).
 Tarifs vérifiés conformes à `functions/api/_lib/pricing.ts`.*
