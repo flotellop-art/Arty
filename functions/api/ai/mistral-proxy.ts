@@ -13,7 +13,7 @@ import { freeModelLockedResponse } from '../_lib/freeQuota'
 import { createMistralParser, teeForParsing } from '../_lib/trackUsage'
 import {
   beginWalletBilling,
-  extractMaxOutputTokens,
+  makeReservationHeartbeat,
   settleWalletBilling,
   voidWalletBilling,
 } from '../_lib/walletBilling'
@@ -99,16 +99,17 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
   // payé à l'usage) ; sinon Mistral reste verrouillé en gratuit (Small déprécié).
   let walletResId: string | undefined
   if (usingServerKey && userPlan === 'free') {
-    let maxOut: number | undefined
+    let parsedBody: Record<string, unknown> = {}
     try {
-      maxOut = extractMaxOutputTokens('mistral', JSON.parse(body) as Record<string, unknown>)
+      parsedBody = JSON.parse(body) as Record<string, unknown>
     } catch {
-      /* maxOut undefined → réserve au plafond */
+      /* body illisible → réserve au plafond (estimation input = 0) */
     }
     const start = await beginWalletBilling(env, waitUntil, {
       email,
       model: modelName,
-      maxOutputTokens: maxOut,
+      provider: 'mistral',
+      body: parsedBody,
     })
     if (start.mode === 'refuse') return start.response
     if (start.mode === 'wallet') {
@@ -181,7 +182,8 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
       const { clientBody, parsedUsage } = teeForParsing(
         response.body,
         parser.feed,
-        parser.finalize
+        parser.finalize,
+        makeReservationHeartbeat(env, walletResId)
       )
       const rid = walletResId
       waitUntil(

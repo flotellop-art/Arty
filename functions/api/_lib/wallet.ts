@@ -204,8 +204,11 @@ export async function reserveCredits(
       D1_TIMEOUT_MS,
     )
     if (raced === '__timeout__') {
-      // Le batch est atomique : commit complet (résa+hold couplés, le sweeper
-      // rendra) ou rien. Dans les deux cas, aucun leak. On refuse côté caller.
+      // Le timeout n'ANNULE PAS le batch (D1 n'a pas d'abort) : il peut commiter
+      // côté serveur après coup → un hold transitoire est pris alors qu'on refuse
+      // côté caller. Ce hold est BORNÉ et récupéré par le sweeper (≤15 min) ; il
+      // ne bloque que le solde de CET user, jamais d'overspend ni de perte. (Le
+      // batch reste atomique résa+hold couplés → pas de résa orpheline sans hold.)
       console.error('[wallet] reserve D1 timeout')
       return { status: 'db_unavailable' }
     }
@@ -252,17 +255,21 @@ export async function settleCredits(
     try {
       const res = await env.DB.batch([
         env.DB.prepare(
+          // Durcissement (audit 14 juin) : les sous-requêtes corrèlent sur
+          // `user_email` en plus de `id` → une réservation ne peut JAMAIS
+          // toucher le wallet d'un autre user, même si l'appelant passait un
+          // email incohérent. La sécurité ne dépend plus du seul contrat appelant.
           `UPDATE wallet SET
-             reserved_micro = MAX(0, reserved_micro - (SELECT reserved_micro FROM reservation WHERE id = ?1 AND status = 'open')),
+             reserved_micro = MAX(0, reserved_micro - (SELECT reserved_micro FROM reservation WHERE id = ?1 AND status = 'open' AND user_email = ?3)),
              balance_micro = balance_micro - ?2,
              updated_at = datetime('now')
-           WHERE user_email = ?3 AND EXISTS (SELECT 1 FROM reservation WHERE id = ?1 AND status = 'open')`,
+           WHERE user_email = ?3 AND EXISTS (SELECT 1 FROM reservation WHERE id = ?1 AND status = 'open' AND user_email = ?3)`,
         ).bind(resId, chargeMicro, email),
         env.DB.prepare(
           `INSERT INTO credit_ledger
              (user_email, amount_micro, kind, ref_type, ref_id, provider_cost_micro, model, modality, meta)
            SELECT ?1, ?2, 'debit', 'reservation', ?3, ?4, ?5, ?6, ?7
-           WHERE EXISTS (SELECT 1 FROM reservation WHERE id = ?3 AND status = 'open')
+           WHERE EXISTS (SELECT 1 FROM reservation WHERE id = ?3 AND status = 'open' AND user_email = ?1)
            ON CONFLICT DO NOTHING`,
         ).bind(email, -chargeMicro, resId, providerCostMicro, model, modality, meta),
         env.DB.prepare(
@@ -295,10 +302,11 @@ export async function voidReservation(env: Env, resId: string, email: string): P
   try {
     const res = await env.DB.batch([
       env.DB.prepare(
+        // Durcissement (audit 14 juin) : corrélation sur user_email (cf. settle).
         `UPDATE wallet SET
-           reserved_micro = MAX(0, reserved_micro - (SELECT reserved_micro FROM reservation WHERE id = ?1 AND status = 'open')),
+           reserved_micro = MAX(0, reserved_micro - (SELECT reserved_micro FROM reservation WHERE id = ?1 AND status = 'open' AND user_email = ?2)),
            updated_at = datetime('now')
-         WHERE user_email = ?2 AND EXISTS (SELECT 1 FROM reservation WHERE id = ?1 AND status = 'open')`,
+         WHERE user_email = ?2 AND EXISTS (SELECT 1 FROM reservation WHERE id = ?1 AND status = 'open' AND user_email = ?2)`,
       ).bind(resId, email),
       env.DB.prepare(
         `UPDATE reservation SET status = 'voided', settled_at = datetime('now')
@@ -394,6 +402,15 @@ export async function creditWallet(
 ): Promise<CreditResult> {
   const { provider, eventId, email, amountMicro, kind = 'topup' } = params
   const orderId = params.orderId ?? null
+  // Fix fuite F-C (audit 14 juin) : le ref_id du ledger pour refund/chargeback
+  // DOIT être l'event_id (unique par event), PAS l'order_id. Deux remboursements
+  // partiels sur une même commande partagent l'order_id → collision sur l'index
+  // unique partiel (ref_type, ref_id, kind WHERE kind IN debit/refund/chargeback)
+  // → le batch entier rollback → l'event n'est jamais claimé → retry infini du
+  // webhook + 2e remboursement jamais appliqué. Utiliser l'event_id aligne la clé
+  // d'unicité du ledger sur celle de webhook_event (la vraie source d'idempotence).
+  // topup garde l'order_id (hors index partiel) pour que le refund le retrouve.
+  const ledgerRefId = kind === 'topup' ? (orderId ?? eventId) : eventId
   if (!env.DB) return { status: 'error' }
   await ensureWalletTables(env)
   try {
@@ -411,7 +428,7 @@ export async function creditWallet(
         `INSERT INTO credit_ledger (user_email, amount_micro, kind, ref_type, ref_id)
          SELECT ?1, ?2, ?3, 'mor_order', ?4
          WHERE NOT EXISTS (SELECT 1 FROM webhook_event WHERE provider = ?5 AND event_id = ?6)`,
-      ).bind(email, amountMicro, kind, orderId ?? eventId, provider, eventId),
+      ).bind(email, amountMicro, kind, ledgerRefId, provider, eventId),
       env.DB.prepare(
         `INSERT INTO webhook_event (provider, event_id, order_id, user_email, amount_micro, kind)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6) ON CONFLICT DO NOTHING`,

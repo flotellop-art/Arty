@@ -63,8 +63,12 @@ function ruleFor(model: string, modality: Modality): MarkupRule {
  */
 export function applyMarkup(providerCostMicro: number, model: string, modality: Modality): number {
   const rule = ruleFor(model, modality)
-  const marked = Math.round((providerCostMicro * (10000 + rule.markupBps)) / 10000)
-  return Math.max(marked, rule.minChargeMicro)
+  // Garde isFinite : si getPricing renvoyait NaN pour un modèle inconnu (tarif
+  // mal défini), on retombe sur 0 → le plancher minChargeMicro s'applique au
+  // lieu d'écrire un NaN dans balance_micro côté D1.
+  const base = Number.isFinite(providerCostMicro) && providerCostMicro > 0 ? providerCostMicro : 0
+  const marked = Math.round((base * (10000 + rule.markupBps)) / 10000)
+  return Math.max(Number.isFinite(marked) ? marked : 0, rule.minChargeMicro)
 }
 
 /** Coerce un compteur de tokens en entier fini >= 0 (parsing SSE foireux, BUG 52). */
@@ -93,21 +97,34 @@ export function chargeForUsageMicro(
 }
 
 /**
- * RÉSERVE texte : estimation PESSIMISTE avant l'appel (on suppose tout le budget
- * output consommé). Mieux vaut sur-réserver et rendre le reliquat au settle que
- * sous-réserver et laisser le solde plonger.
+ * RÉSERVE texte : estimation PESSIMISTE avant l'appel. Couvre l'OUTPUT (budget
+ * plafonné) ET l'INPUT estimé (depuis la taille du prompt).
+ *
+ * ⚠️ Inclure l'input est CRITIQUE (fix fuite F-A, audit 14 juin) : avant, la
+ * réserve ne couvrait que l'output (~centimes) alors que le settle débite
+ * l'input réel. Un user pouvait acheter 1 ct de crédits, envoyer un prompt de
+ * 200k tokens à Opus, et obtenir plusieurs $ d'IA en poussant son solde très
+ * négatif. En réservant l'input, il doit AVOIR le solde correspondant pour que
+ * l'appel passe — la fuite est colmatée. La sous-réserve résiduelle (output
+ * réel > plafond) reste bornée et rattrapée au settle (politique explicite).
  */
-export function estimateReserveMicro(model: string, maxTokens: number | undefined): number {
+export function estimateReserveMicro(
+  model: string,
+  maxTokens: number | undefined,
+  estInputTokens = 0,
+): number {
   // On réserve sur un budget output PLAFONNÉ (jamais max_tokens brut) ; le coût
   // réel est prélevé au settle. Si max_tokens est absent, on prend le plafond.
   const tokens =
     Number.isFinite(maxTokens) && (maxTokens as number) > 0
       ? Math.min(maxTokens as number, RESERVE_OUTPUT_TOKEN_CAP)
       : RESERVE_OUTPUT_TOKEN_CAP
+  const inTokens = Number.isFinite(estInputTokens) && estInputTokens > 0 ? estInputTokens : 0
   const p = getPricing(model)
   // µ$ = tokens × ($/Mtok) : les deux facteurs 1e6 (par-million ÷, micro ×) s'annulent.
   const outputCostMicro = Math.round(tokens * p.output)
-  return applyMarkup(outputCostMicro, model, 'text')
+  const inputCostMicro = Math.round(inTokens * p.input)
+  return applyMarkup(outputCostMicro + inputCostMicro, model, 'text')
 }
 
 /**
