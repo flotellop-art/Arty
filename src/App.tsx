@@ -24,7 +24,6 @@ import { CapReachedModal } from './components/chat/CapReachedModal'
 import { OAuthCallback } from './components/google/OAuthCallback'
 import { LoginScreen } from './components/auth/LoginScreen'
 import { SharedConversationView } from './components/share/SharedConversationView'
-import { WelcomeSlides, isOnboardingDone } from './components/onboarding/WelcomeSlides'
 import {
   OnboardingChoice,
   TrialIntro,
@@ -865,16 +864,14 @@ export default function App() {
     processOAuth(deepLinkCode)
   }, [deepLinkCode])
 
-  const [onboardingDone, setOnboardingDone] = useState(isOnboardingDone)
   const [choiceDone, setChoiceDone] = useState(isOnboardingChoiceDone)
   const [splash, setSplash] = useState(() => getOnboardingSplash())
 
   if (!auth.isAuthenticated) {
-    // Show welcome slides before login (first time only)
-    if (!onboardingDone) {
-      return <WelcomeSlides onComplete={() => setOnboardingDone(true)} />
-    }
-
+    // P2.2 — les 4 slides emojis génériques ont été supprimées (elles ne
+    // démontraient rien et ajoutaient un écran avant de pouvoir essayer). On
+    // va directement à l'écran de choix, qui porte désormais la preuve de
+    // valeur (mini-démos entrée→sortie) + le CTA d'essai.
     // Then show the welcome / Google / BYOK choice screen, also first time only.
     if (!choiceDone) {
       return (

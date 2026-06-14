@@ -235,8 +235,17 @@ unique sous 20 $/mois). Pas par la largeur de catalogue. Volume = distribution
 - [ ] **P2.1 iOS App Store** : port Capacitor (code `ios/` existant). Le plafond de verre
   d'acquisition (55-60 % des dépenses mobiles EU/US). Prérequis : privacy descriptions
   Info.plist (BUG 34), compte développeur, process de review.
-- [ ] **P2.2 Onboarding commercial** : remplacer les 4 slides emojis par 3 démos
-  différenciantes (mail → réponse rédigée ; agenda → brief du matin ; PDF → analyse).
+- [x] **P2.2 Onboarding commercial** — FAIT 14 juin 2026 (PR à venir), **pivot activation**
+  (audit RÈGLE 7, 2 agents). Le challenge a montré que 3 démos slides = 3 écrans passifs de
+  plus AVANT de pouvoir essayer (friction en acquisition à froid) et que l'app a DÉJÀ des
+  intents cliquables (HomeScreen) qui lancent la vraie action. Retenu : (1) **suppression
+  des 4 slides emojis** génériques (`WelcomeSlides.tsx` supprimé) → on va direct à l'écran
+  de choix ; (2) **preuve de valeur sur l'écran de choix** : 3 mini-démos statiques
+  entrée→sortie (JSX pur, AUCUN réseau, cas par « collage » → HONNÊTES avant connexion
+  Google, pas de promesse Gmail trahie) ; (3) **TrialIntro décluttré** (retrait de la liste
+  technique des modèles, oriente vers le 1er message). Vérifié visuellement (Playwright,
+  viewport mobile). NON fait (scope/risque) : pipeline « clic → auto-envoi du 1er message »
+  depuis le splash — les intents cliquables de l'accueil le couvrent déjà à 1 tap.
 - [x] **P2.3 Afficher « annulation en 1 clic, pause possible »** sur la page pricing
   (82 % plus enclins à s'abonner si l'annulation est facile). FAIT 14 juin 2026 (PR #280) :
   ligne de rassurance sur la carte Subscription, visible aussi aux non-abonnés. ⚠️ « pause »

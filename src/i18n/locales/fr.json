@@ -922,9 +922,17 @@
       "byokLink": "J'ai une clé API",
       "subLink": "J'ai déjà un abonnement"
     },
+    "proof": {
+      "intro": "Concrètement, en un message :",
+      "items": [
+        { "ask": "Réponds à ce mail pour décliner poliment", "reply": "Bonjour, merci pour votre proposition. Je ne donnerai pas suite cette fois, mais…" },
+        { "ask": "Résume ce contrat en 3 points", "reply": "• Engagement 12 mois · Préavis 30 j · Pénalité 2 mois" },
+        { "ask": "Organise ma semaine à partir de ces notes", "reply": "Lun : appel client · Mer : rendu projet · Ven : factures" }
+      ]
+    },
     "trial": {
       "title": "30 messages offerts !",
-      "subtitle": "Modèles disponibles : Claude Haiku, GPT-5 mini, Gemini Flash, Mistral Medium",
+      "subtitle": "Tout est prêt. Pose ta première question — ou pioche un exemple sur l'accueil.",
       "cta": "C'est parti",
       "upgrade": "Passe à Pro ou Subscription pour débloquer tous les modèles",
       "memoryNote": "Arty mémorise discrètement ce qui compte pour toi — tout reste chiffré sur ton appareil, modifiable dans les Paramètres."

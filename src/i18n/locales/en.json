@@ -922,9 +922,17 @@
       "byokLink": "I have an API key",
       "subLink": "I already have a subscription"
     },
+    "proof": {
+      "intro": "Concretely, in one message:",
+      "items": [
+        { "ask": "Reply to this email to politely decline", "reply": "Hi, thanks for your proposal. I won't be moving forward this time, but…" },
+        { "ask": "Summarize this contract in 3 points", "reply": "• 12-month term · 30-day notice · 2-month penalty" },
+        { "ask": "Plan my week from these notes", "reply": "Mon: client call · Wed: project delivery · Fri: invoices" }
+      ]
+    },
     "trial": {
       "title": "30 free messages!",
-      "subtitle": "Available models: Claude Haiku, GPT-5 mini, Gemini Flash, Mistral Medium",
+      "subtitle": "You're all set. Ask your first question — or pick an example on the home screen.",
       "cta": "Let's go",
       "upgrade": "Upgrade to Pro or Subscription to unlock all models",
       "memoryNote": "Arty quietly remembers what matters to you — everything stays encrypted on your device, editable in Settings."

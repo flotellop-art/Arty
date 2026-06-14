@@ -29,7 +29,7 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Capacitor, registerPlugin } from '@capacitor/core'
-import { ArtyWordmark } from '../shared/PrismMark'
+import { ArtyWordmark, PrismMark } from '../shared/PrismMark'
 import { buildOAuthUrl } from '../../services/googleAuth'
 import { initTrial } from '../../services/trialClient'
 import { apiUrl } from '../../services/apiBase'
@@ -160,7 +160,14 @@ export function OnboardingChoice({
               })}
             </p>
 
-            <div className="mt-10 space-y-4">
+            {/* P2.2 — preuve de valeur concrète (statique, JSX pur, aucun appel
+                réseau). Cas par « collage » → réponse, donc HONNÊTES avant la
+                connexion Google (on ne montre pas de démo Gmail qui exigerait un
+                compte connecté = pas de promesse trahie). Remplace les anciennes
+                4 slides emojis génériques. */}
+            <ProofPills />
+
+            <div className="mt-8 space-y-4">
               <button
                 type="button"
                 onClick={handleGoogle}
@@ -335,6 +342,41 @@ export function TrialIntro({ onDone, onUpgrade }: TrialIntroProps) {
             defaultValue: 'Passe à Pro ou Subscription pour débloquer tous les modèles',
           })}
         </button>
+      </div>
+    </div>
+  )
+}
+
+// ─── P2.2 — preuve de valeur (mini démos statiques) ────────────────────────
+
+interface ProofItem {
+  ask: string
+  reply: string
+}
+
+function ProofPills() {
+  const { t } = useTranslation()
+  const raw = t('onboardingChoice.proof.items', { returnObjects: true })
+  const items: ProofItem[] = Array.isArray(raw) ? (raw as ProofItem[]) : []
+  if (items.length === 0) return null
+
+  return (
+    <div className="mt-8">
+      <p className="font-sans text-[10px] font-semibold uppercase tracking-kicker text-theme-muted text-center mb-3">
+        {t('onboardingChoice.proof.intro', { defaultValue: 'Concrètement, en un message :' })}
+      </p>
+      <div className="space-y-2">
+        {items.map((item, i) => (
+          <div key={i} className="rounded-2xl bg-theme-ink/[0.04] border border-theme-ink/10 p-3">
+            <p className="font-display italic text-[13px] text-theme-ink/90 leading-snug">« {item.ask} »</p>
+            <div className="flex gap-2 mt-1.5">
+              <span className="flex-shrink-0 mt-[3px] text-theme-accent" aria-hidden>
+                <PrismMark size={13} fill />
+              </span>
+              <p className="font-sans text-[12px] text-theme-muted leading-snug">{item.reply}</p>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   )
