@@ -245,6 +245,10 @@
       "screenshot": "PC screenshot",
       "screenshotAlt": "PC screenshot"
     },
+    "contextCompressed": {
+      "message": "This conversation is long: I summarized the beginning to keep going. For sharper answers (and fewer credits), start a new conversation.",
+      "newConv": "New conversation"
+    },
     "privacyWarning": {
       "title": "Data leaving Europe",
       "body": "This conversation contains messages processed by Mistral (servers in Europe). Switching to {{targetModel}} will send the whole history to the United States. Continue?"

@@ -5,6 +5,7 @@ import {
   type MonthlyModelUsage,
   type MonthlyQuotaStatus,
 } from '../../services/quotaStatus'
+import { hasWalletCached } from '../../services/walletClient'
 
 // Refresh périodique du badge. MED (audit étape 6) — 60s était trop fréquent :
 // l'event 'cost-updated' (BUG 54) fire à chaque recordUsage local, ce qui
@@ -16,6 +17,10 @@ export function CostIndicator() {
   const { t } = useTranslation()
   const [data, setData] = useState<MonthlyQuotaStatus | null>(null)
   const [showDetails, setShowDetails] = useState(false)
+  // Les users CRÉDITS ne voient QUE leur solde (WalletBadge). Ce badge affiche le
+  // coût fournisseur en ~$ (SANS markup) — le laisser à côté du solde crédits
+  // (markupé) exposerait la marge et créerait deux unités contradictoires (P1.7).
+  const [isWalletUser, setIsWalletUser] = useState(() => hasWalletCached())
 
   const refresh = useCallback(async () => {
     const status = await fetchMonthlyQuotaStatus()
@@ -25,14 +30,22 @@ export function CostIndicator() {
   useEffect(() => {
     refresh()
     const interval = window.setInterval(refresh, REFRESH_MS)
-    const onCostEvent = () => { refresh() }
+    const onCostEvent = () => {
+      refresh()
+      // Le flag wallet peut arriver après le 1er mount (fetchWalletBalance async).
+      setIsWalletUser(hasWalletCached())
+    }
     window.addEventListener('cost-updated', onCostEvent)
+    window.addEventListener('wallet-updated', onCostEvent)
     return () => {
       window.clearInterval(interval)
       window.removeEventListener('cost-updated', onCostEvent)
+      window.removeEventListener('wallet-updated', onCostEvent)
     }
   }, [refresh])
 
+  // User crédits → une seule unité affichée (le solde dans WalletBadge).
+  if (isWalletUser) return null
   // Pas de données → utilisateur non whitelisté (BYOK pur), on cache le badge.
   if (!data) return null
 

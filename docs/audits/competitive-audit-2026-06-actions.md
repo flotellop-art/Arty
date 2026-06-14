@@ -224,11 +224,21 @@ unique sous 20 $/mois). Pas par la largeur de catalogue. Volume = distribution
   (withTimeout) masquait le `t` i18n dans LoginScreen → renommée `timeout`.
   Suivi : les labels de catégories de templates vivent dans `data/templates.ts`
   (couche données, encore FR) — à i18niser si on vise sérieusement l'anglophone.
-- [ ] **P1.7 Crédits — visibilité du coût par message** (suite PR #238) : « ce message :
-  3 crédits » sous chaque réponse (données du settle existantes), estimation avant envoi
-  sur modèles premium, maîtrise du contexte en conversation longue (croissance
-  quadratique = le « mes crédits ont fondu » d'Abacus). Conditions pour rester côté
-  OpenRouter (transparent) et pas côté Poe (opaque).
+- [x] **P1.7 Crédits — cohérence d'unité + contexte long** — FAIT 14 juin 2026 (PR à venir),
+  **pivot confiance** (audit RÈGLE 7, agents Sonnet/Opus). Le challenge a recadré le scope
+  initial (« coût par message » + « estimation avant envoi ») : le settle est asynchrone
+  APRÈS le stream (pas dans la réponse HTTP) → pas de chiffre fiable par message en live, et
+  une estimation avant envoi expose le markup ET crée de l'anxiété. Livré à la place les deux
+  socles de confiance : (1) **une seule unité** pour les users crédits — `CostIndicator` (~$
+  coût fournisseur SANS markup) masqué quand un wallet existe, sinon il diverge du solde
+  crédits et expose la marge ; `MICRO_PER_CREDIT` centralisé dans `walletClient`
+  (`microToCredits`). (2) **garde-fou conversation longue** — la compression de contexte à 80k
+  tokens (`conversationCompressor`) était SILENCIEUSE (bascule cachée) ; elle émet maintenant
+  `arty-context-compressed` → bannière discrète honnête + bouton « nouvelle conversation »
+  (`ContextCompressedBanner`). C'est la réponse au « mes crédits ont fondu » d'Abacus :
+  repartir propre = moins de tokens rejoués. **Reste côté OpenRouter (transparent), pas Poe.**
+  Suite possible (différée, plus basse priorité) : coût par message SUR DEMANDE (tap → ~X
+  crédits, calcul client-side avec miroir markup, post-stream uniquement).
 
 ## P2 — Distribution & expansion
 

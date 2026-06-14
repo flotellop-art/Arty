@@ -17,6 +17,30 @@ export interface WalletBalance {
 // Cache synchrone du solde disponible : les services non-React (aiRouter) en ont
 // besoin sans hook. Rafraîchi à chaque fetch (WalletBadge + usePlanStatus).
 const WALLET_CACHE_KEY = 'arty-wallet-available'
+// Cache du flag « cet user a un wallet » — sert à n'afficher qu'UNE unité de
+// coût (crédits) pour les users prépayés : le CostIndicator (coût fournisseur
+// en ~$, non markupé) est masqué pour eux, sinon il diverge du solde crédits et
+// EXPOSE le markup (P1.7, audit 14 juin).
+const WALLET_HAS_KEY = 'arty-wallet-has'
+
+// 1 crédit AFFICHÉ = 1 cent US (10 000 micro-USD). Choix de PRÉSENTATION
+// centralisé ICI (avant : dupliqué dans WalletBadge) — une seule source pour
+// toutes les surfaces qui convertissent µ$ ↔ crédits.
+export const MICRO_PER_CREDIT = 10_000
+
+/** Convertit un montant en micro-USD en crédits affichés (arrondi bas). */
+export function microToCredits(micro: number): number {
+  return Math.max(0, Math.floor((Number.isFinite(micro) ? micro : 0) / MICRO_PER_CREDIT))
+}
+
+/** Vrai si le dernier fetch a vu un wallet (lecture synchrone, sans hook). */
+export function hasWalletCached(): boolean {
+  try {
+    return localStorage.getItem(WALLET_HAS_KEY) === '1'
+  } catch {
+    return false
+  }
+}
 
 export function getCachedWalletAvailableMicro(): number {
   try {
@@ -53,6 +77,7 @@ export async function fetchWalletBalance(): Promise<WalletBalance | null> {
     const data = (await resp.json()) as WalletBalance
     try {
       localStorage.setItem(WALLET_CACHE_KEY, String(data.availableMicro ?? 0))
+      localStorage.setItem(WALLET_HAS_KEY, data.hasWallet ? '1' : '0')
     } catch {
       /* storage indispo — non bloquant */
     }

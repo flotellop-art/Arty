@@ -1,5 +1,21 @@
 import { apiUrl } from './apiBase'
 
+// Nom de l'event émis quand on vient de compresser le contexte d'une conversation.
+// L'UI (bannière discrète) écoute pour PRÉVENIR l'utilisateur — la compression
+// silencieuse violait le principe « jamais de bascule cachée » (P1.7, 14 juin).
+export const CONTEXT_COMPRESSED_EVENT = 'arty-context-compressed'
+
+function notifyCompressed(keptRecent: number): void {
+  try {
+    if (typeof window === 'undefined') return
+    window.dispatchEvent(
+      new CustomEvent(CONTEXT_COMPRESSED_EVENT, { detail: { keptRecent } })
+    )
+  } catch {
+    /* pas de window (tests) — non bloquant */
+  }
+}
+
 // Rough token estimation: ~4 chars per token for French text
 function estimateTokens(text: string): number {
   return Math.ceil(text.length / 4)
@@ -94,6 +110,9 @@ export async function compressIfNeeded(
       },
       ...recentMessages,
     ]
+
+    // Compression réellement effectuée → préviens l'UI (bannière discrète).
+    notifyCompressed(recentMessages.length)
 
     return compressedMessages
   } catch {

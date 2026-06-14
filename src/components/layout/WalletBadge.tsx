@@ -1,10 +1,13 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { fetchWalletBalance, type WalletBalance } from '../../services/walletClient'
+import {
+  fetchWalletBalance,
+  microToCredits,
+  type WalletBalance,
+} from '../../services/walletClient'
 
-// 1 crédit AFFICHÉ = 1 cent US (10 000 micro-USD). C'est un choix de PRÉSENTATION
-// (à régler avec le mapping prix/crédits) — le backend reste en micro-USD.
-const MICRO_PER_CREDIT = 10_000
+// 1 crédit AFFICHÉ = 1 cent US : la conversion µ$ ↔ crédits vit dans walletClient
+// (microToCredits) — une seule source pour toutes les surfaces (P1.7).
 // Sous ce seuil de crédits, on passe le badge en orange (puis rouge à 0).
 const LOW_CREDITS = 50
 // Refresh : l'event 'cost-updated' (BUG 54) fire après chaque message → couvre
@@ -40,7 +43,7 @@ export function WalletBadge() {
   // Affiché uniquement pour les utilisateurs qui ont un wallet (crédits achetés).
   if (!data || !data.hasWallet) return null
 
-  const credits = Math.max(0, Math.floor(data.availableMicro / MICRO_PER_CREDIT))
+  const credits = microToCredits(data.availableMicro)
   const color =
     credits <= 0 ? 'text-red-500' : credits <= LOW_CREDITS ? 'text-yellow-600' : 'text-green-600'
 
