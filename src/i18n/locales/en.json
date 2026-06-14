@@ -508,6 +508,20 @@
     "markUndone": "Mark as not done",
     "delete": "Delete"
   },
+  "wallet": {
+    "badge": "{{credits}} credits",
+    "badgeTitle": "Prepaid credits remaining",
+    "badgeAria": "Credits balance"
+  },
+  "advisor": {
+    "title": "Suggestion",
+    "recommend_subscription": "Over your last 30 days, the flat plan ({{subscription}} €) would cost less than your credits ({{credits}} €) — you'd save ~{{savings}} €/mo.",
+    "recommend_byok": "Over your last 30 days, bringing your own key would cost ~{{byok}} €/mo (vs {{current}} €), paid back in ~{{payback}} months — then you only pay provider cost.",
+    "recommend_credits": "Over your last 30 days, pay-as-you-go (~{{credits}} €) would cost less than your flat plan — ~{{savings}} €/mo saved.",
+    "threeNumbers": "Credits {{credits}} € · Flat {{subscription}} € · Your key {{byok}} €",
+    "optOut": "Stop suggesting optimizations",
+    "ctaSubscribe": "Switch to the flat plan"
+  },
   "costs": {
     "badgeTitle": "Real API cost (this month)",
     "badgeAria": "API cost",
@@ -776,6 +790,14 @@
     "premiumPackTitle": "+100 premium messages pack",
     "premiumPackDescription": "For Subscription users who have reached their monthly quota.",
     "premiumPackCta": "Buy 100 messages",
+    "creditsTitle": "Prepaid credits",
+    "creditsPrice": "€10 = 1,000 credits",
+    "creditsTagline": "Pay as you go · No subscription",
+    "creditsDescription": "Top up once, spend across every model. No monthly commitment — credits don't expire.",
+    "creditsCta": "Buy credits",
+    "creditsBusy": "Opening checkout…",
+    "creditsError": "Couldn't start the checkout. Please try again.",
+    "creditsAdded": "Credits added — your balance is up to date.",
     "transparency": "Our limits are stated in plain messages — no “credits” or “points”. The price shown is the final price, VAT included. A daily anti-abuse limit applies to all plans.",
     "manageSubscription": "Manage my subscription (cancel online)",
     "subscriptionReassurance": "✓ Cancel in one click, anytime — pause available. No commitment.",

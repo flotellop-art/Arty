@@ -11,6 +11,12 @@ import { checkPremiumCap, premiumCapReachedResponse } from '../_lib/checkPremium
 import { consumeDailyQuota, recordUsage } from '../_lib/quota'
 import { freeModelLockedResponse } from '../_lib/freeQuota'
 import { createMistralParser, teeForParsing } from '../_lib/trackUsage'
+import {
+  beginWalletBilling,
+  makeReservationHeartbeat,
+  settleWalletBilling,
+  voidWalletBilling,
+} from '../_lib/walletBilling'
 
 const MISTRAL_API_URL = 'https://api.mistral.ai/v1/chat/completions'
 
@@ -29,6 +35,9 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
   let usingServerKey = false
   let userPlan: 'subscription' | 'pro' | 'vip' | 'free' | 'trial' = 'free'
   let trialRemaining: number | undefined
+  // Essai épuisé routé vers le wallet (crédits) : mémorise l'origine pour rendre
+  // un 403 trial_expired si pas de crédits (pas de tier gratuit Mistral).
+  let wasTrialExhausted = false
 
   // Fallback clé serveur pour les utilisateurs avec un plan actif
   // (sub/pro/vip/trial). `checkAllowedUser` gère le bypass VIP et le
@@ -36,9 +45,15 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
   if (!apiKey && env.MISTRAL_API_KEY) {
     const result = await checkAllowedUser(request, env)
     if (isTrialExpired(result)) {
-      return trialExpiredResponse()
-    }
-    if (result) {
+      // Essai épuisé → wallet (crédits) au lieu d'un 403 sec. `cap_reached` n'a
+      // pas décrémenté le compteur → pas de double-débit. On route comme 'free' ;
+      // sans crédits, le bloc wallet rend trial_expired.
+      apiKey = env.MISTRAL_API_KEY
+      usingServerKey = true
+      userPlan = 'free'
+      wasTrialExhausted = true
+      trialRemaining = 0 // header x-trial-remaining:0 → débloque le premium via crédits (UI)
+    } else if (result) {
       apiKey = env.MISTRAL_API_KEY
       usingServerKey = true
       userPlan = result.planType
@@ -80,10 +95,30 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     }
   }
 
-  // Free : Mistral n'est plus accessible en free depuis la dépréciation
-  // de Small (mai 2026). Medium est trop coûteux pour le tier gratuit.
+  // Sans abo : si l'utilisateur a des crédits → wallet (n'importe quel modèle,
+  // payé à l'usage) ; sinon Mistral reste verrouillé en gratuit (Small déprécié).
+  let walletResId: string | undefined
   if (usingServerKey && userPlan === 'free') {
-    return freeModelLockedResponse(modelName)
+    let parsedBody: Record<string, unknown> = {}
+    try {
+      parsedBody = JSON.parse(body) as Record<string, unknown>
+    } catch {
+      /* body illisible → réserve au plafond (estimation input = 0) */
+    }
+    const start = await beginWalletBilling(env, waitUntil, {
+      email,
+      model: modelName,
+      provider: 'mistral',
+      body: parsedBody,
+    })
+    if (start.mode === 'refuse') return start.response
+    if (start.mode === 'wallet') {
+      walletResId = start.resId
+    } else {
+      // Essai épuisé sans crédits → 403 trial_expired ; sinon Mistral verrouillé.
+      if (wasTrialExhausted) return trialExpiredResponse()
+      return freeModelLockedResponse(modelName)
+    }
   }
 
   // Quota quotidien uniquement sur la clé serveur ET pour le plan subscription
@@ -133,6 +168,8 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => 'Unknown Mistral error')
+      // Le fetch upstream a échoué → libère la réserve wallet en vol (PR #281).
+      if (walletResId) waitUntil(voidWalletBilling(env, walletResId, email))
       // Fix 429 (11 juin 2026) — forwarder Retry-After d'upstream pour que
       // le backoff client attende le bon délai au lieu d'un délai aveugle.
       // Header de réponse recopié tel quel : aucune surface d'auth modifiée.
@@ -156,26 +193,38 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
       return new Response(errorText, { status: response.status, headers })
     }
 
-    // Tracking tokens réels côté serveur uniquement.
+    // Tracking tokens réels côté serveur — un seul tee, deux consommateurs
+    // (analytics + débit wallet sur le chemin wallet).
     if (usingServerKey && response.body) {
       const parser = createMistralParser()
       const { clientBody, parsedUsage } = teeForParsing(
         response.body,
         parser.feed,
-        parser.finalize
+        parser.finalize,
+        makeReservationHeartbeat(env, walletResId)
       )
-      waitUntil(parsedUsage.then((usage) => recordUsage(env, email, modelName, usage)))
+      const rid = walletResId
+      waitUntil(
+        parsedUsage.then((usage) =>
+          Promise.allSettled([
+            recordUsage(env, email, modelName, usage),
+            ...(rid ? [settleWalletBilling(env, { resId: rid, email, model: modelName }, usage)] : []),
+          ])
+        )
+      )
       return new Response(clientBody, {
         status: response.status,
         headers: responseHeaders(),
       })
     }
 
+    if (walletResId) waitUntil(voidWalletBilling(env, walletResId, email))
     return new Response(response.body, {
       status: response.status,
       headers: responseHeaders(),
     })
   } catch (err) {
+    if (walletResId) waitUntil(voidWalletBilling(env, walletResId, email))
     return Response.json(
       { error: err instanceof Error ? err.message : 'Mistral proxy error' },
       { status: 502 }

@@ -1,5 +1,5 @@
 import type { Env } from '../../env'
-import { parseAllowedEmails } from '../_lib/checkAllowedUser'
+import { parseAllowedEmails, verifyTokenViaTokeninfo } from '../_lib/checkAllowedUser'
 import { PREMIUM_BUCKET_CAPS } from '../_lib/checkPremiumCap'
 import {
   FREE_DAILY_LIMITS,
@@ -74,35 +74,6 @@ function jsonStatus(body: StatusResponse): Response {
     status: 200,
     headers: { 'Content-Type': 'application/json', ...STATUS_HEADERS },
   })
-}
-
-async function verifyTokenViaTokeninfo(token: string, expectedAud: string | undefined): Promise<string | null> {
-  try {
-    const res = await fetch(
-      `https://oauth2.googleapis.com/tokeninfo?access_token=${encodeURIComponent(token)}`
-    )
-    if (!res.ok) return null
-    const info = (await res.json()) as {
-      email?: string
-      email_verified?: string | boolean
-      aud?: string
-      azp?: string
-    }
-    const email = info.email?.toLowerCase()
-    if (!email) return null
-    // H-Plan-2 (audit étape 5) — vérifier que le token vient bien de NOTRE
-    // application (aud == GOOGLE_CLIENT_ID) ET que l'email est vérifié.
-    // Sinon un token Google d'une autre app pouvait passer le check et créer
-    // une ligne subscriptions/license au nom de cet email.
-    const verified = info.email_verified === 'true' || info.email_verified === true
-    if (!verified) return null
-    if (expectedAud && info.aud && info.aud !== expectedAud && info.azp !== expectedAud) {
-      return null
-    }
-    return email
-  } catch {
-    return null
-  }
 }
 
 interface SubscriptionRow {

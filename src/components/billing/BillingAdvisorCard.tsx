@@ -1,0 +1,141 @@
+import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import { fetchBillingUsage } from '../../services/billingClient'
+import { decideBillingAdvice, type BillingAdvice } from '../../services/billingAdvisor'
+import { getStoredUser } from '../../services/googleAuth'
+import { openCheckout } from '../../services/checkout'
+
+// Carte « suggestion » du conseiller de facturation. Affichée seulement quand le
+// cerveau a une reco CONFIANTE (sinon rien). Déterministe, zéro appel IA.
+// Anti-harcèlement : refus mémorisé ; on ne re-montre la MÊME cible que si
+// l'économie a matériellement augmenté (doublé).
+
+const DISMISS_KEY = 'billing-advice-dismissed'
+interface Dismissed {
+  target: string
+  savings: number
+  at: number
+}
+
+function readDismissed(): Dismissed | null {
+  try {
+    const raw = localStorage.getItem(DISMISS_KEY)
+    return raw ? (JSON.parse(raw) as Dismissed) : null
+  } catch {
+    return null
+  }
+}
+
+// Kill-switch : coupe DÉFINITIVEMENT toutes les suggestions de facturation.
+const OPTOUT_KEY = 'billing-advice-optout'
+function isOptedOut(): boolean {
+  try {
+    return localStorage.getItem(OPTOUT_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+export function BillingAdvisorCard() {
+  const { t } = useTranslation()
+  const [advice, setAdvice] = useState<BillingAdvice | null>(null)
+  const [hidden, setHidden] = useState(false)
+
+  useEffect(() => {
+    let alive = true
+    fetchBillingUsage().then((usage) => {
+      if (alive && usage) setAdvice(decideBillingAdvice(usage))
+    })
+    return () => {
+      alive = false
+    }
+  }, [])
+
+  if (hidden || isOptedOut() || !advice || !advice.recommend) return null
+
+  // Refus mémorisé pour la même cible → re-montrer seulement si l'économie a doublé.
+  const dismissed = readDismissed()
+  if (
+    dismissed &&
+    dismissed.target === advice.recommend &&
+    advice.savingsEur < dismissed.savings * 2
+  ) {
+    return null
+  }
+
+  const onDismiss = () => {
+    try {
+      localStorage.setItem(
+        DISMISS_KEY,
+        JSON.stringify({ target: advice.recommend, savings: advice.savingsEur, at: Date.now() }),
+      )
+    } catch {
+      /* ignore */
+    }
+    setHidden(true)
+  }
+
+  const onOptOut = () => {
+    try {
+      localStorage.setItem(OPTOUT_KEY, '1')
+    } catch {
+      /* ignore */
+    }
+    setHidden(true)
+  }
+
+  // Seul le forfait a un parcours d'achat prêt (Lemon Squeezy). BYOK = configurer
+  // sa clé dans les réglages ; crédits = achat Creem à venir → ces cas informent
+  // sans bouton tant que le parcours n'existe pas.
+  const onSubscribe = () => {
+    const email = getStoredUser()?.email ?? ''
+    if (email) void openCheckout('subscription', email)
+  }
+
+  const vars = {
+    credits: advice.creditsEur.toFixed(2),
+    subscription: advice.subscriptionEur.toFixed(2),
+    byok: advice.byokEur.toFixed(2),
+    current: advice.currentEur.toFixed(2),
+    savings: advice.savingsEur.toFixed(2),
+    payback: advice.byokPaybackMonths != null ? String(Math.ceil(advice.byokPaybackMonths)) : '',
+  }
+
+  return (
+    <div className="rounded-2xl border border-theme-border bg-theme-surface p-4 mb-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[10px] uppercase tracking-wider text-theme-muted">{t('advisor.title')}</p>
+          <p className="text-sm text-theme-ink mt-1">{t(`advisor.${advice.reasonCode}`, vars)}</p>
+          {/* Transparence : les 3 chiffres, toujours, pour que la reco soit vérifiable. */}
+          <p className="text-[11px] text-theme-muted mt-2 font-mono">{t('advisor.threeNumbers', vars)}</p>
+          {advice.recommend === 'subscription' && (
+            <div className="mt-3">
+              <button
+                onClick={onSubscribe}
+                className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-theme-accent text-white hover:opacity-90"
+              >
+                {t('advisor.ctaSubscribe')}
+              </button>
+            </div>
+          )}
+          <button
+            onClick={onOptOut}
+            className="text-[10px] text-theme-muted underline hover:text-theme-ink mt-2"
+          >
+            {t('advisor.optOut')}
+          </button>
+        </div>
+        <button
+          onClick={onDismiss}
+          className="shrink-0 p-1.5 rounded-lg hover:bg-theme-ink/5 text-theme-muted"
+          aria-label={t('common.close')}
+        >
+          <svg width="16" height="16" viewBox="0 0 18 18" fill="none">
+            <path d="M4 4L14 14M14 4L4 14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          </svg>
+        </button>
+      </div>
+    </div>
+  )
+}

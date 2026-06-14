@@ -27,7 +27,11 @@ const EMPTY: UsageTokens = {
 export function teeForParsing(
   upstream: ReadableStream<Uint8Array>,
   parser: (chunk: string) => void,
-  finalize: () => UsageTokens
+  finalize: () => UsageTokens,
+  // Appelé à chaque chunk parsé (le parseSide draine indépendamment du client).
+  // Sert au heartbeat de réservation wallet pour les streams longs (fix F-B) :
+  // best-effort, throttlé par l'appelant, ne doit jamais throw.
+  onActivity?: () => void
 ): { clientBody: ReadableStream<Uint8Array>; parsedUsage: Promise<UsageTokens> } {
   const [clientSide, parseSide] = upstream.tee()
 
@@ -38,7 +42,12 @@ export function teeForParsing(
       while (true) {
         const { done, value } = await reader.read()
         if (done) break
-        if (value) parser(decoder.decode(value, { stream: true }))
+        if (value) {
+          parser(decoder.decode(value, { stream: true }))
+          if (onActivity) {
+            try { onActivity() } catch { /* heartbeat best-effort */ }
+          }
+        }
       }
       parser(decoder.decode()) // flush
     } catch {
@@ -155,13 +164,19 @@ export function createGeminiParser() {
           usageMetadata?: {
             promptTokenCount?: number
             candidatesTokenCount?: number
+            thoughtsTokenCount?: number
             cachedContentTokenCount?: number
           }
         }
         if (data.usageMetadata) {
           const m = data.usageMetadata
           if (typeof m.promptTokenCount === 'number') usage.inputTokens = m.promptTokenCount
-          if (typeof m.candidatesTokenCount === 'number') usage.outputTokens = m.candidatesTokenCount
+          // Output = jetons visibles (candidates) + jetons de "réflexion" (thoughts),
+          // tous deux facturés au tarif output. Sans thoughtsTokenCount on
+          // sous-facture les requêtes à gros raisonnement (Gemini 2.5/3.x thinking).
+          if (m.candidatesTokenCount != null || m.thoughtsTokenCount != null) {
+            usage.outputTokens = (m.candidatesTokenCount ?? 0) + (m.thoughtsTokenCount ?? 0)
+          }
           if (typeof m.cachedContentTokenCount === 'number') usage.cacheReadTokens = m.cachedContentTokenCount
         }
       } catch {

@@ -41,6 +41,19 @@ const USER_PLAIN_KEY = 'google-user'
 const USER_ENC_KEY = 'google-user-enc'
 
 export function getRedirectUri(): string {
+  // Previews Cloudflare Pages (*.appfacade.pages.dev) : renvoyer sur LEUR propre
+  // callback après le login Google. Sinon le VITE_GOOGLE_REDIRECT_URI (épinglé
+  // sur le callback prod) renverrait un login lancé depuis une preview vers la
+  // prod. Les hosts prod (appfacade.pages.dev, tryarty.com) ne matchent pas le
+  // point de tête → ils gardent l'override ci-dessous. ⚠️ l'alias de branche
+  // doit être enregistré comme redirect URI dans le client OAuth Google.
+  try {
+    if (window.location.hostname.endsWith('.appfacade.pages.dev')) {
+      return `${window.location.origin}/auth/callback`
+    }
+  } catch {
+    /* pas de window (SSR/test) — on continue */
+  }
   if (import.meta.env.VITE_GOOGLE_REDIRECT_URI) return import.meta.env.VITE_GOOGLE_REDIRECT_URI
   // On native, origin is https://localhost — use Cloudflare URL instead
   if (window.location.origin.includes('localhost')) return 'https://appfacade.pages.dev/auth/callback'

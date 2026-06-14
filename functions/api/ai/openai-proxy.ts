@@ -11,6 +11,12 @@ import { checkPremiumCap, premiumCapReachedResponse } from '../_lib/checkPremium
 import { consumeDailyQuota, recordUsage } from '../_lib/quota'
 import { freeModelLockedResponse } from '../_lib/freeQuota'
 import { createOpenAIParser, teeForParsing } from '../_lib/trackUsage'
+import {
+  beginWalletBilling,
+  makeReservationHeartbeat,
+  settleWalletBilling,
+  voidWalletBilling,
+} from '../_lib/walletBilling'
 
 const OPENAI_CHAT_URL = 'https://api.openai.com/v1/chat/completions'
 
@@ -29,6 +35,9 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
   let usingServerKey = false
   let userPlan: 'subscription' | 'pro' | 'vip' | 'free' | 'trial' = 'free'
   let trialRemaining: number | undefined
+  // Essai épuisé routé vers le wallet (crédits) : mémorise l'origine pour rendre
+  // un 403 trial_expired si pas de crédits (pas de tier gratuit OpenAI).
+  let wasTrialExhausted = false
 
   // Fallback clé serveur pour les utilisateurs avec un plan actif
   // (sub/pro/vip/trial). `checkAllowedUser` gère le bypass VIP et le
@@ -36,9 +45,15 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
   if (!apiKey && env.OPENAI_API_KEY) {
     const result = await checkAllowedUser(request, env)
     if (isTrialExpired(result)) {
-      return trialExpiredResponse()
-    }
-    if (result) {
+      // Essai épuisé → wallet (crédits) au lieu d'un 403 sec. `cap_reached` n'a
+      // pas décrémenté le compteur → pas de double-débit. On route comme 'free' ;
+      // sans crédits, le bloc wallet rend trial_expired.
+      apiKey = env.OPENAI_API_KEY
+      usingServerKey = true
+      userPlan = 'free'
+      wasTrialExhausted = true
+      trialRemaining = 0 // header x-trial-remaining:0 → débloque le premium via crédits (UI)
+    } else if (result) {
       apiKey = env.OPENAI_API_KEY
       usingServerKey = true
       userPlan = result.planType
@@ -66,9 +81,30 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     // leave fallback
   }
 
-  // Free : OpenAI intégralement verrouillé (modèles US, coûts élevés).
+  // Sans abo : si l'utilisateur a des crédits → wallet (n'importe quel modèle,
+  // payé à l'usage) ; sinon OpenAI reste verrouillé en gratuit.
+  let walletResId: string | undefined
   if (usingServerKey && userPlan === 'free') {
-    return freeModelLockedResponse(modelName)
+    let parsedBody: Record<string, unknown> = {}
+    try {
+      parsedBody = JSON.parse(body) as Record<string, unknown>
+    } catch {
+      /* body illisible → réserve au plafond (estimation input = 0) */
+    }
+    const start = await beginWalletBilling(env, waitUntil, {
+      email,
+      model: modelName,
+      provider: 'openai',
+      body: parsedBody,
+    })
+    if (start.mode === 'refuse') return start.response
+    if (start.mode === 'wallet') {
+      walletResId = start.resId
+    } else {
+      // Essai épuisé sans crédits → 403 trial_expired ; sinon OpenAI verrouillé.
+      if (wasTrialExhausted) return trialExpiredResponse()
+      return freeModelLockedResponse(modelName)
+    }
   }
 
   // Trial : restriction de modèles. Compteur déjà décrémenté en amont.
@@ -121,6 +157,8 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => 'Unknown OpenAI error')
+      // Le fetch upstream a échoué → libère la réserve wallet en vol (PR #281).
+      if (walletResId) waitUntil(voidWalletBilling(env, walletResId, email))
       // Leak d'info (N-2) : sur la clé serveur, masquer l'erreur OpenAI brute
       // (état de la clé owner). EXCEPTION : le rejet de modèle doit rester
       // détectable — le client (startChatRequest) s'en sert pour retomber de
@@ -146,28 +184,38 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
       })
     }
 
-    // Tracking tokens réels côté serveur uniquement — tee du stream pour
-    // parser usage.prompt_tokens / usage.completion_tokens dans le dernier
-    // chunk SSE sans bloquer le forward client.
+    // Tracking tokens réels côté serveur — un seul tee, deux consommateurs
+    // (analytics + débit wallet sur le chemin wallet).
     if (usingServerKey && response.body) {
       const parser = createOpenAIParser()
       const { clientBody, parsedUsage } = teeForParsing(
         response.body,
         parser.feed,
-        parser.finalize
+        parser.finalize,
+        makeReservationHeartbeat(env, walletResId)
       )
-      waitUntil(parsedUsage.then((usage) => recordUsage(env, email, modelName, usage)))
+      const rid = walletResId
+      waitUntil(
+        parsedUsage.then((usage) =>
+          Promise.allSettled([
+            recordUsage(env, email, modelName, usage),
+            ...(rid ? [settleWalletBilling(env, { resId: rid, email, model: modelName }, usage)] : []),
+          ])
+        )
+      )
       return new Response(clientBody, {
         status: response.status,
         headers: responseHeaders(),
       })
     }
 
+    if (walletResId) waitUntil(voidWalletBilling(env, walletResId, email))
     return new Response(response.body, {
       status: response.status,
       headers: responseHeaders(),
     })
   } catch (err) {
+    if (walletResId) waitUntil(voidWalletBilling(env, walletResId, email))
     return Response.json(
       { error: err instanceof Error ? err.message : 'OpenAI proxy error' },
       { status: 502 }

@@ -12,8 +12,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { openCheckout, type CheckoutPlan } from '../services/checkout'
+import { openCheckout, openCreemCheckout, type CheckoutPlan } from '../services/checkout'
 import { getValidAccessToken, getStoredUser } from '../services/googleAuth'
+import { fetchWalletBalance } from '../services/walletClient'
 import { apiUrl } from '../services/apiBase'
 import { usePlanStatus } from '../hooks/usePlanStatus'
 
@@ -31,6 +32,7 @@ type StatusResult =
   | { kind: 'checking' }
   | { kind: 'active'; plan: string }
   | { kind: 'pending' }
+  | { kind: 'creditsAdded' }
   | { kind: 'error'; message: string }
 
 interface SubscriptionStatusResponse {
@@ -45,6 +47,7 @@ export function UpgradeScreen({ onBack, currentPlan: currentPlanProp, email }: U
   const scrollToPremiumPack = params.get('scroll') === 'premium'
   const premiumPackRef = useRef<HTMLDivElement | null>(null)
   const [status, setStatus] = useState<StatusResult>({ kind: 'idle' })
+  const [creditsBusy, setCreditsBusy] = useState(false)
 
   // Bug P0.7 (audit) : App.tsx ne sait dériver que 'byok' | 'unknown' depuis
   // authMethod — un abonné connecté en Google arrivait toujours en 'unknown',
@@ -112,6 +115,44 @@ export function UpgradeScreen({ onBack, currentPlan: currentPlanProp, email }: U
       return
     }
     await openCheckout(plan, resolvedEmail, { onReturn: refreshStatus })
+  }
+
+  // Le crédit arrive via le webhook Creem (asynchrone) — il peut atterrir APRÈS
+  // la fermeture du navigateur de paiement. On poll le solde en backoff jusqu'à
+  // le voir augmenter, puis on notifie le badge (event 'wallet-updated').
+  const pollWalletAfterPurchase = async (beforeMicro: number) => {
+    setStatus({ kind: 'checking' })
+    const delays = [1500, 3000, 5000]
+    for (const d of delays) {
+      await new Promise((r) => setTimeout(r, d))
+      const bal = await fetchWalletBalance()
+      if (bal && bal.availableMicro > beforeMicro) {
+        window.dispatchEvent(new Event('wallet-updated'))
+        setStatus({ kind: 'creditsAdded' })
+        return
+      }
+    }
+    // Pas encore visible : le badge se mettra à jour via son interval. On notifie
+    // quand même pour forcer un dernier refresh.
+    window.dispatchEvent(new Event('wallet-updated'))
+    setStatus({ kind: 'pending' })
+  }
+
+  const launchCreditsCheckout = async () => {
+    if (creditsBusy) return // garde anti double-clic (évite 2 onglets/2 paiements)
+    setCreditsBusy(true)
+    try {
+      const before = await fetchWalletBalance()
+      const beforeMicro = before?.availableMicro ?? 0
+      const ok = await openCreemCheckout('credits_10', {
+        onReturn: () => {
+          void pollWalletAfterPurchase(beforeMicro)
+        },
+      })
+      if (!ok) setStatus({ kind: 'error', message: t('upgrade.creditsError') })
+    } finally {
+      setCreditsBusy(false)
+    }
   }
 
   const handleByokClick = () => {
@@ -183,6 +224,7 @@ export function UpgradeScreen({ onBack, currentPlan: currentPlanProp, email }: U
             isCurrent={currentPlan === 'subscription'}
             onSubscribe={() => launchCheckout('subscription')}
           />
+          <CreditsCard busy={creditsBusy} onBuy={launchCreditsCheckout} />
         </div>
 
         {currentPlan === 'subscription' && (
@@ -257,6 +299,14 @@ function StatusBanner({ status }: { status: StatusResult }) {
         <p className="font-display italic text-xs text-theme-muted mt-0.5">
           {t('upgrade.statusPendingBody')}
         </p>
+      </div>
+    )
+  }
+
+  if (status.kind === 'creditsAdded') {
+    return (
+      <div className="rounded-sm border border-theme-accent/60 bg-theme-surface px-4 py-3">
+        <p className="font-display text-sm text-theme-ink">{t('upgrade.creditsAdded')}</p>
       </div>
     )
   }
@@ -390,6 +440,37 @@ function SubscriptionCard({ isCurrent, onSubscribe }: SubscriptionCardProps) {
         className="mt-6 w-full py-3.5 font-display italic text-base font-medium tracking-[0.02em] bg-theme-ink text-theme-bg rounded-sm transition-opacity hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
       >
         {isCurrent ? t('upgrade.currentPlan') : t('upgrade.subscriptionCta')}
+      </button>
+    </CardShell>
+  )
+}
+
+interface CreditsCardProps {
+  busy: boolean
+  onBuy: () => void
+}
+
+function CreditsCard({ busy, onBuy }: CreditsCardProps) {
+  const { t } = useTranslation()
+  return (
+    <CardShell>
+      <h2 className="font-display text-[22px] leading-tight font-medium text-theme-ink">
+        {t('upgrade.creditsTitle')}
+      </h2>
+      <p className="mt-2 font-display text-2xl text-theme-ink">{t('upgrade.creditsPrice')}</p>
+      <p className="font-display italic text-xs text-theme-muted mt-1">
+        {t('upgrade.creditsTagline')}
+      </p>
+      <p className="mt-3 font-sans text-sm text-theme-muted leading-relaxed">
+        {t('upgrade.creditsDescription')}
+      </p>
+      <button
+        type="button"
+        onClick={onBuy}
+        disabled={busy}
+        className="mt-6 w-full py-3.5 font-display italic text-base font-medium tracking-[0.02em] bg-theme-ink text-theme-bg rounded-sm transition-opacity hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
+      >
+        {busy ? t('upgrade.creditsBusy') : t('upgrade.creditsCta')}
       </button>
     </CardShell>
   )

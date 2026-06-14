@@ -68,6 +68,8 @@ export function useProactiveBrief({ gmail, isGoogleConnected, userName, onSend }
 
   const runBrief = useCallback(async () => {
     if (runningRef.current) return
+    // isProactiveBriefEnabled() porte le défaut dépendant du plan (OFF pour
+    // essai/free, ON pour les payants) + le choix explicite du toggle Paramètres.
     if (!isProactiveBriefEnabled() || !isGoogleConnected) return
     if (!isBriefDue()) return
 

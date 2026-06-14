@@ -11,6 +11,12 @@ import { checkPremiumCap, premiumCapReachedResponse } from '../_lib/checkPremium
 import { consumeDailyQuota, recordUsage } from '../_lib/quota'
 import { freeModelLockedResponse } from '../_lib/freeQuota'
 import { createGeminiParser, teeForParsing } from '../_lib/trackUsage'
+import {
+  beginWalletBilling,
+  makeReservationHeartbeat,
+  settleWalletBilling,
+  voidWalletBilling,
+} from '../_lib/walletBilling'
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUntil }) => {
   // Anti-relais anonyme : tout user Google authentifié est accepté (CRIT-4).
@@ -27,6 +33,9 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
   let usingServerKey = false
   let userPlan: 'subscription' | 'pro' | 'vip' | 'free' | 'trial' = 'free'
   let trialRemaining: number | undefined
+  // Essai épuisé routé vers le wallet (crédits) : mémorise l'origine pour rendre
+  // un 403 trial_expired si pas de crédits (pas de tier gratuit Gemini).
+  let wasTrialExhausted = false
 
   // Fallback clé serveur pour les utilisateurs avec un plan actif
   // (sub/pro/vip/trial). `checkAllowedUser` gère aussi le bypass VIP via
@@ -34,9 +43,15 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
   if (!apiKey && env.GEMINI_API_KEY) {
     const result = await checkAllowedUser(request, env)
     if (isTrialExpired(result)) {
-      return trialExpiredResponse()
-    }
-    if (result) {
+      // Essai épuisé → wallet (crédits) au lieu d'un 403 sec. `cap_reached` n'a
+      // pas décrémenté le compteur → pas de double-débit. On route comme 'free' ;
+      // sans crédits, le bloc wallet rend trial_expired.
+      apiKey = env.GEMINI_API_KEY
+      usingServerKey = true
+      userPlan = 'free'
+      wasTrialExhausted = true
+      trialRemaining = 0 // header x-trial-remaining:0 → débloque le premium via crédits (UI)
+    } else if (result) {
       apiKey = env.GEMINI_API_KEY
       usingServerKey = true
       userPlan = result.planType
@@ -51,15 +66,23 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     )
   }
 
+  // Déclaré HORS du try pour rester visible dans le catch (rendre la réserve).
+  let walletResId: string | undefined
   try {
     const { model, stream, ...body } = await request.json() as { model: string; stream: boolean; [key: string]: unknown }
 
-    // Free : Gemini intégralement verrouillé. Pour l'instant les utilisateurs
-    // free n'ont accès qu'à Claude Haiku et Mistral Small. Si on souhaite
-    // ouvrir Gemini Flash plus tard, il suffira d'ajouter une famille
-    // gemini-flash dans freeQuota.ts et d'appeler consumeFreeDailyQuota ici.
+    // Sans abo : si l'utilisateur a des crédits → wallet (n'importe quel modèle,
+    // payé à l'usage) ; sinon Gemini reste verrouillé en gratuit.
     if (usingServerKey && userPlan === 'free') {
-      return freeModelLockedResponse(model)
+      const start = await beginWalletBilling(env, waitUntil, { email, model, provider: 'gemini', body })
+      if (start.mode === 'refuse') return start.response
+      if (start.mode === 'wallet') {
+        walletResId = start.resId
+      } else {
+        // Essai épuisé sans crédits → 403 trial_expired ; sinon Gemini verrouillé.
+        if (wasTrialExhausted) return trialExpiredResponse()
+        return freeModelLockedResponse(model)
+      }
     }
 
     // Trial : restriction de modèles. Le compteur a déjà été décrémenté par
@@ -116,6 +139,9 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => 'Unknown Gemini error')
+      // Le fetch upstream a échoué → libère la réserve wallet en vol (refund
+      // de l'input pré-réservé, PR #281) avant de répondre.
+      if (walletResId) waitUntil(voidWalletBilling(env, walletResId, email))
       // Leak d'info (N-2) : sur la clé serveur, ne JAMAIS renvoyer l'erreur
       // Gemini brute (elle révèle l'état de la clé owner : quota, projet,
       // modèles). Le status est préservé : le retry/backoff client (shouldRetry
@@ -133,26 +159,38 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
       })
     }
 
-    // Tracking tokens réels côté serveur uniquement.
+    // Tracking tokens réels côté serveur — un seul tee, deux consommateurs
+    // (analytics + débit wallet sur le chemin wallet).
     if (usingServerKey && response.body) {
       const parser = createGeminiParser()
       const { clientBody, parsedUsage } = teeForParsing(
         response.body,
         parser.feed,
-        parser.finalize
+        parser.finalize,
+        makeReservationHeartbeat(env, walletResId)
       )
-      waitUntil(parsedUsage.then((usage) => recordUsage(env, email, model, usage)))
+      const rid = walletResId
+      waitUntil(
+        parsedUsage.then((usage) =>
+          Promise.allSettled([
+            recordUsage(env, email, model, usage),
+            ...(rid ? [settleWalletBilling(env, { resId: rid, email, model }, usage)] : []),
+          ])
+        )
+      )
       return new Response(clientBody, {
         status: response.status,
         headers: responseHeaders(),
       })
     }
 
+    if (walletResId) waitUntil(voidWalletBilling(env, walletResId, email))
     return new Response(response.body, {
       status: response.status,
       headers: responseHeaders(),
     })
   } catch (err) {
+    if (walletResId) waitUntil(voidWalletBilling(env, walletResId, email))
     return Response.json(
       { error: err instanceof Error ? err.message : 'Gemini proxy error' },
       { status: 502 }

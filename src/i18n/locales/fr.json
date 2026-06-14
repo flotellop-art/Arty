@@ -508,6 +508,20 @@
     "markUndone": "Marquer comme non terminée",
     "delete": "Supprimer"
   },
+  "wallet": {
+    "badge": "{{credits}} crédits",
+    "badgeTitle": "Crédits prépayés restants",
+    "badgeAria": "Solde de crédits"
+  },
+  "advisor": {
+    "title": "Suggestion",
+    "recommend_subscription": "Sur tes 30 derniers jours, le forfait ({{subscription}} €) reviendrait moins cher que tes crédits ({{credits}} €) — tu économiserais ~{{savings}} €/mois.",
+    "recommend_byok": "Sur tes 30 derniers jours, apporter ta propre clé reviendrait à ~{{byok}} €/mois (vs {{current}} €), rentabilisé en ~{{payback}} mois — ensuite tu ne paies que le coût fournisseur.",
+    "recommend_credits": "Sur tes 30 derniers jours, le paiement à l'usage (~{{credits}} €) reviendrait moins cher que ton forfait — ~{{savings}} €/mois d'économie.",
+    "threeNumbers": "Crédits {{credits}} € · Forfait {{subscription}} € · Ta clé {{byok}} €",
+    "optOut": "Ne plus me suggérer d'optimisation",
+    "ctaSubscribe": "Passer au forfait"
+  },
   "costs": {
     "badgeTitle": "Coût API réel (ce mois)",
     "badgeAria": "Coût API",
@@ -776,6 +790,14 @@
     "premiumPackTitle": "Pack +100 messages premium",
     "premiumPackDescription": "Pour les utilisateurs Subscription qui ont atteint leur quota mensuel.",
     "premiumPackCta": "Acheter 100 messages",
+    "creditsTitle": "Crédits prépayés",
+    "creditsPrice": "10 € = 1 000 crédits",
+    "creditsTagline": "Paiement à l'usage · Sans abonnement",
+    "creditsDescription": "Rechargez une fois, dépensez sur tous les modèles. Sans engagement — les crédits n'expirent pas.",
+    "creditsCta": "Acheter des crédits",
+    "creditsBusy": "Ouverture du paiement…",
+    "creditsError": "Impossible de lancer le paiement. Réessaie.",
+    "creditsAdded": "Crédits ajoutés — ton solde est à jour.",
     "transparency": "Nos limites sont écrites en clair, en messages — pas en « crédits » ni en « points ». Le prix affiché est le prix final, TVA comprise. Une limite journalière anti-abus s'applique à tous les plans.",
     "manageSubscription": "Gérer mon abonnement (annulation en ligne)",
     "subscriptionReassurance": "✓ Annulation en 1 clic, à tout moment — pause possible. Sans engagement.",

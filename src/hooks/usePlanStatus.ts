@@ -5,6 +5,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { getValidAccessToken } from '../services/googleAuth'
 import { apiUrl } from '../services/apiBase'
+import { fetchWalletBalance, creditsCoverPremium } from '../services/walletClient'
 
 export type PlanType = 'free' | 'subscription' | 'pro' | 'vip'
 
@@ -60,6 +61,11 @@ const DEFAULT_STATUS: PlanStatus = {
   loading: true,
 }
 
+const ALL_FAMILIES: ModelFamily[] = [
+  'claude-haiku', 'claude-sonnet', 'claude-opus', 'mistral-medium',
+  'gemini-flash', 'gemini-pro', 'gpt-mini', 'gpt-full',
+]
+
 export function usePlanStatus(): PlanStatus & { refresh: () => void } {
   const [state, setState] = useState<PlanStatus>(DEFAULT_STATUS)
 
@@ -78,19 +84,27 @@ export function usePlanStatus(): PlanStatus & { refresh: () => void } {
         return
       }
       const data = (await res.json()) as ApiResponse
+      // Cache le plan en localStorage pour que les services non-React
+      // (anthropicClient, aiRouter) puissent l'utiliser sans hook React.
+      try { localStorage.setItem('arty-plan-cache', data.plan) } catch {}
+      // Crédits prépayés : un user 'free' (essai épuisé ou vrai free) AVEC des
+      // crédits peut payer N'IMPORTE QUEL modèle via le wallet → on débloque
+      // toutes les familles côté UI. `fetchWalletBalance` met aussi le solde en
+      // cache pour aiRouter. Pendant un essai ENCORE actif, `creditsCoverPremium()`
+      // est false → le premium reste verrouillé (le serveur force Haiku — « essai
+      // gratuit d'abord »).
+      await fetchWalletBalance()
+      const unlock = data.plan === 'free' && creditsCoverPremium()
       setState({
         plan: data.plan,
-        allowedFamilies: data.allowed_families,
-        lockedFamilies: data.locked_families,
+        allowedFamilies: unlock ? [...ALL_FAMILIES] : data.allowed_families,
+        lockedFamilies: unlock ? [] : data.locked_families,
         dailyRemaining: data.daily_remaining,
         dailyLimits: data.daily_limits,
         monthlyCap: data.monthly_cap ?? null,
         premiumPackRemaining: data.premium_pack_remaining ?? 0,
         loading: false,
       })
-      // Cache le plan en localStorage pour que les services non-React
-      // (anthropicClient, aiRouter) puissent l'utiliser sans hook React.
-      try { localStorage.setItem('arty-plan-cache', data.plan) } catch {}
     } catch {
       setState((s) => ({ ...s, loading: false }))
     }

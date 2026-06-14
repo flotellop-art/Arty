@@ -80,7 +80,30 @@
       var isCapacitorNative =
         (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform() === true)
         || (location.protocol === 'https:' && location.hostname === 'localhost');
-      if ('serviceWorker' in navigator && !isCapacitorNative) {
+      // Previews Cloudflare Pages (*.appfacade.pages.dev) : NE PAS garder de
+      // Service Worker. Le SW (assets cache-first) servait du JS périmé aux
+      // testeurs à chaque déploiement (BUG 45) sans moyen de s'en défaire. On le
+      // purge ACTIVEMENT (désenregistrement + suppression des caches arty-cache-*)
+      // puis on recharge UNE fois pour repartir sur le build frais. L'index.html
+      // étant servi network-first par le SW, ce script atteint le testeur même
+      // quand le JS bundle est périmé. La prod (tryarty.com) garde son SW (PWA).
+      var isPreview = location.hostname.endsWith('.appfacade.pages.dev');
+      if (isPreview && 'serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then((regs) => {
+          if (!regs.length) return;
+          Promise.all(regs.map((r) => r.unregister()))
+            .then(() => (window.caches && caches.keys ? caches.keys() : Promise.resolve([])))
+            .then((keys) => Promise.all(keys.map((k) => (k.indexOf('arty-cache-') === 0 ? caches.delete(k) : null))))
+            .then(() => {
+              try {
+                if (!sessionStorage.getItem('sw-purged')) {
+                  sessionStorage.setItem('sw-purged', '1');
+                  location.reload();
+                }
+              } catch (e) { location.reload(); }
+            });
+        }).catch(() => {});
+      } else if ('serviceWorker' in navigator && !isCapacitorNative) {
         window.addEventListener('load', () => {
           navigator.serviceWorker.register('/sw.js').catch(() => {});
         });

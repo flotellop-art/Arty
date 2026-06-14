@@ -404,7 +404,7 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
             )}
 
             {openMenu === 'model' && (
-              <div className="absolute top-full left-0 mt-1 bg-theme-surface rounded-xl shadow-lg border border-theme-border py-1 z-50 min-w-[160px]">
+              <div className="absolute top-full left-0 mt-1 bg-theme-surface rounded-xl shadow-lg border border-theme-border py-1 z-50 min-w-[236px]">
                 {MODEL_OPTIONS.map((opt) => {
                   const locked = isProviderLocked(opt.id)
                   return (

@@ -31,6 +31,10 @@ export interface Env {
   DB: D1Database  // Cloudflare D1 binding
   KV: KVNamespace  // Cloudflare KV binding — premium cap counters per user/month
   LEMONSQUEEZY_WEBHOOK_SECRET?: string  // HMAC-SHA256 secret for verifying Lemon Squeezy webhook signatures
+  CREEM_WEBHOOK_SECRET?: string  // HMAC-SHA256 secret (hex) pour vérifier les webhooks Creem (crédits prépayés)
+  CREEM_API_KEY?: string  // clé serveur Creem (creem_test_… / creem_live_…) pour créer des checkouts. JAMAIS de préfixe VITE_ (RÈGLE 1) — passe en header x-api-key
+  CREEM_API_BASE?: string  // override optionnel du host Creem (défaut: dérivé du préfixe de la clé → test-api.creem.io / api.creem.io)
+  RECONCILE_SECRET?: string  // secret partagé pour déclencher GET /api/billing/reconcile depuis un Cron externe (owner-only)
   // Web search proxy (utilisé par Mistral via /api/search/web pour ajouter
   // une capacité recherche en temps réel — Anthropic et Gemini ont déjà
   // leurs tools natifs). 'linkup' par défaut, 'brave' en alternative.
