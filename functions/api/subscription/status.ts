@@ -167,16 +167,14 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
   }
 
   try {
-    // H-Plan-1 (audit étape 5) — vérifier l'expiration. Une license avec
-    // status='active' mais expires_at dépassé restait active → perte de
-    // revenu. `expires_at IS NULL` = license perpétuelle (cas Pro one-shot
-    // sans expiration), gardée active.
+    // Licences Pro = à vie (pas de colonne `expires_at` en prod — l'ancien
+    // filtre faisait planter la requête → catch → Pro affiché comme free).
+    // Réconciliation 15 juin : gate = `status = 'active'`.
     license = await env.DB.prepare(
       `SELECT 1 AS ok
          FROM licenses
         WHERE user_email = ?1
           AND status = 'active'
-          AND (expires_at IS NULL OR expires_at > unixepoch())
         LIMIT 1`
     )
       .bind(email)
