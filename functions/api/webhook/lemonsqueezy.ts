@@ -24,6 +24,10 @@ interface LemonSqueezyAttributes {
     product_id?: number
     variant_id?: number
   }
+  // Présents sur l'objet License Key (événement `license_key_created`).
+  key?: string
+  order_id?: number | string
+  activation_limit?: number
 }
 
 interface LemonSqueezyData {
@@ -184,8 +188,7 @@ async function ensurePremiumPacksTable(db: D1Database): Promise<void> {
 
 async function handleOrderCreated(
   env: Env,
-  data: LemonSqueezyData,
-  included: LemonSqueezyIncluded[] | undefined
+  data: LemonSqueezyData
 ): Promise<void> {
   const attrs = data.attributes ?? {}
   const productId = attrs.first_order_item?.product_id
@@ -194,18 +197,11 @@ async function handleOrderCreated(
   if (!email || !orderId) return
 
   if (productId === PRODUCT_ID_ARTY_PRO) {
-    const licenseKey =
-      included?.find((i) => i.type === 'license-keys')?.attributes?.key ?? ''
-
-    await ensureLicensesTable(env.DB)
-    await env.DB.prepare(
-      `INSERT OR REPLACE INTO licenses
-        (user_email, ls_order_id, license_key, status, max_activations, activation_count, created_at)
-       VALUES (?1, ?2, ?3, 'active', ?4, 0, datetime('now'))`
-    )
-      .bind(email, orderId, licenseKey, LICENSE_MAX_ACTIVATIONS)
-      .run()
-
+    // La LIGNE `licenses` (avec sa clé) est créée par l'événement
+    // `license_key_created` — la clé n'arrive PAS dans le payload `order_created`
+    // (bug de capture corrigé le 15 juin : `license_key` restait vide → activation
+    // impossible). Ici on accorde seulement l'accès Pro à l'email (la détection
+    // Pro par email via `subscriptions` suffit pour débloquer l'app).
     await ensureSubscriptionsTable(env.DB)
     // ON CONFLICT(user_email) plutôt qu'INSERT OR REPLACE : ne PAS écraser un
     // abonnement mensuel existant (ls_subscription_id / current_period_end
@@ -355,6 +351,41 @@ async function handleSubscriptionStatusUpdate(
     .run()
 }
 
+/**
+ * `license_key_created` — porte la vraie clé de licence (objet License Key :
+ * `data.attributes.key` + `order_id` + `user_email` + `activation_limit`).
+ * `order_created` ne contient PAS la clé, d'où ce handler dédié (bug corrigé
+ * le 15 juin : la clé restait vide → `license/activate` ne trouvait jamais la
+ * licence). Crée/complète la ligne `licenses` (idempotent via ON CONFLICT sur
+ * `ls_order_id` UNIQUE) avec la clé réelle — jamais de placeholder vide.
+ */
+async function handleLicenseKeyCreated(env: Env, data: LemonSqueezyData): Promise<void> {
+  const attrs = data.attributes ?? {}
+  const key = typeof attrs.key === 'string' ? attrs.key : ''
+  const orderId = attrs.order_id != null ? String(attrs.order_id) : ''
+  const email = attrs.user_email?.toLowerCase()
+  if (!key || !orderId || !email) return
+
+  const maxActivations =
+    typeof attrs.activation_limit === 'number' && attrs.activation_limit > 0
+      ? attrs.activation_limit
+      : LICENSE_MAX_ACTIVATIONS
+
+  await ensureLicensesTable(env.DB)
+  await env.DB.prepare(
+    `INSERT INTO licenses
+      (user_email, ls_order_id, license_key, status, max_activations, activation_count, created_at)
+     VALUES (?1, ?2, ?3, 'active', ?4, 0, datetime('now'))
+     ON CONFLICT(ls_order_id) DO UPDATE SET
+       license_key = excluded.license_key,
+       user_email = excluded.user_email,
+       max_activations = excluded.max_activations,
+       status = 'active'`
+  )
+    .bind(email, orderId, key, maxActivations)
+    .run()
+}
+
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   if (!env.LEMONSQUEEZY_WEBHOOK_SECRET) {
     return Response.json({ error: 'Webhook not configured' }, { status: 500 })
@@ -394,7 +425,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   try {
     switch (eventName) {
       case 'order_created':
-        await handleOrderCreated(env, data, payload.included)
+        await handleOrderCreated(env, data)
         break
 
       case 'subscription_created':
@@ -425,7 +456,9 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
         break
 
       case 'license_key_created':
-        // Déjà traité dans order_created (la license key arrive dans included[]).
+        // C'est CET événement qui porte la vraie clé de licence (pas
+        // `order_created`) → il crée/complète la ligne `licenses`.
+        await handleLicenseKeyCreated(env, data)
         break
 
       default:
