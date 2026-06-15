@@ -775,12 +775,17 @@ export default function App() {
     async function setupDeepLinks() {
       try {
         const { App: CapApp } = await import('@capacitor/app')
-        const handle = await CapApp.addListener('appUrlOpen', (event) => {
-          const url = new URL(event.url)
-          if (url.pathname === '/auth/callback') {
-            const code = url.searchParams.get('code')
-            if (code) setDeepLinkCode(code)
-          }
+        const handle = await CapApp.addListener('appUrlOpen', () => {
+          // M-1 (audit OAuth) : le `code` OAuth d'un deeplink N'EST PLUS échangé
+          // ici. Ce chemin était NON-NOMINAL (le login natif passe par le plugin
+          // Java GoogleSignInNative, jamais par un redirect /auth/callback) et il
+          // échangeait un `code` arbitraire SANS vérifier le state CSRF → un lien
+          // forgé `tryarty.com/auth/callback?code=…` pouvait connecter la victime
+          // au compte de l'attaquant (login-CSRF). La vérif du state reste
+          // centralisée dans OAuthCallback.tsx (chemin web). Le listener est
+          // conservé (futur usage deeplink éventuel) mais n'échange aucun code.
+          // NB : l'effet `processOAuth` ci-dessous devient inatteignable
+          // (deepLinkCode jamais positionné) — nettoyage du dead code en suivi.
         })
         // M3 (audit frontend) — cleanup du listener. Sans lui, StrictMode
         // (dev) et tout remount empilaient des listeners en double.
