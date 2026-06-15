@@ -106,19 +106,39 @@ function maskEmail(email: string | undefined): string {
   return `***@${email.slice(at + 1)}`
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// Schémas alignés sur la PROD (migration 0002) — réconciliation 15 juin 2026.
+// La prod a été créée par migrations/0002 (id PK AUTOINCREMENT, colonnes
+// `ls_order_id`/`activation_count`, timestamps TEXT) mais le code attendait un
+// autre schéma (user_email PK, `order_id`/`activations`, timestamps INTEGER) →
+// tous les achats (abonnement/licence/pack) échouaient silencieusement.
+// Ces `ensureXxxTable` décrivent désormais le VRAI schéma (no-op sur la prod
+// existante via IF NOT EXISTS, mais correct pour une D1 fraîche).
+// L'index UNIQUE sur subscriptions(user_email) est ce qui fait fonctionner les
+// `ON CONFLICT(user_email)` (0 doublon en prod, vérifié) — voir aussi
+// migrations/0005.
+// ─────────────────────────────────────────────────────────────────────────
 async function ensureSubscriptionsTable(db: D1Database): Promise<void> {
   await db
     .prepare(
       `CREATE TABLE IF NOT EXISTS subscriptions (
-        user_email TEXT PRIMARY KEY,
-        plan_type TEXT NOT NULL,
-        status TEXT NOT NULL,
-        ls_subscription_id TEXT,
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_email TEXT NOT NULL,
+        ls_subscription_id TEXT UNIQUE,
         ls_customer_id TEXT,
         ls_variant_id TEXT,
+        status TEXT NOT NULL DEFAULT 'inactive',
+        plan_type TEXT NOT NULL DEFAULT 'free',
         current_period_end TEXT,
-        updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
       )`
+    )
+    .run()
+  // Contrainte d'unicité requise par tous les ON CONFLICT(user_email).
+  await db
+    .prepare(
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_subscriptions_user_email_unique ON subscriptions(user_email)`
     )
     .run()
 }
@@ -127,16 +147,20 @@ async function ensureLicensesTable(db: D1Database): Promise<void> {
   await db
     .prepare(
       `CREATE TABLE IF NOT EXISTS licenses (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_email TEXT NOT NULL,
-        order_id TEXT NOT NULL,
-        license_key TEXT NOT NULL DEFAULT '',
-        status TEXT NOT NULL,
+        license_key TEXT UNIQUE NOT NULL,
+        ls_order_id TEXT UNIQUE,
+        ls_product_id TEXT,
+        activation_count INTEGER NOT NULL DEFAULT 0,
         max_activations INTEGER NOT NULL DEFAULT 3,
-        activations INTEGER NOT NULL DEFAULT 0,
-        created_at INTEGER NOT NULL DEFAULT (unixepoch()),
-        PRIMARY KEY (user_email, order_id)
+        status TEXT NOT NULL DEFAULT 'active',
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
       )`
     )
+    .run()
+  await db
+    .prepare(`CREATE INDEX IF NOT EXISTS idx_licenses_user_email ON licenses(user_email)`)
     .run()
 }
 
@@ -144,14 +168,17 @@ async function ensurePremiumPacksTable(db: D1Database): Promise<void> {
   await db
     .prepare(
       `CREATE TABLE IF NOT EXISTS premium_packs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_email TEXT NOT NULL,
-        order_id TEXT NOT NULL,
-        messages_total INTEGER NOT NULL,
+        ls_order_id TEXT UNIQUE NOT NULL,
+        messages_total INTEGER NOT NULL DEFAULT 100,
         messages_used INTEGER NOT NULL DEFAULT 0,
-        created_at INTEGER NOT NULL DEFAULT (unixepoch()),
-        PRIMARY KEY (user_email, order_id)
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
       )`
     )
+    .run()
+  await db
+    .prepare(`CREATE INDEX IF NOT EXISTS idx_premium_packs_user_email ON premium_packs(user_email)`)
     .run()
 }
 
@@ -173,17 +200,26 @@ async function handleOrderCreated(
     await ensureLicensesTable(env.DB)
     await env.DB.prepare(
       `INSERT OR REPLACE INTO licenses
-        (user_email, order_id, license_key, status, max_activations, activations, created_at)
-       VALUES (?1, ?2, ?3, 'active', ?4, 0, unixepoch())`
+        (user_email, ls_order_id, license_key, status, max_activations, activation_count, created_at)
+       VALUES (?1, ?2, ?3, 'active', ?4, 0, datetime('now'))`
     )
       .bind(email, orderId, licenseKey, LICENSE_MAX_ACTIVATIONS)
       .run()
 
     await ensureSubscriptionsTable(env.DB)
+    // ON CONFLICT(user_email) plutôt qu'INSERT OR REPLACE : ne PAS écraser un
+    // abonnement mensuel existant (ls_subscription_id / current_period_end
+    // hors du SET → préservés si l'acheteur Pro avait déjà un abo).
     await env.DB.prepare(
-      `INSERT OR REPLACE INTO subscriptions
+      `INSERT INTO subscriptions
         (user_email, plan_type, status, ls_subscription_id, ls_customer_id, ls_variant_id, current_period_end, updated_at)
-       VALUES (?1, 'pro', 'active', NULL, ?2, ?3, NULL, unixepoch())`
+       VALUES (?1, 'pro', 'active', NULL, ?2, ?3, NULL, datetime('now'))
+       ON CONFLICT(user_email) DO UPDATE SET
+         plan_type = 'pro',
+         status = 'active',
+         ls_customer_id = excluded.ls_customer_id,
+         ls_variant_id = excluded.ls_variant_id,
+         updated_at = datetime('now')`
     )
       .bind(
         email,
@@ -198,8 +234,8 @@ async function handleOrderCreated(
     await ensurePremiumPacksTable(env.DB)
     await env.DB.prepare(
       `INSERT OR REPLACE INTO premium_packs
-        (user_email, order_id, messages_total, messages_used, created_at)
-       VALUES (?1, ?2, ?3, 0, unixepoch())`
+        (user_email, ls_order_id, messages_total, messages_used, created_at)
+       VALUES (?1, ?2, ?3, 0, datetime('now'))`
     )
       .bind(email, orderId, PREMIUM_PACK_MESSAGES_TOTAL)
       .run()
@@ -219,9 +255,17 @@ async function handleSubscriptionUpsert(
 
   await ensureSubscriptionsTable(env.DB)
   await env.DB.prepare(
-    `INSERT OR REPLACE INTO subscriptions
+    `INSERT INTO subscriptions
       (user_email, plan_type, status, ls_subscription_id, ls_customer_id, ls_variant_id, current_period_end, updated_at)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, unixepoch())`
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, datetime('now'))
+     ON CONFLICT(user_email) DO UPDATE SET
+       plan_type = excluded.plan_type,
+       status = excluded.status,
+       ls_subscription_id = excluded.ls_subscription_id,
+       ls_customer_id = excluded.ls_customer_id,
+       ls_variant_id = excluded.ls_variant_id,
+       current_period_end = excluded.current_period_end,
+       updated_at = datetime('now')`
   )
     .bind(
       email,
@@ -257,12 +301,12 @@ async function handleSubscriptionStatusUpdate(
     await env.DB.prepare(
       `INSERT INTO subscriptions
         (user_email, plan_type, status, ls_subscription_id, ls_customer_id, ls_variant_id, current_period_end, updated_at)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, unixepoch())
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, datetime('now'))
        ON CONFLICT(user_email) DO UPDATE SET
          plan_type = excluded.plan_type,
          status = excluded.status,
          current_period_end = excluded.current_period_end,
-         updated_at = unixepoch()`
+         updated_at = datetime('now')`
     )
       .bind(
         email,
@@ -281,11 +325,11 @@ async function handleSubscriptionStatusUpdate(
     await env.DB.prepare(
       `INSERT INTO subscriptions
         (user_email, plan_type, status, ls_subscription_id, ls_customer_id, ls_variant_id, current_period_end, updated_at)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, unixepoch())
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, datetime('now'))
        ON CONFLICT(user_email) DO UPDATE SET
          plan_type = excluded.plan_type,
          status = excluded.status,
-         updated_at = unixepoch()`
+         updated_at = datetime('now')`
     )
       .bind(
         email,
@@ -304,7 +348,7 @@ async function handleSubscriptionStatusUpdate(
   // jusqu'à la fin de la période en cours), seul le status change.
   await env.DB.prepare(
     `UPDATE subscriptions
-     SET status = ?1, updated_at = unixepoch()
+     SET status = ?1, updated_at = datetime('now')
      WHERE user_email = ?2`
   )
     .bind(newStatus, email)

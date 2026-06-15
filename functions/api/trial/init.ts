@@ -152,10 +152,15 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   }
 
   // Nouveau user (ou ligne free legacy) → créer le trial + init compteur.
+  // `ON CONFLICT DO NOTHING` (générique, sans cible) : ne lève JAMAIS, que la
+  // contrainte d'unicité sur user_email existe (migration 0005) ou pas — évite
+  // le 503 sur reconnexion d'un user ayant déjà une ligne (réconciliation
+  // 15 juin). created_at/updated_at en datetime('now') = TEXT, cohérent prod.
   try {
     await env.DB.prepare(
       `INSERT INTO subscriptions (user_email, status, plan_type, created_at, updated_at)
-       VALUES (?1, 'active', 'trial', datetime('now'), datetime('now'))`
+       VALUES (?1, 'active', 'trial', datetime('now'), datetime('now'))
+       ON CONFLICT DO NOTHING`
     )
       .bind(email)
       .run()

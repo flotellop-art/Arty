@@ -7,10 +7,10 @@ interface ActivateBody {
 }
 
 interface LicenseRow {
-  order_id: string
+  ls_order_id: string
   status: string
   max_activations: number
-  activations: number
+  activation_count: number
 }
 
 const CORS_HEADERS = {
@@ -67,7 +67,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   let license: LicenseRow | null = null
   try {
     license = await env.DB.prepare(
-      `SELECT order_id, status, max_activations, activations
+      `SELECT ls_order_id, status, max_activations, activation_count
          FROM licenses
         WHERE license_key = ?1 AND user_email = ?2
         LIMIT 1`
@@ -88,26 +88,26 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     return jsonResponse({ error: 'license_inactive' }, 403)
   }
 
-  if (license.activations >= license.max_activations) {
+  if (license.activation_count >= license.max_activations) {
     return jsonResponse(
       { error: 'max_activations_reached', max: license.max_activations },
       403
     )
   }
 
-  // Atomic increment guarded by the activations count we just read — prevents
+  // Atomic increment guarded by the activation_count we just read — prevents
   // a race where two parallel activations both pass the cap check above and
   // each bump the counter past max_activations.
   const update = await env.DB.prepare(
     `UPDATE licenses
-        SET activations = activations + 1
+        SET activation_count = activation_count + 1
       WHERE license_key = ?1
         AND user_email = ?2
-        AND order_id = ?3
+        AND ls_order_id = ?3
         AND status = 'active'
-        AND activations < max_activations`
+        AND activation_count < max_activations`
   )
-    .bind(licenseKey, email, license.order_id)
+    .bind(licenseKey, email, license.ls_order_id)
     .run()
 
   if (!update.success || (update.meta?.changes ?? 0) === 0) {
@@ -117,18 +117,22 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     )
   }
 
-  const newActivations = license.activations + 1
+  const newActivations = license.activation_count + 1
 
   try {
+    // Garde anti-downgrade : ne PAS écraser un abonnement mensuel actif (ou un
+    // VIP) en `pro` (= BYOK, accès clé serveur perdu). Pour free/trial/inactive
+    // → devient pro. created_at préservé (hors INSERT/SET).
     await env.DB.prepare(
       `INSERT INTO subscriptions
         (user_email, plan_type, status, ls_subscription_id, ls_customer_id,
          ls_variant_id, current_period_end, updated_at)
-       VALUES (?1, 'pro', 'active', NULL, NULL, NULL, NULL, unixepoch())
+       VALUES (?1, 'pro', 'active', NULL, NULL, NULL, NULL, datetime('now'))
        ON CONFLICT(user_email) DO UPDATE SET
          plan_type = 'pro',
          status = 'active',
-         updated_at = unixepoch()`
+         updated_at = datetime('now')
+       WHERE subscriptions.plan_type NOT IN ('subscription', 'vip')`
     )
       .bind(email)
       .run()

@@ -129,22 +129,22 @@ async function consumePremiumPack(env: Env, email: string): Promise<boolean> {
     // Décrémente le pack le plus ancien d'abord (FIFO) — on prend juste celui
     // avec le plus petit created_at qui a encore du solde.
     const oldest = await env.DB.prepare(
-      `SELECT user_email, order_id FROM premium_packs
+      `SELECT user_email, ls_order_id FROM premium_packs
        WHERE user_email = ?1 AND messages_used < messages_total
-       ORDER BY created_at ASC, order_id ASC
+       ORDER BY created_at ASC, ls_order_id ASC
        LIMIT 1`
     )
       .bind(email)
-      .first<{ user_email: string; order_id: string }>()
+      .first<{ user_email: string; ls_order_id: string }>()
 
     if (!oldest) return false
 
     const res = await env.DB.prepare(
       `UPDATE premium_packs
        SET messages_used = messages_used + 1
-       WHERE user_email = ?1 AND order_id = ?2 AND messages_used < messages_total`
+       WHERE user_email = ?1 AND ls_order_id = ?2 AND messages_used < messages_total`
     )
-      .bind(oldest.user_email, oldest.order_id)
+      .bind(oldest.user_email, oldest.ls_order_id)
       .run()
 
     // success.meta.changes existe sur D1 — fallback à 1 si non disponible
