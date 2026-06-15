@@ -71,7 +71,7 @@ function sanitizeFacts(raw: unknown): ExistingFact[] {
 }
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
-  const email = await verifyGoogleUser(request)
+  const email = await verifyGoogleUser(request, env.GOOGLE_CLIENT_ID)
   if (!email) {
     return Response.json({ error: 'Authentication required' }, { status: 401 })
   }

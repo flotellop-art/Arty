@@ -2,6 +2,33 @@ import type { Env } from '../../env'
 import { consumeCapAtomic } from './atomicQuota'
 
 /**
+ * Vérifie via `tokeninfo` que le token a été émis POUR Arty (`aud`/`azp`).
+ * Retourne :
+ *  - `true`  : audience confirmée (`aud` OU `azp` === expectedAud)
+ *  - `false` : audience ÉTRANGÈRE explicite (aud/azp présents et ≠ expectedAud)
+ *  - `null`  : indéterminé (tokeninfo KO, ou `aud`/`azp` absents) → l'appelant
+ *              NE doit PAS verrouiller. Fail-safe : évite de bloquer un token
+ *              natif légitime (serverAuthCode, BUG 21/51) ou un incident
+ *              tokeninfo transitoire.
+ */
+async function tokenAudienceMatches(
+  token: string,
+  expectedAud: string
+): Promise<boolean | null> {
+  try {
+    const res = await fetch(
+      `https://oauth2.googleapis.com/tokeninfo?access_token=${encodeURIComponent(token)}`
+    )
+    if (!res.ok) return null
+    const info = (await res.json()) as { aud?: string; azp?: string }
+    if (!info.aud && !info.azp) return null
+    return info.aud === expectedAud || info.azp === expectedAud
+  } catch {
+    return null
+  }
+}
+
+/**
  * Vérifie le token Google passé dans `x-google-token` (ou dans
  * `Authorization: Bearer …` en fallback pour les endpoints Google API
  * qui forwardent directement le token user) auprès de l'API userinfo
@@ -11,9 +38,17 @@ import { consumeCapAtomic } from './atomicQuota'
  * Usage : gate d'authentification pour les endpoints qui acceptent tout
  * utilisateur Google (BYOK inclus). Empêche le relais anonyme via un
  * header forgé — Google est la source de vérité.
+ *
+ * N-1 (audit OAuth) : quand `expectedAud` est fourni (= GOOGLE_CLIENT_ID,
+ * passé par les proxys IA qui dépensent la clé serveur owner), on rejette en
+ * plus tout token émis pour une AUTRE app (audience étrangère). Fail-safe :
+ * un `aud` indéterminé/absent ou un tokeninfo KO NE verrouille PAS (on garde
+ * l'email userinfo) — seul un `aud` étranger EXPLICITE est rejeté. ⚠️ tester
+ * web ET natif avant déploiement (les tokens serverAuthCode natifs, BUG 21/51).
  */
 export async function verifyGoogleUser(
-  request: Request
+  request: Request,
+  expectedAud?: string | null
 ): Promise<string | null> {
   const googleToken =
     request.headers.get('x-google-token') ||
@@ -27,7 +62,12 @@ export async function verifyGoogleUser(
     })
     if (!res.ok) return null
     const userInfo = (await res.json()) as { email?: string }
-    return userInfo.email?.toLowerCase() ?? null
+    const email = userInfo.email?.toLowerCase() ?? null
+    if (!email) return null
+    if (expectedAud && (await tokenAudienceMatches(googleToken, expectedAud)) === false) {
+      return null
+    }
+    return email
   } catch {
     return null
   }
@@ -64,7 +104,11 @@ export async function verifyTokenViaTokeninfo(
     if (!email) return null
     const verified = info.email_verified === 'true' || info.email_verified === true
     if (!verified) return null
-    if (expectedAud && info.aud && info.aud !== expectedAud && info.azp !== expectedAud) {
+    // M-3 (audit) : rejeter aussi un token SANS `aud`/`azp` quand un expectedAud
+    // est exigé (le `&& info.aud` court-circuitait la garde → token sans aud
+    // accepté). Ces endpoints (paiement) reçoivent des tokens web où aud est
+    // toujours présent → durcissement sûr.
+    if (expectedAud && info.aud !== expectedAud && info.azp !== expectedAud) {
       return null
     }
     return email

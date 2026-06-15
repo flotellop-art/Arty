@@ -101,8 +101,11 @@ const LEGACY_KEYS = [
   'token-init-v2',
   'response-style',
   'api-keys',
-  'crypto-salt',
-  'crypto-check',
+  // M-7 (audit OAuth) : 'crypto-salt'/'crypto-check' RETIRÉS. crypto.ts les lit
+  // en GLOBAL (localStorage brut, non préfixé) ; les migrer sous un préfixe user
+  // déplaçait + supprimait le sel global → au 2e compte ajouté sur l'appareil,
+  // les blobs chiffrés du 1er compte devenaient indéchiffrables (perte de
+  // session). Le sel/check DOIVENT rester globaux : ne pas les ré-ajouter ici.
 ]
 
 export function migrateExistingData(userId: string): void {

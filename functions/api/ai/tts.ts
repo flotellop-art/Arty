@@ -25,7 +25,7 @@ const ALLOWED_VOICES = ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer'] as 
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   // Anti-relais anonyme : un token Google valide est obligatoire (CRIT-4).
-  const email = await verifyGoogleUser(request)
+  const email = await verifyGoogleUser(request, env.GOOGLE_CLIENT_ID)
   if (!email) {
     return Response.json(
       { error: 'Authentication required — please sign in with Google' },
