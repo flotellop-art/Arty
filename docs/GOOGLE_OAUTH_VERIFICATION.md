@@ -57,10 +57,12 @@ Endpoints serveur correspondants : `functions/api/gmail`, `drive`, `calendar`, `
 | `contacts` | Identifier des destinataires (lecture + écriture) | Sensitive | Moyen |
 
 **Conséquence :** trois scopes restricted subsistent (`gmail.readonly`,
-`gmail.modify`, `drive.readonly`) → **CASA requis** (voir §6). La réduction de
-scopes ne change PAS le palier (binaire : 1 restricted = Tier 3, et
-`gmail.readonly` est non négociable), mais elle allège le dossier, l'écran de
-consentement et la surface d'audit.
+`gmail.modify`, `drive.readonly`) → **CASA requis** (voir §6). Le cas réaliste
+pour Arty est **Tier 2** (pas Tier 3 — il n'existe aucune règle figée
+« restricted = Tier 3 » : Google assigne le tier selon le risque, et des apps
+indé à scopes Gmail/Drive restricted passent en Tier 2). La réduction de scopes
+ne change pas le besoin de CASA (`gmail.readonly`, non négociable, le déclenche),
+mais elle allège le dossier, l'écran de consentement et la surface d'audit.
 
 ---
 
@@ -122,14 +124,18 @@ Pour les Restricted Scopes, Google exige un audit externe annuel via un labo agr
 > 30 000 USD » correspond à un **Tier 3 chez un labo enterprise** (Bishop Fox,
 > Leviathan…) ou à de vieux devis pré-2023, **pas** au cas réaliste. Chiffres
 > actuels sourcés (assesseurs agréés Google) :
-> - Le **tier est assigné par Google** au cas par cas, pas par une grille fixe.
->   `gmail.readonly`/`drive.readonly` peuvent donner **Tier 2 ou Tier 3** selon le
->   profil de risque de l'app (nb d'utilisateurs). On ne le saura qu'en lançant la
+> - Le **tier est assigné par Google** au cas par cas (App Defense Alliance :
+>   sensibilité des données + nb d'utilisateurs + risque), **pas** par une grille
+>   « restricted = Tier 3 », qui n'existe pas. Pour une app indé en lecture comme
+>   Arty, le cas réaliste est **Tier 2** — confirmé par les retours terrain (Orbis,
+>   truto, dev.to passent en Tier 2 avec des scopes Gmail/Drive restricted). Le
+>   **Tier 3** est l'exception (pentest infra) : gros volume d'utilisateurs ou
+>   badge Google Workspace Marketplace. On ne le saura à coup sûr qu'en lançant la
 >   vérification dans la Cloud Console.
-> - **Tier 2** (validation labo) : **~540 – 900 USD/an** (TAC Security, partenaire
->   Google ; retours indés Orbis/dev.to confirment) ; 1 200 – 6 000 USD chez
->   d'autres labos.
-> - **Tier 3** (pentest complet) : **~4 500 USD/an** (TAC) à 8 000 USD.
+> - **Tier 2** (validation labo — le cas attendu) : **~540 – 900 USD/an** (TAC
+>   Security, partenaire Google ; retours indés Orbis/dev.to confirment) ;
+>   1 200 – 6 000 USD chez d'autres labos.
+> - **Tier 3** (pentest complet — exception) : **~4 500 USD/an** (TAC) à 8 000 USD.
 > - **Renouvellement annuel obligatoire** (réévaluation tous les 12 mois).
 > - **Délai** : 1–3 semaines (TAC) à 3–8 semaines selon labo.
 > - Le **self-scan autonome est déprécié** (2024-25) : la validation par un labo

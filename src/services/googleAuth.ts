@@ -21,8 +21,10 @@ export function withTimeout(ms: number): { signal: AbortSignal; cancel: () => vo
 //   - `calendar` (complet) supprimé : doublon de `calendar.events`, qui couvre
 //     déjà lecture/création/modif/suppression d'événements (seul besoin réel).
 // `gmail.readonly` (lecture du corps des mails = différenciateur) reste le seul
-// scope restricted incontournable → palier CASA inchangé (Tier 3), mais
-// l'écran de consentement est bien moins anxiogène et le dossier plus défendable.
+// scope restricted incontournable → CASA requis. Le cas réaliste pour une app
+// indé en lecture est **Tier 2** (~540–900 $/an), pas Tier 3 — Google assigne le
+// tier selon le risque (voir docs/GOOGLE_OAUTH_VERIFICATION.md §6). L'écran de
+// consentement est bien moins anxiogène et le dossier plus défendable.
 const SCOPES = [
   'https://www.googleapis.com/auth/gmail.readonly',
   'https://www.googleapis.com/auth/gmail.send',
