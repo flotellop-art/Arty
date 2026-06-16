@@ -16,19 +16,73 @@ function notifyCompressed(keptRecent: number): void {
   }
 }
 
-// Rough token estimation: ~4 chars per token for French text
-function estimateTokens(text: string): number {
-  return Math.ceil(text.length / 4)
+// ── Estimation de tokens ───────────────────────────────────────────────────────
+// Deux corrections par rapport au naïf `length / 4` :
+//  1. Le français s'encode à ~3,8 caractères/token sur le tokenizer de Claude
+//     (vs ~4 pour l'anglais) — ajustement mineur.
+//  2. CRITIQUE : l'ancien code écrasait TOUT message non-string (les
+//     tool_results qui portent les corps d'emails, le texte Drive, les pages
+//     web…) en la chaîne '[contenu multimédia]' (~4 tokens) AVANT de compter.
+//     Une conversation avec plusieurs lectures Gmail/Drive (8-10k caractères
+//     chacune) était donc estimée minuscule et ne franchissait jamais le seuil
+//     → context rot. On parcourt maintenant les blocs pour compter leur vrai
+//     texte.
+//
+// On NE compte volontairement PAS la taille réelle des octets base64 des blocs
+// document/image (contrairement à toolResultSize() dans anthropicClient, qui
+// borne le coût d'UN message dans la boucle d'outils) : un gros PDF vit le plus
+// souvent dans les messages récents conservés, que la compression ne peut pas
+// réduire — le compter en entier déclencherait un résumé Sonnet coûteux à
+// CHAQUE tour pour rien. Un poids nominal modeste reflète son coût sans ce thrash.
+const CHARS_PER_TOKEN = 3.8
+const FILE_BLOCK_NOMINAL_TOKENS = 2000
+
+function estimateTextTokens(text: string): number {
+  return Math.ceil(text.length / CHARS_PER_TOKEN)
 }
 
-function estimateMessagesTokens(messages: Array<{ role: string; content: string }>): number {
-  return messages.reduce((total, m) => total + estimateTokens(m.content) + 10, 0)
+function estimateContentTokens(content: string | Array<Record<string, unknown>>): number {
+  if (typeof content === 'string') return estimateTextTokens(content)
+  if (!Array.isArray(content)) return 0
+  let tokens = 0
+  for (const block of content) {
+    if (!block || typeof block !== 'object') continue
+    const type = typeof block.type === 'string' ? block.type : ''
+    // Bloc texte (message simple) ou bloc thinking de l'assistant.
+    if (typeof block.text === 'string') tokens += estimateTextTokens(block.text)
+    if (typeof block.thinking === 'string') tokens += estimateTextTokens(block.thinking)
+    // tool_use : les arguments de l'outil.
+    if (block.input !== undefined) tokens += estimateTextTokens(JSON.stringify(block.input))
+    // tool_result : content = string OU tableau de sous-blocs (texte + fichiers).
+    if (block.content !== undefined) {
+      const c = block.content
+      if (typeof c === 'string') {
+        tokens += estimateTextTokens(c)
+      } else if (Array.isArray(c)) {
+        for (const sub of c as Array<Record<string, unknown>>) {
+          if (sub && typeof sub.text === 'string') tokens += estimateTextTokens(sub.text)
+          if (sub && sub.source !== undefined) tokens += FILE_BLOCK_NOMINAL_TOKENS
+        }
+      }
+    }
+    // Bloc document/image directement au niveau du message (PJ utilisateur).
+    if ((type === 'document' || type === 'image') && block.source !== undefined) {
+      tokens += FILE_BLOCK_NOMINAL_TOKENS
+    }
+  }
+  return tokens
+}
+
+export function estimateMessagesTokens(
+  messages: Array<{ role: string; content: string | Array<Record<string, unknown>> }>
+): number {
+  return messages.reduce((total, m) => total + estimateContentTokens(m.content) + 10, 0)
 }
 
 // Sonnet 4.6 a un contexte de 200k tokens : on peut largement attendre 80k
 // avant de compresser. Plus on garde de messages verbatim, plus Claude
 // préserve les chiffres et nuances (devis, calculs, contexte client).
-const COMPRESSION_THRESHOLD = 80000 // tokens
+export const COMPRESSION_THRESHOLD = 80000 // tokens
 const KEEP_RECENT = 20 // garde les 20 derniers messages intacts (~10 échanges)
 
 interface ApiMessage {
@@ -41,13 +95,10 @@ export async function compressIfNeeded(
   _systemPrompt: string | undefined,
   apiKey: string
 ): Promise<ApiMessage[]> {
-  // Only compress text messages (skip content blocks with files)
-  const textMessages = messages.map(m => ({
-    role: m.role,
-    content: typeof m.content === 'string' ? m.content : '[contenu multimédia]',
-  }))
-
-  const totalTokens = estimateMessagesTokens(textMessages)
+  // Estime sur les messages RÉELS (texte des tool_results inclus) — le flatten
+  // précédent en '[contenu multimédia]' sous-estimait massivement les convs
+  // riches en lectures Gmail/Drive et empêchait toute compression.
+  const totalTokens = estimateMessagesTokens(messages)
 
   // Under threshold — no compression needed
   if (totalTokens < COMPRESSION_THRESHOLD || messages.length <= KEEP_RECENT + 2) {

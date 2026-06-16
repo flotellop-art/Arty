@@ -36,6 +36,7 @@
 import type { Env } from '../../env'
 import { checkAllowedUserPeek } from '../_lib/checkAllowedUser'
 import { isSafePublicUrl, isShortLinkHost } from '../_lib/urlSafety'
+import { truncateWithNotice } from '../_lib/truncate'
 
 const MAX_URL_LEN = 2048
 const MAX_MARKDOWN_CHARS = 200_000
@@ -105,11 +106,14 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
       return Response.json({ error: 'Fetch failed' }, { status: 502 })
     }
     const data = (await res.json()) as { markdown?: string }
-    const markdown = (data.markdown ?? '').slice(0, MAX_MARKDOWN_CHARS)
-    if (!markdown) {
+    const raw = data.markdown ?? ''
+    if (!raw) {
       return Response.json({ error: 'Empty document' }, { status: 502 })
     }
-    return Response.json({ markdown })
+    // Coupe AVEC note visible si le Markdown dépasse la limite (rare : ~50k
+    // tokens) au lieu d'une coupe muette.
+    const { text: markdown, truncated, originalLength } = truncateWithNotice(raw, MAX_MARKDOWN_CHARS)
+    return Response.json({ markdown, truncated, originalLength })
   } catch {
     return Response.json({ error: 'Fetch failed' }, { status: 502 })
   }

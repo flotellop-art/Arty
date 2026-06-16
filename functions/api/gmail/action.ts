@@ -1,6 +1,13 @@
 import type { Env } from '../../env'
 import { decodeBase64Url, decodePartBody, htmlToText, type MimePart } from './_lib'
 import { verifyGoogleUser, notFoundResponse } from '../_lib/checkAllowedUser'
+import { truncateWithNotice } from '../_lib/truncate'
+
+// Limites de texte restitué. Coupe AVEC note visible (truncateWithNotice) au
+// lieu d'une coupe muette : l'utilisateur/Claude savent quand un mail ou une PJ
+// est tronqué et peuvent demander la suite.
+const MAX_EMAIL_BODY_CHARS = 8000
+const MAX_ATTACHMENT_TEXT_CHARS = 10000
 
 // MIME types that Claude can read natively as document/image content
 // blocks. Forwarded as base64 to the client tool wrapper, which packs
@@ -148,10 +155,11 @@ async function handleRead(token: string, body: Record<string, unknown>): Promise
     // Fallback to snippet when extraction yielded nothing (encrypted
     // S/MIME body, exotic encoding, etc.) — Gmail always returns a
     // ~200-char preview. Truncated at 8000 chars (was 5000) to fit
-    // longer business mails.
-    const finalBody = (msgBody || (typeof msg.snippet === 'string' ? msg.snippet : '')).slice(0, 8000)
+    // longer business mails — désormais AVEC note visible si coupé.
+    const rawBody = msgBody || (typeof msg.snippet === 'string' ? msg.snippet : '')
+    const { text: finalBody, truncated, originalLength } = truncateWithNotice(rawBody, MAX_EMAIL_BODY_CHARS)
 
-    return Response.json({ id: msg.id, threadId: msg.threadId, from: h('From'), to: h('To'), subject: h('Subject'), date: h('Date'), body: finalBody, snippet: msg.snippet || '', attachments })
+    return Response.json({ id: msg.id, threadId: msg.threadId, from: h('From'), to: h('To'), subject: h('Subject'), date: h('Date'), body: finalBody, snippet: msg.snippet || '', attachments, truncated, originalLength })
   } catch { return Response.json({ error: 'Failed to read message' }, { status: 500 }) }
 }
 
@@ -268,9 +276,10 @@ async function handleAttachment(token: string, body: Record<string, unknown>): P
 
     // Try plain text (charset detection isn't possible without the
     // parent part headers, so we default to UTF-8).
-    const text = new TextDecoder('utf-8', { fatal: false, ignoreBOM: false }).decode(bytes)
-    if (text && !text.includes('\x00')) {
-      return Response.json({ content: text.slice(0, 10000), type: 'text' })
+    const decoded = new TextDecoder('utf-8', { fatal: false, ignoreBOM: false }).decode(bytes)
+    if (decoded && !decoded.includes('\x00')) {
+      const { text: content, truncated, originalLength } = truncateWithNotice(decoded, MAX_ATTACHMENT_TEXT_CHARS)
+      return Response.json({ content, type: 'text', truncated, originalLength })
     }
 
     return Response.json({ content: '[Fichier binaire — contenu non lisible en texte]', type: 'binary' })
