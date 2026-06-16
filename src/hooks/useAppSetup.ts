@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
+import { buildToolConfirmMessage } from '../services/toolConfirmation'
 import { useGoogleAuth } from './useGoogleAuth'
 import { useGmail } from './useGmail'
 import { useDrive } from './useDrive'
@@ -70,6 +71,18 @@ export function useAppSetup(conversation: ConversationHook) {
           })
         })
       }
+      // HITL : un outil sensible (envoi, partage, suppression, publication)
+      // déclenché dans la boucle exige un consentement humain explicite AVANT
+      // exécution. Sans ça, un contenu lu par Arty (prompt-injection) pouvait
+      // déclencher l'action en autonomie. Si l'utilisateur refuse, on rend un
+      // résultat clair au modèle pour qu'il ne relance pas l'action.
+      const confirmMessage = buildToolConfirmMessage(name, input, t)
+      if (confirmMessage && !window.confirm(confirmMessage)) {
+        return Promise.resolve({
+          result: "L'utilisateur a refusé cette action. Ne la relance pas sans son accord explicite.",
+        })
+      }
+
       return toolExecutorRef.current(name, input).then((res) => {
         if (res.screenshot) {
           setActionScreenshot(res.screenshot)
@@ -77,7 +90,7 @@ export function useAppSetup(conversation: ConversationHook) {
         return res
       })
     })
-  }, [computerActions, gmail, drive, browserActions, setToolHandler])
+  }, [computerActions, gmail, drive, browserActions, setToolHandler, t])
 
   // Auto-fetch Gmail, Drive, and Memory when Google is connected
   useEffect(() => {
