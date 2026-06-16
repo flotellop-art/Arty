@@ -8,6 +8,7 @@ import { ActionBanner } from '../google/ActionBanner'
 import { BrowserBanner } from '../google/BrowserBanner'
 import { ConversationSummaryModal } from './ConversationSummaryModal'
 import { ContextCompressedBanner } from './ContextCompressedBanner'
+import { ContextMeter } from './ContextMeter'
 import { ErrorBoundary } from '../shared/ErrorBoundary'
 import { consumePendingDraft } from '../../services/shareTargetService'
 import type { useGmail } from '../../hooks/useGmail'
@@ -146,6 +147,8 @@ export function ConversationScreen({
           )}
         </div>
       )}
+
+      <ContextMeter messages={conversation.messages} onNewConversation={onNewConversation} />
 
       <ContextCompressedBanner onNewConversation={onNewConversation} />
 
