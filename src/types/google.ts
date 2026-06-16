@@ -22,6 +22,10 @@ export interface GmailMessage {
 export interface GmailFullMessage extends GmailMessage {
   to: string
   body: string
+  /** Vrai si le corps a été tronqué côté serveur (note visible dans `body`). */
+  truncated?: boolean
+  /** Longueur du corps avant troncature. */
+  originalLength?: number
 }
 
 export interface EmailDraft {
@@ -44,6 +48,10 @@ export interface DriveFile {
 
 export interface DriveFileContent extends DriveFile {
   content: string
+  /** Vrai si le contenu a été tronqué côté serveur (note visible dans `content`). */
+  truncated?: boolean
+  /** Longueur du contenu avant troncature. */
+  originalLength?: number
 }
 
 export interface CalendarEvent {

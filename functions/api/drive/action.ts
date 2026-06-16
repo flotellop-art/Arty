@@ -1,5 +1,13 @@
 import type { Env } from '../../env'
 import { verifyGoogleUser, notFoundResponse } from '../_lib/checkAllowedUser'
+import { truncateWithNotice } from '../_lib/truncate'
+
+// Limite de texte restitué pour un document Drive (Google Doc/Sheet exporté,
+// fichier text/*). Au-delà, on coupe AVEC une note visible (truncateWithNotice)
+// au lieu d'une coupe muette. Limite gardée modeste à dessein : élargir =
+// envoyer plus de tokens (= coût clé serveur sur les abonnés) ; la note permet
+// à Claude de redemander un extrait précis si besoin.
+const MAX_DOC_TEXT_CHARS = 10000
 
 const ID_RE = /^[a-zA-Z0-9_-]+$/
 
@@ -125,7 +133,8 @@ async function handleRead(token: string, body: Record<string, unknown>): Promise
     } else {
       content = `[Fichier binaire : ${meta.name} (${meta.mimeType})]`
     }
-    return Response.json({ id: meta.id, name: meta.name, mimeType: meta.mimeType, modifiedTime: meta.modifiedTime, content: content.slice(0, 10000) })
+    const { text, truncated, originalLength } = truncateWithNotice(content, MAX_DOC_TEXT_CHARS)
+    return Response.json({ id: meta.id, name: meta.name, mimeType: meta.mimeType, modifiedTime: meta.modifiedTime, content: text, truncated, originalLength })
   } catch { return Response.json({ error: 'Failed to read file' }, { status: 500 }) }
 }
 
