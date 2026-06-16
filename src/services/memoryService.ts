@@ -170,6 +170,92 @@ function extractMinimalProfil(profil: Record<string, unknown>): Record<string, u
   return Object.keys(minimal).length > 0 ? minimal : null
 }
 
+// ─── Sélection par pertinence du Tier 1 (PR P2) ───
+//
+// Avant : quand le trigger matchait, on injectait TOUS les clients/projets (cap
+// 20 chacun). "rappelle-moi l'adresse de Dupont" avec 20 clients injectait
+// 19 fiches inutiles. Ici : scoring lexical simple (PAS de vecteurs) pour ne
+// garder que les entrées pertinentes, avec deux garde-fous anti-régression :
+//  - listes courtes (≤ RELEVANCE_PASSTHROUGH) : on injecte tout (coût faible,
+//    zéro risque de rater une entrée) ;
+//  - requête générique (0 token utile) ou agrégative (beaucoup d'entrées
+//    matchent, ex "quels clients ont un projet en cours ?") : on retombe sur le
+//    cap complet — JAMAIS de drop silencieux du contexte dont la requête a besoin.
+const RELEVANCE_PASSTHROUGH = 8 // ≤ 8 entrées → tout injecter
+const MAX_RELEVANT = 10 // au-delà → au plus 10 entrées pertinentes
+const MAX_MEMORY_ENTRIES = 20 // cap legacy / requête générique / agrégative
+
+/** Minuscule + retrait des accents (NFD) — appliqué des DEUX côtés de la compa. */
+function normalizeForSearch(s: string): string {
+  return s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+}
+
+// Mots à ignorer dans le scoring. Inclut les déclencheurs de MEMORY_INJECTION_
+// TRIGGERS (ce sont des SIGNAUX d'injection, pas des discriminants de contenu —
+// sans ça "rappelle"/"adresse" sur-matcheraient des fiches au hasard) + les mots
+// vides FR/EN ≥ 3 lettres (les < 3 sont déjà retirés par le filtre de longueur).
+const SCORING_STOPWORDS = new Set([
+  'mon', 'mes', 'notre', 'nos', 'client', 'clients', 'projet', 'projets', 'contact', 'contacts',
+  'adresse', 'adresses', 'note', 'notes', 'rappelle', 'souvient', 'souviens', 'memoire', 'enregistre',
+  'sais', 'connais', 'appelle', 'nomme', 'nommee', 'nommes', 'nommees', 'habite',
+  'les', 'des', 'une', 'ces', 'son', 'ses', 'par', 'sur', 'pas', 'vous', 'nous', 'pour', 'dans', 'avec',
+  'leur', 'leurs', 'vos', 'votre', 'qui', 'que', 'quoi', 'dont', 'cette', 'cet', 'ont', 'sont', 'suis',
+  'etre', 'est', 'fait', 'faire', 'tout', 'tous', 'toute', 'toutes', 'plus', 'moins', 'tres', 'bien',
+  'aussi', 'donc', 'mais', 'car', 'ainsi', 'alors', 'moi', 'toi', 'lui', 'eux', 'elle', 'ils', 'elles',
+  'comme', 'sans', 'sous', 'entre', 'vers', 'chez', 'cela', 'ceci', 'quel', 'quelle', 'quels', 'quelles',
+  'the', 'and', 'for', 'you', 'your', 'our', 'are', 'what', 'who', 'where', 'with', 'this', 'that',
+  'have', 'has', 'from', 'about', 'can', 'will',
+])
+
+/** Tokens discriminants (dédupliqués) d'un message utilisateur. */
+function tokenizeQuery(userMessage: string): string[] {
+  const seen = new Set<string>()
+  for (const raw of normalizeForSearch(userMessage).split(/[^a-z0-9]+/)) {
+    if (raw.length < 3 || SCORING_STOPWORDS.has(raw)) continue
+    seen.add(raw)
+  }
+  return [...seen]
+}
+
+/**
+ * Score lexical d'une entrée mémoire. Le nom/titre pèse double ; tous les autres
+ * champs string (resume, adresse, historique, budget…) comptent simple. Schéma-
+ * libre : on itère sur toutes les valeurs string plutôt qu'une whitelist de clés.
+ */
+function scoreEntry(entry: Record<string, unknown>, tokens: string[]): number {
+  const name = normalizeForSearch(String(entry.nom ?? entry.titre ?? ''))
+  const restParts: string[] = []
+  for (const [k, v] of Object.entries(entry)) {
+    if (k === 'nom' || k === 'titre') continue
+    if (typeof v === 'string') restParts.push(v)
+  }
+  const rest = normalizeForSearch(restParts.join(' '))
+  let score = 0
+  for (const t of tokens) {
+    if (name.includes(t)) score += 2
+    else if (rest.includes(t)) score += 1
+  }
+  return score
+}
+
+function selectRelevantEntries(
+  entries: Record<string, unknown>[],
+  userMessage: string
+): Record<string, unknown>[] {
+  if (entries.length <= RELEVANCE_PASSTHROUGH) return entries
+  const tokens = tokenizeQuery(userMessage)
+  if (tokens.length === 0) return entries.slice(0, MAX_MEMORY_ENTRIES) // requête générique
+  const scored = entries
+    .map((e) => ({ e, score: scoreEntry(e, tokens) }))
+    .filter((s) => s.score > 0)
+  if (scored.length === 0) return entries.slice(0, MAX_MEMORY_ENTRIES) // aucun match → cap
+  // Requête agrégative (beaucoup d'entrées matchent) → la liste entière est
+  // probablement attendue → cap complet plutôt qu'un sous-ensemble tronqué.
+  if (scored.length * 2 > entries.length) return entries.slice(0, MAX_MEMORY_ENTRIES)
+  scored.sort((a, b) => b.score - a.score) // tri stable (ES2019+) : égalités = ordre d'origine
+  return scored.slice(0, MAX_RELEVANT).map((s) => s.e)
+}
+
 /**
  * Formate la mémoire pour injection dans le system prompt.
  *
@@ -210,22 +296,35 @@ export function formatMemoryForPrompt(memory: MemoryData, userMessage?: string):
   // Tier 1 — clients/projets/notes : injectés uniquement si trigger
   // matche, ou si mode legacy (pas de userMessage fourni).
   if (shouldInjectFullMemory) {
-    // Clients
+    // Clients — en mode conditionnel (userMessage présent + trigger), on ne
+    // garde que les fiches pertinentes ; sinon (legacy sans userMessage) cap 20.
     if (memory.clients && memory.clients.length > 0) {
-      const clientSummary = memory.clients
-        .slice(0, 20)
+      const total = memory.clients.length
+      const selected = conditionalMode
+        ? selectRelevantEntries(memory.clients, userMessage as string)
+        : memory.clients.slice(0, MAX_MEMORY_ENTRIES)
+      const clientSummary = selected
         .map((c) => `- ${c.nom || 'Inconnu'}: ${c.resume || JSON.stringify(c)}`)
         .join('\n')
-      parts.push(`CLIENTS CONNUS (${memory.clients.length}) :\n${clientSummary}`)
+      const header = selected.length < total
+        ? `CLIENTS CONNUS (${selected.length} sur ${total} — sélection pertinente)`
+        : `CLIENTS CONNUS (${total})`
+      parts.push(`${header} :\n${clientSummary}`)
     }
 
-    // Projets
+    // Projets — même logique de sélection que les clients.
     if (memory.projets && memory.projets.length > 0) {
-      const projetSummary = memory.projets
-        .slice(0, 20)
+      const total = memory.projets.length
+      const selected = conditionalMode
+        ? selectRelevantEntries(memory.projets, userMessage as string)
+        : memory.projets.slice(0, MAX_MEMORY_ENTRIES)
+      const projetSummary = selected
         .map((p) => `- ${p.nom || p.titre || 'Inconnu'}: ${p.resume || JSON.stringify(p)}`)
         .join('\n')
-      parts.push(`PROJETS (${memory.projets.length}) :\n${projetSummary}`)
+      const header = selected.length < total
+        ? `PROJETS (${selected.length} sur ${total} — sélection pertinente)`
+        : `PROJETS (${total})`
+      parts.push(`${header} :\n${projetSummary}`)
     }
 
     // Notes
