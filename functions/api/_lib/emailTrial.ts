@@ -256,6 +256,11 @@ export async function checkRequestOtpRateLimit(
   normalizedEmail: string,
   ip: string
 ): Promise<boolean> {
+  // INVARIANT : le rate-limit est le PREMIER write D1 du flux (avant storeOtp).
+  // Il DOIT donc créer les tables lui-même — sinon, sur une base vierge,
+  // l'INSERT dans `otp_rate` échoue → fail-closed → 429 systématique au tout
+  // premier appel, et `storeOtp` (qui créait les tables) n'est jamais atteint.
+  await ensureEmailTrialTables(env)
   const okEmail = await consumeRateLimit(
     env,
     `er:${normalizedEmail}:${dayWindow()}`,
@@ -268,6 +273,7 @@ export async function checkRequestOtpRateLimit(
 
 /** Vérifie le plafond de tentatives de vérif par IP (verify-otp, anti « 1 code N comptes »). */
 export async function checkVerifyOtpRateLimit(env: Env, ip: string): Promise<boolean> {
+  await ensureEmailTrialTables(env) // idem : premier write D1 du flux verify
   return consumeRateLimit(env, `iv:${ip}:${hourWindow()}`, OTP_VERIFY_PER_IP_HOUR, 3600)
 }
 
