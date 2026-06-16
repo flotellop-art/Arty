@@ -33,18 +33,28 @@ describe('scoreConversation', () => {
     expect(prefix).toBeGreaterThan(middle)
   })
 
-  it('compte les messages qui matchent, cappé à 5', () => {
-    const many = scoreConversation('x', [], Array.from({ length: 9 }, () => m('dupont')), 'dupont')
-    const five = scoreConversation('x', [], Array.from({ length: 5 }, () => m('dupont')), 'dupont')
-    expect(many).toBe(five) // plafonné
+  it('compte les messages qui matchent, plafonné (deux comptes au-dessus du cap = égaux)', () => {
+    const many = scoreConversation('x', [], Array.from({ length: 12 }, () => m('dupont')), 'dupont')
+    const fewerButCapped = scoreConversation('x', [], Array.from({ length: 8 }, () => m('dupont')), 'dupont')
+    expect(many).toBe(fewerButCapped) // plafonné
   })
 
   it('match de tag', () => {
     expect(scoreConversation('x', ['travail'], [], 'travail')).toBeGreaterThan(0)
   })
 
+  it('insensible aux accents (resume ~ Résumé), des deux côtés', () => {
+    expect(scoreConversation('Résumé du projet', [], [], 'resume')).toBeGreaterThan(0)
+    expect(scoreConversation('Note', [], [m('la tâche urgente')], 'tache')).toBeGreaterThan(0)
+  })
+
   it('0 si aucun match', () => {
     expect(scoreConversation('rien', [], [m('rien du tout')], 'zorglub')).toBe(0)
+  })
+
+  it('ne plante pas sur une conversation sans messages', () => {
+    expect(scoreConversation('Dupont', [], [], 'dupont')).toBeGreaterThan(0)
+    expect(scoreConversation('rien', [], [], 'dupont')).toBe(0)
   })
 })
 
@@ -105,5 +115,18 @@ describe('rankConversations', () => {
     const miss = conv({ id: 'miss', title: 'Rien', messages: [m('autre chose')] })
     const r = rankConversations([hit, miss], 'dupont', tagsOf)
     expect(r.conversations.map((c) => c.id)).toEqual(['hit'])
+  })
+
+  it('match par tag seul : conv incluse, pas de snippet (titre/corps ne matchent pas)', () => {
+    const tagged = conv({ id: 'tag', title: 'Sans rapport', tags: ['travail'], messages: [m('rien')] })
+    const r = rankConversations([tagged], 'travail', (c) => c.tags ?? [])
+    expect(r.conversations.map((c) => c.id)).toEqual(['tag'])
+    expect(r.snippets['tag']).toBeUndefined()
+  })
+
+  it('recherche insensible aux accents (resume trouve « Résumé »)', () => {
+    const c = conv({ id: 'r', title: 'Résumé hebdo' })
+    const r = rankConversations([c], 'resume', tagsOf)
+    expect(r.conversations.map((x) => x.id)).toEqual(['r'])
   })
 })

@@ -14,30 +14,42 @@ import type { Conversation } from '../types'
 // manipulable par un message répétitif). La récence (`updatedAt`) ne sert que de
 // départage, jamais à écraser la pertinence textuelle.
 
-const TITLE_MATCH = 1000
-const TITLE_PREFIX_BONUS = 500
-const TAG_MATCH = 400
-const BODY_MSG_WEIGHT = 20
-const BODY_MSG_CAP = 5
+// Hiérarchie titre > tag > corps, mais sans l'absolutisme initial (titre était
+// 10× le corps) : un corps dense (cap×poids = 240) reste sous un match titre
+// (500) tout en passant devant peu de mentions.
+const TITLE_MATCH = 500
+const TITLE_PREFIX_BONUS = 300
+const TAG_MATCH = 300
+const BODY_MSG_WEIGHT = 40
+const BODY_MSG_CAP = 6
 
-/** `q` est supposé déjà en minuscules et non vide. `tagLabels` déjà en minuscules. */
+// Recherche insensible à la casse ET aux accents (NFD + retrait des diacritiques).
+// Indispensable en français : « resume » doit trouver « résumé », « tache » →
+// « tâche ». Sans ça une grosse part des recherches échoue silencieusement.
+export function normalizeForSearch(s: string): string {
+  return s.toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '')
+}
+
+/** `q` supposé non vide. Casse/accents gérés en interne. `tagLabels` libellés résolus. */
 export function scoreConversation(
   title: string,
   tagLabels: string[],
   messages: { content: string }[],
   q: string,
 ): number {
+  const nq = normalizeForSearch(q)
   let score = 0
-  const t = title.toLowerCase()
-  if (t.includes(q)) {
+
+  const t = normalizeForSearch(title)
+  if (t.includes(nq)) {
     score += TITLE_MATCH
-    if (t.startsWith(q)) score += TITLE_PREFIX_BONUS
+    if (t.startsWith(nq)) score += TITLE_PREFIX_BONUS
   }
-  if (tagLabels.some((l) => l.includes(q))) score += TAG_MATCH
+  if (tagLabels.some((l) => normalizeForSearch(l).includes(nq))) score += TAG_MATCH
 
   let bodyMatches = 0
   for (const m of messages) {
-    if (m.content.toLowerCase().includes(q)) {
+    if (normalizeForSearch(m.content).includes(nq)) {
       bodyMatches++
       if (bodyMatches >= BODY_MSG_CAP) break
     }
@@ -47,20 +59,34 @@ export function scoreConversation(
 }
 
 /**
- * Extrait du 1er message qui contient `q`, fenêtré autour du match et nettoyé
- * (markdown + espaces) pour l'aperçu. `null` si aucun message ne matche.
+ * Extrait du 1er message qui contient `q` (insensible aux accents), fenêtré
+ * autour du match et nettoyé (liens markdown, URLs, markdown, espaces) pour
+ * l'aperçu. `null` si aucun message ne matche.
+ *
+ * Subtilité accents : la DÉCISION de match est normalisée, mais le fenêtrage se
+ * fait sur le texte ORIGINAL via l'index brut. Si les accents ne s'alignent pas
+ * (l'index brut est introuvable), on montre le début du message — dégradation
+ * douce plutôt qu'un index décalé par la normalisation NFD.
  */
 export function firstSnippet(
   messages: { content: string }[],
   q: string,
-  radius = 40,
+  radius = 30,
 ): string | null {
+  const nq = normalizeForSearch(q)
   for (const m of messages) {
-    const idx = m.content.toLowerCase().indexOf(q)
-    if (idx === -1) continue
+    if (!normalizeForSearch(m.content).includes(nq)) continue
+    let idx = m.content.toLowerCase().indexOf(q.toLowerCase())
+    if (idx === -1) idx = 0 // accents non alignés → début du message
     const start = Math.max(0, idx - radius)
     const end = Math.min(m.content.length, idx + q.length + radius)
-    let s = m.content.slice(start, end).replace(/[#*_`~]/g, '').replace(/\s+/g, ' ').trim()
+    let s = m.content
+      .slice(start, end)
+      .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1') // [texte](url) → texte
+      .replace(/https?:\/\/\S+/g, '[lien]') // URL nue → [lien]
+      .replace(/[#*_`~>]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
     if (start > 0) s = '… ' + s
     if (end < m.content.length) s = s + ' …'
     return s
@@ -76,9 +102,9 @@ export interface RankedSearch {
 }
 
 /**
- * @param q          requête déjà en minuscules (et trim). Vide → liste inchangée.
- * @param tagLabelsOf résout les libellés de tags (en minuscules) d'une conv —
- *                    injecté par la Sidebar qui seule a accès à `t`.
+ * @param q          requête (trim). Vide → liste inchangée.
+ * @param tagLabelsOf résout les libellés de tags d'une conv — injecté par la
+ *                    Sidebar qui seule a accès à `t`.
  */
 export function rankConversations(
   conversations: Conversation[],
@@ -87,6 +113,7 @@ export function rankConversations(
 ): RankedSearch {
   if (!q) return { conversations, snippets: {} }
 
+  const nq = normalizeForSearch(q)
   const scored: { c: Conversation; score: number }[] = []
   const snippets: Record<string, string> = {}
 
@@ -95,7 +122,7 @@ export function rankConversations(
     if (score <= 0) continue
     scored.push({ c, score })
     // Extrait seulement si le titre ne matche pas (sinon le titre surligné suffit).
-    if (!c.title.toLowerCase().includes(q)) {
+    if (!normalizeForSearch(c.title).includes(nq)) {
       const s = firstSnippet(c.messages, q)
       if (s) snippets[c.id] = s
     }
