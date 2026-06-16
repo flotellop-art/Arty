@@ -15,6 +15,7 @@ import { importConversationFromFile } from '../../services/conversationExport'
 import { cleanDisplayName } from '../../services/displayName'
 import { toast } from '../../services/toast'
 import { resolveTag } from '../../services/conversationTags'
+import { rankConversations } from '../../services/conversationSearch'
 import { ConversationTagsModal } from './ConversationTagsModal'
 
 interface SidebarProps {
@@ -240,17 +241,15 @@ export const Sidebar = memo(function Sidebar({
     return out
   }, [conversations])
 
-  const filteredConversations = useMemo(() => {
-    const q = debouncedSearch.toLowerCase()
-    if (!q) return conversations
-    return conversations.filter((c) => {
-      if (c.title.toLowerCase().includes(q)) return true
-      // P1.8 — filtre par étiquette : on matche le LIBELLÉ résolu (un tag
-      // prédéfini est stocké par id 'work' mais cherché par « travail »/« work »).
-      if (c.tags?.some((tag) => resolveTag(tag, t).label.toLowerCase().includes(q))) return true
-      return c.messages.some((m) => m.content.toLowerCase().includes(q))
-    })
-  }, [conversations, debouncedSearch, t])
+  const { conversations: filteredConversations, snippets } = useMemo(
+    () =>
+      rankConversations(
+        conversations,
+        debouncedSearch.toLowerCase(),
+        (c) => (c.tags ?? []).map((tag) => resolveTag(tag, t).label.toLowerCase()),
+      ),
+    [conversations, debouncedSearch, t],
+  )
 
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -586,7 +585,7 @@ export const Sidebar = memo(function Sidebar({
                     </span>
                   </div>
                   {/* Ligne 2 — aperçu + badges contextuels */}
-                  {(previewClean || conv.euOnly || dominantModel || conv.tags?.length) && (
+                  {(previewClean || snippets[conv.id] || conv.euOnly || dominantModel || conv.tags?.length) && (
                     <div className="flex items-center gap-1.5 mt-0.5">
                       {conv.euOnly && (
                         <span className="text-[9px] flex-shrink-0" title={t('sidebar.euTooltip')}>🇪🇺</span>
@@ -609,7 +608,11 @@ export const Sidebar = memo(function Sidebar({
                       {conv.tags && conv.tags.length > 2 && (
                         <span className="text-[9px] text-theme-muted/70 flex-shrink-0">+{conv.tags.length - 2}</span>
                       )}
-                      {previewClean && (
+                      {snippets[conv.id] ? (
+                        <span className="text-[11px] text-theme-muted italic truncate">
+                          {highlight(snippets[conv.id]!, debouncedSearch)}
+                        </span>
+                      ) : previewClean && (
                         <span className="text-[11px] text-theme-muted italic truncate">
                           {previewClean}
                         </span>
