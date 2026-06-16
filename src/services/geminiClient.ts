@@ -1,6 +1,7 @@
 import { getGeminiKey } from './activeApiKey'
 import { apiUrl } from './apiBase'
 import { getValidAccessToken } from './googleAuth'
+import { getTrialToken } from './emailTrialClient'
 import { buildLocationContext } from './locationContext'
 import { recordUsage } from './costTracker'
 import { dispatchModelUsed } from './modelLabels'
@@ -283,6 +284,9 @@ async function runGeminiStream(
     const googleToken = await getValidAccessToken()
     if (googleToken) {
       headers['x-google-token'] = googleToken
+    } else {
+      const trialToken = getTrialToken()
+      if (trialToken) headers['x-arty-trial-token'] = trialToken
     }
 
     const response = await fetchWithRetry(
@@ -419,6 +423,9 @@ export async function geminiResearch(
   const googleToken = await getValidAccessToken()
   if (googleToken) {
     headers['x-google-token'] = googleToken
+  } else {
+    const trialToken = getTrialToken()
+    if (trialToken) headers['x-arty-trial-token'] = trialToken
   }
 
   try {

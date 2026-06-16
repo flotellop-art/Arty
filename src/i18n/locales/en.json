@@ -930,7 +930,35 @@
       "googleSub": "30 free messages · no credit card",
       "googleLoading": "Signing in…",
       "byokLink": "I have an API key",
-      "subLink": "I already have a subscription"
+      "subLink": "I already have a subscription",
+      "emailLink": "Try with my email"
+    },
+    "emailTrial": {
+      "title": "Try without a Google account",
+      "subtitle": "Get a code by email. 30 free messages, no credit card.",
+      "emailLabel": "Your email",
+      "emailPlaceholder": "you@example.com",
+      "sendCode": "Send my code",
+      "sending": "Sending…",
+      "codeLabel": "6-digit code",
+      "codeSentTo": "Code sent to {{email}}. Check your spam folder.",
+      "verify": "Verify & start",
+      "verifying": "Verifying…",
+      "resend": "Resend code",
+      "resent": "New code sent.",
+      "changeEmail": "Change email",
+      "back": "Back to choices",
+      "errors": {
+        "invalid_email": "Invalid email.",
+        "disposable_email": "Disposable email addresses aren't accepted. Use a real email.",
+        "rate_limited": "Too many attempts. Try again in a moment.",
+        "invalid_code": "Wrong or expired code.",
+        "send_failed": "Couldn't send the email. Try again.",
+        "captcha_failed": "Anti-bot check failed.",
+        "email_trial_unavailable": "Email trial is temporarily unavailable.",
+        "network": "Connection problem. Try again.",
+        "generic": "Something went wrong."
+      }
     },
     "proof": {
       "intro": "Concretely, in one message:",

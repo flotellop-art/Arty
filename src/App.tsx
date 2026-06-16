@@ -36,7 +36,9 @@ import {
   getOnboardingSplash,
   getTrialRemaining,
   initTrial,
+  initEmailTrialSplash,
 } from './services/trialClient'
+import { setTrialToken } from './services/emailTrialClient'
 import { ProfileSetupModal } from './components/onboarding/ProfileSetupModal'
 import { getUserProfile } from './services/userProfile'
 // H-Perf-2 (audit étape 7) — lazy-load des screens hors chemin critique.
@@ -927,6 +929,24 @@ export default function App() {
           onGoToLogin={() => {
             markOnboardingChoiceDone()
             setChoiceDone(true)
+          }}
+          onEmailTrialLogin={async (email, token) => {
+            // Crée la session AVANT de stocker le jeton (scopedStorage a besoin
+            // du préfixe userId actif). Pas de clé BYOK → 'server-provided'
+            // (même posture que Google sans BYOK, BUG 25). Identifiant namespacé
+            // `emailtrial:` pour ne JAMAIS collisionner avec le compte local
+            // email+password ni le compte Google du même email.
+            await auth.login('email', {
+              displayName: email,
+              email,
+              anthropicKey: 'server-provided',
+              identifier: `emailtrial:${email}`,
+            })
+            setTrialToken(token)
+            initEmailTrialSplash(30)
+            markOnboardingChoiceDone()
+            setChoiceDone(true)
+            setSplash(getOnboardingSplash())
           }}
         />
       )

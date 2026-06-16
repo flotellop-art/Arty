@@ -1,6 +1,7 @@
 import { getMistralKey } from './activeApiKey'
 import { apiUrl } from './apiBase'
 import { getValidAccessToken } from './googleAuth'
+import { getTrialToken } from './emailTrialClient'
 import { TOOLS } from './toolDefinitions'
 import { convertToolsToOpenAI } from './tools/openaiFormat'
 import { buildLocationContext } from './locationContext'
@@ -535,6 +536,9 @@ async function streamOnce(
   const googleToken = await getValidAccessToken()
   if (googleToken) {
     headers['x-google-token'] = googleToken
+  } else {
+    const trialToken = getTrialToken()
+    if (trialToken) headers['x-arty-trial-token'] = trialToken
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

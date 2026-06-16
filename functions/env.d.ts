@@ -41,4 +41,10 @@ export interface Env {
   SEARCH_PROVIDER?: 'linkup' | 'brave'
   LINKUP_API_KEY?: string  // https://app.linkup.so/ — 1k req/mois free, EU-hosted
   BRAVE_SEARCH_API_KEY?: string  // https://api.search.brave.com/ — index indépendant
+  // Essai par email (OTP) — identité sans Google. TOUS serveur-only (RÈGLE 1) :
+  // ne JAMAIS préfixer VITE_ (un secret HMAC dans le bundle = forge illimitée).
+  RESEND_API_KEY?: string         // clé Resend pour l'envoi des codes OTP (transactional email)
+  EMAIL_FROM?: string             // expéditeur vérifié chez Resend, ex: "Arty <noreply@tryarty.com>"
+  EMAIL_TRIAL_SECRET?: string     // secret HMAC qui keye le hash des OTP (CRIT-2). Aléatoire, ≥32 chars.
+  TURNSTILE_SECRET_KEY?: string   // optionnel : si présent, Turnstile est exigé sur request-otp (anti-bot)
 }

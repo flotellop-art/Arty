@@ -84,6 +84,18 @@ export async function initTrial(accessToken: string): Promise<TrialInitResponse 
   }
 }
 
+/**
+ * Variante de `initTrial` pour l'essai par email : PAS d'appel réseau (le
+ * backend a déjà créé la session lors de la vérification OTP). Pose le splash
+ * trial (une seule fois par device) + le compteur initial. L'email-trial ne
+ * passe jamais par /api/trial/init (réservé aux tokens Google).
+ */
+export function initEmailTrialSplash(remaining = 30): void {
+  const splashAlreadyShown = localStorage.getItem(SPLASH_SHOWN_KEY) === '1'
+  if (!splashAlreadyShown) localStorage.setItem(SPLASH_KEY, 'trial')
+  localStorage.setItem(REMAINING_KEY, String(Math.max(0, remaining)))
+}
+
 export function getOnboardingSplash(): SplashState {
   const v = localStorage.getItem(SPLASH_KEY)
   if (v === 'vip' || v === 'trial') return v

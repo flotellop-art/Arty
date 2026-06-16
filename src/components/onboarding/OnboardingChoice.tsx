@@ -30,6 +30,7 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Capacitor, registerPlugin } from '@capacitor/core'
 import { ArtyWordmark, PrismMark } from '../shared/PrismMark'
+import { EmailTrialFlow } from '../auth/EmailTrialFlow'
 import { buildOAuthUrl } from '../../services/googleAuth'
 import { initTrial } from '../../services/trialClient'
 import { apiUrl } from '../../services/apiBase'
@@ -68,14 +69,18 @@ interface OnboardingChoiceProps {
   ) => Promise<void>
   /** Jump to the regular LoginScreen for users who already have a sub. */
   onGoToLogin: () => void
+  /** Essai par email (OTP) — sans Google. Parent appelle auth.login('email', …)
+   *  puis setTrialToken(token). */
+  onEmailTrialLogin: (email: string, token: string) => Promise<void>
 }
 
-type Mode = 'choice' | 'byok'
+type Mode = 'choice' | 'byok' | 'emailtrial'
 
 export function OnboardingChoice({
   onApiKeyLogin,
   onNativeGoogleLogin,
   onGoToLogin,
+  onEmailTrialLogin,
 }: OnboardingChoiceProps) {
   const { t } = useTranslation()
   const [mode, setMode] = useState<Mode>('choice')
@@ -236,6 +241,13 @@ export function OnboardingChoice({
 <div className="mt-10 flex flex-col items-center gap-3">
               <button
                 type="button"
+                onClick={() => setMode('emailtrial')}
+                className="font-display italic text-[13px] text-theme-muted hover:text-theme-ink transition-colors"
+              >
+                {t('onboardingChoice.tryFree.emailLink', { defaultValue: 'Essayer avec mon email' })}
+              </button>
+              <button
+                type="button"
                 onClick={() => setMode('byok')}
                 className="font-display italic text-[13px] text-theme-muted hover:text-theme-ink transition-colors"
               >
@@ -254,6 +266,10 @@ export function OnboardingChoice({
 
         {mode === 'byok' && (
           <ByokForm onBack={() => setMode('choice')} onApiKeyLogin={onApiKeyLogin} />
+        )}
+
+        {mode === 'emailtrial' && (
+          <EmailTrialFlow onSuccess={onEmailTrialLogin} onBack={() => setMode('choice')} />
         )}
       </div>
     </main>
