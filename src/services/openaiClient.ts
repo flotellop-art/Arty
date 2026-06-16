@@ -1,6 +1,7 @@
 import i18n from '../i18n'
 import { apiUrl } from './apiBase'
 import { getValidAccessToken } from './googleAuth'
+import { getTrialToken } from './emailTrialClient'
 import { recordUsage } from './costTracker'
 import { updateTrialFromResponse } from './trialClient'
 
@@ -74,7 +75,12 @@ async function resolveTarget(
   }
   const googleToken = await getValidAccessToken()
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-  if (googleToken) headers['x-google-token'] = googleToken
+  if (googleToken) {
+    headers['x-google-token'] = googleToken
+  } else {
+    const trialToken = getTrialToken()
+    if (trialToken) headers['x-arty-trial-token'] = trialToken
+  }
   return { url: apiUrl('/api/ai/openai-proxy'), headers }
 }
 

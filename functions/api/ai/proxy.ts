@@ -6,8 +6,12 @@ import {
   proKeyRequiredResponse,
   trialExpiredResponse,
   trialModelRestrictedResponse,
-  verifyGoogleUser,
 } from '../_lib/checkAllowedUser'
+import {
+  consumeEmailTrialMessage,
+  emailTrialKey,
+  resolveProxyIdentity,
+} from '../_lib/emailTrial'
 import { checkPremiumCap, premiumCapReachedResponse } from '../_lib/checkPremiumCap'
 import { consumeDailyQuota, recordUsage } from '../_lib/quota'
 import {
@@ -26,16 +30,17 @@ import {
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages'
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUntil }) => {
-  // Anti-relais anonyme : tout appel doit venir d'un user Google authentifié,
-  // même en BYOK. Empêche l'utilisation du proxy Cloudflare comme relais
-  // ouvert par n'importe qui sur Internet (CRIT-4).
-  const email = await verifyGoogleUser(request, env.GOOGLE_CLIENT_ID)
-  if (!email) {
+  // Anti-relais anonyme : tout appel doit venir d'un user authentifié, même en
+  // BYOK. Identité = token Google OU jeton d'essai email (espace de clés disjoint,
+  // plan figé 'trial', CRIT-1). Google prioritaire si les deux headers présents.
+  const identity = await resolveProxyIdentity(request, env)
+  if (!identity) {
     return Response.json(
       { error: 'Authentication required — please sign in with Google' },
       { status: 401 }
     )
   }
+  const email = identity.kind === 'email-trial' ? emailTrialKey(identity.email) : identity.email
 
   // BYOK prioritaire — si le client envoie sa propre clé, on l'utilise
   // telle quelle (chaque user paie ses propres appels, donc pas de quota
@@ -52,8 +57,14 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
   // (subscription/pro/vip/trial via checkAllowedUser, qui gère aussi le
   // bypass VIP via ALLOWED_EMAILS et le décrément du compteur trial KV).
   if (!apiKey) {
-    const result = await checkAllowedUser(request, env)
+    const result =
+      identity.kind === 'email-trial'
+        ? await consumeEmailTrialMessage(env, identity.email)
+        : await checkAllowedUser(request, env)
     if (isTrialExpired(result)) {
+      // Essai email épuisé : pas de wallet/crédits (espace de clés disjoint,
+      // CRIT-1 — un jeton email-trial n'a jamais de solde) → 403 trial_expired direct.
+      if (identity.kind === 'email-trial') return trialExpiredResponse()
       // Essai épuisé : au lieu d'un 403 sec, on tente le wallet (crédits achetés).
       // `cap_reached` n'a PAS décrémenté le compteur (garantie atomique) → ce
       // message n'a rien consommé côté essai, donc le router vers le wallet ne

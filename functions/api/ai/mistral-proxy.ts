@@ -6,8 +6,12 @@ import {
   proKeyRequiredResponse,
   trialExpiredResponse,
   trialModelRestrictedResponse,
-  verifyGoogleUser,
 } from '../_lib/checkAllowedUser'
+import {
+  consumeEmailTrialMessage,
+  emailTrialKey,
+  resolveProxyIdentity,
+} from '../_lib/emailTrial'
 import { checkPremiumCap, premiumCapReachedResponse } from '../_lib/checkPremiumCap'
 import { consumeDailyQuota, recordUsage } from '../_lib/quota'
 import { freeModelLockedResponse } from '../_lib/freeQuota'
@@ -22,14 +26,16 @@ import {
 const MISTRAL_API_URL = 'https://api.mistral.ai/v1/chat/completions'
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUntil }) => {
-  // Anti-relais anonyme : tout user Google authentifié est accepté (CRIT-4).
-  const email = await verifyGoogleUser(request, env.GOOGLE_CLIENT_ID)
-  if (!email) {
+  // Anti-relais : identité Google OU jeton d'essai email (espace de clés disjoint,
+  // plan figé 'trial', CRIT-1). Google prioritaire si les deux headers présents.
+  const identity = await resolveProxyIdentity(request, env)
+  if (!identity) {
     return Response.json(
       { error: 'Authentication required — please sign in with Google' },
       { status: 401 }
     )
   }
+  const email = identity.kind === 'email-trial' ? emailTrialKey(identity.email) : identity.email
 
   // BYOK prioritaire
   let apiKey = request.headers.get('authorization')?.replace('Bearer ', '') || ''
@@ -44,8 +50,13 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
   // (sub/pro/vip/trial). `checkAllowedUser` gère le bypass VIP et le
   // décrément du compteur trial KV.
   if (!apiKey && env.MISTRAL_API_KEY) {
-    const result = await checkAllowedUser(request, env)
+    const result =
+      identity.kind === 'email-trial'
+        ? await consumeEmailTrialMessage(env, identity.email)
+        : await checkAllowedUser(request, env)
     if (isTrialExpired(result)) {
+      // Essai email épuisé : pas de wallet (espace de clés disjoint, CRIT-1) → 403 direct.
+      if (identity.kind === 'email-trial') return trialExpiredResponse()
       // Essai épuisé → wallet (crédits) au lieu d'un 403 sec. `cap_reached` n'a
       // pas décrémenté le compteur → pas de double-débit. On route comme 'free' ;
       // sans crédits, le bloc wallet rend trial_expired.

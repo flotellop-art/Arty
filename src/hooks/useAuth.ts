@@ -15,6 +15,7 @@ import { bootstrapGoogleStorage, logout as googleLogout, clearOAuthState, resetG
 import { wipeFileStorage, bootstrapFileStorage } from '../services/secureFileStorage'
 import { bootstrapConversationStorage, resetConversationMemCache } from '../services/storage'
 import * as scoped from '../services/scopedStorage'
+import { clearTrialToken } from '../services/emailTrialClient'
 
 type StoredKeys = { anthropic: string; gemini?: string; mistral?: string; openai?: string }
 
@@ -117,6 +118,10 @@ export function useAuth() {
     // crypto du user partant restait dispo pour le prochain user qui
     // se logge sur le même appareil. Wipe explicite.
     scoped.removeItem('api-keys')
+    // BUG 41 — révoque + supprime le jeton d'essai email AVANT clearActiveSession
+    // (le scopedStorage résout le préfixe via la session active). Sans ça, le
+    // jeton resterait utilisable par le prochain user du même appareil.
+    clearTrialToken()
     // Drop any pending OAuth state nonce (e.g. user clicked Google then
     // logged out before completing the redirect).
     clearOAuthState()

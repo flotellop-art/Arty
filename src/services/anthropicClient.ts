@@ -3,6 +3,7 @@ import { TOOLS } from './toolDefinitions'
 import { compressIfNeeded } from './conversationCompressor'
 import { getAnthropicKey } from './activeApiKey'
 import { apiUrl } from './apiBase'
+import { getTrialToken } from './emailTrialClient'
 import { getValidAccessToken } from './googleAuth'
 import { resolveClaudeThinking, selectClaudeSubModel, PRIVATE_DATA_TRIGGERS, shouldUseWebSearch, type ClaudeThinkingDirective, type ClaudeSubModel } from './aiRouter'
 import { isProActivated } from './proLicense'
@@ -200,6 +201,10 @@ async function fetchWithRetry(
   const googleToken = await getValidAccessToken()
   if (googleToken) {
     headers['x-google-token'] = googleToken
+  } else {
+    // Pas de Google → essai par email : jeton d'essai (plan trial serveur).
+    const trialToken = getTrialToken()
+    if (trialToken) headers['x-arty-trial-token'] = trialToken
   }
 
   let response: Response | null = null

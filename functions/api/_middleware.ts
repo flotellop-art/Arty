@@ -62,7 +62,7 @@ export const onRequest: PagesFunction = async (context) => {
       headers: {
         'Access-Control-Allow-Origin': hasValidOrigin ? origin : '',
         'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-api-key, x-openai-key, x-google-token, anthropic-version, anthropic-beta',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-api-key, x-openai-key, x-google-token, x-arty-trial-token, anthropic-version, anthropic-beta',
         'Access-Control-Max-Age': '86400',
       },
     })

@@ -930,7 +930,35 @@
       "googleSub": "30 messages gratuits · sans carte bancaire",
       "googleLoading": "Connexion…",
       "byokLink": "J'ai une clé API",
-      "subLink": "J'ai déjà un abonnement"
+      "subLink": "J'ai déjà un abonnement",
+      "emailLink": "Essayer avec mon email"
+    },
+    "emailTrial": {
+      "title": "Essaie sans compte Google",
+      "subtitle": "Reçois un code par email. 30 messages offerts, sans carte bancaire.",
+      "emailLabel": "Ton email",
+      "emailPlaceholder": "toi@exemple.com",
+      "sendCode": "Recevoir mon code",
+      "sending": "Envoi…",
+      "codeLabel": "Code à 6 chiffres",
+      "codeSentTo": "Code envoyé à {{email}}. Pense à vérifier tes spams.",
+      "verify": "Vérifier et démarrer",
+      "verifying": "Vérification…",
+      "resend": "Renvoyer le code",
+      "resent": "Nouveau code envoyé.",
+      "changeEmail": "Changer d'email",
+      "back": "Revenir au choix",
+      "errors": {
+        "invalid_email": "Email invalide.",
+        "disposable_email": "Les adresses jetables ne sont pas acceptées. Utilise un email réel.",
+        "rate_limited": "Trop de tentatives. Réessaie dans un moment.",
+        "invalid_code": "Code incorrect ou expiré.",
+        "send_failed": "Envoi de l'email impossible. Réessaie.",
+        "captcha_failed": "Vérification anti-robot échouée.",
+        "email_trial_unavailable": "L'essai par email est momentanément indisponible.",
+        "network": "Problème de connexion. Réessaie.",
+        "generic": "Une erreur est survenue."
+      }
     },
     "proof": {
       "intro": "Concrètement, en un message :",
