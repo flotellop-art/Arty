@@ -249,7 +249,13 @@
       "email": "Send an email to {{to}}?",
       "drive": "Create the file \"{{name}}\" on your Drive?",
       "event": "Add \"{{title}}\" to your calendar?",
-      "wp": "Publish \"{{title}}\" on your site?"
+      "wp": "Publish \"{{title}}\" on your site?",
+      "deleteEmail": "Move this email to trash?",
+      "shareDrive": "Share this file with {{email}}?",
+      "deleteDrive": "Delete this file from your Drive?",
+      "deleteEvent": "Delete this event from your calendar?",
+      "deleteLocal": "Delete this file from your phone?",
+      "deleteWp": "Delete this WordPress post?"
     },
     "contextCompressed": {
       "message": "This conversation is long: I summarized the beginning to keep going. For sharper answers (and fewer credits), start a new conversation.",
