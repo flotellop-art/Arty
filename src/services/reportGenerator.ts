@@ -201,7 +201,7 @@ body::before{content:'';position:fixed;top:0;left:0;right:0;height:5px;backgroun
 
   <div class="cover">
     <span class="pill">Rapport</span>
-    <h1 class="cover-title">${title}</h1>
+    <h1 class="cover-title">${title.replace(/[<>]/g, '')}</h1>
     <div class="cover-sep"></div>
     <div class="cover-meta">
       <span>Généré le ${new Date().toLocaleDateString(getDateLocale(), { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
