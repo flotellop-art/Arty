@@ -68,6 +68,11 @@ import {
   setPendingDraft,
   type SharePayload,
 } from './services/shareTargetService'
+import {
+  addWidgetActionListener,
+  getPendingWidgetAction,
+  type WidgetActionPayload,
+} from './services/widgetIntentService'
 import type { FileAttachment } from './types'
 
 function AppContent({
@@ -228,6 +233,37 @@ function AppContent({
       cleanup?.()
     }
   }, [handleSharedContent])
+
+  // Home-screen widget tap → open a fresh conversation. V1 has no auto-send;
+  // the user types in the InputBar themselves.
+  const handleWidgetAction = useCallback(
+    (_payload: WidgetActionPayload) => {
+      setActionScreenshot(null)
+      const isFirstConv = conversations.length === 0
+      const id = createConversation(isFirstConv)
+      navigate(`/chat/${id}`)
+    },
+    [conversations.length, createConversation, navigate, setActionScreenshot]
+  )
+
+  // Same cold-start / warm-start pattern as the share listener above.
+  useEffect(() => {
+    let cleanup: (() => void) | undefined
+    let cancelled = false
+    void getPendingWidgetAction().then((payload) => {
+      if (!cancelled && payload) handleWidgetAction(payload)
+    })
+    void addWidgetActionListener((payload) => {
+      handleWidgetAction(payload)
+    }).then((remove) => {
+      if (cancelled) remove()
+      else cleanup = remove
+    })
+    return () => {
+      cancelled = true
+      cleanup?.()
+    }
+  }, [handleWidgetAction])
 
   const handleNewEUConversation = useCallback(() => {
     const id = createConversation(false, true)
