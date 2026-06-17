@@ -50,12 +50,16 @@ public class GoogleSignInPlugin extends Plugin {
                     // écrasait le refresh_token valide du 1er login → logout
                     // silencieux 30 min plus tard.
                     .requestServerAuthCode(serverClientId, true)
+                    // Scopes réduits le 14 juin 2026 — doivent rester alignés
+                    // avec SCOPES (src/services/googleAuth.ts) et main.tsx.
+                    // drive (total) → drive.readonly + drive.file ; calendar
+                    // (doublon) retiré au profit de calendar.events.
                     .requestScopes(
                         new Scope("https://www.googleapis.com/auth/gmail.readonly"),
                         new Scope("https://www.googleapis.com/auth/gmail.send"),
                         new Scope("https://www.googleapis.com/auth/gmail.modify"),
-                        new Scope("https://www.googleapis.com/auth/drive"),
-                        new Scope("https://www.googleapis.com/auth/calendar"),
+                        new Scope("https://www.googleapis.com/auth/drive.readonly"),
+                        new Scope("https://www.googleapis.com/auth/drive.file"),
                         new Scope("https://www.googleapis.com/auth/calendar.events"),
                         new Scope("https://www.googleapis.com/auth/contacts")
                     )

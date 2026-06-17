@@ -511,6 +511,54 @@ Pour toute tâche **non triviale** (refactor, fix multi-fichiers, audit, debug d
 
 ---
 
+## RÈGLE 8 — VÉRIFIER LES FAITS PORTEURS À LA SOURCE AVANT DE LES GRAVER
+
+Application directe de la **RÈGLE 0** (décomposer, ne pas hériter d'hypothèses
+non examinées) et complément de la **RÈGLE 7** (les agents challengent mes biais,
+mais un agent peut se tromper — c'est à moi de vérifier).
+
+**Fait porteur** : tout fait chiffré ou catégoriel sur lequel repose une
+décision, une recommandation ou un artefact — prix, palier/tier, classification,
+limite/quota d'API, version, comportement d'un service tiers, etc. Test simple :
+*si ce fait change, ma conclusion change-t-elle ?* Si oui → fait porteur.
+
+**Directives :**
+
+1. **Un fait porteur se vérifie à la source PRIMAIRE avant d'agir dessus ou de
+   l'écrire dans un artefact** (code, commentaire, doc, message de commit, corps
+   de PR, ou réponse présentée à l'utilisateur comme acquise). Source primaire =
+   doc officielle de l'éditeur / la spec / le code lui-même — **pas** un blog,
+   pas un agent, pas ma mémoire.
+2. **« Avoir des citations » ≠ « vérifié ».** Un agent (ou moi) peut affirmer
+   une règle avec assurance ET joindre des liens qui ne la soutiennent pas. Sur
+   un fait porteur : ouvrir la source citée et confirmer qu'elle dit bien ce
+   qu'on lui fait dire.
+3. **La sortie d'un agent est un AVIS, pas une vérité de terrain.** Les agents
+   hallucinent des règles « propres » qui n'existent pas (ex. binaires séduisants
+   « X = Y »). Recouper les faits porteurs qu'ils produisent.
+4. **Une contradiction entre deux findings = STOP, on résout.** Si deux
+   sources/agents se contredisent — même implicitement (un cas réel qui viole la
+   règle énoncée) — c'est le fil à tirer en PRIORITÉ, jamais à lisser pour garder
+   un récit cohérent.
+5. **Méfiance ACCRUE quand le fait confirme ce que je raconte déjà** (biais de
+   confirmation). Un fait qui arrange le récit mérite plus de scrutin, pas moins.
+6. **Ne JAMAIS propager un fait non vérifié dans un artefact persistant.** Une
+   erreur en conversation se corrige ; écrite dans la doc/PR/commit, elle devient
+   archive et se propage. Tant qu'un fait porteur n'est pas vérifié, l'écrire
+   explicitement « à confirmer » plutôt que l'affirmer.
+
+**Contexte** : posée par l'utilisateur le 15 juin 2026 après que Claude a écrit
+« les scopes restricted Google = CASA Tier 3 » dans `docs/GOOGLE_OAUTH_VERIFICATION.md`
+ET la PR #289, sur la foi d'un agent qui avait **inventé** cette règle (la vraie :
+le tier est assigné au risque par Google ; le cas réaliste pour une app indé est
+**Tier 2**, ~540–900 $/an). Pire : Claude avait dans son propre contexte une
+contradiction (son agent « prix » rapportait Orbis passant en Tier 2 avec un
+scope restricted) qu'il a lissée au lieu de tirer le fil. Erreur évitable par un
+seul `WebFetch` de la source — fait *après* le recadrage de l'utilisateur au lieu
+d'*avant* l'écriture.
+
+---
+
 ## ROADMAP PRODUIT — PLAN D'ACTION CONCURRENTIEL (à consulter)
 
 **Avant toute tâche produit / UX / pricing / monétisation**, lire
