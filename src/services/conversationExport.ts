@@ -231,13 +231,40 @@ export function buildConversationHtml(conv: Conversation): string {
 }
 
 /**
+ * Sanitize an HTML string before it is injected into the MAIN document via
+ * innerHTML for rasterization.
+ *
+ * SÉCURITÉ : le HTML d'un rapport peut être produit par l'IA (outil
+ * `generate_report`) et donc empoisonné par prompt-injection (un mail/fichier
+ * lu par Arty). Il est affiché sans danger dans une iframe sandboxée
+ * (ReportPage.tsx), mais l'export PDF le réinjecte dans l'origine PRINCIPALE
+ * via innerHTML — sans nettoyage, un `<img src=x onerror=…>` ou `<svg onload=…>`
+ * s'exécuterait dans le contexte de l'app et pourrait voler les clés BYOK en
+ * clair + les tokens Google de localStorage (RÈGLE 5). `<script>` ne s'exécute
+ * pas via innerHTML mais les attributs `on*` oui : DOMPurify retire les deux,
+ * plus `javascript:`, `<iframe>`, etc.
+ *
+ * WHOLE_DOCUMENT est OBLIGATOIRE : le rapport met tout son CSS dans
+ * <head><style>, or sans cette option DOMPurify ne renvoie que le <body> et
+ * détruirait 100% du style. FORCE_BODY = ceinture+bretelles pour préserver un
+ * <style> hors structure standard. DOMPurify est chargé paresseusement (comme
+ * jsPDF/html2canvas) pour rester hors du bundle principal.
+ */
+export async function sanitizeReportHtml(html: string): Promise<string> {
+  const DOMPurify = (await import('dompurify')).default
+  return DOMPurify.sanitize(html, { WHOLE_DOCUMENT: true, FORCE_BODY: true })
+}
+
+/**
  * Render an arbitrary HTML string into a styled PDF, then download
  * (web) or share (native). Reusable by both the conversation export and
  * the report page (window.print() doesn't work inside Android Chrome
  * sandboxed iframes — this is the cross-platform replacement).
  *
  * jsPDF and html2canvas are heavy (~500KB combined) so they are loaded
- * lazily — only when the user actually clicks "Export PDF".
+ * lazily — only when the user actually clicks "Export PDF". The HTML is
+ * sanitized (sanitizeReportHtml) before touching the main DOM — see the
+ * security note above.
  */
 export async function exportHtmlAsPdf(
   html: string,
@@ -248,7 +275,7 @@ export async function exportHtmlAsPdf(
   const html2canvas = (await import('html2canvas')).default
 
   const container = document.createElement('div')
-  container.innerHTML = html
+  container.innerHTML = await sanitizeReportHtml(html)
   container.style.position = 'fixed'
   container.style.left = '-10000px'
   container.style.top = '0'

@@ -1,5 +1,5 @@
 import { useNavigate, useParams } from 'react-router-dom'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { getReport } from '../../services/reportGenerator'
 import { exportHtmlAsPdf } from '../../services/conversationExport'
 
@@ -8,6 +8,7 @@ export function ReportPage() {
   const navigate = useNavigate()
   const [html, setHtml] = useState<string | null>(null)
   const [exporting, setExporting] = useState(false)
+  const iframeRef = useRef<HTMLIFrameElement>(null)
 
   useEffect(() => {
     if (id) {
@@ -24,6 +25,13 @@ export function ReportPage() {
   useEffect(() => {
     if (!html) return
     const onMessage = async (e: MessageEvent) => {
+      // SÉCURITÉ : n'accepter que les messages de NOTRE iframe. Comme elle est
+      // sandboxée sans `allow-same-origin`, son origine est opaque
+      // (`e.origin === 'null'`) — on ne peut donc pas filtrer sur l'origine, on
+      // vérifie la SOURCE. Sans ça, n'importe quelle autre fenêtre/frame
+      // pourrait poster `arty-report-export-pdf` et déclencher l'export du HTML
+      // stocké sans action de l'utilisateur.
+      if (e.source !== iframeRef.current?.contentWindow) return
       const data = e.data as { type?: string } | null
       if (!data || typeof data.type !== 'string') return
       if (data.type === 'arty-report-back') {
@@ -68,6 +76,7 @@ export function ReportPage() {
         `allow-popups-to-escape-sandbox` (redirection phishing + évasion sandbox).
       */}
       <iframe
+        ref={iframeRef}
         srcDoc={html}
         className="w-full h-[100dvh] border-0"
         title="Rapport"
