@@ -160,6 +160,96 @@ export async function consumeTtsFreeQuota(
   return { allowed: true, remaining: Math.max(0, TTS_FREE_DAILY_LIMIT - outcome.count) }
 }
 
+// ─────────────────────────────────────────────────────────────────────
+// Cap journalier par email sur les endpoints qui dépensent une clé PAYANTE
+// du propriétaire hors IA : recherche web (Linkup/Brave) et fetch d'URL
+// (Linkup) et reverse-geocoding (Google Maps). Ces endpoints sont ouverts à
+// tout compte Google (plan free inclus) → sans cap, un compte peut brûler le
+// budget Linkup/Maps du owner (coût réel + déni de service quand le quota
+// provider est épuisé).
+//
+// ⚠️ Ce cap borne l'abus PAR COMPTE (équité + runaway). Il NE borne PAS un
+// attaquant qui crée N comptes Gmail jetables — pour ce cas, le filet est le
+// plafond DUR côté provider (crédits prépayés Linkup + quota journalier Google
+// Maps), à configurer côté ops (cf. docs). Les deux ensemble = défense complète.
+//
+// Réutilise la table free_daily_quota (même mécanisme atomique que le quota
+// Haiku/TTS), avec une "famille" dédiée par ressource. Fail-open sur incident
+// D1 (cohérent avec tout le code quota) : un incident infra ne bloque pas
+// l'usage légitime ; le plafond provider couvre cette fenêtre.
+// ─────────────────────────────────────────────────────────────────────
+
+export type OwnerApiFamily = 'web-search' | 'url-fetch' | 'geo-reverse'
+
+export const OWNER_API_DAILY_LIMITS: Record<OwnerApiFamily, number> = {
+  'web-search': 50, // appels Linkup/Brave (1 par source en multi-source)
+  'url-fetch': 20, // appels Linkup /v1/fetch (cap client déjà 3/message)
+  'geo-reverse': 100, // appels Google Maps Geocoding (cache 1h/110m côté client)
+}
+
+/** Vrai si le plan doit être plafonné (non-payant). Les payants (subscription/
+ *  pro/vip) brûlent déjà la clé owner via leur accès — non plafonnés ici ; leur
+ *  garde anti-runaway est le plafond provider (Option D). */
+export function planSubjectToOwnerApiCap(plan: string): boolean {
+  return plan === 'free' || plan === 'trial'
+}
+
+/**
+ * Consomme atomiquement `amount` unités du cap journalier d'une famille de clé
+ * owner pour `email` (= email du token Google VÉRIFIÉ, jamais du body). `amount`
+ * = nombre d'appels provider RÉELS (recherche multi-source = 1 par source) pour
+ * que le cap reflète le coût réel et pas le nombre de requêtes HTTP. Tout-ou-rien :
+ * une requête qui dépasserait le cap est refusée (429) au lieu d'être partiellement
+ * facturée. Fail-open sur incident D1.
+ */
+export async function consumeOwnerApiQuota(
+  env: Env,
+  email: string,
+  family: OwnerApiFamily,
+  amount = 1
+): Promise<{ allowed: boolean; remaining: number; limit: number }> {
+  const limit = OWNER_API_DAILY_LIMITS[family]
+  const n = Math.max(1, Math.floor(Number.isFinite(amount) ? amount : 1))
+  if (!env.DB) return { allowed: true, remaining: limit, limit }
+
+  const day = todayKey()
+  await ensureFreeTable(env)
+  await maybeCleanup(env, `DELETE FROM free_daily_quota WHERE day < ?1`, [day])
+
+  // Upsert conditionnel paramétré par `n` (au lieu du +1 fixe) : l'INSERT initial
+  // crée la ligne à `n`, l'UPDATE n'ajoute `n` que si `count + n <= cap`. Invariant
+  // requis : n <= cap (garanti — n <= 6 sources, cap >= 20). Atomique via le
+  // write-lock D1 (cf. atomicQuota.ts) → jamais de dépassement concurrent.
+  const outcome = await consumeCapAtomic(
+    env,
+    `INSERT INTO free_daily_quota (email, day, family, count, updated_at)
+     VALUES (?1, ?2, ?3, ?4, unixepoch())
+     ON CONFLICT (email, day, family) DO UPDATE SET count = count + ?4, updated_at = unixepoch()
+       WHERE free_daily_quota.count + ?4 <= ?5
+     RETURNING count`,
+    [email, day, family, n, limit]
+  )
+
+  if (outcome.status === 'fail_open') return { allowed: true, remaining: limit, limit }
+  if (outcome.status === 'cap_reached') return { allowed: false, remaining: 0, limit }
+  return { allowed: true, remaining: Math.max(0, limit - outcome.count), limit }
+}
+
+/** 429 générique pour un cap owner-API atteint. Body volontairement générique
+ *  (pas de détail provider) — il peut être ré-injecté dans le contexte LLM côté
+ *  recherche, et ne doit pas révéler l'état du compte search du owner. */
+export function ownerApiLimitResponse(family: OwnerApiFamily, limit: number): Response {
+  return Response.json(
+    {
+      error: 'daily_limit_reached',
+      message: `Limite journalière atteinte (${limit}/jour). Réessaie demain ou passe à un plan payant.`,
+      family,
+      limit,
+    },
+    { status: 429 }
+  )
+}
+
 export function freeModelLockedResponse(model: string): Response {
   return Response.json(
     {

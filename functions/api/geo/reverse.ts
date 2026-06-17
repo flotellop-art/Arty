@@ -1,5 +1,10 @@
 import type { Env } from '../../env'
 import { checkAllowedUserPeek } from '../_lib/checkAllowedUser'
+import {
+  consumeOwnerApiQuota,
+  ownerApiLimitResponse,
+  planSubjectToOwnerApiCap,
+} from '../_lib/freeQuota'
 
 // Reverse geocoding via Google Maps Geocoding API.
 // Appelé depuis src/services/reverseGeocode.ts pour résoudre les coords GPS
@@ -8,10 +13,12 @@ import { checkAllowedUserPeek } from '../_lib/checkAllowedUser'
 // Saint-Chamond au lieu de donner une réponse ferme).
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
-  // Auth : seuls les users avec un plan actif (sub/pro/vip/trial) ou la
-  // whitelist legacy peuvent utiliser la clé Google Maps du owner (évite
-  // le relais anonyme, RÈGLE 6 / BUG 42 CRIT-4). Peek = read-only, ne
-  // décrémente pas le compteur trial (le geocoding n'est pas un message IA).
+  // Auth : tout utilisateur Google authentifié (peek read-only — ne décrémente
+  // pas le compteur trial, le geocoding n'est pas un message IA). Anti-relais
+  // anonyme (RÈGLE 6 / BUG 42 CRIT-4). NB : les plans free/trial ont accès mais
+  // sont PLAFONNÉS par email/jour ci-dessous (la clé Google Maps est payante) ;
+  // les plans payants ne sont pas plafonnés. Le filet multi-comptes est le quota
+  // journalier DUR côté Google Cloud (cf. docs ops).
   const allowed = await checkAllowedUserPeek(request, env)
   if (!allowed) return Response.json({ error: 'Not found' }, { status: 404 })
 
@@ -37,6 +44,15 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     lng > 180
   ) {
     return Response.json({ error: 'Not found' }, { status: 404 })
+  }
+
+  // Cap journalier par email sur la clé Google Maps PAYANTE du owner — plans
+  // non-payants uniquement. Après validation lat/lng (coords invalides = pas de
+  // quota consommé). Un 429 est géré côté client comme un échec doux (fallback
+  // coords brutes), pas un crash.
+  if (planSubjectToOwnerApiCap(allowed.planType)) {
+    const cap = await consumeOwnerApiQuota(env, allowed.email, 'geo-reverse')
+    if (!cap.allowed) return ownerApiLimitResponse('geo-reverse', cap.limit)
   }
 
   const controller = new AbortController()
