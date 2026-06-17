@@ -10,6 +10,11 @@
 
 import type { Env } from '../../env'
 import { checkAllowedUserPeek, isTrialExpired } from '../_lib/checkAllowedUser'
+import {
+  consumeOwnerApiQuota,
+  ownerApiLimitResponse,
+  planSubjectToOwnerApiCap,
+} from '../_lib/freeQuota'
 
 interface SearchRequest {
   query: string
@@ -63,20 +68,34 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     return Response.json({ error: 'Query missing or too short' }, { status: 400 })
   }
 
+  // Domaines nettoyés (mode multi-source) — calculés AVANT le cap pour compter
+  // le nombre d'appels Linkup RÉELS (1 par source), pas 1 par requête HTTP :
+  // sinon un user consommerait jusqu'à 6× le budget Linkup sous 1 unité de cap.
+  const cleanedSources = (sources ?? [])
+    .map((s) => s.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, ''))
+    .filter((s) => /^[a-z0-9.-]+\.[a-z]{2,}$/.test(s))
+    .slice(0, 6) // cap à 6 sources max pour éviter d'exploser le quota Linkup
+  const isMultiSource = cleanedSources.length > 0
+  const providerCalls = isMultiSource ? cleanedSources.length : 1
+
+  // Cap journalier par email sur la clé de recherche PAYANTE du owner
+  // (Linkup/Brave), appliqué aux seuls plans non-payants. Compté en appels
+  // provider réels. Le filet contre l'abus multi-comptes est le plafond DUR
+  // côté provider (budget Linkup) — cf. docs ops.
+  if (planSubjectToOwnerApiCap(user.planType)) {
+    const cap = await consumeOwnerApiQuota(env, user.email, 'web-search', providerCalls)
+    if (!cap.allowed) return ownerApiLimitResponse('web-search', cap.limit)
+  }
+
   const provider: 'linkup' | 'brave' = (env.SEARCH_PROVIDER as 'linkup' | 'brave') || 'linkup'
 
   try {
     // Mode multi-source (Option A) — appels parallèles avec opérateur site:
     // pour chaque domaine demandé. Garantit une réponse par source distincte
     // au lieu d'une synthèse globale qui mélange l'attribution.
-    if (sources && sources.length > 0) {
-      const cleaned = sources
-        .map((s) => s.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, ''))
-        .filter((s) => /^[a-z0-9.-]+\.[a-z]{2,}$/.test(s))
-        .slice(0, 6) // cap à 6 sources max pour éviter d'exploser le quota Linkup
-
+    if (isMultiSource) {
       const perSource = await Promise.all(
-        cleaned.map(async (source) => {
+        cleanedSources.map(async (source) => {
           const sourcedQuery = `${query} site:${source}`
           try {
             const linkup = await searchLinkup(env.LINKUP_API_KEY, sourcedQuery, maxResults)

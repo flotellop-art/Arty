@@ -35,6 +35,11 @@
 
 import type { Env } from '../../env'
 import { checkAllowedUserPeek } from '../_lib/checkAllowedUser'
+import {
+  consumeOwnerApiQuota,
+  ownerApiLimitResponse,
+  planSubjectToOwnerApiCap,
+} from '../_lib/freeQuota'
 import { isSafePublicUrl, isShortLinkHost } from '../_lib/urlSafety'
 import { truncateWithNotice } from '../_lib/truncate'
 
@@ -82,6 +87,15 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
 
   if (!env.LINKUP_API_KEY) {
     return Response.json({ error: 'Fetch unavailable' }, { status: 503 })
+  }
+
+  // Cap journalier par email sur la clé Linkup PAYANTE du owner — uniquement
+  // les plans non-payants. Placé après la validation d'URL (les requêtes
+  // invalides ne consomment pas de quota) et avant le fetch facturé. Filet
+  // multi-comptes = plafond DUR Linkup (cf. docs ops).
+  if (planSubjectToOwnerApiCap(user.planType)) {
+    const cap = await consumeOwnerApiQuota(env, user.email, 'url-fetch')
+    if (!cap.allowed) return ownerApiLimitResponse('url-fetch', cap.limit)
   }
 
   // renderJs uniquement pour les liens de partage Google (interstitiel JS).
