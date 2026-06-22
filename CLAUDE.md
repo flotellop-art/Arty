@@ -541,13 +541,32 @@ Slash command **`/audit-secu`** (défini dans `.claude/commands/audit-secu.md`) 
 
 ### TODO Sécurité — prochain audit
 
-Dernier audit : **14 juin 2026** (3 agents : backend Opus, crypto+auth Opus, frontend Sonnet + vérif terrain + requêtes D1 prod). Précédent : 7 juin 2026. Avant : 4 mai 2026 (PR #127 + #128).
+Dernier audit : **22 juin 2026** (3 agents : backend Opus, crypto+auth Opus, frontend Sonnet + vérif terrain). Précédent : 14 juin 2026. Avant : 7 juin 2026.
 
-> **MAJ 14 juin 2026** — Audit complet `/audit-secu` (3 agents) déclenché après une
+> **MAJ 22 juin 2026** — Audit complet `/audit-secu` (3 agents). **Verdict : aucun CRIT.**
+> **3 HIGH nouveaux trouvés** dans `sw.js` et `reportGenerator.ts` (vecteur prompt-injection
+> → notification système fake ou scripts dans iframe rapport). Non exploitables sans compromission
+> serveur push ou prompt-injection réussie, mais à corriger rapidement. Baseline backend/auth
+> tient (toutes les correcs précédentes confirmées en place).
+>
+> **3 HIGH à corriger en priorité (sprint en cours)** :
+> - **HIGH-1 — `sw.js:30` : `openWindow(url)` sans validation d'origine** — URL push injectée
+>   ouvre un onglet arbitraire. Fix : `if (!url.startsWith('/') && new URL(url).origin !== self.location.origin) return`.
+> - **HIGH-2 — `sw.js:36-48` : SW message handler sans validation d'origine** — n'importe quelle
+>   iframe peut déclencher une fausse notification système "Arty". Fix : vérifier `event.source instanceof Client` + origin.
+> - **HIGH-3 — `reportGenerator.ts:213` : `${content}` IA injecté brut dans iframe `allow-scripts`**
+>   — via prompt-injection, scripts exécutés (fetch exfil, popup abuse). Fix : `DOMPurify.sanitize(content)`.
+>
+> **Nouveaux MED** :
+> - CSP `img-src data:` global (`public/_headers:6`) → à retirer, utiliser `blob:`.
+> - `postMessage('*')` dans boutons iframe rapport (`reportGenerator.ts:186,187`) → passer l'origin.
+> - `window.open` sans `noopener` dans `HomeScreen.tsx:80` et `ConversationSummaryModal.tsx:145`.
+>
+> **MAJ 14 juin 2026** — (historique) Audit complet `/audit-secu` (3 agents) déclenché après une
 > comparaison aux failles d'Odysseus (l'assistant de PewDiePie). **Verdict : aucun CRIT,
 > aucun HIGH exploitable** ; Arty n'a AUCUNE des failles d'Odysseus (pas de RCE/shell au
-> LLM, SSRF nul, IDOR nul, pas de fuite de clé, auth présente). **Corrigé cette session
-> (PR à venir, lot « priorités sûres »)** :
+> LLM, SSRF nul, IDOR nul, pas de fuite de clé, auth présente). Corrigé cette session
+> (PR à venir, lot « priorités sûres ») :
 > - **Boutons d'action en liste blanche** (`useAppSetup.ts` : `default → executor(action)`
 >   supprimé) + **confirmation** sur send_email/save_drive/create_event/publish_wp +
 >   validation `tel:`/`url` + `noopener`. Ferme le vecteur prompt-injection → action en 1 clic.
@@ -616,6 +635,16 @@ des conversations — implémenté le 16 mai, voir « PR à venir » ci-dessous.
 - [ ] **LOW — `computer/relay` forwarde une action arbitraire** + `local/computer-use-server.js` exécute type/key/click sans allowlist (owner-only, PC de l'owner). Fix : allowlist d'actions au relay + rejet des `key` hors `keyMap`.
 - [ ] **LOW — permissions Android sur-déclarées** (`READ_MEDIA_AUDIO/VIDEO`, `MODIFY_AUDIO_SETTINGS`) + `gemini-proxy` `model` non format-vérifié + `drive` `previousParents` non encodé + pas de timeout serveur→Google. Nettoyage avant Play Store.
 - [ ] **⚠️ GO-LIVE (pas une faille) — IDs produits Creem en mode TEST dans le code prod** (`checkout/creem.ts:34`, `webhook/creem.ts:29`). Fail-closed (dérive test/live du préfixe de clé) mais avec une clé LIVE + ces IDs test → checkout cassé/mis-crédité. Remplacer au lancement (TODO `⚠️ replace at go-live` présent).
+
+**Nouveaux findings (audit 22 juin) — HIGH, non corrigés** :
+- [ ] **HIGH — `sw.js:30` : `openWindow(url)` sans validation d'origine** — URL de notification push injectée passée telle quelle à `clients.openWindow()` → open redirect via clic sur notification. Fix : `if (!url.startsWith('/') && new URL(url).origin !== self.location.origin) return` avant `openWindow`.
+- [ ] **HIGH — `sw.js:36-48` : SW `message` handler sans validation d'origine** — tout iframe cross-origin peut envoyer `{type:'schedule-notification', title:'...', body:'...'}` → fausse notification système au nom d'Arty. Fix : `if (!(event.source instanceof Client)) return` + `event.source.url` doit matcher `self.location.origin`.
+- [ ] **HIGH — `reportGenerator.ts:213` : `${content}` IA injecté brut dans iframe `allow-scripts allow-popups`** — via prompt-injection (email/doc malveillant), l'IA peut appeler `generate_report` avec HTML hostile → scripts s'exécutent dans l'iframe (pas d'accès localStorage/DOM parent, mais `fetch` sortant + `allow-popups`). Fix : `DOMPurify.sanitize(content)` avant insertion dans `REPORT_TEMPLATE` (pattern déjà utilisé dans `exportHtmlAsPdf`). Bonus : `escapeHtml` complet sur `title` (pas juste `replace(/[<>]/g, '')`).
+
+**Nouveaux findings (audit 22 juin) — MED/LOW, non corrigés** :
+- [ ] **MED — CSP `img-src data:` global** (`public/_headers:6`) — `data:` dans img-src permet exfiltration de données via `<img src="data:...">` si XSS résiduel, ou vecteur SVG+script. Fix : retirer `data:`, utiliser `blob:` pour les images générées Arty.
+- [ ] **MED — `postMessage('*')` dans iframe rapport** (`reportGenerator.ts:186,187`) — cibler `'*'` au lieu de l'origin exacte. Fix : remplacer par `window.location.origin`.
+- [ ] **MED — `window.open` sans `noopener`** dans `HomeScreen.tsx:80` (events Google Calendar) et `ConversationSummaryModal.tsx:145` (route `/report/…`) → reverse tabnapping potentiel. Fix : `window.open(url, '_blank', 'noopener,noreferrer')`.
 
 **Corrigé le 14 juin (lot « priorités sûres », PR à venir)** :
 - [x] **Boutons d'action en liste blanche + confirmation** (`useAppSetup.ts`) — `default → executor(action)` supprimé ; confirm sur send_email/save_drive/create_event/publish_wp ; `tel:`/`url` validés + `noopener`.
