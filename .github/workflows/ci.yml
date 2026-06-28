@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: [main, dev, "security/**", "fix/**", "claude/**"]
+  pull_request:
+    branches: [main, dev]
+
+jobs:
+  test-build-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies including dev tools
+        run: npm ci --include=dev
+        env:
+          NODE_ENV: development
+
+      - name: Security audit (moderate+)
+        run: npm audit --audit-level=moderate
+
+      - name: Unit and security tests with enforced coverage
+        run: npm run test:coverage
+        env:
+          NODE_ENV: test
+
+      - name: Typecheck and Vite build
+        run: npm run build
+        env:
+          NODE_ENV: production
