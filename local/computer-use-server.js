@@ -4,13 +4,22 @@ const { exec } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { requireStrongTunnelSecret, safeCompareSecret, parseCoordinate, parseScrollAmount, parseScrollDirection, validateText, normalizeKey, psSingleQuote, escapeSendKeysText } = require('./computer-use-safety');
 
 const app = express();
-const PORT = 3003;
+const PORT = Number(process.env.COMPUTER_USE_PORT || 3003);
+const HOST = process.env.COMPUTER_USE_HOST || '127.0.0.1';
 const LOG_FILE = path.join(__dirname, 'computer-use.log');
 
 // Secret token for authentication
-const TUNNEL_SECRET = process.env.TUNNEL_SECRET || 'dev-secret-change-me';
+let TUNNEL_SECRET;
+try {
+  TUNNEL_SECRET = requireStrongTunnelSecret(process.env.TUNNEL_SECRET);
+} catch (err) {
+  console.error(`SECURITY ERROR: ${err.message}`);
+  console.error('Set TUNNEL_SECRET to a random value of at least 32 characters before starting the server.');
+  process.exit(1);
+}
 
 // Allowed applications whitelist
 const ALLOWED_APPS = {
@@ -39,7 +48,7 @@ function log(action, details) {
 // Auth middleware
 function auth(req, res, next) {
   const token = req.headers['x-tunnel-secret'];
-  if (token !== TUNNEL_SECRET) {
+  if (!safeCompareSecret(Array.isArray(token) ? token[0] : token, TUNNEL_SECRET)) {
     log('AUTH_FAILED', { ip: req.ip });
     return res.status(401).json({ error: 'Unauthorized' });
   }
@@ -87,31 +96,33 @@ app.post('/computer/action', auth, async (req, res) => {
       case 'click': {
         const { x, y } = params || {};
         if (x == null || y == null) {
-          return res.json({ success: false, error: 'Missing x, y coordinates' });
+          return res.status(400).json({ success: false, error: 'Missing x, y coordinates' });
         }
-        await click(x, y);
+        const safeX = parseCoordinate(x, 'x');
+        const safeY = parseCoordinate(y, 'y');
+        await click(safeX, safeY);
         await sleep(500);
         const screenshot = await takeScreenshot();
-        return res.json({ success: true, action: 'click', x, y, screenshot });
+        return res.json({ success: true, action: 'click', x: safeX, y: safeY, screenshot });
       }
 
       case 'type': {
         const { text } = params || {};
-        if (!text) {
-          return res.json({ success: false, error: 'Missing text' });
-        }
-        await typeText(text);
+        const safeText = validateText(text);
+        await typeText(safeText);
         await sleep(500);
         const screenshot = await takeScreenshot();
-        return res.json({ success: true, action: 'type', text, screenshot });
+        return res.json({ success: true, action: 'type', text: safeText, screenshot });
       }
 
       case 'scroll': {
         const { direction, amount } = params || {};
-        await scroll(direction || 'down', amount || 3);
+        const safeDirection = parseScrollDirection(direction || 'down');
+        const safeAmount = parseScrollAmount(amount || 3);
+        await scroll(safeDirection, safeAmount);
         await sleep(500);
         const screenshot = await takeScreenshot();
-        return res.json({ success: true, action: 'scroll', direction, screenshot });
+        return res.json({ success: true, action: 'scroll', direction: safeDirection, amount: safeAmount, screenshot });
       }
 
       case 'key': {
@@ -130,7 +141,8 @@ app.post('/computer/action', auth, async (req, res) => {
     }
   } catch (err) {
     log('ERROR', { action, error: err.message });
-    return res.status(500).json({ error: err.message });
+    const status = /^Invalid /.test(err.message) ? 400 : 500;
+    return res.status(status).json({ error: status === 400 ? err.message : 'Action failed' });
   }
 });
 
@@ -192,9 +204,11 @@ async function openApp(exeName) {
 }
 
 async function click(x, y) {
+  const safeX = parseCoordinate(x, 'x');
+  const safeY = parseCoordinate(y, 'y');
   const ps = `
     Add-Type -AssemblyName System.Windows.Forms
-    [System.Windows.Forms.Cursor]::Position = New-Object System.Drawing.Point(${x}, ${y})
+    [System.Windows.Forms.Cursor]::Position = New-Object System.Drawing.Point(${safeX}, ${safeY})
     Add-Type @'
       using System;
       using System.Runtime.InteropServices;
@@ -210,16 +224,18 @@ async function click(x, y) {
 
 async function typeText(text) {
   // Use SendKeys for text input
-  const escaped = text.replace(/[+^%~(){}[\]]/g, '{$&}');
+  const escaped = escapeSendKeysText(text);
   const ps = `
     Add-Type -AssemblyName System.Windows.Forms
-    [System.Windows.Forms.SendKeys]::SendWait('${escaped.replace(/'/g, "''")}')
+    [System.Windows.Forms.SendKeys]::SendWait('${psSingleQuote(escaped)}')
   `;
   await runPowerShell(ps);
 }
 
 async function scroll(direction, amount) {
-  const scrollAmount = direction === 'up' ? amount * 120 : -(amount * 120);
+  const safeDirection = parseScrollDirection(direction);
+  const safeAmount = parseScrollAmount(amount);
+  const scrollAmount = safeDirection === 'up' ? safeAmount * 120 : -(safeAmount * 120);
   const ps = `
     Add-Type @'
       using System;
@@ -257,10 +273,10 @@ async function pressKey(key) {
     'alt+f4': '%{F4}',
   };
 
-  const sendKey = keyMap[key.toLowerCase()] || key;
+  const sendKey = normalizeKey(key);
   const ps = `
     Add-Type -AssemblyName System.Windows.Forms
-    [System.Windows.Forms.SendKeys]::SendWait('${sendKey}')
+    [System.Windows.Forms.SendKeys]::SendWait('${psSingleQuote(sendKey)}')
   `;
   await runPowerShell(ps);
 }
@@ -269,8 +285,8 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-app.listen(PORT, () => {
-  log('SERVER_START', { port: PORT });
-  console.log(`\n  Computer Use Server running on http://localhost:${PORT}`);
-  console.log(`  Health check: http://localhost:${PORT}/health\n`);
+app.listen(PORT, HOST, () => {
+  log('SERVER_START', { host: HOST, port: PORT });
+  console.log(`\n  Computer Use Server running on http://${HOST}:${PORT}`);
+  console.log(`  Health check: http://${HOST}:${PORT}/health\n`);
 });
