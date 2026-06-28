@@ -199,6 +199,62 @@ export async function initCrypto(passphrase: string): Promise<void> {
   setStoredVersion(targetVersion)
 }
 
+
+/**
+ * Rotate all encrypted local blobs from one passphrase to another without
+ * changing the user's data. Used to migrate legacy Google/server-key accounts
+ * away from the public `server-provided` placeholder as an at-rest key.
+ */
+export async function rotateCryptoPassphrase(
+  oldPassphrase: string,
+  newPassphrase: string
+): Promise<boolean> {
+  const targetVersion: CryptoVersion = isV2Disabled() ? 'v1' : 'v2'
+  const storedVersion = getStoredVersion()
+  const check = localStorage.getItem(KEY_CHECK_KEY)
+
+  if (!check) {
+    await initCrypto(newPassphrase)
+    return true
+  }
+
+  const previousKey = cachedKey
+  const oldKey = await deriveKey(oldPassphrase, storedVersion)
+  cachedKey = oldKey
+
+  try {
+    if ((await decrypt(check)) !== 'arty-ok') {
+      cachedKey = previousKey
+      return false
+    }
+  } catch {
+    cachedKey = previousKey
+    return false
+  }
+
+  const blobs = listEncryptedKeys().filter((k) => k !== KEY_CHECK_KEY)
+  const decrypted: Array<[string, string]> = []
+  for (const key of blobs) {
+    const raw = localStorage.getItem(key)
+    if (!raw) continue
+    try {
+      decrypted.push([key, await decrypt(raw)])
+    } catch {
+      // Keep unreadable blobs untouched. The old key self-test passed, so a
+      // failure here means this individual blob is corrupt or from another
+      // historical key; do not let it block the global key rotation.
+    }
+  }
+
+  cachedKey = await deriveKey(newPassphrase, targetVersion)
+  for (const [key, plaintext] of decrypted) {
+    localStorage.setItem(key, await encrypt(plaintext))
+  }
+  localStorage.setItem(KEY_CHECK_KEY, await encrypt('arty-ok'))
+  setStoredVersion(targetVersion)
+  return true
+}
+
 /**
  * Verify if the given passphrase matches the stored key. Utilise la version
  * stockée (pas la target) pour vérifier — sinon on dirait à tort que la

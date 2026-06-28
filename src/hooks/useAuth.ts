@@ -10,7 +10,7 @@ import {
   type AuthMethod,
 } from '../services/userSession'
 import { setActiveKeys, clearActiveKeys } from '../services/activeApiKey'
-import { initCrypto } from '../services/crypto'
+import { initCryptoForApiKey } from '../services/cryptoPassphrase'
 import { bootstrapGoogleStorage, logout as googleLogout, clearOAuthState, resetGoogleMemCache } from '../services/googleAuth'
 import { wipeFileStorage, bootstrapFileStorage } from '../services/secureFileStorage'
 import { bootstrapConversationStorage, resetConversationMemCache } from '../services/storage'
@@ -34,7 +34,7 @@ export function useAuth() {
     const keys = scoped.getJSON<StoredKeys>('api-keys')
     if (!keys?.anthropic) return
     setActiveKeys(keys.anthropic, keys.gemini, keys.mistral, keys.openai)
-    initCrypto(keys.anthropic)
+    initCryptoForApiKey(keys.anthropic)
       .then(() => Promise.all([bootstrapGoogleStorage(), bootstrapFileStorage(), bootstrapConversationStorage()]))
       .catch((err) => {
         console.error('[useAuth] crypto bootstrap failed:', err)
@@ -73,7 +73,7 @@ export function useAuth() {
 
     // Initialize encryption with the API key, then migrate any legacy
     // plain-JSON Google tokens into encrypted storage.
-    await initCrypto(credentials.anthropicKey)
+    await initCryptoForApiKey(credentials.anthropicKey)
     await bootstrapGoogleStorage()
     bootstrapConversationStorage().catch(() => {})
     bootstrapFileStorage().catch(() => {})
@@ -154,7 +154,7 @@ export function useAuth() {
     // Restore new user's API keys
     const keys = scoped.getJSON<StoredKeys>('api-keys')
     if (keys?.anthropic) {
-      await initCrypto(keys.anthropic)
+      await initCryptoForApiKey(keys.anthropic)
       await bootstrapGoogleStorage()
       bootstrapConversationStorage().catch(() => {})
       bootstrapFileStorage().catch(() => {})

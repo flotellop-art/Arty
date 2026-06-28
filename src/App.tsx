@@ -3,7 +3,8 @@ import { BrowserRouter, Routes, Route, useNavigate, useParams } from 'react-rout
 import { useConversation } from './hooks/useConversation'
 import { useAppSetup } from './hooks/useAppSetup'
 import { useAuth } from './hooks/useAuth'
-import { initCrypto, isCryptoReady } from './services/crypto'
+import { isCryptoReady } from './services/crypto'
+import { initCryptoForApiKey } from './services/cryptoPassphrase'
 import { bootstrapGoogleStorage } from './services/googleAuth'
 import { bootstrapConversationStorage } from './services/storage'
 import { getJSON } from './services/scopedStorage'
@@ -651,7 +652,7 @@ export default function App() {
     if (isCryptoReady()) return
     const keys = getJSON<{ anthropic?: string }>('api-keys')
     if (!keys?.anthropic) return
-    initCrypto(keys.anthropic)
+    initCryptoForApiKey(keys.anthropic)
       .then(() => Promise.all([bootstrapGoogleStorage(), bootstrapConversationStorage()]))
       .catch(() => {
         // Non-fatal: useAuth will retry initCrypto once auth resolves.
