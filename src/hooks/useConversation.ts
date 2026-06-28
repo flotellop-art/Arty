@@ -16,6 +16,7 @@ import { putFile } from '../services/secureFileStorage'
 import { runFactCheckOnLatest, factCheckContent, getFactCheckMode } from '../services/factChecker'
 import { detectSuggestedTasks, addTask } from '../services/taskService'
 import { detectReminderIntent, createReminder } from '../services/reminderService'
+import { isEuLockedConversation, markMistralUsed } from '../services/dataResidency'
 
 type ToolHandler = (name: string, input: Record<string, unknown>) => Promise<{ result: string; screenshot?: string }>
 
@@ -277,7 +278,7 @@ export function useConversation() {
           return
         }
 
-        const fc = await factCheckContent(userMsg.content, content, factCheckMode)
+        const fc = await factCheckContent(userMsg.content, content, factCheckMode, undefined, { euOnly: isEuLockedConversation(conv) })
         const finalContent = fc?.correctedContent || content
 
         // Publie la bulle finale. finalize crée un message avec un nouvel
@@ -326,7 +327,7 @@ export function useConversation() {
       const hasFiles = !!(currentFiles && currentFiles.length > 0)
       const hasPdf = hasFiles && currentFiles!.some((f) => f.type === 'application/pdf')
       const selectedModel = getSelectedModel()
-      // EU-only conversations always use Mistral (data stays in Europe).
+      // EU-locked conversations always use Mistral (data stays in Europe).
       // Sinon : si fichiers attachés, on choisit le provider selon ce que
       // le modèle sélectionné peut gérer. Mistral Medium 3.5 a une vision
       // native depuis avril → on respecte le choix de l'utilisateur s'il
@@ -335,7 +336,7 @@ export function useConversation() {
       // non câblés ici → fallback Claude pour ces cas. Sans ça, l'app
       // forçait Sonnet même quand l'utilisateur avait sélectionné Mistral.
       let provider: ReturnType<typeof detectProvider> | 'mistral' | 'claude'
-      if (conv.euOnly) {
+      if (isEuLockedConversation(conv)) {
         provider = 'mistral'
       } else if (hasFiles) {
         if (selectedModel === 'mistral' && !hasPdf) {
@@ -347,10 +348,15 @@ export function useConversation() {
         provider = detectProvider(text)
       }
 
-      // Track which models are used in this conversation
+      // Track which models are used in this conversation. Mistral is sticky:
+      // once touched, the conversation is EU-locked and later turns/post-passes
+      // must not be routed to Claude/Gemini/OpenAI.
       const usedModels = conv.usedModels || []
       const modelName = provider === 'hybrid' ? 'gemini' : provider
-      if (!usedModels.includes(modelName)) {
+      if (modelName === 'mistral') {
+        markMistralUsed(conv)
+        storage.saveConversation(conv)
+      } else if (!usedModels.includes(modelName)) {
         usedModels.push(modelName)
         conv.usedModels = usedModels
         storage.saveConversation(conv)

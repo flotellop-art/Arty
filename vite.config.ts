@@ -27,6 +27,7 @@ export default defineConfig({
         'src/services/aiRouter.ts',
         'src/services/apiKeyStorage.ts',
         'src/services/calendarClient.ts',
+        'src/services/dataResidency.ts',
         'src/services/driveClient.ts',
         'src/services/gmailClient.ts',
         'src/services/reportGenerator.ts',

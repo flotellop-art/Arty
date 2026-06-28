@@ -11,10 +11,12 @@
 
 import { apiUrl } from './apiBase'
 import { getValidAccessToken } from './googleAuth'
+import { getMistralKey } from './activeApiKey'
 import * as scoped from './scopedStorage'
 import * as storage from './storage'
 import { recordUsage } from './costTracker'
-import type { FactCheckResult, FactCheckClaim } from '../types'
+import type { Conversation, FactCheckResult, FactCheckClaim } from '../types'
+import { isEuLockedConversation } from './dataResidency'
 
 export type Verdict = FactCheckClaim['verdict']
 export type { FactCheckResult, FactCheckClaim }
@@ -177,30 +179,42 @@ export type FactCheckOutcome =
   | { result: FactCheckResult }
   | { result: null; reason: string }
 
+export interface FactCheckRequestOptions {
+  euOnly?: boolean
+}
+
 export async function factCheckResponse(
   question: string,
   response: string,
   mode: FactCheckMode = getFactCheckMode(),
-  searchContext: SearchContext | null = null
+  searchContext: SearchContext | null = null,
+  options: FactCheckRequestOptions = {}
 ): Promise<FactCheckOutcome> {
   if (mode === 'off') return { result: null, reason: 'désactivé' }
   if (!response || response.length < 80) return { result: null, reason: 'réponse trop courte' }
 
-  // Mode 'auto' : toujours Sonnet 4.6 + web_search. Haiku 4.5 reste
-  // disponible mais uniquement en mode explicite (settings → 'haiku')
-  // pour ceux qui priorisent vitesse/coût sur fiabilité.
-  const effectiveMode: 'haiku' | 'sonnet' =
-    mode === 'auto' ? 'sonnet' : mode
+  // Mode 'auto' : toujours Sonnet 4.6 + web_search, sauf si le contenu est
+  // EU-locked (conversation créée en mode EU ou ayant déjà touché Mistral).
+  // Dans ce cas le post-pass reste chez Mistral EU au lieu d'envoyer le texte
+  // vers Claude US.
+  const effectiveMode: 'haiku' | 'sonnet' | 'mistral-eu' = options.euOnly
+    ? 'mistral-eu'
+    : (mode === 'auto' ? 'sonnet' : mode)
 
-  const model = effectiveMode === 'sonnet' ? 'claude-sonnet-4-6' : 'claude-haiku-4-5-20251001'
-  const modelLabel = effectiveMode === 'sonnet' ? 'Sonnet 4.6' : 'Haiku 4.5'
+  const model = effectiveMode === 'mistral-eu'
+    ? 'mistral-medium-latest'
+    : effectiveMode === 'sonnet'
+      ? 'claude-sonnet-4-6'
+      : 'claude-haiku-4-5-20251001'
+  const modelLabel = effectiveMode === 'mistral-eu'
+    ? 'Mistral Medium 3.5 (EU)'
+    : effectiveMode === 'sonnet'
+      ? 'Sonnet 4.6'
+      : 'Haiku 4.5'
 
   // Web search natif Anthropic : activé uniquement sur Sonnet (Haiku 4.5 ne
-  // supporte pas web_search_20250305 → 400 si on l'envoie). Permet au
-  // fact-checker de vérifier des claims que les sources Linkup/Anthropic
-  // ramenées par le modèle d'origine ne couvrent pas — résout le paradoxe
-  // où Sonnet 4.6 marquait "uncertain" sur l'existence de "Sonnet 4.6"
-  // faute d'avoir l'info dans son training. `max_uses: 2` limite le coût.
+  // supporte pas web_search_20250305 → 400 si on l'envoie). EU-locked utilise
+  // Mistral sans tool Anthropic.
   const useWebSearch = effectiveMode === 'sonnet'
   const sourcesBlock = formatSearchContext(searchContext)
   const userMessage = `Question utilisateur :\n${question.slice(0, 2000)}\n\nRéponse à vérifier :\n${response.slice(0, 6000)}${sourcesBlock}`
@@ -222,29 +236,51 @@ export async function factCheckResponse(
   const timeoutMs = useWebSearch ? 35_000 : 10_000
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
 
-  type RequestBody = {
+  type AnthropicRequestBody = {
     model: string
     max_tokens: number
     system: string
     messages: Array<{ role: 'user'; content: string }>
     tools?: Array<{ type: string; name: string; max_uses?: number }>
   }
-  const reqBody: RequestBody = {
-    model,
-    // Sonnet + web_search : bump max_tokens pour accommoder les blocs
-    // server_tool_use + web_search_tool_result + texte intermédiaire +
-    // JSON final. 1024 ne suffit plus quand le modèle fait 2 recherches.
-    max_tokens: useWebSearch ? 2500 : 1024,
-    system: SYSTEM_PROMPT,
-    messages: [{ role: 'user', content: userMessage }],
+  type MistralRequestBody = {
+    model: string
+    temperature: number
+    max_tokens: number
+    messages: Array<{ role: 'system' | 'user'; content: string }>
   }
+
+  const endpoint = effectiveMode === 'mistral-eu' ? '/api/ai/mistral-proxy' : '/api/ai/proxy'
+  const reqBody: AnthropicRequestBody | MistralRequestBody = effectiveMode === 'mistral-eu'
+    ? {
+        model,
+        temperature: 0,
+        max_tokens: 1024,
+        messages: [
+          { role: 'system', content: SYSTEM_PROMPT },
+          { role: 'user', content: userMessage },
+        ],
+      }
+    : {
+        model,
+        // Sonnet + web_search : bump max_tokens pour accommoder les blocs
+        // server_tool_use + web_search_tool_result + texte intermédiaire +
+        // JSON final. 1024 ne suffit plus quand le modèle fait 2 recherches.
+        max_tokens: useWebSearch ? 2500 : 1024,
+        system: SYSTEM_PROMPT,
+        messages: [{ role: 'user', content: userMessage }],
+      }
   if (useWebSearch) {
-    reqBody.tools = [{ type: 'web_search_20250305', name: 'web_search', max_uses: 2 }]
+    ;(reqBody as AnthropicRequestBody).tools = [{ type: 'web_search_20250305', name: 'web_search', max_uses: 2 }]
+  }
+  if (effectiveMode === 'mistral-eu') {
+    const mistralKey = getMistralKey()
+    if (mistralKey && mistralKey !== 'server-provided') headers.Authorization = `Bearer ${mistralKey}`
   }
 
   let res: Response
   try {
-    res = await fetch(apiUrl('/api/ai/proxy'), {
+    res = await fetch(apiUrl(endpoint), {
       method: 'POST',
       headers,
       body: JSON.stringify(reqBody),
@@ -272,7 +308,17 @@ export async function factCheckResponse(
   try {
     const data = (await res.json()) as {
       content?: Array<{ type?: string; text?: string }>
-      usage?: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number }
+      choices?: Array<{ message?: { content?: string } }>
+      usage?: {
+        input_tokens?: number
+        output_tokens?: number
+        cache_read_input_tokens?: number
+        prompt_tokens?: number
+        completion_tokens?: number
+      }
+    }
+    if (typeof data.choices?.[0]?.message?.content === 'string') {
+      text = data.choices[0].message.content
     }
     // On cherche le DERNIER bloc text. Avec web_search activé, la réponse
     // contient [server_tool_use, web_search_tool_result, text (commentaire),
@@ -281,7 +327,7 @@ export async function factCheckResponse(
     // a qu'un seul bloc text → le résultat est le même. Boucle inverse
     // plutôt que `.findLast()` parce que la lib TS cible ES2020.
     const blocks = data.content || []
-    for (let i = blocks.length - 1; i >= 0; i--) {
+    for (let i = blocks.length - 1; !text && i >= 0; i--) {
       const b = blocks[i]
       if (b && b.type === 'text' && b.text) {
         text = b.text
@@ -293,8 +339,8 @@ export async function factCheckResponse(
     // était invisible dans le dashboard. On track ici (in/out, sans cache).
     if (data.usage) {
       try {
-        const inputT = (data.usage.input_tokens || 0) + (data.usage.cache_read_input_tokens || 0)
-        const outputT = data.usage.output_tokens || 0
+        const inputT = (data.usage.input_tokens || data.usage.prompt_tokens || 0) + (data.usage.cache_read_input_tokens || 0)
+        const outputT = data.usage.output_tokens || data.usage.completion_tokens || 0
         recordUsage(model, inputT, outputT)
       } catch { /* tracking doit pas casser */ }
     }
@@ -379,14 +425,16 @@ export interface FactCheckContentOutput {
 export async function factCheckContent(
   question: string,
   content: string,
-  mode: FactCheckMode = getFactCheckMode()
+  mode: FactCheckMode = getFactCheckMode(),
+  searchContext?: SearchContext | null,
+  options: FactCheckRequestOptions = {}
 ): Promise<FactCheckContentOutput | null> {
   // Récupère le contexte de recherche capturé pendant la génération
   // (Mistral via setSearchContext) puis clear immédiatement pour ne pas
   // polluer le prochain message si le fact-check échoue.
-  const ctx = getSearchContext()
-  clearSearchContext()
-  const outcome = await factCheckResponse(question, content, mode, ctx)
+  const ctx = searchContext === undefined ? getSearchContext() : searchContext
+  if (searchContext === undefined) clearSearchContext()
+  const outcome = await factCheckResponse(question, content, mode, ctx, options)
   if (!outcome.result) return null
   const result = outcome.result
 
@@ -486,7 +534,7 @@ export async function runFactCheckOnLatest(
   // On clear immédiatement pour ne pas pollluer le prochain message si
   // le fact-check échoue ou si l'IA ne lance pas de search.
   clearSearchContext()
-  const outcome = await factCheckResponse(userMsg.content, originalContent, mode, ctx)
+  const outcome = await factCheckResponse(userMsg.content, originalContent, mode, ctx, { euOnly: isEuLockedConversation(conv as Pick<Conversation, 'euOnly' | 'usedModels'>) })
   if (!outcome.result) {
     console.warn('[factChecker] factCheckResponse returned null —', outcome.reason)
     // Update le placeholder pour montrer l'échec à l'user (au lieu de
