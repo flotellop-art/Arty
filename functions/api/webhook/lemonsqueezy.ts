@@ -172,18 +172,34 @@ async function handleOrderCreated(
 
     await ensureLicensesTable(env.DB)
     await env.DB.prepare(
-      `INSERT OR REPLACE INTO licenses
+      `INSERT INTO licenses
         (user_email, order_id, license_key, status, max_activations, activations, created_at)
-       VALUES (?1, ?2, ?3, 'active', ?4, 0, unixepoch())`
+       VALUES (?1, ?2, ?3, 'active', ?4, 0, unixepoch())
+       ON CONFLICT(user_email, order_id) DO UPDATE SET
+         license_key = CASE
+           WHEN licenses.license_key = '' AND excluded.license_key <> '' THEN excluded.license_key
+           ELSE licenses.license_key
+         END,
+         status = 'active',
+         max_activations = MAX(licenses.max_activations, excluded.max_activations)`
     )
       .bind(email, orderId, licenseKey, LICENSE_MAX_ACTIVATIONS)
       .run()
 
     await ensureSubscriptionsTable(env.DB)
     await env.DB.prepare(
-      `INSERT OR REPLACE INTO subscriptions
+      `INSERT INTO subscriptions
         (user_email, plan_type, status, ls_subscription_id, ls_customer_id, ls_variant_id, current_period_end, updated_at)
-       VALUES (?1, 'pro', 'active', NULL, ?2, ?3, NULL, unixepoch())`
+       VALUES (?1, 'pro', 'active', NULL, ?2, ?3, NULL, unixepoch())
+       ON CONFLICT(user_email) DO UPDATE SET
+         plan_type = CASE
+           WHEN subscriptions.plan_type = 'vip' THEN 'vip'
+           ELSE 'pro'
+         END,
+         status = 'active',
+         ls_customer_id = COALESCE(excluded.ls_customer_id, subscriptions.ls_customer_id),
+         ls_variant_id = COALESCE(excluded.ls_variant_id, subscriptions.ls_variant_id),
+         updated_at = unixepoch()`
     )
       .bind(
         email,
@@ -197,9 +213,12 @@ async function handleOrderCreated(
   if (productId === PRODUCT_ID_PREMIUM_PACK) {
     await ensurePremiumPacksTable(env.DB)
     await env.DB.prepare(
-      `INSERT OR REPLACE INTO premium_packs
+      `INSERT INTO premium_packs
         (user_email, order_id, messages_total, messages_used, created_at)
-       VALUES (?1, ?2, ?3, 0, unixepoch())`
+       VALUES (?1, ?2, ?3, 0, unixepoch())
+       ON CONFLICT(user_email, order_id) DO UPDATE SET
+         messages_total = MAX(premium_packs.messages_total, excluded.messages_total),
+         created_at = premium_packs.created_at`
     )
       .bind(email, orderId, PREMIUM_PACK_MESSAGES_TOTAL)
       .run()
@@ -219,9 +238,23 @@ async function handleSubscriptionUpsert(
 
   await ensureSubscriptionsTable(env.DB)
   await env.DB.prepare(
-    `INSERT OR REPLACE INTO subscriptions
+    `INSERT INTO subscriptions
       (user_email, plan_type, status, ls_subscription_id, ls_customer_id, ls_variant_id, current_period_end, updated_at)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, unixepoch())`
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, unixepoch())
+     ON CONFLICT(user_email) DO UPDATE SET
+       plan_type = CASE
+         WHEN subscriptions.plan_type IN ('pro', 'vip') THEN subscriptions.plan_type
+         ELSE excluded.plan_type
+       END,
+       status = CASE
+         WHEN subscriptions.plan_type IN ('pro', 'vip') THEN 'active'
+         ELSE excluded.status
+       END,
+       ls_subscription_id = excluded.ls_subscription_id,
+       ls_customer_id = excluded.ls_customer_id,
+       ls_variant_id = excluded.ls_variant_id,
+       current_period_end = excluded.current_period_end,
+       updated_at = unixepoch()`
   )
     .bind(
       email,
@@ -259,9 +292,18 @@ async function handleSubscriptionStatusUpdate(
         (user_email, plan_type, status, ls_subscription_id, ls_customer_id, ls_variant_id, current_period_end, updated_at)
        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, unixepoch())
        ON CONFLICT(user_email) DO UPDATE SET
-         plan_type = excluded.plan_type,
-         status = excluded.status,
-         current_period_end = excluded.current_period_end,
+         plan_type = CASE
+           WHEN subscriptions.plan_type IN ('pro', 'vip') THEN subscriptions.plan_type
+           ELSE excluded.plan_type
+         END,
+         status = CASE
+           WHEN subscriptions.plan_type IN ('pro', 'vip') THEN 'active'
+           ELSE excluded.status
+         END,
+         current_period_end = CASE
+           WHEN subscriptions.plan_type IN ('pro', 'vip') THEN subscriptions.current_period_end
+           ELSE excluded.current_period_end
+         END,
          updated_at = unixepoch()`
     )
       .bind(
@@ -283,8 +325,14 @@ async function handleSubscriptionStatusUpdate(
         (user_email, plan_type, status, ls_subscription_id, ls_customer_id, ls_variant_id, current_period_end, updated_at)
        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, unixepoch())
        ON CONFLICT(user_email) DO UPDATE SET
-         plan_type = excluded.plan_type,
-         status = excluded.status,
+         plan_type = CASE
+           WHEN subscriptions.plan_type IN ('pro', 'vip') THEN subscriptions.plan_type
+           ELSE excluded.plan_type
+         END,
+         status = CASE
+           WHEN subscriptions.plan_type IN ('pro', 'vip') THEN 'active'
+           ELSE excluded.status
+         END,
          updated_at = unixepoch()`
     )
       .bind(
@@ -304,7 +352,11 @@ async function handleSubscriptionStatusUpdate(
   // jusqu'à la fin de la période en cours), seul le status change.
   await env.DB.prepare(
     `UPDATE subscriptions
-     SET status = ?1, updated_at = unixepoch()
+     SET status = CASE
+           WHEN plan_type IN ('pro', 'vip') THEN 'active'
+           ELSE ?1
+         END,
+         updated_at = unixepoch()
      WHERE user_email = ?2`
   )
     .bind(newStatus, email)
