@@ -1,4 +1,5 @@
 import type { Env } from '../../env'
+import { notFoundResponse, verifyGoogleUser } from '../_lib/checkAllowedUser'
 
 interface ActivateBody {
   license_key?: unknown
@@ -60,6 +61,16 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   if (!EMAIL_RE.test(email)) {
     return jsonResponse({ error: 'invalid_email' }, 400)
   }
+
+  // MED (Fugu audit) — a license key is a bearer secret, but the email in
+  // the JSON body is attacker-controlled. Bind activation to the Google
+  // account proven by the server-side token verifier; knowing/stuffing a
+  // leaked (license_key,email) pair is no longer enough to grant Pro.
+  const verifiedEmail = await verifyGoogleUser(request)
+  if (!verifiedEmail || verifiedEmail !== email) {
+    return notFoundResponse()
+  }
+
   if (!UUID_RE.test(deviceId)) {
     return jsonResponse({ error: 'invalid_device_id' }, 400)
   }
@@ -126,7 +137,10 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
          ls_variant_id, current_period_end, updated_at)
        VALUES (?1, 'pro', 'active', NULL, NULL, NULL, NULL, unixepoch())
        ON CONFLICT(user_email) DO UPDATE SET
-         plan_type = 'pro',
+         plan_type = CASE
+           WHEN subscriptions.plan_type = 'vip' THEN 'vip'
+           ELSE 'pro'
+         END,
          status = 'active',
          updated_at = unixepoch()`
     )
