@@ -1,14 +1,23 @@
 import type { ComputerAction, ComputerActionResponse } from '../types/computer'
 import { safeJson } from '../utils/safeJson'
 import { apiUrl } from './apiBase'
+import { getValidAccessToken } from './googleAuth'
 
 export async function sendComputerAction(
   action: ComputerAction,
   params?: Record<string, unknown>
 ): Promise<ComputerActionResponse> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  // Le relay /api/computer/relay exige le token Google de l'owner pour
+  // s'authentifier. Sans ce header, il répond 404 et la feature est morte.
+  // getValidAccessToken rafraîchit le token avant envoi (BUG 23 — ne pas
+  // utiliser getStoredTokens qui peut renvoyer un token expiré).
+  const token = await getValidAccessToken()
+  if (token) headers['x-google-token'] = token
+
   const res = await fetch(apiUrl('/api/computer/relay'), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify({ action, params }),
   })
   const data = await safeJson(res)
