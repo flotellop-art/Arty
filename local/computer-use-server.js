@@ -4,13 +4,31 @@ const { exec } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { parseCoordinate, parseScrollAmount, normalizeKey } = require('./computer-use-safety');
 
 const app = express();
 const PORT = 3003;
 const LOG_FILE = path.join(__dirname, 'computer-use.log');
 
-// Secret token for authentication
-const TUNNEL_SECRET = process.env.TUNNEL_SECRET || 'dev-secret-change-me';
+// Secret token for authentication. Ce serveur pilote le PC de l'owner via
+// PowerShell et est joignable à travers le tunnel Cloudflare : un secret par
+// défaut = RCE à distance. On REFUSE de démarrer sans un secret non-défaut.
+const TUNNEL_SECRET = process.env.TUNNEL_SECRET;
+if (!TUNNEL_SECRET || TUNNEL_SECRET === 'dev-secret-change-me') {
+  console.error(
+    'FATAL: TUNNEL_SECRET doit être défini à une valeur non-défaut. Démarrage refusé.'
+  );
+  process.exit(1);
+}
+
+// Comparaison à temps constant pour ne pas fuiter le secret octet par octet.
+function secretIsValid(provided, expected) {
+  if (typeof provided !== 'string') return false;
+  const a = Buffer.from(provided);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length) return false;
+  return crypto.timingSafeEqual(a, b);
+}
 
 // Allowed applications whitelist
 const ALLOWED_APPS = {
@@ -38,8 +56,7 @@ function log(action, details) {
 
 // Auth middleware
 function auth(req, res, next) {
-  const token = req.headers['x-tunnel-secret'];
-  if (token !== TUNNEL_SECRET) {
+  if (!secretIsValid(req.headers['x-tunnel-secret'], TUNNEL_SECRET)) {
     log('AUTH_FAILED', { ip: req.ip });
     return res.status(401).json({ error: 'Unauthorized' });
   }
@@ -89,10 +106,12 @@ app.post('/computer/action', auth, async (req, res) => {
         if (x == null || y == null) {
           return res.json({ success: false, error: 'Missing x, y coordinates' });
         }
-        await click(x, y);
+        const safeX = parseCoordinate(x, 'x');
+        const safeY = parseCoordinate(y, 'y');
+        await click(safeX, safeY);
         await sleep(500);
         const screenshot = await takeScreenshot();
-        return res.json({ success: true, action: 'click', x, y, screenshot });
+        return res.json({ success: true, action: 'click', x: safeX, y: safeY, screenshot });
       }
 
       case 'type': {
@@ -108,10 +127,12 @@ app.post('/computer/action', auth, async (req, res) => {
 
       case 'scroll': {
         const { direction, amount } = params || {};
-        await scroll(direction || 'down', amount || 3);
+        const safeAmount = parseScrollAmount(amount);
+        const safeDir = direction === 'up' ? 'up' : 'down';
+        await scroll(safeDir, safeAmount);
         await sleep(500);
         const screenshot = await takeScreenshot();
-        return res.json({ success: true, action: 'scroll', direction, screenshot });
+        return res.json({ success: true, action: 'scroll', direction: safeDir, screenshot });
       }
 
       case 'key': {
@@ -130,7 +151,10 @@ app.post('/computer/action', auth, async (req, res) => {
     }
   } catch (err) {
     log('ERROR', { action, error: err.message });
-    return res.status(500).json({ error: err.message });
+    // Les erreurs de validation (entrées rejetées avant tout PowerShell) sont
+    // des 400, pas des 500.
+    const status = err && err.statusCode === 400 ? 400 : 500;
+    return res.status(status).json({ error: err.message });
   }
 });
 
@@ -138,7 +162,12 @@ app.post('/computer/action', auth, async (req, res) => {
 
 function runPowerShell(script) {
   return new Promise((resolve, reject) => {
-    const psFile = path.join(require('os').tmpdir(), 'fp-ps-script.ps1');
+    // Nom de fichier unique par requête : un nom fixe se faisait écraser entre
+    // deux requêtes concurrentes (race condition).
+    const psFile = path.join(
+      require('os').tmpdir(),
+      `fp-ps-${crypto.randomBytes(6).toString('hex')}.ps1`
+    );
     fs.writeFileSync(psFile, script);
     exec(`powershell -NoProfile -ExecutionPolicy Bypass -File "${psFile}"`, {
       maxBuffer: 50 * 1024 * 1024,
@@ -192,9 +221,12 @@ async function openApp(exeName) {
 }
 
 async function click(x, y) {
+  // Défense au point de passage : on revalide juste avant l'interpolation PS.
+  const safeX = parseCoordinate(x, 'x');
+  const safeY = parseCoordinate(y, 'y');
   const ps = `
     Add-Type -AssemblyName System.Windows.Forms
-    [System.Windows.Forms.Cursor]::Position = New-Object System.Drawing.Point(${x}, ${y})
+    [System.Windows.Forms.Cursor]::Position = New-Object System.Drawing.Point(${safeX}, ${safeY})
     Add-Type @'
       using System;
       using System.Runtime.InteropServices;
@@ -219,7 +251,8 @@ async function typeText(text) {
 }
 
 async function scroll(direction, amount) {
-  const scrollAmount = direction === 'up' ? amount * 120 : -(amount * 120);
+  const amt = parseScrollAmount(amount);
+  const scrollAmount = direction === 'up' ? amt * 120 : -(amt * 120);
   const ps = `
     Add-Type @'
       using System;
@@ -235,29 +268,9 @@ async function scroll(direction, amount) {
 }
 
 async function pressKey(key) {
-  const keyMap = {
-    'enter': '{ENTER}',
-    'tab': '{TAB}',
-    'escape': '{ESC}',
-    'esc': '{ESC}',
-    'backspace': '{BACKSPACE}',
-    'delete': '{DELETE}',
-    'up': '{UP}',
-    'down': '{DOWN}',
-    'left': '{LEFT}',
-    'right': '{RIGHT}',
-    'home': '{HOME}',
-    'end': '{END}',
-    'ctrl+a': '^a',
-    'ctrl+c': '^c',
-    'ctrl+v': '^v',
-    'ctrl+s': '^s',
-    'ctrl+z': '^z',
-    'alt+tab': '%{TAB}',
-    'alt+f4': '%{F4}',
-  };
-
-  const sendKey = keyMap[key.toLowerCase()] || key;
+  // normalizeKey rejette toute touche hors liste blanche. Fini le fallback vers
+  // la clé brute, qui laissait passer une chaîne arbitraire non échappée.
+  const sendKey = normalizeKey(key);
   const ps = `
     Add-Type -AssemblyName System.Windows.Forms
     [System.Windows.Forms.SendKeys]::SendWait('${sendKey}')
@@ -269,8 +282,10 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-app.listen(PORT, () => {
-  log('SERVER_START', { port: PORT });
-  console.log(`\n  Computer Use Server running on http://localhost:${PORT}`);
-  console.log(`  Health check: http://localhost:${PORT}/health\n`);
+// Bind loopback uniquement : non joignable depuis le LAN. Compatible avec le
+// tunnel Cloudflare (cloudflared tourne sur ce PC et se connecte à 127.0.0.1).
+app.listen(PORT, '127.0.0.1', () => {
+  log('SERVER_START', { port: PORT, host: '127.0.0.1' });
+  console.log(`\n  Computer Use Server running on http://127.0.0.1:${PORT}`);
+  console.log(`  Health check: http://127.0.0.1:${PORT}/health\n`);
 });
