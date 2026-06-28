@@ -30,6 +30,7 @@ export default defineConfig({
         'src/services/gmailClient.ts',
         'src/services/reportGenerator.ts',
         'src/services/shareTargetService.ts',
+        'src/services/toolExecutor.ts',
       ],
       thresholds: { statements: 80, branches: 70, functions: 80, lines: 85 },
     },

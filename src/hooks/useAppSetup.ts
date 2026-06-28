@@ -6,7 +6,7 @@ import { useBrowser } from './useBrowser'
 import { useComputer } from './useComputer'
 import { useMemory } from './useMemory'
 import { buildContextualPrompt } from '../constants/systemPrompt'
-import { createToolExecutor } from '../services/toolExecutor'
+import { createToolExecutor, type DestructiveToolConfirmationRequest } from '../services/toolExecutor'
 import { getStyle, setStyle, getStylePrompt, STYLE_OPTIONS, type ResponseStyle } from '../services/responseStyles'
 import type { Question } from '../components/chat/QuestionModal'
 import type { GmailMessage } from '../types/google'
@@ -45,11 +45,27 @@ export function useAppSetup(conversation: ConversationHook) {
     return () => window.removeEventListener('style-changed', handler)
   }, [])
 
-  const toolExecutorRef = useRef(createToolExecutor(computerActions, gmail, drive, browserActions))
+  const confirmDestructiveTool = useCallback((request: DestructiveToolConfirmationRequest) => {
+    return new Promise<boolean>((resolve) => {
+      setQuestionModal({
+        questions: [{
+          question: request.message,
+          options: ['Confirmer', 'Annuler'],
+          allow_free_text: false,
+        }],
+        resolve: (answers) => {
+          setQuestionModal(null)
+          resolve(answers[0] === 'Confirmer')
+        },
+      })
+    })
+  }, [])
+
+  const toolExecutorRef = useRef(createToolExecutor(computerActions, gmail, drive, browserActions, { confirmDestructiveTool }))
 
   // Create tool executor and register it
   useEffect(() => {
-    toolExecutorRef.current = createToolExecutor(computerActions, gmail, drive, browserActions)
+    toolExecutorRef.current = createToolExecutor(computerActions, gmail, drive, browserActions, { confirmDestructiveTool })
     setToolHandler((name: string, input: Record<string, unknown>) => {
       if (name === 'ask_user') {
         const questions = (input.questions as Question[]) || []
@@ -73,7 +89,7 @@ export function useAppSetup(conversation: ConversationHook) {
         return res
       })
     })
-  }, [computerActions, gmail, drive, browserActions, setToolHandler])
+  }, [computerActions, gmail, drive, browserActions, setToolHandler, confirmDestructiveTool])
 
   // Auto-fetch Gmail, Drive, and Memory when Google is connected
   useEffect(() => {
