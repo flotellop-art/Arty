@@ -2,17 +2,140 @@ import { getDateLocale } from '../utils/formatDate'
 
 const REPORT_STORAGE_KEY = 'arty-report-'
 
+const ALLOWED_REPORT_TAGS = new Set([
+  'a', 'abbr', 'article', 'aside', 'b', 'blockquote', 'br', 'caption', 'code',
+  'col', 'colgroup', 'dd', 'details', 'div', 'dl', 'dt', 'em', 'figcaption',
+  'figure', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'hr', 'i', 'img', 'li', 'mark',
+  'ol', 'p', 'pre', 'section', 'small', 'span', 'strong', 'sub', 'summary',
+  'sup', 'table', 'tbody', 'td', 'tfoot', 'th', 'thead', 'tr', 'u', 'ul',
+])
+
+const DROP_REPORT_TAGS = new Set([
+  'script', 'iframe', 'object', 'embed', 'form', 'input', 'textarea', 'select',
+  'button', 'link', 'meta', 'base', 'style', 'svg', 'math', 'template',
+])
+
+const GLOBAL_REPORT_ATTRS = new Set(['class', 'className', 'style', 'title'])
+const TABLE_REPORT_ATTRS = new Set(['colspan', 'rowspan', 'scope', 'align'])
+
+export function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+function isSafeInlineStyle(value: string): boolean {
+  return !/(url\s*\(|expression\s*\(|@import|javascript:|vbscript:|data:)/i.test(value)
+}
+
+function isSafeHref(value: string): boolean {
+  const trimmed = value.trim()
+  if (trimmed.startsWith('#')) return true
+  try {
+    const parsed = new URL(trimmed)
+    return ['http:', 'https:', 'mailto:', 'tel:'].includes(parsed.protocol)
+  } catch {
+    return false
+  }
+}
+
+function isSafeImageSrc(value: string): boolean {
+  const trimmed = value.trim()
+  if (/^data:image\/(png|jpe?g|gif|webp);base64,[a-z0-9+/=\s]+$/i.test(trimmed)) {
+    return true
+  }
+  try {
+    const parsed = new URL(trimmed)
+    return ['http:', 'https:'].includes(parsed.protocol)
+  } catch {
+    return false
+  }
+}
+
+function sanitizeReportElement(el: Element): void {
+  const tag = el.tagName.toLowerCase()
+
+  if (DROP_REPORT_TAGS.has(tag)) {
+    el.remove()
+    return
+  }
+
+  for (const child of Array.from(el.children)) {
+    sanitizeReportElement(child)
+  }
+
+  if (!ALLOWED_REPORT_TAGS.has(tag)) {
+    el.replaceWith(...Array.from(el.childNodes))
+    return
+  }
+
+  for (const attr of Array.from(el.attributes)) {
+    const name = attr.name.toLowerCase()
+    const value = attr.value
+    const allowedTableAttr = ['td', 'th'].includes(tag) && TABLE_REPORT_ATTRS.has(name)
+    const allowedDataAttr = name.startsWith('data-')
+    const allowedGlobalAttr = GLOBAL_REPORT_ATTRS.has(name)
+    const allowedLinkAttr = tag === 'a' && ['href', 'target', 'rel'].includes(name)
+    const allowedImgAttr = tag === 'img' && ['src', 'alt', 'width', 'height'].includes(name)
+
+    if (name.startsWith('on')) {
+      el.removeAttribute(attr.name)
+      continue
+    }
+    if (name === 'style' && !isSafeInlineStyle(value)) {
+      el.removeAttribute(attr.name)
+      continue
+    }
+    if (name === 'href' && !isSafeHref(value)) {
+      el.removeAttribute(attr.name)
+      continue
+    }
+    if (name === 'src' && !isSafeImageSrc(value)) {
+      el.removeAttribute(attr.name)
+      continue
+    }
+    if (!allowedGlobalAttr && !allowedDataAttr && !allowedLinkAttr && !allowedImgAttr && !allowedTableAttr) {
+      el.removeAttribute(attr.name)
+    }
+  }
+
+  if (tag === 'a') {
+    el.setAttribute('target', '_blank')
+    el.setAttribute('rel', 'noopener noreferrer')
+  }
+}
+
+export function sanitizeReportHtml(input: string): string {
+  if (typeof document === 'undefined') {
+    return escapeHtml(input)
+  }
+
+  const doc = document.implementation.createHTMLDocument('')
+  const root = doc.createElement('div')
+  root.innerHTML = input
+  for (const child of Array.from(root.children)) {
+    sanitizeReportElement(child)
+  }
+  return root.innerHTML
+}
+
+
 // Palette + composants conformes à la spec "Rapport Arty Premium v3 finale".
 // Règles absolues : fond blanc partout, aucun emoji, rouille uniquement sur
 // badges/filets/chiffres clés, chaleur par les accents (sable / caramel /
 // tabac), pas de box-shadow, espace 36px entre sections, 24px sous-sections.
-const REPORT_TEMPLATE = (title: string, content: string) => `<!DOCTYPE html>
+const REPORT_TEMPLATE = (title: string, content: string) => {
+  const safeTitle = escapeHtml(title)
+  return `<!DOCTYPE html>
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <base target="_blank">
-<title>${title} — Arty</title>
+<title>${safeTitle} — Arty</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&display=swap" rel="stylesheet">
 <style>
 :root{
@@ -195,13 +318,13 @@ body::before{content:'';position:fixed;top:0;left:0;right:0;height:5px;backgroun
       </svg>
       arty
     </div>
-    <div class="doc-title">${title.replace(/[<>]/g, '')}</div>
+    <div class="doc-title">${safeTitle}</div>
     <div class="doc-date">${new Date().toLocaleDateString(getDateLocale(), { year: 'numeric', month: 'long', day: 'numeric' })}</div>
   </div>
 
   <div class="cover">
     <span class="pill">Rapport</span>
-    <h1 class="cover-title">${title}</h1>
+    <h1 class="cover-title">${safeTitle}</h1>
     <div class="cover-sep"></div>
     <div class="cover-meta">
       <span>Généré le ${new Date().toLocaleDateString(getDateLocale(), { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
@@ -221,10 +344,11 @@ ${content}
 </div>
 </body>
 </html>`
+}
 
 export function saveReport(title: string, htmlContent: string): string {
   const id = Date.now().toString(36)
-  const fullHtml = REPORT_TEMPLATE(title, htmlContent)
+  const fullHtml = REPORT_TEMPLATE(title, sanitizeReportHtml(htmlContent))
   localStorage.setItem(REPORT_STORAGE_KEY + id, fullHtml)
   return id
 }
