@@ -265,15 +265,16 @@ export async function verifyCrypto(passphrase: string): Promise<boolean> {
   if (!check) return false
 
   const storedVersion = getStoredVersion()
+  const prevKey = cachedKey
   try {
     const tempKey = await deriveKey(passphrase, storedVersion)
-    const prevKey = cachedKey
     cachedKey = tempKey
     const result = await decrypt(check)
-    cachedKey = prevKey
     return result === 'arty-ok'
   } catch {
     return false
+  } finally {
+    cachedKey = prevKey
   }
 }
 

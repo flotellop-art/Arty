@@ -25,6 +25,7 @@ export default defineConfig({
       include: [
         'src/hooks/useStreaming.ts',
         'src/services/aiRouter.ts',
+        'src/services/apiKeyStorage.ts',
         'src/services/calendarClient.ts',
         'src/services/driveClient.ts',
         'src/services/gmailClient.ts',

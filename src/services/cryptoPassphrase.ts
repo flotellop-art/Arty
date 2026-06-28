@@ -31,18 +31,14 @@ export function getOrCreateLocalCryptoPassphrase(): string {
 }
 
 /**
- * Initialize at-rest encryption without ever using the public server-key
- * sentinel as a passphrase. BYOK users keep deriving from their Anthropic key;
- * Google/server-key users get a random per-user local secret that never leaves
- * the device. Legacy ciphertext encrypted with `server-provided` is migrated
- * in-place on first boot/login when possible.
+ * Initialize at-rest encryption without using a provider API key as the steady
+ * local passphrase. A random per-user local secret unlocks local ciphertext and
+ * lets API keys themselves be stored encrypted. On first run for a legacy BYOK
+ * user, `apiKey` is used exactly once to rotate old ciphertext to the local
+ * secret; on first run for a legacy Google/server-key user, the public
+ * `server-provided` sentinel is likewise migrated away.
  */
 export async function initCryptoForApiKey(apiKey: string): Promise<void> {
-  if (!isServerProvidedApiKey(apiKey)) {
-    await initCrypto(apiKey)
-    return
-  }
-
   const existingLocal = getLocalSecret()
   if (existingLocal) {
     await initCrypto(existingLocal)
@@ -50,7 +46,10 @@ export async function initCryptoForApiKey(apiKey: string): Promise<void> {
   }
 
   const localSecret = randomSecret()
-  const migrated = await rotateCryptoPassphrase(SERVER_PROVIDED_API_KEY, localSecret)
+  const legacyPassphrase = isServerProvidedApiKey(apiKey)
+    ? SERVER_PROVIDED_API_KEY
+    : apiKey
+  const migrated = await rotateCryptoPassphrase(legacyPassphrase, localSecret)
   if (!migrated) {
     await initCrypto(localSecret)
   }

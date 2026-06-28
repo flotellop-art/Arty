@@ -5,7 +5,6 @@ import { ApiKeyLoginTab } from './ApiKeyLoginTab'
 import { EmailLoginTab } from './EmailLoginTab'
 import { GoogleLoginTab } from './GoogleLoginTab'
 import type { UserSession, AuthMethod } from '../../services/userSession'
-import * as scoped from '../../services/scopedStorage'
 import { clearOAuthState, withTimeout, storeTokens, storeUser, getStoredTokens } from '../../services/googleAuth'
 
 type Tab = 'apikey' | 'google' | 'email'
@@ -134,7 +133,8 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
       const { generateUserId, setActiveSession } = await import('../../services/userSession')
       const userId = await generateUserId('email', email)
       setActiveSession({ userId, authMethod: 'email', displayName: email, email, createdAt: Date.now() })
-      const existingKeys = scoped.getJSON<{ anthropic: string; gemini?: string; mistral?: string; openai?: string }>('api-keys')
+      const { bootstrapStoredApiKeys } = await import('../../services/apiKeyStorage')
+      const existingKeys = await bootstrapStoredApiKeys()
 
       if (existingKeys && existingKeys.anthropic) {
         // Already has keys — login directly

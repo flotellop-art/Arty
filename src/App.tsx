@@ -4,10 +4,9 @@ import { useConversation } from './hooks/useConversation'
 import { useAppSetup } from './hooks/useAppSetup'
 import { useAuth } from './hooks/useAuth'
 import { isCryptoReady } from './services/crypto'
-import { initCryptoForApiKey } from './services/cryptoPassphrase'
 import { bootstrapGoogleStorage } from './services/googleAuth'
 import { bootstrapConversationStorage } from './services/storage'
-import { getJSON } from './services/scopedStorage'
+import { bootstrapStoredApiKeys } from './services/apiKeyStorage'
 import { QuestionModal } from './components/chat/QuestionModal'
 import { MorningBrief } from './components/home/MorningBrief'
 import { HomeScreen } from './components/home/HomeScreen'
@@ -642,22 +641,17 @@ export default function App() {
   const [deepLinkCode, setDeepLinkCode] = useState<string | null>(null)
 
   // Initialize AES-256 crypto at startup so later storage writes (Google
-  // tokens, conversations) go through the encrypted path. When an
-  // authenticated session is already present, derive the key from the
-  // Anthropic API key stored under the active user scope; otherwise fall
-  // back to a stable per-device salt (initCrypto still requires a
-  // passphrase — here we use a predictable device marker that upgrades to
-  // the user key as soon as login completes via useAuth).
+  // tokens, conversations) go through the encrypted path. API keys are no
+  // longer synchronously readable plaintext; the storage chokepoint bootstraps
+  // crypto from the per-user local secret and migrates any legacy plaintext.
   useEffect(() => {
-    if (isCryptoReady()) return
-    const keys = getJSON<{ anthropic?: string }>('api-keys')
-    if (!keys?.anthropic) return
-    initCryptoForApiKey(keys.anthropic)
+    if (!auth.currentUser || isCryptoReady()) return
+    bootstrapStoredApiKeys()
       .then(() => Promise.all([bootstrapGoogleStorage(), bootstrapConversationStorage()]))
       .catch(() => {
         // Non-fatal: useAuth will retry initCrypto once auth resolves.
       })
-  }, [])
+  }, [auth.currentUser])
 
   // Listen for deep links (native OAuth callback)
   // CSRF state check intentionally NOT done here — `verifyOAuthState()` is
@@ -722,8 +716,8 @@ export default function App() {
         const { generateUserId, setActiveSession } = await import('./services/userSession')
         const userId = await generateUserId('google', user.email)
         setActiveSession({ userId, authMethod: 'google', displayName: user.name, email: user.email, avatar: user.picture, createdAt: Date.now() })
-        const { getJSON } = await import('./services/scopedStorage')
-        const existingKeys = getJSON<{ anthropic: string; gemini?: string; mistral?: string; openai?: string }>('api-keys')
+        const { bootstrapStoredApiKeys } = await import('./services/apiKeyStorage')
+        const existingKeys = await bootstrapStoredApiKeys()
 
         // Login with existing keys or server-provided
         await auth.login('google', {
@@ -901,8 +895,8 @@ function OAuthCallbackAuth({
       const userId = await generateUserId('google', user.email)
       // Temporarily set session to read scoped storage
       setActiveSession({ userId, authMethod: 'google', displayName: user.name, email: user.email, avatar: user.picture, createdAt: Date.now() })
-      const { getJSON } = await import('./services/scopedStorage')
-      const existingKeys = getJSON<{ anthropic: string; gemini?: string; mistral?: string; openai?: string }>('api-keys')
+      const { bootstrapStoredApiKeys } = await import('./services/apiKeyStorage')
+      const existingKeys = await bootstrapStoredApiKeys()
 
       // Use stored keys if available, otherwise login without keys
       // (server-side proxy provides API keys)

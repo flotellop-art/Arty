@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect } from 'react'
-import { secureGet, secureSet, initCrypto, isCryptoReady, verifyCrypto } from '../services/crypto'
-
-const KEYS_STORAGE = 'arty-api-keys'
+import { isCryptoReady } from '../services/crypto'
+import { initCryptoForApiKey } from '../services/cryptoPassphrase'
+import { loadApiKeys, saveApiKeys, clearApiKeys, readLegacyPlainApiKeys } from '../services/apiKeyStorage'
 
 export interface ApiKeys {
   anthropic: string
@@ -21,54 +21,40 @@ export function useApiKeys() {
 
   async function loadKeys() {
     setLoading(true)
-
-    // Check if we have a key stored — try reading the raw localStorage first
-    const raw = localStorage.getItem(KEYS_STORAGE)
-    if (!raw) {
-      setLoading(false)
-      return
-    }
-
-    // Data exists — try to read it
-    // We need the crypto key first. Try plain JSON (unencrypted legacy)
     try {
-      const parsed = JSON.parse(raw) as ApiKeys
-      if (parsed.anthropic) {
-        // Legacy unencrypted — migrate
-        await initCrypto(parsed.anthropic)
-        await secureSet(KEYS_STORAGE, parsed)
-        setKeys(parsed)
-        setLoading(false)
+      const legacy = readLegacyPlainApiKeys()
+      if (legacy?.anthropic) {
+        await initCryptoForApiKey(legacy.anthropic)
+        await saveApiKeys(legacy)
+        setKeys(legacy)
         return
       }
-    } catch {
-      // Encrypted data — we need the user to re-enter their key to unlock
-    }
 
-    setLoading(false)
+      const stored = await loadApiKeys()
+      setKeys(stored)
+    } finally {
+      setLoading(false)
+    }
   }
 
   const saveKeys = useCallback(async (newKeys: ApiKeys) => {
-    await initCrypto(newKeys.anthropic)
-    await secureSet(KEYS_STORAGE, newKeys)
+    await initCryptoForApiKey(newKeys.anthropic)
+    await saveApiKeys(newKeys)
     setKeys(newKeys)
   }, [])
 
   const unlockWithKey = useCallback(async (anthropicKey: string): Promise<boolean> => {
-    const valid = await verifyCrypto(anthropicKey)
-    if (valid) {
-      await initCrypto(anthropicKey)
-      const stored = await secureGet<ApiKeys>(KEYS_STORAGE)
-      if (stored) {
-        setKeys(stored)
-        return true
-      }
+    await initCryptoForApiKey(anthropicKey)
+    const stored = await loadApiKeys()
+    if (stored) {
+      setKeys(stored)
+      return true
     }
     return false
   }, [])
 
   const clearKeys = useCallback(() => {
-    localStorage.removeItem(KEYS_STORAGE)
+    clearApiKeys()
     setKeys(null)
   }, [])
 

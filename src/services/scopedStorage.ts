@@ -12,6 +12,10 @@ function buildKey(baseKey: string): string {
   return `arty-${userId}-${baseKey}`
 }
 
+export function getStorageKey(baseKey: string): string {
+  return buildKey(baseKey)
+}
+
 export function getItem(baseKey: string): string | null {
   return localStorage.getItem(buildKey(baseKey))
 }
@@ -51,6 +55,16 @@ export function secureSetJSON(baseKey: string, value: unknown): void {
   if (isCryptoReady()) {
     secureSet(key, value).catch(() => {})
   }
+}
+
+/**
+ * Strict secure set: never writes a plaintext fallback. Use only for secrets
+ * after crypto bootstrap has completed; callers must read it asynchronously via
+ * secureGetJSON().
+ */
+export async function secureSetJSONStrict(baseKey: string, value: unknown): Promise<void> {
+  if (!isCryptoReady()) throw new Error('Crypto not initialized')
+  await secureSet(buildKey(baseKey), value)
 }
 
 /**

@@ -1,9 +1,9 @@
 import { memo, useEffect, useState } from 'react'
 import { ApiKeySetup } from './ApiKeySetup'
 import type { ApiKeys } from '../../hooks/useApiKeys'
-import * as scoped from '../../services/scopedStorage'
+import { loadApiKeys, saveApiKeys } from '../../services/apiKeyStorage'
 import { setActiveKeys } from '../../services/activeApiKey'
-import { initCrypto } from '../../services/crypto'
+import { initCryptoForApiKey } from '../../services/cryptoPassphrase'
 
 interface ApiKeysModalProps {
   open: boolean
@@ -18,7 +18,7 @@ interface ApiKeysModalProps {
  *
  * Réutilise ApiKeySetup (composant embedded inchangé) pour l'UI. Le handleSave
  * est identique à celui qui existait dans SettingsModal : chiffrement via
- * initCrypto(), stockage plain JSON (BUG 1), activation en mémoire via
+ * initCryptoForApiKey(), stockage chiffré strict, activation en mémoire via
  * setActiveKeys(), puis fermeture.
  */
 export const ApiKeysModal = memo(function ApiKeysModal({ open, onClose }: ApiKeysModalProps) {
@@ -26,8 +26,15 @@ export const ApiKeysModal = memo(function ApiKeysModal({ open, onClose }: ApiKey
 
   useEffect(() => {
     if (!open) return
-    const stored = scoped.getJSON<ApiKeys>('api-keys')
-    setInitialKeys(stored ?? null)
+    let cancelled = false
+    loadApiKeys()
+      .then((stored) => {
+        if (!cancelled) setInitialKeys(stored ?? null)
+      })
+      .catch(() => {
+        if (!cancelled) setInitialKeys(null)
+      })
+    return () => { cancelled = true }
   }, [open])
 
   useEffect(() => {
@@ -42,8 +49,8 @@ export const ApiKeysModal = memo(function ApiKeysModal({ open, onClose }: ApiKey
   if (!open) return null
 
   const handleSave = async (keys: ApiKeys) => {
-    await initCrypto(keys.anthropic)
-    scoped.setJSON('api-keys', {
+    await initCryptoForApiKey(keys.anthropic)
+    await saveApiKeys({
       anthropic: keys.anthropic,
       gemini: keys.gemini,
       mistral: keys.mistral,

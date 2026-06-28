@@ -11,12 +11,11 @@ import {
 } from '../services/userSession'
 import { setActiveKeys, clearActiveKeys } from '../services/activeApiKey'
 import { initCryptoForApiKey } from '../services/cryptoPassphrase'
+import { bootstrapStoredApiKeys, saveApiKeys, clearApiKeys, type StoredApiKeys } from '../services/apiKeyStorage'
 import { bootstrapGoogleStorage, logout as googleLogout, clearOAuthState, resetGoogleMemCache } from '../services/googleAuth'
 import { wipeFileStorage, bootstrapFileStorage } from '../services/secureFileStorage'
 import { bootstrapConversationStorage, resetConversationMemCache } from '../services/storage'
 import * as scoped from '../services/scopedStorage'
-
-type StoredKeys = { anthropic: string; gemini?: string; mistral?: string; openai?: string }
 
 export function useAuth() {
   const [currentUser, setCurrentUser] = useState<UserSession | null>(getActiveSession)
@@ -31,14 +30,21 @@ export function useAuth() {
   // also self-heals corrupt blobs now.
   useEffect(() => {
     if (!currentUser) return
-    const keys = scoped.getJSON<StoredKeys>('api-keys')
-    if (!keys?.anthropic) return
-    setActiveKeys(keys.anthropic, keys.gemini, keys.mistral, keys.openai)
-    initCryptoForApiKey(keys.anthropic)
-      .then(() => Promise.all([bootstrapGoogleStorage(), bootstrapFileStorage(), bootstrapConversationStorage()]))
+    let cancelled = false
+
+    bootstrapStoredApiKeys()
+      .then(async (keys) => {
+        if (cancelled) return
+        if (keys?.anthropic) {
+          setActiveKeys(keys.anthropic, keys.gemini, keys.mistral, keys.openai)
+        }
+        await Promise.all([bootstrapGoogleStorage(), bootstrapFileStorage(), bootstrapConversationStorage()])
+      })
       .catch((err) => {
         console.error('[useAuth] crypto bootstrap failed:', err)
       })
+
+    return () => { cancelled = true }
   }, [currentUser])
 
   const login = useCallback(async (
@@ -78,15 +84,13 @@ export function useAuth() {
     bootstrapConversationStorage().catch(() => {})
     bootstrapFileStorage().catch(() => {})
 
-    // Store API keys as plain JSON for sync reads (getJSON in useEffect)
-    // DO NOT encrypt with migrateKey — it overwrites plain with encrypted,
-    // making getJSON() fail on page reload (see BUG 1 in CLAUDE.md)
-    scoped.setJSON('api-keys', {
+    const keysToStore: StoredApiKeys = {
       anthropic: credentials.anthropicKey,
       gemini: credentials.geminiKey,
       mistral: credentials.mistralKey,
       openai: credentials.openaiKey,
-    })
+    }
+    await saveApiKeys(keysToStore)
 
     // Set active keys in memory for AI clients
     setActiveKeys(
@@ -112,11 +116,9 @@ export function useAuth() {
     // pinned messages are intentionally kept (user request).
     scoped.removeItem('cost_history')
     scoped.removeItem('cost_alert')
-    // BUG 41 fix (étape 9 audit) — `api-keys` stocké en clair dans
-    // localStorage. Le laissait au logout faisait que la passphrase
-    // crypto du user partant restait dispo pour le prochain user qui
-    // se logge sur le même appareil. Wipe explicite.
-    scoped.removeItem('api-keys')
+    // Wipe provider keys for the leaving user (now strictly encrypted, but
+    // still sensitive and not useful after logout on a shared device).
+    clearApiKeys()
     // Drop any pending OAuth state nonce (e.g. user clicked Google then
     // logged out before completing the redirect).
     clearOAuthState()
@@ -151,10 +153,9 @@ export function useAuth() {
     // Activate new session
     setActiveSession(session)
 
-    // Restore new user's API keys
-    const keys = scoped.getJSON<StoredKeys>('api-keys')
+    // Restore new user's API keys (encrypted path, with legacy plaintext migration)
+    const keys = await bootstrapStoredApiKeys()
     if (keys?.anthropic) {
-      await initCryptoForApiKey(keys.anthropic)
       await bootstrapGoogleStorage()
       bootstrapConversationStorage().catch(() => {})
       bootstrapFileStorage().catch(() => {})
