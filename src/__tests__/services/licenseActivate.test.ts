@@ -41,15 +41,6 @@ function makeRequest(headers: Record<string, string> = {}, body = VALID_BODY) {
   })
 }
 
-function mockTokeninfo(payload: unknown, ok = true) {
-  global.fetch = vi.fn(async (url: unknown) => {
-    if (String(url).includes('tokeninfo')) {
-      return { ok, status: ok ? 200 : 401, json: async () => payload } as unknown as Response
-    }
-    throw new Error('unexpected fetch: ' + String(url))
-  }) as unknown as typeof fetch
-}
-
 const makeEnv = () => ({ DB: makeDB(), GOOGLE_CLIENT_ID: 'CID' })
 
 let origFetch: typeof fetch
@@ -66,35 +57,46 @@ async function call(headers: Record<string, string> = {}) {
   return onRequestPost({ request: makeRequest(headers), env: makeEnv() } as any)
 }
 
-describe('license/activate — soft-require token Google', () => {
-  it('SANS token : active via la paire (license_key, email) — users email/BYOK', async () => {
+// L'activation valide UNIQUEMENT la paire secrète (license_key, email) en D1.
+// Pas de gate token Google : il était contournable par omission du header, et
+// rejetait à tort les users sans Google (apikey/email-OTP) ou activant une
+// licence achetée sous un autre email. Aucun risque financier (Pro=BYOK, #287).
+describe('license/activate — validation par paire (license_key, email)', () => {
+  it('SANS token : active via la paire — tous modes de login', async () => {
     const res = await call()
     expect(res.status).toBe(200)
     expect(((await res.json()) as { success?: boolean }).success).toBe(true)
   })
 
-  it('token valide + email correspondant : active', async () => {
-    mockTokeninfo({ email: 'buyer@example.com', email_verified: 'true', aud: 'CID' })
-    const res = await call({ 'x-google-token': 'tok' })
+  it('AVEC un header token (même non vérifié) : ignoré, aucun appel réseau, active', async () => {
+    const fetchSpy = vi.fn()
+    global.fetch = fetchSpy as unknown as typeof fetch
+    const res = await call({ 'x-google-token': 'peu-importe' })
     expect(res.status).toBe(200)
     expect(((await res.json()) as { success?: boolean }).success).toBe(true)
+    // Preuve que le gate token est retiré : tokeninfo (ou tout fetch) jamais appelé.
+    expect(fetchSpy).not.toHaveBeenCalled()
   })
 
-  it('token valide mais email DIFFÉRENT : rejet 404 (pas d’activation croisée)', async () => {
-    mockTokeninfo({ email: 'someone-else@example.com', email_verified: 'true', aud: 'CID' })
-    const res = await call({ 'x-google-token': 'tok' })
-    expect(res.status).toBe(404)
-  })
-
-  it('token invalide (tokeninfo échoue) : rejet 404', async () => {
-    mockTokeninfo({}, false)
-    const res = await call({ 'x-google-token': 'tok' })
-    expect(res.status).toBe(404)
-  })
-
-  it('token d’audience étrangère (aud ≠ GOOGLE_CLIENT_ID) : rejet 404', async () => {
-    mockTokeninfo({ email: 'buyer@example.com', email_verified: 'true', aud: 'OTHER_APP' })
-    const res = await call({ 'x-google-token': 'tok' })
+  it('paire inconnue (license/email ne matchent pas) : rejet 404 uniforme', async () => {
+    const db = makeDB()
+    // Force le SELECT à ne rien renvoyer (licence absente pour cette paire).
+    db.prepare = (() => ({
+      bind: () => ({
+        async first() {
+          return null
+        },
+        async run() {
+          return { success: true, meta: { changes: 0 } }
+        },
+      }),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    })) as any
+    const res = await onRequestPost({
+      request: makeRequest(),
+      env: { DB: db, GOOGLE_CLIENT_ID: 'CID' },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any)
     expect(res.status).toBe(404)
   })
 })
