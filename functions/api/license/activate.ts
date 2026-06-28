@@ -1,5 +1,4 @@
 import type { Env } from '../../env'
-import { verifyTokenViaTokeninfo } from '../_lib/checkAllowedUser'
 
 interface ActivateBody {
   license_key?: unknown
@@ -65,25 +64,18 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     return jsonResponse({ error: 'invalid_device_id' }, 400)
   }
 
-  // Soft-require Google : si un token est fourni, il DOIT correspondre à l'email
-  // du body — ça lie l'activation à l'utilisateur Google authentifié. Absence de
-  // token (utilisateurs email-OTP ou clé API sans Google, ~majorité des comptes
-  // Pro=BYOK) → la paire secrète (license_key, email) en D1 reste l'unique preuve,
-  // comportement inchangé pour eux. verifyTokenViaTokeninfo est strict (aud +
-  // email_verified) : adapté à un endpoint de paiement (vs verifyGoogleUser,
-  // finding N-1). Edge-case assumé : un user Google activant une licence achetée
-  // sous un AUTRE email sera rejeté ici (le token doit matcher).
-  const googleToken = request.headers.get('x-google-token') || ''
-  if (googleToken) {
-    if (!env.GOOGLE_CLIENT_ID) {
-      console.error('[license/activate] GOOGLE_CLIENT_ID manquant — garde aud désactivée')
-    }
-    const verifiedEmail = await verifyTokenViaTokeninfo(googleToken, env.GOOGLE_CLIENT_ID)
-    if (!verifiedEmail || verifiedEmail !== email) {
-      // 404 uniforme : ne révèle pas l'existence de la licence (cf. RÈGLE 6 leak).
-      return jsonResponse({ error: 'license_not_found' }, 404)
-    }
-  }
+  // Validation par la paire secrète (license_key, email) en D1, point. Pas de
+  // gate token Google ici, volontairement :
+  //   - Un gate token était de toute façon contournable (l'attaquant omet
+  //     simplement le header `x-google-token`) → protection illusoire.
+  //   - Arty a 3 modes de login (apikey / google / email-OTP) ; deux d'entre eux
+  //     n'ont aucun token Google. Un soft-require rejetait à tort un user Google
+  //     activant une licence achetée sous un AUTRE email (cadeau, achat pro/perso
+  //     séparés) — friction réelle pour zéro gain.
+  //   - Aucun risque financier : Pro=BYOK (PR #287). Activer une licence ne donne
+  //     PAS accès aux clés IA serveur de l'owner, juste le flag `pro` (= l'user
+  //     fournit sa propre clé). La barrière reste la `license_key` (~32 chars
+  //     secrets) couplée à l'email — non devinable.
 
   let license: LicenseRow | null = null
   try {
