@@ -541,7 +541,30 @@ Slash command **`/audit-secu`** (défini dans `.claude/commands/audit-secu.md`) 
 
 ### TODO Sécurité — prochain audit
 
-Dernier audit : **14 juin 2026** (3 agents : backend Opus, crypto+auth Opus, frontend Sonnet + vérif terrain + requêtes D1 prod). Précédent : 7 juin 2026. Avant : 4 mai 2026 (PR #127 + #128).
+Dernier audit : **29 juin 2026** (3 agents : backend Opus, crypto+auth Opus, frontend Sonnet + vérif terrain). Précédent : 14 juin 2026. Avant : 7 juin 2026.
+
+> **MAJ 29 juin 2026** — Audit complet `/audit-secu` (3 agents). **Verdict : aucun CRIT ;
+> 3 HIGH actifs** (N-1 `aud` upgradé MED→HIGH, `contacts resourceName`, `tokenAudienceMatches`
+> fail-open). La posture globale reste solide : pas d'IDOR, pas de relais anonyme, SQL 100%
+> paramétré, auth partout, XSS fermé, boutons d'action en whitelist. **Nouveaux findings
+> à traiter (lot rapide, ~1h de fix total)** :
+> - **HIGH — Gate IA sans `aud`** (`checkAllowedUser.ts:252,270`) : `verifyGoogleUser` appelé
+>   sans `expectedAud` → tout token Google valide (OAuth playground, autre app) passe le gate.
+>   Fix : passer `env.GOOGLE_CLIENT_ID` comme 2e argument. ⚠️ tester web + natif.
+> - **HIGH — `contacts/action.ts:95,106`** : `resourceName` non validé → path manipulation
+>   People API. Fix : regex `^people\/[a-zA-Z0-9_-]+$`.
+> - **MED — `memory/action.ts:101`** : `err.message` D1 propagé → remplacer par `'Database error'`.
+> - **MED — CSP `data:` en `img-src`** (`public/_headers`) : retirer `data:` de `img-src`.
+> - **MED — SW `openWindow` sans validation URL** (`public/sw.js:30`) : valider protocole avant.
+> - **MED — README `VITE_ANTHROPIC_API_KEY`** (3 occurrences) : remplacer par `ANTHROPIC_API_KEY`.
+> - **MED — Android permissions inutiles** : supprimer `MODIFY_AUDIO_SETTINGS` + `READ_MEDIA_AUDIO`.
+> **Requalifications (14 juin → 29 juin)** :
+> - `/api/license/activate sans token Google` → **FAUX POSITIF** : Pro=BYOK rend l'impact nul, Agent 1 confirme.
+> - `météo/géoloc free` → **FAUX POSITIF** : intentionnel + borné par quota/jour, Agent 1 confirme.
+> - `Trial counter overflow` → **FAUX POSITIF** : cap atomique D1 WHERE, Agent 1 confirme.
+> - `wordpress/action.ts` leak → **CORRIGÉ** : messages génériques déjà en place, Agent 1 confirme.
+> - iOS `CAPACITOR_DEBUG=true` en Release → **FAUX POSITIF** : seuls les Debug configs référencent
+>   `debug.xcconfig` (lignes 186, 295 project.pbxproj), pas les Release (lignes 242, 316).
 
 > **MAJ 14 juin 2026** — Audit complet `/audit-secu` (3 agents) déclenché après une
 > comparaison aux failles d'Odysseus (l'assistant de PewDiePie). **Verdict : aucun CRIT,
@@ -561,8 +584,8 @@ Dernier audit : **14 juin 2026** (3 agents : backend Opus, crypto+auth Opus, fro
 >
 > **Findings 7 juin (N-1 `aud`, N-2 search/web) : statut au 14 juin** — N-2 search/web
 > est **déjà corrigé** dans le code (`web.ts` renvoie `{error:'Search failed'}` 502) → COCHÉ
-> ci-dessous. N-1 (`aud`) toujours actif, voir ci-dessous. Reste aussi des leaks N-2 sur
-> `wordpress`/`contacts` (MED, à faire).
+> ci-dessous. N-1 (`aud`) toujours actif, upgradé HIGH au 29 juin. `wordpress` → corrigé (29 juin).
+> `contacts` → toujours ouvert (HIGH au 29 juin).
 
 À traiter en priorité quand on relance un cycle sécurité :
 
@@ -602,20 +625,40 @@ des conversations — implémenté le 16 mai, voir « PR à venir » ci-dessous.
 - [x] **`tokeninfo` vs `userinfo`** (requalifié) — `status.ts`/`init.ts` durcis avec `aud` + `email_verified` → plus fiable que `userinfo`. Le vrai maillon faible est l'inverse : voir **N-1** ci-dessous.
 - [ ] **Pas de rate limit sur `/api/auth/token`** — TOUJOURS présent, requalifié **LOW** : exploit quasi nul (exige le `client_secret` owner + codes OAuth single-use / TTL court). Durcissement anti-bruteforce de `refresh_token` volés seulement.
 
-**Nouveaux findings résiduels (audit 7 juin)** :
-- [ ] **N-1 (MED) — `verifyGoogleUser` ne valide pas `aud`** dans `checkAllowedUser.ts:24-33` (`oauth2/v2/userinfo`). Un token Google d'audience étrangère passe le gate → abus borné ~10 Haiku/j sur la clé owner (PAS de vol de données : les endpoints Google reforwardent le même token). Fix : passer par `tokeninfo`, rejeter si `aud !== GOOGLE_CLIENT_ID && azp !== GOOGLE_CLIENT_ID`. ⚠️ touche le gate d'auth universel — tester web ET natif (les tokens `requestServerAuthCode` natifs peuvent avoir un `aud` différent, BUG 21/51). **PR sécu dédiée.**
-- [x] **N-2 (MED) — fuite status/body upstream `search/web.ts`** : VÉRIFIÉ CORRIGÉ le 14 juin — `web.ts` renvoie déjà `{error:'Search failed'}` 502, l'`err.message` upstream n'est pas propagé (le TODO était périmé). La même classe sur transcription a été faite en PR #269. **Reste à faire (MED, audit 14 juin)** : `wordpress/action.ts` et `contacts/action.ts` propagent encore `r.status`/`err.error.message` Google au client → message générique + détail en `console.error`.
+**Findings résiduels (audits 7 juin + 14 juin + 29 juin)** :
+- [ ] **N-1 (HIGH, upgradé MED→HIGH le 29 juin) — `verifyGoogleUser` ne valide pas `aud`** : `checkAllowedUser.ts:252,270` appelle `verifyGoogleUser(request)` SANS `expectedAud` → tout token Google valide (OAuth playground, app tierce) passe le gate des proxys IA payants. Fix : `verifyGoogleUser(request, env.GOOGLE_CLIENT_ID)` dans `checkAllowedUser` ET `checkAllowedUserPeek`. ⚠️ tester web ET natif avant deploy. **PR sécu dédiée.**
+- [x] **N-2 (MED) — fuite status/body upstream `search/web.ts`** : CORRIGÉ. `web.ts` 502 générique, transcription PR #269. `wordpress/action.ts` : CORRIGÉ (29 juin, Agent 1 vérifié). `contacts/action.ts:83,109` : encore ouvert (voir HIGH ci-dessous).
 - [ ] **V-2 (MED, différé — audit PR #269 du 12 juin) — quota transcription par appel, pas par durée** : `consumeDailyQuota` compte les appels alors que Voxtral/Whisper facturent à la minute (`audio_seconds`). Mitigé en PR #269 par le cap body 10 MB sur les deux proxys (borne le coût par appel) + quota journalier existant. Fix propre = quota journalier en secondes d'audio (évolution D1 + gate avant forward dans les proxys). À traiter si la vigie whales montre un abus de dictée.
 
-**Nouveaux findings résiduels (audit 14 juin) — NON corrigés (hors lot « priorités sûres »)** :
-- [ ] **MED — `contacts/action.ts:90-106` : `resourceName` non validé/encodé** — seul endpoint Google qui casse la baseline « IDs validés par regex ». Query-string injection dans l'URL People (bornée : compte de l'appelant, pas de cross-user). Fix : `^people\/[a-zA-Z0-9_-]+$` + `encodeURIComponent`.
-- [ ] **MED — `/api/license/activate` sans token Google** (`activate.ts:38`) — identité du body, prouvée seulement par la paire secrète (clé+email). Impact RÉDUIT par Pro=BYOK (PR #287 : un faux Pro ne donne plus d'IA serveur). Fix : exiger `verifyTokenViaTokeninfo` + `email == body.email`. Pas de rate-limit dédié (in-memory par isolat).
-- [ ] **MED — sel PBKDF2 global + migration sans filtre userId** (`crypto.ts:14,67-76`) — sur appareil multi-comptes SANS BYOK, couplage de données (même passphrase publique + même sel → même clé). Borné. À regrouper avec le chantier IndexedDB `CryptoKey` non-extractible (qui supprime sel/passphrase/PBKDF2).
-- [ ] **MED — N-1 `aud`** : voir ci-dessus, toujours actif, PR sécu dédiée (test web+natif).
-- [ ] **MED — météo/géoloc accessibles aux comptes Google `free`** (`weather.ts:9`, `geo/reverse.ts:15` via `checkAllowedUserPeek`) — abus possible de la clé Google Maps owner. Fix : gater sur un plan payant (vérifier d'abord l'usage pré-connexion / brief matin).
-- [ ] **LOW — `computer/relay` forwarde une action arbitraire** + `local/computer-use-server.js` exécute type/key/click sans allowlist (owner-only, PC de l'owner). Fix : allowlist d'actions au relay + rejet des `key` hors `keyMap`.
-- [ ] **LOW — permissions Android sur-déclarées** (`READ_MEDIA_AUDIO/VIDEO`, `MODIFY_AUDIO_SETTINGS`) + `gemini-proxy` `model` non format-vérifié + `drive` `previousParents` non encodé + pas de timeout serveur→Google. Nettoyage avant Play Store.
-- [ ] **⚠️ GO-LIVE (pas une faille) — IDs produits Creem en mode TEST dans le code prod** (`checkout/creem.ts:34`, `webhook/creem.ts:29`). Fail-closed (dérive test/live du préfixe de clé) mais avec une clé LIVE + ces IDs test → checkout cassé/mis-crédité. Remplacer au lancement (TODO `⚠️ replace at go-live` présent).
+**Findings NON corrigés — HIGH (audit 29 juin)** :
+- [ ] **HIGH — `contacts/action.ts:95,106` : `resourceName` non validé** — seul endpoint Google qui casse la baseline « IDs validés par regex ». Path manipulation dans l'URL People API (bornée : compte du caller, pas cross-user). Fix : `const RESOURCE_RE = /^people\/[a-zA-Z0-9_-]+$/; if (!RESOURCE_RE.test(resourceName)) return Response.json({error:'Invalid resourceName'},{status:400})`.
+- [ ] **HIGH — `tokenAudienceMatches` fail-open** (`checkAllowedUser.ts:24`) : retourne `null` (non-bloquant) si `aud`/`azp` absents ou tokeninfo KO → à durcir pour les endpoints payants APRÈS le fix N-1.
+
+**Findings NON corrigés — MED (audit 29 juin)** :
+- [ ] **MED — `memory/action.ts:101-105`** : `err.message` D1 propagé au client (`err instanceof Error ? err.message : 'Database error'`). Fix : toujours `{ error: 'Database error' }`.
+- [ ] **MED — CSP `data:` en `img-src`** (`public/_headers`) : `img-src 'self' data: https:` → retirer `data:` (les images passent par blob: ou https).
+- [ ] **MED — SW `openWindow` sans validation URL** (`public/sw.js:30`) : `openWindow(url)` avec `url = event.notification.data.url` sans whitelist de protocole. Fix : `const url = /^https?:\/\//.test(raw) || raw.startsWith('/') ? raw : '/'`.
+- [ ] **MED — README `VITE_ANTHROPIC_API_KEY`** (`README.md:28,122,178`) : 3 occurrences présentent cette variable comme config légitime, contredit RÈGLE 1. Fix : `ANTHROPIC_API_KEY` (sans `VITE_`) + note "côté serveur uniquement".
+- [ ] **MED — Android permissions inutiles** : `MODIFY_AUDIO_SETTINGS` (`AndroidManifest.xml:83`) + `READ_MEDIA_AUDIO` (`:93`) sans usage identifié. Supprimer avant Play Store.
+- [ ] **MED — sel PBKDF2 global + passphrase `'server-provided'`** (`crypto.ts:14,67-76`) — sur appareil multi-comptes SANS BYOK, même clé crypto = isolation cassée. Classé non-bloquant (sandbox OS). À regrouper avec chantier `CryptoKey` non-extractible IndexedDB.
+- [ ] **MED — N-1 `aud`** : voir N-1 ci-dessus, PR sécu dédiée.
+- [ ] **MED — `contacts/action.ts:83,109`** : `err.error.message` Google propagé au client. Fix : message générique + `console.error`.
+- [ ] **V-2 (MED, différé) — quota transcription par appel, pas par durée** : `consumeDailyQuota` compte les appels alors que Voxtral/Whisper facturent à la minute. Mitigé par cap body 10 MB (PR #269). Fix propre = quota en secondes d'audio.
+
+**Findings NON corrigés — LOW** :
+- [ ] **LOW — `computer/relay` forwarde une action arbitraire** + `local/computer-use-server.js` sans allowlist (owner-only). Fix : allowlist d'actions au relay.
+- [ ] **LOW — `trial/init.ts:54`** : guard `aud` plus faible que `checkAllowedUser` (`&& info.aud` court-circuite si absent). Aligner sur la version durcie.
+- [ ] **LOW — `android:debuggable`** non explicite dans `build.gradle` release. Ajouter `debuggable false` pour documenter l'intention.
+- [ ] **LOW — `console.warn` sans DEV guard** dans `googleAuth.ts:197,221,232,243,247,283` (statuts OAuth visibles via adb logcat).
+- [ ] **LOW — `computer/relay`** : pas de rate-limit dédié (in-memory par isolat).
+- [ ] **⚠️ GO-LIVE (pas une faille) — IDs produits Creem en mode TEST dans le code prod** (`checkout/creem.ts:34`, `webhook/creem.ts:29`). Remplacer au lancement.
+
+**Requalifiés comme faux positifs / déjà mitigés (audit 29 juin)** :
+- ✅ `/api/license/activate sans token Google` — Pro=BYOK rend l'impact nul ; Agent 1 confirme (OK).
+- ✅ `météo/géoloc accessibles aux comptes free` — intentionnel + borné par quota/jour ; Agent 1 confirme.
+- ✅ `Trial counter overflow` — cap atomique D1 `WHERE used < cap`, pas d'overflow ; Agent 1 confirme.
+- ✅ `wordpress/action.ts` leak — messages génériques déjà en place ; Agent 1 confirme (vérifié code).
+- ✅ `iOS CAPACITOR_DEBUG=true` en Release — FAUX POSITIF : seuls les 2 configs Debug référencent `debug.xcconfig` (project.pbxproj:186,295), les configs Release (lignes 242, 316) n'ont aucun `baseConfigurationReference`.
 
 **Corrigé le 14 juin (lot « priorités sûres », PR à venir)** :
 - [x] **Boutons d'action en liste blanche + confirmation** (`useAppSetup.ts`) — `default → executor(action)` supprimé ; confirm sur send_email/save_drive/create_event/publish_wp ; `tel:`/`url` validés + `noopener`.
@@ -635,15 +678,21 @@ des conversations — implémenté le 16 mai, voir « PR à venir » ci-dessous.
 **LOW à nettoyer avant Play Store** :
 - [x] **`console.log` avec emails** — `useGoogleAuth.ts` : toutes les occurrences sont derrière `if (import.meta.env.DEV)` (vérifié 7 juin).
 - [x] **`webContentsDebuggingEnabled: false`** — confirmé dans `capacitor.config.ts` (vérifié 7 juin).
-- [ ] **Trial counter peut overflow** vers 0 dans `trial/init.ts:51-52` — backend ; le client (`trialClient.ts`) est déjà protégé par `Math.max(0, n)` / `Number.isFinite`.
+- [x] **Trial counter overflow** — FAUX POSITIF (vérifié 29 juin) : cap atomique D1 `WHERE used < cap`, Agent 1 confirme pas d'overflow.
 
 **Faux positifs / déjà mitigé** (à NE PAS retraiter) :
 - ✅ `secureSetJSON` race (BUG 1) — `useAuth` utilise `setJSON()` direct sur les tokens, race évitée
 - ✅ RECORD_AUDIO (BUG 44) — vérifié présent dans AndroidManifest
 - ✅ exchangeCode timeout — `withTimeout()` enveloppe le fetch
-- ✅ Frontend XSS — `rehype-sanitize` actif, aucun `dangerouslySetInnerHTML`
-- ✅ Service Worker (BUG 45) — registration conditionnelle, cleanup boot, CACHE bumpé
-- ✅ iOS Info.plist — privacy descriptions complètes (BUG 34)
+- ✅ Frontend XSS — `rehype-sanitize` actif, aucun `dangerouslySetInnerHTML` (vérifié 29 juin)
+- ✅ Service Worker (BUG 45) — registration conditionnelle, cleanup boot, CACHE bumpé (vérifié 29 juin)
+- ✅ iOS Info.plist — privacy descriptions complètes (BUG 34) (vérifié 29 juin)
+- ✅ `useAppSetup.ts` — boutons d'action whitelist + confirms (vérifié 29 juin)
+- ✅ `getValidAccessToken()` — utilisé partout, ~25 consommateurs vérifiés (vérifié 29 juin)
+- ✅ `requestServerAuthCode(serverClientId, true)` — BUG 51 corrigé (vérifié 29 juin)
+- ✅ `refreshAccessToken` logout seulement sur 4xx — BUG 47 corrigé (vérifié 29 juin)
+- ✅ `sourcemap: false` en prod — `vite.config.ts:37` (vérifié 29 juin)
+- ✅ iOS `CAPACITOR_DEBUG=true` en Release — FAUX POSITIF (29 juin) : Release configs n'ont pas de `baseConfigurationReference` dans project.pbxproj
 
 ---
 
