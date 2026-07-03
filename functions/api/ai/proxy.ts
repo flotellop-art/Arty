@@ -270,6 +270,15 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
 
     // Upstream KO (ou pas de body streamable) : rendre la réserve éventuelle.
     if (walletResId) waitUntil(voidWalletBilling(env, walletResId, email))
+    // Leak d'info (audit 3 juillet) : sur la clé serveur, ne JAMAIS renvoyer
+    // l'erreur Anthropic brute (révèle l'état du compte/crédit owner). En
+    // BYOK, le client a besoin du message verbatim pour distinguer clé
+    // invalide / prompt trop long (anthropicClient.ts) → passthrough conservé.
+    if (!isByok) {
+      const errorText = await response.text().catch(() => '')
+      console.error('[anthropic] upstream error', response.status, errorText.slice(0, 300))
+      return Response.json({ error: 'AI service error' }, { status: response.status })
+    }
     return new Response(response.body, {
       status: response.status,
       headers: responseHeaders(),
@@ -277,9 +286,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
   } catch (err) {
     // Échec réseau/exception après réserve → rendre la réserve.
     if (walletResId) waitUntil(voidWalletBilling(env, walletResId, email))
-    return Response.json(
-      { error: err instanceof Error ? err.message : 'Proxy error' },
-      { status: 502 }
-    )
+    console.error('[anthropic] proxy exception', err)
+    return Response.json({ error: 'Proxy error' }, { status: 502 })
   }
 }

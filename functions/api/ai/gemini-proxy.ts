@@ -86,6 +86,13 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
   try {
     const { model, stream, ...body } = await request.json() as { model: string; stream: boolean; [key: string]: unknown }
 
+    // Nom de modèle interpolé dans l'URL upstream (ligne ~133, seul proxy IA
+    // à le faire) — valider le format avant usage pour empêcher toute
+    // injection de segment de path/query (audit 3 juillet).
+    if (typeof model !== 'string' || !/^[a-zA-Z0-9.-]+$/.test(model)) {
+      return Response.json({ error: 'Invalid model' }, { status: 400 })
+    }
+
     // Sans abo : si l'utilisateur a des crédits → wallet (n'importe quel modèle,
     // payé à l'usage) ; sinon Gemini reste verrouillé en gratuit.
     if (usingServerKey && userPlan === 'free') {
