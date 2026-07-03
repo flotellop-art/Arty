@@ -263,7 +263,9 @@ async function handleMove(token: string, body: Record<string, unknown>): Promise
       headers: { Authorization: `Bearer ${token}` },
     })
     const current = await getRes.json() as { parents?: string[] }
-    const previousParents = (current.parents || []).join(',')
+    // Défense en profondeur (F-22) : valeur issue de Google mais interpolée
+    // dans une query-string → encodage systématique.
+    const previousParents = encodeURIComponent((current.parents || []).join(','))
 
     const r = await fetch(`https://www.googleapis.com/drive/v3/files/${id}?addParents=${folderId}&removeParents=${previousParents}`, {
       method: 'PATCH',
