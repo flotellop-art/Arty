@@ -176,7 +176,7 @@ export function useGoogleAuth() {
     } else {
       // Web: redirect OAuth
       try {
-        const url = buildOAuthUrl()
+        const url = await buildOAuthUrl()
         window.location.href = url
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Erreur connexion Google')

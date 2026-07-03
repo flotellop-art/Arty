@@ -71,11 +71,47 @@ export function getRedirectUri(): string {
 // ─────────────────────────────────────────────────────────────
 const OAUTH_STATE_KEY = 'arty-oauth-state'
 
-function generateOAuthState(): string {
-  const bytes = crypto.getRandomValues(new Uint8Array(24))
+/** base64url sans padding d'un buffer d'octets (URL-safe, RFC 7636). */
+function base64url(bytes: Uint8Array): string {
   let bin = ''
   for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]!)
   return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+}
+
+function generateOAuthState(): string {
+  return base64url(crypto.getRandomValues(new Uint8Array(24)))
+}
+
+// ────────────────────────────────
+// PKCE (F-11) — code_verifier / code_challenge (S256)
+// Défense contre l'interception du code d'autorisation : Google ne délivre les
+// tokens que si l'échange présente le `code_verifier` dont le SHA-256 correspond
+// au `code_challenge` envoyé à l'autorisation. Verifier persisté en sessionStorage
+// (comme le state — survit au round-trip de redirection, BUG 24), consommé UNE
+// seule fois à l'échange. Le flow NATIF (serverAuthCode) n'utilise pas PKCE.
+// ────────────────────────────────
+const OAUTH_VERIFIER_KEY = 'arty-oauth-verifier'
+
+function generateCodeVerifier(): string {
+  // 32 octets → 43 caractères base64url (dans la plage 43-128 de la RFC 7636).
+  return base64url(crypto.getRandomValues(new Uint8Array(32)))
+}
+
+async function computeCodeChallenge(verifier: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier))
+  return base64url(new Uint8Array(digest))
+}
+
+/**
+ * Lecture SINGLE-USE du code_verifier PKCE : le renvoie et le supprime dans la
+ * foulée (anti-replay + anti-staleness). Un seul point de consommation
+ * (exchangeCode, flow web) — même discipline que le `state` (BUG 53).
+ */
+export function takeCodeVerifier(): string | null {
+  let v: string | null = null
+  try { v = sessionStorage.getItem(OAUTH_VERIFIER_KEY) } catch {}
+  try { sessionStorage.removeItem(OAUTH_VERIFIER_KEY) } catch {}
+  return v
 }
 
 /**
@@ -96,14 +132,20 @@ export function verifyOAuthState(received: string | null | undefined): boolean {
  * mount and at logout to avoid stale state breaking the next attempt. */
 export function clearOAuthState(): void {
   try { sessionStorage.removeItem(OAUTH_STATE_KEY) } catch {}
+  try { sessionStorage.removeItem(OAUTH_VERIFIER_KEY) } catch {}
 }
 
-export function buildOAuthUrl(): string {
+export async function buildOAuthUrl(): Promise<string> {
   const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID
   if (!clientId) throw new Error('VITE_GOOGLE_CLIENT_ID manquant')
 
   const state = generateOAuthState()
   try { sessionStorage.setItem(OAUTH_STATE_KEY, state) } catch {}
+
+  // PKCE (F-11) : générer + persister le verifier, envoyer le challenge S256.
+  const verifier = generateCodeVerifier()
+  try { sessionStorage.setItem(OAUTH_VERIFIER_KEY, verifier) } catch {}
+  const codeChallenge = await computeCodeChallenge(verifier)
 
   const params = new URLSearchParams({
     client_id: clientId,
@@ -113,6 +155,8 @@ export function buildOAuthUrl(): string {
     access_type: 'offline',
     prompt: 'consent',
     state,
+    code_challenge: codeChallenge,
+    code_challenge_method: 'S256',
   })
 
   return `https://accounts.google.com/o/oauth2/v2/auth?${params}`
@@ -123,13 +167,21 @@ export async function exchangeCode(code: string, redirectUriOverride?: string): 
   // with redirect_uri='' (BUG 2/28); web codes use getRedirectUri(). The
   // override can legitimately be '' — test `=== undefined`, not falsiness.
   const redirectUri = redirectUriOverride !== undefined ? redirectUriOverride : getRedirectUri()
+  // PKCE (F-11) : seul le flow WEB (override === undefined) a posé un verifier
+  // via buildOAuthUrl. Le consommer (single-use) et le joindre à l'échange. Le
+  // flow NATIF (serverAuthCode, override '') n'utilise pas PKCE → pas de verifier.
+  const codeVerifier = redirectUriOverride === undefined ? takeCodeVerifier() : null
   const t = withTimeout(FETCH_TIMEOUT_MS)
   let res: Response
   try {
     res = await fetch(apiUrl('/api/auth/token'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code, redirect_uri: redirectUri }),
+      body: JSON.stringify({
+        code,
+        redirect_uri: redirectUri,
+        ...(codeVerifier ? { code_verifier: codeVerifier } : {}),
+      }),
       signal: t.signal,
     })
   } finally {
