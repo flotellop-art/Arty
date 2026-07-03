@@ -23,6 +23,8 @@ export const onRequestPost: PagesFunction = async ({ request }) => {
   }
 }
 
+const RESOURCE_NAME_RE = /^people\/[a-zA-Z0-9_-]+$/
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function formatContact(person: any) {
   return {
@@ -89,6 +91,9 @@ async function handleCreate(token: string, body: Record<string, unknown>): Promi
 async function handleUpdate(token: string, body: Record<string, unknown>): Promise<Response> {
   const { resourceName, email, phone } = body as { resourceName?: string; email?: string; phone?: string }
   if (!resourceName) return Response.json({ error: 'Missing resourceName' }, { status: 400 })
+  if (!RESOURCE_NAME_RE.test(resourceName)) {
+    return Response.json({ error: 'Invalid resourceName' }, { status: 400 })
+  }
 
   try {
     const getRes = await fetch(

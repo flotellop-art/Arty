@@ -37,7 +37,6 @@ public class GoogleSignInPlugin extends Plugin {
                     "server_client_id", "string", getContext().getPackageName()
                 )
             );
-            Log.d(TAG, "server_client_id: " + serverClientId);
 
             GoogleSignInOptions gso = new GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
                     .requestEmail()
@@ -78,7 +77,6 @@ public class GoogleSignInPlugin extends Plugin {
                     try {
                         Task<GoogleSignInAccount> task = GoogleSignIn.getSignedInAccountFromIntent(result.getData());
                         GoogleSignInAccount account = task.getResult(ApiException.class);
-                        Log.d(TAG, "Sign-in success: " + account.getEmail());
 
                         String authCode = account.getServerAuthCode();
                         Log.d(TAG, "serverAuthCode present: " + (authCode != null && !authCode.isEmpty()));

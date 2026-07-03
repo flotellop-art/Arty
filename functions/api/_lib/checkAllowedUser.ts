@@ -249,7 +249,7 @@ export async function checkAllowedUserPeek(
   request: Request,
   env: Env
 ): Promise<AllowedUser | null> {
-  const email = await verifyGoogleUser(request)
+  const email = await verifyGoogleUser(request, env.GOOGLE_CLIENT_ID)
   if (!email) return null
 
   const allowed = parseAllowedEmails(env.ALLOWED_EMAILS)
@@ -267,7 +267,7 @@ export async function checkAllowedUser(
   request: Request,
   env: Env
 ): Promise<CheckResult> {
-  const email = await verifyGoogleUser(request)
+  const email = await verifyGoogleUser(request, env.GOOGLE_CLIENT_ID)
   if (!email) return null
 
   // ALLOWED_EMAILS = beta testeurs VIP, bypass du check D1
