@@ -12,6 +12,12 @@ import type { TFunction } from 'i18next'
 // si elle est (a) irréversible/destructive OU (b) envoie/expose des données à
 // un tiers. Toute lecture/recherche/listing reste libre (pas de garde).
 //
+// ⚠️ ALLOWLIST POSITIVE : un tool absent du switch passe SANS confirmation.
+// Tout nouveau tool déclaré dans toolDefinitions.ts DOIT être classé dans le
+// test de parité de toolConfirmation.test.ts (confirm ou safe), qui échoue
+// sinon. Les BOUTONS d'action ont leur propre allowlist, maintenue séparément
+// dans useAppSetup.ts (handleAction) — garder les deux en tête lors d'un ajout.
+//
 // Retourne le message à confirmer, ou null si l'action ne requiert pas de garde.
 export function buildToolConfirmMessage(
   name: string,
@@ -37,10 +43,17 @@ export function buildToolConfirmMessage(
     case 'wp_delete_post':
       return t('chat.actionConfirm.deleteWp')
     // WordPress : le brouillon reste libre (cf. system prompt), seule la
-    // publication publique exige un consentement.
+    // publication publique exige un consentement. `!== 'draft'` couvre
+    // 'publish' ET 'future' (publication programmée = publique à terme).
     case 'wp_create_post':
-    case 'publish_wordpress':
-      return ((input.status as string) || 'draft') === 'publish'
+      return ((input.status as string) || 'draft') !== 'draft'
+        ? t('chat.actionConfirm.wp', { title: (input.title as string) || '?' })
+        : null
+    // Audit F-1 (3 juil. 2026) : sans ce case, prompt-injection = création
+    // draft (libre) puis update en 'publish' (libre) → article publié sans
+    // aucun consentement. Un update qui ne touche pas au status reste libre.
+    case 'wp_update_post':
+      return input.status !== undefined && input.status !== 'draft'
         ? t('chat.actionConfirm.wp', { title: (input.title as string) || '?' })
         : null
     default:

@@ -1,7 +1,6 @@
 import type { useComputer } from '../hooks/useComputer'
 import type { useGmail } from '../hooks/useGmail'
 import type { useDrive } from '../hooks/useDrive'
-import type { useBrowser } from '../hooks/useBrowser'
 import type { ToolResult, ToolHandler } from './tools/types'
 import { createComputerHandlers } from './tools/computerTools'
 import { createGmailHandlers } from './tools/gmailTools'
@@ -20,7 +19,6 @@ export function createToolExecutor(
   computer: ReturnType<typeof useComputer>,
   gmail: ReturnType<typeof useGmail>,
   drive: ReturnType<typeof useDrive>,
-  browserActions: ReturnType<typeof useBrowser>,
 ) {
   const handlers: Record<string, ToolHandler> = {
     ...createComputerHandlers(computer),
@@ -28,8 +26,8 @@ export function createToolExecutor(
     ...createDriveHandlers(drive),
     ...createCalendarHandlers(),
     ...createContactsHandlers(),
-    ...createWordpressHandlers(browserActions),
-    ...createUtilityHandlers(browserActions),
+    ...createWordpressHandlers(),
+    ...createUtilityHandlers(),
     ...createNativeHandlers(),
     ...createSheetsHandlers(),
     // P1.3 — toujours enregistré, mais le tool n'est exposé au modèle que

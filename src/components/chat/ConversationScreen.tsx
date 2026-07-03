@@ -13,7 +13,6 @@ import { ErrorBoundary } from '../shared/ErrorBoundary'
 import { consumePendingDraft } from '../../services/shareTargetService'
 import type { useGmail } from '../../hooks/useGmail'
 import type { useDrive } from '../../hooks/useDrive'
-import type { useBrowser } from '../../hooks/useBrowser'
 import type { useComputer } from '../../hooks/useComputer'
 
 interface ConversationScreenProps {
@@ -36,7 +35,6 @@ interface ConversationScreenProps {
   onNewConversation?: () => void
   gmail: ReturnType<typeof useGmail>
   drive: ReturnType<typeof useDrive>
-  browserActions: ReturnType<typeof useBrowser>
   computerActions: ReturnType<typeof useComputer>
   actionScreenshot: string | null
   conversations?: Conversation[]
@@ -61,7 +59,6 @@ export function ConversationScreen({
   onNewConversation,
   gmail,
   drive,
-  browserActions,
   computerActions,
   actionScreenshot,
   conversations,
@@ -87,7 +84,6 @@ export function ConversationScreen({
 
       <ActionBanner icon="📧" message={t('chat.banners.gmailReading')} isVisible={gmail.isLoading} />
       <ActionBanner icon="📁" message={t('chat.banners.driveAccess')} isVisible={drive.isLoading} />
-      <BrowserBanner action={browserActions.currentAction} />
       <BrowserBanner action={computerActions.currentAction} />
 
       <ErrorBoundary>
@@ -118,13 +114,13 @@ export function ConversationScreen({
         </div>
       )}
 
-      {(error || browserActions.error || computerActions.error) && (
+      {(error || computerActions.error) && (
         <div
           role="alert"
           className="mx-4 mb-2 px-4 py-2 bg-red-500/10 border border-red-500/30 rounded-xl text-sm text-red-700 dark:text-red-400 flex items-center gap-2"
         >
           <span className="flex-1 min-w-0 break-words">
-            {error || browserActions.error || computerActions.error}
+            {error || computerActions.error}
           </span>
           {error && onRetryError && !isStreaming && (
             <button
