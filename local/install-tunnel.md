@@ -81,7 +81,7 @@ Creer une variable d'environnement Windows :
 setx TUNNEL_SECRET "votre-token-secret-ici"
 ```
 
-Ce meme token doit etre ajoute dans Vercel (Settings > Environment Variables) :
+Ce meme token doit etre ajoute dans Cloudflare Pages (Settings > Environment variables) :
 - `TUNNEL_SECRET` = le meme token
 
 ## 9. Lancer tous les services
@@ -91,7 +91,7 @@ Double-cliquer sur `start-all.bat` ou executer :
 start-all.bat
 ```
 
-## 10. Ajouter les variables dans Vercel
+## 10. Ajouter les variables dans Cloudflare Pages
 
 | Variable | Valeur |
 |----------|--------|

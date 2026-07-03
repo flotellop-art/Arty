@@ -3,7 +3,6 @@
  * When a Vercel function crashes, it returns plain text ("A server error occurred")
  * instead of JSON. This helper catches that and throws a user-friendly error.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function safeJson(res: Response): Promise<any> {
   const text = await res.text()
   try {

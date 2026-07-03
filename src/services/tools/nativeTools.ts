@@ -83,7 +83,6 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const nativeToolDefinitions: any[] = isNative ? [
   {
     name: 'list_local_files',

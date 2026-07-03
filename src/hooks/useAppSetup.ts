@@ -97,7 +97,6 @@ export function useAppSetup(conversation: ConversationHook) {
       drive.fetchFiles()
       memoryHook.loadMemory()
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [googleAuth.isConnected])
 
   // Update system prompt with Google context

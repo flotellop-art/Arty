@@ -151,7 +151,6 @@ export function streamMistralMessage(
 }
 
 // OpenAI-format message types for the tool loop
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ApiMessage = { role: string; content?: MistralMessageContent | null; tool_calls?: any[]; tool_call_id?: string; name?: string }
 
 interface ToolCall {
@@ -541,7 +540,6 @@ async function streamOnce(
     if (trialToken) headers['x-arty-trial-token'] = trialToken
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const body: Record<string, any> = {
     model,
     messages,

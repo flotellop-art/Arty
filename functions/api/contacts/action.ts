@@ -23,7 +23,6 @@ export const onRequestPost: PagesFunction = async ({ request }) => {
   }
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function formatContact(person: any) {
   return {
     resourceName: person.resourceName || '',
