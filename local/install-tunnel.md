@@ -101,6 +101,6 @@ start-all.bat
 ## Verification
 
 1. Lancer `start-all.bat` sur le PC
-2. Depuis le telephone, ouvrir l'app Facades Pollet
+2. Depuis le telephone, ouvrir l'app Arty
 3. Taper "Ouvre Excel sur mon PC"
 4. Un screenshot du PC devrait apparaitre dans le chat

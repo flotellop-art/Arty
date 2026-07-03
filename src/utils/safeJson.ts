@@ -1,6 +1,6 @@
 /**
  * Safe JSON parser for fetch responses.
- * When a Vercel function crashes, it returns plain text ("A server error occurred")
+ * When a server function crashes, it can return plain text ("A server error occurred")
  * instead of JSON. This helper catches that and throws a user-friendly error.
  */
 export async function safeJson(res: Response): Promise<any> {

@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import type { TFunction } from 'i18next'
 import { buildToolConfirmMessage } from '../../services/toolConfirmation'
 import { TOOLS } from '../../services/toolDefinitions'
+import { NATIVE_TOOL_DEFINITIONS } from '../../services/tools/nativeTools'
 
 // Faux `t` : renvoie la clé + les params, suffisant pour vérifier QUELLE clé
 // est choisie et QUELS params sont passés, sans charger i18next.
@@ -108,7 +109,16 @@ const SAFE_TOOLS = new Set([
 ])
 
 describe('parité allowlist HITL ↔ tools déclarés au LLM', () => {
-  const declaredNames = TOOLS.map((t: { name: string }) => t.name)
+  // ⚠️ TOOLS est amputé des tools natifs hors Capacitor (isNative=false en
+  // CI) : on ajoute NATIVE_TOOL_DEFINITIONS (liste complète, exportée
+  // inconditionnellement) pour que la parité couvre AUSSI cette famille —
+  // delete_local_file est destructif (revue audit F-16).
+  const declaredNames = [
+    ...new Set([
+      ...TOOLS.map((t: { name: string }) => t.name),
+      ...NATIVE_TOOL_DEFINITIONS.map((t: { name: string }) => t.name),
+    ]),
+  ]
 
   it('chaque tool déclaré est classé (confirm OU safe) — un tool non classé = CI rouge', () => {
     const unclassified = declaredNames.filter(
@@ -135,15 +145,11 @@ describe('parité allowlist HITL ↔ tools déclarés au LLM', () => {
     }
   })
 
-  it('les tools classés confirm existent bien dans TOOLS (pas de garde fantôme)', () => {
-    // nativeToolDefinitions n'est peuplé que sur Capacitor natif (isNative) —
-    // en environnement de test, ces tools n'apparaissent pas dans TOOLS mais
-    // leurs gardes ne sont pas du code mort pour autant.
-    const NATIVE_ONLY = new Set(['list_local_files', 'read_local_file', 'save_local_file', 'delete_local_file', 'share'])
+  it('les tools classés confirm existent bien dans les définitions (pas de garde fantôme)', () => {
+    // declaredNames inclut les tools natifs via NATIVE_TOOL_DEFINITIONS,
+    // donc plus besoin d'exemption : toute garde sur un nom inconnu = code mort.
     const declared = new Set(declaredNames)
-    const ghosts = Object.keys(CONFIRM_REQUIRED).filter(
-      (name) => !declared.has(name) && !NATIVE_ONLY.has(name)
-    )
+    const ghosts = Object.keys(CONFIRM_REQUIRED).filter((name) => !declared.has(name))
     expect(
       ghosts,
       `Gardes sur des tools non déclarés (code mort ?) : ${ghosts.join(', ')}`

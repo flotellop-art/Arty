@@ -147,7 +147,17 @@ function formatApiError(status: number, body: string): string {
     // Our Cloudflare Functions return { error: 'string' } — surface it
     // directly so users see e.g. "Authentication required — please sign
     // in with Google" instead of the generic "Clé API invalide".
-    if (typeof err === 'string' && err) return err
+    if (typeof err === 'string' && err) {
+      // Audit F-6 : le proxy masque les erreurs upstream server-key en
+      // 'AI service error' générique (l'état de la clé owner ne doit pas
+      // fuiter). Pour les transients connus, le status HTTP (préservé par
+      // le proxy) permet de restaurer un message localisé.
+      if (err === 'AI service error') {
+        if (status === 529) return i18n.t('errors.apiOverloaded')
+        if (status === 429) return i18n.t('errors.apiRateLimit')
+      }
+      return err
+    }
 
     if (err && typeof err === 'object') {
       const errorType = err.type
