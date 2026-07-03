@@ -1,7 +1,7 @@
 import { getMistralKey } from './activeApiKey'
 import { apiUrl } from './apiBase'
 import { getValidAccessToken } from './googleAuth'
-import { getTrialToken } from './emailTrialClient'
+import { buildAiHeaders, fetchWithTimeout } from './aiHttp'
 import { TOOLS } from './toolDefinitions'
 import { convertToolsToOpenAI } from './tools/openaiFormat'
 import { buildLocationContext } from './locationContext'
@@ -527,18 +527,8 @@ async function streamOnce(
   inputTokens: number
   outputTokens: number
 }> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-  if (apiKey) {
-    headers['Authorization'] = `Bearer ${apiKey}`
-  }
-  // Get a valid (refreshed if needed) Google token for whitelist verification
-  const googleToken = await getValidAccessToken()
-  if (googleToken) {
-    headers['x-google-token'] = googleToken
-  } else {
-    const trialToken = getTrialToken()
-    if (trialToken) headers['x-arty-trial-token'] = trialToken
-  }
+  // C9 : headers factorisés (BYOK Bearer + garde server-provided + google-token/trial).
+  const headers = await buildAiHeaders({ byokKey: apiKey, auth: 'bearer' })
 
   const body: Record<string, any> = {
     model,
@@ -572,23 +562,13 @@ async function streamOnce(
     // CRIT-5 — Timeout 60s sur le stream Mistral. Cold-start Cloudflare ou
     // réseau flaky peuvent laisser pendre 60-90s sinon. Compose avec le
     // controller externe (annulation utilisateur) pour les deux raisons.
-    const timeoutCtrl = new AbortController()
-    const timeoutId = setTimeout(() => timeoutCtrl.abort(new DOMException('Timeout', 'AbortError')), 60_000)
-    const onExternalAbort = () => timeoutCtrl.abort(controller.signal.reason)
-    if (controller.signal.aborted) timeoutCtrl.abort(controller.signal.reason)
-    else controller.signal.addEventListener('abort', onExternalAbort)
-
-    try {
-      response = await fetch(apiUrl('/api/ai/mistral-proxy'), {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(body),
-        signal: timeoutCtrl.signal,
-      })
-    } finally {
-      clearTimeout(timeoutId)
-      controller.signal.removeEventListener('abort', onExternalAbort)
-    }
+    // C9 : timeout 60s + lien signal externe factorisés (aiHttp.fetchWithTimeout).
+    response = await fetchWithTimeout(
+      apiUrl('/api/ai/mistral-proxy'),
+      { method: 'POST', headers, body: JSON.stringify(body) },
+      60_000,
+      controller.signal,
+    )
 
     if (response.status !== 429 || attempt >= 2) break
 

@@ -3,8 +3,7 @@ import { TOOLS } from './toolDefinitions'
 import { compressIfNeeded } from './conversationCompressor'
 import { getAnthropicKey } from './activeApiKey'
 import { apiUrl } from './apiBase'
-import { getTrialToken } from './emailTrialClient'
-import { getValidAccessToken } from './googleAuth'
+import { buildAiHeaders } from './aiHttp'
 import { resolveClaudeThinking, selectClaudeSubModel, PRIVATE_DATA_TRIGGERS, shouldUseWebSearch, type ClaudeThinkingDirective, type ClaudeSubModel } from './aiRouter'
 import { isProActivated } from './proLicense'
 import { dispatchModelUsed } from './modelLabels'
@@ -200,22 +199,16 @@ async function fetchWithRetry(
   // adaptatif (GA sur Opus 4.8/4.7 et Sonnet 4.6). Le header n'est plus requis,
   // et BUG 18 interdit d'envoyer un header beta inutile.
   const betaHeaders = ['pdfs-2024-09-25', 'prompt-caching-2024-07-31']
-  const headers: Record<string, string> = {
-    'content-type': 'application/json',
-    'anthropic-version': '2023-06-01',
-    'anthropic-beta': betaHeaders.join(','),
-  }
-  if (apiKey && apiKey !== 'server-provided') {
-    headers['x-api-key'] = apiKey
-  }
-  const googleToken = await getValidAccessToken()
-  if (googleToken) {
-    headers['x-google-token'] = googleToken
-  } else {
-    // Pas de Google → essai par email : jeton d'essai (plan trial serveur).
-    const trialToken = getTrialToken()
-    if (trialToken) headers['x-arty-trial-token'] = trialToken
-  }
+  // C9 : trio Content-Type/BYOK(x-api-key, garde server-provided)/google-token
+  // factorisé (aiHttp.buildAiHeaders).
+  const headers = await buildAiHeaders({
+    byokKey: apiKey,
+    auth: 'x-api-key',
+    extra: {
+      'anthropic-version': '2023-06-01',
+      'anthropic-beta': betaHeaders.join(','),
+    },
+  })
 
   let response: Response | null = null
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
