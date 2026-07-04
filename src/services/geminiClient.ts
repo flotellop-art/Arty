@@ -1,7 +1,6 @@
 import { getGeminiKey } from './activeApiKey'
 import { apiUrl } from './apiBase'
-import { getValidAccessToken } from './googleAuth'
-import { getTrialToken } from './emailTrialClient'
+import { buildAiHeaders, fetchWithTimeout } from './aiHttp'
 import { buildLocationContext } from './locationContext'
 import { recordUsage } from './costTracker'
 import { dispatchModelUsed } from './modelLabels'
@@ -54,32 +53,6 @@ const GEMINI_TIMEOUT_MS = 60_000
 const RETRY_DELAYS_MS = [1000, 2000, 4000]
 function shouldRetry(status: number): boolean {
   return status === 429 || (status >= 500 && status < 600)
-}
-
-/**
- * fetch + timeout via AbortController. Compose avec un controller externe
- * si fourni (pour permettre l'annulation côté caller).
- */
-async function fetchWithTimeout(
-  url: string,
-  init: RequestInit,
-  timeoutMs: number,
-  externalSignal?: AbortSignal,
-): Promise<Response> {
-  const ctrl = new AbortController()
-  const timeoutId = setTimeout(() => ctrl.abort(new DOMException('Timeout', 'AbortError')), timeoutMs)
-  // Lien avec le signal externe si présent
-  const onExternalAbort = () => ctrl.abort(externalSignal?.reason)
-  if (externalSignal) {
-    if (externalSignal.aborted) ctrl.abort(externalSignal.reason)
-    else externalSignal.addEventListener('abort', onExternalAbort)
-  }
-  try {
-    return await fetch(url, { ...init, signal: ctrl.signal })
-  } finally {
-    clearTimeout(timeoutId)
-    if (externalSignal) externalSignal.removeEventListener('abort', onExternalAbort)
-  }
 }
 
 /**
@@ -275,19 +248,8 @@ async function runGeminiStream(
       tools,
     }
 
-    // Build headers — send BYOK key if available, otherwise proxy uses server key
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-    if (apiKey) {
-      headers['Authorization'] = `Bearer ${apiKey}`
-    }
-    // Send Google token so proxy can verify whitelist
-    const googleToken = await getValidAccessToken()
-    if (googleToken) {
-      headers['x-google-token'] = googleToken
-    } else {
-      const trialToken = getTrialToken()
-      if (trialToken) headers['x-arty-trial-token'] = trialToken
-    }
+    // C9 : headers factorisés (BYOK Bearer + garde server-provided + google-token/trial).
+    const headers = await buildAiHeaders({ byokKey: apiKey, auth: 'bearer' })
 
     const response = await fetchWithRetry(
       apiUrl('/api/ai/gemini-proxy'),
@@ -416,17 +378,7 @@ export async function geminiResearch(
     ],
   }
 
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-  if (apiKey) {
-    headers['Authorization'] = `Bearer ${apiKey}`
-  }
-  const googleToken = await getValidAccessToken()
-  if (googleToken) {
-    headers['x-google-token'] = googleToken
-  } else {
-    const trialToken = getTrialToken()
-    if (trialToken) headers['x-arty-trial-token'] = trialToken
-  }
+  const headers = await buildAiHeaders({ byokKey: apiKey, auth: 'bearer' })
 
   try {
     const res = await fetchWithRetry(
