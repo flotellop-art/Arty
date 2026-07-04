@@ -53,7 +53,6 @@ afterEach(() => {
 })
 
 async function call(headers: Record<string, string> = {}) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return onRequestPost({ request: makeRequest(headers), env: makeEnv() } as any)
 }
 
@@ -90,12 +89,10 @@ describe('license/activate — validation par paire (license_key, email)', () =>
           return { success: true, meta: { changes: 0 } }
         },
       }),
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     })) as any
     const res = await onRequestPost({
       request: makeRequest(),
       env: { DB: db, GOOGLE_CLIENT_ID: 'CID' },
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any)
     expect(res.status).toBe(404)
   })

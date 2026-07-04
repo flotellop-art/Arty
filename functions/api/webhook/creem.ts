@@ -60,7 +60,7 @@ interface CreemWebhookPayload {
  * webhook, en comparaison constant-time. Même schéma que le webhook Lemon
  * Squeezy (calcul sur les octets EXACTS reçus — ne jamais re-sérialiser le JSON).
  */
-async function verifySignature(rawBody: ArrayBuffer, signatureHex: string, secret: string): Promise<boolean> {
+export async function verifySignature(rawBody: ArrayBuffer, signatureHex: string, secret: string): Promise<boolean> {
   if (!signatureHex || !secret) return false
   const enc = new TextEncoder()
   const key = await crypto.subtle.importKey(

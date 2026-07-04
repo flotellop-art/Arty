@@ -85,6 +85,12 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
   let walletResId: string | undefined
   try {
     const { model, stream, ...body } = await request.json() as { model: string; stream: boolean; [key: string]: unknown }
+    // Audit F-22 (3 juil. 2026) — `model` (body client) est interpolé dans
+    // l'URL Gemini : format strict avant interpolation (même baseline que les
+    // IDs Gmail/Drive), sinon injection de segment/query-string possible.
+    if (typeof model !== 'string' || !/^[a-zA-Z0-9.-]+$/.test(model)) {
+      return Response.json({ error: 'Invalid model' }, { status: 400 })
+    }
 
     // Sans abo : si l'utilisateur a des crédits → wallet (n'importe quel modèle,
     // payé à l'usage) ; sinon Gemini reste verrouillé en gratuit.

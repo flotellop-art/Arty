@@ -4,10 +4,8 @@
  * OpenAI:    { type: 'function', function: { name, description, parameters: { type, properties, required } } }
  */
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnthropicTool = { name: string; description?: string; input_schema?: any; type?: string }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type OpenAITool = { type: 'function'; function: { name: string; description: string; parameters: any } }
 
 export function convertToolsToOpenAI(anthropicTools: AnthropicTool[]): OpenAITool[] {

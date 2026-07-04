@@ -24,7 +24,6 @@ export async function listEvents(days = 7): Promise<CalendarEvent[]> {
   const res = await calendarFetch({ type: 'list', days })
   const data = await safeJson(res)
   if (!res.ok) throw new Error(data.error || 'Erreur agenda')
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return (data.events || []).map((e: any) => ({
     id: e.id,
     title: e.title || e.summary || '',

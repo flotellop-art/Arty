@@ -28,8 +28,9 @@ export const onRequestPost: PagesFunction = async ({ request }) => {
     }
     return Response.json({ error: 'Invalid action' }, { status: 400 })
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Sheets action failed'
-    return Response.json({ error: message }, { status: 500 })
+    // Message générique : ne pas propager les erreurs Google/internes (F-23).
+    console.error('[sheets] action failed', err)
+    return Response.json({ error: 'Sheets action failed' }, { status: 500 })
   }
 }
 

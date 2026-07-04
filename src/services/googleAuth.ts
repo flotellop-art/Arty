@@ -224,7 +224,6 @@ export async function refreshAccessToken(): Promise<GoogleTokens | null> {
     t.cancel()
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let data: any
   try {
     data = await safeJson(res)

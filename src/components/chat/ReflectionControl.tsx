@@ -34,7 +34,7 @@ export function ReflectionControl({ level, onSelect, maxLocked }: ReflectionCont
             className={`flex-1 min-w-0 flex items-center justify-center gap-1 px-1.5 py-1.5 rounded-full text-[11px] font-medium transition-colors ${
               active
                 ? 'bg-theme-accent text-theme-bg shadow-sm'
-                : 'text-theme-ink/70 hover:text-theme-ink hover:bg-theme-ink/[0.04]'
+                : 'text-theme-ink/80 hover:text-theme-ink hover:bg-theme-ink/[0.04]'
             }`}
           >
             <span aria-hidden="true" className="text-[10px] leading-none">

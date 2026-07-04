@@ -145,7 +145,6 @@ function AppContent({
     googleAuth,
     gmail,
     drive,
-    browserActions,
     computerActions,
     actionScreenshot,
     setActionScreenshot,
@@ -523,7 +522,6 @@ function AppContent({
               onSelect={selectConversation}
               gmail={gmail}
               drive={drive}
-              browserActions={browserActions}
               computerActions={computerActions}
               actionScreenshot={actionScreenshot}
               onAction={handleAction}
@@ -636,7 +634,6 @@ interface ChatRouteProps {
   onSelect: (id: string) => void
   gmail: ReturnType<typeof import('./hooks/useGmail').useGmail>
   drive: ReturnType<typeof import('./hooks/useDrive').useDrive>
-  browserActions: ReturnType<typeof import('./hooks/useBrowser').useBrowser>
   computerActions: ReturnType<typeof import('./hooks/useComputer').useComputer>
   actionScreenshot: string | null
   onAction?: (action: string, params: Record<string, string>) => void
@@ -662,7 +659,6 @@ function ChatRoute({
   onSelect,
   gmail,
   drive,
-  browserActions,
   computerActions,
   actionScreenshot,
   onAction,
@@ -716,7 +712,6 @@ function ChatRoute({
       onStop={onStop}
       gmail={gmail}
       drive={drive}
-      browserActions={browserActions}
       computerActions={computerActions}
       actionScreenshot={actionScreenshot}
       onAction={onAction}

@@ -8,7 +8,8 @@ CLAUDE.md a autorite absolue sur cette liste : si une case n'est pas cochee,
 ## 1. Chiffrement AES-256 actif
 
 - [x] `src/services/crypto.ts` implemente AES-256-GCM via Web Crypto API
-      (PBKDF2, 100k iterations, sel 16 bytes genere au premier demarrage).
+      (PBKDF2 v2 = 600 000 iterations — OWASP 2023+ ; migration lazy v1
+      (100k) → v2 versionnee, sel 16 bytes genere au premier demarrage).
 - [x] `initCrypto(apiKey)` appele au boot dans `src/App.tsx` (useEffect) **et**
       dans `src/hooks/useAuth.ts` au login/switch.
 - [x] `bootstrapGoogleStorage()` execute apres `initCrypto()` : migre les
@@ -24,8 +25,10 @@ CLAUDE.md a autorite absolue sur cette liste : si une case n'est pas cochee,
       `VITE_MISTRAL_API_KEY`, `VITE_OPENAI_API_KEY` dans `.env`
       ou dans le code navigateur.
 - [x] Les cles serveur (`ANTHROPIC_API_KEY`, `GEMINI_API_KEY`,
-      `MISTRAL_API_KEY`, `GOOGLE_VISION_API_KEY`) sont uniquement
+      `MISTRAL_API_KEY`, `OPENAI_API_KEY`, `BFL_API_KEY`) sont uniquement
       dans les variables Cloudflare Pages (sans prefixe `VITE_`).
+      Note : `GOOGLE_VISION_API_KEY` est de la config MORTE (BUG 14/15) —
+      a retirer du dashboard, pas a configurer.
 - [x] `src/services/activeApiKey.ts` ne contient aucun fallback
       `import.meta.env.VITE_*_API_KEY`.
 
@@ -47,10 +50,12 @@ Aucune occurrence ne doit ressortir.
       aveugle sur un header email).
 - [x] Utilisateurs hors whitelist → obliges d'utiliser leur propre cle BYOK.
 
-Note : la whitelist est desactivee en beta ouverte actuellement (voir le
-commentaire dans `functions/api/_lib/checkAllowedUser.ts`). Avant la
-publication Play Store / App Store, reactiver le bloc commente pour limiter
-l'usage aux emails autorises.
+Note (MAJ 3 juillet 2026 — audit F-18) : il n'y a PLUS de « bloc commente a
+reactiver ». `checkAllowedUser()` implemente un vrai systeme de plans :
+VIP (`ALLOWED_EMAILS`) / subscription / pro (=BYOK, pas de cle serveur) /
+trial / free (quota journalier Haiku). La checklist consiste a verifier que
+`ALLOWED_EMAILS` est bien configuree sur Cloudflare et que les plans payants
+sont actifs, pas a decommenter du code.
 
 ## 4. `getValidAccessToken()` partout pour `x-google-token`
 
@@ -83,12 +88,18 @@ find dist -name "*.map"
 ## 8. Permissions natives
 
 ### Android (`android/app/src/main/AndroidManifest.xml`)
-- [ ] INTERNET, CAMERA, READ_MEDIA_IMAGES, POST_NOTIFICATIONS presentes.
-- [ ] READ_EXTERNAL_STORAGE (Android <= 12) / READ_MEDIA_IMAGES (Android 13+).
+- [x] INTERNET, CAMERA, RECORD_AUDIO (BUG 44), READ_MEDIA_IMAGES,
+      POST_NOTIFICATIONS presentes (verifie audit 3 juillet 2026).
+- [x] READ_EXTERNAL_STORAGE (Android <= 12) / READ_MEDIA_IMAGES (Android 13+).
+- [ ] Retirer les permissions SUR-declarees avant publication :
+      READ_MEDIA_AUDIO, READ_MEDIA_VIDEO, MODIFY_AUDIO_SETTINGS
+      (audit F-28 — exige un test APK reel apres retrait).
 
 ### iOS (`ios/App/App/Info.plist`)
-- [ ] `NSCameraUsageDescription`, `NSPhotoLibraryUsageDescription`,
-      `NSMicrophoneUsageDescription` remplis avec un texte clair en francais.
+- [x] `NSCameraUsageDescription`, `NSPhotoLibraryUsageDescription`,
+      `NSPhotoLibraryAddUsageDescription`, `NSMicrophoneUsageDescription`,
+      `NSLocationWhenInUseUsageDescription` remplis (verifie audit
+      3 juillet 2026 — BUG 34 satisfait).
 
 ## 9. Tests et TypeScript verts
 

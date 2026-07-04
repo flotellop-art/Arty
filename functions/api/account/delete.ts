@@ -6,7 +6,10 @@ import { verifyGoogleUser } from '../_lib/checkAllowedUser'
  *
  * Supprime UNIQUEMENT les données personnelles du caller :
  *   - `memory`  (mémoire structurée, clé user_id = email)
- *   - `quota`   (compteurs d'usage, clé email)
+ *   - `quota`, `quota_model`, `trial_usage`, `free_daily_quota`, `premium_cap`,
+ *     `bg_quota`, `checkout_quota` (compteurs d'usage, clé email)
+ *   - `shared_conversations` (partages publics — contenu personnel publié)
+ *   - `email_otp`, `email_trial_sessions`, `email_trial_usage` (trial email)
  *
  * CONSERVE volontairement `subscriptions` / `licenses` / `premium_packs` :
  * obligation légale de conservation des pièces comptables (10 ans) + droit
@@ -52,6 +55,28 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   } catch { /* table absente */ }
   try {
     await env.DB.prepare('DELETE FROM premium_cap WHERE email = ?').bind(email).run()
+  } catch { /* table absente */ }
+  // Audit F-8 (3 juil. 2026) — l'effacement laissait vivre les conversations
+  // PARTAGÉES PUBLIQUEMENT (content_json = données personnelles publiées,
+  // jusqu'à 30 j après suppression du compte) et les sessions/compteurs du
+  // trial email. Hard delete : c'est le droit à l'effacement, pas un soft.
+  try {
+    await env.DB.prepare('DELETE FROM shared_conversations WHERE owner_email = ?').bind(email).run()
+  } catch { /* table absente */ }
+  try {
+    await env.DB.prepare('DELETE FROM email_otp WHERE email = ?').bind(email).run()
+  } catch { /* table absente */ }
+  try {
+    await env.DB.prepare('DELETE FROM email_trial_sessions WHERE email = ?').bind(email).run()
+  } catch { /* table absente */ }
+  try {
+    await env.DB.prepare('DELETE FROM email_trial_usage WHERE email = ?').bind(email).run()
+  } catch { /* table absente */ }
+  try {
+    await env.DB.prepare('DELETE FROM bg_quota WHERE email = ?').bind(email).run()
+  } catch { /* table absente */ }
+  try {
+    await env.DB.prepare('DELETE FROM checkout_quota WHERE email = ?').bind(email).run()
   } catch { /* table absente */ }
 
   return Response.json({ ok: true })

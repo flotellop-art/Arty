@@ -4,7 +4,6 @@ import { buildToolConfirmMessage } from '../services/toolConfirmation'
 import { useGoogleAuth } from './useGoogleAuth'
 import { useGmail } from './useGmail'
 import { useDrive } from './useDrive'
-import { useBrowser } from './useBrowser'
 import { useComputer } from './useComputer'
 import { useMemory } from './useMemory'
 import { buildContextualPrompt } from '../constants/systemPrompt'
@@ -29,7 +28,6 @@ export function useAppSetup(conversation: ConversationHook) {
   const googleAuth = useGoogleAuth()
   const gmail = useGmail()
   const drive = useDrive()
-  const browserActions = useBrowser()
   const computerActions = useComputer()
   const memoryHook = useMemory()
 
@@ -50,11 +48,11 @@ export function useAppSetup(conversation: ConversationHook) {
     return () => window.removeEventListener('style-changed', handler)
   }, [])
 
-  const toolExecutorRef = useRef(createToolExecutor(computerActions, gmail, drive, browserActions))
+  const toolExecutorRef = useRef(createToolExecutor(computerActions, gmail, drive))
 
   // Create tool executor and register it
   useEffect(() => {
-    toolExecutorRef.current = createToolExecutor(computerActions, gmail, drive, browserActions)
+    toolExecutorRef.current = createToolExecutor(computerActions, gmail, drive)
     setToolHandler((name: string, input: Record<string, unknown>) => {
       if (name === 'ask_user') {
         const questions = (input.questions as Question[]) || []
@@ -90,7 +88,7 @@ export function useAppSetup(conversation: ConversationHook) {
         return res
       })
     })
-  }, [computerActions, gmail, drive, browserActions, setToolHandler, t])
+  }, [computerActions, gmail, drive, setToolHandler, t])
 
   // Auto-fetch Gmail, Drive, and Memory when Google is connected
   useEffect(() => {
@@ -99,7 +97,6 @@ export function useAppSetup(conversation: ConversationHook) {
       drive.fetchFiles()
       memoryHook.loadMemory()
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [googleAuth.isConnected])
 
   // Update system prompt with Google context
@@ -157,6 +154,10 @@ export function useAppSetup(conversation: ConversationHook) {
   }, [googleAuth.isConnected, gmail.messages, drive.files, memoryHook.getPromptContext, setSystemPrompt, responseStyle])
 
   // Handle action buttons clicked in reports
+  // ⚠️ ALLOWLIST POSITIVE (audit 14 juin) — pendant de buildToolConfirmMessage
+  // (toolConfirmation.ts) qui garde la boucle d'outils LLM. Les deux listes
+  // sont maintenues SÉPARÉMENT : à l'ajout d'une action/d'un tool sensible,
+  // mettre à jour les deux et le test de parité de toolConfirmation.test.ts.
   const handleAction = useCallback(
     async (action: string, params: Record<string, string>) => {
       const executor = toolExecutorRef.current
@@ -233,7 +234,6 @@ export function useAppSetup(conversation: ConversationHook) {
     googleAuth,
     gmail,
     drive,
-    browserActions,
     computerActions,
     actionScreenshot,
     setActionScreenshot,

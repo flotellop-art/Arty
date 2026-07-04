@@ -49,6 +49,12 @@ async function readMemoryD1(category: MemoryCategory): Promise<unknown> {
       headers,
       body: JSON.stringify({ type: 'read', userId, category }),
     })
+    // BUG 4 — res.ok AVANT res.json() : sinon une erreur serveur (401/500)
+    // est indiscernable d'une mémoire vide et la panne reste invisible.
+    if (!res.ok) {
+      console.warn('[memory] read failed', res.status, category)
+      return getDefaultData(category)
+    }
     const result = await res.json() as { data: unknown }
     return result.data ?? getDefaultData(category)
   } catch {

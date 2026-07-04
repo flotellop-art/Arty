@@ -446,11 +446,21 @@ Cloudflare Pages. La config se fait dans le dashboard.
 
 ### BUG 40 — _redirects empêche le SPA routing sur Cloudflare
 **Fichier** : `_redirects` (supprimé)
-**Problème** : Le fichier `_redirects` (format Vercel/Netlify)
-n'est pas supporté par Cloudflare Pages. Les routes SPA
+**Problème** : Le fichier `_redirects` historique (copié du format
+Vercel/Netlify) cassait le SPA routing — les routes SPA
 (`/chat/:id`, `/auth/callback`) retournaient 404.
-**Règle** : Cloudflare Pages gère le SPA routing automatiquement.
-Ne pas ajouter de `_redirects` ou `_headers` manuellement.
+**Règle (CORRIGÉE le 3 juillet 2026, audit F-19)** : Cloudflare Pages gère
+le SPA routing automatiquement — ne pas ajouter de `_redirects`. MAIS
+l'affirmation initiale « `_headers` n'est pas supporté » était FAUSSE :
+Cloudflare Pages supporte nativement `public/_headers`, et Arty s'en sert
+pour la CSP/Permissions-Policy (vérifié servi en prod). Deux corollaires :
+1. Ne JAMAIS ajouter de fichiers de config d'AUTRES plateformes
+   (netlify.toml, vercel.json) — inertes sur Cloudflare, dangereux si le
+   repo est branché ailleurs par erreur (shadow-deploy sans CSP ni env).
+2. `public/_headers` est puissant ET traître : `Permissions-Policy:
+   geolocation=()` y a silencieusement tué la géoloc de toute la PWA web
+   (audit F-2) alors que le code était correct. Toute modif de ce fichier
+   doit être testée feature par feature (camera, micro, géoloc).
 
 ### BUG 41 — Logout ne nettoie pas les tokens Google
 **Fichier** : `src/hooks/useAuth.ts`
@@ -541,7 +551,7 @@ Slash command **`/audit-secu`** (défini dans `.claude/commands/audit-secu.md`) 
 
 ### TODO Sécurité — prochain audit
 
-Dernier audit : **14 juin 2026** (3 agents : backend Opus, crypto+auth Opus, frontend Sonnet + vérif terrain + requêtes D1 prod). Précédent : 7 juin 2026. Avant : 4 mai 2026 (PR #127 + #128).
+Dernier audit : **3 juillet 2026** — audit repo complet A→Z (5 agents : backend Opus, auth+crypto Opus, frontend Sonnet, build/config Sonnet, qualité Sonnet + vérifs directes tsc/tests/build/headers prod). Rapport : `docs/audits/repo-audit-2026-07-03.md`, remédiation : PR #307 (voir bloc « Corrigé le 3 juillet 2026 » ci-dessous). Précédents : 14 juin 2026, 7 juin 2026, 4 mai 2026 (PR #127 + #128).
 
 > **MAJ 14 juin 2026** — Audit complet `/audit-secu` (3 agents) déclenché après une
 > comparaison aux failles d'Odysseus (l'assistant de PewDiePie). **Verdict : aucun CRIT,
@@ -603,19 +613,34 @@ des conversations — implémenté le 16 mai, voir « PR à venir » ci-dessous.
 - [ ] **Pas de rate limit sur `/api/auth/token`** — TOUJOURS présent, requalifié **LOW** : exploit quasi nul (exige le `client_secret` owner + codes OAuth single-use / TTL court). Durcissement anti-bruteforce de `refresh_token` volés seulement.
 
 **Nouveaux findings résiduels (audit 7 juin)** :
-- [ ] **N-1 (MED) — `verifyGoogleUser` ne valide pas `aud`** dans `checkAllowedUser.ts:24-33` (`oauth2/v2/userinfo`). Un token Google d'audience étrangère passe le gate → abus borné ~10 Haiku/j sur la clé owner (PAS de vol de données : les endpoints Google reforwardent le même token). Fix : passer par `tokeninfo`, rejeter si `aud !== GOOGLE_CLIENT_ID && azp !== GOOGLE_CLIENT_ID`. ⚠️ touche le gate d'auth universel — tester web ET natif (les tokens `requestServerAuthCode` natifs peuvent avoir un `aud` différent, BUG 21/51). **PR sécu dédiée.**
-- [x] **N-2 (MED) — fuite status/body upstream `search/web.ts`** : VÉRIFIÉ CORRIGÉ le 14 juin — `web.ts` renvoie déjà `{error:'Search failed'}` 502, l'`err.message` upstream n'est pas propagé (le TODO était périmé). La même classe sur transcription a été faite en PR #269. **Reste à faire (MED, audit 14 juin)** : `wordpress/action.ts` et `contacts/action.ts` propagent encore `r.status`/`err.error.message` Google au client → message générique + détail en `console.error`.
+- [~] **N-1 (MED) — validation `aud`** : LARGEMENT CORRIGÉ (commit `cb8f222`) — `verifyGoogleUser(request, expectedAud?)` valide l'audience via `tokeninfo` quand `expectedAud` est fourni, et TOUS les endpoints qui dépensent la clé IA owner le passent (proxys via `resolveProxyIdentity`, tts, image-gen, memory-extract, whisper, voxtral, checkout, trial/init, subscription/status — vérifié audit 3 juillet). **Résiduel (MED-)** : les chemins `checkAllowedUserPeek`/`checkAllowedUser` SANS aud — `search/web.ts` et `fetch/url.ts` (clés Linkup/Brave owner, cap journalier), `ai/quota/*`, `weather.ts` (gratuit), `geo/reverse.ts` (cappé). Fix propre : durcir le helper lui-même, pas appelant par appelant. ⚠️ tester web ET natif (BUG 21/51). **PR sécu dédiée.**
+- [x] **N-2 (MED) — fuite status/body upstream `search/web.ts`** : VÉRIFIÉ CORRIGÉ le 14 juin — `web.ts` renvoie déjà `{error:'Search failed'}` 502, l'`err.message` upstream n'est pas propagé (le TODO était périmé). La même classe sur transcription a été faite en PR #269. **FAIT le 3 juillet 2026 (PR #307)** : `contacts/action.ts` ne renvoie plus `err.error.message` Google (générique + `console.error`) ; `memory/action.ts` et `sheets/append.ts` ne renvoient plus `err.message` ; et surtout `ai/proxy.ts` (le SEUL des 5 proxys IA oublié) masque désormais le body d'erreur Anthropic brut sur le chemin clé serveur. `wordpress/action.ts` : messages déjà génériques ; le `r.status` propagé vers l'owner de son propre site WP n'est pas une fuite (endpoint owner-only) — clos.
 - [ ] **V-2 (MED, différé — audit PR #269 du 12 juin) — quota transcription par appel, pas par durée** : `consumeDailyQuota` compte les appels alors que Voxtral/Whisper facturent à la minute (`audio_seconds`). Mitigé en PR #269 par le cap body 10 MB sur les deux proxys (borne le coût par appel) + quota journalier existant. Fix propre = quota journalier en secondes d'audio (évolution D1 + gate avant forward dans les proxys). À traiter si la vigie whales montre un abus de dictée.
 
 **Nouveaux findings résiduels (audit 14 juin) — NON corrigés (hors lot « priorités sûres »)** :
-- [ ] **MED — `contacts/action.ts:90-106` : `resourceName` non validé/encodé** — seul endpoint Google qui casse la baseline « IDs validés par regex ». Query-string injection dans l'URL People (bornée : compte de l'appelant, pas de cross-user). Fix : `^people\/[a-zA-Z0-9_-]+$` + `encodeURIComponent`.
+- [x] **MED — `contacts/action.ts` : `resourceName` non validé/encodé** — FAIT le 3 juillet 2026 (PR #307) : regex `^people\/[a-zA-Z0-9_-]+$` + `encodeURIComponent` avant toute interpolation People API. Même passe : `wordpress/action.ts` valide `postId` (entier strict) avant interpolation dans l'URL REST WP.
 - [ ] **MED — `/api/license/activate` sans token Google** (`activate.ts:38`) — identité du body, prouvée seulement par la paire secrète (clé+email). Impact RÉDUIT par Pro=BYOK (PR #287 : un faux Pro ne donne plus d'IA serveur). Fix : exiger `verifyTokenViaTokeninfo` + `email == body.email`. Pas de rate-limit dédié (in-memory par isolat).
 - [ ] **MED — sel PBKDF2 global + migration sans filtre userId** (`crypto.ts:14,67-76`) — sur appareil multi-comptes SANS BYOK, couplage de données (même passphrase publique + même sel → même clé). Borné. À regrouper avec le chantier IndexedDB `CryptoKey` non-extractible (qui supprime sel/passphrase/PBKDF2).
 - [ ] **MED — N-1 `aud`** : voir ci-dessus, toujours actif, PR sécu dédiée (test web+natif).
-- [ ] **MED — météo/géoloc accessibles aux comptes Google `free`** (`weather.ts:9`, `geo/reverse.ts:15` via `checkAllowedUserPeek`) — abus possible de la clé Google Maps owner. Fix : gater sur un plan payant (vérifier d'abord l'usage pré-connexion / brief matin).
+- [x] **MED — météo/géoloc accessibles aux comptes `free`** — REQUALIFIÉ le 3 juillet 2026 (audit PR #307) : la moitié était un FAUX POSITIF. `weather.ts` utilise open-meteo (gratuit, sans clé) → aucun abus de clé owner possible. `geo/reverse.ts` (la vraie clé Maps) est désormais cappé par email (`consumeOwnerApiQuota('geo-reverse', 100/j)`, plans payants exemptés). Rien à faire de plus.
 - [ ] **LOW — `computer/relay` forwarde une action arbitraire** + `local/computer-use-server.js` exécute type/key/click sans allowlist (owner-only, PC de l'owner). Fix : allowlist d'actions au relay + rejet des `key` hors `keyMap`.
-- [ ] **LOW — permissions Android sur-déclarées** (`READ_MEDIA_AUDIO/VIDEO`, `MODIFY_AUDIO_SETTINGS`) + `gemini-proxy` `model` non format-vérifié + `drive` `previousParents` non encodé + pas de timeout serveur→Google. Nettoyage avant Play Store.
+- [ ] **LOW — permissions Android sur-déclarées** (`READ_MEDIA_AUDIO/VIDEO`, `MODIFY_AUDIO_SETTINGS`) — reste à faire, exige un test APK réel après retrait (audit F-28). Pas de timeout serveur→Google — reste à faire. FAIT le 3 juillet (PR #307) : `gemini-proxy` valide le format de `model` ; `drive` encode `previousParents`.
 - [ ] **⚠️ GO-LIVE (pas une faille) — IDs produits Creem en mode TEST dans le code prod** (`checkout/creem.ts:34`, `webhook/creem.ts:29`). Fail-closed (dérive test/live du préfixe de clé) mais avec une clé LIVE + ces IDs test → checkout cassé/mis-crédité. Remplacer au lancement (TODO `⚠️ replace at go-live` présent).
+
+**Corrigé le 3 juillet 2026 (audit repo complet A→Z, PR #307 — rapport : `docs/audits/repo-audit-2026-07-03.md`, CDC : `repo-audit-2026-07-03-cdc.md`)** :
+- [x] **HIGH F-1 — bypass HITL WordPress** : `wp_update_post` passait un draft en `publish` SANS confirmation (chemin prompt-injection : create draft libre → update publish libre) ; `wp_create_post status:'future'` (publication programmée) passait aussi. `buildToolConfirmMessage` confirme désormais tout `status !== 'draft'` + **test de parité** : chaque tool de `toolDefinitions.ts` DOIT être classé confirm/safe dans `toolConfirmation.test.ts`, sinon CI rouge — ferme la classe de bug « allowlist positive oubliée ».
+- [x] **HIGH F-2 — géoloc PWA web morte** : `public/_headers` servait `Permissions-Policy: geolocation=()` → `navigator.geolocation` bloqué par policy sur tryarty.com (tout le travail BUG 55/56 inopérant sur web ; natif intact). Fix : `geolocation=(self)`. Voir BUG 40 corrigé.
+- [x] **HIGH F-3 — tools LLM sur routes mortes** : `calculate_distance` → rebranché sur `/api/search/web` (auth `x-google-token`, timeout 30 s) ; `search_price` + `publish_wordpress` + `browserClient.ts`/`useBrowser.ts`/`actionDetector.ts` supprimés (reliquats pré-pivot Playwright, `/api/browser/*` n'existe pas).
+- [x] **HIGH F-4 — README pré-pivot** : réécrit (Arty/Cloudflare) — il instruisait encore `VITE_ANTHROPIC_API_KEY` (violation RÈGLE 1) et Vercel.
+- [x] **MED F-8 — RGPD delete incomplet** : `account/delete.ts` purge désormais `shared_conversations` (contenu personnel PUBLIÉ qui survivait à la suppression du compte), `email_otp`, `email_trial_*`, `bg_quota`, `checkout_quota`.
+- [x] **MED F-12/F-13 — config périmée** : `schema.sql` régénéré (rollup des ~20 tables runtime) ; `.env.example` aligné sur `functions/env.d.ts` (il manquait `ALLOWED_EMAILS` et ~14 autres).
+- [x] **MED F-14 — CVE deps prod** : react-router-dom 6.30.4 (open redirect GHSA-2j2x-hqr9-3h42), dompurify 3.4.11 ; `npm audit` = 0 vulnérabilité.
+- [x] **MED F-15 — `netlify.toml` supprimé** (config morte : le site est servi par Cloudflare ; risque de shadow-deploy si le repo était branché à Netlify).
+- [x] **MED F-17 — régression a11y** : `text-theme-ink/70` (ReflectionControl) et `text-theme-muted/70` (Sidebar ⌘K + badge tags, code du 16 juin) remontés au niveau du fix du 12 mai.
+- [x] **LOW F-25 — 17 `eslint-disable` orphelins purgés** (aucun eslint dans le projet — ni config ni CI ; en ajouter un est une option future).
+- [x] **LOW F-30 — BUG 4 résiduel** : `memoryService.readMemoryD1` vérifie `res.ok` avant `res.json()`.
+- ℹ️ **Différés (justification au CDC)** : F-9 aud peek (PR sécu dédiée, test web+natif), F-10 Turnstile (action ops : vérifier `TURNSTILE_SECRET_KEY` posée en prod), F-11 PKCE (PR dédiée), F-20 refactor clients IA, F-27 TODO Lemon Squeezy expiré (décision Florent), F-28 permissions Android (test APK), F-33 Creem go-live, F-34 chantier `CryptoKey` non-extractible — **priorité rehaussée** : le blob critique protégé par la passphrase publique est le `refresh_token` Google, pas seulement les conversations.
+- [x] **HIGH F-5 (amorcé) — premiers tests `functions/`** : `parseAllowedEmails`, signatures webhooks, regex d'IDs (le backend n'avait AUCUN test).
 
 **Corrigé le 14 juin (lot « priorités sûres », PR à venir)** :
 - [x] **Boutons d'action en liste blanche + confirmation** (`useAppSetup.ts`) — `default → executor(action)` supprimé ; confirm sur send_email/save_drive/create_event/publish_wp ; `tel:`/`url` validés + `noopener`.
@@ -648,7 +673,7 @@ des conversations — implémenté le 16 mai, voir « PR à venir » ci-dessous.
 ---
 
 ### BUG 42 — 4 vulnérabilités critiques live (avril 2026)
-**Fichiers** : `functions/api/memory/action.ts`, `functions/api/ai/anthropic-proxy.ts`, `functions/api/ai/mistral-proxy.ts`, `functions/api/ai/gemini-proxy.ts`, `functions/api/computer/relay.ts`, `functions/api/_middleware.ts`
+**Fichiers** : `functions/api/memory/action.ts`, `functions/api/ai/proxy.ts` (proxy Anthropic — le nom `anthropic-proxy.ts` cité initialement n'existe pas), `functions/api/ai/mistral-proxy.ts`, `functions/api/ai/gemini-proxy.ts`, `functions/api/computer/relay.ts`, `functions/api/_middleware.ts`
 **Problème** : 4 CVEs live sur la prod :
 - **CRIT-1** — `/api/memory/action` acceptait un `userId` depuis le body → n'importe qui pouvait lire/écrire la mémoire d'un autre user.
 - **CRIT-2** — `/api/computer/relay` était ouvert sans auth → relais anonyme sur le compte Cloudflare + leak de tunnels internes dans les erreurs.
