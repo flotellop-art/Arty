@@ -132,7 +132,7 @@ export function notFoundResponse(): Response {
  * saisie à la main dans l'UI Cloudflare : virgules, points-virgules, sauts
  * de ligne, espaces, et guillemets d'enveloppe ("foo@bar.com").
  *
- * TODO Supprimer en juillet 2026 après validation en prod du flux Lemon Squeezy.
+ * TODO (repoussé) : retirer le fallback legacy ALLOWED_EMAILS (pas parseAllowedEmails, réutilisée ailleurs) une fois le flux d'abonnement Lemon Squeezy validé en prod ; à réévaluer après le lancement commercial (aucun abonné à ce jour).
  */
 export function parseAllowedEmails(raw: string | undefined): string[] {
   if (!raw) return []
