@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { requestOtp, verifyOtp, EmailTrialError } from '../../services/emailTrialClient'
+import { TurnstileWidget } from './TurnstileWidget'
 
 /**
  * Essai par email (OTP) — flux en 2 étapes : saisie email → code 6 chiffres.
@@ -24,6 +25,18 @@ export function EmailTrialFlow({ onSuccess, onBack }: EmailTrialFlowProps) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [resent, setResent] = useState(false)
+  // C2/F-10 : widget Turnstile (anti-bot sur l'envoi d'OTP). Optionnel : si la
+  // sitekey n'est pas configurée, le flux fonctionne sans challenge.
+  const siteKey = import.meta.env.VITE_TURNSTILE_SITE_KEY
+  const [turnstileToken, setTurnstileToken] = useState('')
+  const [turnstileReset, setTurnstileReset] = useState(0)
+  // Anti-lockout (revue Opus) : si le widget/script Turnstile échoue (WebView
+  // restreinte, réseau, région bloquée), on FAIL-OPEN côté front — on débloque
+  // le bouton et on laisse le SERVEUR trancher (il renvoie `captcha_failed`,
+  // message i18n, si la secret est posée ; il laisse passer sinon). Jamais de
+  // bouton mort silencieux.
+  const [turnstileFailed, setTurnstileFailed] = useState(false)
+  const turnstileBlocking = !!siteKey && !turnstileFailed && !turnstileToken
 
   const errText = (errorCode: string) =>
     t(`onboardingChoice.emailTrial.errors.${errorCode}`, {
@@ -36,7 +49,7 @@ export function EmailTrialFlow({ onSuccess, onBack }: EmailTrialFlowProps) {
     setError('')
     setBusy(true)
     try {
-      await requestOtp(target)
+      await requestOtp(target, siteKey && !turnstileFailed ? turnstileToken : undefined)
       setEmail(target)
       setStep('code')
       return true
@@ -45,6 +58,12 @@ export function EmailTrialFlow({ onSuccess, onBack }: EmailTrialFlowProps) {
       return false
     } finally {
       setBusy(false)
+      // Token Turnstile consommé (single-use) → forcer un nouveau challenge
+      // pour un éventuel « Renvoyer le code ».
+      if (siteKey) {
+        setTurnstileToken('')
+        setTurnstileReset((n) => n + 1)
+      }
     }
   }
 
@@ -96,6 +115,24 @@ export function EmailTrialFlow({ onSuccess, onBack }: EmailTrialFlowProps) {
         })}
       </p>
 
+      {siteKey && (
+        <div className="mt-4">
+          <TurnstileWidget
+            siteKey={siteKey}
+            onToken={setTurnstileToken}
+            onError={() => setTurnstileFailed(true)}
+            resetSignal={turnstileReset}
+          />
+          {turnstileFailed && (
+            <p className="font-sans text-xs text-theme-muted text-center mt-2">
+              {t('onboardingChoice.emailTrial.captchaUnavailable', {
+                defaultValue: 'Vérification anti-robot indisponible — tu peux continuer.',
+              })}
+            </p>
+          )}
+        </div>
+      )}
+
       {step === 'email' && (
         <form onSubmit={handleSendCode} className="mt-8 space-y-5">
           <div>
@@ -121,7 +158,7 @@ export function EmailTrialFlow({ onSuccess, onBack }: EmailTrialFlowProps) {
 
           <button
             type="submit"
-            disabled={busy || !email.trim()}
+            disabled={busy || !email.trim() || turnstileBlocking}
             className="w-full py-4 font-display italic text-base font-medium tracking-[0.02em] bg-theme-ink text-theme-bg rounded-sm transition-opacity hover:opacity-90 disabled:opacity-40"
           >
             {busy
@@ -181,7 +218,7 @@ export function EmailTrialFlow({ onSuccess, onBack }: EmailTrialFlowProps) {
             <button
               type="button"
               onClick={handleResend}
-              disabled={busy}
+              disabled={busy || turnstileBlocking}
               className="font-display italic text-[13px] text-theme-muted hover:text-theme-ink transition-colors disabled:opacity-40"
             >
               {t('onboardingChoice.emailTrial.resend', { defaultValue: 'Renvoyer le code' })}
