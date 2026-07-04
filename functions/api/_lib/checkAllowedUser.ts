@@ -249,7 +249,13 @@ export async function checkAllowedUserPeek(
   request: Request,
   env: Env
 ): Promise<AllowedUser | null> {
-  const email = await verifyGoogleUser(request)
+  // C1/F-9 : valider l'audience (aud/azp === GOOGLE_CLIENT_ID) sur ces
+  // chemins « peek » qui dépensent les clés owner (Linkup/Brave via
+  // search/web + fetch/url, quotas, météo, géo). Fail-safe interne à
+  // verifyGoogleUser : un token natif serverAuthCode (aud/azp indéterminé,
+  // BUG 21/51) ou un tokeninfo KO N'est PAS verrouillé ; seule une audience
+  // ÉTRANGÈRE EXPLICITE est rejetée.
+  const email = await verifyGoogleUser(request, env.GOOGLE_CLIENT_ID)
   if (!email) return null
 
   const allowed = parseAllowedEmails(env.ALLOWED_EMAILS)
@@ -267,7 +273,12 @@ export async function checkAllowedUser(
   request: Request,
   env: Env
 ): Promise<CheckResult> {
-  const email = await verifyGoogleUser(request)
+  // C1/F-9 : valider l'audience (aud/azp === GOOGLE_CLIENT_ID) sur ce gate
+  // d'accès qui dépense les clés owner (proxys IA sans BYOK, image-gen).
+  // Fail-safe interne à verifyGoogleUser : un token natif serverAuthCode
+  // (aud/azp indéterminé, BUG 21/51) ou un tokeninfo KO N'est PAS verrouillé ;
+  // seule une audience ÉTRANGÈRE EXPLICITE est rejetée.
+  const email = await verifyGoogleUser(request, env.GOOGLE_CLIENT_ID)
   if (!email) return null
 
   // ALLOWED_EMAILS = beta testeurs VIP, bypass du check D1
