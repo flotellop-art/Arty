@@ -33,7 +33,7 @@ export function GoogleLoginTab({ loading, onNativeGoogleLogin }: GoogleLoginTabP
         )
       } else {
         // Web: redirect to Google OAuth
-        const url = buildOAuthUrl()
+        const url = await buildOAuthUrl()
         window.location.href = url
       }
     } catch {
