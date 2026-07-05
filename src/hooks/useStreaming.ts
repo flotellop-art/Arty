@@ -76,12 +76,16 @@ export function useStreaming(deps: {
     const lastMsg = conv.messages[conv.messages.length - 1]
     if (lastMsg?.role === 'assistant' && lastMsg.id === 'streaming') {
       lastMsg.content = s.accumulated
+      // C-B — porte l'attribution sur le partiel : si l'app est tuée en plein
+      // stream, le message restauré au boot garde son modèle (revue Opus).
+      if (s.model) lastMsg.model = s.model
     } else {
       conv.messages.push({
         id: 'streaming',
         role: 'assistant',
         content: s.accumulated,
         timestamp: Date.now(),
+        ...(s.model ? { model: s.model } : {}),
       })
     }
     conv.updatedAt = Date.now()

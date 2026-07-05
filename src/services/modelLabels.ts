@@ -60,6 +60,12 @@ export function getLastModelUsed(): ModelUsedEvent | null {
 }
 
 export function dispatchModelUsed(event: ModelUsedEvent): void {
+  // ⚠️ INVARIANT (revue C-B) : tout dispatch NON-background doit porter un
+  // `conversationId`. Aujourd'hui vrai partout (chat réel = targetId ; brief/
+  // résumé/comparateur = background:true). Un futur appelant non-background
+  // SANS conversationId réactiverait le chemin legacy : accepté par toutes
+  // les surfaces (badge/indicateur d'une autre conversation pollués) et
+  // invisible pour la capture Message.model de useStreaming.
   // Les appels d'arrière-plan n'écrasent pas le cache : il sert à initialiser
   // les surfaces de CONVERSATION au mount (course au premier render).
   if (!event.background) lastModelUsed = event
@@ -137,7 +143,11 @@ export function getModelCapacityKey(model: string): string {
 // France/UE ; tout le reste (Claude, Gemini, GPT) = serveurs US. Défaut = US :
 // on ne revendique JAMAIS « UE » par erreur, ce qui casserait la promesse.
 export function getModelRegion(model: string): { flag: string; key: string } {
-  return model.toLowerCase().startsWith('mistral')
+  // ministral/voxtral = Mistral SAS (France) aussi — aligné sur
+  // getModelCapacityKey pour éviter un drapeau 🇺🇸 sous un libellé « Europe »
+  // si un modèle Mistral léger devient un jour un modèle de chat (revue C-B).
+  const m = model.toLowerCase()
+  return m.startsWith('mistral') || m.startsWith('ministral') || m.startsWith('voxtral')
     ? { flag: '🇪🇺', key: 'chat.region.eu' }
     : { flag: '🇺🇸', key: 'chat.region.us' }
 }
