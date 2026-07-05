@@ -461,11 +461,21 @@ export function useConversation() {
         provider = detectProvider(text)
       }
 
-      // Track which models are used in this conversation
+      // Track which models are used in this conversation.
+      // Hybride = les DEUX providers (F-5, audit visibilité modèle) : Gemini
+      // fait la recherche mais c'est Claude qui RÉDIGE la réponse affichée —
+      // n'enregistrer que 'gemini' faussait l'export, le partage public et
+      // le point Sidebar (texte attribué à Gemini alors que Claude l'a écrit).
       const usedModels = conv.usedModels || []
-      const modelName = provider === 'hybrid' ? 'gemini' : provider
-      if (!usedModels.includes(modelName)) {
-        usedModels.push(modelName)
+      const modelNames = provider === 'hybrid' ? ['gemini', 'claude'] : [provider]
+      let usedModelsChanged = false
+      for (const modelName of modelNames) {
+        if (!usedModels.includes(modelName)) {
+          usedModels.push(modelName)
+          usedModelsChanged = true
+        }
+      }
+      if (usedModelsChanged) {
         conv.usedModels = usedModels
         storage.saveConversation(conv)
       }
@@ -579,6 +589,7 @@ export function useConversation() {
             // Niveau de réflexion utilisateur (chat réel uniquement — jamais
             // sur les appels imposés type comparateur/brief). Cf. anthropicClient.
             reflectionLevel: getReflectionLevel(),
+            conversationId: targetId,
           })
           setAbortController(targetId, controller)
         }).catch(onErr)
@@ -593,6 +604,7 @@ export function useConversation() {
         controller = streamGeminiMessage(apiMessages, onToken, onDone, onErr, {
           systemPrompt: systemPromptRef.current,
           reflectionLevel: getReflectionLevel(),
+          conversationId: targetId,
         })
       } else if (provider === 'mistral') {
         // Mistral Medium 3.5 a une vision native → on utilise le builder
@@ -619,6 +631,7 @@ export function useConversation() {
           // de plus pour rien, dos à dos avec la synthèse (rate limit).
           urlContentInlined: outgoingText !== text,
           euOnly: conv.euOnly,
+          conversationId: targetId,
         })
       } else if (provider === 'openai') {
         // openaiKey peut être null — dans ce cas le client passe par le proxy
@@ -634,6 +647,7 @@ export function useConversation() {
         }
         controller = streamOpenAIMessage(apiMessages, openaiKey, onToken, onDone, onErr, {
           systemPrompt: systemPromptRef.current,
+          conversationId: targetId,
         })
       } else {
         // Claude path — historique complet avec content blocks pour les images
@@ -658,6 +672,7 @@ export function useConversation() {
           systemPrompt: systemPromptRef.current,
           onToolCall: trackedToolHandler,
           reflectionLevel: getReflectionLevel(),
+          conversationId: targetId,
           ...(imageTools ? { tools: imageTools as typeof TOOLS } : {}),
         })
       }

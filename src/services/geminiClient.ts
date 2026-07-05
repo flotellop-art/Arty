@@ -147,6 +147,11 @@ interface GeminiStreamOptions {
   // vrai chat Gemini (useConversation) — jamais par le comparateur. Absent ⇒
   // 'auto' (heuristique par message). Voir reflectionLevel.ts.
   reflectionLevel?: ReflectionLevel
+  // Appel d'arrière-plan (comparateur) : l'event 'arty-model-used' est marqué
+  // background → ignoré par le badge de conversation (F-4).
+  background?: boolean
+  // Conversation d'origine (targetId) — scope l'event 'arty-model-used'.
+  conversationId?: string
 }
 
 export function streamGeminiMessage(
@@ -231,7 +236,16 @@ async function runGeminiStream(
     // Notifie l'UI du modèle exact appelé (ChatTopBar) + si la réflexion est
     // active. Seuil 2048 = palier « profond » de Gemini Flash (le 512/1024
     // par défaut est du micro-raisonnement, pas une réflexion à signaler).
-    dispatchModelUsed({ model, provider: 'gemini', reflecting: thinkingBudget >= 2048 })
+    // NB : l'API Gemini ne renvoie pas le modèle servi dans ses chunks —
+    // c'est le SEUL client dont l'event reste une déclaration d'intention
+    // (pas de dispatch correctif possible, cf. audit visibilité F-2).
+    dispatchModelUsed({
+      model,
+      provider: 'gemini',
+      reflecting: thinkingBudget >= 2048,
+      background: options?.background,
+      conversationId: options?.conversationId,
+    })
 
     const requestBody = {
       model,
@@ -280,9 +294,11 @@ async function runGeminiStream(
       throw new Error(i18n.t(key, { status: response.status }))
     }
 
-    // H-AI-5 — notify UI que ce message est servi par Gemini (mêmes infos
-    // que les autres clients pour cohérence des badges).
-    dispatchModelUsed({ model, provider: 'gemini' })
+    // (Fix F-6, audit visibilité modèle) — le re-dispatch qui vivait ici
+    // (H-AI-5) était REDONDANT avec celui d'avant le fetch (même `model`
+    // calculé client) et, dispatché SANS le champ `reflecting`, il éteignait
+    // l'indicateur « 🧠 réflexion approfondie » avant le premier token
+    // (StreamingIndicator remet reflecting=false sur tout event sans le flag).
 
     const reader = response.body?.getReader()
     if (!reader) throw new Error('No response body')

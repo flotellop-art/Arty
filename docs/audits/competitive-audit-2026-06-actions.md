@@ -89,6 +89,21 @@ unique sous 20 $/mois). Pas par la largeur de catalogue. Volume = distribution
   whales : 500/j est le plafond théorique d'un abonné (≈ 15 000 msg standards/mois
   dans l'absolu) — surveiller via la vigie économique trimestrielle.
 
+- [ ] **P0.11 Visibilité/attribution du modèle exact** — AUDIT + CDC FAITS
+  (5 juillet 2026, PR à venir) : `model-visibility-audit-2026-07-05.md` +
+  `-cdc.md` (16 findings vérifiés, dont : substitution trial silencieuse jamais
+  signalée, badge « Dernier appel » non scopé pollué par les appels de fond,
+  openaiClient muet, AUCUNE persistance du modèle par message, bouton cap no-op,
+  fact-check qui divise le cap Sonnet par 2, et Auto = 100 % Claude sans BYOK).
+  Attribution par message = table stakes 2026 (ChatGPT/Perplexity/Poe) et
+  réponse directe au doute « vrai modèle ? » qui plombe Mammouth.
+  Implémentation : 6 PRs séquencées au CDC. **Décisions D1-D5 TRANCHÉES par
+  Florent le 5 juillet 2026** (détail au CDC) : D1 trou produit → P1.9 ;
+  D2 dé-silencier le swap trial par suppression à la source ; D3 modèle par
+  message exclu du partage public (inclus exports privés) ; D4 CapReachedModal
+  → action explicite « Passer sur Mistral », pas de downgrade auto ;
+  D5 fact-check → compteur de fond séparé + Haiku d'abord.
+
 ## P1 — Combler les attentes standard 2026
 
 - [x] **P1.1 Mémoire automatique** — FAIT (12 juin 2026). Extraction asynchrone des
@@ -239,6 +254,21 @@ unique sous 20 $/mois). Pas par la largeur de catalogue. Volume = distribution
   repartir propre = moins de tokens rejoués. **Reste côté OpenRouter (transparent), pas Poe.**
   Suite possible (différée, plus basse priorité) : coût par message SUR DEMANDE (tap → ~X
   crédits, calcul client-side avec miroir markup, post-stream uniquement).
+
+- [ ] **P1.9 Routage Auto multi-provider pour les comptes serveur (sans BYOK)** —
+  décision D1 de l'audit visibilité modèle (Florent, 5 juillet 2026,
+  `model-visibility-audit-2026-07-05.md` F-14) : en mode Auto, un compte sans
+  BYOK est aujourd'hui servi à 100 % par Claude (tous les chemins d'aiRouter
+  gatés sur `getGeminiKey()`/`getMistralKey()`/`getOpenAIKey()` — null côté
+  serveur). Qualifié TROU PRODUIT : activer le routage intelligent
+  (Gemini Flash pour le factuel/web, Mistral pour le trivial, hybride pour les
+  rapports) sur la clé serveur. Double gain attendu : recherche web temps réel
+  par défaut pour les abonnés (parité avec la promesse « Arty choisit le
+  meilleur modèle ») ET réduction du coût par abonné (Gemini 2.5 Flash ~10×
+  moins cher que Sonnet en input). Prérequis : vigie coût/qualité FR rapide
+  (part des requêtes déroutées, impact marge), caps/quotas par bucket déjà en
+  place (P0.6), garde données privées → Claude (BUG 12) inchangée. Chantier
+  SÉPARÉ du CDC visibilité (ne pas mélanger les PRs).
 
 ## P2 — Distribution & expansion
 

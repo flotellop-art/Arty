@@ -75,6 +75,10 @@ type SSEParseResult = {
   outputTokens: number
   cacheReadTokens: number
   cacheCreationTokens: number
+  /** Modèle CONFIRMÉ par l'API (message_start.message.model). Peut différer
+      du modèle demandé : le proxy substitue Haiku en trial (audit visibilité
+      modèle, F-1). Vide si l'event message_start n'est pas arrivé. */
+  servedModel?: string
 }
 
 export type ToolHandler = (
@@ -100,6 +104,13 @@ interface StreamOptions {
   // sous contrôle. Absent ⇒ 'auto' (heuristique par message, comportement
   // historique). Sans effet si le modèle résolu est Haiku (effort non supporté).
   reflectionLevel?: ReflectionLevel
+  // Appel d'arrière-plan (brief proactif, résumé, comparateur) : l'event
+  // 'arty-model-used' est marqué background → ignoré par le badge de
+  // conversation (audit visibilité modèle, F-4).
+  background?: boolean
+  // Conversation d'origine (targetId de useConversation) — scope l'event
+  // 'arty-model-used' pour les streams concurrents multi-conversations.
+  conversationId?: string
 }
 
 // ── Public API ───────────────────────────────────────────────────────────────
@@ -258,7 +269,9 @@ async function fetchWithRetry(
 
 // ── SSE stream parser ─────────────────────────────────────────────────────────
 
-async function parseSSEStream(
+// Exporté pour les tests (servedModel / message_start, PR C-A audit
+// visibilité modèle) — ne pas appeler depuis l'app en dehors de runWithTools.
+export async function parseSSEStream(
   response: Response,
   onToken: (text: string) => void
 ): Promise<SSEParseResult> {
@@ -275,6 +288,7 @@ async function parseSSEStream(
   let outputTokens = 0
   let cacheReadTokens = 0
   let cacheCreationTokens = 0
+  let servedModel = ''
   let buffer = ''
   let eventType = ''
 
@@ -315,11 +329,17 @@ async function parseSSEStream(
 
         switch (eventType) {
           case 'message_start': {
-            const usage = (data.message as { usage?: { input_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number } } | undefined)?.usage
+            const message = data.message as { model?: string; usage?: { input_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number } } | undefined
+            const usage = message?.usage
             if (usage) {
               inputTokens = usage.input_tokens || 0
               cacheReadTokens = usage.cache_read_input_tokens || 0
               cacheCreationTokens = usage.cache_creation_input_tokens || 0
+            }
+            // Modèle réellement servi — lecture ADDITIVE uniquement (BUG 52 :
+            // ne jamais filtrer/modifier les blocs dans ce parser).
+            if (typeof message?.model === 'string' && message.model) {
+              servedModel = message.model
             }
             break
           }
@@ -446,7 +466,7 @@ async function parseSSEStream(
     reader.releaseLock()
   }
 
-  return { contentBlocks, inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens }
+  return { contentBlocks, inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens, ...(servedModel ? { servedModel } : {}) }
 }
 
 // ── Content blocks validation ────────────────────────────────────────────────
@@ -638,7 +658,13 @@ async function runWithTools(
     const effort = effortActive ? thinking.effort : null
     // Notifie l'UI du modèle exact appelé (ChatTopBar) + si la réflexion est
     // active (StreamingIndicator affiche « réflexion approfondie »).
-    dispatchModelUsed({ model: ANTHROPIC_MODEL, provider: 'claude', reflecting: effortActive })
+    // Dispatch OPTIMISTE (pré-envoi) — corrigé plus bas si message_start
+    // confirme un autre modèle (substitution serveur trial, F-1).
+    const eventScope = { background: options?.background, conversationId: options?.conversationId }
+    // string (pas ClaudeSubModel) : le modèle CONFIRMÉ par l'API peut être un
+    // id hors union (ex: version datée renvoyée par Anthropic).
+    let dispatchedModel: string = ANTHROPIC_MODEL
+    dispatchModelUsed({ model: ANTHROPIC_MODEL, provider: 'claude', reflecting: effortActive, ...eventScope })
     const locationContext = await buildLocationContext(lastUserText)
 
     const baseSystemText = options?.systemPrompt || SYSTEM_PROMPT
@@ -702,7 +728,28 @@ async function runWithTools(
       })
 
       const response = await fetchWithRetry(requestBody, apiKey, controller)
-      const { contentBlocks, inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens } = await parseSSEStream(response, onToken)
+      const { contentBlocks, inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens, servedModel } = await parseSSEStream(response, onToken)
+
+      // Boucle « demandé → servi » (audit visibilité modèle, F-1/F-2) : si
+      // l'API confirme un AUTRE id que celui affiché, on corrige le badge.
+      // Fire en ROUTINE, pas seulement au swap trial : l'API renvoie l'id
+      // daté pour un alias (claude-sonnet-5 → claude-sonnet-5-YYYYMMDD) —
+      // label affiché identique (formatModelName strippe la date), un seul
+      // re-render. Idempotent : une fois par changement, la boucle tool-use
+      // repasse ici avec le même servedModel.
+      if (servedModel && servedModel !== dispatchedModel) {
+        dispatchedModel = servedModel
+        dispatchModelUsed({
+          model: servedModel,
+          provider: 'claude',
+          // reflecting recalculé sur le modèle SERVI : un swap vers Haiku
+          // (trial) ne réfléchit pas — sans ce garde, le 🧠 resterait affiché
+          // à tort (revue Opus, retouche cosmétique).
+          reflecting: effortActive && !servedModel.toLowerCase().includes('haiku'),
+          confirmed: true,
+          ...eventScope,
+        })
+      }
 
       // Track cost. Anthropic facture les "cache_creation_input_tokens" comme
       // de l'input standard (en réalité ~1,25× — on garde 1× = légère
@@ -712,9 +759,11 @@ async function runWithTools(
       // ferait paraître l'optimisation PLUS chère qu'avant (faux signal vers
       // l'écran Coûts / CostIndicator, cf. BUG 54). On pondère donc les reads
       // à 0,1× pour rester proche du coût réel facturé.
+      // Coût attribué au modèle SERVI (F-1 : le local divergeait de D1 en
+      // cas de substitution trial — le serveur enregistrait Haiku, ici Sonnet).
       try {
         recordUsage(
-          ANTHROPIC_MODEL,
+          servedModel || ANTHROPIC_MODEL,
           inputTokens + cacheCreationTokens + Math.ceil(cacheReadTokens * 0.1),
           outputTokens
         )
