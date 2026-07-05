@@ -50,13 +50,14 @@ export function formatModelName(model: string): string {
   }
 
   if (m.startsWith('claude')) {
-    // Étape 12 audit — extraire la version Anthropic format `-X-Y-` entre
-    // tirets. Avant : regex `(\d+(?:[-.]\d+)?)` matchait juste le premier
-    // groupe de chiffres et pouvait s'arrêter à `4` sur `claude-haiku-4-5-20251001`
-    // selon la position. Maintenant : pattern explicite `(\d+)-(\d+)` après
-    // le nom de famille, plus robuste.
-    const verMatch = m.match(/-(haiku|sonnet|opus)-(\d+)-(\d+)/)
-    const ver = verMatch ? `${verMatch[2]}.${verMatch[3]}` : null
+    // Étape 12 audit + migration Sonnet 5 — extraire la version Anthropic
+    // après le nom de famille. Gère les versions à UN chiffre (`claude-sonnet-5`
+    // → "5") comme à deux (`claude-sonnet-4-6` → "4.6"). Le lookahead `(?!\d)`
+    // empêche un run de 8 chiffres (date YYYYMMDD, ex. `claude-haiku-4-5-20251001`)
+    // d'être capté comme version mineure — sans lui, un futur `claude-sonnet-5-20260815`
+    // afficherait "5.20260815".
+    const verMatch = m.match(/-(haiku|sonnet|opus)-(\d{1,2})(?!\d)(?:-(\d{1,2})(?!\d))?/)
+    const ver = verMatch ? (verMatch[3] ? `${verMatch[2]}.${verMatch[3]}` : verMatch[2]) : null
     if (m.includes('haiku')) return ver ? `Claude Haiku ${ver}` : 'Claude Haiku'
     if (m.includes('sonnet')) return ver ? `Claude Sonnet ${ver}` : 'Claude Sonnet'
     if (m.includes('opus')) return ver ? `Claude Opus ${ver}` : 'Claude Opus'

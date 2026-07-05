@@ -79,9 +79,11 @@ export function estimateMessagesTokens(
   return messages.reduce((total, m) => total + estimateContentTokens(m.content) + 10, 0)
 }
 
-// Sonnet 4.6 a un contexte de 200k tokens : on peut largement attendre 80k
-// avant de compresser. Plus on garde de messages verbatim, plus Claude
-// préserve les chiffres et nuances (devis, calculs, contexte client).
+// Sonnet 5 a un contexte de 1M tokens : le seuil de 80k (calibré à l'époque
+// du contexte 200k de Sonnet 4.6) est très conservateur — on le garde tel
+// quel, remonter le seuil est une opportunité à évaluer séparément (CDC
+// sonnet-5 §3). Plus on garde de messages verbatim, plus Claude préserve
+// les chiffres et nuances (devis, calculs, contexte client).
 export const COMPRESSION_THRESHOLD = 80000 // tokens
 const KEEP_RECENT = 20 // garde les 20 derniers messages intacts (~10 échanges)
 
@@ -130,7 +132,7 @@ export async function compressIfNeeded(
         // Sonnet plutôt que Haiku : la compression ne se déclenche qu'au-delà
         // de 80k tokens, donc rare. À ce stade la conversation contient
         // souvent des chiffres/décisions critiques que Haiku perdait.
-        model: 'claude-sonnet-4-6',
+        model: 'claude-sonnet-5',
         max_tokens: 2048,
         messages: [{
           role: 'user',

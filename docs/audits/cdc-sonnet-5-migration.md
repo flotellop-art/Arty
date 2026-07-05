@@ -1,6 +1,9 @@
 # CDC — Migration `claude-sonnet-4-6` → `claude-sonnet-5`
 
-> **Statut : plan validé, implémentation À FAIRE (déléguée à Opus).**
+> **Statut : IMPLÉMENTÉ le 5 juillet 2026** (même session, sur décision de
+> Florent — initialement délégué à Opus). Restent ouverts : le TODO ops §4
+> (`DAILY_QUOTA_PER_MODEL` Cloudflare), la veille post-déploiement §6, et le
+> bug préexistant §7 (PR séparée).
 > Préparé le 5 juillet 2026 (session Fable, branche `claude/arty-sonnet-5-upgrade-rmnxw3`).
 > Diagnostic challengé par 2 agents Sonnet 5 en parallèle (RÈGLE 7) : audit API
 > (`anthropicClient.ts` + proxys) et challenge du plan (régressions, quotas,

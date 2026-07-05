@@ -33,7 +33,7 @@ export const PROVIDER_CATALOG: ProviderDescriptor[] = [
     id: 'anthropic',
     label: 'Anthropic Claude',
     models: [
-      { modelId: 'claude-sonnet-4-6', costKey: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6' },
+      { modelId: 'claude-sonnet-5', costKey: 'claude-sonnet-5', label: 'Claude Sonnet 5' },
       { modelId: 'claude-haiku-4-5', costKey: 'claude-haiku-4-5', label: 'Claude Haiku 4.5' },
     ],
   },
@@ -84,7 +84,7 @@ export interface PanelConfig {
 
 /** Configs par défaut à l'ouverture : Claude Sonnet + Gemini Flash. */
 export const DEFAULT_PANELS: PanelConfig[] = [
-  { id: 'panel-1', provider: 'anthropic', modelId: 'claude-sonnet-4-6' },
+  { id: 'panel-1', provider: 'anthropic', modelId: 'claude-sonnet-5' },
   { id: 'panel-2', provider: 'gemini', modelId: 'gemini-3.5-flash' },
 ]
 

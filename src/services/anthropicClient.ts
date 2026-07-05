@@ -196,7 +196,7 @@ async function fetchWithRetry(
 ): Promise<Response> {
   const maxRetries = 3
   // `interleaved-thinking-2025-05-14` retiré : obsolète avec le thinking
-  // adaptatif (GA sur Opus 4.8/4.7 et Sonnet 4.6). Le header n'est plus requis,
+  // adaptatif (GA sur Opus 4.8/4.7 et Sonnet 5). Le header n'est plus requis,
   // et BUG 18 interdit d'envoyer un header beta inutile.
   const betaHeaders = ['pdfs-2024-09-25', 'prompt-caching-2024-07-31']
   // C9 : trio Content-Type/BYOK(x-api-key, garde server-provided)/google-token
@@ -678,7 +678,7 @@ async function runWithTools(
         model: ANTHROPIC_MODEL,
         max_tokens: maxTokens,
         // temperature/top_p/top_k ont été RETIRÉS de l'API de réflexion
-        // moderne : les envoyer à Opus 4.8/4.7 (et Sonnet 4.6) renvoie 400.
+        // moderne : les envoyer à Opus 4.8/4.7 (et Sonnet 5) renvoie 400.
         // On ne les garde que pour Haiku, qui n'a pas de réflexion et accepte
         // encore le sampling (modèle du plan free — comportement inchangé).
         ...(isHaiku && { temperature: 0.7 }),

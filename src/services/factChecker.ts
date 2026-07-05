@@ -83,7 +83,7 @@ export function setFactCheckMode(mode: FactCheckMode): void {
   try { window.dispatchEvent(new CustomEvent('fact-check-mode-changed', { detail: mode })) } catch {}
 }
 
-// Le mode 'auto' route TOUS les fact-checks vers Sonnet 4.6 (avec
+// Le mode 'auto' route TOUS les fact-checks vers Sonnet 5 (avec
 // web_search). Décision du 11 mai 2026 : Haiku 4.5 hallucine trop
 // souvent sur les sujets post-cutoff (modèles AI récents, actualité
 // tech, comparatifs produits) et ne supporte pas web_search_20250305.
@@ -186,20 +186,20 @@ export async function factCheckResponse(
   if (mode === 'off') return { result: null, reason: 'désactivé' }
   if (!response || response.length < 80) return { result: null, reason: 'réponse trop courte' }
 
-  // Mode 'auto' : toujours Sonnet 4.6 + web_search. Haiku 4.5 reste
+  // Mode 'auto' : toujours Sonnet 5 + web_search. Haiku 4.5 reste
   // disponible mais uniquement en mode explicite (settings → 'haiku')
   // pour ceux qui priorisent vitesse/coût sur fiabilité.
   const effectiveMode: 'haiku' | 'sonnet' =
     mode === 'auto' ? 'sonnet' : mode
 
-  const model = effectiveMode === 'sonnet' ? 'claude-sonnet-4-6' : 'claude-haiku-4-5-20251001'
-  const modelLabel = effectiveMode === 'sonnet' ? 'Sonnet 4.6' : 'Haiku 4.5'
+  const model = effectiveMode === 'sonnet' ? 'claude-sonnet-5' : 'claude-haiku-4-5-20251001'
+  const modelLabel = effectiveMode === 'sonnet' ? 'Sonnet 5' : 'Haiku 4.5'
 
   // Web search natif Anthropic : activé uniquement sur Sonnet (Haiku 4.5 ne
   // supporte pas web_search_20250305 → 400 si on l'envoie). Permet au
   // fact-checker de vérifier des claims que les sources Linkup/Anthropic
   // ramenées par le modèle d'origine ne couvrent pas — résout le paradoxe
-  // où Sonnet 4.6 marquait "uncertain" sur l'existence de "Sonnet 4.6"
+  // historique où Sonnet 4.6 marquait "uncertain" sur sa propre existence
   // faute d'avoir l'info dans son training. `max_uses: 2` limite le coût.
   const useWebSearch = effectiveMode === 'sonnet'
   const sourcesBlock = formatSearchContext(searchContext)
@@ -288,7 +288,7 @@ export async function factCheckResponse(
         break
       }
     }
-    // H-AI-4 (audit étape 4) — recordUsage manquant : Sonnet 4.6 + web_search
+    // H-AI-4 (audit étape 4) — recordUsage manquant : Sonnet + web_search
     // ≈ 5000 tokens × N fact-checks par conversation → 20-30% du coût total
     // était invisible dans le dashboard. On track ici (in/out, sans cache).
     if (data.usage) {

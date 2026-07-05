@@ -78,10 +78,15 @@ function currentMonthKey(): string {
  *
  * Format:
  *   {
- *     "claude-sonnet-4-6": 100,
+ *     "claude-sonnet-5": 100,
  *     "whisper-1": 500,
  *     "default": 500
  *   }
+ *
+ * ⚠️ Match EXACT de clé (pas de préfixe/famille, contrairement à
+ * checkPremiumCap/freeQuota) : à chaque migration de modèle (ex. sonnet-4-6
+ * → sonnet-5), renommer la clé dans la variable Cloudflare si elle existe,
+ * sinon le quota per-model cesse de s'appliquer SILENCIEUSEMENT.
  */
 function parsePerModelLimits(raw: string | undefined): Record<string, number> {
   if (!raw) return {}
