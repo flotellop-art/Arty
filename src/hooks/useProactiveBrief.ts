@@ -156,6 +156,11 @@ export function useProactiveBrief({ gmail, isGoogleConnected, userName, onSend }
             onToolCall,
             tools: BRIEF_TOOLS,
             model: 'claude-haiku-4-5-20251001',
+            // F-4 (audit visibilité modèle) — appel de fond : ne doit JAMAIS
+            // écraser le badge « Dernier appel » de la conversation affichée
+            // (le brief se déclenche au retour foreground, en pleine
+            // conversation — le badge passait à Haiku 🇺🇸 sans message envoyé).
+            background: true,
           },
         )
         abortRef.current = controller

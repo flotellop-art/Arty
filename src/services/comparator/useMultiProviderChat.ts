@@ -9,7 +9,7 @@
  * Le serveur reste la source de vérité pour la facturation réelle.
  */
 
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { findModel, type PanelConfig, type ProviderId } from './providerCatalog'
 import { estimateTokens, estimateCostEur } from './tokenEstimator'
 
@@ -64,7 +64,11 @@ function dispatchStream(
   onDone: () => void,
   onError: (e: Error) => void,
 ): AbortController {
-  const options = { model: modelId }
+  // F-4 (audit visibilité modèle) — background : les N streams du comparateur
+  // ne doivent pas écraser le badge modèle des conversations. Le vecteur réel :
+  // des streams ORPHELINS qui continuent après la navigation retour (pas de
+  // cancel au unmount) et dispatchent pendant qu'une conversation est affichée.
+  const options = { model: modelId, background: true }
   switch (provider) {
     case 'anthropic':
       return factories.anthropic(messages, onToken, onDone, onError, options)
@@ -194,6 +198,20 @@ export function useMultiProviderChat(opts: UseMultiProviderChatOptions) {
       )
     })
     controllersRef.current.clear()
+  }, [])
+
+  // F-4 (fix connexe) — abort des streams au démontage. Le bouton retour du
+  // comparateur n'appelait jamais cancel() : les N streams continuaient en
+  // ORPHELINS après la navigation (tokens facturés pour un écran fermé, et
+  // dispatchs 'arty-model-used' tardifs par-dessus la conversation affichée).
+  useEffect(() => {
+    const controllers = controllersRef.current
+    return () => {
+      controllers.forEach((ctrl) => {
+        try { ctrl.abort() } catch { /* noop */ }
+      })
+      controllers.clear()
+    }
   }, [])
 
   return { panels, setPanels, send, cancel, isStreaming }

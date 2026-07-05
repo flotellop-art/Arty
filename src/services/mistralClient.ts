@@ -110,6 +110,11 @@ interface MistralStreamOptions {
   // de MISTRAL_RULES (impossible ici — le modèle est verrouillé). Bug live
   // 11 juin : Mistral conseillait un switch impossible sur un article paywall.
   euOnly?: boolean
+  // Appel d'arrière-plan (résumé, comparateur) : l'event 'arty-model-used'
+  // est marqué background → ignoré par le badge de conversation (F-4).
+  background?: boolean
+  // Conversation d'origine (targetId) — scope l'event 'arty-model-used'.
+  conversationId?: string
 }
 
 // Décision « forcer web_search au 1er tour » — pure et exportée pour test.
@@ -355,7 +360,11 @@ async function runMistralStream(
     // selectMistralModel (auto-sélection Arty pour le chat normal — par
     // défaut Mistral Medium 3.5 depuis mai 2026).
     const model = options?.model || selectMistralModel(lastUserText)
-    dispatchModelUsed({ model, provider: 'mistral' })
+    // Dispatch OPTIMISTE (pré-envoi) — corrigé dans la boucle ci-dessous si
+    // le flux SSE confirme un autre modèle (substitution serveur trial, F-1).
+    const eventScope = { background: options?.background, conversationId: options?.conversationId }
+    let dispatchedModel = model
+    dispatchModelUsed({ model, provider: 'mistral', ...eventScope })
 
     // Build messages in OpenAI format
     const apiMessages: ApiMessage[] = [
@@ -432,10 +441,18 @@ Pour les COMPARAISONS multi-sites/multi-revendeurs (ex: "compare prix X chez Bri
           apiKey, apiMessages, openaiTools, onToken, controller, model, temperature, false
         )
       }
-      const { content, toolCalls, inputTokens, outputTokens } = once
+      const { content, toolCalls, inputTokens, outputTokens, servedModel } = once
+
+      // Boucle « demandé → servi » (F-1/F-2) : le flux OpenAI-compatible de
+      // Mistral porte le modèle réellement servi dans chaque chunk — corrige
+      // le badge si le proxy a substitué (trial). Dispatch idempotent.
+      if (servedModel && servedModel !== dispatchedModel) {
+        dispatchedModel = servedModel
+        dispatchModelUsed({ model: servedModel, provider: 'mistral', confirmed: true, ...eventScope })
+      }
 
       try {
-        recordUsage(model, inputTokens, outputTokens)
+        recordUsage(servedModel || model, inputTokens, outputTokens)
       } catch {
         // Ne casse pas la réponse si le tracking échoue
       }
@@ -526,6 +543,9 @@ async function streamOnce(
   toolCalls: ToolCall[]
   inputTokens: number
   outputTokens: number
+  /** Modèle CONFIRMÉ par le flux SSE (`model` des chunks, format
+      OpenAI-compatible). Vide si absent du flux. */
+  servedModel?: string
 }> {
   // C9 : headers factorisés (BYOK Bearer + garde server-provided + google-token/trial).
   const headers = await buildAiHeaders({ byokKey: apiKey, auth: 'bearer' })
@@ -623,6 +643,7 @@ async function streamOnce(
   let content = ''
   let inputTokens = 0
   let outputTokens = 0
+  let servedModel = ''
   const toolCalls: ToolCall[] = []
   // Accumulate partial tool calls by index
   const partialToolCalls = new Map<number, { id: string; name: string; args: string }>()
@@ -680,6 +701,11 @@ async function streamOnce(
             inputTokens = parsed.usage.prompt_tokens || 0
             outputTokens = parsed.usage.completion_tokens || 0
           }
+
+          // Modèle réellement servi (chaque chunk OpenAI-compatible le porte).
+          if (typeof parsed.model === 'string' && parsed.model) {
+            servedModel = parsed.model
+          }
         } catch {
           continue
         }
@@ -703,5 +729,5 @@ async function streamOnce(
     inputTokens = Math.ceil(JSON.stringify(messages).length / 4)
   }
 
-  return { content, toolCalls, inputTokens, outputTokens }
+  return { content, toolCalls, inputTokens, outputTokens, ...(servedModel ? { servedModel } : {}) }
 }

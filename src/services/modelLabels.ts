@@ -15,6 +15,39 @@ export interface ModelUsedEvent {
       réfléchit — sans ça, le niveau de réflexion est 100 % imperceptible
       à l'écran (audit fonctionnel 12 juin, reco #2). */
   reflecting?: boolean
+  /** Appel d'arrière-plan (brief proactif, résumé de conversation,
+      comparateur) : les surfaces de conversation (ChatTopBar,
+      StreamingIndicator) DOIVENT l'ignorer — sans ce flag, un brief Haiku 🇺🇸
+      déclenché au retour foreground écrasait le badge d'une conversation
+      Mistral 🇪🇺 (audit visibilité modèle, F-4). */
+  background?: boolean
+  /** Conversation d'origine de l'appel (targetId). Permet à ChatTopBar de
+      rejeter les events d'un stream concurrent d'une AUTRE conversation
+      (MAX_CONCURRENT_STREAMS = 3). Absent = appel legacy → accepté. */
+  conversationId?: string
+  /** true = le model id vient de la RÉPONSE du provider (message_start.model
+      Anthropic, `model` des chunks Mistral/OpenAI), pas de la sélection
+      client pré-envoi. Un event confirmed corrige un éventuel dispatch
+      optimiste antérieur (ex: substitution serveur trial, fallback 5.5→5). */
+  confirmed?: boolean
+}
+
+/**
+ * Filtre commun des surfaces de conversation (ChatTopBar, StreamingIndicator).
+ * Rejette les appels d'arrière-plan, et les events d'une autre conversation
+ * quand l'event ET la surface connaissent leur conversation. Les events sans
+ * conversationId (appelants legacy) restent acceptés — rétro-compat.
+ */
+export function shouldAcceptModelEvent(
+  event: ModelUsedEvent | undefined | null,
+  activeConversationId?: string
+): boolean {
+  if (!event?.model) return false
+  if (event.background) return false
+  if (event.conversationId && activeConversationId && event.conversationId !== activeConversationId) {
+    return false
+  }
+  return true
 }
 
 // Cache module du dernier appel : l'indicateur de streaming peut se monter
@@ -27,7 +60,9 @@ export function getLastModelUsed(): ModelUsedEvent | null {
 }
 
 export function dispatchModelUsed(event: ModelUsedEvent): void {
-  lastModelUsed = event
+  // Les appels d'arrière-plan n'écrasent pas le cache : il sert à initialiser
+  // les surfaces de CONVERSATION au mount (course au premier render).
+  if (!event.background) lastModelUsed = event
   try {
     window.dispatchEvent(new CustomEvent<ModelUsedEvent>('arty-model-used', { detail: event }))
   } catch {

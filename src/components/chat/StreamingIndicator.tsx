@@ -1,6 +1,6 @@
 import { memo, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { getLastModelUsed, type ModelUsedEvent } from '../../services/modelLabels'
+import { getLastModelUsed, shouldAcceptModelEvent, type ModelUsedEvent } from '../../services/modelLabels'
 
 // Petit badge "Arty écrit..." affiché EN DESSOUS de la bulle streaming
 // (tant que le streaming dure). Différent de TypingIndicator qui ne sert
@@ -20,7 +20,10 @@ export const StreamingIndicator = memo(function StreamingIndicator() {
   useEffect(() => {
     const onModelUsed = (e: Event) => {
       const detail = (e as CustomEvent<ModelUsedEvent>).detail
-      setReflecting(!!detail?.reflecting)
+      // F-4 — les appels d'arrière-plan (brief, résumé, comparateur) ne
+      // doivent pas piloter l'indicateur de la conversation affichée.
+      if (!shouldAcceptModelEvent(detail)) return
+      setReflecting(!!detail.reflecting)
     }
     window.addEventListener('arty-model-used', onModelUsed)
     return () => window.removeEventListener('arty-model-used', onModelUsed)

@@ -12,7 +12,7 @@ import { UpgradePromptModal } from './UpgradePromptModal'
 import { ChatOptionsSheet } from './ChatOptionsSheet'
 import { ConversationSwitcherSheet } from './ConversationSwitcherSheet'
 import { usePlanStatus, type ModelFamily } from '../../hooks/usePlanStatus'
-import { formatModelName, getModelExplanationKey, getModelRegion, type ModelUsedEvent } from '../../services/modelLabels'
+import { formatModelName, getModelExplanationKey, getModelRegion, shouldAcceptModelEvent, type ModelUsedEvent } from '../../services/modelLabels'
 import {
   exportConversation,
   exportConversationMarkdown,
@@ -98,11 +98,16 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
   useEffect(() => {
     const onModelUsed = (e: Event) => {
       const detail = (e as CustomEvent<ModelUsedEvent>).detail
-      if (detail?.model) {
+      // F-4 (audit visibilité modèle) — ignorer les appels d'arrière-plan
+      // (brief proactif, résumé, comparateur : background=true) et les streams
+      // d'une AUTRE conversation. Sans ce filtre, un brief Haiku 🇺🇸 déclenché
+      // au retour foreground écrasait le badge d'une conversation Mistral 🇪🇺.
+      if (shouldAcceptModelEvent(detail, conversation?.id)) {
+        // Un event `confirmed` (modèle servi ≠ demandé, ex: substitution
+        // trial) écrase le dispatch optimiste — le badge suit la vérité
+        // serveur. Il ne reset PAS le provider search : c'est le même appel.
         setLastUsedModel(detail.model)
-        // Reset le provider search quand un nouveau modèle est appelé : on
-        // ne sait pas encore si la requête utilisera le tool web_search.
-        setLastSearchProvider(null)
+        if (!detail.confirmed) setLastSearchProvider(null)
       }
     }
     const onSearchUsed = (e: Event) => {
@@ -115,7 +120,7 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
       window.removeEventListener('arty-model-used', onModelUsed)
       window.removeEventListener('arty-search-used', onSearchUsed)
     }
-  }, [])
+  }, [conversation?.id])
 
   const isProviderLocked = (id: AIModel): boolean => {
     if (id === 'auto') return false
