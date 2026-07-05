@@ -70,7 +70,10 @@ async function readTrialRemaining(env: Env, email: string): Promise<number> {
       .bind(email)
       .first<{ used: number }>()
     const used = row?.used ?? 0
-    return Math.max(0, TRIAL_INITIAL_BUDGET - used)
+    // C13 — clamp explicite des DEUX bornes : jamais < 0 (déjà le cas) NI >
+    // budget (protège contre un `used` négatif/corrompu qui gonflerait le
+    // restant côté serveur). Le client était déjà borné.
+    return Math.min(TRIAL_INITIAL_BUDGET, Math.max(0, TRIAL_INITIAL_BUDGET - used))
   } catch (err) {
     console.error('[trial/init] read remaining failed', err)
     return TRIAL_INITIAL_BUDGET

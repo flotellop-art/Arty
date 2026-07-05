@@ -3,6 +3,12 @@ import type { Env } from '../../env'
 const NOT_FOUND = { error: 'Not found' }
 const NOT_FOUND_STATUS = 404
 
+// C13 — défense en profondeur : n'accepter que les actions réellement émises par
+// le client (type ComputerAction). Le serveur local est déjà durci (commit
+// 125dcd1) ; cette allowlist empêche de relayer une action arbitraire même si
+// l'auth owner était un jour contournée.
+const ALLOWED_ACTIONS = new Set(['screenshot', 'open_app', 'click', 'type', 'scroll', 'key'])
+
 /**
  * Verify a Google access token and return its `sub` (stable account id).
  * Returns null if the token is missing, invalid, or Google rejects it.
@@ -45,6 +51,9 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
 
   if (!action) {
     return Response.json({ error: 'Missing action' }, { status: 400 })
+  }
+  if (!ALLOWED_ACTIONS.has(action)) {
+    return Response.json({ error: 'Unknown action' }, { status: 400 })
   }
 
   try {
