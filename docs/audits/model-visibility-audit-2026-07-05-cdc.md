@@ -26,36 +26,37 @@ Mammouth ses plaintes « modèles dégradés »).
 
 ---
 
-## Décisions préalables (Florent) — bloquantes pour certains chantiers
+## Décisions préalables — ✅ TOUTES TRANCHÉES par Florent le 5 juillet 2026
 
-- **D1 — Auto sans BYOK = 100 % Claude (F-14) : intentionnel ?**
-  Reco : trancher AVANT C-C/C-D. Si intentionnel → ajuster les textes (« Auto »
-  décrit un routage multi-provider que la majorité n'a pas) et assumer que
-  GPT-5/Gemini du plan = sélection manuelle. Si trou produit → chantier séparé
-  (activer le routage serveur en Auto), HORS de ce CDC (impact coût/qualité).
-- **D2 — Dé-silencier le swap trial (F-1)** : le silence est une décision codée
-  (« sans exposer d'erreur visible », `proxy.ts:131-134`). Reco : OUI, mais par
-  suppression plutôt que signalement — le client informé du plan trial demande
-  directement Haiku (C-E), donc plus rien à cacher. Accord écrit requis.
-- **D3 — Partage public : modèle par message inclus ?** Reco (challenge Opus) :
-  NON — exclu du payload public (cohérent avec tags/usedModels « privé par
-  design », `types/index.ts:71` ; le reçu s'adresse à l'utilisateur, pas aux
-  tiers ; anti-exposition du routage interne). INCLUS dans les exports privés
-  (Markdown/PDF/JSON). Option acquisition : footer agrégé unique
-  « Généré avec Arty (Claude · Mistral) », jamais par message.
-- **D4 — CapReachedModal (F-11)** : downgrade auto ou vérité ? Reco : PAS de
-  downgrade automatique silencieux (violerait « jamais de bascule silencieuse » ;
-  en plus Haiku n'a pas web_search). Remplacer le no-op par une action EXPLICITE
-  « Passer sur Mistral (EU) » (`setSelectedModel('mistral')`, non capé) + texte
-  vrai (pack / reset le {date} / changer de modèle manuellement).
-- **D5 — Fact-check & compresseur dans le cap premium (F-15)** : sortir du cap
-  (coût owner non plafonné — RÈGLE 6 abus infra) ou rester mais afficher (le cap
-  perçu est divisé par 2 → destruction de confiance) ? Reco : NI l'un NI l'autre
-  tel quel → quota de fond DÉDIÉ ET BORNÉ (pattern `memory-extract`, précédent
-  existant), + interim peu coûteux : mode `auto` = Haiku d'abord, escalade
-  Sonnet+web_search uniquement si claims risqués détectés. Dans tous les cas,
-  afficher l'attribution dans l'écran quotas (« dont X vérifications auto »),
-  convs non-EU uniquement (fact-check désactivé en euOnly).
+- **D1 — Auto sans BYOK = 100 % Claude (F-14)** → **TROU PRODUIT, À CORRIGER**.
+  Chantier SÉPARÉ (hors de ce CDC) : activer le routage multi-provider en Auto
+  pour les comptes serveur. Argument coût retenu : Gemini 2.5 Flash
+  ($0,30/$2,50) est ~10× moins cher que Sonnet — router les questions
+  factuelles dessus RÉDUIT le coût par abonné tout en donnant la recherche web
+  temps réel ; la carte pricing vend déjà « 80 Gemini Pro + 100 GPT-5 ».
+  Tracké comme item P1.9 du plan d'action concurrentiel. En attendant, les
+  textes du CDC (C-C/C-D) restent factuels sur le comportement COURANT.
+- **D2 — Dé-silencier le swap trial (F-1)** → **OUI, SUPPRESSION À LA SOURCE**
+  (C-E complet) : le client apprend le plan `trial` et demande directement
+  Haiku — plus rien à cacher, l'UI dit vrai par construction. Le swap serveur
+  (`proxy.ts:131-148`) reste comme filet de défense jamais déclenché. Cette
+  décision ANNULE l'intention codée « sans exposer d'erreur visible »
+  (`proxy.ts:131-134`) — accord explicite acté ici.
+- **D3 — Partage public** → **MODÈLE PAR MESSAGE EXCLU du payload public**
+  (cohérent tags/usedModels « privé par design », `types/index.ts:71`) ;
+  INCLUS dans les exports privés (Markdown/PDF/JSON). Pas de footer agrégé
+  pour l'instant.
+- **D4 — CapReachedModal (F-11)** → **ACTION EXPLICITE, pas de downgrade auto** :
+  le bouton devient « Passer sur Mistral (EU) » (`setSelectedModel('mistral')`,
+  non capé, visible, réversible) + texte vrai (pack / reset le {date} /
+  changer de modèle manuellement).
+- **D5 — Fact-check & compresseur (F-15)** → **COMPTEUR SÉPARÉ + HAIKU D'ABORD** :
+  quota de fond dédié et borné (pattern `memory-extract` — hors du cap premium
+  utilisateur, avec son propre plafond modeste protégeant la clé owner,
+  RÈGLE 6) ; le mode `auto` vérifie avec Haiku et n'escalade vers
+  Sonnet+web_search que sur claims risqués ; l'écran quotas affiche
+  « dont X vérifications auto » (convs non-EU uniquement, fact-check désactivé
+  en euOnly).
 
 ---
 
@@ -245,6 +246,11 @@ antérieure sans champ → rendu inchangé (pas de « Inconnu » agressif).
 
 Chaque PR : `npx tsc --noEmit` (BUG 13) + suite de tests + vérif visuelle
 Playwright mobile (pattern P2.2) pour les PRs UI (2, 3).
+
+Décisions D1-D5 tranchées le 5 juillet 2026 (voir section ci-dessus) → toutes
+les PRs du séquencement sont débloquées. Le chantier D1 (routage Auto
+multi-provider serveur) est un chantier SÉPARÉ, tracké en P1.9 du plan
+d'action concurrentiel — ne pas le mélanger aux PRs de ce CDC.
 
 ## Critère de succès global
 
