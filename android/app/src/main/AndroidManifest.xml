@@ -78,19 +78,20 @@
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
-    <!-- Micro (speech recognition + Whisper recording) -->
+    <!-- Micro (speech recognition + Whisper recording).
+         C7/F-28 : MODIFY_AUDIO_SETTINGS retirée (aucun usage identifié ;
+         RECORD_AUDIO seul couvre le micro). Rétablir SEULEMENT si la dictée casse. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
-    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
 
     <!-- Fichiers — Android 12 et moins -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
 
-    <!-- Fichiers — Android 13+ (granular media permissions) -->
+    <!-- Fichiers — Android 13+ (granular media permissions).
+         C7/F-28 : READ_MEDIA_VIDEO/AUDIO retirées (l'app ne lit que des images).
+         Rétablir SEULEMENT si un test terrain casse. -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
-    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
-    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
 
     <!-- Fichiers — Android 14+ (partial photo access) — sinon Play Store
          peut rejeter et l'UX "Sélection partielle" ne fonctionne pas. -->

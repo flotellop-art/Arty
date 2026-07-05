@@ -91,9 +91,11 @@ find dist -name "*.map"
 - [x] INTERNET, CAMERA, RECORD_AUDIO (BUG 44), READ_MEDIA_IMAGES,
       POST_NOTIFICATIONS presentes (verifie audit 3 juillet 2026).
 - [x] READ_EXTERNAL_STORAGE (Android <= 12) / READ_MEDIA_IMAGES (Android 13+).
-- [ ] Retirer les permissions SUR-declarees avant publication :
-      READ_MEDIA_AUDIO, READ_MEDIA_VIDEO, MODIFY_AUDIO_SETTINGS
-      (audit F-28 — exige un test APK reel apres retrait).
+- [x] Permissions SUR-declarees RETIREES du manifest (C7/F-28) :
+      READ_MEDIA_AUDIO, READ_MEDIA_VIDEO, MODIFY_AUDIO_SETTINGS.
+      ⚠️ A VALIDER par un test APK reel avant publication : micro/dictee,
+      camera + piece jointe image, partage de fichier, notifications.
+      Retablir UNIQUEMENT la permission necessaire si un test casse.
 
 ### iOS (`ios/App/App/Info.plist`)
 - [x] `NSCameraUsageDescription`, `NSPhotoLibraryUsageDescription`,
