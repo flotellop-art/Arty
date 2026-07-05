@@ -12,9 +12,15 @@ refaire), et `CLAUDE.md` (RÈGLES 0-7 + journal des 60+ bugs, à lire d'abord).
 ## État d'avancement (MAJ 5 juillet 2026 — contre-audit Fable : code relu, CI verte sur HEAD, prod sondée)
 
 - ✅ **C1** FAIT (PR #309) — aud validé sur peek/checkAllowedUser, fail-safe natif, 9 tests.
-- ✅ **C2** front FAIT (PR #313) + ops VÉRIFIÉ en prod (sonde → `403 captcha_failed`).
-  ⚠️ Volet code fail-closed NON codé — ⛔ toujours à statuer (résiduel : retrait
-  accidentel de la secret = retour fail-open silencieux).
+- ✅ **C2** ENTIÈREMENT CLOS le 5 juillet : front (PR #313), ops vérifié en prod
+  (sonde → `403 captcha_failed`), et volet code fail-closed FAIT (décision
+  Florent) — gate 503 sur `request-otp` si host prod sans `TURNSTILE_SECRET_KEY`
+  (détection par hostname `PRODUCTION_HOSTS`, PAS `CF_PAGES_BRANCH` non garanti
+  au runtime), test de parité CI `PRODUCTION_HOSTS` ⇄ `ALLOWED_ORIGINS`.
+  Relecture 2 agents (Opus sécu + Sonnet régressions) : GO. Résiduel ops à
+  vérifier au dashboard : le binding D1 des previews est-il partagé avec la
+  prod ? (si oui, previews fail-open = spam OTP possible sur les tables prod,
+  borné par les rate-limits).
 - ⛔ **C3** — go-live Creem uniquement (inchangé).
 - ✅ **C4** FAIT (commit `1426275`) — TODO re-daté, `parseAllowedEmails` conservée.
 - ✅ **C5** FAIT (PR #310) — PKCE S256, single-use, natif intact. Test terrain web à tracer.
