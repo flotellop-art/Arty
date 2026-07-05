@@ -92,10 +92,12 @@ find dist -name "*.map"
       POST_NOTIFICATIONS presentes (verifie audit 3 juillet 2026).
 - [x] READ_EXTERNAL_STORAGE (Android <= 12) / READ_MEDIA_IMAGES (Android 13+).
 - [x] Permissions SUR-declarees RETIREES du manifest (C7/F-28) :
-      READ_MEDIA_AUDIO, READ_MEDIA_VIDEO, MODIFY_AUDIO_SETTINGS.
-      ⚠️ A VALIDER par un test APK reel avant publication : micro/dictee,
-      camera + piece jointe image, partage de fichier, notifications.
-      Retablir UNIQUEMENT la permission necessaire si un test casse.
+      READ_MEDIA_AUDIO, READ_MEDIA_VIDEO.
+- [x] MODIFY_AUDIO_SETTINGS RETABLIE (commit d1d4968) apres test APK KO
+      le 5 juillet 2026 : requise par getUserMedia en WebView Capacitor
+      (pipeline WebRTC configure AudioManager) — sans elle le micro est
+      refuse MEME avec RECORD_AUDIO accordee (NotReadableError).
+      Ne PAS la retirer a nouveau. Commentaire d'usage dans le manifest.
 
 ### iOS (`ios/App/App/Info.plist`)
 - [x] `NSCameraUsageDescription`, `NSPhotoLibraryUsageDescription`,

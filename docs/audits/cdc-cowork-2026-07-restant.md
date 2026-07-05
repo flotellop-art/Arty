@@ -9,6 +9,28 @@ identifiants F-x renvoient à ses findings), CDC de remédiation
 `repo-audit-2026-07-03-cdc.md` (ce qui a DÉJÀ été corrigé en PR #307 — ne pas
 refaire), et `CLAUDE.md` (RÈGLES 0-7 + journal des 60+ bugs, à lire d'abord).
 
+## État d'avancement (MAJ 5 juillet 2026 — contre-audit Fable : code relu, CI verte sur HEAD, prod sondée)
+
+- ✅ **C1** FAIT (PR #309) — aud validé sur peek/checkAllowedUser, fail-safe natif, 9 tests.
+- ✅ **C2** front FAIT (PR #313) + ops VÉRIFIÉ en prod (sonde → `403 captcha_failed`).
+  ⚠️ Volet code fail-closed NON codé — ⛔ toujours à statuer (résiduel : retrait
+  accidentel de la secret = retour fail-open silencieux).
+- ⛔ **C3** — go-live Creem uniquement (inchangé).
+- ✅ **C4** FAIT (commit `1426275`) — TODO re-daté, `parseAllowedEmails` conservée.
+- ✅ **C5** FAIT (PR #310) — PKCE S256, single-use, natif intact. Test terrain web à tracer.
+- ⬜ **C6** — non commencé (le plus gros, à planifier seul).
+- ✅ **C7** FAIT (PR #316 + `d1d4968`) — READ_MEDIA_AUDIO/VIDEO retirées ;
+  MODIFY_AUDIO_SETTINGS RÉTABLIE après test APK KO (getUserMedia WebView exige
+  cette permission — commentaire d'usage dans le manifest, ne pas re-retirer).
+- ✅ **C8** FAIT (PR #311) — harnais Miniflare D1 réel, 4 zones couvertes, en CI.
+- ✅ **C9** FAIT (PR #312) — `aiHttp.ts`, 4 clients migrés, SSE hors périmètre (voulu).
+- ⬜ **C10** — non commencé.
+- ⬜ **C11** — opportuniste (inchangé).
+- ⛔ **C12** — non commencé, décision requise (Option A recommandée).
+- ✅ **C13** FAIT (PR #314) — timeouts Google, allowlist relay, clamp trial.
+  Rate-limit auth DÉFÉRÉ avec justification (IP partagées) ; eslint non adopté.
+- ⬜ **C14** — déclencheur (abus dictée) non atteint.
+
 ## Règles d'exécution (toutes sessions)
 
 1. **Un chantier = une PR dédiée.** Jamais deux chantiers à risque dans la
