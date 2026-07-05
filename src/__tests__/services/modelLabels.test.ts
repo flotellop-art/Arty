@@ -79,6 +79,12 @@ describe('parité IDs routables ↔ labels / région / capacité / coûts', () =
     ['gpt-5-mini', 'TRIAL_ALLOWED_MODELS + comparateur'],
     ['mistral-large-latest', 'comparateur'],
     ['mistral-small-latest', 'comparateur'],
+    ['claude-haiku-4-5', 'comparateur (variante sans date, providerCatalog)'],
+    ['gemini-2.5-flash-lite', 'comparateur'],
+    ['gemini-3.1-flash-lite', 'comparateur'],
+    // NB : gpt-image-1 (génération d'images) est cappé par checkPremiumCap
+    // mais n'est JAMAIS affiché comme modèle de chat (pas de dispatch, pas de
+    // Message.model) → volontairement hors parité labels.
   ]
 
   it.each(ROUTABLE_IDS)('%s (%s)', (id) => {

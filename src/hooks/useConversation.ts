@@ -426,9 +426,18 @@ export function useConversation() {
           const capErr = err as Error & { capBucket?: string; capLimit?: number }
           try {
             window.dispatchEvent(new CustomEvent('arty-cap-reached', {
-              detail: { bucket: capErr.capBucket, cap: capErr.capLimit },
+              // conversationId : permet au bouton « Relancer sur Mistral » de
+              // ne relancer QUE si la conv qui a capé est celle affichée —
+              // l'event peut venir d'un stream d'arrière-plan (revue C-D).
+              detail: { bucket: capErr.capBucket, cap: capErr.capLimit, conversationId: targetId },
             }))
           } catch { /* contexte sans window (tests) */ }
+          return
+        }
+        // C-D / F-13 — sentinel des clients (refus trial du proxy) traduit au
+        // point d'affichage, pas dans le message d'erreur comparé.
+        if (err.message === 'trial_model_restricted') {
+          if (isActive(targetId)) setError(i18n.t('errors.trialModelRestricted'))
           return
         }
         if (isActive(targetId)) {
@@ -867,6 +876,23 @@ export function useConversation() {
 
     sendMessage(userMsg.content, targetId, originalFiles)
   }, [activeId, refreshConversations, sendMessage])
+
+  // D4 (CDC visibilité modèle) — « Relancer sur Mistral » de CapReachedModal :
+  // la modale bascule le sélecteur puis dispatche cet event pour rejouer la
+  // question restée sans réponse (le clic explicite vaut consentement — ce
+  // n'est PAS une bascule silencieuse). Relance UNIQUEMENT si la conversation
+  // qui a capé est celle affichée : l'event cap peut venir d'un stream
+  // d'arrière-plan (MAX_CONCURRENT_STREAMS=3) — dans ce cas le switch de
+  // modèle s'applique mais on ne rejoue pas le message d'une autre conv.
+  useEffect(() => {
+    const onRetryLast = (e: Event) => {
+      const detail = (e as CustomEvent<{ conversationId?: string }>).detail
+      if (detail?.conversationId && detail.conversationId !== activeId) return
+      retryLastUserMessage()
+    }
+    window.addEventListener('arty-retry-last', onRetryLast)
+    return () => window.removeEventListener('arty-retry-last', onRetryLast)
+  }, [activeId, retryLastUserMessage])
 
   return {
     conversations,

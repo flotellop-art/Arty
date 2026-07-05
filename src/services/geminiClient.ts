@@ -285,13 +285,15 @@ async function runGeminiStream(
           throw e
         }
         // C-D / F-13 — le refus trial explicite du proxy devenait « Erreur
-        // Gemini (403) » générique : l'utilisateur ne savait pas pourquoi.
+        // Gemini (403) » générique. Sentinel STABLE (pattern
+        // premium_cap_reached) : la traduction se fait au point d'affichage
+        // (useConversation.onErr), jamais dans le message d'erreur comparé.
         if (parsed?.error === 'trial_model_restricted') {
-          throw new Error(i18n.t('errors.trialModelRestricted'))
+          throw new Error('trial_model_restricted')
         }
       } catch (e) {
         if ((e as Error).message === 'premium_cap_reached') throw e
-        if ((e as Error).message === i18n.t('errors.trialModelRestricted')) throw e
+        if ((e as Error).message === 'trial_model_restricted') throw e
         // body non-JSON → erreur générique ci-dessous
       }
       // 404 = modèle/endpoint introuvable (renommage Google), pas un problème

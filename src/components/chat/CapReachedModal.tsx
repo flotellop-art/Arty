@@ -12,6 +12,7 @@ import { memo, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { setSelectedModel } from '../../services/modelSelector'
+import { usePlanStatus } from '../../hooks/usePlanStatus'
 
 const BUCKET_LABELS: Record<string, string> = {
   'claude-sonnet': 'Claude Sonnet/Opus',
@@ -22,6 +23,10 @@ const BUCKET_LABELS: Record<string, string> = {
 interface CapDetail {
   bucket?: string
   cap?: number
+  // Conversation qui a déclenché le 429 — la relance ne rejoue le message
+  // QUE si c'est la conversation affichée (l'event peut venir d'un stream
+  // d'arrière-plan, cf. useConversation 'arty-retry-last').
+  conversationId?: string
 }
 
 /** 1er du mois prochain, formaté dans la locale courante. */
@@ -35,6 +40,12 @@ export const CapReachedModal = memo(function CapReachedModal() {
   const navigate = useNavigate()
   const { t, i18n } = useTranslation()
   const [detail, setDetail] = useState<CapDetail | null>(null)
+  // Garde anti-lock (revue C-D) : le bouton bascule le sélecteur en direct,
+  // en contournant le garde isProviderLocked du sélecteur normal. Aujourd'hui
+  // le cap ne touche que le plan subscription (aucune famille verrouillée),
+  // mais si ça évolue, on masque le bouton plutôt que d'envoyer vers un 403.
+  const planStatus = usePlanStatus()
+  const mistralLocked = planStatus.lockedFamilies.includes('mistral-medium')
 
   useEffect(() => {
     const onCap = (e: Event) => {
@@ -101,16 +112,26 @@ export const CapReachedModal = memo(function CapReachedModal() {
               seul) : en Auto, le renvoi re-sélectionnait le même modèle capé
               → nouveau 429 immédiat. Remplacé par une action EXPLICITE et
               réversible : bascule le sélecteur sur Mistral (non cappé,
-              visible dans l'UI). Pas de downgrade automatique silencieux. */}
-          <button
-            onClick={() => {
-              setSelectedModel('mistral')
-              close()
-            }}
-            className="w-full px-4 py-2.5 text-xs font-sans uppercase tracking-kicker border border-theme-border text-theme-ink hover:border-theme-accent hover:text-theme-accent rounded-md transition-colors"
-          >
-            {t('quota.switchToMistral')}
-          </button>
+              visible dans l'UI) PUIS rejoue la question restée sans réponse
+              (le chemin cap ne pose ni bandeau ni bouton retry, et l'input
+              est déjà vidé — sans relance, l'utilisateur devait retaper).
+              Pas de downgrade silencieux : le clic EST le consentement. */}
+          {!mistralLocked && (
+            <button
+              onClick={() => {
+                setSelectedModel('mistral')
+                try {
+                  window.dispatchEvent(new CustomEvent('arty-retry-last', {
+                    detail: { conversationId: detail.conversationId },
+                  }))
+                } catch { /* contexte sans window */ }
+                close()
+              }}
+              className="w-full px-4 py-2.5 text-xs font-sans uppercase tracking-kicker border border-theme-border text-theme-ink hover:border-theme-accent hover:text-theme-accent rounded-md transition-colors"
+            >
+              {t('quota.switchToMistral')}
+            </button>
+          )}
           <button
             onClick={close}
             className="w-full px-3 py-1.5 text-xs font-sans uppercase tracking-kicker text-theme-muted hover:text-theme-ink transition-colors"
