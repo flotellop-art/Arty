@@ -393,7 +393,7 @@ describe('selectClaudeSubModel', () => {
 
   it('debug + thinking → sonnet', () => {
     expect(selectClaudeSubModel('débogue ce code', { enabled: true, budget: 3000 }, false, false))
-      .toBe('claude-sonnet-4-6')
+      .toBe('claude-sonnet-5')
   })
 
   it('strategic report + Pro + max thinking → opus', () => {

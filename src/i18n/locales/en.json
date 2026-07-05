@@ -705,7 +705,7 @@
       "off": "Disabled",
       "auto": "Auto (recommended)",
       "haiku": "Always fast (Haiku 4.5)",
-      "sonnet": "Always strict (Sonnet 4.6)",
+      "sonnet": "Always strict (Sonnet 5)",
       "costAuto": "Fast Haiku by default, strict Sonnet on sensitive topics (prices, quotes, medical, legal). ~$0.0005-0.0015/message.",
       "costHaiku": "~$0.0005/message · adds 1-2s after each response",
       "costSonnet": "~$0.0015/message · adds 3-5s · better for nuance"
