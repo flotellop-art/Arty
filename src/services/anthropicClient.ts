@@ -731,12 +731,24 @@ async function runWithTools(
       const { contentBlocks, inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens, servedModel } = await parseSSEStream(response, onToken)
 
       // Boucle « demandé → servi » (audit visibilité modèle, F-1/F-2) : si
-      // l'API confirme un AUTRE modèle que celui affiché (substitution trial
-      // Sonnet→Haiku côté proxy), on corrige le badge — dispatch idempotent
-      // (une seule fois par changement, la boucle tool-use repasse ici).
+      // l'API confirme un AUTRE id que celui affiché, on corrige le badge.
+      // Fire en ROUTINE, pas seulement au swap trial : l'API renvoie l'id
+      // daté pour un alias (claude-sonnet-5 → claude-sonnet-5-YYYYMMDD) —
+      // label affiché identique (formatModelName strippe la date), un seul
+      // re-render. Idempotent : une fois par changement, la boucle tool-use
+      // repasse ici avec le même servedModel.
       if (servedModel && servedModel !== dispatchedModel) {
         dispatchedModel = servedModel
-        dispatchModelUsed({ model: servedModel, provider: 'claude', reflecting: effortActive, confirmed: true, ...eventScope })
+        dispatchModelUsed({
+          model: servedModel,
+          provider: 'claude',
+          // reflecting recalculé sur le modèle SERVI : un swap vers Haiku
+          // (trial) ne réfléchit pas — sans ce garde, le 🧠 resterait affiché
+          // à tort (revue Opus, retouche cosmétique).
+          reflecting: effortActive && !servedModel.toLowerCase().includes('haiku'),
+          confirmed: true,
+          ...eventScope,
+        })
       }
 
       // Track cost. Anthropic facture les "cache_creation_input_tokens" comme

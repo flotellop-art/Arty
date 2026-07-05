@@ -445,7 +445,9 @@ Pour les COMPARAISONS multi-sites/multi-revendeurs (ex: "compare prix X chez Bri
 
       // Boucle « demandé → servi » (F-1/F-2) : le flux OpenAI-compatible de
       // Mistral porte le modèle réellement servi dans chaque chunk — corrige
-      // le badge si le proxy a substitué (trial). Dispatch idempotent.
+      // le badge si le proxy a substitué (trial). Fire aussi en ROUTINE quand
+      // l'API résout l'alias -latest vers un id daté (mistral-medium-2505) :
+      // label identique à l'écran, coût normalisé par préfixe. Idempotent.
       if (servedModel && servedModel !== dispatchedModel) {
         dispatchedModel = servedModel
         dispatchModelUsed({ model: servedModel, provider: 'mistral', confirmed: true, ...eventScope })

@@ -43,9 +43,15 @@ Mammouth ses plaintes « modèles dégradés »).
   décision ANNULE l'intention codée « sans exposer d'erreur visible »
   (`proxy.ts:131-134`) — accord explicite acté ici.
 - **D3 — Partage public** → **MODÈLE PAR MESSAGE EXCLU du payload public**
-  (cohérent tags/usedModels « privé par design », `types/index.ts:71`) ;
+  (cohérent tags « privé par design », `types/index.ts:71`) ;
   INCLUS dans les exports privés (Markdown/PDF/JSON). Pas de footer agrégé
-  pour l'instant.
+  pour l'instant. ⚠️ Nuance relevée par la revue C-A (agent Sonnet) :
+  `usedModels` au niveau FAMILLE figure déjà dans le payload public
+  (`buildSharePayload`, `shareClient.ts:34-48`) — pré-existant, affiché par
+  SharedConversationView. À trancher en PR 2 (implémentation D3) : soit on
+  l'assume (granularité provider seulement, pas par message), soit on
+  l'exclut aussi. Le per-message `Message.model` reste exclu quoi qu'il en
+  soit.
 - **D4 — CapReachedModal (F-11)** → **ACTION EXPLICITE, pas de downgrade auto** :
   le bouton devient « Passer sur Mistral (EU) » (`setSelectedModel('mistral')`,
   non capé, visible, réversible) + texte vrai (pack / reset le {date} /

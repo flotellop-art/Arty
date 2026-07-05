@@ -91,6 +91,7 @@ export function ConversationScreen({
           messages={conversation.messages}
           isStreaming={isStreaming}
           streamingContent={streamingContent}
+          conversationId={conversation.id}
           onAction={onAction}
           onBranch={onBranch}
           onTogglePin={onTogglePin}

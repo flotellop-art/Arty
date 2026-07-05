@@ -45,8 +45,8 @@ describe('shouldAcceptModelEvent — filtre des surfaces de conversation', () =>
   })
 
   it('accepte un event quand la surface ne connaît pas sa conversation', () => {
-    // StreamingIndicator n'a pas de prop conversationId — il ne filtre que
-    // le background. Un event scopé reste accepté sans id actif fourni.
+    // Rétro-compat : une surface qui ne fournit pas d'id actif (usage legacy)
+    // ne filtre que le background. Un event scopé reste accepté sans id fourni.
     expect(shouldAcceptModelEvent(ev({ conversationId: 'conv-1' }))).toBe(true)
   })
 
