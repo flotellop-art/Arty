@@ -1,4 +1,5 @@
 import { verifyGoogleUser, notFoundResponse } from '../_lib/checkAllowedUser'
+import { googleFetch } from '../_lib/googleFetch'
 
 const ID_RE = /^[a-zA-Z0-9_@.+\-=]+$/
 
@@ -37,7 +38,7 @@ async function handleList(token: string, body: Record<string, unknown>): Promise
       maxResults: '20',
     })
 
-    const r = await fetch(
+    const r = await googleFetch(
       `https://www.googleapis.com/calendar/v3/calendars/primary/events?${params}`,
       { headers: { Authorization: `Bearer ${token}` } }
     )
@@ -77,7 +78,7 @@ async function handleCreate(token: string, body: Record<string, unknown>): Promi
     if (location) event.location = location
     if (description) event.description = description
 
-    const r = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
+    const r = await googleFetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(event),
@@ -112,7 +113,7 @@ async function handleUpdate(token: string, body: Record<string, unknown>): Promi
     if (location) update.location = location
     if (description) update.description = description
 
-    const r = await fetch(
+    const r = await googleFetch(
       `https://www.googleapis.com/calendar/v3/calendars/primary/events/${eventId}`,
       { method: 'PATCH', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(update) }
     )
@@ -129,7 +130,7 @@ async function handleDelete(token: string, body: Record<string, unknown>): Promi
   if (!ID_RE.test(eventId)) return Response.json({ error: 'Invalid eventId' }, { status: 400 })
 
   try {
-    const r = await fetch(
+    const r = await googleFetch(
       `https://www.googleapis.com/calendar/v3/calendars/primary/events/${eventId}`,
       { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } }
     )

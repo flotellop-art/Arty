@@ -2,6 +2,7 @@ import type { Env } from '../../env'
 import { decodeBase64Url, decodePartBody, htmlToText, type MimePart } from './_lib'
 import { verifyGoogleUser, notFoundResponse } from '../_lib/checkAllowedUser'
 import { truncateWithNotice } from '../_lib/truncate'
+import { googleFetch } from '../_lib/googleFetch'
 
 // Limites de texte restitué. Coupe AVEC note visible (truncateWithNotice) au
 // lieu d'une coupe muette : l'utilisateur/Claude savent quand un mail ou une PJ
@@ -81,7 +82,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request }) => {
 
 async function handleList(token: string, _body: Record<string, unknown>): Promise<Response> {
   try {
-    const listRes = await fetch(
+    const listRes = await googleFetch(
       'https://gmail.googleapis.com/gmail/v1/users/me/messages?q=is:unread&maxResults=10',
       { headers: { Authorization: `Bearer ${token}` } }
     )
@@ -91,7 +92,7 @@ async function handleList(token: string, _body: Record<string, unknown>): Promis
     if (ids.length === 0) return Response.json({ messages: [] })
 
     const details = await Promise.all(ids.map(async (id) => {
-      const r = await fetch(
+      const r = await googleFetch(
         `https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date`,
         { headers: { Authorization: `Bearer ${token}` } }
       )
@@ -111,7 +112,7 @@ async function handleRead(token: string, body: Record<string, unknown>): Promise
   if (!/^[a-zA-Z0-9_-]+$/.test(messageId)) return Response.json({ error: 'Invalid message ID' }, { status: 400 })
 
   try {
-    const r = await fetch(
+    const r = await googleFetch(
       `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}?format=full`,
       { headers: { Authorization: `Bearer ${token}` } }
     )
@@ -175,7 +176,7 @@ async function handleSend(token: string, body: Record<string, unknown>): Promise
     const sendBody: { raw: string; threadId?: string } = { raw: encoded }
     if (threadId) sendBody.threadId = threadId
 
-    const r = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
+    const r = await googleFetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
       method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(sendBody),
     })
     if (!r.ok) { const err = await r.json() as Record<string, unknown>; return Response.json({ error: 'Gmail operation failed' }, { status: r.status }) }
@@ -189,7 +190,7 @@ async function handleSearch(token: string, body: Record<string, unknown>): Promi
   if (!query) return Response.json({ error: 'Missing query' }, { status: 400 })
 
   try {
-    const listRes = await fetch(
+    const listRes = await googleFetch(
       `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(query)}&maxResults=10`,
       { headers: { Authorization: `Bearer ${token}` } }
     )
@@ -199,7 +200,7 @@ async function handleSearch(token: string, body: Record<string, unknown>): Promi
     if (ids.length === 0) return Response.json({ messages: [] })
 
     const details = await Promise.all(ids.map(async (id) => {
-      const r = await fetch(
+      const r = await googleFetch(
         `https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date`,
         { headers: { Authorization: `Bearer ${token}` } }
       )
@@ -228,7 +229,7 @@ async function handleAttachment(token: string, body: Record<string, unknown>): P
   }
 
   try {
-    const r = await fetch(
+    const r = await googleFetch(
       `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}/attachments/${attachmentId}`,
       { headers: { Authorization: `Bearer ${token}` } }
     )
@@ -292,7 +293,7 @@ async function handleArchive(token: string, body: Record<string, unknown>): Prom
   if (!/^[a-zA-Z0-9_-]+$/.test(messageId)) return Response.json({ error: 'Invalid message ID' }, { status: 400 })
 
   try {
-    const r = await fetch(
+    const r = await googleFetch(
       `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}/modify`,
       {
         method: 'POST',
@@ -310,7 +311,7 @@ async function handleDelete(token: string, body: Record<string, unknown>): Promi
   if (!messageId) return Response.json({ error: 'Missing id' }, { status: 400 })
   if (!/^[a-zA-Z0-9_-]+$/.test(messageId)) return Response.json({ error: 'Invalid message ID' }, { status: 400 })
   try {
-    const r = await fetch(
+    const r = await googleFetch(
       `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}/trash`,
       { method: 'POST', headers: { Authorization: `Bearer ${token}` } }
     )
@@ -324,7 +325,7 @@ async function handleStar(token: string, body: Record<string, unknown>): Promise
   if (!messageId) return Response.json({ error: 'Missing id' }, { status: 400 })
   if (!/^[a-zA-Z0-9_-]+$/.test(messageId)) return Response.json({ error: 'Invalid message ID' }, { status: 400 })
   try {
-    const r = await fetch(
+    const r = await googleFetch(
       `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}/modify`,
       {
         method: 'POST',
@@ -345,7 +346,7 @@ async function handleDraft(token: string, body: Record<string, unknown>): Promis
     if (to) hdrs.unshift(`To: ${to}`)
     const raw = hdrs.join('\r\n') + '\r\n\r\n' + draftBody
     const encoded = Buffer.from(raw).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
-    const r = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/drafts', {
+    const r = await googleFetch('https://gmail.googleapis.com/gmail/v1/users/me/drafts', {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ message: { raw: encoded } }),
@@ -362,7 +363,7 @@ async function handleLabel(token: string, body: Record<string, unknown>): Promis
   if (!messageId || !label) return Response.json({ error: 'Missing id or label' }, { status: 400 })
   if (!/^[a-zA-Z0-9_-]+$/.test(messageId)) return Response.json({ error: 'Invalid message ID' }, { status: 400 })
   try {
-    const r = await fetch(
+    const r = await googleFetch(
       `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}/modify`,
       {
         method: 'POST',

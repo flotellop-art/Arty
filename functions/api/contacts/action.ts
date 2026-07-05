@@ -1,4 +1,5 @@
 import { verifyGoogleUser, notFoundResponse } from '../_lib/checkAllowedUser'
+import { googleFetch } from '../_lib/googleFetch'
 
 export const onRequestPost: PagesFunction = async ({ request }) => {
   // CRIT-4 (audit étape 2) — exiger un user Google identifié.
@@ -36,13 +37,13 @@ function formatContact(person: any) {
 async function handleSearch(token: string, body: Record<string, unknown>): Promise<Response> {
   const q = (body.query as string) || ''
   try {
-    const r = await fetch(
+    const r = await googleFetch(
       `https://people.googleapis.com/v1/people:searchContacts?query=${encodeURIComponent(q)}&readMask=names,emailAddresses,phoneNumbers,organizations&pageSize=10`,
       { headers: { Authorization: `Bearer ${token}` } }
     )
     if (!r.ok) {
       // Fallback to connections list
-      const r2 = await fetch(
+      const r2 = await googleFetch(
         `https://people.googleapis.com/v1/people/me/connections?personFields=names,emailAddresses,phoneNumbers,organizations&pageSize=50`,
         { headers: { Authorization: `Bearer ${token}` } }
       )
@@ -75,7 +76,7 @@ async function handleCreate(token: string, body: Record<string, unknown>): Promi
     if (phone) person.phoneNumbers = [{ value: phone }]
     if (company) person.organizations = [{ name: company }]
 
-    const r = await fetch('https://people.googleapis.com/v1/people:createContact', {
+    const r = await googleFetch('https://people.googleapis.com/v1/people:createContact', {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(person),
@@ -98,7 +99,7 @@ async function handleUpdate(token: string, body: Record<string, unknown>): Promi
   const personId = encodeURIComponent(resourceName.slice('people/'.length))
 
   try {
-    const getRes = await fetch(
+    const getRes = await googleFetch(
       `https://people.googleapis.com/v1/people/${personId}?personFields=names,emailAddresses,phoneNumbers`,
       { headers: { Authorization: `Bearer ${token}` } }
     )
@@ -109,7 +110,7 @@ async function handleUpdate(token: string, body: Record<string, unknown>): Promi
     if (email) { current.emailAddresses = [{ value: email }]; updateMask.push('emailAddresses') }
     if (phone) { current.phoneNumbers = [{ value: phone }]; updateMask.push('phoneNumbers') }
 
-    const r = await fetch(
+    const r = await googleFetch(
       `https://people.googleapis.com/v1/people/${personId}:updateContact?updatePersonFields=${updateMask.join(',')}`,
       { method: 'PATCH', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(current) }
     )
