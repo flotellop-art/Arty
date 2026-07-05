@@ -3,6 +3,7 @@ import type { Conversation } from '../types'
 import { generateId } from '../utils/generateId'
 import * as storage from './storage'
 import { getDateLocale } from '../utils/formatDate'
+import { formatModelName } from './modelLabels'
 
 /**
  * Download a conversation as a JSON file (Feature 7).
@@ -141,7 +142,12 @@ export function buildConversationMarkdown(conv: Conversation): string {
   for (const msg of conv.messages) {
     const roleLabel = msg.role === 'user' ? '👤 **Utilisateur**' : '🤖 **Arty**'
     lines.push(`### ${roleLabel}`)
-    lines.push(`*${formatDate(msg.timestamp)}*`)
+    // D3 (CDC visibilité modèle) — export PRIVÉ : le modèle par message est
+    // inclus (contrairement au partage public qui l'exclut, shareClient.ts).
+    const modelSuffix = msg.role === 'assistant' && msg.model
+      ? ` · ${formatModelName(msg.model)}`
+      : ''
+    lines.push(`*${formatDate(msg.timestamp)}${modelSuffix}*`)
     lines.push('')
     const cleanContent = typeof msg.content === 'string'
       ? msg.content
@@ -197,10 +203,12 @@ export function buildConversationHtml(conv: Conversation): string {
     const filesHtml = msg.files?.length
       ? `<div style="margin-top:6px;font-size:11px;color:#666;">📎 ${msg.files.map((f) => escape(f.name)).join(', ')}</div>`
       : ''
+    // D3 — export privé : modèle par message inclus (assistant uniquement).
+    const modelSuffix = !isUser && msg.model ? ` · ${escape(formatModelName(msg.model))}` : ''
     return `
       <div style="margin:14px 0;padding:10px 14px;background:${bgColor};border-left:3px solid ${borderColor};border-radius:6px;">
         <div style="font-size:11px;color:#666;margin-bottom:4px;">
-          <strong>${roleLabel}</strong> · ${formatDate(msg.timestamp)}
+          <strong>${roleLabel}</strong> · ${formatDate(msg.timestamp)}${modelSuffix}
         </div>
         <div style="font-size:13px;line-height:1.5;color:#222;">${formatted}</div>
         ${filesHtml}

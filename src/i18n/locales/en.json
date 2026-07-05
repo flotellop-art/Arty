@@ -239,6 +239,17 @@
       "us": "United States",
       "title": "Region where this model processes your request"
     },
+    "modelFooter": {
+      "hint": "Which model wrote this reply?",
+      "capacity": {
+        "mistral": "Europe",
+        "gemini": "Web search",
+        "haiku": "Quick reply",
+        "claude": "Analysis & files",
+        "openai": "ChatGPT",
+        "fallback": "AI model"
+      }
+    },
     "banners": {
       "gmailReading": "Reading emails...",
       "driveAccess": "Accessing Drive...",

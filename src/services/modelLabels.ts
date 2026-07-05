@@ -60,6 +60,12 @@ export function getLastModelUsed(): ModelUsedEvent | null {
 }
 
 export function dispatchModelUsed(event: ModelUsedEvent): void {
+  // ⚠️ INVARIANT (revue C-B) : tout dispatch NON-background doit porter un
+  // `conversationId`. Aujourd'hui vrai partout (chat réel = targetId ; brief/
+  // résumé/comparateur = background:true). Un futur appelant non-background
+  // SANS conversationId réactiverait le chemin legacy : accepté par toutes
+  // les surfaces (badge/indicateur d'une autre conversation pollués) et
+  // invisible pour la capture Message.model de useStreaming.
   // Les appels d'arrière-plan n'écrasent pas le cache : il sert à initialiser
   // les surfaces de CONVERSATION au mount (course au premier render).
   if (!event.background) lastModelUsed = event
@@ -114,6 +120,22 @@ export function formatModelName(model: string): string {
   return model
 }
 
+// Libellé « capacité » d'un modèle — niveau par DÉFAUT du footer par message
+// (CDC C-C : capacité en clair pour le grand public, nom technique précis au
+// tap). Formulation capacité/rôle, JAMAIS un jugement de coût (« réponse
+// rapide », pas « version économique » — anti-objectif cadrage anxiogène).
+export function getModelCapacityKey(model: string): string {
+  const m = model.toLowerCase()
+  if (m.startsWith('mistral') || m.startsWith('ministral') || m.startsWith('voxtral')) {
+    return 'chat.modelFooter.capacity.mistral'
+  }
+  if (m.startsWith('gemini')) return 'chat.modelFooter.capacity.gemini'
+  if (m.includes('haiku')) return 'chat.modelFooter.capacity.haiku'
+  if (m.startsWith('claude')) return 'chat.modelFooter.capacity.claude'
+  if (m.startsWith('gpt') || m.includes('openai')) return 'chat.modelFooter.capacity.openai'
+  return 'chat.modelFooter.capacity.fallback'
+}
+
 // Région d'hébergement du modèle qui traite la requête, affichée à
 // l'utilisateur (« où part ma donnée ? »). Mapping STATIQUE de présentation —
 // JAMAIS dérivé d'une variable d'env, d'une URL de proxy ou d'un endpoint
@@ -121,7 +143,11 @@ export function formatModelName(model: string): string {
 // France/UE ; tout le reste (Claude, Gemini, GPT) = serveurs US. Défaut = US :
 // on ne revendique JAMAIS « UE » par erreur, ce qui casserait la promesse.
 export function getModelRegion(model: string): { flag: string; key: string } {
-  return model.toLowerCase().startsWith('mistral')
+  // ministral/voxtral = Mistral SAS (France) aussi — aligné sur
+  // getModelCapacityKey pour éviter un drapeau 🇺🇸 sous un libellé « Europe »
+  // si un modèle Mistral léger devient un jour un modèle de chat (revue C-B).
+  const m = model.toLowerCase()
+  return m.startsWith('mistral') || m.startsWith('ministral') || m.startsWith('voxtral')
     ? { flag: '🇪🇺', key: 'chat.region.eu' }
     : { flag: '🇺🇸', key: 'chat.region.us' }
 }
