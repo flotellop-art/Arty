@@ -434,6 +434,11 @@
       "titleFree": "Plan gratuit · {{haiku}}/{{limit}} Haiku aujourd'hui. Clique pour débloquer Sonnet, Opus, Mistral, Gemini et GPT.",
       "titleSub": "Messages premium restants ce mois — {{detail}}",
       "titlePro": "Plan {{plan}} · accès illimité"
+    },
+    "notFound": {
+      "title": "Conversation introuvable",
+      "body": "Elle est peut-être encore en cours de chargement, ou son historique est verrouillé sur cet appareil.",
+      "backHome": "Retour à l'accueil"
     }
   },
   "errors": {

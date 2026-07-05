@@ -434,6 +434,11 @@
       "titleFree": "Free plan · {{haiku}}/{{limit}} Haiku today. Tap to unlock Sonnet, Opus, Mistral, Gemini and GPT.",
       "titleSub": "Premium messages left this month — {{detail}}",
       "titlePro": "{{plan}} plan · unlimited access"
+    },
+    "notFound": {
+      "title": "Conversation not found",
+      "body": "It may still be loading, or its history is locked on this device.",
+      "backHome": "Back to home"
     }
   },
   "errors": {
