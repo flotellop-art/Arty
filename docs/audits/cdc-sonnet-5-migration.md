@@ -1,10 +1,11 @@
 # CDC — Migration `claude-sonnet-4-6` → `claude-sonnet-5`
 
-> **Statut : IMPLÉMENTÉ le 5 juillet 2026** (même session, sur décision de
-> Florent — initialement délégué à Opus). Restent ouverts : le TODO ops §4
-> (`DAILY_QUOTA_PER_MODEL` Cloudflare), la veille post-déploiement §6, et le
-> bug préexistant §7 (PR séparée).
-> Préparé le 5 juillet 2026 (session Fable, branche `claude/arty-sonnet-5-upgrade-rmnxw3`).
+> **Statut : CLOS le 5 juillet 2026** — migration mergée (**PR #318**), bug
+> §7 corrigé et mergé (**PR #319**), TODO ops §4 vérifié **sans objet**
+> (Florent : seule `DAILY_QUOTA_PER_USER` est configurée sur Cloudflare,
+> pas de `DAILY_QUOTA_PER_MODEL`). Seul reste ouvert : la **veille
+> post-déploiement §6** (coût/message +30 %, premier débit wallet réel).
+> Préparé et implémenté le 5 juillet 2026 (session Fable, branche `claude/arty-sonnet-5-upgrade-rmnxw3`).
 > Diagnostic challengé par 2 agents Sonnet 5 en parallèle (RÈGLE 7) : audit API
 > (`anthropicClient.ts` + proxys) et challenge du plan (régressions, quotas,
 > coûts historiques). Leurs corrections sont intégrées ci-dessous.
@@ -103,6 +104,13 @@ après migration : nom ET « contexte 200k » — Sonnet 5 = 1M). Exemples :
 
 ## 4. ⚠️ TODO OPS (Florent — hors code, avant/au déploiement)
 
+> ✅ **CLOS le 5 juillet 2026 — sans objet.** Vérifié par Florent au dashboard
+> Cloudflare : seule `DAILY_QUOTA_PER_USER` est configurée, la variable
+> `DAILY_QUOTA_PER_MODEL` n'existe pas → rien à renommer. La leçon reste
+> documentée dans `quota.ts` (docblock) et `env.d.ts` pour la prochaine
+> migration de modèle : si cette variable est un jour posée, ses clés sont
+> en **match exact** et doivent suivre chaque renommage d'ID.
+
 `functions/api/_lib/quota.ts:102` fait un **match EXACT de clé** sur
 `DAILY_QUOTA_PER_MODEL` (env Cloudflare) — contrairement aux autres gates qui
 matchent par préfixe. Si cette variable contient une clé
@@ -138,6 +146,19 @@ Cloudflare et renommer la clé JSON si elle existe.**
   compté, pas un 400).
 
 ## 7. Bug préexistant découvert (HORS migration — PR séparée)
+
+> ✅ **CORRIGÉ le 5 juillet 2026 (PR #319, mergée).** Fix : passage par
+> `buildAiHeaders` (garde BUG 25 + `x-google-token` — le proxy exigeait une
+> identité même en BYOK, donc la compression était cassée pour TOUT LE MONDE,
+> pas seulement les non-BYOK) + `fetchWithTimeout` 45 s + `AbortSignal` threadé
+> (stop utilisateur honoré pendant la compression). Relecture RÈGLE 7 : GO
+> (Opus auth) + GO (Sonnet régressions). Finding MED de l'audit Opus intégré :
+> la requête de résumé passe en `stream: true` — le tee de tracking du proxy
+> est SSE-only, une réponse JSON = 0 token enregistré (dashboard aveugle,
+> BUG 60) et réservation wallet réglée à ~0 (sous-facturation owner).
+> Résiduels documentés non traités : la compression consomme 1 message
+> d'essai pour les plans trial (rare, >80k tokens en 30 messages) ; 1 slot
+> quota/premium-cap pour subscription (correct par nature).
 
 `src/services/conversationCompressor.ts:126` envoie `'x-api-key': apiKey` sans
 le garde BUG 25 (`apiKey !== 'server-provided'`) appliqué partout ailleurs
