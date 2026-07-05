@@ -1,4 +1,5 @@
 import { apiUrl } from './apiBase'
+import { buildAiHeaders, fetchWithTimeout } from './aiHttp'
 
 // Nom de l'event émis quand on vient de compresser le contexte d'une conversation.
 // L'UI (bannière discrète) écoute pour PRÉVENIR l'utilisateur — la compression
@@ -117,15 +118,31 @@ export async function compressIfNeeded(
     return `${role}: ${content.slice(0, 2000)}`
   }).join('\n')
 
-  // Ask Claude to summarize (non-streaming, fast)
+  // Ask Claude to summarize (non-streaming, fast).
+  //
+  // Headers via buildAiHeaders (C9) — ce fichier envoyait `x-api-key: apiKey`
+  // brut, SANS le garde BUG 25 ni `x-google-token`. Double casse :
+  //  1. sentinelle 'server-provided' envoyée comme vraie clé → le proxy la
+  //     prenait pour du BYOK → 401 Anthropic upstream ;
+  //  2. aucun x-google-token → resolveProxyIdentity (anti-relais CRIT-2/4)
+  //     rejetait l'appel en 401 AVANT même le forward, y compris en vrai BYOK.
+  // Résultat : la compression ne fonctionnait pour PERSONNE (catch silencieux
+  // → messages renvoyés intacts → context rot au-delà de 80k tokens).
+  //
+  // fetchWithTimeout (45s) : appel non-streamé avec ~60-80k tokens d'input,
+  // TTFB long (cf. factChecker : 25-30s mesurés en prod sur non-streamé) —
+  // sans timeout, un fetch pendu gelait l'envoi du message utilisateur
+  // (compressIfNeeded est await-é sur le chemin d'envoi ; leçon BUG 47).
+  // Sur timeout/échec : catch existant → messages originaux, non bloquant.
   try {
-    const response = await fetch(apiUrl('/api/ai/proxy'), {
+    const headers = await buildAiHeaders({
+      byokKey: apiKey,
+      auth: 'x-api-key',
+      extra: { 'anthropic-version': '2023-06-01' },
+    })
+    const response = await fetchWithTimeout(apiUrl('/api/ai/proxy'), {
       method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-      },
+      headers,
       body: JSON.stringify({
         // Sonnet plutôt que Haiku : la compression ne se déclenche qu'au-delà
         // de 80k tokens, donc rare. À ce stade la conversation contient
@@ -137,7 +154,7 @@ export async function compressIfNeeded(
           content: `Résume cette conversation en gardant TOUTES les infos clés : noms, chiffres précis (montants, taux, dates), décisions prises, fichiers mentionnés, contexte client/projet. Préserve les nombres exacts. Maximum 1500 mots, en français.\n\n${oldText}`,
         }],
       }),
-    })
+    }, 45_000)
 
     if (!response.ok) {
       // Compression failed — return original messages
