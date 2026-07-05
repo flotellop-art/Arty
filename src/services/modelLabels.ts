@@ -78,16 +78,27 @@ export function dispatchModelUsed(event: ModelUsedEvent): void {
 
 // Transforme un ID modèle technique en label produit affichable.
 // Exemples :
-//  mistral-medium-latest → "Mistral Medium 3.5"
+//  mistral-medium-latest → "Mistral Medium"
 //  claude-sonnet-4-6 → "Claude Sonnet 4.6"
-//  gemini-2.5-pro → "Gemini Pro"
+//  gemini-2.5-pro → "Gemini 2.5 Pro"
+//
+// ANTI-DRIFT (C-D, audit F-12) : un label qui affirme une version que l'id ne
+// porte pas MENT dès que le modèle sous-jacent bouge (« Mistral Medium 3.5 »
+// figé sur l'alias mouvant -latest ; « Gemini Flash » qui fondait 2.5 et 3.5
+// alors que la bascule éco P1.4 les distingue). Règle : la version vient de
+// l'ID ou n'est pas affichée. Le test de parité (modelLabels.test.ts) verrouille
+// chaque ID routable.
 export function formatModelName(model: string): string {
   const m = model.toLowerCase()
 
-  if (m.startsWith('mistral')) {
-    if (m.includes('medium')) return 'Mistral Medium 3.5'
+  if (m.startsWith('mistral') || m.startsWith('ministral')) {
+    // PAS de numéro de version : les ids Mistral sont des alias mouvants
+    // (-latest) ou des dates (-2505) — impossible d'en dériver une version
+    // marketing fiable. Famille seule.
+    if (m.includes('medium')) return 'Mistral Medium'
     if (m.includes('large')) return 'Mistral Large'
-    return 'Mistral Medium 3.5'
+    if (m.includes('small') || m.startsWith('ministral')) return 'Mistral Small'
+    return 'Mistral'
   }
 
   if (m.startsWith('claude')) {
@@ -106,15 +117,26 @@ export function formatModelName(model: string): string {
   }
 
   if (m.startsWith('gemini')) {
-    if (m.includes('flash')) return 'Gemini Flash'
-    if (m.includes('pro')) return 'Gemini Pro'
-    return 'Gemini'
+    // Version extraite de l'ID (gemini-2.5-flash → « Gemini 2.5 Flash ») :
+    // 2.5 et 3.5 ne sont PAS le même modèle — les fondre cachait la bascule
+    // éco P1.4 à l'utilisateur.
+    const ver = m.match(/gemini-(\d+(?:\.\d+)?)/)?.[1]
+    const family = m.includes('flash-lite')
+      ? 'Flash Lite'
+      : m.includes('flash')
+        ? 'Flash'
+        : m.includes('pro')
+          ? 'Pro'
+          : ''
+    return ['Gemini', ver, family].filter(Boolean).join(' ')
   }
 
   if (m.startsWith('gpt')) {
-    if (m.includes('mini')) return 'GPT-5 Mini'
-    if (m.includes('5.5')) return 'GPT-5.5'
-    return 'GPT-5'
+    // Version dérivée de l'ID (gpt-5.5 → « GPT-5.5 », gpt-5-mini →
+    // « GPT-5 Mini », gpt-4o-mini → « GPT-4o Mini ») — plus de mapping figé.
+    const ver = m.match(/^gpt-?(\d+(?:\.\d+)?o?)/)?.[1]
+    const mini = m.includes('mini') ? ' Mini' : ''
+    return ver ? `GPT-${ver}${mini}` : `GPT${mini}`
   }
 
   return model

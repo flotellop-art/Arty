@@ -211,7 +211,7 @@
         "claude": "Files, analysis, Gmail / Drive / Calendar",
         "mistral": "Data processed in Europe — emails, files, clients",
         "gemini": "Real-time web search, news, directions",
-        "openai": "Manual selection only"
+        "openai": "Manual selection — or auto when you mention ChatGPT with your OpenAI key"
       },
       "euNote": "This conversation contains EU data (Mistral). Picking a 🇺🇸 model will ask for confirmation before sending its content outside Europe.",
       "euLocked": "Europe-locked conversation — Mistral only, voice dictation included (Voxtral 🇫🇷) · fact-check disabled (it would leave Europe)",
@@ -228,10 +228,10 @@
     "modelExplain": {
       "mistral": "Mistral runs in Europe mode (servers in France) — ideal for data that must stay in Europe: emails, files, client info. No web search or link opening.",
       "gemini": "Gemini handles real-time web search, news questions and Google Maps queries. Data processed outside Europe.",
-      "haiku": "Claude Haiku handles quick, short conversations. Free model (10/day).",
+      "haiku": "Claude Haiku handles quick, short conversations — no monthly cap on paid plans (the free plan is limited to 10/day).",
       "opus": "Claude Opus handles deep analysis, complex tasks and multi-step reasoning. Pro model.",
       "claude": "Claude is the default: attached files, private data (my emails, my files), URLs to open, or requests needing tools (Gmail, Drive, Calendar). Data processed in the United States (Anthropic).",
-      "openai": "GPT (OpenAI) is used when you select it manually. Data processed outside Europe.",
+      "openai": "GPT (OpenAI) is used when you select it manually — or automatically if you've set up your OpenAI key and your message mentions ChatGPT/GPT. Data processed outside Europe.",
       "fallback": "Model picked automatically based on your request."
     },
     "region": {
@@ -483,7 +483,8 @@
     "micCannotStart": "Couldn't start the microphone",
     "speechNotSupported": "Speech recognition isn't supported in this browser. Use Chrome or Edge.",
     "storageNotReady": "Your conversations are still loading — try again in a second.",
-    "mistralTimeout": "Mistral did not answer in time (60 s) — slow network or busy service. Try again."
+    "mistralTimeout": "Mistral did not answer in time (60 s) — slow network or busy service. Try again.",
+    "trialModelRestricted": "This model isn't available during the free trial — the trial uses the base models (Haiku, Flash, Mistral Medium)."
   },
   "sidebar": {
     "newConversation": "New conversation",
@@ -945,10 +946,10 @@
     "capReachedTitle": "Monthly limit reached",
     "capReachedBody": "You've used your {{cap}} {{model}} messages for this month.",
     "capReachedBodyNoCount": "You've used all your {{model}} messages for this month.",
-    "capReachedHint": "Standard models (Haiku, Flash, Mistral) have no monthly cap — resend your message in standard mode. Your premium quota resets on {{date}}.",
+    "capReachedHint": "Your premium quota resets on {{date}}. Meanwhile: get a +100 pack, or switch to Mistral / a standard model from the selector (no monthly cap).",
     "buyPack": "+100 premium messages — €1.99",
-    "continueStandard": "Continue with standard models",
-    "later": "Later"
+    "later": "Later",
+    "switchToMistral": "Switch to Mistral (EU) — no monthly cap"
   },
   "onboardingChoice": {
     "tryFree": {
@@ -991,9 +992,18 @@
     "proof": {
       "intro": "Concretely, in one message:",
       "items": [
-        { "ask": "Reply to this email to politely decline", "reply": "Hi, thanks for your proposal. I won't be moving forward this time, but…" },
-        { "ask": "Summarize this contract in 3 points", "reply": "• 12-month term · 30-day notice · 2-month penalty" },
-        { "ask": "Plan my week from these notes", "reply": "Mon: client call · Wed: project delivery · Fri: invoices" }
+        {
+          "ask": "Reply to this email to politely decline",
+          "reply": "Hi, thanks for your proposal. I won't be moving forward this time, but…"
+        },
+        {
+          "ask": "Summarize this contract in 3 points",
+          "reply": "• 12-month term · 30-day notice · 2-month penalty"
+        },
+        {
+          "ask": "Plan my week from these notes",
+          "reply": "Mon: client call · Wed: project delivery · Fri: invoices"
+        }
       ]
     },
     "trial": {

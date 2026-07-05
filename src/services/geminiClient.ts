@@ -284,8 +284,14 @@ async function runGeminiStream(
           Object.assign(e, { capBucket: parsed.bucket, capLimit: parsed.cap })
           throw e
         }
+        // C-D / F-13 — le refus trial explicite du proxy devenait « Erreur
+        // Gemini (403) » générique : l'utilisateur ne savait pas pourquoi.
+        if (parsed?.error === 'trial_model_restricted') {
+          throw new Error(i18n.t('errors.trialModelRestricted'))
+        }
       } catch (e) {
         if ((e as Error).message === 'premium_cap_reached') throw e
+        if ((e as Error).message === i18n.t('errors.trialModelRestricted')) throw e
         // body non-JSON → erreur générique ci-dessous
       }
       // 404 = modèle/endpoint introuvable (renommage Google), pas un problème

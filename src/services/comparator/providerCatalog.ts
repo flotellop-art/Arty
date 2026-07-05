@@ -60,9 +60,9 @@ export const PROVIDER_CATALOG: ProviderDescriptor[] = [
     // configurable, multimodal natif, à $0.15/M input — bon rapport
     // qualité/prix pour le comparateur.
     models: [
-      { modelId: 'mistral-large-latest', costKey: 'mistral-large', label: 'Mistral Large 3' },
-      { modelId: 'mistral-medium-latest', costKey: 'mistral-medium', label: 'Mistral Medium 3.5' },
-      { modelId: 'mistral-small-latest', costKey: 'mistral-small', label: 'Mistral Small 4' },
+      { modelId: 'mistral-large-latest', costKey: 'mistral-large', label: 'Mistral Large' },
+      { modelId: 'mistral-medium-latest', costKey: 'mistral-medium', label: 'Mistral Medium' },
+      { modelId: 'mistral-small-latest', costKey: 'mistral-small', label: 'Mistral Small' },
     ],
   },
   {

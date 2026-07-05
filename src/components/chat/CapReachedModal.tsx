@@ -11,6 +11,7 @@
 import { memo, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import { setSelectedModel } from '../../services/modelSelector'
 
 const BUCKET_LABELS: Record<string, string> = {
   'claude-sonnet': 'Claude Sonnet/Opus',
@@ -95,11 +96,20 @@ export const CapReachedModal = memo(function CapReachedModal() {
           >
             {t('quota.buyPack')}
           </button>
+          {/* D4 (CDC visibilité modèle, audit F-11) — l'ancien bouton
+              « Continuer avec les modèles standards » était un NO-OP (close()
+              seul) : en Auto, le renvoi re-sélectionnait le même modèle capé
+              → nouveau 429 immédiat. Remplacé par une action EXPLICITE et
+              réversible : bascule le sélecteur sur Mistral (non cappé,
+              visible dans l'UI). Pas de downgrade automatique silencieux. */}
           <button
-            onClick={close}
+            onClick={() => {
+              setSelectedModel('mistral')
+              close()
+            }}
             className="w-full px-4 py-2.5 text-xs font-sans uppercase tracking-kicker border border-theme-border text-theme-ink hover:border-theme-accent hover:text-theme-accent rounded-md transition-colors"
           >
-            {t('quota.continueStandard')}
+            {t('quota.switchToMistral')}
           </button>
           <button
             onClick={close}
