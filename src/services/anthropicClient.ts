@@ -608,7 +608,8 @@ async function runWithTools(
     const compressed = await compressIfNeeded(
       originalMessages.map((m) => ({ role: m.role, content: m.content })),
       options?.systemPrompt,
-      apiKey
+      apiKey,
+      controller.signal
     )
 
     const apiMessages: ApiMessage[] = compressed as ApiMessage[]
