@@ -91,10 +91,56 @@ interface ApiMessage {
   content: string | Array<Record<string, unknown>>
 }
 
+// Accumule le texte d'une réponse SSE Anthropic (content_block_delta /
+// text_delta). Parser volontairement MINIMAL : on ne lit que le texte du
+// résumé, on ne renvoie JAMAIS ces blocs à l'API — le périmètre BUG 52
+// (interdiction de filtrer les blocs pour un resend) ne s'applique pas ici.
+// `signal` est vérifié à chaque chunk : un stop utilisateur interrompt la
+// lecture (reader.cancel) et le catch de l'appelant rend les messages intacts.
+async function readSseSummary(response: Response, signal?: AbortSignal): Promise<string> {
+  const reader = response.body?.getReader()
+  if (!reader) return ''
+  const decoder = new TextDecoder()
+  let buffer = ''
+  let summary = ''
+  for (;;) {
+    if (signal?.aborted) {
+      try { await reader.cancel() } catch { /* déjà fermé */ }
+      return ''
+    }
+    const { done, value } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+    const lines = buffer.split('\n')
+    buffer = lines.pop() ?? ''
+    for (const line of lines) {
+      if (!line.startsWith('data:')) continue
+      const payload = line.slice(5).trim()
+      if (!payload || payload === '[DONE]') continue
+      try {
+        const evt = JSON.parse(payload) as {
+          type?: string
+          delta?: { type?: string; text?: string }
+        }
+        if (evt.type === 'content_block_delta' && evt.delta?.type === 'text_delta' && typeof evt.delta.text === 'string') {
+          summary += evt.delta.text
+        }
+      } catch {
+        // Ligne SSE partielle ou non-JSON (event:, ping…) — ignore.
+      }
+    }
+  }
+  return summary
+}
+
 export async function compressIfNeeded(
   messages: ApiMessage[],
   _systemPrompt: string | undefined,
-  apiKey: string
+  apiKey: string,
+  // Signal d'annulation de l'envoi en cours (stop utilisateur) — threadé dans
+  // fetchWithTimeout ET vérifié pendant la lecture du stream, sinon un « stop »
+  // pendant la fenêtre de compression n'était honoré qu'après (audit Opus #4).
+  signal?: AbortSignal
 ): Promise<ApiMessage[]> {
   // Estime sur les messages RÉELS (texte des tool_results inclus) — le flatten
   // précédent en '[contenu multimédia]' sous-estimait massivement les convs
@@ -118,7 +164,7 @@ export async function compressIfNeeded(
     return `${role}: ${content.slice(0, 2000)}`
   }).join('\n')
 
-  // Ask Claude to summarize (non-streaming, fast).
+  // Ask Claude to summarize.
   //
   // Headers via buildAiHeaders (C9) — ce fichier envoyait `x-api-key: apiKey`
   // brut, SANS le garde BUG 25 ni `x-google-token`. Double casse :
@@ -129,11 +175,18 @@ export async function compressIfNeeded(
   // Résultat : la compression ne fonctionnait pour PERSONNE (catch silencieux
   // → messages renvoyés intacts → context rot au-delà de 80k tokens).
   //
-  // fetchWithTimeout (45s) : appel non-streamé avec ~60-80k tokens d'input,
-  // TTFB long (cf. factChecker : 25-30s mesurés en prod sur non-streamé) —
-  // sans timeout, un fetch pendu gelait l'envoi du message utilisateur
-  // (compressIfNeeded est await-é sur le chemin d'envoi ; leçon BUG 47).
-  // Sur timeout/échec : catch existant → messages originaux, non bloquant.
+  // `stream: true` OBLIGATOIRE (audit Opus #1) : le tee de tracking du proxy
+  // (`createAnthropicParser`, chemin clé serveur) ne lit que des lignes SSE.
+  // Une réponse JSON non-streamée = 0 token enregistré → résumé invisible au
+  // dashboard coûts (BUG 60) ET réservation wallet réglée à ~0 pour les users
+  // à crédits (sous-facturation à la charge du owner). En SSE, l'usage réel
+  // (message_delta) est parsé et facturé normalement.
+  //
+  // fetchWithTimeout (45s) : ~60-80k tokens d'input, TTFB long — sans timeout,
+  // un fetch pendu gelait l'envoi du message utilisateur (compressIfNeeded est
+  // await-é sur le chemin d'envoi ; leçon BUG 47). Le timeout ne borne que le
+  // TTFB (par design du helper) ; la lecture du stream vérifie `signal` à
+  // chaque chunk. Sur timeout/abort/échec : catch → messages originaux.
   try {
     const headers = await buildAiHeaders({
       byokKey: apiKey,
@@ -149,20 +202,20 @@ export async function compressIfNeeded(
         // souvent des chiffres/décisions critiques que Haiku perdait.
         model: 'claude-sonnet-4-6',
         max_tokens: 2048,
+        stream: true,
         messages: [{
           role: 'user',
           content: `Résume cette conversation en gardant TOUTES les infos clés : noms, chiffres précis (montants, taux, dates), décisions prises, fichiers mentionnés, contexte client/projet. Préserve les nombres exacts. Maximum 1500 mots, en français.\n\n${oldText}`,
         }],
       }),
-    }, 45_000)
+    }, 45_000, signal)
 
     if (!response.ok) {
       // Compression failed — return original messages
       return messages
     }
 
-    const data = await response.json()
-    const summary = data.content?.[0]?.text || ''
+    const summary = await readSseSummary(response, signal)
 
     if (!summary) return messages
 
