@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { generateId } from '../utils/generateId'
 import * as storage from '../services/storage'
+import type { ModelUsedEvent } from '../services/modelLabels'
 
 // Cap de streams concurrents — protège des coûts d'abus (8 convs ouvertes en
 // même temps = 8 appels LLM en // sur le compte du proprio). 3 suffit largement
@@ -15,6 +16,13 @@ type StreamState = {
   // Mode "publish-after-fact-check" : tokens accumulés mais cachés en live.
   // Le caller fera le finalize après le fact-check.
   hideContent: boolean
+  // CDC visibilité modèle (C-B) — model id de CE stream, capturé via l'event
+  // 'arty-model-used' scopé conversationId (voir listener plus bas). Un event
+  // `confirmed` (modèle servi ≠ demandé) écrase la valeur optimiste — c'est
+  // la vérité serveur qui est persistée à finalize(). JAMAIS lu depuis le
+  // cache global getLastModelUsed() : sous MAX_CONCURRENT_STREAMS=3, il peut
+  // refléter le stream d'une AUTRE conversation.
+  model?: string
 }
 
 export function useStreaming(deps: {
@@ -92,6 +100,10 @@ export function useStreaming(deps: {
     const conv = storage.getConversation(targetId)
     if (!conv) return
 
+    // C-B — attribution du modèle : lue dans le StreamState de CE targetId
+    // (encore présent : tous les appelants font finalize AVANT teardown).
+    const model = streamsRef.current.get(targetId)?.model
+
     conv.messages = conv.messages.filter((m) => m.id !== 'streaming')
     conv.messages.push({
       id: generateId(),
@@ -99,6 +111,7 @@ export function useStreaming(deps: {
       content,
       timestamp: Date.now(),
       ...(interrupted ? { interrupted: true } : {}),
+      ...(model ? { model } : {}),
     })
     conv.updatedAt = Date.now()
     storage.saveConversation(conv)
@@ -131,6 +144,23 @@ export function useStreaming(deps: {
       setStreamingContent('')
     }
   }, [cancelPendingFlush, removeFromStreamingSet])
+
+  // CDC visibilité modèle (C-B) — capture le model id de chaque stream depuis
+  // l'event 'arty-model-used' scopé conversationId (posé par les clients IA
+  // depuis la PR C-A). Écriture SYNCHRONE dans le StreamState pendant le
+  // stream → finalize() reste synchrone (BUG 16). Les events background
+  // (brief, résumé, comparateur) et ceux sans conversationId sont ignorés :
+  // sans conversationId on ne peut pas attribuer au bon stream concurrent.
+  useEffect(() => {
+    const onModelUsed = (e: Event) => {
+      const detail = (e as CustomEvent<ModelUsedEvent>).detail
+      if (!detail?.model || detail.background || !detail.conversationId) return
+      const s = streamsRef.current.get(detail.conversationId)
+      if (s) s.model = detail.model
+    }
+    window.addEventListener('arty-model-used', onModelUsed)
+    return () => window.removeEventListener('arty-model-used', onModelUsed)
+  }, [])
 
   // Save partial on app close / page hide — flush TOUS les streams ouverts,
   // pas juste la conv active. Sans ça, fermer l'onglet pendant qu'un stream

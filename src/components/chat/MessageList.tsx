@@ -55,6 +55,7 @@ const MessageItem = memo(function MessageItem({ msg, index, onAction, onBranch, 
           factCheck={msg.factCheck}
           isLast={isLast}
           onBranch={branchHandler}
+          model={msg.model}
         />
       )}
     </div>

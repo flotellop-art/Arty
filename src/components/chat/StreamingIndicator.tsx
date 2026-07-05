@@ -1,6 +1,6 @@
 import { memo, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { getLastModelUsed, shouldAcceptModelEvent, type ModelUsedEvent } from '../../services/modelLabels'
+import { formatModelName, getLastModelUsed, shouldAcceptModelEvent, type ModelUsedEvent } from '../../services/modelLabels'
 
 // Petit badge "Arty écrit..." affiché EN DESSOUS de la bulle streaming
 // (tant que le streaming dure). Différent de TypingIndicator qui ne sert
@@ -22,7 +22,15 @@ interface StreamingIndicatorProps {
 
 export const StreamingIndicator = memo(function StreamingIndicator({ conversationId }: StreamingIndicatorProps) {
   const { t } = useTranslation()
-  const [reflecting, setReflecting] = useState(() => !!getLastModelUsed()?.reflecting)
+  // Init sur le cache module (l'event peut partir avant le mount), FILTRÉ :
+  // le cache peut refléter un stream d'une autre conversation.
+  const initEvent = getLastModelUsed()
+  const initAccepted = shouldAcceptModelEvent(initEvent, conversationId)
+  const [reflecting, setReflecting] = useState(() => initAccepted && !!initEvent?.reflecting)
+  // C-C — nom du modèle résolu affiché PENDANT le stream (« Arty écrit ·
+  // Claude Sonnet 5 »). Suit les events scopés, y compris le correctif
+  // `confirmed` (substitution serveur visible en live).
+  const [model, setModel] = useState<string | null>(() => (initAccepted && initEvent?.model) || null)
 
   useEffect(() => {
     const onModelUsed = (e: Event) => {
@@ -32,6 +40,7 @@ export const StreamingIndicator = memo(function StreamingIndicator({ conversatio
       // de la conversation affichée.
       if (!shouldAcceptModelEvent(detail, conversationId)) return
       setReflecting(!!detail.reflecting)
+      setModel(detail.model)
     }
     window.addEventListener('arty-model-used', onModelUsed)
     return () => window.removeEventListener('arty-model-used', onModelUsed)
@@ -53,6 +62,7 @@ export const StreamingIndicator = memo(function StreamingIndicator({ conversatio
       </span>
       <span className="font-sans uppercase tracking-kicker">
         {t('chat.streaming.writing')}
+        {model && <span> · {formatModelName(model)}</span>}
         {reflecting && (
           <span className="text-theme-accent"> · 🧠 {t('chat.streaming.reflecting')}</span>
         )}

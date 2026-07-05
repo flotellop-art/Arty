@@ -114,6 +114,22 @@ export function formatModelName(model: string): string {
   return model
 }
 
+// Libellé « capacité » d'un modèle — niveau par DÉFAUT du footer par message
+// (CDC C-C : capacité en clair pour le grand public, nom technique précis au
+// tap). Formulation capacité/rôle, JAMAIS un jugement de coût (« réponse
+// rapide », pas « version économique » — anti-objectif cadrage anxiogène).
+export function getModelCapacityKey(model: string): string {
+  const m = model.toLowerCase()
+  if (m.startsWith('mistral') || m.startsWith('ministral') || m.startsWith('voxtral')) {
+    return 'chat.modelFooter.capacity.mistral'
+  }
+  if (m.startsWith('gemini')) return 'chat.modelFooter.capacity.gemini'
+  if (m.includes('haiku')) return 'chat.modelFooter.capacity.haiku'
+  if (m.startsWith('claude')) return 'chat.modelFooter.capacity.claude'
+  if (m.startsWith('gpt') || m.includes('openai')) return 'chat.modelFooter.capacity.openai'
+  return 'chat.modelFooter.capacity.fallback'
+}
+
 // Région d'hébergement du modèle qui traite la requête, affichée à
 // l'utilisateur (« où part ma donnée ? »). Mapping STATIQUE de présentation —
 // JAMAIS dérivé d'une variable d'env, d'une URL de proxy ou d'un endpoint
