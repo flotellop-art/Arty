@@ -17,10 +17,18 @@ refaire), et `CLAUDE.md` (RÈGLES 0-7 + journal des 60+ bugs, à lire d'abord).
   Florent) — gate 503 sur `request-otp` si host prod sans `TURNSTILE_SECRET_KEY`
   (détection par hostname `PRODUCTION_HOSTS`, PAS `CF_PAGES_BRANCH` non garanti
   au runtime), test de parité CI `PRODUCTION_HOSTS` ⇄ `ALLOWED_ORIGINS`.
-  Relecture 2 agents (Opus sécu + Sonnet régressions) : GO. Résiduel ops à
-  vérifier au dashboard : le binding D1 des previews est-il partagé avec la
-  prod ? (si oui, previews fail-open = spam OTP possible sur les tables prod,
-  borné par les rate-limits).
+  Relecture 2 agents (Opus sécu + Sonnet régressions) : GO. Résiduel ops
+  VÉRIFIÉ + TRAITÉ le 5 juillet 2026 : le binding D1 du Preview PARTAGE bien
+  `arty-db` (prod) et le Preview avait Resend + EMAIL_FROM + EMAIL_TRIAL_SECRET
+  SANS `TURNSTILE_SECRET_KEY` (previews publics par défaut) → trou d'email-bombing
+  sur tables prod. CORRIGÉ (option 1, décision Florent) : `RESEND_API_KEY`,
+  `EMAIL_FROM`, `EMAIL_TRIAL_SECRET` RETIRÉES de l'environnement Preview →
+  `request-otp` renvoie 503 avant tout envoi/écriture sur les previews.
+  ⚠️ RESTE : les variables ne s'appliquent qu'aux NOUVEAUX déploiements ; les
+  déploiements preview déjà buildés gardent les anciennes vars jusqu'à
+  redéploiement/suppression. Fermeture immédiate de TOUS les previews existants =
+  activer « Restreindre les aperçus » (Cloudflare Access) — option 2, non retenue
+  pour l'instant.
 - ⛔ **C3** — go-live Creem uniquement (inchangé).
 - ✅ **C4** FAIT (commit `1426275`) — TODO re-daté, `parseAllowedEmails` conservée.
 - ✅ **C5** FAIT (PR #310) — PKCE S256, single-use, natif intact. Test terrain web à tracer.
