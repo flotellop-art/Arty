@@ -46,5 +46,6 @@ export interface Env {
   RESEND_API_KEY?: string         // clé Resend pour l'envoi des codes OTP (transactional email)
   EMAIL_FROM?: string             // expéditeur vérifié chez Resend, ex: "Arty <noreply@tryarty.com>"
   EMAIL_TRIAL_SECRET?: string     // secret HMAC qui keye le hash des OTP (CRIT-2). Aléatoire, ≥32 chars.
-  TURNSTILE_SECRET_KEY?: string   // optionnel : si présent, Turnstile est exigé sur request-otp (anti-bot)
+  TURNSTILE_SECRET_KEY?: string   // anti-bot request-otp. OBLIGATOIRE en prod : son absence sur un host
+                                  // prod bloque request-otp en 503 (fail-closed C2/F-10). Optionnel en dev/preview.
 }

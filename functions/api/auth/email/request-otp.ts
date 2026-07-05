@@ -7,6 +7,7 @@ import {
   normalizeEmail,
   sendOtpEmail,
   storeOtp,
+  turnstileMisconfiguredInProd,
   verifyTurnstile,
 } from '../../_lib/emailTrial'
 
@@ -17,8 +18,9 @@ import {
  * Google. CSRF/Origin assuré par le middleware (Origin whitelisté exigé).
  *
  * Audit sécu (RÈGLE 6) :
- *  - Auth : aucune par nature (signup) → bornée par Turnstile (si configuré) +
- *    rate-limit D1 FAIL-CLOSED (email/jour + IP/heure).
+ *  - Auth : aucune par nature (signup) → bornée par Turnstile (OBLIGATOIRE en
+ *    prod : clé manquante = 503 fail-closed C2/F-10 ; optionnel en dev/preview)
+ *    + rate-limit D1 FAIL-CLOSED (email/jour + IP/heure).
  *  - Abus infra : email-bombing + coût Resend bornés par les plafonds ci-dessus ;
  *    clé HMAC + Resend serveur-only (jamais VITE_).
  *  - Leak : pas de distinction « email connu/inconnu » — l'endpoint ne consulte
@@ -27,6 +29,16 @@ import {
  */
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   if (!env.DB || !env.EMAIL_TRIAL_SECRET || !env.RESEND_API_KEY || !env.EMAIL_FROM) {
+    return Response.json({ error: 'email_trial_unavailable' }, { status: 503 })
+  }
+
+  // C2 (F-10) fail-closed : en prod, TURNSTILE_SECRET_KEY manquante = incident
+  // de config → refuser (503) au lieu d'envoyer des OTP sans captcha en silence.
+  // Dev/previews (hosts non-prod) restent fail-open, rate-limits D1 actifs.
+  if (turnstileMisconfiguredInProd(env, request)) {
+    console.error(
+      '[emailTrial] TURNSTILE_SECRET_KEY manquante en PRODUCTION — request-otp refusé (fail-closed C2/F-10)'
+    )
     return Response.json({ error: 'email_trial_unavailable' }, { status: 503 })
   }
 

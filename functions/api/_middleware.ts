@@ -2,7 +2,10 @@
 // Runs before every API function on Cloudflare Pages
 
 // Production origins only — capacitor:// is required for native Android/iOS app
-const ALLOWED_ORIGINS = [
+// Exporté pour le test de parité avec PRODUCTION_HOSTS (emailTrial.ts) : les
+// deux listes doivent rester synchronisées sur les hosts prod HTTPS, sinon un
+// nouveau domaine prod serait fail-open sur le gate Turnstile (C2/F-10).
+export const ALLOWED_ORIGINS = [
   'https://tryarty.com',        // Nouveau domaine prod (launch Product Hunt)
   'https://www.tryarty.com',    // Variante www
   'https://appfacade.pages.dev',
