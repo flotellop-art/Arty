@@ -94,7 +94,17 @@ export function useConversation() {
     }
   }, [conversations, activeId, streaming.isStreaming])
 
-  const createConversation = useCallback((withWelcome?: boolean, euOnly?: boolean): string => {
+  const createConversation = useCallback((withWelcome?: boolean, euOnly?: boolean): string | null => {
+    // Symétrie avec le garde H5 de sendMessage : tant que l'historique
+    // chiffré n'est pas déchiffré (bootstrap en cours ou échec),
+    // saveConversation est un no-op silencieux — naviguer vers l'id d'une
+    // conversation qui n'existe nulle part laissait ChatRoute rendre `null`
+    // en permanence (écran vide, juillet 2026). On refuse la création avec
+    // une erreur visible plutôt que de dropper l'action de l'utilisateur.
+    if (!storage.isCacheReady()) {
+      setError(i18n.t('errors.storageNotReady'))
+      return null
+    }
     const id = generateId()
     const messages: Message[] = []
 

@@ -23,6 +23,12 @@ import { encrypt, decrypt, isCryptoReady } from './crypto'
 const PLAIN_KEY = 'conversations'
 const ENC_KEY = 'conversations-enc'
 const KILLSWITCH_KEY = 'arty-conv-encryption-disabled'
+// Quarantine slots for ciphertext the current key cannot decrypt. The blob is
+// MOVED here (never deleted) so the app stays usable — cacheReady would
+// otherwise stay false for the whole session and every new conversation would
+// be silently dropped (blank-screen bug, juillet 2026). Each bootstrap retries
+// these slots and merges the history back if the key situation heals.
+const LOCKED_KEYS = ['conversations-enc-locked', 'conversations-enc-locked-2']
 
 // Decrypted conversations, kept in memory for synchronous reads.
 let memConversations: Conversation[] | null = null
@@ -154,6 +160,7 @@ export async function bootstrapConversationStorage(): Promise<void> {
           // Keep the plain copy — re-encryption retried on the next boot.
         }
       }
+      await recoverLockedBlobs()
       return
     }
     const enc = scoped.getItem(ENC_KEY)
@@ -164,19 +171,73 @@ export async function bootstrapConversationStorage(): Promise<void> {
         cacheReady = true
       } catch {
         // Decrypt failed. NEVER wipe — conversations are irreplaceable,
-        // unlike Google tokens. Keep the blob, leave the cache empty, retry
-        // on the next boot. Writes stay disabled (cacheReady === false) so
-        // the blob is not overwritten.
-        console.warn('[storage] conversations decrypt failed — keeping blob, will retry next boot')
+        // unlike Google tokens. But NEVER stay locked either : cacheReady à
+        // false pour toute la session rendait l'app inutilisable (chaque
+        // nouvelle conversation était droppée par saveConversation → écran
+        // vide permanent sur /chat/:id). On MET EN QUARANTAINE le blob
+        // (déplacé, jamais supprimé) et on repart sur un historique vide
+        // utilisable. recoverLockedBlobs() retente le déchiffrement à chaque
+        // boot et re-fusionne l'historique si la clé redevient la bonne.
+        quarantineUndecryptableBlob(enc)
       }
+      if (cacheReady) await recoverLockedBlobs()
       return
     }
-    // No stored data at all — fresh user.
+    // No stored data at all — fresh user (but maybe a quarantined history
+    // from a previous session: retry it now that crypto is up).
     memConversations = []
     cacheReady = true
+    await recoverLockedBlobs()
   } finally {
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('conversations-storage-ready'))
+    }
+  }
+}
+
+/**
+ * Move an undecryptable ciphertext into a free quarantine slot and unlock the
+ * cache with an empty history. The blob is PRESERVED (moved, not deleted) —
+ * a later boot where the derived key matches again restores it via
+ * recoverLockedBlobs(). Two slots cover the worst case: an old history locked
+ * under key A, then new conversations locked under key B after a second key
+ * change. If both slots are full, keep today's behaviour (stay not-ready)
+ * rather than destroy anything.
+ */
+function quarantineUndecryptableBlob(enc: string): void {
+  for (const key of LOCKED_KEYS) {
+    if (scoped.getItem(key)) continue
+    scoped.setItem(key, enc)
+    scoped.removeItem(ENC_KEY)
+    memConversations = []
+    cacheReady = true
+    console.error(`[storage] conversations decrypt failed — blob quarantined under ${key}, continuing with empty history (nothing deleted)`)
+    return
+  }
+  console.error('[storage] conversations decrypt failed — quarantine slots full, keeping blob in place; writes stay disabled')
+}
+
+/**
+ * Retry quarantined ciphertexts with the current key. On success the
+ * recovered conversations are merged back (current history wins on id
+ * collision) and the slot is freed. Silent no-op while the key still cannot
+ * decrypt them — the blobs are kept for the next attempt.
+ */
+async function recoverLockedBlobs(): Promise<void> {
+  if (!isCryptoReady() || !memConversations || !cacheReady) return
+  for (const key of LOCKED_KEYS) {
+    const blob = scoped.getItem(key)
+    if (!blob) continue
+    try {
+      const recovered = JSON.parse(await decrypt(blob)) as Conversation[]
+      const known = new Set(memConversations.map((c) => c.id))
+      const merged = [...memConversations, ...recovered.filter((c) => !known.has(c.id))]
+      merged.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
+      persist(merged)
+      scoped.removeItem(key)
+      console.warn(`[storage] recovered ${recovered.length} conversation(s) from ${key}`)
+    } catch {
+      // Still locked under another key — keep the blob, retry next boot.
     }
   }
 }

@@ -5,6 +5,7 @@ vi.mock('../../services/userSession', () => ({
 }))
 
 import * as storage from '../../services/storage'
+import { initCrypto, encrypt } from '../../services/crypto'
 import type { Conversation } from '../../types'
 
 function makeConv(id: string, overrides: Partial<Conversation> = {}): Conversation {
@@ -95,5 +96,68 @@ describe('storage', () => {
     storage.saveConversation(makeConv('a'))
     expect(localStorage.getItem('arty-user-test-conversations')).toContain('"id":"a"')
     expect(localStorage.getItem('arty-user-test-conversations-enc')).toBeNull()
+  })
+})
+
+// Écran vide permanent (juillet 2026) : un blob indéchiffrable laissait
+// cacheReady=false pour toute la session → chaque nouvelle conversation était
+// silencieusement droppée → ChatRoute rendait `null` pour toujours. Le fix :
+// quarantaine du blob (déplacé, jamais supprimé) + récupération/fusion au
+// boot suivant si la clé redevient la bonne.
+describe('storage — quarantine & recovery of undecryptable history', () => {
+  const ENC = 'arty-user-test-conversations-enc'
+  const LOCKED_1 = 'arty-user-test-conversations-enc-locked'
+  const LOCKED_2 = 'arty-user-test-conversations-enc-locked-2'
+
+  it('quarantines an undecryptable blob and unlocks the cache (app stays usable)', async () => {
+    // Historique chiffré sous la clé A…
+    await initCrypto('passphrase-A')
+    const blobA = await encrypt(JSON.stringify([makeConv('old-1'), makeConv('old-2')]))
+    localStorage.setItem(ENC, blobA)
+    // …mais la session courante dérive la clé B (état "mauvaise passphrase").
+    await initCrypto('passphrase-B')
+    storage.resetConversationMemCache()
+    await storage.bootstrapConversationStorage()
+
+    // Blob préservé en quarantaine, jamais supprimé.
+    expect(localStorage.getItem(LOCKED_1)).toBe(blobA)
+    expect(localStorage.getItem(ENC)).toBeNull()
+    // Cache débloqué : l'app repart sur un historique vide UTILISABLE.
+    expect(storage.isCacheReady()).toBe(true)
+    expect(storage.getConversations()).toEqual([])
+    storage.saveConversation(makeConv('new'))
+    expect(storage.getConversations().map((c) => c.id)).toEqual(['new'])
+  })
+
+  it('recovers and merges a quarantined blob once the key matches again', async () => {
+    await initCrypto('passphrase-A')
+    const blobA = await encrypt(JSON.stringify([makeConv('old', { updatedAt: 1 })]))
+    localStorage.setItem(LOCKED_1, blobA)
+    localStorage.setItem(ENC, await encrypt(JSON.stringify([makeConv('current', { updatedAt: 2 })])))
+    storage.resetConversationMemCache()
+    await storage.bootstrapConversationStorage()
+
+    // Historique fusionné (le courant d'abord, le récupéré ensuite) et slot libéré.
+    expect(storage.getConversations().map((c) => c.id)).toEqual(['current', 'old'])
+    expect(localStorage.getItem(LOCKED_1)).toBeNull()
+  })
+
+  it('keeps writes disabled when both quarantine slots are full (never destroys)', async () => {
+    await initCrypto('passphrase-A')
+    const foreign = await encrypt(JSON.stringify([makeConv('x')]))
+    await initCrypto('passphrase-B')
+    localStorage.setItem(LOCKED_1, 'older-locked-blob')
+    localStorage.setItem(LOCKED_2, 'other-locked-blob')
+    localStorage.setItem(ENC, foreign)
+    storage.resetConversationMemCache()
+    await storage.bootstrapConversationStorage()
+
+    // Rien n'est écrasé ni supprimé ; le comportement d'avant-fix s'applique.
+    expect(localStorage.getItem(ENC)).toBe(foreign)
+    expect(localStorage.getItem(LOCKED_1)).toBe('older-locked-blob')
+    expect(localStorage.getItem(LOCKED_2)).toBe('other-locked-blob')
+    expect(storage.isCacheReady()).toBe(false)
+    storage.saveConversation(makeConv('dropped'))
+    expect(localStorage.getItem(ENC)).toBe(foreign)
   })
 })

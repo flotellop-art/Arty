@@ -35,9 +35,14 @@ interface HomeScreenProps {
   /** PR G — widget « Reprendre » : conversations récentes cliquables. */
   conversations?: Conversation[]
   onSelectConv?: (id: string) => void
+  /** Erreur de useConversation (ex. storage chiffré pas prêt au moment de
+      créer une conversation). Sans ce rendu sur la Home, l'erreur n'était
+      visible que dans ConversationScreen — qui ne monte jamais dans ce cas. */
+  error?: string | null
+  onDismissError?: () => void
 }
 
-function HomeScreenInner({ onMenuToggle, onSend, isStreaming, onStop, googleAuth, userName, proactiveBrief, briefLoading, onDismissBrief, onBriefAction, conversations, onSelectConv }: HomeScreenProps) {
+function HomeScreenInner({ onMenuToggle, onSend, isStreaming, onStop, googleAuth, userName, proactiveBrief, briefLoading, onDismissBrief, onBriefAction, conversations, onSelectConv, error, onDismissError }: HomeScreenProps) {
   const { t, i18n } = useTranslation()
   const googleTooltip = useTooltip('google')
 
@@ -262,6 +267,26 @@ function HomeScreenInner({ onMenuToggle, onSend, isStreaming, onStop, googleAuth
           </div>
         )}
       </div>
+
+      {error && (
+        <div
+          role="alert"
+          className="mx-4 mb-2 px-4 py-2 bg-red-500/10 border border-red-500/30 rounded-xl text-sm text-red-700 dark:text-red-400 flex items-center gap-2"
+        >
+          <span className="flex-1 min-w-0 break-words">{error}</span>
+          {onDismissError && (
+            <button
+              onClick={onDismissError}
+              className="flex-shrink-0 p-1.5 rounded-md hover:bg-red-500/10 transition-colors"
+              aria-label={t('common.close')}
+            >
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                <path d="M2 2L10 10M10 2L2 10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              </svg>
+            </button>
+          )}
+        </div>
+      )}
 
       <InputBar onSend={onSend} isStreaming={isStreaming} onStop={onStop} />
     </div>
