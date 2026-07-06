@@ -549,26 +549,29 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
             </div>
           </div>
 
-          {/* Upgrade entry */}
-          <div className="border-t border-theme-border pt-5">
-            <button
-              onClick={() => {
-                onClose()
-                window.dispatchEvent(new CustomEvent('arty-open-upgrade'))
-              }}
-              className="w-full flex items-center justify-between text-left"
-            >
-              <div>
-                <p className="font-display text-base text-theme-ink">⭐ Upgrade</p>
-                <p className="font-display italic text-xs text-theme-muted mt-0.5">
-                  {t('settings.upgrade.description')}
-                </p>
-              </div>
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="text-theme-accent">
-                <path d="M5 3L9 7L5 11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </button>
-          </div>
+          {/* Upgrade entry — Play Store : masquée sur natif (pas d'entrée
+              vers la page d'achat ; la rédemption de licence reste dispo). */}
+          {!isNative && (
+            <div className="border-t border-theme-border pt-5">
+              <button
+                onClick={() => {
+                  onClose()
+                  window.dispatchEvent(new CustomEvent('arty-open-upgrade'))
+                }}
+                className="w-full flex items-center justify-between text-left"
+              >
+                <div>
+                  <p className="font-display text-base text-theme-ink">⭐ Upgrade</p>
+                  <p className="font-display italic text-xs text-theme-muted mt-0.5">
+                    {t('settings.upgrade.description')}
+                  </p>
+                </div>
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="text-theme-accent">
+                  <path d="M5 3L9 7L5 11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+            </div>
+          )}
 
           {/* Comparateur côte-à-côte */}
           <div className="border-t border-theme-border pt-5">

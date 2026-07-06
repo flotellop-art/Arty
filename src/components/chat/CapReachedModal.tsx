@@ -11,6 +11,7 @@
 import { memo, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import { canPurchase } from '../../services/checkout'
 
 const BUCKET_LABELS: Record<string, string> = {
   'claude-sonnet': 'Claude Sonnet/Opus',
@@ -89,12 +90,16 @@ export const CapReachedModal = memo(function CapReachedModal() {
           {t('quota.capReachedHint', { date: nextResetDate(i18n.language) })}
         </p>
         <div className="flex flex-col gap-2">
-          <button
-            onClick={buyPack}
-            className="w-full px-4 py-2.5 text-xs font-sans uppercase tracking-kicker bg-theme-accent text-theme-bg hover:opacity-90 rounded-md transition-opacity"
-          >
-            {t('quota.buyPack')}
-          </button>
+          {/* Play Store — pas de CTA d'achat sur natif (le hint ci-dessus
+              propose déjà les modèles standards + la date de reset). */}
+          {canPurchase && (
+            <button
+              onClick={buyPack}
+              className="w-full px-4 py-2.5 text-xs font-sans uppercase tracking-kicker bg-theme-accent text-theme-bg hover:opacity-90 rounded-md transition-opacity"
+            >
+              {t('quota.buyPack')}
+            </button>
+          )}
           <button
             onClick={close}
             className="w-full px-4 py-2.5 text-xs font-sans uppercase tracking-kicker border border-theme-border text-theme-ink hover:border-theme-accent hover:text-theme-accent rounded-md transition-colors"

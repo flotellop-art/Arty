@@ -24,9 +24,13 @@ interface AssistantBubbleProps {
       d'actions — l'ancien bouton flottant top-right chevauchait le header
       des blocs de code. */
   onBranch?: () => void
+  /** Signaler cette réponse au développeur (policy Play Store AI-Generated
+      Content : signalement in-app obligatoire). Sur TOUT message assistant,
+      pas seulement le dernier — un contenu offensant peut être relu tard. */
+  onReport?: () => void
 }
 
-export const AssistantBubble = memo(function AssistantBubble({ content, onAction, pinned, onTogglePin, interrupted, onRetry, factCheck, isStreaming, isLast, onBranch }: AssistantBubbleProps) {
+export const AssistantBubble = memo(function AssistantBubble({ content, onAction, pinned, onTogglePin, interrupted, onRetry, factCheck, isStreaming, isLast, onBranch, onReport }: AssistantBubbleProps) {
   const { t } = useTranslation()
   const bubbleRef = useRef<HTMLDivElement>(null)
 
@@ -215,6 +219,19 @@ export const AssistantBubble = memo(function AssistantBubble({ content, onAction
             title={pinned ? t('chat.bubble.unpin') : t('chat.bubble.pin')}
           >
             📌
+          </button>
+        )}
+        {onReport && content && !isStreaming && (
+          <button
+            onClick={onReport}
+            className="opacity-50 md:opacity-0 md:group-hover/bubble:opacity-100 focus-visible:opacity-100 p-2 rounded-md text-theme-muted hover:text-theme-accent transition-all"
+            aria-label={t('chat.bubble.report')}
+            title={t('chat.bubble.report')}
+          >
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <path d="M3.5 14V2.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+              <path d="M3.5 2.5c1.5-.8 3-.8 4.5 0s3 .8 4.5 0V9c-1.5.8-3 .8-4.5 0s-3-.8-4.5 0" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
+            </svg>
           </button>
         )}
       </div>

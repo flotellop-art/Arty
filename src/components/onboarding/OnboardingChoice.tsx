@@ -34,6 +34,7 @@ import { EmailTrialFlow } from '../auth/EmailTrialFlow'
 import { buildOAuthUrl } from '../../services/googleAuth'
 import { initTrial } from '../../services/trialClient'
 import { apiUrl } from '../../services/apiBase'
+import { canPurchase } from '../../services/checkout'
 
 const CHOICE_DONE_KEY = 'arty-onboarding-choice-done'
 
@@ -222,7 +223,14 @@ export function OnboardingChoice({
                   </svg>
                 </div>
                 <p className="font-display text-[13px] font-medium text-theme-ink leading-tight">{t('onboardingChoice.cards.subscription.title')}</p>
-                <p className="font-display italic text-[11px] text-theme-muted leading-tight -mt-1.5">{t('onboardingChoice.cards.subscription.subtitle')}</p>
+                {/* Play Store — sur natif, libellé neutre (« Pro, illimité »
+                    = pub pour un tier payant). La carte reste : c'est juste
+                    la connexion à un compte existant. */}
+                <p className="font-display italic text-[11px] text-theme-muted leading-tight -mt-1.5">
+                  {canPurchase
+                    ? t('onboardingChoice.cards.subscription.subtitle')
+                    : t('onboardingChoice.cards.subscription.subtitleNative')}
+                </p>
               </button>
 
               <button type="button" onClick={() => setMode('byok')}
@@ -349,15 +357,18 @@ export function TrialIntro({ onDone, onUpgrade }: TrialIntroProps) {
           {t('onboardingChoice.trial.cta', { defaultValue: "C'est parti" })} →
         </button>
 
-        <button
-          type="button"
-          onClick={onUpgrade}
-          className="mt-6 font-display italic text-[13px] text-theme-muted hover:text-theme-ink transition-colors"
-        >
-          {t('onboardingChoice.trial.upgrade', {
-            defaultValue: 'Passe à Pro ou Subscription pour débloquer tous les modèles',
-          })}
-        </button>
+        {/* Play Store — pas de CTA d'upgrade sur natif. */}
+        {canPurchase && (
+          <button
+            type="button"
+            onClick={onUpgrade}
+            className="mt-6 font-display italic text-[13px] text-theme-muted hover:text-theme-ink transition-colors"
+          >
+            {t('onboardingChoice.trial.upgrade', {
+              defaultValue: 'Passe à Pro ou Subscription pour débloquer tous les modèles',
+            })}
+          </button>
+        )}
       </div>
     </div>
   )

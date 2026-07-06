@@ -1,12 +1,13 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import type { Conversation, FileAttachment } from '../../types'
+import type { Conversation, FileAttachment, Message } from '../../types'
 import { ChatTopBar } from './ChatTopBar'
 import { MessageList } from './MessageList'
 import { InputBar } from '../layout/InputBar'
 import { ActionBanner } from '../google/ActionBanner'
 import { BrowserBanner } from '../google/BrowserBanner'
 import { ConversationSummaryModal } from './ConversationSummaryModal'
+import { ReportModal } from './ReportModal'
 import { ContextCompressedBanner } from './ContextCompressedBanner'
 import { ContextMeter } from './ContextMeter'
 import { ErrorBoundary } from '../shared/ErrorBoundary'
@@ -69,6 +70,9 @@ export function ConversationScreen({
 }: ConversationScreenProps) {
   const { t } = useTranslation()
   const [showSummary, setShowSummary] = useState(false)
+  // Message assistant ciblé par un signalement (policy Play Store
+  // AI-Generated Content) — ouvre la ReportModal.
+  const [reportTarget, setReportTarget] = useState<Message | null>(null)
   // Drain any pending share-to-Arty draft once on mount. Single-shot — a
   // remount or revisit must not replay the previous share.
   const [initialDraft] = useState(() => consumePendingDraft())
@@ -100,6 +104,10 @@ export function ConversationScreen({
           onTogglePin={onTogglePin}
           onEdit={onEdit}
           onRetry={onRetry}
+          onReport={(messageId) => {
+            const msg = conversation.messages.find((m) => m.id === messageId)
+            if (msg) setReportTarget(msg)
+          }}
         />
       </ErrorBoundary>
 
@@ -167,6 +175,12 @@ export function ConversationScreen({
           onClose={() => setShowSummary(false)}
         />
       )}
+
+      <ReportModal
+        conversation={conversation}
+        message={reportTarget}
+        onClose={() => setReportTarget(null)}
+      />
     </div>
   )
 }

@@ -168,8 +168,10 @@
     "upgradeModal": {
       "title": "{{model}} réservé aux Pro",
       "body": "En gratuit tu as accès à <0>Claude Haiku (10/jour)</0> et <1>Mistral (5/jour)</1>. Pour débloquer Sonnet, Opus, Gemini Pro et GPT, passe à Pro.",
+      "bodyNative": "En gratuit tu as accès à <0>Claude Haiku (10/jour)</0> et <1>Mistral (5/jour)</1>. Pour débloquer Sonnet, Opus, Gemini Pro et GPT, utilise ta propre clé API (BYOK).",
       "later": "Plus tard",
-      "seePlans": "Voir les plans"
+      "seePlans": "Voir les plans",
+      "useByok": "Utiliser ma clé API"
     },
     "questionModal": {
       "progress": "{{current}} sur {{total}}",
@@ -414,7 +416,8 @@
       "unpin": "Désépingler",
       "actionPending": "⏳ En cours...",
       "actionDone": "✅ Fait !",
-      "regenerate": "Régénérer la réponse"
+      "regenerate": "Régénérer la réponse",
+      "report": "Signaler cette réponse"
     },
     "userBubble": {
       "edit": "Modifier",
@@ -822,6 +825,8 @@
     "creditsAdded": "Crédits ajoutés — ton solde est à jour.",
     "transparency": "Nos limites sont écrites en clair, en messages — pas en « crédits » ni en « points ». Le prix affiché est le prix final, TVA comprise. Une limite journalière anti-abus s'applique à tous les plans.",
     "manageSubscription": "Gérer mon abonnement (annulation en ligne)",
+    "nativeUnavailableTitle": "Plans non disponibles dans cette version",
+    "nativeUnavailableBody": "Dans l'app Android, tu peux utiliser ta propre clé API (BYOK) — gratuit côté Arty, tu paies ton fournisseur directement. Si tu as déjà un abonnement, connecte-toi simplement : il est reconnu automatiquement.",
     "subscriptionReassurance": "✓ Annulation en 1 clic, à tout moment — pause possible. Sans engagement.",
     "whyTitle": "Pourquoi c'est moins cher ?",
     "whyIntro": "Pas de magie — juste un modèle économique assumé :",
@@ -998,7 +1003,8 @@
     "cards": {
       "subscription": {
         "title": "Abonnement",
-        "subtitle": "Pro, illimité"
+        "subtitle": "Pro, illimité",
+        "subtitleNative": "Connexion à mon compte"
       },
       "apiKey": {
         "title": "Clé API",
@@ -1048,6 +1054,24 @@
       "footerText": "Cette conversation a été créée avec Arty, l'assistant IA qui réunit Claude, GPT, Gemini et Mistral — avec ton Gmail, ton Drive et ton agenda.",
       "footerCta": "Essayer gratuitement — sans carte bancaire"
     }
+  },
+  "report": {
+    "title": "Signaler cette réponse",
+    "categories": {
+      "offensive": "Contenu offensant ou haineux",
+      "dangerous": "Contenu dangereux (santé, sécurité, illégal)",
+      "misinformation": "Information fausse ou trompeuse",
+      "other": "Autre problème"
+    },
+    "freeTextLabel": "Précisions (optionnel)",
+    "freeTextPlaceholder": "Dis-nous ce qui ne va pas…",
+    "disclosure": "Le contenu signalé (extrait de la réponse et de ta question) sera transmis à l'équipe Arty (base en Europe) pour examen. Rien d'autre n'est envoyé.",
+    "submit": "Envoyer le signalement",
+    "submitting": "Envoi…",
+    "success": "Signalement envoyé. Merci — on y jette un œil.",
+    "errorRateLimit": "Tu as atteint la limite de signalements du jour. Réessaie demain.",
+    "errorAuth": "Connecte-toi pour envoyer un signalement.",
+    "errorFailed": "L'envoi a échoué. Réessaie dans un moment."
   },
   "app": {
     "shareError": {
@@ -1160,6 +1184,7 @@
     "proBannerTitleAccent": "Arty Pro",
     "proBannerTitleTail": " pour utiliser les templates.",
     "proBannerSubtitle": "39 € à vie · 3 appareils · Tous les gabarits inclus.",
+    "proBannerSubtitleNative": "Disponible avec un compte Pro ou un abonnement.",
     "emptyCategory": "Aucun template dans cette catégorie.",
     "lockedTitle": "Réservé aux comptes Pro",
     "modalSubmit": "Utiliser ce template →"
