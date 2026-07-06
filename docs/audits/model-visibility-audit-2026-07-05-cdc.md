@@ -159,10 +159,16 @@ antérieure sans champ → rendu inchangé (pas de « Inconnu » agressif).
 - `chat.optionsSheet.modelDesc.openai` + `modelExplain.openai` : formulation
   conditionnelle honnête (« si tu as configuré ta clé OpenAI, Arty peut y router
   quand tu mentionnes ChatGPT ») — l'auto-routing n'existe pas sans BYOK (F-14).
-- **Garde EU→US alignée** : appliquer la même garde `hadMistral`/euOnly au
-  routage AUTO vers un provider US qu'au switch manuel (`ChatTopBar.tsx:150-156`)
-  — pas de modale de confirmation sur l'intent explicite « utilise ChatGPT »
-  (friction redondante), mais pas de franchissement EU→US silencieux non plus.
+- **Garde EU→US alignée** — ⏸️ DIFFÉRÉE (implémentation PR 3, 5 juillet) :
+  l'analyse d'implémentation montre qu'une conv non-euOnly ayant touché
+  Mistral route DÉJÀ chaque message suivant vers Claude/Gemini (US) en Auto —
+  le trou n'est pas spécifique à l'intent OpenAI, c'est TOUT le routage Auto.
+  Une modale par message serait inutilisable ; le design propre est un
+  acquittement UNE FOIS par conversation (flag persistant type
+  `conv.euUsAcknowledged`) — mini-chantier UX dédié, à cadrer séparément
+  plutôt que bâclé ici. L'intent explicite « utilise ChatGPT » reste sans
+  modale (consentement par le message lui-même). En attendant, les convs
+  euOnly restent verrouillées Mistral en amont (inchangé).
 - **CapReachedModal** (D4) : action explicite « Passer sur Mistral (EU) » +
   texte vrai. Supprimer la promesse fantôme de `capReachedHint`.
 - **formatModelName anti-drift** : dériver la version de l'ID quand elle y est ;

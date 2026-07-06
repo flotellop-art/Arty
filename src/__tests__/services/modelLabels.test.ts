@@ -6,7 +6,8 @@
 // (claude-haiku-4-5-20251001) sans capter la date comme version mineure.
 
 import { describe, expect, it } from 'vitest'
-import { formatModelName } from '../../services/modelLabels'
+import { formatModelName, getModelCapacityKey, getModelRegion } from '../../services/modelLabels'
+import { calculateCost } from '../../services/costTracker'
 
 describe('formatModelName — Claude version extraction', () => {
   it('claude-sonnet-5 → Claude Sonnet 5 (version à un chiffre)', () => {
@@ -34,16 +35,67 @@ describe('formatModelName — Claude version extraction', () => {
   })
 })
 
-describe('formatModelName — autres providers (non-régression)', () => {
-  it('mistral-medium-latest → Mistral Medium 3.5', () => {
-    expect(formatModelName('mistral-medium-latest')).toBe('Mistral Medium 3.5')
+describe('formatModelName — autres providers (anti-drift C-D)', () => {
+  it('mistral : famille SANS numéro de version (alias mouvants -latest / ids datés)', () => {
+    // « Mistral Medium 3.5 » codé en dur mentait dès que l'alias bougeait
+    // (audit F-12) : la version vient de l'ID ou n'est pas affichée.
+    expect(formatModelName('mistral-medium-latest')).toBe('Mistral Medium')
+    expect(formatModelName('mistral-medium-2505')).toBe('Mistral Medium')
+    expect(formatModelName('mistral-large-latest')).toBe('Mistral Large')
+    expect(formatModelName('mistral-small-latest')).toBe('Mistral Small')
   })
 
-  it('gemini-2.5-pro → Gemini Pro', () => {
-    expect(formatModelName('gemini-2.5-pro')).toBe('Gemini Pro')
+  it('gemini : version extraite de l\'ID — 2.5 et 3.5 ne sont plus fondus', () => {
+    expect(formatModelName('gemini-2.5-flash')).toBe('Gemini 2.5 Flash')
+    expect(formatModelName('gemini-3.5-flash')).toBe('Gemini 3.5 Flash')
+    expect(formatModelName('gemini-2.5-pro')).toBe('Gemini 2.5 Pro')
+    expect(formatModelName('gemini-2.5-flash-lite')).toBe('Gemini 2.5 Flash Lite')
   })
 
-  it('gpt-5.5 → GPT-5.5', () => {
+  it('gpt : version dérivée de l\'ID', () => {
     expect(formatModelName('gpt-5.5')).toBe('GPT-5.5')
+    expect(formatModelName('gpt-5')).toBe('GPT-5')
+    expect(formatModelName('gpt-5-mini')).toBe('GPT-5 Mini')
+    expect(formatModelName('gpt-4o-mini')).toBe('GPT-4o Mini')
+  })
+})
+
+// Test de PARITÉ (C-D — pattern F-1 toolConfirmation) : tout ID que le code
+// peut réellement router DOIT avoir un label produit, une région, une
+// capacité non-fallback et un coût connu. Tout NOUVEAU modèle (RÈGLE 3)
+// s'ajoute ici — CI rouge sinon, ce qui force la mise à jour des 4 mappings
+// d'un coup (fin de la dérive silencieuse des labels).
+describe('parité IDs routables ↔ labels / région / capacité / coûts', () => {
+  const ROUTABLE_IDS: Array<[id: string, source: string]> = [
+    ['claude-haiku-4-5-20251001', 'selectClaudeSubModel + cible du swap trial (proxy.ts)'],
+    ['claude-sonnet-5', 'selectClaudeSubModel défaut'],
+    ['claude-opus-4-8', 'selectClaudeSubModel rapports Pro'],
+    ['mistral-medium-latest', 'selectMistralModel + cible du swap trial (mistral-proxy.ts)'],
+    ['gemini-2.5-flash', 'GEMINI_CHAT_MODEL'],
+    ['gemini-3.5-flash', 'GEMINI_RESEARCH_MODEL + killswitch arty-gemini-cheap-disabled'],
+    ['gemini-2.5-pro', 'comparateur (providerCatalog)'],
+    ['gpt-5.5', 'DEFAULT_MODEL openaiClient'],
+    ['gpt-5', 'FALLBACK_MODEL openaiClient'],
+    ['gpt-5-mini', 'TRIAL_ALLOWED_MODELS + comparateur'],
+    ['mistral-large-latest', 'comparateur'],
+    ['mistral-small-latest', 'comparateur'],
+    ['claude-haiku-4-5', 'comparateur (variante sans date, providerCatalog)'],
+    ['gemini-2.5-flash-lite', 'comparateur'],
+    ['gemini-3.1-flash-lite', 'comparateur'],
+    // NB : gpt-image-1 (génération d'images) est cappé par checkPremiumCap
+    // mais n'est JAMAIS affiché comme modèle de chat (pas de dispatch, pas de
+    // Message.model) → volontairement hors parité labels.
+  ]
+
+  it.each(ROUTABLE_IDS)('%s (%s)', (id) => {
+    // Label produit ≠ id brut (l'utilisateur ne doit jamais voir un slug).
+    expect(formatModelName(id)).not.toBe(id)
+    // Région connue (drapeau + clé i18n).
+    const region = getModelRegion(id)
+    expect(['🇪🇺', '🇺🇸']).toContain(region.flag)
+    // Capacité : jamais le fallback pour un ID routable.
+    expect(getModelCapacityKey(id)).not.toBe('chat.modelFooter.capacity.fallback')
+    // Coût connu (bucket de prix résolu — un coût 0 = entrée pricing absente).
+    expect(calculateCost(id, 1_000_000, 1_000_000)).toBeGreaterThan(0)
   })
 })
