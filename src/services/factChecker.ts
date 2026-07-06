@@ -78,7 +78,11 @@ export function getFactCheckMode(): FactCheckMode {
   // en Sonnet pour un compte d'essai (C-E).
   let plan: string | null = null
   try { plan = localStorage.getItem('arty-plan-cache') } catch {}
-  return plan === 'free' || plan === 'trial' ? 'off' : 'auto'
+  // 'pro' aussi → off (revue PR 5) : Pro = BYOK sans clé serveur (PR #287),
+  // l'endpoint fact-check répond 403 — tenter à chaque réponse ajoutait un
+  // badge d'échec systématique + la latence réseau dans le flux deferPublish.
+  // Un réglage EXPLICITE (posé plus haut) prime toujours sur ce défaut.
+  return plan === 'free' || plan === 'trial' || plan === 'pro' ? 'off' : 'auto'
 }
 
 export function setFactCheckMode(mode: FactCheckMode): void {
@@ -109,16 +113,32 @@ const FACT_CHECK_ENDPOINT = '/api/ai/fact-check'
 export const FACT_CHECK_QUOTA_REASON = 'quota de fond atteint'
 
 // Une fois le 429 fact_check_quota reçu, on arrête d'appeler l'endpoint
-// jusqu'au lendemain (évite un aller-retour réseau par message).
-let quotaExhaustedDay: string | null = null
+// jusqu'au lendemain (évite un aller-retour réseau par message). PAR PALIER
+// (revue Sonnet PR 5) : les plafonds serveur sont asymétriques (60 Haiku /
+// 15 Sonnet par jour) — un flag global posé par le 429 Sonnet bloquait
+// silencieusement les ~45 vérifs Haiku restantes de la journée, défaisant
+// l'objectif « Haiku d'abord » du chantier.
+const quotaExhaustedDayByTier: { haiku: string | null; sonnet: string | null } = {
+  haiku: null,
+  sonnet: null,
+}
 
 function today(): string {
   return new Date().toISOString().slice(0, 10)
 }
 
+/** Le palier d'ENTRÉE du mode donné est-il épuisé pour aujourd'hui ?
+    (mode sonnet explicite → palier sonnet ; auto/haiku → palier haiku).
+    Exporté pour le pré-garde de runFactCheckOnLatest. */
+export function isFactCheckQuotaExhausted(mode: FactCheckMode = getFactCheckMode()): boolean {
+  const tier = mode === 'sonnet' ? 'sonnet' : 'haiku'
+  return quotaExhaustedDayByTier[tier] === today()
+}
+
 // Compteur local du jour — alimente la ligne « dont X vérifications auto »
 // du sheet quotas (affichage indicatif ; la borne réelle est côté serveur).
-// BUG 54 : écriture partagée entre vues → CustomEvent à chaque bump.
+// Compte les vérifications LOGIQUES (une escalade Haiku→Sonnet = 1), pas les
+// appels API. BUG 54 : écriture partagée entre vues → CustomEvent au bump.
 const COUNT_KEY_PREFIX = 'factcheck-count-'
 
 function bumpAutoCheckCount(): void {
@@ -188,25 +208,33 @@ export async function factCheckResponse(
 ): Promise<FactCheckOutcome> {
   if (mode === 'off') return { result: null, reason: 'désactivé' }
   if (!response || response.length < 80) return { result: null, reason: 'réponse trop courte' }
-  if (quotaExhaustedDay === today()) return { result: null, reason: FACT_CHECK_QUOTA_REASON }
+  if (isFactCheckQuotaExhausted(mode)) return { result: null, reason: FACT_CHECK_QUOTA_REASON }
 
   const sourcesBlock = formatSearchContext(searchContext)
+  // Une vérification LOGIQUE réussie = 1 au compteur (même si escalade).
+  const done = (o: FactCheckOutcome): FactCheckOutcome => {
+    if (o.result) bumpAutoCheckCount()
+    return o
+  }
 
   // Modes explicites (settings) : un seul palier, pas d'escalade.
   if (mode === 'haiku' || mode === 'sonnet') {
-    return runCheckTier(mode, question, response, sourcesBlock)
+    return done(await runCheckTier(mode, question, response, sourcesBlock))
   }
 
   // Mode 'auto' (D5) : Haiku d'abord, Sonnet+web_search seulement si la
   // passe rapide remonte au moins un claim risqué.
   const first = await runCheckTier('haiku', question, response, sourcesBlock)
   if (!first.result) return first
-  if (!shouldEscalateToSonnet(first.result)) return first
+  if (!shouldEscalateToSonnet(first.result)) return done(first)
+  // Palier Sonnet du jour déjà épuisé → le résultat Haiku est final (le
+  // palier Haiku, lui, reste disponible pour les prochains messages).
+  if (quotaExhaustedDayByTier.sonnet === today()) return done(first)
 
   const escalated = await runCheckTier('sonnet', question, response, sourcesBlock)
   // Si l'escalade échoue (timeout, plafond Sonnet du jour…), le résultat
   // Haiku reste plus utile qu'un badge d'échec.
-  return escalated.result ? escalated : first
+  return done(escalated.result ? escalated : first)
 }
 
 const TIER_INFO = {
@@ -258,10 +286,10 @@ async function runCheckTier(
   clearTimeout(timeoutId)
 
   if (res.status === 429) {
-    // Plafond de fond du jour atteint → suspendre jusqu'à demain ; les
-    // appelants skippent SANS badge (raison sentinelle).
-    quotaExhaustedDay = today()
-    console.info('[factChecker] quota de fond atteint — vérifs suspendues pour la journée')
+    // Plafond de fond du PALIER atteint → suspendre CE palier jusqu'à
+    // demain ; les appelants skippent SANS badge (raison sentinelle).
+    quotaExhaustedDayByTier[tier] = today()
+    console.info('[factChecker] quota de fond ' + tier + ' atteint — palier suspendu pour la journée')
     return { result: null, reason: FACT_CHECK_QUOTA_REASON }
   }
   if (!res.ok) {
@@ -269,8 +297,6 @@ async function runCheckTier(
     console.warn('[factChecker] endpoint returned non-ok:', res.status, errBody)
     return { result: null, reason: `endpoint ${res.status}${errBody ? ' ' + errBody.slice(0, 60) : ''}` }
   }
-
-  bumpAutoCheckCount()
 
   let text = ''
   try {
@@ -578,7 +604,7 @@ export async function runFactCheckOnLatest(
   // C-F — plafond de fond du jour déjà atteint : skip AVANT de poser le
   // placeholder (sinon chaque message afficherait « Vérification en
   // cours… » puis rien). Même logique silencieuse que le mode off.
-  if (quotaExhaustedDay === today()) {
+  if (isFactCheckQuotaExhausted(mode)) {
     console.info('[factChecker] skipping (' + FACT_CHECK_QUOTA_REASON + ')')
     return
   }

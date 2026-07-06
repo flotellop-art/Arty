@@ -1,5 +1,5 @@
 import type { Env } from '../../env'
-import { verifyGoogleUser, resolveUserPlan } from '../_lib/checkAllowedUser'
+import { checkAllowedUserPeek } from '../_lib/checkAllowedUser'
 import { consumeCapAtomic } from '../_lib/atomicQuota'
 import { recordUsage } from '../_lib/quota'
 
@@ -120,18 +120,24 @@ interface FactCheckRequest {
 }
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
-  const email = await verifyGoogleUser(request, env.GOOGLE_CLIENT_ID)
-  if (!email) {
+  // checkAllowedUserPeek = auth Google (aud C1/F-9) + résolution de plan
+  // INCLUANT le bypass whitelist ALLOWED_EMAILS → 'vip'. Ne PAS remplacer
+  // par resolveUserPlan seul : il ignore la whitelist, ce qui faux-bloquait
+  // les bêta-testeurs VIP en 403 permanent (revue Opus PR 5) alors que le
+  // client les croit VIP (subscription/status les mappe 'vip') et tente un
+  // fact-check à chaque réponse.
+  const user = await checkAllowedUserPeek(request, env)
+  if (!user) {
     return Response.json({ error: 'Authentication required' }, { status: 401 })
   }
+  const email = user.email
   if (!env.ANTHROPIC_API_KEY) {
     return Response.json({ error: 'fact_check_unavailable' }, { status: 503 })
   }
 
   // Plans sur clé serveur uniquement. free/trial ont le fact-check OFF côté
   // client (getFactCheckMode) ; pro = BYOK (pas de clé serveur, PR #287).
-  const plan = await resolveUserPlan(env, email)
-  if (plan !== 'subscription' && plan !== 'vip') {
+  if (user.planType !== 'subscription' && user.planType !== 'vip') {
     return Response.json({ error: 'fact_check_unavailable' }, { status: 403 })
   }
 
