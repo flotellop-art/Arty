@@ -86,10 +86,28 @@ Ces corrections réduisent fortement le coût et le délai de vérification, et 
 ## 6. Security Assessment / CASA
 
 Pour les Restricted Scopes, Google exige généralement un audit externe annuel via un labo agréé **CASA**.
-- Niveau probable : **Tier 2**.
-- Coût indicatif : **15 000 – 30 000 USD** selon périmètre.
-- Délai : 3–8 semaines (audit + corrections), parallélisable.
-- Renouvellement : annuel.
+- Niveau probable : **Tier 2** (nouvelle terminologie officielle : **AL1** « Developer Tested, Lab Reviewed » — le développeur exécute un scan DAST, le labo valide preuves + questionnaire SAQ, sans accès au code).
+- ~~Coût indicatif : 15 000 – 30 000 USD selon périmètre.~~ **CORRIGÉ le 6 juillet 2026 (recherche 2 agents, sources primaires + témoignages)** : cette estimation était **fausse d'un facteur 10-30×**, probablement alimentée par du contenu SEO synthétique (fils de forum incohérents, listicles Medium sans labo nommé — identifiés et écartés). Coût réel Tier 2/AL1 : **~540-855 USD/an** via TAC Security, le labo désigné « Google Recommended/Preferred » avec tarif négocié par Google. Aucun témoignage vérifié de première main au-dessus de 3 600 $ pour un Tier 2. Le 15-30 k$ correspond à un **Tier 3/AL2** (pentest complet, labos enterprise type Bishop Fox/NCC) — non requis sauf si l'ADA classe l'app « high risk » ou si on vise le badge Google Workspace Marketplace ; un solo-founder à faible base utilisateurs relève normalement du Tier 2.
+- Délai réel constaté : vérification de marque 2-3 j ouvrés ; vérification restricted scopes « several weeks » côté Google ; côté labo, cas Orbis (scopes quasi identiques à Arty) : ~2 j ouvrés de turnaround, allers-retours typiques = headers manquants (CORP/CSP), corrigés en jours.
+- Renouvellement : annuel (confirmé multi-sources) — budgéter en récurrent ; les plans TAC « Premium » (855 $, revalidations illimitées) neutralisent le coût des re-scans.
+
+**Short-list labos (page officielle ADA appdefensealliance.dev/casa/casa-assessors, MAJ 26 juin 2026 — liste GELÉE, onboarding de nouveaux labos en pause)** :
+
+| Labo | Tier 2 / AL1 | Notes |
+|---|---|---|
+| **TAC Security** (casa.tacsecurity.com) | **675 $** Basic (2 cycles revalidation) / **855 $** Premium (illimité) ; tarif négocié Google cité à ~540 $/an | ✅ choix n°1 — labo « préféré » de Google, cas réel Orbis (gmail.modify + calendar + contacts) passé pour 540 $ en ~2 j |
+| Leviathan Security | 3 000-6 000 $ (AL1, selon délai de démarrage) | alternative premium, prix publiés |
+| Prescient, NetSentries, NCC, Bishop Fox, DEKRA, KPMG, Orange CD | ~1 000-1 500 $+ estimés, devis sur demande | enterprise, sans intérêt à notre échelle |
+
+**Faits de périmètre qui changent la facture (vérifiés sur support.google.com/cloud/answer/13464325)** :
+- **Calendar et Contacts ne sont PAS des scopes « restricted »** (sensitive seulement) → ils ne déclenchent pas CASA. Le doc initial (§2) les surclassait.
+- **`gmail.send` seul est « sensitive »**, pas restricted. Ce sont **`gmail.readonly`/`gmail.modify` et `drive`/`drive.readonly`** qui déclenchent CASA.
+- **`drive.file` n'est pas restricted** → la migration `drive` → `drive.file` (déjà recommandée au §3) sort Drive du périmètre CASA. Surface minimale restante : Gmail readonly/modify.
+- Le tier est fixé par **Google/l'ADA, pas par le développeur** (sensibilité des données, volume d'utilisateurs, profil de risque) ; réévaluation annuelle possible.
+- L'ancien chemin d'auto-scan gratuit (portail PwC) est **officiellement déprécié** — ne pas suivre les tutos antérieurs à 2024.
+- Google ne facture rien ; 100 % du coût est chez le labo.
+
+**Conséquence stratégique (6 juillet 2026)** : le « péage CASA » n'est PAS un mur à 15-30 k$ — c'est **~600-900 €/an**, moins cher qu'un mois de budget marketing test. Le différenciateur Gmail/Drive est défendable à coût dérisoire ; la vraie dépense reste le temps de dossier (scopes §3, vidéo démo, justifications §7). Prochaine étape inchangée : trancher les scopes MVP (§3), puis devis TAC Security.
 
 **Atouts d'Arty à mettre en avant à l'audit :** contenu chiffré côté appareil (AES-256-GCM), serveur ne stockant que email + jeton OAuth, clés serveur en secrets Cloudflare, `verifyGoogleUser` + whitelist, CSP, HMAC webhook. Documenter ces points avec `docs/DPIA.md`.
 
@@ -129,7 +147,7 @@ Pour les Restricted Scopes, Google exige généralement un audit externe annuel 
 - [ ] Créer un compte Google de test propre.
 - [ ] Enregistrer la vidéo démo couvrant chaque permission demandée.
 - [ ] Soumettre la vérification OAuth.
-- [ ] Demander 2–3 devis CASA Tier 2.
+- [ ] Demander 2–3 devis CASA Tier 2 (commencer par TAC Security — voir short-list §6, corrigée le 6 juillet 2026).
 
 ---
 
