@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { BottomSheet } from '../shared/BottomSheet'
 import { PrismMark } from '../shared/PrismMark'
@@ -9,6 +9,7 @@ import { type ReflectionLevel } from '../../services/reflectionLevel'
 import { ReflectionControl } from './ReflectionControl'
 import { formatModelName, getModelExplanationKey, getModelRegion } from '../../services/modelLabels'
 import { usePlanStatus } from '../../hooks/usePlanStatus'
+import { getAutoCheckCountToday, getFactCheckMode } from '../../services/factChecker'
 
 // Sheet « ⋯ » de la conversation (PR B) — regroupe modèle / style / actions
 // qui occupaient 2 rangées de chips dans ChatTopBar. Composant volontairement
@@ -79,6 +80,14 @@ export function ChatOptionsSheet({
   // limites = différenciateur n°1 de l'audit concurrentiel : l'utilisateur
   // voit exactement où il en est, jamais de surprise.
   const planStatus = usePlanStatus()
+  // C-F (D5) — vérifications automatiques du jour (fact-check, quota de FOND
+  // hors cap premium). Compteur local indicatif, mis à jour en live (BUG 54).
+  const [autoChecks, setAutoChecks] = useState(() => getAutoCheckCountToday())
+  useEffect(() => {
+    const sync = () => setAutoChecks(getAutoCheckCountToday())
+    window.addEventListener('arty-factcheck-count-changed', sync)
+    return () => window.removeEventListener('arty-factcheck-count-changed', sync)
+  }, [])
 
   const kicker = 'block font-sans text-[10px] font-semibold uppercase tracking-kicker text-theme-muted mb-2'
 
@@ -206,6 +215,16 @@ export function ChatOptionsSheet({
                 ? t('quota.sheetFooterWithPack', { pack: planStatus.premiumPackRemaining })
                 : t('quota.sheetFooter')}
             </p>
+            {/* C-F (D5) — attribution des appels de fond : les vérifications
+                auto ne consomment PLUS le cap premium ci-dessus (endpoint
+                dédié borné). Ligne affichée seulement si le fact-check est
+                actif et a tourné aujourd'hui — pas de bruit en conv EU
+                (fact-check désactivé) ni pour les modes off. */}
+            {getFactCheckMode() !== 'off' && !euOnly && autoChecks > 0 && (
+              <p className="text-[10px] text-theme-muted leading-relaxed">
+                {t('quota.autoChecksToday', { count: autoChecks })}
+              </p>
+            )}
           </div>
         </section>
       )}

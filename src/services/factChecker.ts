@@ -86,65 +86,65 @@ export function setFactCheckMode(mode: FactCheckMode): void {
   try { window.dispatchEvent(new CustomEvent('fact-check-mode-changed', { detail: mode })) } catch {}
 }
 
-// Le mode 'auto' route TOUS les fact-checks vers Sonnet 5 (avec
-// web_search). Décision du 11 mai 2026 : Haiku 4.5 hallucine trop
-// souvent sur les sujets post-cutoff (modèles AI récents, actualité
-// tech, comparatifs produits) et ne supporte pas web_search_20250305.
-// Pour gagner en fiabilité, on accepte le coût supplémentaire.
-//
-// Si tu veux forcer Haiku (rapide, gratuit, pas de web), passer en
-// mode 'haiku' explicite dans les settings — réservé aux cas où la
-// fiabilité ne prime pas (chat trivial, brainstorming).
+// C-F (CDC visibilité modèle, décision D5) — mode 'auto' = HAIKU D'ABORD,
+// escalade Sonnet + web_search UNIQUEMENT si la passe Haiku détecte des
+// claims risqués (wrong/uncertain). Historique : depuis le 11 mai 2026,
+// 'auto' routait TOUT vers Sonnet+web (fiabilité) — mais chaque réponse
+// vérifiée consommait 1 unité du cap premium mensuel de l'abonné (150
+// Sonnet/Opus ≈ 75 vrais échanges, audit F-15). Désormais :
+//  - la plupart des vérifs s'arrêtent à Haiku (rapide, quasi gratuit) ;
+//  - l'escalade Sonnet ne part que sur du risque détecté ;
+//  - TOUT passe par l'endpoint dédié /api/ai/fact-check (pattern
+//    memory-extract) : HORS cap premium et quota journalier, borné par son
+//    propre plafond de fond (60 Haiku + 15 Sonnet / jour, côté serveur).
+// Le prompt système vit CÔTÉ SERVEUR (functions/api/ai/fact-check.ts) —
+// l'endpoint n'accepte que {tier, question, response, sources} : il ne peut
+// pas servir de proxy Claude générique.
 
-const SYSTEM_PROMPT = `Tu es un fact-checker rigoureux. On te donne une question d'utilisateur, une réponse d'IA à vérifier, ET (si disponible) les SOURCES WEB CONSULTÉES par l'IA pendant sa réponse. Ton job : identifier les claims factuels VÉRIFIABLES (chiffres précis, dates, noms propres, prix, scores, statistiques, citations), donner un verdict pour CHACUN, et PROPOSER UNE CORRECTION quand tu es confiant que c'est faux.
+const FACT_CHECK_ENDPOINT = '/api/ai/fact-check'
 
-Verdicts possibles :
-- "verified" : tu es très confiant que le claim est exact. Si SOURCES présentes, le claim est confirmé par au moins une source. Sinon, info stable connue (ex: "Paris est la capitale de la France").
-- "uncertain" : tu n'as pas assez d'info pour confirmer. Si SOURCES présentes : aucune ne confirme ni ne contredit le claim. Sinon : tu hésites.
-- "wrong" : tu es très confiant que le claim est faux ET tu connais la version correcte. Si SOURCES présentes, tu peux extraire la bonne réponse de leurs snippets.
+// Raison sentinelle du skip quota — les appelants la traitent comme un skip
+// INTENTIONNEL (pas de badge « indisponible » à chaque message une fois le
+// plafond de fond du jour atteint).
+export const FACT_CHECK_QUOTA_REASON = 'quota de fond atteint'
 
-UTILISATION DES SOURCES (si fournies) :
-Quand des sources web sont fournies, tu DOIS les utiliser comme vérité prioritaire (elles sont fraîches, ton training data peut être obsolète). Pour chaque claim, cherche dans les sources :
-- Si claim explicitement confirmé par 1+ sources → "verified"
-- Si claim explicitement contredit par 1+ sources → "wrong" + extraire la bonne valeur des sources comme "correction"
-- Si claim non mentionné dans les sources → "uncertain" (les sources couvraient juste partiellement le sujet)
+// Une fois le 429 fact_check_quota reçu, on arrête d'appeler l'endpoint
+// jusqu'au lendemain (évite un aller-retour réseau par message).
+let quotaExhaustedDay: string | null = null
 
-Pour les claims "wrong", AJOUTE deux champs :
-- "originalText" : le passage EXACT de la réponse à corriger, copié VERBATIM caractère par caractère — Y COMPRIS le markdown (**gras**, _italique_), la ponctuation, les apostrophes et les espaces tels qu'ils apparaissent dans la réponse. Si tu omets le markdown ou modifies un caractère, le remplacement automatique échoue.
-- "correction" : le texte qui doit le remplacer dans la réponse, basé sur les sources si fournies. Une VALEUR de remplacement du même format que l'original (ex : une plage de températures remplace une plage de températures) — l'explication du pourquoi va dans "explanation", PAS dans "correction".
-
-Si tu sais que le claim est faux MAIS tu ne connais pas la bonne réponse (ni dans tes données ni dans les sources), marque-le "uncertain" plutôt que "wrong" et omet "correction".
-
-Sois CONSERVATEUR : préfère "uncertain" à "wrong" quand tu doutes. Ignore les claims évidents ("Paris est en France"), les opinions ("c'est joli"), et les conseils généraux.
-
-URLs ET LIENS — règle stricte :
-- N'ALTÈRE JAMAIS un markdown link [...](URL) sauf si tu es CERTAIN que l'URL est dangereuse (phishing, malware) ou trompeusement attribuée (ex : citée comme "source officielle Apple" alors que c'est un blog).
-- Les domaines suivants sont les domaines de l'app Arty elle-même (deep-links internes vers des features comme les rapports comparatifs, les exports PDF, les conversations partagées) — ne les considère JAMAIS comme suspects ou tiers :
-  * appfacade.pages.dev (toutes routes : /report/, /chat/, /upgrade, etc.)
-  * tryarty.com (toutes routes)
-  * claude-fix-arty-error-vzjfz.appfacade.pages.dev (preview branch)
-  * *.appfacade.pages.dev (previews Cloudflare)
-- Une URL inconnue n'est PAS automatiquement fausse. Préfère "uncertain" plutôt que de la supprimer.
-
-Si la réponse contient ZÉRO claim factuel risqué, retourne "claims": [] et "overall_confidence": "high".
-
-OUTIL WEB_SEARCH (si disponible) :
-Si le tool web_search est mis à ta disposition, tu PEUX l'appeler pour vérifier un claim que les sources fournies ne couvrent PAS — exemples : existence d'un produit/modèle/personne, dates de sortie, tarifs officiels, scores benchmarks, citations exactes. Préfère 1 à 2 recherches ciblées (max 2) plutôt que 0 — c'est ce qui te permet de passer "uncertain" à "verified" ou "wrong" sur des claims vérifiables en ligne. N'appelle PAS web_search pour les claims déjà confirmés/contredits par les sources fournies, ni pour les opinions ou conseils. Après tes recherches, retourne ton JSON final dans un dernier bloc texte.
-
-RÉPONDS UNIQUEMENT EN JSON VALIDE, sans texte avant ou après, sans backticks, format strict :
-{
-  "overall_confidence": "high" | "medium" | "low",
-  "claims": [
-    { "claim": "string", "verdict": "verified" | "uncertain" | "wrong", "explanation": "string courte", "originalText": "...", "correction": "..." }
-  ]
+function today(): string {
+  return new Date().toISOString().slice(0, 10)
 }
 
-Les champs "originalText" et "correction" ne sont REQUIS que pour les verdicts "wrong" où tu es certain de la bonne réponse.
+// Compteur local du jour — alimente la ligne « dont X vérifications auto »
+// du sheet quotas (affichage indicatif ; la borne réelle est côté serveur).
+// BUG 54 : écriture partagée entre vues → CustomEvent à chaque bump.
+const COUNT_KEY_PREFIX = 'factcheck-count-'
 
-Échelle overall_confidence :
-- "high" : 0 claim risqué OU tous "verified"
-- "medium" : claims "uncertain" présents
-- "low" : au moins 1 "wrong" OU plusieurs "uncertain" critiques`
+function bumpAutoCheckCount(): void {
+  try {
+    const key = COUNT_KEY_PREFIX + today()
+    const cur = parseInt(scoped.getItem(key) || '0', 10)
+    scoped.setItem(key, String((Number.isFinite(cur) ? cur : 0) + 1))
+    window.dispatchEvent(new CustomEvent('arty-factcheck-count-changed'))
+  } catch { /* compteur d'affichage — jamais bloquant */ }
+}
+
+export function getAutoCheckCountToday(): number {
+  try {
+    const n = parseInt(scoped.getItem(COUNT_KEY_PREFIX + today()) || '0', 10)
+    return Number.isFinite(n) && n > 0 ? n : 0
+  } catch {
+    return 0
+  }
+}
+
+// Critère d'escalade Haiku → Sonnet (exporté pour test) : au moins un claim
+// non « verified ». Un résultat Haiku entièrement vert est final — inutile
+// de payer Sonnet + web_search pour re-confirmer du déjà-vérifié.
+export function shouldEscalateToSonnet(result: FactCheckResult): boolean {
+  return result.claims.some((c) => c.verdict !== 'verified')
+}
 
 function formatSearchContext(ctx: SearchContext | null): string {
   if (!ctx) return ''
@@ -188,76 +188,68 @@ export async function factCheckResponse(
 ): Promise<FactCheckOutcome> {
   if (mode === 'off') return { result: null, reason: 'désactivé' }
   if (!response || response.length < 80) return { result: null, reason: 'réponse trop courte' }
+  if (quotaExhaustedDay === today()) return { result: null, reason: FACT_CHECK_QUOTA_REASON }
 
-  // Mode 'auto' : toujours Sonnet 5 + web_search. Haiku 4.5 reste
-  // disponible mais uniquement en mode explicite (settings → 'haiku')
-  // pour ceux qui priorisent vitesse/coût sur fiabilité.
-  const effectiveMode: 'haiku' | 'sonnet' =
-    mode === 'auto' ? 'sonnet' : mode
-
-  const model = effectiveMode === 'sonnet' ? 'claude-sonnet-5' : 'claude-haiku-4-5-20251001'
-  const modelLabel = effectiveMode === 'sonnet' ? 'Sonnet 5' : 'Haiku 4.5'
-
-  // Web search natif Anthropic : activé uniquement sur Sonnet (Haiku 4.5 ne
-  // supporte pas web_search_20250305 → 400 si on l'envoie). Permet au
-  // fact-checker de vérifier des claims que les sources Linkup/Anthropic
-  // ramenées par le modèle d'origine ne couvrent pas — résout le paradoxe
-  // historique où Sonnet 4.6 marquait "uncertain" sur sa propre existence
-  // faute d'avoir l'info dans son training. `max_uses: 2` limite le coût.
-  const useWebSearch = effectiveMode === 'sonnet'
   const sourcesBlock = formatSearchContext(searchContext)
-  const userMessage = `Question utilisateur :\n${question.slice(0, 2000)}\n\nRéponse à vérifier :\n${response.slice(0, 6000)}${sourcesBlock}`
 
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    'anthropic-version': '2023-06-01',
+  // Modes explicites (settings) : un seul palier, pas d'escalade.
+  if (mode === 'haiku' || mode === 'sonnet') {
+    return runCheckTier(mode, question, response, sourcesBlock)
   }
+
+  // Mode 'auto' (D5) : Haiku d'abord, Sonnet+web_search seulement si la
+  // passe rapide remonte au moins un claim risqué.
+  const first = await runCheckTier('haiku', question, response, sourcesBlock)
+  if (!first.result) return first
+  if (!shouldEscalateToSonnet(first.result)) return first
+
+  const escalated = await runCheckTier('sonnet', question, response, sourcesBlock)
+  // Si l'escalade échoue (timeout, plafond Sonnet du jour…), le résultat
+  // Haiku reste plus utile qu'un badge d'échec.
+  return escalated.result ? escalated : first
+}
+
+const TIER_INFO = {
+  haiku: { model: 'claude-haiku-4-5-20251001', label: 'Haiku 4.5', timeoutMs: 10_000 },
+  // Sonnet + web_search en non-streamé : Anthropic accumule toute la réponse
+  // (2 recherches + synthèse JSON) avant de répondre — 25-30 s typique en
+  // prod, 35 s couvre le 95e percentile sans geler le placeholder.
+  sonnet: { model: 'claude-sonnet-5', label: 'Sonnet 5', timeoutMs: 35_000 },
+} as const
+
+async function runCheckTier(
+  tier: 'haiku' | 'sonnet',
+  question: string,
+  response: string,
+  sourcesBlock: string
+): Promise<FactCheckOutcome> {
+  const info = TIER_INFO[tier]
+
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   const googleToken = await getValidAccessToken()
   if (googleToken) headers['x-google-token'] = googleToken
 
-  // Timeout : avec web_search en mode non-streamé, Anthropic accumule
-  // toute la réponse côté serveur (2 recherches + synthèse JSON) avant
-  // de répondre. Mesuré en prod : 25-30s typique sur des sujets denses,
-  // d'où 35s comme garde-fou pour couvrir les 95e percentile sans geler
-  // le placeholder "Vérification en cours…" indéfiniment. 10s suffit
-  // pour Haiku sans web_search.
   const controller = new AbortController()
-  const timeoutMs = useWebSearch ? 35_000 : 10_000
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
-
-  type RequestBody = {
-    model: string
-    max_tokens: number
-    system: string
-    messages: Array<{ role: 'user'; content: string }>
-    tools?: Array<{ type: string; name: string; max_uses?: number }>
-  }
-  const reqBody: RequestBody = {
-    model,
-    // Sonnet + web_search : bump max_tokens pour accommoder les blocs
-    // server_tool_use + web_search_tool_result + texte intermédiaire +
-    // JSON final. 1024 ne suffit plus quand le modèle fait 2 recherches.
-    max_tokens: useWebSearch ? 2500 : 1024,
-    system: SYSTEM_PROMPT,
-    messages: [{ role: 'user', content: userMessage }],
-  }
-  if (useWebSearch) {
-    reqBody.tools = [{ type: 'web_search_20250305', name: 'web_search', max_uses: 2 }]
-  }
+  const timeoutId = setTimeout(() => controller.abort(), info.timeoutMs)
 
   let res: Response
   try {
-    res = await fetch(apiUrl('/api/ai/proxy'), {
+    res = await fetch(apiUrl(FACT_CHECK_ENDPOINT), {
       method: 'POST',
       headers,
-      body: JSON.stringify(reqBody),
+      body: JSON.stringify({
+        tier,
+        question: question.slice(0, 2000),
+        response: response.slice(0, 6000),
+        sources: sourcesBlock,
+      }),
       signal: controller.signal,
     })
   } catch (err) {
     clearTimeout(timeoutId)
     if (err instanceof Error && err.name === 'AbortError') {
-      console.warn('[factChecker] timeout after', timeoutMs, 'ms')
-      return { result: null, reason: `timeout ${timeoutMs / 1000}s` }
+      console.warn('[factChecker] timeout after', info.timeoutMs, 'ms')
+      return { result: null, reason: `timeout ${info.timeoutMs / 1000}s` }
     }
     console.warn('[factChecker] fetch failed:', err)
     const msg = err instanceof Error ? err.message : 'erreur réseau'
@@ -265,11 +257,20 @@ export async function factCheckResponse(
   }
   clearTimeout(timeoutId)
 
+  if (res.status === 429) {
+    // Plafond de fond du jour atteint → suspendre jusqu'à demain ; les
+    // appelants skippent SANS badge (raison sentinelle).
+    quotaExhaustedDay = today()
+    console.info('[factChecker] quota de fond atteint — vérifs suspendues pour la journée')
+    return { result: null, reason: FACT_CHECK_QUOTA_REASON }
+  }
   if (!res.ok) {
     const errBody = await res.text().catch(() => '')
-    console.warn('[factChecker] proxy returned non-ok:', res.status, errBody)
-    return { result: null, reason: `proxy ${res.status}${errBody ? ' ' + errBody.slice(0, 60) : ''}` }
+    console.warn('[factChecker] endpoint returned non-ok:', res.status, errBody)
+    return { result: null, reason: `endpoint ${res.status}${errBody ? ' ' + errBody.slice(0, 60) : ''}` }
   }
+
+  bumpAutoCheckCount()
 
   let text = ''
   try {
@@ -291,14 +292,13 @@ export async function factCheckResponse(
         break
       }
     }
-    // H-AI-4 (audit étape 4) — recordUsage manquant : Sonnet + web_search
-    // ≈ 5000 tokens × N fact-checks par conversation → 20-30% du coût total
-    // était invisible dans le dashboard. On track ici (in/out, sans cache).
+    // H-AI-4 — tracking LOCAL (fallback BYOK/offline du dashboard). Le coût
+    // D1 (source de vérité, BUG 60) est tracé côté endpoint fact-check.
     if (data.usage) {
       try {
         const inputT = (data.usage.input_tokens || 0) + (data.usage.cache_read_input_tokens || 0)
         const outputT = data.usage.output_tokens || 0
-        recordUsage(model, inputT, outputT)
+        recordUsage(info.model, inputT, outputT)
       } catch { /* tracking doit pas casser */ }
     }
   } catch (err) {
@@ -362,7 +362,7 @@ export async function factCheckResponse(
     result: {
       overallConfidence,
       claims,
-      modelLabel,
+      modelLabel: info.label,
       checkedAt: Date.now(),
       // BUG 59 — status structuré : succès "vide" = aucun claim risqué
       // (wrong/uncertain), succès "avec claims" = au moins un à signaler.
@@ -488,9 +488,13 @@ export async function factCheckContent(
   clearSearchContext()
   const outcome = await factCheckResponse(question, content, mode, ctx)
   if (!outcome.result) {
-    // Skip intentionnel (mode off, réponse triviale type "Salut !") →
-    // pas la peine d'afficher un badge à l'utilisateur. Return null.
-    if (outcome.reason === 'désactivé' || outcome.reason === 'réponse trop courte') {
+    // Skip intentionnel (mode off, réponse triviale type "Salut !", plafond
+    // de fond du jour atteint) → pas de badge. Return null.
+    if (
+      outcome.reason === 'désactivé' ||
+      outcome.reason === 'réponse trop courte' ||
+      outcome.reason === FACT_CHECK_QUOTA_REASON
+    ) {
       return null
     }
     // Fail réel (timeout, réseau, parse) → on remonte le fail pour que
@@ -571,6 +575,14 @@ export async function runFactCheckOnLatest(
     return
   }
 
+  // C-F — plafond de fond du jour déjà atteint : skip AVANT de poser le
+  // placeholder (sinon chaque message afficherait « Vérification en
+  // cours… » puis rien). Même logique silencieuse que le mode off.
+  if (quotaExhaustedDay === today()) {
+    console.info('[factChecker] skipping (' + FACT_CHECK_QUOTA_REASON + ')')
+    return
+  }
+
   // Marqueur PENDING immédiat — visible dans l'UI même si le fact-check
   // prend 2-5s. Permet à l'utilisateur de voir que la vérif est active
   // dès la fin du stream. Sera remplacé par le vrai résultat plus bas.
@@ -600,6 +612,18 @@ export async function runFactCheckOnLatest(
   const outcome = await factCheckResponse(userMsg.content, originalContent, mode, ctx)
   if (!outcome.result) {
     console.warn('[factChecker] factCheckResponse returned null —', outcome.reason)
+    // C-F — plafond de fond atteint PENDANT cet appel (429) : retirer le
+    // placeholder sans badge d'échec — skip intentionnel, pas une panne.
+    if (outcome.reason === FACT_CHECK_QUOTA_REASON) {
+      const convQ = storage.getConversation(conversationId)
+      const targetQ = convQ?.messages.find((m) => m.id === assistantMsg.id)
+      if (convQ && targetQ) {
+        delete targetQ.factCheck
+        storage.saveConversation(convQ)
+        refreshConversations()
+      }
+      return
+    }
     // Update le placeholder pour montrer l'échec à l'user (au lieu de
     // laisser "Vérification en cours…" éternellement). On embarque la
     // raison dans le modelLabel pour qu'elle s'affiche dans le badge

@@ -949,7 +949,9 @@
     "capReachedHint": "Ton quota premium se réinitialise le {{date}}. En attendant : un pack +100, ou bascule sur Mistral / un modèle standard via le sélecteur (sans plafond mensuel).",
     "buyPack": "+100 messages premium — 1,99 €",
     "later": "Plus tard",
-    "switchToMistral": "Relancer sur Mistral (EU) — sans plafond mensuel"
+    "switchToMistral": "Relancer sur Mistral (EU) — sans plafond mensuel",
+    "autoChecksToday_one": "Vérifications auto aujourd'hui : {{count}} — hors quota premium (compteur de fond dédié)",
+    "autoChecksToday_other": "Vérifications auto aujourd'hui : {{count}} — hors quota premium (compteur de fond dédié)"
   },
   "onboardingChoice": {
     "tryFree": {
