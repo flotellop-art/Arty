@@ -334,13 +334,16 @@ export function selectClaudeSubModel(
 ): ClaudeSubModel {
   // Plan free/trial : Haiku uniquement, sans exception. Évite le 403
   // model_locked serveur-side ET le swap trial silencieux (C-E, décision D2 :
-  // le client demande directement le modèle qui sera servi — le swap
-  // Sonnet→Haiku du proxy devient un filet jamais déclenché, l'UI dit vrai
-  // par construction). Le plan est mis en cache par usePlanStatus
-  // ('arty-plan-cache', /api/subscription/status normalise trial → 'free')
-  // et par le flux essai email (setTrialToken pose 'free' — pas de token
-  // Google, donc jamais de fetch status). 'trial' accepté défensivement si
-  // status.ts distingue un jour l'essai.
+  // le client demande directement le modèle qui sera servi). Le plan est mis
+  // en cache par usePlanStatus ('arty-plan-cache', /api/subscription/status
+  // normalise trial → 'free') et par le flux essai email (setTrialToken pose
+  // 'free' — pas de token Google, donc jamais de fetch status). 'trial'
+  // accepté défensivement si status.ts distingue un jour l'essai.
+  // ⚠️ Portée réelle (revue PR 4) : ce verrou ne couvre QUE le chat principal
+  // — les appelants qui passent options.model directement (comparateur) ou
+  // qui postent sur le proxy sans passer ici (compresseur) peuvent encore
+  // déclencher le swap serveur ; pour le chat, l'event `confirmed` (C-A)
+  // rend tout swap résiduel visible au badge. Suivi Comparateur au CDC.
   let cachedPlan: string | null = null
   try { cachedPlan = localStorage.getItem('arty-plan-cache') } catch {}
   // SANS crédits utilisables → Haiku only. AVEC des crédits (essai épuisé ou

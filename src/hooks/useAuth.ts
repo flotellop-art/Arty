@@ -122,6 +122,12 @@ export function useAuth() {
     // (le scopedStorage résout le préfixe via la session active). Sans ça, le
     // jeton resterait utilisable par le prochain user du même appareil.
     clearTrialToken()
+    // C-E (revue PR 4, 2 agents) — purge le cache de plan GLOBAL : un 'free'
+    // résiduel (essai email/Google du user partant) épinglerait le prochain
+    // compte PAYANT sur Haiku le temps du premier fetch /api/subscription/status.
+    // Trou pré-existant (jamais purgé), rendu plus fréquent par l'écriture du
+    // flux essai email — fermé ici pour tous les flux.
+    try { localStorage.removeItem('arty-plan-cache') } catch { /* noop */ }
     // Drop any pending OAuth state nonce (e.g. user clicked Google then
     // logged out before completing the redirect).
     clearOAuthState()
@@ -152,6 +158,10 @@ export function useAuth() {
     clearActiveKeys()
     resetGoogleMemCache()
     resetConversationMemCache()
+    // C-E — le cache de plan est GLOBAL : celui du compte quitté ne doit pas
+    // router les modèles du compte suivant (usePlanStatus le re-remplit au
+    // premier fetch). Symétrique de la purge du logout.
+    try { localStorage.removeItem('arty-plan-cache') } catch { /* noop */ }
 
     // Activate new session
     setActiveSession(session)
