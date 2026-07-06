@@ -1,7 +1,7 @@
 import { getMistralKey } from './activeApiKey'
 import { apiUrl } from './apiBase'
 import { getValidAccessToken } from './googleAuth'
-import { getTrialToken } from './emailTrialClient'
+import { buildAiHeaders, fetchWithTimeout } from './aiHttp'
 import { TOOLS } from './toolDefinitions'
 import { convertToolsToOpenAI } from './tools/openaiFormat'
 import { buildLocationContext } from './locationContext'
@@ -110,6 +110,11 @@ interface MistralStreamOptions {
   // de MISTRAL_RULES (impossible ici — le modèle est verrouillé). Bug live
   // 11 juin : Mistral conseillait un switch impossible sur un article paywall.
   euOnly?: boolean
+  // Appel d'arrière-plan (résumé, comparateur) : l'event 'arty-model-used'
+  // est marqué background → ignoré par le badge de conversation (F-4).
+  background?: boolean
+  // Conversation d'origine (targetId) — scope l'event 'arty-model-used'.
+  conversationId?: string
 }
 
 // Décision « forcer web_search au 1er tour » — pure et exportée pour test.
@@ -151,7 +156,6 @@ export function streamMistralMessage(
 }
 
 // OpenAI-format message types for the tool loop
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ApiMessage = { role: string; content?: MistralMessageContent | null; tool_calls?: any[]; tool_call_id?: string; name?: string }
 
 interface ToolCall {
@@ -356,7 +360,11 @@ async function runMistralStream(
     // selectMistralModel (auto-sélection Arty pour le chat normal — par
     // défaut Mistral Medium 3.5 depuis mai 2026).
     const model = options?.model || selectMistralModel(lastUserText)
-    dispatchModelUsed({ model, provider: 'mistral' })
+    // Dispatch OPTIMISTE (pré-envoi) — corrigé dans la boucle ci-dessous si
+    // le flux SSE confirme un autre modèle (substitution serveur trial, F-1).
+    const eventScope = { background: options?.background, conversationId: options?.conversationId }
+    let dispatchedModel = model
+    dispatchModelUsed({ model, provider: 'mistral', ...eventScope })
 
     // Build messages in OpenAI format
     const apiMessages: ApiMessage[] = [
@@ -433,10 +441,20 @@ Pour les COMPARAISONS multi-sites/multi-revendeurs (ex: "compare prix X chez Bri
           apiKey, apiMessages, openaiTools, onToken, controller, model, temperature, false
         )
       }
-      const { content, toolCalls, inputTokens, outputTokens } = once
+      const { content, toolCalls, inputTokens, outputTokens, servedModel } = once
+
+      // Boucle « demandé → servi » (F-1/F-2) : le flux OpenAI-compatible de
+      // Mistral porte le modèle réellement servi dans chaque chunk — corrige
+      // le badge si le proxy a substitué (trial). Fire aussi en ROUTINE quand
+      // l'API résout l'alias -latest vers un id daté (mistral-medium-2505) :
+      // label identique à l'écran, coût normalisé par préfixe. Idempotent.
+      if (servedModel && servedModel !== dispatchedModel) {
+        dispatchedModel = servedModel
+        dispatchModelUsed({ model: servedModel, provider: 'mistral', confirmed: true, ...eventScope })
+      }
 
       try {
-        recordUsage(model, inputTokens, outputTokens)
+        recordUsage(servedModel || model, inputTokens, outputTokens)
       } catch {
         // Ne casse pas la réponse si le tracking échoue
       }
@@ -527,21 +545,13 @@ async function streamOnce(
   toolCalls: ToolCall[]
   inputTokens: number
   outputTokens: number
+  /** Modèle CONFIRMÉ par le flux SSE (`model` des chunks, format
+      OpenAI-compatible). Vide si absent du flux. */
+  servedModel?: string
 }> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-  if (apiKey) {
-    headers['Authorization'] = `Bearer ${apiKey}`
-  }
-  // Get a valid (refreshed if needed) Google token for whitelist verification
-  const googleToken = await getValidAccessToken()
-  if (googleToken) {
-    headers['x-google-token'] = googleToken
-  } else {
-    const trialToken = getTrialToken()
-    if (trialToken) headers['x-arty-trial-token'] = trialToken
-  }
+  // C9 : headers factorisés (BYOK Bearer + garde server-provided + google-token/trial).
+  const headers = await buildAiHeaders({ byokKey: apiKey, auth: 'bearer' })
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const body: Record<string, any> = {
     model,
     messages,
@@ -574,23 +584,13 @@ async function streamOnce(
     // CRIT-5 — Timeout 60s sur le stream Mistral. Cold-start Cloudflare ou
     // réseau flaky peuvent laisser pendre 60-90s sinon. Compose avec le
     // controller externe (annulation utilisateur) pour les deux raisons.
-    const timeoutCtrl = new AbortController()
-    const timeoutId = setTimeout(() => timeoutCtrl.abort(new DOMException('Timeout', 'AbortError')), 60_000)
-    const onExternalAbort = () => timeoutCtrl.abort(controller.signal.reason)
-    if (controller.signal.aborted) timeoutCtrl.abort(controller.signal.reason)
-    else controller.signal.addEventListener('abort', onExternalAbort)
-
-    try {
-      response = await fetch(apiUrl('/api/ai/mistral-proxy'), {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(body),
-        signal: timeoutCtrl.signal,
-      })
-    } finally {
-      clearTimeout(timeoutId)
-      controller.signal.removeEventListener('abort', onExternalAbort)
-    }
+    // C9 : timeout 60s + lien signal externe factorisés (aiHttp.fetchWithTimeout).
+    response = await fetchWithTimeout(
+      apiUrl('/api/ai/mistral-proxy'),
+      { method: 'POST', headers, body: JSON.stringify(body) },
+      60_000,
+      controller.signal,
+    )
 
     if (response.status !== 429 || attempt >= 2) break
 
@@ -645,6 +645,7 @@ async function streamOnce(
   let content = ''
   let inputTokens = 0
   let outputTokens = 0
+  let servedModel = ''
   const toolCalls: ToolCall[] = []
   // Accumulate partial tool calls by index
   const partialToolCalls = new Map<number, { id: string; name: string; args: string }>()
@@ -702,6 +703,11 @@ async function streamOnce(
             inputTokens = parsed.usage.prompt_tokens || 0
             outputTokens = parsed.usage.completion_tokens || 0
           }
+
+          // Modèle réellement servi (chaque chunk OpenAI-compatible le porte).
+          if (typeof parsed.model === 'string' && parsed.model) {
+            servedModel = parsed.model
+          }
         } catch {
           continue
         }
@@ -725,5 +731,5 @@ async function streamOnce(
     inputTokens = Math.ceil(JSON.stringify(messages).length / 4)
   }
 
-  return { content, toolCalls, inputTokens, outputTokens }
+  return { content, toolCalls, inputTokens, outputTokens, ...(servedModel ? { servedModel } : {}) }
 }

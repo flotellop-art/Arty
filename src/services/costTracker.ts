@@ -16,7 +16,11 @@ export const EUR_PER_USD = 0.92
 // $ par 1M tokens (input / output)
 export const MODEL_COSTS: Record<string, { input: number; output: number }> = {
   'claude-haiku-4-5':  { input: 0.80,  output: 4.00 },
-  'claude-sonnet-4-6': { input: 3.00,  output: 15.00 },
+  'claude-sonnet-4-6': { input: 3.00,  output: 15.00 }, // legacy — conservé pour les coûts historiques
+  // Sonnet 5 : tarif durable $3/$15 (l'intro $2/$10 court jusqu'au 31/08/2026 —
+  // on inscrit le tarif pérenne pour éviter une PR de re-pricing en septembre).
+  // ⚠️ Tokenizer Sonnet 5 ~30% plus gourmand : coût par MESSAGE ~+30% à tarif égal.
+  'claude-sonnet-5':   { input: 3.00,  output: 15.00 },
   'claude-opus-4-6':   { input: 15.00, output: 75.00 }, // legacy — conservé pour les coûts historiques
   'claude-opus-4-8':   { input: 15.00, output: 75.00 }, // opus actif (GA 28/05/2026, même tarif que 4.6/4.7)
   'gpt-5-mini':        { input: 0.40,  output: 1.60 },
@@ -95,7 +99,7 @@ export function normaliseModel(model: string): string {
   if (MODEL_ALIASES[model]) return MODEL_ALIASES[model] as string
   // Fallbacks par préfixe pour ne pas perdre les futurs modèles
   if (model.startsWith('claude-haiku')) return 'claude-haiku-4-5'
-  if (model.startsWith('claude-sonnet')) return 'claude-sonnet-4-6'
+  if (model.startsWith('claude-sonnet')) return 'claude-sonnet-5'
   if (model.startsWith('claude-opus')) return 'claude-opus-4-8'
   if (model.startsWith('gpt-5-mini') || model.includes('mini')) return 'gpt-5-mini'
   if (model.startsWith('gpt-')) return 'gpt-5'

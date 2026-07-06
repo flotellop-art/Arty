@@ -1,7 +1,6 @@
 import { getGeminiKey } from './activeApiKey'
 import { apiUrl } from './apiBase'
-import { getValidAccessToken } from './googleAuth'
-import { getTrialToken } from './emailTrialClient'
+import { buildAiHeaders, fetchWithTimeout } from './aiHttp'
 import { buildLocationContext } from './locationContext'
 import { recordUsage } from './costTracker'
 import { dispatchModelUsed } from './modelLabels'
@@ -54,32 +53,6 @@ const GEMINI_TIMEOUT_MS = 60_000
 const RETRY_DELAYS_MS = [1000, 2000, 4000]
 function shouldRetry(status: number): boolean {
   return status === 429 || (status >= 500 && status < 600)
-}
-
-/**
- * fetch + timeout via AbortController. Compose avec un controller externe
- * si fourni (pour permettre l'annulation côté caller).
- */
-async function fetchWithTimeout(
-  url: string,
-  init: RequestInit,
-  timeoutMs: number,
-  externalSignal?: AbortSignal,
-): Promise<Response> {
-  const ctrl = new AbortController()
-  const timeoutId = setTimeout(() => ctrl.abort(new DOMException('Timeout', 'AbortError')), timeoutMs)
-  // Lien avec le signal externe si présent
-  const onExternalAbort = () => ctrl.abort(externalSignal?.reason)
-  if (externalSignal) {
-    if (externalSignal.aborted) ctrl.abort(externalSignal.reason)
-    else externalSignal.addEventListener('abort', onExternalAbort)
-  }
-  try {
-    return await fetch(url, { ...init, signal: ctrl.signal })
-  } finally {
-    clearTimeout(timeoutId)
-    if (externalSignal) externalSignal.removeEventListener('abort', onExternalAbort)
-  }
 }
 
 /**
@@ -174,6 +147,11 @@ interface GeminiStreamOptions {
   // vrai chat Gemini (useConversation) — jamais par le comparateur. Absent ⇒
   // 'auto' (heuristique par message). Voir reflectionLevel.ts.
   reflectionLevel?: ReflectionLevel
+  // Appel d'arrière-plan (comparateur) : l'event 'arty-model-used' est marqué
+  // background → ignoré par le badge de conversation (F-4).
+  background?: boolean
+  // Conversation d'origine (targetId) — scope l'event 'arty-model-used'.
+  conversationId?: string
 }
 
 export function streamGeminiMessage(
@@ -258,7 +236,16 @@ async function runGeminiStream(
     // Notifie l'UI du modèle exact appelé (ChatTopBar) + si la réflexion est
     // active. Seuil 2048 = palier « profond » de Gemini Flash (le 512/1024
     // par défaut est du micro-raisonnement, pas une réflexion à signaler).
-    dispatchModelUsed({ model, provider: 'gemini', reflecting: thinkingBudget >= 2048 })
+    // NB : l'API Gemini ne renvoie pas le modèle servi dans ses chunks —
+    // c'est le SEUL client dont l'event reste une déclaration d'intention
+    // (pas de dispatch correctif possible, cf. audit visibilité F-2).
+    dispatchModelUsed({
+      model,
+      provider: 'gemini',
+      reflecting: thinkingBudget >= 2048,
+      background: options?.background,
+      conversationId: options?.conversationId,
+    })
 
     const requestBody = {
       model,
@@ -275,19 +262,8 @@ async function runGeminiStream(
       tools,
     }
 
-    // Build headers — send BYOK key if available, otherwise proxy uses server key
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-    if (apiKey) {
-      headers['Authorization'] = `Bearer ${apiKey}`
-    }
-    // Send Google token so proxy can verify whitelist
-    const googleToken = await getValidAccessToken()
-    if (googleToken) {
-      headers['x-google-token'] = googleToken
-    } else {
-      const trialToken = getTrialToken()
-      if (trialToken) headers['x-arty-trial-token'] = trialToken
-    }
+    // C9 : headers factorisés (BYOK Bearer + garde server-provided + google-token/trial).
+    const headers = await buildAiHeaders({ byokKey: apiKey, auth: 'bearer' })
 
     const response = await fetchWithRetry(
       apiUrl('/api/ai/gemini-proxy'),
@@ -308,8 +284,16 @@ async function runGeminiStream(
           Object.assign(e, { capBucket: parsed.bucket, capLimit: parsed.cap })
           throw e
         }
+        // C-D / F-13 — le refus trial explicite du proxy devenait « Erreur
+        // Gemini (403) » générique. Sentinel STABLE (pattern
+        // premium_cap_reached) : la traduction se fait au point d'affichage
+        // (useConversation.onErr), jamais dans le message d'erreur comparé.
+        if (parsed?.error === 'trial_model_restricted') {
+          throw new Error('trial_model_restricted')
+        }
       } catch (e) {
         if ((e as Error).message === 'premium_cap_reached') throw e
+        if ((e as Error).message === 'trial_model_restricted') throw e
         // body non-JSON → erreur générique ci-dessous
       }
       // 404 = modèle/endpoint introuvable (renommage Google), pas un problème
@@ -318,9 +302,11 @@ async function runGeminiStream(
       throw new Error(i18n.t(key, { status: response.status }))
     }
 
-    // H-AI-5 — notify UI que ce message est servi par Gemini (mêmes infos
-    // que les autres clients pour cohérence des badges).
-    dispatchModelUsed({ model, provider: 'gemini' })
+    // (Fix F-6, audit visibilité modèle) — le re-dispatch qui vivait ici
+    // (H-AI-5) était REDONDANT avec celui d'avant le fetch (même `model`
+    // calculé client) et, dispatché SANS le champ `reflecting`, il éteignait
+    // l'indicateur « 🧠 réflexion approfondie » avant le premier token
+    // (StreamingIndicator remet reflecting=false sur tout event sans le flag).
 
     const reader = response.body?.getReader()
     if (!reader) throw new Error('No response body')
@@ -416,17 +402,7 @@ export async function geminiResearch(
     ],
   }
 
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-  if (apiKey) {
-    headers['Authorization'] = `Bearer ${apiKey}`
-  }
-  const googleToken = await getValidAccessToken()
-  if (googleToken) {
-    headers['x-google-token'] = googleToken
-  } else {
-    const trialToken = getTrialToken()
-    if (trialToken) headers['x-arty-trial-token'] = trialToken
-  }
+  const headers = await buildAiHeaders({ byokKey: apiKey, auth: 'bearer' })
 
   try {
     const res = await fetchWithRetry(

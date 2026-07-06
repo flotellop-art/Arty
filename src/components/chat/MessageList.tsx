@@ -60,6 +60,7 @@ const MessageItem = memo(function MessageItem({ msg, index, onAction, onBranch, 
           // Le placeholder de stream ('streaming') n'est pas signalable :
           // contenu partiel, non persisté tel quel.
           onReport={onReport && msg.id !== 'streaming' ? handleReport : undefined}
+          model={msg.model}
         />
       )}
     </div>
@@ -70,6 +71,9 @@ interface MessageListProps {
   messages: Message[]
   isStreaming: boolean
   streamingContent: string
+  /** Id de la conversation affichée — relayé à StreamingIndicator pour
+      filtrer les events modèle des streams concurrents (F-4). */
+  conversationId?: string
   onAction?: (action: string, params: Record<string, string>) => void
   onBranch?: (messageIndex: number) => void
   onTogglePin?: (messageId: string) => void
@@ -87,7 +91,7 @@ interface MessageListProps {
 // Différent du comportement antérieur qui suivait le bas en permanence
 // — ça forçait à descendre à chaque token et empêchait de naviguer.
 
-export const MessageList = memo(function MessageList({ messages, isStreaming, streamingContent, onAction, onBranch, onTogglePin, onEdit, onRetry, onReport }: MessageListProps) {
+export const MessageList = memo(function MessageList({ messages, isStreaming, streamingContent, conversationId, onAction, onBranch, onTogglePin, onEdit, onRetry, onReport }: MessageListProps) {
   const { t } = useTranslation()
   const scrollRef = useRef<HTMLDivElement>(null)
   const prevMessagesCount = useRef(messages.length)
@@ -205,7 +209,7 @@ export const MessageList = memo(function MessageList({ messages, isStreaming, st
         {isStreaming && streamingContent && (
           <>
             <AssistantBubble content={streamingContent} onAction={onAction} isStreaming />
-            <StreamingIndicator />
+            <StreamingIndicator conversationId={conversationId} />
           </>
         )}
 

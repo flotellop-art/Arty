@@ -1,6 +1,7 @@
 import type { Env } from '../../env'
 import { verifyGoogleUser, notFoundResponse } from '../_lib/checkAllowedUser'
 import { truncateWithNotice } from '../_lib/truncate'
+import { googleFetch } from '../_lib/googleFetch'
 
 // Limite de texte restitué pour un document Drive (Google Doc/Sheet exporté,
 // fichier text/*). Au-delà, on coupe AVEC une note visible (truncateWithNotice)
@@ -78,7 +79,7 @@ async function handleList(token: string, body: Record<string, unknown>): Promise
       }
     }
     const params = new URLSearchParams({ q, fields: 'files(id,name,mimeType,modifiedTime,size,webViewLink,iconLink)', orderBy: 'modifiedTime desc', pageSize: '50' })
-    const r = await fetch(`https://www.googleapis.com/drive/v3/files?${params}`, { headers: { Authorization: `Bearer ${token}` } })
+    const r = await googleFetch(`https://www.googleapis.com/drive/v3/files?${params}`, { headers: { Authorization: `Bearer ${token}` } })
     if (!r.ok) {
       return Response.json({ error: 'Drive API error' }, { status: r.status })
     }
@@ -92,27 +93,27 @@ async function handleRead(token: string, body: Record<string, unknown>): Promise
   if (!fileId) return Response.json({ error: 'Missing id' }, { status: 400 })
   if (!ID_RE.test(fileId)) return Response.json({ error: 'Invalid file ID' }, { status: 400 })
   try {
-    const metaRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=id,name,mimeType,modifiedTime`, { headers: { Authorization: `Bearer ${token}` } })
+    const metaRes = await googleFetch(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=id,name,mimeType,modifiedTime`, { headers: { Authorization: `Bearer ${token}` } })
     if (!metaRes.ok) { const err = await metaRes.json() as { error?: { message?: string } }; return Response.json({ error: 'Drive operation failed' }, { status: metaRes.status }) }
     const meta = await metaRes.json() as { id: string; name: string; mimeType: string; modifiedTime: string }
     let content = ''
     if (meta.mimeType === 'application/vnd.google-apps.document') {
-      const r = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=text/plain`, { headers: { Authorization: `Bearer ${token}` } })
+      const r = await googleFetch(`https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=text/plain`, { headers: { Authorization: `Bearer ${token}` } })
       if (r.ok) content = await r.text()
     } else if (meta.mimeType === 'application/vnd.google-apps.spreadsheet') {
-      const r = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=text/csv`, { headers: { Authorization: `Bearer ${token}` } })
+      const r = await googleFetch(`https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=text/csv`, { headers: { Authorization: `Bearer ${token}` } })
       if (r.ok) content = await r.text()
     } else if (meta.mimeType?.startsWith('text/')) {
-      const r = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, { headers: { Authorization: `Bearer ${token}` } })
+      const r = await googleFetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, { headers: { Authorization: `Bearer ${token}` } })
       if (r.ok) content = await r.text()
     } else if (meta.mimeType === 'application/pdf') {
       // Try Google Drive export first (works for Google Docs saved as PDF)
-      const expRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=text/plain`, { headers: { Authorization: `Bearer ${token}` } })
+      const expRes = await googleFetch(`https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=text/plain`, { headers: { Authorization: `Bearer ${token}` } })
       if (expRes.ok) {
         content = await expRes.text()
       } else {
         // Native PDF — return raw base64 for frontend to handle via Claude's native PDF support
-        const dlRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, { headers: { Authorization: `Bearer ${token}` } })
+        const dlRes = await googleFetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, { headers: { Authorization: `Bearer ${token}` } })
         if (dlRes.ok) {
           // Size cap pour éviter l'OOM Worker (BUG 50 + cap explicite).
           const contentLength = Number(dlRes.headers.get('content-length') || '0')
@@ -143,7 +144,7 @@ async function handleDownload(token: string, body: Record<string, unknown>): Pro
   if (!fileId) return Response.json({ error: 'Missing id' }, { status: 400 })
   if (!ID_RE.test(fileId)) return Response.json({ error: 'Invalid file ID' }, { status: 400 })
   try {
-    const metaRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=id,name,mimeType`, { headers: { Authorization: `Bearer ${token}` } })
+    const metaRes = await googleFetch(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=id,name,mimeType`, { headers: { Authorization: `Bearer ${token}` } })
     if (!metaRes.ok) { const err = await metaRes.json() as { error?: { message?: string } }; return Response.json({ error: 'Drive operation failed' }, { status: metaRes.status }) }
     const meta = await metaRes.json() as { id: string; name: string; mimeType: string }
 
@@ -156,7 +157,7 @@ async function handleDownload(token: string, body: Record<string, unknown>): Pro
       dlUrl = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`
     }
 
-    const dlRes = await fetch(dlUrl, { headers: { Authorization: `Bearer ${token}` } })
+    const dlRes = await googleFetch(dlUrl, { headers: { Authorization: `Bearer ${token}` } })
     if (!dlRes.ok) return Response.json({ error: 'Download failed' }, { status: dlRes.status })
 
     const contentLength = Number(dlRes.headers.get('content-length') || '0')
@@ -191,7 +192,7 @@ async function handleCreate(token: string, body: Record<string, unknown>): Promi
       return Response.json({ error: 'Invalid content' }, { status: 400 })
     }
     const reqBody = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n--${boundary}\r\nContent-Type: ${isGoogleDoc ? 'text/plain' : mimeType || 'text/plain'}\r\n\r\n${content}\r\n--${boundary}--`
-    const r = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink', {
+    const r = await googleFetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink', {
       method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': `multipart/related; boundary=${boundary}` }, body: reqBody,
     })
     if (!r.ok) { const err = await r.json() as { error?: { message?: string } }; return Response.json({ error: 'Drive operation failed' }, { status: r.status }) }
@@ -206,13 +207,13 @@ async function handleUpdate(token: string, body: Record<string, unknown>): Promi
   if (!ID_RE.test(id)) return Response.json({ error: 'Invalid file ID' }, { status: 400 })
   try {
     // Check if it's a Google Doc (need special handling)
-    const metaRes = await fetch(`https://www.googleapis.com/drive/v3/files/${id}?fields=mimeType`, {
+    const metaRes = await googleFetch(`https://www.googleapis.com/drive/v3/files/${id}?fields=mimeType`, {
       headers: { Authorization: `Bearer ${token}` },
     })
     const meta = await metaRes.json() as { mimeType: string }
     const isGoogleDoc = meta.mimeType === 'application/vnd.google-apps.document'
 
-    const r = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${id}?uploadType=media`, {
+    const r = await googleFetch(`https://www.googleapis.com/upload/drive/v3/files/${id}?uploadType=media`, {
       method: 'PATCH',
       headers: {
         Authorization: `Bearer ${token}`,
@@ -230,7 +231,7 @@ async function handleDelete(token: string, body: Record<string, unknown>): Promi
   if (!fileId) return Response.json({ error: 'Missing id' }, { status: 400 })
   if (!ID_RE.test(fileId)) return Response.json({ error: 'Invalid file ID' }, { status: 400 })
   try {
-    const r = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
+    const r = await googleFetch(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
       method: 'DELETE', headers: { Authorization: `Bearer ${token}` },
     })
     if (!r.ok && r.status !== 204) { const err = await r.json().catch(() => ({})) as { error?: { message?: string } }; return Response.json({ error: 'Delete failed' }, { status: r.status }) }
@@ -243,7 +244,7 @@ async function handleRename(token: string, body: Record<string, unknown>): Promi
   if (!id || !name) return Response.json({ error: 'Missing id or name' }, { status: 400 })
   if (!ID_RE.test(id)) return Response.json({ error: 'Invalid file ID' }, { status: 400 })
   try {
-    const r = await fetch(`https://www.googleapis.com/drive/v3/files/${id}`, {
+    const r = await googleFetch(`https://www.googleapis.com/drive/v3/files/${id}`, {
       method: 'PATCH',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ name }),
@@ -259,13 +260,15 @@ async function handleMove(token: string, body: Record<string, unknown>): Promise
   if (!ID_RE.test(id) || !ID_RE.test(folderId)) return Response.json({ error: 'Invalid ID' }, { status: 400 })
   try {
     // Get current parents
-    const getRes = await fetch(`https://www.googleapis.com/drive/v3/files/${id}?fields=parents`, {
+    const getRes = await googleFetch(`https://www.googleapis.com/drive/v3/files/${id}?fields=parents`, {
       headers: { Authorization: `Bearer ${token}` },
     })
     const current = await getRes.json() as { parents?: string[] }
-    const previousParents = (current.parents || []).join(',')
+    // Défense en profondeur (F-22) : valeur issue de Google mais interpolée
+    // dans une query-string → encodage systématique.
+    const previousParents = encodeURIComponent((current.parents || []).join(','))
 
-    const r = await fetch(`https://www.googleapis.com/drive/v3/files/${id}?addParents=${folderId}&removeParents=${previousParents}`, {
+    const r = await googleFetch(`https://www.googleapis.com/drive/v3/files/${id}?addParents=${folderId}&removeParents=${previousParents}`, {
       method: 'PATCH',
       headers: { Authorization: `Bearer ${token}` },
     })
@@ -285,7 +288,7 @@ async function handleCreateFolder(token: string, body: Record<string, unknown>):
     }
     if (parentId) metadata.parents = [parentId]
 
-    const r = await fetch('https://www.googleapis.com/drive/v3/files?fields=id,name,webViewLink', {
+    const r = await googleFetch('https://www.googleapis.com/drive/v3/files?fields=id,name,webViewLink', {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(metadata),
@@ -301,7 +304,7 @@ async function handleShare(token: string, body: Record<string, unknown>): Promis
   if (!id || !email) return Response.json({ error: 'Missing id or email' }, { status: 400 })
   if (!ID_RE.test(id)) return Response.json({ error: 'Invalid file ID' }, { status: 400 })
   try {
-    const r = await fetch(`https://www.googleapis.com/drive/v3/files/${id}/permissions`, {
+    const r = await googleFetch(`https://www.googleapis.com/drive/v3/files/${id}/permissions`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ type: 'user', role: role || 'reader', emailAddress: email }),
@@ -318,7 +321,7 @@ async function handleCopy(token: string, body: Record<string, unknown>): Promise
   try {
     const copyBody: Record<string, string> = {}
     if (name) copyBody.name = name
-    const r = await fetch(`https://www.googleapis.com/drive/v3/files/${id}/copy?fields=id,name,webViewLink`, {
+    const r = await googleFetch(`https://www.googleapis.com/drive/v3/files/${id}/copy?fields=id,name,webViewLink`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(copyBody),

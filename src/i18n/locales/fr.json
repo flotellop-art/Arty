@@ -213,7 +213,7 @@
         "claude": "Fichiers, analyses, Gmail / Drive / Calendar",
         "mistral": "Données traitées en Europe — mails, fichiers, clients",
         "gemini": "Recherche web temps réel, actus, itinéraires",
-        "openai": "Sélection manuelle uniquement"
+        "openai": "Sélection manuelle — ou auto si tu mentionnes ChatGPT avec ta clé OpenAI"
       },
       "euNote": "Cette conversation contient des données EU (Mistral). Choisir un modèle 🇺🇸 demandera une confirmation avant d'envoyer son contenu hors Europe.",
       "euLocked": "Conversation verrouillée Europe — Mistral uniquement, dictée vocale comprise (Voxtral 🇫🇷) · fact-check désactivé (il sortirait d'Europe)",
@@ -230,16 +230,27 @@
     "modelExplain": {
       "mistral": "Mistral est utilisé en mode Europe (serveurs en France) — idéal pour les données qui doivent rester en Europe : mails, fichiers, infos clients. Pas de recherche web ni d'ouverture de liens.",
       "gemini": "Gemini est utilisé pour les recherches web en temps réel, les questions sur l'actualité et les requêtes Google Maps. Données traitées hors Europe.",
-      "haiku": "Claude Haiku est utilisé pour les conversations rapides et courtes. Modèle gratuit (10/jour).",
+      "haiku": "Claude Haiku est utilisé pour les conversations rapides et courtes — sans plafond mensuel pour les comptes payants (le plan gratuit est limité à 10/jour).",
       "opus": "Claude Opus est utilisé pour les analyses approfondies, les tâches complexes et les raisonnements multi-étapes. Modèle Pro.",
       "claude": "Claude est utilisé par défaut : fichiers attachés, données privées (mes mails, mes fichiers), URLs à ouvrir, ou requêtes nécessitant des tools (Gmail, Drive, Calendar). Données traitées aux États-Unis (Anthropic).",
-      "openai": "GPT (OpenAI) est utilisé quand tu le sélectionnes manuellement. Données traitées hors Europe.",
+      "openai": "GPT (OpenAI) est utilisé quand tu le sélectionnes manuellement — ou automatiquement si tu as configuré ta clé OpenAI et que ton message mentionne ChatGPT/GPT. Données traitées hors Europe.",
       "fallback": "Modèle sélectionné automatiquement selon le contenu de ta requête."
     },
     "region": {
       "eu": "France",
       "us": "États-Unis",
       "title": "Région où ce modèle traite ta demande"
+    },
+    "modelFooter": {
+      "hint": "Quel modèle a écrit cette réponse ?",
+      "capacity": {
+        "mistral": "Europe",
+        "gemini": "Recherche web",
+        "haiku": "Réponse rapide",
+        "claude": "Analyse & fichiers",
+        "openai": "ChatGPT",
+        "fallback": "Modèle IA"
+      }
     },
     "banners": {
       "gmailReading": "Lecture emails...",
@@ -437,6 +448,11 @@
       "titleFree": "Plan gratuit · {{haiku}}/{{limit}} Haiku aujourd'hui. Clique pour débloquer Sonnet, Opus, Mistral, Gemini et GPT.",
       "titleSub": "Messages premium restants ce mois — {{detail}}",
       "titlePro": "Plan {{plan}} · accès illimité"
+    },
+    "notFound": {
+      "title": "Conversation introuvable",
+      "body": "Elle est peut-être encore en cours de chargement, ou son historique est verrouillé sur cet appareil.",
+      "backHome": "Retour à l'accueil"
     }
   },
   "errors": {
@@ -470,7 +486,8 @@
     "micCannotStart": "Impossible de démarrer le micro",
     "speechNotSupported": "Reconnaissance vocale non supportée sur ce navigateur. Utilisez Chrome ou Edge.",
     "storageNotReady": "Tes conversations sont encore en cours de chargement — réessaie dans une seconde.",
-    "mistralTimeout": "Mistral n'a pas répondu à temps (60 s) — réseau lent ou service surchargé. Réessaie."
+    "mistralTimeout": "Mistral n'a pas répondu à temps (60 s) — réseau lent ou service surchargé. Réessaie.",
+    "trialModelRestricted": "Ce modèle n'est pas disponible pendant l'essai gratuit — l'essai utilise les modèles de base (Haiku, Flash, Mistral Medium)."
   },
   "sidebar": {
     "newConversation": "Nouvelle conversation",
@@ -703,7 +720,7 @@
       "off": "Désactivé",
       "auto": "Auto (recommandé)",
       "haiku": "Toujours rapide (Haiku 4.5)",
-      "sonnet": "Toujours strict (Sonnet 4.6)",
+      "sonnet": "Toujours strict (Sonnet 5)",
       "costAuto": "Haiku rapide par défaut, Sonnet strict sur les sujets sensibles (prix, devis, médical, juridique). ~$0.0005-0.0015/message.",
       "costHaiku": "~$0.0005/message · ajoute 1-2s après chaque réponse",
       "costSonnet": "~$0.0015/message · ajoute 3-5s · meilleur sur les nuances"
@@ -934,10 +951,10 @@
     "capReachedTitle": "Limite mensuelle atteinte",
     "capReachedBody": "Tu as utilisé tes {{cap}} messages {{model}} de ce mois.",
     "capReachedBodyNoCount": "Tu as utilisé tous tes messages {{model}} de ce mois.",
-    "capReachedHint": "Les modèles standards (Haiku, Flash, Mistral) n'ont pas de plafond mensuel — renvoie ton message en mode standard. Ton quota premium se réinitialise le {{date}}.",
+    "capReachedHint": "Ton quota premium se réinitialise le {{date}}. En attendant : un pack +100, ou bascule sur Mistral / un modèle standard via le sélecteur (sans plafond mensuel).",
     "buyPack": "+100 messages premium — 1,99 €",
-    "continueStandard": "Continuer avec les modèles standards",
-    "later": "Plus tard"
+    "later": "Plus tard",
+    "switchToMistral": "Relancer sur Mistral (EU) — sans plafond mensuel"
   },
   "onboardingChoice": {
     "tryFree": {
@@ -980,9 +997,18 @@
     "proof": {
       "intro": "Concrètement, en un message :",
       "items": [
-        { "ask": "Réponds à ce mail pour décliner poliment", "reply": "Bonjour, merci pour votre proposition. Je ne donnerai pas suite cette fois, mais…" },
-        { "ask": "Résume ce contrat en 3 points", "reply": "• Engagement 12 mois · Préavis 30 j · Pénalité 2 mois" },
-        { "ask": "Organise ma semaine à partir de ces notes", "reply": "Lun : appel client · Mer : rendu projet · Ven : factures" }
+        {
+          "ask": "Réponds à ce mail pour décliner poliment",
+          "reply": "Bonjour, merci pour votre proposition. Je ne donnerai pas suite cette fois, mais…"
+        },
+        {
+          "ask": "Résume ce contrat en 3 points",
+          "reply": "• Engagement 12 mois · Préavis 30 j · Pénalité 2 mois"
+        },
+        {
+          "ask": "Organise ma semaine à partir de ces notes",
+          "reply": "Lun : appel client · Mer : rendu projet · Ven : factures"
+        }
       ]
     },
     "trial": {

@@ -1,8 +1,8 @@
 import i18n from '../i18n'
 import { apiUrl } from './apiBase'
-import { getValidAccessToken } from './googleAuth'
-import { getTrialToken } from './emailTrialClient'
+import { buildAiHeaders } from './aiHttp'
 import { recordUsage } from './costTracker'
+import { dispatchModelUsed } from './modelLabels'
 import { updateTrialFromResponse } from './trialClient'
 
 // OpenAI client — deux chemins :
@@ -37,6 +37,11 @@ export interface OpenAIMessage {
 interface OpenAIOptions {
   systemPrompt?: string
   model?: string
+  // Appel d'arrière-plan (comparateur) : l'event 'arty-model-used' est marqué
+  // background → ignoré par le badge de conversation (F-4).
+  background?: boolean
+  // Conversation d'origine (targetId) — scope l'event 'arty-model-used'.
+  conversationId?: string
 }
 
 // ─── Error formatting ───
@@ -73,14 +78,8 @@ async function resolveTarget(
       },
     }
   }
-  const googleToken = await getValidAccessToken()
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-  if (googleToken) {
-    headers['x-google-token'] = googleToken
-  } else {
-    const trialToken = getTrialToken()
-    if (trialToken) headers['x-arty-trial-token'] = trialToken
-  }
+  // C9 : branche proxy (pas de BYOK) → google-token/trial factorisés (aiHttp).
+  const headers = await buildAiHeaders()
   return { url: apiUrl('/api/ai/openai-proxy'), headers }
 }
 
@@ -143,6 +142,14 @@ export function sendMessageStream(
     try {
       const systemPrompt = options?.systemPrompt || OPENAI_SYSTEM
       const model = options?.model || DEFAULT_MODEL
+      // Dispatch OPTIMISTE (pré-envoi) — openaiClient était le SEUL client à
+      // ne jamais dispatcher (audit visibilité modèle, F-3) : le badge restait
+      // muet ou figé sur le modèle/drapeau d'un provider précédent alors que
+      // la donnée partait chez OpenAI (US). Corrigé plus bas si le flux
+      // confirme un autre modèle (fallback 5.5→5, substitution proxy).
+      const eventScope = { background: options?.background, conversationId: options?.conversationId }
+      let dispatchedModel = model
+      dispatchModelUsed({ model, provider: 'openai', ...eventScope })
       const payload = {
         model,
         messages: buildMessages(messages, systemPrompt),
@@ -172,8 +179,16 @@ export function sendMessageStream(
             Object.assign(e, { capBucket: parsed.bucket, capLimit: parsed.cap })
             throw e
           }
+          // C-D / F-13 — le refus trial explicite du proxy devenait « Erreur
+          // OpenAI (403) » générique. Sentinel STABLE (pattern
+          // premium_cap_reached) : la traduction se fait au point d'affichage
+          // (useConversation.onErr), jamais dans le message d'erreur comparé.
+          if (parsed?.error === 'trial_model_restricted') {
+            throw new Error('trial_model_restricted')
+          }
         } catch (e) {
           if ((e as Error).message === 'premium_cap_reached') throw e
+          if ((e as Error).message === 'trial_model_restricted') throw e
         }
         throw formatError(response.status)
       }
@@ -217,7 +232,16 @@ export function sendMessageStream(
                 promptTokens = parsed.usage.prompt_tokens || promptTokens
                 completionTokens = parsed.usage.completion_tokens || completionTokens
               }
-              if (parsed.model) usedModel = parsed.model
+              if (parsed.model) {
+                usedModel = parsed.model
+                // Boucle « demandé → servi » (F-2/F-3) : corrige le badge dès
+                // que le flux confirme un autre modèle (fallback startChatRequest
+                // gpt-5.5→gpt-5, ou fallback transparent du proxy serveur).
+                if (usedModel !== dispatchedModel) {
+                  dispatchedModel = usedModel
+                  dispatchModelUsed({ model: usedModel, provider: 'openai', confirmed: true, ...eventScope })
+                }
+              }
             } catch {
               // Skip malformed chunks
             }

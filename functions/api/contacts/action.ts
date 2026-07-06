@@ -1,4 +1,5 @@
 import { verifyGoogleUser, notFoundResponse } from '../_lib/checkAllowedUser'
+import { googleFetch } from '../_lib/googleFetch'
 
 export const onRequestPost: PagesFunction = async ({ request }) => {
   // CRIT-4 (audit étape 2) — exiger un user Google identifié.
@@ -23,7 +24,6 @@ export const onRequestPost: PagesFunction = async ({ request }) => {
   }
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function formatContact(person: any) {
   return {
     resourceName: person.resourceName || '',
@@ -37,17 +37,18 @@ function formatContact(person: any) {
 async function handleSearch(token: string, body: Record<string, unknown>): Promise<Response> {
   const q = (body.query as string) || ''
   try {
-    const r = await fetch(
+    const r = await googleFetch(
       `https://people.googleapis.com/v1/people:searchContacts?query=${encodeURIComponent(q)}&readMask=names,emailAddresses,phoneNumbers,organizations&pageSize=10`,
       { headers: { Authorization: `Bearer ${token}` } }
     )
     if (!r.ok) {
       // Fallback to connections list
-      const r2 = await fetch(
+      const r2 = await googleFetch(
         `https://people.googleapis.com/v1/people/me/connections?personFields=names,emailAddresses,phoneNumbers,organizations&pageSize=50`,
         { headers: { Authorization: `Bearer ${token}` } }
       )
-      if (!r2.ok) { const err = await r2.json() as Record<string, unknown>; return Response.json({ error: (err.error as Record<string, string>)?.message }, { status: r2.status }) }
+      // Baseline N-2 : jamais le message d'erreur Google brut au client.
+      if (!r2.ok) { console.error('[contacts] connections failed', r2.status, await r2.text().catch(() => '')); return Response.json({ error: 'Search failed' }, { status: r2.status }) }
       const data = await r2.json() as { connections?: Array<Record<string, unknown>> }
       const contacts = (data.connections || [])
         .filter((c) => {
@@ -75,12 +76,12 @@ async function handleCreate(token: string, body: Record<string, unknown>): Promi
     if (phone) person.phoneNumbers = [{ value: phone }]
     if (company) person.organizations = [{ name: company }]
 
-    const r = await fetch('https://people.googleapis.com/v1/people:createContact', {
+    const r = await googleFetch('https://people.googleapis.com/v1/people:createContact', {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(person),
     })
-    if (!r.ok) { const err = await r.json() as Record<string, unknown>; return Response.json({ error: (err.error as Record<string, string>)?.message }, { status: r.status }) }
+    if (!r.ok) { console.error('[contacts] create failed', r.status, await r.text().catch(() => '')); return Response.json({ error: 'Create failed' }, { status: r.status }) }
     const result = await r.json() as Record<string, unknown>
     return Response.json({ success: true, name, resourceName: result.resourceName })
   } catch { return Response.json({ error: 'Create failed' }, { status: 500 }) }
@@ -89,10 +90,17 @@ async function handleCreate(token: string, body: Record<string, unknown>): Promi
 async function handleUpdate(token: string, body: Record<string, unknown>): Promise<Response> {
   const { resourceName, email, phone } = body as { resourceName?: string; email?: string; phone?: string }
   if (!resourceName) return Response.json({ error: 'Missing resourceName' }, { status: 400 })
+  // Audit F-7 (3 juil. 2026) — resourceName vient du body client et était
+  // interpolé tel quel dans l'URL People API (injection query-string). Même
+  // baseline que les IDs Gmail/Drive : format strict AVANT toute interpolation.
+  if (!/^people\/[a-zA-Z0-9_-]+$/.test(resourceName)) {
+    return Response.json({ error: 'Invalid resourceName' }, { status: 400 })
+  }
+  const personId = encodeURIComponent(resourceName.slice('people/'.length))
 
   try {
-    const getRes = await fetch(
-      `https://people.googleapis.com/v1/${resourceName}?personFields=names,emailAddresses,phoneNumbers`,
+    const getRes = await googleFetch(
+      `https://people.googleapis.com/v1/people/${personId}?personFields=names,emailAddresses,phoneNumbers`,
       { headers: { Authorization: `Bearer ${token}` } }
     )
     if (!getRes.ok) return Response.json({ error: 'Contact not found' }, { status: getRes.status })
@@ -102,11 +110,11 @@ async function handleUpdate(token: string, body: Record<string, unknown>): Promi
     if (email) { current.emailAddresses = [{ value: email }]; updateMask.push('emailAddresses') }
     if (phone) { current.phoneNumbers = [{ value: phone }]; updateMask.push('phoneNumbers') }
 
-    const r = await fetch(
-      `https://people.googleapis.com/v1/${resourceName}:updateContact?updatePersonFields=${updateMask.join(',')}`,
+    const r = await googleFetch(
+      `https://people.googleapis.com/v1/people/${personId}:updateContact?updatePersonFields=${updateMask.join(',')}`,
       { method: 'PATCH', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(current) }
     )
-    if (!r.ok) { const err = await r.json() as Record<string, unknown>; return Response.json({ error: (err.error as Record<string, string>)?.message }, { status: r.status }) }
+    if (!r.ok) { console.error('[contacts] update failed', r.status, await r.text().catch(() => '')); return Response.json({ error: 'Update failed' }, { status: r.status }) }
     return Response.json({ success: true })
   } catch { return Response.json({ error: 'Update failed' }, { status: 500 }) }
 }

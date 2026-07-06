@@ -462,7 +462,7 @@ export const Sidebar = memo(function Sidebar({
             />
             {/* Indice ⌘K — desktop uniquement. */}
             {!searchRaw && isPersistent && (
-              <span className="text-[10px] font-mono text-theme-muted/70 select-none">⌘K</span>
+              <span className="text-[10px] font-mono text-theme-muted select-none">⌘K</span>
             )}
             {searchRaw && (
               <button
@@ -606,7 +606,7 @@ export const Sidebar = memo(function Sidebar({
                         )
                       })}
                       {conv.tags && conv.tags.length > 2 && (
-                        <span className="text-[9px] text-theme-muted/70 flex-shrink-0">+{conv.tags.length - 2}</span>
+                        <span className="text-[9px] text-theme-muted flex-shrink-0">+{conv.tags.length - 2}</span>
                       )}
                       {snippets[conv.id] ? (
                         <span className="text-[11px] text-theme-muted italic truncate">

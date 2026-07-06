@@ -1,10 +1,10 @@
-import type { useBrowser } from '../../hooks/useBrowser'
 import type { ToolHandler } from './types'
 import { openReport } from '../reportGenerator'
 import { updateMemory } from '../memoryService'
 import { safeJson } from '../../utils/safeJson'
 import { apiUrl } from '../apiBase'
 import { getUserLocation, isLocationConsentEnabled } from '../native/location'
+import { getValidAccessToken } from '../googleAuth'
 
 export const utilityToolDefinitions = [
   {
@@ -76,20 +76,9 @@ export const utilityToolDefinitions = [
       required: ['category', 'data'],
     },
   },
-  {
-    name: 'search_price',
-    description: "Recherche le prix d'un produit chez des marchands en ligne.",
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        product: { type: 'string' as const, description: 'Produit à chercher' },
-      },
-      required: ['product'],
-    },
-  },
 ]
 
-export function createUtilityHandlers(browserActions: ReturnType<typeof useBrowser>): Record<string, ToolHandler> {
+export function createUtilityHandlers(): Record<string, ToolHandler> {
   return {
     generate_report: async (input) => {
       const title = input.title as string
@@ -110,14 +99,37 @@ export function createUtilityHandlers(browserActions: ReturnType<typeof useBrows
         return { result: "Précise un point de départ (ville ou adresse). La géolocalisation n'est pas activée." }
       }
 
+      // Audit F-3 (3 juil. 2026) : ce handler pointait sur /api/browser/search,
+      // une route qui n'existe pas (reliquat pré-pivot) → échec garanti à
+      // chaque appel. Rebranché sur /api/search/web (Linkup/Brave), avec la
+      // même auth que executeMistralWebSearch : le proxy exige x-google-token
+      // (checkAllowedUserPeek, anti-relais CRIT-4).
       try {
-        const res = await fetch(apiUrl('/api/browser/search'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ query: `distance ${origin} vers ${dest}` }),
-        })
+        const googleToken = await getValidAccessToken()
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+        if (googleToken) headers['x-google-token'] = googleToken
+
+        const ctrl = new AbortController()
+        const timeoutId = setTimeout(() => ctrl.abort(new DOMException('Timeout', 'AbortError')), 30_000)
+        let res: Response
+        try {
+          res = await fetch(apiUrl('/api/search/web'), {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ query: `distance et temps de trajet ${origin} vers ${dest}`, maxResults: 5 }),
+            signal: ctrl.signal,
+          })
+        } finally {
+          clearTimeout(timeoutId)
+        }
+        if (!res.ok) {
+          return { result: `Impossible de calculer la distance de ${origin} vers ${dest} (recherche indisponible).` }
+        }
         const data = await safeJson(res)
-        if (data.results && data.results.length > 0) {
+        if (typeof data.answer === 'string' && data.answer.trim()) {
+          return { result: `Distance ${origin} → ${dest} :\n${data.answer.trim()}` }
+        }
+        if (Array.isArray(data.results) && data.results.length > 0) {
           return { result: `Distance ${origin} → ${dest} :\n${data.results.slice(0, 3).map((r: { title: string; snippet: string }) => `${r.title}: ${r.snippet}`).join('\n')}` }
         }
         return { result: `Impossible de calculer la distance de ${origin} vers ${dest}.` }
@@ -159,18 +171,6 @@ export function createUtilityHandlers(browserActions: ReturnType<typeof useBrows
       if (!category || !data) return { result: 'Erreur: catégorie ou données manquantes.' }
       const res = await updateMemory(category, data)
       return { result: res.message }
-    },
-
-    search_price: async (input) => {
-      const product = input.product as string
-      const res = await browserActions.searchPrices(product)
-      if (res) {
-        const table = res.results.map(r =>
-          `${r.source}: ${r.product} — ${r.price}`
-        ).join('\n')
-        return { result: `Prix pour "${product}":\n${table}` }
-      }
-      return { result: 'Erreur: recherche prix échouée.' }
     },
   }
 }

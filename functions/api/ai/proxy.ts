@@ -270,16 +270,25 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
 
     // Upstream KO (ou pas de body streamable) : rendre la réserve éventuelle.
     if (walletResId) waitUntil(voidWalletBilling(env, walletResId, email))
+    // Audit F-6 (3 juil. 2026) — chemin clé serveur : ne PAS forwarder le body
+    // d'erreur Anthropic brut (état de la clé owner : rate-limit, crédits,
+    // validité) à l'appelant. Détail loggé serveur uniquement (baseline N-2,
+    // aligné sur les proxys openai/gemini/mistral/tts). Le user BYOK, lui,
+    // reçoit l'erreur brute d'Anthropic : c'est SA clé.
+    if (!isByok && !response.ok) {
+      const detail = await response.text().catch(() => '')
+      console.error('[proxy] upstream error', response.status, detail.slice(0, 500))
+      return Response.json({ error: 'AI service error' }, { status: response.status, headers: responseHeaders() })
+    }
     return new Response(response.body, {
       status: response.status,
       headers: responseHeaders(),
     })
   } catch (err) {
-    // Échec réseau/exception après réserve → rendre la réserve.
+    // Échec réseau/exception après réserve → rendre la réserve. Message
+    // générique : err.message peut révéler des détails d'infra (F-6).
     if (walletResId) waitUntil(voidWalletBilling(env, walletResId, email))
-    return Response.json(
-      { error: err instanceof Error ? err.message : 'Proxy error' },
-      { status: 502 }
-    )
+    console.error('[proxy] exception', err)
+    return Response.json({ error: 'Proxy error' }, { status: 502 })
   }
 }

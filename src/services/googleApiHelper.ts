@@ -2,7 +2,6 @@ import { getValidAccessToken } from './googleAuth'
 import { safeJson } from '../utils/safeJson'
 import { apiUrl } from './apiBase'
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function callGoogleApi(
   endpoint: string,
   payload: Record<string, unknown>
@@ -17,7 +16,6 @@ export async function callGoogleApi(
   return safeJson(res)
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function callApi(
   endpoint: string,
   payload: Record<string, unknown>

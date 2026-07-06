@@ -802,7 +802,6 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
   // hardResetRecording handles the cancel flag + flags + state itself.
   useEffect(() => {
     return () => { hardResetRecording() }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Feature 16 — Create calendar event from detected date

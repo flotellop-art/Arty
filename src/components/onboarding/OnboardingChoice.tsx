@@ -133,7 +133,7 @@ export function OnboardingChoice({
         // Web — redirect to Google. Trial init is performed in App's
         // OAuthCallback handler once we get the access_token back.
         markOnboardingChoiceDone()
-        window.location.href = buildOAuthUrl()
+        window.location.href = await buildOAuthUrl()
       }
     } catch {
       setError(t('login.google.failed', { defaultValue: 'Connexion Google impossible.' }))

@@ -1,4 +1,3 @@
-import type { useBrowser } from '../../hooks/useBrowser'
 import type { ToolHandler } from './types'
 import { callApi } from '../googleApiHelper'
 import { getDateLocale } from '../../utils/formatDate'
@@ -30,7 +29,7 @@ export const wordpressToolDefinitions = [
   },
   {
     name: 'wp_update_post',
-    description: 'Modifie un article WordPress existant.',
+    description: "Modifie un article WordPress existant. CONFIRMATION OBLIGATOIRE pour passer en 'publish'.",
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -53,7 +52,7 @@ export const wordpressToolDefinitions = [
   },
 ]
 
-export function createWordpressHandlers(browserActions: ReturnType<typeof useBrowser>): Record<string, ToolHandler> {
+export function createWordpressHandlers(): Record<string, ToolHandler> {
   return {
     wp_create_post: async (input) => {
       try {
@@ -95,17 +94,6 @@ export function createWordpressHandlers(browserActions: ReturnType<typeof useBro
       } catch (err) {
         return { result: `Erreur: ${err instanceof Error ? err.message : 'WordPress échoué.'}` }
       }
-    },
-
-    publish_wordpress: async (input) => {
-      const title = input.title as string
-      const content = input.content as string
-      const status = (input.status as string) || 'draft'
-      const res = await browserActions.publishWP({ title, content, status: status as 'draft' | 'publish' })
-      if (res) {
-        return { result: `Article "${title}" ${status === 'publish' ? 'publié' : 'enregistré en brouillon'}.${res.url ? ` URL: ${res.url}` : ''}` }
-      }
-      return { result: 'Erreur WordPress Playwright.' }
     },
   }
 }

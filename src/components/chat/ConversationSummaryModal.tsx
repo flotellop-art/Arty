@@ -109,6 +109,10 @@ export function ConversationSummaryModal({ conversation, onClose }: Props) {
       },
       {
         systemPrompt: 'Tu es un assistant qui produit des résumés clairs et structurés en Markdown. Ne pose pas de questions, produis directement le résumé demandé. Rédige le résumé dans la langue de la conversation.',
+        // F-4 (audit visibilité modèle) — le résumé est un appel de fond :
+        // sans ce flag, il écrasait le badge « Dernier appel » de la
+        // conversation affichée (modale montée SOUS ChatTopBar).
+        background: true,
       }
     )
 

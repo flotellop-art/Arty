@@ -3,9 +3,13 @@
  *
  * Sérialise un instantané TEXTE (titre + messages role/content/timestamp) et
  * le POST à /api/share. EXCLUT tout ce qui n'a pas sa place dans une page
- * publique : fichiers/base64, factCheck, pinned, interrupted — et NEUTRALISE
+ * publique : fichiers/base64, factCheck, pinned, interrupted, et le modèle
+ * par message (`Message.model` — décision D3 du CDC visibilité modèle : le
+ * reçu d'attribution s'adresse à l'utilisateur, pas aux tiers) — et NEUTRALISE
  * les références d'images générées (`arty-img://fileId`, locales à l'IndexedDB
- * de l'auteur → images mortes pour un visiteur).
+ * de l'auteur → images mortes pour un visiteur). Le mapping explicite
+ * role/content/timestamp ci-dessous est LA garantie : ne pas le remplacer par
+ * un spread `...m`.
  */
 
 import type { Conversation } from '../types'

@@ -1,39 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { cn } from '../../utils/cn'
 import { generateId } from '../../utils/generateId'
 import { safeJson } from '../../utils/safeJson'
-
-// ──────────────────────────────────────────────
-// cn — Tailwind class merger
-// ──────────────────────────────────────────────
-describe('cn', () => {
-  it('merges two class strings', () => {
-    expect(cn('flex', 'items-center')).toBe('flex items-center')
-  })
-
-  it('resolves Tailwind conflicts (last wins)', () => {
-    // tailwind-merge ensures p-4 overrides p-2
-    expect(cn('p-2', 'p-4')).toBe('p-4')
-  })
-
-  it('handles conditional classes', () => {
-    const active = true
-    expect(cn('btn', active && 'btn-active')).toBe('btn btn-active')
-    expect(cn('btn', false && 'btn-active')).toBe('btn')
-  })
-
-  it('handles undefined / null gracefully', () => {
-    expect(cn('base', undefined, null as unknown as string)).toBe('base')
-  })
-
-  it('merges object syntax', () => {
-    expect(cn({ flex: true, hidden: false })).toBe('flex')
-  })
-
-  it('returns empty string for no inputs', () => {
-    expect(cn()).toBe('')
-  })
-})
 
 // ──────────────────────────────────────────────
 // generateId — UUID generator

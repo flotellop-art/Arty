@@ -3,6 +3,7 @@
  * Uses the user's Google token from the x-google-token header.
  */
 import { verifyGoogleUser, notFoundResponse } from '../_lib/checkAllowedUser'
+import { googleFetch } from '../_lib/googleFetch'
 
 export const onRequestPost: PagesFunction = async ({ request }) => {
   // CRIT-4 (audit étape 2) — exiger un user Google identifié.
@@ -28,8 +29,9 @@ export const onRequestPost: PagesFunction = async ({ request }) => {
     }
     return Response.json({ error: 'Invalid action' }, { status: 400 })
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Sheets action failed'
-    return Response.json({ error: message }, { status: 500 })
+    // Message générique : ne pas propager les erreurs Google/internes (F-23).
+    console.error('[sheets] action failed', err)
+    return Response.json({ error: 'Sheets action failed' }, { status: 500 })
   }
 }
 
@@ -37,7 +39,7 @@ async function handleCreate(token: string, body: Record<string, unknown>): Promi
   const title = (body.title as string) || 'Arty Export'
   const headers = (body.headers as string[] | undefined) || []
 
-  const createRes = await fetch('https://sheets.googleapis.com/v4/spreadsheets', {
+  const createRes = await googleFetch('https://sheets.googleapis.com/v4/spreadsheets', {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ properties: { title } }),
@@ -55,7 +57,7 @@ async function handleCreate(token: string, body: Record<string, unknown>): Promi
   if (headers.length > 0) {
     const valueInputOption = 'USER_ENTERED'
     const range = 'A1'
-    const writeRes = await fetch(
+    const writeRes = await googleFetch(
       `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(range)}:append?valueInputOption=${valueInputOption}`,
       {
         method: 'POST',
@@ -92,7 +94,7 @@ async function handleAppend(token: string, body: Record<string, unknown>): Promi
   const range = encodeURIComponent(`${sheetName}!A1`)
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId)}/values/${range}:append?valueInputOption=USER_ENTERED`
 
-  const res = await fetch(url, {
+  const res = await googleFetch(url, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ values: rows }),

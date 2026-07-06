@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { AssistantAvatar } from './AssistantAvatar'
 import { MarkdownRenderer } from '../shared/MarkdownRenderer'
 import { FactCheckBadge } from './FactCheckBadge'
+import { ModelFooter } from './ModelFooter'
 import type { FactCheckResult } from '../../types'
 import { speak, cancel as cancelTts, getSpeakingId, onSpeakingChange, isTtsSupported } from '../../utils/tts'
 
@@ -28,9 +29,12 @@ interface AssistantBubbleProps {
       Content : signalement in-app obligatoire). Sur TOUT message assistant,
       pas seulement le dernier — un contenu offensant peut être relu tard. */
   onReport?: () => void
+  /** Model id exact qui a produit cette réponse (Message.model, CDC C-B/C-C).
+      Absent sur les messages antérieurs au déploiement → pas de footer. */
+  model?: string
 }
 
-export const AssistantBubble = memo(function AssistantBubble({ content, onAction, pinned, onTogglePin, interrupted, onRetry, factCheck, isStreaming, isLast, onBranch, onReport }: AssistantBubbleProps) {
+export const AssistantBubble = memo(function AssistantBubble({ content, onAction, pinned, onTogglePin, interrupted, onRetry, factCheck, isStreaming, isLast, onBranch, onReport, model }: AssistantBubbleProps) {
   const { t } = useTranslation()
   const bubbleRef = useRef<HTMLDivElement>(null)
 
@@ -124,6 +128,7 @@ export const AssistantBubble = memo(function AssistantBubble({ content, onAction
           </div>
         )}
         {factCheck && <FactCheckBadge result={factCheck} />}
+        {model && !isStreaming && <ModelFooter model={model} />}
       </div>
       {/* Actions bar : copier + speak + pin. Visible à 50% opacity sur mobile,
           hover desktop (cohérent avec branche button PR 1) + focus-visible

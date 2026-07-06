@@ -94,7 +94,17 @@ export function useConversation() {
     }
   }, [conversations, activeId, streaming.isStreaming])
 
-  const createConversation = useCallback((withWelcome?: boolean, euOnly?: boolean): string => {
+  const createConversation = useCallback((withWelcome?: boolean, euOnly?: boolean): string | null => {
+    // Symétrie avec le garde H5 de sendMessage : tant que l'historique
+    // chiffré n'est pas déchiffré (bootstrap en cours ou échec),
+    // saveConversation est un no-op silencieux — naviguer vers l'id d'une
+    // conversation qui n'existe nulle part laissait ChatRoute rendre `null`
+    // en permanence (écran vide, juillet 2026). On refuse la création avec
+    // une erreur visible plutôt que de dropper l'action de l'utilisateur.
+    if (!storage.isCacheReady()) {
+      setError(i18n.t('errors.storageNotReady'))
+      return null
+    }
     const id = generateId()
     const messages: Message[] = []
 
@@ -416,9 +426,18 @@ export function useConversation() {
           const capErr = err as Error & { capBucket?: string; capLimit?: number }
           try {
             window.dispatchEvent(new CustomEvent('arty-cap-reached', {
-              detail: { bucket: capErr.capBucket, cap: capErr.capLimit },
+              // conversationId : permet au bouton « Relancer sur Mistral » de
+              // ne relancer QUE si la conv qui a capé est celle affichée —
+              // l'event peut venir d'un stream d'arrière-plan (revue C-D).
+              detail: { bucket: capErr.capBucket, cap: capErr.capLimit, conversationId: targetId },
             }))
           } catch { /* contexte sans window (tests) */ }
+          return
+        }
+        // C-D / F-13 — sentinel des clients (refus trial du proxy) traduit au
+        // point d'affichage, pas dans le message d'erreur comparé.
+        if (err.message === 'trial_model_restricted') {
+          if (isActive(targetId)) setError(i18n.t('errors.trialModelRestricted'))
           return
         }
         if (isActive(targetId)) {
@@ -451,11 +470,21 @@ export function useConversation() {
         provider = detectProvider(text)
       }
 
-      // Track which models are used in this conversation
+      // Track which models are used in this conversation.
+      // Hybride = les DEUX providers (F-5, audit visibilité modèle) : Gemini
+      // fait la recherche mais c'est Claude qui RÉDIGE la réponse affichée —
+      // n'enregistrer que 'gemini' faussait l'export, le partage public et
+      // le point Sidebar (texte attribué à Gemini alors que Claude l'a écrit).
       const usedModels = conv.usedModels || []
-      const modelName = provider === 'hybrid' ? 'gemini' : provider
-      if (!usedModels.includes(modelName)) {
-        usedModels.push(modelName)
+      const modelNames = provider === 'hybrid' ? ['gemini', 'claude'] : [provider]
+      let usedModelsChanged = false
+      for (const modelName of modelNames) {
+        if (!usedModels.includes(modelName)) {
+          usedModels.push(modelName)
+          usedModelsChanged = true
+        }
+      }
+      if (usedModelsChanged) {
         conv.usedModels = usedModels
         storage.saveConversation(conv)
       }
@@ -569,6 +598,7 @@ export function useConversation() {
             // Niveau de réflexion utilisateur (chat réel uniquement — jamais
             // sur les appels imposés type comparateur/brief). Cf. anthropicClient.
             reflectionLevel: getReflectionLevel(),
+            conversationId: targetId,
           })
           setAbortController(targetId, controller)
         }).catch(onErr)
@@ -583,6 +613,7 @@ export function useConversation() {
         controller = streamGeminiMessage(apiMessages, onToken, onDone, onErr, {
           systemPrompt: systemPromptRef.current,
           reflectionLevel: getReflectionLevel(),
+          conversationId: targetId,
         })
       } else if (provider === 'mistral') {
         // Mistral Medium 3.5 a une vision native → on utilise le builder
@@ -609,6 +640,7 @@ export function useConversation() {
           // de plus pour rien, dos à dos avec la synthèse (rate limit).
           urlContentInlined: outgoingText !== text,
           euOnly: conv.euOnly,
+          conversationId: targetId,
         })
       } else if (provider === 'openai') {
         // openaiKey peut être null — dans ce cas le client passe par le proxy
@@ -624,6 +656,7 @@ export function useConversation() {
         }
         controller = streamOpenAIMessage(apiMessages, openaiKey, onToken, onDone, onErr, {
           systemPrompt: systemPromptRef.current,
+          conversationId: targetId,
         })
       } else {
         // Claude path — historique complet avec content blocks pour les images
@@ -648,6 +681,7 @@ export function useConversation() {
           systemPrompt: systemPromptRef.current,
           onToolCall: trackedToolHandler,
           reflectionLevel: getReflectionLevel(),
+          conversationId: targetId,
           ...(imageTools ? { tools: imageTools as typeof TOOLS } : {}),
         })
       }
@@ -842,6 +876,23 @@ export function useConversation() {
 
     sendMessage(userMsg.content, targetId, originalFiles)
   }, [activeId, refreshConversations, sendMessage])
+
+  // D4 (CDC visibilité modèle) — « Relancer sur Mistral » de CapReachedModal :
+  // la modale bascule le sélecteur puis dispatche cet event pour rejouer la
+  // question restée sans réponse (le clic explicite vaut consentement — ce
+  // n'est PAS une bascule silencieuse). Relance UNIQUEMENT si la conversation
+  // qui a capé est celle affichée : l'event cap peut venir d'un stream
+  // d'arrière-plan (MAX_CONCURRENT_STREAMS=3) — dans ce cas le switch de
+  // modèle s'applique mais on ne rejoue pas le message d'une autre conv.
+  useEffect(() => {
+    const onRetryLast = (e: Event) => {
+      const detail = (e as CustomEvent<{ conversationId?: string }>).detail
+      if (detail?.conversationId && detail.conversationId !== activeId) return
+      retryLastUserMessage()
+    }
+    window.addEventListener('arty-retry-last', onRetryLast)
+    return () => window.removeEventListener('arty-retry-last', onRetryLast)
+  }, [activeId, retryLastUserMessage])
 
   return {
     conversations,

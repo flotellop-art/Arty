@@ -21,6 +21,12 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   const body = await request.json() as Record<string, unknown>
   const type = body.type as string | undefined
 
+  // Audit F-22 (3 juil. 2026) — postId (body client) est interpolé dans l'URL
+  // REST WP : un id non numérique permettrait d'atteindre un autre chemin de
+  // l'API (`123/revisions`, query-string…). Entier strict uniquement.
+  const postId = Number(body.postId)
+  const postIdValid = Number.isInteger(postId) && postId > 0
+
   try {
     switch (type) {
       case 'list': {
@@ -47,27 +53,27 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
       }
 
       case 'update': {
-        if (!body.postId) return Response.json({ error: 'Missing postId' }, { status: 400 })
+        if (!postIdValid) return Response.json({ error: 'Missing or invalid postId' }, { status: 400 })
         const payload: Record<string, unknown> = {}
         if (body.title) payload.title = body.title
         if (body.content) payload.content = body.content
         if (body.status) payload.status = body.status
-        const r = await fetch(`${apiBase}/posts/${body.postId}`, { method: 'POST', headers, body: JSON.stringify(payload) })
+        const r = await fetch(`${apiBase}/posts/${postId}`, { method: 'POST', headers, body: JSON.stringify(payload) })
         if (!r.ok) return Response.json({ error: 'Update failed' }, { status: r.status })
         const post = await r.json() as Record<string, unknown>
         return Response.json({ id: post.id, title: (post.title as Record<string, string>)?.rendered, status: post.status, link: post.link })
       }
 
       case 'delete': {
-        if (!body.postId) return Response.json({ error: 'Missing postId' }, { status: 400 })
-        const r = await fetch(`${apiBase}/posts/${body.postId}`, { method: 'DELETE', headers })
+        if (!postIdValid) return Response.json({ error: 'Missing or invalid postId' }, { status: 400 })
+        const r = await fetch(`${apiBase}/posts/${postId}`, { method: 'DELETE', headers })
         if (!r.ok) return Response.json({ error: 'Delete failed' }, { status: r.status })
         return Response.json({ success: true })
       }
 
       case 'get': {
-        if (!body.postId) return Response.json({ error: 'Missing postId' }, { status: 400 })
-        const r = await fetch(`${apiBase}/posts/${body.postId}`, { headers })
+        if (!postIdValid) return Response.json({ error: 'Missing or invalid postId' }, { status: 400 })
+        const r = await fetch(`${apiBase}/posts/${postId}`, { headers })
         if (!r.ok) return Response.json({ error: 'Not found' }, { status: r.status })
         const post = await r.json() as Record<string, unknown>
         return Response.json({

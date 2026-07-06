@@ -99,9 +99,8 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
         return Response.json({ error: 'Use type: read, write, readAll, delete' }, { status: 400 })
     }
   } catch (err) {
-    return Response.json(
-      { error: err instanceof Error ? err.message : 'Database error' },
-      { status: 500 }
-    )
+    // Message générique : err.message D1 peut révéler le schéma (F-23).
+    console.error('[memory] action failed', err)
+    return Response.json({ error: 'Database error' }, { status: 500 })
   }
 }

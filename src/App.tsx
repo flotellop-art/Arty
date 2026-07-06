@@ -146,7 +146,6 @@ function AppContent({
     googleAuth,
     gmail,
     drive,
-    browserActions,
     computerActions,
     actionScreenshot,
     setActionScreenshot,
@@ -159,6 +158,10 @@ function AppContent({
       setActionScreenshot(null)
       const isFirstConv = conversations.length === 0
       const id = createConversation(isFirstConv)
+      // Storage pas prêt (ou déchiffrement en échec) : l'erreur visible est
+      // déjà posée par createConversation — on reste sur la Home au lieu de
+      // naviguer vers une conversation fantôme (écran vide).
+      if (!id) return
       if (files?.length) {
         navigate(`/chat/${id}`)
         setTimeout(() => sendMessage(text, id, files), 100)
@@ -184,6 +187,7 @@ function AppContent({
   const handleNewConversation = useCallback(() => {
     const isFirstConv = conversations.length === 0
     const id = createConversation(isFirstConv)
+    if (!id) return
     navigate(`/chat/${id}`)
   }, [createConversation, navigate, conversations.length])
 
@@ -203,6 +207,7 @@ function AppContent({
       setPendingDraft(draft)
       const isFirstConv = conversations.length === 0
       const id = createConversation(isFirstConv)
+      if (!id) return
       navigate(`/chat/${id}`)
     },
     [conversations.length, createConversation, navigate, setActionScreenshot]
@@ -232,6 +237,7 @@ function AppContent({
 
   const handleNewEUConversation = useCallback(() => {
     const id = createConversation(false, true)
+    if (!id) return
     navigate(`/chat/${id}`)
   }, [createConversation, navigate])
 
@@ -456,6 +462,8 @@ function AppContent({
               onBriefAction={proactiveBrief.runAction}
               conversations={conversations}
               onSelectConv={handleSelectConversation}
+              error={error}
+              onDismissError={clearError}
             />
           }
         />
@@ -524,7 +532,6 @@ function AppContent({
               onSelect={selectConversation}
               gmail={gmail}
               drive={drive}
-              browserActions={browserActions}
               computerActions={computerActions}
               actionScreenshot={actionScreenshot}
               onAction={handleAction}
@@ -642,7 +649,6 @@ interface ChatRouteProps {
   onSelect: (id: string) => void
   gmail: ReturnType<typeof import('./hooks/useGmail').useGmail>
   drive: ReturnType<typeof import('./hooks/useDrive').useDrive>
-  browserActions: ReturnType<typeof import('./hooks/useBrowser').useBrowser>
   computerActions: ReturnType<typeof import('./hooks/useComputer').useComputer>
   actionScreenshot: string | null
   onAction?: (action: string, params: Record<string, string>) => void
@@ -668,7 +674,6 @@ function ChatRoute({
   onSelect,
   gmail,
   drive,
-  browserActions,
   computerActions,
   actionScreenshot,
   onAction,
@@ -683,26 +688,53 @@ function ChatRoute({
   onSelectConv,
 }: ChatRouteProps) {
   const { id } = useParams<{ id: string }>()
+  const { t } = useTranslation()
+  const navigate = useNavigate()
+  const matchesRoute = !id || (!!activeConversation && activeConversation.id === id)
+  // Écran vide permanent (juillet 2026) : quand la conversation demandée
+  // n'existe pas (storage chiffré pas prêt, id fantôme), l'ancien
+  // `return null` restait affiché POUR TOUJOURS — la branche "introuvable"
+  // était du code mort car `id` est toujours défini sur /chat/:id. On borne
+  // l'attente : au-delà de 4 s sans match, on affiche un état "introuvable"
+  // actionnable au lieu d'un écran vide.
+  const [lookupTimedOut, setLookupTimedOut] = useState(false)
+  useEffect(() => {
+    if (matchesRoute) return
+    setLookupTimedOut(false)
+    const timer = setTimeout(() => setLookupTimedOut(true), 4000)
+    return () => clearTimeout(timer)
+  }, [id, matchesRoute])
 
   // CRIT-9 (audit étape 6) — onSelect doit être appelé dans un useEffect,
   // pas directement pendant le render. Sinon React 18 warning "Cannot
   // update a component from inside the function body of a different
-  // component" + risque de loop infinie. Le `null` early return reste
-  // pendant la transition.
+  // component" + risque de loop infinie.
   useEffect(() => {
     if (id && (!activeConversation || activeConversation.id !== id)) {
       onSelect(id)
     }
   }, [id, activeConversation, onSelect])
 
-  if (id && (!activeConversation || activeConversation.id !== id)) {
-    return null
-  }
-
-  if (!activeConversation) {
+  if (!matchesRoute || !activeConversation) {
+    if (!lookupTimedOut) {
+      // Transition courte attendue : sélection en cours ou déchiffrement du
+      // storage qui se termine. État VISIBLE, jamais un écran vide.
+      return (
+        <div className="flex items-center justify-center h-full text-theme-muted text-sm">
+          {t('common.loading')}
+        </div>
+      )
+    }
     return (
-      <div className="flex items-center justify-center h-full text-theme-muted text-sm">
-        Conversation introuvable
+      <div className="flex flex-col items-center justify-center h-full gap-3 px-8 text-center">
+        <p className="text-theme-ink font-medium">{t('chat.notFound.title')}</p>
+        <p className="text-theme-muted text-sm">{t('chat.notFound.body')}</p>
+        <button
+          onClick={() => navigate('/')}
+          className="mt-2 px-4 py-2 rounded-xl border border-theme-border bg-theme-surface text-sm font-medium text-theme-ink hover:border-theme-accent transition-colors"
+        >
+          {t('chat.notFound.backHome')}
+        </button>
       </div>
     )
   }
@@ -722,7 +754,6 @@ function ChatRoute({
       onStop={onStop}
       gmail={gmail}
       drive={drive}
-      browserActions={browserActions}
       computerActions={computerActions}
       actionScreenshot={actionScreenshot}
       onAction={onAction}

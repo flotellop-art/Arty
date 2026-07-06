@@ -49,6 +49,16 @@ export interface Message {
   pinned?: boolean
   interrupted?: boolean
   factCheck?: FactCheckResult
+  // CDC visibilité modèle (C-B) — model id exact qui a produit cette réponse
+  // (ex: 'claude-sonnet-5-20250929', 'mistral-medium-latest'). Posé à
+  // finalize() depuis le StreamState (capturé via l'event 'arty-model-used'
+  // scopé conversationId — JAMAIS via le cache global getLastModelUsed, qui
+  // peut refléter un stream concurrent). Champ optionnel, pattern additif de
+  // `tags` : transparent au déchiffrement, aucune migration, les messages
+  // antérieurs n'en ont pas (l'UI n'affiche alors rien). ATTRIBUTION
+  // uniquement — ne JAMAIS s'en servir pour router un prochain appel.
+  // Exclu du partage public (décision D3), inclus dans les exports privés.
+  model?: string
 }
 
 export interface Conversation {

@@ -83,8 +83,12 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const nativeToolDefinitions: any[] = isNative ? [
+// Déclarées INCONDITIONNELLEMENT (revue audit F-16, 3 juil. 2026) : en CI,
+// isNative=false vidait nativeToolDefinitions → le test de parité HITL ne
+// voyait pas ces tools (dont delete_local_file, destructif) et un futur tool
+// natif non classé ne faisait pas échouer la CI. La liste complète est
+// exportée pour le test ; l'exposition au LLM reste gardée par isNative.
+export const NATIVE_TOOL_DEFINITIONS: any[] = [
   {
     name: 'list_local_files',
     description: 'Liste les fichiers et dossiers sur le téléphone de l\'utilisateur. Utilise path pour naviguer dans les sous-dossiers.',
@@ -142,4 +146,6 @@ export const nativeToolDefinitions: any[] = isNative ? [
       },
     },
   },
-] : []
+]
+
+export const nativeToolDefinitions: any[] = isNative ? NATIVE_TOOL_DEFINITIONS : []

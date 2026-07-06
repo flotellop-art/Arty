@@ -210,3 +210,71 @@ describe('googleAuth — storage paths', () => {
     expect(scoped.getItem('google-tokens-enc')).toBe('INVALID_BASE64_!@#')
   })
 })
+
+// ─────────────────────────────────────────────────────────────
+// PKCE (C5 / F-11) — le flow OAuth web doit émettre un code_challenge S256
+// dérivé d'un code_verifier persisté (sessionStorage), consommé UNE seule fois
+// à l'échange. Le flow natif (serverAuthCode, redirect_uri '') n'utilise PAS PKCE.
+// ─────────────────────────────────────────────────────────────
+function b64url(bytes: Uint8Array): string {
+  let bin = ''
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]!)
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+}
+async function expectedChallenge(verifier: string): Promise<string> {
+  const digest = await globalThis.crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier))
+  return b64url(new Uint8Array(digest))
+}
+
+describe('googleAuth — PKCE (C5/F-11)', () => {
+  beforeEach(() => {
+    sessionStorage.clear()
+    vi.stubEnv('VITE_GOOGLE_CLIENT_ID', 'test-client.apps.googleusercontent.com')
+  })
+
+  it("buildOAuthUrl émet code_challenge_method=S256 et un challenge = SHA-256(verifier) persisté", async () => {
+    const url = await googleAuth.buildOAuthUrl()
+    const params = new URL(url).searchParams
+    expect(params.get('code_challenge_method')).toBe('S256')
+
+    const verifier = sessionStorage.getItem('arty-oauth-verifier')
+    expect(verifier).toBeTruthy()
+    expect(verifier!.length).toBeGreaterThanOrEqual(43) // borne RFC 7636
+    expect(params.get('code_challenge')).toBe(await expectedChallenge(verifier!))
+    // le state reste présent (non régressé)
+    expect(params.get('state')).toBeTruthy()
+  })
+
+  it('exchangeCode (web) joint le code_verifier et le consomme (single-use)', async () => {
+    sessionStorage.setItem('arty-oauth-verifier', 'VERIF-123')
+    const fetchMock = mockFetch({ access_token: 'a', refresh_token: 'r', expires_in: 3600 })
+
+    await googleAuth.exchangeCode('code-web')
+    const body1 = JSON.parse(fetchMock.mock.calls[0]![1]!.body as string)
+    expect(body1.code_verifier).toBe('VERIF-123')
+    // consommé → retiré du sessionStorage
+    expect(sessionStorage.getItem('arty-oauth-verifier')).toBeNull()
+
+    // 2e échange : plus de verifier renvoyé (single-use)
+    const fetchMock2 = mockFetch({ access_token: 'a2', refresh_token: 'r', expires_in: 3600 })
+    await googleAuth.exchangeCode('code-web-2')
+    const body2 = JSON.parse(fetchMock2.mock.calls[0]![1]!.body as string)
+    expect('code_verifier' in body2).toBe(false)
+  })
+
+  it('exchangeCode (natif, redirect_uri "") N’envoie PAS de code_verifier (BUG 2)', async () => {
+    sessionStorage.setItem('arty-oauth-verifier', 'STALE') // même si présent
+    const fetchMock = mockFetch({ access_token: 'n', refresh_token: 'r', expires_in: 3600 })
+
+    await googleAuth.exchangeCode('server-auth-code', '')
+    const body = JSON.parse(fetchMock.mock.calls[0]![1]!.body as string)
+    expect(body.redirect_uri).toBe('') // chemin natif préservé
+    expect('code_verifier' in body).toBe(false)
+  })
+
+  it('clearOAuthState purge aussi le verifier PKCE', async () => {
+    sessionStorage.setItem('arty-oauth-verifier', 'X')
+    googleAuth.clearOAuthState()
+    expect(sessionStorage.getItem('arty-oauth-verifier')).toBeNull()
+  })
+})

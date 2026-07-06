@@ -277,12 +277,57 @@ export async function checkVerifyOtpRateLimit(env: Env, ip: string): Promise<boo
   return consumeRateLimit(env, `iv:${ip}:${hourWindow()}`, OTP_VERIFY_PER_IP_HOUR, 3600)
 }
 
-// ── Turnstile (optionnel — enforced si TURNSTILE_SECRET_KEY est configuré) ─
+// ── Turnstile (optionnel en dev/preview — OBLIGATOIRE en prod, fail-closed) ─
+
+/**
+ * Hosts de PRODUCTION — miroir côté serveur des domaines prod de
+ * `ALLOWED_ORIGINS` (`functions/api/_middleware.ts`). Les déploiements preview
+ * de Cloudflare Pages servent sur `<hash>.appfacade.pages.dev` (non listé) et
+ * `wrangler pages dev` sur localhost → non-prod. Si un domaine prod est ajouté
+ * au middleware, l'ajouter ICI aussi — un test de parité
+ * (`turnstileFailClosed.test.ts`) échoue en CI si les deux listes divergent
+ * (pattern F-1 : une allowlist positive doit être imposée par la CI, pas par
+ * un commentaire). Exporté pour ce test uniquement.
+ */
+export const PRODUCTION_HOSTS = new Set([
+  'tryarty.com',
+  'www.tryarty.com',
+  'appfacade.pages.dev',
+  'arty.pages.dev',
+  'app.arty.fr',
+])
+
+/**
+ * C2 (F-10) fail-closed : en PRODUCTION, l'absence de `TURNSTILE_SECRET_KEY`
+ * ne doit PAS désactiver silencieusement le captcha — `verifyTurnstile` est
+ * fail-open sans clé (voulu pour dev/previews), donc une clé supprimée par
+ * erreur du dashboard rouvrirait l'email-bombing sans aucun signal. Le caller
+ * (`request-otp`) refuse alors en 503 (incident de config, pas 403 captcha).
+ *
+ * Détection prod par le HOST du déploiement plutôt que par `CF_PAGES_BRANCH` :
+ * la présence de cette variable au RUNTIME des Pages Functions n'est pas
+ * documentée par Cloudflare — un gate armé par une variable absente ne se
+ * déclencherait jamais (l'anti-pattern exact qu'on corrige). Fail-safe : URL
+ * imparsable → non-prod (on ne casse pas le flux sur un cas dégénéré).
+ */
+export function turnstileMisconfiguredInProd(env: Env, request: Request): boolean {
+  if (env.TURNSTILE_SECRET_KEY) return false
+  try {
+    return PRODUCTION_HOSTS.has(new URL(request.url).hostname.toLowerCase())
+  } catch {
+    return false
+  }
+}
 
 /**
  * Vérifie un token Cloudflare Turnstile. Si `TURNSTILE_SECRET_KEY` n'est pas
- * configuré, retourne true (la défense repose alors sur les rate-limits D1).
- * Recommandé en prod : configurer la clé pour bloquer les bots sur l'envoi.
+ * configuré, retourne true (la défense repose alors sur les rate-limits D1) —
+ * acceptable en dev/preview UNIQUEMENT : en prod, `turnstileMisconfiguredInProd`
+ * bloque le flux en amont (fail-closed C2/F-10).
+ *
+ * ⚠️ Tout NOUVEL appelant de `verifyTurnstile` DOIT appliquer
+ * `turnstileMisconfiguredInProd` en amont (comme `request-otp`), sinon il
+ * réintroduit le fail-open silencieux en prod que C2/F-10 ferme.
  */
 export async function verifyTurnstile(
   env: Env,

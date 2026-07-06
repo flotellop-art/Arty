@@ -24,7 +24,11 @@ export interface ModelPricing {
 // publient de nouveaux tarifs.
 const PRICING: Record<string, ModelPricing> = {
   // Anthropic Claude
-  'claude-sonnet-4-6': { input: 3, output: 15, cacheRead: 0.3, cacheCreation: 3.75 },
+  'claude-sonnet-4-6': { input: 3, output: 15, cacheRead: 0.3, cacheCreation: 3.75 }, // legacy — conservé pour les coûts historiques
+  // Sonnet 5 : tarif durable $3/$15 (l'intro $2/$10 court jusqu'au 31/08/2026 —
+  // tarif pérenne inscrit d'emblée, conservateur pour le wallet). ⚠️ Tokenizer
+  // ~30% plus gourmand que 4.6 : coût par MESSAGE ~+30% à tarif égal.
+  'claude-sonnet-5': { input: 3, output: 15, cacheRead: 0.3, cacheCreation: 3.75 },
   'claude-opus-4-6': { input: 15, output: 75, cacheRead: 1.5, cacheCreation: 18.75 },
   'claude-opus-4-7': { input: 15, output: 75, cacheRead: 1.5, cacheCreation: 18.75 },
   'claude-opus-4-8': { input: 15, output: 75, cacheRead: 1.5, cacheCreation: 18.75 }, // GA 28/05/2026, même tarif
@@ -84,9 +88,9 @@ const FALLBACK_PRICING: ModelPricing = { input: 3, output: 15, cacheRead: 0.3 }
 
 export function getPricing(model: string): ModelPricing {
   if (PRICING[model]) return PRICING[model]
-  // Fallback via préfixe (ex: "claude-sonnet-latest" → claude-sonnet-4-6)
+  // Fallback via préfixe (ex: "claude-sonnet-latest" → claude-sonnet-5)
   const prefix = model.split(/[-@.]/)[0] ?? ''
-  if (prefix === 'claude') return PRICING['claude-sonnet-4-6'] ?? FALLBACK_PRICING
+  if (prefix === 'claude') return PRICING['claude-sonnet-5'] ?? FALLBACK_PRICING
   if (prefix === 'gpt') return PRICING['gpt-5.5-mini'] ?? FALLBACK_PRICING
   if (prefix === 'gemini') return PRICING['gemini-2.5-flash'] ?? FALLBACK_PRICING
   if (prefix === 'mistral') return PRICING['mistral-medium-latest'] ?? FALLBACK_PRICING

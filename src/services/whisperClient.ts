@@ -43,6 +43,12 @@ function formatWhisperError(status: number, body: string): string {
       // Forme d'erreur Mistral (Voxtral) : message au top-level.
       message?: string
     }
+    // C-D / F-13 — le refus trial des proxys transcription renvoyait le code
+    // BRUT « trial_model_restricted » à l'utilisateur (sibling du fix
+    // openai/gemini) : traduit ici, au point d'affichage.
+    if (parsed.error === 'trial_model_restricted') {
+      return i18n.t('errors.trialModelRestricted')
+    }
     if (typeof parsed.error === 'string' && parsed.error) return parsed.error
     if (parsed.error && typeof parsed.error === 'object' && parsed.error.message) {
       return parsed.error.message

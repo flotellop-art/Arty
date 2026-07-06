@@ -263,10 +263,11 @@ export function needsThinking(message: string): ThinkingConfig {
 // modèle (selectClaudeSubModel garde Opus pour les rapports à gros budget) —
 // ils ne sont PAS envoyés à l'API.
 //
-// Niveaux d'effort valides : low/medium/high/max sur Opus 4.5→4.8 ET Sonnet 4.6.
-// `xhigh` n'existe que sur Opus 4.7/4.8 → on l'évite pour rester compatible
-// Sonnet. Haiku 4.5 ne supporte AUCUN effort (400) → le garde-fou est côté
-// anthropicClient (n'envoie jamais d'effort si le modèle résolu est Haiku).
+// Niveaux d'effort valides : low/medium/high/max sur Opus 4.5→4.8 ET Sonnet 5.
+// `xhigh` existe sur Opus 4.7/4.8 et Sonnet 5 mais reste volontairement hors
+// type (non exploité — voir CDC sonnet-5). Haiku 4.5 ne supporte AUCUN effort
+// (400) → le garde-fou est côté anthropicClient (n'envoie jamais d'effort si
+// le modèle résolu est Haiku).
 export type ClaudeEffort = 'low' | 'medium' | 'high' | 'max'
 
 export interface ClaudeThinkingDirective {
@@ -316,7 +317,7 @@ export function resolveClaudeThinking(
   }
 }
 
-export type ClaudeSubModel = 'claude-haiku-4-5-20251001' | 'claude-sonnet-4-6' | 'claude-opus-4-8'
+export type ClaudeSubModel = 'claude-haiku-4-5-20251001' | 'claude-sonnet-5' | 'claude-opus-4-8'
 
 /**
  * Choisit la déclinaison de Claude la mieux adaptée à la requête :
@@ -356,7 +357,7 @@ export function selectClaudeSubModel(
     return 'claude-opus-4-8'
   }
 
-  return 'claude-sonnet-4-6'
+  return 'claude-sonnet-5'
 }
 
 export function detectProvider(message: string): AIProvider {

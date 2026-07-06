@@ -56,7 +56,7 @@ interface LemonSqueezyWebhookPayload {
  * Comparaison constant-time pour éviter les timing attacks. Retourne true
  * si la signature en hex matche celle reçue dans le header X-Signature.
  */
-async function verifySignature(
+export async function verifySignature(
   rawBody: ArrayBuffer,
   signatureHex: string,
   secret: string

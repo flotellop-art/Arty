@@ -1,7 +1,11 @@
 import type { Env } from '../../env'
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
-  const { code, redirect_uri } = await request.json() as { code?: string; redirect_uri?: string }
+  const { code, redirect_uri, code_verifier } = await request.json() as {
+    code?: string
+    redirect_uri?: string
+    code_verifier?: string
+  }
 
   if (!code || redirect_uri === undefined || redirect_uri === null) {
     return Response.json({ error: 'Missing code or redirect_uri' }, { status: 400 })
@@ -12,16 +16,21 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   }
 
   try {
+    const params = new URLSearchParams({
+      code,
+      client_id: env.GOOGLE_CLIENT_ID,
+      client_secret: env.GOOGLE_CLIENT_SECRET,
+      redirect_uri,
+      grant_type: 'authorization_code',
+    })
+    // PKCE (F-11) : forwarder le code_verifier quand le flow web l'a fourni.
+    // Absent sur le flow natif (serverAuthCode) → ne pas l'ajouter.
+    if (code_verifier) params.set('code_verifier', code_verifier)
+
     const response = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        code,
-        client_id: env.GOOGLE_CLIENT_ID,
-        client_secret: env.GOOGLE_CLIENT_SECRET,
-        redirect_uri,
-        grant_type: 'authorization_code',
-      }),
+      body: params,
     })
 
     const data = await response.json() as Record<string, unknown>

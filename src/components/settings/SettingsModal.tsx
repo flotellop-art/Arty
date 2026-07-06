@@ -445,7 +445,7 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
                   className="text-xs bg-theme-surface border border-theme-border rounded px-2 py-1 text-theme-ink focus:outline-none focus:border-theme-accent"
                 >
                   <option value="haiku">Claude Haiku (US)</option>
-                  <option value="mistral">Mistral Medium 3.5 (EU)</option>
+                  <option value="mistral">Mistral Medium (EU)</option>
                 </select>
               </div>
             )}
