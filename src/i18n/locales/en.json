@@ -954,7 +954,9 @@
     "capReachedHint": "Your premium quota resets on {{date}}. Meanwhile: get a +100 pack, or switch to Mistral / a standard model from the selector (no monthly cap).",
     "buyPack": "+100 premium messages — €1.99",
     "later": "Later",
-    "switchToMistral": "Retry on Mistral (EU) — no monthly cap"
+    "switchToMistral": "Retry on Mistral (EU) — no monthly cap",
+    "autoChecksToday_one": "Auto fact-checks today: {{count}} — outside your premium quota (dedicated background counter)",
+    "autoChecksToday_other": "Auto fact-checks today: {{count}} — outside your premium quota (dedicated background counter)"
   },
   "onboardingChoice": {
     "tryFree": {

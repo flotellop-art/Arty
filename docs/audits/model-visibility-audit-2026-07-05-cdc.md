@@ -199,7 +199,13 @@ antérieure sans champ → rendu inchangé (pas de « Inconnu » agressif).
   flag serveur, plafond modeste, coût tracké séparément) — SORT du cap premium
   utilisateur, SANS ouvrir un chemin clé-serveur non plafonné (RÈGLE 6).
   Interim : `auto` = Haiku d'abord, escalade Sonnet si claims risqués.
-- Compresseur : même traitement (rare — seuil 80 k tokens — mais même principe).
+- Compresseur : ⏸️ RÉSIDUEL DOCUMENTÉ (implémentation PR 5, 6 juillet) — non
+  migré vers l'endpoint de fond : son entrée est l'historique COMPLET
+  (~80 k tokens), incompatible avec le pattern « payload tronqué côté
+  serveur » de fact-check/memory-extract (tronquer casserait le résumé).
+  Exposition bornée : déclenchement rare (seuil 80 k), 1 appel par
+  compression, BYOK non concerné (clé user). À migrer si la vigie éco
+  montre un poids réel (endpoint dédié à payload large + cap 5/jour).
 - Écran quotas : ligne d'attribution « dont X vérifications automatiques »
   (convs non-EU uniquement).
 - Test de non-régression : « aucun appel de fond ne consomme le bucket premium »
