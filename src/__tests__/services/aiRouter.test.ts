@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { detectProvider, needsThinking, resolveClaudeThinking, selectClaudeSubModel, extractPdfUrls, extractWebUrls, extractYouTubeUrls, hasYouTubeUrl, shouldUseWebSearch } from '../../services/aiRouter'
 import { getGeminiThinkingBudget, resolveGeminiThinkingBudget } from '../../services/geminiClient'
 
@@ -399,6 +399,38 @@ describe('selectClaudeSubModel', () => {
   it('strategic report + Pro + max thinking → opus', () => {
     expect(selectClaudeSubModel('rapport stratégique détaillé', { enabled: true, budget: 10000 }, false, true))
       .toBe('claude-opus-4-8')
+  })
+})
+
+// C-E (décision D2, audit F-1) — verrou Haiku par plan : le client demande
+// DIRECTEMENT le modèle que le serveur servirait, le swap trial silencieux
+// du proxy devient un filet jamais déclenché. 'free' = valeur écrite par
+// usePlanStatus (le serveur normalise trial → free) ET par le flux essai
+// email (setTrialToken — pas de token Google, jamais de fetch status).
+// 'trial' = défensif si status.ts distingue un jour l'essai.
+describe('selectClaudeSubModel — verrou Haiku par plan (C-E)', () => {
+  const REQUEST_SONNET = 'débogue ce code' // sans verrou → sonnet (cf. test ci-dessus)
+  const THINKING = { enabled: true, budget: 3000 }
+
+  afterEach(() => {
+    localStorage.removeItem('arty-plan-cache')
+  })
+
+  it.each(['free', 'trial'])('plan %s sans crédits → Haiku, même sur une requête à thinking', (plan) => {
+    localStorage.setItem('arty-plan-cache', plan)
+    expect(selectClaudeSubModel(REQUEST_SONNET, THINKING, false, false))
+      .toBe('claude-haiku-4-5-20251001')
+  })
+
+  it('cache vide (jamais fetché) → sélection normale (sonnet)', () => {
+    expect(selectClaudeSubModel(REQUEST_SONNET, THINKING, false, false))
+      .toBe('claude-sonnet-5')
+  })
+
+  it('plan payant → sélection normale (sonnet)', () => {
+    localStorage.setItem('arty-plan-cache', 'subscription')
+    expect(selectClaudeSubModel(REQUEST_SONNET, THINKING, false, false))
+      .toBe('claude-sonnet-5')
   })
 })
 

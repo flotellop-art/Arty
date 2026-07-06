@@ -34,7 +34,9 @@ interface ReflectionPillProps {
 function isProFromCache(): boolean {
   try {
     const plan = localStorage.getItem('arty-plan-cache')
-    return plan !== null && plan !== 'free'
+    // 'trial' : défensif (C-E) — un essai n'est pas un compte payant, même si
+    // status.ts venait à le distinguer de 'free' un jour.
+    return plan !== null && plan !== 'free' && plan !== 'trial'
   } catch {
     return false
   }

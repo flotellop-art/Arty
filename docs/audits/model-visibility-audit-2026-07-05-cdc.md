@@ -205,6 +205,21 @@ antérieure sans champ → rendu inchangé (pas de « Inconnu » agressif).
 - Test de non-régression : « aucun appel de fond ne consomme le bucket premium »
   (le commentaire d'avertissement de `memory-extract` n'a pas suffi — 3 récidives).
 
+### Suivi résiduel C-E (revue PR 4, 5 juillet) — Comparateur en essai
+
+Le verrou Haiku (C-E) ne couvre que le chat principal. Le COMPARATEUR
+(`/compare`) contourne tout : `options.model` prime sur `selectClaudeSubModel`
+(`anthropicClient.ts`), le panneau par défaut est `claude-sonnet-5`
+(`providerCatalog.ts`), et ses events sont `background:true` → la correction
+de badge `confirmed` (C-A) est filtrée. Un compte d'essai qui ouvre le
+Comparateur reçoit donc du Haiku sous un en-tête « Claude Sonnet 5 », sans
+signal, avec un coût estimé sur le modèle demandé. À traiter (chantier court
+dédié) : gating de plan sur l'écran Comparateur (ou panneaux par défaut
+adaptés au plan) + affichage du `servedModel` dans les panneaux (les events
+background portent déjà le modèle confirmé — il suffit que le Comparateur les
+écoute pour SES panneaux). Le compresseur de contexte (Sonnet hardcodé, swap
+possible en trial >80k tokens) relève de C-F/PR 5.
+
 ### C-G (P2) — Finitions
 
 - Ledger par message sur demande : tap sur le footer C-C → « ~X crédits ·

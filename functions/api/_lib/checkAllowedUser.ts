@@ -205,17 +205,25 @@ export async function ensureTrialTable(env: Env): Promise<void> {
 
 /**
  * Vérifie si un nom de modèle est autorisé pour un user en plan trial.
- * Matche par famille (claude→haiku, gpt→mini, gemini→flash, mistral→small)
+ * Matche par famille (claude→haiku, gpt→mini, gemini→flash, mistral→medium)
  * pour tolérer les suffixes de versions API. Les proxys IA étant scopés par
  * fournisseur, le préfixe `claude-` / `gpt-` / `gemini-` / `mistral-` est
  * implicite ; on regarde juste la sous-famille.
+ *
+ * F-16 (audit visibilité modèle, corrigé C-E) : cette fonction exigeait
+ * encore `small` pour Mistral alors que TRIAL_ALLOWED_MODELS déclare
+ * `mistral-medium` depuis la dépréciation de Small (mai 2026) ET que le swap
+ * trial de mistral-proxy cible mistral-medium-latest — la cible de la
+ * substitution échouait elle-même le test. Aligné sur `medium` : aucun
+ * changement de coût (medium était déjà servi via le swap), le swap devient
+ * simplement inutile pour le défaut Mistral.
  */
 export function isModelAllowedInTrial(model: string): boolean {
   const m = model.toLowerCase()
   if (m.startsWith('claude')) return m.includes('haiku')
   if (m.startsWith('gpt')) return m.includes('mini')
   if (m.startsWith('gemini')) return m.includes('flash')
-  if (m.startsWith('mistral')) return m.includes('small')
+  if (m.startsWith('mistral')) return m.includes('medium')
   return false
 }
 
