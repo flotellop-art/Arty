@@ -12,7 +12,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { openCheckout, openCreemCheckout, type CheckoutPlan } from '../services/checkout'
+import { openCheckout, openCreemCheckout, canPurchase, type CheckoutPlan } from '../services/checkout'
 import { getValidAccessToken, getStoredUser } from '../services/googleAuth'
 import { fetchWalletBalance } from '../services/walletClient'
 import { apiUrl } from '../services/apiBase'
@@ -214,27 +214,50 @@ export function UpgradeScreen({ onBack, currentPlan: currentPlanProp, email }: U
           </p>
         )}
 
+        {/* Play Store — sur natif, AUCUN parcours d'achat ne doit être visible
+            (biens numériques hors Google Play Billing = motif de rejet). On ne
+            garde que BYOK (gratuit côté Arty) + un bloc informatif neutre. Le
+            statut d'un abonné existant reste visible ailleurs (PlanBadge,
+            quotas) et son lien de GESTION (annulation) est conservé : ce n'est
+            pas une incitation à acheter, c'est un dû envers l'abonné. */}
         <div className="grid grid-cols-1 gap-4">
           <FreeBYOKCard isCurrent={currentPlan === 'byok'} onClick={handleByokClick} />
-          <ProCard
-            isCurrent={currentPlan === 'pro'}
-            onBuy={() => launchCheckout('pro')}
-          />
-          <SubscriptionCard
-            isCurrent={currentPlan === 'subscription'}
-            onSubscribe={() => launchCheckout('subscription')}
-          />
-          <CreditsCard busy={creditsBusy} onBuy={launchCreditsCheckout} />
+          {canPurchase && (
+            <>
+              <ProCard
+                isCurrent={currentPlan === 'pro'}
+                onBuy={() => launchCheckout('pro')}
+              />
+              <SubscriptionCard
+                isCurrent={currentPlan === 'subscription'}
+                onSubscribe={() => launchCheckout('subscription')}
+              />
+              <CreditsCard busy={creditsBusy} onBuy={launchCreditsCheckout} />
+            </>
+          )}
         </div>
 
-        {currentPlan === 'subscription' && (
+        {!canPurchase && (
+          <div className="rounded-sm border border-theme-border bg-theme-surface px-5 py-4">
+            <p className="font-display text-sm text-theme-ink">
+              {t('upgrade.nativeUnavailableTitle')}
+            </p>
+            <p className="font-sans text-sm text-theme-muted mt-1 leading-relaxed">
+              {t('upgrade.nativeUnavailableBody')}
+            </p>
+          </div>
+        )}
+
+        {canPurchase && currentPlan === 'subscription' && (
           <div ref={premiumPackRef} className="pt-4">
             <PremiumPackCard onBuy={() => launchCheckout('premium_pack')} />
           </div>
         )}
 
         {/* P0.10 — annulation accessible depuis l'app (portail Lemon Squeezy).
-            Sans ce lien, « annulable en ligne » serait une promesse creuse. */}
+            Sans ce lien, « annulable en ligne » serait une promesse creuse.
+            Conservé aussi sur natif : gérer/annuler un abonnement EXISTANT
+            n'est pas un achat (exception documentée du masquage Play Store). */}
         {currentPlan === 'subscription' && (
           <a
             href="https://app.lemonsqueezy.com/billing"
@@ -249,13 +272,15 @@ export function UpgradeScreen({ onBack, currentPlan: currentPlanProp, email }: U
         {/* P2.4 — « pourquoi c'est moins cher » : on assume le modèle éco
             (routage intelligent + marge faible) pour désarmer le « trop beau
             pour être vrai ». La transparence économique devient la marque. */}
-        <WhyCheaperSection />
+        {canPurchase && <WhyCheaperSection />}
 
         {/* P0.10 — la transparence comme argument de vente (audit concurrentiel :
             la plainte la plus virale du segment = limites opaques). */}
-        <p className="font-display italic text-[11px] text-theme-muted text-center pt-4 leading-relaxed">
-          {t('upgrade.transparency')}
-        </p>
+        {canPurchase && (
+          <p className="font-display italic text-[11px] text-theme-muted text-center pt-4 leading-relaxed">
+            {t('upgrade.transparency')}
+          </p>
+        )}
         <p className="font-display italic text-[11px] text-theme-muted text-center pt-1">
           {t('upgrade.legal')}
         </p>

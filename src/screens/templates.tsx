@@ -21,6 +21,7 @@ import {
   renderTemplatePrompt,
 } from '../data/templates'
 import type { CurrentPlan } from './upgrade'
+import { canPurchase } from '../services/checkout'
 
 interface TemplatesScreenProps {
   onBack: () => void
@@ -116,7 +117,9 @@ function TemplatesScreenInner({ onBack, onUpgrade, onUseTemplate, currentPlan }:
                 {t('templates.proBannerTitleLead')}<span className="italic">{t('templates.proBannerTitleAccent')}</span>{t('templates.proBannerTitleTail')}
               </p>
               <p className="font-display italic text-xs text-theme-muted mt-0.5">
-                {t('templates.proBannerSubtitle')}
+                {/* Play Store — pas de prix affiché sur natif (incitation à
+                    l'achat hors Play Billing). Variante neutre. */}
+                {canPurchase ? t('templates.proBannerSubtitle') : t('templates.proBannerSubtitleNative')}
               </p>
             </div>
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="text-theme-accent flex-shrink-0">

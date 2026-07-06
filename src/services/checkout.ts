@@ -14,6 +14,17 @@
 import { Capacitor } from '@capacitor/core'
 import { getValidAccessToken } from './googleAuth'
 import { apiUrl } from './apiBase'
+import { isNative } from './native/platform'
+
+/**
+ * Play Store — les biens numériques vendus DANS l'app Android doivent passer
+ * par Google Play Billing (ou le « billing choice program », non intégré).
+ * Sur natif, aucun checkout ne doit s'ouvrir : les achats se font sur le web
+ * (tryarty.com), le plan est côté serveur (D1) donc le statut se synchronise
+ * dans l'app. `canPurchase` est le point de vérité unique pour l'UI ;
+ * `openCheckout`/`openCreemCheckout` re-vérifient en filet de sécurité.
+ */
+export const canPurchase = !isNative
 
 export type CheckoutPlan = 'subscription' | 'pro' | 'premium_pack'
 
@@ -54,6 +65,7 @@ export async function openCheckout(
   email: string,
   options: OpenCheckoutOptions = {}
 ): Promise<void> {
+  if (!canPurchase) return
   const url = buildCheckoutUrl(plan, email)
   await openExternalUrl(url, options.onReturn)
 }
@@ -113,6 +125,7 @@ export async function openCreemCheckout(
   pack: string,
   options: OpenCheckoutOptions = {}
 ): Promise<boolean> {
+  if (!canPurchase) return false
   const token = await getValidAccessToken()
   if (!token) return false
 

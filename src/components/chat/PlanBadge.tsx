@@ -9,6 +9,7 @@ import { memo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 import { usePlanStatus } from '../../hooks/usePlanStatus'
+import { canPurchase } from '../../services/checkout'
 
 // Clés i18n des labels de plan et des abréviations de bucket (P1.6).
 const PLAN_LABEL_KEY: Record<string, string> = {
@@ -74,8 +75,10 @@ export const PlanBadge = memo(function PlanBadge() {
   return (
     <button
       onClick={() => {
-        if (isFree) navigate('/upgrade')
-        else if (isSub) navigate(subExhausted ? '/upgrade?scroll=premium' : '/costs')
+        // Play Store — sur natif, le badge ne route jamais vers la page
+        // d'achat : /costs (usage) pour les abonnés, no-op pour les free.
+        if (isFree) { if (canPurchase) navigate('/upgrade') }
+        else if (isSub) navigate(subExhausted && canPurchase ? '/upgrade?scroll=premium' : '/costs')
       }}
       className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] uppercase tracking-kicker font-sans transition-colors ${
         isAlmostExhausted

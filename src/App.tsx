@@ -39,6 +39,7 @@ import {
   initEmailTrialSplash,
 } from './services/trialClient'
 import { setTrialToken } from './services/emailTrialClient'
+import { canPurchase } from './services/checkout'
 import { ProfileSetupModal } from './components/onboarding/ProfileSetupModal'
 import { getUserProfile } from './services/userProfile'
 // H-Perf-2 (audit étape 7) — lazy-load des screens hors chemin critique.
@@ -604,12 +605,15 @@ function TrialBanner({ onUpgrade }: { onUpgrade: () => void }) {
         <p className="font-display italic text-sm">
           {t('trial.banner.ended')}
         </p>
-        <button
-          onClick={onUpgrade}
-          className="font-display italic text-xs underline shrink-0"
-        >
-          {t('trial.banner.seePlans')}
-        </button>
+        {/* Play Store — pas de CTA vers la page d'achat sur natif. */}
+        {canPurchase && (
+          <button
+            onClick={onUpgrade}
+            className="font-display italic text-xs underline shrink-0"
+          >
+            {t('trial.banner.seePlans')}
+          </button>
+        )}
       </div>
     )
   }
@@ -622,12 +626,14 @@ function TrialBanner({ onUpgrade }: { onUpgrade: () => void }) {
       <p className="font-display italic text-xs">
         {t('trial.banner.remaining', { count: remaining })}
       </p>
-      <button
-        onClick={onUpgrade}
-        className="font-display italic text-xs underline shrink-0"
-      >
-        {t('trial.banner.upgradeCta')}
-      </button>
+      {canPurchase && (
+        <button
+          onClick={onUpgrade}
+          className="font-display italic text-xs underline shrink-0"
+        >
+          {t('trial.banner.upgradeCta')}
+        </button>
+      )}
     </div>
   )
 }

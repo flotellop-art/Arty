@@ -4,6 +4,7 @@
 import { memo, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation, Trans } from 'react-i18next'
+import { canPurchase } from '../../services/checkout'
 
 interface UpgradePromptModalProps {
   modelLabel: string
@@ -31,6 +32,13 @@ export const UpgradePromptModal = memo(function UpgradePromptModal({
     navigate('/upgrade')
   }
 
+  // Play Store — sur natif, pas d'incitation à l'achat : on oriente vers
+  // BYOK (gratuit côté Arty, l'utilisateur paie son provider directement).
+  const handleByok = () => {
+    onClose()
+    window.dispatchEvent(new CustomEvent('arty-open-api-keys'))
+  }
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
@@ -51,7 +59,7 @@ export const UpgradePromptModal = memo(function UpgradePromptModal({
         </div>
         <p className="text-sm text-theme-muted mb-5 leading-relaxed">
           <Trans
-            i18nKey="chat.upgradeModal.body"
+            i18nKey={canPurchase ? 'chat.upgradeModal.body' : 'chat.upgradeModal.bodyNative'}
             components={{ 0: <strong className="text-theme-ink" />, 1: <strong className="text-theme-ink" /> }}
           />
         </p>
@@ -63,10 +71,10 @@ export const UpgradePromptModal = memo(function UpgradePromptModal({
             {t('chat.upgradeModal.later')}
           </button>
           <button
-            onClick={handleUpgrade}
+            onClick={canPurchase ? handleUpgrade : handleByok}
             className="px-4 py-1.5 text-xs font-sans uppercase tracking-kicker bg-theme-accent text-theme-bg hover:opacity-90 rounded-md transition-opacity"
           >
-            {t('chat.upgradeModal.seePlans')}
+            {canPurchase ? t('chat.upgradeModal.seePlans') : t('chat.upgradeModal.useByok')}
           </button>
         </div>
       </div>

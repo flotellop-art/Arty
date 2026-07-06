@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { fetchBillingUsage } from '../../services/billingClient'
 import { decideBillingAdvice, type BillingAdvice } from '../../services/billingAdvisor'
 import { getStoredUser } from '../../services/googleAuth'
-import { openCheckout } from '../../services/checkout'
+import { openCheckout, canPurchase } from '../../services/checkout'
 
 // Carte « suggestion » du conseiller de facturation. Affichée seulement quand le
 // cerveau a une reco CONFIANTE (sinon rien). Déterministe, zéro appel IA.
@@ -52,6 +52,11 @@ export function BillingAdvisorCard() {
   }, [])
 
   if (hidden || isOptedOut() || !advice || !advice.recommend) return null
+
+  // Play Store — sur natif, seule la reco BYOK (gratuite côté Arty) peut
+  // s'afficher : recommander l'abonnement/les crédits avec chiffres d'économie
+  // est une incitation à l'achat hors Play Billing.
+  if (!canPurchase && advice.recommend !== 'byok') return null
 
   // Refus mémorisé pour la même cible → re-montrer seulement si l'économie a doublé.
   const dismissed = readDismissed()
