@@ -89,20 +89,28 @@ unique sous 20 $/mois). Pas par la largeur de catalogue. Volume = distribution
   whales : 500/j est le plafond théorique d'un abonné (≈ 15 000 msg standards/mois
   dans l'absolu) — surveiller via la vigie économique trimestrielle.
 
-- [ ] **P0.11 Visibilité/attribution du modèle exact** — AUDIT + CDC FAITS
-  (5 juillet 2026, PR à venir) : `model-visibility-audit-2026-07-05.md` +
-  `-cdc.md` (16 findings vérifiés, dont : substitution trial silencieuse jamais
-  signalée, badge « Dernier appel » non scopé pollué par les appels de fond,
-  openaiClient muet, AUCUNE persistance du modèle par message, bouton cap no-op,
-  fact-check qui divise le cap Sonnet par 2, et Auto = 100 % Claude sans BYOK).
-  Attribution par message = table stakes 2026 (ChatGPT/Perplexity/Poe) et
-  réponse directe au doute « vrai modèle ? » qui plombe Mammouth.
-  Implémentation : 6 PRs séquencées au CDC. **Décisions D1-D5 TRANCHÉES par
-  Florent le 5 juillet 2026** (détail au CDC) : D1 trou produit → P1.9 ;
-  D2 dé-silencier le swap trial par suppression à la source ; D3 modèle par
-  message exclu du partage public (inclus exports privés) ; D4 CapReachedModal
-  → action explicite « Passer sur Mistral », pas de downgrade auto ;
-  D5 fact-check → compteur de fond séparé + Haiku d'abord.
+- [x] **P0.11 Visibilité/attribution du modèle exact** — **FAIT, séquencement
+  complet mergé les 5-6 juillet 2026 (PRs #321 → #327)**. Audit + CDC :
+  `model-visibility-audit-2026-07-05.md` + `-cdc.md` (16 findings vérifiés).
+  Décisions D1-D5 tranchées par Florent le 5 juillet (détail au CDC).
+  Livré : **PR 1/#321** boucle demandé→servi refermée (message_start.model lu,
+  openaiClient dispatche, badge scopé conversation + background, hybride =
+  2 providers) ; **PR 2/#322** `Message.model` persisté par message (capture
+  par stream, jamais le cache global) + ModelFooter 2 niveaux (capacité+drapeau
+  / tap → nom précis) + nom du modèle pendant le stream + exports privés
+  (partage public exclu, D3) ; **PR 3/#323** labels anti-drift (version dérivée
+  de l'ID, test de parité 15 IDs), CapReachedModal « Relancer sur Mistral »
+  (D4, avec relance scopée), textes i18n vrais, refus trial parlants ;
+  **PR 4/#325** trial honnête (D2 : le client demande Haiku directement, fin
+  du swap silencieux F-1 ; purge du cache plan au logout/switch) ; **PR 5/#327**
+  fact-check hors du cap premium (D5 : endpoint dédié `/api/ai/fact-check`
+  borné 60 Haiku + 15 Sonnet/j, Haiku d'abord + escalade sur claims risqués,
+  ligne « vérifications auto » au sheet quotas — le cap 150 redevient
+  ~150 vrais échanges). Chaque PR : revue RÈGLE 7 par 2 agents + audit
+  RÈGLE 6 quand serveur touché. **Suivis ouverts** (documentés au CDC) :
+  P1.9 (D1), Comparateur-en-essai (revue PR 4), garde EU→US en Auto
+  (différée PR 3), finitions P2 (C-G : coût par message au tap, labels
+  Sidebar), compresseur résiduel (C-F), test terrain APK des nouveautés.
 
 ## P1 — Combler les attentes standard 2026
 

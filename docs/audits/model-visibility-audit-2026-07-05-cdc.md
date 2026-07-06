@@ -268,14 +268,14 @@ possible en trial >80k tokens) relève de C-F/PR 5.
 
 ## Séquencement proposé (PRs)
 
-| PR | Contenu | Dépend de |
+| PR | Contenu | Statut |
 |---|---|---|
-| 1 | C-A complet + tests de parité dispatch | — |
-| 2 | C-B (Message.model + plomberie StreamState) + C-C (footer + streaming) | PR 1 (canal scopé) |
-| 3 | C-D (textes, labels anti-drift, CapReachedModal, erreurs parlantes) | D1, D4 |
-| 4 | C-E (trial honnête) | D2 |
-| 5 | C-F (quotas de fond) | D5 |
-| 6+ | C-G (P2) | PR 2 |
+| 1 | C-A complet + tests de parité dispatch | ✅ Mergé (#321, 5 juil.) |
+| 2 | C-B (Message.model + plomberie StreamState) + C-C (footer + streaming) | ✅ Mergé (#322, 5 juil.) |
+| 3 | C-D (textes, labels anti-drift, CapReachedModal, erreurs parlantes) | ✅ Mergé (#323, 6 juil.) |
+| 4 | C-E (trial honnête) | ✅ Mergé (#325, 6 juil.) |
+| 5 | C-F (quotas de fond — endpoint /api/ai/fact-check) | ✅ Mergé (#327, 6 juil.) |
+| 6+ | C-G (P2) | ⏳ Ouvert |
 
 Chaque PR : `npx tsc --noEmit` (BUG 13) + suite de tests + vérif visuelle
 Playwright mobile (pattern P2.2) pour les PRs UI (2, 3).
