@@ -1034,8 +1034,8 @@
   },
   "trial": {
     "banner": {
-      "remaining_one": "✨ Free trial — {{count}} message left",
-      "remaining_other": "✨ Free trial — {{count}} messages left",
+      "remaining_one": "✨ Free trial — {{count}} message left · base models (Haiku, Flash, Medium)",
+      "remaining_other": "✨ Free trial — {{count}} messages left · base models (Haiku, Flash, Medium)",
       "ended": "Trial over — pick a plan to continue",
       "upgradeCta": "Upgrade",
       "seePlans": "See plans →"

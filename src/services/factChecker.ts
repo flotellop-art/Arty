@@ -72,10 +72,13 @@ export function getFactCheckMode(): FactCheckMode {
   const v = scoped.getItem(SETTING_KEY)
   if (v === 'off' || v === 'sonnet' || v === 'haiku' || v === 'auto') return v
   // Défaut : 'auto' pour les payants (Haiku rapide / Sonnet sur sujets
-  // sensibles), 'off' pour les free (cap quota).
+  // sensibles), 'off' pour les free ET les essais (cap quota). 'trial' :
+  // défensif — rien ne l'écrit aujourd'hui (l'essai est normalisé 'free'),
+  // mais si status.ts distingue un jour, le fact-check ne doit pas basculer
+  // en Sonnet pour un compte d'essai (C-E).
   let plan: string | null = null
   try { plan = localStorage.getItem('arty-plan-cache') } catch {}
-  return plan === 'free' ? 'off' : 'auto'
+  return plan === 'free' || plan === 'trial' ? 'off' : 'auto'
 }
 
 export function setFactCheckMode(mode: FactCheckMode): void {

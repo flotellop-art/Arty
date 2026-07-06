@@ -1034,8 +1034,8 @@
   },
   "trial": {
     "banner": {
-      "remaining_one": "✨ Essai gratuit — {{count}} message restant",
-      "remaining_other": "✨ Essai gratuit — {{count}} messages restants",
+      "remaining_one": "✨ Essai gratuit — {{count}} message restant · modèles de base (Haiku, Flash, Medium)",
+      "remaining_other": "✨ Essai gratuit — {{count}} messages restants · modèles de base (Haiku, Flash, Medium)",
       "ended": "Essai terminé — Choisis un plan pour continuer",
       "upgradeCta": "Passer à Pro",
       "seePlans": "Voir les plans →"

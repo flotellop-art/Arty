@@ -29,6 +29,17 @@ export function getTrialToken(): string | null {
 
 export function setTrialToken(token: string): void {
   scoped.setItem(TOKEN_KEY, token)
+  // C-E / F-1 (CDC visibilité modèle, décision D2) — un compte essai email n'a
+  // PAS de token Google : usePlanStatus ne peut jamais appeler
+  // /api/subscription/status, donc 'arty-plan-cache' restait null pour
+  // toujours → selectClaudeSubModel demandait Sonnet → le proxy substituait
+  // Haiku EN SILENCE à chaque message (l'UI affichait Sonnet, mensonge
+  // permanent). On pose ici la MÊME valeur que le serveur aurait renvoyée
+  // (normalizePlan mappe 'trial' → 'free', subscription/status.ts) : le
+  // client demande directement Haiku, le swap serveur devient un filet
+  // jamais déclenché. Clé GLOBALE volontairement (même convention que
+  // usePlanStatus.ts:89).
+  try { localStorage.setItem('arty-plan-cache', 'free') } catch { /* noop */ }
 }
 
 /**

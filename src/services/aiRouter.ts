@@ -332,15 +332,21 @@ export function selectClaudeSubModel(
   isPrivateData: boolean,
   isPro: boolean
 ): ClaudeSubModel {
-  // Plan free : Haiku uniquement, sans exception. Évite le 403 model_locked
-  // serveur-side. Le plan est mis en cache par usePlanStatus dans
-  // localStorage 'arty-plan-cache' à chaque /api/subscription/status.
+  // Plan free/trial : Haiku uniquement, sans exception. Évite le 403
+  // model_locked serveur-side ET le swap trial silencieux (C-E, décision D2 :
+  // le client demande directement le modèle qui sera servi — le swap
+  // Sonnet→Haiku du proxy devient un filet jamais déclenché, l'UI dit vrai
+  // par construction). Le plan est mis en cache par usePlanStatus
+  // ('arty-plan-cache', /api/subscription/status normalise trial → 'free')
+  // et par le flux essai email (setTrialToken pose 'free' — pas de token
+  // Google, donc jamais de fetch status). 'trial' accepté défensivement si
+  // status.ts distingue un jour l'essai.
   let cachedPlan: string | null = null
   try { cachedPlan = localStorage.getItem('arty-plan-cache') } catch {}
-  // Plan free SANS crédits utilisables → Haiku only (évite le 403 model_locked
-  // serveur). AVEC des crédits (essai épuisé ou vrai free) → on laisse la
-  // sélection normale choisir Sonnet/Opus : le wallet paie n'importe quel modèle.
-  if (cachedPlan === 'free' && !creditsCoverPremium()) {
+  // SANS crédits utilisables → Haiku only. AVEC des crédits (essai épuisé ou
+  // vrai free) → on laisse la sélection normale choisir Sonnet/Opus : le
+  // wallet paie n'importe quel modèle.
+  if ((cachedPlan === 'free' || cachedPlan === 'trial') && !creditsCoverPremium()) {
     return 'claude-haiku-4-5-20251001'
   }
 
