@@ -23,7 +23,7 @@
     "editorialTitle": "Welcome back",
     "editorialSubtitle": "Your assistant, encrypted, yours.",
     "edition": "Private edition · Vol. 1",
-    "privacyNote": "Encrypted locally. Nothing leaves your device without you.",
+    "privacyNote": "Your conversations are encrypted locally. Nothing leaves your device without your action.",
     "or": "or",
     "connectedAs": "Signed in as <strong>{{name}}</strong>. Enter your Anthropic API key to continue.",
     "tabs": {
@@ -45,7 +45,7 @@
         "required": "Anthropic API key is required",
         "invalidPrefix": "The key must start with sk-ant-"
       },
-      "notice": "Your key is never sent to our servers. It's only used to talk to the Anthropic API."
+      "notice": "Your key stays stored on your device and is only used to call the provider's API. When it passes through our servers, it is never stored or logged."
     },
     "google": {
       "signIn": "Sign in with Google",
@@ -65,7 +65,7 @@
         "wrongPassword": "Wrong password",
         "generic": "Connection error"
       },
-      "notice": "Your account stays on this device. No server."
+      "notice": "Your data stays on this device. Your email is only used to verify your identity and your free trial."
     },
     "recentAccounts": "Recent accounts",
     "apikey": {
@@ -1135,16 +1135,16 @@
   },
   "apiKeySetup": {
     "pageTitle": "Setup",
-    "pageSubtitle": "Enter your API keys to get started. They are encrypted and stored only on your device.",
+    "pageSubtitle": "Enter your API keys to get started. They are stored only on your device, never on our servers.",
     "optional": "(optional)",
     "hideKey": "Hide",
     "showKey": "Show",
     "test": "Test",
     "currentKey": "Current: {{mask}}",
-    "saving": "Encrypting…",
+    "saving": "Saving…",
     "save": "Save",
     "start": "Start",
-    "encryptionNotice": "Your keys are encrypted with AES-256 and stored only on your device.",
+    "encryptionNotice": "Your keys are stored only on your device, never on our servers.",
     "labels": {
       "anthropic": "Anthropic API key",
       "openai": "OpenAI API key",
@@ -1162,7 +1162,7 @@
     "kicker": "API keys",
     "titleLead": "Your ",
     "titleAccent": "keys.",
-    "subtitle": "Encrypted with AES-256 and stored only on your device."
+    "subtitle": "Stored only on your device, never on our servers."
   },
   "memoryViewer": {
     "title": "🧠 Arty's memory",

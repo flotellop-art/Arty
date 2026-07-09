@@ -65,16 +65,17 @@ L'utilisation par Arty des données reçues des API Google, et leur transfert ve
 
 ## 6. Sécurité
 
-- **Chiffrement au repos sur l'appareil** : vos conversations, vos pièces jointes (IndexedDB) et vos clés API personnelles (BYOK) sont chiffrées en AES-256-GCM via la Web Crypto API. La clé de chiffrement est dérivée localement et ne quitte jamais votre appareil.
+- **Chiffrement au repos sur l'appareil** : vos conversations et vos pièces jointes (IndexedDB) sont chiffrées en AES-256-GCM via la Web Crypto API. La clé de chiffrement est dérivée localement et ne quitte jamais votre appareil.
+- **Clés API personnelles (BYOK)** : stockées uniquement sur votre appareil (stockage local protégé par l'isolation du système). Elles transitent par nos serveurs uniquement pour relayer vos requêtes vers l'API du fournisseur, sans jamais y être stockées ni journalisées.
 - **Chiffrement en transit** : toutes les communications utilisent HTTPS (TLS 1.2+).
 - **Serveur** : nous ne stockons côté serveur que l'email d'authentification et le jeton OAuth Google nécessaire à la fourniture du service. Les conversations, pièces jointes et clés API ne sont jamais stockées sur nos serveurs.
 - **Clés API serveur** : jamais exposées dans l'application cliente. Stockées en secrets Cloudflare Workers.
 
 ## 7. Stockage local sur votre appareil
 
-Pour fonctionner, l'application stocke localement (sur votre appareil, jamais envoyé serveur) :
+Pour fonctionner, l'application stocke localement (sur votre appareil, jamais stocké côté serveur) :
 
-- **localStorage** : préférences (langue, onboarding, plan), identifiant d'appareil non personnel, hash de votre email pour la reconnexion, clés API personnelles BYOK chiffrées, état trial.
+- **localStorage** : préférences (langue, onboarding, plan), identifiant d'appareil non personnel, hash de votre email pour la reconnexion, clés API personnelles BYOK, état trial.
 - **sessionStorage** : état OAuth Google (protection CSRF), messages d'erreur transitoires.
 - **IndexedDB** : pièces jointes (images, PDFs) chiffrées AES-256.
 

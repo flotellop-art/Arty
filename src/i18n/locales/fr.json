@@ -23,7 +23,7 @@
     "editorialTitle": "Bon retour",
     "editorialSubtitle": "Ton assistant, chiffré, à toi.",
     "edition": "Édition privée · Vol. 1",
-    "privacyNote": "Chiffré localement. Rien ne quitte ton appareil sans toi.",
+    "privacyNote": "Tes conversations sont chiffrées localement. Rien ne quitte ton appareil sans ton action.",
     "or": "ou",
     "connectedAs": "Connecté en tant que <strong>{{name}}</strong>. Entre ta clé API Anthropic pour continuer.",
     "tabs": {
@@ -45,7 +45,7 @@
         "required": "La clé API Anthropic est obligatoire",
         "invalidPrefix": "La clé doit commencer par sk-ant-"
       },
-      "notice": "Ta clé n'est jamais envoyée à nos serveurs. Elle sert uniquement à communiquer avec l'API Anthropic."
+      "notice": "Ta clé reste stockée sur ton appareil et sert uniquement à appeler l'API du fournisseur. Lorsqu'elle transite par nos serveurs, elle n'y est jamais stockée ni journalisée."
     },
     "google": {
       "signIn": "Se connecter avec Google",
@@ -65,7 +65,7 @@
         "wrongPassword": "Mot de passe incorrect",
         "generic": "Erreur de connexion"
       },
-      "notice": "Ton compte est stocké sur cet appareil. Pas de serveur."
+      "notice": "Tes données restent sur cet appareil. Ton email sert uniquement à vérifier ton identité et ton essai gratuit."
     },
     "recentAccounts": "Comptes récents",
     "apikey": {
@@ -1135,16 +1135,16 @@
   },
   "apiKeySetup": {
     "pageTitle": "Configuration",
-    "pageSubtitle": "Entre tes clés API pour commencer. Elles sont chiffrées et stockées uniquement sur ton appareil.",
+    "pageSubtitle": "Entre tes clés API pour commencer. Elles sont stockées uniquement sur ton appareil, jamais sur nos serveurs.",
     "optional": "(optionnel)",
     "hideKey": "Masquer",
     "showKey": "Afficher",
     "test": "Tester",
     "currentKey": "Actuel : {{mask}}",
-    "saving": "Chiffrement…",
+    "saving": "Enregistrement…",
     "save": "Enregistrer",
     "start": "Commencer",
-    "encryptionNotice": "Tes clés sont chiffrées en AES-256 et stockées uniquement sur ton appareil.",
+    "encryptionNotice": "Tes clés sont stockées uniquement sur ton appareil, jamais sur nos serveurs.",
     "labels": {
       "anthropic": "Clé API Anthropic",
       "openai": "Clé API OpenAI",
@@ -1162,7 +1162,7 @@
     "kicker": "Clés API",
     "titleLead": "Tes ",
     "titleAccent": "clés.",
-    "subtitle": "Chiffrées en AES-256 et stockées uniquement sur ton appareil."
+    "subtitle": "Stockées uniquement sur ton appareil, jamais sur nos serveurs."
   },
   "memoryViewer": {
     "title": "🧠 Mémoire d'Arty",

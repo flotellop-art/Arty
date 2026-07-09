@@ -65,16 +65,17 @@ Arty's use of information received from Google APIs, and its transfer to any oth
 
 ## 6. Security
 
-- **Encryption at rest on your device**: your conversations, attachments (IndexedDB), and personal API keys (BYOK) are encrypted with AES-256-GCM via the Web Crypto API. The encryption key is derived locally and never leaves your device.
+- **Encryption at rest on your device**: your conversations and attachments (IndexedDB) are encrypted with AES-256-GCM via the Web Crypto API. The encryption key is derived locally and never leaves your device.
+- **Personal API keys (BYOK)**: stored only on your device (local storage protected by OS-level isolation). They pass through our servers only to relay your requests to the provider's API, and are never stored or logged there.
 - **Encryption in transit**: all communications use HTTPS (TLS 1.2+).
 - **Server-side**: we only store your authentication email and the Google OAuth token required to deliver the service. Conversations, attachments, and personal API keys are never stored on our servers.
 - **Server API keys**: never exposed to the client app. Stored as Cloudflare Workers secrets.
 
 ## 7. Local storage on your device
 
-To operate, the app stores locally on your device (never sent server-side):
+To operate, the app stores locally on your device (never stored server-side):
 
-- **localStorage**: preferences (language, onboarding, plan), non-personal device identifier, hash of your email for reconnection, encrypted personal BYOK API keys, trial state.
+- **localStorage**: preferences (language, onboarding, plan), non-personal device identifier, hash of your email for reconnection, personal BYOK API keys, trial state.
 - **sessionStorage**: Google OAuth state (CSRF protection), transient error messages.
 - **IndexedDB**: encrypted attachments (images, PDFs, AES-256).
 

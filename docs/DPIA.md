@@ -66,7 +66,7 @@ potentiellement sensibles issues de boîtes mail/fichiers, scopes Google « Rest
 | Donnée | Stockage | Chiffrement |
 |---|---|---|
 | Conversations & pièces jointes | **Appareil de l'utilisateur uniquement** (IndexedDB/localStorage) | AES-256-GCM (Web Crypto), clé dérivée localement (PBKDF2 600k), ne quitte jamais l'appareil |
-| Clés API personnelles (BYOK) | **Appareil uniquement** (localStorage) | AES-256-GCM |
+| Clés API personnelles (BYOK) | **Appareil uniquement** (localStorage) | **Aucun chiffrement at-rest à ce jour** (JSON clair sous la sandbox OS de la WebView — voir CLAUDE.md BUG 1) ; **à faire** : chantier `CryptoKey` non-extractible (F-34). Transit proxy sans stockage ni journalisation |
 | Email d'authentification + jeton OAuth Google | Serveur (Cloudflare) | Secrets/Workers |
 | Mémoire structurée (table `memory`) | Serveur Cloudflare D1, clé = email vérifié | — |
 | Quotas / abonnements | Cloudflare D1/KV | — |
@@ -121,7 +121,7 @@ Gravité (G) et vraisemblance (V) de 1 (faible) à 4 (très élevée). Risque br
 | Surcollecte via scopes larges (`drive`, `calendar`, `contacts`) | 4 | 4 | 16 | **À faire** : réduire les scopes, consentement granulaire | 8 |
 | Transmission de contenus à un LLM hors UE | 4 | 3 | 12 | SCC + DPF, routage Mistral UE pour données sensibles, minimisation des prompts ; **à faire** : no-training/zero-retention contractuel | 7 |
 | Envoi / corbeille Gmail non souhaité (action automatisée) | 4 | 2 | 8 | **À faire** : confirmation explicite avant envoi/modif/corbeille, journal d'actions | 4 |
-| Fuite de clés BYOK | 4 | 2 | 8 | Chiffrement AES-256-GCM côté appareil, jamais côté serveur, non-journalisation | 4 |
+| Fuite de clés BYOK | 4 | 2 | 8 | Stockage restreint à l'appareil (sandbox OS), jamais stockées côté serveur, non-journalisation ; **à faire** : chiffrement at-rest (chantier `CryptoKey` non-extractible, F-34) | 6 (4 après F-34) |
 | Hallucination IA → décision préjudiciable | 3 | 3 | 9 | Avertissements UX, validation humaine avant action ; **à faire** : clause CGU (pas de conseil juridique/médical/financier) | 5 |
 | Non-conformité OAuth Restricted Scopes | 4 | 4 | 16 | **À faire** : vérification OAuth Google + CASA Tier 2 (voir doc dédié) | 8 (jusqu'à validation) |
 | Abus / relais anonyme du proxy IA | 3 | 2 | 6 | `verifyGoogleUser` (token vérifié), whitelist `ALLOWED_EMAILS`, origin strict, rate-limit 60/min/IP | 3 |
@@ -133,8 +133,8 @@ Gravité (G) et vraisemblance (V) de 1 (faible) à 4 (très élevée). Risque br
 
 ### 6.1 Existant (vérifié dans le code)
 
-- Chiffrement local AES-256-GCM (Web Crypto), clé dérivée PBKDF2 600k itérations (`src/services/crypto.ts`).
-- Conversations/pièces jointes/clés BYOK **jamais** envoyées au serveur.
+- Chiffrement local AES-256-GCM (Web Crypto), clé dérivée PBKDF2 600k itérations (`src/services/crypto.ts`) — couvre conversations, pièces jointes, tokens Google et mémoire locale ; **ne couvre pas** le blob `api-keys` (clés BYOK), stocké en clair (voir §2.4 et chantier F-34).
+- Conversations/pièces jointes/clés BYOK **jamais stockées** côté serveur (les requêtes IA et les clés BYOK transitent par les proxys sans être conservées ni journalisées).
 - Proxys serveur pour toutes les clés IA (jamais exposées au client) ; BYOK via header `x-api-key`.
 - `verifyGoogleUser` (vérification du token Google côté serveur) + whitelist `ALLOWED_EMAILS` sur le proxy IA.
 - Middleware : CORS origines strictes (égalité, pas `startsWith`), rate-limit 60/min/IP, CSRF par `Origin`, exemption webhook authentifiée par HMAC.
