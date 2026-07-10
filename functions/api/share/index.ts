@@ -1,5 +1,5 @@
 import type { Env } from '../../env'
-import { verifyGoogleUser } from '../_lib/checkAllowedUser'
+import { verifyGoogleUserStrict } from '../_lib/checkAllowedUser'
 import { consumeCapAtomic, maybeCleanup } from '../_lib/atomicQuota'
 
 /**
@@ -76,7 +76,7 @@ async function ensureTable(env: Env): Promise<void> {
 }
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
-  const email = await verifyGoogleUser(request)
+  const email = await verifyGoogleUserStrict(request, env.GOOGLE_CLIENT_ID)
   if (!email) {
     return Response.json({ error: 'Authentication required' }, { status: 401 })
   }

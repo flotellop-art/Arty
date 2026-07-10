@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit && tsc -p functions/tsconfig.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "verify": "npm run typecheck && npm run test:coverage && npm run build"
   },
   "dependencies": {
     "@capacitor/android": "^8.3.0",
@@ -29,7 +30,6 @@
     "@capacitor/share": "^8.0.1",
     "@capacitor/splash-screen": "^8.0.1",
     "@capacitor/status-bar": "^8.0.2",
-    "@codetrix-studio/capacitor-google-auth": "^3.4.0-rc.4",
     "clsx": "^2.1.1",
     "dompurify": "^3.4.11",
     "html2canvas": "^1.4.1",

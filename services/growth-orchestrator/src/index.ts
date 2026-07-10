@@ -1734,7 +1734,7 @@ async function handleDiscordInteraction(
 async function handleDGAdhoc(env: Env, userMessage: string, interaction: DiscordInteraction): Promise<void> {
   const aujourd = new Date().toISOString().slice(0, 10);
   const username = interaction.member?.user?.username || interaction.user?.username || "Florent";
-  console.log(`[adhoc] start, user=${username}, msg="${userMessage.slice(0, 80)}"`);
+  console.log(`[adhoc] start, user=${username}, message_chars=${userMessage.length}`);
 
   // Stats waitlist en temps reel via Tally
   const tallyBlock = await fetchTallyStats(env);

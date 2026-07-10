@@ -28,6 +28,73 @@ async function tokenAudienceMatches(
   }
 }
 
+function getGoogleToken(request: Request): string {
+  return (
+    request.headers.get('x-google-token') ||
+    request.headers.get('authorization')?.replace(/^Bearer\s+/i, '') ||
+    ''
+  )
+}
+
+export interface StrictGoogleIdentity {
+  email: string
+  /** Stable Google account identifier (userinfo `id`). */
+  sub: string | null
+}
+
+/**
+ * Strict authentication gate for Arty-owned data and privileged relays.
+ *
+ * Unlike `verifyGoogleUser`, this helper is deliberately fail-closed:
+ * - GOOGLE_CLIENT_ID is mandatory;
+ * - tokeninfo must answer successfully;
+ * - `aud` or `azp` must match Arty's client id;
+ * - userinfo must confirm the account identity.
+ *
+ * Google API pass-through endpoints keep using the legacy helper because they
+ * forward the user's token to Google. Arty data/control endpoints must use this
+ * helper so a token minted for another OAuth client cannot be replayed here.
+ */
+export async function verifyGoogleIdentityStrict(
+  request: Request,
+  expectedAud: string | null | undefined
+): Promise<StrictGoogleIdentity | null> {
+  const googleToken = getGoogleToken(request)
+  const audience = expectedAud?.trim()
+  if (!googleToken || !audience) return null
+
+  try {
+    const tokenRes = await fetch(
+      `https://oauth2.googleapis.com/tokeninfo?access_token=${encodeURIComponent(googleToken)}`
+    )
+    if (!tokenRes.ok) return null
+    const tokenInfo = (await tokenRes.json()) as { aud?: string; azp?: string }
+    if (tokenInfo.aud !== audience && tokenInfo.azp !== audience) return null
+
+    const userRes = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+      headers: { Authorization: `Bearer ${googleToken}` },
+    })
+    if (!userRes.ok) return null
+    const userInfo = (await userRes.json()) as {
+      email?: string
+      id?: string
+      verified_email?: boolean
+    }
+    const email = userInfo.email?.trim().toLowerCase()
+    if (!email || userInfo.verified_email !== true) return null
+    return { email, sub: userInfo.id || null }
+  } catch {
+    return null
+  }
+}
+
+export async function verifyGoogleUserStrict(
+  request: Request,
+  expectedAud: string | null | undefined
+): Promise<string | null> {
+  return (await verifyGoogleIdentityStrict(request, expectedAud))?.email ?? null
+}
+
 /**
  * Vérifie le token Google passé dans `x-google-token` (ou dans
  * `Authorization: Bearer …` en fallback pour les endpoints Google API
@@ -50,10 +117,7 @@ export async function verifyGoogleUser(
   request: Request,
   expectedAud?: string | null
 ): Promise<string | null> {
-  const googleToken =
-    request.headers.get('x-google-token') ||
-    request.headers.get('authorization')?.replace(/^Bearer\s+/i, '') ||
-    ''
+  const googleToken = getGoogleToken(request)
   if (!googleToken) return null
 
   try {
@@ -257,13 +321,9 @@ export async function checkAllowedUserPeek(
   request: Request,
   env: Env
 ): Promise<AllowedUser | null> {
-  // C1/F-9 : valider l'audience (aud/azp === GOOGLE_CLIENT_ID) sur ces
-  // chemins « peek » qui dépensent les clés owner (Linkup/Brave via
-  // search/web + fetch/url, quotas, météo, géo). Fail-safe interne à
-  // verifyGoogleUser : un token natif serverAuthCode (aud/azp indéterminé,
-  // BUG 21/51) ou un tokeninfo KO N'est PAS verrouillé ; seule une audience
-  // ÉTRANGÈRE EXPLICITE est rejetée.
-  const email = await verifyGoogleUser(request, env.GOOGLE_CLIENT_ID)
+  // Les chemins « peek » peuvent dépenser des clés owner. L'audience Arty est
+  // donc obligatoire et toute panne/absence de `aud` échoue fermée.
+  const email = await verifyGoogleUserStrict(request, env.GOOGLE_CLIENT_ID)
   if (!email) return null
 
   const allowed = parseAllowedEmails(env.ALLOWED_EMAILS)
@@ -281,12 +341,8 @@ export async function checkAllowedUser(
   request: Request,
   env: Env
 ): Promise<CheckResult> {
-  // C1/F-9 : valider l'audience (aud/azp === GOOGLE_CLIENT_ID) sur ce gate
-  // d'accès qui dépense les clés owner (proxys IA sans BYOK, image-gen).
-  // Fail-safe interne à verifyGoogleUser : un token natif serverAuthCode
-  // (aud/azp indéterminé, BUG 21/51) ou un tokeninfo KO N'est PAS verrouillé ;
-  // seule une audience ÉTRANGÈRE EXPLICITE est rejetée.
-  const email = await verifyGoogleUser(request, env.GOOGLE_CLIENT_ID)
+  // Ce gate dépense les clés owner : audience Arty obligatoire, fail-closed.
+  const email = await verifyGoogleUserStrict(request, env.GOOGLE_CLIENT_ID)
   if (!email) return null
 
   // ALLOWED_EMAILS = beta testeurs VIP, bypass du check D1
@@ -394,7 +450,7 @@ export async function resolveUserPlan(env: Env, email: string): Promise<PlanType
        WHERE user_email = ?1
          AND plan_type IN ('subscription', 'pro', 'vip', 'trial')
          AND (
-           status = 'active'
+           status IN ('active', 'on_trial', 'paused', 'past_due', 'unpaid')
            OR (status = 'cancelled'
                AND (current_period_end IS NULL
                     OR unixepoch(current_period_end) > unixepoch()))

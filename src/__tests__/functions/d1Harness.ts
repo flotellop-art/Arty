@@ -51,7 +51,7 @@ export async function makeD1Harness(extraEnv: Partial<Env> = {}): Promise<D1Harn
         'bg_quota', 'checkout_quota', 'trial_usage', 'email_otp',
         'email_trial_sessions', 'email_trial_usage', 'otp_rate', 'subscriptions',
         'licenses', 'premium_packs', 'wallet', 'credit_ledger', 'reservation',
-        'webhook_event', 'shared_conversations',
+        'webhook_event', 'wallet_reversal', 'shared_conversations', 'content_reports',
       ]
       for (const t of tables) {
         try { await db.prepare(`DELETE FROM ${t}`).run() } catch { /* table absente */ }

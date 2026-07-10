@@ -93,6 +93,20 @@ export function removeKnownSession(userId: string): void {
 
 // ─── Data migration ───
 
+/**
+ * Reports created before account scoping contain no owner metadata. Assigning
+ * them to the next account that signs in could disclose another person's
+ * report on a shared device, so the only safe migration is deletion.
+ */
+export function purgeLegacyGlobalReports(): number {
+  // Legacy IDs were generated with Date.now().toString(36): lowercase
+  // alphanumerics only. The exact shape avoids matching a scoped key when a
+  // synthetic/test userId itself starts with "report-".
+  const keys = Object.keys(localStorage).filter((key) => /^arty-report-[a-z0-9]+$/.test(key))
+  keys.forEach((key) => localStorage.removeItem(key))
+  return keys.length
+}
+
 const LEGACY_KEYS = [
   'conversations',
   'google-tokens',
@@ -101,14 +115,16 @@ const LEGACY_KEYS = [
   'token-init-v2',
   'response-style',
   'api-keys',
-  // M-7 (audit OAuth) : 'crypto-salt'/'crypto-check' RETIRÉS. crypto.ts les lit
-  // en GLOBAL (localStorage brut, non préfixé) ; les migrer sous un préfixe user
-  // déplaçait + supprimait le sel global → au 2e compte ajouté sur l'appareil,
-  // les blobs chiffrés du 1er compte devenaient indéchiffrables (perte de
-  // session). Le sel/check DOIVENT rester globaux : ne pas les ré-ajouter ici.
+  // Les métadonnées crypto sont migrées de manière non destructive par
+  // crypto.ts vers des clés par compte. Ne pas les déplacer ici : ce module ne
+  // possède ni la passphrase ni la capacité de re-chiffrer les blobs.
 ]
 
 export function migrateExistingData(userId: string): void {
+  // Do this before the per-user migration flag check: an ownerless report may
+  // appear after an earlier migration (for example after restoring old data).
+  purgeLegacyGlobalReports()
+
   const migrationFlag = `arty-migration-done-${userId}`
   if (localStorage.getItem(migrationFlag)) return
 
@@ -120,19 +136,6 @@ export function migrateExistingData(userId: string): void {
     if (oldData && !localStorage.getItem(newKey)) {
       localStorage.setItem(newKey, oldData)
       localStorage.removeItem(oldKey)
-    }
-  }
-
-  // Migrate reports (arty-report-{id})
-  const allKeys = Object.keys(localStorage)
-  for (const key of allKeys) {
-    if (key.startsWith('arty-report-') && !key.includes(userId)) {
-      const reportId = key.replace('arty-report-', '')
-      const newKey = `arty-${userId}-report-${reportId}`
-      if (!localStorage.getItem(newKey)) {
-        localStorage.setItem(newKey, localStorage.getItem(key)!)
-        localStorage.removeItem(key)
-      }
     }
   }
 

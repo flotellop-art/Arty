@@ -78,7 +78,7 @@ public class GoogleSignInPlugin extends Plugin {
                     try {
                         Task<GoogleSignInAccount> task = GoogleSignIn.getSignedInAccountFromIntent(result.getData());
                         GoogleSignInAccount account = task.getResult(ApiException.class);
-                        Log.d(TAG, "Sign-in success: " + account.getEmail());
+                        Log.d(TAG, "Sign-in success");
 
                         String authCode = account.getServerAuthCode();
                         Log.d(TAG, "serverAuthCode present: " + (authCode != null && !authCode.isEmpty()));

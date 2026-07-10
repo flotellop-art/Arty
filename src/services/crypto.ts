@@ -11,6 +11,8 @@
  * `arty-crypto-v2-disabled = '1'` pour rollback rapide via DevTools.
  */
 
+import { getActiveUserId } from './userSession'
+
 const SALT_KEY = 'arty-crypto-salt'
 const KEY_CHECK_KEY = 'arty-crypto-check'
 const VERSION_KEY = 'arty-crypto-version'
@@ -31,12 +33,26 @@ const PBKDF2_ITERATIONS: Record<CryptoVersion, number> = {
 }
 
 let cachedKey: CryptoKey | null = null
+let cachedVersion: CryptoVersion | null = null
+let cachedKeys: Partial<Record<CryptoVersion, CryptoKey>> = {}
+
+/**
+ * Crypto metadata must be isolated exactly like the encrypted payloads. The
+ * legacy application kept one global check/version marker, so migrating user A
+ * could advance the version while user B still had v1 ciphertext. Keep the
+ * legacy keys only as a no-session fallback and migration source.
+ */
+function scopedMetadataKey(legacyKey: string): string {
+  const userId = getActiveUserId()
+  return userId ? `arty-${userId}-${legacyKey.replace(/^arty-/, '')}` : legacyKey
+}
 
 // ─── Version helpers ───
 
 function getStoredVersion(): CryptoVersion {
   try {
-    const raw = localStorage.getItem(VERSION_KEY)
+    const key = scopedMetadataKey(VERSION_KEY)
+    const raw = localStorage.getItem(key) ?? (key !== VERSION_KEY ? localStorage.getItem(VERSION_KEY) : null)
     return raw === 'v2' ? 'v2' : 'v1'
   } catch {
     return 'v1'
@@ -44,7 +60,7 @@ function getStoredVersion(): CryptoVersion {
 }
 
 function setStoredVersion(v: CryptoVersion): void {
-  try { localStorage.setItem(VERSION_KEY, v) } catch { /* quota / SSR */ }
+  localStorage.setItem(scopedMetadataKey(VERSION_KEY), v)
 }
 
 /**
@@ -66,10 +82,12 @@ function isV2Disabled(): boolean {
  */
 function listEncryptedKeys(): string[] {
   const out: string[] = []
+  const userId = getActiveUserId()
+  const prefix = userId ? `arty-${userId}-` : 'arty-'
   try {
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i)
-      if (k && k.endsWith('-enc')) out.push(k)
+      if (k && k.startsWith(prefix) && k.endsWith('-enc')) out.push(k)
     }
   } catch { /* SSR / privacy mode */ }
   return out
@@ -78,12 +96,22 @@ function listEncryptedKeys(): string[] {
 // ─── Key derivation ───
 
 async function getSalt(): Promise<Uint8Array> {
-  const existing = localStorage.getItem(SALT_KEY)
+  const key = scopedMetadataKey(SALT_KEY)
+  const existing = localStorage.getItem(key)
   if (existing) {
     return new Uint8Array(JSON.parse(existing))
   }
+
+  // Existing installations encrypted every account with the same legacy salt.
+  // Copy it once into the account scope so old ciphertext remains readable;
+  // fresh installations/users without a legacy salt get an independent salt.
+  const legacy = key !== SALT_KEY ? localStorage.getItem(SALT_KEY) : null
+  if (legacy) {
+    localStorage.setItem(key, legacy)
+    return new Uint8Array(JSON.parse(legacy))
+  }
   const salt = crypto.getRandomValues(new Uint8Array(16))
-  localStorage.setItem(SALT_KEY, JSON.stringify(Array.from(salt)))
+  localStorage.setItem(key, JSON.stringify(Array.from(salt)))
   return salt
 }
 
@@ -124,78 +152,67 @@ async function deriveKey(passphrase: string, version: CryptoVersion): Promise<Cr
  */
 export async function initCrypto(passphrase: string): Promise<void> {
   const targetVersion: CryptoVersion = isV2Disabled() ? 'v1' : 'v2'
-  const storedVersion = getStoredVersion()
-  const hasExistingCheck = !!localStorage.getItem(KEY_CHECK_KEY)
+  const checkKey = scopedMetadataKey(KEY_CHECK_KEY)
+  // Keep both derivations available. New ciphertext carries its version in an
+  // envelope, while legacy ciphertext (without an envelope) is tried with both
+  // keys. This removes the unsafe in-place bulk rewrite: a WebView may close at
+  // any instruction without ever leaving a mixed, marker-dependent state.
+  const [v1, v2] = await Promise.all([
+    deriveKey(passphrase, 'v1'),
+    deriveKey(passphrase, 'v2'),
+  ])
+  cachedKeys = { v1, v2 }
+  cachedVersion = targetVersion
+  cachedKey = cachedKeys[targetVersion]!
 
-  // 1) Fresh install — pas de check existant, on initialise direct au target.
-  if (!hasExistingCheck) {
-    cachedKey = await deriveKey(passphrase, targetVersion)
-    const check = await encrypt('arty-ok')
-    localStorage.setItem(KEY_CHECK_KEY, check)
+  const scopedCheck = localStorage.getItem(checkKey)
+  if (scopedCheck) {
+    try {
+      if ((await decrypt(scopedCheck)) !== 'arty-ok') return
+    } catch {
+      // A changed/wrong passphrase must never wipe or rewrite the old marker.
+      // Keep the candidate key cached so storage bootstraps can quarantine data
+      // non-destructively and the user can retry with the former credential.
+      return
+    }
+
+    // Migrating the tiny check is crash-safe because its envelope identifies
+    // the derivation independently from the version marker. User blobs remain
+    // untouched and readable through the dual-key legacy fallback.
+    localStorage.setItem(checkKey, await encrypt('arty-ok'))
     setStoredVersion(targetVersion)
     return
   }
 
-  // 2) Déjà à la version target → flow normal.
-  if (storedVersion === targetVersion) {
-    cachedKey = await deriveKey(passphrase, targetVersion)
-    return
-  }
-
-  // 3) Migration v1 → v2 (ou inversement si killswitch).
-  // 3a) Vérifier que la passphrase est correcte avec l'ancien algo.
-  const oldKey = await deriveKey(passphrase, storedVersion)
-  const prevCachedKey = cachedKey
-  cachedKey = oldKey
-  let isValid = false
-  try {
-    isValid = (await decrypt(localStorage.getItem(KEY_CHECK_KEY)!)) === 'arty-ok'
-  } catch {
-    isValid = false
-  }
-
-  if (!isValid) {
-    // Mauvaise passphrase. NE PAS migrer, NE PAS wiper (BUG 47). On garde
-    // oldKey en cache pour cohérence avec l'ancien comportement — les
-    // callers verront `selfTestCrypto = false` et retesteront plus tard.
-    cachedKey = prevCachedKey ?? oldKey
-    return
-  }
-
-  // 3b) Passphrase OK. Décrypter tous les blobs avec oldKey, ré-encrypter
-  // avec newKey. La séquence importe : on collecte d'abord tous les plaintexts
-  // (oldKey actif), puis on swap cachedKey, puis on ré-écrit.
-  const blobs = listEncryptedKeys().filter((k) => k !== KEY_CHECK_KEY)
-  const decrypted: Array<[string, string]> = []
-  for (const k of blobs) {
-    try {
-      const raw = localStorage.getItem(k)
-      if (!raw) continue
-      const plain = await decrypt(raw)
-      decrypted.push([k, plain])
-    } catch {
-      // Blob illisible avec oldKey — peut-être déjà à v2 (migration partielle
-      // précédente kill switchée) ou corrompu. On skip sans casser.
+  // Adoption from the old global metadata. The global check may belong to a
+  // different account, so only trust it if this passphrase opens it. If it
+  // does not, validate every blob in the active account prefix. This also
+  // repairs installations where a previous global v1→v2 migration stopped
+  // halfway: each unversioned blob is tried independently with v2 then v1.
+  let identityConfirmed = false
+  if (checkKey !== KEY_CHECK_KEY) {
+    const legacyCheck = localStorage.getItem(KEY_CHECK_KEY)
+    if (legacyCheck) {
+      try { identityConfirmed = (await decrypt(legacyCheck)) === 'arty-ok' } catch { /* another account */ }
     }
   }
 
-  const newKey = await deriveKey(passphrase, targetVersion)
-  cachedKey = newKey
-  for (const [k, plain] of decrypted) {
+  const blobs = listEncryptedKeys()
+  if (!identityConfirmed && blobs.length > 0) {
     try {
-      const encNew = await encrypt(plain)
-      localStorage.setItem(k, encNew)
+      for (const key of blobs) {
+        const raw = localStorage.getItem(key)
+        if (raw) await decrypt(raw)
+      }
+      identityConfirmed = true
     } catch {
-      // En cas d'échec de re-encrypt, on garde l'ancien blob (qui n'est plus
-      // lisible avec newKey). Le prochain boot retentera la migration depuis
-      // v1 (puisque setStoredVersion n'a pas encore été appelé).
+      // Preserve unreadable data and leave the account without a new marker.
+      return
     }
   }
 
-  // Réécrire KEY_CHECK_KEY EN DERNIER. Si on crash avant cette ligne, le
-  // prochain boot lit storedVersion=v1 et retente la migration.
-  const newCheck = await encrypt('arty-ok')
-  localStorage.setItem(KEY_CHECK_KEY, newCheck)
+  // Fresh account (no blobs) or verified legacy account.
+  localStorage.setItem(checkKey, await encrypt('arty-ok'))
   setStoredVersion(targetVersion)
 }
 
@@ -205,19 +222,27 @@ export async function initCrypto(passphrase: string): Promise<void> {
  * passphrase est mauvaise alors qu'elle est juste en attente de migration.
  */
 export async function verifyCrypto(passphrase: string): Promise<boolean> {
-  const check = localStorage.getItem(KEY_CHECK_KEY)
+  const check = localStorage.getItem(scopedMetadataKey(KEY_CHECK_KEY))
   if (!check) return false
 
-  const storedVersion = getStoredVersion()
+  const previousKey = cachedKey
+  const previousVersion = cachedVersion
+  const previousKeys = cachedKeys
   try {
-    const tempKey = await deriveKey(passphrase, storedVersion)
-    const prevKey = cachedKey
-    cachedKey = tempKey
-    const result = await decrypt(check)
-    cachedKey = prevKey
-    return result === 'arty-ok'
+    const [v1, v2] = await Promise.all([
+      deriveKey(passphrase, 'v1'),
+      deriveKey(passphrase, 'v2'),
+    ])
+    cachedKeys = { v1, v2 }
+    cachedVersion = getStoredVersion()
+    cachedKey = cachedKeys[cachedVersion]!
+    return (await decrypt(check)) === 'arty-ok'
   } catch {
     return false
+  } finally {
+    cachedKey = previousKey
+    cachedVersion = previousVersion
+    cachedKeys = previousKeys
   }
 }
 
@@ -237,7 +262,7 @@ export function isCryptoReady(): boolean {
  */
 export async function selfTestCrypto(): Promise<boolean> {
   if (!cachedKey) return false
-  const check = localStorage.getItem(KEY_CHECK_KEY)
+  const check = localStorage.getItem(scopedMetadataKey(KEY_CHECK_KEY))
   if (!check) return true
   try {
     return (await decrypt(check)) === 'arty-ok'
@@ -264,7 +289,7 @@ function bytesToBase64(bytes: Uint8Array): string {
  * Encrypt a string value. Returns a base64-encoded ciphertext.
  */
 export async function encrypt(plaintext: string): Promise<string> {
-  if (!cachedKey) throw new Error('Crypto not initialized')
+  if (!cachedKey || !cachedVersion) throw new Error('Crypto not initialized')
 
   const enc = new TextEncoder()
   const iv = crypto.getRandomValues(new Uint8Array(12))
@@ -279,7 +304,7 @@ export async function encrypt(plaintext: string): Promise<string> {
   packed.set(iv)
   packed.set(new Uint8Array(ciphertext), iv.length)
 
-  return bytesToBase64(packed)
+  return `${cachedVersion}:${bytesToBase64(packed)}`
 }
 
 /**
@@ -288,13 +313,38 @@ export async function encrypt(plaintext: string): Promise<string> {
 export async function decrypt(encoded: string): Promise<string> {
   if (!cachedKey) throw new Error('Crypto not initialized')
 
+  const envelope = /^(v1|v2):(.*)$/s.exec(encoded)
+  if (envelope) {
+    const key = cachedKeys[envelope[1] as CryptoVersion]
+    if (!key) throw new Error('Crypto version not initialized')
+    return decryptWithKey(envelope[2]!, key)
+  }
+
+  // Legacy blobs have no version envelope. Try the active version first, then
+  // the other derivation. This is what makes an old partially migrated account
+  // recoverable without mutating its ciphertext in place.
+  const attempts = [
+    cachedKey,
+    ...(['v1', 'v2'] as CryptoVersion[])
+      .map((version) => cachedKeys[version])
+      .filter((key): key is CryptoKey => !!key && key !== cachedKey),
+  ]
+  let lastError: unknown
+  for (const key of attempts) {
+    try { return await decryptWithKey(encoded, key) } catch (error) { lastError = error }
+  }
+  throw lastError ?? new Error('Unable to decrypt ciphertext')
+}
+
+async function decryptWithKey(encoded: string, key: CryptoKey): Promise<string> {
+
   const packed = Uint8Array.from(atob(encoded), (c) => c.charCodeAt(0))
   const iv = packed.slice(0, 12)
   const ciphertext = packed.slice(12)
 
   const plaintext = await crypto.subtle.decrypt(
     { name: 'AES-GCM', iv },
-    cachedKey,
+    key,
     ciphertext
   )
 

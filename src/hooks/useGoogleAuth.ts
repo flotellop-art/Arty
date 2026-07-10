@@ -113,6 +113,10 @@ export function useGoogleAuth() {
   }, [isConnected])
 
   const login = useCallback(async () => {
+    if (Capacitor.isNativePlatform() && Capacitor.getPlatform() !== 'android') {
+      setError('Google Sign-In sur iOS nécessite encore la configuration native. Utilise provisoirement l’essai par email ou une clé API.')
+      return
+    }
     if (Capacitor.isNativePlatform()) {
       // Étape 13 audit — debug logs gated DEV pour éviter de leaker des emails
       // dans la console prod (PII soft). console.error reste actif (utile en prod).

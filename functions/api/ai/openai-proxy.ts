@@ -15,9 +15,15 @@ import {
 import { checkPremiumCap, premiumCapReachedResponse } from '../_lib/checkPremiumCap'
 import { consumeDailyQuota, recordUsage } from '../_lib/quota'
 import { freeModelLockedResponse } from '../_lib/freeQuota'
-import { createOpenAIParser, teeForParsing } from '../_lib/trackUsage'
+import {
+  createOpenAIParser,
+  enforceStreamUsage,
+  responseUsageFormat,
+  teeForParsing,
+} from '../_lib/trackUsage'
 import {
   beginWalletBilling,
+  enforceWalletOutputLimit,
   makeReservationHeartbeat,
   settleWalletBilling,
   voidWalletBilling,
@@ -83,7 +89,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     )
   }
 
-  const body = await request.text()
+  let body = await request.text()
 
   // Extract le nom du modèle pour le quota + le tracking coût.
   let modelName = 'gpt-5'
@@ -96,6 +102,10 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     // leave fallback
   }
 
+  // Streaming Chat Completions omit usage unless explicitly requested. Never
+  // trust a wallet caller to include the billing metadata it will be charged on.
+  body = enforceStreamUsage(body)
+
   // Sans abo : si l'utilisateur a des crédits → wallet (n'importe quel modèle,
   // payé à l'usage) ; sinon OpenAI reste verrouillé en gratuit.
   let walletResId: string | undefined
@@ -106,6 +116,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     } catch {
       /* body illisible → réserve au plafond (estimation input = 0) */
     }
+    enforceWalletOutputLimit('openai', parsedBody)
     const start = await beginWalletBilling(env, waitUntil, {
       email,
       model: modelName,
@@ -115,6 +126,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     if (start.mode === 'refuse') return start.response
     if (start.mode === 'wallet') {
       walletResId = start.resId
+      body = JSON.stringify(parsedBody)
     } else {
       // Essai épuisé sans crédits → 403 trial_expired ; sinon OpenAI verrouillé.
       if (wasTrialExhausted) return trialExpiredResponse()
@@ -202,7 +214,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     // Tracking tokens réels côté serveur — un seul tee, deux consommateurs
     // (analytics + débit wallet sur le chemin wallet).
     if (usingServerKey && response.body) {
-      const parser = createOpenAIParser()
+      const parser = createOpenAIParser(responseUsageFormat(response.headers.get('content-type')))
       const { clientBody, parsedUsage } = teeForParsing(
         response.body,
         parser.feed,

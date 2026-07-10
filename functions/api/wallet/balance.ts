@@ -1,5 +1,5 @@
 import type { Env } from '../../env'
-import { verifyGoogleUser } from '../_lib/checkAllowedUser'
+import { verifyGoogleUserStrict } from '../_lib/checkAllowedUser'
 import { getWalletBalance } from '../_lib/wallet'
 
 // GET /api/wallet/balance — solde de crédits prépayés de l'utilisateur.
@@ -10,7 +10,7 @@ import { getWalletBalance } from '../_lib/wallet'
 // nul si pas de wallet OU si D1 est indisponible (getWalletBalance est résilient
 // → jamais de 500 ici). GET → exempt du gate Origin du middleware.
 export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
-  const email = await verifyGoogleUser(request)
+  const email = await verifyGoogleUserStrict(request, env.GOOGLE_CLIENT_ID)
   if (!email) {
     return Response.json({ error: 'Authentication required' }, { status: 401 })
   }

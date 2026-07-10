@@ -55,7 +55,9 @@ async function handleCreate(token: string, body: Record<string, unknown>): Promi
 
   // Write headers to row 1 if provided
   if (headers.length > 0) {
-    const valueInputOption = 'USER_ENTERED'
+    // Headers can originate from a model or imported document. RAW prevents
+    // values beginning with =, +, - or @ from becoming spreadsheet formulas.
+    const valueInputOption = 'RAW'
     const range = 'A1'
     const writeRes = await googleFetch(
       `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(range)}:append?valueInputOption=${valueInputOption}`,
@@ -92,7 +94,9 @@ async function handleAppend(token: string, body: Record<string, unknown>): Promi
   const rows = Array.isArray(values[0]) ? (values as string[][]) : [values as string[]]
 
   const range = encodeURIComponent(`${sheetName}!A1`)
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId)}/values/${range}:append?valueInputOption=USER_ENTERED`
+  // All exported cells are untrusted data. USER_ENTERED would evaluate formula
+  // payloads when the user opens the sheet; RAW stores the exact text instead.
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId)}/values/${range}:append?valueInputOption=RAW`
 
   const res = await googleFetch(url, {
     method: 'POST',

@@ -142,12 +142,18 @@ export function ConversationSummaryModal({ conversation, onClose }: Props) {
     }
   }
 
-  const handleExportPdf = () => {
+  const handleExportPdf = async () => {
+    // Open synchronously to preserve the browser's user-activation allowance;
+    // encryption/sanitization is asynchronous and would otherwise trigger a
+    // popup blocker when opening the finished report.
+    const reportWindow = window.open('about:blank', '_blank')
     try {
       const html = mdToHtml(summary)
-      const reportId = openReport(t('summary.reportTitle', { title: conversation.title }), html)
-      window.open(`/report/${reportId}`, '_blank')
+      const reportId = await openReport(t('summary.reportTitle', { title: conversation.title }), html)
+      if (reportWindow) reportWindow.location.href = `/report/${reportId}`
+      else window.location.href = `/report/${reportId}`
     } catch (err) {
+      reportWindow?.close()
       console.warn('Export PDF failed:', err)
     }
   }

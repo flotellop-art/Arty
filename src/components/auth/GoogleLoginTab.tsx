@@ -23,6 +23,10 @@ export function GoogleLoginTab({ loading, onNativeGoogleLogin }: GoogleLoginTabP
   const handleGoogleLogin = async () => {
     setError('')
     try {
+      if (Capacitor.isNativePlatform() && Capacitor.getPlatform() !== 'android') {
+        setError(t('login.google.iosUnavailable'))
+        return
+      }
       if (Capacitor.isNativePlatform() && onNativeGoogleLogin) {
         const result = await GoogleSignInNative.signIn()
         onNativeGoogleLogin(

@@ -15,9 +15,10 @@ import {
 import { checkPremiumCap, premiumCapReachedResponse } from '../_lib/checkPremiumCap'
 import { consumeDailyQuota, recordUsage } from '../_lib/quota'
 import { freeModelLockedResponse } from '../_lib/freeQuota'
-import { createGeminiParser, teeForParsing } from '../_lib/trackUsage'
+import { createGeminiParser, responseUsageFormat, teeForParsing } from '../_lib/trackUsage'
 import {
   beginWalletBilling,
+  enforceWalletOutputLimit,
   makeReservationHeartbeat,
   settleWalletBilling,
   voidWalletBilling,
@@ -95,6 +96,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     // Sans abo : si l'utilisateur a des crédits → wallet (n'importe quel modèle,
     // payé à l'usage) ; sinon Gemini reste verrouillé en gratuit.
     if (usingServerKey && userPlan === 'free') {
+      enforceWalletOutputLimit('gemini', body)
       const start = await beginWalletBilling(env, waitUntil, { email, model, provider: 'gemini', body })
       if (start.mode === 'refuse') return start.response
       if (start.mode === 'wallet') {
@@ -183,7 +185,10 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     // Tracking tokens réels côté serveur — un seul tee, deux consommateurs
     // (analytics + débit wallet sur le chemin wallet).
     if (usingServerKey && response.body) {
-      const parser = createGeminiParser()
+      const usageFormat = stream
+        ? responseUsageFormat(response.headers.get('content-type'))
+        : 'json'
+      const parser = createGeminiParser(usageFormat)
       const { clientBody, parsedUsage } = teeForParsing(
         response.body,
         parser.feed,

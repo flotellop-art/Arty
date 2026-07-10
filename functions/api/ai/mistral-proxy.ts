@@ -15,9 +15,15 @@ import {
 import { checkPremiumCap, premiumCapReachedResponse } from '../_lib/checkPremiumCap'
 import { consumeDailyQuota, recordUsage } from '../_lib/quota'
 import { freeModelLockedResponse } from '../_lib/freeQuota'
-import { createMistralParser, teeForParsing } from '../_lib/trackUsage'
+import {
+  createMistralParser,
+  enforceStreamUsage,
+  responseUsageFormat,
+  teeForParsing,
+} from '../_lib/trackUsage'
 import {
   beginWalletBilling,
+  enforceWalletOutputLimit,
   makeReservationHeartbeat,
   settleWalletBilling,
   voidWalletBilling,
@@ -96,6 +102,10 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     // leave fallback
   }
 
+  // Mistral's OpenAI-compatible stream only guarantees its final usage object
+  // when include_usage is enabled. Enforce it server-side for billing.
+  body = enforceStreamUsage(body)
+
   // Trial : override silencieux vers mistral-medium-latest si le modèle
   // demandé n'est pas autorisé en trial. Même logique que proxy.ts
   // (Anthropic). Plus de Mistral Small (déprécié mai 2026).
@@ -120,6 +130,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     } catch {
       /* body illisible → réserve au plafond (estimation input = 0) */
     }
+    enforceWalletOutputLimit('mistral', parsedBody)
     const start = await beginWalletBilling(env, waitUntil, {
       email,
       model: modelName,
@@ -129,6 +140,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     if (start.mode === 'refuse') return start.response
     if (start.mode === 'wallet') {
       walletResId = start.resId
+      body = JSON.stringify(parsedBody)
     } else {
       // Essai épuisé sans crédits → 403 trial_expired ; sinon Mistral verrouillé.
       if (wasTrialExhausted) return trialExpiredResponse()
@@ -211,7 +223,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     // Tracking tokens réels côté serveur — un seul tee, deux consommateurs
     // (analytics + débit wallet sur le chemin wallet).
     if (usingServerKey && response.body) {
-      const parser = createMistralParser()
+      const parser = createMistralParser(responseUsageFormat(response.headers.get('content-type')))
       const { clientBody, parsedUsage } = teeForParsing(
         response.body,
         parser.feed,

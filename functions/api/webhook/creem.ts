@@ -1,5 +1,10 @@
 import type { Env } from '../../env'
-import { creditWallet } from '../_lib/wallet'
+import {
+  creditWallet,
+  registerWalletReversalClaim,
+  resolveWalletReversalsForTopup,
+} from '../_lib/wallet'
+import { isCreemCreditPack, resolveCreemCreditAmount } from '../_lib/creemProducts'
 
 // ─────────────────────────────────────────────────────────────────────
 // Webhook Creem — top-ups de crédits prépayés (Track A).
@@ -7,9 +12,10 @@ import { creditWallet } from '../_lib/wallet'
 // Sécurité (RÈGLE 6) :
 //  - Auth = signature HMAC-SHA256 (hex) du body brut, header `creem-signature`.
 //    Sans signature valide → 401, rien n'est traité.
-//  - L'email ET le montant crédité viennent du payload SIGNÉ + d'une table
-//    produits FIGÉE en code (CREEM_CREDIT_PRODUCTS). On n'utilise JAMAIS le
-//    montant du payload (qui est en EUR) : le crédit est défini par le PRODUIT.
+//  - L'email ET le montant crédité viennent du payload SIGNÉ + du catalogue
+//    financier partagé. Le product_id vient de l'environnement actif, tandis
+//    que la valeur du pack reste figée dans le code. On n'utilise JAMAIS le
+//    montant du payload (qui est en EUR) pour définir les crédits accordés.
 //  - Crédit UNIQUEMENT sur paiement CAPTURÉ (`object.order.status === 'paid'`).
 //  - Idempotence par event_id (assurée dans creditWallet) → un replay d'event
 //    signé ne re-crédite pas.
@@ -17,28 +23,25 @@ import { creditWallet } from '../_lib/wallet'
 //    remplace l'Origin, comme le webhook Lemon Squeezy).
 // ─────────────────────────────────────────────────────────────────────
 
-// TODO(owner) : remplace par tes VRAIS product IDs Creem → crédits accordés en
-// micro-USD. 1 crédit = 1 µ$ de droit de tirage au prix Arty (markupé). Le
-// montant payé en EUR ne sert PAS au calcul — chaque pack accorde un montant
-// FIXE défini ici. Ex : un pack vendu 10 € donnant « 10 $ de crédits » = 10_000_000.
-// Tant que cette table est vide, aucun checkout.completed n'est crédité (no-op sûr).
-const CREEM_CREDIT_PRODUCTS: Record<string, number> = {
-  // ⚠️ IDs de mode TEST — à remplacer par les prod_ LIVE au go-live.
-  // Clé = object.product.id du webhook ; valeur = crédits accordés (micro-USD).
-  // 1 crédit affiché = 10 000 µ$ (1 cent US) → 1000 crédits = 10 000 000 µ$.
-  'prod_5ba1P24WLXkcXUnbZytWm7': 10_000_000, // Pack 10 € = 1000 crédits
-}
-
 interface CreemOrder {
   id?: string
   product?: string
   amount?: number
+  amount_paid?: number
   currency?: string
   status?: string
+}
+interface CreemTransaction {
+  amount?: number
+  amount_paid?: number
+  refunded_amount?: number
+  order?: string | { id?: string }
 }
 interface CreemObject {
   id?: string
   order?: CreemOrder
+  transaction?: CreemTransaction
+  refund_amount?: number
   product?: { id?: string; name?: string }
   customer?: { id?: string; email?: string }
   // `metadata` est ré-émis tel quel par Creem depuis la création du checkout.
@@ -126,8 +129,14 @@ async function handleCheckoutCompleted(env: Env, payload: CreemWebhookPayload): 
     console.log(`[creem] checkout.completed status=${order.status} (non payé) — ignoré`)
     return
   }
-  const amountMicro = CREEM_CREDIT_PRODUCTS[productId]
+  const amountMicro = resolveCreemCreditAmount(env, productId)
   if (!amountMicro || amountMicro <= 0) {
+    // Ce checkout a ete cree par notre endpoint comme achat de credits. Une
+    // rotation/mauvaise configuration du product_id ne doit jamais transformer
+    // un paiement capture en 200 silencieux : le 5xx force le retry Creem.
+    if (isCreemCreditPack(obj.metadata?.pack)) {
+      throw new Error('Creem credit product is not configured for this paid checkout')
+    }
     // Produit hors table crédits (ex : licence Pro vendue par un autre flux).
     console.warn(`[creem] produit ${productId} hors table crédits — non crédité`)
     return
@@ -140,17 +149,26 @@ async function handleCheckoutCompleted(env: Env, payload: CreemWebhookPayload): 
     amountMicro,
     kind: 'topup',
   })
+  if (res.status === 'error') throw new Error('Creem top-up persistence failed')
+  // Un refund/dispute peut avoir été livré avant checkout.completed. Le claim
+  // durable est résolu même sur un replay où le top-up est déjà `duplicate`.
+  const reversals = await resolveWalletReversalsForTopup(env, {
+    provider: 'creem',
+    orderId,
+    email,
+    topupMicro: amountMicro,
+  })
+  if (reversals.status === 'error') throw new Error('Creem pending reversal persistence failed')
   console.log(`[creem] topup ${maskEmail(email)} order=${orderId} → ${res.status}`)
 }
 
 /**
  * refund.created / dispute.created → débite les crédits accordés pour la
  * commande remboursée/contestée (anti-fraude : payer, recevoir, chargeback,
- * garder les crédits). On retrouve le top-up d'origine par order_id et on
- * débite le même montant. Idempotent sur l'event_id du refund/dispute.
- * order_id = object.order.id (confirmé sur la doc Creem). Si absent → no-op sûr
- * (jamais de débit sur le mauvais wallet). Débite le pack ENTIER : un refund
- * PARTIEL sur-débiterait — lire object.refund.amount si tu actives le partiel.
+ * garder les crédits). On retrouve le top-up d'origine par order_id. Pour un
+ * remboursement, on retire la même proportion du pack que
+ * `refund_amount / transaction.amount_paid`; un chargeback retire le reliquat.
+ * Idempotent sur l'event_id du refund/dispute, et plafonné au top-up initial.
  */
 async function handleRefundOrDispute(
   env: Env,
@@ -159,11 +177,46 @@ async function handleRefundOrDispute(
 ): Promise<void> {
   const eventId = payload.id
   const obj = payload.object ?? {}
+  const transactionOrder = obj.transaction?.order
   const orderId = obj.order?.id
+    ?? (typeof transactionOrder === 'string' ? transactionOrder : transactionOrder?.id)
   if (!eventId || !orderId || !env.DB) {
     console.warn(`[creem] ${kind} : event_id/order_id manquant — ignoré`)
     return
   }
+
+  let ratioNumerator = 1
+  let ratioDenominator = 1
+  if (kind === 'refund') {
+    const refundAmount = obj.refund_amount
+    const paidAmount = obj.transaction?.amount_paid ?? obj.order?.amount_paid
+    if (
+      !Number.isSafeInteger(refundAmount)
+      || (refundAmount as number) <= 0
+      || !Number.isSafeInteger(paidAmount)
+      || (paidAmount as number) <= 0
+    ) {
+      // Sans deux montants comparables, ne jamais inventer un débit.
+      console.warn(`[creem] refund ${eventId} : refund_amount/amount_paid invalide — ignoré`)
+      return
+    }
+    ratioNumerator = refundAmount as number
+    ratioDenominator = paidAmount as number
+  }
+
+  // Claim AVANT la recherche du top-up : s'il n'est pas encore livré, la
+  // reversal reste durablement awaiting_topup au lieu d'être acquittée en 200
+  // puis oubliée.
+  const registered = await registerWalletReversalClaim(env, {
+    provider: 'creem',
+    eventId,
+    orderId,
+    kind,
+    ratioNumerator,
+    ratioDenominator,
+  })
+  if (registered.status === 'error') throw new Error('Creem reversal registration failed')
+
   const orig = await env.DB.prepare(
     `SELECT user_email, amount_micro FROM credit_ledger
      WHERE ref_type = 'mor_order' AND ref_id = ?1 AND kind = 'topup'
@@ -172,17 +225,17 @@ async function handleRefundOrDispute(
     .bind(orderId)
     .first<{ user_email: string; amount_micro: number }>()
   if (!orig) {
-    console.warn(`[creem] ${kind} pour commande inconnue ${orderId} — rien à débiter`)
+    console.log(`[creem] ${kind} pour commande ${orderId} en attente du top-up`)
     return
   }
-  const res = await creditWallet(env, {
+
+  const res = await resolveWalletReversalsForTopup(env, {
     provider: 'creem',
-    eventId,
     orderId,
     email: orig.user_email,
-    amountMicro: -orig.amount_micro,
-    kind,
+    topupMicro: orig.amount_micro,
   })
+  if (res.status === 'error') throw new Error('Creem reversal persistence failed')
   console.log(`[creem] ${kind} ${maskEmail(orig.user_email)} order=${orderId} → ${res.status}`)
 }
 

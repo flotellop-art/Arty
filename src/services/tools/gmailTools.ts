@@ -1,4 +1,5 @@
 import type { useGmail } from '../../hooks/useGmail'
+import { markUntrustedThirdPartyData } from './untrustedContent'
 import type { ToolHandler } from './types'
 import { callGoogleApi } from '../googleApiHelper'
 
@@ -149,7 +150,7 @@ export function createGmailHandlers(gmail: ReturnType<typeof useGmail>): Record<
         const summary = messages.slice(0, 10).map((m, i) =>
           `${i + 1}. [ID:${m.id}] [Thread:${m.threadId}] De: ${m.from} | Objet: ${m.subject} | ${m.snippet}`
         ).join('\n')
-        return { result: `${messages.length} emails non lus:\n${summary}` }
+        return { result: markUntrustedThirdPartyData('Gmail', `${messages.length} emails non lus:\n${summary}`) }
       }
       return { result: messages?.length === 0 ? 'Aucun email non lu.' : 'Erreur: impossible de lire Gmail. Google non connecté ?' }
     },
@@ -168,7 +169,7 @@ export function createGmailHandlers(gmail: ReturnType<typeof useGmail>): Record<
           ).join('\n')
           result += "\n\nPour lire une PJ : appelle read_email_attachment avec message_id, attachment_id, mime_type et filename ci-dessus. Le mime_type est obligatoire pour les fichiers binaires non-PDF (Word, Excel, image)."
         }
-        return { result }
+        return { result: markUntrustedThirdPartyData('Gmail', result) }
       }
       return { result: 'Erreur: impossible de lire cet email.' }
     },
@@ -200,7 +201,7 @@ export function createGmailHandlers(gmail: ReturnType<typeof useGmail>): Record<
           const name = (data.filename as string | undefined) || filenameHint || `attachment.${guessExt(data.mimeType as string)}`
           const kind = data.type === 'image' ? 'image' : data.type === 'pdf' ? 'PDF' : 'document'
           return {
-            result: `Pièce jointe ${kind}${sizeKb ? ` (${sizeKb} Ko)` : ''} — fichier brut transmis pour lecture directe.`,
+            result: markUntrustedThirdPartyData('Gmail', `Pièce jointe ${kind}${sizeKb ? ` (${sizeKb} Ko)` : ''} — fichier brut transmis pour lecture directe.`),
             fileData: {
               name,
               mimeType: data.mimeType as string,
@@ -210,7 +211,7 @@ export function createGmailHandlers(gmail: ReturnType<typeof useGmail>): Record<
         }
 
         if (data.content) {
-          return { result: `Contenu de la pièce jointe (${data.type || 'inconnu'})${data.pages ? `, ${data.pages} pages` : ''} :\n\n${data.content}` }
+          return { result: markUntrustedThirdPartyData('Gmail', `Contenu de la pièce jointe (${data.type || 'inconnu'})${data.pages ? `, ${data.pages} pages` : ''} :\n\n${data.content}`) }
         }
         return { result: data.error || 'Erreur: impossible de lire la pièce jointe.' }
       } catch (err) {
@@ -245,7 +246,7 @@ export function createGmailHandlers(gmail: ReturnType<typeof useGmail>): Record<
           const summary = data.messages.map((m: { id: string; from: string; subject: string; snippet: string }, i: number) =>
             `${i + 1}. [ID:${m.id}] De: ${m.from} | ${m.subject} | ${m.snippet}`
           ).join('\n')
-          return { result: `${data.messages.length} résultats pour "${query}":\n${summary}` }
+          return { result: markUntrustedThirdPartyData('Gmail', `${data.messages.length} résultats pour "${query}":\n${summary}`) }
         }
         return { result: `Aucun email trouvé pour "${query}".` }
       } catch (err) {

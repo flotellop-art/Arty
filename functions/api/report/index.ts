@@ -1,5 +1,5 @@
 import type { Env } from '../../env'
-import { resolveProxyIdentity } from '../_lib/emailTrial'
+import { emailTrialKey, resolveProxyIdentity } from '../_lib/emailTrial'
 import { consumeCapAtomic, maybeCleanup } from '../_lib/atomicQuota'
 
 /**
@@ -80,7 +80,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   // Même convention d'identifiant que le reste du backend : les essais email
   // sont préfixés pour ne jamais entrer en collision avec un compte Google.
   const reporterEmail =
-    identity.kind === 'email-trial' ? `emailtrial:${identity.email}` : identity.email
+    identity.kind === 'email-trial' ? emailTrialKey(identity.email) : identity.email
 
   let payload: ReportPayload
   try {

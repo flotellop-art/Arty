@@ -1,4 +1,5 @@
 import type { Env } from '../../env'
+import { verifyGoogleIdentityStrict } from '../_lib/checkAllowedUser'
 
 const NOT_FOUND = { error: 'Not found' }
 const NOT_FOUND_STATUS = 404
@@ -9,23 +10,6 @@ const NOT_FOUND_STATUS = 404
 // l'auth owner était un jour contournée.
 const ALLOWED_ACTIONS = new Set(['screenshot', 'open_app', 'click', 'type', 'scroll', 'key'])
 
-/**
- * Verify a Google access token and return its `sub` (stable account id).
- * Returns null if the token is missing, invalid, or Google rejects it.
- */
-async function verifyGoogleSub(token: string): Promise<string | null> {
-  try {
-    const res = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-    if (!res.ok) return null
-    const data = await res.json() as { id?: string }
-    return data.id || null
-  } catch {
-    return null
-  }
-}
-
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   // Feature flag — endpoint is hidden entirely unless explicitly enabled.
   if (env.COMPUTER_RELAY_ENABLED !== 'true') {
@@ -33,17 +17,13 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   }
 
   // Config sanity — if any piece is missing, pretend the endpoint does not exist.
-  if (!env.COMPUTER_RELAY_OWNER_SUB || !env.TUNNEL_URL || !env.TUNNEL_SECRET) {
+  if (!env.GOOGLE_CLIENT_ID || !env.COMPUTER_RELAY_OWNER_SUB || !env.TUNNEL_URL || !env.TUNNEL_SECRET) {
     return Response.json(NOT_FOUND, { status: NOT_FOUND_STATUS })
   }
 
   // Auth: require a Google token whose sub matches the configured owner.
-  const googleToken = request.headers.get('x-google-token')
-  if (!googleToken) {
-    return Response.json(NOT_FOUND, { status: NOT_FOUND_STATUS })
-  }
-  const sub = await verifyGoogleSub(googleToken)
-  if (!sub || sub !== env.COMPUTER_RELAY_OWNER_SUB) {
+  const identity = await verifyGoogleIdentityStrict(request, env.GOOGLE_CLIENT_ID)
+  if (!identity?.sub || identity.sub !== env.COMPUTER_RELAY_OWNER_SUB) {
     return Response.json(NOT_FOUND, { status: NOT_FOUND_STATUS })
   }
 

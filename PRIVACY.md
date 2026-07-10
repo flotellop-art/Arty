@@ -1,6 +1,6 @@
 # Politique de confidentialité — Arty
 
-**Dernière mise à jour :** 22 mai 2026
+**Dernière mise à jour :** 10 juillet 2026
 
 **Éditeur :** Florent Pollet, personne physique, domicilié 884 chemin de la Prairie, 38270 Beaufort, France. Aucune entreprise n'est immatriculée à ce jour ; un SIREN sera ajouté à cette politique dès l'enregistrement de l'activité, prévu avant le lancement public et les premiers paiements.
 **Contact :** flotellop@gmail.com
@@ -16,10 +16,10 @@ Le responsable de traitement au sens du RGPD est Florent Pollet, personne physiq
 | Catégorie | Données | Source |
 |---|---|---|
 | Identité de connexion | Email, nom complet, photo de profil | Connexion Google (OAuth) |
-| Contenu utilisateur | Messages, fichiers et pièces jointes envoyés à l'assistant | Vous |
+| Contenu utilisateur | Messages, fichiers et pièces jointes envoyés à l'assistant ; mémoire structurée, conversations partagées et signalements que vous soumettez volontairement | Vous |
 | Données Google Workspace | Selon les fonctionnalités utilisées : envoi d'emails (Gmail), lecture et création d'événements (Calendar), contacts (Contacts) | Vos comptes Google, sur votre demande explicite |
 | Localisation | Position géographique approximative | Capteur GPS de votre appareil, uniquement si activé |
-| Données de paiement | Email + transaction, sans coordonnées bancaires | Vous + Lemon Squeezy |
+| Données de paiement | Email du compte, offre ou pack choisi, identifiants et statut de transaction ; Arty ne reçoit aucune coordonnée bancaire | Vous + Lemon Squeezy ou Creem |
 | Inscription waitlist | Email (pré-lancement uniquement) | Formulaire Tally |
 
 Nous ne traçons pas votre navigation à des fins publicitaires et n'utilisons aucun profilage commercial.
@@ -30,7 +30,7 @@ Nous ne traçons pas votre navigation à des fins publicitaires et n'utilisons a
 |---|---|
 | Authentification et fourniture du service (compte, conversations, IA, connecteurs Google) | Exécution du contrat — vos conditions d'utilisation |
 | Réponses géolocalisées | Consentement explicite (vous activez la localisation) |
-| Paiements (abonnement Pro) | Exécution du contrat + obligation légale comptable |
+| Paiements (abonnement Pro et packs de crédits prépayés) | Exécution du contrat + obligation légale comptable |
 | Lutte contre la fraude et sécurité du service (logs techniques, kill-switch chiffrement) | Intérêt légitime |
 | Communication pré-lancement (waitlist) | Consentement (inscription volontaire au formulaire) |
 
@@ -45,7 +45,8 @@ Vos données sont transmises, **uniquement pour les finalités ci-dessus**, aux 
 | OpenAI | Génération de réponses IA (selon le modèle choisi) | États-Unis | SCC + EU-US Data Privacy Framework |
 | Google (Gemini + Workspace) | Génération de réponses IA + connecteurs Gmail/Calendar/Contacts | UE + États-Unis | SCC + EU-US Data Privacy Framework |
 | Mistral AI | Génération de réponses IA | France (UE) | Hébergement UE direct |
-| Lemon Squeezy (Stripe) | Traitement des paiements abonnement Pro | États-Unis | SCC + EU-US Data Privacy Framework, gestion PCI-DSS |
+| Lemon Squeezy | Traitement des paiements abonnement Pro | États-Unis | SCC + EU-US Data Privacy Framework, gestion PCI-DSS |
+| Creem | Merchant of Record et page de paiement hébergée pour les packs de crédits. Arty lui transmet l'email Google vérifié du compte, le produit/pack choisi, un identifiant de requête aléatoire et l'URL de retour. Les coordonnées bancaires sont saisies directement chez Creem et ne sont pas reçues par Arty. | Estonie (UE) | RGPD, DPA Creem ; SCC pour ses sous-traitants hors EEE |
 | Resend | Envoi d'emails transactionnels (notifications, récap) | UE | DPA Resend |
 | Tally | Formulaire de waitlist (pré-lancement) | UE | DPA Tally |
 
@@ -65,16 +66,17 @@ L'utilisation par Arty des données reçues des API Google, et leur transfert ve
 
 ## 6. Sécurité
 
-- **Chiffrement au repos sur l'appareil** : vos conversations, vos pièces jointes (IndexedDB) et vos clés API personnelles (BYOK) sont chiffrées en AES-256-GCM via la Web Crypto API. La clé de chiffrement est dérivée localement et ne quitte jamais votre appareil.
+- **Chiffrement au repos sur l'appareil** : vos conversations, vos pièces jointes (IndexedDB) et vos rapports générés sont chiffrés en AES-256-GCM via la Web Crypto API. La clé de chiffrement est dérivée localement et ne quitte jamais votre appareil.
+- **Clés API personnelles (BYOK)** : elles sont stockées localement dans l'espace applicatif de votre appareil, sans chiffrement applicatif supplémentaire. Elles transitent par le proxy API Cloudflare d'Arty uniquement pour relayer vos requêtes vers l'API du fournisseur ; elles ne sont ni stockées ni journalisées par Arty côté serveur.
 - **Chiffrement en transit** : toutes les communications utilisent HTTPS (TLS 1.2+).
-- **Serveur** : nous ne stockons côté serveur que l'email d'authentification et le jeton OAuth Google nécessaire à la fourniture du service. Les conversations, pièces jointes et clés API ne sont jamais stockées sur nos serveurs.
+- **Traitements côté serveur** : les jetons Google et les clés BYOK sont traités en transit pour authentifier ou relayer la requête, sans être persistés ni journalisés par Arty. Les données persistées sont limitées aux identités et sessions email, à la mémoire structurée explicitement enregistrée, aux conversations partagées et signalements soumis volontairement, aux données de facturation/wallet ainsi qu'aux quotas et compteurs techniques, selon les durées du §8.
 - **Clés API serveur** : jamais exposées dans l'application cliente. Stockées en secrets Cloudflare Workers.
 
 ## 7. Stockage local sur votre appareil
 
-Pour fonctionner, l'application stocke localement (sur votre appareil, jamais envoyé serveur) :
+Pour fonctionner, l'application conserve localement les données suivantes. À l'exception du transit ponctuel des clés BYOK décrit ci-dessus, ces éléments ne sont pas envoyés côté serveur :
 
-- **localStorage** : préférences (langue, onboarding, plan), identifiant d'appareil non personnel, hash de votre email pour la reconnexion, clés API personnelles BYOK chiffrées, état trial.
+- **localStorage** : préférences (langue, onboarding, plan), identifiant d'appareil non personnel, hash de votre email pour la reconnexion, clés API personnelles BYOK sans chiffrement applicatif, rapports générés chiffrés, état trial.
 - **sessionStorage** : état OAuth Google (protection CSRF), messages d'erreur transitoires.
 - **IndexedDB** : pièces jointes (images, PDFs) chiffrées AES-256.
 
@@ -86,9 +88,10 @@ Nous n'utilisons **aucun cookie** de tracking ni d'analyse. Le chargement des po
 
 | Catégorie | Durée |
 |---|---|
-| Compte (email + jeton OAuth) | Tant que votre compte est actif. Suppression sous 30 jours après votre demande de suppression. |
-| Conversations et pièces jointes | Stockées uniquement sur votre appareil. Effacées par "déconnexion + effacement" dans l'application. |
+| Identités et sessions email, mémoire structurée, conversations partagées et signalements | Tant que votre compte est actif. Ces données sont supprimées lors de votre demande de suppression (au plus tard sous 30 jours). |
+| Conversations, pièces jointes et rapports | Stockés uniquement sur votre appareil et chiffrés. Une simple déconnexion les conserve pour votre prochaine connexion. Supprimer une conversation efface ses pièces jointes ; supprimer le compte efface l'ensemble de ces données. |
 | Données de paiement | 10 ans (obligation légale comptable, article L123-22 Code de commerce). |
+| Compteurs techniques minimaux d’usage, de quota et d’anti-abus | Conservés pendant la durée strictement nécessaire à la sécurité, à la prévention des abus et à l’intégrité de la facturation. Ils ne contiennent pas le contenu de vos échanges. |
 | Logs techniques serveur (Cloudflare Workers, anti-abus) | 12 mois maximum. |
 | Email waitlist (pré-lancement) | Jusqu'au lancement de l'application + 12 mois ou désinscription, selon la première éventualité. |
 | Contenu transmis aux fournisseurs d'IA | Non conservé sur nos serveurs au-delà du traitement de la requête. Conservation chez le fournisseur selon sa propre politique (Anthropic 30 jours, OpenAI 30 jours, Google variable, Mistral 30 jours). |

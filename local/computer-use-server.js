@@ -54,6 +54,13 @@ function log(action, details) {
   console.log(entry.trim());
 }
 
+function safeActionDetails(action, params) {
+  if (action === 'type') {
+    return { textLength: typeof params?.text === 'string' ? params.text.length : 0 };
+  }
+  return params || {};
+}
+
 // Auth middleware
 function auth(req, res, next) {
   if (!secretIsValid(req.headers['x-tunnel-secret'], TUNNEL_SECRET)) {
@@ -76,7 +83,9 @@ app.post('/computer/action', auth, async (req, res) => {
     return res.status(400).json({ error: 'Missing action' });
   }
 
-  log('ACTION', { action, params });
+  // Never persist typed text: it can contain passwords, tokens or private
+  // customer data. Operational logs keep only the character count.
+  log('ACTION', { action, params: safeActionDetails(action, params) });
 
   try {
     switch (action) {
@@ -122,7 +131,7 @@ app.post('/computer/action', auth, async (req, res) => {
         await typeText(text);
         await sleep(500);
         const screenshot = await takeScreenshot();
-        return res.json({ success: true, action: 'type', text, screenshot });
+        return res.json({ success: true, action: 'type', textLength: text.length, screenshot });
       }
 
       case 'scroll': {

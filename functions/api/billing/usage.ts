@@ -1,5 +1,5 @@
 import type { Env } from '../../env'
-import { verifyGoogleUser, resolveUserPlan } from '../_lib/checkAllowedUser'
+import { verifyGoogleUserStrict, resolveUserPlan } from '../_lib/checkAllowedUser'
 import { getUsageWindow } from '../_lib/quota'
 import { estimateCreditsMicro } from '../_lib/creditPricing'
 import { getWalletBalance } from '../_lib/wallet'
@@ -11,7 +11,7 @@ const WINDOW_DAYS = 30
 // cet endpoint ne fait que fournir les chiffres bruts de SES propres stats.
 //
 // Audit RÈGLE 6 :
-//  - Authentification : token Google vérifié (verifyGoogleUser).
+//  - Authentification : token Google vérifié avec audience Arty obligatoire.
 //  - Autorisation/IDOR : email du token, jamais d'un champ client ; toutes les
 //    requêtes filtrent sur cet email → un user ne lit que SON usage.
 //  - Abus : read-only (n'incrémente rien), aucun appel tiers/clé serveur IA.
@@ -19,10 +19,10 @@ const WINDOW_DAYS = 30
 //    on expose le coût fournisseur + le coût crédits markupé, jamais le coût de
 //    revient ni des agrégats multi-users).
 //  - Origin/CSRF : GET → exempt du middleware.
-//  (N-1 : verifyGoogleUser ne valide pas `aud` — lecture de stats perso à faible
-//   sensibilité, cohérent avec /api/wallet/balance ; durcissement global différé.)
+//  - Audience OAuth : gate strict, fail-closed sur aud/azp étranger, absent ou
+//    GOOGLE_CLIENT_ID non configuré.
 export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
-  const email = await verifyGoogleUser(request)
+  const email = await verifyGoogleUserStrict(request, env.GOOGLE_CLIENT_ID)
   if (!email) {
     return Response.json({ error: 'Authentication required' }, { status: 401 })
   }

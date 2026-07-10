@@ -1,58 +1,73 @@
 import { useNavigate, useParams } from 'react-router-dom'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { getReport } from '../../services/reportGenerator'
 import { exportHtmlAsPdf } from '../../services/conversationExport'
+import { isCryptoReady } from '../../services/crypto'
 
 export function ReportPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const [html, setHtml] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
   const [exporting, setExporting] = useState(false)
-  const iframeRef = useRef<HTMLIFrameElement>(null)
 
   useEffect(() => {
-    if (id) {
-      const report = getReport(id)
-      setHtml(report)
+    let cancelled = false
+
+    const load = async () => {
+      if (!id) {
+        if (!cancelled) setLoading(false)
+        return
+      }
+      // On a direct page refresh, useAuth may still be deriving the key. Its
+      // conversation bootstrap emits the ready event below once crypto works.
+      if (!isCryptoReady()) return
+
+      setLoading(true)
+      try {
+        const report = await getReport(id)
+        if (!cancelled) setHtml(report)
+      } catch (err) {
+        console.warn('Report load failed:', err)
+        if (!cancelled) setHtml(null)
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+
+    void load()
+    const onStorageReady = () => { void load() }
+    window.addEventListener('conversations-storage-ready', onStorageReady)
+    const timeout = window.setTimeout(() => {
+      if (!cancelled && !isCryptoReady()) setLoading(false)
+    }, 10_000)
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(timeout)
+      window.removeEventListener('conversations-storage-ready', onStorageReady)
     }
   }, [id])
 
-  // Listen for postMessage events from the sandboxed iframe (the report's
-  // toolbar buttons). window.print() doesn't work inside an Android Chrome
-  // sandboxed iframe, so the buttons relay their intent to the parent and
-  // we handle export + back here using the same jsPDF/html2canvas pipeline
-  // as the conversation export.
-  useEffect(() => {
-    if (!html) return
-    const onMessage = async (e: MessageEvent) => {
-      // SÉCURITÉ : n'accepter que les messages de NOTRE iframe. Comme elle est
-      // sandboxée sans `allow-same-origin`, son origine est opaque
-      // (`e.origin === 'null'`) — on ne peut donc pas filtrer sur l'origine, on
-      // vérifie la SOURCE. Sans ça, n'importe quelle autre fenêtre/frame
-      // pourrait poster `arty-report-export-pdf` et déclencher l'export du HTML
-      // stocké sans action de l'utilisateur.
-      if (e.source !== iframeRef.current?.contentWindow) return
-      const data = e.data as { type?: string } | null
-      if (!data || typeof data.type !== 'string') return
-      if (data.type === 'arty-report-back') {
-        navigate(-1)
-        return
-      }
-      if (data.type === 'arty-report-export-pdf') {
-        if (exporting) return
-        setExporting(true)
-        try {
-          await exportHtmlAsPdf(html, 'arty-rapport', '#F2EBDE')
-        } catch (err) {
-          console.warn('Report PDF export failed:', err)
-        } finally {
-          setExporting(false)
-        }
-      }
+  const handleExport = async () => {
+    if (!html || exporting) return
+    setExporting(true)
+    try {
+      await exportHtmlAsPdf(html, 'arty-rapport', '#F2EBDE')
+    } catch (err) {
+      console.warn('Report PDF export failed:', err)
+    } finally {
+      setExporting(false)
     }
-    window.addEventListener('message', onMessage)
-    return () => window.removeEventListener('message', onMessage)
-  }, [html, navigate, exporting])
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-[100dvh] bg-theme-bg">
+        <p className="text-theme-muted">Chargement du rapport…</p>
+      </div>
+    )
+  }
 
   if (!html) {
     return (
@@ -64,24 +79,40 @@ export function ReportPage() {
 
   return (
     <>
+      {/* Controls live in the trusted parent, never in model-generated HTML. */}
+      <div
+        className="fixed left-4 z-40 flex gap-2"
+        style={{ top: 'max(0.75rem, calc(env(safe-area-inset-top, 0px) + 0.5rem))' }}
+      >
+        <button
+          type="button"
+          onClick={() => navigate(-1)}
+          className="rounded-md bg-theme-ink px-3.5 py-2 text-[11px] font-semibold text-theme-bg shadow-sm"
+        >
+          ← Retour
+        </button>
+        <button
+          type="button"
+          onClick={() => { void handleExport() }}
+          disabled={exporting}
+          className="rounded-md bg-theme-accent px-3.5 py-2 text-[11px] font-semibold text-white shadow-sm disabled:opacity-60"
+        >
+          {exporting ? 'Génération…' : 'Télécharger PDF'}
+        </button>
+      </div>
+
       {/*
-        SÉCURITÉ : `html` est généré par l'IA et peut contenir du contenu hostile
-        (prompt injection via un mail/une page lue). On NE met JAMAIS
-        `allow-same-origin` avec `allow-scripts` sur un srcDoc : la combinaison
-        permet à un script injecté d'accéder au localStorage/DOM du parent
-        (exfiltration des tokens/clés). Sans `allow-same-origin`, l'iframe a une
-        origine opaque : les scripts tournent (rapports interactifs) et les boutons
-        relaient toujours par postMessage (cross-origin OK), mais ne peuvent plus
-        toucher le parent. On retire aussi `allow-top-navigation` et
-        `allow-popups-to-escape-sandbox` (redirection phishing + évasion sandbox).
+        No script capability is granted. The stored document is sanitized and
+        carries its own fail-closed CSP; the opaque sandbox origin remains an
+        additional boundary against access to the parent application.
       */}
       <iframe
-        ref={iframeRef}
         srcDoc={html}
         className="w-full h-[100dvh] border-0"
         title="Rapport"
-        sandbox="allow-scripts allow-popups"
+        sandbox="allow-popups"
       />
+
       {exporting && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-theme-ink/40 pointer-events-none"

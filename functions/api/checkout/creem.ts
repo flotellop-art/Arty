@@ -1,6 +1,7 @@
 import type { Env } from '../../env'
 import { verifyTokenViaTokeninfo, notFoundResponse } from '../_lib/checkAllowedUser'
 import { consumeCapAtomic } from '../_lib/atomicQuota'
+import { resolveCreemCheckoutProduct } from '../_lib/creemProducts'
 
 // ─────────────────────────────────────────────────────────────────────
 // POST /api/checkout/creem — crée un checkout Creem pour acheter des crédits.
@@ -24,15 +25,6 @@ import { consumeCapAtomic } from '../_lib/atomicQuota'
 //  - Erreurs génériques au client (pas de fuite du status/body Creem — N-2).
 //  - 404 si la feature n'est pas configurée (ne révèle pas l'état de config).
 // ─────────────────────────────────────────────────────────────────────
-
-// pack (envoyé par le client) → product_id Creem. Le MONTANT de crédits accordé
-// est défini par le webhook (CREEM_CREDIT_PRODUCTS, creem.ts) à partir du
-// product_id — source unique de vérité côté argent. Ici on choisit uniquement
-// QUEL produit acheter, pas combien de crédits il vaut.
-const CREEM_PACKS: Record<string, { productId: string }> = {
-  // ⚠️ IDs de mode TEST — à remplacer par les prod_ LIVE au go-live.
-  credits_10: { productId: 'prod_5ba1P24WLXkcXUnbZytWm7' }, // Pack 10 € = 1000 crédits
-}
 
 const CHECKOUTS_PER_DAY = 20
 const CREEM_FETCH_TIMEOUT_MS = 10_000
@@ -131,10 +123,14 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     return Response.json({ error: 'Invalid request' }, { status: 400 })
   }
   const pack = body.pack
-  if (typeof pack !== 'string' || pack.length > 64 || !CREEM_PACKS[pack]) {
+  if (typeof pack !== 'string' || pack.length > 64) {
     return notFoundResponse()
   }
-  const productId = CREEM_PACKS[pack].productId
+  const productId = resolveCreemCheckoutProduct(env, pack)
+  if (!productId) {
+    console.error('[checkout] pack Creem absent ou invalide dans la configuration')
+    return notFoundResponse()
+  }
 
   // Anti-abus : cap de créations de checkout par email/jour. Fail-open si D1
   // est down (un incident infra ne doit pas bloquer un achat légitime).

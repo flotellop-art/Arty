@@ -200,8 +200,6 @@ RÈGLES ABSOLUES :
 - Si le PC n'est pas joignable, dis-le simplement et propose des alternatives`
 
 export function buildContextualPrompt(context?: {
-  gmailSummary?: string
-  driveSummary?: string
   memorySummary?: string
   customInstructions?: string
 }): string {
@@ -234,14 +232,6 @@ export function buildContextualPrompt(context?: {
 
   if (context?.memorySummary) {
     prompt += context.memorySummary
-  }
-
-  if (context?.gmailSummary) {
-    prompt += `\n\nContexte Gmail actuel :\n${context.gmailSummary}`
-  }
-
-  if (context?.driveSummary) {
-    prompt += `\n\nContexte Google Drive actuel :\n${context.driveSummary}`
   }
 
   return prompt

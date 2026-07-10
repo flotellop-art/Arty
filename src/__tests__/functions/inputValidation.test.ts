@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('../../../functions/api/_lib/checkAllowedUser', () => ({
   verifyGoogleUser: vi.fn(async () => 'owner@example.com'),
+  verifyGoogleUserStrict: vi.fn(async () => 'owner@example.com'),
   parseAllowedEmails: (raw: string | undefined) =>
     raw ? raw.split(',').map((e) => e.trim().toLowerCase()).filter(Boolean) : [],
   notFoundResponse: () => Response.json({ error: 'Not found' }, { status: 404 }),

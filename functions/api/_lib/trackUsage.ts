@@ -1,12 +1,24 @@
-// Helpers pour capturer les tokens consommés par chaque provider IA sans
-// bloquer le stream vers le client.
-//
-// Principe : on tee() le ReadableStream entrant, un côté part au client
-// (forward immédiat), l'autre est parsé en tâche de fond via waitUntil().
-// Quand le parser trouve le usage (à la fin du stream), on met à jour
-// quota_model avec les tokens réels et le coût calculé.
+// Capture provider usage without blocking the response sent to the client.
+// Streaming responses are tee'd: one branch is forwarded, the other parsed.
 
 import type { UsageTokens } from './pricing'
+
+export type UsageResponseFormat = 'json' | 'sse'
+
+/**
+ * A successful completion can legitimately contain zero output tokens. The
+ * explicit flag distinguishes that case from missing/truncated usage data.
+ */
+export type MeasuredUsage = UsageTokens & { measured: boolean }
+
+const emptyMeasuredUsage = (): MeasuredUsage => ({
+  inputTokens: 0,
+  outputTokens: 0,
+  cacheReadTokens: 0,
+  cacheCreationTokens: 0,
+  audioSeconds: 0,
+  measured: false,
+})
 
 const EMPTY: UsageTokens = {
   inputTokens: 0,
@@ -16,28 +28,98 @@ const EMPTY: UsageTokens = {
   audioSeconds: 0,
 }
 
+interface UsageParser {
+  feed: (chunk: string) => void
+  finalize: () => MeasuredUsage
+}
+
 /**
- * Tee le body d'une Response streaming. Retourne :
- * - `clientBody` : un ReadableStream à renvoyer au client (identique à l'upstream)
- * - `parsedUsage` : une Promise qui résout avec les tokens finaux quand
- *   le stream parsé est terminé. Ne jamais await côté handler principal —
- *   utiliser context.waitUntil(...) pour que la requête client ne soit pas
- *   bloquée par le parsing.
+ * JSON and SSE are distinct wire formats. SSE is parsed incrementally to keep
+ * memory bounded. JSON is accumulated until EOF so multi-line JSON cannot be
+ * mistaken for a sequence of SSE records.
  */
+function createWireParser(
+  format: UsageResponseFormat,
+  consumePayload: (payload: unknown) => void,
+  usage: MeasuredUsage,
+): UsageParser {
+  let buffer = ''
+
+  const consumeJson = (raw: string) => {
+    if (!raw.trim()) return
+    try {
+      const payload = JSON.parse(raw) as unknown
+      if (Array.isArray(payload)) {
+        for (const item of payload) consumePayload(item)
+      } else {
+        consumePayload(payload)
+      }
+    } catch {
+      // Keep measured=false. Wallet settlement then uses its reservation.
+    }
+  }
+
+  const consumeSseLine = (rawLine: string) => {
+    const line = rawLine.trim()
+    if (!line.startsWith('data:')) return
+    const payload = line.slice(5).trim()
+    if (!payload || payload === '[DONE]') return
+    consumeJson(payload)
+  }
+
+  const feed = (chunk: string) => {
+    buffer += chunk
+    if (format === 'json') return
+
+    let newline: number
+    while ((newline = buffer.indexOf('\n')) !== -1) {
+      consumeSseLine(buffer.slice(0, newline))
+      buffer = buffer.slice(newline + 1)
+    }
+  }
+
+  const finalize = () => {
+    if (format === 'json') consumeJson(buffer)
+    else if (buffer.trim()) consumeSseLine(buffer)
+    buffer = ''
+    return usage
+  }
+
+  return { feed, finalize }
+}
+
+export function responseUsageFormat(contentType: string | null): UsageResponseFormat {
+  return contentType?.toLowerCase().includes('application/json') ? 'json' : 'sse'
+}
+
+/** Force OpenAI-compatible streamed responses to include the final usage chunk. */
+export function enforceStreamUsage(body: string): string {
+  try {
+    const parsed = JSON.parse(body) as Record<string, unknown>
+    if (parsed.stream !== true) return body
+    const existing = parsed.stream_options
+    parsed.stream_options = {
+      ...(existing && typeof existing === 'object' ? existing as Record<string, unknown> : {}),
+      include_usage: true,
+    }
+    return JSON.stringify(parsed)
+  } catch {
+    return body
+  }
+}
+
 export function teeForParsing(
   upstream: ReadableStream<Uint8Array>,
   parser: (chunk: string) => void,
-  finalize: () => UsageTokens,
-  // Appelé à chaque chunk parsé (le parseSide draine indépendamment du client).
-  // Sert au heartbeat de réservation wallet pour les streams longs (fix F-B) :
-  // best-effort, throttlé par l'appelant, ne doit jamais throw.
-  onActivity?: () => void
-): { clientBody: ReadableStream<Uint8Array>; parsedUsage: Promise<UsageTokens> } {
+  finalize: () => MeasuredUsage,
+  onActivity?: () => void,
+): { clientBody: ReadableStream<Uint8Array>; parsedUsage: Promise<MeasuredUsage> } {
   const [clientSide, parseSide] = upstream.tee()
 
   const parsedUsage = (async () => {
     const decoder = new TextDecoder()
     const reader = parseSide.getReader()
+    let completedNormally = false
     try {
       while (true) {
         const { done, value } = await reader.read()
@@ -45,153 +127,123 @@ export function teeForParsing(
         if (value) {
           parser(decoder.decode(value, { stream: true }))
           if (onActivity) {
-            try { onActivity() } catch { /* heartbeat best-effort */ }
+            try { onActivity() } catch { /* heartbeat is best-effort */ }
           }
         }
       }
-      parser(decoder.decode()) // flush
+      parser(decoder.decode())
+      completedNormally = true
     } catch {
-      // best-effort — if parsing fails we just report zero tokens
+      // A parser may already have seen a plausible partial usage event. A read
+      // failure means the completion is truncated regardless of that snapshot,
+      // so billing must fall back to the full reservation.
     } finally {
       reader.releaseLock()
     }
-    return finalize()
+    const usage = finalize()
+    return completedNormally ? usage : { ...usage, measured: false }
   })()
 
   return { clientBody: clientSide, parsedUsage }
 }
 
-/**
- * Parser pour Anthropic streaming. Extrait usage depuis `event: message_delta`
- * (le dernier chunk contient { usage: { input_tokens, output_tokens,
- * cache_read_input_tokens, cache_creation_input_tokens } }) et depuis
- * `event: message_start` (qui contient input_tokens).
- */
-export function createAnthropicParser() {
-  const usage = { ...EMPTY }
-  let buffer = ''
+/** Anthropic Messages usage, for both JSON and message_start/message_delta SSE. */
+export function createAnthropicParser(format: UsageResponseFormat = 'sse'): UsageParser {
+  const usage = emptyMeasuredUsage()
+  let sawInput = false
+  let sawOutput = false
 
-  const feed = (chunk: string) => {
-    buffer += chunk
-    let idx: number
-    while ((idx = buffer.indexOf('\n')) !== -1) {
-      const line = buffer.slice(0, idx).trim()
-      buffer = buffer.slice(idx + 1)
-      if (!line.startsWith('data:')) continue
-      const payload = line.slice(5).trim()
-      if (!payload || payload === '[DONE]') continue
-      try {
-        const data = JSON.parse(payload) as {
-          type?: string
-          message?: { usage?: Record<string, number> }
-          usage?: Record<string, number>
-        }
-        // message_start contient l'input complet (avec cache_read/creation)
-        const u = data.message?.usage ?? data.usage
-        if (u) {
-          if (typeof u.input_tokens === 'number') usage.inputTokens = Math.max(usage.inputTokens, u.input_tokens)
-          if (typeof u.output_tokens === 'number') usage.outputTokens = Math.max(usage.outputTokens, u.output_tokens)
-          if (typeof u.cache_read_input_tokens === 'number')
-            usage.cacheReadTokens = Math.max(usage.cacheReadTokens, u.cache_read_input_tokens)
-          if (typeof u.cache_creation_input_tokens === 'number')
-            usage.cacheCreationTokens = Math.max(usage.cacheCreationTokens, u.cache_creation_input_tokens)
-        }
-      } catch {
-        // skip unparseable
-      }
+  return createWireParser(format, (payload) => {
+    const data = payload as {
+      message?: { usage?: Record<string, number> }
+      usage?: Record<string, number>
+    } | null
+    const messageStartUsage = data?.message?.usage
+    const terminalUsage = data?.usage
+    const u = messageStartUsage ?? terminalUsage
+    if (!u) return
+
+    if (typeof u.input_tokens === 'number' && u.input_tokens >= 0) {
+      usage.inputTokens = Math.max(usage.inputTokens, u.input_tokens)
+      sawInput = true
     }
-  }
-
-  return { feed, finalize: () => usage }
+    // In SSE, message_start may expose an initial output_tokens snapshot
+    // (often 1) before generation completes. Only the top-level usage carried
+    // by message_delta is final. A non-streamed JSON response is final as-is.
+    const outputIsFinal = format === 'json' || !!terminalUsage
+    if (outputIsFinal && typeof u.output_tokens === 'number' && u.output_tokens >= 0) {
+      usage.outputTokens = Math.max(usage.outputTokens, u.output_tokens)
+      sawOutput = true
+    }
+    if (typeof u.cache_read_input_tokens === 'number' && u.cache_read_input_tokens >= 0) {
+      usage.cacheReadTokens = Math.max(usage.cacheReadTokens, u.cache_read_input_tokens)
+    }
+    if (typeof u.cache_creation_input_tokens === 'number' && u.cache_creation_input_tokens >= 0) {
+      usage.cacheCreationTokens = Math.max(usage.cacheCreationTokens, u.cache_creation_input_tokens)
+    }
+    usage.measured = sawInput && sawOutput
+  }, usage)
 }
 
-/**
- * Parser pour Mistral streaming (OpenAI-compatible). Le dernier chunk avant
- * `data: [DONE]` contient `usage: { prompt_tokens, completion_tokens }`.
- */
-export function createMistralParser() {
-  const usage = { ...EMPTY }
-  let buffer = ''
+/** OpenAI-compatible usage used by OpenAI Chat Completions and Mistral. */
+export function createMistralParser(format: UsageResponseFormat = 'sse'): UsageParser {
+  const usage = emptyMeasuredUsage()
 
-  const feed = (chunk: string) => {
-    buffer += chunk
-    let idx: number
-    while ((idx = buffer.indexOf('\n')) !== -1) {
-      const line = buffer.slice(0, idx).trim()
-      buffer = buffer.slice(idx + 1)
-      if (!line.startsWith('data:')) continue
-      const payload = line.slice(5).trim()
-      if (!payload || payload === '[DONE]') continue
-      try {
-        const data = JSON.parse(payload) as { usage?: { prompt_tokens?: number; completion_tokens?: number } }
-        if (data.usage) {
-          if (typeof data.usage.prompt_tokens === 'number') usage.inputTokens = data.usage.prompt_tokens
-          if (typeof data.usage.completion_tokens === 'number') usage.outputTokens = data.usage.completion_tokens
-        }
-      } catch {
-        // skip
-      }
-    }
-  }
+  return createWireParser(format, (payload) => {
+    const u = (payload as {
+      usage?: { prompt_tokens?: number; completion_tokens?: number }
+    } | null)?.usage
+    if (!u) return
 
-  return { feed, finalize: () => usage }
+    const hasInput = typeof u.prompt_tokens === 'number' && u.prompt_tokens >= 0
+    const hasOutput = typeof u.completion_tokens === 'number' && u.completion_tokens >= 0
+    if (hasInput) usage.inputTokens = u.prompt_tokens as number
+    if (hasOutput) usage.outputTokens = u.completion_tokens as number
+    usage.measured = hasInput && hasOutput
+  }, usage)
 }
 
-// OpenAI Chat utilise le même format SSE que Mistral (prompt_tokens /
-// completion_tokens dans le dernier chunk quand stream_options.include_usage
-// est activé côté client). Alias exporté pour la clarté à l'import.
 export const createOpenAIParser = createMistralParser
 
-/**
- * Parser pour Gemini streaming SSE. Chaque chunk peut avoir `usageMetadata`,
- * on prend le dernier (cumul côté Google).
- */
-export function createGeminiParser() {
-  const usage = { ...EMPTY }
-  let buffer = ''
+/** Gemini usageMetadata, for both generateContent JSON and SSE streaming. */
+export function createGeminiParser(format: UsageResponseFormat = 'sse'): UsageParser {
+  const usage = emptyMeasuredUsage()
 
-  const feed = (chunk: string) => {
-    buffer += chunk
-    let idx: number
-    while ((idx = buffer.indexOf('\n')) !== -1) {
-      const line = buffer.slice(0, idx).trim()
-      buffer = buffer.slice(idx + 1)
-      if (!line.startsWith('data:')) continue
-      const payload = line.slice(5).trim()
-      if (!payload) continue
-      try {
-        const data = JSON.parse(payload) as {
-          usageMetadata?: {
-            promptTokenCount?: number
-            candidatesTokenCount?: number
-            thoughtsTokenCount?: number
-            cachedContentTokenCount?: number
-          }
-        }
-        if (data.usageMetadata) {
-          const m = data.usageMetadata
-          if (typeof m.promptTokenCount === 'number') usage.inputTokens = m.promptTokenCount
-          // Output = jetons visibles (candidates) + jetons de "réflexion" (thoughts),
-          // tous deux facturés au tarif output. Sans thoughtsTokenCount on
-          // sous-facture les requêtes à gros raisonnement (Gemini 2.5/3.x thinking).
-          if (m.candidatesTokenCount != null || m.thoughtsTokenCount != null) {
-            usage.outputTokens = (m.candidatesTokenCount ?? 0) + (m.thoughtsTokenCount ?? 0)
-          }
-          if (typeof m.cachedContentTokenCount === 'number') usage.cacheReadTokens = m.cachedContentTokenCount
-        }
-      } catch {
-        // skip
+  return createWireParser(format, (payload) => {
+    const metadata = (payload as {
+      usageMetadata?: {
+        promptTokenCount?: number
+        candidatesTokenCount?: number
+        thoughtsTokenCount?: number
+        cachedContentTokenCount?: number
       }
-    }
-  }
+    } | null)?.usageMetadata
+    if (!metadata) return
 
-  return { feed, finalize: () => usage }
+    const hasInput =
+      typeof metadata.promptTokenCount === 'number' && metadata.promptTokenCount >= 0
+    const hasOutput =
+      typeof metadata.candidatesTokenCount === 'number' && metadata.candidatesTokenCount >= 0
+
+    if (hasInput) usage.inputTokens = metadata.promptTokenCount as number
+    if (hasOutput) {
+      const thoughts =
+        typeof metadata.thoughtsTokenCount === 'number' && metadata.thoughtsTokenCount > 0
+          ? metadata.thoughtsTokenCount
+          : 0
+      usage.outputTokens = (metadata.candidatesTokenCount as number) + thoughts
+    }
+    if (
+      typeof metadata.cachedContentTokenCount === 'number' &&
+      metadata.cachedContentTokenCount >= 0
+    ) {
+      usage.cacheReadTokens = metadata.cachedContentTokenCount
+    }
+    usage.measured = hasInput && hasOutput
+  }, usage)
 }
 
-/**
- * Parser pour Whisper (non-streaming). On extrait `duration` du JSON retourné
- * si `response_format=verbose_json`. Sinon on ne sait pas combien de secondes.
- */
+/** Whisper non-streaming duration (verbose_json). */
 export function parseWhisperBody(raw: string): UsageTokens {
   const usage = { ...EMPTY }
   try {
@@ -200,26 +252,22 @@ export function parseWhisperBody(raw: string): UsageTokens {
       usage.audioSeconds = data.duration
     }
   } catch {
-    // skip
+    // Caller applies its own non-streaming fallback policy.
   }
   return usage
 }
 
-/**
- * Parser pour Voxtral (transcription Mistral, non-streaming). La durée est
- * dans `usage.prompt_audio_seconds`. Les prompt/completion_tokens ne sont pas
- * repris : la facturation Voxtral est à la minute d'audio uniquement.
- */
+/** Voxtral non-streaming audio duration. */
 export function parseVoxtralBody(raw: string): UsageTokens {
   const usage = { ...EMPTY }
   try {
     const data = JSON.parse(raw) as { usage?: { prompt_audio_seconds?: number } }
-    const secs = data.usage?.prompt_audio_seconds
-    if (typeof secs === 'number' && secs > 0) {
-      usage.audioSeconds = secs
+    const seconds = data.usage?.prompt_audio_seconds
+    if (typeof seconds === 'number' && seconds > 0) {
+      usage.audioSeconds = seconds
     }
   } catch {
-    // skip
+    // Caller applies its own non-streaming fallback policy.
   }
   return usage
 }

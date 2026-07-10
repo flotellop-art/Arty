@@ -1,4 +1,5 @@
 import type { useDrive } from '../../hooks/useDrive'
+import { markUntrustedThirdPartyData } from './untrustedContent'
 import type { ToolHandler } from './types'
 import { callGoogleApi } from '../googleApiHelper'
 
@@ -131,7 +132,7 @@ export function createDriveHandlers(drive: ReturnType<typeof useDrive>): Record<
           const summary = files.slice(0, 50).map((f: { id: string; name: string; mimeType: string }, i: number) =>
             `${i + 1}. [ID:${f.id}] ${f.name} (${f.mimeType.split('.').pop() || f.mimeType})`
           ).join('\n')
-          return { result: `${files.length} fichiers${folderId ? ' dans ce dossier' : ''}:\n${summary}` }
+          return { result: markUntrustedThirdPartyData('Google Drive', `${files.length} fichiers${folderId ? ' dans ce dossier' : ''}:\n${summary}`) }
         }
         return { result: folderId ? 'Dossier vide.' : `Aucun fichier sur Drive. (debug: ${JSON.stringify(data.debug || {})})` }
       } catch (err) {
@@ -148,7 +149,7 @@ export function createDriveHandlers(drive: ReturnType<typeof useDrive>): Record<
           const summary = files.map((f, i) =>
             `${i + 1}. [ID:${f.id}] ${f.name} (${f.mimeType.split('.').pop() || f.mimeType})`
           ).join('\n')
-          return { result: `${files.length} fichiers trouvés pour "${query}":\n${summary}` }
+          return { result: markUntrustedThirdPartyData('Google Drive', `${files.length} fichiers trouvés pour "${query}":\n${summary}`) }
         }
         return { result: `Aucun fichier trouvé pour "${query}". Essaie avec d'autres mots-clés ou liste le contenu des dossiers avec list_drive.` }
       } catch (err) {
@@ -176,7 +177,7 @@ export function createDriveHandlers(drive: ReturnType<typeof useDrive>): Record<
           || (content.length < 50 && data.mimeType === 'application/pdf')
 
         if (!isUnreadable) {
-          return { result: `Fichier: ${data.name}\nType: ${data.mimeType}\n\nContenu:\n${content}` }
+          return { result: markUntrustedThirdPartyData('Google Drive', `Fichier: ${data.name}\nType: ${data.mimeType}\n\nContenu:\n${content}`) }
         }
 
         // 2. Text extraction failed — download raw file for Claude to read natively
@@ -184,7 +185,7 @@ export function createDriveHandlers(drive: ReturnType<typeof useDrive>): Record<
           const dlData = await callGoogleApi('/api/drive/action', { type: 'download', id: fileId })
           if (dlData.base64 && dlData.mimeType) {
             return {
-              result: `Fichier: ${dlData.name} (${dlData.mimeType}) — le texte n'a pas pu être extrait, voici le document brut pour lecture directe.`,
+              result: markUntrustedThirdPartyData('Google Drive', `Fichier: ${dlData.name} (${dlData.mimeType}) — le texte n'a pas pu être extrait, voici le document brut pour lecture directe.`),
               fileData: {
                 name: dlData.name,
                 mimeType: dlData.mimeType,
@@ -194,7 +195,7 @@ export function createDriveHandlers(drive: ReturnType<typeof useDrive>): Record<
           }
         } catch { /* download failed, return original result */ }
 
-        return { result: `Fichier: ${data.name}\nType: ${data.mimeType}\n\nContenu:\n${content}` }
+        return { result: markUntrustedThirdPartyData('Google Drive', `Fichier: ${data.name}\nType: ${data.mimeType}\n\nContenu:\n${content}`) }
       } catch (err) {
         return { result: `Erreur: ${err instanceof Error ? err.message : 'lecture échouée'}` }
       }

@@ -34,6 +34,10 @@ function getOwnerKey(): string {
   return userId ? `arty-${userId}` : 'arty-anon'
 }
 
+function ownerKeyFor(userId: string | null): string {
+  return userId ? `arty-${userId}` : 'arty-anon'
+}
+
 function getDB(): Promise<IDBPDatabase> {
   if (!dbPromise) {
     dbPromise = openDB(DB_NAME, DB_VERSION, {
@@ -119,17 +123,50 @@ export async function getFiles(fileIds: string[]): Promise<FileAttachment[]> {
 }
 
 export async function deleteFile(fileId: string): Promise<void> {
+  const ownerKey = getOwnerKey()
   const db = await getDB()
   const record = (await db.get(STORE, fileId)) as StoredFile | undefined
-  if (!record || record.ownerKey !== getOwnerKey()) return
+  if (!record || record.ownerKey !== ownerKey) return
   await db.delete(STORE, fileId)
+}
+
+/**
+ * Delete a bounded set of files for one captured owner.
+ *
+ * Conversation deletion must never run a global "all unreferenced files"
+ * sweep: another conversation may have persisted a file in IndexedDB but not
+ * yet committed its Message reference. Restricting deletion to IDs that came
+ * from the deleted conversation closes that race. The owner is captured before
+ * opening IndexedDB so an account switch cannot redirect the cleanup.
+ */
+export async function deleteOwnedFiles(
+  fileIds: Iterable<string>,
+  ownerUserId: string | null = getActiveUserId(),
+): Promise<number> {
+  const ownerKey = ownerKeyFor(ownerUserId)
+  const uniqueIds = [...new Set(fileIds)]
+  if (uniqueIds.length === 0) return 0
+
+  const db = await getDB()
+  const tx = db.transaction(STORE, 'readwrite')
+  let deleted = 0
+  for (const fileId of uniqueIds) {
+    const record = (await tx.store.get(fileId)) as StoredFile | undefined
+    if (record?.ownerKey !== ownerKey) continue
+    await tx.store.delete(fileId)
+    deleted++
+  }
+  await tx.done
+  return deleted
 }
 
 // Wipe TOUS les fichiers (du user actif uniquement). Appelé dans logout()
 // pour respecter BUG 41.
-export async function wipeFileStorage(): Promise<void> {
+export async function wipeFileStorage(ownerUserId: string | null = getActiveUserId()): Promise<void> {
+  // Capture identity before the first await. Logout clears the active session;
+  // resolving it afterwards would target arty-anon and leave user files behind.
+  const ownerKey = ownerKeyFor(ownerUserId)
   const db = await getDB()
-  const ownerKey = getOwnerKey()
   const tx = db.transaction(STORE, 'readwrite')
   const index = tx.store.index('ownerKey')
   let cursor = await index.openCursor(IDBKeyRange.only(ownerKey))
@@ -143,9 +180,12 @@ export async function wipeFileStorage(): Promise<void> {
 
 // Purge les fichiers orphelins : ceux qui ne sont plus référencés par
 // aucune conversation. Retourne le nombre de fichiers supprimés.
-export async function purgeOrphanFiles(referencedIds: Set<string>): Promise<number> {
+export async function purgeOrphanFiles(
+  referencedIds: Set<string>,
+  ownerUserId: string | null = getActiveUserId(),
+): Promise<number> {
+  const ownerKey = ownerKeyFor(ownerUserId)
   const db = await getDB()
-  const ownerKey = getOwnerKey()
   const tx = db.transaction(STORE, 'readwrite')
   const index = tx.store.index('ownerKey')
   let count = 0

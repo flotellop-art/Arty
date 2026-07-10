@@ -20,6 +20,8 @@ interface LemonSqueezyAttributes {
   variant_id?: number | string
   status?: string
   renews_at?: string | null
+  ends_at?: string | null
+  updated_at?: string | null
   first_order_item?: {
     product_id?: number
     variant_id?: number
@@ -86,21 +88,71 @@ export async function verifySignature(
   return diff === 0
 }
 
+type SubscriptionStatus =
+  | 'active'
+  | 'on_trial'
+  | 'paused'
+  | 'past_due'
+  | 'unpaid'
+  | 'cancelled'
+  | 'expired'
+
 /** Mappe le status Lemon Squeezy vers notre vocabulaire interne. */
-function mapSubscriptionStatus(raw: string | undefined): string {
+function mapSubscriptionStatus(raw: string | undefined): SubscriptionStatus | null {
   switch (raw) {
     case 'active':
-      return 'active'
-    case 'cancelled':
-      return 'cancelled'
-    case 'expired':
-      return 'expired'
+    case 'on_trial':
+    case 'paused':
     case 'past_due':
-      return 'past_due'
+    case 'unpaid':
+    case 'cancelled':
+    case 'expired':
+      return raw
     default:
-      return 'inactive'
+      return null
   }
 }
+
+function normalizeProviderTimestamp(value: string | null | undefined): string | null {
+  if (!value) return null
+  const date = new Date(value)
+  return Number.isFinite(date.getTime()) ? date.toISOString() : null
+}
+
+function subscriptionPeriodEnd(attrs: LemonSqueezyAttributes): string | null {
+  // A cancelled/expired subscription exposes its paid-through date in ends_at.
+  return attrs.ends_at ?? attrs.renews_at ?? null
+}
+
+const MONOTONIC_SUBSCRIPTION_UPDATE = `
+  subscriptions.provider_updated_at IS NULL
+  OR (
+    excluded.provider_updated_at IS NOT NULL
+    AND (
+      excluded.provider_updated_at > subscriptions.provider_updated_at
+      OR (
+        excluded.provider_updated_at = subscriptions.provider_updated_at
+        AND CASE excluded.status
+          WHEN 'expired' THEN 70
+          WHEN 'cancelled' THEN 60
+          WHEN 'unpaid' THEN 50
+          WHEN 'past_due' THEN 40
+          WHEN 'paused' THEN 30
+          WHEN 'on_trial' THEN 20
+          WHEN 'active' THEN 10
+          ELSE 0 END
+        >= CASE subscriptions.status
+          WHEN 'expired' THEN 70
+          WHEN 'cancelled' THEN 60
+          WHEN 'unpaid' THEN 50
+          WHEN 'past_due' THEN 40
+          WHEN 'paused' THEN 30
+          WHEN 'on_trial' THEN 20
+          WHEN 'active' THEN 10
+          ELSE 0 END
+      )
+    )
+  )`
 
 /** N'affiche que le domaine de l'email pour les logs (privacy). */
 function maskEmail(email: string | undefined): string {
@@ -134,11 +186,38 @@ async function ensureSubscriptionsTable(db: D1Database): Promise<void> {
         status TEXT NOT NULL DEFAULT 'inactive',
         plan_type TEXT NOT NULL DEFAULT 'free',
         current_period_end TEXT,
+        provider_updated_at TEXT,
         created_at TEXT NOT NULL DEFAULT (datetime('now')),
         updated_at TEXT NOT NULL DEFAULT (datetime('now'))
       )`
     )
     .run()
+  const columns = await db
+    .prepare(`PRAGMA table_info(subscriptions)`)
+    .all<{ name: string }>()
+  if (!(columns.results ?? []).some((column) => column.name === 'provider_updated_at')) {
+    try {
+      await db.prepare(`ALTER TABLE subscriptions ADD COLUMN provider_updated_at TEXT`).run()
+    } catch (error) {
+      // Deux webhooks peuvent initialiser une ancienne base en parallèle. Ne
+      // tolérer l'échec que si l'autre requête a effectivement ajouté la colonne.
+      const refreshed = await db
+        .prepare(`PRAGMA table_info(subscriptions)`)
+        .all<{ name: string }>()
+      if (!(refreshed.results ?? []).some((column) => column.name === 'provider_updated_at')) {
+        throw error
+      }
+    }
+  }
+  // Les lignes créées avant l'ajout de provider_updated_at doivent elles aussi
+  // être protégées contre un premier webhook ancien. Leur updated_at local est
+  // une borne conservatrice : tout événement fournisseur antérieur est rejeté,
+  // tandis qu'un événement réellement plus récent peut encore avancer l'état.
+  await db.prepare(
+    `UPDATE subscriptions
+     SET provider_updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', updated_at)
+     WHERE provider_updated_at IS NULL AND updated_at IS NOT NULL`
+  ).run()
   // Contrainte d'unicité requise par tous les ON CONFLICT(user_email).
   await db
     .prepare(
@@ -229,9 +308,14 @@ async function handleOrderCreated(
   if (productId === PRODUCT_ID_PREMIUM_PACK) {
     await ensurePremiumPacksTable(env.DB)
     await env.DB.prepare(
-      `INSERT OR REPLACE INTO premium_packs
+      // Le replay de `order_created` est normal pour un webhook. REPLACE
+      // supprimait puis recréait la ligne et remettait `messages_used` à 0,
+      // réattribuant ainsi un pack déjà consommé. L'order id est la clé
+      // d'idempotence : le premier event gagne, les suivants sont des no-op.
+      `INSERT INTO premium_packs
         (user_email, ls_order_id, messages_total, messages_used, created_at)
-       VALUES (?1, ?2, ?3, 0, datetime('now'))`
+       VALUES (?1, ?2, ?3, 0, datetime('now'))
+       ON CONFLICT(ls_order_id) DO NOTHING`
     )
       .bind(email, orderId, PREMIUM_PACK_MESSAGES_TOTAL)
       .run()
@@ -247,13 +331,19 @@ async function handleSubscriptionUpsert(
   if (!email) return
 
   const status = mapSubscriptionStatus(attrs.status)
-  const planType = status === 'active' ? 'subscription' : 'inactive'
+  if (!status) {
+    console.warn('[lemonsqueezy] subscription status inconnu — event ignoré')
+    return
+  }
+  const planType = status === 'expired' ? 'inactive' : 'subscription'
+  const providerUpdatedAt = normalizeProviderTimestamp(attrs.updated_at)
 
   await ensureSubscriptionsTable(env.DB)
   await env.DB.prepare(
     `INSERT INTO subscriptions
-      (user_email, plan_type, status, ls_subscription_id, ls_customer_id, ls_variant_id, current_period_end, updated_at)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, datetime('now'))
+      (user_email, plan_type, status, ls_subscription_id, ls_customer_id, ls_variant_id,
+       current_period_end, provider_updated_at, updated_at)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, datetime('now'))
      ON CONFLICT(user_email) DO UPDATE SET
        plan_type = excluded.plan_type,
        status = excluded.status,
@@ -261,7 +351,9 @@ async function handleSubscriptionUpsert(
        ls_customer_id = excluded.ls_customer_id,
        ls_variant_id = excluded.ls_variant_id,
        current_period_end = excluded.current_period_end,
+       provider_updated_at = excluded.provider_updated_at,
        updated_at = datetime('now')`
+     + ` WHERE ${MONOTONIC_SUBSCRIPTION_UPDATE}`
   )
     .bind(
       email,
@@ -270,7 +362,8 @@ async function handleSubscriptionUpsert(
       data.id ?? null,
       attrs.customer_id != null ? String(attrs.customer_id) : null,
       attrs.variant_id != null ? String(attrs.variant_id) : null,
-      attrs.renews_at ?? null
+      subscriptionPeriodEnd(attrs),
+      providerUpdatedAt
     )
     .run()
 }
@@ -278,8 +371,7 @@ async function handleSubscriptionUpsert(
 async function handleSubscriptionStatusUpdate(
   env: Env,
   data: LemonSqueezyData,
-  newStatus: 'cancelled' | 'expired' | 'past_due' | 'active',
-  options: { resetPlanToInactive?: boolean; updateRenewsAt?: boolean } = {}
+  newStatus: 'cancelled' | 'expired' | 'past_due' | 'active'
 ): Promise<void> {
   const attrs = data.attributes ?? {}
   const email = attrs.user_email?.toLowerCase()
@@ -287,67 +379,38 @@ async function handleSubscriptionStatusUpdate(
 
   await ensureSubscriptionsTable(env.DB)
 
-  const planType =
-    options.resetPlanToInactive ? 'inactive' : newStatus === 'active' ? 'subscription' : null
+  const planType = newStatus === 'expired' ? 'inactive' : 'subscription'
+  const providerUpdatedAt = normalizeProviderTimestamp(attrs.updated_at)
 
-  // Update si la ligne existe ; sinon on l'insère pour ne pas perdre l'event.
-  // (Cas typique : payment_success arrive avant le subscription_created si
-  // le webhook subscription_created a échoué une 1ère fois.)
-  if (planType !== null && options.updateRenewsAt) {
-    await env.DB.prepare(
-      `INSERT INTO subscriptions
-        (user_email, plan_type, status, ls_subscription_id, ls_customer_id, ls_variant_id, current_period_end, updated_at)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, datetime('now'))
-       ON CONFLICT(user_email) DO UPDATE SET
-         plan_type = excluded.plan_type,
-         status = excluded.status,
-         current_period_end = excluded.current_period_end,
-         updated_at = datetime('now')`
-    )
-      .bind(
-        email,
-        planType,
-        newStatus,
-        data.id ?? null,
-        attrs.customer_id != null ? String(attrs.customer_id) : null,
-        attrs.variant_id != null ? String(attrs.variant_id) : null,
-        attrs.renews_at ?? null
-      )
-      .run()
-    return
-  }
-
-  if (planType !== null) {
-    await env.DB.prepare(
-      `INSERT INTO subscriptions
-        (user_email, plan_type, status, ls_subscription_id, ls_customer_id, ls_variant_id, current_period_end, updated_at)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, datetime('now'))
-       ON CONFLICT(user_email) DO UPDATE SET
-         plan_type = excluded.plan_type,
-         status = excluded.status,
-         updated_at = datetime('now')`
-    )
-      .bind(
-        email,
-        planType,
-        newStatus,
-        data.id ?? null,
-        attrs.customer_id != null ? String(attrs.customer_id) : null,
-        attrs.variant_id != null ? String(attrs.variant_id) : null,
-        attrs.renews_at ?? null
-      )
-      .run()
-    return
-  }
-
-  // past_due : on garde le plan_type existant (l'utilisateur a encore accès
-  // jusqu'à la fin de la période en cours), seul le status change.
+  // Tous les statuts conservent l'accès sauf expired. L'upsert est monotone
+  // sur `attributes.updated_at`, donc un ancien event active ne peut jamais
+  // réécraser une annulation/expiration plus récente.
   await env.DB.prepare(
-    `UPDATE subscriptions
-     SET status = ?1, updated_at = datetime('now')
-     WHERE user_email = ?2`
+    `INSERT INTO subscriptions
+      (user_email, plan_type, status, ls_subscription_id, ls_customer_id, ls_variant_id,
+       current_period_end, provider_updated_at, updated_at)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, datetime('now'))
+     ON CONFLICT(user_email) DO UPDATE SET
+       plan_type = excluded.plan_type,
+       status = excluded.status,
+       ls_subscription_id = COALESCE(subscriptions.ls_subscription_id, excluded.ls_subscription_id),
+       ls_customer_id = COALESCE(excluded.ls_customer_id, subscriptions.ls_customer_id),
+       ls_variant_id = COALESCE(excluded.ls_variant_id, subscriptions.ls_variant_id),
+       current_period_end = COALESCE(excluded.current_period_end, subscriptions.current_period_end),
+       provider_updated_at = excluded.provider_updated_at,
+       updated_at = datetime('now')
+     WHERE ${MONOTONIC_SUBSCRIPTION_UPDATE}`
   )
-    .bind(newStatus, email)
+    .bind(
+      email,
+      planType,
+      newStatus,
+      data.id ?? null,
+      attrs.customer_id != null ? String(attrs.customer_id) : null,
+      attrs.variant_id != null ? String(attrs.variant_id) : null,
+      subscriptionPeriodEnd(attrs),
+      providerUpdatedAt
+    )
     .run()
 }
 
@@ -434,15 +497,11 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
         break
 
       case 'subscription_cancelled':
-        await handleSubscriptionStatusUpdate(env, data, 'cancelled', {
-          resetPlanToInactive: true,
-        })
+        await handleSubscriptionStatusUpdate(env, data, 'cancelled')
         break
 
       case 'subscription_expired':
-        await handleSubscriptionStatusUpdate(env, data, 'expired', {
-          resetPlanToInactive: true,
-        })
+        await handleSubscriptionStatusUpdate(env, data, 'expired')
         break
 
       case 'subscription_payment_failed':
@@ -450,9 +509,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
         break
 
       case 'subscription_payment_success':
-        await handleSubscriptionStatusUpdate(env, data, 'active', {
-          updateRenewsAt: true,
-        })
+        await handleSubscriptionStatusUpdate(env, data, 'active')
         break
 
       case 'license_key_created':

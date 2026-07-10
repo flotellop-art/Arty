@@ -1,7 +1,7 @@
 import type { Env } from '../../env'
 import { consumeCapAtomic } from './atomicQuota'
 import {
-  verifyGoogleUser,
+  verifyGoogleUserStrict,
   type AllowedUser,
   type CheckResult,
   TRIAL_ALLOWED_MODELS,
@@ -553,7 +553,7 @@ export type ProxyIdentity =
 
 /**
  * Gate d'identité des proxys IA : Google D'ABORD (toujours prioritaire), puis
- * fallback email-trial. Ne broaden PAS `verifyGoogleUser` — la mémoire et les
+ * fallback email-trial. Ne broaden PAS le gate Google — la mémoire et les
  * endpoints Google restent Google-only (l'email-trial n'a pas de token Google).
  * Si les deux headers sont envoyés, Google gagne.
  */
@@ -561,10 +561,9 @@ export async function resolveProxyIdentity(
   request: Request,
   env: Env
 ): Promise<ProxyIdentity | null> {
-  // Passe GOOGLE_CLIENT_ID → valide l'audience du token (fix N-1 `aud`, aligné
-  // sur les proxys depuis le merge main). Le chemin Google de l'essai email
-  // hérite ainsi du même durcissement que le gate principal.
-  const googleEmail = await verifyGoogleUser(request, env.GOOGLE_CLIENT_ID)
+  // Les proxys dépensent une clé owner : l'audience Arty est obligatoire et
+  // un échec tokeninfo ne doit jamais basculer sur une identité Google permissive.
+  const googleEmail = await verifyGoogleUserStrict(request, env.GOOGLE_CLIENT_ID)
   if (googleEmail) return { kind: 'google', email: googleEmail }
   const trialEmail = await verifyEmailTrialToken(request, env)
   if (trialEmail) return { kind: 'email-trial', email: trialEmail }

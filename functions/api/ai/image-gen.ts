@@ -4,7 +4,7 @@ import {
   isTrialExpired,
   proKeyRequiredResponse,
   trialExpiredResponse,
-  verifyGoogleUser,
+  verifyGoogleUserStrict,
 } from '../_lib/checkAllowedUser'
 import { checkPremiumCap, premiumCapReachedResponse } from '../_lib/checkPremiumCap'
 import { recordUsage } from '../_lib/quota'
@@ -110,7 +110,7 @@ async function generateViaFlux(prompt: string, bflKey: string): Promise<string |
 }
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUntil }) => {
-  const email = await verifyGoogleUser(request, env.GOOGLE_CLIENT_ID)
+  const email = await verifyGoogleUserStrict(request, env.GOOGLE_CLIENT_ID)
   if (!email) {
     return Response.json({ error: 'Authentication required — please sign in with Google' }, { status: 401 })
   }

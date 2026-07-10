@@ -1,6 +1,7 @@
 import type { Env } from '../../env'
 import { estimateReserveMicro } from './creditPricing'
 import {
+  drainWalletReversalsForUser,
   getWalletBalance,
   reserveCredits,
   settleCredits,
@@ -9,12 +10,15 @@ import {
   touchReservation,
   type WalletBalance,
 } from './wallet'
-import type { UsageTokens } from './pricing'
+import type { MeasuredUsage } from './trackUsage'
 
-// ~4 caractères par token : approximation grossière mais suffisante pour une
-// RÉSERVE (pessimiste par design). On ne cherche pas la précision du tokenizer,
-// juste à ce que la réserve couvre l'ordre de grandeur de l'input.
-const CHARS_PER_TOKEN = 4
+// Une borne en octets UTF-8 est volontairement plus haute qu'un comptage BPE :
+// elle reste sûre pour le CJK, les emoji, le code et les schémas d'outils.
+const TOKEN_BOUND_ENCODER = new TextEncoder()
+const MEDIA_TOKEN_FLOOR = 16_384
+const REMOTE_MEDIA_TOKEN_FLOOR = 128_000
+export const DEFAULT_WALLET_MAX_OUTPUT_TOKENS = 8_192
+export const WALLET_MAX_OUTPUT_TOKENS = 65_536
 
 // ─────────────────────────────────────────────────────────────────────
 // Facturation wallet pour les proxys IA — briques composables (les 4 proxys
@@ -69,37 +73,50 @@ export function extractMaxOutputTokens(
  * uniquement — pas les blobs base64 (facturés différemment, surestimerait).
  */
 export function estimateInputTokens(_provider: AiProvider, body: Record<string, unknown>): number {
-  let chars = 0
-  const addText = (v: unknown) => {
-    if (typeof v === 'string') chars += v.length
-  }
-  const addContent = (content: unknown) => {
-    if (typeof content === 'string') {
-      chars += content.length
+  let tokens = TOKEN_BOUND_ENCODER.encode(JSON.stringify(body)).length
+
+  const isMediaKey = (key: string) =>
+    /^(image_url|inline_?data|file_?data|input_audio|audio|document|source)$/i.test(key)
+  const isMediaPayloadKey = (key: string) =>
+    /^(data|url|uri|file_?uri|image_url|input_audio)$/i.test(key)
+  const looksEncoded = (value: string) =>
+    value.startsWith('data:') || (value.length > 512 && /^[A-Za-z0-9+/=_-]+$/.test(value))
+
+  const walk = (value: unknown, key = '', media = false): void => {
+    if (typeof value === 'string') {
+      if (isMediaKey(key) || (media && isMediaPayloadKey(key))) {
+        const bytesAlreadyCounted = TOKEN_BOUND_ENCODER.encode(value).length
+        const mediaBound = looksEncoded(value)
+          ? Math.max(MEDIA_TOKEN_FLOOR, bytesAlreadyCounted)
+          : REMOTE_MEDIA_TOKEN_FLOOR
+        tokens += Math.max(0, mediaBound - bytesAlreadyCounted)
+      }
       return
     }
-    if (Array.isArray(content)) {
-      for (const part of content) {
-        if (part && typeof part === 'object') addText((part as { text?: unknown }).text)
-      }
+    if (Array.isArray(value)) {
+      for (const item of value) walk(item, key, media)
+      return
+    }
+    if (!value || typeof value !== 'object') return
+
+    const record = value as Record<string, unknown>
+    const type = typeof record.type === 'string' ? record.type.toLowerCase() : ''
+    const mime = typeof record.mime_type === 'string'
+      ? record.mime_type.toLowerCase()
+      : typeof record.mimeType === 'string'
+        ? record.mimeType.toLowerCase()
+        : ''
+    const thisMedia =
+      media || /image|audio|document|file/.test(type) || /^(image|audio|video|application\/pdf)/.test(mime)
+    if (thisMedia && !media) tokens += MEDIA_TOKEN_FLOOR
+
+    for (const [childKey, child] of Object.entries(record)) {
+      walk(child, childKey, thisMedia || isMediaKey(childKey))
     }
   }
-  // system (Anthropic accepte string OU array de blocs)
-  addContent(body.system)
-  // messages[] (Anthropic / OpenAI / Mistral)
-  if (Array.isArray(body.messages)) {
-    for (const m of body.messages) {
-      if (m && typeof m === 'object') addContent((m as { content?: unknown }).content)
-    }
-  }
-  // contents[].parts[].text (Gemini)
-  if (Array.isArray(body.contents)) {
-    for (const c of body.contents) {
-      const parts = (c as { parts?: unknown }).parts
-      if (Array.isArray(parts)) for (const p of parts) addText((p as { text?: unknown }).text)
-    }
-  }
-  return Math.ceil(chars / CHARS_PER_TOKEN)
+
+  walk(body)
+  return Math.ceil(tokens)
 }
 
 /**
@@ -142,6 +159,17 @@ export async function beginWalletBilling(
   // bénéfice (solde rendu) s'applique dès la requête suivante.
   waitUntil(sweepStaleReservations(env, { email, limit: 10 }))
 
+  // Une dette de refund/chargeback a priorité sur un nouvel appel IA. Si son
+  // état ne peut pas être lu/appliqué, refuser le path wallet plutôt que de
+  // réserver des fonds qui auraient dû être repris.
+  const reversalDrain = await drainWalletReversalsForUser(env, email)
+  if (reversalDrain.status === 'error') {
+    return {
+      mode: 'refuse',
+      response: Response.json({ error: 'wallet_temporarily_unavailable' }, { status: 503 }),
+    }
+  }
+
   const bal: WalletBalance | null = await getWalletBalance(env, email)
   if (!bal || bal.availableMicro <= 0) return { mode: 'skip' }
 
@@ -172,9 +200,44 @@ export async function beginWalletBilling(
 export function settleWalletBilling(
   env: Env,
   params: { resId: string; email: string; model: string },
-  usage: UsageTokens,
+  usage: MeasuredUsage,
 ): Promise<unknown> {
-  return settleCredits(env, { ...params, modality: 'text', usage })
+  return settleCredits(env, {
+    ...params,
+    modality: 'text',
+    usage,
+    usageMeasured: usage.measured,
+  })
+}
+
+/**
+ * Impose au fournisseur le plafond exact utilisé par la réservation wallet.
+ * Sans cette réécriture, une requête omettant max_tokens serait réservée à
+ * 8 192 puis pourrait consommer le défaut (potentiellement supérieur) du
+ * modèle. La borne haute protège aussi contre les budgets pathologiques.
+ */
+export function enforceWalletOutputLimit(
+  provider: AiProvider,
+  body: Record<string, unknown>,
+): number {
+  const requested = extractMaxOutputTokens(provider, body)
+  const limit = Math.min(
+    WALLET_MAX_OUTPUT_TOKENS,
+    Math.max(1, Math.ceil(requested ?? DEFAULT_WALLET_MAX_OUTPUT_TOKENS)),
+  )
+
+  if (provider === 'gemini') {
+    const current = body.generationConfig
+    body.generationConfig = {
+      ...(current && typeof current === 'object' ? current as Record<string, unknown> : {}),
+      maxOutputTokens: limit,
+    }
+  } else if (provider === 'openai' && Object.prototype.hasOwnProperty.call(body, 'max_completion_tokens')) {
+    body.max_completion_tokens = limit
+  } else {
+    body.max_tokens = limit
+  }
+  return limit
 }
 
 /** VOID — rendre la réserve sur échec upstream (!ok) ou exception. Via waitUntil. */

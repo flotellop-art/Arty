@@ -1,5 +1,5 @@
 import type { Env } from '../../env'
-import { decodeBase64Url, decodePartBody, htmlToText, type MimePart } from './_lib'
+import { buildPlainTextMime, decodeBase64Url, decodePartBody, htmlToText, InvalidMimeHeaderError, type MimePart } from './_lib'
 import { verifyGoogleUser, notFoundResponse } from '../_lib/checkAllowedUser'
 import { truncateWithNotice } from '../_lib/truncate'
 import { googleFetch } from '../_lib/googleFetch'
@@ -168,10 +168,12 @@ async function handleSend(token: string, body: Record<string, unknown>): Promise
   const { to, subject, body: emailBody, threadId, inReplyTo } = body as { to?: string; subject?: string; body?: string; threadId?: string; inReplyTo?: string }
   if (!to || !subject || !emailBody) return Response.json({ error: 'Missing to, subject, or body' }, { status: 400 })
 
+  if (threadId && !/^[a-zA-Z0-9_-]+$/.test(threadId)) {
+    return Response.json({ error: 'Invalid threadId' }, { status: 400 })
+  }
+
   try {
-    const hdrs = [`To: ${to}`, `Subject: ${subject}`, 'Content-Type: text/plain; charset=utf-8']
-    if (inReplyTo) { hdrs.push(`In-Reply-To: ${inReplyTo}`, `References: ${inReplyTo}`) }
-    const raw = hdrs.join('\r\n') + '\r\n\r\n' + emailBody
+    const raw = buildPlainTextMime({ to, subject, body: emailBody, inReplyTo })
     const encoded = Buffer.from(raw).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
     const sendBody: { raw: string; threadId?: string } = { raw: encoded }
     if (threadId) sendBody.threadId = threadId
@@ -182,7 +184,12 @@ async function handleSend(token: string, body: Record<string, unknown>): Promise
     if (!r.ok) { const err = await r.json() as Record<string, unknown>; return Response.json({ error: 'Gmail operation failed' }, { status: r.status }) }
     const result = await r.json() as Record<string, unknown>
     return Response.json({ id: result.id, threadId: result.threadId })
-  } catch { return Response.json({ error: 'Failed to send' }, { status: 500 }) }
+  } catch (err) {
+    if (err instanceof InvalidMimeHeaderError) {
+      return Response.json({ error: 'Invalid email headers' }, { status: 400 })
+    }
+    return Response.json({ error: 'Failed to send' }, { status: 500 })
+  }
 }
 
 async function handleSearch(token: string, body: Record<string, unknown>): Promise<Response> {
@@ -342,9 +349,7 @@ async function handleDraft(token: string, body: Record<string, unknown>): Promis
   const { to, subject, body: draftBody } = body as { to?: string; subject?: string; body?: string }
   if (!subject || !draftBody) return Response.json({ error: 'Missing subject or body' }, { status: 400 })
   try {
-    const hdrs = [`Subject: ${subject}`, 'Content-Type: text/plain; charset=utf-8']
-    if (to) hdrs.unshift(`To: ${to}`)
-    const raw = hdrs.join('\r\n') + '\r\n\r\n' + draftBody
+    const raw = buildPlainTextMime({ to: to || undefined, subject, body: draftBody })
     const encoded = Buffer.from(raw).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
     const r = await googleFetch('https://gmail.googleapis.com/gmail/v1/users/me/drafts', {
       method: 'POST',
@@ -354,7 +359,12 @@ async function handleDraft(token: string, body: Record<string, unknown>): Promis
     if (!r.ok) { const err = await r.json() as Record<string, unknown>; return Response.json({ error: 'Gmail operation failed' }, { status: r.status }) }
     const result = await r.json() as Record<string, unknown>
     return Response.json({ id: result.id, success: true })
-  } catch { return Response.json({ error: 'Draft failed' }, { status: 500 }) }
+  } catch (err) {
+    if (err instanceof InvalidMimeHeaderError) {
+      return Response.json({ error: 'Invalid email headers' }, { status: 400 })
+    }
+    return Response.json({ error: 'Draft failed' }, { status: 500 })
+  }
 }
 
 async function handleLabel(token: string, body: Record<string, unknown>): Promise<Response> {
