@@ -85,4 +85,4 @@ jobs:
 
       - name: Android lint, unit tests, and compile checks
         working-directory: android
-        run: ./gradlew lintDebug testDebugUnitTest assembleDebug assembleAndroidTest --no-daemon
+        run: ./gradlew :app:lintDebug :app:testDebugUnitTest :app:assembleDebug :app:assembleAndroidTest --no-daemon

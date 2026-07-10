@@ -108,7 +108,7 @@ jobs:
           ARTY_KEYSTORE_PASSWORD: ${{ secrets.ARTY_KEYSTORE_PASSWORD }}
           ARTY_KEY_ALIAS: ${{ secrets.ARTY_KEY_ALIAS }}
           ARTY_KEY_PASSWORD: ${{ secrets.ARTY_KEY_PASSWORD }}
-        run: ./gradlew lintRelease testReleaseUnitTest assembleRelease --no-daemon
+        run: ./gradlew :app:lintRelease :app:testReleaseUnitTest :app:assembleRelease --no-daemon
 
       - name: Distribute to Firebase App Distribution
         uses: wzieba/Firebase-Distribution-Github-Action@bd494989dd4bec0343f78adee87fe66e48279ad6 # v1.7.1

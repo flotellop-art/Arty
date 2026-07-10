@@ -75,7 +75,7 @@ jobs:
           ARTY_KEYSTORE_PASSWORD: ${{ secrets.ARTY_KEYSTORE_PASSWORD }}
           ARTY_KEY_ALIAS: ${{ secrets.ARTY_KEY_ALIAS }}
           ARTY_KEY_PASSWORD: ${{ secrets.ARTY_KEY_PASSWORD }}
-        run: ./gradlew lintRelease testReleaseUnitTest bundleRelease --no-daemon
+        run: ./gradlew :app:lintRelease :app:testReleaseUnitTest :app:bundleRelease --no-daemon
 
       - name: Upload AAB artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
