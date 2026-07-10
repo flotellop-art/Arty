@@ -1,5 +1,6 @@
 import type { Env } from '../../env'
 import { consumeCapAtomic, maybeCleanup } from './atomicQuota'
+import { hasKnownPricing } from './pricing'
 
 /**
  * Cap mensuel sur les modèles "premium" pour le plan subscription
@@ -37,6 +38,7 @@ export const PREMIUM_BUCKET_CAPS: Record<string, number> = {
   'claude-sonnet': 150,
   'gpt-5': 100,
   'gemini-pro': 80,
+  'unknown-model': 80,
   // P1.3 — génération d'images. Cap volontairement bas (chaque image = coût
   // fixe ~$0.04) ; tunable après une vigie d'un mois.
   'gpt-image': 10,
@@ -60,7 +62,7 @@ interface PremiumCapEntry {
  *
  * Standards (retourne null) : gpt-5-mini, gemini-flash*, mistral-*.
  */
-function classifyModel(model: string): PremiumCapEntry | null {
+export function classifyPremiumModel(model: string): PremiumCapEntry | null {
   const m = model.toLowerCase()
 
   // Génération d'images (P1.3) — bucket dédié, avant les patterns gpt-*.
@@ -70,10 +72,15 @@ function classifyModel(model: string): PremiumCapEntry | null {
     return { bucket: 'gpt-image', cap: PREMIUM_BUCKET_CAPS['gpt-image']! }
   }
 
-  // Standards en premier — pour ne pas être attrapé par les patterns premium.
-  if (m.startsWith('gpt-5-mini')) return null
-  if (m.startsWith('gemini-flash') || m.includes('-flash')) return null
-  if (m.startsWith('mistral')) return null
+  // Standards seulement s'ils figurent exactement au catalogue financier.
+  // Une variante nouvelle/inventée ne doit jamais hériter d'un tarif mini ni
+  // contourner les caps par simple suffixe.
+  if (hasKnownPricing(m)) {
+    if (m.startsWith('gpt-5') && (m.includes('-mini') || m.includes('-nano'))) return null
+    if (m.startsWith('gemini-flash') || m.includes('-flash')) return null
+    if (m.startsWith('mistral') || m.startsWith('codestral')) return null
+    if (m === 'whisper-1' || m === 'voxtral-mini-latest') return null
+  }
 
   if (m.startsWith('claude-sonnet') || m.startsWith('claude-opus')) {
     return { bucket: 'claude-sonnet', cap: PREMIUM_BUCKET_CAPS['claude-sonnet']! }
@@ -82,10 +89,16 @@ function classifyModel(model: string): PremiumCapEntry | null {
     // gpt-5-mini déjà filtré plus haut. gpt-5, gpt-5.5, gpt-5-turbo, etc. → 100.
     return { bucket: 'gpt-5', cap: PREMIUM_BUCKET_CAPS['gpt-5']! }
   }
-  if (m.startsWith('gemini-pro') || m.includes('gemini-1.5-pro') || m.includes('gemini-2-pro')) {
+  // Covers every versioned Pro ID exposed by the clients/catalogue, including
+  // gemini-2.5-pro (which the former gemini-2-pro substring missed), preview
+  // suffixes and the unversioned gemini-pro aliases.
+  if (/^gemini-(?:\d+(?:\.\d+)?-)?pro(?:$|[-.])/.test(m)) {
     return { bucket: 'gemini-pro', cap: PREMIUM_BUCKET_CAPS['gemini-pro']! }
   }
 
+  if (!hasKnownPricing(m)) {
+    return { bucket: 'unknown-model', cap: PREMIUM_BUCKET_CAPS['unknown-model']! }
+  }
   return null
 }
 
@@ -184,7 +197,7 @@ export async function checkPremiumCap(
   model: string,
   env: Env
 ): Promise<PremiumCapResult> {
-  const entry = classifyModel(model)
+  const entry = classifyPremiumModel(model)
   if (!entry) return { allowed: true, reason: 'standard_model' }
 
   if (!env.DB) {

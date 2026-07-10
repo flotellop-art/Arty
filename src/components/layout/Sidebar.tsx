@@ -770,6 +770,7 @@ export const Sidebar = memo(function Sidebar({
             {onLogout && (
               <button
                 onClick={onLogout}
+                title={t('common.logoutHint')}
                 className="bg-transparent text-theme-muted hover:text-theme-ink text-[10px] px-2.5 py-1 rounded-md transition-colors"
                 style={{ border: `1px solid ${DESIGN.borderMid}` }}
               >

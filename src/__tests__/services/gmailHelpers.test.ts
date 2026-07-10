@@ -1,9 +1,12 @@
 import { describe, it, expect } from 'vitest'
 import {
+  buildPlainTextMime,
   getCharset,
   decodeBase64Url,
   decodePartBody,
   htmlToText,
+  InvalidMimeHeaderError,
+  normalizeRecipientList,
   type MimePart,
 } from '../../../functions/api/gmail/_lib'
 
@@ -247,5 +250,38 @@ describe('gmail/_lib — htmlToText', () => {
     // The closing produces a newline before the next token; trim() removes
     // the trailing one.
     expect(htmlToText('<h1>Title</h1>')).toBe('Title')
+  })
+})
+
+describe('gmail/_lib — safe MIME construction', () => {
+  it('builds normalized recipient headers and preserves the body', () => {
+    const raw = buildPlainTextMime({
+      to: 'alice@example.com, bob+tag@example.org',
+      subject: 'Compte rendu',
+      body: 'Bonjour\nLigne 2',
+    })
+    expect(raw).toContain('To: alice@example.com, bob+tag@example.org\r\n')
+    expect(raw).toContain('Subject: Compte rendu\r\n')
+    expect(raw.endsWith('\r\n\r\nBonjour\nLigne 2')).toBe(true)
+  })
+
+  it.each([
+    'victim@example.com\r\nBcc: attacker@example.com',
+    'victim@example.com\nCc: attacker@example.com',
+    'victim@example.com\0attacker@example.com',
+  ])('rejects recipient header injection: %j', (to) => {
+    expect(() => buildPlainTextMime({ to, subject: 'Bonjour', body: 'x' }))
+      .toThrow(InvalidMimeHeaderError)
+  })
+
+  it('rejects controls in subject/Message-ID and ambiguous mailboxes', () => {
+    expect(() => buildPlainTextMime({
+      to: 'a@example.com', subject: 'ok\r\nBcc: x@y.z', body: 'x',
+    })).toThrow(InvalidMimeHeaderError)
+    expect(() => buildPlainTextMime({
+      to: 'a@example.com', subject: 'ok', body: 'x', inReplyTo: '<id@example.com>\0',
+    })).toThrow(InvalidMimeHeaderError)
+    expect(() => normalizeRecipientList('Alice <alice@example.com>'))
+      .toThrow(InvalidMimeHeaderError)
   })
 })

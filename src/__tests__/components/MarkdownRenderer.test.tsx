@@ -36,9 +36,9 @@ describe('MarkdownRenderer', () => {
     const { container } = render(
       <MarkdownRenderer content={'<img src="x" onerror="alert(1)" />\n\n```js\nconst a = 1\n```'} />
     )
-    const img = container.querySelector('img')
-    // l'attribut handler doit être strippé par rehype-sanitize
-    expect(img?.getAttribute('onerror')).toBeNull()
+    // L'image relative est bloquée et aucun handler ne survit au sanitize.
+    expect(container.querySelector('img')).toBeNull()
+    expect(container.querySelector('[onerror]')).toBeNull()
     expect(container.querySelector('script')).toBeNull()
   })
 
@@ -63,6 +63,28 @@ describe('MarkdownRenderer', () => {
     const img = container.querySelector('img')
     // src data: retiré par la sanitisation (protocols.src sans 'data')
     expect(img?.getAttribute('src') ?? '').not.toContain('data:')
+  })
+
+  it('ne charge jamais automatiquement une image Markdown HTTP(S)', () => {
+    const { container } = render(
+      <MarkdownRenderer content={'![pixel de suivi](https://tracker.example/pixel.png?user=42)'} />
+    )
+    expect(container.querySelector('img')).toBeNull()
+    const note = screen.getByRole('note')
+    expect(note.textContent).toMatch(/remoteImageBlocked|image externe bloquée/i)
+    const link = screen.getByRole('link')
+    expect(link.getAttribute('href')).toBe('https://tracker.example/pixel.png?user=42')
+    expect(link.getAttribute('referrerpolicy')).toBe('no-referrer')
+  })
+
+  it('supprime aussi les URL distantes cachées dans du CSS Markdown', () => {
+    const { container } = render(
+      <MarkdownRenderer content={'<div style="background-image:url(https://tracker.example/pixel.png);width:75%">rapport</div>'} />
+    )
+    const div = container.querySelector('.report-content > div')
+    expect(div?.getAttribute('style') ?? '').not.toContain('url(')
+    // Le seul style riche autorisé reste la largeur des barres de progression.
+    expect(div?.getAttribute('style')).toContain('width: 75%')
   })
 
   it('numérote les listes ordonnées via les marqueurs CSS (structure md-list)', () => {

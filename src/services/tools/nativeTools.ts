@@ -1,5 +1,5 @@
 import type { ToolHandler } from './types'
-import { isNative } from '../native/platform'
+import { isNative, platform } from '../native/platform'
 import { listLocalFiles, readLocalFile, writeLocalFile, deleteLocalFile } from '../native/filesystem'
 import { shareContent } from '../native/share'
 
@@ -7,6 +7,7 @@ export function createNativeHandlers(): Record<string, ToolHandler> {
   return {
     list_local_files: async (input) => {
       if (!isNative) return { result: 'Disponible uniquement sur l\'app mobile.' }
+      if (platform === 'android') return { result: 'Sélection de fichiers Android temporairement indisponible.' }
       const path = (input.path as string) || ''
       const files = await listLocalFiles(path)
       if (files.length === 0) return { result: 'Aucun fichier trouvé.' }
@@ -18,6 +19,7 @@ export function createNativeHandlers(): Record<string, ToolHandler> {
 
     read_local_file: async (input) => {
       if (!isNative) return { result: 'Disponible uniquement sur l\'app mobile.' }
+      if (platform === 'android') return { result: 'Sélection de fichiers Android temporairement indisponible.' }
       const path = input.path as string
       if (!path) return { result: 'Chemin du fichier requis.' }
       const file = await readLocalFile(path)
@@ -148,4 +150,7 @@ export const NATIVE_TOOL_DEFINITIONS: any[] = [
   },
 ]
 
-export const nativeToolDefinitions: any[] = isNative ? NATIVE_TOOL_DEFINITIONS : []
+const ANDROID_SAF_PENDING = new Set(['list_local_files', 'read_local_file'])
+export const nativeToolDefinitions: any[] = isNative
+  ? NATIVE_TOOL_DEFINITIONS.filter((tool) => platform !== 'android' || !ANDROID_SAF_PENDING.has(tool.name))
+  : []

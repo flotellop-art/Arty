@@ -1,5 +1,5 @@
 import type { Env } from '../../env'
-import { verifyGoogleUser } from '../_lib/checkAllowedUser'
+import { verifyGoogleUserStrict } from '../_lib/checkAllowedUser'
 
 async function ensureTable(db: D1Database) {
   await db.prepare(`
@@ -25,7 +25,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   // caller cannot read or write another user's memory. Pas besoin de
   // whitelist ici : la mémoire est scopée par user (chaque user n'a accès
   // qu'à la sienne), aucun coût d'API tiers impliqué.
-  const email = await verifyGoogleUser(request)
+  const email = await verifyGoogleUserStrict(request, env.GOOGLE_CLIENT_ID)
   if (!email) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 })
   }

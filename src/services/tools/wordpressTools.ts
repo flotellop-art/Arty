@@ -1,5 +1,5 @@
 import type { ToolHandler } from './types'
-import { callApi } from '../googleApiHelper'
+import { callGoogleApi } from '../googleApiHelper'
 import { getDateLocale } from '../../utils/formatDate'
 
 export const wordpressToolDefinitions = [
@@ -56,7 +56,7 @@ export function createWordpressHandlers(): Record<string, ToolHandler> {
   return {
     wp_create_post: async (input) => {
       try {
-        const data = await callApi('/api/wordpress/action', { type: 'create', title: input.title, content: input.content, status: input.status, date: input.date })
+        const data = await callGoogleApi('/api/wordpress/action', { type: 'create', title: input.title, content: input.content, status: input.status, date: input.date })
         return { result: data.id ? `Article "${data.title}" créé (${data.status}).${data.link ? ` Lien: ${data.link}` : ''}` : `Erreur: ${data.error}` }
       } catch (err) {
         return { result: `Erreur: ${err instanceof Error ? err.message : 'WordPress échoué.'}` }
@@ -65,7 +65,7 @@ export function createWordpressHandlers(): Record<string, ToolHandler> {
 
     wp_list_posts: async (input) => {
       try {
-        const data = await callApi('/api/wordpress/action', { type: 'list', status: input.status })
+        const data = await callGoogleApi('/api/wordpress/action', { type: 'list', status: input.status })
         if (data.posts && data.posts.length > 0) {
           const list = data.posts.map((p: { id: number; title: string; status: string; date: string; link: string }, i: number) =>
             `${i + 1}. [ID:${p.id}] ${p.title} (${p.status}) — ${new Date(p.date).toLocaleDateString(getDateLocale())}`
@@ -80,7 +80,7 @@ export function createWordpressHandlers(): Record<string, ToolHandler> {
 
     wp_update_post: async (input) => {
       try {
-        const data = await callApi('/api/wordpress/action', { type: 'update', postId: input.post_id, title: input.title, content: input.content, status: input.status })
+        const data = await callGoogleApi('/api/wordpress/action', { type: 'update', postId: input.post_id, title: input.title, content: input.content, status: input.status })
         return { result: data.id ? `Article "${data.title}" modifié (${data.status}).` : `Erreur: ${data.error}` }
       } catch (err) {
         return { result: `Erreur: ${err instanceof Error ? err.message : 'WordPress échoué.'}` }
@@ -89,7 +89,7 @@ export function createWordpressHandlers(): Record<string, ToolHandler> {
 
     wp_delete_post: async (input) => {
       try {
-        const data = await callApi('/api/wordpress/action', { type: 'delete', postId: input.post_id })
+        const data = await callGoogleApi('/api/wordpress/action', { type: 'delete', postId: input.post_id })
         return { result: data.success ? 'Article supprimé.' : `Erreur: ${data.error}` }
       } catch (err) {
         return { result: `Erreur: ${err instanceof Error ? err.message : 'WordPress échoué.'}` }

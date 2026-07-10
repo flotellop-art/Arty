@@ -83,7 +83,7 @@ export function createUtilityHandlers(): Record<string, ToolHandler> {
     generate_report: async (input) => {
       const title = input.title as string
       const content = input.content as string
-      const reportId = openReport(title, content)
+      const reportId = await openReport(title, content)
       return { result: `Rapport "${title}" prêt. Lien : [📄 Ouvrir le rapport](${window.location.origin}/report/${reportId})` }
     },
 
@@ -148,11 +148,14 @@ export function createUtilityHandlers(): Record<string, ToolHandler> {
       }
 
       try {
+        const googleToken = await getValidAccessToken()
+        if (!googleToken) return { result: 'Connecte ton compte Google pour obtenir la météo.' }
         const res = await fetch(apiUrl('/api/browser/weather'), {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'x-google-token': googleToken },
           body: JSON.stringify({ city }),
         })
+        if (!res.ok) return { result: 'Erreur: météo indisponible.' }
         const data = await safeJson(res)
         if (data.current) {
           let result = `Météo ${data.city} : ${data.current.condition}, ${data.current.temperature}°C, vent ${data.current.wind} km/h\n\nPrévisions :\n`

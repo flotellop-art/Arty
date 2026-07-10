@@ -41,6 +41,26 @@ function GeneratedImage({ fileId, alt }: { fileId: string; alt?: string }) {
   )
 }
 
+function BlockedRemoteImage({ src, alt }: { src: string; alt?: string }) {
+  const { t } = useTranslation()
+  return (
+    <span role="note" className="block my-3 rounded-xl border border-theme-border bg-theme-surface px-4 py-3 text-xs">
+      <span className="block text-theme-ink/70">
+        {t('chat.bubble.remoteImageBlocked')}{alt ? ` — ${alt}` : ''}
+      </span>
+      <a
+        href={src}
+        target="_blank"
+        rel="noopener noreferrer"
+        referrerPolicy="no-referrer"
+        className="mt-1 inline-block text-theme-accent underline"
+      >
+        {t('chat.bubble.openRemoteImage')}
+      </a>
+    </span>
+  )
+}
+
 // Custom sanitize schema: allow Arty CSS classes + data-* attributes for action buttons
 // Block: <script>, <iframe>, onerror, onload, javascript: URIs
 const sanitizeSchema = {
@@ -51,7 +71,7 @@ const sanitizeSchema = {
   ],
   attributes: {
     ...defaultSchema.attributes,
-    '*': ['className', 'class', 'style'],
+    '*': ['className', 'class'],
     // SÉCURITÉ (audit 14 juin) : liste BLANCHE explicite au lieu du wildcard
     // `data*`. Le wildcard laissait l'IA injecter n'importe quel data-attribut ;
     // couplé au dispatch des boutons, il amplifiait le vecteur de prompt-injection.
@@ -183,10 +203,13 @@ const components: Components = {
     if (typeof src === 'string' && src.startsWith('arty-img://')) {
       return <GeneratedImage fileId={src.slice('arty-img://'.length)} alt={alt} />
     }
-    return (
-      <img src={src} alt={alt || 'Image'}
-        className="w-full rounded-xl border border-theme-border my-3 shadow-sm" />
-    )
+    // Remote Markdown images can be tracking pixels. Never fetch them merely
+    // because model/third-party text was rendered; an explicit no-referrer link
+    // lets the user open the resource in a separate tab if they choose.
+    if (typeof src === 'string' && /^https?:\/\//i.test(src)) {
+      return <BlockedRemoteImage src={src} alt={alt} />
+    }
+    return <span role="note" className="text-xs text-theme-ink/60">{alt || 'Image'}</span>
   },
   blockquote: ({ children }) => (
     <blockquote className="my-3 pl-4 border-l-4 border-theme-accent bg-theme-accent/5 rounded-r-xl py-3 pr-4 italic text-theme-ink/80">
@@ -259,12 +282,25 @@ const components: Components = {
   },
   pre: ({ children }) => <>{children}</>,
   // HTML elements for rich reports
-  div: ({ className, children, ...props }) => (
-    <div className={className || ''} {...props}>{children}</div>
+  div: ({ className, children, style, ...props }) => (
+    <div className={className || ''} style={sanitizeReportStyle(style)} {...props}>{children}</div>
   ),
   span: ({ className, children, style, ...props }) => (
-    <span className={className || ''} style={style} {...props}>{children}</span>
+    <span className={className || ''} style={sanitizeReportStyle(style)} {...props}>{children}</span>
   ),
+}
+
+/**
+ * Rich reports only need percentage widths for progress/severity bars. Drop
+ * every other model-controlled CSS property, especially url() values that
+ * could otherwise load a remote tracking resource without user interaction.
+ */
+function sanitizeReportStyle(style: React.CSSProperties | undefined): React.CSSProperties | undefined {
+  const width = style?.width
+  if (typeof width === 'string' && /^(?:100|[1-9]?\d)%$/.test(width)) {
+    return { width }
+  }
+  return undefined
 }
 
 // CRIT-8 (audit étape 6) — memo'ed pour éviter le reparse markdown à chaque

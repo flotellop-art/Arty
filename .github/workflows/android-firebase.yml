@@ -18,32 +18,42 @@ on:
         required: false
         default: 'beta-testers'
 
+permissions:
+  contents: read
+
 concurrency:
   group: firebase-apk-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   build-and-distribute:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    environment: Preview
+    env:
+      FIREBASE_GROUPS: ${{ inputs.groups || 'beta-testers' }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Validate Gradle wrapper
+        uses: gradle/actions/wrapper-validation@3f131e8634966bd73d06cc69884922b02e6faf92 # v6.2.0
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '22'
           cache: 'npm'
 
       - name: Setup Java 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4.8.0
         with:
           distribution: 'temurin'
           java-version: '21'
 
       - name: Cache Gradle
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: |
             ~/.gradle/caches
@@ -54,19 +64,11 @@ jobs:
       - name: Install npm dependencies
         run: npm ci
 
-      - name: Build web assets (Vite + tsc)
-        run: npm run build
+      - name: Verify web app and Functions
+        run: npm run verify
 
       - name: Sync Capacitor Android
         run: npx cap sync android
-
-      # JCenter a fermé en 2021 ; le plugin capacitor-google-auth déclare encore
-      # `jcenter()`. On le REMPLACE par mavenCentral() (pas juste supprimer :
-      # jcenter hébergeait des deps transitives d'AGP — jdom2, commons-codec,
-      # kotlin-stdlib… — absentes de google() mais présentes sur mavenCentral()).
-      - name: Replace defunct JCenter with mavenCentral in plugins
-        run: |
-          grep -rl 'jcenter()' node_modules android --include=build.gradle 2>/dev/null | xargs -r sed -i 's/jcenter()/mavenCentral()/g' || true
 
       - name: Decode google-services.json
         env:
@@ -83,18 +85,21 @@ jobs:
           test -s android/app/arty-release.keystore
 
       - name: Write release notes
-        id: notes
+        env:
+          RELEASE_NOTES_INPUT: ${{ inputs.release_notes }}
         run: |
-          NOTES="${{ github.event.inputs.release_notes }}"
-          if [ -z "$NOTES" ]; then
-            NOTES="$(git log -1 --pretty=%s)"
+          if [ -n "$RELEASE_NOTES_INPUT" ]; then
+            printf '%s\n' "$RELEASE_NOTES_INPUT" > android/app/release-notes.txt
+          else
+            git log -1 --pretty=%s > android/app/release-notes.txt
           fi
-          printf '%s\n' "$NOTES" > android/app/release-notes.txt
-          {
-            echo "notes<<__END__"
-            cat android/app/release-notes.txt
-            echo "__END__"
-          } >> "$GITHUB_OUTPUT"
+
+      - name: Validate Firebase group names
+        run: |
+          if ! [[ "$FIREBASE_GROUPS" =~ ^[A-Za-z0-9._,-]+$ ]]; then
+            echo "Invalid Firebase distribution group list" >&2
+            exit 1
+          fi
 
       - name: Build signed release APK
         working-directory: android
@@ -103,19 +108,20 @@ jobs:
           ARTY_KEYSTORE_PASSWORD: ${{ secrets.ARTY_KEYSTORE_PASSWORD }}
           ARTY_KEY_ALIAS: ${{ secrets.ARTY_KEY_ALIAS }}
           ARTY_KEY_PASSWORD: ${{ secrets.ARTY_KEY_PASSWORD }}
-        run: ./gradlew assembleRelease --no-daemon
+        run: ./gradlew :app:lintRelease :app:testReleaseUnitTest :app:assembleRelease --no-daemon
 
       - name: Distribute to Firebase App Distribution
-        uses: wzieba/Firebase-Distribution-Github-Action@v1
+        uses: wzieba/Firebase-Distribution-Github-Action@bd494989dd4bec0343f78adee87fe66e48279ad6 # v1.7.1
         with:
           appId: ${{ secrets.FIREBASE_APP_ID }}
           serviceCredentialsFileContent: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-          groups: ${{ github.event.inputs.groups || 'beta-testers' }}
+          groups: ${{ env.FIREBASE_GROUPS }}
           file: android/app/build/outputs/apk/release/app-release.apk
-          releaseNotes: ${{ steps.notes.outputs.notes }}
+          releaseNotesFile: android/app/release-notes.txt
 
       - name: Cleanup secret files
         if: always()
         run: |
           rm -f android/app/arty-release.keystore
           rm -f android/app/google-services.json
+          rm -f android/app/release-notes.txt

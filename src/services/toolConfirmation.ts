@@ -28,7 +28,10 @@ export function buildToolConfirmMessage(
     // Envoi externe / exfiltration
     case 'send_email':
     case 'reply_email':
-      return t('chat.actionConfirm.email', { to: (input.to as string) || '?' })
+      return t('chat.actionConfirm.email', {
+        to: (input.to as string) || '?',
+        subject: (input.subject as string) || '?',
+      })
     case 'share_drive_file':
       return t('chat.actionConfirm.shareDrive', { email: (input.email as string) || '?' })
     // Suppression destructive

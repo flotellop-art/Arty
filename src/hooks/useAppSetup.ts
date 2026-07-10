@@ -12,7 +12,6 @@ import { getCustomInstructions } from '../services/customInstructions'
 import { createToolExecutor } from '../services/toolExecutor'
 import { getStyle, setStyle, getStylePrompt, STYLE_OPTIONS, type ResponseStyle } from '../services/responseStyles'
 import type { Question } from '../components/chat/QuestionModal'
-import type { GmailMessage } from '../types/google'
 
 interface ConversationHook {
   activeId: string | null
@@ -111,24 +110,6 @@ export function useAppSetup(conversation: ConversationHook) {
       return
     }
 
-    let gmailSummary: string | undefined
-    if (gmail.messages.length > 0) {
-      gmailSummary = `${gmail.messages.length} emails non lus :\n` +
-        gmail.messages
-          .slice(0, 5)
-          .map((m: GmailMessage) => `- De: ${m.from} | Objet: ${m.subject}`)
-          .join('\n')
-    }
-
-    let driveSummary: string | undefined
-    if (drive.files.length > 0) {
-      driveSummary = `Fichiers récents sur Drive :\n` +
-        drive.files
-          .slice(0, 5)
-          .map((f) => `- ${f.name} (${f.mimeType})`)
-          .join('\n')
-    }
-
     // Roadmap PR 12.1 — injection mémoire conditionnelle.
     // Au boot et aux changements Google/Drive, on construit un prompt avec
     // mémoire COMPLÈTE (fallback legacy safe). Mais quand sendMessage dispatch
@@ -137,7 +118,9 @@ export function useAppSetup(conversation: ConversationHook) {
     // requêtes type "salut", "merci", "comment ça va").
     const buildPrompt = (userMessage?: string) => {
       const memorySummary = memoryHook.getPromptContext(userMessage)
-      const prompt = buildLocalMemoryPrompt() + buildContextualPrompt({ gmailSummary, driveSummary, memorySummary, customInstructions: getCustomInstructions() }) + getStylePrompt(responseStyle)
+      // Gmail/Drive may be cached for the UI and proactive brief, but their
+      // metadata is never silently copied into every model request.
+      const prompt = buildLocalMemoryPrompt() + buildContextualPrompt({ memorySummary, customInstructions: getCustomInstructions() }) + getStylePrompt(responseStyle)
       setSystemPrompt(prompt)
     }
     buildPrompt()
@@ -151,7 +134,7 @@ export function useAppSetup(conversation: ConversationHook) {
     }
     window.addEventListener('arty-rebuild-prompt', onRebuild)
     return () => window.removeEventListener('arty-rebuild-prompt', onRebuild)
-  }, [googleAuth.isConnected, gmail.messages, drive.files, memoryHook.getPromptContext, setSystemPrompt, responseStyle])
+  }, [googleAuth.isConnected, memoryHook.getPromptContext, setSystemPrompt, responseStyle])
 
   // Handle action buttons clicked in reports
   // ⚠️ ALLOWLIST POSITIVE (audit 14 juin) — pendant de buildToolConfirmMessage
@@ -173,7 +156,10 @@ export function useAppSetup(conversation: ConversationHook) {
           // Confirmation avant un envoi externe : un bouton issu d'un contenu
           // tiers (email/page lu par Arty, prompt-injection) ne doit jamais
           // exfiltrer en 1 clic. On montre le destinataire pour qu'il soit lisible.
-          if (!window.confirm(t('chat.actionConfirm.email', { to: params.to || '?' }))) break
+          if (!window.confirm(t('chat.actionConfirm.email', {
+            to: params.to || '?',
+            subject: params.subject || '?',
+          }))) break
           await executor('send_email', params)
           break
         case 'save_drive':

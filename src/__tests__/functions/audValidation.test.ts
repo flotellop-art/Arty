@@ -11,9 +11,9 @@ import type { Env } from '../../../functions/env'
 // désormais valider l'audience du token Google (aud/azp === GOOGLE_CLIENT_ID)
 // pour rejeter un access_token valide mais émis pour une AUTRE app.
 //
-// Contrainte critique (BUG 21/51) : le token natif issu de serverAuthCode peut
-// avoir un aud/azp indéterminé ; il ne doit PAS être verrouillé. Seule une
-// audience ÉTRANGÈRE EXPLICITE est rejetée.
+// Les codes natifs sont échangés côté serveur contre un access token dont
+// l'audience est le client web Arty. Une audience absente ou invérifiable doit
+// donc être rejetée sur les chemins qui dépensent les clés owner.
 
 const CLIENT_ID = 'arty-web.apps.googleusercontent.com'
 const OWNER_TOKEN = 'tok-abc'
@@ -44,7 +44,7 @@ function stubGoogle(opts: {
     const url = String(input)
     if (url.includes('/oauth2/v2/userinfo')) {
       if (!opts.email) return new Response('', { status: 401 })
-      return new Response(JSON.stringify({ email: opts.email }), { status: 200 })
+      return new Response(JSON.stringify({ email: opts.email, verified_email: true }), { status: 200 })
     }
     if (url.includes('/tokeninfo')) {
       if (opts.tokeninfo === 'network_error') throw new Error('boom')
@@ -78,16 +78,14 @@ describe('checkAllowedUserPeek — validation aud (C1/F-9)', () => {
     expect(r).toEqual({ email: 'user@gmail.com', planType: 'free' })
   })
 
-  it('NE VERROUILLE PAS un token natif sans aud/azp (fail-safe BUG 21/51)', async () => {
+  it('REJETTE un token sans aud/azp', async () => {
     stubGoogle({ email: 'user@gmail.com', tokeninfo: {} })
-    const r = await checkAllowedUserPeek(makeRequest(), makeEnv())
-    expect(r).toEqual({ email: 'user@gmail.com', planType: 'free' })
+    expect(await checkAllowedUserPeek(makeRequest(), makeEnv())).toBeNull()
   })
 
-  it('NE VERROUILLE PAS sur tokeninfo KO (incident transitoire → fail-safe)', async () => {
+  it('REJETTE sur tokeninfo KO (fail-closed)', async () => {
     stubGoogle({ email: 'user@gmail.com', tokeninfo: 'http_error' })
-    const r = await checkAllowedUserPeek(makeRequest(), makeEnv())
-    expect(r).toEqual({ email: 'user@gmail.com', planType: 'free' })
+    expect(await checkAllowedUserPeek(makeRequest(), makeEnv())).toBeNull()
   })
 
   it('refuse (null) si aucun token Google (pas de header)', async () => {
@@ -109,10 +107,9 @@ describe('checkAllowedUser — validation aud (C1/F-9)', () => {
     expect(r).toEqual({ email: 'user@gmail.com', planType: 'free' })
   })
 
-  it('sans GOOGLE_CLIENT_ID configuré, ne régresse pas (aud non vérifié)', async () => {
+  it('sans GOOGLE_CLIENT_ID configuré, refuse le chemin financé', async () => {
     stubGoogle({ email: 'user@gmail.com', tokeninfo: { aud: 'other' } })
     const env = {} as unknown as Env // GOOGLE_CLIENT_ID absent → expectedAud falsy
-    const r = await checkAllowedUser(makeRequest(), env)
-    expect(r).toEqual({ email: 'user@gmail.com', planType: 'free' })
+    expect(await checkAllowedUser(makeRequest(), env)).toBeNull()
   })
 })

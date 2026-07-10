@@ -6,13 +6,16 @@ import {
   getKnownSessions,
   generateUserId,
   migrateExistingData,
+  purgeLegacyGlobalReports,
+  getActiveUserId,
+  removeKnownSession,
   type UserSession,
   type AuthMethod,
 } from '../services/userSession'
 import { setActiveKeys, clearActiveKeys } from '../services/activeApiKey'
 import { initCrypto } from '../services/crypto'
 import { bootstrapGoogleStorage, logout as googleLogout, clearOAuthState, resetGoogleMemCache } from '../services/googleAuth'
-import { wipeFileStorage, bootstrapFileStorage } from '../services/secureFileStorage'
+import { bootstrapFileStorage } from '../services/secureFileStorage'
 import { bootstrapConversationStorage, resetConversationMemCache } from '../services/storage'
 import * as scoped from '../services/scopedStorage'
 import { clearTrialToken } from '../services/emailTrialClient'
@@ -32,6 +35,10 @@ export function useAuth() {
   // also self-heals corrupt blobs now.
   useEffect(() => {
     if (!currentUser) return
+    // Legacy reports predate account scoping and contain no owner metadata.
+    // They cannot be assigned safely, so remove them on the first authenticated
+    // boot instead of leaving personal HTML globally readable.
+    purgeLegacyGlobalReports()
     const keys = scoped.getJSON<StoredKeys>('api-keys')
     if (!keys?.anthropic) return
     setActiveKeys(keys.anthropic, keys.gemini, keys.mistral, keys.openai)
@@ -104,6 +111,7 @@ export function useAuth() {
   }, [])
 
   const logout = useCallback(() => {
+    const leavingUserId = getActiveUserId()
     // Clear everything synchronously first (both plain + encrypted copies)
     clearActiveKeys()
     googleLogout()
@@ -131,16 +139,18 @@ export function useAuth() {
     // Drop any pending OAuth state nonce (e.g. user clicked Google then
     // logged out before completing the redirect).
     clearOAuthState()
-    // Wipe les fichiers chiffrés du user actif (BUG 41 — éviter qu'un autre
-    // user ne récupère les fichiers du précédent). Async, fire-and-forget.
-    wipeFileStorage().catch(() => {})
+    // A simple logout keeps encrypted conversations AND their attachments on
+    // this device. Owner scoping prevents another account from reading them;
+    // permanent deletion remains the explicit "delete account" flow.
     resetConversationMemCache()
     clearActiveSession()
+    if (leavingUserId) removeKnownSession(leavingUserId)
     setCurrentUser(null)
+    setKnownSessions(getKnownSessions())
 
     // Sign out from native Google Sign-In in background (don't await)
     import('@capacitor/core').then(({ Capacitor, registerPlugin }) => {
-      if (Capacitor.isNativePlatform()) {
+      if (Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android') {
         const GoogleSignInNative = registerPlugin<{ signOut(): Promise<void> }>('GoogleSignInNative')
         GoogleSignInNative.signOut().catch(() => {})
       }

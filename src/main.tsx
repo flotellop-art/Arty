@@ -30,25 +30,11 @@ async function cleanupLegacyServiceWorker(): Promise<void> {
 
 void cleanupLegacyServiceWorker()
 
-// Initialize Google Sign-In on native
+// Native Google Sign-In is provided by the app-owned GoogleSignInNative
+// Capacitor plugin registered in MainActivity. Do not initialize the obsolete
+// @codetrix plugin here: it only supports Capacitor 6 and duplicates the native
+// implementation used by every login flow.
 if (Capacitor.isNativePlatform()) {
-  import('@codetrix-studio/capacitor-google-auth').then(({ GoogleAuth }) => {
-    GoogleAuth.initialize({
-      clientId: '794968525529-fk2k1ffpvbev4gs4ghf4gntqjroljln3.apps.googleusercontent.com',
-      scopes: [
-        'email', 'profile',
-        'https://www.googleapis.com/auth/gmail.readonly',
-        'https://www.googleapis.com/auth/gmail.send',
-        'https://www.googleapis.com/auth/gmail.modify',
-        'https://www.googleapis.com/auth/drive',
-        'https://www.googleapis.com/auth/calendar',
-        'https://www.googleapis.com/auth/calendar.events',
-        'https://www.googleapis.com/auth/contacts',
-      ],
-      grantOfflineAccess: true,
-    })
-  }).catch(() => {})
-
   // Track the actual visible viewport via the standard `visualViewport` API,
   // which gives CSS pixels directly (unlike the Capacitor Keyboard plugin's
   // `info.keyboardHeight` that returns device pixels — on a DPR=3 phone,

@@ -33,7 +33,7 @@ import { ArtyWordmark, PrismMark } from '../shared/PrismMark'
 import { EmailTrialFlow } from '../auth/EmailTrialFlow'
 import { buildOAuthUrl } from '../../services/googleAuth'
 import { initTrial } from '../../services/trialClient'
-import { apiUrl } from '../../services/apiBase'
+import { exchangeNativeGoogleCode } from '../../services/nativeGoogleTokenExchange'
 import { canPurchase } from '../../services/checkout'
 
 const CHOICE_DONE_KEY = 'arty-onboarding-choice-done'
@@ -93,34 +93,16 @@ export function OnboardingChoice({
     setError('')
     setBusy(true)
     try {
+      if (Capacitor.isNativePlatform() && Capacitor.getPlatform() !== 'android') {
+        setError(t('login.google.iosUnavailable'))
+        return
+      }
       if (Capacitor.isNativePlatform()) {
         const { email, name, avatar, serverAuthCode } = await GoogleSignInNative.signIn()
-        let accessToken = ''
-        let refreshToken = ''
-        let expiresIn = 3600
-        if (serverAuthCode) {
-          const res = await fetch(apiUrl('/api/auth/token'), {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ code: serverAuthCode, redirect_uri: '' }),
-          })
-          if (res.ok) {
-            const data = (await res.json()) as {
-              access_token?: string
-              refresh_token?: string
-              expires_in?: number
-            }
-            accessToken = data.access_token || ''
-            refreshToken = data.refresh_token || ''
-            expiresIn = data.expires_in || 3600
-          }
-        }
+        const { accessToken, refreshToken, expiresIn } = await exchangeNativeGoogleCode(serverAuthCode)
         // Décide du splash post-login (vip|trial|none) AVANT de finaliser
         // l'auth — le composant va unmount dès que auth.isAuthenticated flip.
-        if (accessToken) {
-          await initTrial(accessToken)
-        }
-        markOnboardingChoiceDone()
+        await initTrial(accessToken)
         await onNativeGoogleLogin(
           email,
           name || email.split('@')[0] || '',
@@ -129,6 +111,9 @@ export function OnboardingChoice({
           refreshToken,
           expiresIn
         )
+        // Ne jamais masquer le chemin de récupération avant que l'échange OAuth
+        // ET la création de session aient tous deux abouti.
+        markOnboardingChoiceDone()
       } else {
         // Web — redirect to Google. Trial init is performed in App's
         // OAuthCallback handler once we get the access_token back.

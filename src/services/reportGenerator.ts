@@ -1,6 +1,26 @@
 import { getDateLocale } from '../utils/formatDate'
+import { secureGet, secureSet, isCryptoReady } from './crypto'
+import { getActiveUserId, purgeLegacyGlobalReports } from './userSession'
 
-const REPORT_STORAGE_KEY = 'arty-report-'
+export { purgeLegacyGlobalReports } from './userSession'
+
+const REPORT_STORAGE_KEY = 'report-'
+const REPORT_CSP = "default-src 'none'; script-src 'none'; connect-src 'none'; img-src data:; media-src 'none'; font-src data:; style-src 'unsafe-inline'; object-src 'none'; frame-src 'none'; child-src 'none'; form-action 'none'; base-uri 'none'"
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+function reportStorageKey(id: string): string {
+  const userId = getActiveUserId()
+  if (!userId) throw new Error('Authenticated session required to access reports')
+  return `arty-${userId}-${REPORT_STORAGE_KEY}${id}`
+}
 
 // Palette + composants conformes à la spec "Rapport Arty Premium v3 finale".
 // Règles absolues : fond blanc partout, aucun emoji, rouille uniquement sur
@@ -11,9 +31,8 @@ const REPORT_TEMPLATE = (title: string, content: string) => `<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<base target="_blank">
-<title>${title} — Arty</title>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&display=swap" rel="stylesheet">
+<meta http-equiv="Content-Security-Policy" content="${REPORT_CSP}">
+<title>${escapeHtml(title)} — Arty</title>
 <style>
 :root{
   --c-bg-page:#FFFFFF;
@@ -150,18 +169,10 @@ body::before{content:'';position:fixed;top:0;left:0;right:0;height:5px;backgroun
 .divider{height:1px;background:var(--c-line);margin:24px 0}
 .divider-accent{height:2px;background:linear-gradient(90deg,var(--c-accent),transparent);margin:24px 0}
 
-/* Boutons UI (réservés, hors PDF) */
-.report-actions{position:fixed;top:max(2.75rem, calc(env(safe-area-inset-top, 0px) + 0.5rem));left:max(1rem, calc(env(safe-area-inset-left, 0px) + 0.5rem));display:flex;gap:8px;z-index:200}
-.back-btn,.pdf-btn{font-family:'Inter',sans-serif;font-size:11px;font-weight:600;border:none;border-radius:6px;padding:8px 14px;cursor:pointer;transition:opacity 0.15s}
-.back-btn{background:var(--c-ink);color:#fff}
-.pdf-btn{background:var(--c-accent);color:#fff}
-.back-btn:hover,.pdf-btn:hover{opacity:0.85}
-
 /* Print + responsive */
 @media print{
   body{background:#fff}
   body::before{display:none}
-  .report-actions{display:none}
   .page{padding:36px 50px;max-width:none}
 }
 @media(min-width:641px){
@@ -182,10 +193,6 @@ body::before{content:'';position:fixed;top:0;left:0;right:0;height:5px;backgroun
 </style>
 </head>
 <body>
-<div class="report-actions">
-<button class="back-btn" onclick="window.parent.postMessage({type:'arty-report-back'},'*')">← Retour</button>
-<button class="pdf-btn" onclick="window.parent.postMessage({type:'arty-report-export-pdf'},'*')">Télécharger PDF</button>
-</div>
 <div class="page">
   <div class="page-header">
     <div class="brand">
@@ -195,13 +202,13 @@ body::before{content:'';position:fixed;top:0;left:0;right:0;height:5px;backgroun
       </svg>
       arty
     </div>
-    <div class="doc-title">${title.replace(/[<>]/g, '')}</div>
+    <div class="doc-title">${escapeHtml(title)}</div>
     <div class="doc-date">${new Date().toLocaleDateString(getDateLocale(), { year: 'numeric', month: 'long', day: 'numeric' })}</div>
   </div>
 
   <div class="cover">
     <span class="pill">Rapport</span>
-    <h1 class="cover-title">${title.replace(/[<>]/g, '')}</h1>
+    <h1 class="cover-title">${escapeHtml(title)}</h1>
     <div class="cover-sep"></div>
     <div class="cover-meta">
       <span>Généré le ${new Date().toLocaleDateString(getDateLocale(), { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
@@ -222,18 +229,125 @@ ${content}
 </body>
 </html>`
 
-export function saveReport(title: string, htmlContent: string): string {
+function isSafeEmbeddedImage(value: string): boolean {
+  return /^data:image\/(?:png|jpe?g|gif|webp);base64,[a-z0-9+/=\s]+$/i.test(value)
+}
+
+/**
+ * Sanitize the complete model-produced report before it ever reaches srcDoc.
+ * The iframe CSP and sandbox are a second, independent boundary: sanitization
+ * removes active content, while CSP prevents any missed network-bearing
+ * attribute or CSS construct from making an outbound request.
+ */
+export async function sanitizeReportDocument(html: string): Promise<string> {
+  const DOMPurify = (await import('dompurify')).default
+  const clean = String(DOMPurify.sanitize(html, {
+    WHOLE_DOCUMENT: true,
+    FORCE_BODY: true,
+    FORBID_TAGS: [
+      'script', 'iframe', 'frame', 'object', 'embed', 'form', 'input',
+      'textarea', 'select', 'option', 'button', 'video', 'audio', 'source',
+      'track', 'link', 'meta', 'base',
+    ],
+  }))
+
+  const doc = new DOMParser().parseFromString(clean, 'text/html')
+
+  // Keep the built-in report stylesheet, but drop any stylesheet capable of
+  // loading a resource. The internal CSP independently blocks such loads.
+  for (const style of Array.from(doc.querySelectorAll('style'))) {
+    if (/@import|url\s*\(|(?:-webkit-)?image-set\s*\(/i.test(style.textContent || '')) {
+      style.remove()
+    }
+  }
+
+  for (const element of Array.from(doc.querySelectorAll('*'))) {
+    const tagName = element.tagName.toLowerCase()
+
+    // Reports only require percentage widths for progress/severity bars.
+    // Preserve that single declaration and discard every other inline style.
+    const rawStyle = element.getAttribute('style')
+    if (rawStyle !== null) {
+      const width = rawStyle
+        .split(';')
+        .map((part) => part.trim().match(/^width\s*:\s*((?:100|[1-9]?\d)%)\s*(?:!important)?$/i)?.[1])
+        .find((value): value is string => !!value)
+      if (width) element.setAttribute('style', `width:${width}`)
+      else element.removeAttribute('style')
+    }
+
+    for (const attribute of Array.from(element.attributes)) {
+      const name = attribute.name.toLowerCase()
+      const value = attribute.value.trim()
+      if (name === 'src') {
+        if (tagName !== 'img' || !isSafeEmbeddedImage(value)) element.removeAttribute(attribute.name)
+      } else if (['srcset', 'poster', 'data', 'background', 'ping'].includes(name)) {
+        element.removeAttribute(attribute.name)
+      } else if (name === 'href' || name === 'xlink:href') {
+        // Links are user-triggered and may remain; SVG/MathML hrefs can fetch
+        // automatically, so only same-document fragments are accepted there.
+        if (tagName !== 'a' && !value.startsWith('#')) element.removeAttribute(attribute.name)
+      }
+    }
+
+    if (tagName === 'a' && element.hasAttribute('href')) {
+      element.setAttribute('target', '_blank')
+      element.setAttribute('rel', 'noopener noreferrer')
+      element.setAttribute('referrerpolicy', 'no-referrer')
+    }
+  }
+
+  doc.querySelectorAll('.report-actions').forEach((element) => element.remove())
+  doc.head.querySelectorAll('meta[http-equiv="Content-Security-Policy"]').forEach((element) => element.remove())
+
+  const charset = doc.createElement('meta')
+  charset.setAttribute('charset', 'UTF-8')
+  const csp = doc.createElement('meta')
+  csp.setAttribute('http-equiv', 'Content-Security-Policy')
+  csp.setAttribute('content', REPORT_CSP)
+  const viewport = doc.createElement('meta')
+  viewport.setAttribute('name', 'viewport')
+  viewport.setAttribute('content', 'width=device-width, initial-scale=1.0, viewport-fit=cover')
+  doc.head.prepend(viewport)
+  doc.head.prepend(csp)
+  doc.head.prepend(charset)
+  doc.documentElement.setAttribute('data-arty-report-hardened', '1')
+
+  return `<!DOCTYPE html>\n${doc.documentElement.outerHTML}`
+}
+
+export async function saveReport(title: string, htmlContent: string): Promise<string> {
+  purgeLegacyGlobalReports()
+  if (!isCryptoReady()) throw new Error('Crypto not initialized — report not stored')
+
   const id = Date.now().toString(36)
-  const fullHtml = REPORT_TEMPLATE(title, htmlContent)
-  localStorage.setItem(REPORT_STORAGE_KEY + id, fullHtml)
+  const fullHtml = await sanitizeReportDocument(REPORT_TEMPLATE(title, htmlContent))
+  await secureSet(reportStorageKey(id), fullHtml)
   return id
 }
 
-export function getReport(id: string): string | null {
-  return localStorage.getItem(REPORT_STORAGE_KEY + id)
+export async function getReport(id: string): Promise<string | null> {
+  purgeLegacyGlobalReports()
+  if (!getActiveUserId() || !isCryptoReady()) return null
+
+  const key = reportStorageKey(id)
+  const raw = localStorage.getItem(key)
+  if (!raw) return null
+
+  const encrypted = /^(?:v1|v2):/.test(raw)
+  const html = raw.trimStart().startsWith('<')
+    ? raw // transient scoped plaintext produced by the previous implementation
+    : await secureGet<string>(key)
+  if (!html) return null
+
+  // Ciphertext bearing our marker was sanitized before encryption. Plaintext,
+  // legacy ciphertext and older report versions are hardened then re-encrypted.
+  if (encrypted && html.includes('data-arty-report-hardened="1"')) return html
+  const hardened = await sanitizeReportDocument(html)
+  await secureSet(key, hardened)
+  return hardened
 }
 
-export function openReport(title: string, htmlContent: string): string {
-  const id = saveReport(title, htmlContent)
-  return id
+export async function openReport(title: string, htmlContent: string): Promise<string> {
+  return saveReport(title, htmlContent)
 }

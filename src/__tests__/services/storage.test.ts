@@ -1,8 +1,13 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 
+const fileStorage = vi.hoisted(() => ({
+  deleteOwnedFiles: vi.fn(async (_fileIds: Iterable<string>, _ownerUserId: string | null) => 0),
+}))
+
 vi.mock('../../services/userSession', () => ({
   getActiveUserId: () => 'user-test',
 }))
+vi.mock('../../services/secureFileStorage', () => fileStorage)
 
 import * as storage from '../../services/storage'
 import { initCrypto, encrypt } from '../../services/crypto'
@@ -21,6 +26,7 @@ function makeConv(id: string, overrides: Partial<Conversation> = {}): Conversati
 
 beforeEach(() => {
   localStorage.clear()
+  fileStorage.deleteOwnedFiles.mockClear()
   // The in-memory conversation cache is module state — localStorage.clear()
   // does not reset it. Drop it so each test starts from a clean slate.
   storage.resetConversationMemCache()
@@ -62,6 +68,53 @@ describe('storage', () => {
     storage.deleteConversation('a')
     const convs = storage.getConversations()
     expect(convs.map(c => c.id)).toEqual(['b'])
+  })
+
+  it('keeps generated images referenced only from Markdown during orphan cleanup', () => {
+    const imageId = '123e4567-e89b-12d3-a456-426614174000'
+    const refs = storage.collectReferencedFileIds([
+      makeConv('image', {
+        messages: [{
+          id: 'm1',
+          role: 'assistant',
+          content: `![résultat](arty-img://${imageId})`,
+          timestamp: Date.now(),
+        }],
+      }),
+    ])
+    expect(refs).toContain(imageId)
+  })
+
+  it('deletes only files owned by the removed conversation and captures the owner', () => {
+    storage.saveConversation(makeConv('keep', {
+      messages: [{
+        id: 'keep-message',
+        role: 'user',
+        content: 'shared',
+        timestamp: 1,
+        files: [{ id: 'shared-file', name: 'shared.pdf', type: 'application/pdf' }],
+      }],
+    }))
+    storage.saveConversation(makeConv('remove', {
+      messages: [{
+        id: 'remove-message',
+        role: 'assistant',
+        content: '![image](arty-img://generated-only)',
+        timestamp: 2,
+        files: [
+          { id: 'shared-file', name: 'shared.pdf', type: 'application/pdf' },
+          { id: 'deleted-only', name: 'private.pdf', type: 'application/pdf' },
+        ],
+      }],
+    }))
+
+    storage.deleteConversation('remove')
+
+    expect(fileStorage.deleteOwnedFiles).toHaveBeenCalledOnce()
+    const [candidateIds, ownerUserId] = fileStorage.deleteOwnedFiles.mock.calls[0]!
+    expect([...candidateIds]).toEqual(expect.arrayContaining(['deleted-only', 'generated-only']))
+    expect([...candidateIds]).not.toContain('shared-file')
+    expect(ownerUserId).toBe('user-test')
   })
 
   it('saveConversation remains synchronous (BUG 16)', () => {

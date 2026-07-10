@@ -7,6 +7,7 @@
     "back": "Back",
     "help": "Help",
     "logout": "Log out",
+    "logoutHint": "Your encrypted conversations and attachments stay on this device",
     "menu": "Menu",
     "history": "History",
     "loading": "Loading...",
@@ -45,11 +46,12 @@
         "required": "Anthropic API key is required",
         "invalidPrefix": "The key must start with sk-ant-"
       },
-      "notice": "Your key is never sent to our servers. It's only used to talk to the Anthropic API."
+      "notice": "Your key is stored locally on this device without application-level encryption. It passes through Arty's proxy only to relay requests to the provider and is never stored or logged there."
     },
     "google": {
       "signIn": "Sign in with Google",
       "failed": "Google sign-in failed. Please try again.",
+      "iosUnavailable": "Google Sign-In on iOS still requires native configuration. For now, use the email trial or an API key.",
       "notice": "Connect your Google account to access Gmail, Drive and Calendar."
     },
     "email": {
@@ -259,7 +261,7 @@
       "screenshotAlt": "PC screenshot"
     },
     "actionConfirm": {
-      "email": "Send an email to {{to}}?",
+      "email": "Send an email to {{to}} with subject “{{subject}}”?",
       "drive": "Create the file \"{{name}}\" on your Drive?",
       "event": "Add \"{{title}}\" to your calendar?",
       "wp": "Publish \"{{title}}\" on your site?",
@@ -428,7 +430,9 @@
       "actionPending": "⏳ Working...",
       "actionDone": "✅ Done!",
       "regenerate": "Regenerate response",
-      "report": "Report this response"
+      "report": "Report this response",
+      "remoteImageBlocked": "External image blocked to protect your privacy",
+      "openRemoteImage": "Open external image"
     },
     "userBubble": {
       "edit": "Edit",
@@ -935,9 +939,9 @@
   "account": {
     "dangerZone": "Danger zone",
     "delete": "Delete my account",
-    "deleteDescription": "Permanently erases your memory, conversations and data — on this device and our servers.",
+    "deleteDescription": "Permanently erases your content, sessions, and reports — on this device and our servers.",
     "confirmTitle": "Permanently delete your account?",
-    "confirmBody": "This can't be undone. Your conversations, memory and settings will be erased from this device, and your personal data deleted from our servers. Any invoices are kept (legal requirement).",
+    "confirmBody": "This can't be undone. Your conversations, attachments, reports, sessions, memory, and settings will be deleted. Only any invoices (legal requirement) and minimal technical usage, quota, and anti-abuse counters are retained; they contain none of your conversation content.",
     "confirmCta": "Yes, delete permanently",
     "cancel": "Cancel",
     "deleting": "Deleting…",
@@ -1135,16 +1139,16 @@
   },
   "apiKeySetup": {
     "pageTitle": "Setup",
-    "pageSubtitle": "Enter your API keys to get started. They are encrypted and stored only on your device.",
+    "pageSubtitle": "Enter your API keys to get started. They are stored locally on this device without application-level encryption.",
     "optional": "(optional)",
     "hideKey": "Hide",
     "showKey": "Show",
     "test": "Test",
     "currentKey": "Current: {{mask}}",
-    "saving": "Encrypting…",
+    "saving": "Saving…",
     "save": "Save",
     "start": "Start",
-    "encryptionNotice": "Your keys are encrypted with AES-256 and stored only on your device.",
+    "encryptionNotice": "When a key passes through Arty's proxy to call its provider, it is neither stored nor logged there.",
     "labels": {
       "anthropic": "Anthropic API key",
       "openai": "OpenAI API key",
@@ -1162,7 +1166,7 @@
     "kicker": "API keys",
     "titleLead": "Your ",
     "titleAccent": "keys.",
-    "subtitle": "Encrypted with AES-256 and stored only on your device."
+    "subtitle": "Stored locally on this device without application-level encryption."
   },
   "memoryViewer": {
     "title": "🧠 Arty's memory",

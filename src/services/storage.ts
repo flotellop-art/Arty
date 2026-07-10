@@ -1,6 +1,8 @@
 import type { Conversation } from '../types'
 import * as scoped from './scopedStorage'
 import { encrypt, decrypt, isCryptoReady } from './crypto'
+import { deleteOwnedFiles } from './secureFileStorage'
+import { getActiveUserId } from './userSession'
 
 // ─────────────────────────────────────────────────────────────────────────
 // Conversations are encrypted at rest (AES-256) under `conversations-enc`.
@@ -128,13 +130,40 @@ export function saveConversation(conversation: Conversation): void {
   persist(conversations)
 }
 
+/** Collect every IndexedDB file reference, including generated-image URLs. */
+export function collectReferencedFileIds(conversations: Conversation[]): Set<string> {
+  const referencedIds = new Set<string>()
+  for (const conversation of conversations) {
+    for (const message of conversation.messages) {
+      for (const file of message.files ?? []) {
+        if (file.id) referencedIds.add(file.id)
+      }
+      const generatedImages = message.content.matchAll(/arty-img:\/\/([A-Za-z0-9._~-]+)/g)
+      for (const match of generatedImages) referencedIds.add(match[1]!)
+    }
+  }
+  return referencedIds
+}
+
 export function deleteConversation(id: string): void {
   const conversations = getConversations()
   if (!cacheReady) {
     console.warn('[storage] deleteConversation before conversations loaded — skipped')
     return
   }
-  persist(conversations.filter((c) => c.id !== id))
+  const deleted = conversations.find((c) => c.id === id)
+  const remaining = conversations.filter((c) => c.id !== id)
+  persist(remaining)
+  if (!deleted) return
+
+  // Only remove files that belonged to the deleted conversation. A global
+  // orphan sweep can race with sendMessage(), which writes the IndexedDB file
+  // before persisting its Message reference, and delete an in-flight upload.
+  const remainingRefs = collectReferencedFileIds(remaining)
+  const candidates = collectReferencedFileIds([deleted])
+  for (const fileId of remainingRefs) candidates.delete(fileId)
+  const ownerUserId = getActiveUserId()
+  void deleteOwnedFiles(candidates, ownerUserId).catch(() => {})
 }
 
 /**

@@ -1,6 +1,6 @@
 # DPIA — Analyse d'impact relative à la protection des données — Arty
 
-**Date :** 24 mai 2026
+**Date :** 10 juillet 2026
 **Version :** 1 (document de travail)
 **Statut :** À faire valider par un conseil juridique avant lancement public à grande échelle.
 **Responsable de traitement :** Florent Pollet, personne physique, 884 chemin de la Prairie, 38270 Beaufort, France — flotellop@gmail.com. SIREN à ajouter dès l'enregistrement de l'activité (avant lancement public et premiers paiements).
@@ -34,7 +34,7 @@ potentiellement sensibles issues de boîtes mail/fichiers, scopes Google « Rest
    - **Contacts** : identification de destinataires et contexte.
    - **Sheets** : ajout de lignes ponctuel (voir réserve §6 — scope non déclaré).
 4. **Mémoire structurée** : faits utiles mémorisés pour personnaliser l'assistant (table D1 `memory`, par catégorie : profil/clients/projets/notes).
-5. **Quotas, facturation, abonnements** : suivi d'usage, statut d'abonnement, paiement via Lemon Squeezy.
+5. **Quotas, facturation, abonnements** : suivi d'usage, statut d'abonnement, paiement via Lemon Squeezy et packs de crédits via Creem.
 6. **Sécurité / anti-abus** : anti-CSRF, rate-limit, logs techniques.
 7. **Support & droits RGPD**.
 
@@ -59,21 +59,23 @@ potentiellement sensibles issues de boîtes mail/fichiers, scopes Google « Rest
 - **Données IA** : prompts, réponses, extraits transmis aux modèles.
 - **Mémoire structurée D1** : faits/préférences par catégorie.
 - **Localisation** : position approximative (GPS, si activée).
-- **Paiement** : email + identifiants de transaction/abonnement (pas de coordonnées bancaires côté Arty).
+- **Paiement** : email du compte, offre ou pack choisi, identifiants et statut de transaction/abonnement (pas de coordonnées bancaires côté Arty).
 
 ### 2.4 Où vivent les données (architecture réelle — point clé)
 
 | Donnée | Stockage | Chiffrement |
 |---|---|---|
 | Conversations & pièces jointes | **Appareil de l'utilisateur uniquement** (IndexedDB/localStorage) | AES-256-GCM (Web Crypto), clé dérivée localement (PBKDF2 600k), ne quitte jamais l'appareil |
-| Clés API personnelles (BYOK) | **Appareil uniquement** (localStorage) | AES-256-GCM |
-| Email d'authentification + jeton OAuth Google | Serveur (Cloudflare) | Secrets/Workers |
+| Rapports générés | **Appareil uniquement** (localStorage) | AES-256-GCM |
+| Clés API personnelles (BYOK) | **Appareil uniquement** (localStorage) ; transit ponctuel par le proxy API | Aucun chiffrement applicatif au repos ; HTTPS en transit ; aucune persistance ni journalisation côté serveur Arty |
+| Jetons OAuth Google | **Appareil uniquement** (localStorage) ; transit ponctuel pour authentifier les appels | AES-256-GCM au repos ; aucune persistance ni journalisation côté serveur Arty |
+| Identités et sessions email | Serveur Cloudflare D1 | Jetons de session stockés sous forme de hash |
 | Mémoire structurée (table `memory`) | Serveur Cloudflare D1, clé = email vérifié | — |
-| Quotas / abonnements | Cloudflare D1/KV | — |
+| Conversations partagées et signalements volontaires | Serveur Cloudflare D1 | — |
+| Facturation, wallet, quotas et compteurs techniques | Cloudflare D1/KV | — |
 | Clés API serveur (du propriétaire) | Secrets Cloudflare Workers, **jamais exposées au client** | — |
 
-**Le serveur ne stocke jamais le contenu des conversations, les pièces jointes ni les clés BYOK.**
-Les requêtes IA transitent par des proxys serveur (`functions/api/ai/*`) qui relaient sans conserver le contenu au-delà du traitement.
+Les jetons Google, les clés BYOK et le contenu courant des requêtes IA transitent par les endpoints Cloudflare nécessaires, sans persistance ni journalisation applicative côté Arty. Le contenu des conversations et les pièces jointes restent sur l'appareil, sauf conversation partagée ou signalement soumis volontairement par l'utilisateur.
 
 ---
 
@@ -83,8 +85,8 @@ Les requêtes IA transitent par des proxys serveur (`functions/api/ai/*`) qui re
 2. App → OAuth Google (consentement) → `/api/auth/token` & `/api/auth/refresh` (échange/renouvellement de jetons).
 3. App/backend → APIs Google (Gmail, Drive, Calendar, Contacts) via endpoints Cloudflare.
 4. Cloudflare Pages Functions → modèles d'IA (proxys serveur) selon routage (`aiRouter` : Gemini par défaut, Claude pour données privées, Mistral en mode UE-only).
-5. Cloudflare D1/KV : email d'auth, jeton OAuth, mémoire structurée, quotas.
-6. Cloudflare → Lemon Squeezy : webhooks de paiement (signature HMAC vérifiée).
+5. Cloudflare D1/KV : identités/sessions email, mémoire structurée explicite, partages/signalements volontaires, facturation/wallet, quotas et compteurs techniques. Les jetons OAuth Google n'y sont pas persistés.
+6. App/Cloudflare ↔ Lemon Squeezy et Creem : pages de paiement puis webhooks signés. Pour Creem, Arty transmet uniquement l'email Google vérifié, le produit/pack choisi, un identifiant de requête aléatoire et l'URL de retour ; les coordonnées bancaires sont saisies directement chez Creem.
 
 **Sous-traitants (art. 28) — alignés sur `PRIVACY.md` :**
 
@@ -96,6 +98,7 @@ Les requêtes IA transitent par des proxys serveur (`functions/api/ai/*`) qui re
 | Google (Gemini + Workspace) | Génération IA + connecteurs Gmail/Drive/Calendar/Contacts | UE + États-Unis | SCC + EU-US DPF |
 | Mistral AI | Génération IA | France (UE) | Hébergement UE |
 | Lemon Squeezy | Paiement (Merchant of Record) | États-Unis | SCC + EU-US DPF, PCI-DSS |
+| Creem | Merchant of Record et paiement hébergé des packs de crédits | Estonie (UE) | RGPD, DPA Creem ; SCC pour ses sous-traitants hors EEE |
 | Resend | E-mails transactionnels | UE | DPA |
 | Tally | Formulaire waitlist | UE | DPA |
 
@@ -105,7 +108,7 @@ Les requêtes IA transitent par des proxys serveur (`functions/api/ai/*`) qui re
 
 ## 4. Nécessité et proportionnalité
 
-- **Minimisation** : le serveur ne conserve que l'email + le jeton OAuth ; le contenu reste sur l'appareil. C'est un point fort structurel.
+- **Minimisation** : les jetons Google et BYOK ne sont pas persistés côté serveur. La persistance serveur est limitée aux identités/sessions email, mémoire explicite, partages/signalements volontaires, facturation/wallet et compteurs techniques ; le reste du contenu demeure sur l'appareil.
 - **Réserve majeure — scopes Google trop larges** (voir aussi `docs/GOOGLE_OAUTH_VERIFICATION.md`) : `drive` (accès complet) et le doublon `calendar` + `calendar.events` dépassent le strict nécessaire. À réduire avant soumission Google.
 - **Consentement IA** : l'utilisateur déclenche chaque action ; afficher clairement, avant connexion, quels connecteurs Google sont demandés.
 
@@ -117,11 +120,11 @@ Gravité (G) et vraisemblance (V) de 1 (faible) à 4 (très élevée). Risque br
 
 | Risque | G | V | Brut | Mesures (existantes / à faire) | Résiduel |
 |---|--:|--:|--:|---|--:|
-| Vol de jeton OAuth → accès e-mails/fichiers | 4 | 3 | 12 | `state` anti-CSRF, jeton chiffré côté client, stockage serveur minimal, révocation, CSP (`public/_headers`) | 6 |
+| Vol de jeton OAuth → accès e-mails/fichiers | 4 | 3 | 12 | `state` anti-CSRF, jeton chiffré côté client, transit sans persistance serveur, révocation, CSP (`public/_headers`) | 6 |
 | Surcollecte via scopes larges (`drive`, `calendar`, `contacts`) | 4 | 4 | 16 | **À faire** : réduire les scopes, consentement granulaire | 8 |
 | Transmission de contenus à un LLM hors UE | 4 | 3 | 12 | SCC + DPF, routage Mistral UE pour données sensibles, minimisation des prompts ; **à faire** : no-training/zero-retention contractuel | 7 |
 | Envoi / corbeille Gmail non souhaité (action automatisée) | 4 | 2 | 8 | **À faire** : confirmation explicite avant envoi/modif/corbeille, journal d'actions | 4 |
-| Fuite de clés BYOK | 4 | 2 | 8 | Chiffrement AES-256-GCM côté appareil, jamais côté serveur, non-journalisation | 4 |
+| Fuite de clés BYOK (accès local, sauvegarde appareil ou XSS) | 4 | 3 | 12 | Existant : isolation applicative du système, HTTPS, transit proxy sans persistance ni journalisation, suppression au logout. **À faire** : chiffrement au repos avec une `CryptoKey` non extractible ou le keystore natif, avec migration non destructive. | 8 tant que le chiffrement dédié n'est pas déployé |
 | Hallucination IA → décision préjudiciable | 3 | 3 | 9 | Avertissements UX, validation humaine avant action ; **à faire** : clause CGU (pas de conseil juridique/médical/financier) | 5 |
 | Non-conformité OAuth Restricted Scopes | 4 | 4 | 16 | **À faire** : vérification OAuth Google + CASA Tier 2 (voir doc dédié) | 8 (jusqu'à validation) |
 | Abus / relais anonyme du proxy IA | 3 | 2 | 6 | `verifyGoogleUser` (token vérifié), whitelist `ALLOWED_EMAILS`, origin strict, rate-limit 60/min/IP | 3 |
@@ -133,9 +136,9 @@ Gravité (G) et vraisemblance (V) de 1 (faible) à 4 (très élevée). Risque br
 
 ### 6.1 Existant (vérifié dans le code)
 
-- Chiffrement local AES-256-GCM (Web Crypto), clé dérivée PBKDF2 600k itérations (`src/services/crypto.ts`).
-- Conversations/pièces jointes/clés BYOK **jamais** envoyées au serveur.
-- Proxys serveur pour toutes les clés IA (jamais exposées au client) ; BYOK via header `x-api-key`.
+- Chiffrement local AES-256-GCM (Web Crypto), clé dérivée PBKDF2 600k itérations (`src/services/crypto.ts`) pour conversations, pièces jointes, rapports et jetons Google.
+- Clés BYOK stockées dans le `localStorage` du compte sans chiffrement applicatif ; elles transitent via le header `x-api-key` du proxy uniquement pour l'appel fournisseur, sans persistance ni journalisation côté serveur Arty.
+- Clés IA serveur conservées dans les secrets Cloudflare Workers, jamais exposées au client.
 - `verifyGoogleUser` (vérification du token Google côté serveur) + whitelist `ALLOWED_EMAILS` sur le proxy IA.
 - Middleware : CORS origines strictes (égalité, pas `startsWith`), rate-limit 60/min/IP, CSRF par `Origin`, exemption webhook authentifiée par HMAC.
 - CSP + en-têtes de sécurité dans `public/_headers`.
@@ -145,21 +148,22 @@ Gravité (G) et vraisemblance (V) de 1 (faible) à 4 (très élevée). Risque br
 
 ### 6.2 À mettre en place avant lancement public
 
-1. **Réduire les scopes Google** : `drive` → `drive.readonly`/`drive.file` ; conserver un seul scope Calendar ; justifier ou différer `contacts`.
-2. **Consentement granulaire** affiché avant connexion Google.
-3. **Confirmation explicite** avant toute action Gmail send/modify/corbeille et toute écriture Calendar/Drive.
-4. **Journal d'activité utilisateur** (action, date, connecteur).
-5. **Panneau mémoire** : consultation, suppression unitaire, export, purge.
-6. **Suppression de compte** : flux complet (email + jeton serveur, mémoire D1) sous 30 jours.
-7. **No-training / zero-retention** contractualisé chez les fournisseurs IA quand disponible.
-8. **Plan d'incident RGPD 72 h** (détection, qualification, notification CNIL/personnes).
+1. **Chiffrer les clés BYOK au repos** avec une `CryptoKey` non extractible et, sur natif, le keystore du système ; prévoir une migration non destructive et un mécanisme de récupération explicite.
+2. **Réduire les scopes Google** : `drive` → `drive.readonly`/`drive.file` ; conserver un seul scope Calendar ; justifier ou différer `contacts`.
+3. **Consentement granulaire** affiché avant connexion Google.
+4. **Confirmation explicite** avant toute action Gmail send/modify/corbeille et toute écriture Calendar/Drive.
+5. **Journal d'activité utilisateur** (action, date, connecteur).
+6. **Panneau mémoire** : consultation, suppression unitaire, export, purge.
+7. **Suppression de compte** : flux complet (identités/sessions email, mémoire, partages/signalements) sous 30 jours.
+8. **No-training / zero-retention** contractualisé chez les fournisseurs IA quand disponible.
+9. **Plan d'incident RGPD 72 h** (détection, qualification, notification CNIL/personnes).
 
 ---
 
 ## 7. Mesures organisationnelles
 
 - Registre des traitements tenu à jour.
-- DPA signés et archivés avec Cloudflare, Google, Anthropic, Mistral, OpenAI, Lemon Squeezy, Resend, Tally.
+- DPA signés et archivés avec Cloudflare, Google, Anthropic, Mistral, OpenAI, Lemon Squeezy, Creem, Resend, Tally.
 - Transfer Impact Assessment (TIA) pour chaque transfert hors UE.
 - Support : ne jamais demander de refresh token ni de clé BYOK en clair.
 - Accès admin restreint au besoin d'en connaître.
@@ -174,11 +178,12 @@ Accès, rectification, effacement, limitation, opposition (intérêt légitime),
 
 ## 9. Verdict & plan d'action
 
-**DPIA : favorable sous conditions.** L'architecture (contenu chiffré côté appareil, serveur minimal) est un atout fort. Les risques résiduels significatifs sont concentrés sur **les scopes Google trop larges** et **la conformité OAuth Restricted**.
+**DPIA : favorable sous conditions.** L'architecture (contenu principal chiffré côté appareil, persistance serveur limitée) est un atout, mais l'absence actuelle de chiffrement applicatif des clés BYOK maintient un risque résiduel important. Les autres risques significatifs sont concentrés sur **les scopes Google trop larges** et **la conformité OAuth Restricted**.
 
 Actions prioritaires avant lancement public :
-1. Réduire les scopes Google et soumettre la vérification OAuth (voir `docs/GOOGLE_OAUTH_VERIFICATION.md`).
-2. Ajouter confirmation explicite + journal pour les actions Gmail/Calendar/Drive.
-3. Implémenter suppression/export de compte et panneau mémoire.
-4. Signer/archiver DPA + SCC ; rédiger les TIA.
-5. Ajouter le SIREN dès enregistrement, faire relire ce DPIA et les CGU par un conseil.
+1. Chiffrer les clés BYOK au repos avec une clé non extractible/keystore et migrer les installations existantes sans perte.
+2. Réduire les scopes Google et soumettre la vérification OAuth (voir `docs/GOOGLE_OAUTH_VERIFICATION.md`).
+3. Ajouter confirmation explicite + journal pour les actions Gmail/Calendar/Drive.
+4. Implémenter suppression/export de compte et panneau mémoire.
+5. Signer/archiver DPA + SCC ; rédiger les TIA.
+6. Ajouter le SIREN dès enregistrement, faire relire ce DPIA et les CGU par un conseil.

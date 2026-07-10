@@ -11,9 +11,13 @@ const fakeT = ((key: string, params?: Record<string, unknown>) =>
 
 describe('buildToolConfirmMessage — garde HITL boucle d\'outils', () => {
   it('exige une confirmation sur les envois externes / exfiltration', () => {
-    expect(buildToolConfirmMessage('send_email', { to: 'a@b.c' }, fakeT)).toContain('chat.actionConfirm.email')
-    expect(buildToolConfirmMessage('send_email', { to: 'a@b.c' }, fakeT)).toContain('a@b.c')
-    expect(buildToolConfirmMessage('reply_email', { to: 'x@y.z' }, fakeT)).toContain('chat.actionConfirm.email')
+    const send = buildToolConfirmMessage('send_email', { to: 'a@b.c', subject: 'Facture juillet' }, fakeT)
+    expect(send).toContain('chat.actionConfirm.email')
+    expect(send).toContain('a@b.c')
+    expect(send).toContain('Facture juillet')
+    const reply = buildToolConfirmMessage('reply_email', { to: 'x@y.z', subject: 'Re: devis' }, fakeT)
+    expect(reply).toContain('chat.actionConfirm.email')
+    expect(reply).toContain('Re: devis')
     expect(buildToolConfirmMessage('share_drive_file', { email: 'tiers@x.com' }, fakeT)).toContain('chat.actionConfirm.shareDrive')
     expect(buildToolConfirmMessage('share_drive_file', { email: 'tiers@x.com' }, fakeT)).toContain('tiers@x.com')
   })
@@ -74,8 +78,8 @@ describe('buildToolConfirmMessage — garde HITL boucle d\'outils', () => {
 
 // Tools sensibles → input représentatif du cas qui DOIT déclencher la garde.
 const CONFIRM_REQUIRED: Record<string, Record<string, unknown>> = {
-  send_email: { to: 'x@y.z' },
-  reply_email: { to: 'x@y.z' },
+  send_email: { to: 'x@y.z', subject: 'Objet' },
+  reply_email: { to: 'x@y.z', subject: 'Re: Objet' },
   share_drive_file: { email: 'x@y.z' },
   delete_email: {},
   delete_drive_file: {},

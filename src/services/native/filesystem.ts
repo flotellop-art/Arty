@@ -20,7 +20,10 @@ function getReadDirectory(): Directory {
  * Falls back to empty array on web.
  */
 export async function listLocalFiles(path: string = ''): Promise<LocalFile[]> {
-  if (!isNative) return []
+  // Android scoped storage interdit le parcours arbitraire sans SAF. Ces deux
+  // opérations restent désactivées jusqu'à un picker ACTION_OPEN_DOCUMENT /
+  // OPEN_DOCUMENT_TREE ; ne jamais réintroduire READ_EXTERNAL_STORAGE.
+  if (!isNative || platform === 'android') return []
 
   try {
     const result = await Filesystem.readdir({
@@ -46,7 +49,7 @@ export async function listLocalFiles(path: string = ''): Promise<LocalFile[]> {
  * Read a file from the device as base64.
  */
 export async function readLocalFile(path: string): Promise<{ data: string; mimeType: string } | null> {
-  if (!isNative) return null
+  if (!isNative || platform === 'android') return null
 
   try {
     const ext = path.split('.').pop()?.toLowerCase() || ''

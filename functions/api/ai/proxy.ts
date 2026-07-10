@@ -19,9 +19,10 @@ import {
   freeModelLockedResponse,
   freeQuotaExhaustedResponse,
 } from '../_lib/freeQuota'
-import { createAnthropicParser, teeForParsing } from '../_lib/trackUsage'
+import { createAnthropicParser, responseUsageFormat, teeForParsing } from '../_lib/trackUsage'
 import {
   beginWalletBilling,
+  enforceWalletOutputLimit,
   makeReservationHeartbeat,
   settleWalletBilling,
   voidWalletBilling,
@@ -157,6 +158,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     } catch {
       /* body illisible → réserve au plafond (estimation input = 0) */
     }
+    enforceWalletOutputLimit('anthropic', parsedBody)
     const start = await beginWalletBilling(env, waitUntil, {
       email,
       model: modelName,
@@ -166,6 +168,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     if (start.mode === 'refuse') return start.response
     if (start.mode === 'wallet') {
       walletResId = start.resId
+      body = JSON.stringify(parsedBody)
     } else {
       // Pas de crédits. Essai ÉPUISÉ → 403 trial_expired : le tier Haiku gratuit
       // est réservé aux vrais 'free' (qui n'ont jamais eu d'essai), pas aux
@@ -243,7 +246,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
 
     // Ne track que les appels server-key réussis (BYOK = user paie lui-même).
     if (!isByok && response.ok && response.body) {
-      const parser = createAnthropicParser()
+      const parser = createAnthropicParser(responseUsageFormat(response.headers.get('content-type')))
       const { clientBody, parsedUsage } = teeForParsing(
         response.body,
         parser.feed,

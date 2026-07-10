@@ -5,6 +5,7 @@ import { listUnreadEmails } from './gmailClient'
 import { getUserLocation, isLocationConsentEnabled } from './native/location'
 import { apiUrl } from './apiBase'
 import { safeJson } from '../utils/safeJson'
+import { getValidAccessToken } from './googleAuth'
 
 /**
  * Morning Brief Service
@@ -109,14 +110,16 @@ export async function buildBriefSpeechText(
 
   // 3. Météo
   let weatherSpeech = ''
-  if (isLocationConsentEnabled()) {
+  if (isGoogleConnected && isLocationConsentEnabled()) {
     try {
       const pos = await getUserLocation()
       if (pos) {
+        const googleToken = await getValidAccessToken()
+        if (!googleToken) throw new Error('Google authentication required for weather')
         const city = `${pos.latitude.toFixed(5)},${pos.longitude.toFixed(5)}`
         const res = await fetch(apiUrl('/api/browser/weather'), {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'x-google-token': googleToken },
           body: JSON.stringify({ city }),
         })
         if (res.ok) {

@@ -56,6 +56,7 @@ export type SettleResult =
   | { status: 'error' }
 export type VoidResult = { status: 'voided' | 'already_finalized' | 'error' }
 export type CreditResult = { status: 'credited' | 'duplicate' | 'error' }
+export type ReversalDrainResult = { status: 'ok' | 'error'; pendingMicro: number }
 
 export interface WalletBalance {
   balanceMicro: number
@@ -131,6 +132,31 @@ export async function ensureWalletTables(env: Env): Promise<void> {
         `CREATE INDEX IF NOT EXISTS idx_reservation_sweep
            ON reservation(status, updated_at)`,
       ),
+      env.DB.prepare(
+        `CREATE TABLE IF NOT EXISTS wallet_reversal (
+           provider TEXT NOT NULL,
+           event_id TEXT NOT NULL,
+           order_id TEXT NOT NULL,
+           user_email TEXT,
+           kind TEXT NOT NULL,
+           ratio_numerator INTEGER NOT NULL,
+           ratio_denominator INTEGER NOT NULL,
+           requested_micro INTEGER,
+           collected_micro INTEGER NOT NULL DEFAULT 0,
+           status TEXT NOT NULL DEFAULT 'awaiting_topup',
+           created_at TEXT NOT NULL DEFAULT (datetime('now')),
+           updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+           PRIMARY KEY (provider, event_id)
+         )`,
+      ),
+      env.DB.prepare(
+        `CREATE INDEX IF NOT EXISTS idx_wallet_reversal_order
+           ON wallet_reversal(provider, order_id, status)`,
+      ),
+      env.DB.prepare(
+        `CREATE INDEX IF NOT EXISTS idx_wallet_reversal_user
+           ON wallet_reversal(user_email, status, created_at)`,
+      ),
     ])
     tablesEnsured = true
   } catch (err) {
@@ -186,6 +212,7 @@ export async function reserveCredits(
   params: { email: string; estMicro: number; resId: string; model: string; modality: Modality },
 ): Promise<ReserveResult> {
   const { email, estMicro, resId, model, modality } = params
+  if (!Number.isSafeInteger(estMicro) || estMicro <= 0) return { status: 'insufficient' }
   if (!env.DB) return { status: 'db_unavailable' }
   await ensureWalletTables(env)
   try {
@@ -238,47 +265,85 @@ export async function reserveCredits(
  */
 export async function settleCredits(
   env: Env,
-  params: { resId: string; email: string; model: string; modality: Modality; usage: UsageTokens },
+  params: {
+    resId: string
+    email: string
+    model: string
+    modality: Modality
+    usage: UsageTokens
+    /** false means usage was absent/incomplete: charge the conservative hold. */
+    usageMeasured?: boolean
+  },
 ): Promise<SettleResult> {
   const { resId, email, model, modality, usage } = params
   if (!env.DB) return { status: 'error' }
-  // chargeForUsageMicro assainit l'usage → chargeMicro toujours fini et > 0 (fix P6).
-  const { chargeMicro, providerCostMicro } = chargeForUsageMicro(model, usage)
+  const usageMeasured = params.usageMeasured !== false
+  // Null is intentional: SQL substitutes reservation.reserved_micro inside the
+  // same transaction. Missing usage can never degrade to the minimum charge.
+  const priced = usageMeasured ? chargeForUsageMicro(model, usage) : null
+  const chargeMicro: number | null = priced?.chargeMicro ?? null
+  const providerCostMicro: number | null = priced?.providerCostMicro ?? null
   const meta = JSON.stringify({
     input: usage.inputTokens,
     output: usage.outputTokens,
     cacheRead: usage.cacheReadTokens,
     cacheCreation: usage.cacheCreationTokens,
+    usageMeasured,
+    fallback: usageMeasured ? undefined : 'full_reservation',
   })
 
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const res = await env.DB.batch([
+        // Insert the exact amount that can be debited before mutating wallet.
+        // If usage is unknown, COALESCE selects the full reservation. MIN plus
+        // the wallet MAX below preserve balance_micro >= 0 even for legacy or
+        // unexpectedly under-reserved calls.
         env.DB.prepare(
-          // Durcissement (audit 14 juin) : les sous-requêtes corrèlent sur
-          // `user_email` en plus de `id` → une réservation ne peut JAMAIS
-          // toucher le wallet d'un autre user, même si l'appelant passait un
-          // email incohérent. La sécurité ne dépend plus du seul contrat appelant.
+          `INSERT INTO credit_ledger
+             (user_email, amount_micro, kind, ref_type, ref_id, provider_cost_micro, model, modality, meta, balance_after)
+           SELECT ?1,
+                  -MIN(
+                    MAX(0, w.balance_micro - MAX(0, w.reserved_micro - r.reserved_micro)),
+                    COALESCE(?2, r.reserved_micro)
+                  ),
+                  'debit', 'reservation', ?3, ?4, ?5, ?6, ?7,
+                  w.balance_micro - MIN(
+                    MAX(0, w.balance_micro - MAX(0, w.reserved_micro - r.reserved_micro)),
+                    COALESCE(?2, r.reserved_micro)
+                  )
+           FROM wallet w
+           JOIN reservation r ON r.id = ?3 AND r.user_email = ?1 AND r.status = 'open'
+           WHERE w.user_email = ?1
+           ON CONFLICT DO NOTHING`,
+        ).bind(email, chargeMicro, resId, providerCostMicro, model, modality, meta),
+        env.DB.prepare(
           `UPDATE wallet SET
              reserved_micro = MAX(0, reserved_micro - (SELECT reserved_micro FROM reservation WHERE id = ?1 AND status = 'open' AND user_email = ?3)),
-             balance_micro = balance_micro - ?2,
+             balance_micro = balance_micro - MIN(
+               MAX(0, balance_micro - MAX(0, reserved_micro - (SELECT reserved_micro FROM reservation WHERE id = ?1 AND status = 'open' AND user_email = ?3))),
+               COALESCE(?2, (SELECT reserved_micro FROM reservation WHERE id = ?1 AND status = 'open' AND user_email = ?3))
+             ),
              updated_at = datetime('now')
            WHERE user_email = ?3 AND EXISTS (SELECT 1 FROM reservation WHERE id = ?1 AND status = 'open' AND user_email = ?3)`,
         ).bind(resId, chargeMicro, email),
         env.DB.prepare(
-          `INSERT INTO credit_ledger
-             (user_email, amount_micro, kind, ref_type, ref_id, provider_cost_micro, model, modality, meta)
-           SELECT ?1, ?2, 'debit', 'reservation', ?3, ?4, ?5, ?6, ?7
-           WHERE EXISTS (SELECT 1 FROM reservation WHERE id = ?3 AND status = 'open' AND user_email = ?1)
-           ON CONFLICT DO NOTHING`,
-        ).bind(email, -chargeMicro, resId, providerCostMicro, model, modality, meta),
-        env.DB.prepare(
           `UPDATE reservation SET status = 'settled', settled_at = datetime('now')
-           WHERE id = ?1 AND status = 'open'`,
-        ).bind(resId),
+           WHERE id = ?1 AND user_email = ?2 AND status = 'open'`,
+        ).bind(resId, email),
       ])
       const flipped = res[2]?.meta?.changes ?? 0
-      return flipped > 0 ? { status: 'settled', chargedMicro: chargeMicro } : { status: 'already_finalized' }
+      if (flipped <= 0) return { status: 'already_finalized' }
+
+      const ledger = await env.DB.prepare(
+        `SELECT amount_micro FROM credit_ledger
+         WHERE ref_type = 'reservation' AND ref_id = ?1 AND kind = 'debit'`,
+      ).bind(resId).first<{ amount_micro: number }>()
+      const reversalDrain = await drainWalletReversalsForUser(env, email)
+      if (reversalDrain.status === 'error') {
+        console.error('[wallet] settle terminé mais drain reversal différé')
+      }
+      return { status: 'settled', chargedMicro: Math.max(0, -(ledger?.amount_micro ?? 0)) }
     } catch (err) {
       console.error(`[wallet] settle échec (tentative ${attempt + 1})`, err)
     }
@@ -314,7 +379,14 @@ export async function voidReservation(env: Env, resId: string, email: string): P
       ).bind(resId),
     ])
     const flipped = res[1]?.meta?.changes ?? 0
-    return flipped > 0 ? { status: 'voided' } : { status: 'already_finalized' }
+    if (flipped > 0) {
+      const reversalDrain = await drainWalletReversalsForUser(env, email)
+      if (reversalDrain.status === 'error') {
+        console.error('[wallet] void terminé mais drain reversal différé')
+      }
+      return { status: 'voided' }
+    }
+    return { status: 'already_finalized' }
   } catch (err) {
     console.error('[wallet] void erreur', err)
     return { status: 'error' }
@@ -383,11 +455,9 @@ export async function touchReservation(env: Env, resId: string): Promise<void> {
  *   stmt2 — ligne ledger, même garde ;
  *   stmt3 — claim de l'event (ON CONFLICT DO NOTHING).
  * Idempotence par event_id seul : Creem renvoie un event_id stable (evt_…) à
- * l'identique sur retry. On NE dédoublonne PAS sur order_id — un refund/dispute
- * partage l'order_id du top-up et doit être traité comme un event distinct.
- * ⚠️ Convention de signe : pour un chargeback/refund sortant, le CALLER passe un
- *    amountMicro NÉGATIF (le SET additionne toujours). Le câblage webhook impose
- *    le signe selon le type d'event — ne jamais laisser un champ libre décider.
+ * l'identique sur retry. Cette fonction accepte exclusivement un crédit top-up
+ * strictement positif. Les refunds/chargebacks passent par les claims durables
+ * `wallet_reversal`, jamais par une valeur négative fournie ici.
  */
 export async function creditWallet(
   env: Env,
@@ -397,20 +467,16 @@ export async function creditWallet(
     orderId?: string
     email: string
     amountMicro: number
-    kind?: 'topup' | 'refund' | 'chargeback'
+    kind?: 'topup'
   },
 ): Promise<CreditResult> {
-  const { provider, eventId, email, amountMicro, kind = 'topup' } = params
+  const { provider, eventId, email, amountMicro } = params
+  const kind = 'topup' as const
   const orderId = params.orderId ?? null
-  // Fix fuite F-C (audit 14 juin) : le ref_id du ledger pour refund/chargeback
-  // DOIT être l'event_id (unique par event), PAS l'order_id. Deux remboursements
-  // partiels sur une même commande partagent l'order_id → collision sur l'index
-  // unique partiel (ref_type, ref_id, kind WHERE kind IN debit/refund/chargeback)
-  // → le batch entier rollback → l'event n'est jamais claimé → retry infini du
-  // webhook + 2e remboursement jamais appliqué. Utiliser l'event_id aligne la clé
-  // d'unicité du ledger sur celle de webhook_event (la vraie source d'idempotence).
-  // topup garde l'order_id (hors index partiel) pour que le refund le retrouve.
-  const ledgerRefId = kind === 'topup' ? (orderId ?? eventId) : eventId
+  // L'order id relie le top-up aux futurs claims de reversal. L'event id reste
+  // le fallback idempotent pour les providers qui n'exposent pas de commande.
+  const ledgerRefId = orderId ?? eventId
+  if (!Number.isSafeInteger(amountMicro) || amountMicro <= 0) return { status: 'error' }
   if (!env.DB) return { status: 'error' }
   await ensureWalletTables(env)
   try {
@@ -435,11 +501,319 @@ export async function creditWallet(
       ).bind(provider, eventId, orderId, email, amountMicro, kind),
     ])
     const claimed = res[3]?.meta?.changes ?? 0
+    const reversalDrain = await drainWalletReversalsForUser(env, email)
+    if (reversalDrain.status === 'error') return { status: 'error' }
     return { status: claimed > 0 ? 'credited' : 'duplicate' }
   } catch (err) {
     console.error('[wallet] creditWallet erreur', err)
     return { status: 'error' }
   }
+}
+
+/**
+ * Persiste un remboursement/chargeback avant de tenter son encaissement. Le
+ * ratio reste disponible jusqu'à ce que checkout.completed identifie le wallet
+ * et le montant du top-up. Un ancien webhook_event gagne afin qu'un déploiement
+ * ne rejoue pas un événement déjà traité par l'implémentation précédente.
+ */
+export async function registerWalletReversalClaim(
+  env: Env,
+  params: {
+    provider: string
+    eventId: string
+    orderId: string
+    kind: 'refund' | 'chargeback'
+    ratioNumerator: number
+    ratioDenominator: number
+  },
+): Promise<CreditResult> {
+  const { provider, eventId, orderId, kind, ratioNumerator, ratioDenominator } = params
+  const validKey = (value: string) => value.length > 0 && value.length <= 255
+  if (
+    !env.DB
+    || !validKey(provider)
+    || !validKey(eventId)
+    || !validKey(orderId)
+    || !Number.isSafeInteger(ratioNumerator)
+    || ratioNumerator <= 0
+    || !Number.isSafeInteger(ratioDenominator)
+    || ratioDenominator <= 0
+  ) return { status: 'error' }
+
+  await ensureWalletTables(env)
+  try {
+    const result = await env.DB.prepare(
+      `INSERT INTO wallet_reversal
+         (provider, event_id, order_id, kind, ratio_numerator, ratio_denominator, status)
+       SELECT ?1, ?2, ?3, ?4, ?5, ?6, 'awaiting_topup'
+       WHERE NOT EXISTS (
+         SELECT 1 FROM webhook_event WHERE provider = ?1 AND event_id = ?2
+       )
+       ON CONFLICT(provider, event_id) DO NOTHING`,
+    )
+      .bind(provider, eventId, orderId, kind, ratioNumerator, ratioDenominator)
+      .run()
+    return { status: (result.meta?.changes ?? 0) > 0 ? 'credited' : 'duplicate' }
+  } catch (err) {
+    console.error('[wallet] registerWalletReversalClaim erreur', err)
+    return { status: 'error' }
+  }
+}
+
+interface PendingReversalRow {
+  provider: string
+  event_id: string
+  order_id: string
+  kind: 'refund' | 'chargeback'
+  ratio_numerator: number
+  ratio_denominator: number
+  requested_micro: number
+  collected_micro: number
+}
+
+/**
+ * Encaisse tout montant actuellement disponible pour les reversals résolues.
+ * Chaque échéance est une transaction : append ledger, débit du même montant
+ * immuable, puis avancement de la dette. La garde collected_before sérialise
+ * deux drainers concurrents sans modifier le ledger append-only.
+ */
+export async function drainWalletReversalsForUser(
+  env: Env,
+  email: string,
+): Promise<ReversalDrainResult> {
+  if (!env.DB) return { status: 'ok', pendingMicro: 0 }
+  await ensureWalletTables(env)
+
+  try {
+    // Page until no claim can advance. This prevents a wallet with more than
+    // 100 small reversals from retaining spendable funds behind the first page.
+    while (true) {
+      const pending = await env.DB.prepare(
+        `SELECT provider, event_id, order_id, kind, ratio_numerator, ratio_denominator,
+                requested_micro, collected_micro
+         FROM wallet_reversal
+         WHERE user_email = ?1
+           AND requested_micro IS NOT NULL
+           AND collected_micro < requested_micro
+         ORDER BY created_at ASC, event_id ASC
+         LIMIT 100`,
+      ).bind(email).all<PendingReversalRow>()
+      const rows = pending.results ?? []
+      if (rows.length === 0) break
+
+      let advanced = false
+      for (const row of rows) {
+        const expectedCollected = row.collected_micro
+        // JSON tuple keeps the installment key unambiguous even if a provider
+        // ever emits event ids containing separators such as `:`.
+        const collectionRef = JSON.stringify([row.provider, row.event_id, expectedCollected])
+        const meta = JSON.stringify({
+          provider: row.provider,
+          eventId: row.event_id,
+          orderId: row.order_id,
+          requestedMicro: row.requested_micro,
+          collectedBefore: expectedCollected,
+        })
+        const delta = `MIN(
+          MAX(0, w.balance_micro - w.reserved_micro),
+          MAX(0, r.requested_micro - r.collected_micro)
+        )`
+        const ledgerDelta = `COALESCE((
+          SELECT -amount_micro FROM credit_ledger
+          WHERE ref_type = 'mor_reversal' AND ref_id = ?6 AND kind = ?5
+          LIMIT 1
+        ), 0)`
+
+        const result = await env.DB.batch([
+          env.DB.prepare(
+            `INSERT INTO credit_ledger
+               (user_email, amount_micro, kind, ref_type, ref_id, meta, balance_after)
+             SELECT ?1, -(${delta}), ?5, 'mor_reversal', ?6, ?7,
+                    w.balance_micro - (${delta})
+             FROM wallet w
+             JOIN wallet_reversal r ON r.user_email = w.user_email
+             WHERE w.user_email = ?1
+               AND r.provider = ?2 AND r.event_id = ?3
+               AND r.kind = ?5 AND r.collected_micro = ?4
+               AND r.requested_micro IS NOT NULL
+               AND (${delta}) > 0`,
+          ).bind(
+            email,
+            row.provider,
+            row.event_id,
+            expectedCollected,
+            row.kind,
+            collectionRef,
+            meta,
+          ),
+          env.DB.prepare(
+            `UPDATE wallet
+             SET balance_micro = balance_micro - (${ledgerDelta}),
+                 updated_at = datetime('now')
+             WHERE user_email = ?1
+               AND (${ledgerDelta}) > 0
+               AND EXISTS (
+                 SELECT 1 FROM wallet_reversal
+                 WHERE provider = ?2 AND event_id = ?3 AND user_email = ?1
+                   AND collected_micro = ?4
+               )`,
+          ).bind(email, row.provider, row.event_id, expectedCollected, row.kind, collectionRef),
+          env.DB.prepare(
+            `UPDATE wallet_reversal
+             SET collected_micro = collected_micro + (${ledgerDelta}),
+                 status = CASE
+                   WHEN collected_micro + (${ledgerDelta}) >= requested_micro THEN 'settled'
+                   ELSE 'pending'
+                 END,
+                 updated_at = datetime('now')
+             WHERE provider = ?2 AND event_id = ?3 AND user_email = ?1
+               AND collected_micro = ?4
+               AND (${ledgerDelta}) > 0`,
+          ).bind(email, row.provider, row.event_id, expectedCollected, row.kind, collectionRef),
+        ])
+
+        if ((result[0]?.meta?.changes ?? 0) <= 0) break
+        advanced = true
+      }
+
+      // No available funds (or another serialized drainer won this snapshot).
+      // settle/void/top-up and the next wallet entrypoint will retry safely.
+      if (!advanced) break
+    }
+
+    const outstanding = await env.DB.prepare(
+      `SELECT COALESCE(SUM(requested_micro - collected_micro), 0) AS pending_micro
+       FROM wallet_reversal
+       WHERE user_email = ?1 AND requested_micro IS NOT NULL
+         AND collected_micro < requested_micro`,
+    ).bind(email).first<{ pending_micro: number }>()
+    return { status: 'ok', pendingMicro: Math.max(0, outstanding?.pending_micro ?? 0) }
+  } catch (err) {
+    console.error('[wallet] drainWalletReversalsForUser erreur', err)
+    return { status: 'error', pendingMicro: 0 }
+  }
+}
+
+/**
+ * Résout toutes les reversals en attente pour une commande. La somme des
+ * anciens et nouveaux claims est cappée atomiquement au top-up d'origine.
+ */
+export async function resolveWalletReversalsForTopup(
+  env: Env,
+  params: {
+    provider: string
+    orderId: string
+    email: string
+    topupMicro: number
+  },
+): Promise<CreditResult> {
+  const { provider, orderId, email, topupMicro } = params
+  if (!env.DB || !Number.isSafeInteger(topupMicro) || topupMicro <= 0) {
+    return { status: 'error' }
+  }
+  await ensureWalletTables(env)
+
+  try {
+    const unresolved = await env.DB.prepare(
+      `SELECT provider, event_id, order_id, kind, ratio_numerator, ratio_denominator,
+              0 AS requested_micro, collected_micro
+       FROM wallet_reversal
+       WHERE provider = ?1 AND order_id = ?2 AND requested_micro IS NULL
+       ORDER BY created_at ASC, event_id ASC`,
+    ).bind(provider, orderId).all<PendingReversalRow>()
+
+    let resolved = 0
+    for (const row of unresolved.results ?? []) {
+      const ratio = Math.min(1, row.ratio_numerator / row.ratio_denominator)
+      const requested = Math.min(topupMicro, Math.max(1, Math.round(topupMicro * ratio)))
+      const result = await env.DB.batch([
+        env.DB.prepare(
+          `UPDATE wallet_reversal
+           SET user_email = ?3,
+               requested_micro = MIN(
+                 ?4,
+                 MAX(0, ?5
+                   - COALESCE((
+                       SELECT SUM(requested_micro) FROM wallet_reversal
+                       WHERE provider = ?1 AND order_id = ?2
+                         AND requested_micro IS NOT NULL
+                     ), 0)
+                   - COALESCE((
+                       SELECT -SUM(amount_micro) FROM webhook_event
+                       WHERE provider = ?1 AND order_id = ?2
+                         AND kind IN ('refund', 'chargeback') AND amount_micro < 0
+                     ), 0)
+                 )
+               ),
+               status = 'pending',
+               updated_at = datetime('now')
+           WHERE provider = ?1 AND event_id = ?6 AND order_id = ?2
+             AND requested_micro IS NULL`,
+        ).bind(provider, orderId, email, requested, topupMicro, row.event_id),
+        env.DB.prepare(
+          `UPDATE wallet_reversal
+           SET status = CASE
+             WHEN COALESCE(requested_micro, 0) <= collected_micro THEN 'settled'
+             ELSE 'pending'
+           END,
+           updated_at = datetime('now')
+           WHERE provider = ?1 AND event_id = ?2`,
+        ).bind(provider, row.event_id),
+      ])
+      resolved += result[0]?.meta?.changes ?? 0
+    }
+
+    const drain = await drainWalletReversalsForUser(env, email)
+    if (drain.status === 'error') return { status: 'error' }
+    return { status: resolved > 0 ? 'credited' : 'duplicate' }
+  } catch (err) {
+    console.error('[wallet] resolveWalletReversalsForTopup erreur', err)
+    return { status: 'error' }
+  }
+}
+
+/** Point d'entrée de compatibilité quand le montant de reversal est déjà connu. */
+export async function debitWalletForReversal(
+  env: Env,
+  params: {
+    provider: string
+    eventId: string
+    orderId: string
+    email: string
+    requestedDebitMicro: number
+    maxCumulativeDebitMicro: number
+    kind: 'refund' | 'chargeback'
+  },
+): Promise<CreditResult> {
+  const {
+    provider, eventId, orderId, email,
+    requestedDebitMicro, maxCumulativeDebitMicro, kind,
+  } = params
+  if (
+    !Number.isSafeInteger(requestedDebitMicro)
+    || requestedDebitMicro <= 0
+    || !Number.isSafeInteger(maxCumulativeDebitMicro)
+    || maxCumulativeDebitMicro <= 0
+  ) return { status: 'error' }
+
+  const registered = await registerWalletReversalClaim(env, {
+    provider,
+    eventId,
+    orderId,
+    kind,
+    ratioNumerator: requestedDebitMicro,
+    ratioDenominator: maxCumulativeDebitMicro,
+  })
+  if (registered.status === 'error') return registered
+
+  const resolved = await resolveWalletReversalsForTopup(env, {
+    provider,
+    orderId,
+    email,
+    topupMicro: maxCumulativeDebitMicro,
+  })
+  if (resolved.status === 'error') return resolved
+  return registered
 }
 
 export interface ReconcileReport {

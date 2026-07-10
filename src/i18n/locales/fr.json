@@ -7,6 +7,7 @@
     "back": "Retour",
     "help": "Aide",
     "logout": "Déconnexion",
+    "logoutHint": "Tes conversations et pièces jointes chiffrées restent sur cet appareil",
     "menu": "Menu",
     "history": "Historique",
     "loading": "Chargement...",
@@ -45,11 +46,12 @@
         "required": "La clé API Anthropic est obligatoire",
         "invalidPrefix": "La clé doit commencer par sk-ant-"
       },
-      "notice": "Ta clé n'est jamais envoyée à nos serveurs. Elle sert uniquement à communiquer avec l'API Anthropic."
+      "notice": "Ta clé est stockée localement sur cet appareil, sans chiffrement applicatif. Elle transite par le proxy Arty uniquement pour relayer tes requêtes vers le fournisseur, sans y être stockée ni journalisée."
     },
     "google": {
       "signIn": "Se connecter avec Google",
       "failed": "Connexion Google échouée. Réessaie.",
+      "iosUnavailable": "Google Sign-In sur iOS nécessite encore la configuration native. Utilise provisoirement l’essai par email ou une clé API.",
       "notice": "Connecte ton compte Google pour accéder à Gmail, Drive et Calendar."
     },
     "email": {
@@ -259,7 +261,7 @@
       "screenshotAlt": "Screenshot du PC"
     },
     "actionConfirm": {
-      "email": "Envoyer un email à {{to}} ?",
+      "email": "Envoyer un email à {{to}} avec l’objet « {{subject}} » ?",
       "drive": "Créer le fichier « {{name}} » sur ton Drive ?",
       "event": "Ajouter « {{title}} » à ton agenda ?",
       "wp": "Publier « {{title}} » sur ton site ?",
@@ -428,7 +430,9 @@
       "actionPending": "⏳ En cours...",
       "actionDone": "✅ Fait !",
       "regenerate": "Régénérer la réponse",
-      "report": "Signaler cette réponse"
+      "report": "Signaler cette réponse",
+      "remoteImageBlocked": "Image externe bloquée pour protéger ta confidentialité",
+      "openRemoteImage": "Ouvrir l’image externe"
     },
     "userBubble": {
       "edit": "Modifier",
@@ -935,9 +939,9 @@
   "account": {
     "dangerZone": "Zone de danger",
     "delete": "Supprimer mon compte",
-    "deleteDescription": "Efface définitivement ta mémoire, tes conversations et tes données — sur cet appareil et sur nos serveurs.",
+    "deleteDescription": "Efface définitivement ton contenu, tes sessions et tes rapports — sur cet appareil et sur nos serveurs.",
     "confirmTitle": "Supprimer définitivement ton compte ?",
-    "confirmBody": "Action irréversible. Tes conversations, ta mémoire et tes réglages seront effacés de cet appareil, et tes données personnelles supprimées de nos serveurs. Tes éventuelles factures sont conservées (obligation légale).",
+    "confirmBody": "Action irréversible. Tes conversations, pièces jointes, rapports, sessions, mémoire et réglages seront supprimés. Seuls tes éventuelles factures (obligation légale) et des compteurs techniques minimaux d’usage, de quota et d’anti-abus sont conservés ; ils ne contiennent pas le contenu de tes échanges.",
     "confirmCta": "Oui, supprimer définitivement",
     "cancel": "Annuler",
     "deleting": "Suppression…",
@@ -1135,16 +1139,16 @@
   },
   "apiKeySetup": {
     "pageTitle": "Configuration",
-    "pageSubtitle": "Entre tes clés API pour commencer. Elles sont chiffrées et stockées uniquement sur ton appareil.",
+    "pageSubtitle": "Entre tes clés API pour commencer. Elles sont stockées localement sur cet appareil, sans chiffrement applicatif.",
     "optional": "(optionnel)",
     "hideKey": "Masquer",
     "showKey": "Afficher",
     "test": "Tester",
     "currentKey": "Actuel : {{mask}}",
-    "saving": "Chiffrement…",
+    "saving": "Enregistrement…",
     "save": "Enregistrer",
     "start": "Commencer",
-    "encryptionNotice": "Tes clés sont chiffrées en AES-256 et stockées uniquement sur ton appareil.",
+    "encryptionNotice": "Lorsqu’une clé transite par le proxy Arty pour appeler son fournisseur, elle n’y est ni stockée ni journalisée.",
     "labels": {
       "anthropic": "Clé API Anthropic",
       "openai": "Clé API OpenAI",
@@ -1162,7 +1166,7 @@
     "kicker": "Clés API",
     "titleLead": "Tes ",
     "titleAccent": "clés.",
-    "subtitle": "Chiffrées en AES-256 et stockées uniquement sur ton appareil."
+    "subtitle": "Stockées localement sur cet appareil, sans chiffrement applicatif."
   },
   "memoryViewer": {
     "title": "🧠 Mémoire d'Arty",

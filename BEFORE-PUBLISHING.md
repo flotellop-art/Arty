@@ -88,11 +88,13 @@ find dist -name "*.map"
 ## 8. Permissions natives
 
 ### Android (`android/app/src/main/AndroidManifest.xml`)
-- [x] INTERNET, CAMERA, RECORD_AUDIO (BUG 44), READ_MEDIA_IMAGES,
-      POST_NOTIFICATIONS presentes (verifie audit 3 juillet 2026).
-- [x] READ_EXTERNAL_STORAGE (Android <= 12) / READ_MEDIA_IMAGES (Android 13+).
-- [x] Permissions SUR-declarees RETIREES du manifest (C7/F-28) :
-      READ_MEDIA_AUDIO, READ_MEDIA_VIDEO.
+- [x] INTERNET, CAMERA, RECORD_AUDIO (BUG 44) et POST_NOTIFICATIONS présentes.
+- [x] Aucun accès large aux photos ou au stockage : Photo Picker / SAF couvrent
+      les sélections ponctuelles sans READ_MEDIA_IMAGES, READ_EXTERNAL_STORAGE
+      ni READ_MEDIA_VISUAL_USER_SELECTED (politique Google Play 2025+).
+- [x] Permissions sur-déclarées retirées : READ_MEDIA_IMAGES,
+      READ_MEDIA_VISUAL_USER_SELECTED, READ_MEDIA_AUDIO, READ_MEDIA_VIDEO,
+      READ_EXTERNAL_STORAGE et WRITE_EXTERNAL_STORAGE.
 - [x] MODIFY_AUDIO_SETTINGS RETABLIE (commit d1d4968) apres test APK KO
       le 5 juillet 2026 : requise par getUserMedia en WebView Capacitor
       (pipeline WebRTC configure AudioManager) — sans elle le micro est
@@ -108,9 +110,8 @@ find dist -name "*.map"
 ## 9. Tests et TypeScript verts
 
 ```bash
-npx tsc --noEmit        # 0 erreur
-npx vitest run          # 100% passing
-npm run build           # pas d'erreur, sourcemaps off
+npm ci                  # dependances exactement conformes au lockfile
+npm run verify          # app + Functions types, couverture et build
 ```
 
 Ne JAMAIS publier avec des erreurs TypeScript (BUG 13) : le build echoue
@@ -119,7 +120,8 @@ silencieusement sur Cloudflare.
 ## 10. Compilation APK / AAB
 
 ```bash
-npm run build
+npm ci
+npm run verify
 npx cap sync
 npx cap open android
 ```
@@ -150,6 +152,9 @@ Dans Android Studio :
 ## 13. App Store (iOS)
 
 En plus des points 1-12 :
-- [ ] Info.plist avec descriptions privacy completes (cf. BUG 34).
+- [x] Info.plist avec descriptions privacy completes (cf. BUG 34).
+- [x] Plugins Capacitor Browser et Geolocation inclus dans le package Swift.
+- [ ] Implementer et valider `GoogleSignInNative` sur iOS avant toute diffusion :
+      le plugin applicatif existe actuellement cote Android uniquement.
 - [ ] Build signe avec un certificat Distribution.
 - [ ] Revoir si une feature utilise une API Apple restricted (ex: ATT).

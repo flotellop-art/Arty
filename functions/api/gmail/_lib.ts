@@ -17,6 +17,63 @@ export interface MimePart {
   headers?: Array<{ name: string; value: string }>
 }
 
+const HEADER_CONTROL_CHARS = /[\u0000-\u001f\u007f]/
+const MAILBOX = /^[A-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?(?:\.[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?)+$/i
+
+export class InvalidMimeHeaderError extends Error {
+  constructor() {
+    super('Invalid MIME header')
+    this.name = 'InvalidMimeHeaderError'
+  }
+}
+
+function safeHeaderValue(value: string, maxLength = 998): string {
+  const normalized = value.trim()
+  if (!normalized || normalized.length > maxLength || HEADER_CONTROL_CHARS.test(normalized)) {
+    throw new InvalidMimeHeaderError()
+  }
+  return normalized
+}
+
+/** Accept a small, explicit mailbox grammar; display names are not needed by Arty. */
+export function normalizeRecipientList(value: string): string {
+  const raw = safeHeaderValue(value)
+  const recipients = raw.split(',').map((part) => part.trim())
+  if (recipients.length === 0 || recipients.length > 20 || recipients.some((mailbox) => !MAILBOX.test(mailbox))) {
+    throw new InvalidMimeHeaderError()
+  }
+  return recipients.join(', ')
+}
+
+/**
+ * Build a plain-text RFC 5322 message without allowing user-controlled header
+ * folding. CR, LF, NUL and all other control characters are rejected from
+ * every interpolated header before the MIME string is assembled.
+ */
+export function buildPlainTextMime(input: {
+  to?: string
+  subject: string
+  body: string
+  inReplyTo?: string
+}): string {
+  const subject = safeHeaderValue(input.subject)
+  const headers = [
+    'MIME-Version: 1.0',
+    'Content-Type: text/plain; charset=utf-8',
+    'Content-Transfer-Encoding: 8bit',
+  ]
+  if (input.to !== undefined) headers.unshift(`To: ${normalizeRecipientList(input.to)}`)
+  headers.unshift(`Subject: ${subject}`)
+  if (input.inReplyTo !== undefined) {
+    const messageId = safeHeaderValue(input.inReplyTo, 500)
+    // Message-ID is an opaque addr-spec enclosed in angle brackets. Gmail
+    // threadId is sent separately and never interpolated into MIME headers.
+    if (!/^<[^<>\s@]+@[^<>\s@]+>$/.test(messageId)) throw new InvalidMimeHeaderError()
+    headers.push(`In-Reply-To: ${messageId}`, `References: ${messageId}`)
+  }
+  return `${headers.join('\r\n')}\r\n\r\n${input.body}`
+}
+
 export function getCharset(part: MimePart): string {
   const ct = part.headers?.find((h) => h.name.toLowerCase() === 'content-type')?.value || ''
   const m = /charset\s*=\s*"?([^";]+)"?/i.exec(ct)

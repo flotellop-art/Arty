@@ -1,5 +1,5 @@
 import type { Env } from '../../env'
-import { verifyGoogleUser } from '../_lib/checkAllowedUser'
+import { verifyGoogleUserStrict } from '../_lib/checkAllowedUser'
 
 /**
  * P1.5 — Lecture publique (GET) et révocation (DELETE) d'un partage.
@@ -58,7 +58,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ params, env }) => {
 }
 
 export const onRequestDelete: PagesFunction<Env> = async ({ params, request, env }) => {
-  const email = await verifyGoogleUser(request)
+  const email = await verifyGoogleUserStrict(request, env.GOOGLE_CLIENT_ID)
   if (!email) return Response.json({ error: 'Authentication required' }, { status: 401 })
   const id = getId(params)
   if (!/^[a-f0-9-]{36}$/i.test(id) || !env.DB) return NOT_FOUND()

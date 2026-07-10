@@ -116,6 +116,7 @@ CREATE TABLE IF NOT EXISTS subscriptions (
   status TEXT NOT NULL DEFAULT 'inactive',
   plan_type TEXT NOT NULL DEFAULT 'free',
   current_period_end TEXT,
+  provider_updated_at TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -179,6 +180,29 @@ CREATE TABLE IF NOT EXISTS webhook_event (
   PRIMARY KEY (provider, event_id)
 );
 
+-- Reversals are durable debts, not one-shot webhook claims. `requested_micro`
+-- stays NULL until the matching top-up is known; `collected_micro` advances as
+-- reservations are released or later top-ups make funds available.
+CREATE TABLE IF NOT EXISTS wallet_reversal (
+  provider TEXT NOT NULL,
+  event_id TEXT NOT NULL,
+  order_id TEXT NOT NULL,
+  user_email TEXT,
+  kind TEXT NOT NULL,
+  ratio_numerator INTEGER NOT NULL,
+  ratio_denominator INTEGER NOT NULL,
+  requested_micro INTEGER,
+  collected_micro INTEGER NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'awaiting_topup',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (provider, event_id)
+);
+CREATE INDEX IF NOT EXISTS idx_wallet_reversal_order
+  ON wallet_reversal(provider, order_id, status);
+CREATE INDEX IF NOT EXISTS idx_wallet_reversal_user
+  ON wallet_reversal(user_email, status, created_at);
+
 -- ── Partage public de conversations — functions/api/share/index.ts ──
 CREATE TABLE IF NOT EXISTS shared_conversations (
   id TEXT PRIMARY KEY,
@@ -191,3 +215,17 @@ CREATE TABLE IF NOT EXISTS shared_conversations (
   deleted_at INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_shared_owner ON shared_conversations(owner_email);
+
+-- Content reports (functions/api/report/index.ts). Personal excerpts are
+-- deleted by /api/account/delete; billing tables above are retained.
+CREATE TABLE IF NOT EXISTS content_reports (
+  id TEXT PRIMARY KEY,
+  reporter_email TEXT NOT NULL,
+  category TEXT NOT NULL,
+  free_text TEXT,
+  message_excerpt TEXT NOT NULL,
+  preceding_excerpt TEXT,
+  used_models_json TEXT,
+  eu_only INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL DEFAULT (unixepoch())
+);

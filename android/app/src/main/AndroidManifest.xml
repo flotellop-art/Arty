@@ -89,18 +89,9 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
 
-    <!-- Fichiers — Android 12 et moins -->
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
-
-    <!-- Fichiers — Android 13+ (granular media permissions).
-         C7/F-28 : READ_MEDIA_VIDEO/AUDIO retirées (l'app ne lit que des images).
-         Rétablir SEULEMENT si un test terrain casse. -->
-    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
-
-    <!-- Fichiers — Android 14+ (partial photo access) — sinon Play Store
-         peut rejeter et l'UX "Sélection partielle" ne fonctionne pas. -->
-    <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
+    <!-- Photos et fichiers : aucun accès large au stockage. Les sélections
+         ponctuelles passent par Android Photo Picker / SAF, qui accordent une
+         URI temporaire sans READ_MEDIA_IMAGES ni READ_EXTERNAL_STORAGE. -->
 
     <!-- Notifications push -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />

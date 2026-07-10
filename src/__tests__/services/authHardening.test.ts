@@ -112,4 +112,59 @@ describe('N-1 / M-3 — Google token audience validation', () => {
     routeFetch({ tokeninfo: { email: 'x@y.z', email_verified: 'true', aud: 'MY_CLIENT_ID' } })
     expect(await verifyTokenViaTokeninfo('tok', 'MY_CLIENT_ID')).toBe('x@y.z')
   })
+
+  it('strict gate fails closed when GOOGLE_CLIENT_ID is missing', async () => {
+    const { verifyGoogleUserStrict } = await import('../../../functions/api/_lib/checkAllowedUser')
+    const f = vi.fn()
+    global.fetch = f as unknown as typeof fetch
+    expect(await verifyGoogleUserStrict(req(), undefined)).toBeNull()
+    expect(f).not.toHaveBeenCalled()
+  })
+
+  it('strict gate rejects a foreign audience before reading userinfo', async () => {
+    const { verifyGoogleUserStrict } = await import('../../../functions/api/_lib/checkAllowedUser')
+    routeFetch({ tokeninfo: { aud: 'OTHER_APP', azp: 'OTHER_APP' } })
+    expect(await verifyGoogleUserStrict(req(), 'MY_CLIENT_ID')).toBeNull()
+    expect(global.fetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('strict gate returns the verified Arty identity for matching aud/azp', async () => {
+    const { verifyGoogleIdentityStrict } = await import('../../../functions/api/_lib/checkAllowedUser')
+    routeFetch({
+      tokeninfo: { aud: 'MY_CLIENT_ID' },
+      userinfo: { email: 'Owner@Example.com', id: 'google-sub-1', verified_email: true },
+    })
+    expect(await verifyGoogleIdentityStrict(req(), 'MY_CLIENT_ID')).toEqual({
+      email: 'owner@example.com',
+      sub: 'google-sub-1',
+    })
+  })
+
+  it('strict gate rejects userinfo that does not confirm a verified email', async () => {
+    const { verifyGoogleUserStrict } = await import('../../../functions/api/_lib/checkAllowedUser')
+    routeFetch({
+      tokeninfo: { aud: 'MY_CLIENT_ID' },
+      userinfo: { email: 'owner@example.com', id: 'google-sub-1' },
+    })
+    expect(await verifyGoogleUserStrict(req(), 'MY_CLIENT_ID')).toBeNull()
+  })
+
+  it('purges ownerless legacy reports instead of assigning them to the next account', async () => {
+    const { migrateExistingData } = await import('../../services/userSession')
+
+    localStorage.setItem('arty-report-privatelegacy', '<html>other user report</html>')
+    localStorage.setItem('arty-conversations', JSON.stringify([{ id: 'legacy-conversation' }]))
+
+    migrateExistingData('google-new-owner')
+
+    expect(localStorage.getItem('arty-report-privatelegacy')).toBeNull()
+    expect(localStorage.getItem('arty-google-new-owner-report-privatelegacy')).toBeNull()
+    // Other ownerless data keeps its established migration path.
+    expect(localStorage.getItem('arty-google-new-owner-conversations')).toContain('legacy-conversation')
+
+    // Purging happens even when this account's migration flag already exists.
+    localStorage.setItem('arty-report-restoredlater', '<html>restored report</html>')
+    migrateExistingData('google-new-owner')
+    expect(localStorage.getItem('arty-report-restoredlater')).toBeNull()
+  })
 })

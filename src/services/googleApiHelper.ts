@@ -13,7 +13,9 @@ export async function callGoogleApi(
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
     body: JSON.stringify(payload),
   })
-  return safeJson(res)
+  const data = await safeJson(res)
+  if (!res.ok) throw new Error(`Google API request failed (${res.status})`)
+  return data
 }
 
 export async function callApi(
@@ -25,5 +27,7 @@ export async function callApi(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   })
-  return safeJson(res)
+  const data = await safeJson(res)
+  if (!res.ok) throw new Error(`API request failed (${res.status})`)
+  return data
 }

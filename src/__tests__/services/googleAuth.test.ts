@@ -197,10 +197,10 @@ describe('googleAuth — storage paths', () => {
     // blob is wiped. THIS test exercises the inverse: simulate the case where
     // KEY_CHECK_KEY was NOT rewritten (e.g. corrupted cache) → selfTest fails →
     // blob preserved.
-    localStorage.removeItem('arty-crypto-check') // simulate corrupted check value
+    localStorage.removeItem('arty-user-test-crypto-check') // simulate corrupted scoped check
     await cryptoFresh.initCrypto('sk-ant-A')
     // Manually corrupt KEY_CHECK_KEY so selfTest fails
-    localStorage.setItem('arty-crypto-check', 'GARBAGE')
+    localStorage.setItem('arty-user-test-crypto-check', 'GARBAGE')
 
     // Now corrupt the blob in a way that decrypt throws
     scoped.setItem('google-tokens-enc', 'INVALID_BASE64_!@#')

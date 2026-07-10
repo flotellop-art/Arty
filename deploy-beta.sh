@@ -74,55 +74,91 @@ if [[ $SKIP_BUILD -eq 0 ]]; then
   fi
 fi
 
+# Firebase CLI exige toujours --app. En l'absence d'override, prendre l'App ID
+# Android correspondant au package Arty dans google-services.json.
+if [[ -z "${FIREBASE_APP_ID:-}" ]]; then
+  FIREBASE_APP_ID="$(node -e '
+    const fs = require("fs");
+    const config = JSON.parse(fs.readFileSync("android/app/google-services.json", "utf8"));
+    const client = (config.client || []).find((entry) =>
+      entry?.client_info?.android_client_info?.package_name === "com.arty.app"
+    );
+    const appId = client?.client_info?.mobilesdk_app_id;
+    if (typeof appId === "string") process.stdout.write(appId);
+  ')"
+fi
+if [[ -z "$FIREBASE_APP_ID" ]]; then
+  error "FIREBASE_APP_ID absent et mobilesdk_app_id introuvable pour com.arty.app."
+  exit 1
+fi
+
 # --- 2. Build Vite + sync Capacitor ---
 if [[ $SKIP_BUILD -eq 0 ]]; then
-  info "Build Vite (tsc --noEmit + vite build)..."
-  npm run build
+  info "Installation reproductible + gate complet (types, tests, couverture, build)..."
+  npm ci
+  npm run verify
 
   info "Sync Capacitor Android..."
   npx cap sync android
 
   # --- 3. Build APK release signé ---
-  info "Build APK release signé (./gradlew assembleRelease)..."
+  info "Lint, tests et build APK release signé..."
   pushd android > /dev/null
   if [[ "$(uname -s)" == MINGW* || "$(uname -s)" == MSYS* || "$(uname -s)" == CYGWIN* ]]; then
-    ./gradlew.bat assembleRelease
+    ./gradlew.bat lintRelease testReleaseUnitTest assembleRelease --no-daemon
   else
-    ./gradlew assembleRelease
+    ./gradlew lintRelease testReleaseUnitTest assembleRelease --no-daemon
   fi
   popd > /dev/null
 
-  # --- 4. Vérification APK ---
-  if [[ ! -f "$APK_PATH" ]]; then
-    error "APK introuvable après build: $APK_PATH"
-    exit 1
-  fi
-
-  # Vérifier la signature (apksigner si disponible dans le PATH via ANDROID_HOME)
-  if [[ -n "${ANDROID_HOME:-}" && -x "$ANDROID_HOME/build-tools/$(ls -1 "$ANDROID_HOME/build-tools" | sort -Vr | head -1)/apksigner" ]]; then
-    APKSIGNER="$ANDROID_HOME/build-tools/$(ls -1 "$ANDROID_HOME/build-tools" | sort -Vr | head -1)/apksigner"
-    info "Vérification de la signature APK..."
-    "$APKSIGNER" verify --verbose "$APK_PATH" | head -5 || {
-      error "La signature APK est invalide — abandon."
-      exit 1
-    }
-  else
-    warn "apksigner non trouvé (\$ANDROID_HOME non défini) — signature non vérifiée."
-  fi
-
-  info "APK prêt : $APK_PATH"
-  du -h "$APK_PATH" | awk '{print "      taille: "$1}'
 fi
+
+# --- 4. Vérification APK ---
+# S'applique aussi à --skip-build : ne jamais distribuer un chemin absent ou
+# une archive dont la signature est invalide simplement parce qu'elle existait.
+if [[ ! -f "$APK_PATH" ]]; then
+  error "APK introuvable: $APK_PATH"
+  exit 1
+fi
+
+# Vérifier la signature avec le binaire du PATH ou le build-tools Android le
+# plus récent. Les recherches sont séquencées pour rester compatibles set -e.
+APKSIGNER=""
+if command -v apksigner &> /dev/null; then
+  APKSIGNER="$(command -v apksigner)"
+elif command -v apksigner.bat &> /dev/null; then
+  APKSIGNER="$(command -v apksigner.bat)"
+elif [[ -n "${ANDROID_HOME:-}" && -d "$ANDROID_HOME/build-tools" ]]; then
+  BUILD_TOOLS_VERSION="$(ls -1 "$ANDROID_HOME/build-tools" | sort -Vr | head -1)"
+  if [[ -n "$BUILD_TOOLS_VERSION" && -x "$ANDROID_HOME/build-tools/$BUILD_TOOLS_VERSION/apksigner" ]]; then
+    APKSIGNER="$ANDROID_HOME/build-tools/$BUILD_TOOLS_VERSION/apksigner"
+  elif [[ -n "$BUILD_TOOLS_VERSION" && -f "$ANDROID_HOME/build-tools/$BUILD_TOOLS_VERSION/apksigner.bat" ]]; then
+    APKSIGNER="$ANDROID_HOME/build-tools/$BUILD_TOOLS_VERSION/apksigner.bat"
+  fi
+fi
+
+if [[ -n "$APKSIGNER" ]]; then
+  info "Vérification de la signature APK..."
+  "$APKSIGNER" verify --verbose "$APK_PATH" || {
+    error "La signature APK est invalide — abandon."
+    exit 1
+  }
+elif [[ $SKIP_BUILD -eq 1 ]]; then
+  error "apksigner introuvable : --skip-build exige de vérifier l'APK existant."
+  exit 1
+else
+  warn "apksigner non trouvé — le build Gradle vient d'être signé mais sa vérification externe est indisponible."
+fi
+
+info "APK prêt : $APK_PATH"
+du -h "$APK_PATH" | awk '{print "      taille: "$1}'
 
 # --- 5. Upload Firebase App Distribution ---
 info "Upload vers Firebase App Distribution..."
 
 # Construire la commande firebase
 FIREBASE_CMD=(firebase appdistribution:distribute "$APK_PATH")
-
-if [[ -n "${FIREBASE_APP_ID:-}" ]]; then
-  FIREBASE_CMD+=(--app "$FIREBASE_APP_ID")
-fi
+FIREBASE_CMD+=(--app "$FIREBASE_APP_ID")
 
 # Release notes : priorité argument > env > fichier
 if [[ -n "$NOTES_OVERRIDE" ]]; then
