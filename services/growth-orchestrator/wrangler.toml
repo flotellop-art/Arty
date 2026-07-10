@@ -72,6 +72,11 @@ AGENT_WATCHER_MANAGER_ID = "agent_0138FMUj2wjqLZPx79prnWyR"
 # Le workspace est implicite via l'API key, on garde l'ID pour debug.
 ANTHROPIC_WORKSPACE_ID = "wrkspc_01H3ruuiyXxKTdN1DGELBeDi"
 ANTHROPIC_ENV_ID = "env_0171H3zqE4PaL95poNDMP7kv"
+# ID public du vault Anthropic qui contient un credential `static_bearer`
+# pour l'URL exacte du MCP Gmail. Vide = Gmail indisponible dans les sessions DG.
+ANTHROPIC_GMAIL_VAULT_ID = ""
+# Garde de securite : aucun brouillon tant qu'une approbation humaine n'existe.
+GMAIL_DRAFTS_ENABLED = "false"
 
 # Memory store partage entre les 4 agents (DG + 3 sub-agents)
 # Monte dans le container a /mnt/memory/arty/ (= name du store)

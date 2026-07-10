@@ -89,6 +89,10 @@ des routes d'admin.
 - `DISCORD_ALLOWED_USER_IDS` : l'ID Discord de Florent (CSV si plusieurs).
   Récupérer l'ID via Discord → Paramètres → Avancé → Mode développeur, puis
   clic droit sur l'utilisateur → Copier l'ID.
+- `ANTHROPIC_GMAIL_VAULT_ID` : l'ID `vlt_...` créé à l'étape 7. Laisser vide
+  désactive l'accès Gmail dans les sessions DG.
+- `GMAIL_DRAFTS_ENABLED` : conserver `"false"` tant qu'un écran d'approbation
+  humaine n'est pas disponible.
 
 Les IDs d'agents, du memory store, du workspace et de Discord sont déjà remplis.
 
@@ -127,8 +131,8 @@ curl -X POST -H "X-Trigger-Secret: <TRIGGER_SECRET>" \
 
 ### 6. Connecter Gmail (OAuth Google)
 
-Le DG peut lire les mails de Florent et créer des brouillons via le serveur MCP
-Gmail. Démarrer le flux OAuth (one-shot) :
+Le DG peut lire les mails de Florent via le serveur MCP Gmail. Démarrer le flux
+OAuth (one-shot) :
 
 ```bash
 curl -X POST -H "X-Trigger-Secret: <TRIGGER_SECRET>" \
@@ -139,16 +143,29 @@ La réponse contient `authorize_url` : l'ouvrir dans un navigateur **sous 10 min
 se connecter avec le compte Google de Florent, accepter. Le `refresh_token` est
 stocké en KV.
 
-### 7. Déclarer le serveur MCP Gmail dans l'agent DG
+Le consentement par défaut demande uniquement la lecture Gmail. Si un ancien
+jeton avait reçu le droit `gmail.compose`, le révoquer dans le compte Google puis
+relancer cette étape pour réduire réellement ses droits.
 
-Dans la config de l'agent DG (`mcp_servers`), ajouter un serveur MCP HTTP :
+### 7. Déclarer le serveur MCP Gmail et son coffre
 
-- URL : `https://<worker>/mcp/gmail`
-- Authorization token : la valeur de `MCP_AUTH_TOKEN` (envoyée en header
-  `Authorization: Bearer`).
+Dans la config de l'agent DG (`mcp_servers`), ajouter un serveur MCP HTTP dont
+l'URL est exactement `https://<worker>/mcp/gmail`.
 
-L'agent dispose alors des outils `gmail_search`, `gmail_get_message`,
-`gmail_draft`.
+Créer ensuite un vault Anthropic avec un credential `static_bearer` :
+
+- `mcp_server_url` : la même URL, caractère pour caractère ;
+- token : la valeur de `MCP_AUTH_TOKEN` ;
+- reporter l'ID `vlt_...` dans `ANTHROPIC_GMAIL_VAULT_ID` puis redéployer.
+
+Le Worker attache ce vault aux nouvelles sessions DG. Le jeton ne doit pas être
+placé directement dans la définition de l'agent.
+
+Dans les permissions MCP de l'agent, mettre `gmail_search` et
+`gmail_get_message` en `always_allow`. Laisser `gmail_draft` désactivé : le
+serveur ne l'annonce pas tant que `GMAIL_DRAFTS_ENABLED` vaut `false`. Toute
+demande `always_ask` inattendue est refusée automatiquement afin que la session
+ne reste pas bloquée indéfiniment.
 
 ### 8. (Optionnel) Activer l'équipe de veille
 
@@ -227,11 +244,11 @@ Audit des 9 routes HTTP exposées.
 | `GET /` | aucune | n/a | n/a | version/ts seulement | n/a |
 | `POST /trigger` | `X-Trigger-Secret`, constant-time | n/a | secret requis | 404 nu | n/a (secret header) |
 | `POST /admin/*` | `X-Trigger-Secret`, constant-time | n/a | secret requis | 404 nu | n/a |
-| `POST /anthropic/webhook` | HMAC SHA256 + anti-replay 5 min | sessions trackées en KV | dedup KV | 401 nu | signature = origine |
+| `POST /anthropic/webhook` | HMAC SHA256 + anti-replay 5 min | sessions trackées, livraison seulement sur `end_turn`, dédup par `event.id` | corps borné, timeouts, erreur critique = 503 | 401 nu | signature = origine |
 | `POST /oauth/google/start` | `X-Trigger-Secret`, constant-time | n/a | secret requis | 404 nu | n/a |
-| `GET /oauth/google/callback` | nonce `state` (KV, single-use, TTL 10 min) | n/a | n/a | erreur Google brute (flux Florent) | state anti-CSRF |
-| `POST /mcp/gmail` | `Authorization: Bearer`, constant-time | refresh_token unique (1 user) | token requis | 401 nu | n/a |
-| `POST /discord/interactions` | signature Ed25519 | allowlist `DISCORD_ALLOWED_USER_IDS` + canal vérifié | n/a | 401 nu | signature = origine |
+| `GET /oauth/google/callback` | nonce `state` (KV, single-use, TTL 10 min) | n/a | timeout sortant | erreur Google masquée | state anti-CSRF |
+| `POST /mcp/gmail` | `Authorization: Bearer`, constant-time | lecture seule par défaut ; brouillons masqués | corps/réponses/MIME bornés, timeouts | erreurs externes masquées | n/a (Bearer non automatique) |
+| `POST /discord/interactions` | signature Ed25519 | allowlist `DISCORD_ALLOWED_USER_IDS` + canal vérifié | corps borné + timeout | 401 nu | signature = origine |
 
 Autres mesures : aucun secret en query string (BUG 7), comparaisons de secrets
 constant-time, IDs Gmail validés par regex avant toute URL d'API (BUG 32),
@@ -239,17 +256,18 @@ constant-time, IDs Gmail validés par regex avant toute URL d'API (BUG 32),
 
 ### Risques acceptés (décision écrite)
 
-- **Scope OAuth `gmail.compose`** : Google ne fournit pas de scope « brouillon
-  uniquement » ; ce scope autorise techniquement l'envoi. Mitigation : le serveur
-  MCP n'expose **aucun** outil d'envoi (search / get / draft seulement) et le
-  token est isolé en KV. Le risque résiduel est une fuite du `refresh_token`.
+- **Scope OAuth d'écriture** : par défaut, seul `gmail.readonly` est demandé.
+  Activer explicitement les brouillons ajoute `gmail.compose`, qui autorise aussi
+  techniquement l'envoi ; cette option reste donc désactivée sans approbation
+  humaine.
 - **`refresh_token` Google en KV** : stocké sans chiffrement applicatif (KV est
   chiffré at-rest par Cloudflare). Le chiffrer placerait la clé dans le même
   coffre de secrets CF → gain marginal. Accepté.
-- **Race double-DG** : KV n'a pas de compare-and-set ; deux webhooks
-  quasi-simultanés peuvent en théorie lancer 2 sessions DG. Le garde
-  d'idempotence `cycle:{id}:digest-posted` borne l'impact à une session
-  Anthropic en trop (~0,30 $, rare), jamais deux digests postés.
+- **Race double-DG / double-post** : KV n'a pas de compare-and-set. Le Worker
+  déduplique désormais par `event.id`, pose un claim temporaire et écrit les
+  marqueurs seulement après confirmation Discord. Cela bloque les replays
+  ordinaires, pas toutes les courses multi-régions ; une garantie forte exige
+  encore une Queue + un état atomique (Durable Object).
 - **Pas de rate limiting** sur `/trigger` (secret) et `/dg` (allowlist) :
   surfaces déjà protégées.
 
@@ -302,6 +320,8 @@ Total : ~17 $/mois.
 ```bash
 npx wrangler tail        # logs en temps réel
 npx tsc --noEmit         # typecheck (obligatoire avant deploy — CLAUDE.md BUG 13)
+npm test                 # tests contrats Anthropic, Discord et Gmail
+npm run verify           # typecheck + tests + build Cloudflare à blanc
 npx wrangler deploy --dry-run   # valide le build sans déployer
 ```
 
@@ -312,6 +332,9 @@ Historique des invocations : dashboard Cloudflare → Workers →
 
 - **Pas de watchdog** : si une session Anthropic n'émet jamais `idle` ni
   `terminated`, le cycle reste incomplet ; les clés KV expirent après 24h.
+- **Traitement webhook encore synchrone** : les erreurs critiques renvoient 503
+  et conservent le suivi, mais la livraison durable par Queue et la coordination
+  fortement cohérente par Durable Object restent le prochain chantier.
 - **Tally paginé à 50** : `fetchTallyStats` ne lit que la 1ʳᵉ page. À paginer
   quand le total dépasse ~50 inscriptions sur une fenêtre courte.
 - **Pas de retry** automatique sur échec de création de session.

@@ -1,5 +1,24 @@
 /// <reference types="@cloudflare/workers-types" />
 
+import {
+  classifyIdleDisposition,
+  type AnthropicSessionStatus,
+  type SessionStatusIdleEvent,
+} from "./anthropic-session";
+import {
+  BodyTooLargeError,
+  readJsonBodyLimited,
+  readTextBodyLimited,
+} from "./bounded-body";
+import { discordFetchOrThrow } from "./discord-http";
+import {
+  appendReference,
+  buildRfc2822Message,
+  encodeBase64UrlUtf8,
+  GmailMessageValidationError,
+} from "./gmail-message";
+import { fetchWithTimeout } from "./http-timeout";
+
 /**
  * Arty Growth Orchestrator v2
  * --------------------------------
@@ -59,6 +78,8 @@ export interface Env {
   // Vars publiques
   ANTHROPIC_WORKSPACE_ID: string;
   ANTHROPIC_ENV_ID: string;
+  // Vault Anthropic contenant le credential static_bearer du MCP Gmail.
+  ANTHROPIC_GMAIL_VAULT_ID?: string;
   AGENT_DG_ID: string;
   AGENT_GROWTH_FR_ID: string;
   AGENT_CONTENT_FR_ID: string;
@@ -79,6 +100,9 @@ export interface Env {
   EMAIL_TO: string;
   EMAIL_FROM: string;
   EMAIL_FROM_NAME: string;
+  // Les brouillons restent desactives tant qu'un flux d'approbation humaine
+  // n'est pas branche. La valeur doit etre explicitement "true" pour les exposer.
+  GMAIL_DRAFTS_ENABLED?: string;
   // Agents de veille (4 crons : mer outils/infra, jeu users, ven research, sam manager).
   // Vides au depart ; une fois crees sur la console Anthropic, coller les IDs dans wrangler.toml.
   // Liste complete et leur slot defini dans WATCHERS_CONFIG (src/index.ts).
@@ -112,6 +136,7 @@ interface PendingInteraction {
   watcher?: string;
   cycleId?: string;                            // pour weekly_* et infra_watch
   createdAt: number;
+  phase?: "created" | "message_sent" | "send_unknown";
 }
 
 // Metadata d'un cycle hebdo, stockee en KV `cycle:{cycleId}:meta`
@@ -127,6 +152,7 @@ interface CycleMeta {
 // ===========================================================================
 
 const ANTHROPIC_BASE = "https://api.anthropic.com/v1";
+const ANTHROPIC_HTTP_TIMEOUT_MS = 8_000;
 
 function anthropicHeaders(apiKey: string): Record<string, string> {
   return {
@@ -143,6 +169,18 @@ interface GithubRepoMount {
   token: string;
 }
 
+function gmailVaultIds(env: Env): string[] | undefined {
+  const vaultId = env.ANTHROPIC_GMAIL_VAULT_ID?.trim();
+  if (!vaultId) {
+    console.warn("[anthropic] ANTHROPIC_GMAIL_VAULT_ID absent: MCP Gmail indisponible pour cette session DG");
+    return undefined;
+  }
+  if (!/^vlt_[a-zA-Z0-9_-]+$/.test(vaultId)) {
+    throw new Error("ANTHROPIC_GMAIL_VAULT_ID invalide");
+  }
+  return [vaultId];
+}
+
 async function createSession(
   apiKey: string,
   agentId: string,
@@ -150,6 +188,7 @@ async function createSession(
   title: string,
   memoryStoreId?: string,
   githubRepo?: GithubRepoMount,
+  vaultIds?: string[],
 ): Promise<{ ok: true; id: string } | { ok: false; err: string }> {
   const body: Record<string, unknown> = {
     agent: agentId,
@@ -169,16 +208,17 @@ async function createSession(
     });
   }
   if (resources.length > 0) body.resources = resources;
+  if (vaultIds?.length) body.vault_ids = vaultIds;
 
-  const res = await fetch(`${ANTHROPIC_BASE}/sessions`, {
+  const res = await fetchWithTimeout(`${ANTHROPIC_BASE}/sessions`, {
     method: "POST",
     headers: anthropicHeaders(apiKey),
     body: JSON.stringify(body),
-  });
+  }, ANTHROPIC_HTTP_TIMEOUT_MS);
   if (!res.ok) {
-    return { ok: false, err: `Create session ${res.status}: ${(await res.text()).slice(0, 300)}` };
+    return { ok: false, err: `Create session ${res.status}: ${await responseErrorSnippet(res)}` };
   }
-  const data = (await res.json()) as { id?: string };
+  const data = await readJsonBodyLimited<{ id?: string }>(res, 256 * 1024);
   if (!data.id) return { ok: false, err: "Missing session id" };
   return { ok: true, id: data.id };
 }
@@ -188,17 +228,97 @@ async function sendUserMessage(
   sessionId: string,
   text: string,
 ): Promise<{ ok: boolean; err?: string }> {
-  const res = await fetch(`${ANTHROPIC_BASE}/sessions/${sessionId}/events`, {
+  const res = await fetchWithTimeout(`${ANTHROPIC_BASE}/sessions/${sessionId}/events`, {
     method: "POST",
     headers: anthropicHeaders(apiKey),
     body: JSON.stringify({
       events: [{ type: "user.message", content: [{ type: "text", text }] }],
     }),
-  });
+  }, ANTHROPIC_HTTP_TIMEOUT_MS);
   if (!res.ok) {
-    return { ok: false, err: `Send event ${res.status}: ${(await res.text()).slice(0, 300)}` };
+    return { ok: false, err: `Send event ${res.status}: ${await responseErrorSnippet(res)}` };
   }
   return { ok: true };
+}
+
+/** Enregistre la session avant l'envoi pour qu'un tour tres rapide ne soit pas perdu. */
+type TrackedSendResult =
+  | { ok: true; ambiguous: false }
+  | { ok: false; ambiguous: boolean; err: string };
+
+async function trackAndSendUserMessage(
+  env: Env,
+  sessionId: string,
+  text: string,
+  pending: PendingInteraction,
+  expirationTtl: number,
+): Promise<TrackedSendResult> {
+  const key = `sess:${sessionId}`;
+  await env.INTERACTIONS.put(key, JSON.stringify({ ...pending, phase: "created" }), { expirationTtl });
+
+  let sent: { ok: boolean; err?: string };
+  try {
+    sent = await sendUserMessage(env.ANTHROPIC_API_KEY, sessionId, text);
+  } catch (error) {
+    // Un timeout est ambigu : Anthropic a peut-etre accepte le message. Garder
+    // le suivi permet au webhook final de livrer malgre l'erreur cote appelant.
+    try {
+      await env.INTERACTIONS.put(
+        key,
+        JSON.stringify({ ...pending, phase: "send_unknown" }),
+        { expirationTtl },
+      );
+    } catch (stateError) {
+      console.error(`[anthropic] unable to persist ambiguous send state for ${sessionId}: ${stateError}`);
+    }
+    return { ok: false, ambiguous: true, err: `Anthropic send outcome unknown: ${String(error)}` };
+  }
+  if (!sent.ok) {
+    try {
+      await env.INTERACTIONS.delete(key);
+    } catch (cleanupError) {
+      console.error(`[anthropic] cleanup after send failure failed for ${sessionId}: ${cleanupError}`);
+    }
+    return { ok: false, ambiguous: false, err: sent.err ?? "Anthropic rejected the message" };
+  }
+
+  try {
+    await env.INTERACTIONS.put(key, JSON.stringify({ ...pending, phase: "message_sent" }), { expirationTtl });
+  } catch (error) {
+    try {
+      await env.INTERACTIONS.put(
+        key,
+        JSON.stringify({ ...pending, phase: "send_unknown" }),
+        { expirationTtl },
+      );
+    } catch (stateError) {
+      console.error(`[anthropic] unable to persist sent state for ${sessionId}: ${stateError}`);
+    }
+    return { ok: false, ambiguous: true, err: `Anthropic send state unknown: ${String(error)}` };
+  }
+  return { ok: true, ambiguous: false };
+}
+
+async function denyPendingToolActions(
+  apiKey: string,
+  sessionId: string,
+  eventIds: string[],
+): Promise<void> {
+  const res = await fetchWithTimeout(`${ANTHROPIC_BASE}/sessions/${sessionId}/events`, {
+    method: "POST",
+    headers: anthropicHeaders(apiKey),
+    body: JSON.stringify({
+      events: eventIds.map((eventId) => ({
+        type: "user.tool_confirmation",
+        tool_use_id: eventId,
+        result: "deny",
+        deny_message: "Aucun flux d'approbation humaine n'est configure. Continue sans cet outil.",
+      })),
+    }),
+  }, ANTHROPIC_HTTP_TIMEOUT_MS);
+  if (!res.ok) {
+    throw new Error(`Deny tool confirmations failed (${res.status})`);
+  }
 }
 
 async function fetchAgentText(apiKey: string, sessionId: string, limit = 500): Promise<string> {
@@ -213,14 +333,16 @@ async function fetchAgentText(apiKey: string, sessionId: string, limit = 500): P
   // chronologique dans le texte concatene, ce qui preserve la lisibilite pour
   // les usages /dg ou un long raisonnement multi-message est restitue dans
   // l'ordre naturel.
-  const res = await fetch(`${ANTHROPIC_BASE}/sessions/${sessionId}/events?limit=${limit}&order=desc`, {
+  const res = await fetchWithTimeout(`${ANTHROPIC_BASE}/sessions/${sessionId}/events?limit=${limit}&order=desc`, {
     method: "GET",
     headers: anthropicHeaders(apiKey),
-  });
-  if (!res.ok) return "";
-  const data = (await res.json()) as {
+  }, ANTHROPIC_HTTP_TIMEOUT_MS);
+  if (!res.ok) {
+    throw new Error(`Fetch session events ${res.status}: ${await responseErrorSnippet(res)}`);
+  }
+  const data = await readJsonBodyLimited<{
     data?: Array<{ type?: string; content?: Array<{ type?: string; text?: string }> }>;
-  };
+  }>(res, 2 * 1024 * 1024);
   const events = (data.data ?? []).slice().reverse();
   const texts: string[] = [];
   for (const ev of events) {
@@ -230,6 +352,41 @@ async function fetchAgentText(apiKey: string, sessionId: string, limit = 500): P
     }
   }
   return texts.join("\n\n");
+}
+
+interface AnthropicSessionSnapshot {
+  status?: AnthropicSessionStatus;
+}
+
+async function retrieveAnthropicSession(
+  apiKey: string,
+  sessionId: string,
+): Promise<AnthropicSessionSnapshot> {
+  const res = await fetchWithTimeout(`${ANTHROPIC_BASE}/sessions/${sessionId}`, {
+    method: "GET",
+    headers: anthropicHeaders(apiKey),
+  }, ANTHROPIC_HTTP_TIMEOUT_MS);
+  if (!res.ok) {
+    throw new Error(`Retrieve session ${res.status}: ${await responseErrorSnippet(res)}`);
+  }
+  return readJsonBodyLimited<AnthropicSessionSnapshot>(res, 256 * 1024);
+}
+
+async function fetchLatestIdleEvent(
+  apiKey: string,
+  sessionId: string,
+): Promise<SessionStatusIdleEvent | null> {
+  const params = new URLSearchParams({ order: "desc", limit: "1" });
+  params.append("types[]", "session.status_idle");
+  const res = await fetchWithTimeout(`${ANTHROPIC_BASE}/sessions/${sessionId}/events?${params}`, {
+    method: "GET",
+    headers: anthropicHeaders(apiKey),
+  }, ANTHROPIC_HTTP_TIMEOUT_MS);
+  if (!res.ok) {
+    throw new Error(`Fetch idle event ${res.status}: ${await responseErrorSnippet(res)}`);
+  }
+  const data = await readJsonBodyLimited<{ data?: SessionStatusIdleEvent[] }>(res, 256 * 1024);
+  return data.data?.[0] ?? null;
 }
 
 function sleep(ms: number): Promise<void> {
@@ -298,6 +455,9 @@ function isValidGmailId(id: string): boolean {
 
 /** base64url -> bytes (Workers' Buffer ne gere pas toujours 'base64url'). */
 function decodeBase64Url(data: string): Uint8Array {
+  if (data.length > 512 * 1024) {
+    throw new Error("Gmail MIME part too large");
+  }
   const b64 = data.replace(/-/g, "+").replace(/_/g, "/");
   const padded = b64.padEnd(Math.ceil(b64.length / 4) * 4, "=");
   const bin = atob(padded);
@@ -392,18 +552,18 @@ async function fetchTallyStats(env: Env): Promise<string> {
     // ce qui suffit pour calculer total approx, delta semaine et delta jour.
     // Si total > 50 plus tard, on paginera.
     const url = `https://api.tally.so/forms/${env.TALLY_FORM_ID}/submissions?limit=50&page=1`;
-    const res = await fetch(url, {
+    const res = await fetchWithTimeout(url, {
       headers: {
         Authorization: `Bearer ${env.TALLY_API_KEY}`,
         "Content-Type": "application/json",
       },
     });
     if (!res.ok) {
-      const errText = (await res.text()).slice(0, 200);
+      const errText = await responseErrorSnippet(res);
       console.error(`[tally] HTTP ${res.status}: ${errText}`);
       return `## Stats waitlist (Tally)\n\nNon disponibles cette execution. Erreur API : ${res.status}.\n`;
     }
-    const data = (await res.json()) as {
+    const data = await readJsonBodyLimited<{
       totalNumberOfSubmissionsPerFilter?: { all?: number; completed?: number };
       submissions?: Array<{
         id: string;
@@ -411,7 +571,7 @@ async function fetchTallyStats(env: Env): Promise<string> {
         isCompleted?: boolean;
         responses?: Array<{ question?: { title?: string }; answer?: { value?: string } }>;
       }>;
-    };
+    }>(res, 2 * 1024 * 1024);
 
     const totalAll = data.totalNumberOfSubmissionsPerFilter?.completed
       ?? data.totalNumberOfSubmissionsPerFilter?.all
@@ -635,20 +795,25 @@ function buildBriefDG(
 async function fetchMemoryByPath(env: Env, path: string): Promise<string | null> {
   const normalized = path.startsWith("/") ? path : "/" + path;
   // Limite KV/Anthropic : on liste 100 max. Pour la v1 on suppose < 100 memories.
-  const listRes = await fetch(
+  const listRes = await fetchWithTimeout(
     `${ANTHROPIC_BASE}/memory_stores/${env.MEMORY_STORE_ID}/memories?limit=100`,
     { headers: anthropicHeaders(env.ANTHROPIC_API_KEY) },
+    ANTHROPIC_HTTP_TIMEOUT_MS,
   );
   if (!listRes.ok) return null;
-  const list = (await listRes.json()) as { data?: Array<{ path?: string; id?: string }> };
+  const list = await readJsonBodyLimited<{ data?: Array<{ path?: string; id?: string }> }>(
+    listRes,
+    2 * 1024 * 1024,
+  );
   const found = list.data?.find((m) => m.path === normalized);
   if (!found?.id) return null;
-  const memRes = await fetch(
+  const memRes = await fetchWithTimeout(
     `${ANTHROPIC_BASE}/memory_stores/${env.MEMORY_STORE_ID}/memories/${found.id}`,
     { headers: anthropicHeaders(env.ANTHROPIC_API_KEY) },
+    ANTHROPIC_HTTP_TIMEOUT_MS,
   );
   if (!memRes.ok) return null;
-  const mem = (await memRes.json()) as { content?: string };
+  const mem = await readJsonBodyLimited<{ content?: string }>(memRes, 5 * 1024 * 1024);
   return mem.content || null;
 }
 
@@ -786,46 +951,76 @@ async function discordPostMessage(
       const a = attachments[i];
       form.append(`files[${i}]`, new Blob([a.data], { type: "image/png" }), a.filename);
     }
-    const res = await fetch(url, {
+    await discordFetchOrThrow(url, {
       method: "POST",
       headers: { Authorization: `Bot ${env.DISCORD_BOT_TOKEN}` },
       body: form,
-    });
-    if (!res.ok) {
-      console.error(`[discord] post (with attachments) failed ${res.status}: ${(await res.text()).slice(0, 200)}`);
-    } else {
-      console.log(`[discord] post OK avec ${attachments.length} piece(s) jointe(s)`);
-    }
+    }, "Discord post with attachments");
+    console.log(`[discord] post OK avec ${attachments.length} piece(s) jointe(s)`);
   } else {
-    const res = await fetch(url, {
+    await discordFetchOrThrow(url, {
       method: "POST",
       headers: {
         Authorization: `Bot ${env.DISCORD_BOT_TOKEN}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ content: chunks[0] }),
-    });
-    if (!res.ok) {
-      console.error(`[discord] post failed ${res.status}: ${(await res.text()).slice(0, 200)}`);
-    }
+    }, "Discord post");
   }
   await sleep(300);
 
   // Chunks suivants : POST text only
   for (let i = 1; i < chunks.length; i++) {
-    const res = await fetch(url, {
+    await discordFetchOrThrow(url, {
       method: "POST",
       headers: {
         Authorization: `Bot ${env.DISCORD_BOT_TOKEN}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ content: chunks[i] }),
-    });
-    if (!res.ok) {
-      console.error(`[discord] post follow chunk ${i} failed ${res.status}`);
-    }
+    }, `Discord post chunk ${i + 1}/${chunks.length}`);
     await sleep(300);
   }
+}
+
+async function responseErrorSnippet(response: Response): Promise<string> {
+  try {
+    return (await readTextBodyLimited(response, 64 * 1024, 4_000)).slice(0, 300);
+  } catch {
+    return "response body unavailable";
+  }
+}
+
+interface GmailMimePart {
+  mimeType?: string;
+  body?: { data?: string };
+  headers?: Array<{ name?: string; value?: string }>;
+  parts?: GmailMimePart[];
+}
+
+/** Parcours MIME iteratif et borne : pas de recursion ni d'arbre hostile infini. */
+function findGmailMimePart(root: GmailMimePart | undefined, wantedMime: string): GmailMimePart | null {
+  if (!root) return null;
+  const stack: Array<{ node: GmailMimePart; depth: number }> = [{ node: root, depth: 0 }];
+  let visited = 0;
+
+  while (stack.length) {
+    const current = stack.pop()!;
+    visited += 1;
+    if (visited > 200 || current.depth > 20) {
+      throw new Error("Gmail MIME structure too complex");
+    }
+    if ((current.node.mimeType ?? "").toLowerCase() === wantedMime && current.node.body?.data) {
+      return current.node;
+    }
+    const children = current.node.parts ?? [];
+    if (children.length > 200) throw new Error("Gmail MIME structure too complex");
+    for (let i = children.length - 1; i >= 0; i--) {
+      stack.push({ node: children[i]!, depth: current.depth + 1 });
+    }
+  }
+
+  return null;
 }
 
 function splitForDiscord(text: string, max: number): string[] {
@@ -905,7 +1100,7 @@ async function translateForNovice(env: Env, technicalContent: string): Promise<s
   ].join("\n");
 
   try {
-    const res = await fetch(`${ANTHROPIC_BASE}/messages`, {
+    const res = await fetchWithTimeout(`${ANTHROPIC_BASE}/messages`, {
       method: "POST",
       headers: {
         "anthropic-version": "2023-06-01",
@@ -920,10 +1115,12 @@ async function translateForNovice(env: Env, technicalContent: string): Promise<s
       }),
     });
     if (!res.ok) {
-      console.error(`[email] translate failed ${res.status}: ${(await res.text()).slice(0, 200)}`);
+      console.error(`[email] translate failed ${res.status}: ${await responseErrorSnippet(res)}`);
       return "";
     }
-    const data = (await res.json()) as { content?: Array<{ type?: string; text?: string }> };
+    const data = await readJsonBodyLimited<{
+      content?: Array<{ type?: string; text?: string }>;
+    }>(res, 512 * 1024);
     const text = (data.content ?? [])
       .filter((b) => b.type === "text" && b.text)
       .map((b) => b.text)
@@ -949,7 +1146,7 @@ async function sendEmail(env: Env, subject: string, htmlBody: string): Promise<v
     const from = env.EMAIL_FROM_NAME
       ? `${env.EMAIL_FROM_NAME} <${env.EMAIL_FROM}>`
       : env.EMAIL_FROM;
-    const res = await fetch("https://api.resend.com/emails", {
+    const res = await fetchWithTimeout("https://api.resend.com/emails", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${env.RESEND_API_KEY}`,
@@ -963,7 +1160,7 @@ async function sendEmail(env: Env, subject: string, htmlBody: string): Promise<v
       }),
     });
     if (!res.ok) {
-      console.error(`[email] send failed ${res.status}: ${(await res.text()).slice(0, 200)}`);
+      console.error(`[email] send failed ${res.status}: ${await responseErrorSnippet(res)}`);
       return;
     }
     console.log(`[email] sent "${subject}" to ${env.EMAIL_TO}`);
@@ -1082,20 +1279,17 @@ async function runWeeklyCycle(env: Env): Promise<void> {
           console.error(`[cycle] create ${role} failed: ${created.err}`);
           return;
         }
-        const sent = await sendUserMessage(env.ANTHROPIC_API_KEY, created.id, brief);
-        if (!sent.ok) {
-          console.error(`[cycle] send ${role} failed: ${sent.err}`);
-          return;
-        }
         const pending: PendingInteraction = {
           type: "weekly_subagent",
           role,
           cycleId,
           createdAt: Date.now(),
         };
-        await env.INTERACTIONS.put(`sess:${created.id}`, JSON.stringify(pending), {
-          expirationTtl: WEEKLY_KV_TTL,
-        });
+        const sent = await trackAndSendUserMessage(env, created.id, brief, pending, WEEKLY_KV_TTL);
+        if (!sent.ok) {
+          console.error(`[cycle] send ${role} failed: ${sent.err}`);
+          return;
+        }
         console.log(`[cycle] ${role} session ${created.id} launched`);
       },
     ),
@@ -1158,55 +1352,69 @@ async function maybeLaunchDG(env: Env, cycleId: string): Promise<void> {
   }
   await env.INTERACTIONS.put(lockKey, new Date().toISOString(), { expirationTtl: WEEKLY_KV_TTL });
 
-  const meta = safeParse<CycleMeta>(await env.INTERACTIONS.get(`cycle:${cycleId}:meta`));
-  if (!meta) {
-    console.error(`[cycle] meta manquante/corrompue pour ${cycleId}`);
-    await discordPostMessage(env, `Erreur cycle ${cycleId} : metadata introuvable, DG non lance.`);
-    return;
-  }
-  const [analytics, growth, content] = results;
-  const tallyBlock =
-    (await env.INTERACTIONS.get(`cycle:${cycleId}:tally`)) || (await fetchTallyStats(env));
+  let launched = false;
+  try {
+    const meta = safeParse<CycleMeta>(await env.INTERACTIONS.get(`cycle:${cycleId}:meta`));
+    if (!meta) {
+      console.error(`[cycle] meta manquante/corrompue pour ${cycleId}`);
+      throw new Error(`Cycle metadata unavailable for ${cycleId}`);
+    }
+    const [analytics, growth, content] = results;
+    const tallyBlock =
+      (await env.INTERACTIONS.get(`cycle:${cycleId}:tally`)) || (await fetchTallyStats(env));
 
-  const dgBrief = buildBriefDG(
-    new Date(meta.weekStart),
-    new Date(meta.weekEnd),
-    meta.cycleN,
-    { analytics: analytics || "", growth: growth || "", content: content || "" },
-    tallyBlock,
-  );
+    const dgBrief = buildBriefDG(
+      new Date(meta.weekStart),
+      new Date(meta.weekEnd),
+      meta.cycleN,
+      { analytics: analytics || "", growth: growth || "", content: content || "" },
+      tallyBlock,
+    );
 
-  const created = await createSession(
-    env.ANTHROPIC_API_KEY,
-    env.AGENT_DG_ID,
-    env.ANTHROPIC_ENV_ID,
-    `DG - cycle #${meta.cycleN}`,
-    env.MEMORY_STORE_ID,
-    {
-      url: env.GITHUB_REPO_URL,
-      mountPath: env.GITHUB_REPO_MOUNT,
-      token: env.GITHUB_TOKEN,
-    },
-  );
-  if (!created.ok) {
-    console.error(`[cycle] DG create failed: ${created.err}`);
-    await discordPostMessage(env, `Erreur cycle #${meta.cycleN} : impossible de creer la session DG (${created.err.slice(0, 200)}).`);
-    return;
+    const created = await createSession(
+      env.ANTHROPIC_API_KEY,
+      env.AGENT_DG_ID,
+      env.ANTHROPIC_ENV_ID,
+      `DG - cycle #${meta.cycleN}`,
+      env.MEMORY_STORE_ID,
+      {
+        url: env.GITHUB_REPO_URL,
+        mountPath: env.GITHUB_REPO_MOUNT,
+        token: env.GITHUB_TOKEN,
+      },
+      gmailVaultIds(env),
+    );
+    if (!created.ok) {
+      console.error(`[cycle] DG create failed: ${created.err}`);
+      throw new Error(`Unable to create DG session for ${cycleId}`);
+    }
+    const dgPending: PendingInteraction = {
+      type: "weekly_dg",
+      cycleId,
+      role: "dg",
+      createdAt: Date.now(),
+    };
+    const sent = await trackAndSendUserMessage(env, created.id, dgBrief, dgPending, WEEKLY_KV_TTL);
+    if (!sent.ok) {
+      console.error(`[cycle] DG send failed: ${sent.err}`);
+      if (sent.ambiguous) {
+        // La session peut deja tourner : conserver le lock evite d'en creer une seconde.
+        launched = true;
+        return;
+      }
+      throw new Error(`Unable to send DG brief for ${cycleId}`);
+    }
+    launched = true;
+    console.log(`[cycle] DG session ${created.id} launched for cycle ${cycleId}`);
+  } finally {
+    if (!launched) {
+      try {
+        await env.INTERACTIONS.delete(lockKey);
+      } catch (unlockError) {
+        console.error(`[cycle] impossible de liberer ${lockKey}: ${unlockError}`);
+      }
+    }
   }
-  const sent = await sendUserMessage(env.ANTHROPIC_API_KEY, created.id, dgBrief);
-  if (!sent.ok) {
-    console.error(`[cycle] DG send failed: ${sent.err}`);
-    return;
-  }
-
-  const dgPending: PendingInteraction = {
-    type: "weekly_dg",
-    cycleId,
-    role: "dg",
-    createdAt: Date.now(),
-  };
-  await env.INTERACTIONS.put(`sess:${created.id}`, JSON.stringify(dgPending), { expirationTtl: WEEKLY_KV_TTL });
-  console.log(`[cycle] DG session ${created.id} launched for cycle ${cycleId}`);
 }
 
 /**
@@ -1224,10 +1432,6 @@ async function handleWeeklyDgDone(env: Env, pending: PendingInteraction, session
     console.log(`[cycle] digest deja poste pour ${cycleId}, skip`);
     return;
   }
-  await env.INTERACTIONS.put(`cycle:${cycleId}:digest-posted`, new Date().toISOString(), {
-    expirationTtl: WEEKLY_KV_TTL,
-  });
-
   const text = await fetchAgentText(env.ANTHROPIC_API_KEY, sessionId);
   const meta = safeParse<CycleMeta>(await env.INTERACTIONS.get(`cycle:${cycleId}:meta`));
 
@@ -1241,6 +1445,10 @@ async function handleWeeklyDgDone(env: Env, pending: PendingInteraction, session
   const header = `# Digest Arty - cycle #${cycleN} (${fmtDate(start)} au ${fmtDate(end)})\n_Genere automatiquement le ${new Date().toLocaleString("fr-FR")} par Arty DG._\n\n---\n\n`;
   const fullDigest = header + (text || "Le DG a fini sa session mais n'a renvoye aucun texte.");
   await discordPostMessage(env, fullDigest);
+  // Marquer livre uniquement APRES confirmation de tous les chunks Discord.
+  await env.INTERACTIONS.put(`cycle:${cycleId}:digest-posted`, new Date().toISOString(), {
+    expirationTtl: WEEKLY_KV_TTL,
+  });
   console.log(`[cycle] digest poste sur Discord pour cycle ${cycleId}`);
 
   // Email recap vulgarise (echec silencieux, ne bloque pas le cleanup).
@@ -1444,20 +1652,17 @@ async function runWatchCycle(env: Env, slot: CycleSlot): Promise<void> {
         console.error(`[watch:${slot}] create ${w.key} failed: ${created.err}`);
         return;
       }
-      const sent = await sendUserMessage(env.ANTHROPIC_API_KEY, created.id, brief);
-      if (!sent.ok) {
-        console.error(`[watch:${slot}] send ${w.key} failed: ${sent.err}`);
-        return;
-      }
       const pending: PendingInteraction = {
         type: "infra_watch",
         watcher: w.key,
         cycleId,
         createdAt: Date.now(),
       };
-      await env.INTERACTIONS.put(`sess:${created.id}`, JSON.stringify(pending), {
-        expirationTtl: WEEKLY_KV_TTL,
-      });
+      const sent = await trackAndSendUserMessage(env, created.id, brief, pending, WEEKLY_KV_TTL);
+      if (!sent.ok) {
+        console.error(`[watch:${slot}] send ${w.key} failed: ${sent.err}`);
+        return;
+      }
       console.log(`[watch:${slot}] ${w.key} session ${created.id} launched`);
     }),
   );
@@ -1563,15 +1768,15 @@ async function maybePostWatchDigest(env: Env, cycleId: string, slot: CycleSlot):
     console.log(`[watch:${slot}] digest deja poste pour ${cycleId}, skip`);
     return;
   }
-  await env.INTERACTIONS.put(postedKey, new Date().toISOString(), {
-    expirationTtl: WEEKLY_KV_TTL,
-  });
-
   const dateStr = cycleId.replace(/^watch-/, "");
   const sections = slotWatchers.map((w, i) => `## ${w.label}\n\n${results[i] || "(aucun resume)"}`);
   const body = sections.join("\n\n---\n\n");
   const fullDigest = watchDigestHeader(slot, dateStr) + body;
   await discordPostMessage(env, fullDigest);
+  // Marquer livre uniquement APRES confirmation de tous les chunks Discord.
+  await env.INTERACTIONS.put(postedKey, new Date().toISOString(), {
+    expirationTtl: WEEKLY_KV_TTL,
+  });
   console.log(`[watch:${slot}] digest poste pour ${cycleId}`);
 
   // Email recap vulgarise (echec silencieux, ne bloque pas le cleanup).
@@ -1637,17 +1842,18 @@ async function registerDiscordCommands(env: Env): Promise<{ ok: boolean; detail:
   ];
   // Enregistre sur le guild (instantane, vs commands globales = 1h de cache)
   const url = `${DISCORD_API}/applications/${env.DISCORD_APPLICATION_ID}/guilds/${env.DISCORD_GUILD_ID}/commands`;
-  const res = await fetch(url, {
+  const res = await fetchWithTimeout(url, {
     method: "PUT", // PUT remplace toutes les commands du guild en une fois
     headers: {
       Authorization: `Bot ${env.DISCORD_BOT_TOKEN}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify(commands),
-  });
-  const text = await res.text();
+  }, 8_000);
+  const text = await readTextBodyLimited(res, 256 * 1024);
   if (!res.ok) {
-    return { ok: false, detail: `${res.status}: ${text.slice(0, 300)}` };
+    console.error(`[discord] register commands failed ${res.status}: ${text.slice(0, 300)}`);
+    return { ok: false, detail: "Discord command registration failed" };
   }
   return { ok: true, detail: `Registered ${commands.length} command(s)` };
 }
@@ -1787,24 +1993,18 @@ async function handleDGAdhoc(env: Env, userMessage: string, interaction: Discord
       mountPath: env.GITHUB_REPO_MOUNT,
       token: env.GITHUB_TOKEN,
     },
+    gmailVaultIds(env),
   );
   if (!created.ok) {
     console.error(`[adhoc] create session failed: ${created.err}`);
-    await patchDiscordOriginal(env, interaction.token, `Erreur creation session DG : ${created.err.slice(0, 200)}`);
+    await patchDiscordOriginal(env, interaction.token, "Erreur temporaire pendant la creation de la session DG.");
     return;
   }
   const sessionId = created.id;
   console.log(`[adhoc] session created: ${sessionId}`);
 
-  // 2. Envoyer le brief
-  const sent = await sendUserMessage(env.ANTHROPIC_API_KEY, sessionId, brief);
-  if (!sent.ok) {
-    console.error(`[adhoc] send message failed: ${sent.err}`);
-    await patchDiscordOriginal(env, interaction.token, `Erreur envoi brief : ${sent.err?.slice(0, 200)}`);
-    return;
-  }
-
-  // 3. Stocker le mapping session -> interaction en KV (TTL 14 min)
+  // 2. Stocker le mapping avant d'envoyer le brief (TTL 24 h pour permettre
+  // le fallback bot lorsque le token d'interaction Discord a expire).
   // Token Discord d'interaction = 15 min valide.
   const pending: PendingInteraction = {
     interactionToken: interaction.token,
@@ -1812,9 +2012,16 @@ async function handleDGAdhoc(env: Env, userMessage: string, interaction: Discord
     role: "dg",
     createdAt: Date.now(),
   };
-  await env.INTERACTIONS.put(`sess:${sessionId}`, JSON.stringify(pending), {
-    expirationTtl: 14 * 60, // 14 minutes
-  });
+  const sent = await trackAndSendUserMessage(env, sessionId, brief, pending, WEEKLY_KV_TTL);
+  if (!sent.ok) {
+    console.error(`[adhoc] send message failed: ${sent.err}`);
+    if (sent.ambiguous) {
+      // Le webhook livrera la reponse si Anthropic avait accepte le POST.
+      return;
+    }
+    await patchDiscordOriginal(env, interaction.token, "Erreur temporaire pendant l'envoi du brief.");
+    return;
+  }
   console.log(`[adhoc] stored in KV: sess:${sessionId}`);
 
   // 4. Fin de l'invocation. Le webhook Anthropic ping notre /anthropic/webhook
@@ -1835,14 +2042,11 @@ async function patchDiscordOriginal(
   const url = `${DISCORD_API}/webhooks/${env.DISCORD_APPLICATION_ID}/${interactionToken}/messages/@original`;
 
   if (attachments.length === 0) {
-    const res = await fetch(url, {
+    await discordFetchOrThrow(url, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ content: chunks[0] }),
-    });
-    if (!res.ok) {
-      console.error(`[discord] PATCH @original ${res.status}: ${(await res.text()).slice(0, 200)}`);
-    }
+    }, "Discord PATCH original interaction");
   } else {
     // PATCH multipart avec les pieces jointes sur le 1er chunk
     const form = new FormData();
@@ -1858,20 +2062,24 @@ async function patchDiscordOriginal(
       const blob = new Blob([a.data], { type: "image/png" });
       form.append(`files[${i}]`, blob, a.filename);
     }
-    const res = await fetch(url, { method: "PATCH", body: form });
-    if (!res.ok) {
-      console.error(`[discord] PATCH @original (with attachments) ${res.status}: ${(await res.text()).slice(0, 200)}`);
-    } else {
-      console.log(`[discord] PATCH @original OK avec ${attachments.length} piece(s) jointe(s)`);
-    }
+    await discordFetchOrThrow(
+      url,
+      { method: "PATCH", body: form },
+      "Discord PATCH original interaction with attachments",
+    );
+    console.log(`[discord] PATCH @original OK avec ${attachments.length} piece(s) jointe(s)`);
   }
 
   for (let i = 1; i < chunks.length; i++) {
-    await fetch(`${DISCORD_API}/webhooks/${env.DISCORD_APPLICATION_ID}/${interactionToken}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content: chunks[i] }),
-    });
+    await discordFetchOrThrow(
+      `${DISCORD_API}/webhooks/${env.DISCORD_APPLICATION_ID}/${interactionToken}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: chunks[i] }),
+      },
+      `Discord interaction follow-up ${i + 1}/${chunks.length}`,
+    );
     await sleep(200);
   }
 }
@@ -1960,12 +2168,36 @@ async function verifyAnthropicWebhook(
  *    comparaison constant-time, anti-replay 5 min.
  *  - Autorisation : on filtre que sur les sessions trackees en KV (creees par nous).
  *    Session inconnue -> 200 silent (pas de leak d'info).
- *  - Abus : retry de Anthropic est at-least-once, on dedup via le KV (delete apres delivery).
+ *  - Fiabilite : un idle n'est livre que pour stop_reason=end_turn. Les erreurs
+ *    critiques renvoient 503 et le suivi KV n'est supprime qu'apres succes.
  *  - Leak : 401 nu cote reponse, motif d'echec uniquement en console.warn.
  *  - Stocke en KV : juste interactionToken + type, pas de PII.
  */
-async function handleAnthropicWebhook(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-  const body = await request.text();
+interface AnthropicWebhookPayload {
+  id?: string;
+  data?: { type?: string; id?: string };
+}
+
+type DeliveryEventType =
+  | "session.status_idled"
+  | "session.status_terminated"
+  | "session.status_retries_exhausted";
+
+const MAX_ANTHROPIC_WEBHOOK_BYTES = 256 * 1024;
+const MAX_MCP_REQUEST_BYTES = 512 * 1024;
+const WEBHOOK_PROCESSING_TTL = 5 * 60;
+const WEBHOOK_HANDLED_TTL = 7 * 24 * 60 * 60;
+
+async function handleAnthropicWebhook(request: Request, env: Env): Promise<Response> {
+  let body: string;
+  try {
+    body = await readTextBodyLimited(request, MAX_ANTHROPIC_WEBHOOK_BYTES);
+  } catch (error) {
+    if (error instanceof BodyTooLargeError) {
+      return new Response("Payload Too Large", { status: 413 });
+    }
+    return new Response("invalid body", { status: 400 });
+  }
   const webhookId = request.headers.get("webhook-id");
   const webhookTs = request.headers.get("webhook-timestamp");
   const webhookSig = request.headers.get("webhook-signature");
@@ -1984,15 +2216,18 @@ async function handleAnthropicWebhook(request: Request, env: Env, ctx: Execution
     return new Response("Unauthorized", { status: 401 });
   }
 
-  let event: any;
+  let event: AnthropicWebhookPayload;
   try {
-    event = JSON.parse(body);
+    event = JSON.parse(body) as AnthropicWebhookPayload;
   } catch {
     return new Response("invalid json", { status: 400 });
   }
 
   const eventType = event?.data?.type;
   const sessionId = event?.data?.id;
+  const sourceEventId = typeof event.id === "string" && event.id.length <= 200
+    ? event.id
+    : webhookId;
   console.log(`[webhook] event=${eventType} session=${sessionId}`);
 
   // On ne traite que les session.status_idled et session.status_terminated
@@ -2000,6 +2235,19 @@ async function handleAnthropicWebhook(request: Request, env: Env, ctx: Execution
     return new Response("ignored", { status: 200 });
   }
   if (!sessionId) return new Response("no session id", { status: 200 });
+  if (!sourceEventId || !/^[a-zA-Z0-9_-]+$/.test(sourceEventId)) {
+    return new Response("invalid event id", { status: 400 });
+  }
+
+  // `event.id` reste identique lors des retries Anthropic. KV ne fournit pas de
+  // CAS, donc ce claim est best-effort en concurrence ; il bloque en revanche
+  // les replays sequentiels et les retries apres une livraison deja confirmee.
+  const eventKey = `anthropic-event:${sourceEventId}`;
+  const previousEventState = await env.INTERACTIONS.get(eventKey);
+  if (previousEventState === "handled") return new Response(null, { status: 204 });
+  if (previousEventState?.startsWith("processing:")) {
+    return new Response("temporarily unavailable", { status: 503 });
+  }
 
   // Lookup KV
   const kvKey = `sess:${sessionId}`;
@@ -2016,26 +2264,117 @@ async function handleAnthropicWebhook(request: Request, env: Env, ctx: Execution
     await env.INTERACTIONS.delete(kvKey);
     return new Response("corrupt entry", { status: 200 });
   }
+  if (pending.phase === "created") {
+    // L'appel POST n'a pas encore rendu la main. Attendre son second put evite
+    // que celui-ci recree la cle apres une livraison tres rapide.
+    return new Response("temporarily unavailable", { status: 503 });
+  }
+  if (pending.phase === "send_unknown") {
+    // Le POST a pu etre accepte avant un timeout. La classification ci-dessous
+    // tranche selon l'etat persiste chez Anthropic.
+    console.warn(`[webhook] phase d'envoi ambigue pour ${sessionId}`);
+  }
 
-  // Delete tout de suite pour eviter les double-delivery (Anthropic retries at-least-once)
-  await env.INTERACTIONS.delete(kvKey);
+  let deliveryEventType = eventType as DeliveryEventType;
+  if (eventType === "session.status_idled") {
+    try {
+      // Le webhook dit seulement "idle". Relire la session et son evenement
+      // persiste permet de distinguer fin naturelle, validation requise et
+      // webhook arrive en retard apres un retour a running/rescheduling.
+      const session = await retrieveAnthropicSession(env.ANTHROPIC_API_KEY, sessionId);
+      const idleEvent = session.status === "idle"
+        ? await fetchLatestIdleEvent(env.ANTHROPIC_API_KEY, sessionId)
+        : null;
+      const disposition = classifyIdleDisposition(session.status, idleEvent);
 
-  // Faire le travail Discord en background pour acquitter Anthropic en < 1s
-  ctx.waitUntil(deliverSessionResultToDiscord(env, pending, sessionId, eventType));
+      if (disposition.kind === "stale") {
+        console.log(`[webhook] idle stale pour session ${sessionId}, statut=${session.status}`);
+        await env.INTERACTIONS.put(eventKey, "handled", { expirationTtl: WEBHOOK_HANDLED_TTL });
+        return new Response(null, { status: 204 });
+      }
+      if (disposition.kind === "requires_action") {
+        console.warn(
+          `[webhook] session ${sessionId} attend ${disposition.eventIds.length} confirmation(s), refus automatique`,
+        );
+        // Aucun flux d'approbation humaine n'existe encore : refuser est plus
+        // sur que laisser la session attendre indefiniment ou approuver seul.
+        await denyPendingToolActions(env.ANTHROPIC_API_KEY, sessionId, disposition.eventIds);
+        await env.INTERACTIONS.put(eventKey, "handled", { expirationTtl: WEBHOOK_HANDLED_TTL });
+        return new Response(null, { status: 204 });
+      }
+      if (disposition.kind === "retry") {
+        console.warn(`[webhook] stop_reason indisponible pour session ${sessionId}, retry demande`);
+        return new Response("temporarily unavailable", { status: 503 });
+      }
+      if (disposition.kind === "failed") {
+        deliveryEventType = "session.status_retries_exhausted";
+      }
+    } catch (err) {
+      console.error(`[webhook] classification session ${sessionId} impossible: ${err}`);
+      return new Response("temporarily unavailable", { status: 503 });
+    }
+  }
 
-  return new Response(null, { status: 204 });
+  const claimValue = `processing:${crypto.randomUUID()}`;
+  try {
+    await env.INTERACTIONS.put(eventKey, claimValue, { expirationTtl: WEBHOOK_PROCESSING_TTL });
+    const observedClaim = await env.INTERACTIONS.get(eventKey);
+    if (observedClaim !== claimValue) {
+      return new Response("temporarily unavailable", { status: 503 });
+    }
+    // Le traitement reste synchrone dans cette PR : une erreur renvoie 503 afin
+    // qu'Anthropic retente. La migration Queue + Durable Object est separee.
+    await deliverSessionResultToDiscord(env, pending, sessionId, deliveryEventType);
+    // Marquer l'evenement avant de supprimer la session : si le delete echoue,
+    // un retry n'enverra pas une seconde fois la reponse externe.
+    await env.INTERACTIONS.put(eventKey, "handled", { expirationTtl: WEBHOOK_HANDLED_TTL });
+    await env.INTERACTIONS.delete(kvKey);
+    return new Response(null, { status: 204 });
+  } catch (err) {
+    console.error(`[webhook] delivery failed, suivi conserve pour ${sessionId}: ${err}`);
+    try {
+      if ((await env.INTERACTIONS.get(eventKey)) === claimValue) {
+        await env.INTERACTIONS.delete(eventKey);
+      }
+    } catch (claimCleanupError) {
+      console.error(`[webhook] claim cleanup failed for ${sourceEventId}: ${claimCleanupError}`);
+    }
+    return new Response("temporarily unavailable", { status: 503 });
+  }
+}
+
+async function deliverAdhocResponse(
+  env: Env,
+  pending: PendingInteraction,
+  content: string,
+  attachments: ScreenshotAttachment[] = [],
+): Promise<void> {
+  if (!pending.interactionToken) {
+    throw new Error("Invalid adhoc delivery state: missing interaction token");
+  }
+  const ageMs = Date.now() - pending.createdAt;
+  const interactionBudgetMs = 13 * 60 * 1000;
+  if (ageMs > interactionBudgetMs) {
+    const prefix = `**Reponse differee du DG** (session de ${(ageMs / 60000).toFixed(1)} min, token interaction expire) :\n\n`;
+    await discordPostMessage(env, prefix + content, attachments);
+  } else {
+    await patchDiscordOriginal(env, pending.interactionToken, content, attachments);
+  }
 }
 
 async function deliverSessionResultToDiscord(
   env: Env,
   pending: PendingInteraction,
   sessionId: string,
-  eventType: string,
+  eventType: DeliveryEventType,
 ): Promise<void> {
   try {
-    // Cas terminated : session echouee cote Anthropic.
-    if (eventType === "session.status_terminated") {
-      const msg = `Erreur : la session s'est terminee anormalement cote Anthropic. Type=${pending.type}, role=${pending.role ?? "?"}, session=${sessionId}.`;
+    // Cas terminated / retries_exhausted : session echouee cote Anthropic.
+    if (eventType !== "session.status_idled") {
+      const failureReason = eventType === "session.status_retries_exhausted"
+        ? "le tour Anthropic a epuise ses tentatives"
+        : "la session s'est terminee anormalement cote Anthropic";
+      const msg = `Erreur : ${failureReason}. Type=${pending.type}, role=${pending.role ?? "?"}, session=${sessionId}.`;
       console.error(`[webhook] terminated: ${msg}`);
       if (pending.type === "weekly_subagent") {
         // Stocker un placeholder pour ne PAS figer le cycle : maybeLaunchDG doit
@@ -2056,8 +2395,8 @@ async function deliverSessionResultToDiscord(
           sessionId,
           `(Watch ${pending.watcher ?? "?"} terminee anormalement cote Anthropic, aucun livrable cette semaine.)`,
         );
-      } else if (pending.type === "adhoc" && pending.interactionToken) {
-        await patchDiscordOriginal(env, pending.interactionToken, msg);
+      } else if (pending.type === "adhoc") {
+        await deliverAdhocResponse(env, pending, msg);
       } else {
         await discordPostMessage(env, msg);
       }
@@ -2066,10 +2405,6 @@ async function deliverSessionResultToDiscord(
 
     // Dispatch sur le type
     if (pending.type === "adhoc") {
-      if (!pending.interactionToken) {
-        console.error(`[webhook] adhoc without interactionToken`);
-        return;
-      }
       const rawText = await fetchAgentText(env.ANTHROPIC_API_KEY, sessionId);
       const baseText = rawText && rawText.trim().length > 0
         ? rawText
@@ -2079,18 +2414,8 @@ async function deliverSessionResultToDiscord(
       const { cleanText, attachments } = await extractScreenshots(baseText, env);
       console.log(`[webhook] adhoc : ${attachments.length} screenshot(s) extrait(s)`);
 
-      // Limite Discord : interaction.token expire apres 15 min.
-      // Si la session a dure > 13 min (marge securite), on poste un NOUVEAU message
-      // dans le canal via le bot token (pas de limite de temps) au lieu de PATCH.
       const ageMs = Date.now() - pending.createdAt;
-      const FIFTEEN_MIN_BUDGET = 13 * 60 * 1000;
-      if (ageMs > FIFTEEN_MIN_BUDGET) {
-        const prefix = `**Reponse differee du DG** (session de ${(ageMs / 60000).toFixed(1)} min, token interaction expire) :\n\n`;
-        console.log(`[webhook] adhoc fallback bot post (age=${(ageMs / 60000).toFixed(1)} min)`);
-        await discordPostMessage(env, prefix + cleanText, attachments);
-      } else {
-        await patchDiscordOriginal(env, pending.interactionToken, cleanText, attachments);
-      }
+      await deliverAdhocResponse(env, pending, cleanText, attachments);
       console.log(`[webhook] adhoc delivered to Discord (sess=${sessionId}, attachments=${attachments.length}, age=${(ageMs / 60000).toFixed(1)}min)`);
       return;
     }
@@ -2110,9 +2435,10 @@ async function deliverSessionResultToDiscord(
       return;
     }
 
-    console.warn(`[webhook] unknown pending type: ${pending.type}`);
+    throw new Error(`Invalid delivery state: unknown pending type ${pending.type}`);
   } catch (err) {
     console.error(`[webhook] deliver error: ${err}`);
+    throw err;
   }
 }
 
@@ -2122,11 +2448,15 @@ async function deliverSessionResultToDiscord(
 
 const GOOGLE_OAUTH_AUTHORIZE = "https://accounts.google.com/o/oauth2/v2/auth";
 const GOOGLE_OAUTH_TOKEN = "https://oauth2.googleapis.com/token";
-const GMAIL_SCOPES = [
-  "https://www.googleapis.com/auth/gmail.readonly",
-  "https://www.googleapis.com/auth/gmail.compose",
-];
+const GMAIL_READONLY_SCOPE = "https://www.googleapis.com/auth/gmail.readonly";
+const GMAIL_COMPOSE_SCOPE = "https://www.googleapis.com/auth/gmail.compose";
 const GMAIL_API = "https://gmail.googleapis.com/gmail/v1";
+
+function requestedGmailScopes(env: Env): string[] {
+  return env.GMAIL_DRAFTS_ENABLED === "true"
+    ? [GMAIL_READONLY_SCOPE, GMAIL_COMPOSE_SCOPE]
+    : [GMAIL_READONLY_SCOPE];
+}
 
 /**
  * Demarre le flow OAuth Google. Auth : header X-Trigger-Secret (BUG 7 : aucun
@@ -2151,7 +2481,7 @@ async function handleGoogleOAuthStart(env: Env, request: Request): Promise<Respo
     client_id: env.GOOGLE_CLIENT_ID,
     redirect_uri: redirectUri,
     response_type: "code",
-    scope: GMAIL_SCOPES.join(" "),
+    scope: requestedGmailScopes(env).join(" "),
     access_type: "offline",
     prompt: "consent", // garantit un refresh_token a chaque flow
     state,
@@ -2194,22 +2524,22 @@ async function handleGoogleOAuthCallback(env: Env, request: Request): Promise<Re
     redirect_uri: redirectUri,
     grant_type: "authorization_code",
   });
-  const tokRes = await fetch(GOOGLE_OAUTH_TOKEN, {
+  const tokRes = await fetchWithTimeout(GOOGLE_OAUTH_TOKEN, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: body.toString(),
-  });
+  }, 8_000);
   if (!tokRes.ok) {
-    const err = await tokRes.text();
+    const err = await responseErrorSnippet(tokRes);
     console.error(`[oauth-google] token exchange failed ${tokRes.status}: ${err.slice(0, 200)}`);
-    return new Response(`Token exchange failed: ${err.slice(0, 200)}`, { status: 400 });
+    return new Response("Token exchange failed", { status: 400 });
   }
-  const tokens = (await tokRes.json()) as {
+  const tokens = await readJsonBodyLimited<{
     access_token?: string;
     refresh_token?: string;
     expires_in?: number;
     scope?: string;
-  };
+  }>(tokRes, 256 * 1024);
   if (!tokens.refresh_token) {
     return new Response("No refresh_token returned. Re-try and ensure prompt=consent.", { status: 400 });
   }
@@ -2264,16 +2594,19 @@ async function getGoogleAccessToken(env: Env): Promise<{ ok: true; token: string
     client_secret: env.GOOGLE_CLIENT_SECRET,
     grant_type: "refresh_token",
   });
-  const res = await fetch(GOOGLE_OAUTH_TOKEN, {
+  const res = await fetchWithTimeout(GOOGLE_OAUTH_TOKEN, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: body.toString(),
-  });
+  }, 8_000);
   if (!res.ok) {
-    const err = await res.text();
+    const err = await responseErrorSnippet(res);
     return { ok: false, err: `Google refresh ${res.status}: ${err.slice(0, 200)}` };
   }
-  const data = (await res.json()) as { access_token?: string; expires_in?: number };
+  const data = JSON.parse(await readTextBodyLimited(res, 64 * 1024)) as {
+    access_token?: string;
+    expires_in?: number;
+  };
   if (!data.access_token) return { ok: false, err: "No access_token in refresh response" };
 
   // Cache le nouveau access_token
@@ -2293,14 +2626,13 @@ async function getGoogleAccessToken(env: Env): Promise<{ ok: true; token: string
  * Tools exposes :
  *   - gmail_search : liste de messages matching une query Gmail
  *   - gmail_get_message : detail d'un message (subject, from, body)
- *   - gmail_draft : cree un brouillon
+ *   - gmail_draft : cree un brouillon (masque par defaut)
  *
  * Audit secu :
  *   - Auth : header `Authorization: Bearer <MCP_AUTH_TOKEN>` (BUG 7 : pas de
  *     secret en query string). Comparaison constant-time.
- *   - Le DG n'expose que search/get/draft via MCP (aucun tool d'envoi). Note :
- *     le scope OAuth `gmail.compose` permet techniquement l'envoi — Google n'a
- *     pas de scope draft-only. Risque accepte (voir README, section Securite).
+ *   - Le DG n'expose que search/get par defaut. `gmail_draft` reste masque tant
+ *     qu'un flux d'approbation humaine n'est pas disponible.
  *   - IDs Gmail valides par regex avant toute URL d'API (BUG 32).
  */
 async function handleMcpGmail(request: Request, env: Env): Promise<Response> {
@@ -2313,8 +2645,15 @@ async function handleMcpGmail(request: Request, env: Env): Promise<Response> {
 
   let req: { jsonrpc?: string; method?: string; params?: any; id?: string | number };
   try {
-    req = await request.json();
-  } catch {
+    const rawRequest = await readTextBodyLimited(request, MAX_MCP_REQUEST_BYTES);
+    req = JSON.parse(rawRequest) as typeof req;
+  } catch (error) {
+    if (error instanceof BodyTooLargeError) {
+      return new Response(
+        JSON.stringify({ jsonrpc: "2.0", error: { code: -32000, message: "Payload too large" } }),
+        { status: 413, headers: { "Content-Type": "application/json" } },
+      );
+    }
     return new Response(
       JSON.stringify({ jsonrpc: "2.0", error: { code: -32700, message: "Parse error" } }),
       { status: 400, headers: { "Content-Type": "application/json" } },
@@ -2330,47 +2669,54 @@ async function handleMcpGmail(request: Request, env: Env): Promise<Response> {
     });
   }
 
+  if (req.method === "notifications/initialized") {
+    return new Response(null, { status: 202 });
+  }
+
   if (req.method === "tools/list") {
+    const tools: Array<Record<string, unknown>> = [
+      {
+        name: "gmail_search",
+        description: "Cherche dans les emails de Florent. Utilise la syntaxe de recherche Gmail (ex: 'from:korben.info', 'is:unread', 'subject:arty', 'after:2026/05/10'). Retourne une liste de messages avec id, subject, from, snippet.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            query: { type: "string", description: "Query Gmail (syntaxe standard Gmail search)" },
+            max_results: { type: "integer", description: "Max messages a retourner (defaut 10, max 50)", default: 10 },
+          },
+          required: ["query"],
+        },
+      },
+      {
+        name: "gmail_get_message",
+        description: "Recupere le contenu complet d'un email par son id. Retourne subject, from, to, date, body.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            message_id: { type: "string", description: "Id du message (obtenu via gmail_search)" },
+          },
+          required: ["message_id"],
+        },
+      },
+    ];
+    if (env.GMAIL_DRAFTS_ENABLED === "true") {
+      tools.push({
+        name: "gmail_draft",
+        description: "Cree un brouillon de mail dans la boite Gmail de Florent (PAS d'envoi). Florent verra le draft dans Gmail UI et pourra l'envoyer ou le modifier.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            to: { type: "string", description: "Destinataire (email)" },
+            subject: { type: "string", description: "Sujet" },
+            body: { type: "string", description: "Corps du mail en texte brut" },
+            in_reply_to_message_id: { type: "string", description: "(optionnel) Id du message auquel on repond, pour thread Gmail proprement" },
+          },
+          required: ["to", "subject", "body"],
+        },
+      });
+    }
     return mcpResult(reqId, {
-      tools: [
-        {
-          name: "gmail_search",
-          description: "Cherche dans les emails de Florent. Utilise la syntaxe de recherche Gmail (ex: 'from:korben.info', 'is:unread', 'subject:arty', 'after:2026/05/10'). Retourne une liste de messages avec id, subject, from, snippet.",
-          inputSchema: {
-            type: "object",
-            properties: {
-              query: { type: "string", description: "Query Gmail (syntaxe standard Gmail search)" },
-              max_results: { type: "integer", description: "Max messages a retourner (defaut 10, max 50)", default: 10 },
-            },
-            required: ["query"],
-          },
-        },
-        {
-          name: "gmail_get_message",
-          description: "Recupere le contenu complet d'un email par son id. Retourne subject, from, to, date, body.",
-          inputSchema: {
-            type: "object",
-            properties: {
-              message_id: { type: "string", description: "Id du message (obtenu via gmail_search)" },
-            },
-            required: ["message_id"],
-          },
-        },
-        {
-          name: "gmail_draft",
-          description: "Cree un brouillon de mail dans la boite Gmail de Florent (PAS d'envoi). Florent verra le draft dans Gmail UI et pourra l'envoyer ou le modifier.",
-          inputSchema: {
-            type: "object",
-            properties: {
-              to: { type: "string", description: "Destinataire (email)" },
-              subject: { type: "string", description: "Sujet" },
-              body: { type: "string", description: "Corps du mail en texte brut" },
-              in_reply_to_message_id: { type: "string", description: "(optionnel) Id du message auquel on repond, pour thread Gmail proprement" },
-            },
-            required: ["to", "subject", "body"],
-          },
-        },
-      ],
+      tools,
     });
   }
 
@@ -2378,10 +2724,24 @@ async function handleMcpGmail(request: Request, env: Env): Promise<Response> {
     const name = req.params?.name;
     const args = req.params?.arguments || {};
 
+    if (name === "gmail_draft" && env.GMAIL_DRAFTS_ENABLED !== "true") {
+      return mcpResult(reqId, {
+        content: [{ type: "text", text: "Creation de brouillon desactivee en attente d'un flux d'approbation humaine." }],
+        isError: true,
+      });
+    }
+    if (name !== "gmail_search" && name !== "gmail_get_message" && name !== "gmail_draft") {
+      return mcpResult(reqId, {
+        content: [{ type: "text", text: "Tool Gmail inconnu" }],
+        isError: true,
+      });
+    }
+
     const tokenResult = await getGoogleAccessToken(env);
     if (!tokenResult.ok) {
+      console.error(`[mcp-gmail] Google authentication failed: ${tokenResult.err}`);
       return mcpResult(reqId, {
-        content: [{ type: "text", text: `Erreur Gmail auth : ${tokenResult.err}` }],
+        content: [{ type: "text", text: "Erreur d'authentification Gmail. Consulte les logs du Worker." }],
         isError: true,
       });
     }
@@ -2390,24 +2750,34 @@ async function handleMcpGmail(request: Request, env: Env): Promise<Response> {
     try {
       if (name === "gmail_search") {
         const query = String(args.query || "");
-        const max = Math.min(parseInt(String(args.max_results || "10"), 10) || 10, 50);
-        const listRes = await fetch(
+        if (!query.trim() || query.length > 2048) {
+          return mcpResult(reqId, {
+            content: [{ type: "text", text: "Query Gmail vide ou trop longue (maximum 2048 caracteres)." }],
+            isError: true,
+          });
+        }
+        const max = Math.max(1, Math.min(parseInt(String(args.max_results || "10"), 10) || 10, 50));
+        const listRes = await fetchWithTimeout(
           `${GMAIL_API}/users/me/messages?q=${encodeURIComponent(query)}&maxResults=${max}`,
           { headers: { Authorization: `Bearer ${accessToken}` } },
+          8_000,
         );
-        if (!listRes.ok) throw new Error(`Gmail list ${listRes.status}: ${(await listRes.text()).slice(0, 200)}`);
-        const list = (await listRes.json()) as { messages?: Array<{ id: string }> };
+        if (!listRes.ok) throw new Error(`Gmail list ${listRes.status}: ${await responseErrorSnippet(listRes)}`);
+        const list = JSON.parse(await readTextBodyLimited(listRes, 256 * 1024)) as {
+          messages?: Array<{ id: string }>;
+        };
         const ids = (list.messages || []).slice(0, max);
 
         // Pour chaque id, fetch metadata
         const details = await Promise.all(
           ids.map(async (m) => {
-            const r = await fetch(
+            const r = await fetchWithTimeout(
               `${GMAIL_API}/users/me/messages/${m.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date`,
               { headers: { Authorization: `Bearer ${accessToken}` } },
+              8_000,
             );
             if (!r.ok) return { id: m.id, error: `fetch ${r.status}` };
-            const md = (await r.json()) as any;
+            const md = JSON.parse(await readTextBodyLimited(r, 256 * 1024)) as any;
             const headers = md.payload?.headers || [];
             const get = (n: string) => headers.find((h: any) => h.name === n)?.value || "";
             return {
@@ -2432,11 +2802,14 @@ async function handleMcpGmail(request: Request, env: Env): Promise<Response> {
             isError: true,
           });
         }
-        const r = await fetch(`${GMAIL_API}/users/me/messages/${id}?format=full`, {
+        const r = await fetchWithTimeout(`${GMAIL_API}/users/me/messages/${id}?format=full`, {
           headers: { Authorization: `Bearer ${accessToken}` },
-        });
-        if (!r.ok) throw new Error(`Gmail get ${r.status}: ${(await r.text()).slice(0, 200)}`);
-        const msg = (await r.json()) as any;
+        }, 8_000);
+        if (!r.ok) throw new Error(`Gmail get ${r.status}: ${await responseErrorSnippet(r)}`);
+        const msg = JSON.parse(await readTextBodyLimited(r, 2 * 1024 * 1024)) as {
+          payload?: GmailMimePart;
+          snippet?: string;
+        };
         const headers = msg.payload?.headers || [];
         // Comparaison de header insensible a la casse (RFC 2822 — BUG 49).
         const get = (n: string) =>
@@ -2445,21 +2818,12 @@ async function handleMcpGmail(request: Request, env: Env): Promise<Response> {
         // Body : text/plain en priorite, sinon text/html -> texte. Le charset
         // declare est respecte (BUG 36/49 : atob() seul casse l'UTF-8 et le
         // windows-1252 des mails Outlook -> accents en U+FFFD).
-        const findByMime = (node: any, mime: string): any => {
-          if (!node) return null;
-          if ((node.mimeType || "").toLowerCase() === mime && node.body?.data) return node;
-          for (const p of node.parts || []) {
-            const sub = findByMime(p, mime);
-            if (sub) return sub;
-          }
-          return null;
-        };
         let body = "";
-        const plainPart = findByMime(msg.payload, "text/plain");
+        const plainPart = findGmailMimePart(msg.payload, "text/plain");
         if (plainPart) {
           body = decodePartBody(plainPart);
         } else {
-          const htmlPart = findByMime(msg.payload, "text/html");
+          const htmlPart = findGmailMimePart(msg.payload, "text/html");
           if (htmlPart) body = htmlToText(decodePartBody(htmlPart));
         }
         if (!body) body = msg.snippet || "";
@@ -2492,39 +2856,71 @@ async function handleMcpGmail(request: Request, env: Env): Promise<Response> {
           });
         }
 
-        // Construire le message RFC 2822
-        const lines = [
-          `To: ${to}`,
-          `Subject: ${subject}`,
-          inReplyTo ? `In-Reply-To: ${inReplyTo}` : "",
-          "Content-Type: text/plain; charset=utf-8",
-          "",
-          bodyText,
-        ].filter(Boolean);
-        const raw = lines.join("\r\n");
-        const encoded = btoa(unescape(encodeURIComponent(raw)))
-          .replace(/\+/g, "-")
-          .replace(/\//g, "_")
-          .replace(/=+$/, "");
-
-        const draftBody: any = { message: { raw: encoded } };
+        let threadId: string | undefined;
+        let messageIdHeader: string | undefined;
+        let referencesHeader: string | undefined;
         if (inReplyTo) {
-          // Pour threading, on a besoin du threadId
-          const tr = await fetch(`${GMAIL_API}/users/me/messages/${inReplyTo}?format=metadata`, {
-            headers: { Authorization: `Bearer ${accessToken}` },
-          });
-          if (tr.ok) {
-            const tmsg = (await tr.json()) as { threadId?: string };
-            if (tmsg.threadId) draftBody.message.threadId = tmsg.threadId;
+          // Pour un threading RFC correct, l'ID Gmail sert a recuperer le
+          // threadId, mais In-Reply-To doit contenir le vrai header Message-ID.
+          const tr = await fetchWithTimeout(
+            `${GMAIL_API}/users/me/messages/${inReplyTo}?format=metadata&metadataHeaders=Message-ID&metadataHeaders=References`,
+            {
+              headers: { Authorization: `Bearer ${accessToken}` },
+            },
+            8_000,
+          );
+          if (!tr.ok) {
+            throw new Error(`Gmail reply metadata ${tr.status}`);
           }
+          const tmsg = JSON.parse(await readTextBodyLimited(tr, 256 * 1024)) as {
+            threadId?: string;
+            payload?: { headers?: Array<{ name?: string; value?: string }> };
+          };
+          threadId = tmsg.threadId;
+          const headers = tmsg.payload?.headers ?? [];
+          const header = (headerName: string) =>
+            headers.find((h) => (h.name ?? "").toLowerCase() === headerName.toLowerCase())?.value;
+          messageIdHeader = header("Message-ID");
+          if (!threadId || !messageIdHeader) {
+            throw new Error("Gmail reply metadata incomplete");
+          }
+          const previousReferences = header("References") ?? "";
+          referencesHeader = messageIdHeader
+            ? appendReference(previousReferences, messageIdHeader)
+            : previousReferences || undefined;
         }
-        const r = await fetch(`${GMAIL_API}/users/me/drafts`, {
+
+        let raw: string;
+        try {
+          raw = buildRfc2822Message({
+            to,
+            subject,
+            body: bodyText,
+            inReplyTo: messageIdHeader,
+            references: referencesHeader,
+          });
+        } catch (err) {
+          if (err instanceof GmailMessageValidationError) {
+            return mcpResult(reqId, {
+              content: [{ type: "text", text: `Brouillon refuse : ${err.message}` }],
+              isError: true,
+            });
+          }
+          throw err;
+        }
+
+        const draftBody: { message: { raw: string; threadId?: string } } = {
+          message: { raw: encodeBase64UrlUtf8(raw) },
+        };
+        if (threadId) draftBody.message.threadId = threadId;
+
+        const r = await fetchWithTimeout(`${GMAIL_API}/users/me/drafts`, {
           method: "POST",
           headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
           body: JSON.stringify(draftBody),
-        });
-        if (!r.ok) throw new Error(`Gmail draft ${r.status}: ${(await r.text()).slice(0, 200)}`);
-        const draft = (await r.json()) as { id?: string };
+        }, 8_000);
+        if (!r.ok) throw new Error(`Gmail draft ${r.status}: ${await responseErrorSnippet(r)}`);
+        const draft = JSON.parse(await readTextBodyLimited(r, 64 * 1024)) as { id?: string };
         return mcpResult(reqId, {
           content: [{
             type: "text",
@@ -2540,7 +2936,7 @@ async function handleMcpGmail(request: Request, env: Env): Promise<Response> {
     } catch (err) {
       console.error(`[mcp-gmail] err in ${name}: ${err}`);
       return mcpResult(reqId, {
-        content: [{ type: "text", text: `Erreur execution ${name} : ${err}` }],
+        content: [{ type: "text", text: `Erreur execution ${name}. Consulte les logs du Worker.` }],
         isError: true,
       });
     }
@@ -2668,7 +3064,8 @@ export default {
           headers: { "Content-Type": "application/json" },
         });
       } catch (err) {
-        return new Response(JSON.stringify({ ok: false, err: String(err) }), {
+        console.error(`[admin/post-test] Discord delivery failed: ${err}`);
+        return new Response(JSON.stringify({ ok: false, error: "Discord delivery failed" }), {
           status: 500,
           headers: { "Content-Type": "application/json" },
         });
@@ -2677,7 +3074,7 @@ export default {
 
     // /anthropic/webhook : reception des events Anthropic (session.status_idled)
     if (url.pathname === "/anthropic/webhook" && request.method === "POST") {
-      return handleAnthropicWebhook(request, env, ctx);
+      return handleAnthropicWebhook(request, env);
     }
 
     // /oauth/google/start : initie le OAuth flow Google (setup one-shot par Florent).
@@ -2698,7 +3095,15 @@ export default {
 
     // /discord/interactions : webhook Discord
     if (url.pathname === "/discord/interactions" && request.method === "POST") {
-      const body = await request.text();
+      let body: string;
+      try {
+        body = await readTextBodyLimited(request, 256 * 1024);
+      } catch (error) {
+        return new Response(
+          error instanceof BodyTooLargeError ? "payload too large" : "invalid body",
+          { status: error instanceof BodyTooLargeError ? 413 : 400 },
+        );
+      }
       const valid = await verifyDiscordRequest(request, body, env.DISCORD_PUBLIC_KEY);
       if (!valid) {
         return new Response("invalid request signature", { status: 401 });
