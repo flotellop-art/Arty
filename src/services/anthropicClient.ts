@@ -137,12 +137,25 @@ export function streamMessage(
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function findLastUserText(
+// Le content d'un message user devient un TABLEAU de blocks quand un fichier
+// est attaché (buildContentBlocks) — ignorer ces messages ferait porter le
+// routage (thinking, sous-modèle, web search) sur la question du tour
+// précédent, pas sur celle qui accompagne le fichier.
+export function findLastUserText(
   messages: Array<{ role: string; content: string | Array<Record<string, unknown>> }>
 ): string {
   for (let i = messages.length - 1; i >= 0; i--) {
     const m = messages[i]
-    if (m && m.role === 'user' && typeof m.content === 'string') return m.content
+    if (!m || m.role !== 'user') continue
+    if (typeof m.content === 'string') return m.content
+    if (Array.isArray(m.content)) {
+      const text = m.content
+        .filter((b) => b && b.type === 'text' && typeof b.text === 'string')
+        .map((b) => b.text as string)
+        .join('\n')
+        .trim()
+      if (text) return text
+    }
   }
   return ''
 }
