@@ -6,6 +6,7 @@ import { recordUsage } from './costTracker'
 import { dispatchModelUsed } from './modelLabels'
 import { extractYouTubeUrls } from './aiRouter'
 import { isMapToolQuery, isWeatherQuery } from './router/intentPatterns'
+import type { RouteReason } from './router/types'
 import { updateTrialFromResponse } from './trialClient'
 import type { ReflectionLevel } from './reflectionLevel'
 import i18n from '../i18n'
@@ -157,6 +158,9 @@ interface GeminiStreamOptions {
   background?: boolean
   // Conversation d'origine (targetId) — scope l'event 'arty-model-used'.
   conversationId?: string
+  // Raison du routage (refonte routage, étape 4) — resolveRoute, via
+  // useConversation. Portée par l'event 'arty-model-used' pour l'UI.
+  routeReason?: RouteReason
 }
 
 export function streamGeminiMessage(
@@ -248,6 +252,7 @@ async function runGeminiStream(
       reflecting: thinkingBudget >= 2048,
       background: options?.background,
       conversationId: options?.conversationId,
+      ...(options?.routeReason ? { reason: options.routeReason } : {}),
     })
 
     const requestBody = {

@@ -608,6 +608,7 @@ export function useConversation() {
           systemPrompt: systemPromptRef.current,
           reflectionLevel: getReflectionLevel(),
           conversationId: targetId,
+          routeReason: routeDecision.reason,
         })
       } else if (provider === 'mistral') {
         // Mistral Medium 3.5 a une vision native → on utilise le builder
@@ -635,6 +636,7 @@ export function useConversation() {
           urlContentInlined: outgoingText !== text,
           euOnly: conv.euOnly,
           conversationId: targetId,
+          routeReason: routeDecision.reason,
         })
       } else if (provider === 'openai') {
         // openaiKey peut être null — dans ce cas le client passe par le proxy
@@ -651,6 +653,7 @@ export function useConversation() {
         controller = streamOpenAIMessage(apiMessages, openaiKey, onToken, onDone, onErr, {
           systemPrompt: systemPromptRef.current,
           conversationId: targetId,
+          routeReason: routeDecision.reason,
         })
       } else {
         // Claude path — historique complet avec content blocks pour les images

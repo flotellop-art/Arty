@@ -9,6 +9,7 @@ import { recordUsage } from './costTracker'
 import { dispatchModelUsed } from './modelLabels'
 import { setSearchContext } from './factChecker'
 import { shouldUseWebSearch } from './aiRouter'
+import type { RouteReason } from './router/types'
 import { updateTrialFromResponse } from './trialClient'
 import i18n from '../i18n'
 
@@ -115,6 +116,9 @@ interface MistralStreamOptions {
   background?: boolean
   // Conversation d'origine (targetId) — scope l'event 'arty-model-used'.
   conversationId?: string
+  // Raison du routage (refonte routage, étape 4) — resolveRoute, via
+  // useConversation. Portée par l'event 'arty-model-used' pour l'UI.
+  routeReason?: RouteReason
 }
 
 // Décision « forcer web_search au 1er tour » — pure et exportée pour test.
@@ -362,7 +366,11 @@ async function runMistralStream(
     const model = options?.model || selectMistralModel(lastUserText)
     // Dispatch OPTIMISTE (pré-envoi) — corrigé dans la boucle ci-dessous si
     // le flux SSE confirme un autre modèle (substitution serveur trial, F-1).
-    const eventScope = { background: options?.background, conversationId: options?.conversationId }
+    const eventScope = {
+      background: options?.background,
+      conversationId: options?.conversationId,
+      ...(options?.routeReason ? { reason: options.routeReason } : {}),
+    }
     let dispatchedModel = model
     dispatchModelUsed({ model, provider: 'mistral', ...eventScope })
 

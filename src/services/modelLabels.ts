@@ -7,9 +7,17 @@
 // CustomEvent 'arty-model-used' avec le model exact dès qu'ils choisissent
 // quoi appeler — ChatTopBar écoute et affiche.
 
+import type { RouteReason } from './router/types'
+
 export interface ModelUsedEvent {
   model: string
   provider: 'claude' | 'mistral' | 'gemini' | 'openai'
+  /** Raison du routage (refonte routage, étape 4) — code machine résolu par
+      resolveRoute (router/types.ts), traduit par l'UI via i18n
+      `chat.routeReason.<code>`. Absent sur les appels sans décision
+      (comparateur, brief, compresseur, appelants legacy) → l'UI retombe sur
+      l'explication générique (getModelExplanationKey). */
+  reason?: RouteReason
   /** Réflexion étendue active sur cet appel (effort Claude / gros budget
       Gemini). Permet à l'UI (StreamingIndicator) de signaler que le modèle
       réfléchit — sans ça, le niveau de réflexion est 100 % imperceptible

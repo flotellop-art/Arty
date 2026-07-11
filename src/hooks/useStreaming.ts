@@ -23,6 +23,10 @@ type StreamState = {
   // cache global getLastModelUsed() : sous MAX_CONCURRENT_STREAMS=3, il peut
   // refléter le stream d'une AUTRE conversation.
   model?: string
+  // Raison du routage (refonte routage, étape 4) — code machine porté par le
+  // même event, persisté sur le Message à finalize() pour que le footer
+  // affiche POURQUOI ce modèle, même sur l'historique.
+  reasonCode?: string
 }
 
 export function useStreaming(deps: {
@@ -79,6 +83,7 @@ export function useStreaming(deps: {
       // C-B — porte l'attribution sur le partiel : si l'app est tuée en plein
       // stream, le message restauré au boot garde son modèle (revue Opus).
       if (s.model) lastMsg.model = s.model
+      if (s.reasonCode) lastMsg.reasonCode = s.reasonCode
     } else {
       conv.messages.push({
         id: 'streaming',
@@ -86,6 +91,7 @@ export function useStreaming(deps: {
         content: s.accumulated,
         timestamp: Date.now(),
         ...(s.model ? { model: s.model } : {}),
+        ...(s.reasonCode ? { reasonCode: s.reasonCode } : {}),
       })
     }
     conv.updatedAt = Date.now()
@@ -106,7 +112,9 @@ export function useStreaming(deps: {
 
     // C-B — attribution du modèle : lue dans le StreamState de CE targetId
     // (encore présent : tous les appelants font finalize AVANT teardown).
-    const model = streamsRef.current.get(targetId)?.model
+    const s = streamsRef.current.get(targetId)
+    const model = s?.model
+    const reasonCode = s?.reasonCode
 
     conv.messages = conv.messages.filter((m) => m.id !== 'streaming')
     conv.messages.push({
@@ -116,6 +124,7 @@ export function useStreaming(deps: {
       timestamp: Date.now(),
       ...(interrupted ? { interrupted: true } : {}),
       ...(model ? { model } : {}),
+      ...(reasonCode ? { reasonCode } : {}),
     })
     conv.updatedAt = Date.now()
     storage.saveConversation(conv)
@@ -160,7 +169,12 @@ export function useStreaming(deps: {
       const detail = (e as CustomEvent<ModelUsedEvent>).detail
       if (!detail?.model || detail.background || !detail.conversationId) return
       const s = streamsRef.current.get(detail.conversationId)
-      if (s) s.model = detail.model
+      if (s) {
+        s.model = detail.model
+        // Seulement si présent : un event `confirmed` sans reason (swap
+        // serveur) ne doit pas effacer la raison du dispatch optimiste.
+        if (detail.reason?.code) s.reasonCode = detail.reason.code
+      }
     }
     window.addEventListener('arty-model-used', onModelUsed)
     return () => window.removeEventListener('arty-model-used', onModelUsed)

@@ -688,7 +688,13 @@ async function runWithTools(
     // active (StreamingIndicator affiche « réflexion approfondie »).
     // Dispatch OPTIMISTE (pré-envoi) — corrigé plus bas si message_start
     // confirme un autre modèle (substitution serveur trial, F-1).
-    const eventScope = { background: options?.background, conversationId: options?.conversationId }
+    const eventScope = {
+      background: options?.background,
+      conversationId: options?.conversationId,
+      // Raison du routage (étape 4) — portée par les dispatchs optimiste ET
+      // confirmé : un swap serveur change le modèle, pas pourquoi on a routé.
+      ...(rd?.reason ? { reason: rd.reason } : {}),
+    }
     // string (pas ClaudeSubModel) : le modèle CONFIRMÉ par l'API peut être un
     // id hors union (ex: version datée renvoyée par Anthropic).
     let dispatchedModel: string = ANTHROPIC_MODEL

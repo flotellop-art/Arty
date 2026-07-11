@@ -13,25 +13,29 @@ import type { AIModel } from '../modelSelector'
 import type { ReflectionLevel } from '../reflectionLevel'
 
 // Codes machine des raisons de routage. Chaque code DOIT avoir sa clé i18n
-// `chat.routeReason.<code>` en fr ET en (test de parité, étape 4).
-export type ReasonCode =
-  | 'manual_selection'      // l'utilisateur a choisi ce modèle
-  | 'eu_only'               // conversation verrouillée Europe → Mistral (RÈGLE 5.3)
-  | 'files_to_claude'       // fichier attaché → Claude (lecture native PDF/image, BUG 12)
-  | 'files_mistral_native'  // image + Mistral choisi → vision native Mistral
-  | 'private_data'          // mails/Drive/agenda → Claude (tools Google, BUG 12)
-  | 'youtube_native'        // vidéo YouTube → Gemini (lecture native)
-  | 'url_web_fetch'         // URL collée → Claude (web_fetch lit vraiment la page)
-  | 'openai_intent'         // mention explicite de ChatGPT/GPT
-  | 'hybrid_research'       // rapport/comparatif → recherche Gemini + rédaction Claude
-  | 'trivial_chat'          // salutation/micro-réponse → chemin rapide
-  | 'default_capable'       // défaut : modèle capable avec recherche web (BUG 58)
-  | 'fallback_no_provider'  // provider préféré indisponible → repli
+// `chat.routeReason.<code>` en fr ET en — verrouillé par le test de parité
+// (routeReason.i18n.test.ts), d'où la liste RUNTIME (pas seulement un type).
+export const ALL_REASON_CODES = [
+  'manual_selection',       // l'utilisateur a choisi ce modèle
+  'eu_only',                // conversation verrouillée Europe → Mistral (RÈGLE 5.3)
+  'files_to_claude',        // fichier attaché → Claude (lecture native PDF/image, BUG 12)
+  'files_mistral_native',   // image + Mistral choisi → vision native Mistral
+  'private_data',           // mails/Drive/agenda → Claude (tools Google, BUG 12)
+  'youtube_native',         // vidéo YouTube → Gemini (lecture native)
+  'url_web_fetch',          // URL collée → Claude (web_fetch lit vraiment la page)
+  'openai_intent',          // mention explicite de ChatGPT/GPT
+  'hybrid_research',        // rapport/comparatif → recherche Gemini + rédaction Claude
+  'trivial_chat',           // salutation/micro-réponse → chemin rapide
+  'default_capable',        // défaut : modèle capable avec recherche web (BUG 58)
+  'fallback_no_provider',   // provider préféré indisponible → repli
   // Sous-modèle Claude (subModelReason) :
-  | 'plan_locked_haiku'     // plan free/trial sans crédits → Haiku verrouillé (C-E)
-  | 'submodel_haiku_trivial' // message trivial → Haiku (rapide, économique)
-  | 'submodel_opus_report'  // rapport stratégique Pro → Opus
-  | 'submodel_sonnet_default' // défaut Claude → Sonnet (BUG 58)
+  'plan_locked_haiku',      // plan free/trial sans crédits → Haiku verrouillé (C-E)
+  'submodel_haiku_trivial', // message trivial → Haiku (rapide, économique)
+  'submodel_opus_report',   // rapport stratégique Pro → Opus
+  'submodel_sonnet_default', // défaut Claude → Sonnet (BUG 58)
+] as const
+
+export type ReasonCode = (typeof ALL_REASON_CODES)[number]
 
 export interface RouteReason {
   code: ReasonCode

@@ -238,6 +238,29 @@
       "openai": "GPT (OpenAI) is used when you select it manually — or automatically if you've set up your OpenAI key and your message mentions ChatGPT/GPT. Data processed outside Europe.",
       "fallback": "Model picked automatically based on your request."
     },
+    "routeReason": {
+      "manual_selection": "You picked this model manually.",
+      "eu_only": "Europe-mode conversation: Mistral (servers in France) is the only model used — your data never leaves Europe.",
+      "files_to_claude": "File attached: Claude is the only model in Arty that natively reads PDFs and images.",
+      "files_mistral_native": "Image attached with Mistral selected: Mistral analyzes it with its native vision (data stays in Europe).",
+      "private_data": "Your request involves your private data (emails, files, calendar…): Claude is used because it has the Gmail/Drive/Calendar tools — a web search can't see that data.",
+      "youtube_native": "YouTube link detected: Gemini watches the video directly.",
+      "url_web_fetch": "Link detected: Claude actually opens and reads the page (other models only see snippets and may make things up).",
+      "openai_intent": "You mentioned ChatGPT/GPT: your request was sent to it.",
+      "hybrid_research": "Report or comparison: Gemini does the web research, then Claude writes the synthesis.",
+      "trivial_chat": "Short message: fast path, no unnecessary web search.",
+      "default_capable": "General question: Gemini answers with Google Search (up-to-date info).",
+      "fallback_no_provider": "The ideal model isn't available on this account: falling back to the best accessible one.",
+      "plan_locked_haiku": "Free plan: Claude Haiku is the included model (other models require a paid plan).",
+      "submodel_haiku_trivial": "Short message: Claude Haiku is enough (fast and light).",
+      "submodel_opus_report": "Strategic report: Claude Opus, the most powerful model, steps in.",
+      "submodel_sonnet_default": "Claude Sonnet, the best power/speed balance."
+    },
+    "override": {
+      "files_to_claude": "File attached → answer handled by Claude (only model that reads PDFs/images) instead of {{requested}}.",
+      "private_data": "Private data detected → answer handled by Claude (Gmail/Drive/Calendar tools) instead of {{requested}}.",
+      "url_web_fetch": "Link to open → answer handled by Claude (actually reads the page) rather than ChatGPT."
+    },
     "region": {
       "eu": "France",
       "us": "United States",

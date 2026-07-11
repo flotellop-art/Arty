@@ -238,6 +238,29 @@
       "openai": "GPT (OpenAI) est utilisé quand tu le sélectionnes manuellement — ou automatiquement si tu as configuré ta clé OpenAI et que ton message mentionne ChatGPT/GPT. Données traitées hors Europe.",
       "fallback": "Modèle sélectionné automatiquement selon le contenu de ta requête."
     },
+    "routeReason": {
+      "manual_selection": "Tu as choisi ce modèle manuellement.",
+      "eu_only": "Conversation en mode Europe : Mistral (serveurs en France) est le seul modèle utilisé — tes données ne quittent pas l'Europe.",
+      "files_to_claude": "Fichier joint : Claude est le seul modèle qui lit nativement les PDF et images dans Arty.",
+      "files_mistral_native": "Image jointe avec Mistral sélectionné : Mistral l'analyse avec sa vision native (les données restent en Europe).",
+      "private_data": "Ta demande touche à tes données privées (mails, fichiers, agenda…) : Claude est utilisé car il a les outils Gmail/Drive/Calendar — une recherche web ne verrait pas ces données.",
+      "youtube_native": "Lien YouTube détecté : Gemini regarde la vidéo directement.",
+      "url_web_fetch": "Lien détecté : Claude ouvre et lit réellement la page (les autres modèles ne voient que des extraits et risquent d'inventer).",
+      "openai_intent": "Tu as mentionné ChatGPT/GPT : ta demande lui a été envoyée.",
+      "hybrid_research": "Rapport ou comparatif : Gemini fait la recherche web, puis Claude rédige la synthèse.",
+      "trivial_chat": "Message court : chemin rapide, sans recherche web inutile.",
+      "default_capable": "Question générale : Gemini répond avec la recherche Google (infos à jour).",
+      "fallback_no_provider": "Le modèle idéal n'est pas disponible sur ce compte : bascule sur le meilleur modèle accessible.",
+      "plan_locked_haiku": "Plan gratuit : Claude Haiku est le modèle inclus (les autres modèles sont réservés aux plans payants).",
+      "submodel_haiku_trivial": "Message court : Claude Haiku suffit (rapide et léger).",
+      "submodel_opus_report": "Rapport stratégique : Claude Opus, le modèle le plus puissant, est mobilisé.",
+      "submodel_sonnet_default": "Claude Sonnet, le meilleur équilibre puissance/rapidité."
+    },
+    "override": {
+      "files_to_claude": "Fichier joint → réponse confiée à Claude (seul modèle qui lit les PDF/images) au lieu de {{requested}}.",
+      "private_data": "Données privées détectées → réponse confiée à Claude (outils Gmail/Drive/Calendar) au lieu de {{requested}}.",
+      "url_web_fetch": "Lien à ouvrir → réponse confiée à Claude (lecture réelle de la page) plutôt qu'à ChatGPT."
+    },
     "region": {
       "eu": "France",
       "us": "États-Unis",
