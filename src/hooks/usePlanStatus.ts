@@ -95,6 +95,17 @@ export function usePlanStatus(): PlanStatus & { refresh: () => void } {
       // gratuit d'abord »).
       await fetchWalletBalance()
       const unlock = data.plan === 'free' && creditsCoverPremium()
+      // F-14 (refonte routage, étape 3) — cache aussi les FAMILLES autorisées
+      // pour le routage auto hors React (router/availability.ts) : un abonné
+      // clé-serveur peut atteindre Gemini/Mistral selon son plan, plus
+      // seulement selon ses clés BYOK. Même valeur que l'état UI (unlock
+      // wallet inclus) pour ne jamais afficher débloqué et router verrouillé.
+      try {
+        localStorage.setItem(
+          'arty-allowed-families',
+          JSON.stringify(unlock ? ALL_FAMILIES : data.allowed_families)
+        )
+      } catch {}
       setState({
         plan: data.plan,
         allowedFamilies: unlock ? [...ALL_FAMILIES] : data.allowed_families,

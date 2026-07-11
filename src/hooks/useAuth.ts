@@ -136,6 +136,9 @@ export function useAuth() {
     // Trou pré-existant (jamais purgé), rendu plus fréquent par l'écriture du
     // flux essai email — fermé ici pour tous les flux.
     try { localStorage.removeItem('arty-plan-cache') } catch { /* noop */ }
+    // F-14 — les familles autorisées suivent le même cycle de vie que le plan
+    // (cache global rempli par usePlanStatus) : purge symétrique.
+    try { localStorage.removeItem('arty-allowed-families') } catch { /* noop */ }
     // Drop any pending OAuth state nonce (e.g. user clicked Google then
     // logged out before completing the redirect).
     clearOAuthState()
@@ -172,6 +175,7 @@ export function useAuth() {
     // router les modèles du compte suivant (usePlanStatus le re-remplit au
     // premier fetch). Symétrique de la purge du logout.
     try { localStorage.removeItem('arty-plan-cache') } catch { /* noop */ }
+    try { localStorage.removeItem('arty-allowed-families') } catch { /* noop */ }
 
     // Activate new session
     setActiveSession(session)
