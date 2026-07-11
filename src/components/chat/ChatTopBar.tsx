@@ -12,7 +12,7 @@ import { UpgradePromptModal } from './UpgradePromptModal'
 import { ChatOptionsSheet } from './ChatOptionsSheet'
 import { ConversationSwitcherSheet } from './ConversationSwitcherSheet'
 import { usePlanStatus, type ModelFamily } from '../../hooks/usePlanStatus'
-import { formatModelName, getModelExplanationKey, getModelRegion, shouldAcceptModelEvent, type ModelUsedEvent } from '../../services/modelLabels'
+import { formatModelName, getModelRegion, getRouteExplanationKey, shouldAcceptModelEvent, type ModelUsedEvent } from '../../services/modelLabels'
 import {
   exportConversation,
   exportConversationMarkdown,
@@ -74,6 +74,9 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
   const [privacyWarning, setPrivacyWarning] = useState<AIModel | null>(null)
   const [upgradePrompt, setUpgradePrompt] = useState<string | null>(null)
   const [lastUsedModel, setLastUsedModel] = useState<string | null>(null)
+  // Refonte routage (étape 5) — raison EXACTE du dernier routage (ReasonCode
+  // porté par l'event). null = pas de décision connue → explication générique.
+  const [lastUsedReasonCode, setLastUsedReasonCode] = useState<string | null>(null)
   // Roadmap UI Phase 1 #3 — tap sur le badge "Dernier appel : X" → tooltip
   // expliquant pourquoi ce modèle a été choisi. Améliore la transparence
   // du routeur IA, qui était jusqu'ici opaque (auto sélection invisible).
@@ -108,6 +111,10 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
         // serveur. Il ne reset PAS le provider search : c'est le même appel.
         setLastUsedModel(detail.model)
         if (!detail.confirmed) setLastSearchProvider(null)
+        // Raison : posée par le dispatch optimiste ; un event `confirmed`
+        // sans reason (swap serveur) ne l'efface pas — même appel, même raison.
+        if (detail.reason?.code) setLastUsedReasonCode(detail.reason.code)
+        else if (!detail.confirmed) setLastUsedReasonCode(null)
       }
     }
     const onSearchUsed = (e: Event) => {
@@ -467,7 +474,7 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
           {showModelExplain && (
             <div className="mt-1.5 px-2.5 py-2 bg-theme-surface border border-theme-border rounded-lg normal-case tracking-normal text-[11px] text-theme-ink leading-relaxed max-w-md">
               <p className="font-semibold mb-1">{t('chat.topBar.whyModel')}</p>
-              <p className="text-theme-ink/80">{t(getModelExplanationKey(lastUsedModel))}</p>
+              <p className="text-theme-ink/80">{t(getRouteExplanationKey(lastUsedModel, lastUsedReasonCode))}</p>
             </div>
           )}
         </div>
@@ -580,6 +587,7 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
           euOnly={euOnly}
           hasMistralData={!!usedModels?.includes('mistral') && !euOnly}
           lastUsedModel={lastUsedModel}
+          lastUsedReasonCode={lastUsedReasonCode}
           lastSearchProvider={lastSearchProvider}
           isProviderLocked={isProviderLocked}
           onSelectModel={handleModelChange}

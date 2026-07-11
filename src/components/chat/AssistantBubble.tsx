@@ -32,9 +32,12 @@ interface AssistantBubbleProps {
   /** Model id exact qui a produit cette réponse (Message.model, CDC C-B/C-C).
       Absent sur les messages antérieurs au déploiement → pas de footer. */
   model?: string
+  /** Raison exacte du routage (Message.reasonCode, refonte routage étape 5).
+      Absent → le footer garde l'explication générique. */
+  reasonCode?: string
 }
 
-export const AssistantBubble = memo(function AssistantBubble({ content, onAction, pinned, onTogglePin, interrupted, onRetry, factCheck, isStreaming, isLast, onBranch, onReport, model }: AssistantBubbleProps) {
+export const AssistantBubble = memo(function AssistantBubble({ content, onAction, pinned, onTogglePin, interrupted, onRetry, factCheck, isStreaming, isLast, onBranch, onReport, model, reasonCode }: AssistantBubbleProps) {
   const { t } = useTranslation()
   const bubbleRef = useRef<HTMLDivElement>(null)
 
@@ -128,7 +131,7 @@ export const AssistantBubble = memo(function AssistantBubble({ content, onAction
           </div>
         )}
         {factCheck && <FactCheckBadge result={factCheck} />}
-        {model && !isStreaming && <ModelFooter model={model} />}
+        {model && !isStreaming && <ModelFooter model={model} reasonCode={reasonCode} />}
       </div>
       {/* Actions bar : copier + speak + pin. Visible à 50% opacity sur mobile,
           hover desktop (cohérent avec branche button PR 1) + focus-visible

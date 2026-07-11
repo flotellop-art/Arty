@@ -7,7 +7,7 @@
 // CustomEvent 'arty-model-used' avec le model exact dès qu'ils choisissent
 // quoi appeler — ChatTopBar écoute et affiche.
 
-import type { RouteReason } from './router/types'
+import { ALL_REASON_CODES, type RouteReason } from './router/types'
 
 export interface ModelUsedEvent {
   model: string
@@ -196,4 +196,18 @@ export function getModelExplanationKey(modelId: string): string {
   if (m.includes('claude')) return 'chat.modelExplain.claude'
   if (m.includes('gpt') || m.includes('openai')) return 'chat.modelExplain.openai'
   return 'chat.modelExplain.fallback'
+}
+
+// Refonte routage (étape 5) — clé i18n de l'explication « pourquoi ce
+// modèle ? » : la raison EXACTE du routage (chat.routeReason.<code>) quand un
+// ReasonCode valide est disponible, sinon le fallback générique par modèle
+// ci-dessus (messages de l'historique, appels sans décision, code inconnu
+// d'une vieille version). La validation contre ALL_REASON_CODES garantit de
+// ne jamais afficher une clé i18n brute — chaque code de la liste a ses
+// traductions fr/en (test de parité routeReason.i18n.test.ts).
+export function getRouteExplanationKey(modelId: string, reasonCode?: string | null): string {
+  if (reasonCode && (ALL_REASON_CODES as readonly string[]).includes(reasonCode)) {
+    return `chat.routeReason.${reasonCode}`
+  }
+  return getModelExplanationKey(modelId)
 }

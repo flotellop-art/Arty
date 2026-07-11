@@ -22,6 +22,7 @@ import { TOOLS } from '../services/toolDefinitions'
 import { wantsImageGeneration, generateImageToolDefinition } from '../services/tools/imageTools'
 import { detectReminderIntent, createReminder } from '../services/reminderService'
 import i18n from '../i18n'
+import { toast } from '../services/toast'
 
 type ToolHandler = (name: string, input: Record<string, unknown>) => Promise<{ result: string; screenshot?: string }>
 
@@ -459,6 +460,18 @@ export function useConversation() {
         gatherRouteInput({ originalText: text, hasFiles, hasPdf, euOnly: !!conv.euOnly })
       )
       const provider = routeDecision.provider
+
+      // « Jamais de bascule silencieuse » (stratégie produit) : resolveRoute
+      // ne remplit `overrides` QUE quand un choix explicite de l'utilisateur
+      // est contredit (fichier → Claude malgré Gemini/OpenAI sélectionné,
+      // données privées → Claude, URL vs mention ChatGPT). Toast info
+      // non-bloquant — les décisions Auto normales ne toastent jamais.
+      for (const ov of routeDecision.overrides) {
+        const requestedLabel =
+          ov.requested === 'openai' ? 'ChatGPT'
+          : ov.requested.charAt(0).toUpperCase() + ov.requested.slice(1)
+        toast(i18n.t(`chat.override.${ov.reason.code}`, { requested: requestedLabel }), 'info')
+      }
 
       // Track which models are used in this conversation.
       // Hybride = les DEUX providers (F-5, audit visibilité modèle) : Gemini

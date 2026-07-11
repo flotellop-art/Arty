@@ -61,6 +61,7 @@ const MessageItem = memo(function MessageItem({ msg, index, onAction, onBranch, 
           // contenu partiel, non persisté tel quel.
           onReport={onReport && msg.id !== 'streaming' ? handleReport : undefined}
           model={msg.model}
+          reasonCode={msg.reasonCode}
         />
       )}
     </div>
