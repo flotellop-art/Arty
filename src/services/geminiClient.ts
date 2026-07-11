@@ -5,6 +5,7 @@ import { buildLocationContext } from './locationContext'
 import { recordUsage } from './costTracker'
 import { dispatchModelUsed } from './modelLabels'
 import { extractYouTubeUrls } from './aiRouter'
+import { isMapToolQuery, isWeatherQuery } from './router/intentPatterns'
 import { updateTrialFromResponse } from './trialClient'
 import type { ReflectionLevel } from './reflectionLevel'
 import i18n from '../i18n'
@@ -108,7 +109,11 @@ Règles de vérité : Cite toujours tes sources avec les URLs. Si tu n'es pas ce
  * - 1024 par défaut
  */
 export function getGeminiThinkingBudget(message: string, isMapQuery: boolean): number {
-  if (isMapQuery || /météo|quel\s+temps|température|horaires?|ouvert|fermé|itinéraire|trajet/i.test(message)) {
+  // « ouvert|fermé » (horaires d'ouverture) reste inline : lookup factuel qui
+  // n'est ni météo ni carte. isMapToolQuery est re-testé ici pour couvrir les
+  // appels directs (tests, comparateur) où le param isMapQuery ne viendrait
+  // pas du même message — en prod l'appelant passe déjà isMapToolQuery(msg).
+  if (isMapQuery || isMapToolQuery(message) || isWeatherQuery(message) || /ouvert|fermé/i.test(message)) {
     return 0
   }
   if (/prix|tarif|actualité|news|résultat|score/i.test(message)) {
@@ -192,11 +197,6 @@ async function runGeminiStream(
       parts: [{ text: m.content }],
     }))
 
-    // Detect if query is map/location related — google_maps and google_search
-    // cannot be combined in the same Gemini request (cf. CLAUDE.md BUG 5).
-    // Couvre les formulations naturelles FR/EN d'itinéraire et de distance:
-    // "combien de temps pour aller à X", "temps qu'il faut pour aller",
-    // "à quelle distance", "distance entre Y et X", "aller à X", etc.
     const lastMessage = messages[messages.length - 1]?.content || ''
 
     // Vidéo YouTube : Gemini la lit nativement si on lui passe l'URL canonique
@@ -216,7 +216,10 @@ async function runGeminiStream(
       }
     }
 
-    const isMapQuery = /google\s*maps|itinéraire|trajet|street\s*view|restaurant|horaires?|adresse|où\s+(se\s+trouve|est|aller|trouver)|coordonnées|GPS|plan\s+(de|du)|carte|combien\s+(de\s+)?(temps|km|kilomètres?|minutes?|heures?)\s+(pour|jusqu|en\s+voiture|d['’]aller|de\s+route|de\s+trajet)|temps\s+(qu['’]il\s+)?(faut|pour)\s+(pour\s+)?aller|aller\s+(à|jusqu['’]?\s*à|en)|distance\s+(entre|jusqu|pour|de)|à\s+quelle\s+distance|how\s+(far|long)\s+(is|to|from)|driving\s+(time|distance)|directions?\s+(to|from)/i.test(lastMessage)
+    // google_maps et google_search sont mutuellement exclusifs dans une même
+    // requête Gemini (BUG 5) — le choix se fait via le prédicat partagé
+    // isMapToolQuery (router/intentPatterns.ts, étroit : exclut la météo).
+    const isMapQuery = isMapToolQuery(lastMessage)
 
     // Le grounding (google_search/url_context/google_maps) n'est PAS supporté
     // avec une entrée multimodale (vidéo) → risque de rejet 400. Quand une
