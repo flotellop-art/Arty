@@ -1,6 +1,7 @@
-import { getGeminiKey, getMistralKey, getOpenAIKey } from './activeApiKey'
-import { getSelectedModel, detectOpenAIIntent } from './modelSelector'
+import { getSelectedModel } from './modelSelector'
 import { creditsCoverPremium } from './walletClient'
+import { resolveRoute } from './router/resolveRoute'
+import { getProviderAvailability } from './router/availability'
 import type { ReflectionLevel } from './reflectionLevel'
 
 // AI Router — decides which model to use based on the query.
@@ -78,7 +79,8 @@ const REPORT_TRIGGERS = [
 // regulation / pricing / how-to queries that benefit from Gemini research
 // followed by Claude synthesis. REPORT_TRIGGERS reste utilisé par
 // needsThinking() pour le palier 10000 (rapport stratégique uniquement).
-const HYBRID_TRIGGERS = [
+// Exporté pour le moteur unifié (router/resolveRoute.ts).
+export const HYBRID_TRIGGERS = [
   ...REPORT_TRIGGERS,
   /\bvs\b|versus|\bcontre\b|compare[z]?\s+(.*)\s+(et|avec|à)/i,
   /norme[s]?\s+(RE|RT|DTU|NF)|réglementation\s+thermique|MaPrimeRénov/i,
@@ -91,6 +93,13 @@ const HYBRID_TRIGGERS = [
 // gaspillés) et restent sur le chemin rapide (Mistral/Haiku).
 // Partagé entre detectProvider() et selectClaudeSubModel().
 const TRIVIAL_CHAT_REGEX = /^(salut|bonjour|bonsoir|coucou|hello|hi|hey|yo|merci|thanks?|thx|ok|okay|d'accord|super|cool|parfait|nickel|top|génial|bien|bien sûr|ouais|oui|non|nope)\b|^(\s*[\d+\-*/().\s]+\s*=?\s*\?*\s*)$|^(combien\s+font?\s+\d|how\s+much\s+is\s+\d)/i
+
+// Le couple « < 150 chars + trigger trivial » était dupliqué en dur à 3
+// endroits (shouldUseWebSearch, detectProvider, selectClaudeSubModel) —
+// factorisé ici, seul point de vérité du « chemin rapide ».
+export function isTrivialChat(message: string): boolean {
+  return message.length < 150 && TRIVIAL_CHAT_REGEX.test(message)
+}
 
 // URL detection — Mistral n'a pas de tool web_fetch natif, seulement
 // web_search qui renvoie des SNIPPETS d'index, pas le contenu d'une page.
@@ -211,7 +220,7 @@ export function extractWebUrls(message: string): string[] {
 export function shouldUseWebSearch(message: string): boolean {
   if (!message || !message.trim()) return false
   if (PRIVATE_DATA_TRIGGERS.some((r) => r.test(message))) return false
-  if (message.length < 150 && TRIVIAL_CHAT_REGEX.test(message)) return false
+  if (isTrivialChat(message)) return false
   return true
 }
 
@@ -319,19 +328,34 @@ export function resolveClaudeThinking(
 
 export type ClaudeSubModel = 'claude-haiku-4-5-20251001' | 'claude-sonnet-5' | 'claude-opus-4-8'
 
+// Injection du plan pour rendre la sélection PURE (testable sans mock de
+// localStorage/wallet). Absent → lectures singleton historiques (fallback
+// des appelants hors chat : comparateur, compresseur).
+export interface PlanGate {
+  plan: string | null
+  creditsCoverPremium: boolean
+}
+
+export interface SubModelChoice {
+  model: ClaudeSubModel
+  reason: 'plan_locked_haiku' | 'submodel_haiku_trivial' | 'submodel_opus_report' | 'submodel_sonnet_default'
+}
+
 /**
- * Choisit la déclinaison de Claude la mieux adaptée à la requête :
+ * Choisit la déclinaison de Claude la mieux adaptée à la requête, avec la
+ * RAISON du choix (transparence UI) :
  * - Free → Haiku TOUJOURS (le proxy refuse Sonnet/Opus pour ce plan)
  * - Haiku pour les messages courts/triviaux sans données privées ni thinking
  * - Opus pour les rapports stratégiques (Pro uniquement, thinking max)
  * - Sonnet par défaut
  */
-export function selectClaudeSubModel(
+export function selectClaudeSubModelWithReason(
   message: string,
   thinking: ThinkingConfig,
   isPrivateData: boolean,
-  isPro: boolean
-): ClaudeSubModel {
+  isPro: boolean,
+  planGate?: PlanGate
+): SubModelChoice {
   // Plan free/trial : Haiku uniquement, sans exception. Évite le 403
   // model_locked serveur-side ET le swap trial silencieux (C-E, décision D2 :
   // le client demande directement le modèle qui sera servi). Le plan est mis
@@ -344,87 +368,65 @@ export function selectClaudeSubModel(
   // qui postent sur le proxy sans passer ici (compresseur) peuvent encore
   // déclencher le swap serveur ; pour le chat, l'event `confirmed` (C-A)
   // rend tout swap résiduel visible au badge. Suivi Comparateur au CDC.
-  let cachedPlan: string | null = null
-  try { cachedPlan = localStorage.getItem('arty-plan-cache') } catch {}
+  let cachedPlan: string | null
+  let credits: boolean
+  if (planGate) {
+    cachedPlan = planGate.plan
+    credits = planGate.creditsCoverPremium
+  } else {
+    cachedPlan = null
+    try { cachedPlan = localStorage.getItem('arty-plan-cache') } catch {}
+    credits = creditsCoverPremium()
+  }
   // SANS crédits utilisables → Haiku only. AVEC des crédits (essai épuisé ou
   // vrai free) → on laisse la sélection normale choisir Sonnet/Opus : le
   // wallet paie n'importe quel modèle.
-  if ((cachedPlan === 'free' || cachedPlan === 'trial') && !creditsCoverPremium()) {
-    return 'claude-haiku-4-5-20251001'
+  if ((cachedPlan === 'free' || cachedPlan === 'trial') && !credits) {
+    return { model: 'claude-haiku-4-5-20251001', reason: 'plan_locked_haiku' }
   }
 
   // Routage automatique selon la requête (un utilisateur premium / avec crédits
   // a déjà passé le pin Haiku ci-dessus) :
   // Haiku — short, low-stakes queries (no private data, no thinking needed)
-  const isShortTrivial = message.length < 150 && TRIVIAL_CHAT_REGEX.test(message)
-  if (!isPrivateData && !thinking.enabled && isShortTrivial) {
-    return 'claude-haiku-4-5-20251001'
+  if (!isPrivateData && !thinking.enabled && isTrivialChat(message)) {
+    return { model: 'claude-haiku-4-5-20251001', reason: 'submodel_haiku_trivial' }
   }
 
   // Opus — strategic deep-dive reports (Pro tier + max thinking budget)
   if (isPro && thinking.budget >= 10000 && /rapport\s+stratégique|business\s+plan|étude\s+de\s+marché/i.test(message)) {
-    return 'claude-opus-4-8'
+    return { model: 'claude-opus-4-8', reason: 'submodel_opus_report' }
   }
 
-  return 'claude-sonnet-5'
+  return { model: 'claude-sonnet-5', reason: 'submodel_sonnet_default' }
 }
 
+/** Variante historique (modèle seul) — conservée pour les appelants/tests existants. */
+export function selectClaudeSubModel(
+  message: string,
+  thinking: ThinkingConfig,
+  isPrivateData: boolean,
+  isPro: boolean
+): ClaudeSubModel {
+  return selectClaudeSubModelWithReason(message, thinking, isPrivateData, isPro).model
+}
+
+/**
+ * Wrapper historique — délègue au moteur unifié (router/resolveRoute.ts) qui
+ * est désormais LE point de décision. Conservé pour rétro-compat (tests,
+ * appels qui ne veulent que le provider sans le reste de la décision).
+ * L'ordre des règles, les raisons et les overrides vivent dans resolveRoute.
+ */
 export function detectProvider(message: string): AIProvider {
-  const selectedModel = getSelectedModel()
-
-  // Private data → ALWAYS Claude (security rule — OpenAI/Gemini can't access tools/user data)
-  const isPrivate = PRIVATE_DATA_TRIGGERS.some((r) => r.test(message))
-
-  // If user forced a specific model, use it (but redirect private data to Claude for models without tools)
-  if (selectedModel !== 'auto') {
-    if (isPrivate && (selectedModel === 'gemini' || selectedModel === 'openai')) {
-      return 'claude'
-    }
-    return selectedModel
-  }
-
-  // Auto mode — intelligent routing
-  const geminiKey = getGeminiKey()
-  const mistralKey = getMistralKey()
-  const openaiKey = getOpenAIKey()
-
-  // Private data → always Claude (needs tools + security)
-  if (isPrivate) return 'claude'
-
-  // URL YouTube → Gemini : il lit la vidéo nativement (part fileData, cf.
-  // geminiClient.ts). Sans clé Gemini, fallback Claude (qui ne lit pas la
-  // vidéo non plus, mais c'est le comportement historique). Les AUTRES URL →
-  // Claude (web_fetch natif Anthropic ; Mistral hallucine sur les URLs, cf.
-  // commentaire URL_REGEX). La fiabilité du contenu prime sur l'intent ChatGPT.
-  if (hasYouTubeUrl(message)) return geminiKey ? 'gemini' : 'claude'
-  if (hasUrl(message)) return 'claude'
-
-  // Explicit OpenAI/ChatGPT mention → OpenAI (if key available)
-  if (openaiKey && detectOpenAIIntent(message)) return 'openai'
-
-  // Reports / comparisons / regulation / pricing / how-to → hybrid
-  // (Gemini research + Claude writing) if Gemini available
-  if (geminiKey) {
-    for (const regex of HYBRID_TRIGGERS) {
-      if (regex.test(message)) return 'hybrid'
-    }
-  }
-
-  // Trivial chat (salutations, merci, calculs, "ok") → fast path without
-  // web search. Mistral if available (cheap + EU), sinon Claude (Haiku via
-  // selectClaudeSubModel). Évite la latence/coût d'une recherche inutile.
-  const isTrivial = message.length < 150 && TRIVIAL_CHAT_REGEX.test(message)
-  if (isTrivial) {
-    return mistralKey ? 'mistral' : 'claude'
-  }
-
-  // Default → Gemini avec google_search activé (gratuit + données 2026
-  // à jour). Couvre toute question factuelle/générale au-delà de la
-  // mémoire d'entraînement des modèles. Voir geminiClient.ts:82-84
-  // qui active google_search + url_context par défaut.
-  if (geminiKey) return 'gemini'
-
-  // Pas de clé Gemini → fallback Mistral (EU, pas de search) sinon Claude
-  if (mistralKey) return 'mistral'
-  return 'claude'
+  let plan: string | null = null
+  try { plan = localStorage.getItem('arty-plan-cache') } catch {}
+  return resolveRoute({
+    originalText: message,
+    hasFiles: false,
+    hasPdf: false,
+    euOnly: false,
+    selectedModel: getSelectedModel(),
+    availability: getProviderAvailability(),
+    plan: { plan, isPro: false, creditsCoverPremium: creditsCoverPremium() },
+    reflectionLevel: 'auto',
+  }).provider
 }

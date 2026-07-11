@@ -5,6 +5,7 @@ import { getAnthropicKey } from './activeApiKey'
 import { apiUrl } from './apiBase'
 import { buildAiHeaders } from './aiHttp'
 import { resolveClaudeThinking, selectClaudeSubModel, PRIVATE_DATA_TRIGGERS, shouldUseWebSearch, type ClaudeThinkingDirective, type ClaudeSubModel } from './aiRouter'
+import type { RouteDecision } from './router/types'
 import { isProActivated } from './proLicense'
 import { dispatchModelUsed } from './modelLabels'
 import type { ReflectionLevel } from './reflectionLevel'
@@ -111,6 +112,14 @@ interface StreamOptions {
   // Conversation d'origine (targetId de useConversation) — scope l'event
   // 'arty-model-used' pour les streams concurrents multi-conversations.
   conversationId?: string
+  // Décision de routage calculée par resolveRoute sur le texte ORIGINAL de
+  // l'utilisateur (refonte routage, étape 2). Présente sur les appels du chat
+  // réel (useConversation, y compris la branche Claude de l'hybride) : le
+  // sous-modèle / thinking / web search en sont tirés directement, au lieu
+  // d'être recalculés sur findLastUserText — qui, en hybride, contient les
+  // résultats de recherche Gemini injectés (texte que l'utilisateur n'a pas
+  // écrit). Absente (comparateur, brief, compresseur) → recalcul historique.
+  routeDecision?: RouteDecision
 }
 
 // ── Public API ───────────────────────────────────────────────────────────────
@@ -648,19 +657,25 @@ async function runWithTools(
     const apiMessages: ApiMessage[] = compressed as ApiMessage[]
 
     const lastUserText = findLastUserText(originalMessages)
-    const isPrivateData = PRIVATE_DATA_TRIGGERS.some((r) => r.test(lastUserText))
+    const rd = options?.routeDecision
+    const isPrivateData = rd ? rd.isPrivateData : PRIVATE_DATA_TRIGGERS.some((r) => r.test(lastUserText))
     const isPro = isProActivated()
     // Réflexion (thinking étendu) :
     //  - Appel à modèle imposé (brief proactif, comparateur, résumé) → coupée :
     //    ces appels contrôlent leur propre coût et ne doivent JAMAIS hériter du
     //    réglage global de l'utilisateur (sinon le comparateur comparerait un
     //    Claude « dopé » au lieu du comportement par défaut).
-    //  - Chat réel → niveau passé explicitement via options.reflectionLevel
-    //    (depuis useConversation). Absent ⇒ 'auto' = heuristique par message.
+    //  - Chat réel avec routeDecision → décision déjà calculée sur le texte
+    //    original par resolveRoute (useConversation) — consommée telle quelle.
+    //  - Fallback historique (appelant sans décision) : recalcul local sur
+    //    findLastUserText.
     const thinking: ClaudeThinkingDirective = options?.model
       ? { enabled: false, budget: 0, effort: null }
-      : resolveClaudeThinking(lastUserText, options?.reflectionLevel ?? 'auto', isPro)
-    const ANTHROPIC_MODEL = options?.model || selectClaudeSubModel(lastUserText, thinking, isPrivateData, isPro)
+      : rd
+        ? rd.thinking
+        : resolveClaudeThinking(lastUserText, options?.reflectionLevel ?? 'auto', isPro)
+    const ANTHROPIC_MODEL =
+      options?.model || rd?.subModel || selectClaudeSubModel(lastUserText, thinking, isPrivateData, isPro)
     // Garde-fou Haiku : effort/adaptive thinking renvoient 400 sur Haiku 4.5.
     // selectClaudeSubModel ne renvoie Haiku QUE si thinking.enabled est false
     // (message trivial) OU si le plan est free (verrouillé Haiku). Dans le 1er
@@ -691,7 +706,9 @@ async function runWithTools(
     // Pas de forçage web_search sur un appel à modèle imposé (ex: brief
     // proactif) : son jeu d'outils est restreint et n'inclut pas web_search,
     // donc pousser le modèle à l'appeler n'aurait aucun sens.
-    const webSearchHint = (!options?.model && shouldUseWebSearch(lastUserText)) ? FORCE_WEB_SEARCH_PROMPT : ''
+    const webSearchHint = (!options?.model && (rd ? rd.webSearch : shouldUseWebSearch(lastUserText)))
+      ? FORCE_WEB_SEARCH_PROMPT
+      : ''
     const systemText = withThinking + locationContext + webSearchHint
     const systemBlocks = [{ type: 'text', text: systemText, cache_control: { type: 'ephemeral' } }]
     // Add prompt-caching hint to last tool definition. L'ensemble d'outils
