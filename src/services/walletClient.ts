@@ -1,6 +1,7 @@
 import { getValidAccessToken } from './googleAuth'
 import { apiUrl } from './apiBase'
 import { getTrialRemaining } from './trialClient'
+import { getActiveUserId } from './userSession'
 
 // Client pour le solde de crédits prépayés (GET /api/wallet/balance).
 // Tout est en micro-USD côté serveur ; la conversion en "crédits" affichés est
@@ -22,6 +23,7 @@ const WALLET_CACHE_KEY = 'arty-wallet-available'
 // en ~$, non markupé) est masqué pour eux, sinon il diverge du solde crédits et
 // EXPOSE le markup (P1.7, audit 14 juin).
 const WALLET_HAS_KEY = 'arty-wallet-has'
+let walletRequestSerial = 0
 
 // 1 crédit AFFICHÉ = 1 cent US (10 000 micro-USD). Choix de PRÉSENTATION
 // centralisé ICI (avant : dupliqué dans WalletBadge) — une seule source pour
@@ -51,6 +53,17 @@ export function getCachedWalletAvailableMicro(): number {
   }
 }
 
+/** Invalide les requêtes en vol et purge les caches globaux du wallet. */
+export function clearWalletCache(): void {
+  walletRequestSerial += 1
+  try {
+    localStorage.removeItem(WALLET_CACHE_KEY)
+    localStorage.removeItem(WALLET_HAS_KEY)
+  } catch {
+    /* storage indispo — état synchrone déjà invalidé par le serial */
+  }
+}
+
 /**
  * L'utilisateur peut-il payer un modèle PREMIUM avec ses crédits MAINTENANT ?
  * = il a des crédits ET n'est PAS sur un essai gratuit encore actif.
@@ -66,15 +79,28 @@ export function creditsCoverPremium(): boolean {
 }
 
 export async function fetchWalletBalance(): Promise<WalletBalance | null> {
+  const requestId = ++walletRequestSerial
+  const requestUserId = getActiveUserId()
+  const isCurrentRequest = () =>
+    requestId === walletRequestSerial && getActiveUserId() === requestUserId
   const token = await getValidAccessToken()
-  if (!token) return null
+  if (!token) {
+    if (isCurrentRequest()) clearWalletCache()
+    return null
+  }
   try {
     const resp = await fetch(apiUrl('/api/wallet/balance'), {
       method: 'GET',
       headers: { 'x-google-token': token },
     })
-    if (!resp.ok) return null
+    if (!resp.ok) {
+      if (isCurrentRequest()) clearWalletCache()
+      return null
+    }
     const data = (await resp.json()) as WalletBalance
+    // Un changement de compte ou un fetch plus récent a eu lieu pendant le
+    // réseau : cette réponse ne doit jamais repeupler les caches globaux.
+    if (!isCurrentRequest()) return null
     try {
       localStorage.setItem(WALLET_CACHE_KEY, String(data.availableMicro ?? 0))
       localStorage.setItem(WALLET_HAS_KEY, data.hasWallet ? '1' : '0')
@@ -83,6 +109,7 @@ export async function fetchWalletBalance(): Promise<WalletBalance | null> {
     }
     return data
   } catch {
+    if (isCurrentRequest()) clearWalletCache()
     return null
   }
 }

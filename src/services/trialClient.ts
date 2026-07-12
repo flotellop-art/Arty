@@ -12,17 +12,52 @@
  *     la bannière, mis à jour à chaque réponse IA via le header
  *     `x-trial-remaining` lu par les AI clients.
  *
- * État stocké en localStorage NON scopé par user — on en a besoin AVANT
- * la création de la session Arty (entre la fin du login Google et le
- * setActiveSession). Acceptable parce que c'est juste un compteur public,
- * pas de PII ni de token.
+ * Le compteur est stocké par utilisateur dès que la session Arty existe.
+ * Pendant le court intervalle AVANT setActiveSession (login Google), une clé
+ * globale sert de zone temporaire puis est adoptée par useAuth. Cela évite
+ * qu'un solde d'essai d'un compte influence le wallet/routage d'un autre.
  */
 
 import { apiUrl } from './apiBase'
+import * as scoped from './scopedStorage'
+import { getActiveUserId } from './userSession'
 
 const SPLASH_KEY = 'arty-trial-onboarding-splash'
 const SPLASH_SHOWN_KEY = 'arty-trial-onboarding-splash-shown'
 const REMAINING_KEY = 'arty-trial-remaining'
+const SCOPED_REMAINING_KEY = 'trial-remaining'
+
+function setRemainingValue(value: string): void {
+  if (getActiveUserId()) scoped.setItem(SCOPED_REMAINING_KEY, value)
+  else localStorage.setItem(REMAINING_KEY, value)
+}
+
+function removeRemainingValue(): void {
+  if (getActiveUserId()) scoped.removeItem(SCOPED_REMAINING_KEY)
+  else localStorage.removeItem(REMAINING_KEY)
+}
+
+/**
+ * `initTrial` s'exécute avant la création de session Google. Une fois la
+ * session active, déplace le compteur temporaire vers le stockage du compte.
+ */
+export function adoptPendingTrialRemaining(): void {
+  if (!getActiveUserId()) return
+  const pending = localStorage.getItem(REMAINING_KEY)
+  if (pending === null) return
+  scoped.setItem(SCOPED_REMAINING_KEY, pending)
+  localStorage.removeItem(REMAINING_KEY)
+  try {
+    window.dispatchEvent(new CustomEvent('arty-trial-remaining-changed', {
+      detail: { remaining: Number.parseInt(pending, 10) },
+    }))
+  } catch {}
+}
+
+/** Purge seulement la zone temporaire pré-session, jamais le compteur scopé. */
+export function clearPendingTrialRemaining(): void {
+  localStorage.removeItem(REMAINING_KEY)
+}
 
 export type TrialPlan = 'trial' | 'vip' | 'subscription' | 'pro' | 'free'
 
@@ -93,7 +128,7 @@ export async function initTrial(accessToken: string): Promise<TrialInitResponse 
 export function initEmailTrialSplash(remaining = 30): void {
   const splashAlreadyShown = localStorage.getItem(SPLASH_SHOWN_KEY) === '1'
   if (!splashAlreadyShown) localStorage.setItem(SPLASH_KEY, 'trial')
-  localStorage.setItem(REMAINING_KEY, String(Math.max(0, remaining)))
+  setRemainingValue(String(Math.max(0, remaining)))
 }
 
 export function getOnboardingSplash(): SplashState {
@@ -108,7 +143,9 @@ export function clearOnboardingSplash(): void {
 }
 
 export function getTrialRemaining(): number | null {
-  const raw = localStorage.getItem(REMAINING_KEY)
+  const raw = getActiveUserId()
+    ? scoped.getItem(SCOPED_REMAINING_KEY)
+    : localStorage.getItem(REMAINING_KEY)
   if (raw === null) return null
   const n = parseInt(raw, 10)
   return Number.isFinite(n) ? Math.max(0, n) : null
@@ -121,7 +158,7 @@ export function getTrialRemaining(): number | null {
  * polling localStorage.
  */
 export function setTrialRemaining(n: number): void {
-  localStorage.setItem(REMAINING_KEY, String(Math.max(0, n)))
+  setRemainingValue(String(Math.max(0, n)))
   try {
     window.dispatchEvent(new CustomEvent('arty-trial-remaining-changed', { detail: { remaining: n } }))
   } catch {
@@ -130,6 +167,8 @@ export function setTrialRemaining(n: number): void {
 }
 
 export function clearTrialRemaining(): void {
+  removeRemainingValue()
+  // Peut subsister si un login pré-session a été interrompu.
   localStorage.removeItem(REMAINING_KEY)
   try {
     window.dispatchEvent(new CustomEvent('arty-trial-remaining-changed', { detail: { remaining: null } }))

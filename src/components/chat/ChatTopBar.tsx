@@ -12,7 +12,7 @@ import { UpgradePromptModal } from './UpgradePromptModal'
 import { ChatOptionsSheet } from './ChatOptionsSheet'
 import { ConversationSwitcherSheet } from './ConversationSwitcherSheet'
 import { usePlanStatus, type ModelFamily } from '../../hooks/usePlanStatus'
-import { formatModelName, getModelExplanationKey, getModelRegion, shouldAcceptModelEvent, type ModelUsedEvent } from '../../services/modelLabels'
+import { formatModelName, getLastModelAttribution, getModelRegion, getRouteExplanationKey, shouldAcceptModelEvent, type ModelUsedEvent } from '../../services/modelLabels'
 import {
   exportConversation,
   exportConversationMarkdown,
@@ -74,6 +74,10 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
   const [privacyWarning, setPrivacyWarning] = useState<AIModel | null>(null)
   const [upgradePrompt, setUpgradePrompt] = useState<string | null>(null)
   const [lastUsedModel, setLastUsedModel] = useState<string | null>(null)
+  // Refonte routage (étape 5) — raison EXACTE du dernier routage (ReasonCode
+  // porté par l'event). null = pas de décision connue → explication générique.
+  const [lastUsedReasonCode, setLastUsedReasonCode] = useState<string | null>(null)
+  const [lastUsedSubModelReasonCode, setLastUsedSubModelReasonCode] = useState<string | null>(null)
   // Roadmap UI Phase 1 #3 — tap sur le badge "Dernier appel : X" → tooltip
   // expliquant pourquoi ce modèle a été choisi. Améliore la transparence
   // du routeur IA, qui était jusqu'ici opaque (auto sélection invisible).
@@ -88,9 +92,26 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
   const canSwitch = !!onSelectConversation && (conversations?.length ?? 0) > 1
   const menuRef = useRef<HTMLDivElement>(null)
   const exportRef = useRef<HTMLDivElement>(null)
+  const activeConversationIdRef = useRef(conversation?.id)
+  activeConversationIdRef.current = conversation?.id
   // Évalué à chaque render (lecture localStorage triviale) : un testeur peut
   // poser le flag en DevTools et le voir s'appliquer au prochain render.
   const sheetV2 = chatSheetV2Enabled()
+
+  const persistedAttribution = getLastModelAttribution(conversation?.messages ?? [])
+  const persistedModel = persistedAttribution?.model ?? null
+  const persistedReasonCode = persistedAttribution?.reasonCode ?? null
+  const persistedSubModelReasonCode = persistedAttribution?.subModelReasonCode ?? null
+
+  // Réhydrate (ou efface) l'attribution à chaque changement de conversation.
+  // Sans ceci, une conversation B sans event reçu héritait du modèle de A.
+  useEffect(() => {
+    setLastUsedModel(persistedModel)
+    setLastUsedReasonCode(persistedReasonCode)
+    setLastUsedSubModelReasonCode(persistedSubModelReasonCode)
+    setLastSearchProvider(null)
+    setShowModelExplain(false)
+  }, [conversation?.id, persistedModel, persistedReasonCode, persistedSubModelReasonCode])
 
   // Écoute le dernier modèle effectivement appelé (dispatché par les
   // clients AI avant l'envoi). Permet d'afficher "Mistral Medium 3.5" sous
@@ -102,12 +123,18 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
       // (brief proactif, résumé, comparateur : background=true) et les streams
       // d'une AUTRE conversation. Sans ce filtre, un brief Haiku 🇺🇸 déclenché
       // au retour foreground écrasait le badge d'une conversation Mistral 🇪🇺.
-      if (shouldAcceptModelEvent(detail, conversation?.id)) {
+      if (shouldAcceptModelEvent(detail, activeConversationIdRef.current)) {
         // Un event `confirmed` (modèle servi ≠ demandé, ex: substitution
         // trial) écrase le dispatch optimiste — le badge suit la vérité
         // serveur. Il ne reset PAS le provider search : c'est le même appel.
         setLastUsedModel(detail.model)
         if (!detail.confirmed) setLastSearchProvider(null)
+        // Raison : posée par le dispatch optimiste ; un event `confirmed`
+        // sans reason (swap serveur) ne l'efface pas — même appel, même raison.
+        if (detail.reason?.code) setLastUsedReasonCode(detail.reason.code)
+        else if (!detail.confirmed) setLastUsedReasonCode(null)
+        if (detail.subModelReason?.code) setLastUsedSubModelReasonCode(detail.subModelReason.code)
+        else if (!detail.confirmed) setLastUsedSubModelReasonCode(null)
       }
     }
     const onSearchUsed = (e: Event) => {
@@ -120,7 +147,7 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
       window.removeEventListener('arty-model-used', onModelUsed)
       window.removeEventListener('arty-search-used', onSearchUsed)
     }
-  }, [conversation?.id])
+  }, [])
 
   const isProviderLocked = (id: AIModel): boolean => {
     if (id === 'auto') return false
@@ -467,7 +494,12 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
           {showModelExplain && (
             <div className="mt-1.5 px-2.5 py-2 bg-theme-surface border border-theme-border rounded-lg normal-case tracking-normal text-[11px] text-theme-ink leading-relaxed max-w-md">
               <p className="font-semibold mb-1">{t('chat.topBar.whyModel')}</p>
-              <p className="text-theme-ink/80">{t(getModelExplanationKey(lastUsedModel))}</p>
+              <div className="text-theme-ink/80 space-y-1">
+                <p>{t(getRouteExplanationKey(lastUsedModel, lastUsedReasonCode))}</p>
+                {lastUsedSubModelReasonCode && lastUsedSubModelReasonCode !== lastUsedReasonCode && (
+                  <p>{t(getRouteExplanationKey(lastUsedModel, lastUsedSubModelReasonCode))}</p>
+                )}
+              </div>
             </div>
           )}
         </div>
@@ -580,6 +612,8 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
           euOnly={euOnly}
           hasMistralData={!!usedModels?.includes('mistral') && !euOnly}
           lastUsedModel={lastUsedModel}
+          lastUsedReasonCode={lastUsedReasonCode}
+          lastUsedSubModelReasonCode={lastUsedSubModelReasonCode}
           lastSearchProvider={lastSearchProvider}
           isProviderLocked={isProviderLocked}
           onSelectModel={handleModelChange}

@@ -6,13 +6,15 @@ import { streamGeminiMessage, geminiResearch } from '../services/geminiClient'
 import { streamMistralMessage } from '../services/mistralClient'
 import { sendMessageStream as streamOpenAIMessage } from '../services/openaiClient'
 import { getOpenAIKey } from '../services/activeApiKey'
-import { detectProvider, extractPdfUrls, extractWebUrls } from '../services/aiRouter'
+import { extractPdfUrls, extractWebUrls } from '../services/aiRouter'
+import { canExecuteRoute, resolveRoute } from '../services/router/resolveRoute'
+import { gatherRouteInput } from '../services/router/gatherRouteInput'
+import { notifyRouteOverrides } from '../services/router/notifyRouteOverrides'
 import { fetchPdfMarkdowns, fetchUrlMarkdowns } from '../services/pdfUrlFetch'
 import * as storage from '../services/storage'
 import { maybeExtractMemory } from '../services/autoMemory'
 import { useStreaming } from './useStreaming'
 import { useFileAttachments, buildApiMessages, buildContentBlocks, buildTextOnlyMessages, buildMistralMessages, buildMistralBlocks } from './useFileAttachments'
-import { getSelectedModel } from '../services/modelSelector'
 import { getReflectionLevel } from '../services/reflectionLevel'
 import { putFile } from '../services/secureFileStorage'
 import { runFactCheckOnLatest, factCheckContent, getFactCheckMode } from '../services/factChecker'
@@ -104,6 +106,19 @@ export function useConversation() {
     if (!storage.isCacheReady()) {
       setError(i18n.t('errors.storageNotReady'))
       return null
+    }
+    if (euOnly) {
+      const access = gatherRouteInput({
+        originalText: '',
+        hasFiles: false,
+        hasPdf: false,
+        euOnly: true,
+        hasPrivateHistory: false,
+      })
+      if (!canExecuteRoute(access)) {
+        setError(i18n.t('errors.euPlanRequired'))
+        return null
+      }
     }
     const id = generateId()
     const messages: Message[] = []
@@ -448,27 +463,35 @@ export function useConversation() {
       const currentFiles = pendingFilesRef.current
       const hasFiles = !!(currentFiles && currentFiles.length > 0)
       const hasPdf = hasFiles && currentFiles!.some((f) => f.type === 'application/pdf')
-      const selectedModel = getSelectedModel()
-      // EU-only conversations always use Mistral (data stays in Europe).
-      // Sinon : si fichiers attachés, on choisit le provider selon ce que
-      // le modèle sélectionné peut gérer. Mistral Medium 3.5 a une vision
-      // native depuis avril → on respecte le choix de l'utilisateur s'il
-      // a explicitement choisi Mistral et qu'aucun PDF n'est attaché (PDF
-      // pas supporté nativement par Mistral). Gemini/OpenAI multimodal
-      // non câblés ici → fallback Claude pour ces cas. Sans ça, l'app
-      // forçait Sonnet même quand l'utilisateur avait sélectionné Mistral.
-      let provider: ReturnType<typeof detectProvider> | 'mistral' | 'claude'
-      if (conv.euOnly) {
-        provider = 'mistral'
-      } else if (hasFiles) {
-        if (selectedModel === 'mistral' && !hasPdf) {
-          provider = 'mistral'
-        } else {
-          provider = 'claude'
-        }
-      } else {
-        provider = detectProvider(text)
+      // Décision de routage UNIQUE (refonte routage, étape 2) : euOnly,
+      // fichiers, choix manuel et cascade auto vivent désormais dans
+      // resolveRoute — même ordre d'invariants qu'avant (RÈGLE 5.3, BUG 12).
+      // Calculée sur le texte ORIGINAL (avant enrichissement PDF/hybride)
+      // et transmise aux clients via options.routeDecision : anthropicClient
+      // ne re-route plus sur un texte contaminé ou du tour précédent.
+      const routeInput = gatherRouteInput({
+        originalText: text,
+        hasFiles,
+        hasPdf,
+        euOnly: !!conv.euOnly,
+        hasPrivateHistory: !!conv.hasGoogleData,
+      })
+      // Une ancienne conversation EU peut survivre à l'expiration d'un
+      // abonnement. On bloque alors localement : jamais de fallback Claude
+      // hors EU, jamais de requête Mistral vouée au 403.
+      if (!canExecuteRoute(routeInput)) {
+        onErr(new Error(i18n.t('errors.euPlanRequired')))
+        return
       }
+      const routeDecision = resolveRoute(routeInput)
+      const provider = routeDecision.provider
+
+      // « Jamais de bascule silencieuse » (stratégie produit) : resolveRoute
+      // ne remplit `overrides` QUE quand un choix explicite de l'utilisateur
+      // est contredit (fichier → Claude malgré Gemini/OpenAI sélectionné,
+      // données privées → Claude, ou mode Europe → Mistral). Toast info
+      // non-bloquant — les décisions Auto normales ne toastent jamais.
+      notifyRouteOverrides(routeDecision.overrides)
 
       // Track which models are used in this conversation.
       // Hybride = les DEUX providers (F-5, audit visibilité modèle) : Gemini
@@ -599,6 +622,10 @@ export function useConversation() {
             // sur les appels imposés type comparateur/brief). Cf. anthropicClient.
             reflectionLevel: getReflectionLevel(),
             conversationId: targetId,
+            // Décision calculée sur le texte ORIGINAL — sans elle, le
+            // sous-modèle/thinking se recalculait sur le message enrichi de
+            // la recherche Gemini (bug contamination hybride).
+            routeDecision,
           })
           setAbortController(targetId, controller)
         }).catch(onErr)
@@ -614,6 +641,7 @@ export function useConversation() {
           systemPrompt: systemPromptRef.current,
           reflectionLevel: getReflectionLevel(),
           conversationId: targetId,
+          routeReason: routeDecision.reason,
         })
       } else if (provider === 'mistral') {
         // Mistral Medium 3.5 a une vision native → on utilise le builder
@@ -641,6 +669,8 @@ export function useConversation() {
           urlContentInlined: outgoingText !== text,
           euOnly: conv.euOnly,
           conversationId: targetId,
+          routeReason: routeDecision.reason,
+          webSearch: routeDecision.webSearch,
         })
       } else if (provider === 'openai') {
         // openaiKey peut être null — dans ce cas le client passe par le proxy
@@ -657,6 +687,7 @@ export function useConversation() {
         controller = streamOpenAIMessage(apiMessages, openaiKey, onToken, onDone, onErr, {
           systemPrompt: systemPromptRef.current,
           conversationId: targetId,
+          routeReason: routeDecision.reason,
         })
       } else {
         // Claude path — historique complet avec content blocks pour les images
@@ -682,6 +713,7 @@ export function useConversation() {
           onToolCall: trackedToolHandler,
           reflectionLevel: getReflectionLevel(),
           conversationId: targetId,
+          routeDecision,
           ...(imageTools ? { tools: imageTools as typeof TOOLS } : {}),
         })
       }

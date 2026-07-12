@@ -19,6 +19,8 @@ import { bootstrapFileStorage } from '../services/secureFileStorage'
 import { bootstrapConversationStorage, resetConversationMemCache } from '../services/storage'
 import * as scoped from '../services/scopedStorage'
 import { clearTrialToken } from '../services/emailTrialClient'
+import { clearWalletCache } from '../services/walletClient'
+import { adoptPendingTrialRemaining, clearPendingTrialRemaining } from '../services/trialClient'
 
 type StoredKeys = { anthropic: string; gemini?: string; mistral?: string; openai?: string }
 
@@ -35,6 +37,7 @@ export function useAuth() {
   // also self-heals corrupt blobs now.
   useEffect(() => {
     if (!currentUser) return
+    adoptPendingTrialRemaining()
     // Legacy reports predate account scoping and contain no owner metadata.
     // They cannot be assigned safely, so remove them on the first authenticated
     // boot instead of leaving personal HTML globally readable.
@@ -75,6 +78,7 @@ export function useAuth() {
 
     // Activate session (sets the prefix for scopedStorage)
     setActiveSession(session)
+    adoptPendingTrialRemaining()
 
     // Migrate existing data if first login after update
     migrateExistingData(userId)
@@ -136,6 +140,11 @@ export function useAuth() {
     // Trou pré-existant (jamais purgé), rendu plus fréquent par l'écriture du
     // flux essai email — fermé ici pour tous les flux.
     try { localStorage.removeItem('arty-plan-cache') } catch { /* noop */ }
+    // F-14 — les familles autorisées suivent le même cycle de vie que le plan
+    // (cache global rempli par usePlanStatus) : purge symétrique.
+    try { localStorage.removeItem('arty-allowed-families') } catch { /* noop */ }
+    clearWalletCache()
+    clearPendingTrialRemaining()
     // Drop any pending OAuth state nonce (e.g. user clicked Google then
     // logged out before completing the redirect).
     clearOAuthState()
@@ -172,6 +181,9 @@ export function useAuth() {
     // router les modèles du compte suivant (usePlanStatus le re-remplit au
     // premier fetch). Symétrique de la purge du logout.
     try { localStorage.removeItem('arty-plan-cache') } catch { /* noop */ }
+    try { localStorage.removeItem('arty-allowed-families') } catch { /* noop */ }
+    clearWalletCache()
+    clearPendingTrialRemaining()
 
     // Activate new session
     setActiveSession(session)

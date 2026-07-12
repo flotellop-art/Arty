@@ -50,6 +50,8 @@ vi.mock('../../services/storage', () => ({
   resetConversationMemCache: mocks.resetConversationMemCache,
 }))
 vi.mock('../../services/scopedStorage', () => ({
+  getItem: vi.fn((key: string) => localStorage.getItem(`arty-user-a-${key}`)),
+  setItem: vi.fn((key: string, value: string) => localStorage.setItem(`arty-user-a-${key}`, value)),
   getJSON: vi.fn(() => null),
   setJSON: vi.fn(),
   removeItem: vi.fn(),
@@ -64,7 +66,14 @@ vi.mock('@capacitor/core', () => ({
 import { useAuth } from '../../hooks/useAuth'
 
 describe('useAuth logout retention', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => {
+    vi.clearAllMocks()
+    localStorage.setItem('arty-plan-cache', 'subscription')
+    localStorage.setItem('arty-allowed-families', JSON.stringify(['gemini-flash']))
+    localStorage.setItem('arty-wallet-available', '50000')
+    localStorage.setItem('arty-wallet-has', '1')
+    localStorage.setItem('arty-trial-remaining', '12')
+  })
 
   it('keeps encrypted attachments on a simple logout', () => {
     const { result } = renderHook(() => useAuth())
@@ -77,6 +86,25 @@ describe('useAuth logout retention', () => {
     expect(mocks.clearActiveSession).toHaveBeenCalledOnce()
     expect(mocks.removeKnownSession).toHaveBeenCalledWith('user-a')
     expect(mocks.resetConversationMemCache).toHaveBeenCalledOnce()
+    expect(localStorage.getItem('arty-plan-cache')).toBeNull()
+    expect(localStorage.getItem('arty-allowed-families')).toBeNull()
+    expect(localStorage.getItem('arty-wallet-available')).toBeNull()
+    expect(localStorage.getItem('arty-wallet-has')).toBeNull()
+    expect(localStorage.getItem('arty-trial-remaining')).toBeNull()
     expect(result.current.currentUser).toBeNull()
+  })
+
+  it('purge aussi les deux caches avant un changement de compte', async () => {
+    const { result } = renderHook(() => useAuth())
+
+    await act(async () => {
+      await result.current.switchAccount('user-a')
+    })
+
+    expect(localStorage.getItem('arty-plan-cache')).toBeNull()
+    expect(localStorage.getItem('arty-allowed-families')).toBeNull()
+    expect(localStorage.getItem('arty-wallet-available')).toBeNull()
+    expect(localStorage.getItem('arty-wallet-has')).toBeNull()
+    expect(localStorage.getItem('arty-trial-remaining')).toBeNull()
   })
 })

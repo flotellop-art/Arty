@@ -7,7 +7,7 @@ import { MODEL_OPTIONS, type AIModel } from '../../services/modelSelector'
 import { STYLE_OPTIONS, type ResponseStyle } from '../../services/responseStyles'
 import { type ReflectionLevel } from '../../services/reflectionLevel'
 import { ReflectionControl } from './ReflectionControl'
-import { formatModelName, getModelExplanationKey, getModelRegion } from '../../services/modelLabels'
+import { formatModelName, getModelRegion, getRouteExplanationKey } from '../../services/modelLabels'
 import { usePlanStatus } from '../../hooks/usePlanStatus'
 import { getAutoCheckCountToday, getFactCheckMode } from '../../services/factChecker'
 
@@ -36,6 +36,11 @@ interface ChatOptionsSheetProps {
   /** Conversation mixte ayant utilisé Mistral (≠ euOnly) → note EU informative. */
   hasMistralData?: boolean
   lastUsedModel: string | null
+  /** Raison exacte du dernier routage (ReasonCode) — null = explication
+      générique (refonte routage, étape 5). */
+  lastUsedReasonCode?: string | null
+  /** Raison de la sous-décision Claude (Haiku/Sonnet/Opus). */
+  lastUsedSubModelReasonCode?: string | null
   lastSearchProvider: string | null
   isProviderLocked: (id: AIModel) => boolean
   onSelectModel: (model: AIModel) => void
@@ -62,6 +67,8 @@ export function ChatOptionsSheet({
   euOnly,
   hasMistralData,
   lastUsedModel,
+  lastUsedReasonCode,
+  lastUsedSubModelReasonCode,
   lastSearchProvider,
   isProviderLocked,
   onSelectModel,
@@ -177,7 +184,12 @@ export function ChatOptionsSheet({
             {showExplain && (
               <div className="mt-1.5 px-2.5 py-2 bg-theme-bg border border-theme-border rounded-lg text-[11px] text-theme-ink leading-relaxed">
                 <p className="font-semibold mb-1">{t('chat.topBar.whyModel')}</p>
-                <p className="text-theme-ink/80">{t(getModelExplanationKey(lastUsedModel))}</p>
+                <div className="text-theme-ink/80 space-y-1">
+                  <p>{t(getRouteExplanationKey(lastUsedModel, lastUsedReasonCode))}</p>
+                  {lastUsedSubModelReasonCode && lastUsedSubModelReasonCode !== lastUsedReasonCode && (
+                    <p>{t(getRouteExplanationKey(lastUsedModel, lastUsedSubModelReasonCode))}</p>
+                  )}
+                </div>
               </div>
             )}
           </div>

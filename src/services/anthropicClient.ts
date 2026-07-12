@@ -5,6 +5,7 @@ import { getAnthropicKey } from './activeApiKey'
 import { apiUrl } from './apiBase'
 import { buildAiHeaders } from './aiHttp'
 import { resolveClaudeThinking, selectClaudeSubModel, PRIVATE_DATA_TRIGGERS, shouldUseWebSearch, type ClaudeThinkingDirective, type ClaudeSubModel } from './aiRouter'
+import type { RouteDecision, RouteReason } from './router/types'
 import { isProActivated } from './proLicense'
 import { dispatchModelUsed } from './modelLabels'
 import type { ReflectionLevel } from './reflectionLevel'
@@ -81,6 +82,39 @@ type SSEParseResult = {
   servedModel?: string
 }
 
+function claudeModelFamily(model: string): 'haiku' | 'sonnet' | 'opus' | 'other' {
+  const id = model.toLowerCase()
+  if (id.includes('haiku')) return 'haiku'
+  if (id.includes('sonnet')) return 'sonnet'
+  if (id.includes('opus')) return 'opus'
+  return 'other'
+}
+
+/**
+ * La raison optimiste reste valide pour un alias/version datée de la même
+ * famille. Si le serveur change réellement de famille (Sonnet → Haiku en
+ * trial, par exemple), on la remplace par une raison honnête et affichable.
+ */
+export function resolveServedSubModelReason(
+  requestedModel: string,
+  servedModel: string,
+  requestedReason?: RouteReason,
+): RouteReason | undefined {
+  return claudeModelFamily(requestedModel) === claudeModelFamily(servedModel)
+    ? requestedReason
+    : { code: 'server_model_substitution' }
+}
+
+/** Retire la recherche publique quand la décision centrale l'interdit. */
+export function filterAnthropicToolsForRoute(
+  toolSet: typeof TOOLS,
+  route?: Pick<RouteDecision, 'webSearch'>,
+): typeof TOOLS {
+  return route && !route.webSearch
+    ? toolSet.filter((tool) => tool.name !== 'web_search')
+    : toolSet
+}
+
 export type ToolHandler = (
   name: string,
   input: Record<string, unknown>
@@ -111,6 +145,14 @@ interface StreamOptions {
   // Conversation d'origine (targetId de useConversation) — scope l'event
   // 'arty-model-used' pour les streams concurrents multi-conversations.
   conversationId?: string
+  // Décision de routage calculée par resolveRoute sur le texte ORIGINAL de
+  // l'utilisateur (refonte routage, étape 2). Présente sur les appels du chat
+  // réel (useConversation, y compris la branche Claude de l'hybride) : le
+  // sous-modèle / thinking / web search en sont tirés directement, au lieu
+  // d'être recalculés sur findLastUserText — qui, en hybride, contient les
+  // résultats de recherche Gemini injectés (texte que l'utilisateur n'a pas
+  // écrit). Absente (comparateur, brief, compresseur) → recalcul historique.
+  routeDecision?: RouteDecision
 }
 
 // ── Public API ───────────────────────────────────────────────────────────────
@@ -137,12 +179,25 @@ export function streamMessage(
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function findLastUserText(
+// Le content d'un message user devient un TABLEAU de blocks quand un fichier
+// est attaché (buildContentBlocks) — ignorer ces messages ferait porter le
+// routage (thinking, sous-modèle, web search) sur la question du tour
+// précédent, pas sur celle qui accompagne le fichier.
+export function findLastUserText(
   messages: Array<{ role: string; content: string | Array<Record<string, unknown>> }>
 ): string {
   for (let i = messages.length - 1; i >= 0; i--) {
     const m = messages[i]
-    if (m && m.role === 'user' && typeof m.content === 'string') return m.content
+    if (!m || m.role !== 'user') continue
+    if (typeof m.content === 'string') return m.content
+    if (Array.isArray(m.content)) {
+      const text = m.content
+        .filter((b) => b && b.type === 'text' && typeof b.text === 'string')
+        .map((b) => b.text as string)
+        .join('\n')
+        .trim()
+      if (text) return text
+    }
   }
   return ''
 }
@@ -635,19 +690,25 @@ async function runWithTools(
     const apiMessages: ApiMessage[] = compressed as ApiMessage[]
 
     const lastUserText = findLastUserText(originalMessages)
-    const isPrivateData = PRIVATE_DATA_TRIGGERS.some((r) => r.test(lastUserText))
+    const rd = options?.routeDecision
+    const isPrivateData = rd ? rd.isPrivateData : PRIVATE_DATA_TRIGGERS.some((r) => r.test(lastUserText))
     const isPro = isProActivated()
     // Réflexion (thinking étendu) :
     //  - Appel à modèle imposé (brief proactif, comparateur, résumé) → coupée :
     //    ces appels contrôlent leur propre coût et ne doivent JAMAIS hériter du
     //    réglage global de l'utilisateur (sinon le comparateur comparerait un
     //    Claude « dopé » au lieu du comportement par défaut).
-    //  - Chat réel → niveau passé explicitement via options.reflectionLevel
-    //    (depuis useConversation). Absent ⇒ 'auto' = heuristique par message.
+    //  - Chat réel avec routeDecision → décision déjà calculée sur le texte
+    //    original par resolveRoute (useConversation) — consommée telle quelle.
+    //  - Fallback historique (appelant sans décision) : recalcul local sur
+    //    findLastUserText.
     const thinking: ClaudeThinkingDirective = options?.model
       ? { enabled: false, budget: 0, effort: null }
-      : resolveClaudeThinking(lastUserText, options?.reflectionLevel ?? 'auto', isPro)
-    const ANTHROPIC_MODEL = options?.model || selectClaudeSubModel(lastUserText, thinking, isPrivateData, isPro)
+      : rd
+        ? rd.thinking
+        : resolveClaudeThinking(lastUserText, options?.reflectionLevel ?? 'auto', isPro)
+    const ANTHROPIC_MODEL =
+      options?.model || rd?.subModel || selectClaudeSubModel(lastUserText, thinking, isPrivateData, isPro)
     // Garde-fou Haiku : effort/adaptive thinking renvoient 400 sur Haiku 4.5.
     // selectClaudeSubModel ne renvoie Haiku QUE si thinking.enabled est false
     // (message trivial) OU si le plan est free (verrouillé Haiku). Dans le 1er
@@ -660,7 +721,16 @@ async function runWithTools(
     // active (StreamingIndicator affiche « réflexion approfondie »).
     // Dispatch OPTIMISTE (pré-envoi) — corrigé plus bas si message_start
     // confirme un autre modèle (substitution serveur trial, F-1).
-    const eventScope = { background: options?.background, conversationId: options?.conversationId }
+    const eventScope = {
+      background: options?.background,
+      conversationId: options?.conversationId,
+      // Raison du routage (étape 4) — portée par les dispatchs optimiste ET
+      // confirmé : un swap serveur change le modèle, pas pourquoi on a routé.
+      ...(rd?.reason ? { reason: rd.reason } : {}),
+      // Pourquoi Haiku/Sonnet/Opus a été retenu. Cette seconde raison ne doit
+      // pas écraser celle du provider : les deux sont affichées ensemble.
+      ...(rd?.subModelReason ? { subModelReason: rd.subModelReason } : {}),
+    }
     // string (pas ClaudeSubModel) : le modèle CONFIRMÉ par l'API peut être un
     // id hors union (ex: version datée renvoyée par Anthropic).
     let dispatchedModel: string = ANTHROPIC_MODEL
@@ -678,12 +748,14 @@ async function runWithTools(
     // Pas de forçage web_search sur un appel à modèle imposé (ex: brief
     // proactif) : son jeu d'outils est restreint et n'inclut pas web_search,
     // donc pousser le modèle à l'appeler n'aurait aucun sens.
-    const webSearchHint = (!options?.model && shouldUseWebSearch(lastUserText)) ? FORCE_WEB_SEARCH_PROMPT : ''
+    const webSearchHint = (!options?.model && (rd ? rd.webSearch : shouldUseWebSearch(lastUserText)))
+      ? FORCE_WEB_SEARCH_PROMPT
+      : ''
     const systemText = withThinking + locationContext + webSearchHint
     const systemBlocks = [{ type: 'text', text: systemText, cache_control: { type: 'ephemeral' } }]
     // Add prompt-caching hint to last tool definition. L'ensemble d'outils
     // peut être restreint via options.tools (brief proactif = lecture seule).
-    const toolSet = options?.tools ?? TOOLS
+    const toolSet = filterAnthropicToolsForRoute(options?.tools ?? TOOLS, rd)
     const cachedTools = toolSet.map((t, i) =>
       i === toolSet.length - 1 ? { ...t, cache_control: { type: 'ephemeral' } } : t
     )
@@ -739,6 +811,11 @@ async function runWithTools(
       // repasse ici avec le même servedModel.
       if (servedModel && servedModel !== dispatchedModel) {
         dispatchedModel = servedModel
+        const servedSubModelReason = resolveServedSubModelReason(
+          ANTHROPIC_MODEL,
+          servedModel,
+          rd?.subModelReason,
+        )
         dispatchModelUsed({
           model: servedModel,
           provider: 'claude',
@@ -748,6 +825,7 @@ async function runWithTools(
           reflecting: effortActive && !servedModel.toLowerCase().includes('haiku'),
           confirmed: true,
           ...eventScope,
+          ...(servedSubModelReason ? { subModelReason: servedSubModelReason } : {}),
         })
       }
 

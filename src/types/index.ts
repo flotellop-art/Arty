@@ -59,6 +59,14 @@ export interface Message {
   // uniquement — ne JAMAIS s'en servir pour router un prochain appel.
   // Exclu du partage public (décision D3), inclus dans les exports privés.
   model?: string
+  // Refonte routage (étape 4) — POURQUOI ce modèle a été choisi : code machine
+  // de resolveRoute (ReasonCode, ex: 'private_data', 'default_capable'),
+  // traduit par l'UI via i18n `chat.routeReason.<code>`. Même pattern additif
+  // que `model` : optionnel, aucune migration, messages antérieurs sans.
+  reasonCode?: string
+  // Sous-décision Claude (Haiku/Sonnet/Opus), conservée séparément afin de ne
+  // pas perdre la raison principale du provider (privé, fichier, hybride…).
+  subModelReasonCode?: string
 }
 
 export interface Conversation {

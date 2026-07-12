@@ -4,6 +4,7 @@ import { buildAiHeaders } from './aiHttp'
 import { recordUsage } from './costTracker'
 import { dispatchModelUsed } from './modelLabels'
 import { updateTrialFromResponse } from './trialClient'
+import type { RouteReason } from './router/types'
 
 // OpenAI client — deux chemins :
 // 1. BYOK : si l'utilisateur a saisi sa clé (getOpenAIKey) → appel direct
@@ -42,6 +43,9 @@ interface OpenAIOptions {
   background?: boolean
   // Conversation d'origine (targetId) — scope l'event 'arty-model-used'.
   conversationId?: string
+  // Raison du routage (refonte routage, étape 4) — resolveRoute, via
+  // useConversation. Portée par l'event 'arty-model-used' pour l'UI.
+  routeReason?: RouteReason
 }
 
 // ─── Error formatting ───
@@ -147,7 +151,11 @@ export function sendMessageStream(
       // muet ou figé sur le modèle/drapeau d'un provider précédent alors que
       // la donnée partait chez OpenAI (US). Corrigé plus bas si le flux
       // confirme un autre modèle (fallback 5.5→5, substitution proxy).
-      const eventScope = { background: options?.background, conversationId: options?.conversationId }
+      const eventScope = {
+        background: options?.background,
+        conversationId: options?.conversationId,
+        ...(options?.routeReason ? { reason: options.routeReason } : {}),
+      }
       let dispatchedModel = model
       dispatchModelUsed({ model, provider: 'openai', ...eventScope })
       const payload = {
