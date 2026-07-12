@@ -8,7 +8,7 @@ import { buildLocationContext } from './locationContext'
 import { recordUsage } from './costTracker'
 import { dispatchModelUsed } from './modelLabels'
 import { setSearchContext } from './factChecker'
-import { shouldUseWebSearch } from './aiRouter'
+import { isTrivialChat, shouldUseWebSearch } from './aiRouter'
 import type { RouteReason } from './router/types'
 import { updateTrialFromResponse } from './trialClient'
 import i18n from '../i18n'
@@ -23,8 +23,13 @@ import i18n from '../i18n'
  * Signature conservée (prend `message`) pour compat avec les appelants
  * existants — l'argument est ignoré.
  */
-export function selectMistralModel(_message: string): 'mistral-medium-latest' {
-  return 'mistral-medium-latest'
+export type MistralChatModel = 'mistral-small-2603' | 'mistral-medium-latest'
+
+export function selectMistralModel(message: string): MistralChatModel {
+  // Small 4 suffit pour les salutations, confirmations et calculs élémentaires
+  // déjà classés triviaux par le routeur. Medium reste réservé au chat EU,
+  // aux outils et aux demandes générales. Gain catalogue : ~90 % sur ce flux.
+  return isTrivialChat(message) ? 'mistral-small-2603' : 'mistral-medium-latest'
 }
 
 const MISTRAL_SYSTEM = `Tu es Arty, un assistant IA personnel.
@@ -99,7 +104,7 @@ interface MistralStreamOptions {
   systemPrompt?: string
   onToolCall?: ToolHandler
   // Force un modèle précis (utilisé par le comparateur multi-modèles).
-  // Si absent, fallback sur selectMistralModel (défaut Arty : medium).
+  // Si absent, fallback sur selectMistralModel (Small trivial, Medium sinon).
   model?: string
   // Fix 429 (11 juin 2026) — true quand useConversation a déjà inliné le
   // contenu d'URL/PDF (lot C) dans le dernier message : la recherche web
@@ -119,6 +124,10 @@ interface MistralStreamOptions {
   // Raison du routage (refonte routage, étape 4) — resolveRoute, via
   // useConversation. Portée par l'event 'arty-model-used' pour l'UI.
   routeReason?: RouteReason
+  // Décision centrale d'autoriser la recherche publique. Quand elle vaut
+  // false (notamment historique Google privé), le tool web_search est retiré
+  // de la requête : Mistral ne peut pas contourner le verrou via tool_choice.
+  webSearch?: boolean
 }
 
 // Décision « forcer web_search au 1er tour » — pure et exportée pour test.
@@ -127,9 +136,10 @@ interface MistralStreamOptions {
 export function shouldForceSearch(
   lastUserText: string,
   hasToolHandler: boolean,
-  urlContentInlined: boolean
+  urlContentInlined: boolean,
+  webSearchAllowed = shouldUseWebSearch(lastUserText),
 ): boolean {
-  return hasToolHandler && !urlContentInlined && shouldUseWebSearch(lastUserText)
+  return hasToolHandler && !urlContentInlined && webSearchAllowed
 }
 
 // Mistral content blocks pour le multimodal (image_url + text). Format
@@ -336,7 +346,13 @@ async function runMistralStream(
     // alors qu'on n'a pas de handler pour l'exécuter résulte en un panneau
     // vide (toolCalls détectés → onDone direct sans streamer de texte).
     // Symétrique du fix Anthropic dans le wiring du comparateur (compare.tsx).
-    const forceWebHint = shouldForceSearch(lastUserText, !!options?.onToolCall, !!options?.urlContentInlined)
+    const webSearchAllowed = options?.webSearch ?? shouldUseWebSearch(lastUserText)
+    const forceWebHint = shouldForceSearch(
+      lastUserText,
+      !!options?.onToolCall,
+      !!options?.urlContentInlined,
+      webSearchAllowed,
+    )
       ? `\n\nRECHERCHE WEB OBLIGATOIRE — non négociable :\nPour CE message utilisateur, tu DOIS appeler le tool web_search AVANT de répondre, même si tu penses connaître la réponse. La recherche web prime sur ta mémoire d'entraînement. Si un fichier est attaché, analyse-le ET fais une recherche web. Cite les sources via [1], [2]. Ne dis JAMAIS "j'ai cherché" — c'est le tool qui cherche.`
       : ''
     // Date du jour — sans elle, Mistral ne sait pas se situer par rapport à
@@ -361,8 +377,7 @@ async function runMistralStream(
     // chiffres/dates (audit, cause n°4). Conversationnel : 0.7 conservé.
     const temperature = forceWebHint ? 0.3 : 0.7
     // Modèle effectif : `options.model` (forcé par le comparateur) ou
-    // selectMistralModel (auto-sélection Arty pour le chat normal — par
-    // défaut Mistral Medium 3.5 depuis mai 2026).
+    // selectMistralModel (Small 4 pour le trivial, Medium 3.5 sinon).
     const model = options?.model || selectMistralModel(lastUserText)
     // Dispatch OPTIMISTE (pré-envoi) — corrigé dans la boucle ci-dessous si
     // le flux SSE confirme un autre modèle (substitution serveur trial, F-1).
@@ -394,7 +409,7 @@ async function runMistralStream(
     const openaiTools = options?.onToolCall
       ? [
           ...baseTools,
-          {
+          ...(webSearchAllowed ? [{
             type: 'function' as const,
             function: {
               name: 'web_search',
@@ -415,7 +430,7 @@ Pour les COMPARAISONS multi-sites/multi-revendeurs (ex: "compare prix X chez Bri
                 required: ['query'],
               },
             },
-          },
+          }] : []),
         ]
       : []
 

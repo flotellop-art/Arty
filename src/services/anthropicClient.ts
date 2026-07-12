@@ -5,7 +5,7 @@ import { getAnthropicKey } from './activeApiKey'
 import { apiUrl } from './apiBase'
 import { buildAiHeaders } from './aiHttp'
 import { resolveClaudeThinking, selectClaudeSubModel, PRIVATE_DATA_TRIGGERS, shouldUseWebSearch, type ClaudeThinkingDirective, type ClaudeSubModel } from './aiRouter'
-import type { RouteDecision } from './router/types'
+import type { RouteDecision, RouteReason } from './router/types'
 import { isProActivated } from './proLicense'
 import { dispatchModelUsed } from './modelLabels'
 import type { ReflectionLevel } from './reflectionLevel'
@@ -80,6 +80,39 @@ type SSEParseResult = {
       du modèle demandé : le proxy substitue Haiku en trial (audit visibilité
       modèle, F-1). Vide si l'event message_start n'est pas arrivé. */
   servedModel?: string
+}
+
+function claudeModelFamily(model: string): 'haiku' | 'sonnet' | 'opus' | 'other' {
+  const id = model.toLowerCase()
+  if (id.includes('haiku')) return 'haiku'
+  if (id.includes('sonnet')) return 'sonnet'
+  if (id.includes('opus')) return 'opus'
+  return 'other'
+}
+
+/**
+ * La raison optimiste reste valide pour un alias/version datée de la même
+ * famille. Si le serveur change réellement de famille (Sonnet → Haiku en
+ * trial, par exemple), on la remplace par une raison honnête et affichable.
+ */
+export function resolveServedSubModelReason(
+  requestedModel: string,
+  servedModel: string,
+  requestedReason?: RouteReason,
+): RouteReason | undefined {
+  return claudeModelFamily(requestedModel) === claudeModelFamily(servedModel)
+    ? requestedReason
+    : { code: 'server_model_substitution' }
+}
+
+/** Retire la recherche publique quand la décision centrale l'interdit. */
+export function filterAnthropicToolsForRoute(
+  toolSet: typeof TOOLS,
+  route?: Pick<RouteDecision, 'webSearch'>,
+): typeof TOOLS {
+  return route && !route.webSearch
+    ? toolSet.filter((tool) => tool.name !== 'web_search')
+    : toolSet
 }
 
 export type ToolHandler = (
@@ -694,6 +727,9 @@ async function runWithTools(
       // Raison du routage (étape 4) — portée par les dispatchs optimiste ET
       // confirmé : un swap serveur change le modèle, pas pourquoi on a routé.
       ...(rd?.reason ? { reason: rd.reason } : {}),
+      // Pourquoi Haiku/Sonnet/Opus a été retenu. Cette seconde raison ne doit
+      // pas écraser celle du provider : les deux sont affichées ensemble.
+      ...(rd?.subModelReason ? { subModelReason: rd.subModelReason } : {}),
     }
     // string (pas ClaudeSubModel) : le modèle CONFIRMÉ par l'API peut être un
     // id hors union (ex: version datée renvoyée par Anthropic).
@@ -719,7 +755,7 @@ async function runWithTools(
     const systemBlocks = [{ type: 'text', text: systemText, cache_control: { type: 'ephemeral' } }]
     // Add prompt-caching hint to last tool definition. L'ensemble d'outils
     // peut être restreint via options.tools (brief proactif = lecture seule).
-    const toolSet = options?.tools ?? TOOLS
+    const toolSet = filterAnthropicToolsForRoute(options?.tools ?? TOOLS, rd)
     const cachedTools = toolSet.map((t, i) =>
       i === toolSet.length - 1 ? { ...t, cache_control: { type: 'ephemeral' } } : t
     )
@@ -775,6 +811,11 @@ async function runWithTools(
       // repasse ici avec le même servedModel.
       if (servedModel && servedModel !== dispatchedModel) {
         dispatchedModel = servedModel
+        const servedSubModelReason = resolveServedSubModelReason(
+          ANTHROPIC_MODEL,
+          servedModel,
+          rd?.subModelReason,
+        )
         dispatchModelUsed({
           model: servedModel,
           provider: 'claude',
@@ -784,6 +825,7 @@ async function runWithTools(
           reflecting: effortActive && !servedModel.toLowerCase().includes('haiku'),
           confirmed: true,
           ...eventScope,
+          ...(servedSubModelReason ? { subModelReason: servedSubModelReason } : {}),
         })
       }
 

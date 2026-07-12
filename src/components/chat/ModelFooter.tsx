@@ -24,9 +24,10 @@ import {
 interface ModelFooterProps {
   model: string
   reasonCode?: string
+  subModelReasonCode?: string
 }
 
-export const ModelFooter = memo(function ModelFooter({ model, reasonCode }: ModelFooterProps) {
+export const ModelFooter = memo(function ModelFooter({ model, reasonCode, subModelReasonCode }: ModelFooterProps) {
   const { t } = useTranslation()
   const [expanded, setExpanded] = useState(false)
   const region = getModelRegion(model)
@@ -34,6 +35,9 @@ export const ModelFooter = memo(function ModelFooter({ model, reasonCode }: Mode
   // Raison exacte si le code est valide (traductions garanties par le test
   // de parité), sinon fallback générique — jamais une clé brute à l'écran.
   const explanation = t(getRouteExplanationKey(model, reasonCode))
+  const subModelExplanation = subModelReasonCode && subModelReasonCode !== reasonCode
+    ? t(getRouteExplanationKey(model, subModelReasonCode))
+    : null
 
   return (
     <div className="mt-1.5">
@@ -48,9 +52,10 @@ export const ModelFooter = memo(function ModelFooter({ model, reasonCode }: Mode
           : `${t(getModelCapacityKey(model))} · ${region.flag}`}
       </button>
       {expanded && (
-        <p className="mt-1 text-xs text-theme-muted leading-relaxed max-w-[60ch]">
-          {explanation}
-        </p>
+        <div className="mt-1 text-xs text-theme-muted leading-relaxed max-w-[60ch] space-y-1">
+          <p>{explanation}</p>
+          {subModelExplanation && <p>{subModelExplanation}</p>}
+        </div>
       )}
     </div>
   )

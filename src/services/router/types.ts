@@ -33,6 +33,7 @@ export const ALL_REASON_CODES = [
   'submodel_haiku_trivial', // message trivial → Haiku (rapide, économique)
   'submodel_opus_report',   // rapport stratégique Pro → Opus
   'submodel_sonnet_default', // défaut Claude → Sonnet (BUG 58)
+  'server_model_substitution', // serveur a servi une autre famille Claude
 ] as const
 
 export type ReasonCode = (typeof ALL_REASON_CODES)[number]
@@ -42,9 +43,9 @@ export interface RouteReason {
   params?: Record<string, string | number>
 }
 
-// Une redirection appliquée CONTRE ce que l'utilisateur avait demandé
-// (choix manuel contredit, ou intention explicite non honorée). Vide la
-// plupart du temps. L'UI (étape 5) toaste ces cas au lieu de les taire.
+// Une redirection appliquée CONTRE un choix MANUEL du sélecteur. Une simple
+// intention détectée dans le texte (ex. mention ChatGPT) n'est pas un choix
+// manuel et ne doit jamais produire de toast. Vide la plupart du temps.
 export interface RouteOverride {
   requested: string
   applied: AIProvider
@@ -74,6 +75,10 @@ export interface RouteInput {
   hasFiles: boolean
   hasPdf: boolean
   euOnly: boolean
+  // Une réponse précédente contient des données Google privées (mail, Drive,
+  // agenda…). L'historique complet ne doit alors jamais partir vers
+  // Gemini/OpenAI, même si le nouveau texte est aussi vague que « résume ça ».
+  hasPrivateHistory: boolean
   selectedModel: AIModel
   availability: ProviderAvailability
   plan: PlanContext

@@ -39,6 +39,8 @@ const conv = (): Conversation => ({
       content: 'Réponse.',
       timestamp: 1750000001000,
       model: 'claude-sonnet-5-20250929',
+      reasonCode: 'private_data',
+      subModelReasonCode: 'submodel_sonnet_default',
     },
     // Message antérieur au déploiement : pas de champ model (rétro-compat).
     { id: 'a2', role: 'assistant', content: 'Ancienne réponse.', timestamp: 1750000002000 },
@@ -54,6 +56,8 @@ describe('partage public — Message.model EXCLU (décision D3)', () => {
       // casse si quelqu'un le remplace par un spread `...m`.
       expect(Object.keys(m).sort()).toEqual(['content', 'role', 'timestamp'])
       expect((m as Record<string, unknown>).model).toBeUndefined()
+      expect((m as Record<string, unknown>).reasonCode).toBeUndefined()
+      expect((m as Record<string, unknown>).subModelReasonCode).toBeUndefined()
     }
   })
 })

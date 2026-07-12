@@ -92,13 +92,20 @@ export const HYBRID_TRIGGERS = [
 // courts. Ces messages n'ont pas besoin de recherche web (latence + tokens
 // gaspillés) et restent sur le chemin rapide (Mistral/Haiku).
 // Partagé entre detectProvider() et selectClaudeSubModel().
-const TRIVIAL_CHAT_REGEX = /^(salut|bonjour|bonsoir|coucou|hello|hi|hey|yo|merci|thanks?|thx|ok|okay|d'accord|super|cool|parfait|nickel|top|génial|bien|bien sûr|ouais|oui|non|nope)\b|^(\s*[\d+\-*/().\s]+\s*=?\s*\?*\s*)$|^(combien\s+font?\s+\d|how\s+much\s+is\s+\d)/i
+const TRIVIAL_GREETING_REGEX = /^\s*(?:salut|bonjour|bonsoir|coucou|hello|hi|hey|yo)(?:\s*[,!?.…-]*\s*(?:(?:comment\s+)?(?:ça|ca)\s+va|comment\s+vas[- ]tu|tu\s+vas\s+bien|how\s+are\s+you|there))?\s*[!?.…]*\s*$/i
+const TRIVIAL_THANKS_REGEX = /^\s*(?:merci|thanks?|thx)(?:\s+(?:beaucoup|bien|mille\s+fois|à\s+toi|pour\s+ça))?\s*[!?.…]*\s*$/i
+const TRIVIAL_ACK_REGEX = /^\s*(?:ok|okay|d'accord|super|cool|parfait|nickel|top|génial|bien\s+sûr|bien|ouais|oui|non|nope)(?:\s+(?:merci|stp|s'il\s+te\s+plaît))?\s*[!?.…]*\s*$/i
+const TRIVIAL_ARITHMETIC_REGEX = /^\s*(?:[\d+\-*/().,\s]+\s*=?\s*\?*|(?:combien\s+font?|how\s+much\s+is)\s+[\d+\-*/().,\s]+\??)\s*$/i
 
 // Le couple « < 150 chars + trigger trivial » était dupliqué en dur à 3
 // endroits (shouldUseWebSearch, detectProvider, selectClaudeSubModel) —
 // factorisé ici, seul point de vérité du « chemin rapide ».
 export function isTrivialChat(message: string): boolean {
-  return message.length < 150 && TRIVIAL_CHAT_REGEX.test(message)
+  if (message.length >= 150) return false
+  return TRIVIAL_GREETING_REGEX.test(message)
+    || TRIVIAL_THANKS_REGEX.test(message)
+    || TRIVIAL_ACK_REGEX.test(message)
+    || TRIVIAL_ARITHMETIC_REGEX.test(message)
 }
 
 // URL detection — Mistral n'a pas de tool web_fetch natif, seulement
@@ -419,14 +426,16 @@ export function selectClaudeSubModel(
 export function detectProvider(message: string): AIProvider {
   let plan: string | null = null
   try { plan = localStorage.getItem('arty-plan-cache') } catch {}
+  const walletCoversPremium = creditsCoverPremium()
   return resolveRoute({
     originalText: message,
     hasFiles: false,
     hasPdf: false,
     euOnly: false,
+    hasPrivateHistory: false,
     selectedModel: getSelectedModel(),
-    availability: getProviderAvailability(),
-    plan: { plan, isPro: false, creditsCoverPremium: creditsCoverPremium() },
+    availability: getProviderAvailability({ plan, creditsCoverPremium: walletCoversPremium }),
+    plan: { plan, isPro: false, creditsCoverPremium: walletCoversPremium },
     reflectionLevel: 'auto',
   }).provider
 }

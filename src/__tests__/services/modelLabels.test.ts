@@ -6,7 +6,7 @@
 // (claude-haiku-4-5-20251001) sans capter la date comme version mineure.
 
 import { describe, expect, it } from 'vitest'
-import { formatModelName, getModelCapacityKey, getModelRegion } from '../../services/modelLabels'
+import { formatModelName, getLastModelAttribution, getModelCapacityKey, getModelRegion } from '../../services/modelLabels'
 import { calculateCost } from '../../services/costTracker'
 
 describe('formatModelName — Claude version extraction', () => {
@@ -32,6 +32,32 @@ describe('formatModelName — Claude version extraction', () => {
 
   it('id claude sans version → label famille sans numéro', () => {
     expect(formatModelName('claude-sonnet-latest')).toBe('Claude Sonnet')
+  })
+})
+
+describe('getLastModelAttribution — changement de conversation', () => {
+  it('réhydrate modèle et deux raisons depuis la dernière réponse', () => {
+    expect(getLastModelAttribution([
+      { role: 'assistant', model: 'gemini-2.5-flash', reasonCode: 'default_capable' },
+      { role: 'user' },
+      {
+        role: 'assistant',
+        model: 'claude-haiku-4-5-20251001',
+        reasonCode: 'fallback_no_provider',
+        subModelReasonCode: 'plan_locked_haiku',
+      },
+    ])).toEqual({
+      model: 'claude-haiku-4-5-20251001',
+      reasonCode: 'fallback_no_provider',
+      subModelReasonCode: 'plan_locked_haiku',
+    })
+  })
+
+  it('reste neutre si la dernière réponse ne possède pas encore d’attribution', () => {
+    expect(getLastModelAttribution([
+      { role: 'assistant', model: 'gemini-2.5-flash' },
+      { role: 'assistant' },
+    ])).toBeNull()
   })
 })
 
@@ -70,7 +96,8 @@ describe('parité IDs routables ↔ labels / région / capacité / coûts', () =
     ['claude-haiku-4-5-20251001', 'selectClaudeSubModel + cible du swap trial (proxy.ts)'],
     ['claude-sonnet-5', 'selectClaudeSubModel défaut'],
     ['claude-opus-4-8', 'selectClaudeSubModel rapports Pro'],
-    ['mistral-medium-latest', 'selectMistralModel + cible du swap trial (mistral-proxy.ts)'],
+    ['mistral-small-2603', 'selectMistralModel trivial'],
+    ['mistral-medium-latest', 'selectMistralModel général + cible du swap trial (mistral-proxy.ts)'],
     ['gemini-2.5-flash', 'GEMINI_CHAT_MODEL'],
     ['gemini-3.5-flash', 'GEMINI_RESEARCH_MODEL + killswitch arty-gemini-cheap-disabled'],
     ['gemini-2.5-pro', 'comparateur (providerCatalog)'],

@@ -27,4 +27,8 @@ describe('shouldForceSearch', () => {
   it('small talk → pas de forçage même sans contenu inliné', () => {
     expect(shouldForceSearch('salut ça va ?', true, false)).toBe(false)
   })
+
+  it('décision centrale privée → jamais de recherche, même sur une requête récente', () => {
+    expect(shouldForceSearch('quel temps demain ?', true, false, false)).toBe(false)
+  })
 })

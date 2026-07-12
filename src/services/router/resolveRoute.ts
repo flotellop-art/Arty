@@ -36,9 +36,18 @@ import {
 import { detectOpenAIIntent } from '../modelSelector'
 import type { RouteDecision, RouteInput, RouteOverride, RouteReason } from './types'
 
+/**
+ * Un mode EU ne doit jamais se replier vers un fournisseur hors Europe.
+ * Si Mistral n'est pas disponible pour le plan/BYOK courant, l'appel est
+ * bloqué avant tout envoi (création et anciennes conversations expirées).
+ */
+export function canExecuteRoute(input: Pick<RouteInput, 'euOnly' | 'availability'>): boolean {
+  return !input.euOnly || input.availability.mistral
+}
+
 export function resolveRoute(input: RouteInput): RouteDecision {
   const text = input.originalText
-  const isPrivateData = PRIVATE_DATA_TRIGGERS.some((r) => r.test(text))
+  const isPrivateData = input.hasPrivateHistory || PRIVATE_DATA_TRIGGERS.some((r) => r.test(text))
   const overrides: RouteOverride[] = []
 
   let provider: AIProvider
@@ -49,11 +58,14 @@ export function resolveRoute(input: RouteInput): RouteDecision {
     // (l'UI verrouille le sélecteur en mode EU). RÈGLE 5.3 / BUG 8.
     provider = 'mistral'
     reason = { code: 'eu_only' }
+    if (input.selectedModel !== 'auto' && input.selectedModel !== 'mistral') {
+      overrides.push({ requested: input.selectedModel, applied: 'mistral', reason: { code: 'eu_only' } })
+    }
   } else if (input.hasFiles) {
     // Fichiers attachés → Claude (lecture native PDF/image, BUG 12).
     // Exception : Mistral choisi manuellement + pas de PDF → vision native
     // Mistral (seul canal image compatible EU).
-    if (input.selectedModel === 'mistral' && !input.hasPdf) {
+    if (input.selectedModel === 'mistral' && !input.hasPdf && input.availability.mistral) {
       provider = 'mistral'
       reason = { code: 'files_mistral_native' }
     } else {
@@ -73,6 +85,17 @@ export function resolveRoute(input: RouteInput): RouteDecision {
       provider = 'claude'
       reason = { code: 'private_data' }
       overrides.push({ requested: input.selectedModel, applied: 'claude', reason: { code: 'private_data' } })
+    } else if (!input.availability[input.selectedModel]) {
+      // Sélection manuelle devenue indisponible (expiration d'abonnement,
+      // absence de clé BYOK Pro, cache de sélecteur ancien) : verrou AVANT
+      // l'envoi, puis repli Claude/Haiku au lieu d'attendre un 403 serveur.
+      provider = 'claude'
+      reason = { code: 'fallback_no_provider', params: { preferred: input.selectedModel } }
+      overrides.push({
+        requested: input.selectedModel,
+        applied: 'claude',
+        reason: { code: 'fallback_no_provider', params: { preferred: input.selectedModel } },
+      })
     } else {
       provider = input.selectedModel
       reason = { code: 'manual_selection' }
@@ -95,14 +118,11 @@ export function resolveRoute(input: RouteInput): RouteDecision {
         : { code: 'fallback_no_provider', params: { preferred: 'gemini' } }
     } else if (hasUrl(text)) {
       // URL → Claude (web_fetch lit vraiment la page ; Mistral hallucine sur
-      // les URLs). La fiabilité de lecture prime sur l'intent ChatGPT — si
-      // l'utilisateur mentionnait explicitement ChatGPT, on trace l'override
-      // au lieu de l'ignorer en silence.
+      // les URLs). La fiabilité de lecture prime sur l'intent ChatGPT. Une
+      // mention dans le texte reste une intention AUTO, pas un choix manuel :
+      // elle explique la priorité mais ne déclenche aucun toast d'override.
       provider = 'claude'
       reason = { code: 'url_web_fetch' }
-      if (a.openai && detectOpenAIIntent(text)) {
-        overrides.push({ requested: 'openai', applied: 'claude', reason: { code: 'url_web_fetch' } })
-      }
     } else if (a.openai && detectOpenAIIntent(text)) {
       provider = 'openai'
       reason = { code: 'openai_intent' }
@@ -154,7 +174,10 @@ export function resolveRoute(input: RouteInput): RouteDecision {
     provider,
     subModel,
     thinking,
-    webSearch: shouldUseWebSearch(text),
+    // Une conversation qui contient des données Google privées ne doit
+    // jamais déclencher une recherche publique, même si le nouveau message
+    // (ex. « résume ça » ou une question météo) la demanderait isolément.
+    webSearch: !isPrivateData && shouldUseWebSearch(text),
     needsHybrid: provider === 'hybrid',
     isPrivateData,
     reason,

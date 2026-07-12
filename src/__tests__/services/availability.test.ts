@@ -19,9 +19,10 @@ vi.mock('../../services/modelSelector', () => ({
   detectOpenAIIntent: vi.fn(() => false),
 }))
 
-import { getGeminiKey, getMistralKey } from '../../services/activeApiKey'
+import { getGeminiKey, getMistralKey, getOpenAIKey } from '../../services/activeApiKey'
 const mockGemini = vi.mocked(getGeminiKey)
 const mockMistral = vi.mocked(getMistralKey)
+const mockOpenAI = vi.mocked(getOpenAIKey)
 
 function setFamilies(families: string[] | null) {
   if (families === null) localStorage.removeItem('arty-allowed-families')
@@ -37,35 +38,59 @@ beforeEach(() => {
   vi.clearAllMocks()
   mockGemini.mockReturnValue(null)
   mockMistral.mockReturnValue(null)
+  mockOpenAI.mockReturnValue(null)
   setFamilies(null)
 })
 
+function availability(plan: string | null, creditsCoverPremium = false) {
+  return getProviderAvailability({ plan, creditsCoverPremium })
+}
+
 describe('getProviderAvailability', () => {
   it('sans BYOK ni cache familles → BYOK-only historique (tout fermé sauf Claude)', () => {
-    expect(getProviderAvailability()).toEqual({ claude: true, gemini: false, mistral: false, openai: false })
+    expect(availability('subscription')).toEqual({ claude: true, gemini: false, mistral: false, openai: false })
   })
 
   it('abonné clé-serveur (familles payantes, zéro BYOK) → tout disponible', () => {
     setFamilies(PAID_FAMILIES)
-    expect(getProviderAvailability()).toEqual({ claude: true, gemini: true, mistral: true, openai: true })
+    expect(availability('subscription')).toEqual({ claude: true, gemini: true, mistral: true, openai: true })
+    expect(availability('vip')).toEqual({ claude: true, gemini: true, mistral: true, openai: true })
   })
 
-  it('plan free (claude-haiku seul) → gemini/mistral/openai fermés', () => {
-    setFamilies(['claude-haiku'])
-    expect(getProviderAvailability()).toEqual({ claude: true, gemini: false, mistral: false, openai: false })
+  it('free/essai sans crédits → familles serveur fermées, même avec un cache payé obsolète', () => {
+    setFamilies(PAID_FAMILIES)
+    expect(availability('free')).toEqual({ claude: true, gemini: false, mistral: false, openai: false })
+    expect(availability('trial')).toEqual({ claude: true, gemini: false, mistral: false, openai: false })
   })
 
-  it('clé BYOK présente → provider ouvert même sans famille serveur', () => {
+  it('free/essai avec crédits → familles effectives du wallet disponibles', () => {
+    setFamilies(PAID_FAMILIES)
+    expect(availability('free', true)).toEqual({ claude: true, gemini: true, mistral: true, openai: true })
+    expect(availability('trial', true)).toEqual({ claude: true, gemini: true, mistral: true, openai: true })
+  })
+
+  it('Pro One-Time reste BYOK-only, même si le cache contient toutes les familles', () => {
+    setFamilies(PAID_FAMILIES)
+    expect(availability('pro', true)).toEqual({ claude: true, gemini: false, mistral: false, openai: false })
+  })
+
+  it('plan inconnu échoue fermé, même si le cache contient toutes les familles', () => {
+    setFamilies(PAID_FAMILIES)
+    expect(availability(null, true)).toEqual({ claude: true, gemini: false, mistral: false, openai: false })
+  })
+
+  it('clé BYOK présente → provider ouvert indépendamment du plan serveur', () => {
     setFamilies(['claude-haiku'])
     mockGemini.mockReturnValue('byok-key')
-    expect(getProviderAvailability().gemini).toBe(true)
+    mockOpenAI.mockReturnValue('byok-openai')
+    expect(availability('pro')).toMatchObject({ gemini: true, openai: true })
   })
 
   it('cache corrompu → repli BYOK-only, pas de crash', () => {
     localStorage.setItem('arty-allowed-families', '{pas-un-tableau')
-    expect(getProviderAvailability()).toEqual({ claude: true, gemini: false, mistral: false, openai: false })
+    expect(availability('subscription')).toEqual({ claude: true, gemini: false, mistral: false, openai: false })
     localStorage.setItem('arty-allowed-families', '"string"')
-    expect(getProviderAvailability().gemini).toBe(false)
+    expect(availability('subscription').gemini).toBe(false)
   })
 })
 
@@ -76,8 +101,12 @@ function route(text: string, plan: PlanContext): ReturnType<typeof resolveRoute>
     hasFiles: false,
     hasPdf: false,
     euOnly: false,
+    hasPrivateHistory: false,
     selectedModel: 'auto',
-    availability: getProviderAvailability(),
+    availability: getProviderAvailability({
+      plan: plan.plan,
+      creditsCoverPremium: plan.creditsCoverPremium,
+    }),
     plan,
     reflectionLevel: 'auto',
   }
@@ -133,5 +162,16 @@ describe('compte free en Auto (verrou AVANT envoi, pas de 403)', () => {
     expect(d.provider).toBe('claude')
     expect(d.subModel).toBe('claude-haiku-4-5-20251001')
     expect(d.subModelReason?.code).toBe('plan_locked_haiku')
+  })
+})
+
+describe('compte free avec crédits en Auto', () => {
+  const FREE_WITH_CREDITS: PlanContext = { plan: 'free', isPro: false, creditsCoverPremium: true }
+  beforeEach(() => setFamilies(PAID_FAMILIES))
+
+  it('les familles effectivement débloquées par le wallet sont routables', () => {
+    const d = route('Explique-moi la loi de Moore', FREE_WITH_CREDITS)
+    expect(d.provider).toBe('gemini')
+    expect(d.reason.code).toBe('default_capable')
   })
 })

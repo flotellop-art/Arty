@@ -5,7 +5,7 @@
 // euOnly/fichiers (ex-useConversation, jamais testée), raisons, overrides,
 // et sous-décision Claude calculée sur le texte original.
 import { describe, expect, it } from 'vitest'
-import { resolveRoute } from '../../services/router/resolveRoute'
+import { canExecuteRoute, resolveRoute } from '../../services/router/resolveRoute'
 import type { PlanContext, ProviderAvailability, RouteInput } from '../../services/router/types'
 
 const ALL: ProviderAvailability = { claude: true, gemini: true, mistral: true, openai: true }
@@ -19,6 +19,7 @@ function input(overrides: Partial<RouteInput> = {}): RouteInput {
     hasFiles: false,
     hasPdf: false,
     euOnly: false,
+    hasPrivateHistory: false,
     selectedModel: 'auto',
     availability: ALL,
     plan: PAID,
@@ -28,15 +29,31 @@ function input(overrides: Partial<RouteInput> = {}): RouteInput {
 }
 
 describe('resolveRoute — invariants euOnly / fichiers (ex-useConversation, 0 test avant)', () => {
+  it('euOnly sans accès Mistral est bloqué, sans fallback hors Europe', () => {
+    const routeInput = input({ euOnly: true, availability: NONE, plan: FREE })
+    expect(canExecuteRoute(routeInput)).toBe(false)
+    // La décision de résidence reste Mistral ; c'est l'exécution qui est
+    // refusée avant l'appel réseau.
+    expect(resolveRoute(routeInput).provider).toBe('mistral')
+  })
+
+  it('hors mode EU, le même compte peut utiliser son fallback Haiku', () => {
+    expect(canExecuteRoute(input({ availability: NONE, plan: FREE }))).toBe(true)
+  })
+
   it('euOnly → Mistral quel que soit le texte, même privé (RÈGLE 5.3)', () => {
     const d = resolveRoute(input({ euOnly: true, originalText: 'Rapport sur mes mails' }))
     expect(d.provider).toBe('mistral')
     expect(d.reason.code).toBe('eu_only')
+    expect(d.webSearch).toBe(false)
   })
 
   it('euOnly prime sur le choix manuel (le sélecteur est verrouillé en UI)', () => {
     const d = resolveRoute(input({ euOnly: true, selectedModel: 'gemini' }))
     expect(d.provider).toBe('mistral')
+    expect(d.overrides).toEqual([
+      { requested: 'gemini', applied: 'mistral', reason: { code: 'eu_only' } },
+    ])
   })
 
   it('fichier PDF → Claude, même si Mistral est choisi manuellement (BUG 12)', () => {
@@ -119,6 +136,59 @@ describe('resolveRoute — raisons de la cascade auto', () => {
     const d = resolveRoute(input({ availability: NONE }))
     expect(d.provider).toBe('claude')
     expect(d.reason.code).toBe('fallback_no_provider')
+  })
+
+  it('historique Google privé + « résume ça » → jamais Gemini/OpenAI', () => {
+    const auto = resolveRoute(input({ originalText: 'résume ça', hasPrivateHistory: true }))
+    expect(auto.provider).toBe('claude')
+    expect(auto.reason.code).toBe('private_data')
+    expect(auto.isPrivateData).toBe(true)
+    expect(auto.webSearch).toBe(false)
+
+    const manualOpenAI = resolveRoute(input({
+      originalText: 'résume ça',
+      hasPrivateHistory: true,
+      selectedModel: 'openai',
+    }))
+    expect(manualOpenAI.provider).toBe('claude')
+    expect(manualOpenAI.overrides[0]?.reason.code).toBe('private_data')
+    expect(manualOpenAI.webSearch).toBe(false)
+  })
+
+  it('euOnly + historique privé retire aussi la recherche publique de Mistral', () => {
+    const d = resolveRoute(input({
+      euOnly: true,
+      hasPrivateHistory: true,
+      originalText: 'quel temps demain à Voiron ?',
+    }))
+    expect(d.provider).toBe('mistral')
+    expect(d.isPrivateData).toBe(true)
+    expect(d.webSearch).toBe(false)
+  })
+
+  it('sélection manuelle périmée sur un compte free → Claude Haiku avant envoi', () => {
+    const d = resolveRoute(input({
+      selectedModel: 'gemini',
+      availability: NONE,
+      plan: FREE,
+    }))
+    expect(d.provider).toBe('claude')
+    expect(d.reason.code).toBe('fallback_no_provider')
+    expect(d.subModelReason?.code).toBe('plan_locked_haiku')
+    expect(d.overrides).toEqual([
+      {
+        requested: 'gemini',
+        applied: 'claude',
+        reason: { code: 'fallback_no_provider', params: { preferred: 'gemini' } },
+      },
+    ])
+  })
+
+  it('URL + mention ChatGPT en Auto → Claude sans toast d’override manuel', () => {
+    const d = resolveRoute(input({ originalText: 'Résume https://example.com avec ChatGPT' }))
+    expect(d.provider).toBe('claude')
+    expect(d.reason.code).toBe('url_web_fetch')
+    expect(d.overrides).toEqual([])
   })
 })
 

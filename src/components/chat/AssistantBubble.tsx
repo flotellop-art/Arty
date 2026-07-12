@@ -35,9 +35,11 @@ interface AssistantBubbleProps {
   /** Raison exacte du routage (Message.reasonCode, refonte routage étape 5).
       Absent → le footer garde l'explication générique. */
   reasonCode?: string
+  /** Raison de la sous-décision Claude (Haiku/Sonnet/Opus). */
+  subModelReasonCode?: string
 }
 
-export const AssistantBubble = memo(function AssistantBubble({ content, onAction, pinned, onTogglePin, interrupted, onRetry, factCheck, isStreaming, isLast, onBranch, onReport, model, reasonCode }: AssistantBubbleProps) {
+export const AssistantBubble = memo(function AssistantBubble({ content, onAction, pinned, onTogglePin, interrupted, onRetry, factCheck, isStreaming, isLast, onBranch, onReport, model, reasonCode, subModelReasonCode }: AssistantBubbleProps) {
   const { t } = useTranslation()
   const bubbleRef = useRef<HTMLDivElement>(null)
 
@@ -131,7 +133,13 @@ export const AssistantBubble = memo(function AssistantBubble({ content, onAction
           </div>
         )}
         {factCheck && <FactCheckBadge result={factCheck} />}
-        {model && !isStreaming && <ModelFooter model={model} reasonCode={reasonCode} />}
+        {model && !isStreaming && (
+          <ModelFooter
+            model={model}
+            reasonCode={reasonCode}
+            subModelReasonCode={subModelReasonCode}
+          />
+        )}
       </div>
       {/* Actions bar : copier + speak + pin. Visible à 50% opacity sur mobile,
           hover desktop (cohérent avec branche button PR 1) + focus-visible

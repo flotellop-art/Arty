@@ -7,8 +7,9 @@ import { streamMistralMessage } from '../services/mistralClient'
 import { sendMessageStream as streamOpenAIMessage } from '../services/openaiClient'
 import { getOpenAIKey } from '../services/activeApiKey'
 import { extractPdfUrls, extractWebUrls } from '../services/aiRouter'
-import { resolveRoute } from '../services/router/resolveRoute'
+import { canExecuteRoute, resolveRoute } from '../services/router/resolveRoute'
 import { gatherRouteInput } from '../services/router/gatherRouteInput'
+import { notifyRouteOverrides } from '../services/router/notifyRouteOverrides'
 import { fetchPdfMarkdowns, fetchUrlMarkdowns } from '../services/pdfUrlFetch'
 import * as storage from '../services/storage'
 import { maybeExtractMemory } from '../services/autoMemory'
@@ -22,7 +23,6 @@ import { TOOLS } from '../services/toolDefinitions'
 import { wantsImageGeneration, generateImageToolDefinition } from '../services/tools/imageTools'
 import { detectReminderIntent, createReminder } from '../services/reminderService'
 import i18n from '../i18n'
-import { toast } from '../services/toast'
 
 type ToolHandler = (name: string, input: Record<string, unknown>) => Promise<{ result: string; screenshot?: string }>
 
@@ -106,6 +106,19 @@ export function useConversation() {
     if (!storage.isCacheReady()) {
       setError(i18n.t('errors.storageNotReady'))
       return null
+    }
+    if (euOnly) {
+      const access = gatherRouteInput({
+        originalText: '',
+        hasFiles: false,
+        hasPdf: false,
+        euOnly: true,
+        hasPrivateHistory: false,
+      })
+      if (!canExecuteRoute(access)) {
+        setError(i18n.t('errors.euPlanRequired'))
+        return null
+      }
     }
     const id = generateId()
     const messages: Message[] = []
@@ -456,22 +469,29 @@ export function useConversation() {
       // Calculée sur le texte ORIGINAL (avant enrichissement PDF/hybride)
       // et transmise aux clients via options.routeDecision : anthropicClient
       // ne re-route plus sur un texte contaminé ou du tour précédent.
-      const routeDecision = resolveRoute(
-        gatherRouteInput({ originalText: text, hasFiles, hasPdf, euOnly: !!conv.euOnly })
-      )
+      const routeInput = gatherRouteInput({
+        originalText: text,
+        hasFiles,
+        hasPdf,
+        euOnly: !!conv.euOnly,
+        hasPrivateHistory: !!conv.hasGoogleData,
+      })
+      // Une ancienne conversation EU peut survivre à l'expiration d'un
+      // abonnement. On bloque alors localement : jamais de fallback Claude
+      // hors EU, jamais de requête Mistral vouée au 403.
+      if (!canExecuteRoute(routeInput)) {
+        onErr(new Error(i18n.t('errors.euPlanRequired')))
+        return
+      }
+      const routeDecision = resolveRoute(routeInput)
       const provider = routeDecision.provider
 
       // « Jamais de bascule silencieuse » (stratégie produit) : resolveRoute
       // ne remplit `overrides` QUE quand un choix explicite de l'utilisateur
       // est contredit (fichier → Claude malgré Gemini/OpenAI sélectionné,
-      // données privées → Claude, URL vs mention ChatGPT). Toast info
+      // données privées → Claude, ou mode Europe → Mistral). Toast info
       // non-bloquant — les décisions Auto normales ne toastent jamais.
-      for (const ov of routeDecision.overrides) {
-        const requestedLabel =
-          ov.requested === 'openai' ? 'ChatGPT'
-          : ov.requested.charAt(0).toUpperCase() + ov.requested.slice(1)
-        toast(i18n.t(`chat.override.${ov.reason.code}`, { requested: requestedLabel }), 'info')
-      }
+      notifyRouteOverrides(routeDecision.overrides)
 
       // Track which models are used in this conversation.
       // Hybride = les DEUX providers (F-5, audit visibilité modèle) : Gemini
@@ -650,6 +670,7 @@ export function useConversation() {
           euOnly: conv.euOnly,
           conversationId: targetId,
           routeReason: routeDecision.reason,
+          webSearch: routeDecision.webSearch,
         })
       } else if (provider === 'openai') {
         // openaiKey peut être null — dans ce cas le client passe par le proxy

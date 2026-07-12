@@ -15,16 +15,18 @@ export const EUR_PER_USD = 0.92
 
 // $ par 1M tokens (input / output)
 export const MODEL_COSTS: Record<string, { input: number; output: number }> = {
-  'claude-haiku-4-5':  { input: 0.80,  output: 4.00 },
+  'claude-haiku-4-5':  { input: 1.00,  output: 5.00 },
   'claude-sonnet-4-6': { input: 3.00,  output: 15.00 }, // legacy — conservé pour les coûts historiques
   // Sonnet 5 : tarif durable $3/$15 (l'intro $2/$10 court jusqu'au 31/08/2026 —
   // on inscrit le tarif pérenne pour éviter une PR de re-pricing en septembre).
   // ⚠️ Tokenizer Sonnet 5 ~30% plus gourmand : coût par MESSAGE ~+30% à tarif égal.
   'claude-sonnet-5':   { input: 3.00,  output: 15.00 },
-  'claude-opus-4-6':   { input: 15.00, output: 75.00 }, // legacy — conservé pour les coûts historiques
-  'claude-opus-4-8':   { input: 15.00, output: 75.00 }, // opus actif (GA 28/05/2026, même tarif que 4.6/4.7)
-  'gpt-5-mini':        { input: 0.40,  output: 1.60 },
-  'gpt-5':             { input: 2.50,  output: 10.00 },
+  'claude-opus-4-6':   { input: 5.00,  output: 25.00 }, // legacy — tarif unifié Opus actuel
+  'claude-opus-4-7':   { input: 5.00,  output: 25.00 },
+  'claude-opus-4-8':   { input: 5.00,  output: 25.00 },
+  'gpt-5.5':           { input: 5.00,  output: 30.00 },
+  'gpt-5-mini':        { input: 0.25,  output: 2.00 },
+  'gpt-5':             { input: 1.25,  output: 10.00 },
   // Défaut CHAT (gros volume) = gemini-2.5-flash, tarif GA réel $0.30/$2.50
   // (ai.google.dev). L'ancienne valeur $0.10/$0.40 était une estimation
   // intermédiaire qui sous-estimait le coût. Source primaire des montants =
@@ -32,16 +34,12 @@ export const MODEL_COSTS: Record<string, { input: number; output: number }> = {
   'gemini-flash':      { input: 0.30,  output: 2.50 },
   // gemini-3.5-flash — moitié recherche du mode hybride uniquement. $1.50/$9.
   'gemini-flash-pro':  { input: 1.50,  output: 9.00 },
-  'gemini-flash-lite': { input: 0.05,  output: 0.20 }, // gemini-3.1-flash-lite, gemini-2.5-flash-lite
-  'gemini-pro':        { input: 1.25,  output: 5.00 },
-  'mistral-small':     { input: 0.15,  output: 0.45 }, // Small 4 (mars 2026, multimodal+reasoning)
-  // Medium 3.5 — aligné sur functions/api/_lib/pricing.ts ($0.40/$2.00).
-  // L'ancienne valeur (1.50/7.50) surestimait ~3.75× les coûts Mistral du
-  // dashboard local (audit Mistral 11 juin 2026). N'affecte que la
-  // valorisation locale future ; le serveur D1 reste la source primaire
-  // des montants (BUG 60).
-  'mistral-medium':    { input: 0.40,  output: 2.00 },
-  'mistral-large':     { input: 2.00,  output: 6.00 }, // Large 3 (décembre 2025, MoE)
+  'gemini-flash-lite-2.5': { input: 0.10, output: 0.40 },
+  'gemini-flash-lite-3.1': { input: 0.25, output: 1.50 },
+  'gemini-pro':        { input: 1.25,  output: 10.00 },
+  'mistral-small':     { input: 0.15,  output: 0.60 }, // Small 4
+  'mistral-medium':    { input: 1.50,  output: 7.50 }, // Medium 3.5
+  'mistral-large':     { input: 0.50,  output: 1.50 }, // Large 3
 }
 
 export interface ModelStats {
@@ -79,16 +77,13 @@ const MODEL_ALIASES: Record<string, string> = {
   'mistral-small-latest': 'mistral-small',
   'mistral-small-4': 'mistral-small',
   'gemini-3.5-flash': 'gemini-flash-pro', // recherche hybride premium ($1.50/$9)
-  'gemini-3.1-flash-lite': 'gemini-flash-lite',
+  'gemini-3.1-flash-lite': 'gemini-flash-lite-3.1',
   'gemini-3-flash': 'gemini-flash-pro',
   'gemini-3-flash-preview': 'gemini-flash-pro',
-  'gemini-2.5-flash-lite': 'gemini-flash-lite',
+  'gemini-2.5-flash-lite': 'gemini-flash-lite-2.5',
   'gemini-2.5-flash': 'gemini-flash', // défaut chat éco ($0.30/$2.50)
   'gemini-2.5-pro': 'gemini-pro',
   'gemini-pro-latest': 'gemini-pro',
-  // GPT-5.5 (sorti avril 2026) facturé au tarif gpt-5 en attendant qu'OpenAI
-  // publie une grille séparée.
-  'gpt-5.5': 'gpt-5',
   'gpt-5-turbo': 'gpt-5',
   'claude-sonnet-4-5': 'claude-sonnet-4-6',
   'claude-opus-4-5': 'claude-opus-4-6',
@@ -103,7 +98,8 @@ export function normaliseModel(model: string): string {
   if (model.startsWith('claude-opus')) return 'claude-opus-4-8'
   if (model.startsWith('gpt-5-mini') || model.includes('mini')) return 'gpt-5-mini'
   if (model.startsWith('gpt-')) return 'gpt-5'
-  if (model.startsWith('gemini') && model.includes('flash-lite')) return 'gemini-flash-lite'
+  if (model.startsWith('gemini-3.1') && model.includes('flash-lite')) return 'gemini-flash-lite-3.1'
+  if (model.startsWith('gemini') && model.includes('flash-lite')) return 'gemini-flash-lite-2.5'
   if (model.startsWith('gemini') && model.includes('flash')) return 'gemini-flash'
   if (model.startsWith('gemini')) return 'gemini-pro'
   if (model.startsWith('mistral') && model.includes('small')) return 'mistral-small'

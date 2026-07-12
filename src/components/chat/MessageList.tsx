@@ -62,6 +62,7 @@ const MessageItem = memo(function MessageItem({ msg, index, onAction, onBranch, 
           onReport={onReport && msg.id !== 'streaming' ? handleReport : undefined}
           model={msg.model}
           reasonCode={msg.reasonCode}
+          subModelReasonCode={msg.subModelReasonCode}
         />
       )}
     </div>

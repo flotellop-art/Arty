@@ -18,16 +18,18 @@ export interface RouteContext {
   hasFiles: boolean
   hasPdf: boolean
   euOnly: boolean
+  hasPrivateHistory: boolean
 }
 
 export function gatherRouteInput(ctx: RouteContext): RouteInput {
   let plan: string | null = null
   try { plan = localStorage.getItem('arty-plan-cache') } catch { /* contexte sans storage */ }
+  const walletCoversPremium = creditsCoverPremium()
   return {
     ...ctx,
     selectedModel: getSelectedModel(),
-    availability: getProviderAvailability(),
-    plan: { plan, isPro: isProActivated(), creditsCoverPremium: creditsCoverPremium() },
+    availability: getProviderAvailability({ plan, creditsCoverPremium: walletCoversPremium }),
+    plan: { plan, isPro: isProActivated(), creditsCoverPremium: walletCoversPremium },
     reflectionLevel: getReflectionLevel(),
   }
 }

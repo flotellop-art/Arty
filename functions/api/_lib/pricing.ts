@@ -20,7 +20,7 @@ export interface ModelPricing {
   imagePerUnit?: number
 }
 
-// Toutes les valeurs sont celles d'avril 2026. À ajuster si les providers
+// Toutes les valeurs sont vérifiées au 12 juillet 2026. À ajuster si les providers
 // publient de nouveaux tarifs.
 const PRICING: Record<string, ModelPricing> = {
   // Anthropic Claude
@@ -29,9 +29,9 @@ const PRICING: Record<string, ModelPricing> = {
   // tarif pérenne inscrit d'emblée, conservateur pour le wallet). ⚠️ Tokenizer
   // ~30% plus gourmand que 4.6 : coût par MESSAGE ~+30% à tarif égal.
   'claude-sonnet-5': { input: 3, output: 15, cacheRead: 0.3, cacheCreation: 3.75 },
-  'claude-opus-4-6': { input: 15, output: 75, cacheRead: 1.5, cacheCreation: 18.75 },
-  'claude-opus-4-7': { input: 15, output: 75, cacheRead: 1.5, cacheCreation: 18.75 },
-  'claude-opus-4-8': { input: 15, output: 75, cacheRead: 1.5, cacheCreation: 18.75 }, // GA 28/05/2026, même tarif
+  'claude-opus-4-6': { input: 5, output: 25, cacheRead: 0.5, cacheCreation: 6.25 },
+  'claude-opus-4-7': { input: 5, output: 25, cacheRead: 0.5, cacheCreation: 6.25 },
+  'claude-opus-4-8': { input: 5, output: 25, cacheRead: 0.5, cacheCreation: 6.25 },
   'claude-haiku-4-5-20251001': { input: 1, output: 5, cacheRead: 0.1, cacheCreation: 1.25 },
   'claude-haiku-4-5': { input: 1, output: 5, cacheRead: 0.1, cacheCreation: 1.25 },
 
@@ -49,9 +49,9 @@ const PRICING: Record<string, ModelPricing> = {
   'gpt-5.5': { input: 5, output: 30 },
   'gpt-5.5-mini': { input: 0.5, output: 3 },
   // GPT-5 et dérivés (ancienne génération, conservés pour BYOK + fallback)
-  'gpt-5': { input: 5, output: 20 },
-  'gpt-5-mini': { input: 0.5, output: 2 },
-  'gpt-5-nano': { input: 0.1, output: 0.4 },
+  'gpt-5': { input: 1.25, output: 10 },
+  'gpt-5-mini': { input: 0.25, output: 2 },
+  'gpt-5-nano': { input: 0.05, output: 0.4 },
   'gpt-4o': { input: 2.5, output: 10 },
   'gpt-4o-mini': { input: 0.15, output: 0.6 },
   // Génération d'images (P1.3). Coût fixe par image (qualité medium 1024²
@@ -61,10 +61,13 @@ const PRICING: Record<string, ModelPricing> = {
   'flux-2-klein-9b': { input: 0, output: 0, imagePerUnit: 0.015 },
   'flux-2-pro': { input: 0, output: 0, imagePerUnit: 0.03 },
 
-  // Mistral (Small déprécié mai 2026, Medium 3.5 est le standard)
-  'mistral-large-latest': { input: 2, output: 6 },
-  'mistral-medium-latest': { input: 0.4, output: 2 },
-  'mistral-small-latest': { input: 0.4, output: 2 },
+  // Mistral — tarifs des générations actuelles derrière les alias latest.
+  'mistral-large-latest': { input: 0.5, output: 1.5 }, // Large 3
+  'mistral-large-2512': { input: 0.5, output: 1.5 },
+  'mistral-medium-latest': { input: 1.5, output: 7.5 }, // Medium 3.5
+  'mistral-medium-3-5': { input: 1.5, output: 7.5 },
+  'mistral-small-latest': { input: 0.15, output: 0.6 }, // Small 4
+  'mistral-small-2603': { input: 0.15, output: 0.6 },
   'codestral-latest': { input: 0.2, output: 0.6 },
 
   // Google Gemini
@@ -74,8 +77,8 @@ const PRICING: Record<string, ModelPricing> = {
   // L'ancienne valeur $0.075/$0.30 était le tarif preview/lite et sous-estimait
   // ~4-8× le coût réel — bug de tracking corrigé indépendamment du switch.
   'gemini-2.5-flash': { input: 0.3, output: 2.5, cacheRead: 0.075 },
-  'gemini-2.5-flash-lite': { input: 0.04, output: 0.15 },
-  'gemini-3.1-flash-lite': { input: 0.3, output: 2.5, cacheRead: 0.075 },
+  'gemini-2.5-flash-lite': { input: 0.1, output: 0.4, cacheRead: 0.01 },
+  'gemini-3.1-flash-lite': { input: 0.25, output: 1.5 },
   // Gemini Flash. `gemini-3.5-flash` (GA, modèle réellement servi cf.
   // geminiClient.ts) : $1.50/$9, cache $0.15 — source ai.google.dev/gemini-api/
   // docs/pricing. ATTENTION : ~3× plus cher que le preview. Le preview

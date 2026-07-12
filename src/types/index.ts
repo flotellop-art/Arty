@@ -64,6 +64,9 @@ export interface Message {
   // traduit par l'UI via i18n `chat.routeReason.<code>`. Même pattern additif
   // que `model` : optionnel, aucune migration, messages antérieurs sans.
   reasonCode?: string
+  // Sous-décision Claude (Haiku/Sonnet/Opus), conservée séparément afin de ne
+  // pas perdre la raison principale du provider (privé, fichier, hybride…).
+  subModelReasonCode?: string
 }
 
 export interface Conversation {

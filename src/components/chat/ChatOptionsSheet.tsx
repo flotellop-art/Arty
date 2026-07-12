@@ -39,6 +39,8 @@ interface ChatOptionsSheetProps {
   /** Raison exacte du dernier routage (ReasonCode) — null = explication
       générique (refonte routage, étape 5). */
   lastUsedReasonCode?: string | null
+  /** Raison de la sous-décision Claude (Haiku/Sonnet/Opus). */
+  lastUsedSubModelReasonCode?: string | null
   lastSearchProvider: string | null
   isProviderLocked: (id: AIModel) => boolean
   onSelectModel: (model: AIModel) => void
@@ -66,6 +68,7 @@ export function ChatOptionsSheet({
   hasMistralData,
   lastUsedModel,
   lastUsedReasonCode,
+  lastUsedSubModelReasonCode,
   lastSearchProvider,
   isProviderLocked,
   onSelectModel,
@@ -181,7 +184,12 @@ export function ChatOptionsSheet({
             {showExplain && (
               <div className="mt-1.5 px-2.5 py-2 bg-theme-bg border border-theme-border rounded-lg text-[11px] text-theme-ink leading-relaxed">
                 <p className="font-semibold mb-1">{t('chat.topBar.whyModel')}</p>
-                <p className="text-theme-ink/80">{t(getRouteExplanationKey(lastUsedModel, lastUsedReasonCode))}</p>
+                <div className="text-theme-ink/80 space-y-1">
+                  <p>{t(getRouteExplanationKey(lastUsedModel, lastUsedReasonCode))}</p>
+                  {lastUsedSubModelReasonCode && lastUsedSubModelReasonCode !== lastUsedReasonCode && (
+                    <p>{t(getRouteExplanationKey(lastUsedModel, lastUsedSubModelReasonCode))}</p>
+                  )}
+                </div>
               </div>
             )}
           </div>

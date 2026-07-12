@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { estimateReserveMicro } from '../../../functions/api/_lib/creditPricing'
+import { getPricing } from '../../../functions/api/_lib/pricing'
 import {
   enforceWalletOutputLimit,
   estimateInputTokens,
@@ -12,7 +13,10 @@ describe('wallet reservation covers the provider maximum', () => {
     const withoutInput = estimateReserveMicro(OPUS, 1_000, 0)
     const withLargeInput = estimateReserveMicro(OPUS, 1_000, 200_000)
     expect(withLargeInput).toBeGreaterThan(withoutInput)
-    expect(estimateReserveMicro(OPUS, undefined, 200_000)).toBeGreaterThan(4_000_000)
+    // Le seuil suit le tarif officiel : la propriété de sécurité est que la
+    // réserve couvre au minimum TOUT l'input provider, puis l'output + markup.
+    const inputOnlyProviderCostMicro = 200_000 * getPricing(OPUS).input
+    expect(estimateReserveMicro(OPUS, undefined, 200_000)).toBeGreaterThan(inputOnlyProviderCostMicro)
   })
 
   it('keeps the historical optional input argument compatible and finite', () => {

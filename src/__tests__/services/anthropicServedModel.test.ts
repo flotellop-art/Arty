@@ -5,7 +5,12 @@
 // jamais corriger le badge ni le cost tracking local. La lecture doit rester
 // ADDITIVE : tous les blocs sont poussés tels quels (BUG 52 — aucun filtrage).
 import { describe, expect, it } from 'vitest'
-import { parseSSEStream } from '../../services/anthropicClient'
+import {
+  filterAnthropicToolsForRoute,
+  parseSSEStream,
+  resolveServedSubModelReason,
+} from '../../services/anthropicClient'
+import { TOOLS } from '../../services/toolDefinitions'
 
 function sseResponse(lines: string[]): Response {
   return new Response(lines.join('\n') + '\n', {
@@ -55,5 +60,36 @@ describe('parseSSEStream — modèle servi (message_start)', () => {
 
     const result = await parseSSEStream(response, () => {})
     expect(result.servedModel).toBeUndefined()
+  })
+})
+
+describe('raison du sous-modèle Claude confirmé', () => {
+  it('remplace la raison Sonnet quand le serveur sert réellement Haiku', () => {
+    expect(resolveServedSubModelReason(
+      'claude-sonnet-5',
+      'claude-haiku-4-5-20251001',
+      { code: 'submodel_sonnet_default' },
+    )).toEqual({ code: 'server_model_substitution' })
+  })
+
+  it('conserve la raison pour un alias daté de la même famille', () => {
+    expect(resolveServedSubModelReason(
+      'claude-sonnet-5',
+      'claude-sonnet-5-20260929',
+      { code: 'submodel_sonnet_default' },
+    )).toEqual({ code: 'submodel_sonnet_default' })
+  })
+})
+
+describe('outils Anthropic selon la décision centrale', () => {
+  it('retire web_search quand la recherche publique est interdite', () => {
+    const filtered = filterAnthropicToolsForRoute(TOOLS, { webSearch: false })
+    expect(filtered.some((tool) => tool.name === 'web_search')).toBe(false)
+    expect(filtered).toHaveLength(TOOLS.length - 1)
+  })
+
+  it('conserve web_search quand le routeur l’autorise', () => {
+    expect(filterAnthropicToolsForRoute(TOOLS, { webSearch: true })
+      .some((tool) => tool.name === 'web_search')).toBe(true)
   })
 })

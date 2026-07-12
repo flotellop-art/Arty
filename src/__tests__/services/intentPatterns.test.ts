@@ -11,6 +11,7 @@ describe('isLocationQuery (large — injection GPS)', () => {
     // Carte / lieux explicites
     'ouvre google maps', "quel est l'itinéraire pour Lyon", 'le trajet dure combien',
     'montre le street view', 'un restaurant sympa', 'les horaires de la poste',
+    'est-ce ouvert aujourd’hui ?', 'la pharmacie est fermée',
     "l'adresse de la mairie", 'mes coordonnées GPS', 'le plan du quartier', 'sur la carte',
     // Météo (FR/EN)
     'quelle météo demain', 'quel temps fera-t-il', 'les prévisions du week-end',
@@ -44,6 +45,7 @@ describe('isLocationQuery (large — injection GPS)', () => {
 describe('isMapToolQuery (étroite — tool google_maps)', () => {
   const positives = [
     "l'itinéraire pour Lyon", 'le trajet en voiture', 'un restaurant à Voiron',
+    'est-ce ouvert ?', 'ce magasin est fermé',
     'combien de temps pour aller à Grenoble', "temps qu'il faut pour aller au bureau",
     'à quelle distance est Lyon', 'distance entre Paris et Lille',
     'où se trouve la mairie', 'how far is Geneva', 'driving distance to Turin',
@@ -96,7 +98,7 @@ describe('isWeatherQuery', () => {
 describe('cohérence étroite ⊂ large', () => {
   const samples = [
     'itinéraire pour Lyon', 'combien de temps pour aller à Voiron', 'restaurant à Grenoble',
-    'où se trouve la gare', 'driving time to Geneva', 'directions to the airport',
+    'où se trouve la gare', 'est-ce ouvert', 'driving time to Geneva', 'directions to the airport',
   ]
   it.each(samples)('« %s » : isMapToolQuery ⇒ isLocationQuery', (msg) => {
     expect(isMapToolQuery(msg)).toBe(true)

@@ -46,19 +46,16 @@ export const PROVIDER_CATALOG: ProviderDescriptor[] = [
     // (gemini-3.1-pro-preview) — exclu pour la stabilité du comparateur.
     models: [
       { modelId: 'gemini-3.5-flash', costKey: 'gemini-flash-pro', label: 'Gemini 3.5 Flash' },
-      { modelId: 'gemini-3.1-flash-lite', costKey: 'gemini-flash-lite', label: 'Gemini 3.1 Flash Lite' },
+      { modelId: 'gemini-3.1-flash-lite', costKey: 'gemini-flash-lite-3.1', label: 'Gemini 3.1 Flash Lite' },
       { modelId: 'gemini-2.5-pro', costKey: 'gemini-pro', label: 'Gemini 2.5 Pro' },
       { modelId: 'gemini-2.5-flash', costKey: 'gemini-flash', label: 'Gemini 2.5 Flash' },
-      { modelId: 'gemini-2.5-flash-lite', costKey: 'gemini-flash-lite', label: 'Gemini 2.5 Flash Lite' },
+      { modelId: 'gemini-2.5-flash-lite', costKey: 'gemini-flash-lite-2.5', label: 'Gemini 2.5 Flash Lite' },
     ],
   },
   {
     id: 'mistral',
     label: 'Mistral',
-    // Mistral expose des aliases "-latest" stables. Small 4 (mars 2026)
-    // a fusionné Magistral+Pixtral+Devstral et propose un reasoning_effort
-    // configurable, multimodal natif, à $0.15/M input — bon rapport
-    // qualité/prix pour le comparateur.
+    // Les aliases "-latest" pointent vers Large 3, Medium 3.5 et Small 4.
     models: [
       { modelId: 'mistral-large-latest', costKey: 'mistral-large', label: 'Mistral Large' },
       { modelId: 'mistral-medium-latest', costKey: 'mistral-medium', label: 'Mistral Medium' },

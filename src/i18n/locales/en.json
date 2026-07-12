@@ -241,7 +241,7 @@
     "routeReason": {
       "manual_selection": "You picked this model manually.",
       "eu_only": "Europe-mode conversation: Mistral (servers in France) is the only model used — your data never leaves Europe.",
-      "files_to_claude": "File attached: Claude is the only model in Arty that natively reads PDFs and images.",
+      "files_to_claude": "The selected model cannot handle this file in Arty, so Claude is used to analyze it.",
       "files_mistral_native": "Image attached with Mistral selected: Mistral analyzes it with its native vision (data stays in Europe).",
       "private_data": "Your request involves your private data (emails, files, calendar…): Claude is used because it has the Gmail/Drive/Calendar tools — a web search can't see that data.",
       "youtube_native": "YouTube link detected: Gemini watches the video directly.",
@@ -251,15 +251,17 @@
       "trivial_chat": "Short message: fast path, no unnecessary web search.",
       "default_capable": "General question: Gemini answers with Google Search (up-to-date info).",
       "fallback_no_provider": "The ideal model isn't available on this account: falling back to the best accessible one.",
-      "plan_locked_haiku": "Free plan: Claude Haiku is the included model (other models require a paid plan).",
+      "plan_locked_haiku": "Free or trial account without credits: Claude Haiku is the included model.",
       "submodel_haiku_trivial": "Short message: Claude Haiku is enough (fast and light).",
       "submodel_opus_report": "Strategic report: Claude Opus, the most powerful model, steps in.",
-      "submodel_sonnet_default": "Claude Sonnet, the best power/speed balance."
+      "submodel_sonnet_default": "Claude Sonnet, the best power/speed balance.",
+      "server_model_substitution": "The server applied the Claude model available for your account."
     },
     "override": {
-      "files_to_claude": "File attached → answer handled by Claude (only model that reads PDFs/images) instead of {{requested}}.",
+      "eu_only": "Europe-mode conversation → switched to Mistral instead of {{requested}} so the data stays in Europe.",
+      "files_to_claude": "File attached → Claude handles it because the selected model cannot process this file, instead of {{requested}}.",
       "private_data": "Private data detected → answer handled by Claude (Gmail/Drive/Calendar tools) instead of {{requested}}.",
-      "url_web_fetch": "Link to open → answer handled by Claude (actually reads the page) rather than ChatGPT."
+      "fallback_no_provider": "{{requested}} is not available for this account → switched to Claude before sending."
     },
     "region": {
       "eu": "France",
@@ -514,7 +516,8 @@
     "speechNotSupported": "Speech recognition isn't supported in this browser. Use Chrome or Edge.",
     "storageNotReady": "Your conversations are still loading — try again in a second.",
     "mistralTimeout": "Mistral did not answer in time (60 s) — slow network or busy service. Try again.",
-    "trialModelRestricted": "This model isn't available during the free trial — the trial uses the base models (Haiku, Flash, Mistral Medium)."
+    "trialModelRestricted": "This model isn't available without credits — free access uses Haiku.",
+    "euPlanRequired": "EU conversations require Mistral access: a subscription, sufficient credits, or your own API key. No data was sent outside Europe."
   },
   "sidebar": {
     "newConversation": "New conversation",

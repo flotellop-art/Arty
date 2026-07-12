@@ -30,8 +30,8 @@ describe('parité i18n chat.routeReason.*', () => {
 
 describe('parité i18n chat.override.*', () => {
   // Les seuls codes qu'un RouteOverride peut porter (cf. resolveRoute) :
-  // fichiers → Claude, données privées → Claude, URL vs ChatGPT.
-  const OVERRIDE_CODES = ['files_to_claude', 'private_data', 'url_web_fetch']
+  // mode Europe → Mistral, fichiers → Claude, données privées → Claude.
+  const OVERRIDE_CODES = ['eu_only', 'files_to_claude', 'private_data', 'fallback_no_provider']
 
   it.each(OVERRIDE_CODES)('« %s » a une clé fr ET en non vide', (code) => {
     expect(frChat.override[code], `fr manquant: chat.override.${code}`).toBeTruthy()

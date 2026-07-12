@@ -19,7 +19,16 @@ import * as storage from '../../services/storage'
 const mockGetConversation = vi.mocked(storage.getConversation)
 const mockSaveConversation = vi.mocked(storage.saveConversation)
 
-type TestMsg = { id: string; role: string; content: string; timestamp: number; interrupted?: boolean }
+type TestMsg = {
+  id: string
+  role: string
+  content: string
+  timestamp: number
+  interrupted?: boolean
+  model?: string
+  reasonCode?: string
+  subModelReasonCode?: string
+}
 type TestConv = { id: string; messages: TestMsg[]; updatedAt: number }
 
 function makeConv(id = 'conv-1'): TestConv {
@@ -364,6 +373,33 @@ describe('onDone', () => {
     // conv-1 is still the active stream → UI keeps streaming.
     expect(result.current.isStreaming).toBe(true)
     expect(result.current.hasStream('conv-2')).toBe(false)
+  })
+
+  it('persiste le modèle, la raison provider et la raison du sous-modèle du bon stream', () => {
+    const conv = makeConv('conv-1')
+    mockGetConversation.mockReturnValue(conv as never)
+    const { result } = renderStreaming()
+    startActive(result, 'conv-1')
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent('arty-model-used', {
+        detail: {
+          model: 'claude-haiku-4-5-20251001',
+          provider: 'claude',
+          conversationId: 'conv-1',
+          reason: { code: 'fallback_no_provider' },
+          subModelReason: { code: 'plan_locked_haiku' },
+        },
+      }))
+      result.current.onToken('réponse', 'conv-1')
+      result.current.onDone('conv-1')
+    })
+
+    expect(lastSaved().messages.at(-1)).toMatchObject({
+      model: 'claude-haiku-4-5-20251001',
+      reasonCode: 'fallback_no_provider',
+      subModelReasonCode: 'plan_locked_haiku',
+    })
   })
 })
 

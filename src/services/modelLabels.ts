@@ -18,6 +18,9 @@ export interface ModelUsedEvent {
       (comparateur, brief, compresseur, appelants legacy) → l'UI retombe sur
       l'explication générique (getModelExplanationKey). */
   reason?: RouteReason
+  /** Raison du sous-modèle Claude effectivement choisi (Haiku/Sonnet/Opus).
+      Distincte de `reason`, qui explique le choix du provider. */
+  subModelReason?: RouteReason
   /** Réflexion étendue active sur cet appel (effort Claude / gros budget
       Gemini). Permet à l'UI (StreamingIndicator) de signaler que le modèle
       réfléchit — sans ça, le niveau de réflexion est 100 % imperceptible
@@ -38,6 +41,35 @@ export interface ModelUsedEvent {
       client pré-envoi. Un event confirmed corrige un éventuel dispatch
       optimiste antérieur (ex: substitution serveur trial, fallback 5.5→5). */
   confirmed?: boolean
+}
+
+export interface ModelAttributionMessage {
+  role: 'user' | 'assistant'
+  model?: string
+  reasonCode?: string
+  subModelReasonCode?: string
+}
+
+/**
+ * Attribution persistée de la dernière réponse d'une conversation.
+ * On regarde la dernière réponse assistant (pas une réponse plus ancienne) :
+ * si elle précède la collecte d'attribution, le header doit rester neutre au
+ * lieu d'afficher un modèle obsolète.
+ */
+export function getLastModelAttribution(
+  messages: readonly ModelAttributionMessage[]
+): { model: string; reasonCode?: string; subModelReasonCode?: string } | null {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const message = messages[i]
+    if (message?.role !== 'assistant') continue
+    if (!message.model) return null
+    return {
+      model: message.model,
+      ...(message.reasonCode ? { reasonCode: message.reasonCode } : {}),
+      ...(message.subModelReasonCode ? { subModelReasonCode: message.subModelReasonCode } : {}),
+    }
+  }
+  return null
 }
 
 /**

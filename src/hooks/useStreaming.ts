@@ -27,6 +27,8 @@ type StreamState = {
   // même event, persisté sur le Message à finalize() pour que le footer
   // affiche POURQUOI ce modèle, même sur l'historique.
   reasonCode?: string
+  // Raison de la sous-décision Claude, distincte de la raison du provider.
+  subModelReasonCode?: string
 }
 
 export function useStreaming(deps: {
@@ -84,6 +86,7 @@ export function useStreaming(deps: {
       // stream, le message restauré au boot garde son modèle (revue Opus).
       if (s.model) lastMsg.model = s.model
       if (s.reasonCode) lastMsg.reasonCode = s.reasonCode
+      if (s.subModelReasonCode) lastMsg.subModelReasonCode = s.subModelReasonCode
     } else {
       conv.messages.push({
         id: 'streaming',
@@ -92,6 +95,7 @@ export function useStreaming(deps: {
         timestamp: Date.now(),
         ...(s.model ? { model: s.model } : {}),
         ...(s.reasonCode ? { reasonCode: s.reasonCode } : {}),
+        ...(s.subModelReasonCode ? { subModelReasonCode: s.subModelReasonCode } : {}),
       })
     }
     conv.updatedAt = Date.now()
@@ -115,6 +119,7 @@ export function useStreaming(deps: {
     const s = streamsRef.current.get(targetId)
     const model = s?.model
     const reasonCode = s?.reasonCode
+    const subModelReasonCode = s?.subModelReasonCode
 
     conv.messages = conv.messages.filter((m) => m.id !== 'streaming')
     conv.messages.push({
@@ -125,6 +130,7 @@ export function useStreaming(deps: {
       ...(interrupted ? { interrupted: true } : {}),
       ...(model ? { model } : {}),
       ...(reasonCode ? { reasonCode } : {}),
+      ...(subModelReasonCode ? { subModelReasonCode } : {}),
     })
     conv.updatedAt = Date.now()
     storage.saveConversation(conv)
@@ -174,6 +180,7 @@ export function useStreaming(deps: {
         // Seulement si présent : un event `confirmed` sans reason (swap
         // serveur) ne doit pas effacer la raison du dispatch optimiste.
         if (detail.reason?.code) s.reasonCode = detail.reason.code
+        if (detail.subModelReason?.code) s.subModelReasonCode = detail.subModelReason.code
       }
     }
     window.addEventListener('arty-model-used', onModelUsed)

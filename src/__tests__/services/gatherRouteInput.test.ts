@@ -30,14 +30,22 @@ vi.mock('../../services/walletClient', () => ({
 import { getSelectedModel } from '../../services/modelSelector'
 import { getReflectionLevel } from '../../services/reflectionLevel'
 import { isProActivated } from '../../services/proLicense'
+import { creditsCoverPremium } from '../../services/walletClient'
 
-const CTX = { originalText: 'Explique-moi la loi de Moore', hasFiles: false, hasPdf: false, euOnly: false }
+const CTX = {
+  originalText: 'Explique-moi la loi de Moore',
+  hasFiles: false,
+  hasPdf: false,
+  euOnly: false,
+  hasPrivateHistory: false,
+}
 
 beforeEach(() => {
   vi.clearAllMocks()
   vi.mocked(getSelectedModel).mockReturnValue('auto')
   vi.mocked(getReflectionLevel).mockReturnValue('auto')
   vi.mocked(isProActivated).mockReturnValue(false)
+  vi.mocked(creditsCoverPremium).mockReturnValue(false)
   localStorage.removeItem('arty-plan-cache')
   localStorage.removeItem('arty-allowed-families')
 })
@@ -54,15 +62,32 @@ describe('gatherRouteInput', () => {
     expect(input.hasFiles).toBe(true)
     expect(input.hasPdf).toBe(true)
     expect(input.euOnly).toBe(true)
+    expect(input.hasPrivateHistory).toBe(false)
     expect(input.selectedModel).toBe('mistral')
     expect(input.reflectionLevel).toBe('approfondi')
     expect(input.plan).toEqual({ plan: 'subscription', isPro: true, creditsCoverPremium: false })
   })
 
   it('availability branchée sur le cache familles (F-14)', () => {
+    localStorage.setItem('arty-plan-cache', 'subscription')
     localStorage.setItem('arty-allowed-families', JSON.stringify(['claude-haiku', 'gemini-flash', 'mistral-medium']))
     const input = gatherRouteInput(CTX)
     expect(input.availability).toEqual({ claude: true, gemini: true, mistral: true, openai: false })
+  })
+
+  it('Pro One-Time ne transforme jamais le cache familles en accès clé-serveur', () => {
+    localStorage.setItem('arty-plan-cache', 'pro')
+    localStorage.setItem('arty-allowed-families', JSON.stringify(['gemini-flash', 'mistral-medium', 'gpt-full']))
+    const input = gatherRouteInput(CTX)
+    expect(input.availability).toEqual({ claude: true, gemini: false, mistral: false, openai: false })
+  })
+
+  it('essai avec crédits utilise les familles effectives débloquées par le wallet', () => {
+    vi.mocked(creditsCoverPremium).mockReturnValue(true)
+    localStorage.setItem('arty-plan-cache', 'trial')
+    localStorage.setItem('arty-allowed-families', JSON.stringify(['gemini-flash', 'mistral-medium']))
+    const input = gatherRouteInput(CTX)
+    expect(input.availability).toMatchObject({ gemini: true, mistral: true })
   })
 
   it('plan cache absent → plan null (resolveRoute ne verrouille pas Haiku)', () => {

@@ -23,7 +23,7 @@
 
 // Vocabulaire carte/lieu explicite — partagé large + étroite.
 const MAP_CORE =
-  "google\\s*maps|itinéraire|trajet|street\\s*view|restaurant|horaires?|adresse|coordonnées|GPS|plan\\s+(?:de|du)|carte"
+  "google\\s*maps|itinéraire|trajet|street\\s*view|restaurant|horaires?|ouvert(?:e)?|fermée?|adresse|coordonnées|GPS|plan\\s+(?:de|du)|carte"
 
 // « où … » — la variante étroite ne matche pas « où je suis » (position de
 // l'utilisateur = injection GPS, pas un calcul d'itinéraire google_maps).
