@@ -1,8 +1,8 @@
 # Cahier des charges — Phase 1 sans CASA : Drive connecté (`drive.file` + Picker) et recherche Gmail améliorée
 
-**Version :** 1.2 — corrections du décideur intégrées (13 juillet 2026)<br>
+**Version :** 1.3 — second verdict du décideur intégré (13 juillet 2026)<br>
 **Date :** 13 juillet 2026<br>
-**Statut :** GO de principe du décideur sur la stratégie ; **implémentation EN PAUSE** jusqu'à validation de cette v1.2. Aucun code n'est écrit d'ici là.<br>
+**Statut :** architecture sans CASA validée sur le principe ; Gmail quasi validé ; **implémentation EN PAUSE** jusqu'à validation de cette v1.3. Aucun code n'est écrit d'ici là.<br>
 **Périmètre :** application publique Arty Web (PWA `tryarty.com`) + Android (Capacitor) ; AUCUN changement au Workspace Add-on ni au canal bêta<br>
 **Décideur :** Florent Pollet<br>
 **Documents liés :** `CAHIER_DES_CHARGES_GMAIL_SANS_CASA.md` (Phase 0, PR #336), `ADR_GMAIL_ADDON_SANS_CASA.md`, `GOOGLE_OAUTH_VERIFICATION.md`
@@ -26,6 +26,18 @@
 | D9 | Remplacer « pour toujours / définitivement » par « **tant que l'autorisation, le fichier et les règles administrateur restent valides** ». |
 | D10 | **Prouver que `services/growth-orchestrator` (scopes Gmail restreints) utilise un projet OAuth entièrement séparé** du client public. Prérequis P0. |
 | D11 | Volet Gmail : résultat discriminé `not_gmail \| ready \| needs_details`, correction de la double navigation `window.open(..., 'noopener')`, validateur email strict non-global pour `authuser`, repli honnête (non automatique), flag du lien direct indépendant du profil Phase 0. |
+
+**Second verdict (v1.3) — « très nette amélioration », 3 blocages Drive restants + corrections Gmail ciblées :**
+
+| # | Décision actée (v1.3) |
+|---|---|
+| D12 | **Isolation réelle du jeton web** : GIS agrège par défaut les permissions déjà accordées → imposer `include_granted_scopes: false` ET exiger côté serveur que le jeton contextuel contienne **exactement `drive.file`**, sans aucun scope supplémentaire. |
+| D13 | **Deux justificatifs séparés au proxy** : identité/session Arty + jeton Drive contextuel. Le serveur vérifie les deux et confirme qu'ils appartiennent au **même compte Google** (`sub` identique) — sinon Arty connecté avec le compte A pourrait connecter le Drive du compte B. L'audience accepte les **clients web ET Android de production** (ensemble de client IDs), pas un unique « client public ». |
+| D14 | **Cycle de vie Android complet** : `play-services-auth` 21.3.0 → **21.6.0** ; récupération d'un nouveau jeton après expiration/redémarrage **sans rouvrir le Picker** ; ne PAS attendre de `resourceKey` du résultat Android — Google ne garantit que `picked_file_ids` → appeler ensuite `files.get(fields=...resourceKey...)`. |
+| D15 | **Navigation Gmail fiabilisée** : un lien `<a>` ne garantit pas que la copie asynchrone soit terminée avant l'ouverture → **réserver un onglet vide** (`window.open` synchrone dans le geste utilisateur) puis le **naviguer après la copie**. |
+| D16 | **Affirmations du validateur corrigées** : `validateGmailSearchQuery` ne rejette pas tous les `#`, et la requête est **éditable par l'utilisateur** dans la carte — la sécurité vient de la **re-validation au clic puis `encodeURIComponent`** de la valeur finale, pas d'une propriété supposée du validateur amont. |
+| D17 | **Faux positifs exclus** de la détection d'intention : colis, SMS, WhatsApp, « message d'accueil »… ; et retrait des noms Contacts fantômes `update_contact`/`delete_contact` de la blocklist. |
+| D18 | **Contrôles sans-CASA réécrits sémantiquement** : les tests actuels matchent des sous-chaînes (`includes('/auth/drive')` rejetterait `drive.file` ; le test « racine Gmail nue » refuse l'URL de résultats légitime) → comparaison d'identifiants **exacts** (ensembles de scopes canoniques, URLs construites validées), jamais de sous-chaînes. |
 
 ---
 
@@ -72,7 +84,7 @@ Vérifiée sur [Choose Google Drive API scopes](https://developers.google.com/wo
 3. **`drive.file` couvre toutes les ressources REST Drive** sur le périmètre accordé, y compris `files.export` (Docs/Sheets/Slides → texte/PDF, limite 10 Mo) et `files.get?alt=media` (binaires).
 4. **Sélectionner un DOSSIER ne donne PAS accès à ses enfants** (ni actuels ni futurs) — seulement au dossier comme objet. Confirmé par un Developer Advocate Google et le ticket [issuetracker #330555392](https://issuetracker.google.com/issues/330555392). Conséquence : **pas de « dossier Arty » auto-synchronisé** ; le pattern honnête est la resélection explicite via Picker pré-navigué (`setParent(folderId)`).
 5. **Android — parcours natif officiel (D2)** : Google documente désormais l'intégration du Picker dans les apps mobiles via l'API d'autorisation Google Identity Services : `AuthorizationRequest` portant le `ResourceParameter` **`PICKER_OAUTH_TRIGGER`**, scope **strictement `drive.file`**, `setOptOutIncludingGrantedScopes(true)` (le jeton retourné ne contient QUE `drive.file` — pas de cumul avec Calendar), `AuthorizationRequest.Prompt = CONSENT` (optionnellement `OR SELECT_ACCOUNT`), paramètres optionnels `PICKER_ALLOW_MULTIPLE`, `PICKER_MIMETYPES`, `PICKER_FILE_IDS`, `PICKER_ALLOW_FOLDER_SELECTION`. Le flux d'autorisation AFFICHE le Picker lui-même : la sélection de fichiers fait partie du parcours système, **aucun Picker JavaScript en WebView n'est requis ni testé** ([doc officielle](https://developers.google.com/workspace/drive/picker/guides/desktop-mobile-picker)). Validation terrain sur APK réel : `GATE-PICKER-ANDROID-01` (§8.2).
-6. **`resourceKey` (D5)** : certains fichiers partagés par lien exigent la paire `id + resourceKey` ; les lectures/exports/téléchargements de ces fichiers doivent envoyer l'en-tête **`X-Goog-Drive-Resource-Keys: <id1>/<key1>,<id2>/<key2>`** ([doc officielle](https://developers.google.com/workspace/drive/api/guides/resource-keys)). Le Picker retourne la `resourceKey` quand elle existe ; elle est stockée au registre avec l'id.
+6. **`resourceKey` (D5/D14)** : certains fichiers partagés par lien exigent la paire `id + resourceKey` ; les lectures/exports/téléchargements de ces fichiers doivent envoyer l'en-tête **`X-Goog-Drive-Resource-Keys: <id1>/<key1>,<id2>/<key2>`** ([doc officielle](https://developers.google.com/workspace/drive/api/guides/resource-keys)). Le Picker **web** retourne la `resourceKey` quand elle existe ; le résultat **Android** ne garantit que `picked_file_ids` → la `resourceKey` est récupérée par `files.get(fields=...resourceKey...)` (D14). Elle est stockée au registre avec l'id.
 
 ### 2.3 Faits vérifiés sur le lien direct Gmail
 
@@ -89,6 +101,8 @@ Vérifiée sur [Choose Google Drive API scopes](https://developers.google.com/wo
 - [Resource keys — `X-Goog-Drive-Resource-Keys`](https://developers.google.com/workspace/drive/api/guides/resource-keys)
 - [`files.export`](https://developers.google.com/drive/v3/reference/files/export) ; [téléchargements](https://developers.google.com/workspace/drive/api/guides/manage-downloads)
 - [Drive UI integration / « Ouvrir avec »](https://developers.google.com/workspace/drive/api/guides/enable-sdk) (reporté, D7)
+- [GIS token model — `TokenClientConfig`, dont `include_granted_scopes`](https://developers.google.com/identity/oauth2/web/reference/js-reference) (D12)
+- [Autorisation Android — `AuthorizationClient`/`AuthorizationRequest`](https://developers.google.com/identity/authorization/android) (D14)
 - [OAuth en WebView interdit](https://developers.googleblog.com/upcoming-security-changes-to-googles-oauth-20-authorization-endpoint-in-embedded-webviews/)
 - [Opérateurs de recherche Gmail](https://support.google.com/mail/answer/7190)
 
@@ -107,9 +121,9 @@ Spécifications :
 - **Flag** : `VITE_GMAIL_SEARCH_DIRECT_LINK` (pattern de `gmailNoCasaPhase0.ts` : `TRUE_VALUES`, défaut OFF, paramètre par défaut testable). **Indépendant du profil Phase 0** (D11) : le profil sans CASA a vocation à devenir l'état permanent du client public, le lien direct est un réglage d'expérience autonome — aucune dépendance de flag à flag.
 - **Plateformes** : web desktop uniquement. Sur `Capacitor.isNativePlatform()` et sur mobile web, conserver `openGmailHome()` actuel.
 - **Compte** : segment `/u/0/` par défaut. Si l'email Google de l'utilisateur est connu (`google-user`), variante `https://mail.google.com/mail/u/?authuser=<email>#search/<q>`. **Validateur email dédié** (D11) : regex **ancrée `^...$`, NON globale** (l'`EMAIL_RE` existante est en `/gi` — un `.test()` sur une regex globale est stateful via `lastIndex` et une regex non ancrée matche une sous-chaîne : les deux défauts sont disqualifiants pour une valeur injectée dans une URL), longueur bornée ; échec → repli `/u/0/`.
-- **Navigation sans double-ouverture** (D11) : le code actuel `window.open(url, '_blank', 'noopener,noreferrer')` retourne `null` MÊME en cas de succès (comportement spécifié de `noopener` dans les features) → le repli `window.location.assign()` peut naviguer l'onglet courant EN PLUS du nouvel onglet. Correctif retenu : le bouton de la carte devient un **vrai lien `<a href target="_blank" rel="noopener noreferrer">`** (clic programmatique ou natif) — pas de valeur de retour à interpréter, pas de repli automatique, et le geste utilisateur est traité permissivement par les bloqueurs de popups. La copie presse-papiers reste faite au clic, avant la navigation.
+- **Navigation « onglet réservé »** (D11 corrigé par D15) : le code actuel `window.open(url, '_blank', 'noopener,noreferrer')` retourne `null` MÊME en cas de succès → double navigation possible avec le repli `location.assign()`. Un simple lien `<a>` corrigerait la double navigation mais ne garantit PAS que la **copie presse-papiers asynchrone** soit terminée avant l'ouverture. Correctif retenu (D15) : au clic (synchrone, dans le geste utilisateur, donc toléré par les bloqueurs de popups), **réserver un onglet vide** `const tab = window.open('', '_blank')` (sans `noopener` dans les features pour obtenir la référence, puis `tab.opener = null`) ; `await` la copie ; **puis naviguer l'onglet réservé** (`tab.location.href = url`). Si `tab === null` (popup bloqué) : la copie est quand même faite, la carte affiche l'indication de collage manuel — JAMAIS de `location.assign()` automatique sur l'onglet courant.
 - **Repli honnête** (D11) : en cas d'échec du deep link, il n'y a **pas de repli automatique** — la carte l'explique : « La requête est copiée : si Gmail ne s'ouvre pas sur les résultats, colle-la dans la barre de recherche Gmail. »
-- **Construction de l'URL** : `buildGmailSearchUrl` ne reçoit JAMAIS le texte brut de l'utilisateur — uniquement la requête compilée déjà passée par `validateGmailSearchQuery` (opérateurs allowlistés, bidi/contrôles strippés, longueur ≤ 500 ; le validateur rejette déjà `#` et `/u/<n>/`), puis `encodeURIComponent`. Aucune donnée autre que la requête dans l'URL.
+- **Construction de l'URL** (D16) : la requête affichée dans la carte est **éditable par l'utilisateur** — la valeur naviguée n'est donc PAS garantie par la compilation amont. Garantie réelle, dans l'ordre, au moment du clic : (1) **re-validation** de la valeur finale par `validateGmailSearchQuery` (opérateurs allowlistés, bidi/contrôles strippés, longueur ≤ 500 — sans lui prêter des propriétés qu'il n'a pas : il ne rejette pas tout `#`) ; (2) **`encodeURIComponent`** de la requête validée, qui neutralise tout caractère de structure d'URL (`#`, `/`, `?`) dans le fragment. Échec de re-validation → pas de navigation, message `needs_details`. Aucune donnée autre que la requête dans l'URL.
 - **Fichiers** : `src/services/gmailSearchHandoff.ts` (nouvelle `buildGmailSearchUrl(query, email?)`), `src/components/gmail/GmailSearchCard.tsx` (lien + sous-texte), `src/vite-env.d.ts`, copies FR/EN.
 
 ### 3.2 A2 + A3 — Compilation à résultat discriminé `not_gmail | ready | needs_details` (D11)
@@ -122,17 +136,25 @@ compileGmailSearch(text) : { status: 'not_gmail' }
                          | { status: 'needs_details', reason: 'no_operator' | 'invalid_value' | ... }
 ```
 
-- **Étape 1 — détection d'intention** (indépendante de la compilation) : déclencheurs directs actuels (`gmail|mails?|e-?mails?|courriels?|messages?` + verbe de recherche) **élargis** aux formulations indirectes (discipline BUG 56) : `(que|qu')\s+\w+\s+m'a envoyé`, `envoyé (par|de)`, `reçu (de|en|le)`, `dans ma boîte`, `in my inbox`, `(sent|received) (me|from)`, etc. **Anti-collision volet B** : un phrasing indirect contenant un substantif fichier/Drive (`fichier|document|doc|pdf|feuille|classeur|présentation|drive|dossier`) SANS substantif mail est classé `not_gmail` et part vers le LLM (qui dispose des outils Drive du volet B et peut demander). Panel de tests négatifs couvrant des formulations Drive obligatoire.
+- **Étape 1 — détection d'intention** (indépendante de la compilation) : déclencheurs directs actuels (`gmail|mails?|e-?mails?|courriels?|messages?` + verbe de recherche) **élargis** aux formulations indirectes (discipline BUG 56) : `(que|qu')\s+\w+\s+m'a envoyé`, `envoyé (par|de)`, `reçu (de|en|le)`, `dans ma boîte`, `in my inbox`, `(sent|received) (me|from)`, etc. **Anti-collision volet B** : un phrasing indirect contenant un substantif fichier/Drive (`fichier|document|doc|pdf|feuille|classeur|présentation|drive|dossier`) SANS substantif mail est classé `not_gmail`. **Exclusions de faux positifs (D17)** : les canaux et objets non-Gmail neutralisent la détection même en présence du mot « message » — `colis|livraison|suivi`, `SMS|texto`, `WhatsApp|Telegram|Signal|Messenger|Slack|Discord`, `message vocal|répondeur`, et les usages génériques type « message d'accueil », « message d'erreur », « message de bienvenue ». Panel de tests négatifs couvrant formulations Drive ET ces faux positifs, obligatoire.
 - **Étape 2 — compilation** : si l'intention est détectée, le compilateur retourne `ready` (payload validé → carte de recherche) ou `needs_details` (raison précise). `not_gmail` → flux LLM normal, aucun message.
 - **Rendu `needs_details`** : message assistant local (sans appel LLM ni quota) : « Je n'ai pas réussi à construire une recherche Gmail fiable à partir de ta demande. Reformule avec un expéditeur, un sujet ou une période — ou ouvre Gmail et colle des mots-clés. » + bouton d'ouverture Gmail générique. Jamais de fallthrough silencieux vers un LLM sans outils.
-- **Tests** : panel FR/EN d'au moins 20 phrasings positifs (directs + indirects), 10 négatifs généraux et 5 négatifs Drive ; chaque cas raté remonté en usage = un pattern ajouté + un test de non-régression (règle BUG 56).
+- **Tests** : panel FR/EN d'au moins 20 phrasings positifs (directs + indirects), 10 négatifs généraux (dont colis/SMS/WhatsApp/« message d'accueil », D17) et 5 négatifs Drive ; chaque cas raté remonté en usage = un pattern ajouté + un test de non-régression (règle BUG 56).
 
 ### 3.3 A4 — Purge des contradictions internes (item CDC Phase 0 §13.2 non traité)
 
 1. **`src/constants/systemPrompt.ts`** : rendre le prompt système **profil-aware** (`buildSystemPrompt(profile)`). En mode `noCasa`, les sections « TES OUTILS » ne doivent plus lister `read_emails`, `send_email`, `reply_email`, `list_drive`, `search_drive`, `read_drive_file`, `create_drive_file`, ni la « PROCÉDURE OBLIGATOIRE » en 7 étapes Gmail+Drive, ni le bouton `data-action="save_drive"`. La stratégie actuelle (préfixe « PRIORITÉ ABSOLUE » prépendu par `useAppSetup.ts:35` à ~200 lignes contradictoires) repose sur l'ordre d'emphase → risque d'hallucination « j'ai lu tes mails ». Le volet B réintroduit ensuite les blocs Drive adaptés (« fichiers connectés », pas « ton Drive »).
 2. **`src/services/morningBriefService.ts:166-192`** : supprimer l'appel `listUnreadEmails()` (mort — le token n'a plus le scope) quand le profil noCasa est actif — aligner sur `useProactiveBrief.ts:88,120,126`.
 3. **`src/services/previewDemo.ts:52-74`** : gater ou réécrire les 2 conversations de démo qui promettent « synthèse des mails » / « retrouvé dans ton Drive ». Portée limitée (previews Cloudflare, gate `isDemoAllowed`) — cosmétique, priorité basse.
-4. **Hygiène** : corriger `NO_CASA_BLOCKED_TOOL_NAMES` (`gmailNoCasaPhase0.ts:13-32`) — noms inexistants (`modify_email`, `create_draft`) et omissions (`archive_email`, `delete_email`, `star_email`, `create_draft_email`, `label_email` côté Gmail ; `rename_drive_file`, `move_drive_file`, `create_drive_folder`, `copy_drive_file` côté Drive). Test de parité : chaque nom de la liste DOIT exister dans les définitions d'outils, chaque outil Gmail/Drive/Contacts défini DOIT être couvert (pattern F-1). La liste évolue avec le volet B (les outils réintroduits en sortent) — le test suit chaque PR.
+4. **Hygiène** : corriger `NO_CASA_BLOCKED_TOOL_NAMES` (`gmailNoCasaPhase0.ts:13-32`) — noms inexistants (`modify_email`, `create_draft`, et côté Contacts les fantômes **`update_contact`/`delete_contact`**, D17) et omissions (`archive_email`, `delete_email`, `star_email`, `create_draft_email`, `label_email` côté Gmail ; `rename_drive_file`, `move_drive_file`, `create_drive_folder`, `copy_drive_file` côté Drive). Test de parité : chaque nom de la liste DOIT exister dans les définitions d'outils, chaque outil Gmail/Drive/Contacts défini DOIT être couvert (pattern F-1). La liste évolue avec le volet B (les outils réintroduits en sortent) — le test suit chaque PR.
+
+### 3.4 A5 — Réécriture sémantique des contrôles automatiques sans CASA (D18)
+
+Les contrôles actuels matchent des **sous-chaînes** et produiraient des faux positifs bloquants pour cette phase :
+
+- `src/__tests__/services/gmailNoCasaPhase0.test.ts:13-33` : `scopes.some(s => s.includes('/auth/drive'))` — rejetterait `https://www.googleapis.com/auth/drive.file` (qui contient `/auth/drive`). Réécriture : comparaison d'**ensembles de scopes canoniques exacts** — `expect(new Set(scopes)).toEqual(new Set(LOGIN_ALLOWLIST))` pour l'allowlist, et denylist exprimée en **chaînes complètes** (`https://www.googleapis.com/auth/drive`, `.../auth/drive.readonly`, …) comparées par égalité stricte, jamais par inclusion.
+- `src/__tests__/services/gmailSearchHandoff.test.ts:90-95` : impose `pathname === '/'`, `search === ''`, `hash === ''` — refuse l'URL de résultats légitime du volet A. Réécriture : le test devient conditionnel au flag — flag OFF : racine nue (inchangé) ; flag ON : l'URL construite DOIT être `origin === 'https://mail.google.com'`, path conforme (`/mail/u/0/` ou `/mail/u/`), fragment strictement de la forme `#search/<encodeURIComponent(requête validée)>`, `authuser` seul paramètre autorisé — une **allowlist sémantique de l'URL construite**, pas une interdiction de tout hash.
+- **Principe général (à inscrire dans les deux fichiers de test)** : tout contrôle « sans CASA » compare des identifiants exacts (scopes canoniques, URLs décomposées via `new URL()`), JAMAIS des sous-chaînes — un contrôle qui refuse une valeur légitime sera contourné ou supprimé sous pression de livraison, ce qui est pire que pas de contrôle.
 
 ---
 
@@ -142,7 +164,7 @@ compileGmailSearch(text) : { status: 'not_gmail' }
 
 **P0-a — Révocation/migration des anciens accès larges + contrôle serveur strict (D3).** Les refresh tokens `gmail.readonly`/`gmail.modify`/`drive` accordés avant la Phase 0 restent pleinement fonctionnels : le proxy actuel les accepterait tels quels, ce qui rendrait « sans CASA » déclaratif et non effectif. Obligatoire avant le volet B :
 
-1. **Contrôle serveur** : `functions/api/drive/action.ts` (et tout endpoint Google réactivé) valide le jeton via `tokeninfo` (cache court) et exige : (i) présence de `drive.file` dans `scope` ; (ii) **absence de tout scope restreint** (`gmail.readonly`, `gmail.modify`, `gmail.compose`, `gmail.metadata`, `mail.google.com`, `drive`, `drive.readonly`, `drive.metadata*`) ; (iii) `aud` = client OAuth public d'Arty. Tout jeton non conforme → 403 avec message de reconnexion actionnable. Ce contrôle force mécaniquement la migration des anciens jetons.
+1. **Contrôle serveur à DEUX justificatifs (D13)** : le proxy Drive ne reçoit pas seulement le jeton Drive — chaque requête porte : (a) l'**identité/session Arty** (jeton Google du login principal, header existant) et (b) le **jeton Drive contextuel** (nouveau header dédié, ex. `x-drive-token`). Le serveur valide les deux via `tokeninfo` (cache court) et exige : (i) jeton Drive : `scope` == **exactement `drive.file`**, sans aucun scope supplémentaire (D12) ; (ii) jeton d'identité : aucun scope restreint hérité (`gmail.readonly`, `gmail.modify`, `gmail.compose`, `gmail.metadata`, `mail.google.com`, `drive`, `drive.readonly`, `drive.metadata*` — comparaison par chaînes exactes, D18) ; (iii) `aud` de chaque jeton ∈ **ensemble des clients de production** (client ID web ET client ID Android), pas un unique « client public » ; (iv) **`sub` identique entre les deux jetons** — sinon un utilisateur connecté à Arty avec le compte A pourrait connecter le Drive du compte B. Tout jeton non conforme → 403 avec message de reconnexion actionnable. Ce contrôle force mécaniquement la migration des anciens jetons.
 2. **Révocation/migration** : exécuter le chantier CDC Phase 0 §13.3 (révocation des anciens grants larges côté Google + parcours de reconnexion) — il passe de « différé » à **prérequis P0 de cette phase**.
 
 **P0-b — Preuve de séparation du `growth-orchestrator` (D10).** `services/growth-orchestrator/src/index.ts:2125-2127` demande `gmail.readonly` + `gmail.compose` (**deux scopes restreints**). Livrable : document (annexé à ce CDC) prouvant que son client OAuth vit dans un **projet GCP entièrement séparé** du projet du client public Arty — n° de projet, client ID, capture de l'écran de consentement du projet public sans aucun scope restreint. Si les deux partagent un projet : blocage — la présence de scopes restreints sur le projet partagé entraînerait tout le projet dans la vérification restricted, et la migration devient le préalable absolu.
@@ -159,7 +181,7 @@ compileGmailSearch(text) : { status: 'not_gmail' }
 ### 4.2 B1 — Autorisation contextuelle (web)
 
 - **Le login n'accorde jamais Drive** : `GMAIL_NO_CASA_PHASE0_GOOGLE_SCOPES` (`googleAuth.ts:31-36`) reste SANS `drive.file`. Idem côté Android : `requestScopes()` du sign-in principal (`GoogleSignInPlugin.java:54-60`) reste Calendar-only (D2).
-- **Web** : au clic « Connecter des fichiers », autorisation incrémentale via **GIS `google.accounts.oauth2.initTokenClient`** demandant uniquement `drive.file` (popup Google, conforme à la politique d'autorisation contextuelle). Conséquences assumées (revirement vs v1.1, imposé par D1) : enregistrement des *Authorized JavaScript origins* (`tryarty.com`, previews, `https://localhost`) et ajout CSP `accounts.google.com` — budgétés en PR-B1. Le token contextuel (courte durée) sert au Picker (`setOAuthToken`) et aux appels Drive ; sa gestion (mémoire, re-demande silencieuse à expiration, jamais persisté en clair) est spécifiée en PR-B1.
+- **Web** : au clic « Connecter des fichiers », autorisation incrémentale via **GIS `google.accounts.oauth2.initTokenClient`** demandant uniquement `drive.file` (popup Google, conforme à la politique d'autorisation contextuelle), avec **`include_granted_scopes: false` OBLIGATOIRE (D12)** — sans quoi GIS agrège par défaut les permissions précédemment accordées et le jeton « contextuel » cumulerait Calendar (voire d'anciens scopes larges) avec `drive.file`. Le serveur vérifie de son côté que le jeton contient exactement `drive.file` (§4.0 P0-a) — la config cliente n'est jamais la seule garantie. `login_hint` = email du compte de session Arty (limite les sélections de mauvais compte en amont du contrôle `sub` serveur). Conséquences assumées (revirement vs v1.1, imposé par D1) : enregistrement des *Authorized JavaScript origins* (`tryarty.com`, previews, `https://localhost`) et ajout CSP `accounts.google.com` — budgétés en PR-B1. Le token contextuel (courte durée) sert au Picker (`setOAuthToken`) et aux appels Drive via `x-drive-token` (D13) ; sa gestion (mémoire, re-demande silencieuse à expiration, jamais persisté en clair) est spécifiée en PR-B1.
 - **Utilisateurs Phase 0 existants** : aucun mécanisme de « re-consentement au login » n'est nécessaire — l'autorisation contextuelle EST le mécanisme : premier clic → consentement. Tout 403 Drive côté proxy remonte un message actionnable (« Reconnecte tes fichiers Drive ») — jamais d'échec silencieux.
 - **Tests de verrouillage** : le test TS existant (`gmailNoCasaPhase0.test.ts`) vérifie que `drive.file` n'apparaît PAS dans les scopes de login ; un test **à créer** lit `GoogleSignInPlugin.java` par chaîne (précédent : `workspaceAddonPhase0Runtime.test.ts` via `readFileSync`) et échoue si un scope Drive/Gmail y apparaît.
 
@@ -191,10 +213,13 @@ compileGmailSearch(text) : { status: 'not_gmail' }
 - **Restent bloqués en Phase 1** : `delete_drive_file`, `share_drive_file`, `move_drive_file`, `rename_drive_file`, `copy_drive_file`, `create_drive_folder`, et tous les outils Contacts.
 - **Routage IA** : `PRIVATE_DATA_TRIGGERS` (BUG 12) inchangés — « mes fichiers/mon Drive » → Claude, jamais hybride.
 
-### 4.6 B5 — Android (Capacitor) : parcours natif officiel (D2)
+### 4.6 B5 — Android (Capacitor) : parcours natif officiel (D2) et cycle de vie complet (D14)
 
-- Au clic « Connecter des fichiers » sur natif : **`AuthorizationClient.authorize()`** avec `AuthorizationRequest` portant : scope `drive.file` uniquement, `setOptOutIncludingGrantedScopes(true)` (jeton limité à `drive.file`, PAS de cumul avec Calendar), `ResourceParameter` **`PICKER_OAUTH_TRIGGER`** (+ `PICKER_ALLOW_MULTIPLE` ; `PICKER_MIMETYPES` selon besoin), `Prompt.CONSENT` (+ `SELECT_ACCOUNT` si multi-comptes). Le flux système affiche le Picker ; la sélection retourne les fichiers accordés et un jeton `drive.file`.
-- **Aucun Picker JavaScript en WebView** — l'ancien gate WebView de la v1.1 est supprimé. Nouveau plugin/méthode dans le code natif (extension de `GoogleSignInPlugin.java` ou plugin dédié `DrivePickerPlugin.java`), résultat transmis à la couche JS (ids + resourceKeys + jeton) pour alimenter le registre.
+- **Prérequis de dépendance (D14)** : `play-services-auth` **21.3.0 → 21.6.0** (`android/app/build.gradle:80`) — l'API `AuthorizationClient`/`PICKER_OAUTH_TRIGGER` relève des versions récentes. Bump isolé et testé (zone auth native — BUG 21/26/27/51 : jamais en lot avec autre chose).
+- **Connexion de fichiers** : **`AuthorizationClient.authorize()`** avec `AuthorizationRequest` portant : scope `drive.file` uniquement, `setOptOutIncludingGrantedScopes(true)` (jeton limité à `drive.file`, PAS de cumul avec Calendar), `ResourceParameter` **`PICKER_OAUTH_TRIGGER`** (+ `PICKER_ALLOW_MULTIPLE` ; `PICKER_MIMETYPES` selon besoin), `Prompt.CONSENT` (+ `SELECT_ACCOUNT` si multi-comptes). Le flux système affiche le Picker.
+- **Résultat honnête (D14)** : Google ne garantit que **`picked_file_ids`** dans le résultat — ne PAS attendre de `resourceKey` ni de métadonnées. Pour chaque id : appel **`files.get(fileId, fields=id,name,mimeType,resourceKey)`** avec le jeton obtenu, puis entrée au registre (nom, type, `resourceKey` si présente). Même chemin de revalidation que le web.
+- **Renouvellement de jeton SANS Picker (D14)** : après expiration du jeton ou redémarrage de l'app, relancer `AuthorizationClient.authorize()` avec le scope `drive.file` **sans** `PICKER_OAUTH_TRIGGER` — pour un scope déjà accordé, le flux ré-émet un jeton sans UI (silencieux) ; le Picker n'est rouvert QUE pour connecter de nouveaux fichiers. Ce chemin de renouvellement est une exigence de première classe (sinon l'utilisateur reverrait le Picker à chaque session — inacceptable).
+- **Aucun Picker JavaScript en WebView** — l'ancien gate WebView de la v1.1 est supprimé. Nouveau plugin/méthode dans le code natif (extension de `GoogleSignInPlugin.java` ou plugin dédié `DrivePickerPlugin.java`), résultat transmis à la couche JS (ids + jeton) pour la revalidation `files.get` et le registre.
 - **`GATE-PICKER-ANDROID-01`** (§8.2) valide le parcours sur APK réel avant toute communication Android. FAIL → volet B livré web-first, Android suit dans une PR dédiée.
 
 ### 4.7 « Ouvrir avec Arty » — REPORTÉ (D7)
@@ -232,7 +257,7 @@ Tout scope Gmail (`gmail.*`, `mail.google.com`), `drive`, `drive.readonly`, `dri
 
 | Endpoint | Auth | Autorisation | Abus infra | Leak | Origin/CSRF |
 |---|---|---|---|---|---|
-| `functions/api/drive/action.ts` (réactivé, opérations réduites : `list`, `read`, `download`, `create` — la « recherche » est `list`+`q`, l'« export » vit dans `read`/`download`) | header `Authorization: Bearer` (token contextuel `drive.file`) ; côté serveur : `tokeninfo` avec **exigence `drive.file` + rejet des scopes restreints + `aud` = client public** (§4.0 P0-a — durcissement NOUVEAU vs pass-through actuel) | le token de l'utilisateur EST l'autorité — Google filtre le périmètre du scope ; le **registre** filtre en plus côté app (D4) ; IDs validés regex (BUG 32) ; terme `fullText` échappé ; `X-Goog-Drive-Resource-Keys` uniquement pour les ids du registre (D5) | pas de clé owner dépensée (API Drive gratuite) ; quotas/caps par appel conservés | erreurs Google masquées (générique + `console.error`, pattern N-2/PR #307) | middleware existant inchangé (Origin whitelist strict) |
+| `functions/api/drive/action.ts` (réactivé, opérations réduites : `list`, `read`, `download`, `create` — la « recherche » est `list`+`q`, l'« export » vit dans `read`/`download`) | **DEUX justificatifs (D13)** : identité/session Arty (header existant) + jeton Drive contextuel (`x-drive-token`) ; `tokeninfo` sur les deux : jeton Drive == **exactement `drive.file`** (D12), aucun scope restreint hérité (chaînes exactes, D18), `aud` ∈ {client web prod, client Android prod}, **`sub` identique** entre les deux jetons (§4.0 P0-a) | le token de l'utilisateur EST l'autorité — Google filtre le périmètre du scope ; le **registre** filtre en plus côté app (D4) ; IDs validés regex (BUG 32) ; terme `fullText` échappé ; `X-Goog-Drive-Resource-Keys` uniquement pour les ids du registre (D5) | pas de clé owner dépensée (API Drive gratuite) ; quotas/caps par appel conservés | erreurs Google masquées (générique + `console.error`, pattern N-2/PR #307) | middleware existant inchangé (Origin whitelist strict) |
 | Aucun endpoint nouveau côté volet A (tout est client-local) | — | — | — | — | — |
 
 Opérations du proxy Drive (`drive/action.ts:45-59`) en Phase 1 : **conservées = `list`, `read`, `download`, `create`** ; **retirées = `update`, `delete`, `rename`, `move`, `create_folder`, `share`, `copy`** (RÈGLE 6 « pas de fonctionnalité non déclarée »).
@@ -253,7 +278,7 @@ Opérations du proxy Drive (`drive/action.ts:45-59`) en Phase 1 : **conservées 
 
 | ID | Exigence |
 |---|---|
-| DRV-P1-00a | Contrôle serveur des jetons : `drive.file` requis, scopes restreints rejetés, `aud` client public vérifié (D3) |
+| DRV-P1-00a | Contrôle serveur à deux justificatifs : jeton Drive == exactement `drive.file` (D12), scopes restreints rejetés (chaînes exactes), `aud` ∈ clients prod web+Android, `sub` identique entre identité et jeton Drive (D3/D13) |
 | DRV-P1-00b | Révocation/migration des anciens grants larges (chantier Phase 0 §13.3 exécuté) (D3) |
 | DRV-P1-00c | Preuve documentée de séparation OAuth du `growth-orchestrator` (D10) |
 
@@ -261,12 +286,13 @@ Opérations du proxy Drive (`drive/action.ts:45-59`) en Phase 1 : **conservées 
 
 | ID | Exigence |
 |---|---|
-| GML-P1-08a | Lien direct résultats Gmail web desktop sous flag `VITE_GMAIL_SEARCH_DIRECT_LINK` **indépendant du profil Phase 0**, copie préservée, lien `<a>` sans double navigation (D11) |
+| GML-P1-08a | Lien direct résultats Gmail web desktop sous flag `VITE_GMAIL_SEARCH_DIRECT_LINK` **indépendant du profil Phase 0**, navigation « onglet réservé » : copie terminée AVANT navigation, un seul onglet, jamais de `location.assign` automatique (D11/D15) |
 | GML-P1-08b | Variante `authuser=<email>` avec validateur ancré non-global, repli `/u/0/` (D11) |
 | GML-P1-09 | Détection élargie aux phrasings indirects + anti-collision Drive + tests (≥20 positifs, ≥10 négatifs, ≥5 négatifs Drive) |
 | GML-P1-10 | Compilateur à résultat discriminé `not_gmail \| ready \| needs_details` ; `needs_details` → message local explicite, zéro quota (D11) |
 | GML-P1-11 | System prompt profil-aware (plus aucune promesse Gmail/Drive en noCasa) |
-| GML-P1-12 | `morningBriefService` sans appel Gmail mort ; `previewDemo` cohérente ; parité `NO_CASA_BLOCKED_TOOL_NAMES` |
+| GML-P1-12 | `morningBriefService` sans appel Gmail mort ; `previewDemo` cohérente ; parité `NO_CASA_BLOCKED_TOOL_NAMES` (fantômes `update_contact`/`delete_contact` retirés, D17) |
+| GML-P1-13 | Contrôles sans-CASA réécrits sémantiquement : scopes comparés en chaînes exactes (plus de `includes('/auth/drive')`), test d'URL Gmail conditionnel au flag avec allowlist sémantique (D18, §3.4) |
 | DRV-P1-01 | Autorisation `drive.file` contextuelle au clic (web GIS, Android AuthorizationClient) — jamais au login (D1/D2) ; denylist login verrouillée par tests (TS + `.java` à créer) |
 | DRV-P1-02 | Picker web : recherche tout-Drive, multi-sélection, clé publique restreinte dédiée (D8), CSP testée feature par feature |
 | DRV-P1-03 | Registre « Mes fichiers connectés » : métadonnées + `resourceKey` (D5), event BUG 54, purge logout, **filtrage réel** de `list`/`search`/`read` (D4), wording honnête + lien révocation Google |
@@ -274,6 +300,7 @@ Opérations du proxy Drive (`drive/action.ts:45-59`) en Phase 1 : **conservées 
 | DRV-P1-05 | Proxy Drive réduit aux opérations exposées ; erreurs génériques ; audit RÈGLE 6 documenté dans la PR |
 | DRV-P1-06 | Résultat vide → pédagogie du modèle + bouton « Connecter des fichiers » allowlisté |
 | DRV-P1-07 | `GATE-PICKER-ANDROID-01` exécuté sur APK réel avant toute promesse Android (D2) |
+| DRV-P1-08 | Cycle de vie Android complet : `play-services-auth` 21.6.0, renouvellement de jeton silencieux sans réouverture du Picker, métadonnées + `resourceKey` via `files.get` après `picked_file_ids` (D14) |
 
 ### Reportés (décisions actées)
 
@@ -293,7 +320,7 @@ Sur un compte de test avec ~10 fichiers accordés via Picker : vérifier que `fi
 
 ### 8.2 `GATE-PICKER-ANDROID-01` (1 jour, avant toute communication Android)
 
-Sur APK réel (pas émulateur seul) : `AuthorizationClient` + `AuthorizationRequest` (`drive.file` seul, `setOptOutIncludingGrantedScopes(true)`, `PICKER_OAUTH_TRIGGER`, `Prompt.CONSENT`). Critères : l'écran de consentement n'affiche QUE `drive.file` ; le Picker système s'affiche et la recherche fonctionne ; la sélection retourne ids (+ `resourceKey` le cas échéant) ; le jeton retourné est accepté par le proxy (contrôle §4.0 P0-a compris) ; comportement multi-comptes sain (`SELECT_ACCOUNT`). FAIL → volet B livré web-first ; Android dans une PR dédiée ultérieure. Résultat annexé à ce CDC (date, appareil, captures).
+Sur APK réel (pas émulateur seul), avec `play-services-auth` **21.6.0** : `AuthorizationClient` + `AuthorizationRequest` (`drive.file` seul, `setOptOutIncludingGrantedScopes(true)`, `PICKER_OAUTH_TRIGGER`, `Prompt.CONSENT`). Critères : l'écran de consentement n'affiche QUE `drive.file` ; le Picker système s'affiche et la recherche fonctionne ; la sélection retourne `picked_file_ids` et **`files.get(fields=...resourceKey...)` complète les métadonnées** ; le couple identité+jeton Drive est accepté par le proxy (contrôle §4.0 P0-a : scope exact, `aud`, `sub` identique) ; **renouvellement silencieux** après expiration/kill de l'app SANS réouverture du Picker ; comportement multi-comptes sain (`SELECT_ACCOUNT` + rejet `sub` divergent). FAIL → volet B livré web-first ; Android dans une PR dédiée ultérieure. Résultat annexé à ce CDC (date, appareil, captures).
 
 ### 8.3 Matrice manuelle lien direct Gmail (½ journée)
 
@@ -303,11 +330,12 @@ Chrome/Firefox/Safari desktop × {1 compte, multi-comptes, non connecté} : le l
 
 ## 9. Plan de tests automatisés
 
-- `buildGmailSearchUrl` : encodage, bidi/contrôles, longueur, validateur `authuser` ancré non-global (cas : email valide, sous-chaîne malveillante, appels répétés — pas d'état `lastIndex`), repli.
-- Compilateur discriminé : `not_gmail`/`ready`/`needs_details` sur le panel complet (≥20 positifs, ≥10 négatifs, ≥5 négatifs Drive) ; `needs_details` → aucun appel réseau/quota (mock).
-- Carte : le bouton est un `<a rel="noopener noreferrer">` — test de non-régression sur la double navigation (pas de `window.location.assign` après ouverture réussie).
+- `buildGmailSearchUrl` : encodage (y compris `#`/`/`/`?` dans la requête → neutralisés par `encodeURIComponent`), bidi/contrôles, longueur, **re-validation au clic de la requête éditée** (D16), validateur `authuser` ancré non-global (cas : email valide, sous-chaîne malveillante, appels répétés — pas d'état `lastIndex`), repli.
+- Compilateur discriminé : `not_gmail`/`ready`/`needs_details` sur le panel complet (≥20 positifs, ≥10 négatifs dont colis/SMS/WhatsApp/« message d'accueil », ≥5 négatifs Drive) ; `needs_details` → aucun appel réseau/quota (mock).
+- Navigation « onglet réservé » (D15) : l'onglet est ouvert dans le geste utilisateur, navigué APRÈS résolution de la copie, un seul onglet, `opener` nul, popup bloqué → copie faite + indication, jamais de `location.assign` automatique.
+- Contrôles sémantiques (D18) : réécriture de `gmailNoCasaPhase0.test.ts` (ensembles exacts — `drive.file` accepté, `https://www.googleapis.com/auth/drive` refusé) et de `gmailSearchHandoff.test.ts:90-95` (allowlist sémantique d'URL conditionnelle au flag).
 - Parité scopes : `drive.file` ABSENT des scopes de login (TS) + test `.java` (nouveau, `readFileSync`).
-- Contrôle serveur des jetons : `drive.file` manquant → 403 ; scope restreint présent → 403 ; `aud` étranger → 403 (mocks tokeninfo, pattern `audValidation.test.ts`).
+- Contrôle serveur à deux justificatifs : jeton Drive avec scope surnuméraire → 403 ; `drive.file` manquant → 403 ; scope restreint présent → 403 ; `aud` hors ensemble prod → 403 ; **`sub` divergent entre identité et jeton Drive → 403** (mocks tokeninfo, pattern `audValidation.test.ts`).
 - Registre : filtrage effectif de `list`/`search`/`read` (fichier hors registre invisible/refusé) ; ajout auto à la création ; retrait sur 404 ; event `drive-connected-files-updated` dispatché ; purge au logout.
 - `search_drive` : échappement `fullText`, construction `q`, intersection registre, erreurs masquées.
 - `read_drive_file` : header `X-Goog-Drive-Resource-Keys` présent ssi `resourceKey` au registre.
@@ -320,11 +348,12 @@ Chrome/Firefox/Safari desktop × {1 compte, multi-comptes, non connecté} : le l
 
 ## 10. Critères d'acceptation
 
-1. Sur web desktop, flag ON : « retrouve le mail de Paul sur le devis de juin » → carte avec requête → un clic → Gmail ouvert **sur les résultats**, requête dans le presse-papiers, **un seul onglet** ouvert.
-2. « Le devis que Paul m'a envoyé en juin » (sans le mot « mail ») déclenche la même carte ; « le document Drive que Paul a partagé » n'est PAS intercepté.
-3. Une demande Gmail non compilable produit le message `needs_details` local — jamais un silence ni une hallucination.
+1. Sur web desktop, flag ON : « retrouve le mail de Paul sur le devis de juin » → carte avec requête → un clic → **la copie est terminée avant la navigation**, Gmail ouvert **sur les résultats**, **un seul onglet** ouvert.
+2. « Le devis que Paul m'a envoyé en juin » (sans le mot « mail ») déclenche la même carte ; « le document Drive que Paul a partagé », « où est mon colis », « réponds à ce WhatsApp » et « écris un message d'accueil » ne sont PAS interceptés.
+3. Une demande Gmail non compilable produit le message `needs_details` local — jamais un silence ni une hallucination. Une requête **éditée** dans la carte est re-validée puis encodée au clic.
 4. En mode noCasa, aucune réponse du LLM ne prétend avoir lu/cherché Gmail ou le Drive global (panel de 10 prompts pièges).
-5. Un jeton portant un ancien scope large (`drive`, `gmail.readonly`) est **refusé** par le proxy Drive avec un message de reconnexion.
+5. Un jeton portant un ancien scope large (`drive`, `gmail.readonly`) est **refusé** par le proxy Drive ; un jeton Drive portant un scope EN PLUS de `drive.file` est **refusé** ; un jeton Drive d'un compte différent du compte de session (`sub` divergent) est **refusé** — chaque cas avec message de reconnexion actionnable.
+5-bis. Sur Android : après kill/redémarrage de l'app, la lecture d'un fichier connecté fonctionne **sans réouverture du Picker** (renouvellement silencieux) ; un fichier partagé par lien sélectionné sur Android obtient sa `resourceKey` via `files.get`.
 6. L'utilisateur connecte 3 fichiers via le Picker ; « résume le doc X » et « cherche <terme> dans mes fichiers » fonctionnent ; un fichier non connecté n'est jamais visible ; un fichier **retiré d'Arty** disparaît de `list`/`search` et son `read` est refusé (D4).
 7. Un fichier partagé par lien avec `resourceKey` se lit correctement (header envoyé) (D5).
 8. Un rapport généré par Arty est sauvé dans Drive **après confirmation** (D6) et reste lisible ensuite.
@@ -337,13 +366,13 @@ Chrome/Firefox/Safari desktop × {1 compte, multi-comptes, non connecté} : le l
 
 | PR | Contenu | Estimation |
 |---|---|---|
-| PR-A1 | Compilateur discriminé + triggers élargis/anti-collision + system prompt/brief/demo/hygiène | 1-1,5 j |
-| PR-A2 | Lien direct sous flag indépendant + lien `<a>` + validateur authuser + matrice | 0,5-1 j |
-| **PR-B0** | **Prérequis D3/D10 : contrôle scopes serveur + révocation/migration anciens grants + preuve growth-orchestrator** | 1-1,5 j + ops |
-| PR-B1 | Autorisation contextuelle web (GIS, origins, CSP accounts.google.com) + spike fulltext + tests parité (TS + `.java`) | 1,5 j |
+| PR-A1 | Compilateur discriminé + triggers élargis/anti-collision/faux positifs (D17) + system prompt/brief/demo/hygiène (fantômes Contacts inclus) + **réécriture sémantique des contrôles (D18)** | 1,5 j |
+| PR-A2 | Lien direct sous flag indépendant + navigation « onglet réservé » (D15) + re-validation au clic (D16) + validateur authuser + matrice | 1 j |
+| **PR-B0** | **Prérequis D3/D10/D12/D13 : contrôle serveur à deux justificatifs (scope exact, multi-aud, `sub` identique) + révocation/migration anciens grants + preuve growth-orchestrator** | 1,5-2 j + ops |
+| PR-B1 | Autorisation contextuelle web (GIS avec `include_granted_scopes: false`, origins, CSP accounts.google.com) + spike fulltext + tests parité (TS + `.java`) | 1,5 j |
 | PR-B2 | Picker web + registre filtrant + resourceKeys + CSP Picker | 2 j |
 | PR-B3 | Outils LLM réintroduits + confirmation `create_drive_file` + prompt « fichiers connectés » | 1-1,5 j |
-| PR-B4 | Android natif (`AuthorizationClient` + `PICKER_OAUTH_TRIGGER`) + `GATE-PICKER-ANDROID-01` | 1,5-2 j |
+| PR-B4 | Android natif : bump `play-services-auth` 21.6.0 (isolé), `AuthorizationClient` + `PICKER_OAUTH_TRIGGER`, renouvellement silencieux, `files.get` post-sélection + `GATE-PICKER-ANDROID-01` (D14) | 2 j |
 
 Ordre : PR-A1 → PR-A2 (valeur immédiate, zéro changement de permission), puis **PR-B0 obligatoirement avant PR-B1→B4**. Chaque PR passe `tsc`, la suite complète, et l'audit RÈGLE 6 quand un endpoint est touché.
 
@@ -360,4 +389,4 @@ Ordre : PR-A1 → PR-A2 (valeur immédiate, zéro changement de permission), pui
 | Contrôle serveur des scopes trop strict → lockout d'utilisateurs légitimes en transition | Moyen | Message 403 actionnable (« reconnecte tes fichiers ») ; déploiement de PR-B0 AVANT l'UI Drive (aucun utilisateur ne dépend encore du parcours) |
 | Confusion « pourquoi Arty ne voit pas ce fichier ? » | Élevé (UX) | Pédagogie systématique (DRV-P1-06), écran Réglages, réponse LLM standardisée |
 
-Aucune question ouverte : les décisions D1-D11 (§0) couvrent les quatre questions de la v1.1. L'implémentation reste **en pause** jusqu'au GO explicite du décideur sur cette v1.2.
+Aucune question ouverte : les décisions D1-D18 (§0) couvrent les questions de la v1.1 et les blocages du second verdict. L'implémentation reste **en pause** jusqu'au GO explicite du décideur sur cette v1.3.
