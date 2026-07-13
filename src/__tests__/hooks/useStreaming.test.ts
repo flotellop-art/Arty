@@ -126,7 +126,7 @@ describe('startStream', () => {
     expect(result.current.streamingContent).toBe('Hello')
 
     act(() => {
-      result.current.completeStreaming('conv-1')
+      result.current.stopStreaming('conv-1')
     })
     act(() => {
       result.current.startStream('conv-1')
@@ -519,25 +519,6 @@ describe('stopStreaming', () => {
 })
 
 // ──────────────────────────────────────────────
-// completeStreaming — teardown after manual publish
-// ──────────────────────────────────────────────
-describe('completeStreaming', () => {
-  it('clears the interval and resets the active UI state', () => {
-    const clearIntervalSpy = vi.spyOn(globalThis, 'clearInterval')
-    const { result } = renderStreaming()
-    startActive(result, 'conv-1')
-    act(() => {
-      result.current.completeStreaming('conv-1')
-    })
-
-    expect(clearIntervalSpy).toHaveBeenCalled()
-    expect(result.current.hasStream('conv-1')).toBe(false)
-    expect(result.current.isStreaming).toBe(false)
-    expect(result.current.streamingContent).toBe('')
-  })
-})
-
-// ──────────────────────────────────────────────
 // active-stream switching (multi-stream UI)
 // ──────────────────────────────────────────────
 describe('setActiveStream', () => {
@@ -571,23 +552,9 @@ describe('setActiveStream', () => {
 })
 
 // ──────────────────────────────────────────────
-// setHideContent / setProgressContent
+// setProgressContent
 // ──────────────────────────────────────────────
 describe('display overrides', () => {
-  it('setHideContent hides the live content of the active conv', () => {
-    const { result } = renderStreaming()
-    startActive(result, 'conv-1')
-    act(() => {
-      result.current.onToken('secret', 'conv-1')
-    })
-    flushRaf()
-    expect(result.current.streamingContent).toBe('secret')
-    act(() => {
-      result.current.setHideContent(true, 'conv-1')
-    })
-    expect(result.current.streamingContent).toBe('')
-  })
-
   it('setProgressContent shows an ephemeral message for the active conv', () => {
     const { result } = renderStreaming()
     startActive(result, 'conv-1')

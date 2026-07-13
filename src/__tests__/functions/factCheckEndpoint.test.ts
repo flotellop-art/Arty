@@ -31,4 +31,24 @@ describe('endpoint fact-check — hors quotas utilisateur (C-F/D5)', () => {
   it('fixe le prompt système côté serveur (pas de proxy Claude générique)', () => {
     expect(src).toMatch(/const SYSTEM_PROMPT = /)
   })
+
+  // Le bump maxTokens/max_uses de juillet 2026 (fiabilité + audace) a doublé
+  // le coût worst-case PAR VÉRIFICATION — les caps journaliers par palier
+  // sont donc devenus LE contrôle de coût. Les remonter exige une décision
+  // écrite de Florent (RÈGLE 6, abus infra).
+  it('garde les plafonds journaliers 60 Haiku / 15 Sonnet (le vrai contrôle de coût)', () => {
+    expect(src).toMatch(/dailyCap: 60/)
+    expect(src).toMatch(/dailyCap: 15/)
+  })
+
+  it('masque les erreurs upstream (pattern V-4) — y compris sur le chemin retry', () => {
+    // Le corps d'erreur Anthropic ne doit jamais être relayé au client.
+    expect(src).toMatch(/fact_check_failed/)
+    expect(src).not.toMatch(/err\.message/)
+  })
+
+  it('le retry vit côté serveur, APRÈS la consommation du quota (jamais côté client)', () => {
+    // Un retry client re-consommerait bg_quota à chaque tentative.
+    expect(src).toMatch(/fetchAnthropicWithRetry/)
+  })
 })

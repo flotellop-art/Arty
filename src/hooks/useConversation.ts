@@ -17,7 +17,7 @@ import { useStreaming } from './useStreaming'
 import { useFileAttachments, buildApiMessages, buildContentBlocks, buildTextOnlyMessages, buildMistralMessages, buildMistralBlocks } from './useFileAttachments'
 import { getReflectionLevel } from '../services/reflectionLevel'
 import { putFile } from '../services/secureFileStorage'
-import { runFactCheckOnLatest, factCheckContent, getFactCheckMode } from '../services/factChecker'
+import { runFactCheckOnLatest, getFactCheckMode } from '../services/factChecker'
 import { detectSuggestedTasks, addTask } from '../services/taskService'
 import { TOOLS } from '../services/toolDefinitions'
 import { wantsImageGeneration, generateImageToolDefinition } from '../services/tools/imageTools'
@@ -66,8 +66,7 @@ export function useConversation() {
   // 60 fps et casserait les memo de MessageItem/Sidebar. Les fonctions,
   // elles, sont stables (useCallback à deps stables dans useStreaming).
   const {
-    canStart, startStream, setActiveStream, setHideContent, markStreamDone,
-    finalize: finalizeStream, completeStreaming, onToken: streamToken,
+    canStart, startStream, setActiveStream, onToken: streamToken,
     onDone: streamDone, onError: streamError, setProgressContent,
     setAbortController, resetAccumulated, hasStream, isActive, stopStreaming,
   } = streaming
@@ -350,19 +349,21 @@ export function useConversation() {
 
       setPendingFiles((files && files.length > 0) ? files : null)
 
-      // Mode "publish-after-fact-check" : si fact-check actif, on cache
-      // les tokens en live (TypingIndicator au lieu de bulle stream) et on
-      // retarde le finalize jusqu'à la fin du fact-check. Évite à
-      // l'utilisateur de voir la version non vérifiée. Mode 'off' garde
-      // l'ancien flow streaming visible + fact-check async.
+      // Fact-check ASYNCHRONE (retrait du mode publish-after-fact-check,
+      // juillet 2026) : la réponse streame et se publie immédiatement, la
+      // vérif tourne ensuite en arrière-plan et RÉTRO-APPLIQUE ses
+      // corrections sur le message publié (badge pending → résultat, diff
+      // barré→corrigé visible — pas de bascule silencieuse). L'ancien mode
+      // retenait la bulle derrière un TypingIndicator pendant génération +
+      // vérif (jusqu'à ~45 s) — plainte « fact-check lent ».
       // RGPD (RÈGLE 5.3) — audit Mistral 11 juin 2026 : le fact-checker
       // tourne sur Claude (Anthropic, serveurs US). L'exécuter sur une
       // conversation euOnly enverrait question + réponse (jusqu'à 8 000
       // chars, mails/Drive inclus) hors Europe — violation silencieuse de
       // la promesse « tes données ne quitteront pas l'Europe ». Fact-check
       // désactivé sur les convs EU ; le sheet « ⋯ » l'indique (euLocked).
+      // runFactCheckOnLatest re-vérifie euOnly en défense en profondeur.
       const factCheckMode = conv.euOnly ? 'off' : getFactCheckMode()
-      const deferPublish = factCheckMode !== 'off'
 
       // Relecture (audit) — canStart est vérifié plus haut mais des `await`
       // (putFile, createReminder) s'intercalent : le cap peut être atteint
@@ -372,11 +373,10 @@ export function useConversation() {
         setError(i18n.t('errors.tooManyConcurrentStreams'))
         return
       }
-      setHideContent(deferPublish, targetId)
 
       const onToken = (token: string) => streamToken(token, targetId)
 
-      const onDone = async () => {
+      const onDone = () => {
         // Signale au PlanBadge de rafraîchir ses compteurs free quotidiens.
         try { window.dispatchEvent(new CustomEvent('arty-message-sent')) } catch {}
 
@@ -387,87 +387,15 @@ export function useConversation() {
         // service.
         void maybeExtractMemory(storage.getConversation(targetId))
 
-        if (!deferPublish) {
-          // Mode 'off' : publication immédiate, pas de fact-check.
-          streamDone(targetId)
-          return
+        // Publication immédiate dans tous les cas.
+        streamDone(targetId)
+
+        // Puis vérification en arrière-plan. Les gardes fins (euOnly,
+        // réponse interrompue/trop courte, déjà vérifié, quota du jour)
+        // vivent dans runFactCheckOnLatest.
+        if (factCheckMode !== 'off') {
+          void runFactCheckOnLatest(targetId, refreshConversations)
         }
-
-        // Mode fact-check actif : retient le placeholder, lance la vérif,
-        // puis publie la bulle finale avec contenu corrigé d'un coup.
-        const content = markStreamDone(targetId)
-
-        // Trouve le user message qui précède pour le fact-check.
-        const conv = storage.getConversation(targetId)
-        type Msg = NonNullable<typeof conv>['messages'][number]
-        let userMsg: Msg | undefined
-        if (conv) {
-          for (let i = conv.messages.length - 1; i >= 0; i--) {
-            const m = conv.messages[i]
-            if (m && m.role === 'user') {
-              userMsg = m
-              break
-            }
-          }
-        }
-
-        // Fallback : si pas de content ou pas de user msg, on publie ce
-        // qu'on a et on tente le fact-check après (ancien flow).
-        if (!content || !userMsg) {
-          finalizeStream(targetId, content)
-          completeStreaming(targetId)
-          if (content) void runFactCheckOnLatest(targetId, refreshConversations)
-          return
-        }
-
-        const fc = await factCheckContent(userMsg.content, content, factCheckMode)
-
-        // H4 (audit frontend) — si l'utilisateur a cliqué Stop PENDANT le
-        // fact-check, stopStreaming() a déjà finalisé (bulle "interrompue")
-        // et démonté le stream. Re-finaliser ici pousserait une DEUXIÈME
-        // bulle assistant persistée. Le stream absent = stop déjà traité.
-        if (!hasStream(targetId)) return
-
-        const finalContent = fc?.correctedContent || content
-
-        // Publie la bulle finale. finalize crée un message avec un nouvel
-        // ID — on attache le factCheck juste après via une lecture/écriture
-        // de la conv.
-        finalizeStream(targetId, finalContent)
-        if (fc?.result) {
-          // Succès : attache le résultat normal.
-          const fresh = storage.getConversation(targetId)
-          if (fresh) {
-            const last = fresh.messages[fresh.messages.length - 1]
-            if (last && last.role === 'assistant') {
-              last.factCheck = fc.result
-              storage.saveConversation(fresh)
-              refreshConversations()
-            }
-          }
-        } else if (fc) {
-          // fc.result === null mais fc !== null → fact-check a vraiment été
-          // tenté et a échoué (timeout/parse/réseau). Affiche le badge pour
-          // que l'utilisateur sache que la réponse n'est pas vérifiée.
-          const fresh = storage.getConversation(targetId)
-          if (fresh) {
-            const last = fresh.messages[fresh.messages.length - 1]
-            if (last && last.role === 'assistant') {
-              last.factCheck = {
-                overallConfidence: 'medium',
-                claims: [],
-                modelLabel: `⚠ Fact-check indisponible${fc.failReason ? ` (${fc.failReason})` : ''}`,
-                checkedAt: Date.now(),
-                status: 'failed',
-              }
-              storage.saveConversation(fresh)
-              refreshConversations()
-            }
-          }
-        }
-        // fc === null → skip intentionnel (mode off ou réponse triviale)
-        // → on n'attache pas de factCheck du tout, pas de badge visible.
-        completeStreaming(targetId)
       }
 
       const onErr = (err: Error) => {
@@ -767,7 +695,6 @@ export function useConversation() {
     },
     [
       activeId, refreshConversations, canStart, startStream, setActiveStream,
-      setHideContent, markStreamDone, finalizeStream, completeStreaming,
       streamToken, streamDone, streamError, setProgressContent,
       setAbortController, resetAccumulated, hasStream, isActive,
       setPendingFiles, pendingFilesRef, noCasaPhase0,
@@ -831,7 +758,17 @@ export function useConversation() {
       const newConv: Conversation = {
         id: newId,
         title: `${conv.title} (branche)`,
-        messages: branchedMessages.map(m => ({ ...m, id: generateId() })),
+        // Un factCheck 'pending' copié ne serait JAMAIS résolu : la vérif en
+        // vol ne retouche que l'id original dans la conv source (possible
+        // depuis la publication immédiate — le message existe et se branche
+        // pendant que sa vérif tourne). On le strippe ; les résultats
+        // finalisés, eux, se copient normalement.
+        messages: branchedMessages.map(m => {
+          const { factCheck, ...rest } = m
+          const isPending = factCheck &&
+            (factCheck.status === 'pending' || factCheck.modelLabel === 'Vérification en cours…')
+          return { ...rest, id: generateId(), ...(factCheck && !isPending ? { factCheck } : {}) }
+        }),
         createdAt: Date.now(),
         updatedAt: Date.now(),
         // Preserve EU flag, model history AND tags from parent conversation

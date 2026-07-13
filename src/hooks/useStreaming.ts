@@ -13,9 +13,6 @@ type StreamState = {
   accumulated: string
   saveInterval: ReturnType<typeof setInterval> | null
   abortController: AbortController | null
-  // Mode "publish-after-fact-check" : tokens accumulés mais cachés en live.
-  // Le caller fera le finalize après le fact-check.
-  hideContent: boolean
   // CDC visibilité modèle (C-B) — model id de CE stream, capturé via l'event
   // 'arty-model-used' scopé conversationId (voir listener plus bas). Un event
   // `confirmed` (modèle servi ≠ demandé) écrase la valeur optimiste — c'est
@@ -52,7 +49,7 @@ export function useStreaming(deps: {
   const [streamingConvIds, setStreamingConvIds] = useState<ReadonlySet<string>>(() => new Set())
 
   // Map de tous les streams en cours, indexée par convId. Stocke l'accumulé,
-  // l'interval de savePartial, l'AbortController et le flag fact-check par conv.
+  // l'interval de savePartial et l'AbortController par conv.
   // Hors React state pour éviter un re-render de toute l'app à chaque token.
   const streamsRef = useRef<Map<string, StreamState>>(new Map())
 
@@ -224,7 +221,6 @@ export function useStreaming(deps: {
         if (cur) savePartialFor(cur)
       }, 3000),
       abortController: null,
-      hideContent: false,
     }
     streamsRef.current.set(targetId, s)
     setStreamingConvIds((prev) => {
@@ -248,7 +244,7 @@ export function useStreaming(deps: {
       const s = streamsRef.current.get(id)
       if (s) {
         setIsStreaming(true)
-        setStreamingContent(s.hideContent ? '' : s.accumulated)
+        setStreamingContent(s.accumulated)
         return
       }
     }
@@ -268,7 +264,6 @@ export function useStreaming(deps: {
     const s = streamsRef.current.get(targetId)
     if (!s) return
     s.accumulated += token
-    if (s.hideContent) return
     if (activeIdRef.current !== targetId) return
     // Throttle RAF : on coalesce les tokens en 1 setState par frame, lu
     // depuis le ref (toujours frais) au moment du flush.
@@ -276,35 +271,11 @@ export function useStreaming(deps: {
     pendingFlushRef.current = requestAnimationFrame(() => {
       pendingFlushRef.current = null
       const cur = streamsRef.current.get(targetId)
-      if (cur && activeIdRef.current === targetId && !cur.hideContent) {
+      if (cur && activeIdRef.current === targetId) {
         setStreamingContent(cur.accumulated)
       }
     })
   }, [])
-
-  // Marque la fin du stream SANS finalize. Garde le placeholder `streaming`
-  // en place, garde le stream dans streamsRef pour que isStreaming reste true.
-  // Différent de onDone qui finalize immédiatement.
-  const markStreamDone = useCallback((targetId: string): string => {
-    const s = streamsRef.current.get(targetId)
-    const content = s?.accumulated || ''
-    if (s?.saveInterval) {
-      clearInterval(s.saveInterval)
-      s.saveInterval = null
-    }
-    if (s) s.abortController = null
-    if (activeIdRef.current === targetId) {
-      cancelPendingFlush()
-      setStreamingContent('')
-    }
-    return content
-  }, [cancelPendingFlush])
-
-  // Cleanup final après publish manuel. À appeler après markStreamDone +
-  // finalize manuel pour libérer l'état de streaming.
-  const completeStreaming = useCallback((targetId: string) => {
-    teardownStream(targetId)
-  }, [teardownStream])
 
   const onDone = useCallback((targetId: string) => {
     const s = streamsRef.current.get(targetId)
@@ -337,12 +308,6 @@ export function useStreaming(deps: {
 
   // Setters indexés par convId — exposés en remplacement des accès directs
   // aux refs depuis useConversation.
-
-  const setHideContent = useCallback((hide: boolean, targetId: string) => {
-    const s = streamsRef.current.get(targetId)
-    if (s) s.hideContent = hide
-    if (hide && activeIdRef.current === targetId) setStreamingContent('')
-  }, [])
 
   // Affiche un message de progression dans la bulle live (ex: "📄 Lecture du
   // PDF..."). Ne touche PAS à `accumulated` — c'est ephémère, juste pour l'UI.
@@ -395,14 +360,11 @@ export function useStreaming(deps: {
     onToken,
     onDone,
     onError,
-    markStreamDone,
-    completeStreaming,
     stopStreaming,
     // Sync avec la conv affichée
     setActiveStream,
     isActive,
     // Setters indexés (remplacent les accès directs aux refs)
-    setHideContent,
     setProgressContent,
     setAbortController,
     resetAccumulated,
@@ -411,8 +373,8 @@ export function useStreaming(deps: {
     savePartialAll,
   }), [
     isStreaming, streamingContent, streamingConvIds, isStreamingFor, hasStream,
-    canStart, startStream, onToken, onDone, onError, markStreamDone,
-    completeStreaming, stopStreaming, setActiveStream, isActive, setHideContent,
+    canStart, startStream, onToken, onDone, onError,
+    stopStreaming, setActiveStream, isActive,
     setProgressContent, setAbortController, resetAccumulated, finalize,
     savePartialAll,
   ])

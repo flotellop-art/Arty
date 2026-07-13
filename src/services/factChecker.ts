@@ -1,10 +1,14 @@
 // Fact-checker post-pass : vérifie les claims factuels d'une réponse IA
-// avec un second appel Claude (Haiku par défaut, Sonnet en mode strict).
+// avec un second appel Claude (Haiku d'abord, escalade Sonnet sur risque).
 //
-// Run AFTER chaque réponse assistant complétée. Le résultat est attaché
-// à Message.factCheck et affiché en badge sous la bulle. Async, ne bloque
-// pas l'affichage de la réponse — l'utilisateur voit la réponse normale,
-// le badge apparaît 1-2 secondes après.
+// Run AFTER chaque réponse assistant complétée. ENTIÈREMENT ASYNCHRONE
+// depuis le retrait du mode « publish-after-fact-check » (juillet 2026) :
+// la réponse streame et se publie immédiatement, le badge passe par
+// pending → résultat, et les corrections sont RÉTRO-APPLIQUÉES sur le
+// message publié avec le diff barré→corrigé visible dans le badge (pas de
+// bascule silencieuse). L'ancien mode retenait la bulle pendant toute la
+// génération + la vérif (jusqu'à ~45 s de TypingIndicator) — plainte
+// « fact-check lent » de juillet 2026.
 //
 // Indépendant du provider qui a généré la réponse (Mistral, Claude, Gemini,
 // OpenAI) — le fact-checker prend (question, réponse) en entrée brute.
@@ -14,7 +18,7 @@ import { getValidAccessToken } from './googleAuth'
 import * as scoped from './scopedStorage'
 import * as storage from './storage'
 import { recordUsage } from './costTracker'
-import type { FactCheckResult, FactCheckClaim } from '../types'
+import type { FactCheckResult, FactCheckClaim, Message } from '../types'
 
 export type Verdict = FactCheckClaim['verdict']
 export type { FactCheckResult, FactCheckClaim }
@@ -80,7 +84,7 @@ export function getFactCheckMode(): FactCheckMode {
   try { plan = localStorage.getItem('arty-plan-cache') } catch {}
   // 'pro' aussi → off (revue PR 5) : Pro = BYOK sans clé serveur (PR #287),
   // l'endpoint fact-check répond 403 — tenter à chaque réponse ajoutait un
-  // badge d'échec systématique + la latence réseau dans le flux deferPublish.
+  // badge d'échec systématique + la latence réseau dans l'ex-flux deferPublish.
   // Un réglage EXPLICITE (posé plus haut) prime toujours sur ce défaut.
   return plan === 'free' || plan === 'trial' || plan === 'pro' ? 'off' : 'auto'
 }
@@ -192,6 +196,40 @@ function formatSearchContext(ctx: SearchContext | null): string {
 }
 
 /**
+ * Extrait le premier objet JSON à accolades ÉQUILIBRÉES d'un texte LLM
+ * (backticks, prose avant/après tolérés). Retourne null si aucun objet ne
+ * se ferme — typiquement un JSON tronqué par max_tokens : mieux vaut un
+ * échec franc (« pas de JSON ») qu'un JSON.parse sur une capture greedy.
+ * Exporté pour les tests.
+ */
+export function extractJsonObject(text: string): string | null {
+  const start = text.indexOf('{')
+  if (start === -1) return null
+  let depth = 0
+  let inString = false
+  let escaped = false
+  for (let i = start; i < text.length; i++) {
+    const ch = text.charAt(i)
+    if (escaped) {
+      escaped = false
+      continue
+    }
+    if (inString) {
+      if (ch === '\\') escaped = true
+      else if (ch === '"') inString = false
+      continue
+    }
+    if (ch === '"') inString = true
+    else if (ch === '{') depth++
+    else if (ch === '}') {
+      depth--
+      if (depth === 0) return text.slice(start, i + 1)
+    }
+  }
+  return null
+}
+
+/**
  * Résultat de factCheckResponse. En cas d'échec, on capture la raison
  * (timeout/401/parse fail/…) pour afficher dans le badge UI au lieu d'un
  * générique "indisponible". Permet le diagnostic en prod sans logs.
@@ -237,12 +275,19 @@ export async function factCheckResponse(
   return done(escalated.result ? escalated : first)
 }
 
+// Timeouts client GÉNÉREUX depuis que la vérif est asynchrone (publication
+// immédiate) : ils ne gèlent plus aucune UI, ils bornent seulement le moment
+// où le badge bascule en « indisponible ». Un abort client trop court est
+// du pur gaspillage : le quota bg_quota est consommé à l'entrée de
+// l'endpoint et l'appel Anthropic va au bout côté Worker — on paie la
+// vérif et on jette le résultat. Doit couvrir le timeout upstream serveur
+// par palier (15 s Haiku / 50 s Sonnet) + retry serveur + réseau.
 const TIER_INFO = {
-  haiku: { model: 'claude-haiku-4-5-20251001', label: 'Haiku 4.5', timeoutMs: 10_000 },
+  haiku: { model: 'claude-haiku-4-5-20251001', label: 'Haiku 4.5', timeoutMs: 25_000 },
   // Sonnet + web_search en non-streamé : Anthropic accumule toute la réponse
-  // (2 recherches + synthèse JSON) avant de répondre — 25-30 s typique en
-  // prod, 35 s couvre le 95e percentile sans geler le placeholder.
-  sonnet: { model: 'claude-sonnet-5', label: 'Sonnet 5', timeoutMs: 35_000 },
+  // (jusqu'à 3 recherches + synthèse JSON) avant de répondre — 25-30 s
+  // typique en prod.
+  sonnet: { model: 'claude-sonnet-5', label: 'Sonnet 5', timeoutMs: 60_000 },
 } as const
 
 async function runCheckTier(
@@ -337,18 +382,20 @@ async function runCheckTier(
   }
 
   // Le LLM peut wrapper le JSON dans des backticks ou ajouter du texte.
-  // On extrait le premier objet JSON valide qu'on trouve.
-  const jsonMatch = text.match(/\{[\s\S]*\}/)
-  if (!jsonMatch) {
+  // Extraction à accolades équilibrées (l'ancien regex greedy /\{[\s\S]*\}/
+  // capturait jusqu'à la DERNIÈRE accolade du texte — du commentaire après
+  // le JSON suffisait à produire un « JSON malformé »).
+  const candidate = extractJsonObject(text)
+  if (!candidate) {
     console.warn('[factChecker] no JSON found in response text:', text.slice(0, 200))
     return { result: null, reason: 'pas de JSON dans la réponse LLM' }
   }
 
   let parsed: { overall_confidence?: unknown; claims?: unknown }
   try {
-    parsed = JSON.parse(jsonMatch[0])
+    parsed = JSON.parse(candidate)
   } catch (err) {
-    console.warn('[factChecker] JSON.parse failed:', err, 'raw:', jsonMatch[0].slice(0, 200))
+    console.warn('[factChecker] JSON.parse failed:', err, 'raw:', candidate.slice(0, 200))
     return { result: null, reason: 'JSON malformé' }
   }
 
@@ -399,27 +446,9 @@ async function runCheckTier(
   }
 }
 
-// Pure variant — prend (question, content, mode) et retourne le résultat
-// du fact-check + le contenu corrigé (find/replace des claims "wrong"
-// appliqué). Aucun side-effect sur le storage. Utilisé par le flow
-// "publish-after-fact-check" où on retient la bulle assistant tant que
-// la vérif n'a pas fini, pour éviter de montrer le contenu non vérifié.
-export interface FactCheckContentOutput {
-  correctedContent: string
-  result: FactCheckResult | null
-  appliedCorrections: number
-  // Si result null, raison du fail (timeout, parse, réseau, etc.). Présent
-  // uniquement quand le fact-check a vraiment été tenté mais a échoué.
-  // ABSENT quand on a skippé intentionnellement (mode off ou réponse
-  // triviale) — dans ce cas factCheckContent retourne null tout court.
-  // L'appelant utilise cette distinction pour décider d'afficher ou non
-  // le badge "⚠ Fact-check indisponible".
-  failReason?: string
-}
-
 // ---------------------------------------------------------------------------
-// Application des corrections — partagée par factCheckContent (flow
-// deferPublish, chemin normal) et runFactCheckOnLatest (fallback async).
+// Application des corrections — consommée par runFactCheckOnLatest (chemin
+// unique depuis le retrait du mode publish-after-fact-check).
 // Bug live du 11 juin 2026 : le remplacement était un `includes()` verbatim
 // qui ratait silencieusement dès que le fact-checker citait le passage sans
 // son markdown (**gras**), avec une apostrophe droite là où la réponse en a
@@ -502,46 +531,36 @@ export function applyClaimCorrections(
   return { correctedContent: corrected, appliedCount }
 }
 
-export async function factCheckContent(
-  question: string,
-  content: string,
-  mode: FactCheckMode = getFactCheckMode()
-): Promise<FactCheckContentOutput | null> {
-  // Récupère le contexte de recherche capturé pendant la génération
-  // (Mistral via setSearchContext) puis clear immédiatement pour ne pas
-  // polluer le prochain message si le fact-check échoue.
-  const ctx = getSearchContext()
-  clearSearchContext()
-  const outcome = await factCheckResponse(question, content, mode, ctx)
-  if (!outcome.result) {
-    // Skip intentionnel (mode off, réponse triviale type "Salut !", plafond
-    // de fond du jour atteint) → pas de badge. Return null.
-    if (
-      outcome.reason === 'désactivé' ||
-      outcome.reason === 'réponse trop courte' ||
-      outcome.reason === FACT_CHECK_QUOTA_REASON
-    ) {
-      return null
-    }
-    // Fail réel (timeout, réseau, parse) → on remonte le fail pour que
-    // l'appelant affiche le badge "indisponible" et informe l'utilisateur
-    // que la vérif n'a pas tourné.
-    return { correctedContent: content, result: null, appliedCorrections: 0, failReason: outcome.reason }
-  }
-  const result = outcome.result
-
-  const { correctedContent, appliedCount } = applyClaimCorrections(content, result.claims)
-  if (appliedCount > 0) {
-    result.originalContent = content
-    result.appliedCorrections = appliedCount
-  }
-  return { correctedContent, result, appliedCorrections: appliedCount }
+// Remplacement IMMUTABLE d'un message (pattern H1/togglePinMessage) : muter
+// le message en place laisse les mêmes références objet/array → les memo()
+// de MessageList/MessageItem ne re-rendent jamais le badge ni la correction
+// rétro-appliquée. C'est load-bearing depuis que le fact-check est le chemin
+// asynchrone unique : plus aucun finalize ne suit pour « couvrir » l'écriture.
+// `patch` retourne le message remplaçant (objet NEUF, jamais le même muté).
+function patchMessage(
+  conversationId: string,
+  messageId: string,
+  patch: (m: Message) => Message,
+  bumpUpdatedAt = false
+): void {
+  const conv = storage.getConversation(conversationId)
+  if (!conv) return
+  let found = false
+  conv.messages = conv.messages.map((m) => {
+    if (m.id !== messageId) return m
+    found = true
+    return patch(m)
+  })
+  if (!found) return
+  if (bumpUpdatedAt) conv.updatedAt = Date.now()
+  storage.saveConversation(conv)
 }
 
 // Helper end-to-end : trouve le dernier (question, réponse) dans une
 // conversation, lance le fact-check, attache le résultat à Message.factCheck
 // et persiste. À appeler après chaque onDone d'une réponse assistant.
-// Ne fait rien si mode 'off' ou si on ne trouve pas la paire.
+// Ne fait rien si mode 'off', conversation EU, réponse interrompue, ou si
+// on ne trouve pas la paire.
 export async function runFactCheckOnLatest(
   conversationId: string,
   refreshConversations: () => void
@@ -556,6 +575,17 @@ export async function runFactCheckOnLatest(
   const conv = storage.getConversation(conversationId)
   if (!conv) {
     console.warn('[factChecker] conv not found:', conversationId)
+    return
+  }
+
+  // RGPD (RÈGLE 5.3) — défense en profondeur : le fact-checker tourne sur
+  // Claude (Anthropic, serveurs US). Une conversation euOnly ne doit JAMAIS
+  // arriver ici — le call site (useConversation) force déjà mode 'off' sur
+  // les convs EU, mais ce garde doit AUSSI vivre dans le service : un futur
+  // appelant qui oublierait le gate enverrait question + réponse (mails/
+  // Drive inclus) hors Europe en silence.
+  if (conv.euOnly) {
+    console.info('[factChecker] skipped (conversation EU — RÈGLE 5.3)')
     return
   }
 
@@ -584,6 +614,13 @@ export async function runFactCheckOnLatest(
   }
 
   const assistantMsg = conv.messages[lastAssistantIdx]!
+  // Réponse interrompue (bouton Stop) : contenu partiel — vérifier ou
+  // « corriger » une réponse tronquée n'a pas de sens et gaspille le quota
+  // de fond. Remplace le garde H4 du flow deferPublish supprimé.
+  if (assistantMsg.interrupted) {
+    console.info('[factChecker] skipping (réponse interrompue)')
+    return
+  }
   // Skip si déjà fact-checké ET ce n'est PAS le placeholder pending
   // (sinon on ne pourrait jamais finaliser).
   if (assistantMsg.factCheck && assistantMsg.factCheck.modelLabel !== 'Vérification en cours…') {
@@ -610,9 +647,9 @@ export async function runFactCheckOnLatest(
   }
 
   // Marqueur PENDING immédiat — visible dans l'UI même si le fact-check
-  // prend 2-5s. Permet à l'utilisateur de voir que la vérif est active
+  // prend 2-45s. Permet à l'utilisateur de voir que la vérif est active
   // dès la fin du stream. Sera remplacé par le vrai résultat plus bas.
-  assistantMsg.factCheck = {
+  const pendingFactCheck: FactCheckResult = {
     overallConfidence: 'high',
     claims: [],
     // Le modelLabel exact 'Vérification en cours…' reste load-bearing :
@@ -622,7 +659,7 @@ export async function runFactCheckOnLatest(
     checkedAt: Date.now(),
     status: 'pending',
   }
-  storage.saveConversation(conv)
+  patchMessage(conversationId, assistantMsg.id, (m) => ({ ...m, factCheck: pendingFactCheck }))
   refreshConversations()
 
   const originalContent = assistantMsg.content
@@ -641,56 +678,47 @@ export async function runFactCheckOnLatest(
     // C-F — plafond de fond atteint PENDANT cet appel (429) : retirer le
     // placeholder sans badge d'échec — skip intentionnel, pas une panne.
     if (outcome.reason === FACT_CHECK_QUOTA_REASON) {
-      const convQ = storage.getConversation(conversationId)
-      const targetQ = convQ?.messages.find((m) => m.id === assistantMsg.id)
-      if (convQ && targetQ) {
-        delete targetQ.factCheck
-        storage.saveConversation(convQ)
-        refreshConversations()
-      }
+      patchMessage(conversationId, assistantMsg.id, (m) => {
+        const { factCheck: _dropped, ...rest } = m
+        return rest
+      })
+      refreshConversations()
       return
     }
     // Update le placeholder pour montrer l'échec à l'user (au lieu de
     // laisser "Vérification en cours…" éternellement). On embarque la
     // raison dans le modelLabel pour qu'elle s'affiche dans le badge
     // (visible côté utilisateur sans avoir à ouvrir DevTools).
-    const conv2 = storage.getConversation(conversationId)
-    if (conv2) {
-      const target2 = conv2.messages.find((m) => m.id === assistantMsg.id)
-      if (target2) {
-        target2.factCheck = {
-          overallConfidence: 'medium',
-          claims: [],
-          modelLabel: `⚠ Fact-check indisponible (${outcome.reason})`,
-          checkedAt: Date.now(),
-          status: 'failed',
-        }
-        storage.saveConversation(conv2)
-        refreshConversations()
-      }
+    const failedFactCheck: FactCheckResult = {
+      overallConfidence: 'medium',
+      claims: [],
+      modelLabel: `⚠ Fact-check indisponible (${outcome.reason})`,
+      checkedAt: Date.now(),
+      status: 'failed',
     }
+    patchMessage(conversationId, assistantMsg.id, (m) => ({ ...m, factCheck: failedFactCheck }))
+    refreshConversations()
     return
   }
   const result = outcome.result
 
-  // Applique les corrections (helper partagé avec factCheckContent — même
-  // matching exact + tolérant, mêmes flags claim.applied). On garde
-  // l'original dans factCheck.originalContent pour le diff du dropdown.
+  // Applique les corrections (matching exact + tolérant, flags
+  // claim.applied). On garde l'original dans factCheck.originalContent
+  // pour le diff du dropdown.
   const { correctedContent, appliedCount } = applyClaimCorrections(originalContent, result.claims)
   if (appliedCount > 0) {
     result.originalContent = originalContent
     result.appliedCorrections = appliedCount
   }
 
-  // Re-lit la conv (peut avoir changé pendant l'await) et update le message
-  // exact via son ID.
-  const freshConv = storage.getConversation(conversationId)
-  if (!freshConv) return
-  const target = freshConv.messages.find((m) => m.id === assistantMsg.id)
-  if (!target) return
-  target.content = correctedContent
-  target.factCheck = result
-  freshConv.updatedAt = Date.now()
-  storage.saveConversation(freshConv)
+  // patchMessage re-lit la conv (elle peut avoir changé pendant l'await) et
+  // remplace le message exact via son ID — si le message a disparu entre
+  // temps (régénération, suppression), aucune écriture.
+  patchMessage(
+    conversationId,
+    assistantMsg.id,
+    (m) => ({ ...m, content: correctedContent, factCheck: result }),
+    true
+  )
   refreshConversations()
 }

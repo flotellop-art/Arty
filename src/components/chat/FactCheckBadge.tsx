@@ -24,18 +24,28 @@ interface Props {
 
 type FactCheckStatus = NonNullable<FactCheckResult['status']>
 
+// Un pending plus vieux que le pire cas de la cascade (~85 s Haiku+Sonnet)
+// est orphelin : l'app a été fermée/crashée pendant la vérif et rien ne la
+// relance au boot. Rendu « indisponible » plutôt qu'un « Vérification… »
+// pulsé pour l'éternité. Purement visuel — aucune écriture storage.
+const STALE_PENDING_MS = 3 * 60_000
+
 // Rétro-compat : les résultats persistés (conversations chiffrées) avant
 // l'ajout du champ status n'en ont pas — on dérive l'état des magic
 // strings historiques du modelLabel. Ces strings restent posées par
 // factChecker.ts (le skip-guard de runFactCheckOnLatest compare
 // 'Vérification en cours…') : ne pas les supprimer côté service.
 function deriveStatus(result: FactCheckResult): FactCheckStatus {
-  if (result.status) return result.status
-  if (result.modelLabel === 'Vérification en cours…') return 'pending'
-  if (result.modelLabel?.includes('indisponible')) return 'failed'
-  return result.claims.some((c) => c.verdict !== 'verified')
-    ? 'success-with-claims'
-    : 'success-empty'
+  const status: FactCheckStatus = result.status
+    ?? (result.modelLabel === 'Vérification en cours…'
+      ? 'pending'
+      : result.modelLabel?.includes('indisponible')
+        ? 'failed'
+        : result.claims.some((c) => c.verdict !== 'verified')
+          ? 'success-with-claims'
+          : 'success-empty')
+  if (status === 'pending' && Date.now() - result.checkedAt > STALE_PENDING_MS) return 'failed'
+  return status
 }
 
 const VERDICT_STYLE: Record<string, string> = {
