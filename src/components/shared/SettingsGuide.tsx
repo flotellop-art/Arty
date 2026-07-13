@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { isGmailNoCasaPhase0Enabled } from '../../services/gmailNoCasaPhase0'
+import { isPublicGoogleOAuthProfileEnabled } from '../../services/publicGoogleOAuthProfile'
 
 interface SettingsGuideProps {
   onClose: () => void
@@ -96,7 +96,7 @@ function StylePage() {
 }
 
 function ModelPage() {
-  const noCasaPhase0 = isGmailNoCasaPhase0Enabled()
+  const noCasaPhase0 = isPublicGoogleOAuthProfileEnabled()
   return (
     <div className="space-y-4">
       <p className="text-xs text-theme-muted leading-relaxed">

@@ -27,7 +27,7 @@ import {
   type BriefAction,
 } from '../services/proactiveBriefActions'
 import type { useGmail } from './useGmail'
-import { isGmailNoCasaPhase0Enabled } from '../services/gmailNoCasaPhase0'
+import { isPublicGoogleOAuthProfileEnabled } from '../services/publicGoogleOAuthProfile'
 
 // Outils EXCLUSIVEMENT en lecture exposés au modèle, + l'outil de sortie
 // structurée. Sécurité (RÈGLE 6 / lethal trifecta) : le brief ingère du contenu
@@ -57,7 +57,7 @@ export function useProactiveBrief({ gmail, isGoogleConnected, userName, onSend }
   const [brief, setBrief] = useState<BriefState>(null)
   const [loading, setLoading] = useState(false)
   const [dismissed, setDismissed] = useState(false)
-  const noCasaPhase0 = isGmailNoCasaPhase0Enabled()
+  const noCasaPhase0 = isPublicGoogleOAuthProfileEnabled()
 
   const runningRef = useRef(false)
   const abortRef = useRef<AbortController | null>(null)
