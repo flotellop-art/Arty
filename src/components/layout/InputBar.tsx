@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback, type KeyboardEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
-import type { FileAttachment } from '../../types'
+import type { ChatSendHandler, FileAttachment, QuickActionId, QuickActionSelection } from '../../types'
 import { generateId } from '../../utils/generateId'
 import { useSpeechRecognition } from '../../hooks/useSpeechRecognition'
 import { isNative } from '../../services/native/platform'
@@ -16,9 +16,10 @@ import { hasUrl } from '../../services/aiRouter'
 import { haptic } from '../../utils/haptic'
 import { InputContextSlot } from './InputContextSlot'
 import { ReflectionPill } from '../chat/ReflectionPill'
+import { createQuickActionSelection, QUICK_ACTIONS } from '../../services/quickActions'
 
 interface InputBarProps {
-  onSend: (text: string, files?: FileAttachment[]) => void
+  onSend: ChatSendHandler
   isStreaming: boolean
   onStop?: () => void
   // Seed value for the textarea on mount. Used by the share-to-Arty flow
@@ -37,29 +38,23 @@ interface InputBarProps {
 }
 
 // Roadmap UI Phase 3 #4 — Quick Actions chips contextuelles. Affichées
-// sous l'input quand celui-ci est vide. Évoluent selon l'heure pour rester
-// pertinents. Volontairement polyvalents (résumé, traduction, rédaction,
-// explication) — pas de feature métier nichée. Pour ne pas pénaliser les
-// utilisateurs sans Google connecté.
-function getQuickActionChips(t: TFunction): Array<{ label: string; prompt: string; icon: string }> {
+// sous l'input quand celui-ci est vide, elles arment le prochain texte au
+// lieu d'envoyer seules un prompt incomplet. Elles évoluent selon l'heure et
+// restent polyvalentes (résumé, traduction, rédaction, explication).
+function getQuickActionChips(t: TFunction): Array<{ id: QuickActionId; label: string; icon: string }> {
   const hour = new Date().getHours()
   // Variant matin : commencer la journée avec un brief / résumé
   // Variant après-midi / soir : actions productives génériques
   const morning = hour < 11
-  if (morning) {
-    return [
-      { icon: '☀️', label: t('chat.input.chips.brief.label'), prompt: t('chat.input.chips.brief.prompt') },
-      { icon: '✍️', label: t('chat.input.chips.writeEmail.label'), prompt: t('chat.input.chips.writeEmail.prompt') },
-      { icon: '📝', label: t('chat.input.chips.summarizeText.label'), prompt: t('chat.input.chips.summarizeText.prompt') },
-      { icon: '🌍', label: t('chat.input.chips.translateToEn.label'), prompt: t('chat.input.chips.translateToEn.prompt') },
-    ]
-  }
-  return [
-    { icon: '📝', label: t('chat.input.chips.summarize.label'), prompt: t('chat.input.chips.summarize.prompt') },
-    { icon: '✍️', label: t('chat.input.chips.write.label'), prompt: t('chat.input.chips.write.prompt') },
-    { icon: '🌍', label: t('chat.input.chips.translate.label'), prompt: t('chat.input.chips.translate.prompt') },
-    { icon: '💡', label: t('chat.input.chips.explain.label'), prompt: t('chat.input.chips.explain.prompt') },
-  ]
+  const ids: QuickActionId[] = morning
+    ? ['brief', 'writeEmail', 'summarizeText', 'translateToEn']
+    : ['summarize', 'write', 'translate', 'explain']
+
+  return ids.map((id) => ({
+    id,
+    icon: QUICK_ACTIONS[id].icon,
+    label: t(QUICK_ACTIONS[id].labelKey),
+  }))
 }
 
 // V2 voice-first — tap = webkit speech, hold ≥ 600ms = Whisper recording.
@@ -150,6 +145,10 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
   const v2 = inputBarV2Enabled()
   const [text, setText] = useState(() => initialText ?? '')
   const [files, setFiles] = useState<FileAttachment[]>(() => initialFiles ?? [])
+  // Un clic sur une action rapide ARME le prochain envoi. L'instruction
+  // n'entre jamais dans le textarea ni dans la bulle user : seuls l'ID et la
+  // locale allowlistés traversent le flux d'envoi.
+  const [pendingQuickAction, setPendingQuickAction] = useState<QuickActionSelection | undefined>()
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const cameraInputRef = useRef<HTMLInputElement>(null)
@@ -286,20 +285,36 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
     // Roadmap UI Phase 1 #6 — retour haptique léger sur envoi. Confirme
     // l'action même en bruit de fond / poche / écran non regardé.
     haptic('light').catch(() => {})
-    onSend(trimmed || t('chat.input.defaultFilePrompt'), filesToSend.length > 0 ? filesToSend : undefined)
+    onSend(
+      trimmed || t('chat.input.defaultFilePrompt'),
+      filesToSend.length > 0 ? filesToSend : undefined,
+      pendingQuickAction ? { quickAction: pendingQuickAction } : undefined,
+    )
     setText('')
     setFiles([])
+    setPendingQuickAction(undefined)
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto'
     }
     return true
-  }, [isStreaming, isListening, stopListening, onSend, t])
+  }, [isStreaming, isListening, stopListening, onSend, t, pendingQuickAction])
 
   const handleSend = () => { sendText(text, files) }
 
   const applySlashCommand = useCallback((cmd: SlashCommand) => {
     setText(cmd.prompt)
+    // Une commande slash explicite remplace le mode rapide précédemment
+    // armé, sinon deux intentions invisibles se cumuleraient.
+    setPendingQuickAction(undefined)
     setShowSlashPalette(false)
+    setTimeout(() => textareaRef.current?.focus(), 0)
+  }, [])
+
+  const handleQuickActionClick = useCallback((id: QuickActionId) => {
+    // Second clic = annulation ; clic sur une autre action = remplacement.
+    setPendingQuickAction((current) =>
+      current?.id === id ? undefined : createQuickActionSelection(id)
+    )
     setTimeout(() => textareaRef.current?.focus(), 0)
   }, [])
 
@@ -914,17 +929,21 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
 
       {/* Quick Actions chips — affichées sous l'input quand celui-ci est
           vide ET pas de fichier attaché ET pas en train de streamer/écouter.
-          Roadmap UI Phase 3 #4 — suggestions contextuelles à 1 tap, utile pour
-          les utilisateurs qui ne savent pas quoi taper. Le set évolue selon
-          l'heure pour rester pertinent (matin = brief, soir = résumé). */}
+          Un tap sélectionne le mode du prochain message, sans envoi immédiat.
+          Le set évolue selon l'heure (matin = brief, soir = résumé). */}
       {!v2 && !text.trim() && files.length === 0 && !isStreaming && !isListening && !isRecordingAudio && (
         <div className="mb-2 flex flex-wrap gap-1.5 px-1">
           {getQuickActionChips(t).map((chip) => (
             <button
-              key={chip.label}
+              key={chip.id}
               type="button"
-              onClick={() => onSend(chip.prompt)}
-              className="px-3 py-1.5 text-xs rounded-full bg-theme-surface border border-theme-border text-theme-ink hover:border-theme-accent hover:text-theme-accent transition-colors"
+              onClick={() => handleQuickActionClick(chip.id)}
+              aria-pressed={pendingQuickAction?.id === chip.id}
+              className={`px-3 py-1.5 text-xs rounded-full border transition-colors ${
+                pendingQuickAction?.id === chip.id
+                  ? 'bg-theme-accent text-theme-bg border-theme-accent'
+                  : 'bg-theme-surface border-theme-border text-theme-ink hover:border-theme-accent hover:text-theme-accent'
+              }`}
               aria-label={t('chat.input.chipSuggestion', { label: chip.label })}
             >
               {chip.icon} {chip.label}
@@ -1012,7 +1031,8 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
           onDismissCalendar={() => setCalendarSuggestion(null)}
           showChips={!text.trim() && files.length === 0 && !isStreaming && !isListening && !isRecordingAudio}
           chips={getQuickActionChips(t)}
-          onChipClick={(prompt) => onSend(prompt)}
+          activeChipId={pendingQuickAction?.id}
+          onChipClick={handleQuickActionClick}
           reflectionSlot={<ReflectionPill euOnly={euOnly} />}
         />
       )}

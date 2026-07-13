@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useRef } from 'react'
 import type { FileAttachment, Message } from '../types'
 import { getFile } from '../services/secureFileStorage'
+import { getMessageTextForModel } from '../services/quickActions'
 
 // Detect MIME type from filename if browser didn't set it
 function detectMimeType(name: string, type: string): string {
@@ -78,15 +79,16 @@ export async function buildApiMessages(
 ): Promise<Array<{ role: string; content: string | Array<Record<string, unknown>> }>> {
   return Promise.all(
     messages.map(async (m) => {
+      const modelText = getMessageTextForModel(m)
       if (!m.files || m.files.length === 0) {
-        return { role: m.role, content: m.content }
+        return { role: m.role, content: modelText }
       }
       const hydrated = await hydrateFiles(m.files)
       const blocks = buildBlocksFromFiles(hydrated)
       // Un bloc text vide est rejeté par l'API Anthropic ("text content blocks
       // must contain non-whitespace text"). Pour un message image-only,
       // injecter un texte de relais pour que l'historique reste valide.
-      const trailingText = m.content.trim() || 'Analyse ce fichier.'
+      const trailingText = modelText.trim() || 'Analyse ce fichier.'
       blocks.push({ type: 'text', text: trailingText })
       return { role: m.role, content: blocks }
     })
@@ -101,11 +103,12 @@ export async function buildTextOnlyMessages(
   messages: Message[]
 ): Promise<Array<{ role: string; content: string }>> {
   return messages.map((m) => {
+    const modelText = getMessageTextForModel(m)
     if (!m.files || m.files.length === 0) {
-      return { role: m.role, content: m.content }
+      return { role: m.role, content: modelText }
     }
     const fileNotes = m.files.map((f) => `[Fichier joint: ${f.name}]`).join('\n')
-    return { role: m.role, content: `${fileNotes}\n${m.content}`.trim() }
+    return { role: m.role, content: `${fileNotes}\n${modelText}`.trim() }
   })
 }
 
@@ -123,11 +126,11 @@ export async function buildMistralMessages(
 ): Promise<Array<{ role: string; content: string | MistralBlock[] }>> {
   return Promise.all(
     messages.map(async (m) => {
+      const modelText = getMessageTextForModel(m)
       if (!m.files || m.files.length === 0) {
-        return { role: m.role, content: m.content }
+        return { role: m.role, content: modelText }
       }
-      const hydrated = await hydrateFiles(m.files)
-      const blocks = buildMistralBlocks(m.content, hydrated)
+      const blocks = await buildMistralContentBlocks(modelText, m.files)
       return { role: m.role, content: blocks }
     })
   )
@@ -167,6 +170,17 @@ export function buildMistralBlocks(
   const fullText = [...textNotes, text].filter(Boolean).join('\n')
   blocks.push({ type: 'text', text: fullText || 'Analyse ce fichier.' })
   return blocks
+}
+
+// Rejouer ou éditer un ancien message ne dispose plus forcément des bytes en
+// RAM. Hydrater les références avant de reconstruire le dernier message évite
+// de perdre silencieusement une image lors d'une relance Mistral.
+export async function buildMistralContentBlocks(
+  text: string,
+  files: FileAttachment[]
+): Promise<MistralBlock[]> {
+  const hydrated = await hydrateFiles(files)
+  return buildMistralBlocks(text, hydrated)
 }
 
 // Build content blocks for the current outgoing message (files have data

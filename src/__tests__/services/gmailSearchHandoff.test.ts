@@ -107,5 +107,7 @@ describe('Gmail search handoff — deterministic local compiler', () => {
     const base = compileGmailSearch('Cherche le mail de Paul', new Date(now))!.payload
     expect(isValidGmailSearchPayload({ ...base, createdAt: now + 120_000, expiresAt: now + 180_000 }, now)).toBe(false)
     expect(isValidGmailSearchPayload({ ...base, query: 'label:secret' }, now)).toBe(false)
+    expect(isValidGmailSearchPayload({ ...base, afterOpen: 'delete' }, now)).toBe(false)
+    expect(isValidGmailSearchPayload({ ...base, afterOpen: 'summarize' }, now)).toBe(true)
   })
 })

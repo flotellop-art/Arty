@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
-import type { Conversation, Message, FileAttachment } from '../types'
+import type { ChatSendOptions, Conversation, Message, FileAttachment } from '../types'
 import { generateId } from '../utils/generateId'
 import { streamMessage } from '../services/anthropicClient'
 import { streamGeminiMessage, geminiResearch } from '../services/geminiClient'
@@ -14,7 +14,7 @@ import { fetchPdfMarkdowns, fetchUrlMarkdowns } from '../services/pdfUrlFetch'
 import * as storage from '../services/storage'
 import { maybeExtractMemory } from '../services/autoMemory'
 import { useStreaming } from './useStreaming'
-import { useFileAttachments, buildApiMessages, buildContentBlocks, buildTextOnlyMessages, buildMistralMessages, buildMistralBlocks } from './useFileAttachments'
+import { useFileAttachments, buildApiMessages, buildContentBlocks, buildTextOnlyMessages, buildMistralMessages, buildMistralContentBlocks } from './useFileAttachments'
 import { getReflectionLevel } from '../services/reflectionLevel'
 import { putFile } from '../services/secureFileStorage'
 import { runFactCheckOnLatest, getFactCheckMode } from '../services/factChecker'
@@ -24,6 +24,11 @@ import { wantsImageGeneration, generateImageToolDefinition } from '../services/t
 import { detectReminderIntent, createReminder } from '../services/reminderService'
 import { compileGmailSearch, validateGmailSearchQuery } from '../services/gmailSearchHandoff'
 import { isPublicGoogleOAuthProfileEnabled } from '../services/publicGoogleOAuthProfile'
+import {
+  composeQuickActionText,
+  getGmailAfterOpenAction,
+  isQuickActionSelection,
+} from '../services/quickActions'
 import i18n from '../i18n'
 
 type ToolHandler = (name: string, input: Record<string, unknown>) => Promise<{ result: string; screenshot?: string }>
@@ -186,9 +191,21 @@ export function useConversation() {
   }, [])
 
   const sendMessage = useCallback(
-    async (text: string, conversationId?: string, files?: FileAttachment[]) => {
+    async (
+      text: string,
+      conversationId?: string,
+      files?: FileAttachment[],
+      options?: ChatSendOptions,
+    ) => {
       const targetId = conversationId ?? activeId
       if (!targetId) return
+
+      // Seul un ID connu peut activer une instruction invisible. Le texte
+      // saisi reste la source d'affichage, de titre, de recherche et de copie.
+      const quickAction = isQuickActionSelection(options?.quickAction)
+        ? options.quickAction
+        : undefined
+      const modelText = composeQuickActionText(text, quickAction)
 
       setError(null)
 
@@ -211,7 +228,10 @@ export function useConversation() {
       // assistant, et on ne consomme PAS de quota LLM.
       // Détection conservative : trigger explicite + date claire + body
       // non vide. Si ambigu, on laisse passer au LLM.
-      const reminderIntent = detectReminderIntent(text)
+      // Une action rapide explicite doit gagner sur les automations locales :
+      // un texte à résumer contenant « rappelle-moi mardi » ne doit pas créer
+      // un vrai rappel à la place du résumé demandé.
+      const reminderIntent = quickAction ? null : detectReminderIntent(text)
       if (reminderIntent) {
         const userMsg: Message = {
           id: generateId(),
@@ -234,7 +254,7 @@ export function useConversation() {
       }
 
       // Handle /aide command
-      if (text.trim().toLowerCase() === '/aide') {
+      if (!quickAction && text.trim().toLowerCase() === '/aide') {
         const helpMsg: Message = {
           id: generateId(),
           role: 'user',
@@ -263,6 +283,7 @@ export function useConversation() {
         ? compileGmailSearch(text)
         : null
       if (gmailSearch) {
+        const afterOpen = getGmailAfterOpenAction(quickAction)
         const userMsg: Message = {
           id: generateId(),
           role: 'user',
@@ -274,7 +295,10 @@ export function useConversation() {
           role: 'assistant',
           content: i18n.t('gmailSearch.assistantIntro'),
           timestamp: Date.now(),
-          gmailSearch: gmailSearch.payload,
+          gmailSearch: {
+            ...gmailSearch.payload,
+            ...(afterOpen ? { afterOpen } : {}),
+          },
         }
         conv.messages.push(userMsg, handoffResponse)
         if (conv.messages.filter((message) => message.role === 'user').length === 1) {
@@ -328,6 +352,7 @@ export function useConversation() {
         content: text,
         timestamp: Date.now(),
         ...(persistedFiles ? { files: persistedFiles } : {}),
+        ...(quickAction ? { quickAction } : {}),
       }
 
       conv.messages.push(userMessage)
@@ -433,11 +458,12 @@ export function useConversation() {
       // Décision de routage UNIQUE (refonte routage, étape 2) : euOnly,
       // fichiers, choix manuel et cascade auto vivent désormais dans
       // resolveRoute — même ordre d'invariants qu'avant (RÈGLE 5.3, BUG 12).
-      // Calculée sur le texte ORIGINAL (avant enrichissement PDF/hybride)
+      // Calculée sur la requête effective (action rapide + texte), avant
+      // enrichissement PDF/hybride,
       // et transmise aux clients via options.routeDecision : anthropicClient
       // ne re-route plus sur un texte contaminé ou du tour précédent.
       const routeInput = gatherRouteInput({
-        originalText: text,
+        originalText: modelText,
         hasFiles,
         hasPdf,
         euOnly: !!conv.euOnly,
@@ -488,7 +514,7 @@ export function useConversation() {
       // si le message ne touche pas à la mémoire.
       try {
         window.dispatchEvent(
-          new CustomEvent('arty-rebuild-prompt', { detail: { userMessage: text } })
+          new CustomEvent('arty-rebuild-prompt', { detail: { userMessage: modelText } })
         )
       } catch { /* SSR / test env */ }
 
@@ -525,14 +551,14 @@ export function useConversation() {
       // le provider. Échec = on laisse passer tel quel. Linkup est déjà dans
       // le chemin de données euOnly (recherche web Mistral via /api/search/web)
       // et hébergé en EU → compatible avec la promesse "données EU".
-      let outgoingText = text
+      let outgoingText = modelText
       if (provider !== 'hybrid') {
         const pdfUrls = extractPdfUrls(text)
         if (pdfUrls.length > 0) {
           setProgressContent('📄 Lecture du PDF...', targetId)
           const pdfSections = await fetchPdfMarkdowns(pdfUrls)
           if (pdfSections) {
-            outgoingText = `${text}\n\n${pdfSections}`
+            outgoingText = `${outgoingText}\n\n${pdfSections}`
           }
           resetAccumulated(targetId)
           setProgressContent('', targetId)
@@ -569,7 +595,7 @@ export function useConversation() {
 
       if (provider === 'hybrid') {
         setProgressContent('🔍 Recherche en cours (Gemini)...', targetId)
-        Promise.all([geminiResearch(text, undefined, getReflectionLevel()), buildApiMessages(conv.messages)]).then(([research, enrichedMessages]) => {
+        Promise.all([geminiResearch(modelText, undefined, getReflectionLevel()), buildApiMessages(conv.messages)]).then(([research, enrichedMessages]) => {
           // Si l'utilisateur a cliqué Stop PENDANT la recherche Gemini,
           // stopStreaming() a déjà nettoyé le stream. Sans ce garde, le .then
           // démarrerait quand même une génération Claude "zombie" après le Stop.
@@ -577,7 +603,7 @@ export function useConversation() {
           if (research) {
             enrichedMessages[enrichedMessages.length - 1] = {
               role: 'user',
-              content: `${text}\n\n--- RECHERCHE WEB (données Gemini, à jour) ---\n${research}\n--- FIN RECHERCHE ---\n\nUtilise ces données pour ton rapport. Cite les sources trouvées.`,
+              content: `${modelText}\n\n--- RECHERCHE WEB (données Gemini, à jour) ---\n${research}\n--- FIN RECHERCHE ---\n\nUtilise ces données pour ton rapport. Cite les sources trouvées.`,
             }
           }
           resetAccumulated(targetId)
@@ -601,7 +627,7 @@ export function useConversation() {
         // Gemini text-only pour l'instant — le multimodal Gemini sera dans
         // une PR future (formats parts/inlineData différents de Claude).
         const apiMessages = await buildTextOnlyMessages(conv.messages)
-        if (outgoingText !== text) {
+        if (outgoingText !== modelText) {
           apiMessages[apiMessages.length - 1] = { role: 'user', content: outgoingText }
         }
         controller = streamGeminiMessage(apiMessages, onToken, onDone, onErr, {
@@ -622,18 +648,18 @@ export function useConversation() {
         // ou si le commit IndexedDB n'a pas encore été visible côté lecture.
         // Symétrique du path Claude (voir plus bas).
         if (currentFiles && currentFiles.length > 0) {
-          apiMessages[apiMessages.length - 1] = { role: 'user', content: buildMistralBlocks(outgoingText, currentFiles) }
+          apiMessages[apiMessages.length - 1] = { role: 'user', content: await buildMistralContentBlocks(outgoingText, currentFiles) }
           setPendingFiles(null)
-        } else if (outgoingText !== text) {
+        } else if (outgoingText !== modelText) {
           apiMessages[apiMessages.length - 1] = { role: 'user', content: outgoingText }
         }
         controller = streamMistralMessage(apiMessages, onToken, onDone, onErr, {
           systemPrompt: systemPromptRef.current,
           onToolCall: trackedToolHandler,
-          // Fix 429 — outgoingText ≠ text ⇔ du contenu d'URL/PDF a été
+          // Fix 429 — outgoingText ≠ modelText ⇔ du contenu d'URL/PDF a été
           // inliné (lot C) : la recherche forcée serait un appel Mistral
           // de plus pour rien, dos à dos avec la synthèse (rate limit).
-          urlContentInlined: outgoingText !== text,
+          urlContentInlined: outgoingText !== modelText,
           euOnly: conv.euOnly,
           conversationId: targetId,
           routeReason: routeDecision.reason,
@@ -648,7 +674,7 @@ export function useConversation() {
           role: (m.role === 'assistant' ? 'assistant' : 'user') as 'user' | 'assistant',
           content: m.content,
         }))
-        if (outgoingText !== text && apiMessages.length > 0) {
+        if (outgoingText !== modelText && apiMessages.length > 0) {
           apiMessages[apiMessages.length - 1] = { role: 'user', content: outgoingText }
         }
         controller = streamOpenAIMessage(apiMessages, openaiKey, onToken, onDone, onErr, {
@@ -665,14 +691,14 @@ export function useConversation() {
         if (currentFiles && currentFiles.length > 0) {
           apiMessages[apiMessages.length - 1] = { role: 'user', content: await buildContentBlocks(outgoingText, currentFiles) }
           setPendingFiles(null)
-        } else if (outgoingText !== text) {
+        } else if (outgoingText !== modelText) {
           apiMessages[apiMessages.length - 1] = { role: 'user', content: outgoingText }
         }
         // P1.3 — le tool generate_image n'est EXPOSÉ au modèle que si
         // l'utilisateur demande explicitement une image (seule garantie
         // anti-faux-déclenchement, cf. imageTools). euOnly n'atteint jamais ce
         // chemin (forcé sur Mistral) → génération naturellement bloquée en EU.
-        const imageTools = wantsImageGeneration(text)
+        const imageTools = wantsImageGeneration(modelText)
           ? [...TOOLS, generateImageToolDefinition]
           : undefined
         controller = streamMessage(apiMessages, onToken, onDone, onErr, {
@@ -850,7 +876,12 @@ export function useConversation() {
       storage.saveConversation(conv)
       refreshConversations()
 
-      sendMessage(userMsg.content, targetId, originalFiles)
+      sendMessage(
+        userMsg.content,
+        targetId,
+        originalFiles,
+        userMsg.quickAction ? { quickAction: userMsg.quickAction } : undefined,
+      )
     },
     [activeId, refreshConversations, sendMessage]
   )
@@ -876,7 +907,12 @@ export function useConversation() {
       refreshConversations()
 
       // Re-send the edited message
-      sendMessage(newContent, targetId, originalFiles)
+      sendMessage(
+        newContent,
+        targetId,
+        originalFiles,
+        msg.quickAction ? { quickAction: msg.quickAction } : undefined,
+      )
     },
     [activeId, refreshConversations, sendMessage]
   )
@@ -902,7 +938,12 @@ export function useConversation() {
     storage.saveConversation(conv)
     refreshConversations()
 
-    sendMessage(userMsg.content, targetId, originalFiles)
+    sendMessage(
+      userMsg.content,
+      targetId,
+      originalFiles,
+      userMsg.quickAction ? { quickAction: userMsg.quickAction } : undefined,
+    )
   }, [activeId, refreshConversations, sendMessage])
 
   // D4 (CDC visibilité modèle) — « Relancer sur Mistral » de CapReachedModal :

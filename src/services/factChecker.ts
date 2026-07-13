@@ -19,6 +19,7 @@ import * as scoped from './scopedStorage'
 import * as storage from './storage'
 import { recordUsage } from './costTracker'
 import type { FactCheckResult, FactCheckClaim, Message } from '../types'
+import { getMessageTextForModel } from './quickActions'
 
 export type Verdict = FactCheckClaim['verdict']
 export type { FactCheckResult, FactCheckClaim }
@@ -672,7 +673,12 @@ export async function runFactCheckOnLatest(
   // On clear immédiatement pour ne pas pollluer le prochain message si
   // le fact-check échoue ou si l'IA ne lance pas de search.
   clearSearchContext()
-  const outcome = await factCheckResponse(userMsg.content, originalContent, mode, ctx)
+  const outcome = await factCheckResponse(
+    getMessageTextForModel(userMsg),
+    originalContent,
+    mode,
+    ctx,
+  )
   if (!outcome.result) {
     console.warn('[factChecker] factCheckResponse returned null —', outcome.reason)
     // C-F — plafond de fond atteint PENDANT cet appel (429) : retirer le

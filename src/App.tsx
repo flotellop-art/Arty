@@ -69,7 +69,7 @@ import {
   setPendingDraft,
   type SharePayload,
 } from './services/shareTargetService'
-import type { FileAttachment } from './types'
+import type { ChatSendHandler } from './types'
 
 function AppContent({
   onLogout,
@@ -154,8 +154,8 @@ function AppContent({
     handleAction,
   } = useAppSetup(conversation)
 
-  const handleSendFromHome = useCallback(
-    (text: string, files?: FileAttachment[]) => {
+  const handleSendFromHome: ChatSendHandler = useCallback(
+    (text, files, options) => {
       setActionScreenshot(null)
       const isFirstConv = conversations.length === 0
       const id = createConversation(isFirstConv)
@@ -165,9 +165,9 @@ function AppContent({
       if (!id) return
       if (files?.length) {
         navigate(`/chat/${id}`)
-        setTimeout(() => sendMessage(text, id, files), 100)
+        setTimeout(() => sendMessage(text, id, files, options), 100)
       } else {
-        sendMessage(text, id)
+        sendMessage(text, id, undefined, options)
         navigate(`/chat/${id}`)
       }
     },
@@ -269,8 +269,8 @@ function AppContent({
   const handleOpenCosts = useCallback(() => navigate('/costs'), [navigate])
   const handleOpenCompare = useCallback(() => navigate('/compare'), [navigate])
   const handleOpenApiKeys = useCallback(() => setShowApiKeys(true), [])
-  const handleSendInChat = useCallback(
-    (text: string, files?: FileAttachment[]) => sendMessage(text, undefined, files),
+  const handleSendInChat: ChatSendHandler = useCallback(
+    (text, files, options) => sendMessage(text, undefined, files, options),
     [sendMessage]
   )
 
@@ -654,7 +654,7 @@ interface ChatRouteProps {
   streamingContent: string
   error: string | null
   onBack: () => void
-  onSend: (text: string, files?: FileAttachment[]) => void
+  onSend: ChatSendHandler
   onStop: () => void
   onSelect: (id: string) => void
   gmail: ReturnType<typeof import('./hooks/useGmail').useGmail>
