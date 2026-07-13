@@ -15,6 +15,8 @@
 | Suite locale | ✅ 1103 tests / 108 fichiers, double typecheck, build, scanner | `npm run verify` |
 | Allowlist Android stricte (I4) | ✅ GELÉE — 13 permissions (8 source + 5 injectées par les dépendances), testée nominal + cas adverse | commit « gel de l'allowlist » |
 | Variable d'échappement documentée | ✅ `functions/env.d.ts` + `.env.example` | idem |
+| Flip client web Production | ✅ `VITE_GMAIL_NO_CASA_PHASE0=true`, déjà compilé dans le déploiement Production canonique | déploiement `a812d7d5`, commit `7a2da4a8` |
+| Rehearsal rollback serveur Preview | ✅ 4×410 → variable + Retry → 4×404 → retrait + second Retry → 4×410 ; déploiement temporaire supprimé | déploiement restauré `347df4e1`, 13 juillet |
 
 ## 2. Reste à faire — CODE (dans la PR, avant merge)
 
@@ -24,28 +26,32 @@
 
 ## 3. Validations — avant merge
 
-- [ ] **Verdict du décideur sur la PR #338** (comme pour le CDC : relecture + GO écrit). Points d'attention suggérés : le helper `tombstone.ts` (410 avant auth, défaut ON), la variable d'échappement, le gel des 13 permissions, la décision I6 (Sheets gaté), le mapping I4 des « 3 inspections ».
-- [ ] **Confirmation du moment du merge** : merger = couper la prod (voir §4). Le GO doit inclure le « quand », pas seulement le « quoi ».
+- [x] **Verdict du décideur sur la PR #338 : GO avec les correctifs de la revue finale intégrés.** Contrôlés : tombstones 410 avant auth et actifs par défaut, variable d'échappement stricte, 13 permissions Android, Sheets gaté et testé, mapping des inspections, checksum Bundletool officiel, chemins Windows avec espaces et inventaire complet des scopes Drive restreints.
+- [x] **Moment du merge confirmé** : couper la prod dans le déploiement déclenché par le squash-merge de PR #338, uniquement après validation des critères 1, 2 et 5. Aucun Retry Production anticipé n'est nécessaire : le flip client est déjà compilé dans la Production actuelle.
 
 ## 4. Opérations JOUR J — coordination de la coupure
 
 Le merge déclenche l'auto-déploiement de `main` → les quatre connecteurs répondent 410 en production. Pour éviter une fenêtre incohérente (client prod qui affiche encore les outils Gmail/Drive → échecs 410 avec message générique), l'ordre recommandé :
 
-1. [ ] **AVANT le merge — flip client web** : poser `VITE_GMAIL_NO_CASA_PHASE0=true` dans l'environnement **Production** de Cloudflare Pages. Ainsi le build déclenché par le merge part directement avec le client public (outils Gmail/Drive/Contacts/Sheets retirés de l'UI, hand-off Gmail actif) — client et serveur basculent dans le MÊME déploiement.
+1. [x] **AVANT le merge — flip client web** : `VITE_GMAIL_NO_CASA_PHASE0=true` est posé dans l'environnement **Production** de Cloudflare Pages et déjà compilé dans le déploiement canonique `a812d7d5` (contrôle API du 13 juillet). Le build déclenché par le merge conservera donc le client public (outils Gmail/Drive/Contacts/Sheets retirés de l'UI, hand-off Gmail actif).
 2. [ ] **Merger la PR #338** (squash, comme #336/#337).
 3. [ ] **Vérifier en prod** (~5 min après) : `tryarty.com` → le client ne montre plus les outils des connecteurs ; `POST /api/gmail/action` → 410 ; Calendar fonctionne toujours (il n'est PAS tombstoné) ; géoloc/caméra/micro intacts (leçon F-2 : tester feature par feature après tout changement de config).
 4. [ ] **Android** : lancer un build avec `ARTY_GMAIL_NO_CASA_PHASE0=true` et le distribuer (Firebase App Distribution). D'ici là, l'APK existant affichera des outils qui échouent en 410 — fenêtre assumée, à garder courte.
 5. [ ] **Prévenir la bêta** (Mégane & co) : Gmail, Drive, Contacts et Sheets disparaissent d'Arty à partir du jour J ; Drive revient au fil des PRs B0→B3 (fichiers connectés via le Picker) ; Calendar reste. Message court à envoyer AVANT la coupure.
-6. [ ] **Rollback documenté et compris** : poser `LEGACY_GOOGLE_CONNECTORS_ENABLED=true` (env Production) **puis « Retry deployment »** (~2 min, sans revert de code). ⚠️ Sur Cloudflare Pages, une variable ne s'applique qu'au déploiement suivant — le « Retry » fait partie du geste. Optionnel mais recommandé : **répéter le rollback une fois sur l'environnement Preview** avant le jour J (poser la var en Preview + retry + vérifier que les connecteurs répondent à nouveau normalement, puis la retirer).
+6. [x] **Rollback documenté, compris et répété en Preview** :
+   - **Rollback serveur d'urgence** : poser `LEGACY_GOOGLE_CONNECTORS_ENABLED=true` en Production, puis « Retry deployment ». Il réactive les endpoints pour les anciens APK/caches, mais le bundle web compilé sans les outils reste inchangé.
+   - **Rollback produit complet** : poser aussi `VITE_GMAIL_NO_CASA_PHASE0=false` (ou retirer la variable) avant le même Retry, afin de reconstruire l'UI legacy. Cette variante réintroduit le parcours nécessitant les anciens scopes et ne doit être utilisée qu'en décision d'urgence explicite.
+   - **Rehearsal exécuté le 13 juillet** : Preview initial 4×410 ; variable `LEGACY...=true` + Retry → 4×404 (handlers historiques atteints sans auth) ; retrait de la variable + **second Retry obligatoire** → 4×410 sur la nouvelle URL et l'alias de branche. Le déploiement temporaire réactivé a ensuite été supprimé et son URL vérifiée indisponible. Production est restée sans `LEGACY...` pendant tout le test.
+   - La configuration Preview étant commune aux branches et les URLs hashées restant accessibles, tout futur rehearsal doit geler les pushes Preview pendant la fenêtre, faire le second Retry après retrait, puis supprimer le déploiement temporaire réactivé.
 
 ## 5. Critères de merge (synthèse — tous cochés = GO merge)
 
 1. [ ] CI verte sur le HEAD final de la PR.
 2. [ ] Relecture agent du diff faite, findings bloquants corrigés.
-3. [ ] Verdict GO du décideur sur la PR, incluant le moment de la coupure.
-4. [ ] `VITE_GMAIL_NO_CASA_PHASE0=true` posé en Production (flip simultané) — ou décision explicite d'assumer la fenêtre incohérente.
+3. [x] Verdict GO du décideur sur la PR, incluant le moment de la coupure : squash-merge après critères 1, 2 et 5.
+4. [x] `VITE_GMAIL_NO_CASA_PHASE0=true` posé et déjà compilé en Production.
 5. [ ] Bêta prévenue.
-6. [ ] Rollback compris (var + Retry deployment) — idéalement répété une fois en Preview.
+6. [x] Rollback serveur et rollback produit complet distingués ; rehearsal Preview exécuté avec second Retry et suppression du déploiement temporaire.
 
 ## 6. Hors périmètre de ce gate (rappels)
 

@@ -19,9 +19,10 @@
  * Usage : node scripts/check-public-google-access.mjs   (npm run no-casa:check)
  */
 import { readFileSync, readdirSync, statSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, relative } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
-const ROOT = new URL('..', import.meta.url).pathname
+const ROOT = fileURLToPath(new URL('..', import.meta.url))
 
 // ── Allowlists exactes du profil public ─────────────────────────────────
 const PUBLIC_WEB_SCOPES = new Set([
@@ -60,6 +61,7 @@ const RESTRICTED_SCOPES = new Set([
   'https://www.googleapis.com/auth/drive.metadata.readonly',
   'https://www.googleapis.com/auth/drive.activity',
   'https://www.googleapis.com/auth/drive.activity.readonly',
+  'https://www.googleapis.com/auth/drive.meet.readonly',
   'https://www.googleapis.com/auth/drive.scripts',
 ])
 
@@ -193,7 +195,7 @@ check('aucun scope restreint en littéral hors des fichiers legacy connus', () =
   const offenders = []
   for (const root of ['src', 'functions', 'android/app/src/main/java']) {
     for (const file of walk(join(ROOT, root))) {
-      const rel = file.slice(ROOT.length)
+      const rel = relative(ROOT, file).replaceAll('\\', '/')
       if (LEGACY_ALLOWED_FILES.has(rel)) continue
       const literals = quotedStrings(readFileSync(file, 'utf8'))
       for (const lit of literals) {

@@ -87,7 +87,7 @@ jobs:
       - name: Inspect AAB manifest permissions
         run: |
           BUNDLETOOL_VERSION=1.17.2
-          BUNDLETOOL_SHA256=797b23b1a4b7cbba3ffd7d4bca663200fed9362630d0aa340e8480a3ba8f8052
+          BUNDLETOOL_SHA256=2d4ad908faea64047c1cc9cb747e6aa667c6ab192e09607bd16b67246a8cd6ae
           curl -sSL -o /tmp/bundletool.jar \
             "https://github.com/google/bundletool/releases/download/${BUNDLETOOL_VERSION}/bundletool-all-${BUNDLETOOL_VERSION}.jar"
           echo "${BUNDLETOOL_SHA256}  /tmp/bundletool.jar" | sha256sum -c -

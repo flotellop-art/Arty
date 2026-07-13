@@ -34,18 +34,22 @@ describe('Gmail no-CASA Phase 0 build profile', () => {
     expect(scopes).toContain('https://www.googleapis.com/auth/calendar')
   })
 
-  it('retire les outils globaux Gmail, Drive et Contacts tout en gardant Calendar', () => {
+  it('retire les outils globaux Gmail, Drive, Contacts et Sheets tout en gardant Calendar', () => {
     const names = buildToolDefinitions(true).map((tool) => (tool as { name?: string }).name)
     expect(names).toContain('list_calendar')
     expect(names).not.toContain('read_emails')
     expect(names).not.toContain('search_drive')
     expect(names).not.toContain('search_contacts')
+    expect(names).not.toContain('export_clients_to_sheets')
+    expect(names).not.toContain('export_projets_to_sheets')
   })
 
   it('bloque les anciens outils même si un message historique tente de les appeler', () => {
     expect(isBlockedPublicGoogleTool('send_email')).toBe(true)
     expect(isBlockedPublicGoogleTool('read_drive_file')).toBe(true)
     expect(isBlockedPublicGoogleTool('search_contacts')).toBe(true)
+    expect(isBlockedPublicGoogleTool('export_clients_to_sheets')).toBe(true)
+    expect(isBlockedPublicGoogleTool('export_projets_to_sheets')).toBe(true)
     expect(isBlockedPublicGoogleTool('list_calendar')).toBe(false)
   })
 })
