@@ -67,10 +67,50 @@ const RESTRICTED_SCOPES = new Set([
 // le profil LEGACY (branche flag-OFF) vit dans ces deux fichiers tant que le
 // flip prod n'a pas eu lieu. Le growth-orchestrator (services/) est un projet
 // OAuth séparé (CDC D10/P0-b) hors du périmètre de ce scanner.
+//
+// L'inventaire COMPLET des scopes de chaque fichier legacy est GELÉ ci-dessous
+// (contrôle 4) : même dans ces fichiers, un scope ne peut pas s'ajouter sans
+// mise à jour consciente du scanner — y compris hors du bloc public Java.
 const LEGACY_ALLOWED_FILES = new Set([
   'src/services/googleAuth.ts',
   'android/app/src/main/java/com/arty/app/GoogleSignInPlugin.java',
 ])
+
+const FROZEN_FILE_SCOPES = {
+  'src/services/googleAuth.ts': new Set([
+    // PUBLIC_GOOGLE_SCOPES
+    'openid',
+    'https://www.googleapis.com/auth/userinfo.email',
+    'https://www.googleapis.com/auth/userinfo.profile',
+    'https://www.googleapis.com/auth/calendar',
+    // STANDARD_GOOGLE_SCOPES (profil legacy flag-OFF)
+    'https://www.googleapis.com/auth/gmail.readonly',
+    'https://www.googleapis.com/auth/gmail.send',
+    'https://www.googleapis.com/auth/gmail.modify',
+    'https://www.googleapis.com/auth/drive',
+    'https://www.googleapis.com/auth/calendar.events',
+    'https://www.googleapis.com/auth/contacts',
+  ]),
+  'android/app/src/main/java/com/arty/app/GoogleSignInPlugin.java': new Set([
+    // bloc public (if GMAIL_NO_CASA_PHASE0)
+    'https://www.googleapis.com/auth/calendar',
+    // branche else (profil legacy flag-OFF)
+    'https://www.googleapis.com/auth/gmail.readonly',
+    'https://www.googleapis.com/auth/gmail.send',
+    'https://www.googleapis.com/auth/gmail.modify',
+    'https://www.googleapis.com/auth/drive',
+    'https://www.googleapis.com/auth/calendar.events',
+    'https://www.googleapis.com/auth/contacts',
+  ]),
+}
+
+function looksLikeScope(lit) {
+  return (
+    lit === 'openid' ||
+    lit === 'https://mail.google.com/' ||
+    lit.startsWith('https://www.googleapis.com/auth/')
+  )
+}
 
 // ── Petit runner ────────────────────────────────────────────────────────
 let failures = 0
@@ -163,6 +203,20 @@ check('aucun scope restreint en littéral hors des fichiers legacy connus', () =
   }
   if (offenders.length > 0) {
     throw new Error(`scopes restreints trouvés :\n    ${offenders.join('\n    ')}`)
+  }
+})
+
+// ── 4. Inventaire gelé des fichiers legacy ──────────────────────────────
+check('fichiers legacy : aucun scope hors inventaire gelé', () => {
+  const offenders = []
+  for (const [rel, frozen] of Object.entries(FROZEN_FILE_SCOPES)) {
+    const literals = quotedStrings(readFileSync(join(ROOT, rel), 'utf8'))
+    for (const lit of literals) {
+      if (looksLikeScope(lit) && !frozen.has(lit)) offenders.push(`${rel} → ${lit}`)
+    }
+  }
+  if (offenders.length > 0) {
+    throw new Error(`scopes hors inventaire gelé :\n    ${offenders.join('\n    ')}`)
   }
 })
 

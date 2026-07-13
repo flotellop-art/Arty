@@ -92,8 +92,10 @@ jobs:
       # Inspection 1/3 = scanner source (job verify-app, no-casa:check).
       - name: Inspect merged manifest (2/3)
         run: |
-          MERGED=$(find android/app/build/intermediates/merged_manifests -name AndroidManifest.xml | head -1)
-          test -n "$MERGED" || { echo "merged manifest introuvable"; exit 1; }
+          # -path filtre la variante debug : assembleAndroidTest produit aussi
+          # un manifest mergé (debugAndroidTest) au jeu de permissions différent.
+          MERGED=$(find android/app/build/intermediates/merged_manifests -path '*/debug/*' -name AndroidManifest.xml | head -1)
+          test -n "$MERGED" || { echo "merged manifest debug introuvable"; exit 1; }
           node scripts/check-android-manifest.mjs "$MERGED"
 
       - name: Inspect assembled APK permissions (3/3)
@@ -101,5 +103,6 @@ jobs:
           APK=$(find android/app/build/outputs/apk/debug -name '*.apk' | head -1)
           test -n "$APK" || { echo "APK debug introuvable"; exit 1; }
           AAPT=$(find "$ANDROID_HOME/build-tools" -name aapt | sort | tail -1)
+          test -n "$AAPT" || { echo "aapt introuvable dans ANDROID_HOME/build-tools"; exit 1; }
           "$AAPT" dump permissions "$APK" > /tmp/apk-permissions.txt
           node scripts/check-android-manifest.mjs /tmp/apk-permissions.txt

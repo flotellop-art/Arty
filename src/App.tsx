@@ -965,9 +965,10 @@ export default function App() {
             })
             // After auth flips, scopedStorage is keyed to the user — store
             // the Google credentials through storeTokens/storeUser so they
-            // take the encrypted-at-rest path and keep the refresh_token
-            // preservation guard (BUG 51), exactly like LoginScreen does.
-            // (D22/P0-a-bis — the previous raw setJSON bypassed both.)
+            // take the encrypted-at-rest path (D22/P0-a-bis — the previous
+            // raw setJSON bypassed it). First native login: the refresh
+            // token is freshly minted (requestServerAuthCode forces it,
+            // BUG 51), so no merge-with-existing is needed here.
             const { storeTokens, storeUser } = await import('./services/googleAuth')
             await storeUser({ email, name, picture: avatar })
             await storeTokens({

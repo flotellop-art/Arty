@@ -80,11 +80,17 @@ jobs:
       # PR-0 (CDC Phase 1 D21/D29) — inspection sémantique de l'AAB signé
       # (pendant release des inspections par-PR de ci.yml, qui portent sur
       # l'APK debug — ce workflow est manuel, il ne gate pas les PRs).
+      # NB : l'allowlist de check-android-manifest.mjs a été gelée depuis
+      # l'APK DEBUG — si le jeu de permissions release diffère, ce step
+      # échouera en loud au premier build : mettre la liste à jour en
+      # conscience le cas échéant.
       - name: Inspect AAB manifest permissions
         run: |
           BUNDLETOOL_VERSION=1.17.2
+          BUNDLETOOL_SHA256=797b23b1a4b7cbba3ffd7d4bca663200fed9362630d0aa340e8480a3ba8f8052
           curl -sSL -o /tmp/bundletool.jar \
             "https://github.com/google/bundletool/releases/download/${BUNDLETOOL_VERSION}/bundletool-all-${BUNDLETOOL_VERSION}.jar"
+          echo "${BUNDLETOOL_SHA256}  /tmp/bundletool.jar" | sha256sum -c -
           java -jar /tmp/bundletool.jar dump manifest \
             --bundle android/app/build/outputs/bundle/release/app-release.aab > /tmp/aab-manifest.xml
           node scripts/check-android-manifest.mjs /tmp/aab-manifest.xml

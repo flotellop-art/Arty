@@ -82,6 +82,8 @@ const DENYLIST = new Set([
 function extractPermissions(text) {
   const found = new Set()
   // Manifest XML (mergé ou bundletool) : <uses-permission android:name="..."/>
+  // NB : capte volontairement AUSSI <uses-permission-sdk-23> — une permission
+  // conditionnelle reste une permission, elle doit passer par l'allowlist.
   for (const m of text.matchAll(/<uses-permission[^>]*android:name="([^"]+)"/g)) found.add(m[1])
   // Sortie aapt : uses-permission: name='...'
   for (const m of text.matchAll(/uses-permission: name='([^']+)'/g)) found.add(m[1])
