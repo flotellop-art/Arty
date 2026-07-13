@@ -1,0 +1,74 @@
+{
+  "renderActions": {
+    "action": {
+      "navigations": [
+        {
+          "pushCard": {
+            "header": {
+              "title": "Message courant",
+              "subtitle": "Aucune lecture avant votre clic"
+            },
+            "sections": [
+              {
+                "widgets": [
+                  {
+                    "textParagraph": {
+                      "text": "Le contexte Gmail a été reçu, mais le contenu du message n’a pas encore été demandé."
+                    }
+                  },
+                  {
+                    "buttonList": {
+                      "buttons": [
+                        {
+                          "text": "Lire le message courant",
+                          "onClick": {
+                            "action": {
+                              "function": "{{BASE_URL}}/read",
+                              "loadIndicator": "SPINNER"
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "textInput": {
+                      "name": "phase0_reply_body",
+                      "label": "Texte du brouillon de test",
+                      "type": "MULTIPLE_LINE",
+                      "value": "Bonjour,\n\nMerci pour votre message.\n",
+                      "validation": {
+                        "characterLimit": 5000
+                      }
+                    }
+                  },
+                  {
+                    "buttonList": {
+                      "buttons": [
+                        {
+                          "text": "Tester le brouillon dans ce fil",
+                          "onClick": {
+                            "action": {
+                              "function": "{{BASE_URL}}/create-draft",
+                              "loadIndicator": "SPINNER",
+                              "parameters": [
+                                {
+                                  "key": "phase0_action_nonce",
+                                  "value": "{{ACTION_NONCE}}"
+                                }
+                              ]
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

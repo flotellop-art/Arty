@@ -5,6 +5,7 @@ import { UserBubble } from './UserBubble'
 import { AssistantBubble } from './AssistantBubble'
 import { TypingIndicator } from './TypingIndicator'
 import { StreamingIndicator } from './StreamingIndicator'
+import { GmailSearchCard } from '../gmail/GmailSearchCard'
 
 interface MessageItemProps {
   msg: Message
@@ -15,10 +16,11 @@ interface MessageItemProps {
   onEdit?: (messageId: string, newContent: string) => void
   onRetry?: (messageId: string) => void
   onReport?: (messageId: string) => void
+  onUpdateGmailSearch?: (messageId: string, query: string) => void
   isLast?: boolean
 }
 
-const MessageItem = memo(function MessageItem({ msg, index, onAction, onBranch, onTogglePin, onEdit, onRetry, onReport, isLast }: MessageItemProps) {
+const MessageItem = memo(function MessageItem({ msg, index, onAction, onBranch, onTogglePin, onEdit, onRetry, onReport, onUpdateGmailSearch, isLast }: MessageItemProps) {
   const handleBranch = useCallback(() => onBranch?.(index), [onBranch, index])
   const handleTogglePin = useCallback(() => onTogglePin?.(msg.id), [onTogglePin, msg.id])
   const handleEdit = useCallback((newContent: string) => onEdit?.(msg.id, newContent), [onEdit, msg.id])
@@ -45,6 +47,14 @@ const MessageItem = memo(function MessageItem({ msg, index, onAction, onBranch, 
           // dupliquer sa question pour la corriger → pollue le fil.
           onEdit={onEdit ? handleEdit : undefined}
           onBranch={branchHandler}
+        />
+      ) : msg.gmailSearch ? (
+        <GmailSearchCard
+          content={msg.content}
+          payload={msg.gmailSearch}
+          onQueryChange={onUpdateGmailSearch
+            ? (query) => onUpdateGmailSearch(msg.id, query)
+            : undefined}
         />
       ) : (
         <AssistantBubble
@@ -82,6 +92,7 @@ interface MessageListProps {
   onEdit?: (messageId: string, newContent: string) => void
   onRetry?: (messageId: string) => void
   onReport?: (messageId: string) => void
+  onUpdateGmailSearch?: (messageId: string, query: string) => void
 }
 
 // Comportement type ChatGPT / Claude.ai : quand un nouveau message user
@@ -93,7 +104,7 @@ interface MessageListProps {
 // Différent du comportement antérieur qui suivait le bas en permanence
 // — ça forçait à descendre à chaque token et empêchait de naviguer.
 
-export const MessageList = memo(function MessageList({ messages, isStreaming, streamingContent, conversationId, onAction, onBranch, onTogglePin, onEdit, onRetry, onReport }: MessageListProps) {
+export const MessageList = memo(function MessageList({ messages, isStreaming, streamingContent, conversationId, onAction, onBranch, onTogglePin, onEdit, onRetry, onReport, onUpdateGmailSearch }: MessageListProps) {
   const { t } = useTranslation()
   const scrollRef = useRef<HTMLDivElement>(null)
   const prevMessagesCount = useRef(messages.length)
@@ -201,6 +212,7 @@ export const MessageList = memo(function MessageList({ messages, isStreaming, st
               onEdit={onEdit}
               onRetry={onRetry}
               onReport={onReport}
+              onUpdateGmailSearch={onUpdateGmailSearch}
               // « Régénérer » uniquement sur la dernière réponse assistant,
               // et jamais pendant qu'un stream est en cours (P0.4).
               isLast={!isStreaming && index === lastAssistantIdx}

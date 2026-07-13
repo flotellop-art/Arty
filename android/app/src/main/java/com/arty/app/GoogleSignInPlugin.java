@@ -39,7 +39,7 @@ public class GoogleSignInPlugin extends Plugin {
             );
             Log.d(TAG, "server_client_id: " + serverClientId);
 
-            GoogleSignInOptions gso = new GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+            GoogleSignInOptions.Builder gsoBuilder = new GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
                     .requestEmail()
                     .requestProfile()
                     // BUG 49 — `forceCodeForRefreshToken=true` force Google à
@@ -49,8 +49,17 @@ public class GoogleSignInPlugin extends Plugin {
                     // ultérieurs renvoient `refresh_token: undefined`, qui
                     // écrasait le refresh_token valide du 1er login → logout
                     // silencieux 30 min plus tard.
-                    .requestServerAuthCode(serverClientId, true)
-                    .requestScopes(
+                    .requestServerAuthCode(serverClientId, true);
+
+            if (BuildConfig.GMAIL_NO_CASA_PHASE0) {
+                // Le client principal ne demande aucun accès Gmail/Drive/Contacts.
+                // Les deux scopes Gmail contextuels restent exclusivement dans
+                // le manifest du Workspace Add-on. Calendar n'est pas restreint.
+                gsoBuilder.requestScopes(
+                    new Scope("https://www.googleapis.com/auth/calendar")
+                );
+            } else {
+                gsoBuilder.requestScopes(
                         new Scope("https://www.googleapis.com/auth/gmail.readonly"),
                         new Scope("https://www.googleapis.com/auth/gmail.send"),
                         new Scope("https://www.googleapis.com/auth/gmail.modify"),
@@ -58,8 +67,10 @@ public class GoogleSignInPlugin extends Plugin {
                         new Scope("https://www.googleapis.com/auth/calendar"),
                         new Scope("https://www.googleapis.com/auth/calendar.events"),
                         new Scope("https://www.googleapis.com/auth/contacts")
-                    )
-                    .build();
+                );
+            }
+
+            GoogleSignInOptions gso = gsoBuilder.build();
 
             googleSignInClient = GoogleSignIn.getClient(getActivity(), gso);
             Log.d(TAG, "GoogleSignInClient created OK");

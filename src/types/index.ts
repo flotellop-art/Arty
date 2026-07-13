@@ -40,6 +40,25 @@ export interface FactCheckResult {
   appliedCorrections?: number // count des corrections appliquées
 }
 
+export interface GmailSearchAssumption {
+  kind: 'date'
+  label: string
+}
+
+/**
+ * Ephemeral, local-only handoff. It never contains a Gmail URL, token,
+ * message id, search result or email content.
+ */
+export interface GmailSearchPayload {
+  type: 'gmail_search'
+  version: 1
+  query: string
+  assumptions: GmailSearchAssumption[]
+  createdAt: number
+  expiresAt: number
+  afterOpen?: 'summarize' | 'reply'
+}
+
 export interface Message {
   id: string
   role: 'user' | 'assistant'
@@ -67,6 +86,7 @@ export interface Message {
   // Sous-décision Claude (Haiku/Sonnet/Opus), conservée séparément afin de ne
   // pas perdre la raison principale du provider (privé, fichier, hybride…).
   subModelReasonCode?: string
+  gmailSearch?: GmailSearchPayload
 }
 
 export interface Conversation {

@@ -3,6 +3,7 @@ import {
   buildConversationMarkdown,
   buildConversationHtml,
   sanitizeReportHtml,
+  buildConversationJsonExport,
 } from '../../services/conversationExport'
 import { saveReport, getReport } from '../../services/reportGenerator'
 import { initCrypto } from '../../services/crypto'
@@ -86,6 +87,29 @@ describe('buildConversationMarkdown', () => {
   it('falls back to a default title when missing', () => {
     const noTitle = { ...fakeConv, title: '' }
     expect(buildConversationMarkdown(noTitle)).toContain('# Conversation Arty')
+  })
+})
+
+describe('buildConversationJsonExport', () => {
+  it('exclut le passage Gmail local et éphémère', () => {
+    const withHandoff: Conversation = {
+      ...fakeConv,
+      messages: [{
+        id: 'handoff',
+        role: 'assistant',
+        content: 'Préparation locale',
+        timestamp: Date.now(),
+        gmailSearch: {
+          type: 'gmail_search',
+          version: 1,
+          query: 'from:Paul',
+          assumptions: [],
+          createdAt: Date.now(),
+          expiresAt: Date.now() + 60_000,
+        },
+      }],
+    }
+    expect(buildConversationJsonExport(withHandoff).conversation.messages[0]).not.toHaveProperty('gmailSearch')
   })
 })
 

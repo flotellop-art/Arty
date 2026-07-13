@@ -26,3 +26,8 @@ local.properties
 *.ipa
 *.apk
 *.aab
+
+# Google Workspace Add-on Phase 0 — rendered deployment artifacts
+google-workspace-addon/phase0/deployment.phase0.json
+google-workspace-addon/phase0/context-card.phase0.json
+google-workspace-addon/phase0/cloudflare.vars.phase0.json

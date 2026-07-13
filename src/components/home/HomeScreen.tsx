@@ -15,6 +15,7 @@ import type { useGmail } from '../../hooks/useGmail'
 import type { useDrive } from '../../hooks/useDrive'
 import type { FileAttachment, Conversation } from '../../types'
 import { homeV2Enabled } from '../../services/homeV2'
+import { isGmailNoCasaPhase0Enabled } from '../../services/gmailNoCasaPhase0'
 
 interface HomeScreenProps {
   onMenuToggle: () => void
@@ -44,7 +45,8 @@ interface HomeScreenProps {
 
 function HomeScreenInner({ onMenuToggle, onSend, isStreaming, onStop, googleAuth, userName, proactiveBrief, briefLoading, onDismissBrief, onBriefAction, conversations, onSelectConv, error, onDismissError }: HomeScreenProps) {
   const { t, i18n } = useTranslation()
-  const googleTooltip = useTooltip('google')
+  const noCasaPhase0 = isGmailNoCasaPhase0Enabled()
+  const googleTooltip = useTooltip(noCasaPhase0 ? 'googleNoCasa' : 'google')
 
   // Editorial kicker: "VENDREDI 19 AVRIL · VALENCE" style — locale-aware.
   const kicker = useMemo(() => {

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { isGmailNoCasaPhase0Enabled } from '../../services/gmailNoCasaPhase0'
 
 interface SettingsGuideProps {
   onClose: () => void
@@ -95,6 +96,7 @@ function StylePage() {
 }
 
 function ModelPage() {
+  const noCasaPhase0 = isGmailNoCasaPhase0Enabled()
   return (
     <div className="space-y-4">
       <p className="text-xs text-theme-muted leading-relaxed">
@@ -109,7 +111,9 @@ function ModelPage() {
       <GuideItem
         emoji="🇺🇸"
         title="Claude"
-        desc="Le plus intelligent. Excellent pour raisonner, rédiger, analyser des documents et utiliser tes outils (Gmail, Drive, etc.)."
+        desc={noCasaPhase0
+          ? "Le plus intelligent. Excellent pour raisonner, rédiger et analyser des documents. Dans ce test, il n'a aucun accès global à Gmail ou Drive."
+          : "Le plus intelligent. Excellent pour raisonner, rédiger, analyser des documents et utiliser tes outils (Gmail, Drive, etc.)."}
       />
       <GuideItem
         emoji="🇪🇺"

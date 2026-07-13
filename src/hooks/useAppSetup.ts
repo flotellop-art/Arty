@@ -12,6 +12,7 @@ import { getCustomInstructions } from '../services/customInstructions'
 import { createToolExecutor } from '../services/toolExecutor'
 import { getStyle, setStyle, getStylePrompt, STYLE_OPTIONS, type ResponseStyle } from '../services/responseStyles'
 import type { Question } from '../components/chat/QuestionModal'
+import { isGmailNoCasaPhase0Enabled } from '../services/gmailNoCasaPhase0'
 
 interface ConversationHook {
   activeId: string | null
@@ -29,6 +30,10 @@ export function useAppSetup(conversation: ConversationHook) {
   const drive = useDrive()
   const computerActions = useComputer()
   const memoryHook = useMemory()
+  const noCasaPhase0 = isGmailNoCasaPhase0Enabled()
+  const noCasaPrompt = noCasaPhase0
+    ? 'MODE GMAIL SANS CASA — PRIORITÉ ABSOLUE : tu n\'as aucun accès global à Gmail, Drive ou Contacts. Ne prétends jamais lire, chercher ou modifier ces données. La recherche Gmail est préparée localement par l\'interface puis exécutée par l\'utilisateur dans Gmail. Calendar reste disponible.\n\n'
+    : ''
 
   const [actionScreenshot, setActionScreenshot] = useState<string | null>(null)
   const [questionModal, setQuestionModal] = useState<{
@@ -92,11 +97,13 @@ export function useAppSetup(conversation: ConversationHook) {
   // Auto-fetch Gmail, Drive, and Memory when Google is connected
   useEffect(() => {
     if (googleAuth.isConnected) {
-      gmail.fetchMessages()
-      drive.fetchFiles()
+      if (!noCasaPhase0) {
+        gmail.fetchMessages()
+        drive.fetchFiles()
+      }
       memoryHook.loadMemory()
     }
-  }, [googleAuth.isConnected])
+  }, [googleAuth.isConnected, noCasaPhase0])
 
   // Update system prompt with Google context
   useEffect(() => {
@@ -106,7 +113,7 @@ export function useAppSetup(conversation: ConversationHook) {
     // sur la langue des réponses.
     if (!googleAuth.isConnected) {
       const prompt = buildLocalMemoryPrompt() + buildContextualPrompt({ customInstructions: getCustomInstructions() }) + getStylePrompt(responseStyle)
-      setSystemPrompt(prompt)
+      setSystemPrompt(noCasaPrompt + prompt)
       return
     }
 
@@ -121,7 +128,7 @@ export function useAppSetup(conversation: ConversationHook) {
       // Gmail/Drive may be cached for the UI and proactive brief, but their
       // metadata is never silently copied into every model request.
       const prompt = buildLocalMemoryPrompt() + buildContextualPrompt({ memorySummary, customInstructions: getCustomInstructions() }) + getStylePrompt(responseStyle)
-      setSystemPrompt(prompt)
+      setSystemPrompt(noCasaPrompt + prompt)
     }
     buildPrompt()
 
@@ -134,7 +141,7 @@ export function useAppSetup(conversation: ConversationHook) {
     }
     window.addEventListener('arty-rebuild-prompt', onRebuild)
     return () => window.removeEventListener('arty-rebuild-prompt', onRebuild)
-  }, [googleAuth.isConnected, memoryHook.getPromptContext, setSystemPrompt, responseStyle])
+  }, [googleAuth.isConnected, memoryHook.getPromptContext, noCasaPrompt, setSystemPrompt, responseStyle])
 
   // Handle action buttons clicked in reports
   // ⚠️ ALLOWLIST POSITIVE (audit 14 juin) — pendant de buildToolConfirmMessage

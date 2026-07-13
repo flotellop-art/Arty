@@ -29,6 +29,7 @@ interface ConversationScreenProps {
   onTogglePin?: (messageId: string) => void
   onEdit?: (messageId: string, newContent: string) => void
   onRetry?: (messageId: string) => void
+  onUpdateGmailSearch?: (messageId: string, query: string) => void
   // Bandeau d'erreur API (audit UX) : rejouer le dernier message user sans
   // le retaper, et fermer le bandeau qui ne disparaissait jamais.
   onRetryError?: () => void
@@ -55,6 +56,7 @@ export function ConversationScreen({
   onTogglePin,
   onEdit,
   onRetry,
+  onUpdateGmailSearch,
   onRetryError,
   onDismissError,
   onNewConversation,
@@ -101,6 +103,7 @@ export function ConversationScreen({
           onTogglePin={onTogglePin}
           onEdit={onEdit}
           onRetry={onRetry}
+          onUpdateGmailSearch={onUpdateGmailSearch}
           onReport={(messageId) => {
             const msg = conversation.messages.find((m) => m.id === messageId)
             if (msg) setReportTarget(msg)

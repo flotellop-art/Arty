@@ -27,6 +27,7 @@ import {
   type BriefAction,
 } from '../services/proactiveBriefActions'
 import type { useGmail } from './useGmail'
+import { isGmailNoCasaPhase0Enabled } from '../services/gmailNoCasaPhase0'
 
 // Outils EXCLUSIVEMENT en lecture exposés au modèle, + l'outil de sortie
 // structurée. Sécurité (RÈGLE 6 / lethal trifecta) : le brief ingère du contenu
@@ -56,6 +57,7 @@ export function useProactiveBrief({ gmail, isGoogleConnected, userName, onSend }
   const [brief, setBrief] = useState<BriefState>(null)
   const [loading, setLoading] = useState(false)
   const [dismissed, setDismissed] = useState(false)
+  const noCasaPhase0 = isGmailNoCasaPhase0Enabled()
 
   const runningRef = useRef(false)
   const abortRef = useRef<AbortController | null>(null)
@@ -83,7 +85,7 @@ export function useProactiveBrief({ gmail, isGoogleConnected, userName, onSend }
       // Pré-check GRATUIT (API Google, pas Claude) : sans mail non lu ni
       // événement à venir, aucun token Claude n'est dépensé.
       const [messages, events] = await Promise.all([
-        gmailRef.current.fetchMessages().catch(() => []),
+        noCasaPhase0 ? Promise.resolve([]) : gmailRef.current.fetchMessages().catch(() => []),
         listEvents(2).catch(() => []),
       ])
       markBriefRun()
@@ -114,17 +116,19 @@ export function useProactiveBrief({ gmail, isGoogleConnected, userName, onSend }
       const lenDirective = prefs.length === 'short'
         ? '\n\nL\'utilisateur préfère un brief TRÈS court : 3 éléments maximum, l\'essentiel seulement.'
         : ''
-      const systemPrompt = i18n.t('proactiveBrief.systemPrompt') + extra + lenDirective
+      const systemPrompt = (noCasaPhase0
+        ? 'Tu n\'as aucun accès global à Gmail. Construis ce brief uniquement avec Calendar, les tâches et la mémoire locale.\n\n'
+        : '') + i18n.t('proactiveBrief.systemPrompt') + extra + lenDirective
 
       // Handler lecture-seule + capture de la sortie structurée. Tout outil hors
       // whitelist est refusé (défense en profondeur, même si le modèle ne voit
       // que BRIEF_TOOLS). read_email plafonné.
-      const gmailHandlers = createGmailHandlers(gmailRef.current)
+      const gmailHandlers = noCasaPhase0 ? null : createGmailHandlers(gmailRef.current)
       const calendarHandlers = createCalendarHandlers()
       const readHandlers: Record<string, ToolHandler | undefined> = {
-        read_emails: gmailHandlers.read_emails,
-        read_email: gmailHandlers.read_email,
-        search_emails: gmailHandlers.search_emails,
+        read_emails: gmailHandlers?.read_emails,
+        read_email: gmailHandlers?.read_email,
+        search_emails: gmailHandlers?.search_emails,
         list_calendar: calendarHandlers.list_calendar,
       }
       let readEmailCount = 0
@@ -177,7 +181,7 @@ export function useProactiveBrief({ gmail, isGoogleConnected, userName, onSend }
       setLoading(false)
       runningRef.current = false
     }
-  }, [isGoogleConnected])
+  }, [isGoogleConnected, noCasaPhase0])
 
   // Déclencheurs : ouverture (mount) + retour au premier plan (appStateChange
   // natif / visibilitychange web). PAS de setInterval (timers gelés en arrière-plan).

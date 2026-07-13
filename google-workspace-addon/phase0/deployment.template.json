@@ -1,0 +1,30 @@
+{
+  "oauthScopes": [
+    "https://www.googleapis.com/auth/gmail.addons.current.action.compose",
+    "https://www.googleapis.com/auth/gmail.addons.current.message.action",
+    "https://www.googleapis.com/auth/userinfo.email",
+    "openid"
+  ],
+  "addOns": {
+    "common": {
+      "name": "Arty pour Gmail — Phase 0",
+      "logoUrl": "{{LOGO_URL}}",
+      "homepageTrigger": {
+        "runFunction": "{{BASE_URL}}/home",
+        "enabled": true
+      }
+    },
+    "gmail": {
+      "contextualTriggers": [
+        {
+          "unconditional": {},
+          "onTriggerFunction": "{{BASE_URL}}/context"
+        }
+      ]
+    },
+    "httpOptions": {
+      "authorizationHeader": "SYSTEM_ID_TOKEN",
+      "granularOauthPermissionSupport": "OPT_IN"
+    }
+  }
+}

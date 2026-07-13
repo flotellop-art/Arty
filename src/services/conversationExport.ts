@@ -9,15 +9,26 @@ import { formatModelName } from './modelLabels'
  * Download a conversation as a JSON file (Feature 7).
  */
 export function exportConversation(conv: Conversation): void {
-  const payload = {
-    version: 1,
-    exportedAt: new Date().toISOString(),
-    conversation: conv,
-  }
+  const payload = buildConversationJsonExport(conv)
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
   const filename = `arty-${sanitizeFilename(conv.title)}.json`
   // Reuse the share path on native so the user can pick a destination.
   void downloadOrShare(blob, filename, 'application/json')
+}
+
+export function buildConversationJsonExport(conv: Conversation) {
+  const conversation = {
+    ...conv,
+    // Le passage vers Gmail est local et éphémère. La requête n'a aucune
+    // raison de quitter l'app dans un fichier exporté.
+    messages: conv.messages.map(({ gmailSearch: _localHandoff, ...message }) => message),
+  }
+  const payload = {
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    conversation,
+  }
+  return payload
 }
 
 /**
@@ -37,8 +48,8 @@ export async function importConversationFromFile(file: File): Promise<string> {
     title: original.title ? `${original.title} (importée)` : 'Conversation importée',
     createdAt: Date.now(),
     updatedAt: Date.now(),
-    messages: original.messages.map((m) => ({
-      ...m,
+    messages: original.messages.map(({ gmailSearch: _untrustedHandoff, ...message }) => ({
+      ...message,
       id: generateId(),
     })),
   }
