@@ -112,8 +112,8 @@ function ModelPage() {
         emoji="🇺🇸"
         title="Claude"
         desc={noCasaPhase0
-          ? "Le plus intelligent. Excellent pour raisonner, rédiger et analyser des documents. Dans ce test, il n'a aucun accès global à Gmail ou Drive."
-          : "Le plus intelligent. Excellent pour raisonner, rédiger, analyser des documents et utiliser tes outils (Gmail, Drive, etc.)."}
+          ? "Le plus intelligent. Excellent pour raisonner, rédiger et analyser les contenus que tu fournis. Dans ce profil, il n'a aucun accès global à Drive."
+          : "Le plus intelligent. Excellent pour raisonner, rédiger, analyser des documents et utiliser les outils connectés disponibles."}
       />
       <GuideItem
         emoji="🇪🇺"

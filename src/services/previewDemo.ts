@@ -64,12 +64,12 @@ const DEMO_CONVERSATIONS: Conversation[] = [
   },
   {
     id: 'demo-2',
-    title: 'Synthèse des mails de la semaine',
+    title: 'Synthèse du compte-rendu chantier',
     createdAt: Date.now() - 5 * 3600_000,
     updatedAt: Date.now() - 5 * 3600_000,
     messages: [
-      { id: 'd2a', role: 'user', content: 'Fais-moi une synthèse de mes mails importants cette semaine.', timestamp: Date.now() - 5 * 3600_000 },
-      { id: 'd2b', role: 'assistant', content: 'Trois sujets ressortent : la relance Garage Martin, le point équipe de jeudi, et…', timestamp: Date.now() - 5 * 3600_000 },
+      { id: 'd2a', role: 'user', content: 'Résume le compte-rendu de chantier que je viens de joindre.', timestamp: Date.now() - 5 * 3600_000 },
+      { id: 'd2b', role: 'assistant', content: 'Trois sujets ressortent : la livraison des menuiseries, le point équipe de jeudi et la validation client…', timestamp: Date.now() - 5 * 3600_000 },
     ],
   },
   {

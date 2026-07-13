@@ -1,7 +1,7 @@
 {
   "name": "arty",
   "private": true,
-  "version": "1.0.80",
+  "version": "1.0.81",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -13,6 +13,7 @@
     "test:coverage": "vitest run --coverage",
     "addon:phase0:check": "node google-workspace-addon/phase0/render-manifest.mjs check-template",
     "no-casa:check": "node scripts/check-public-google-access.mjs",
+    "no-casa:android-check": "node scripts/check-public-google-access.mjs --require-android-assets",
     "verify": "npm run addon:phase0:check && npm run no-casa:check && npm run typecheck && npm run test:coverage && npm run build"
   },
   "dependencies": {

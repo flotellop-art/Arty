@@ -26,8 +26,8 @@ Règles de vérité (prioritaires, non-négociables) :
 // Force le modèle à toujours appeler web_search avant de répondre — y compris
 // quand un fichier est attaché (analyse du fichier + recherche internet pour
 // répondre à la question). Décliné en BUG 12 : désactivé pour les requêtes
-// sur données privées (Gmail/Drive/Calendar/Contacts) où les tools natifs
-// récupèrent les vraies données et web_search ne ferait qu'halluciner.
+// sur données privées fournies par l'utilisateur ou issues de Drive/Calendar/
+// Contacts, où web_search ne ferait qu'halluciner.
 const FORCE_WEB_SEARCH_PROMPT = `
 
 RECHERCHE WEB OBLIGATOIRE — non négociable :
@@ -548,7 +548,7 @@ function assertContentBlocksValid(blocks: ContentBlock[]): void {
 // l'API à chaque itération de la boucle (jusqu'à 30) : sans budget, un seul
 // message peut coûter plusieurs dollars (leçon T3 Chat).
 // - MAX_TOOL_FILE_BASE64_CHARS : ~8 MB binaire (défense en profondeur — les
-//   proxys Gmail/Drive cappent déjà à 8 MB côté serveur).
+//   le proxy Drive cappe déjà à 8 MB côté serveur).
 // - TOOL_CONTEXT_BUDGET_CHARS : ~150 K tokens de tool_results cumulés par
 //   message. Au-delà, on n'exécute plus les tools : le modèle est invité à
 //   synthétiser avec ce qu'il a déjà lu (transparent, jamais silencieux).
@@ -742,9 +742,9 @@ async function runWithTools(
     // quand la réflexion est réellement active (pas sur Haiku, où effort est off).
     const withThinking = effortActive ? baseSystemText + ANTI_HALLU_PROMPT : baseSystemText
     // Force web_search sur toute requête non-privée et non-triviale (règle
-    // user du 10 mai 2026). Les requêtes "mes mails / mon Drive / agenda"
-    // sont exclues car les tools natifs Gmail/Drive/Calendar récupèrent les
-    // vraies données — web_search ne ferait qu'halluciner (cf. BUG 12).
+    // user du 10 mai 2026). Les requêtes privées (contenu fourni, demande de
+    // boîte mail, Drive ou agenda) sont exclues : web_search ne pourrait pas
+    // retrouver ces données et ne ferait qu'halluciner (cf. BUG 12).
     // Pas de forçage web_search sur un appel à modèle imposé (ex: brief
     // proactif) : son jeu d'outils est restreint et n'inclut pas web_search,
     // donc pousser le modèle à l'appeler n'aurait aucun sens.
@@ -763,7 +763,7 @@ async function runWithTools(
     // H-AI-3 (audit étape 4) — Mistral est à 20 itérations max. 200 ici était
     // trop permissif : un bug dans un tool (boucle d'appels) pouvait consommer
     // des dizaines de $ silencieusement. 30 reste large pour des chaînes de
-    // tool calls complexes (read_email → analyze → search → write_doc).
+    // tool calls complexes (read_file → analyze → search → write_doc).
     let maxIterations = 30
     // P0.9 — cumul des chars de tool_results de CE message (texte + base64).
     let toolContextChars = 0
@@ -787,7 +787,7 @@ async function runWithTools(
         // attend un array non-vide OU pas de champ. Envoyer `tools: []` est
         // toléré mais peut combiner avec un SYSTEM_PROMPT orienté tools pour
         // produire des réponses vides (Claude "refuse" parce que le SP lui
-        // dit d'appeler web_search/gmail/drive qu'on ne lui fournit pas).
+        // dit d'appeler web_search/drive qu'on ne lui fournit pas).
         // Cas d'usage légitime de tools=[] : le comparateur de modèles.
         ...(cachedTools.length > 0 && { tools: cachedTools }),
         messages: apiMessages,

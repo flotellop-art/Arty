@@ -1,4 +1,5 @@
 import type { Env } from '../../env'
+import { revokeGoogleGrant, validatePublicGoogleAccessToken } from '../_lib/publicGoogleScopes'
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   const { refresh_token } = await request.json() as { refresh_token?: string }
@@ -39,8 +40,27 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
       )
     }
 
+    const accessToken = typeof data.access_token === 'string' ? data.access_token : ''
+    if (!accessToken) {
+      return Response.json({ error: 'Google token response missing access token' }, { status: 502 })
+    }
+
+    const scopeCheck = await validatePublicGoogleAccessToken(accessToken)
+    if (!scopeCheck.ok) {
+      // Un grant n'est révoqué que lorsque des scopes surnuméraires sont
+      // effectivement observés. Les indisponibilités de tokeninfo échouent
+      // fermé pour l'appel courant sans détruire un grant potentiellement sain.
+      if (scopeCheck.reason === 'scope_mismatch') {
+        await revokeGoogleGrant(refresh_token)
+      }
+      return Response.json(
+        { error: 'invalid_scope_set' },
+        { status: scopeCheck.reason === 'scope_mismatch' ? 403 : 502 },
+      )
+    }
+
     return Response.json({
-      access_token: data.access_token,
+      access_token: accessToken,
       expires_in: data.expires_in,
       token_type: data.token_type,
     })

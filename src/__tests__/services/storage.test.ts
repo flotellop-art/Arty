@@ -124,7 +124,7 @@ describe('storage', () => {
     expect(ret).toBeUndefined()
   })
 
-  it('purge les passages Gmail expirés ou importés avec un schéma invalide', () => {
+  it('purge les anciens passages Gmail sans tenir compte de leur ancien TTL', () => {
     const now = Date.now()
     const sanitized = storage.sanitizeConversationPayloads([
       makeConv('expired', {
@@ -135,13 +135,13 @@ describe('storage', () => {
             createdAt: now - 2 * 60 * 60 * 1000,
             expiresAt: now - 60 * 60 * 1000,
           },
-        }],
+        } as any],
       }),
     ], now)
     expect(sanitized[0]?.messages[0]).not.toHaveProperty('gmailSearch')
   })
 
-  it('conserve un passage Gmail valide pendant sa fenêtre d’une heure', () => {
+  it('purge aussi un ancien passage Gmail encore valide', () => {
     const now = Date.now()
     const conversation = makeConv('valid', {
       messages: [{
@@ -151,10 +151,10 @@ describe('storage', () => {
           createdAt: now,
           expiresAt: now + 60_000,
         },
-      }],
+      } as any],
     })
     expect(storage.sanitizeConversationPayloads([conversation], now)).toBeInstanceOf(Array)
-    expect(storage.sanitizeConversationPayloads([conversation], now)[0]?.messages[0]).toHaveProperty('gmailSearch')
+    expect(storage.sanitizeConversationPayloads([conversation], now)[0]?.messages[0]).not.toHaveProperty('gmailSearch')
   })
 
   it('bootstrap migrates a legacy plain conversations blob into the cache', async () => {

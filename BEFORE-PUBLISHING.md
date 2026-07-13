@@ -61,9 +61,17 @@ sont actifs, pas a decommenter du code.
 
 - [x] Aucun client AI n'utilise `getStoredTokens()` brut pour le header
       `x-google-token` (voir BUG 23 de CLAUDE.md).
-- [x] Tous les clients (`anthropicClient`, `geminiClient`, `mistralClient`,
-      `gmailClient`, `driveClient`, `calendarClient`, `contactsClient`)
+- [x] Tous les clients encore connectes a Google (`anthropicClient`,
+      `geminiClient`, `mistralClient`, `driveClient`, `calendarClient`,
+      `contactsClient`)
       passent par `getValidAccessToken()` qui refresh automatiquement.
+- [x] L'application publique web et Android ne demande aucun scope Gmail,
+      n'expose aucun outil de lecture/envoi Gmail et ne pretend pas acceder a
+      la boite mail. Un email n'est traite que si l'utilisateur colle, joint
+      ou partage lui-meme son contenu.
+- [ ] Google Cloud Console > Data Access contient exactement `openid`,
+      `userinfo.email`, `userinfo.profile`, `calendar` ; supprimer les anciens
+      scopes Gmail/Drive/Contacts/Sheets et révoquer les grants de test.
 
 ## 5. Sourcemaps desactives
 
@@ -123,6 +131,7 @@ silencieusement sur Cloudflare.
 npm ci
 npm run verify
 npx cap sync
+npm run no-casa:android-check
 npx cap open android
 ```
 
@@ -146,8 +155,10 @@ Dans Android Studio :
   - Chiffrement en transit : OUI (HTTPS only).
   - Chiffrement au repos : OUI (AES-256 Web Crypto).
   - Donnees supprimables sur demande : OUI (bouton "deconnexion + effacement").
-- Scopes Google verifies par l'OAuth brand verification (obligatoire pour
-  `gmail.send`, `drive`, `calendar` au-dela de 100 utilisateurs).
+- Profil OAuth public limite a `openid`, `userinfo.email`, `userinfo.profile`
+  et `calendar`. Aucun scope Gmail ni `drive` complet dans l'APK/AAB public ;
+  verifier les exigences de marque et de consentement Google applicables au
+  calendrier avant soumission.
 
 ## 13. App Store (iOS)
 

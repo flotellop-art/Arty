@@ -8,6 +8,7 @@ import rehypeSanitize, { defaultSchema } from 'rehype-sanitize'
 import type { Components } from 'react-markdown'
 import { isValidElement } from 'react'
 import { getFile } from '../../services/secureFileStorage'
+import { isAllowedReportAction } from '../../services/reportActions'
 
 // P1.3 — image générée référencée par `arty-img://<fileId>`. Charge le binaire
 // depuis IndexedDB chiffré et le rend via un blob: URL (révoqué au démontage).
@@ -198,6 +199,16 @@ const components: Components = {
       {children}
     </a>
   ),
+  button: ({ children, ...props }) => {
+    const action = (props as Record<string, unknown>)['data-action']
+    // Les conversations antérieures peuvent encore contenir des boutons
+    // d'intégrations supprimées. On conserve leur libellé comme texte, mais
+    // on ne rend jamais une action inconnue cliquable.
+    if (typeof action !== 'string' || !isAllowedReportAction(action)) {
+      return <span>{children}</span>
+    }
+    return <button {...props}>{children}</button>
+  },
   img: ({ src, alt }) => {
     // P1.3 — image générée stockée en IndexedDB : résolue en blob: URL.
     if (typeof src === 'string' && src.startsWith('arty-img://')) {

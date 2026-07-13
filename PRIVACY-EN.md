@@ -1,6 +1,6 @@
 # Privacy Policy — Arty
 
-**Last updated:** July 10, 2026
+**Last updated:** July 13, 2026
 
 **Publisher:** Florent Pollet, natural person, residing at 884 chemin de la Prairie, 38270 Beaufort, France. No business is registered to date; a SIREN identifier will be added to this policy upon registration of the activity, planned before the public launch and the first payments.
 **Contact:** flotellop@gmail.com
@@ -16,13 +16,15 @@ The data controller under the GDPR is Florent Pollet, natural person (contact de
 | Category | Data | Source |
 |---|---|---|
 | Authentication identity | Email, full name, profile picture | Google Sign-In (OAuth) |
-| User content | Messages, files, and attachments sent to the assistant; structured memory, shared conversations, and reports you voluntarily submit | You |
-| Google Workspace data | Depending on the features used: sending emails (Gmail), reading and creating events (Calendar), contacts (Contacts) | Your Google accounts, on your explicit request |
+| User content | Messages, files, and attachments sent to the assistant, including email content you manually paste, attach, or share; structured memory, shared conversations, and reports you voluntarily submit | You |
+| Google Workspace data | Reading and creating events (Calendar), only when you use an agenda feature. The public app does not access your Gmail mailbox | Your Google account, on your explicit request |
 | Location | Approximate geographic position | Your device's GPS sensor, only if enabled |
 | Payment data | Account email, selected offer or pack, transaction identifiers and status; Arty receives no payment-card details | You + Lemon Squeezy or Creem |
 | Waitlist signup | Email (pre-launch only) | Tally form |
 
 We do not track your browsing for advertising purposes and do not use any commercial profiling.
+
+Arty does not search, read, modify, or send messages in your Gmail mailbox. If you ask Arty to summarize an email or draft a reply, its content is processed only when you paste, attach, or share it with the assistant yourself.
 
 ## 3. Purposes and legal grounds
 
@@ -43,7 +45,7 @@ Your data is shared, **strictly for the purposes above**, with the following pro
 | Cloudflare | Hosting Workers, Pages, KV (API proxy, non-sensitive key storage, site distribution) | EU + global (CDN) | Standard Contractual Clauses (SCC), Cloudflare DPA |
 | Anthropic (Claude) | AI response generation | United States | SCC + EU-US Data Privacy Framework |
 | OpenAI | AI response generation (depending on the selected model) | United States | SCC + EU-US Data Privacy Framework |
-| Google (Gemini + Workspace) | AI response generation + Gmail/Calendar/Contacts connectors | EU + United States | SCC + EU-US Data Privacy Framework |
+| Google (Gemini + Workspace) | AI response generation + Calendar features explicitly requested by the user; no Gmail connector in the public app | EU + United States | SCC + EU-US Data Privacy Framework |
 | Mistral AI | AI response generation | France (EU) | Direct EU hosting |
 | Lemon Squeezy | Pro subscription payment processing | United States | SCC + EU-US Data Privacy Framework, PCI-DSS compliance |
 | Creem | Merchant of Record and hosted checkout for prepaid credit packs. Arty sends the verified Google account email, selected product/pack, a random request ID, and the return URL. Payment-card details are entered directly with Creem and are not received by Arty. | Estonia (EU) | GDPR, Creem DPA; SCC for its sub-processors outside the EEA |

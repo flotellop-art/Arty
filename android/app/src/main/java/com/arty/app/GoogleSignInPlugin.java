@@ -51,24 +51,11 @@ public class GoogleSignInPlugin extends Plugin {
                     // silencieux 30 min plus tard.
                     .requestServerAuthCode(serverClientId, true);
 
-            if (BuildConfig.GMAIL_NO_CASA_PHASE0) {
-                // Le client principal ne demande aucun accès Gmail/Drive/Contacts.
-                // Les deux scopes Gmail contextuels restent exclusivement dans
-                // le manifest du Workspace Add-on. Calendar n'est pas restreint.
-                gsoBuilder.requestScopes(
-                    new Scope("https://www.googleapis.com/auth/calendar")
-                );
-            } else {
-                gsoBuilder.requestScopes(
-                        new Scope("https://www.googleapis.com/auth/gmail.readonly"),
-                        new Scope("https://www.googleapis.com/auth/gmail.send"),
-                        new Scope("https://www.googleapis.com/auth/gmail.modify"),
-                        new Scope("https://www.googleapis.com/auth/drive"),
-                        new Scope("https://www.googleapis.com/auth/calendar"),
-                        new Scope("https://www.googleapis.com/auth/calendar.events"),
-                        new Scope("https://www.googleapis.com/auth/contacts")
-                );
-            }
+            // Profil public permanent : identité + Calendar uniquement.
+            // Aucun flag de build ne peut réactiver un scope restreint.
+            gsoBuilder.requestScopes(
+                new Scope("https://www.googleapis.com/auth/calendar")
+            );
 
             GoogleSignInOptions gso = gsoBuilder.build();
 

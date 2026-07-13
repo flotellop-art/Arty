@@ -12,7 +12,6 @@ import { ContextCompressedBanner } from './ContextCompressedBanner'
 import { ContextMeter } from './ContextMeter'
 import { ErrorBoundary } from '../shared/ErrorBoundary'
 import { consumePendingDraft } from '../../services/shareTargetService'
-import type { useGmail } from '../../hooks/useGmail'
 import type { useDrive } from '../../hooks/useDrive'
 import type { useComputer } from '../../hooks/useComputer'
 
@@ -29,13 +28,11 @@ interface ConversationScreenProps {
   onTogglePin?: (messageId: string) => void
   onEdit?: (messageId: string, newContent: string) => void
   onRetry?: (messageId: string) => void
-  onUpdateGmailSearch?: (messageId: string, query: string) => void
   // Bandeau d'erreur API (audit UX) : rejouer le dernier message user sans
   // le retaper, et fermer le bandeau qui ne disparaissait jamais.
   onRetryError?: () => void
   onDismissError?: () => void
   onNewConversation?: () => void
-  gmail: ReturnType<typeof useGmail>
   drive: ReturnType<typeof useDrive>
   computerActions: ReturnType<typeof useComputer>
   actionScreenshot: string | null
@@ -56,11 +53,9 @@ export function ConversationScreen({
   onTogglePin,
   onEdit,
   onRetry,
-  onUpdateGmailSearch,
   onRetryError,
   onDismissError,
   onNewConversation,
-  gmail,
   drive,
   computerActions,
   actionScreenshot,
@@ -88,7 +83,6 @@ export function ConversationScreen({
         onSelectConversation={onSelectConv}
       />
 
-      <ActionBanner icon="📧" message={t('chat.banners.gmailReading')} isVisible={gmail.isLoading} />
       <ActionBanner icon="📁" message={t('chat.banners.driveAccess')} isVisible={drive.isLoading} />
       <BrowserBanner action={computerActions.currentAction} />
 
@@ -103,7 +97,6 @@ export function ConversationScreen({
           onTogglePin={onTogglePin}
           onEdit={onEdit}
           onRetry={onRetry}
-          onUpdateGmailSearch={onUpdateGmailSearch}
           onReport={(messageId) => {
             const msg = conversation.messages.find((m) => m.id === messageId)
             if (msg) setReportTarget(msg)

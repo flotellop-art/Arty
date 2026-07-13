@@ -10,7 +10,6 @@ export interface SlashCommand {
 }
 
 export const SLASH_COMMANDS: SlashCommand[] = [
-  { cmd: '/email', label: 'Lire derniers emails non lus', icon: '📧', prompt: 'Lis mes derniers emails non lus' },
   { cmd: '/agenda', label: "Agenda d'aujourd'hui", icon: '📅', prompt: "Qu'est-ce que j'ai dans mon agenda aujourd'hui ?" },
   { cmd: '/creer-app', label: 'Créer une app sur le PC (Orchestrateur)', icon: '🖥️', prompt: "Crée une application sur mon PC (Orchestrateur local) : précise l'app (excel, word, bloc-notes, wordpress, chrome), un nom de fichier optionnel, et un contenu initial optionnel. Exemple : « Crée un classeur Excel nommé suivi-budget-2026 avec les colonnes Poste / Catégorie / Montant / Statut »." },
   { cmd: '/resume', label: 'Résumer la conversation', icon: '📋', prompt: 'Résume cette conversation' },

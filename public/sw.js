@@ -87,7 +87,7 @@ self.addEventListener('fetch', (event) => {
 
   // BUG 45 partiel (audit étape 13) — never cache Cloudflare Pages Functions.
   // Sans ça, le SW peut servir une réponse mise en cache (souvent une erreur
-  // CORS ou un 5xx) sur /api/ai/proxy, /api/gmail/action, /api/auth/token, etc.
+  // CORS ou un 5xx) sur /api/ai/proxy, /api/auth/token, etc.
   // → l'app croit que le proxy est cassé alors qu'il marche.
   if (url.pathname.startsWith('/api/')) {
     return

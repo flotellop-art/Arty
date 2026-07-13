@@ -1,5 +1,5 @@
-Arty 1.0.80 — Gmail sans CASA
+Arty 1.0.81 — Messagerie privée, sans accès Gmail
 
-• Les demandes de recherche d'e-mails restent dans Arty, puis ouvrent une recherche Gmail préparée quand c'est nécessaire.
-• Arty ne demande plus les accès directs Gmail, Drive, Contacts ou Sheets dans le profil Google public.
-• La build Android utilise désormais le même profil sans CASA que la version web.
+• Arty n'accède plus à votre boîte Gmail et ne peut ni chercher, ni ouvrir, ni envoyer vos messages.
+• Pour résumer un email ou préparer une réponse, collez, joignez ou partagez simplement son contenu avec Arty.
+• La connexion Google publique reste limitée à l'identité et à l'agenda, sans scope Gmail.

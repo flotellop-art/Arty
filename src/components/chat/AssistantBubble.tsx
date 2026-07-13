@@ -6,6 +6,7 @@ import { FactCheckBadge } from './FactCheckBadge'
 import { ModelFooter } from './ModelFooter'
 import type { FactCheckResult } from '../../types'
 import { speak, cancel as cancelTts, getSpeakingId, onSpeakingChange, isTtsSupported } from '../../utils/tts'
+import { isAllowedReportAction } from '../../services/reportActions'
 
 interface AssistantBubbleProps {
   content: string
@@ -73,6 +74,7 @@ export const AssistantBubble = memo(function AssistantBubble({ content, onAction
 
     e.preventDefault()
     const action = btn.dataset.action || ''
+    if (!isAllowedReportAction(action)) return
     const params: Record<string, string> = {}
     for (const [key, value] of Object.entries(btn.dataset)) {
       if (key !== 'action') params[key] = value || ''

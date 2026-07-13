@@ -55,8 +55,8 @@ export function useGoogleAuth() {
   // refresh resilient (no wipe on 5xx), so a null here usually means a
   // temporary network blip, not a real disconnect. Flipping isConnected
   // would force the user back to the login screen for nothing. The hook
-  // stays "connected" while tokens exist in storage; AGENDA/Gmail will
-  // show their own retryable error if the immediate API call fails.
+  // stays "connected" while tokens exist in storage; Calendar will show its
+  // own retryable error if the immediate API call fails.
   useEffect(() => {
     if (!isConnected) return
     getValidAccessToken().catch(() => {})
@@ -76,7 +76,7 @@ export function useGoogleAuth() {
 
   // Refresh on app resume. When the user comes back from another app
   // after >1h, the stored access_token is expired. Without this, the
-  // FIRST API call (AGENDA mount, Gmail fetch) hits the cold-start
+  // FIRST API call (for example the AGENDA mount) hits the cold-start
   // window and throws "Non connecté à Google" before the user can do
   // anything. Triggering the refresh here means the cold-start delay
   // happens silently while the user is still looking at the home screen.

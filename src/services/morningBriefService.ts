@@ -1,7 +1,6 @@
 import i18n from '../i18n'
 import { getDateLocale } from '../utils/formatDate'
 import { listEvents } from './calendarClient'
-import { listUnreadEmails } from './gmailClient'
 import { getUserLocation, isLocationConsentEnabled } from './native/location'
 import { apiUrl } from './apiBase'
 import { safeJson } from '../utils/safeJson'
@@ -83,7 +82,7 @@ export function formatEventTime(isoStart: string): string {
 
 /**
  * Construit le texte brut du brief pour la synthèse vocale.
- * Combine la salutation, la date, la météo (si position consentie), l'agenda et les emails non lus.
+ * Combine la salutation, la date, la météo (si position consentie) et l'agenda.
  */
 export async function buildBriefSpeechText(
   userName?: string,
@@ -163,38 +162,9 @@ export async function buildBriefSpeechText(
     }
   }
 
-  // 5. Emails non lus
-  let emailSpeech = ''
-  if (isGoogleConnected) {
-    try {
-      const emails = await listUnreadEmails()
-      if (emails.length === 0) {
-        emailSpeech = i18n.t('morningBrief.speech.noEmails')
-      } else {
-        const cleanSender = (fromStr: string): string => {
-          let name = (fromStr.split('<')[0] || '').trim()
-          if (!name && fromStr.includes('@')) {
-            name = (fromStr.split('@')[0] || '').trim()
-          }
-          name = name.replace(/^"+|"+$/g, '')
-          return name || fromStr
-        }
-        const uniqueSenders = Array.from(new Set(emails.map(e => cleanSender(e.from)))).slice(0, 5)
-        const sendersList = uniqueSenders.join(', ')
-        emailSpeech = i18n.t(
-          emails.length === 1 ? 'morningBrief.speech.emailsIntro_one' : 'morningBrief.speech.emailsIntro_other',
-          { count: emails.length, senders: sendersList }
-        )
-      }
-    } catch (e) {
-      console.warn('Speech email fetch error:', e)
-    }
-  }
-
   const speechParts = [greeting, dateSpeech]
   if (weatherSpeech) speechParts.push(weatherSpeech)
   if (calendarSpeech) speechParts.push(calendarSpeech)
-  if (emailSpeech) speechParts.push(emailSpeech)
 
   return speechParts.filter(Boolean).join(' ')
 }

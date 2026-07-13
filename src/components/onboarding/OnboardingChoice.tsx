@@ -153,8 +153,8 @@ export function OnboardingChoice({
 
             {/* P2.2 — preuve de valeur concrète (statique, JSX pur, aucun appel
                 réseau). Cas par « collage » → réponse, donc HONNÊTES avant la
-                connexion Google (on ne montre pas de démo Gmail qui exigerait un
-                compte connecté = pas de promesse trahie). Remplace les anciennes
+                connexion Google (aucune donnée connectée n'est simulée avant
+                authentification = pas de promesse trahie). Remplace les anciennes
                 4 slides emojis génériques. */}
             <ProofPills />
 

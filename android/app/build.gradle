@@ -1,9 +1,5 @@
 apply plugin: 'com.android.application'
 
-def gmailNoCasaPhase0 = (project.findProperty('artyGmailNoCasaPhase0')
-        ?: System.getenv('ARTY_GMAIL_NO_CASA_PHASE0')
-        ?: 'false').toString().toBoolean()
-
 android {
     namespace = "com.arty.app"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -14,9 +10,8 @@ android {
         applicationId "com.arty.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 81
-        versionName "1.0.80"
-        buildConfigField "boolean", "GMAIL_NO_CASA_PHASE0", gmailNoCasaPhase0.toString()
+        versionCode 82
+        versionName "1.0.81"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.

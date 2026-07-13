@@ -1,9 +1,7 @@
 import type { useComputer } from '../hooks/useComputer'
-import type { useGmail } from '../hooks/useGmail'
 import type { useDrive } from '../hooks/useDrive'
 import type { ToolResult, ToolHandler } from './tools/types'
 import { createComputerHandlers } from './tools/computerTools'
-import { createGmailHandlers } from './tools/gmailTools'
 import { createDriveHandlers } from './tools/driveTools'
 import { createCalendarHandlers } from './tools/calendarTools'
 import { createContactsHandlers } from './tools/contactsTools'
@@ -18,12 +16,10 @@ export type { ToolResult, ToolHandler }
 
 export function createToolExecutor(
   computer: ReturnType<typeof useComputer>,
-  gmail: ReturnType<typeof useGmail>,
   drive: ReturnType<typeof useDrive>,
 ) {
   const handlers: Record<string, ToolHandler> = {
     ...createComputerHandlers(computer),
-    ...createGmailHandlers(gmail),
     ...createDriveHandlers(drive),
     ...createCalendarHandlers(),
     ...createContactsHandlers(),
@@ -39,7 +35,7 @@ export function createToolExecutor(
   return async (name: string, input: Record<string, unknown>): Promise<ToolResult> => {
     if (isPublicGoogleOAuthProfileEnabled() && isBlockedPublicGoogleTool(name)) {
       return {
-        result: 'Ce build sans CASA ne donne pas à Arty un accès global à Gmail, Drive ou Contacts.',
+        result: 'Ce profil Google public ne donne pas à Arty un accès global à Drive ou Contacts.',
       }
     }
     const handler = handlers[name]

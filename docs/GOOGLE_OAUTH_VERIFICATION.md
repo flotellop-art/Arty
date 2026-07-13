@@ -1,12 +1,19 @@
 # Dossier de vérification OAuth Google — Arty
 
 **Date :** 24 mai 2026
-**Statut :** Document de préparation interne (à remettre au prestataire/au labo CASA et à reporter dans Google Cloud Console).
+**Statut : ARCHIVÉ / SUPERSEDED le 13 juillet 2026. Ne pas utiliser pour configurer Google Cloud.**
 **App :** Arty — assistant IA, PWA `tryarty.com` + Android (Capacitor). iOS = PWA.
 **Éditeur :** Florent Pollet, personne physique, 884 chemin de la Prairie, 38270 Beaufort, France — flotellop@gmail.com.
 
 > Les justifications « EN » ci-dessous sont prêtes à coller telles quelles dans Google Cloud
 > Console (Google attend de l'anglais). Le reste du document est en français pour le pilotage interne.
+
+> ⚠️ Ce dossier décrit l'ancienne architecture avec accès Gmail/Drive et ne
+> correspond plus au produit public. La source active est désormais
+> [`PLAY-STORE-SUBMISSION.md`](../PLAY-STORE-SUBMISSION.md) : le client demande
+> uniquement `openid`, `userinfo.email`, `userinfo.profile` et `calendar`.
+> Aucun scope Gmail ou Drive restreint ne doit être ajouté au projet OAuth
+> public. Le contenu ci-dessous est conservé uniquement comme historique.
 
 ---
 

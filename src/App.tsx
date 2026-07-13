@@ -124,7 +124,6 @@ function AppContent({
     branchConversation,
     stopStreaming,
     togglePinMessage,
-    updateGmailSearch,
     editAndResend,
     retryMessage,
     retryLastUserMessage,
@@ -145,7 +144,6 @@ function AppContent({
 
   const {
     googleAuth,
-    gmail,
     drive,
     computerActions,
     actionScreenshot,
@@ -179,7 +177,6 @@ function AppContent({
   // chips d'action passent par handleSendFromHome (humain dans la boucle) ou une
   // tâche locale. Rendu sur l'accueil.
   const proactiveBrief = useProactiveBrief({
-    gmail,
     isGoogleConnected: googleAuth.isConnected,
     userName: profileName || userName,
     onSend: handleSendFromHome,
@@ -298,14 +295,6 @@ function AppContent({
       togglePinMessage(activeId, messageId)
     },
     [activeId, togglePinMessage]
-  )
-
-  const handleGmailSearchUpdate = useCallback(
-    (messageId: string, query: string) => {
-      if (!activeId) return
-      updateGmailSearch(activeId, messageId, query)
-    },
-    [activeId, updateGmailSearch],
   )
 
   const handleOAuthCallback = useCallback(
@@ -462,7 +451,6 @@ function AppContent({
               isStreaming={isStreaming}
               onStop={stopStreaming}
               googleAuth={googleAuth}
-              gmail={gmail}
               drive={drive}
               userName={profileName || userName}
               proactiveBrief={proactiveBrief.brief}
@@ -539,7 +527,6 @@ function AppContent({
               onSend={handleSendInChat}
               onStop={stopStreaming}
               onSelect={selectConversation}
-              gmail={gmail}
               drive={drive}
               computerActions={computerActions}
               actionScreenshot={actionScreenshot}
@@ -548,7 +535,6 @@ function AppContent({
               onTogglePin={handleTogglePin}
               onEdit={editAndResend}
               onRetry={retryMessage}
-              onUpdateGmailSearch={handleGmailSearchUpdate}
               onRetryError={retryLastUserMessage}
               onDismissError={clearError}
               onNewConversation={handleNewConversation}
@@ -657,7 +643,6 @@ interface ChatRouteProps {
   onSend: ChatSendHandler
   onStop: () => void
   onSelect: (id: string) => void
-  gmail: ReturnType<typeof import('./hooks/useGmail').useGmail>
   drive: ReturnType<typeof import('./hooks/useDrive').useDrive>
   computerActions: ReturnType<typeof import('./hooks/useComputer').useComputer>
   actionScreenshot: string | null
@@ -666,7 +651,6 @@ interface ChatRouteProps {
   onTogglePin?: (messageId: string) => void
   onEdit?: (messageId: string, newContent: string) => void
   onRetry?: (messageId: string) => void
-  onUpdateGmailSearch?: (messageId: string, query: string) => void
   onRetryError?: () => void
   onDismissError?: () => void
   onNewConversation?: () => void
@@ -683,7 +667,6 @@ function ChatRoute({
   onSend,
   onStop,
   onSelect,
-  gmail,
   drive,
   computerActions,
   actionScreenshot,
@@ -692,7 +675,6 @@ function ChatRoute({
   onTogglePin,
   onEdit,
   onRetry,
-  onUpdateGmailSearch,
   onRetryError,
   onDismissError,
   onNewConversation,
@@ -764,7 +746,6 @@ function ChatRoute({
       onBack={onBack}
       onSend={onSend}
       onStop={onStop}
-      gmail={gmail}
       drive={drive}
       computerActions={computerActions}
       actionScreenshot={actionScreenshot}
@@ -773,7 +754,6 @@ function ChatRoute({
       onTogglePin={onTogglePin}
       onEdit={onEdit}
       onRetry={onRetry}
-      onUpdateGmailSearch={onUpdateGmailSearch}
       onRetryError={onRetryError}
       onDismissError={onDismissError}
       onNewConversation={onNewConversation}
@@ -886,8 +866,8 @@ export default function App() {
 
     async function processOAuth(code: string) {
       try {
-        const { exchangeCode, fetchGoogleUser } = await import('./services/googleAuth')
-        const tokens = await exchangeCode(code)
+        const { exchangeCode, fetchGoogleUser, storeMailboxFreeGrant, storeUser } = await import('./services/googleAuth')
+        const tokens = await exchangeCode(code, undefined, false)
         const user = await fetchGoogleUser(tokens.access_token)
         // Pose le splash post-login (vip|trial) AVANT de flipper l'auth.
         await initTrial(tokens.access_token)
@@ -906,6 +886,8 @@ export default function App() {
           openaiKey: existingKeys?.openai,
           identifier: user.email,
         })
+        await storeMailboxFreeGrant(tokens)
+        await storeUser(user)
         setSplash(getOnboardingSplash())
       } catch (err) {
         // Stash the error so LoginScreen surfaces it (it drains
@@ -969,9 +951,9 @@ export default function App() {
             // raw setJSON bypassed it). First native login: the refresh
             // token is freshly minted (requestServerAuthCode forces it,
             // BUG 51), so no merge-with-existing is needed here.
-            const { storeTokens, storeUser } = await import('./services/googleAuth')
+            const { storeMailboxFreeGrant, storeUser } = await import('./services/googleAuth')
             await storeUser({ email, name, picture: avatar })
-            await storeTokens({
+            await storeMailboxFreeGrant({
               access_token: accessToken,
               refresh_token: refreshToken,
               expires_at: Date.now() + expiresIn * 1000,
@@ -1099,8 +1081,8 @@ function OAuthCallbackAuth({
 
   const handleCallback = useCallback(async (code: string) => {
     try {
-      const { exchangeCode, fetchGoogleUser } = await import('./services/googleAuth')
-      const tokens = await exchangeCode(code)
+      const { exchangeCode, fetchGoogleUser, storeMailboxFreeGrant, storeUser } = await import('./services/googleAuth')
+      const tokens = await exchangeCode(code, undefined, false)
       const user = await fetchGoogleUser(tokens.access_token)
 
       // Initialise (ou récupère) le statut trial AVANT de finaliser l'auth :
@@ -1128,6 +1110,8 @@ function OAuthCallbackAuth({
         openaiKey: existingKeys?.openai || undefined,
         identifier: user.email,
       })
+      await storeMailboxFreeGrant(tokens)
+      await storeUser(user)
       onPostLogin?.()
       navigate('/')
     } catch (err) {

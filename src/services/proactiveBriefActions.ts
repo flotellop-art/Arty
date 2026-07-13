@@ -2,24 +2,20 @@
 // définition de l'outil `present_brief`, validation/sanitisation du payload
 // renvoyé par le modèle, et routage SÉCURISÉ des actions.
 //
-// Sécurité (cf. challenge Opus) : le brief ingère du contenu de mails NON
-// FIABLE. Le modèle ne fournit donc QUE des champs d'affichage + un type
+// Sécurité : le modèle ne fournit QUE des champs d'affichage + un type
 // d'action dans un ENUM fermé. Les libellés des chips et les prompts routés
-// sont construits ICI, côté client, à partir de constantes — JAMAIS de texte
-// exécutable écrit par le modèle. Les actions sur un mail passent par un
-// `message_id` validé (même regex que BUG 32 côté serveur), pas par le corps.
+// sont construits ici, côté client, à partir de constantes.
 
-export type BriefActionType = 'view_email' | 'reply' | 'reminder' | 'schedule'
+export type BriefActionType = 'reminder' | 'schedule'
 
 export interface BriefAction {
   type: BriefActionType
-  emailId?: string
 }
 
 export interface BriefItem {
   title: string
   detail?: string
-  source?: 'mail' | 'agenda' | 'tâche' | 'mémoire'
+  source?: 'agenda' | 'tâche' | 'mémoire'
   actions: BriefAction[]
 }
 
@@ -27,9 +23,8 @@ export interface BriefData {
   items: BriefItem[]
 }
 
-const ACTION_TYPES: BriefActionType[] = ['view_email', 'reply', 'reminder', 'schedule']
-const SOURCES = ['mail', 'agenda', 'tâche', 'mémoire']
-const ID_RE = /^[a-zA-Z0-9_-]+$/
+const ACTION_TYPES: BriefActionType[] = ['reminder', 'schedule']
+const SOURCES = ['agenda', 'tâche', 'mémoire']
 
 const MAX_ITEMS = 8
 const MAX_ACTIONS = 4
@@ -51,7 +46,7 @@ export const PRESENT_BRIEF_TOOL = {
         items: {
           type: 'object' as const,
           properties: {
-            title: { type: 'string' as const, description: 'Titre court de l\'élément (ex: "Mail de Marie — facture en retard").' },
+            title: { type: 'string' as const, description: 'Titre court de l\'élément (ex: "Rendez-vous chantier à 9 h").' },
             detail: { type: 'string' as const, description: 'Une phrase de contexte ou de priorité (optionnel).' },
             source: { type: 'string' as const, enum: SOURCES, description: 'Origine de l\'élément.' },
             actions: {
@@ -61,7 +56,6 @@ export const PRESENT_BRIEF_TOOL = {
                 type: 'object' as const,
                 properties: {
                   type: { type: 'string' as const, enum: ACTION_TYPES },
-                  email_id: { type: 'string' as const, description: "ID du mail — OBLIGATOIRE pour view_email et reply (fourni par read_emails)." },
                 },
                 required: ['type'],
               },
@@ -102,13 +96,10 @@ export function sanitizeBriefData(input: unknown): BriefData | null {
       const ao = a as Record<string, unknown>
       const type = ao.type as BriefActionType
       if (!ACTION_TYPES.includes(type)) continue
-      const emailId = typeof ao.email_id === 'string' ? ao.email_id : undefined
-      // view_email / reply exigent un id de mail valide, sinon on drop l'action.
-      if ((type === 'view_email' || type === 'reply') && !(emailId && ID_RE.test(emailId))) continue
-      const key = `${type}:${emailId ?? ''}`
+      const key = type
       if (seen.has(key)) continue
       seen.add(key)
-      actions.push({ type, ...(emailId && ID_RE.test(emailId) ? { emailId } : {}) })
+      actions.push({ type })
     }
     if (actions.length === 0) continue
 
@@ -135,22 +126,12 @@ export type ActionRoute =
 /**
  * Construit la cible d'une action côté client (jamais via le modèle).
  * - reminder → tâche locale (UI contrainte, aucun risque d'envoi).
- * - view_email / reply → chat, routé par message_id validé (corps re-lu côté chat).
  * - schedule → chat, titre fencé comme donnée.
  */
 export function routeBriefAction(action: BriefAction, item: BriefItem): ActionRoute | null {
   switch (action.type) {
     case 'reminder':
       return { kind: 'task', text: fence(item.title) }
-    case 'view_email':
-      if (!action.emailId || !ID_RE.test(action.emailId)) return null
-      return { kind: 'chat', prompt: `Montre-moi le contenu complet de cet email (message_id: ${action.emailId}).` }
-    case 'reply':
-      if (!action.emailId || !ID_RE.test(action.emailId)) return null
-      return {
-        kind: 'chat',
-        prompt: `Prépare un brouillon de réponse à cet email (message_id: ${action.emailId}). Montre-le-moi d'abord et NE L'ENVOIE PAS sans ma validation explicite.`,
-      }
     case 'schedule':
       return {
         kind: 'chat',
@@ -162,8 +143,6 @@ export function routeBriefAction(action: BriefAction, item: BriefItem): ActionRo
 }
 
 export const ACTION_LABEL_KEY: Record<BriefActionType, string> = {
-  view_email: 'proactiveBrief.actions.view',
-  reply: 'proactiveBrief.actions.reply',
   reminder: 'proactiveBrief.actions.reminder',
   schedule: 'proactiveBrief.actions.schedule',
 }

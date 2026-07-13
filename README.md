@@ -1,9 +1,11 @@
 # Arty
 
 Assistant IA personnel multi-modèles (Claude, Mistral, Gemini, OpenAI) avec
-intégration Google (Gmail, Drive, Calendar, Contacts, Sheets), disponible en
-PWA web ([tryarty.com](https://tryarty.com)) et en application Android/iOS
-(Capacitor).
+connexion Google et agenda, disponible en PWA web
+([tryarty.com](https://tryarty.com)) et en application Android/iOS
+(Capacitor). L'application publique n'accède pas à la boîte Gmail : pour
+résumer un message ou préparer une réponse, l'utilisateur colle, joint ou
+partage lui-même son contenu avec Arty.
 
 ## Architecture
 
@@ -53,7 +55,7 @@ dashboard Cloudflare Pages (Settings → Environment variables + bindings D1).
   `geminiClient`, `openaiClient`), routage (`aiRouter`), stockage chiffré
   (`crypto`, `scopedStorage`, `storage`), auth Google (`googleAuth`)
 - `src/services/tools/` + `src/services/toolDefinitions.ts` — outils exposés
-  au LLM (Gmail, Drive, Calendar, WordPress, utilitaires). ⚠️ Tout nouveau
+  au LLM (Drive, Calendar, WordPress, utilitaires). ⚠️ Tout nouveau
   tool doit être classé dans le test de parité HITL
   (`src/__tests__/services/toolConfirmation.test.ts`)
 - `functions/api/` — endpoints serveur : proxys IA, auth OAuth/OTP, quotas,

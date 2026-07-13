@@ -3,7 +3,6 @@ import { safeJson } from '../utils/safeJson'
 import * as scoped from './scopedStorage'
 import { apiUrl } from './apiBase'
 import { encrypt, decrypt, isCryptoReady, selfTestCrypto } from './crypto'
-import { isPublicGoogleOAuthProfileEnabled } from './publicGoogleOAuthProfile'
 
 const FETCH_TIMEOUT_MS = 15_000
 
@@ -13,21 +12,8 @@ export function withTimeout(ms: number): { signal: AbortSignal; cancel: () => vo
   return { signal: controller.signal, cancel: () => clearTimeout(id) }
 }
 
-export const STANDARD_GOOGLE_SCOPES = [
-  'https://www.googleapis.com/auth/gmail.readonly',
-  'https://www.googleapis.com/auth/gmail.send',
-  'https://www.googleapis.com/auth/gmail.modify',
-  'https://www.googleapis.com/auth/drive',
-  'https://www.googleapis.com/auth/calendar',
-  'https://www.googleapis.com/auth/calendar.events',
-  'https://www.googleapis.com/auth/contacts',
-  'https://www.googleapis.com/auth/userinfo.email',
-  'https://www.googleapis.com/auth/userinfo.profile',
-]
-
-// Experimental public-client profile: Calendar remains available because it
-// is not a restricted Gmail/Drive scope. Gmail contextual scopes live only in
-// the Workspace Add-on manifest and must never appear here.
+// Public-client profile: Calendar remains available. Contextual Gmail scopes
+// live only in the isolated Workspace Add-on manifest and never appear here.
 export const PUBLIC_GOOGLE_SCOPES = [
   'openid',
   'https://www.googleapis.com/auth/userinfo.email',
@@ -35,8 +21,8 @@ export const PUBLIC_GOOGLE_SCOPES = [
   'https://www.googleapis.com/auth/calendar',
 ]
 
-export function getGoogleOAuthScopes(noCasa = isPublicGoogleOAuthProfileEnabled()): string[] {
-  return [...(noCasa ? PUBLIC_GOOGLE_SCOPES : STANDARD_GOOGLE_SCOPES)]
+export function getGoogleOAuthScopes(): string[] {
+  return [...PUBLIC_GOOGLE_SCOPES]
 }
 
 const SCOPES = getGoogleOAuthScopes().join(' ')
@@ -56,6 +42,40 @@ const TOKENS_PLAIN_KEY = 'google-tokens'
 const TOKENS_ENC_KEY = 'google-tokens-enc'
 const USER_PLAIN_KEY = 'google-user'
 const USER_ENC_KEY = 'google-user-enc'
+// One-time OAuth epoch. Existing installs may hold refresh tokens issued before
+// mailbox access was removed. We revoke and purge that grant once, then require
+// a fresh sign-in with the reduced scopes above.
+const MAILBOX_FREE_OAUTH_EPOCH_KEY = 'google-oauth-mailbox-free-v1'
+
+function revokeLegacyGoogleGrant(token: string): void {
+  if (!token || token === 'native') return
+  void fetch('https://oauth2.googleapis.com/revoke', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ token }).toString(),
+    keepalive: true,
+  }).catch(() => {
+    // Best effort only. Local credentials are already purged, so the app can
+    // no longer refresh or use the old grant even if Google is unreachable.
+  })
+}
+
+export function migrateLegacyMailboxGrant(): boolean {
+  if (scoped.getItem(MAILBOX_FREE_OAUTH_EPOCH_KEY) === '1') return false
+
+  // A retained encrypted blob with no decrypted cache means the crypto key is
+  // temporarily unavailable. Do not mark the epoch complete: retry next boot.
+  if (scoped.getItem(TOKENS_ENC_KEY) && !memTokens) return false
+
+  scoped.setItem(MAILBOX_FREE_OAUTH_EPOCH_KEY, '1')
+  const tokens = getStoredTokens()
+  if (!tokens) return false
+
+  const tokenToRevoke = tokens.refresh_token || tokens.access_token
+  logout()
+  revokeLegacyGoogleGrant(tokenToRevoke)
+  return true
+}
 
 export function getRedirectUri(): string {
   // Previews Cloudflare Pages (*.appfacade.pages.dev) : renvoyer sur LEUR propre
@@ -169,6 +189,7 @@ export async function buildOAuthUrl(): Promise<string> {
     redirect_uri: getRedirectUri(),
     response_type: 'code',
     scope: SCOPES,
+    include_granted_scopes: 'false',
     access_type: 'offline',
     prompt: 'consent',
     state,
@@ -179,7 +200,11 @@ export async function buildOAuthUrl(): Promise<string> {
   return `https://accounts.google.com/o/oauth2/v2/auth?${params}`
 }
 
-export async function exchangeCode(code: string, redirectUriOverride?: string): Promise<GoogleTokens> {
+export async function exchangeCode(
+  code: string,
+  redirectUriOverride?: string,
+  persistGrant = true,
+): Promise<GoogleTokens> {
   // Native Google Sign-In returns a serverAuthCode that must be exchanged
   // with redirect_uri='' (BUG 2/28); web codes use getRedirectUri(). The
   // override can legitimately be '' — test `=== undefined`, not falsiness.
@@ -208,18 +233,17 @@ export async function exchangeCode(code: string, redirectUriOverride?: string): 
   const data = await safeJson(res)
   if (!res.ok) throw new Error((data.error as string) || 'Token exchange failed')
 
-  // BUG 49 — préserver le refresh_token existant si Google n'en renvoie pas
-  // (re-consent récent). Sans ça, le refresh_token valide se ferait écraser
-  // par undefined → logout silencieux après expiration de l'access_token.
-  const existing = getStoredTokens()
   const tokens: GoogleTokens = {
     access_token: data.access_token,
-    refresh_token: data.refresh_token || existing?.refresh_token || '',
+    refresh_token: data.refresh_token || '',
     expires_at: Date.now() + data.expires_in * 1000,
   }
 
-  await storeTokens(tokens)
-  return tokens
+  // Le callback de première connexion ne connaît l'identité Google qu'après
+  // cet échange. Il diffère donc la persistance jusqu'à l'activation du scope
+  // utilisateur, sinon le grant et son marqueur d'époque seraient écrits sous
+  // la portée globale puis considérés comme legacy au bootstrap suivant.
+  return persistGrant ? storeMailboxFreeGrant(tokens) : tokens
 }
 
 export async function storeTokens(tokens: GoogleTokens): Promise<void> {
@@ -237,6 +261,34 @@ export async function storeTokens(tokens: GoogleTokens): Promise<void> {
   // Crypto not ready yet — write plain JSON so sync reads still work.
   // Will be re-encrypted at the next `bootstrapGoogleStorage()` call.
   scoped.setJSON(TOKENS_PLAIN_KEY, tokens)
+}
+
+/**
+ * Persiste un grant émis avec le profil Google courant, sans accès boîte mail.
+ *
+ * Google ne renvoie pas toujours un nouveau refresh_token lors d'une
+ * reconnexion. Le fallback vers le refresh_token déjà stocké reste utile, mais
+ * uniquement si ce stockage appartient déjà à l'époque mailbox-free. Un jeton
+ * antérieur à cette époque peut encore porter les anciens scopes Gmail et ne
+ * doit jamais être recyclé dans un grant frais.
+ */
+export async function storeMailboxFreeGrant(tokens: GoogleTokens): Promise<GoogleTokens> {
+  const mailboxFreeEpochAlreadyActive = scoped.getItem(MAILBOX_FREE_OAUTH_EPOCH_KEY) === '1'
+  const existingRefreshToken = mailboxFreeEpochAlreadyActive
+    ? getStoredTokens()?.refresh_token
+    : ''
+
+  const mailboxFreeTokens: GoogleTokens = {
+    ...tokens,
+    refresh_token: tokens.refresh_token || existingRefreshToken || '',
+  }
+
+  // Persister d'abord le nouveau grant, puis seulement son marqueur. Si
+  // l'écriture ou l'application s'interrompt entre les deux, le bootstrap
+  // traitera le grant comme legacy et forcera une reconnexion sûre.
+  await storeTokens(mailboxFreeTokens)
+  scoped.setItem(MAILBOX_FREE_OAUTH_EPOCH_KEY, '1')
+  return mailboxFreeTokens
 }
 
 export async function storeUser(user: GoogleUser): Promise<void> {
@@ -466,6 +518,8 @@ export async function bootstrapGoogleStorage(): Promise<void> {
         await storeUser(plain)
       }
     }
+
+    migrateLegacyMailboxGrant()
   } finally {
     // ALWAYS dispatch so the UI never stays stuck waiting — even if the
     // bootstrap threw halfway. Without the finally, a mid-bootstrap crash

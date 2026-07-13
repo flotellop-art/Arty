@@ -10,7 +10,7 @@
  * IMPORTANT — Comparateur = répondre SANS tools, avec un system prompt neutre.
  *
  * Les 4 clients d'Arty embarquent par défaut leur gros SYSTEM_PROMPT métier
- * (instructions Gmail/Drive/web_search/agenda, règles Arty, etc.) ET pour
+ * (instructions Drive/web_search/agenda, règles Arty, etc.) ET pour
  * Anthropic/Mistral, ils embarquent les TOOLS d'Arty. Pour le comparateur,
  * on veut au contraire :
  *

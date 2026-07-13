@@ -3,7 +3,6 @@ import i18n from '../../i18n'
 import type { Message, QuickActionSelection } from '../../types'
 import {
   composeQuickActionText,
-  getGmailAfterOpenAction,
   getMessageTextForModel,
   isQuickActionSelection,
 } from '../../services/quickActions'
@@ -70,12 +69,6 @@ describe('actions rapides invisibles', () => {
     expect(composeQuickActionText('Hello', { id: 'translateToEn', locale: 'en' })).toBe(
       'Translate this text to French:\n\nHello',
     )
-  })
-
-  it('transporte les actions compatibles dans le handoff Gmail sans CASA', () => {
-    expect(getGmailAfterOpenAction({ id: 'summarize', locale: 'fr' })).toBe('summarize')
-    expect(getGmailAfterOpenAction({ id: 'writeEmail', locale: 'fr' })).toBe('reply')
-    expect(getGmailAfterOpenAction({ id: 'translate', locale: 'fr' })).toBeUndefined()
   })
 
   it('ne modifie jamais les messages assistant', () => {

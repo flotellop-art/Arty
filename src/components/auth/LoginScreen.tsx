@@ -6,7 +6,7 @@ import { EmailLoginTab } from './EmailLoginTab'
 import { GoogleLoginTab } from './GoogleLoginTab'
 import type { UserSession, AuthMethod } from '../../services/userSession'
 import * as scoped from '../../services/scopedStorage'
-import { clearOAuthState, withTimeout, storeTokens, storeUser, getStoredTokens } from '../../services/googleAuth'
+import { clearOAuthState, withTimeout, storeMailboxFreeGrant, storeUser } from '../../services/googleAuth'
 
 type Tab = 'apikey' | 'google' | 'email'
 
@@ -298,7 +298,7 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
                   }
                   const data = await res.json() as { access_token?: string; refresh_token?: string; expires_in?: number }
                   // Fail loud instead of marking the user "connected" with an
-                  // empty token — that left AGENDA/Gmail permanently broken
+                  // empty token — that left the Google connection unusable
                   // with no error shown (CRITIQUE-2 audit du 16 mai).
                   if (!data.access_token) {
                     throw new Error(t('login.errors.noAccessToken'))
@@ -320,12 +320,12 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
                   })
 
                   // Store Google data AFTER login — scoped storage needs the
-                  // userId, and storeTokens/storeUser encrypt at rest.
-                  // BUG 49 — never overwrite an existing refresh_token with ''.
-                  const existing = getStoredTokens()
-                  await storeTokens({
+                  // userId. The mailbox-free helper encrypts via storeTokens,
+                  // marks the reduced-scope epoch and only preserves a refresh
+                  // token that was already issued inside that epoch.
+                  await storeMailboxFreeGrant({
                     access_token: data.access_token,
-                    refresh_token: data.refresh_token || existing?.refresh_token || '',
+                    refresh_token: data.refresh_token || '',
                     expires_at: Date.now() + (data.expires_in || 3600) * 1000,
                   })
                   await storeUser({ email, name, picture: avatar || '' })
