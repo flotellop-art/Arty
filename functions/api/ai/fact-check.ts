@@ -24,27 +24,42 @@ import { recordUsage } from '../_lib/quota'
  *   côté serveur. Aucun contenu arbitraire ne pilote l'appel.
  * - Rate-limit de fond BORNÉ par palier (bg_quota, compteur atomique D1) :
  *   60 vérifs Haiku/jour + 15 escalades Sonnet/jour par utilisateur.
- *   Coût owner worst-case ≈ 1,2 $/jour/utilisateur, réel très inférieur
- *   (l'escalade ne part que sur claims risqués).
+ *   Ces caps sont LE contrôle de coût — ne pas les remonter sans décision
+ *   écrite. Coût owner worst-case ≈ 2,8 $/jour/utilisateur depuis le bump
+ *   maxTokens/max_uses de juillet 2026 (avant : ≈ 1,2 $) ; réel très
+ *   inférieur (l'escalade ne part que sur claims risqués, et personne ne
+ *   sature 60 vérifs/jour).
  * - recordUsage trace le coût réel en D1 (sans toucher les compteurs de
  *   quota visibles).
- * - Erreurs upstream masquées (générique + console.error), pattern V-4.
+ * - Erreurs upstream masquées (générique + console.error), pattern V-4 —
+ *   y compris sur le chemin retry.
  */
 
+// maxTokens : chaque claim porte jusqu'à 4×500 chars (claim, explanation,
+// originalText, correction) × 10 claims max. À 1024 tokens (historique), le
+// JSON sortait TRONQUÉ dès ~4-5 claims riches → « JSON malformé » côté
+// client → en mode auto, la passe Haiku avortait TOUTE la cascade (l'escalade
+// Sonnet ne partait jamais). Cause n°1 des échecs remontés en juillet 2026.
 const TIERS = {
   haiku: {
     model: 'claude-haiku-4-5-20251001',
-    maxTokens: 1024,
+    maxTokens: 3000,
     webSearch: false,
     dailyCap: 60,
     task: 'fact-check-haiku',
+    // Pas de web_search : réponse en quelques secondes. 15 s couvre le
+    // cold start Worker + D1 sans laisser pendre le badge.
+    upstreamTimeoutMs: 15_000,
   },
   sonnet: {
     model: 'claude-sonnet-5',
-    maxTokens: 2500,
+    maxTokens: 4000,
     webSearch: true,
     dailyCap: 15,
     task: 'fact-check-sonnet',
+    // Sonnet + web_search accumule toute la réponse côté Anthropic avant
+    // de répondre (25-30 s mesurés en prod).
+    upstreamTimeoutMs: 50_000,
   },
 } as const
 
@@ -53,10 +68,6 @@ type Tier = keyof typeof TIERS
 const MAX_QUESTION_CHARS = 2000
 const MAX_RESPONSE_CHARS = 6000
 const MAX_SOURCES_CHARS = 8000
-// Sonnet + web_search accumule toute la réponse côté Anthropic avant de
-// répondre (25-30 s mesurés en prod) — 45 s de marge, le client abandonne
-// à 35 s de toute façon.
-const UPSTREAM_TIMEOUT_MS = 45_000
 
 // Prompt système du fact-checker — vit CÔTÉ SERVEUR (le client ne peut pas
 // le remplacer, sinon l'endpoint devient un proxy Claude générique hors
@@ -81,7 +92,10 @@ Pour les claims "wrong", AJOUTE deux champs :
 
 Si tu sais que le claim est faux MAIS tu ne connais pas la bonne réponse (ni dans tes données ni dans les sources), marque-le "uncertain" plutôt que "wrong" et omet "correction".
 
-Sois CONSERVATEUR : préfère "uncertain" à "wrong" quand tu doutes. Ignore les claims évidents ("Paris est en France"), les opinions ("c'est joli"), et les conseils généraux.
+DÉCISION ANCRÉE SUR LES SOURCES — règle à deux régimes :
+- AVEC source (fournie ci-dessus OU trouvée via web_search) : sois DÉCISIF. Une source fiable qui contredit un claim = "wrong" + "correction" extraite de la source, JAMAIS "uncertain". Ne te réfugie pas dans "uncertain" quand une source tranche — un fact-checker qui voit l'erreur et ne la corrige pas ne sert à rien.
+- SANS source (jugement sur ta seule connaissance interne) : reste prudent, préfère "uncertain" à "wrong" quand tu doutes.
+Dans les deux régimes, ignore les claims évidents ("Paris est en France"), les opinions ("c'est joli"), et les conseils généraux.
 
 URLs ET LIENS — règle stricte :
 - N'ALTÈRE JAMAIS un markdown link [...](URL) sauf si tu es CERTAIN que l'URL est dangereuse (phishing, malware) ou trompeusement attribuée (ex : citée comme "source officielle Apple" alors que c'est un blog).
@@ -95,7 +109,7 @@ URLs ET LIENS — règle stricte :
 Si la réponse contient ZÉRO claim factuel risqué, retourne "claims": [] et "overall_confidence": "high".
 
 OUTIL WEB_SEARCH (si disponible) :
-Si le tool web_search est mis à ta disposition, tu PEUX l'appeler pour vérifier un claim que les sources fournies ne couvrent PAS — exemples : existence d'un produit/modèle/personne, dates de sortie, tarifs officiels, scores benchmarks, citations exactes. Préfère 1 à 2 recherches ciblées (max 2) plutôt que 0 — c'est ce qui te permet de passer "uncertain" à "verified" ou "wrong" sur des claims vérifiables en ligne. N'appelle PAS web_search pour les claims déjà confirmés/contredits par les sources fournies, ni pour les opinions ou conseils. Après tes recherches, retourne ton JSON final dans un dernier bloc texte.
+Si le tool web_search est mis à ta disposition, tu PEUX l'appeler pour vérifier un claim que les sources fournies ne couvrent PAS — exemples : existence d'un produit/modèle/personne, dates de sortie, tarifs officiels, scores benchmarks, citations exactes. Préfère 1 à 3 recherches ciblées (max 3) plutôt que 0 — c'est ce qui te permet de passer "uncertain" à "verified" ou "wrong" sur des claims vérifiables en ligne. N'appelle PAS web_search pour les claims déjà confirmés/contredits par les sources fournies, ni pour les opinions ou conseils. Après tes recherches, retourne ton JSON final dans un dernier bloc texte.
 
 RÉPONDS UNIQUEMENT EN JSON VALIDE, sans texte avant ou après, sans backticks, format strict :
 {
@@ -105,7 +119,7 @@ RÉPONDS UNIQUEMENT EN JSON VALIDE, sans texte avant ou après, sans backticks, 
   ]
 }
 
-Les champs "originalText" et "correction" ne sont REQUIS que pour les verdicts "wrong" où tu es certain de la bonne réponse.
+Tout verdict "wrong" DOIT inclure "originalText" ET "correction". Si tu ne peux pas fournir les deux (passage exact introuvable, bonne valeur inconnue), utilise "uncertain" à la place — un "wrong" sans correction allume un badge rouge sans rien réparer.
 
 Échelle overall_confidence :
 - "high" : 0 claim risqué OU tous "verified"
@@ -117,6 +131,45 @@ interface FactCheckRequest {
   question?: unknown
   response?: unknown
   sources?: unknown
+}
+
+// Retry ×1 CÔTÉ SERVEUR sur transitoire (throw réseau hors timeout, 429/5xx
+// Anthropic). JAMAIS côté client : bg_quota est consommé à l'ENTRÉE de
+// l'endpoint — un retry client brûlerait une 2e unité du cap journalier pour
+// la même vérification. Ici le quota est déjà consommé : retenter ne
+// re-facture rien. Pas de retry sur timeout (le budget du palier est déjà
+// épuisé, le client a probablement abandonné — repartir pour un tour complet
+// coûterait un appel Anthropic entier pour un résultat jeté).
+async function fetchAnthropicWithRetry(body: string, apiKey: string, timeoutMs: number): Promise<Response> {
+  let lastErr: unknown
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+        },
+        body,
+        signal: AbortSignal.timeout(timeoutMs),
+      })
+      if (attempt === 0 && (res.status === 429 || res.status >= 500)) {
+        try { await res.body?.cancel() } catch { /* body déjà consommé/absent */ }
+        await new Promise((r) => setTimeout(r, 500))
+        continue
+      }
+      return res
+    } catch (err) {
+      if (err instanceof Error && err.name === 'TimeoutError') throw err
+      lastErr = err
+      if (attempt === 0) {
+        await new Promise((r) => setTimeout(r, 500))
+        continue
+      }
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error('anthropic fetch failed')
 }
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
@@ -192,24 +245,19 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   const userContent = `Question utilisateur :\n${question}\n\nRéponse à vérifier :\n${response}${sources}`
 
   try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'x-api-key': env.ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
+    const res = await fetchAnthropicWithRetry(
+      JSON.stringify({
         model: cfg.model,
         max_tokens: cfg.maxTokens,
         system: SYSTEM_PROMPT,
         messages: [{ role: 'user', content: userContent }],
         ...(cfg.webSearch
-          ? { tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 2 }] }
+          ? { tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 3 }] }
           : {}),
       }),
-      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
-    })
+      env.ANTHROPIC_API_KEY,
+      cfg.upstreamTimeoutMs
+    )
 
     if (!res.ok) {
       console.error('[fact-check] upstream', res.status, await res.text().catch(() => ''))

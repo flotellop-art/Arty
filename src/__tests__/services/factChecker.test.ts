@@ -3,7 +3,7 @@
 // typographie) et les garde-fous anti sur-remplacement. Premier test du
 // service factChecker.
 import { describe, it, expect } from 'vitest'
-import { applyClaimCorrections } from '../../services/factChecker'
+import { applyClaimCorrections, extractJsonObject } from '../../services/factChecker'
 import type { FactCheckClaim } from '../../types'
 
 function wrongClaim(originalText: string, correction: string): FactCheckClaim {
@@ -109,5 +109,43 @@ describe('applyClaimCorrections — fallback tolérant', () => {
     expect(correctedContent).toBe('Contenu.')
     expect(appliedCount).toBe(0)
     expect(v.applied).toBeUndefined()
+  })
+})
+
+// Extraction JSON à accolades équilibrées (fiabilité, juillet 2026). L'ancien
+// regex greedy /\{[\s\S]*\}/ capturait jusqu'à la DERNIÈRE accolade du texte :
+// n'importe quel commentaire post-JSON contenant « } » produisait un « JSON
+// malformé » et faisait échouer toute la vérification.
+describe('extractJsonObject — extraction équilibrée', () => {
+  it('objet JSON nu', () => {
+    expect(extractJsonObject('{"a": 1}')).toBe('{"a": 1}')
+  })
+
+  it('JSON wrappé dans des backticks + prose avant', () => {
+    const text = 'Voici mon analyse :\n```json\n{"claims": []}\n```'
+    expect(extractJsonObject(text)).toBe('{"claims": []}')
+  })
+
+  it('prose APRÈS le JSON contenant une accolade → objet exact quand même', () => {
+    const text = '{"claims": [{"claim": "x"}]}\nNote : le format {clé} est respecté.'
+    expect(extractJsonObject(text)).toBe('{"claims": [{"claim": "x"}]}')
+  })
+
+  it('accolades DANS une string JSON (explication citant du code) ignorées', () => {
+    const json = '{"explanation": "le pattern {a: 1} est faux", "v": "wrong"}'
+    expect(extractJsonObject('bla ' + json)).toBe(json)
+  })
+
+  it('guillemets échappés dans une string ne cassent pas le tracking', () => {
+    const json = '{"claim": "il a dit \\"non\\" hier"}'
+    expect(extractJsonObject(json)).toBe(json)
+  })
+
+  it('JSON tronqué (max_tokens atteint) → null, échec franc', () => {
+    expect(extractJsonObject('{"claims": [{"claim": "coupé en plein')).toBeNull()
+  })
+
+  it('aucun JSON → null', () => {
+    expect(extractJsonObject('Pas de JSON ici.')).toBeNull()
   })
 })
