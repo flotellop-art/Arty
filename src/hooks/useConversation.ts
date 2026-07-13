@@ -23,7 +23,7 @@ import { TOOLS } from '../services/toolDefinitions'
 import { wantsImageGeneration, generateImageToolDefinition } from '../services/tools/imageTools'
 import { detectReminderIntent, createReminder } from '../services/reminderService'
 import { compileGmailSearch, validateGmailSearchQuery } from '../services/gmailSearchHandoff'
-import { isGmailNoCasaPhase0Enabled } from '../services/gmailNoCasaPhase0'
+import { isPublicGoogleOAuthProfileEnabled } from '../services/publicGoogleOAuthProfile'
 import i18n from '../i18n'
 
 type ToolHandler = (name: string, input: Record<string, unknown>) => Promise<{ result: string; screenshot?: string }>
@@ -38,7 +38,7 @@ const GOOGLE_TOOL_NAMES = new Set([
 ])
 
 export function useConversation() {
-  const noCasaPhase0 = isGmailNoCasaPhase0Enabled()
+  const noCasaPhase0 = isPublicGoogleOAuthProfileEnabled()
   // H1 (audit frontend) — storage.getConversations() retourne la RÉFÉRENCE du
   // cache mémoire, muté en place par saveConversation. La repasser telle
   // quelle à setState ferait bail-out React (même identité → pas de

@@ -42,8 +42,9 @@ function makeContactsRequest(body: Record<string, unknown>): Request {
 
 describe('contacts/action — validation resourceName (F-7)', () => {
   const call = (body: Record<string, unknown>) =>
-    // Le handler n'utilise que { request } — contexte minimal suffisant.
-    contactsPost({ request: makeContactsRequest(body) } as never)
+    // Tombstone PR-0 : la variable d'échappement contourne le 410 par défaut
+    // pour exercer la logique réelle du handler.
+    contactsPost({ request: makeContactsRequest(body), env: { LEGACY_GOOGLE_CONNECTORS_ENABLED: 'true' } } as never)
 
   it("rejette en 400 un resourceName hors format people/<id> — pas d'appel upstream", async () => {
     for (const malicious of [

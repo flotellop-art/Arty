@@ -964,10 +964,14 @@ export default function App() {
               identifier: email,
             })
             // After auth flips, scopedStorage is keyed to the user — store
-            // the Google credentials so the AI clients can find them.
-            const { setJSON } = await import('./services/scopedStorage')
-            setJSON('google-user', { email, name, picture: avatar })
-            setJSON('google-tokens', {
+            // the Google credentials through storeTokens/storeUser so they
+            // take the encrypted-at-rest path (D22/P0-a-bis — the previous
+            // raw setJSON bypassed it). First native login: the refresh
+            // token is freshly minted (requestServerAuthCode forces it,
+            // BUG 51), so no merge-with-existing is needed here.
+            const { storeTokens, storeUser } = await import('./services/googleAuth')
+            await storeUser({ email, name, picture: avatar })
+            await storeTokens({
               access_token: accessToken,
               refresh_token: refreshToken,
               expires_at: Date.now() + expiresIn * 1000,

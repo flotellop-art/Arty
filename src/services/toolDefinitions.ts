@@ -7,9 +7,9 @@ import { wordpressToolDefinitions } from './tools/wordpressTools'
 import { utilityToolDefinitions } from './tools/utilityTools'
 import { nativeToolDefinitions } from './tools/nativeTools'
 import { sheetsToolDefinitions } from './tools/sheetsTools'
-import { isGmailNoCasaPhase0Enabled } from './gmailNoCasaPhase0'
+import { isPublicGoogleOAuthProfileEnabled } from './publicGoogleOAuthProfile'
 
-export function buildToolDefinitions(noCasa = isGmailNoCasaPhase0Enabled()) {
+export function buildToolDefinitions(noCasa = isPublicGoogleOAuthProfileEnabled()) {
   return [
   ...utilityToolDefinitions,
   ...computerToolDefinitions,
@@ -19,7 +19,9 @@ export function buildToolDefinitions(noCasa = isGmailNoCasaPhase0Enabled()) {
   ...(noCasa ? [] : contactsToolDefinitions),
   ...wordpressToolDefinitions,
   ...nativeToolDefinitions,
-  ...sheetsToolDefinitions,
+  // Sheets is one of the four Google connectors disabled by the public
+  // profile (CDC D26/D29) — Phase 0 forgot this gate.
+  ...(noCasa ? [] : sheetsToolDefinitions),
   // Server-side tools (handled by Anthropic API, no local executor)
   {
     type: 'web_search_20250305',

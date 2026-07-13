@@ -12,7 +12,7 @@ import { getCustomInstructions } from '../services/customInstructions'
 import { createToolExecutor } from '../services/toolExecutor'
 import { getStyle, setStyle, getStylePrompt, STYLE_OPTIONS, type ResponseStyle } from '../services/responseStyles'
 import type { Question } from '../components/chat/QuestionModal'
-import { isGmailNoCasaPhase0Enabled } from '../services/gmailNoCasaPhase0'
+import { isPublicGoogleOAuthProfileEnabled } from '../services/publicGoogleOAuthProfile'
 
 interface ConversationHook {
   activeId: string | null
@@ -30,7 +30,7 @@ export function useAppSetup(conversation: ConversationHook) {
   const drive = useDrive()
   const computerActions = useComputer()
   const memoryHook = useMemory()
-  const noCasaPhase0 = isGmailNoCasaPhase0Enabled()
+  const noCasaPhase0 = isPublicGoogleOAuthProfileEnabled()
   const noCasaPrompt = noCasaPhase0
     ? 'MODE GMAIL SANS CASA — PRIORITÉ ABSOLUE : tu n\'as aucun accès global à Gmail, Drive ou Contacts. Ne prétends jamais lire, chercher ou modifier ces données. La recherche Gmail est préparée localement par l\'interface puis exécutée par l\'utilisateur dans Gmail. Calendar reste disponible.\n\n'
     : ''
