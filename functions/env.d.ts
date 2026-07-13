@@ -2,6 +2,15 @@
 export interface Env {
   GOOGLE_CLIENT_ID: string
   GOOGLE_CLIENT_SECRET: string
+  // Workspace Add-on HTTP — Phase 0 uniquement. Toutes les valeurs sont
+  // serveur-only et le flag doit valoir exactement "true" pour ouvrir les routes.
+  WORKSPACE_ADDON_PHASE0_ENABLED?: string
+  WORKSPACE_ADDON_PHASE0_BASE_URL?: string
+  WORKSPACE_ADDON_PHASE0_OAUTH_CLIENT_ID?: string
+  WORKSPACE_ADDON_PHASE0_SERVICE_ACCOUNT_EMAIL?: string
+  WORKSPACE_ADDON_PHASE0_HOST_ACTION_SHAPE?: 'rpc' | 'legacy'
+  // Base D1 dédiée au spike : ne jamais la lier à DB prod/bêta.
+  WORKSPACE_ADDON_PHASE0_DB?: D1Database
   ANTHROPIC_API_KEY?: string
   GEMINI_API_KEY?: string
   MISTRAL_API_KEY?: string

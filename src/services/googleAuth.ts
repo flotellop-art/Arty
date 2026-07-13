@@ -3,6 +3,7 @@ import { safeJson } from '../utils/safeJson'
 import * as scoped from './scopedStorage'
 import { apiUrl } from './apiBase'
 import { encrypt, decrypt, isCryptoReady, selfTestCrypto } from './crypto'
+import { isGmailNoCasaPhase0Enabled } from './gmailNoCasaPhase0'
 
 const FETCH_TIMEOUT_MS = 15_000
 
@@ -12,7 +13,7 @@ export function withTimeout(ms: number): { signal: AbortSignal; cancel: () => vo
   return { signal: controller.signal, cancel: () => clearTimeout(id) }
 }
 
-const SCOPES = [
+export const STANDARD_GOOGLE_SCOPES = [
   'https://www.googleapis.com/auth/gmail.readonly',
   'https://www.googleapis.com/auth/gmail.send',
   'https://www.googleapis.com/auth/gmail.modify',
@@ -22,7 +23,23 @@ const SCOPES = [
   'https://www.googleapis.com/auth/contacts',
   'https://www.googleapis.com/auth/userinfo.email',
   'https://www.googleapis.com/auth/userinfo.profile',
-].join(' ')
+]
+
+// Experimental public-client profile: Calendar remains available because it
+// is not a restricted Gmail/Drive scope. Gmail contextual scopes live only in
+// the Workspace Add-on manifest and must never appear here.
+export const GMAIL_NO_CASA_PHASE0_GOOGLE_SCOPES = [
+  'openid',
+  'https://www.googleapis.com/auth/userinfo.email',
+  'https://www.googleapis.com/auth/userinfo.profile',
+  'https://www.googleapis.com/auth/calendar',
+]
+
+export function getGoogleOAuthScopes(noCasa = isGmailNoCasaPhase0Enabled()): string[] {
+  return [...(noCasa ? GMAIL_NO_CASA_PHASE0_GOOGLE_SCOPES : STANDARD_GOOGLE_SCOPES)]
+}
+
+const SCOPES = getGoogleOAuthScopes().join(' ')
 
 // ─────────────────────────────────────────────────────────────
 // In-memory cache for encrypted tokens.

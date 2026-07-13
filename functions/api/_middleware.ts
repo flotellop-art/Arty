@@ -20,6 +20,13 @@ const rateLimitMap = new Map<string, { count: number; resetAt: number }>()
 const RATE_LIMIT = 60
 const RATE_WINDOW = 60_000
 
+export const WORKSPACE_ADDON_POST_PATHS = new Set([
+  '/api/workspace-addon/phase0/home',
+  '/api/workspace-addon/phase0/context',
+  '/api/workspace-addon/phase0/read',
+  '/api/workspace-addon/phase0/create-draft',
+])
+
 function checkRateLimit(ip: string): boolean {
   const now = Date.now()
   const entry = rateLimitMap.get(ip)
@@ -52,11 +59,28 @@ function isAllowedOrigin(origin: string): boolean {
 export const onRequest: PagesFunction = async (context) => {
   const { request } = context
   const ip = request.headers.get('cf-connecting-ip') || 'unknown'
-  const origin = request.headers.get('origin') || ''
+  const originHeader = request.headers.get('origin')
+  const origin = originHeader ?? ''
+  const hasSuppliedOrigin = originHeader !== null
+  const url = new URL(request.url)
+  // Phase 0 Workspace Add-on: Google/Apps Script call these handlers
+  // server-to-server, without an Origin header. Keep this exception narrowly
+  // scoped to POST requests under the exact `/api/workspace-addon/` prefix;
+  // the handler still has to perform its own OIDC/runtime authentication.
+  const isWorkspaceAddonNamespace = url.pathname.startsWith('/api/workspace-addon/')
+  const isWorkspaceAddonPath = WORKSPACE_ADDON_POST_PATHS.has(url.pathname)
+  const isWorkspaceAddonPost = request.method === 'POST' && isWorkspaceAddonPath
   // MED (audit étape 2) — égalité stricte au lieu de startsWith. Évite
   // qu'un Origin comme `https://tryarty.com:8080` ou `https://tryarty.com.evil`
   // matche par préfixe. + previews owner-only `*.appfacade.pages.dev`.
   const hasValidOrigin = isAllowedOrigin(origin)
+
+  // Workspace Add-on endpoints are non-browser routes. Reject every supplied
+  // Origin (including an otherwise allowed one) before CORS headers can be
+  // added to the response.
+  if (isWorkspaceAddonNamespace && (!isWorkspaceAddonPost || hasSuppliedOrigin)) {
+    return Response.json({ error: 'Forbidden — invalid origin' }, { status: 403 })
+  }
 
   // Handle CORS preflight (OPTIONS)
   if (request.method === 'OPTIONS') {
@@ -72,7 +96,10 @@ export const onRequest: PagesFunction = async (context) => {
   }
 
   // Rate limiting
-  if (!checkRateLimit(ip)) {
+  // Google can fan many add-on calls through a shared egress IP. The exact
+  // allowlisted add-on routes enforce their own post-OIDC limit by user `sub`;
+  // applying this pre-auth IP bucket would let one tenant starve another.
+  if (!isWorkspaceAddonPost && !checkRateLimit(ip)) {
     return Response.json({ error: 'Too many requests' }, { status: 429 })
   }
 
@@ -82,9 +109,8 @@ export const onRequest: PagesFunction = async (context) => {
   // `https://localhost` (both whitelisted above).
   // Exception : les webhooks server-to-server (ex: Lemon Squeezy) n'ont pas
   // d'Origin et s'authentifient via signature HMAC dans le handler lui-même.
-  const url = new URL(request.url)
   const isWebhook = url.pathname.startsWith('/api/webhook/')
-  if (request.method !== 'GET' && !hasValidOrigin && !isWebhook) {
+  if (request.method !== 'GET' && !hasValidOrigin && !isWebhook && !isWorkspaceAddonPost) {
     return Response.json({ error: 'Forbidden — invalid origin' }, { status: 403 })
   }
 

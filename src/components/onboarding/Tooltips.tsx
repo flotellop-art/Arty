@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 
 const TOOLTIP_KEY = 'arty-tooltips-seen'
 
-type TooltipId = 'dropdowns' | 'attach' | 'mic' | 'google'
+type TooltipId = 'dropdowns' | 'attach' | 'mic' | 'google' | 'googleNoCasa'
 
 function getSeenTooltips(): Set<TooltipId> {
   try {

@@ -52,7 +52,8 @@
       "signIn": "Se connecter avec Google",
       "failed": "Connexion Google échouée. Réessaie.",
       "iosUnavailable": "Google Sign-In sur iOS nécessite encore la configuration native. Utilise provisoirement l’essai par email ou une clé API.",
-      "notice": "Connecte ton compte Google pour accéder à Gmail, Drive et Calendar."
+      "notice": "Connecte ton compte Google pour accéder à Gmail, Drive et Calendar.",
+      "noticeNoCasa": "Connecte ton compte Google pour ton identité et Calendar. Arty prépare les recherches Gmail sans lire ta boîte."
     },
     "email": {
       "label": "Email",
@@ -111,7 +112,8 @@
       "dropdowns": "Change le ton et le modèle IA ici",
       "attach": "Envoie une photo ou un fichier",
       "mic": "Dicte ton message",
-      "google": "Connecte Google pour accéder à tes mails et fichiers"
+      "google": "Connecte Google pour accéder à tes mails et fichiers",
+      "googleNoCasa": "Connecte Google pour ton identité et Calendar ; Arty ne lit pas ta boîte Gmail"
     }
   },
   "profileSetup": {
@@ -1154,6 +1156,28 @@
   },
   "oauthCallback": {
     "loading": "Connexion Google en cours…"
+  },
+  "gmailSearch": {
+    "assistantIntro": "Je prépare la recherche, puis Gmail l'exécutera sans me donner accès à ta boîte.",
+    "kicker": "Passage de relais sécurisé",
+    "title": "Préparer la recherche Gmail",
+    "noGlobalAccess": "Sans accès global",
+    "queryLabel": "Requête Gmail éditable",
+    "assumption": "Hypothèse visible : {{value}}",
+    "open": "Chercher dans Gmail",
+    "copy": "Copier la recherche",
+    "instructions": "La requête est copiée avant l'ouverture de Gmail. Colle-la dans la barre de recherche, ouvre le bon message, puis clique sur l'icône Arty dans le panneau latéral Gmail.",
+    "privacy": "Aucun mail ni résultat lu par Arty",
+    "status": {
+      "ready": "Tu peux modifier la requête avant de continuer.",
+      "copying": "Copie en cours…",
+      "copied": "Recherche copiée. Arty ne reçoit pas les résultats.",
+      "opening": "Copie de la recherche puis ouverture de Gmail…",
+      "invalid": "La requête contient un opérateur ou un caractère non autorisé.",
+      "copyError": "Impossible de copier. Gmail n'a pas été ouvert ; sélectionne la requête manuellement.",
+      "openError": "Recherche copiée, mais Gmail n'a pas pu être ouvert automatiquement.",
+      "expired": "Cette préparation a expiré. Renvoie ta demande pour en créer une nouvelle."
+    }
   },
   "driveFileCard": {
     "modifiedAt": "Modifié le {{date}}",

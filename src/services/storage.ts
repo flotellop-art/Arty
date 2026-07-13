@@ -3,6 +3,7 @@ import * as scoped from './scopedStorage'
 import { encrypt, decrypt, isCryptoReady } from './crypto'
 import { deleteOwnedFiles } from './secureFileStorage'
 import { getActiveUserId } from './userSession'
+import { isValidGmailSearchPayload } from './gmailSearchHandoff'
 
 // ─────────────────────────────────────────────────────────────────────────
 // Conversations are encrypted at rest (AES-256) under `conversations-enc`.
@@ -43,6 +44,25 @@ let cacheReady = false
 // safety-net if no newer saveConversation has run since it started.
 let writeGen = 0
 
+export function sanitizeConversationPayloads(
+  conversations: Conversation[],
+  now = Date.now(),
+): Conversation[] {
+  let changed = false
+  const sanitized = conversations.map((conversation) => {
+    let conversationChanged = false
+    const messages = conversation.messages.map((message) => {
+      if (!message.gmailSearch || isValidGmailSearchPayload(message.gmailSearch, now)) return message
+      const { gmailSearch: _expired, ...safeMessage } = message
+      changed = true
+      conversationChanged = true
+      return safeMessage
+    })
+    return conversationChanged ? { ...conversation, messages } : conversation
+  })
+  return changed ? sanitized : conversations
+}
+
 function encryptionDisabled(): boolean {
   try {
     return localStorage.getItem(KILLSWITCH_KEY) === '1'
@@ -65,9 +85,9 @@ export function getConversations(): Conversation[] {
   // crash-safety-net write — either way it is the freshest available state.
   const plain = scoped.getJSON<Conversation[]>(PLAIN_KEY)
   if (plain) {
-    memConversations = plain
+    memConversations = sanitizeConversationPayloads(plain)
     cacheReady = true
-    return plain
+    return memConversations
   }
   // No plain copy. If there is no ciphertext either, the store is genuinely
   // empty and the empty cache is authoritative. Otherwise the history is
@@ -179,11 +199,11 @@ export async function bootstrapConversationStorage(): Promise<void> {
     // re-encrypt and drop the plain — unless the killswitch is on.
     const plain = scoped.getJSON<Conversation[]>(PLAIN_KEY)
     if (plain) {
-      memConversations = plain
+      memConversations = sanitizeConversationPayloads(plain)
       cacheReady = true
       if (!encryptionDisabled() && isCryptoReady()) {
         try {
-          scoped.setItem(ENC_KEY, await encrypt(JSON.stringify(plain)))
+          scoped.setItem(ENC_KEY, await encrypt(JSON.stringify(memConversations)))
           scoped.removeItem(PLAIN_KEY)
         } catch {
           // Keep the plain copy — re-encryption retried on the next boot.
@@ -196,7 +216,9 @@ export async function bootstrapConversationStorage(): Promise<void> {
     if (enc) {
       if (!isCryptoReady()) return // can't decrypt yet — stay not-ready
       try {
-        memConversations = JSON.parse(await decrypt(enc)) as Conversation[]
+        memConversations = sanitizeConversationPayloads(
+          JSON.parse(await decrypt(enc)) as Conversation[],
+        )
         cacheReady = true
       } catch {
         // Decrypt failed. NEVER wipe — conversations are irreplaceable,
@@ -258,7 +280,9 @@ async function recoverLockedBlobs(): Promise<void> {
     const blob = scoped.getItem(key)
     if (!blob) continue
     try {
-      const recovered = JSON.parse(await decrypt(blob)) as Conversation[]
+      const recovered = sanitizeConversationPayloads(
+        JSON.parse(await decrypt(blob)) as Conversation[],
+      )
       const known = new Set(memConversations.map((c) => c.id))
       const merged = [...memConversations, ...recovered.filter((c) => !known.has(c.id))]
       merged.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))

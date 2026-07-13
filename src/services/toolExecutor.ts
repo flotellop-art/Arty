@@ -12,6 +12,7 @@ import { createUtilityHandlers } from './tools/utilityTools'
 import { createNativeHandlers } from './tools/nativeTools'
 import { createSheetsHandlers } from './tools/sheetsTools'
 import { createImageHandlers } from './tools/imageTools'
+import { isGmailNoCasaPhase0Enabled, isNoCasaBlockedTool } from './gmailNoCasaPhase0'
 
 export type { ToolResult, ToolHandler }
 
@@ -36,6 +37,11 @@ export function createToolExecutor(
   }
 
   return async (name: string, input: Record<string, unknown>): Promise<ToolResult> => {
+    if (isGmailNoCasaPhase0Enabled() && isNoCasaBlockedTool(name)) {
+      return {
+        result: 'Ce build sans CASA ne donne pas à Arty un accès global à Gmail, Drive ou Contacts.',
+      }
+    }
     const handler = handlers[name]
     if (!handler) return { result: `Outil inconnu: ${name}` }
     try {

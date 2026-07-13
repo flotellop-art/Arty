@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Capacitor, registerPlugin } from '@capacitor/core'
 import { buildOAuthUrl } from '../../services/googleAuth'
+import { isGmailNoCasaPhase0Enabled } from '../../services/gmailNoCasaPhase0'
 
 // Native Google Sign-In plugin (defined in Java)
 interface GoogleSignInNativePlugin {
@@ -19,6 +20,7 @@ interface GoogleLoginTabProps {
 export function GoogleLoginTab({ loading, onNativeGoogleLogin }: GoogleLoginTabProps) {
   const { t } = useTranslation()
   const [error, setError] = useState('')
+  const noCasaPhase0 = isGmailNoCasaPhase0Enabled()
 
   const handleGoogleLogin = async () => {
     setError('')
@@ -64,7 +66,7 @@ export function GoogleLoginTab({ loading, onNativeGoogleLogin }: GoogleLoginTabP
       {error && <p className="text-sm text-red-500 text-center">{error}</p>}
 
       <p className="text-xs text-theme-muted text-center leading-relaxed">
-        {t('login.google.notice')}
+        {t(noCasaPhase0 ? 'login.google.noticeNoCasa' : 'login.google.notice')}
       </p>
     </div>
   )

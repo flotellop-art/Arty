@@ -22,6 +22,8 @@ import { detectSuggestedTasks, addTask } from '../services/taskService'
 import { TOOLS } from '../services/toolDefinitions'
 import { wantsImageGeneration, generateImageToolDefinition } from '../services/tools/imageTools'
 import { detectReminderIntent, createReminder } from '../services/reminderService'
+import { compileGmailSearch, validateGmailSearchQuery } from '../services/gmailSearchHandoff'
+import { isGmailNoCasaPhase0Enabled } from '../services/gmailNoCasaPhase0'
 import i18n from '../i18n'
 
 type ToolHandler = (name: string, input: Record<string, unknown>) => Promise<{ result: string; screenshot?: string }>
@@ -36,6 +38,7 @@ const GOOGLE_TOOL_NAMES = new Set([
 ])
 
 export function useConversation() {
+  const noCasaPhase0 = isGmailNoCasaPhase0Enabled()
   // H1 (audit frontend) — storage.getConversations() retourne la RÉFÉRENCE du
   // cache mémoire, muté en place par saveConversation. La repasser telle
   // quelle à setState ferait bail-out React (même identité → pas de
@@ -127,7 +130,9 @@ export function useConversation() {
       messages.push({
         id: generateId(),
         role: 'assistant',
-        content: `Salut ! Moi c'est **Arty**, ton assistant IA.\n\nTu peux me poser des questions, m'envoyer des photos, ou me dicter un message.\n\nEn haut à droite, tu peux changer le **ton** de mes réponses et le **modèle IA** utilisé. Appuie sur **?** pour voir les détails.\n\nSi tu connectes ton compte Google, je pourrai aussi lire tes mails, accéder à tes fichiers Drive et gérer ton agenda.\n\nQu'est-ce que je peux faire pour toi ?`,
+        content: noCasaPhase0
+          ? `Salut ! Moi c'est **Arty**, ton assistant IA.\n\nTu peux me poser des questions, m'envoyer des photos, ou me dicter un message.\n\nPour Gmail, je peux préparer une recherche sans lire ta boîte. Tu l'exécutes ensuite dans Gmail, puis le panneau Arty peut travailler uniquement sur le message que tu as ouvert.\n\nQu'est-ce que je peux faire pour toi ?`
+          : `Salut ! Moi c'est **Arty**, ton assistant IA.\n\nTu peux me poser des questions, m'envoyer des photos, ou me dicter un message.\n\nEn haut à droite, tu peux changer le **ton** de mes réponses et le **modèle IA** utilisé. Appuie sur **?** pour voir les détails.\n\nSi tu connectes ton compte Google, je pourrai aussi lire tes mails, accéder à tes fichiers Drive et gérer ton agenda.\n\nQu'est-ce que je peux faire pour toi ?`,
         timestamp: Date.now(),
       })
     }
@@ -136,7 +141,9 @@ export function useConversation() {
       messages.push({
         id: generateId(),
         role: 'assistant',
-        content: `🇪🇺 **Conversation confidentielle EU**\n\nLe traitement IA de cette conversation se fait exclusivement chez **Mistral** (serveurs en France) — rien n'est envoyé à Claude, Gemini ou OpenAI, dictée vocale comprise. Tes messages restent stockés sur ton appareil, chiffrés.\n\nJe peux lire tes mails, accéder à Drive et gérer ton calendrier (ces données restent hébergées chez Google).`,
+        content: noCasaPhase0
+          ? `🇪🇺 **Conversation confidentielle EU**\n\nLe traitement IA de cette conversation se fait exclusivement chez **Mistral** (serveurs en France) — rien n'est envoyé à Claude, Gemini ou OpenAI, dictée vocale comprise. Tes messages restent stockés sur ton appareil, chiffrés.\n\nJe n'ai pas d'accès global à Gmail ou Drive. Je peux préparer une recherche Gmail, que tu exécutes toi-même.`
+          : `🇪🇺 **Conversation confidentielle EU**\n\nLe traitement IA de cette conversation se fait exclusivement chez **Mistral** (serveurs en France) — rien n'est envoyé à Claude, Gemini ou OpenAI, dictée vocale comprise. Tes messages restent stockés sur ton appareil, chiffrés.\n\nJe peux lire tes mails, accéder à Drive et gérer ton calendrier (ces données restent hébergées chez Google).`,
         timestamp: Date.now(),
       })
     }
@@ -155,7 +162,7 @@ export function useConversation() {
     setActiveId(id)
     setError(null)
     return id
-  }, [refreshConversations, setActiveStream])
+  }, [noCasaPhase0, refreshConversations, setActiveStream])
 
   const selectConversation = useCallback((id: string) => {
     setActiveStream(id)
@@ -195,14 +202,6 @@ export function useConversation() {
         if (!storage.isCacheReady()) {
           setError(i18n.t('errors.storageNotReady'))
         }
-        return
-      }
-
-      // Cap multi-conv : refuse l'envoi si le cap de streams concurrents est
-      // atteint. La check est faite AVANT d'ajouter le user message pour ne
-      // pas laisser un message orphelin sans réponse.
-      if (!canStart(targetId)) {
-        setError(i18n.t('errors.tooManyConcurrentStreams'))
         return
       }
 
@@ -246,13 +245,53 @@ export function useConversation() {
         const helpResponse: Message = {
           id: generateId(),
           role: 'assistant',
-          content: `## Aide — Arty\n\n**Ce que je sais faire :**\n- Répondre à tes questions sur tous les sujets\n- Analyser des photos et documents (bouton **+**)\n- Dicter par la voix (bouton **micro**)\n- Lire tes mails Gmail et y répondre\n- Accéder à tes fichiers Google Drive\n- Gérer ton agenda Google Calendar\n- Faire des recherches web en temps réel\n\n**Commandes :**\n- \`/aide\` — Affiche cette aide\n\n**Réglages (en haut à droite) :**\n- **Ton** — Normal, Concis, Détaillé, Formel, Technique\n- **Modèle** — Auto, Claude, Mistral EU, Gemini\n- **?** — Explication détaillée de chaque option\n\n**Astuce :** Connecte ton compte Google pour que je puisse accéder à tes mails et fichiers.`,
+          content: noCasaPhase0
+            ? `## Aide — Arty\n\n**Ce que je sais faire :**\n- Répondre à tes questions sur tous les sujets\n- Analyser des photos et documents (bouton **+**)\n- Dicter par la voix (bouton **micro**)\n- Préparer une recherche Gmail sans lire ta boîte\n- Travailler sur le seul message ouvert depuis le panneau Arty dans Gmail\n- Gérer ton agenda Google Calendar\n- Faire des recherches web en temps réel\n\nArty ne reçoit jamais les résultats de la recherche Gmail et n'envoie aucun e-mail automatiquement.`
+            : `## Aide — Arty\n\n**Ce que je sais faire :**\n- Répondre à tes questions sur tous les sujets\n- Analyser des photos et documents (bouton **+**)\n- Dicter par la voix (bouton **micro**)\n- Lire tes mails Gmail et y répondre\n- Accéder à tes fichiers Google Drive\n- Gérer ton agenda Google Calendar\n- Faire des recherches web en temps réel\n\n**Commandes :**\n- \`/aide\` — Affiche cette aide\n\n**Réglages (en haut à droite) :**\n- **Ton** — Normal, Concis, Détaillé, Formel, Technique\n- **Modèle** — Auto, Claude, Mistral EU, Gemini\n- **?** — Explication détaillée de chaque option\n\n**Astuce :** Connecte ton compte Google pour que je puisse accéder à tes mails et fichiers.`,
           timestamp: Date.now(),
         }
         conv.messages.push(helpMsg, helpResponse)
         conv.updatedAt = Date.now()
         storage.saveConversation(conv)
         refreshConversations()
+        return
+      }
+
+      // Phase 0 Gmail sans CASA — parcours local, avant tout LLM/quota/tool.
+      // Arty prépare uniquement une requête éditable. Gmail exécute ensuite
+      // la recherche dans sa propre interface ; aucun résultat ne revient ici.
+      const gmailSearch = !files?.length && noCasaPhase0
+        ? compileGmailSearch(text)
+        : null
+      if (gmailSearch) {
+        const userMsg: Message = {
+          id: generateId(),
+          role: 'user',
+          content: text,
+          timestamp: Date.now(),
+        }
+        const handoffResponse: Message = {
+          id: generateId(),
+          role: 'assistant',
+          content: i18n.t('gmailSearch.assistantIntro'),
+          timestamp: Date.now(),
+          gmailSearch: gmailSearch.payload,
+        }
+        conv.messages.push(userMsg, handoffResponse)
+        if (conv.messages.filter((message) => message.role === 'user').length === 1) {
+          conv.title = text.trim().slice(0, 50) + (text.trim().length > 50 ? '...' : '')
+        }
+        conv.updatedAt = Date.now()
+        storage.saveConversation(conv)
+        refreshConversations()
+        return
+      }
+
+      // Cap multi-conv : il ne concerne que les parcours qui démarrent un
+      // stream. Les réponses locales ci-dessus restent disponibles même si
+      // une autre conversation est déjà en cours.
+      if (!canStart(targetId)) {
+        setError(i18n.t('errors.tooManyConcurrentStreams'))
         return
       }
 
@@ -731,7 +770,7 @@ export function useConversation() {
       setHideContent, markStreamDone, finalizeStream, completeStreaming,
       streamToken, streamDone, streamError, setProgressContent,
       setAbortController, resetAccumulated, hasStream, isActive,
-      setPendingFiles, pendingFilesRef,
+      setPendingFiles, pendingFilesRef, noCasaPhase0,
     ]
   )
 
@@ -827,6 +866,26 @@ export function useConversation() {
       refreshConversations()
     },
     [refreshConversations]
+  )
+
+  // Persiste l'édition de la requête avant le passage vers Gmail. Mise à jour
+  // immutable pour que MessageItem (memo) se rafraîchisse immédiatement.
+  const updateGmailSearch = useCallback(
+    (conversationId: string, messageId: string, query: string) => {
+      const trimmed = query.trim()
+      if (!validateGmailSearchQuery(trimmed, trimmed)) return
+      const conv = storage.getConversation(conversationId)
+      if (!conv) return
+      const message = conv.messages.find((item) => item.id === messageId)
+      if (!message?.gmailSearch || message.gmailSearch.expiresAt <= Date.now()) return
+      conv.messages = conv.messages.map((item) => item.id === messageId
+        ? { ...item, gmailSearch: { ...item.gmailSearch!, query: trimmed } }
+        : item)
+      conv.updatedAt = Date.now()
+      storage.saveConversation(conv)
+      refreshConversations()
+    },
+    [refreshConversations],
   )
 
   // Retry an interrupted assistant message: find the user message right
@@ -948,6 +1007,7 @@ export function useConversation() {
     setSystemPrompt,
     setToolHandler,
     togglePinMessage,
+    updateGmailSearch,
     editAndResend,
     retryMessage,
     retryLastUserMessage,

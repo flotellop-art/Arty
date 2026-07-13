@@ -124,6 +124,7 @@ function AppContent({
     branchConversation,
     stopStreaming,
     togglePinMessage,
+    updateGmailSearch,
     editAndResend,
     retryMessage,
     retryLastUserMessage,
@@ -297,6 +298,14 @@ function AppContent({
       togglePinMessage(activeId, messageId)
     },
     [activeId, togglePinMessage]
+  )
+
+  const handleGmailSearchUpdate = useCallback(
+    (messageId: string, query: string) => {
+      if (!activeId) return
+      updateGmailSearch(activeId, messageId, query)
+    },
+    [activeId, updateGmailSearch],
   )
 
   const handleOAuthCallback = useCallback(
@@ -539,6 +548,7 @@ function AppContent({
               onTogglePin={handleTogglePin}
               onEdit={editAndResend}
               onRetry={retryMessage}
+              onUpdateGmailSearch={handleGmailSearchUpdate}
               onRetryError={retryLastUserMessage}
               onDismissError={clearError}
               onNewConversation={handleNewConversation}
@@ -656,6 +666,7 @@ interface ChatRouteProps {
   onTogglePin?: (messageId: string) => void
   onEdit?: (messageId: string, newContent: string) => void
   onRetry?: (messageId: string) => void
+  onUpdateGmailSearch?: (messageId: string, query: string) => void
   onRetryError?: () => void
   onDismissError?: () => void
   onNewConversation?: () => void
@@ -681,6 +692,7 @@ function ChatRoute({
   onTogglePin,
   onEdit,
   onRetry,
+  onUpdateGmailSearch,
   onRetryError,
   onDismissError,
   onNewConversation,
@@ -761,6 +773,7 @@ function ChatRoute({
       onTogglePin={onTogglePin}
       onEdit={onEdit}
       onRetry={onRetry}
+      onUpdateGmailSearch={onUpdateGmailSearch}
       onRetryError={onRetryError}
       onDismissError={onDismissError}
       onNewConversation={onNewConversation}

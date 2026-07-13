@@ -52,7 +52,8 @@
       "signIn": "Sign in with Google",
       "failed": "Google sign-in failed. Please try again.",
       "iosUnavailable": "Google Sign-In on iOS still requires native configuration. For now, use the email trial or an API key.",
-      "notice": "Connect your Google account to access Gmail, Drive and Calendar."
+      "notice": "Connect your Google account to access Gmail, Drive and Calendar.",
+      "noticeNoCasa": "Connect your Google account for identity and Calendar. Arty prepares Gmail searches without reading your inbox."
     },
     "email": {
       "label": "Email",
@@ -111,7 +112,8 @@
       "dropdowns": "Change the tone and AI model here",
       "attach": "Send a photo or a file",
       "mic": "Dictate your message",
-      "google": "Connect Google to access your emails and files"
+      "google": "Connect Google to access your emails and files",
+      "googleNoCasa": "Connect Google for identity and Calendar; Arty does not read your Gmail inbox"
     }
   },
   "profileSetup": {
@@ -1154,6 +1156,28 @@
   },
   "oauthCallback": {
     "loading": "Signing in with Google…"
+  },
+  "gmailSearch": {
+    "assistantIntro": "I'll prepare the search, then Gmail will run it without giving me access to your inbox.",
+    "kicker": "Secure handoff",
+    "title": "Prepare the Gmail search",
+    "noGlobalAccess": "No global access",
+    "queryLabel": "Editable Gmail query",
+    "assumption": "Visible assumption: {{value}}",
+    "open": "Search in Gmail",
+    "copy": "Copy search",
+    "instructions": "The query is copied before Gmail opens. Paste it into Gmail's search bar, open the right message, then click the Arty icon in Gmail's side panel.",
+    "privacy": "Arty reads no email or search result",
+    "status": {
+      "ready": "You can edit the query before continuing.",
+      "copying": "Copying…",
+      "copied": "Search copied. Arty does not receive the results.",
+      "opening": "Copying the search, then opening Gmail…",
+      "invalid": "The query contains an unsupported operator or character.",
+      "copyError": "Copy failed. Gmail was not opened; select the query manually.",
+      "openError": "Search copied, but Gmail could not be opened automatically.",
+      "expired": "This preparation has expired. Send your request again to create a new one."
+    }
   },
   "driveFileCard": {
     "modifiedAt": "Modified on {{date}}",

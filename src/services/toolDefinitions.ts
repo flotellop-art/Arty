@@ -7,14 +7,16 @@ import { wordpressToolDefinitions } from './tools/wordpressTools'
 import { utilityToolDefinitions } from './tools/utilityTools'
 import { nativeToolDefinitions } from './tools/nativeTools'
 import { sheetsToolDefinitions } from './tools/sheetsTools'
+import { isGmailNoCasaPhase0Enabled } from './gmailNoCasaPhase0'
 
-export const TOOLS = [
+export function buildToolDefinitions(noCasa = isGmailNoCasaPhase0Enabled()) {
+  return [
   ...utilityToolDefinitions,
   ...computerToolDefinitions,
-  ...gmailToolDefinitions,
-  ...driveToolDefinitions,
+  ...(noCasa ? [] : gmailToolDefinitions),
+  ...(noCasa ? [] : driveToolDefinitions),
   ...calendarToolDefinitions,
-  ...contactsToolDefinitions,
+  ...(noCasa ? [] : contactsToolDefinitions),
   ...wordpressToolDefinitions,
   ...nativeToolDefinitions,
   ...sheetsToolDefinitions,
@@ -29,4 +31,7 @@ export const TOOLS = [
     name: 'web_fetch',
     allowed_callers: ['direct'],
   } as any,
-]
+  ]
+}
+
+export const TOOLS = buildToolDefinitions()
