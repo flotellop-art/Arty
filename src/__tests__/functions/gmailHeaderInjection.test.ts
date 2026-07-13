@@ -17,6 +17,9 @@ function call(body: Record<string, unknown>) {
       headers: { 'content-type': 'application/json', authorization: 'Bearer google-token' },
       body: JSON.stringify(body),
     }),
+    // Tombstone PR-0 : ces tests exercent la logique RÉELLE du handler —
+    // la variable d'échappement contourne le 410 par défaut.
+    env: { LEGACY_GOOGLE_CONNECTORS_ENABLED: 'true' },
   } as never)
 }
 

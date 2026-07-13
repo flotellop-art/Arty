@@ -1,7 +1,11 @@
+import { isConnectorTombstoned, tombstoneResponse } from '../_lib/tombstone'
 import { verifyGoogleUser, notFoundResponse } from '../_lib/checkAllowedUser'
 import { googleFetch } from '../_lib/googleFetch'
 
-export const onRequestPost: PagesFunction = async ({ request }) => {
+export const onRequestPost: PagesFunction = async ({ request, env }) => {
+  // PR-0 (CDC Phase 1 D26/D29) — connecteur tombstoné, 410 avant auth.
+  if (isConnectorTombstoned('contacts', env)) return tombstoneResponse()
+
   // CRIT-4 (audit étape 2) — exiger un user Google identifié.
   const email = await verifyGoogleUser(request)
   if (!email) return notFoundResponse()
