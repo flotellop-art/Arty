@@ -86,3 +86,20 @@ jobs:
       - name: Android lint, unit tests, and compile checks
         working-directory: android
         run: ./gradlew :app:lintDebug :app:testDebugUnitTest :app:assembleDebug :app:assembleAndroidTest --no-daemon
+
+      # PR-0 (CDC Phase 1 D21/D29) — inspections sémantiques des artefacts
+      # Android, sur les builds DÉJÀ produits par assembleDebug (coût ~0).
+      # Inspection 1/3 = scanner source (job verify-app, no-casa:check).
+      - name: Inspect merged manifest (2/3)
+        run: |
+          MERGED=$(find android/app/build/intermediates/merged_manifests -name AndroidManifest.xml | head -1)
+          test -n "$MERGED" || { echo "merged manifest introuvable"; exit 1; }
+          node scripts/check-android-manifest.mjs "$MERGED"
+
+      - name: Inspect assembled APK permissions (3/3)
+        run: |
+          APK=$(find android/app/build/outputs/apk/debug -name '*.apk' | head -1)
+          test -n "$APK" || { echo "APK debug introuvable"; exit 1; }
+          AAPT=$(find "$ANDROID_HOME/build-tools" -name aapt | sort | tail -1)
+          "$AAPT" dump permissions "$APK" > /tmp/apk-permissions.txt
+          node scripts/check-android-manifest.mjs /tmp/apk-permissions.txt

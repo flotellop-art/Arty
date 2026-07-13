@@ -12,7 +12,8 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "addon:phase0:check": "node google-workspace-addon/phase0/render-manifest.mjs check-template",
-    "verify": "npm run addon:phase0:check && npm run typecheck && npm run test:coverage && npm run build"
+    "no-casa:check": "node scripts/check-public-google-access.mjs",
+    "verify": "npm run addon:phase0:check && npm run no-casa:check && npm run typecheck && npm run test:coverage && npm run build"
   },
   "dependencies": {
     "@capacitor/android": "^8.3.0",
