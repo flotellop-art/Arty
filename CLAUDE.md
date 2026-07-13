@@ -551,7 +551,14 @@ Slash command **`/audit-secu`** (défini dans `.claude/commands/audit-secu.md`) 
 
 ### TODO Sécurité — prochain audit
 
-Dernier audit : **3 juillet 2026** — audit repo complet A→Z (5 agents : backend Opus, auth+crypto Opus, frontend Sonnet, build/config Sonnet, qualité Sonnet + vérifs directes tsc/tests/build/headers prod). Rapport : `docs/audits/repo-audit-2026-07-03.md`, remédiation : PR #307 (voir bloc « Corrigé le 3 juillet 2026 » ci-dessous). Précédents : 14 juin 2026, 7 juin 2026, 4 mai 2026 (PR #127 + #128).
+Dernier audit : **13 juillet 2026** — audit mensuel `/audit-secu` (3 agents : backend Opus, crypto+auth Google Opus, frontend Sonnet + vérification terrain grep/git log sur les findings avant publication). Rapport : `docs/audits/repo-audit-2026-07-13.md`. **Verdict : aucun CRIT.** 2 HIGH : (1) **nouveau** — CSP `script-src` bloque le script de purge SW ajouté en preview (`cf0b878`), régression du symptôme BUG 45 sur previews + pas de SW en web ; (2) confirmation de F-34 déjà connu (chiffrement inopérant pour comptes non-BYOK, priorité déjà relevée, non-bloquant selon cadrage du 16 mai). 4 MED (dédup `verifyTokenViaTokeninfo` dans `trial/init.ts`, leak `err.message` sur 6 proxys IA hors `ai/proxy.ts`, scopes OAuth Drive/Gmail larges, `window.open` sans `noopener` dans `HomeScreen.tsx`). Aucun code corrigé — attente validation utilisateur (RÈGLE 7). Précédents : 3 juillet 2026 (PR #307), 14 juin 2026, 7 juin 2026, 4 mai 2026 (PR #127 + #128).
+
+**Nouveaux findings du 13 juillet 2026 — à traiter** :
+- [ ] **HIGH — CSP bloque le script de purge SW** (`public/_headers:6` vs `index.html:81-111`) : sortir le script inline (ajouté en `cf0b878`) dans un fichier externe type `/sw-bootstrap.js`, ou nonce. ~30 min.
+- [ ] **MED — `trial/init.ts` duplique `verifyTokenViaTokeninfo`** avec un garde `aud` plus faible que `checkAllowedUser.ts` (le `&& info.aud` en trop laisse passer un token sans claim `aud`). Importer la version centrale durcie. ~15 min.
+- [ ] **MED — leak `err.message` sur 6 proxys IA** (mistral/gemini/openai/tts/whisper/voxtral) dans le catch réseau final — `ai/proxy.ts` a déjà été durci en message générique, pas les 6 autres. ~30 min.
+- [ ] **MED — `window.open` sans `noopener,noreferrer`** dans `HomeScreen.tsx:85` (fallback lien calendrier), incohérent avec le reste du code.
+- [ ] **LOW — pas de timeout sur fetch serveur→Google** dans `auth/token.ts`, `auth/refresh.ts`, `checkAllowedUser.ts` (le reste du backend utilise `googleFetch` avec timeout 20s).
 
 > **MAJ 14 juin 2026** — Audit complet `/audit-secu` (3 agents) déclenché après une
 > comparaison aux failles d'Odysseus (l'assistant de PewDiePie). **Verdict : aucun CRIT,
