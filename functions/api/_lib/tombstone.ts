@@ -9,8 +9,8 @@
  * Décision du 13 juillet 2026 : coupure ACTIVE PAR DÉFAUT (« coupure
  * immédiate »). LEGACY_GOOGLE_CONNECTORS_ENABLED='true' est la variable
  * d'échappement d'urgence : elle réactive les handlers historiques sans
- * redéploiement (rollback ops, même pattern que
- * WORKSPACE_ADDON_PHASE0_ENABLED).
+ * revert de code (rollback ops : poser la var + « Retry deployment »,
+ * ~2 min — même pattern que WORKSPACE_ADDON_PHASE0_ENABLED).
  *
  * PR-B0 retirera ATOMIQUEMENT 'drive' de TOMBSTONED_CONNECTORS (D29) —
  * Gmail/Contacts/Sheets restent en 410.

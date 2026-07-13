@@ -15,9 +15,12 @@
  *  2. PARITÉ SOURCE : chaque permission déclarée dans le manifest source
  *     doit être présente (une disparition silencieuse = merge cassé,
  *     leçon BUG 44 : permission manquante = feature morte sans prompt).
- *  3. RAPPORT : la liste complète des permissions mergées est imprimée
- *     dans les logs CI. Durcissement prévu (même PR, après la première CI
- *     verte) : gel de cette liste en ALLOWLIST stricte.
+ *  3. ALLOWLIST STRICTE : le jeu de permissions mergé doit être EXACTEMENT
+ *     celui gelé ci-dessous (base réelle établie par le run CI 29274468841
+ *     du 13 juillet 2026 — 8 permissions source + 5 injectées par les
+ *     dépendances). Tout ajout/retrait — y compris par une mise à jour de
+ *     dépendance — fait échouer la CI et exige une mise à jour CONSCIENTE
+ *     de cette liste.
  *
  * Usage : node scripts/check-android-manifest.mjs <fichier>
  */
@@ -30,6 +33,26 @@ if (!input) {
   console.error('usage: node scripts/check-android-manifest.mjs <manifest.xml | aapt-dump.txt>')
   process.exit(2)
 }
+
+// Base gelée le 13 juillet 2026 (run CI 29274468841, APK debug mergé).
+// Les 5 dernières sont injectées par les dépendances (Capacitor/AndroidX/
+// play-services) — bénignes et attendues. NB : DYNAMIC_RECEIVER_NOT_EXPORTED
+// est préfixée par l'applicationId (com.arty.app).
+const MERGED_ALLOWLIST = new Set([
+  'android.permission.INTERNET',
+  'android.permission.CAMERA',
+  'android.permission.MODIFY_AUDIO_SETTINGS',
+  'android.permission.RECORD_AUDIO',
+  'android.permission.POST_NOTIFICATIONS',
+  'android.permission.VIBRATE',
+  'android.permission.ACCESS_FINE_LOCATION',
+  'android.permission.ACCESS_COARSE_LOCATION',
+  'android.permission.ACCESS_NETWORK_STATE',
+  'android.permission.RECEIVE_BOOT_COMPLETED',
+  'android.permission.WAKE_LOCK',
+  'com.arty.app.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION',
+  'com.google.android.c2dm.permission.RECEIVE',
+])
 
 const DENYLIST = new Set([
   'android.permission.READ_EXTERNAL_STORAGE',
@@ -91,6 +114,16 @@ if (missing.length > 0) {
   console.error(`  ✗ permissions du manifest source ABSENTES du mergé : ${missing.join(', ')}`)
 } else {
   console.log('  ✓ parité avec le manifest source')
+}
+
+const extra = [...merged].filter((p) => !MERGED_ALLOWLIST.has(p))
+const gone = [...MERGED_ALLOWLIST].filter((p) => !merged.has(p))
+if (extra.length > 0 || gone.length > 0) {
+  failures += 1
+  if (extra.length > 0) console.error(`  ✗ permissions HORS allowlist gelée : ${extra.join(', ')}`)
+  if (gone.length > 0) console.error(`  ✗ permissions de l'allowlist DISPARUES : ${gone.join(', ')}`)
+} else {
+  console.log('  ✓ allowlist stricte respectée (13 permissions gelées)')
 }
 
 console.log(`  ℹ permissions mergées (${merged.size}) : ${[...merged].sort().join(', ')}`)

@@ -5,8 +5,10 @@ export interface Env {
   // PR-0 (CDC Phase 1 D26/D29) — variable d'ÉCHAPPEMENT des tombstones.
   // Les connecteurs Gmail/Drive/Contacts/Sheets répondent 410 PAR DÉFAUT
   // (« coupure immédiate », décision du 13 juillet 2026). Poser 'true' ici
-  // réactive les handlers historiques sans redéploiement (rollback
-  // d'urgence uniquement — à ne jamais laisser en place durablement).
+  // réactive les handlers historiques. Rollback d'urgence uniquement, à ne
+  // jamais laisser durablement. NB Cloudflare Pages : un changement de
+  // variable ne s'applique qu'au prochain déploiement → poser la var PUIS
+  // « Retry deployment » (~2 min, sans revert de code).
   LEGACY_GOOGLE_CONNECTORS_ENABLED?: string
   // Workspace Add-on HTTP — Phase 0 uniquement. Toutes les valeurs sont
   // serveur-only et le flag doit valoir exactement "true" pour ouvrir les routes.
