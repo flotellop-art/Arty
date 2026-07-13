@@ -13,13 +13,13 @@ import { cleanDisplayName } from '../../services/displayName'
 import type { useGoogleAuth } from '../../hooks/useGoogleAuth'
 import type { useGmail } from '../../hooks/useGmail'
 import type { useDrive } from '../../hooks/useDrive'
-import type { FileAttachment, Conversation } from '../../types'
+import type { ChatSendHandler, Conversation } from '../../types'
 import { homeV2Enabled } from '../../services/homeV2'
 import { isPublicGoogleOAuthProfileEnabled } from '../../services/publicGoogleOAuthProfile'
 
 interface HomeScreenProps {
   onMenuToggle: () => void
-  onSend: (text: string, files?: FileAttachment[]) => void
+  onSend: ChatSendHandler
   isStreaming: boolean
   /** Stop du stream actif. Sans lui, le bouton Stop affiché quand un stream
       tourne en arrière-plan (retour Home pendant une réponse) est un no-op

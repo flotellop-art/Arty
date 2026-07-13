@@ -28,7 +28,8 @@ const baseProps = {
   onCreateCalendarEvent: () => {},
   onDismissCalendar: () => {},
   showChips: false,
-  chips: [{ label: 'Résumer', prompt: 'Résume', icon: '📝' }],
+  chips: [{ id: 'summarize' as const, label: 'Résumer', icon: '📝' }],
+  activeChipId: undefined,
   onChipClick: () => {},
 }
 
@@ -127,6 +128,15 @@ describe('InputContextSlot — priorité voix > erreur > calendrier > chips', ()
     expect(html).toContain('Résumer')
     expect(html).toContain('overflow-x-auto')
     expect(html).toContain('flex-nowrap')
+  })
+
+  it('expose l\'action armée sans afficher son prompt caché', () => {
+    const html = renderToStaticMarkup(
+      <InputContextSlot {...baseProps} showChips={true} activeChipId="summarize" />
+    )
+    expect(html).toContain('aria-pressed="true"')
+    expect(html).toContain('Résumer')
+    expect(html).not.toContain('Résume-moi ce texte')
   })
 
   it('transcript intérimaire visible pendant la dictée', () => {

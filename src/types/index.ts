@@ -6,6 +6,38 @@ export interface FileAttachment {
   size?: number // octets, après compression éventuelle
 }
 
+/** Actions rapides proposées au-dessus du composer. L'identifiant est
+ * volontairement allowlisté : une conversation importée ne peut pas glisser
+ * une instruction arbitraire dans un champ invisible. */
+export type QuickActionId =
+  | 'brief'
+  | 'writeEmail'
+  | 'summarizeText'
+  | 'translateToEn'
+  | 'summarize'
+  | 'write'
+  | 'translate'
+  | 'explain'
+
+export type QuickActionLocale = 'fr' | 'en'
+
+export interface QuickActionSelection {
+  id: QuickActionId
+  /** Locale figée au clic : une relance garde exactement la même intention,
+   * même si l'utilisateur change ensuite la langue de l'interface. */
+  locale: QuickActionLocale
+}
+
+export interface ChatSendOptions {
+  quickAction?: QuickActionSelection
+}
+
+export type ChatSendHandler = (
+  text: string,
+  files?: FileAttachment[],
+  options?: ChatSendOptions,
+) => void
+
 export interface FactCheckClaim {
   claim: string
   verdict: 'verified' | 'uncertain' | 'wrong'
@@ -68,6 +100,10 @@ export interface Message {
   pinned?: boolean
   interrupted?: boolean
   factCheck?: FactCheckResult
+  // Action rapide appliquée côté modèle, jamais rendue dans la bulle user.
+  // L'ID et la locale (plutôt qu'un prompt libre) permettent de reconstruire
+  // une instruction stable lors d'un retry sans canal caché arbitraire.
+  quickAction?: QuickActionSelection
   // CDC visibilité modèle (C-B) — model id exact qui a produit cette réponse
   // (ex: 'claude-sonnet-5-20250929', 'mistral-medium-latest'). Posé à
   // finalize() depuis le StreamState (capturé via l'event 'arty-model-used'

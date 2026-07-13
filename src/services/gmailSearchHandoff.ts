@@ -254,6 +254,7 @@ export function isValidGmailSearchPayload(value: unknown, now = Date.now()): val
       && ((assumption as Partial<GmailSearchAssumption>).label?.length ?? 0) <= 80)
     && typeof payload.createdAt === 'number'
     && typeof payload.expiresAt === 'number'
+    && (payload.afterOpen === undefined || payload.afterOpen === 'summarize' || payload.afterOpen === 'reply')
     && payload.createdAt <= now + 60_000
     && payload.expiresAt > now
     && payload.expiresAt - payload.createdAt <= GMAIL_SEARCH_PAYLOAD_TTL_MS

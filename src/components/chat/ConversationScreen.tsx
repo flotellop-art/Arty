@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import type { Conversation, FileAttachment, Message } from '../../types'
+import type { ChatSendHandler, Conversation, Message } from '../../types'
 import { ChatTopBar } from './ChatTopBar'
 import { MessageList } from './MessageList'
 import { InputBar } from '../layout/InputBar'
@@ -22,7 +22,7 @@ interface ConversationScreenProps {
   streamingContent: string
   error: string | null
   onBack: () => void
-  onSend: (text: string, files?: FileAttachment[]) => void
+  onSend: ChatSendHandler
   onStop: () => void
   onAction?: (action: string, params: Record<string, string>) => void
   onBranch?: (messageIndex: number) => void

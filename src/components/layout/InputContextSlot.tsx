@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
+import type { QuickActionId } from '../../types'
 
 // Slot contextuel unique au-dessus de l'InputBar (PR C, design/mockups-2026-06/
 // PLAN.md). Remplace les 7 bandeaux concurrents qui s'empilaient sans
@@ -15,8 +16,8 @@ import { useTranslation } from 'react-i18next'
 // l'identique pour ne pas changer le langage visuel pendant la beta.
 
 export interface ContextChip {
+  id: QuickActionId
   label: string
-  prompt: string
   icon: string
 }
 
@@ -37,7 +38,8 @@ interface InputContextSlotProps {
   /** Conditions chips calculées par InputBar (texte vide, pas de fichier…). */
   showChips: boolean
   chips: ContextChip[]
-  onChipClick: (prompt: string) => void
+  activeChipId?: QuickActionId
+  onChipClick: (id: QuickActionId) => void
   /** Pastille Réflexion (ReflectionPill) rendue SOUS la rangée de chips,
       uniquement à l'idle — même cycle de vie que les chips : visible quand
       le textarea est vide, disparaît dès la frappe (« ne gêne pas lors de
@@ -60,6 +62,7 @@ export function InputContextSlot({
   onDismissCalendar,
   showChips,
   chips,
+  activeChipId,
   onChipClick,
   reflectionSlot,
 }: InputContextSlotProps) {
@@ -160,10 +163,15 @@ export function InputContextSlot({
           >
             {chips.map((chip) => (
               <button
-                key={chip.label}
+                key={chip.id}
                 type="button"
-                onClick={() => onChipClick(chip.prompt)}
-                className="shrink-0 whitespace-nowrap px-3 py-1.5 text-xs rounded-full bg-theme-surface border border-theme-border text-theme-ink hover:border-theme-accent hover:text-theme-accent transition-colors"
+                onClick={() => onChipClick(chip.id)}
+                aria-pressed={activeChipId === chip.id}
+                className={`shrink-0 whitespace-nowrap px-3 py-1.5 text-xs rounded-full border transition-colors ${
+                  activeChipId === chip.id
+                    ? 'bg-theme-accent text-theme-bg border-theme-accent'
+                    : 'bg-theme-surface border-theme-border text-theme-ink hover:border-theme-accent hover:text-theme-accent'
+                }`}
                 aria-label={t('chat.input.chipSuggestion', { label: chip.label })}
               >
                 {chip.icon} {chip.label}
