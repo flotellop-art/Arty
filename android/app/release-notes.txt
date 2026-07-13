@@ -1,5 +1,5 @@
-Arty 1.0.23 — Notifications Android + diagnostic Google (cumule 1.0.22)
+Arty 1.0.80 — Gmail sans CASA
 
-• Fix : le toggle Notifications dans Paramètres utilise maintenant le plugin natif Capacitor LocalNotifications — le prompt système Android 13+ apparaît enfin quand tu actives les notifs. Avant, l'app demandait via l'API du navigateur qui renvoyait "denied" silencieusement sur l'APK.
-• Fix : le logo Arty (triangle Prism sur fond crème) devrait enfin apparaître sur l'écran d'accueil à la place du robot Android (fix R8 keep.xml sur l'adaptive icon).
-• Diag : timeout 30s sur la connexion Google + banner rouge visible si le popup se bloque (déjà dans 1.0.22, conservé).
+• Les demandes de recherche d'e-mails restent dans Arty, puis ouvrent une recherche Gmail préparée quand c'est nécessaire.
+• Arty ne demande plus les accès directs Gmail, Drive, Contacts ou Sheets dans le profil Google public.
+• La build Android utilise désormais le même profil sans CASA que la version web.

@@ -67,6 +67,13 @@ jobs:
       - name: Verify web app and Functions
         run: npm run verify
 
+      # Les tests de parite couvrent aussi le profil legacy et s'executent donc
+      # sans flag. Cette seconde build est celle embarquee dans le WebView.
+      - name: Build web app with public Google profile
+        env:
+          VITE_GMAIL_NO_CASA_PHASE0: 'true'
+        run: npm run build
+
       - name: Sync Capacitor Android
         run: npx cap sync android
 
@@ -108,6 +115,8 @@ jobs:
           ARTY_KEYSTORE_PASSWORD: ${{ secrets.ARTY_KEYSTORE_PASSWORD }}
           ARTY_KEY_ALIAS: ${{ secrets.ARTY_KEY_ALIAS }}
           ARTY_KEY_PASSWORD: ${{ secrets.ARTY_KEY_PASSWORD }}
+          # Doit rester aligne avec VITE_GMAIL_NO_CASA_PHASE0 ci-dessus.
+          ARTY_GMAIL_NO_CASA_PHASE0: 'true'
         run: ./gradlew :app:lintRelease :app:testReleaseUnitTest :app:assembleRelease --no-daemon
 
       - name: Distribute to Firebase App Distribution
