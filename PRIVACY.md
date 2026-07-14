@@ -1,6 +1,6 @@
 # Politique de confidentialité — Arty
 
-**Dernière mise à jour :** 13 juillet 2026
+**Dernière mise à jour :** 14 juillet 2026
 
 **Éditeur :** Florent Pollet, personne physique, domicilié 884 chemin de la Prairie, 38270 Beaufort, France. Aucune entreprise n'est immatriculée à ce jour ; un SIREN sera ajouté à cette politique dès l'enregistrement de l'activité, prévu avant le lancement public et les premiers paiements.
 **Contact :** flotellop@gmail.com
@@ -68,7 +68,7 @@ L'utilisation par Arty des données reçues des API Google, et leur transfert ve
 
 ## 6. Sécurité
 
-- **Chiffrement au repos sur l'appareil** : vos conversations, vos pièces jointes (IndexedDB) et vos rapports générés sont chiffrés en AES-256-GCM via la Web Crypto API. La clé de chiffrement est dérivée localement et ne quitte jamais votre appareil.
+- **Données locales protégées par l'application** : vos conversations, vos pièces jointes (IndexedDB), vos rapports générés et vos jetons OAuth Google sont stockés localement sous forme chiffrée AES-256-GCM via la Web Crypto API. En mode BYOK, la clé est dérivée localement de votre clé API personnelle. Pour un compte sans BYOK, elle est dérivée d'une valeur intégrée à l'application et d'un sel stocké localement : les données sont chiffrées sur le disque, mais la clé n'est ni secrète ni liée au matériel. Ce mécanisme ne protège donc pas contre un attaquant qui accède à la fois au code de l'application et au stockage local.
 - **Clés API personnelles (BYOK)** : elles sont stockées localement dans l'espace applicatif de votre appareil, sans chiffrement applicatif supplémentaire. Elles transitent par le proxy API Cloudflare d'Arty uniquement pour relayer vos requêtes vers l'API du fournisseur ; elles ne sont ni stockées ni journalisées par Arty côté serveur.
 - **Chiffrement en transit** : toutes les communications utilisent HTTPS (TLS 1.2+).
 - **Traitements côté serveur** : les jetons Google et les clés BYOK sont traités en transit pour authentifier ou relayer la requête, sans être persistés ni journalisés par Arty. Les données persistées sont limitées aux identités et sessions email, à la mémoire structurée explicitement enregistrée, aux conversations partagées et signalements soumis volontairement, aux données de facturation/wallet ainsi qu'aux quotas et compteurs techniques, selon les durées du §8.
@@ -76,9 +76,9 @@ L'utilisation par Arty des données reçues des API Google, et leur transfert ve
 
 ## 7. Stockage local sur votre appareil
 
-Pour fonctionner, l'application conserve localement les données suivantes. À l'exception du transit ponctuel des clés BYOK décrit ci-dessus, ces éléments ne sont pas envoyés côté serveur :
+Pour fonctionner, l'application conserve localement les données suivantes. Lorsque vous demandez une fonctionnalité, le contenu nécessaire, les jetons Google et/ou les clés BYOK peuvent transiter par les endpoints Cloudflare d'Arty et les prestataires concernés, comme décrit aux §4 et §6. Arty ne persiste pas côté serveur le contenu courant des conversations, les pièces jointes, les jetons Google ni les clés BYOK, sauf conversation partagée ou signalement que vous soumettez volontairement.
 
-- **localStorage** : préférences (langue, onboarding, plan), identifiant d'appareil non personnel, hash de votre email pour la reconnexion, clés API personnelles BYOK sans chiffrement applicatif, rapports générés chiffrés, état trial.
+- **localStorage** : préférences (langue, onboarding, plan), identifiant d'appareil non personnel, hash de votre email pour la reconnexion, clés API personnelles BYOK sans chiffrement applicatif, conversations, rapports générés et jetons OAuth Google chiffrés, état trial.
 - **sessionStorage** : état OAuth Google (protection CSRF), messages d'erreur transitoires.
 - **IndexedDB** : pièces jointes (images, PDFs) chiffrées AES-256.
 
@@ -91,7 +91,7 @@ Nous n'utilisons **aucun cookie** de tracking ni d'analyse. Le chargement des po
 | Catégorie | Durée |
 |---|---|
 | Identités et sessions email, mémoire structurée, conversations partagées et signalements | Tant que votre compte est actif. Ces données sont supprimées lors de votre demande de suppression (au plus tard sous 30 jours). |
-| Conversations, pièces jointes et rapports | Stockés uniquement sur votre appareil et chiffrés. Une simple déconnexion les conserve pour votre prochaine connexion. Supprimer une conversation efface ses pièces jointes ; supprimer le compte efface l'ensemble de ces données. |
+| Conversations, pièces jointes et rapports | Stockés uniquement sur votre appareil et chiffrés selon le modèle et les limites décrits au §6. Une simple déconnexion les conserve pour votre prochaine connexion. Supprimer une conversation efface ses pièces jointes ; supprimer le compte efface l'ensemble de ces données. |
 | Données de paiement | 10 ans (obligation légale comptable, article L123-22 Code de commerce). |
 | Compteurs techniques minimaux d’usage, de quota et d’anti-abus | Conservés pendant la durée strictement nécessaire à la sécurité, à la prévention des abus et à l’intégrité de la facturation. Ils ne contiennent pas le contenu de vos échanges. |
 | Logs techniques serveur (Cloudflare Workers, anti-abus) | 12 mois maximum. |

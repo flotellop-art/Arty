@@ -1,6 +1,6 @@
 # Privacy Policy — Arty
 
-**Last updated:** July 13, 2026
+**Last updated:** July 14, 2026
 
 **Publisher:** Florent Pollet, natural person, residing at 884 chemin de la Prairie, 38270 Beaufort, France. No business is registered to date; a SIREN identifier will be added to this policy upon registration of the activity, planned before the public launch and the first payments.
 **Contact:** flotellop@gmail.com
@@ -68,7 +68,7 @@ Arty's use of information received from Google APIs, and its transfer to any oth
 
 ## 6. Security
 
-- **Encryption at rest on your device**: your conversations, attachments (IndexedDB), and generated reports are encrypted with AES-256-GCM via the Web Crypto API. The encryption key is derived locally and never leaves your device.
+- **Data locally protected by the application**: your conversations, attachments (IndexedDB), generated reports, and Google OAuth tokens are stored locally as AES-256-GCM ciphertext using the Web Crypto API. In BYOK mode, the key is locally derived from your personal API key. For an account without BYOK, it is derived from a value embedded in the application and a locally stored salt: the data is encrypted on disk, but the key is neither secret nor hardware-bound. This mechanism therefore does not protect against an attacker who can access both the application code and local storage.
 - **Personal API keys (BYOK)**: they are stored locally in your device's application storage without additional application-level encryption. They pass through Arty's Cloudflare API proxy only to relay your requests to the provider's API; Arty neither stores nor logs them server-side.
 - **Encryption in transit**: all communications use HTTPS (TLS 1.2+).
 - **Server-side processing**: Google tokens and BYOK keys are processed in transit to authenticate or relay a request, without being persisted or logged by Arty. Persisted data is limited to email identities and sessions, structured memory you explicitly save, shared conversations and reports you voluntarily submit, billing/wallet data, and technical quota and usage counters, subject to the retention periods in Section 8.
@@ -76,9 +76,9 @@ Arty's use of information received from Google APIs, and its transfer to any oth
 
 ## 7. Local storage on your device
 
-To operate, the app keeps the following data locally. Except for the transient BYOK-key relay described above, these items are not sent server-side:
+To operate, the app keeps the following data locally. When you request a feature, the necessary content, Google tokens, and/or BYOK keys may transit through Arty's Cloudflare endpoints and the relevant providers, as described in Sections 4 and 6. Arty does not persist current conversation content, attachments, Google tokens, or BYOK keys server-side, except for a shared conversation or report you voluntarily submit.
 
-- **localStorage**: preferences (language, onboarding, plan), non-personal device identifier, hash of your email for reconnection, personal BYOK API keys without application-level encryption, encrypted generated reports, trial state.
+- **localStorage**: preferences (language, onboarding, plan), non-personal device identifier, hash of your email for reconnection, personal BYOK API keys without application-level encryption, encrypted conversations, generated reports, and Google OAuth tokens, trial state.
 - **sessionStorage**: Google OAuth state (CSRF protection), transient error messages.
 - **IndexedDB**: encrypted attachments (images, PDFs, AES-256).
 
@@ -91,7 +91,7 @@ We use **no tracking or analytics cookies**. Loading our display fonts may trigg
 | Category | Duration |
 |---|---|
 | Email identities and sessions, structured memory, shared conversations, and submitted reports | As long as your account is active. These data are deleted when you submit a deletion request (within 30 days at the latest). |
-| Conversations, attachments, and reports | Stored only on your device and encrypted. A simple sign-out keeps them for your next sign-in. Deleting a conversation erases its attachments; deleting the account erases all of this data. |
+| Conversations, attachments, and reports | Stored only on your device and encrypted according to the model and limitations described in Section 6. A simple sign-out keeps them for your next sign-in. Deleting a conversation erases its attachments; deleting the account erases all of this data. |
 | Payment data | 10 years (legal accounting obligation, French Code of Commerce Article L123-22). |
 | Minimal technical usage, quota, and anti-abuse counters | Retained only for as long as strictly necessary for security, abuse prevention, and billing integrity. They contain none of your conversation content. |
 | Server-side technical logs (Cloudflare Workers, anti-abuse) | 12 months maximum. |

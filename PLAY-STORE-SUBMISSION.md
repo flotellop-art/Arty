@@ -62,7 +62,7 @@ et d'une mise à jour de ce dossier avant publication.
   - Position (uniquement si l'utilisateur active la localisation).
 - **Données partagées avec des tiers ?** **OUI** — le contenu utilisateur est transmis aux fournisseurs d'IA (Anthropic, OpenAI, Google, Mistral) **uniquement pour traiter la demande**. Pas de publicité, pas de revente, pas de courtage de données.
 - **Chiffrement en transit** : OUI (HTTPS uniquement).
-- **Chiffrement au repos** : OUI (AES-256, Web Crypto API).
+- Le formulaire Data Safety ne demande pas de déclaration « chiffrement au repos ». Ne pas ajouter ce champ : la protection locale AES et ses limites sont décrites dans la politique de confidentialité, séparément de la réponse « chiffrement en transit ».
 - **L'utilisateur peut-il demander la suppression ?** OUI (bouton déconnexion + effacement local).
 - **Données requises ou optionnelles** : email requis (auth) ; le reste dépend des fonctionnalités utilisées.
 
@@ -70,9 +70,39 @@ et d'une mise à jour de ce dossier avant publication.
 
 ## 3. Politique de confidentialité
 
-Google exige une **page web publique** de politique de confidentialité (même si l'app ne monétise pas les données). À héberger (ex : `tryarty.com/privacy`).
+Google exige une **page web publique** de politique de confidentialité (même si l'app ne monétise pas les données).
 
-> TODO : confirmer si `tryarty.com` a déjà une page privacy. Sinon, demander à Claude le texte (peut être rédigé à partir des points de la section 2 + le modèle de chiffrement).
+- Français : `https://tryarty.com/privacy`
+- Anglais : `https://tryarty.com/privacy/en`
+- Garder `PRIVACY.md`, `PRIVACY-EN.md` et ces deux copies HTML synchronisés à chaque modification.
+
+### Abonnements existants dans l'application Android
+
+L'application Android ne montre aucune offre ni bouton d'achat : `canPurchase`
+est faux sur natif et les fonctions de checkout échouent fermées. Un abonné
+existant conserve toutefois un lien vers le portail client Arty
+(`https://tryarty.lemonsqueezy.com/billing`) afin de pouvoir gérer ou annuler
+son abonnement, comme l'exige la politique Google Play sur les abonnements.
+
+Avant soumission, désactiver dans la configuration du Customer Portal Lemon
+Squeezy tous les changements de produit/variant, puis vérifier avec un compte
+abonné que le portail ne propose aucun achat ou upgrade. Si Arty veut proposer
+ultérieurement un lien externe d'upgrade, il faudra d'abord s'inscrire au
+programme Google Play applicable (External Offers/External Content Links selon
+la région) et intégrer ses API ; le simple lien web n'est pas suffisant.
+
+État au 14 juillet 2026 : changements de produit/variant et de quantité
+désactivés, annulation et suspension conservées, configuration publiée. Le
+magasin reste toutefois en attente d'activation par Lemon Squeezy et son URL
+publique `/billing` est encore interdite. L'activation du magasin et un test
+avec un abonné live restent donc des gates de soumission, pas des gates de merge.
+
+Sources officielles vérifiées le 14 juillet 2026 :
+
+- [Politique Google Play — abonnements et annulation](https://support.google.com/googleplay/android-developer/answer/9900533?hl=en)
+- [Programme External Offers — EEE](https://support.google.com/googleplay/android-developer/answer/14372887?hl=en)
+- [Programme External Content Links — États-Unis](https://support.google.com/googleplay/android-developer/answer/16470497?hl=en)
+- [Lemon Squeezy — Customer Portal](https://docs.lemonsqueezy.com/help/online-store/customer-portal)
 
 ---
 

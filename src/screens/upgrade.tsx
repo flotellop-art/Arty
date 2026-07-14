@@ -12,7 +12,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { openCheckout, openCreemCheckout, canPurchase, type CheckoutPlan } from '../services/checkout'
+import {
+  openCheckout,
+  openCreemCheckout,
+  canPurchase,
+  SUBSCRIPTION_PORTAL_URL,
+  type CheckoutPlan,
+} from '../services/checkout'
 import { getValidAccessToken, getStoredUser } from '../services/googleAuth'
 import { fetchWalletBalance } from '../services/walletClient'
 import { apiUrl } from '../services/apiBase'
@@ -218,8 +224,7 @@ export function UpgradeScreen({ onBack, currentPlan: currentPlanProp, email }: U
             (biens numériques hors Google Play Billing = motif de rejet). On ne
             garde que BYOK (gratuit côté Arty) + un bloc informatif neutre. Le
             statut d'un abonné existant reste visible ailleurs (PlanBadge,
-            quotas) et son lien de GESTION (annulation) est conservé : ce n'est
-            pas une incitation à acheter, c'est un dû envers l'abonné. */}
+            quotas). */}
         <div className="grid grid-cols-1 gap-4">
           <FreeBYOKCard isCurrent={currentPlan === 'byok'} onClick={handleByokClick} />
           {canPurchase && (
@@ -254,13 +259,15 @@ export function UpgradeScreen({ onBack, currentPlan: currentPlanProp, email }: U
           </div>
         )}
 
-        {/* P0.10 — annulation accessible depuis l'app (portail Lemon Squeezy).
-            Sans ce lien, « annulable en ligne » serait une promesse creuse.
-            Conservé aussi sur natif : gérer/annuler un abonnement EXISTANT
-            n'est pas un achat (exception documentée du masquage Play Store). */}
+        {/* L'accès à l'annulation reste disponible aux abonnés existants, y
+            compris sur Android : la politique Google Play sur les abonnements
+            exige une méthode d'annulation en ligne facile d'accès. Le portail
+            est celui du store Arty, jamais l'espace marchand Lemon Squeezy.
+            Les upgrades/downgrades doivent rester désactivés dans sa config
+            tant qu'Arty n'est pas inscrit au programme de liens externes. */}
         {currentPlan === 'subscription' && (
           <a
-            href="https://app.lemonsqueezy.com/billing"
+            href={SUBSCRIPTION_PORTAL_URL}
             target="_blank"
             rel="noopener noreferrer"
             className="block font-display italic text-[12px] text-theme-muted hover:text-theme-ink underline underline-offset-2 text-center pt-2 transition-colors"
