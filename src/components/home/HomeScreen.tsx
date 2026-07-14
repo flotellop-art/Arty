@@ -135,11 +135,28 @@ function HomeScreenInner({ onMenuToggle, onSend, isStreaming, onStop, googleAuth
         </div>
 
         {/* Google connect (only when not connected) */}
-        {!googleAuth.isConnected && (
+        {googleAuth.isInitializing && (
+          <div className="px-6 pt-5 max-w-md" role="status">
+            <p className="font-sans text-sm text-theme-muted">{t('common.loading')}</p>
+          </div>
+        )}
+
+        {!googleAuth.isInitializing && !googleAuth.isConnected && (
           <div className="px-6 pt-5 max-w-md">
+            {googleAuth.reconsentRequired && (
+              <div className="mb-3 p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl" role="status">
+                <p className="font-sans text-sm text-theme-ink font-semibold">
+                  {t('home.googleReconsent.title')}
+                </p>
+                <p className="font-sans text-xs text-theme-muted mt-1">
+                  {t('home.googleReconsent.body')}
+                </p>
+              </div>
+            )}
             <GoogleConnectButton
               onConnect={googleAuth.login}
               isLoading={googleAuth.isLoading}
+              label={googleAuth.reconsentRequired ? t('home.googleReconsent.cta') : undefined}
             />
             <div className="relative">
               <googleTooltip.TooltipComponent />

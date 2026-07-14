@@ -70,7 +70,7 @@ sont actifs, pas a decommenter du code.
       la boite mail. Un email n'est traite que si l'utilisateur colle, joint
       ou partage lui-meme son contenu.
 - [ ] Google Cloud Console > Data Access contient exactement `openid`,
-      `userinfo.email`, `userinfo.profile`, `calendar` ; supprimer les anciens
+      `userinfo.email`, `userinfo.profile`, `calendar.events` ; supprimer les anciens
       scopes Gmail/Drive/Contacts/Sheets et révoquer les grants de test.
 
 ## 5. Sourcemaps desactives
@@ -156,9 +156,14 @@ Dans Android Studio :
   - Chiffrement au repos : OUI (AES-256 Web Crypto).
   - Donnees supprimables sur demande : OUI (bouton "deconnexion + effacement").
 - Profil OAuth public limite a `openid`, `userinfo.email`, `userinfo.profile`
-  et `calendar`. Aucun scope Gmail ni `drive` complet dans l'APK/AAB public ;
+  et `calendar.events`. Aucun scope Gmail, `calendar` complet ni `drive` complet dans l'APK/AAB public ;
   verifier les exigences de marque et de consentement Google applicables au
   calendrier avant soumission.
+- Migration beta uniquement : poser `GOOGLE_OAUTH_LEGACY_COMPAT_UNTIL` (date ISO
+  courte, maximum 7 jours) dans Cloudflare AVANT le deploiement afin que l'APK
+  1.0.80 puisse encore renouveler son grant `calendar`. Ne jamais ouvrir cette
+  compatibilite sans date valide. La retirer avant la RC publique, apres mise a
+  jour des 12 testeurs et 72 h sans usage legacy.
 
 ## 13. App Store (iOS)
 

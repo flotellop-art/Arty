@@ -11,7 +11,7 @@
 > ⚠️ Ce dossier décrit l'ancienne architecture avec accès Gmail/Drive et ne
 > correspond plus au produit public. La source active est désormais
 > [`PLAY-STORE-SUBMISSION.md`](../PLAY-STORE-SUBMISSION.md) : le client demande
-> uniquement `openid`, `userinfo.email`, `userinfo.profile` et `calendar`.
+> uniquement `openid`, `userinfo.email`, `userinfo.profile` et `calendar.events`.
 > Aucun scope Gmail ou Drive restreint ne doit être ajouté au projet OAuth
 > public. Le contenu ci-dessous est conservé uniquement comme historique.
 

@@ -2,6 +2,8 @@ export interface GoogleTokens {
   access_token: string
   refresh_token: string
   expires_at: number
+  /** OAuth scope profile proven by the server for this grant. */
+  oauth_profile?: 'calendar-events-v1'
 }
 
 export interface GoogleUser {

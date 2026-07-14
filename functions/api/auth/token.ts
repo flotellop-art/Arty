@@ -1,15 +1,24 @@
 import type { Env } from '../../env'
-import { revokeGoogleGrant, validatePublicGoogleAccessToken } from '../_lib/publicGoogleScopes'
+import {
+  CURRENT_GOOGLE_OAUTH_PROFILE,
+  isLegacyGoogleOAuthCompatActive,
+  revokeGoogleGrant,
+  validatePublicGoogleAccessToken,
+} from '../_lib/publicGoogleScopes'
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
-  const { code, redirect_uri, code_verifier } = await request.json() as {
+  const { code, redirect_uri, code_verifier, oauth_profile } = await request.json() as {
     code?: string
     redirect_uri?: string
     code_verifier?: string
+    oauth_profile?: string
   }
 
   if (!code || redirect_uri === undefined || redirect_uri === null) {
     return Response.json({ error: 'Missing code or redirect_uri' }, { status: 400 })
+  }
+  if (oauth_profile !== undefined && oauth_profile !== CURRENT_GOOGLE_OAUTH_PROFILE) {
+    return Response.json({ error: 'unsupported_oauth_profile' }, { status: 400 })
   }
 
   if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET) {
@@ -54,7 +63,16 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
       return Response.json({ error: 'Google token response missing access token' }, { status: 502 })
     }
 
-    const scopeCheck = await validatePublicGoogleAccessToken(accessToken)
+    const scopeCheck = await validatePublicGoogleAccessToken(accessToken, {
+      requiredProfile: oauth_profile === CURRENT_GOOGLE_OAUTH_PROFILE
+        ? CURRENT_GOOGLE_OAUTH_PROFILE
+        : undefined,
+      // Only installed legacy Android clients exchange with redirect_uri=''.
+      // Old web/PWA flows must reload and use the narrowed current profile.
+      allowLegacy: oauth_profile === undefined
+        && redirect_uri === ''
+        && isLegacyGoogleOAuthCompatActive(env.GOOGLE_OAUTH_LEGACY_COMPAT_UNTIL),
+    })
     if (!scopeCheck.ok) {
       // Seul un écart de scopes prouvé invalide le grant. Une panne de
       // tokeninfo reste fail-closed pour cette requête, mais ne doit pas
@@ -68,12 +86,16 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
         { status: scopeCheck.reason === 'scope_mismatch' ? 403 : 502 },
       )
     }
+    if (scopeCheck.profile !== CURRENT_GOOGLE_OAUTH_PROFILE) {
+      console.info('[google-oauth] accepted legacy-calendar-v1 token exchange')
+    }
 
     return Response.json({
       access_token: accessToken,
       refresh_token: data.refresh_token,
       expires_in: data.expires_in,
       token_type: data.token_type,
+      oauth_profile: scopeCheck.profile,
     })
   } catch {
     return Response.json({ error: 'Token exchange failed' }, { status: 500 })

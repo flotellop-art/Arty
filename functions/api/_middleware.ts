@@ -45,7 +45,7 @@ function checkRateLimit(ip: string): boolean {
 // cross-origin. On parse l'hostname via `new URL` (jamais de regex sur la
 // string brute — évite les bypass userinfo `@`, backslash, suffixe `.evil.com`)
 // et on exige le POINT de tête + https (sinon `xappfacade.pages.dev` passerait).
-function isAllowedOrigin(origin: string): boolean {
+export function isAllowedOrigin(origin: string): boolean {
   if (!origin) return false
   if (ALLOWED_ORIGINS.includes(origin)) return true
   try {

@@ -28,11 +28,11 @@ const PUBLIC_WEB_SCOPES = new Set([
   'openid',
   'https://www.googleapis.com/auth/userinfo.email',
   'https://www.googleapis.com/auth/userinfo.profile',
-  'https://www.googleapis.com/auth/calendar',
+  'https://www.googleapis.com/auth/calendar.events',
 ])
 
 const PUBLIC_ANDROID_SCOPES = new Set([
-  'https://www.googleapis.com/auth/calendar',
+  'https://www.googleapis.com/auth/calendar.events',
 ])
 
 // Scopes RESTREINTS Google (classification officielle, chaînes canoniques
@@ -63,9 +63,17 @@ const FROZEN_FILE_SCOPES = {
     'openid',
     'https://www.googleapis.com/auth/userinfo.email',
     'https://www.googleapis.com/auth/userinfo.profile',
-    'https://www.googleapis.com/auth/calendar',
+    'https://www.googleapis.com/auth/calendar.events',
   ]),
   'android/app/src/main/java/com/arty/app/GoogleSignInPlugin.java': new Set([
+    'https://www.googleapis.com/auth/calendar.events',
+  ]),
+  'functions/api/_lib/publicGoogleScopes.ts': new Set([
+    'openid',
+    'https://www.googleapis.com/auth/userinfo.email',
+    'https://www.googleapis.com/auth/userinfo.profile',
+    'https://www.googleapis.com/auth/calendar.events',
+    // Temporary exact legacy profile for APK 1.0.80; server-gated by cutoff.
     'https://www.googleapis.com/auth/calendar',
   ]),
 }
@@ -216,6 +224,31 @@ check('clients web, Android et bundle APK synchronisé : aucune capacité Gmail 
   }
   if (offenders.length > 0) {
     throw new Error(`marqueurs Gmail trouvés dans le client :\n    ${offenders.join('\n    ')}`)
+  }
+})
+
+check('bundle APK synchronisé : scope Calendar exact et à jour', () => {
+  const androidAssetsRoot = join(ROOT, 'android/app/src/main/assets/public')
+  const requireAndroidAssets = process.argv.includes('--require-android-assets')
+  if (!existsSync(androidAssetsRoot)) {
+    if (requireAndroidAssets) throw new Error('bundle Android absent')
+    return
+  }
+
+  let currentScopeFound = false
+  const offenders = []
+  for (const file of walk(androidAssetsRoot)) {
+    const rel = relative(ROOT, file).replaceAll('\\', '/')
+    for (const literal of quotedStrings(readFileSync(file, 'utf8'))) {
+      if (literal === 'https://www.googleapis.com/auth/calendar.events') currentScopeFound = true
+      if (literal === 'https://www.googleapis.com/auth/calendar') offenders.push(rel)
+    }
+  }
+  if (offenders.length > 0) {
+    throw new Error(`ancien scope Calendar dans le bundle :\n    ${offenders.join('\n    ')}`)
+  }
+  if (requireAndroidAssets && !currentScopeFound) {
+    throw new Error('scope calendar.events absent du bundle Android synchronisé')
   }
 })
 

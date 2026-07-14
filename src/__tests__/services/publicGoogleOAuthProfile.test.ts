@@ -42,7 +42,7 @@ describe('profil Google public sans boîte mail', () => {
     for (const fragment of RESTRICTED_SCOPE_FRAGMENTS) {
       expect(scopes.some((scope) => scope.includes(fragment))).toBe(false)
     }
-    expect(scopes).toContain('https://www.googleapis.com/auth/calendar')
+    expect(scopes).toContain('https://www.googleapis.com/auth/calendar.events')
   })
 
   it('retire les outils globaux Gmail, Drive, Contacts et Sheets tout en gardant Calendar', () => {

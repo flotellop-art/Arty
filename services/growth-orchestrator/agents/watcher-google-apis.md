@@ -21,7 +21,7 @@ Arty utilise actuellement :
 - **OAuth 2.0** : auth principale, vérification token côté serveur (`tokeninfo`).
 - **Gmail** : scopes `gmail.readonly`, `gmail.send`, `gmail.modify`, `gmail.compose`. Lecture/envoi/draft. Aussi exposé comme serveur MCP pour le DG.
 - **Drive** : scope `drive`. Lecture/écriture fichiers.
-- **Calendar** : scopes `calendar` + `calendar.events`. Lecture/création événements.
+- **Calendar** : le client public utilise uniquement `calendar.events`. Les projets OAuth privés de l'orchestrateur ont leurs scopes propres, vérifiés séparément et jamais hérités par le client public.
 - **People** : scope `contacts`. Lecture contacts.
 - **Sheets** : append de données.
 - **Maps Geocoding** : reverse geocoding GPS côté serveur.
