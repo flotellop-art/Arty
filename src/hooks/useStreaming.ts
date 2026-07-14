@@ -279,8 +279,13 @@ export function useStreaming(deps: {
 
   const onDone = useCallback((targetId: string) => {
     const s = streamsRef.current.get(targetId)
-    const content = s?.accumulated || ''
-    finalize(targetId, content)
+    // Stream déjà démonté — Stop utilisateur : stopStreaming a finalisé puis
+    // abort, et le onDone du client (mistral/openai traduisent l'AbortError en
+    // fin douce) arrive en microtask APRÈS le teardown. Sans ce garde,
+    // finalize(targetId, '') poussait une SECONDE bulle assistant vide sous le
+    // message interrompu (revue Opus, 14 juillet 2026).
+    if (!s) return
+    finalize(targetId, s.accumulated || '')
     teardownStream(targetId)
   }, [finalize, teardownStream])
 

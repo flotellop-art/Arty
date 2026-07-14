@@ -376,11 +376,19 @@ async function runGeminiStream(
 
     onDone()
   } catch (err) {
-    // AbortError = Stop utilisateur : stopStreaming a déjà finalisé et démonté
-    // le stream. TOUT le reste doit atteindre onError — un throw non-Error
-    // avalé laisserait le stream fantôme (spinner éternel), même durcissement
-    // que runWithTools côté Anthropic (14 juillet 2026).
-    if (err instanceof Error && err.name === 'AbortError') return
+    // AbortError = deux origines à distinguer (revue Opus, 14 juillet 2026) :
+    //  - Stop utilisateur (controller.signal aborté) : stopStreaming a déjà
+    //    finalisé et démonté le stream → silence.
+    //  - Timeout TTFB interne de fetchWithTimeout (signal externe INTACT) :
+    //    l'avaler laissait le stream fantôme — spinner éternel, dernière
+    //    variante du bug ciblé. On surface une erreur propre.
+    // TOUT le reste doit atteindre onError — un throw non-Error avalé
+    // laisserait aussi le stream fantôme (durcissement runWithTools).
+    if (err instanceof Error && err.name === 'AbortError') {
+      if (controller.signal.aborted) return
+      onError(new Error(i18n.t('errors.streamStalled')))
+      return
+    }
     onError(err instanceof Error ? err : new Error(String(err)))
   }
 }

@@ -75,8 +75,11 @@ export async function fetchWithTimeout(
     // finally) : le fetch entier — body streamé compris — est piloté par
     // ctrl.signal, et retirer le lien externe dès les headers rendait le
     // Stop utilisateur inopérant pendant toute la lecture du stream
-    // (audit 14 juillet 2026). Le signal externe est un AbortController
-    // par-message, à durée de vie courte : pas de fuite de listener.
+    // (audit 14 juillet 2026). Coût accepté : dans un tour multi-outils avec
+    // retries (Mistral : jusqu'à 20 itérations × 3 tentatives 429), plusieurs
+    // dizaines de listeners {once} peuvent s'empiler sur le MÊME signal
+    // par-message — sans effet (abort() sur un ctrl dont le fetch est fini
+    // est un no-op) et tout est GC-able à la fin du message.
     else externalSignal.addEventListener('abort', onExternalAbort, { once: true })
   }
   try {

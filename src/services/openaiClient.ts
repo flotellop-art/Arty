@@ -283,7 +283,15 @@ export function sendMessageStream(
       onDone()
     } catch (err) {
       if ((err as Error).name === 'AbortError') {
-        onDone()
+        // Stop utilisateur (signal externe aborté) → fin douce. Un AbortError
+        // SANS Stop = timeout TTFB interne de fetchWithTimeout : le traiter en
+        // onDone fabriquait une bulle assistant VIDE sans aucun bandeau
+        // d'erreur (revue Opus, 14 juillet 2026) — on surface une erreur.
+        if (controller.signal.aborted) {
+          onDone()
+          return
+        }
+        onError(new Error(i18n.t('errors.streamStalled')))
         return
       }
       onError(err instanceof Error ? err : new Error('OpenAI streaming failed'))

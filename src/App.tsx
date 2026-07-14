@@ -559,6 +559,7 @@ function AppContent({
           onSend={handleSendFromHome}
           userName={profileName || userName}
           isGoogleConnected={googleAuth.isConnected}
+          isStreaming={isStreaming}
         />
       )}
 
