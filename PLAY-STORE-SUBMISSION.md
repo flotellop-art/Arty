@@ -91,6 +91,12 @@ ultérieurement un lien externe d'upgrade, il faudra d'abord s'inscrire au
 programme Google Play applicable (External Offers/External Content Links selon
 la région) et intégrer ses API ; le simple lien web n'est pas suffisant.
 
+État au 14 juillet 2026 : changements de produit/variant et de quantité
+désactivés, annulation et suspension conservées, configuration publiée. Le
+magasin reste toutefois en attente d'activation par Lemon Squeezy et son URL
+publique `/billing` est encore interdite. L'activation du magasin et un test
+avec un abonné live restent donc des gates de soumission, pas des gates de merge.
+
 Sources officielles vérifiées le 14 juillet 2026 :
 
 - [Politique Google Play — abonnements et annulation](https://support.google.com/googleplay/android-developer/answer/9900533?hl=en)

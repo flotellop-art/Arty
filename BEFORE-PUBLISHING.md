@@ -167,11 +167,16 @@ Dans Android Studio :
 - Paiements Android : les cartes et checkouts restent masques par `canPurchase`
   et les fonctions d'ouverture sont des no-op sur natif. Pour un abonne existant,
   conserver l'acces a l'annulation via `https://tryarty.lemonsqueezy.com/billing`.
-- [ ] Dans Lemon Squeezy > Design > Customer Portal, desactiver les changements
-      de produit/variant (upgrade/downgrade) avant la soumission, puis verifier
-      avec un abonne live que le portail natif ne propose que gestion, pause et
-      annulation. Tout lien permettant un nouvel achat ou upgrade exige d'abord
-      l'inscription au programme Google Play applicable et son integration API.
+- [x] Dans Lemon Squeezy > Design > Customer Portal, changements de
+      produit/variant et de quantite desactives puis configuration publiee le
+      14 juillet 2026. Annulation et suspension restent actives.
+- [ ] Attendre l'activation du magasin Lemon Squeezy : tant que la demande est
+      en examen, `https://tryarty.lemonsqueezy.com/billing` repond « Ce magasin
+      n'a pas ete active » et ne constitue pas encore un parcours d'annulation.
+- [ ] Apres activation, verifier avec un abonne live que le portail natif ne
+      propose que gestion, pause et annulation. Tout lien permettant un nouvel
+      achat ou upgrade exige d'abord l'inscription au programme Google Play
+      applicable et son integration API.
 - Profil OAuth public limite a `openid`, `userinfo.email`, `userinfo.profile`
   et `calendar.events`. Aucun scope Gmail, `calendar` complet ni `drive` complet dans l'APK/AAB public ;
   verifier les exigences de marque et de consentement Google applicables au
