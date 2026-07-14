@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vite
 vi.mock('../../services/googleAuth', () => ({ getValidAccessToken: vi.fn() }))
 vi.mock('../../services/emailTrialClient', () => ({ getTrialToken: vi.fn() }))
 
-import { buildAiHeaders, fetchWithTimeout } from '../../services/aiHttp'
+import { buildAiHeaders, fetchWithTimeout, readWithInactivityTimeout } from '../../services/aiHttp'
 import { getValidAccessToken } from '../../services/googleAuth'
 import { getTrialToken } from '../../services/emailTrialClient'
 
@@ -103,5 +103,46 @@ describe('fetchWithTimeout (C9/F-20)', () => {
       }),
     ))
     await expect(fetchWithTimeout('https://x', {}, 5000, ext.signal)).rejects.toMatchObject({ name: 'AbortError' })
+  })
+
+  it('le Stop utilisateur reste actif PENDANT la lecture du body (post-headers)', async () => {
+    // Durcissement 14 juillet 2026 — l'ancien finally détachait le listener
+    // du signal externe dès l'arrivée des headers : le Stop utilisateur ne
+    // pouvait plus annuler le stream en cours de lecture (Mistral/Gemini).
+    let capturedSignal: AbortSignal | undefined
+    vi.stubGlobal('fetch', vi.fn(async (_url: string, init: RequestInit) => {
+      capturedSignal = init.signal ?? undefined
+      return new Response('ok')
+    }))
+    const ext = new AbortController()
+    await fetchWithTimeout('https://x', {}, 1000, ext.signal)
+    expect(capturedSignal!.aborted).toBe(false)
+    ext.abort(new DOMException('user', 'AbortError'))
+    expect(capturedSignal!.aborted).toBe(true)
+  })
+})
+
+describe('readWithInactivityTimeout (durcissement 14 juillet 2026)', () => {
+  it('résout normalement quand des octets arrivent avant le délai', async () => {
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('data'))
+      },
+    })
+    const reader = stream.getReader()
+    const { done, value } = await readWithInactivityTimeout(reader, 1000)
+    expect(done).toBe(false)
+    expect(new TextDecoder().decode(value)).toBe('data')
+  })
+
+  it('rejette avec une Error ORDINAIRE (jamais AbortError) après le silence', async () => {
+    // Connexion half-open simulée : aucun octet, jamais de close. Un
+    // AbortError serait avalé par les catch des clients (Stop utilisateur)
+    // → le spinner éternel reviendrait.
+    const stream = new ReadableStream<Uint8Array>({ start() { /* silence */ } })
+    const reader = stream.getReader()
+    const promise = readWithInactivityTimeout(reader, 30)
+    await expect(promise).rejects.toThrow()
+    await expect(promise).rejects.not.toMatchObject({ name: 'AbortError' })
   })
 })

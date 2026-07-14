@@ -1,6 +1,6 @@
 import i18n from '../i18n'
 import { apiUrl } from './apiBase'
-import { buildAiHeaders } from './aiHttp'
+import { buildAiHeaders, fetchWithTimeout, readWithInactivityTimeout } from './aiHttp'
 import { recordUsage } from './costTracker'
 import { dispatchModelUsed } from './modelLabels'
 import { updateTrialFromResponse } from './trialClient'
@@ -93,12 +93,16 @@ async function openaiFetch(
   signal?: AbortSignal
 ): Promise<Response> {
   const { url, headers } = await resolveTarget(apiKey)
-  const res = await fetch(url, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(body),
+  // Durcissement 14 juillet 2026 — openaiClient était le dernier client sans
+  // AUCUNE borne : cold-start ou réseau flaky pouvaient pendre indéfiniment
+  // avant le premier octet (BUG 47). 60 s = TTFB seulement, la lecture du
+  // stream est bornée séparément par le watchdog d'inactivité.
+  const res = await fetchWithTimeout(
+    url,
+    { method: 'POST', headers, body: JSON.stringify(body) },
+    60_000,
     signal,
-  })
+  )
   updateTrialFromResponse(res)
   return res
 }
@@ -209,11 +213,15 @@ export function sendMessageStream(
       let completionTokens = 0
       let usedModel = model
 
-      // H-AI-2 — releaseLock en try/finally pour éviter le leak du reader
-      // sur erreur (le body n'était jamais GC autrement).
+      // Fin logique du flux (`data: [DONE]`). Sans cette sortie, la boucle
+      // n'avait qu'une porte — la fermeture TCP : sur une connexion mobile
+      // half-open, reader.read() pendait pour toujours (durcissement
+      // 14 juillet 2026, même bug que le message_stop Anthropic).
+      let sawDone = false
+
       try {
         while (true) {
-          const { done, value } = await reader.read()
+          const { done, value } = await readWithInactivityTimeout(reader)
           if (done) break
 
           buffer += decoder.decode(value, { stream: true })
@@ -223,7 +231,8 @@ export function sendMessageStream(
           for (const line of lines) {
             if (!line.startsWith('data: ')) continue
             const data = line.slice(6).trim()
-            if (!data || data === '[DONE]') continue
+            if (!data) continue
+            if (data === '[DONE]') { sawDone = true; continue }
 
             try {
               const parsed = JSON.parse(data) as {
@@ -254,9 +263,15 @@ export function sendMessageStream(
               // Skip malformed chunks
             }
           }
+
+          // Flux terminé côté OpenAI : ne pas attendre la fermeture TCP.
+          if (sawDone) break
         }
       } finally {
-        try { reader.releaseLock() } catch { /* already released */ }
+        // cancel() (et pas releaseLock() seul) : ferme la connexion — socket
+        // half-open après [DONE], read() encore pendant après un timeout du
+        // watchdog. No-op inoffensif sur une fin naturelle par `done`.
+        try { await reader.cancel() } catch { /* stream déjà terminé ou aborté */ }
       }
 
       try {

@@ -3,7 +3,7 @@ import { TOOLS } from './toolDefinitions'
 import { compressIfNeeded } from './conversationCompressor'
 import { getAnthropicKey } from './activeApiKey'
 import { apiUrl } from './apiBase'
-import { buildAiHeaders } from './aiHttp'
+import { buildAiHeaders, readWithInactivityTimeout, STREAM_INACTIVITY_TIMEOUT_MS } from './aiHttp'
 import { resolveClaudeThinking, selectClaudeSubModel, PRIVATE_DATA_TRIGGERS, shouldUseWebSearch, type ClaudeThinkingDirective, type ClaudeSubModel } from './aiRouter'
 import type { RouteDecision, RouteReason } from './router/types'
 import { isProActivated } from './proLicense'
@@ -324,35 +324,10 @@ async function fetchWithRetry(
 
 // ── SSE stream parser ─────────────────────────────────────────────────────────
 
-// Watchdog d'inactivité sur la lecture du stream. L'API Anthropic émet des
-// octets en continu pendant toute la génération (text/thinking deltas, et des
-// `event: ping` pendant les pauses serveur — thinking, web_search…) : un
-// silence total de 90 s n'est jamais légitime, c'est une connexion morte
-// (réseau mobile half-open). Même classe que BUG 47 : jamais d'attente réseau
-// non bornée. NE PAS remplacer par un AbortSignal.timeout sur le fetch : ce
-// serait un plafond sur la durée TOTALE du stream, qui abattrait les longues
-// générations légitimes (max_tokens 65536 + réflexion = plusieurs minutes).
-const STREAM_INACTIVITY_TIMEOUT_MS = 90_000
-
-// Rejette avec une Error ORDINAIRE (surtout pas un AbortError : le catch de
-// runWithTools ignore les AbortError — un timeout déguisé en abort ne
-// déclencherait jamais onError et le spinner resterait éternel).
-async function readWithInactivityTimeout(
-  reader: ReadableStreamDefaultReader<Uint8Array>,
-  timeoutMs: number
-): Promise<ReadableStreamReadResult<Uint8Array>> {
-  let timer: ReturnType<typeof setTimeout> | undefined
-  try {
-    return await Promise.race([
-      reader.read(),
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(new Error(i18n.t('errors.streamStalled'))), timeoutMs)
-      }),
-    ])
-  } finally {
-    clearTimeout(timer)
-  }
-}
+// Watchdog d'inactivité : helper commun aux 4 clients IA (aiHttp) depuis le
+// durcissement du 14 juillet 2026. L'API Anthropic émet des octets en continu
+// (deltas + `event: ping` pendant les pauses serveur — thinking, web_search…) :
+// 90 s de silence total = connexion morte.
 
 // Exporté pour les tests (servedModel / message_start, PR C-A audit
 // visibilité modèle) — ne pas appeler depuis l'app en dehors de runWithTools.

@@ -1,5 +1,6 @@
 import { getValidAccessToken } from './googleAuth'
 import { getTrialToken } from './emailTrialClient'
+import i18n from '../i18n'
 
 // ─────────────────────────────────────────────────────────────────────
 // Helper HTTP commun aux clients IA (C9 / F-20)
@@ -69,12 +70,64 @@ export async function fetchWithTimeout(
   const onExternalAbort = () => ctrl.abort(externalSignal?.reason)
   if (externalSignal) {
     if (externalSignal.aborted) ctrl.abort(externalSignal.reason)
-    else externalSignal.addEventListener('abort', onExternalAbort)
+    // `once` : le listener se détache seul quand le signal fire. On ne le
+    // détache PAS à l'arrivée des headers (l'ancien `removeEventListener` en
+    // finally) : le fetch entier — body streamé compris — est piloté par
+    // ctrl.signal, et retirer le lien externe dès les headers rendait le
+    // Stop utilisateur inopérant pendant toute la lecture du stream
+    // (audit 14 juillet 2026). Le signal externe est un AbortController
+    // par-message, à durée de vie courte : pas de fuite de listener.
+    else externalSignal.addEventListener('abort', onExternalAbort, { once: true })
   }
   try {
     return await fetch(url, { ...init, signal: ctrl.signal })
+  } catch (err) {
+    // Échec avant les headers : plus aucun body à piloter, on nettoie.
+    if (externalSignal) externalSignal.removeEventListener('abort', onExternalAbort)
+    throw err
   } finally {
     clearTimeout(timeoutId)
-    if (externalSignal) externalSignal.removeEventListener('abort', onExternalAbort)
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Lecture de stream bornée par un watchdog d'inactivité (bug live du
+// 14 juillet 2026 — « Arty écrit… » éternel). Les 4 clients IA lisaient le
+// body via `reader.read()` sans AUCUNE borne : sur une connexion mobile
+// half-open (morte sans RST), la lecture pendait pour toujours → ni onDone
+// ni onError → stream fantôme. Même classe que BUG 47 (« jamais d'attente
+// réseau non bornée »).
+//
+// Les API SSE émettent des octets en continu pendant toute la génération
+// (deltas, keep-alive/ping pendant les pauses serveur) : un silence total de
+// 90 s n'est jamais légitime. NE PAS remplacer par un AbortSignal.timeout sur
+// le fetch : ce serait un plafond sur la durée TOTALE du stream, qui
+// abattrait les longues générations légitimes.
+// ─────────────────────────────────────────────────────────────────────
+export const STREAM_INACTIVITY_TIMEOUT_MS = 90_000
+
+/**
+ * Un `reader.read()` qui rejette après `timeoutMs` sans octet reçu.
+ * Rejette avec une Error ORDINAIRE — surtout pas un AbortError : plusieurs
+ * clients traitent AbortError comme un Stop utilisateur (silencieux ou
+ * onDone) ; un timeout déguisé en abort ne déclencherait jamais onError et
+ * reproduirait le spinner éternel. L'appelant DOIT `reader.cancel()` dans son
+ * finally : après un timeout, le read() d'origine reste pendant — cancel le
+ * résout et libère la socket.
+ */
+export async function readWithInactivityTimeout(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  timeoutMs: number = STREAM_INACTIVITY_TIMEOUT_MS
+): Promise<ReadableStreamReadResult<Uint8Array>> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([
+      reader.read(),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(i18n.t('errors.streamStalled'))), timeoutMs)
+      }),
+    ])
+  } finally {
+    clearTimeout(timer)
   }
 }

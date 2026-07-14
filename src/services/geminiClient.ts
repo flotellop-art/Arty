@@ -1,6 +1,6 @@
 import { getGeminiKey } from './activeApiKey'
 import { apiUrl } from './apiBase'
-import { buildAiHeaders, fetchWithTimeout } from './aiHttp'
+import { buildAiHeaders, fetchWithTimeout, readWithInactivityTimeout } from './aiHttp'
 import { buildLocationContext } from './locationContext'
 import { recordUsage } from './costTracker'
 import { dispatchModelUsed } from './modelLabels'
@@ -326,8 +326,12 @@ async function runGeminiStream(
     let promptTokens = 0
     let candidatesTokens = 0
     try {
+      // Gemini n'a pas de sentinelle terminale ([DONE]/message_stop) : la fin
+      // du flux EST la fermeture de connexion. Le watchdog d'inactivité
+      // (aiHttp, durcissement 14 juillet 2026) est donc la seule protection
+      // contre une connexion mobile half-open qui ne se ferme jamais.
       while (true) {
-        const { done, value } = await reader.read()
+        const { done, value } = await readWithInactivityTimeout(reader)
         if (done) break
 
         buffer += decoder.decode(value, { stream: true })
@@ -358,7 +362,10 @@ async function runGeminiStream(
         }
       }
     } finally {
-      try { reader.releaseLock() } catch { /* already released */ }
+      // cancel() (et pas releaseLock() seul) : après un timeout du watchdog,
+      // le read() d'origine reste pendant — cancel le résout et libère la
+      // socket. No-op inoffensif sur une fin naturelle par `done`.
+      try { await reader.cancel() } catch { /* stream déjà terminé ou aborté */ }
     }
 
     try {
@@ -369,9 +376,12 @@ async function runGeminiStream(
 
     onDone()
   } catch (err) {
-    if (err instanceof Error && err.name !== 'AbortError') {
-      onError(err)
-    }
+    // AbortError = Stop utilisateur : stopStreaming a déjà finalisé et démonté
+    // le stream. TOUT le reste doit atteindre onError — un throw non-Error
+    // avalé laisserait le stream fantôme (spinner éternel), même durcissement
+    // que runWithTools côté Anthropic (14 juillet 2026).
+    if (err instanceof Error && err.name === 'AbortError') return
+    onError(err instanceof Error ? err : new Error(String(err)))
   }
 }
 

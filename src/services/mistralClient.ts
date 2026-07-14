@@ -1,7 +1,7 @@
 import { getMistralKey } from './activeApiKey'
 import { apiUrl } from './apiBase'
 import { getValidAccessToken } from './googleAuth'
-import { buildAiHeaders, fetchWithTimeout } from './aiHttp'
+import { buildAiHeaders, fetchWithTimeout, readWithInactivityTimeout } from './aiHttp'
 import { TOOLS } from './toolDefinitions'
 import { convertToolsToOpenAI } from './tools/openaiFormat'
 import { buildLocationContext } from './locationContext'
@@ -673,11 +673,16 @@ async function streamOnce(
   // Accumulate partial tool calls by index
   const partialToolCalls = new Map<number, { id: string; name: string; args: string }>()
 
-  // H-AI-1 (étendu Mistral) — releaseLock en try/finally pour éviter
-  // le leak du reader sur erreur.
+  // Fin logique du flux (`data: [DONE]`). L'ancien `break` sur [DONE] ne
+  // cassait que la boucle des lignes, pas le while : on repartait attendre un
+  // reader.read() qui, sur une connexion mobile half-open, ne rendait jamais
+  // `done` → stream pendu (durcissement 14 juillet 2026, même bug que le
+  // message_stop Anthropic).
+  let sawDone = false
+
   try {
     while (true) {
-      const { done, value } = await reader.read()
+      const { done, value } = await readWithInactivityTimeout(reader)
       if (done) break
 
       buffer += decoder.decode(value, { stream: true })
@@ -687,7 +692,7 @@ async function streamOnce(
       for (const line of lines) {
         if (!line.startsWith('data: ')) continue
         const data = line.slice(6).trim()
-        if (data === '[DONE]') break
+        if (data === '[DONE]') { sawDone = true; break }
 
         try {
           const parsed = JSON.parse(data)
@@ -735,9 +740,15 @@ async function streamOnce(
           continue
         }
       }
+
+      // Flux terminé côté Mistral : ne pas attendre la fermeture TCP.
+      if (sawDone) break
     }
   } finally {
-    try { reader.releaseLock() } catch { /* already released */ }
+    // cancel() (et pas releaseLock() seul) : ferme la connexion sous-jacente
+    // — socket half-open après [DONE], read() encore pendant après un timeout
+    // du watchdog. No-op inoffensif sur une fin naturelle par `done`.
+    try { await reader.cancel() } catch { /* stream déjà terminé ou aborté */ }
   }
 
   // Finalize tool calls
