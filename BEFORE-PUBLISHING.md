@@ -5,7 +5,7 @@ soumettre un APK/AAB sur le Play Store (ou un IPA sur App Store Connect).
 CLAUDE.md a autorite absolue sur cette liste : si une case n'est pas cochee,
 **ne PAS publier**.
 
-## 1. Chiffrement AES-256 actif
+## 1. Stockage local et limites du chiffrement applicatif
 
 - [x] `src/services/crypto.ts` implemente AES-256-GCM via Web Crypto API
       (PBKDF2 v2 = 600 000 iterations — OWASP 2023+ ; migration lazy v1
@@ -18,6 +18,13 @@ CLAUDE.md a autorite absolue sur cette liste : si une case n'est pas cochee,
       (sauf cles a lecture synchrone obligatoire — voir BUG 1 de CLAUDE.md).
 - [x] Tokens Google : chiffres dans localStorage, cache en memoire apres
       decryption pour conserver la lecture synchrone via `getStoredTokens()`.
+- [x] Compte sans BYOK : `initCrypto('server-provided')` derive une cle depuis
+      une valeur publique integree au client et un sel local. Le blob est bien
+      en AES-256-GCM, mais cette cle n'est ni secrete ni liee au materiel : ne
+      jamais la presenter comme une protection contre un attaquant ayant le
+      code et le stockage local.
+- [x] Cles BYOK : stockees localement sans chiffrement applicatif supplementaire ;
+      ce comportement est declare explicitement dans les politiques FR/EN.
 
 ## 2. Aucune cle API payante cote client
 
@@ -153,8 +160,18 @@ Dans Android Studio :
 - Formulaire de declaration de donnees (Data safety) rempli :
   - Donnees collectees : email (Google OAuth), contenu utilisateur.
   - Chiffrement en transit : OUI (HTTPS only).
-  - Chiffrement au repos : OUI (AES-256 Web Crypto).
+  - Le formulaire Data Safety ne demande pas de déclaration « chiffrement au repos » :
+    ne pas inventer ce champ ni transposer la protection AES locale dans la réponse
+    « chiffrement en transit ».
   - Donnees supprimables sur demande : OUI (bouton "deconnexion + effacement").
+- Paiements Android : les cartes et checkouts restent masques par `canPurchase`
+  et les fonctions d'ouverture sont des no-op sur natif. Pour un abonne existant,
+  conserver l'acces a l'annulation via `https://tryarty.lemonsqueezy.com/billing`.
+- [ ] Dans Lemon Squeezy > Design > Customer Portal, desactiver les changements
+      de produit/variant (upgrade/downgrade) avant la soumission, puis verifier
+      avec un abonne live que le portail natif ne propose que gestion, pause et
+      annulation. Tout lien permettant un nouvel achat ou upgrade exige d'abord
+      l'inscription au programme Google Play applicable et son integration API.
 - Profil OAuth public limite a `openid`, `userinfo.email`, `userinfo.profile`
   et `calendar.events`. Aucun scope Gmail, `calendar` complet ni `drive` complet dans l'APK/AAB public ;
   verifier les exigences de marque et de consentement Google applicables au

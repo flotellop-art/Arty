@@ -6,6 +6,22 @@ avant le lancement (ça compromettrait la v1).
 
 ---
 
+## Décision de lancement Android — 14 juillet 2026
+
+- Le client public web et Android est lancé sans Gmail, Drive, Contacts ni
+  Sheets. Il conserve uniquement le profil Google minimal et
+  `calendar.events` avec re-consentement explicite.
+- Drive revient après le lancement avec le scope borné `drive.file` et le
+  Google Picker, sans rouvrir l'accès complet au Drive.
+- Une éventuelle bêta Gmail/Drive utilisera un client OAuth séparé et ne
+  retardera pas la bêta Play publique.
+- Coût stratégique accepté : la bêta Play ne valide pas le différenciateur
+  Gmail/Drive auprès des moins de 100 testeurs. Cette hypothèse devra être
+  testée séparément, puis re-décidée à partir des retours et du coût réel de
+  vérification/CASA — elle ne doit pas revenir par inertie dans le client public.
+
+---
+
 ## v2 — "Arty-Flex" : agrégateur IA souverain (flexibilité Mammouth + sécurité Arty)
 
 ### Vision
@@ -19,8 +35,10 @@ serveur reste un relais.
 
 - **BYOK multi-fournisseurs** : `anthropicClient`, `geminiClient`, `mistralClient`,
   `openaiClient` acceptent déjà une clé perso (headers `x-api-key` / `x-openai-key`).
-- **Chiffrement** : `crypto.ts` (AES-256 Web Crypto) + `scopedStorage.ts` chiffrent
-  clés et conversations.
+  Ces clés sont actuellement stockées localement sans chiffrement applicatif.
+- **Chiffrement local** : `crypto.ts` (AES-256 Web Crypto) + `scopedStorage.ts`
+  protègent notamment conversations et jetons Google, avec la limite documentée
+  de la clé publique `server-provided` pour les comptes sans BYOK.
 - **Proxys relais** : `functions/api/ai/*` relaient sans stocker le contenu.
 - **Sélecteur de modèle + routage auto** : `aiRouter.ts`, `modelSelector.ts`.
 
@@ -49,8 +67,10 @@ Ces points sont des **contraintes dures**, pas des options :
   proxy toujours. Idem Replicate/fal (CORS + exposition de clé) → proxy obligatoire.
 - **Le proxy image suit la RÈGLE 3** : clé serveur sans préfixe `VITE_`,
   `checkAllowedUser()`, jamais de clé payante côté client. BYOK accepté via header.
-- **Les clés BYOK restent chiffrées AES-256 en local** (réutiliser `crypto.ts`),
-  déchiffrées en mémoire seulement au moment de l'appel.
+- **Ne jamais présenter les clés BYOK comme chiffrées aujourd'hui.** Avant d'en
+  faire une promesse produit, implémenter un stockage natif protégé par le
+  système (Keystore/Keychain) et un équivalent web dont le modèle de menace est
+  documenté, puis migrer les clés existantes sans perte.
 
 ### Note économique (argument produit valable)
 

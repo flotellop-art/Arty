@@ -83,7 +83,7 @@
   <h1>Your data, your rights.</h1>
 
   <div class="meta">
-    <div><strong>Last updated:</strong> July 13, 2026</div>
+    <div><strong>Last updated:</strong> July 14, 2026</div>
     <div><strong>Publisher:</strong> Florent Pollet, natural person, residing at 884 chemin de la Prairie, 38270 Beaufort, France. No business is registered to date; a SIREN identifier will be added to this policy upon registration of the activity, planned before the public launch and the first payments.</div>
     <div><strong>Contact:</strong> <a href="mailto:flotellop@gmail.com">flotellop@gmail.com</a></div>
   </div>
@@ -98,10 +98,10 @@
     <thead><tr><th>Category</th><th>Data</th><th>Source</th></tr></thead>
     <tbody>
       <tr><td>Authentication identity</td><td>Email, full name, profile picture</td><td>Google Sign-In (OAuth)</td></tr>
-      <tr><td>User content</td><td>Messages, files, and attachments you send to the assistant, including email content you manually paste, attach, or share</td><td>You</td></tr>
+      <tr><td>User content</td><td>Messages, files, and attachments sent to the assistant, including email content you manually paste, attach, or share; structured memory, shared conversations, and reports you voluntarily submit</td><td>You</td></tr>
       <tr><td>Google Workspace data</td><td>Reading and creating events (Calendar), only when you use an agenda feature. The public app does not access your Gmail mailbox</td><td>Your Google account, on your explicit request</td></tr>
       <tr><td>Location</td><td>Approximate geographic position</td><td>Your device's GPS sensor, only if enabled</td></tr>
-      <tr><td>Payment data</td><td>Email + transaction, no bank card details</td><td>You + Lemon Squeezy</td></tr>
+      <tr><td>Payment data</td><td>Account email, selected offer or pack, transaction identifiers and status; Arty receives no payment-card details</td><td>You + Lemon Squeezy or Creem</td></tr>
       <tr><td>Waitlist signup</td><td>Email (pre-launch only)</td><td>Tally form</td></tr>
     </tbody>
   </table>
@@ -114,7 +114,7 @@
     <tbody>
       <tr><td>Authentication and service provision (account, conversations, AI, Google connectors)</td><td>Performance of contract — your terms of use</td></tr>
       <tr><td>Geolocated answers</td><td>Explicit consent (you enable location)</td></tr>
-      <tr><td>Payments (Pro subscription)</td><td>Performance of contract + legal accounting obligation</td></tr>
+      <tr><td>Payments (Pro subscription and prepaid credit packs)</td><td>Performance of contract + legal accounting obligation</td></tr>
       <tr><td>Fraud prevention and service security (technical logs, crypto kill-switch)</td><td>Legitimate interest</td></tr>
       <tr><td>Pre-launch communication (waitlist)</td><td>Consent (voluntary signup)</td></tr>
     </tbody>
@@ -130,7 +130,8 @@
       <tr><td>OpenAI</td><td>AI response generation (depending on the selected model)</td><td>United States</td><td>SCC + EU-US Data Privacy Framework</td></tr>
       <tr><td>Google (Gemini + Workspace)</td><td>AI response generation + Calendar features explicitly requested by the user; no Gmail connector in the public app</td><td>EU + United States</td><td>SCC + EU-US Data Privacy Framework</td></tr>
       <tr><td>Mistral AI</td><td>AI response generation</td><td>France (EU)</td><td>Direct EU hosting</td></tr>
-      <tr><td>Lemon Squeezy (Stripe)</td><td>Pro subscription payment processing</td><td>United States</td><td>SCC + EU-US Data Privacy Framework, PCI-DSS compliance</td></tr>
+      <tr><td>Lemon Squeezy</td><td>Pro subscription payment processing</td><td>United States</td><td>SCC + EU-US Data Privacy Framework, PCI-DSS compliance</td></tr>
+      <tr><td>Creem</td><td>Merchant of Record and hosted checkout for prepaid credit packs. Arty sends the verified Google account email, selected product/pack, a random request ID, and the return URL. Payment-card details are entered directly with Creem and are not received by Arty.</td><td>Estonia (EU)</td><td>GDPR, Creem DPA; SCC for its sub-processors outside the EEA</td></tr>
       <tr><td>Resend</td><td>Transactional email delivery (notifications, recaps)</td><td>EU</td><td>Resend DPA</td></tr>
       <tr><td>Tally</td><td>Waitlist form (pre-launch)</td><td>EU</td><td>Tally DPA</td></tr>
     </tbody>
@@ -150,16 +151,17 @@
 
   <h2>6. Security</h2>
   <ul>
-    <li><strong>Encryption at rest on your device:</strong> your conversations, attachments (IndexedDB), and personal API keys (BYOK) are encrypted with AES-256-GCM via the Web Crypto API. The encryption key is derived locally and never leaves your device.</li>
+    <li><strong>Data locally protected by the application:</strong> your conversations, attachments (IndexedDB), generated reports, and Google OAuth tokens are stored locally as AES-256-GCM ciphertext using the Web Crypto API. In BYOK mode, the key is locally derived from your personal API key. For an account without BYOK, it is derived from a value embedded in the application and a locally stored salt: the data is encrypted on disk, but the key is neither secret nor hardware-bound. This mechanism therefore does not protect against an attacker who can access both the application code and local storage.</li>
+    <li><strong>Personal API keys (BYOK):</strong> they are stored locally in your device's application storage without additional application-level encryption. They pass through Arty's Cloudflare API proxy only to relay your requests to the provider; Arty neither stores nor logs them server-side.</li>
     <li><strong>Encryption in transit:</strong> all communications use HTTPS (TLS 1.2+).</li>
-    <li><strong>Server-side:</strong> we only store your authentication email and the Google OAuth token required to deliver the service. Conversations, attachments, and personal API keys are never stored on our servers.</li>
+    <li><strong>Server-side processing:</strong> Google tokens and BYOK keys are processed in transit to authenticate or relay a request, without being persisted or logged by Arty. Persisted data is limited to email identities and sessions, structured memory you explicitly save, shared conversations and reports you voluntarily submit, billing/wallet data, and technical quota and usage counters.</li>
     <li><strong>Server API keys:</strong> never exposed to the client app. Stored as Cloudflare Workers secrets.</li>
   </ul>
 
   <h2>7. Local storage on your device</h2>
-  <p>To operate, the app stores locally on your device (never sent server-side):</p>
+  <p>To operate, the app keeps the following data locally. When you request a feature, the necessary content, Google tokens, and/or BYOK keys may transit through Arty's Cloudflare endpoints and the relevant providers. Arty does not persist current conversation content, attachments, Google tokens, or BYOK keys server-side, except for a shared conversation or report you voluntarily submit.</p>
   <ul>
-    <li><strong>localStorage:</strong> preferences (language, onboarding, plan), non-personal device identifier, hash of your email for reconnection, encrypted personal BYOK API keys, trial state.</li>
+    <li><strong>localStorage:</strong> preferences (language, onboarding, plan), non-personal device identifier, hash of your email for reconnection, personal BYOK API keys without application-level encryption, encrypted conversations, generated reports, and Google OAuth tokens, trial state.</li>
     <li><strong>sessionStorage:</strong> Google OAuth state (CSRF protection), transient error messages.</li>
     <li><strong>IndexedDB:</strong> encrypted attachments (images, PDFs, AES-256).</li>
   </ul>
@@ -170,9 +172,10 @@
   <table>
     <thead><tr><th>Category</th><th>Duration</th></tr></thead>
     <tbody>
-      <tr><td>Account (email + OAuth token)</td><td>As long as your account is active. Deletion within 30 days of your deletion request.</td></tr>
-      <tr><td>Conversations and attachments</td><td>Stored only on your device. Erased via "Sign out + erase" in the app.</td></tr>
+      <tr><td>Email identities and sessions, structured memory, shared conversations, and submitted reports</td><td>As long as your account is active. These data are deleted when you submit a deletion request (within 30 days at the latest).</td></tr>
+      <tr><td>Conversations, attachments, and reports</td><td>Stored only on your device and encrypted according to the model and limitations described in Section 6. A simple sign-out keeps them for your next sign-in. Deleting a conversation erases its attachments; deleting the account erases all of this data.</td></tr>
       <tr><td>Payment data</td><td>10 years (legal accounting obligation, French Code of Commerce Article L123-22).</td></tr>
+      <tr><td>Minimal technical usage, quota, and anti-abuse counters</td><td>Retained only for as long as strictly necessary for security, abuse prevention, and billing integrity. They contain none of your conversation content.</td></tr>
       <tr><td>Server-side technical logs (Cloudflare Workers, anti-abuse)</td><td>12 months maximum.</td></tr>
       <tr><td>Waitlist email (pre-launch)</td><td>Until app launch + 12 months, or unsubscription, whichever comes first.</td></tr>
       <tr><td>Content transmitted to AI providers</td><td>Not stored on our servers beyond request processing. Retention by the provider follows their own policy (Anthropic 30 days, OpenAI 30 days, Google varies, Mistral 30 days).</td></tr>

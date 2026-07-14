@@ -1,11 +1,10 @@
 /**
  * Lemon Squeezy checkout service.
  *
- * Builds the checkout URL with the user's email pre-filled, then opens it in
- * the in-app Capacitor browser (native) or a new tab (web). On native, the
- * `browserFinished` event fires when the user closes the in-app browser —
- * we relay that to an optional `onReturn` callback so the caller can refresh
- * the subscription status.
+ * Builds the checkout URL with the user's email pre-filled, then opens it on
+ * the web. Public native builds fail closed before any checkout URL or network
+ * request is reached; existing subscribers use the separate customer-portal
+ * URL only to manage or cancel an existing subscription.
  *
  * Test-mode variant IDs live in `CHECKOUT_URLS`. Swap them with the
  * production variants once the store goes live.
@@ -25,6 +24,15 @@ import { isNative } from './native/platform'
  * `openCheckout`/`openCreemCheckout` re-vérifient en filet de sécurité.
  */
 export const canPurchase = !isNative
+
+/**
+ * Store-scoped Lemon Squeezy customer portal. This is a subscription
+ * management/cancellation destination, not a checkout URL. Google Play's
+ * subscriptions policy requires an easy online cancellation path; keep the
+ * portal available to existing subscribers while every purchase entry point
+ * remains gated by `canPurchase` on native.
+ */
+export const SUBSCRIPTION_PORTAL_URL = 'https://tryarty.lemonsqueezy.com/billing'
 
 export type CheckoutPlan = 'subscription' | 'pro' | 'premium_pack'
 

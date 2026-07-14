@@ -32,4 +32,13 @@ describe('checkout — gating natif (Play Store)', () => {
     expect(fetchSpy).not.toHaveBeenCalled()
     fetchSpy.mockRestore()
   })
+
+  it('utilise le portail client du store Arty, jamais la facturation du compte marchand', async () => {
+    const { SUBSCRIPTION_PORTAL_URL } = await import('../../services/checkout')
+    const portal = new URL(SUBSCRIPTION_PORTAL_URL)
+
+    expect(portal.hostname).toBe('tryarty.lemonsqueezy.com')
+    expect(portal.pathname).toBe('/billing')
+    expect(SUBSCRIPTION_PORTAL_URL).not.toContain('app.lemonsqueezy.com')
+  })
 })
