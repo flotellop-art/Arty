@@ -54,7 +54,7 @@ public class GoogleSignInPlugin extends Plugin {
             // Profil public permanent : identité + Calendar uniquement.
             // Aucun flag de build ne peut réactiver un scope restreint.
             gsoBuilder.requestScopes(
-                new Scope("https://www.googleapis.com/auth/calendar")
+                new Scope("https://www.googleapis.com/auth/calendar.events")
             );
 
             GoogleSignInOptions gso = gsoBuilder.build();
@@ -138,4 +138,5 @@ public class GoogleSignInPlugin extends Plugin {
             call.resolve();
         }
     }
+
 }

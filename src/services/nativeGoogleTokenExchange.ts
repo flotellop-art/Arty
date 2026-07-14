@@ -1,5 +1,5 @@
 import { apiUrl } from './apiBase'
-import { withTimeout } from './googleAuth'
+import { CURRENT_GOOGLE_OAUTH_PROFILE, withTimeout } from './googleAuth'
 import { safeJson } from '../utils/safeJson'
 
 export interface NativeGoogleTokens {
@@ -22,7 +22,11 @@ export async function exchangeNativeGoogleCode(serverAuthCode: string): Promise<
     response = await fetch(apiUrl('/api/auth/token'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code: serverAuthCode, redirect_uri: '' }),
+      body: JSON.stringify({
+        code: serverAuthCode,
+        redirect_uri: '',
+        oauth_profile: CURRENT_GOOGLE_OAUTH_PROFILE,
+      }),
       signal: timeout.signal,
     })
   } finally {
@@ -32,6 +36,9 @@ export async function exchangeNativeGoogleCode(serverAuthCode: string): Promise<
   const data = await safeJson(response)
   if (!response.ok) {
     throw new Error(typeof data.error === 'string' ? data.error : `Token exchange failed (${response.status})`)
+  }
+  if (data.oauth_profile !== CURRENT_GOOGLE_OAUTH_PROFILE) {
+    throw new Error('Google OAuth profile was not verified')
   }
 
   const accessToken = typeof data.access_token === 'string' ? data.access_token.trim() : ''

@@ -16,7 +16,7 @@ Source : `src/services/googleAuth.ts` (`PUBLIC_GOOGLE_SCOPES`).
 |---|---|---|---|
 | `openid` | Basique | Authentifier la session | non |
 | `userinfo.email`, `userinfo.profile` | Basique | Identifier l'utilisateur à la connexion | non |
-| `calendar` | Sensible | Lire et créer des événements à la demande de l'utilisateur | non |
+| `calendar.events` | Sensible | Lire et créer des événements à la demande de l'utilisateur | non |
 
 Avant publication, vérifier dans Google Cloud Console que la section « Data
 Access » contient **exactement** ces quatre scopes. Retirer explicitement tout
@@ -49,7 +49,7 @@ et d'une mise à jour de ce dossier avant publication.
 
 ### Justification du scope sensible (texte EN pour la vérification OAuth)
 
-- **calendar** — "Arty reads and creates calendar events only when the user requests an agenda-related action. Arty does not access the user's Gmail mailbox. Email content is processed only when the user manually pastes, attaches, or shares it with the assistant."
+- **calendar.events** — "Arty reads and creates calendar events only when the user requests an agenda-related action. Arty uses the event-only scope instead of full calendar access. Arty does not access the user's Gmail mailbox. Email content is processed only when the user manually pastes, attaches, or shares it with the assistant."
 
 ---
 

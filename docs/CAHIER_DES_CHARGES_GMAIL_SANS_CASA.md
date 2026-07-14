@@ -456,7 +456,7 @@ Le build public et sa configuration Google Cloud ne doivent contenir aucun des s
 ### 9.3 Reste de l'écosystème Google
 
 - Retirer entièrement Drive du P0 : scopes, connecteur, outils, routes, hooks, copies UI, démos et tests. `drive.file` reste une option P1 distincte, sans droit acquis dans ce cahier des charges.
-- Supprimer le doublon calendar + calendar.events et conserver le scope minimal validé.
+- Fait (14 juillet 2026) : le client public conserve uniquement `calendar.events` ; `calendar` complet a été retiré.
 - Retirer Contacts du consentement et du bundle public P0 : aucun parcours 6.2 à 6.4 ne l'exige. Une réintroduction ultérieure passe par un consentement incrémental séparé et jamais par le manifest Gmail.
 - Distinguer « identité Google connectée » des capacités Gmail, Calendar, Contacts et Drive.
 

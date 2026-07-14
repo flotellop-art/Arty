@@ -163,6 +163,11 @@
     },
     "connectGoogle": "Connecter Google",
     "googleConnectError": "Erreur connexion Google :",
+    "googleReconsent": {
+      "title": "Reconnecte Google pour ton agenda",
+      "body": "Arty demande maintenant uniquement l’accès à tes événements, au lieu de l’accès complet à ton agenda. Reconnecte ton compte pour continuer à afficher et créer des événements. Ta session Arty et tes conversations restent intactes.",
+      "cta": "Reconnecter Google"
+    },
     "resumeKicker": "Reprendre",
     "optionsSheetTitle": "Réglages"
   },

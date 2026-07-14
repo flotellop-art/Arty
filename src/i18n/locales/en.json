@@ -163,6 +163,11 @@
     },
     "connectGoogle": "Connect Google",
     "googleConnectError": "Google connection error:",
+    "googleReconsent": {
+      "title": "Reconnect Google for your calendar",
+      "body": "Arty now asks only for access to your events instead of full access to your calendar. Reconnect your account to keep viewing and creating events. Your Arty session and conversations stay intact.",
+      "cta": "Reconnect Google"
+    },
     "resumeKicker": "Resume",
     "optionsSheetTitle": "Settings"
   },

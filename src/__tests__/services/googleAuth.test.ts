@@ -13,10 +13,13 @@ import * as scoped from '../../services/scopedStorage'
 import * as googleAuth from '../../services/googleAuth'
 
 function mockFetch(body: unknown, init: { ok?: boolean; status?: number } = {}) {
+  const responseBody = body && typeof body === 'object' && 'access_token' in body && !('oauth_profile' in body)
+    ? { ...body, oauth_profile: 'calendar-events-v1' }
+    : body
   const response = {
     ok: init.ok ?? true,
     status: init.status ?? 200,
-    text: async () => JSON.stringify(body),
+    text: async () => JSON.stringify(responseBody),
   } as unknown as Response
   global.fetch = vi.fn().mockResolvedValue(response) as unknown as typeof fetch
   return global.fetch as unknown as ReturnType<typeof vi.fn>
@@ -43,17 +46,35 @@ describe('googleAuth — storage paths', () => {
     })
     const fetchMock = mockFetch({})
 
-    expect(googleAuth.migrateLegacyMailboxGrant()).toBe(true)
+    expect(await googleAuth.migrateLegacyMailboxGrant()).toBe(true)
     expect(googleAuth.getStoredTokens()).toBeNull()
     expect(localStorage.getItem('arty-user-test-google-oauth-mailbox-free-v1')).toBe('1')
     expect(fetchMock).toHaveBeenCalledWith(
-      'https://oauth2.googleapis.com/revoke',
+      '/api/auth/revoke',
       expect.objectContaining({
         method: 'POST',
-        body: 'token=legacy-refresh',
+        body: JSON.stringify({ token: 'legacy-refresh' }),
       }),
     )
-    expect(googleAuth.migrateLegacyMailboxGrant()).toBe(false)
+    expect(await googleAuth.migrateLegacyMailboxGrant()).toBe(false)
+  })
+
+  it('purge un grant Calendar large et conserve une notice de reconnexion', async () => {
+    await googleAuth.storeTokens({
+      access_token: 'legacy-calendar-access',
+      refresh_token: 'legacy-calendar-refresh',
+      expires_at: Date.now() + 3600_000,
+    })
+    const fetchMock = mockFetch({})
+
+    expect(await googleAuth.migrateLegacyCalendarGrant()).toBe(true)
+    expect(googleAuth.getStoredTokens()).toBeNull()
+    expect(googleAuth.isGoogleOAuthReconsentRequired()).toBe(true)
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/auth/revoke',
+      expect.objectContaining({ body: JSON.stringify({ token: 'legacy-calendar-refresh' }) }),
+    )
+    expect(await googleAuth.migrateLegacyCalendarGrant()).toBe(false)
   })
 
   it('storeTokens writes plain JSON when crypto not ready (sync reads stay functional)', async () => {
@@ -82,7 +103,12 @@ describe('googleAuth — storage paths', () => {
 
   it('bootstrapGoogleStorage migrates legacy plain tokens to encrypted storage', async () => {
     // Arrange: legacy plain tokens written before crypto ready
-    const tokens = { access_token: 'legacy', refresh_token: 'r', expires_at: Date.now() + 3600_000 }
+    const tokens = {
+      access_token: 'legacy',
+      refresh_token: 'r',
+      expires_at: Date.now() + 3600_000,
+      oauth_profile: 'calendar-events-v1' as const,
+    }
     scoped.setJSON('google-tokens', tokens)
 
     // Act: init crypto then bootstrap
@@ -140,6 +166,8 @@ describe('googleAuth — storage paths', () => {
     await googleAuth.storeMailboxFreeGrant(tokens)
     expect(googleAuth.getStoredTokens()?.access_token).toBe('fresh-web-access')
     expect(localStorage.getItem('arty-user-test-google-oauth-mailbox-free-v1')).toBe('1')
+    expect(googleAuth.getStoredTokens()?.oauth_profile).toBe('calendar-events-v1')
+    expect(googleAuth.isGoogleOAuthReconsentRequired()).toBe(false)
   })
 
   it('exchangeCode ne recycle jamais un ancien refresh token pré-epoch', async () => {
@@ -268,7 +296,11 @@ describe('googleAuth — storage paths', () => {
       return {
         ok: true,
         status: 200,
-        text: async () => JSON.stringify({ access_token: 'fresh', expires_in: 3600 }),
+        text: async () => JSON.stringify({
+          access_token: 'fresh',
+          expires_in: 3600,
+          oauth_profile: 'calendar-events-v1',
+        }),
       } as unknown as Response
     }) as unknown as typeof fetch
 
@@ -277,10 +309,82 @@ describe('googleAuth — storage paths', () => {
     expect(calls).toBe(2)
   }, 10_000)
 
+  it('refreshAccessToken conserve le profil dans le blob courant', async () => {
+    await googleAuth.storeMailboxFreeGrant({
+      access_token: 'old',
+      refresh_token: 'r',
+      expires_at: Date.now() - 1000,
+    })
+    mockFetch({ access_token: 'fresh', expires_in: 3600 })
+
+    const refreshed = await googleAuth.refreshAccessToken()
+
+    expect(refreshed?.oauth_profile).toBe('calendar-events-v1')
+    expect(await googleAuth.migrateLegacyCalendarGrant()).toBe(false)
+  })
+
+  it('exchangeCode refuse un profil serveur legacy ou absent', async () => {
+    const response = {
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({
+        access_token: 'legacy',
+        refresh_token: 'legacy-refresh',
+        expires_in: 3600,
+        oauth_profile: 'legacy-calendar-v1',
+      }),
+    } as unknown as Response
+    global.fetch = vi.fn().mockResolvedValue(response) as unknown as typeof fetch
+
+    await expect(googleAuth.exchangeCode('legacy-code')).rejects.toThrow(/profile/i)
+    expect(googleAuth.getStoredTokens()).toBeNull()
+  })
+
+  it('un refresh tardif ne ressuscite pas les tokens après logout', async () => {
+    await googleAuth.storeMailboxFreeGrant({
+      access_token: 'old',
+      refresh_token: 'r',
+      expires_at: Date.now() - 1000,
+    })
+    let resolveResponse!: (response: Response) => void
+    global.fetch = vi.fn(() => new Promise<Response>((resolve) => {
+      resolveResponse = resolve
+    })) as unknown as typeof fetch
+
+    const pending = googleAuth.refreshAccessToken()
+    googleAuth.logout()
+    resolveResponse(new Response(JSON.stringify({
+      access_token: 'late',
+      expires_in: 3600,
+      oauth_profile: 'calendar-events-v1',
+    }), { status: 200 }))
+
+    expect(await pending).toBeNull()
+    expect(googleAuth.getStoredTokens()).toBeNull()
+  })
+
+  it('invalid_scope_set pose la notice avant de purger le grant', async () => {
+    await googleAuth.storeMailboxFreeGrant({
+      access_token: 'old',
+      refresh_token: 'r',
+      expires_at: Date.now() - 1000,
+    })
+    mockFetch({ error: 'invalid_scope_set' }, { ok: false, status: 403 })
+
+    expect(await googleAuth.refreshAccessToken()).toBeNull()
+    expect(googleAuth.getStoredTokens()).toBeNull()
+    expect(googleAuth.isGoogleOAuthReconsentRequired()).toBe(true)
+  })
+
   it('bootstrapGoogleStorage keeps ciphertext when key self-test fails', async () => {
     // Arrange: write encrypted blob with passphrase A
     await crypto.initCrypto('sk-ant-A')
-    await googleAuth.storeTokens({ access_token: 'kept', refresh_token: 'r', expires_at: Date.now() + 3600_000 })
+    await googleAuth.storeTokens({
+      access_token: 'kept',
+      refresh_token: 'r',
+      expires_at: Date.now() + 3600_000,
+      oauth_profile: 'calendar-events-v1',
+    })
     const encBefore = scoped.getItem('google-tokens-enc')
     expect(encBefore).toBeTruthy()
 

@@ -6,7 +6,8 @@ import { EmailLoginTab } from './EmailLoginTab'
 import { GoogleLoginTab } from './GoogleLoginTab'
 import type { UserSession, AuthMethod } from '../../services/userSession'
 import * as scoped from '../../services/scopedStorage'
-import { clearOAuthState, withTimeout, storeMailboxFreeGrant, storeUser } from '../../services/googleAuth'
+import { clearOAuthState, storeMailboxFreeGrant, storeUser } from '../../services/googleAuth'
+import { exchangeNativeGoogleCode } from '../../services/nativeGoogleTokenExchange'
 
 type Tab = 'apikey' | 'google' | 'email'
 
@@ -276,39 +277,15 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
                   if (!serverAuthCode) {
                     throw new Error(t('login.errors.noAuthCode'))
                   }
-                  // Exchange serverAuthCode for Google tokens. redirect_uri
-                  // MUST be '' for a native serverAuthCode (BUG 2/28). The
-                  // fetch carries a 15s timeout so a flaky network can't
-                  // freeze the spinner for minutes (BUG 47).
-                  const { apiUrl } = await import('../../services/apiBase')
-                  const timeout = withTimeout(15_000)
-                  let res: Response
-                  try {
-                    res = await fetch(apiUrl('/api/auth/token'), {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ code: serverAuthCode, redirect_uri: '' }),
-                      signal: timeout.signal,
-                    })
-                  } finally {
-                    timeout.cancel()
-                  }
-                  if (!res.ok) {
-                    throw new Error(t('login.errors.tokenExchangeFailed', { status: res.status }))
-                  }
-                  const data = await res.json() as { access_token?: string; refresh_token?: string; expires_in?: number }
-                  // Fail loud instead of marking the user "connected" with an
-                  // empty token — that left the Google connection unusable
-                  // with no error shown (CRITIQUE-2 audit du 16 mai).
-                  if (!data.access_token) {
-                    throw new Error(t('login.errors.noAccessToken'))
-                  }
+                  // Shared strict exchange: announces calendar-events-v1 and
+                  // refuses a server response that was validated as legacy.
+                  const { accessToken, refreshToken, expiresIn } = await exchangeNativeGoogleCode(serverAuthCode)
 
                   // Initialise (ou récupère) le statut trial AVANT de
                   // finaliser l'auth : pose le splash post-login en
                   // localStorage avant le re-render racine.
                   const { initTrial } = await import('../../services/trialClient')
-                  await initTrial(data.access_token)
+                  await initTrial(accessToken)
 
                   // Login (handles session, crypto, keys)
                   await onLogin('google', {
@@ -324,9 +301,9 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
                   // marks the reduced-scope epoch and only preserves a refresh
                   // token that was already issued inside that epoch.
                   await storeMailboxFreeGrant({
-                    access_token: data.access_token,
-                    refresh_token: data.refresh_token || '',
-                    expires_at: Date.now() + (data.expires_in || 3600) * 1000,
+                    access_token: accessToken,
+                    refresh_token: refreshToken,
+                    expires_at: Date.now() + expiresIn * 1000,
                   })
                   await storeUser({ email, name, picture: avatar || '' })
                 } catch (err) {

@@ -1,11 +1,22 @@
 import type { Env } from '../../env'
-import { revokeGoogleGrant, validatePublicGoogleAccessToken } from '../_lib/publicGoogleScopes'
+import {
+  CURRENT_GOOGLE_OAUTH_PROFILE,
+  isLegacyGoogleOAuthCompatActive,
+  revokeGoogleGrant,
+  validatePublicGoogleAccessToken,
+} from '../_lib/publicGoogleScopes'
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
-  const { refresh_token } = await request.json() as { refresh_token?: string }
+  const { refresh_token, oauth_profile } = await request.json() as {
+    refresh_token?: string
+    oauth_profile?: string
+  }
 
   if (!refresh_token) {
     return Response.json({ error: 'Missing refresh_token' }, { status: 400 })
+  }
+  if (oauth_profile !== undefined && oauth_profile !== CURRENT_GOOGLE_OAUTH_PROFILE) {
+    return Response.json({ error: 'unsupported_oauth_profile' }, { status: 400 })
   }
 
   if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET) {
@@ -45,7 +56,13 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
       return Response.json({ error: 'Google token response missing access token' }, { status: 502 })
     }
 
-    const scopeCheck = await validatePublicGoogleAccessToken(accessToken)
+    const scopeCheck = await validatePublicGoogleAccessToken(accessToken, {
+      requiredProfile: oauth_profile === CURRENT_GOOGLE_OAUTH_PROFILE
+        ? CURRENT_GOOGLE_OAUTH_PROFILE
+        : undefined,
+      allowLegacy: oauth_profile === undefined
+        && isLegacyGoogleOAuthCompatActive(env.GOOGLE_OAUTH_LEGACY_COMPAT_UNTIL),
+    })
     if (!scopeCheck.ok) {
       // Un grant n'est révoqué que lorsque des scopes surnuméraires sont
       // effectivement observés. Les indisponibilités de tokeninfo échouent
@@ -58,11 +75,15 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
         { status: scopeCheck.reason === 'scope_mismatch' ? 403 : 502 },
       )
     }
+    if (scopeCheck.profile !== CURRENT_GOOGLE_OAUTH_PROFILE) {
+      console.info('[google-oauth] accepted legacy-calendar-v1 refresh')
+    }
 
     return Response.json({
       access_token: accessToken,
       expires_in: data.expires_in,
       token_type: data.token_type,
+      oauth_profile: scopeCheck.profile,
     })
   } catch {
     return Response.json({ error: 'Token refresh failed' }, { status: 500 })

@@ -8,6 +8,8 @@ import {
   getStoredTokens,
   getStoredUser,
   getValidAccessToken,
+  isGoogleOAuthReconsentRequired,
+  isGoogleStorageReady,
   storeUser,
   logout as googleLogout,
 } from '../services/googleAuth'
@@ -23,6 +25,10 @@ export function useGoogleAuth() {
   const [isConnected, setIsConnected] = useState(() => getStoredTokens() !== null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [storageReady, setStorageReady] = useState(() => isGoogleStorageReady())
+  const [reconsentRequired, setReconsentRequired] = useState(
+    () => isGoogleOAuthReconsentRequired(),
+  )
 
   // Re-sync the hook state when the in-memory Google caches are populated
   // by `bootstrapGoogleStorage()`. On a fresh page refresh, the hook's
@@ -34,6 +40,7 @@ export function useGoogleAuth() {
   useEffect(() => {
     const sync = () => {
       const tokens = getStoredTokens()
+      setStorageReady(isGoogleStorageReady())
       const nextConnected = tokens !== null
       setIsConnected((prev) => (prev === nextConnected ? prev : nextConnected))
       const storedUser = getStoredUser()
@@ -42,6 +49,11 @@ export function useGoogleAuth() {
         if (!prev && !storedUser) return prev
         return storedUser
       })
+      const nextReconsentRequired = isGoogleOAuthReconsentRequired()
+      setReconsentRequired(nextReconsentRequired)
+      if (!nextConnected && nextReconsentRequired) {
+        setError(null)
+      }
     }
     // Run once on mount in case bootstrap already finished before this
     // hook mounted (e.g. late-mounted sub-tree).
@@ -113,6 +125,7 @@ export function useGoogleAuth() {
   }, [isConnected])
 
   const login = useCallback(async () => {
+    if (!storageReady) return
     if (Capacitor.isNativePlatform() && Capacitor.getPlatform() !== 'android') {
       setError('Google Sign-In sur iOS nécessite encore la configuration native. Utilise provisoirement l’essai par email ou une clé API.')
       return
@@ -170,6 +183,7 @@ export function useGoogleAuth() {
         await storeUser(googleUser)
         setUser(googleUser)
         setIsConnected(true)
+        setReconsentRequired(false)
         if (import.meta.env.DEV) console.log('[useGoogleAuth] login success for', result.email)
       } catch (err) {
         console.error('[useGoogleAuth] native login failed:', err)
@@ -186,7 +200,7 @@ export function useGoogleAuth() {
         setError(err instanceof Error ? err.message : 'Erreur connexion Google')
       }
     }
-  }, [])
+  }, [storageReady])
 
   const handleCallback = useCallback(async (code: string) => {
     setIsLoading(true)
@@ -196,6 +210,7 @@ export function useGoogleAuth() {
       const googleUser = await fetchGoogleUser(tokens.access_token)
       setUser(googleUser)
       setIsConnected(true)
+      setReconsentRequired(false)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erreur authentification')
       setIsConnected(false)
@@ -208,6 +223,7 @@ export function useGoogleAuth() {
     googleLogout()
     setUser(null)
     setIsConnected(false)
+    setReconsentRequired(false)
     setError(null)
   }, [])
 
@@ -215,7 +231,9 @@ export function useGoogleAuth() {
     user,
     isConnected,
     isLoading,
+    isInitializing: !storageReady,
     error,
+    reconsentRequired,
     login,
     handleCallback,
     logout,
