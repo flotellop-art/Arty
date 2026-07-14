@@ -506,6 +506,7 @@
     "openaiError": "OpenAI error ({{status}})",
     "streamInterrupted": "Response interrupted",
     "streamStopped": "Response stopped",
+    "streamStalled": "Server connection stalled (unstable network). The answer received so far was kept.",
     "responseIncomplete": "Incomplete response, please retry.",
     "promptEnhancementFailed": "Couldn't enhance the prompt — try again.",
     "tooManyConcurrentStreams": "Too many conversations streaming at once. Wait for one to finish.",

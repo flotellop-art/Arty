@@ -324,11 +324,42 @@ async function fetchWithRetry(
 
 // ── SSE stream parser ─────────────────────────────────────────────────────────
 
+// Watchdog d'inactivité sur la lecture du stream. L'API Anthropic émet des
+// octets en continu pendant toute la génération (text/thinking deltas, et des
+// `event: ping` pendant les pauses serveur — thinking, web_search…) : un
+// silence total de 90 s n'est jamais légitime, c'est une connexion morte
+// (réseau mobile half-open). Même classe que BUG 47 : jamais d'attente réseau
+// non bornée. NE PAS remplacer par un AbortSignal.timeout sur le fetch : ce
+// serait un plafond sur la durée TOTALE du stream, qui abattrait les longues
+// générations légitimes (max_tokens 65536 + réflexion = plusieurs minutes).
+const STREAM_INACTIVITY_TIMEOUT_MS = 90_000
+
+// Rejette avec une Error ORDINAIRE (surtout pas un AbortError : le catch de
+// runWithTools ignore les AbortError — un timeout déguisé en abort ne
+// déclencherait jamais onError et le spinner resterait éternel).
+async function readWithInactivityTimeout(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  timeoutMs: number
+): Promise<ReadableStreamReadResult<Uint8Array>> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([
+      reader.read(),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(i18n.t('errors.streamStalled'))), timeoutMs)
+      }),
+    ])
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 // Exporté pour les tests (servedModel / message_start, PR C-A audit
 // visibilité modèle) — ne pas appeler depuis l'app en dehors de runWithTools.
 export async function parseSSEStream(
   response: Response,
-  onToken: (text: string) => void
+  onToken: (text: string) => void,
+  inactivityTimeoutMs: number = STREAM_INACTIVITY_TIMEOUT_MS
 ): Promise<SSEParseResult> {
   const reader = response.body!.getReader()
   const decoder = new TextDecoder()
@@ -346,10 +377,17 @@ export async function parseSSEStream(
   let servedModel = ''
   let buffer = ''
   let eventType = ''
+  // Fin logique du message Anthropic (`message_stop`). Sans cette sortie, la
+  // boucle n'a qu'une seule porte — `done` = fermeture TCP par le serveur.
+  // Sur un réseau mobile qui meurt en silence (half-open, pas de RST), tous
+  // les tokens + message_stop sont arrivés mais `done` n'arrive jamais →
+  // reader.read() pendait pour toujours → ni onDone ni onError → indicateur
+  // « Arty écrit… » et bouton Stop éternels (bug live APK, 14 juillet 2026).
+  let sawMessageStop = false
 
   try {
     while (true) {
-      const { done, value } = await reader.read()
+      const { done, value } = await readWithInactivityTimeout(reader, inactivityTimeoutMs)
       if (done) break
 
       buffer += decoder.decode(value, { stream: true })
@@ -503,6 +541,14 @@ export async function parseSSEStream(
             if (usage) outputTokens = usage.output_tokens || 0
             break
           }
+          case 'message_stop':
+            // Dernier event du flux (toujours APRÈS message_delta, donc usage
+            // et servedModel sont déjà capturés, et tous les content_block_stop
+            // sont poussés — aucun bloc droppé, BUG 52 respecté). On note la
+            // fin ; la sortie se fait après le for (traiter d'éventuelles
+            // lignes restantes du même chunk ne change rien).
+            sawMessageStop = true
+            break
           case 'error': {
             // Erreurs en milieu de stream (l'API a accepté la requête HTTP
             // mais Anthropic rencontre un problème pendant la génération :
@@ -516,9 +562,17 @@ export async function parseSSEStream(
           }
         }
       }
+
+      // Message terminé côté Anthropic : ne pas attendre la fermeture TCP.
+      if (sawMessageStop) break
     }
   } finally {
-    reader.releaseLock()
+    // cancel() (et pas releaseLock() seul) : ferme la connexion sous-jacente.
+    // Indispensable dans les trois sorties — message_stop (socket half-open à
+    // libérer), timeout d'inactivité (reader.read() encore pendant : cancel le
+    // résout et évite un unhandled rejection), et erreur de parsing. Sur une
+    // fin naturelle par `done`, c'est un no-op inoffensif.
+    try { await reader.cancel() } catch { /* stream déjà terminé ou aborté */ }
   }
 
   return { contentBlocks, inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens, ...(servedModel ? { servedModel } : {}) }
@@ -751,7 +805,18 @@ async function runWithTools(
     const webSearchHint = (!options?.model && (rd ? rd.webSearch : shouldUseWebSearch(lastUserText)))
       ? FORCE_WEB_SEARCH_PROMPT
       : ''
-    const systemText = withThinking + locationContext + webSearchHint
+    // Date du jour — sans ancre temporelle, Claude devine « demain » depuis
+    // son entraînement (bug live 14 juillet 2026 : « RDV demain 16/07 » créé
+    // alors que demain = 15/07). Même pattern que mistralClient (audit Mistral
+    // 11 juin 2026, cause n°1) — le commentaire là-bas prétendait que « Claude
+    // reçoit son contexte par ailleurs » : c'était faux, aucune date n'était
+    // injectée nulle part pour Claude. Date seule (pas l'heure) : la string
+    // est stable sur la journée, donc le cache prompt (systemBlocks ephemeral)
+    // n'est invalidé qu'une fois par jour.
+    const dateLine = `\n\nDate du jour : ${new Date().toLocaleDateString('fr-FR', {
+      weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+    })}.`
+    const systemText = withThinking + dateLine + locationContext + webSearchHint
     const systemBlocks = [{ type: 'text', text: systemText, cache_control: { type: 'ephemeral' } }]
     // Add prompt-caching hint to last tool definition. L'ensemble d'outils
     // peut être restreint via options.tools (brief proactif = lecture seule).
@@ -894,8 +959,11 @@ async function runWithTools(
 
     onDone()
   } catch (err) {
-    if (err instanceof Error && err.name !== 'AbortError') {
-      onError(err)
-    }
+    // AbortError = Stop utilisateur : stopStreaming a déjà finalisé et démonté
+    // le stream — ne rien rappeler. TOUT le reste doit atteindre onError :
+    // un throw non-Error avalé ici laisserait le stream fantôme (spinner et
+    // bouton Stop éternels, même symptôme que le hang réseau).
+    if (err instanceof Error && err.name === 'AbortError') return
+    onError(err instanceof Error ? err : new Error(String(err)))
   }
 }

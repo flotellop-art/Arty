@@ -357,8 +357,8 @@ async function runMistralStream(
       : ''
     // Date du jour — sans elle, Mistral ne sait pas se situer par rapport à
     // son cutoff d'entraînement → erreurs systématiques sur tout le récent
-    // (audit Mistral 11 juin 2026, cause n°1). Claude reçoit son contexte
-    // par ailleurs ; ici on l'injecte côté client à chaque appel.
+    // (audit Mistral 11 juin 2026, cause n°1). Claude a le même correctif
+    // dans anthropicClient (runWithTools) depuis le 14 juillet 2026.
     const dateLine = `\n\nDate du jour : ${new Date().toLocaleDateString('fr-FR', {
       weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
     })}.`

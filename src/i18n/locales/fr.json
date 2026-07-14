@@ -506,6 +506,7 @@
     "openaiError": "Erreur OpenAI ({{status}})",
     "streamInterrupted": "Réponse interrompue",
     "streamStopped": "Réponse arrêtée",
+    "streamStalled": "Connexion au serveur interrompue (réseau instable). La réponse déjà reçue est conservée.",
     "responseIncomplete": "Réponse incomplète, réessaie ta question.",
     "promptEnhancementFailed": "Impossible d'améliorer le prompt — réessaie.",
     "tooManyConcurrentStreams": "Trop de conversations en cours en parallèle. Attends qu'une réponse se termine.",
