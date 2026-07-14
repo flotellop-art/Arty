@@ -2,7 +2,6 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { buildToolConfirmMessage } from '../services/toolConfirmation'
 import { useGoogleAuth } from './useGoogleAuth'
-import { useGmail } from './useGmail'
 import { useDrive } from './useDrive'
 import { useComputer } from './useComputer'
 import { useMemory } from './useMemory'
@@ -13,6 +12,7 @@ import { createToolExecutor } from '../services/toolExecutor'
 import { getStyle, setStyle, getStylePrompt, STYLE_OPTIONS, type ResponseStyle } from '../services/responseStyles'
 import type { Question } from '../components/chat/QuestionModal'
 import { isPublicGoogleOAuthProfileEnabled } from '../services/publicGoogleOAuthProfile'
+import { isAllowedReportAction } from '../services/reportActions'
 
 interface ConversationHook {
   activeId: string | null
@@ -26,13 +26,13 @@ export function useAppSetup(conversation: ConversationHook) {
 
   const { t } = useTranslation()
   const googleAuth = useGoogleAuth()
-  const gmail = useGmail()
   const drive = useDrive()
   const computerActions = useComputer()
   const memoryHook = useMemory()
   const noCasaPhase0 = isPublicGoogleOAuthProfileEnabled()
-  const noCasaPrompt = noCasaPhase0
-    ? 'MODE GMAIL SANS CASA — PRIORITÉ ABSOLUE : tu n\'as aucun accès global à Gmail, Drive ou Contacts. Ne prétends jamais lire, chercher ou modifier ces données. La recherche Gmail est préparée localement par l\'interface puis exécutée par l\'utilisateur dans Gmail. Calendar reste disponible.\n\n'
+  const mailboxBoundaryPrompt = 'ACCÈS AUX E-MAILS — PRIORITÉ ABSOLUE : tu n\'as accès à aucune boîte mail et tu ne peux ni chercher, ouvrir, envoyer ni modifier un e-mail. Tu peux analyser, résumer ou rédiger uniquement à partir du contenu que l\'utilisateur colle, joint ou partage dans cette conversation. Si le contenu demandé n\'est pas fourni, explique cette limite et demande-lui de copier-coller, transférer ou joindre le message. Ne prétends jamais avoir consulté sa boîte.\n\n'
+  const publicGooglePrompt = noCasaPhase0
+    ? 'PROFIL GOOGLE PUBLIC : tu n\'as aucun accès global à Drive ou Contacts. Calendar reste disponible.\n\n'
     : ''
 
   const [actionScreenshot, setActionScreenshot] = useState<string | null>(null)
@@ -52,11 +52,11 @@ export function useAppSetup(conversation: ConversationHook) {
     return () => window.removeEventListener('style-changed', handler)
   }, [])
 
-  const toolExecutorRef = useRef(createToolExecutor(computerActions, gmail, drive))
+  const toolExecutorRef = useRef(createToolExecutor(computerActions, drive))
 
   // Create tool executor and register it
   useEffect(() => {
-    toolExecutorRef.current = createToolExecutor(computerActions, gmail, drive)
+    toolExecutorRef.current = createToolExecutor(computerActions, drive)
     setToolHandler((name: string, input: Record<string, unknown>) => {
       if (name === 'ask_user') {
         const questions = (input.questions as Question[]) || []
@@ -92,13 +92,12 @@ export function useAppSetup(conversation: ConversationHook) {
         return res
       })
     })
-  }, [computerActions, gmail, drive, setToolHandler, t])
+  }, [computerActions, drive, setToolHandler, t])
 
-  // Auto-fetch Gmail, Drive, and Memory when Google is connected
+  // Auto-fetch Drive and Memory when Google is connected.
   useEffect(() => {
     if (googleAuth.isConnected) {
       if (!noCasaPhase0) {
-        gmail.fetchMessages()
         drive.fetchFiles()
       }
       memoryHook.loadMemory()
@@ -113,7 +112,7 @@ export function useAppSetup(conversation: ConversationHook) {
     // sur la langue des réponses.
     if (!googleAuth.isConnected) {
       const prompt = buildLocalMemoryPrompt() + buildContextualPrompt({ customInstructions: getCustomInstructions() }) + getStylePrompt(responseStyle)
-      setSystemPrompt(noCasaPrompt + prompt)
+      setSystemPrompt(mailboxBoundaryPrompt + publicGooglePrompt + prompt)
       return
     }
 
@@ -125,10 +124,10 @@ export function useAppSetup(conversation: ConversationHook) {
     // requêtes type "salut", "merci", "comment ça va").
     const buildPrompt = (userMessage?: string) => {
       const memorySummary = memoryHook.getPromptContext(userMessage)
-      // Gmail/Drive may be cached for the UI and proactive brief, but their
-      // metadata is never silently copied into every model request.
+      // Drive may be cached for the UI, but its metadata is never silently
+      // copied into every model request.
       const prompt = buildLocalMemoryPrompt() + buildContextualPrompt({ memorySummary, customInstructions: getCustomInstructions() }) + getStylePrompt(responseStyle)
-      setSystemPrompt(noCasaPrompt + prompt)
+      setSystemPrompt(mailboxBoundaryPrompt + publicGooglePrompt + prompt)
     }
     buildPrompt()
 
@@ -141,7 +140,7 @@ export function useAppSetup(conversation: ConversationHook) {
     }
     window.addEventListener('arty-rebuild-prompt', onRebuild)
     return () => window.removeEventListener('arty-rebuild-prompt', onRebuild)
-  }, [googleAuth.isConnected, memoryHook.getPromptContext, noCasaPrompt, setSystemPrompt, responseStyle])
+  }, [googleAuth.isConnected, memoryHook.getPromptContext, mailboxBoundaryPrompt, publicGooglePrompt, setSystemPrompt, responseStyle])
 
   // Handle action buttons clicked in reports
   // ⚠️ ALLOWLIST POSITIVE (audit 14 juin) — pendant de buildToolConfirmMessage
@@ -150,6 +149,10 @@ export function useAppSetup(conversation: ConversationHook) {
   // mettre à jour les deux et le test de parité de toolConfirmation.test.ts.
   const handleAction = useCallback(
     async (action: string, params: Record<string, string>) => {
+      if (!isAllowedReportAction(action)) {
+        console.warn('[action] action de bouton inconnue ignorée:', action)
+        return
+      }
       const executor = toolExecutorRef.current
       switch (action) {
         case 'reply': {
@@ -159,20 +162,6 @@ export function useAppSetup(conversation: ConversationHook) {
           }
           break
         }
-        case 'send_email':
-          // Confirmation avant un envoi externe : un bouton issu d'un contenu
-          // tiers (email/page lu par Arty, prompt-injection) ne doit jamais
-          // exfiltrer en 1 clic. On montre le destinataire pour qu'il soit lisible.
-          if (!window.confirm(t('chat.actionConfirm.email', {
-            to: params.to || '?',
-            subject: params.subject || '?',
-          }))) break
-          await executor('send_email', params)
-          break
-        case 'save_drive':
-          if (!window.confirm(t('chat.actionConfirm.drive', { name: params.name || 'Document' }))) break
-          await executor('create_drive_file', { name: params.name || 'Document', content: params.content || '' })
-          break
         case 'create_event':
           if (!window.confirm(t('chat.actionConfirm.event', { title: params.title || params.summary || '?' }))) break
           await executor('create_calendar_event', params)
@@ -207,12 +196,8 @@ export function useAppSetup(conversation: ConversationHook) {
           break
         }
         default:
-          // SÉCURITÉ (audit 14 juin) : NE JAMAIS passer une action arbitraire au
-          // toolExecutor. Sans ce garde, un bouton injecté via prompt-injection
-          // (email/page lu par Arty) pouvait déclencher n'importe quel outil en
-          // 1 clic. Seules les actions explicites ci-dessus sont autorisées
-          // depuis un bouton généré par l'IA.
-          console.warn('[action] action de bouton inconnue ignorée:', action)
+          // Défense en profondeur si l'allowlist et le switch divergent.
+          console.warn('[action] action autorisée sans handler:', action)
       }
     },
     [activeId, sendMessage, t]
@@ -225,7 +210,6 @@ export function useAppSetup(conversation: ConversationHook) {
 
   return {
     googleAuth,
-    gmail,
     drive,
     computerActions,
     actionScreenshot,

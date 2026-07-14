@@ -5,6 +5,11 @@ import * as storage from './storage'
 import { getDateLocale } from '../utils/formatDate'
 import { formatModelName } from './modelLabels'
 
+function stripLegacyMailboxPayload<T extends Conversation['messages'][number]>(message: T): Omit<T, 'gmailSearch'> {
+  const { gmailSearch: _removed, ...safe } = message as T & { gmailSearch?: unknown }
+  return safe
+}
+
 /**
  * Download a conversation as a JSON file (Feature 7).
  */
@@ -19,9 +24,9 @@ export function exportConversation(conv: Conversation): void {
 export function buildConversationJsonExport(conv: Conversation) {
   const conversation = {
     ...conv,
-    // Le passage vers Gmail est local et éphémère. La requête n'a aucune
-    // raison de quitter l'app dans un fichier exporté.
-    messages: conv.messages.map(({ gmailSearch: _localHandoff, ...message }) => message),
+    // Purge de compatibilité pour les exports créés depuis un historique
+    // antérieur à la suppression de l'intégration boîte mail.
+    messages: conv.messages.map(stripLegacyMailboxPayload),
   }
   const payload = {
     version: 1,
@@ -48,8 +53,8 @@ export async function importConversationFromFile(file: File): Promise<string> {
     title: original.title ? `${original.title} (importée)` : 'Conversation importée',
     createdAt: Date.now(),
     updatedAt: Date.now(),
-    messages: original.messages.map(({ gmailSearch: _untrustedHandoff, ...message }) => ({
-      ...message,
+    messages: original.messages.map((legacyMessage) => ({
+      ...stripLegacyMailboxPayload(legacyMessage),
       id: generateId(),
     })),
   }

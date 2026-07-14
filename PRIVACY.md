@@ -1,6 +1,6 @@
 # Politique de confidentialité — Arty
 
-**Dernière mise à jour :** 10 juillet 2026
+**Dernière mise à jour :** 13 juillet 2026
 
 **Éditeur :** Florent Pollet, personne physique, domicilié 884 chemin de la Prairie, 38270 Beaufort, France. Aucune entreprise n'est immatriculée à ce jour ; un SIREN sera ajouté à cette politique dès l'enregistrement de l'activité, prévu avant le lancement public et les premiers paiements.
 **Contact :** flotellop@gmail.com
@@ -16,13 +16,15 @@ Le responsable de traitement au sens du RGPD est Florent Pollet, personne physiq
 | Catégorie | Données | Source |
 |---|---|---|
 | Identité de connexion | Email, nom complet, photo de profil | Connexion Google (OAuth) |
-| Contenu utilisateur | Messages, fichiers et pièces jointes envoyés à l'assistant ; mémoire structurée, conversations partagées et signalements que vous soumettez volontairement | Vous |
-| Données Google Workspace | Selon les fonctionnalités utilisées : envoi d'emails (Gmail), lecture et création d'événements (Calendar), contacts (Contacts) | Vos comptes Google, sur votre demande explicite |
+| Contenu utilisateur | Messages, fichiers et pièces jointes envoyés à l'assistant, y compris le contenu d'un email que vous collez, joignez ou partagez manuellement ; mémoire structurée, conversations partagées et signalements que vous soumettez volontairement | Vous |
+| Données Google Workspace | Lecture et création d'événements (Calendar), uniquement lorsque vous utilisez une fonction d'agenda. L'application publique n'accède pas à votre boîte Gmail | Votre compte Google, sur votre demande explicite |
 | Localisation | Position géographique approximative | Capteur GPS de votre appareil, uniquement si activé |
 | Données de paiement | Email du compte, offre ou pack choisi, identifiants et statut de transaction ; Arty ne reçoit aucune coordonnée bancaire | Vous + Lemon Squeezy ou Creem |
 | Inscription waitlist | Email (pré-lancement uniquement) | Formulaire Tally |
 
 Nous ne traçons pas votre navigation à des fins publicitaires et n'utilisons aucun profilage commercial.
+
+Arty ne recherche, ne lit, ne modifie et n'envoie aucun message dans votre boîte Gmail. Si vous demandez de résumer un email ou de préparer une réponse, son contenu n'est traité que si vous le collez, le joignez ou le partagez vous-même avec l'assistant.
 
 ## 3. Finalités et bases légales
 
@@ -43,7 +45,7 @@ Vos données sont transmises, **uniquement pour les finalités ci-dessus**, aux 
 | Cloudflare | Hébergement Workers, Pages, KV (proxy API, stockage clés non sensibles, distribution du site) | UE + monde (CDN) | Standard Contractual Clauses (SCC), DPA Cloudflare |
 | Anthropic (Claude) | Génération de réponses IA | États-Unis | SCC + EU-US Data Privacy Framework |
 | OpenAI | Génération de réponses IA (selon le modèle choisi) | États-Unis | SCC + EU-US Data Privacy Framework |
-| Google (Gemini + Workspace) | Génération de réponses IA + connecteurs Gmail/Calendar/Contacts | UE + États-Unis | SCC + EU-US Data Privacy Framework |
+| Google (Gemini + Workspace) | Génération de réponses IA + fonctions Calendar explicitement demandées ; aucun connecteur Gmail dans l'application publique | UE + États-Unis | SCC + EU-US Data Privacy Framework |
 | Mistral AI | Génération de réponses IA | France (UE) | Hébergement UE direct |
 | Lemon Squeezy | Traitement des paiements abonnement Pro | États-Unis | SCC + EU-US Data Privacy Framework, gestion PCI-DSS |
 | Creem | Merchant of Record et page de paiement hébergée pour les packs de crédits. Arty lui transmet l'email Google vérifié du compte, le produit/pack choisi, un identifiant de requête aléatoire et l'URL de retour. Les coordonnées bancaires sont saisies directement chez Creem et ne sont pas reçues par Arty. | Estonie (UE) | RGPD, DPA Creem ; SCC pour ses sous-traitants hors EEE |

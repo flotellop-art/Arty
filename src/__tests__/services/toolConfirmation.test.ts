@@ -10,21 +10,7 @@ const fakeT = ((key: string, params?: Record<string, unknown>) =>
   params ? `${key} ${JSON.stringify(params)}` : key) as unknown as TFunction
 
 describe('buildToolConfirmMessage — garde HITL boucle d\'outils', () => {
-  it('exige une confirmation sur les envois externes / exfiltration', () => {
-    const send = buildToolConfirmMessage('send_email', { to: 'a@b.c', subject: 'Facture juillet' }, fakeT)
-    expect(send).toContain('chat.actionConfirm.email')
-    expect(send).toContain('a@b.c')
-    expect(send).toContain('Facture juillet')
-    const reply = buildToolConfirmMessage('reply_email', { to: 'x@y.z', subject: 'Re: devis' }, fakeT)
-    expect(reply).toContain('chat.actionConfirm.email')
-    expect(reply).toContain('Re: devis')
-    expect(buildToolConfirmMessage('share_drive_file', { email: 'tiers@x.com' }, fakeT)).toContain('chat.actionConfirm.shareDrive')
-    expect(buildToolConfirmMessage('share_drive_file', { email: 'tiers@x.com' }, fakeT)).toContain('tiers@x.com')
-  })
-
   it('exige une confirmation sur toutes les suppressions destructives', () => {
-    expect(buildToolConfirmMessage('delete_email', {}, fakeT)).toBe('chat.actionConfirm.deleteEmail')
-    expect(buildToolConfirmMessage('delete_drive_file', {}, fakeT)).toBe('chat.actionConfirm.deleteDrive')
     expect(buildToolConfirmMessage('delete_calendar_event', {}, fakeT)).toBe('chat.actionConfirm.deleteEvent')
     expect(buildToolConfirmMessage('delete_local_file', {}, fakeT)).toBe('chat.actionConfirm.deleteLocal')
     expect(buildToolConfirmMessage('wp_delete_post', {}, fakeT)).toBe('chat.actionConfirm.deleteWp')
@@ -50,9 +36,6 @@ describe('buildToolConfirmMessage — garde HITL boucle d\'outils', () => {
 
   it('laisse passer librement les lectures / recherches / listings', () => {
     for (const safe of [
-      'read_emails', 'read_email', 'read_email_attachment', 'search_emails',
-      'list_drive', 'search_drive', 'read_drive_file', 'create_drive_file',
-      'create_drive_folder', 'rename_drive_file', 'move_drive_file', 'copy_drive_file',
       'list_calendar', 'create_calendar_event', 'list_local_files', 'read_local_file',
       'web_search', 'ask_user', 'update_memory', 'wp_list_posts',
     ]) {
@@ -78,11 +61,6 @@ describe('buildToolConfirmMessage — garde HITL boucle d\'outils', () => {
 
 // Tools sensibles → input représentatif du cas qui DOIT déclencher la garde.
 const CONFIRM_REQUIRED: Record<string, Record<string, unknown>> = {
-  send_email: { to: 'x@y.z', subject: 'Objet' },
-  reply_email: { to: 'x@y.z', subject: 'Re: Objet' },
-  share_drive_file: { email: 'x@y.z' },
-  delete_email: {},
-  delete_drive_file: {},
   delete_calendar_event: {},
   delete_local_file: {},
   wp_delete_post: {},
@@ -94,15 +72,10 @@ const CONFIRM_REQUIRED: Record<string, Record<string, unknown>> = {
 // destructif, ni envoi de données à un tiers.
 const SAFE_TOOLS = new Set([
   // Lectures / recherches / listings
-  'read_emails', 'read_email', 'read_email_attachment', 'search_emails',
-  'list_drive', 'search_drive', 'read_drive_file', 'list_calendar',
-  'list_local_files', 'read_local_file', 'search_contacts', 'wp_list_posts',
+  'list_calendar', 'list_local_files', 'read_local_file', 'wp_list_posts',
   // Écritures réversibles dans l'espace PROPRE de l'utilisateur
-  'create_drive_file', 'create_drive_folder', 'rename_drive_file',
-  'move_drive_file', 'copy_drive_file', 'create_calendar_event',
-  'update_calendar_event', 'create_contact', 'create_draft_email',
-  'star_email', 'label_email', 'archive_email', 'save_local_file',
-  'export_clients_to_sheets', 'export_projets_to_sheets', 'update_memory',
+  'create_calendar_event', 'update_calendar_event', 'save_local_file',
+  'update_memory',
   // Interaction locale / owner-only (computer-use : gate = relay owner-only +
   // serveur local durci ; share : l'humain choisit la cible dans le sheet OS)
   'create_app', 'open_app', 'screenshot_pc', 'share',

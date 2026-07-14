@@ -1,4 +1,4 @@
-export type ThirdPartySource = 'Gmail' | 'Google Drive'
+export type ThirdPartySource = 'Google Drive'
 
 /**
  * Frame data fetched from third-party systems before returning it to the LLM.

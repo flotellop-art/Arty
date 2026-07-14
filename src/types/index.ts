@@ -72,25 +72,6 @@ export interface FactCheckResult {
   appliedCorrections?: number // count des corrections appliquées
 }
 
-export interface GmailSearchAssumption {
-  kind: 'date'
-  label: string
-}
-
-/**
- * Ephemeral, local-only handoff. It never contains a Gmail URL, token,
- * message id, search result or email content.
- */
-export interface GmailSearchPayload {
-  type: 'gmail_search'
-  version: 1
-  query: string
-  assumptions: GmailSearchAssumption[]
-  createdAt: number
-  expiresAt: number
-  afterOpen?: 'summarize' | 'reply'
-}
-
 export interface Message {
   id: string
   role: 'user' | 'assistant'
@@ -122,7 +103,6 @@ export interface Message {
   // Sous-décision Claude (Haiku/Sonnet/Opus), conservée séparément afin de ne
   // pas perdre la raison principale du provider (privé, fichier, hybride…).
   subModelReasonCode?: string
-  gmailSearch?: GmailSearchPayload
 }
 
 export interface Conversation {
@@ -133,9 +113,9 @@ export interface Conversation {
   updatedAt: number
   usedModels?: string[]  // models used in this conversation (e.g. ['mistral', 'claude'])
   euOnly?: boolean       // if true, locked to Mistral EU — no US model allowed
-  // P1.5 — vrai dès qu'un outil Gmail/Drive/Calendar/Contacts a été appelé :
+  // P1.5 — vrai dès qu'un outil Drive/Calendar/Contacts a été appelé :
   // le texte des réponses peut alors contenir des données Google (résumé de
-  // mail, contenu de fichier). Sert à l'avertissement renforcé avant un
+  // contenu de fichier ou données d'agenda). Sert à l'avertissement renforcé avant un
   // partage public. Détecté à l'appel (les tool_use ne sont pas persistés
   // dans `content`, donc indétectable a posteriori).
   hasGoogleData?: boolean

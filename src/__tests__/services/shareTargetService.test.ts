@@ -111,6 +111,16 @@ describe('shareTargetService — buildDraftFromShare', () => {
     })
   })
 
+  it('keeps manually shared email content available for analysis', () => {
+    const email = 'Objet : Devis signé\nDe : client@example.com\n\nBonjour, le devis est validé.'
+    const draft = buildDraftFromShare({ text: email, file: null, error: null })
+
+    expect(draft).toEqual({
+      text: `Voici un texte que je viens de partager :\n\n${email}`,
+      files: [],
+    })
+  })
+
   it('builds an image draft with the default analyse prompt', () => {
     const draft = buildDraftFromShare({
       text: null,

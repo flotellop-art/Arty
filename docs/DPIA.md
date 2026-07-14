@@ -1,13 +1,21 @@
 # DPIA — Analyse d'impact relative à la protection des données — Arty
 
 **Date :** 10 juillet 2026
-**Version :** 1 (document de travail)
-**Statut :** À faire valider par un conseil juridique avant lancement public à grande échelle.
+**Version :** 1 (archive de l'ancien périmètre Gmail/Drive)
+**Statut : ARCHIVÉ / SUPERSEDED le 13 juillet 2026. À ne pas utiliser comme état actuel du produit.**
 **Responsable de traitement :** Florent Pollet, personne physique, 884 chemin de la Prairie, 38270 Beaufort, France — flotellop@gmail.com. SIREN à ajouter dès l'enregistrement de l'activité (avant lancement public et premiers paiements).
 
 > Ce document est le pendant interne (registre art. 35 RGPD) de la politique de
 > confidentialité publique (`PRIVACY.md`, en ligne sur `tryarty.com/privacy`).
 > En cas de divergence, **`PRIVACY.md` fait foi** : ce DPIA doit être réaligné dessus.
+
+> ⚠️ L'application publique n'accède plus à Gmail ni au Drive global. Elle
+> traite un email uniquement lorsque l'utilisateur colle, joint ou partage son
+> contenu. Le profil OAuth actif est limité à l'identité et à Calendar, sans
+> scope restreint. Voir [`PLAY-STORE-SUBMISSION.md`](../PLAY-STORE-SUBMISSION.md)
+> et [`PRIVACY.md`](../PRIVACY.md). Une nouvelle version du DPIA devra repartir
+> de ce périmètre ; les sections ci-dessous restent un historique, pas une
+> instruction d'architecture ou de configuration.
 
 ---
 

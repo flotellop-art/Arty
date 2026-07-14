@@ -22,9 +22,9 @@ function notifyCompressed(keptRecent: number): void {
 //  1. Le français s'encode à ~3,8 caractères/token sur le tokenizer de Claude
 //     (vs ~4 pour l'anglais) — ajustement mineur.
 //  2. CRITIQUE : l'ancien code écrasait TOUT message non-string (les
-//     tool_results qui portent les corps d'emails, le texte Drive, les pages
+//     tool_results qui portent le texte Drive, les pages
 //     web…) en la chaîne '[contenu multimédia]' (~4 tokens) AVANT de compter.
-//     Une conversation avec plusieurs lectures Gmail/Drive (8-10k caractères
+//     Une conversation avec plusieurs lectures Drive (8-10k caractères
 //     chacune) était donc estimée minuscule et ne franchissait jamais le seuil
 //     → context rot. On parcourt maintenant les blocs pour compter leur vrai
 //     texte.
@@ -146,7 +146,7 @@ export async function compressIfNeeded(
 ): Promise<ApiMessage[]> {
   // Estime sur les messages RÉELS (texte des tool_results inclus) — le flatten
   // précédent en '[contenu multimédia]' sous-estimait massivement les convs
-  // riches en lectures Gmail/Drive et empêchait toute compression.
+  // riches en lectures Drive et empêchait toute compression.
   const totalTokens = estimateMessagesTokens(messages)
 
   // Under threshold — no compression needed

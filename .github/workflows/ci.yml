@@ -82,6 +82,7 @@ jobs:
           npm ci
           npm run build
           npx cap sync android
+          npm run no-casa:android-check
 
       - name: Android lint, unit tests, and compile checks
         working-directory: android

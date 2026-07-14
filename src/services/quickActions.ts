@@ -1,6 +1,5 @@
 import i18n, { getLocale } from '../i18n'
 import type {
-  GmailSearchPayload,
   Message,
   QuickActionId,
   QuickActionSelection,
@@ -70,17 +69,6 @@ export function isQuickActionSelection(value: unknown): value is QuickActionSele
 
 export function createQuickActionSelection(id: QuickActionId): QuickActionSelection {
   return { id, locale: getLocale() }
-}
-
-/** Le handoff Gmail sans CASA sait enchaîner uniquement les deux actions
- * disponibles dans le panneau après ouverture d'un message. */
-export function getGmailAfterOpenAction(
-  selection?: QuickActionSelection,
-): GmailSearchPayload['afterOpen'] {
-  if (!isQuickActionSelection(selection)) return undefined
-  if (selection.id === 'summarize' || selection.id === 'summarizeText') return 'summarize'
-  if (selection.id === 'write' || selection.id === 'writeEmail') return 'reply'
-  return undefined
 }
 
 /** Compose le contenu réellement envoyé au modèle. Le texte visible reste

@@ -10,32 +10,6 @@ export interface GoogleUser {
   picture: string
 }
 
-export interface GmailMessage {
-  id: string
-  threadId: string
-  from: string
-  subject: string
-  date: string
-  snippet: string
-}
-
-export interface GmailFullMessage extends GmailMessage {
-  to: string
-  body: string
-  /** Vrai si le corps a été tronqué côté serveur (note visible dans `body`). */
-  truncated?: boolean
-  /** Longueur du corps avant troncature. */
-  originalLength?: number
-}
-
-export interface EmailDraft {
-  to: string
-  subject: string
-  body: string
-  threadId?: string
-  inReplyTo?: string
-}
-
 export interface DriveFile {
   id: string
   name: string

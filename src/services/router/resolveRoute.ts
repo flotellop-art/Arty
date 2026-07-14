@@ -80,7 +80,7 @@ export function resolveRoute(input: RouteInput): RouteDecision {
   } else if (input.selectedModel !== 'auto') {
     // Choix manuel respecté, SAUF données privées vers un modèle sans tools
     // Google (Gemini/OpenAI) → Claude. Mistral manuel reste honoré : il a le
-    // tool-calling complet Gmail/Drive/Calendar.
+    // tool-calling complet Drive/Calendar.
     if (isPrivateData && (input.selectedModel === 'gemini' || input.selectedModel === 'openai')) {
       provider = 'claude'
       reason = { code: 'private_data' }

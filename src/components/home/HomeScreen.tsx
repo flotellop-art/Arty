@@ -11,7 +11,6 @@ import { CalendarView } from '../google/CalendarView'
 import { useTooltip } from '../onboarding/Tooltips'
 import { cleanDisplayName } from '../../services/displayName'
 import type { useGoogleAuth } from '../../hooks/useGoogleAuth'
-import type { useGmail } from '../../hooks/useGmail'
 import type { useDrive } from '../../hooks/useDrive'
 import type { ChatSendHandler, Conversation } from '../../types'
 import { homeV2Enabled } from '../../services/homeV2'
@@ -26,7 +25,6 @@ interface HomeScreenProps {
       silencieux — bug relevé par PLAN.md (PR C). */
   onStop?: () => void
   googleAuth: ReturnType<typeof useGoogleAuth>
-  gmail: ReturnType<typeof useGmail>
   drive: ReturnType<typeof useDrive>
   userName?: string
   proactiveBrief?: { items: BriefItem[] } | { text: string } | null
@@ -89,18 +87,14 @@ function HomeScreenInner({ onMenuToggle, onSend, isStreaming, onStop, googleAuth
   }, [])
 
   // Roadmap UI Phase 1 #1 — Page d'accueil intelligente.
-  // Avant : 4 intents codés en dur. 3/4 supposent Google connecté
-  // ("Tes mails non lus", "Ce qu'il y a aujourd'hui", "Trouve-moi un créneau")
-  // → un user qui n'a pas connecté Google clique l'intent, l'IA répond
-  // "je n'ai pas accès à tes mails" et l'utilisateur ferme l'app.
-  // Maintenant : si Google connecté → intents Google. Sinon → intents
-  // polyvalents universels (résumé, traduction, rédaction, explication).
+  // Les intentions restent utiles sans dépendre d'une boîte mail. La rédaction
+  // d'un e-mail est une aide textuelle : elle ne déclenche aucun accès externe.
   const intents = googleAuth.isConnected
     ? [
-        t('home.intents.unreadEmails'),
         t('home.intents.today'),
         t('home.intents.schedule'),
         t('home.intents.useful'),
+        t('home.intents.summarize'),
       ]
     : [
         t('home.intents.summarize'),

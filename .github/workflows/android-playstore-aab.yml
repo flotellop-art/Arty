@@ -52,7 +52,9 @@ jobs:
         run: npm run verify
 
       - name: Sync Capacitor Android
-        run: npx cap sync android
+        run: |
+          npx cap sync android
+          npm run no-casa:android-check
 
       - name: Decode google-services.json
         env:

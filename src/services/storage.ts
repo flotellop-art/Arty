@@ -3,7 +3,6 @@ import * as scoped from './scopedStorage'
 import { encrypt, decrypt, isCryptoReady } from './crypto'
 import { deleteOwnedFiles } from './secureFileStorage'
 import { getActiveUserId } from './userSession'
-import { isValidGmailSearchPayload } from './gmailSearchHandoff'
 
 // ─────────────────────────────────────────────────────────────────────────
 // Conversations are encrypted at rest (AES-256) under `conversations-enc`.
@@ -46,14 +45,18 @@ let writeGen = 0
 
 export function sanitizeConversationPayloads(
   conversations: Conversation[],
-  now = Date.now(),
+  _now = Date.now(),
 ): Conversation[] {
   let changed = false
   const sanitized = conversations.map((conversation) => {
     let conversationChanged = false
     const messages = conversation.messages.map((message) => {
-      if (!message.gmailSearch || isValidGmailSearchPayload(message.gmailSearch, now)) return message
-      const { gmailSearch: _expired, ...safeMessage } = message
+      // Migration temporaire : les anciennes versions pouvaient persister une
+      // carte de passage vers Gmail. Elle est retirée sans condition au boot,
+      // même si son ancien TTL n'est pas expiré.
+      const legacyMessage = message as typeof message & { gmailSearch?: unknown }
+      if (!Object.prototype.hasOwnProperty.call(legacyMessage, 'gmailSearch')) return message
+      const { gmailSearch: _removed, ...safeMessage } = legacyMessage
       changed = true
       conversationChanged = true
       return safeMessage

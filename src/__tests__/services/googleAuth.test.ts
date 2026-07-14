@@ -23,13 +23,39 @@ function mockFetch(body: unknown, init: { ok?: boolean; status?: number } = {}) 
 }
 
 beforeEach(() => {
+  googleAuth.logout()
   localStorage.clear()
+  // Sauf test dédié, simule un compte déjà migré afin que les tests de
+  // stockage n'effectuent pas la révocation one-shot.
+  localStorage.setItem('arty-user-test-google-oauth-mailbox-free-v1', '1')
   vi.clearAllMocks()
   // Reset crypto cached key between tests so initCrypto re-derives
   vi.resetModules()
 })
 
 describe('googleAuth — storage paths', () => {
+  it('purge et révoque une seule fois les anciens identifiants Google', async () => {
+    localStorage.removeItem('arty-user-test-google-oauth-mailbox-free-v1')
+    await googleAuth.storeTokens({
+      access_token: 'legacy-access',
+      refresh_token: 'legacy-refresh',
+      expires_at: Date.now() + 3600_000,
+    })
+    const fetchMock = mockFetch({})
+
+    expect(googleAuth.migrateLegacyMailboxGrant()).toBe(true)
+    expect(googleAuth.getStoredTokens()).toBeNull()
+    expect(localStorage.getItem('arty-user-test-google-oauth-mailbox-free-v1')).toBe('1')
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://oauth2.googleapis.com/revoke',
+      expect.objectContaining({
+        method: 'POST',
+        body: 'token=legacy-refresh',
+      }),
+    )
+    expect(googleAuth.migrateLegacyMailboxGrant()).toBe(false)
+  })
+
   it('storeTokens writes plain JSON when crypto not ready (sync reads stay functional)', async () => {
     const tokens = { access_token: 'a', refresh_token: 'r', expires_at: Date.now() + 3600_000 }
     await googleAuth.storeTokens(tokens)
@@ -98,6 +124,78 @@ describe('googleAuth — storage paths', () => {
     expect(res.access_token).toBe('new')
     const call = fetchMock.mock.calls[0]
     expect(call?.[0]).toBe('/api/auth/token')
+  })
+
+  it('peut différer la persistance jusqu’à l’activation du scope utilisateur', async () => {
+    googleAuth.logout()
+    localStorage.removeItem('arty-user-test-google-oauth-mailbox-free-v1')
+    mockFetch({ access_token: 'fresh-web-access', refresh_token: 'fresh-web-refresh', expires_in: 3600 })
+
+    const tokens = await googleAuth.exchangeCode('first-web-login', undefined, false)
+
+    expect(tokens.refresh_token).toBe('fresh-web-refresh')
+    expect(googleAuth.getStoredTokens()).toBeNull()
+    expect(localStorage.getItem('arty-user-test-google-oauth-mailbox-free-v1')).toBeNull()
+
+    await googleAuth.storeMailboxFreeGrant(tokens)
+    expect(googleAuth.getStoredTokens()?.access_token).toBe('fresh-web-access')
+    expect(localStorage.getItem('arty-user-test-google-oauth-mailbox-free-v1')).toBe('1')
+  })
+
+  it('exchangeCode ne recycle jamais un ancien refresh token pré-epoch', async () => {
+    localStorage.removeItem('arty-user-test-google-oauth-mailbox-free-v1')
+    await googleAuth.storeTokens({
+      access_token: 'legacy-gmail-access',
+      refresh_token: 'legacy-gmail-refresh',
+      expires_at: Date.now() + 3600_000,
+    })
+    mockFetch({ access_token: 'mailbox-free-access', expires_in: 3600 })
+
+    const tokens = await googleAuth.exchangeCode('fresh-code')
+
+    expect(tokens.refresh_token).toBe('')
+    expect(googleAuth.getStoredTokens()?.refresh_token).toBe('')
+    expect(localStorage.getItem('arty-user-test-google-oauth-mailbox-free-v1')).toBe('1')
+  })
+
+  it('un grant natif frais marque l’epoch et survit au bootstrap suivant', async () => {
+    localStorage.removeItem('arty-user-test-google-oauth-mailbox-free-v1')
+    await crypto.initCrypto('sk-ant-native-fresh')
+    const fetchSpy = vi.fn()
+    global.fetch = fetchSpy as unknown as typeof fetch
+
+    await googleAuth.storeMailboxFreeGrant({
+      access_token: 'native-mailbox-free-access',
+      refresh_token: 'native-mailbox-free-refresh',
+      expires_at: Date.now() + 3600_000,
+    })
+    googleAuth.resetGoogleMemCache()
+    await googleAuth.bootstrapGoogleStorage()
+
+    expect(localStorage.getItem('arty-user-test-google-oauth-mailbox-free-v1')).toBe('1')
+    expect(googleAuth.getStoredTokens()?.refresh_token).toBe('native-mailbox-free-refresh')
+    expect(fetchSpy).not.toHaveBeenCalled()
+  })
+
+  it('ne marque pas l’epoch si la persistance du nouveau grant échoue', async () => {
+    localStorage.removeItem('arty-user-test-google-oauth-mailbox-free-v1')
+    const originalSetItem = Storage.prototype.setItem
+    const setItemSpy = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (key, value) {
+      if (key.includes('google-tokens')) throw new Error('quota exceeded')
+      return originalSetItem.call(this, key, value)
+    })
+
+    try {
+      await expect(googleAuth.storeMailboxFreeGrant({
+        access_token: 'fresh-access',
+        refresh_token: 'fresh-refresh',
+        expires_at: Date.now() + 3600_000,
+      })).rejects.toThrow('quota exceeded')
+
+      expect(localStorage.getItem('arty-user-test-google-oauth-mailbox-free-v1')).toBeNull()
+    } finally {
+      setItemSpy.mockRestore()
+    }
   })
 
   it('refreshAccessToken keeps tokens on 5xx (transient cold-start)', async () => {

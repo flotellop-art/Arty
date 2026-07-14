@@ -2,7 +2,7 @@ import type { TFunction } from 'i18next'
 
 // HITL — consentement humain avant une action SENSIBLE déclenchée par le modèle
 // DANS LA BOUCLE D'OUTILS. Le modèle peut appeler ces outils tout seul, y
-// compris sous l'effet d'une prompt-injection cachée dans un email / fichier /
+// compris sous l'effet d'une prompt-injection cachée dans un fichier /
 // page qu'il vient de lire (RÈGLE 6, BUG 42). Le « CONFIRMATION OBLIGATOIRE »
 // des descriptions d'outils n'est qu'une consigne au LLM, pas un garde : le
 // vrai consentement est imposé par buildToolConfirmMessage, exactement comme
@@ -25,20 +25,7 @@ export function buildToolConfirmMessage(
   t: TFunction
 ): string | null {
   switch (name) {
-    // Envoi externe / exfiltration
-    case 'send_email':
-    case 'reply_email':
-      return t('chat.actionConfirm.email', {
-        to: (input.to as string) || '?',
-        subject: (input.subject as string) || '?',
-      })
-    case 'share_drive_file':
-      return t('chat.actionConfirm.shareDrive', { email: (input.email as string) || '?' })
     // Suppression destructive
-    case 'delete_email':
-      return t('chat.actionConfirm.deleteEmail')
-    case 'delete_drive_file':
-      return t('chat.actionConfirm.deleteDrive')
     case 'delete_calendar_event':
       return t('chat.actionConfirm.deleteEvent')
     case 'delete_local_file':

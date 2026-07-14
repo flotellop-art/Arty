@@ -7,7 +7,7 @@ import type { ReflectionLevel } from './reflectionLevel'
 // AI Router — decides which model to use based on the query.
 // Routage en mode auto: Gemini par défaut (google_search activé, gratuit)
 // pour bénéficier de données à jour 2026+. Les exceptions sont:
-// - PRIVATE_DATA_TRIGGERS → Claude (tools natifs Gmail/Drive/Calendar)
+// - PRIVATE_DATA_TRIGGERS → Claude (contenu privé fourni + Drive/Calendar)
 // - HYBRID_TRIGGERS → Hybrid (Gemini research + Claude synthesis)
 // - TRIVIAL_CHAT_REGEX → Mistral/Claude (pas de search inutile)
 // - euOnly conversations → forcé Mistral en amont (useConversation.ts)
@@ -215,9 +215,10 @@ export function extractWebUrls(message: string): string[] {
  * Décide si une requête utilisateur doit déclencher une recherche web forcée.
  * Règle posée par l'utilisateur le 10 mai 2026 : recherche internet par défaut
  * sur la plupart des requêtes, SAUF :
- * - Données privées (mails, Drive, calendar, contacts) — BUG 12 : Gemini
- *   hallucine sur des données privées inaccessibles ; les tools natifs
- *   Gmail/Drive/Calendar récupèrent les vraies données, web search inutile.
+ * - Données privées (contenu de mails fourni, Drive, calendar, contacts) —
+ *   BUG 12 : une recherche web ne peut pas retrouver ces données et pousserait
+ *   le modèle à les inventer. Les requêtes de boîte mail restent donc privées,
+ *   même si l'app répond qu'il faut coller ou joindre le contenu.
  * - Salutations / micro-réponses (TRIVIAL_CHAT_REGEX) — gaspillage de tokens.
  *
  * Les fichiers attachés (PDF, image) ne désactivent PAS la recherche web :

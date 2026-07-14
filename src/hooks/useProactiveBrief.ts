@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import i18n from '../i18n'
 import { streamMessage, type ToolHandler as ClientToolHandler } from '../services/anthropicClient'
 import { TOOLS } from '../services/toolDefinitions'
-import { createGmailHandlers } from '../services/tools/gmailTools'
 import { createCalendarHandlers } from '../services/tools/calendarTools'
 import type { ToolHandler } from '../services/tools/types'
 import { listEvents } from '../services/calendarClient'
@@ -26,43 +25,32 @@ import {
   type BriefItem,
   type BriefAction,
 } from '../services/proactiveBriefActions'
-import type { useGmail } from './useGmail'
-import { isPublicGoogleOAuthProfileEnabled } from '../services/publicGoogleOAuthProfile'
 
-// Outils EXCLUSIVEMENT en lecture exposés au modèle, + l'outil de sortie
-// structurée. Sécurité (RÈGLE 6 / lethal trifecta) : le brief ingère du contenu
-// non fiable (mails) ET de la mémoire privée, sans humain dans la boucle. Aucun
-// outil d'écriture/envoi/suppression, AUCUN outil web (web_fetch = exfiltration).
-const READ_TOOL_NAMES = ['read_emails', 'read_email', 'search_emails', 'list_calendar']
+// Outil EXCLUSIVEMENT en lecture exposé au modèle, + l'outil de sortie
+// structurée. Le brief utilise l'agenda, les tâches et la mémoire locale ;
+// aucun outil d'écriture ni outil web n'est disponible en arrière-plan.
+const READ_TOOL_NAMES = ['list_calendar']
 const READ_TOOL_SET = new Set<string>(READ_TOOL_NAMES)
 const BRIEF_TOOLS = [
   ...TOOLS.filter((t) => READ_TOOL_SET.has((t as { name?: string }).name ?? '')),
   PRESENT_BRIEF_TOOL,
 ] as typeof TOOLS
 
-// Plafond de lectures détaillées par brief : empêche le modèle de lire 10 corps
-// de mails complets chaque matin (coût + surface). 3 suffit pour un brief.
-const MAX_READ_EMAIL = 3
-
 type BriefState = { items: BriefItem[] } | { text: string } | null
 
 interface Params {
-  gmail: ReturnType<typeof useGmail>
   isGoogleConnected: boolean
   userName?: string
   onSend: (text: string) => void
 }
 
-export function useProactiveBrief({ gmail, isGoogleConnected, userName, onSend }: Params) {
+export function useProactiveBrief({ isGoogleConnected, userName, onSend }: Params) {
   const [brief, setBrief] = useState<BriefState>(null)
   const [loading, setLoading] = useState(false)
   const [dismissed, setDismissed] = useState(false)
-  const noCasaPhase0 = isPublicGoogleOAuthProfileEnabled()
 
   const runningRef = useRef(false)
   const abortRef = useRef<AbortController | null>(null)
-  const gmailRef = useRef(gmail)
-  gmailRef.current = gmail
   const nameRef = useRef(userName)
   nameRef.current = userName
   const onSendRef = useRef(onSend)
@@ -82,56 +70,46 @@ export function useProactiveBrief({ gmail, isGoogleConnected, userName, onSend }
     // retour dans l'app), elle reste lisible jusqu'à ce que la nouvelle soit prête.
 
     try {
-      // Pré-check GRATUIT (API Google, pas Claude) : sans mail non lu ni
-      // événement à venir, aucun token Claude n'est dépensé.
-      const [messages, events] = await Promise.all([
-        noCasaPhase0 ? Promise.resolve([]) : gmailRef.current.fetchMessages().catch(() => []),
-        listEvents(2).catch(() => []),
-      ])
+      // Pré-check gratuit : agenda, tâches et mémoire locale sont inspectés
+      // avant de décider si un appel IA est utile.
+      const events = await listEvents(2).catch(() => [])
+      const tasks = getTasks().filter((t) => !t.done).slice(0, 10).map((t) => `- ${t.text}`)
+      let memoryContext = ''
+      try {
+        const mem = await readAllMemory()
+        memoryContext = formatMemoryForPrompt(mem, ' ').slice(0, 600).trim()
+      } catch { /* mémoire indisponible — non bloquant */ }
       markBriefRun()
       if (areNotificationsEnabled() && shouldScheduleNudge()) {
         markNudgeScheduled()
         void scheduleMorningNotification(nameRef.current)
       }
 
-      const hasMail = Array.isArray(messages) && messages.length > 0
-      const hasEvents = Array.isArray(events) && events.length > 0
-      if (!hasMail && !hasEvents) {
+      const hasUsefulContext = (Array.isArray(events) && events.length > 0)
+        || tasks.length > 0
+        || memoryContext.length > 0
+      if (!hasUsefulContext) {
         setBrief({ text: i18n.t('proactiveBrief.calm') })
         return
       }
 
       // Contexte additionnel (sources étendues), gardé COMPACT pour le coût.
       let extra = ''
-      const tasks = getTasks().filter((t) => !t.done).slice(0, 10).map((t) => `- ${t.text}`)
       if (tasks.length) extra += `\n\nTÂCHES EN COURS (Arty) :\n${tasks.join('\n')}`
-      try {
-        const mem = await readAllMemory()
-        // mode conditionnel minimal (Tier 0) via un userMessage neutre, puis tronqué.
-        const memStr = formatMemoryForPrompt(mem, ' ').slice(0, 600)
-        if (memStr.trim()) extra += `\n${memStr}`
-      } catch { /* mémoire indisponible — non bloquant */ }
+      if (memoryContext) extra += `\n${memoryContext}`
 
       const prefs = getBriefPrefs()
       const lenDirective = prefs.length === 'short'
         ? '\n\nL\'utilisateur préfère un brief TRÈS court : 3 éléments maximum, l\'essentiel seulement.'
         : ''
-      const systemPrompt = (noCasaPhase0
-        ? 'Tu n\'as aucun accès global à Gmail. Construis ce brief uniquement avec Calendar, les tâches et la mémoire locale.\n\n'
-        : '') + i18n.t('proactiveBrief.systemPrompt') + extra + lenDirective
+      const systemPrompt = i18n.t('proactiveBrief.systemPrompt') + extra + lenDirective
 
       // Handler lecture-seule + capture de la sortie structurée. Tout outil hors
-      // whitelist est refusé (défense en profondeur, même si le modèle ne voit
-      // que BRIEF_TOOLS). read_email plafonné.
-      const gmailHandlers = noCasaPhase0 ? null : createGmailHandlers(gmailRef.current)
+      // whitelist est refusé, même si le modèle ne voit que BRIEF_TOOLS.
       const calendarHandlers = createCalendarHandlers()
       const readHandlers: Record<string, ToolHandler | undefined> = {
-        read_emails: gmailHandlers?.read_emails,
-        read_email: gmailHandlers?.read_email,
-        search_emails: gmailHandlers?.search_emails,
         list_calendar: calendarHandlers.list_calendar,
       }
-      let readEmailCount = 0
       const captured: { data: BriefData | null } = { data: null }
 
       const onToolCall: ClientToolHandler = async (name, input) => {
@@ -139,12 +117,8 @@ export function useProactiveBrief({ gmail, isGoogleConnected, userName, onSend }
           if (!captured.data) captured.data = sanitizeBriefData(input)
           return { result: 'Brief enregistré. Termine maintenant sans autre action.' }
         }
-        if (name === 'read_email' && readEmailCount >= MAX_READ_EMAIL) {
-          return { result: 'Limite de lecture détaillée atteinte pour le brief — synthétise avec ce que tu as.' }
-        }
         const handler = readHandlers[name]
         if (!handler) return { result: `Outil "${name}" non autorisé en mode brief (lecture seule).` }
-        if (name === 'read_email') readEmailCount++
         try { return await handler(input) } catch { return { result: `Erreur de lecture (${name}).` } }
       }
 
@@ -181,7 +155,7 @@ export function useProactiveBrief({ gmail, isGoogleConnected, userName, onSend }
       setLoading(false)
       runningRef.current = false
     }
-  }, [isGoogleConnected, noCasaPhase0])
+  }, [isGoogleConnected])
 
   // Déclencheurs : ouverture (mount) + retour au premier plan (appStateChange
   // natif / visibilitychange web). PAS de setInterval (timers gelés en arrière-plan).
@@ -221,9 +195,8 @@ export function useProactiveBrief({ gmail, isGoogleConnected, userName, onSend }
     abortRef.current?.abort()
   }, [])
 
-  // Exécute une action de chip. Le routage est construit côté client (jamais par
-  // le modèle) : reminder = tâche locale ; le reste passe par le chat (humain
-  // dans la boucle), routé par message_id validé.
+  // Exécute une action de chip. Le routage est construit côté client : reminder
+  // crée une tâche locale ; schedule passe par le chat avec humain dans la boucle.
   const runAction = useCallback((action: BriefAction, item: BriefItem): 'task' | 'chat' | null => {
     const route = routeBriefAction(action, item)
     if (!route) return null

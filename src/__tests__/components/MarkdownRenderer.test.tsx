@@ -45,15 +45,33 @@ describe('MarkdownRenderer', () => {
   it('conserve les data-* des boutons d\'action connus (allowlist, pas wildcard)', () => {
     const { container } = render(
       <MarkdownRenderer
-        content={'<button data-action="send_email" data-to="a@b.com" data-evil="x">Envoyer</button>'}
+        content={'<button data-action="create_event" data-title="Rendez-vous" data-evil="x">Créer</button>'}
       />
     )
     const btn = container.querySelector('button[data-action]')
     expect(btn).toBeTruthy()
-    expect(btn!.getAttribute('data-action')).toBe('send_email')
-    expect(btn!.getAttribute('data-to')).toBe('a@b.com')
+    expect(btn!.getAttribute('data-action')).toBe('create_event')
+    expect(btn!.getAttribute('data-title')).toBe('Rendez-vous')
     // Un data-* hors allowlist est strippé par la sanitisation
     expect(btn!.getAttribute('data-evil')).toBeNull()
+  })
+
+  it('neutralise un ancien bouton d’envoi de mail sans faux succès', () => {
+    const { container } = render(
+      <MarkdownRenderer content={'<button data-action="send_email" data-to="client@example.com">Envoyer</button>'} />
+    )
+
+    expect(container.querySelector('button[data-action="send_email"]')).toBeNull()
+    expect(screen.getByText('Envoyer').tagName).toBe('SPAN')
+  })
+
+  it('neutralise aussi un ancien bouton Drive devenu indisponible', () => {
+    const { container } = render(
+      <MarkdownRenderer content={'<button data-action="save_drive" data-name="Rapport">Sauvegarder</button>'} />
+    )
+
+    expect(container.querySelector('button[data-action="save_drive"]')).toBeNull()
+    expect(screen.getByText('Sauvegarder').tagName).toBe('SPAN')
   })
 
   it('strippe les data: URI dans src (XSS SVG sur WebView)', () => {

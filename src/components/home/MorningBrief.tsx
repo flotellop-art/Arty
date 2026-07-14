@@ -339,7 +339,6 @@ function MorningBriefInner({ onClose, onSend, userName, isGoogleConnected }: Pro
             </div>
             <ul className="flex flex-col gap-2">
               {[
-                { label: t('morningBrief.actions.unreadEmails.label'), q: t('morningBrief.actions.unreadEmails.prompt') },
                 { label: t('morningBrief.actions.today.label'), q: t('morningBrief.actions.today.prompt') },
                 { label: t('morningBrief.actions.priorities.label'), q: t('morningBrief.actions.priorities.prompt') },
                 { label: t('morningBrief.actions.idea.label'), q: t('morningBrief.actions.idea.prompt') },

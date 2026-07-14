@@ -115,7 +115,7 @@ public class ShareTargetPlugin extends Plugin {
     private JSObject readFile(Uri uri, String fallbackMime) {
         ContentResolver resolver = getContext().getContentResolver();
 
-        // Resolver mime is more reliable than the intent type (Gmail PDFs
+        // Resolver mime is more reliable than the intent type (shared PDFs
         // sometimes arrive as application/octet-stream at the intent layer).
         String mimeType = resolver.getType(uri);
         if (mimeType == null) mimeType = fallbackMime;
