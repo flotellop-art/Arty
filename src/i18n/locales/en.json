@@ -826,6 +826,112 @@
     "shareText": "Arty costs — {{monthKey}}",
     "shareDialogTitle": "Share CSV"
   },
+  "landing": {
+    "nav": {
+      "login": "Sign in",
+      "cta": "Try it free"
+    },
+    "hero": {
+      "kicker": "Claude · GPT-5 · Gemini · Mistral",
+      "titleMain": "The best AIs.",
+      "titleAccent": "One app.",
+      "lede": "Arty brings Claude, GPT-5, Gemini and Mistral together in one personal assistant, with your Google calendar and the content you choose to share with it.",
+      "cta": "Try it free",
+      "ctaNote": "30 free messages · no credit card",
+      "secondary": "See pricing"
+    },
+    "problem": {
+      "kicker": "The problem",
+      "title": "How much are your AI subscriptions costing you?",
+      "p1": "ChatGPT Plus, Claude Pro, Gemini… stacking them costs €60–80 a month, for opaque limits and three interfaces that don't talk to each other.",
+      "p2": "Arty replaces them with a single assistant: you pick the model for the task, you see your limits in plain words, and you pay a final price you know upfront."
+    },
+    "features": {
+      "kicker": "What Arty does",
+      "title": "An assistant, not a catalog.",
+      "models": {
+        "title": "The right model for each task",
+        "text": "Claude for writing, Gemini for research, Mistral for confidential work: Arty routes your request to the right model — or you pick it yourself."
+      },
+      "calendar": {
+        "title": "Your calendar, connected",
+        "text": "Connect your Google calendar: \"Schedule a meeting tomorrow at 2pm\" creates the event. Check, create, move — in plain language."
+      },
+      "files": {
+        "title": "Your documents, on your terms",
+        "text": "Paste, attach or share a PDF, an image, a text: Arty reads them natively. Nothing is siphoned in the background — you choose what you hand over."
+      },
+      "voice": {
+        "title": "Voice or keyboard",
+        "text": "Dictate your messages and listen to the replies. Handy on the go, on mobile and on the web."
+      }
+    },
+    "trust": {
+      "kicker": "Trust",
+      "title": "Rules written in plain words.",
+      "limits": {
+        "title": "Readable limits",
+        "text": "Your quotas are shown in messages, with visible counters in the app — not in \"credits\" or \"points\"."
+      },
+      "noSwitch": {
+        "title": "Never a silent downgrade",
+        "text": "Quota reached? Arty tells you and lets you choose — it never quietly moves you to a weaker model."
+      },
+      "privacy": {
+        "title": "Your data stays yours",
+        "text": "Conversations encrypted on your device (AES-256). And for sensitive work, a 100% European confidential mode (Mistral, servers in France), switchable per conversation."
+      },
+      "byok": {
+        "title": "Your own key if you prefer",
+        "text": "You can plug in your own API key (Anthropic, OpenAI, Google, Mistral) and pay cost price. Your spending is tracked model by model."
+      }
+    },
+    "pricing": {
+      "kicker": "Pricing",
+      "title": "Three ways to use Arty.",
+      "trialCallout": "🎁 Start with the free trial: 30 messages, no credit card.",
+      "byokName": "Free (BYOK)",
+      "byokPrice": "€0",
+      "byokDesc": "Your own API key · All models · Encrypted local storage",
+      "subName": "Subscription",
+      "subPrice": "€9.99/mo · VAT incl.",
+      "subDesc": "No API key · 150 Claude Sonnet/Opus + 100 GPT-5 + 80 Gemini Pro per month · Haiku, Flash and Mistral with no monthly cap",
+      "subReassurance": "✓ Cancel in one click, anytime — pause available. No commitment.",
+      "subBadge": "Most popular",
+      "proName": "Pro",
+      "proPrice": "€39 one-time · VAT incl.",
+      "proDesc": "One-time payment, app for life · You use your own API key (BYOK) · Business templates · Priority support",
+      "cardCta": "Get started",
+      "extras": "Need more? +100 premium messages pack at €1.99 VAT incl., or prepaid credits (€10 = 1,000 credits) that never expire.",
+      "transparency": "Our limits are stated in plain messages — no “credits” or “points”. The price shown is the final price, VAT included. A daily anti-abuse limit applies to all plans."
+    },
+    "faq": {
+      "kicker": "FAQ",
+      "title": "Frequently asked questions",
+      "q1": "Which models are included?",
+      "a1": "With the subscription: 150 Claude Sonnet/Opus messages, 100 GPT-5 and 80 Gemini Pro per month, plus Haiku, Flash and Mistral with no monthly cap. The free trial (30 messages) uses the base models (Haiku, Flash, Mistral Medium).",
+      "q2": "Can I use my own API key?",
+      "a2": "Yes. BYOK mode is free on Arty's side: plug in your Anthropic, OpenAI, Google or Mistral key, access every model and pay your provider at cost price. Your key is encrypted locally and never leaves your device in the clear.",
+      "q3": "What's the difference between the Subscription and Pro?",
+      "a3": "The Subscription (€9.99/mo VAT incl.) works without an API key: Arty provides model access, with quotas stated in plain words. Pro (€39 one-time) is a lifetime license for the app where you use your own API key — model access goes through your key, not Arty's servers.",
+      "q4": "What happens when I reach my quota?",
+      "a4": "Nothing silent: Arty tells you and lets you choose — add a 100 premium messages pack (€1.99), continue on the models with no monthly cap, or wait for next month.",
+      "q5": "Where does my data go?",
+      "a5": "Your conversations are encrypted on your device (AES-256). Claude, GPT-5 and Gemini process requests in the United States (covered by Standard Contractual Clauses and the EU-US DPF); for sensitive work, the confidential mode routes everything to Mistral, on servers in France.",
+      "q6": "Does Arty replace ChatGPT Plus or Claude Pro?",
+      "a6": "Arty is a personal assistant that brings several AIs into one app, with your calendar and your content. If you stack several subscriptions today, one may be enough — and if another model is stronger for your task, you switch in one tap without losing the thread.",
+      "q7": "Who is behind Arty?",
+      "a7": "Florent Pollet, solo founder, in France. When you write to support, he's the one who answers."
+    },
+    "finalCta": {
+      "title": "Try Arty now."
+    },
+    "footer": {
+      "madeIn": "Built in France by Florent Pollet, solo founder.",
+      "privacy": "Privacy",
+      "login": "Sign in"
+    }
+  },
   "upgrade": {
     "back": "Back",
     "headerTitle": "Upgrade",

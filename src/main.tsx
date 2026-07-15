@@ -4,6 +4,11 @@ import { Capacitor } from '@capacitor/core'
 import App from './App'
 import './index.css'
 import './i18n' // initialise react-i18next (détection navigator + localStorage)
+import { captureAcquisition } from './services/acquisition'
+
+// Attribution first-party pubs (utm_* dans l'URL) — AVANT le render et tout
+// login, first-touch only. Voir services/acquisition.ts pour la chaîne.
+captureAcquisition()
 
 // Cleanup any legacy service worker + cache left over from pre-1.0.13 APKs
 // on Capacitor native. Without this, users upgrading from 1.0.12 still have

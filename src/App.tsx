@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef, lazy, Suspense } from 'react'
 import { useTranslation } from 'react-i18next'
 import { BrowserRouter, Routes, Route, useNavigate, useParams } from 'react-router-dom'
+import { Capacitor } from '@capacitor/core'
 import { useConversation } from './hooks/useConversation'
 import { useAppSetup } from './hooks/useAppSetup'
 import { useAuth } from './hooks/useAuth'
@@ -39,6 +40,7 @@ import {
   initEmailTrialSplash,
 } from './services/trialClient'
 import { setTrialToken } from './services/emailTrialClient'
+import { hasStartParam } from './services/acquisition'
 import { canPurchase } from './services/checkout'
 import { ProfileSetupModal } from './components/onboarding/ProfileSetupModal'
 import { getUserProfile } from './services/userProfile'
@@ -50,6 +52,9 @@ const UpgradeScreen = lazy(() => import('./screens/upgrade').then((m) => ({ defa
 const TemplatesScreen = lazy(() => import('./screens/templates').then((m) => ({ default: m.TemplatesScreen })))
 const CostsScreen = lazy(() => import('./screens/costs').then((m) => ({ default: m.CostsScreen })))
 const ComparatorScreen = lazy(() => import('./screens/compare').then((m) => ({ default: m.ComparatorScreen })))
+// Landing marketing (item 16 roadmap v2) — vue uniquement par les
+// primo-visiteurs web ; les utilisateurs connectés ne la téléchargent jamais.
+const LandingScreen = lazy(() => import('./screens/landing').then((m) => ({ default: m.LandingScreen })))
 
 // Fallback pendant le chargement des chunks lazy — petit splash neutre,
 // disparaît dès que le chunk arrive (<200ms en pratique sur 4G).
@@ -911,83 +916,11 @@ export default function App() {
   const [splash, setSplash] = useState(() => getOnboardingSplash())
 
   if (!auth.isAuthenticated) {
-    // P2.2 — les 4 slides emojis génériques ont été supprimées (elles ne
-    // démontraient rien et ajoutaient un écran avant de pouvoir essayer). On
-    // va directement à l'écran de choix, qui porte désormais la preuve de
-    // valeur (mini-démos entrée→sortie) + le CTA d'essai.
-    // Then show the welcome / Google / BYOK choice screen, also first time only.
-    if (!choiceDone) {
-      return (
-        <OnboardingChoice
-          onApiKeyLogin={async (anthropicKey) => {
-            await auth.login('apikey', {
-              displayName: 'Utilisateur',
-              anthropicKey,
-              identifier: anthropicKey,
-            })
-            // login flips auth.isAuthenticated → this branch unmounts; mark
-            // the choice as done so a future logout doesn't replay it.
-            markOnboardingChoiceDone()
-            setChoiceDone(true)
-          }}
-          onNativeGoogleLogin={async (
-            email,
-            name,
-            avatar,
-            accessToken,
-            refreshToken,
-            expiresIn
-          ) => {
-            await auth.login('google', {
-              displayName: name,
-              email,
-              avatar,
-              anthropicKey: 'server-provided',
-              identifier: email,
-            })
-            // After auth flips, scopedStorage is keyed to the user — store
-            // the Google credentials through storeTokens/storeUser so they
-            // take the encrypted-at-rest path (D22/P0-a-bis — the previous
-            // raw setJSON bypassed it). First native login: the refresh
-            // token is freshly minted (requestServerAuthCode forces it,
-            // BUG 51), so no merge-with-existing is needed here.
-            const { storeMailboxFreeGrant, storeUser } = await import('./services/googleAuth')
-            await storeUser({ email, name, picture: avatar })
-            await storeMailboxFreeGrant({
-              access_token: accessToken,
-              refresh_token: refreshToken,
-              expires_at: Date.now() + expiresIn * 1000,
-            })
-            markOnboardingChoiceDone()
-            setChoiceDone(true)
-            setSplash(getOnboardingSplash())
-          }}
-          onGoToLogin={() => {
-            markOnboardingChoiceDone()
-            setChoiceDone(true)
-          }}
-          onEmailTrialLogin={async (email, token) => {
-            // Crée la session AVANT de stocker le jeton (scopedStorage a besoin
-            // du préfixe userId actif). Pas de clé BYOK → 'server-provided'
-            // (même posture que Google sans BYOK, BUG 25). Identifiant namespacé
-            // `emailtrial:` pour ne JAMAIS collisionner avec le compte local
-            // email+password ni le compte Google du même email.
-            await auth.login('email', {
-              displayName: email,
-              email,
-              anthropicKey: 'server-provided',
-              identifier: `emailtrial:${email}`,
-            })
-            setTrialToken(token)
-            initEmailTrialSplash(30)
-            markOnboardingChoiceDone()
-            setChoiceDone(true)
-            setSplash(getOnboardingSplash())
-          }}
-        />
-      )
-    }
-
+    // Le routeur englobe TOUTE la zone non authentifiée. Avant, la branche
+    // !choiceDone rendait OnboardingChoice sans routeur : un primo-visiteur
+    // qui ouvrait /share/:id ou /auth/callback tombait sur l'écran de choix
+    // au lieu de la page attendue. La décision landing / choix d'onboarding /
+    // login vit dans LoggedOutHome.
     return (
       <BrowserRouter>
         <Routes>
@@ -995,15 +928,31 @@ export default function App() {
             path="/auth/callback"
             element={<OAuthCallbackAuth auth={auth} onPostLogin={() => setSplash(getOnboardingSplash())} />}
           />
-          {/* P1.5 — partage public lisible SANS compte (canal d'acquisition). */}
+          {/* P1.5 — partage public lisible SANS compte (canal d'acquisition),
+              y compris pour un primo-visiteur qui n'a pas fait l'onboarding. */}
           <Route path="/share/:id" element={<SharedConversationView />} />
-          <Route path="*" element={
-            <LoginScreen
-              onLogin={auth.login}
-              knownSessions={auth.knownSessions}
-              onSwitchAccount={auth.switchAccount}
-            />
-          } />
+          {/* Cible explicite du « Se connecter » de la landing. */}
+          <Route
+            path="/login"
+            element={
+              <LoginScreen
+                onLogin={auth.login}
+                knownSessions={auth.knownSessions}
+                onSwitchAccount={auth.switchAccount}
+              />
+            }
+          />
+          <Route
+            path="*"
+            element={
+              <LoggedOutHome
+                auth={auth}
+                choiceDone={choiceDone}
+                setChoiceDone={setChoiceDone}
+                setSplash={setSplash}
+              />
+            }
+          />
         </Routes>
         <Toaster />
       </BrowserRouter>
@@ -1066,6 +1015,135 @@ export default function App() {
       )}
       <Toaster />
     </BrowserRouter>
+  )
+}
+
+/**
+ * Zone non authentifiée hors routes profondes (/auth/callback, /share, /login).
+ *
+ * Ordre de décision :
+ *  1. Primo-visiteur web (onboarding jamais fait, aucune session connue,
+ *     pas Capacitor natif) → landing marketing (item 16 roadmap v2).
+ *     « Essayer gratuitement » révèle l'écran de choix SANS marquer
+ *     l'onboarding comme fait : un refresh ré-affiche la landing, pas le
+ *     login. Les trois gardes sont des lectures synchrones (localStorage) —
+ *     aucun flash de landing pour un utilisateur connu.
+ *  2. Onboarding pas encore fait → OnboardingChoice (P2.2 — l'écran de choix
+ *     porte la preuve de valeur + le CTA d'essai).
+ *  3. Sinon → LoginScreen.
+ *
+ * Preview Cloudflare : le mode démo (__DEMO_ALLOWED__) pose une session
+ * avant le render → la landing est contournée ; utiliser `?login` pour la
+ * revoir (previewDemo.ts).
+ */
+function LoggedOutHome({
+  auth,
+  choiceDone,
+  setChoiceDone,
+  setSplash,
+}: {
+  auth: ReturnType<typeof useAuth>
+  choiceDone: boolean
+  setChoiceDone: (done: boolean) => void
+  setSplash: (splash: ReturnType<typeof getOnboardingSplash>) => void
+}) {
+  const navigate = useNavigate()
+  // `?start=1` : entrée directe dans l'onboarding — les LPs pubs Meta
+  // (public/lp/*) y pointent leur CTA pour tenir le message match sans
+  // repasser par la landing générique. Cas limite assumé : si l'onboarding
+  // a déjà été fait sur cet appareil (choiceDone=true, déconnecté), le
+  // param est un no-op → LoginScreen (l'utilisateur connaît déjà le produit).
+  const [entered, setEntered] = useState(() => hasStartParam(window.location.search))
+
+  if (!choiceDone) {
+    const showLanding =
+      !entered && !Capacitor.isNativePlatform() && auth.knownSessions.length === 0
+    if (showLanding) {
+      return (
+        // Fallback vide aux couleurs du thème : pas de texte « Chargement… »
+        // en première impression marketing (le chunk arrive en <200ms).
+        <Suspense fallback={<div className="min-h-screen bg-theme-bg" />}>
+          <LandingScreen onStart={() => setEntered(true)} onLogin={() => navigate('/login')} />
+        </Suspense>
+      )
+    }
+    return (
+      <OnboardingChoice
+        onApiKeyLogin={async (anthropicKey) => {
+          await auth.login('apikey', {
+            displayName: 'Utilisateur',
+            anthropicKey,
+            identifier: anthropicKey,
+          })
+          // login flips auth.isAuthenticated → this branch unmounts; mark
+          // the choice as done so a future logout doesn't replay it.
+          markOnboardingChoiceDone()
+          setChoiceDone(true)
+        }}
+        onNativeGoogleLogin={async (
+          email,
+          name,
+          avatar,
+          accessToken,
+          refreshToken,
+          expiresIn
+        ) => {
+          await auth.login('google', {
+            displayName: name,
+            email,
+            avatar,
+            anthropicKey: 'server-provided',
+            identifier: email,
+          })
+          // After auth flips, scopedStorage is keyed to the user — store
+          // the Google credentials through storeTokens/storeUser so they
+          // take the encrypted-at-rest path (D22/P0-a-bis — the previous
+          // raw setJSON bypassed it). First native login: the refresh
+          // token is freshly minted (requestServerAuthCode forces it,
+          // BUG 51), so no merge-with-existing is needed here.
+          const { storeMailboxFreeGrant, storeUser } = await import('./services/googleAuth')
+          await storeUser({ email, name, picture: avatar })
+          await storeMailboxFreeGrant({
+            access_token: accessToken,
+            refresh_token: refreshToken,
+            expires_at: Date.now() + expiresIn * 1000,
+          })
+          markOnboardingChoiceDone()
+          setChoiceDone(true)
+          setSplash(getOnboardingSplash())
+        }}
+        onGoToLogin={() => {
+          markOnboardingChoiceDone()
+          setChoiceDone(true)
+        }}
+        onEmailTrialLogin={async (email, token) => {
+          // Crée la session AVANT de stocker le jeton (scopedStorage a besoin
+          // du préfixe userId actif). Pas de clé BYOK → 'server-provided'
+          // (même posture que Google sans BYOK, BUG 25). Identifiant namespacé
+          // `emailtrial:` pour ne JAMAIS collisionner avec le compte local
+          // email+password ni le compte Google du même email.
+          await auth.login('email', {
+            displayName: email,
+            email,
+            anthropicKey: 'server-provided',
+            identifier: `emailtrial:${email}`,
+          })
+          setTrialToken(token)
+          initEmailTrialSplash(30)
+          markOnboardingChoiceDone()
+          setChoiceDone(true)
+          setSplash(getOnboardingSplash())
+        }}
+      />
+    )
+  }
+
+  return (
+    <LoginScreen
+      onLogin={auth.login}
+      knownSessions={auth.knownSessions}
+      onSwitchAccount={auth.switchAccount}
+    />
   )
 }
 

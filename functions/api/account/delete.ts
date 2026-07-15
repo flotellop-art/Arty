@@ -51,7 +51,8 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
       `SELECT name FROM sqlite_master
        WHERE type = 'table' AND name IN (
          'memory', 'shared_conversations', 'content_reports',
-         'email_otp', 'email_trial_sessions', 'email_trial_usage'
+         'email_otp', 'email_trial_sessions', 'email_trial_usage',
+         'acquisition'
        )`
     ).all<{ name: string }>()
     const present = new Set((existing.results ?? []).map((row) => row.name))
@@ -64,6 +65,9 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
 
     add('email_otp', 'DELETE FROM email_otp WHERE email = ?1', email)
     add('email_trial_sessions', 'DELETE FROM email_trial_sessions WHERE email = ?1', email)
+    // Attribution pubs (trial/init.ts) — donnée personnelle (email + campagne
+    // d'origine), effacée avec le compte.
+    add('acquisition', 'DELETE FROM acquisition WHERE email = ?1', email)
     // Proxy content is recorded under a disjoint trial identity even though
     // authentication/session tables use the normalized raw email. Usage and
     // quota rows are retained as anti-abuse/accounting records.
