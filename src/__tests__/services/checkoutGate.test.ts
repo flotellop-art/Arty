@@ -19,7 +19,7 @@ describe('checkout — gating natif (Play Store)', () => {
     const { openCheckout } = await import('../../services/checkout')
     const openSpy = vi.spyOn(window, 'open').mockReturnValue(null)
     const onReturn = vi.fn()
-    await openCheckout('subscription', 'user@example.com', { onReturn })
+    await expect(openCheckout('subscription', { onReturn })).resolves.toBe(false)
     expect(openSpy).not.toHaveBeenCalled()
     expect(onReturn).not.toHaveBeenCalled()
     openSpy.mockRestore()

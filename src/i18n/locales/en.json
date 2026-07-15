@@ -839,6 +839,7 @@
     "statusPendingBody": "Confirmation can take a minute. Check back in a moment.",
     "errorNoToken": "Sign in with Google to check your subscription.",
     "errorNoEmail": "No email found. Sign in with Google first.",
+    "checkoutError": "Couldn't start the secure checkout. Sign in with Google and try again.",
     "currentPlan": "Current plan",
     "byokPrice": "Free",
     "proPrice": "€39 one-time · VAT incl.",
