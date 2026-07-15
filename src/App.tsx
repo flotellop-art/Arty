@@ -40,6 +40,7 @@ import {
   initEmailTrialSplash,
 } from './services/trialClient'
 import { setTrialToken } from './services/emailTrialClient'
+import { hasStartParam } from './services/acquisition'
 import { canPurchase } from './services/checkout'
 import { ProfileSetupModal } from './components/onboarding/ProfileSetupModal'
 import { getUserProfile } from './services/userProfile'
@@ -1047,7 +1048,12 @@ function LoggedOutHome({
   setSplash: (splash: ReturnType<typeof getOnboardingSplash>) => void
 }) {
   const navigate = useNavigate()
-  const [entered, setEntered] = useState(false)
+  // `?start=1` : entrée directe dans l'onboarding — les LPs pubs Meta
+  // (public/lp/*) y pointent leur CTA pour tenir le message match sans
+  // repasser par la landing générique. Cas limite assumé : si l'onboarding
+  // a déjà été fait sur cet appareil (choiceDone=true, déconnecté), le
+  // param est un no-op → LoginScreen (l'utilisateur connaît déjà le produit).
+  const [entered, setEntered] = useState(() => hasStartParam(window.location.search))
 
   if (!choiceDone) {
     const showLanding =

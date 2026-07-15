@@ -1,4 +1,7 @@
-const CACHE_NAME = 'arty-cache-v52'
+// ⚠️ Bumper à CHAQUE déploiement qui touche un fichier statique non hashé
+// servi en cache-first (lp.js, manifest.json, favicon.svg) — sinon les
+// visiteurs qui l'ont en cache ne verront jamais la nouvelle version.
+const CACHE_NAME = 'arty-cache-v53'
 
 // ─── Push Notifications (Web Push API) ───
 self.addEventListener('push', (event) => {
@@ -109,8 +112,12 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       fetch(request)
         .then((response) => {
-          const clone = response.clone()
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone))
+          // Ne jamais mettre en cache une erreur (404 typo d'URL de pub,
+          // 5xx transitoire) — même garde que la branche assets ci-dessous.
+          if (response.ok) {
+            const clone = response.clone()
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, clone))
+          }
           return response
         })
         .catch(() => caches.match('/') || new Response('Offline', { status: 503 }))

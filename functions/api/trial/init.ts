@@ -60,6 +60,84 @@ async function verifyTokenViaTokeninfo(token: string, expectedAud: string | unde
   }
 }
 
+// ─── Attribution first-party pubs (LP Meta, sans pixel) ────────────────────
+// Le client (trialClient.ts) attache un JSON `acquisition` optionnel au body :
+// utm_* / fbclid / lp capturés par les LPs statiques public/lp/* ou par la SPA.
+// Stockage first-touch (INSERT OR IGNORE, une ligne par email) pour mesurer le
+// coût par inscription par campagne. Best-effort intégral : aucun échec ici ne
+// doit bloquer l'init du trial.
+
+const ACQUISITION_FIELDS = [
+  'utm_source',
+  'utm_medium',
+  'utm_campaign',
+  'utm_content',
+  'utm_term',
+  'fbclid',
+  'lp',
+] as const
+
+async function readAcquisitionFromBody(
+  request: Request
+): Promise<Record<string, string> | null> {
+  try {
+    const body = (await request.json()) as { acquisition?: Record<string, unknown> } | null
+    const acq = body?.acquisition
+    if (!acq || typeof acq !== 'object') return null
+    const out: Record<string, string> = {}
+    for (const field of ACQUISITION_FIELDS) {
+      const value = (acq as Record<string, unknown>)[field]
+      if (typeof value === 'string' && value) {
+        // Même allowlist de caractères que le client (défense en profondeur —
+        // le body reste modifiable par n'importe quel appelant authentifié).
+        const clean = value.slice(0, 120).replace(/[^\w.\-~:/%+ ]/g, '')
+        if (clean) out[field] = clean
+      }
+    }
+    return Object.keys(out).length > 0 ? out : null
+  } catch {
+    return null // body absent ou non-JSON — appelants historiques sans body
+  }
+}
+
+async function storeAcquisition(
+  env: Env,
+  email: string,
+  acq: Record<string, string>
+): Promise<void> {
+  if (!env.DB) return
+  try {
+    await env.DB.prepare(
+      `CREATE TABLE IF NOT EXISTS acquisition (
+         email TEXT PRIMARY KEY,
+         utm_source TEXT, utm_medium TEXT, utm_campaign TEXT,
+         utm_content TEXT, utm_term TEXT, fbclid TEXT, lp TEXT,
+         created_at TEXT NOT NULL DEFAULT (datetime('now'))
+       )`
+    ).run()
+    // First-touch : une attribution déjà posée pour cet email n'est JAMAIS
+    // écrasée (OR IGNORE sur la clé primaire email).
+    await env.DB.prepare(
+      `INSERT OR IGNORE INTO acquisition
+         (email, utm_source, utm_medium, utm_campaign, utm_content, utm_term, fbclid, lp)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)`
+    )
+      .bind(
+        email,
+        acq.utm_source ?? null,
+        acq.utm_medium ?? null,
+        acq.utm_campaign ?? null,
+        acq.utm_content ?? null,
+        acq.utm_term ?? null,
+        acq.fbclid ?? null,
+        acq.lp ?? null
+      )
+      .run()
+  } catch (err) {
+    console.error('[trial/init] acquisition store failed', err)
+  }
+}
+
 async function readTrialRemaining(env: Env, email: string): Promise<number> {
   if (!env.DB) return TRIAL_INITIAL_BUDGET
   try {
@@ -119,6 +197,13 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
 
   if (!env.DB) {
     return Response.json({ error: 'database_unavailable' }, { status: 503 })
+  }
+
+  // Attribution pub éventuelle — après vérification du token (l'email est
+  // prouvé), hors chemin VIP (beta testeurs ≠ trafic payant), best-effort.
+  const acquisition = await readAcquisitionFromBody(request)
+  if (acquisition) {
+    await storeAcquisition(env, email, acquisition)
   }
 
   // Ligne subscription existante ?

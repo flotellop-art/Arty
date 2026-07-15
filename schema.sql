@@ -229,3 +229,15 @@ CREATE TABLE IF NOT EXISTS content_reports (
   eu_only INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL DEFAULT (unixepoch())
 );
+
+-- Attribution first-party des campagnes payantes (functions/api/trial/init.ts).
+-- First-touch : une ligne par email (INSERT OR IGNORE), écrite au premier
+-- /api/trial/init portant un body `acquisition` (LPs pubs Meta public/lp/*,
+-- sans pixel — utm_* capturés en localStorage puis envoyés au sign-in).
+-- Purgée par /api/account/delete (RGPD).
+CREATE TABLE IF NOT EXISTS acquisition (
+  email TEXT PRIMARY KEY,
+  utm_source TEXT, utm_medium TEXT, utm_campaign TEXT,
+  utm_content TEXT, utm_term TEXT, fbclid TEXT, lp TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);

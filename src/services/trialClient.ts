@@ -21,6 +21,7 @@
 import { apiUrl } from './apiBase'
 import * as scoped from './scopedStorage'
 import { getActiveUserId } from './userSession'
+import { consumeAcquisition, getAcquisition } from './acquisition'
 
 const SPLASH_KEY = 'arty-trial-onboarding-splash'
 const SPLASH_SHOWN_KEY = 'arty-trial-onboarding-splash-shown'
@@ -81,14 +82,20 @@ export type SplashState = 'vip' | 'trial' | null
 export async function initTrial(accessToken: string): Promise<TrialInitResponse | null> {
   if (!accessToken) return null
   try {
+    // Attribution first-party pubs (voir services/acquisition.ts) : attachée
+    // au corps si présente, consommée UNIQUEMENT après un aller-retour serveur
+    // réussi. Best-effort intégral — ne doit jamais gêner le sign-in.
+    const acquisition = getAcquisition()
     const res = await fetch(apiUrl('/api/trial/init'), {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${accessToken}`,
         'Content-Type': 'application/json',
       },
+      body: JSON.stringify(acquisition ? { acquisition } : {}),
     })
     if (!res.ok) return null
+    if (acquisition) consumeAcquisition()
     const data = (await res.json()) as TrialInitResponse
 
     // Le splash post-login (VIP welcome, trial intro) ne doit s'afficher

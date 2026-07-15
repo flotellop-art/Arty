@@ -836,6 +836,25 @@ La maintenance des triggers est un **work-in-progress permanent**, pas un final 
 **Problème** : la page « 💸 Mes coûts » lisait `cost_history` depuis localStorage uniquement. Le tracker local manquait régulièrement des appels (multi-device, switch de tab pendant un stream, event `cost-updated` raté à cause d'un crash JS, BYOK switch). Divergence visible : l'utilisateur voyait `0,26€` (sonnet uniquement) côté local pendant que le serveur D1 totalisait `$1.2578` tous modèles. Inacceptable pour un dashboard financier.
 **Règle** : tout dashboard d'**usage facturable** (coûts API, quotas, tokens) DOIT lire le **serveur comme source primaire** (table `quota_model` agrégée par jour ET par modèle), avec fallback local pour BYOK pur ou hors-ligne. Pour étendre `getMonthlyQuotaStatus` à de nouveaux dashboards : ajouter les agrégats nécessaires (`byDay`, `byHour`, etc.) dans la même fonction et forwarder via `/api/ai/quota/month`. Ne JAMAIS faire confiance au localStorage seul pour des montants comparés à une facture officielle — l'écart finira par devenir visible et casser la confiance de l'utilisateur.
 
+### BUG 62 — Scripts inline silencieusement bloqués par la CSP (SW jamais enregistré en prod)
+**Fichiers** : `index.html`, `public/sw-register.js`, `public/_headers`
+**Problème** : le bloc `<script>` inline de `index.html` (enregistrement du
+Service Worker + purge preview) était bloqué par la CSP `script-src 'self'`
+(pas de `unsafe-inline`, pas de nonce) → le SW ne s'est JAMAIS enregistré en
+prod ; la promesse PWA/offline (BUG 45 « le SW reste actif sur la PWA web »)
+était morte en silence. Le fix (`public/sw-register.js`) existait dans le
+repo — avec un commentaire expliquant précisément ce problème — mais n'était
+référencé par AUCUN HTML. Découvert le 15 juillet 2026 pendant l'audit des
+landing pages pubs Meta.
+**Règle** : avec `script-src 'self'`, TOUT script doit être un fichier externe
+self-hosted (`<script src="...">`). Ne JAMAIS ajouter de `<script>` inline
+dans `index.html` ni dans une page statique `public/*` — il échoue SANS
+erreur au build ni au déploiement, seulement une ligne console CSP au runtime.
+Après tout ajout de script, vérifier en navigateur réel que le code s'exécute.
+Garde CI : `lpPages.test.ts` interdit les scripts inline sous `public/lp/`.
+Corollaire : quand on externalise un fix, vérifier qu'il est RÉFÉRENCÉ —
+un fichier orphelin donne l'illusion que le problème est réglé.
+
 ### BUG 61 — Écran vide permanent dès qu'on essaie de discuter (cacheReady bloqué + ChatRoute null)
 **Fichiers** : `src/services/storage.ts`, `src/hooks/useConversation.ts`, `src/App.tsx` (ChatRoute), `src/components/home/HomeScreen.tsx` (juillet 2026)
 **Problème** : remonté en live par Florent le 5 juillet (capture APK : écran crème totalement vide dès l'ouverture d'une discussion). Chaîne de 3 bugs :
