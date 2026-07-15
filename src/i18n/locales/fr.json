@@ -826,6 +826,112 @@
     "shareText": "Coûts Arty — {{monthKey}}",
     "shareDialogTitle": "Partager le CSV"
   },
+  "landing": {
+    "nav": {
+      "login": "Se connecter",
+      "cta": "Essayer gratuitement"
+    },
+    "hero": {
+      "kicker": "Claude · GPT-5 · Gemini · Mistral",
+      "titleMain": "Les meilleures IA.",
+      "titleAccent": "Une seule app.",
+      "lede": "Arty réunit Claude, GPT-5, Gemini et Mistral dans un assistant personnel, avec ton agenda Google et le contenu que tu choisis de lui confier.",
+      "cta": "Essayer gratuitement",
+      "ctaNote": "30 messages offerts · sans carte bancaire",
+      "secondary": "Voir les tarifs"
+    },
+    "problem": {
+      "kicker": "Le problème",
+      "title": "Combien te coûtent tes abonnements IA ?",
+      "p1": "ChatGPT Plus, Claude Pro, Gemini… les cumuler coûte 60 à 80 € par mois, pour des limites opaques et trois interfaces qui ne se parlent pas.",
+      "p2": "Arty les remplace par un seul assistant : tu choisis le modèle selon la tâche, tu vois tes limites en clair, et tu paies un prix final connu d'avance."
+    },
+    "features": {
+      "kicker": "Ce qu'Arty fait",
+      "title": "Un assistant, pas un catalogue.",
+      "models": {
+        "title": "Le bon modèle pour chaque tâche",
+        "text": "Claude pour rédiger, Gemini pour chercher, Mistral pour le confidentiel : Arty route ta demande vers le modèle adapté — ou tu choisis toi-même."
+      },
+      "calendar": {
+        "title": "Ton agenda connecté",
+        "text": "Connecte ton agenda Google : « Planifie un point demain 14h » crée l'événement. Consulter, créer, déplacer — en langage naturel."
+      },
+      "files": {
+        "title": "Tes documents, à ta demande",
+        "text": "Colle, joins ou partage un PDF, une image, un texte : Arty les lit nativement. Rien n'est aspiré en arrière-plan — tu choisis ce que tu confies."
+      },
+      "voice": {
+        "title": "À la voix comme au clavier",
+        "text": "Dicte tes messages et écoute les réponses. Pratique en déplacement, sur mobile comme sur le web."
+      }
+    },
+    "trust": {
+      "kicker": "Confiance",
+      "title": "Des règles écrites en clair.",
+      "limits": {
+        "title": "Limites lisibles",
+        "text": "Tes quotas sont affichés en messages, avec des compteurs visibles dans l'app — pas en « crédits » ni en « points »."
+      },
+      "noSwitch": {
+        "title": "Jamais de bascule silencieuse",
+        "text": "Quota atteint ? Arty te le dit et te laisse choisir — il ne te rétrograde jamais vers un modèle moins bon sans te prévenir."
+      },
+      "privacy": {
+        "title": "Tes données chez toi",
+        "text": "Conversations chiffrées sur ton appareil (AES-256). Et pour le sensible, un mode confidentiel 100 % européen (Mistral, serveurs en France), activable conversation par conversation."
+      },
+      "byok": {
+        "title": "Ta clé si tu préfères",
+        "text": "Tu peux brancher ta propre clé API (Anthropic, OpenAI, Google, Mistral) et payer au prix coûtant. Tes coûts sont suivis modèle par modèle."
+      }
+    },
+    "pricing": {
+      "kicker": "Tarifs",
+      "title": "Trois façons d'utiliser Arty.",
+      "trialCallout": "🎁 Commence par l'essai gratuit : 30 messages offerts, sans carte bancaire.",
+      "byokName": "Gratuit (BYOK)",
+      "byokPrice": "0 €",
+      "byokDesc": "Ta propre clé API · Tous les modèles · Stockage local chiffré",
+      "subName": "Abonnement",
+      "subPrice": "9,99 €/mois · TTC",
+      "subDesc": "Sans clé API · 150 Claude Sonnet/Opus + 100 GPT-5 + 80 Gemini Pro par mois · Haiku, Flash et Mistral sans plafond mensuel",
+      "subReassurance": "✓ Annulation en 1 clic, à tout moment — pause possible. Sans engagement.",
+      "subBadge": "Le plus populaire",
+      "proName": "Pro",
+      "proPrice": "39 € une fois · TTC",
+      "proDesc": "Paiement unique, app à vie · Tu utilises ta propre clé API (BYOK) · Templates métier · Support prioritaire",
+      "cardCta": "Commencer",
+      "extras": "Besoin de plus ? Pack +100 messages premium à 1,99 € TTC, ou crédits prépayés (10 € = 1 000 crédits) qui n'expirent jamais.",
+      "transparency": "Nos limites sont écrites en clair, en messages — pas en « crédits » ni en « points ». Le prix affiché est le prix final, TVA comprise. Une limite journalière anti-abus s'applique à tous les plans."
+    },
+    "faq": {
+      "kicker": "FAQ",
+      "title": "Questions fréquentes",
+      "q1": "Quels modèles sont inclus ?",
+      "a1": "Avec l'abonnement : 150 messages Claude Sonnet/Opus, 100 GPT-5 et 80 Gemini Pro par mois, plus Haiku, Flash et Mistral sans plafond mensuel. L'essai gratuit (30 messages) utilise les modèles de base (Haiku, Flash, Mistral Medium).",
+      "q2": "Puis-je utiliser ma propre clé API ?",
+      "a2": "Oui. Le mode BYOK est gratuit côté Arty : tu branches ta clé Anthropic, OpenAI, Google ou Mistral, tu accèdes à tous les modèles et tu paies ton fournisseur au prix coûtant. Ta clé est chiffrée localement, elle ne quitte jamais ton appareil en clair.",
+      "q3": "Quelle différence entre l'Abonnement et Pro ?",
+      "a3": "L'Abonnement (9,99 €/mois TTC) fonctionne sans clé API : Arty fournit l'accès aux modèles, avec des quotas écrits en clair. Pro (39 € une fois) est une licence à vie de l'app où tu utilises ta propre clé API — l'accès aux modèles passe par ta clé, pas par les serveurs d'Arty.",
+      "q4": "Que se passe-t-il quand j'atteins mon quota ?",
+      "a4": "Rien en silence : Arty te prévient et te laisse choisir — ajouter un pack de 100 messages premium (1,99 €), continuer sur les modèles sans plafond mensuel, ou attendre le mois suivant.",
+      "q5": "Où vont mes données ?",
+      "a5": "Tes conversations sont chiffrées sur ton appareil (AES-256). Claude, GPT-5 et Gemini traitent les requêtes aux États-Unis (encadré par les clauses contractuelles types et l'EU-US DPF) ; pour le sensible, le mode confidentiel route tout vers Mistral, sur des serveurs en France.",
+      "q6": "Est-ce qu'Arty remplace ChatGPT Plus ou Claude Pro ?",
+      "a6": "Arty est un assistant personnel qui réunit plusieurs IA dans une seule app, avec ton agenda et tes contenus. Si tu cumules plusieurs abonnements aujourd'hui, un seul peut suffire — et si un modèle est plus fort sur ta tâche, tu changes en un geste, sans perdre le fil.",
+      "q7": "Qui est derrière Arty ?",
+      "a7": "Florent Pollet, solo founder, en France. Tu écris au support, c'est lui qui répond."
+    },
+    "finalCta": {
+      "title": "Essaie Arty maintenant."
+    },
+    "footer": {
+      "madeIn": "Construit en France par Florent Pollet, solo founder.",
+      "privacy": "Confidentialité",
+      "login": "Se connecter"
+    }
+  },
   "upgrade": {
     "back": "Retour",
     "headerTitle": "Mise à niveau",

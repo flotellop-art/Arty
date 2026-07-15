@@ -6,73 +6,25 @@
     <meta name="theme-color" content="#FAF3E7" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-    <meta name="description" content="Arty — Assistant IA personnel" />
+    <meta name="description" content="Arty réunit Claude, GPT-5, Gemini et Mistral dans un assistant personnel, avec ton agenda Google. Essai gratuit : 30 messages, sans carte bancaire. Limites écrites en clair, prix TTC." />
     <link rel="manifest" href="/manifest.json" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..700&family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&family=Lora:wght@400;600;700&display=swap" rel="stylesheet" />
-    <title>Arty</title>
+    <title>Arty — Les meilleures IA. Une seule app.</title>
     <link rel="canonical" href="https://tryarty.com/" />
-    <link rel="canonical" href="https://tryarty.com/" />
+    <meta property="og:title" content="Arty — Les meilleures IA. Une seule app." />
+    <meta property="og:description" content="Claude, GPT-5, Gemini et Mistral dans un assistant personnel, avec ton agenda Google. Essai gratuit : 30 messages, sans carte bancaire." />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://tryarty.com/" />
+    <meta property="og:image" content="https://tryarty.com/icons/icon-512x512.png" />
+    <meta name="twitter:card" content="summary" />
   </head>
   <body>
-    <!-- Pre-launch waitlist banner.
-         Affiche uniquement en mode web (pas Capacitor native), au-dessus de l'app preview.
-         Permet aux visiteurs de tryarty.com de rejoindre la waitlist depuis l'app preview.
-         Sera retire au lancement public juillet 2026. -->
-    <style>
-      #arty-prelaunch-banner {
-        position: fixed;
-        top: 0; left: 0; right: 0;
-        z-index: 9999;
-        background: #0D0D0D;
-        color: #FAF3E7;
-        padding: calc(10px + env(safe-area-inset-top, 0px)) 48px 10px 16px;
-        text-align: center;
-        font-family: 'Inter', system-ui, -apple-system, sans-serif;
-        font-size: 14px;
-        line-height: 1.4;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-        display: none;
-      }
-      #arty-prelaunch-banner a {
-        color: #C85A28;
-        font-weight: 600;
-        text-decoration: none;
-        margin-left: 6px;
-        white-space: nowrap;
-      }
-      #arty-prelaunch-banner a:hover { text-decoration: underline; }
-      #arty-prelaunch-banner-close {
-        position: absolute;
-        right: 10px;
-        top: calc(50% + env(safe-area-inset-top, 0px) / 2);
-        transform: translateY(-50%);
-        background: none;
-        border: none;
-        color: #FAF3E7;
-        font-size: 22px;
-        line-height: 1;
-        cursor: pointer;
-        padding: 4px 8px;
-        opacity: 0.6;
-      }
-      #arty-prelaunch-banner-close:hover { opacity: 1; }
-      body.arty-banner-visible #root {
-        padding-top: calc(44px + env(safe-area-inset-top, 0px));
-      }
-    </style>
-    <div id="arty-prelaunch-banner" role="region" aria-label="Annonce pre-launch Arty">
-      Arty arrive en juillet.
-      <a href="/waitlist">Rejoindre la waitlist →</a>
-      <button id="arty-prelaunch-banner-close" aria-label="Fermer">×</button>
-    </div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
-    <!-- Bandeau pre-launch : script externe (CSP refuse inline). -->
-    <script src="/arty-banner.js"></script>
     <script>
       // Skip SW registration on Capacitor native — the SW persists across APK
       // updates and serves stale JS/CSS, forcing users to clear app data.
