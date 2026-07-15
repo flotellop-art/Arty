@@ -259,9 +259,18 @@ export function LandingScreen({ onStart, onLogin }: LandingScreenProps) {
       <footer className="border-t border-theme-border">
         <div className="mx-auto flex max-w-5xl flex-col items-center gap-3 px-6 py-8 text-center text-xs text-theme-muted sm:flex-row sm:justify-between sm:text-left">
           <p>{t('landing.footer.madeIn')}</p>
-          <nav className="flex items-center gap-4">
+          <nav className="flex flex-wrap items-center justify-center gap-4">
             <a href="/privacy/" className="underline underline-offset-4 hover:text-theme-ink">
               {t('landing.footer.privacy')}
+            </a>
+            <a href="/terms/" className="underline underline-offset-4 hover:text-theme-ink">
+              {t('landing.footer.terms')}
+            </a>
+            <a href="/legal-notice/" className="underline underline-offset-4 hover:text-theme-ink">
+              {t('landing.footer.legalNotice')}
+            </a>
+            <a href="mailto:support@tryarty.com" className="underline underline-offset-4 hover:text-theme-ink">
+              {t('landing.footer.support')}
             </a>
             <button
               type="button"
