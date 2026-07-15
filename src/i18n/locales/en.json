@@ -929,6 +929,9 @@
     "footer": {
       "madeIn": "Built in France by Florent Pollet, solo founder.",
       "privacy": "Privacy",
+      "terms": "Terms",
+      "legalNotice": "Legal notice",
+      "support": "Support",
       "login": "Sign in"
     }
   },
@@ -938,7 +941,11 @@
     "heroMain": "Choose your",
     "heroAccent": "plan.",
     "heroSubtitle": "No commitment. You can change later.",
-    "legal": "Secure payment via Lemon Squeezy. VAT included.",
+    "legal": "Secure payment through the merchant shown at checkout. VAT included.",
+    "legalTerms": "Terms",
+    "legalPrivacy": "Privacy",
+    "legalNotice": "Legal notice",
+    "support": "support@tryarty.com",
     "statusChecking": "Checking your subscription…",
     "statusActive": "✓ Subscription activated!",
     "statusPendingTitle": "Pending",

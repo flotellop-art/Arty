@@ -289,7 +289,19 @@ export function UpgradeScreen({ onBack, currentPlan: currentPlanProp, email }: U
           </p>
         )}
         <p className="font-display italic text-[11px] text-theme-muted text-center pt-1">
-          {t('upgrade.legal')}
+          {t('upgrade.legal')} ·{' '}
+          <a className="underline underline-offset-2 hover:text-theme-ink" href="/terms/">
+            {t('upgrade.legalTerms')}
+          </a>{' '}·{' '}
+          <a className="underline underline-offset-2 hover:text-theme-ink" href="/privacy/">
+            {t('upgrade.legalPrivacy')}
+          </a>{' '}·{' '}
+          <a className="underline underline-offset-2 hover:text-theme-ink" href="/legal-notice/">
+            {t('upgrade.legalNotice')}
+          </a>{' '}·{' '}
+          <a className="underline underline-offset-2 hover:text-theme-ink" href="mailto:support@tryarty.com">
+            {t('upgrade.support')}
+          </a>
         </p>
       </div>
     </div>

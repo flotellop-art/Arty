@@ -929,6 +929,9 @@
     "footer": {
       "madeIn": "Construit en France par Florent Pollet, solo founder.",
       "privacy": "Confidentialité",
+      "terms": "Conditions",
+      "legalNotice": "Mentions légales",
+      "support": "Support",
       "login": "Se connecter"
     }
   },
@@ -938,7 +941,11 @@
     "heroMain": "Choisis ta",
     "heroAccent": "formule.",
     "heroSubtitle": "Pas d'engagement. Tu peux changer plus tard.",
-    "legal": "Paiement sécurisé via Lemon Squeezy. TVA incluse.",
+    "legal": "Paiement sécurisé via le vendeur affiché au moment de la commande. TVA incluse.",
+    "legalTerms": "Conditions",
+    "legalPrivacy": "Confidentialité",
+    "legalNotice": "Mentions légales",
+    "support": "support@tryarty.com",
     "statusChecking": "Vérification de ton abonnement…",
     "statusActive": "✓ Abonnement activé !",
     "statusPendingTitle": "En attente",
