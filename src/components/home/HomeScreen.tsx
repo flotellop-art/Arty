@@ -238,9 +238,15 @@ function HomeScreenInner({ onMenuToggle, onSend, isStreaming, onStop, googleAuth
             <ul className="border-t border-theme-ink mt-1.5 pt-3 flex flex-col gap-2.5">
               {intents.map((intent) => (
                 <li key={intent}>
+                  {/* disabled={isStreaming} : même garde que le bouton
+                      Découvrir. Sans elle, un double-tap envoyait deux fois
+                      l'intention — deux conversations distinctes créées
+                      (activeId est null sur la Home, chaque envoi passe par
+                      createConversation). */}
                   <button
                     onClick={() => onSend(intent)}
-                    className="block w-full text-left font-display italic text-[13px] leading-[1.25] text-theme-ink border-l-2 border-theme-accent pl-2 py-0.5 hover:bg-theme-accent/5 transition-colors"
+                    disabled={isStreaming}
+                    className="block w-full text-left font-display italic text-[13px] leading-[1.25] text-theme-ink border-l-2 border-theme-accent pl-2 py-0.5 hover:bg-theme-accent/5 transition-colors disabled:opacity-50 disabled:hover:bg-transparent"
                   >
                     « {intent} »
                   </button>

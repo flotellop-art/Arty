@@ -18,9 +18,13 @@ interface Props {
   onSend: (text: string) => void
   userName?: string
   isGoogleConnected: boolean
+  // Même garde que les boutons d'intentions de HomeScreen (14 juillet 2026) :
+  // sans elle, une action rapide tapée pendant un stream en cours créait une
+  // conversation concurrente sans blocage.
+  isStreaming?: boolean
 }
 
-function MorningBriefInner({ onClose, onSend, userName, isGoogleConnected }: Props) {
+function MorningBriefInner({ onClose, onSend, userName, isGoogleConnected, isStreaming }: Props) {
   const { t } = useTranslation()
   const [events, setEvents] = useState<CalendarEvent[]>([])
   const [loading, setLoading] = useState(true)
@@ -181,7 +185,13 @@ function MorningBriefInner({ onClose, onSend, userName, isGoogleConnected }: Pro
     weekday: 'long', day: 'numeric', month: 'long',
   })
 
+  // One-shot : la modale se ferme au premier tap, mais un double-tap rapide
+  // peut faire fire les deux handlers avant le re-render/unmount — le ref
+  // borne à UN envoi par vie de modale, quel que soit le timing.
+  const sentRef = useRef(false)
   const handleQuickAction = (text: string) => {
+    if (isStreaming || sentRef.current) return
+    sentRef.current = true
     stopAudio()
     onClose()
     setTimeout(() => onSend(text), 150)

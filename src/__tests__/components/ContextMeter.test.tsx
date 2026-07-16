@@ -4,6 +4,10 @@ import type { Message } from '../../types'
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
+  // aiHttp (transitif via conversationCompressor) importe ../i18n, dont
+  // l'init appelle .use(initReactI18next) au module-load — le shim standard
+  // suffit pour un mock partiel.
+  initReactI18next: { type: '3rdParty', init: () => {} },
 }))
 // conversationCompressor importe apiBase (@capacitor/core) au transitif.
 vi.mock('../../services/apiBase', () => ({ apiUrl: (p: string) => p }))

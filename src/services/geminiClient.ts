@@ -1,6 +1,6 @@
 import { getGeminiKey } from './activeApiKey'
 import { apiUrl } from './apiBase'
-import { buildAiHeaders, fetchWithTimeout } from './aiHttp'
+import { buildAiHeaders, fetchWithTimeout, readWithInactivityTimeout } from './aiHttp'
 import { buildLocationContext } from './locationContext'
 import { recordUsage } from './costTracker'
 import { dispatchModelUsed } from './modelLabels'
@@ -326,8 +326,12 @@ async function runGeminiStream(
     let promptTokens = 0
     let candidatesTokens = 0
     try {
+      // Gemini n'a pas de sentinelle terminale ([DONE]/message_stop) : la fin
+      // du flux EST la fermeture de connexion. Le watchdog d'inactivité
+      // (aiHttp, durcissement 14 juillet 2026) est donc la seule protection
+      // contre une connexion mobile half-open qui ne se ferme jamais.
       while (true) {
-        const { done, value } = await reader.read()
+        const { done, value } = await readWithInactivityTimeout(reader)
         if (done) break
 
         buffer += decoder.decode(value, { stream: true })
@@ -358,7 +362,10 @@ async function runGeminiStream(
         }
       }
     } finally {
-      try { reader.releaseLock() } catch { /* already released */ }
+      // cancel() (et pas releaseLock() seul) : après un timeout du watchdog,
+      // le read() d'origine reste pendant — cancel le résout et libère la
+      // socket. No-op inoffensif sur une fin naturelle par `done`.
+      try { await reader.cancel() } catch { /* stream déjà terminé ou aborté */ }
     }
 
     try {
@@ -369,9 +376,20 @@ async function runGeminiStream(
 
     onDone()
   } catch (err) {
-    if (err instanceof Error && err.name !== 'AbortError') {
-      onError(err)
+    // AbortError = deux origines à distinguer (revue Opus, 14 juillet 2026) :
+    //  - Stop utilisateur (controller.signal aborté) : stopStreaming a déjà
+    //    finalisé et démonté le stream → silence.
+    //  - Timeout TTFB interne de fetchWithTimeout (signal externe INTACT) :
+    //    l'avaler laissait le stream fantôme — spinner éternel, dernière
+    //    variante du bug ciblé. On surface une erreur propre.
+    // TOUT le reste doit atteindre onError — un throw non-Error avalé
+    // laisserait aussi le stream fantôme (durcissement runWithTools).
+    if (err instanceof Error && err.name === 'AbortError') {
+      if (controller.signal.aborted) return
+      onError(new Error(i18n.t('errors.streamStalled')))
+      return
     }
+    onError(err instanceof Error ? err : new Error(String(err)))
   }
 }
 
