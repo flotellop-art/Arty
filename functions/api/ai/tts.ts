@@ -5,6 +5,7 @@ import {
   verifyGoogleUserStrict,
 } from '../_lib/checkAllowedUser'
 import { consumeTtsFreeQuota, TTS_FREE_DAILY_LIMIT } from '../_lib/freeQuota'
+import { recordUsage } from '../_lib/quota'
 
 // Proxy TTS (text-to-speech) pour le brief vocal matinal. Calqué sur
 // whisper-proxy.ts. La clé OpenAI reste côté serveur (RÈGLE 1) ; un token
@@ -23,7 +24,7 @@ const TTS_MODEL = 'tts-1' // modèle stable et bon marché (~15 $/1M chars)
 const MAX_TEXT_CHARS = 4096 // limite OpenAI TTS par requête
 const ALLOWED_VOICES = ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer'] as const
 
-export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
+export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUntil }) => {
   // Anti-relais anonyme : un token Google valide est obligatoire (CRIT-4).
   const email = await verifyGoogleUserStrict(request, env.GOOGLE_CLIENT_ID)
   if (!email) {
@@ -119,6 +120,26 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
         return Response.json({ error: 'Voice service error' }, { status })
       }
       return Response.json({ error: `TTS upstream ${upstream.status}: ${errText}` }, { status })
+    }
+
+    // Traçage coût D1 (C9, esprit BUG 60) : avant juillet 2026, le TTS ne
+    // laissait AUCUNE ligne en D1 — angle mort total du dashboard coûts.
+    // tts-1 facture le texte d'ENTRÉE ($15/1M chars → charPerUnit dans
+    // pricing.ts) ; text.length est connu côté serveur, aucune confiance
+    // client. Clé serveur uniquement (BYOK = dépense de l'utilisateur, hors
+    // dashboard owner — même convention que le reste du tracking D1).
+    // waitUntil : ne retarde pas le stream audio.
+    if (usingServerKey) {
+      waitUntil(
+        recordUsage(env, email, TTS_MODEL, {
+          inputTokens: 0,
+          outputTokens: 0,
+          cacheReadTokens: 0,
+          cacheCreationTokens: 0,
+          audioSeconds: 0,
+          chars: text.length,
+        })
+      )
     }
 
     // Succès : binaire audio relayé tel quel.

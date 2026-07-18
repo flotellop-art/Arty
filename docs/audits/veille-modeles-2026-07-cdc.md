@@ -359,7 +359,20 @@ Audit RÈGLE 6 au passage (endpoint touché). Taille S.
 
 ---
 
-## Décisions Florent en attente (récapitulatif)
+## Décisions Florent — TRANCHÉES le 18 juillet 2026 (session quick wins)
+
+- **D-A : GO après vérif D1.** Swap Terra validé sous réserve de vérifier
+  d'abord en D1 la part réelle du fallback `gpt-5` ; cap 100 inchangé ;
+  les 4 sous-chantiers pricing/labels/parité obligatoires.
+- **D-B : retirer Gemini Pro du comparateur maintenant** (dans la PR C1),
+  réintroduction à la GA de Gemini 3.5 Pro.
+- **D-C : statu quo trial jusqu'à la vigie C2 volet 1** — la vigie chiffrera
+  le coût d'un essai multi-provider avant d'ouvrir (ou de purger).
+- **D-D : ouvrir l'escalade Opus 4.8 aux abonnés** dans le bucket
+  Sonnet+Opus existant, sous-quota Opus à définir (cf. vigie éco 14/06) —
+  nouveau chantier C10 à spécifier.
+
+## Décisions Florent en attente (récapitulatif — historique pré-décision)
 
 | ID | Question | Bloque | Recommandation |
 |---|---|---|---|

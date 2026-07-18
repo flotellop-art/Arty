@@ -25,6 +25,11 @@ export const MODEL_COSTS: Record<string, { input: number; output: number }> = {
   'claude-opus-4-7':   { input: 5.00,  output: 25.00 },
   'claude-opus-4-8':   { input: 5.00,  output: 25.00 },
   'gpt-5.5':           { input: 5.00,  output: 30.00 },
+  // gpt-5.5-mini : JAMAIS routé aujourd'hui, mais l'entrée est OBLIGATOIRE —
+  // sans elle, normaliseModel le rabattait sur gpt-5-mini via la règle
+  // includes('mini') → coût local sous-estimé 2× vs le serveur ($0.5/$3,
+  // pricing.ts). Fix C6 (CDC veille 2026-07).
+  'gpt-5.5-mini':      { input: 0.50,  output: 3.00 },
   'gpt-5-mini':        { input: 0.25,  output: 2.00 },
   'gpt-5':             { input: 1.25,  output: 10.00 },
   // Défaut CHAT (gros volume) = gemini-2.5-flash, tarif GA réel $0.30/$2.50
@@ -78,6 +83,9 @@ const MODEL_ALIASES: Record<string, string> = {
   'mistral-small-4': 'mistral-small',
   'gemini-3.5-flash': 'gemini-flash-pro', // recherche hybride premium ($1.50/$9)
   'gemini-3.1-flash-lite': 'gemini-flash-lite-3.1',
+  // ⚠️ Alias MORTS (audit C6) — gemini-3-flash* (jamais sorti en GA) et
+  // gemini-pro-latest ne sont plus routés par aucun client ; conservés pour
+  // valoriser d'éventuels coûts historiques stockés sous ces IDs.
   'gemini-3-flash': 'gemini-flash-pro',
   'gemini-3-flash-preview': 'gemini-flash-pro',
   'gemini-2.5-flash-lite': 'gemini-flash-lite-2.5',
