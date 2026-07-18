@@ -21,10 +21,18 @@ export interface ModelPricing {
   /** USD per input character (TTS — tts-1 facture le texte d'entrée). */
   charPerUnit?: number
   /** USD par prompt groundé (Gemini Grounding with Google Search — C11).
-   * ⚠️ BORNE HAUTE THÉORIQUE : Google ne facture qu'au-delà du palier gratuit
-   * partagé (~5 000 prompts groundés/mois, famille 3.x au 18/07/2026) → le
-   * coût réel est souvent 0. Sert l'analytics owner (vigie C2) ; JAMAIS le
-   * débit wallet (chargeForUsageMicro exclut ce champ par construction). */
+   * ⚠️ TARIF DE RÉFÉRENCE pour une BORNE HAUTE THÉORIQUE, jamais un coût réel :
+   * Google ne facture qu'au-delà du palier gratuit partagé (~5 000 prompts
+   * groundés/mois, famille 3.x au 18/07/2026) → coût réel souvent 0.
+   * ⚠️ VOLONTAIREMENT ABSENT de computeCostMicroUsd (revue C11, 2 relecteurs) :
+   * le mélanger dans cost_usd_micro polluait TOUS les consommateurs aval —
+   * conseiller de facturation (biais vers l'abo : BYOK/crédits sur-estimés),
+   * dashboard Coûts + badge TopBar (coût gonflé sans explication, BUG 60), et
+   * divergence avec le ledger wallet (qui exclut le grounding). La borne haute
+   * se DÉRIVE à la demande : groundingUpperBoundMicroUsd(model, n) — la vigie
+   * fait SUM(grounded_prompts) × ce tarif. Nuance documentée : les prompts
+   * groundés Maps (SKU Google distinct) sont comptés dans le même volume et
+   * donc estimés au tarif Search — borne indicative, pas une facture. */
   groundingPerPrompt?: number
 }
 
@@ -162,7 +170,9 @@ export interface UsageTokens {
   chars?: number
   /** Prompts ayant déclenché le grounding Google Search (0 ou 1 par appel —
    * la facturation Google est PAR PROMPT groundé, pas par requête de
-   * recherche émise). Optionnel, défaut 0. C11. */
+   * recherche émise). Optionnel, défaut 0. C11. VOLUME uniquement : ce champ
+   * n'entre PAS dans computeCostMicroUsd (voir groundingPerPrompt) — il est
+   * persisté tel quel (colonne grounded_prompts) par recordUsage. */
   groundedPrompts?: number
 }
 
@@ -178,7 +188,21 @@ export function computeCostMicroUsd(model: string, usage: UsageTokens): number {
     (usage.cacheCreationTokens * (p.cacheCreation ?? 0)) / MTOK +
     usage.audioSeconds * (p.audioPerSec ?? 0) +
     (usage.images ?? 0) * (p.imagePerUnit ?? 0) +
-    (usage.chars ?? 0) * (p.charPerUnit ?? 0) +
-    (usage.groundedPrompts ?? 0) * (p.groundingPerPrompt ?? 0)
+    (usage.chars ?? 0) * (p.charPerUnit ?? 0)
+  // ⚠️ PAS de terme groundedPrompts ici — délibéré (revue C11), voir
+  // groundingPerPrompt : la borne haute grounding se dérive via
+  // groundingUpperBoundMicroUsd, jamais mélangée au coût facturable.
   return Math.round(cost * 1_000_000)
+}
+
+/**
+ * Borne haute théorique du coût de grounding (µ$) pour `n` prompts groundés —
+ * DÉRIVÉE à la demande depuis le volume (colonne D1 `grounded_prompts`),
+ * jamais persistée dans cost_usd_micro (revue C11, voir groundingPerPrompt).
+ * Usage vigie : SUM(grounded_prompts) par modèle × ce calcul.
+ */
+export function groundingUpperBoundMicroUsd(model: string, groundedPrompts: number): number {
+  const perPrompt = PRICING[model]?.groundingPerPrompt ?? 0
+  const n = Number.isFinite(groundedPrompts) && groundedPrompts > 0 ? groundedPrompts : 0
+  return Math.round(n * perPrompt * 1_000_000)
 }

@@ -1,15 +1,20 @@
 // C11 (CDC veille 2026-07) : traçage du grounding Gemini — le poste de coût
 // dominant du chemin Gemini ($14/1000 prompts groundés, famille 3.x) était
 // totalement invisible (aucun champ dans pricing/trackUsage/quota_model).
-// Design tranché : tracer le VOLUME (grounded_prompts D1) + le coût théorique
-// BORNE HAUTE dans cost_usd_micro ; la facturation réelle dépend du palier
-// gratuit Google partagé (~5 000/mois) donc le coût réel est souvent 0 — et le
-// wallet ne débite JAMAIS ce poste (test runtime ci-dessous).
+// Design tranché EN REVUE (2 relecteurs convergents) : persister le VOLUME
+// (colonne grounded_prompts) ; le coût borne haute est DÉRIVÉ à la demande
+// (groundingUpperBoundMicroUsd) et JAMAIS mélangé dans cost_usd_micro — le
+// mélange polluait le conseiller de facturation (biais vers l'abo), le
+// dashboard Coûts (coût gonflé sans explication, BUG 60) et divergeait du
+// ledger wallet. Facturation réelle souvent 0 (palier gratuit ~5 000/mois).
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { createGeminiParser } from '../../../functions/api/_lib/trackUsage'
-import { computeCostMicroUsd } from '../../../functions/api/_lib/pricing'
+import {
+  computeCostMicroUsd,
+  groundingUpperBoundMicroUsd,
+} from '../../../functions/api/_lib/pricing'
 import { chargeForUsageMicro } from '../../../functions/api/_lib/creditPricing'
 
 const ZERO = {
@@ -71,24 +76,31 @@ describe('createGeminiParser — détection du grounding (C11)', () => {
   })
 })
 
-describe('pricing grounding — borne haute $14/1000 (C11)', () => {
-  it('1 prompt groundé sur la famille 3.x = 14 000 µ$ (s’additionne aux tokens)', () => {
-    expect(computeCostMicroUsd('gemini-3.5-flash', { ...ZERO, groundedPrompts: 1 })).toBe(14000)
-    expect(computeCostMicroUsd('gemini-3.1-flash-lite', { ...ZERO, groundedPrompts: 1 })).toBe(14000)
-    // Additif : 1M tokens input ($1.5) + grounding ($0.014) sur 3.5-flash.
+describe('pricing grounding — borne haute DÉRIVÉE, jamais dans le coût facturable (revue C11)', () => {
+  it('computeCostMicroUsd IGNORE groundedPrompts — garde anti-pollution (advisor, dashboard, ledger)', () => {
+    // Invariant exigé par les 2 relecteurs : cost_usd_micro reste token-only.
+    // Sans ça, le conseiller de facturation sur-estime BYOK/crédits (biais
+    // vers l'abo) et le badge TopBar gonfle sans explication (BUG 60).
+    expect(computeCostMicroUsd('gemini-3.5-flash', { ...ZERO, groundedPrompts: 1 })).toBe(0)
     expect(
       computeCostMicroUsd('gemini-3.5-flash', {
         ...ZERO,
         inputTokens: 1_000_000,
         groundedPrompts: 1,
       })
-    ).toBe(1_500_000 + 14000)
+    ).toBe(1_500_000) // tokens seuls — pas de +14 000
   })
 
-  it('groundedPrompts est inerte sur les modèles sans tarif grounding', () => {
-    expect(computeCostMicroUsd('claude-sonnet-5', { ...ZERO, groundedPrompts: 1 })).toBe(0)
-    // Famille 2.5 : plus routée depuis C1, volontairement pas pricée grounding.
-    expect(computeCostMicroUsd('gemini-2.5-flash', { ...ZERO, groundedPrompts: 1 })).toBe(0)
+  it('groundingUpperBoundMicroUsd dérive la borne haute depuis le volume', () => {
+    expect(groundingUpperBoundMicroUsd('gemini-3.5-flash', 1)).toBe(14000)
+    expect(groundingUpperBoundMicroUsd('gemini-3.1-flash-lite', 1)).toBe(14000)
+    expect(groundingUpperBoundMicroUsd('gemini-3.5-flash', 250)).toBe(3_500_000) // 250 × $0.014 = $3.50
+    // Modèles sans tarif grounding (dont la famille 2.5, plus routée) → 0.
+    expect(groundingUpperBoundMicroUsd('claude-sonnet-5', 1)).toBe(0)
+    expect(groundingUpperBoundMicroUsd('gemini-2.5-flash', 1)).toBe(0)
+    // Entrées dégénérées bornées.
+    expect(groundingUpperBoundMicroUsd('gemini-3.5-flash', -3)).toBe(0)
+    expect(groundingUpperBoundMicroUsd('gemini-3.5-flash', Number.NaN)).toBe(0)
   })
 })
 
@@ -104,7 +116,7 @@ describe('wallet — le grounding ne débite JAMAIS les crédits (C11, stratégi
   })
 })
 
-describe('câblage D1 — le volume groundé est persisté (gardes par source)', () => {
+describe('câblage D1 + exposition — le volume groundé est persisté et forwardé (gardes par source)', () => {
   const quotaSrc = readFileSync(resolve(process.cwd(), 'functions/api/_lib/quota.ts'), 'utf8')
   const schemaSrc = readFileSync(resolve(process.cwd(), 'schema.sql'), 'utf8')
 
@@ -115,5 +127,15 @@ describe('câblage D1 — le volume groundé est persisté (gardes par source)',
 
   it('schema.sql (rollup prod, F-12) déclare la colonne', () => {
     expect(schemaSrc).toMatch(/grounded_prompts INTEGER NOT NULL DEFAULT 0/)
+  })
+
+  it('les endpoints status/month forwardent le volume (revue C11 : sans lui, le champ client est mort)', () => {
+    const statusSrc = readFileSync(
+      resolve(process.cwd(), 'functions/api/ai/quota/status.ts'),
+      'utf8'
+    )
+    const monthSrc = readFileSync(resolve(process.cwd(), 'functions/api/ai/quota/month.ts'), 'utf8')
+    expect(statusSrc).toMatch(/groundedPrompts: m\.groundedPrompts/)
+    expect(monthSrc).toMatch(/groundedPrompts: m\.groundedPrompts/)
   })
 })

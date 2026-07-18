@@ -29,7 +29,9 @@ export interface ModelUsage {
   /** Whisper audio seconds transcribed today. 0 if N/A. */
   audioSeconds: number
   /** Prompts groundés Gemini (Google Search) aujourd'hui — VOLUME (C11).
-   * Le coût associé ($14/1000, borne haute) est déjà inclus dans costUsd. */
+   * Coût NON inclus dans costUsd (revue C11) : borne haute dérivable via
+   * groundingUpperBoundMicroUsd(model, n), facturation réelle souvent 0
+   * (palier gratuit Google). */
   groundedPrompts: number
   /** Real cost in USD — computed server-side from token pricing, not an estimate. */
   costUsd: number
@@ -51,7 +53,8 @@ export interface MonthlyModelUsage {
   cacheReadTokens: number
   cacheCreationTokens: number
   audioSeconds: number
-  /** Prompts groundés Gemini sur le mois (volume, C11). */
+  /** Prompts groundés Gemini sur le mois (volume, C11 — coût non inclus
+   * dans costUsd, voir ModelUsage.groundedPrompts). */
   groundedPrompts: number
   costUsd: number
 }
