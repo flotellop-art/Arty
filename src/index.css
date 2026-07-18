@@ -79,6 +79,8 @@ html.dark {
 html {
   /* iOS Safari : empêche le gonflement automatique des polices en rotation. */
   -webkit-text-size-adjust: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
 }
 
 body {
@@ -87,6 +89,7 @@ body {
   font-family: Arial, Helvetica, sans-serif;
   font-weight: 400;
   margin: 0;
+  max-width: 100%;
   overflow-x: hidden;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;

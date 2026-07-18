@@ -203,6 +203,30 @@ describe('InputBar — préremplissage éditorial', () => {
   })
 })
 
+describe('InputBar — finition Fable du hero', () => {
+  beforeEach(async () => {
+    await i18n.changeLanguage('fr')
+    localStorage.setItem('arty-inputbar-v2', '1')
+  })
+
+  afterEach(() => {
+    cleanup()
+    localStorage.removeItem('arty-inputbar-v2')
+    vi.restoreAllMocks()
+  })
+
+  it('utilise une surface galet douce qui reste contenue sur mobile', () => {
+    render(<InputBar onSend={vi.fn()} isStreaming={false} showQuickActions={false} variant="hero" />)
+
+    const textarea = screen.getByPlaceholderText('chat.input.placeholder')
+    expect(textarea.parentElement).toHaveClass(
+      'rounded-[24px]',
+      'max-[639px]:rounded-[20px]',
+      'border-theme-ink/10',
+    )
+  })
+})
+
 describe('InputBar — brouillons', () => {
   beforeEach(async () => {
     await i18n.changeLanguage('fr')
