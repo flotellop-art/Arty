@@ -68,10 +68,19 @@ Sélection UI : providers Claude/Mistral/Gemini/ChatGPT + sous-modèles via le
 comparateur. **Opus 4.8 n'est sélectionnable nulle part** (ni sélecteur, ni
 comparateur).
 
-Rappel périmètre (P1.9, décision D1 du 5 juillet, encore ouverte) : en mode
-Auto, un compte **sans BYOK** est aujourd'hui servi à 100 % par Claude — la
-cascade multi-provider ci-dessus ne joue à plein que pour les BYOK. C'est le
-levier de coût n°1 côté abonnés (voir §3).
+**⚠️ RECTIFICATIF (18 juillet, contre-audit Opus du CDC)** : la première
+version de ce rapport affirmait ici que « en mode Auto, un compte sans BYOK
+est servi à 100 % par Claude » et que P1.9 restait à implémenter. **C'est
+faux depuis le 12 juillet** : la PR #334 « Refonte du routage des modèles
+IA » (commit `8703258`) a livré P1.9 — `PAID_FAMILIES = [...ALL_FAMILIES]`
+(`subscription/status.ts:27`) → `serverAllows` (`availability.ts:57-63`) →
+cascade Auto multi-provider **sur clé serveur** (`resolveRoute.ts:138-142`).
+Un abonné sans BYOK est donc DÉJÀ routé Gemini (factuel/web), Mistral
+(trivial), hybride (rapports), Claude (privé/URLs/fichiers — garde BUG 12
+inchangée). Conséquences : (1) le « levier marge n°1 » est déjà actif —
+reste à le MESURER (vigie, jamais faite) ; (2) le blast-radius de la
+migration Gemini P0 inclut les abonnés, pas seulement les BYOK ; (3)
+rollback une ligne documenté dans `availability.ts:25`.
 
 ### Legacy / entrées mortes (pricing seulement, jamais appelées)
 
@@ -167,8 +176,8 @@ grounding), qualité relative dans le rôle.
 
 | Rôle Arty | Aujourd'hui | Coût/échange | Verdict qualité/coût | Alternative crédible |
 |---|---|---|---|---|
-| Chat standard (Auto, clé serveur) | Sonnet 5 | ~1,5 ¢ (1,0 ¢ jusqu'au 31/08) | Excellent en qualité, cher en volume | **P1.9** : dérouter le factuel/web vers Gemini (~0,2 ¢) = levier n°1 de marge |
-| Chat cascade Auto (BYOK) | Gemini 2.5 Flash | ~0,21 ¢ | Très bon MAIS **meurt le 16/10** | `gemini-3.1-flash-lite` (~0,14 ¢, GA, −33 %) ou `2.5-flash-lite` (~0,044 ¢) à qualifier FR |
+| Chat Auto — tous comptes, hors données privées (post-PR #334) | Gemini 2.5 Flash | ~0,21 ¢ | Très bon MAIS **meurt le 16/10** — et sert désormais AUSSI les abonnés | `gemini-3.1-flash-lite` (~0,14 ¢, GA, −33 %) ou `2.5-flash-lite` (~0,044 ¢) à qualifier FR |
+| Données privées / URLs / fichiers (BUG 12) | Sonnet 5 | ~1,5 ¢ (1,0 ¢ jusqu'au 31/08) | Excellent — le bon modèle pour ce rôle | Intouchable (contrainte données, pas coût) |
 | Small talk | Haiku 4.5 / Small 4 | ~0,5 ¢ / ~0,07 ¢ | Bien calibré | — |
 | Rapports lourds | Opus 4.8 | ~3,25 ¢ | Meilleur rapport qualité/prix du tier frontier ($5/$25 vs GPT-5.6 Sol $5/$30) | Problème d'accès, pas de modèle (§5.3) |
 | Mistral payants | Medium 3.5 | ~0,75 ¢ | Bon, EU | Large 3 ($0.5/$1.5) coûte 3× moins en output — à benchmarker FR, curiosité tarifaire |
@@ -179,8 +188,10 @@ grounding), qualité relative dans le rôle.
 | Image | gpt-image-1 / Flux Klein | 4 ¢ / 1,5 ¢ | Routage par style déjà optimisé (P1.3) | — |
 
 Points d'économie structurels confirmés par la veille :
-1. **P1.9** (routage Auto multi-provider sur clé serveur) reste le plus gros
-   levier de marge : Sonnet ~7× plus cher que Gemini Flash sur le chat factuel.
+1. **P1.9 est déjà livré (PR #334, rectificatif ci-dessus)** — le levier
+   marge n°1 (Sonnet ~7× le prix de Gemini sur le factuel) est actif en
+   prod ; ce qui manque est la **vigie** (part des requêtes par provider,
+   marge €/abonné, taux de régénération, contrôle BUG 12) — jamais faite.
 2. **Migration Gemini 3.x** : grounding 2,5× moins cher + un candidat
    (`3.1-flash-lite`) moins cher que l'actuel en tokens.
 3. **Sonnet 5 intro** : jusqu'au 31/08, le coût réel Anthropic est ~33 % sous
@@ -197,9 +208,11 @@ Points d'économie structurels confirmés par la veille :
   famille condamnée à terme), `gemini-3.5-flash` (qualité max, 5×). Exige la
   vigie qualité FR rapide comme en P1.4 (grounding/function calling supportés à
   vérifier sur le candidat). Le killswitch `arty-gemini-cheap-disabled` et le
-  pattern de bascule P1.4 sont réutilisables tels quels. ⚠️ `gemini-2.5-pro`
-  (comparateur) meurt aussi le 16/10 → le retirer/remplacer dans
-  `providerCatalog.ts`. À COUPLER avec P1.9 pour ne faire qu'une seule vigie.
+  pattern de bascule P1.4 sont réutilisables tels quels. ⚠️ Le comparateur
+  expose **les deux** modèles condamnés : `gemini-2.5-pro` (`providerCatalog.ts:50`)
+  ET `gemini-2.5-flash` (`:51`) → retirer/remplacer les deux, sinon 404 en
+  prod après le 16/10. La vigie C1 se couple à la télémétrie P1.9 (déjà
+  livré, PR #334 — rectificatif §1) qui sert de baseline.
 
 ### P1 — dette d'exactitude coûts (esprit BUG 60) & produit
 - [ ] **Fix traçage transcription** : `whisper-proxy.ts:117` enregistre
