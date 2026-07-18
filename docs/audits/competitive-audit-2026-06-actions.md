@@ -263,7 +263,18 @@ unique sous 20 $/mois). Pas par la largeur de catalogue. Volume = distribution
   Suite possible (différée, plus basse priorité) : coût par message SUR DEMANDE (tap → ~X
   crédits, calcul client-side avec miroir markup, post-stream uniquement).
 
-- [ ] **P1.9 Routage Auto multi-provider pour les comptes serveur (sans BYOK)** —
+- [x] **P1.9 Routage Auto multi-provider pour les comptes serveur (sans BYOK)** —
+  **FAIT (PR #334 « Refonte du routage des modèles IA », mergée le 12 juillet
+  2026 — case cochée a posteriori le 18 juillet par le contre-audit de la
+  veille modèles, la PR ne l'avait pas fait)**. Livré : `PAID_FAMILIES =
+  [...ALL_FAMILIES]` (`subscription/status.ts:27`) → `serverAllows`
+  (`availability.ts:57-63`) → cascade Auto multi-provider sur clé serveur
+  (`resolveRoute.ts:138-142`) ; garde données privées → Claude (BUG 12)
+  inchangée ; rollback une ligne documenté (`availability.ts:25`).
+  **RESTE OUVERT : le prérequis « vigie coût/qualité FR » n'a jamais été
+  fait** — repris comme vigie C1+C2 du CDC veille modèles
+  (`docs/audits/veille-modeles-2026-07-cdc.md`, PR #356).
+  Historique de la décision :
   décision D1 de l'audit visibilité modèle (Florent, 5 juillet 2026,
   `model-visibility-audit-2026-07-05.md` F-14) : en mode Auto, un compte sans
   BYOK est aujourd'hui servi à 100 % par Claude (tous les chemins d'aiRouter
