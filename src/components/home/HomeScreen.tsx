@@ -39,6 +39,38 @@ interface HomeScreenProps {
 }
 
 type SecondarySection = 'brief' | 'agenda' | 'recents'
+type SuggestionKind = 'summarize' | 'write' | 'translate' | 'explain'
+
+interface HomeSuggestion {
+  kind: SuggestionKind
+  label: string
+  prompt: string
+}
+
+function SuggestionIcon({ kind }: { kind: SuggestionKind }) {
+  const common = {
+    width: 17,
+    height: 17,
+    viewBox: '0 0 24 24',
+    fill: 'none',
+    stroke: 'currentColor',
+    strokeWidth: 1.55,
+    strokeLinecap: 'round' as const,
+    strokeLinejoin: 'round' as const,
+    'aria-hidden': true,
+  }
+
+  if (kind === 'summarize') {
+    return <svg {...common}><path d="M6 4h12M6 9h12M6 14h8M6 19h5" /></svg>
+  }
+  if (kind === 'write') {
+    return <svg {...common}><path d="m5 19 3.5-.8L19 7.7 16.3 5 5.8 15.5Z" /><path d="m14.8 6.5 2.7 2.7" /></svg>
+  }
+  if (kind === 'translate') {
+    return <svg {...common}><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3c2.4 2.5 3.6 5.5 3.6 9S14.4 18.5 12 21c-2.4-2.5-3.6-5.5-3.6-9S9.6 5.5 12 3Z" /></svg>
+  }
+  return <svg {...common}><path d="M9 18h6M10 21h4" /><path d="M8.5 15.5A7 7 0 1 1 15.5 15.5c-.8.6-1.2 1.1-1.3 1.5h-4.4c-.1-.4-.5-.9-1.3-1.5Z" /></svg>
+}
 
 function relativeDate(timestamp: number, locale: string): string {
   const deltaSeconds = Math.round((timestamp - Date.now()) / 1000)
@@ -119,12 +151,12 @@ function HomeScreenInner({
     return cleaned
   }, [userName])
 
-  const suggestions = useMemo(
+  const suggestions = useMemo<HomeSuggestion[]>(
     () => [
-      { label: t('home.editorial.suggestions.summarize'), prompt: t('home.editorial.suggestions.summarizePrompt') },
-      { label: t('home.editorial.suggestions.write'), prompt: t('home.editorial.suggestions.writePrompt') },
-      { label: t('home.editorial.suggestions.translate'), prompt: t('home.editorial.suggestions.translatePrompt') },
-      { label: t('home.editorial.suggestions.explain'), prompt: t('home.editorial.suggestions.explainPrompt') },
+      { kind: 'summarize', label: t('home.editorial.suggestions.summarize'), prompt: t('home.editorial.suggestions.summarizePrompt') },
+      { kind: 'write', label: t('home.editorial.suggestions.write'), prompt: t('home.editorial.suggestions.writePrompt') },
+      { kind: 'translate', label: t('home.editorial.suggestions.translate'), prompt: t('home.editorial.suggestions.translatePrompt') },
+      { kind: 'explain', label: t('home.editorial.suggestions.explain'), prompt: t('home.editorial.suggestions.explainPrompt') },
     ],
     [t],
   )
@@ -205,11 +237,11 @@ function HomeScreenInner({
   const recentTitle = recentConversations[0]?.title || t('home.resumeKicker')
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-theme-bg text-theme-ink">
+    <div className="flex h-full min-h-0 max-w-full flex-col overflow-x-hidden bg-theme-bg text-theme-ink">
       <TopBar onMenuToggle={onMenuToggle} menuOpen={menuOpen} dateLabel={dateLabel} />
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <main className="mx-auto flex min-h-full w-full max-w-[1060px] flex-col px-[34px] max-[899px]:px-[14px]" aria-labelledby="home-chat-title">
+      <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
+        <main className="mx-auto flex min-h-full min-w-0 w-full max-w-[1060px] flex-col px-[34px] max-[899px]:px-[14px]" aria-labelledby="home-chat-title">
           <section className="flex flex-1 items-center justify-center py-12 max-[639px]:items-start max-[639px]:pb-9 max-[639px]:pt-11">
             <div className="w-full max-w-[760px] text-center">
               <div className="mb-4 flex min-h-6 items-baseline justify-between gap-6 text-left max-[639px]:flex-col max-[639px]:gap-1.5">
@@ -277,7 +309,7 @@ function HomeScreenInner({
               </h1>
 
               {error && (
-                <div className="mb-3 flex items-center gap-2 border border-red-700 bg-red-500/10 px-4 py-2 text-left font-sans text-sm text-red-800 dark:text-red-300" role="alert">
+                <div className="mb-3 flex items-center gap-2 rounded-[18px] border border-red-700/40 bg-red-500/10 px-4 py-2 text-left font-sans text-sm text-red-800 dark:text-red-300" role="alert">
                   <span className="min-w-0 flex-1 break-words">{error}</span>
                   {onDismissError && (
                     <button type="button" onClick={onDismissError} className="min-h-11 min-w-11" aria-label={t('common.close')}>×</button>
@@ -295,24 +327,23 @@ function HomeScreenInner({
                 variant="hero"
               />
 
-              <div className="mt-4 flex flex-wrap items-center justify-center gap-x-0 gap-y-1" role="group" aria-label={t('home.suggestions.title')}>
-                {suggestions.map((suggestion, index) => (
-                  <span key={suggestion.label} className="flex items-center">
-                    {index > 0 && <span className="mx-3 text-theme-border" aria-hidden="true">·</span>}
-                    <button
-                      type="button"
-                      onClick={() => fillComposer(suggestion.prompt)}
-                      className="min-h-11 border-b border-transparent bg-transparent px-0 font-sans text-[13px] text-theme-muted transition-colors hover:border-theme-accent hover:text-theme-accent-text"
-                    >
-                      {suggestion.label}
-                    </button>
-                  </span>
+              <div className="mt-5 grid w-full grid-cols-4 gap-2 max-[639px]:grid-cols-2" role="group" aria-label={t('home.suggestions.title')}>
+                {suggestions.map((suggestion) => (
+                  <button
+                    key={suggestion.kind}
+                    type="button"
+                    onClick={() => fillComposer(suggestion.prompt)}
+                    className="flex min-h-11 min-w-0 items-center justify-center gap-2 rounded-full border border-theme-ink/10 bg-white/20 px-3 font-sans text-[13px] text-theme-muted shadow-[0_1px_2px_rgb(var(--theme-ink)/0.025)] transition-[color,background-color,border-color,box-shadow,transform] duration-200 hover:border-theme-accent/30 hover:bg-theme-accent/10 hover:text-theme-accent-text active:scale-[0.98] dark:bg-theme-surface/40 max-[420px]:px-2 max-[420px]:text-xs"
+                  >
+                    <SuggestionIcon kind={suggestion.kind} />
+                    <span className="truncate">{suggestion.label}</span>
+                  </button>
                 ))}
               </div>
             </div>
           </section>
 
-          <nav className="flex min-h-[62px] flex-wrap items-center justify-center gap-x-5 gap-y-1 border-t border-theme-border py-2 font-sans text-xs text-theme-muted max-[639px]:flex-col max-[639px]:gap-0" aria-label={t('home.hybrid.today')}>
+          <nav className="flex min-h-[62px] flex-wrap items-center justify-center gap-x-5 gap-y-1 border-t border-theme-ink/10 py-2 font-sans text-xs text-theme-muted max-[639px]:flex-col max-[639px]:gap-0" aria-label={t('home.hybrid.today')}>
             <span className="font-semibold uppercase tracking-[0.1em] text-theme-ink">{t('home.hybrid.today')}</span>
             <button type="button" onClick={() => openSecondary('brief')} className="min-h-11 bg-transparent hover:text-theme-accent-text">
               {t('home.hybrid.briefSummary', { count: briefCount })}
@@ -328,9 +359,9 @@ function HomeScreenInner({
             {t('home.hybrid.secondaryIntro')}
           </h2>
 
-          <div className="border-t border-theme-border">
-            <details ref={briefDetailsRef} id="home-brief" className="group scroll-mt-4 border-b border-theme-border">
-              <summary className="flex min-h-[64px] cursor-pointer list-none items-center justify-between gap-4 py-3 marker:hidden">
+          <div className="border-t border-theme-ink/10">
+            <details ref={briefDetailsRef} id="home-brief" className="group scroll-mt-4 border-b border-theme-ink/10">
+              <summary className="flex min-h-[68px] cursor-pointer list-none items-center justify-between gap-4 rounded-[14px] px-3 py-3 marker:hidden transition-[color,background-color,transform] duration-200 hover:bg-theme-ink/[0.035] active:scale-[0.995]">
                 <span className="font-display text-xl font-normal">{t('proactiveBrief.title')}</span>
                 <span className="flex items-center gap-3 font-sans text-[10px] font-semibold uppercase tracking-[0.1em] text-theme-muted">
                   {briefCount > 0 ? t('home.hybrid.briefMeta', { count: briefCount }) : t('home.hybrid.briefEmptyMeta')}
@@ -360,8 +391,8 @@ function HomeScreenInner({
               </div>
             </details>
 
-            <details ref={agendaDetailsRef} id="home-agenda" className="group scroll-mt-4 border-b border-theme-border">
-              <summary className="flex min-h-[64px] cursor-pointer list-none items-center justify-between gap-4 py-3 marker:hidden">
+            <details ref={agendaDetailsRef} id="home-agenda" className="group scroll-mt-4 border-b border-theme-ink/10">
+              <summary className="flex min-h-[68px] cursor-pointer list-none items-center justify-between gap-4 rounded-[14px] px-3 py-3 marker:hidden transition-[color,background-color,transform] duration-200 hover:bg-theme-ink/[0.035] active:scale-[0.995]">
                 <span className="font-display text-xl font-normal">{t('home.agendaKicker')}</span>
                 <span className="flex items-center gap-3 font-sans text-[10px] font-semibold uppercase tracking-[0.1em] text-theme-muted">
                   {googleAuth.isConnected ? t('home.hybrid.agendaMeta') : t('home.hybrid.agendaConnectMeta')}
@@ -396,8 +427,8 @@ function HomeScreenInner({
               </div>
             </details>
 
-            <details ref={recentsDetailsRef} id="home-recents" className="group scroll-mt-4 border-b border-theme-border">
-              <summary className="flex min-h-[64px] cursor-pointer list-none items-center justify-between gap-4 py-3 marker:hidden">
+            <details ref={recentsDetailsRef} id="home-recents" className="group scroll-mt-4 border-b border-theme-ink/10">
+              <summary className="flex min-h-[68px] cursor-pointer list-none items-center justify-between gap-4 rounded-[14px] px-3 py-3 marker:hidden transition-[color,background-color,transform] duration-200 hover:bg-theme-ink/[0.035] active:scale-[0.995]">
                 <span className="font-display text-xl font-normal">{t('home.resumeKicker')}</span>
                 <span className="flex items-center gap-3 font-sans text-[10px] font-semibold uppercase tracking-[0.1em] text-theme-muted">
                   {t('home.hybrid.recentsMeta', { count: recentConversations.length })}
@@ -406,13 +437,13 @@ function HomeScreenInner({
               </summary>
               <div className="pb-7 pt-1">
                 {recentConversations.length > 0 && onSelectConv ? (
-                  <div className="border-t border-theme-border/70">
+                  <div className="border-t border-theme-ink/10">
                     {recentConversations.map((conversation) => (
                       <button
                         key={conversation.id}
                         type="button"
                         onClick={() => onSelectConv(conversation.id)}
-                        className="grid min-h-[58px] w-full grid-cols-[1fr_auto] items-center gap-4 border-b border-theme-border/70 bg-transparent py-2 text-left hover:text-theme-accent-text"
+                        className="grid min-h-[58px] w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-4 border-b border-theme-ink/10 bg-transparent px-3 py-2 text-left transition-[color,background-color] hover:bg-theme-ink/[0.025] hover:text-theme-accent-text max-[420px]:grid-cols-1 max-[420px]:gap-1"
                       >
                         <strong className="truncate font-display text-[15px] font-normal leading-snug">{conversation.title}</strong>
                         <small className="font-sans text-[11px] text-theme-muted">{relativeDate(conversation.updatedAt, locale)}</small>

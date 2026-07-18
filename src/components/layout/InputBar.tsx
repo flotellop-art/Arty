@@ -1006,7 +1006,7 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
       <div className={`relative mx-auto w-full ${heroVariant ? 'max-w-[760px]' : 'max-w-[1060px]'}`}>
       {/* Slash command palette (Feature 2) */}
       {showSlashPalette && filteredCommands.length > 0 && (
-        <div className="absolute bottom-full left-4 right-4 z-20 mb-2 overflow-hidden border border-theme-border bg-theme-surface animate-fade-in">
+        <div className={`absolute bottom-full left-4 right-4 z-20 mb-2 overflow-hidden border bg-theme-surface animate-fade-in ${heroVariant ? 'rounded-[18px] border-theme-ink/10 shadow-[0_12px_32px_rgb(var(--theme-ink)/0.10)]' : 'border-theme-border'}`}>
           <div className="text-[10px] uppercase tracking-kicker font-semibold text-theme-muted px-3 py-2 border-b border-theme-border bg-theme-bg">
             {t('chat.input.slashPaletteHeader')}
           </div>
@@ -1211,9 +1211,9 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
         </div>
       )}
 
-      <div className={`relative flex items-end gap-2 border transition-[border-color,box-shadow,transform] duration-200 ${
+      <div className={`relative flex items-end gap-2 border transition-[border-color,box-shadow,transform] duration-[180ms] ${
         heroVariant
-          ? 'min-h-[112px] rounded-[20px] border-theme-border bg-theme-surface px-4 pb-3 pt-4 shadow-[0_14px_36px_rgb(var(--theme-ink)/0.06)] focus-within:-translate-y-px focus-within:border-theme-accent focus-within:shadow-[0_18px_42px_rgb(var(--theme-ink)/0.09)] max-[639px]:min-h-[128px] max-[639px]:rounded-[17px] max-[639px]:px-3 max-[639px]:pb-2.5 max-[639px]:pt-3'
+          ? 'min-h-[112px] rounded-[24px] border-theme-ink/10 bg-white/60 px-4 pb-3 pt-4 shadow-[0_1px_2px_rgb(var(--theme-ink)/0.04),0_12px_32px_rgb(var(--theme-ink)/0.07)] focus-within:-translate-y-px focus-within:border-theme-accent/40 focus-within:shadow-[0_2px_4px_rgb(var(--theme-ink)/0.05),0_16px_38px_rgb(var(--theme-ink)/0.10)] focus-within:ring-4 focus-within:ring-theme-accent/10 dark:bg-theme-surface/80 max-[639px]:min-h-[128px] max-[639px]:rounded-[20px] max-[639px]:px-3 max-[639px]:pb-2.5 max-[639px]:pt-3'
           : 'min-h-[52px] border-theme-ink bg-transparent px-[10px] py-2'
       }`}>
         {/* + menu — file upload + native camera/scan + web camera (mobile). */}
@@ -1281,10 +1281,14 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
           <button
             onClick={handleEnhance}
             disabled={!text.trim() || isEnhancing}
-            className={`relative mb-0.5 flex h-11 w-11 flex-shrink-0 items-center justify-center border border-theme-border transition-colors ${heroVariant ? 'rounded-full' : ''} ${
+            className={`relative mb-0.5 flex h-11 w-11 flex-shrink-0 items-center justify-center border transition-[color,background-color,border-color,transform,box-shadow] duration-[180ms] active:scale-[0.98] ${
+              heroVariant
+                ? 'rounded-full border-theme-ink/10 bg-theme-bg/60 shadow-[0_1px_2px_rgb(var(--theme-ink)/0.025)]'
+                : 'border-theme-border'
+            } ${
               isEnhancing
                 ? 'bg-theme-accent/20 text-theme-accent'
-                : 'hover:bg-theme-ink/5 text-theme-muted disabled:opacity-30'
+                : 'text-theme-muted hover:border-theme-accent/30 hover:bg-theme-accent/10 hover:text-theme-accent-text disabled:opacity-30'
             }`}
             aria-label={t('chat.input.aria.enhance')}
             title={isEnhancing ? t('chat.input.enhancing') : t('chat.input.enhanceTooltip')}
@@ -1339,7 +1343,7 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
         {isStreaming ? (
           <button
             onClick={onStop}
-            className={`flex h-11 w-11 flex-shrink-0 items-center justify-center bg-theme-ink text-theme-bg transition-colors hover:bg-theme-accent ${heroVariant ? 'rounded-full' : ''}`}
+            className={`flex h-11 w-11 flex-shrink-0 items-center justify-center bg-theme-ink text-theme-bg transition-[background-color,transform,box-shadow] duration-[180ms] hover:bg-theme-accent active:scale-[0.98] ${heroVariant ? 'rounded-full shadow-[0_8px_22px_-12px_rgb(var(--theme-ink)/0.85)]' : ''}`}
             aria-label={t('chat.input.aria.stop')}
           >
             <svg width="14" height="14" viewBox="0 0 12 12" fill="none">
@@ -1350,7 +1354,7 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
           <button
             onClick={handleSend}
             disabled={isSubmitting}
-            className={`flex h-11 w-11 flex-shrink-0 items-center justify-center border border-theme-accent bg-theme-accent text-theme-bg transition-colors hover:bg-theme-ink hover:text-theme-bg disabled:cursor-wait disabled:opacity-50 ${heroVariant ? 'rounded-full' : ''}`}
+            className={`flex h-11 w-11 flex-shrink-0 items-center justify-center border border-theme-accent bg-theme-accent text-theme-bg transition-[background-color,color,transform,box-shadow] duration-[180ms] hover:bg-theme-ink hover:text-theme-bg active:scale-[0.98] disabled:cursor-wait disabled:opacity-50 ${heroVariant ? 'rounded-full shadow-[0_8px_22px_-12px_rgb(var(--theme-accent)/0.9)]' : ''}`}
             aria-label={t('chat.input.aria.send')}
           >
             <svg width="18" height="18" viewBox="0 0 14 14" fill="none">
@@ -1439,7 +1443,10 @@ function AttachMenu({ open, onOpenChange, onPickFile, onPickCamera, onPickScan, 
         ref={triggerRef}
         type="button"
         onClick={handlePrimaryClick}
-        className={`flex h-11 w-11 items-center justify-center border border-theme-border text-theme-muted transition-colors hover:border-theme-accent hover:text-theme-accent-text ${rounded ? 'rounded-full' : ''}`}
+        className={`flex h-11 w-11 items-center justify-center border text-theme-muted transition-[color,background-color,border-color,transform,box-shadow] duration-[180ms] active:scale-[0.98] ${rounded
+          ? 'rounded-full border-theme-ink/10 bg-theme-bg/60 shadow-[0_1px_2px_rgb(var(--theme-ink)/0.025)] hover:border-theme-accent/30 hover:bg-theme-accent/10 hover:text-theme-accent-text'
+          : 'border-theme-border hover:border-theme-accent hover:text-theme-accent-text'
+        }`}
         aria-label={hasMulti ? ariaLabel : labels.file}
         aria-expanded={hasMulti ? open : undefined}
       >
@@ -1449,7 +1456,7 @@ function AttachMenu({ open, onOpenChange, onPickFile, onPickCamera, onPickScan, 
         </svg>
       </button>
       {hasMulti && open && (
-        <div className="absolute bottom-full left-0 z-30 mb-2 min-w-[160px] overflow-hidden border border-theme-ink bg-theme-bg animate-fade-in">
+        <div className={`absolute bottom-full left-0 z-30 mb-2 min-w-[160px] overflow-hidden border bg-theme-bg animate-fade-in ${rounded ? 'rounded-[18px] border-theme-ink/10 shadow-[0_12px_32px_rgb(var(--theme-ink)/0.10)]' : 'border-theme-ink'}`}>
           <MenuItem
             onClick={() => { onOpenChange(false); onPickFile() }}
             icon={
@@ -1568,7 +1575,9 @@ function VoiceButton({
     bgClass = 'bg-theme-accent text-theme-bg'
     pulseClass = 'animate-pulse-ring-accent'
   } else {
-    bgClass = 'border border-theme-border bg-transparent text-theme-muted hover:border-theme-accent hover:text-theme-accent-text'
+    bgClass = rounded
+      ? 'border border-theme-ink/10 bg-theme-bg/60 text-theme-muted shadow-[0_1px_2px_rgb(var(--theme-ink)/0.025)] hover:border-theme-accent/30 hover:bg-theme-accent/10 hover:text-theme-accent-text'
+      : 'border border-theme-border bg-transparent text-theme-muted hover:border-theme-accent hover:text-theme-accent-text'
   }
 
   return (
@@ -1585,9 +1594,11 @@ function VoiceButton({
         touchAction: 'none',
         WebkitUserSelect: 'none',
         userSelect: 'none',
-        transition: 'width 0.25s cubic-bezier(0.34,1.56,0.64,1), height 0.25s cubic-bezier(0.34,1.56,0.64,1)',
+        transition: rounded
+          ? 'width 180ms cubic-bezier(.2,0,0,1), height 180ms cubic-bezier(.2,0,0,1)'
+          : 'width 0.25s cubic-bezier(0.34,1.56,0.64,1), height 0.25s cubic-bezier(0.34,1.56,0.64,1)',
       }}
-      className={`relative mb-0.5 flex flex-shrink-0 items-center justify-center ${bgClass} ${pulseClass} ${rounded ? 'rounded-full' : ''}`}
+      className={`relative mb-0.5 flex flex-shrink-0 items-center justify-center transition-[color,background-color,border-color,transform,box-shadow] duration-[180ms] ${bgClass} ${pulseClass} ${rounded ? 'rounded-full active:scale-[0.98]' : ''}`}
       aria-label={ariaLabel}
       disabled={isTranscribing}
     >

@@ -132,7 +132,7 @@ export function TopBar({ onMenuToggle, menuOpen = false, dateLabel = '' }: TopBa
         className="bg-theme-bg"
         style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
       >
-        <div className="mx-auto flex w-full max-w-[1060px] items-center justify-between gap-[10px] border-b border-theme-border px-[34px] pb-2 pt-4 max-[899px]:px-[14px] max-[899px]:pt-3">
+        <div className="mx-auto flex w-full max-w-[1060px] items-center justify-between gap-[10px] border-b border-theme-ink/10 px-[34px] pb-2 pt-4 max-[899px]:px-[14px] max-[899px]:pt-3">
           <button
             id="arty-menu-button"
             type="button"

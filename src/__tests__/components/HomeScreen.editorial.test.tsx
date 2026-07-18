@@ -147,6 +147,15 @@ describe('HomeScreen — accueil éditorial', () => {
     expect(onSend).not.toHaveBeenCalled()
   })
 
+  it('garde les actions Fable dans une grille mobile sans défilement horizontal', () => {
+    renderHome()
+
+    const actions = screen.getByRole('group', { name: 'Suggestions' })
+    expect(actions).toHaveClass('grid', 'max-[639px]:grid-cols-2')
+    expect(actions.className).not.toContain('overflow-x')
+    expect(screen.getByRole('button', { name: 'Résumer' })).toHaveClass('rounded-full')
+  })
+
   it('le brief peut être fermé puis réaffiché avec son état piloté par le hook', () => {
     render(<BriefHarness />)
 
