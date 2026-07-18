@@ -21,7 +21,7 @@ Pro = BYOK (3 proxys, `proKeyRequiredResponse`).
 
 | # | Chantier | Verdict | Taille | Bloqué par |
 |---|---|---|---|---|
-| C1 | Migration Gemini chat 2.5 → 3.x (deadline 16/10) | GO avec réserves | S/M + vigie | Décision D-B (Gemini Pro comparateur) |
+| C1 | Migration Gemini chat 2.5 → 3.x (deadline 16/10) | ✅ **FAIT (18/07, PR C1)** — chat basculé sur `gemini-3.5-flash` (décision Florent : le candidat éco 3.1-flash-lite a une régression FACTS Grounding documentée −19 % [40.6 vs 50.4, model card DeepMind] → bascule sûre d'abord, downgrade éco à re-décider après la vigie C2). Recherche de validation : tools 4/4 confirmés sur le lite, contexte 1M identique, grounding $14/1000. Comparateur : les 3 entrées 2.5 retirées (D-B), 3.5-flash ajouté. Killswitch conservé (inerte, futur rollback). `geminiClient.test.ts` créé (1er test du client). Suivis : copy « 80 Gemini Pro » orphelin ; entrée Pro à réintroduire à la GA de 3.5 Pro ; downgrade lite conditionné à vigie C2 + test live google_search | S/M | — |
 | C2 | P1.9 — re-scopé : vigie + reliquat trial | Re-scopé (déjà livré PR #334) | S | Décision D-C (trial multi-provider) |
 | C3 | Défaut ChatGPT → gpt-5.6-terra | GO, incomplet sans sous-chantiers | M | ⛔ Décision D-A (bucket GPT-5) |
 | C4 | Traçage transcription (nom du modèle) | GO avec réserves (urgence revue à la baisse) | M | — |

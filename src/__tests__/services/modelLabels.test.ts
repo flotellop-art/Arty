@@ -98,16 +98,15 @@ describe('parité IDs routables ↔ labels / région / capacité / coûts', () =
     ['claude-opus-4-8', 'selectClaudeSubModel rapports Pro'],
     ['mistral-small-2603', 'selectMistralModel trivial'],
     ['mistral-medium-latest', 'selectMistralModel général + cible du swap trial (mistral-proxy.ts)'],
-    ['gemini-2.5-flash', 'GEMINI_CHAT_MODEL'],
-    ['gemini-3.5-flash', 'GEMINI_RESEARCH_MODEL + killswitch arty-gemini-cheap-disabled'],
-    ['gemini-2.5-pro', 'comparateur (providerCatalog)'],
+    // C1 (18/07/2026) : gemini-2.5-* retirés du routable (arrêt Google 16/10).
+    // 3.5-flash est désormais chat ET recherche (convergence C1).
+    ['gemini-3.5-flash', 'GEMINI_CHAT_MODEL + GEMINI_RESEARCH_MODEL + comparateur'],
     ['gpt-5.5', 'DEFAULT_MODEL openaiClient'],
     ['gpt-5', 'FALLBACK_MODEL openaiClient'],
     ['gpt-5-mini', 'TRIAL_ALLOWED_MODELS + comparateur'],
     ['mistral-large-latest', 'comparateur'],
     ['mistral-small-latest', 'comparateur'],
     ['claude-haiku-4-5', 'comparateur (variante sans date, providerCatalog)'],
-    ['gemini-2.5-flash-lite', 'comparateur'],
     ['gemini-3.1-flash-lite', 'comparateur'],
     // NB : gpt-image-1 (génération d'images) est cappé par checkPremiumCap
     // mais n'est JAMAIS affiché comme modèle de chat (pas de dispatch, pas de

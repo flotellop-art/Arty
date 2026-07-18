@@ -89,7 +89,7 @@ const MODEL_ALIASES: Record<string, string> = {
   'gemini-3-flash': 'gemini-flash-pro',
   'gemini-3-flash-preview': 'gemini-flash-pro',
   'gemini-2.5-flash-lite': 'gemini-flash-lite-2.5',
-  'gemini-2.5-flash': 'gemini-flash', // défaut chat éco ($0.30/$2.50)
+  'gemini-2.5-flash': 'gemini-flash', // ancien défaut chat (remplacé par 3.5-flash, C1 18/07)
   'gemini-2.5-pro': 'gemini-pro',
   'gemini-pro-latest': 'gemini-pro',
   'gpt-5-turbo': 'gpt-5',
