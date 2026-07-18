@@ -18,6 +18,8 @@ export interface ModelPricing {
   audioPerSec?: number
   /** USD per generated image (gpt-image-1). */
   imagePerUnit?: number
+  /** USD per input character (TTS — tts-1 facture le texte d'entrée). */
+  charPerUnit?: number
 }
 
 // Toutes les valeurs sont vérifiées au 12 juillet 2026. À ajuster si les providers
@@ -47,11 +49,17 @@ const PRICING: Record<string, ModelPricing> = {
   // GPT-5.5 sorti le 23/04/2026 — tarif officiel OpenAI $5 input / $30 output.
   // -60% hallucinations vs GPT-5 selon OpenAI. Défault dans openaiClient.ts.
   'gpt-5.5': { input: 5, output: 30 },
+  // ⚠️ MORT (audit veille 2026-07, C6) : jamais appelé par aucun client. NE PAS
+  // SUPPRIMER — l'entrée sert d'ancre de coût historique ET d'exemption du cap
+  // premium (hasKnownPricing → checkPremiumCap exempte les -mini/-nano connus ;
+  // sans entrée ils tomberaient dans le bucket unknown-model, cap 80).
   'gpt-5.5-mini': { input: 0.5, output: 3 },
   // GPT-5 et dérivés (ancienne génération, conservés pour BYOK + fallback)
   'gpt-5': { input: 1.25, output: 10 },
   'gpt-5-mini': { input: 0.25, output: 2 },
+  // ⚠️ MORT — même statut que gpt-5.5-mini ci-dessus (ancre + exemption cap).
   'gpt-5-nano': { input: 0.05, output: 0.4 },
+  // ⚠️ MORT — jamais appelé (gpt-4o-mini sert uniquement au test de clé BYOK).
   'gpt-4o': { input: 2.5, output: 10 },
   'gpt-4o-mini': { input: 0.15, output: 0.6 },
   // Génération d'images (P1.3). Coût fixe par image (qualité medium 1024²
@@ -59,7 +67,13 @@ const PRICING: Record<string, ModelPricing> = {
   'gpt-image-1': { input: 0, output: 0, imagePerUnit: 0.04 },
   // FLUX (Black Forest Labs) — coût par image 1024² (P1.3-FLUX).
   'flux-2-klein-9b': { input: 0, output: 0, imagePerUnit: 0.015 },
+  // ⚠️ MORT — aucune branche d'image-gen.ts ne l'invoque (seul klein-9b sert).
   'flux-2-pro': { input: 0, output: 0, imagePerUnit: 0.03 },
+
+  // OpenAI TTS (brief vocal, functions/api/ai/tts.ts). Tarif officiel tts-1 :
+  // $15 / 1M caractères d'entrée. Le texte est connu côté serveur → coût tracé
+  // par charPerUnit (C9 — avant juillet 2026 le TTS n'était PAS tracé du tout).
+  'tts-1': { input: 0, output: 0, charPerUnit: 15 / 1_000_000 },
 
   // Mistral — tarifs des générations actuelles derrière les alias latest.
   'mistral-large-latest': { input: 0.5, output: 1.5 }, // Large 3
@@ -68,7 +82,9 @@ const PRICING: Record<string, ModelPricing> = {
   'mistral-medium-3-5': { input: 1.5, output: 7.5 },
   'mistral-small-latest': { input: 0.15, output: 0.6 }, // Small 4
   'mistral-small-2603': { input: 0.15, output: 0.6 },
-  'codestral-latest': { input: 0.2, output: 0.6 },
+  // ⚠️ MORT — aucun client ne route Codestral. Tarif corrigé (veille 2026-07 :
+  // l'officiel Mistral est $0.3/$0.9, l'ancienne valeur 0.2/0.6 était périmée).
+  'codestral-latest': { input: 0.3, output: 0.9 },
 
   // Google Gemini
   'gemini-2.5-pro': { input: 1.25, output: 10, cacheRead: 0.31 },
@@ -85,6 +101,8 @@ const PRICING: Record<string, ModelPricing> = {
   // `gemini-3-flash-preview` ($0.50/$3) et l'ancien nom GA jamais sorti
   // `gemini-3-flash` sont gardés comme alias pour les coûts historiques.
   'gemini-3.5-flash': { input: 1.5, output: 9, cacheRead: 0.15 },
+  // ⚠️ MORTES — voir commentaire ci-dessus : alias de coûts historiques
+  // uniquement (gemini-3-flash n'est jamais sorti en GA). Ne pas router dessus.
   'gemini-3-flash': { input: 0.5, output: 3 },
   'gemini-3-flash-preview': { input: 0.5, output: 3 },
 }
@@ -114,6 +132,8 @@ export interface UsageTokens {
   audioSeconds: number
   /** Nombre d'images générées (gpt-image-1). Optionnel, défaut 0. */
   images?: number
+  /** Caractères de texte facturés (TTS). Optionnel, défaut 0. */
+  chars?: number
 }
 
 /** Coût en micro-USD (10^-6 USD) — évite les floats dans D1. */
@@ -127,6 +147,7 @@ export function computeCostMicroUsd(model: string, usage: UsageTokens): number {
     (usage.cacheReadTokens * (p.cacheRead ?? 0)) / MTOK +
     (usage.cacheCreationTokens * (p.cacheCreation ?? 0)) / MTOK +
     usage.audioSeconds * (p.audioPerSec ?? 0) +
-    (usage.images ?? 0) * (p.imagePerUnit ?? 0)
+    (usage.images ?? 0) * (p.imagePerUnit ?? 0) +
+    (usage.chars ?? 0) * (p.charPerUnit ?? 0)
   return Math.round(cost * 1_000_000)
 }

@@ -12,6 +12,10 @@ describe('parité tarifs client ↔ serveur — modèles de chat exposés', () =
     ['claude-opus-4-7', 5, 25],
     ['claude-opus-4-8', 5, 25],
     ['gpt-5.5', 5, 30],
+    // Entrée morte mais la parité est le filet anti-sous-estimation 2× si un
+    // jour câblée (fix normalisation C6 — includes('mini') la rabattait sur
+    // gpt-5-mini $0.25/$2 alors que le serveur facture $0.5/$3).
+    ['gpt-5.5-mini', 0.5, 3],
     ['gpt-5', 1.25, 10],
     ['gpt-5-mini', 0.25, 2],
     ['gemini-2.5-pro', 1.25, 10],

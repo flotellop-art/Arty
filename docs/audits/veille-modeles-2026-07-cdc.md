@@ -26,10 +26,10 @@ Pro = BYOK (3 proxys, `proKeyRequiredResponse`).
 | C3 | Défaut ChatGPT → gpt-5.6-terra | GO, incomplet sans sous-chantiers | M | ⛔ Décision D-A (bucket GPT-5) |
 | C4 | Traçage transcription (nom du modèle) | GO avec réserves (urgence revue à la baisse) | M | — |
 | C5 | web_search 20250305 → 20260209 | GO avec réserves | S | Validation live de la version |
-| C6 | Hygiène pricing + normalisation | GO | S | — |
+| C6 | Hygiène pricing + normalisation | ✅ **FAIT (18/07, PR #357)** — entrées annotées (pas supprimées), codestral 0.3/0.9, fix gpt-5.5-mini + parité | S | — |
 | C7 | Voxtral TTS euOnly | **Différé** (aucun consommateur) | M/L si repris | Un cas d'usage euOnly réel |
-| C8 | MAJ doc BUG 58 | GO | S | — |
-| C9 | (nouveau) Traçage coût TTS inexistant | GO | S | — |
+| C8 | MAJ doc BUG 58 | ✅ **FAIT (18/07, PR #357)** — formulation deux couches free/trial | S | — |
+| C9 | (nouveau) Traçage coût TTS inexistant | ✅ **FAIT (18/07, PR #357)** — tts-1 pricé ($15/1M chars), recordUsage waitUntil clé serveur ; relecture 2 agents (Opus sécu GO 5/5 + Sonnet régressions GO, suite 1230/1230). Résiduel LOW documenté : `count` D1 reste 1/jour (structurel recordUsage, coût exact) | S | — |
 
 **Ordre d'exécution recommandé** (challenge Opus) : C6+C8+C9 (quick wins) →
 C5 (après validation live) → C1 (+ vigie couplée à la télémétrie C2) → C4 →
@@ -359,7 +359,20 @@ Audit RÈGLE 6 au passage (endpoint touché). Taille S.
 
 ---
 
-## Décisions Florent en attente (récapitulatif)
+## Décisions Florent — TRANCHÉES le 18 juillet 2026 (session quick wins)
+
+- **D-A : GO après vérif D1.** Swap Terra validé sous réserve de vérifier
+  d'abord en D1 la part réelle du fallback `gpt-5` ; cap 100 inchangé ;
+  les 4 sous-chantiers pricing/labels/parité obligatoires.
+- **D-B : retirer Gemini Pro du comparateur maintenant** (dans la PR C1),
+  réintroduction à la GA de Gemini 3.5 Pro.
+- **D-C : statu quo trial jusqu'à la vigie C2 volet 1** — la vigie chiffrera
+  le coût d'un essai multi-provider avant d'ouvrir (ou de purger).
+- **D-D : ouvrir l'escalade Opus 4.8 aux abonnés** dans le bucket
+  Sonnet+Opus existant, sous-quota Opus à définir (cf. vigie éco 14/06) —
+  nouveau chantier C10 à spécifier.
+
+## Décisions Florent en attente (récapitulatif — historique pré-décision)
 
 | ID | Question | Bloque | Recommandation |
 |---|---|---|---|
