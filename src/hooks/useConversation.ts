@@ -180,6 +180,14 @@ export function useConversation() {
   }, [])
 
   const sendMessage = useCallback(
+    // ⚠️ INVARIANT (revue #353) : tout `return false` (refus) DOIT rester
+    // SYNCHRONE — placé avant le premier `await` de cette fonction. Deux
+    // consommateurs en dépendent : handleSendFromHome (App.tsx) capte les
+    // refus via un Promise.race à 0 ms avant de naviguer, et InputBar
+    // restaure le brouillon vidé optimistiquement en comptant sur une
+    // résolution quasi immédiate (composant encore monté). Un refus ajouté
+    // APRÈS un await perdrait la course silencieusement : navigation vers
+    // une conversation vide + brouillon perdu.
     async (
       text: string,
       conversationId?: string,
