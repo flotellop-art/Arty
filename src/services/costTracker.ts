@@ -103,6 +103,18 @@ const MODEL_ALIASES: Record<string, string> = {
 export function normaliseModel(model: string): string {
   if (MODEL_COSTS[model]) return model
   if (MODEL_ALIASES[model]) return MODEL_ALIASES[model] as string
+  // Modèles de transcription : JAMAIS rabattus sur un bucket chat (revue C4 —
+  // 'gpt-4o-transcribe'.startsWith('gpt-') fusionnait la dictée dans la ligne
+  // « gpt-5 » de l'écran Coûts, et 'voxtral-MINI-latest'.includes('mini') la
+  // fusionnait dans « gpt-5-mini » — le piège C6, découvert par le test de
+  // cette règle). Chaque modèle de transcription garde sa propre ligne.
+  if (
+    model === 'gpt-4o-transcribe' ||
+    model === 'whisper-1' ||
+    model.startsWith('voxtral')
+  ) {
+    return model
+  }
   // Fallbacks par préfixe pour ne pas perdre les futurs modèles
   if (model.startsWith('claude-haiku')) return 'claude-haiku-4-5'
   if (model.startsWith('claude-sonnet')) return 'claude-sonnet-5'

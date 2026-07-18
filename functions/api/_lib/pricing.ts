@@ -39,6 +39,14 @@ const PRICING: Record<string, ModelPricing> = {
 
   // OpenAI (transcription)
   'whisper-1': { input: 0, output: 0, audioPerSec: 0.006 / 60 }, // $0.006 / minute
+  // gpt-4o-transcribe — le modèle réellement essayé EN PREMIER par
+  // whisperClient (whisper-1 = repli). C4 (18/07/2026) : enfin pricé et tracé
+  // sous son nom. ⚠️ APPROXIMATION documentée : la facturation officielle
+  // OpenAI est par TOKENS audio ($2.5/M in, $10/M out), mais parseWhisperBody
+  // n'extrait que la durée (verbose_json) → équivalent dérivé ~$0.006/min,
+  // même ordre que whisper-1. À affiner si OpenAI expose les tokens audio
+  // dans la réponse de transcription.
+  'gpt-4o-transcribe': { input: 0, output: 0, audioPerSec: 0.006 / 60 },
 
   // Mistral (transcription EU — dictée des conversations euOnly)
   // Facturé à la minute ; les prompt/completion_tokens de la réponse ne sont
