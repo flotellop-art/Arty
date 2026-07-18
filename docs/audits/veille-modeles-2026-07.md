@@ -32,7 +32,8 @@ confiance + exclusivité Google, PAS la largeur de catalogue).
    première alternative EU crédible au `tts-1` d'OpenAI (~même prix).
 4. **OpenAI : GPT-5.6 est sorti le 9 juillet** (Sol $5/$30 = même prix que le
    5.5 actuel, Terra $2.5/$15, Luna $1/$6). Le défaut `gpt-5.5` d'Arty a une
-   génération de retard — swap candidat à iso-prix (Sol) ou à −50 % (Terra).
+   génération de retard — **reco : Terra** (−50 %, qualité quasi-Sol — annexe A).
+   Luna : à NE PAS intégrer (long-contexte effondré — annexe A).
 5. **Transcription : bon choix de modèles, mauvais traçage.** Le proxy enregistre
    TOUT sous le tarif `whisper-1` alors que le modèle réellement servi en
    premier est `gpt-4o-transcribe` (absent de `pricing.ts`) — le dashboard coûts
@@ -211,12 +212,23 @@ Points d'économie structurels confirmés par la veille :
   (b) l'ouvrir au plan subscription dans le bucket Sonnet+Opus existant
   (cf. vigie éco : sous-quota Opus à arbitrer) ; (c) l'exposer au comparateur
   pour les BYOK. Lié au trou « trial multi-provider mort » (§5.2).
-- [ ] **GPT-5.6** : swap `gpt-5.5` → `gpt-5.6-sol` (iso-prix) après vérif
-  d'éligibilité du compte (le pattern fallback 5.5→5 existe déjà dans
-  `openaiClient.ts`) ; évaluer Terra ($2.5/$15) comme défaut si la qualité
-  suffit — −50 % sur le poste ChatGPT.
+- [ ] **GPT-5.6 : swap `gpt-5.5` → `gpt-5.6-terra`** ($2.5/$15, −50 % sur le
+  poste ChatGPT). Les benchs (annexe A) placent Terra quasi au niveau de Sol
+  (long-contexte 89,6 % vs 91,5 %) et la presse spécialisée converge sur
+  « défaut = Terra, escalade = Sol ». Vérifier l'éligibilité du compte (le
+  pattern fallback 5.5→5 de `openaiClient.ts` est réutilisable) ; Sol en
+  option comparateur/BYOK seulement. ⚠️ Le bucket premium « 100 GPT-5 »
+  facture aujourd'hui sur `gpt-5` ($1.25/$10) — décider explicitement quel
+  modèle le bucket sert (Terra = 2× le coût du bucket).
 
 ### P2 — hygiène & options
+- [ ] **Fact-check passe 2 : passer de `web_search_20250305` à
+  `web_search_20260209`** (filtrage dynamique des résultats, dispo Sonnet 5)
+  — précision meilleure + tokens économisés à iso-architecture
+  (`fact-check.ts:255`). À valider en vigie (latence passe 2 : 25-30 s en
+  prod, le filtrage peut jouer dans les deux sens). Le routing fact-check
+  lui-même ne bouge PAS (annexe D : la contrainte dominante est que le
+  vérificateur doit déjà voir la conversation → Anthropic verrouillé).
 - [ ] Purger/annoter les entrées de pricing mortes (`codestral` — au passage
   stale 0.2/0.6 vs 0.3/0.9 officiel —, `flux-2-pro`, `gpt-5.5-mini`,
   `gpt-5-nano`, `gpt-4o`, `gemini-3-flash*`) + fixer la normalisation
@@ -230,9 +242,16 @@ Points d'économie structurels confirmés par la veille :
 ### À NE PAS faire (aligné anti-objectifs)
 - ❌ Intégrer DeepSeek/Grok/Llama malgré leurs prix — largeur de catalogue =
   anti-objectif assumé, DeepSeek déjà écarté (serveurs Chine, P1.4).
+- ❌ Intégrer GPT-5.6 Luna : rappel long-contexte effondré (41,3 % — annexe A),
+  rédhibitoire pour un assistant qui injecte mails/Drive (~150K tokens de
+  boucle d'outils). Iso-prix Haiku, 4× le prix de gpt-5-mini : aucun rôle.
 - ❌ Router vers Gemini 3.5 Pro (pas GA, ID/prix non confirmés) ou tout ID
   preview comme défaut.
 - ❌ Fable 5 ($10/$50) : hors cas d'usage et hors économie du plan.
+- ❌ Déplacer le fact-check vers Gemini/OpenAI malgré le grounding Google
+  « meilleur sur le papier » : le fact-check reçoit question + réponse (donc
+  potentiellement du contenu Gmail/Drive) — un nouveau destinataire des
+  données privées violerait BUG 12 et la promesse de confiance (annexe D).
 
 ---
 
@@ -263,6 +282,71 @@ Points d'économie structurels confirmés par la veille :
 7. **Mistral Large 3 quasi orphelin** — jamais routé automatiquement,
    comparateur only ; ironie tarifaire : $0.5/$1.5, moins cher que Medium 3.5
    en sortie (5×) — vaut un benchmark FR par curiosité avant de statuer.
+
+---
+
+## 6. Annexes comparatives (18 juillet — questions de Florent)
+
+⚠️ Précaution de lecture commune : chiffres à J+9 du lancement GPT-5.6,
+configurations de reasoning pas toujours comparables (ex. Sonnet mesuré à
+« max effort » vs Terra à « medium »), et aucun de ces benchs ne mesure le
+français ni l'usage assistant-personnel. Ordres de grandeur, pas classement
+au point près. Tout déroutage réel passe par une vigie FR maison (pattern
+P1.4).
+
+### A. GPT-5.6 : Sol / Terra / Luna face à l'écurie Arty
+
+| Palier | Prix in/out | Concurrent direct Arty | Signal qualité |
+|---|---|---|---|
+| Sol | $5/$30 | Opus 4.8 ($5/$25) | Nouveau SOTA agentique (Agents' Last Exam 53,6) et coding index (80) ; Opus 17 % moins cher en sortie |
+| Terra | $2.5/$15 | Sonnet 5 ($3/$15 ; intro $2/$10) | Quasi-Sol sur le long-contexte (89,6 % vs 91,5 %) pour moitié prix — « défaut = Terra, escalade = Sol » |
+| Luna | $1/$6 | Haiku 4.5 ($1/$5), gpt-5-mini ($0.25/$2) | **Long-contexte effondré : 41,3 %** — disqualifiant pour Arty ; ne remplace ni Haiku (iso-prix) ni mini (4× moins cher) |
+
+Sources : artificialanalysis.ai, vellum.ai, openai.com, the-agent-report.com.
+
+### B. Terra vs Sonnet 5 (qualité)
+
+Même classe, coude-à-coude : Intelligence Index AA 53 (Sonnet, max) vs 46
+(Terra, medium) ; coding général nettement Sonnet (76,7 vs 63,4) ;
+SWE-Bench Pro ex æquo (63,2 / 63,4) ; Terminal-Bench Terra devant (87,4 vs
+80,4) ; connaissances factuelles avantage Terra ; leaderboard BenchLM 85/84.
+**Conclusion Arty** : aucune raison de toucher au backbone Sonnet (boucle
+d'outils, agentique, rédaction, architecture données privées, prix intro
+jusqu'au 31/08) ; Terra = meilleur défaut du provider ChatGPT ; son point
+fort factuel est déjà couvert — en mieux — par le grounding Gemini.
+Sources : artificialanalysis.ai, benchlm.ai, merge.dev, datacamp.com.
+
+### C. Gemini : niveau réel et validation du candidat de migration
+
+Le sommet GA de Google est `gemini-3.5-flash` — une demi-classe sous
+Sonnet 5/Terra en raisonnement brut (Terminal-Bench 76,2 vs 80,4/87,4 ;
+Intelligence Index ~55) mais imbattable sur son terrain : grounding
+Search/Maps natif, multimodal, vitesse, prix ($1.5/$9). Google n'a AUCUN
+frontier GA (3.5 Pro bloqué en preview) → le découpage Arty « Gemini
+cherche, Claude rédige » reste objectivement optimal.
+**Candidat migration P0 validé** : `gemini-3.1-flash-lite` bat
+`gemini-2.5-flash` sur 3 benchs sur 4 (GPQA Diamond 86,9 %, HLE, SimpleQA)
+avec 2,5× moins de latence, +45 % de débit, ~1,5× moins cher. Trois
+vérifications restantes : FACTS Grounding (le seul bench où 2.5 garde
+l'avantage — cœur du rôle Arty), fenêtre de contexte exacte (< 1M), vigie
+FR + support tools (`google_search`/`google_maps`/`url_context`).
+Sources : blog.google, llm-stats.com, cometapi.com, datacamp.com,
+buildfastwithai.com.
+
+### D. Fact-checking : pourquoi le routing actuel est le bon
+
+Setup (PR #327) : passe 1 Haiku sans web (60/j, tri rapide) → passe 2
+Sonnet 5 + web_search (15/j, claims risqués). La contrainte dominante n'est
+pas la qualité factuelle brute : **le vérificateur reçoit question +
+réponse, donc potentiellement du contenu Gmail/Drive — il doit être un
+fournisseur qui voit DÉJÀ la conversation**. Ça verrouille Anthropic.
+Gemini+grounding serait « meilleur » et moins cher sur le papier ($14/1000
+prompts groundés) mais ajouterait un destinataire des données privées
+(contre BUG 12) ; Terra/Luna : même objection, gain nul (la faiblesse
+long-contexte de Luna serait ici sans objet — payloads ~4K tokens — mais
+iso-prix Haiku). Le web search de la passe 2 bat de toute façon les
+connaissances paramétriques de n'importe quel modèle sur le factuel frais.
+Seule amélioration retenue : variante `web_search_20260209` (action P2).
 
 ---
 
