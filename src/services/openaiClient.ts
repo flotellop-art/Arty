@@ -27,7 +27,7 @@ const DEFAULT_MODEL = 'gpt-5.6-terra'
 const FALLBACK_MODEL = 'gpt-5'
 // Modèle utilisé pour valider une clé BYOK saisie dans la modale — dispo
 // sur tous les comptes payants depuis 2024, évite les faux négatifs de
-// test si l'utilisateur n'a pas encore accès à gpt-5 / gpt-5.5.
+// test si l'utilisateur n'a pas encore accès à gpt-5 / gpt-5.6.
 const TEST_MODEL = 'gpt-4o-mini'
 
 const OPENAI_SYSTEM = `Tu es Arty, un assistant IA personnel.
@@ -108,8 +108,9 @@ async function openaiFetch(
   return res
 }
 
-// Certains comptes OpenAI n'ont pas encore accès à gpt-5.5 (gating par tier
-// dans les premières semaines après release) — on retente une fois avec gpt-5
+// Certains comptes OpenAI n'ont pas encore accès au DEFAULT_MODEL (gating
+// par tier dans les premières semaines après une release — vrai pour 5.5 en
+// avril, pour 5.6 en juillet) — on retente une fois avec gpt-5
 // si le 1er appel refuse le modèle, avant même que le stream ait commencé.
 // Pattern miroir de whisperClient:71-83.
 async function startChatRequest(
