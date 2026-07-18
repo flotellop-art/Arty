@@ -23,17 +23,15 @@ const config: CapacitorConfig = {
       showSpinner: false,
     },
     Keyboard: {
-      // 'body' = Capacitor resizes the body when the keyboard appears, which
-      // keeps regular flow content above it on most Android launchers. We
-      // additionally listen to keyboardWillShow/keyboardWillHide in main.tsx
-      // and expose `--keyboard-height` (CSS px) so screens that opt-in via
-      // `.keyboard-aware` get extra padding-bottom for inputs (BYOK key in
-      // onboarding, license input in Settings). The legacy `--kb-height`
-      // (visualViewport-based, used by `.fixed.inset-0` modals) is kept as
-      // a safety net for ROMs where `resize: body` misbehaves.
+      // `resize` only applies to iOS. Android is handled by adjustNothing plus
+      // the viewport controller in main.tsx.
       resize: 'body',
       style: 'dark',
-      resizeOnFullScreen: true,
+      // Keep Capacitor's Android full-screen workaround disabled. With Arty's
+      // edge-to-edge WebView it changes the native child height while
+      // visualViewport also reports the IME occlusion, which reduces the app
+      // twice and exposes a white strip above the keyboard.
+      resizeOnFullScreen: false,
     },
     PushNotifications: {
       presentationOptions: ['badge', 'sound', 'alert'],

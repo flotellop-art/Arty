@@ -2,6 +2,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { Capacitor } from '@capacitor/core'
 import App from './App'
+import { resolveNativeViewportHeight } from './services/native/viewport'
 import './index.css'
 import './i18n' // initialise react-i18next (détection navigator + localStorage)
 import { captureAcquisition } from './services/acquisition'
@@ -40,12 +41,10 @@ void cleanupLegacyServiceWorker()
 // @codetrix plugin here: it only supports Capacitor 6 and duplicates the native
 // implementation used by every login flow.
 if (Capacitor.isNativePlatform()) {
-  // Track the actual visible viewport via the standard `visualViewport` API,
-  // which gives CSS pixels directly (unlike the Capacitor Keyboard plugin's
-  // `info.keyboardHeight` that returns device pixels — on a DPR=3 phone,
-  // setting `--kb-height: 1080px` for a 1080 device-px keyboard would
-  // oversubtract from `100dvh` (927 CSS px on the same phone) and collapse
-  // the App root to 0).
+  // Track the visible viewport in CSS pixels. While the keyboard is open, the
+  // Capacitor Keyboard event is authoritative: on edge-to-edge Android,
+  // visualViewport can briefly report a WebView that has already been reduced
+  // by the IME and applying that value again creates a blank strip.
   //
   // We expose two CSS vars on <html>:
   //   --viewport-h → visible viewport height in CSS px (App root uses this)
@@ -55,39 +54,59 @@ if (Capacitor.isNativePlatform()) {
   //                  viewport, so subtracting from `100dvh` alone is not
   //                  enough for fixed overlays).
   const root = document.documentElement
+  let nativeKeyboardHeight = 0
+  let layoutHeight = Math.max(
+    root.clientHeight,
+    window.innerHeight,
+    window.visualViewport?.height ?? 0,
+  )
+
   const updateViewport = () => {
     const vv = window.visualViewport
     const visualH = vv?.height ?? window.innerHeight
-    const layoutH = root.clientHeight
-    const kbHeight = Math.max(0, layoutH - visualH)
-    root.style.setProperty('--viewport-h', `${visualH}px`)
+
+    // With adjustNothing, clientHeight/innerHeight keep the pre-keyboard
+    // layout height. Re-sample it while the IME is hidden so rotation and
+    // split-screen changes are still handled.
+    if (nativeKeyboardHeight === 0) {
+      layoutHeight = Math.max(root.clientHeight, window.innerHeight, visualH)
+    }
+
+    const visibleH = resolveNativeViewportHeight({
+      layoutHeight,
+      visualHeight: visualH,
+      keyboardHeight: nativeKeyboardHeight,
+    })
+    const kbHeight = Math.max(0, layoutHeight - visibleH)
+
+    root.style.setProperty('--viewport-h', `${visibleH}px`)
     root.style.setProperty('--kb-height', `${kbHeight}px`)
+    root.style.setProperty('--keyboard-height', `${kbHeight}px`)
   }
   window.visualViewport?.addEventListener('resize', updateViewport)
   window.visualViewport?.addEventListener('scroll', updateViewport)
   window.addEventListener('resize', updateViewport)
   updateViewport()
 
-  // Capacitor Keyboard plugin — explicit show/hide events let us set a CSS
-  // var (`--keyboard-height`) consumed by `.keyboard-aware` containers (see
-  // index.css). This is more reliable than `visualViewport` on some Android
-  // ROMs where the resize event fires too late. We also hide the iOS-style
-  // accessory bar (no value on Android, harmless when missing).
+  // Capacitor Keyboard supplies CSS pixels on Android and iOS. Besides feeding
+  // `.keyboard-aware`, it is the fallback for ROMs where visualViewport is
+  // late or does not shrink. Listen to will+did so the final IME animation
+  // frame always wins.
   import('@capacitor/keyboard').then(({ Keyboard }) => {
     Keyboard.setAccessoryBarVisible({ isVisible: false }).catch(() => {})
-    Keyboard.addListener('keyboardWillShow', (info) => {
-      // info.keyboardHeight on Android is in device px. Convert to CSS px
-      // by dividing by devicePixelRatio so it matches `--viewport-h` (CSS
-      // px). On iOS the value is already in CSS px and DPR is typically
-      // ~2/3 — the same conversion gives a slightly smaller value but
-      // .keyboard-aware uses it as padding-bottom which is forgiving.
-      const dpr = window.devicePixelRatio || 1
-      const cssPx = Math.round(info.keyboardHeight / dpr)
-      root.style.setProperty('--keyboard-height', `${cssPx}px`)
-    })
-    Keyboard.addListener('keyboardWillHide', () => {
-      root.style.setProperty('--keyboard-height', '0px')
-    })
+    const onShow = (info: { keyboardHeight: number }) => {
+      nativeKeyboardHeight = Math.max(0, Math.round(info.keyboardHeight))
+      updateViewport()
+    }
+    const onHide = () => {
+      nativeKeyboardHeight = 0
+      updateViewport()
+      requestAnimationFrame(updateViewport)
+    }
+    Keyboard.addListener('keyboardWillShow', onShow)
+    Keyboard.addListener('keyboardDidShow', onShow)
+    Keyboard.addListener('keyboardWillHide', onHide)
+    Keyboard.addListener('keyboardDidHide', onHide)
   }).catch(() => {})
 }
 
