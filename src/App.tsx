@@ -158,7 +158,7 @@ function AppContent({
   } = useAppSetup(conversation)
 
   const handleSendFromHome: ChatSendHandler = useCallback(
-    (text, files, options) => {
+    async (text, files, options) => {
       setActionScreenshot(null)
       const isFirstConv = conversations.length === 0
       const id = createConversation(isFirstConv)
@@ -166,18 +166,29 @@ function AppContent({
       // déjà posée par createConversation — on reste sur la Home au lieu de
       // naviguer vers une conversation fantôme (écran vide).
       if (!id) return false
-      // Navigue SANS attendre la résolution de sendMessage : la préparation
-      // d'envoi peut bloquer sur le réseau (PDF/URL inlinés via Linkup) ou
-      // IndexedDB — pendant ce temps la progression (« Lecture du PDF… »)
-      // vit dans la conversation, pas sur la Home. La promesse retournée
-      // garde la sémantique brouillon : InputBar ne vide le composeur que si
-      // elle résout true ; un refus (cap de streams) laisse le brouillon Home
-      // intact et l'erreur s'affiche dans la conversation ouverte.
       const accepted = sendMessage(text, id, files?.length ? files : undefined, options)
+      // Ne PAS attendre la résolution complète : la préparation d'envoi peut
+      // bloquer sur le réseau (PDF/URL inlinés via Linkup) ou IndexedDB, et
+      // sa progression (« Lecture du PDF… ») vit dans la conversation, pas
+      // sur la Home. En revanche, TOUS les chemins `return false` de
+      // sendMessage sont synchrones (avant son premier await) : ce race à
+      // 0 ms les capte — les microtasks passent avant les timers — sans
+      // retarder la navigation des envois acceptés.
+      const quick = await Promise.race([
+        accepted,
+        new Promise<'pending'>((resolve) => setTimeout(() => resolve('pending'), 0)),
+      ])
+      if (quick === false) {
+        // Refus (cap de streams…) : on reste sur la Home, InputBar restaure
+        // le brouillon, et la conversation vide créée ci-dessus n'a plus de
+        // raison d'être — sans ce delete elle traînerait dans la liste.
+        deleteConversation(id)
+        return false
+      }
       navigate(`/chat/${id}`)
       return accepted
     },
-    [createConversation, sendMessage, navigate, setActionScreenshot, conversations.length]
+    [createConversation, sendMessage, deleteConversation, navigate, setActionScreenshot, conversations.length]
   )
 
   // Brief proactif (façon "Daily Brief") : généré tout seul à l'ouverture / au

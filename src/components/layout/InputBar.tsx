@@ -397,15 +397,38 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
       return false
     }
     if (accepted && typeof (accepted as Promise<void | boolean>).then === 'function') {
+      // Nettoyage OPTIMISTE au dispatch (revue #353, agent) : la préparation
+      // d'envoi peut durer (Linkup PDF/URL, IndexedDB) et l'utilisateur peut
+      // revenir sur cet écran AVANT la résolution — attendre pour vider le
+      // brouillon ferait ressusciter un texte déjà envoyé (Map relue par la
+      // nouvelle instance au mount). Les refus, eux, résolvent en synchrone
+      // dans sendMessage (avant tout await) → la restauration ci-dessous
+      // tourne quasi immédiatement, composant encore monté.
+      const snapshot = {
+        text: textToSend,
+        files: filesToSend,
+        quickAction: pendingQuickAction,
+      }
+      const restoreRefusedDraft = () => {
+        draftTouchedRef.current = true
+        // La Map d'abord : elle couvre aussi le cas d'un composant démonté
+        // (le prochain mount de ce draftKey relira ce texte).
+        if (scopedDraftKey) setComposerDraftMemory(scopedDraftKey, snapshot.text)
+        setText(snapshot.text)
+        setFiles(snapshot.files)
+        setPendingQuickAction(snapshot.quickAction)
+        return false
+      }
+      clearAcceptedDraft()
       setIsSubmitting(true)
       return (accepted as Promise<void | boolean>)
-        .then((result) => (result === false ? false : clearAcceptedDraft()))
-        .catch(() => false)
+        .then((result) => (result === false ? restoreRefusedDraft() : true))
+        .catch(restoreRefusedDraft)
         .finally(() => setIsSubmitting(false))
     }
     if (accepted === false) return false
     return clearAcceptedDraft()
-  }, [encryptedDraftKey, isStreaming, isSubmitting, isListening, stopListening, onSend, t, pendingQuickAction, scopedDraftKey])
+  }, [isStreaming, isSubmitting, isListening, stopListening, onSend, t, pendingQuickAction, scopedDraftKey])
 
   const handleSend = () => { sendText(text, files) }
 
@@ -756,10 +779,17 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
         // sendText we fall back to the textarea so the transcription isn't lost.
         const draft = textRef.current.trim()
         const combined = draft ? draft + ' ' + transcription : transcription
-        const sent = await sendText(combined, filesRef.current)
-        if (!sent) {
+        const dispatched = sendText(combined, filesRef.current)
+        if (dispatched === false) {
+          // Refus SYNCHRONE (champ bloqué : stream/submit en cours) — rien
+          // n'a été vidé, on rattache la transcription au brouillon visible.
           draftTouchedRef.current = true
           setText((prev) => (prev ? prev + ' ' : '') + transcription)
+        } else {
+          // Chemin asynchrone : sur refus, sendText restaure lui-même le
+          // snapshot `combined` (qui contient déjà la transcription) — ne
+          // PAS ré-appender ici, sinon transcription en double.
+          await dispatched
         }
       } catch (err) {
         console.warn('Whisper transcription failed:', err)
