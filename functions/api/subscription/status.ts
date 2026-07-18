@@ -263,8 +263,26 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
       console.error('[subscription/status] premium_cap query failed', err)
     }
     monthlyCap = {}
+    // C12 (18/07/2026, décision produit tracée en revue — 2 relecteurs) :
+    // buckets ENFORCÉS mais masqués TANT QUE NON CONSOMMÉS. `gemini-pro` :
+    // aucun chemin de l'app ne peut le consommer depuis C1 (Auto ne route
+    // jamais vers un -pro, comparateur nettoyé) → afficher « 80 Gemini Pro »
+    // à tout le monde était une promesse structurellement mensongère.
+    // `unknown-model` : filet technique anti-abus, pas une promesse produit —
+    // il s'affichait en brut dans le tooltip PlanBadge. MAIS le masque est
+    // conditionnel (`u === 0`) : si une consommation RÉELLE existe (modèle
+    // forgé en curl, ou dérive « client déployé avant l'entrée pricing »),
+    // la ligne RÉAPPARAÎT — un cap ne fond jamais sans ligne visible (doctrine
+    // « jamais de bascule silencieuse »), et l'avertissement anticipé du badge
+    // est préservé pour ce cas. Les caps restent appliqués par checkPremiumCap
+    // quoi qu'il arrive. Filtrer ICI masque la ligne aussi pour les vieux APK.
+    // Réintroduire l'affichage INCONDITIONNEL de gemini-pro UNIQUEMENT en même
+    // temps qu'un vrai chemin de consommation (GA Gemini 3.5 Pro) ET que le
+    // copy marketing — jamais le copy seul en premier (CDC veille 2026-07).
+    const hiddenIfUnused = new Set(['gemini-pro', 'unknown-model'])
     for (const [bucket, limit] of Object.entries(PREMIUM_BUCKET_CAPS)) {
       const u = Math.min(used[bucket] ?? 0, limit)
+      if (hiddenIfUnused.has(bucket) && u === 0) continue
       monthlyCap[bucket] = { used: u, limit, remaining: limit - u }
     }
   }
