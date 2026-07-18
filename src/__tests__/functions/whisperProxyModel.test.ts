@@ -11,6 +11,7 @@ import {
   computeCostMicroUsd,
   hasKnownPricing,
 } from '../../../functions/api/_lib/pricing'
+import { normaliseModel } from '../../services/costTracker'
 
 const src = readFileSync(resolve(process.cwd(), 'functions/api/ai/whisper-proxy.ts'), 'utf8')
 
@@ -51,6 +52,16 @@ describe('whisper-proxy — câblage (gardes par source)', () => {
 
   it('rembourse le quota sur échec upstream (invariant C3/C4 « consommé ⟺ servi »)', () => {
     expect(src).toMatch(/voidDailyQuota\(env, email, dailyConsumedModel\)/)
+  })
+})
+
+describe('normalisation client — la transcription garde sa propre ligne (revue C4)', () => {
+  it("normaliseModel ne rabat JAMAIS un modèle de transcription sur un bucket chat", () => {
+    // Bug bloquant trouvé en revue : startsWith('gpt-') fusionnait
+    // gpt-4o-transcribe dans la ligne « gpt-5 » de l'écran Coûts.
+    expect(normaliseModel('gpt-4o-transcribe')).toBe('gpt-4o-transcribe')
+    expect(normaliseModel('whisper-1')).toBe('whisper-1')
+    expect(normaliseModel('voxtral-mini-latest')).toBe('voxtral-mini-latest')
   })
 })
 
