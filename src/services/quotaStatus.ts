@@ -15,6 +15,10 @@ export interface ModelUsage {
   cacheReadTokens: number
   cacheCreationTokens: number
   audioSeconds: number
+  /** Prompts groundés Gemini (Google Search) — volume, C11. Optionnel :
+   * absent des réponses antérieures au déploiement C11. Le coût associé
+   * (borne haute $14/1000) est déjà inclus dans costUsd. */
+  groundedPrompts?: number
   /** Coût réel calculé serveur-side depuis les tokens et les tarifs officiels. */
   costUsd: number
 }
@@ -55,6 +59,8 @@ export interface MonthlyModelUsage {
   cacheReadTokens: number
   cacheCreationTokens: number
   audioSeconds: number
+  /** Prompts groundés Gemini sur le mois (volume, C11). Optionnel. */
+  groundedPrompts?: number
   costUsd: number
 }
 

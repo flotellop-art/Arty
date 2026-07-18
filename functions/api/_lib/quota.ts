@@ -28,6 +28,9 @@ export interface ModelUsage {
   cacheCreationTokens: number
   /** Whisper audio seconds transcribed today. 0 if N/A. */
   audioSeconds: number
+  /** Prompts groundés Gemini (Google Search) aujourd'hui — VOLUME (C11).
+   * Le coût associé ($14/1000, borne haute) est déjà inclus dans costUsd. */
+  groundedPrompts: number
   /** Real cost in USD — computed server-side from token pricing, not an estimate. */
   costUsd: number
 }
@@ -48,6 +51,8 @@ export interface MonthlyModelUsage {
   cacheReadTokens: number
   cacheCreationTokens: number
   audioSeconds: number
+  /** Prompts groundés Gemini sur le mois (volume, C11). */
+  groundedPrompts: number
   costUsd: number
 }
 
@@ -171,6 +176,7 @@ export async function consumeDailyQuota(
         cache_read_tokens INTEGER NOT NULL DEFAULT 0,
         cache_creation_tokens INTEGER NOT NULL DEFAULT 0,
         audio_seconds INTEGER NOT NULL DEFAULT 0,
+        grounded_prompts INTEGER NOT NULL DEFAULT 0,
         cost_usd_micro INTEGER NOT NULL DEFAULT 0,
         updated_at INTEGER NOT NULL,
         PRIMARY KEY (email, day, model)
@@ -186,6 +192,7 @@ export async function consumeDailyQuota(
       'cache_read_tokens INTEGER NOT NULL DEFAULT 0',
       'cache_creation_tokens INTEGER NOT NULL DEFAULT 0',
       'audio_seconds INTEGER NOT NULL DEFAULT 0',
+      'grounded_prompts INTEGER NOT NULL DEFAULT 0',
       'cost_usd_micro INTEGER NOT NULL DEFAULT 0',
     ]) {
       try {
@@ -282,6 +289,7 @@ export async function getDailyQuotaStatus(
                 COALESCE(cache_read_tokens, 0) AS cache_read_tokens,
                 COALESCE(cache_creation_tokens, 0) AS cache_creation_tokens,
                 COALESCE(audio_seconds, 0) AS audio_seconds,
+                COALESCE(grounded_prompts, 0) AS grounded_prompts,
                 COALESCE(cost_usd_micro, 0) AS cost_usd_micro
          FROM quota_model WHERE email = ?1 AND day = ?2 ORDER BY count DESC`
       )
@@ -294,6 +302,7 @@ export async function getDailyQuotaStatus(
           cache_read_tokens: number
           cache_creation_tokens: number
           audio_seconds: number
+          grounded_prompts: number
           cost_usd_micro: number
         }>()
       byModel = (res.results ?? []).map((r) => ({
@@ -305,6 +314,7 @@ export async function getDailyQuotaStatus(
         cacheReadTokens: r.cache_read_tokens,
         cacheCreationTokens: r.cache_creation_tokens,
         audioSeconds: r.audio_seconds,
+        groundedPrompts: r.grounded_prompts,
         costUsd: r.cost_usd_micro / 1_000_000,
       }))
     } catch {
@@ -345,6 +355,7 @@ export async function getMonthlyQuotaStatus(
               SUM(COALESCE(cache_read_tokens, 0)) AS cache_read_tokens,
               SUM(COALESCE(cache_creation_tokens, 0)) AS cache_creation_tokens,
               SUM(COALESCE(audio_seconds, 0)) AS audio_seconds,
+              SUM(COALESCE(grounded_prompts, 0)) AS grounded_prompts,
               SUM(COALESCE(cost_usd_micro, 0)) AS cost_usd_micro
        FROM quota_model
        WHERE email = ?1 AND day LIKE ?2
@@ -360,6 +371,7 @@ export async function getMonthlyQuotaStatus(
         cache_read_tokens: number
         cache_creation_tokens: number
         audio_seconds: number
+        grounded_prompts: number
         cost_usd_micro: number
       }>()
 
@@ -371,6 +383,7 @@ export async function getMonthlyQuotaStatus(
       cacheReadTokens: r.cache_read_tokens ?? 0,
       cacheCreationTokens: r.cache_creation_tokens ?? 0,
       audioSeconds: r.audio_seconds ?? 0,
+      groundedPrompts: r.grounded_prompts ?? 0,
       costUsd: (r.cost_usd_micro ?? 0) / 1_000_000,
     }))
 
@@ -475,6 +488,13 @@ export async function getUsageWindow(env: Env, email: string, days: number): Pro
  * Idempotent pour les erreurs D1 : en cas d'échec, on log et on ignore (le
  * compteur reste correct, seule la précision du coût est affectée).
  */
+// C11 — les migrations de quota_model vivent dans consumeDailyQuota, que les
+// VIP/trial BYPASSENT (cf. BUG 50 ci-dessus) : sur une base pas encore migrée,
+// leur recordUsage référencerait grounded_prompts avant tout ALTER → INSERT en
+// échec → usage perdu. On garantit donc la colonne ICI aussi, mémoïsé par
+// isolat pour ne pas payer un ALTER par appel.
+let groundedColumnEnsured = false
+
 export async function recordUsage(
   env: Env,
   email: string,
@@ -486,19 +506,31 @@ export async function recordUsage(
   const cost = computeCostMicroUsd(model, usage)
   const day = todayKey()
 
+  if (!groundedColumnEnsured) {
+    try {
+      await env.DB.prepare(
+        'ALTER TABLE quota_model ADD COLUMN grounded_prompts INTEGER NOT NULL DEFAULT 0'
+      ).run()
+    } catch {
+      // colonne déjà présente (ou table absente — l'INSERT échouera et loggera)
+    }
+    groundedColumnEnsured = true
+  }
+
   try {
     await env.DB.prepare(
       `INSERT INTO quota_model (
          email, day, model, count, input_tokens, output_tokens,
          cache_read_tokens, cache_creation_tokens, audio_seconds,
-         cost_usd_micro, updated_at
-       ) VALUES (?7, ?8, ?9, 1, ?1, ?2, ?3, ?4, ?5, ?6, unixepoch())
+         grounded_prompts, cost_usd_micro, updated_at
+       ) VALUES (?7, ?8, ?9, 1, ?1, ?2, ?3, ?4, ?5, ?10, ?6, unixepoch())
        ON CONFLICT (email, day, model) DO UPDATE SET
          input_tokens = input_tokens + ?1,
          output_tokens = output_tokens + ?2,
          cache_read_tokens = cache_read_tokens + ?3,
          cache_creation_tokens = cache_creation_tokens + ?4,
          audio_seconds = audio_seconds + ?5,
+         grounded_prompts = grounded_prompts + ?10,
          cost_usd_micro = cost_usd_micro + ?6,
          updated_at = unixepoch()`
     )
@@ -511,7 +543,8 @@ export async function recordUsage(
         Math.max(0, Math.round(cost)),
         email,
         day,
-        model
+        model,
+        Math.max(0, Math.round(usage.groundedPrompts ?? 0))
       )
       .run()
   } catch (err) {

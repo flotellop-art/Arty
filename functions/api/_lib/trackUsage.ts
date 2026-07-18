@@ -205,19 +205,51 @@ export function createMistralParser(format: UsageResponseFormat = 'sse'): UsageP
 
 export const createOpenAIParser = createMistralParser
 
-/** Gemini usageMetadata, for both generateContent JSON and SSE streaming. */
+/** Preuve qu'un candidat Gemini a réellement groundé (C11). Un
+ * `groundingMetadata` VIDE peut apparaître quand les tools sont déclarés mais
+ * qu'aucune recherche n'a été émise — on exige au moins une requête, un chunk
+ * de source, ou un searchEntryPoint pour compter le prompt comme groundé. */
+function candidateDidGround(candidate: unknown): boolean {
+  const g = (candidate as {
+    groundingMetadata?: {
+      webSearchQueries?: unknown
+      groundingChunks?: unknown
+      searchEntryPoint?: unknown
+    }
+  } | null)?.groundingMetadata
+  if (!g || typeof g !== 'object') return false
+  return (
+    (Array.isArray(g.webSearchQueries) && g.webSearchQueries.length > 0) ||
+    (Array.isArray(g.groundingChunks) && g.groundingChunks.length > 0) ||
+    g.searchEntryPoint != null
+  )
+}
+
+/** Gemini usageMetadata, for both generateContent JSON and SSE streaming.
+ * Détecte aussi le grounding Google Search (C11) : `groundedPrompts` vaut 1 si
+ * AU MOINS un chunk/candidat porte une preuve de recherche — plafonné à 1 par
+ * réponse, car Google facture PAR PROMPT groundé ($14/1000 famille 3.x), pas
+ * par requête de recherche ni par chunk SSE. */
 export function createGeminiParser(format: UsageResponseFormat = 'sse'): UsageParser {
   const usage = emptyMeasuredUsage()
+  usage.groundedPrompts = 0
 
   return createWireParser(format, (payload) => {
-    const metadata = (payload as {
+    const data = payload as {
+      candidates?: unknown[]
       usageMetadata?: {
         promptTokenCount?: number
         candidatesTokenCount?: number
         thoughtsTokenCount?: number
         cachedContentTokenCount?: number
       }
-    } | null)?.usageMetadata
+    } | null
+
+    if (Array.isArray(data?.candidates) && data.candidates.some(candidateDidGround)) {
+      usage.groundedPrompts = 1
+    }
+
+    const metadata = data?.usageMetadata
     if (!metadata) return
 
     const hasInput =

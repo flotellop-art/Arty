@@ -82,6 +82,12 @@ export function chargeForUsageMicro(
   model: string,
   usage: UsageTokens,
 ): { chargeMicro: number; providerCostMicro: number } {
+  // Champs optionnels de UsageTokens (images, chars, groundedPrompts)
+  // VOLONTAIREMENT non copiés — ils ne débitent jamais le wallet. En
+  // particulier groundedPrompts (C11) : le tarif grounding est une BORNE HAUTE
+  // théorique (palier gratuit Google → coût réel souvent 0) tracée pour
+  // l'analytics owner ; débiter des crédits réels sur un coût théorique
+  // violerait la stratégie confiance. À réévaluer si la vigie montre un abus.
   const safe: UsageTokens = {
     inputTokens: safeCount(usage.inputTokens),
     outputTokens: safeCount(usage.outputTokens),
