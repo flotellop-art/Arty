@@ -27,9 +27,9 @@ Surveiller en continu les évolutions des **APIs des fournisseurs IA utilisés p
 
 Arty utilise actuellement :
 - **Anthropic Claude** : modèles `claude-haiku-4-5-20251001`, `claude-sonnet-5`, `claude-opus-4-8`. API REST directe avec beta header `managed-agents-2026-04-01`. LLM principal + 4 agents managés (DG, Growth FR, Content FR, Analytics).
-- **Google Gemini** : `gemini-3-flash`. Grounding natif via `google_search` + `url_context`. Routing alternatif vers `google_maps` pour les requêtes localisation.
+- **Google Gemini** : `gemini-3.5-flash` (chat ET recherche hybride depuis le 18/07/2026, C1 — la famille 2.5 est arrêtée par Google le 16/10/2026). Grounding natif via `google_search` + `url_context`. Routing alternatif vers `google_maps` pour les requêtes localisation.
 - **Mistral** : `mistral-medium-latest`. LLM EU (RGPD-friendly, pas de modale consentement). Web search via Linkup.
-- **OpenAI** : `gpt-5.5` (défaut), fallback `gpt-5`. Whisper `gpt-4o-transcribe` (fallback `whisper-1`). Principalement BYOK.
+- **OpenAI** : `gpt-5.6-terra` (défaut depuis le 18/07/2026, C3 — $2.5/$15), fallback `gpt-5`. Whisper `gpt-4o-transcribe` (fallback `whisper-1`). Principalement BYOK.
 
 Routing intelligent dans `aiRouter.ts` (côté Arty). Tu n'as pas accès au repo, base-toi sur ces infos.
 

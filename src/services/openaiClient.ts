@@ -14,15 +14,20 @@ import type { RouteReason } from './router/types'
 // Pattern miroir de whisperClient.ts.
 
 const OPENAI_DIRECT_URL = 'https://api.openai.com/v1/chat/completions'
-// GPT-5.5 sorti le 23 avril 2026, -60% hallucinations vs GPT-5 (source
-// OpenAI). Si OpenAI renvoie un 400 "model does not exist" sur un compte
-// qui n'a pas encore accès, le fallback ci-dessous bascule sur gpt-5 (dont
-// on sait qu'il fonctionne).
-const DEFAULT_MODEL = 'gpt-5.5'
+// C3 (CDC veille 2026-07, décision D-A du 18/07 après vérif D1) : défaut
+// gpt-5.6-terra — palier milieu de la famille GPT-5.6 (GA 9 juillet 2026),
+// $2.5/$15 soit −50 % vs gpt-5.5 ($5/$30) pour une qualité quasi-Sol
+// (long-contexte 89,6 % vs 91,5 %, benchs de lancement). La vérif D1 a
+// confirmé que le chemin dominant était gpt-5.5 (le fallback gpt-5 = une
+// seule journée de test en avril) → le swap DIVISE le coût du provider.
+// Bucket premium : startsWith('gpt-5.') → « gpt-5 », cap 100 inchangé.
+// Si OpenAI renvoie un 400/404 "model does not exist" sur un compte pas
+// encore éligible 5.6, le fallback ci-dessous bascule sur gpt-5 (connu bon).
+const DEFAULT_MODEL = 'gpt-5.6-terra'
 const FALLBACK_MODEL = 'gpt-5'
 // Modèle utilisé pour valider une clé BYOK saisie dans la modale — dispo
 // sur tous les comptes payants depuis 2024, évite les faux négatifs de
-// test si l'utilisateur n'a pas encore accès à gpt-5 / gpt-5.5.
+// test si l'utilisateur n'a pas encore accès à gpt-5 / gpt-5.6.
 const TEST_MODEL = 'gpt-4o-mini'
 
 const OPENAI_SYSTEM = `Tu es Arty, un assistant IA personnel.
@@ -103,8 +108,9 @@ async function openaiFetch(
   return res
 }
 
-// Certains comptes OpenAI n'ont pas encore accès à gpt-5.5 (gating par tier
-// dans les premières semaines après release) — on retente une fois avec gpt-5
+// Certains comptes OpenAI n'ont pas encore accès au DEFAULT_MODEL (gating
+// par tier dans les premières semaines après une release — vrai pour 5.5 en
+// avril, pour 5.6 en juillet) — on retente une fois avec gpt-5
 // si le 1er appel refuse le modèle, avant même que le stream ait commencé.
 // Pattern miroir de whisperClient:71-83.
 async function startChatRequest(

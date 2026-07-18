@@ -221,6 +221,36 @@ export async function consumeDailyQuota(
 }
 
 /**
+ * Rembourse UNE consommation de quota journalier (tables `quota` +
+ * `quota_model`, les DEUX — en corriger une seule les désynchroniserait)
+ * quand l'upstream n'a pas servi la réponse. Revue C3 (18/07/2026) :
+ * `consumeDailyQuota` est appelé AVANT le fetch upstream, et le retry
+ * d'éligibilité du client (openaiClient.startChatRequest) refait une requête
+ * complète → 2 unités pour 1 message servi. Invariant restauré : « quota
+ * consommé ⟺ réponse servie ». Best-effort (waitUntil), jamais sous 0.
+ */
+export async function voidDailyQuota(env: Env, email: string, model: string): Promise<void> {
+  if (!env.DB) return
+  const day = todayKey()
+  try {
+    await env.DB.prepare(
+      `UPDATE quota SET count = MAX(0, count - 1), updated_at = unixepoch()
+       WHERE email = ?1 AND day = ?2`
+    )
+      .bind(email, day)
+      .run()
+    await env.DB.prepare(
+      `UPDATE quota_model SET count = MAX(0, count - 1), updated_at = unixepoch()
+       WHERE email = ?1 AND day = ?2 AND model = ?3`
+    )
+      .bind(email, day, model)
+      .run()
+  } catch (err) {
+    console.error('[quota] void failed (unité perdue, non bloquant)', err)
+  }
+}
+
+/**
  * Snapshot du quota journalier pour `email` : total global + décomposition
  * par modèle (avec la limite de chaque modèle). Utilisé par GET
  * /api/ai/quota/status pour afficher le quota dans Paramètres Arty.

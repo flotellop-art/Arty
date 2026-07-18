@@ -45,9 +45,14 @@ const PRICING: Record<string, ModelPricing> = {
   // PAS comptés (le tarif officiel est uniquement par minute d'audio).
   'voxtral-mini-latest': { input: 0, output: 0, audioPerSec: 0.003 / 60 }, // $0.003 / minute
 
-  // OpenAI (chat, avril 2026)
-  // GPT-5.5 sorti le 23/04/2026 — tarif officiel OpenAI $5 input / $30 output.
-  // -60% hallucinations vs GPT-5 selon OpenAI. Défault dans openaiClient.ts.
+  // OpenAI (chat)
+  // gpt-5.6-terra — DÉFAUT openaiClient depuis C3 (18/07/2026). Palier milieu
+  // de la famille GPT-5.6 (GA 09/07/2026), tarif officiel $2.5/$15
+  // (developers.openai.com/api/docs/pricing) — moitié du gpt-5.5 remplacé.
+  'gpt-5.6-terra': { input: 2.5, output: 15 },
+  // gpt-5.5 — ANCIEN défaut (avril → 18 juillet 2026, remplacé par Terra en
+  // C3). Conservé : coûts historiques + cible possible du retry si un compte
+  // n'est pas éligible 5.6.
   'gpt-5.5': { input: 5, output: 30 },
   // ⚠️ MORT (audit veille 2026-07, C6) : jamais appelé par aucun client. NE PAS
   // SUPPRIMER — l'entrée sert d'ancre de coût historique ET d'exemption du cap

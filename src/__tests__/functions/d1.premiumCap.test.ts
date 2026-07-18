@@ -77,3 +77,100 @@ describe('checkPremiumCap — cap atomique (zone 1)', () => {
     expect(results.some((r) => r.reason === 'cap_reached')).toBe(true)
   })
 })
+
+// ── Zone remboursement (revue C3, 18/07/2026) ────────────────────────────────
+// Invariant : « quota/cap consommé ⟺ message servi ». Le retry d'éligibilité
+// du client (Terra rejeté → gpt-5) refait une requête complète : sans void,
+// un seul message consommait 2 unités du bucket. Ces tests figent le
+// remboursement sur les 3 chemins (monthly_cap, premium_pack, quota journalier).
+import { voidPremiumCap } from '../../../functions/api/_lib/checkPremiumCap'
+import { consumeDailyQuota, voidDailyQuota } from '../../../functions/api/_lib/quota'
+
+describe('voidPremiumCap — remboursement du cap (revue C3)', () => {
+  it('rembourse une consommation monthly_cap et la rend re-consommable', async () => {
+    const email = 'refund@x.io'
+    const r1 = await checkPremiumCap(email, IMG, h.env)
+    expect(r1.reason).toBe('monthly_cap')
+    expect(r1.remaining).toBe(9)
+
+    await voidPremiumCap(h.env, email, r1)
+    const row = await h.db
+      .prepare('SELECT count FROM premium_cap WHERE email = ?1')
+      .bind(email)
+      .first<{ count: number }>()
+    expect(row!.count).toBe(0)
+
+    // L'unité rendue est bien re-consommable (pas juste un compteur cosmétique).
+    const r2 = await checkPremiumCap(email, IMG, h.env)
+    expect(r2.remaining).toBe(9)
+  })
+
+  it('ne descend jamais sous 0 (double void = no-op)', async () => {
+    const email = 'floor@x.io'
+    const r = await checkPremiumCap(email, IMG, h.env)
+    await voidPremiumCap(h.env, email, r)
+    await voidPremiumCap(h.env, email, r)
+    const row = await h.db
+      .prepare('SELECT count FROM premium_cap WHERE email = ?1')
+      .bind(email)
+      .first<{ count: number }>()
+    expect(row!.count).toBe(0)
+  })
+
+  it('no-op pour un résultat standard_model (aucune ligne créée)', async () => {
+    const email = 'std-void@x.io'
+    const r = await checkPremiumCap(email, STD, h.env)
+    await voidPremiumCap(h.env, email, r)
+    const row = await h.db.prepare('SELECT COUNT(*) AS n FROM premium_cap').first<{ n: number }>()
+    expect(row!.n).toBe(0)
+  })
+
+  it('re-crédite un pack entamé (reason premium_pack)', async () => {
+    const email = 'pack@x.io'
+    await h.db
+      .prepare(
+        `INSERT INTO premium_packs (user_email, ls_order_id, messages_total, messages_used)
+         VALUES (?1, 'order-1', 100, 5)`
+      )
+      .bind(email)
+      .run()
+    await voidPremiumCap(h.env, email, {
+      allowed: true,
+      reason: 'premium_pack',
+      bucket: 'gpt-image',
+      cap: 10,
+    })
+    const row = await h.db
+      .prepare('SELECT messages_used FROM premium_packs WHERE user_email = ?1')
+      .bind(email)
+      .first<{ messages_used: number }>()
+    expect(row!.messages_used).toBe(4)
+  })
+})
+
+describe('voidDailyQuota — remboursement du quota journalier (revue C3)', () => {
+  it('rembourse les DEUX tables (quota + quota_model), jamais sous 0', async () => {
+    const email = 'daily@x.io'
+    const model = 'gpt-5.6-terra'
+    await consumeDailyQuota(h.env, email, model)
+    await voidDailyQuota(h.env, email, model)
+
+    const g = await h.db
+      .prepare('SELECT count FROM quota WHERE email = ?1')
+      .bind(email)
+      .first<{ count: number }>()
+    const m = await h.db
+      .prepare('SELECT count FROM quota_model WHERE email = ?1 AND model = ?2')
+      .bind(email, model)
+      .first<{ count: number }>()
+    expect(g!.count).toBe(0)
+    expect(m!.count).toBe(0)
+
+    await voidDailyQuota(h.env, email, model)
+    const g2 = await h.db
+      .prepare('SELECT count FROM quota WHERE email = ?1')
+      .bind(email)
+      .first<{ count: number }>()
+    expect(g2!.count).toBe(0)
+  })
+})

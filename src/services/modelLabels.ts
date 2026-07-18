@@ -174,9 +174,15 @@ export function formatModelName(model: string): string {
   if (m.startsWith('gpt')) {
     // Version dérivée de l'ID (gpt-5.5 → « GPT-5.5 », gpt-5-mini →
     // « GPT-5 Mini », gpt-4o-mini → « GPT-4o Mini ») — plus de mapping figé.
+    // C3 : la famille GPT-5.6 a trois paliers nommés (Sol/Terra/Luna) qui
+    // sont des MODÈLES DIFFÉRENTS ($5/$30, $2.5/$15, $1/$6) — les fondre en
+    // « GPT-5.6 » cacherait lequel répond (anti-drift PR #323, même logique
+    // que la distinction Flash/Pro/Flash Lite côté Gemini).
     const ver = m.match(/^gpt-?(\d+(?:\.\d+)?o?)/)?.[1]
+    const tierMatch = m.match(/-(sol|terra|luna)(?:$|[-.])/)?.[1]
+    const tier = tierMatch ? ` ${tierMatch.charAt(0).toUpperCase()}${tierMatch.slice(1)}` : ''
     const mini = m.includes('mini') ? ' Mini' : ''
-    return ver ? `GPT-${ver}${mini}` : `GPT${mini}`
+    return ver ? `GPT-${ver}${tier}${mini}` : `GPT${tier}${mini}`
   }
 
   return model

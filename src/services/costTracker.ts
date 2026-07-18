@@ -24,7 +24,11 @@ export const MODEL_COSTS: Record<string, { input: number; output: number }> = {
   'claude-opus-4-6':   { input: 5.00,  output: 25.00 }, // legacy — tarif unifié Opus actuel
   'claude-opus-4-7':   { input: 5.00,  output: 25.00 },
   'claude-opus-4-8':   { input: 5.00,  output: 25.00 },
-  'gpt-5.5':           { input: 5.00,  output: 30.00 },
+  // gpt-5.6-terra — défaut ChatGPT depuis C3 (18/07). Parité serveur exigée
+  // (pricingParity.test.ts) : sans cette entrée, le fallback préfixe 'gpt-'
+  // le rabattrait sur gpt-5 ($1.25/$10) = coût local sous-estimé 2×.
+  'gpt-5.6-terra':     { input: 2.50,  output: 15.00 },
+  'gpt-5.5':           { input: 5.00,  output: 30.00 }, // ancien défaut (→ 18/07, C3)
   // gpt-5.5-mini : JAMAIS routé aujourd'hui, mais l'entrée est OBLIGATOIRE —
   // sans elle, normaliseModel le rabattait sur gpt-5-mini via la règle
   // includes('mini') → coût local sous-estimé 2× vs le serveur ($0.5/$3,

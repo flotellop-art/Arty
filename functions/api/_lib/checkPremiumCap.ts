@@ -57,7 +57,7 @@ interface PremiumCapEntry {
  * - claude-sonnet-* (toute variante) → 150/mois
  * - claude-opus-*                    → 150/mois (partage le bucket sonnet)
  * - gpt-5 strict (pas gpt-5-mini)    → 100/mois
- * - gpt-5.5 (et variantes non-mini)  → 100/mois (bucket gpt5)
+ * - gpt-5.x non-mini (5.5, 5.6-terra…) → 100/mois (bucket gpt5)
  * - gemini-pro* (toute variante)     → 80/mois
  *
  * Standards (retourne null) : gpt-5-mini, gemini-flash*, mistral-*.
@@ -246,6 +246,63 @@ export async function checkPremiumCap(
     return { allowed: true, reason: 'premium_pack', remaining: 0, bucket: entry.bucket, cap: entry.cap }
   }
   return { allowed: false, reason: 'cap_reached', remaining: 0, bucket: entry.bucket, cap: entry.cap }
+}
+
+/**
+ * Rembourse UNE consommation de cap premium quand l'upstream n'a PAS servi
+ * la réponse (revue C3, 18/07/2026) — invariant : « cap consommé ⟺ message
+ * servi ». Sans ça, le retry d'éligibilité du client (Terra rejeté → gpt-5,
+ * openaiClient.startChatRequest) faisait consommer le bucket DEUX FOIS pour
+ * un seul message (aucun voidPremiumCap n'existait, seul le wallet avait son
+ * void). Bug pré-existant (5.5→5), ré-exposé par le swap C3.
+ *
+ * - reason 'monthly_cap' : décrémente la ligne (email, month, bucket),
+ *   jamais sous 0.
+ * - reason 'premium_pack' : re-crédite un pack entamé. Le solde est un
+ *   SUM(total - used) → décrémenter N'IMPORTE QUEL pack avec used > 0
+ *   restaure exactement 1 crédit ; on cible le plus ancien entamé pour
+ *   rester déterministe (l'ordre FIFO peut être légèrement perturbé, le
+ *   TOTAL reste exact).
+ * - autres reasons ('standard_model', fail-open sans bucket) : no-op.
+ * Best-effort (waitUntil) : un échec de remboursement est loggé, jamais
+ * propagé — pire cas = l'ancien comportement (une unité perdue).
+ */
+export async function voidPremiumCap(
+  env: Env,
+  email: string,
+  consumed: PremiumCapResult
+): Promise<void> {
+  if (!env.DB || !consumed.allowed || !consumed.bucket) return
+  try {
+    if (consumed.reason === 'monthly_cap') {
+      await env.DB.prepare(
+        `UPDATE premium_cap SET count = MAX(0, count - 1), updated_at = unixepoch()
+         WHERE email = ?1 AND month = ?2 AND bucket = ?3`
+      )
+        .bind(email, currentMonthKey(), consumed.bucket)
+        .run()
+      return
+    }
+    if (consumed.reason === 'premium_pack') {
+      const target = await env.DB.prepare(
+        `SELECT user_email, ls_order_id FROM premium_packs
+         WHERE user_email = ?1 AND messages_used > 0
+         ORDER BY created_at ASC, ls_order_id ASC
+         LIMIT 1`
+      )
+        .bind(email)
+        .first<{ user_email: string; ls_order_id: string }>()
+      if (!target) return
+      await env.DB.prepare(
+        `UPDATE premium_packs SET messages_used = MAX(0, messages_used - 1)
+         WHERE user_email = ?1 AND ls_order_id = ?2`
+      )
+        .bind(target.user_email, target.ls_order_id)
+        .run()
+    }
+  } catch (err) {
+    console.error('[premium-cap] void failed (unité perdue, non bloquant)', err)
+  }
 }
 
 /**

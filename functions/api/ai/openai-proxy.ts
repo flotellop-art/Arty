@@ -12,8 +12,13 @@ import {
   emailTrialKey,
   resolveProxyIdentity,
 } from '../_lib/emailTrial'
-import { checkPremiumCap, premiumCapReachedResponse } from '../_lib/checkPremiumCap'
-import { consumeDailyQuota, recordUsage } from '../_lib/quota'
+import {
+  checkPremiumCap,
+  premiumCapReachedResponse,
+  voidPremiumCap,
+  type PremiumCapResult,
+} from '../_lib/checkPremiumCap'
+import { consumeDailyQuota, recordUsage, voidDailyQuota } from '../_lib/quota'
 import { freeModelLockedResponse } from '../_lib/freeQuota'
 import {
   createOpenAIParser,
@@ -141,6 +146,12 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
 
   // Quota quotidien uniquement sur la clé serveur ET seulement pour le plan
   // subscription. Pro/VIP illimités, trial cappé par son compteur KV dédié.
+  // Revue C3 (18/07) : quota et cap sont consommés AVANT le fetch upstream —
+  // on garde une trace de ce qui a été consommé pour le REMBOURSER si
+  // l'upstream ne sert pas la réponse (sinon le retry d'éligibilité du
+  // client, Terra rejeté → gpt-5, consommait 2 unités pour 1 message).
+  let dailyConsumedModel: string | undefined
+  let capConsumed: PremiumCapResult | undefined
   if (usingServerKey && userPlan === 'subscription') {
     const quota = await consumeDailyQuota(env, email, modelName)
     if (!quota.allowed) {
@@ -153,12 +164,19 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
         { status: 429 }
       )
     }
+    dailyConsumedModel = modelName
   }
 
   // Cap mensuel premium uniquement pour le plan subscription.
   if (usingServerKey && userPlan === 'subscription') {
     const cap = await checkPremiumCap(email, modelName, env)
-    if (!cap.allowed) return premiumCapReachedResponse(cap)
+    if (!cap.allowed) {
+      // Le quota journalier vient d'être consommé mais le message ne partira
+      // pas — rembourser pour ne pas pénaliser le refus de cap.
+      if (dailyConsumedModel) waitUntil(voidDailyQuota(env, email, dailyConsumedModel))
+      return premiumCapReachedResponse(cap)
+    }
+    if (cap.reason === 'monthly_cap' || cap.reason === 'premium_pack') capConsumed = cap
   }
 
   try {
@@ -184,8 +202,13 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => 'Unknown OpenAI error')
-      // Le fetch upstream a échoué → libère la réserve wallet en vol (PR #281).
+      // Le fetch upstream a échoué → libère la réserve wallet en vol (PR #281)
+      // ET rembourse quota/cap consommés en amont (revue C3 — invariant :
+      // « quota/cap consommé ⟺ réponse servie »). Couvre le rejet de modèle
+      // (retry client → sans ça, 2 unités par message) ET tout autre échec.
       if (walletResId) waitUntil(voidWalletBilling(env, walletResId, email))
+      if (capConsumed) waitUntil(voidPremiumCap(env, email, capConsumed))
+      if (dailyConsumedModel) waitUntil(voidDailyQuota(env, email, dailyConsumedModel))
       // Leak d'info (N-2) : sur la clé serveur, masquer l'erreur OpenAI brute
       // (état de la clé owner). EXCEPTION : le rejet de modèle doit rester
       // détectable — le client (startChatRequest) s'en sert pour retomber de
@@ -243,6 +266,9 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     })
   } catch (err) {
     if (walletResId) waitUntil(voidWalletBilling(env, walletResId, email))
+    // Même invariant que le chemin !response.ok : rien n'a été servi.
+    if (capConsumed) waitUntil(voidPremiumCap(env, email, capConsumed))
+    if (dailyConsumedModel) waitUntil(voidDailyQuota(env, email, dailyConsumedModel))
     return Response.json(
       { error: err instanceof Error ? err.message : 'OpenAI proxy error' },
       { status: 502 }
