@@ -17,17 +17,20 @@ import { haptic } from '../../utils/haptic'
 import { InputContextSlot } from './InputContextSlot'
 import { ReflectionPill } from '../chat/ReflectionPill'
 import { createQuickActionSelection, QUICK_ACTIONS } from '../../services/quickActions'
-import { getActiveUserId } from '../../services/userSession'
 import { decrypt, encrypt, isCryptoReady } from '../../services/crypto'
+import {
+  clearComposerDraft,
+  composerDraftStorageKey,
+  getComposerDraft,
+  hasComposerDraft,
+  scopeComposerDraftKey,
+  setComposerDraftMemory,
+} from '../../services/composerDrafts'
 
 export interface ComposerPrefill {
   id: number
   text: string
 }
-
-// Brouillons conservés uniquement en mémoire : ils survivent aux changements
-// d'écran sans écrire de contenu potentiellement sensible en clair sur disque.
-const composerDrafts = new Map<string, string>()
 
 interface InputBarProps {
   onSend: ChatSendHandler
@@ -162,12 +165,12 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
   // Évalué à chaque render (lecture localStorage triviale) — un testeur peut
   // poser le killswitch en DevTools et le voir s'appliquer immédiatement.
   const v2 = inputBarV2Enabled()
-  const scopedDraftKey = draftKey ? `${getActiveUserId() ?? 'anonymous'}:${draftKey}` : undefined
-  const encryptedDraftKey = scopedDraftKey ? `arty-composer-draft:${scopedDraftKey}` : undefined
+  const scopedDraftKey = draftKey ? scopeComposerDraftKey(draftKey) : undefined
+  const encryptedDraftKey = scopedDraftKey ? composerDraftStorageKey(scopedDraftKey) : undefined
   const previousDraftKeyRef = useRef(scopedDraftKey)
   const draftTouchedRef = useRef(Boolean(initialText))
   const draftWriteVersionRef = useRef(0)
-  const [text, setText] = useState(() => initialText ?? (scopedDraftKey ? composerDrafts.get(scopedDraftKey) ?? '' : ''))
+  const [text, setText] = useState(() => initialText ?? (scopedDraftKey ? getComposerDraft(scopedDraftKey) ?? '' : ''))
   const [files, setFiles] = useState<FileAttachment[]>(() => initialFiles ?? [])
   const [isSubmitting, setIsSubmitting] = useState(false)
   // Un clic sur une action rapide ARME le prochain envoi. L'instruction
@@ -192,8 +195,7 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
 
   useEffect(() => {
     if (!draftKey || !scopedDraftKey) return
-    if (text) composerDrafts.set(scopedDraftKey!, text)
-    else composerDrafts.delete(scopedDraftKey!)
+    setComposerDraftMemory(scopedDraftKey, text)
 
     const writeVersion = ++draftWriteVersionRef.current
     if (!encryptedDraftKey) return
@@ -210,7 +212,7 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
   }, [draftKey, encryptedDraftKey, scopedDraftKey, text])
 
   useEffect(() => {
-    if (!encryptedDraftKey || composerDrafts.has(scopedDraftKey!) || initialText) return
+    if (!encryptedDraftKey || hasComposerDraft(scopedDraftKey!) || initialText) return
     let active = true
     const restoreEncryptedDraft = () => {
       if (!active || !isCryptoReady()) return
@@ -218,7 +220,7 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
       if (!ciphertext) return
       void decrypt(ciphertext).then((restored) => {
         if (!active || !restored) return
-        composerDrafts.set(scopedDraftKey!, restored)
+        setComposerDraftMemory(scopedDraftKey!, restored)
         setText((current) => current || restored)
       }).catch(() => {})
     }
@@ -235,7 +237,7 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
     previousDraftKeyRef.current = scopedDraftKey
     draftTouchedRef.current = Boolean(initialText)
     draftWriteVersionRef.current += 1
-    setText(initialText ?? (scopedDraftKey ? composerDrafts.get(scopedDraftKey) ?? '' : ''))
+    setText(initialText ?? (scopedDraftKey ? getComposerDraft(scopedDraftKey) ?? '' : ''))
     setFiles(initialFiles ?? [])
     setPendingQuickAction(undefined)
   }, [initialFiles, initialText, scopedDraftKey])
@@ -375,8 +377,7 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
     haptic('light').catch(() => {})
     const clearAcceptedDraft = () => {
       draftWriteVersionRef.current += 1
-      if (scopedDraftKey) composerDrafts.delete(scopedDraftKey)
-      if (encryptedDraftKey) localStorage.removeItem(encryptedDraftKey)
+      if (scopedDraftKey) clearComposerDraft(scopedDraftKey)
       draftTouchedRef.current = false
       setText('')
       setFiles([])

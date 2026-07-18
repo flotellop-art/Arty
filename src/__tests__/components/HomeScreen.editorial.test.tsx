@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { HomeScreen } from '../../components/home/HomeScreen'
@@ -42,7 +43,7 @@ const googleAuth = {
   logout: vi.fn(),
 }
 
-function renderHome(onSend = vi.fn(), onDismissBrief = vi.fn(), onRestoreBrief = vi.fn()) {
+function renderHome(onSend = vi.fn(), briefDismissed = false) {
   render(
     <HomeScreen
       onMenuToggle={vi.fn()}
@@ -52,13 +53,36 @@ function renderHome(onSend = vi.fn(), onDismissBrief = vi.fn(), onRestoreBrief =
       drive={{} as never}
       userName="Camille"
       proactiveBrief={null}
-      onDismissBrief={onDismissBrief}
-      onRestoreBrief={onRestoreBrief}
+      briefDismissed={briefDismissed}
+      onDismissBrief={vi.fn()}
+      onRestoreBrief={vi.fn()}
       conversations={[]}
       onNewConversation={vi.fn()}
     />,
   )
-  return { onSend, onDismissBrief, onRestoreBrief }
+  return { onSend }
+}
+
+/** Simule useProactiveBrief : l'état « masqué » vit au-dessus de la Home
+    (niveau App), la Home n'est qu'une vue contrôlée. */
+function BriefHarness() {
+  const [dismissed, setDismissed] = useState(false)
+  return (
+    <HomeScreen
+      onMenuToggle={vi.fn()}
+      onSend={vi.fn()}
+      isStreaming={false}
+      googleAuth={googleAuth as never}
+      drive={{} as never}
+      userName="Camille"
+      proactiveBrief={null}
+      briefDismissed={dismissed}
+      onDismissBrief={() => setDismissed(true)}
+      onRestoreBrief={() => setDismissed(false)}
+      conversations={[]}
+      onNewConversation={vi.fn()}
+    />
+  )
 }
 
 describe('HomeScreen — accueil éditorial', () => {
@@ -91,15 +115,23 @@ describe('HomeScreen — accueil éditorial', () => {
     expect(onSend).not.toHaveBeenCalled()
   })
 
-  it('le brief peut être fermé puis réaffiché', () => {
-    const { onDismissBrief, onRestoreBrief } = renderHome()
+  it('le brief peut être fermé puis réaffiché (état piloté par le hook)', () => {
+    render(<BriefHarness />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Fermer le brief' }))
-    expect(onDismissBrief).toHaveBeenCalledTimes(1)
     expect(screen.queryByLabelText('Ton brief')).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Afficher le brief' }))
-    expect(onRestoreBrief).toHaveBeenCalledTimes(1)
     expect(screen.getByLabelText('Ton brief')).toBeInTheDocument()
+  })
+
+  // Non-régression M3 (revue PR #353) : après dismiss puis navigation
+  // aller-retour, la Home se REMONTE. L'état venant du hook (pas d'un state
+  // local), le bouton de restauration doit réapparaître — pas une carte vide.
+  it('remount avec brief masqué : le bouton « Afficher le brief » est là', () => {
+    renderHome(vi.fn(), true)
+
+    expect(screen.getByRole('button', { name: 'Afficher le brief' })).toBeInTheDocument()
+    expect(screen.queryByLabelText('Ton brief')).not.toBeInTheDocument()
   })
 })

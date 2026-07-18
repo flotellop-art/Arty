@@ -21,6 +21,7 @@ import * as scoped from '../services/scopedStorage'
 import { clearTrialToken } from '../services/emailTrialClient'
 import { clearWalletCache } from '../services/walletClient'
 import { adoptPendingTrialRemaining, clearPendingTrialRemaining } from '../services/trialClient'
+import { purgeComposerDraftsForActiveUser } from '../services/composerDrafts'
 
 type StoredKeys = { anthropic: string; gemini?: string; mistral?: string; openai?: string }
 
@@ -145,6 +146,11 @@ export function useAuth() {
     try { localStorage.removeItem('arty-allowed-families') } catch { /* noop */ }
     clearWalletCache()
     clearPendingTrialRemaining()
+    // Revue PR #353 — brouillons du composeur (mémoire + blobs chiffrés
+    // `arty-composer-draft:*`). Même hygiène que BUG 41 : aucune famille de
+    // clés du user partant ne doit survivre. AVANT clearActiveSession — le
+    // scope userId doit encore pointer sur le compte qui part.
+    purgeComposerDraftsForActiveUser()
     // Drop any pending OAuth state nonce (e.g. user clicked Google then
     // logged out before completing the redirect).
     clearOAuthState()

@@ -215,6 +215,11 @@ export function useProactiveBrief({ isGoogleConnected, userName, onSend }: Param
   return {
     brief: dismissed ? null : brief,
     loading: dismissed ? false : loading,
+    // Exposé tel quel : la visibilité du brief DOIT vivre ici (état App) et
+    // pas dans un useState local de la Home — un state local se réinitialise
+    // au remount (navigation aller-retour) et désynchronise l'UI (carte
+    // « vide » à la place du bouton de restauration).
+    dismissed,
     dismiss,
     restore,
     runAction,

@@ -6,6 +6,9 @@ import { useMediaQuery } from '../../hooks/useMediaQuery'
 import { getTheme, toggleTheme, type Theme } from '../../services/themeService'
 import { SettingsModal } from '../settings/SettingsModal'
 import { ApiKeysModal } from '../settings/ApiKeysModal'
+import { CostIndicator } from './CostIndicator'
+import { StreakBadge } from './StreakBadge'
+import { homeV2Enabled } from '../../services/homeV2'
 import { TaskPanel } from '../tasks/TaskPanel'
 import { countPending } from '../../services/taskService'
 import { importConversationFromFile } from '../../services/conversationExport'
@@ -505,6 +508,9 @@ export const Sidebar = memo(function Sidebar({
               <h2 className="mb-1 px-2.5 text-[10px] font-normal uppercase tracking-[0.14em] text-theme-muted">
                 {t('sidebar.pinned', { count: pinned.length })}
               </h2>
+              {/* Plafond hérité de l'ancienne sidebar : sans lui, 10 épinglés
+                  poussent la liste des conversations hors de l'écran. */}
+              <div className="max-h-28 overflow-y-auto">
               {pinned.map((item) => (
                 <button
                   key={item.message.id}
@@ -521,6 +527,7 @@ export const Sidebar = memo(function Sidebar({
                   </span>
                 </button>
               ))}
+              </div>
             </div>
           )}
 
@@ -568,6 +575,18 @@ export const Sidebar = memo(function Sidebar({
             {filteredConversations.map((conversation) => {
               const isActive = conversation.id === activeId
               const isStreaming = streamingConvIds?.has(conversation.id) ?? false
+              // Aperçu = dernière réponse d'Arty (plus informatif que la
+              // dernière question) ; fallback dernier message. Même logique
+              // que l'ancienne sidebar (Roadmap UI Phase 3 #5, cards riches).
+              const preview = (() => {
+                for (let i = conversation.messages.length - 1; i >= 0; i--) {
+                  const m = conversation.messages[i]
+                  if (m?.role === 'assistant' && m.content) return m.content
+                }
+                return conversation.messages[conversation.messages.length - 1]?.content ?? ''
+              })()
+              const previewClean = preview.replace(/[#*_`~]/g, '').replace(/\s+/g, ' ').trim().slice(0, 80)
+              const dominantModel = conversation.usedModels?.[0]
               const conversationDetails = (
                 <>
                   <span
@@ -626,10 +645,20 @@ export const Sidebar = memo(function Sidebar({
                           </span>
                         )
                       })}
+                      {conversation.tags && conversation.tags.length > 2 && (
+                        <span className="shrink-0">+{conversation.tags.length - 2}</span>
+                      )}
+                      {dominantModel && !previewClean && (
+                        <span className="shrink-0 uppercase tracking-[0.08em]">{dominantModel}</span>
+                      )}
                     </span>
-                    {snippets[conversation.id] && (
+                    {snippets[conversation.id] ? (
                       <span className="mt-0.5 block truncate text-[10px] italic text-theme-muted">
                         {highlight(snippets[conversation.id]!, debouncedSearch)}
+                      </span>
+                    ) : previewClean && (
+                      <span className="mt-0.5 block truncate text-[10px] italic text-theme-muted">
+                        {previewClean}
                       </span>
                     )}
                   </div>
@@ -733,6 +762,16 @@ export const Sidebar = memo(function Sidebar({
           className="mt-auto shrink-0 border-t border-theme-border px-3.5 pt-2"
           style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom, 0.75rem))' }}
         >
+          {/* PR G / revue #353 — coût (live) + série TOUJOURS visibles dans le
+              pied (stratégie « limites lisibles ») ; les deux rendent null si
+              non pertinents. Gate homeV2 partagé avec TopBar : en rollback
+              (arty-home-v2 = '0') c'est le header legacy qui les affiche. */}
+          {homeV2Enabled() && (
+            <div className="mb-1 flex items-center justify-end gap-1 px-2.5">
+              <CostIndicator />
+              <StreakBadge />
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-1">
             <button
               type="button"

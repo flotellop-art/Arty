@@ -23,6 +23,7 @@ import { TOOLS } from '../services/toolDefinitions'
 import { wantsImageGeneration, generateImageToolDefinition } from '../services/tools/imageTools'
 import { detectReminderIntent, createReminder } from '../services/reminderService'
 import { composeQuickActionText, isQuickActionSelection } from '../services/quickActions'
+import { clearConversationComposerDraft } from '../services/composerDrafts'
 import i18n from '../i18n'
 
 type ToolHandler = (name: string, input: Record<string, unknown>) => Promise<{ result: string; screenshot?: string }>
@@ -689,6 +690,9 @@ export function useConversation() {
         stopStreaming(id)
       }
       storage.deleteConversation(id)
+      // GC du brouillon composeur associé (mémoire + blob chiffré) — sans
+      // cible, il ne serait plus jamais ni restauré ni nettoyé.
+      clearConversationComposerDraft(id)
       refreshConversations()
       if (activeId === id) {
         setActiveId(null)

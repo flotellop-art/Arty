@@ -158,7 +158,7 @@ function AppContent({
   } = useAppSetup(conversation)
 
   const handleSendFromHome: ChatSendHandler = useCallback(
-    async (text, files, options) => {
+    (text, files, options) => {
       setActionScreenshot(null)
       const isFirstConv = conversations.length === 0
       const id = createConversation(isFirstConv)
@@ -166,10 +166,16 @@ function AppContent({
       // déjà posée par createConversation — on reste sur la Home au lieu de
       // naviguer vers une conversation fantôme (écran vide).
       if (!id) return false
-      const accepted = await sendMessage(text, id, files?.length ? files : undefined, options)
-      if (!accepted) return false
+      // Navigue SANS attendre la résolution de sendMessage : la préparation
+      // d'envoi peut bloquer sur le réseau (PDF/URL inlinés via Linkup) ou
+      // IndexedDB — pendant ce temps la progression (« Lecture du PDF… »)
+      // vit dans la conversation, pas sur la Home. La promesse retournée
+      // garde la sémantique brouillon : InputBar ne vide le composeur que si
+      // elle résout true ; un refus (cap de streams) laisse le brouillon Home
+      // intact et l'erreur s'affiche dans la conversation ouverte.
+      const accepted = sendMessage(text, id, files?.length ? files : undefined, options)
       navigate(`/chat/${id}`)
-      return true
+      return accepted
     },
     [createConversation, sendMessage, navigate, setActionScreenshot, conversations.length]
   )
@@ -467,6 +473,7 @@ function AppContent({
               userName={profileName || userName}
               proactiveBrief={proactiveBrief.brief}
               briefLoading={proactiveBrief.loading}
+              briefDismissed={proactiveBrief.dismissed}
               onDismissBrief={proactiveBrief.dismiss}
               onRestoreBrief={proactiveBrief.restore}
               onBriefAction={proactiveBrief.runAction}

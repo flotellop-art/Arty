@@ -25,6 +25,11 @@ interface HomeScreenProps {
   userName?: string
   proactiveBrief?: { items: BriefItem[] } | { text: string } | null
   briefLoading?: boolean
+  /** État « masqué » du brief — vit dans useProactiveBrief (niveau App), pas
+      dans un state local : un state local se réinitialise au remount de la
+      Home (navigation aller-retour) et affichait une carte « vide » à la
+      place du bouton de restauration. */
+  briefDismissed?: boolean
   onDismissBrief?: () => void
   onRestoreBrief?: () => void
   onBriefAction?: (action: BriefAction, item: BriefItem) => 'task' | 'chat' | null
@@ -62,6 +67,7 @@ function HomeScreenInner({
   userName,
   proactiveBrief,
   briefLoading,
+  briefDismissed = false,
   onDismissBrief,
   onRestoreBrief,
   onBriefAction,
@@ -74,7 +80,6 @@ function HomeScreenInner({
   const { t, i18n } = useTranslation()
   const noCasaPhase0 = isPublicGoogleOAuthProfileEnabled()
   const googleTooltip = useTooltip(noCasaPhase0 ? 'googleNoCasa' : 'google')
-  const [briefVisible, setBriefVisible] = useState(true)
   const [prefill, setPrefill] = useState<ComposerPrefill | undefined>()
   const prefillId = useRef(0)
   const reopenBriefRef = useRef<HTMLButtonElement>(null)
@@ -152,13 +157,11 @@ function HomeScreenInner({
 
   const dismissBrief = () => {
     onDismissBrief?.()
-    setBriefVisible(false)
     requestAnimationFrame(() => reopenBriefRef.current?.focus())
   }
 
   const reopenBrief = () => {
     onRestoreBrief?.()
-    setBriefVisible(true)
     requestAnimationFrame(() => document.getElementById('arty-brief-close')?.focus())
   }
 
@@ -188,7 +191,7 @@ function HomeScreenInner({
             </p>
           </header>
 
-          {briefVisible ? (
+          {!briefDismissed ? (
             <ProactiveBriefCard
               brief={proactiveBrief ?? null}
               loading={!!briefLoading}
@@ -233,7 +236,9 @@ function HomeScreenInner({
               ) : googleAuth.isConnected ? (
                 <>
                   <div className="mb-2"><GoogleStatus isConnected user={googleAuth.user} onLogout={googleAuth.logout} /></div>
-                  <CalendarView days={1} onEventClick={openEvent} />
+                  {/* 7 jours comme avant la refonte : « prépare ma semaine »
+                      est un parcours cœur — 1 seul jour amputait l'aperçu. */}
+                  <CalendarView days={7} onEventClick={openEvent} />
                 </>
               ) : (
                 <div className="py-1">
@@ -288,7 +293,12 @@ function HomeScreenInner({
                     onClick={() => onSelectConv(conversation.id)}
                     className="block min-h-11 w-full border-b border-theme-border bg-transparent py-2 text-left hover:text-theme-accent-text"
                   >
-                    <strong className="block font-display text-[13.12px] font-normal leading-snug">{conversation.title}</strong>
+                    <strong className="block font-display text-[13.12px] font-normal leading-snug">
+                      {conversation.euOnly && (
+                        <span className="mr-1 text-theme-accent-text" title={t('sidebar.euTooltip')} aria-hidden="true">◇</span>
+                      )}
+                      {conversation.title}
+                    </strong>
                     <small className="mt-0.5 block font-sans text-[10.88px] text-theme-muted">{relativeDate(conversation.updatedAt, locale)}</small>
                   </button>
                 ))
