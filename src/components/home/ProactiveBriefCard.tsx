@@ -12,13 +12,14 @@ interface Props {
   onDismiss: () => void
   onAction: (action: BriefAction, item: BriefItem) => 'task' | 'chat' | null
   isStreaming?: boolean
+  variant?: 'card' | 'plain'
 }
 
 function hasItems(brief: BriefState): brief is { items: BriefItem[] } {
   return !!brief && 'items' in brief
 }
 
-function ProactiveBriefCardInner({ brief, loading, onDismiss, onAction, isStreaming }: Props) {
+function ProactiveBriefCardInner({ brief, loading, onDismiss, onAction, isStreaming, variant = 'card' }: Props) {
   const { t } = useTranslation()
   const [doneActions, setDoneActions] = useState<Set<string>>(new Set())
   const [feedback, setFeedback] = useState<null | 'up' | 'down'>(null)
@@ -31,7 +32,10 @@ function ProactiveBriefCardInner({ brief, loading, onDismiss, onAction, isStream
   }
 
   return (
-    <section className="mb-[14px] border border-theme-ink px-[18px] py-4" aria-labelledby="arty-brief-title">
+    <section
+      className={variant === 'plain' ? 'mb-0 border-0 px-0 py-0' : 'mb-[14px] border border-theme-ink px-[18px] py-4'}
+      aria-labelledby="arty-brief-title"
+    >
       <div className="grid grid-cols-[1fr_auto] items-start gap-x-3 gap-y-3 min-[640px]:grid-cols-[1fr_auto_auto] min-[640px]:items-center">
         <div className="min-w-0">
           <h2 id="arty-brief-title" className="font-sans text-[11.5px] font-bold uppercase tracking-[0.14em] text-theme-accent-text">

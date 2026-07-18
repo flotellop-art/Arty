@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { HomeScreen } from '../../components/home/HomeScreen'
@@ -9,8 +9,8 @@ vi.mock('../../components/layout/TopBar', () => ({
 }))
 
 vi.mock('../../components/layout/InputBar', () => ({
-  InputBar: ({ prefill }: { prefill?: { id: number; text: string } }) => (
-    <textarea aria-label="composer" value={prefill?.text ?? ''} readOnly />
+  InputBar: ({ prefill, variant }: { prefill?: { id: number; text: string }; variant?: string }) => (
+    <textarea aria-label="composer" data-variant={variant} value={prefill?.text ?? ''} readOnly />
   ),
 }))
 
@@ -24,7 +24,22 @@ vi.mock('../../components/google/GoogleConnectButton', () => ({
   GoogleConnectButton: () => <button>Connecter Google</button>,
 }))
 vi.mock('../../components/google/GoogleStatus', () => ({ GoogleStatus: () => null }))
-vi.mock('../../components/google/CalendarView', () => ({ CalendarView: () => null }))
+vi.mock('../../components/google/CalendarView', () => ({
+  CalendarView: ({ onEventsChange }: { onEventsChange?: (events: unknown[], error: string | null) => void }) => {
+    useEffect(() => {
+      const start = new Date()
+      start.setMinutes(start.getMinutes() + 10)
+      const end = new Date(start.getTime() + 30 * 60_000)
+      onEventsChange?.([{
+        id: 'event-1',
+        title: 'Revue produit',
+        start: start.toISOString(),
+        end: end.toISOString(),
+      }], null)
+    }, [onEventsChange])
+    return null
+  },
+}))
 vi.mock('../../components/onboarding/Tooltips', () => ({
   useTooltip: () => ({ TooltipComponent: () => null }),
 }))
@@ -43,28 +58,32 @@ const googleAuth = {
   logout: vi.fn(),
 }
 
-function renderHome(onSend = vi.fn(), briefDismissed = false) {
+function renderHome(
+  onSend = vi.fn(),
+  onDismissBrief = vi.fn(),
+  onRestoreBrief = vi.fn(),
+  auth = googleAuth,
+  briefDismissed = false,
+) {
   render(
     <HomeScreen
       onMenuToggle={vi.fn()}
       onSend={onSend}
       isStreaming={false}
-      googleAuth={googleAuth as never}
+      googleAuth={auth as never}
       drive={{} as never}
       userName="Camille"
       proactiveBrief={null}
       briefDismissed={briefDismissed}
-      onDismissBrief={vi.fn()}
-      onRestoreBrief={vi.fn()}
+      onDismissBrief={onDismissBrief}
+      onRestoreBrief={onRestoreBrief}
       conversations={[]}
       onNewConversation={vi.fn()}
     />,
   )
-  return { onSend }
+  return { onSend, onDismissBrief, onRestoreBrief }
 }
 
-/** Simule useProactiveBrief : l'état « masqué » vit au-dessus de la Home
-    (niveau App), la Home n'est qu'une vue contrôlée. */
 function BriefHarness() {
   const [dismissed, setDismissed] = useState(false)
   return (
@@ -95,14 +114,27 @@ describe('HomeScreen — accueil éditorial', () => {
     vi.clearAllMocks()
   })
 
-  it('une intention préremplit le composeur sans envoyer', () => {
+  it('met le chat au premier plan dans sa variante hero', () => {
+    renderHome()
+
+    expect(screen.getByRole('heading', { level: 1, name: /Que voulez-vous accomplir/ })).toBeInTheDocument()
+    expect(screen.getByLabelText('composer')).toHaveAttribute('data-variant', 'hero')
+    expect(screen.queryByText(/templates métier/)).not.toBeInTheDocument()
+  })
+
+  it('affiche une note agenda utile dans la partie haute sans carte', async () => {
+    renderHome(vi.fn(), vi.fn(), vi.fn(), { ...googleAuth, isConnected: true })
+
+    expect(await screen.findByText('Revue produit')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Ouvrir l’agenda du jour' })).toBeInTheDocument()
+  })
+
+  it('une action rapide préremplit le composeur sans envoyer', () => {
     const { onSend } = renderHome()
 
-    fireEvent.click(screen.getByRole('button', { name: /Préparer/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Rédiger' }))
 
-    expect(screen.getByLabelText('composer')).toHaveValue(
-      'Prépare un ordre du jour concis pour ma prochaine réunion. Commence par me demander les informations qui te manquent.',
-    )
+    expect(screen.getByLabelText('composer')).toHaveValue('Aide-moi à rédiger : ')
     expect(onSend).not.toHaveBeenCalled()
   })
 
@@ -115,23 +147,21 @@ describe('HomeScreen — accueil éditorial', () => {
     expect(onSend).not.toHaveBeenCalled()
   })
 
-  it('le brief peut être fermé puis réaffiché (état piloté par le hook)', () => {
+  it('le brief peut être fermé puis réaffiché avec son état piloté par le hook', () => {
     render(<BriefHarness />)
 
+    fireEvent.click(screen.getByRole('button', { name: 'Brief · 0 priorités' }))
     fireEvent.click(screen.getByRole('button', { name: 'Fermer le brief' }))
     expect(screen.queryByLabelText('Ton brief')).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Afficher le brief' }))
+    fireEvent.click(screen.getByRole('button', { name: /Afficher le brief/ }))
     expect(screen.getByLabelText('Ton brief')).toBeInTheDocument()
   })
 
-  // Non-régression M3 (revue PR #353) : après dismiss puis navigation
-  // aller-retour, la Home se REMONTE. L'état venant du hook (pas d'un state
-  // local), le bouton de restauration doit réapparaître — pas une carte vide.
-  it('remount avec brief masqué : le bouton « Afficher le brief » est là', () => {
-    renderHome(vi.fn(), true)
+  it('affiche toujours la restauration après un remount avec brief masqué', () => {
+    renderHome(vi.fn(), vi.fn(), vi.fn(), googleAuth, true)
 
-    expect(screen.getByRole('button', { name: 'Afficher le brief' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Afficher le brief/ })).toBeInTheDocument()
     expect(screen.queryByLabelText('Ton brief')).not.toBeInTheDocument()
   })
 })
