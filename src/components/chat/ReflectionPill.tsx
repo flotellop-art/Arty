@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useReflectionLevel } from '../../hooks/useReflectionLevel'
 import { useSelectedModel } from '../../hooks/useSelectedModel'
@@ -49,20 +49,33 @@ export function ReflectionPill({ euOnly }: ReflectionPillProps) {
   const [open, setOpen] = useState(false)
   const [upgradePrompt, setUpgradePrompt] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const optionRefs = useRef<Array<HTMLButtonElement | null>>([])
 
-  // Fermeture au tap extérieur (même pattern que les menus de ChatTopBar).
+  // Fermeture extérieure/Échap et focus initial sur l'option active.
   useEffect(() => {
     if (!open) return
     const onDown = (e: MouseEvent | TouchEvent) => {
       if (!rootRef.current?.contains(e.target as Node)) setOpen(false)
     }
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      setOpen(false)
+      window.requestAnimationFrame(() => triggerRef.current?.focus())
+    }
     document.addEventListener('mousedown', onDown)
     document.addEventListener('touchstart', onDown)
+    document.addEventListener('keydown', onKeyDown)
+    const selectedIndex = Math.max(0, REFLECTION_OPTIONS.findIndex((option) => option.id === level))
+    const focusFrame = window.requestAnimationFrame(() => optionRefs.current[selectedIndex]?.focus())
     return () => {
+      window.cancelAnimationFrame(focusFrame)
       document.removeEventListener('mousedown', onDown)
       document.removeEventListener('touchstart', onDown)
+      document.removeEventListener('keydown', onKeyDown)
     }
-  }, [open])
+  }, [level, open])
 
   if (!reflectionSupported(model, euOnly)) return null
 
@@ -77,17 +90,36 @@ export function ReflectionPill({ euOnly }: ReflectionPillProps) {
     }
     setReflectionLevel(id)
     setOpen(false)
+    window.requestAnimationFrame(() => triggerRef.current?.focus())
+  }
+
+  const moveOptionFocus = (index: number, event: ReactKeyboardEvent<HTMLButtonElement>) => {
+    let nextIndex = index
+    if (event.key === 'ArrowDown') nextIndex = (index + 1) % REFLECTION_OPTIONS.length
+    else if (event.key === 'ArrowUp') nextIndex = (index - 1 + REFLECTION_OPTIONS.length) % REFLECTION_OPTIONS.length
+    else if (event.key === 'Home') nextIndex = 0
+    else if (event.key === 'End') nextIndex = REFLECTION_OPTIONS.length - 1
+    else return
+    event.preventDefault()
+    optionRefs.current[nextIndex]?.focus()
   }
 
   return (
     <div ref={rootRef} className="relative inline-block">
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => setOpen((v) => !v)}
+        onKeyDown={(event) => {
+          if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+            event.preventDefault()
+            setOpen(true)
+          }
+        }}
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-label={t('chat.reflection.label')}
-        className="flex items-center gap-1 px-2 py-1 rounded-full text-[10.5px] text-theme-muted hover:text-theme-ink hover:bg-theme-ink/[0.04] transition-colors"
+        className="flex min-h-11 items-center gap-1 border border-theme-border px-2 py-1 text-[10.5px] text-theme-muted transition-colors hover:border-theme-accent hover:text-theme-ink"
       >
         <span aria-hidden="true">{current.emoji}</span>
         <span className="font-sans uppercase tracking-kicker text-[9.5px] font-semibold">
@@ -102,26 +134,29 @@ export function ReflectionPill({ euOnly }: ReflectionPillProps) {
         <div
           role="listbox"
           aria-label={t('chat.reflection.label')}
-          className="absolute bottom-full left-0 mb-1.5 bg-theme-surface rounded-xl shadow-lg border border-theme-border py-1 z-30 min-w-[170px] animate-fade-in"
+          className="absolute bottom-full left-0 z-30 mb-1.5 min-w-[170px] border border-theme-ink bg-theme-bg py-1 animate-fade-in"
         >
-          {REFLECTION_OPTIONS.map((opt) => {
+          {REFLECTION_OPTIONS.map((opt, index) => {
             const selected = level === opt.id
             const locked = isReflectionLevelLocked(opt.id, isPro)
             return (
               <button
+                ref={(element) => { optionRefs.current[index] = element }}
                 key={opt.id}
                 role="option"
                 aria-selected={selected}
+                tabIndex={selected ? 0 : -1}
                 onClick={() => select(opt.id)}
+                onKeyDown={(event) => moveOptionFocus(index, event)}
                 className={`w-full flex items-center gap-2 px-3 py-2 text-xs transition-colors ${
                   selected
-                    ? 'bg-theme-accent/10 text-theme-accent font-semibold'
+                    ? 'bg-theme-accent/10 text-theme-accent-text font-semibold'
                     : 'text-theme-ink/80 hover:bg-theme-ink/[0.03]'
                 }`}
               >
                 <span aria-hidden="true">{locked ? '🔒' : opt.emoji}</span>
                 <span className="flex-1 text-left">{t(`chat.reflection.${opt.id}`)}</span>
-                {selected && <span className="text-theme-accent" aria-hidden="true">✓</span>}
+                {selected && <span className="text-theme-accent-text" aria-hidden="true">✓</span>}
               </button>
             )
           })}

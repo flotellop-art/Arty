@@ -29,11 +29,13 @@ const PROVIDER_TO_FAMILY: Record<Exclude<AIModel, 'auto'>, ModelFamily> = {
 
 interface TopBarProps {
   onMenuToggle: () => void
+  menuOpen?: boolean
+  dateLabel?: string
 }
 
 type OpenMenu = null | 'style' | 'model'
 
-export function TopBar({ onMenuToggle }: TopBarProps) {
+export function TopBar({ onMenuToggle, menuOpen = false, dateLabel = '' }: TopBarProps) {
   const { t } = useTranslation()
   const [currentStyle, setCurrentStyle] = useState<ResponseStyle>(getStyle)
   const currentModel = useSelectedModel()
@@ -130,39 +132,34 @@ export function TopBar({ onMenuToggle }: TopBarProps) {
         className="bg-theme-bg"
         style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
       >
-        <div className="flex items-center px-4 pt-2.5 pb-2 gap-2">
+        <div className="mx-auto flex w-full max-w-[1060px] items-center justify-between gap-[10px] border-b border-theme-border px-[34px] pb-[10px] pt-[22px] max-[899px]:px-[14px] max-[899px]:pt-4">
           <button
+            id="arty-menu-button"
+            type="button"
             onClick={onMenuToggle}
-            className="p-2 -ml-2 rounded-lg hover:bg-theme-ink/5 transition-colors text-theme-ink lg:hidden"
+            className="flex h-11 w-11 flex-shrink-0 flex-col items-center justify-center gap-1 border border-theme-border text-theme-ink transition-colors hover:border-theme-accent min-[900px]:hidden"
             aria-label={t('common.menu')}
+            aria-controls="arty-sidebar"
+            aria-expanded={menuOpen}
           >
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-              <rect y="3" width="20" height="2" rx="1" fill="currentColor" />
-              <rect y="9" width="20" height="2" rx="1" fill="currentColor" />
-              <rect y="15" width="20" height="2" rx="1" fill="currentColor" />
-            </svg>
+            <span className="h-px w-[15px] bg-current" />
+            <span className="h-px w-[15px] bg-current" />
+            <span className="h-px w-[15px] bg-current" />
           </button>
-          <div className="flex-1 flex items-center justify-center gap-2">
-            <PrismMark size={18} fill />
-            <span className="font-display italic text-[19px] text-theme-ink">Arty</span>
-          </div>
+          <span className="truncate font-sans text-[11.5px] uppercase tracking-[0.14em] text-theme-muted max-[899px]:mr-auto max-[420px]:text-[9.3px] max-[420px]:tracking-[0.1em]">
+            {dateLabel}
+          </span>
+          <span className="pointer-events-none font-display text-base font-bold tracking-[-0.03em] text-theme-ink">
+            arty<span className="text-theme-accent-text">.</span>
+          </span>
           <button
+            type="button"
             onClick={() => setSheetOpen(true)}
-            className="w-9 h-9 rounded-xl text-theme-ink text-lg leading-none hover:bg-theme-ink/5 transition-colors shrink-0 flex items-center justify-center"
+            className="flex h-11 w-11 flex-shrink-0 items-center justify-center border border-theme-border text-lg leading-none text-theme-ink transition-colors hover:border-theme-accent"
             aria-label={t('chat.optionsSheet.open')}
             aria-haspopup="dialog"
           >
             ⋯
-          </button>
-          <button
-            onClick={() => setShowSettings(true)}
-            className="p-2 rounded-lg hover:bg-theme-ink/5 transition-colors text-theme-ink shrink-0"
-            aria-label={t('sidebar.settings')}
-          >
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-              <circle cx="10" cy="10" r="2.5" stroke="currentColor" strokeWidth="1.5" />
-              <path d="M10 1.5V4M10 16V18.5M18.5 10H16M4 10H1.5M16.01 4L14.24 5.76M5.76 14.24L4 16M16.01 16L14.24 14.24M5.76 5.76L4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-            </svg>
           </button>
         </div>
 

@@ -71,7 +71,7 @@ export function applyTheme(theme: Theme): void {
 
   // Reflect in <meta name="theme-color"> so the Android system bar matches.
   const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')
-  if (meta) meta.content = theme === 'nocturne' ? '#0B0908' : '#FAF3E7'
+  if (meta) meta.content = theme === 'nocturne' ? '#201D19' : '#F4EFE5'
 }
 
 export function toggleTheme(): Theme {

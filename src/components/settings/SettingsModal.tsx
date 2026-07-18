@@ -1,5 +1,6 @@
 import { memo, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useDialogFocusTrap } from '../../hooks/useDialogFocusTrap'
 import {
   areNotificationsEnabled,
   setNotificationsEnabled,
@@ -63,6 +64,7 @@ interface SettingsModalProps {
  */
 export const SettingsModal = memo(function SettingsModal({ open, onClose }: SettingsModalProps) {
   const { t } = useTranslation()
+  const dialogRef = useDialogFocusTrap<HTMLDivElement>(open, onClose)
   const [notifEnabled, setNotifEnabled] = useState(false)
   const [locationEnabled, setLocationEnabled] = useState(false)
   const [locationFix, setLocationFix] = useState<UserLocation | null>(null)
@@ -235,16 +237,6 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
     setFactCheckModeState(mode)
   }
 
-  // Close on Escape
-  useEffect(() => {
-    if (!open) return
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [open, onClose])
-
   if (!open) return null
 
   return (
@@ -253,7 +245,12 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
       onClick={onClose}
     >
       <div
-        className="bg-theme-bg text-theme-ink rounded-sm shadow-xl w-full max-w-md overflow-y-auto border border-theme-border"
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="settings-modal-title"
+        tabIndex={-1}
+        className="w-full max-w-md overflow-y-auto border border-theme-border bg-theme-bg text-theme-ink"
         style={{ maxHeight: 'min(90vh, calc(var(--viewport-h, 100dvh) - 32px))' }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -266,7 +263,7 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
           </span>
           <button
             onClick={onClose}
-            className="p-1.5 rounded hover:bg-theme-ink/5 text-theme-ink"
+            className="grid h-11 w-11 place-items-center border border-theme-border text-theme-ink hover:border-theme-accent"
             aria-label={t('common.close')}
           >
             <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
@@ -278,8 +275,8 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
         <div className="mx-6 mt-[3px] h-px bg-theme-ink" />
 
         <div className="px-6 pt-6 pb-2">
-          <h1 className="font-display font-medium text-[28px] leading-[1.05] -tracking-[0.02em] text-theme-ink">
-            {t('settings.titleMain')} <span className="italic text-theme-accent">{t('settings.titleAccent')}</span>
+          <h1 id="settings-modal-title" className="font-display font-medium text-[28px] leading-[1.05] -tracking-[0.02em] text-theme-ink">
+            {t('settings.titleMain')} <span className="italic text-theme-accent-text">{t('settings.titleAccent')}</span>
           </h1>
           <p className="font-display italic text-theme-muted text-sm mt-1">
             {t('settings.subtitle')}

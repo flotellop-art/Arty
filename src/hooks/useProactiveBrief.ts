@@ -195,6 +195,10 @@ export function useProactiveBrief({ isGoogleConnected, userName, onSend }: Param
     abortRef.current?.abort()
   }, [])
 
+  const restore = useCallback(() => {
+    setDismissed(false)
+  }, [])
+
   // Exécute une action de chip. Le routage est construit côté client : reminder
   // crée une tâche locale ; schedule passe par le chat avec humain dans la boucle.
   const runAction = useCallback((action: BriefAction, item: BriefItem): 'task' | 'chat' | null => {
@@ -212,6 +216,7 @@ export function useProactiveBrief({ isGoogleConnected, userName, onSend }: Param
     brief: dismissed ? null : brief,
     loading: dismissed ? false : loading,
     dismiss,
+    restore,
     runAction,
   }
 }

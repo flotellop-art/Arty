@@ -7,9 +7,9 @@ export default {
   theme: {
     extend: {
       colors: {
-        cream: '#F5F0E8',
-        accent: '#E05510',
-        'bubble-user': '#1E1A14',
+        cream: '#F4EFE5',
+        accent: '#C45E44',
+        'bubble-user': '#201D19',
 
         ember: {
           paper: '#FAF3E7',
@@ -36,14 +36,15 @@ export default {
           ink: 'rgb(var(--theme-ink) / <alpha-value>)',
           muted: 'rgb(var(--theme-muted) / <alpha-value>)',
           accent: 'rgb(var(--theme-accent) / <alpha-value>)',
+          'accent-text': 'rgb(var(--theme-accent-text) / <alpha-value>)',
           border: 'rgb(var(--theme-border) / <alpha-value>)',
           cream: 'rgb(var(--theme-cream) / <alpha-value>)',
         },
       },
       fontFamily: {
-        serif: ['Lora', 'serif'],
-        display: ['Fraunces', 'Lora', 'serif'],
-        sans: ['Inter', 'sans-serif'],
+        serif: ['Georgia', '"Times New Roman"', 'serif'],
+        display: ['Georgia', '"Times New Roman"', 'serif'],
+        sans: ['Arial', 'Helvetica', 'sans-serif'],
         mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
       },
       letterSpacing: {

@@ -5,6 +5,7 @@ import type { ApiKeys } from '../../hooks/useApiKeys'
 import * as scoped from '../../services/scopedStorage'
 import { setActiveKeys } from '../../services/activeApiKey'
 import { initCrypto } from '../../services/crypto'
+import { useDialogFocusTrap } from '../../hooks/useDialogFocusTrap'
 
 interface ApiKeysModalProps {
   open: boolean
@@ -24,6 +25,7 @@ interface ApiKeysModalProps {
  */
 export const ApiKeysModal = memo(function ApiKeysModal({ open, onClose }: ApiKeysModalProps) {
   const { t } = useTranslation()
+  const dialogRef = useDialogFocusTrap<HTMLDivElement>(open, onClose)
   const [initialKeys, setInitialKeys] = useState<ApiKeys | null>(null)
 
   useEffect(() => {
@@ -31,15 +33,6 @@ export const ApiKeysModal = memo(function ApiKeysModal({ open, onClose }: ApiKey
     const stored = scoped.getJSON<ApiKeys>('api-keys')
     setInitialKeys(stored ?? null)
   }, [open])
-
-  useEffect(() => {
-    if (!open) return
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [open, onClose])
 
   if (!open) return null
 
@@ -61,7 +54,12 @@ export const ApiKeysModal = memo(function ApiKeysModal({ open, onClose }: ApiKey
       onClick={onClose}
     >
       <div
-        className="bg-theme-bg text-theme-ink rounded-sm shadow-xl w-full max-w-md overflow-y-auto border border-theme-border"
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="api-keys-modal-title"
+        tabIndex={-1}
+        className="w-full max-w-md overflow-y-auto border border-theme-border bg-theme-bg text-theme-ink"
         style={{ maxHeight: 'min(90vh, calc(var(--viewport-h, 100dvh) - 32px))' }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -74,7 +72,7 @@ export const ApiKeysModal = memo(function ApiKeysModal({ open, onClose }: ApiKey
           </span>
           <button
             onClick={onClose}
-            className="p-1.5 rounded hover:bg-theme-ink/5 text-theme-ink"
+            className="grid h-11 w-11 place-items-center border border-theme-border text-theme-ink hover:border-theme-accent"
             aria-label={t('common.close')}
           >
             <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
@@ -86,8 +84,8 @@ export const ApiKeysModal = memo(function ApiKeysModal({ open, onClose }: ApiKey
         <div className="mx-6 mt-[3px] h-px bg-theme-ink" />
 
         <div className="px-6 pt-6 pb-2">
-          <h1 className="font-display font-medium text-[28px] leading-[1.05] -tracking-[0.02em] text-theme-ink">
-            {t('apiKeysModal.titleLead')}<span className="italic text-theme-accent">{t('apiKeysModal.titleAccent')}</span>
+          <h1 id="api-keys-modal-title" className="font-display font-medium text-[28px] leading-[1.05] -tracking-[0.02em] text-theme-ink">
+            {t('apiKeysModal.titleLead')}<span className="italic text-theme-accent-text">{t('apiKeysModal.titleAccent')}</span>
           </h1>
           <p className="font-display italic text-theme-muted text-sm mt-1">
             {t('apiKeysModal.subtitle')}

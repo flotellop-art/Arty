@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 /* ============================================================
-   THEME TOKENS — Ember (day) + Nocturne (night)
+   THEME TOKENS — Fable (day) + Nocturne (night)
    Driven by [data-theme="ember"|"nocturne"] on <html>.
    Components consume via `theme-*` Tailwind utilities or
    directly via `var(--theme-*)`.
@@ -12,37 +12,34 @@
    ============================================================ */
 :root,
 html[data-theme='ember'] {
-  --theme-bg: 250 243 231;       /* #FAF3E7 ember-paper */
-  --theme-surface: 255 255 255;  /* #FFFFFF ember-card */
-  --theme-ink: 24 22 19;         /* #181613 ember-ink */
-  /* #7A5A3C — 4.6:1 sur ember-paper (WCAG AA petit texte). L'ancien
-     #8F6B4D (143 107 77) plafonnait à ~3.2:1, insuffisant pour les
-     nombreux usages en text-xs/text-[10px] (kickers, timestamps). */
-  --theme-muted: 122 90 60;
-  --theme-accent: 200 90 40;     /* #C85A28 ember-accent terracotta */
-  --theme-border: 232 217 191;   /* #E8D9BF ember-border */
-  --theme-cream: 245 230 208;    /* #F5E6D0 ember-cream */
-  /* Sidebar surfaces — elevated tile + soft borders. In Ember = warm
-     cream / dark-on-paper at low alpha. In Nocturne = deep brown /
-     paper-on-dark at low alpha. Used by the Design C sidebar so its
-     colors flip with the theme instead of staying dark in cream mode. */
-  --surface-elev: 245 230 208;        /* matches --theme-cream */
-  --border-weak: 24 22 19 / 0.06;
-  --border-mid: 24 22 19 / 0.12;
+  --theme-bg: 244 239 229;       /* #F4EFE5 ivoire */
+  --theme-surface: 239 232 218;  /* #EFE8DA panneau */
+  --theme-ink: 32 29 25;         /* #201D19 charbon */
+  --theme-muted: 111 102 86;     /* #6F6656 */
+  --theme-accent: 196 94 68;     /* #C45E44 terre cuite */
+  /* Variante texte AA pour les petits labels. L'accent de référence reste
+     inchangé pour les fonds, filets et grands éléments. */
+  --theme-accent-text: 157 62 42;
+  --theme-border: 201 189 168;   /* #C9BDA8 filet doux */
+  --theme-cream: 216 203 184;    /* #D8CBB8 sable */
+  --surface-elev: 239 232 218;
+  --border-weak: 201 189 168 / 0.72;
+  --border-mid: 201 189 168 / 1;
   color-scheme: light;
 }
 
 html[data-theme='nocturne'] {
-  --theme-bg: 11 9 8;            /* #0B0908 nocturne-bg */
-  --theme-surface: 24 19 17;     /* #181311 nocturne-surface */
-  --theme-ink: 245 230 208;      /* #F5E6D0 nocturne-ink */
-  --theme-muted: 168 156 138;    /* #A89C8A nocturne-muted */
-  --theme-accent: 245 154 75;    /* #F59A4B nocturne-accent amber */
-  --theme-border: 245 154 75;    /* #F59A4B used at low opacity (border-theme-border/10) */
-  --theme-cream: 43 31 21;       /* #2B1F15 nocturne-deep (alt warm surface) */
-  --surface-elev: 28 24 18;            /* #1C1812 (original Design C card) */
-  --border-weak: 240 226 204 / 0.07;
-  --border-mid: 240 226 204 / 0.13;
+  --theme-bg: 32 29 25;          /* #201D19 */
+  --theme-surface: 42 38 32;     /* #2A2620 */
+  --theme-ink: 244 239 229;      /* #F4EFE5 */
+  --theme-muted: 168 154 130;    /* #A89A82 */
+  --theme-accent: 225 138 112;   /* terre cuite éclaircie pour le contraste */
+  --theme-accent-text: 238 164 141;
+  --theme-border: 74 67 54;      /* #4A4336 */
+  --theme-cream: 74 67 54;
+  --surface-elev: 42 38 32;
+  --border-weak: 74 67 54 / 0.72;
+  --border-mid: 74 67 54 / 1;
   color-scheme: dark;
 }
 
@@ -50,16 +47,17 @@ html[data-theme='nocturne'] {
    still toggles the class. Prefer setting data-theme="nocturne"
    via themeService.ts. */
 html.dark {
-  --theme-bg: 11 9 8;
-  --theme-surface: 24 19 17;
-  --theme-ink: 245 230 208;
-  --theme-muted: 168 156 138;
-  --theme-accent: 245 154 75;
-  --theme-border: 245 154 75;
-  --theme-cream: 43 31 21;
-  --surface-elev: 28 24 18;
-  --border-weak: 240 226 204 / 0.07;
-  --border-mid: 240 226 204 / 0.13;
+  --theme-bg: 32 29 25;
+  --theme-surface: 42 38 32;
+  --theme-ink: 244 239 229;
+  --theme-muted: 168 154 130;
+  --theme-accent: 225 138 112;
+  --theme-accent-text: 238 164 141;
+  --theme-border: 74 67 54;
+  --theme-cream: 74 67 54;
+  --surface-elev: 42 38 32;
+  --border-weak: 74 67 54 / 0.72;
+  --border-mid: 74 67 54 / 1;
   color-scheme: dark;
 }
 
@@ -86,8 +84,8 @@ html {
 body {
   background-color: rgb(var(--theme-bg));
   color: rgb(var(--theme-ink));
-  font-family: 'Inter', sans-serif;
-  font-weight: 300;
+  font-family: Arial, Helvetica, sans-serif;
+  font-weight: 400;
   margin: 0;
   overflow-x: hidden;
   -webkit-font-smoothing: antialiased;
@@ -98,6 +96,18 @@ body {
      listes (l'app gère ses propres scrolls internes). */
   -webkit-tap-highlight-color: transparent;
   overscroll-behavior-y: none;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid rgb(var(--theme-accent));
+  outline-offset: 2px;
 }
 
 /* Safe areas are applied per-component (TopBar/ChatTopBar paddingTop,

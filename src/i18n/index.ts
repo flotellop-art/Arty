@@ -24,7 +24,9 @@ i18n
     load: 'languageOnly', // "fr-FR" → "fr", "en-US" → "en"
     nonExplicitSupportedLngs: true,
     detection: {
-      order: ['localStorage', 'navigator'],
+      // Le français est la langue produit par défaut. L'anglais n'est activé
+      // qu'après un choix explicite, ensuite persisté ici.
+      order: ['localStorage'],
       caches: ['localStorage'],
       lookupLocalStorage: LOCALE_STORAGE_KEY,
     },

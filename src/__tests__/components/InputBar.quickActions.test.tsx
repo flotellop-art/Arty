@@ -142,3 +142,120 @@ describe.each([
     )
   })
 })
+
+describe('InputBar — préremplissage éditorial', () => {
+  beforeEach(async () => {
+    await i18n.changeLanguage('fr')
+    localStorage.setItem('arty-inputbar-v2', '1')
+  })
+
+  afterEach(() => {
+    cleanup()
+    localStorage.removeItem('arty-inputbar-v2')
+    vi.restoreAllMocks()
+  })
+
+  it('préremplit et focalise le champ sans envoyer automatiquement', async () => {
+    const onSend = vi.fn()
+    const { rerender } = render(
+      <InputBar onSend={onSend} isStreaming={false} showQuickActions={false} />,
+    )
+
+    rerender(
+      <InputBar
+        onSend={onSend}
+        isStreaming={false}
+        showQuickActions={false}
+        prefill={{ id: 1, text: 'Prépare un ordre du jour concis.' }}
+      />,
+    )
+
+    const textarea = screen.getByPlaceholderText('chat.input.placeholder')
+    await waitFor(() => expect(textarea).toHaveValue('Prépare un ordre du jour concis.'))
+    await waitFor(() => expect(textarea).toHaveFocus())
+    expect(onSend).not.toHaveBeenCalled()
+    expect(screen.queryByRole('button', { name: /Suggestion:/ })).not.toBeInTheDocument()
+  })
+
+  it('ne remplace pas une modification utilisateur tant que la requête garde le même id', async () => {
+    const onSend = vi.fn()
+    const { rerender } = render(
+      <InputBar
+        onSend={onSend}
+        isStreaming={false}
+        prefill={{ id: 7, text: 'Texte proposé' }}
+      />,
+    )
+    const textarea = screen.getByPlaceholderText('chat.input.placeholder')
+    await waitFor(() => expect(textarea).toHaveValue('Texte proposé'))
+
+    fireEvent.change(textarea, { target: { value: 'Texte proposé et modifié' } })
+    rerender(
+      <InputBar
+        onSend={onSend}
+        isStreaming={false}
+        prefill={{ id: 7, text: 'Texte proposé' }}
+      />,
+    )
+
+    expect(textarea).toHaveValue('Texte proposé et modifié')
+    expect(onSend).not.toHaveBeenCalled()
+  })
+})
+
+describe('InputBar — brouillons', () => {
+  beforeEach(async () => {
+    await i18n.changeLanguage('fr')
+    localStorage.setItem('arty-inputbar-v2', '1')
+  })
+
+  afterEach(() => {
+    cleanup()
+    localStorage.removeItem('arty-inputbar-v2')
+    vi.restoreAllMocks()
+  })
+
+  it('conserve le texte quand le parent refuse la création de conversation', () => {
+    const onSend = vi.fn(() => false)
+    render(<InputBar onSend={onSend} isStreaming={false} draftKey="refused-send" />)
+    const textarea = screen.getByPlaceholderText('chat.input.placeholder')
+
+    fireEvent.change(textarea, { target: { value: 'Brouillon à ne pas perdre' } })
+    fireEvent.click(screen.getByRole('button', { name: 'chat.input.aria.send' }))
+
+    expect(onSend).toHaveBeenCalledTimes(1)
+    expect(textarea).toHaveValue('Brouillon à ne pas perdre')
+  })
+
+  it('conserve aussi le texte après un refus asynchrone du flux', async () => {
+    const onSend = vi.fn(async () => false)
+    render(<InputBar onSend={onSend} isStreaming={false} draftKey="async-refused-send" />)
+    const textarea = screen.getByPlaceholderText('chat.input.placeholder')
+
+    fireEvent.change(textarea, { target: { value: 'Message pendant deux autres streams' } })
+    fireEvent.click(screen.getByRole('button', { name: 'chat.input.aria.send' }))
+
+    await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(textarea).toHaveValue('Message pendant deux autres streams'))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'chat.input.aria.send' })).toBeEnabled())
+  })
+
+  it('restaure un brouillon après remount puis le retire après un envoi accepté', async () => {
+    const first = render(<InputBar onSend={vi.fn()} isStreaming={false} draftKey="route-draft" />)
+    fireEvent.change(screen.getByPlaceholderText('chat.input.placeholder'), {
+      target: { value: 'Texte conservé entre deux écrans' },
+    })
+    first.unmount()
+
+    const second = render(<InputBar onSend={vi.fn(() => true)} isStreaming={false} draftKey="route-draft" />)
+    const restored = screen.getByPlaceholderText('chat.input.placeholder')
+    expect(restored).toHaveValue('Texte conservé entre deux écrans')
+
+    fireEvent.click(screen.getByRole('button', { name: 'chat.input.aria.send' }))
+    await waitFor(() => expect(restored).toHaveValue(''))
+    second.unmount()
+
+    render(<InputBar onSend={vi.fn()} isStreaming={false} draftKey="route-draft" />)
+    expect(screen.getByPlaceholderText('chat.input.placeholder')).toHaveValue('')
+  })
+})
