@@ -8,6 +8,7 @@ import { getDateLocale } from '../../utils/formatDate'
 interface CalendarViewProps {
   days?: number
   onEventClick?: (event: CalendarEvent) => void
+  onEventsChange?: (events: CalendarEvent[], error: string | null) => void
 }
 
 function startOfDay(d: Date): Date {
@@ -112,7 +113,7 @@ interface EventGroup {
  * editorial kicker ("Aujourd'hui", "Demain", "lundi 22 avril"). Purely
  * presentational — mutations happen through the Calendar tools (Claude).
  */
-function CalendarViewInner({ days = 7, onEventClick }: CalendarViewProps) {
+function CalendarViewInner({ days = 7, onEventClick, onEventsChange }: CalendarViewProps) {
   const { t } = useTranslation()
   const [events, setEvents] = useState<CalendarEvent[] | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -122,15 +123,22 @@ function CalendarViewInner({ days = 7, onEventClick }: CalendarViewProps) {
     let alive = true
     setLoading(true)
     listEvents(days)
-      .then((list) => { if (alive) { setEvents(list); setError(null) } })
+      .then((list) => {
+        if (!alive) return
+        setEvents(list)
+        setError(null)
+        onEventsChange?.(list, null)
+      })
       .catch((err: unknown) => {
         if (!alive) return
-        setError(err instanceof Error ? err.message : t('calendar.errors.fetchFailed'))
+        const message = err instanceof Error ? err.message : t('calendar.errors.fetchFailed')
+        setError(message)
         setEvents([])
+        onEventsChange?.([], message)
       })
       .finally(() => { if (alive) setLoading(false) })
     return () => { alive = false }
-  }, [days])
+  }, [days, onEventsChange, t])
 
   const groups = useMemo<EventGroup[]>(() => {
     if (!events || events.length === 0) return []

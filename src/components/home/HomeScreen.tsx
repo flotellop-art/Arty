@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { TopBar } from '../layout/TopBar'
 import { InputBar, type ComposerPrefill } from '../layout/InputBar'
@@ -12,6 +12,7 @@ import { cleanDisplayName } from '../../services/displayName'
 import type { useGoogleAuth } from '../../hooks/useGoogleAuth'
 import type { useDrive } from '../../hooks/useDrive'
 import type { ChatSendHandler, Conversation } from '../../types'
+import type { CalendarEvent } from '../../types/google'
 import { isPublicGoogleOAuthProfileEnabled } from '../../services/publicGoogleOAuthProfile'
 
 interface HomeScreenProps {
@@ -25,10 +26,7 @@ interface HomeScreenProps {
   userName?: string
   proactiveBrief?: { items: BriefItem[] } | { text: string } | null
   briefLoading?: boolean
-  /** État « masqué » du brief — vit dans useProactiveBrief (niveau App), pas
-      dans un state local : un state local se réinitialise au remount de la
-      Home (navigation aller-retour) et affichait une carte « vide » à la
-      place du bouton de restauration. */
+  /** Controlled by useProactiveBrief so dismissal survives home remounts. */
   briefDismissed?: boolean
   onDismissBrief?: () => void
   onRestoreBrief?: () => void
@@ -40,11 +38,7 @@ interface HomeScreenProps {
   onDismissError?: () => void
 }
 
-interface Intention {
-  title: string
-  subtitle: string
-  prompt: string
-}
+type SecondarySection = 'brief' | 'agenda' | 'recents'
 
 function relativeDate(timestamp: number, locale: string): string {
   const deltaSeconds = Math.round((timestamp - Date.now()) / 1000)
@@ -55,6 +49,15 @@ function relativeDate(timestamp: number, locale: string): string {
   if (abs < 86_400) return formatter.format(Math.round(deltaSeconds / 3600), 'hour')
   if (abs < 604_800) return formatter.format(Math.round(deltaSeconds / 86_400), 'day')
   return new Date(timestamp).toLocaleDateString(locale, { day: 'numeric', month: 'short' })
+}
+
+function isToday(iso: string): boolean {
+  return new Date(iso).toDateString() === new Date().toDateString()
+}
+
+function agendaTime(event: CalendarEvent, locale: string): string {
+  if (!event.start.includes('T')) return locale.startsWith('fr') ? 'Toute la journée' : 'All day'
+  return new Date(event.start).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })
 }
 
 function HomeScreenInner({
@@ -81,8 +84,15 @@ function HomeScreenInner({
   const noCasaPhase0 = isPublicGoogleOAuthProfileEnabled()
   const googleTooltip = useTooltip(noCasaPhase0 ? 'googleNoCasa' : 'google')
   const [prefill, setPrefill] = useState<ComposerPrefill | undefined>()
+  const [calendarPreview, setCalendarPreview] = useState<{ events: CalendarEvent[] | null; error: string | null }>({
+    events: null,
+    error: null,
+  })
   const prefillId = useRef(0)
   const reopenBriefRef = useRef<HTMLButtonElement>(null)
+  const briefDetailsRef = useRef<HTMLDetailsElement>(null)
+  const agendaDetailsRef = useRef<HTMLDetailsElement>(null)
+  const recentsDetailsRef = useRef<HTMLDetailsElement>(null)
 
   const locale = i18n.language?.startsWith('en') ? 'en-US' : 'fr-FR'
   const dateLabel = useMemo(
@@ -109,32 +119,6 @@ function HomeScreenInner({
     return cleaned
   }, [userName])
 
-  const intentions = useMemo<Intention[]>(
-    () => [
-      {
-        title: t('home.editorial.intentions.prepare.title'),
-        subtitle: t('home.editorial.intentions.prepare.subtitle'),
-        prompt: t('home.editorial.intentions.prepare.prompt'),
-      },
-      {
-        title: t('home.editorial.intentions.structure.title'),
-        subtitle: t('home.editorial.intentions.structure.subtitle'),
-        prompt: t('home.editorial.intentions.structure.prompt'),
-      },
-      {
-        title: t('home.editorial.intentions.analyze.title'),
-        subtitle: t('home.editorial.intentions.analyze.subtitle'),
-        prompt: t('home.editorial.intentions.analyze.prompt'),
-      },
-      {
-        title: t('home.editorial.intentions.imagine.title'),
-        subtitle: t('home.editorial.intentions.imagine.subtitle'),
-        prompt: t('home.editorial.intentions.imagine.prompt'),
-      },
-    ],
-    [t],
-  )
-
   const suggestions = useMemo(
     () => [
       { label: t('home.editorial.suggestions.summarize'), prompt: t('home.editorial.suggestions.summarizePrompt') },
@@ -150,9 +134,52 @@ function HomeScreenInner({
     [conversations],
   )
 
+  const briefCount = useMemo(() => {
+    if (!proactiveBrief) return 0
+    return 'items' in proactiveBrief ? proactiveBrief.items.length : 1
+  }, [proactiveBrief])
+
+  useEffect(() => {
+    if (!googleAuth.isConnected) setCalendarPreview({ events: null, error: null })
+  }, [googleAuth.isConnected])
+
+  const updateCalendarPreview = useCallback((events: CalendarEvent[], calendarError: string | null) => {
+    setCalendarPreview({ events, error: calendarError })
+  }, [])
+
+  const todayEvents = useMemo(() => {
+    const now = Date.now()
+    return (calendarPreview.events ?? [])
+      .filter((event) => {
+        if (!isToday(event.start)) return false
+        if (!event.start.includes('T')) return true
+        const end = event.end ? new Date(event.end).getTime() : new Date(event.start).getTime()
+        return end >= now
+      })
+      .sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime())
+  }, [calendarPreview.events])
+
+  const imminentEventId = useMemo(() => {
+    const next = todayEvents[0]
+    if (!next || !next.start.includes('T')) return null
+    const deltaMinutes = Math.ceil((new Date(next.start).getTime() - Date.now()) / 60_000)
+    return deltaMinutes >= 0 && deltaMinutes <= 30 ? next.id : null
+  }, [todayEvents])
+
   const fillComposer = useCallback((text: string) => {
     prefillId.current += 1
     setPrefill({ id: prefillId.current, text })
+  }, [])
+
+  const openSecondary = useCallback((section: SecondarySection) => {
+    const element = section === 'brief'
+      ? briefDetailsRef.current
+      : section === 'agenda'
+        ? agendaDetailsRef.current
+        : recentsDetailsRef.current
+    if (!element) return
+    element.open = true
+    requestAnimationFrame(() => element.scrollIntoView?.({ behavior: 'smooth', block: 'start' }))
   }, [])
 
   const dismissBrief = () => {
@@ -165,7 +192,7 @@ function HomeScreenInner({
     requestAnimationFrame(() => document.getElementById('arty-brief-close')?.focus())
   }
 
-  const openEvent = useCallback(async (event: import('../../types/google').CalendarEvent) => {
+  const openEvent = useCallback(async (event: CalendarEvent) => {
     const url = event.htmlLink || `https://calendar.google.com/calendar/r/eventedit?eid=${encodeURIComponent(event.id)}`
     try {
       const { Browser } = await import('@capacitor/browser')
@@ -175,176 +202,238 @@ function HomeScreenInner({
     }
   }, [])
 
+  const recentTitle = recentConversations[0]?.title || t('home.resumeKicker')
+
   return (
     <div className="flex h-full min-h-0 flex-col bg-theme-bg text-theme-ink">
       <TopBar onMenuToggle={onMenuToggle} menuOpen={menuOpen} dateLabel={dateLabel} />
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto w-full max-w-[1060px] px-[34px] pb-6 pt-[22px] max-[900px]:px-[14px] max-[900px]:pt-5">
-          <header className="mb-[18px]">
-            <h1 className="font-display text-[32px] font-normal leading-[1.05] tracking-[-0.02em] max-[900px]:text-[28px]">
-              {greeting}{firstName ? ' ' : ''}
-              {firstName && <em className="font-normal text-theme-accent-text">{firstName}</em>}.
-            </h1>
-            <p className="mt-1 font-sans text-[13.6px] leading-snug text-theme-muted">
-              {t('home.editorial.subtitle')}
-            </p>
-          </header>
-
-          {!briefDismissed ? (
-            <ProactiveBriefCard
-              brief={proactiveBrief ?? null}
-              loading={!!briefLoading}
-              onDismiss={dismissBrief}
-              onAction={onBriefAction ?? (() => null)}
-              isStreaming={isStreaming}
-            />
-          ) : (
-            <button
-              ref={reopenBriefRef}
-              type="button"
-              onClick={reopenBrief}
-              className="mb-[14px] min-h-11 border border-theme-ink bg-transparent px-4 py-2 font-sans text-xs hover:bg-theme-ink hover:text-theme-bg"
-            >
-              {t('home.editorial.showBrief')}
-            </button>
-          )}
-
-          <section className="mb-[18px] grid grid-cols-[auto_1fr_auto] items-center gap-x-4 gap-y-1 border-b border-theme-border border-t-2 border-t-theme-ink py-[10px] max-[900px]:grid-cols-1">
-            <h2 className="font-sans text-[11.5px] font-bold uppercase tracking-[0.16em]">
-              {t('home.discover.label')}
-            </h2>
-            <p className="font-display text-[13.6px] italic leading-snug text-theme-muted">
-              {t('home.editorial.discoverDescription')}
-            </p>
-            <button
-              type="button"
-              onClick={() => fillComposer(t('home.discover.prompt'))}
-              className="min-h-11 border border-theme-ink bg-transparent px-[14px] py-[7px] font-sans text-xs hover:bg-theme-ink hover:text-theme-bg max-[900px]:mt-1 max-[900px]:w-full"
-            >
-              {t('home.editorial.explore')} →
-            </button>
-          </section>
-
-          <div className="mb-[18px] grid grid-cols-3 gap-[14px] max-[900px]:grid-cols-1">
-            <section className="border border-theme-border p-[14px]" aria-labelledby="home-agenda-title">
-              <h2 id="home-agenda-title" className="mb-[10px] border-b border-theme-border pb-2 font-sans text-[11.2px] font-bold uppercase tracking-[0.14em]">
-                <span className="mr-1 text-theme-accent-text">01</span> {t('home.agendaKicker')}
-              </h2>
-              {googleAuth.isInitializing ? (
-                <p className="py-3 font-display text-sm italic text-theme-muted" role="status">{t('common.loading')}</p>
-              ) : googleAuth.isConnected ? (
-                <>
-                  <div className="mb-2"><GoogleStatus isConnected user={googleAuth.user} onLogout={googleAuth.logout} /></div>
-                  {/* 7 jours comme avant la refonte : « prépare ma semaine »
-                      est un parcours cœur — 1 seul jour amputait l'aperçu. */}
-                  <CalendarView days={7} onEventClick={openEvent} />
-                </>
-              ) : (
-                <div className="py-1">
-                  <p className="font-display text-sm leading-snug text-theme-muted">{t('home.editorial.calendarDisconnected')}</p>
-                  {googleAuth.reconsentRequired && (
-                    <p className="mt-2 font-sans text-xs text-theme-accent-text" role="status">{t('home.googleReconsent.body')}</p>
+        <main className="mx-auto flex min-h-full w-full max-w-[1060px] flex-col px-[34px] max-[899px]:px-[14px]" aria-labelledby="home-chat-title">
+          <section className="flex flex-1 items-center justify-center py-12 max-[639px]:items-start max-[639px]:pb-9 max-[639px]:pt-11">
+            <div className="w-full max-w-[760px] text-center">
+              <div className="mb-4 flex min-h-6 items-baseline justify-between gap-6 text-left max-[639px]:flex-col max-[639px]:gap-1.5">
+                <p className="shrink-0 font-sans text-[11px] font-semibold uppercase tracking-[0.16em] text-theme-accent-text">
+                  {greeting}{firstName ? ` ${firstName}` : ''}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => openSecondary('agenda')}
+                  className="group/agenda flex min-w-0 max-w-[470px] items-baseline gap-2 bg-transparent text-right font-sans text-[12px] leading-5 text-theme-muted transition-colors hover:text-theme-ink max-[639px]:w-full max-[639px]:max-w-none max-[639px]:text-left"
+                  aria-label={t('home.hybrid.agendaOpen')}
+                  aria-live="polite"
+                >
+                  {!googleAuth.isConnected ? (
+                    <span className="border-b border-theme-border group-hover/agenda:border-theme-accent">
+                      {t('home.hybrid.agendaConnect')} →
+                    </span>
+                  ) : calendarPreview.error ? (
+                    <span>{t('home.hybrid.agendaUnavailable')}</span>
+                  ) : calendarPreview.events === null ? (
+                    <span>{t('home.hybrid.agendaLoading')}</span>
+                  ) : todayEvents.length === 0 ? (
+                    <span className="font-display text-[13px] italic">{t('home.hybrid.agendaFree')}</span>
+                  ) : (
+                    <>
+                      {todayEvents.slice(0, 2).map((event, index) => {
+                        const isImminent = event.id === imminentEventId
+                        const isOngoing = event.start.includes('T')
+                          && new Date(event.start).getTime() <= Date.now()
+                          && !!event.end
+                          && new Date(event.end).getTime() >= Date.now()
+                        const minutes = isImminent
+                          ? Math.max(1, Math.ceil((new Date(event.start).getTime() - Date.now()) / 60_000))
+                          : null
+                        return (
+                          <span key={event.id} className={index === 1 ? 'hidden min-w-0 items-baseline gap-1 sm:flex' : 'flex min-w-0 items-baseline gap-1'}>
+                            {index > 0 && <span className="text-theme-border" aria-hidden="true">·</span>}
+                            <time className="shrink-0 tabular-nums text-theme-ink">{agendaTime(event, locale)}</time>
+                            <span className="truncate">{event.title}</span>
+                            {(isOngoing || (isImminent && minutes !== null)) && (
+                              <span className="shrink-0 font-semibold text-theme-accent-text">
+                                {isOngoing ? t('home.hybrid.agendaNow') : t('home.hybrid.agendaSoon', { count: minutes ?? 1 })}
+                              </span>
+                            )}
+                          </span>
+                        )
+                      })}
+                      {todayEvents.length > 1 && (
+                        <span className="shrink-0 border-b border-theme-border group-hover/agenda:border-theme-accent sm:hidden">
+                          +{todayEvents.length - 1}
+                        </span>
+                      )}
+                      {todayEvents.length > 2 && (
+                        <span className="hidden shrink-0 border-b border-theme-border group-hover/agenda:border-theme-accent sm:inline">
+                          +{todayEvents.length - 2}
+                        </span>
+                      )}
+                    </>
                   )}
-                  <div className="mt-3">
-                    <GoogleConnectButton
-                      onConnect={googleAuth.login}
-                      isLoading={googleAuth.isLoading}
-                      label={googleAuth.reconsentRequired ? t('home.googleReconsent.cta') : undefined}
-                    />
-                  </div>
-                  <div className="relative"><googleTooltip.TooltipComponent /></div>
-                  {googleAuth.error && <p className="mt-2 break-words font-sans text-xs text-theme-accent-text" role="alert">{googleAuth.error}</p>}
+                </button>
+              </div>
+              <h1 id="home-chat-title" className="mb-8 text-balance font-display text-[clamp(44px,6vw,72px)] font-normal leading-[0.99] tracking-[-0.052em] max-[639px]:mb-7 max-[639px]:text-[clamp(40px,12.5vw,57px)]">
+                {t('home.hybrid.heroLead')}{' '}
+                <em className="font-normal text-theme-accent-text">{t('home.hybrid.heroEmphasis')}</em>&nbsp;?
+              </h1>
+
+              {error && (
+                <div className="mb-3 flex items-center gap-2 border border-red-700 bg-red-500/10 px-4 py-2 text-left font-sans text-sm text-red-800 dark:text-red-300" role="alert">
+                  <span className="min-w-0 flex-1 break-words">{error}</span>
+                  {onDismissError && (
+                    <button type="button" onClick={onDismissError} className="min-h-11 min-w-11" aria-label={t('common.close')}>×</button>
+                  )}
                 </div>
               )}
-            </section>
 
-            <section className="border border-theme-border" aria-labelledby="home-intentions-title">
-              <div className="flex items-center justify-between border-b border-theme-border px-[14px] pb-[11px] pt-[14px] max-[420px]:px-[10px] max-[420px]:pb-[10px] max-[420px]:pt-[13px]">
-                <h2 id="home-intentions-title" className="font-display text-[24.8px] font-normal leading-none tracking-[-0.025em]">
-                  {t('home.intentionsKicker')}
-                </h2>
-                <span className="font-sans text-[10px] tracking-[0.08em] text-theme-accent-text">02</span>
-              </div>
-              <div className="grid grid-cols-2 gap-2 px-[14px] pb-[14px] max-[420px]:gap-[7px] max-[420px]:px-[10px] max-[420px]:pb-3 max-[339px]:grid-cols-1">
-                {intentions.map((intention) => (
-                  <button
-                    key={intention.title}
-                    type="button"
-                    onClick={() => fillComposer(intention.prompt)}
-                    className="flex min-h-[84px] flex-col justify-between border border-theme-border bg-transparent px-3 py-[11px] text-left hover:border-theme-accent hover:text-theme-accent-text max-[420px]:min-h-[90px] max-[420px]:p-[10px]"
-                  >
-                    <strong className="font-display text-base font-normal leading-[1.15] max-[420px]:text-[15.36px]">{intention.title}</strong>
-                    <span className="font-sans text-[10.88px] leading-[1.35] text-theme-muted">{intention.subtitle} →</span>
-                  </button>
+              <InputBar
+                onSend={onSend}
+                isStreaming={isStreaming}
+                onStop={onStop}
+                prefill={prefill}
+                showQuickActions={false}
+                draftKey="home"
+                variant="hero"
+              />
+
+              <div className="mt-4 flex flex-wrap items-center justify-center gap-x-0 gap-y-1" role="group" aria-label={t('home.suggestions.title')}>
+                {suggestions.map((suggestion, index) => (
+                  <span key={suggestion.label} className="flex items-center">
+                    {index > 0 && <span className="mx-3 text-theme-border" aria-hidden="true">·</span>}
+                    <button
+                      type="button"
+                      onClick={() => fillComposer(suggestion.prompt)}
+                      className="min-h-11 border-b border-transparent bg-transparent px-0 font-sans text-[13px] text-theme-muted transition-colors hover:border-theme-accent hover:text-theme-accent-text"
+                    >
+                      {suggestion.label}
+                    </button>
+                  </span>
                 ))}
               </div>
-            </section>
+            </div>
+          </section>
 
-            <section className="border border-theme-border p-[14px]" aria-labelledby="home-resume-title">
-              <h2 id="home-resume-title" className="mb-[2px] border-b border-theme-border pb-2 font-sans text-[11.2px] font-bold uppercase tracking-[0.14em]">
-                <span className="mr-1 text-theme-accent-text">03</span> {t('home.resumeKicker')}
-              </h2>
-              {recentConversations.length > 0 && onSelectConv ? (
-                recentConversations.map((conversation) => (
+          <nav className="flex min-h-[62px] flex-wrap items-center justify-center gap-x-5 gap-y-1 border-t border-theme-border py-2 font-sans text-xs text-theme-muted max-[639px]:flex-col max-[639px]:gap-0" aria-label={t('home.hybrid.today')}>
+            <span className="font-semibold uppercase tracking-[0.1em] text-theme-ink">{t('home.hybrid.today')}</span>
+            <button type="button" onClick={() => openSecondary('brief')} className="min-h-11 bg-transparent hover:text-theme-accent-text">
+              {t('home.hybrid.briefSummary', { count: briefCount })}
+            </button>
+            <button type="button" onClick={() => openSecondary('recents')} className="min-h-11 max-w-[260px] truncate bg-transparent hover:text-theme-accent-text">
+              {t('home.hybrid.recentSummary', { title: recentTitle })}
+            </button>
+          </nav>
+        </main>
+
+        <section className="mx-auto w-[calc(100%-40px)] max-w-[760px] pb-14 pt-16 max-[639px]:w-[calc(100%-28px)] max-[639px]:pt-12" aria-labelledby="home-secondary-title">
+          <h2 id="home-secondary-title" className="mb-6 font-display text-xl font-normal italic text-theme-muted">
+            {t('home.hybrid.secondaryIntro')}
+          </h2>
+
+          <div className="border-t border-theme-border">
+            <details ref={briefDetailsRef} id="home-brief" className="group scroll-mt-4 border-b border-theme-border">
+              <summary className="flex min-h-[64px] cursor-pointer list-none items-center justify-between gap-4 py-3 marker:hidden">
+                <span className="font-display text-xl font-normal">{t('proactiveBrief.title')}</span>
+                <span className="flex items-center gap-3 font-sans text-[10px] font-semibold uppercase tracking-[0.1em] text-theme-muted">
+                  {briefCount > 0 ? t('home.hybrid.briefMeta', { count: briefCount }) : t('home.hybrid.briefEmptyMeta')}
+                  <span className="text-xl font-normal leading-none text-theme-accent-text transition-transform group-open:rotate-45" aria-hidden="true">+</span>
+                </span>
+              </summary>
+              <div className="pb-7 pt-1">
+                {!briefDismissed ? (
+                  <ProactiveBriefCard
+                    brief={proactiveBrief ?? null}
+                    loading={!!briefLoading}
+                    onDismiss={dismissBrief}
+                    onAction={onBriefAction ?? (() => null)}
+                    isStreaming={isStreaming}
+                    variant="plain"
+                  />
+                ) : (
                   <button
-                    key={conversation.id}
+                    ref={reopenBriefRef}
                     type="button"
-                    onClick={() => onSelectConv(conversation.id)}
-                    className="block min-h-11 w-full border-b border-theme-border bg-transparent py-2 text-left hover:text-theme-accent-text"
+                    onClick={reopenBrief}
+                    className="min-h-11 border-b border-theme-accent bg-transparent font-sans text-xs text-theme-accent-text"
                   >
-                    <strong className="block font-display text-[13.12px] font-normal leading-snug">
-                      {conversation.euOnly && (
-                        <span className="mr-1 text-theme-accent-text" title={t('sidebar.euTooltip')} aria-hidden="true">◇</span>
-                      )}
-                      {conversation.title}
-                    </strong>
-                    <small className="mt-0.5 block font-sans text-[10.88px] text-theme-muted">{relativeDate(conversation.updatedAt, locale)}</small>
+                    {t('home.editorial.showBrief')} →
                   </button>
-                ))
-              ) : (
-                <div className="py-3">
-                  <p className="font-display text-sm italic text-theme-muted">{t('home.editorial.noRecent')}</p>
-                  {onNewConversation && (
-                    <button type="button" onClick={onNewConversation} className="mt-3 min-h-11 border border-theme-ink px-3 py-2 font-sans text-xs hover:bg-theme-ink hover:text-theme-bg">
-                      {t('sidebar.newConversation')}
-                    </button>
-                  )}
-                </div>
-              )}
-            </section>
-          </div>
+                )}
+              </div>
+            </details>
 
-          <div className="flex flex-wrap gap-2" role="group" aria-label={t('home.suggestions.title')}>
-            {suggestions.map((suggestion) => (
-              <button
-                key={suggestion.label}
-                type="button"
-                onClick={() => fillComposer(suggestion.prompt)}
-                className="min-h-11 border border-theme-ink bg-transparent px-[14px] py-1.5 font-display text-xs hover:border-theme-ink hover:bg-theme-ink hover:text-theme-bg"
-              >
-                {suggestion.label}
-              </button>
-            ))}
+            <details ref={agendaDetailsRef} id="home-agenda" className="group scroll-mt-4 border-b border-theme-border">
+              <summary className="flex min-h-[64px] cursor-pointer list-none items-center justify-between gap-4 py-3 marker:hidden">
+                <span className="font-display text-xl font-normal">{t('home.agendaKicker')}</span>
+                <span className="flex items-center gap-3 font-sans text-[10px] font-semibold uppercase tracking-[0.1em] text-theme-muted">
+                  {googleAuth.isConnected ? t('home.hybrid.agendaMeta') : t('home.hybrid.agendaConnectMeta')}
+                  <span className="text-xl font-normal leading-none text-theme-accent-text transition-transform group-open:rotate-45" aria-hidden="true">+</span>
+                </span>
+              </summary>
+              <div className="pb-7 pt-1">
+                {googleAuth.isInitializing ? (
+                  <p className="py-3 font-display text-sm italic text-theme-muted" role="status">{t('common.loading')}</p>
+                ) : googleAuth.isConnected ? (
+                  <>
+                    <div className="mb-3"><GoogleStatus isConnected user={googleAuth.user} onLogout={googleAuth.logout} /></div>
+                    <CalendarView days={3} onEventClick={openEvent} onEventsChange={updateCalendarPreview} />
+                  </>
+                ) : (
+                  <div>
+                    <p className="max-w-xl font-display text-base leading-snug text-theme-muted">{t('home.editorial.calendarDisconnected')}</p>
+                    {googleAuth.reconsentRequired && (
+                      <p className="mt-2 font-sans text-xs text-theme-accent-text" role="status">{t('home.googleReconsent.body')}</p>
+                    )}
+                    <div className="mt-3">
+                      <GoogleConnectButton
+                        onConnect={googleAuth.login}
+                        isLoading={googleAuth.isLoading}
+                        label={googleAuth.reconsentRequired ? t('home.googleReconsent.cta') : undefined}
+                      />
+                    </div>
+                    <div className="relative"><googleTooltip.TooltipComponent /></div>
+                    {googleAuth.error && <p className="mt-2 break-words font-sans text-xs text-theme-accent-text" role="alert">{googleAuth.error}</p>}
+                  </div>
+                )}
+              </div>
+            </details>
+
+            <details ref={recentsDetailsRef} id="home-recents" className="group scroll-mt-4 border-b border-theme-border">
+              <summary className="flex min-h-[64px] cursor-pointer list-none items-center justify-between gap-4 py-3 marker:hidden">
+                <span className="font-display text-xl font-normal">{t('home.resumeKicker')}</span>
+                <span className="flex items-center gap-3 font-sans text-[10px] font-semibold uppercase tracking-[0.1em] text-theme-muted">
+                  {t('home.hybrid.recentsMeta', { count: recentConversations.length })}
+                  <span className="text-xl font-normal leading-none text-theme-accent-text transition-transform group-open:rotate-45" aria-hidden="true">+</span>
+                </span>
+              </summary>
+              <div className="pb-7 pt-1">
+                {recentConversations.length > 0 && onSelectConv ? (
+                  <div className="border-t border-theme-border/70">
+                    {recentConversations.map((conversation) => (
+                      <button
+                        key={conversation.id}
+                        type="button"
+                        onClick={() => onSelectConv(conversation.id)}
+                        className="grid min-h-[58px] w-full grid-cols-[1fr_auto] items-center gap-4 border-b border-theme-border/70 bg-transparent py-2 text-left hover:text-theme-accent-text"
+                      >
+                        <strong className="truncate font-display text-[15px] font-normal leading-snug">{conversation.title}</strong>
+                        <small className="font-sans text-[11px] text-theme-muted">{relativeDate(conversation.updatedAt, locale)}</small>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div>
+                    <p className="font-display text-sm italic text-theme-muted">{t('home.editorial.noRecent')}</p>
+                    {onNewConversation && (
+                      <button type="button" onClick={onNewConversation} className="mt-3 min-h-11 border-b border-theme-accent bg-transparent font-sans text-xs text-theme-accent-text">
+                        {t('home.hybrid.newConversation')} →
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            </details>
           </div>
-        </div>
+        </section>
       </div>
-
-      {error && (
-        <div className="mx-auto mb-2 flex w-[calc(100%-28px)] max-w-[992px] items-center gap-2 border border-red-700 bg-red-500/10 px-4 py-2 font-sans text-sm text-red-800 dark:text-red-300" role="alert">
-          <span className="min-w-0 flex-1 break-words">{error}</span>
-          {onDismissError && <button type="button" onClick={onDismissError} className="min-h-11 min-w-11" aria-label={t('common.close')}>×</button>}
-        </div>
-      )}
-
-      <InputBar
-        onSend={onSend}
-        isStreaming={isStreaming}
-        onStop={onStop}
-        prefill={prefill}
-        showQuickActions={false}
-        draftKey="home"
-      />
     </div>
   )
 }

@@ -132,12 +132,12 @@ export function TopBar({ onMenuToggle, menuOpen = false, dateLabel = '' }: TopBa
         className="bg-theme-bg"
         style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
       >
-        <div className="mx-auto flex w-full max-w-[1060px] items-center justify-between gap-[10px] border-b border-theme-border px-[34px] pb-[10px] pt-[22px] max-[899px]:px-[14px] max-[899px]:pt-4">
+        <div className="mx-auto flex w-full max-w-[1060px] items-center justify-between gap-[10px] border-b border-theme-border px-[34px] pb-2 pt-4 max-[899px]:px-[14px] max-[899px]:pt-3">
           <button
             id="arty-menu-button"
             type="button"
             onClick={onMenuToggle}
-            className="flex h-11 w-11 flex-shrink-0 flex-col items-center justify-center gap-1 border border-theme-border text-theme-ink transition-colors hover:border-theme-accent min-[900px]:hidden"
+            className="flex h-11 w-11 flex-shrink-0 flex-col items-center justify-center gap-1 rounded-full text-theme-ink transition-colors hover:bg-theme-ink/5 min-[900px]:hidden"
             aria-label={t('common.menu')}
             aria-controls="arty-sidebar"
             aria-expanded={menuOpen}
@@ -149,13 +149,13 @@ export function TopBar({ onMenuToggle, menuOpen = false, dateLabel = '' }: TopBa
           <span className="truncate font-sans text-[11.5px] uppercase tracking-[0.14em] text-theme-muted max-[899px]:mr-auto max-[420px]:text-[9.3px] max-[420px]:tracking-[0.1em]">
             {dateLabel}
           </span>
-          <span className="pointer-events-none font-display text-base font-bold tracking-[-0.03em] text-theme-ink">
+          <span className="pointer-events-none font-display text-[22px] font-semibold tracking-[-0.04em] text-theme-ink">
             arty<span className="text-theme-accent-text">.</span>
           </span>
           <button
             type="button"
             onClick={() => setSheetOpen(true)}
-            className="flex h-11 w-11 flex-shrink-0 items-center justify-center border border-theme-border text-lg leading-none text-theme-ink transition-colors hover:border-theme-accent"
+            className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full text-lg leading-none text-theme-ink transition-colors hover:bg-theme-ink/5 hover:text-theme-accent-text"
             aria-label={t('chat.optionsSheet.open')}
             aria-haspopup="dialog"
           >

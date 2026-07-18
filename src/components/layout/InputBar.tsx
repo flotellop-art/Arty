@@ -57,6 +57,9 @@ interface InputBarProps {
   showQuickActions?: boolean
   /** Identifiant stable pour restaurer le brouillon lors d'un remount. */
   draftKey?: string
+  /** Variante centrale utilisée sur l'accueil simplifié. La mécanique reste
+      identique ; seule la hiérarchie visuelle change. */
+  variant?: 'default' | 'hero'
 }
 
 // Roadmap UI Phase 3 #4 — Quick Actions chips contextuelles. Affichées
@@ -160,8 +163,9 @@ function PendingFilePreview({ file, onRemove }: { file: FileAttachment; onRemove
   )
 }
 
-export function InputBar({ onSend, isStreaming, onStop, initialText, initialFiles, euOnly, prefill, showQuickActions = true, draftKey }: InputBarProps) {
+export function InputBar({ onSend, isStreaming, onStop, initialText, initialFiles, euOnly, prefill, showQuickActions = true, draftKey, variant = 'default' }: InputBarProps) {
   const { t } = useTranslation()
+  const heroVariant = variant === 'hero'
   // Évalué à chaque render (lecture localStorage triviale) — un testeur peut
   // poser le killswitch en DevTools et le voir s'appliquer immédiatement.
   const v2 = inputBarV2Enabled()
@@ -994,10 +998,12 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
 
   return (
     <div
-      className="relative border-t border-theme-ink bg-theme-bg px-[34px] pb-4 pt-3 max-[899px]:px-[14px] max-[899px]:pb-[14px] max-[899px]:pt-[10px]"
-      style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 1rem))' }}
+      className={heroVariant
+        ? 'relative bg-transparent p-0'
+        : 'relative border-t border-theme-ink bg-theme-bg px-[34px] pb-4 pt-3 max-[899px]:px-[14px] max-[899px]:pb-[14px] max-[899px]:pt-[10px]'}
+      style={heroVariant ? undefined : { paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 1rem))' }}
     >
-      <div className="relative mx-auto w-full max-w-[1060px]">
+      <div className={`relative mx-auto w-full ${heroVariant ? 'max-w-[760px]' : 'max-w-[1060px]'}`}>
       {/* Slash command palette (Feature 2) */}
       {showSlashPalette && filteredCommands.length > 0 && (
         <div className="absolute bottom-full left-4 right-4 z-20 mb-2 overflow-hidden border border-theme-border bg-theme-surface animate-fade-in">
@@ -1149,7 +1155,7 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
           chips={showQuickActions ? getQuickActionChips(t) : []}
           activeChipId={pendingQuickAction?.id}
           onChipClick={handleQuickActionClick}
-          reflectionSlot={<ReflectionPill euOnly={euOnly} />}
+          reflectionSlot={heroVariant ? undefined : <ReflectionPill euOnly={euOnly} />}
         />
       )}
 
@@ -1205,7 +1211,11 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
         </div>
       )}
 
-      <div className="relative flex min-h-[52px] items-end gap-2 border border-theme-ink bg-transparent px-[10px] py-2">
+      <div className={`relative flex items-end gap-2 border transition-[border-color,box-shadow,transform] duration-200 ${
+        heroVariant
+          ? 'min-h-[112px] rounded-[20px] border-theme-border bg-theme-surface px-4 pb-3 pt-4 shadow-[0_14px_36px_rgb(var(--theme-ink)/0.06)] focus-within:-translate-y-px focus-within:border-theme-accent focus-within:shadow-[0_18px_42px_rgb(var(--theme-ink)/0.09)] max-[639px]:min-h-[128px] max-[639px]:rounded-[17px] max-[639px]:px-3 max-[639px]:pb-2.5 max-[639px]:pt-3'
+          : 'min-h-[52px] border-theme-ink bg-transparent px-[10px] py-2'
+      }`}>
         {/* + menu — file upload + native camera/scan + web camera (mobile). */}
         <AttachMenu
           open={showAttachMenu}
@@ -1219,6 +1229,7 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
             photo: t('chat.input.menu.photo'),
             scan: t('chat.input.menu.scan'),
           }}
+          rounded={heroVariant}
         />
         <input
           ref={fileInputRef}
@@ -1259,7 +1270,9 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
             // message suivant pendant que la réponse arrive (comme claude.ai).
             // sendText garde le verrou d'ENVOI pendant le stream ; sur mobile,
             // le clavier ne se referme plus à chaque envoi.
-            className="min-w-0 flex-1 resize-none bg-transparent py-2 font-sans text-sm font-normal leading-relaxed text-theme-ink placeholder:text-theme-muted focus:outline-none"
+            className={`min-w-0 flex-1 resize-none bg-transparent font-sans font-normal leading-relaxed text-theme-ink placeholder:text-theme-muted focus:outline-none ${
+              heroVariant ? 'min-h-[76px] py-1 text-[17px] max-[639px]:min-h-[88px] max-[639px]:text-base' : 'py-2 text-sm'
+            }`}
           />
         )}
 
@@ -1268,7 +1281,7 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
           <button
             onClick={handleEnhance}
             disabled={!text.trim() || isEnhancing}
-            className={`relative mb-0.5 flex h-11 w-11 flex-shrink-0 items-center justify-center border border-theme-border transition-colors ${
+            className={`relative mb-0.5 flex h-11 w-11 flex-shrink-0 items-center justify-center border border-theme-border transition-colors ${heroVariant ? 'rounded-full' : ''} ${
               isEnhancing
                 ? 'bg-theme-accent/20 text-theme-accent'
                 : 'hover:bg-theme-ink/5 text-theme-muted disabled:opacity-30'
@@ -1326,7 +1339,7 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
         {isStreaming ? (
           <button
             onClick={onStop}
-            className="flex h-11 w-11 flex-shrink-0 items-center justify-center bg-theme-ink text-theme-bg transition-colors hover:bg-theme-accent"
+            className={`flex h-11 w-11 flex-shrink-0 items-center justify-center bg-theme-ink text-theme-bg transition-colors hover:bg-theme-accent ${heroVariant ? 'rounded-full' : ''}`}
             aria-label={t('chat.input.aria.stop')}
           >
             <svg width="14" height="14" viewBox="0 0 12 12" fill="none">
@@ -1337,7 +1350,7 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
           <button
             onClick={handleSend}
             disabled={isSubmitting}
-            className="flex h-11 w-11 flex-shrink-0 items-center justify-center border border-theme-accent bg-theme-accent text-theme-bg transition-colors hover:bg-theme-ink hover:text-theme-bg disabled:cursor-wait disabled:opacity-50"
+            className={`flex h-11 w-11 flex-shrink-0 items-center justify-center border border-theme-accent bg-theme-accent text-theme-bg transition-colors hover:bg-theme-ink hover:text-theme-bg disabled:cursor-wait disabled:opacity-50 ${heroVariant ? 'rounded-full' : ''}`}
             aria-label={t('chat.input.aria.send')}
           >
             <svg width="18" height="18" viewBox="0 0 14 14" fill="none">
@@ -1358,6 +1371,7 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
             holdProgress={holdProgress}
             ariaLabel={t('chat.input.aria.holdToRecord')}
             showIdleRing={v2 && canUseWhisper}
+            rounded={heroVariant}
           />
         ) : null}
       </div>
@@ -1384,9 +1398,10 @@ interface AttachMenuProps {
   onPickScan?: () => void
   ariaLabel: string
   labels: { file: string; photo: string; scan: string }
+  rounded?: boolean
 }
 
-function AttachMenu({ open, onOpenChange, onPickFile, onPickCamera, onPickScan, ariaLabel, labels }: AttachMenuProps) {
+function AttachMenu({ open, onOpenChange, onPickFile, onPickCamera, onPickScan, ariaLabel, labels, rounded }: AttachMenuProps) {
   const hasMulti = !!(onPickCamera || onPickScan)
   const containerRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
@@ -1424,7 +1439,7 @@ function AttachMenu({ open, onOpenChange, onPickFile, onPickCamera, onPickScan, 
         ref={triggerRef}
         type="button"
         onClick={handlePrimaryClick}
-        className="flex h-11 w-11 items-center justify-center border border-theme-border text-theme-muted transition-colors hover:border-theme-accent hover:text-theme-accent-text"
+        className={`flex h-11 w-11 items-center justify-center border border-theme-border text-theme-muted transition-colors hover:border-theme-accent hover:text-theme-accent-text ${rounded ? 'rounded-full' : ''}`}
         aria-label={hasMulti ? ariaLabel : labels.file}
         aria-expanded={hasMulti ? open : undefined}
       >
@@ -1526,12 +1541,13 @@ interface VoiceButtonProps {
   ariaLabel: string
   /** v2 : anneau pointillé statique à l'idle — hint « ce bouton se maintient ». */
   showIdleRing?: boolean
+  rounded?: boolean
 }
 
 function VoiceButton({
   onPointerDown, onPointerMove, onPointerUp, onPointerCancel,
   isListening, isRecordingAudio, isSwipeCancelling, isTranscribing,
-  crossedThreshold, holdProgress, ariaLabel, showIdleRing,
+  crossedThreshold, holdProgress, ariaLabel, showIdleRing, rounded,
 }: VoiceButtonProps) {
   // Size morph: 52px idle, 56px active (listening or whisper). Roadmap UI
   // Phase 3 #7 — WCAG 2.2 "Target Size Minimum" + confort terrain (gants,
@@ -1571,7 +1587,7 @@ function VoiceButton({
         userSelect: 'none',
         transition: 'width 0.25s cubic-bezier(0.34,1.56,0.64,1), height 0.25s cubic-bezier(0.34,1.56,0.64,1)',
       }}
-      className={`relative mb-0.5 flex flex-shrink-0 items-center justify-center ${bgClass} ${pulseClass}`}
+      className={`relative mb-0.5 flex flex-shrink-0 items-center justify-center ${bgClass} ${pulseClass} ${rounded ? 'rounded-full' : ''}`}
       aria-label={ariaLabel}
       disabled={isTranscribing}
     >
