@@ -32,12 +32,11 @@ export const MODEL_COSTS: Record<string, { input: number; output: number }> = {
   'gpt-5.5-mini':      { input: 0.50,  output: 3.00 },
   'gpt-5-mini':        { input: 0.25,  output: 2.00 },
   'gpt-5':             { input: 1.25,  output: 10.00 },
-  // Défaut CHAT (gros volume) = gemini-2.5-flash, tarif GA réel $0.30/$2.50
-  // (ai.google.dev). L'ancienne valeur $0.10/$0.40 était une estimation
-  // intermédiaire qui sous-estimait le coût. Source primaire des montants =
-  // serveur D1 (BUG 60) ; ce bucket sert au fallback BYOK/offline.
+  // gemini-2.5-flash — ANCIEN défaut chat (remplacé par 3.5-flash, C1 18/07).
+  // Bucket conservé pour les coûts historiques + fallback BYOK/offline.
+  // Source primaire des montants = serveur D1 (BUG 60).
   'gemini-flash':      { input: 0.30,  output: 2.50 },
-  // gemini-3.5-flash — moitié recherche du mode hybride uniquement. $1.50/$9.
+  // gemini-3.5-flash — défaut CHAT **et** recherche hybride depuis C1 (18/07).
   'gemini-flash-pro':  { input: 1.50,  output: 9.00 },
   'gemini-flash-lite-2.5': { input: 0.10, output: 0.40 },
   'gemini-flash-lite-3.1': { input: 0.25, output: 1.50 },

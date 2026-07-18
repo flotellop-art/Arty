@@ -18,11 +18,15 @@ import i18n from '../i18n'
 // Google) plutôt que gemini-3.1-flash-lite : le lite a une régression
 // documentée de −19 % sur FACTS Grounding (40.6 vs 50.4, model card DeepMind)
 // — la fidélité aux sources est LE rôle de ce chemin (réponses web-grounded).
-// Coût : $1.50/$9 vs $0.30/$2.50 avant, MAIS le grounding 3.x est 2,5× moins
-// cher ($14 vs $35/1000 prompts Search) et le chemin reste ~2× sous Sonnet.
-// Downgrade éventuel vers le lite = à re-décider APRÈS la vigie C2 (données
-// D1 réelles), jamais avant. Depuis la PR #334, ce défaut sert AUSSI les
-// abonnés clé serveur — pas seulement les BYOK.
+// Coût (calcul complet, revue produit 18/07) : tokens seuls ×4 ($0.0084 vs
+// $0.0021/msg type), MAIS sur un tour GROUNDÉ — l'usage réel de ce chemin —
+// le total tokens+recherche PASSE DE $0.0371 À $0.0224 (−40 %) car le
+// grounding domine la facture et chute de $35 à $14/1000 sur la famille 3.x.
+// Downgrade éventuel vers le lite = à re-décider APRÈS la vigie C2, jamais
+// avant. Depuis la PR #334, ce défaut sert AUSSI les abonnés clé serveur.
+// ⚠️ Rollback de CETTE bascule = redéploiement uniquement (assumé) : revenir
+// à un modèle que Google éteint le 16/10 serait une impasse, et 3.5-flash
+// est déjà éprouvé en prod (il servait la recherche hybride depuis mai).
 // Si Google renomme, le 404 affiche errors.geminiModelNotFound.
 // Noms valides : GET https://generativelanguage.googleapis.com/v1beta/models
 const GEMINI_CHAT_MODEL = 'gemini-3.5-flash'
