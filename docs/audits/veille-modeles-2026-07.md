@@ -135,7 +135,7 @@ Source : `ai.google.dev/gemini-api/docs/pricing` + `/deprecations`.
 | Gemini 3 Flash | `gemini-3-flash-preview` | 0.5 / 3 | Preview |
 | Gemini 2.5 Pro | `gemini-2.5-pro` | 1.25 / 10 | **Déprécié — arrêt 16/10/2026** |
 | Gemini 2.5 Flash | `gemini-2.5-flash` | 0.3 / 2.5 | **Déprécié — arrêt 16/10/2026** — défaut chat Arty ! |
-| Gemini 2.5 Flash-Lite | `gemini-2.5-flash-lite` | 0.10 / 0.40 | GA, pas d'arrêt annoncé |
+| Gemini 2.5 Flash-Lite | `gemini-2.5-flash-lite` | 0.10 / 0.40 | **Déprécié — arrêt 16/10/2026** (corrigé en review : TOUTE la famille 2.5 est condamnée ; Google recommande 3.5-flash / 3.1-flash-lite) |
 
 **Grounding** (Search/Maps, cœur du rôle Gemini dans Arty) : famille 3.x =
 5 000 prompts gratuits/mois puis **$14/1000** (Search) et **$25/1000** (Maps) ;
@@ -176,7 +176,7 @@ grounding), qualité relative dans le rôle.
 
 | Rôle Arty | Aujourd'hui | Coût/échange | Verdict qualité/coût | Alternative crédible |
 |---|---|---|---|---|
-| Chat Auto — tous comptes, hors données privées (post-PR #334) | Gemini 2.5 Flash | ~0,21 ¢ | Très bon MAIS **meurt le 16/10** — et sert désormais AUSSI les abonnés | `gemini-3.1-flash-lite` (~0,14 ¢, GA, −33 %) ou `2.5-flash-lite` (~0,044 ¢) à qualifier FR |
+| Chat Auto — tous comptes, hors données privées (post-PR #334) | Gemini 2.5 Flash | ~0,21 ¢ | Très bon MAIS **meurt le 16/10** — et sert désormais AUSSI les abonnés | `gemini-3.1-flash-lite` (~0,14 ¢, GA, −33 %) à qualifier FR — 2.5-flash-lite écarté (condamné aussi, cf. §2) |
 | Données privées / URLs / fichiers (BUG 12) | Sonnet 5 | ~1,5 ¢ (1,0 ¢ jusqu'au 31/08) | Excellent — le bon modèle pour ce rôle | Intouchable (contrainte données, pas coût) |
 | Small talk | Haiku 4.5 / Small 4 | ~0,5 ¢ / ~0,07 ¢ | Bien calibré | — |
 | Rapports lourds | Opus 4.8 | ~3,25 ¢ | Meilleur rapport qualité/prix du tier frontier ($5/$25 vs GPT-5.6 Sol $5/$30) | Problème d'accès, pas de modèle (§5.3) |
@@ -204,8 +204,9 @@ Points d'économie structurels confirmés par la veille :
 ### P0 — avant le 16 octobre 2026
 - [ ] **Migrer le chat Auto hors de `gemini-2.5-flash`** (arrêt Google 16/10).
   Candidats par ordre : `gemini-3.1-flash-lite` (GA, $0.25/$1.5, −33 % vs
-  actuel), `gemini-2.5-flash-lite` (GA, $0.10/$0.40, non déprécié mais même
-  famille condamnée à terme), `gemini-3.5-flash` (qualité max, 5×). Exige la
+  actuel — remplaçant officiellement recommandé par Google), `gemini-3.5-flash`
+  (qualité max, 5×). ~~`gemini-2.5-flash-lite`~~ ÉCARTÉ (corrigé en review :
+  arrêté le 16/10 comme toute la famille 2.5). Exige la
   vigie qualité FR rapide comme en P1.4 (grounding/function calling supportés à
   vérifier sur le candidat). Le killswitch `arty-gemini-cheap-disabled` et le
   pattern de bascule P1.4 sont réutilisables tels quels. ⚠️ Le comparateur
@@ -230,9 +231,12 @@ Points d'économie structurels confirmés par la veille :
   (long-contexte 89,6 % vs 91,5 %) et la presse spécialisée converge sur
   « défaut = Terra, escalade = Sol ». Vérifier l'éligibilité du compte (le
   pattern fallback 5.5→5 de `openaiClient.ts` est réutilisable) ; Sol en
-  option comparateur/BYOK seulement. ⚠️ Le bucket premium « 100 GPT-5 »
-  facture aujourd'hui sur `gpt-5` ($1.25/$10) — décider explicitement quel
-  modèle le bucket sert (Terra = 2× le coût du bucket).
+  option comparateur/BYOK seulement. Économie du bucket « 100 GPT-5 »
+  (corrigée en review) : le modèle réellement servi aujourd'hui est
+  `gpt-5.5` ($5/$30, DEFAULT_MODEL) — `gpt-5` ($1.25/$10) n'est que le
+  fallback d'éligibilité. **Terra divise donc le coût du chemin dominant
+  par 2** ; seule vérif préalable : la part réelle du fallback dans D1
+  (`quota_model`), seul cas où Terra coûterait plus.
 
 ### P2 — hygiène & options
 - [ ] **Fact-check passe 2 : passer de `web_search_20250305` à

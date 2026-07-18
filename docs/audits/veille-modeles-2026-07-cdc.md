@@ -135,11 +135,18 @@ décision D-C actée puis le code et la doc alignés sur UNE seule réalité.
 
 ## C3 — Défaut ChatGPT : `gpt-5.5` → `gpt-5.6-terra` ⛔
 
-**⛔ Bloqué par la décision D-A (Florent)** : le bucket premium « 100 GPT-5 »
-capte automatiquement Terra (`checkPremiumCap.ts:88-90`, `startsWith('gpt-5.')`)
-qui coûte 2× le modèle actuel du bucket (`gpt-5` $1.25/$10 → Terra $2.5/$15).
-Options : garder le cap 100 en absorbant le coût ; baisser le cap ; ou servir
-le bucket sur gpt-5 et Terra hors bucket. Sans décision, ne pas coder.
+**⛔ Décision D-A (Florent) — économie CORRIGÉE en review (l'analyse initiale
+était inversée)** : le bucket premium « 100 GPT-5 » capte automatiquement
+Terra (`checkPremiumCap.ts:88-90`, `startsWith('gpt-5.')`). Le modèle
+réellement servi aujourd'hui dans ce bucket est **`gpt-5.5` à $5/$30**
+(DEFAULT_MODEL, `openaiClient.ts:21`) — `gpt-5` ($1.25/$10) n'est que le
+fallback des comptes non éligibles. **Terra ($2.5/$15) divise donc par 2 le
+coût du chemin dominant.** L'analyse initiale (« Terra = 2× le coût ») était
+fondée sur le nom technique du bucket, pas sur le modèle servi. Reste avant
+de coder : (a) vérifier en D1 (`quota_model`) la part réelle du fallback
+`gpt-5` — seule sous-population pour laquelle Terra serait un renchérissement
+(2×) ; (b) confirmer que le cap 100 reste inchangé (probable : le coût
+baisse). D-A devient une vérification + un feu vert, plus un arbitrage lourd.
 
 **Sous-chantiers OBLIGATOIRES découverts par la cartographie** (sans eux, le
 swap est un bug de facturation actif) :
@@ -187,26 +194,44 @@ boundary multipart, `whisper-proxy.ts:77-89`) → il ne PEUT pas lire le champ
 (`whisperClient.ts:99-109` : gpt-4o-transcribe d'abord, whisper-1 en repli —
 deux requêtes HTTP distinctes, aucun état partagé).
 
-**Solution retenue (option header)** : le client expose le modèle demandé dans
-un header dédié (`x-transcribe-model`) ; le proxy le lit, le **valide contre
-une allowlist** {`gpt-4o-transcribe`, `whisper-1`} (RÈGLE 6 — ne jamais tracer
-une string arbitraire du client), et l'utilise pour les DEUX points hardcodés :
-`consumeDailyQuota` (`whisper-proxy.ts:68`) ET `recordUsage` (`:117`) — en
-corriger un seul rendrait quota et coûts incohérents entre eux.
+**Solution retenue (CORRIGÉE en review — le body est la source de vérité,
+pas un header)** : la première version proposait un header `x-transcribe-model`
+allowlisté ; objection review fondée : un header peut mentir par rapport au
+champ `model` du multipart réellement transmis à OpenAI (client ancien ou
+malveillant → quota/coût faussés — inoffensif aujourd'hui à prix quasi égaux,
+faux dès qu'un palier moins cher comme `gpt-4o-mini-transcribe` existe).
+Solution : le proxy lit le champ `model` DU BODY via
+`await request.clone().formData()` — c'est exactement ce qu'OpenAI servira,
+donc la vérité de facturation par construction. Coût mémoire du clone borné
+par le cap existant `MAX_BODY_BYTES` 10 Mo (`whisper-proxy.ts:16`) —
+acceptable ; si la mémoire Workers pose problème en pratique, repli :
+reconstruire le FormData côté proxy (parse unique + re-émission). Le modèle
+extrait est **validé contre l'allowlist** {`gpt-4o-transcribe`, `whisper-1`}
+(RÈGLE 6) — hors allowlist : 400 (le proxy ne forwarde pas un modèle
+arbitraire sur la clé serveur, durcissement bonus vs l'existant). La valeur
+validée alimente les DEUX points hardcodés : `consumeDailyQuota`
+(`whisper-proxy.ts:68`) ET `recordUsage` (`:117`) — en corriger un seul
+rendrait quota et coûts incohérents entre eux. Aucun changement client requis
+(anciens clients inclus : le champ `model` est déjà dans le FormData,
+`whisperClient.ts:80-93`).
 
 **Pricing** : ajouter `gpt-4o-transcribe` dans `pricing.ts` avec `audioPerSec`
 approximé (~$0.006/min) — la vraie facturation OpenAI est par tokens audio,
 mais `parseWhisperBody` (`trackUsage.ts:246-258`) n'extrait que `duration` ;
 documenter l'approximation dans le fichier.
 
-**Tests** : créer un test whisper-proxy (aucun n'existe) : header valide →
-tracé sous le bon modèle ; header absent → défaut `whisper-1` (compat) ;
-header hors allowlist → rejeté/défaut. + case `pricingParity` si le client
-price aussi.
+**Tests** : créer un test whisper-proxy (aucun n'existe) : FormData avec
+`model=gpt-4o-transcribe` → quota + coût tracés sous ce nom ; avec
+`model=whisper-1` → idem whisper-1 ; champ `model` absent → défaut
+`whisper-1` (compat) ; modèle hors allowlist → 400 sans forward. + case
+`pricingParity` si le client price aussi.
 
-**Audit sécu (RÈGLE 6, endpoint touché)** : auth inchangée ; le header est
-borné par allowlist (pas d'injection D1) ; pas de nouveau leak d'erreur ;
-Origin/CSRF inchangés ; pas de relais infra nouveau.
+**Audit sécu (RÈGLE 6, endpoint touché)** : auth inchangée ; le modèle tracé
+vient du body réellement forwardé, validé par allowlist (pas d'injection D1,
+pas de désynchronisation header/body possible) ; le rejet hors allowlist
+FERME un trou existant (aujourd'hui le proxy forwarde n'importe quel `model`
+du FormData sur la clé serveur) ; pas de nouveau leak d'erreur ; Origin/CSRF
+inchangés ; pas de relais infra nouveau.
 
 **Critère d'acceptation** : une transcription gpt-4o-transcribe apparaît sous
 son nom dans `quota_model` D1 et l'écran Coûts ; le repli whisper-1 reste
@@ -226,8 +251,10 @@ asymétrie qui ressemble à un oubli, PAS un choix.
 étendre au chat principal dans une seconde étape si la vigie est bonne — en
 documentant explicitement l'état transitoire à deux versions.
 
-**Préalable bloquant** : vérifier en live que `web_search_20260209` est servi
-sur le compte pour Sonnet 5 (sinon 502 silencieux de la passe 2).
+**Préalable (allégé en review)** : la doc Anthropic confirme que
+`web_search_20260209` supporte Sonnet 5 et auto-provisionne l'exécution
+nécessaire — le préalable se réduit à un smoke test en prod avant merge
+(pas un point bloquant).
 
 **Pièges** : BUG 10 — ne JAMAIS ajouter `code_execution` dans TOOLS au passage
 (auto-injecté par l'API) ; latence passe 2 (25-30 s prod) à re-mesurer, le
@@ -296,12 +323,23 @@ pattern `tts.ts`, champ pricing par caractère, audit RÈGLE 6 complet.
 ## C8 — MAJ doc BUG 58 (CLAUDE.md:822)
 
 Remplacer la phrase « Trial/free utilisateurs gardent Small par défaut (cap
-quota) » par : « Free : verrouillé sur Claude Haiku (aucun Mistral). Trial :
-Mistral Medium uniquement (Small retiré de `TRIAL_ALLOWED_MODELS` en mai
-2026) — toute requête trial est swappée serveur vers Medium, jamais Small.
-Small n'est servi qu'aux payants sur messages triviaux. » Vérifié contre
-`checkAllowedUser.ts:236-243,285-291` et `subscription/status.ts:12,25`.
-Attention à préserver la distinction free ≠ trial.
+quota) » par une formulation à DEUX COUCHES (harmonisée en review avec C2 —
+la version initiale de ce CDC se contredisait entre C2 « trial = 100 % Haiku »
+et C8 « trial = Mistral Medium ») :
+
+> « Small n'est plus jamais servi aux non-payants. **Free** :
+> `allowed_families = ['claude-haiku']` — aucun accès Mistral, ni UI ni
+> serveur. **Trial** : côté CLIENT, vu comme `free` (`normalizePlan` ne
+> renvoie jamais `trial`) → chat Auto = Haiku uniquement en pratique ; côté
+> SERVEUR, `TRIAL_ALLOWED_MODELS` autoriserait 4 familles dont
+> `mistral-medium` (jamais Small, retiré en mai 2026) avec swap proxy vers
+> Medium — branches aujourd'hui inatteignables via l'UI (cf. D-C).
+> **Payants** : Small réservé aux messages triviaux, Medium 3.5 défaut. »
+
+Vérifié contre `checkAllowedUser.ts:236-243,285-291`,
+`subscription/status.ts:12,25,93-96`. Les deux couches (réalité client vs
+câblage serveur) doivent TOUTES DEUX apparaître, sinon la doc redevient
+fausse dans un sens ou l'autre.
 
 ---
 
@@ -325,7 +363,7 @@ Audit RÈGLE 6 au passage (endpoint touché). Taille S.
 
 | ID | Question | Bloque | Recommandation |
 |---|---|---|---|
-| D-A | Bucket « 100 GPT-5 » : quel modèle, quel cap, quelle marge ? | C3 | Terra dans le bucket avec cap ajusté à la marge cible — chiffrer d'abord via la vigie C2 |
+| D-A | Bucket « 100 GPT-5 » : confirmer le swap Terra (−50 % vs gpt-5.5 servi aujourd'hui — économie corrigée en review) après vérif D1 de la part du fallback gpt-5 | C3 | Vérif D1 puis GO : Terra dans le bucket, cap 100 inchangé |
 | D-B | Gemini Pro au comparateur : retirer sans remplaçant GA, exposer un preview, ou attendre 3.5 Pro ? | C1 (partie comparateur) | Retirer maintenant, réintroduire à la GA de 3.5 Pro |
 | D-C | Trial multi-provider : ouvrir pour de vrai ou purger le code serveur mort ? | C2 volet 2 | Trancher après la vigie C2 volet 1 (chiffrer le coût réel d'un essai multi-provider) |
 | D-D | Escalade Opus 4.8 (gate Pro BYOK, regex étroite, absent de toute UI) — rapport §5.3 | Hors chantiers (décision produit pure) | (b) du rapport : ouvrir au bucket Sonnet+Opus subscription, sous-quota à arbitrer (cf. vigie éco 14/06) |
