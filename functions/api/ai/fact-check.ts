@@ -252,7 +252,14 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
         system: SYSTEM_PROMPT,
         messages: [{ role: 'user', content: userContent }],
         ...(cfg.webSearch
-          ? { tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 3 }] }
+          ? // C5 (CDC veille 2026-07) : variante 20260209 (filtrage dynamique des
+            // résultats avant d'entrer en contexte — précision + économie de
+            // tokens). Supportée par Sonnet 5, auto-provisionne son exécution
+            // (doc Anthropic). NE PAS déclarer l'outil d'exécution de code ici
+            // (BUG 10 — auto-injecté par l'API, conflit sinon).
+            // ⚠️ toolDefinitions.ts (chat principal) reste volontairement sur
+            // 20250305 — extension prévue en 2e étape après vigie fact-check.
+            { tools: [{ type: 'web_search_20260209', name: 'web_search', max_uses: 3 }] }
           : {}),
       }),
       env.ANTHROPIC_API_KEY,

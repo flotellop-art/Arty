@@ -51,4 +51,15 @@ describe('endpoint fact-check — hors quotas utilisateur (C-F/D5)', () => {
     // Un retry client re-consommerait bg_quota à chaque tentative.
     expect(src).toMatch(/fetchAnthropicWithRetry/)
   })
+
+  // C5 (CDC veille 2026-07) : la passe 2 utilise la variante 20260209
+  // (filtrage dynamique). Avant ce test, AUCUNE garde ne figeait la version —
+  // une régression vers l'ancien snapshot serait passée inaperçue.
+  it('utilise web_search_20260209 (C5) et ne déclare JAMAIS code_execution (BUG 10)', () => {
+    expect(src).toMatch(/web_search_20260209/)
+    expect(src).not.toMatch(/web_search_20250305/)
+    // L'API Anthropic auto-injecte code_execution avec web_search — le
+    // déclarer manuellement provoque « Auto-injecting tools would conflict ».
+    expect(src).not.toMatch(/code_execution/)
+  })
 })
