@@ -263,7 +263,20 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
       console.error('[subscription/status] premium_cap query failed', err)
     }
     monthlyCap = {}
+    // C12 (18/07/2026) — buckets ENFORCÉS mais NON AFFICHÉS. `gemini-pro` :
+    // aucun chemin de l'app ne peut le consommer depuis C1 (Auto ne route
+    // jamais vers un -pro, comparateur nettoyé) → afficher « 80 Gemini Pro »
+    // était une promesse structurellement mensongère (revue produit).
+    // `unknown-model` : filet technique anti-abus, pas une promesse produit —
+    // il s'affichait en brut dans le tooltip PlanBadge. Les caps RESTENT
+    // appliqués par checkPremiumCap (défense en profondeur si un client forge
+    // un modèle -pro). Filtrer ICI masque la ligne aussi pour les vieux APK.
+    // Réintroduire l'affichage gemini-pro UNIQUEMENT en même temps qu'un vrai
+    // chemin de consommation (GA Gemini 3.5 Pro) ET que le copy marketing —
+    // jamais le copy seul en premier (CDC veille 2026-07, C12).
+    const hiddenBuckets = new Set(['gemini-pro', 'unknown-model'])
     for (const [bucket, limit] of Object.entries(PREMIUM_BUCKET_CAPS)) {
+      if (hiddenBuckets.has(bucket)) continue
       const u = Math.min(used[bucket] ?? 0, limit)
       monthlyCap[bucket] = { used: u, limit, remaining: limit - u }
     }

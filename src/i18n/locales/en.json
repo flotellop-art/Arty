@@ -215,8 +215,8 @@
   "chat": {
     "upgradeModal": {
       "title": "{{model}} is Pro-only",
-      "body": "On the free plan you get access to <0>Claude Haiku (10/day)</0> and <1>Mistral (5/day)</1>. To unlock Sonnet, Opus, Gemini Pro and GPT, upgrade to Pro.",
-      "bodyNative": "On the free plan you get access to <0>Claude Haiku (10/day)</0> and <1>Mistral (5/day)</1>. To unlock Sonnet, Opus, Gemini Pro and GPT, use your own API key (BYOK).",
+      "body": "On the free plan you get access to <0>Claude Haiku (10/day)</0> and <1>Mistral (5/day)</1>. To unlock Sonnet, Opus, Gemini and GPT, upgrade to Pro.",
+      "bodyNative": "On the free plan you get access to <0>Claude Haiku (10/day)</0> and <1>Mistral (5/day)</1>. To unlock Sonnet, Opus, Gemini and GPT, use your own API key (BYOK).",
       "later": "Later",
       "seePlans": "See plans",
       "useByok": "Use my API key"
@@ -946,7 +946,7 @@
       "byokDesc": "Your own API key · All models · Encrypted local storage",
       "subName": "Subscription",
       "subPrice": "€9.99/mo · VAT incl.",
-      "subDesc": "No API key · 150 Claude Sonnet/Opus + 100 GPT-5 + 80 Gemini Pro per month · Haiku, Flash and Mistral with no monthly cap",
+      "subDesc": "No API key · 150 Claude Sonnet/Opus + 100 GPT-5 per month · Haiku, Flash and Mistral with no monthly cap",
       "subReassurance": "✓ Cancel in one click, anytime — pause available. No commitment.",
       "subBadge": "Most popular",
       "proName": "Pro",
@@ -960,7 +960,7 @@
       "kicker": "FAQ",
       "title": "Frequently asked questions",
       "q1": "Which models are included?",
-      "a1": "With the subscription: 150 Claude Sonnet/Opus messages, 100 GPT-5 and 80 Gemini Pro per month, plus Haiku, Flash and Mistral with no monthly cap. The free trial (30 messages) uses the base models (Haiku, Flash, Mistral Medium).",
+      "a1": "With the subscription: 150 Claude Sonnet/Opus messages and 100 GPT-5 per month, plus Haiku, Flash and Mistral with no monthly cap. The free trial (30 messages) uses the base models (Haiku, Flash, Mistral Medium).",
       "q2": "Can I use my own API key?",
       "a2": "Yes. BYOK mode is free on Arty's side: plug in your Anthropic, OpenAI, Google or Mistral key, access every model and pay your provider at cost price. Your key is encrypted locally and never leaves your device in the clear.",
       "q3": "What's the difference between the Subscription and Pro?",
@@ -1014,7 +1014,7 @@
     "proTagline": "Lifetime license · your own key",
     "proDescription": "One-time payment, app for life · You use your own API key (BYOK) · Business templates · Priority support · No subscription",
     "proCta": "Buy Arty Pro",
-    "subscriptionDescription": "No API key · 150 Claude Sonnet/Opus + 100 GPT-5 + 80 Gemini Pro per month · Haiku, Flash and Mistral with no monthly cap",
+    "subscriptionDescription": "No API key · 150 Claude Sonnet/Opus + 100 GPT-5 per month · Haiku, Flash and Mistral with no monthly cap",
     "subscriptionCta": "Subscribe",
     "premiumPackEyebrow": "Quota exceeded?",
     "premiumPackTitle": "+100 premium messages pack",
