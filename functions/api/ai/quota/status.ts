@@ -32,6 +32,9 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
     cacheReadTokens: m.cacheReadTokens,
     cacheCreationTokens: m.cacheCreationTokens,
     audioSeconds: m.audioSeconds,
+    // C11 : volume groundé forwardé (le coût borne haute n'est PAS dans
+    // costUsd — l'UI peut l'expliquer sans gonfler le coût facturable).
+    groundedPrompts: m.groundedPrompts,
     costUsd: Number(m.costUsd.toFixed(4)),
   }))
 
