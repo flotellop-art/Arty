@@ -87,11 +87,12 @@ const PRICING: Record<string, ModelPricing> = {
   'codestral-latest': { input: 0.3, output: 0.9 },
 
   // Google Gemini
+  // ⚠️ Famille 2.5 : ARRÊT GOOGLE le 16/10/2026 (C1 — plus aucun client ne
+  // route dessus depuis le 18/07). Entrées conservées UNIQUEMENT pour
+  // valoriser les coûts historiques D1 antérieurs à la bascule.
   'gemini-2.5-pro': { input: 1.25, output: 10, cacheRead: 0.31 },
-  // gemini-2.5-flash — défaut CHAT depuis juin 2026 (cf. geminiClient.ts).
-  // Tarif GA réel $0.30/$2.50 (source ai.google.dev/gemini-api/docs/pricing).
-  // L'ancienne valeur $0.075/$0.30 était le tarif preview/lite et sous-estimait
-  // ~4-8× le coût réel — bug de tracking corrigé indépendamment du switch.
+  // gemini-2.5-flash — ANCIEN défaut chat (juin → 18 juillet 2026, remplacé
+  // par gemini-3.5-flash en C1). Tarif GA $0.30/$2.50.
   'gemini-2.5-flash': { input: 0.3, output: 2.5, cacheRead: 0.075 },
   'gemini-2.5-flash-lite': { input: 0.1, output: 0.4, cacheRead: 0.01 },
   'gemini-3.1-flash-lite': { input: 0.25, output: 1.5 },

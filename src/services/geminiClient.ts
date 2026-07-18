@@ -11,29 +11,36 @@ import { updateTrialFromResponse } from './trialClient'
 import type { ReflectionLevel } from './reflectionLevel'
 import i18n from '../i18n'
 
-// Modèle Flash par défaut du CHAT (gros volume). gemini-2.5-flash coûte
-// ~5× moins en input ($0.30 vs $1.50) et ~3.6× moins en output ($2.50 vs $9)
-// que gemini-3.5-flash, et supporte AUSSI BIEN google_search, url_context,
-// google_maps et le function calling (vérifié juin 2026 — function calling
-// même *amélioré* sur le refresh 2.5). Pour le chat grand public (Q/R,
-// rédaction, réponses web-grounded en français) la qualité est équivalente :
-// le saut 3.5 ne paie que du raisonnement agentique/code que ce chemin
-// n'exerce pas. Le grounding 2.5 est facturé PAR PROMPT (vs par requête sur
-// 3.x), souvent moins cher pour un chat où beaucoup de tours déclenchent une
-// recherche. Si Google renomme, le 404 affiche errors.geminiModelNotFound.
+// Modèle Flash par défaut du CHAT (gros volume). C1 (CDC veille 2026-07,
+// décision Florent 18/07) : gemini-2.5-flash est DÉPRÉCIÉ par Google — arrêt
+// le 16 OCTOBRE 2026 (toute la famille 2.5, ai.google.dev/gemini-api/docs/
+// deprecations). Bascule sur gemini-3.5-flash (GA, remplaçant recommandé par
+// Google) plutôt que gemini-3.1-flash-lite : le lite a une régression
+// documentée de −19 % sur FACTS Grounding (40.6 vs 50.4, model card DeepMind)
+// — la fidélité aux sources est LE rôle de ce chemin (réponses web-grounded).
+// Coût (calcul complet, revue produit 18/07) : tokens seuls ×4 ($0.0084 vs
+// $0.0021/msg type), MAIS sur un tour GROUNDÉ — l'usage réel de ce chemin —
+// le total tokens+recherche PASSE DE $0.0371 À $0.0224 (−40 %) car le
+// grounding domine la facture et chute de $35 à $14/1000 sur la famille 3.x.
+// Downgrade éventuel vers le lite = à re-décider APRÈS la vigie C2, jamais
+// avant. Depuis la PR #334, ce défaut sert AUSSI les abonnés clé serveur.
+// ⚠️ Rollback de CETTE bascule = redéploiement uniquement (assumé) : revenir
+// à un modèle que Google éteint le 16/10 serait une impasse, et 3.5-flash
+// est déjà éprouvé en prod (il servait la recherche hybride depuis mai).
+// Si Google renomme, le 404 affiche errors.geminiModelNotFound.
 // Noms valides : GET https://generativelanguage.googleapis.com/v1beta/models
-const GEMINI_CHAT_MODEL = 'gemini-2.5-flash'
+const GEMINI_CHAT_MODEL = 'gemini-3.5-flash'
 
-// Modèle de la moitié RECHERCHE du mode hybride (geminiResearch). On garde
-// 3.5-flash : c'est l'orchestration multi-étapes / synthèse longue qui
-// alimente le rapport rédigé ensuite par Claude — exactement là où le saut
-// 3.5 (agentique, long-horizon) apporte quelque chose. Volume faible,
-// qualité sensible → pas d'économie ici.
+// Modèle de la moitié RECHERCHE du mode hybride (geminiResearch) — 3.5-flash,
+// désormais le MÊME que le chat (convergence C1). Constante distincte
+// conservée : les deux rôles peuvent re-diverger au prochain downgrade éco.
 const GEMINI_RESEARCH_MODEL = 'gemini-3.5-flash'
 
-// Killswitch : `arty-gemini-cheap-disabled = '1'` (DevTools / localStorage)
-// repasse le CHAT sur 3.5-flash sans redéploiement, si une régression est
-// observée en prod. Ne touche pas la recherche hybride (déjà sur 3.5).
+// Killswitch : `arty-gemini-cheap-disabled = '1'` (DevTools / localStorage).
+// INERTE depuis C1 (chat == recherche == 3.5-flash) — câblage conservé
+// volontairement : si la vigie C2 valide un downgrade éco du chat (ex.
+// gemini-3.1-flash-lite), ce switch redeviendra le rollback sans
+// redéploiement, comme en P1.4. Ne touche pas la recherche hybride.
 const GEMINI_CHEAP_KILLSWITCH = 'arty-gemini-cheap-disabled'
 function geminiChatModel(): string {
   try {

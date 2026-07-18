@@ -21,7 +21,7 @@ Pro = BYOK (3 proxys, `proKeyRequiredResponse`).
 
 | # | Chantier | Verdict | Taille | Bloqué par |
 |---|---|---|---|---|
-| C1 | Migration Gemini chat 2.5 → 3.x (deadline 16/10) | GO avec réserves | S/M + vigie | Décision D-B (Gemini Pro comparateur) |
+| C1 | Migration Gemini chat 2.5 → 3.x (deadline 16/10) | ✅ **FAIT (18/07, PR C1)** — chat basculé sur `gemini-3.5-flash` (décision Florent : le candidat éco 3.1-flash-lite a une régression FACTS Grounding documentée −19 % [40.6 vs 50.4, model card DeepMind] → bascule sûre d'abord, downgrade éco à re-décider après la vigie C2). Recherche de validation : tools 4/4 confirmés sur le lite, contexte 1M identique, grounding $14/1000. Comparateur : les 3 entrées 2.5 retirées (D-B), 3.5-flash ajouté. Killswitch conservé (inerte, futur rollback). `geminiClient.test.ts` créé (1er test du client). Suivis : copy « 80 Gemini Pro » orphelin ; entrée Pro à réintroduire à la GA de 3.5 Pro ; downgrade lite conditionné à vigie C2 + test live google_search | S/M | — |
 | C2 | P1.9 — re-scopé : vigie + reliquat trial | Re-scopé (déjà livré PR #334) | S | Décision D-C (trial multi-provider) |
 | C3 | Défaut ChatGPT → gpt-5.6-terra | GO, incomplet sans sous-chantiers | M | ⛔ Décision D-A (bucket GPT-5) |
 | C4 | Traçage transcription (nom du modèle) | GO avec réserves (urgence revue à la baisse) | M | — |
@@ -29,6 +29,8 @@ Pro = BYOK (3 proxys, `proKeyRequiredResponse`).
 | C6 | Hygiène pricing + normalisation | ✅ **FAIT (18/07, PR #357)** — entrées annotées (pas supprimées), codestral 0.3/0.9, fix gpt-5.5-mini + parité | S | — |
 | C7 | Voxtral TTS euOnly | **Différé** (aucun consommateur) | M/L si repris | Un cas d'usage euOnly réel |
 | C8 | MAJ doc BUG 58 | ✅ **FAIT (18/07, PR #357)** — formulation deux couches free/trial | S | — |
+| C11 | (nouveau, revue produit C1) **Traçage du coût de grounding Gemini** — `pricing.ts`/`recordUsage`/`trackUsage` n'ont AUCUN champ grounding alors que c'est le poste dominant du chemin Gemini ($14/1000). Sans lui, la vigie C2 est aveugle au facteur qui décide si C1 fait gagner ou perdre de l'argent. Piste : détecter `groundingMetadata` dans la réponse streamée (trackUsage) + champ `groundingPerPrompt`. En attendant : la vigie C2 ESTIME (nb requêtes Gemini × $14/1000 en borne haute) et documente l'angle mort | GO (avant de faire confiance à la vigie) | S/M | — |
+| C12 | (nouveau, revue produit C1) **Copy « 80 Gemini Pro » structurellement mensonger** — le bucket s'affiche en direct (PlanBadge/ChatOptionsSheet itèrent PREMIUM_BUCKET_CAPS) mais AUCUN chemin de l'app ne peut plus le consommer (Auto ne route jamais vers un -pro, sélecteur = provider générique, comparateur nettoyé). Spec revue : retirer le copy (en/fr.json:218-219,949,963,1017 + lp/prix), masquer la ligne du bucket côté client, et ne réintroduire copy+bucket QUE simultanément avec un vrai chemin (GA de 3.5 Pro). Jamais le copy seul en premier | GO (confiance) | S | — |
 | C9 | (nouveau) Traçage coût TTS inexistant | ✅ **FAIT (18/07, PR #357)** — tts-1 pricé ($15/1M chars), recordUsage waitUntil clé serveur ; relecture 2 agents (Opus sécu GO 5/5 + Sonnet régressions GO, suite 1230/1230). Résiduel LOW documenté : `count` D1 reste 1/jour (structurel recordUsage, coût exact) | S | — |
 
 **Ordre d'exécution recommandé** (challenge Opus) : C6+C8+C9 (quick wins) →
@@ -42,7 +44,21 @@ légèrement (conservateur, voulu).
 
 ---
 
-## C1 — Migration Gemini chat : `gemini-2.5-flash` → `gemini-3.1-flash-lite`
+## C1 — Migration Gemini chat : `gemini-2.5-flash` → ~~`gemini-3.1-flash-lite`~~ **`gemini-3.5-flash`** (réalisé)
+
+> **⚠️ RÉALISÉ DIFFÉREMMENT DE LA SPEC CI-DESSOUS (18/07, PR C1).** La
+> recherche de validation a chiffré une régression FACTS Grounding de −19 %
+> sur le candidat lite (40.6 vs 50.4, model card DeepMind) → décision
+> Florent : bascule sûre sur `gemini-3.5-flash` (GA, remplaçant recommandé
+> par Google). Conséquences vs la spec historique conservée ci-dessous :
+> (1) le killswitch est INERTE (chat == recherche) — **rollback de C1 =
+> redéploiement uniquement, assumé** (revenir à un modèle éteint le 16/10
+> serait une impasse ; 3.5-flash servait déjà la recherche hybride en prod) ;
+> (2) coût réel (revue produit) : tokens ×4 mais **−40 % sur un tour groundé**
+> (le grounding domine et passe de $35 à $14/1000) ; (3) le downgrade éco
+> vers le lite reste possible après la vigie C2 + test live google_search —
+> le killswitch retrouverait alors son rôle. La spec ci-dessous reste comme
+> trace du plan initial.
 
 **Deadline dure : 16 octobre 2026** (arrêt Google de 2.5 Flash ET 2.5 Pro).
 Blast-radius : depuis la PR #334, ce défaut sert AUSSI les abonnés clé serveur,
