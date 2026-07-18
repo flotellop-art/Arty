@@ -23,6 +23,7 @@ import { TOOLS } from '../services/toolDefinitions'
 import { wantsImageGeneration, generateImageToolDefinition } from '../services/tools/imageTools'
 import { detectReminderIntent, createReminder } from '../services/reminderService'
 import { composeQuickActionText, isQuickActionSelection } from '../services/quickActions'
+import { clearConversationComposerDraft } from '../services/composerDrafts'
 import i18n from '../i18n'
 
 type ToolHandler = (name: string, input: Record<string, unknown>) => Promise<{ result: string; screenshot?: string }>
@@ -184,9 +185,9 @@ export function useConversation() {
       conversationId?: string,
       files?: FileAttachment[],
       options?: ChatSendOptions,
-    ) => {
+    ): Promise<boolean> => {
       const targetId = conversationId ?? activeId
-      if (!targetId) return
+      if (!targetId) return false
 
       // Seul un ID connu peut activer une instruction invisible. Le texte
       // saisi reste la source d'affichage, de titre, de recherche et de copie.
@@ -206,7 +207,7 @@ export function useConversation() {
         if (!storage.isCacheReady()) {
           setError(i18n.t('errors.storageNotReady'))
         }
-        return
+        return false
       }
 
       // Roadmap Phase 2 C — détection d'intent rappel.
@@ -238,7 +239,7 @@ export function useConversation() {
         conv.updatedAt = Date.now()
         storage.saveConversation(conv)
         refreshConversations()
-        return
+        return true
       }
 
       // Handle /aide command
@@ -259,7 +260,7 @@ export function useConversation() {
         conv.updatedAt = Date.now()
         storage.saveConversation(conv)
         refreshConversations()
-        return
+        return true
       }
 
       // Cap multi-conv : il ne concerne que les parcours qui démarrent un
@@ -267,7 +268,7 @@ export function useConversation() {
       // une autre conversation est déjà en cours.
       if (!canStart(targetId)) {
         setError(i18n.t('errors.tooManyConcurrentStreams'))
-        return
+        return false
       }
 
       // Persiste les binaires dans IndexedDB chiffré AVANT de sauvegarder le
@@ -348,7 +349,7 @@ export function useConversation() {
       // onDone finalisait une bulle assistant VIDE.
       if (!startStream(targetId)) {
         setError(i18n.t('errors.tooManyConcurrentStreams'))
-        return
+        return true
       }
 
       const onToken = (token: string) => streamToken(token, targetId)
@@ -426,7 +427,7 @@ export function useConversation() {
       // hors EU, jamais de requête Mistral vouée au 403.
       if (!canExecuteRoute(routeInput)) {
         onErr(new Error(i18n.t('errors.euPlanRequired')))
-        return
+        return true
       }
       const routeDecision = resolveRoute(routeInput)
       const provider = routeDecision.provider
@@ -670,6 +671,7 @@ export function useConversation() {
         // l'erreur — exactement comme une erreur réseau du client LLM.
         onErr(err instanceof Error ? err : new Error(String(err)))
       }
+      return true
     },
     [
       activeId, refreshConversations, canStart, startStream, setActiveStream,
@@ -688,6 +690,9 @@ export function useConversation() {
         stopStreaming(id)
       }
       storage.deleteConversation(id)
+      // GC du brouillon composeur associé (mémoire + blob chiffré) — sans
+      // cible, il ne serait plus jamais ni restauré ni nettoyé.
+      clearConversationComposerDraft(id)
       refreshConversations()
       if (activeId === id) {
         setActiveId(null)

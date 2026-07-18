@@ -36,7 +36,7 @@ export type ChatSendHandler = (
   text: string,
   files?: FileAttachment[],
   options?: ChatSendOptions,
-) => void
+) => void | boolean | Promise<void | boolean>
 
 export interface FactCheckClaim {
   claim: string

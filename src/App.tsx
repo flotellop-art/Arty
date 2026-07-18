@@ -165,14 +165,17 @@ function AppContent({
       // Storage pas prêt (ou déchiffrement en échec) : l'erreur visible est
       // déjà posée par createConversation — on reste sur la Home au lieu de
       // naviguer vers une conversation fantôme (écran vide).
-      if (!id) return
-      if (files?.length) {
-        navigate(`/chat/${id}`)
-        setTimeout(() => sendMessage(text, id, files, options), 100)
-      } else {
-        sendMessage(text, id, undefined, options)
-        navigate(`/chat/${id}`)
-      }
+      if (!id) return false
+      // Navigue SANS attendre la résolution de sendMessage : la préparation
+      // d'envoi peut bloquer sur le réseau (PDF/URL inlinés via Linkup) ou
+      // IndexedDB — pendant ce temps la progression (« Lecture du PDF… »)
+      // vit dans la conversation, pas sur la Home. La promesse retournée
+      // garde la sémantique brouillon : InputBar ne vide le composeur que si
+      // elle résout true ; un refus (cap de streams) laisse le brouillon Home
+      // intact et l'erreur s'affiche dans la conversation ouverte.
+      const accepted = sendMessage(text, id, files?.length ? files : undefined, options)
+      navigate(`/chat/${id}`)
+      return accepted
     },
     [createConversation, sendMessage, navigate, setActionScreenshot, conversations.length]
   )
@@ -193,6 +196,12 @@ function AppContent({
     if (!id) return
     navigate(`/chat/${id}`)
   }, [createConversation, navigate, conversations.length])
+
+  const handleHome = useCallback(() => {
+    setActionScreenshot(null)
+    clearActive()
+    navigate('/')
+  }, [clearActive, navigate, setActionScreenshot])
 
   // Share-to-Arty: handles a payload coming from the Android Share menu.
   // Creates a fresh conversation, hands the draft off to ConversationScreen
@@ -256,6 +265,7 @@ function AppContent({
   // Callbacks stables pour la Sidebar (memo) et ChatRoute — les littéraux
   // inline recréés à chaque render court-circuitaient le memo pendant le
   // streaming (audit perf H2).
+  const openSidebar = useCallback(() => setSidebarOpen(true), [])
   const closeSidebar = useCallback(() => setSidebarOpen(false), [])
   const handleImportConversation = useCallback(
     (id: string) => {
@@ -367,7 +377,7 @@ function AppContent({
 
   return (
     <div
-      className="bg-theme-bg text-theme-ink font-sans font-light"
+      className="bg-theme-bg font-sans font-normal text-theme-ink"
       style={{ height: 'var(--viewport-h, 100dvh)' }}
     >
       {shareError && (
@@ -419,12 +429,14 @@ function AppContent({
 
       <Sidebar
         isOpen={sidebarOpen}
+        onOpen={openSidebar}
         onClose={closeSidebar}
         conversations={conversations}
         activeId={activeId}
         streamingConvIds={streamingConvIds}
         onSelect={handleSelectConversation}
         onNew={handleNewConversation}
+        onHome={handleHome}
         onNewEU={handleNewEUConversation}
         onDelete={deleteConversation}
         onRename={renameConversation}
@@ -442,16 +454,17 @@ function AppContent({
       {/* P0.7 — modale de choix au cap premium atteint (event arty-cap-reached). */}
       <CapReachedModal />
 
-      {/* PR E — desktop ≥1024px : la sidebar persistante (fixed, toujours
-          visible) occupe lg:w-72 à gauche ; on décale le contenu d'autant.
+      {/* Coquille Fable — la sidebar persistante apparaît à 900 px et occupe
+          exactement 248 px ; sous ce seuil elle devient un tiroir superposé.
           Aucune restructuration flex de la racine → mobile inchangé. */}
-      <main className="h-full lg:pl-72">
+      <main id="arty-main-shell" className="h-full min-[900px]:pl-[248px]">
       <Routes>
         <Route
           path="/"
           element={
             <HomeScreen
               onMenuToggle={() => setSidebarOpen((o) => !o)}
+              menuOpen={sidebarOpen}
               onSend={handleSendFromHome}
               isStreaming={isStreaming}
               onStop={stopStreaming}
@@ -460,10 +473,13 @@ function AppContent({
               userName={profileName || userName}
               proactiveBrief={proactiveBrief.brief}
               briefLoading={proactiveBrief.loading}
+              briefDismissed={proactiveBrief.dismissed}
               onDismissBrief={proactiveBrief.dismiss}
+              onRestoreBrief={proactiveBrief.restore}
               onBriefAction={proactiveBrief.runAction}
               conversations={conversations}
               onSelectConv={handleSelectConversation}
+              onNewConversation={handleNewConversation}
               error={error}
               onDismissError={clearError}
             />

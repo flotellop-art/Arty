@@ -1,10 +1,9 @@
-import { memo, useCallback, useMemo } from 'react'
+import { memo, useCallback, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { TopBar } from '../layout/TopBar'
-import { InputBar } from '../layout/InputBar'
-import { PrismMark } from '../shared/PrismMark'
+import { InputBar, type ComposerPrefill } from '../layout/InputBar'
 import { ProactiveBriefCard } from './ProactiveBriefCard'
-import type { BriefItem, BriefAction } from '../../services/proactiveBriefActions'
+import type { BriefAction, BriefItem } from '../../services/proactiveBriefActions'
 import { GoogleConnectButton } from '../google/GoogleConnectButton'
 import { GoogleStatus } from '../google/GoogleStatus'
 import { CalendarView } from '../google/CalendarView'
@@ -13,68 +12,158 @@ import { cleanDisplayName } from '../../services/displayName'
 import type { useGoogleAuth } from '../../hooks/useGoogleAuth'
 import type { useDrive } from '../../hooks/useDrive'
 import type { ChatSendHandler, Conversation } from '../../types'
-import { homeV2Enabled } from '../../services/homeV2'
 import { isPublicGoogleOAuthProfileEnabled } from '../../services/publicGoogleOAuthProfile'
 
 interface HomeScreenProps {
   onMenuToggle: () => void
+  menuOpen?: boolean
   onSend: ChatSendHandler
   isStreaming: boolean
-  /** Stop du stream actif. Sans lui, le bouton Stop affiché quand un stream
-      tourne en arrière-plan (retour Home pendant une réponse) est un no-op
-      silencieux — bug relevé par PLAN.md (PR C). */
   onStop?: () => void
   googleAuth: ReturnType<typeof useGoogleAuth>
   drive: ReturnType<typeof useDrive>
   userName?: string
   proactiveBrief?: { items: BriefItem[] } | { text: string } | null
   briefLoading?: boolean
+  /** État « masqué » du brief — vit dans useProactiveBrief (niveau App), pas
+      dans un state local : un state local se réinitialise au remount de la
+      Home (navigation aller-retour) et affichait une carte « vide » à la
+      place du bouton de restauration. */
+  briefDismissed?: boolean
   onDismissBrief?: () => void
+  onRestoreBrief?: () => void
   onBriefAction?: (action: BriefAction, item: BriefItem) => 'task' | 'chat' | null
-  /** PR G — widget « Reprendre » : conversations récentes cliquables. */
   conversations?: Conversation[]
   onSelectConv?: (id: string) => void
-  /** Erreur de useConversation (ex. storage chiffré pas prêt au moment de
-      créer une conversation). Sans ce rendu sur la Home, l'erreur n'était
-      visible que dans ConversationScreen — qui ne monte jamais dans ce cas. */
+  onNewConversation?: () => void
   error?: string | null
   onDismissError?: () => void
 }
 
-function HomeScreenInner({ onMenuToggle, onSend, isStreaming, onStop, googleAuth, userName, proactiveBrief, briefLoading, onDismissBrief, onBriefAction, conversations, onSelectConv, error, onDismissError }: HomeScreenProps) {
+interface Intention {
+  title: string
+  subtitle: string
+  prompt: string
+}
+
+function relativeDate(timestamp: number, locale: string): string {
+  const deltaSeconds = Math.round((timestamp - Date.now()) / 1000)
+  const formatter = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' })
+  const abs = Math.abs(deltaSeconds)
+  if (abs < 60) return formatter.format(0, 'second')
+  if (abs < 3600) return formatter.format(Math.round(deltaSeconds / 60), 'minute')
+  if (abs < 86_400) return formatter.format(Math.round(deltaSeconds / 3600), 'hour')
+  if (abs < 604_800) return formatter.format(Math.round(deltaSeconds / 86_400), 'day')
+  return new Date(timestamp).toLocaleDateString(locale, { day: 'numeric', month: 'short' })
+}
+
+function HomeScreenInner({
+  onMenuToggle,
+  menuOpen = false,
+  onSend,
+  isStreaming,
+  onStop,
+  googleAuth,
+  userName,
+  proactiveBrief,
+  briefLoading,
+  briefDismissed = false,
+  onDismissBrief,
+  onRestoreBrief,
+  onBriefAction,
+  conversations,
+  onSelectConv,
+  onNewConversation,
+  error,
+  onDismissError,
+}: HomeScreenProps) {
   const { t, i18n } = useTranslation()
   const noCasaPhase0 = isPublicGoogleOAuthProfileEnabled()
   const googleTooltip = useTooltip(noCasaPhase0 ? 'googleNoCasa' : 'google')
+  const [prefill, setPrefill] = useState<ComposerPrefill | undefined>()
+  const prefillId = useRef(0)
+  const reopenBriefRef = useRef<HTMLButtonElement>(null)
 
-  // Editorial kicker: "VENDREDI 19 AVRIL · VALENCE" style — locale-aware.
-  const kicker = useMemo(() => {
-    const locale = i18n.language?.startsWith('en') ? 'en-US' : 'fr-FR'
-    return new Date().toLocaleDateString(locale, {
-      weekday: 'long',
-      day: 'numeric',
-      month: 'long',
-    })
-  }, [i18n.language])
+  const locale = i18n.language?.startsWith('en') ? 'en-US' : 'fr-FR'
+  const dateLabel = useMemo(
+    () =>
+      new Date().toLocaleDateString(locale, {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+      }),
+    [locale],
+  )
 
-  // Fraunces hero greeting — splits first name for italic treatment.
   const greeting = useMemo(() => {
-    const h = new Date().getHours()
-    if (h < 12) return t('home.greetingMorning')
-    if (h < 18) return t('home.greetingAfternoon')
+    const hour = new Date().getHours()
+    if (hour < 12) return t('home.greetingMorning')
+    if (hour < 18) return t('home.greetingAfternoon')
     return t('home.greetingEvening')
   }, [t])
 
-  // Show a first name only when we're sure it reads like one. The shared
-  // cleanDisplayName helper strips API key previews, raw emails, and other
-  // placeholder values so we never greet "Bonjour sk-ant-api…".
-  // Also skip the generic "Utilisateur" placeholder we store for API-key
-  // logins — it's fine in the Sidebar footer but not in a hero greeting.
   const firstName = useMemo(() => {
     const cleaned = cleanDisplayName(userName)
-    if (!cleaned) return ''
-    if (/^utilisateur$/i.test(cleaned) || /^user$/i.test(cleaned)) return ''
+    if (!cleaned || /^(utilisateur|user)$/i.test(cleaned)) return ''
     return cleaned
   }, [userName])
+
+  const intentions = useMemo<Intention[]>(
+    () => [
+      {
+        title: t('home.editorial.intentions.prepare.title'),
+        subtitle: t('home.editorial.intentions.prepare.subtitle'),
+        prompt: t('home.editorial.intentions.prepare.prompt'),
+      },
+      {
+        title: t('home.editorial.intentions.structure.title'),
+        subtitle: t('home.editorial.intentions.structure.subtitle'),
+        prompt: t('home.editorial.intentions.structure.prompt'),
+      },
+      {
+        title: t('home.editorial.intentions.analyze.title'),
+        subtitle: t('home.editorial.intentions.analyze.subtitle'),
+        prompt: t('home.editorial.intentions.analyze.prompt'),
+      },
+      {
+        title: t('home.editorial.intentions.imagine.title'),
+        subtitle: t('home.editorial.intentions.imagine.subtitle'),
+        prompt: t('home.editorial.intentions.imagine.prompt'),
+      },
+    ],
+    [t],
+  )
+
+  const suggestions = useMemo(
+    () => [
+      { label: t('home.editorial.suggestions.summarize'), prompt: t('home.editorial.suggestions.summarizePrompt') },
+      { label: t('home.editorial.suggestions.write'), prompt: t('home.editorial.suggestions.writePrompt') },
+      { label: t('home.editorial.suggestions.translate'), prompt: t('home.editorial.suggestions.translatePrompt') },
+      { label: t('home.editorial.suggestions.explain'), prompt: t('home.editorial.suggestions.explainPrompt') },
+    ],
+    [t],
+  )
+
+  const recentConversations = useMemo(
+    () => [...(conversations ?? [])].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 3),
+    [conversations],
+  )
+
+  const fillComposer = useCallback((text: string) => {
+    prefillId.current += 1
+    setPrefill({ id: prefillId.current, text })
+  }, [])
+
+  const dismissBrief = () => {
+    onDismissBrief?.()
+    requestAnimationFrame(() => reopenBriefRef.current?.focus())
+  }
+
+  const reopenBrief = () => {
+    onRestoreBrief?.()
+    requestAnimationFrame(() => document.getElementById('arty-brief-close')?.focus())
+  }
 
   const openEvent = useCallback(async (event: import('../../types/google').CalendarEvent) => {
     const url = event.htmlLink || `https://calendar.google.com/calendar/r/eventedit?eid=${encodeURIComponent(event.id)}`
@@ -82,226 +171,180 @@ function HomeScreenInner({ onMenuToggle, onSend, isStreaming, onStop, googleAuth
       const { Browser } = await import('@capacitor/browser')
       await Browser.open({ url })
     } catch {
-      window.open(url, '_blank')
+      window.open(url, '_blank', 'noopener,noreferrer')
     }
   }, [])
 
-  // Roadmap UI Phase 1 #1 — Page d'accueil intelligente.
-  // Les intentions restent utiles sans dépendre d'une boîte mail. La rédaction
-  // d'un e-mail est une aide textuelle : elle ne déclenche aucun accès externe.
-  const intents = googleAuth.isConnected
-    ? [
-        t('home.intents.today'),
-        t('home.intents.schedule'),
-        t('home.intents.useful'),
-        t('home.intents.summarize'),
-      ]
-    : [
-        t('home.intents.summarize'),
-        t('home.intents.translate'),
-        t('home.intents.writeEmail'),
-        t('home.intents.explain'),
-      ]
-
   return (
-    <div className="flex flex-col h-full bg-theme-bg text-theme-ink">
-      <TopBar onMenuToggle={onMenuToggle} />
+    <div className="flex h-full min-h-0 flex-col bg-theme-bg text-theme-ink">
+      <TopBar onMenuToggle={onMenuToggle} menuOpen={menuOpen} dateLabel={dateLabel} />
 
-      <div className="flex-1 overflow-y-auto">
-        {/* Masthead — editorial kicker + brand mark. En v2 (PR G) le logo est
-            déjà dans le header (wordmark) → on ne garde que le kicker date. */}
-        <div className="px-6 pt-4 pb-2 flex items-center justify-between">
-          <span className="font-sans text-[10px] font-semibold uppercase tracking-kicker text-theme-muted">
-            {kicker}
-          </span>
-          {!homeV2Enabled() && <PrismMark size={22} color="rgb(var(--theme-ink))" />}
-        </div>
-        {/* Editorial double rule */}
-        <div className="mx-6 h-[2px] bg-theme-ink" />
-        <div className="mx-6 mt-[3px] h-px bg-theme-ink" />
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="mx-auto w-full max-w-[1060px] px-[34px] pb-6 pt-[22px] max-[900px]:px-[14px] max-[900px]:pt-5">
+          <header className="mb-[18px]">
+            <h1 className="font-display text-[32px] font-normal leading-[1.05] tracking-[-0.02em] max-[900px]:text-[28px]">
+              {greeting}{firstName ? ' ' : ''}
+              {firstName && <em className="font-normal text-theme-accent-text">{firstName}</em>}.
+            </h1>
+            <p className="mt-1 font-sans text-[13.6px] leading-snug text-theme-muted">
+              {t('home.editorial.subtitle')}
+            </p>
+          </header>
 
-        {/* Hero */}
-        <div className="px-6 pt-6 pb-2 max-w-2xl">
-          <h1 className="font-display font-medium text-[40px] leading-[0.98] -tracking-[0.03em] text-theme-ink">
-            {greeting}
-            {firstName && (
-              <>
-                <br />
-                <span className="italic">{firstName}</span>
-                <span className="text-theme-accent">.</span>
-              </>
-            )}
-          </h1>
-        </div>
-
-        {/* Google connect (only when not connected) */}
-        {googleAuth.isInitializing && (
-          <div className="px-6 pt-5 max-w-md" role="status">
-            <p className="font-sans text-sm text-theme-muted">{t('common.loading')}</p>
-          </div>
-        )}
-
-        {!googleAuth.isInitializing && !googleAuth.isConnected && (
-          <div className="px-6 pt-5 max-w-md">
-            {googleAuth.reconsentRequired && (
-              <div className="mb-3 p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl" role="status">
-                <p className="font-sans text-sm text-theme-ink font-semibold">
-                  {t('home.googleReconsent.title')}
-                </p>
-                <p className="font-sans text-xs text-theme-muted mt-1">
-                  {t('home.googleReconsent.body')}
-                </p>
-              </div>
-            )}
-            <GoogleConnectButton
-              onConnect={googleAuth.login}
-              isLoading={googleAuth.isLoading}
-              label={googleAuth.reconsentRequired ? t('home.googleReconsent.cta') : undefined}
+          {!briefDismissed ? (
+            <ProactiveBriefCard
+              brief={proactiveBrief ?? null}
+              loading={!!briefLoading}
+              onDismiss={dismissBrief}
+              onAction={onBriefAction ?? (() => null)}
+              isStreaming={isStreaming}
             />
-            <div className="relative">
-              <googleTooltip.TooltipComponent />
-            </div>
-            {googleAuth.error && (
-              <div className="mt-3 p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
-                <p className="font-sans text-xs text-red-700 dark:text-red-400 font-semibold">{t('home.googleConnectError')}</p>
-                <p className="font-sans text-xs text-red-600 dark:text-red-300/80 mt-1 break-words">{googleAuth.error}</p>
-              </div>
-            )}
-          </div>
-        )}
-
-        {googleAuth.isConnected && (
-          <div className="px-6 pt-4">
-            <GoogleStatus
-              isConnected={googleAuth.isConnected}
-              user={googleAuth.user}
-              onLogout={googleAuth.logout}
-            />
-          </div>
-        )}
-
-        {/* Proactive brief — auto-generated on app open/resume (read-only,
-            Haiku, deduped). Renders here on the Home screen. */}
-        <ProactiveBriefCard
-          brief={proactiveBrief ?? null}
-          loading={!!briefLoading}
-          onDismiss={onDismissBrief ?? (() => {})}
-          onAction={onBriefAction ?? (() => null)}
-          isStreaming={isStreaming}
-        />
-
-        {/* Discover — one click sends a capabilities summary prompt through the
-            normal chat pipeline. Shown to everyone (no Google needed): it's an
-            overview of what Arty can do, with concrete example requests. */}
-        <div className="px-6 pt-7 max-w-3xl">
-          <button
-            onClick={() => onSend(t('home.discover.prompt'))}
-            disabled={isStreaming}
-            aria-label={t('home.discover.label')}
-            className="group w-full flex items-center gap-3.5 rounded-[14px] px-4 py-3.5 text-left transition-transform hover:-translate-y-[1px] disabled:opacity-50 disabled:hover:translate-y-0"
-            style={{
-              background: 'linear-gradient(150deg, rgb(var(--theme-accent)) 0%, rgb(var(--theme-accent) / 0.82) 100%)',
-              color: '#1C0E06',
-              boxShadow: '0 6px 24px rgba(245,154,75,0.22), 0 1px 0 rgba(255,255,255,0.12) inset',
-            }}
-          >
-            <PrismMark size={22} fill color="#1C0E06" />
-            <span className="flex-1 min-w-0">
-              <span className="block font-display font-medium text-[16px] leading-tight">{t('home.discover.label')}</span>
-              <span className="block font-sans text-[11px] leading-snug opacity-75 mt-0.5">{t('home.discover.description')}</span>
-            </span>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1C0E06" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 transition-transform group-hover:translate-x-0.5">
-              <path d="M5 12h14M13 6l6 6-6 6" />
-            </svg>
-          </button>
-        </div>
-
-        {/* Two-up: Agenda + Intentions — editorial grid */}
-        <div className="px-6 pt-8 pb-4 grid grid-cols-1 sm:grid-cols-2 gap-6 max-w-3xl">
-          {/* Agenda (only when Google connected) */}
-          {googleAuth.isConnected && (
-            <section>
-              <span className="font-sans text-[10px] font-semibold uppercase tracking-kicker text-theme-muted">
-                {t('home.agendaKicker')}
-              </span>
-              <div className="border-t border-theme-ink mt-1.5 pt-3">
-                <CalendarView days={7} onEventClick={openEvent} />
-              </div>
-            </section>
+          ) : (
+            <button
+              ref={reopenBriefRef}
+              type="button"
+              onClick={reopenBrief}
+              className="mb-[14px] min-h-11 border border-theme-ink bg-transparent px-4 py-2 font-sans text-xs hover:bg-theme-ink hover:text-theme-bg"
+            >
+              {t('home.editorial.showBrief')}
+            </button>
           )}
 
-          {/* Intentions — suggestion quotes */}
-          <section className={googleAuth.isConnected ? '' : 'sm:col-span-2'}>
-            <span className="font-sans text-[10px] font-semibold uppercase tracking-kicker text-theme-muted">
-              {t('home.intentionsKicker')}
-            </span>
-            <ul className="border-t border-theme-ink mt-1.5 pt-3 flex flex-col gap-2.5">
-              {intents.map((intent) => (
-                <li key={intent}>
-                  <button
-                    onClick={() => onSend(intent)}
-                    className="block w-full text-left font-display italic text-[13px] leading-[1.25] text-theme-ink border-l-2 border-theme-accent pl-2 py-0.5 hover:bg-theme-accent/5 transition-colors"
-                  >
-                    « {intent} »
-                  </button>
-                </li>
-              ))}
-            </ul>
+          <section className="mb-[18px] grid grid-cols-[auto_1fr_auto] items-center gap-x-4 gap-y-1 border-b border-theme-border border-t-2 border-t-theme-ink py-[10px] max-[900px]:grid-cols-1">
+            <h2 className="font-sans text-[11.5px] font-bold uppercase tracking-[0.16em]">
+              {t('home.discover.label')}
+            </h2>
+            <p className="font-display text-[13.6px] italic leading-snug text-theme-muted">
+              {t('home.editorial.discoverDescription')}
+            </p>
+            <button
+              type="button"
+              onClick={() => fillComposer(t('home.discover.prompt'))}
+              className="min-h-11 border border-theme-ink bg-transparent px-[14px] py-[7px] font-sans text-xs hover:bg-theme-ink hover:text-theme-bg max-[900px]:mt-1 max-[900px]:w-full"
+            >
+              {t('home.editorial.explore')} →
+            </button>
           </section>
-        </div>
 
-        {/* PR G — « Reprendre » : les 5 conversations les plus récentes, en
-            scroll horizontal. Additif et derrière le flag accueil v2. */}
-        {homeV2Enabled() && onSelectConv && (conversations?.length ?? 0) > 0 && (
-          <div className="px-6 pb-4 max-w-3xl">
-            <span className="font-sans text-[10px] font-semibold uppercase tracking-kicker text-theme-muted">
-              {t('home.resumeKicker', { defaultValue: 'Reprendre' })}
-            </span>
-            <div className="flex gap-2.5 overflow-x-auto pt-3 pb-1" style={{ scrollbarWidth: 'none' }}>
-              {[...conversations!]
-                .sort((a, b) => b.updatedAt - a.updatedAt)
-                .slice(0, 5)
-                .map((conv) => (
+          <div className="mb-[18px] grid grid-cols-3 gap-[14px] max-[900px]:grid-cols-1">
+            <section className="border border-theme-border p-[14px]" aria-labelledby="home-agenda-title">
+              <h2 id="home-agenda-title" className="mb-[10px] border-b border-theme-border pb-2 font-sans text-[11.2px] font-bold uppercase tracking-[0.14em]">
+                <span className="mr-1 text-theme-accent-text">01</span> {t('home.agendaKicker')}
+              </h2>
+              {googleAuth.isInitializing ? (
+                <p className="py-3 font-display text-sm italic text-theme-muted" role="status">{t('common.loading')}</p>
+              ) : googleAuth.isConnected ? (
+                <>
+                  <div className="mb-2"><GoogleStatus isConnected user={googleAuth.user} onLogout={googleAuth.logout} /></div>
+                  {/* 7 jours comme avant la refonte : « prépare ma semaine »
+                      est un parcours cœur — 1 seul jour amputait l'aperçu. */}
+                  <CalendarView days={7} onEventClick={openEvent} />
+                </>
+              ) : (
+                <div className="py-1">
+                  <p className="font-display text-sm leading-snug text-theme-muted">{t('home.editorial.calendarDisconnected')}</p>
+                  {googleAuth.reconsentRequired && (
+                    <p className="mt-2 font-sans text-xs text-theme-accent-text" role="status">{t('home.googleReconsent.body')}</p>
+                  )}
+                  <div className="mt-3">
+                    <GoogleConnectButton
+                      onConnect={googleAuth.login}
+                      isLoading={googleAuth.isLoading}
+                      label={googleAuth.reconsentRequired ? t('home.googleReconsent.cta') : undefined}
+                    />
+                  </div>
+                  <div className="relative"><googleTooltip.TooltipComponent /></div>
+                  {googleAuth.error && <p className="mt-2 break-words font-sans text-xs text-theme-accent-text" role="alert">{googleAuth.error}</p>}
+                </div>
+              )}
+            </section>
+
+            <section className="border border-theme-border" aria-labelledby="home-intentions-title">
+              <div className="flex items-center justify-between border-b border-theme-border px-[14px] pb-[11px] pt-[14px] max-[420px]:px-[10px] max-[420px]:pb-[10px] max-[420px]:pt-[13px]">
+                <h2 id="home-intentions-title" className="font-display text-[24.8px] font-normal leading-none tracking-[-0.025em]">
+                  {t('home.intentionsKicker')}
+                </h2>
+                <span className="font-sans text-[10px] tracking-[0.08em] text-theme-accent-text">02</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2 px-[14px] pb-[14px] max-[420px]:gap-[7px] max-[420px]:px-[10px] max-[420px]:pb-3 max-[339px]:grid-cols-1">
+                {intentions.map((intention) => (
                   <button
-                    key={conv.id}
-                    onClick={() => onSelectConv(conv.id)}
-                    className="shrink-0 w-[172px] text-left bg-theme-surface border border-theme-border rounded-[13px] px-3.5 py-3 hover:border-theme-accent transition-colors"
+                    key={intention.title}
+                    type="button"
+                    onClick={() => fillComposer(intention.prompt)}
+                    className="flex min-h-[84px] flex-col justify-between border border-theme-border bg-transparent px-3 py-[11px] text-left hover:border-theme-accent hover:text-theme-accent-text max-[420px]:min-h-[90px] max-[420px]:p-[10px]"
                   >
-                    <span className="block text-[12.5px] font-medium text-theme-ink leading-tight line-clamp-2">
-                      {conv.title}
-                    </span>
-                    <span className="block text-[10px] text-theme-muted mt-1.5">
-                      {conv.euOnly && <span className="mr-1">🇪🇺</span>}
-                      {new Date(conv.updatedAt).toLocaleDateString(i18n.language?.startsWith('en') ? 'en-US' : 'fr-FR', { day: 'numeric', month: 'short' })}
-                    </span>
+                    <strong className="font-display text-base font-normal leading-[1.15] max-[420px]:text-[15.36px]">{intention.title}</strong>
+                    <span className="font-sans text-[10.88px] leading-[1.35] text-theme-muted">{intention.subtitle} →</span>
                   </button>
                 ))}
-            </div>
+              </div>
+            </section>
+
+            <section className="border border-theme-border p-[14px]" aria-labelledby="home-resume-title">
+              <h2 id="home-resume-title" className="mb-[2px] border-b border-theme-border pb-2 font-sans text-[11.2px] font-bold uppercase tracking-[0.14em]">
+                <span className="mr-1 text-theme-accent-text">03</span> {t('home.resumeKicker')}
+              </h2>
+              {recentConversations.length > 0 && onSelectConv ? (
+                recentConversations.map((conversation) => (
+                  <button
+                    key={conversation.id}
+                    type="button"
+                    onClick={() => onSelectConv(conversation.id)}
+                    className="block min-h-11 w-full border-b border-theme-border bg-transparent py-2 text-left hover:text-theme-accent-text"
+                  >
+                    <strong className="block font-display text-[13.12px] font-normal leading-snug">
+                      {conversation.euOnly && (
+                        <span className="mr-1 text-theme-accent-text" title={t('sidebar.euTooltip')} aria-hidden="true">◇</span>
+                      )}
+                      {conversation.title}
+                    </strong>
+                    <small className="mt-0.5 block font-sans text-[10.88px] text-theme-muted">{relativeDate(conversation.updatedAt, locale)}</small>
+                  </button>
+                ))
+              ) : (
+                <div className="py-3">
+                  <p className="font-display text-sm italic text-theme-muted">{t('home.editorial.noRecent')}</p>
+                  {onNewConversation && (
+                    <button type="button" onClick={onNewConversation} className="mt-3 min-h-11 border border-theme-ink px-3 py-2 font-sans text-xs hover:bg-theme-ink hover:text-theme-bg">
+                      {t('sidebar.newConversation')}
+                    </button>
+                  )}
+                </div>
+              )}
+            </section>
           </div>
-        )}
+
+          <div className="flex flex-wrap gap-2" role="group" aria-label={t('home.suggestions.title')}>
+            {suggestions.map((suggestion) => (
+              <button
+                key={suggestion.label}
+                type="button"
+                onClick={() => fillComposer(suggestion.prompt)}
+                className="min-h-11 border border-theme-ink bg-transparent px-[14px] py-1.5 font-display text-xs hover:border-theme-ink hover:bg-theme-ink hover:text-theme-bg"
+              >
+                {suggestion.label}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
 
       {error && (
-        <div
-          role="alert"
-          className="mx-4 mb-2 px-4 py-2 bg-red-500/10 border border-red-500/30 rounded-xl text-sm text-red-700 dark:text-red-400 flex items-center gap-2"
-        >
-          <span className="flex-1 min-w-0 break-words">{error}</span>
-          {onDismissError && (
-            <button
-              onClick={onDismissError}
-              className="flex-shrink-0 p-1.5 rounded-md hover:bg-red-500/10 transition-colors"
-              aria-label={t('common.close')}
-            >
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-                <path d="M2 2L10 10M10 2L2 10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-              </svg>
-            </button>
-          )}
+        <div className="mx-auto mb-2 flex w-[calc(100%-28px)] max-w-[992px] items-center gap-2 border border-red-700 bg-red-500/10 px-4 py-2 font-sans text-sm text-red-800 dark:text-red-300" role="alert">
+          <span className="min-w-0 flex-1 break-words">{error}</span>
+          {onDismissError && <button type="button" onClick={onDismissError} className="min-h-11 min-w-11" aria-label={t('common.close')}>×</button>}
         </div>
       )}
 
-      <InputBar onSend={onSend} isStreaming={isStreaming} onStop={onStop} />
+      <InputBar
+        onSend={onSend}
+        isStreaming={isStreaming}
+        onStop={onStop}
+        prefill={prefill}
+        showQuickActions={false}
+        draftKey="home"
+      />
     </div>
   )
 }

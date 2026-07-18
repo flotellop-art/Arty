@@ -169,7 +169,27 @@
       "cta": "Reconnect Google"
     },
     "resumeKicker": "Resume",
-    "optionsSheetTitle": "Settings"
+    "optionsSheetTitle": "Settings",
+    "editorial": {
+      "subtitle": "Your studio is ready. Pick up the thread or open a blank page.",
+      "showBrief": "Show the brief",
+      "discoverDescription": "New: professional templates write your reports in your own house style.",
+      "explore": "Explore",
+      "calendarDisconnected": "No calendar is connected. Connect Google to display today’s events.",
+      "noRecent": "No recent conversations.",
+      "intentions": {
+        "prepare": { "title": "Prepare", "subtitle": "an agenda", "prompt": "Prepare a concise agenda for my next meeting. Start by asking for any information you need." },
+        "structure": { "title": "Structure", "subtitle": "scattered ideas", "prompt": "Help me turn my ideas into a clear outline. First ask me to paste my notes." },
+        "analyze": { "title": "Analyze", "subtitle": "the risks", "prompt": "Analyze the risks of my project with nuance. First ask for its context, constraints and deadline." },
+        "imagine": { "title": "Imagine", "subtitle": "new angles", "prompt": "Suggest new angles for my topic. First ask for the objective, audience and ideas already explored." }
+      },
+      "suggestions": {
+        "summarize": "Summarize", "summarizePrompt": "Summarize this content: ",
+        "write": "Write", "writePrompt": "Help me write: ",
+        "translate": "Translate", "translatePrompt": "Translate this content and ask for the target language: ",
+        "explain": "Explain", "explainPrompt": "Explain this simply: "
+      }
+    }
   },
   "chat": {
     "upgradeModal": {
@@ -524,7 +544,9 @@
   },
   "sidebar": {
     "newConversation": "New conversation",
-    "newConversationEU": "Secure EU conversation",
+    "home": "Home",
+    "navigation": "Main navigation",
+    "newConversationEU": "Conversation — EU region configured",
     "emptyList": "No conversations",
     "timeAgo": {
       "now": "just now",
@@ -542,19 +564,26 @@
     "recent": "Recent",
     "chipImport": "Import",
     "chipTasks": "Tasks",
-    "chipEU": "Secure EU",
+    "chipEU": "EU region configured",
     "templates": "Industry templates",
     "clearSearch": "Clear",
     "pinned": "Pinned ({{count}})",
     "noResults": "No results",
-    "euTooltip": "Europe mode — data kept in France",
+    "euTooltip": "Routing configured for the available European provider",
     "apiKeys": "API keys",
     "settings": "Settings",
     "confirmDelete": "Tap again to delete",
     "renameAria": "Rename conversation",
     "tagsAria": "Tags",
     "importSuccess": "Conversation imported",
-    "streamingTitle": "Thinking"
+    "streamingTitle": "Thinking",
+    "profilePersonal": "Personal profile",
+    "personalProfile": "Personal profile",
+    "euRegion": "EU region configured",
+    "euRegionStatus": "EU region configured",
+    "logoutAria": "Log out",
+    "modeNight": "Night mode",
+    "modeDay": "Day mode"
   },
   "tags": {
     "modalTitle": "Tags",
@@ -656,6 +685,7 @@
   "proactiveBrief": {
     "title": "Your brief",
     "loading": "Preparing your brief…",
+    "empty": "Add your first task or connect a source to create your brief.",
     "calm": "Nothing urgent in your calendar, tasks or memory. Have a great day!",
     "feedbackPrompt": "Useful?",
     "feedbackThanks": "Thanks, I'll adjust.",

@@ -17,6 +17,20 @@ import { haptic } from '../../utils/haptic'
 import { InputContextSlot } from './InputContextSlot'
 import { ReflectionPill } from '../chat/ReflectionPill'
 import { createQuickActionSelection, QUICK_ACTIONS } from '../../services/quickActions'
+import { decrypt, encrypt, isCryptoReady } from '../../services/crypto'
+import {
+  clearComposerDraft,
+  composerDraftStorageKey,
+  getComposerDraft,
+  hasComposerDraft,
+  scopeComposerDraftKey,
+  setComposerDraftMemory,
+} from '../../services/composerDrafts'
+
+export interface ComposerPrefill {
+  id: number
+  text: string
+}
 
 interface InputBarProps {
   onSend: ChatSendHandler
@@ -35,6 +49,14 @@ interface InputBarProps {
   // fictives). On affiche alors un bandeau qui invite l'utilisateur à
   // coller le texte de l'article plutôt que l'URL.
   euOnly?: boolean
+  /** Requête explicite de préremplissage (intentions/suggestions de l'accueil).
+      L'id permet de rejouer deux fois le même texte sans transformer le champ
+      en input contrôlé et sans écraser les modifications libres. */
+  prefill?: ComposerPrefill
+  /** Sur l'accueil, les suggestions vivent dans le contenu éditorial. */
+  showQuickActions?: boolean
+  /** Identifiant stable pour restaurer le brouillon lors d'un remount. */
+  draftKey?: string
 }
 
 // Roadmap UI Phase 3 #4 — Quick Actions chips contextuelles. Affichées
@@ -109,13 +131,13 @@ function PendingFilePreview({ file, onRemove }: { file: FileAttachment; onRemove
         <img
           src={previewUrl}
           alt={file.name}
-          className="w-[64px] h-[64px] object-cover rounded-lg border border-theme-border"
+          className="h-[64px] w-[64px] border border-theme-border object-cover"
           title={file.name}
         />
         <button
           onClick={onRemove}
           aria-label={t('chat.input.removeFile', { name: file.name })}
-          className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-theme-surface border border-theme-border text-theme-muted hover:text-theme-accent text-[10px] leading-none flex items-center justify-center shadow-sm"
+          className="absolute -right-1.5 -top-1.5 flex h-6 w-6 items-center justify-center border border-theme-border bg-theme-surface text-[10px] leading-none text-theme-muted hover:border-theme-accent hover:text-theme-accent"
         >
           ✕
         </button>
@@ -124,7 +146,7 @@ function PendingFilePreview({ file, onRemove }: { file: FileAttachment; onRemove
   }
 
   return (
-    <div className="flex items-center gap-1.5 bg-theme-surface rounded-lg border border-theme-border px-2.5 py-1.5 text-xs text-theme-ink/80 flex-shrink-0">
+    <div className="flex flex-shrink-0 items-center gap-1.5 border border-theme-border bg-theme-surface px-2.5 py-1.5 text-xs text-theme-ink/80">
       <span>{isImage ? '🖼️' : '📄'}</span>
       <span className="max-w-[120px] truncate">{file.name}</span>
       <button
@@ -138,13 +160,19 @@ function PendingFilePreview({ file, onRemove }: { file: FileAttachment; onRemove
   )
 }
 
-export function InputBar({ onSend, isStreaming, onStop, initialText, initialFiles, euOnly }: InputBarProps) {
+export function InputBar({ onSend, isStreaming, onStop, initialText, initialFiles, euOnly, prefill, showQuickActions = true, draftKey }: InputBarProps) {
   const { t } = useTranslation()
   // Évalué à chaque render (lecture localStorage triviale) — un testeur peut
   // poser le killswitch en DevTools et le voir s'appliquer immédiatement.
   const v2 = inputBarV2Enabled()
-  const [text, setText] = useState(() => initialText ?? '')
+  const scopedDraftKey = draftKey ? scopeComposerDraftKey(draftKey) : undefined
+  const encryptedDraftKey = scopedDraftKey ? composerDraftStorageKey(scopedDraftKey) : undefined
+  const previousDraftKeyRef = useRef(scopedDraftKey)
+  const draftTouchedRef = useRef(Boolean(initialText))
+  const draftWriteVersionRef = useRef(0)
+  const [text, setText] = useState(() => initialText ?? (scopedDraftKey ? getComposerDraft(scopedDraftKey) ?? '' : ''))
   const [files, setFiles] = useState<FileAttachment[]>(() => initialFiles ?? [])
+  const [isSubmitting, setIsSubmitting] = useState(false)
   // Un clic sur une action rapide ARME le prochain envoi. L'instruction
   // n'entre jamais dans le textarea ni dans la bulle user : seuls l'ID et la
   // locale allowlistés traversent le flux d'envoi.
@@ -152,6 +180,67 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const cameraInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (!prefill) return
+    draftTouchedRef.current = true
+    setText(prefill.text)
+    setPendingQuickAction(undefined)
+    requestAnimationFrame(() => {
+      textareaRef.current?.focus()
+      const end = textareaRef.current?.value.length ?? 0
+      textareaRef.current?.setSelectionRange(end, end)
+    })
+  }, [prefill?.id])
+
+  useEffect(() => {
+    if (!draftKey || !scopedDraftKey) return
+    setComposerDraftMemory(scopedDraftKey, text)
+
+    const writeVersion = ++draftWriteVersionRef.current
+    if (!encryptedDraftKey) return
+    if (!text) {
+      if (draftTouchedRef.current) localStorage.removeItem(encryptedDraftKey)
+      return
+    }
+    if (!isCryptoReady()) return
+    void encrypt(text).then((ciphertext) => {
+      if (draftWriteVersionRef.current === writeVersion) {
+        localStorage.setItem(encryptedDraftKey, ciphertext)
+      }
+    }).catch(() => {})
+  }, [draftKey, encryptedDraftKey, scopedDraftKey, text])
+
+  useEffect(() => {
+    if (!encryptedDraftKey || hasComposerDraft(scopedDraftKey!) || initialText) return
+    let active = true
+    const restoreEncryptedDraft = () => {
+      if (!active || !isCryptoReady()) return
+      const ciphertext = localStorage.getItem(encryptedDraftKey)
+      if (!ciphertext) return
+      void decrypt(ciphertext).then((restored) => {
+        if (!active || !restored) return
+        setComposerDraftMemory(scopedDraftKey!, restored)
+        setText((current) => current || restored)
+      }).catch(() => {})
+    }
+    restoreEncryptedDraft()
+    window.addEventListener('conversations-storage-ready', restoreEncryptedDraft)
+    return () => {
+      active = false
+      window.removeEventListener('conversations-storage-ready', restoreEncryptedDraft)
+    }
+  }, [encryptedDraftKey, initialText, scopedDraftKey])
+
+  useEffect(() => {
+    if (previousDraftKeyRef.current === scopedDraftKey) return
+    previousDraftKeyRef.current = scopedDraftKey
+    draftTouchedRef.current = Boolean(initialText)
+    draftWriteVersionRef.current += 1
+    setText(initialText ?? (scopedDraftKey ? getComposerDraft(scopedDraftKey) ?? '' : ''))
+    setFiles(initialFiles ?? [])
+    setPendingQuickAction(undefined)
+  }, [initialFiles, initialText, scopedDraftKey])
 
   // Attach menu popup (replaces separate camera/scan/web-camera buttons).
   const [showAttachMenu, setShowAttachMenu] = useState(false)
@@ -269,6 +358,7 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
 
   // Callback for speech recognition
   const handleTranscript = useCallback((spokenText: string) => {
+    draftTouchedRef.current = true
     setText((prev) => {
       if (!prev) return spokenText
       return prev + (prev.endsWith(' ') ? '' : ' ') + spokenText
@@ -278,30 +368,49 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
   // Pure send function — takes explicit text/files rather than closing over
   // state, so the async MediaRecorder.onstop callback can call it with fresh
   // refs. Returns true on successful send, false if blocked (empty or streaming).
-  const sendText = useCallback((textToSend: string, filesToSend: FileAttachment[]): boolean => {
+  const sendText = useCallback((textToSend: string, filesToSend: FileAttachment[]): boolean | Promise<boolean> => {
     const trimmed = textToSend.trim()
-    if ((!trimmed && filesToSend.length === 0) || isStreaming) return false
+    if ((!trimmed && filesToSend.length === 0) || isStreaming || isSubmitting) return false
     if (isListening) stopListening()
     // Roadmap UI Phase 1 #6 — retour haptique léger sur envoi. Confirme
     // l'action même en bruit de fond / poche / écran non regardé.
     haptic('light').catch(() => {})
-    onSend(
+    const clearAcceptedDraft = () => {
+      draftWriteVersionRef.current += 1
+      if (scopedDraftKey) clearComposerDraft(scopedDraftKey)
+      draftTouchedRef.current = false
+      setText('')
+      setFiles([])
+      setPendingQuickAction(undefined)
+      if (textareaRef.current) textareaRef.current.style.height = 'auto'
+      return true
+    }
+
+    let accepted: ReturnType<ChatSendHandler>
+    try {
+      accepted = onSend(
       trimmed || t('chat.input.defaultFilePrompt'),
       filesToSend.length > 0 ? filesToSend : undefined,
       pendingQuickAction ? { quickAction: pendingQuickAction } : undefined,
-    )
-    setText('')
-    setFiles([])
-    setPendingQuickAction(undefined)
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto'
+      )
+    } catch {
+      return false
     }
-    return true
-  }, [isStreaming, isListening, stopListening, onSend, t, pendingQuickAction])
+    if (accepted && typeof (accepted as Promise<void | boolean>).then === 'function') {
+      setIsSubmitting(true)
+      return (accepted as Promise<void | boolean>)
+        .then((result) => (result === false ? false : clearAcceptedDraft()))
+        .catch(() => false)
+        .finally(() => setIsSubmitting(false))
+    }
+    if (accepted === false) return false
+    return clearAcceptedDraft()
+  }, [encryptedDraftKey, isStreaming, isSubmitting, isListening, stopListening, onSend, t, pendingQuickAction, scopedDraftKey])
 
   const handleSend = () => { sendText(text, files) }
 
   const applySlashCommand = useCallback((cmd: SlashCommand) => {
+    draftTouchedRef.current = true
     setText(cmd.prompt)
     // Une commande slash explicite remplace le mode rapide précédemment
     // armé, sinon deux intentions invisibles se cumuleraient.
@@ -433,6 +542,7 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
       // 90% des scans ont pour but d'extraire les infos clés (facture,
       // ticket, formulaire, recette). Si le user veut juste attacher le
       // scan pour discuter, il a déjà tapé sa question → on ne touche pas.
+      draftTouchedRef.current = true
       setText((prev) => {
         if (prev.trim().length > 0) return prev
         return t('chat.input.scanPrompt', {
@@ -646,8 +756,9 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
         // sendText we fall back to the textarea so the transcription isn't lost.
         const draft = textRef.current.trim()
         const combined = draft ? draft + ' ' + transcription : transcription
-        const sent = sendText(combined, filesRef.current)
+        const sent = await sendText(combined, filesRef.current)
         if (!sent) {
+          draftTouchedRef.current = true
           setText((prev) => (prev ? prev + ' ' : '') + transcription)
         }
       } catch (err) {
@@ -872,6 +983,7 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
     setEnhanceError(null)
     try {
       const enhanced = await enhancePrompt(current, { euOnly })
+      draftTouchedRef.current = true
       setText(enhanced)
     } catch (err) {
       setEnhanceError(err instanceof Error ? err.message : t('errors.promptEnhancementFailed'))
@@ -881,10 +993,14 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
   }
 
   return (
-    <div className="relative px-4 pb-4 pt-2 bg-theme-bg" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 1rem))' }}>
+    <div
+      className="relative border-t border-theme-ink bg-theme-bg px-[34px] pb-4 pt-3 max-[899px]:px-[14px] max-[899px]:pb-[14px] max-[899px]:pt-[10px]"
+      style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 1rem))' }}
+    >
+      <div className="relative mx-auto w-full max-w-[1060px]">
       {/* Slash command palette (Feature 2) */}
       {showSlashPalette && filteredCommands.length > 0 && (
-        <div className="absolute bottom-full left-4 right-4 mb-2 bg-theme-surface rounded-xl shadow-lg border border-theme-border overflow-hidden z-20 animate-fade-in">
+        <div className="absolute bottom-full left-4 right-4 z-20 mb-2 overflow-hidden border border-theme-border bg-theme-surface animate-fade-in">
           <div className="text-[10px] uppercase tracking-kicker font-semibold text-theme-muted px-3 py-2 border-b border-theme-border bg-theme-bg">
             {t('chat.input.slashPaletteHeader')}
           </div>
@@ -931,7 +1047,7 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
           vide ET pas de fichier attaché ET pas en train de streamer/écouter.
           Un tap sélectionne le mode du prochain message, sans envoi immédiat.
           Le set évolue selon l'heure (matin = brief, soir = résumé). */}
-      {!v2 && !text.trim() && files.length === 0 && !isStreaming && !isListening && !isRecordingAudio && (
+      {!v2 && showQuickActions && !text.trim() && files.length === 0 && !isStreaming && !isListening && !isRecordingAudio && (
         <div className="mb-2 flex flex-wrap gap-1.5 px-1">
           {getQuickActionChips(t).map((chip) => (
             <button
@@ -989,7 +1105,7 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
           détectée dans la draft. Les conversations non-EU sont auto-routées
           vers Claude (web_fetch) dans aiRouter.detectProvider(). */}
       {euOnly && hasUrl(text) && (
-        <div className="mb-2 flex items-start gap-2 px-3 py-2 bg-theme-accent/10 border border-theme-accent/20 rounded-xl text-xs text-theme-ink">
+        <div className="mb-2 flex items-start gap-2 border border-theme-accent/20 bg-theme-accent/10 px-3 py-2 text-xs text-theme-ink">
           <span className="mt-0.5">💡</span>
           <span className="flex-1">{t('chat.input.euOnlyUrlHint')}</span>
         </div>
@@ -1030,7 +1146,7 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
           onCreateCalendarEvent={() => setShowCalendarForm(true)}
           onDismissCalendar={() => setCalendarSuggestion(null)}
           showChips={!text.trim() && files.length === 0 && !isStreaming && !isListening && !isRecordingAudio}
-          chips={getQuickActionChips(t)}
+          chips={showQuickActions ? getQuickActionChips(t) : []}
           activeChipId={pendingQuickAction?.id}
           onChipClick={handleQuickActionClick}
           reflectionSlot={<ReflectionPill euOnly={euOnly} />}
@@ -1089,7 +1205,7 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
         </div>
       )}
 
-      <div className="relative flex items-end gap-1.5 bg-theme-surface rounded-2xl border border-theme-border px-3 py-2 shadow-sm">
+      <div className="relative flex min-h-[52px] items-end gap-2 border border-theme-ink bg-transparent px-[10px] py-2">
         {/* + menu — file upload + native camera/scan + web camera (mobile). */}
         <AttachMenu
           open={showAttachMenu}
@@ -1132,7 +1248,10 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
           <textarea
             ref={textareaRef}
             value={text}
-            onChange={(e) => setText(e.target.value)}
+            onChange={(e) => {
+              draftTouchedRef.current = true
+              setText(e.target.value)
+            }}
             onKeyDown={handleKeyDown}
             placeholder={t('chat.input.placeholder')}
             rows={1}
@@ -1140,7 +1259,7 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
             // message suivant pendant que la réponse arrive (comme claude.ai).
             // sendText garde le verrou d'ENVOI pendant le stream ; sur mobile,
             // le clavier ne se referme plus à chaque envoi.
-            className="flex-1 resize-none bg-transparent text-sm text-theme-ink placeholder:text-theme-muted focus:outline-none py-1.5 font-sans font-light leading-relaxed"
+            className="min-w-0 flex-1 resize-none bg-transparent py-2 font-sans text-sm font-normal leading-relaxed text-theme-ink placeholder:text-theme-muted focus:outline-none"
           />
         )}
 
@@ -1149,7 +1268,7 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
           <button
             onClick={handleEnhance}
             disabled={!text.trim() || isEnhancing}
-            className={`relative flex-shrink-0 p-1.5 rounded-full transition-colors mb-0.5 ${
+            className={`relative mb-0.5 flex h-11 w-11 flex-shrink-0 items-center justify-center border border-theme-border transition-colors ${
               isEnhancing
                 ? 'bg-theme-accent/20 text-theme-accent'
                 : 'hover:bg-theme-ink/5 text-theme-muted disabled:opacity-30'
@@ -1207,7 +1326,7 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
         {isStreaming ? (
           <button
             onClick={onStop}
-            className="flex-shrink-0 w-[52px] h-[52px] rounded-full bg-theme-ink text-theme-bg flex items-center justify-center hover:opacity-90 transition-opacity"
+            className="flex h-11 w-11 flex-shrink-0 items-center justify-center bg-theme-ink text-theme-bg transition-colors hover:bg-theme-accent"
             aria-label={t('chat.input.aria.stop')}
           >
             <svg width="14" height="14" viewBox="0 0 12 12" fill="none">
@@ -1217,7 +1336,8 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
         ) : (text.trim() || files.length > 0) ? (
           <button
             onClick={handleSend}
-            className="flex-shrink-0 w-[52px] h-[52px] rounded-full bg-theme-accent text-theme-bg flex items-center justify-center hover:opacity-90 transition-opacity shadow-sm"
+            disabled={isSubmitting}
+            className="flex h-11 w-11 flex-shrink-0 items-center justify-center border border-theme-accent bg-theme-accent text-theme-bg transition-colors hover:bg-theme-ink hover:text-theme-bg disabled:cursor-wait disabled:opacity-50"
             aria-label={t('chat.input.aria.send')}
           >
             <svg width="18" height="18" viewBox="0 0 14 14" fill="none">
@@ -1249,6 +1369,7 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
           {canUseWhisper ? t('chat.input.voice.hint') : t('chat.input.voice.hintTapOnly')}
         </p>
       )}
+      </div>
     </div>
   )
 }
@@ -1268,6 +1389,7 @@ interface AttachMenuProps {
 function AttachMenu({ open, onOpenChange, onPickFile, onPickCamera, onPickScan, ariaLabel, labels }: AttachMenuProps) {
   const hasMulti = !!(onPickCamera || onPickScan)
   const containerRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
 
   // Close on outside click
   useEffect(() => {
@@ -1275,11 +1397,19 @@ function AttachMenu({ open, onOpenChange, onPickFile, onPickCamera, onPickScan, 
     const onDown = (e: MouseEvent | TouchEvent) => {
       if (!containerRef.current?.contains(e.target as Node)) onOpenChange(false)
     }
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      onOpenChange(false)
+      window.requestAnimationFrame(() => triggerRef.current?.focus())
+    }
     document.addEventListener('mousedown', onDown)
     document.addEventListener('touchstart', onDown)
+    document.addEventListener('keydown', onKeyDown)
     return () => {
       document.removeEventListener('mousedown', onDown)
       document.removeEventListener('touchstart', onDown)
+      document.removeEventListener('keydown', onKeyDown)
     }
   }, [open, onOpenChange])
 
@@ -1289,11 +1419,12 @@ function AttachMenu({ open, onOpenChange, onPickFile, onPickCamera, onPickScan, 
   }
 
   return (
-    <div ref={containerRef} className="relative flex-shrink-0 mb-0.5">
+    <div ref={containerRef} className="relative mb-0.5 flex-shrink-0">
       <button
+        ref={triggerRef}
         type="button"
         onClick={handlePrimaryClick}
-        className="p-1.5 rounded-full hover:bg-theme-ink/5 transition-colors text-theme-muted"
+        className="flex h-11 w-11 items-center justify-center border border-theme-border text-theme-muted transition-colors hover:border-theme-accent hover:text-theme-accent-text"
         aria-label={hasMulti ? ariaLabel : labels.file}
         aria-expanded={hasMulti ? open : undefined}
       >
@@ -1303,7 +1434,7 @@ function AttachMenu({ open, onOpenChange, onPickFile, onPickCamera, onPickScan, 
         </svg>
       </button>
       {hasMulti && open && (
-        <div className="absolute bottom-full left-0 mb-2 bg-theme-surface rounded-xl border border-theme-border shadow-lg overflow-hidden z-30 animate-fade-in min-w-[160px]">
+        <div className="absolute bottom-full left-0 z-30 mb-2 min-w-[160px] overflow-hidden border border-theme-ink bg-theme-bg animate-fade-in">
           <MenuItem
             onClick={() => { onOpenChange(false); onPickFile() }}
             icon={
@@ -1415,13 +1546,13 @@ function VoiceButton({
   if (isSwipeCancelling) {
     bgClass = 'bg-red-500 text-white'
   } else if (isRecordingAudio) {
-    bgClass = 'bg-gradient-to-br from-red-500 to-red-700 text-white'
+    bgClass = 'bg-red-700 text-white'
     pulseClass = 'animate-pulse-ring-danger'
   } else if (isListening) {
-    bgClass = 'bg-gradient-to-br from-theme-accent to-orange-700 text-white'
+    bgClass = 'bg-theme-accent text-theme-bg'
     pulseClass = 'animate-pulse-ring-accent'
   } else {
-    bgClass = 'bg-theme-accent/15 text-theme-muted hover:bg-theme-accent/25'
+    bgClass = 'border border-theme-border bg-transparent text-theme-muted hover:border-theme-accent hover:text-theme-accent-text'
   }
 
   return (
@@ -1440,7 +1571,7 @@ function VoiceButton({
         userSelect: 'none',
         transition: 'width 0.25s cubic-bezier(0.34,1.56,0.64,1), height 0.25s cubic-bezier(0.34,1.56,0.64,1)',
       }}
-      className={`relative flex-shrink-0 rounded-full flex items-center justify-center mb-0.5 ${bgClass} ${pulseClass}`}
+      className={`relative mb-0.5 flex flex-shrink-0 items-center justify-center ${bgClass} ${pulseClass}`}
       aria-label={ariaLabel}
       disabled={isTranscribing}
     >
@@ -1509,31 +1640,31 @@ function CalendarMiniForm({ detected, context, onConfirm, onCancel }: CalendarMi
   })
 
   return (
-    <div className="mb-2 p-3 bg-theme-surface border border-theme-accent/30 rounded-xl shadow-sm">
+    <div className="mb-2 border border-theme-accent/30 bg-theme-surface p-3">
       <p className="text-xs font-semibold text-theme-ink mb-2">📅 {t('calendar.newEvent')}</p>
       <input
         type="text"
         value={title}
         onChange={(e) => setTitle(e.target.value)}
         placeholder={t('calendar.eventTitlePlaceholder')}
-        className="w-full mb-2 px-2 py-1.5 text-xs border border-theme-border rounded-lg focus:outline-none focus:border-theme-accent bg-transparent text-theme-ink"
+        className="mb-2 w-full border border-theme-border bg-transparent px-2 py-1.5 text-xs text-theme-ink focus:border-theme-accent focus:outline-none"
       />
       <input
         type="datetime-local"
         value={dateStr}
         onChange={(e) => setDateStr(e.target.value)}
-        className="w-full mb-2 px-2 py-1.5 text-xs border border-theme-border rounded-lg focus:outline-none focus:border-theme-accent bg-transparent text-theme-ink"
+        className="mb-2 w-full border border-theme-border bg-transparent px-2 py-1.5 text-xs text-theme-ink focus:border-theme-accent focus:outline-none"
       />
       <div className="flex gap-2">
         <button
           onClick={onCancel}
-          className="flex-1 py-1.5 rounded-lg border border-theme-border text-xs text-theme-ink/80 hover:bg-theme-ink/5"
+          className="flex-1 border border-theme-border py-1.5 text-xs text-theme-ink/80 hover:border-theme-accent"
         >
           {t('common.cancel')}
         </button>
         <button
           onClick={() => onConfirm(title, new Date(dateStr))}
-          className="flex-1 py-1.5 rounded-lg bg-theme-accent text-theme-bg text-xs font-semibold hover:opacity-90"
+          className="flex-1 border border-theme-accent bg-theme-accent py-1.5 text-xs font-semibold text-theme-bg hover:bg-theme-ink"
         >
           {t('calendar.addToCalendar')}
         </button>

@@ -169,7 +169,27 @@
       "cta": "Reconnecter Google"
     },
     "resumeKicker": "Reprendre",
-    "optionsSheetTitle": "Réglages"
+    "optionsSheetTitle": "Réglages",
+    "editorial": {
+      "subtitle": "Votre atelier est prêt. Reprenez le fil ou ouvrez une page blanche.",
+      "showBrief": "Afficher le brief",
+      "discoverDescription": "Nouveau : les templates métier rédigent vos comptes rendus dans le ton de votre maison.",
+      "explore": "Explorer",
+      "calendarDisconnected": "Aucun calendrier n’est connecté. Connectez Google pour afficher les événements du jour.",
+      "noRecent": "Aucune conversation récente.",
+      "intentions": {
+        "prepare": { "title": "Préparer", "subtitle": "un ordre du jour", "prompt": "Prépare un ordre du jour concis pour ma prochaine réunion. Commence par me demander les informations qui te manquent." },
+        "structure": { "title": "Structurer", "subtitle": "des idées éparses", "prompt": "Aide-moi à structurer mes idées en un plan clair. Demande-moi d’abord de coller mes notes." },
+        "analyze": { "title": "Analyser", "subtitle": "les risques", "prompt": "Analyse les risques de mon projet avec nuance. Demande-moi d’abord son contexte, ses contraintes et son échéance." },
+        "imagine": { "title": "Imaginer", "subtitle": "de nouveaux angles", "prompt": "Propose de nouveaux angles pour mon sujet. Demande-moi d’abord l’objectif, le public et les pistes déjà explorées." }
+      },
+      "suggestions": {
+        "summarize": "Résumer", "summarizePrompt": "Résume ce contenu : ",
+        "write": "Rédiger", "writePrompt": "Aide-moi à rédiger : ",
+        "translate": "Traduire", "translatePrompt": "Traduis ce contenu en précisant la langue cible : ",
+        "explain": "Expliquer", "explainPrompt": "Explique-moi simplement : "
+      }
+    }
   },
   "chat": {
     "upgradeModal": {
@@ -524,7 +544,9 @@
   },
   "sidebar": {
     "newConversation": "Nouvelle conversation",
-    "newConversationEU": "Conversation EU sécurisée",
+    "home": "Accueil",
+    "navigation": "Navigation principale",
+    "newConversationEU": "Conversation — région UE configurée",
     "emptyList": "Aucune conversation",
     "timeAgo": {
       "now": "à l'instant",
@@ -542,19 +564,26 @@
     "recent": "Récent",
     "chipImport": "Importer",
     "chipTasks": "Tâches",
-    "chipEU": "EU sécurisé",
+    "chipEU": "Région UE configurée",
     "templates": "Templates métier",
     "clearSearch": "Effacer",
     "pinned": "Épinglés ({{count}})",
     "noResults": "Aucun résultat",
-    "euTooltip": "Mode Europe — données restées en France",
+    "euTooltip": "Routage configuré vers le fournisseur européen disponible",
     "apiKeys": "Clés API",
     "settings": "Paramètres",
     "confirmDelete": "Appuie à nouveau pour supprimer",
     "renameAria": "Renommer la conversation",
     "tagsAria": "Étiquettes",
     "importSuccess": "Conversation importée",
-    "streamingTitle": "Réflexion en cours"
+    "streamingTitle": "Réflexion en cours",
+    "profilePersonal": "Profil personnel",
+    "personalProfile": "Profil personnel",
+    "euRegion": "Région UE configurée",
+    "euRegionStatus": "Région UE configurée",
+    "logoutAria": "Se déconnecter",
+    "modeNight": "Mode nuit",
+    "modeDay": "Mode clair"
   },
   "tags": {
     "modalTitle": "Étiquettes",
@@ -656,6 +685,7 @@
   "proactiveBrief": {
     "title": "Ton brief",
     "loading": "Je prépare ton brief…",
+    "empty": "Ajoutez une première tâche ou connectez une source pour composer votre brief.",
     "calm": "Rien d'urgent côté agenda, tâches ou mémoire. Bonne journée !",
     "feedbackPrompt": "Utile ?",
     "feedbackThanks": "Merci, j'en tiens compte.",

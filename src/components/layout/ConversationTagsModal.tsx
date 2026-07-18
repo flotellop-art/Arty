@@ -3,6 +3,7 @@
 // pastille (●), lisible en thème clair comme sombre.
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useDialogFocusTrap } from '../../hooks/useDialogFocusTrap'
 import {
   PREDEFINED_TAGS,
   resolveTag,
@@ -21,6 +22,7 @@ interface Props {
 
 export function ConversationTagsModal({ tags, onSave, onClose }: Props) {
   const { t } = useTranslation()
+  const dialogRef = useDialogFocusTrap<HTMLDivElement>(true, onClose)
   const [selected, setSelected] = useState<string[]>(tags)
   const [custom, setCustom] = useState('')
 
@@ -41,11 +43,16 @@ export function ConversationTagsModal({ tags, onSave, onClose }: Props) {
       onClick={onClose}
     >
       <div
-        className="bg-theme-bg text-theme-ink rounded-sm shadow-xl w-full max-w-sm border border-theme-border p-5 space-y-4"
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="conversation-tags-title"
+        tabIndex={-1}
+        className="w-full max-w-sm space-y-4 border border-theme-border bg-theme-bg p-5 text-theme-ink"
         onClick={(e) => e.stopPropagation()}
       >
         <div>
-          <p className="font-display text-base text-theme-ink">{t('tags.modalTitle')}</p>
+          <p id="conversation-tags-title" className="font-display text-base text-theme-ink">{t('tags.modalTitle')}</p>
           <p className="font-display italic text-xs text-theme-muted mt-0.5">
             {t('tags.modalHint', { max: MAX_TAGS_PER_CONVERSATION })}
           </p>
@@ -61,7 +68,7 @@ export function ConversationTagsModal({ tags, onSave, onClose }: Props) {
                   key={tag}
                   type="button"
                   onClick={() => toggle(tag)}
-                  className="flex items-center gap-1 px-2 py-1 rounded-full text-[11px] bg-theme-ink/5 text-theme-ink hover:bg-theme-ink/10 transition-colors"
+                  className="flex min-h-11 items-center gap-1 border border-theme-border bg-theme-ink/5 px-2 py-1 text-[11px] text-theme-ink transition-colors hover:bg-theme-ink/10"
                   aria-label={t('tags.remove', { tag: r.label })}
                 >
                   <span aria-hidden style={{ color: r.color }}>●</span>
@@ -83,7 +90,7 @@ export function ConversationTagsModal({ tags, onSave, onClose }: Props) {
                 type="button"
                 onClick={() => toggle(def.id)}
                 disabled={!on && full}
-                className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] border transition-colors disabled:opacity-40 ${
+                className={`flex min-h-11 items-center gap-1 border px-2.5 py-1 text-[11px] transition-colors disabled:opacity-40 ${
                   on
                     ? 'border-theme-accent bg-theme-accent/10 text-theme-ink'
                     : 'border-theme-border text-theme-muted hover:text-theme-ink'
@@ -110,13 +117,13 @@ export function ConversationTagsModal({ tags, onSave, onClose }: Props) {
             }}
             placeholder={t('tags.customPlaceholder')}
             disabled={full}
-            className="flex-1 min-w-0 bg-theme-surface border border-theme-border rounded px-2 py-1.5 text-[13px] text-theme-ink outline-none focus:border-theme-accent disabled:opacity-40"
+            className="min-h-11 min-w-0 flex-1 border border-theme-border bg-theme-surface px-2 py-1.5 text-[13px] text-theme-ink outline-none focus:border-theme-accent disabled:opacity-40"
           />
           <button
             type="button"
             onClick={addCustom}
             disabled={full || !custom.trim()}
-            className="px-3 py-1.5 rounded text-[12px] bg-theme-ink text-theme-bg disabled:opacity-40"
+            className="min-h-11 border border-theme-ink bg-theme-ink px-3 py-1.5 text-[12px] text-theme-bg disabled:opacity-40"
           >
             {t('tags.add')}
           </button>
@@ -126,14 +133,14 @@ export function ConversationTagsModal({ tags, onSave, onClose }: Props) {
           <button
             type="button"
             onClick={onClose}
-            className="px-3 py-2 text-[13px] text-theme-muted hover:text-theme-ink"
+            className="min-h-11 border border-transparent px-3 py-2 text-[13px] text-theme-muted hover:border-theme-border hover:text-theme-ink"
           >
             {t('tags.cancel')}
           </button>
           <button
             type="button"
             onClick={() => onSave(selected)}
-            className="px-4 py-2 rounded text-[13px] bg-theme-accent text-theme-bg font-medium"
+            className="min-h-11 border border-theme-accent bg-theme-accent px-4 py-2 text-[13px] font-medium text-theme-bg"
           >
             {t('tags.save')}
           </button>

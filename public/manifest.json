@@ -4,8 +4,8 @@
   "description": "Arty — Assistant IA personnel",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#FAF3E7",
-  "theme_color": "#C85A28",
+  "background_color": "#F4EFE5",
+  "theme_color": "#C45E44",
   "orientation": "portrait",
   "icons": [
     {

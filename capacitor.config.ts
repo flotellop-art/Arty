@@ -19,7 +19,7 @@ const config: CapacitorConfig = {
     SplashScreen: {
       launchAutoHide: true,
       launchShowDuration: 1500,
-      backgroundColor: '#FAF3E7',
+      backgroundColor: '#F4EFE5',
       showSpinner: false,
     },
     Keyboard: {
@@ -40,10 +40,10 @@ const config: CapacitorConfig = {
     },
     StatusBar: {
       // 'DARK' = dark-colored icons/text (for use over a light background).
-      // Our paper cream bg (#FAF3E7) needs dark icons; 'LIGHT' made them
+      // Our paper cream bg (#F4EFE5) needs dark icons; 'LIGHT' made them
       // white → invisible / washed out.
       style: 'DARK',
-      backgroundColor: '#FAF3E7',
+      backgroundColor: '#F4EFE5',
     },
   },
 };
