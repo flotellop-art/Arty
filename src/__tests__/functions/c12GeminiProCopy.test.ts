@@ -6,7 +6,7 @@
 // l'affichage du bucket sans un vrai chemin de consommation (GA Gemini
 // 3.5 Pro) doit faire rougir la CI. Le cap serveur, lui, RESTE enforcé
 // (défense en profondeur — voir premiumModelClassification.test.ts).
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
@@ -21,16 +21,25 @@ describe('C12 — plus aucun copy « Gemini Pro » vendu sans chemin de consomma
     expect(read('src/i18n/locales/en.json')).not.toContain('Gemini Pro')
   })
 
-  it('landing pages : aucune promesse « Gemini Pro » (prix, essai, agenda)', () => {
-    for (const lp of ['prix', 'essai', 'agenda']) {
+  it('landing pages : aucune promesse « Gemini Pro » (TOUS les dossiers lp, revue C12)', () => {
+    // Itération dynamique (revue) : une future page lp ou une mention
+    // orpheline sur une page existante fait rougir la CI d'office.
+    const lpDirs = readdirSync(resolve(process.cwd(), 'public/lp'), { withFileTypes: true })
+      .filter((d) => d.isDirectory())
+      .map((d) => d.name)
+    expect(lpDirs.length).toBeGreaterThanOrEqual(3) // sanity : le dossier est bien peuplé
+    for (const lp of lpDirs) {
       expect(read(`public/lp/${lp}/index.html`)).not.toContain('Gemini Pro')
     }
   })
 
-  it('subscription/status masque les buckets gemini-pro et unknown-model (mais checkPremiumCap les enforce toujours)', () => {
+  it('subscription/status masque les buckets gemini-pro/unknown-model TANT QUE non consommés (checkPremiumCap les enforce toujours)', () => {
     const statusSrc = read('functions/api/subscription/status.ts')
-    expect(statusSrc).toMatch(/hiddenBuckets = new Set\(\['gemini-pro', 'unknown-model'\]\)/)
-    expect(statusSrc).toMatch(/hiddenBuckets\.has\(bucket\)/)
+    expect(statusSrc).toMatch(/hiddenIfUnused = new Set\(\['gemini-pro', 'unknown-model'\]\)/)
+    // Masque CONDITIONNEL (revue C12, doctrine « jamais de bascule
+    // silencieuse ») : consommation réelle → la ligne réapparaît, un cap ne
+    // fond jamais sans ligne visible.
+    expect(statusSrc).toMatch(/hiddenIfUnused\.has\(bucket\) && u === 0/)
     // La source de vérité des caps garde les deux buckets : le filtre est un
     // masque d'AFFICHAGE, pas un retrait d'enforcement.
     const capsSrc = read('functions/api/_lib/checkPremiumCap.ts')
