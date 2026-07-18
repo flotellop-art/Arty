@@ -101,7 +101,7 @@ describe('parité IDs routables ↔ labels / région / capacité / coûts', () =
     // C1 (18/07/2026) : gemini-2.5-* retirés du routable (arrêt Google 16/10).
     // 3.5-flash est désormais chat ET recherche (convergence C1).
     ['gemini-3.5-flash', 'GEMINI_CHAT_MODEL + GEMINI_RESEARCH_MODEL + comparateur'],
-    ['gpt-5.5', 'DEFAULT_MODEL openaiClient'],
+    ['gpt-5.6-terra', 'DEFAULT_MODEL openaiClient (C3, 18/07)'],
     ['gpt-5', 'FALLBACK_MODEL openaiClient'],
     ['gpt-5-mini', 'TRIAL_ALLOWED_MODELS + comparateur'],
     ['mistral-large-latest', 'comparateur'],

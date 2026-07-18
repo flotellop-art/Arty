@@ -7,6 +7,7 @@ describe('premium model classification stays aligned with exposed models', () =>
     ['claude-opus-4-8', 'claude-sonnet'],
     ['gpt-5', 'gpt-5'],
     ['gpt-5.5', 'gpt-5'],
+    ['gpt-5.6-terra', 'gpt-5'], // défaut C3 — capté par startsWith('gpt-5.'), cap 100 inchangé (D-A)
     ['gemini-2.5-pro', 'gemini-pro'],
     ['gemini-pro-latest', 'gemini-pro'],
     ['gemini-3.1-pro-preview', 'gemini-pro'],
