@@ -34,9 +34,12 @@ import { simplifySegments } from '../_lib/simplify'
 
 const USER_AGENT = 'Arty/1.0 (+https://tryarty.com)'
 const OVERPASS_INSTANCES = [
-  // Ordre empirique (sondes 19 juil. 2026) : l'instance principale rend en ~2 s
-  // quand elle n'est pas saturée ; maps.mail.ru est un miroir stable et rapide.
+  // Ordre : UE d'abord (la requête contient des coords proches du domicile de
+  // l'utilisateur — RÈGLE 5), mail.ru en dernier recours. 3 instances : le
+  // premier test terrain (19 juil.) a montré que les instances traitent
+  // différemment les IP egress Cloudflare partagées — multiplier les chances.
   'https://overpass-api.de/api/interpreter',
+  'https://overpass.openstreetmap.fr/api/interpreter',
   'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
 ]
 const MAX_UPSTREAM_BYTES = 5 * 1024 * 1024
@@ -126,7 +129,7 @@ async function handleSearch(env: Env, allowed: AllowedUser, body: Record<string,
   // `out geom(bbox)` CLIPPE la géométrie au cadre de recherche : un GR national
   // qui traverse la zone ne renvoie que son tronçon local (pas 700 km de trace).
   const ql =
-    `[out:json][timeout:10];` +
+    `[out:json][timeout:8];` +
     `relation["type"="route"]["route"~"${KIND_FILTERS[kind]}"](around:${radiusM},${center.lat.toFixed(6)},${center.lon.toFixed(6)});` +
     `out geom(${south},${west},${north},${east}) 40;` +
     `way["highway"~"^(track|path|bridleway)$"](around:3000,${center.lat.toFixed(6)},${center.lon.toFixed(6)});` +
@@ -208,7 +211,7 @@ async function handleGeometry(env: Env, allowed: AllowedUser, body: Record<strin
   const capResponse = await enforceQuota(env, allowed)
   if (capResponse) return capResponse
 
-  const data = await queryOverpass(`[out:json][timeout:10];relation(id:${routeId});out geom;`)
+  const data = await queryOverpass(`[out:json][timeout:8];relation(id:${routeId});out geom;`)
   const rel = (data.elements ?? []).find((e) => e.type === 'relation' && e.id === routeId)
   if (!rel) {
     return Response.json({ error: 'Circuit introuvable' }, { status: 404 })
@@ -257,8 +260,8 @@ async function resolveCenter(
     return { lat, lon, label: `${lat.toFixed(4)}, ${lon.toFixed(4)}` }
   }
 
-  // Cache du géocodage lui-même : évite de re-frapper open-meteo/Nominatim
-  // pour le même lieu, et absorbe la contrainte « 1 req/s » de Nominatim.
+  // Cache du géocodage lui-même : évite de re-frapper les géocodeurs pour le
+  // même lieu, et absorbe la contrainte « 1 req/s » de Nominatim.
   const cacheKey = cacheRequest(`geocode/${encodeURIComponent(location.toLowerCase())}`)
   const cached = await cacheGet(cacheKey)
   if (cached) {
@@ -267,49 +270,83 @@ async function resolveCenter(
     } catch { /* entrée illisible → re-géocode */ }
   }
 
-  // 1) open-meteo (villes/villages — même service que browser/weather.ts).
+  // Chaîne re-priorisée après le premier test terrain (19 juil.) : depuis les
+  // IP egress Cloudflare partagées, Nominatim (anti-datacenter) et open-meteo
+  // peuvent refuser/limiter. L'API Adresse (adresse.data.gouv.fr) est CONÇUE
+  // pour l'appel programmatique, couvre communes ET adresses françaises
+  // (« 191 chemin des bouviers Viriville ») et gère « Viriville Isère » —
+  // qu'open-meteo ne résout pas. Timeouts 5 s : la chaîne complète doit tenir
+  // sous le budget client (45 s) avec les 3 instances Overpass derrière.
+  const center =
+    (await geocodeBanFrance(location)) ??
+    (await geocodeOpenMeteo(location)) ??
+    (await geocodeNominatim(location))
+  if (center) await cachePut(cacheKey, Response.json(center))
+  return center
+}
+
+/** API Adresse (Base Adresse Nationale) — gouvernement français, sans clé. */
+async function geocodeBanFrance(location: string): Promise<{ lat: number; lon: number; label: string } | null> {
+  try {
+    const res = await fetch(
+      `https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(location)}&limit=1`,
+      { headers: { 'User-Agent': USER_AGENT }, redirect: 'error', signal: AbortSignal.timeout(5000) }
+    )
+    if (!res.ok) return null
+    const geo = (await res.json()) as {
+      features?: Array<{ geometry?: { coordinates?: [number, number] }; properties?: { label?: string; score?: number } }>
+    }
+    const hit = geo.features?.[0]
+    const lon = hit?.geometry?.coordinates?.[0]
+    const lat = hit?.geometry?.coordinates?.[1]
+    // Score < 0.4 = correspondance douteuse (la BAN renvoie toujours quelque
+    // chose) → laisser la main aux géocodeurs mondiaux plutôt que de partir
+    // sur une mauvaise commune.
+    if ((hit?.properties?.score ?? 0) < 0.4) return null
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null
+    return { lat: lat as number, lon: lon as number, label: (hit?.properties?.label ?? location).slice(0, 120) }
+  } catch (err) {
+    console.warn('[geo/trails] ban geocode failed', err instanceof Error ? err.message : err)
+    return null
+  }
+}
+
+/** open-meteo (mondial, villes/villages — même service que browser/weather.ts). */
+async function geocodeOpenMeteo(location: string): Promise<{ lat: number; lon: number; label: string } | null> {
   try {
     const res = await fetch(
       `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(location)}&count=1&language=fr`,
-      { headers: { 'User-Agent': USER_AGENT }, redirect: 'error', signal: AbortSignal.timeout(8000) }
+      { headers: { 'User-Agent': USER_AGENT }, redirect: 'error', signal: AbortSignal.timeout(5000) }
     )
-    if (res.ok) {
-      const geo = (await res.json()) as { results?: Array<{ latitude: number; longitude: number; name: string }> }
-      const hit = geo.results?.[0]
-      if (hit && Number.isFinite(hit.latitude) && Number.isFinite(hit.longitude)) {
-        const center = { lat: hit.latitude, lon: hit.longitude, label: hit.name }
-        await cachePut(cacheKey, Response.json(center))
-        return center
-      }
-    }
+    if (!res.ok) return null
+    const geo = (await res.json()) as { results?: Array<{ latitude: number; longitude: number; name: string }> }
+    const hit = geo.results?.[0]
+    if (!hit || !Number.isFinite(hit.latitude) || !Number.isFinite(hit.longitude)) return null
+    return { lat: hit.latitude, lon: hit.longitude, label: hit.name }
   } catch (err) {
     console.warn('[geo/trails] open-meteo geocode failed', err instanceof Error ? err.message : err)
+    return null
   }
+}
 
-  // 2) Repli Nominatim (adresses précises type « 191 chemin des bouviers »).
-  // Politique Nominatim : User-Agent identifiant OBLIGATOIRE, usage modéré —
-  // garanti ici par le cache ci-dessus + le cap journalier appelant.
+/** Nominatim en dernier recours (mondial, adresses) — UA identifiant requis. */
+async function geocodeNominatim(location: string): Promise<{ lat: number; lon: number; label: string } | null> {
   try {
     const res = await fetch(
       `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(location)}&format=jsonv2&limit=1&accept-language=fr`,
-      { headers: { 'User-Agent': USER_AGENT }, redirect: 'error', signal: AbortSignal.timeout(8000) }
+      { headers: { 'User-Agent': USER_AGENT }, redirect: 'error', signal: AbortSignal.timeout(5000) }
     )
-    if (res.ok) {
-      const results = (await res.json()) as Array<{ lat: string; lon: string; display_name?: string }>
-      const hit = results?.[0]
-      const lat = Number(hit?.lat)
-      const lon = Number(hit?.lon)
-      if (Number.isFinite(lat) && Number.isFinite(lon) && lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180) {
-        const center = { lat, lon, label: (hit.display_name ?? location).slice(0, 120) }
-        await cachePut(cacheKey, Response.json(center))
-        return center
-      }
-    }
+    if (!res.ok) return null
+    const results = (await res.json()) as Array<{ lat: string; lon: string; display_name?: string }>
+    const hit = results?.[0]
+    const lat = Number(hit?.lat)
+    const lon = Number(hit?.lon)
+    if (!Number.isFinite(lat) || !Number.isFinite(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) return null
+    return { lat, lon, label: (hit?.display_name ?? location).slice(0, 120) }
   } catch (err) {
     console.warn('[geo/trails] nominatim geocode failed', err instanceof Error ? err.message : err)
+    return null
   }
-
-  return null
 }
 
 // ── Overpass ─────────────────────────────────────────────────────────────────
@@ -323,7 +360,9 @@ async function queryOverpass(ql: string): Promise<{ elements?: OverpassElement[]
         headers: { 'User-Agent': USER_AGENT, 'Content-Type': 'application/x-www-form-urlencoded' },
         body: `data=${encodeURIComponent(ql)}`,
         redirect: 'error',
-        signal: AbortSignal.timeout(12_000),
+        // 10 s × 3 instances + géocodage 3 × 5 s = 45 s pile — le timeout
+        // client (trailsClient) est calé à 45 s pour couvrir ce pire cas.
+        signal: AbortSignal.timeout(10_000),
       })
       if (!res.ok) {
         lastError = new Error(`overpass ${res.status}`)
@@ -412,7 +451,9 @@ function routeLabel(tags: Record<string, string>, id: number): string {
 
 function clampRadius(value: unknown): number {
   const n = Number(value)
-  if (!Number.isFinite(n)) return 6
+  // Défaut 10 km — leçon terrain (19 juil., Viriville) : à 6 km une zone
+  // rurale peut n'avoir AUCUNE relation balisée alors qu'il y en a 11 à 10 km.
+  if (!Number.isFinite(n)) return 10
   return Math.min(15, Math.max(1, Math.round(n)))
 }
 

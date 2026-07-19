@@ -33,7 +33,7 @@ export const trailToolDefinitions = [
       type: 'object' as const,
       properties: {
         location: { type: 'string' as const, description: "Lieu de départ (village, adresse, ou coords « lat,lon »). Omis = position GPS de l'utilisateur si disponible." },
-        radius_km: { type: 'number' as const, description: 'Rayon de recherche en km (1-15, défaut 6).' },
+        radius_km: { type: 'number' as const, description: 'Rayon de recherche en km (1-15, défaut 10).' },
         kind: { type: 'string' as const, enum: ['horse', 'hiking', 'bike', 'all'], description: 'Type de circuit : horse (équestre), hiking (pédestre), bike (VTT/vélo), all (défaut).' },
       },
     },
@@ -100,7 +100,7 @@ export function createTrailHandlers(): Record<string, ToolHandler> {
       if (routes.length === 0) {
         return {
           result:
-            `Aucun circuit balisé recensé sur OpenStreetMap à ${data.radiusKm ?? 6} km autour de ${centerLabel}.\n${pathLine}\n` +
+            `Aucun circuit balisé recensé sur OpenStreetMap à ${data.radiusKm ?? 10} km autour de ${centerLabel}.\n${pathLine}\n` +
             "Sois transparent avec l'utilisateur : pas de boucle officielle publiée dans ce rayon. Propose d'élargir le rayon (radius_km jusqu'à 15) ou un autre type (kind).",
         }
       }
@@ -116,7 +116,7 @@ export function createTrailHandlers(): Record<string, ToolHandler> {
 
       const summary = markUntrustedThirdPartyData(
         'OpenStreetMap',
-        `Circuits balisés autour de ${centerLabel} (rayon ${data.radiusKm ?? 6} km) :\n${lines.join('\n')}\n${pathLine}`
+        `Circuits balisés autour de ${centerLabel} (rayon ${data.radiusKm ?? 10} km) :\n${lines.join('\n')}\n${pathLine}`
       )
       return {
         result:
@@ -141,8 +141,10 @@ export function createTrailHandlers(): Record<string, ToolHandler> {
             return { result: 'Export GPX indisponible (réseau).' }
           case 'quota':
             return { result: 'Limite journalière atteinte pour ce compte. Réessaie demain.' }
-          default:
+          case 'not_found':
             return { result: `Circuit ${routeId} introuvable — relance find_trails pour obtenir des ids à jour.` }
+          default:
+            return { result: 'Export GPX momentanément indisponible. Réessaie dans quelques minutes.' }
         }
       }
 
