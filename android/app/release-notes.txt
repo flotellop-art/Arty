@@ -1,5 +1,5 @@
-Arty 1.0.81 — Messagerie privée, sans accès Gmail
+Arty 1.0.82 — Sentiers OSM et expérience Android améliorée
 
-• Arty n'accède plus à votre boîte Gmail et ne peut ni chercher, ni ouvrir, ni envoyer vos messages.
-• Pour résumer un email ou préparer une réponse, collez, joignez ou partagez simplement son contenu avec Arty.
-• La connexion Google publique reste limitée à l'identité et à l'agenda, sans scope Gmail.
+• Recherche de sentiers et boucles autour d'un lieu avec visualisation cartographique intégrée.
+• Export GPX vers les applications compatibles, dont Komoot.
+• Routage conversationnel et accès OSM rendus plus robustes sur mobile.
