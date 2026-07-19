@@ -52,7 +52,7 @@ describe('wallet reservation covers the provider maximum', () => {
     expect(withTools).toBeGreaterThan(plain)
   })
 
-  it('holds conservatively for encoded and remote media (contrat PR-0 : borné, plus jamais au poids du base64)', () => {
+  it('holds conservatively for encoded images and remote media', () => {
     const plain = estimateInputTokens('gemini', {
       contents: [{ parts: [{ text: 'analyse cette image' }] }],
     })
@@ -62,14 +62,9 @@ describe('wallet reservation covers the provider maximum', () => {
     const remote = estimateInputTokens('openai', {
       messages: [{ content: [{ type: 'image_url', image_url: { url: 'https://example.test/photo.jpg' } }] }],
     })
-    // Une image encodée est BORNÉE (borne image 4 096 ; + floor bloc 16 384
-    // quand le média est typé au niveau du bloc, cas Anthropic), PAS comptée à
-    // son poids : l'estimation domine le texte seul d'au moins la borne image
-    // (couvre les ~1 000-1 600 tokens réellement facturés par les providers)
-    // et reste du même ordre quel que soit le poids du base64.
-    // Seuil 3 500 (pas 4 096 pile) : marge si la borne image évolue — la
-    // valeur réelle ici est ~plain + 4 115 (borne 4 096 + delta JSON).
-    expect(encoded).toBeGreaterThan(plain + 3_500)
+    // Une image encodée est BORNÉE une seule fois à 16 384 tokens, PAS comptée
+    // à son poids. Cette borne couvre notamment Terra 4K (~12 288 tokens).
+    expect(encoded).toBeGreaterThan(plain + 12_000)
     expect(encoded).toBeLessThan(plain + 30_000)
     expect(remote).toBeGreaterThanOrEqual(128_000)
   })
