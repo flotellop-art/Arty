@@ -84,14 +84,16 @@ const sanitizeSchema = {
       'dataAction', 'dataTo', 'dataSubject', 'dataBody', 'dataText', 'dataValue',
       'dataName', 'dataContent', 'dataTitle', 'dataStart', 'dataEnd',
       'dataLocation', 'dataStatus', 'dataPhone', 'dataUrl', 'dataQuery', 'dataSummary',
-      'dataRouteId', // view_trail — id OSM validé par parseTrailRouteId au dispatch
+      'dataTrailId', // view_trail — UUID opaque résolu dans IndexedDB
+      'dataRouteId', // ancien message : conservé uniquement pour afficher l'aide de migration
     ],
     div: [
       'className', 'class', 'style',
       'dataAction', 'dataTo', 'dataSubject', 'dataBody', 'dataText', 'dataValue',
       'dataName', 'dataContent', 'dataTitle', 'dataStart', 'dataEnd',
       'dataLocation', 'dataStatus', 'dataPhone', 'dataUrl', 'dataQuery', 'dataSummary',
-      'dataRouteId', // view_trail — id OSM validé par parseTrailRouteId au dispatch
+      'dataTrailId', // view_trail — UUID opaque résolu dans IndexedDB
+      'dataRouteId', // ancien message : jamais résolu en relation réseau
     ],
     span: ['className', 'class', 'style'],
     a: ['href', 'target', 'rel', 'className'],

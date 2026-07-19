@@ -56,17 +56,26 @@ describe('MarkdownRenderer', () => {
     expect(btn!.getAttribute('data-evil')).toBeNull()
   })
 
-  it('conserve data-route-id sur un bouton view_trail (visualiseur de carte)', () => {
+  it('conserve data-trail-id sur un bouton view_trail (snapshot local opaque)', () => {
+    const trailId = '1f6e8d42-73c4-4f01-9d58-2a6f8c35e920'
     const { container } = render(
       <MarkdownRenderer
-        content={'<button data-action="view_trail" data-route-id="18675656">🗺️ Voir la carte</button>'}
+        content={`<button data-action="view_trail" data-trail-id="${trailId}">🗺️ Voir la carte</button>`}
       />
     )
     const btn = container.querySelector('button[data-action="view_trail"]')
-    // Sans `dataRouteId` dans l'allowlist sanitize, l'attribut serait strippé
+    // Sans `dataTrailId` dans l'allowlist sanitize, l'attribut serait strippé
     // silencieusement et le bouton naviguerait vers rien (classe de bug F-1).
     expect(btn).toBeTruthy()
-    expect(btn!.getAttribute('data-route-id')).toBe('18675656')
+    expect(btn!.getAttribute('data-trail-id')).toBe(trailId)
+    expect(btn!.getAttribute('data-route-id')).toBeNull()
+  })
+
+  it('conserve l’ancien route-id uniquement pour afficher le message de migration', () => {
+    const { container } = render(
+      <MarkdownRenderer content={'<button data-action="view_trail" data-route-id="18675656">Ancienne carte</button>'} />
+    )
+    expect(container.querySelector('button')?.getAttribute('data-route-id')).toBe('18675656')
   })
 
   it('neutralise un ancien bouton d’envoi de mail sans faux succès', () => {

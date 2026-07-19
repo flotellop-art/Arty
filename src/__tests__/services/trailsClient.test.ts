@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // Désambiguïsation des 404 (fix post-terrain 19 juil.) : le 404 uniforme
 // d'auth (notFoundResponse → {error:'Not found'}) ne doit PAS être présenté
@@ -15,18 +15,30 @@ vi.mock('../../services/apiBase', () => ({ apiUrl: (p: string) => `https://test.
 vi.mock('../../services/trailsOsm', () => ({
   searchTrailsDirect: vi.fn(async () => null),
   fetchTrailGeometryDirect: vi.fn(async () => null),
+  fetchTrailGeometriesDirect: vi.fn(async () => null),
 }))
 
-import { searchTrails, fetchTrailGeometry } from '../../services/trailsClient'
-import { searchTrailsDirect, fetchTrailGeometryDirect } from '../../services/trailsOsm'
+import { searchTrails, fetchTrailGeometries, fetchTrailGeometry, isTrailGeometry } from '../../services/trailsClient'
+import { searchTrailsDirect, fetchTrailGeometriesDirect, fetchTrailGeometryDirect } from '../../services/trailsOsm'
 
-afterEach(() => vi.unstubAllGlobals())
+beforeEach(() => vi.clearAllMocks())
+afterEach(() => {
+  vi.useRealTimers()
+  vi.unstubAllGlobals()
+})
 
 function stubFetchResponse(body: unknown, status: number) {
   vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(body), { status })))
 }
 
 describe('trailsClient — classification des réponses', () => {
+  it('rejette un payload geometry-v3 incomplet', () => {
+    expect(isTrailGeometry({
+      id: 42, name: 'X', kind: 'horse', distanceKm: 3,
+      sourceSegments: [[[45.3, 5.2], [45.31, 5.2]]],
+      displaySegments: [[[45.3, 5.2], [45.31, 5.2]]],
+    })).toBe(false)
+  })
   it('404 métier « Lieu introuvable » → not_found', async () => {
     stubFetchResponse({ error: 'Lieu introuvable' }, 404)
     expect(await searchTrails({ location: 'Nulle-Part' })).toEqual({ ok: false, status: 'not_found' })
@@ -84,10 +96,86 @@ describe('trailsClient — façade direct-d\'abord (fix egress Cloudflare filtr�
   })
 
   it('direct injoignable (null) → repli serveur', async () => {
-    stubFetchResponse({ id: 42, name: 'X', kind: 'horse', distanceKm: 3, segments: [[[45.3, 5.2], [45.31, 5.2]]] }, 200)
+    const sourceSegments = [[[45.3, 5.2], [45.31, 5.2]]]
+    stubFetchResponse({
+      id: 42, name: 'X', kind: 'horse', distanceKm: 3, distanceMeters: 3000,
+      sourceSegments, sourceSegmentDirectionLocked: [false], displaySegments: sourceSegments,
+      integrity: { hasNestedRelations: false, unsupportedWayRoles: [], displaySafe: true },
+      provenance: { provider: 'OpenStreetMap', relationId: 42, fetchedAt: Date.now() },
+    }, 200)
     vi.mocked(fetchTrailGeometryDirect).mockResolvedValueOnce(null)
     const out = await fetchTrailGeometry(42)
     expect(out.ok).toBe(true)
     if (out.ok) expect(out.data.name).toBe('X')
+  })
+
+  it('le timeout du repli couvre aussi un corps HTTP bloqué', async () => {
+    vi.useFakeTimers()
+    vi.mocked(fetchTrailGeometryDirect).mockResolvedValueOnce(null)
+    vi.stubGlobal('fetch', vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
+      const signal = init?.signal
+      return new Response(new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode('{"id":42'))
+          signal?.addEventListener('abort', () => controller.error(new DOMException('Timeout', 'AbortError')))
+        },
+      }), { status: 200 })
+    }))
+    const pending = fetchTrailGeometry(42)
+    await vi.advanceTimersByTimeAsync(45_001)
+    await expect(pending).resolves.toEqual({ ok: false, status: 'network' })
+  })
+
+  it('vérifie plusieurs géométries en un seul appel direct', async () => {
+    vi.mocked(fetchTrailGeometriesDirect).mockResolvedValueOnce({
+      ok: true,
+      data: [{ id: 42, name: 'X', kind: 'horse', distanceKm: 3, sourceSegments: [], displaySegments: [] }],
+    })
+    const out = await fetchTrailGeometries([42])
+    expect(out.ok).toBe(true)
+    expect(fetchTrailGeometriesDirect).toHaveBeenCalledWith([42], expect.any(Number))
+  })
+
+  it('conserve un lot déjà vérifié si un lot suivant est indisponible', async () => {
+    vi.mocked(fetchTrailGeometriesDirect).mockClear()
+    const verified = { id: 1, name: 'A', kind: 'horse', distanceKm: 3, sourceSegments: [], displaySegments: [] }
+    vi.mocked(fetchTrailGeometriesDirect)
+      .mockResolvedValueOnce({ ok: true, data: [verified] })
+      .mockResolvedValueOnce(null)
+    stubFetchResponse({ error: 'Service indisponible' }, 502)
+    const out = await fetchTrailGeometries([1, 2, 3, 4])
+    expect(out).toEqual({ ok: true, data: [verified] })
+    expect(fetchTrailGeometriesDirect).toHaveBeenNthCalledWith(1, [1, 2, 3], expect.any(Number))
+    expect(fetchTrailGeometriesDirect).toHaveBeenNthCalledWith(2, [4], expect.any(Number))
+  })
+
+  it('subdivise un lot en échec pour sauver les relations individuelles', async () => {
+    vi.mocked(fetchTrailGeometriesDirect).mockResolvedValueOnce(null)
+    vi.mocked(fetchTrailGeometryDirect)
+      .mockResolvedValueOnce({
+        ok: true,
+        data: {
+          id: 1, name: 'A', kind: 'horse', distanceKm: 3,
+          sourceSegments: [[[45.3, 5.2], [45.31, 5.2]]],
+          sourceSegmentDirectionLocked: [false],
+          displaySegments: [[[45.3, 5.2], [45.31, 5.2]]],
+        },
+      })
+      .mockResolvedValueOnce({ ok: false, status: 'not_found' })
+      .mockResolvedValueOnce({
+        ok: true,
+        data: {
+          id: 3, name: 'C', kind: 'horse', distanceKm: 4,
+          sourceSegments: [[[45.4, 5.2], [45.41, 5.2]]],
+          sourceSegmentDirectionLocked: [false],
+          displaySegments: [[[45.4, 5.2], [45.41, 5.2]]],
+        },
+      })
+    stubFetchResponse({ error: 'Service indisponible' }, 502)
+
+    const out = await fetchTrailGeometries([1, 2, 3])
+    expect(out.ok).toBe(true)
+    if (out.ok) expect(out.data.map((trail) => trail.id)).toEqual([1, 3])
+    expect(fetchTrailGeometryDirect).toHaveBeenCalledTimes(3)
   })
 })

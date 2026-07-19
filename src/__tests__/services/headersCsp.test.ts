@@ -13,8 +13,9 @@ const cspLine = headers.split('\n').find((l) => l.includes('Content-Security-Pol
 const imgSrc = cspLine.split(';').find((d) => d.trim().startsWith('img-src')) ?? ''
 
 describe('public/_headers — invariants CSP', () => {
-  it('img-src autorise les 3 hôtes de tuiles OpenTopoMap (page /trail/:id)', () => {
+  it('img-src autorise PLAN IGN et les 3 hôtes OpenTopoMap (page /trail/:id)', () => {
     for (const host of [
+      'https://data.geopf.fr',
       'https://a.tile.opentopomap.org',
       'https://b.tile.opentopomap.org',
       'https://c.tile.opentopomap.org',
@@ -32,7 +33,6 @@ describe('public/_headers — invariants CSP', () => {
     for (const host of [
       'https://overpass-api.de',
       'https://overpass.openstreetmap.fr',
-      'https://maps.mail.ru',
       'https://api-adresse.data.gouv.fr',
       'https://geocoding-api.open-meteo.com',
       'https://nominatim.openstreetmap.org',
