@@ -84,14 +84,9 @@ export function simplifySegments(
   const toleranceLimit = Math.max(0, maxToleranceM)
   if (toleranceLimit === 0) return { segments, toleranceM: 0 }
 
-  let toleranceM = Math.min(1, toleranceLimit)
-  let result = segments
-  while (true) {
-    result = segments.map((seg) => douglasPeucker(seg, toleranceM))
-    const count = result.reduce((n, s) => n + s.length, 0)
-    if (count <= maxPoints || toleranceM >= toleranceLimit) {
-      return { segments: result, toleranceM }
-    }
-    toleranceM = Math.min(toleranceLimit, toleranceM * 2)
-  }
+  // Une seule passe à la borne contractuelle. Les essais 1→2→4→5 m avaient
+  // le même plafond d'erreur final, mais un zigzag dense déclenche le pire cas
+  // quadratique de Douglas-Peucker à chaque tolérance trop faible.
+  const result = segments.map((segment) => douglasPeucker(segment, toleranceLimit))
+  return { segments: result, toleranceM: toleranceLimit }
 }
