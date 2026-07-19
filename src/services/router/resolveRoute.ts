@@ -176,12 +176,19 @@ export function resolveRoute(input: RouteInput): RouteDecision {
       // elle explique la priorité mais ne déclenche aucun toast d'override.
       provider = 'claude'
       reason = { code: 'url_web_fetch' }
-    } else if (TRAIL_TRIGGERS.some((r) => r.test(text))) {
+    } else if (
+      TRAIL_TRIGGERS.some((r) => r.test(text)) ||
+      (input.hasTrailHistory && !isTrivialChat(text))
+    ) {
       // Sentiers / traces GPX → Claude : les outils find_trails /
       // export_trail_gpx (géodonnées OSM + génération GPX) n'existent que
       // dans la boucle d'outils Claude. Même principe que url_web_fetch :
       // la capacité réelle prime sur le défaut Gemini, qui ne peut que
       // paraphraser des résultats de recherche sans produire de trace.
+      // hasTrailHistory : un suivi court dans une conversation sentiers
+      // (« Viriville » seul, cas terrain 19 juil.) ne matche aucun trigger
+      // texte — le contexte collé à la conversation le garde chez Claude.
+      // Les messages triviaux (« merci ! ») gardent leur chemin rapide.
       provider = 'claude'
       reason = { code: 'trail_tools' }
     } else if (a.openai && detectOpenAIIntent(text)) {

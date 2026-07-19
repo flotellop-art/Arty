@@ -464,6 +464,26 @@ describe('resolveRoute — sentiers/GPX → Claude (trail_tools, juillet 2026)',
     }
   })
 
+  it('suivi court dans une conversation sentiers → Claude même sans trigger texte', () => {
+    // Cas terrain 19 juil. (2e session) : « Viriville » seul en réponse à une
+    // discussion sentiers partait sur Gemini sans outils → pas de bouton carte.
+    const d = resolveRoute(input({ originalText: 'Viriville', hasTrailHistory: true }))
+    expect(d.provider).toBe('claude')
+    expect(d.reason.code).toBe('trail_tools')
+  })
+
+  it('le contexte sentiers ne détourne PAS les messages triviaux du chemin rapide', () => {
+    const d = resolveRoute(input({ originalText: 'merci !', hasTrailHistory: true }))
+    expect(d.provider).toBe('mistral')
+    expect(d.reason.code).toBe('trivial_chat')
+  })
+
+  it('sans contexte sentiers, « Viriville » seul reste sur le défaut', () => {
+    const d = resolveRoute(input({ originalText: 'Viriville' }))
+    expect(d.provider).toBe('gemini')
+    expect(d.reason.code).toBe('default_capable')
+  })
+
   it("les gardes absolues restent prioritaires : euOnly prime sur trail_tools", () => {
     const d = resolveRoute(input({ euOnly: true, originalText: 'prépare une rando GPX' }))
     expect(d.provider).toBe('mistral')

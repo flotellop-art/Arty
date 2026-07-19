@@ -124,6 +124,13 @@ export interface Conversation {
   // partage public. Détecté à l'appel (les tool_use ne sont pas persistés
   // dans `content`, donc indétectable a posteriori).
   hasGoogleData?: boolean
+  // Sentiers (juil. 2026) — vrai dès qu'un message a routé vers les outils
+  // sentiers ou qu'un outil find_trails/export_trail_gpx a été appelé. Les
+  // suivis courts (« Viriville », « et en VTT ? ») ne matchent aucun trigger
+  // texte : ce flag fait coller le contexte sentiers à la conversation, comme
+  // hasGoogleData pour les données privées. Optionnel → transparent au
+  // déchiffrement, aucune migration.
+  hasTrailContext?: boolean
   // P1.8 — étiquettes (tags) libres/prédéfinies pour ranger les conversations,
   // filtrables depuis la Sidebar. Champ optionnel → transparent au
   // déchiffrement (cast nu), aucune migration. Privé : exclu du partage public.

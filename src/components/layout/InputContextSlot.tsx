@@ -75,7 +75,7 @@ export function InputContextSlot({
       {/* Erreur — co-affichée avec la voix (jamais à sa place), exclusive sinon. */}
       {error && (
         <div
-          className="mb-2 flex items-center gap-2 border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-700 dark:text-red-400"
+          className="mb-2 flex items-center gap-2 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-700 dark:text-red-400"
           role="alert"
         >
           <span>⚠️</span>
@@ -96,7 +96,7 @@ export function InputContextSlot({
         <>
           {isRecordingAudio && (
             <div
-              className={`mb-1 flex items-center gap-2 border border-theme-border px-2 py-1.5 text-xs transition-colors ${
+              className={`mb-1 flex items-center gap-2 rounded-xl border border-theme-ink/10 px-2 py-1.5 text-xs transition-colors ${
                 isSwipeCancelling
                   ? 'bg-red-500/15 text-red-700 dark:text-red-400 font-semibold'
                   : 'bg-theme-ink/5 text-theme-muted'
@@ -135,7 +135,7 @@ export function InputContextSlot({
           )}
         </>
       ) : !error && calendarSuggestion ? (
-        <div className="mb-2 flex items-center gap-2 border border-theme-accent/20 bg-theme-accent/10 px-3 py-2 text-xs text-theme-ink">
+        <div className="mb-2 flex items-center gap-2 rounded-xl border border-theme-accent/20 bg-theme-accent/10 px-3 py-2 text-xs text-theme-ink">
           <span>📅</span>
           <span className="flex-1 truncate">
             {t('calendar.suggestionPillPrefix')}
@@ -143,7 +143,7 @@ export function InputContextSlot({
           </span>
           <button
             onClick={onCreateCalendarEvent}
-            className="border border-theme-ink bg-theme-ink px-2 py-0.5 text-[10px] font-semibold text-theme-bg hover:border-theme-accent"
+            className="rounded-full border border-theme-ink bg-theme-ink px-2.5 py-0.5 text-[10px] font-semibold text-theme-bg hover:border-theme-accent"
           >
             {t('calendar.create')}
           </button>
@@ -168,10 +168,10 @@ export function InputContextSlot({
                 type="button"
                 onClick={() => onChipClick(chip.id)}
                 aria-pressed={activeChipId === chip.id}
-                className={`shrink-0 whitespace-nowrap border px-3 py-1.5 text-xs transition-colors ${
+                className={`shrink-0 whitespace-nowrap rounded-full border px-3 py-1.5 text-xs transition-colors shadow-[0_1px_2px_rgb(var(--theme-ink)/0.025)] ${
                   activeChipId === chip.id
                     ? 'border-theme-accent bg-theme-accent/10 text-theme-accent-text'
-                    : 'border-theme-border bg-theme-surface text-theme-ink hover:border-theme-accent hover:text-theme-accent-text'
+                    : 'border-theme-ink/10 bg-theme-bg/60 text-theme-ink hover:border-theme-accent/30 hover:bg-theme-accent/10 hover:text-theme-accent-text'
                 }`}
                 aria-label={t('chat.input.chipSuggestion', { label: chip.label })}
               >

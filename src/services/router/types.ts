@@ -89,6 +89,11 @@ export interface RouteInput {
   // agenda…). L'historique complet ne doit alors jamais partir vers
   // Gemini/OpenAI, même si le nouveau texte est aussi vague que « résume ça ».
   hasPrivateHistory: boolean
+  // La conversation a un contexte sentiers (routage trail_tools ou outil
+  // find_trails déjà appelé) : les suivis qui ne matchent aucun trigger texte
+  // (« Viriville » seul, cas terrain 19 juil.) restent chez Claude, qui a les
+  // outils. Optionnel : absent = false (n'affecte que la cascade auto).
+  hasTrailHistory?: boolean
   selectedModel: AIModel
   availability: ProviderAvailability
   plan: PlanContext

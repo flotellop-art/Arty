@@ -119,7 +119,7 @@ export function ReflectionPill({ euOnly }: ReflectionPillProps) {
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-label={t('chat.reflection.label')}
-        className="flex min-h-11 items-center gap-1 border border-theme-border px-2 py-1 text-[10.5px] text-theme-muted transition-colors hover:border-theme-accent hover:text-theme-ink"
+        className="flex min-h-11 items-center gap-1 rounded-full border border-theme-ink/10 bg-theme-bg/60 px-3 py-1 text-[10.5px] text-theme-muted shadow-[0_1px_2px_rgb(var(--theme-ink)/0.025)] transition-colors hover:border-theme-accent/30 hover:bg-theme-accent/10 hover:text-theme-ink"
       >
         <span aria-hidden="true">{current.emoji}</span>
         <span className="font-sans uppercase tracking-kicker text-[9.5px] font-semibold">
