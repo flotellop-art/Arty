@@ -3,9 +3,9 @@
 // une image de 8 Mo réservait ~10,7 M « tokens » (dizaines de dollars avec
 // markup) pour ~1 600 tokens réellement facturés par Anthropic. Bug DÉJÀ LIVE
 // sur le chemin Claude (proxy.ts → beginWalletBilling pour free-avec-crédits).
-// Contrat corrigé : chaque payload média encodé est REMPLACÉ par une borne par
-// nature (image plate, autre média proportionnel plafonné), pessimiste vs la
-// facturation provider réelle (fuite F-A) mais bornée.
+// Contrat corrigé : une image encodée est REMPLACÉE par une borne plate et
+// explicite. Les PDF/audio restent sur le comptage historique du base64 : le
+// chantier vision ne doit pas modifier leur réservation sans compteur dédié.
 import { describe, expect, it } from 'vitest'
 import { estimateInputTokens } from '../../../functions/api/_lib/walletBilling'
 import { estimateReserveMicro } from '../../../functions/api/_lib/creditPricing'
@@ -30,13 +30,13 @@ describe('estimateInputTokens — payloads média bornés (PR-0)', () => {
         },
       ],
     })
-    // Avant le fix : ~10,7 M. Après : texte + floor bloc 16 384 + borne image
-    // 4 096 → quelques dizaines de milliers.
-    expect(est).toBeLessThan(50_000)
-    expect(est).toBeGreaterThan(16_384) // reste pessimiste, jamais gratuit
+    // Avant le fix : ~10,7 M. Après : une borne image unique de 16 384,
+    // indépendante de la shape Anthropic du body.
+    expect(est).toBeLessThan(30_000)
+    expect(est).toBeGreaterThanOrEqual(16_384) // couvre Terra 4K (~12 288)
   })
 
-  it('un PDF Anthropic est borné proportionnellement (octets/3, durci en revue) avec plafond 300 k', () => {
+  it('un PDF Anthropic conserve le comptage historique de son base64', () => {
     const pdfDoc = (bytes: number) => ({
       messages: [
         {
@@ -49,21 +49,17 @@ describe('estimateInputTokens — payloads média bornés (PR-0)', () => {
         },
       ],
     })
-    // 300 Ko → base64 ~410 k chars → /3 ≈ 137 k tokens : couvre un PDF texte
-    // dense de ~100 pages compressées (le cas de sous-réservation ×5-8 que le
-    // diviseur /8 initial laissait passer — audit Opus PR-0).
+    // La réserve PDF n'est pas optimisée dans le chantier image : elle reste
+    // volontairement au moins aussi grande que le payload encodé.
     const smallDense = estimateInputTokens('anthropic', pdfDoc(300 * 1024))
-    expect(smallDense).toBeGreaterThan(120_000)
-    expect(smallDense).toBeLessThan(180_000)
+    expect(smallDense).toBeGreaterThanOrEqual(b64(300 * 1024).length)
 
-    // ≥ ~700 Ko : le plafond 300 k s'applique (100 pages × ~3 k, la borne
-    // réelle Anthropic) + floor bloc + texte — identique pour 1 Mo et 10 Mo.
+    // Aucun plafond artificiel : un document dix fois plus lourd continue à
+    // réserver nettement davantage au lieu de créer une fuite économique.
     const oneMb = estimateInputTokens('anthropic', pdfDoc(1 * MB))
     const tenMb = estimateInputTokens('anthropic', pdfDoc(10 * MB))
-    for (const est of [oneMb, tenMb]) {
-      expect(est).toBeGreaterThan(290_000)
-      expect(est).toBeLessThan(340_000)
-    }
+    expect(oneMb).toBeGreaterThanOrEqual(b64(1 * MB).length)
+    expect(tenMb).toBeGreaterThan(oneMb * 8)
   })
 
   it('une data URL image (Mistral/OpenAI) prend la borne image, pas le poids', () => {
@@ -80,6 +76,35 @@ describe('estimateInputTokens — payloads média bornés (PR-0)', () => {
     expect(est).toBeLessThan(50_000)
   })
 
+  it('une petite image base64 reste une image, pas un média distant à 128 k', () => {
+    const est = estimateInputTokens('anthropic', {
+      messages: [{
+        content: [{
+          type: 'image',
+          source: { type: 'base64', media_type: 'image/jpeg', data: 'AAAA' },
+        }],
+      }],
+    })
+    expect(est).toBeGreaterThanOrEqual(16_384)
+    expect(est).toBeLessThan(30_000)
+  })
+
+  it('quatre images OpenAI couvrent quatre images Terra 4K sans dépendre du poids', () => {
+    const imageBlock = (bytes: number) => ({
+      type: 'image_url',
+      image_url: { url: `data:image/jpeg;base64,${b64(bytes)}` },
+    })
+    const one = estimateInputTokens('openai', {
+      messages: [{ content: [imageBlock(1 * MB)] }],
+    })
+    const four = estimateInputTokens('openai', {
+      messages: [{ content: Array.from({ length: 4 }, () => imageBlock(8 * MB)) }],
+    })
+    expect(one).toBeGreaterThanOrEqual(16_384)
+    expect(four).toBeGreaterThanOrEqual(4 * 16_384)
+    expect(four).toBeLessThan(100_000)
+  })
+
   it('Gemini : inline_data image/* raffine le kind hérité vers la borne image', () => {
     const image = estimateInputTokens('gemini', {
       contents: [
@@ -93,8 +118,8 @@ describe('estimateInputTokens — payloads média bornés (PR-0)', () => {
         { parts: [{ inline_data: { mime_type: 'application/pdf', data: b64(1 * MB) } }] },
       ],
     })
-    // PDF → tier proportionnel, PAS la borne image plate.
-    expect(pdf).toBeGreaterThan(100_000)
+    // PDF → comportement historique, PAS la borne image plate.
+    expect(pdf).toBeGreaterThanOrEqual(b64(1 * MB).length)
   })
 
   it('le texte pur reste compté à la borne octet (non-régression F-A)', () => {
