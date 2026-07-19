@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it, vi, afterEach } from 'vitest'
-import { parseSearchElements, searchTrailsDirect, fetchTrailGeometryDirect } from '../../services/trailsOsm'
+import { parseSearchElements, searchTrailsDirect, fetchTrailGeometriesDirect, fetchTrailGeometryDirect } from '../../services/trailsOsm'
 import { onRequestPost } from '../../../functions/api/geo/trails'
 
 // PARITÉ client ↔ serveur : trailsOsm.ts (pipeline direct, IP utilisateur)
@@ -35,7 +35,7 @@ function stubServerFetch() {
     if (u.includes('/oauth2/v2/userinfo')) {
       return new Response(JSON.stringify({ id: 'g-1', email: EMAIL, verified_email: true }), { status: 200 })
     }
-    if (u.includes('overpass') || u.includes('maps.mail.ru')) {
+    if (u.includes('overpass')) {
       return new Response(JSON.stringify(OVERPASS_BODY), { status: 200 })
     }
     throw new Error('unexpected fetch ' + u)
@@ -58,7 +58,9 @@ describe('parité trailsOsm ↔ endpoint serveur', () => {
     const server = await res.json() as { routes: unknown }
 
     // Côté client : parse direct des mêmes éléments.
-    const client = parseSearchElements(OVERPASS_BODY.elements as never)
+    const client = parseSearchElements(OVERPASS_BODY.elements as never, {
+      center: { lat: 45.313, lon: 5.204 }, radiusM: 8000,
+    })
 
     expect(client.routes).toEqual(server.routes)
     expect(client.nearbyPathCount).toBe(99)
@@ -88,5 +90,71 @@ describe('parité trailsOsm ↔ endpoint serveur', () => {
   it('direct : relation inconnue → not_found définitif (pas de repli inutile)', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ elements: [] }), { status: 200 })))
     expect(await fetchTrailGeometryDirect(999999)).toEqual({ ok: false, status: 'not_found' })
+  })
+
+  it('direct : vérifie un lot de relations dans une seule réponse', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(OVERPASS_BODY), { status: 200 })))
+    const out = await fetchTrailGeometriesDirect([111, 222])
+    expect(out?.ok).toBe(true)
+    if (out?.ok) expect(out.data.map((trail) => trail.id)).toEqual([111, 222])
+  })
+
+  it('direct : applique le rôle backward avant la construction GPX', async () => {
+    const a = { lat: 45.3, lon: 5.2 }
+    const b = { lat: 45.301, lon: 5.2 }
+    const c = { lat: 45.302, lon: 5.2 }
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      elements: [{
+        type: 'relation', id: 77, tags: { route: 'horse' }, members: [
+          { type: 'way', geometry: [a, b] },
+          { type: 'way', role: 'backward', geometry: [c, b] },
+        ],
+      }],
+    }), { status: 200 })))
+    const out = await fetchTrailGeometryDirect(77)
+    expect(out?.ok).toBe(true)
+    if (out?.ok) {
+      expect(out.data.sourceSegments[1]).toEqual([[b.lat, b.lon], [c.lat, c.lon]])
+      expect(out.data.sourceSegmentDirectionLocked).toEqual([false, true])
+    }
+  })
+
+  it('direct : un rôle de section hiking reste réversible et supporté', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      elements: [{
+        type: 'relation', id: 78, tags: { route: 'hiking' }, members: [
+          { type: 'way', role: 'main', geometry: GEOM },
+        ],
+      }],
+    }), { status: 200 })))
+    const out = await fetchTrailGeometryDirect(78)
+    expect(out?.ok).toBe(true)
+    if (out?.ok) {
+      expect(out.data.sourceSegmentDirectionLocked).toEqual([false])
+      expect(out.data.integrity?.unsupportedWayRoles).toEqual([])
+    }
+  })
+
+  it('direct : une branche optionnelle est signalée, jamais fondue dans le circuit canonique', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      elements: [{
+        type: 'relation', id: 79, tags: { route: 'hiking' }, members: [
+          { type: 'way', role: 'alternative', geometry: GEOM },
+        ],
+      }],
+    }), { status: 200 })))
+    const out = await fetchTrailGeometryDirect(79)
+    expect(out?.ok).toBe(true)
+    if (out?.ok) expect(out.data.integrity?.unsupportedWayRoles).toEqual(['alternative'])
+  })
+
+  it('direct : un remark HTTP 200 bascule sur le miroir suivant', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ remark: 'runtime error', elements: [] }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(OVERPASS_BODY), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+    const out = await fetchTrailGeometryDirect(222)
+    expect(out?.ok).toBe(true)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 })

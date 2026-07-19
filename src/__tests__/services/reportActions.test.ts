@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { REPORT_ACTION_NAMES, isAllowedReportAction, parseTrailRouteId } from '../../services/reportActions'
+import { REPORT_ACTION_NAMES, isAllowedReportAction, parseTrailRouteId, parseTrailSnapshotId } from '../../services/reportActions'
 
 // Boutons d'action des messages — allowlist positive (audit 14 juin) + garde
 // d'entrée view_trail. Le data-route-id vient d'un bouton généré par le LLM :
@@ -16,6 +16,18 @@ describe('reportActions — allowlist', () => {
     expect(isAllowedReportAction('save_drive')).toBe(false)
     expect(isAllowedReportAction('anything_else')).toBe(false)
   })
+})
+
+describe('parseTrailSnapshotId — référence opaque locale', () => {
+  it('accepte et normalise un UUID v4', () => {
+    expect(parseTrailSnapshotId('1F6E8D42-73C4-4F01-9D58-2A6F8C35E920'))
+      .toBe('1f6e8d42-73c4-4f01-9d58-2a6f8c35e920')
+  })
+
+  it.each(['18675656', '../trail', '1f6e8d42-73c4-3f01-9d58-2a6f8c35e920', '1f6e8d42-73c4-4f01-7d58-2a6f8c35e920', ''])
+    ('rejette une référence non locale : %s', (raw) => {
+      expect(parseTrailSnapshotId(raw)).toBeNull()
+    })
 })
 
 describe('parseTrailRouteId — validation stricte (classe BUG 32)', () => {

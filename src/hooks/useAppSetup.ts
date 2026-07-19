@@ -12,7 +12,8 @@ import { createToolExecutor } from '../services/toolExecutor'
 import { getStyle, setStyle, getStylePrompt, STYLE_OPTIONS, type ResponseStyle } from '../services/responseStyles'
 import type { Question } from '../components/chat/QuestionModal'
 import { isPublicGoogleOAuthProfileEnabled } from '../services/publicGoogleOAuthProfile'
-import { isAllowedReportAction, parseTrailRouteId } from '../services/reportActions'
+import { isAllowedReportAction, parseTrailRouteId, parseTrailSnapshotId } from '../services/reportActions'
+import { toast } from '../services/toast'
 import { useNavigate } from 'react-router-dom'
 
 interface ConversationHook {
@@ -200,11 +201,12 @@ export function useAppSetup(conversation: ConversationHook) {
           break
         }
         case 'view_trail': {
-          // Le bouton ne transporte qu'un id de relation OSM (jamais de
-          // coordonnées ni de géométrie) — validé strictement avant de
-          // naviguer (BUG 32 : id issu d'un contenu généré par le LLM).
-          const routeId = parseTrailRouteId(params.routeId)
-          if (routeId !== null) navigate(`/trail/${routeId}`)
+          // Le bouton ne transporte qu'une référence locale opaque. La page
+          // exige ensuite que le snapshot existe réellement dans IndexedDB :
+          // un UUID inventé ou injecté par le LLM reste inerte.
+          const trailId = parseTrailSnapshotId(params.trailId)
+          if (trailId !== null) navigate(`/trail/${trailId}`)
+          else if (parseTrailRouteId(params.routeId) !== null) toast(t('trailPage.legacyButton'), 'info')
           break
         }
         default:

@@ -6,6 +6,7 @@ import {
   planSubjectToOwnerApiCap,
 } from '../_lib/freeQuota'
 import { simplifySegments } from '../_lib/simplify'
+import { segmentsKmWithinRadius } from '../_lib/geoDistance'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Recherche de sentiers OpenStreetMap + géométrie pour export GPX.
@@ -34,17 +35,16 @@ import { simplifySegments } from '../_lib/simplify'
 
 const USER_AGENT = 'Arty/1.0 (+https://tryarty.com)'
 const OVERPASS_INSTANCES = [
-  // Ordre : UE d'abord (la requête contient des coords proches du domicile de
-  // l'utilisateur — RÈGLE 5), mail.ru en dernier recours. 3 instances : le
-  // premier test terrain (19 juil.) a montré que les instances traitent
-  // différemment les IP egress Cloudflare partagées — multiplier les chances.
+  // UE uniquement : la requête peut contenir des coordonnées proches du
+  // domicile. On ne les transfère pas à un miroir hors UE en dernier recours.
   'https://overpass-api.de/api/interpreter',
   'https://overpass.openstreetmap.fr/api/interpreter',
-  'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
 ]
 const MAX_UPSTREAM_BYTES = 5 * 1024 * 1024
 const MAX_ROUTES = 12
+const MAX_GEOMETRY_BATCH = 3
 const MAX_GEOMETRY_POINTS = 4000
+const MAX_SAFE_DISPLAY_POINTS = 20_000
 const CACHE_TTL_SECONDS = 86400
 
 // La valeur regex vient de cette map FIXE, jamais du texte utilisateur.
@@ -56,13 +56,18 @@ const KIND_FILTERS: Record<string, string> = {
 }
 
 interface OverpassGeomPoint { lat: number; lon: number }
-interface OverpassMember { type: string; role?: string; geometry?: OverpassGeomPoint[] }
+interface OverpassMember { type: string; role?: string; geometry?: Array<OverpassGeomPoint | null> }
 interface OverpassElement {
   type: string
   id: number
   tags?: Record<string, string>
   members?: OverpassMember[]
 }
+interface OverpassPayload { elements?: OverpassElement[]; remark?: string }
+
+// Les branches optionnelles sont signalées comme non supportées : les inclure
+// toutes donnerait une distance/trace faussement canonique.
+const REVERSIBLE_WAY_ROLES = new Set(['', 'main'])
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   const allowed = await checkAllowedUserPeek(request, env)
@@ -75,11 +80,14 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     return notFoundResponse()
   }
 
-  const action = body.action === 'geometry' ? 'geometry' : 'search'
+  const action = body.action === 'geometry' || body.action === 'geometries' ? body.action : 'search'
 
   try {
     if (action === 'geometry') {
       return await handleGeometry(env, allowed, body)
+    }
+    if (action === 'geometries') {
+      return await handleGeometries(env, allowed, body)
     }
     return await handleSearch(env, allowed, body)
   } catch (err) {
@@ -105,13 +113,19 @@ async function handleSearch(env: Env, allowed: AllowedUser, body: Record<string,
     return Response.json({ error: 'Lieu introuvable' }, { status: 404 })
   }
 
-  // Clé de cache : coords arrondies à ~110 m — deux demandes voisines dans le
-  // même village partagent l'entrée, et la clé ne peut pas exploser en variantes.
-  const cacheKey = cacheRequest(
-    `search/${center.lat.toFixed(3)}/${center.lon.toFixed(3)}/${radiusKm}/${kind}`
-  )
+  // Clé de cache au mètre près : deux domiciles voisins ne doivent pas recevoir
+  // les distances locales calculées depuis le centre de l'autre.
+  const searchKey = await cacheDigest(`${center.lat.toFixed(5)}/${center.lon.toFixed(5)}/${radiusKm}/${kind}`)
+  const cacheKey = cacheRequest(`search-v4/${searchKey}`)
   const cached = await cacheGet(cacheKey)
-  if (cached) return cached
+  if (cached) {
+    try {
+      // Le centre exact, qui peut être le domicile, n'est jamais stocké dans
+      // la valeur de cache partagée.
+      const publicResult = await cached.json() as Record<string, unknown>
+      return Response.json({ ...publicResult, center })
+    } catch { /* cache ancien/corrompu → requête fraîche */ }
+  }
 
   const capResponse = await enforceQuota(env, allowed)
   if (capResponse) return capResponse
@@ -158,8 +172,8 @@ async function handleSearch(env: Env, allowed: AllowedUser, body: Record<string,
     }
     if (el.type !== 'relation') continue
     const tags = el.tags ?? {}
-    const segments = memberSegments(el)
-    const km = segments.reduce((sum, seg) => sum + segmentKm(seg), 0)
+    const { segments } = memberSegments(el)
+    const km = segmentsKmWithinRadius(segments, center, radiusM)
     if (km < 0.05) continue // relation sans géométrie exploitable dans la zone
     const network = tags.network ?? null
     routes.push({
@@ -184,16 +198,17 @@ async function handleSearch(env: Env, allowed: AllowedUser, body: Record<string,
     r.kind === 'horse' ? 0 : r.longDistance ? 2 : 1
   routes.sort((a, b) => groupOf(a) - groupOf(b) || a.distanceKm - b.distanceKm)
 
-  const response = Response.json({
-    center,
+  const publicResult = {
     radiusKm,
     kind,
     routes: routes.slice(0, MAX_ROUTES),
     totalFound: routes.length,
     nearbyPathCount,
-  })
-  await cachePut(cacheKey, response.clone())
-  return response
+  }
+  // Cache partagé : uniquement les données OSM publiques. Le centre précis et
+  // son libellé restent dans la réponse privée construite pour cette requête.
+  await cachePut(cacheKey, Response.json(publicResult))
+  return Response.json({ ...publicResult, center })
 }
 
 // ── Géométrie (export GPX) ───────────────────────────────────────────────────
@@ -204,7 +219,9 @@ async function handleGeometry(env: Env, allowed: AllowedUser, body: Record<strin
     return Response.json({ error: 'Paramètre routeId invalide' }, { status: 400 })
   }
 
-  const cacheKey = cacheRequest(`geometry/${routeId}`)
+  // v2 sépare géométrie source (GPX/distance) et géométrie d'affichage.
+  // Versionner la clé évite de resservir pendant 24 h l'ancien contrat.
+  const cacheKey = cacheRequest(`geometry-v3/${routeId}`)
   const cached = await cacheGet(cacheKey)
   if (cached) return cached
 
@@ -217,29 +234,92 @@ async function handleGeometry(env: Env, allowed: AllowedUser, body: Record<strin
     return Response.json({ error: 'Circuit introuvable' }, { status: 404 })
   }
 
-  const tags = rel.tags ?? {}
-  const sourceSegments = memberSegments(rel)
-  // Longueur TOUJOURS calculée sur la géométrie source — jamais sur la version
-  // simplifiée (sinon la distance affichée et le GPX mentent sur le terrain).
-  const sourcePointCount = sourceSegments.reduce((n, s) => n + s.length, 0)
-  const distanceKm = Math.round(sourceSegments.reduce((sum, s) => sum + segmentKm(s), 0) * 10) / 10
-  // Douglas-Peucker par segment (extrémités et segments disjoints préservés),
-  // jamais de troncature — cf. functions/api/_lib/simplify.ts.
-  const { segments, toleranceM } = simplifySegments(sourceSegments, MAX_GEOMETRY_POINTS)
-  if (segments.length === 0) {
+  const geometry = geometryFromRelation(rel)
+  if (geometry.sourceSegments.length === 0) {
     return Response.json({ error: 'Circuit introuvable' }, { status: 404 })
   }
 
-  const response = Response.json({
+  const response = Response.json(geometry)
+  await cachePut(cacheKey, response.clone())
+  return response
+}
+
+function geometryFromRelation(rel: OverpassElement) {
+  const tags = rel.tags ?? {}
+  const { segments: sourceSegments, directionLocked: sourceSegmentDirectionLocked } = memberSegments(rel)
+  // Longueur TOUJOURS calculée sur la géométrie source — jamais sur la version
+  // simplifiée (sinon la distance affichée et le GPX mentent sur le terrain).
+  const sourcePointCount = sourceSegments.reduce((n, s) => n + s.length, 0)
+  const exactDistanceKm = sourceSegments.reduce((sum, s) => sum + segmentKm(s), 0)
+  const distanceMeters = Math.round(exactDistanceKm * 1000)
+  const distanceKm = Math.round(exactDistanceKm * 10) / 10
+  // Douglas-Peucker par segment, uniquement pour l'affichage et avec une
+  // erreur maximale de 5 m. Le GPX reçoit toujours `sourceSegments`.
+  const { segments: displaySegments, toleranceM } = simplifySegments(sourceSegments, MAX_GEOMETRY_POINTS, 5)
+  const displayPointCount = displaySegments.reduce((n, s) => n + s.length, 0)
+  return {
     id: rel.id,
     name: routeLabel(tags, rel.id),
     kind: tags.route ?? 'hiking',
     distanceKm,
-    segments,
-    simplified: { toleranceM, sourcePointCount },
-  })
-  await cachePut(cacheKey, response.clone())
-  return response
+    distanceMeters,
+    sourceSegments,
+    sourceSegmentDirectionLocked,
+    displaySegments,
+    simplified: { toleranceM, sourcePointCount, displayPointCount },
+    integrity: {
+      hasNestedRelations: (rel.members ?? []).some((member) => member.type === 'relation'),
+      unsupportedWayRoles: [...new Set(
+        (rel.members ?? [])
+          .filter((member) => member.type === 'way' && !REVERSIBLE_WAY_ROLES.has(member.role ?? '') && member.role !== 'forward' && member.role !== 'backward')
+          .map((member) => member.role as string)
+      )],
+      displaySafe: displayPointCount <= MAX_SAFE_DISPLAY_POINTS,
+    },
+    provenance: { provider: 'OpenStreetMap' as const, relationId: rel.id, fetchedAt: Date.now() },
+  }
+}
+
+async function handleGeometries(env: Env, allowed: AllowedUser, body: Record<string, unknown>): Promise<Response> {
+  const rawIds = Array.isArray(body.routeIds) ? body.routeIds : []
+  const routeIds = [...new Set(rawIds.map(Number))]
+  if (
+    routeIds.length === 0 || routeIds.length > MAX_GEOMETRY_BATCH ||
+    routeIds.some((id) => !Number.isSafeInteger(id) || id <= 0)
+  ) {
+    return Response.json({ error: 'Paramètre routeIds invalide' }, { status: 400 })
+  }
+
+  const byId = new Map<number, ReturnType<typeof geometryFromRelation>>()
+  for (const routeId of routeIds) {
+    const cached = await cacheGet(cacheRequest(`geometry-v3/${routeId}`))
+    if (!cached) continue
+    try {
+      const geometry = await cached.json() as ReturnType<typeof geometryFromRelation>
+      if (geometry.id === routeId && Array.isArray(geometry.sourceSegments)) byId.set(routeId, geometry)
+    } catch { /* entrée illisible → recharger cet id */ }
+  }
+
+  const missingIds = routeIds.filter((routeId) => !byId.has(routeId))
+  if (missingIds.length > 0) {
+    const capResponse = await enforceQuota(env, allowed)
+    if (capResponse) return capResponse
+    const data = await queryOverpass(`[out:json][timeout:8];relation(id:${missingIds.join(',')});out geom;`)
+    for (const element of data.elements ?? []) {
+      if (element.type !== 'relation' || !missingIds.includes(element.id)) continue
+      const geometry = geometryFromRelation(element)
+      if (geometry.sourceSegments.length === 0) continue
+      byId.set(element.id, geometry)
+      await cachePut(cacheRequest(`geometry-v3/${element.id}`), Response.json(geometry))
+    }
+  }
+  const trails = routeIds
+    .map((id) => byId.get(id))
+    .filter((trail): trail is NonNullable<typeof trail> => !!trail && trail.sourceSegments.length > 0)
+  if (trails.length === 0) {
+    return Response.json({ error: 'Circuit introuvable' }, { status: 404 })
+  }
+  return Response.json({ trails })
 }
 
 // ── Géocodage ────────────────────────────────────────────────────────────────
@@ -262,7 +342,7 @@ async function resolveCenter(
 
   // Cache du géocodage lui-même : évite de re-frapper les géocodeurs pour le
   // même lieu, et absorbe la contrainte « 1 req/s » de Nominatim.
-  const cacheKey = cacheRequest(`geocode/${encodeURIComponent(location.toLowerCase())}`)
+  const cacheKey = cacheRequest(`geocode-v2/${await cacheDigest(location.toLowerCase())}`)
   const cached = await cacheGet(cacheKey)
   if (cached) {
     try {
@@ -276,7 +356,7 @@ async function resolveCenter(
   // pour l'appel programmatique, couvre communes ET adresses françaises
   // (« 191 chemin des bouviers Viriville ») et gère « Viriville Isère » —
   // qu'open-meteo ne résout pas. Timeouts 5 s : la chaîne complète doit tenir
-  // sous le budget client (45 s) avec les 3 instances Overpass derrière.
+  // sous le budget client avec les deux instances Overpass derrière.
   const center =
     (await geocodeBanFrance(location)) ??
     (await geocodeOpenMeteo(location)) ??
@@ -351,7 +431,7 @@ async function geocodeNominatim(location: string): Promise<{ lat: number; lon: n
 
 // ── Overpass ─────────────────────────────────────────────────────────────────
 
-async function queryOverpass(ql: string): Promise<{ elements?: OverpassElement[] }> {
+async function queryOverpass(ql: string): Promise<OverpassPayload> {
   let lastError: unknown = null
   for (const instance of OVERPASS_INSTANCES) {
     try {
@@ -360,8 +440,8 @@ async function queryOverpass(ql: string): Promise<{ elements?: OverpassElement[]
         headers: { 'User-Agent': USER_AGENT, 'Content-Type': 'application/x-www-form-urlencoded' },
         body: `data=${encodeURIComponent(ql)}`,
         redirect: 'error',
-        // 10 s × 3 instances + géocodage 3 × 5 s = 45 s pile — le timeout
-        // client (trailsClient) est calé à 45 s pour couvrir ce pire cas.
+        // 10 s × 2 instances ; le timeout client garde de la marge pour les
+        // géocodeurs exécutés avant la recherche.
         signal: AbortSignal.timeout(10_000),
       })
       if (!res.ok) {
@@ -374,7 +454,12 @@ async function queryOverpass(ql: string): Promise<{ elements?: OverpassElement[]
         continue
       }
       const text = await readBounded(res, MAX_UPSTREAM_BYTES)
-      return JSON.parse(text) as { elements?: OverpassElement[] }
+      const payload = JSON.parse(text) as OverpassPayload
+      if (typeof payload.remark === 'string' && payload.remark.trim()) {
+        lastError = new Error('overpass runtime error')
+        continue
+      }
+      return payload
     } catch (err) {
       lastError = err
     }
@@ -410,16 +495,45 @@ async function readBounded(res: Response, maxBytes: number): Promise<string> {
 
 // ── Helpers géométrie / divers ───────────────────────────────────────────────
 
-function memberSegments(rel: OverpassElement): Array<Array<[number, number]>> {
+function memberSegments(rel: OverpassElement): {
+  segments: Array<Array<[number, number]>>
+  directionLocked: boolean[]
+} {
   const segments: Array<Array<[number, number]>> = []
+  const directionLocked: boolean[] = []
   for (const member of rel.members ?? []) {
     if (member.type !== 'way' || !Array.isArray(member.geometry)) continue
-    const points = member.geometry
-      .filter((p) => Number.isFinite(p?.lat) && Number.isFinite(p?.lon))
-      .map((p) => [p.lat, p.lon] as [number, number])
-    if (points.length >= 2) segments.push(points)
+    const memberParts: Array<Array<[number, number]>> = []
+    let current: Array<[number, number]> = []
+    const flush = () => {
+      if (current.length >= 2) memberParts.push(current)
+      current = []
+    }
+    for (const point of member.geometry) {
+      if (!point || !Number.isFinite(point.lat) || !Number.isFinite(point.lon)) {
+        flush()
+        continue
+      }
+      current.push([point.lat, point.lon])
+    }
+    flush()
+    if (member.role === 'backward') {
+      memberParts.reverse()
+      for (const part of memberParts) part.reverse()
+    }
+    for (const part of memberParts) {
+      segments.push(part)
+      directionLocked.push(member.role === 'forward' || member.role === 'backward')
+    }
   }
-  return segments
+  return { segments, directionLocked }
+}
+
+/** Cache Cloudflare opaque : coordonnées et adresses ne figurent jamais en
+ * clair dans l'URL interne de cache ni dans les journaux associés. */
+async function cacheDigest(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value))
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('')
 }
 
 function segmentKm(points: Array<[number, number]>): number {

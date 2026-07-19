@@ -4,7 +4,9 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
-const source = readFileSync(resolve(process.cwd(), 'functions/api/ai/openai-proxy.ts'), 'utf8')
+// Normalise CRLF : ce garde structurel recherchait un motif multi-ligne LF et
+// échouait uniquement sur Windows alors que le même SHA passait en CI Linux.
+const source = readFileSync(resolve(process.cwd(), 'functions/api/ai/openai-proxy.ts'), 'utf8').replace(/\r\n/g, '\n')
 const unchangedPdfProxies = ['proxy.ts', 'gemini-proxy.ts', 'mistral-proxy.ts'].map((name) =>
   readFileSync(resolve(process.cwd(), 'functions/api/ai', name), 'utf8'),
 )

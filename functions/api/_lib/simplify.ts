@@ -5,9 +5,11 @@
 // doit être une SIMPLIFICATION topologique, jamais une troncature ni une
 // décimation aveugle — sinon la trace affichée et le GPX divergent du terrain.
 // Douglas-Peucker par segment : extrémités toujours préservées, segments
-// disjoints jamais fusionnés ni supprimés, tolérance métrique escaladée
-// jusqu'à passer sous le plafond. La longueur affichée reste calculée sur la
-// géométrie SOURCE par l'appelant (avant simplification).
+// disjoints jamais fusionnés ni supprimés. La tolérance métrique est bornée :
+// si le budget de points ne peut pas être atteint sans déformer le sentier,
+// on conserve davantage de points plutôt que d'augmenter silencieusement
+// l'erreur jusqu'à plusieurs centaines de mètres. La longueur affichée reste
+// calculée sur la géométrie SOURCE par l'appelant (avant simplification).
 // ─────────────────────────────────────────────────────────────────────────────
 
 export type SimplifyPoint = [number, number] // [lat, lon]
@@ -67,24 +69,29 @@ export function douglasPeucker(points: SimplifyPoint[], toleranceM: number): Sim
 }
 
 /**
- * Simplifie un ensemble de segments pour tenir sous `maxPoints` au total.
- * Tolérance de départ 5 m, doublée jusqu'à passer sous le plafond (bornée à
- * ~640 m — au-delà, on accepte le dépassement plutôt que détruire la forme).
+ * Simplifie un ensemble de segments en visant `maxPoints` au total, sans
+ * jamais dépasser `maxToleranceM`. Le plafond de points est un objectif de
+ * performance, pas une autorisation de déformer le terrain.
  */
 export function simplifySegments(
   segments: SimplifyPoint[][],
-  maxPoints: number
+  maxPoints: number,
+  maxToleranceM = 5
 ): { segments: SimplifyPoint[][]; toleranceM: number } {
   const total = segments.reduce((n, s) => n + s.length, 0)
   if (total <= maxPoints) return { segments, toleranceM: 0 }
 
-  let toleranceM = 5
+  const toleranceLimit = Math.max(0, maxToleranceM)
+  if (toleranceLimit === 0) return { segments, toleranceM: 0 }
+
+  let toleranceM = Math.min(1, toleranceLimit)
   let result = segments
-  for (let i = 0; i < 8; i++) {
+  while (true) {
     result = segments.map((seg) => douglasPeucker(seg, toleranceM))
     const count = result.reduce((n, s) => n + s.length, 0)
-    if (count <= maxPoints) return { segments: result, toleranceM }
-    toleranceM *= 2
+    if (count <= maxPoints || toleranceM >= toleranceLimit) {
+      return { segments: result, toleranceM }
+    }
+    toleranceM = Math.min(toleranceLimit, toleranceM * 2)
   }
-  return { segments: result, toleranceM }
 }

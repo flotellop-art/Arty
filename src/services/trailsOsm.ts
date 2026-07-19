@@ -1,5 +1,6 @@
 import type { TrailGeometry, TrailSearchResult, TrailSummary } from './trailsClient'
 import { simplifySegments } from '../../functions/api/_lib/simplify'
+import { segmentsKmWithinRadius } from '../../functions/api/_lib/geoDistance'
 import { polylineKm, type LatLon } from './gpx'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -26,10 +27,11 @@ import { polylineKm, type LatLon } from './gpx'
 const OVERPASS_INSTANCES = [
   'https://overpass-api.de/api/interpreter',
   'https://overpass.openstreetmap.fr/api/interpreter',
-  'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
 ]
 const MAX_ROUTES = 12
 const MAX_GEOMETRY_POINTS = 4000
+const MAX_SAFE_DISPLAY_POINTS = 20_000
+const MAX_UPSTREAM_BYTES = 5 * 1024 * 1024
 
 const KIND_FILTERS: Record<string, string> = {
   horse: '^horse$',
@@ -39,13 +41,19 @@ const KIND_FILTERS: Record<string, string> = {
 }
 
 interface OverpassGeomPoint { lat: number; lon: number }
-interface OverpassMember { type: string; geometry?: OverpassGeomPoint[] }
+interface OverpassMember { type: string; role?: string; geometry?: Array<OverpassGeomPoint | null> }
 interface OverpassElement {
   type: string
   id: number
   tags?: Record<string, string>
   members?: OverpassMember[]
 }
+interface OverpassPayload { elements?: OverpassElement[]; remark?: string }
+
+// La v1 ne choisit pas arbitrairement entre branches optionnelles : les rôles
+// alternative/excursion/approach/connection font rejeter la relation par la
+// garde d'intégrité, sinon leur longueur gonflerait le circuit canonique.
+const REVERSIBLE_WAY_ROLES = new Set(['', 'main'])
 
 /** null = infra injoignable (→ la façade tentera le serveur) ;
  *  'not_found' = réponse définitive (géocodeurs joignables, lieu inconnu). */
@@ -137,24 +145,69 @@ async function geocodeDirect(location: string): Promise<{ center: Center | null;
 
 // ── Overpass ─────────────────────────────────────────────────────────────────
 
-async function queryOverpassDirect(ql: string): Promise<{ elements?: OverpassElement[] } | null> {
+async function readBounded(res: Response, maxBytes: number): Promise<string> {
+  const reader = res.body?.getReader()
+  if (!reader) {
+    const raw = await res.text()
+    if (new TextEncoder().encode(raw).byteLength > maxBytes) throw new Error('overpass response too large')
+    return raw
+  }
+  const chunks: Uint8Array[] = []
+  let total = 0
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    total += value.byteLength
+    if (total > maxBytes) {
+      await reader.cancel()
+      throw new Error('overpass response too large')
+    }
+    chunks.push(value)
+  }
+  const merged = new Uint8Array(total)
+  let offset = 0
+  for (const chunk of chunks) {
+    merged.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  return new TextDecoder().decode(merged)
+}
+
+async function queryOverpassDirect(ql: string, timeoutMs = 5000): Promise<OverpassPayload | null> {
+  const deadline = Date.now() + timeoutMs
   for (const instance of OVERPASS_INSTANCES) {
+    const remainingMs = deadline - Date.now()
+    if (remainingMs <= 0) break
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(new DOMException('Timeout', 'AbortError')), remainingMs)
     try {
-      const res = await fetchWithTimeout(instance, {
+      const res = await fetch(instance, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: `data=${encodeURIComponent(ql)}`,
-      }, 5000)
+        signal: controller.signal,
+      })
       if (!res.ok) continue
-      return (await res.json()) as { elements?: OverpassElement[] }
+      const declaredSize = Number(res.headers.get('content-length') ?? 0)
+      if (declaredSize > MAX_UPSTREAM_BYTES) continue
+      const raw = await readBounded(res, MAX_UPSTREAM_BYTES)
+      const payload = JSON.parse(raw) as OverpassPayload
+      // Overpass encode certaines erreurs d'exécution dans un JSON HTTP 200.
+      // Ce n'est jamais un vrai « zéro résultat » : essayer le miroir suivant.
+      if (typeof payload.remark === 'string' && payload.remark.trim()) continue
+      return payload
     } catch { /* instance suivante */ }
+    finally { clearTimeout(timer) }
   }
   return null
 }
 
 // ── Parse partagé recherche (miroir du serveur — test de parité) ─────────────
 
-export function parseSearchElements(elements: OverpassElement[]): {
+export function parseSearchElements(
+  elements: OverpassElement[],
+  area?: { center: { lat: number; lon: number }; radiusM: number }
+): {
   routes: TrailSummary[]
   nearbyPathCount: number
 } {
@@ -167,8 +220,10 @@ export function parseSearchElements(elements: OverpassElement[]): {
     }
     if (el.type !== 'relation') continue
     const tags = el.tags ?? {}
-    const segments = memberSegments(el)
-    const km = segments.reduce((sum, seg) => sum + polylineKm(seg), 0)
+    const { segments } = memberSegments(el)
+    const km = area
+      ? segmentsKmWithinRadius(segments, area.center, area.radiusM)
+      : segments.reduce((sum, seg) => sum + polylineKm(seg), 0)
     if (km < 0.05) continue
     const network = tags.network ?? null
     routes.push({
@@ -189,16 +244,38 @@ export function parseSearchElements(elements: OverpassElement[]): {
   return { routes, nearbyPathCount }
 }
 
-function memberSegments(rel: OverpassElement): LatLon[][] {
+function memberSegments(rel: OverpassElement): { segments: LatLon[][]; directionLocked: boolean[] } {
   const segments: LatLon[][] = []
+  const directionLocked: boolean[] = []
   for (const member of rel.members ?? []) {
     if (member.type !== 'way' || !Array.isArray(member.geometry)) continue
-    const points = member.geometry
-      .filter((p) => Number.isFinite(p?.lat) && Number.isFinite(p?.lon))
-      .map((p) => [p.lat, p.lon] as LatLon)
-    if (points.length >= 2) segments.push(points)
+    const memberParts: LatLon[][] = []
+    let current: LatLon[] = []
+    const flush = () => {
+      if (current.length >= 2) memberParts.push(current)
+      current = []
+    }
+    for (const point of member.geometry) {
+      // `out geom(bbox)` représente les portions hors cadre par des valeurs
+      // absentes/nulles. Les filtrer puis recoller les points restants créait
+      // une diagonale fictive lorsqu'un way sortait puis rentrait dans la zone.
+      if (!point || !Number.isFinite(point.lat) || !Number.isFinite(point.lon)) {
+        flush()
+        continue
+      }
+      current.push([point.lat, point.lon])
+    }
+    flush()
+    if (member.role === 'backward') {
+      memberParts.reverse()
+      for (const part of memberParts) part.reverse()
+    }
+    for (const part of memberParts) {
+      segments.push(part)
+      directionLocked.push(member.role === 'forward' || member.role === 'backward')
+    }
   }
-  return segments
+  return { segments, directionLocked }
 }
 
 function routeLabel(tags: Record<string, string>, id: number): string {
@@ -252,7 +329,10 @@ export async function searchTrailsDirect(params: {
   const data = await queryOverpassDirect(ql)
   if (!data) return null
 
-  const { routes, nearbyPathCount } = parseSearchElements(data.elements ?? [])
+  const { routes, nearbyPathCount } = parseSearchElements(
+    data.elements ?? [],
+    { center, radiusM }
+  )
   return {
     ok: true,
     data: {
@@ -266,31 +346,73 @@ export async function searchTrailsDirect(params: {
   }
 }
 
-export async function fetchTrailGeometryDirect(routeId: number): Promise<DirectOutcome<TrailGeometry>> {
+export async function fetchTrailGeometryDirect(
+  routeId: number,
+  timeoutMs = 5000
+): Promise<DirectOutcome<TrailGeometry>> {
   if (!Number.isInteger(routeId) || routeId <= 0) return { ok: false, status: 'not_found' }
 
-  const data = await queryOverpassDirect(`[out:json][timeout:8];relation(id:${routeId});out geom;`)
+  const data = await queryOverpassDirect(`[out:json][timeout:8];relation(id:${routeId});out geom;`, timeoutMs)
   if (!data) return null
 
   const rel = (data.elements ?? []).find((e) => e.type === 'relation' && e.id === routeId)
   if (!rel) return { ok: false, status: 'not_found' }
 
-  const tags = rel.tags ?? {}
-  const sourceSegments = memberSegments(rel)
-  const sourcePointCount = sourceSegments.reduce((n, s) => n + s.length, 0)
-  const distanceKm = Math.round(sourceSegments.reduce((sum, s) => sum + polylineKm(s), 0) * 10) / 10
-  const { segments, toleranceM } = simplifySegments(sourceSegments, MAX_GEOMETRY_POINTS)
-  if (segments.length === 0) return { ok: false, status: 'not_found' }
+  const geometry = geometryFromRelation(rel)
+  return geometry.sourceSegments.length > 0
+    ? { ok: true, data: geometry }
+    : { ok: false, status: 'not_found' }
+}
 
+function geometryFromRelation(rel: OverpassElement): TrailGeometry {
+  const tags = rel.tags ?? {}
+  const { segments: sourceSegments, directionLocked: sourceSegmentDirectionLocked } = memberSegments(rel)
+  const sourcePointCount = sourceSegments.reduce((n, s) => n + s.length, 0)
+  const exactDistanceKm = sourceSegments.reduce((sum, s) => sum + polylineKm(s), 0)
+  const distanceMeters = Math.round(exactDistanceKm * 1000)
+  const distanceKm = Math.round(exactDistanceKm * 10) / 10
+  const { segments: displaySegments, toleranceM } = simplifySegments(sourceSegments, MAX_GEOMETRY_POINTS, 5)
+  const displayPointCount = displaySegments.reduce((n, s) => n + s.length, 0)
   return {
-    ok: true,
-    data: {
-      id: rel.id,
-      name: routeLabel(tags, rel.id),
-      kind: tags.route ?? 'hiking',
-      distanceKm,
-      segments,
-      simplified: { toleranceM, sourcePointCount },
+    id: rel.id,
+    name: routeLabel(tags, rel.id),
+    kind: tags.route ?? 'hiking',
+    distanceKm,
+    distanceMeters,
+    sourceSegments,
+    sourceSegmentDirectionLocked,
+    displaySegments,
+    simplified: { toleranceM, sourcePointCount, displayPointCount },
+    integrity: {
+      hasNestedRelations: (rel.members ?? []).some((member) => member.type === 'relation'),
+      unsupportedWayRoles: [...new Set(
+        (rel.members ?? [])
+          .filter((member) => member.type === 'way' && !REVERSIBLE_WAY_ROLES.has(member.role ?? '') && member.role !== 'forward' && member.role !== 'backward')
+          .map((member) => member.role as string)
+      )],
+      displaySafe: displayPointCount <= MAX_SAFE_DISPLAY_POINTS,
     },
+    provenance: { provider: 'OpenStreetMap', relationId: rel.id, fetchedAt: Date.now() },
   }
+}
+
+/** Vérifie plusieurs relations en une seule requête Overpass. Cela évite de
+ * transformer une recherche de 12 candidats en 12 appels communautaires. */
+export async function fetchTrailGeometriesDirect(
+  routeIds: number[],
+  timeoutMs = 10_000
+): Promise<DirectOutcome<TrailGeometry[]>> {
+  const ids = [...new Set(routeIds)]
+  if (ids.length === 0 || ids.length > 3 || ids.some((id) => !Number.isSafeInteger(id) || id <= 0)) {
+    return { ok: false, status: 'not_found' }
+  }
+  const data = await queryOverpassDirect(`[out:json][timeout:8];relation(id:${ids.join(',')});out geom;`, timeoutMs)
+  if (!data) return null
+  const byId = new Map(
+    (data.elements ?? [])
+      .filter((element) => element.type === 'relation' && ids.includes(element.id))
+      .map((element) => [element.id, geometryFromRelation(element)] as const)
+  )
+  const trails = ids.map((id) => byId.get(id)).filter((trail): trail is TrailGeometry => !!trail && trail.sourceSegments.length > 0)
+  return trails.length > 0 ? { ok: true, data: trails } : { ok: false, status: 'not_found' }
 }

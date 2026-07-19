@@ -56,7 +56,7 @@ const ComparatorScreen = lazy(() => import('./screens/compare').then((m) => ({ d
 // primo-visiteurs web ; les utilisateurs connectés ne la téléchargent jamais.
 const LandingScreen = lazy(() => import('./screens/landing').then((m) => ({ default: m.LandingScreen })))
 // Visualiseur de sentiers — chunk séparé : Leaflet (+CSS) ne rejoint jamais
-// le bundle principal, il n'est chargé qu'à l'ouverture de /trail/:routeId.
+// le bundle principal, il n'est chargé qu'à l'ouverture de /trail/:trailId.
 const TrailScreen = lazy(() => import('./screens/trail').then((m) => ({ default: m.TrailScreen })))
 
 // Fallback pendant le chargement des chunks lazy — petit splash neutre,
@@ -573,7 +573,7 @@ function AppContent({
           element={<ReportPage />}
         />
         <Route
-          path="/trail/:routeId"
+          path="/trail/:trailId"
           element={
             <Suspense fallback={<LazyFallback />}>
               <TrailScreen />

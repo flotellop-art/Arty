@@ -43,12 +43,13 @@ describe('simplifySegments', () => {
     expect(toleranceM).toBe(0)
   })
 
-  it('passe sous le plafond en préservant chaque segment et ses extrémités', () => {
+  it('borne la déformation à 5 m, même si le budget de points ne peut être atteint', () => {
     const segA = line(6000, 5e-5) // zigzag
     const segB = line(6000, 5e-5)
-    const { segments: out } = simplifySegments([segA, segB], 4000)
+    const { segments: out, toleranceM } = simplifySegments([segA, segB], 4000)
     expect(out).toHaveLength(2) // jamais de fusion ni de suppression de segment
-    expect(out.reduce((n, s) => n + s.length, 0)).toBeLessThanOrEqual(4000)
+    expect(toleranceM).toBeLessThanOrEqual(5)
+    expect(out.reduce((n, s) => n + s.length, 0)).toBeGreaterThan(0)
     const outA = out[0]!
     const outB = out[1]!
     expect(outA[0]).toEqual(segA[0])

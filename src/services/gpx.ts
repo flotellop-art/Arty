@@ -3,15 +3,17 @@
 //
 // Entrée : les segments géométriques d'une relation OSM tels que renvoyés par
 // /api/geo/trails (un tableau de ways membres, chacun une liste de [lat, lon]).
-// Les membres d'une relation OSM ne sont PAS garantis ordonnés ni orientés :
-// chainSegments les raccorde par un glouton d'extrémités (avec inversion si
-// nécessaire) pour produire le moins de <trkseg> possibles — un GPS grand
+// L'ordre des membres de la relation est conservé. Leur orientation peut être
+// arbitraire quand le rôle OSM ne l'impose pas : chainSegments résout alors
+// l'orientation de toute la séquence, sans jamais réordonner les membres, pour
+// produire le moins de <trkseg> possibles — un GPS grand
 // public (Komoot, Organic Maps…) affiche alors une trace continue au lieu de
 // confettis. Quand le réseau est réellement discontinu (tronçons de réseau de
 // points-nœuds), plusieurs trkseg subsistent : c'est le comportement honnête.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export type LatLon = [number, number]
+export interface GpxProvenance { relationId: number; fetchedAt: number }
 
 /** Distance haversine en mètres. */
 export function haversineMeters(a: LatLon, b: LatLon): number {
@@ -36,50 +38,87 @@ export function polylineKm(points: LatLon[]): number {
   return m / 1000
 }
 
-// Tolérance de raccord entre deux extrémités de ways. 40 m absorbe les petits
-// trous de cartographie OSM sans fusionner des tronçons réellement disjoints.
-const JOIN_TOLERANCE_M = 40
+// Tolérance uniquement destinée aux erreurs d'arrondi des coordonnées d'un
+// même nœud OSM. Au-delà d'un mètre, la discontinuité reste un <trkseg>
+// distinct : jamais de diagonale inventée pour « réparer » la donnée.
+const JOIN_TOLERANCE_M = 1
 
 /**
- * Raccorde des segments non ordonnés en chaînes continues (glouton par
- * extrémités, inversion autorisée). Pure et déterministe : part du premier
- * segment, étend la chaîne tant qu'une extrémité libre matche, puis recommence
- * avec le prochain segment non consommé.
+ * Raccorde uniquement des segments CONSÉCUTIFS dans l'ordre de la relation
+ * OSM. Un petit programme dynamique choisit le sens des membres réversibles,
+ * y compris le premier, afin de minimiser le nombre de chaînes. Les membres
+ * forward/backward, déjà orientés au parsing, sont verrouillés et ne sont
+ * jamais retournés. En cas d'égalité, l'orientation source est conservée.
  */
-export function chainSegments(segments: LatLon[][]): LatLon[][] {
-  const remaining = segments.filter((s) => s.length >= 2).map((s) => [...s])
-  const chains: LatLon[][] = []
+export function chainSegments(segments: LatLon[][], directionLocked: boolean[] = []): LatLon[][] {
+  const usable = segments.flatMap((points, index) =>
+    points.length >= 2 ? [{ points, locked: directionLocked[index] === true }] : []
+  )
+  if (usable.length === 0) return []
 
-  while (remaining.length > 0) {
-    const chain = remaining.shift()
-    if (!chain) break
-    let extended = true
-    while (extended) {
-      extended = false
-      for (let i = 0; i < remaining.length; i++) {
-        const seg = remaining[i]
-        const head = chain[0]
-        const tail = chain[chain.length - 1]
-        const segStart = seg?.[0]
-        const segEnd = seg?.[seg.length - 1]
-        if (!seg || !head || !tail || !segStart || !segEnd) continue
-        if (haversineMeters(tail, segStart) <= JOIN_TOLERANCE_M) {
-          chain.push(...seg.slice(1))
-        } else if (haversineMeters(tail, segEnd) <= JOIN_TOLERANCE_M) {
-          chain.push(...[...seg].reverse().slice(1))
-        } else if (haversineMeters(head, segEnd) <= JOIN_TOLERANCE_M) {
-          chain.unshift(...seg.slice(0, -1))
-        } else if (haversineMeters(head, segStart) <= JOIN_TOLERANCE_M) {
-          chain.unshift(...[...seg].reverse().slice(0, -1))
-        } else {
-          continue
-        }
-        remaining.splice(i, 1)
-        extended = true
-        break
+  type Choice = { chains: number; reversals: number; previous: 0 | 1 | null }
+  const choices: Array<Array<Choice | null>> = []
+  const orientations = (locked: boolean): Array<0 | 1> => locked ? [0] : [0, 1]
+  // Toujours copier : la construction des chaînes concatène les points. Une
+  // référence source ici muterait la géométrie canonique avant le snapshot.
+  const oriented = (points: LatLon[], reversed: 0 | 1): LatLon[] => reversed ? [...points].reverse() : [...points]
+
+  for (let index = 0; index < usable.length; index++) {
+    const current = usable[index]!
+    choices[index] = [null, null]
+    for (const reversed of orientations(current.locked)) {
+      if (index === 0) {
+        choices[index]![reversed] = { chains: 1, reversals: reversed, previous: null }
+        continue
       }
+      const currentPoints = oriented(current.points, reversed)
+      let best: Choice | null = null
+      for (const previousReversed of orientations(usable[index - 1]!.locked)) {
+        const previousChoice = choices[index - 1]![previousReversed]
+        if (!previousChoice) continue
+        const previousPoints = oriented(usable[index - 1]!.points, previousReversed)
+        const joins = haversineMeters(previousPoints[previousPoints.length - 1]!, currentPoints[0]!) <= JOIN_TOLERANCE_M
+        const candidate: Choice = {
+          chains: previousChoice.chains + (joins ? 0 : 1),
+          reversals: previousChoice.reversals + reversed,
+          previous: previousReversed,
+        }
+        if (!best || candidate.chains < best.chains ||
+          (candidate.chains === best.chains && candidate.reversals < best.reversals)) best = candidate
+      }
+      choices[index]![reversed] = best
     }
-    chains.push(chain)
+  }
+
+  const lastIndex = usable.length - 1
+  let lastOrientation: 0 | 1 = 0
+  const endForward = choices[lastIndex]![0]
+  const endReverse = choices[lastIndex]![1]
+  if (!endForward || (endReverse && (endReverse.chains < endForward.chains ||
+    (endReverse.chains === endForward.chains && endReverse.reversals < endForward.reversals)))) {
+    lastOrientation = 1
+  }
+  const resolved = new Array<0 | 1>(usable.length)
+  for (let index = lastIndex; index >= 0; index--) {
+    resolved[index] = lastOrientation
+    lastOrientation = choices[index]![lastOrientation]!.previous ?? 0
+  }
+
+  const chains: LatLon[][] = []
+  for (let index = 0; index < usable.length; index++) {
+    const segment = oriented(usable[index]!.points, resolved[index]!)
+    const chain = chains[chains.length - 1]
+    if (!chain) {
+      chains.push(segment)
+      continue
+    }
+    const tail = chain[chain.length - 1]!
+    const start = segment[0]!
+    if (haversineMeters(tail, start) <= JOIN_TOLERANCE_M) {
+      chain.push(...segment.slice(1))
+    } else {
+      chains.push([...segment])
+    }
   }
   return chains
 }
@@ -97,8 +136,14 @@ function escapeXml(s: string): string {
  * Construit un document GPX 1.1 à partir de chaînes de points. Le nom est
  * échappé XML — il peut venir d'un tag OSM libre (contenu tiers non fiable).
  */
-export function buildGpx(name: string, chains: LatLon[][]): string {
+export function buildGpx(name: string, chains: LatLon[][], provenance?: GpxProvenance): string {
   const safeName = escapeXml(name.slice(0, 120))
+  const safeProvenance = provenance && Number.isSafeInteger(provenance.relationId) && provenance.relationId > 0 &&
+    Number.isFinite(provenance.fetchedAt) && provenance.fetchedAt > 0
+    // Ordre metadataType GPX 1.1 : link* précède time.
+    ? `\n    <link href="https://www.openstreetmap.org/relation/${provenance.relationId}"><text>Relation OpenStreetMap ${provenance.relationId}</text></link>` +
+      `\n    <time>${new Date(provenance.fetchedAt).toISOString()}</time>`
+    : ''
   const segs = chains
     .filter((c) => c.length >= 2)
     .map(
@@ -111,7 +156,7 @@ export function buildGpx(name: string, chains: LatLon[][]): string {
   return (
     '<?xml version="1.0" encoding="UTF-8"?>\n' +
     '<gpx version="1.1" creator="Arty" xmlns="http://www.topografix.com/GPX/1/1">\n' +
-    `  <metadata><name>${safeName}</name></metadata>\n` +
+    `  <metadata>\n    <name>${safeName}</name>${safeProvenance}\n  </metadata>\n` +
     '  <trk>\n' +
     `    <name>${safeName}</name>\n` +
     segs +

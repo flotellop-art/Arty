@@ -74,7 +74,7 @@ function stubFetch(overpass: (url: string, init?: RequestInit) => Response | nul
         { status: 200 }
       )
     }
-    if (u.includes('overpass') || u.includes('maps.mail.ru')) {
+    if (u.includes('overpass')) {
       const r = overpass(u, init)
       if (r) return r
       throw new Error('unexpected overpass fetch ' + u)
@@ -209,10 +209,36 @@ describe('geo/trails — recherche', () => {
     })
     const res = await call(req({ action: 'search', location: '45.313,5.204' }))
     expect(res.status).toBe(200)
-    // 2e instance = overpass.openstreetmap.fr (ordre UE d'abord, mail.ru en
-    // dernier recours — RÈGLE 5).
+    // 2e instance = overpass.openstreetmap.fr (deux miroirs UE uniquement).
     expect(seen.some((u) => u.includes('overpass.openstreetmap.fr'))).toBe(true)
-    expect(seen.some((u) => u.includes('maps.mail.ru'))).toBe(false)
+  })
+
+  it("bascule aussi quand Overpass renvoie une erreur `remark` en HTTP 200", async () => {
+    const seen: string[] = []
+    stubFetch((u) => {
+      seen.push(u)
+      if (u.includes('overpass-api.de')) {
+        return new Response(JSON.stringify({ remark: 'runtime error: Query timed out', elements: [] }), { status: 200 })
+      }
+      return new Response(JSON.stringify(OVERPASS_SEARCH_BODY), { status: 200 })
+    })
+    const res = await call(req({ action: 'search', location: '45.313,5.204' }))
+    expect(res.status).toBe(200)
+    expect(seen.some((u) => u.includes('overpass.openstreetmap.fr'))).toBe(true)
+  })
+
+  it('n’écrit jamais les coordonnées exactes en clair dans la clé de cache', async () => {
+    const matched: string[] = []
+    vi.stubGlobal('caches', { default: {
+      match: vi.fn(async (request: Request) => { matched.push(request.url); return undefined }),
+      put: vi.fn(async (request: Request) => { matched.push(request.url) }),
+    } })
+    stubFetch(() => new Response(JSON.stringify(OVERPASS_SEARCH_BODY), { status: 200 }))
+    const res = await call(req({ action: 'search', location: '45.313,5.204', radiusKm: 8 }))
+    expect(res.status).toBe(200)
+    expect(matched.some((url) => url.includes('search-v4/'))).toBe(true)
+    expect(matched.join('\n')).not.toContain('45.313')
+    expect(matched.join('\n')).not.toContain('5.204')
   })
 
   it('toutes les instances down → 502 générique sans détail upstream (N-2)', async () => {
@@ -226,7 +252,7 @@ describe('geo/trails — recherche', () => {
 })
 
 describe('geo/trails — géométrie (export GPX)', () => {
-  it('renvoie les segments et décime au-delà du plafond de points', async () => {
+  it('sépare source GPX et affichage, sans dépasser 5 m de simplification', async () => {
     const bigGeom = Array.from({ length: 9000 }, (_, i) => ({ lat: 45.3 + i * 1e-5, lon: 5.2 }))
     stubFetch(() =>
       new Response(
@@ -243,16 +269,52 @@ describe('geo/trails — géométrie (export GPX)', () => {
     )
     const res = await call(req({ action: 'geometry', routeId: 555 }))
     expect(res.status).toBe(200)
-    const data = await res.json() as { name: string; distanceKm: number; segments: Array<Array<[number, number]>> }
+    const data = await res.json() as {
+      name: string
+      distanceKm: number
+      sourceSegments: Array<Array<[number, number]>>
+      sourceSegmentDirectionLocked: boolean[]
+      displaySegments: Array<Array<[number, number]>>
+      simplified: { toleranceM: number; sourcePointCount: number; displayPointCount: number }
+    }
     expect(data.name).toBe('Grande boucle')
-    const totalPoints = data.segments.reduce((n, s) => n + s.length, 0)
-    expect(totalPoints).toBeLessThanOrEqual(4001) // plafond + extrémité conservée
+    expect(data.sourceSegments[0]).toHaveLength(9000)
+    expect(data.sourceSegmentDirectionLocked).toEqual([false])
+    expect(data.displaySegments[0]!.length).toBeLessThan(data.sourceSegments[0]!.length)
+    expect(data.simplified.toleranceM).toBeLessThanOrEqual(5)
+    expect(data.simplified.sourcePointCount).toBe(9000)
+    expect(data.simplified.displayPointCount).toBe(data.displaySegments[0]!.length)
     expect(data.distanceKm).toBeGreaterThan(5)
   })
 
   it('relation inconnue → 404 générique', async () => {
     stubFetch(() => new Response(JSON.stringify({ elements: [] }), { status: 200 }))
     expect((await call(req({ action: 'geometry', routeId: 999999 }))).status).toBe(404)
+  })
+
+  it('vérifie plusieurs relations en une seule requête groupée', async () => {
+    let overpassCalls = 0
+    stubFetch(() => {
+      overpassCalls++
+      return new Response(JSON.stringify({
+        elements: [
+          { type: 'relation', id: 41, tags: { route: 'horse', name: 'A' }, members: [{ type: 'way', geometry: GEOM }] },
+          { type: 'relation', id: 42, tags: { route: 'hiking', name: 'B' }, members: [{ type: 'way', geometry: GEOM }] },
+        ],
+      }), { status: 200 })
+    })
+    const res = await call(req({ action: 'geometries', routeIds: [41, 42] }))
+    expect(res.status).toBe(200)
+    const data = await res.json() as { trails: Array<{ id: number; sourceSegments: unknown[] }> }
+    expect(data.trails.map((trail) => trail.id)).toEqual([41, 42])
+    expect(data.trails.every((trail) => trail.sourceSegments.length > 0)).toBe(true)
+    expect(overpassCalls).toBe(1)
+  })
+
+  it('refuse une vérification groupée trop large', async () => {
+    stubFetch(() => { throw new Error('Overpass ne doit pas être appelé') })
+    const routeIds = Array.from({ length: 4 }, (_, index) => index + 1)
+    expect((await call(req({ action: 'geometries', routeIds }))).status).toBe(400)
   })
 })
 
