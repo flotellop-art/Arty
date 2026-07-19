@@ -16,7 +16,7 @@ import { maybeExtractMemory } from '../services/autoMemory'
 import { useStreaming } from './useStreaming'
 import { useFileAttachments, buildApiMessages, buildContentBlocks, buildTextOnlyMessages, buildMistralMessages, buildMistralContentBlocks } from './useFileAttachments'
 import { getReflectionLevel } from '../services/reflectionLevel'
-import { putFile } from '../services/secureFileStorage'
+import { deleteFile, putFile } from '../services/secureFileStorage'
 import { runFactCheckOnLatest, getFactCheckMode } from '../services/factChecker'
 import { detectSuggestedTasks, addTask } from '../services/taskService'
 import { TOOLS } from '../services/toolDefinitions'
@@ -279,23 +279,65 @@ export function useConversation() {
       // marche).
       let persistedFiles: FileAttachment[] | undefined
       if (files && files.length > 0) {
-        persistedFiles = await Promise.all(
-          files.map(async (f) => {
-            // Si f.data est absent (cas retry/edit : déjà persisté),
-            // on garde la référence telle quelle.
-            if (!f.data) return f
-            try {
-              const id = await putFile(f)
-              return { id, name: f.name, type: f.type, size: f.size }
-            } catch (err) {
-              if (import.meta.env.DEV) console.warn('putFile failed:', err)
-              // Ne PAS retourner l'objet avec data — saveConversation écrirait
-              // le base64 en localStorage et risquerait la limite 5 MB (BUG 11).
-              // Le tour courant marche via pendingFilesRef qui contient encore
-              // les data en RAM. Les renders futurs verront "Image indispo".
-              return { id: f.id, name: f.name, type: f.type, size: f.size }
+        const persistedNewIds: string[] = []
+        const persistOne = async (f: FileAttachment): Promise<FileAttachment> => {
+          // Si f.data est absent (cas retry/edit : déjà persisté),
+          // on garde la référence telle quelle.
+          if (!f.data) return f
+          try {
+            const id = await putFile(f)
+            persistedNewIds.push(id)
+            return {
+              id,
+              name: f.name,
+              type: f.type,
+              size: f.size,
+              width: f.width,
+              height: f.height,
+              normalizationVersion: f.normalizationVersion,
             }
-          })
+          } catch (err) {
+            if (import.meta.env.DEV) console.warn('putFile failed:', err)
+            // L'asset canonique est le contrat du premier envoi ET des retry.
+            // Continuer uniquement en RAM rendrait le prochain tour différent.
+            if (f.normalizationVersion !== undefined) throw err
+            // Ne PAS retourner l'objet avec data — saveConversation écrirait
+            // le base64 en localStorage et risquerait la limite 5 MB (BUG 11).
+            // Le tour courant marche via pendingFilesRef qui contient encore
+            // les data en RAM. Les renders futurs verront "Image indispo".
+            return {
+              id: f.id,
+              name: f.name,
+              type: f.type,
+              size: f.size,
+              width: f.width,
+              height: f.height,
+              normalizationVersion: f.normalizationVersion,
+            }
+          }
+        }
+
+        // Le chiffrement de quatre base64 4K en parallèle multiplie les copies
+        // temporaires en RAM. Les assets canoniques sont donc persistés dans
+        // l'ordre, tandis que les PDF/fichiers historiques gardent exactement
+        // leur parallélisme existant.
+        let canonicalWriteChain = Promise.resolve()
+        const persistenceTasks = files.map((f) => {
+          if (f.normalizationVersion === undefined) return persistOne(f)
+          const task = canonicalWriteChain.then(() => persistOne(f))
+          // La queue reste utilisable après un échec; allSettled ci-dessous
+          // collecte le rejet et supprime tous les canoniques déjà écrits.
+          canonicalWriteChain = task.then(() => undefined, () => undefined)
+          return task
+        })
+        const persistenceResults = await Promise.allSettled(persistenceTasks)
+        if (persistenceResults.some((result) => result.status === 'rejected')) {
+          await Promise.allSettled(persistedNewIds.map((id) => deleteFile(id)))
+          setError(i18n.t('errors.fileStorageFailed'))
+          return false
+        }
+        persistedFiles = persistenceResults.map((result) =>
+          (result as PromiseFulfilledResult<FileAttachment>).value
         )
       }
 

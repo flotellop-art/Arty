@@ -21,7 +21,7 @@
 > de patches et ~0,031 $/photo recalculés corrects. Réserve : vérification
 > documentaire — un appel API réel de confirmation fait partie de PR-B.
 >
-> Les amendements A1–A8 ci-dessous CORRIGENT ou COMPLÈTENT le document. En cas
+> Les amendements A1–A9 ci-dessous CORRIGENT ou COMPLÈTENT le document. En cas
 > de conflit, ils priment sur le texte des sections qu'ils visent. A1, A2, A7
 > s'ajoutent aux exigences P0 du §13.
 
@@ -30,11 +30,12 @@
 | **A1** | **BLOQUANT (P0, PR-C)** | **Réconciliation de la règle écrite BUG 12.** Le routage §7 (image-only + Auto → Terra) contredit frontalement CLAUDE.md BUG 12 (« fichiers attachés → TOUJOURS Claude ») ET le commentaire d'invariant de `resolveRoute.ts:16-22`. PR-C DOIT : amender le texte BUG 12 (carve-out explicite « lot composé uniquement d'images » avec ses gardes euOnly/privé), mettre à jour le commentaire d'invariant, et couvrir la nouvelle précédence dans `resolveRoute.test.ts`. Sans cet amendement écrit, l'implémentation viole une règle maison documentée. |
 | **A2** | **BLOQUANT (P0, PR-A)** | **Décodage des sources énormes : risque mémoire + échec silencieux.** Précision factuelle (revue du 19/07) : la limite WebKit ~16,7 Mpx concerne l'aire du canvas de **sortie** (`width × height > 16 777 216`, bugs.webkit.org #171238) — la sortie normalisée 4096×3072 = 12,58 Mpx reste sous cette limite. Le danger réel est le **pic mémoire du décodage source** (200 MP ≈ 800 Mo RGBA) et les échecs silencieux associés sur WebView mobile. Exigences P0 : gate octets/mégapixels sur la SOURCE avant tout décodage ; `createImageBitmap(blob, {resizeWidth, resizeHeight})` comme **chemin préféré testé** (l'API ne garantit pas contractuellement l'absence de décodage complet sur toutes les versions WKWebView) avec **fallback natif/tuilé** ; test de non-corruption (sortie non uniforme) ; essais sur appareils iOS réels. |
 | **A3** | **URGENCE RELEVÉE (PR-0 indépendante)** | **La sur-réservation wallet (§2 point 5) est un bug DÉJÀ LIVE, pas un risque futur.** `walletBilling.estimateInputTokens` compte le base64 comme du texte (le commentaire du code annonce l'inverse de son comportement) et le chemin est actif aujourd'hui pour Claude (`proxy.ts` → `beginWalletBilling` pour free-avec-crédits). *Exemple chiffré, pas une constante* (hypothèses : image ≈ 8 Mo en base64, tarif input du modèle appelé, markup texte, plafond de sortie par défaut) : ~8 M « tokens » comptés → une réservation de l'ordre de plusieurs dizaines de dollars pour quelques centimes de coût réel — l'ampleur exacte dépend du poids binaire, du modèle, du plafond de sortie et du markup. Le fix §10.2 doit partir en **PR-0 autonome AVANT la vision**, avec test de non-régression sur le chemin Claude existant. |
-| **A4** | **CORRECTION FACTUELLE (§5/§10/§11)** | Les bornes « 4 images / 6 Mio / 20 Mio / 30 Mio » sont des **choix défensifs Arty**, PAS des limites OpenAI. Limites officielles réelles : **512 Mo de payload total et 1 500 images par requête**. Aucune formulation du document ne doit les présenter comme des contraintes API. |
+| **A4** | **CORRECTION FACTUELLE (§5/§10/§11)** | Les bornes « 4 images / 6 Mio / 24 Mio / 40 Mio » sont des **choix défensifs Arty**, PAS des limites OpenAI. Limites officielles réelles : **512 Mo de payload total et 1 500 images par requête**. Aucune formulation du document ne doit les présenter comme des contraintes API. |
 | **A5** | **MED (§7)** | **La colonne « OpenAI disponible » encode le PLAN via `availability.ts`** (`canUseServerKey` = subscription/vip ou free/trial avec crédits ; sinon BYOK) — l'implémenteur DOIT réutiliser cette availability plan-aware, le tableau §7 seul ne suffit pas. Gap réel à trancher : **trial** — `TRIAL_ALLOWED_MODELS` n'inclut pas `gpt-5.6-terra` (`isModelAllowedInTrial` → false) → un trial-avec-crédits routé Terra recevrait `trial_model_restricted`. Décision requise avant PR-C : ajouter Terra-vision au trial, ou router trial → Claude. **Pro : déjà correct** (BYOK, `proKeyRequiredResponse`). |
 | **A6** | **MED (§8.2/§19, PR-A)** | **Piège double-compression non flagué** : `secureFileStorage.putFile` re-compresse à 2 048 px à la persistance. Si `normalizeImageForVision` sort du 4 096 mais que `putFile` reste en l'état, IndexedDB stocke du 2 048 pendant que la RAM du 1er tour est en 4 096 — ce qui **recrée exactement la divergence RAM/retry que le §8.2 veut tuer**. PR-A doit neutraliser/aligner `putFile` sur l'asset canonique. |
 | **A7** | **P0 (précise §8.3)** | **Invariant JPEG du chemin natif : à TESTER, pas à re-forcer.** Constat corrigé (revue du 19/07) : la capture native actuelle passe par `CameraResultType.Base64` et `@capacitor/camera` 8 ne retourne que du JPEG sur iOS et Android (l'implémentation Swift sérialise `jpegData`, `format: "jpeg"`) — pas de chantier « forcer le JPEG natif » en P0. Exigence réelle : un **test de non-régression verrouillant cet invariant JPEG** du chemin natif, et le rejet/la conversion HEIC sur les chemins d'**import** (web/fichiers), où le risque existe vraiment. |
 | **A8** | **HYGIÈNE (P0)** | Ajouter aux exigences P0 : gate `npx tsc --noEmit` avant push (BUG 13 — l'union multimodale + 4 nouveaux champs `RouteInput` sont une grosse surface de types) ; audit RÈGLE 6 explicite sur `openai-proxy` modifié (dont Origin/CSRF) ; vérification `AndroidManifest` : `CAMERA` présente **et confirmer que `READ_MEDIA_IMAGES` reste inutile** (absence volontaire documentée au manifest — sélections via Photo Picker/SAF avec URI temporaire ; ne l'ajouter QUE si l'architecture change) ; vérification CSP `img-src data:/blob:` de `public/_headers` pour les vignettes (précédent BUG 40/62). |
+| **A9** | **DÉCISION PRODUIT (§3/§11/§14, 19/07/2026)** | Un échantillon réel OnePlus 12R `3072 × 4096` pèse 5,5 Mio : quatre photos normales dépasseraient la borne initiale de 20 Mio. Le lot passe donc à **24 Mio binaires** (4 × 6 Mio) et le futur proxy à **40 Mio de JSON**, afin d'absorber les ~32 Mio de base64 plus le texte et l'overhead JSON. Les PDF/autres fichiers restent à 10 Mio. |
 
 Points vérifiés CONFORMES (aucune action) : bucket premium `gpt-5.6-terra` →
 `gpt-5` cap 100 (D11) ; invariant « consommé ⟺ servi » cohérent avec
@@ -113,7 +114,7 @@ entre le premier envoi, l'édition et le retry.
 | D2 | Le fichier normalisé, et non l'original du capteur, est la seule version utilisable par le stockage et les fournisseurs IA. |
 | D3 | OpenAI reçoit explicitement `detail: "original"`. Dans ce contexte, « original » désigne l'asset déjà normalisé à 4K par Arty. |
 | D4 | JPEG photo : qualité cible **0,90**. Une baisse contrôlée jusqu'à 0,85 est autorisée uniquement pour respecter la borne de poids. |
-| D5 | **6 Mio maximum par image normalisée**, **4 images maximum** et **20 Mio binaires maximum** par message vision. |
+| D5 | **6 Mio maximum par image normalisée**, **4 images maximum** et **24 Mio binaires maximum** par message vision. |
 | D6 | Une source image jusqu'à **32 Mio** peut être décodée puis réduite localement. Les autres fichiers gardent leur limite actuelle de 10 Mio. |
 | D7 | En Auto, un message composé uniquement d'images compatibles est candidat à Terra. PDF, Office, texte brut joint ou lot mixte restent chez Claude. |
 | D8 | `euOnly` reste un verrou absolu vers Mistral. Une conversation privée ou avec historique Google reste chez Claude. |
@@ -363,7 +364,7 @@ P0 :
 
 - Source image : 32 Mio maximum ; autres fichiers : limite actuelle de 10 Mio.
 - Traitement séquentiel des sources lourdes pour borner le pic mémoire mobile.
-- Maximum 4 images vision et 20 Mio binaires normalisés par message.
+- Maximum 4 images vision et 24 Mio binaires normalisés par message.
 - Aucun original 48/200 MP écrit dans IndexedDB ou localStorage.
 - Métadonnées EXIF, dont la géolocalisation, retirées avant stockage/envoi.
 - Aucun base64 dans les logs, rapports d'erreur, analytics ou événements UI.
@@ -376,7 +377,7 @@ P0 :
 
 - Borne explicite de `Content-Length` avant `request.text()` ; réponse 413
   structurée et localisée côté client.
-- Borne recommandée du JSON encodé : **30 Mio**, couvrant les 20 Mio binaires
+- Borne recommandée du JSON encodé : **40 Mio**, couvrant les 24 Mio binaires
   après expansion base64 et l'overhead JSON.
 - Validation d'un maximum de quatre blocs image.
 - Refus des URLs distantes en v1 : uniquement des data URLs issues du pipeline
@@ -407,7 +408,7 @@ P0 :
 - Pendant une normalisation perceptible : état « Préparation de la photo… » ;
   le bouton Envoyer reste bloqué pour éviter un envoi de la source brute.
 - Messages distincts pour : format non supporté, source >32 Mio, échec de
-  décodage, trop d'images et lot normalisé >20 Mio.
+  décodage, trop d'images et lot normalisé >24 Mio.
 
 ### Après l'envoi
 
@@ -461,7 +462,7 @@ P0 :
 - [ ] Une source très légère mais `>4096 px` est redimensionnée.
 - [ ] Une recompression plus lourde ne fait jamais ressortir l'original hors borne.
 - [ ] L'orientation EXIF est appliquée et les métadonnées sont retirées.
-- [ ] La sortie respecte 6 Mio ; quatre sorties respectent 20 Mio.
+- [ ] La sortie respecte 6 Mio ; quatre sorties respectent 24 Mio.
 - [ ] Premier envoi, retry et édition utilisent le même hash d'asset canonique.
 
 ### 14.2 Routage
@@ -500,7 +501,7 @@ P0 :
 - [ ] Test navigateur mobile : `capture="environment"`.
 - [ ] Source 200 MP de 25–30 Mio : normalisée ou refusée proprement sans crash.
 - [ ] Mode avion pendant l'envoi : erreur récupérable, asset local intact.
-- [ ] Proxy : corps >30 Mio → 413 avant lecture complète et avant appel OpenAI.
+- [ ] Proxy : corps >40 Mio → 413 avant lecture complète et avant appel OpenAI.
 
 ---
 
@@ -624,7 +625,7 @@ réversible ou dimensions de source permettant de profiler un appareil.
 ### Bloquantes avant PR-B
 
 1. **Engineering :** quelle borne de body Cloudflare est effectivement garantie
-   sur le plan de production ? La borne Arty de 30 Mio doit rester inférieure.
+   sur le plan de production ? La borne Arty de 40 Mio doit rester inférieure.
 2. **Produit/finance :** confirme-t-on le markup texte pour l'image d'entrée,
    ou souhaite-t-on un markup dédié distinct de la génération d'images ?
 3. **Engineering :** le fallback `gpt-5` accepte-t-il le même bloc multimodal

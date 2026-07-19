@@ -440,6 +440,18 @@
       },
       "fileTooLarge": "File too large (max 10 MB): {{names}}",
       "tooManyFiles": "Maximum {{max}} files per message",
+      "preparingImage": "Preparing the photo…",
+      "photoFallbackName": "the photo",
+      "imageSourceTooLarge": "Photo too large (max 32 MB): {{name}}",
+      "imageTooManyPixels": "This photo is too detailed to prepare safely: {{name}}. Use standard photo mode or a smaller copy.",
+      "imageUnsupported": "Unsupported photo format: {{name}}. Use JPEG, PNG, or WebP.",
+      "imageDecodeFailed": "The photo could not be decoded correctly: {{name}}.",
+      "imageEncodeFailed": "The photo could not be optimized: {{name}}.",
+      "imageOutputTooLarge": "The photo is still too large after optimization: {{name}}.",
+      "imagePreparationFailed": "Photo preparation failed: {{name}}.",
+      "fileReadFailed": "Could not read the file: {{name}}.",
+      "tooManyImages": "Maximum {{max}} photos per message",
+      "imageBatchTooLarge": "The optimized photos exceed 24 MB in total.",
       "scanPrompt": "Extract the key information from this document: amounts, dates, sender, recipient, subject, and anything notable."
     },
     "tone": {
@@ -559,6 +571,7 @@
     "micCannotStart": "Couldn't start the microphone",
     "speechNotSupported": "Speech recognition isn't supported in this browser. Use Chrome or Edge.",
     "storageNotReady": "Your conversations are still loading — try again in a second.",
+    "fileStorageFailed": "Could not save every photo on this device. Free up some space and try again.",
     "mistralTimeout": "Mistral did not answer in time (60 s) — slow network or busy service. Try again.",
     "trialModelRestricted": "This model isn't available without credits — free access uses Haiku.",
     "euPlanRequired": "EU conversations require Mistral access: a subscription, sufficient credits, or your own API key. No data was sent outside Europe."
@@ -1291,7 +1304,8 @@
   },
   "app": {
     "shareError": {
-      "fileTooLarge": "File too large (>10 MB), sharing cancelled."
+      "fileTooLarge": "This file is too large to share, sharing cancelled.",
+      "imagePreparation": "This photo could not be prepared safely. Use JPEG, PNG, or WebP in standard photo mode."
     },
     "budgetAlert": {
       "message": "⚠️ AI budget exceeded — {{spent}} / {{limit}} this month.",

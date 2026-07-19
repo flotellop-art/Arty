@@ -6,6 +6,16 @@ import { generateId } from '../../utils/generateId'
 import { useSpeechRecognition } from '../../hooks/useSpeechRecognition'
 import { isNative } from '../../services/native/platform'
 import { takePhoto, scanDocument } from '../../services/native/camera'
+import {
+  ImageNormalizationError,
+  MAX_IMAGE_DIMENSION,
+  MAX_IMAGE_SOURCE_BYTES,
+  MAX_NORMALIZED_IMAGE_BYTES,
+  normalizeImageAttachmentForVision,
+  normalizeImageForVision,
+  type NormalizedImageAsset,
+} from '../../services/imageNormalization'
+import { isVision4kFoundationEnabled } from '../../services/visionFeature'
 import { filterSlashCommands, type SlashCommand } from '../../constants/slashCommands'
 import { detectDates } from '../../utils/dateDetector'
 import { getValidAccessToken } from '../../services/googleAuth'
@@ -102,12 +112,82 @@ function inputBarV2Enabled(): boolean {
 // 5 PDFs) avec une erreur brute ; on borne plus bas côté UI avec un message
 // clair (audit UX 10 juin 2026).
 const MAX_ATTACHED_FILES = 10
+const MAX_VISION_IMAGES = 4
+const MAX_VISION_BATCH_BYTES = 24 * 1024 * 1024
+
+function isImageCandidate(file: Pick<File, 'name' | 'type'>): boolean {
+  return file.type.startsWith('image/') || /\.(?:jpe?g|png|webp|gif|heic|heif)$/i.test(file.name)
+}
+
+function readBlobAsBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const result = String(reader.result ?? '')
+      resolve(result.slice(result.indexOf(',') + 1))
+    }
+    reader.onerror = () => reject(reader.error ?? new Error('FileReader failed'))
+    reader.readAsDataURL(blob)
+  })
+}
+
+function normalizedAttachment(id: string, name: string, asset: NormalizedImageAsset): FileAttachment {
+  return {
+    id,
+    name,
+    type: asset.mimeType,
+    data: asset.data,
+    size: asset.size,
+    width: asset.width,
+    height: asset.height,
+    normalizationVersion: asset.normalizationVersion,
+  }
+}
+
+function imagePreparationError(t: TFunction, error: unknown, name: string): string {
+  if (!(error instanceof ImageNormalizationError)) {
+    return t('chat.input.imagePreparationFailed', { name })
+  }
+  const key = {
+    source_too_large: 'chat.input.imageSourceTooLarge',
+    source_too_many_pixels: 'chat.input.imageTooManyPixels',
+    unsupported_format: 'chat.input.imageUnsupported',
+    mime_mismatch: 'chat.input.imageUnsupported',
+    decode_failed: 'chat.input.imageDecodeFailed',
+    encode_failed: 'chat.input.imageEncodeFailed',
+    output_too_large: 'chat.input.imageOutputTooLarge',
+    corrupt_output: 'chat.input.imageDecodeFailed',
+  }[error.code]
+  return t(key, { name })
+}
+
+function visionBatchError(files: FileAttachment[], next: FileAttachment, t: TFunction): string | null {
+  const images = files.filter((file) => file.type.startsWith('image/'))
+  if (images.length >= MAX_VISION_IMAGES) return t('chat.input.tooManyImages', { max: MAX_VISION_IMAGES })
+  const total = images.reduce((sum, file) => sum + (file.size ?? 0), 0) + (next.size ?? 0)
+  if (total > MAX_VISION_BATCH_BYTES) return t('chat.input.imageBatchTooLarge')
+  return null
+}
+
+function remainingVisionBatchBytes(files: FileAttachment[]): number {
+  const used = files
+    .filter((file) => file.type.startsWith('image/'))
+    .reduce((sum, file) => sum + (file.size ?? 0), 0)
+  return Math.max(0, MAX_VISION_BATCH_BYTES - used)
+}
+
+function nextImageBudget(files: FileAttachment[], remainingImages = 1): number {
+  return Math.min(
+    MAX_NORMALIZED_IMAGE_BYTES,
+    Math.floor(remainingVisionBatchBytes(files) / Math.max(1, remainingImages)),
+  )
+}
 
 // Vignette d'aperçu d'un fichier en attente d'envoi. Pour les images, affiche
 // la photo réelle via blob URL (le base64 est en RAM, pas encore persisté).
 // Sans ça, l'utilisateur voit juste un emoji "🖼️" et a l'impression que la
 // photo n'a pas été chargée.
-function PendingFilePreview({ file, onRemove }: { file: FileAttachment; onRemove: () => void }) {
+function PendingFilePreview({ file, onRemove, disabled = false }: { file: FileAttachment; onRemove: () => void; disabled?: boolean }) {
   const { t } = useTranslation()
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const isImage = file.type.startsWith('image/')
@@ -139,8 +219,9 @@ function PendingFilePreview({ file, onRemove }: { file: FileAttachment; onRemove
         />
         <button
           onClick={onRemove}
+          disabled={disabled}
           aria-label={t('chat.input.removeFile', { name: file.name })}
-          className="absolute -right-1.5 -top-1.5 flex h-6 w-6 items-center justify-center border border-theme-border bg-theme-surface text-[10px] leading-none text-theme-muted hover:border-theme-accent hover:text-theme-accent"
+          className="absolute -right-1.5 -top-1.5 flex h-6 w-6 items-center justify-center border border-theme-border bg-theme-surface text-[10px] leading-none text-theme-muted hover:border-theme-accent hover:text-theme-accent disabled:cursor-wait disabled:opacity-40"
         >
           ✕
         </button>
@@ -154,8 +235,9 @@ function PendingFilePreview({ file, onRemove }: { file: FileAttachment; onRemove
       <span className="max-w-[120px] truncate">{file.name}</span>
       <button
         onClick={onRemove}
+        disabled={disabled}
         aria-label={t('chat.input.removeFile', { name: file.name })}
-        className="text-theme-muted hover:text-theme-accent ml-1 p-1 leading-none"
+        className="text-theme-muted hover:text-theme-accent ml-1 p-1 leading-none disabled:cursor-wait disabled:opacity-40"
       >
         ✕
       </button>
@@ -169,6 +251,7 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
   // Évalué à chaque render (lecture localStorage triviale) — un testeur peut
   // poser le killswitch en DevTools et le voir s'appliquer immédiatement.
   const v2 = inputBarV2Enabled()
+  const vision4kFoundation = isVision4kFoundationEnabled()
   const scopedDraftKey = draftKey ? scopeComposerDraftKey(draftKey) : undefined
   const encryptedDraftKey = scopedDraftKey ? composerDraftStorageKey(scopedDraftKey) : undefined
   const previousDraftKeyRef = useRef(scopedDraftKey)
@@ -177,6 +260,8 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
   const [text, setText] = useState(() => initialText ?? (scopedDraftKey ? getComposerDraft(scopedDraftKey) ?? '' : ''))
   const [files, setFiles] = useState<FileAttachment[]>(() => initialFiles ?? [])
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isPreparingAttachments, setIsPreparingAttachments] = useState(false)
+  const [isPreparingImages, setIsPreparingImages] = useState(false)
   // Un clic sur une action rapide ARME le prochain envoi. L'instruction
   // n'entre jamais dans le textarea ni dans la bulle user : seuls l'ID et la
   // locale allowlistés traversent le flux d'envoi.
@@ -242,7 +327,9 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
     draftTouchedRef.current = Boolean(initialText)
     draftWriteVersionRef.current += 1
     setText(initialText ?? (scopedDraftKey ? getComposerDraft(scopedDraftKey) ?? '' : ''))
-    setFiles(initialFiles ?? [])
+    const nextInitialFiles = initialFiles ?? []
+    filesRef.current = nextInitialFiles
+    setFiles(nextInitialFiles)
     setPendingQuickAction(undefined)
   }, [initialFiles, initialText, scopedDraftKey])
 
@@ -296,7 +383,25 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
   // recorder creation. Reading these via refs lets the callback see the latest
   // draft/attachments at the moment the user releases the mic.
   const textRef = useRef('')
-  const filesRef = useRef<FileAttachment[]>([])
+  const filesRef = useRef<FileAttachment[]>(initialFiles ?? [])
+  // Mutex synchrone : React peut batcher setIsPreparingImages. Sans ce ref,
+  // deux sélections déclenchées avant le render suivant normalisent en
+  // parallèle puis la dernière fin écrase le résultat de l'autre.
+  const imagePreparationLockRef = useRef(false)
+
+  const acquireImagePreparationLock = (showProgress = true): boolean => {
+    if (imagePreparationLockRef.current) return false
+    imagePreparationLockRef.current = true
+    setIsPreparingAttachments(true)
+    if (showProgress) setIsPreparingImages(true)
+    return true
+  }
+
+  const releaseImagePreparationLock = () => {
+    imagePreparationLockRef.current = false
+    setIsPreparingAttachments(false)
+    setIsPreparingImages(false)
+  }
 
   const {
     isListening,
@@ -374,7 +479,13 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
   // refs. Returns true on successful send, false if blocked (empty or streaming).
   const sendText = useCallback((textToSend: string, filesToSend: FileAttachment[]): boolean | Promise<boolean> => {
     const trimmed = textToSend.trim()
-    if ((!trimmed && filesToSend.length === 0) || isStreaming || isSubmitting) return false
+    if (
+      (!trimmed && filesToSend.length === 0) ||
+      isStreaming ||
+      isSubmitting ||
+      isPreparingAttachments ||
+      imagePreparationLockRef.current
+    ) return false
     if (isListening) stopListening()
     // Roadmap UI Phase 1 #6 — retour haptique léger sur envoi. Confirme
     // l'action même en bruit de fond / poche / écran non regardé.
@@ -384,6 +495,7 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
       if (scopedDraftKey) clearComposerDraft(scopedDraftKey)
       draftTouchedRef.current = false
       setText('')
+      filesRef.current = []
       setFiles([])
       setPendingQuickAction(undefined)
       if (textareaRef.current) textareaRef.current.style.height = 'auto'
@@ -409,7 +521,7 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
     }
     if (accepted === false) return false
     return clearAcceptedDraft()
-  }, [encryptedDraftKey, isStreaming, isSubmitting, isListening, stopListening, onSend, t, pendingQuickAction, scopedDraftKey])
+  }, [encryptedDraftKey, isStreaming, isSubmitting, isPreparingAttachments, isListening, stopListening, onSend, t, pendingQuickAction, scopedDraftKey])
 
   const handleSend = () => { sendText(text, files) }
 
@@ -476,76 +588,212 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
     const selectedFiles = e.target.files
     if (!selectedFiles) return
 
+    const containsVisionImage = vision4kFoundation && Array.from(selectedFiles).some(isImageCandidate)
+    const ownsPreparationLock = vision4kFoundation
+      ? acquireImagePreparationLock(containsVisionImage)
+      : false
+    if (vision4kFoundation && !ownsPreparationLock) {
+      if (fileInputRef.current) fileInputRef.current.value = ''
+      return
+    }
+
     setFileError(null)
-    const newFiles: FileAttachment[] = []
-    // Audit UX — avant : les fichiers >10 MB étaient silencieusement ignorés
-    // (`continue` sans feedback), l'utilisateur croyait son fichier attaché.
-    const rejectedNames: string[] = []
-    for (let i = 0; i < selectedFiles.length; i++) {
-      const f = selectedFiles.item(i)
-      if (!f) continue
-      if (f.size > 10 * 1024 * 1024) {
-        rejectedNames.push(f.name)
-        continue
+    const next = [...filesRef.current]
+    const errors: string[] = []
+    const legacyRejectedNames: string[] = []
+    const existingImages = next.filter((file) => file.type.startsWith('image/')).length
+    let remainingVisionCandidates = vision4kFoundation
+      ? Math.min(
+          Math.max(0, MAX_VISION_IMAGES - existingImages),
+          Array.from(selectedFiles).filter(isImageCandidate).length,
+        )
+      : 0
+    try {
+      // Séquentiel volontairement : quatre décodages 48 MP en parallèle font
+      // exploser le pic RAM d'une WebView mobile.
+      for (let i = 0; i < selectedFiles.length; i++) {
+        const file = selectedFiles.item(i)
+        if (!file) continue
+        if (next.length >= MAX_ATTACHED_FILES) {
+          errors.push(t('chat.input.tooManyFiles', { max: MAX_ATTACHED_FILES }))
+          break
+        }
+
+        const imageCandidate = isImageCandidate(file)
+        const outputBudget = vision4kFoundation && imageCandidate && remainingVisionCandidates > 0
+          ? nextImageBudget(next, remainingVisionCandidates)
+          : MAX_NORMALIZED_IMAGE_BYTES
+        if (vision4kFoundation && imageCandidate && remainingVisionCandidates > 0) {
+          remainingVisionCandidates -= 1
+        }
+        const sourceLimit = vision4kFoundation && imageCandidate
+          ? MAX_IMAGE_SOURCE_BYTES
+          : 10 * 1024 * 1024
+        if (file.size > sourceLimit) {
+          if (vision4kFoundation && imageCandidate) {
+            errors.push(t('chat.input.imageSourceTooLarge', { name: file.name }))
+          } else {
+            legacyRejectedNames.push(file.name)
+          }
+          continue
+        }
+
+        try {
+          let attachment: FileAttachment
+          if (vision4kFoundation && imageCandidate) {
+            if (next.filter((item) => item.type.startsWith('image/')).length >= MAX_VISION_IMAGES) {
+              errors.push(t('chat.input.tooManyImages', { max: MAX_VISION_IMAGES }))
+              continue
+            }
+            if (outputBudget <= 0) {
+              errors.push(t('chat.input.imageBatchTooLarge'))
+              continue
+            }
+            const asset = await normalizeImageForVision(file, file.type, {
+              maxOutputBytes: outputBudget,
+            })
+            attachment = normalizedAttachment(generateId(), file.name, asset)
+            const limitError = visionBatchError(next, attachment, t)
+            if (limitError) {
+              errors.push(limitError)
+              continue
+            }
+          } else {
+            attachment = {
+              id: generateId(),
+              name: file.name,
+              type: file.type || 'application/octet-stream',
+              data: await readBlobAsBase64(file),
+              size: file.size,
+            }
+          }
+          next.push(attachment)
+        } catch (error) {
+          errors.push(
+            vision4kFoundation && imageCandidate
+              ? imagePreparationError(t, error, file.name)
+              : t('chat.input.fileReadFailed', { name: file.name }),
+          )
+        }
       }
 
-      const base64 = await new Promise<string>((resolve) => {
-        const reader = new FileReader()
-        reader.onload = () => {
-          const result = reader.result as string
-          resolve(result.split(',')[1] || '')
-        }
-        reader.readAsDataURL(f)
-      })
-
-      newFiles.push({
-        id: generateId(),
-        name: f.name,
-        type: f.type || 'application/octet-stream',
-        data: base64,
-        size: f.size,
-      })
+      if (legacyRejectedNames.length > 0) {
+        errors.push(t('chat.input.fileTooLarge', { names: legacyRejectedNames.join(', ') }))
+      }
+      filesRef.current = next
+      setFiles(next)
+      if (errors.length > 0) setFileError([...new Set(errors)].join(' '))
+    } finally {
+      if (ownsPreparationLock) releaseImagePreparationLock()
+      if (fileInputRef.current) fileInputRef.current.value = ''
     }
-
-    if (rejectedNames.length > 0) {
-      setFileError(t('chat.input.fileTooLarge', { names: rejectedNames.join(', ') }))
-    }
-
-    // Cap UI : au-delà, l'API rejette avec une erreur incompréhensible.
-    // Side-effects (setFileError) hors de l'updater setFiles — un updater
-    // doit rester pur (double exécution en StrictMode).
-    const next = [...files, ...newFiles]
-    if (next.length > MAX_ATTACHED_FILES) {
-      setFileError(t('chat.input.tooManyFiles', { max: MAX_ATTACHED_FILES }))
-    }
-    setFiles(next.slice(0, MAX_ATTACHED_FILES))
-    if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
   const removeFile = (index: number) => {
-    setFiles((prev) => prev.filter((_, i) => i !== index))
+    if (imagePreparationLockRef.current) return
+    const next = filesRef.current.filter((_, i) => i !== index)
+    filesRef.current = next
+    setFiles(next)
   }
 
   const handleCamera = async () => {
-    const photo = await takePhoto()
-    if (photo) {
-      setFiles((prev) => [...prev, {
+    if (vision4kFoundation && filesRef.current.length >= MAX_ATTACHED_FILES) {
+      setFileError(t('chat.input.tooManyFiles', { max: MAX_ATTACHED_FILES }))
+      return
+    }
+    if (
+      vision4kFoundation &&
+      filesRef.current.filter((file) => file.type.startsWith('image/')).length >= MAX_VISION_IMAGES
+    ) {
+      setFileError(t('chat.input.tooManyImages', { max: MAX_VISION_IMAGES }))
+      return
+    }
+    if (vision4kFoundation && nextImageBudget(filesRef.current) <= 0) {
+      setFileError(t('chat.input.imageBatchTooLarge'))
+      return
+    }
+    const ownsPreparationLock = vision4kFoundation
+      ? acquireImagePreparationLock()
+      : false
+    if (vision4kFoundation && !ownsPreparationLock) return
+    setFileError(null)
+    try {
+      const photo = await takePhoto(
+        vision4kFoundation ? { maxDimension: MAX_IMAGE_DIMENSION } : undefined,
+      )
+      if (!photo) return
+      let attachment: FileAttachment = {
         id: generateId(),
         name: `photo_${Date.now()}.${photo.mimeType.split('/')[1] || 'jpeg'}`,
         type: photo.mimeType,
         data: photo.base64,
-      }])
+      }
+      if (vision4kFoundation) {
+        attachment = await normalizeImageAttachmentForVision(attachment, {
+          maxOutputBytes: nextImageBudget(filesRef.current),
+        })
+      }
+      const limitError = vision4kFoundation
+        ? visionBatchError(filesRef.current, attachment, t)
+        : null
+      if (limitError) {
+        setFileError(limitError)
+        return
+      }
+      const next = [...filesRef.current, attachment]
+      filesRef.current = next
+      setFiles(next)
+    } catch (error) {
+      setFileError(imagePreparationError(t, error, t('chat.input.photoFallbackName')))
+    } finally {
+      if (ownsPreparationLock) releaseImagePreparationLock()
     }
   }
 
   const handleScan = async () => {
-    const doc = await scanDocument()
-    if (doc) {
-      // Roadmap Phase 2 D — quand l'utilisateur lance un scan ET que le
-      // champ texte est vide, pré-remplir un prompt OCR utile par défaut.
-      // 90% des scans ont pour but d'extraire les infos clés (facture,
-      // ticket, formulaire, recette). Si le user veut juste attacher le
-      // scan pour discuter, il a déjà tapé sa question → on ne touche pas.
+    if (vision4kFoundation && filesRef.current.length >= MAX_ATTACHED_FILES) {
+      setFileError(t('chat.input.tooManyFiles', { max: MAX_ATTACHED_FILES }))
+      return
+    }
+    if (
+      vision4kFoundation &&
+      filesRef.current.filter((file) => file.type.startsWith('image/')).length >= MAX_VISION_IMAGES
+    ) {
+      setFileError(t('chat.input.tooManyImages', { max: MAX_VISION_IMAGES }))
+      return
+    }
+    if (vision4kFoundation && nextImageBudget(filesRef.current) <= 0) {
+      setFileError(t('chat.input.imageBatchTooLarge'))
+      return
+    }
+    const ownsPreparationLock = vision4kFoundation
+      ? acquireImagePreparationLock()
+      : false
+    if (vision4kFoundation && !ownsPreparationLock) return
+    try {
+      const doc = await scanDocument()
+      if (!doc) return
+      let attachment: FileAttachment = {
+        id: generateId(),
+        name: `scan_${Date.now()}.${doc.mimeType.split('/')[1] || 'jpeg'}`,
+        type: doc.mimeType,
+        data: doc.base64,
+      }
+      if (vision4kFoundation) {
+        attachment = await normalizeImageAttachmentForVision(attachment, {
+          maxOutputBytes: nextImageBudget(filesRef.current),
+        })
+        const limitError = visionBatchError(filesRef.current, attachment, t)
+        if (limitError) {
+          setFileError(limitError)
+          return
+        }
+      }
+      const next = [...filesRef.current, attachment]
+      filesRef.current = next
+      setFiles(next)
+      // Ajouter le prompt OCR seulement après acceptation du scan : aucun
+      // texte orphelin si la normalisation ou la borne du lot le refuse.
       draftTouchedRef.current = true
       setText((prev) => {
         if (prev.trim().length > 0) return prev
@@ -553,12 +801,10 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
           defaultValue: "Extrais les informations clés de ce document : montants, dates, expéditeur, destinataire, sujet, et tout point notable.",
         })
       })
-      setFiles((prev) => [...prev, {
-        id: generateId(),
-        name: `scan_${Date.now()}.${doc.mimeType.split('/')[1] || 'jpeg'}`,
-        type: doc.mimeType,
-        data: doc.base64,
-      }])
+    } catch (error) {
+      setFileError(imagePreparationError(t, error, t('chat.input.photoFallbackName')))
+    } finally {
+      if (ownsPreparationLock) releaseImagePreparationLock()
     }
   }
 
@@ -570,22 +816,66 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
   const handleWebCameraChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]
     if (!f) return
-    const base64 = await new Promise<string>((resolve) => {
-      const reader = new FileReader()
-      reader.onload = () => {
-        const result = reader.result as string
-        resolve(result.split(',')[1] || '')
+    if (vision4kFoundation && filesRef.current.length >= MAX_ATTACHED_FILES) {
+      setFileError(t('chat.input.tooManyFiles', { max: MAX_ATTACHED_FILES }))
+      if (cameraInputRef.current) cameraInputRef.current.value = ''
+      return
+    }
+    if (
+      vision4kFoundation &&
+      filesRef.current.filter((file) => file.type.startsWith('image/')).length >= MAX_VISION_IMAGES
+    ) {
+      setFileError(t('chat.input.tooManyImages', { max: MAX_VISION_IMAGES }))
+      if (cameraInputRef.current) cameraInputRef.current.value = ''
+      return
+    }
+    if (vision4kFoundation && nextImageBudget(filesRef.current) <= 0) {
+      setFileError(t('chat.input.imageBatchTooLarge'))
+      if (cameraInputRef.current) cameraInputRef.current.value = ''
+      return
+    }
+    const ownsPreparationLock = vision4kFoundation
+      ? acquireImagePreparationLock()
+      : false
+    if (vision4kFoundation && !ownsPreparationLock) {
+      if (cameraInputRef.current) cameraInputRef.current.value = ''
+      return
+    }
+    setFileError(null)
+    try {
+      if (vision4kFoundation && f.size > MAX_IMAGE_SOURCE_BYTES) {
+        setFileError(t('chat.input.imageSourceTooLarge', { name: f.name }))
+        return
       }
-      reader.readAsDataURL(f)
-    })
-    setFiles((prev) => [...prev, {
-      id: generateId(),
-      name: f.name || `photo_${Date.now()}.jpg`,
-      type: f.type || 'image/jpeg',
-      data: base64,
-      size: f.size,
-    }])
-    if (cameraInputRef.current) cameraInputRef.current.value = ''
+      let attachment: FileAttachment
+      if (vision4kFoundation) {
+        const asset = await normalizeImageForVision(f, f.type, {
+          maxOutputBytes: nextImageBudget(filesRef.current),
+        })
+        attachment = normalizedAttachment(generateId(), f.name || `photo_${Date.now()}.jpg`, asset)
+        const limitError = visionBatchError(filesRef.current, attachment, t)
+        if (limitError) {
+          setFileError(limitError)
+          return
+        }
+      } else {
+        attachment = {
+          id: generateId(),
+          name: f.name || `photo_${Date.now()}.jpg`,
+          type: f.type || 'image/jpeg',
+          data: await readBlobAsBase64(f),
+          size: f.size,
+        }
+      }
+      const next = [...filesRef.current, attachment]
+      filesRef.current = next
+      setFiles(next)
+    } catch (error) {
+      setFileError(imagePreparationError(t, error, f.name))
+    } finally {
+      if (ownsPreparationLock) releaseImagePreparationLock()
+      if (cameraInputRef.current) cameraInputRef.current.value = ''
+    }
   }
 
   // V2 voice button — tap = webkit speech toggle, hold ≥ 600ms = Whisper.
@@ -1129,6 +1419,7 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
               key={`${file.name}-${file.size ?? 0}-${i}`}
               file={file}
               onRemove={() => removeFile(i)}
+              disabled={isPreparingAttachments}
             />
           ))}
         </div>
@@ -1151,12 +1442,19 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
           calendarSuggestion={showCalendarForm ? null : calendarSuggestion}
           onCreateCalendarEvent={() => setShowCalendarForm(true)}
           onDismissCalendar={() => setCalendarSuggestion(null)}
-          showChips={!text.trim() && files.length === 0 && !isStreaming && !isListening && !isRecordingAudio}
+          showChips={!text.trim() && files.length === 0 && !isStreaming && !isPreparingAttachments && !isListening && !isRecordingAudio}
           chips={showQuickActions ? getQuickActionChips(t) : []}
           activeChipId={pendingQuickAction?.id}
           onChipClick={handleQuickActionClick}
           reflectionSlot={heroVariant ? undefined : <ReflectionPill euOnly={euOnly} />}
         />
+      )}
+
+      {isPreparingImages && (
+        <div className="text-xs text-theme-muted italic mb-1 px-1 flex items-center gap-2" role="status">
+          <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-theme-accent" />
+          {t('chat.input.preparingImage')}
+        </div>
       )}
 
       {/* Mic / audio / file error message (speech recognition + Whisper + attachements) */}
@@ -1230,6 +1528,7 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
             scan: t('chat.input.menu.scan'),
           }}
           rounded={heroVariant}
+          disabled={isPreparingAttachments}
         />
         <input
           ref={fileInputRef}
@@ -1353,7 +1652,7 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
         ) : (text.trim() || files.length > 0) ? (
           <button
             onClick={handleSend}
-            disabled={isSubmitting}
+            disabled={isSubmitting || isPreparingAttachments}
             className={`flex h-11 w-11 flex-shrink-0 items-center justify-center border border-theme-accent bg-theme-accent text-theme-bg transition-[background-color,color,transform,box-shadow] duration-[180ms] hover:bg-theme-ink hover:text-theme-bg active:scale-[0.98] disabled:cursor-wait disabled:opacity-50 ${heroVariant ? 'rounded-full shadow-[0_8px_22px_-12px_rgb(var(--theme-accent)/0.9)]' : ''}`}
             aria-label={t('chat.input.aria.send')}
           >
@@ -1403,9 +1702,10 @@ interface AttachMenuProps {
   ariaLabel: string
   labels: { file: string; photo: string; scan: string }
   rounded?: boolean
+  disabled?: boolean
 }
 
-function AttachMenu({ open, onOpenChange, onPickFile, onPickCamera, onPickScan, ariaLabel, labels, rounded }: AttachMenuProps) {
+function AttachMenu({ open, onOpenChange, onPickFile, onPickCamera, onPickScan, ariaLabel, labels, rounded, disabled = false }: AttachMenuProps) {
   const hasMulti = !!(onPickCamera || onPickScan)
   const containerRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
@@ -1433,6 +1733,7 @@ function AttachMenu({ open, onOpenChange, onPickFile, onPickCamera, onPickScan, 
   }, [open, onOpenChange])
 
   const handlePrimaryClick = () => {
+    if (disabled) return
     if (!hasMulti) onPickFile()
     else onOpenChange(!open)
   }
@@ -1443,7 +1744,8 @@ function AttachMenu({ open, onOpenChange, onPickFile, onPickCamera, onPickScan, 
         ref={triggerRef}
         type="button"
         onClick={handlePrimaryClick}
-        className={`flex h-11 w-11 items-center justify-center border text-theme-muted transition-[color,background-color,border-color,transform,box-shadow] duration-[180ms] active:scale-[0.98] ${rounded
+        disabled={disabled}
+        className={`flex h-11 w-11 items-center justify-center border text-theme-muted transition-[color,background-color,border-color,transform,box-shadow] duration-[180ms] active:scale-[0.98] disabled:cursor-wait disabled:opacity-40 ${rounded
           ? 'rounded-full border-theme-ink/10 bg-theme-bg/60 shadow-[0_1px_2px_rgb(var(--theme-ink)/0.025)] hover:border-theme-accent/30 hover:bg-theme-accent/10 hover:text-theme-accent-text'
           : 'border-theme-border hover:border-theme-accent hover:text-theme-accent-text'
         }`}

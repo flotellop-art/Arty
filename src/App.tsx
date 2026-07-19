@@ -75,6 +75,8 @@ import {
   type SharePayload,
 } from './services/shareTargetService'
 import type { ChatSendHandler } from './types'
+import { normalizeImageAttachmentForVision } from './services/imageNormalization'
+import { isVision4kFoundationEnabled } from './services/visionFeature'
 
 function AppContent({
   onLogout,
@@ -98,6 +100,7 @@ function AppContent({
     return res?.triggered ? { spent: res.spent, limit: res.limit } : null
   })
   const [shareError, setShareError] = useState<string | null>(null)
+  const shareOperationRef = useRef(0)
   const navigate = useNavigate()
   const { t } = useTranslation()
 
@@ -208,13 +211,42 @@ function AppContent({
   // via the in-memory pending draft, and never auto-sends — the user must
   // confirm or edit the suggested prompt first.
   const handleSharedContent = useCallback(
-    (payload: SharePayload) => {
+    async (payload: SharePayload) => {
+      const operationId = ++shareOperationRef.current
+      setShareError(null)
+      const vision4kFoundation = isVision4kFoundationEnabled()
       if (payload.error === 'file_too_large') {
         setShareError(t('app.shareError.fileTooLarge'))
         return
       }
-      const draft = buildDraftFromShare(payload)
+      // Le plugin natif sait lire jusqu'à 32 Mio pour préparer l'activation,
+      // mais le flag OFF doit conserver exactement l'ancien plafond live de
+      // 10 Mio. Les PDF/autres fichiers restent bornés à 10 Mio côté Java.
+      if (
+        !vision4kFoundation &&
+        payload.file?.mimeType.startsWith('image/') &&
+        payload.file.sizeBytes > 10 * 1024 * 1024
+      ) {
+        setShareError(t('app.shareError.fileTooLarge'))
+        return
+      }
+      let draft = buildDraftFromShare(payload)
       if (!draft) return
+      if (
+        vision4kFoundation &&
+        draft.files[0]?.type.startsWith('image/') &&
+        draft.files[0].data
+      ) {
+        try {
+          const normalized = await normalizeImageAttachmentForVision(draft.files[0])
+          if (operationId !== shareOperationRef.current) return
+          draft = { ...draft, files: [normalized] }
+        } catch {
+          if (operationId !== shareOperationRef.current) return
+          setShareError(t('app.shareError.imagePreparation'))
+          return
+        }
+      }
       setActionScreenshot(null)
       setPendingDraft(draft)
       const isFirstConv = conversations.length === 0
@@ -222,7 +254,7 @@ function AppContent({
       if (!id) return
       navigate(`/chat/${id}`)
     },
-    [conversations.length, createConversation, navigate, setActionScreenshot]
+    [conversations.length, createConversation, navigate, setActionScreenshot, t]
   )
 
   // Wire the Share intent listener once auth + the navigator are ready.
@@ -243,6 +275,7 @@ function AppContent({
     })
     return () => {
       cancelled = true
+      shareOperationRef.current += 1
       cleanup?.()
     }
   }, [handleSharedContent])

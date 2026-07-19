@@ -24,12 +24,23 @@ function detectMimeType(name: string, type: string): string {
 // Hydrate files: si f.data manque, le recharger depuis IndexedDB. Si null
 // (blob purgé par OS / quota dépassé), retourner un placeholder qui produira
 // un texte "[Image indisponible — recharge la conversation]" plutôt qu'un crash.
+// Queue globale aux builders : plusieurs messages/conversations peuvent être
+// hydratés via Promise.all, mais deux gros assets canoniques ne doivent jamais
+// être déchiffrés en parallèle sur une WebView mobile.
+let canonicalHydrationChain: Promise<void> = Promise.resolve()
+
 async function hydrateFiles(files: FileAttachment[]): Promise<FileAttachment[]> {
   return Promise.all(
-    files.map(async (f) => {
+    files.map((f) => {
       if (f.data) return f
-      const loaded = await getFile(f.id)
-      return loaded ?? f // f sans data → traité comme indisponible plus bas
+      const load = async () => {
+        const loaded = await getFile(f.id)
+        return loaded ?? f // f sans data → traité comme indisponible plus bas
+      }
+      if (f.normalizationVersion === undefined) return load()
+      const task = canonicalHydrationChain.then(load)
+      canonicalHydrationChain = task.then(() => undefined, () => undefined)
+      return task
     })
   )
 }

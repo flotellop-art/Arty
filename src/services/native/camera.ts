@@ -6,17 +6,30 @@ export interface CapturedPhoto {
   mimeType: string
 }
 
+export interface CapturePhotoOptions {
+  /** Redimensionnement natif avant que les pixels entrent dans WKWebView. */
+  maxDimension?: number
+}
+
+function nativeResizeOptions(options?: CapturePhotoOptions): { width: number; height: number } | Record<string, never> {
+  const max = options?.maxDimension
+  return typeof max === 'number' && max > 0
+    ? { width: Math.floor(max), height: Math.floor(max) }
+    : {}
+}
+
 /**
  * Take a photo with the device camera.
  * On web, falls back to the browser camera API.
  */
-export async function takePhoto(): Promise<CapturedPhoto | null> {
+export async function takePhoto(options?: CapturePhotoOptions): Promise<CapturedPhoto | null> {
   try {
     const image = await Camera.getPhoto({
       quality: 85,
       allowEditing: false,
       resultType: CameraResultType.Base64,
       source: CameraSource.Camera,
+      ...nativeResizeOptions(options),
     })
 
     if (!image.base64String) return null
@@ -34,13 +47,14 @@ export async function takePhoto(): Promise<CapturedPhoto | null> {
 /**
  * Pick a photo from the gallery.
  */
-export async function pickPhoto(): Promise<CapturedPhoto | null> {
+export async function pickPhoto(options?: CapturePhotoOptions): Promise<CapturedPhoto | null> {
   try {
     const image = await Camera.getPhoto({
       quality: 90,
       allowEditing: false,
       resultType: CameraResultType.Base64,
       source: CameraSource.Photos,
+      ...nativeResizeOptions(options),
     })
 
     if (!image.base64String) return null

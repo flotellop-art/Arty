@@ -4,6 +4,11 @@ export interface FileAttachment {
   type: string // 'application/pdf', 'image/jpeg', etc.
   data?: string // base64 — présent en RAM avant send, absent après persistance
   size?: number // octets, après compression éventuelle
+  /** Dimensions de l'asset canonique, jamais celles du capteur original. */
+  width?: number
+  height?: number
+  /** Présent uniquement après passage par normalizeImageForVision. */
+  normalizationVersion?: number
 }
 
 /** Actions rapides proposées au-dessus du composer. L'identifiant est

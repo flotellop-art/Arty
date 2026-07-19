@@ -15,6 +15,7 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
+import java.util.Locale;
 
 // Captures Android Share intents (ACTION_SEND) and exposes the payload to JS.
 // Reads URI bytes IMMEDIATELY at intent reception because the
@@ -24,7 +25,32 @@ import java.io.InputStream;
 @CapacitorPlugin(name = "ShareTarget")
 public class ShareTargetPlugin extends Plugin {
 
-    private static final long MAX_FILE_SIZE_BYTES = 10L * 1024 * 1024; // 10 MB
+    static final long MAX_FILE_SIZE_BYTES = 10L * 1024 * 1024; // PDF/autres
+    static final long MAX_IMAGE_SIZE_BYTES = 32L * 1024 * 1024; // source avant normalisation 4K
+
+    static long maxFileSizeBytes(String mimeType) {
+        return mimeType != null && mimeType.startsWith("image/")
+            ? MAX_IMAGE_SIZE_BYTES
+            : MAX_FILE_SIZE_BYTES;
+    }
+
+    static String resolveMimeType(String resolverMime, String fallbackMime, String name) {
+        String mimeType = resolverMime;
+        if (mimeType == null || mimeType.isEmpty() || "application/octet-stream".equals(mimeType)) {
+            if (fallbackMime != null && !fallbackMime.isEmpty() && !"application/octet-stream".equals(fallbackMime)) {
+                mimeType = fallbackMime;
+            }
+        }
+        if (mimeType != null && !mimeType.isEmpty() && !"application/octet-stream".equals(mimeType)) {
+            return mimeType;
+        }
+        String lowerName = name == null ? "" : name.toLowerCase(Locale.ROOT);
+        if (lowerName.endsWith(".jpg") || lowerName.endsWith(".jpeg")) return "image/jpeg";
+        if (lowerName.endsWith(".png")) return "image/png";
+        if (lowerName.endsWith(".webp")) return "image/webp";
+        if (lowerName.endsWith(".pdf")) return "application/pdf";
+        return "application/octet-stream";
+    }
 
     private final Object lock = new Object();
     private JSObject pendingPayload = null;
@@ -117,9 +143,7 @@ public class ShareTargetPlugin extends Plugin {
 
         // Resolver mime is more reliable than the intent type (shared PDFs
         // sometimes arrive as application/octet-stream at the intent layer).
-        String mimeType = resolver.getType(uri);
-        if (mimeType == null) mimeType = fallbackMime;
-        if (mimeType == null) mimeType = "application/octet-stream";
+        String resolverMime = resolver.getType(uri);
 
         String name = "shared";
         long size = -1;
@@ -139,7 +163,10 @@ public class ShareTargetPlugin extends Plugin {
             // streaming and we'll discover the size during read.
         }
 
-        if (size > MAX_FILE_SIZE_BYTES) {
+        String mimeType = resolveMimeType(resolverMime, fallbackMime, name);
+        long maxSizeBytes = maxFileSizeBytes(mimeType);
+
+        if (size > maxSizeBytes) {
             JSObject err = new JSObject();
             err.put("error", "file_too_large");
             return err;
@@ -148,7 +175,7 @@ public class ShareTargetPlugin extends Plugin {
         byte[] bytes;
         try (InputStream in = resolver.openInputStream(uri)) {
             if (in == null) return null;
-            bytes = readAllCapped(in, MAX_FILE_SIZE_BYTES + 1);
+            bytes = readAllCapped(in, maxSizeBytes);
         } catch (Exception e) {
             return null;
         }
@@ -168,7 +195,7 @@ public class ShareTargetPlugin extends Plugin {
     }
 
     // Reads up to `cap` bytes; returns null if the stream exceeds the cap.
-    private byte[] readAllCapped(InputStream in, long cap) throws java.io.IOException {
+    static byte[] readAllCapped(InputStream in, long cap) throws java.io.IOException {
         ByteArrayOutputStream buffer = new ByteArrayOutputStream();
         byte[] chunk = new byte[8 * 1024];
         long total = 0;
