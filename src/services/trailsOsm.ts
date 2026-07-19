@@ -82,7 +82,7 @@ async function geocodeDirect(location: string): Promise<{ center: Center | null;
   try {
     const res = await fetchWithTimeout(
       `https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(location)}&limit=1`,
-      {}, 5000
+      {}, 4000
     )
     if (res.ok) {
       reachable = true
@@ -102,7 +102,7 @@ async function geocodeDirect(location: string): Promise<{ center: Center | null;
   try {
     const res = await fetchWithTimeout(
       `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(location)}&count=1&language=fr`,
-      {}, 5000
+      {}, 4000
     )
     if (res.ok) {
       reachable = true
@@ -118,7 +118,7 @@ async function geocodeDirect(location: string): Promise<{ center: Center | null;
   try {
     const res = await fetchWithTimeout(
       `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(location)}&format=jsonv2&limit=1&accept-language=fr`,
-      {}, 5000
+      {}, 4000
     )
     if (res.ok) {
       reachable = true
@@ -144,7 +144,7 @@ async function queryOverpassDirect(ql: string): Promise<{ elements?: OverpassEle
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: `data=${encodeURIComponent(ql)}`,
-      }, 10_000)
+      }, 5000)
       if (!res.ok) continue
       return (await res.json()) as { elements?: OverpassElement[] }
     } catch { /* instance suivante */ }
