@@ -4,6 +4,7 @@ import { buildAiHeaders } from './aiHttp'
 import { recordUsage } from './costTracker'
 import { dispatchModelUsed } from './modelLabels'
 import { updateTrialFromResponse } from './trialClient'
+import { getActiveSessionEpoch, getActiveUserId } from './userSession'
 import type { RouteReason } from './router/types'
 
 // OpenAI client — deux chemins :
@@ -47,6 +48,11 @@ export interface OpenAIMessage {
 interface OpenAIOptions {
   systemPrompt?: string
   model?: string
+  /** Petit budget pour les appels internes structurés (ex. localisation ROI). */
+  maxCompletionTokens?: number
+  /** Lie une opération asynchrone au compte qui possédait ses données. */
+  expectedUserId?: string | null
+  expectedSessionEpoch?: number
   // Appel d'arrière-plan (comparateur) : l'event 'arty-model-used' est marqué
   // background → ignoré par le badge de conversation (F-4).
   background?: boolean
@@ -99,9 +105,25 @@ async function resolveTarget(
 async function openaiFetch(
   apiKey: string | null,
   body: Record<string, unknown>,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  expectedUserId?: string | null,
+  expectedSessionEpoch?: number,
 ): Promise<Response> {
+  if (
+    (expectedUserId !== undefined && getActiveUserId() !== expectedUserId) ||
+    (expectedSessionEpoch !== undefined && getActiveSessionEpoch() !== expectedSessionEpoch)
+  ) {
+    throw new Error(i18n.t('errors.accountChangedDuringRequest'))
+  }
   const { url, headers } = await resolveTarget(apiKey)
+  // buildAiHeaders peut rafraîchir un token : revalidation obligatoire après
+  // cet await, avant que les pixels ne quittent l'appareil.
+  if (
+    (expectedUserId !== undefined && getActiveUserId() !== expectedUserId) ||
+    (expectedSessionEpoch !== undefined && getActiveSessionEpoch() !== expectedSessionEpoch)
+  ) {
+    throw new Error(i18n.t('errors.accountChangedDuringRequest'))
+  }
   // Le proxy sélectionne ainsi son parseur JSON streaming à 24 Mio. Un client
   // qui ment sur ce header ne gagne rien : le serveur exige ensuite le contrat
   // vision canonique complet. Le BYOK direct ne passe pas par ce transport.
@@ -124,9 +146,11 @@ async function openaiFetch(
 async function startChatRequest(
   apiKey: string | null,
   payload: Record<string, unknown>,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  expectedUserId?: string | null,
+  expectedSessionEpoch?: number,
 ): Promise<Response> {
-  const response = await openaiFetch(apiKey, payload, signal)
+  const response = await openaiFetch(apiKey, payload, signal, expectedUserId, expectedSessionEpoch)
   if (response.ok) return response
   // gpt-5 n'a pas le même contrat `detail: original`. Une requête vision ne
   // doit jamais être rejouée silencieusement sur ce fallback texte historique.
@@ -139,7 +163,13 @@ async function startChatRequest(
     return response
   }
   console.warn('[openai] DEFAULT_MODEL rejected, retrying with FALLBACK:', errText.slice(0, 120))
-  return openaiFetch(apiKey, { ...payload, model: FALLBACK_MODEL }, signal)
+  return openaiFetch(
+    apiKey,
+    { ...payload, model: FALLBACK_MODEL },
+    signal,
+    expectedUserId,
+    expectedSessionEpoch,
+  )
 }
 
 export function hasOpenAIVisionBlocks(payload: Record<string, unknown>): boolean {
@@ -192,7 +222,7 @@ export function sendMessageStream(
         stream: true,
         // gpt-5 / o-series : "max_tokens" renommé en "max_completion_tokens".
         // max_completion_tokens fonctionne aussi sur gpt-4o donc pas de branchement.
-        max_completion_tokens: 4096,
+        max_completion_tokens: Math.max(1, Math.min(65_536, Math.floor(options?.maxCompletionTokens ?? 4096))),
         // Note : on ne set pas "temperature". gpt-5 / o-series n'acceptent que
         // la valeur par défaut (1) — OpenAI renvoie 400 unsupported_value sur
         // n'importe quelle autre valeur. Laisser le default évite le branchement.
@@ -201,7 +231,13 @@ export function sendMessageStream(
         stream_options: { include_usage: true },
       }
 
-      const response = await startChatRequest(apiKey, payload, controller.signal)
+      const response = await startChatRequest(
+        apiKey,
+        payload,
+        controller.signal,
+        options?.expectedUserId,
+        options?.expectedSessionEpoch,
+      )
 
       if (!response.ok) {
         // P0.7 — cap premium mensuel : code structuré surfacé tel quel (la

@@ -86,7 +86,10 @@ function base64ByteLength(value: string): number {
 // callers restent sur le compresseur 2048 historique jusqu'à activation du
 // feature flag et les images générées sans métadonnées gardent ce fallback.
 // Retourne le fileId stable à stocker dans Message.files[].id.
-export async function putFile(file: FileAttachment): Promise<string> {
+export async function putFile(
+  file: FileAttachment,
+  ownerUserId: string | null = getActiveUserId(),
+): Promise<string> {
   if (!isCryptoReady()) {
     throw new Error('Crypto not ready — cannot persist file')
   }
@@ -143,7 +146,9 @@ export async function putFile(file: FileAttachment): Promise<string> {
   const fileId = file.id || generateId()
   const record: StoredFile = {
     fileId,
-    ownerKey: getOwnerKey(),
+    // Capturé avant les await : un changement de compte pendant le
+    // chiffrement ne peut pas déplacer le blob dans le scope suivant.
+    ownerKey: ownerKeyFor(ownerUserId),
     name: file.name,
     mimeType: stored.mimeType,
     size: stored.size,
@@ -165,12 +170,15 @@ export async function putFile(file: FileAttachment): Promise<string> {
 
 // Lit + déchiffre un fichier. Retourne null si absent ou si la clé n'est
 // pas la bonne (multi-compte).
-export async function getFile(fileId: string): Promise<FileAttachment | null> {
+export async function getFile(
+  fileId: string,
+  ownerUserId: string | null = getActiveUserId(),
+): Promise<FileAttachment | null> {
   if (!isCryptoReady()) return null
   const db = await getDB()
   const record = (await db.get(STORE, fileId)) as StoredFile | undefined
   if (!record) return null
-  if (record.ownerKey !== getOwnerKey()) return null
+  if (record.ownerKey !== ownerKeyFor(ownerUserId)) return null
   try {
     const data = await decrypt(record.encryptedData)
     return {

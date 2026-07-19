@@ -529,7 +529,11 @@
       "edit": "Edit",
       "editTitle": "Edit and resend",
       "send": "Send",
-      "imageUnavailable": "Image unavailable"
+      "imageUnavailable": "Image unavailable",
+      "openFullscreen": "View full screen"
+    },
+    "visionAutoCrop": {
+      "disclosure": "To locate the area automatically, Arty will send OpenAI a reduced overview of the photo(s), then only the HD crop. These calls are billed separately: the locator may still count if the final analysis fails. Continue?"
     },
     "planBadge": {
       "labelFree": "Free",
@@ -572,6 +576,11 @@
     "openaiVisionDisabled": "GPT photo analysis is temporarily disabled.",
     "openaiInvalidImagePayload": "A photo could not be validated. Remove it and attach it again.",
     "openaiVisionAssetUnavailable": "The original photo is no longer available on this device. Attach it again.",
+    "visionAutoCropRegionNotFound": "I couldn't locate that area confidently. Describe the object and its position in the photo more precisely.",
+    "visionAutoCropAssetUnavailable": "The photo to crop is no longer available on this device. Attach it again.",
+    "visionAutoCropFailed": "I couldn't locate the requested area. Nothing else was sent; try again with a more precise position.",
+    "visionAutoCropInProgress": "I'm already locating that area. Wait a moment before sending again.",
+    "accountChangedDuringRequest": "The account changed during the operation. It was stopped before the next step; start again from this account.",
     "streamInterrupted": "Response interrupted",
     "streamStopped": "Response stopped",
     "streamStalled": "Server connection stalled (unstable network). The answer received so far was kept.",

@@ -47,6 +47,19 @@ export interface ImageNormalizationOptions {
   maxOutputBytes?: number
 }
 
+/** Rectangle normalisé (0..1) dans l'asset canonique déjà orienté. */
+export interface NormalizedCropRect {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+export interface ImageCropOptions extends ImageNormalizationOptions {
+  /** Borne du plus grand côté de sortie. 768 px pour l'aperçu de repérage. */
+  maxDimension?: number
+}
+
 interface ImageHeader {
   mimeType: 'image/jpeg' | 'image/png' | 'image/webp'
   width: number
@@ -575,6 +588,122 @@ export function base64ImageToBlob(base64: string, mimeType: string): Blob {
     return new Blob([bytes], { type: normalizedMime(mimeType) })
   } catch {
     throw new ImageNormalizationError('decode_failed', 'Invalid base64 image')
+  }
+}
+
+/**
+ * Recadre un asset vision canonique dans le navigateur. Les coordonnées sont
+ * normalisées afin que le rectangle renvoyé par Terra sur l'aperçu léger
+ * s'applique exactement à l'original HD, quelle que soit sa résolution.
+ *
+ * Le canvas réencode l'image : EXIF/XMP et autres métadonnées ne sont jamais
+ * copiées dans le recadrage envoyé au second passage.
+ */
+export async function cropImageAttachmentForVision(
+  file: Pick<FileAttachment, 'id' | 'name' | 'type' | 'data' | 'normalizationVersion'>,
+  rect: NormalizedCropRect,
+  options: ImageCropOptions = {},
+): Promise<NormalizedImageAsset> {
+  if (!file.data) throw new ImageNormalizationError('decode_failed', 'Image data is missing')
+  if (file.normalizationVersion !== IMAGE_NORMALIZATION_VERSION) {
+    throw new ImageNormalizationError('decode_failed', 'Image is not a canonical vision asset')
+  }
+
+  const finite = [rect.x, rect.y, rect.width, rect.height].every(Number.isFinite)
+  if (!finite || rect.width <= 0 || rect.height <= 0) {
+    throw new ImageNormalizationError('decode_failed', 'Crop rectangle is invalid')
+  }
+
+  const source = base64ImageToBlob(file.data, file.type)
+  const header = await inspectImageHeader(source, file.type)
+  let decoded: DecodedImage | null = null
+  let canvas: HTMLCanvasElement | null = null
+  try {
+    decoded = await decodeImage(source, header)
+    if (decoded.width * decoded.height > MAX_IMAGE_SOURCE_PIXELS) {
+      throw new ImageNormalizationError('source_too_many_pixels', 'Decoded image exceeds the safe pixel budget')
+    }
+
+    const x = Math.max(0, Math.min(1, rect.x))
+    const y = Math.max(0, Math.min(1, rect.y))
+    const right = Math.max(x, Math.min(1, rect.x + rect.width))
+    const bottom = Math.max(y, Math.min(1, rect.y + rect.height))
+    const sourceX = Math.min(decoded.width - 1, Math.floor(x * decoded.width))
+    const sourceY = Math.min(decoded.height - 1, Math.floor(y * decoded.height))
+    const sourceWidth = Math.max(1, Math.min(decoded.width - sourceX, Math.ceil((right - x) * decoded.width)))
+    const sourceHeight = Math.max(1, Math.min(decoded.height - sourceY, Math.ceil((bottom - y) * decoded.height)))
+    if (sourceWidth < 32 || sourceHeight < 32) {
+      throw new ImageNormalizationError('decode_failed', 'Crop rectangle is too small')
+    }
+
+    const requestedMaxDimension = Math.max(32, Math.floor(options.maxDimension ?? MAX_IMAGE_DIMENSION))
+    const maxDimension = Math.min(MAX_IMAGE_DIMENSION, requestedMaxDimension)
+    const scale = Math.min(1, maxDimension / Math.max(sourceWidth, sourceHeight))
+    const width = Math.max(1, Math.round(sourceWidth * scale))
+    const height = Math.max(1, Math.round(sourceHeight * scale))
+
+    canvas = createCanvas(width, height)
+    const context = canvas.getContext('2d', { alpha: true })
+    if (!context) throw new ImageNormalizationError('decode_failed', 'Canvas 2D unavailable')
+    context.drawImage(
+      decoded.source,
+      sourceX,
+      sourceY,
+      sourceWidth,
+      sourceHeight,
+      0,
+      0,
+      width,
+      height,
+    )
+    const sourceSignature = pixelSignature(canvas, width, height)
+    const preserveAlpha = header.hasAlpha && canvasHasTransparency(canvas)
+    const mimeType: 'image/jpeg' | 'image/png' = preserveAlpha ? 'image/png' : 'image/jpeg'
+    const maxOutputBytes = Math.min(
+      MAX_NORMALIZED_IMAGE_BYTES,
+      Math.max(1, Math.floor(options.maxOutputBytes ?? MAX_NORMALIZED_IMAGE_BYTES)),
+    )
+
+    let blob = mimeType === 'image/png'
+      ? await canvasToBlob(canvas, mimeType)
+      : await canvasToBlob(canvas, mimeType, JPEG_QUALITY_STEPS[0])
+    if (mimeType === 'image/jpeg') {
+      for (let index = 1; blob.size > maxOutputBytes && index < JPEG_QUALITY_STEPS.length; index++) {
+        blob = await canvasToBlob(canvas, mimeType, JPEG_QUALITY_STEPS[index])
+      }
+    }
+
+    decoded.release()
+    decoded = null
+    canvas.width = 1
+    canvas.height = 1
+    canvas = null
+
+    // Cas pathologique (PNG transparent ou bruit photo très dense) : le
+    // normaliseur existant réduit progressivement la taille sous 4 Mio.
+    if (blob.size > maxOutputBytes) {
+      return normalizeImageForVision(blob, mimeType, { maxOutputBytes })
+    }
+
+    const encoded = { blob, width, height, mimeType }
+    await verifyEncodedOutput(encoded, sourceSignature)
+    return {
+      data: await blobToBase64(blob),
+      mimeType,
+      size: blob.size,
+      width,
+      height,
+      normalizationVersion: IMAGE_NORMALIZATION_VERSION,
+    }
+  } catch (error) {
+    if (error instanceof ImageNormalizationError) throw error
+    throw new ImageNormalizationError('decode_failed', 'Image could not be cropped')
+  } finally {
+    decoded?.release()
+    if (canvas) {
+      canvas.width = 1
+      canvas.height = 1
+    }
   }
 }
 

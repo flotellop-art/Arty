@@ -20,6 +20,7 @@ interface ConversationScreenProps {
   isStreaming: boolean
   streamingContent: string
   error: string | null
+  errorRetryable?: boolean
   onBack: () => void
   onSend: ChatSendHandler
   onStop: () => void
@@ -45,6 +46,7 @@ export function ConversationScreen({
   isStreaming,
   streamingContent,
   error,
+  errorRetryable = true,
   onBack,
   onSend,
   onStop,
@@ -127,7 +129,7 @@ export function ConversationScreen({
           <span className="flex-1 min-w-0 break-words">
             {error || computerActions.error}
           </span>
-          {error && onRetryError && !isStreaming && (
+          {error && onRetryError && !isStreaming && errorRetryable && (
             <button
               onClick={onRetryError}
               className="flex-shrink-0 px-2.5 py-1 rounded-md border border-red-500/40 font-medium hover:bg-red-500/10 transition-colors"

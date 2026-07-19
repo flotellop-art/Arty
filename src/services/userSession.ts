@@ -19,6 +19,7 @@ export interface UserSession {
 
 // Current active session
 let _activeSession: UserSession | null = null
+let _sessionEpoch = 0
 
 // ─── Hash helper ───
 
@@ -57,7 +58,13 @@ export function getActiveUserId(): string | null {
   return getActiveSession()?.userId || null
 }
 
+/** Change à chaque switch/logout, même si l'utilisateur revient au même ID. */
+export function getActiveSessionEpoch(): number {
+  return _sessionEpoch
+}
+
 export function setActiveSession(session: UserSession): void {
+  _sessionEpoch += 1
   _activeSession = session
   localStorage.setItem(ACTIVE_SESSION_KEY, JSON.stringify(session))
 
@@ -73,6 +80,7 @@ export function setActiveSession(session: UserSession): void {
 }
 
 export function clearActiveSession(): void {
+  _sessionEpoch += 1
   _activeSession = null
   localStorage.removeItem(ACTIVE_SESSION_KEY)
 }

@@ -1,4 +1,5 @@
 import { memo, useState, useRef, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import type { FileAttachment } from '../../types'
 import { getFile } from '../../services/secureFileStorage'
@@ -20,6 +21,10 @@ const FileThumbnail = memo(function FileThumbnail({ file }: { file: FileAttachme
   const { t } = useTranslation()
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [unavailable, setUnavailable] = useState(false)
+  const [expanded, setExpanded] = useState(false)
+  const triggerButtonRef = useRef<HTMLButtonElement>(null)
+  const closeButtonRef = useRef<HTMLButtonElement>(null)
+  const overlayRef = useRef<HTMLDivElement>(null)
   const isImage = file.type.startsWith('image/')
 
   useEffect(() => {
@@ -51,6 +56,47 @@ const FileThumbnail = memo(function FileThumbnail({ file }: { file: FileAttachme
     }
   }, [file.id, file.type, isImage])
 
+  useEffect(() => {
+    if (!expanded) return
+    const previousOverflow = document.body.style.overflow
+    const previousOverscroll = document.body.style.overscrollBehavior
+    const backgroundElements = Array.from(document.body.children)
+      .filter((element): element is HTMLElement =>
+        element instanceof HTMLElement && element !== overlayRef.current
+      )
+      .map((element) => ({
+        element,
+        inert: element.inert,
+        ariaHidden: element.getAttribute('aria-hidden'),
+      }))
+    for (const { element } of backgroundElements) {
+      element.inert = true
+      element.setAttribute('aria-hidden', 'true')
+    }
+    document.body.style.overflow = 'hidden'
+    document.body.style.overscrollBehavior = 'none'
+    requestAnimationFrame(() => closeButtonRef.current?.focus())
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setExpanded(false)
+      if (event.key === 'Tab') {
+        event.preventDefault()
+        closeButtonRef.current?.focus()
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+      document.body.style.overflow = previousOverflow
+      document.body.style.overscrollBehavior = previousOverscroll
+      for (const { element, inert, ariaHidden } of backgroundElements) {
+        element.inert = inert
+        if (ariaHidden === null) element.removeAttribute('aria-hidden')
+        else element.setAttribute('aria-hidden', ariaHidden)
+      }
+      triggerButtonRef.current?.focus()
+    }
+  }, [expanded])
+
   if (isImage) {
     if (unavailable) {
       return (
@@ -65,12 +111,53 @@ const FileThumbnail = memo(function FileThumbnail({ file }: { file: FileAttachme
       )
     }
     return (
-      <img
-        src={previewUrl}
-        alt={file.name}
-        className="w-[100px] h-[100px] object-cover rounded-md border border-theme-border"
-        title={file.name}
-      />
+      <>
+        <button
+          ref={triggerButtonRef}
+          type="button"
+          onClick={() => setExpanded(true)}
+          className="block rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-theme-accent"
+          aria-label={`${file.name} — ${t('chat.userBubble.openFullscreen')}`}
+          title={t('chat.userBubble.openFullscreen')}
+        >
+          <img
+            src={previewUrl}
+            alt={file.name}
+            className="w-[100px] h-[100px] object-cover rounded-md border border-theme-border cursor-zoom-in"
+          />
+        </button>
+        {expanded && createPortal(
+          <div
+            ref={overlayRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label={file.name}
+            className="fixed inset-0 z-[120] h-[100dvh] bg-black/90 flex items-center justify-center p-3 sm:p-6"
+            onPointerDown={(event) => {
+              if (event.target === event.currentTarget) setExpanded(false)
+            }}
+          >
+            <img
+              src={previewUrl}
+              alt={file.name}
+              decoding="async"
+              draggable={false}
+              className="max-w-full max-h-full object-contain select-none [touch-action:pinch-zoom]"
+            />
+            <button
+              ref={closeButtonRef}
+              type="button"
+              onClick={() => setExpanded(false)}
+              className="absolute top-[max(0.75rem,env(safe-area-inset-top))] right-3 sm:right-6 w-11 h-11 rounded-full bg-black/60 border border-white/30 text-white text-2xl leading-none flex items-center justify-center hover:bg-black/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+              aria-label={t('common.close')}
+              title={t('common.close')}
+            >
+              ×
+            </button>
+          </div>,
+          document.body,
+        )}
+      </>
     )
   }
 

@@ -17,7 +17,7 @@ import { useStreaming } from './useStreaming'
 import { useFileAttachments, buildApiMessages, buildContentBlocks, buildTextOnlyMessages, buildMistralMessages, buildMistralContentBlocks } from './useFileAttachments'
 import { buildOpenAIRouteMessages } from './openaiRouteMessages'
 import { getReflectionLevel } from '../services/reflectionLevel'
-import { deleteFile, putFile } from '../services/secureFileStorage'
+import { deleteFile, deleteOwnedFiles, putFile } from '../services/secureFileStorage'
 import { runFactCheckOnLatest, getFactCheckMode } from '../services/factChecker'
 import { detectSuggestedTasks, addTask } from '../services/taskService'
 import { TOOLS } from '../services/toolDefinitions'
@@ -25,6 +25,13 @@ import { wantsImageGeneration, generateImageToolDefinition } from '../services/t
 import { detectReminderIntent, createReminder } from '../services/reminderService'
 import { composeQuickActionText, isQuickActionSelection } from '../services/quickActions'
 import { clearConversationComposerDraft } from '../services/composerDrafts'
+import { getActiveSessionEpoch, getActiveUserId } from '../services/userSession'
+import {
+  findLatestTerraVisionBatch,
+  isVisionAutoCropFollowUp,
+  prepareVisionAutoCrop,
+  VisionAutoCropError,
+} from '../services/visionAutoCrop'
 import i18n from '../i18n'
 
 type ToolHandler = (name: string, input: Record<string, unknown>) => Promise<{ result: string; screenshot?: string }>
@@ -37,6 +44,11 @@ const GOOGLE_TOOL_NAMES = new Set([
   'list_calendar', 'search_contacts',
 ])
 
+function confirmVisionAutoCropDisclosure(): boolean {
+  if (typeof window === 'undefined' || typeof window.confirm !== 'function') return false
+  return window.confirm(i18n.t('chat.visionAutoCrop.disclosure'))
+}
+
 export function useConversation() {
   // H1 (audit frontend) — storage.getConversations() retourne la RÉFÉRENCE du
   // cache mémoire, muté en place par saveConversation. La repasser telle
@@ -48,8 +60,16 @@ export function useConversation() {
   )
   const [activeId, setActiveId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // Le bandeau ne peut rejouer que le dernier message DEJA persisté. Une
+  // erreur de préparation laisse le nouveau texte dans le composer : rejouer
+  // le dernier tour historique enverrait le mauvais message (et parfois la
+  // photo 4K d'origine).
+  const [errorRetryable, setErrorRetryable] = useState(false)
   const systemPromptRef = useRef<string | undefined>(undefined)
   const toolHandlerRef = useRef<ToolHandler | undefined>(undefined)
+  // Verrou par conversation : deux taps rapides ne peuvent pas lancer deux
+  // séquences locator + analyse en parallèle.
+  const visionAutoCropLocksRef = useRef(new Set<string>())
 
   const activeConversation = conversations.find((c) => c.id === activeId) ?? null
 
@@ -105,6 +125,7 @@ export function useConversation() {
     // en permanence (écran vide, juillet 2026). On refuse la création avec
     // une erreur visible plutôt que de dropper l'action de l'utilisateur.
     if (!storage.isCacheReady()) {
+      setErrorRetryable(false)
       setError(i18n.t('errors.storageNotReady'))
       return null
     }
@@ -116,6 +137,7 @@ export function useConversation() {
         hasPrivateHistory: false,
       })
       if (!canExecuteRoute(access)) {
+        setErrorRetryable(false)
         setError(i18n.t('errors.euPlanRequired'))
         return null
       }
@@ -154,6 +176,7 @@ export function useConversation() {
     setActiveStream(id)
     setActiveId(id)
     setError(null)
+    setErrorRetryable(false)
     return id
   }, [refreshConversations, setActiveStream])
 
@@ -161,15 +184,20 @@ export function useConversation() {
     setActiveStream(id)
     setActiveId(id)
     setError(null)
+    setErrorRetryable(false)
   }, [setActiveStream])
 
   const clearActive = useCallback(() => {
     setActiveStream(null)
     setActiveId(null)
     setError(null)
+    setErrorRetryable(false)
   }, [setActiveStream])
 
-  const clearError = useCallback(() => setError(null), [])
+  const clearError = useCallback(() => {
+    setError(null)
+    setErrorRetryable(false)
+  }, [])
 
   const setSystemPrompt = useCallback((prompt: string | undefined) => {
     systemPromptRef.current = prompt
@@ -197,6 +225,8 @@ export function useConversation() {
       const modelText = composeQuickActionText(text, quickAction)
 
       setError(null)
+      // Passe a true uniquement après la persistance du nouveau message.
+      setErrorRetryable(false)
 
       const conv = storage.getConversation(targetId)
       if (!conv) {
@@ -271,6 +301,148 @@ export function useConversation() {
         return false
       }
 
+      const replaceMessageId = typeof options?.replaceMessageId === 'string'
+        ? options.replaceMessageId
+        : undefined
+      const relocatingVisionCrop = !!(
+        options?.relocateVisionCrop && files?.some((file) => file.visionCrop?.kind === 'auto')
+      )
+      const applyMessageReplacement = (): boolean => {
+        if (!replaceMessageId) return true
+        const replaceIndex = conv.messages.findIndex((message) =>
+          message.id === replaceMessageId && message.role === 'user'
+        )
+        if (replaceIndex < 0) return false
+        conv.messages = conv.messages.slice(0, replaceIndex)
+        return true
+      }
+      let effectiveFiles = files
+      let autoCropSources: FileAttachment[] | null = null
+      let visionAutoCropOwnerId: string | null | undefined
+      let visionAutoCropSessionEpoch: number | undefined
+      let visionAutoCropLockHeld = false
+      let visionStreamReserved = false
+      let visionAutoCropPrepared = false
+      let lockedVisionRouteDecision: ReturnType<typeof resolveRoute> | null = null
+      const releaseVisionAutoCropLock = () => {
+        if (!visionAutoCropLockHeld) return
+        visionAutoCropLocksRef.current.delete(targetId)
+        visionAutoCropLockHeld = false
+      }
+      const visionOwnerChanged = () =>
+        visionAutoCropOwnerId !== undefined && (
+          getActiveUserId() !== visionAutoCropOwnerId ||
+          getActiveSessionEpoch() !== visionAutoCropSessionEpoch
+        )
+      if (!quickAction && options?.relocateVisionCrop && files?.some((file) => file.visionCrop)) {
+        const provenance = files.find((file) => file.visionCrop?.kind === 'auto')?.visionCrop
+        const sourceIds = [...new Set(provenance?.sourceFileIds?.length
+          ? provenance.sourceFileIds
+          : provenance ? [provenance.sourceFileId] : [])]
+        const priorFiles = conv.messages.flatMap((message) => message.files ?? [])
+        const byId = new Map(priorFiles.map((file) => [file.id, file]))
+        autoCropSources = sourceIds
+          .map((id) => byId.get(id))
+          .filter((file): file is FileAttachment => !!file)
+        if (autoCropSources.length === 0 || autoCropSources.length !== sourceIds.length) {
+          setError(i18n.t('errors.visionAutoCropAssetUnavailable'))
+          return false
+        }
+      } else if (!quickAction && (!files || files.length === 0) && isVisionAutoCropFollowUp(text)) {
+        autoCropSources = findLatestTerraVisionBatch(conv.messages)
+      }
+
+      if (autoCropSources && autoCropSources.length > 0) {
+        // Aucun pixel historique ne part avant que le routeur public ait
+        // confirmé exactement le chemin Terra (gates EU/private/trial/flags).
+        const prospectiveInput = gatherRouteInput({
+          originalText: modelText,
+          ...classifyRouteAttachments(autoCropSources),
+          euOnly: !!conv.euOnly,
+          hasPrivateHistory: !!conv.hasGoogleData,
+          hasTrailHistory: !!conv.hasTrailContext,
+        })
+        const prospectiveRoute = canExecuteRoute(prospectiveInput)
+          ? resolveRoute(prospectiveInput)
+          : null
+        if (prospectiveRoute?.usesOpenAIVision) {
+          // La décision de fournisseur est figée pour les deux passes. Un
+          // changement du sélecteur pendant le locator ne peut donc ni envoyer
+          // le crop à un autre fournisseur, ni contourner les gardes Terra.
+          lockedVisionRouteDecision = prospectiveRoute
+          // Consentement pour CETTE opération, avant le moindre
+          // getFile/aperçu/appel. Le
+          // locator et l'analyse finale sont deux requêtes facturables.
+          if (!confirmVisionAutoCropDisclosure()) return false
+          if (visionAutoCropLocksRef.current.has(targetId)) {
+            setError(i18n.t('errors.visionAutoCropInProgress'))
+            return false
+          }
+          visionAutoCropLocksRef.current.add(targetId)
+          visionAutoCropLockHeld = true
+          visionAutoCropOwnerId = getActiveUserId()
+          visionAutoCropSessionEpoch = getActiveSessionEpoch()
+          // Réserve le slot AVANT le locator facturable. Le bouton Stop peut
+          // ainsi annuler la passe 1 et aucun autre stream ne peut prendre la
+          // dernière place entre localisation et analyse.
+          if (!startStream(targetId)) {
+            setError(i18n.t('errors.tooManyConcurrentStreams'))
+            releaseVisionAutoCropLock()
+            return false
+          }
+          visionStreamReserved = true
+          try {
+            effectiveFiles = [await prepareVisionAutoCrop(
+              autoCropSources,
+              text,
+              targetId,
+              {
+                expectedUserId: visionAutoCropOwnerId,
+                expectedSessionEpoch: visionAutoCropSessionEpoch,
+                onLocatorController: (locatorController) => {
+                  if (hasStream(targetId)) setAbortController(targetId, locatorController)
+                  else locatorController.abort()
+                },
+              },
+            )]
+            visionAutoCropPrepared = true
+          } catch (error) {
+            const wasCancelled = visionStreamReserved && !hasStream(targetId)
+            if (visionStreamReserved && hasStream(targetId)) stopStreaming(targetId)
+            const code = error instanceof VisionAutoCropError ? error.code : 'locator_failed'
+            if (!wasCancelled) {
+              setError(i18n.t(
+                code === 'region_not_found'
+                  ? 'errors.visionAutoCropRegionNotFound'
+                  : code === 'asset_unavailable'
+                    ? 'errors.visionAutoCropAssetUnavailable'
+                    : code === 'account_changed'
+                      ? 'errors.accountChangedDuringRequest'
+                    : 'errors.visionAutoCropFailed'
+              ))
+            }
+            releaseVisionAutoCropLock()
+            return false
+          }
+        } else if (relocatingVisionCrop) {
+          // Une édition d'un crop doit impérativement recalculer sa zone sur
+          // Terra. Si la route n'est plus autorisée, ne jamais réutiliser le
+          // crop correspondant à l'ancien texte.
+          setError(i18n.t('errors.visionAutoCropFailed'))
+          return false
+        }
+      }
+
+      if (visionStreamReserved && !hasStream(targetId)) {
+        releaseVisionAutoCropLock()
+        return false
+      }
+      if (visionOwnerChanged()) {
+        if (visionStreamReserved && hasStream(targetId)) stopStreaming(targetId)
+        setError(i18n.t('errors.accountChangedDuringRequest'))
+        releaseVisionAutoCropLock()
+        return false
+      }
       // Persiste les binaires dans IndexedDB chiffré AVANT de sauvegarder le
       // Message. On garde uniquement {id, name, type, size} sur le Message —
       // le binaire est rechargé à la volée par buildApiMessages au moment de
@@ -278,14 +450,17 @@ export function useConversation() {
       // fichiers en RAM uniquement (perdus au refresh, mais le tour courant
       // marche).
       let persistedFiles: FileAttachment[] | undefined
-      if (files && files.length > 0) {
-        const persistedNewIds: string[] = []
+      const persistedNewIds: string[] = []
+      if (effectiveFiles && effectiveFiles.length > 0) {
         const persistOne = async (f: FileAttachment): Promise<FileAttachment> => {
           // Si f.data est absent (cas retry/edit : déjà persisté),
           // on garde la référence telle quelle.
           if (!f.data) return f
           try {
-            const id = await putFile(f)
+            const id = await putFile(
+              f,
+              visionAutoCropOwnerId !== undefined ? visionAutoCropOwnerId : getActiveUserId(),
+            )
             persistedNewIds.push(id)
             return {
               id,
@@ -295,6 +470,7 @@ export function useConversation() {
               width: f.width,
               height: f.height,
               normalizationVersion: f.normalizationVersion,
+              visionCrop: f.visionCrop,
             }
           } catch (err) {
             if (import.meta.env.DEV) console.warn('putFile failed:', err)
@@ -322,7 +498,7 @@ export function useConversation() {
         // l'ordre, tandis que les PDF/fichiers historiques gardent exactement
         // leur parallélisme existant.
         let canonicalWriteChain = Promise.resolve()
-        const persistenceTasks = files.map((f) => {
+        const persistenceTasks = effectiveFiles.map((f) => {
           if (f.normalizationVersion === undefined) return persistOne(f)
           const task = canonicalWriteChain.then(() => persistOne(f))
           // La queue reste utilisable après un échec; allSettled ci-dessous
@@ -331,14 +507,52 @@ export function useConversation() {
           return task
         })
         const persistenceResults = await Promise.allSettled(persistenceTasks)
+        if (visionStreamReserved && !hasStream(targetId)) {
+          if (visionAutoCropOwnerId !== undefined) {
+            await deleteOwnedFiles(persistedNewIds, visionAutoCropOwnerId)
+          }
+          releaseVisionAutoCropLock()
+          return false
+        }
+        if (visionOwnerChanged()) {
+          if (visionAutoCropOwnerId !== undefined) {
+            await deleteOwnedFiles(persistedNewIds, visionAutoCropOwnerId)
+          }
+          setError(i18n.t('errors.accountChangedDuringRequest'))
+          if (visionStreamReserved && hasStream(targetId)) stopStreaming(targetId)
+          releaseVisionAutoCropLock()
+          return false
+        }
         if (persistenceResults.some((result) => result.status === 'rejected')) {
-          await Promise.allSettled(persistedNewIds.map((id) => deleteFile(id)))
+          if (visionAutoCropOwnerId !== undefined) {
+            await deleteOwnedFiles(persistedNewIds, visionAutoCropOwnerId)
+          } else {
+            await Promise.allSettled(persistedNewIds.map((id) => deleteFile(id)))
+          }
           setError(i18n.t('errors.fileStorageFailed'))
+          if (visionStreamReserved && hasStream(targetId)) stopStreaming(targetId)
+          releaseVisionAutoCropLock()
           return false
         }
         persistedFiles = persistenceResults.map((result) =>
           (result as PromiseFulfilledResult<FileAttachment>).value
         )
+      }
+
+      // Edition atomique : le fil existant reste intact jusqu'à ce que le
+      // nouveau crop soit localisé ET stocké. Ensuite, aucune opération
+      // asynchrone ne s'intercale entre la troncature et l'insertion du tour.
+      if (replaceMessageId && relocatingVisionCrop) {
+        if (!visionAutoCropPrepared || !applyMessageReplacement()) {
+          if (visionAutoCropOwnerId !== undefined) {
+            await deleteOwnedFiles(persistedNewIds, visionAutoCropOwnerId)
+          } else {
+            await Promise.allSettled(persistedNewIds.map((id) => deleteFile(id)))
+          }
+          if (visionStreamReserved && hasStream(targetId)) stopStreaming(targetId)
+          releaseVisionAutoCropLock()
+          return false
+        }
       }
 
       const userMessage: Message = {
@@ -364,10 +578,11 @@ export function useConversation() {
       conv.updatedAt = Date.now()
       storage.saveConversation(conv)
       refreshConversations()
+      setErrorRetryable(true)
       setActiveStream(targetId)
       setActiveId(targetId)
 
-      setPendingFiles((files && files.length > 0) ? files : null)
+      setPendingFiles((effectiveFiles && effectiveFiles.length > 0) ? effectiveFiles : null)
 
       // Fact-check ASYNCHRONE (retrait du mode publish-after-fact-check,
       // juillet 2026) : la réponse streame et se publie immédiatement, la
@@ -389,8 +604,9 @@ export function useConversation() {
       // (putFile, createReminder) s'intercalent : le cap peut être atteint
       // entre-temps. Ignorer ce retour lançait un appel LLM orphelin dont le
       // onDone finalisait une bulle assistant VIDE.
-      if (!startStream(targetId)) {
+      if (!visionStreamReserved && !startStream(targetId)) {
         setError(i18n.t('errors.tooManyConcurrentStreams'))
+        releaseVisionAutoCropLock()
         return true
       }
 
@@ -468,9 +684,10 @@ export function useConversation() {
       // hors EU, jamais de requête Mistral vouée au 403.
       if (!canExecuteRoute(routeInput)) {
         onErr(new Error(i18n.t('errors.euPlanRequired')))
+        releaseVisionAutoCropLock()
         return true
       }
-      const routeDecision = resolveRoute(routeInput)
+      const routeDecision = lockedVisionRouteDecision ?? resolveRoute(routeInput)
       const provider = routeDecision.provider
 
       // Contexte sentiers : dès qu'un message route vers les outils trails, le
@@ -688,11 +905,27 @@ export function useConversation() {
           outgoingText,
           modelText,
         })
+        // Stop ou changement de session pendant un await de préparation :
+        // aucun appel final zombie/facturable ne doit encore pouvoir partir.
+        if (visionStreamReserved && !hasStream(targetId)) {
+          releaseVisionAutoCropLock()
+          return true
+        }
+        if (visionOwnerChanged()) {
+          if (visionStreamReserved && hasStream(targetId)) stopStreaming(targetId)
+          setError(i18n.t('errors.accountChangedDuringRequest'))
+          releaseVisionAutoCropLock()
+          return true
+        }
         if (openaiRoute.consumedCurrentFiles) setPendingFiles(null)
         controller = streamOpenAIMessage(openaiRoute.messages, openaiKey, onToken, onDone, onErr, {
           systemPrompt: systemPromptRef.current,
           conversationId: targetId,
           routeReason: routeDecision.reason,
+          ...(visionAutoCropOwnerId !== undefined ? { expectedUserId: visionAutoCropOwnerId } : {}),
+          ...(visionAutoCropSessionEpoch !== undefined
+            ? { expectedSessionEpoch: visionAutoCropSessionEpoch }
+            : {}),
         })
       } else {
         // Claude path — historique complet avec content blocks pour les images
@@ -724,6 +957,7 @@ export function useConversation() {
       }
 
       setAbortController(targetId, controller)
+      releaseVisionAutoCropLock()
 
       } catch (err) {
         // onErr finalize ce qui a été accumulé, démonte le stream et affiche
@@ -732,7 +966,9 @@ export function useConversation() {
         onErr(normalized.message === 'openai_vision_asset_unavailable'
           ? new Error(i18n.t('errors.openaiVisionAssetUnavailable'))
           : normalized)
+        releaseVisionAutoCropLock()
       }
+      releaseVisionAutoCropLock()
       return true
     },
     [
@@ -903,19 +1139,25 @@ export function useConversation() {
       const msg = conv.messages[idx]
       if (!msg || msg.role !== 'user') return
 
-      // Truncate everything after this message and update its content
       const originalFiles = msg.files
-      conv.messages = conv.messages.slice(0, idx)
-      conv.updatedAt = Date.now()
-      storage.saveConversation(conv)
-      refreshConversations()
-
-      // Re-send the edited message
-      sendMessage(
+      const relocatesAutoCrop = !!originalFiles?.some((file) => file.visionCrop?.kind === 'auto')
+      if (!relocatesAutoCrop) {
+        conv.messages = conv.messages.slice(0, idx)
+        conv.updatedAt = Date.now()
+        storage.saveConversation(conv)
+        refreshConversations()
+      }
+      // sendMessage tronque au dernier moment. Pour un auto-crop, cela évite
+      // de perdre la suite si le locator, le blob ou le consentement échoue.
+      void sendMessage(
         newContent,
         targetId,
         originalFiles,
-        msg.quickAction ? { quickAction: msg.quickAction } : undefined,
+        {
+          ...(relocatesAutoCrop ? { replaceMessageId: messageId } : {}),
+          ...(msg.quickAction ? { quickAction: msg.quickAction } : {}),
+          ...(relocatesAutoCrop ? { relocateVisionCrop: true } : {}),
+        },
       )
     },
     [activeId, refreshConversations, sendMessage]
@@ -976,6 +1218,7 @@ export function useConversation() {
     streamingConvIds: streaming.streamingConvIds,
     isStreamingFor: streaming.isStreamingFor,
     error,
+    errorRetryable,
     clearError,
     createConversation,
     selectConversation,

@@ -9,6 +9,15 @@ export interface FileAttachment {
   height?: number
   /** Présent uniquement après passage par normalizeImageForVision. */
   normalizationVersion?: number
+  /** Provenance locale d'un détail recadré automatiquement. Jamais envoyée
+   * au provider ; permet aux retry d'utiliser le crop et aux éditions de
+   * relocaliser la zone depuis l'original chiffré. */
+  visionCrop?: {
+    kind: 'auto'
+    sourceFileId: string
+    sourceFileIds: string[]
+    rect: { x: number; y: number; width: number; height: number }
+  }
 }
 
 /** Actions rapides proposées au-dessus du composer. L'identifiant est
@@ -35,6 +44,11 @@ export interface QuickActionSelection {
 
 export interface ChatSendOptions {
   quickAction?: QuickActionSelection
+  /** Interne : une édition du texte doit recalculer le crop, pas réutiliser
+   * silencieusement les coordonnées choisies pour l'ancien prompt. */
+  relocateVisionCrop?: boolean
+  /** Interne : remplace ce tour user seulement après une préparation réussie. */
+  replaceMessageId?: string
 }
 
 export type ChatSendHandler = (
