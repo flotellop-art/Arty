@@ -1568,7 +1568,7 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
       <div className={`relative flex items-end gap-2 border transition-[border-color,box-shadow,transform] duration-[180ms] ${
         heroVariant
           ? 'min-h-[112px] rounded-[24px] border-theme-ink/10 bg-white/60 px-4 pb-3 pt-4 shadow-[0_1px_2px_rgb(var(--theme-ink)/0.04),0_12px_32px_rgb(var(--theme-ink)/0.07)] focus-within:-translate-y-px focus-within:border-theme-accent/40 focus-within:shadow-[0_2px_4px_rgb(var(--theme-ink)/0.05),0_16px_38px_rgb(var(--theme-ink)/0.10)] focus-within:ring-4 focus-within:ring-theme-accent/10 dark:bg-theme-surface/80 max-[639px]:min-h-[128px] max-[639px]:rounded-[20px] max-[639px]:px-3 max-[639px]:pb-2.5 max-[639px]:pt-3'
-          : 'min-h-[52px] border-theme-ink bg-transparent px-[10px] py-2'
+          : 'min-h-[52px] rounded-[20px] border-theme-ink/10 bg-white/60 px-3 py-2 shadow-[0_1px_2px_rgb(var(--theme-ink)/0.04),0_8px_24px_rgb(var(--theme-ink)/0.06)] focus-within:border-theme-accent/40 focus-within:ring-4 focus-within:ring-theme-accent/10 dark:bg-theme-surface/80'
       }`}>
         {/* + menu — file upload + native camera/scan + web camera (mobile). */}
         <AttachMenu
@@ -1583,7 +1583,7 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
             photo: t('chat.input.menu.photo'),
             scan: t('chat.input.menu.scan'),
           }}
-          rounded={heroVariant}
+          rounded
           disabled={isPreparingAttachments}
         />
         <input
@@ -1636,11 +1636,7 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
           <button
             onClick={handleEnhance}
             disabled={!text.trim() || isEnhancing}
-            className={`relative mb-0.5 flex h-11 w-11 flex-shrink-0 items-center justify-center border transition-[color,background-color,border-color,transform,box-shadow] duration-[180ms] active:scale-[0.98] ${
-              heroVariant
-                ? 'rounded-full border-theme-ink/10 bg-theme-bg/60 shadow-[0_1px_2px_rgb(var(--theme-ink)/0.025)]'
-                : 'border-theme-border'
-            } ${
+            className={`relative mb-0.5 flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full border border-theme-ink/10 bg-theme-bg/60 shadow-[0_1px_2px_rgb(var(--theme-ink)/0.025)] transition-[color,background-color,border-color,transform,box-shadow] duration-[180ms] active:scale-[0.98] ${
               isEnhancing
                 ? 'bg-theme-accent/20 text-theme-accent'
                 : 'text-theme-muted hover:border-theme-accent/30 hover:bg-theme-accent/10 hover:text-theme-accent-text disabled:opacity-30'
@@ -1698,7 +1694,7 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
         {isStreaming ? (
           <button
             onClick={onStop}
-            className={`flex h-11 w-11 flex-shrink-0 items-center justify-center bg-theme-ink text-theme-bg transition-[background-color,transform,box-shadow] duration-[180ms] hover:bg-theme-accent active:scale-[0.98] ${heroVariant ? 'rounded-full shadow-[0_8px_22px_-12px_rgb(var(--theme-ink)/0.85)]' : ''}`}
+            className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-theme-ink text-theme-bg shadow-[0_8px_22px_-12px_rgb(var(--theme-ink)/0.85)] transition-[background-color,transform,box-shadow] duration-[180ms] hover:bg-theme-accent active:scale-[0.98]"
             aria-label={t('chat.input.aria.stop')}
           >
             <svg width="14" height="14" viewBox="0 0 12 12" fill="none">
@@ -1709,7 +1705,7 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
           <button
             onClick={handleSend}
             disabled={isSubmitting || isPreparingAttachments}
-            className={`flex h-11 w-11 flex-shrink-0 items-center justify-center border border-theme-accent bg-theme-accent text-theme-bg transition-[background-color,color,transform,box-shadow] duration-[180ms] hover:bg-theme-ink hover:text-theme-bg active:scale-[0.98] disabled:cursor-wait disabled:opacity-50 ${heroVariant ? 'rounded-full shadow-[0_8px_22px_-12px_rgb(var(--theme-accent)/0.9)]' : ''}`}
+            className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full border border-theme-accent bg-theme-accent text-theme-bg shadow-[0_8px_22px_-12px_rgb(var(--theme-accent)/0.9)] transition-[background-color,color,transform,box-shadow] duration-[180ms] hover:bg-theme-ink hover:text-theme-bg active:scale-[0.98] disabled:cursor-wait disabled:opacity-50"
             aria-label={t('chat.input.aria.send')}
           >
             <svg width="18" height="18" viewBox="0 0 14 14" fill="none">
@@ -1730,7 +1726,7 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
             holdProgress={holdProgress}
             ariaLabel={t('chat.input.aria.holdToRecord')}
             showIdleRing={v2 && canUseWhisper}
-            rounded={heroVariant}
+            rounded
           />
         ) : null}
       </div>
