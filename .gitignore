@@ -1,6 +1,7 @@
 node_modules
 dist
 coverage
+artifacts/vision-a11/
 .env
 .env.*
 !.env.example

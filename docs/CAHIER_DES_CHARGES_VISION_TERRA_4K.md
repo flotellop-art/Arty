@@ -21,7 +21,7 @@
 > de patches et ~0,031 $/photo recalculés corrects. Réserve : vérification
 > documentaire — un appel API réel de confirmation fait partie de PR-B.
 >
-> Les amendements A1–A9 ci-dessous CORRIGENT ou COMPLÈTENT le document. En cas
+> Les amendements A1–A13 ci-dessous CORRIGENT ou COMPLÈTENT le document. En cas
 > de conflit, ils priment sur le texte des sections qu'ils visent. A1, A2, A7
 > s'ajoutent aux exigences P0 du §13.
 
@@ -39,6 +39,7 @@
 | **A10** | **PÉRIMÈTRE PR-B, AMENDÉ PAR A12 (§11/§18, 19/07/2026)** | La borne JSON vision est désormais **24 Mio** et s'applique uniquement au transport vision streaming de `openai-proxy` ; le transport texte OpenAI reste borné à **10 Mio**. Les proxys Anthropic/Gemini/Mistral et les PDF ne changent pas : leurs caps restent un chantier d'hygiène séparé, avec une politique document-aware. |
 | **A11** | **PRÉFLIGHT LOCAL RÉSOLU / STAGING BLOQUANT — CLOUDFLARE/MÉMOIRE (19/07/2026)** | La mémoire Cloudflare reste limitée à [128 MB par isolat](https://developers.cloudflare.com/workers/platform/limits/#memory). Le `tee()` streaming évite le DOM complet mais retient sa branche upstream pendant la validation. Le préflight Workerd reproductible teste donc des isolates neufs, le chemin BYOK et la clé serveur, avec chevauchement forcé. Il reste un signal de régression local : le GO production exige encore la [métrique mémoire P999 en staging](https://developers.cloudflare.com/workers/observability/metrics-and-analytics/) et zéro `exceededMemory`/1102. |
 | **A12** | **DÉCISION SÉCURITÉ MÉMOIRE (§3/§11/§14, 19/07/2026)** | Nouveau contrat : **4 Mio maximum par photo**, **16 Mio binaires par lot** et **24 Mio de JSON**. La normalisation passe en v2 et essaie le JPEG jusqu'à q.70 avant de réduire les dimensions ; le grand côté reste plafonné à 4096 px. Les anciens assets v1 restent lisibles dans l'historique mais sont inéligibles à Terra : leur retry continue chez Claude ; pour les relancer sur Terra, l'utilisateur doit rattacher l'image, plutôt que de migrer silencieusement des pixels. Après identité valide et avant toute lecture du body, le proxy admet **une seule validation vision par isolat** et refuse les concurrentes en 429 `vision_busy`, sans file JS. Le permis reste détenu jusqu'à EOF ou demande d'annulation du body, sans attendre un acknowledgement runtime potentiellement bloqué ; un délai global de 120 s couvre dès l'identité initiale le body, les dépendances Google/D1/wallet/quota/cap et le fetch upstream, avec remboursement tardif des effets réservés. Un dépassement streaming sans `Content-Length` annule les deux branches du `tee()` sans attendre EOF et conserve le 413. Sur Node 22, 30 isolates froids (BYOK + serveur, concurrence 1/2/4) ont culminé localement à **70,19 Mio comptabilisés** pour 21,33 Mio de JSON, sous le seuil conservateur local de 96 Mio. Cela ne lève pas le gate staging A11. Les PDF/autres fichiers restent inchangés. |
+| **A13** | **PROTOCOLE A11 CLARIFIÉ / HARNESS PRÊT (19/07/2026)** | Le chat BYOK live appelle OpenAI **directement** depuis le client : il ne traverse pas Cloudflare et n'entre donc pas dans le P999 Worker. Le gate staging complet porte sur le chemin clé serveur réellement exposé, aux concurrences 1/2/4, avec **100 réponses 200 drainées par scénario au total**, réparties W1/W2/W3 en 34/33/33 et une cellule/rapport séparés. Le chemin synthétique `x-openai-key` du proxy reste couvert localement et par quelques smokes défensifs, sans être présenté comme un chemin produit. La charge principale utilise quatre PNG valides 32×32 de 4 Mio chacun, paddés par un chunk ancillary privé : le JSON/base64 reste à ~21,33 Mio et exerce le même transport/`tee()`/parser, pour quatre patches image seulement. Chaque fenêtre conserve une sentinelle serveur 4096² et une sentinelle BYOK direct 4096². Ce protocole mémoire ne remplace ni le benchmark qualité 4K ni les tests mobiles. Le projet Pages doit être physiquement séparé, sans binding ni domaine prod, protégé par Access ; le harness verrouille la matrice/coût, l'URL atomique `short_id`, le SHA local propre et conserve les échecs partiels. Un 429 `vision_busy` est archivé mais n'est pas une condition du GO, Cloudflare pouvant répartir la rafale entre plusieurs isolats. Seuil exact : **100 663 296 octets**, zéro `exceededMemory`, `exceededResources` ou 1102. Voir `docs/RUNBOOK_VISION_A11_STAGING.md`. Les PDF restent inchangés. |
 
 Points vérifiés CONFORMES (aucune action) : bucket premium `gpt-5.6-terra` →
 `gpt-5` cap 100 (D11) ; invariant « consommé ⟺ servi » cohérent avec
@@ -511,8 +512,16 @@ P0 :
 - [x] Workerd local, Node 22 : 30 isolates froids, chemins BYOK/serveur et
   concurrence 1/2/4 ; maximum local 70,19 Mio et aucune seconde requête
   transmise upstream pendant le 429 fail-fast.
-- [ ] Staging Cloudflare isolé : au moins 100 invocations acceptées par scénario
-  sur trois fenêtres, P999 mémoire <=96 Mio, zéro `exceededMemory`/1102.
+- [ ] Staging Cloudflare **physiquement isolé** et protégé par Access : chemin
+  serveur, concurrence 1/2/4, au moins 100 réponses 200 drainées par scénario
+  réparties 34/33/33 sur W1/W2/W3 ; P999 <=100 663 296 octets et zéro
+  `exceededMemory`, `exceededResources` ou 1102. Une invocation/rapport par
+  cellule ; les 429 `vision_busy` ne comptent pas comme acceptées mais leur
+  absence n'invalide pas une cellule. Harness et procédure :
+  `scripts/bench-vision-cloudflare-staging.mjs` et
+  `docs/RUNBOOK_VISION_A11_STAGING.md`.
+- [ ] Une sentinelle serveur 4096² et une sentinelle BYOK direct 4096² passent
+  dans chaque fenêtre ; le BYOK direct reste hors métrique mémoire Cloudflare.
 
 ---
 
@@ -650,8 +659,9 @@ réversible ou dimensions de source permettant de profiler un appareil.
 ### Restant avant activation
 
 1. **Produit :** faut-il afficher le coût estimé avant une réanalyse manuelle ?
-2. **Engineering :** exécuter le protocole staging A11 (P999 <=96 Mio, zéro
-   `exceededMemory`/1102 sur trois fenêtres) ; le préflight Workerd local est vert.
+2. **Engineering :** exécuter le protocole staging A11 du runbook (P999
+   <=100 663 296 octets, zéro `exceededMemory`/`exceededResources`/1102 sur
+   trois fenêtres) ; le préflight Workerd local et le harness dry-run sont verts.
 3. **Data :** quelle grille de vérité terrain utiliser pour les photos de
    chantier du benchmark ?
 4. **Engineering :** faut-il convertir HEIC en P1 côté natif uniquement ou
