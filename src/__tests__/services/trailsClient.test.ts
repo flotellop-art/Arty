@@ -9,8 +9,16 @@ vi.mock('../../services/googleAuth', () => ({
   getValidAccessToken: vi.fn(async () => 'tok'),
 }))
 vi.mock('../../services/apiBase', () => ({ apiUrl: (p: string) => `https://test.local${p}` }))
+// Le pipeline direct est neutralisé par défaut (null = « infra injoignable »)
+// pour tester la classification du REPLI serveur ; les tests de façade le
+// surchargent explicitement.
+vi.mock('../../services/trailsOsm', () => ({
+  searchTrailsDirect: vi.fn(async () => null),
+  fetchTrailGeometryDirect: vi.fn(async () => null),
+}))
 
 import { searchTrails, fetchTrailGeometry } from '../../services/trailsClient'
+import { searchTrailsDirect, fetchTrailGeometryDirect } from '../../services/trailsOsm'
 
 afterEach(() => vi.unstubAllGlobals())
 
@@ -50,5 +58,36 @@ describe('trailsClient — classification des réponses', () => {
     const out = await searchTrails({ location: 'X' })
     expect(out.ok).toBe(true)
     if (out.ok) expect(out.data.center.label).toBe('X')
+  })
+})
+
+describe('trailsClient — façade direct-d\'abord (fix egress Cloudflare filtré)', () => {
+  it('le pipeline direct qui répond court-circuite le serveur (zéro fetch API)', async () => {
+    const spy = vi.fn(async () => new Response('{}', { status: 200 }))
+    vi.stubGlobal('fetch', spy)
+    vi.mocked(searchTrailsDirect).mockResolvedValueOnce({
+      ok: true,
+      data: { center: { lat: 45.3, lon: 5.2, label: 'Viriville' }, radiusKm: 10, kind: 'all', routes: [], totalFound: 0, nearbyPathCount: 12 },
+    })
+    const out = await searchTrails({ location: 'Viriville' })
+    expect(out.ok).toBe(true)
+    expect(spy).not.toHaveBeenCalled()
+  })
+
+  it('un « introuvable » DÉFINITIF du direct ne déclenche pas le repli serveur', async () => {
+    const spy = vi.fn(async () => new Response('{}', { status: 200 }))
+    vi.stubGlobal('fetch', spy)
+    vi.mocked(fetchTrailGeometryDirect).mockResolvedValueOnce({ ok: false, status: 'not_found' })
+    const out = await fetchTrailGeometry(42)
+    expect(out).toEqual({ ok: false, status: 'not_found' })
+    expect(spy).not.toHaveBeenCalled()
+  })
+
+  it('direct injoignable (null) → repli serveur', async () => {
+    stubFetchResponse({ id: 42, name: 'X', kind: 'horse', distanceKm: 3, segments: [[[45.3, 5.2], [45.31, 5.2]]] }, 200)
+    vi.mocked(fetchTrailGeometryDirect).mockResolvedValueOnce(null)
+    const out = await fetchTrailGeometry(42)
+    expect(out.ok).toBe(true)
+    if (out.ok) expect(out.data.name).toBe('X')
   })
 })

@@ -17,7 +17,8 @@ async function tokenAudienceMatches(
 ): Promise<boolean | null> {
   try {
     const res = await fetch(
-      `https://oauth2.googleapis.com/tokeninfo?access_token=${encodeURIComponent(token)}`
+      `https://oauth2.googleapis.com/tokeninfo?access_token=${encodeURIComponent(token)}`,
+      { signal: AbortSignal.timeout(10_000) }
     )
     if (!res.ok) return null
     const info = (await res.json()) as { aud?: string; azp?: string }
@@ -55,6 +56,11 @@ export interface StrictGoogleIdentity {
  * forward the user's token to Google. Arty data/control endpoints must use this
  * helper so a token minted for another OAuth client cannot be replayed here.
  */
+// Règle BUG 47 étendue au serveur (revue agent 19 juil.) : AUCUN fetch d'auth
+// sans timeout. Ce gate tourne AVANT tout traitement de chaque endpoint — un
+// fetch Google non borné qui pend ici bloquait la requête entière (le client
+// abandonnait à 45 s sur /api/geo/trails en croyant à une panne géodonnées).
+// L'abort retombe sur le catch → même sémantique que l'échec réseau existant.
 export async function verifyGoogleIdentityStrict(
   request: Request,
   expectedAud: string | null | undefined
@@ -65,7 +71,8 @@ export async function verifyGoogleIdentityStrict(
 
   try {
     const tokenRes = await fetch(
-      `https://oauth2.googleapis.com/tokeninfo?access_token=${encodeURIComponent(googleToken)}`
+      `https://oauth2.googleapis.com/tokeninfo?access_token=${encodeURIComponent(googleToken)}`,
+      { signal: AbortSignal.timeout(10_000) }
     )
     if (!tokenRes.ok) return null
     const tokenInfo = (await tokenRes.json()) as { aud?: string; azp?: string }
@@ -73,6 +80,7 @@ export async function verifyGoogleIdentityStrict(
 
     const userRes = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
       headers: { Authorization: `Bearer ${googleToken}` },
+      signal: AbortSignal.timeout(10_000),
     })
     if (!userRes.ok) return null
     const userInfo = (await userRes.json()) as {
@@ -123,6 +131,7 @@ export async function verifyGoogleUser(
   try {
     const res = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
       headers: { Authorization: `Bearer ${googleToken}` },
+      signal: AbortSignal.timeout(10_000),
     })
     if (!res.ok) return null
     const userInfo = (await res.json()) as { email?: string }
@@ -155,7 +164,8 @@ export async function verifyTokenViaTokeninfo(
   if (!token) return null
   try {
     const res = await fetch(
-      `https://oauth2.googleapis.com/tokeninfo?access_token=${encodeURIComponent(token)}`
+      `https://oauth2.googleapis.com/tokeninfo?access_token=${encodeURIComponent(token)}`,
+      { signal: AbortSignal.timeout(10_000) }
     )
     if (!res.ok) return null
     const info = (await res.json()) as {

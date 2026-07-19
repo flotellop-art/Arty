@@ -1,6 +1,7 @@
 import { apiUrl } from './apiBase'
 import { safeJson } from '../utils/safeJson'
 import { getValidAccessToken } from './googleAuth'
+import { fetchTrailGeometryDirect, searchTrailsDirect } from './trailsOsm'
 import type { LatLon } from './gpx'
 
 // Client partagé de /api/geo/trails — utilisé par les outils LLM
@@ -88,11 +89,25 @@ async function classify(res: Response | null): Promise<'network' | 'quota' | 'no
   return 'ok'
 }
 
+// Façade DIRECT d'abord, serveur en repli (fix terrain 19 juil., 19:52) :
+// l'egress Cloudflare partagé est filtré par les services OSM communautaires
+// → le pipeline client (trailsOsm.ts, IP de l'utilisateur, CORS ouvert) est
+// devenu le chemin primaire — même architecture que les tuiles de la carte.
+// Le serveur (cache 24 h) ne sert plus que de repli quand le réseau local de
+// l'utilisateur bloque ces hosts. Un résultat DÉFINITIF du direct (lieu ou
+// circuit introuvable) ne déclenche PAS le repli : le serveur interroge les
+// mêmes sources, retenter coûterait jusqu'à 45 s pour la même réponse.
+
 export async function searchTrails(params: {
   location: string
   radiusKm?: unknown
   kind?: unknown
 }): Promise<TrailsApiOutcome<TrailSearchResult>> {
+  try {
+    const direct = await searchTrailsDirect(params)
+    if (direct) return direct
+  } catch { /* pipeline direct indisponible → repli serveur */ }
+
   const res = await callTrailsApi({ action: 'search', ...params })
   const status = await classify(res)
   if (status !== 'ok') return { ok: false, status }
@@ -100,6 +115,11 @@ export async function searchTrails(params: {
 }
 
 export async function fetchTrailGeometry(routeId: number): Promise<TrailsApiOutcome<TrailGeometry>> {
+  try {
+    const direct = await fetchTrailGeometryDirect(routeId)
+    if (direct) return direct
+  } catch { /* pipeline direct indisponible → repli serveur */ }
+
   const res = await callTrailsApi({ action: 'geometry', routeId })
   const status = await classify(res)
   if (status !== 'ok') return { ok: false, status }

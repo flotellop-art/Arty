@@ -27,6 +27,20 @@ describe('public/_headers — invariants CSP', () => {
     expect(imgSrc).not.toContain('*.tile.opentopomap.org')
   })
 
+  it('connect-src autorise le pipeline sentiers direct (géocodeurs + Overpass)', () => {
+    const connectSrc = cspLine.split(';').find((d) => d.trim().startsWith('connect-src')) ?? ''
+    for (const host of [
+      'https://overpass-api.de',
+      'https://overpass.openstreetmap.fr',
+      'https://maps.mail.ru',
+      'https://api-adresse.data.gouv.fr',
+      'https://geocoding-api.open-meteo.com',
+      'https://nominatim.openstreetmap.org',
+    ]) {
+      expect(connectSrc, `host manquant dans connect-src : ${host}`).toContain(host)
+    }
+  })
+
   it('la géolocalisation reste autorisée pour la PWA (régression F-2)', () => {
     expect(headers).toContain('geolocation=(self)')
   })
