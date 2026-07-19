@@ -105,6 +105,7 @@ export interface RouteContext {
   hasSupportedVisionImages: boolean
   euOnly: boolean
   hasPrivateHistory: boolean
+  hasTrailHistory?: boolean
 }
 
 export function gatherRouteInput(ctx: RouteContext): RouteInput {

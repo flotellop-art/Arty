@@ -461,6 +461,7 @@ export function useConversation() {
         ...attachmentFlags,
         euOnly: !!conv.euOnly,
         hasPrivateHistory: !!conv.hasGoogleData,
+        hasTrailHistory: !!conv.hasTrailContext,
       })
       // Une ancienne conversation EU peut survivre à l'expiration d'un
       // abonnement. On bloque alors localement : jamais de fallback Claude
@@ -471,6 +472,15 @@ export function useConversation() {
       }
       const routeDecision = resolveRoute(routeInput)
       const provider = routeDecision.provider
+
+      // Contexte sentiers : dès qu'un message route vers les outils trails, le
+      // flag colle à la conversation — les suivis courts (« Viriville » seul)
+      // ne matchent aucun trigger texte et resteraient sinon sur Gemini sans
+      // outils (cas terrain 19 juil., « je ne vois pas le bouton carte »).
+      if (routeDecision.reason.code === 'trail_tools' && !conv.hasTrailContext) {
+        conv.hasTrailContext = true
+        storage.saveConversation(conv)
+      }
 
       // « Jamais de bascule silencieuse » (stratégie produit) : resolveRoute
       // ne remplit `overrides` QUE quand un choix explicite de l'utilisateur
@@ -521,6 +531,15 @@ export function useConversation() {
           const c = storage.getConversation(targetId)
           if (c && !c.hasGoogleData) {
             c.hasGoogleData = true
+            storage.saveConversation(c)
+          }
+        }
+        // Contexte sentiers : dès qu'un outil trails tourne, les suivis courts
+        // de cette conversation restent chez Claude (cf. hasTrailHistory).
+        if (name === 'find_trails' || name === 'export_trail_gpx') {
+          const c = storage.getConversation(targetId)
+          if (c && !c.hasTrailContext) {
+            c.hasTrailContext = true
             storage.saveConversation(c)
           }
         }
@@ -802,6 +821,11 @@ export function useConversation() {
         ...(conv.euOnly ? { euOnly: true } : {}),
         ...(conv.usedModels ? { usedModels: [...conv.usedModels] } : {}),
         ...(conv.tags ? { tags: [...conv.tags] } : {}),
+        // BUG 8 (même classe) : les flags de contexte doivent suivre la
+        // branche — hasGoogleData (avertissement partage renforcé, trou
+        // pré-existant corrigé ici) et hasTrailContext (routage des suivis).
+        ...(conv.hasGoogleData ? { hasGoogleData: true } : {}),
+        ...(conv.hasTrailContext ? { hasTrailContext: true } : {}),
       }
       storage.saveConversation(newConv)
       refreshConversations()
