@@ -64,6 +64,10 @@ function stubFetch(overpass: (url: string, init?: RequestInit) => Response | nul
     if (u.includes('/oauth2/v2/userinfo')) {
       return new Response(JSON.stringify({ id: 'g-1', email: EMAIL, verified_email: true }), { status: 200 })
     }
+    if (u.includes('api-adresse.data.gouv.fr')) {
+      // Par défaut la BAN ne matche pas → la chaîne passe à open-meteo.
+      return new Response(JSON.stringify({ features: [] }), { status: 200 })
+    }
     if (u.includes('geocoding-api.open-meteo.com')) {
       return new Response(
         JSON.stringify({ results: [{ latitude: 45.313, longitude: 5.204, name: 'Viriville' }] }),
@@ -153,12 +157,47 @@ describe('geo/trails — recherche', () => {
     expect(JSON.stringify(data)).not.toContain('"segments"')
   })
 
-  it('nom de lieu : géocodé via open-meteo avant Overpass', async () => {
+  it('nom de lieu : géocodé (BAN sans résultat → open-meteo) avant Overpass', async () => {
     stubFetch(() => new Response(JSON.stringify(OVERPASS_SEARCH_BODY), { status: 200 }))
     const res = await call(req({ action: 'search', location: 'Viriville' }))
     expect(res.status).toBe(200)
     const data = await res.json() as { center: { label: string } }
     expect(data.center.label).toBe('Viriville')
+  })
+
+  it("l'API Adresse (BAN) prime quand elle matche avec un bon score", async () => {
+    const spy = stubFetch(() => new Response(JSON.stringify(OVERPASS_SEARCH_BODY), { status: 200 }))
+    spy.mockImplementation(async (url: RequestInfo | URL) => {
+      const u = String(url)
+      if (u.includes('/tokeninfo')) return new Response(JSON.stringify({ aud: 'arty-client-id' }), { status: 200 })
+      if (u.includes('/oauth2/v2/userinfo')) {
+        return new Response(JSON.stringify({ id: 'g-1', email: EMAIL, verified_email: true }), { status: 200 })
+      }
+      if (u.includes('api-adresse.data.gouv.fr')) {
+        return new Response(JSON.stringify({
+          features: [{ geometry: { coordinates: [5.205671, 45.311889] }, properties: { label: 'Viriville (38980)', score: 0.94 } }],
+        }), { status: 200 })
+      }
+      if (u.includes('overpass')) return new Response(JSON.stringify(OVERPASS_SEARCH_BODY), { status: 200 })
+      throw new Error('unexpected fetch ' + u)
+    })
+    const res = await call(req({ action: 'search', location: 'Viriville Isère' }))
+    expect(res.status).toBe(200)
+    const data = await res.json() as { center: { label: string } }
+    // open-meteo n'est jamais appelé (il ne connaît pas « Viriville Isère »)
+    expect(data.center.label).toBe('Viriville (38980)')
+    expect(spy.mock.calls.some((c) => String(c[0]).includes('open-meteo'))).toBe(false)
+  })
+
+  it('rayon par défaut = 10 km (leçon terrain : 6 km rate les circuits ruraux)', async () => {
+    let capturedQl = ''
+    stubFetch((_u, init) => {
+      capturedQl = decodeURIComponent(String(init?.body ?? ''))
+      return new Response(JSON.stringify(OVERPASS_SEARCH_BODY), { status: 200 })
+    })
+    const res = await call(req({ action: 'search', location: '45.313,5.204' }))
+    expect(res.status).toBe(200)
+    expect(capturedQl).toContain('around:10000,')
   })
 
   it("bascule sur l'instance suivante quand la première est saturée (504)", async () => {
@@ -170,7 +209,10 @@ describe('geo/trails — recherche', () => {
     })
     const res = await call(req({ action: 'search', location: '45.313,5.204' }))
     expect(res.status).toBe(200)
-    expect(seen.some((u) => u.includes('maps.mail.ru'))).toBe(true)
+    // 2e instance = overpass.openstreetmap.fr (ordre UE d'abord, mail.ru en
+    // dernier recours — RÈGLE 5).
+    expect(seen.some((u) => u.includes('overpass.openstreetmap.fr'))).toBe(true)
+    expect(seen.some((u) => u.includes('maps.mail.ru'))).toBe(false)
   })
 
   it('toutes les instances down → 502 générique sans détail upstream (N-2)', async () => {

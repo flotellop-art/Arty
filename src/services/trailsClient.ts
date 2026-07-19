@@ -49,7 +49,10 @@ async function callTrailsApi(body: Record<string, unknown>): Promise<Response | 
   if (googleToken) headers['x-google-token'] = googleToken
 
   const ctrl = new AbortController()
-  const timeoutId = setTimeout(() => ctrl.abort(new DOMException('Timeout', 'AbortError')), 30_000)
+  // 45 s : le pire cas serveur légitime est 3 géocodeurs × 5 s + 3 instances
+  // Overpass × 10 s = 45 s. À 30 s (valeur initiale), le premier test terrain
+  // abandonnait des requêtes que le serveur aurait fini par servir.
+  const timeoutId = setTimeout(() => ctrl.abort(new DOMException('Timeout', 'AbortError')), 45_000)
   try {
     return await fetch(apiUrl('/api/geo/trails'), {
       method: 'POST',
@@ -64,10 +67,23 @@ async function callTrailsApi(body: Record<string, unknown>): Promise<Response | 
   }
 }
 
-function classify(res: Response | null): 'network' | 'quota' | 'not_found' | 'error' | 'ok' {
+async function classify(res: Response | null): Promise<'network' | 'quota' | 'not_found' | 'error' | 'ok'> {
   if (!res) return 'network'
   if (res.status === 429) return 'quota'
-  if (res.status === 404) return 'not_found'
+  if (res.status === 404) {
+    // Le 404 est ambigu : « Lieu/Circuit introuvable » (métier) vs le 404
+    // uniforme d'auth (notFoundResponse). Sans distinction, un hoquet de
+    // vérification de token s'affichait comme « lieu introuvable » (constaté
+    // au premier test terrain) — trompeur pour le modèle ET l'utilisateur.
+    try {
+      const body = (await res.clone().json()) as { error?: string }
+      return body.error === 'Lieu introuvable' || body.error === 'Circuit introuvable'
+        ? 'not_found'
+        : 'error'
+    } catch {
+      return 'error'
+    }
+  }
   if (!res.ok) return 'error'
   return 'ok'
 }
@@ -78,14 +94,14 @@ export async function searchTrails(params: {
   kind?: unknown
 }): Promise<TrailsApiOutcome<TrailSearchResult>> {
   const res = await callTrailsApi({ action: 'search', ...params })
-  const status = classify(res)
+  const status = await classify(res)
   if (status !== 'ok') return { ok: false, status }
   return { ok: true, data: (await safeJson(res as Response)) as TrailSearchResult }
 }
 
 export async function fetchTrailGeometry(routeId: number): Promise<TrailsApiOutcome<TrailGeometry>> {
   const res = await callTrailsApi({ action: 'geometry', routeId })
-  const status = classify(res)
+  const status = await classify(res)
   if (status !== 'ok') return { ok: false, status }
   return { ok: true, data: (await safeJson(res as Response)) as TrailGeometry }
 }
