@@ -1,6 +1,6 @@
 export const OPENAI_VISION_MAX_IMAGES = 4
-export const OPENAI_VISION_MAX_IMAGE_BYTES = 6 * 1024 * 1024
-export const OPENAI_VISION_MAX_BATCH_BYTES = 24 * 1024 * 1024
+export const OPENAI_VISION_MAX_IMAGE_BYTES = 4 * 1024 * 1024
+export const OPENAI_VISION_MAX_BATCH_BYTES = 16 * 1024 * 1024
 export const OPENAI_VISION_MAX_SIDE = 4096
 
 type SupportedImageMime = 'image/jpeg' | 'image/png'

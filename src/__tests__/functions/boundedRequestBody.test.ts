@@ -1,9 +1,10 @@
 // @vitest-environment node
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   OPENAI_CHAT_BODY_MAX_BYTES,
   OPENAI_TEXT_BODY_MAX_BYTES,
   limitReadableStream,
+  observeReadableStreamCompletion,
   readRequestTextWithLimit,
   RequestBodyTooLargeError,
 } from '../../../functions/api/_lib/boundedRequestBody'
@@ -45,8 +46,8 @@ function generatedAsciiRequest(totalBytes: number, chunkBytes = 1024 * 1024): Re
 }
 
 describe('readRequestTextWithLimit', () => {
-  it('fixe le contrat OpenAI à 40 Mio binaires de JSON', () => {
-    expect(OPENAI_CHAT_BODY_MAX_BYTES).toBe(40 * 1024 * 1024)
+  it('fixe le contrat OpenAI à 24 Mio binaires de JSON', () => {
+    expect(OPENAI_CHAT_BODY_MAX_BYTES).toBe(24 * 1024 * 1024)
     expect(OPENAI_TEXT_BODY_MAX_BYTES).toBe(10 * 1024 * 1024)
   })
 
@@ -54,7 +55,7 @@ describe('readRequestTextWithLimit', () => {
     await expect(readRequestTextWithLimit(streamedRequest(['é', 'é']), 4)).resolves.toBe('éé')
   })
 
-  it('accepte exactement 40 Mio en streaming sans matérialiser une string', async () => {
+  it('accepte exactement 24 Mio en streaming sans matérialiser une string', async () => {
     const request = generatedAsciiRequest(OPENAI_CHAT_BODY_MAX_BYTES)
     const reader = limitReadableStream(request.body!, OPENAI_CHAT_BODY_MAX_BYTES).getReader()
     let received = 0
@@ -79,5 +80,46 @@ describe('readRequestTextWithLimit', () => {
   it('rejette un flux sous-déclaré qui dépasse réellement la borne', async () => {
     await expect(readRequestTextWithLimit(streamedRequest(['12345'], '2'), 4))
       .rejects.toBeInstanceOf(RequestBodyTooLargeError)
+  })
+})
+
+describe('observeReadableStreamCompletion', () => {
+  it('ne signale la fin qu’après EOF réel', async () => {
+    const source = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array([1, 2, 3]))
+        controller.close()
+      },
+    })
+    const observed = observeReadableStreamCompletion(source)
+    let completed = false
+    void observed.completed.then(() => { completed = true })
+    expect(completed).toBe(false)
+
+    await expect(new Response(observed.stream).arrayBuffer())
+      .resolves.toHaveProperty('byteLength', 3)
+    await observed.completed
+    expect(completed).toBe(true)
+  })
+
+  it('annule la source et termine sur abort', async () => {
+    const cancel = vi.fn()
+    const source = new ReadableStream<Uint8Array>({ cancel }, { highWaterMark: 0 })
+    const controller = new AbortController()
+    const observed = observeReadableStreamCompletion(source, controller.signal)
+
+    controller.abort(new Error('deadline'))
+    await observed.completed
+    expect(cancel).toHaveBeenCalledOnce()
+  })
+
+  it('termine sans attendre un acknowledgement de cancel bloqué', async () => {
+    const cancel = vi.fn(() => new Promise<void>(() => undefined))
+    const source = new ReadableStream<Uint8Array>({ cancel }, { highWaterMark: 0 })
+    const observed = observeReadableStreamCompletion(source)
+
+    await expect(observed.cancel('deadline')).resolves.toBeUndefined()
+    await expect(observed.completed).resolves.toBeUndefined()
+    expect(cancel).toHaveBeenCalledOnce()
   })
 })

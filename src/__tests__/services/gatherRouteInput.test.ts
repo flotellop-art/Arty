@@ -150,11 +150,11 @@ describe('classifyRouteAttachments — contrat vision canonique', () => {
     size,
     width: 4096,
     height: 3072,
-    normalizationVersion: 1,
+    normalizationVersion: 2,
   })
 
-  it('accepte quatre images canoniques dans 24 Mio', () => {
-    expect(classifyRouteAttachments([1, 2, 3, 4].map((id) => image(id, 6 * 1024 * 1024))))
+  it('accepte quatre images canoniques dans 16 Mio', () => {
+    expect(classifyRouteAttachments([1, 2, 3, 4].map((id) => image(id, 4 * 1024 * 1024))))
       .toMatchObject({
         hasFiles: true,
         hasImages: true,
@@ -187,7 +187,7 @@ describe('classifyRouteAttachments — contrat vision canonique', () => {
   })
 
   it('refuse une image ou un lot hors borne octets', () => {
-    expect(classifyRouteAttachments([image(1, 6 * 1024 * 1024 + 1)]).hasSupportedVisionImages)
+    expect(classifyRouteAttachments([image(1, 4 * 1024 * 1024 + 1)]).hasSupportedVisionImages)
       .toBe(false)
     expect(classifyRouteAttachments([1, 2, 3, 4, 5].map((id) => image(id, 5 * 1024 * 1024)))
       .hasSupportedVisionImages).toBe(false)
@@ -196,7 +196,9 @@ describe('classifyRouteAttachments — contrat vision canonique', () => {
   it('refuse une dimension 4097 px ou une version de normalisation inconnue', () => {
     expect(classifyRouteAttachments([{ ...image(1), width: 4097 }]).hasSupportedVisionImages)
       .toBe(false)
-    expect(classifyRouteAttachments([{ ...image(1), normalizationVersion: 2 }]).hasSupportedVisionImages)
+    expect(classifyRouteAttachments([{ ...image(1), normalizationVersion: 3 }]).hasSupportedVisionImages)
+      .toBe(false)
+    expect(classifyRouteAttachments([{ ...image(1), normalizationVersion: 1 }]).hasSupportedVisionImages)
       .toBe(false)
   })
 })

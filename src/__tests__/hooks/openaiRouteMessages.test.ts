@@ -10,7 +10,7 @@ const photo: FileAttachment = {
   size: 1,
   width: 4096,
   height: 3072,
-  normalizationVersion: 1,
+  normalizationVersion: 2,
 }
 
 const history: Message[] = [{

@@ -11,6 +11,7 @@ import {
   MAX_IMAGE_DIMENSION,
   MAX_IMAGE_SOURCE_BYTES,
   MAX_NORMALIZED_IMAGE_BYTES,
+  MAX_NORMALIZED_VISION_BATCH_BYTES,
   normalizeImageAttachmentForVision,
   normalizeImageForVision,
   type NormalizedImageAsset,
@@ -118,7 +119,7 @@ function inputBarV2Enabled(): boolean {
 // clair (audit UX 10 juin 2026).
 const MAX_ATTACHED_FILES = 10
 const MAX_VISION_IMAGES = 4
-const MAX_VISION_BATCH_BYTES = 24 * 1024 * 1024
+const MAX_VISION_BATCH_BYTES = MAX_NORMALIZED_VISION_BATCH_BYTES
 
 function isImageCandidate(file: Pick<File, 'name' | 'type'>): boolean {
   return file.type.startsWith('image/') || /\.(?:jpe?g|png|webp|gif|heic|heif)$/i.test(file.name)

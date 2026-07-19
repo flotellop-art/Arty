@@ -102,7 +102,7 @@ async function openaiFetch(
   signal?: AbortSignal
 ): Promise<Response> {
   const { url, headers } = await resolveTarget(apiKey)
-  // Le proxy sélectionne ainsi son parseur JSON streaming à 40 Mio. Un client
+  // Le proxy sélectionne ainsi son parseur JSON streaming à 24 Mio. Un client
   // qui ment sur ce header ne gagne rien : le serveur exige ensuite le contrat
   // vision canonique complet. Le BYOK direct ne passe pas par ce transport.
   if (!apiKey && hasOpenAIVisionBlocks(body)) headers['x-arty-vision'] = '1'

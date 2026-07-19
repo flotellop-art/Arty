@@ -2,6 +2,11 @@ import { useCallback, useMemo, useRef } from 'react'
 import type { FileAttachment, Message } from '../types'
 import { getFile } from '../services/secureFileStorage'
 import { getMessageTextForModel } from '../services/quickActions'
+import {
+  IMAGE_NORMALIZATION_VERSION,
+  MAX_IMAGE_DIMENSION,
+  MAX_NORMALIZED_IMAGE_BYTES,
+} from '../services/imageNormalization'
 import i18n from '../i18n'
 
 // Detect MIME type from filename if browser didn't set it
@@ -220,13 +225,16 @@ export async function buildOpenAIVisionContentBlocks(
     if (!file.data) throw new Error('openai_vision_asset_unavailable')
     if (
       (mime !== 'image/jpeg' && mime !== 'image/png') ||
-      file.normalizationVersion !== 1 ||
+      file.normalizationVersion !== IMAGE_NORMALIZATION_VERSION ||
       !Number.isInteger(file.width) ||
       !Number.isInteger(file.height) ||
       (file.width ?? 0) <= 0 ||
       (file.height ?? 0) <= 0 ||
-      (file.width ?? 0) > 4096 ||
-      (file.height ?? 0) > 4096
+      (file.width ?? 0) > MAX_IMAGE_DIMENSION ||
+      (file.height ?? 0) > MAX_IMAGE_DIMENSION ||
+      !Number.isInteger(file.size) ||
+      (file.size ?? 0) <= 0 ||
+      (file.size ?? 0) > MAX_NORMALIZED_IMAGE_BYTES
     ) {
       throw new Error('openai_vision_asset_not_canonical')
     }

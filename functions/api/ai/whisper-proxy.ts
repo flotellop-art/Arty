@@ -5,7 +5,12 @@ import {
   trialModelRestrictedResponse,
   verifyGoogleUserStrict,
 } from '../_lib/checkAllowedUser'
-import { consumeDailyQuota, recordUsage, voidDailyQuota } from '../_lib/quota'
+import {
+  consumeDailyQuota,
+  recordUsage,
+  voidDailyQuota,
+  type QuotaDebit,
+} from '../_lib/quota'
 import { parseWhisperBody } from '../_lib/trackUsage'
 
 const WHISPER_URL = 'https://api.openai.com/v1/audio/transcriptions'
@@ -104,16 +109,19 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
 
   // Quota quotidien uniquement sur la clé serveur ET pour le plan subscription.
   // Tracé sous le modèle RÉEL (C4) — avant, tout partait sous 'whisper-1'.
-  let dailyConsumedModel: string | undefined
+  let dailyConsumed: { model: string; debited: QuotaDebit } | undefined
   if (usingServerKey && userPlan !== 'pro' && userPlan !== 'vip') {
     const quota = await consumeDailyQuota(env, email, transcribeModel)
     if (!quota.allowed) {
+      if (quota.debited) {
+        waitUntil(voidDailyQuota(env, email, transcribeModel, quota.debited))
+      }
       return Response.json(
         { error: 'Quota quotidien atteint — réessayez demain ou ajoutez votre propre clé OpenAI' },
         { status: 429 }
       )
     }
-    dailyConsumedModel = transcribeModel
+    if (quota.debited) dailyConsumed = { model: transcribeModel, debited: quota.debited }
   }
 
   // Forward the multipart body untouched — Whisper needs the original
@@ -143,7 +151,9 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
       // Invariant C3/C4 « quota consommé ⟺ réponse servie » : le fallback
       // client (gpt-4o-transcribe rejeté → whisper-1) refait une requête
       // complète — sans remboursement, une dictée consommait 2 unités.
-      if (dailyConsumedModel) waitUntil(voidDailyQuota(env, email, dailyConsumedModel))
+      if (dailyConsumed) {
+        waitUntil(voidDailyQuota(env, email, dailyConsumed.model, dailyConsumed.debited))
+      }
       const modelRejected =
         /model/i.test(respBody) && /not.?found|does.?not.?exist|unknown|invalid/i.test(respBody)
       if (modelRejected) {
@@ -172,7 +182,9 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     })
   } catch (err) {
     // Même invariant que le chemin !upstream.ok : rien n'a été servi.
-    if (dailyConsumedModel) waitUntil(voidDailyQuota(env, email, dailyConsumedModel))
+    if (dailyConsumed) {
+      waitUntil(voidDailyQuota(env, email, dailyConsumed.model, dailyConsumed.debited))
+    }
     return Response.json(
       { error: err instanceof Error ? err.message : 'Whisper proxy error' },
       { status: 502 }

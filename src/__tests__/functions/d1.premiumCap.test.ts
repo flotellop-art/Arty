@@ -1,7 +1,8 @@
 // @vitest-environment node
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { makeD1Harness, type D1Harness } from './d1Harness'
 import { checkPremiumCap } from '../../../functions/api/_lib/checkPremiumCap'
+import type { Env } from '../../../functions/env'
 
 // Zone 1 (C8/F-5) — consumeCapAtomic via checkPremiumCap : l'upsert conditionnel
 // D1 ne dépasse JAMAIS le cap, même sous appels concurrents (le pattern KV
@@ -13,6 +14,10 @@ const STD = 'claude-haiku-4-5'   // standard, jamais cappé
 let h: D1Harness
 beforeAll(async () => { h = await makeD1Harness() })
 afterAll(async () => { await h.dispose() })
+afterEach(() => {
+  vi.useRealTimers()
+  vi.restoreAllMocks()
+})
 beforeEach(async () => { await h.reset() })
 
 describe('checkPremiumCap — cap atomique (zone 1)', () => {
@@ -28,6 +33,7 @@ describe('checkPremiumCap — cap atomique (zone 1)', () => {
     const r = await checkPremiumCap('u1@x.io', IMG, h.env)
     expect(r.allowed).toBe(true)
     expect(r.reason).toBe('monthly_cap')
+    expect(r.debited).toEqual({ kind: 'monthly_cap', month: expect.any(String) })
     expect(r.bucket).toBe('gpt-image')
     expect(r.cap).toBe(10)
     expect(r.remaining).toBe(9)
@@ -75,6 +81,33 @@ describe('checkPremiumCap — cap atomique (zone 1)', () => {
     }
     // Saturation atteinte : au moins un refus cap_reached.
     expect(results.some((r) => r.reason === 'cap_reached')).toBe(true)
+  })
+
+  it("n'annonce aucun débit remboursable lors d'un fail-open D1", async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const db = {
+      prepare(sql: string) {
+        if (sql.includes('CREATE TABLE IF NOT EXISTS premium_cap')) {
+          return { run: async () => ({ success: true }) }
+        }
+        if (sql.includes('INSERT INTO premium_cap')) {
+          return {
+            bind: () => ({ first: async () => { throw new Error('D1 unavailable') } }),
+          }
+        }
+        throw new Error(`Unexpected SQL: ${sql}`)
+      },
+    }
+
+    const r = await checkPremiumCap(
+      'fail-open@x.io',
+      IMG,
+      { DB: db } as unknown as Env,
+    )
+
+    expect(r).toMatchObject({ allowed: true, reason: 'monthly_cap' })
+    expect(r.debited).toBeUndefined()
+    expect(error).toHaveBeenCalled()
   })
 })
 
@@ -125,6 +158,45 @@ describe('voidPremiumCap — remboursement du cap (revue C3)', () => {
     expect(row!.n).toBe(0)
   })
 
+  it('ne rembourse jamais un résultat sans débit confirmé', async () => {
+    const email = 'unconfirmed@x.io'
+    const consumed = await checkPremiumCap(email, IMG, h.env)
+    const { debited: _debited, ...unconfirmed } = consumed
+
+    await voidPremiumCap(h.env, email, unconfirmed)
+
+    const row = await h.db
+      .prepare('SELECT count FROM premium_cap WHERE email = ?1')
+      .bind(email)
+      .first<{ count: number }>()
+    expect(row!.count).toBe(1)
+  })
+
+  it('rembourse le mois capturé sans toucher le compteur du mois suivant', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.spyOn(Math, 'random').mockReturnValue(1)
+    const email = 'month-boundary@x.io'
+
+    vi.setSystemTime(new Date('2026-06-30T23:59:59.900Z'))
+    const june = await checkPremiumCap(email, IMG, h.env)
+    expect(june.debited).toEqual({ kind: 'monthly_cap', month: '2026-06' })
+
+    vi.setSystemTime(new Date('2026-07-01T00:00:00.100Z'))
+    const july = await checkPremiumCap(email, IMG, h.env)
+    expect(july.debited).toEqual({ kind: 'monthly_cap', month: '2026-07' })
+
+    await voidPremiumCap(h.env, email, june)
+
+    const rows = await h.db
+      .prepare('SELECT month, count FROM premium_cap WHERE email = ?1 ORDER BY month')
+      .bind(email)
+      .all<{ month: string; count: number }>()
+    expect(rows.results).toEqual([
+      { month: '2026-06', count: 0 },
+      { month: '2026-07', count: 1 },
+    ])
+  })
+
   it('re-crédite un pack entamé (reason premium_pack)', async () => {
     const email = 'pack@x.io'
     await h.db
@@ -136,6 +208,7 @@ describe('voidPremiumCap — remboursement du cap (revue C3)', () => {
       .run()
     await voidPremiumCap(h.env, email, {
       allowed: true,
+      debited: { kind: 'premium_pack' },
       reason: 'premium_pack',
       bucket: 'gpt-image',
       cap: 10,
@@ -149,11 +222,67 @@ describe('voidPremiumCap — remboursement du cap (revue C3)', () => {
 })
 
 describe('voidDailyQuota — remboursement du quota journalier (revue C3)', () => {
+  it("n'annonce aucun débit remboursable si D1 est absent ou échoue avant l'UPSERT", async () => {
+    const missing = await consumeDailyQuota({} as Env, 'missing@x.io', 'gpt-5.6-terra')
+    expect(missing.debited).toBeUndefined()
+
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const failingDb = {
+      prepare() {
+        throw new Error('D1 unavailable')
+      },
+    }
+    const failed = await consumeDailyQuota(
+      { DB: failingDb } as unknown as Env,
+      'failed@x.io',
+      'gpt-5.6-terra',
+    )
+    expect(failed.debited).toBeUndefined()
+    expect(error).toHaveBeenCalled()
+  })
+
+  it("expose seulement le débit global si D1 échoue avant l'UPSERT modèle", async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const partialDb = {
+      prepare(sql: string) {
+        if (sql.includes('INSERT INTO quota ')) {
+          return {
+            bind: () => ({ first: async () => ({ count: 1 }) }),
+          }
+        }
+        if (sql.includes('CREATE TABLE IF NOT EXISTS quota_model')) {
+          return { run: async () => { throw new Error('D1 partial failure') } }
+        }
+        throw new Error(`Unexpected SQL: ${sql}`)
+      },
+    }
+
+    const result = await consumeDailyQuota(
+      { DB: partialDb } as unknown as Env,
+      'partial@x.io',
+      'gpt-5.6-terra',
+    )
+
+    expect(result).toMatchObject({ allowed: true, count: 0 })
+    expect(result.debited).toEqual({
+      day: expect.any(String),
+      global: true,
+      model: false,
+    })
+    expect(error).toHaveBeenCalled()
+  })
+
   it('rembourse les DEUX tables (quota + quota_model), jamais sous 0', async () => {
     const email = 'daily@x.io'
     const model = 'gpt-5.6-terra'
-    await consumeDailyQuota(h.env, email, model)
-    await voidDailyQuota(h.env, email, model)
+    const consumed = await consumeDailyQuota(h.env, email, model)
+    expect(consumed.debited).toEqual({
+      day: expect.any(String),
+      global: true,
+      model: true,
+    })
+    if (!consumed.debited) throw new Error('Expected confirmed quota debit')
+    await voidDailyQuota(h.env, email, model, consumed.debited)
 
     const g = await h.db
       .prepare('SELECT count FROM quota WHERE email = ?1')
@@ -166,11 +295,76 @@ describe('voidDailyQuota — remboursement du quota journalier (revue C3)', () =
     expect(g!.count).toBe(0)
     expect(m!.count).toBe(0)
 
-    await voidDailyQuota(h.env, email, model)
+    await voidDailyQuota(h.env, email, model, consumed.debited)
     const g2 = await h.db
       .prepare('SELECT count FROM quota WHERE email = ?1')
       .bind(email)
       .first<{ count: number }>()
     expect(g2!.count).toBe(0)
+  })
+
+  it('ne rembourse que le compteur dont le débit a été confirmé', async () => {
+    const email = 'partial-daily@x.io'
+    const model = 'gpt-5.6-terra'
+    await consumeDailyQuota(h.env, email, model)
+
+    await voidDailyQuota(h.env, email, model, {
+      day: new Date().toISOString().slice(0, 10),
+      global: true,
+      model: false,
+    })
+
+    const g = await h.db
+      .prepare('SELECT count FROM quota WHERE email = ?1')
+      .bind(email)
+      .first<{ count: number }>()
+    const m = await h.db
+      .prepare('SELECT count FROM quota_model WHERE email = ?1 AND model = ?2')
+      .bind(email, model)
+      .first<{ count: number }>()
+    expect(g!.count).toBe(0)
+    expect(m!.count).toBe(1)
+  })
+
+  it('rembourse le jour capturé sans toucher les compteurs du lendemain', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    const email = 'day-boundary@x.io'
+    const model = 'gpt-5.6-terra'
+
+    vi.setSystemTime(new Date('2026-07-19T23:59:59.900Z'))
+    const previousDay = await consumeDailyQuota(h.env, email, model)
+    expect(previousDay.debited).toEqual({
+      day: '2026-07-19',
+      global: true,
+      model: true,
+    })
+
+    vi.setSystemTime(new Date('2026-07-20T00:00:00.100Z'))
+    const nextDay = await consumeDailyQuota(h.env, email, model)
+    expect(nextDay.debited).toEqual({
+      day: '2026-07-20',
+      global: true,
+      model: true,
+    })
+    if (!previousDay.debited) throw new Error('Expected confirmed quota debit')
+
+    await voidDailyQuota(h.env, email, model, previousDay.debited)
+
+    const globalRows = await h.db
+      .prepare('SELECT day, count FROM quota WHERE email = ?1 ORDER BY day')
+      .bind(email)
+      .all<{ day: string; count: number }>()
+    const modelRows = await h.db
+      .prepare('SELECT day, count FROM quota_model WHERE email = ?1 AND model = ?2 ORDER BY day')
+      .bind(email, model)
+      .all<{ day: string; count: number }>()
+    expect(globalRows.results).toEqual([
+      { day: '2026-07-19', count: 0 },
+      { day: '2026-07-20', count: 1 },
+    ])
+    expect(modelRows.results).toEqual([
+      { day: '2026-07-19', count: 0 },
+      { day: '2026-07-20', count: 1 },
+    ])
   })
 })

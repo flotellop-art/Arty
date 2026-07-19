@@ -15,6 +15,7 @@ import {
   IMAGE_NORMALIZATION_VERSION,
   MAX_IMAGE_DIMENSION,
   MAX_NORMALIZED_IMAGE_BYTES,
+  MAX_NORMALIZED_VISION_BATCH_BYTES,
 } from '../imageNormalization'
 import {
   isVision4kFoundationEnabled,
@@ -24,7 +25,7 @@ import { getProviderAvailability } from './availability'
 import type { FileAttachment } from '../../types'
 import type { RouteInput } from './types'
 
-const MAX_VISION_BATCH_BYTES = 24 * 1024 * 1024
+const MAX_VISION_BATCH_BYTES = MAX_NORMALIZED_VISION_BATCH_BYTES
 const MAX_VISION_IMAGES = 4
 
 export interface RouteAttachmentFlags {
