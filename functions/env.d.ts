@@ -53,7 +53,12 @@ export interface Env {
   GOOGLE_MAPS_API_KEY?: string  // Geocoding API key — reverse geocoding server-side (BUG: Arty devinait la ville en 1.0.29)
   DB: D1Database  // Cloudflare D1 binding
   KV: KVNamespace  // Cloudflare KV binding — premium cap counters per user/month
-  LEMONSQUEEZY_WEBHOOK_SECRET?: string  // HMAC-SHA256 secret for verifying Lemon Squeezy webhook signatures
+  LEMONSQUEEZY_API_KEY?: string  // clé serveur Test/Live utilisée uniquement pour créer les checkouts dynamiques
+  LEMONSQUEEZY_STORE_ID?: string  // store Arty ; doit correspondre à la clé API de l'environnement
+  LEMONSQUEEZY_SUBSCRIPTION_VARIANT_ID?: string  // variant Test en preview, variant Live en production
+  LEMONSQUEEZY_PRO_VARIANT_ID?: string
+  LEMONSQUEEZY_PREMIUM_PACK_VARIANT_ID?: string
+  LEMONSQUEEZY_WEBHOOK_SECRET?: string  // secret HMAC du webhook du même environnement Test/Live
   CREEM_WEBHOOK_SECRET?: string  // HMAC-SHA256 secret (hex) pour vérifier les webhooks Creem (crédits prépayés)
   CREEM_API_KEY?: string  // clé serveur Creem (creem_test_… / creem_live_…) pour créer des checkouts. JAMAIS de préfixe VITE_ (RÈGLE 1) — passe en header x-api-key
   CREEM_API_BASE?: string  // override optionnel du host Creem (défaut: dérivé du préfixe de la clé → test-api.creem.io / api.creem.io)

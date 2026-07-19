@@ -1031,6 +1031,7 @@
     "statusPendingBody": "La confirmation peut prendre une minute. Reviens dans quelques instants.",
     "errorNoToken": "Connecte-toi avec Google pour vérifier ton abonnement.",
     "errorNoEmail": "Aucun email trouvé. Connecte-toi avec Google d'abord.",
+    "checkoutError": "Impossible de lancer le paiement sécurisé. Réessaie après t’être connecté avec Google.",
     "currentPlan": "Mode actuel",
     "byokPrice": "Gratuit",
     "proPrice": "39€ une fois · TTC",

@@ -1,17 +1,15 @@
 import type { Env } from '../../env'
-
-// Product IDs Lemon Squeezy — figés côté store, on les hardcode ici plutôt
-// que d'avoir une variable d'env pour qu'un changement nécessite une review
-// du code (un attaquant qui contrôlerait le panel CF Pages ne pourrait pas
-// rediriger des paiements vers un autre plan).
-const PRODUCT_ID_ARTY_PRO = 1004485
-const PRODUCT_ID_PREMIUM_PACK = 1004493
+import {
+  resolveLemonSqueezyVariantId,
+  type LemonSqueezyPlan,
+} from '../_lib/lemonSqueezyProducts'
 
 const PREMIUM_PACK_MESSAGES_TOTAL = 100
 const LICENSE_MAX_ACTIVATIONS = 3
 
 interface LemonSqueezyMeta {
   event_name?: string
+  custom_data?: Record<string, unknown>
 }
 
 interface LemonSqueezyAttributes {
@@ -162,6 +160,34 @@ function maskEmail(email: string | undefined): string {
   return `***@${email.slice(at + 1)}`
 }
 
+function verifiedCheckoutEmail(meta: LemonSqueezyMeta | undefined): string | null {
+  const value = meta?.custom_data?.app_user_email
+  if (typeof value !== 'string' || value.length > 320) return null
+  const email = value.trim().toLowerCase()
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : null
+}
+
+function configuredVariantOrThrow(env: Env, plan: LemonSqueezyPlan): number {
+  const variantId = resolveLemonSqueezyVariantId(env, plan)
+  if (!variantId) throw new Error(`Lemon Squeezy ${plan} variant not configured`)
+  return variantId
+}
+
+function eventVariantId(value: number | string | undefined): number | null {
+  const parsed = typeof value === 'number' ? value : Number(value)
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null
+}
+
+function isSubscriptionVariant(env: Env, attrs: LemonSqueezyAttributes): boolean {
+  const configured = configuredVariantOrThrow(env, 'subscription')
+  const actual = eventVariantId(attrs.variant_id)
+  if (actual !== configured) {
+    console.warn('[lemonsqueezy] événement abonnement pour une variante non configurée — ignoré')
+    return false
+  }
+  return true
+}
+
 // ─────────────────────────────────────────────────────────────────────────
 // Schémas alignés sur la PROD (migration 0002) — réconciliation 15 juin 2026.
 // La prod a été créée par migrations/0002 (id PK AUTOINCREMENT, colonnes
@@ -270,12 +296,15 @@ async function handleOrderCreated(
   data: LemonSqueezyData
 ): Promise<void> {
   const attrs = data.attributes ?? {}
-  const productId = attrs.first_order_item?.product_id
+  const variantId = eventVariantId(attrs.first_order_item?.variant_id ?? attrs.variant_id)
   const email = attrs.user_email?.toLowerCase()
   const orderId = data.id ?? ''
   if (!email || !orderId) return
 
-  if (productId === PRODUCT_ID_ARTY_PRO) {
+  const proVariantId = configuredVariantOrThrow(env, 'pro')
+  const premiumPackVariantId = configuredVariantOrThrow(env, 'premium_pack')
+
+  if (variantId === proVariantId) {
     // La LIGNE `licenses` (avec sa clé) est créée par l'événement
     // `license_key_created` — la clé n'arrive PAS dans le payload `order_created`
     // (bug de capture corrigé le 15 juin : `license_key` restait vide → activation
@@ -305,7 +334,7 @@ async function handleOrderCreated(
     return
   }
 
-  if (productId === PRODUCT_ID_PREMIUM_PACK) {
+  if (variantId === premiumPackVariantId) {
     await ensurePremiumPacksTable(env.DB)
     await env.DB.prepare(
       // Le replay de `order_created` est normal pour un webhook. REPLACE
@@ -329,6 +358,7 @@ async function handleSubscriptionUpsert(
   const attrs = data.attributes ?? {}
   const email = attrs.user_email?.toLowerCase()
   if (!email) return
+  if (!isSubscriptionVariant(env, attrs)) return
 
   const status = mapSubscriptionStatus(attrs.status)
   if (!status) {
@@ -376,6 +406,7 @@ async function handleSubscriptionStatusUpdate(
   const attrs = data.attributes ?? {}
   const email = attrs.user_email?.toLowerCase()
   if (!email) return
+  if (!isSubscriptionVariant(env, attrs)) return
 
   await ensureSubscriptionsTable(env.DB)
 
@@ -481,7 +512,17 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     return Response.json({ error: 'Missing event_name' }, { status: 400 })
   }
 
-  const data = payload.data ?? {}
+  const originalData = payload.data ?? {}
+  const checkoutEmail = verifiedCheckoutEmail(payload.meta)
+  // Les nouveaux checkouts dynamiques posent app_user_email côté serveur à
+  // partir du token Google vérifié. Il prime sur l'email de facturation, que
+  // le client peut modifier sur la page Lemon Squeezy.
+  const data: LemonSqueezyData = checkoutEmail
+    ? {
+        ...originalData,
+        attributes: { ...(originalData.attributes ?? {}), user_email: checkoutEmail },
+      }
+    : originalData
   const email = data.attributes?.user_email
   console.log(`[lemonsqueezy] event=${eventName} user=${maskEmail(email)}`)
 
