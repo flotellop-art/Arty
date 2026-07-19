@@ -564,7 +564,13 @@ Slash command **`/audit-secu`** (défini dans `.claude/commands/audit-secu.md`) 
 
 ### TODO Sécurité — prochain audit
 
-Dernier audit : **3 juillet 2026** — audit repo complet A→Z (5 agents : backend Opus, auth+crypto Opus, frontend Sonnet, build/config Sonnet, qualité Sonnet + vérifs directes tsc/tests/build/headers prod). Rapport : `docs/audits/repo-audit-2026-07-03.md`, remédiation : PR #307 (voir bloc « Corrigé le 3 juillet 2026 » ci-dessous). Précédents : 14 juin 2026, 7 juin 2026, 4 mai 2026 (PR #127 + #128).
+Dernier audit : **6 juillet 2026** — audit mensuel `/audit-secu` (3 agents Explore : backend Opus, crypto+auth Opus, frontend+Capacitor Sonnet, + vérification directe Read/Grep de chaque claim). Rapport : `docs/audits/audit-secu-2026-07-06.md`. **Verdict : aucun CRIT, aucun HIGH actif** — les durcissements des PRs #307/#309-#316 tiennent tous. 3 MED trouvés (2 à corriger rapidement, 1 déjà tracé/accepté) :
+- [ ] **MED — CSP `connect-src` sans `api.openai.com`** (`public/_headers:6`) : casse silencieusement ChatGPT/Whisper BYOK sur le web (PWA, pas le natif). Fix : ajouter l'hôte à la liste. ~1 ligne.
+- [ ] **MED — exfiltration CSS via `style` wildcard + `img-src https:` trop large** (`src/components/shared/MarkdownRenderer.tsx:52-73`, `public/_headers:6`) : `style` autorisé sur tous les tags sans validation de la valeur CSS (`url(...)` non bloqué) → un contenu markdown malveillant (prompt-injection via email/page lue par Arty) pourrait charger une image vers un domaine arbitraire sans clic utilisateur (canal d'exfiltration passif). Fix : retirer `style` du wildcard `'*'`, resserrer `img-src` aux hôtes réellement utilisés.
+- [ ] **MED (accepté, à planifier) — `onNativeGoogleLogin` contourne `storeTokens()`** (`src/App.tsx:949-955`) : écrit les tokens Google en clair via `setJSON` direct au lieu du chemin canonique chiffrant immédiatement — fenêtre transitoire de credential en clair + logique d'échange dupliquée sans timeout. Fix : router vers `storeTokens()`/`exchangeCode()` existants.
+- LOW résiduels (non urgents) : `trial/init.ts:54` duplique `verifyTokenViaTokeninfo` avec un court-circuit déjà retiré côté canonique (M-3) ; 7 endpoints (`gemini-proxy`, `openai-proxy`, `mistral-proxy`, `tts`, `voxtral-proxy`, `whisper-proxy`, `computer/relay`) renvoient `err.message` brut au client dans leur catch d'exception (incohérent avec `ai/proxy.ts` déjà durci) ; clés crypto globales non scopées par user (edge-case multi-comptes BYOK, déjà englobé par le chantier `CryptoKey` non-extractible ci-dessous).
+
+Précédents : 3 juillet 2026 (`docs/audits/repo-audit-2026-07-03.md`, PR #307), 14 juin 2026, 7 juin 2026, 4 mai 2026 (PR #127 + #128).
 
 > **MAJ 14 juin 2026** — Audit complet `/audit-secu` (3 agents) déclenché après une
 > comparaison aux failles d'Odysseus (l'assistant de PewDiePie). **Verdict : aucun CRIT,
