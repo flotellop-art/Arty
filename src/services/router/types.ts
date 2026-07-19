@@ -20,6 +20,7 @@ export const ALL_REASON_CODES = [
   'eu_only',                // conversation verrouillée Europe → Mistral (RÈGLE 5.3)
   'files_to_claude',        // fichier attaché → Claude (lecture native PDF/image, BUG 12)
   'files_mistral_native',   // image + Mistral choisi → vision native Mistral
+  'image_vision_openai',    // lot photo canonique → GPT-5.6 Terra vision
   'private_data',           // mails/Drive/agenda → Claude (tools Google, BUG 12)
   'youtube_native',         // vidéo YouTube → Gemini (lecture native)
   'url_web_fetch',          // URL collée → Claude (web_fetch lit vraiment la page)
@@ -57,6 +58,9 @@ export interface ProviderAvailability {
   gemini: boolean
   mistral: boolean
   openai: boolean
+  /** Terra vision réellement accessible : BYOK OpenAI, ou clé serveur hors
+      trial et famille gpt-full autorisée. Plus stricte que le chat OpenAI. */
+  openaiVision: boolean
 }
 
 export interface PlanContext {
@@ -73,7 +77,12 @@ export interface RouteInput {
   // texte contaminé » et « routage sur le tour précédent ».
   originalText: string
   hasFiles: boolean
+  hasImages: boolean
   hasPdf: boolean
+  hasOtherFiles: boolean
+  /** Toutes les pièces jointes sont des JPEG/PNG canoniques PR-A, dans les
+      bornes 4096 px / 6 Mio / 24 Mio attendues par le builder Terra. */
+  hasSupportedVisionImages: boolean
   euOnly: boolean
   // Une réponse précédente contient des données Google privées (mail, Drive,
   // agenda…). L'historique complet ne doit alors jamais partir vers
@@ -83,10 +92,17 @@ export interface RouteInput {
   availability: ProviderAvailability
   plan: PlanContext
   reflectionLevel: ReflectionLevel
+  /** Construction OpenAI multimodale autorisée (flag client PR-A/B). */
+  visionOpenAIEnabled: boolean
+  /** Routage Auto vers Terra autorisé séparément, après les gates PR-C. */
+  visionAutoRoutingEnabled: boolean
 }
 
 export interface RouteDecision {
   provider: AIProvider
+  /** Contrat d'exécution explicite : le hook ne doit jamais reconstruire le
+      choix multimodal depuis les flags après la décision pure. */
+  usesOpenAIVision: boolean
   // Renseigné quand la réponse est rédigée par Claude (provider 'claude' ou
   // 'hybrid' — en hybride c'est Claude qui écrit le texte affiché).
   subModel?: ClaudeSubModel

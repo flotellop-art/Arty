@@ -59,6 +59,26 @@ beforeEach(() => {
 })
 
 describe('usePlanStatus — cache effectif et courses', () => {
+  it('notifie le composer seulement après avoir commité plan et familles', async () => {
+    const snapshots: Array<{ plan: string | null; families: string | null }> = []
+    const listener = () => snapshots.push({
+      plan: localStorage.getItem('arty-plan-cache'),
+      families: localStorage.getItem('arty-allowed-families'),
+    })
+    window.addEventListener('arty-plan-status-changed', listener)
+    vi.stubGlobal('fetch', vi.fn(async () => response(status('subscription'))))
+
+    const { result, unmount } = renderHook(() => usePlanStatus())
+    await waitFor(() => expect(result.current.loading).toBe(false))
+
+    expect(snapshots).toEqual([{
+      plan: 'subscription',
+      families: JSON.stringify(ALL_FAMILIES),
+    }])
+    unmount()
+    window.removeEventListener('arty-plan-status-changed', listener)
+  })
+
   it('cache les familles débloquées seulement après un fetch wallet réussi', async () => {
     mocks.creditsCoverPremium.mockReturnValue(true)
     vi.stubGlobal('fetch', vi.fn(async () => response(status('free'))))

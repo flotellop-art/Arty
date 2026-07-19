@@ -28,6 +28,9 @@ describe('parité TRIAL_ALLOWED_MODELS ↔ isModelAllowedInTrial', () => {
     'claude-sonnet-5',
     'claude-opus-4-8',
     'gpt-5.5',
+    // Décision vision A5 : un essai sur clé serveur reste chez Claude pour
+    // les photos. Seule une clé OpenAI personnelle peut contourner ce verrou.
+    'gpt-5.6-terra',
     'gpt-5',
     'gemini-2.5-pro',
     'mistral-large-latest',

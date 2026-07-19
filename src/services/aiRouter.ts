@@ -2,6 +2,8 @@ import { getSelectedModel } from './modelSelector'
 import { creditsCoverPremium } from './walletClient'
 import { resolveRoute } from './router/resolveRoute'
 import { getProviderAvailability } from './router/availability'
+import { getTrialRemaining } from './trialClient'
+import { isVision4kFoundationEnabled, isVisionTerraAutoRoutingEnabled } from './visionFeature'
 import type { ReflectionLevel } from './reflectionLevel'
 
 // AI Router — decides which model to use based on the query.
@@ -431,12 +433,21 @@ export function detectProvider(message: string): AIProvider {
   return resolveRoute({
     originalText: message,
     hasFiles: false,
+    hasImages: false,
     hasPdf: false,
+    hasOtherFiles: false,
+    hasSupportedVisionImages: false,
     euOnly: false,
     hasPrivateHistory: false,
     selectedModel: getSelectedModel(),
-    availability: getProviderAvailability({ plan, creditsCoverPremium: walletCoversPremium }),
+    availability: getProviderAvailability({
+      plan,
+      creditsCoverPremium: walletCoversPremium,
+      trialRemaining: getTrialRemaining(),
+    }),
     plan: { plan, isPro: false, creditsCoverPremium: walletCoversPremium },
     reflectionLevel: 'auto',
+    visionOpenAIEnabled: isVision4kFoundationEnabled(),
+    visionAutoRoutingEnabled: isVisionTerraAutoRoutingEnabled(),
   }).provider
 }

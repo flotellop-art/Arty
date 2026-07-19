@@ -1,9 +1,9 @@
 # Cahier des charges — Vision GPT-5.6 Terra en 4K dans Arty
 
-**Statut :** proposition à valider avant implémentation — **revue adversariale intégrée, voir §0**<br>
+**Statut :** PR-A #371 et PR-B #372 mergées ; PR-C routage/UI en cours, flags désactivés — **revue adversariale intégrée, voir §0**<br>
 **Date :** 19 juillet 2026<br>
 **Périmètre :** analyse de photos par `gpt-5.6-terra`, routage automatique, préparation mobile, maîtrise des coûts et confidentialité<br>
-**Nature de cette PR :** documentation uniquement ; aucun comportement de production n'est modifié
+**État de production :** aucun routage Terra vision activé ; les deux flags client et le killswitch serveur restent désactivés par défaut
 
 ---
 
@@ -27,17 +27,17 @@
 
 | ID | Sévérité | Amendement |
 |---|---|---|
-| **A1** | **BLOQUANT (P0, PR-C)** | **Réconciliation de la règle écrite BUG 12.** Le routage §7 (image-only + Auto → Terra) contredit frontalement CLAUDE.md BUG 12 (« fichiers attachés → TOUJOURS Claude ») ET le commentaire d'invariant de `resolveRoute.ts:16-22`. PR-C DOIT : amender le texte BUG 12 (carve-out explicite « lot composé uniquement d'images » avec ses gardes euOnly/privé), mettre à jour le commentaire d'invariant, et couvrir la nouvelle précédence dans `resolveRoute.test.ts`. Sans cet amendement écrit, l'implémentation viole une règle maison documentée. |
+| **A1** | **RÉSOLU PR-C (P0, 19/07/2026)** | **Réconciliation de la règle écrite BUG 12.** `CLAUDE.md` définit désormais le carve-out étroit « images seules canoniques » ; `resolveRoute` applique l'ordre `euOnly` → privé → pièces jointes et les tests couvrent Auto, choix manuels, PDF/lot mixte et historique privé. PDF, autres documents, Gemini et hybride restent exclus du carve-out. |
 | **A2** | **BLOQUANT (P0, PR-A)** | **Décodage des sources énormes : risque mémoire + échec silencieux.** Précision factuelle (revue du 19/07) : la limite WebKit ~16,7 Mpx concerne l'aire du canvas de **sortie** (`width × height > 16 777 216`, bugs.webkit.org #171238) — la sortie normalisée 4096×3072 = 12,58 Mpx reste sous cette limite. Le danger réel est le **pic mémoire du décodage source** (200 MP ≈ 800 Mo RGBA) et les échecs silencieux associés sur WebView mobile. Exigences P0 : gate octets/mégapixels sur la SOURCE avant tout décodage ; `createImageBitmap(blob, {resizeWidth, resizeHeight})` comme **chemin préféré testé** (l'API ne garantit pas contractuellement l'absence de décodage complet sur toutes les versions WKWebView) avec **fallback natif/tuilé** ; test de non-corruption (sortie non uniforme) ; essais sur appareils iOS réels. |
 | **A3** | **URGENCE RELEVÉE (PR-0 indépendante)** | **La sur-réservation wallet (§2 point 5) est un bug DÉJÀ LIVE, pas un risque futur.** `walletBilling.estimateInputTokens` compte le base64 comme du texte (le commentaire du code annonce l'inverse de son comportement) et le chemin est actif aujourd'hui pour Claude (`proxy.ts` → `beginWalletBilling` pour free-avec-crédits). *Exemple chiffré, pas une constante* (hypothèses : image ≈ 8 Mo en base64, tarif input du modèle appelé, markup texte, plafond de sortie par défaut) : ~8 M « tokens » comptés → une réservation de l'ordre de plusieurs dizaines de dollars pour quelques centimes de coût réel — l'ampleur exacte dépend du poids binaire, du modèle, du plafond de sortie et du markup. Le fix §10.2 doit partir en **PR-0 autonome AVANT la vision**, avec test de non-régression sur le chemin Claude existant. |
 | **A4** | **CORRECTION FACTUELLE (§5/§10/§11)** | Les bornes « 4 images / 6 Mio / 24 Mio / 40 Mio » sont des **choix défensifs Arty**, PAS des limites OpenAI. Limites officielles réelles : **512 Mo de payload total et 1 500 images par requête**. Aucune formulation du document ne doit les présenter comme des contraintes API. |
-| **A5** | **MED (§7)** | **La colonne « OpenAI disponible » encode le PLAN via `availability.ts`** (`canUseServerKey` = subscription/vip ou free/trial avec crédits ; sinon BYOK) — l'implémenteur DOIT réutiliser cette availability plan-aware, le tableau §7 seul ne suffit pas. Gap réel à trancher : **trial** — `TRIAL_ALLOWED_MODELS` n'inclut pas `gpt-5.6-terra` (`isModelAllowedInTrial` → false) → un trial-avec-crédits routé Terra recevrait `trial_model_restricted`. Décision requise avant PR-C : ajouter Terra-vision au trial, ou router trial → Claude. **Pro : déjà correct** (BYOK, `proKeyRequiredResponse`). |
+| **A5** | **RÉSOLU PR-C (§7, 19/07/2026)** | **Disponibilité plan-aware et décision trial.** Le routage réutilise `availability.ts` avec une capacité distincte `openaiVision`. Un essai actif sur clé serveur reste chez Claude, car Terra demeure hors `TRIAL_ALLOWED_MODELS` et un test verrouille ce refus. Une clé OpenAI personnelle reste autorisée pendant l'essai, à la charge de l'utilisateur. Pour `free` + wallet serveur, seule la preuve d'un essai explicitement épuisé (`trialRemaining === 0`) ouvre Terra ; `null` est un état inconnu et revient à Claude. Subscription/vip suivent la famille `gpt-full`. |
 | **A6** | **MED (§8.2/§19, PR-A)** | **Piège double-compression non flagué** : `secureFileStorage.putFile` re-compresse à 2 048 px à la persistance. Si `normalizeImageForVision` sort du 4 096 mais que `putFile` reste en l'état, IndexedDB stocke du 2 048 pendant que la RAM du 1er tour est en 4 096 — ce qui **recrée exactement la divergence RAM/retry que le §8.2 veut tuer**. PR-A doit neutraliser/aligner `putFile` sur l'asset canonique. |
 | **A7** | **P0 (précise §8.3)** | **Invariant JPEG du chemin natif : à TESTER, pas à re-forcer.** Constat corrigé (revue du 19/07) : la capture native actuelle passe par `CameraResultType.Base64` et `@capacitor/camera` 8 ne retourne que du JPEG sur iOS et Android (l'implémentation Swift sérialise `jpegData`, `format: "jpeg"`) — pas de chantier « forcer le JPEG natif » en P0. Exigence réelle : un **test de non-régression verrouillant cet invariant JPEG** du chemin natif, et le rejet/la conversion HEIC sur les chemins d'**import** (web/fichiers), où le risque existe vraiment. |
 | **A8** | **HYGIÈNE (P0)** | Ajouter aux exigences P0 : gate `npx tsc --noEmit` avant push (BUG 13 — l'union multimodale + 4 nouveaux champs `RouteInput` sont une grosse surface de types) ; audit RÈGLE 6 explicite sur `openai-proxy` modifié (dont Origin/CSRF) ; vérification `AndroidManifest` : `CAMERA` présente **et confirmer que `READ_MEDIA_IMAGES` reste inutile** (absence volontaire documentée au manifest — sélections via Photo Picker/SAF avec URI temporaire ; ne l'ajouter QUE si l'architecture change) ; vérification CSP `img-src data:/blob:` de `public/_headers` pour les vignettes (précédent BUG 40/62). |
-| **A9** | **DÉCISION PRODUIT (§3/§11/§14, 19/07/2026)** | Un échantillon réel OnePlus 12R `3072 × 4096` pèse 5,5 Mio : quatre photos normales dépasseraient la borne initiale de 20 Mio. Le lot passe donc à **24 Mio binaires** (4 × 6 Mio) et le futur proxy à **40 Mio de JSON**, afin d'absorber les ~32 Mio de base64 plus le texte et l'overhead JSON. Les PDF/autres fichiers restent à 10 Mio. |
+| **A9** | **DÉCISION PRODUIT (§3/§11/§14, 19/07/2026)** | Un échantillon réel OnePlus 12R `3072 × 4096` pèse 5,5 Mio : quatre photos normales dépasseraient la borne initiale de 20 Mio. Le lot passe donc à **24 Mio binaires** (4 × 6 Mio) et le transport vision OpenAI à **40 Mio de JSON**, afin d'absorber les ~32 Mio de base64 plus le texte et l'overhead JSON. Les PDF/autres fichiers restent à 10 Mio. |
 | **A10** | **PÉRIMÈTRE PR-B (§11/§18, 19/07/2026)** | La borne JSON de **40 Mio s'applique uniquement au transport vision streaming de `openai-proxy`** dans PR-B ; le transport texte OpenAI est borné à **10 Mio** pour empêcher le pic `body + DOM + re-stringify`. L'appliquer indistinctement aux quatre proxys chat ferait régresser les lots Claude de plusieurs PDF (trois PDF de 10 Mio approchent déjà 40 Mio après base64, avant JSON), en contradiction avec la décision de ne pas modifier les PDF. Les caps Anthropic/Gemini/Mistral restent un chantier d'hygiène séparé, avec une politique document-aware. |
-| **A11** | **RÉSOLU PR-B / GATE PR-C — CLOUDFLARE/MÉMOIRE (19/07/2026)** | La [limite officielle d'entrée Cloudflare](https://developers.cloudflare.com/workers/platform/limits/#request-and-response-limits) est au minimum 100 MB (Free/Pro), donc supérieure aux 40 Mio Arty ; la mémoire reste limitée à 128 MB par isolat. Un profil du premier prototype bufferisé dépassait cette mémoire (~146 Mio RSS). PR-B utilise donc `tee()` + parse JSON streaming par feuilles : une branche est validée, l'autre est relayée inchangée à OpenAI, et elle est annulée sur tout refus pré-upstream. Aucun `request.text()`/DOM/re-stringify complet n'existe sur le chemin 4 × 6 Mio. Avant d'activer PR-C, mesurer sous Workerd/staging un lot maximal seul puis plusieurs lots simultanés : la borne mémoire est par isolat, pas par requête. Si la marge sous 128 MB n'est pas démontrée, ajouter un plafond de validations vision concurrentes par isolat ou migrer le transport image vers un stockage/upload dédié. |
+| **A11** | **RÉSOLU PR-B / GATE D'ACTIVATION — CLOUDFLARE/MÉMOIRE (19/07/2026)** | La [limite officielle d'entrée Cloudflare](https://developers.cloudflare.com/workers/platform/limits/#request-and-response-limits) est au minimum 100 MB (Free/Pro), donc supérieure aux 40 Mio Arty ; la mémoire reste limitée à 128 MB par isolat. Un profil du premier prototype bufferisé dépassait cette mémoire (~146 Mio RSS). PR-B utilise donc `tee()` + parse JSON streaming par feuilles : une branche est validée, l'autre est relayée inchangée à OpenAI, et elle est annulée sur tout refus pré-upstream. Aucun `request.text()`/DOM/re-stringify complet n'existe sur le chemin 4 × 6 Mio. Avant d'activer Auto, mesurer sous Workerd/staging un lot maximal seul puis plusieurs lots simultanés : la borne mémoire est par isolat, pas par requête. Si la marge sous 128 MB n'est pas démontrée, ajouter un plafond de validations vision concurrentes par isolat ou migrer le transport image vers un stockage/upload dédié. |
 
 Points vérifiés CONFORMES (aucune action) : bucket premium `gpt-5.6-terra` →
 `gpt-5` cap 100 (D11) ; invariant « consommé ⟺ servi » cohérent avec
@@ -50,10 +50,10 @@ génération (D12).
 
 ## 1. Résumé exécutif
 
-Arty sait joindre et stocker des images, mais le chemin OpenAI est encore
-texte-seul : les fichiers sont remplacés par une simple mention avant l'appel.
-En mode Auto, toute pièce jointe est par ailleurs routée vers Claude, sauf une
-image envoyée avec Mistral choisi manuellement.
+PR-A sait désormais normaliser et stocker jusqu'à quatre images canoniques 4K,
+et PR-B sait les transmettre à OpenAI en streaming borné avec facturation
+dimensionnelle. Ces fondations restent inactives par défaut. PR-C ajoute le
+routage et la transparence UI sans activer le déploiement Auto.
 
 Le produit cible est le suivant :
 
@@ -210,8 +210,9 @@ routeur doit recevoir au minimum `hasImages`, `hasPdf`, `hasOtherFiles` et
 | 5 | Images seules + Mistral manuel | Mistral | `files_mistral_native` |
 | 6 | Images seules + OpenAI manuel et disponible | OpenAI/Terra | `image_vision_openai` |
 | 7 | Images seules + Auto + OpenAI disponible + feature activée | OpenAI/Terra | `image_vision_openai` |
-| 8 | Images seules + Auto, OpenAI indisponible/désactivé | Claude | `fallback_no_provider` |
-| 9 | Images seules + Gemini manuel tant que Gemini reste texte-seul | Claude + override visible | `files_to_claude` |
+| 8 | Images seules + fondation ou flag Auto désactivé | Claude | `files_to_claude` |
+| 9 | Images seules + flags requis actifs, Terra indisponible pour le compte | Claude | `fallback_no_provider` |
+| 10 | Images seules + Gemini manuel tant que Gemini reste texte-seul | Claude + override visible | `files_to_claude` |
 
 ### Exigences de transparence
 
@@ -592,15 +593,20 @@ réversible ou dimensions de source permettant de profiler un appareil.
    changer le routage.
 2. **PR-B — OpenAI vision** : blocs multimodaux, historique one-shot, bornes
    proxy et facturation, feature désactivée.
-3. **PR-C — routage et UI** : raison, overrides, traductions et benchmark.
-4. **Activation** : manuel interne, 10 % Auto, 50 %, puis 100 % si les métriques
+3. **PR-C — routage et UI** : raison, overrides, traductions et tests, avec les
+   flags toujours désactivés.
+4. **Activation après benchmark et test mémoire/concurrence** : manuel interne,
+   10 % Auto, 50 %, puis 100 % si les métriques
    restent dans les bornes pendant au moins 48 h par palier.
 
 ### Feature flags
 
-- Un flag client désactive la construction multimodale et le routage Auto.
+- `arty-vision-terra-4k-foundation` contrôle la fondation et la sélection
+  OpenAI manuelle ; valeur par défaut : OFF.
+- `arty-vision-terra-auto-routing` contrôle séparément Auto et ne peut être
+  actif que si la fondation l'est ; valeur par défaut : OFF.
 - Un killswitch serveur refuse les blocs image avant débit quota/wallet pour le
-  chemin clé serveur.
+  chemin clé serveur : `OPENAI_VISION_ENABLED`, valeur par défaut `false`.
 - Le rollback restaure le routage des images vers Claude ; les assets 4K déjà
   persistés restent compatibles et ne nécessitent aucune migration.
 - Aucun fallback cross-provider silencieux après réception upstream.
@@ -636,10 +642,11 @@ réversible ou dimensions de source permettant de profiler un appareil.
 3. **Engineering :** le fallback `gpt-5` est désactivé dès qu'un bloc vision est
    présent ; aucun replay cross-modèle silencieux n'est autorisé.
 
-### Non bloquantes pour PR-A
+### Restant avant activation
 
 1. **Produit :** faut-il afficher le coût estimé avant une réanalyse manuelle ?
-2. **Design :** où placer l'état « optimisée en 4K » sans alourdir le composer ?
+2. **Engineering :** valider sous Workerd/staging un lot maximal seul puis des
+   lots simultanés avec une marge démontrée sous 128 MB par isolat.
 3. **Data :** quelle grille de vérité terrain utiliser pour les photos de
    chantier du benchmark ?
 4. **Engineering :** faut-il convertir HEIC en P1 côté natif uniquement ou

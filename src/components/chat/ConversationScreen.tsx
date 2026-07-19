@@ -160,6 +160,7 @@ export function ConversationScreen({
         initialText={initialDraft?.text}
         initialFiles={initialDraft?.files}
         euOnly={conversation.euOnly}
+        hasPrivateHistory={!!conversation.hasGoogleData}
         draftKey={`conversation:${conversation.id}`}
       />
 

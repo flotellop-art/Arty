@@ -289,6 +289,7 @@
       "eu_only": "Conversation en mode Europe : Mistral (serveurs en France) est le seul modèle utilisé — tes données ne quittent pas l'Europe.",
       "files_to_claude": "Ce fichier n'est pas pris en charge par le modèle choisi dans Arty : Claude est utilisé pour l'analyser.",
       "files_mistral_native": "Image jointe avec Mistral sélectionné : Mistral l'analyse avec sa vision native (les données restent en Europe).",
+      "image_vision_openai": "Photos compatibles : GPT-5.6 Terra les analyse en détail 4K via OpenAI.",
       "private_data": "Ta demande contient des données privées fournies dans le chat, un fichier ou des données d'agenda : Claude est utilisé pour les traiter sans recherche web inutile.",
       "youtube_native": "Lien YouTube détecté : Gemini regarde la vidéo directement.",
       "url_web_fetch": "Lien détecté : Claude ouvre et lit réellement la page (les autres modèles ne voient que des extraits et risquent d'inventer).",
@@ -316,6 +317,7 @@
     },
     "modelFooter": {
       "hint": "Quel modèle a écrit cette réponse ?",
+      "vision4k": "analyse photo 4K",
       "capacity": {
         "mistral": "Europe",
         "gemini": "Recherche web",
@@ -453,6 +455,13 @@
       "fileReadFailed": "Impossible de lire le fichier : {{name}}.",
       "tooManyImages": "Maximum {{max}} photos par message",
       "imageBatchTooLarge": "Le total des photos optimisées dépasse 24 Mo.",
+      "optimized4k": "Optimisée en 4K",
+      "routePreview": "Analyse prévue par {{provider}}",
+      "routeProvider": {
+        "terra": "GPT-5.6 Terra (OpenAI)",
+        "mistral": "Mistral",
+        "claude": "Claude"
+      },
       "scanPrompt": "Extrais les informations clés de ce document : montants, dates, expéditeur, destinataire, sujet, et tout point notable."
     },
     "tone": {

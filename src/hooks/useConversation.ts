@@ -5,17 +5,17 @@ import { streamMessage } from '../services/anthropicClient'
 import { streamGeminiMessage, geminiResearch } from '../services/geminiClient'
 import { streamMistralMessage } from '../services/mistralClient'
 import { sendMessageStream as streamOpenAIMessage } from '../services/openaiClient'
-import type { OpenAIMessage } from '../services/openaiClient'
 import { getOpenAIKey } from '../services/activeApiKey'
 import { extractPdfUrls, extractWebUrls } from '../services/aiRouter'
 import { canExecuteRoute, resolveRoute } from '../services/router/resolveRoute'
-import { gatherRouteInput } from '../services/router/gatherRouteInput'
+import { classifyRouteAttachments, gatherRouteInput } from '../services/router/gatherRouteInput'
 import { notifyRouteOverrides } from '../services/router/notifyRouteOverrides'
 import { fetchPdfMarkdowns, fetchUrlMarkdowns } from '../services/pdfUrlFetch'
 import * as storage from '../services/storage'
 import { maybeExtractMemory } from '../services/autoMemory'
 import { useStreaming } from './useStreaming'
-import { useFileAttachments, buildApiMessages, buildContentBlocks, buildTextOnlyMessages, buildMistralMessages, buildMistralContentBlocks, buildOpenAIVisionContentBlocks } from './useFileAttachments'
+import { useFileAttachments, buildApiMessages, buildContentBlocks, buildTextOnlyMessages, buildMistralMessages, buildMistralContentBlocks } from './useFileAttachments'
+import { buildOpenAIRouteMessages } from './openaiRouteMessages'
 import { getReflectionLevel } from '../services/reflectionLevel'
 import { deleteFile, putFile } from '../services/secureFileStorage'
 import { runFactCheckOnLatest, getFactCheckMode } from '../services/factChecker'
@@ -26,7 +26,6 @@ import { detectReminderIntent, createReminder } from '../services/reminderServic
 import { composeQuickActionText, isQuickActionSelection } from '../services/quickActions'
 import { clearConversationComposerDraft } from '../services/composerDrafts'
 import i18n from '../i18n'
-import { isVision4kFoundationEnabled } from '../services/visionFeature'
 
 type ToolHandler = (name: string, input: Record<string, unknown>) => Promise<{ result: string; screenshot?: string }>
 
@@ -112,8 +111,7 @@ export function useConversation() {
     if (euOnly) {
       const access = gatherRouteInput({
         originalText: '',
-        hasFiles: false,
-        hasPdf: false,
+        ...classifyRouteAttachments(null),
         euOnly: true,
         hasPrivateHistory: false,
       })
@@ -450,8 +448,7 @@ export function useConversation() {
       }
 
       const currentFiles = pendingFilesRef.current
-      const hasFiles = !!(currentFiles && currentFiles.length > 0)
-      const hasPdf = hasFiles && currentFiles!.some((f) => f.type === 'application/pdf')
+      const attachmentFlags = classifyRouteAttachments(currentFiles)
       // Décision de routage UNIQUE (refonte routage, étape 2) : euOnly,
       // fichiers, choix manuel et cascade auto vivent désormais dans
       // resolveRoute — même ordre d'invariants qu'avant (RÈGLE 5.3, BUG 12).
@@ -461,8 +458,7 @@ export function useConversation() {
       // ne re-route plus sur un texte contaminé ou du tour précédent.
       const routeInput = gatherRouteInput({
         originalText: modelText,
-        hasFiles,
-        hasPdf,
+        ...attachmentFlags,
         euOnly: !!conv.euOnly,
         hasPrivateHistory: !!conv.hasGoogleData,
       })
@@ -666,25 +662,15 @@ export function useConversation() {
         // openaiKey peut être null — dans ce cas le client passe par le proxy
         // serveur (/api/ai/openai-proxy) qui utilise env.OPENAI_API_KEY.
         const openaiKey = getOpenAIKey()
-        const textOnly = await buildTextOnlyMessages(conv.messages)
-        const apiMessages: OpenAIMessage[] = textOnly.map((m) => ({
-          role: (m.role === 'assistant' ? 'assistant' : 'user') as 'user' | 'assistant',
-          content: m.content,
-        }))
-        const currentImagesOnly =
-          currentFiles &&
-          currentFiles.length > 0 &&
-          currentFiles.every((file) => file.type.startsWith('image/'))
-        if (isVision4kFoundationEnabled() && currentImagesOnly && apiMessages.length > 0) {
-          apiMessages[apiMessages.length - 1] = {
-            role: 'user',
-            content: await buildOpenAIVisionContentBlocks(outgoingText, currentFiles),
-          }
-          setPendingFiles(null)
-        } else if (outgoingText !== modelText && apiMessages.length > 0) {
-          apiMessages[apiMessages.length - 1] = { role: 'user', content: outgoingText }
-        }
-        controller = streamOpenAIMessage(apiMessages, openaiKey, onToken, onDone, onErr, {
+        const openaiRoute = await buildOpenAIRouteMessages({
+          history: conv.messages,
+          routeDecision,
+          currentFiles,
+          outgoingText,
+          modelText,
+        })
+        if (openaiRoute.consumedCurrentFiles) setPendingFiles(null)
+        controller = streamOpenAIMessage(openaiRoute.messages, openaiKey, onToken, onDone, onErr, {
           systemPrompt: systemPromptRef.current,
           conversationId: targetId,
           routeReason: routeDecision.reason,

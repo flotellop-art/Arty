@@ -38,6 +38,7 @@ export const ModelFooter = memo(function ModelFooter({ model, reasonCode, subMod
   const subModelExplanation = subModelReasonCode && subModelReasonCode !== reasonCode
     ? t(getRouteExplanationKey(model, subModelReasonCode))
     : null
+  const isOpenAIVision = reasonCode === 'image_vision_openai'
 
   return (
     <div className="mt-1.5">
@@ -49,7 +50,9 @@ export const ModelFooter = memo(function ModelFooter({ model, reasonCode, subMod
       >
         {expanded
           ? `${formatModelName(model)} · ${t(region.key)}`
-          : `${t(getModelCapacityKey(model))} · ${region.flag}`}
+          : isOpenAIVision
+            ? `${formatModelName(model)} · ${t('chat.modelFooter.vision4k')}`
+            : `${t(getModelCapacityKey(model))} · ${region.flag}`}
       </button>
       {expanded && (
         <div className="mt-1 text-xs text-theme-muted leading-relaxed max-w-[60ch] space-y-1">

@@ -15,17 +15,9 @@ import { isProActivated } from '../../services/proLicense'
 import { StreakBadge } from './StreakBadge'
 import { ChatOptionsSheet } from '../chat/ChatOptionsSheet'
 import { UpgradePromptModal } from '../chat/UpgradePromptModal'
-import { usePlanStatus, type ModelFamily } from '../../hooks/usePlanStatus'
+import { usePlanStatus } from '../../hooks/usePlanStatus'
 import { homeV2Enabled } from '../../services/homeV2'
-
-// Mapping provider → famille (identique à ChatTopBar) pour le lock Pro du
-// sélecteur de modèle de l'accueil v2.
-const PROVIDER_TO_FAMILY: Record<Exclude<AIModel, 'auto'>, ModelFamily> = {
-  claude: 'claude-haiku',
-  mistral: 'mistral-medium',
-  gemini: 'gemini-flash',
-  openai: 'gpt-mini',
-}
+import { isProviderLockedForPlan } from '../../services/providerLock'
 
 interface TopBarProps {
   onMenuToggle: () => void
@@ -50,10 +42,8 @@ export function TopBar({ onMenuToggle, menuOpen = false, dateLabel = '' }: TopBa
   const [sheetOpen, setSheetOpen] = useState(false)
   const [upgradePrompt, setUpgradePrompt] = useState<string | null>(null)
   const planStatus = usePlanStatus()
-  const isProviderLocked = (id: AIModel): boolean => {
-    if (id === 'auto') return false
-    return planStatus.lockedFamilies.includes(PROVIDER_TO_FAMILY[id])
-  }
+  const isProviderLocked = (id: AIModel): boolean =>
+    isProviderLockedForPlan(id, planStatus.lockedFamilies)
   // Variante v2 du changement de modèle : lock Pro → modale upgrade
   // (l'accueil n'a pas de conversation, donc pas de confirmation EU/US).
   const handleModelChangeV2 = (model: AIModel) => {

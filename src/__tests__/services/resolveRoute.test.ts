@@ -8,8 +8,8 @@ import { describe, expect, it } from 'vitest'
 import { canExecuteRoute, resolveRoute } from '../../services/router/resolveRoute'
 import type { PlanContext, ProviderAvailability, RouteInput } from '../../services/router/types'
 
-const ALL: ProviderAvailability = { claude: true, gemini: true, mistral: true, openai: true }
-const NONE: ProviderAvailability = { claude: true, gemini: false, mistral: false, openai: false }
+const ALL: ProviderAvailability = { claude: true, gemini: true, mistral: true, openai: true, openaiVision: true }
+const NONE: ProviderAvailability = { claude: true, gemini: false, mistral: false, openai: false, openaiVision: false }
 const PAID: PlanContext = { plan: 'subscription', isPro: false, creditsCoverPremium: false }
 const FREE: PlanContext = { plan: 'free', isPro: false, creditsCoverPremium: false }
 
@@ -17,13 +17,18 @@ function input(overrides: Partial<RouteInput> = {}): RouteInput {
   return {
     originalText: 'Explique-moi la loi de Moore',
     hasFiles: false,
+    hasImages: false,
     hasPdf: false,
+    hasOtherFiles: false,
+    hasSupportedVisionImages: false,
     euOnly: false,
     hasPrivateHistory: false,
     selectedModel: 'auto',
     availability: ALL,
     plan: PAID,
     reflectionLevel: 'auto',
+    visionOpenAIEnabled: false,
+    visionAutoRoutingEnabled: false,
     ...overrides,
   }
 }
@@ -66,7 +71,13 @@ describe('resolveRoute — invariants euOnly / fichiers (ex-useConversation, 0 t
   })
 
   it('image (pas de PDF) + Mistral manuel → Mistral (vision native), sans override', () => {
-    const d = resolveRoute(input({ hasFiles: true, hasPdf: false, selectedModel: 'mistral' }))
+    const d = resolveRoute(input({
+      hasFiles: true,
+      hasImages: true,
+      hasPdf: false,
+      hasSupportedVisionImages: true,
+      selectedModel: 'mistral',
+    }))
     expect(d.provider).toBe('mistral')
     expect(d.reason.code).toBe('files_mistral_native')
     expect(d.overrides).toEqual([])
@@ -93,6 +104,180 @@ describe('resolveRoute — invariants euOnly / fichiers (ex-useConversation, 0 t
   })
 })
 
+describe('resolveRoute — matrice Terra vision PR-C', () => {
+  const vision = {
+    hasFiles: true,
+    hasImages: true,
+    hasPdf: false,
+    hasOtherFiles: false,
+    hasSupportedVisionImages: true,
+    visionOpenAIEnabled: true,
+  }
+
+  it('OpenAI manuel + images canoniques → Terra même si le flag Auto reste OFF', () => {
+    const d = resolveRoute(input({ ...vision, selectedModel: 'openai' }))
+    expect(d.provider).toBe('openai')
+    expect(d.reason.code).toBe('image_vision_openai')
+    expect(d.usesOpenAIVision).toBe(true)
+    expect(d.overrides).toEqual([])
+  })
+
+  it('Auto + flags vision/Auto + disponibilité → Terra', () => {
+    const d = resolveRoute(input({ ...vision, visionAutoRoutingEnabled: true }))
+    expect(d.provider).toBe('openai')
+    expect(d.reason.code).toBe('image_vision_openai')
+    expect(d.usesOpenAIVision).toBe(true)
+  })
+
+  it('Auto + flag Auto OFF → Claude sans prétendre que Terra est indisponible', () => {
+    const d = resolveRoute(input({ ...vision, visionAutoRoutingEnabled: false }))
+    expect(d.provider).toBe('claude')
+    expect(d.reason).toEqual({ code: 'files_to_claude' })
+    expect(d.usesOpenAIVision).toBe(false)
+  })
+
+  it('fondation OFF + flag Auto incohérent ON → jamais Terra', () => {
+    const d = resolveRoute(input({
+      ...vision,
+      visionOpenAIEnabled: false,
+      visionAutoRoutingEnabled: true,
+    }))
+    expect(d.provider).toBe('claude')
+    expect(d.reason).toEqual({ code: 'files_to_claude' })
+    expect(d.usesOpenAIVision).toBe(false)
+  })
+
+  it('OpenAI manuel + fondation OFF → Claude/files_to_claude avec override visible', () => {
+    const d = resolveRoute(input({
+      ...vision,
+      selectedModel: 'openai',
+      visionOpenAIEnabled: false,
+    }))
+    expect(d.provider).toBe('claude')
+    expect(d.overrides).toEqual([{
+      requested: 'openai',
+      applied: 'claude',
+      reason: { code: 'files_to_claude' },
+    }])
+  })
+
+  it('Auto + Terra indisponible pour le plan → Claude', () => {
+    const d = resolveRoute(input({
+      ...vision,
+      visionAutoRoutingEnabled: true,
+      availability: { ...ALL, openaiVision: false },
+    }))
+    expect(d.provider).toBe('claude')
+    expect(d.reason.code).toBe('fallback_no_provider')
+  })
+
+  it('OpenAI manuel indisponible → Claude avec override visible', () => {
+    const d = resolveRoute(input({
+      ...vision,
+      selectedModel: 'openai',
+      availability: { ...ALL, openaiVision: false },
+    }))
+    expect(d.provider).toBe('claude')
+    expect(d.overrides).toEqual([{
+      requested: 'openai',
+      applied: 'claude',
+      reason: { code: 'fallback_no_provider', params: { preferred: 'openai' } },
+    }])
+  })
+
+  it('image non canonique → Claude/files_to_claude, jamais Terra', () => {
+    const d = resolveRoute(input({
+      ...vision,
+      hasSupportedVisionImages: false,
+      selectedModel: 'openai',
+      visionAutoRoutingEnabled: true,
+    }))
+    expect(d.provider).toBe('claude')
+    expect(d.reason.code).toBe('files_to_claude')
+    expect(d.usesOpenAIVision).toBe(false)
+  })
+
+  it('Claude manuel + photos → Claude/manual_selection', () => {
+    const d = resolveRoute(input({ ...vision, selectedModel: 'claude' }))
+    expect(d.provider).toBe('claude')
+    expect(d.reason.code).toBe('manual_selection')
+  })
+
+  it('Gemini manuel + photos → Claude avec override fichiers', () => {
+    const d = resolveRoute(input({ ...vision, selectedModel: 'gemini' }))
+    expect(d.provider).toBe('claude')
+    expect(d.reason.code).toBe('files_to_claude')
+    expect(d.overrides[0]).toMatchObject({ requested: 'gemini', applied: 'claude' })
+  })
+
+  it.each([
+    ['PDF seul', { hasImages: false, hasPdf: true }],
+    ['JPEG + PDF', { hasImages: true, hasPdf: true }],
+  ])('%s + flags Terra ON → Claude/files_to_claude', (_label, attachment) => {
+    const d = resolveRoute(input({
+      ...vision,
+      ...attachment,
+      hasSupportedVisionImages: false,
+      visionAutoRoutingEnabled: true,
+    }))
+    expect(d.provider).toBe('claude')
+    expect(d.reason.code).toBe('files_to_claude')
+    expect(d.usesOpenAIVision).toBe(false)
+  })
+
+  it('historique Google privé + photo + Auto → Claude/private_data', () => {
+    const d = resolveRoute(input({
+      ...vision,
+      hasPrivateHistory: true,
+      visionAutoRoutingEnabled: true,
+    }))
+    expect(d.provider).toBe('claude')
+    expect(d.reason.code).toBe('private_data')
+    expect(d.usesOpenAIVision).toBe(false)
+  })
+
+  it('historique Google privé + photo + Mistral manuel → Claude/private_data', () => {
+    const d = resolveRoute(input({ ...vision, hasPrivateHistory: true, selectedModel: 'mistral' }))
+    expect(d.provider).toBe('claude')
+    expect(d.reason.code).toBe('private_data')
+    expect(d.overrides[0]).toMatchObject({ requested: 'mistral', applied: 'claude' })
+  })
+
+  it('« mes mails » + photo + OpenAI manuel → Claude/private_data + override', () => {
+    const d = resolveRoute(input({
+      ...vision,
+      originalText: 'Analyse cette photo avec mes mails',
+      selectedModel: 'openai',
+    }))
+    expect(d.provider).toBe('claude')
+    expect(d.reason.code).toBe('private_data')
+    expect(d.overrides[0]).toMatchObject({ requested: 'openai', applied: 'claude' })
+  })
+
+  it('euOnly reste prioritaire sur Terra et conserve Mistral', () => {
+    const d = resolveRoute(input({ ...vision, euOnly: true, visionAutoRoutingEnabled: true }))
+    expect(d.provider).toBe('mistral')
+    expect(d.reason.code).toBe('eu_only')
+    expect(d.usesOpenAIVision).toBe(false)
+  })
+
+  it('euOnly + OpenAI manuel + JPEG → Mistral avec override explicite', () => {
+    const d = resolveRoute(input({
+      ...vision,
+      euOnly: true,
+      selectedModel: 'openai',
+      visionAutoRoutingEnabled: true,
+    }))
+    expect(d.provider).toBe('mistral')
+    expect(d.reason.code).toBe('eu_only')
+    expect(d.overrides).toEqual([{
+      requested: 'openai',
+      applied: 'mistral',
+      reason: { code: 'eu_only' },
+    }])
+  })
+})
+
 describe('resolveRoute — choix manuel et garde données privées', () => {
   it('choix manuel respecté avec raison manual_selection', () => {
     const d = resolveRoute(input({ selectedModel: 'gemini' }))
@@ -110,10 +295,13 @@ describe('resolveRoute — choix manuel et garde données privées', () => {
     ])
   })
 
-  it('privé + Mistral manuel → Mistral honoré (il a les tools Google)', () => {
+  it('privé + Mistral manuel → Claude : private_data précède le carve-out photo', () => {
     const d = resolveRoute(input({ selectedModel: 'mistral', originalText: 'Montre mes emails' }))
-    expect(d.provider).toBe('mistral')
-    expect(d.overrides).toEqual([])
+    expect(d.provider).toBe('claude')
+    expect(d.reason.code).toBe('private_data')
+    expect(d.overrides).toEqual([
+      { requested: 'mistral', applied: 'claude', reason: { code: 'private_data' } },
+    ])
   })
 })
 
