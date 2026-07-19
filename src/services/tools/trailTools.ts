@@ -1,26 +1,27 @@
 import type { ToolHandler } from './types'
-import { apiUrl } from '../apiBase'
-import { safeJson } from '../../utils/safeJson'
-import { getValidAccessToken } from '../googleAuth'
 import { getUserLocation, isLocationConsentEnabled } from '../native/location'
 import { markUntrustedThirdPartyData } from './untrustedContent'
-import { buildGpx, chainSegments, gpxFilename, type LatLon } from '../gpx'
+import { buildGpx, chainSegments, gpxFilename } from '../gpx'
 import { downloadOrShareFile } from '../native/shareFile'
+import { searchTrails, fetchTrailGeometry } from '../trailsClient'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Outils sentiers/GPX (juillet 2026) — repousse la limite « Arty ne trouve pas
 // de chemins de randonnée et ne sait pas produire une trace GPX ».
 //
-// find_trails interroge /api/geo/trails (Overpass/OSM côté serveur) et renvoie
-// au LLM un RÉSUMÉ texte (jamais la géométrie : inutile au modèle et ruineuse
-// en tokens). export_trail_gpx re-résout la géométrie par id OSM via le même
-// endpoint (cache serveur 24 h) puis génère le fichier côté client — stateless,
-// pas de cache module partagé entre conversations (revue agents, RÈGLE 7).
-// Livraison : share sheet natif (« Ouvrir avec Komoot… ») ou téléchargement web
-// via downloadOrShareFile — PAS writeLocalFile (invisible sur Android 11+).
-// Les tags OSM (name, description…) sont du contenu tiers éditable par
-// n'importe qui → enveloppés markUntrustedThirdPartyData avant d'atteindre le
-// modèle, et jamais utilisés bruts comme nom de fichier (slug gpxFilename).
+// find_trails interroge /api/geo/trails (Overpass/OSM côté serveur, via le
+// client partagé trailsClient.ts) et renvoie au LLM un RÉSUMÉ texte (jamais la
+// géométrie : inutile au modèle et ruineuse en tokens). Le tracé se consulte
+// dans Arty sur la page /trail/:id (bouton view_trail) ; export_trail_gpx
+// re-résout la géométrie par id OSM (cache serveur 24 h) puis génère le
+// fichier côté client — stateless, pas de cache module partagé entre
+// conversations (revue agents, RÈGLE 7).
+// Livraison GPX : share sheet natif (« Ouvrir avec Komoot… ») ou
+// téléchargement web via downloadOrShareFile — PAS writeLocalFile (invisible
+// sur Android 11+). Les tags OSM (name, description…) sont du contenu tiers
+// éditable par n'importe qui → enveloppés markUntrustedThirdPartyData avant
+// d'atteindre le modèle, et jamais utilisés bruts comme nom de fichier (slug
+// gpxFilename).
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const trailToolDefinitions = [
@@ -40,7 +41,7 @@ export const trailToolDefinitions = [
   {
     name: 'export_trail_gpx',
     description:
-      "Génère le fichier GPX d'un circuit trouvé par find_trails et le propose à l'utilisateur (partage natif ou téléchargement). Appelle d'abord find_trails, puis passe ici le route_id du circuit choisi. Le GPX s'importe ensuite dans Komoot, VisuGPX, Organic Maps, etc.",
+      "Génère le fichier GPX d'un circuit trouvé par find_trails et le propose à l'utilisateur (partage natif ou téléchargement). Appelle d'abord find_trails, puis passe ici le route_id du circuit choisi. Le GPX s'importe ensuite dans Komoot, VisuGPX, Organic Maps, etc. Pour VISUALISER le circuit dans Arty, ajoute plutôt un bouton view_trail dans ta réponse.",
     input_schema: {
       type: 'object' as const,
       properties: {
@@ -59,39 +60,6 @@ const KIND_LABELS: Record<string, string> = {
   mtb: 'VTT',
 }
 
-interface TrailRoute {
-  id: number
-  name: string
-  kind: string
-  network: string | null
-  longDistance: boolean
-  distanceKm: number
-  colour: string | null
-  note: string | null
-}
-
-async function callTrailsApi(body: Record<string, unknown>): Promise<Response | null> {
-  // BUG 23 : toujours getValidAccessToken() (refresh auto), jamais le token brut.
-  const googleToken = await getValidAccessToken()
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-  if (googleToken) headers['x-google-token'] = googleToken
-
-  const ctrl = new AbortController()
-  const timeoutId = setTimeout(() => ctrl.abort(new DOMException('Timeout', 'AbortError')), 30_000)
-  try {
-    return await fetch(apiUrl('/api/geo/trails'), {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(body),
-      signal: ctrl.signal,
-    })
-  } catch {
-    return null
-  } finally {
-    clearTimeout(timeoutId)
-  }
-}
-
 export function createTrailHandlers(): Record<string, ToolHandler> {
   return {
     find_trails: async (input) => {
@@ -104,29 +72,25 @@ export function createTrailHandlers(): Record<string, ToolHandler> {
         return { result: "Précise un lieu de départ (village, adresse). La géolocalisation n'est pas activée." }
       }
 
-      const res = await callTrailsApi({
-        action: 'search',
+      const outcome = await searchTrails({
         location,
         radiusKm: input.radius_km,
         kind: input.kind,
       })
-      if (!res) return { result: 'Recherche de sentiers indisponible (réseau).' }
-      if (res.status === 429) {
-        return { result: 'Limite journalière de recherches de sentiers atteinte pour ce compte. Réessaie demain.' }
-      }
-      if (res.status === 404) {
-        return { result: `Lieu "${location}" introuvable. Demande à l'utilisateur de préciser (commune + département).` }
-      }
-      if (!res.ok) {
-        return { result: 'Recherche de sentiers momentanément indisponible. Réessaie dans quelques minutes.' }
+      if (!outcome.ok) {
+        switch (outcome.status) {
+          case 'network':
+            return { result: 'Recherche de sentiers indisponible (réseau).' }
+          case 'quota':
+            return { result: 'Limite journalière de recherches de sentiers atteinte pour ce compte. Réessaie demain.' }
+          case 'not_found':
+            return { result: `Lieu "${location}" introuvable. Demande à l'utilisateur de préciser (commune + département).` }
+          default:
+            return { result: 'Recherche de sentiers momentanément indisponible. Réessaie dans quelques minutes.' }
+        }
       }
 
-      const data = await safeJson(res) as {
-        center?: { label?: string }
-        radiusKm?: number
-        routes?: TrailRoute[]
-        nearbyPathCount?: number
-      }
+      const data = outcome.data
       const routes = Array.isArray(data.routes) ? data.routes : []
       const centerLabel = data.center?.label || location
       const pathLine =
@@ -157,7 +121,9 @@ export function createTrailHandlers(): Record<string, ToolHandler> {
       return {
         result:
           `${summary}\n\n` +
-          'Pour livrer une trace : appelle export_trail_gpx avec le route_id choisi. ' +
+          'Pour chaque circuit pertinent, ajoute dans ta réponse un bouton carte : ' +
+          '<button class="action-btn btn-primary" data-action="view_trail" data-route-id="ID">🗺️ Voir la carte</button> ' +
+          "(remplace ID par l'id du circuit). L'utilisateur peut aussi demander le fichier GPX (export_trail_gpx). " +
           "Présente honnêtement les résultats : les segments de réseau local (points-nœuds) sont des tronçons à combiner, pas des boucles complètes ; ne promets jamais une « boucle » si la donnée ne le dit pas.",
       }
     },
@@ -168,20 +134,19 @@ export function createTrailHandlers(): Record<string, ToolHandler> {
         return { result: 'route_id invalide — utilise un id renvoyé par find_trails.' }
       }
 
-      const res = await callTrailsApi({ action: 'geometry', routeId })
-      if (!res) return { result: 'Export GPX indisponible (réseau).' }
-      if (res.status === 429) {
-        return { result: 'Limite journalière atteinte pour ce compte. Réessaie demain.' }
-      }
-      if (!res.ok) {
-        return { result: `Circuit ${routeId} introuvable — relance find_trails pour obtenir des ids à jour.` }
+      const outcome = await fetchTrailGeometry(routeId)
+      if (!outcome.ok) {
+        switch (outcome.status) {
+          case 'network':
+            return { result: 'Export GPX indisponible (réseau).' }
+          case 'quota':
+            return { result: 'Limite journalière atteinte pour ce compte. Réessaie demain.' }
+          default:
+            return { result: `Circuit ${routeId} introuvable — relance find_trails pour obtenir des ids à jour.` }
+        }
       }
 
-      const data = await safeJson(res) as {
-        name?: string
-        distanceKm?: number
-        segments?: LatLon[][]
-      }
+      const data = outcome.data
       const segments = Array.isArray(data.segments) ? data.segments : []
       if (segments.length === 0) {
         return { result: `Pas de géométrie exploitable pour le circuit ${routeId}.` }

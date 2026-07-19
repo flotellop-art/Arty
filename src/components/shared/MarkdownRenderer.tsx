@@ -84,12 +84,14 @@ const sanitizeSchema = {
       'dataAction', 'dataTo', 'dataSubject', 'dataBody', 'dataText', 'dataValue',
       'dataName', 'dataContent', 'dataTitle', 'dataStart', 'dataEnd',
       'dataLocation', 'dataStatus', 'dataPhone', 'dataUrl', 'dataQuery', 'dataSummary',
+      'dataRouteId', // view_trail — id OSM validé par parseTrailRouteId au dispatch
     ],
     div: [
       'className', 'class', 'style',
       'dataAction', 'dataTo', 'dataSubject', 'dataBody', 'dataText', 'dataValue',
       'dataName', 'dataContent', 'dataTitle', 'dataStart', 'dataEnd',
       'dataLocation', 'dataStatus', 'dataPhone', 'dataUrl', 'dataQuery', 'dataSummary',
+      'dataRouteId', // view_trail — id OSM validé par parseTrailRouteId au dispatch
     ],
     span: ['className', 'class', 'style'],
     a: ['href', 'target', 'rel', 'className'],

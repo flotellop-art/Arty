@@ -5,6 +5,7 @@ import {
   ownerApiLimitResponse,
   planSubjectToOwnerApiCap,
 } from '../_lib/freeQuota'
+import { simplifySegments } from '../_lib/simplify'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Recherche de sentiers OpenStreetMap + géométrie pour export GPX.
@@ -214,9 +215,14 @@ async function handleGeometry(env: Env, allowed: AllowedUser, body: Record<strin
   }
 
   const tags = rel.tags ?? {}
-  let segments = memberSegments(rel)
-  const distanceKm = Math.round(segments.reduce((sum, s) => sum + segmentKm(s), 0) * 10) / 10
-  segments = decimateSegments(segments, MAX_GEOMETRY_POINTS)
+  const sourceSegments = memberSegments(rel)
+  // Longueur TOUJOURS calculée sur la géométrie source — jamais sur la version
+  // simplifiée (sinon la distance affichée et le GPX mentent sur le terrain).
+  const sourcePointCount = sourceSegments.reduce((n, s) => n + s.length, 0)
+  const distanceKm = Math.round(sourceSegments.reduce((sum, s) => sum + segmentKm(s), 0) * 10) / 10
+  // Douglas-Peucker par segment (extrémités et segments disjoints préservés),
+  // jamais de troncature — cf. functions/api/_lib/simplify.ts.
+  const { segments, toleranceM } = simplifySegments(sourceSegments, MAX_GEOMETRY_POINTS)
   if (segments.length === 0) {
     return Response.json({ error: 'Circuit introuvable' }, { status: 404 })
   }
@@ -227,6 +233,7 @@ async function handleGeometry(env: Env, allowed: AllowedUser, body: Record<strin
     kind: tags.route ?? 'hiking',
     distanceKm,
     segments,
+    simplified: { toleranceM, sourcePointCount },
   })
   await cachePut(cacheKey, response.clone())
   return response
@@ -393,21 +400,6 @@ function haversineM(a: [number, number], b: [number, number]): number {
     Math.sin(dLat / 2) ** 2 +
     Math.cos(toRad(a[0])) * Math.cos(toRad(b[0])) * Math.sin(dLon / 2) ** 2
   return 2 * R * Math.asin(Math.sqrt(s))
-}
-
-/** Décime pour tenir sous maxPoints au total, en gardant toujours les extrémités. */
-function decimateSegments(
-  segments: Array<Array<[number, number]>>,
-  maxPoints: number
-): Array<Array<[number, number]>> {
-  const total = segments.reduce((n, s) => n + s.length, 0)
-  if (total <= maxPoints) return segments
-  const step = Math.ceil(total / maxPoints)
-  return segments.map((seg) => {
-    const kept = seg.filter((_, i) => i % step === 0)
-    if (kept[kept.length - 1] !== seg[seg.length - 1]) kept.push(seg[seg.length - 1])
-    return kept
-  })
 }
 
 function routeLabel(tags: Record<string, string>, id: number): string {

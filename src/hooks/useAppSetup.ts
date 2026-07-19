@@ -12,7 +12,8 @@ import { createToolExecutor } from '../services/toolExecutor'
 import { getStyle, setStyle, getStylePrompt, STYLE_OPTIONS, type ResponseStyle } from '../services/responseStyles'
 import type { Question } from '../components/chat/QuestionModal'
 import { isPublicGoogleOAuthProfileEnabled } from '../services/publicGoogleOAuthProfile'
-import { isAllowedReportAction } from '../services/reportActions'
+import { isAllowedReportAction, parseTrailRouteId } from '../services/reportActions'
+import { useNavigate } from 'react-router-dom'
 
 interface ConversationHook {
   activeId: string | null
@@ -22,6 +23,9 @@ interface ConversationHook {
 }
 
 export function useAppSetup(conversation: ConversationHook) {
+  // Appelé depuis AppContent, toujours monté sous BrowserRouter (App.tsx) —
+  // requis par l'action view_trail (navigation vers /trail/:id).
+  const navigate = useNavigate()
   const { activeId, sendMessage, setSystemPrompt, setToolHandler } = conversation
 
   const { t } = useTranslation()
@@ -195,12 +199,20 @@ export function useAppSetup(conversation: ConversationHook) {
           }
           break
         }
+        case 'view_trail': {
+          // Le bouton ne transporte qu'un id de relation OSM (jamais de
+          // coordonnées ni de géométrie) — validé strictement avant de
+          // naviguer (BUG 32 : id issu d'un contenu généré par le LLM).
+          const routeId = parseTrailRouteId(params.routeId)
+          if (routeId !== null) navigate(`/trail/${routeId}`)
+          break
+        }
         default:
           // Défense en profondeur si l'allowlist et le switch divergent.
           console.warn('[action] action autorisée sans handler:', action)
       }
     },
-    [activeId, sendMessage, t]
+    [activeId, sendMessage, t, navigate]
   )
 
   const changeStyle = useCallback((style: ResponseStyle) => {

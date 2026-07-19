@@ -1317,6 +1317,25 @@
     "errorAuth": "Connecte-toi pour envoyer un signalement.",
     "errorFailed": "L'envoi a échoué. Réessaie dans un moment."
   },
+  "trailPage": {
+    "loading": "Chargement du tracé…",
+    "notFound": "Circuit introuvable",
+    "notFoundHint": "L'identifiant a peut-être expiré. Relance une recherche de sentiers dans le chat.",
+    "quota": "Limite journalière atteinte pour ce compte. Réessaie demain.",
+    "error": "Tracé momentanément indisponible.",
+    "retry": "Réessayer",
+    "back": "← Retour",
+    "tilesDown": "Fond de carte indisponible — le tracé reste affiché.",
+    "locate": "📍 Me localiser",
+    "locating": "Localisation…",
+    "locationUnavailable": "Position indisponible (géolocalisation désactivée ?)",
+    "downloadGpx": "⬇️ Trace GPX",
+    "shareTitle": "Trace GPX Arty",
+    "segments": "{{count}} tronçons distincts",
+    "kindHorse": "équestre",
+    "kindHiking": "pédestre",
+    "kindBike": "VTT / vélo"
+  },
   "app": {
     "shareError": {
       "fileTooLarge": "Fichier trop volumineux pour être partagé, partage annulé.",

@@ -1317,6 +1317,25 @@
     "errorAuth": "Sign in to send a report.",
     "errorFailed": "Sending failed. Try again in a moment."
   },
+  "trailPage": {
+    "loading": "Loading the trail…",
+    "notFound": "Trail not found",
+    "notFoundHint": "The id may have expired. Run a new trail search in the chat.",
+    "quota": "Daily limit reached for this account. Try again tomorrow.",
+    "error": "Trail temporarily unavailable.",
+    "retry": "Retry",
+    "back": "← Back",
+    "tilesDown": "Background map unavailable — the trail is still shown.",
+    "locate": "📍 Locate me",
+    "locating": "Locating…",
+    "locationUnavailable": "Position unavailable (is location enabled?)",
+    "downloadGpx": "⬇️ GPX track",
+    "shareTitle": "Arty GPX track",
+    "segments": "{{count}} separate sections",
+    "kindHorse": "equestrian",
+    "kindHiking": "hiking",
+    "kindBike": "MTB / bike"
+  },
   "app": {
     "shareError": {
       "fileTooLarge": "This file is too large to share, sharing cancelled.",
