@@ -293,6 +293,7 @@
       "private_data": "Your request contains private content supplied in chat, a file or calendar data, so Claude handles it without an unnecessary web search.",
       "youtube_native": "YouTube link detected: Gemini watches the video directly.",
       "url_web_fetch": "Link detected: Claude actually opens and reads the page (other models only see snippets and may make things up).",
+      "trail_tools": "Trails or GPX track: Claude queries OpenStreetMap (real marked routes) and can generate the GPX file.",
       "openai_intent": "You mentioned ChatGPT/GPT: your request was sent to it.",
       "hybrid_research": "Report or comparison: Gemini does the web research, then Claude writes the synthesis.",
       "trivial_chat": "Short message: fast path, no unnecessary web search.",
@@ -1315,6 +1316,25 @@
     "errorRateLimit": "You've reached today's report limit. Try again tomorrow.",
     "errorAuth": "Sign in to send a report.",
     "errorFailed": "Sending failed. Try again in a moment."
+  },
+  "trailPage": {
+    "loading": "Loading the trail…",
+    "notFound": "Trail not found",
+    "notFoundHint": "The id may have expired. Run a new trail search in the chat.",
+    "quota": "Daily limit reached for this account. Try again tomorrow.",
+    "error": "Trail temporarily unavailable.",
+    "retry": "Retry",
+    "back": "← Back",
+    "tilesDown": "Background map unavailable — the trail is still shown.",
+    "locate": "📍 Locate me",
+    "locating": "Locating…",
+    "locationUnavailable": "Position unavailable (is location enabled?)",
+    "downloadGpx": "⬇️ GPX track",
+    "shareTitle": "Arty GPX track",
+    "segments": "{{count}} separate sections",
+    "kindHorse": "equestrian",
+    "kindHiking": "hiking",
+    "kindBike": "MTB / bike"
   },
   "app": {
     "shareError": {

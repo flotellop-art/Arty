@@ -90,6 +90,26 @@ export const HYBRID_TRIGGERS = [
   /comment\s+(installer|configurer|mettre\s+en\s+place|créer\s+une?\s+entreprise)/i,
 ]
 
+// Sentiers / GPX → Claude (feature juillet 2026). Les outils find_trails /
+// export_trail_gpx n'existent que dans la boucle d'outils Claude/Mistral —
+// Gemini ne reçoit JAMAIS les tools custom. Sans ce trigger, la cascade auto
+// envoie « cherche des randos autour de X » sur Gemini (default_capable) et
+// la feature est morte. Panel de phrasings indirects inclus (leçon BUG 56) ;
+// tout cas terrain raté → ajouter le pattern ET un test resolveRoute.
+export const TRAIL_TRIGGERS = [
+  // FR — randonnée / sentiers / balades
+  /randonn[ée]e?s?|\brandos?\b/i,
+  /\bsentiers?\b/i,
+  /boucles?\s+(équestres?|pédestres?|de\s+rando|à\s+cheval|à\s+pied|VTT|vélo)/i,
+  /balades?\s+(à\s+cheval|à\s+pied|équestres?|en\s+forêt|VTT|vélo)/i,
+  /circuits?\s+(équestres?|pédestres?|de\s+rando|VTT)/i,
+  /chemins?\s+de\s+(terre|halage|randonnée)|\bGR\s?\d+/i,
+  // GPX — le format lui-même est un signal fort (trace, fichier, export…)
+  /\bGPX\b/i,
+  // EN
+  /hiking|bridle\s?path|bridleway|horse\s+(riding\s+)?trails?|trail\s+(loop|ride|network)/i,
+]
+
 // Trivial chat — salutations, remerciements, calculs simples, suivis très
 // courts. Ces messages n'ont pas besoin de recherche web (latence + tokens
 // gaspillés) et restent sur le chemin rapide (Mistral/Haiku).

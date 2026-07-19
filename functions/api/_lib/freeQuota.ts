@@ -179,12 +179,17 @@ export async function consumeTtsFreeQuota(
 // l'usage légitime ; le plafond provider couvre cette fenêtre.
 // ─────────────────────────────────────────────────────────────────────
 
-export type OwnerApiFamily = 'web-search' | 'url-fetch' | 'geo-reverse'
+export type OwnerApiFamily = 'web-search' | 'url-fetch' | 'geo-reverse' | 'osm-trails'
 
 export const OWNER_API_DAILY_LIMITS: Record<OwnerApiFamily, number> = {
   'web-search': 50, // appels Linkup/Brave (1 par source en multi-source)
   'url-fetch': 20, // appels Linkup /v1/fetch (cap client déjà 3/message)
   'geo-reverse': 100, // appels Google Maps Geocoding (cache 1h/110m côté client)
+  // Overpass/Nominatim sont gratuits mais bannissent les IP qui les martèlent —
+  // l'IP egress Cloudflare est PARTAGÉE : un seul abuseur ferait bannir la
+  // feature pour tous (RÈGLE 6, abus infra). Cap large pour un usage réel
+  // (une recherche de sentiers = 1-2 appels upstream, cache 24h en amont).
+  'osm-trails': 25,
 }
 
 /** Vrai si le plan doit être plafonné (non-payant). Les payants (subscription/

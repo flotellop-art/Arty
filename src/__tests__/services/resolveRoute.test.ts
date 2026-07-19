@@ -418,3 +418,50 @@ describe('resolveRoute — sous-décision Claude sur le texte ORIGINAL', () => {
     expect(d.subModel).toBeUndefined()
   })
 })
+
+describe('resolveRoute — sentiers/GPX → Claude (trail_tools, juillet 2026)', () => {
+  // Le cas terrain fondateur : la demande de Florent sur Viriville partait
+  // chez Gemini (default_capable) qui n'a aucun outil custom → échec garanti.
+  it('la demande fondatrice (boucles équestres Viriville + GPX) → Claude', () => {
+    const d = resolveRoute(input({
+      originalText:
+        "Peux-tu me préparer des boucles de randonnée au départ de la maison à Viriville, " +
+        'en privilégiant les chemins de terre ? Je voudrais des traces GPX.',
+    }))
+    expect(d.provider).toBe('claude')
+    expect(d.reason.code).toBe('trail_tools')
+  })
+
+  it.each([
+    'cherche des sentiers autour de Viriville',
+    'une balade à cheval sympa près de chez moi',
+    'trouve-moi une rando de 10 km',
+    'tu peux me générer un fichier GPX du circuit ?',
+    'des circuits VTT dans le coin ?',
+    'où passe le GR 65 ?',
+    'any horse riding trails near Viriville?',
+  ])('phrasing indirect « %s » → Claude/trail_tools', (text) => {
+    const d = resolveRoute(input({ originalText: text }))
+    expect(d.provider).toBe('claude')
+    expect(d.reason.code).toBe('trail_tools')
+  })
+
+  it('le trigger ne détourne PAS une question générale vers Claude', () => {
+    const d = resolveRoute(input({ originalText: 'Explique-moi la loi de Moore' }))
+    expect(d.provider).toBe('gemini')
+    expect(d.reason.code).toBe('default_capable')
+  })
+
+  it("les gardes absolues restent prioritaires : euOnly prime sur trail_tools", () => {
+    const d = resolveRoute(input({ euOnly: true, originalText: 'prépare une rando GPX' }))
+    expect(d.provider).toBe('mistral')
+    expect(d.reason.code).toBe('eu_only')
+  })
+
+  it('un choix manuel Gemini reste respecté (pas d\'override sur simple intent)', () => {
+    const d = resolveRoute(input({ selectedModel: 'gemini', originalText: 'cherche une rando GPX' }))
+    expect(d.provider).toBe('gemini')
+    expect(d.reason.code).toBe('manual_selection')
+    expect(d.overrides).toEqual([])
+  })
+})

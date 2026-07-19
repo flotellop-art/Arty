@@ -293,6 +293,7 @@
       "private_data": "Ta demande contient des données privées fournies dans le chat, un fichier ou des données d'agenda : Claude est utilisé pour les traiter sans recherche web inutile.",
       "youtube_native": "Lien YouTube détecté : Gemini regarde la vidéo directement.",
       "url_web_fetch": "Lien détecté : Claude ouvre et lit réellement la page (les autres modèles ne voient que des extraits et risquent d'inventer).",
+      "trail_tools": "Sentiers ou trace GPX : Claude interroge OpenStreetMap (circuits balisés réels) et peut générer le fichier GPX.",
       "openai_intent": "Tu as mentionné ChatGPT/GPT : ta demande lui a été envoyée.",
       "hybrid_research": "Rapport ou comparatif : Gemini fait la recherche web, puis Claude rédige la synthèse.",
       "trivial_chat": "Message court : chemin rapide, sans recherche web inutile.",
@@ -1315,6 +1316,25 @@
     "errorRateLimit": "Tu as atteint la limite de signalements du jour. Réessaie demain.",
     "errorAuth": "Connecte-toi pour envoyer un signalement.",
     "errorFailed": "L'envoi a échoué. Réessaie dans un moment."
+  },
+  "trailPage": {
+    "loading": "Chargement du tracé…",
+    "notFound": "Circuit introuvable",
+    "notFoundHint": "L'identifiant a peut-être expiré. Relance une recherche de sentiers dans le chat.",
+    "quota": "Limite journalière atteinte pour ce compte. Réessaie demain.",
+    "error": "Tracé momentanément indisponible.",
+    "retry": "Réessayer",
+    "back": "← Retour",
+    "tilesDown": "Fond de carte indisponible — le tracé reste affiché.",
+    "locate": "📍 Me localiser",
+    "locating": "Localisation…",
+    "locationUnavailable": "Position indisponible (géolocalisation désactivée ?)",
+    "downloadGpx": "⬇️ Trace GPX",
+    "shareTitle": "Trace GPX Arty",
+    "segments": "{{count}} tronçons distincts",
+    "kindHorse": "équestre",
+    "kindHiking": "pédestre",
+    "kindBike": "VTT / vélo"
   },
   "app": {
     "shareError": {

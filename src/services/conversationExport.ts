@@ -1,5 +1,5 @@
-import { Capacitor } from '@capacitor/core'
 import type { Conversation } from '../types'
+import { downloadOrShareFile } from './native/shareFile'
 import { generateId } from '../utils/generateId'
 import * as storage from './storage'
 import { getDateLocale } from '../utils/formatDate'
@@ -81,53 +81,17 @@ function formatDate(ts: number): string {
  * On web: trigger a blob download.
  * On native: write to cache + open the system share sheet so the user
  * picks a destination (Drive, Mail, Files, …).
+ * Extrait vers src/services/native/shareFile.ts (partagé avec l'export GPX).
  */
 async function downloadOrShare(
   blob: Blob,
   filename: string,
   _mimeType: string,
 ): Promise<void> {
-  if (Capacitor.isNativePlatform()) {
-    const { Filesystem, Directory } = await import('@capacitor/filesystem')
-    const { Share } = await import('@capacitor/share')
-
-    const base64 = await blobToBase64(blob)
-
-    const written = await Filesystem.writeFile({
-      path: filename,
-      data: base64,
-      directory: Directory.Cache,
-    })
-
-    await Share.share({
-      title: filename,
-      text: 'Conversation Arty',
-      url: written.uri,
-      dialogTitle: 'Partager la conversation',
-    })
-    return
-  }
-
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  setTimeout(() => URL.revokeObjectURL(url), 1000)
-}
-
-function blobToBase64(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => {
-      const dataUrl = reader.result as string
-      const comma = dataUrl.indexOf(',')
-      resolve(comma >= 0 ? dataUrl.slice(comma + 1) : '')
-    }
-    reader.onerror = () => reject(reader.error ?? new Error('FileReader error'))
-    reader.readAsDataURL(blob)
+  await downloadOrShareFile(blob, filename, {
+    title: filename,
+    text: 'Conversation Arty',
+    dialogTitle: 'Partager la conversation',
   })
 }
 

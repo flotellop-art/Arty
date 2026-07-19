@@ -24,6 +24,7 @@
 import {
   HYBRID_TRIGGERS,
   PRIVATE_DATA_TRIGGERS,
+  TRAIL_TRIGGERS,
   hasUrl,
   hasYouTubeUrl,
   isTrivialChat,
@@ -175,6 +176,14 @@ export function resolveRoute(input: RouteInput): RouteDecision {
       // elle explique la priorité mais ne déclenche aucun toast d'override.
       provider = 'claude'
       reason = { code: 'url_web_fetch' }
+    } else if (TRAIL_TRIGGERS.some((r) => r.test(text))) {
+      // Sentiers / traces GPX → Claude : les outils find_trails /
+      // export_trail_gpx (géodonnées OSM + génération GPX) n'existent que
+      // dans la boucle d'outils Claude. Même principe que url_web_fetch :
+      // la capacité réelle prime sur le défaut Gemini, qui ne peut que
+      // paraphraser des résultats de recherche sans produire de trace.
+      provider = 'claude'
+      reason = { code: 'trail_tools' }
     } else if (a.openai && detectOpenAIIntent(text)) {
       provider = 'openai'
       reason = { code: 'openai_intent' }

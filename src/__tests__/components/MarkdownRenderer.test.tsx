@@ -56,6 +56,19 @@ describe('MarkdownRenderer', () => {
     expect(btn!.getAttribute('data-evil')).toBeNull()
   })
 
+  it('conserve data-route-id sur un bouton view_trail (visualiseur de carte)', () => {
+    const { container } = render(
+      <MarkdownRenderer
+        content={'<button data-action="view_trail" data-route-id="18675656">🗺️ Voir la carte</button>'}
+      />
+    )
+    const btn = container.querySelector('button[data-action="view_trail"]')
+    // Sans `dataRouteId` dans l'allowlist sanitize, l'attribut serait strippé
+    // silencieusement et le bouton naviguerait vers rien (classe de bug F-1).
+    expect(btn).toBeTruthy()
+    expect(btn!.getAttribute('data-route-id')).toBe('18675656')
+  })
+
   it('neutralise un ancien bouton d’envoi de mail sans faux succès', () => {
     const { container } = render(
       <MarkdownRenderer content={'<button data-action="send_email" data-to="client@example.com">Envoyer</button>'} />

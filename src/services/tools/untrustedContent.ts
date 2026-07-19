@@ -1,4 +1,4 @@
-export type ThirdPartySource = 'Google Drive'
+export type ThirdPartySource = 'Google Drive' | 'OpenStreetMap'
 
 /**
  * Frame data fetched from third-party systems before returning it to the LLM.

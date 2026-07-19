@@ -24,6 +24,7 @@ export const ALL_REASON_CODES = [
   'private_data',           // mails/Drive/agenda → Claude (tools Google, BUG 12)
   'youtube_native',         // vidéo YouTube → Gemini (lecture native)
   'url_web_fetch',          // URL collée → Claude (web_fetch lit vraiment la page)
+  'trail_tools',            // sentiers/GPX → Claude (outils OSM + export GPX)
   'openai_intent',          // mention explicite de ChatGPT/GPT
   'hybrid_research',        // rapport/comparatif → recherche Gemini + rédaction Claude
   'trivial_chat',           // salutation/micro-réponse → chemin rapide
