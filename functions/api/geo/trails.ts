@@ -35,8 +35,12 @@ import { segmentsKmWithinRadius } from '../_lib/geoDistance'
 
 const USER_AGENT = 'Arty/1.0 (+https://tryarty.com)'
 const OVERPASS_INSTANCES = [
-  // UE uniquement : la requête peut contenir des coordonnées proches du
-  // domicile. On ne les transfère pas à un miroir hors UE en dernier recours.
+  // Chemin SERVEUR uniquement : ce miroir accepte explicitement les projets
+  // tiers et répond quand les IP/UA navigateur sont refusées par les miroirs
+  // européens. Il reçoit seulement le QL numérique par POST — jamais l'adresse,
+  // le token Google, l'email ni l'IP du téléphone. Le cache 24 h amortit les
+  // recherches répétées.
+  'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
   'https://overpass-api.de/api/interpreter',
   'https://overpass.openstreetmap.fr/api/interpreter',
 ]
@@ -352,7 +356,7 @@ async function resolveCenter(
 
   // Chaîne re-priorisée après le premier test terrain (19 juil.) : depuis les
   // IP egress Cloudflare partagées, Nominatim (anti-datacenter) et open-meteo
-  // peuvent refuser/limiter. L'API Adresse (adresse.data.gouv.fr) est CONÇUE
+  // peuvent refuser/limiter. La Géoplateforme / BAN est CONÇUE
   // pour l'appel programmatique, couvre communes ET adresses françaises
   // (« 191 chemin des bouviers Viriville ») et gère « Viriville Isère » —
   // qu'open-meteo ne résout pas. Timeouts 5 s : la chaîne complète doit tenir
@@ -365,11 +369,11 @@ async function resolveCenter(
   return center
 }
 
-/** API Adresse (Base Adresse Nationale) — gouvernement français, sans clé. */
+/** Géoplateforme / Base Adresse Nationale — gouvernement français, sans clé. */
 async function geocodeBanFrance(location: string): Promise<{ lat: number; lon: number; label: string } | null> {
   try {
     const res = await fetch(
-      `https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(location)}&limit=1`,
+      `https://data.geopf.fr/geocodage/search/?q=${encodeURIComponent(location)}&limit=1`,
       { headers: { 'User-Agent': USER_AGENT }, redirect: 'error', signal: AbortSignal.timeout(5000) }
     )
     if (!res.ok) return null

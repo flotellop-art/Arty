@@ -33,7 +33,7 @@ describe('public/_headers — invariants CSP', () => {
     for (const host of [
       'https://overpass-api.de',
       'https://overpass.openstreetmap.fr',
-      'https://api-adresse.data.gouv.fr',
+      'https://data.geopf.fr',
       'https://geocoding-api.open-meteo.com',
       'https://nominatim.openstreetmap.org',
     ]) {
