@@ -440,6 +440,18 @@
       },
       "fileTooLarge": "Fichier trop volumineux (max 10 MB) : {{names}}",
       "tooManyFiles": "Maximum {{max}} fichiers par message",
+      "preparingImage": "Préparation de la photo…",
+      "photoFallbackName": "la photo",
+      "imageSourceTooLarge": "Photo trop volumineuse (max 32 Mo) : {{name}}",
+      "imageTooManyPixels": "Photo trop détaillée pour être préparée sans risque : {{name}}. Utilise le mode photo standard ou une version réduite.",
+      "imageUnsupported": "Format photo non pris en charge : {{name}}. Utilise JPEG, PNG ou WebP.",
+      "imageDecodeFailed": "Impossible de lire correctement la photo : {{name}}.",
+      "imageEncodeFailed": "Impossible d'optimiser la photo : {{name}}.",
+      "imageOutputTooLarge": "La photo reste trop volumineuse après optimisation : {{name}}.",
+      "imagePreparationFailed": "Échec de la préparation de la photo : {{name}}.",
+      "fileReadFailed": "Impossible de lire le fichier : {{name}}.",
+      "tooManyImages": "Maximum {{max}} photos par message",
+      "imageBatchTooLarge": "Le total des photos optimisées dépasse 24 Mo.",
       "scanPrompt": "Extrais les informations clés de ce document : montants, dates, expéditeur, destinataire, sujet, et tout point notable."
     },
     "tone": {
@@ -559,6 +571,7 @@
     "micCannotStart": "Impossible de démarrer le micro",
     "speechNotSupported": "Reconnaissance vocale non supportée sur ce navigateur. Utilisez Chrome ou Edge.",
     "storageNotReady": "Tes conversations sont encore en cours de chargement — réessaie dans une seconde.",
+    "fileStorageFailed": "Impossible de sauvegarder toutes les photos sur cet appareil. Libère un peu d’espace puis réessaie.",
     "mistralTimeout": "Mistral n'a pas répondu à temps (60 s) — réseau lent ou service surchargé. Réessaie.",
     "trialModelRestricted": "Ce modèle n'est pas disponible sans crédits — l'accès gratuit utilise Haiku.",
     "euPlanRequired": "La conversation EU nécessite un accès Mistral : abonnement, crédits suffisants ou clé API personnelle. Aucune donnée n'a été envoyée hors Europe."
@@ -1291,7 +1304,8 @@
   },
   "app": {
     "shareError": {
-      "fileTooLarge": "Fichier trop volumineux (>10 Mo), partage annulé."
+      "fileTooLarge": "Fichier trop volumineux pour être partagé, partage annulé.",
+      "imagePreparation": "Impossible de préparer cette photo en toute sécurité. Utilise JPEG, PNG ou WebP, en mode photo standard."
     },
     "budgetAlert": {
       "message": "⚠️ Budget IA dépassé — {{spent}} / {{limit}} ce mois-ci.",

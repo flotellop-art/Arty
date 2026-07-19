@@ -11,6 +11,11 @@ import { encrypt, decrypt, isCryptoReady, selfTestCrypto } from './crypto'
 import { getActiveUserId } from './userSession'
 import { generateId } from '../utils/generateId'
 import { compressImageIfNeeded } from './imageCompression'
+import {
+  IMAGE_NORMALIZATION_VERSION,
+  MAX_IMAGE_DIMENSION,
+  MAX_NORMALIZED_IMAGE_BYTES,
+} from './imageNormalization'
 import type { FileAttachment } from '../types'
 
 const DB_NAME = 'arty-files'
@@ -25,6 +30,9 @@ interface StoredFile {
   size: number
   encryptedData: string
   createdAt: number
+  width?: number
+  height?: number
+  normalizationVersion?: number
 }
 
 let dbPromise: Promise<IDBPDatabase> | null = null
@@ -67,7 +75,16 @@ export async function bootstrapFileStorage(): Promise<void> {
   }
 }
 
-// Persiste un fichier. Compresse les images > 500 KB AVANT chiffrement.
+function base64ByteLength(value: string): number {
+  const payload = value.includes(',') ? value.slice(value.indexOf(',') + 1) : value
+  const padding = payload.endsWith('==') ? 2 : payload.endsWith('=') ? 1 : 0
+  return Math.max(0, Math.floor((payload.length * 3) / 4) - padding)
+}
+
+// Persiste un fichier. Les assets canoniques PR-A sont chiffrés tels quels :
+// les recompresser ici recréerait la divergence RAM/retry (A6). Les anciens
+// callers restent sur le compresseur 2048 historique jusqu'à activation du
+// feature flag et les images générées sans métadonnées gardent ce fallback.
 // Retourne le fileId stable à stocker dans Message.files[].id.
 export async function putFile(file: FileAttachment): Promise<string> {
   if (!isCryptoReady()) {
@@ -77,17 +94,68 @@ export async function putFile(file: FileAttachment): Promise<string> {
     throw new Error('File has no data to persist')
   }
 
-  const compressed = await compressImageIfNeeded(file.data, file.type)
-  const encryptedData = await encrypt(compressed.data)
+  const hasNormalizationMetadata = file.normalizationVersion !== undefined
+  if (
+    hasNormalizationMetadata &&
+    file.normalizationVersion !== IMAGE_NORMALIZATION_VERSION
+  ) {
+    throw new Error('Unsupported canonical image normalization version')
+  }
+
+  const markedCanonical = file.normalizationVersion === IMAGE_NORMALIZATION_VERSION
+  const canonicalSize = markedCanonical ? base64ByteLength(file.data) : 0
+  if (
+    markedCanonical &&
+    (
+      !Number.isInteger(file.width) ||
+      !Number.isInteger(file.height) ||
+      !file.width ||
+      !file.height ||
+      file.width <= 0 ||
+      file.height <= 0 ||
+      file.width > MAX_IMAGE_DIMENSION ||
+      file.height > MAX_IMAGE_DIMENSION
+    )
+  ) {
+    throw new Error('Canonical image has invalid dimensions')
+  }
+  if (
+    markedCanonical &&
+    file.type !== 'image/jpeg' &&
+    file.type !== 'image/png'
+  ) {
+    throw new Error('Canonical image has unsupported MIME type')
+  }
+  if (markedCanonical && (canonicalSize <= 0 || canonicalSize > MAX_NORMALIZED_IMAGE_BYTES)) {
+    throw new Error('Canonical image has invalid binary size')
+  }
+
+  const stored = markedCanonical
+    ? {
+        data: file.data,
+        mimeType: file.type,
+        // Ne jamais faire confiance à `FileAttachment.size` : certains
+        // callers historiques passent 0 ou une taille source.
+        size: canonicalSize,
+      }
+    : await compressImageIfNeeded(file.data, file.type)
+  const encryptedData = await encrypt(stored.data)
   const fileId = file.id || generateId()
   const record: StoredFile = {
     fileId,
     ownerKey: getOwnerKey(),
     name: file.name,
-    mimeType: compressed.mimeType,
-    size: compressed.size,
+    mimeType: stored.mimeType,
+    size: stored.size,
     encryptedData,
     createdAt: Date.now(),
+    ...(markedCanonical
+      ? {
+          width: file.width,
+          height: file.height,
+          normalizationVersion: file.normalizationVersion,
+        }
+      : {}),
   }
 
   const db = await getDB()
@@ -111,6 +179,9 @@ export async function getFile(fileId: string): Promise<FileAttachment | null> {
       type: record.mimeType,
       data,
       size: record.size,
+      width: record.width,
+      height: record.height,
+      normalizationVersion: record.normalizationVersion,
     }
   } catch {
     return null
