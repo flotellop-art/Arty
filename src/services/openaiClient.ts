@@ -35,9 +35,13 @@ Tu parles comme un pote compétent — direct, cash, pas de flatterie.
 Tutoie l'utilisateur. Phrases courtes. Pas de "Excellente question !" ni de formules creuses.
 Si l'utilisateur a tort, dis-le clairement. Sois cash mais respectueux.`
 
+export type OpenAIContentBlock =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string; detail: 'original' } }
+
 export interface OpenAIMessage {
   role: 'system' | 'user' | 'assistant'
-  content: string
+  content: string | OpenAIContentBlock[]
 }
 
 interface OpenAIOptions {
@@ -98,6 +102,10 @@ async function openaiFetch(
   signal?: AbortSignal
 ): Promise<Response> {
   const { url, headers } = await resolveTarget(apiKey)
+  // Le proxy sélectionne ainsi son parseur JSON streaming à 40 Mio. Un client
+  // qui ment sur ce header ne gagne rien : le serveur exige ensuite le contrat
+  // vision canonique complet. Le BYOK direct ne passe pas par ce transport.
+  if (!apiKey && hasOpenAIVisionBlocks(body)) headers['x-arty-vision'] = '1'
   const res = await fetch(url, {
     method: 'POST',
     headers,
@@ -120,6 +128,9 @@ async function startChatRequest(
 ): Promise<Response> {
   const response = await openaiFetch(apiKey, payload, signal)
   if (response.ok) return response
+  // gpt-5 n'a pas le même contrat `detail: original`. Une requête vision ne
+  // doit jamais être rejouée silencieusement sur ce fallback texte historique.
+  if (hasOpenAIVisionBlocks(payload)) return response
   if (payload.model !== DEFAULT_MODEL) return response
   if (response.status !== 400 && response.status !== 404) return response
 
@@ -129,6 +140,17 @@ async function startChatRequest(
   }
   console.warn('[openai] DEFAULT_MODEL rejected, retrying with FALLBACK:', errText.slice(0, 120))
   return openaiFetch(apiKey, { ...payload, model: FALLBACK_MODEL }, signal)
+}
+
+export function hasOpenAIVisionBlocks(payload: Record<string, unknown>): boolean {
+  const messages = Array.isArray(payload.messages) ? payload.messages : []
+  return messages.some((message) => {
+    if (!message || typeof message !== 'object') return false
+    const content = (message as { content?: unknown }).content
+    return Array.isArray(content) && content.some(
+      (block) => block && typeof block === 'object' && (block as { type?: unknown }).type === 'image_url',
+    )
+  })
 }
 
 // ─── Streaming ───
@@ -200,9 +222,23 @@ export function sendMessageStream(
           if (parsed?.error === 'trial_model_restricted') {
             throw new Error('trial_model_restricted')
           }
+          if (parsed?.error === 'payload_too_large' || parsed?.error === 'vision_payload_too_large') {
+            throw new Error(i18n.t('errors.openaiPayloadTooLarge'))
+          }
+          if (parsed?.error === 'vision_disabled') {
+            throw new Error(i18n.t('errors.openaiVisionDisabled'))
+          }
+          if (parsed?.error === 'invalid_image_payload') {
+            throw new Error(i18n.t('errors.openaiInvalidImagePayload'))
+          }
         } catch (e) {
           if ((e as Error).message === 'premium_cap_reached') throw e
           if ((e as Error).message === 'trial_model_restricted') throw e
+          if (
+            (e as Error).message === i18n.t('errors.openaiPayloadTooLarge') ||
+            (e as Error).message === i18n.t('errors.openaiVisionDisabled') ||
+            (e as Error).message === i18n.t('errors.openaiInvalidImagePayload')
+          ) throw e
         }
         throw formatError(response.status)
       }

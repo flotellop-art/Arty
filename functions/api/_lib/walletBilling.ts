@@ -14,7 +14,6 @@ import type { MeasuredUsage } from './trackUsage'
 
 // Une borne en octets UTF-8 est volontairement plus haute qu'un comptage BPE :
 // elle reste sûre pour le CJK, les emoji, le code et les schémas d'outils.
-const TOKEN_BOUND_ENCODER = new TextEncoder()
 const MEDIA_TOKEN_FLOOR = 16_384
 const REMOTE_MEDIA_TOKEN_FLOOR = 128_000
 // PR-0 (CDC vision §0/A3, 19/07/2026) — une image encodée remplace son
@@ -92,8 +91,28 @@ export function extractMaxOutputTokens(
  * (Anthropic/OpenAI/Mistral, blocs source/image_url) et contents[].parts[]
  * (Gemini, inline_data/file_data).
  */
-export function estimateInputTokens(_provider: AiProvider, body: Record<string, unknown>): number {
-  let tokens = TOKEN_BOUND_ENCODER.encode(JSON.stringify(body)).length
+export function estimateInputTokens(
+  provider: AiProvider,
+  body: Record<string, unknown>,
+  options: { validatedImageTokens?: number; validatedImageCount?: number } = {},
+): number {
+  const validatedImageTokens = options.validatedImageTokens
+  const validatedImageCount = options.validatedImageCount
+  if (validatedImageTokens !== undefined) {
+    if (
+      provider !== 'openai' ||
+      !Number.isFinite(validatedImageTokens) ||
+      validatedImageTokens < 0 ||
+      !Number.isInteger(validatedImageTokens) ||
+      !Number.isInteger(validatedImageCount) ||
+      (validatedImageCount ?? 0) < 1 ||
+      (validatedImageCount ?? 0) > 4
+    ) {
+      throw new Error('invalid_validated_image_tokens')
+    }
+  } else if (validatedImageCount !== undefined) {
+    throw new Error('invalid_validated_image_tokens')
+  }
 
   const isMediaKey = (key: string) =>
     /^(image_url|inline_?data|file_?data|input_audio|audio|document|source)$/i.test(key)
@@ -107,10 +126,51 @@ export function estimateInputTokens(_provider: AiProvider, body: Record<string, 
   // on retombe sur 'media' — la borne la PLUS pessimiste des deux.
   type MediaKind = 'image' | 'media' | null
 
-  const walk = (value: unknown, key = '', kind: MediaKind = null): void => {
+  // Calcule simultanément la longueur UTF-8 brute et JSON d'une string sans
+  // créer de Uint8Array ni appeler JSON.stringify sur un base64 de 32 Mio.
+  const stringLengths = (value: string): { raw: number; json: number } => {
+    let raw = 0
+    let json = 2 // guillemets JSON
+    for (let index = 0; index < value.length; index += 1) {
+      const code = value.charCodeAt(index)
+      if (code === 0x22 || code === 0x5c) {
+        raw += 1
+        json += 2
+      } else if (code <= 0x1f) {
+        raw += 1
+        json += code === 0x08 || code === 0x09 || code === 0x0a || code === 0x0c || code === 0x0d ? 2 : 6
+      } else if (code <= 0x7f) {
+        raw += 1
+        json += 1
+      } else if (code <= 0x7ff) {
+        raw += 2
+        json += 2
+      } else if (code >= 0xd800 && code <= 0xdbff) {
+        const next = value.charCodeAt(index + 1)
+        if (next >= 0xdc00 && next <= 0xdfff) {
+          raw += 4
+          json += 4
+          index += 1
+        } else {
+          raw += 3 // TextEncoder remplace un surrogate isolé par U+FFFD
+          json += 6 // JSON.stringify l'échappe en \udxxx
+        }
+      } else if (code >= 0xdc00 && code <= 0xdfff) {
+        raw += 3
+        json += 6
+      } else {
+        raw += 3
+        json += 3
+      }
+    }
+    return { raw, json }
+  }
+
+  let removedValidatedImages = 0
+  const walk = (value: unknown, key = '', kind: MediaKind = null): number => {
     if (typeof value === 'string') {
+      const lengths = stringLengths(value)
       if (isMediaKey(key) || (kind && isMediaPayloadKey(key))) {
-        const bytesAlreadyCounted = TOKEN_BOUND_ENCODER.encode(value).length
         let mediaBound: number
         // Une petite base64 (< 513 caractères) ne passe pas le détecteur
         // générique `looksEncoded`. Le contexte image + clé `data` (ou une
@@ -119,31 +179,41 @@ export function estimateInputTokens(_provider: AiProvider, body: Record<string, 
         const encodedImage =
           (kind === 'image' && key.toLowerCase() === 'data') || /^data:image\//i.test(value)
         if (encodedImage) {
-          mediaBound = IMAGE_PAYLOAD_TOKEN_BOUND
+          mediaBound = validatedImageTokens === undefined ? IMAGE_PAYLOAD_TOKEN_BOUND : 0
+          if (validatedImageTokens !== undefined) removedValidatedImages += 1
         } else if (!looksEncoded(value)) {
           // Média distant : contenu inconnu à la réserve → plancher pessimiste.
-          mediaBound = Math.max(REMOTE_MEDIA_TOKEN_FLOOR, bytesAlreadyCounted)
+          mediaBound = Math.max(REMOTE_MEDIA_TOKEN_FLOOR, lengths.raw)
         } else if (kind === 'image' || /^data:image\//i.test(value)) {
-          mediaBound = IMAGE_PAYLOAD_TOKEN_BOUND
+          mediaBound = validatedImageTokens === undefined ? IMAGE_PAYLOAD_TOKEN_BOUND : 0
+          if (validatedImageTokens !== undefined) removedValidatedImages += 1
         } else {
           // PDF/audio/inconnu : ne pas changer leur réservation historique.
           // Un compteur fiable devra être fondé sur les pages/durée et le
           // provider avant de pouvoir retirer leur base64 du comptage texte.
-          mediaBound = Math.max(MEDIA_TOKEN_FLOOR, bytesAlreadyCounted)
+          mediaBound = Math.max(MEDIA_TOKEN_FLOOR, lengths.raw)
         }
-        // Delta possiblement NÉGATIF : c'est le cœur du fix PR-0 — les octets
-        // du payload déjà comptés ligne 1 sont remplacés par la borne (l'ancien
-        // Math.max(0, …) neutralisait le remplacement et laissait le base64
-        // compté au poids).
-        tokens += mediaBound - bytesAlreadyCounted
+        // Conserve les guillemets/échappements JSON, remplace uniquement les
+        // octets de la valeur média par sa borne.
+        return lengths.json - lengths.raw + mediaBound
       }
-      return
+      return lengths.json
     }
     if (Array.isArray(value)) {
-      for (const item of value) walk(item, key, kind)
-      return
+      let total = 2 // []
+      for (let index = 0; index < value.length; index += 1) {
+        if (index > 0) total += 1
+        const item = value[index]
+        total += item === undefined || typeof item === 'function' || typeof item === 'symbol'
+          ? 4 // null dans un tableau JSON
+          : walk(item, key, kind)
+      }
+      return total
     }
-    if (!value || typeof value !== 'object') return
+    if (value === null) return 4
+    if (typeof value === 'boolean') return value ? 4 : 5
+    if (typeof value === 'number') return (JSON.stringify(value) ?? 'null').length
+    if (typeof value !== 'object') return 0
 
     const record = value as Record<string, unknown>
     const type = typeof record.type === 'string' ? record.type.toLowerCase() : ''
@@ -159,14 +229,29 @@ export function estimateInputTokens(_provider: AiProvider, body: Record<string, 
     // Le plancher de bloc historique reste pour les médias non-image. Une
     // image possède déjà sa borne unique explicite : ne pas la doubler selon
     // la forme Anthropic/OpenAI du body.
-    if (thisKind === 'media' && !kind) tokens += MEDIA_TOKEN_FLOOR
+    let total = 2 + (thisKind === 'media' && !kind ? MEDIA_TOKEN_FLOOR : 0) // {}
 
+    let serializedEntries = 0
     for (const [childKey, child] of Object.entries(record)) {
-      walk(child, childKey, thisKind ?? (isMediaKey(childKey) ? 'media' : null))
+      if (child === undefined || typeof child === 'function' || typeof child === 'symbol') continue
+      if (serializedEntries > 0) total += 1
+      serializedEntries += 1
+      total += stringLengths(childKey).json + 1 // clé + deux-points
+      total += walk(child, childKey, thisKind ?? (isMediaKey(childKey) ? 'media' : null))
     }
+    return total
   }
 
-  walk(body)
+  let tokens = walk(body)
+  // PR-B vision : uniquement pour OpenAI, le proxy remplace les bornes plates
+  // par la somme calculée depuis les dimensions extraites des bytes validés.
+  // Les autres providers — et surtout les PDF — gardent le contrat PR-0.
+  if (validatedImageTokens !== undefined) {
+    if (removedValidatedImages !== validatedImageCount) {
+      throw new Error('validated_image_count_mismatch')
+    }
+    tokens += validatedImageTokens
+  }
   return Math.ceil(Math.max(0, tokens))
 }
 
@@ -201,9 +286,25 @@ export function makeReservationHeartbeat(env: Env, resId: string | undefined): (
 export async function beginWalletBilling(
   env: Env,
   waitUntil: (p: Promise<unknown>) => void,
-  params: { email: string; model: string; provider: AiProvider; body: Record<string, unknown> },
+  params: {
+    email: string
+    model: string
+    provider: AiProvider
+    body: Record<string, unknown>
+    validatedImageTokens?: number
+    validatedImageCount?: number
+    validatedInputTokens?: number
+  },
 ): Promise<WalletBillingStart> {
-  const { email, model, provider, body } = params
+  const {
+    email,
+    model,
+    provider,
+    body,
+    validatedImageTokens,
+    validatedImageCount,
+    validatedInputTokens,
+  } = params
 
   // Auto-soin (pas de Cron sur Pages) : libère MES réservations orphelines d'un
   // settle/void raté précédent. En arrière-plan → hors chemin de latence ; le
@@ -225,7 +326,18 @@ export async function beginWalletBilling(
   if (!bal || bal.availableMicro <= 0) return { mode: 'skip' }
 
   const maxOutputTokens = extractMaxOutputTokens(provider, body)
-  const estInputTokens = estimateInputTokens(provider, body)
+  if (
+    validatedInputTokens !== undefined &&
+    (
+      provider !== 'openai' ||
+      !Number.isSafeInteger(validatedInputTokens) ||
+      validatedInputTokens < 0 ||
+      validatedImageTokens !== undefined ||
+      validatedImageCount !== undefined
+    )
+  ) throw new Error('invalid_validated_input_tokens')
+  const estInputTokens = validatedInputTokens ??
+    estimateInputTokens(provider, body, { validatedImageTokens, validatedImageCount })
   const estMicro = estimateReserveMicro(model, maxOutputTokens, estInputTokens)
   const resId = crypto.randomUUID()
   const r = await reserveCredits(env, { email, estMicro, resId, model, modality: 'text' })

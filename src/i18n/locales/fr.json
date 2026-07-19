@@ -359,6 +359,7 @@
       "placeholder": "Discuter avec Arty...",
       "listening": "Écoute en cours...",
       "defaultFilePrompt": "Analyse ce fichier.",
+      "analyzePhotoRelay": "Analyse cette photo.",
       "enhanceTooltip": "Améliorer le prompt",
       "enhancing": "Amélioration en cours...",
       "aria": {
@@ -557,6 +558,10 @@
     "openaiRateLimit": "Quota dépassé",
     "openaiServer": "Erreur OpenAI",
     "openaiError": "Erreur OpenAI ({{status}})",
+    "openaiPayloadTooLarge": "Le lot de photos est trop volumineux pour être envoyé.",
+    "openaiVisionDisabled": "L’analyse photo par GPT est temporairement désactivée.",
+    "openaiInvalidImagePayload": "Une photo n’a pas pu être validée. Retire-la puis ajoute-la de nouveau.",
+    "openaiVisionAssetUnavailable": "La photo originale n’est plus disponible sur cet appareil. Ajoute-la de nouveau.",
     "streamInterrupted": "Réponse interrompue",
     "streamStopped": "Réponse arrêtée",
     "streamStalled": "Connexion au serveur interrompue (réseau instable). La réponse déjà reçue est conservée.",

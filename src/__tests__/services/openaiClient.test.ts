@@ -6,6 +6,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { formatModelName } from '../../services/modelLabels'
+import { hasOpenAIVisionBlocks } from '../../services/openaiClient'
 
 const client = readFileSync(resolve(process.cwd(), 'src/services/openaiClient.ts'), 'utf8')
 
@@ -21,6 +22,18 @@ describe('openaiClient — modèles (C3)', () => {
   it('le retry 400/404 « model does not exist » est toujours câblé (pattern startChatRequest)', () => {
     expect(client).toMatch(/payload\.model !== DEFAULT_MODEL/)
     expect(client).toMatch(/FALLBACK_MODEL \}/)
+  })
+
+  it('interdit explicitement le fallback dès que le payload contient une image', () => {
+    expect(client).toMatch(/if \(hasOpenAIVisionBlocks\(payload\)\) return response/)
+    expect(hasOpenAIVisionBlocks({
+      messages: [{
+        role: 'user',
+        content: [{ type: 'image_url', image_url: { url: 'data:image/jpeg;base64,AA==' } }],
+      }],
+    })).toBe(true)
+    expect(hasOpenAIVisionBlocks({ messages: [{ role: 'user', content: 'texte' }] })).toBe(false)
+    expect(client).toContain("headers['x-arty-vision'] = '1'")
   })
 })
 

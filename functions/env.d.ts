@@ -27,6 +27,8 @@ export interface Env {
   GEMINI_API_KEY?: string
   MISTRAL_API_KEY?: string
   OPENAI_API_KEY?: string
+  /** Killswitch serveur : les blocs image OpenAI sont refusés sauf valeur exacte 'true'. */
+  OPENAI_VISION_ENABLED?: string
   /** Black Forest Labs (FLUX) — génération d'images, endpoint EU. P1.3-FLUX. */
   BFL_API_KEY?: string
   ALLOWED_EMAILS?: string  // comma-separated list of emails allowed to use server keys

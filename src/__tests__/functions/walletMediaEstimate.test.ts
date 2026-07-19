@@ -158,3 +158,67 @@ describe('estimateInputTokens — payloads média bornés (PR-0)', () => {
     expect(reserveMicro).toBeGreaterThan(100_000) // toujours une vraie réserve
   })
 })
+
+describe('estimateInputTokens — override dimensionnel OpenAI vision (PR-B)', () => {
+  const openaiBody = (count: number, bytes = 1024) => ({
+    model: 'gpt-5.6-terra',
+    messages: [{
+      role: 'user',
+      content: Array.from({ length: count }, () => ({
+        type: 'image_url',
+        image_url: { url: `data:image/jpeg;base64,${b64(bytes)}`, detail: 'original' },
+      })),
+    }],
+  })
+
+  it('ajoute exactement 12 288 tokens validés pour une image 4096 × 3072', () => {
+    const body = openaiBody(1)
+    const withoutImages = estimateInputTokens('openai', body, { validatedImageTokens: 0, validatedImageCount: 1 })
+    const withImage = estimateInputTokens('openai', body, { validatedImageTokens: 12_288, validatedImageCount: 1 })
+    expect(withImage - withoutImages).toBe(12_288)
+  })
+
+  it('ajoute 65 536 tokens pour quatre carrés 4K', () => {
+    const body = openaiBody(4)
+    const withoutImages = estimateInputTokens('openai', body, { validatedImageTokens: 0, validatedImageCount: 4 })
+    const withImages = estimateInputTokens('openai', body, { validatedImageTokens: 65_536, validatedImageCount: 4 })
+    expect(withImages - withoutImages).toBe(65_536)
+  })
+
+  it("le poids base64 n'influence plus l'override dimensionnel", () => {
+    const small = estimateInputTokens('openai', openaiBody(1, 1024), { validatedImageTokens: 12_288, validatedImageCount: 1 })
+    const large = estimateInputTokens('openai', openaiBody(1, 6 * MB), { validatedImageTokens: 12_288, validatedImageCount: 1 })
+    expect(Math.abs(large - small)).toBeLessThan(100)
+  })
+
+  it("refuse qu'un autre provider fournisse un override client", () => {
+    expect(() => estimateInputTokens('anthropic', openaiBody(1), { validatedImageTokens: 1, validatedImageCount: 1 }))
+      .toThrow('invalid_validated_image_tokens')
+  })
+
+  it("refuse un nombre d'images qui ne correspond pas aux blocs validés", () => {
+    expect(() => estimateInputTokens('openai', openaiBody(1), {
+      validatedImageTokens: 12_288,
+      validatedImageCount: 2,
+    })).toThrow('validated_image_count_mismatch')
+  })
+})
+
+describe('estimateInputTokens — parité JSON UTF-8 sans copie globale', () => {
+  it('égale TextEncoder(JSON.stringify) sur texte, échappements et Unicode', () => {
+    const body: Record<string, unknown> = {
+      simple: 'bonjour',
+      escaped: 'guillemet " slash \\ contrôles\n\t\u0001',
+      unicode: '東京 — façade — 😀',
+      loneSurrogate: '\ud800',
+      'clé-é': { truthy: true, falsy: false, nil: null, nan: Number.NaN },
+      array: ['x', undefined, 42, '\udfff'],
+      omitted: undefined,
+    }
+    const expected = new TextEncoder().encode(JSON.stringify(body)).length
+    expect(estimateInputTokens('openai', body)).toBe(expected)
+    expect(estimateInputTokens('anthropic', body)).toBe(expected)
+    expect(estimateInputTokens('gemini', body)).toBe(expected)
+    expect(estimateInputTokens('mistral', body)).toBe(expected)
+  })
+})
