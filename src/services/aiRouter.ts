@@ -101,9 +101,15 @@ export const TRAIL_TRIGGERS = [
   /randonn[ée]e?s?|\brandos?\b/i,
   /\bsentiers?\b/i,
   /boucles?\s+(équestres?|pédestres?|de\s+rando|à\s+cheval|à\s+pied|VTT|vélo)/i,
-  /balades?\s+(à\s+cheval|à\s+pied|équestres?|en\s+forêt|VTT|vélo)/i,
+  /balades?\s+(à\s+cheval|à\s+pied|équestres?|en\s+forêt|VTT|vélo|autour|pr[èe]s\s+de|vers)/i,
   /circuits?\s+(équestres?|pédestres?|de\s+rando|VTT)/i,
   /chemins?\s+de\s+(terre|halage|randonnée)|\bGR\s?\d+/i,
+  // Cas terrain 19 juil. 2026 (capture Florent) : « cherche des chemins
+  // autour de Viriville » ne matchait RIEN → Gemini sans outils → réponse
+  // vide. « chemins » + contexte spatial/balisage = intention sentiers.
+  /chemins?\s+(autour|pr[èe]s\s+de|vers|balis[ée]s?)/i,
+  /pistes?\s+(cavali[èe]res?|équestres?)/i,
+  /o[ùu]\s+(se\s+|me\s+)?(balader|promener|randonner)/i,
   // GPX — le format lui-même est un signal fort (trace, fichier, export…)
   /\bGPX\b/i,
   // EN
