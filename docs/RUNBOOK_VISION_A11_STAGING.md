@@ -118,6 +118,31 @@ Avant tout déploiement de l'application :
 Les previews Pages sont publiques par défaut. Ne déployer l'application qu'une
 fois Access vérifié sur une page neutre ou un déploiement vide.
 
+### Préflight d'un jeton de compte jetable
+
+Si l'amorçage neutre utilise exceptionnellement un jeton API de compte au lieu
+du profil Wrangler, limiter ce jeton au compte exact et à `Pages Read` plus
+`Pages Write`, puis le révoquer après un seul essai. Avant d'appeler Wrangler,
+vérifier le jeton avec `GET /accounts/{account_id}/tokens/verify`, puis vérifier
+l'identité, le nom et `production_branch=never-production` du projet.
+
+Le lanceur ne doit jamais afficher le jeton, les en-têtes, le body, les messages
+d'erreur, l'identifiant ou les dates du jeton. Son diagnostic public est limité
+à une occurrence de chacune des lignes suivantes :
+
+```text
+A11_TOKEN_HTTP_STATUS=[1-5][0-9]{2}
+A11_TOKEN_API_CODE=[0-9]{1,9}
+A11_TOKEN_STATUS=active|disabled|expired|missing|unexpected
+```
+
+Séparer les échecs en `account_token_transport`, `account_token_http`,
+`account_token_json`, `account_token_api` et `account_token_status`. Toute sortie
+hors allowlist, combinaison incohérente ou valeur dupliquée doit supprimer la
+sortie capturée et arrêter le lanceur. Aucun retry et aucun élargissement de
+permission après un résultat ambigu ; réconcilier d'abord le nombre de
+déploiements via l'API Cloudflare et vérifier que la production est inchangée.
+
 ## 5. Déployer le SHA en Preview
 
 Depuis la racine du dépôt — Wrangler embarque alors `functions/` avec `dist/` :
@@ -342,6 +367,7 @@ désactivation + révocation garde les preuves récupérables.
 - Cloudflare — [Preview deployments et Access](https://developers.cloudflare.com/pages/configuration/preview-deployments/)
 - Cloudflare — [Direct Upload avec Wrangler](https://developers.cloudflare.com/pages/get-started/direct-upload/)
 - Cloudflare — [API des déploiements Pages](https://developers.cloudflare.com/api/resources/pages/subresources/projects/subresources/deployments/methods/get/)
+- Cloudflare — [Vérifier un jeton API de compte](https://developers.cloudflare.com/api/resources/accounts/subresources/tokens/methods/verify/)
 - Cloudflare — [Métriques Workers et P999 mémoire](https://developers.cloudflare.com/workers/observability/metrics-and-analytics/)
 - Cloudflare — [Service tokens Access](https://developers.cloudflare.com/cloudflare-one/access-controls/service-credentials/service-tokens/)
 - OpenAI — [Images and vision](https://developers.openai.com/api/docs/guides/images-vision)
