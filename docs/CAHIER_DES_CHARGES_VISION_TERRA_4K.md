@@ -36,6 +36,8 @@
 | **A7** | **P0 (précise §8.3)** | **Invariant JPEG du chemin natif : à TESTER, pas à re-forcer.** Constat corrigé (revue du 19/07) : la capture native actuelle passe par `CameraResultType.Base64` et `@capacitor/camera` 8 ne retourne que du JPEG sur iOS et Android (l'implémentation Swift sérialise `jpegData`, `format: "jpeg"`) — pas de chantier « forcer le JPEG natif » en P0. Exigence réelle : un **test de non-régression verrouillant cet invariant JPEG** du chemin natif, et le rejet/la conversion HEIC sur les chemins d'**import** (web/fichiers), où le risque existe vraiment. |
 | **A8** | **HYGIÈNE (P0)** | Ajouter aux exigences P0 : gate `npx tsc --noEmit` avant push (BUG 13 — l'union multimodale + 4 nouveaux champs `RouteInput` sont une grosse surface de types) ; audit RÈGLE 6 explicite sur `openai-proxy` modifié (dont Origin/CSRF) ; vérification `AndroidManifest` : `CAMERA` présente **et confirmer que `READ_MEDIA_IMAGES` reste inutile** (absence volontaire documentée au manifest — sélections via Photo Picker/SAF avec URI temporaire ; ne l'ajouter QUE si l'architecture change) ; vérification CSP `img-src data:/blob:` de `public/_headers` pour les vignettes (précédent BUG 40/62). |
 | **A9** | **DÉCISION PRODUIT (§3/§11/§14, 19/07/2026)** | Un échantillon réel OnePlus 12R `3072 × 4096` pèse 5,5 Mio : quatre photos normales dépasseraient la borne initiale de 20 Mio. Le lot passe donc à **24 Mio binaires** (4 × 6 Mio) et le futur proxy à **40 Mio de JSON**, afin d'absorber les ~32 Mio de base64 plus le texte et l'overhead JSON. Les PDF/autres fichiers restent à 10 Mio. |
+| **A10** | **PÉRIMÈTRE PR-B (§11/§18, 19/07/2026)** | La borne JSON de **40 Mio s'applique uniquement au transport vision streaming de `openai-proxy`** dans PR-B ; le transport texte OpenAI est borné à **10 Mio** pour empêcher le pic `body + DOM + re-stringify`. L'appliquer indistinctement aux quatre proxys chat ferait régresser les lots Claude de plusieurs PDF (trois PDF de 10 Mio approchent déjà 40 Mio après base64, avant JSON), en contradiction avec la décision de ne pas modifier les PDF. Les caps Anthropic/Gemini/Mistral restent un chantier d'hygiène séparé, avec une politique document-aware. |
+| **A11** | **RÉSOLU PR-B / GATE PR-C — CLOUDFLARE/MÉMOIRE (19/07/2026)** | La [limite officielle d'entrée Cloudflare](https://developers.cloudflare.com/workers/platform/limits/#request-and-response-limits) est au minimum 100 MB (Free/Pro), donc supérieure aux 40 Mio Arty ; la mémoire reste limitée à 128 MB par isolat. Un profil du premier prototype bufferisé dépassait cette mémoire (~146 Mio RSS). PR-B utilise donc `tee()` + parse JSON streaming par feuilles : une branche est validée, l'autre est relayée inchangée à OpenAI, et elle est annulée sur tout refus pré-upstream. Aucun `request.text()`/DOM/re-stringify complet n'existe sur le chemin 4 × 6 Mio. Avant d'activer PR-C, mesurer sous Workerd/staging un lot maximal seul puis plusieurs lots simultanés : la borne mémoire est par isolat, pas par requête. Si la marge sous 128 MB n'est pas démontrée, ajouter un plafond de validations vision concurrentes par isolat ou migrer le transport image vers un stockage/upload dédié. |
 
 Points vérifiés CONFORMES (aucune action) : bucket premium `gpt-5.6-terra` →
 `gpt-5` cap 100 (D11) ; invariant « consommé ⟺ servi » cohérent avec
@@ -502,6 +504,9 @@ P0 :
 - [ ] Source 200 MP de 25–30 Mio : normalisée ou refusée proprement sans crash.
 - [ ] Mode avion pendant l'envoi : erreur récupérable, asset local intact.
 - [ ] Proxy : corps >40 Mio → 413 avant lecture complète et avant appel OpenAI.
+- [ ] Workerd/staging : 1 puis au moins 2 lots simultanés de 4 × 6 Mio restent
+  sous 128 MB par isolat ; sinon l'activation est bloquée jusqu'à l'ajout d'un
+  plafond de validations concurrentes ou d'un transport par upload.
 
 ---
 
@@ -622,15 +627,14 @@ réversible ou dimensions de source permettant de profiler un appareil.
 
 ## 20. Questions ouvertes
 
-### Bloquantes avant PR-B
+### Résolues par PR-B
 
-1. **Engineering :** quelle borne de body Cloudflare est effectivement garantie
-   sur le plan de production ? La borne Arty de 40 Mio doit rester inférieure.
-2. **Produit/finance :** confirme-t-on le markup texte pour l'image d'entrée,
-   ou souhaite-t-on un markup dédié distinct de la génération d'images ?
-3. **Engineering :** le fallback `gpt-5` accepte-t-il le même bloc multimodal
-   dans tous les comptes BYOK visés ? À défaut, désactiver le fallback pour les
-   requêtes vision.
+1. **Engineering :** Cloudflare garantit au moins 100 MB de body ; Arty reste à
+   40 Mio et parse en streaming pour respecter les 128 MB mémoire par isolat.
+2. **Produit/finance :** l'image d'entrée conserve le markup texte existant ;
+   aucun tarif de génération d'image n'est appliqué à l'analyse de photo.
+3. **Engineering :** le fallback `gpt-5` est désactivé dès qu'un bloc vision est
+   présent ; aucun replay cross-modèle silencieux n'est autorisé.
 
 ### Non bloquantes pour PR-A
 

@@ -106,6 +106,22 @@ describe('Workspace Add-on Origin exception', () => {
 })
 
 describe('existing middleware behavior outside Workspace Add-on routes', () => {
+  it('autorise le header vision depuis Capacitor au preflight et sur la réponse', async () => {
+    const preflight = await runMiddleware(
+      request('/api/ai/openai-proxy', 'OPTIONS', 'capacitor://localhost')
+    )
+    expect(preflight.response.status).toBe(204)
+    expect(preflight.response.headers.get('Access-Control-Allow-Headers'))
+      .toContain('x-arty-vision')
+
+    const actual = await runMiddleware(
+      request('/api/ai/openai-proxy', 'POST', 'capacitor://localhost')
+    )
+    expect(actual.response.status).toBe(200)
+    expect(actual.response.headers.get('Access-Control-Allow-Headers'))
+      .toContain('x-arty-vision')
+  })
+
   it('still allows an authorized browser Origin and returns ACAO', async () => {
     const { response, next } = await runMiddleware(
       request('/api/auth/token', 'POST', 'https://tryarty.com')

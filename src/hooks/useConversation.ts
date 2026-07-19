@@ -5,6 +5,7 @@ import { streamMessage } from '../services/anthropicClient'
 import { streamGeminiMessage, geminiResearch } from '../services/geminiClient'
 import { streamMistralMessage } from '../services/mistralClient'
 import { sendMessageStream as streamOpenAIMessage } from '../services/openaiClient'
+import type { OpenAIMessage } from '../services/openaiClient'
 import { getOpenAIKey } from '../services/activeApiKey'
 import { extractPdfUrls, extractWebUrls } from '../services/aiRouter'
 import { canExecuteRoute, resolveRoute } from '../services/router/resolveRoute'
@@ -14,7 +15,7 @@ import { fetchPdfMarkdowns, fetchUrlMarkdowns } from '../services/pdfUrlFetch'
 import * as storage from '../services/storage'
 import { maybeExtractMemory } from '../services/autoMemory'
 import { useStreaming } from './useStreaming'
-import { useFileAttachments, buildApiMessages, buildContentBlocks, buildTextOnlyMessages, buildMistralMessages, buildMistralContentBlocks } from './useFileAttachments'
+import { useFileAttachments, buildApiMessages, buildContentBlocks, buildTextOnlyMessages, buildMistralMessages, buildMistralContentBlocks, buildOpenAIVisionContentBlocks } from './useFileAttachments'
 import { getReflectionLevel } from '../services/reflectionLevel'
 import { deleteFile, putFile } from '../services/secureFileStorage'
 import { runFactCheckOnLatest, getFactCheckMode } from '../services/factChecker'
@@ -25,6 +26,7 @@ import { detectReminderIntent, createReminder } from '../services/reminderServic
 import { composeQuickActionText, isQuickActionSelection } from '../services/quickActions'
 import { clearConversationComposerDraft } from '../services/composerDrafts'
 import i18n from '../i18n'
+import { isVision4kFoundationEnabled } from '../services/visionFeature'
 
 type ToolHandler = (name: string, input: Record<string, unknown>) => Promise<{ result: string; screenshot?: string }>
 
@@ -665,11 +667,21 @@ export function useConversation() {
         // serveur (/api/ai/openai-proxy) qui utilise env.OPENAI_API_KEY.
         const openaiKey = getOpenAIKey()
         const textOnly = await buildTextOnlyMessages(conv.messages)
-        const apiMessages = textOnly.map((m) => ({
+        const apiMessages: OpenAIMessage[] = textOnly.map((m) => ({
           role: (m.role === 'assistant' ? 'assistant' : 'user') as 'user' | 'assistant',
           content: m.content,
         }))
-        if (outgoingText !== modelText && apiMessages.length > 0) {
+        const currentImagesOnly =
+          currentFiles &&
+          currentFiles.length > 0 &&
+          currentFiles.every((file) => file.type.startsWith('image/'))
+        if (isVision4kFoundationEnabled() && currentImagesOnly && apiMessages.length > 0) {
+          apiMessages[apiMessages.length - 1] = {
+            role: 'user',
+            content: await buildOpenAIVisionContentBlocks(outgoingText, currentFiles),
+          }
+          setPendingFiles(null)
+        } else if (outgoingText !== modelText && apiMessages.length > 0) {
           apiMessages[apiMessages.length - 1] = { role: 'user', content: outgoingText }
         }
         controller = streamOpenAIMessage(apiMessages, openaiKey, onToken, onDone, onErr, {
@@ -711,7 +723,10 @@ export function useConversation() {
       } catch (err) {
         // onErr finalize ce qui a été accumulé, démonte le stream et affiche
         // l'erreur — exactement comme une erreur réseau du client LLM.
-        onErr(err instanceof Error ? err : new Error(String(err)))
+        const normalized = err instanceof Error ? err : new Error(String(err))
+        onErr(normalized.message === 'openai_vision_asset_unavailable'
+          ? new Error(i18n.t('errors.openaiVisionAssetUnavailable'))
+          : normalized)
       }
       return true
     },

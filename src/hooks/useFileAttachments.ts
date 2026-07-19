@@ -2,6 +2,7 @@ import { useCallback, useMemo, useRef } from 'react'
 import type { FileAttachment, Message } from '../types'
 import { getFile } from '../services/secureFileStorage'
 import { getMessageTextForModel } from '../services/quickActions'
+import i18n from '../i18n'
 
 // Detect MIME type from filename if browser didn't set it
 function detectMimeType(name: string, type: string): string {
@@ -22,8 +23,9 @@ function detectMimeType(name: string, type: string): string {
 }
 
 // Hydrate files: si f.data manque, le recharger depuis IndexedDB. Si null
-// (blob purgé par OS / quota dépassé), retourner un placeholder qui produira
-// un texte "[Image indisponible — recharge la conversation]" plutôt qu'un crash.
+// (blob purgé par OS / quota dépassé), retourner la référence sans data. Les
+// builders historiques produisent alors un placeholder ; le builder OpenAI
+// vision échoue explicitement pour empêcher une relance sans pixels.
 // Queue globale aux builders : plusieurs messages/conversations peuvent être
 // hydratés via Promise.all, mais deux gros assets canoniques ne doivent jamais
 // être déchiffrés en parallèle sur une WebView mobile.
@@ -132,6 +134,10 @@ export type MistralBlock =
   | { type: 'text'; text: string }
   | { type: 'image_url'; image_url: { url: string } }
 
+export type OpenAIVisionBlock =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string; detail: 'original' } }
+
 export async function buildMistralMessages(
   messages: Message[]
 ): Promise<Array<{ role: string; content: string | MistralBlock[] }>> {
@@ -192,6 +198,46 @@ export async function buildMistralContentBlocks(
 ): Promise<MistralBlock[]> {
   const hydrated = await hydrateFiles(files)
   return buildMistralBlocks(text, hydrated)
+}
+
+/**
+ * Builder one-shot OpenAI : uniquement les images du tour courant, puis le
+ * texte. L'historique est construit séparément en text-only afin de ne jamais
+ * renvoyer silencieusement les mêmes pixels aux tours suivants.
+ */
+export async function buildOpenAIVisionContentBlocks(
+  text: string,
+  files: FileAttachment[],
+): Promise<OpenAIVisionBlock[]> {
+  const hydrated = await hydrateFiles(files)
+  const blocks: OpenAIVisionBlock[] = []
+
+  for (const file of hydrated) {
+    const mime = detectMimeType(file.name, file.type)
+    if (!mime.startsWith('image/')) throw new Error('openai_vision_requires_images_only')
+    // Retry/edit doit rester fail-closed : sans les pixels, ne jamais dégrader
+    // silencieusement la demande en texte (ce qui réactiverait le fallback).
+    if (!file.data) throw new Error('openai_vision_asset_unavailable')
+    if (
+      (mime !== 'image/jpeg' && mime !== 'image/png') ||
+      file.normalizationVersion !== 1 ||
+      !Number.isInteger(file.width) ||
+      !Number.isInteger(file.height) ||
+      (file.width ?? 0) <= 0 ||
+      (file.height ?? 0) <= 0 ||
+      (file.width ?? 0) > 4096 ||
+      (file.height ?? 0) > 4096
+    ) {
+      throw new Error('openai_vision_asset_not_canonical')
+    }
+    blocks.push({
+      type: 'image_url',
+      image_url: { url: `data:${mime};base64,${file.data}`, detail: 'original' },
+    })
+  }
+
+  blocks.push({ type: 'text', text: text.trim() || i18n.t('chat.input.analyzePhotoRelay') })
+  return blocks
 }
 
 // Build content blocks for the current outgoing message (files have data

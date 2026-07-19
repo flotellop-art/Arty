@@ -89,7 +89,7 @@ export const onRequest: PagesFunction = async (context) => {
       headers: {
         'Access-Control-Allow-Origin': hasValidOrigin ? origin : '',
         'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-api-key, x-openai-key, x-google-token, x-arty-trial-token, anthropic-version, anthropic-beta',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-api-key, x-openai-key, x-google-token, x-arty-vision, x-arty-trial-token, anthropic-version, anthropic-beta',
         'Access-Control-Max-Age': '86400',
       },
     })
@@ -124,7 +124,7 @@ export const onRequest: PagesFunction = async (context) => {
   headers.set('Referrer-Policy', 'strict-origin-when-cross-origin')
   if (hasValidOrigin) {
     headers.set('Access-Control-Allow-Origin', origin)
-    headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-api-key, x-openai-key, x-google-token, anthropic-version, anthropic-beta')
+    headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-api-key, x-openai-key, x-google-token, x-arty-vision, anthropic-version, anthropic-beta')
     // Expose les headers custom que le client lit côté navigateur (sinon
     // CORS les masque). `x-trial-remaining` est renvoyé par les proxys IA
     // pour mettre à jour le compteur d'essai côté front à chaque message.

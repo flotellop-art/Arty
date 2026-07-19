@@ -359,6 +359,7 @@
       "placeholder": "Chat with Arty...",
       "listening": "Listening...",
       "defaultFilePrompt": "Analyze this file.",
+      "analyzePhotoRelay": "Analyze this photo.",
       "enhanceTooltip": "Enhance prompt",
       "enhancing": "Enhancing...",
       "aria": {
@@ -557,6 +558,10 @@
     "openaiRateLimit": "Quota exceeded",
     "openaiServer": "OpenAI error",
     "openaiError": "OpenAI error ({{status}})",
+    "openaiPayloadTooLarge": "The photo batch is too large to send.",
+    "openaiVisionDisabled": "GPT photo analysis is temporarily disabled.",
+    "openaiInvalidImagePayload": "A photo could not be validated. Remove it and attach it again.",
+    "openaiVisionAssetUnavailable": "The original photo is no longer available on this device. Attach it again.",
     "streamInterrupted": "Response interrupted",
     "streamStopped": "Response stopped",
     "streamStalled": "Server connection stalled (unstable network). The answer received so far was kept.",
