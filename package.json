@@ -12,6 +12,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "bench:vision:workerd": "node scripts/bench-vision-workerd-memory.mjs",
+    "bench:vision:cloudflare": "node scripts/bench-vision-cloudflare-staging.mjs",
     "addon:phase0:check": "node google-workspace-addon/phase0/render-manifest.mjs check-template",
     "no-casa:check": "node scripts/check-public-google-access.mjs",
     "no-casa:android-check": "node scripts/check-public-google-access.mjs --require-android-assets",
