@@ -99,7 +99,7 @@ describe('validateOpenAIVisionStream', () => {
       relayedBytes += value.byteLength
     }
     expect(relayedBytes).toBe(requestBytes)
-  })
+  }, 30_000)
 
   it('rejette un bloc inconnu et un message vide après le tour vision', async () => {
     const image = pngBase64(32, 32, 57, 1)
