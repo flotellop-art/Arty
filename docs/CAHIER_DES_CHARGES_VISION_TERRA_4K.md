@@ -1,9 +1,47 @@
 # Cahier des charges — Vision GPT-5.6 Terra en 4K dans Arty
 
-**Statut :** proposition à valider avant implémentation<br>
+**Statut :** proposition à valider avant implémentation — **revue adversariale intégrée, voir §0**<br>
 **Date :** 19 juillet 2026<br>
 **Périmètre :** analyse de photos par `gpt-5.6-terra`, routage automatique, préparation mobile, maîtrise des coûts et confidentialité<br>
 **Nature de cette PR :** documentation uniquement ; aucun comportement de production n'est modifié
+
+---
+
+## 0. Revue adversariale du 19 juillet 2026 — amendements LIANTS
+
+> Rédaction initiale : GPT-5.6. Challenge : 2 agents (Opus — audit des claims
+> contre le code réel, file:line ; Sonnet — fact-check des claims API sur les
+> docs officielles OpenAI). **Verdict : base saine** — les 7 affirmations sur
+> l'état du code sont TOUTES exactes (aucun fichier halluciné, les 13 chemins
+> du §19 existent), et la prémisse centrale est validée documentairement :
+> `detail: "original"` existe (introduit sur gpt-5.4, défaut sur 5.5/5.6) et
+> **GPT-5.6 est le seul de la famille SANS redimensionnement interne** en
+> `original`/`auto` (gpt-5.5/5.4 cappent à 10 000 patches / 6 000 px ; l'ère
+> GPT-4o rescalait à 2 048 px) → le 4K atteint réellement le modèle ; formule
+> de patches et ~0,031 $/photo recalculés corrects. Réserve : vérification
+> documentaire — un appel API réel de confirmation fait partie de PR-B.
+>
+> Les amendements A1–A8 ci-dessous CORRIGENT ou COMPLÈTENT le document. En cas
+> de conflit, ils priment sur le texte des sections qu'ils visent. A1, A2, A7
+> s'ajoutent aux exigences P0 du §13.
+
+| ID | Sévérité | Amendement |
+|---|---|---|
+| **A1** | **BLOQUANT (P0, PR-C)** | **Réconciliation de la règle écrite BUG 12.** Le routage §7 (image-only + Auto → Terra) contredit frontalement CLAUDE.md BUG 12 (« fichiers attachés → TOUJOURS Claude ») ET le commentaire d'invariant de `resolveRoute.ts:16-22`. PR-C DOIT : amender le texte BUG 12 (carve-out explicite « lot composé uniquement d'images » avec ses gardes euOnly/privé), mettre à jour le commentaire d'invariant, et couvrir la nouvelle précédence dans `resolveRoute.test.ts`. Sans cet amendement écrit, l'implémentation viole une règle maison documentée. |
+| **A2** | **BLOQUANT (P0, PR-A)** | **Décodage des sources énormes : `drawImage` direct interdit.** Sur WKWebView iOS le canvas est plafonné (~16,7 Mpx d'aire) et un `drawImage` d'une source surdimensionnée produit un canvas blanc/noir SANS throw → JPEG valide-mais-vide qui passe les checks. Un 200 MP = ~800 Mo de bitmap RGBA, non allouable. Le pipeline §8.1 DOIT imposer `createImageBitmap(blob, {resizeWidth, resizeHeight})` (décodage+réduction sans bitmap plein) ou un draw tuilé, plus un gate explicite sur les mégapixels source, et un test de non-corruption (sortie non uniforme) sur source > aire canvas. |
+| **A3** | **URGENCE RELEVÉE (PR-0 indépendante)** | **La sur-réservation wallet (§2 point 5) est un bug DÉJÀ LIVE, pas un risque futur.** `walletBilling.estimateInputTokens` compte le base64 comme du texte (le commentaire du code ment sur son propre comportement) et le chemin est actif aujourd'hui pour Claude (`proxy.ts` → `beginWalletBilling` pour free-avec-crédits) : un PDF/image joint réserve ~×700 le coût réel (image 4K ≈ 21–31 $ réservés pour 0,03 $ de coût). Le fix §10.2 doit partir en **PR-0 autonome AVANT la vision**, avec test de non-régression sur le chemin Claude existant. |
+| **A4** | **CORRECTION FACTUELLE (§5/§10/§11)** | Les bornes « 4 images / 6 Mio / 20 Mio / 30 Mio » sont des **choix défensifs Arty**, PAS des limites OpenAI. Limites officielles réelles : **512 Mo de payload total et 1 500 images par requête**. Aucune formulation du document ne doit les présenter comme des contraintes API. |
+| **A5** | **MED (§7)** | **La colonne « OpenAI disponible » encode le PLAN via `availability.ts`** (`canUseServerKey` = subscription/vip ou free/trial avec crédits ; sinon BYOK) — l'implémenteur DOIT réutiliser cette availability plan-aware, le tableau §7 seul ne suffit pas. Gap réel à trancher : **trial** — `TRIAL_ALLOWED_MODELS` n'inclut pas `gpt-5.6-terra` (`isModelAllowedInTrial` → false) → un trial-avec-crédits routé Terra recevrait `trial_model_restricted`. Décision requise avant PR-C : ajouter Terra-vision au trial, ou router trial → Claude. **Pro : déjà correct** (BYOK, `proKeyRequiredResponse`). |
+| **A6** | **MED (§8.2/§19, PR-A)** | **Piège double-compression non flagué** : `secureFileStorage.putFile` re-compresse à 2 048 px à la persistance. Si `normalizeImageForVision` sort du 4 096 mais que `putFile` reste en l'état, IndexedDB stocke du 2 048 pendant que la RAM du 1er tour est en 4 096 — ce qui **recrée exactement la divergence RAM/retry que le §8.2 veut tuer**. PR-A doit neutraliser/aligner `putFile` sur l'asset canonique. |
+| **A7** | **P0 (corrige §8.3)** | **La capture iOS peut produire du HEIC** : `native/camera.ts` retourne `image/${format}` sans forcer le JPEG — l'affirmation « la capture native doit produire un JPEG compatible » n'est pas garantie par le code. Forcer le JPEG à la capture dès P0 (sinon rejet systématique des photos iPhone) ; le report du HEIC en P1 ne vaut que pour l'IMPORT de fichiers. |
+| **A8** | **HYGIÈNE (P0)** | Ajouter aux exigences P0 : gate `npx tsc --noEmit` avant push (BUG 13 — l'union multimodale + 4 nouveaux champs `RouteInput` sont une grosse surface de types) ; audit RÈGLE 6 explicite sur `openai-proxy` modifié (dont Origin/CSRF) ; vérification `AndroidManifest` CAMERA + `READ_MEDIA_IMAGES` (BUG 33) ; vérification CSP `img-src data:/blob:` de `public/_headers` pour les vignettes (précédent BUG 40/62). |
+
+Points vérifiés CONFORMES (aucune action) : bucket premium `gpt-5.6-terra` →
+`gpt-5` cap 100 (D11) ; invariant « consommé ⟺ servi » cohérent avec
+`openai-proxy` (nuance : le cap ne concerne que le plan subscription — le
+free/wallet passe par la réservation, pas le cap) ; `files_mistral_native`
+et euOnly→Mistral vision déjà fonctionnels ; markup image réservé à la
+génération (D12).
 
 ---
 
