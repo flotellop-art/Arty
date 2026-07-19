@@ -440,6 +440,12 @@ describe('resolveRoute — sentiers/GPX → Claude (trail_tools, juillet 2026)',
     'des circuits VTT dans le coin ?',
     'où passe le GR 65 ?',
     'any horse riding trails near Viriville?',
+    // Cas terrain 19 juil. 2026 (capture Florent, APK) : partait sur Gemini.
+    'Cherche des chemins autour de viriville',
+    'des chemins près de la maison ?',
+    'une balade autour de Viriville',
+    'où se balader vers Viriville ?',
+    'y a des pistes cavalières dans le coin ?',
   ])('phrasing indirect « %s » → Claude/trail_tools', (text) => {
     const d = resolveRoute(input({ originalText: text }))
     expect(d.provider).toBe('claude')
@@ -447,9 +453,15 @@ describe('resolveRoute — sentiers/GPX → Claude (trail_tools, juillet 2026)',
   })
 
   it('le trigger ne détourne PAS une question générale vers Claude', () => {
-    const d = resolveRoute(input({ originalText: 'Explique-moi la loi de Moore' }))
-    expect(d.provider).toBe('gemini')
-    expect(d.reason.code).toBe('default_capable')
+    for (const text of [
+      'Explique-moi la loi de Moore',
+      "l'histoire du chemin de fer en France",
+      'quel est le plus court chemin en théorie des graphes ?',
+    ]) {
+      const d = resolveRoute(input({ originalText: text }))
+      expect(d.provider, text).toBe('gemini')
+      expect(d.reason.code, text).toBe('default_capable')
+    }
   })
 
   it("les gardes absolues restent prioritaires : euOnly prime sur trail_tools", () => {
