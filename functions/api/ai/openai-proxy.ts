@@ -6,11 +6,13 @@ import {
   proKeyRequiredResponse,
   trialExpiredResponse,
   trialModelRestrictedResponse,
+  voidTrialMessage,
 } from '../_lib/checkAllowedUser'
 import {
   consumeEmailTrialMessage,
   emailTrialKey,
   resolveProxyIdentity,
+  voidEmailTrialMessage,
 } from '../_lib/emailTrial'
 import {
   checkPremiumCap,
@@ -18,7 +20,12 @@ import {
   voidPremiumCap,
   type PremiumCapResult,
 } from '../_lib/checkPremiumCap'
-import { consumeDailyQuota, recordUsage, voidDailyQuota } from '../_lib/quota'
+import {
+  consumeDailyQuota,
+  recordUsage,
+  voidDailyQuota,
+  type QuotaDebit,
+} from '../_lib/quota'
 import { freeModelLockedResponse } from '../_lib/freeQuota'
 import {
   createOpenAIParser,
@@ -37,23 +44,151 @@ import {
   assertRequestContentLengthWithinLimit,
   OPENAI_CHAT_BODY_MAX_BYTES,
   OPENAI_TEXT_BODY_MAX_BYTES,
+  observeReadableStreamCompletion,
   readRequestTextWithLimit,
   requestBodyTooLargeResponse,
   RequestBodyTooLargeError,
+  type ObservedReadableStream,
 } from '../_lib/boundedRequestBody'
 import { validateOpenAIVisionPayload, type OpenAIVisionValidation } from '../_lib/openaiVision'
 import {
   validateOpenAIVisionStream,
   type OpenAIVisionStreamValidation,
 } from '../_lib/openaiVisionStream'
+import { createVisionAdmission, visionBusyResponse } from '../_lib/visionAdmission'
 
 const OPENAI_CHAT_URL = 'https://api.openai.com/v1/chat/completions'
+const visionAdmission = createVisionAdmission(1)
+const VISION_REQUEST_DEADLINE_MS = 120_000
+
+interface VisionDeadline {
+  signal: AbortSignal
+  cleanup: () => void
+}
+
+function startVisionDeadline(requestSignal: AbortSignal): VisionDeadline {
+  const controller = new AbortController()
+  const abortFromRequest = () => controller.abort(
+    requestSignal.reason ?? new Error('vision_request_aborted'),
+  )
+  if (requestSignal.aborted) abortFromRequest()
+  else requestSignal.addEventListener('abort', abortFromRequest, { once: true })
+  const timer = setTimeout(() => {
+    controller.abort(new Error('vision_request_timeout'))
+  }, VISION_REQUEST_DEADLINE_MS)
+  return {
+    signal: controller.signal,
+    cleanup: () => {
+      clearTimeout(timer)
+      requestSignal.removeEventListener('abort', abortFromRequest)
+    },
+  }
+}
+
+function throwIfVisionAborted(deadline: VisionDeadline | undefined): void {
+  if (deadline?.signal.aborted) {
+    throw deadline.signal.reason ?? new Error('vision_request_aborted')
+  }
+}
+
+/**
+ * Rend un await pré-upstream réellement interruptible. La promesse sous-jacente
+ * peut être une opération D1 non annulable ; `onTimeout` la conserve alors dans
+ * waitUntil et rembourse son éventuel effet tardif, tandis que le body et le
+ * permis mémoire sont libérés immédiatement par le finally du proxy.
+ */
+function awaitVisionDependency<T>(
+  operation: Promise<T>,
+  deadline: VisionDeadline | undefined,
+  onTimeout?: (pending: Promise<T>) => void,
+): Promise<T> {
+  if (!deadline) return operation
+  const { signal } = deadline
+  const scheduleTimeoutCleanup = () => {
+    try {
+      onTimeout?.(operation)
+    } catch {
+      // Le cleanup est best-effort ; son ordonnanceur ne doit jamais empêcher
+      // le rejet qui libère le body et le permis mémoire.
+      console.error('[vision] timeout cleanup scheduling failed')
+    }
+  }
+  if (signal.aborted) {
+    scheduleTimeoutCleanup()
+    return Promise.reject(signal.reason ?? new Error('vision_request_aborted'))
+  }
+  return new Promise<T>((resolve, reject) => {
+    let settled = false
+    const onAbort = () => {
+      if (settled) return
+      settled = true
+      scheduleTimeoutCleanup()
+      reject(signal.reason ?? new Error('vision_request_aborted'))
+    }
+    signal.addEventListener('abort', onAbort, { once: true })
+    operation.then(
+      (value) => {
+        if (settled) return
+        settled = true
+        signal.removeEventListener('abort', onAbort)
+        resolve(value)
+      },
+      (error) => {
+        if (settled) return
+        settled = true
+        signal.removeEventListener('abort', onAbort)
+        reject(error)
+      },
+    )
+  })
+}
+
+function visionTimeoutResponse(): Response {
+  return Response.json(
+    { error: 'vision_request_timeout', retry_after_seconds: 1 },
+    { status: 408, headers: { 'retry-after': '1' } },
+  )
+}
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUntil }) => {
+  // Le transport vision démarre sa deadline AVANT toute dépendance distante ;
+  // le permis mémoire n'est pris qu'APRÈS auth valide, juste avant le tee. Une
+  // auth Google/D1 bloquée ne peut donc ni monopoliser le slot, ni contourner
+  // le délai global annoncé au client.
+  const usesVisionTransport = request.headers.get('x-arty-vision') === '1'
+  let releaseVisionAdmission: (() => void) | undefined
+  let visionDeadline: VisionDeadline | undefined
+  const cancelIncomingBody = (reason: unknown) => {
+    try { void request.body?.cancel(reason).catch(() => undefined) } catch { /* already locked */ }
+  }
+  const cleanupEarlyVision = () => {
+    visionDeadline?.cleanup()
+    releaseVisionAdmission?.()
+    releaseVisionAdmission = undefined
+  }
+  if (usesVisionTransport) {
+    if (env.OPENAI_VISION_ENABLED !== 'true') {
+      cancelIncomingBody('vision_disabled')
+      return Response.json({ error: 'vision_disabled' }, { status: 403 })
+    }
+    visionDeadline = startVisionDeadline(request.signal)
+  }
+
   // Anti-relais : identité Google OU jeton d'essai email (espace de clés disjoint,
   // plan figé 'trial', CRIT-1). Google prioritaire si les deux headers présents.
-  const identity = await resolveProxyIdentity(request, env)
+  let identity: Awaited<ReturnType<typeof resolveProxyIdentity>>
+  try {
+    identity = await awaitVisionDependency(resolveProxyIdentity(request, env), visionDeadline)
+  } catch (error) {
+    const timedOut = usesVisionTransport && visionDeadline?.signal.aborted
+    cancelIncomingBody(error)
+    cleanupEarlyVision()
+    if (timedOut) return visionTimeoutResponse()
+    throw error
+  }
   if (!identity) {
+    if (usesVisionTransport) cancelIncomingBody('vision_authentication_failed')
+    cleanupEarlyVision()
     return Response.json(
       { error: 'Authentication required — please sign in with Google' },
       { status: 401 }
@@ -61,16 +196,56 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
   }
   const email = identity.kind === 'email-trial' ? emailTrialKey(identity.email) : identity.email
 
-  // Le client annonce le transport vision : il reçoit 40 Mio et un parsing
+  // Une auth lente/invalide est bornée par la deadline mais ne monopolise pas
+  // le slot mémoire : admission seulement après identité valide, toujours avant
+  // le tee et la première lecture applicative du body.
+  if (usesVisionTransport) {
+    releaseVisionAdmission = visionAdmission.tryAcquire() ?? undefined
+    if (!releaseVisionAdmission) {
+      cancelIncomingBody('vision_busy')
+      cleanupEarlyVision()
+      return visionBusyResponse()
+    }
+  }
+
+  // Le client annonce le transport vision : il reçoit 24 Mio et un parsing
   // streaming. Le texte historique reste borné à 10 Mio, ce qui ferme le pic
   // body + DOM + re-stringify sous la limite mémoire Worker de 128 Mio.
-  const usesVisionTransport = request.headers.get('x-arty-vision') === '1'
-  let body: BodyInit
-  let parsedPayload: Record<string, unknown> | undefined
-  let visionValidation: OpenAIVisionValidation = { ok: true, imageCount: 0, totalBytes: 0 }
-  let streamedVision: Extract<OpenAIVisionStreamValidation, { ok: true }> | undefined
-  let bufferedVisionBody: ReadableStream<Uint8Array> | undefined
+  let bufferedVisionBody: ObservedReadableStream | undefined
+  let walletResId: string | undefined
+  let dailyConsumed: { model: string; debited: QuotaDebit } | undefined
+  let capConsumed: PremiumCapResult | undefined
+  let trialConsumedBy: 'google' | 'email-trial' | undefined
+
+  const scheduleTrialRefund = () => {
+    if (trialConsumedBy === 'google') waitUntil(voidTrialMessage(env, identity.email))
+    if (trialConsumedBy === 'email-trial') {
+      waitUntil(voidEmailTrialMessage(env, identity.email))
+    }
+    trialConsumedBy = undefined
+  }
+  const scheduleUnservedRefunds = () => {
+    if (walletResId) {
+      waitUntil(voidWalletBilling(env, walletResId, email))
+      walletResId = undefined
+    }
+    if (capConsumed) {
+      waitUntil(voidPremiumCap(env, email, capConsumed))
+      capConsumed = undefined
+    }
+    if (dailyConsumed) {
+      waitUntil(voidDailyQuota(env, email, dailyConsumed.model, dailyConsumed.debited))
+      dailyConsumed = undefined
+    }
+    scheduleTrialRefund()
+  }
+  try {
+    let body: BodyInit
+    let parsedPayload: Record<string, unknown> | undefined
+    let visionValidation: OpenAIVisionValidation = { ok: true, imageCount: 0, totalBytes: 0 }
+    let streamedVision: Extract<OpenAIVisionStreamValidation, { ok: true }> | undefined
   const cancelBufferedVision = async (response: Response): Promise<Response> => {
+    scheduleTrialRefund()
     if (bufferedVisionBody) {
       await bufferedVisionBody.cancel().catch(() => undefined)
       bufferedVisionBody = undefined
@@ -79,17 +254,21 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
   }
 
   if (usesVisionTransport) {
-    // Killswitch réellement peu coûteux : quand la fonctionnalité est OFF, ne
-    // pas lire ni parser jusqu'à 40 Mio avant de refuser.
-    if (env.OPENAI_VISION_ENABLED !== 'true') {
-      return Response.json({ error: 'vision_disabled' }, { status: 403 })
-    }
     try {
+      const activeVisionDeadline = visionDeadline
+      if (!activeVisionDeadline) throw new Error('vision_deadline_missing')
       assertRequestContentLengthWithinLimit(request, OPENAI_CHAT_BODY_MAX_BYTES)
       if (!request.body) return Response.json({ error: 'invalid_request_body' }, { status: 400 })
       const [validationBody, upstreamBody] = request.body.tee()
-      bufferedVisionBody = upstreamBody
-      const result = await validateOpenAIVisionStream(validationBody, OPENAI_CHAT_BODY_MAX_BYTES)
+      bufferedVisionBody = observeReadableStreamCompletion(upstreamBody, activeVisionDeadline.signal)
+      const validationOperation = validateOpenAIVisionStream(
+        validationBody,
+        OPENAI_CHAT_BODY_MAX_BYTES,
+        activeVisionDeadline.signal,
+        (reason) => { void bufferedVisionBody?.cancel(reason) },
+      )
+      const result = await awaitVisionDependency(validationOperation, activeVisionDeadline)
+      throwIfVisionAborted(activeVisionDeadline)
       if (!result.ok) {
         return cancelBufferedVision(Response.json(
           { error: result.error, reason: result.reason },
@@ -97,8 +276,9 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
         ))
       }
       streamedVision = result
-      body = upstreamBody
+      body = bufferedVisionBody.stream
     } catch (err) {
+      throwIfVisionAborted(visionDeadline)
       const response = err instanceof RequestBodyTooLargeError
         ? requestBodyTooLargeResponse(err.maxBytes)
         : Response.json({ error: 'invalid_request_body' }, { status: 400 })
@@ -149,10 +329,36 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
   // (sub/pro/vip/trial). `checkAllowedUser` gère le bypass VIP et le
   // décrément du compteur trial KV.
   if (!apiKey && env.OPENAI_API_KEY) {
-    const result =
+    const accessOperation =
       identity.kind === 'email-trial'
-        ? await consumeEmailTrialMessage(env, identity.email)
-        : await checkAllowedUser(request, env)
+        ? consumeEmailTrialMessage(env, identity.email)
+        : checkAllowedUser(request, env)
+    const result = await awaitVisionDependency(
+      accessOperation,
+      visionDeadline,
+      (pending) => {
+        waitUntil(pending.then((lateResult) => {
+          if (
+            !lateResult ||
+            isTrialExpired(lateResult) ||
+            lateResult.planType !== 'trial' ||
+            lateResult.trialDebited !== true
+          ) return
+          return identity.kind === 'email-trial'
+            ? voidEmailTrialMessage(env, identity.email)
+            : voidTrialMessage(env, identity.email)
+        }).catch(() => undefined))
+      },
+    )
+    if (
+      usesVisionTransport &&
+      result &&
+      !isTrialExpired(result) &&
+      result.planType === 'trial' &&
+      result.trialDebited === true
+    ) {
+      trialConsumedBy = identity.kind
+    }
     if (isTrialExpired(result)) {
       // Essai email épuisé : pas de wallet (espace de clés disjoint, CRIT-1) → 403 direct.
       if (identity.kind === 'email-trial') return cancelBufferedVision(trialExpiredResponse())
@@ -217,7 +423,6 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
 
   // Sans abo : si l'utilisateur a des crédits → wallet (n'importe quel modèle,
   // payé à l'usage) ; sinon OpenAI reste verrouillé en gratuit.
-  let walletResId: string | undefined
   if (usingServerKey && userPlan === 'free') {
     let parsedBody: Record<string, unknown> = streamedVision
       ? {
@@ -240,7 +445,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     if (!streamedVision && parsedPayload && previousOutputLimit !== enforcedOutputLimit) {
       mustSerializeParsedPayload = true
     }
-    const start = await beginWalletBilling(env, waitUntil, {
+    const walletOperation = beginWalletBilling(env, waitUntil, {
       email,
       model: modelName,
       provider: 'openai',
@@ -251,6 +456,13 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
             validatedImageTokens: visionValidation.ok ? visionValidation.validatedImageTokens : undefined,
             validatedImageCount: visionValidation.ok ? visionValidation.validatedImageCount : undefined,
           }),
+    })
+    const start = await awaitVisionDependency(walletOperation, visionDeadline, (pending) => {
+      waitUntil(pending.then((lateStart) => {
+        if (lateStart.mode === 'wallet') {
+          return voidWalletBilling(env, lateStart.resId, email)
+        }
+      }).catch(() => undefined))
     })
     if (start.mode === 'refuse') return cancelBufferedVision(start.response)
     if (start.mode === 'wallet') {
@@ -264,7 +476,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
   }
 
   // Ne sérialiser que si le proxy a effectivement modifié le JSON. Le body
-  // original est déjà validé et conserver une seconde string de ~32 Mio au
+  // original est déjà validé et conserver une seconde string de ~24 Mio au
   // moment de l'appel upstream dépasserait vite la mémoire d'un Worker.
   if (parsedPayload && mustSerializeParsedPayload && !walletResId) {
     body = JSON.stringify(parsedPayload)
@@ -281,11 +493,20 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
   // on garde une trace de ce qui a été consommé pour le REMBOURSER si
   // l'upstream ne sert pas la réponse (sinon le retry d'éligibilité du
   // client, Terra rejeté → gpt-5, consommait 2 unités pour 1 message).
-  let dailyConsumedModel: string | undefined
-  let capConsumed: PremiumCapResult | undefined
   if (usingServerKey && userPlan === 'subscription') {
-    const quota = await consumeDailyQuota(env, email, modelName)
+    const quotaOperation = consumeDailyQuota(env, email, modelName)
+    const quota = await awaitVisionDependency(quotaOperation, visionDeadline, (pending) => {
+      waitUntil(pending.then((lateQuota) => {
+        if (lateQuota.debited) {
+          return voidDailyQuota(env, email, modelName, lateQuota.debited)
+        }
+      }).catch(() => undefined))
+    })
     if (!quota.allowed) {
+      if (quota.debited) {
+        dailyConsumed = { model: modelName, debited: quota.debited }
+        scheduleUnservedRefunds()
+      }
       return cancelBufferedVision(Response.json(
         {
           error: `Quota journalier atteint (${quota.count}/${quota.limit} appels aujourd'hui pour ${modelName}). Réessayez demain ou configurez votre propre clé.`,
@@ -295,19 +516,24 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
         { status: 429 }
       ))
     }
-    dailyConsumedModel = modelName
+    if (quota.debited) dailyConsumed = { model: modelName, debited: quota.debited }
   }
 
   // Cap mensuel premium uniquement pour le plan subscription.
   if (usingServerKey && userPlan === 'subscription') {
-    const cap = await checkPremiumCap(email, modelName, env)
+    const capOperation = checkPremiumCap(email, modelName, env)
+    const cap = await awaitVisionDependency(capOperation, visionDeadline, (pending) => {
+      waitUntil(pending.then((lateCap) => {
+        if (lateCap.debited) return voidPremiumCap(env, email, lateCap)
+      }).catch(() => undefined))
+    })
     if (!cap.allowed) {
       // Le quota journalier vient d'être consommé mais le message ne partira
       // pas — rembourser pour ne pas pénaliser le refus de cap.
-      if (dailyConsumedModel) waitUntil(voidDailyQuota(env, email, dailyConsumedModel))
+      scheduleUnservedRefunds()
       return cancelBufferedVision(premiumCapReachedResponse(cap))
     }
-    if (cap.reason === 'monthly_cap' || cap.reason === 'premium_pack') capConsumed = cap
+    if (cap.debited) capConsumed = cap
   }
 
   // Plus aucun contrôle n'utilise l'arbre parsé. Libérer cette référence avant
@@ -323,10 +549,15 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
         'Authorization': `Bearer ${apiKey}`,
       },
       body,
+      ...(visionDeadline ? { signal: visionDeadline.signal } : {}),
     })
-    // Le fetch a consommé/pris possession du stream ; ne plus retenir la
-    // branche du tee dans la fermeture de la requête.
-    bufferedVisionBody = undefined
+    // `fetch()` peut résoudre dès les headers. Le permis mémoire reste détenu
+    // jusqu'à EOF/cancel réel du body de requête, jamais jusqu'aux seuls headers.
+    if (bufferedVisionBody) {
+      await bufferedVisionBody.completed
+      throwIfVisionAborted(visionDeadline)
+      bufferedVisionBody = undefined
+    }
 
     const responseHeaders = (): Record<string, string> => {
       const out: Record<string, string> = {
@@ -345,9 +576,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
       // ET rembourse quota/cap consommés en amont (revue C3 — invariant :
       // « quota/cap consommé ⟺ réponse servie »). Couvre le rejet de modèle
       // (retry client → sans ça, 2 unités par message) ET tout autre échec.
-      if (walletResId) waitUntil(voidWalletBilling(env, walletResId, email))
-      if (capConsumed) waitUntil(voidPremiumCap(env, email, capConsumed))
-      if (dailyConsumedModel) waitUntil(voidDailyQuota(env, email, dailyConsumedModel))
+      scheduleUnservedRefunds()
       // Leak d'info (N-2) : sur la clé serveur, masquer l'erreur OpenAI brute
       // (état de la clé owner). EXCEPTION : le rejet de modèle doit rester
       // détectable — le client (startChatRequest) s'en sert pour retomber de
@@ -400,9 +629,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
       })
     }
 
-    if (walletResId) waitUntil(voidWalletBilling(env, walletResId, email))
-    if (capConsumed) waitUntil(voidPremiumCap(env, email, capConsumed))
-    if (dailyConsumedModel) waitUntil(voidDailyQuota(env, email, dailyConsumedModel))
+    scheduleUnservedRefunds()
     return new Response(response.body, {
       status: response.status,
       headers: responseHeaders(),
@@ -412,13 +639,30 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
       await bufferedVisionBody.cancel(err).catch(() => undefined)
       bufferedVisionBody = undefined
     }
-    if (walletResId) waitUntil(voidWalletBilling(env, walletResId, email))
     // Même invariant que le chemin !response.ok : rien n'a été servi.
-    if (capConsumed) waitUntil(voidPremiumCap(env, email, capConsumed))
-    if (dailyConsumedModel) waitUntil(voidDailyQuota(env, email, dailyConsumedModel))
+    scheduleUnservedRefunds()
+    throwIfVisionAborted(visionDeadline)
     return Response.json(
       { error: err instanceof Error ? err.message : 'OpenAI proxy error' },
       { status: 502 }
     )
+  }
+  } catch (err) {
+    scheduleUnservedRefunds()
+    scheduleTrialRefund()
+    if (usesVisionTransport && visionDeadline?.signal.aborted) {
+      return visionTimeoutResponse()
+    }
+    throw err
+  } finally {
+    try {
+      if (bufferedVisionBody) {
+        await bufferedVisionBody.cancel('vision_request_cleanup').catch(() => undefined)
+        bufferedVisionBody = undefined
+      }
+    } finally {
+      visionDeadline?.cleanup()
+      releaseVisionAdmission?.()
+    }
   }
 }

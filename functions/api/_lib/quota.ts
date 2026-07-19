@@ -4,6 +4,15 @@ import { computeCostMicroUsd } from './pricing'
 
 const DEFAULT_DAILY_LIMIT = 50
 
+export interface QuotaDebit {
+  /** UTC day whose counters were incremented. */
+  day: string
+  /** The global daily counter was confirmed incremented. */
+  global: boolean
+  /** The per-model daily counter was confirmed incremented. */
+  model: boolean
+}
+
 export interface QuotaResult {
   /** True if the request should proceed. */
   allowed: boolean
@@ -11,6 +20,8 @@ export interface QuotaResult {
   count: number
   /** Configured limit at evaluation time (for the model). */
   limit: number
+  /** Counters whose increment was confirmed and may therefore be refunded. */
+  debited?: QuotaDebit
 }
 
 export interface ModelUsage {
@@ -145,14 +156,20 @@ export async function consumeDailyQuota(
   const hasPerModel = Object.keys(perModel).length > 0
 
   const modelLimit = getLimitForModel(env, model)
+  const day = todayKey()
 
   if (!env.DB) {
     return { allowed: true, count: 0, limit: modelLimit }
   }
 
-  try {
-    const day = todayKey()
+  let globalDebited = false
+  let modelDebited = false
+  const confirmedDebit = (): QuotaDebit | undefined =>
+    globalDebited || modelDebited
+      ? { day, global: globalDebited, model: modelDebited }
+      : undefined
 
+  try {
     // Counter global (utilisé comme fallback quand DAILY_QUOTA_PER_MODEL
     // n'est pas défini). Incrémenté dans tous les cas pour garder l'historique.
     const globalRow = await env.DB.prepare(
@@ -162,6 +179,7 @@ export async function consumeDailyQuota(
     )
       .bind(email, day)
       .first<{ count: number }>()
+    globalDebited = Boolean(globalRow)
 
     // Counter par modèle — utilisé pour l'affichage détaillé ET (si
     // DAILY_QUOTA_PER_MODEL est set) pour appliquer la limite par modèle.
@@ -212,6 +230,7 @@ export async function consumeDailyQuota(
     )
       .bind(email, day, model)
       .first<{ count: number }>()
+    modelDebited = Boolean(modelRow)
 
     const modelCount = modelRow?.count ?? 0
     const globalCount = globalRow?.count ?? 0
@@ -222,39 +241,54 @@ export async function consumeDailyQuota(
       ? modelCount <= modelLimit
       : globalCount <= modelLimit
 
-    return { allowed, count: hasPerModel ? modelCount : globalCount, limit: modelLimit }
+    return {
+      allowed,
+      count: hasPerModel ? modelCount : globalCount,
+      limit: modelLimit,
+      debited: confirmedDebit(),
+    }
   } catch (err) {
     // Never block on infra failure — log and let the request through.
     console.error('quota.consumeDailyQuota failed', err)
-    return { allowed: true, count: 0, limit: modelLimit }
+    return { allowed: true, count: 0, limit: modelLimit, debited: confirmedDebit() }
   }
 }
 
 /**
- * Rembourse UNE consommation de quota journalier (tables `quota` +
- * `quota_model`, les DEUX — en corriger une seule les désynchroniserait)
+ * Rembourse UNE consommation de quota journalier. Le caller doit passer le
+ * marqueur `debited` de `consumeDailyQuota` afin de ne rembourser que les
+ * écritures D1 réellement confirmées (y compris en cas d'échec partiel).
  * quand l'upstream n'a pas servi la réponse. Revue C3 (18/07/2026) :
  * `consumeDailyQuota` est appelé AVANT le fetch upstream, et le retry
  * d'éligibilité du client (openaiClient.startChatRequest) refait une requête
  * complète → 2 unités pour 1 message servi. Invariant restauré : « quota
  * consommé ⟺ réponse servie ». Best-effort (waitUntil), jamais sous 0.
  */
-export async function voidDailyQuota(env: Env, email: string, model: string): Promise<void> {
+export async function voidDailyQuota(
+  env: Env,
+  email: string,
+  model: string,
+  debited: QuotaDebit
+): Promise<void> {
   if (!env.DB) return
-  const day = todayKey()
+  if (!debited.global && !debited.model) return
   try {
-    await env.DB.prepare(
-      `UPDATE quota SET count = MAX(0, count - 1), updated_at = unixepoch()
-       WHERE email = ?1 AND day = ?2`
-    )
-      .bind(email, day)
-      .run()
-    await env.DB.prepare(
-      `UPDATE quota_model SET count = MAX(0, count - 1), updated_at = unixepoch()
-       WHERE email = ?1 AND day = ?2 AND model = ?3`
-    )
-      .bind(email, day, model)
-      .run()
+    if (debited.global) {
+      await env.DB.prepare(
+        `UPDATE quota SET count = MAX(0, count - 1), updated_at = unixepoch()
+         WHERE email = ?1 AND day = ?2`
+      )
+        .bind(email, debited.day)
+        .run()
+    }
+    if (debited.model) {
+      await env.DB.prepare(
+        `UPDATE quota_model SET count = MAX(0, count - 1), updated_at = unixepoch()
+         WHERE email = ?1 AND day = ?2 AND model = ?3`
+      )
+        .bind(email, debited.day, model)
+        .run()
+    }
   } catch (err) {
     console.error('[quota] void failed (unité perdue, non bloquant)', err)
   }

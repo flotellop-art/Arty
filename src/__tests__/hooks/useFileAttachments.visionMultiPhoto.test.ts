@@ -31,7 +31,7 @@ describe('hydrateFiles — lots canoniques 4K', () => {
         size: 1024,
         width: 4096,
         height: 3072,
-        normalizationVersion: 1,
+        normalizationVersion: 2,
       }
     })
 
@@ -42,7 +42,7 @@ describe('hydrateFiles — lots canoniques 4K', () => {
       size: 1024,
       width: 4096,
       height: 3072,
-      normalizationVersion: 1,
+      normalizationVersion: 2,
     })))
 
     expect(peak).toBe(1)

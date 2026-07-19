@@ -51,7 +51,9 @@ describe('whisper-proxy — câblage (gardes par source)', () => {
   })
 
   it('rembourse le quota sur échec upstream (invariant C3/C4 « consommé ⟺ servi »)', () => {
-    expect(src).toMatch(/voidDailyQuota\(env, email, dailyConsumedModel\)/)
+    expect(src).toMatch(
+      /voidDailyQuota\(env, email, dailyConsumed\.model, dailyConsumed\.debited\)/,
+    )
   })
 })
 

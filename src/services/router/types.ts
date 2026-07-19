@@ -81,7 +81,7 @@ export interface RouteInput {
   hasPdf: boolean
   hasOtherFiles: boolean
   /** Toutes les pièces jointes sont des JPEG/PNG canoniques PR-A, dans les
-      bornes 4096 px / 6 Mio / 24 Mio attendues par le builder Terra. */
+      bornes 4096 px / 4 Mio / 16 Mio attendues par le builder Terra. */
   hasSupportedVisionImages: boolean
   euOnly: boolean
   // Une réponse précédente contient des données Google privées (mail, Drive,

@@ -215,6 +215,8 @@ export interface AllowedUser {
   trialRemaining?: number
   /** Pour le plan trial uniquement : liste des familles de modèles autorisées. */
   allowedModels?: string[]
+  /** Interne proxy : vrai uniquement si CET appel a atomiquement incrémenté D1. */
+  trialDebited?: true
 }
 
 export interface TrialExpired {
@@ -348,7 +350,6 @@ export async function checkAllowedUser(
   // ALLOWED_EMAILS = beta testeurs VIP, bypass du check D1
   const allowed = parseAllowedEmails(env.ALLOWED_EMAILS)
   if (allowed.includes(email)) {
-    console.log(`[VIP bypass] ${email.slice(0, 3)}...`)
     return { email, planType: 'vip' }
   }
 
@@ -418,6 +419,25 @@ async function consumeTrialMessage(env: Env, email: string): Promise<CheckResult
     planType: 'trial',
     trialRemaining: Math.max(0, TRIAL_INITIAL_MESSAGES - outcome.count),
     allowedModels: [...TRIAL_ALLOWED_MODELS],
+    trialDebited: true,
+  }
+}
+
+/**
+ * Rembourse un message trial réservé par `checkAllowedUser` lorsqu'aucune
+ * requête IA n'est finalement servie (timeout/refus vision pré-upstream).
+ * Best-effort et borné à zéro ; sans D1, le chemin d'origine était fail-open.
+ */
+export async function voidTrialMessage(env: Env, email: string): Promise<void> {
+  if (!env.DB) return
+  try {
+    await env.DB.prepare(
+      `UPDATE trial_usage
+       SET used = MAX(0, used - 1), updated_at = unixepoch()
+       WHERE email = ?1`,
+    ).bind(email).run()
+  } catch (err) {
+    console.error('[trial] void failed', err)
   }
 }
 

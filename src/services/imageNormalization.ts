@@ -1,14 +1,15 @@
 import type { FileAttachment } from '../types'
 
-export const IMAGE_NORMALIZATION_VERSION = 1
+export const IMAGE_NORMALIZATION_VERSION = 2
 export const MAX_IMAGE_SOURCE_BYTES = 32 * 1024 * 1024
 export const MAX_IMAGE_SOURCE_PIXELS = 50_000_000
 export const MAX_IMAGE_DIMENSION = 4096
-export const MAX_NORMALIZED_IMAGE_BYTES = 6 * 1024 * 1024
+export const MAX_NORMALIZED_IMAGE_BYTES = 4 * 1024 * 1024
+export const MAX_NORMALIZED_VISION_BATCH_BYTES = 4 * MAX_NORMALIZED_IMAGE_BYTES
 
 const HEADER_READ_BYTES = 512 * 1024
 const MAX_SAFE_HTML_FALLBACK_PIXELS = 16_777_216
-const JPEG_QUALITY_STEPS = [0.9, 0.875, 0.85] as const
+const JPEG_QUALITY_STEPS = [0.9, 0.875, 0.85, 0.8, 0.75, 0.7] as const
 const MIN_OUTPUT_DIMENSION = 256
 const MAX_RESIZE_ATTEMPTS = 8
 
@@ -42,7 +43,7 @@ export interface NormalizedImageAsset {
 }
 
 export interface ImageNormalizationOptions {
-  /** Budget binaire de cet asset, plafonné par la borne globale de 6 Mio. */
+  /** Budget binaire de cet asset, plafonné par la borne globale de 4 Mio. */
   maxOutputBytes?: number
 }
 
@@ -489,10 +490,9 @@ async function encodeWithinLimit(
         const finalQuality = JPEG_QUALITY_STEPS[JPEG_QUALITY_STEPS.length - 1] ?? 0.85
         const qualities: readonly number[] = attempt === 0 ? JPEG_QUALITY_STEPS : [finalQuality]
         blob = await canvasToBlob(canvas, mimeType, qualities[0] ?? finalQuality)
-        for (let index = 1; index < qualities.length; index++) {
+        for (let index = 1; blob.size > maxOutputBytes && index < qualities.length; index++) {
           const quality = qualities[index] ?? finalQuality
           blob = await canvasToBlob(canvas, mimeType, quality)
-          if (blob.size <= maxOutputBytes) break
         }
       } else {
         blob = await canvasToBlob(canvas, mimeType)
@@ -514,7 +514,7 @@ async function encodeWithinLimit(
     }
   }
 
-  throw new ImageNormalizationError('output_too_large', 'Normalized image exceeds 6 MiB')
+  throw new ImageNormalizationError('output_too_large', 'Normalized image exceeds 4 MiB')
 }
 
 async function verifyEncodedOutput(

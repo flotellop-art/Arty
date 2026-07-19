@@ -17,7 +17,7 @@ const image = (id: string, type: 'image/jpeg' | 'image/png'): FileAttachment => 
   size: 100,
   width: 4096,
   height: 3072,
-  normalizationVersion: 1,
+  normalizationVersion: 2,
 })
 
 describe('builder OpenAI vision one-shot', () => {

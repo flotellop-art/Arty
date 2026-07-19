@@ -542,6 +542,21 @@ export async function consumeEmailTrialMessage(
     planType: 'trial',
     trialRemaining: Math.max(0, EMAIL_TRIAL_MESSAGES - outcome.count),
     allowedModels: [...TRIAL_ALLOWED_MODELS],
+    trialDebited: true,
+  }
+}
+
+/** Même remboursement best-effort, dans l'espace D1 disjoint email-trial. */
+export async function voidEmailTrialMessage(env: Env, normalizedEmail: string): Promise<void> {
+  if (!env.DB) return
+  try {
+    await env.DB.prepare(
+      `UPDATE email_trial_usage
+       SET used = MAX(0, used - 1), updated_at = unixepoch()
+       WHERE email = ?1`,
+    ).bind(normalizedEmail).run()
+  } catch (err) {
+    console.error('[email-trial] void failed', err)
   }
 }
 

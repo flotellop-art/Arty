@@ -181,7 +181,7 @@ describe('wallet billing through complete proxy handlers', () => {
   })
 
   it('annule le wallet sur un 200 OpenAI sans body exploitable', async () => {
-    global.fetch = vi.fn(async (input: RequestInfo | URL) => {
+    global.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input)
       const google = googleIdentityResponse(url)
       if (google) return google
@@ -256,11 +256,12 @@ describe('wallet billing through complete proxy handlers', () => {
       cacheCreationTokens: 0,
       audioSeconds: 0,
     }
-    global.fetch = vi.fn(async (input: RequestInfo | URL) => {
+    global.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input)
       const google = googleIdentityResponse(url)
       if (google) return google
       if (url.includes('api.openai.com')) {
+        await new Response(init?.body ?? null).arrayBuffer()
         return new Response([
           'data: {"choices":[{"delta":{"content":"ok"}}]}',
           '',
@@ -301,11 +302,12 @@ describe('wallet billing through complete proxy handlers', () => {
 
   it("annule intégralement la réservation vision si OpenAI refuse l'appel", async () => {
     h.env.OPENAI_VISION_ENABLED = 'true'
-    global.fetch = vi.fn(async (input: RequestInfo | URL) => {
+    global.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input)
       const google = googleIdentityResponse(url)
       if (google) return google
       if (url.includes('api.openai.com')) {
+        await new Response(init?.body ?? null).arrayBuffer()
         return Response.json({ error: { message: 'upstream refused' } }, { status: 400 })
       }
       throw new Error(`Unexpected fetch: ${url}`)

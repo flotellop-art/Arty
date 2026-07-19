@@ -53,7 +53,7 @@ describe('secureFileStorage — asset canonique PR-A', () => {
       size: 999_999, // taille caller volontairement fausse
       width: 4096,
       height: 3072,
-      normalizationVersion: 1,
+      normalizationVersion: 2,
     })
 
     expect(mocks.compressImageIfNeeded).not.toHaveBeenCalled()
@@ -62,7 +62,7 @@ describe('secureFileStorage — asset canonique PR-A', () => {
       size: 4,
       width: 4096,
       height: 3072,
-      normalizationVersion: 1,
+      normalizationVersion: 2,
       encryptedData: 'encrypted:AQIDBA==',
     })
     await expect(getFile('canonical-1')).resolves.toEqual({
@@ -73,7 +73,7 @@ describe('secureFileStorage — asset canonique PR-A', () => {
       size: 4,
       width: 4096,
       height: 3072,
-      normalizationVersion: 1,
+      normalizationVersion: 2,
     })
   })
 
@@ -99,7 +99,7 @@ describe('secureFileStorage — asset canonique PR-A', () => {
       name: 'broken.jpg',
       type: 'image/jpeg',
       data: 'AQID',
-      normalizationVersion: 1,
+      normalizationVersion: 2,
     })).rejects.toThrow('invalid dimensions')
     expect(mocks.compressImageIfNeeded).not.toHaveBeenCalled()
   })
@@ -117,10 +117,10 @@ describe('secureFileStorage — asset canonique PR-A', () => {
     await expect(putFile({ ...base, normalizationVersion: 99 })).rejects.toThrow(
       'Unsupported canonical image normalization version',
     )
-    await expect(putFile({ ...base, width: 4097, normalizationVersion: 1 })).rejects.toThrow(
+    await expect(putFile({ ...base, width: 4097, normalizationVersion: 2 })).rejects.toThrow(
       'invalid dimensions',
     )
-    await expect(putFile({ ...base, type: 'application/pdf', normalizationVersion: 1 })).rejects.toThrow(
+    await expect(putFile({ ...base, type: 'application/pdf', normalizationVersion: 2 })).rejects.toThrow(
       'unsupported MIME type',
     )
     expect(mocks.compressImageIfNeeded).not.toHaveBeenCalled()

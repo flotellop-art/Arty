@@ -57,7 +57,7 @@ function payload(blocks: unknown[], model = 'gpt-5.6-terra') {
 }
 
 describe('validateOpenAIVisionPayload', () => {
-  it('aligne exactement le lot 24 Mio sur quatre images de 6 Mio', () => {
+  it('aligne exactement le lot 16 Mio sur quatre images de 4 Mio', () => {
     expect(OPENAI_VISION_MAX_BATCH_BYTES).toBe(4 * OPENAI_VISION_MAX_IMAGE_BYTES)
     const image = imageBlock(pngBase64(32, 32, OPENAI_VISION_MAX_IMAGE_BYTES))
     expect(validateOpenAIVisionPayload(payload([
@@ -113,7 +113,7 @@ describe('validateOpenAIVisionPayload', () => {
     expect(validateOpenAIVisionPayload(payload([pdf]))).toMatchObject({ ok: false, reason: 'non_image_media_not_allowed' })
   })
 
-  it('refuse MIME usurpé, dimensions >4096 et image >6 Mio', () => {
+  it('refuse MIME usurpé, dimensions >4096 et image >4 Mio', () => {
     expect(validateOpenAIVisionPayload(payload([
       imageBlock(jpegBase64(32, 32), 'image/png'),
     ]))).toMatchObject({ ok: false, reason: 'mime_or_dimensions_mismatch' })

@@ -12,8 +12,14 @@ import { hasKnownPricing } from './pricing'
  * acheté (table `premium_packs`) qui peut compenser.
  */
 
+export type PremiumCapDebit =
+  | { kind: 'monthly_cap'; month: string }
+  | { kind: 'premium_pack' }
+
 export interface PremiumCapResult {
   allowed: boolean
+  /** Exact unit and period confirmed consumed, suitable for a later refund. */
+  debited?: PremiumCapDebit
   /**
    * - 'standard_model' : modèle non-premium, pas de cap
    * - 'monthly_cap'    : sous le cap mensuel
@@ -224,6 +230,7 @@ export async function checkPremiumCap(
   if (outcome.status === 'consumed') {
     return {
       allowed: true,
+      debited: { kind: 'monthly_cap', month },
       reason: 'monthly_cap',
       remaining: Math.max(0, entry.cap - outcome.count),
       bucket: entry.bucket,
@@ -243,7 +250,14 @@ export async function checkPremiumCap(
   // cap_reached → tenter un Pack Premium acheté (table premium_packs, déjà atomique).
   const packConsumed = await consumePremiumPack(env, email)
   if (packConsumed) {
-    return { allowed: true, reason: 'premium_pack', remaining: 0, bucket: entry.bucket, cap: entry.cap }
+    return {
+      allowed: true,
+      debited: { kind: 'premium_pack' },
+      reason: 'premium_pack',
+      remaining: 0,
+      bucket: entry.bucket,
+      cap: entry.cap,
+    }
   }
   return { allowed: false, reason: 'cap_reached', remaining: 0, bucket: entry.bucket, cap: entry.cap }
 }
@@ -263,7 +277,9 @@ export async function checkPremiumCap(
  *   restaure exactement 1 crédit ; on cible le plus ancien entamé pour
  *   rester déterministe (l'ordre FIFO peut être légèrement perturbé, le
  *   TOTAL reste exact).
- * - autres reasons ('standard_model', fail-open sans bucket) : no-op.
+ * - tout résultat sans marqueur `debited`, notamment un fail-open : no-op.
+ * Le marqueur mensuel conserve le mois UTC exact du débit : un remboursement
+ * tardif après un changement de mois ne peut jamais toucher la nouvelle ligne.
  * Best-effort (waitUntil) : un échec de remboursement est loggé, jamais
  * propagé — pire cas = l'ancien comportement (une unité perdue).
  */
@@ -272,18 +288,18 @@ export async function voidPremiumCap(
   email: string,
   consumed: PremiumCapResult
 ): Promise<void> {
-  if (!env.DB || !consumed.allowed || !consumed.bucket) return
+  if (!env.DB || !consumed.debited || !consumed.allowed || !consumed.bucket) return
   try {
-    if (consumed.reason === 'monthly_cap') {
+    if (consumed.reason === 'monthly_cap' && consumed.debited.kind === 'monthly_cap') {
       await env.DB.prepare(
         `UPDATE premium_cap SET count = MAX(0, count - 1), updated_at = unixepoch()
          WHERE email = ?1 AND month = ?2 AND bucket = ?3`
       )
-        .bind(email, currentMonthKey(), consumed.bucket)
+        .bind(email, consumed.debited.month, consumed.bucket)
         .run()
       return
     }
-    if (consumed.reason === 'premium_pack') {
+    if (consumed.reason === 'premium_pack' && consumed.debited.kind === 'premium_pack') {
       const target = await env.DB.prepare(
         `SELECT user_email, ls_order_id FROM premium_packs
          WHERE user_email = ?1 AND messages_used > 0

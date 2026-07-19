@@ -69,7 +69,7 @@ function bodyStream(json: string, chunkBytes = 64 * 1024): ReadableStream<Uint8A
 }
 
 describe('validateOpenAIVisionStream', () => {
-  it('valide quatre data URLs distinctes de 6 Mio sans construire le DOM complet', async () => {
+  it('valide quatre data URLs distinctes de 4 Mio sans construire le DOM complet', async () => {
     let images = [1, 2, 3, 4].map((fill) =>
       pngBase64(4096, 4096, OPENAI_VISION_MAX_IMAGE_BYTES, fill),
     )
@@ -78,7 +78,7 @@ describe('validateOpenAIVisionStream', () => {
     const [validationBody, upstreamBody] = bodyStream(json).tee()
     images = []
     json = ''
-    const result = await validateOpenAIVisionStream(validationBody, 40 * 1024 * 1024)
+    const result = await validateOpenAIVisionStream(validationBody, 24 * 1024 * 1024)
     expect(result).toMatchObject({
       ok: true,
       imageCount: 4,
@@ -108,7 +108,7 @@ describe('validateOpenAIVisionStream', () => {
     await expect(validateOpenAIVisionStream(
       bodyStream(JSON.stringify(extraBlock)),
       1024 * 1024,
-    )).resolves.toMatchObject({ ok: false, reason: 'invalid_vision_block_order' })
+    )).resolves.toMatchObject({ ok: false, reason: 'invalid_vision_field' })
 
     const trailingMessage = visionPayload([image])
     ;(trailingMessage.messages as unknown[]).push({})
@@ -151,14 +151,63 @@ describe('validateOpenAIVisionStream', () => {
   it('coupe une string JSON géante avant que le tokenizer ne la matérialise', async () => {
     const image = pngBase64(32, 32, 57, 1)
     const payload = visionPayload([image])
-    ;(payload.messages[0] as { content: string }).content = 'x'.repeat(9 * 1024 * 1024 + 1)
+    ;(payload.messages[0] as { content: string }).content = 'x'.repeat(6 * 1024 * 1024 + 1)
     await expect(validateOpenAIVisionStream(
       bodyStream(JSON.stringify(payload)),
-      40 * 1024 * 1024,
+      24 * 1024 * 1024,
     )).resolves.toMatchObject({
       ok: false,
       status: 413,
       reason: 'json_string_too_large',
+    })
+  })
+
+  it('rejette tôt les champs inconnus et les structures adversariales', async () => {
+    const image = pngBase64(32, 32, 57, 1)
+    const unknown = visionPayload([image]) as Record<string, unknown>
+    unknown.unexpected = 'x'.repeat(1024)
+    await expect(validateOpenAIVisionStream(
+      bodyStream(JSON.stringify(unknown)),
+      2 * 1024 * 1024,
+    )).resolves.toMatchObject({ ok: false, reason: 'invalid_vision_field' })
+
+    const manyMessages = visionPayload([image])
+    manyMessages.messages = [
+      ...Array.from({ length: 128 }, () => ({ role: 'user', content: 'x' })),
+      manyMessages.messages[1],
+    ]
+    await expect(validateOpenAIVisionStream(
+      bodyStream(JSON.stringify(manyMessages)),
+      2 * 1024 * 1024,
+    )).resolves.toMatchObject({
+      ok: false,
+      status: 413,
+      reason: 'vision_structure_too_large',
+    })
+
+    const tooMuchText = visionPayload([image])
+    ;(tooMuchText.messages[0] as { content: string }).content = 'x'.repeat(1024 * 1024 + 1)
+    await expect(validateOpenAIVisionStream(
+      bodyStream(JSON.stringify(tooMuchText)),
+      2 * 1024 * 1024,
+    )).resolves.toMatchObject({
+      ok: false,
+      status: 413,
+      reason: 'vision_scalar_strings_too_large',
+    })
+
+    const giantRoles = visionPayload([image])
+    giantRoles.messages = [1, 2, 3, 4].map(() => ({
+      role: 'x'.repeat(512 * 1024),
+      content: 'x',
+    })) as typeof giantRoles.messages
+    await expect(validateOpenAIVisionStream(
+      bodyStream(JSON.stringify(giantRoles)),
+      4 * 1024 * 1024,
+    )).resolves.toMatchObject({
+      ok: false,
+      status: 413,
+      reason: 'vision_scalar_strings_too_large',
     })
   })
 })

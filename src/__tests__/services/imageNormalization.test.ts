@@ -260,7 +260,7 @@ describe('normalizeImageForVision', () => {
       size: 256,
       width: 4096,
       height: 3072,
-      normalizationVersion: 1,
+      normalizationVersion: 2,
     })
     // Source redimensionnée puis blob canonique redécodé pour validation.
     expect(bitmapClose).toHaveBeenCalledTimes(2)
@@ -295,24 +295,44 @@ describe('normalizeImageForVision', () => {
     })
   })
 
-  it('essaie JPEG q.90, q.875 puis q.85 avant de réduire les dimensions', async () => {
-    const sixMiB = 6 * 1024 * 1024
-    const { encodedQualities } = installCanvasMocks([], [sixMiB + 2, sixMiB + 1, sixMiB - 1])
+  it('conserve q.90 quand le premier encodage respecte déjà 4 Mio', async () => {
+    const fourMiB = 4 * 1024 * 1024
+    const { encodedQualities } = installCanvasMocks([], [fourMiB - 1])
     const blob = new Blob([jpegBytes(4032, 3024)], { type: 'image/jpeg' })
-    const result = await normalizeImageForVision(blob)
 
-    expect(encodedQualities).toEqual([0.9, 0.875, 0.85])
-    expect(result).toMatchObject({ size: sixMiB - 1, width: 4032, height: 3024 })
+    await expect(normalizeImageForVision(blob)).resolves.toMatchObject({
+      size: fourMiB - 1,
+      width: 4032,
+      height: 3024,
+    })
+    expect(encodedQualities).toEqual([0.9])
   })
 
-  it('réduit proportionnellement les dimensions si q.85 dépasse encore 6 Mio', async () => {
-    const sevenMiB = 7 * 1024 * 1024
-    const fiveMiB = 5 * 1024 * 1024
-    installCanvasMocks([], [sevenMiB, sevenMiB, sevenMiB, fiveMiB])
+  it('essaie les qualités JPEG jusqu’à q.70 avant de réduire les dimensions', async () => {
+    const fourMiB = 4 * 1024 * 1024
+    const { encodedQualities } = installCanvasMocks([], [
+      fourMiB + 5,
+      fourMiB + 4,
+      fourMiB + 3,
+      fourMiB + 2,
+      fourMiB + 1,
+      fourMiB - 1,
+    ])
     const blob = new Blob([jpegBytes(4032, 3024)], { type: 'image/jpeg' })
     const result = await normalizeImageForVision(blob)
 
-    expect(result.size).toBe(fiveMiB)
+    expect(encodedQualities).toEqual([0.9, 0.875, 0.85, 0.8, 0.75, 0.7])
+    expect(result).toMatchObject({ size: fourMiB - 1, width: 4032, height: 3024 })
+  })
+
+  it('réduit proportionnellement les dimensions si q.85 dépasse encore 4 Mio', async () => {
+    const fiveMiB = 5 * 1024 * 1024
+    const threeMiB = 3 * 1024 * 1024
+    installCanvasMocks([], [fiveMiB, fiveMiB, fiveMiB, fiveMiB, fiveMiB, fiveMiB, threeMiB])
+    const blob = new Blob([jpegBytes(4032, 3024)], { type: 'image/jpeg' })
+    const result = await normalizeImageForVision(blob)
+
+    expect(result.size).toBe(threeMiB)
     expect(result.width).toBeLessThan(4032)
     expect(result.height).toBeLessThan(3024)
     expect(result.width / result.height).toBeCloseTo(4 / 3, 2)

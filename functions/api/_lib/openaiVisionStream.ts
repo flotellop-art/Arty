@@ -20,6 +20,12 @@ interface StreamBlockState {
   validUrl?: true
 }
 
+const OPENAI_VISION_MAX_MESSAGES = 128
+const OPENAI_VISION_MAX_CONTENT_BLOCKS = OPENAI_VISION_MAX_IMAGES + 1
+const OPENAI_VISION_MAX_STRUCTURE_TOKENS = 8_192
+const OPENAI_VISION_MAX_DEPTH = 16
+const OPENAI_VISION_MAX_NON_IMAGE_STRING_CHARACTERS = 1024 * 1024
+
 export type OpenAIVisionStreamValidation =
   | {
       ok: true
@@ -70,6 +76,29 @@ function structureTracker(
   blockCoordinates: Set<string>,
 ): TransformStream<ParsedToken, ParsedToken> {
   const stack: StructureContext[] = []
+  let structureTokens = 0
+  let nonImageStringCharacters = 0
+
+  const allowedObjectKey = (path: JsonPath, key: string): boolean => {
+    if (path.length === 0) {
+      return key === 'model' || key === 'messages' || key === 'stream' ||
+        key === 'stream_options' || key === 'max_completion_tokens'
+    }
+    if (path.length === 1 && path[0] === 'stream_options') return key === 'include_usage'
+    if (path.length === 2 && path[0] === 'messages' && typeof path[1] === 'number') {
+      return key === 'role' || key === 'content'
+    }
+    if (path.length === 4 && path[0] === 'messages' && path[2] === 'content') {
+      return key === 'type' || key === 'image_url' || key === 'text'
+    }
+    if (
+      path.length === 5 &&
+      path[0] === 'messages' &&
+      path[2] === 'content' &&
+      path[4] === 'image_url'
+    ) return key === 'url' || key === 'detail'
+    return false
+  }
 
   const currentValuePath = (): JsonPath => {
     const parent = stack[stack.length - 1]
@@ -80,6 +109,9 @@ function structureTracker(
   const noteValue = (path: JsonPath) => {
     if (path.length === 2 && path[0] === 'messages' && typeof path[1] === 'number') {
       messageIndexes.add(path[1])
+      if (messageIndexes.size > OPENAI_VISION_MAX_MESSAGES) {
+        throw new VisionStreamValidationError(tooLarge('vision_structure_too_large'))
+      }
     }
     if (
       path.length === 4 &&
@@ -87,7 +119,12 @@ function structureTracker(
       typeof path[1] === 'number' &&
       path[2] === 'content' &&
       typeof path[3] === 'number'
-    ) blockCoordinates.add(`${path[1]}:${path[3]}`)
+    ) {
+      blockCoordinates.add(`${path[1]}:${path[3]}`)
+      if (blockCoordinates.size > OPENAI_VISION_MAX_CONTENT_BLOCKS) {
+        throw new VisionStreamValidationError(tooLarge('vision_structure_too_large'))
+      }
+    }
   }
   const completeParentValue = () => {
     const parent = stack[stack.length - 1]
@@ -96,26 +133,38 @@ function structureTracker(
 
   return new TransformStream<ParsedToken, ParsedToken>({
     transform(token, controller) {
+      structureTokens += 1
+      if (structureTokens > OPENAI_VISION_MAX_STRUCTURE_TOKENS) {
+        throw new VisionStreamValidationError(tooLarge('vision_structure_too_large'))
+      }
       const parent = stack[stack.length - 1]
       if (token.token === TokenType.STRING && parent?.kind === 'object' && parent.expectingKey) {
         const key = String(token.value)
-        if (
-          parent.path.length === 4 &&
-          parent.path[0] === 'messages' &&
-          parent.path[2] === 'content' &&
-          key !== 'type' && key !== 'image_url' && key !== 'text'
-        ) throw new VisionStreamValidationError(invalid('invalid_vision_block_order'))
-        if (
-          parent.path.length === 5 &&
-          parent.path[0] === 'messages' &&
-          parent.path[2] === 'content' &&
-          parent.path[4] === 'image_url' &&
-          key !== 'url' && key !== 'detail'
-        ) throw new VisionStreamValidationError(invalid('invalid_image_block'))
+        if (!allowedObjectKey(parent.path, key)) {
+          throw new VisionStreamValidationError(invalid('invalid_vision_field'))
+        }
         parent.key = key
         parent.expectingKey = false
         controller.enqueue(token)
         return
+      }
+
+      if (token.token === TokenType.STRING) {
+        const path = currentValuePath()
+        const isImageUrl =
+          path.length === 6 &&
+          path[0] === 'messages' &&
+          typeof path[1] === 'number' &&
+          path[2] === 'content' &&
+          typeof path[3] === 'number' &&
+          path[4] === 'image_url' &&
+          path[5] === 'url'
+        if (!isImageUrl) {
+          nonImageStringCharacters += String(token.value).length
+          if (nonImageStringCharacters > OPENAI_VISION_MAX_NON_IMAGE_STRING_CHARACTERS) {
+            throw new VisionStreamValidationError(tooLarge('vision_scalar_strings_too_large'))
+          }
+        }
       }
 
       if (token.token === TokenType.COLON) {
@@ -129,6 +178,9 @@ function structureTracker(
           parent.expectingValue = true
         }
       } else if (token.token === TokenType.LEFT_BRACE || token.token === TokenType.LEFT_BRACKET) {
+        if (stack.length >= OPENAI_VISION_MAX_DEPTH) {
+          throw new VisionStreamValidationError(tooLarge('vision_structure_too_large'))
+        }
         const path = currentValuePath()
         noteValue(path)
         stack.push(token.token === TokenType.LEFT_BRACE
@@ -152,10 +204,10 @@ function structureTracker(
   })
 }
 
-// Une data URL de 6 Mio occupe ~8 Mio. Refuser toute string JSON au-delà de
-// 9 Mio AVANT le tokenizer empêche un client de faire matérialiser une unique
-// string de 40 Mio, même si elle se trouve sur un path ignoré.
-const OPENAI_VISION_MAX_JSON_STRING_BYTES = 9 * 1024 * 1024
+// Une data URL de 4 Mio occupe ~5,34 Mio. Refuser toute string JSON au-delà de
+// 6 Mio AVANT le tokenizer empêche un client de faire matérialiser une unique
+// string géante, même si elle se trouve sur un path ignoré.
+const OPENAI_VISION_MAX_JSON_STRING_BYTES = 6 * 1024 * 1024
 
 function jsonStringSizeGuard(): TransformStream<Uint8Array, Uint8Array> {
   let inString = false
@@ -201,6 +253,8 @@ function jsonStringSizeGuard(): TransformStream<Uint8Array, Uint8Array> {
 export async function validateOpenAIVisionStream(
   stream: ReadableStream<Uint8Array>,
   maxRequestBytes: number,
+  signal?: AbortSignal,
+  onEarlyReject?: (reason: unknown) => void,
 ): Promise<OpenAIVisionStreamValidation> {
   let requestBytes = 0
   const messageIndexes = new Set<number>()
@@ -222,12 +276,15 @@ export async function validateOpenAIVisionStream(
   })
   const reader = limitReadableStream(stream, maxRequestBytes, (bytes) => {
     requestBytes = bytes
-  })
+  }, onEarlyReject)
     .pipeThrough(jsonStringSizeGuard())
     .pipeThrough(tokenizer)
     .pipeThrough(structureTracker(messageIndexes, blockCoordinates))
     .pipeThrough(parser)
     .getReader()
+  const abortValidation = () => { void reader.cancel(signal?.reason) }
+  if (signal?.aborted) abortValidation()
+  else signal?.addEventListener('abort', abortValidation, { once: true })
 
   const top = new Map<string, unknown>()
   const roles = new Map<number, unknown>()
@@ -304,13 +361,20 @@ export async function validateOpenAIVisionStream(
       }
     }
   } catch (error) {
-    await reader.cancel(error).catch(() => undefined)
+    // Même invariant que limitReadableStream : attendre l'annulation d'une
+    // seule branche `tee()` peut interbloquer le validateur. Le proxy annule
+    // le sibling dès que ce résultat lui est rendu.
+    void reader.cancel(error).catch(() => undefined)
+    if (signal?.aborted) throw signal.reason ?? error
     if (error instanceof VisionStreamValidationError) return error.result
     if (error instanceof RequestBodyTooLargeError) throw error
     return invalid('invalid_json')
   } finally {
+    signal?.removeEventListener('abort', abortValidation)
     reader.releaseLock()
   }
+
+  if (signal?.aborted) throw signal.reason ?? new Error('vision_request_aborted')
 
   const model = top.get('model')
   const maxCompletionTokens = top.get('max_completion_tokens')

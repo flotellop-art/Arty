@@ -71,7 +71,7 @@ function asset(index: number, size = 1024 * 1024) {
     size,
     width: 4096,
     height: 3072,
-    normalizationVersion: 1,
+    normalizationVersion: 2,
   }
 }
 
@@ -84,7 +84,7 @@ function canonicalAttachment(name = 'chantier.jpg') {
     size: 1024,
     width: 4096,
     height: 3072,
-    normalizationVersion: 1,
+    normalizationVersion: 2,
   }
 }
 
@@ -161,7 +161,7 @@ describe('InputBar — lots de photos 4K', () => {
       'deux.jpg',
       'trois.jpg',
     ])
-    expect(sentFiles?.every((file: { normalizationVersion?: number }) => file.normalizationVersion === 1)).toBe(true)
+    expect(sentFiles?.every((file: { normalizationVersion?: number }) => file.normalizationVersion === 2)).toBe(true)
     expect(new Set(sentFiles?.map((file: { id: string }) => file.id)).size).toBe(3)
   })
 
@@ -179,11 +179,11 @@ describe('InputBar — lots de photos 4K', () => {
     expect(screen.queryByText('5.jpg')).not.toBeInTheDocument()
   })
 
-  it('garde une défense si un asset hors contrat faisait dépasser 24 Mio', async () => {
+  it('garde une défense si un asset hors contrat faisait dépasser 16 Mio', async () => {
     let index = 0
     visionMocks.normalizeImageForVision.mockImplementation(async () => {
       index += 1
-      return asset(index, index === 4 ? 7 * 1024 * 1024 : 6 * 1024 * 1024)
+      return asset(index, index === 4 ? 5 * 1024 * 1024 : 4 * 1024 * 1024)
     })
     const { container } = render(<InputBar onSend={vi.fn()} isStreaming={false} />)
 
@@ -196,11 +196,11 @@ describe('InputBar — lots de photos 4K', () => {
     expect(visionMocks.normalizeImageForVision).toHaveBeenCalledTimes(4)
   })
 
-  it('accepte exactement 24 Mio pour quatre photos 4K', async () => {
+  it('accepte exactement 16 Mio pour quatre photos 4K', async () => {
     let index = 0
     visionMocks.normalizeImageForVision.mockImplementation(async () => {
       index += 1
-      return asset(index, 6 * 1024 * 1024)
+      return asset(index, 4 * 1024 * 1024)
     })
     const onSend = vi.fn()
     const { container } = render(<InputBar onSend={onSend} isStreaming={false} />)
