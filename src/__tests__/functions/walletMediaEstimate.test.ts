@@ -89,16 +89,18 @@ describe('estimateInputTokens — payloads média bornés (PR-0)', () => {
     expect(est).toBeLessThan(30_000)
   })
 
-  it('quatre images OpenAI couvrent quatre images Terra 4K sans dépendre du poids', () => {
+  it('quatre images OpenAI réservent quatre bornes sans facturer le base64', () => {
     const imageBlock = (bytes: number) => ({
       type: 'image_url',
       image_url: { url: `data:image/jpeg;base64,${b64(bytes)}` },
     })
     const one = estimateInputTokens('openai', {
-      messages: [{ content: [imageBlock(1 * MB)] }],
+      messages: [{ content: [imageBlock(1024)] }],
     })
+    // 4 × 64 Kio reste assez gros pour que l'ancien comptage du base64
+    // dépasse 100 k tokens, sans allouer ~43 Mio de fixtures sous couverture.
     const four = estimateInputTokens('openai', {
-      messages: [{ content: Array.from({ length: 4 }, () => imageBlock(8 * MB)) }],
+      messages: [{ content: Array.from({ length: 4 }, () => imageBlock(64 * 1024)) }],
     })
     expect(one).toBeGreaterThanOrEqual(16_384)
     expect(four).toBeGreaterThanOrEqual(4 * 16_384)
