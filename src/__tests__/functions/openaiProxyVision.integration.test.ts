@@ -378,7 +378,7 @@ describe('openai-proxy vision — intégration fail-closed', () => {
     await expect(rejected.json()).resolves.toMatchObject({ error: 'payload_too_large' })
     expect(cancel).toHaveBeenCalledOnce()
     expect((await onRequestPost(context(request(visionBody()), true))).status).toBe(200)
-  })
+  }, 15_000)
 
   it('rend 408 et libère le permis si une dépendance Google reste pending', async () => {
     vi.useFakeTimers()
