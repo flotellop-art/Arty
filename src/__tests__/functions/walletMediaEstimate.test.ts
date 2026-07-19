@@ -36,38 +36,34 @@ describe('estimateInputTokens — payloads média bornés (PR-0)', () => {
     expect(est).toBeGreaterThan(16_384) // reste pessimiste, jamais gratuit
   })
 
-  it('un PDF Anthropic est borné proportionnellement (octets/8) avec plafond 300 k', () => {
-    const oneMb = estimateInputTokens('anthropic', {
+  it('un PDF Anthropic est borné proportionnellement (octets/3, durci en revue) avec plafond 300 k', () => {
+    const pdfDoc = (bytes: number) => ({
       messages: [
         {
           content: [
             {
               type: 'document',
-              source: { type: 'base64', media_type: 'application/pdf', data: b64(1 * MB) },
+              source: { type: 'base64', media_type: 'application/pdf', data: b64(bytes) },
             },
           ],
         },
       ],
     })
-    // 1 Mo → base64 ~1,4 M chars → /8 ≈ 175 k tokens (ordre « pages Anthropic »).
-    expect(oneMb).toBeGreaterThan(100_000)
-    expect(oneMb).toBeLessThan(250_000)
+    // 300 Ko → base64 ~410 k chars → /3 ≈ 137 k tokens : couvre un PDF texte
+    // dense de ~100 pages compressées (le cas de sous-réservation ×5-8 que le
+    // diviseur /8 initial laissait passer — audit Opus PR-0).
+    const smallDense = estimateInputTokens('anthropic', pdfDoc(300 * 1024))
+    expect(smallDense).toBeGreaterThan(120_000)
+    expect(smallDense).toBeLessThan(180_000)
 
-    const tenMb = estimateInputTokens('anthropic', {
-      messages: [
-        {
-          content: [
-            {
-              type: 'document',
-              source: { type: 'base64', media_type: 'application/pdf', data: b64(10 * MB) },
-            },
-          ],
-        },
-      ],
-    })
-    // Plafond 300 k (100 pages × ~3 k, la borne réelle Anthropic) + floor + texte.
-    expect(tenMb).toBeLessThan(340_000)
-    expect(tenMb).toBeGreaterThan(290_000)
+    // ≥ ~700 Ko : le plafond 300 k s'applique (100 pages × ~3 k, la borne
+    // réelle Anthropic) + floor bloc + texte — identique pour 1 Mo et 10 Mo.
+    const oneMb = estimateInputTokens('anthropic', pdfDoc(1 * MB))
+    const tenMb = estimateInputTokens('anthropic', pdfDoc(10 * MB))
+    for (const est of [oneMb, tenMb]) {
+      expect(est).toBeGreaterThan(290_000)
+      expect(est).toBeLessThan(340_000)
+    }
   })
 
   it('une data URL image (Mistral/OpenAI) prend la borne image, pas le poids', () => {

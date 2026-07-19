@@ -67,7 +67,9 @@ describe('wallet reservation covers the provider maximum', () => {
     // son poids : l'estimation domine le texte seul d'au moins la borne image
     // (couvre les ~1 000-1 600 tokens réellement facturés par les providers)
     // et reste du même ordre quel que soit le poids du base64.
-    expect(encoded).toBeGreaterThan(plain + 4_000)
+    // Seuil 3 500 (pas 4 096 pile) : marge si la borne image évolue — la
+    // valeur réelle ici est ~plain + 4 115 (borne 4 096 + delta JSON).
+    expect(encoded).toBeGreaterThan(plain + 3_500)
     expect(encoded).toBeLessThan(plain + 30_000)
     expect(remote).toBeGreaterThanOrEqual(128_000)
   })

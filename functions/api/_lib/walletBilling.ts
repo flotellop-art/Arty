@@ -22,16 +22,23 @@ const REMOTE_MEDIA_TOKEN_FLOOR = 128_000
 // médias par pixels/pages/secondes, jamais au poids du base64) :
 // - image : Anthropic plafonne ~1 600 tokens/image (redimensionnement interne
 //   ~1,15 Mpx), Gemini/Mistral du même ordre → 4 096 = ×2,5 de marge.
-// - autre média encodé (PDF/audio/inconnu) : proportionnel au poids (≈ 1 token
-//   pour 8 octets de base64 ≈ l'ordre « page de PDF » Anthropic), plafonné à
-//   300 000 (borne réelle Anthropic : 100 pages × ~3 000 tokens/page).
+// - autre média encodé (PDF/audio/inconnu) : proportionnel au poids (1 token
+//   pour 3 octets de base64 — durci 8→3 en revue : un PDF TEXTE dense fait
+//   ~1,75 octet de base64 par token réellement facturé par Anthropic, /8 le
+//   sous-couvrait ×5-8), plafonné à 300 000 (borne réelle Anthropic :
+//   100 pages × ~3 000 tokens/page).
 // Ces bornes restent PESSIMISTES vs la facturation réelle (fuite F-A : la
 // réserve doit couvrir le pire coût provider plausible) tout en tuant la
 // sur-réservation ×N du base64-compté-comme-texte (bug PR-0 : une image de
 // 8 Mo réservait ~10,7 M « tokens » ≈ dizaines de dollars pour ~1 600 réels).
+// Résiduel assumé (audit Opus PR-0) : un PDF texte très dense peut encore
+// sous-réserver ~×1,7 au pire — SANS risque de solde négatif : le settle est
+// plafonné au solde disponible (wallet.ts, débit = MIN(solde − autres holds,
+// charge)), donc toute sous-réservation = sous-perception bornée sur des
+// fonds PRÉPAYÉS, jamais un découvert.
 const IMAGE_PAYLOAD_TOKEN_BOUND = 4_096
 const ENCODED_MEDIA_TOKEN_CAP = 300_000
-const ENCODED_MEDIA_BYTES_PER_TOKEN = 8
+const ENCODED_MEDIA_BYTES_PER_TOKEN = 3
 export const DEFAULT_WALLET_MAX_OUTPUT_TOKENS = 8_192
 export const WALLET_MAX_OUTPUT_TOKENS = 65_536
 
@@ -89,7 +96,7 @@ export function extractMaxOutputTokens(
  *   PESSIMISTE par design (~×4 vs BPE) ;
  * - chaque payload média ENCODÉ (base64 / data URL) est RETIRÉ du comptage
  *   texte et REMPLACÉ par une borne par nature : image → 4 096 tokens ;
- *   autre média (PDF/audio/inconnu) → octets/8, plancher 16 384, plafond
+ *   autre média (PDF/audio/inconnu) → octets/3, plancher 16 384, plafond
  *   300 000 (voir constantes) ;
  * - un média DISTANT (URL http) garde le plancher pessimiste 128 000 (contenu
  *   inconnu au moment de la réserve).
