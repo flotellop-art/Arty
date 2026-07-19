@@ -81,6 +81,11 @@ const SAFE_TOOLS = new Set([
   'create_app', 'open_app', 'screenshot_pc', 'share',
   // Utilitaires sans effet de bord externe
   'generate_report', 'calculate_distance', 'get_weather', 'ask_user',
+  // Sentiers : find_trails = lecture (recherche OSM) ; export_trail_gpx =
+  // génération d'un fichier dans l'espace propre de l'utilisateur, livré via
+  // le share sheet où l'HUMAIN choisit la destination (même raisonnement que
+  // save_local_file/share).
+  'find_trails', 'export_trail_gpx',
   // Server-side (exécutés par l'API Anthropic, jamais par le toolExecutor)
   'web_search', 'web_fetch',
 ])

@@ -7,6 +7,7 @@ import { createCalendarHandlers } from './tools/calendarTools'
 import { createContactsHandlers } from './tools/contactsTools'
 import { createWordpressHandlers } from './tools/wordpressTools'
 import { createUtilityHandlers } from './tools/utilityTools'
+import { createTrailHandlers } from './tools/trailTools'
 import { createNativeHandlers } from './tools/nativeTools'
 import { createSheetsHandlers } from './tools/sheetsTools'
 import { createImageHandlers } from './tools/imageTools'
@@ -25,6 +26,7 @@ export function createToolExecutor(
     ...createContactsHandlers(),
     ...createWordpressHandlers(),
     ...createUtilityHandlers(),
+    ...createTrailHandlers(),
     ...createNativeHandlers(),
     ...createSheetsHandlers(),
     // P1.3 — toujours enregistré, mais le tool n'est exposé au modèle que

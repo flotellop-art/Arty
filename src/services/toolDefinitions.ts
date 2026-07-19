@@ -3,10 +3,12 @@ import { calendarToolDefinitions } from './tools/calendarTools'
 import { wordpressToolDefinitions } from './tools/wordpressTools'
 import { utilityToolDefinitions } from './tools/utilityTools'
 import { nativeToolDefinitions } from './tools/nativeTools'
+import { trailToolDefinitions } from './tools/trailTools'
 
 export function buildToolDefinitions() {
   return [
   ...utilityToolDefinitions,
+  ...trailToolDefinitions,
   ...computerToolDefinitions,
   ...calendarToolDefinitions,
   ...wordpressToolDefinitions,
