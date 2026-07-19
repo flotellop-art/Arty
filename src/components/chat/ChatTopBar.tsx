@@ -11,7 +11,7 @@ import { PlanBadge } from './PlanBadge'
 import { UpgradePromptModal } from './UpgradePromptModal'
 import { ChatOptionsSheet } from './ChatOptionsSheet'
 import { ConversationSwitcherSheet } from './ConversationSwitcherSheet'
-import { usePlanStatus, type ModelFamily } from '../../hooks/usePlanStatus'
+import { usePlanStatus } from '../../hooks/usePlanStatus'
 import { formatModelName, getLastModelAttribution, getModelRegion, getRouteExplanationKey, shouldAcceptModelEvent, type ModelUsedEvent } from '../../services/modelLabels'
 import {
   exportConversation,
@@ -20,16 +20,7 @@ import {
 } from '../../services/conversationExport'
 import { ShareModal } from './ShareModal'
 import type { Conversation } from '../../types'
-
-// Mapping provider → famille primaire (la moins chère). Le proxy gère
-// le routage Haiku/Sonnet/Opus dans la famille Claude. Pour le lock UI,
-// on regarde si la famille primaire est dispo dans le plan.
-const PROVIDER_TO_FAMILY: Record<Exclude<AIModel, 'auto'>, ModelFamily> = {
-  claude: 'claude-haiku',
-  mistral: 'mistral-medium',
-  gemini: 'gemini-flash',
-  openai: 'gpt-mini',
-}
+import { isProviderLockedForPlan } from '../../services/providerLock'
 
 interface ChatTopBarProps {
   title: string
@@ -149,11 +140,8 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
     }
   }, [])
 
-  const isProviderLocked = (id: AIModel): boolean => {
-    if (id === 'auto') return false
-    const family = PROVIDER_TO_FAMILY[id]
-    return planStatus.lockedFamilies.includes(family)
-  }
+  const isProviderLocked = (id: AIModel): boolean =>
+    isProviderLockedForPlan(id, planStatus.lockedFamilies)
 
   const styleLabel = (id: ResponseStyle) => t(`chat.tone.${id}`)
   const modelLabel = (id: AIModel) => (id === 'auto' ? t('chat.model.auto') : MODEL_OPTIONS.find(o => o.id === id)?.label ?? id)

@@ -16,6 +16,8 @@ import {
   type NormalizedImageAsset,
 } from '../../services/imageNormalization'
 import { isVision4kFoundationEnabled } from '../../services/visionFeature'
+import { classifyRouteAttachments, gatherRouteInput } from '../../services/router/gatherRouteInput'
+import { resolveRoute } from '../../services/router/resolveRoute'
 import { filterSlashCommands, type SlashCommand } from '../../constants/slashCommands'
 import { detectDates } from '../../utils/dateDetector'
 import { getValidAccessToken } from '../../services/googleAuth'
@@ -59,6 +61,9 @@ interface InputBarProps {
   // fictives). On affiche alors un bandeau qui invite l'utilisateur à
   // coller le texte de l'article plutôt que l'URL.
   euOnly?: boolean
+  /** Historique contenant des données Google privées : le preview applique la
+      même précédence que l'envoi réel et ne promet jamais Terra. */
+  hasPrivateHistory?: boolean
   /** Requête explicite de préremplissage (intentions/suggestions de l'accueil).
       L'id permet de rejouer deux fois le même texte sans transformer le champ
       en input contrôlé et sans écraser les modifications libres. */
@@ -245,7 +250,7 @@ function PendingFilePreview({ file, onRemove, disabled = false }: { file: FileAt
   )
 }
 
-export function InputBar({ onSend, isStreaming, onStop, initialText, initialFiles, euOnly, prefill, showQuickActions = true, draftKey, variant = 'default' }: InputBarProps) {
+export function InputBar({ onSend, isStreaming, onStop, initialText, initialFiles, euOnly, hasPrivateHistory = false, prefill, showQuickActions = true, draftKey, variant = 'default' }: InputBarProps) {
   const { t } = useTranslation()
   const heroVariant = variant === 'hero'
   // Évalué à chaque render (lecture localStorage triviale) — un testeur peut
@@ -262,6 +267,7 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isPreparingAttachments, setIsPreparingAttachments] = useState(false)
   const [isPreparingImages, setIsPreparingImages] = useState(false)
+  const [, setRoutePreviewVersion] = useState(0)
   // Un clic sur une action rapide ARME le prochain envoi. L'instruction
   // n'entre jamais dans le textarea ni dans la bulle user : seuls l'ID et la
   // locale allowlistés traversent le flux d'envoi.
@@ -269,6 +275,37 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const cameraInputRef = useRef<HTMLInputElement>(null)
+
+  // Le sélecteur de modèle est un store externe. Sans cet event, changer
+  // Auto/Claude/Mistral/OpenAI laisserait la destination pré-envoi périmée
+  // jusqu'à la prochaine frappe.
+  useEffect(() => {
+    const refresh = () => setRoutePreviewVersion((version) => version + 1)
+    window.addEventListener('model-changed', refresh)
+    window.addEventListener('arty-trial-remaining-changed', refresh)
+    window.addEventListener('arty-plan-status-changed', refresh)
+    return () => {
+      window.removeEventListener('model-changed', refresh)
+      window.removeEventListener('arty-trial-remaining-changed', refresh)
+      window.removeEventListener('arty-plan-status-changed', refresh)
+    }
+  }, [])
+
+  const attachmentRouteFlags = classifyRouteAttachments(files)
+  let attachmentRouteProvider: 'terra' | 'mistral' | 'claude' | null = null
+  if (attachmentRouteFlags.hasImages) {
+    const preview = resolveRoute(gatherRouteInput({
+      originalText: text,
+      ...attachmentRouteFlags,
+      euOnly: !!euOnly,
+      hasPrivateHistory,
+    }))
+    attachmentRouteProvider = preview.usesOpenAIVision
+      ? 'terra'
+      : preview.provider === 'mistral'
+        ? 'mistral'
+        : 'claude'
+  }
 
   useEffect(() => {
     if (!prefill) return
@@ -1422,6 +1459,24 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
               disabled={isPreparingAttachments}
             />
           ))}
+        </div>
+      )}
+
+      {attachmentRouteProvider && (
+        <div
+          className="mb-2 flex items-center gap-1.5 px-1 text-[11px] text-theme-muted"
+          role="status"
+          data-testid="attachment-route-preview"
+        >
+          <span aria-hidden="true">↗</span>
+          <span>
+            {attachmentRouteFlags.hasSupportedVisionImages && (
+              <>{t('chat.input.optimized4k')} · </>
+            )}
+            {t('chat.input.routePreview', {
+              provider: t(`chat.input.routeProvider.${attachmentRouteProvider}`),
+            })}
+          </span>
         </div>
       )}
 

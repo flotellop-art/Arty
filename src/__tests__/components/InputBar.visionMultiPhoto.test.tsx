@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { InputBar } from '../../components/layout/InputBar'
 
@@ -16,6 +16,7 @@ vi.mock('react-i18next', async (importOriginal) => ({
   useTranslation: () => ({
     t: (key: string, options?: Record<string, unknown>) => {
       if (typeof options?.name === 'string') return `${key}:${options.name}`
+      if (key === 'chat.input.routePreview') return `${key}:${String(options?.provider ?? '')}`
       return key
     },
   }),
@@ -45,8 +46,17 @@ vi.mock('../../services/promptEnhancer', () => ({
 vi.mock('../../services/promptEnhancerSettings', () => ({
   isPromptEnhancementEnabled: vi.fn(() => false),
 }))
-vi.mock('../../services/aiRouter', () => ({ hasUrl: vi.fn(() => false) }))
-vi.mock('../../services/activeApiKey', () => ({ hasOpenAIKey: vi.fn(() => false) }))
+vi.mock('../../services/aiRouter', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../services/aiRouter')>()),
+  hasUrl: vi.fn(() => false),
+}))
+vi.mock('../../services/activeApiKey', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../services/activeApiKey')>()),
+  hasOpenAIKey: vi.fn(() => false),
+  getGeminiKey: vi.fn(() => null),
+  getMistralKey: vi.fn(() => null),
+  getOpenAIKey: vi.fn(() => null),
+}))
 vi.mock('../../utils/haptic', () => ({ haptic: vi.fn(async () => undefined) }))
 vi.mock('../../components/chat/ReflectionPill', () => ({ ReflectionPill: () => null }))
 
@@ -59,6 +69,19 @@ function asset(index: number, size = 1024 * 1024) {
     data: `canonical-${index}`,
     mimeType: 'image/jpeg' as const,
     size,
+    width: 4096,
+    height: 3072,
+    normalizationVersion: 1,
+  }
+}
+
+function canonicalAttachment(name = 'chantier.jpg') {
+  return {
+    id: `canonical-${name}`,
+    name,
+    type: 'image/jpeg',
+    data: 'AA==',
+    size: 1024,
     width: 4096,
     height: 3072,
     normalizationVersion: 1,
@@ -80,7 +103,11 @@ function asFileList(files: File[]): FileList {
 describe('InputBar — lots de photos 4K', () => {
   beforeEach(() => {
     localStorage.setItem('arty-vision-terra-4k-foundation', '1')
+    localStorage.setItem('arty-vision-terra-auto-routing', '1')
     localStorage.setItem('arty-inputbar-v2', '1')
+    localStorage.setItem('arty-ai-model', 'auto')
+    localStorage.setItem('arty-plan-cache', 'subscription')
+    localStorage.setItem('arty-allowed-families', JSON.stringify(['gpt-full']))
     vi.stubGlobal('URL', {
       ...URL,
       createObjectURL: vi.fn(() => 'blob:preview'),
@@ -91,7 +118,13 @@ describe('InputBar — lots de photos 4K', () => {
   afterEach(() => {
     cleanup()
     localStorage.removeItem('arty-vision-terra-4k-foundation')
+    localStorage.removeItem('arty-vision-terra-auto-routing')
     localStorage.removeItem('arty-inputbar-v2')
+    localStorage.removeItem('arty-ai-model')
+    localStorage.removeItem('arty-plan-cache')
+    localStorage.removeItem('arty-allowed-families')
+    localStorage.removeItem('arty-trial-remaining')
+    localStorage.removeItem('arty-wallet-available')
     visionMocks.normalizeImageForVision.mockReset()
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
@@ -198,6 +231,90 @@ describe('InputBar — lots de photos 4K', () => {
       type: 'application/pdf',
       data: 'cGRm',
     })
+  })
+
+  it('annonce Terra avant envoi pour un lot photo canonique éligible', () => {
+    render(
+      <InputBar
+        onSend={vi.fn()}
+        isStreaming={false}
+        initialFiles={[canonicalAttachment()]}
+      />,
+    )
+
+    expect(screen.getByTestId('attachment-route-preview')).toHaveTextContent('chat.input.optimized4k')
+    expect(screen.getByTestId('attachment-route-preview')).toHaveTextContent(
+      'chat.input.routePreview:chat.input.routeProvider.terra',
+    )
+  })
+
+  it('recalcule la destination quand le plan change sans toucher aux photos', async () => {
+    render(
+      <InputBar
+        onSend={vi.fn()}
+        isStreaming={false}
+        initialFiles={[canonicalAttachment()]}
+      />,
+    )
+    expect(screen.getByTestId('attachment-route-preview')).toHaveTextContent('routeProvider.terra')
+
+    localStorage.setItem('arty-plan-cache', 'free')
+    localStorage.setItem('arty-allowed-families', JSON.stringify(['claude-haiku']))
+    act(() => window.dispatchEvent(new CustomEvent('arty-plan-status-changed')))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('attachment-route-preview')).toHaveTextContent('routeProvider.claude')
+    })
+  })
+
+  it('recalcule la destination quand le trial expire et le wallet prend le relais', async () => {
+    localStorage.setItem('arty-plan-cache', 'free')
+    localStorage.setItem('arty-allowed-families', JSON.stringify(['gpt-full']))
+    localStorage.setItem('arty-wallet-available', '1000000')
+    localStorage.setItem('arty-trial-remaining', '2')
+    render(
+      <InputBar
+        onSend={vi.fn()}
+        isStreaming={false}
+        initialFiles={[canonicalAttachment()]}
+      />,
+    )
+    expect(screen.getByTestId('attachment-route-preview')).toHaveTextContent('routeProvider.claude')
+
+    localStorage.setItem('arty-trial-remaining', '0')
+    act(() => window.dispatchEvent(new CustomEvent('arty-trial-remaining-changed')))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('attachment-route-preview')).toHaveTextContent('routeProvider.terra')
+    })
+  })
+
+  it('recalcule la destination au changement de modèle et respecte l’historique privé', async () => {
+    const { rerender } = render(
+      <InputBar
+        onSend={vi.fn()}
+        isStreaming={false}
+        initialFiles={[canonicalAttachment()]}
+      />,
+    )
+    expect(screen.getByTestId('attachment-route-preview')).toHaveTextContent('routeProvider.terra')
+
+    localStorage.setItem('arty-ai-model', 'claude')
+    act(() => window.dispatchEvent(new CustomEvent('model-changed')))
+    await waitFor(() => {
+      expect(screen.getByTestId('attachment-route-preview')).toHaveTextContent('routeProvider.claude')
+    })
+
+    localStorage.setItem('arty-ai-model', 'auto')
+    rerender(
+      <InputBar
+        onSend={vi.fn()}
+        isStreaming={false}
+        initialFiles={[canonicalAttachment()]}
+        hasPrivateHistory
+      />,
+    )
+    expect(screen.getByTestId('attachment-route-preview')).toHaveTextContent('routeProvider.claude')
   })
 
   it('désactive ajout, suppression et envoi pendant une normalisation longue', async () => {

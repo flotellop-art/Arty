@@ -117,6 +117,12 @@ export function usePlanStatus(): PlanStatus & { refresh: () => void } {
           JSON.stringify(effectiveFamilies)
         )
       } catch {}
+      // Le composer calcule une destination avant envoi hors React context.
+      // Notifier après le commit plan+familles évite d'afficher Terra avec un
+      // entitlement expiré (ou Claude juste après un achat) jusqu'à la frappe.
+      try {
+        window.dispatchEvent(new CustomEvent('arty-plan-status-changed'))
+      } catch {}
       setState({
         plan: data.plan,
         allowedFamilies: effectiveFamilies,

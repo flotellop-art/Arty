@@ -229,7 +229,20 @@ locale pouvait appeler les proxys.
 ### BUG 12 — Mode hybride déclenché sur données privées
 **Fichiers** : `src/services/aiRouter.ts`
 **Problème** : "Rapport sur mes mails" déclenchait le mode hybride → Gemini cherchait sur le web des données privées inaccessibles → réponse vide ou hallucinations. "Analyse le fichier" avec un PDF attaché déclenchait aussi le mode hybride (regex "analyse le")
-**Règle** : Les requêtes mentionnant des données privées (mes mails, mes fichiers, mon Drive) doivent TOUJOURS aller à Claude. Quand des fichiers sont attachés, TOUJOURS utiliser Claude — jamais hybride, jamais Gemini
+**Règle** : Les requêtes mentionnant des données privées (mes mails, mes
+fichiers, mon Drive), ainsi que toute conversation avec historique Google
+privé, doivent TOUJOURS aller à Claude. Cette garde précède tout routage de
+photo. Les PDF, documents et lots mixtes restent TOUJOURS chez Claude — jamais
+hybride, jamais Gemini.
+
+Exception étroite vision 4K : un lot composé uniquement d'images canoniques
+peut quitter Claude après ces gardes. `euOnly` reste prioritaire et impose
+Mistral ; Mistral choisi manuellement conserve son chemin natif ; OpenAI choisi
+manuellement peut utiliser Terra si la fondation et la disponibilité le
+permettent ; Auto ne peut utiliser Terra que si les deux flags vision
+(fondation + routage Auto) et la disponibilité plan/BYOK sont actifs. Tous les
+autres cas reviennent à Claude, et Gemini/hybride ne reçoivent jamais les
+pièces jointes.
 
 ### BUG 13 — Erreurs TypeScript bloquent le déploiement silencieusement
 **Fichiers** : tous les fichiers `.ts`/`.tsx`

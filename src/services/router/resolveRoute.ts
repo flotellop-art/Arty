@@ -14,8 +14,9 @@
 // utilisateur) — la matière de la transparence UI.
 //
 // ⚠️ L'ORDRE des règles est un invariant de sécurité/confiance, pas du style :
-//  1. euOnly (RÈGLE 5.3, BUG 8)  2. fichiers (BUG 12)  3. choix manuel
-//  (+ garde données privées)  4. cascade auto (privé → YouTube → URL →
+//  1. euOnly (RÈGLE 5.3, BUG 8)  2. données privées (BUG 12)
+//  3. pièces jointes (documents/mixte → Claude ; images seules avec carve-out
+//  vision explicite)  4. choix manuel  5. cascade auto (YouTube → URL →
 //  intent ChatGPT → hybride → trivial → défaut capable, BUG 58).
 // Toute permutation peut réintroduire BUG 12 — modifier UNIQUEMENT avec un
 // test de non-régression.
@@ -48,6 +49,11 @@ export function canExecuteRoute(input: Pick<RouteInput, 'euOnly' | 'availability
 export function resolveRoute(input: RouteInput): RouteDecision {
   const text = input.originalText
   const isPrivateData = input.hasPrivateHistory || PRIVATE_DATA_TRIGGERS.some((r) => r.test(text))
+  const hasImagesOnly =
+    input.hasFiles &&
+    input.hasImages &&
+    !input.hasPdf &&
+    !input.hasOtherFiles
   const overrides: RouteOverride[] = []
 
   let provider: AIProvider
@@ -61,31 +67,82 @@ export function resolveRoute(input: RouteInput): RouteDecision {
     if (input.selectedModel !== 'auto' && input.selectedModel !== 'mistral') {
       overrides.push({ requested: input.selectedModel, applied: 'mistral', reason: { code: 'eu_only' } })
     }
+  } else if (isPrivateData) {
+    // Le contenu privé précède TOUS les carve-outs photo. Sans ce garde, une
+    // image jointe à « mes mails » ou à un historique Google pouvait partir
+    // chez Mistral/OpenAI avant même d'atteindre la règle private_data.
+    provider = 'claude'
+    reason = { code: 'private_data' }
+    if (input.selectedModel !== 'auto' && input.selectedModel !== 'claude') {
+      overrides.push({
+        requested: input.selectedModel,
+        applied: 'claude',
+        reason: { code: 'private_data' },
+      })
+    }
   } else if (input.hasFiles) {
-    // Fichiers attachés → Claude (lecture native PDF/image, BUG 12).
-    // Exception : Mistral choisi manuellement + pas de PDF → vision native
-    // Mistral (seul canal image compatible EU).
-    if (input.selectedModel === 'mistral' && !input.hasPdf && input.availability.mistral) {
-      provider = 'mistral'
-      reason = { code: 'files_mistral_native' }
-    } else {
+    // PDF, document ou lot mixte : invariant BUG 12 inchangé. Le carve-out
+    // ci-dessous ne concerne qu'un lot composé exclusivement d'images.
+    if (!hasImagesOnly) {
       provider = 'claude'
       reason = { code: 'files_to_claude' }
       if (input.selectedModel !== 'auto' && input.selectedModel !== 'claude') {
-        // Le choix manuel (Gemini/OpenAI, ou Mistral avec PDF) est contredit
-        // — tracé pour que l'UI le signale au lieu de basculer en silence.
         overrides.push({ requested: input.selectedModel, applied: 'claude', reason: { code: 'files_to_claude' } })
       }
+    } else if (input.selectedModel === 'claude') {
+      provider = 'claude'
+      reason = { code: 'manual_selection' }
+    } else if (input.selectedModel === 'mistral') {
+      if (input.availability.mistral) {
+        provider = 'mistral'
+        reason = { code: 'files_mistral_native' }
+      } else {
+        provider = 'claude'
+        reason = { code: 'fallback_no_provider', params: { preferred: 'mistral' } }
+        overrides.push({ requested: 'mistral', applied: 'claude', reason })
+      }
+    } else if (input.selectedModel === 'gemini') {
+      // Gemini reste text-only dans Arty : redirection visible vers Claude.
+      provider = 'claude'
+      reason = { code: 'files_to_claude' }
+      overrides.push({ requested: 'gemini', applied: 'claude', reason })
+    } else if (input.selectedModel === 'openai') {
+      if (
+        input.hasSupportedVisionImages &&
+        input.visionOpenAIEnabled &&
+        input.availability.openaiVision
+      ) {
+        provider = 'openai'
+        reason = { code: 'image_vision_openai' }
+      } else {
+        provider = 'claude'
+        reason = input.hasSupportedVisionImages && input.visionOpenAIEnabled
+          ? { code: 'fallback_no_provider', params: { preferred: 'openai' } }
+          : { code: 'files_to_claude' }
+        overrides.push({ requested: 'openai', applied: 'claude', reason })
+      }
+    } else if (
+      input.hasSupportedVisionImages &&
+      input.visionOpenAIEnabled &&
+      input.visionAutoRoutingEnabled &&
+      input.availability.openaiVision
+    ) {
+      provider = 'openai'
+      reason = { code: 'image_vision_openai' }
+    } else {
+      provider = 'claude'
+      reason =
+        input.hasSupportedVisionImages &&
+        input.visionOpenAIEnabled &&
+        input.visionAutoRoutingEnabled
+        ? { code: 'fallback_no_provider', params: { preferred: 'openai' } }
+        : { code: 'files_to_claude' }
     }
   } else if (input.selectedModel !== 'auto') {
-    // Choix manuel respecté, SAUF données privées vers un modèle sans tools
-    // Google (Gemini/OpenAI) → Claude. Mistral manuel reste honoré : il a le
-    // tool-calling complet Drive/Calendar.
-    if (isPrivateData && (input.selectedModel === 'gemini' || input.selectedModel === 'openai')) {
-      provider = 'claude'
-      reason = { code: 'private_data' }
-      overrides.push({ requested: input.selectedModel, applied: 'claude', reason: { code: 'private_data' } })
-    } else if (!input.availability[input.selectedModel]) {
+    // Choix manuel respecté après les gardes absolues euOnly/private/files.
+    // La règle private_data ci-dessus s'applique volontairement aussi à
+    // Mistral manuel, conformément à BUG 12 et à la matrice PR-C.
+    if (!input.availability[input.selectedModel]) {
       // Sélection manuelle devenue indisponible (expiration d'abonnement,
       // absence de clé BYOK Pro, cache de sélecteur ancien) : verrou AVANT
       // l'envoi, puis repli Claude/Haiku au lieu d'attendre un 403 serveur.
@@ -104,12 +161,7 @@ export function resolveRoute(input: RouteInput): RouteDecision {
     // ── Cascade AUTO ─────────────────────────────────────────────────────
     const a = input.availability
 
-    if (isPrivateData) {
-      // Mails / Drive / agenda / contacts → Claude (tools natifs). Web search
-      // ou hybride sur des données privées = hallucination garantie (BUG 12).
-      provider = 'claude'
-      reason = { code: 'private_data' }
-    } else if (hasYouTubeUrl(text)) {
+    if (hasYouTubeUrl(text)) {
       // Gemini lit la vidéo nativement (part fileData). Sans Gemini, repli
       // Claude (comportement historique — il ne lira pas la vidéo non plus).
       provider = a.gemini ? 'gemini' : 'claude'
@@ -172,6 +224,7 @@ export function resolveRoute(input: RouteInput): RouteDecision {
 
   return {
     provider,
+    usesOpenAIVision: provider === 'openai' && reason.code === 'image_vision_openai',
     subModel,
     thinking,
     // Une conversation qui contient des données Google privées ne doit

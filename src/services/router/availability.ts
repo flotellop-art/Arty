@@ -31,6 +31,8 @@ import type { ProviderAvailability } from './types'
 export interface ProviderAccessContext {
   plan: string | null
   creditsCoverPremium: boolean
+  /** Source de vérité trial : le cache plan normalise les essais en `free`. */
+  trialRemaining: number | null
 }
 
 function readAllowedFamilies(): string[] {
@@ -56,10 +58,27 @@ export function getProviderAvailability(context: ProviderAccessContext): Provide
     ((context.plan === 'free' || context.plan === 'trial') && context.creditsCoverPremium)
   const serverAllows = (...fams: string[]) =>
     canUseServerKey && fams.some((f) => families.includes(f))
+  const openaiByok = !!getOpenAIKey()
+  // Le cache plan normalise l'essai en `free`. `null` est ambigu : il peut
+  // signifier « aucun essai » OU « initTrial a échoué ». Comme le serveur
+  // débite l'essai avant de refuser Terra, seule la preuve explicite `0`
+  // autorise le wallet vision. Unknown reste chez Claude (fail-closed).
+  const canUseVisionServerKey =
+    context.plan === 'subscription' ||
+    context.plan === 'vip' ||
+    (context.plan === 'free' &&
+      context.creditsCoverPremium &&
+      context.trialRemaining === 0)
   return {
     claude: true,
     gemini: !!getGeminiKey() || serverAllows('gemini-flash', 'gemini-pro'),
     mistral: !!getMistralKey() || serverAllows('mistral-medium'),
-    openai: !!getOpenAIKey() || serverAllows('gpt-mini', 'gpt-full'),
+    openai: openaiByok || serverAllows('gpt-mini', 'gpt-full'),
+    // Décision A5 : le trial conserve Claude pour les photos tant que Terra
+    // n'est pas dans TRIAL_ALLOWED_MODELS. Une clé OpenAI personnelle reste
+    // utilisable : elle ne passe pas par l'allowlist ni la facture serveur.
+    openaiVision:
+      openaiByok ||
+      (canUseVisionServerKey && families.includes('gpt-full')),
   }
 }
