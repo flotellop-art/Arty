@@ -15,15 +15,15 @@ export function isVision4kFoundationEnabled(): boolean {
 }
 
 /**
- * Le routage Auto photo conserve un déploiement distinct et explicite. La
- * fondation peut ainsi être ouverte à tous sans modifier les routes Auto tant
- * que ce second flag n'est pas positionné à `1`.
+ * Le routage Auto photo est ouvert par défaut pour les comptes éligibles.
+ * `0` reste un coupe-circuit local ; gatherRouteInput exige séparément une
+ * preuve positive de compte payant avant d'exposer Terra au mode Auto.
  */
 export function isVisionTerraAutoRoutingEnabled(): boolean {
   if (!isVision4kFoundationEnabled()) return false
   try {
-    return localStorage.getItem(VISION_TERRA_AUTO_ROUTING_FLAG) === '1'
+    return localStorage.getItem(VISION_TERRA_AUTO_ROUTING_FLAG) !== '0'
   } catch {
-    return false
+    return true
   }
 }

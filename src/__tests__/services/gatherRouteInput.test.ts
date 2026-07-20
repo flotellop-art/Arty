@@ -32,8 +32,10 @@ vi.mock('../../services/trialClient', () => ({
 }))
 
 import { getSelectedModel } from '../../services/modelSelector'
+import { getOpenAIKey } from '../../services/activeApiKey'
 import { getReflectionLevel } from '../../services/reflectionLevel'
 import { isProActivated } from '../../services/proLicense'
+import { getTrialRemaining } from '../../services/trialClient'
 import { creditsCoverPremium } from '../../services/walletClient'
 
 const CTX = {
@@ -53,6 +55,8 @@ beforeEach(() => {
   vi.mocked(getReflectionLevel).mockReturnValue('auto')
   vi.mocked(isProActivated).mockReturnValue(false)
   vi.mocked(creditsCoverPremium).mockReturnValue(false)
+  vi.mocked(getOpenAIKey).mockReturnValue(null)
+  vi.mocked(getTrialRemaining).mockReturnValue(null)
   localStorage.removeItem('arty-plan-cache')
   localStorage.removeItem('arty-allowed-families')
   localStorage.removeItem('arty-vision-terra-4k-foundation')
@@ -105,15 +109,125 @@ describe('gatherRouteInput', () => {
   })
 
   it('collecte séparément les flags vision manuel et Auto', () => {
-    expect(gatherRouteInput(CTX)).toMatchObject({
-      visionOpenAIEnabled: true,
-      visionAutoRoutingEnabled: false,
-    })
-    localStorage.setItem('arty-vision-terra-auto-routing', '1')
+    localStorage.setItem('arty-plan-cache', 'subscription')
     expect(gatherRouteInput(CTX)).toMatchObject({
       visionOpenAIEnabled: true,
       visionAutoRoutingEnabled: true,
     })
+    localStorage.setItem('arty-vision-terra-auto-routing', '0')
+    expect(gatherRouteInput(CTX)).toMatchObject({
+      visionOpenAIEnabled: true,
+      visionAutoRoutingEnabled: false,
+    })
+  })
+
+  it('bout-en-bout : abonné éligible + photo en Auto → Terra', () => {
+    localStorage.setItem('arty-plan-cache', 'subscription')
+    localStorage.setItem('arty-allowed-families', JSON.stringify(['claude-sonnet', 'gpt-full']))
+
+    const decision = resolveRoute(gatherRouteInput({
+      ...CTX,
+      hasFiles: true,
+      hasImages: true,
+      hasSupportedVisionImages: true,
+    }))
+    expect(decision.provider).toBe('openai')
+    expect(decision.reason.code).toBe('image_vision_openai')
+    expect(decision.usesOpenAIVision).toBe(true)
+  })
+
+  it('désactive Terra en Auto pendant un essai actif, même avec BYOK OpenAI', () => {
+    localStorage.setItem('arty-plan-cache', 'free')
+    vi.mocked(getTrialRemaining).mockReturnValue(5)
+    vi.mocked(getOpenAIKey).mockReturnValue('sk-trial-user')
+
+    const input = gatherRouteInput({
+      ...CTX,
+      hasFiles: true,
+      hasImages: true,
+      hasSupportedVisionImages: true,
+    })
+    expect(input.availability.openaiVision).toBe(true)
+    expect(input.visionAutoRoutingEnabled).toBe(false)
+    const decision = resolveRoute(input)
+    expect(decision.provider).toBe('claude')
+    expect(decision.usesOpenAIVision).toBe(false)
+  })
+
+  it('garde un compte free chez Claude en Auto, même avec wallet et BYOK', () => {
+    localStorage.setItem('arty-plan-cache', 'free')
+    localStorage.setItem('arty-allowed-families', JSON.stringify(['claude-sonnet', 'gpt-full']))
+    vi.mocked(getTrialRemaining).mockReturnValue(0)
+    vi.mocked(creditsCoverPremium).mockReturnValue(true)
+    vi.mocked(getOpenAIKey).mockReturnValue('sk-free-user')
+
+    const decision = resolveRoute(gatherRouteInput({
+      ...CTX,
+      hasFiles: true,
+      hasImages: true,
+      hasSupportedVisionImages: true,
+    }))
+    expect(decision.provider).toBe('claude')
+    expect(decision.usesOpenAIVision).toBe(false)
+  })
+
+  it.each([
+    ['free', 'free'],
+    ['inconnu', null],
+  ])('plan %s + état trial inconnu + BYOK reste chez Claude en Auto', (_label, plan) => {
+    if (plan) localStorage.setItem('arty-plan-cache', plan)
+    vi.mocked(getTrialRemaining).mockReturnValue(null)
+    vi.mocked(getOpenAIKey).mockReturnValue('sk-unknown-trial')
+
+    const input = gatherRouteInput({
+      ...CTX,
+      hasFiles: true,
+      hasImages: true,
+      hasSupportedVisionImages: true,
+    })
+    expect(input.availability.openaiVision).toBe(true)
+    expect(input.visionAutoRoutingEnabled).toBe(false)
+    expect(resolveRoute(input).provider).toBe('claude')
+  })
+
+  it('licence Pro + BYOK + photo en Auto → Terra', () => {
+    localStorage.setItem('arty-plan-cache', 'pro')
+    vi.mocked(isProActivated).mockReturnValue(true)
+    vi.mocked(getOpenAIKey).mockReturnValue('sk-pro-user')
+
+    const decision = resolveRoute(gatherRouteInput({
+      ...CTX,
+      hasFiles: true,
+      hasImages: true,
+      hasSupportedVisionImages: true,
+    }))
+    expect(decision.provider).toBe('openai')
+    expect(decision.usesOpenAIVision).toBe(true)
+  })
+
+  it('licence Pro locale prime sur un cache plan free obsolète, avec BYOK', () => {
+    localStorage.setItem('arty-plan-cache', 'free')
+    vi.mocked(isProActivated).mockReturnValue(true)
+    vi.mocked(getOpenAIKey).mockReturnValue('sk-pro-licensed-user')
+
+    const input = gatherRouteInput({
+      ...CTX,
+      hasFiles: true,
+      hasImages: true,
+      hasSupportedVisionImages: true,
+    })
+    expect(input.visionAutoRoutingEnabled).toBe(true)
+    expect(resolveRoute(input).provider).toBe('openai')
+  })
+
+  it('un abonné reste éligible malgré un ancien compteur trial non nettoyé', () => {
+    localStorage.setItem('arty-plan-cache', 'subscription')
+    localStorage.setItem('arty-allowed-families', JSON.stringify(['claude-sonnet', 'gpt-full']))
+    vi.mocked(getTrialRemaining).mockReturnValue(5)
+
+    const input = gatherRouteInput(CTX)
+    expect(input.visionAutoRoutingEnabled).toBe(true)
+    expect(input.availability.openaiVision).toBe(true)
   })
 
   // Bout-en-bout de la glue : le chemin complet gatherRouteInput → resolveRoute

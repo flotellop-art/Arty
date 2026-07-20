@@ -267,7 +267,7 @@ describe('InputBar — lots de photos 4K', () => {
     })
   })
 
-  it('recalcule la destination quand le trial expire et le wallet prend le relais', async () => {
+  it('reste chez Claude pour un compte free quand le trial expire et le wallet prend le relais', async () => {
     localStorage.setItem('arty-plan-cache', 'free')
     localStorage.setItem('arty-allowed-families', JSON.stringify(['gpt-full']))
     localStorage.setItem('arty-wallet-available', '1000000')
@@ -285,7 +285,7 @@ describe('InputBar — lots de photos 4K', () => {
     act(() => window.dispatchEvent(new CustomEvent('arty-trial-remaining-changed')))
 
     await waitFor(() => {
-      expect(screen.getByTestId('attachment-route-preview')).toHaveTextContent('routeProvider.terra')
+      expect(screen.getByTestId('attachment-route-preview')).toHaveTextContent('routeProvider.claude')
     })
   })
 
