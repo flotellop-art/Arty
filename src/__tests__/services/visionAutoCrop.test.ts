@@ -57,6 +57,13 @@ describe('vision auto-crop intent et source', () => {
     'Tu peux lire ce qui est écrit sur le cadre blanc à gauche ?',
     'Zoome sur l’étiquette en bas de la photo',
     'Read the text on the screen at the right',
+    "Quelle est la plaque d'immatriculation ?",
+    'Quelle est la plaque d’immatriculation ?',
+    'Peux-tu relever la plaque du véhicule ?',
+    'Peux-tu me donner la plaque du fourgon ?',
+    'C’est quoi l’immatriculation ?',
+    'What is the license plate number?',
+    'What is the registration number?',
   ])('détecte un suivi visuel explicite: %s', (text) => {
     expect(isVisionAutoCropFollowUp(text)).toBe(true)
   })
@@ -68,6 +75,20 @@ describe('vision auto-crop intent et source', () => {
     'continue',
     'analyse ça dans le détail',
     'lis ce qui est écrit dans le mail',
+    "Que signifie une plaque d'immatriculation ?",
+    'Quelle est la réglementation sur la plaque d’immatriculation ?',
+    'Quelle plaque est obligatoire en France ?',
+    'Quelle est la plaque de cuisson recommandée ?',
+    'Quelle est la plaque idéale pour ce mur ?',
+    'Quelle est la plaque d’immatriculation obligatoire en France ?',
+    'Donne-moi le prix d’une plaque d’immatriculation.',
+    'Donne-moi les règles pour la plaque d’immatriculation.',
+    'What is the license plate format in France?',
+    'Tell me about the license plate rules',
+    'Identifie la plaque tectonique',
+    'Quel numéro appeler sur cette étiquette ?',
+    'Quelle est la référence de l’image ?',
+    'Le code QR est-il dangereux ?',
   ])
     ('ne retransmet rien pour un suivi textuel: %s', (text) => {
       expect(isVisionAutoCropFollowUp(text)).toBe(false)
