@@ -62,13 +62,21 @@ function assertVisionOwner(expectedUserId: string | null, expectedSessionEpoch: 
 }
 
 const DETAIL_INTENT = /(?:\blis\b|\blire\b|\blecture\b|\bécri(?:t|te|ts|tes|ture)?\b|\binscription\b|\btexte\b|\bd[ée]tail\b|\bzoom(?:e|er)?\b|\bagrandi(?:s|r|ssement)?\b|\bd[ée]chiffr|\bidentifi|\breconna[iî]|\bregarde\b|\banalys|\bread\b|\bwriting\b|\btext\b|\bdetail\b|\bzoom\b|\bidentify\b)/i
-const VISUAL_REFERENCE = /(?:\bphoto\b|\bimage\b|\bcadre\b|\b[ée]cran\b|\b[ée]tiquette\b|\bpanneau\b|\baffiche\b|\bobjet\b|\bzone\b|\bpartie\b|\bcoin\b|\bgauche\b|\bdroite\b|\ben haut\b|\ben bas\b|\bau fond\b|\bdessus\b|\bdedans\b|\bpicture\b|\bphoto\b|\bscreen\b|\blabel\b|\bsign\b|\bleft\b|\bright\b|\btop\b|\bbottom\b|\bbackground\b)/i
+const VISUAL_REFERENCE = /(?:\bphoto\b|\bimage\b|\bcadre\b|[ée]cran\b|[ée]tiquette\b|\bpanneau\b|\baffiche\b|\bobjet\b|\bzone\b|\bpartie\b|\bcoin\b|\bgauche\b|\bdroite\b|\ben haut\b|\ben bas\b|\bau fond\b|\bdessus\b|\bdedans\b|\bpicture\b|\bphoto\b|\bscreen\b|\blabel\b|\bsign\b|\bleft\b|\bright\b|\btop\b|\bbottom\b|\bbackground\b)/i
+const FRENCH_PLATE_TARGET = String.raw`(?:la\s+plaque(?:\s+d['’]immatriculation|\s+(?:du|de\s+la|de\s+l['’])\s+(?:v[ée]hicule|voiture|fourgon|camion|auto))|le\s+num[ée]ro\s+d['’]immatriculation|l['’]immatriculation)`
+const ENGLISH_PLATE_TARGET = String.raw`(?:(?:the\s+)?(?:licen[cs]e\s+plate(?:\s+number)?|number\s+plate|plate\s+number|registration\s+(?:number|plate))(?:\s+(?:on|of)\s+(?:the\s+)?(?:car|vehicle|van|truck))?)`
+const PLATE_VALUE_QUERY = new RegExp(
+  String.raw`(?:\b(?:quel(?:le)?\s+est|c['’]est\s+quoi)\s+${FRENCH_PLATE_TARGET}(?:\s+(?:sur|dans)\s+(?:la\s+)?(?:photo|image))?\s*[?!.]?\s*$|\b(?:lis|lire|rel[eè]v(?:e|er)|donn(?:e|er)(?:[-\s]moi)?|dis(?:[-\s]moi)?|trouve|identifi\w*|d[ée]chiffr\w*)\s+${FRENCH_PLATE_TARGET}(?:\s+(?:sur|dans)\s+(?:la\s+)?(?:photo|image))?\s*[?!.]?\s*$|\bwhat(?:['’]s|\s+is)\s+${ENGLISH_PLATE_TARGET}\s*[?!.]?\s*$|\b(?:read|identify|find|tell\s+me)\s+${ENGLISH_PLATE_TARGET}\s*[?!.]?\s*$)`,
+  'i',
+)
 
 /** Détection volontairement conservative : pas de réanalyse sur « merci ». */
 export function isVisionAutoCropFollowUp(text: string): boolean {
   const normalized = text.trim()
   if (normalized.length < 4) return false
-  return DETAIL_INTENT.test(normalized) && VISUAL_REFERENCE.test(normalized)
+  return PLATE_VALUE_QUERY.test(normalized) || (
+    DETAIL_INTENT.test(normalized) && VISUAL_REFERENCE.test(normalized)
+  )
 }
 
 /**
