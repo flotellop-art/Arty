@@ -113,6 +113,12 @@ export function gatherRouteInput(ctx: RouteContext): RouteInput {
   try { plan = localStorage.getItem('arty-plan-cache') } catch { /* contexte sans storage */ }
   const walletCoversPremium = creditsCoverPremium()
   const trialRemaining = getTrialRemaining()
+  const proActivated = isProActivated()
+  // Auto → Terra exige une preuve positive de compte payant. Un plan absent,
+  // free ou trial reste donc chez Claude, même avec une clé OpenAI personnelle
+  // ou un état d'essai incomplet. Le choix manuel de ChatGPT reste indépendant.
+  const canAutoRouteVisionToTerra =
+    plan === 'subscription' || plan === 'vip' || plan === 'pro' || proActivated
   return {
     ...ctx,
     selectedModel: getSelectedModel(),
@@ -121,9 +127,9 @@ export function gatherRouteInput(ctx: RouteContext): RouteInput {
       creditsCoverPremium: walletCoversPremium,
       trialRemaining,
     }),
-    plan: { plan, isPro: isProActivated(), creditsCoverPremium: walletCoversPremium },
+    plan: { plan, isPro: proActivated, creditsCoverPremium: walletCoversPremium },
     reflectionLevel: getReflectionLevel(),
     visionOpenAIEnabled: isVision4kFoundationEnabled(),
-    visionAutoRoutingEnabled: isVisionTerraAutoRoutingEnabled(),
+    visionAutoRoutingEnabled: isVisionTerraAutoRoutingEnabled() && canAutoRouteVisionToTerra,
   }
 }

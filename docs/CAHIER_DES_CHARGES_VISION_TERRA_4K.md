@@ -1,9 +1,9 @@
 # Cahier des charges — Vision GPT-5.6 Terra en 4K dans Arty
 
-**Statut :** PR-A #371, PR-B #372 et PR-C #373 mergées ; gates d'activation en cours, flags désactivés — **revue adversariale intégrée, voir §0**<br>
-**Date :** 19 juillet 2026<br>
+**Statut :** PR-A #371, PR-B #372 et PR-C #373 mergées ; Terra manuel ouvert, Auto réservé aux comptes payants éligibles, free/trials sur Claude — **revue adversariale intégrée, voir §0**<br>
+**Date :** 20 juillet 2026<br>
 **Périmètre :** analyse de photos par `gpt-5.6-terra`, routage automatique, préparation mobile, maîtrise des coûts et confidentialité<br>
-**État de production :** aucun routage Terra vision activé ; les deux flags client et le killswitch serveur restent désactivés par défaut
+**État après fusion de l'activation :** ChatGPT manuel accepte les photos pour les comptes éligibles ; Auto envoie les photos vers Terra uniquement avec une preuve positive de compte payant éligible (`subscription`, `vip` ou licence Pro avec BYOK) et conserve Claude pour free/trial ; les validations A11/§15 restent des actions P0 post-activation sous dérogation A13
 
 ---
 
@@ -31,14 +31,15 @@
 | **A2** | **BLOQUANT (P0, PR-A)** | **Décodage des sources énormes : risque mémoire + échec silencieux.** Précision factuelle (revue du 19/07) : la limite WebKit ~16,7 Mpx concerne l'aire du canvas de **sortie** (`width × height > 16 777 216`, bugs.webkit.org #171238) — la sortie normalisée 4096×3072 = 12,58 Mpx reste sous cette limite. Le danger réel est le **pic mémoire du décodage source** (200 MP ≈ 800 Mo RGBA) et les échecs silencieux associés sur WebView mobile. Exigences P0 : gate octets/mégapixels sur la SOURCE avant tout décodage ; `createImageBitmap(blob, {resizeWidth, resizeHeight})` comme **chemin préféré testé** (l'API ne garantit pas contractuellement l'absence de décodage complet sur toutes les versions WKWebView) avec **fallback natif/tuilé** ; test de non-corruption (sortie non uniforme) ; essais sur appareils iOS réels. |
 | **A3** | **URGENCE RELEVÉE (PR-0 indépendante)** | **La sur-réservation wallet (§2 point 5) est un bug DÉJÀ LIVE, pas un risque futur.** `walletBilling.estimateInputTokens` compte le base64 comme du texte (le commentaire du code annonce l'inverse de son comportement) et le chemin est actif aujourd'hui pour Claude (`proxy.ts` → `beginWalletBilling` pour free-avec-crédits). *Exemple chiffré, pas une constante* (hypothèses : image ≈ 8 Mo en base64, tarif input du modèle appelé, markup texte, plafond de sortie par défaut) : ~8 M « tokens » comptés → une réservation de l'ordre de plusieurs dizaines de dollars pour quelques centimes de coût réel — l'ampleur exacte dépend du poids binaire, du modèle, du plafond de sortie et du markup. Le fix §10.2 doit partir en **PR-0 autonome AVANT la vision**, avec test de non-régression sur le chemin Claude existant. |
 | **A4** | **CORRECTION FACTUELLE (§5/§10/§11)** | Les bornes Arty, initialement « 4 images / 6 Mio / 24 Mio / 40 Mio » puis réduites par A12, sont des **choix défensifs Arty**, PAS des limites OpenAI. Limites officielles réelles : **512 Mo de payload total et 1 500 images par requête**. Aucune formulation du document ne doit les présenter comme des contraintes API. |
-| **A5** | **RÉSOLU PR-C (§7, 19/07/2026)** | **Disponibilité plan-aware et décision trial.** Le routage réutilise `availability.ts` avec une capacité distincte `openaiVision`. Un essai actif sur clé serveur reste chez Claude, car Terra demeure hors `TRIAL_ALLOWED_MODELS` et un test verrouille ce refus. Une clé OpenAI personnelle reste autorisée pendant l'essai, à la charge de l'utilisateur. Pour `free` + wallet serveur, seule la preuve d'un essai explicitement épuisé (`trialRemaining === 0`) ouvre Terra ; `null` est un état inconnu et revient à Claude. Subscription/vip suivent la famille `gpt-full`. |
+| **A5** | **RÉSOLU PR-C, AMENDÉ A13 (§7, 20/07/2026)** | **Disponibilité plan-aware et décision trial.** Le routage réutilise `availability.ts` avec une capacité distincte `openaiVision`. Un essai actif sur clé serveur reste chez Claude, car Terra demeure hors `TRIAL_ALLOWED_MODELS`. Une clé OpenAI personnelle et un wallet après essai peuvent encore ouvrir Terra en sélection **manuelle**, à la charge de l'utilisateur. En **Auto**, A13 exige en plus une preuve positive de compte payant : free/trial/plan inconnu restent chez Claude, même avec wallet ou BYOK. Subscription/vip suivent la famille `gpt-full` ; la licence Pro exige BYOK. |
 | **A6** | **MED (§8.2/§19, PR-A)** | **Piège double-compression non flagué** : `secureFileStorage.putFile` re-compresse à 2 048 px à la persistance. Si `normalizeImageForVision` sort du 4 096 mais que `putFile` reste en l'état, IndexedDB stocke du 2 048 pendant que la RAM du 1er tour est en 4 096 — ce qui **recrée exactement la divergence RAM/retry que le §8.2 veut tuer**. PR-A doit neutraliser/aligner `putFile` sur l'asset canonique. |
 | **A7** | **P0 (précise §8.3)** | **Invariant JPEG du chemin natif : à TESTER, pas à re-forcer.** Constat corrigé (revue du 19/07) : la capture native actuelle passe par `CameraResultType.Base64` et `@capacitor/camera` 8 ne retourne que du JPEG sur iOS et Android (l'implémentation Swift sérialise `jpegData`, `format: "jpeg"`) — pas de chantier « forcer le JPEG natif » en P0. Exigence réelle : un **test de non-régression verrouillant cet invariant JPEG** du chemin natif, et le rejet/la conversion HEIC sur les chemins d'**import** (web/fichiers), où le risque existe vraiment. |
 | **A8** | **HYGIÈNE (P0)** | Ajouter aux exigences P0 : gate `npx tsc --noEmit` avant push (BUG 13 — l'union multimodale + 4 nouveaux champs `RouteInput` sont une grosse surface de types) ; audit RÈGLE 6 explicite sur `openai-proxy` modifié (dont Origin/CSRF) ; vérification `AndroidManifest` : `CAMERA` présente **et confirmer que `READ_MEDIA_IMAGES` reste inutile** (absence volontaire documentée au manifest — sélections via Photo Picker/SAF avec URI temporaire ; ne l'ajouter QUE si l'architecture change) ; vérification CSP `img-src data:/blob:` de `public/_headers` pour les vignettes (précédent BUG 40/62). |
 | **A9** | **REMPLACÉ PAR A12 (§3/§11/§14, 19/07/2026)** | La décision initiale 4 × 6 Mio / 40 Mio tenait compte d'un échantillon OnePlus 12R de 5,5 Mio, mais précédait la mesure concurrente du proxy. Elle est conservée comme historique et ne définit plus le contrat actif. |
 | **A10** | **PÉRIMÈTRE PR-B, AMENDÉ PAR A12 (§11/§18, 19/07/2026)** | La borne JSON vision est désormais **24 Mio** et s'applique uniquement au transport vision streaming de `openai-proxy` ; le transport texte OpenAI reste borné à **10 Mio**. Les proxys Anthropic/Gemini/Mistral et les PDF ne changent pas : leurs caps restent un chantier d'hygiène séparé, avec une politique document-aware. |
-| **A11** | **PRÉFLIGHT LOCAL RÉSOLU / STAGING BLOQUANT — CLOUDFLARE/MÉMOIRE (19/07/2026)** | La mémoire Cloudflare reste limitée à [128 MB par isolat](https://developers.cloudflare.com/workers/platform/limits/#memory). Le `tee()` streaming évite le DOM complet mais retient sa branche upstream pendant la validation. Le préflight Workerd reproductible teste donc des isolates neufs, le chemin BYOK et la clé serveur, avec chevauchement forcé. Il reste un signal de régression local : le GO production exige encore la [métrique mémoire P999 en staging](https://developers.cloudflare.com/workers/observability/metrics-and-analytics/) et zéro `exceededMemory`/1102. |
-| **A12** | **DÉCISION SÉCURITÉ MÉMOIRE (§3/§11/§14, 19/07/2026)** | Nouveau contrat : **4 Mio maximum par photo**, **16 Mio binaires par lot** et **24 Mio de JSON**. La normalisation passe en v2 et essaie le JPEG jusqu'à q.70 avant de réduire les dimensions ; le grand côté reste plafonné à 4096 px. Les anciens assets v1 restent lisibles dans l'historique mais sont inéligibles à Terra : leur retry continue chez Claude ; pour les relancer sur Terra, l'utilisateur doit rattacher l'image, plutôt que de migrer silencieusement des pixels. Après identité valide et avant toute lecture du body, le proxy admet **une seule validation vision par isolat** et refuse les concurrentes en 429 `vision_busy`, sans file JS. Le permis reste détenu jusqu'à EOF ou demande d'annulation du body, sans attendre un acknowledgement runtime potentiellement bloqué ; un délai global de 120 s couvre dès l'identité initiale le body, les dépendances Google/D1/wallet/quota/cap et le fetch upstream, avec remboursement tardif des effets réservés. Un dépassement streaming sans `Content-Length` annule les deux branches du `tee()` sans attendre EOF et conserve le 413. Sur Node 22, 30 isolates froids (BYOK + serveur, concurrence 1/2/4) ont culminé localement à **70,19 Mio comptabilisés** pour 21,33 Mio de JSON, sous le seuil conservateur local de 96 Mio. Cela ne lève pas le gate staging A11. Les PDF/autres fichiers restent inchangés. |
+| **A11** | **PRÉFLIGHT LOCAL RÉSOLU / SUIVI P0 POST-ACTIVATION — CLOUDFLARE/MÉMOIRE (20/07/2026)** | La mémoire Cloudflare reste limitée à [128 MB par isolat](https://developers.cloudflare.com/workers/platform/limits/#memory). Le `tee()` streaming évite le DOM complet mais retient sa branche upstream pendant la validation. Le préflight Workerd reproductible teste donc des isolates neufs, le chemin BYOK et la clé serveur, avec chevauchement forcé. La preuve staging P999 et zéro `exceededMemory`/1102 n'est **pas acquise**. A13 autorise l'activation Pro avant cette preuve ; elle devient une action P0 post-activation, avec coupure serveur immédiate de la clé plateforme au premier signal mémoire. |
+| **A12** | **DÉCISION SÉCURITÉ MÉMOIRE (§3/§11/§14, 19/07/2026)** | Nouveau contrat : **4 Mio maximum par photo**, **16 Mio binaires par lot** et **24 Mio de JSON**. La normalisation passe en v2 et essaie le JPEG jusqu'à q.70 avant de réduire les dimensions ; le grand côté reste plafonné à 4096 px. Les anciens assets v1 restent lisibles dans l'historique mais sont inéligibles à Terra : leur retry continue chez Claude ; pour les relancer sur Terra, l'utilisateur doit rattacher l'image, plutôt que de migrer silencieusement des pixels. Après identité valide et avant toute lecture du body, le proxy admet **une seule validation vision par isolat** et refuse les concurrentes en 429 `vision_busy`, sans file JS. Le permis reste détenu jusqu'à EOF ou demande d'annulation du body, sans attendre un acknowledgement runtime potentiellement bloqué ; un délai global de 120 s couvre dès l'identité initiale le body, les dépendances Google/D1/wallet/quota/cap et le fetch upstream, avec remboursement tardif des effets réservés. Un dépassement streaming sans `Content-Length` annule les deux branches du `tee()` sans attendre EOF et conserve le 413. Sur Node 22, 30 isolates froids (BYOK + serveur, concurrence 1/2/4) ont culminé localement à **70,19 Mio comptabilisés** pour 21,33 Mio de JSON, sous le seuil conservateur local de 96 Mio. Cela ne constitue pas la preuve staging A11. Les PDF/autres fichiers restent inchangés. |
+| **A13** | **DÉCISION PRODUIT EXPLICITE — AUTO PRO (20/07/2026)** | Auto + photos canoniques est activé par défaut pour les comptes payants prouvés : `subscription`/`vip` avec `gpt-full`, ou licence Pro avec BYOK. Free, trial et plan inconnu restent chez Claude en Auto, y compris avec wallet ou BYOK ; la sélection manuelle reste indépendante. Cette décision déroge explicitement au séquençage antérieur « benchmark + staging avant Auto ». A11 et §15 ne sont pas déclarés réussis : ils restent P0 post-activation et tout échec impose `OPENAI_VISION_ENABLED=false` pour la clé plateforme puis un redéploiement client avec le flag Auto coupé. |
 
 Points vérifiés CONFORMES (aucune action) : bucket premium `gpt-5.6-terra` →
 `gpt-5` cap 100 (D11) ; invariant « consommé ⟺ servi » cohérent avec
@@ -53,8 +54,9 @@ génération (D12).
 
 PR-A sait désormais normaliser et stocker jusqu'à quatre images canoniques 4K,
 et PR-B sait les transmettre à OpenAI en streaming borné avec facturation
-dimensionnelle. Ces fondations restent inactives par défaut. PR-C ajoute le
-routage et la transparence UI sans activer le déploiement Auto.
+dimensionnelle. La fondation est ouverte par défaut pour la sélection manuelle
+de ChatGPT et le mode Auto des comptes payants éligibles. Les comptes free et
+les essais conservent Claude en Auto.
 
 Le produit cible est le suivant :
 
@@ -68,8 +70,8 @@ Le produit cible est le suivant :
 - une image n'est pas renvoyée silencieusement à chaque message suivant ;
 - le coût est calculé, réservé et mesuré à partir des tokens image réels, sans
   compter le base64 comme du texte ;
-- le déploiement Auto n'a lieu qu'après un benchmark aveugle sur des photos
-  Arty réelles face au chemin Claude actuel.
+- par décision produit A13, Auto Pro est ouvert avant le benchmark aveugle ;
+  celui-ci reste P0 après activation et peut imposer un retour à Claude.
 
 Le compromis 4K vise environ **12,6 MP** pour une photo 4:3
 (`4096 × 3072`). Il fournit quatre fois plus de pixels que le stockage actuel
@@ -125,7 +127,7 @@ entre le premier envoi, l'édition et le retry.
 | D10 | Retry/édition du tour image : l'image normalisée peut être renvoyée, avec le coût normal d'un nouvel appel. |
 | D11 | Le cap premium « 100 GPT-5 » reste compté par message ; aucun nouveau bucket n'est créé pour la vision en v1. |
 | D12 | Le coût des images d'entrée suit la tarification de tokens d'entrée Terra et le markup texte existant. Le markup « image » actuel reste réservé à la génération d'images. |
-| D13 | Le routage Auto vers Terra est conditionné à un benchmark de qualité. En cas d'échec du gate, la vision Terra sort d'abord en sélection manuelle. |
+| D13 | **Amendé par A13 :** Auto Pro est ouvert avant le benchmark de qualité. En cas d'échec du gate post-activation, Auto revient à Claude et Terra reste en sélection manuelle. |
 
 ---
 
@@ -210,7 +212,7 @@ routeur doit recevoir au minimum `hasImages`, `hasPdf`, `hasOtherFiles` et
 | 4 | Images seules + Claude manuel | Claude | `manual_selection` |
 | 5 | Images seules + Mistral manuel | Mistral | `files_mistral_native` |
 | 6 | Images seules + OpenAI manuel et disponible | OpenAI/Terra | `image_vision_openai` |
-| 7 | Images seules + Auto + OpenAI disponible + feature activée | OpenAI/Terra | `image_vision_openai` |
+| 7 | Images seules + Auto + compte payant prouvé + OpenAI disponible + feature activée | OpenAI/Terra | `image_vision_openai` |
 | 8 | Images seules + fondation ou flag Auto désactivé | Claude | `files_to_claude` |
 | 9 | Images seules + flags requis actifs, Terra indisponible pour le compte | Claude | `fallback_no_provider` |
 | 10 | Images seules + Gemini manuel tant que Gemini reste texte-seul | Claude + override visible | `files_to_claude` |
@@ -438,8 +440,10 @@ P0 :
 - Bornes client et proxy §11.
 - Estimation wallet par dimensions et settle par usage réel.
 - Raison de routage et modèle visibles en FR/EN.
-- Feature flag désactivé par défaut.
-- Benchmark et matrice de tests verts avant activation Auto.
+- Feature flags actifs par défaut, avec gate positif de compte payant et
+  coupe-circuit local explicite `0`.
+- Par dérogation A13, benchmark et preuve staging restent P0 post-activation ;
+  un échec coupe Auto et restaure Claude.
 
 ### P1 — amélioration rapide
 
@@ -473,7 +477,8 @@ P0 :
 
 ### 14.2 Routage
 
-- [ ] Auto + JPEG seul + OpenAI disponible → Terra.
+- [x] Auto + JPEG seul + compte payant/OpenAI disponibles → Terra.
+- [x] Auto + JPEG seul + free/trial/plan inconnu → Claude, même avec BYOK.
 - [ ] OpenAI manuel + JPEG seul → Terra.
 - [ ] Claude manuel + JPEG seul → Claude.
 - [ ] Mistral manuel + JPEG seul → Mistral.
@@ -516,7 +521,7 @@ P0 :
 
 ---
 
-## 15. Benchmark qualité obligatoire
+## 15. Benchmark qualité obligatoire post-activation
 
 Comparer en aveugle le chemin actuel Claude et Terra 4K sur au moins **40
 cas réels ou représentatifs**, sans données personnelles non consenties :
@@ -530,7 +535,7 @@ cas réels ou représentatifs**, sans données personnelles non consenties :
 Chaque cas possède une vérité terrain ou une grille annotée par un humain :
 éléments visibles, éléments absents, texte attendu, niveau d'incertitude.
 
-Gate d'activation Auto :
+Gate de maintien d'Auto :
 
 - taux d'erreur critique Terra non supérieur à Claude de plus de 2 points ;
 - score global Terra au moins égal à 95 % du score Claude ;
@@ -538,8 +543,8 @@ Gate d'activation Auto :
 - taux d'hallucination sur cas négatifs non dégradé ;
 - coût et latence dans les bornes §16.
 
-Si le gate échoue, Terra vision reste accessible uniquement par sélection
-manuelle pendant l'itération suivante.
+Si le gate échoue, Auto revient à Claude et Terra vision reste accessible
+uniquement par sélection manuelle pendant l'itération suivante.
 
 ---
 
@@ -600,20 +605,28 @@ réversible ou dimensions de source permettant de profiler un appareil.
    proxy et facturation, feature désactivée.
 3. **PR-C — routage et UI** : raison, overrides, traductions et tests, avec les
    flags toujours désactivés.
-4. **Activation après benchmark et test mémoire/concurrence** : manuel interne,
-   10 % Auto, 50 %, puis 100 % si les métriques
-   restent dans les bornes pendant au moins 48 h par palier.
+4. **Activation produit** : sélection manuelle ouverte pour les comptes
+   éligibles ; Auto ouvert uniquement avec une preuve positive de compte payant.
+   Free/trial restent chez Claude. Le test mémoire/concurrence A11 reste à
+   formaliser et le coupe-circuit permet un rollback local immédiat.
 
 ### Feature flags
 
 - `arty-vision-terra-4k-foundation` contrôle la fondation et la sélection
-  OpenAI manuelle ; valeur par défaut : OFF.
+  OpenAI manuelle ; valeur par défaut : ON, `0` la coupe sur l'appareil.
 - `arty-vision-terra-auto-routing` contrôle séparément Auto et ne peut être
-  actif que si la fondation l'est ; valeur par défaut : OFF.
+  actif que si la fondation l'est ; valeur par défaut : ON, `0` le coupe sur
+  l'appareil. Sans preuve de plan `subscription`/`vip` ou de licence Pro, ce
+  flag est forcé à OFF dans l'entrée du routeur. La licence Pro activée sur
+  l'appareil est une preuve positive et prime sur un cache plan free/null
+  obsolète ; Terra exige toujours une clé OpenAI personnelle pour cette offre.
 - Un killswitch serveur refuse les blocs image avant débit quota/wallet pour le
   chemin clé serveur : `OPENAI_VISION_ENABLED`, valeur par défaut `false`.
-- Le rollback restaure le routage des images vers Claude ; les assets 4K déjà
-  persistés restent compatibles et ne nécessitent aucune migration.
+- Le rollback client par `0` restaure localement le routage des images vers
+  Claude. Le killswitch serveur bloque globalement les appels avec la clé
+  plateforme mais ne couvre pas BYOK et retourne une erreur explicite ; un
+  rollback client global exige un redéploiement. Les assets 4K déjà persistés
+  restent compatibles et ne nécessitent aucune migration.
 - Aucun fallback cross-provider silencieux après réception upstream.
 
 ---
@@ -647,7 +660,7 @@ réversible ou dimensions de source permettant de profiler un appareil.
 3. **Engineering :** le fallback `gpt-5` est désactivé dès qu'un bloc vision est
    présent ; aucun replay cross-modèle silencieux n'est autorisé.
 
-### Restant avant activation
+### Restant après activation
 
 1. **Produit :** faut-il afficher le coût estimé avant une réanalyse manuelle ?
 2. **Engineering :** exécuter le protocole staging A11 (P999 <=96 Mio, zéro
@@ -659,9 +672,10 @@ réversible ou dimensions de source permettant de profiler un appareil.
 
 ---
 
-## 21. Définition de terminé
+## 21. Définition de complètement terminé
 
-La fonctionnalité est terminée lorsque :
+L'activation sous dérogation A13 ne signifie pas que le chantier est terminé.
+La fonctionnalité est complètement terminée lorsque :
 
 1. tous les P0 et critères §14 sont verts ;
 2. le benchmark §15 passe ;
