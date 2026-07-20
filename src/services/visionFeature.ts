@@ -2,22 +2,22 @@ const VISION_4K_FOUNDATION_FLAG = 'arty-vision-terra-4k-foundation'
 const VISION_TERRA_AUTO_ROUTING_FLAG = 'arty-vision-terra-auto-routing'
 
 /**
- * Fondation PR-A/PR-B : OFF par défaut, y compris après la fusion de PR-C.
- * Les images live gardent donc leurs routes historiques tant qu'un essai
- * owner n'active pas explicitement le flag à `1`.
+ * Terra vision manuel est ouvert en production. `0` reste un coupe-circuit
+ * local explicite pour le diagnostic ; le proxy conserve en plus son
+ * killswitch OPENAI_VISION_ENABLED pour les appels avec la clé plateforme.
  */
 export function isVision4kFoundationEnabled(): boolean {
   try {
-    return localStorage.getItem(VISION_4K_FOUNDATION_FLAG) === '1'
+    return localStorage.getItem(VISION_4K_FOUNDATION_FLAG) !== '0'
   } catch {
-    return false
+    return true
   }
 }
 
 /**
- * Flag distinct pour le routage Auto. La fondation peut ainsi être ouverte
- * en manuel aux essais owner sans envoyer automatiquement les photos à
- * OpenAI avant le benchmark qualité et le test mémoire concurrent Workerd.
+ * Le routage Auto photo conserve un déploiement distinct et explicite. La
+ * fondation peut ainsi être ouverte à tous sans modifier les routes Auto tant
+ * que ce second flag n'est pas positionné à `1`.
  */
 export function isVisionTerraAutoRoutingEnabled(): boolean {
   if (!isVision4kFoundationEnabled()) return false

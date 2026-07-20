@@ -105,7 +105,6 @@ describe('gatherRouteInput', () => {
   })
 
   it('collecte séparément les flags vision manuel et Auto', () => {
-    localStorage.setItem('arty-vision-terra-4k-foundation', '1')
     expect(gatherRouteInput(CTX)).toMatchObject({
       visionOpenAIEnabled: true,
       visionAutoRoutingEnabled: false,

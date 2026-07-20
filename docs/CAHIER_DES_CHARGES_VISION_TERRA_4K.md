@@ -1,9 +1,9 @@
 # Cahier des charges — Vision GPT-5.6 Terra en 4K dans Arty
 
-**Statut :** PR-A #371, PR-B #372 et PR-C #373 mergées ; gates d'activation en cours, flags désactivés — **revue adversariale intégrée, voir §0**<br>
-**Date :** 19 juillet 2026<br>
+**Statut :** PR-A #371, PR-B #372 et PR-C #373 mergées ; Terra manuel ouvert, Auto encore désactivé — **revue adversariale intégrée, voir §0**<br>
+**Date :** 20 juillet 2026<br>
 **Périmètre :** analyse de photos par `gpt-5.6-terra`, routage automatique, préparation mobile, maîtrise des coûts et confidentialité<br>
-**État de production :** aucun routage Terra vision activé ; les deux flags client et le killswitch serveur restent désactivés par défaut
+**État après fusion de l'activation :** ChatGPT manuel accepte les photos pour les comptes éligibles ; le routage Auto reste désactivé par défaut et le gate staging A11 reste à formaliser
 
 ---
 
@@ -53,8 +53,9 @@ génération (D12).
 
 PR-A sait désormais normaliser et stocker jusqu'à quatre images canoniques 4K,
 et PR-B sait les transmettre à OpenAI en streaming borné avec facturation
-dimensionnelle. Ces fondations restent inactives par défaut. PR-C ajoute le
-routage et la transparence UI sans activer le déploiement Auto.
+dimensionnelle. La fondation est ouverte par défaut pour la sélection manuelle
+de ChatGPT. PR-C ajoute le routage et la transparence UI sans activer le
+déploiement Auto.
 
 Le produit cible est le suivant :
 
@@ -600,20 +601,23 @@ réversible ou dimensions de source permettant de profiler un appareil.
    proxy et facturation, feature désactivée.
 3. **PR-C — routage et UI** : raison, overrides, traductions et tests, avec les
    flags toujours désactivés.
-4. **Activation après benchmark et test mémoire/concurrence** : manuel interne,
-   10 % Auto, 50 %, puis 100 % si les métriques
+4. **Activation progressive** : sélection manuelle ouverte ; après benchmark et
+   test mémoire/concurrence, 10 % Auto, 50 %, puis 100 % si les métriques
    restent dans les bornes pendant au moins 48 h par palier.
 
 ### Feature flags
 
 - `arty-vision-terra-4k-foundation` contrôle la fondation et la sélection
-  OpenAI manuelle ; valeur par défaut : OFF.
+  OpenAI manuelle ; valeur par défaut : ON, `0` la coupe sur l'appareil.
 - `arty-vision-terra-auto-routing` contrôle séparément Auto et ne peut être
   actif que si la fondation l'est ; valeur par défaut : OFF.
 - Un killswitch serveur refuse les blocs image avant débit quota/wallet pour le
   chemin clé serveur : `OPENAI_VISION_ENABLED`, valeur par défaut `false`.
-- Le rollback restaure le routage des images vers Claude ; les assets 4K déjà
-  persistés restent compatibles et ne nécessitent aucune migration.
+- Le rollback client par `0` restaure localement le routage des images vers
+  Claude. Le killswitch serveur bloque globalement les appels avec la clé
+  plateforme mais ne couvre pas BYOK et retourne une erreur explicite ; un
+  rollback client global exige un redéploiement. Les assets 4K déjà persistés
+  restent compatibles et ne nécessitent aucune migration.
 - Aucun fallback cross-provider silencieux après réception upstream.
 
 ---
@@ -647,7 +651,7 @@ réversible ou dimensions de source permettant de profiler un appareil.
 3. **Engineering :** le fallback `gpt-5` est désactivé dès qu'un bloc vision est
    présent ; aucun replay cross-modèle silencieux n'est autorisé.
 
-### Restant avant activation
+### Restant avant activation Auto et généralisation
 
 1. **Produit :** faut-il afficher le coût estimé avant une réanalyse manuelle ?
 2. **Engineering :** exécuter le protocole staging A11 (P999 <=96 Mio, zéro
