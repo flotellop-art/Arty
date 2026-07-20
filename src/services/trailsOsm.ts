@@ -28,6 +28,7 @@ const OVERPASS_INSTANCES = [
   'https://overpass-api.de/api/interpreter',
   'https://overpass.openstreetmap.fr/api/interpreter',
 ]
+const OVERPASS_HEDGE_DELAY_MS = 1200
 const MAX_ROUTES = 12
 const MAX_GEOMETRY_POINTS = 4000
 const MAX_SAFE_DISPLAY_POINTS = 20_000
@@ -86,10 +87,11 @@ async function geocodeDirect(location: string): Promise<{ center: Center | null;
 
   let reachable = false
 
-  // 1) API Adresse (BAN) — gouvernement français, CORS ouvert.
+  // 1) Géoplateforme / BAN — gouvernement français, CORS ouvert. L'ancien
+  // api-adresse.data.gouv.fr est arrivé à extinction le 31 janvier 2026.
   try {
     const res = await fetchWithTimeout(
-      `https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(location)}&limit=1`,
+      `https://data.geopf.fr/geocodage/search/?q=${encodeURIComponent(location)}&limit=1`,
       {}, 4000
     )
     if (res.ok) {
@@ -173,33 +175,56 @@ async function readBounded(res: Response, maxBytes: number): Promise<string> {
   return new TextDecoder().decode(merged)
 }
 
-async function queryOverpassDirect(ql: string, timeoutMs = 5000): Promise<OverpassPayload | null> {
-  const deadline = Date.now() + timeoutMs
-  for (const instance of OVERPASS_INSTANCES) {
-    const remainingMs = deadline - Date.now()
-    if (remainingMs <= 0) break
-    const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(new DOMException('Timeout', 'AbortError')), remainingMs)
-    try {
+async function queryOverpassDirect(ql: string, timeoutMs = 10_000): Promise<OverpassPayload | null> {
+  // Une deadline séquentielle de 5 s laissait le premier miroir lent consommer
+  // tout le budget : le second n'était alors jamais appelé. On lance donc un
+  // hedge retardé (pas un doublon systématique) et on garde la première réponse
+  // valide. Le budget reste global et le perdant est annulé immédiatement.
+  const controller = new AbortController()
+  const timer = setTimeout(
+    () => controller.abort(new DOMException('Timeout', 'AbortError')),
+    timeoutMs
+  )
+  try {
+    const attempts = OVERPASS_INSTANCES.map(async (instance, index) => {
+      if (index > 0) {
+        await new Promise((resolve) => setTimeout(resolve, index * OVERPASS_HEDGE_DELAY_MS))
+        if (controller.signal.aborted) throw controller.signal.reason
+      }
       const res = await fetch(instance, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: `data=${encodeURIComponent(ql)}`,
         signal: controller.signal,
       })
-      if (!res.ok) continue
+      if (!res.ok) throw new Error(`overpass ${res.status}`)
       const declaredSize = Number(res.headers.get('content-length') ?? 0)
-      if (declaredSize > MAX_UPSTREAM_BYTES) continue
+      if (declaredSize > MAX_UPSTREAM_BYTES) throw new Error('overpass response too large')
       const raw = await readBounded(res, MAX_UPSTREAM_BYTES)
       const payload = JSON.parse(raw) as OverpassPayload
       // Overpass encode certaines erreurs d'exécution dans un JSON HTTP 200.
-      // Ce n'est jamais un vrai « zéro résultat » : essayer le miroir suivant.
-      if (typeof payload.remark === 'string' && payload.remark.trim()) continue
+      // Ce n'est jamais un vrai « zéro résultat » : attendre l'autre miroir.
+      if (typeof payload.remark === 'string' && payload.remark.trim()) {
+        throw new Error('overpass runtime error')
+      }
       return payload
-    } catch { /* instance suivante */ }
-    finally { clearTimeout(timer) }
+    })
+    const payload = await new Promise<OverpassPayload>((resolve, reject) => {
+      let failed = 0
+      for (const attempt of attempts) {
+        attempt.then(resolve, () => {
+          failed++
+          if (failed === attempts.length) reject(new Error('overpass unavailable'))
+        })
+      }
+    })
+    controller.abort()
+    return payload
+  } catch {
+    return null
+  } finally {
+    clearTimeout(timer)
   }
-  return null
 }
 
 // ── Parse partagé recherche (miroir du serveur — test de parité) ─────────────
@@ -348,7 +373,7 @@ export async function searchTrailsDirect(params: {
 
 export async function fetchTrailGeometryDirect(
   routeId: number,
-  timeoutMs = 5000
+  timeoutMs = 10_000
 ): Promise<DirectOutcome<TrailGeometry>> {
   if (!Number.isInteger(routeId) || routeId <= 0) return { ok: false, status: 'not_found' }
 
