@@ -127,6 +127,7 @@ function AppContent({
     streamingContent,
     streamingConvIds,
     error,
+    errorRetryable,
     createConversation,
     selectConversation,
     clearActive,
@@ -588,6 +589,7 @@ function AppContent({
               isStreaming={isStreaming}
               streamingContent={streamingContent}
               error={error}
+              errorRetryable={errorRetryable}
               onBack={handleBack}
               onSend={handleSendInChat}
               onStop={stopStreaming}
@@ -704,6 +706,7 @@ interface ChatRouteProps {
   isStreaming: boolean
   streamingContent: string
   error: string | null
+  errorRetryable?: boolean
   onBack: () => void
   onSend: ChatSendHandler
   onStop: () => void
@@ -728,6 +731,7 @@ function ChatRoute({
   isStreaming,
   streamingContent,
   error,
+  errorRetryable,
   onBack,
   onSend,
   onStop,
@@ -808,6 +812,7 @@ function ChatRoute({
       isStreaming={isStreaming}
       streamingContent={streamingContent}
       error={error}
+      errorRetryable={errorRetryable}
       onBack={onBack}
       onSend={onSend}
       onStop={onStop}

@@ -529,7 +529,11 @@
       "edit": "Modifier",
       "editTitle": "Modifier et renvoyer",
       "send": "Envoyer",
-      "imageUnavailable": "Image indispo"
+      "imageUnavailable": "Image indispo",
+      "openFullscreen": "Afficher en plein écran"
+    },
+    "visionAutoCrop": {
+      "disclosure": "Pour repérer automatiquement la zone, Arty enverra à OpenAI un aperçu réduit de la ou des photos, puis uniquement le recadrage HD. Ces deux appels sont facturés séparément : le repérage peut être compté même si l’analyse finale échoue. Continuer ?"
     },
     "planBadge": {
       "labelFree": "Gratuit",
@@ -572,6 +576,11 @@
     "openaiVisionDisabled": "L’analyse photo par GPT est temporairement désactivée.",
     "openaiInvalidImagePayload": "Une photo n’a pas pu être validée. Retire-la puis ajoute-la de nouveau.",
     "openaiVisionAssetUnavailable": "La photo originale n’est plus disponible sur cet appareil. Ajoute-la de nouveau.",
+    "visionAutoCropRegionNotFound": "Je n’ai pas trouvé cette zone avec assez de certitude. Précise l’objet et sa position dans la photo.",
+    "visionAutoCropAssetUnavailable": "La photo à recadrer n’est plus disponible sur cet appareil. Ajoute-la de nouveau.",
+    "visionAutoCropFailed": "Je n’ai pas pu repérer la zone demandée. Rien d’autre n’a été envoyé ; réessaie en précisant sa position.",
+    "visionAutoCropInProgress": "Je repère déjà cette zone. Attends un instant avant de renvoyer.",
+    "accountChangedDuringRequest": "Le compte a changé pendant l’opération. Elle a été arrêtée avant l’étape suivante ; recommence depuis ce compte.",
     "streamInterrupted": "Réponse interrompue",
     "streamStopped": "Réponse arrêtée",
     "streamStalled": "Connexion au serveur interrompue (réseau instable). La réponse déjà reçue est conservée.",

@@ -3,6 +3,7 @@ import {
   ImageNormalizationError,
   MAX_IMAGE_SOURCE_BYTES,
   base64ImageToBlob,
+  cropImageAttachmentForVision,
   inspectImageHeader,
   normalizeImageForVision,
 } from '../../services/imageNormalization'
@@ -91,6 +92,12 @@ function uniformPixels(): Uint8ClampedArray {
   const pixels = new Uint8ClampedArray(16 * 16 * 4)
   for (let i = 0; i < pixels.length; i += 4) pixels.set([255, 255, 255, 255], i)
   return pixels
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let value = ''
+  for (const byte of bytes) value += String.fromCharCode(byte)
+  return btoa(value)
 }
 
 function transparentPixels(): Uint8ClampedArray {
@@ -385,5 +392,47 @@ describe('normalizeImageForVision', () => {
 
     await expect(normalizeImageForVision(blob)).rejects.toMatchObject({ code: 'decode_failed' })
     expect(createElement).not.toHaveBeenCalledWith('canvas')
+  })
+})
+
+describe('cropImageAttachmentForVision', () => {
+  it('recadre l’asset canonique orienté sans agrandir les pixels', async () => {
+    installCanvasMocks()
+    const result = await cropImageAttachmentForVision({
+      id: 'photo',
+      name: 'photo.jpg',
+      type: 'image/jpeg',
+      data: bytesToBase64(jpegBytes(3072, 4096)),
+      normalizationVersion: 2,
+    }, { x: 0.25, y: 0.25, width: 0.5, height: 0.5 })
+
+    expect(result).toMatchObject({
+      mimeType: 'image/jpeg',
+      width: 1536,
+      height: 2048,
+      normalizationVersion: 2,
+    })
+  })
+
+  it('produit un aperçu 768 px au même ratio pour la passe de repérage', async () => {
+    installCanvasMocks()
+    const result = await cropImageAttachmentForVision({
+      id: 'photo',
+      name: 'photo.jpg',
+      type: 'image/jpeg',
+      data: bytesToBase64(jpegBytes(3072, 4096)),
+      normalizationVersion: 2,
+    }, { x: 0, y: 0, width: 1, height: 1 }, { maxDimension: 768 })
+
+    expect(result).toMatchObject({ width: 576, height: 768 })
+  })
+
+  it('refuse une ancienne image non canonique', async () => {
+    await expect(cropImageAttachmentForVision({
+      id: 'legacy',
+      name: 'legacy.jpg',
+      type: 'image/jpeg',
+      data: bytesToBase64(jpegBytes(1200, 800)),
+    }, { x: 0, y: 0, width: 1, height: 1 })).rejects.toMatchObject({ code: 'decode_failed' })
   })
 })
