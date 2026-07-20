@@ -26,7 +26,10 @@ const OVERPASS_BODY = {
 const EMAIL = 'flo@example.com'
 const env = { GOOGLE_CLIENT_ID: 'arty-client-id', ALLOWED_EMAILS: EMAIL } as unknown
 
-afterEach(() => vi.unstubAllGlobals())
+afterEach(() => {
+  vi.useRealTimers()
+  vi.unstubAllGlobals()
+})
 
 function stubServerFetch() {
   vi.stubGlobal('fetch', vi.fn(async (url: RequestInfo | URL) => {
@@ -156,5 +159,30 @@ describe('parité trailsOsm ↔ endpoint serveur', () => {
     const out = await fetchTrailGeometryDirect(222)
     expect(out?.ok).toBe(true)
     expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('direct : un premier miroir bloqué ne prive jamais le second du budget', async () => {
+    vi.useFakeTimers()
+    const fetchMock = vi.fn((url: RequestInfo | URL, init?: RequestInit) => {
+      if (String(url).includes('overpass-api.de')) {
+        return new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener(
+            'abort',
+            () => reject(new DOMException('Aborted', 'AbortError')),
+            { once: true }
+          )
+        })
+      }
+      return Promise.resolve(new Response(JSON.stringify(OVERPASS_BODY), { status: 200 }))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const pending = fetchTrailGeometryDirect(222)
+    await vi.advanceTimersByTimeAsync(1201)
+    const out = await pending
+
+    expect(out?.ok).toBe(true)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(String(fetchMock.mock.calls[1]?.[0])).toContain('overpass.openstreetmap.fr')
   })
 })

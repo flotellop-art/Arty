@@ -64,7 +64,7 @@ function stubFetch(overpass: (url: string, init?: RequestInit) => Response | nul
     if (u.includes('/oauth2/v2/userinfo')) {
       return new Response(JSON.stringify({ id: 'g-1', email: EMAIL, verified_email: true }), { status: 200 })
     }
-    if (u.includes('api-adresse.data.gouv.fr')) {
+    if (u.includes('data.geopf.fr/geocodage')) {
       // Par défaut la BAN ne matche pas → la chaîne passe à open-meteo.
       return new Response(JSON.stringify({ features: [] }), { status: 200 })
     }
@@ -173,7 +173,7 @@ describe('geo/trails — recherche', () => {
       if (u.includes('/oauth2/v2/userinfo')) {
         return new Response(JSON.stringify({ id: 'g-1', email: EMAIL, verified_email: true }), { status: 200 })
       }
-      if (u.includes('api-adresse.data.gouv.fr')) {
+      if (u.includes('data.geopf.fr/geocodage')) {
         return new Response(JSON.stringify({
           features: [{ geometry: { coordinates: [5.205671, 45.311889] }, properties: { label: 'Viriville (38980)', score: 0.94 } }],
         }), { status: 200 })
@@ -200,31 +200,32 @@ describe('geo/trails — recherche', () => {
     expect(capturedQl).toContain('around:10000,')
   })
 
-  it("bascule sur l'instance suivante quand la première est saturée (504)", async () => {
+  it("bascule sur une instance UE quand le miroir serveur primaire est saturé (504)", async () => {
     const seen: string[] = []
     stubFetch((u) => {
       seen.push(u)
-      if (u.includes('overpass-api.de')) return new Response('busy', { status: 504 })
+      if (u.includes('maps.mail.ru')) return new Response('busy', { status: 504 })
       return new Response(JSON.stringify(OVERPASS_SEARCH_BODY), { status: 200 })
     })
     const res = await call(req({ action: 'search', location: '45.313,5.204' }))
     expect(res.status).toBe(200)
-    // 2e instance = overpass.openstreetmap.fr (deux miroirs UE uniquement).
-    expect(seen.some((u) => u.includes('overpass.openstreetmap.fr'))).toBe(true)
+    expect(seen[0]).toContain('maps.mail.ru')
+    expect(seen.some((u) => u.includes('overpass-api.de'))).toBe(true)
   })
 
   it("bascule aussi quand Overpass renvoie une erreur `remark` en HTTP 200", async () => {
     const seen: string[] = []
     stubFetch((u) => {
       seen.push(u)
-      if (u.includes('overpass-api.de')) {
+      if (u.includes('maps.mail.ru')) {
         return new Response(JSON.stringify({ remark: 'runtime error: Query timed out', elements: [] }), { status: 200 })
       }
       return new Response(JSON.stringify(OVERPASS_SEARCH_BODY), { status: 200 })
     })
     const res = await call(req({ action: 'search', location: '45.313,5.204' }))
     expect(res.status).toBe(200)
-    expect(seen.some((u) => u.includes('overpass.openstreetmap.fr'))).toBe(true)
+    expect(seen[0]).toContain('maps.mail.ru')
+    expect(seen.some((u) => u.includes('overpass-api.de'))).toBe(true)
   })
 
   it('n’écrit jamais les coordonnées exactes en clair dans la clé de cache', async () => {
