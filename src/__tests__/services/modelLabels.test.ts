@@ -74,6 +74,8 @@ describe('formatModelName — autres providers (anti-drift C-D)', () => {
   it('gemini : version extraite de l\'ID — 2.5 et 3.5 ne sont plus fondus', () => {
     expect(formatModelName('gemini-2.5-flash')).toBe('Gemini 2.5 Flash')
     expect(formatModelName('gemini-3.5-flash')).toBe('Gemini 3.5 Flash')
+    expect(formatModelName('gemini-3.6-flash')).toBe('Gemini 3.6 Flash')
+    expect(formatModelName('gemini-3.5-flash-lite')).toBe('Gemini 3.5 Flash Lite')
     expect(formatModelName('gemini-2.5-pro')).toBe('Gemini 2.5 Pro')
     expect(formatModelName('gemini-2.5-flash-lite')).toBe('Gemini 2.5 Flash Lite')
   })
@@ -99,8 +101,10 @@ describe('parité IDs routables ↔ labels / région / capacité / coûts', () =
     ['mistral-small-2603', 'selectMistralModel trivial'],
     ['mistral-medium-latest', 'selectMistralModel général + cible du swap trial (mistral-proxy.ts)'],
     // C1 (18/07/2026) : gemini-2.5-* retirés du routable (arrêt Google 16/10).
-    // 3.5-flash est désormais chat ET recherche (convergence C1).
-    ['gemini-3.5-flash', 'GEMINI_CHAT_MODEL + GEMINI_RESEARCH_MODEL + comparateur'],
+    // Chat stable 3.5 ; recherche 3.6 avec fallback serveur 3.5.
+    ['gemini-3.5-flash', 'GEMINI_CHAT_MODEL + fallback recherche + comparateur'],
+    ['gemini-3.6-flash', 'GEMINI_RESEARCH_MODEL + comparateur'],
+    ['gemini-3.5-flash-lite', 'comparateur'],
     ['gpt-5.6-terra', 'DEFAULT_MODEL openaiClient (C3, 18/07)'],
     ['gpt-5', 'FALLBACK_MODEL openaiClient'],
     ['gpt-5-mini', 'TRIAL_ALLOWED_MODELS + comparateur'],

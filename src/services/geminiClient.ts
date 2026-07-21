@@ -31,10 +31,26 @@ import i18n from '../i18n'
 // Noms valides : GET https://generativelanguage.googleapis.com/v1beta/models
 const GEMINI_CHAT_MODEL = 'gemini-3.5-flash'
 
-// Modèle de la moitié RECHERCHE du mode hybride (geminiResearch) — 3.5-flash,
-// désormais le MÊME que le chat (convergence C1). Constante distincte
-// conservée : les deux rôles peuvent re-diverger au prochain downgrade éco.
-const GEMINI_RESEARCH_MODEL = 'gemini-3.5-flash'
+// Recherche hybride one-shot : Gemini 3.6 Flash (GA 21/07/2026). Le chat
+// multi-tour reste volontairement sur 3.5 Flash : ce déploiement ne change pas
+// son comportement ni la gestion historique des thought signatures.
+const GEMINI_RESEARCH_MODEL = 'gemini-3.6-flash'
+const GEMINI_RESEARCH_FALLBACK_MODEL = 'gemini-3.5-flash'
+
+// Rollback local complémentaire. Le vrai killswitch global vit côté proxy
+// (`GEMINI_36_DISABLED=true`) afin de pouvoir désactiver 3.6 pour tous les
+// clients lors d'un retry de déploiement Cloudflare.
+const GEMINI_36_LOCAL_KILLSWITCH = 'arty-gemini-36-disabled'
+function geminiResearchModel(): string {
+  try {
+    if (localStorage.getItem(GEMINI_36_LOCAL_KILLSWITCH) === '1') {
+      return GEMINI_RESEARCH_FALLBACK_MODEL
+    }
+  } catch {
+    // localStorage indisponible (tests/SSR) — le proxy garde son flag global.
+  }
+  return GEMINI_RESEARCH_MODEL
+}
 
 // Killswitch : `arty-gemini-cheap-disabled = '1'` (DevTools / localStorage).
 // INERTE depuis C1 (chat == recherche == 3.5-flash) — câblage conservé
@@ -45,7 +61,7 @@ const GEMINI_CHEAP_KILLSWITCH = 'arty-gemini-cheap-disabled'
 function geminiChatModel(): string {
   try {
     if (localStorage.getItem(GEMINI_CHEAP_KILLSWITCH) === '1') {
-      return GEMINI_RESEARCH_MODEL
+      return GEMINI_RESEARCH_FALLBACK_MODEL
     }
   } catch {
     // localStorage indispo (tests/SSR) — garder le défaut éco.
@@ -57,46 +73,9 @@ function geminiChatModel(): string {
 // laisser pendre une requête 60-90s. Force un cap explicite.
 const GEMINI_TIMEOUT_MS = 60_000
 
-// CRIT-6 — Retry transient errors (429, 5xx). Gemini preview model est
-// particulièrement exposé aux ratelimits. Backoff exponentiel.
-const RETRY_DELAYS_MS = [1000, 2000, 4000]
-function shouldRetry(status: number): boolean {
-  return status === 429 || (status >= 500 && status < 600)
-}
-
-/**
- * fetch + retry exponentiel sur 429/5xx + erreurs réseau transient.
- * Préserve les erreurs d'abort utilisateur (pas de retry sur AbortError).
- */
-async function fetchWithRetry(
-  url: string,
-  init: RequestInit,
-  timeoutMs: number,
-  externalSignal?: AbortSignal,
-): Promise<Response> {
-  let lastError: unknown
-  for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
-    try {
-      const res = await fetchWithTimeout(url, init, timeoutMs, externalSignal)
-      if (!shouldRetry(res.status) || attempt === RETRY_DELAYS_MS.length) return res
-      // P0.7 — 429 cap premium mensuel = définitif, ne pas retenter 7 s.
-      if (res.status === 429) {
-        const peek = await res.clone().text().catch(() => '')
-        try {
-          if ((JSON.parse(peek) as { error?: string })?.error === 'premium_cap_reached') return res
-        } catch { /* body non-JSON → rate limit upstream, retry normal */ }
-      }
-      lastError = new Error(`HTTP ${res.status}`)
-    } catch (err) {
-      // Abort utilisateur = on ne retry pas
-      if (externalSignal?.aborted) throw err
-      lastError = err
-      if (attempt === RETRY_DELAYS_MS.length) throw err
-    }
-    await new Promise((r) => setTimeout(r, RETRY_DELAYS_MS[attempt]))
-  }
-  throw lastError instanceof Error ? lastError : new Error('Retry exhausted')
-}
+// Les retries/fallbacks vivent côté proxy, APRÈS une unique consommation de
+// quota/trial. Retenter ici rappellerait le proxy plusieurs fois et pourrait
+// facturer une réponse exécutée malgré un timeout réseau ambigu.
 
 // Gemini API client with streaming
 
@@ -138,8 +117,8 @@ export function getGeminiThinkingBudget(message: string, isMapQuery: boolean): n
  *  - rapide          → 0 (réflexion coupée)
  *  - approfondi/max  → 2048 (palier « profond » de Gemini Flash)
  *  - auto            → heuristique par message (getGeminiThinkingBudget)
- * Gemini Flash n'expose qu'un budget de pensée (pas de niveaux d'effort comme
- * Claude) ; « approfondi » et « max » convergent donc vers le même palier.
+ * Les valeurs historiques sont ensuite converties vers les niveaux nommés de
+ * Gemini 3 ; « approfondi » et « max » convergent vers `high`.
  */
 export function resolveGeminiThinkingBudget(
   message: string,
@@ -149,6 +128,67 @@ export function resolveGeminiThinkingBudget(
   if (level === 'rapide') return 0
   if (level === 'approfondi' || level === 'max') return 2048
   return getGeminiThinkingBudget(message, isMapQuery)
+}
+
+export type GeminiThinkingLevel = 'minimal' | 'low' | 'medium' | 'high'
+
+export function geminiThinkingLevelFromBudget(budget: number): GeminiThinkingLevel {
+  if (budget <= 0) return 'minimal'
+  if (budget <= 512) return 'low'
+  if (budget <= 1024) return 'medium'
+  return 'high'
+}
+
+function isGemini3Model(model: string): boolean {
+  return /^gemini-3(?:[.-]|$)/i.test(model)
+}
+
+interface GeminiGenerationConfigOptions {
+  temperature: number
+  maxOutputTokens: number
+  thinkingBudget: number
+  thinkingLevel?: GeminiThinkingLevel
+}
+
+/** Gemini 3.x n'accepte plus les réglages d'échantillonnage historiques et
+ * attend un niveau de réflexion nommé. Le chemin legacy 2.5 reste compatible
+ * pour les appels BYOK forcés, sans être exposé par Arty. */
+export function buildGeminiGenerationConfig(
+  model: string,
+  options: GeminiGenerationConfigOptions,
+): Record<string, unknown> {
+  if (isGemini3Model(model)) {
+    return {
+      maxOutputTokens: options.maxOutputTokens,
+      thinkingConfig: {
+        thinkingLevel: options.thinkingLevel ?? geminiThinkingLevelFromBudget(options.thinkingBudget),
+      },
+    }
+  }
+  return {
+    temperature: options.temperature,
+    maxOutputTokens: options.maxOutputTokens,
+    thinkingConfig: { thinkingBudget: options.thinkingBudget },
+  }
+}
+
+function resolveStreamThinkingLevel(
+  model: string,
+  budget: number,
+  reflectionLevel: ReflectionLevel,
+): GeminiThinkingLevel {
+  // Flash-Lite est comparé avec son réglage natif/minimal en mode auto ; une
+  // préférence utilisateur explicite reste prioritaire.
+  if (model.includes('flash-lite') && reflectionLevel === 'auto') return 'minimal'
+  return geminiThinkingLevelFromBudget(budget)
+}
+
+export function resolveGeminiResearchThinkingLevel(
+  level: ReflectionLevel = 'auto',
+): GeminiThinkingLevel {
+  if (level === 'rapide') return 'low'
+  if (level === 'approfondi' || level === 'max') return 'high'
+  return 'medium'
 }
 
 interface GeminiStreamOptions {
@@ -168,6 +208,9 @@ interface GeminiStreamOptions {
   // Raison du routage (refonte routage, étape 4) — resolveRoute, via
   // useConversation. Portée par l'event 'arty-model-used' pour l'UI.
   routeReason?: RouteReason
+  // Override explicite du comparateur. [] désactive les tools afin de comparer
+  // les modèles bruts sans grounding facturable.
+  tools?: Array<Record<string, unknown>>
 }
 
 export function streamGeminiMessage(
@@ -236,16 +279,18 @@ async function runGeminiStream(
     // avec une entrée multimodale (vidéo) → risque de rejet 400. Quand une
     // vidéo YouTube est présente, on n'envoie aucun outil : la vidéo se suffit.
     // `tools: undefined` est retiré du JSON par JSON.stringify.
-    const tools = hasVideo
-      ? undefined
-      : isMapQuery
-        ? [{ google_maps: {} }]
-        : [{ google_search: {} }, { url_context: {} }]
+    const defaultTools = isMapQuery
+      ? [{ google_maps: {} }]
+      : [{ google_search: {} }, { url_context: {} }]
+    const selectedTools = options?.tools ?? defaultTools
+    const tools = hasVideo || selectedTools.length === 0 ? undefined : selectedTools
 
     const locationContext = await buildLocationContext(lastMessage)
     const systemText = (options?.systemPrompt || GEMINI_SYSTEM) + locationContext
 
-    const thinkingBudget = resolveGeminiThinkingBudget(lastMessage, isMapQuery, options?.reflectionLevel ?? 'auto')
+    const reflectionLevel = options?.reflectionLevel ?? 'auto'
+    const thinkingBudget = resolveGeminiThinkingBudget(lastMessage, isMapQuery, reflectionLevel)
+    const thinkingLevel = resolveStreamThinkingLevel(model, thinkingBudget, reflectionLevel)
 
     // Notifie l'UI du modèle exact appelé (ChatTopBar) + si la réflexion est
     // active. Seuil 2048 = palier « profond » de Gemini Flash (le 512/1024
@@ -256,7 +301,7 @@ async function runGeminiStream(
     dispatchModelUsed({
       model,
       provider: 'gemini',
-      reflecting: thinkingBudget >= 2048,
+      reflecting: thinkingLevel === 'high',
       background: options?.background,
       conversationId: options?.conversationId,
       ...(options?.routeReason ? { reason: options.routeReason } : {}),
@@ -269,24 +314,40 @@ async function runGeminiStream(
       systemInstruction: {
         parts: [{ text: systemText }],
       },
-      generationConfig: {
+      generationConfig: buildGeminiGenerationConfig(model, {
         temperature: 0.7,
         maxOutputTokens: 8192,
-        thinkingConfig: { thinkingBudget },
-      },
+        thinkingBudget,
+        thinkingLevel,
+      }),
       tools,
     }
 
     // C9 : headers factorisés (BYOK Bearer + garde server-provided + google-token/trial).
     const headers = await buildAiHeaders({ byokKey: apiKey, auth: 'bearer' })
 
-    const response = await fetchWithRetry(
+    const response = await fetchWithTimeout(
       apiUrl('/api/ai/gemini-proxy'),
       { method: 'POST', headers, body: JSON.stringify(requestBody) },
       GEMINI_TIMEOUT_MS,
       controller.signal,
     )
     updateTrialFromResponse(response)
+
+    // Le proxy peut appliquer le killswitch global ou le fallback 3.6 → 3.5.
+    // Corrige l'attribution optimiste et le coût local avec le modèle servi.
+    const servedModel = response.headers.get('x-arty-model-used')?.trim() || model
+    if (servedModel !== model) {
+      dispatchModelUsed({
+        model: servedModel,
+        provider: 'gemini',
+        reflecting: thinkingLevel === 'high',
+        background: options?.background,
+        conversationId: options?.conversationId,
+        confirmed: true,
+        ...(options?.routeReason ? { reason: options.routeReason } : {}),
+      })
+    }
 
     if (!response.ok) {
       // P0.7 — cap premium mensuel : code structuré surfacé tel quel (la
@@ -332,6 +393,7 @@ async function runGeminiStream(
     let buffer = ''
     let promptTokens = 0
     let candidatesTokens = 0
+    let thoughtsTokens = 0
     try {
       while (true) {
         const { done, value } = await reader.read()
@@ -358,6 +420,7 @@ async function runGeminiStream(
             if (usage) {
               promptTokens = usage.promptTokenCount || promptTokens
               candidatesTokens = usage.candidatesTokenCount || candidatesTokens
+              thoughtsTokens = usage.thoughtsTokenCount || thoughtsTokens
             }
           } catch {
             // Skip malformed JSON chunks
@@ -369,7 +432,7 @@ async function runGeminiStream(
     }
 
     try {
-      recordUsage(model, promptTokens, candidatesTokens)
+      recordUsage(servedModel, promptTokens, candidatesTokens + thoughtsTokens)
     } catch {
       // Tracking ne doit pas casser la réponse
     }
@@ -390,8 +453,12 @@ export async function geminiResearch(
 ): Promise<string> {
   const apiKey = apiKeyOverride || getGeminiKey()
 
+  const model = geminiResearchModel()
+  const thinkingLevel = resolveGeminiResearchThinkingLevel(reflectionLevel ?? 'auto')
+  const thinkingBudget = thinkingLevel === 'low' ? 512 : thinkingLevel === 'medium' ? 1024 : 2048
+
   const requestBody = {
-    model: GEMINI_RESEARCH_MODEL,
+    model,
     stream: false,
     contents: [{
       role: 'user',
@@ -402,15 +469,12 @@ export async function geminiResearch(
         text: `Tu es un assistant de recherche. Cherche les informations demandées sur le web et retourne un résumé structuré avec les données clés, chiffres, sources et liens. Sois factuel et concis. Pas de blabla. Format: bullet points avec les données trouvées.`,
       }],
     },
-    generationConfig: {
+    generationConfig: buildGeminiGenerationConfig(model, {
       temperature: 0.3,
       maxOutputTokens: 4096,
-      // Cohérence avec le niveau de réflexion (audit fonctionnel 12 juin) :
-      // en « rapide », la recherche hybride ne doit pas brûler 4096 tokens de
-      // pensée — on garde un budget réduit (la qualité de recherche reste
-      // portée par google_search, pas par le raisonnement).
-      thinkingConfig: { thinkingBudget: reflectionLevel === 'rapide' ? 1024 : 4096 },
-    },
+      thinkingBudget,
+      thinkingLevel,
+    }),
     tools: [
       { google_search: {} },
       { url_context: {} },
@@ -420,7 +484,7 @@ export async function geminiResearch(
   const headers = await buildAiHeaders({ byokKey: apiKey, auth: 'bearer' })
 
   try {
-    const res = await fetchWithRetry(
+    const res = await fetchWithTimeout(
       apiUrl('/api/ai/gemini-proxy'),
       { method: 'POST', headers, body: JSON.stringify(requestBody) },
       GEMINI_TIMEOUT_MS,

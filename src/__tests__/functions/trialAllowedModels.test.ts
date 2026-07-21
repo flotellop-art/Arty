@@ -19,6 +19,8 @@ describe('parité TRIAL_ALLOWED_MODELS ↔ isModelAllowedInTrial', () => {
     'mistral-medium-latest',
     'gemini-2.5-flash',
     'gemini-3.5-flash',
+    'gemini-3.6-flash',
+    'gemini-3.5-flash-lite',
     'gpt-5-mini',
   ])('id réel %s → autorisé en essai', (id) => {
     expect(isModelAllowedInTrial(id)).toBe(true)

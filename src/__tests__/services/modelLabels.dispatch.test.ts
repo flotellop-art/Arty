@@ -101,16 +101,18 @@ describe('parité source — les 4 clients IA dispatchent arty-model-used', () =
     expect(clientSource(name)).toMatch(/dispatchModelUsed\(/)
   })
 
-  it('geminiClient ne dispatche qu\'UNE fois (F-6 — le second dispatch sans `reflecting` éteignait l\'indicateur de réflexion avant le premier token)', () => {
-    const calls = clientSource('geminiClient').match(/dispatchModelUsed\(/g) ?? []
-    expect(calls).toHaveLength(1)
+  it('geminiClient ne corrige le modèle que si le proxy a réellement fallback, en conservant reflecting', () => {
+    const source = clientSource('geminiClient')
+    const calls = source.match(/dispatchModelUsed\(/g) ?? []
+    expect(calls).toHaveLength(2)
+    expect(source).toMatch(/if \(servedModel !== model\) \{[\s\S]*reflecting: thinkingLevel === 'high',[\s\S]*confirmed: true/)
   })
 
-  it.each(['anthropicClient', 'mistralClient', 'openaiClient'])(
+  it.each(['anthropicClient', 'mistralClient', 'geminiClient', 'openaiClient'])(
     '%s referme la boucle demandé→servi (dispatch correctif confirmed)',
     (name) => {
-      // Gemini est exclu : son API ne renvoie pas le modèle servi dans les
-      // chunks — seul client dont l'event reste une déclaration d'intention.
+      // Gemini reçoit désormais le modèle effectif via x-arty-model-used,
+      // notamment quand le proxy applique le killswitch/fallback 3.6 → 3.5.
       expect(clientSource(name)).toMatch(/confirmed: true/)
     }
   )

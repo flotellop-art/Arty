@@ -205,11 +205,21 @@ export function createMistralParser(format: UsageResponseFormat = 'sse'): UsageP
 
 export const createOpenAIParser = createMistralParser
 
-/** Preuve qu'un candidat Gemini a réellement groundé (C11). Un
- * `groundingMetadata` VIDE peut apparaître quand les tools sont déclarés mais
- * qu'aucune recherche n'a été émise — on exige au moins une requête, un chunk
- * de source, ou un searchEntryPoint pour compter le prompt comme groundé. */
-function candidateDidGround(candidate: unknown): boolean {
+export type GeminiGroundingTool = 'search' | 'maps'
+
+interface GeminiGroundingEvidence {
+  grounded: boolean
+  tool: GeminiGroundingTool
+  queries: string[]
+}
+
+/** Extrait une preuve de grounding et les unités tarifaires Gemini 3. Un
+ * groundingMetadata vide ne compte pas. Les requêtes vides sont ignorées et
+ * les chunks Maps permettent de classifier les appels directs sans contexte. */
+function candidateGroundingEvidence(
+  candidate: unknown,
+  requestedTool?: GeminiGroundingTool,
+): GeminiGroundingEvidence | null {
   const g = (candidate as {
     groundingMetadata?: {
       webSearchQueries?: unknown
@@ -217,22 +227,49 @@ function candidateDidGround(candidate: unknown): boolean {
       searchEntryPoint?: unknown
     }
   } | null)?.groundingMetadata
-  if (!g || typeof g !== 'object') return false
-  return (
-    (Array.isArray(g.webSearchQueries) && g.webSearchQueries.length > 0) ||
-    (Array.isArray(g.groundingChunks) && g.groundingChunks.length > 0) ||
-    g.searchEntryPoint != null
+  if (!g || typeof g !== 'object') return null
+
+  const queries = Array.isArray(g.webSearchQueries)
+    ? g.webSearchQueries
+        .filter((q): q is string => typeof q === 'string')
+        .map((q) => q.trim())
+        .filter(Boolean)
+    : []
+  const chunks = Array.isArray(g.groundingChunks) ? g.groundingChunks : []
+  const hasMapsChunk = chunks.some(
+    (chunk) => Boolean(chunk && typeof chunk === 'object' && 'maps' in chunk),
   )
+  const hasWebChunk = chunks.some(
+    (chunk) => Boolean(chunk && typeof chunk === 'object' && 'web' in chunk),
+  )
+  const grounded = queries.length > 0 || chunks.length > 0 || g.searchEntryPoint != null
+  if (!grounded) return null
+
+  const tool = requestedTool ?? (hasMapsChunk && !hasWebChunk ? 'maps' : 'search')
+  return { grounded, tool, queries }
 }
 
 /** Gemini usageMetadata, for both generateContent JSON and SSE streaming.
- * Détecte aussi le grounding Google Search (C11) : `groundedPrompts` vaut 1 si
- * AU MOINS un chunk/candidat porte une preuve de recherche — plafonné à 1 par
- * réponse, car Google facture PAR PROMPT groundé ($14/1000 famille 3.x), pas
- * par requête de recherche ni par chunk SSE. */
-export function createGeminiParser(format: UsageResponseFormat = 'sse'): UsageParser {
+ * `groundedPrompts` suit l'allocation gratuite ; searchQueries/mapsQueries
+ * comptent les requêtes uniques non vides facturables après ce palier. */
+export function createGeminiParser(
+  format: UsageResponseFormat = 'sse',
+  requestedTool?: GeminiGroundingTool,
+): UsageParser {
   const usage = emptyMeasuredUsage()
   usage.groundedPrompts = 0
+  usage.searchGroundedPrompts = 0
+  usage.mapsGroundedPrompts = 0
+  usage.searchQueries = 0
+  usage.mapsQueries = 0
+  const searchQueries = new Set<string>()
+  const mapsQueries = new Set<string>()
+  let promptTokens: number | null = null
+  let candidatesTokens: number | null = null
+  let thoughtsTokens = 0
+  let cachedTokens = 0
+  let sawInput = false
+  let sawOutput = false
 
   return createWireParser(format, (payload) => {
     const data = payload as {
@@ -245,33 +282,49 @@ export function createGeminiParser(format: UsageResponseFormat = 'sse'): UsagePa
       }
     } | null
 
-    if (Array.isArray(data?.candidates) && data.candidates.some(candidateDidGround)) {
-      usage.groundedPrompts = 1
+    if (Array.isArray(data?.candidates)) {
+      for (const candidate of data.candidates) {
+        const evidence = candidateGroundingEvidence(candidate, requestedTool)
+        if (!evidence?.grounded) continue
+        usage.groundedPrompts = 1
+        if (evidence.tool === 'maps') {
+          usage.mapsGroundedPrompts = 1
+          for (const query of evidence.queries) mapsQueries.add(query)
+        } else {
+          usage.searchGroundedPrompts = 1
+          for (const query of evidence.queries) searchQueries.add(query)
+        }
+      }
+      usage.searchQueries = searchQueries.size
+      usage.mapsQueries = mapsQueries.size
     }
 
     const metadata = data?.usageMetadata
     if (!metadata) return
 
-    const hasInput =
-      typeof metadata.promptTokenCount === 'number' && metadata.promptTokenCount >= 0
-    const hasOutput =
-      typeof metadata.candidatesTokenCount === 'number' && metadata.candidatesTokenCount >= 0
-
-    if (hasInput) usage.inputTokens = metadata.promptTokenCount as number
-    if (hasOutput) {
-      const thoughts =
-        typeof metadata.thoughtsTokenCount === 'number' && metadata.thoughtsTokenCount > 0
-          ? metadata.thoughtsTokenCount
-          : 0
-      usage.outputTokens = (metadata.candidatesTokenCount as number) + thoughts
+    if (typeof metadata.promptTokenCount === 'number' && metadata.promptTokenCount >= 0) {
+      promptTokens = metadata.promptTokenCount
+      sawInput = true
+    }
+    if (typeof metadata.candidatesTokenCount === 'number' && metadata.candidatesTokenCount >= 0) {
+      candidatesTokens = metadata.candidatesTokenCount
+      sawOutput = true
+    }
+    if (typeof metadata.thoughtsTokenCount === 'number' && metadata.thoughtsTokenCount >= 0) {
+      thoughtsTokens = metadata.thoughtsTokenCount
     }
     if (
       typeof metadata.cachedContentTokenCount === 'number' &&
       metadata.cachedContentTokenCount >= 0
     ) {
-      usage.cacheReadTokens = metadata.cachedContentTokenCount
+      cachedTokens = metadata.cachedContentTokenCount
     }
-    usage.measured = hasInput && hasOutput
+    // Gemini inclut le cache dans promptTokenCount. Le soustraire évite de le
+    // facturer une fois au prix input puis une seconde au prix cache-read.
+    if (promptTokens != null) usage.inputTokens = Math.max(0, promptTokens - cachedTokens)
+    usage.cacheReadTokens = cachedTokens
+    if (candidatesTokens != null) usage.outputTokens = candidatesTokens + thoughtsTokens
+    usage.measured = sawInput && sawOutput
   }, usage)
 }
 

@@ -57,7 +57,9 @@ describe('provider usage parsing (JSON and SSE)', () => {
       },
     }))
     expect(parser.finalize()).toMatchObject({
-      inputTokens: 1_234,
+      // promptTokenCount inclut les 34 tokens cachés : ils sont ventilés au
+      // tarif cache-read, jamais refacturés comme input normal.
+      inputTokens: 1_200,
       outputTokens: 656,
       cacheReadTokens: 34,
       measured: true,

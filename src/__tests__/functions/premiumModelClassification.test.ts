@@ -24,6 +24,8 @@ describe('premium model classification stays aligned with exposed models', () =>
     'gpt-5-nano',
     'gemini-2.5-flash',
     'gemini-3.5-flash',
+    'gemini-3.6-flash',
+    'gemini-3.5-flash-lite',
     'mistral-medium-latest',
   ])('keeps standard model %s outside the premium cap', (model) => {
     expect(classifyPremiumModel(model)).toBeNull()

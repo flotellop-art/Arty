@@ -20,6 +20,10 @@ export interface ModelUsage {
    * n'est PAS dans costUsd (borne haute théorique $14/1000, souvent non
    * facturée par Google — palier gratuit) : ce champ sert à l'expliquer. */
   groundedPrompts?: number
+  searchGroundedPrompts?: number
+  mapsGroundedPrompts?: number
+  searchQueries?: number
+  mapsQueries?: number
   /** Coût réel calculé serveur-side depuis les tokens et les tarifs officiels. */
   costUsd: number
 }
@@ -63,6 +67,10 @@ export interface MonthlyModelUsage {
   /** Prompts groundés Gemini sur le mois (volume, C11 — coût non inclus
    * dans costUsd). Optionnel. */
   groundedPrompts?: number
+  searchGroundedPrompts?: number
+  mapsGroundedPrompts?: number
+  searchQueries?: number
+  mapsQueries?: number
   costUsd: number
 }
 

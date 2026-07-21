@@ -60,7 +60,11 @@ const factories: StreamFactories = {
       onToken,
       onDone,
       onError,
-      { ...(options as Parameters<typeof streamGeminiMessage>[4]), systemPrompt: COMPARATOR_SYSTEM_PROMPT },
+      {
+        ...(options as Parameters<typeof streamGeminiMessage>[4]),
+        systemPrompt: COMPARATOR_SYSTEM_PROMPT,
+        tools: [],
+      },
       key,
     ),
   mistral: (m, onToken, onDone, onError, options, key) =>

@@ -126,9 +126,9 @@ export const onRequest: PagesFunction = async (context) => {
     headers.set('Access-Control-Allow-Origin', origin)
     headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-api-key, x-openai-key, x-google-token, x-arty-vision, anthropic-version, anthropic-beta')
     // Expose les headers custom que le client lit côté navigateur (sinon
-    // CORS les masque). `x-trial-remaining` est renvoyé par les proxys IA
-    // pour mettre à jour le compteur d'essai côté front à chaque message.
-    headers.set('Access-Control-Expose-Headers', 'x-trial-remaining')
+    // CORS les masque). Trial met à jour le compteur d'essai ; Gemini expose
+    // le modèle effectif après killswitch/fallback 3.6 → 3.5.
+    headers.set('Access-Control-Expose-Headers', 'x-trial-remaining, x-arty-model-used')
   }
 
   return new Response(response.body, {
