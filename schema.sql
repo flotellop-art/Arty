@@ -34,6 +34,10 @@ CREATE TABLE IF NOT EXISTS quota_model (
   cache_creation_tokens INTEGER NOT NULL DEFAULT 0,
   audio_seconds INTEGER NOT NULL DEFAULT 0,
   grounded_prompts INTEGER NOT NULL DEFAULT 0,
+  search_grounded_prompts INTEGER NOT NULL DEFAULT 0,
+  maps_grounded_prompts INTEGER NOT NULL DEFAULT 0,
+  search_queries INTEGER NOT NULL DEFAULT 0,
+  maps_queries INTEGER NOT NULL DEFAULT 0,
   cost_usd_micro INTEGER NOT NULL DEFAULT 0,
   updated_at INTEGER NOT NULL,
   PRIMARY KEY (email, day, model)

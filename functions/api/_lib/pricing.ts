@@ -20,23 +20,22 @@ export interface ModelPricing {
   imagePerUnit?: number
   /** USD per input character (TTS — tts-1 facture le texte d'entrée). */
   charPerUnit?: number
-  /** USD par prompt groundé (Gemini Grounding with Google Search — C11).
+  /** USD par requête de recherche unique non vide (Gemini 3 grounding).
    * ⚠️ TARIF DE RÉFÉRENCE pour une BORNE HAUTE THÉORIQUE, jamais un coût réel :
-   * Google ne facture qu'au-delà du palier gratuit partagé (~5 000 prompts
-   * groundés/mois, famille 3.x au 18/07/2026) → coût réel souvent 0.
+   * Google ne facture ces requêtes qu'après le palier gratuit partagé de
+   * 5 000 prompts groundés/mois (famille 3.x au 21/07/2026) → coût réel
+   * souvent 0 et impossible à attribuer exactement à un appel isolé.
    * ⚠️ VOLONTAIREMENT ABSENT de computeCostMicroUsd (revue C11, 2 relecteurs) :
    * le mélanger dans cost_usd_micro polluait TOUS les consommateurs aval —
    * conseiller de facturation (biais vers l'abo : BYOK/crédits sur-estimés),
    * dashboard Coûts + badge TopBar (coût gonflé sans explication, BUG 60), et
    * divergence avec le ledger wallet (qui exclut le grounding). La borne haute
-   * se DÉRIVE à la demande : groundingUpperBoundMicroUsd(model, n) — la vigie
-   * fait SUM(grounded_prompts) × ce tarif. Nuance documentée : les prompts
-   * groundés Maps (SKU Google distinct) sont comptés dans le même volume et
-   * donc estimés au tarif Search — borne indicative, pas une facture. */
-  groundingPerPrompt?: number
+   * se DÉRIVE à la demande : groundingUpperBoundMicroUsd(model, n), où n est
+   * SUM(search_queries + maps_queries). */
+  groundingPerQuery?: number
 }
 
-// Toutes les valeurs sont vérifiées au 12 juillet 2026. À ajuster si les providers
+// Toutes les valeurs sont vérifiées au 21 juillet 2026. À ajuster si les providers
 // publient de nouveaux tarifs.
 const PRICING: Record<string, ModelPricing> = {
   // Anthropic Claude
@@ -122,19 +121,24 @@ const PRICING: Record<string, ModelPricing> = {
   // par gemini-3.5-flash en C1). Tarif GA $0.30/$2.50.
   'gemini-2.5-flash': { input: 0.3, output: 2.5, cacheRead: 0.075 },
   'gemini-2.5-flash-lite': { input: 0.1, output: 0.4, cacheRead: 0.01 },
-  // gemini-3.1-flash-lite — routable via le comparateur (C1/D-B). Grounding
-  // famille 3.x : $14/1000 prompts groundés (C11, borne haute).
-  'gemini-3.1-flash-lite': { input: 0.25, output: 1.5, groundingPerPrompt: 14 / 1000 },
+  // Gemini 3 grounding : $14/1000 requêtes uniques après l'allocation gratuite
+  // partagée. Ce tarif reste une borne haute analytique, jamais un débit wallet.
+  'gemini-3.1-flash-lite': { input: 0.25, output: 1.5, groundingPerQuery: 14 / 1000 },
   // Gemini Flash. `gemini-3.5-flash` (GA, modèle réellement servi cf.
   // geminiClient.ts) : $1.50/$9, cache $0.15 — source ai.google.dev/gemini-api/
   // docs/pricing. ATTENTION : ~3× plus cher que le preview. Le preview
   // `gemini-3-flash-preview` ($0.50/$3) et l'ancien nom GA jamais sorti
   // `gemini-3-flash` sont gardés comme alias pour les coûts historiques.
-  // C11 : grounding tracé ($14/1000) — le poste qui décide si C1 gagne ou perd
-  // de l'argent (un tour groundé domine la facture). La famille 2.5 ($35/1000)
+  // C11 : grounding tracé ($14/1000 requêtes) — le poste qui décide si C1
+  // gagne ou perd de l'argent. La famille 2.5 ($35/1000 prompts)
   // n'est PAS pricée grounding : plus routée depuis C1, historique déjà
   // valorisé à l'écriture (recordUsage calcule le coût au moment du record).
-  'gemini-3.5-flash': { input: 1.5, output: 9, cacheRead: 0.15, groundingPerPrompt: 14 / 1000 },
+  'gemini-3.5-flash': { input: 1.5, output: 9, cacheRead: 0.15, groundingPerQuery: 14 / 1000 },
+  // GA 21/07/2026 — nouveau modèle rapide recommandé par Google pour remplacer
+  // 2.5 Flash. Déployé d'abord sur la recherche one-shot, chat inchangé.
+  'gemini-3.6-flash': { input: 1.5, output: 7.5, cacheRead: 0.15, groundingPerQuery: 14 / 1000 },
+  // GA 21/07/2026 — exposé au comparateur uniquement pendant la phase d'A/B.
+  'gemini-3.5-flash-lite': { input: 0.3, output: 2.5, cacheRead: 0.03, groundingPerQuery: 14 / 1000 },
   // ⚠️ MORTES — voir commentaire ci-dessus : alias de coûts historiques
   // uniquement (gemini-3-flash n'est jamais sorti en GA). Ne pas router dessus.
   'gemini-3-flash': { input: 0.5, output: 3 },
@@ -168,12 +172,19 @@ export interface UsageTokens {
   images?: number
   /** Caractères de texte facturés (TTS). Optionnel, défaut 0. */
   chars?: number
-  /** Prompts ayant déclenché le grounding Google Search (0 ou 1 par appel —
-   * la facturation Google est PAR PROMPT groundé, pas par requête de
-   * recherche émise). Optionnel, défaut 0. C11. VOLUME uniquement : ce champ
-   * n'entre PAS dans computeCostMicroUsd (voir groundingPerPrompt) — il est
+  /** Prompts ayant déclenché un grounding Search ou Maps (0 ou 1 par appel).
+   * Sert à suivre l'allocation gratuite partagée ; ce n'est plus l'unité
+   * facturée par Google pour Gemini 3. Optionnel, défaut 0. Ce champ
+   * n'entre PAS dans computeCostMicroUsd (voir groundingPerQuery) — il est
    * persisté tel quel (colonne grounded_prompts) par recordUsage. */
   groundedPrompts?: number
+  /** Ventilation du nombre de prompts groundés par outil (0 ou 1 par appel). */
+  searchGroundedPrompts?: number
+  mapsGroundedPrompts?: number
+  /** Requêtes uniques non vides observées dans webSearchQueries. Ce sont les
+   * unités tarifaires Gemini 3 après épuisement de l'allocation gratuite. */
+  searchQueries?: number
+  mapsQueries?: number
 }
 
 /** Coût en micro-USD (10^-6 USD) — évite les floats dans D1. */
@@ -189,20 +200,20 @@ export function computeCostMicroUsd(model: string, usage: UsageTokens): number {
     usage.audioSeconds * (p.audioPerSec ?? 0) +
     (usage.images ?? 0) * (p.imagePerUnit ?? 0) +
     (usage.chars ?? 0) * (p.charPerUnit ?? 0)
-  // ⚠️ PAS de terme groundedPrompts ici — délibéré (revue C11), voir
-  // groundingPerPrompt : la borne haute grounding se dérive via
+  // ⚠️ PAS de terme grounding ici — délibéré (revue C11), voir
+  // groundingPerQuery : la borne haute grounding se dérive via
   // groundingUpperBoundMicroUsd, jamais mélangée au coût facturable.
   return Math.round(cost * 1_000_000)
 }
 
 /**
- * Borne haute théorique du coût de grounding (µ$) pour `n` prompts groundés —
- * DÉRIVÉE à la demande depuis le volume (colonne D1 `grounded_prompts`),
- * jamais persistée dans cost_usd_micro (revue C11, voir groundingPerPrompt).
- * Usage vigie : SUM(grounded_prompts) par modèle × ce calcul.
+ * Borne haute théorique du coût de grounding (µ$) pour `n` requêtes uniques —
+ * DÉRIVÉE à la demande depuis search_queries + maps_queries, jamais persistée
+ * dans cost_usd_micro. Elle ignore volontairement l'allocation gratuite et
+ * constitue donc un plafond analytique, pas une facture.
  */
-export function groundingUpperBoundMicroUsd(model: string, groundedPrompts: number): number {
-  const perPrompt = PRICING[model]?.groundingPerPrompt ?? 0
-  const n = Number.isFinite(groundedPrompts) && groundedPrompts > 0 ? groundedPrompts : 0
-  return Math.round(n * perPrompt * 1_000_000)
+export function groundingUpperBoundMicroUsd(model: string, groundingQueries: number): number {
+  const perQuery = PRICING[model]?.groundingPerQuery ?? 0
+  const n = Number.isFinite(groundingQueries) && groundingQueries > 0 ? groundingQueries : 0
+  return Math.round(n * perQuery * 1_000_000)
 }

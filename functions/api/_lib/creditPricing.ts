@@ -82,9 +82,9 @@ export function chargeForUsageMicro(
   model: string,
   usage: UsageTokens,
 ): { chargeMicro: number; providerCostMicro: number } {
-  // Champs optionnels de UsageTokens (images, chars, groundedPrompts)
+  // Champs optionnels de UsageTokens (images, chars et télémétrie grounding)
   // VOLONTAIREMENT non copiés — ils ne débitent jamais le wallet. En
-  // particulier groundedPrompts (C11) : le tarif grounding est une BORNE HAUTE
+  // particulier les prompts/requêtes grounding : le tarif est une BORNE HAUTE
   // théorique (palier gratuit Google → coût réel souvent 0) tracée pour
   // l'analytics owner ; débiter des crédits réels sur un coût théorique
   // violerait la stratégie confiance. À réévaluer si la vigie montre un abus.

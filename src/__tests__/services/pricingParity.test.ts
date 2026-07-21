@@ -24,6 +24,8 @@ describe('parité tarifs client ↔ serveur — modèles de chat exposés', () =
     ['gemini-2.5-flash-lite', 0.1, 0.4],
     ['gemini-3.1-flash-lite', 0.25, 1.5],
     ['gemini-3.5-flash', 1.5, 9],
+    ['gemini-3.5-flash-lite', 0.3, 2.5],
+    ['gemini-3.6-flash', 1.5, 7.5],
     ['mistral-small-latest', 0.15, 0.6],
     ['mistral-medium-latest', 1.5, 7.5],
     ['mistral-large-latest', 0.5, 1.5],

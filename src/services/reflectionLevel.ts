@@ -7,7 +7,7 @@ import type { AIModel } from './modelSelector'
 //
 // Mappé en aval :
 //  - Claude  → thinking adaptatif + output_config.effort (aiRouter.resolveClaudeThinking)
-//  - Gemini  → thinkingConfig.thinkingBudget          (aiRouter.resolveGeminiThinkingBudget)
+//  - Gemini 3 → thinkingConfig.thinkingLevel          (geminiClient)
 //  - Mistral / ChatGPT → PAS de réflexion exposée → le contrôle est masqué.
 //
 // Ordre du sélecteur (choix produit, validé avec l'utilisateur) :

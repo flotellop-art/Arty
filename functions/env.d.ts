@@ -25,6 +25,9 @@ export interface Env {
   WORKSPACE_ADDON_PHASE0_DB?: D1Database
   ANTHROPIC_API_KEY?: string
   GEMINI_API_KEY?: string
+  // Rollback Gemini 3.6 : valeur exacte 'true' → proxy route 3.6 vers 3.5.
+  // Sur Pages, changer la variable puis relancer le dernier déploiement.
+  GEMINI_36_DISABLED?: string
   MISTRAL_API_KEY?: string
   OPENAI_API_KEY?: string
   /** Killswitch serveur : les blocs image OpenAI sont refusés sauf valeur exacte 'true'. */

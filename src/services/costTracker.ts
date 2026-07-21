@@ -40,10 +40,12 @@ export const MODEL_COSTS: Record<string, { input: number; output: number }> = {
   // Bucket conservé pour les coûts historiques + fallback BYOK/offline.
   // Source primaire des montants = serveur D1 (BUG 60).
   'gemini-flash':      { input: 0.30,  output: 2.50 },
-  // gemini-3.5-flash — défaut CHAT **et** recherche hybride depuis C1 (18/07).
+  // gemini-3.5-flash — défaut CHAT ; fallback recherche 3.6 depuis le 21/07.
   'gemini-flash-pro':  { input: 1.50,  output: 9.00 },
+  'gemini-flash-3.6':  { input: 1.50,  output: 7.50 },
   'gemini-flash-lite-2.5': { input: 0.10, output: 0.40 },
   'gemini-flash-lite-3.1': { input: 0.25, output: 1.50 },
+  'gemini-flash-lite-3.5': { input: 0.30, output: 2.50 },
   'gemini-pro':        { input: 1.25,  output: 10.00 },
   'mistral-small':     { input: 0.15,  output: 0.60 }, // Small 4
   'mistral-medium':    { input: 1.50,  output: 7.50 }, // Medium 3.5
@@ -84,7 +86,9 @@ const MODEL_ALIASES: Record<string, string> = {
   'mistral-medium-3.5': 'mistral-medium',
   'mistral-small-latest': 'mistral-small',
   'mistral-small-4': 'mistral-small',
-  'gemini-3.5-flash': 'gemini-flash-pro', // recherche hybride premium ($1.50/$9)
+  'gemini-3.5-flash': 'gemini-flash-pro', // chat + fallback recherche ($1.50/$9)
+  'gemini-3.6-flash': 'gemini-flash-3.6',
+  'gemini-3.5-flash-lite': 'gemini-flash-lite-3.5',
   'gemini-3.1-flash-lite': 'gemini-flash-lite-3.1',
   // ⚠️ Alias MORTS (audit C6) — gemini-3-flash* (jamais sorti en GA) et
   // gemini-pro-latest ne sont plus routés par aucun client ; conservés pour
@@ -122,6 +126,8 @@ export function normaliseModel(model: string): string {
   if (model.startsWith('gpt-5-mini') || model.includes('mini')) return 'gpt-5-mini'
   if (model.startsWith('gpt-')) return 'gpt-5'
   if (model.startsWith('gemini-3.1') && model.includes('flash-lite')) return 'gemini-flash-lite-3.1'
+  if (model.startsWith('gemini-3') && model.includes('flash-lite')) return 'gemini-flash-lite-3.5'
+  if (model.startsWith('gemini-3') && model.includes('flash')) return 'gemini-flash-pro'
   if (model.startsWith('gemini') && model.includes('flash-lite')) return 'gemini-flash-lite-2.5'
   if (model.startsWith('gemini') && model.includes('flash')) return 'gemini-flash'
   if (model.startsWith('gemini')) return 'gemini-pro'

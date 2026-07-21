@@ -31,6 +31,10 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
     audioSeconds: m.audioSeconds,
     // C11 : volume groundé forwardé (coût borne haute PAS dans costUsd).
     groundedPrompts: m.groundedPrompts,
+    searchGroundedPrompts: m.searchGroundedPrompts,
+    mapsGroundedPrompts: m.mapsGroundedPrompts,
+    searchQueries: m.searchQueries,
+    mapsQueries: m.mapsQueries,
     costUsd: Number(m.costUsd.toFixed(4)),
   }))
 

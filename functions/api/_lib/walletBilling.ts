@@ -294,6 +294,9 @@ export async function beginWalletBilling(
     validatedImageTokens?: number
     validatedImageCount?: number
     validatedInputTokens?: number
+    /** Modèle plus conservateur utilisé uniquement pour dimensionner le hold.
+     * Le modèle réel reste inscrit dans la réservation et utilisé au settle. */
+    reservePricingModel?: string
   },
 ): Promise<WalletBillingStart> {
   const {
@@ -304,6 +307,7 @@ export async function beginWalletBilling(
     validatedImageTokens,
     validatedImageCount,
     validatedInputTokens,
+    reservePricingModel,
   } = params
 
   // Auto-soin (pas de Cron sur Pages) : libère MES réservations orphelines d'un
@@ -338,7 +342,11 @@ export async function beginWalletBilling(
   ) throw new Error('invalid_validated_input_tokens')
   const estInputTokens = validatedInputTokens ??
     estimateInputTokens(provider, body, { validatedImageTokens, validatedImageCount })
-  const estMicro = estimateReserveMicro(model, maxOutputTokens, estInputTokens)
+  const estMicro = estimateReserveMicro(
+    reservePricingModel ?? model,
+    maxOutputTokens,
+    estInputTokens,
+  )
   const resId = crypto.randomUUID()
   const r = await reserveCredits(env, { email, estMicro, resId, model, modality: 'text' })
 

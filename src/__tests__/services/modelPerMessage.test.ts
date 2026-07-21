@@ -13,6 +13,8 @@ describe('getModelCapacityKey — libellé capacité du footer', () => {
     ['mistral-medium-2505', 'chat.modelFooter.capacity.mistral'],
     ['gemini-2.5-flash', 'chat.modelFooter.capacity.gemini'],
     ['gemini-3.5-flash', 'chat.modelFooter.capacity.gemini'],
+    ['gemini-3.6-flash', 'chat.modelFooter.capacity.gemini'],
+    ['gemini-3.5-flash-lite', 'chat.modelFooter.capacity.gemini'],
     ['claude-haiku-4-5-20251001', 'chat.modelFooter.capacity.haiku'],
     ['claude-sonnet-5', 'chat.modelFooter.capacity.claude'],
     ['claude-sonnet-5-20250929', 'chat.modelFooter.capacity.claude'],

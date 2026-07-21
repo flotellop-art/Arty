@@ -48,8 +48,12 @@ export const PROVIDER_CATALOG: ProviderDescriptor[] = [
     // principe « jamais de preview au comparateur ») → réintroduire une entrée
     // Pro à la GA de gemini-3.5-pro. ⚠️ Suivi copy : le bucket « 80 Gemini
     // Pro » du pricing (P0.10) devient orphelin — à reformuler.
+    // 21/07 : 3.6 Flash et 3.5 Flash-Lite sont GA. Ils entrent d'abord ici
+    // pour comparaison one-shot ; seul 3.6 prend aussi la recherche hybride.
     models: [
+      { modelId: 'gemini-3.6-flash', costKey: 'gemini-flash-3.6', label: 'Gemini 3.6 Flash' },
       { modelId: 'gemini-3.5-flash', costKey: 'gemini-flash-pro', label: 'Gemini 3.5 Flash' },
+      { modelId: 'gemini-3.5-flash-lite', costKey: 'gemini-flash-lite-3.5', label: 'Gemini 3.5 Flash Lite' },
       { modelId: 'gemini-3.1-flash-lite', costKey: 'gemini-flash-lite-3.1', label: 'Gemini 3.1 Flash Lite' },
     ],
   },
@@ -83,7 +87,7 @@ export interface PanelConfig {
 /** Configs par défaut à l'ouverture : Claude Sonnet + Gemini Flash. */
 export const DEFAULT_PANELS: PanelConfig[] = [
   { id: 'panel-1', provider: 'anthropic', modelId: 'claude-sonnet-5' },
-  { id: 'panel-2', provider: 'gemini', modelId: 'gemini-3.5-flash' },
+  { id: 'panel-2', provider: 'gemini', modelId: 'gemini-3.6-flash' },
 ]
 
 /** Résout (provider, modelId) -> ModelDescriptor. */
