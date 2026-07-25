@@ -249,7 +249,15 @@ Le point structurel importe plus que les CVE elles-mêmes : **ni la CI ni
 audits manuels — ici 3 semaines pour passer de 0 à 8, dont un contournement du
 correctif précédent.
 
-**Fix** : job CI `npm audit --audit-level=high` (~30 min) + tri des 5 CVE prod.
+**Fix — attention au piège du gate naïf.** `npm audit --audit-level=high`
+sort en code 1 dès maintenant (vérifié) : la CI serait rouge au premier run à
+cause de vulnérabilités préexistantes, principalement de build (`postcss`,
+`miniflare`, `sharp`). Pire, ce seuil **ignorerait précisément la CVE
+react-router citée ci-dessus**, classée `moderate`. Deux options cohérentes :
+soit corriger les 5 CVE prod dans la même PR puis poser le gate à `moderate`,
+soit poser d'abord un job **non bloquant** (rapport en artefact) et le rendre
+bloquant une fois la dette à zéro. Dans les deux cas, viser `--omit=dev` pour
+le gate bloquant et garder l'audit complet en information.
 
 ### M10 — Le seuil de couverture CI est réglé à la moitié de la couverture réelle
 `vite.config.ts:38` — `thresholds: { statements: 27, branches: 24, functions: 31, lines: 28 }`
@@ -257,7 +265,11 @@ correctif précédent.
 Couverture réelle mesurée : **statements 49,7 % · branches 45,8 % · functions
 54,8 % · lines 51,7 %**. Le filet peut donc absorber une régression d'environ
 20 points avant que `npm run verify` — le seul gate CI — ne passe au rouge.
-**Fix (~15 min)** : relever les seuils au niveau mesuré.
+**Fix (~15 min)** : relever les seuils **juste sous** la mesure (une marge de
+2-3 points évite de rougir sur une variation normale), et compléter par des
+seuils ciblés (`coverage.thresholds` par glob) sur les fichiers critiques —
+wallet, quota, auth — qui sont aujourd'hui noyés dans une moyenne globale
+qu'un gros fichier bien testé suffit à maintenir.
 
 ### M11 — L'endpoint qui a eu le CVE IDOR (CRIT-1) a 0 % de couverture
 `functions/api/memory/action.ts`
@@ -321,14 +333,16 @@ itérations** au lieu d'une, plus un double déchiffrement de tous les blobs.
   `ai/image-gen.ts:55-62` (chunk 8192), `drive/action.ts:25-31` (0x8000),
   `workspace-addon/phase0/_lib/gmail.ts:242-249` (spread). Un futur ajustement
   appliqué à une seule copie laisse les deux autres buguées.
-- **L5 — La dérive config est déjà revenue 3 semaines après correction** :
-  4 variables dans `functions/env.d.ts` absentes de `.env.example`
-  (`CREEM_API_BASE`, `DAILY_QUOTA_PER_MODEL`,
-  `GOOGLE_OAUTH_LEGACY_COMPAT_UNTIL`, `LEGACY_GOOGLE_CONNECTORS_ENABLED`) ;
-  la table `workspace_addon_phase0_idempotency` (créée dynamiquement par
-  `_lib/idempotency.ts:127`) manque à `schema.sql`. Le repo sait écrire ce
-  garde-fou (parité `PRODUCTION_HOSTS` ⇄ `ALLOWED_ORIGINS`) mais ne l'a pas
-  appliqué ici.
+- **L5 — Schéma Phase 0 non versionné** (item corrigé après contre-relecture —
+  voir l'errata en fin de rapport). La table
+  `workspace_addon_phase0_idempotency` est créée dynamiquement au premier appel
+  par `_lib/idempotency.ts:127`. Elle n'a pas à figurer dans `schema.sql` :
+  elle vit dans une base D1 **séparée** (`WORKSPACE_ADDON_PHASE0_DB`,
+  `functions/env.d.ts:25`, distinct du binding `DB` ligne 57) et l'y ajouter
+  serait faux. Le vrai manque est qu'aucun schéma ni migration n'est versionné
+  pour cette base : sa structure n'existe que dans le code qui la crée.
+  **Fix** : versionner un `schema-phase0.sql` (ou une migration dédiée) pour
+  la base Phase 0, sans toucher au `schema.sql` de production.
 - **L6 — Le garde-fou CSP ne dérive pas du code** :
   `src/__tests__/services/headersCsp.test.ts` vérifie une liste d'hôtes codée
   en dur. Aucune dérive actuelle (vérifié : tous les hôtes appelés depuis
@@ -433,6 +447,33 @@ et précision des coordonnées), et le statut de C10/C11 dont L3 montre qu'ils s
 dégradent activement.
 
 ---
+
+## Errata — contre-relecture du rapport
+
+Le rapport a été soumis à une relecture contradictoire après publication. Trois
+corrections retenues, une objection écartée. Le détail est consigné ici parce
+qu'un audit dont on ne trace pas les erreurs perd sa valeur de référence.
+
+**Retenu — L5 était un faux positif.** L'affirmation « 4 variables de
+`functions/env.d.ts` absentes de `.env.example` » est **fausse** : les quatre
+y sont. Et la table `workspace_addon_phase0_idempotency` n'a pas à rejoindre
+`schema.sql`, puisqu'elle vit dans une base D1 séparée. L'item a été réécrit
+autour du seul manque réel (aucun schéma versionné pour la base Phase 0).
+Cause de l'erreur : c'est le seul finding du rapport dont la mesure n'a pas été
+re-vérifiée à la main avant retenue.
+
+**Retenu — le gate `npm audit` proposé était mal calibré** : rouge dès le
+premier run sur de la dette de build, et aveugle à la CVE `moderate` qui sert
+d'exemple. Voir M9, réécrit.
+
+**Retenu — les seuils de couverture** doivent garder une marge sous la mesure
+et être complétés par des seuils ciblés sur les fichiers critiques. Voir M10.
+
+**Écarté — « M4 est déjà corrigé dans des changements locaux non commités ».**
+Vérifié : `src/services/costTracker.ts:126` contient toujours
+`model.includes('mini')` à `HEAD`, `git status` est vide (aucune modification
+locale), et `origin/main` est exactement `HEAD~1` — le checkout n'est pas
+divergent. M4 reste ouvert.
 
 ## Deux corrections factuelles à porter au CLAUDE.md
 
