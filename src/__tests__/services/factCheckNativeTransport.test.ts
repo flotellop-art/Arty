@@ -61,7 +61,7 @@ describe('fact-check, transport Android natif', () => {
         'x-google-token': 'google-token',
       }),
       connectTimeout: 15_000,
-      readTimeout: 45_000,
+      readTimeout: 90_000,
       responseType: 'json',
     }))
 
@@ -94,6 +94,32 @@ describe('fact-check, transport Android natif', () => {
 
     expect(outcome.result?.status).toBe('success-empty')
     expect(outcome.result?.modelLabel).toBe('Sonnet 5 (secours)')
+  })
+
+  it('affiche le fournisseur de secours réellement servi', async () => {
+    nativeRequest.mockResolvedValue({
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+      data: {
+        model: 'gemini-3.6-flash',
+        fallback: 'provider',
+        content: [{
+          type: 'text',
+          text: '{"overall_confidence":"high","claims":[]}',
+        }],
+        usage: {},
+      },
+    })
+
+    const outcome = await factCheckResponse(
+      'Quelle information faut-il vérifier ?',
+      'Cette réponse dépasse volontairement quatre-vingts caractères afin de déclencher la vérification factuelle.',
+      'haiku',
+      null,
+    )
+
+    expect(outcome.result?.status).toBe('success-empty')
+    expect(outcome.result?.modelLabel).toBe('Gemini 3.6 Flash (secours)')
   })
 
   it('masque le 503 upstream derrière une raison lisible', async () => {

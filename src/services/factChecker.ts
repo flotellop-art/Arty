@@ -634,13 +634,14 @@ export async function factCheckResponse(
 // vérif et on jette le résultat. Doit couvrir le timeout upstream serveur
 // par palier (15 s Haiku / 50 s Sonnet) + retry serveur + réseau.
 const TIER_INFO = {
-  // Le serveur peut basculer une passe Haiku indisponible vers Sonnet sans
-  // recherche. Le délai client couvre le timeout primaire + ce secours.
-  haiku: { model: 'claude-haiku-4-5-20251001', label: 'Haiku 4.5', timeoutMs: 45_000 },
+  // Le serveur peut basculer une passe Haiku indisponible vers Sonnet, puis
+  // vers Gemini. Le délai client couvre la cascade sans jeter un résultat
+  // encore en cours côté serveur.
+  haiku: { model: 'claude-haiku-4-5-20251001', label: 'Haiku 4.5', timeoutMs: 90_000 },
   // Sonnet + web_search en non-streamé : Anthropic accumule toute la réponse
-  // (jusqu'à 3 recherches + synthèse JSON) avant de répondre — 25-30 s
-  // typique en prod.
-  sonnet: { model: 'claude-sonnet-5', label: 'Sonnet 5', timeoutMs: 90_000 },
+  // avant de répondre. Le budget inclut aussi Gemini + google_search si
+  // Anthropic reste indisponible.
+  sonnet: { model: 'claude-sonnet-5', label: 'Sonnet 5', timeoutMs: 150_000 },
 } as const
 
 interface FactCheckRequestPayload {
@@ -753,12 +754,12 @@ async function runCheckTier(
 
   let text = ''
   let servedModel: string = info.model
-  let fallback: 'model' | 'without_web_search' | undefined
+  let fallback: 'model' | 'without_web_search' | 'provider' | undefined
   try {
     const data = (await res.json()) as {
       content?: Array<{ type?: string; text?: string }>
       model?: string
-      fallback?: 'model' | 'without_web_search'
+      fallback?: 'model' | 'without_web_search' | 'provider'
       usage?: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number }
     }
     servedModel = typeof data.model === 'string' && data.model ? data.model : info.model
@@ -846,6 +847,8 @@ async function runCheckTier(
         ? 'Sonnet 5 (secours)'
         : fallback === 'without_web_search'
           ? 'Sonnet 5 (secours sans recherche)'
+          : fallback === 'provider'
+            ? `${servedModel === 'gemini-3.5-flash' ? 'Gemini 3.5 Flash' : 'Gemini 3.6 Flash'} (secours)`
           : info.label,
       checkedAt: Date.now(),
       // BUG 59 — status structuré : succès "vide" = aucun claim risqué
