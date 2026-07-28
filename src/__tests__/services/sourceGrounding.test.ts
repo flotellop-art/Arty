@@ -114,6 +114,13 @@ describe('prepareAssistantContent', () => {
               recovered: true,
             },
             {
+              title: 'NASA image of the James Webb launch',
+              url: 'https://www.nasa.gov/image-article/james-webb-launch/',
+              snippet: 'The image shows the ESA and Arianespace launch of Webb.',
+              cited: true,
+              recovered: true,
+            },
+            {
               title: 'Webb liftoff on Ariane 5',
               url: 'https://www.esa.int/Science_Exploration/Space_Science/Webb/Webb_liftoff',
               snippet: 'ESA confirms the successful launch of the James Webb Space Telescope.',

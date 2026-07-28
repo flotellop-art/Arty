@@ -1,11 +1,37 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { verifySearchResults } from '../../../functions/api/search/web'
+import {
+  extractAnswerResults,
+  verifySearchResults,
+} from '../../../functions/api/search/web'
 
 afterEach(() => {
   vi.unstubAllGlobals()
 })
 
 describe('vérification réelle des liens de recherche', () => {
+  it('récupère les URL directes diversifiées présentes dans la réponse sourcée', () => {
+    const results = extractAnswerResults([
+      'NASA : https://www.nasa.gov/solar-system/webb-launch/',
+      'ESA : https://www.esa.int/Science_Exploration/Webb_launch',
+      'Arianespace : https://www.arianespace.com/mission/ariane-flight-va256/',
+    ].join('\n'))
+
+    expect(results).toEqual([
+      expect.objectContaining({
+        title: 'NASA',
+        url: 'https://www.nasa.gov/solar-system/webb-launch/',
+      }),
+      expect.objectContaining({
+        title: 'ESA',
+        url: 'https://www.esa.int/Science_Exploration/Webb_launch',
+      }),
+      expect.objectContaining({
+        title: 'Arianespace',
+        url: 'https://www.arianespace.com/mission/ariane-flight-va256/',
+      }),
+    ])
+  })
+
   it('conserve seulement les pages publiques que Linkup parvient à relire', async () => {
     const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
       const payload = JSON.parse(String(init?.body || '{}')) as { url?: string }

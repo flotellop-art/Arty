@@ -272,6 +272,23 @@ function normalizedSourceHost(url: string): string {
   }
 }
 
+function sourceMatchesDomain(url: string, domain: string): boolean {
+  const host = normalizedSourceHost(url)
+  const expected = domain.toLowerCase().replace(/^www\./, '')
+  return !!host && (host === expected || host.endsWith(`.${expected}`))
+}
+
+const LINK_IDENTITY_STOP_WORDS = new Set([
+  'article', 'communique', 'details', 'flight', 'james', 'launch', 'lancement',
+  'lien', 'live', 'mission', 'news', 'newsroom', 'officiel', 'officielle',
+  'page', 'press', 'release', 'source', 'spatial', 'telescope', 'va256', 'webb',
+])
+
+function linkIdentityTokens(value: string): Set<string> {
+  const tokens = normalizeSourceText(value).match(/[a-z0-9]{2,}/g) || []
+  return new Set(tokens.filter((token) => !LINK_IDENTITY_STOP_WORDS.has(token)))
+}
+
 function replacementScore(
   source: SearchContextSource,
   label: string,
@@ -281,13 +298,32 @@ function replacementScore(
 
   const sourceHost = normalizedSourceHost(source.url)
   const originalHost = normalizedSourceHost(originalUrl)
+  const originalIsOpaque = isGoogleGroundingRedirect(originalUrl)
   let score = source.recovered ? 3 : 0
 
-  if (sourceHost && originalHost) {
+  if (sourceHost && originalHost && !originalIsOpaque) {
     if (sourceHost === originalHost) score += 20
     else if (sourceHost.endsWith(`.${originalHost}`) || originalHost.endsWith(`.${sourceHost}`)) {
       score += 16
+    } else {
+      // Une URL inventée sur esa.int ne doit jamais être remplacée par une
+      // page nasa.gov simplement parce que les deux parlent de James-Webb.
+      return -1
     }
+  }
+
+  const identityTokens = linkIdentityTokens(label)
+  if (identityTokens.size > 0) {
+    const sourceIdentity = linkIdentityTokens(`${sourceHost}\n${source.title}`)
+    const identityOverlap = [...identityTokens].filter((token) =>
+      [...sourceIdentity].some((candidate) =>
+        candidate === token ||
+        (Math.min(candidate.length, token.length) >= 5 &&
+          (candidate.startsWith(token) || token.startsWith(candidate)))
+      )
+    )
+    if (identityOverlap.length === 0 && originalIsOpaque) return -1
+    score += identityOverlap.length * 8
   }
 
   const labelTokens = sourceRelevanceTokens(label)
@@ -669,7 +705,9 @@ async function requestRecoverySearch(
       bySource[domain] = {
         answer: entry.answer,
         results: (entry.results || [])
-          .filter((source) => source.verified === true)
+          .filter((source) =>
+            source.verified === true && sourceMatchesDomain(source.url, domain)
+          )
           .map(markRecovered),
       }
     }

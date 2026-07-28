@@ -193,4 +193,34 @@ describe('fact-check, transport Android natif', () => {
       responseType: 'json',
     }))
   })
+
+  it('refuse un résultat NASA rangé à tort dans le domaine ESA', async () => {
+    nativeRequest.mockResolvedValue({
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+      data: {
+        provider: 'linkup',
+        query: 'lancement James-Webb ESA',
+        bySource: {
+          'esa.int': {
+            results: [{
+              title: 'NASA image of the Webb launch',
+              url: 'https://www.nasa.gov/image-article/james-webb-launch/',
+              snippet: 'Cette page mentionne aussi ESA et Arianespace.',
+              verified: true,
+            }],
+          },
+        },
+      },
+    })
+
+    const question = 'Donne un lien officiel de l’ESA sur le lancement de James-Webb.'
+    const content = '[ESA, lancement de Webb](https://www.esa.int/page-inventee)'
+    const initial = prepareAssistantContent(question, content, 'native-wrong-domain')
+    const recovered = await recoverAssistantLinks(question, content, initial)
+
+    expect(recovered.content).toContain('lien non vérifié retiré')
+    expect(recovered.content).not.toContain('(https://www.nasa.gov/')
+    expect(recovered.replacedLinks).toBe(0)
+  })
 })
