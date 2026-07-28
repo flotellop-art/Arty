@@ -68,4 +68,12 @@ describe('endpoint fact-check — hors quotas utilisateur (C-F/D5)', () => {
     expect(src).toMatch(/without_web_search/)
     expect(src).toMatch(/status: 503/)
   })
+
+  it('bascule sur Gemini si Anthropic reste indisponible', () => {
+    expect(src).toMatch(/requestGeminiFactCheck/)
+    expect(src).toMatch(/gemini-3\.6-flash/)
+    expect(src).toMatch(/gemini-3\.5-flash/)
+    expect(src).toMatch(/google_search/)
+    expect(src).toMatch(/fallback: 'provider'/)
+  })
 })

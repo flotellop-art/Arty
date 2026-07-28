@@ -69,6 +69,23 @@ const MAX_QUESTION_CHARS = 2000
 const MAX_RESPONSE_CHARS = 6000
 const MAX_SOURCES_CHARS = 8000
 const FACT_CHECK_FALLBACK_MODEL = 'claude-sonnet-5'
+const GEMINI_FACT_CHECK_MODELS = ['gemini-3.6-flash', 'gemini-3.5-flash'] as const
+
+interface FactCheckUsagePayload {
+  input_tokens?: number
+  output_tokens?: number
+  cache_read_input_tokens?: number
+  cache_creation_input_tokens?: number
+  grounded_prompts?: number
+  search_grounded_prompts?: number
+  search_queries?: number
+}
+
+interface FactCheckProviderPayload {
+  content: Array<{ type: 'text'; text: string }>
+  usage: FactCheckUsagePayload
+  model: string
+}
 
 // Prompt système du fact-checker — vit CÔTÉ SERVEUR (le client ne peut pas
 // le remplacer, sinon l'endpoint devient un proxy Claude générique hors
@@ -224,7 +241,208 @@ function anthropicBody(
   })
 }
 
-type FallbackKind = 'model' | 'without_web_search'
+const GEMINI_FACT_CHECK_SCHEMA = {
+  type: 'object',
+  properties: {
+    overall_confidence: {
+      type: 'string',
+      enum: ['high', 'medium', 'low'],
+    },
+    claims: {
+      type: 'array',
+      maxItems: 10,
+      items: {
+        type: 'object',
+        properties: {
+          claim: { type: 'string' },
+          verdict: {
+            type: 'string',
+            enum: ['verified', 'uncertain', 'wrong'],
+          },
+          explanation: { type: 'string' },
+          originalText: { type: 'string' },
+          correction: { type: 'string' },
+        },
+        required: ['claim', 'verdict', 'explanation'],
+      },
+    },
+  },
+  required: ['overall_confidence', 'claims'],
+} as const
+
+function geminiBody(
+  userContent: string,
+  maxTokens: number,
+  webSearch: boolean,
+): string {
+  return JSON.stringify({
+    systemInstruction: {
+      parts: [{
+        text: `${SYSTEM_PROMPT}
+
+Sur Gemini, l'outil google_search joue exactement le rôle de web_search décrit ci-dessus.`,
+      }],
+    },
+    contents: [{
+      role: 'user',
+      parts: [{ text: userContent }],
+    }],
+    generationConfig: {
+      maxOutputTokens: maxTokens,
+      responseMimeType: 'application/json',
+      responseSchema: GEMINI_FACT_CHECK_SCHEMA,
+    },
+    ...(webSearch ? { tools: [{ google_search: {} }] } : {}),
+  })
+}
+
+function isRetryableGeminiResponse(res: Response): boolean {
+  return res.status === 408 || res.status === 429 || res.status >= 500
+}
+
+export async function fetchGeminiWithRetry(
+  body: string,
+  apiKey: string,
+  model: string,
+  timeoutMs: number,
+  maxAttempts = 2,
+): Promise<Response> {
+  let lastErr: unknown
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+        {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'x-goog-api-key': apiKey,
+          },
+          body,
+          signal: AbortSignal.timeout(timeoutMs),
+        },
+      )
+      if (attempt + 1 < maxAttempts && isRetryableGeminiResponse(res)) {
+        const delayMs = retryDelayMs(res, attempt)
+        try { await res.body?.cancel() } catch { /* body déjà consommé/absent */ }
+        await new Promise((r) => setTimeout(r, delayMs))
+        continue
+      }
+      return res
+    } catch (err) {
+      if (err instanceof Error && err.name === 'TimeoutError') throw err
+      lastErr = err
+      if (attempt + 1 < maxAttempts) {
+        await new Promise((r) => setTimeout(r, Math.min(2_000, 500 * (2 ** attempt))))
+        continue
+      }
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error('gemini fetch failed')
+}
+
+function normalizeGeminiFactCheck(
+  data: {
+    candidates?: Array<{
+      content?: { parts?: Array<{ text?: string }> }
+      groundingMetadata?: {
+        webSearchQueries?: string[]
+        groundingChunks?: unknown[]
+        searchEntryPoint?: unknown
+      }
+    }>
+    usageMetadata?: {
+      promptTokenCount?: number
+      candidatesTokenCount?: number
+      thoughtsTokenCount?: number
+      cachedContentTokenCount?: number
+    }
+  },
+  model: string,
+): FactCheckProviderPayload | null {
+  const text = (data.candidates ?? [])
+    .flatMap((candidate) => candidate.content?.parts ?? [])
+    .map((part) => typeof part.text === 'string' ? part.text : '')
+    .join('')
+  if (!text) return null
+
+  const metadata = data.usageMetadata
+  const cachedTokens = metadata?.cachedContentTokenCount ?? 0
+  const searchQueries = new Set(
+    (data.candidates ?? [])
+      .flatMap((candidate) => candidate.groundingMetadata?.webSearchQueries ?? [])
+      .filter((query): query is string => typeof query === 'string' && query.trim().length > 0),
+  )
+  const grounded = (data.candidates ?? []).some((candidate) => {
+    const grounding = candidate.groundingMetadata
+    return Boolean(
+      grounding &&
+      (
+        (grounding.webSearchQueries?.length ?? 0) > 0 ||
+        (grounding.groundingChunks?.length ?? 0) > 0 ||
+        grounding.searchEntryPoint != null
+      )
+    )
+  })
+
+  return {
+    content: [{ type: 'text', text }],
+    usage: {
+      input_tokens: Math.max(0, (metadata?.promptTokenCount ?? 0) - cachedTokens),
+      output_tokens: (metadata?.candidatesTokenCount ?? 0) + (metadata?.thoughtsTokenCount ?? 0),
+      cache_read_input_tokens: cachedTokens,
+      cache_creation_input_tokens: 0,
+      grounded_prompts: grounded ? 1 : 0,
+      search_grounded_prompts: grounded ? 1 : 0,
+      search_queries: searchQueries.size,
+    },
+    model,
+  }
+}
+
+export async function requestGeminiFactCheck(
+  apiKey: string,
+  userContent: string,
+  maxTokens: number,
+  webSearch: boolean,
+  timeoutMs: number,
+): Promise<{ payload: FactCheckProviderPayload | null; status: number }> {
+  let lastStatus = 0
+  for (let index = 0; index < GEMINI_FACT_CHECK_MODELS.length; index++) {
+    const model = GEMINI_FACT_CHECK_MODELS[index]!
+    let res: Response
+    try {
+      res = await fetchGeminiWithRetry(
+        geminiBody(userContent, maxTokens, webSearch),
+        apiKey,
+        model,
+        timeoutMs,
+        2,
+      )
+    } catch {
+      if (index + 1 < GEMINI_FACT_CHECK_MODELS.length) continue
+      return { payload: null, status: 0 }
+    }
+
+    lastStatus = res.status
+    if (res.ok) {
+      const data = await res.json() as Parameters<typeof normalizeGeminiFactCheck>[0]
+      const payload = normalizeGeminiFactCheck(data, model)
+      if (payload) return { payload, status: res.status }
+      if (index + 1 < GEMINI_FACT_CHECK_MODELS.length) continue
+      return { payload: null, status: res.status }
+    }
+
+    const canTryNextModel =
+      index + 1 < GEMINI_FACT_CHECK_MODELS.length &&
+      (res.status === 404 || res.status >= 500)
+    try { await res.body?.cancel() } catch { /* body déjà consommé/absent */ }
+    if (!canTryNextModel) break
+  }
+  return { payload: null, status: lastStatus }
+}
+
+type FallbackKind = 'model' | 'without_web_search' | 'provider'
 
 function shouldUseFactCheckFallback(tier: Tier, res: Response): boolean {
   if (isRetryableAnthropicResponse(res)) return true
@@ -245,7 +463,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     return Response.json({ error: 'Authentication required' }, { status: 401 })
   }
   const email = user.email
-  if (!env.ANTHROPIC_API_KEY) {
+  if (!env.ANTHROPIC_API_KEY && !env.GEMINI_API_KEY) {
     return Response.json({ error: 'fact_check_unavailable' }, { status: 503 })
   }
 
@@ -311,18 +529,23 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     let res: Response | null = null
     let primaryError: unknown
 
-    try {
-      res = await fetchAnthropicWithRetry(
-        anthropicBody(cfg.model, userContent, cfg.maxTokens, cfg.webSearch),
-        env.ANTHROPIC_API_KEY,
-        cfg.upstreamTimeoutMs,
-        3,
-      )
-    } catch (err) {
-      primaryError = err
+    if (env.ANTHROPIC_API_KEY) {
+      try {
+        res = await fetchAnthropicWithRetry(
+          anthropicBody(cfg.model, userContent, cfg.maxTokens, cfg.webSearch),
+          env.ANTHROPIC_API_KEY,
+          cfg.upstreamTimeoutMs,
+          3,
+        )
+      } catch (err) {
+        primaryError = err
+      }
     }
 
-    if (primaryError || (res && shouldUseFactCheckFallback(tier, res))) {
+    if (
+      env.ANTHROPIC_API_KEY &&
+      (primaryError || (res && shouldUseFactCheckFallback(tier, res)))
+    ) {
       if (res) {
         console.error(
           '[fact-check] primary unavailable',
@@ -349,11 +572,42 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
 
     if (!res || !res.ok) {
       console.error(
-        '[fact-check] upstream unavailable',
+        '[fact-check] anthropic unavailable',
         res?.status || 0,
         res?.headers.get('request-id') || 'no-request-id',
       )
       try { await res?.body?.cancel() } catch { /* déjà consommé/absent */ }
+
+      if (env.GEMINI_API_KEY) {
+        const gemini = await requestGeminiFactCheck(
+          env.GEMINI_API_KEY,
+          userContent,
+          cfg.maxTokens,
+          cfg.webSearch,
+          tier === 'haiku' ? 12_000 : 35_000,
+        )
+        if (gemini.payload) {
+          const data = gemini.payload
+          await recordUsage(env, email, data.model, {
+            inputTokens: data.usage.input_tokens ?? 0,
+            outputTokens: data.usage.output_tokens ?? 0,
+            cacheReadTokens: data.usage.cache_read_input_tokens ?? 0,
+            cacheCreationTokens: data.usage.cache_creation_input_tokens ?? 0,
+            audioSeconds: 0,
+            groundedPrompts: data.usage.grounded_prompts ?? 0,
+            searchGroundedPrompts: data.usage.search_grounded_prompts ?? 0,
+            searchQueries: data.usage.search_queries ?? 0,
+          })
+          return Response.json({
+            content: data.content,
+            usage: data.usage,
+            model: data.model,
+            fallback: 'provider' satisfies FallbackKind,
+          })
+        }
+        console.error('[fact-check] gemini unavailable', gemini.status)
+      }
+
       return Response.json(
         { error: 'fact_check_failed', retryable: true },
         { status: 503, headers: { 'retry-after': '5' } },
@@ -363,12 +617,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     const data = (await res.json()) as {
       model?: string
       content?: Array<{ type?: string; text?: string }>
-      usage?: {
-        input_tokens?: number
-        output_tokens?: number
-        cache_read_input_tokens?: number
-        cache_creation_input_tokens?: number
-      }
+      usage?: FactCheckUsagePayload
     }
     if (typeof data.model === 'string' && data.model) servedModel = data.model
 
