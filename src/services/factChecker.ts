@@ -14,6 +14,7 @@
 // OpenAI) — le fact-checker prend (question, réponse) en entrée brute.
 
 import { apiUrl } from './apiBase'
+import { Capacitor, CapacitorHttp } from '@capacitor/core'
 import { getValidAccessToken } from './googleAuth'
 import * as scoped from './scopedStorage'
 import * as storage from './storage'
@@ -36,6 +37,9 @@ export interface SearchContextSource {
   title: string
   url: string
   snippet: string
+  // Seules les sources explicitement reliées au texte par le provider sont
+  // affichables. Les résultats bruts restent disponibles pour le fact-check.
+  cited?: boolean
 }
 
 export interface SearchContext {
@@ -65,14 +69,23 @@ function mergeSearchContexts(previous: SearchContext | null, next: SearchContext
     a: SearchContextSource[] | undefined,
     b: SearchContextSource[] | undefined,
   ): SearchContextSource[] | undefined => {
-    const merged = [...(a || []), ...(b || [])]
-    const seen = new Set<string>()
-    const unique = merged.filter((source) => {
+    const byUrl = new Map<string, SearchContextSource>()
+    for (const source of [...(a || []), ...(b || [])]) {
       const key = source.url.trim()
-      if (!key || seen.has(key)) return false
-      seen.add(key)
-      return true
-    })
+      if (!key) continue
+      const previousSource = byUrl.get(key)
+      if (!previousSource) {
+        byUrl.set(key, source)
+        continue
+      }
+      byUrl.set(key, {
+        title: previousSource.title || source.title,
+        url: previousSource.url,
+        snippet: previousSource.snippet || source.snippet,
+        ...(previousSource.cited || source.cited ? { cited: true } : {}),
+      })
+    }
+    const unique = [...byUrl.values()]
     return unique.length > 0 ? unique : undefined
   }
 
@@ -239,7 +252,7 @@ export function prepareAssistantContent(
   const sourcesToAppend = sources
     .filter((source) => {
       const comparable = comparableUrl(source.url)
-      return !!comparable && !linkedComparables.has(comparable)
+      return source.cited === true && !!comparable && !linkedComparables.has(comparable)
     })
     .slice(0, 5)
   if (sourcesToAppend.length > 0) {
@@ -500,6 +513,52 @@ const TIER_INFO = {
   sonnet: { model: 'claude-sonnet-5', label: 'Sonnet 5', timeoutMs: 60_000 },
 } as const
 
+interface FactCheckRequestPayload {
+  tier: 'haiku' | 'sonnet'
+  question: string
+  response: string
+  sources: string
+}
+
+async function requestFactCheck(
+  headers: Record<string, string>,
+  payload: FactCheckRequestPayload,
+  timeoutMs: number,
+  signal: AbortSignal,
+): Promise<Response> {
+  const url = apiUrl(FACT_CHECK_ENDPOINT)
+  if (!Capacitor.isNativePlatform()) {
+    return fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload),
+      signal,
+    })
+  }
+
+  // Un POST non-streamé de 15 à 50 secondes est vulnérable aux sockets
+  // half-open de la WebView Android, qui remontent alors TypeError:
+  // "Failed to fetch". Le transport natif Capacitor utilise HttpURLConnection
+  // et possède ses propres timeouts de connexion/lecture. Origin reste exigé
+  // par le middleware Cloudflare, même si le transport natif peut le définir.
+  const nativeResponse = await CapacitorHttp.request({
+    url,
+    method: 'POST',
+    headers: { ...headers, Origin: 'https://localhost' },
+    data: payload,
+    connectTimeout: 15_000,
+    readTimeout: timeoutMs,
+    responseType: 'json',
+  })
+  const body = typeof nativeResponse.data === 'string'
+    ? nativeResponse.data
+    : JSON.stringify(nativeResponse.data ?? {})
+  return new Response(body, {
+    status: nativeResponse.status,
+    headers: nativeResponse.headers,
+  })
+}
+
 async function runCheckTier(
   tier: 'haiku' | 'sonnet',
   question: string,
@@ -517,20 +576,23 @@ async function runCheckTier(
 
   let res: Response
   try {
-    res = await fetch(apiUrl(FACT_CHECK_ENDPOINT), {
-      method: 'POST',
+    res = await requestFactCheck(
       headers,
-      body: JSON.stringify({
+      {
         tier,
         question: question.slice(0, 2000),
         response: response.slice(0, 6000),
         sources: sourcesBlock,
-      }),
-      signal: controller.signal,
-    })
+      },
+      info.timeoutMs,
+      controller.signal,
+    )
   } catch (err) {
     clearTimeout(timeoutId)
-    if (err instanceof Error && err.name === 'AbortError') {
+    if (
+      controller.signal.aborted ||
+      (err instanceof Error && (err.name === 'AbortError' || /timeout/i.test(err.message)))
+    ) {
       console.warn('[factChecker] timeout after', info.timeoutMs, 'ms')
       return { result: null, reason: `timeout ${info.timeoutMs / 1000}s` }
     }
