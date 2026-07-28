@@ -1,11 +1,54 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   extractAnswerResults,
+  resolveGoogleGroundingRedirects,
   verifySearchResults,
 } from '../../../functions/api/search/web'
 
 afterEach(() => {
   vi.unstubAllGlobals()
+})
+
+describe('resolution des redirects Google', () => {
+  it('resout le redirect sans visiter sa destination', async () => {
+    const redirect =
+      'https://vertexaisearch.cloud.google.com/grounding-api-redirect/signed'
+    const fetchMock = vi.fn(async () => new Response(null, {
+      status: 302,
+      headers: {
+        location: 'https://newsroom.arianespace.com/ariane-flight-va256/',
+      },
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const resolved = await resolveGoogleGroundingRedirects([redirect])
+
+    expect(resolved).toEqual([{
+      title: 'newsroom.arianespace.com',
+      url: 'https://newsroom.arianespace.com/ariane-flight-va256/',
+      snippet: '',
+    }])
+    expect(fetchMock).toHaveBeenCalledWith(
+      redirect,
+      expect.objectContaining({
+        method: 'GET',
+        redirect: 'manual',
+      }),
+    )
+  })
+
+  it('refuse la destination privee du redirect', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(null, {
+      status: 302,
+      headers: { location: 'http://127.0.0.1/admin' },
+    })))
+
+    const resolved = await resolveGoogleGroundingRedirects([
+      'https://vertexaisearch.cloud.google.com/grounding-api-redirect/signed',
+    ])
+
+    expect(resolved).toEqual([])
+  })
 })
 
 describe('vérification réelle des liens de recherche', () => {

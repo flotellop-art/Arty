@@ -279,14 +279,50 @@ function sourceMatchesDomain(url: string, domain: string): boolean {
 }
 
 const LINK_IDENTITY_STOP_WORDS = new Set([
-  'article', 'communique', 'details', 'flight', 'james', 'launch', 'lancement',
-  'lien', 'live', 'mission', 'news', 'newsroom', 'officiel', 'officielle',
-  'page', 'press', 'release', 'source', 'spatial', 'telescope', 'va256', 'webb',
+  'agency', 'agence', 'article', 'communique', 'details', 'european',
+  'europeenne', 'flight', 'james', 'launch', 'lancement', 'lien', 'live',
+  'mission', 'news', 'newsroom', 'officiel', 'officielle', 'page', 'press',
+  'release', 'space', 'source', 'spatial', 'spatiale', 'telescope', 'va256',
+  'webb',
 ])
 
 function linkIdentityTokens(value: string): Set<string> {
-  const tokens = normalizeSourceText(value).match(/[a-z0-9]{2,}/g) || []
+  const normalized = normalizeSourceText(value)
+    .replace(/\beuropean space agency\b/g, ' esa ')
+    .replace(/\bagence spatiale europeenne\b/g, ' esa ')
+    .replace(/\bnational aeronautics and space administration\b/g, ' nasa ')
+  const tokens = normalized.match(/[a-z0-9]{2,}/g) || []
   return new Set(tokens.filter((token) => !LINK_IDENTITY_STOP_WORDS.has(token)))
+}
+
+type LinkInstitution = 'nasa' | 'esa' | 'arianespace'
+
+function linkInstitution(value: string): LinkInstitution | null {
+  const normalized = normalizeSourceText(value)
+  if (/\barianespace\b/.test(normalized)) return 'arianespace'
+  if (
+    /\bnasa\b/.test(normalized) ||
+    /\bnational aeronautics and space administration\b/.test(normalized)
+  ) return 'nasa'
+  if (
+    /\besa\b/.test(normalized) ||
+    /\beuropean space agency\b/.test(normalized) ||
+    /\bagence spatiale europeenne\b/.test(normalized)
+  ) return 'esa'
+  return null
+}
+
+function contextualMarkdownLinkLabel(
+  content: string,
+  offset: number,
+  label: string,
+): string {
+  const lineStart = content.lastIndexOf('\n', Math.max(0, offset - 1)) + 1
+  const prefix = content.slice(lineStart, offset)
+    .replace(/^[\s>*+-]+/, '')
+    .replace(/[*_`]/g, ' ')
+    .slice(-120)
+  return `${prefix}\n${label}`.trim()
 }
 
 function replacementScore(
@@ -300,6 +336,15 @@ function replacementScore(
   const originalHost = normalizedSourceHost(originalUrl)
   const originalIsOpaque = isGoogleGroundingRedirect(originalUrl)
   let score = source.recovered ? 3 : 0
+
+  if (originalIsOpaque) {
+    const expectedInstitution = linkInstitution(label)
+    if (expectedInstitution) {
+      const sourceInstitution = linkInstitution(`${sourceHost}\n${source.title}`)
+      if (sourceInstitution !== expectedInstitution) return -1
+      score += 30
+    }
+  }
 
   if (sourceHost && originalHost && !originalIsOpaque) {
     if (sourceHost === originalHost) score += 20
@@ -452,16 +497,27 @@ function prepareAssistantContentFromContext(
 
   grounded = grounded.replace(
     /(?<!!)\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)(?:\s+["'][^)]*["'])?\)/gi,
-    (full, label: string, url: string) => {
+    (full, label: string, url: string, offset: number, whole: string) => {
+      const contextualLabel = contextualMarkdownLinkLabel(whole, offset, label)
       if (isGoogleGroundingRedirect(url)) {
-        const direct = pickReplacementSource(label, url, relevantSources, usedReplacementUrls)
+        const direct = pickReplacementSource(
+          contextualLabel,
+          url,
+          relevantSources,
+          usedReplacementUrls,
+        )
         if (direct) {
           replacedLinks++
           return `[${label}](${direct.url})`
         }
       }
       if (isAllowed(url)) return full
-      const replacement = pickReplacementSource(label, url, relevantSources, usedReplacementUrls)
+      const replacement = pickReplacementSource(
+        contextualLabel,
+        url,
+        relevantSources,
+        usedReplacementUrls,
+      )
       if (replacement) {
         replacedLinks++
         return `[${label}](${replacement.url})`
@@ -541,7 +597,10 @@ function prepareAssistantContentFromContext(
   const sourcesToAppend = relevantSources
     .filter((source) => {
       const comparable = comparableUrl(source.url)
-      return source.cited === true && !!comparable && !linkedComparables.has(comparable)
+      return source.cited === true &&
+        !isGoogleGroundingRedirect(source.url) &&
+        !!comparable &&
+        !linkedComparables.has(comparable)
     })
     .slice(0, 5)
   if (sourcesToAppend.length > 0) {
@@ -578,6 +637,7 @@ type RecoverySearch = (
   query: string,
   maxResults: number,
   sources: string[],
+  redirectUrls: string[],
 ) => Promise<SearchContext | null>
 
 function requestedLinkCount(question: string): number {
@@ -639,6 +699,7 @@ async function requestRecoverySearch(
   query: string,
   maxResults: number,
   sources: string[],
+  redirectUrls: string[],
 ): Promise<SearchContext | null> {
   const googleToken = await getValidAccessToken()
   if (!googleToken) return null
@@ -654,6 +715,7 @@ async function requestRecoverySearch(
     maxResults: sources.length > 0 ? 1 : maxResults,
     verifyUrls: true,
     ...(sources.length > 0 ? { sources } : {}),
+    ...(redirectUrls.length > 0 ? { redirectUrls } : {}),
   }
   const url = apiUrl('/api/search/web')
 
@@ -742,9 +804,12 @@ export async function recoverAssistantLinks(
     ? requestedLinkCount(question)
     : Math.max(1, prepared.removedLinks, outboundLinkCount(prepared.content))
   const domains = recoveryDomains(originalContent)
+  const redirectUrls = extractHttpUrls(originalContent)
+    .filter(isGoogleGroundingRedirect)
+    .slice(0, 5)
   let recovered: SearchContext | null
   try {
-    recovered = await search(question, Math.max(3, target), domains)
+    recovered = await search(question, Math.max(3, target), domains, redirectUrls)
   } catch (error) {
     console.warn('[factChecker] link recovery failed:', error)
     return prepared
@@ -767,7 +832,7 @@ export async function recoverAssistantLinks(
     )
   ) {
     try {
-      const general = await search(question, Math.max(3, target), [])
+      const general = await search(question, Math.max(3, target), [], redirectUrls)
       if (general) {
         merged = mergeSearchContexts(merged, general)
         result = prepareAssistantContentFromContext(question, originalContent, merged)
