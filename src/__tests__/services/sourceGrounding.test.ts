@@ -2,7 +2,9 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import {
   clearSearchContext,
   getSearchContext,
+  needsLinkRecovery,
   prepareAssistantContent,
+  recoverAssistantLinks,
   setSearchContext,
 } from '../../services/factChecker'
 import { extractGeminiSearchContext } from '../../services/geminiClient'
@@ -51,7 +53,7 @@ describe('provenance des sources par conversation', () => {
 describe('prepareAssistantContent', () => {
   beforeEach(() => clearSearchContext('conv-a'))
 
-  it('retire un lien halluciné et ajoute la vraie URL structurée de la recherche', () => {
+  it('remplace un lien halluciné par la vraie URL structurée de la recherche', () => {
     setSearchContext({
       provider: 'Linkup',
       query: 'documentation officielle',
@@ -70,12 +72,251 @@ describe('prepareAssistantContent', () => {
     )
 
     expect(prepared.content).not.toContain('(https://docs.example.com/guide-invente)')
-    expect(prepared.content).toContain('lien non vérifié retiré')
     expect(prepared.content).toContain(
-      '[Documentation officielle](https://docs.example.com/guide)',
+      '[guide](https://docs.example.com/guide)',
     )
-    expect(prepared.removedLinks).toBeGreaterThan(0)
+    expect(prepared.removedLinks).toBe(0)
+    expect(prepared.replacedLinks).toBe(1)
+    expect(prepared.appendedSources).toBe(0)
     expect(getSearchContext('conv-a')).toBeNull()
+  })
+
+  it('recherche et remplace trois liens morts par trois pages directes du bon domaine', async () => {
+    const question = [
+      'Donne-moi trois liens officiels sur le lancement du télescope James-Webb,',
+      'un de la NASA, un de l’ESA et un d’Arianespace.',
+    ].join(' ')
+    const content = [
+      '- [NASA : lancement de Webb](https://www.nasa.gov/communique-invente)',
+      '- [ESA : décollage de Webb](https://www.esa.int/page-inventee)',
+      '- [Arianespace : vol VA256](https://www.arianespace.com/mission-inventee)',
+    ].join('\n')
+    const initial = prepareAssistantContent(question, content, 'conv-a')
+    expect(initial.removedLinks).toBe(3)
+    expect(needsLinkRecovery(question, initial)).toBe(true)
+
+    let requestedDomains: string[] = []
+    const recovered = await recoverAssistantLinks(
+      question,
+      content,
+      initial,
+      async (_query, _maxResults, domains) => {
+        requestedDomains = domains
+        return {
+          provider: 'Linkup link recovery',
+          query: question,
+          results: [
+            {
+              title: 'NASA launches James Webb Space Telescope',
+              url: 'https://www.nasa.gov/news-release/nasa-launches-james-webb-space-telescope/',
+              snippet: 'Webb launched aboard Ariane 5 on December 25, 2021.',
+              cited: true,
+              recovered: true,
+            },
+            {
+              title: 'NASA image of the James Webb launch',
+              url: 'https://www.nasa.gov/image-article/james-webb-launch/',
+              snippet: 'The image shows the ESA and Arianespace launch of Webb.',
+              cited: true,
+              recovered: true,
+            },
+            {
+              title: 'Webb liftoff on Ariane 5',
+              url: 'https://www.esa.int/Science_Exploration/Space_Science/Webb/Webb_liftoff',
+              snippet: 'ESA confirms the successful launch of the James Webb Space Telescope.',
+              cited: true,
+              recovered: true,
+            },
+            {
+              title: 'Ariane Flight VA256',
+              url: 'https://newsroom.arianespace.com/ariane-flight-va256/',
+              snippet: 'Arianespace launched Webb on Ariane 5 flight VA256.',
+              cited: true,
+              recovered: true,
+            },
+          ],
+        }
+      },
+    )
+
+    expect(requestedDomains).toEqual([
+      'nasa.gov',
+      'esa.int',
+      'arianespace.com',
+    ])
+    expect(recovered.content).toContain(
+      '(https://www.nasa.gov/news-release/nasa-launches-james-webb-space-telescope/)',
+    )
+    expect(recovered.content).toContain(
+      '(https://www.esa.int/Science_Exploration/Space_Science/Webb/Webb_liftoff)',
+    )
+    expect(recovered.content).toContain(
+      '(https://newsroom.arianespace.com/ariane-flight-va256/)',
+    )
+    expect(recovered.content).not.toContain('lien non vérifié retiré')
+    expect(recovered.removedLinks).toBe(0)
+    expect(recovered.replacedLinks).toBe(3)
+  })
+
+  it('remplace aussi un redirect Google opaque par une URL directe récupérée', async () => {
+    const question = 'Donne le lien officiel Arianespace du vol VA256.'
+    const redirect =
+      'https://vertexaisearch.cloud.google.com/grounding-api-redirect/opaque'
+    setSearchContext({
+      provider: 'Google Search',
+      query: question,
+      results: [{
+        title: 'Arianespace',
+        url: redirect,
+        snippet: '',
+        supportText: 'Le vol VA256 a lancé le télescope James-Webb.',
+        cited: true,
+      }],
+    }, 'conv-a')
+    const content = `[Arianespace, vol VA256](${redirect})`
+    const initial = prepareAssistantContent(question, content, 'conv-a')
+
+    const recovered = await recoverAssistantLinks(
+      question,
+      content,
+      initial,
+      async () => ({
+        provider: 'Linkup link recovery',
+        query: question,
+        results: [{
+          title: 'Ariane Flight VA256',
+          url: 'https://newsroom.arianespace.com/ariane-flight-va256/',
+          snippet: 'Arianespace flight VA256 launched the James Webb Space Telescope.',
+          cited: true,
+          recovered: true,
+        }],
+      }),
+    )
+
+    expect(recovered.content).toContain(
+      '[Arianespace, vol VA256](https://newsroom.arianespace.com/ariane-flight-va256/)',
+    )
+    expect(recovered.content).not.toContain('grounding-api-redirect')
+    expect(recovered.replacedLinks).toBe(1)
+  })
+
+  it('complète une récupération par domaine pour remplacer le dernier redirect opaque', async () => {
+    const question = 'Donne trois liens officiels NASA, ESA et Arianespace sur James-Webb.'
+    const redirect =
+      'https://vertexaisearch.cloud.google.com/grounding-api-redirect/arianespace'
+    setSearchContext({
+      provider: 'Google Search',
+      query: question,
+      results: [{
+        title: 'Arianespace',
+        url: redirect,
+        snippet: '',
+        supportText: 'Arianespace a lancé James-Webb avec le vol VA256.',
+        cited: true,
+      }],
+    }, 'conv-a')
+    const content = [
+      '[NASA, lancement de Webb](https://www.nasa.gov/page-inventee)',
+      '[ESA, lancement de Webb](https://www.esa.int/page-inventee)',
+      `[Arianespace, vol VA256](${redirect})`,
+    ].join('\n')
+    const initial = prepareAssistantContent(question, content, 'conv-a')
+    const calls: string[][] = []
+
+    const recovered = await recoverAssistantLinks(
+      question,
+      content,
+      initial,
+      async (_query, _maxResults, domains) => {
+        calls.push(domains)
+        if (domains.length > 0) {
+          return {
+            provider: 'Linkup link recovery',
+            query: question,
+            results: [
+              {
+                title: 'NASA launches James Webb',
+                url: 'https://www.nasa.gov/news-release/nasa-launches-james-webb/',
+                snippet: 'NASA confirms the launch of James-Webb.',
+                cited: true,
+                recovered: true,
+              },
+              {
+                title: 'ESA Webb liftoff',
+                url: 'https://www.esa.int/Science_Exploration/Webb_liftoff',
+                snippet: 'ESA confirms the launch of James-Webb.',
+                cited: true,
+                recovered: true,
+              },
+            ],
+          }
+        }
+        return {
+          provider: 'Linkup link recovery',
+          query: question,
+          results: [{
+            title: 'Ariane Flight VA256',
+            url: 'https://newsroom.arianespace.com/ariane-flight-va256/',
+            snippet: 'Arianespace launched James-Webb on flight VA256.',
+            cited: true,
+            recovered: true,
+          }],
+        }
+      },
+    )
+
+    expect(calls).toEqual([
+      ['nasa.gov', 'esa.int'],
+      [],
+    ])
+    expect(recovered.content).not.toContain('grounding-api-redirect')
+    expect(recovered.content).toContain('newsroom.arianespace.com/ariane-flight-va256')
+    expect(recovered.removedLinks).toBe(0)
+    expect(recovered.replacedLinks).toBe(3)
+  })
+
+  it('ne recherche pas trois liens quand la question en demande un seul', () => {
+    setSearchContext({
+      provider: 'Linkup',
+      query: 'documentation officielle',
+      results: [{
+        title: 'Documentation officielle',
+        url: 'https://docs.example.com/guide',
+        snippet: 'Guide officiel du produit.',
+      }],
+    }, 'conv-a')
+    const prepared = prepareAssistantContent(
+      'Donne le lien de la documentation officielle.',
+      '[Documentation](https://docs.example.com/guide)',
+      'conv-a',
+    )
+
+    expect(needsLinkRecovery('Donne le lien de la documentation officielle.', prepared)).toBe(false)
+  })
+
+  it('ne confond pas le code source avec une demande de sources web', () => {
+    const prepared = prepareAssistantContent(
+      'Explique ce code source TypeScript.',
+      'Ce code transforme une liste puis retourne le résultat calculé.',
+      'conv-a',
+    )
+
+    expect(needsLinkRecovery('Explique ce code source TypeScript.', prepared)).toBe(false)
+  })
+
+  it('garde les liens neutralisés si la recherche de remplacement échoue', async () => {
+    const question = 'Donne trois liens officiels.'
+    const content = '[Source](https://dead.example/page)'
+    const initial = prepareAssistantContent(question, content, 'conv-a')
+    const recovered = await recoverAssistantLinks(
+      question,
+      content,
+      initial,
+      async () => null,
+    )
+
+    expect(recovered).toEqual(initial)
+    expect(recovered.content).toContain('lien non vérifié retiré')
   })
 
   it('n’affiche pas le réservoir brut de résultats non cités', () => {

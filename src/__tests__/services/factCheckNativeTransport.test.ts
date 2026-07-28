@@ -21,7 +21,11 @@ vi.mock('../../services/costTracker', () => ({
   recordUsage: vi.fn(),
 }))
 
-import { factCheckResponse } from '../../services/factChecker'
+import {
+  factCheckResponse,
+  prepareAssistantContent,
+  recoverAssistantLinks,
+} from '../../services/factChecker'
 
 describe('fact-check, transport Android natif', () => {
   beforeEach(() => {
@@ -61,7 +65,7 @@ describe('fact-check, transport Android natif', () => {
         'x-google-token': 'google-token',
       }),
       connectTimeout: 15_000,
-      readTimeout: 45_000,
+      readTimeout: 90_000,
       responseType: 'json',
     }))
 
@@ -96,6 +100,32 @@ describe('fact-check, transport Android natif', () => {
     expect(outcome.result?.modelLabel).toBe('Sonnet 5 (secours)')
   })
 
+  it('affiche le fournisseur de secours réellement servi', async () => {
+    nativeRequest.mockResolvedValue({
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+      data: {
+        model: 'gemini-3.6-flash',
+        fallback: 'provider',
+        content: [{
+          type: 'text',
+          text: '{"overall_confidence":"high","claims":[]}',
+        }],
+        usage: {},
+      },
+    })
+
+    const outcome = await factCheckResponse(
+      'Quelle information faut-il vérifier ?',
+      'Cette réponse dépasse volontairement quatre-vingts caractères afin de déclencher la vérification factuelle.',
+      'haiku',
+      null,
+    )
+
+    expect(outcome.result?.status).toBe('success-empty')
+    expect(outcome.result?.modelLabel).toBe('Gemini 3.6 Flash (secours)')
+  })
+
   it('masque le 503 upstream derrière une raison lisible', async () => {
     nativeRequest.mockResolvedValue({
       status: 503,
@@ -114,5 +144,83 @@ describe('fact-check, transport Android natif', () => {
       result: null,
       reason: 'service de vérification temporairement indisponible',
     })
+  })
+
+  it('récupère les liens via le transport Android natif et remplace l’URL morte', async () => {
+    nativeRequest.mockResolvedValue({
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+      data: {
+        provider: 'linkup',
+        query: 'lancement James-Webb NASA',
+        bySource: {
+          'nasa.gov': {
+            results: [{
+              title: 'NASA launches James Webb Space Telescope',
+              url: 'https://www.nasa.gov/news-release/nasa-launches-james-webb-space-telescope/',
+              snippet: 'NASA confirms the launch of Webb aboard Ariane 5.',
+              verified: true,
+            }],
+          },
+        },
+      },
+    })
+
+    const question = 'Donne un lien officiel de la NASA sur le lancement de James-Webb.'
+    const content = '[NASA, lancement de Webb](https://www.nasa.gov/page-inventee)'
+    const initial = prepareAssistantContent(question, content, 'native-links')
+    const recovered = await recoverAssistantLinks(question, content, initial)
+
+    expect(recovered.content).toContain(
+      '(https://www.nasa.gov/news-release/nasa-launches-james-webb-space-telescope/)',
+    )
+    expect(recovered.removedLinks).toBe(0)
+    expect(recovered.replacedLinks).toBe(1)
+    expect(nativeRequest).toHaveBeenCalledWith(expect.objectContaining({
+      url: 'https://tryarty.com/api/search/web',
+      method: 'POST',
+      headers: expect.objectContaining({
+        Origin: 'https://localhost',
+        'x-google-token': 'google-token',
+      }),
+      data: expect.objectContaining({
+        maxResults: 1,
+        sources: ['nasa.gov'],
+        verifyUrls: true,
+      }),
+      connectTimeout: 10_000,
+      readTimeout: 30_000,
+      responseType: 'json',
+    }))
+  })
+
+  it('refuse un résultat NASA rangé à tort dans le domaine ESA', async () => {
+    nativeRequest.mockResolvedValue({
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+      data: {
+        provider: 'linkup',
+        query: 'lancement James-Webb ESA',
+        bySource: {
+          'esa.int': {
+            results: [{
+              title: 'NASA image of the Webb launch',
+              url: 'https://www.nasa.gov/image-article/james-webb-launch/',
+              snippet: 'Cette page mentionne aussi ESA et Arianespace.',
+              verified: true,
+            }],
+          },
+        },
+      },
+    })
+
+    const question = 'Donne un lien officiel de l’ESA sur le lancement de James-Webb.'
+    const content = '[ESA, lancement de Webb](https://www.esa.int/page-inventee)'
+    const initial = prepareAssistantContent(question, content, 'native-wrong-domain')
+    const recovered = await recoverAssistantLinks(question, content, initial)
+
+    expect(recovered.content).toContain('lien non vérifié retiré')
+    expect(recovered.content).not.toContain('(https://www.nasa.gov/')
+    expect(recovered.replacedLinks).toBe(0)
   })
 })

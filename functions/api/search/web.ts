@@ -15,10 +15,14 @@ import {
   ownerApiLimitResponse,
   planSubjectToOwnerApiCap,
 } from '../_lib/freeQuota'
+import { isSafePublicUrl, isShortLinkHost } from '../_lib/urlSafety'
 
 interface SearchRequest {
   query: string
   maxResults?: number
+  // Passe de récupération des liens : chaque résultat est relu par Linkup
+  // avant d'être rendu cliquable. Désactivé pour les recherches ordinaires.
+  verifyUrls?: boolean
   // Liste optionnelle de domaines à interroger SÉPARÉMENT (ex:
   // ["bricodepot.fr", "cedeo.fr"]). Quand fournie, le proxy fait un appel
   // par source avec l'opérateur `site:`, agrège, et retourne les résultats
@@ -33,6 +37,7 @@ interface NormalisedResult {
   title: string
   url: string
   snippet: string
+  verified?: boolean
 }
 
 // Réponse pour 1 source unique (cas standard, ou Brave).
@@ -63,10 +68,18 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     return Response.json({ error: 'Authentication required' }, { status: 401 })
   }
 
-  const { query, maxResults = 5, sources } = (await request.json()) as SearchRequest
+  const {
+    query,
+    maxResults: rawMaxResults = 5,
+    sources,
+    verifyUrls = false,
+  } = (await request.json()) as SearchRequest
   if (!query || typeof query !== 'string' || query.length < 2) {
     return Response.json({ error: 'Query missing or too short' }, { status: 400 })
   }
+  const maxResults = Number.isFinite(rawMaxResults)
+    ? Math.max(1, Math.min(5, Math.floor(rawMaxResults)))
+    : 5
 
   // Domaines nettoyés (mode multi-source) — calculés AVANT le cap pour compter
   // le nombre d'appels Linkup RÉELS (1 par source), pas 1 par requête HTTP :
@@ -76,7 +89,14 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     .filter((s) => /^[a-z0-9.-]+\.[a-z]{2,}$/.test(s))
     .slice(0, 6) // cap à 6 sources max pour éviter d'exploser le quota Linkup
   const isMultiSource = cleanedSources.length > 0
-  const providerCalls = isMultiSource ? cleanedSources.length : 1
+  const searchCalls = isMultiSource ? cleanedSources.length : 1
+  // La vérification relit au maximum un résultat par domaine en mode ciblé,
+  // ou `maxResults` résultats en mode général. Elle est comptée dans le même
+  // plafond que la recherche pour éviter tout contournement du quota.
+  const verificationCalls = verifyUrls
+    ? (isMultiSource ? cleanedSources.length : maxResults)
+    : 0
+  const providerCalls = searchCalls + verificationCalls
 
   // Cap journalier par email sur la clé de recherche PAYANTE du owner
   // (Linkup/Brave), appliqué aux seuls plans non-payants. Compté en appels
@@ -99,7 +119,15 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
           const sourcedQuery = `${query} site:${source}`
           try {
             const linkup = await searchLinkup(env.LINKUP_API_KEY, sourcedQuery, maxResults)
-            return { source, answer: linkup.answer, results: linkup.results }
+            const candidates = verifyUrls
+              ? mergeAnswerResults(linkup.answer, linkup.results)
+                .filter((result) => urlMatchesDomain(result.url, source))
+                .slice(0, maxResults)
+              : linkup.results
+            const results = verifyUrls
+              ? await verifySearchResults(env.LINKUP_API_KEY, candidates)
+              : candidates
+            return { source, answer: linkup.answer, results }
           } catch (err) {
             // Idem N-2 : on n'embarque pas le message d'erreur du provider dans
             // la réponse (il n'était de toute façon pas propagé à bySource). Le
@@ -135,6 +163,10 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
       answer = linkupResp.answer
       results = linkupResp.results
     }
+    if (verifyUrls) {
+      results = mergeAnswerResults(answer, results).slice(0, maxResults)
+      results = await verifySearchResults(env.LINKUP_API_KEY, results)
+    }
     const response: SingleSourceResponse = { provider, answer, results, query }
     return Response.json(response, {
       status: 200,
@@ -153,6 +185,115 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     console.error('[search/web] provider error', provider, err)
     return Response.json({ error: 'Search failed' }, { status: 502 })
   }
+}
+
+function cleanAnswerUrl(value: string): string {
+  return value.replace(/[),.;:!?]+$/, '')
+}
+
+export function extractAnswerResults(answer: string | undefined): NormalisedResult[] {
+  if (!answer) return []
+
+  const results: NormalisedResult[] = []
+  const seen = new Set<string>()
+  for (const line of answer.split(/\r?\n/)) {
+    const urls = line.match(/https?:\/\/[^\s<>"'`]+/gi) || []
+    for (const rawUrl of urls) {
+      const url = cleanAnswerUrl(rawUrl)
+      let parsed: URL
+      try {
+        parsed = new URL(url)
+      } catch {
+        continue
+      }
+      if (!isSafePublicUrl(parsed) || seen.has(parsed.toString())) continue
+      seen.add(parsed.toString())
+      const before = line.slice(0, line.indexOf(rawUrl))
+        .replace(/^[\s*\-•#\d.)]+/, '')
+        .replace(/\s*[:：]\s*$/, '')
+        .trim()
+      results.push({
+        title: before || parsed.hostname.replace(/^www\./, ''),
+        url: parsed.toString(),
+        snippet: line.trim(),
+      })
+    }
+  }
+  return results
+}
+
+function mergeAnswerResults(
+  answer: string | undefined,
+  results: NormalisedResult[],
+): NormalisedResult[] {
+  const merged = [...extractAnswerResults(answer), ...results]
+  const seen = new Set<string>()
+  return merged.filter((result) => {
+    let key: string
+    try {
+      key = new URL(result.url).toString()
+    } catch {
+      return false
+    }
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
+function urlMatchesDomain(value: string, domain: string): boolean {
+  try {
+    const host = new URL(value).hostname.toLowerCase().replace(/^www\./, '')
+    const expected = domain.toLowerCase().replace(/^www\./, '')
+    return host === expected || host.endsWith(`.${expected}`)
+  } catch {
+    return false
+  }
+}
+
+// Vérification de disponibilité déléguée à Linkup. Le Worker ne suit jamais
+// lui-même l'URL cible, ce qui préserve l'invariant anti-SSRF de /api/fetch/url.
+// Un résultat refusé ou illisible reste absent : mieux vaut moins de liens que
+// réafficher une URL morte.
+export async function verifySearchResults(
+  apiKey: string | undefined,
+  results: NormalisedResult[],
+): Promise<NormalisedResult[]> {
+  if (!apiKey || results.length === 0) return []
+
+  const checked = await Promise.all(
+    results.slice(0, 5).map(async (result): Promise<NormalisedResult | null> => {
+      let parsed: URL
+      try {
+        parsed = new URL(result.url)
+      } catch {
+        return null
+      }
+      if (!isSafePublicUrl(parsed)) return null
+
+      try {
+        const res = await fetch('https://api.linkup.so/v1/fetch', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({
+            url: parsed.toString(),
+            includeRawHtml: false,
+            extractImages: false,
+            ...(isShortLinkHost(parsed.hostname) ? { renderJs: true } : {}),
+          }),
+          signal: AbortSignal.timeout(12_000),
+        })
+        return res.ok ? { ...result, verified: true } : null
+      } catch {
+        return null
+      }
+    }),
+  )
+
+  return checked.filter((result): result is NormalisedResult => result !== null)
 }
 
 // Linkup — API LLM-native, hostée EU (france). Mode 'sourcedAnswer' :
