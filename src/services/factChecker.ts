@@ -547,7 +547,10 @@ function prepareAssistantContentFromContext(
   const sourcesToAppend = relevantSources
     .filter((source) => {
       const comparable = comparableUrl(source.url)
-      return source.cited === true && !!comparable && !linkedComparables.has(comparable)
+      return source.cited === true &&
+        !isGoogleGroundingRedirect(source.url) &&
+        !!comparable &&
+        !linkedComparables.has(comparable)
     })
     .slice(0, 5)
   if (sourcesToAppend.length > 0) {
