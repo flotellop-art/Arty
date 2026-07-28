@@ -6,7 +6,9 @@ import rehypeRaw from 'rehype-raw'
 import rehypeHighlight from 'rehype-highlight'
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize'
 import type { Components } from 'react-markdown'
+import type { MouseEvent, ReactNode } from 'react'
 import { isValidElement } from 'react'
+import { Capacitor } from '@capacitor/core'
 import { getFile } from '../../services/secureFileStorage'
 import { isAllowedReportAction } from '../../services/reportActions'
 
@@ -49,16 +51,50 @@ function BlockedRemoteImage({ src, alt }: { src: string; alt?: string }) {
       <span className="block text-theme-ink/70">
         {t('chat.bubble.remoteImageBlocked')}{alt ? ` — ${alt}` : ''}
       </span>
-      <a
+      <MarkdownLink
         href={src}
-        target="_blank"
-        rel="noopener noreferrer"
-        referrerPolicy="no-referrer"
         className="mt-1 inline-block text-theme-accent underline"
       >
         {t('chat.bubble.openRemoteImage')}
-      </a>
+      </MarkdownLink>
     </span>
+  )
+}
+
+function MarkdownLink({
+  href,
+  children,
+  className = 'text-theme-accent underline decoration-theme-accent/30 hover:decoration-theme-accent hover:bg-theme-accent/5 rounded px-0.5 transition-all',
+}: {
+  href?: string
+  children: ReactNode
+  className?: string
+}) {
+  const openNative = (event: MouseEvent<HTMLAnchorElement>) => {
+    if (!href || !Capacitor.isNativePlatform()) return
+    try {
+      const parsed = new URL(href)
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return
+      event.preventDefault()
+      void import('@capacitor/browser')
+        .then(({ Browser }) => Browser.open({ url: parsed.toString() }))
+        .catch((err) => console.warn('[MarkdownRenderer] external link failed', err))
+    } catch {
+      event.preventDefault()
+    }
+  }
+
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      referrerPolicy="no-referrer"
+      className={className}
+      onClick={openNative}
+    >
+      {children}
+    </a>
   )
 }
 
@@ -197,12 +233,7 @@ const components: Components = {
   p: ({ children }) => (
     <p className="my-1.5 leading-relaxed">{children}</p>
   ),
-  a: ({ href, children }) => (
-    <a href={href} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer"
-      className="text-theme-accent underline decoration-theme-accent/30 hover:decoration-theme-accent hover:bg-theme-accent/5 rounded px-0.5 transition-all">
-      {children}
-    </a>
-  ),
+  a: ({ href, children }) => <MarkdownLink href={href}>{children}</MarkdownLink>,
   button: ({ children, ...props }) => {
     const action = (props as Record<string, unknown>)['data-action']
     // Les conversations antérieures peuvent encore contenir des boutons

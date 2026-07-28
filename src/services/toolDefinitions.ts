@@ -15,6 +15,8 @@ export function buildToolDefinitions() {
   ...nativeToolDefinitions,
   // Server-side tools (handled by Anthropic API, no local executor)
   {
+    // Variante directe compatible avec Haiku 4.5 comme avec Sonnet. Le
+    // fact-check Sonnet utilise séparément la variante dynamique 20260318.
     type: 'web_search_20250305',
     name: 'web_search',
     max_uses: 5,

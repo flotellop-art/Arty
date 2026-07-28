@@ -611,7 +611,13 @@ export function extractAnthropicSearchContext(
   fallbackQuery = '',
 ): SearchContext | null {
   const queries: string[] = []
-  const sources: Array<{ title: string; url: string; snippet: string; cited?: boolean }> = []
+  const sources: Array<{
+    title: string
+    url: string
+    snippet: string
+    supportText?: string
+    cited?: boolean
+  }> = []
 
   for (const block of contentBlocks) {
     if (block.type === 'server_tool_use' && block.name === 'web_search') {
@@ -637,13 +643,20 @@ export function extractAnthropicSearchContext(
           title: typeof citation.title === 'string' ? citation.title : '',
           url: citation.url,
           snippet: typeof citation.cited_text === 'string' ? citation.cited_text : '',
+          supportText: block.text,
           cited: true,
         })
       }
     }
   }
 
-  const byUrl = new Map<string, { title: string; url: string; snippet: string; cited?: boolean }>()
+  const byUrl = new Map<string, {
+    title: string
+    url: string
+    snippet: string
+    supportText?: string
+    cited?: boolean
+  }>()
   for (const source of sources) {
     const existing = byUrl.get(source.url)
     if (!existing) {
@@ -653,6 +666,7 @@ export function extractAnthropicSearchContext(
         title: existing.title || source.title,
         url: existing.url,
         snippet: existing.snippet || source.snippet,
+        supportText: existing.supportText || source.supportText,
         ...(existing.cited || source.cited ? { cited: true } : {}),
       })
     }
