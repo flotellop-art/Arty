@@ -59,6 +59,7 @@ describe('prepareAssistantContent', () => {
         title: 'Documentation officielle',
         url: 'https://docs.example.com/guide',
         snippet: 'Guide officiel',
+        cited: true,
       }],
     }, 'conv-a')
 
@@ -75,6 +76,31 @@ describe('prepareAssistantContent', () => {
     )
     expect(prepared.removedLinks).toBeGreaterThan(0)
     expect(getSearchContext('conv-a')).toBeNull()
+  })
+
+  it('n’affiche pas le réservoir brut de résultats non cités', () => {
+    setSearchContext({
+      provider: 'Anthropic Web Search',
+      query: 'rumeurs mercato football',
+      results: [
+        { title: 'selectra.info', url: 'https://selectra.info/article', snippet: '' },
+        { title: 'alertes-meteo.com', url: 'https://alertes-meteo.com/article', snippet: '' },
+        { title: 'legifrance.gouv.fr', url: 'https://legifrance.gouv.fr/article', snippet: '' },
+      ],
+    }, 'conv-a')
+
+    const prepared = prepareAssistantContent(
+      'Quelles sont les dernières rumeurs du mercato ?',
+      'John Stones intéresse plusieurs clubs européens.',
+      'conv-a',
+    )
+
+    expect(prepared.content).not.toContain('Sources retrouvées par la recherche')
+    expect(prepared.content).not.toContain('selectra.info')
+    expect(prepared.appendedSources).toBe(0)
+    // Le pool brut reste fourni au fact-checker, il n'est simplement plus
+    // présenté à l'utilisateur comme une bibliographie fiable.
+    expect(prepared.searchContext?.results).toHaveLength(3)
   })
 
   it('conserve une URL exacte issue de la recherche et une URL fournie par l’utilisateur', () => {
@@ -151,6 +177,9 @@ describe('métadonnées Google Search', () => {
               title: 'example.com',
             },
           }],
+          groundingSupports: [{
+            groundingChunkIndices: [0],
+          }],
         },
       }],
     })
@@ -162,6 +191,7 @@ describe('métadonnées Google Search', () => {
         title: 'example.com',
         url: 'https://vertexaisearch.cloud.google.com/grounding-api-redirect/abc',
         snippet: '',
+        cited: true,
       }],
     })
   })
