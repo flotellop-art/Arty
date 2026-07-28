@@ -198,7 +198,7 @@ const components: Components = {
     <p className="my-1.5 leading-relaxed">{children}</p>
   ),
   a: ({ href, children }) => (
-    <a href={href} target="_blank" rel="noopener noreferrer"
+    <a href={href} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer"
       className="text-theme-accent underline decoration-theme-accent/30 hover:decoration-theme-accent hover:bg-theme-accent/5 rounded px-0.5 transition-all">
       {children}
     </a>

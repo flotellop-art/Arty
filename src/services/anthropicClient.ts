@@ -12,6 +12,7 @@ import type { ReflectionLevel } from './reflectionLevel'
 import { buildLocationContext } from './locationContext'
 import { recordUsage } from './costTracker'
 import { updateTrialFromResponse } from './trialClient'
+import { setSearchContext, type SearchContext } from './factChecker'
 import i18n from '../i18n'
 
 const ANTI_HALLU_PROMPT = `
@@ -43,12 +44,22 @@ retard sur la date du jour).
 - Si le tool retourne peu/pas de résultats, réessaie 1 fois avec une
   reformulation différente avant de répondre sans search.
 - Cite les sources web utilisées (URL ou domaine) dans ta réponse.
+- Toute URL cliquable doit être recopiée EXACTEMENT depuis un résultat de
+  web_search/web_fetch ou depuis le message utilisateur. N'invente jamais
+  une URL, un chemin ou un slug plausible, même sur un domaine réel.
 - Ne dis JAMAIS "j'ai cherché" — c'est le tool qui cherche, pas toi.
   Formule : "selon les sources web", "d'après la recherche".`
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-type TextBlock = { type: 'text'; text: string }
+type AnthropicCitation = {
+  type?: string
+  url?: string
+  title?: string
+  cited_text?: string
+  [key: string]: unknown
+}
+type TextBlock = { type: 'text'; text: string; citations?: AnthropicCitation[] }
 type ToolUseBlock = { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> }
 type ThinkingBlock = { type: 'thinking'; thinking: string; signature: string }
 type RedactedThinkingBlock = { type: 'redacted_thinking'; data: string }
@@ -368,6 +379,7 @@ export async function parseSSEStream(
   let currentToolInput = ''
   let currentBlockType = ''
   let currentTextContent = ''
+  let currentTextCitations: AnthropicCitation[] = []
   let currentThinkingText = ''
   let currentThinkingSignature = ''
   let inputTokens = 0
@@ -441,6 +453,7 @@ export async function parseSSEStream(
             if (block?.type === 'text') {
               currentBlockType = 'text'
               currentTextContent = ''
+              currentTextCitations = []
             } else if (block?.type === 'tool_use') {
               currentBlockType = 'tool_use'
               currentToolInput = ''
@@ -485,10 +498,21 @@ export async function parseSSEStream(
             break
           }
           case 'content_block_delta': {
-            const delta = data.delta as { type?: string; text?: string; partial_json?: string; thinking?: string; signature?: string } | undefined
+            const delta = data.delta as {
+              type?: string
+              text?: string
+              partial_json?: string
+              thinking?: string
+              signature?: string
+              citation?: AnthropicCitation
+            } | undefined
             if (delta?.type === 'text_delta' && delta.text) {
               onToken(delta.text)
               currentTextContent += delta.text
+            } else if (delta?.type === 'citations_delta' && delta.citation) {
+              // Les citations structurées doivent être renvoyées verbatim lors
+              // d'une itération suivante et alimentent la provenance des liens.
+              currentTextCitations.push(delta.citation)
             } else if (delta?.type === 'input_json_delta' && delta.partial_json) {
               currentToolInput += delta.partial_json
             } else if (delta?.type === 'thinking_delta' && delta.thinking) {
@@ -506,7 +530,11 @@ export async function parseSSEStream(
             // (signature présente, etc.) est faite par assertContentBlocksValid
             // avant le resend dans la boucle tool-use.
             if (currentBlockType === 'text') {
-              contentBlocks.push({ type: 'text', text: currentTextContent })
+              contentBlocks.push({
+                type: 'text',
+                text: currentTextContent,
+                ...(currentTextCitations.length > 0 ? { citations: currentTextCitations } : {}),
+              })
             } else if (currentBlockType === 'tool_use' && currentToolInput) {
               const lastTool = contentBlocks[contentBlocks.length - 1]
               if (lastTool?.type === 'tool_use') {
@@ -576,6 +604,59 @@ export async function parseSSEStream(
   }
 
   return { contentBlocks, inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens, ...(servedModel ? { servedModel } : {}) }
+}
+
+export function extractAnthropicSearchContext(
+  contentBlocks: ContentBlock[],
+  fallbackQuery = '',
+): SearchContext | null {
+  const queries: string[] = []
+  const sources: Array<{ title: string; url: string; snippet: string }> = []
+
+  for (const block of contentBlocks) {
+    if (block.type === 'server_tool_use' && block.name === 'web_search') {
+      const query = typeof block.input?.query === 'string' ? block.input.query.trim() : ''
+      if (query) queries.push(query)
+    }
+
+    if (block.type === 'web_search_tool_result' && Array.isArray(block.content)) {
+      for (const item of block.content as Array<Record<string, unknown>>) {
+        if (item.type !== 'web_search_result') continue
+        const url = typeof item.url === 'string' ? item.url : ''
+        const title = typeof item.title === 'string' ? item.title : ''
+        if (url) sources.push({ title, url, snippet: '' })
+      }
+    }
+
+    if (block.type === 'text') {
+      for (const citation of block.citations || []) {
+        if (citation.type !== 'web_search_result_location' || typeof citation.url !== 'string') continue
+        sources.push({
+          title: typeof citation.title === 'string' ? citation.title : '',
+          url: citation.url,
+          snippet: typeof citation.cited_text === 'string' ? citation.cited_text : '',
+        })
+      }
+    }
+  }
+
+  const byUrl = new Map<string, { title: string; url: string; snippet: string }>()
+  for (const source of sources) {
+    const existing = byUrl.get(source.url)
+    if (!existing) {
+      byUrl.set(source.url, source)
+    } else if (!existing.snippet && source.snippet) {
+      byUrl.set(source.url, { ...existing, snippet: source.snippet })
+    }
+  }
+  const unique = [...byUrl.values()]
+  if (unique.length === 0) return null
+
+  return {
+    provider: 'Anthropic Web Search',
+    query: queries.join(' | ') || fallbackQuery,
+    results: unique,
+  }
 }
 
 // ── Content blocks validation ────────────────────────────────────────────────
@@ -866,6 +947,8 @@ async function runWithTools(
 
       const response = await fetchWithRetry(requestBody, apiKey, controller)
       const { contentBlocks, inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens, servedModel } = await parseSSEStream(response, onToken)
+      const searchContext = extractAnthropicSearchContext(contentBlocks, lastUserText)
+      if (searchContext) setSearchContext(searchContext, options?.conversationId)
 
       // Boucle « demandé → servi » (audit visibilité modèle, F-1/F-2) : si
       // l'API confirme un AUTRE id que celui affiché, on corrige le badge.

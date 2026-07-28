@@ -18,7 +18,7 @@ import { useFileAttachments, buildApiMessages, buildContentBlocks, buildTextOnly
 import { buildOpenAIRouteMessages } from './openaiRouteMessages'
 import { getReflectionLevel } from '../services/reflectionLevel'
 import { deleteFile, deleteOwnedFiles, putFile } from '../services/secureFileStorage'
-import { runFactCheckOnLatest, getFactCheckMode } from '../services/factChecker'
+import { clearSearchContext, runFactCheckOnLatest } from '../services/factChecker'
 import { detectSuggestedTasks, addTask } from '../services/taskService'
 import { TOOLS } from '../services/toolDefinitions'
 import { wantsImageGeneration, generateImageToolDefinition } from '../services/tools/imageTools'
@@ -598,8 +598,6 @@ export function useConversation() {
       // la promesse « tes données ne quitteront pas l'Europe ». Fact-check
       // désactivé sur les convs EU ; le sheet « ⋯ » l'indique (euLocked).
       // runFactCheckOnLatest re-vérifie euOnly en défense en profondeur.
-      const factCheckMode = conv.euOnly ? 'off' : getFactCheckMode()
-
       // Relecture (audit) — canStart est vérifié plus haut mais des `await`
       // (putFile, createReminder) s'intercalent : le cap peut être atteint
       // entre-temps. Ignorer ce retour lançait un appel LLM orphelin dont le
@@ -609,6 +607,9 @@ export function useConversation() {
         releaseVisionAutoCropLock()
         return true
       }
+      // Un stream précédent interrompu après sa recherche peut avoir laissé un
+      // contexte incomplet. Chaque nouveau tour repart avec une provenance vide.
+      clearSearchContext(targetId)
 
       const onToken = (token: string) => streamToken(token, targetId)
 
@@ -626,15 +627,13 @@ export function useConversation() {
         // Publication immédiate dans tous les cas.
         streamDone(targetId)
 
-        // Puis vérification en arrière-plan. Les gardes fins (euOnly,
-        // réponse interrompue/trop courte, déjà vérifié, quota du jour)
-        // vivent dans runFactCheckOnLatest.
-        if (factCheckMode !== 'off') {
-          void runFactCheckOnLatest(targetId, refreshConversations)
-        }
+        // Puis nettoyage des liens et vérification en arrière-plan. Les gardes
+        // fines (mode off, euOnly, réponse courte, quota) vivent dans le service.
+        void runFactCheckOnLatest(targetId, refreshConversations)
       }
 
       const onErr = (err: Error) => {
+        clearSearchContext(targetId)
         streamError(err, targetId)
         // P0.7 — cap premium atteint : pas de bandeau rouge ni de redirect
         // muet vers /upgrade. On dispatche un event que CapReachedModal
@@ -824,7 +823,10 @@ export function useConversation() {
 
       if (provider === 'hybrid') {
         setProgressContent('🔍 Recherche en cours (Gemini)...', targetId)
-        Promise.all([geminiResearch(modelText, undefined, getReflectionLevel()), buildApiMessages(conv.messages)]).then(([research, enrichedMessages]) => {
+        Promise.all([
+          geminiResearch(modelText, undefined, getReflectionLevel(), targetId),
+          buildApiMessages(conv.messages),
+        ]).then(([research, enrichedMessages]) => {
           // Si l'utilisateur a cliqué Stop PENDANT la recherche Gemini,
           // stopStreaming() a déjà nettoyé le stream. Sans ce garde, le .then
           // démarrerait quand même une génération Claude "zombie" après le Stop.
