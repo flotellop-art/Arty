@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { fetchBillingUsage } from '../../services/billingClient'
 import { decideBillingAdvice, type BillingAdvice } from '../../services/billingAdvisor'
-import { getStoredUser } from '../../services/googleAuth'
 import { openCheckout, canPurchase } from '../../services/checkout'
 
 // Carte « suggestion » du conseiller de facturation. Affichée seulement quand le
@@ -89,12 +88,10 @@ export function BillingAdvisorCard() {
     setHidden(true)
   }
 
-  // Seul le forfait a un parcours d'achat prêt (Lemon Squeezy). BYOK = configurer
-  // sa clé dans les réglages ; crédits = achat Creem à venir → ces cas informent
-  // sans bouton tant que le parcours n'existe pas.
+  // Seul le forfait déclenche un CTA dans cette carte. Le checkout dynamique
+  // récupère l'identité vérifiée côté serveur ; aucun email client n'est envoyé.
   const onSubscribe = () => {
-    const email = getStoredUser()?.email ?? ''
-    if (email) void openCheckout('subscription', email)
+    void openCheckout('subscription')
   }
 
   const vars = {

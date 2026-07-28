@@ -167,6 +167,14 @@ Dans Android Studio :
 - Paiements Android : les cartes et checkouts restent masques par `canPurchase`
   et les fonctions d'ouverture sont des no-op sur natif. Pour un abonne existant,
   conserver l'acces a l'annulation via `https://tryarty.lemonsqueezy.com/billing`.
+- [ ] Avant de merger le checkout dynamique Lemon Squeezy, configurer dans
+      Cloudflare Preview les valeurs TEST coherentes : `LEMONSQUEEZY_API_KEY`,
+      `LEMONSQUEEZY_STORE_ID`, `LEMONSQUEEZY_SUBSCRIPTION_VARIANT_ID`,
+      `LEMONSQUEEZY_PRO_VARIANT_ID`, `LEMONSQUEEZY_PREMIUM_PACK_VARIANT_ID` et
+      `LEMONSQUEEZY_WEBHOOK_SECRET`. Ne jamais melanger Test et Live.
+- [ ] Avant le deploiement production, poser les six equivalents LIVE. Le
+      checkout echoue volontairement en 404 si une valeur est absente ou
+      malformee ; le webhook echoue en 5xx si ses variants ne sont pas configures.
 - [x] Dans Lemon Squeezy > Design > Customer Portal, changements de
       produit/variant et de quantite desactives puis configuration publiee le
       14 juillet 2026. Annulation et suspension restent actives.
