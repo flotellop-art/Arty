@@ -99,9 +99,41 @@ export function extractGeminiSearchContext(
 
   const queries = metadata.webSearchQueries || metadata.web_search_queries || []
   const chunks = metadata.groundingChunks || metadata.grounding_chunks || []
-  const results: Array<{ title: string; url: string; snippet: string }> = []
+  const supports = metadata.groundingSupports || metadata.grounding_supports || []
+  const citedChunkIndexes = new Set<number>()
+  const supportTextByChunkIndex = new Map<number, string>()
+  if (Array.isArray(supports)) {
+    for (const support of supports) {
+      const indexes = support?.groundingChunkIndices || support?.grounding_chunk_indices || []
+      if (!Array.isArray(indexes)) continue
+      const supportText =
+        support?.segment?.text ||
+        support?.segmentText ||
+        support?.segment_text ||
+        ''
+      for (const index of indexes) {
+        if (!Number.isInteger(index) || index < 0) continue
+        citedChunkIndexes.add(index)
+        if (
+          typeof supportText === 'string' &&
+          supportText.trim() &&
+          !supportTextByChunkIndex.has(index)
+        ) {
+          supportTextByChunkIndex.set(index, supportText.trim())
+        }
+      }
+    }
+  }
+  const results: Array<{
+    title: string
+    url: string
+    snippet: string
+    supportText?: string
+    cited?: boolean
+  }> = []
 
-  for (const chunk of chunks) {
+  for (let index = 0; index < chunks.length; index++) {
+    const chunk = chunks[index]
     const source = chunk?.web || chunk?.retrievedContext || chunk?.retrieved_context
     const url = source?.uri
     if (typeof url !== 'string' || !url) continue
@@ -109,6 +141,10 @@ export function extractGeminiSearchContext(
       title: typeof source.title === 'string' ? source.title : '',
       url,
       snippet: typeof source.text === 'string' ? source.text : '',
+      ...(supportTextByChunkIndex.has(index)
+        ? { supportText: supportTextByChunkIndex.get(index)! }
+        : {}),
+      ...(citedChunkIndexes.has(index) ? { cited: true } : {}),
     })
   }
   if (results.length === 0) return null

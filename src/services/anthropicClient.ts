@@ -611,7 +611,13 @@ export function extractAnthropicSearchContext(
   fallbackQuery = '',
 ): SearchContext | null {
   const queries: string[] = []
-  const sources: Array<{ title: string; url: string; snippet: string }> = []
+  const sources: Array<{
+    title: string
+    url: string
+    snippet: string
+    supportText?: string
+    cited?: boolean
+  }> = []
 
   for (const block of contentBlocks) {
     if (block.type === 'server_tool_use' && block.name === 'web_search') {
@@ -624,6 +630,8 @@ export function extractAnthropicSearchContext(
         if (item.type !== 'web_search_result') continue
         const url = typeof item.url === 'string' ? item.url : ''
         const title = typeof item.title === 'string' ? item.title : ''
+        // Résultat candidat uniquement. Anthropic peut renvoyer des résultats
+        // hors sujet que le modèle n'utilise jamais dans son texte.
         if (url) sources.push({ title, url, snippet: '' })
       }
     }
@@ -635,18 +643,32 @@ export function extractAnthropicSearchContext(
           title: typeof citation.title === 'string' ? citation.title : '',
           url: citation.url,
           snippet: typeof citation.cited_text === 'string' ? citation.cited_text : '',
+          supportText: block.text,
+          cited: true,
         })
       }
     }
   }
 
-  const byUrl = new Map<string, { title: string; url: string; snippet: string }>()
+  const byUrl = new Map<string, {
+    title: string
+    url: string
+    snippet: string
+    supportText?: string
+    cited?: boolean
+  }>()
   for (const source of sources) {
     const existing = byUrl.get(source.url)
     if (!existing) {
       byUrl.set(source.url, source)
-    } else if (!existing.snippet && source.snippet) {
-      byUrl.set(source.url, { ...existing, snippet: source.snippet })
+    } else {
+      byUrl.set(source.url, {
+        title: existing.title || source.title,
+        url: existing.url,
+        snippet: existing.snippet || source.snippet,
+        supportText: existing.supportText || source.supportText,
+        ...(existing.cited || source.cited ? { cited: true } : {}),
+      })
     }
   }
   const unique = [...byUrl.values()]

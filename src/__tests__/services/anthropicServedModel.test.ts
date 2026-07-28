@@ -104,7 +104,13 @@ describe('parseSSEStream — modèle servi (message_start)', () => {
     expect(context).toEqual({
       provider: 'Anthropic Web Search',
       query: 'actualité Arty',
-      results: [{ title: 'Article', url: 'https://example.com/article', snippet: 'Extrait fiable' }],
+      results: [{
+        title: 'Article',
+        url: 'https://example.com/article',
+        snippet: 'Extrait fiable',
+        supportText: 'Fait sourcé',
+        cited: true,
+      }],
     })
   })
 })
