@@ -23,6 +23,9 @@ interface SearchRequest {
   // Passe de récupération des liens : chaque résultat est relu par Linkup
   // avant d'être rendu cliquable. Désactivé pour les recherches ordinaires.
   verifyUrls?: boolean
+  // Redirects opaques renvoyés par Google Search. Le serveur ne suit que ce
+  // domaine précis et récupère sa destination publique sans la visiter.
+  redirectUrls?: string[]
   // Liste optionnelle de domaines à interroger SÉPARÉMENT (ex:
   // ["bricodepot.fr", "cedeo.fr"]). Quand fournie, le proxy fait un appel
   // par source avec l'opérateur `site:`, agrège, et retourne les résultats
@@ -73,6 +76,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     maxResults: rawMaxResults = 5,
     sources,
     verifyUrls = false,
+    redirectUrls,
   } = (await request.json()) as SearchRequest
   if (!query || typeof query !== 'string' || query.length < 2) {
     return Response.json({ error: 'Query missing or too short' }, { status: 400 })
@@ -89,6 +93,10 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     .filter((s) => /^[a-z0-9.-]+\.[a-z]{2,}$/.test(s))
     .slice(0, 6) // cap à 6 sources max pour éviter d'exploser le quota Linkup
   const isMultiSource = cleanedSources.length > 0
+  const cleanedRedirects = (redirectUrls ?? [])
+    .filter((value): value is string => typeof value === 'string')
+    .filter(isGoogleGroundingRedirect)
+    .slice(0, 5)
   const searchCalls = isMultiSource ? cleanedSources.length : 1
   // La vérification relit au maximum un résultat par domaine en mode ciblé,
   // ou `maxResults` résultats en mode général. Elle est comptée dans le même
@@ -96,7 +104,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   const verificationCalls = verifyUrls
     ? (isMultiSource ? cleanedSources.length : maxResults)
     : 0
-  const providerCalls = searchCalls + verificationCalls
+  const providerCalls = searchCalls + verificationCalls + cleanedRedirects.length
 
   // Cap journalier par email sur la clé de recherche PAYANTE du owner
   // (Linkup/Brave), appliqué aux seuls plans non-payants. Compté en appels
@@ -110,6 +118,10 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   const provider: 'linkup' | 'brave' = (env.SEARCH_PROVIDER as 'linkup' | 'brave') || 'linkup'
 
   try {
+    const resolvedRedirects = verifyUrls
+      ? await resolveGoogleGroundingRedirects(cleanedRedirects)
+      : []
+
     // Mode multi-source (Option A) — appels parallèles avec opérateur site:
     // pour chaque domaine demandé. Garantit une réponse par source distincte
     // au lieu d'une synthèse globale qui mélange l'attribution.
@@ -120,7 +132,10 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
           try {
             const linkup = await searchLinkup(env.LINKUP_API_KEY, sourcedQuery, maxResults)
             const candidates = verifyUrls
-              ? mergeAnswerResults(linkup.answer, linkup.results)
+              ? uniqueResults([
+                ...resolvedRedirects,
+                ...mergeAnswerResults(linkup.answer, linkup.results),
+              ])
                 .filter((result) => urlMatchesDomain(result.url, source))
                 .slice(0, maxResults)
               : linkup.results
@@ -164,7 +179,10 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
       results = linkupResp.results
     }
     if (verifyUrls) {
-      results = mergeAnswerResults(answer, results).slice(0, maxResults)
+      results = uniqueResults([
+        ...resolvedRedirects,
+        ...mergeAnswerResults(answer, results),
+      ]).slice(0, maxResults)
       results = await verifySearchResults(env.LINKUP_API_KEY, results)
     }
     const response: SingleSourceResponse = { provider, answer, results, query }
@@ -226,9 +244,12 @@ function mergeAnswerResults(
   answer: string | undefined,
   results: NormalisedResult[],
 ): NormalisedResult[] {
-  const merged = [...extractAnswerResults(answer), ...results]
+  return uniqueResults([...extractAnswerResults(answer), ...results])
+}
+
+function uniqueResults(results: NormalisedResult[]): NormalisedResult[] {
   const seen = new Set<string>()
-  return merged.filter((result) => {
+  return results.filter((result) => {
     let key: string
     try {
       key = new URL(result.url).toString()
@@ -241,6 +262,17 @@ function mergeAnswerResults(
   })
 }
 
+function isGoogleGroundingRedirect(value: string): boolean {
+  try {
+    const parsed = new URL(value)
+    return parsed.protocol === 'https:' &&
+      parsed.hostname === 'vertexaisearch.cloud.google.com' &&
+      parsed.pathname.startsWith('/grounding-api-redirect/')
+  } catch {
+    return false
+  }
+}
+
 function urlMatchesDomain(value: string, domain: string): boolean {
   try {
     const host = new URL(value).hostname.toLowerCase().replace(/^www\./, '')
@@ -249,6 +281,43 @@ function urlMatchesDomain(value: string, domain: string): boolean {
   } catch {
     return false
   }
+}
+
+// Résout uniquement les redirects signés de Google Search. `manual` empêche
+// le Worker de visiter la destination. Après lecture du header Location, la
+// cible doit encore satisfaire la validation d'URL publique avant d'être
+// relue séparément par Linkup.
+export async function resolveGoogleGroundingRedirects(
+  redirects: string[],
+): Promise<NormalisedResult[]> {
+  const resolved = await Promise.all(
+    redirects.slice(0, 5).map(async (redirect): Promise<NormalisedResult | null> => {
+      if (!isGoogleGroundingRedirect(redirect)) return null
+      try {
+        const response = await fetch(redirect, {
+          method: 'GET',
+          redirect: 'manual',
+          signal: AbortSignal.timeout(8_000),
+        })
+        if (response.status < 300 || response.status >= 400) return null
+        const location = response.headers.get('location')
+        if (!location) return null
+        const target = new URL(location, redirect)
+        if (!isSafePublicUrl(target) || isGoogleGroundingRedirect(target.toString())) return null
+        return {
+          title: target.hostname.replace(/^www\./, ''),
+          url: target.toString(),
+          snippet: '',
+        }
+      } catch {
+        return null
+      }
+    }),
+  )
+
+  return uniqueResults(
+    resolved.filter((result): result is NormalisedResult => result !== null),
+  )
 }
 
 // Vérification de disponibilité déléguée à Linkup. Le Worker ne suit jamais

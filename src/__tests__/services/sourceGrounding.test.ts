@@ -222,13 +222,15 @@ describe('prepareAssistantContent', () => {
     ].join('\n')
     const initial = prepareAssistantContent(question, content, 'conv-a')
     const calls: string[][] = []
+    const redirectCalls: string[][] = []
 
     const recovered = await recoverAssistantLinks(
       question,
       content,
       initial,
-      async (_query, _maxResults, domains) => {
+      async (_query, _maxResults, domains, redirects) => {
         calls.push(domains)
+        redirectCalls.push(redirects)
         if (domains.length > 0) {
           return {
             provider: 'Linkup link recovery',
@@ -269,10 +271,41 @@ describe('prepareAssistantContent', () => {
       ['nasa.gov', 'esa.int'],
       [],
     ])
+    expect(redirectCalls).toEqual([[redirect], [redirect]])
     expect(recovered.content).not.toContain('grounding-api-redirect')
     expect(recovered.content).toContain('newsroom.arianespace.com/ariane-flight-va256')
     expect(recovered.removedLinks).toBe(0)
     expect(recovered.replacedLinks).toBe(3)
+  })
+
+  it('reconnait le nom developpe de ESA dans un redirect opaque', async () => {
+    const question = 'Donne le lien officiel de Agence spatiale europeenne.'
+    const redirect =
+      'https://vertexaisearch.cloud.google.com/grounding-api-redirect/esa'
+    const content = `[Agence spatiale europeenne](${redirect})`
+    const initial = prepareAssistantContent(question, content, 'conv-a')
+
+    const recovered = await recoverAssistantLinks(
+      question,
+      content,
+      initial,
+      async () => ({
+        provider: 'Linkup link recovery',
+        query: question,
+        results: [{
+          title: 'ESA',
+          url: 'https://www.esa.int/Science_Exploration/Webb_liftoff',
+          snippet: 'Agence spatiale europeenne, ESA, confirme le lancement.',
+          cited: true,
+          recovered: true,
+        }],
+      }),
+    )
+
+    expect(recovered.content).toContain(
+      '[Agence spatiale europeenne](https://www.esa.int/Science_Exploration/Webb_liftoff)',
+    )
+    expect(recovered.content).not.toContain('grounding-api-redirect')
   })
 
   it('ne recherche pas trois liens quand la question en demande un seul', () => {
