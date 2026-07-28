@@ -108,6 +108,7 @@ describe('parseSSEStream — modèle servi (message_start)', () => {
         title: 'Article',
         url: 'https://example.com/article',
         snippet: 'Extrait fiable',
+        supportText: 'Fait sourcé',
         cited: true,
       }],
     })

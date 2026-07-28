@@ -37,6 +37,10 @@ export interface SearchContextSource {
   title: string
   url: string
   snippet: string
+  // Passage exact de la réponse que le provider relie à cette source
+  // (bloc texte Anthropic ou groundingSupport Gemini). Il permet de rejeter
+  // une attribution devenue orpheline après assemblage du stream.
+  supportText?: string
   // Seules les sources explicitement reliées au texte par le provider sont
   // affichables. Les résultats bruts restent disponibles pour le fact-check.
   cited?: boolean
@@ -82,6 +86,7 @@ function mergeSearchContexts(previous: SearchContext | null, next: SearchContext
         title: previousSource.title || source.title,
         url: previousSource.url,
         snippet: previousSource.snippet || source.snippet,
+        supportText: previousSource.supportText || source.supportText,
         ...(previousSource.cited || source.cited ? { cited: true } : {}),
       })
     }
@@ -167,6 +172,123 @@ function escapeMarkdownLabel(value: string): string {
   return value.replace(/[[\]\\]/g, '\\$&').trim() || 'Source'
 }
 
+// Termes trop génériques pour établir qu'une source traite réellement du
+// sujet. Le filtrage est volontairement conservateur : une source refusée
+// reste disponible dans SearchContext pour le fact-check, elle n'est
+// simplement pas présentée comme une bibliographie fiable.
+const SOURCE_RELEVANCE_STOP_WORDS = new Set([
+  'avec', 'avoir', 'cette', 'comme', 'dans', 'depuis', 'donne', 'entre',
+  'faire', 'leurs', 'mais', 'nous', 'pour', 'plus', 'sans', 'sont', 'sous',
+  'tout', 'tous', 'toute', 'vous', 'votre', 'voici', 'ainsi', 'apres',
+  'avant', 'cela', 'celui', 'elle', 'elles', 'etre', 'font', 'leur', 'meme',
+  'peut', 'quand', 'quelle', 'quelles', 'quel', 'quels', 'reste', 'site',
+  'source', 'sources', 'article', 'actualite', 'actualites', 'officiel',
+  'officielle', 'france', 'francais', 'francaise', 'europe', 'europeen',
+  'europeenne', 'www', 'http', 'https', 'html', 'page', 'info',
+  'about', 'after', 'also', 'before', 'from', 'have', 'into', 'more', 'most',
+  'other', 'over', 'than', 'that', 'their', 'there', 'these', 'this', 'those',
+  'with', 'without', 'your', 'official', 'website', 'news',
+])
+
+function normalizeSourceText(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function stemSourceToken(token: string): string {
+  if (token.length > 7 && token.endsWith('ements')) return token.slice(0, -6)
+  if (token.length > 7 && token.endsWith('ement')) return token.slice(0, -5)
+  if (token.length > 6 && token.endsWith('iques')) return token.slice(0, -5)
+  if (token.length > 6 && token.endsWith('ique')) return token.slice(0, -4)
+  if (token.length > 6 && token.endsWith('ions')) return token.slice(0, -4)
+  if (token.length > 5 && token.endsWith('es')) return token.slice(0, -2)
+  if (token.length > 5 && token.endsWith('s')) return token.slice(0, -1)
+  return token
+}
+
+function sourceRelevanceTokens(value: string): Set<string> {
+  const tokens = normalizeSourceText(value).match(/[a-z0-9]{4,}/g) || []
+  return new Set(
+    tokens
+      .filter((token) => !SOURCE_RELEVANCE_STOP_WORDS.has(token))
+      .map(stemSourceToken)
+      .filter((token) => token.length >= 4 && !SOURCE_RELEVANCE_STOP_WORDS.has(token)),
+  )
+}
+
+function isBareDomainTitle(title: string, url: string): boolean {
+  try {
+    const normalizedTitle = normalizeSourceText(title)
+      .replace(/^www\./, '')
+      .replace(/\s+/g, '')
+    const host = new URL(url).hostname.toLowerCase().replace(/^www\./, '')
+    return normalizedTitle === host || normalizedTitle === host.replace(/\.[a-z]{2,}$/i, '')
+  } catch {
+    return false
+  }
+}
+
+function sourceUrlDescriptor(url: string): string {
+  try {
+    const parsed = new URL(url)
+    // Les jetons des redirects Google sont opaques et ne décrivent pas le
+    // sujet. Leur titre/extrait doit suffire à établir la pertinence.
+    if (
+      parsed.hostname === 'vertexaisearch.cloud.google.com' &&
+      parsed.pathname.startsWith('/grounding-api-redirect/')
+    ) return ''
+    return decodeURIComponent(`${parsed.hostname} ${parsed.pathname}`)
+  } catch {
+    return ''
+  }
+}
+
+function sourceTopicText(value: string): string {
+  return value
+    .replace(
+      /(?<!!)\[([^\]\n]+)\]\((?:https?:\/\/)[^\s)]+(?:\s+["'][^)]*["'])?\)/gi,
+      '$1',
+    )
+    .replace(/https?:\/\/[^\s<>"'`)\]]+/gi, ' ')
+}
+
+function isSourceRelevant(
+  source: SearchContextSource,
+  question: string,
+  content: string,
+): boolean {
+  if (!safeHttpUrl(source.url)) return false
+
+  const support = source.supportText?.trim()
+  if (support && support.length >= 12) {
+    const normalizedContent = normalizeSourceText(content)
+    const normalizedSupport = normalizeSourceText(support)
+    if (!normalizedContent.includes(normalizedSupport)) return false
+  }
+
+  const descriptiveTitle = isBareDomainTitle(source.title, source.url) ? '' : source.title
+  const evidenceTokens = sourceRelevanceTokens(
+    `${descriptiveTitle}\n${source.snippet}\n${sourceUrlDescriptor(source.url)}`,
+  )
+  if (evidenceTokens.size === 0) return false
+
+  // Les URLs générées ne doivent jamais se valider elles-mêmes par simple
+  // recopie de leur domaine/slug dans le texte évalué.
+  const topicTokens = sourceRelevanceTokens(sourceTopicText(
+    `${question}\n${support || ''}\n${content}`,
+  ))
+  const overlap = [...evidenceTokens].filter((token) => topicTokens.has(token))
+  if (overlap.length >= 2) return true
+
+  // Un terme rare et long (nom propre, produit, institution) suffit. Les mots
+  // génériques ont été retirés plus haut et exigent donc deux recoupements.
+  return overlap.some((token) => token.length >= 9 || /^\d{4,}$/.test(token))
+}
+
 export interface PreparedAssistantContent {
   content: string
   searchContext: SearchContext | null
@@ -183,12 +305,15 @@ export function prepareAssistantContent(
   clearSearchContext(scope)
 
   const sources = getSearchContextSources(searchContext)
+  const relevantSources = sources.filter((source) =>
+    isSourceRelevant(source, question, content)
+  )
   const allowed = new Set<string>()
   for (const url of extractHttpUrls(question)) {
     const comparable = comparableUrl(url)
     if (comparable) allowed.add(comparable)
   }
-  for (const source of sources) {
+  for (const source of relevantSources) {
     const comparable = comparableUrl(source.url)
     if (comparable) allowed.add(comparable)
   }
@@ -249,7 +374,7 @@ export function prepareAssistantContent(
       .map(comparableUrl)
       .filter((url): url is string => !!url),
   )
-  const sourcesToAppend = sources
+  const sourcesToAppend = relevantSources
     .filter((source) => {
       const comparable = comparableUrl(source.url)
       return source.cited === true && !!comparable && !linkedComparables.has(comparable)
@@ -487,6 +612,9 @@ export async function factCheckResponse(
   // passe rapide remonte au moins un claim risqué.
   const first = await runCheckTier('haiku', question, response, sourcesBlock)
   if (!first.result) return first
+  // Le fallback serveur a déjà exécuté Sonnet : ne pas payer puis attendre
+  // une seconde passe Sonnet dans la même vérification logique.
+  if (first.result.modelLabel.startsWith('Sonnet 5')) return done(first)
   if (!shouldEscalateToSonnet(first.result, hasFreshSources)) return done(first)
   // Palier Sonnet du jour déjà épuisé → le résultat Haiku est final (le
   // palier Haiku, lui, reste disponible pour les prochains messages).
@@ -506,11 +634,13 @@ export async function factCheckResponse(
 // vérif et on jette le résultat. Doit couvrir le timeout upstream serveur
 // par palier (15 s Haiku / 50 s Sonnet) + retry serveur + réseau.
 const TIER_INFO = {
-  haiku: { model: 'claude-haiku-4-5-20251001', label: 'Haiku 4.5', timeoutMs: 25_000 },
+  // Le serveur peut basculer une passe Haiku indisponible vers Sonnet sans
+  // recherche. Le délai client couvre le timeout primaire + ce secours.
+  haiku: { model: 'claude-haiku-4-5-20251001', label: 'Haiku 4.5', timeoutMs: 45_000 },
   // Sonnet + web_search en non-streamé : Anthropic accumule toute la réponse
   // (jusqu'à 3 recherches + synthèse JSON) avant de répondre — 25-30 s
   // typique en prod.
-  sonnet: { model: 'claude-sonnet-5', label: 'Sonnet 5', timeoutMs: 60_000 },
+  sonnet: { model: 'claude-sonnet-5', label: 'Sonnet 5', timeoutMs: 90_000 },
 } as const
 
 interface FactCheckRequestPayload {
@@ -612,36 +742,41 @@ async function runCheckTier(
   if (!res.ok) {
     const errBody = await res.text().catch(() => '')
     console.warn('[factChecker] endpoint returned non-ok:', res.status, errBody)
+    if (
+      (res.status === 502 || res.status === 503) &&
+      /fact_check_failed|error code:\s*50[23]/i.test(errBody)
+    ) {
+      return { result: null, reason: 'service de vérification temporairement indisponible' }
+    }
     return { result: null, reason: `endpoint ${res.status}${errBody ? ' ' + errBody.slice(0, 60) : ''}` }
   }
 
   let text = ''
+  let servedModel: string = info.model
+  let fallback: 'model' | 'without_web_search' | undefined
   try {
     const data = (await res.json()) as {
       content?: Array<{ type?: string; text?: string }>
+      model?: string
+      fallback?: 'model' | 'without_web_search'
       usage?: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number }
     }
-    // On cherche le DERNIER bloc text. Avec web_search activé, la réponse
-    // contient [server_tool_use, web_search_tool_result, text (commentaire),
-    //  server_tool_use, web_search_tool_result, text (JSON final)] — il
-    // faut prendre le dernier, qui porte le JSON. Sans web_search, il n'y
-    // a qu'un seul bloc text → le résultat est le même. Boucle inverse
-    // plutôt que `.findLast()` parce que la lib TS cible ES2020.
-    const blocks = data.content || []
-    for (let i = blocks.length - 1; i >= 0; i--) {
-      const b = blocks[i]
-      if (b && b.type === 'text' && b.text) {
-        text = b.text
-        break
-      }
-    }
+    servedModel = typeof data.model === 'string' && data.model ? data.model : info.model
+    fallback = data.fallback
+    // Une citation web peut couper le JSON final en plusieurs blocs `text`.
+    // Les concaténer préserve l'objet complet ; extractJsonObject ignore la
+    // prose éventuelle produite avant les recherches.
+    text = (data.content || [])
+      .filter((block) => block?.type === 'text' && typeof block.text === 'string')
+      .map((block) => block.text || '')
+      .join('')
     // H-AI-4 — tracking LOCAL (fallback BYOK/offline du dashboard). Le coût
     // D1 (source de vérité, BUG 60) est tracé côté endpoint fact-check.
     if (data.usage) {
       try {
         const inputT = (data.usage.input_tokens || 0) + (data.usage.cache_read_input_tokens || 0)
         const outputT = data.usage.output_tokens || 0
-        recordUsage(info.model, inputT, outputT)
+        recordUsage(servedModel, inputT, outputT)
       } catch { /* tracking doit pas casser */ }
     }
   } catch (err) {
@@ -707,7 +842,11 @@ async function runCheckTier(
     result: {
       overallConfidence,
       claims,
-      modelLabel: info.label,
+      modelLabel: fallback === 'model'
+        ? 'Sonnet 5 (secours)'
+        : fallback === 'without_web_search'
+          ? 'Sonnet 5 (secours sans recherche)'
+          : info.label,
       checkedAt: Date.now(),
       // BUG 59 — status structuré : succès "vide" = aucun claim risqué
       // (wrong/uncertain), succès "avec claims" = au moins un à signaler.

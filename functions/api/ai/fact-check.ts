@@ -68,6 +68,7 @@ type Tier = keyof typeof TIERS
 const MAX_QUESTION_CHARS = 2000
 const MAX_RESPONSE_CHARS = 6000
 const MAX_SOURCES_CHARS = 8000
+const FACT_CHECK_FALLBACK_MODEL = 'claude-sonnet-5'
 
 // Prompt système du fact-checker — vit CÔTÉ SERVEUR (le client ne peut pas
 // le remplacer, sinon l'endpoint devient un proxy Claude générique hors
@@ -136,16 +137,36 @@ interface FactCheckRequest {
   sources?: unknown
 }
 
-// Retry ×1 CÔTÉ SERVEUR sur transitoire (throw réseau hors timeout, 429/5xx
+// Retry ×2 CÔTÉ SERVEUR sur transitoire (throw réseau hors timeout, 429/5xx
 // Anthropic). JAMAIS côté client : bg_quota est consommé à l'ENTRÉE de
 // l'endpoint — un retry client brûlerait une 2e unité du cap journalier pour
 // la même vérification. Ici le quota est déjà consommé : retenter ne
 // re-facture rien. Pas de retry sur timeout (le budget du palier est déjà
 // épuisé, le client a probablement abandonné — repartir pour un tour complet
 // coûterait un appel Anthropic entier pour un résultat jeté).
-async function fetchAnthropicWithRetry(body: string, apiKey: string, timeoutMs: number): Promise<Response> {
+export function isRetryableAnthropicResponse(res: Response): boolean {
+  if (res.headers.get('x-should-retry')?.toLowerCase() === 'false') return false
+  return res.status === 408 || res.status === 429 || res.status >= 500
+}
+
+function retryDelayMs(res: Response, attempt: number): number {
+  const retryAfter = Number(res.headers.get('retry-after'))
+  if (Number.isFinite(retryAfter) && retryAfter >= 0) {
+    // L'endpoint reste interactif : on respecte le header dans une fenêtre
+    // courte, puis le fallback de modèle prend le relais.
+    return Math.min(2_000, Math.max(250, Math.round(retryAfter * 1000)))
+  }
+  return Math.min(2_000, 500 * (2 ** attempt))
+}
+
+export async function fetchAnthropicWithRetry(
+  body: string,
+  apiKey: string,
+  timeoutMs: number,
+  maxAttempts = 3,
+): Promise<Response> {
   let lastErr: unknown
-  for (let attempt = 0; attempt < 2; attempt++) {
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
     try {
       const res = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
@@ -157,22 +178,59 @@ async function fetchAnthropicWithRetry(body: string, apiKey: string, timeoutMs: 
         body,
         signal: AbortSignal.timeout(timeoutMs),
       })
-      if (attempt === 0 && (res.status === 429 || res.status >= 500)) {
+      if (attempt + 1 < maxAttempts && isRetryableAnthropicResponse(res)) {
+        const delayMs = retryDelayMs(res, attempt)
         try { await res.body?.cancel() } catch { /* body déjà consommé/absent */ }
-        await new Promise((r) => setTimeout(r, 500))
+        await new Promise((r) => setTimeout(r, delayMs))
         continue
       }
       return res
     } catch (err) {
       if (err instanceof Error && err.name === 'TimeoutError') throw err
       lastErr = err
-      if (attempt === 0) {
-        await new Promise((r) => setTimeout(r, 500))
+      if (attempt + 1 < maxAttempts) {
+        await new Promise((r) => setTimeout(r, Math.min(2_000, 500 * (2 ** attempt))))
         continue
       }
     }
   }
   throw lastErr instanceof Error ? lastErr : new Error('anthropic fetch failed')
+}
+
+function anthropicBody(
+  model: string,
+  userContent: string,
+  maxTokens: number,
+  webSearch: boolean,
+): string {
+  return JSON.stringify({
+    model,
+    max_tokens: maxTokens,
+    system: SYSTEM_PROMPT,
+    messages: [{ role: 'user', content: userContent }],
+    ...(webSearch
+      ? {
+          tools: [{
+            // Version courante Anthropic (juin 2026) : filtrage dynamique des
+            // résultats et suppression des blocs bruts déjà consommés. Les
+            // citations du dernier bloc texte restent présentes.
+            type: 'web_search_20260318',
+            name: 'web_search',
+            max_uses: 3,
+            response_inclusion: 'excluded',
+          }],
+        }
+      : {}),
+  })
+}
+
+type FallbackKind = 'model' | 'without_web_search'
+
+function shouldUseFactCheckFallback(tier: Tier, res: Response): boolean {
+  if (isRetryableAnthropicResponse(res)) return true
+  // Une incompatibilité/validation du tool ne doit pas rendre tout le
+  // fact-check indisponible. On réessaie Sonnet sans recherche.
+  return tier === 'sonnet' && res.status === 400
 }
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
@@ -248,33 +306,62 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   const userContent = `Question utilisateur :\n${question}\n\nRéponse à vérifier :\n${response}${sources}`
 
   try {
-    const res = await fetchAnthropicWithRetry(
-      JSON.stringify({
-        model: cfg.model,
-        max_tokens: cfg.maxTokens,
-        system: SYSTEM_PROMPT,
-        messages: [{ role: 'user', content: userContent }],
-        ...(cfg.webSearch
-          ? // C5 (CDC veille 2026-07) : variante 20260209 (filtrage dynamique des
-            // résultats avant d'entrer en contexte — précision + économie de
-            // tokens). Supportée par Sonnet 5, auto-provisionne son exécution
-            // (doc Anthropic). NE PAS déclarer l'outil d'exécution de code ici
-            // (BUG 10 — auto-injecté par l'API, conflit sinon).
-            // ⚠️ toolDefinitions.ts (chat principal) reste volontairement sur
-            // 20250305 — extension prévue en 2e étape après vigie fact-check.
-            { tools: [{ type: 'web_search_20260209', name: 'web_search', max_uses: 3 }] }
-          : {}),
-      }),
-      env.ANTHROPIC_API_KEY,
-      cfg.upstreamTimeoutMs
-    )
+    let servedModel: string = cfg.model
+    let fallback: FallbackKind | undefined
+    let res: Response | null = null
+    let primaryError: unknown
 
-    if (!res.ok) {
-      console.error('[fact-check] upstream', res.status, await res.text().catch(() => ''))
-      return Response.json({ error: 'fact_check_failed' }, { status: 502 })
+    try {
+      res = await fetchAnthropicWithRetry(
+        anthropicBody(cfg.model, userContent, cfg.maxTokens, cfg.webSearch),
+        env.ANTHROPIC_API_KEY,
+        cfg.upstreamTimeoutMs,
+        3,
+      )
+    } catch (err) {
+      primaryError = err
+    }
+
+    if (primaryError || (res && shouldUseFactCheckFallback(tier, res))) {
+      if (res) {
+        console.error(
+          '[fact-check] primary unavailable',
+          res.status,
+          res.headers.get('request-id') || 'no-request-id',
+        )
+        try { await res.body?.cancel() } catch { /* déjà consommé/absent */ }
+      } else {
+        console.error(
+          '[fact-check] primary request failed',
+          primaryError instanceof Error ? primaryError.name : 'unknown',
+        )
+      }
+
+      fallback = tier === 'haiku' ? 'model' : 'without_web_search'
+      servedModel = FACT_CHECK_FALLBACK_MODEL
+      res = await fetchAnthropicWithRetry(
+        anthropicBody(servedModel, userContent, cfg.maxTokens, false),
+        env.ANTHROPIC_API_KEY,
+        tier === 'haiku' ? 20_000 : 25_000,
+        2,
+      )
+    }
+
+    if (!res || !res.ok) {
+      console.error(
+        '[fact-check] upstream unavailable',
+        res?.status || 0,
+        res?.headers.get('request-id') || 'no-request-id',
+      )
+      try { await res?.body?.cancel() } catch { /* déjà consommé/absent */ }
+      return Response.json(
+        { error: 'fact_check_failed', retryable: true },
+        { status: 503, headers: { 'retry-after': '5' } },
+      )
     }
 
     const data = (await res.json()) as {
+      model?: string
       content?: Array<{ type?: string; text?: string }>
       usage?: {
         input_tokens?: number
@@ -283,9 +370,10 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
         cache_creation_input_tokens?: number
       }
     }
+    if (typeof data.model === 'string' && data.model) servedModel = data.model
 
     // Coût réel tracé en D1 (dashboard/vigie éco) — hors compteurs visibles.
-    await recordUsage(env, email, cfg.model, {
+    await recordUsage(env, email, servedModel, {
       inputTokens: data.usage?.input_tokens ?? 0,
       outputTokens: data.usage?.output_tokens ?? 0,
       cacheReadTokens: data.usage?.cache_read_input_tokens ?? 0,
@@ -293,11 +381,23 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
       audioSeconds: 0,
     })
 
-    // Relais FILTRÉ : uniquement content/usage (le client parse le dernier
-    // bloc texte, même logique qu'avant via le proxy).
-    return Response.json({ content: data.content ?? [], usage: data.usage ?? {} })
+    // Relais FILTRÉ : uniquement content/usage + modèle réellement servi.
+    // Le client concatène les blocs texte, car les citations peuvent couper
+    // le JSON final en plusieurs fragments.
+    return Response.json({
+      content: data.content ?? [],
+      usage: data.usage ?? {},
+      model: servedModel,
+      ...(fallback ? { fallback } : {}),
+    })
   } catch (err) {
-    console.error('[fact-check] failed', err)
-    return Response.json({ error: 'fact_check_failed' }, { status: 502 })
+    console.error(
+      '[fact-check] failed',
+      err instanceof Error ? err.name : 'unknown',
+    )
+    return Response.json(
+      { error: 'fact_check_failed', retryable: true },
+      { status: 503, headers: { 'retry-after': '5' } },
+    )
   }
 }
