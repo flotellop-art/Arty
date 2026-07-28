@@ -279,13 +279,19 @@ function sourceMatchesDomain(url: string, domain: string): boolean {
 }
 
 const LINK_IDENTITY_STOP_WORDS = new Set([
-  'article', 'communique', 'details', 'flight', 'james', 'launch', 'lancement',
-  'lien', 'live', 'mission', 'news', 'newsroom', 'officiel', 'officielle',
-  'page', 'press', 'release', 'source', 'spatial', 'telescope', 'va256', 'webb',
+  'agency', 'agence', 'article', 'communique', 'details', 'european',
+  'europeenne', 'flight', 'james', 'launch', 'lancement', 'lien', 'live',
+  'mission', 'news', 'newsroom', 'officiel', 'officielle', 'page', 'press',
+  'release', 'space', 'source', 'spatial', 'spatiale', 'telescope', 'va256',
+  'webb',
 ])
 
 function linkIdentityTokens(value: string): Set<string> {
-  const tokens = normalizeSourceText(value).match(/[a-z0-9]{2,}/g) || []
+  const normalized = normalizeSourceText(value)
+    .replace(/\beuropean space agency\b/g, ' esa ')
+    .replace(/\bagence spatiale europeenne\b/g, ' esa ')
+    .replace(/\bnational aeronautics and space administration\b/g, ' nasa ')
+  const tokens = normalized.match(/[a-z0-9]{2,}/g) || []
   return new Set(tokens.filter((token) => !LINK_IDENTITY_STOP_WORDS.has(token)))
 }
 
@@ -578,6 +584,7 @@ type RecoverySearch = (
   query: string,
   maxResults: number,
   sources: string[],
+  redirectUrls: string[],
 ) => Promise<SearchContext | null>
 
 function requestedLinkCount(question: string): number {
@@ -639,6 +646,7 @@ async function requestRecoverySearch(
   query: string,
   maxResults: number,
   sources: string[],
+  redirectUrls: string[],
 ): Promise<SearchContext | null> {
   const googleToken = await getValidAccessToken()
   if (!googleToken) return null
@@ -654,6 +662,7 @@ async function requestRecoverySearch(
     maxResults: sources.length > 0 ? 1 : maxResults,
     verifyUrls: true,
     ...(sources.length > 0 ? { sources } : {}),
+    ...(redirectUrls.length > 0 ? { redirectUrls } : {}),
   }
   const url = apiUrl('/api/search/web')
 
@@ -742,9 +751,12 @@ export async function recoverAssistantLinks(
     ? requestedLinkCount(question)
     : Math.max(1, prepared.removedLinks, outboundLinkCount(prepared.content))
   const domains = recoveryDomains(originalContent)
+  const redirectUrls = extractHttpUrls(originalContent)
+    .filter(isGoogleGroundingRedirect)
+    .slice(0, 5)
   let recovered: SearchContext | null
   try {
-    recovered = await search(question, Math.max(3, target), domains)
+    recovered = await search(question, Math.max(3, target), domains, redirectUrls)
   } catch (error) {
     console.warn('[factChecker] link recovery failed:', error)
     return prepared
@@ -767,7 +779,7 @@ export async function recoverAssistantLinks(
     )
   ) {
     try {
-      const general = await search(question, Math.max(3, target), [])
+      const general = await search(question, Math.max(3, target), [], redirectUrls)
       if (general) {
         merged = mergeSearchContexts(merged, general)
         result = prepareAssistantContentFromContext(question, originalContent, merged)

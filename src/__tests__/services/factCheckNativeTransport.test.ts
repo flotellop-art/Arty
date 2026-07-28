@@ -194,6 +194,41 @@ describe('fact-check, transport Android natif', () => {
     }))
   })
 
+  it('transmet le redirect Google au serveur et utilise sa destination verifiee', async () => {
+    const redirect =
+      'https://vertexaisearch.cloud.google.com/grounding-api-redirect/arianespace'
+    nativeRequest.mockResolvedValue({
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+      data: {
+        provider: 'linkup',
+        query: 'vol VA256 Arianespace',
+        results: [{
+          title: 'newsroom.arianespace.com',
+          url: 'https://newsroom.arianespace.com/ariane-flight-va256/',
+          snippet: 'Arianespace flight VA256.',
+          verified: true,
+        }],
+      },
+    })
+
+    const question = 'Donne le lien officiel Arianespace du vol VA256.'
+    const content = `[Arianespace, vol VA256](${redirect})`
+    const initial = prepareAssistantContent(question, content, 'native-redirect')
+    const recovered = await recoverAssistantLinks(question, content, initial)
+
+    expect(recovered.content).toContain(
+      '[Arianespace, vol VA256](https://newsroom.arianespace.com/ariane-flight-va256/)',
+    )
+    expect(recovered.content).not.toContain('grounding-api-redirect')
+    expect(nativeRequest).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        redirectUrls: [redirect],
+        verifyUrls: true,
+      }),
+    }))
+  })
+
   it('refuse un résultat NASA rangé à tort dans le domaine ESA', async () => {
     nativeRequest.mockResolvedValue({
       status: 200,
