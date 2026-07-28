@@ -50,6 +50,7 @@ vi.mock('../../services/userSession', () => ({
 }))
 vi.mock('../../services/autoMemory', () => ({ maybeExtractMemory: vi.fn() }))
 vi.mock('../../services/factChecker', () => ({
+  clearSearchContext: vi.fn(),
   getFactCheckMode: vi.fn(() => 'off'),
   runFactCheckOnLatest: vi.fn(),
 }))

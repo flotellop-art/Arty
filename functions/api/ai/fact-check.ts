@@ -98,6 +98,9 @@ DÉCISION ANCRÉE SUR LES SOURCES — règle à deux régimes :
 Dans les deux régimes, ignore les claims évidents ("Paris est en France"), les opinions ("c'est joli"), et les conseils généraux.
 
 URLs ET LIENS — règle stricte :
+- Une URL cliquable est elle-même un claim vérifiable. Ne la déclare "verified" que si son URL EXACTE apparaît dans les SOURCES WEB CONSULTÉES ou dans les résultats de ton propre web_search.
+- Une URL plausible, un domaine réel ou un chemin qui "semble correct" ne suffisent jamais. Si l'URL exacte n'est pas sourcée, verdict "uncertain".
+- N'invente jamais une URL de remplacement. Une correction d'URL n'est permise que si la bonne URL exacte apparaît dans les sources.
 - N'ALTÈRE JAMAIS un markdown link [...](URL) sauf si tu es CERTAIN que l'URL est dangereuse (phishing, malware) ou trompeusement attribuée (ex : citée comme "source officielle Apple" alors que c'est un blog).
 - Les domaines suivants sont les domaines de l'app Arty elle-même (deep-links internes vers des features comme les rapports comparatifs, les exports PDF, les conversations partagées) — ne les considère JAMAIS comme suspects ou tiers :
   * appfacade.pages.dev (toutes routes : /report/, /chat/, /upgrade, etc.)
