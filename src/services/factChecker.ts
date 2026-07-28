@@ -295,6 +295,36 @@ function linkIdentityTokens(value: string): Set<string> {
   return new Set(tokens.filter((token) => !LINK_IDENTITY_STOP_WORDS.has(token)))
 }
 
+type LinkInstitution = 'nasa' | 'esa' | 'arianespace'
+
+function linkInstitution(value: string): LinkInstitution | null {
+  const normalized = normalizeSourceText(value)
+  if (/\barianespace\b/.test(normalized)) return 'arianespace'
+  if (
+    /\bnasa\b/.test(normalized) ||
+    /\bnational aeronautics and space administration\b/.test(normalized)
+  ) return 'nasa'
+  if (
+    /\besa\b/.test(normalized) ||
+    /\beuropean space agency\b/.test(normalized) ||
+    /\bagence spatiale europeenne\b/.test(normalized)
+  ) return 'esa'
+  return null
+}
+
+function contextualMarkdownLinkLabel(
+  content: string,
+  offset: number,
+  label: string,
+): string {
+  const lineStart = content.lastIndexOf('\n', Math.max(0, offset - 1)) + 1
+  const prefix = content.slice(lineStart, offset)
+    .replace(/^[\s>*+-]+/, '')
+    .replace(/[*_`]/g, ' ')
+    .slice(-120)
+  return `${prefix}\n${label}`.trim()
+}
+
 function replacementScore(
   source: SearchContextSource,
   label: string,
@@ -306,6 +336,15 @@ function replacementScore(
   const originalHost = normalizedSourceHost(originalUrl)
   const originalIsOpaque = isGoogleGroundingRedirect(originalUrl)
   let score = source.recovered ? 3 : 0
+
+  if (originalIsOpaque) {
+    const expectedInstitution = linkInstitution(label)
+    if (expectedInstitution) {
+      const sourceInstitution = linkInstitution(`${sourceHost}\n${source.title}`)
+      if (sourceInstitution !== expectedInstitution) return -1
+      score += 30
+    }
+  }
 
   if (sourceHost && originalHost && !originalIsOpaque) {
     if (sourceHost === originalHost) score += 20
@@ -458,16 +497,27 @@ function prepareAssistantContentFromContext(
 
   grounded = grounded.replace(
     /(?<!!)\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)(?:\s+["'][^)]*["'])?\)/gi,
-    (full, label: string, url: string) => {
+    (full, label: string, url: string, offset: number, whole: string) => {
+      const contextualLabel = contextualMarkdownLinkLabel(whole, offset, label)
       if (isGoogleGroundingRedirect(url)) {
-        const direct = pickReplacementSource(label, url, relevantSources, usedReplacementUrls)
+        const direct = pickReplacementSource(
+          contextualLabel,
+          url,
+          relevantSources,
+          usedReplacementUrls,
+        )
         if (direct) {
           replacedLinks++
           return `[${label}](${direct.url})`
         }
       }
       if (isAllowed(url)) return full
-      const replacement = pickReplacementSource(label, url, relevantSources, usedReplacementUrls)
+      const replacement = pickReplacementSource(
+        contextualLabel,
+        url,
+        relevantSources,
+        usedReplacementUrls,
+      )
       if (replacement) {
         replacedLinks++
         return `[${label}](${replacement.url})`

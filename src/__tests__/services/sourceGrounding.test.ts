@@ -308,6 +308,61 @@ describe('prepareAssistantContent', () => {
     expect(recovered.content).not.toContain('grounding-api-redirect')
   })
 
+  it('utilise le nom de institution avant le lien pour attribuer chaque redirect', async () => {
+    const question =
+      'Donne trois liens officiels NASA, ESA et Arianespace sur le lancement de James-Webb.'
+    const content = [
+      '- **NASA** : [Webb launch](https://vertexaisearch.cloud.google.com/grounding-api-redirect/nasa)',
+      '- **ESA** : [Webb liftoff on Ariane 5](https://vertexaisearch.cloud.google.com/grounding-api-redirect/esa)',
+      '- **Arianespace** : [Ariane Flight VA256](https://vertexaisearch.cloud.google.com/grounding-api-redirect/arianespace)',
+    ].join('\n')
+    const initial = prepareAssistantContent(question, content, 'conv-a')
+
+    const recovered = await recoverAssistantLinks(
+      question,
+      content,
+      initial,
+      async () => ({
+        provider: 'Linkup link recovery',
+        query: question,
+        results: [
+          {
+            title: 'Ariane Flight VA256',
+            url: 'https://newsroom.arianespace.com/ariane-flight-va256/',
+            snippet: 'Arianespace launched James-Webb.',
+            cited: true,
+            recovered: true,
+          },
+          {
+            title: 'ESA',
+            url: 'https://www.esa.int/Science_Exploration/Space_Science/Webb_liftoff',
+            snippet: 'ESA confirms the James-Webb launch.',
+            cited: true,
+            recovered: true,
+          },
+          {
+            title: 'NASA',
+            url: 'https://www.nasa.gov/news-release/james-webb-launch/',
+            snippet: 'NASA confirms the James-Webb launch.',
+            cited: true,
+            recovered: true,
+          },
+        ],
+      }),
+    )
+
+    expect(recovered.content).toContain(
+      '**NASA** : [Webb launch](https://www.nasa.gov/news-release/james-webb-launch/)',
+    )
+    expect(recovered.content).toContain(
+      '**ESA** : [Webb liftoff on Ariane 5](https://www.esa.int/Science_Exploration/Space_Science/Webb_liftoff)',
+    )
+    expect(recovered.content).toContain(
+      '**Arianespace** : [Ariane Flight VA256](https://newsroom.arianespace.com/ariane-flight-va256/)',
+    )
+    expect(recovered.content).not.toContain('grounding-api-redirect')
+  })
+
   it('ne recherche pas trois liens quand la question en demande un seul', () => {
     setSearchContext({
       provider: 'Linkup',
