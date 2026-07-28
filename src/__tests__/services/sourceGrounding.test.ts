@@ -169,7 +169,7 @@ describe('prepareAssistantContent', () => {
         title: 'Arianespace',
         url: redirect,
         snippet: '',
-        supportText: 'Le vol VA256 a lancé le télescope James-Webb.',
+        supportText: 'Arianespace, vol VA256',
         cited: true,
       }],
     }, 'conv-a')
