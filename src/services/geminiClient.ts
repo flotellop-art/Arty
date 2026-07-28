@@ -8,6 +8,7 @@ import { extractYouTubeUrls } from './aiRouter'
 import { isMapToolQuery, isWeatherQuery } from './router/intentPatterns'
 import type { RouteReason } from './router/types'
 import { updateTrialFromResponse } from './trialClient'
+import { setSearchContext, type SearchContext } from './factChecker'
 import type { ReflectionLevel } from './reflectionLevel'
 import i18n from '../i18n'
 
@@ -85,7 +86,41 @@ Tutoie l'utilisateur. Phrases courtes. Pas de "Excellente question !" ni de form
 Quand tu fais une recherche, cite tes sources avec les liens.
 Tu es utilisé spécifiquement pour les tâches nécessitant l'accès à du contenu web (YouTube, Google Maps, actus temps réel).
 
-Règles de vérité : Cite toujours tes sources avec les URLs. Si tu n'es pas certain d'un fait (date, prix, nom), dis-le explicitement. Préfère 'je ne sais pas' à une réponse inventée.`
+Règles de vérité : Cite toujours tes sources avec les URLs. Si tu n'es pas certain d'un fait (date, prix, nom), dis-le explicitement. Préfère 'je ne sais pas' à une réponse inventée.
+Une URL cliquable doit être recopiée EXACTEMENT depuis les résultats de Google Search, URL Context ou depuis le message utilisateur. N'invente jamais une URL, un chemin ou un slug plausible.`
+
+export function extractGeminiSearchContext(
+  data: Record<string, any>,
+  fallbackQuery = '',
+): SearchContext | null {
+  const candidate = data.candidates?.[0]
+  const metadata = candidate?.groundingMetadata || candidate?.grounding_metadata
+  if (!metadata) return null
+
+  const queries = metadata.webSearchQueries || metadata.web_search_queries || []
+  const chunks = metadata.groundingChunks || metadata.grounding_chunks || []
+  const results: Array<{ title: string; url: string; snippet: string }> = []
+
+  for (const chunk of chunks) {
+    const source = chunk?.web || chunk?.retrievedContext || chunk?.retrieved_context
+    const url = source?.uri
+    if (typeof url !== 'string' || !url) continue
+    results.push({
+      title: typeof source.title === 'string' ? source.title : '',
+      url,
+      snippet: typeof source.text === 'string' ? source.text : '',
+    })
+  }
+  if (results.length === 0) return null
+
+  return {
+    provider: 'Google Search',
+    query: Array.isArray(queries)
+      ? queries.filter((q): q is string => typeof q === 'string').join(' | ') || fallbackQuery
+      : fallbackQuery,
+    results,
+  }
+}
 
 /**
  * Adapte le budget thinking de Gemini à la nature de la requête :
@@ -410,6 +445,8 @@ async function runGeminiStream(
 
           try {
             const data = JSON.parse(jsonStr)
+            const searchContext = extractGeminiSearchContext(data, lastMessage)
+            if (searchContext) setSearchContext(searchContext, options?.conversationId)
             const text = data.candidates?.[0]?.content?.parts?.[0]?.text
             if (text) {
               onToken(text)
@@ -449,7 +486,8 @@ async function runGeminiStream(
 export async function geminiResearch(
   query: string,
   apiKeyOverride?: string,
-  reflectionLevel?: ReflectionLevel
+  reflectionLevel?: ReflectionLevel,
+  conversationId?: string,
 ): Promise<string> {
   const apiKey = apiKeyOverride || getGeminiKey()
 
@@ -494,6 +532,8 @@ export async function geminiResearch(
     if (!res.ok) return ''
 
     const data = await res.json()
+    const searchContext = extractGeminiSearchContext(data, query)
+    if (searchContext) setSearchContext(searchContext, conversationId)
     const parts = data.candidates?.[0]?.content?.parts || []
     return parts.map((p: { text?: string }) => p.text || '').join('\n')
   } catch {

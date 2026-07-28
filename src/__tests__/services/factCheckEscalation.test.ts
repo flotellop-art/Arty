@@ -27,6 +27,14 @@ describe('shouldEscalateToSonnet — critère d\'escalade (D5)', () => {
     expect(shouldEscalateToSonnet(result([claim('verified'), claim('verified')]))).toBe(false)
   })
 
+  it('verified sans source fraîche → escalade pour une vraie vérification web', () => {
+    expect(shouldEscalateToSonnet(result([claim('verified')]), false)).toBe(true)
+  })
+
+  it('aucun claim sans source fraîche → pas de recherche inutile', () => {
+    expect(shouldEscalateToSonnet(result([]), false)).toBe(false)
+  })
+
   it('un uncertain → escalade (Sonnet + web_search tranche)', () => {
     expect(shouldEscalateToSonnet(result([claim('verified'), claim('uncertain')]))).toBe(true)
   })

@@ -61,6 +61,9 @@ question le justifie, ta réponse est interdite. Quand le tool renvoie
 une réponse vérifiée, reprends-la TELLE QUELLE et cite les sources via
 [1], [2], etc. Ne mélange JAMAIS plusieurs sources dans une même
 phrase sans le préciser.
+Une URL cliquable doit être recopiée EXACTEMENT depuis le résultat du tool
+web_search ou depuis le message utilisateur. N'invente jamais un chemin,
+un slug ou une URL plausible, et ne "corrige" jamais une URL de mémoire.
 
 RÈGLE NARRATIVE — interdiction absolue :
 N'écris JAMAIS "j'ai cherché", "j'ai vérifié", "j'ai consulté",
@@ -192,7 +195,10 @@ function clip(text: string, max: number): string {
   return text.length > max ? text.slice(0, max) + ' […]' : text
 }
 
-async function executeMistralWebSearch(args: Record<string, unknown>): Promise<{ result: string }> {
+async function executeMistralWebSearch(
+  args: Record<string, unknown>,
+  contextScope?: string,
+): Promise<{ result: string }> {
   const query = String(args.query || '').trim()
   if (!query) return { result: 'Erreur: paramètre `query` manquant.' }
   // Défaut 5 → 8 : sur les requêtes type rapport/comparatif, 5 snippets ne
@@ -257,14 +263,14 @@ async function executeMistralWebSearch(args: Record<string, unknown>): Promise<{
       provider: data.provider,
       query,
       bySource: data.bySource,
-    })
+    }, contextScope)
   } else {
     setSearchContext({
       provider: data.provider,
       query,
       answer: data.answer,
       results: data.results,
-    })
+    }, contextScope)
   }
 
   // Multi-source response (Option A) : retour structuré par source avec
@@ -509,7 +515,7 @@ Pour les COMPARAISONS multi-sites/multi-revendeurs (ex: "compare prix X chez Bri
           // global — c'est spécifique au flow Mistral.
           let result: { result: string }
           if (tc.function.name === 'web_search') {
-            result = await executeMistralWebSearch(args)
+            result = await executeMistralWebSearch(args, options?.conversationId)
           } else {
             result = await options.onToolCall(tc.function.name, args)
           }

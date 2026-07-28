@@ -49,22 +49,216 @@ export interface SearchContext {
   bySource?: Record<string, { answer?: string; results: SearchContextSource[] }>
 }
 
-// Module-level — Arty est mono-user dans un onglet, pas de race possible
-// entre conversations. setSearchContext est appelé par les clients AI au
-// moment de l'appel à un tool de recherche, getSearchContext est lu par
-// runFactCheckOnLatest puis clearSearchContext reset pour le prochain tour.
-let activeSearchContext: SearchContext | null = null
+// Les streams sont concurrents, donc chaque conversation possède son propre
+// contexte. Les recherches successives d'un même tour sont fusionnées.
+const DEFAULT_CONTEXT_SCOPE = '__default__'
+const activeSearchContexts = new Map<string, SearchContext>()
 
-export function setSearchContext(ctx: SearchContext): void {
-  activeSearchContext = ctx
+function contextScope(scope?: string): string {
+  return scope || DEFAULT_CONTEXT_SCOPE
 }
 
-export function getSearchContext(): SearchContext | null {
-  return activeSearchContext
+function mergeSearchContexts(previous: SearchContext | null, next: SearchContext): SearchContext {
+  if (!previous) return next
+
+  const mergeResults = (
+    a: SearchContextSource[] | undefined,
+    b: SearchContextSource[] | undefined,
+  ): SearchContextSource[] | undefined => {
+    const merged = [...(a || []), ...(b || [])]
+    const seen = new Set<string>()
+    const unique = merged.filter((source) => {
+      const key = source.url.trim()
+      if (!key || seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+    return unique.length > 0 ? unique : undefined
+  }
+
+  return {
+    provider: previous.provider === next.provider
+      ? next.provider
+      : `${previous.provider} + ${next.provider}`,
+    query: [previous.query, next.query].filter(Boolean).join(' | ').slice(0, 1200),
+    answer: [previous.answer, next.answer].filter(Boolean).join('\n').slice(0, 4000) || undefined,
+    results: mergeResults(previous.results, next.results),
+    bySource: previous.bySource || next.bySource
+      ? { ...(previous.bySource || {}), ...(next.bySource || {}) }
+      : undefined,
+  }
 }
 
-export function clearSearchContext(): void {
-  activeSearchContext = null
+export function setSearchContext(ctx: SearchContext, scope?: string): void {
+  const key = contextScope(scope)
+  activeSearchContexts.set(key, mergeSearchContexts(activeSearchContexts.get(key) || null, ctx))
+}
+
+export function getSearchContext(scope?: string): SearchContext | null {
+  return activeSearchContexts.get(contextScope(scope)) || null
+}
+
+export function clearSearchContext(scope?: string): void {
+  activeSearchContexts.delete(contextScope(scope))
+}
+
+function safeHttpUrl(value: string): string | null {
+  try {
+    const parsed = new URL(value)
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null
+    return parsed.toString()
+  } catch {
+    return null
+  }
+}
+
+export function getSearchContextSources(ctx: SearchContext | null): SearchContextSource[] {
+  if (!ctx) return []
+  const all: SearchContextSource[] = [...(ctx.results || [])]
+  for (const entry of Object.values(ctx.bySource || {})) all.push(...entry.results)
+
+  const seen = new Set<string>()
+  return all.filter((source) => {
+    const url = safeHttpUrl(source.url)
+    if (!url || seen.has(url)) return false
+    seen.add(url)
+    return true
+  })
+}
+
+function comparableUrl(value: string): string | null {
+  const safe = safeHttpUrl(value)
+  if (!safe) return null
+  const parsed = new URL(safe)
+  parsed.hash = ''
+  if (parsed.pathname !== '/') parsed.pathname = parsed.pathname.replace(/\/+$/, '')
+  return parsed.toString()
+}
+
+function extractHttpUrls(text: string): string[] {
+  return text.match(/https?:\/\/[^\s<>"'`)\]]+/gi) || []
+}
+
+function isArtyInternalUrl(value: string): boolean {
+  try {
+    const host = new URL(value).hostname.toLowerCase()
+    return host === 'tryarty.com' ||
+      host === 'appfacade.pages.dev' ||
+      host.endsWith('.appfacade.pages.dev')
+  } catch {
+    return false
+  }
+}
+
+function escapeMarkdownLabel(value: string): string {
+  return value.replace(/[[\]\\]/g, '\\$&').trim() || 'Source'
+}
+
+export interface PreparedAssistantContent {
+  content: string
+  searchContext: SearchContext | null
+  removedLinks: number
+  appendedSources: number
+}
+
+export function prepareAssistantContent(
+  question: string,
+  content: string,
+  scope?: string,
+): PreparedAssistantContent {
+  const searchContext = getSearchContext(scope)
+  clearSearchContext(scope)
+
+  const sources = getSearchContextSources(searchContext)
+  const allowed = new Set<string>()
+  for (const url of extractHttpUrls(question)) {
+    const comparable = comparableUrl(url)
+    if (comparable) allowed.add(comparable)
+  }
+  for (const source of sources) {
+    const comparable = comparableUrl(source.url)
+    if (comparable) allowed.add(comparable)
+  }
+
+  const isAllowed = (url: string): boolean => {
+    const comparable = comparableUrl(url)
+    return !!comparable && (allowed.has(comparable) || isArtyInternalUrl(url))
+  }
+
+  let removedLinks = 0
+  let grounded = content
+  const protectedCode: string[] = []
+  grounded = grounded.replace(
+    /```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`\n]*`|<code\b[^>]*>[\s\S]*?<\/code>/gi,
+    (segment) => {
+      const index = protectedCode.push(segment) - 1
+      return `\uE000ARTY_CODE_${index}\uE001`
+    },
+  )
+
+  grounded = grounded.replace(
+    /(?<!!)\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)(?:\s+["'][^)]*["'])?\)/gi,
+    (full, label: string, url: string) => {
+      if (isAllowed(url)) return full
+      removedLinks++
+      return `${label} *(lien non vérifié retiré)*`
+    },
+  )
+
+  grounded = grounded.replace(
+    /<a\b([^>]*?)\bhref=(["'])(https?:\/\/[^"']+)\2([^>]*)>([\s\S]*?)<\/a>/gi,
+    (full, _before: string, _quote: string, url: string, _after: string, label: string) => {
+      if (isAllowed(url)) return full
+      removedLinks++
+      return `${label} <em>(lien non vérifié retiré)</em>`
+    },
+  )
+
+  grounded = grounded.replace(
+    /<button\b(?=[^>]*\bdata-action=(["'])link\1)(?=[^>]*\bdata-url=(["'])(https?:\/\/[^"']+)\2)[^>]*>([\s\S]*?)<\/button>/gi,
+    (full, _actionQuote: string, _urlQuote: string, url: string, label: string) => {
+      if (isAllowed(url)) return full
+      removedLinks++
+      return `${label} <em>(lien non vérifié retiré)</em>`
+    },
+  )
+
+  // remark-gfm transforme une URL nue en lien. Les URLs sans provenance sont
+  // passées en code inline, donc visibles mais non cliquables.
+  grounded = grounded.replace(/https?:\/\/[^\s<>"'`)\]]+/gi, (url) => {
+    if (isAllowed(url)) return url
+    removedLinks++
+    return `\`${url}\` *(non vérifié)*`
+  })
+
+  const linkedComparables = new Set(
+    extractHttpUrls(grounded)
+      .map(comparableUrl)
+      .filter((url): url is string => !!url),
+  )
+  const sourcesToAppend = sources
+    .filter((source) => {
+      const comparable = comparableUrl(source.url)
+      return !!comparable && !linkedComparables.has(comparable)
+    })
+    .slice(0, 5)
+  if (sourcesToAppend.length > 0) {
+    const lines = sourcesToAppend.map((source) =>
+      `- [${escapeMarkdownLabel(source.title || new URL(source.url).hostname)}](${source.url})`
+    )
+    grounded = `${grounded.trimEnd()}\n\n### Sources retrouvées par la recherche\n\n${lines.join('\n')}`
+  }
+
+  grounded = grounded.replace(/\uE000ARTY_CODE_(\d+)\uE001/g, (_token, index: string) =>
+    protectedCode[Number(index)] || ''
+  )
+
+  return {
+    content: grounded,
+    searchContext,
+    removedLinks,
+    appendedSources: sourcesToAppend.length,
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -167,7 +361,14 @@ export function getAutoCheckCountToday(): number {
 // Critère d'escalade Haiku → Sonnet (exporté pour test) : au moins un claim
 // non « verified ». Un résultat Haiku entièrement vert est final — inutile
 // de payer Sonnet + web_search pour re-confirmer du déjà-vérifié.
-export function shouldEscalateToSonnet(result: FactCheckResult): boolean {
+export function shouldEscalateToSonnet(
+  result: FactCheckResult,
+  hasFreshSources = true,
+): boolean {
+  if (result.claims.length === 0) return false
+  // Sans source fraîche, un verdict "verified" de Haiku reste une opinion
+  // issue de son entraînement, pas un fact-check. Sonnet doit alors chercher.
+  if (!hasFreshSources) return true
   return result.claims.some((c) => c.verdict !== 'verified')
 }
 
@@ -194,6 +395,13 @@ function formatSearchContext(ctx: SearchContext | null): string {
     }
   }
   return parts.join('\n')
+}
+
+function hasFreshSearchEvidence(ctx: SearchContext | null): boolean {
+  if (!ctx) return false
+  if (ctx.answer?.trim()) return true
+  if (getSearchContextSources(ctx).length > 0) return true
+  return Object.values(ctx.bySource || {}).some((entry) => !!entry.answer?.trim())
 }
 
 /**
@@ -250,6 +458,7 @@ export async function factCheckResponse(
   if (isFactCheckQuotaExhausted(mode)) return { result: null, reason: FACT_CHECK_QUOTA_REASON }
 
   const sourcesBlock = formatSearchContext(searchContext)
+  const hasFreshSources = hasFreshSearchEvidence(searchContext)
   // Une vérification LOGIQUE réussie = 1 au compteur (même si escalade).
   const done = (o: FactCheckOutcome): FactCheckOutcome => {
     if (o.result) bumpAutoCheckCount()
@@ -265,7 +474,7 @@ export async function factCheckResponse(
   // passe rapide remonte au moins un claim risqué.
   const first = await runCheckTier('haiku', question, response, sourcesBlock)
   if (!first.result) return first
-  if (!shouldEscalateToSonnet(first.result)) return done(first)
+  if (!shouldEscalateToSonnet(first.result, hasFreshSources)) return done(first)
   // Palier Sonnet du jour déjà épuisé → le résultat Haiku est final (le
   // palier Haiku, lui, reste disponible pour les prochains messages).
   if (quotaExhaustedDayByTier.sonnet === today()) return done(first)
@@ -560,33 +769,19 @@ function patchMessage(
 // Helper end-to-end : trouve le dernier (question, réponse) dans une
 // conversation, lance le fact-check, attache le résultat à Message.factCheck
 // et persiste. À appeler après chaque onDone d'une réponse assistant.
-// Ne fait rien si mode 'off', conversation EU, réponse interrompue, ou si
-// on ne trouve pas la paire.
+// Nettoie toujours les liens à partir de la provenance capturée. Le second
+// appel de vérification reste désactivé en mode off, en conversation EU, sur
+// une réponse interrompue ou quand la paire question/réponse est introuvable.
 export async function runFactCheckOnLatest(
   conversationId: string,
   refreshConversations: () => void
 ): Promise<void> {
   const mode = getFactCheckMode()
-  if (mode === 'off') {
-    console.info('[factChecker] skipped (mode=off)')
-    return
-  }
-  console.info('[factChecker] starting (mode=' + mode + ')')
 
   const conv = storage.getConversation(conversationId)
   if (!conv) {
+    clearSearchContext(conversationId)
     console.warn('[factChecker] conv not found:', conversationId)
-    return
-  }
-
-  // RGPD (RÈGLE 5.3) — défense en profondeur : le fact-checker tourne sur
-  // Claude (Anthropic, serveurs US). Une conversation euOnly ne doit JAMAIS
-  // arriver ici — le call site (useConversation) force déjà mode 'off' sur
-  // les convs EU, mais ce garde doit AUSSI vivre dans le service : un futur
-  // appelant qui oublierait le gate enverrait question + réponse (mails/
-  // Drive inclus) hors Europe en silence.
-  if (conv.euOnly) {
-    console.info('[factChecker] skipped (conversation EU — RÈGLE 5.3)')
     return
   }
 
@@ -599,7 +794,10 @@ export async function runFactCheckOnLatest(
       break
     }
   }
-  if (lastAssistantIdx < 0) return
+  if (lastAssistantIdx < 0) {
+    clearSearchContext(conversationId)
+    return
+  }
 
   // Trouver le user message qui le précède
   let userMsg: typeof conv.messages[number] | undefined
@@ -610,6 +808,7 @@ export async function runFactCheckOnLatest(
     }
   }
   if (!userMsg) {
+    clearSearchContext(conversationId)
     console.warn('[factChecker] no user msg before assistant idx', lastAssistantIdx)
     return
   }
@@ -619,22 +818,49 @@ export async function runFactCheckOnLatest(
   // « corriger » une réponse tronquée n'a pas de sens et gaspille le quota
   // de fond. Remplace le garde H4 du flow deferPublish supprimé.
   if (assistantMsg.interrupted) {
+    clearSearchContext(conversationId)
     console.info('[factChecker] skipping (réponse interrompue)')
     return
   }
   // Skip si déjà fact-checké ET ce n'est PAS le placeholder pending
   // (sinon on ne pourrait jamais finaliser).
   if (assistantMsg.factCheck && assistantMsg.factCheck.modelLabel !== 'Vérification en cours…') {
+    clearSearchContext(conversationId)
     console.info('[factChecker] already fact-checked, skipping')
     return
   }
+
+  const originalContent = assistantMsg.content
+  const question = getMessageTextForModel(userMsg)
+  const prepared = prepareAssistantContent(question, originalContent, conversationId)
+  const contentWasPrepared = prepared.content !== originalContent
+
+  // Les liens sans provenance sont neutralisés même lorsque le second appel
+  // de fact-check est coupé. En mode EU, cette étape reste entièrement locale.
+  if (mode === 'off' || conv.euOnly) {
+    if (contentWasPrepared) {
+      patchMessage(conversationId, assistantMsg.id, (m) => ({ ...m, content: prepared.content }))
+      refreshConversations()
+    }
+    console.info(
+      conv.euOnly
+        ? '[factChecker] source cleanup only (conversation EU — RÈGLE 5.3)'
+        : '[factChecker] source cleanup only (mode=off)'
+    )
+    return
+  }
+  console.info('[factChecker] starting (mode=' + mode + ')')
 
   // Skip silencieux si la réponse est trop courte pour valoir un fact-check
   // (salutations, "ok", "merci", etc.). Même seuil que factCheckResponse.
   // Sans cet early-return, le placeholder "Vérification en cours…" serait
   // setté puis remplacé par "⚠ Fact-check indisponible (réponse trop courte)"
   // sur des bulles triviales — bruit UI inutile pour l'utilisateur.
-  if (!assistantMsg.content || assistantMsg.content.length < 80) {
+  if (!prepared.content || prepared.content.length < 80) {
+    if (contentWasPrepared) {
+      patchMessage(conversationId, assistantMsg.id, (m) => ({ ...m, content: prepared.content }))
+      refreshConversations()
+    }
     console.info('[factChecker] skipping (réponse trop courte)')
     return
   }
@@ -643,6 +869,10 @@ export async function runFactCheckOnLatest(
   // placeholder (sinon chaque message afficherait « Vérification en
   // cours… » puis rien). Même logique silencieuse que le mode off.
   if (isFactCheckQuotaExhausted(mode)) {
+    if (contentWasPrepared) {
+      patchMessage(conversationId, assistantMsg.id, (m) => ({ ...m, content: prepared.content }))
+      refreshConversations()
+    }
     console.info('[factChecker] skipping (' + FACT_CHECK_QUOTA_REASON + ')')
     return
   }
@@ -660,24 +890,23 @@ export async function runFactCheckOnLatest(
     checkedAt: Date.now(),
     status: 'pending',
   }
-  patchMessage(conversationId, assistantMsg.id, (m) => ({ ...m, factCheck: pendingFactCheck }))
+  patchMessage(
+    conversationId,
+    assistantMsg.id,
+    (m) => ({ ...m, content: prepared.content, factCheck: pendingFactCheck })
+  )
   refreshConversations()
 
-  const originalContent = assistantMsg.content
   // Récupère le contexte de recherche capturé pendant la génération
   // (Mistral via setSearchContext dans executeMistralWebSearch). Permet
   // au fact-checker de comparer les claims aux SOURCES RÉELLES plutôt
   // que de se reposer sur son cutoff de connaissance — c'est la
   // différence v1 → v2.
-  const ctx = getSearchContext()
-  // On clear immédiatement pour ne pas pollluer le prochain message si
-  // le fact-check échoue ou si l'IA ne lance pas de search.
-  clearSearchContext()
   const outcome = await factCheckResponse(
-    getMessageTextForModel(userMsg),
-    originalContent,
+    question,
+    prepared.content,
     mode,
-    ctx,
+    prepared.searchContext,
   )
   if (!outcome.result) {
     console.warn('[factChecker] factCheckResponse returned null —', outcome.reason)
@@ -686,7 +915,7 @@ export async function runFactCheckOnLatest(
     if (outcome.reason === FACT_CHECK_QUOTA_REASON) {
       patchMessage(conversationId, assistantMsg.id, (m) => {
         const { factCheck: _dropped, ...rest } = m
-        return rest
+        return { ...rest, content: prepared.content }
       })
       refreshConversations()
       return
@@ -702,7 +931,11 @@ export async function runFactCheckOnLatest(
       checkedAt: Date.now(),
       status: 'failed',
     }
-    patchMessage(conversationId, assistantMsg.id, (m) => ({ ...m, factCheck: failedFactCheck }))
+    patchMessage(
+      conversationId,
+      assistantMsg.id,
+      (m) => ({ ...m, content: prepared.content, factCheck: failedFactCheck })
+    )
     refreshConversations()
     return
   }
@@ -711,7 +944,7 @@ export async function runFactCheckOnLatest(
   // Applique les corrections (matching exact + tolérant, flags
   // claim.applied). On garde l'original dans factCheck.originalContent
   // pour le diff du dropdown.
-  const { correctedContent, appliedCount } = applyClaimCorrections(originalContent, result.claims)
+  const { correctedContent, appliedCount } = applyClaimCorrections(prepared.content, result.claims)
   if (appliedCount > 0) {
     result.originalContent = originalContent
     result.appliedCorrections = appliedCount
