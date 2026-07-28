@@ -44,6 +44,11 @@ export interface SearchContextSource {
   // Seules les sources explicitement reliées au texte par le provider sont
   // affichables. Les résultats bruts restent disponibles pour le fact-check.
   cited?: boolean
+  // Source retrouvée par la passe de récupération des liens. Elle provient
+  // d'une recherche serveur fraîche et peut remplacer une URL hallucinée.
+  recovered?: boolean
+  // Preuve serveur que la page a réellement pu être relue.
+  verified?: boolean
 }
 
 export interface SearchContext {
@@ -88,6 +93,8 @@ function mergeSearchContexts(previous: SearchContext | null, next: SearchContext
         snippet: previousSource.snippet || source.snippet,
         supportText: previousSource.supportText || source.supportText,
         ...(previousSource.cited || source.cited ? { cited: true } : {}),
+        ...(previousSource.recovered || source.recovered ? { recovered: true } : {}),
+        ...(previousSource.verified || source.verified ? { verified: true } : {}),
       })
     }
     const unique = [...byUrl.values()]
@@ -247,6 +254,79 @@ function sourceUrlDescriptor(url: string): string {
   }
 }
 
+function isGoogleGroundingRedirect(url: string): boolean {
+  try {
+    const parsed = new URL(url)
+    return parsed.hostname === 'vertexaisearch.cloud.google.com' &&
+      parsed.pathname.startsWith('/grounding-api-redirect/')
+  } catch {
+    return false
+  }
+}
+
+function normalizedSourceHost(url: string): string {
+  try {
+    return new URL(url).hostname.toLowerCase().replace(/^www\./, '')
+  } catch {
+    return ''
+  }
+}
+
+function replacementScore(
+  source: SearchContextSource,
+  label: string,
+  originalUrl: string,
+): number {
+  if (!safeHttpUrl(source.url) || isGoogleGroundingRedirect(source.url)) return -1
+
+  const sourceHost = normalizedSourceHost(source.url)
+  const originalHost = normalizedSourceHost(originalUrl)
+  let score = source.recovered ? 3 : 0
+
+  if (sourceHost && originalHost) {
+    if (sourceHost === originalHost) score += 20
+    else if (sourceHost.endsWith(`.${originalHost}`) || originalHost.endsWith(`.${sourceHost}`)) {
+      score += 16
+    }
+  }
+
+  const labelTokens = sourceRelevanceTokens(label)
+  const sourceTokens = sourceRelevanceTokens(
+    `${source.title}\n${source.snippet}\n${sourceUrlDescriptor(source.url)}`,
+  )
+  const overlap = [...labelTokens].filter((token) => sourceTokens.has(token))
+  score += overlap.length * 4
+  if (overlap.some((token) => token.length >= 8)) score += 3
+
+  return score
+}
+
+function pickReplacementSource(
+  label: string,
+  originalUrl: string,
+  sources: SearchContextSource[],
+  used: Set<string>,
+): SearchContextSource | null {
+  let best: SearchContextSource | null = null
+  let bestScore = -1
+  for (const source of sources) {
+    const comparable = comparableUrl(source.url)
+    if (!comparable || used.has(comparable)) continue
+    const score = replacementScore(source, label, originalUrl)
+    if (score > bestScore) {
+      best = source
+      bestScore = score
+    }
+  }
+
+  // Un même domaine est une correspondance forte. Sinon il faut au minimum
+  // un recoupement lexical significatif entre le libellé et la source.
+  if (!best || bestScore < 4) return null
+  const comparable = comparableUrl(best.url)
+  if (comparable) used.add(comparable)
+  return best
+}
+
 function sourceTopicText(value: string): string {
   return value
     .replace(
@@ -293,17 +373,15 @@ export interface PreparedAssistantContent {
   content: string
   searchContext: SearchContext | null
   removedLinks: number
+  replacedLinks: number
   appendedSources: number
 }
 
-export function prepareAssistantContent(
+function prepareAssistantContentFromContext(
   question: string,
   content: string,
-  scope?: string,
+  searchContext: SearchContext | null,
 ): PreparedAssistantContent {
-  const searchContext = getSearchContext(scope)
-  clearSearchContext(scope)
-
   const sources = getSearchContextSources(searchContext)
   const relevantSources = sources.filter((source) =>
     isSourceRelevant(source, question, content)
@@ -324,7 +402,9 @@ export function prepareAssistantContent(
   }
 
   let removedLinks = 0
+  let replacedLinks = 0
   let grounded = content
+  const usedReplacementUrls = new Set<string>()
   const protectedCode: string[] = []
   grounded = grounded.replace(
     /```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`\n]*`|<code\b[^>]*>[\s\S]*?<\/code>/gi,
@@ -337,7 +417,19 @@ export function prepareAssistantContent(
   grounded = grounded.replace(
     /(?<!!)\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)(?:\s+["'][^)]*["'])?\)/gi,
     (full, label: string, url: string) => {
+      if (isGoogleGroundingRedirect(url)) {
+        const direct = pickReplacementSource(label, url, relevantSources, usedReplacementUrls)
+        if (direct) {
+          replacedLinks++
+          return `[${label}](${direct.url})`
+        }
+      }
       if (isAllowed(url)) return full
+      const replacement = pickReplacementSource(label, url, relevantSources, usedReplacementUrls)
+      if (replacement) {
+        replacedLinks++
+        return `[${label}](${replacement.url})`
+      }
       removedLinks++
       return `${label} *(lien non vérifié retiré)*`
     },
@@ -346,7 +438,19 @@ export function prepareAssistantContent(
   grounded = grounded.replace(
     /<a\b([^>]*?)\bhref=(["'])(https?:\/\/[^"']+)\2([^>]*)>([\s\S]*?)<\/a>/gi,
     (full, _before: string, _quote: string, url: string, _after: string, label: string) => {
+      if (isGoogleGroundingRedirect(url)) {
+        const direct = pickReplacementSource(label, url, relevantSources, usedReplacementUrls)
+        if (direct) {
+          replacedLinks++
+          return full.replace(url, direct.url)
+        }
+      }
       if (isAllowed(url)) return full
+      const replacement = pickReplacementSource(label, url, relevantSources, usedReplacementUrls)
+      if (replacement) {
+        replacedLinks++
+        return full.replace(url, replacement.url)
+      }
       removedLinks++
       return `${label} <em>(lien non vérifié retiré)</em>`
     },
@@ -355,7 +459,19 @@ export function prepareAssistantContent(
   grounded = grounded.replace(
     /<button\b(?=[^>]*\bdata-action=(["'])link\1)(?=[^>]*\bdata-url=(["'])(https?:\/\/[^"']+)\2)[^>]*>([\s\S]*?)<\/button>/gi,
     (full, _actionQuote: string, _urlQuote: string, url: string, label: string) => {
+      if (isGoogleGroundingRedirect(url)) {
+        const direct = pickReplacementSource(label, url, relevantSources, usedReplacementUrls)
+        if (direct) {
+          replacedLinks++
+          return full.replace(url, direct.url)
+        }
+      }
       if (isAllowed(url)) return full
+      const replacement = pickReplacementSource(label, url, relevantSources, usedReplacementUrls)
+      if (replacement) {
+        replacedLinks++
+        return full.replace(url, replacement.url)
+      }
       removedLinks++
       return `${label} <em>(lien non vérifié retiré)</em>`
     },
@@ -364,7 +480,19 @@ export function prepareAssistantContent(
   // remark-gfm transforme une URL nue en lien. Les URLs sans provenance sont
   // passées en code inline, donc visibles mais non cliquables.
   grounded = grounded.replace(/https?:\/\/[^\s<>"'`)\]]+/gi, (url) => {
+    if (isGoogleGroundingRedirect(url)) {
+      const direct = pickReplacementSource(url, url, relevantSources, usedReplacementUrls)
+      if (direct) {
+        replacedLinks++
+        return direct.url
+      }
+    }
     if (isAllowed(url)) return url
+    const replacement = pickReplacementSource(url, url, relevantSources, usedReplacementUrls)
+    if (replacement) {
+      replacedLinks++
+      return replacement.url
+    }
     removedLinks++
     return `\`${url}\` *(non vérifié)*`
   })
@@ -395,8 +523,223 @@ export function prepareAssistantContent(
     content: grounded,
     searchContext,
     removedLinks,
+    replacedLinks,
     appendedSources: sourcesToAppend.length,
   }
+}
+
+export function prepareAssistantContent(
+  question: string,
+  content: string,
+  scope?: string,
+): PreparedAssistantContent {
+  const searchContext = getSearchContext(scope)
+  clearSearchContext(scope)
+  return prepareAssistantContentFromContext(question, content, searchContext)
+}
+
+type RecoverySearch = (
+  query: string,
+  maxResults: number,
+  sources: string[],
+) => Promise<SearchContext | null>
+
+function requestedLinkCount(question: string): number {
+  const normalized = normalizeSourceText(question)
+  const digit = normalized.match(/\b([1-5])\s+(?:liens?|urls?|sources?)\b/)
+  if (digit) return Number(digit[1])
+  const words: Record<string, number> = {
+    un: 1,
+    une: 1,
+    deux: 2,
+    trois: 3,
+    quatre: 4,
+    cinq: 5,
+  }
+  const word = normalized.match(/\b(un|une|deux|trois|quatre|cinq)\s+(?:liens?|urls?|sources?)\b/)
+  const wordValue = word?.[1]
+  if (wordValue) return words[wordValue] || 3
+  if (/\b(?:le|la|un|une)\s+(?:lien|url|source|reference)\b/.test(normalized)) return 1
+  return 3
+}
+
+function asksForLinks(question: string): boolean {
+  const normalized = normalizeSourceText(question)
+  if (/\b(?:liens?|urls?|references?)\b/.test(normalized)) return true
+  return /\bsources?\b/.test(normalized) && !/\bcode\s+source\b/.test(normalized)
+}
+
+function outboundLinkCount(content: string): number {
+  return new Set(
+    extractHttpUrls(content)
+      .map(comparableUrl)
+      .filter((url): url is string => !!url && !isArtyInternalUrl(url)),
+  ).size
+}
+
+function recoveryDomains(content: string): string[] {
+  const domains = new Set<string>()
+  for (const value of extractHttpUrls(content)) {
+    if (isGoogleGroundingRedirect(value) || isArtyInternalUrl(value)) continue
+    const host = normalizedSourceHost(value)
+    if (!host || host === 'vertexaisearch.cloud.google.com') continue
+    domains.add(host)
+    if (domains.size >= 6) break
+  }
+  return [...domains]
+}
+
+export function needsLinkRecovery(
+  question: string,
+  prepared: PreparedAssistantContent,
+): boolean {
+  if (prepared.removedLinks > 0) return true
+  if (extractHttpUrls(prepared.content).some(isGoogleGroundingRedirect)) return true
+  return asksForLinks(question) &&
+    outboundLinkCount(prepared.content) < requestedLinkCount(question)
+}
+
+async function requestRecoverySearch(
+  query: string,
+  maxResults: number,
+  sources: string[],
+): Promise<SearchContext | null> {
+  const googleToken = await getValidAccessToken()
+  if (!googleToken) return null
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'x-google-token': googleToken,
+  }
+  const payload = {
+    query: query.slice(0, 1200),
+    // En recherche ciblée, un résultat vivant par domaine suffit. La passe
+    // générale peut en ramener jusqu'au nombre demandé.
+    maxResults: sources.length > 0 ? 1 : maxResults,
+    verifyUrls: true,
+    ...(sources.length > 0 ? { sources } : {}),
+  }
+  const url = apiUrl('/api/search/web')
+
+  let response: Response
+  if (Capacitor.isNativePlatform()) {
+    const nativeResponse = await CapacitorHttp.request({
+      url,
+      method: 'POST',
+      headers: { ...headers, Origin: 'https://localhost' },
+      data: payload,
+      connectTimeout: 10_000,
+      readTimeout: 30_000,
+      responseType: 'json',
+    })
+    const body = typeof nativeResponse.data === 'string'
+      ? nativeResponse.data
+      : JSON.stringify(nativeResponse.data ?? {})
+    response = new Response(body, {
+      status: nativeResponse.status,
+      headers: nativeResponse.headers,
+    })
+  } else {
+    response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(30_000),
+    })
+  }
+
+  if (!response.ok) return null
+  const data = (await response.json()) as {
+    provider?: string
+    answer?: string
+    query?: string
+    results?: SearchContextSource[]
+    bySource?: Record<string, { answer?: string; results: SearchContextSource[] }>
+  }
+
+  const markRecovered = (source: SearchContextSource): SearchContextSource => ({
+    ...source,
+    cited: true,
+    recovered: true,
+  })
+
+  if (data.bySource) {
+    const bySource: SearchContext['bySource'] = {}
+    for (const [domain, entry] of Object.entries(data.bySource)) {
+      bySource[domain] = {
+        answer: entry.answer,
+        results: (entry.results || [])
+          .filter((source) => source.verified === true)
+          .map(markRecovered),
+      }
+    }
+    return {
+      provider: `${data.provider || 'search'} link recovery`,
+      query: data.query || query,
+      bySource,
+    }
+  }
+
+  const results = (data.results || [])
+    .filter((source) => source.verified === true)
+    .map(markRecovered)
+  if (results.length === 0) return null
+  return {
+    provider: `${data.provider || 'search'} link recovery`,
+    query: data.query || query,
+    answer: data.answer,
+    results,
+  }
+}
+
+export async function recoverAssistantLinks(
+  question: string,
+  originalContent: string,
+  prepared: PreparedAssistantContent,
+  search: RecoverySearch = requestRecoverySearch,
+): Promise<PreparedAssistantContent> {
+  if (!needsLinkRecovery(question, prepared)) return prepared
+
+  const target = asksForLinks(question)
+    ? requestedLinkCount(question)
+    : Math.max(1, prepared.removedLinks, outboundLinkCount(prepared.content))
+  const domains = recoveryDomains(originalContent)
+  let recovered: SearchContext | null
+  try {
+    recovered = await search(question, Math.max(3, target), domains)
+  } catch (error) {
+    console.warn('[factChecker] link recovery failed:', error)
+    return prepared
+  }
+  if (!recovered) return prepared
+
+  let merged = mergeSearchContexts(prepared.searchContext, recovered)
+  let result = prepareAssistantContentFromContext(question, originalContent, merged)
+
+  // Une recherche ciblée par domaines peut réparer les URL explicites tout en
+  // ratant une source représentée uniquement par un redirect Google opaque.
+  // Si le nombre demandé n'est toujours pas atteint, une recherche générale
+  // unique complète le jeu de sources.
+  if (
+    domains.length > 0 &&
+    (
+      result.removedLinks > 0 ||
+      (asksForLinks(question) && outboundLinkCount(result.content) < target) ||
+      extractHttpUrls(result.content).some(isGoogleGroundingRedirect)
+    )
+  ) {
+    try {
+      const general = await search(question, Math.max(3, target), [])
+      if (general) {
+        merged = mergeSearchContexts(merged, general)
+        result = prepareAssistantContentFromContext(question, originalContent, merged)
+      }
+    } catch (error) {
+      console.warn('[factChecker] general link recovery failed:', error)
+    }
+  }
+
+  return result
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1036,21 +1379,40 @@ export async function runFactCheckOnLatest(
 
   const originalContent = assistantMsg.content
   const question = getMessageTextForModel(userMsg)
-  const prepared = prepareAssistantContent(question, originalContent, conversationId)
-  const contentWasPrepared = prepared.content !== originalContent
+  const initialPrepared = prepareAssistantContent(question, originalContent, conversationId)
+  let prepared = initialPrepared
+  let contentWasPrepared = prepared.content !== originalContent
 
   // Les liens sans provenance sont neutralisés même lorsque le second appel
-  // de fact-check est coupé. En mode EU, cette étape reste entièrement locale.
-  if (mode === 'off' || conv.euOnly) {
+  // de fact-check est coupé. En mode EU, cette étape reste entièrement locale
+  // et aucune recherche de récupération supplémentaire n'est lancée.
+  if (conv.euOnly) {
     if (contentWasPrepared) {
       patchMessage(conversationId, assistantMsg.id, (m) => ({ ...m, content: prepared.content }))
       refreshConversations()
     }
-    console.info(
-      conv.euOnly
-        ? '[factChecker] source cleanup only (conversation EU — RÈGLE 5.3)'
-        : '[factChecker] source cleanup only (mode=off)'
-    )
+    console.info('[factChecker] source cleanup only (conversation EU — RÈGLE 5.3)')
+    return
+  }
+
+  // Ne laisse jamais une URL non prouvée cliquable pendant la recherche de
+  // remplacement. Le premier passage la neutralise immédiatement, puis la
+  // recherche serveur tente de la remplacer par une source directe et fraîche.
+  if (needsLinkRecovery(question, prepared)) {
+    if (contentWasPrepared) {
+      patchMessage(conversationId, assistantMsg.id, (m) => ({ ...m, content: prepared.content }))
+      refreshConversations()
+    }
+    prepared = await recoverAssistantLinks(question, originalContent, prepared)
+    contentWasPrepared = prepared.content !== originalContent
+  }
+
+  if (mode === 'off') {
+    if (contentWasPrepared) {
+      patchMessage(conversationId, assistantMsg.id, (m) => ({ ...m, content: prepared.content }))
+      refreshConversations()
+    }
+    console.info('[factChecker] source cleanup and recovery only (mode=off)')
     return
   }
   console.info('[factChecker] starting (mode=' + mode + ')')
