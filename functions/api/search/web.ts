@@ -119,9 +119,14 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
           const sourcedQuery = `${query} site:${source}`
           try {
             const linkup = await searchLinkup(env.LINKUP_API_KEY, sourcedQuery, maxResults)
-            const results = verifyUrls
-              ? await verifySearchResults(env.LINKUP_API_KEY, linkup.results)
+            const candidates = verifyUrls
+              ? mergeAnswerResults(linkup.answer, linkup.results)
+                .filter((result) => urlMatchesDomain(result.url, source))
+                .slice(0, maxResults)
               : linkup.results
+            const results = verifyUrls
+              ? await verifySearchResults(env.LINKUP_API_KEY, candidates)
+              : candidates
             return { source, answer: linkup.answer, results }
           } catch (err) {
             // Idem N-2 : on n'embarque pas le message d'erreur du provider dans
@@ -159,6 +164,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
       results = linkupResp.results
     }
     if (verifyUrls) {
+      results = mergeAnswerResults(answer, results).slice(0, maxResults)
       results = await verifySearchResults(env.LINKUP_API_KEY, results)
     }
     const response: SingleSourceResponse = { provider, answer, results, query }
@@ -178,6 +184,70 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     // le client ne reçoit qu'un message générique indistinguable.
     console.error('[search/web] provider error', provider, err)
     return Response.json({ error: 'Search failed' }, { status: 502 })
+  }
+}
+
+function cleanAnswerUrl(value: string): string {
+  return value.replace(/[),.;:!?]+$/, '')
+}
+
+export function extractAnswerResults(answer: string | undefined): NormalisedResult[] {
+  if (!answer) return []
+
+  const results: NormalisedResult[] = []
+  const seen = new Set<string>()
+  for (const line of answer.split(/\r?\n/)) {
+    const urls = line.match(/https?:\/\/[^\s<>"'`]+/gi) || []
+    for (const rawUrl of urls) {
+      const url = cleanAnswerUrl(rawUrl)
+      let parsed: URL
+      try {
+        parsed = new URL(url)
+      } catch {
+        continue
+      }
+      if (!isSafePublicUrl(parsed) || seen.has(parsed.toString())) continue
+      seen.add(parsed.toString())
+      const before = line.slice(0, line.indexOf(rawUrl))
+        .replace(/^[\s*\-•#\d.)]+/, '')
+        .replace(/\s*[:：]\s*$/, '')
+        .trim()
+      results.push({
+        title: before || parsed.hostname.replace(/^www\./, ''),
+        url: parsed.toString(),
+        snippet: line.trim(),
+      })
+    }
+  }
+  return results
+}
+
+function mergeAnswerResults(
+  answer: string | undefined,
+  results: NormalisedResult[],
+): NormalisedResult[] {
+  const merged = [...extractAnswerResults(answer), ...results]
+  const seen = new Set<string>()
+  return merged.filter((result) => {
+    let key: string
+    try {
+      key = new URL(result.url).toString()
+    } catch {
+      return false
+    }
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
+function urlMatchesDomain(value: string, domain: string): boolean {
+  try {
+    const host = new URL(value).hostname.toLowerCase().replace(/^www\./, '')
+    const expected = domain.toLowerCase().replace(/^www\./, '')
+    return host === expected || host.endsWith(`.${expected}`)
+  } catch {
+    return false
   }
 }
 
