@@ -52,6 +52,12 @@ describe('auto mode — private data → claude', () => {
     'Ma boîte de réception est pleine',
     'Cherche dans mon drive les contrats',
     'Liste mes devis en attente',
+    // Boîtes mail IMAP natives (9 août 2026) — phrasings indirects BUG 56
+    'Regarde ma boîte Free',
+    'Vérifie mon compte Gmail',
+    'J\'ai reçu un mail de Darty ?',
+    'Le mail de confirmation de ma commande',
+    'Check mes mails',
   ]
 
   const privateEN = [
@@ -65,6 +71,10 @@ describe('auto mode — private data → claude', () => {
     'Unread emails please',
     'Find in my drive',
     'My schedule for tomorrow',
+    // Native IMAP mailboxes (9 Aug 2026) — indirect phrasings BUG 56
+    'Look at my Gmail account',
+    'Check my mailbox',
+    'The email from the bank about my loan',
   ]
 
   it.each(privateFR)('FR private "%s" → claude', (msg) => {

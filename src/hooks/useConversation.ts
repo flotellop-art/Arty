@@ -22,6 +22,7 @@ import { clearSearchContext, runFactCheckOnLatest } from '../services/factChecke
 import { detectSuggestedTasks, addTask } from '../services/taskService'
 import { TOOLS } from '../services/toolDefinitions'
 import { wantsImageGeneration, generateImageToolDefinition } from '../services/tools/imageTools'
+import { mailToolDefinitions, mailToolsAvailable } from '../services/tools/mailTools'
 import { detectReminderIntent, createReminder } from '../services/reminderService'
 import { composeQuickActionText, isQuickActionSelection } from '../services/quickActions'
 import { clearConversationComposerDraft } from '../services/composerDrafts'
@@ -945,16 +946,21 @@ export function useConversation() {
         // l'utilisateur demande explicitement une image (seule garantie
         // anti-faux-déclenchement, cf. imageTools). euOnly n'atteint jamais ce
         // chemin (forcé sur Mistral) → génération naturellement bloquée en EU.
-        const imageTools = wantsImageGeneration(modelText)
-          ? [...TOOLS, generateImageToolDefinition]
-          : undefined
+        // Boîtes mail : les outils mail_* ne sont exposés que si ≥1 compte
+        // IMAP natif est connecté (sinon le modèle annoncerait une capacité
+        // inexistante — classe F-3 « tools sur routes mortes »).
+        const extraTools = [
+          ...(wantsImageGeneration(modelText) ? [generateImageToolDefinition] : []),
+          ...(mailToolsAvailable() ? mailToolDefinitions : []),
+        ]
+        const toolsOverride = extraTools.length > 0 ? [...TOOLS, ...extraTools] : undefined
         controller = streamMessage(apiMessages, onToken, onDone, onErr, {
           systemPrompt: systemPromptRef.current,
           onToolCall: trackedToolHandler,
           reflectionLevel: getReflectionLevel(),
           conversationId: targetId,
           routeDecision,
-          ...(imageTools ? { tools: imageTools as typeof TOOLS } : {}),
+          ...(toolsOverride ? { tools: toolsOverride as typeof TOOLS } : {}),
         })
       }
 

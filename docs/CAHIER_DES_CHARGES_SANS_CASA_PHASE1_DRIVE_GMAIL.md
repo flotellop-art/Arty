@@ -398,7 +398,17 @@ Toute valeur hors borne → 400 générique, jamais d'appel Google. **Chaque fro
 
 ### Anti-objectifs
 
-Pas de scope restreint « temporaire », pas de `drive.metadata.readonly`, pas de dossier auto-synchronisé (impossible), pas de compte de service partagé, pas d'IMAP/app-password, pas d'auto-forward — options formellement écartées (rapports d'agents du 13 juillet 2026).
+Pas de scope restreint « temporaire », pas de `drive.metadata.readonly`, pas de dossier auto-synchronisé (impossible), pas de compte de service partagé, ~~pas d'IMAP/app-password~~ (renversé par D38, voir ci-dessous), pas d'auto-forward — options formellement écartées (rapports d'agents du 13 juillet 2026).
+
+### D38 — Renversement de l'anti-objectif IMAP/app-password (9 août 2026, décision Florent Pollet)
+
+**Décision** : l'accès universel aux boîtes mail (Free, Gmail, Yahoo, iCloud, IMAP générique) est réintroduit, **exclusivement via un client IMAP natif sur l'appareil Android** (`MailImapPlugin.java`), jamais via un relais serveur. Objectif produit : « brancher n'importe quelle boîte mail sur Arty sans passer de CASA, l'accès doit y être implicite ».
+
+**Pourquoi l'analyse du 13 juillet change** : l'anti-objectif visait un relais IMAP côté serveur (credentials transitant par Cloudflare, IP datacenter bloquées par Google, surface d'abus infra). L'architecture retenue ici supprime ces trois risques par construction : le mot de passe d'application est chiffré dans l'**Android Keystore** et ne quitte jamais le téléphone ; la connexion IMAP (TLS 993 uniquement) part de l'**IP résidentielle** de l'utilisateur ; aucun endpoint serveur n'existe. Trois agents de challenge (RÈGLE 7 : sécurité Opus, intégration Sonnet, faisabilité Sonnet) ont audité le plan ; la recommandation « client sur l'appareil » de l'audit sécurité est celle retenue.
+
+**Invariants conservés** : aucun scope Google restreint dans le projet OAuth public (IMAP n'utilise pas OAuth — le scanner `no-casa:check` reste vert et inchangé) ; lecture seule stricte (`Folder.READ_ONLY`, jamais d'envoi/suppression/modification) ; contenu mail encadré `markUntrustedThirdPartyData` (donnée, jamais instruction) ; outils exposés au modèle uniquement si ≥1 compte connecté ; le web (`tryarty.com`) reste SANS accès mail (un futur relais serveur serait une décision séparée, avec son propre gate).
+
+**Compensations** : parité `toolConfirmation.test.ts` étendue aux outils mail (SAFE, lecture seule) ; frontière mail du system prompt conditionnelle à source unique (`MAILBOX_NO_ACCESS_PROMPT` / `buildMailboxAccessPrompt`) ; PRIVACY.md/PRIVACY-EN.md mis à jour ; dossier Play (`PLAY-STORE-SUBMISSION.md`) à réviser AVANT toute soumission store (déclaration Data Safety « E-mails »).
 
 ---
 

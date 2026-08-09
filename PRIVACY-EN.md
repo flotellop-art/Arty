@@ -1,6 +1,6 @@
 # Privacy Policy — Arty
 
-**Last updated:** July 14, 2026
+**Last updated:** August 9, 2026
 
 **Publisher:** Florent Pollet, natural person, residing at 884 chemin de la Prairie, 38270 Beaufort, France. No business is registered to date; a SIREN identifier will be added to this policy upon registration of the activity, planned before the public launch and the first payments.
 **Contact:** flotellop@gmail.com
@@ -17,14 +17,15 @@ The data controller under the GDPR is Florent Pollet, natural person (contact de
 |---|---|---|
 | Authentication identity | Email, full name, profile picture | Google Sign-In (OAuth) |
 | User content | Messages, files, and attachments sent to the assistant, including email content you manually paste, attach, or share; structured memory, shared conversations, and reports you voluntarily submit | You |
-| Google Workspace data | Reading and creating events (Calendar), only when you use an agenda feature. The public app does not access your Gmail mailbox | Your Google account, on your explicit request |
+| Google Workspace data | Reading and creating events (Calendar), only when you use an agenda feature. The public app does not use any Gmail API | Your Google account, on your explicit request |
+| Connected mailboxes (Android app only) | If you voluntarily connect a mailbox (Free, Gmail, Yahoo, iCloud or IMAP), the assistant can list, search and read your messages in READ-ONLY mode. The connection is made directly from your phone (IMAP TLS); your app password is encrypted with the Android Keystore (non-extractable hardware key) and is never sent to our servers. Message content is only sent to the conversation's AI provider, and only when you ask a question that requires it | You (voluntary connection in Settings → Mailboxes) |
 | Location | Approximate geographic position | Your device's GPS sensor, only if enabled |
 | Payment data | Account email, selected offer or pack, transaction identifiers and status; Arty receives no payment-card details | You + Lemon Squeezy or Creem |
 | Waitlist signup | Email (pre-launch only) | Tally form |
 
 We do not track your browsing for advertising purposes and do not use any commercial profiling.
 
-Arty does not search, read, modify, or send messages in your Gmail mailbox. If you ask Arty to summarize an email or draft a reply, its content is processed only when you paste, attach, or share it with the assistant yourself.
+Arty does not use any Gmail API and never sends, modifies or deletes a message in your mailbox. Without a connected mailbox, email content is processed only when you paste, attach, or share it with the assistant yourself. If you connect a mailbox in the Android app (update of August 9, 2026), the assistant can READ it (read-only) directly from your phone to answer your requests; you can remove a mailbox at any time in Settings → Mailboxes, which deletes its password from the device.
 
 ## 3. Purposes and legal grounds
 

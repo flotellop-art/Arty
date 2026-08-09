@@ -1,11 +1,11 @@
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { buildToolConfirmMessage } from '../services/toolConfirmation'
 import { useGoogleAuth } from './useGoogleAuth'
 import { useDrive } from './useDrive'
 import { useComputer } from './useComputer'
 import { useMemory } from './useMemory'
-import { buildContextualPrompt } from '../constants/systemPrompt'
+import { buildContextualPrompt, buildMailboxAccessPrompt, MAILBOX_NO_ACCESS_PROMPT } from '../constants/systemPrompt'
 import { buildLocalMemoryPrompt } from '../services/localMemoryService'
 import { getCustomInstructions } from '../services/customInstructions'
 import { createToolExecutor } from '../services/toolExecutor'
@@ -15,6 +15,7 @@ import { isPublicGoogleOAuthProfileEnabled } from '../services/publicGoogleOAuth
 import { isAllowedReportAction, parseTrailRouteId, parseTrailSnapshotId } from '../services/reportActions'
 import { toast } from '../services/toast'
 import { useNavigate } from 'react-router-dom'
+import { hasConnectedMailAccounts, refreshMailAccounts, getCachedMailAccounts } from '../services/mailAccounts'
 
 interface ConversationHook {
   activeId: string | null
@@ -35,7 +36,24 @@ export function useAppSetup(conversation: ConversationHook) {
   const computerActions = useComputer()
   const memoryHook = useMemory()
   const noCasaPhase0 = isPublicGoogleOAuthProfileEnabled()
-  const mailboxBoundaryPrompt = 'ACCÈS AUX E-MAILS — PRIORITÉ ABSOLUE : tu n\'as accès à aucune boîte mail et tu ne peux ni chercher, ouvrir, envoyer ni modifier un e-mail. Tu peux analyser, résumer ou rédiger uniquement à partir du contenu que l\'utilisateur colle, joint ou partage dans cette conversation. Si le contenu demandé n\'est pas fourni, explique cette limite et demande-lui de copier-coller, transférer ou joindre le message. Ne prétends jamais avoir consulté sa boîte.\n\n'
+  // Comptes mail IMAP natifs (décision du 9 août 2026, « natif d'abord ») :
+  // le préambule mail du system prompt est CONDITIONNEL. Sans compte connecté,
+  // la frontière Phase 0 reste inchangée (aucun accès boîte mail). Avec ≥1
+  // compte, on annonce les outils de lecture — et uniquement eux (jamais
+  // d'envoi/modification), avec la règle contenu-externe-jamais-instruction.
+  const [mailAccountsVersion, setMailAccountsVersion] = useState(0)
+  useEffect(() => {
+    refreshMailAccounts()
+    const onUpdate = () => setMailAccountsVersion((v) => v + 1)
+    window.addEventListener('mail-accounts-updated', onUpdate)
+    return () => window.removeEventListener('mail-accounts-updated', onUpdate)
+  }, [])
+  const mailboxBoundaryPrompt = useMemo(() => {
+    void mailAccountsVersion
+    return hasConnectedMailAccounts()
+      ? buildMailboxAccessPrompt(getCachedMailAccounts())
+      : MAILBOX_NO_ACCESS_PROMPT
+  }, [mailAccountsVersion])
   const publicGooglePrompt = noCasaPhase0
     ? 'PROFIL GOOGLE PUBLIC : tu n\'as aucun accès global à Drive ou Contacts. Calendar reste disponible.\n\n'
     : ''

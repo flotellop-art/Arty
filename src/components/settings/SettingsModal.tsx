@@ -49,6 +49,8 @@ import { getStreakData, setVacationMode, type StreakData } from '../../services/
 import { isAutoMemoryEnabled, setAutoMemoryEnabled } from '../../services/autoMemory'
 import { getCustomInstructions, setCustomInstructions, MAX_CUSTOM_INSTRUCTIONS_CHARS } from '../../services/customInstructions'
 import { LocalMemoryModal } from './LocalMemoryModal'
+import { MailAccountsModal } from './MailAccountsModal'
+import { isMailImapAvailable } from '../../services/native/mailImap'
 import { deleteAccount } from '../../services/accountService'
 
 interface SettingsModalProps {
@@ -81,6 +83,7 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
   const [showMemoryViewer, setShowMemoryViewer] = useState(false)
   const [streakData, setStreakDataState] = useState<StreakData>(getStreakData)
   const [showLocalMemory, setShowLocalMemory] = useState(false)
+  const [showMailAccounts, setShowMailAccounts] = useState(false)
   const [confirmDeleteAccount, setConfirmDeleteAccount] = useState(false)
   const [deletingAccount, setDeletingAccount] = useState(false)
   const [deleteAccountError, setDeleteAccountError] = useState('')
@@ -681,6 +684,26 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
             </button>
           </div>
 
+          {/* Boîtes mail IMAP natives (9 août 2026 — Android uniquement) */}
+          {isMailImapAvailable() && (
+            <div className="border-t border-theme-border pt-5">
+              <button
+                onClick={() => setShowMailAccounts(true)}
+                className="w-full flex items-center justify-between text-left"
+              >
+                <div>
+                  <p className="font-display text-base text-theme-ink">📧 {t('mailAccountsModal.settingsTitle')}</p>
+                  <p className="font-display italic text-xs text-theme-muted mt-0.5">
+                    {t('mailAccountsModal.settingsDescription')}
+                  </p>
+                </div>
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="text-theme-accent">
+                  <path d="M5 3L9 7L5 11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+            </div>
+          )}
+
           {/* Memory history */}
           <div className="border-t border-theme-border pt-5">
             <button
@@ -829,6 +852,7 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
       {showMemoryHistory && <MemoryHistoryPanel onClose={() => setShowMemoryHistory(false)} />}
       {showMemoryViewer && <MemoryViewer onClose={() => setShowMemoryViewer(false)} />}
       {showLocalMemory && <LocalMemoryModal onClose={() => setShowLocalMemory(false)} />}
+      <MailAccountsModal open={showMailAccounts} onClose={() => setShowMailAccounts(false)} />
       {showLocationDebug && (
         <div
           className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-theme-ink/50"

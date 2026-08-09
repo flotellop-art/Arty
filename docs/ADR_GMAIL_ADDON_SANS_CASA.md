@@ -83,7 +83,7 @@ Les helpers actuels fondés sur `tokeninfo` ou le client OAuth principal Arty ne
 
 La recherche assistée vit dans Arty Web/Android, pas dans le panneau Workspace Add-on. Le bouton informe l'utilisateur, copie une requête et ouvre Gmail génériquement ; l'utilisateur choisit le compte si nécessaire, colle la requête et lance la recherche.
 
-Ce parcours n'ajoute aucune permission Gmail. Arty n'utilise ni jeton, ni API Gmail, ni IMAP, ni callback et ne reçoit jamais les résultats. Un lien direct vers les résultats est désactivé par défaut et ne peut être expérimenté qu'en P1 sous feature flag, avec le copier-coller comme repli.
+Ce parcours n'ajoute aucune permission Gmail. Arty n'utilise ni jeton, ni API Gmail, ni IMAP *(correction du 9 août 2026 : un client IMAP NATIF sur l'appareil Android existe désormais — décision D38 du CDC Phase 1. Cette phrase reste vraie pour tout ce qui est côté serveur : aucun IMAP ne transite par Cloudflare, aucun jeton ni API Gmail n'est utilisé, et le projet OAuth public reste sans scope restreint)*, ni callback et ne reçoit jamais les résultats. Un lien direct vers les résultats est désactivé par défaut et ne peut être expérimenté qu'en P1 sous feature flag, avec le copier-coller comme repli.
 
 ## Options étudiées
 

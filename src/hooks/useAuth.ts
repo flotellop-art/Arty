@@ -22,6 +22,7 @@ import { clearTrialToken } from '../services/emailTrialClient'
 import { clearWalletCache } from '../services/walletClient'
 import { adoptPendingTrialRemaining, clearPendingTrialRemaining } from '../services/trialClient'
 import { purgeComposerDraftsForActiveUser } from '../services/composerDrafts'
+import { resetMailAccountsCache } from '../services/mailAccounts'
 
 type StoredKeys = { anthropic: string; gemini?: string; mistral?: string; openai?: string }
 
@@ -158,6 +159,12 @@ export function useAuth() {
     // this device. Owner scoping prevents another account from reading them;
     // permanent deletion remains the explicit "delete account" flow.
     resetConversationMemCache()
+    // Comptes mail IMAP natifs : même politique que les conversations — les
+    // credentials restent dans le Keystore de l'appareil, scopés par userId
+    // Arty (un autre compte ne peut pas les lire). Seul le cache mémoire est
+    // vidé pour que les outils mail disparaissent immédiatement du prompt.
+    // Suppression définitive : Réglages → Boîtes mail, ou suppression du compte.
+    resetMailAccountsCache()
     clearActiveSession()
     if (leavingUserId) removeKnownSession(leavingUserId)
     setCurrentUser(null)
@@ -183,6 +190,9 @@ export function useAuth() {
     clearActiveKeys()
     resetGoogleMemCache()
     resetConversationMemCache()
+    // BUG 6 — cache mail vidé AVANT setActiveSession : sinon les outils mail
+    // du compte quitté resteraient exposés pendant la fenêtre de switch.
+    resetMailAccountsCache()
     // C-E — le cache de plan est GLOBAL : celui du compte quitté ne doit pas
     // router les modèles du compte suivant (usePlanStatus le re-remplit au
     // premier fetch). Symétrique de la purge du logout.

@@ -73,6 +73,11 @@ dependencies {
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
     implementation project(':capacitor-cordova-android-plugins')
     implementation 'com.google.android.gms:play-services-auth:21.3.0'
+    // Client IMAP lecture seule embarqué (MailImapPlugin) — build JavaMail
+    // officiel pour Android. Le mot de passe d'application reste dans le
+    // Keystore de l'appareil, aucune donnée mail ne transite par nos serveurs.
+    implementation 'com.sun.mail:android-mail:1.6.7'
+    implementation 'com.sun.mail:android-activation:1.6.7'
 }
 
 apply from: 'capacitor.build.gradle'

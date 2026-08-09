@@ -1,6 +1,6 @@
 # Politique de confidentialité — Arty
 
-**Dernière mise à jour :** 14 juillet 2026
+**Dernière mise à jour :** 9 août 2026
 
 **Éditeur :** Florent Pollet, personne physique, domicilié 884 chemin de la Prairie, 38270 Beaufort, France. Aucune entreprise n'est immatriculée à ce jour ; un SIREN sera ajouté à cette politique dès l'enregistrement de l'activité, prévu avant le lancement public et les premiers paiements.
 **Contact :** flotellop@gmail.com
@@ -17,14 +17,15 @@ Le responsable de traitement au sens du RGPD est Florent Pollet, personne physiq
 |---|---|---|
 | Identité de connexion | Email, nom complet, photo de profil | Connexion Google (OAuth) |
 | Contenu utilisateur | Messages, fichiers et pièces jointes envoyés à l'assistant, y compris le contenu d'un email que vous collez, joignez ou partagez manuellement ; mémoire structurée, conversations partagées et signalements que vous soumettez volontairement | Vous |
-| Données Google Workspace | Lecture et création d'événements (Calendar), uniquement lorsque vous utilisez une fonction d'agenda. L'application publique n'accède pas à votre boîte Gmail | Votre compte Google, sur votre demande explicite |
+| Données Google Workspace | Lecture et création d'événements (Calendar), uniquement lorsque vous utilisez une fonction d'agenda. L'application publique n'utilise aucune API Gmail | Votre compte Google, sur votre demande explicite |
+| Boîtes mail connectées (app Android uniquement) | Si vous connectez volontairement une boîte mail (Free, Gmail, Yahoo, iCloud ou IMAP), l'assistant peut lister, rechercher et lire vos messages en LECTURE SEULE. La connexion se fait directement depuis votre téléphone (IMAP TLS) ; votre mot de passe d'application est chiffré via le Keystore Android (clé matérielle non extractible) et n'est jamais transmis à nos serveurs. Le contenu d'un message n'est transmis qu'au fournisseur d'IA de la conversation, uniquement quand vous posez une question qui le nécessite | Vous (connexion volontaire dans Réglages → Boîtes mail) |
 | Localisation | Position géographique approximative | Capteur GPS de votre appareil, uniquement si activé |
 | Données de paiement | Email du compte, offre ou pack choisi, identifiants et statut de transaction ; Arty ne reçoit aucune coordonnée bancaire | Vous + Lemon Squeezy ou Creem |
 | Inscription waitlist | Email (pré-lancement uniquement) | Formulaire Tally |
 
 Nous ne traçons pas votre navigation à des fins publicitaires et n'utilisons aucun profilage commercial.
 
-Arty ne recherche, ne lit, ne modifie et n'envoie aucun message dans votre boîte Gmail. Si vous demandez de résumer un email ou de préparer une réponse, son contenu n'est traité que si vous le collez, le joignez ou le partagez vous-même avec l'assistant.
+Arty n'utilise aucune API Gmail et n'envoie, ne modifie ni ne supprime jamais un message dans votre boîte. Sans boîte connectée, le contenu d'un email n'est traité que si vous le collez, le joignez ou le partagez vous-même avec l'assistant. Si vous connectez une boîte mail dans l'app Android (mise à jour du 9 août 2026), l'assistant peut la LIRE (lecture seule) directement depuis votre téléphone pour répondre à vos demandes ; vous pouvez retirer une boîte à tout moment dans Réglages → Boîtes mail, ce qui supprime son mot de passe de l'appareil.
 
 ## 3. Finalités et bases légales
 
@@ -32,6 +33,7 @@ Arty ne recherche, ne lit, ne modifie et n'envoie aucun message dans votre boît
 |---|---|
 | Authentification et fourniture du service (compte, conversations, IA, connecteurs Google) | Exécution du contrat — vos conditions d'utilisation |
 | Réponses géolocalisées | Consentement explicite (vous activez la localisation) |
+| Lecture de vos boîtes mail connectées (app Android) | Consentement explicite (vous connectez chaque boîte volontairement, révocable à tout moment) |
 | Paiements (abonnement Pro et packs de crédits prépayés) | Exécution du contrat + obligation légale comptable |
 | Lutte contre la fraude et sécurité du service (logs techniques, kill-switch chiffrement) | Intérêt légitime |
 | Communication pré-lancement (waitlist) | Consentement (inscription volontaire au formulaire) |

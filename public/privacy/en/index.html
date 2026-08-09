@@ -83,7 +83,7 @@
   <h1>Your data, your rights.</h1>
 
   <div class="meta">
-    <div><strong>Last updated:</strong> July 15, 2026</div>
+    <div><strong>Last updated:</strong> August 9, 2026</div>
     <div><strong>Publisher:</strong> POLLET FLORENT, French sole trader, SIREN 887 679 611, SIRET 887 679 611 00012, Rue des Sièges, 30120 Bréau-Mars, France. Arty is the name of the software service.</div>
     <div><strong>Contact:</strong> <a href="mailto:support@tryarty.com">support@tryarty.com</a></div>
   </div>
@@ -99,14 +99,15 @@
     <tbody>
       <tr><td>Authentication identity</td><td>Email, full name, profile picture</td><td>Google Sign-In (OAuth)</td></tr>
       <tr><td>User content</td><td>Messages, files, and attachments sent to the assistant, including email content you manually paste, attach, or share; structured memory, shared conversations, and reports you voluntarily submit</td><td>You</td></tr>
-      <tr><td>Google Workspace data</td><td>Reading and creating events (Calendar), only when you use an agenda feature. The public app does not access your Gmail mailbox</td><td>Your Google account, on your explicit request</td></tr>
+      <tr><td>Google Workspace data</td><td>Reading and creating events (Calendar), only when you use an agenda feature. The public app does not use any Gmail API</td><td>Your Google account, on your explicit request</td></tr>
+      <tr><td>Connected mailboxes (Android app only)</td><td>If you voluntarily connect a mailbox (Free, Gmail, Yahoo, iCloud or IMAP), the assistant can list, search and read your messages in READ-ONLY mode. The connection is made directly from your phone (IMAP TLS); your app password is encrypted with the Android Keystore (non-extractable hardware key) and is never sent to our servers. Message content is only sent to the conversation's AI provider, and only when you ask a question that requires it</td><td>You (voluntary connection in Settings → Mailboxes)</td></tr>
       <tr><td>Location</td><td>Approximate geographic position</td><td>Your device's GPS sensor, only if enabled</td></tr>
       <tr><td>Payment data</td><td>Account email, selected offer or pack, transaction identifiers and status; Arty receives no payment-card details</td><td>You + Lemon Squeezy or Creem</td></tr>
       <tr><td>Waitlist signup</td><td>Email (pre-launch only)</td><td>Tally form</td></tr>
     </tbody>
   </table>
   <p>We do not track your browsing for advertising purposes and do not use any commercial profiling.</p>
-  <p>Arty does not search, read, modify, or send messages in your Gmail mailbox. If you ask Arty to summarize an email or draft a reply, its content is processed only when you paste, attach, or share it with the assistant yourself.</p>
+  <p>Arty does not use any Gmail API and never sends, modifies or deletes a message in your mailbox. Without a connected mailbox, email content is processed only when you paste, attach, or share it with the assistant yourself. If you connect a mailbox in the Android app (update of August 9, 2026), the assistant can READ it (read-only) directly from your phone; you can remove a mailbox at any time in Settings → Mailboxes, which deletes its password from the device.</p>
 
   <h2>3. Purposes and legal grounds</h2>
   <table>
