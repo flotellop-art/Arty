@@ -30,6 +30,33 @@ import {
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages'
 
+// Anthropic renvoie en 400 DEUX familles d'erreurs : les requêtes malformées
+// (notre bug : schéma d'outil, bloc invalide, champ manquant) et les problèmes
+// de FACTURATION de la clé appelante (« credit balance is too low »). Seule la
+// première est exposable : la seconde décrit l'état de la clé du propriétaire
+// et reste masquée (invariant de l'audit F-6).
+const BILLING_LEAK_PATTERN = /credit|balance|billing|payment|purchase|upgrade|plan|quota|spend|invoice|subscription/i
+
+/**
+ * Message d'erreur 400 exposable au client, ou null s'il doit rester masqué.
+ * Exporté pour les tests : la frontière « bug applicatif » / « état de la clé »
+ * est un invariant de sécurité, elle doit être verrouillée.
+ */
+export function safeUpstreamRequestError(detail: string): string | null {
+  let message: unknown
+  try {
+    const parsed = JSON.parse(detail) as { error?: { type?: string; message?: unknown } }
+    if (parsed?.error?.type !== 'invalid_request_error') return null
+    message = parsed.error.message
+  } catch {
+    return null
+  }
+  if (typeof message !== 'string' || !message.trim()) return null
+  if (BILLING_LEAK_PATTERN.test(message)) return null
+  // Borne stricte : un message d'erreur n'a pas vocation à transporter du volume.
+  return `Requête refusée par le service IA : ${message.slice(0, 300)}`
+}
+
 export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUntil }) => {
   // Anti-relais anonyme : tout appel doit venir d'un user authentifié, même en
   // BYOK. Identité = token Google OU jeton d'essai email (espace de clés disjoint,
@@ -281,6 +308,16 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     if (!isByok && !response.ok) {
       const detail = await response.text().catch(() => '')
       console.error('[proxy] upstream error', response.status, detail.slice(0, 500))
+      // Terrain 9 août : un 400 opaque a coûté plusieurs allers-retours de
+      // diagnostic. Un 400 `invalid_request_error` décrit NOTRE payload (un
+      // bug applicatif), pas l'état de la clé du propriétaire — le masquer
+      // n'apporte aucune sécurité et empêche de corriger. Exception : Anthropic
+      // renvoie AUSSI les problèmes de facturation en 400 ; ceux-là restent
+      // masqués (cf. safeUpstreamRequestError).
+      const safe = response.status === 400 ? safeUpstreamRequestError(detail) : null
+      if (safe) {
+        return Response.json({ error: safe }, { status: 400, headers: responseHeaders() })
+      }
       return Response.json({ error: 'AI service error' }, { status: response.status, headers: responseHeaders() })
     }
     return new Response(response.body, {

@@ -583,6 +583,7 @@
     "apiServer": "Erreur serveur chez Anthropic. Réessaie dans un instant.",
     "apiInvalidRequest": "Requête invalide : {{message}}",
     "apiConnection": "Erreur de connexion ({{status}}). Vérifie ta connexion internet.",
+    "apiBadRequest": "Requête refusée par le service IA (400). Ce n'est pas ta connexion : réessaie, et signale-le si ça persiste.",
     "geminiError": "Erreur Gemini ({{status}}). Vérifie ta clé ou ta connexion.",
     "geminiModelNotFound": "Modèle Gemini indisponible ({{status}}). L'app doit être mise à jour — réessaie avec Claude en attendant.",
     "geminiEmptyResponse": "Gemini n'a renvoyé aucune réponse ({{reason}}). Reformule ta demande ou choisis un autre modèle.",

@@ -268,6 +268,9 @@ function formatApiError(status: number, body: string): string {
 /** Message localisé pour un status HTTP, sans rien révéler de l'upstream. */
 function mapErrorStatus(status: number): string {
   switch (status) {
+    // Terrain 9 août : un 400 affichait « Vérifie ta connexion internet » —
+    // faux et trompeur (la requête est arrivée, c'est elle qui est refusée).
+    case 400: return i18n.t('errors.apiBadRequest')
     case 401: return i18n.t('errors.apiKeyInvalid')
     case 403: return i18n.t('errors.apiAccessDenied')
     case 429: return i18n.t('errors.apiRateLimit')
