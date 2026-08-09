@@ -215,6 +215,11 @@ export function findLastUserText(
 
 // ── Error formatting ─────────────────────────────────────────────────────────
 
+/** Exporté pour les tests : verrouille l'absence de message brut à l'écran. */
+export function formatApiErrorForTest(status: number, body: string): string {
+  return formatApiError(status, body)
+}
+
 function formatApiError(status: number, body: string): string {
   try {
     const parsed = JSON.parse(body) as { error?: string | { type?: string; message?: string } }
@@ -226,12 +231,15 @@ function formatApiError(status: number, body: string): string {
     if (typeof err === 'string' && err) {
       // Audit F-6 : le proxy masque les erreurs upstream server-key en
       // 'AI service error' générique (l'état de la clé owner ne doit pas
-      // fuiter). Pour les transients connus, le status HTTP (préservé par
-      // le proxy) permet de restaurer un message localisé.
-      if (err === 'AI service error') {
-        if (status === 529) return i18n.t('errors.apiOverloaded')
-        if (status === 429) return i18n.t('errors.apiRateLimit')
-      }
+      // fuiter). Le status HTTP, lui, est préservé par le proxy : on rend
+      // TOUJOURS un message localisé et actionnable à partir de lui.
+      // Terrain 9 août : seuls 429/529 étaient traduits — tout autre statut
+      // affichait « AI service error » brut, en anglais dans une UI
+      // française, sans indiquer quoi faire (classe BUG 59 : un état visible
+      // doit porter une raison lisible). Le mapping ci-dessous ne révèle
+      // aucune information sur la clé du propriétaire : il ne reformule que
+      // la catégorie déjà portée par le code HTTP.
+      if (err === 'AI service error') return mapErrorStatus(status)
       return err
     }
 
@@ -254,11 +262,19 @@ function formatApiError(status: number, body: string): string {
     // Not JSON — fall through to status-based messages
   }
 
+  return mapErrorStatus(status)
+}
+
+/** Message localisé pour un status HTTP, sans rien révéler de l'upstream. */
+function mapErrorStatus(status: number): string {
   switch (status) {
     case 401: return i18n.t('errors.apiKeyInvalid')
     case 403: return i18n.t('errors.apiAccessDenied')
     case 429: return i18n.t('errors.apiRateLimit')
-    case 500: return i18n.t('errors.apiServer')
+    case 500:
+    case 502:
+    case 503:
+    case 504: return i18n.t('errors.apiServer')
     case 529: return i18n.t('errors.apiOverloaded')
     default: return i18n.t('errors.apiConnection', { status })
   }
