@@ -22,6 +22,17 @@ describe('safeUpstreamRequestError — expose le bug, jamais l’état de la cl�
       .toContain('Field required')
   })
 
+  // Les messages qui ont réellement coûté le diagnostic du 9 août : ils
+  // DOIVENT rester visibles, c'est toute la raison d'être de cette exposition.
+  it.each([
+    'thinking is not supported for this model',
+    'output_config.effort is not supported on claude-haiku-4-5',
+    'tools.1: web_fetch_20260209 is not supported by this model',
+    'max_tokens: must be less than or equal to 64000',
+  ])('expose les incompatibilités de modèle : %s', (message) => {
+    expect(safeUpstreamRequestError(invalidRequest(message))).toContain(message)
+  })
+
   it.each([
     'Your credit balance is too low to access the Claude API',
     'This request would exceed your organization plan limit',

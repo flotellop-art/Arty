@@ -35,7 +35,46 @@ const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages'
 // de FACTURATION de la clé appelante (« credit balance is too low »). Seule la
 // première est exposable : la seconde décrit l'état de la clé du propriétaire
 // et reste masquée (invariant de l'audit F-6).
-const BILLING_LEAK_PATTERN = /credit|balance|billing|payment|purchase|upgrade|plan|quota|spend|invoice|subscription/i
+// Motifs SPÉCIFIQUES à la facturation. Volontairement pas de mot isolé trop
+// courant (« plan », « quota », « upgrade ») : Anthropic les emploie aussi
+// dans des messages purement techniques, et les masquer nous priverait du
+// diagnostic sans rien protéger de plus.
+const BILLING_LEAK_PATTERN =
+  /credit\s*balance|insufficient\s*credit|billing|payment|purchase|invoice|spend\s*limit|upgrade\s+your|your\s+plan|too\s+low|exceed(?:s|ed)?\s+your|organization\s+\w*\s*limit|monthly\s+quota|rate\s*limit/i
+
+// Haiku 4.5 ne supporte ni le thinking adaptatif ni `output_config.effort`
+// (400), et pas non plus le server tool `web_fetch_20260209` — contrairement
+// à `web_search_20250305`, choisi précisément pour sa compatibilité Haiku.
+const HAIKU_UNSUPPORTED_TOOL_TYPES = ['web_fetch_20260209']
+
+/**
+ * Aligne le corps de requête sur le modèle RÉELLEMENT servi.
+ * Exporté pour les tests : c'est l'invariant qui empêche un 400 quand le
+ * serveur substitue un modèle sans que le client puisse le savoir.
+ */
+export function alignBodyWithServedModel(body: string, servedModel: string): string {
+  if (!servedModel.toLowerCase().includes('haiku')) return body
+  let parsed: Record<string, unknown>
+  try {
+    parsed = JSON.parse(body) as Record<string, unknown>
+  } catch {
+    return body
+  }
+  let changed = false
+  if ('thinking' in parsed) { delete parsed.thinking; changed = true }
+  if ('output_config' in parsed) { delete parsed.output_config; changed = true }
+  if (typeof parsed.max_tokens === 'number' && parsed.max_tokens > 64000) {
+    parsed.max_tokens = 64000
+    changed = true
+  }
+  if (Array.isArray(parsed.tools)) {
+    const kept = (parsed.tools as Array<Record<string, unknown>>).filter(
+      (tool) => typeof tool?.type !== 'string' || !HAIKU_UNSUPPORTED_TOOL_TYPES.includes(tool.type)
+    )
+    if (kept.length !== parsed.tools.length) { parsed.tools = kept; changed = true }
+  }
+  return changed ? JSON.stringify(parsed) : body
+}
 
 /**
  * Message d'erreur 400 exposable au client, ou null s'il doit rester masqué.
@@ -240,6 +279,14 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     const cap = await checkPremiumCap(email, modelName, env)
     if (!cap.allowed) return premiumCapReachedResponse(cap)
   }
+
+  // Filet FINAL : le modèle réellement servi peut différer de celui demandé
+  // par le client (substitution trial ci-dessus, plan verrouillé, wallet).
+  // Le client construit `thinking`/`output_config` et le tool set d'après le
+  // modèle DEMANDÉ (anthropicClient : `effortActive = enabled && !isHaiku`) —
+  // il ne PEUT pas savoir. Seul ce point connaît le modèle final : c'est donc
+  // ici qu'on aligne le payload, sinon Anthropic répond 400 (terrain 9 août).
+  body = alignBodyWithServedModel(body, modelName)
 
   const headers: Record<string, string> = {
     'content-type': 'application/json',
