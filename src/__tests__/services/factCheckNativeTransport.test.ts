@@ -254,8 +254,167 @@ describe('fact-check, transport Android natif', () => {
     const initial = prepareAssistantContent(question, content, 'native-wrong-domain')
     const recovered = await recoverAssistantLinks(question, content, initial)
 
-    expect(recovered.content).toContain('lien non vérifié retiré')
+    // URL directe neutralisée : préservée en code inline NON cliquable
+    // (plus jamais détruite), jamais remplacée par un domaine étranger.
+    expect(recovered.content).toContain('`https://www.esa.int/page-inventee`')
+    expect(recovered.content).toContain('*(non vérifié)*')
+    expect(recovered.content).not.toContain('](https://www.esa.int/page-inventee)')
     expect(recovered.content).not.toContain('(https://www.nasa.gov/')
     expect(recovered.replacedLinks).toBe(0)
+  })
+
+  it('bascule sur fetch WebView quand le DNS natif échoue avant émission', async () => {
+    nativeRequest.mockRejectedValue({
+      code: 'UnknownHostException',
+      message: 'Unable to resolve host "tryarty.com": No address associated with hostname',
+    })
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async () =>
+      new Response(JSON.stringify({
+        content: [{
+          type: 'text',
+          text: '{"overall_confidence":"high","claims":[]}',
+        }],
+        usage: {},
+      }), { status: 200 }),
+    )
+
+    const outcome = await factCheckResponse(
+      'Quelle information faut-il vérifier ?',
+      'Cette réponse dépasse volontairement quatre-vingts caractères afin de déclencher la vérification factuelle.',
+      'haiku',
+      null,
+    )
+
+    expect(outcome.result?.status).toBe('success-empty')
+    expect(nativeRequest).toHaveBeenCalledTimes(1)
+    expect(fetchSpy).toHaveBeenCalledTimes(1)
+    const [, init] = fetchSpy.mock.calls[0] as [string, RequestInit]
+    const headers = init.headers as Record<string, string>
+    // Le token part sur les deux transports ; Origin est un forbidden header
+    // pour fetch (la WebView pose le sien) — le repli ne doit pas le passer.
+    expect(headers['x-google-token']).toBe('google-token')
+    expect(headers.Origin).toBeUndefined()
+
+    fetchSpy.mockRestore()
+  })
+
+  it('ne bascule JAMAIS sur un timeout natif ambigu (double-quota interdit)', async () => {
+    nativeRequest.mockRejectedValue({
+      code: 'SocketTimeoutException',
+      message: 'failed to connect to tryarty.com (port 443) after 15000ms',
+    })
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+
+    const outcome = await factCheckResponse(
+      'Quelle information faut-il vérifier ?',
+      'Cette réponse dépasse volontairement quatre-vingts caractères afin de déclencher la vérification factuelle.',
+      'haiku',
+      null,
+    )
+
+    expect(outcome).toEqual({ result: null, reason: 'réseau — délai dépassé' })
+    expect(fetchSpy).not.toHaveBeenCalled()
+
+    fetchSpy.mockRestore()
+  })
+
+  it('ne rejoue jamais après une réponse HTTP reçue', async () => {
+    nativeRequest.mockResolvedValue({
+      status: 500,
+      headers: { 'content-type': 'application/json' },
+      data: { error: 'boom' },
+    })
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+
+    const outcome = await factCheckResponse(
+      'Quelle information faut-il vérifier ?',
+      'Cette réponse dépasse volontairement quatre-vingts caractères afin de déclencher la vérification factuelle.',
+      'haiku',
+      null,
+    )
+
+    expect(outcome.result).toBeNull()
+    expect(fetchSpy).not.toHaveBeenCalled()
+
+    fetchSpy.mockRestore()
+  })
+
+  it('sans code natif (iOS), aucun repli', async () => {
+    nativeRequest.mockRejectedValue(new Error('The request timed out.'))
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+
+    const outcome = await factCheckResponse(
+      'Quelle information faut-il vérifier ?',
+      'Cette réponse dépasse volontairement quatre-vingts caractères afin de déclencher la vérification factuelle.',
+      'haiku',
+      null,
+    )
+
+    expect(outcome.result).toBeNull()
+    expect(fetchSpy).not.toHaveBeenCalled()
+
+    fetchSpy.mockRestore()
+  })
+
+  it('masque le message natif brut (IP locale) derrière une catégorie', async () => {
+    nativeRequest.mockRejectedValue({
+      code: 'ConnectException',
+      message: 'Failed to connect to tryarty.com/104.21.4.4:443 from /192.168.1.34 (port 40412)',
+    })
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
+      throw new TypeError('Failed to fetch')
+    })
+
+    const outcome = await factCheckResponse(
+      'Quelle information faut-il vérifier ?',
+      'Cette réponse dépasse volontairement quatre-vingts caractères afin de déclencher la vérification factuelle.',
+      'haiku',
+      null,
+    )
+
+    expect(outcome.result).toBeNull()
+    expect('reason' in outcome && outcome.reason).toBe('réseau indisponible')
+    expect(JSON.stringify(outcome)).not.toContain('192.168')
+    // ConnectException est pré-émission : le repli a bien été tenté.
+    expect(fetchSpy).toHaveBeenCalledTimes(1)
+
+    fetchSpy.mockRestore()
+  })
+
+  it('récupère les liens via le repli WebView quand le DNS natif échoue', async () => {
+    nativeRequest.mockRejectedValue({
+      code: 'UnknownHostException',
+      message: 'Unable to resolve host "tryarty.com": No address associated with hostname',
+    })
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async () =>
+      new Response(JSON.stringify({
+        provider: 'linkup',
+        query: 'lancement James-Webb NASA',
+        bySource: {
+          'nasa.gov': {
+            results: [{
+              title: 'NASA launches James Webb Space Telescope',
+              url: 'https://www.nasa.gov/news-release/nasa-launches-james-webb-space-telescope/',
+              snippet: 'NASA confirms the launch of Webb aboard Ariane 5.',
+              verified: true,
+            }],
+          },
+        },
+      }), { status: 200 }),
+    )
+
+    const question = 'Donne un lien officiel de la NASA sur le lancement de James-Webb.'
+    const content = '[NASA, lancement de Webb](https://www.nasa.gov/page-inventee)'
+    const initial = prepareAssistantContent(question, content, 'native-links-fallback')
+    const recovered = await recoverAssistantLinks(question, content, initial)
+
+    expect(recovered.content).toContain(
+      '(https://www.nasa.gov/news-release/nasa-launches-james-webb-space-telescope/)',
+    )
+    expect(recovered.removedLinks).toBe(0)
+    expect(recovered.replacedLinks).toBe(1)
+    expect(fetchSpy).toHaveBeenCalled()
+
+    fetchSpy.mockRestore()
   })
 })

@@ -404,7 +404,11 @@ describe('prepareAssistantContent', () => {
     )
 
     expect(recovered).toEqual(initial)
-    expect(recovered.content).toContain('lien non vérifié retiré')
+    // L'URL directe reste visible en code inline NON cliquable — une panne
+    // de la recherche de remplacement ne détruit plus la donnée.
+    expect(recovered.content).toContain('`https://dead.example/page`')
+    expect(recovered.content).toContain('*(non vérifié)*')
+    expect(recovered.content).not.toContain('](https://dead.example/page)')
   })
 
   it('n’affiche pas le réservoir brut de résultats non cités', () => {
@@ -512,11 +516,54 @@ describe('prepareAssistantContent', () => {
     )
 
     expect(prepared.content).not.toContain('Sources retrouvées par la recherche')
-    expect(prepared.content).not.toContain('(https://meteofrance.com')
-    expect(prepared.content).toContain('lien non vérifié retiré')
+    // Le lien hors sujet n'est plus cliquable ; l'URL reste lisible en code
+    // inline (préservation), jamais en lien markdown.
+    expect(prepared.content).not.toContain('](https://meteofrance.com')
+    expect(prepared.content).toContain('`https://meteofrance.com/previsions-meteo-france`')
+    expect(prepared.content).toContain('*(non vérifié)*')
     expect(prepared.content).not.toContain('selectra.info')
     expect(prepared.appendedSources).toBe(0)
     expect(prepared.searchContext?.results).toHaveLength(5)
+  })
+
+  it('ne révèle jamais le jeton opaque d’un redirect Google retiré', () => {
+    const redirect =
+      'https://vertexaisearch.cloud.google.com/grounding-api-redirect/opaque-token'
+    const prepared = prepareAssistantContent(
+      'Quelles sont les actualités du jour ?',
+      `[Voir la source](${redirect})`,
+      'conv-a',
+    )
+
+    expect(prepared.removedLinks).toBe(1)
+    expect(prepared.content).toContain('Voir la source *(lien non vérifié retiré)*')
+    expect(prepared.content).not.toContain('vertexaisearch')
+  })
+
+  it('accepte une marque alphanumérique courte à chiffre comme recoupement suffisant', () => {
+    setSearchContext({
+      provider: 'Google Search',
+      query: 'montre Citizen occasion',
+      results: [{
+        // Titre = domaine nu et snippet vide : le seul indice de pertinence
+        // est le token « chrono24 » (8 chars) du descripteur d'URL — sous
+        // l'ancien seuil de 9, la source légitime était rejetée et le lien
+        // retiré (terrain 9 août 2026).
+        title: 'chrono24.fr',
+        url: 'https://www.chrono24.fr/search/index.htm',
+        snippet: '',
+        cited: true,
+      }],
+    }, 'conv-a')
+
+    const prepared = prepareAssistantContent(
+      'Je recherche une montre Citizen.',
+      'Voir les offres sur [Chrono24](https://www.chrono24.fr/search/index.htm).',
+      'conv-a',
+    )
+
+    expect(prepared.removedLinks).toBe(0)
+    expect(prepared.content).toContain('[Chrono24](https://www.chrono24.fr/search/index.htm)')
   })
 
   it('affiche une citation structurée seulement quand son extrait recoupe le sujet', () => {

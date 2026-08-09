@@ -14,7 +14,8 @@
 // OpenAI) — le fact-checker prend (question, réponse) en entrée brute.
 
 import { apiUrl } from './apiBase'
-import { Capacitor, CapacitorHttp } from '@capacitor/core'
+import { Capacitor } from '@capacitor/core'
+import { postJsonNativeWithFallback } from './aiHttp'
 import { getValidAccessToken } from './googleAuth'
 import * as scoped from './scopedStorage'
 import * as storage from './storage'
@@ -447,7 +448,14 @@ function isSourceRelevant(
 
   // Un terme rare et long (nom propre, produit, institution) suffit. Les mots
   // génériques ont été retirés plus haut et exigent donc deux recoupements.
-  return overlap.some((token) => token.length >= 9 || /^\d{4,}$/.test(token))
+  // Les marques alphanumériques à chiffre (« chrono24 » : 8 chars) passaient
+  // sous le seuil de 9 et faisaient rejeter des sources légitimes (terrain
+  // 9 août 2026) — un chiffre dans un token de 8+ est assez distinctif.
+  return overlap.some((token) =>
+    token.length >= 9 ||
+    /^\d{4,}$/.test(token) ||
+    (token.length >= 8 && /\d/.test(token))
+  )
 }
 
 export interface PreparedAssistantContent {
@@ -523,7 +531,15 @@ function prepareAssistantContentFromContext(
         return `[${label}](${replacement.url})`
       }
       removedLinks++
-      return `${label} *(lien non vérifié retiré)*`
+      // Redirect Google opaque : le jeton n'a aucune valeur pour l'utilisateur,
+      // seul le label survit. URL directe : préservée en code inline NON
+      // cliquable (même traitement que les URLs nues plus bas) — une panne de
+      // la recherche de récupération ne doit jamais DÉTRUIRE une URL (terrain
+      // 9 août 2026 : lien Chrono24 perdu sur micro-coupure DNS). Passée par
+      // protectedCode pour que la passe « URLs nues » ne la re-traite pas.
+      if (isGoogleGroundingRedirect(url)) return `${label} *(lien non vérifié retiré)*`
+      const preservedIdx = protectedCode.push(`\`${url}\``) - 1
+      return `${label} (\uE000ARTY_CODE_${preservedIdx}\uE001 *(non vérifié)*)`
     },
   )
 
@@ -544,7 +560,9 @@ function prepareAssistantContentFromContext(
         return full.replace(url, replacement.url)
       }
       removedLinks++
-      return `${label} <em>(lien non vérifié retiré)</em>`
+      if (isGoogleGroundingRedirect(url)) return `${label} <em>(lien non vérifié retiré)</em>`
+      const preservedIdx = protectedCode.push(`<code>${url}</code>`) - 1
+      return `${label} \uE000ARTY_CODE_${preservedIdx}\uE001 <em>(non vérifié)</em>`
     },
   )
 
@@ -565,7 +583,9 @@ function prepareAssistantContentFromContext(
         return full.replace(url, replacement.url)
       }
       removedLinks++
-      return `${label} <em>(lien non vérifié retiré)</em>`
+      if (isGoogleGroundingRedirect(url)) return `${label} <em>(lien non vérifié retiré)</em>`
+      const preservedIdx = protectedCode.push(`<code>${url}</code>`) - 1
+      return `${label} \uE000ARTY_CODE_${preservedIdx}\uE001 <em>(non vérifié)</em>`
     },
   )
 
@@ -721,21 +741,13 @@ async function requestRecoverySearch(
 
   let response: Response
   if (Capacitor.isNativePlatform()) {
-    const nativeResponse = await CapacitorHttp.request({
-      url,
-      method: 'POST',
-      headers: { ...headers, Origin: 'https://localhost' },
-      data: payload,
-      connectTimeout: 10_000,
-      readTimeout: 30_000,
-      responseType: 'json',
-    })
-    const body = typeof nativeResponse.data === 'string'
-      ? nativeResponse.data
-      : JSON.stringify(nativeResponse.data ?? {})
-    response = new Response(body, {
-      status: nativeResponse.status,
-      headers: nativeResponse.headers,
+    // Repli WebView sur échec DNS/connexion pré-émission (voir aiHttp.ts) :
+    // sans lui, une micro-coupure du résolveur système pendant un handoff
+    // Wi-Fi↔LTE rendait la récupération de liens impossible.
+    response = await postJsonNativeWithFallback(url, headers, payload, {
+      connectTimeoutMs: 10_000,
+      readTimeoutMs: 30_000,
+      deadline: Date.now() + 30_000,
     })
   } else {
     response = await fetch(url, {
@@ -1097,6 +1109,28 @@ interface FactCheckRequestPayload {
   sources: string
 }
 
+// Libellés d'échec réseau par classe d'exception native (`err.code` posé par
+// le bridge Capacitor = nom de la classe Java). La CATÉGORIE remonte toujours
+// dans le badge (leçon BUG 64 : sans elle, tout le debug part du mauvais
+// côté), le message brut JAMAIS : sur ConnectException il peut contenir l'IP
+// locale et le port source de l'appareil (audit RÈGLE 6, leak d'info).
+const NATIVE_NETWORK_REASONS: Record<string, string> = {
+  UnknownHostException: 'réseau — DNS indisponible',
+  ConnectException: 'réseau — connexion impossible',
+  NoRouteToHostException: 'réseau — serveur injoignable',
+  SocketTimeoutException: 'réseau — délai dépassé',
+  SSLException: 'réseau — liaison TLS interrompue',
+  SSLHandshakeException: 'réseau — liaison TLS interrompue',
+}
+
+function networkFailureReason(err: unknown): string {
+  const code = (err as { code?: unknown } | null)?.code
+  if (typeof code === 'string' && NATIVE_NETWORK_REASONS[code]) {
+    return NATIVE_NETWORK_REASONS[code]
+  }
+  return 'réseau indisponible'
+}
+
 async function requestFactCheck(
   headers: Record<string, string>,
   payload: FactCheckRequestPayload,
@@ -1116,23 +1150,14 @@ async function requestFactCheck(
   // Un POST non-streamé de 15 à 50 secondes est vulnérable aux sockets
   // half-open de la WebView Android, qui remontent alors TypeError:
   // "Failed to fetch". Le transport natif Capacitor utilise HttpURLConnection
-  // et possède ses propres timeouts de connexion/lecture. Origin reste exigé
-  // par le middleware Cloudflare, même si le transport natif peut le définir.
-  const nativeResponse = await CapacitorHttp.request({
-    url,
-    method: 'POST',
-    headers: { ...headers, Origin: 'https://localhost' },
-    data: payload,
-    connectTimeout: 15_000,
-    readTimeout: timeoutMs,
-    responseType: 'json',
-  })
-  const body = typeof nativeResponse.data === 'string'
-    ? nativeResponse.data
-    : JSON.stringify(nativeResponse.data ?? {})
-  return new Response(body, {
-    status: nativeResponse.status,
-    headers: nativeResponse.headers,
+  // et possède ses propres timeouts de connexion/lecture — mais son résolveur
+  // DNS système peut échouer pendant un handoff Wi-Fi↔LTE alors que la pile
+  // WebView fonctionne : postJsonNativeWithFallback replie alors sur fetch
+  // avec le temps RESTANT du palier (deadline jamais ré-armé).
+  return postJsonNativeWithFallback(url, headers, payload, {
+    connectTimeoutMs: 15_000,
+    readTimeoutMs: timeoutMs,
+    deadline: Date.now() + timeoutMs,
   })
 }
 
@@ -1174,8 +1199,7 @@ async function runCheckTier(
       return { result: null, reason: `timeout ${info.timeoutMs / 1000}s` }
     }
     console.warn('[factChecker] fetch failed:', err)
-    const msg = err instanceof Error ? err.message : 'erreur réseau'
-    return { result: null, reason: `réseau (${msg.slice(0, 60)})` }
+    return { result: null, reason: networkFailureReason(err) }
   }
   clearTimeout(timeoutId)
 
