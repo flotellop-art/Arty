@@ -20,6 +20,7 @@
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { quotedStrings } from './lib/quotedStrings.mjs'
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url))
 
@@ -99,12 +100,47 @@ function check(name, fn) {
 }
 
 // Extraction token-level : littéraux entre quotes simples ou doubles.
-function quotedStrings(source) {
-  const out = []
-  const re = /'([^'\n]*)'|"([^"\n]*)"/g
-  let m
-  while ((m = re.exec(source)) !== null) out.push(m[1] ?? m[2])
-  return out
+// Extrait dans `scripts/lib/quotedStrings.mjs` pour être couvert par des
+// tests unitaires : c'est ce seul régex qui a rendu le scanner aveugle au
+// scope Calendar du bundle Android le 9 août 2026.
+
+// Familles de scopes RESTREINTS, par préfixe. Énumérer chaque chaîne exacte
+// est un pari perdu d'avance : Google ajoute des scopes aux familles
+// existantes sans prévenir, et une chaîne oubliée passe en silence. Le
+// préfixe attrape aussi les variantes futures.
+//
+// Familles retenues d'après la liste fermée publiée par Google (Gmail, Drive,
+// Fit, Chat, Data Portability, Photos, Health) — analyse CASA du 9 août 2026.
+const RESTRICTED_SCOPE_PREFIXES = [
+  'https://mail.google.com/',
+  'https://www.googleapis.com/auth/gmail.',
+  'https://www.googleapis.com/auth/drive',
+  'https://www.googleapis.com/auth/fitness.',
+  'https://www.googleapis.com/auth/chat.',
+  'https://www.googleapis.com/auth/dataportability.',
+]
+
+// Exceptions explicites, chacune justifiée. Tout ce qui n'est PAS listé ici
+// et qui correspond à un préfixe fait échouer la CI : c'est volontaire. La
+// stratégie « sans CASA » ne tient qu'à un fil (ne jamais demander de scope
+// restreint) et n'a aucun filet de second niveau — mieux vaut une CI rouge à
+// tort qu'un scope restreint qui passe.
+const RESTRICTED_PREFIX_EXCEPTIONS = new Set([
+  // Non sensible : n'ouvre que les fichiers explicitement choisis par
+  // l'utilisateur dans le sélecteur Google. C'est le SEUL scope Drive
+  // utilisable sans basculer dans CASA (cf. chantier de réouverture Drive).
+  'https://www.googleapis.com/auth/drive.file',
+  // Scopes d'add-on Google Workspace : ils n'existent que dans le projet
+  // Cloud ISOLÉ de l'add-on, jamais dans le client public, et relèvent du
+  // régime sensible et non restreint.
+  'https://www.googleapis.com/auth/gmail.addons.current.message.action',
+  'https://www.googleapis.com/auth/gmail.addons.current.action.compose',
+])
+
+function isRestrictedScope(value) {
+  if (RESTRICTED_SCOPES.has(value)) return true
+  if (RESTRICTED_PREFIX_EXCEPTIONS.has(value)) return false
+  return RESTRICTED_SCOPE_PREFIXES.some((prefix) => value.startsWith(prefix))
 }
 
 function setEquals(a, b) {
@@ -154,19 +190,57 @@ function* walk(dir) {
   }
 }
 
+// Périmètre d'inspection. `services/` en est volontairement EXCLU :
+// growth-orchestrator est un service interne rattaché à un projet Cloud
+// distinct du client public, et il porte légitimement des scopes Gmail. Cette
+// exclusion est un choix, pas un oubli — si ce service devait un jour partager
+// le projet OAuth du client public, il faudrait l'ajouter ici ET refaire
+// l'analyse CASA, puisque c'est le projet qui porte l'obligation.
+const SCANNED_ROOTS = ['src', 'functions', 'android/app/src/main/java']
+
 check('aucun scope restreint en littéral dans le client public', () => {
   const offenders = []
-  for (const root of ['src', 'functions', 'android/app/src/main/java']) {
+  for (const root of SCANNED_ROOTS) {
     for (const file of walk(join(ROOT, root))) {
       const rel = relative(ROOT, file).replaceAll('\\', '/')
       const literals = quotedStrings(readFileSync(file, 'utf8'))
       for (const lit of literals) {
-        if (RESTRICTED_SCOPES.has(lit)) offenders.push(`${rel} → ${lit}`)
+        if (isRestrictedScope(lit)) offenders.push(`${rel} → ${lit}`)
       }
     }
   }
   if (offenders.length > 0) {
     throw new Error(`scopes restreints trouvés :\n    ${offenders.join('\n    ')}`)
+  }
+})
+
+// Un scope peut être écrit sans jamais former un littéral complet :
+// concaténation (`BASE + 'gmail.readonly'`), interpolation (`${BASE}/drive`),
+// chaîne coupée sur deux lignes. Le contrôle ci-dessus ne voit rien de tout
+// cela. On cherche donc les familles restreintes dans le TEXTE BRUT, quel que
+// soit le découpage — quitte à être plus bruyant.
+check('aucune famille de scope restreint dans le texte brut du client public', () => {
+  const offenders = []
+  for (const root of SCANNED_ROOTS) {
+    for (const file of walk(join(ROOT, root))) {
+      const rel = relative(ROOT, file).replaceAll('\\', '/')
+      let text = readFileSync(file, 'utf8')
+      // Neutraliser les exceptions justifiées avant de chercher les familles.
+      for (const allowed of RESTRICTED_PREFIX_EXCEPTIONS) {
+        text = text.split(allowed).join('')
+      }
+      for (const prefix of RESTRICTED_SCOPE_PREFIXES) {
+        // On cherche la partie discriminante, pour rester robuste si l'hôte
+        // est stocké dans une constante séparée du chemin du scope.
+        const needle = prefix.replace('https://www.googleapis.com', '')
+        if (text.includes(needle)) offenders.push(`${rel} → ${needle}`)
+      }
+    }
+  }
+  if (offenders.length > 0) {
+    throw new Error(
+      `familles de scopes restreints trouvées (même hors littéral) :\n    ${offenders.join('\n    ')}`
+    )
   }
 })
 

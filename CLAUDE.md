@@ -534,6 +534,69 @@ Pour toute tâche **non triviale** (refactor, fix multi-fichiers, audit, debug d
 
 ---
 
+## RÈGLE 8 — PÉRIMÈTRE OAUTH GOOGLE : LE FIL UNIQUE
+
+**Contexte** : analyse CASA du 9 août 2026 (11 agents, chaque conclusion
+soumise à contre-expertise). Verdict : le branchement mail IMAP ne déclenche
+aucun CASA, et le périmètre OAuth actuel non plus.
+
+**Mais le fait générateur du CASA a DEUX conditions cumulatives** :
+1. demander un scope OAuth **restreint** (liste fermée et énumérative publiée
+   par Google : Gmail, Drive, Fit, Chat, Data Portability, Photos, Health) ;
+2. pouvoir accéder à ces données depuis ou à travers un **serveur tiers**.
+
+La condition 2 est **déjà remplie en permanence** chez Arty : le proxy
+Cloudflare et l'envoi du contenu à Anthropic la satisfont en continu. Il ne
+manque que la condition 1. Autrement dit : **la stratégie « sans CASA » ne
+tient qu'à un seul fil — ne jamais demander de scope restreint — et n'a aucun
+filet de second niveau.** Ce n'est pas un détail d'implémentation du mail,
+c'est la condition unique de tout l'édifice.
+
+**Interdits opérationnels**, par ordre de probabilité réelle qu'on les commette :
+
+1. **Ne JAMAIS brancher une boîte Gmail par « Se connecter avec Google »
+   (XOAUTH2)**, même si c'est plus ergonomique et *paraît* plus sûr que le mot
+   de passe d'application. L'IMAP en OAuth exige `https://mail.google.com/`,
+   décrit par Google comme couvrant « tout usage des protocoles IMAP, SMTP et
+   POP3 », et classé restreint. Le basculement serait immédiat et total.
+2. **Ne JAMAIS prendre `gmail.compose` ni `gmail.modify`** (restreints).
+   Contre-intuitif et utile : `gmail.send` est seulement sensible, et l'envoi
+   par SMTP avec le mot de passe déjà en coffre-fort ne mobilise aucun scope.
+   Le piège classique est le « tant qu'à faire, prenons `modify` pour marquer
+   comme lu ».
+3. **Réouverture Drive : ne JAMAIS élargir au-delà de `drive.file`** (seul
+   scope Drive non sensible). `drive.metadata.readonly` est le plus traître —
+   il paraît anodin et il est plus simple à coder qu'un sélecteur de fichiers.
+4. **Ne JAMAIS ajouter un scope directement dans la console Google Cloud.**
+   C'est le seul point sans protection technique : trois clics, aucun commit,
+   aucune alerte. Tout scope passe par le dépôt.
+5. **Ne pas déplacer le relais IMAP côté serveur** pour faire marcher le mail
+   sur le web : pas un déclencheur de CASA, mais cela ferait transiter des
+   mots de passe par Cloudflare et rouvrirait tout ce que D38 a fermé.
+
+**Garde-fou** : `npm run no-casa:check` (durci le 9 août — familles de scopes
+par préfixe, littéraux gabarits, scan du texte brut pour attraper
+concaténations et interpolations). Il inspecte `src`, `functions` et
+`android/app/src/main/java`. `services/` en est EXCLU volontairement
+(growth-orchestrator = projet Cloud distinct). Traiter ce scanner comme une
+hygiène, jamais comme une garantie : c'est la console Google Cloud qui fait
+foi, et elle n'est pas inspectable depuis le dépôt.
+
+**Ce que « pas de CASA » ne dispense PAS de faire** : vérification OAuth du
+scope sensible `calendar.events` (sans elle, application plafonnée à
+100 utilisateurs — vrai risque de lancement), formulaire Sécurité des données
+de Play, divulgation proéminente IA in-app, politique de confidentialité.
+
+**Fait stratégique à connaître avant toute promesse commerciale** : les mots
+de passe d'application sont impossibles sur un compte Workspace (donc toutes
+les boîtes Gmail professionnelles) depuis mai 2025, sur un compte en
+protection renforcée, et si l'administrateur désactive l'option. Leur seul
+chemin technique est XOAUTH2 : **conquérir les boîtes pro reviendrait à
+acheter un CASA.**
+
+---
+
+
 ## ROADMAP PRODUIT — PLAN D'ACTION CONCURRENTIEL (à consulter)
 
 **Avant toute tâche produit / UX / pricing / monétisation**, lire
