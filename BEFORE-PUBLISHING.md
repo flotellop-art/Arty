@@ -81,9 +81,30 @@ sont actifs, pas a decommenter du code.
       partagees, optionnelles) — voir PLAY-STORE-SUBMISSION.md section 1.b
       et section 2. Aucun texte soumis a Google ne doit affirmer qu'Arty
       n'accede pas a la boite mail de l'utilisateur.
-- [ ] Google Cloud Console > Data Access contient exactement `openid`,
-      `userinfo.email`, `userinfo.profile`, `calendar.events` ; supprimer les anciens
-      scopes Gmail/Drive/Contacts/Sheets et révoquer les grants de test.
+- [ ] **PRIORITE 1** — Google Cloud Console > Data Access contient exactement
+      `openid`, `userinfo.email`, `userinfo.profile`, `calendar.events` ;
+      supprimer les anciens scopes Gmail/Drive/Contacts/Sheets et révoquer les
+      grants de test. La classification restreinte/sensible s'evalue sur ce que
+      DECLARE LA CONSOLE, pas sur ce que demande le code : tant que des scopes
+      Gmail/Drive y figurent, Arty est classee restreinte et CASA s'applique,
+      quelle que soit la proprete du depot. Le scanner `no-casa:check` ne voit
+      pas la console.
+- [ ] **SHA-1 de la cle de signature Play ajoutee au client OAuth Android.**
+      La signature d'application Play RESIGNE l'APK avec une cle differente de
+      la cle d'envoi : sans cette empreinte, « Se connecter avec Google »
+      fonctionne dans le build Firebase et ECHOUE dans le build telecharge
+      depuis le Store — meme code, comportement different, indiagnosticable
+      depuis le depot. Empreinte : Play Console > Release > Configuration >
+      Integrite de l'application. A ajouter EN PLUS de la cle d'envoi.
+      Zone historiquement couteuse (BUG 21, 26, 27, 51).
+- [ ] Date de creation du compte developpeur Play verifiee (reçu des 25 $ ou
+      Parametres > Details du compte). Compte cree APRES le 13 novembre 2023 =
+      test ferme obligatoire, 12 testeurs / 14 jours consecutifs (le test
+      INTERNE ne compte pas, Firebase non plus). Avant = exigence sans objet.
+- [ ] Verification OAuth soumise AVANT de lancer le chronometre des 14 jours :
+      un testeur qui traverse l'ecran « application non securisee » recule sans
+      laisser de trace, et Google refuse l'acces production pour « engagement
+      insuffisant » — voir `docs/GOOGLE_OAUTH_VERIFICATION.md` §9.
 
 ## 5. Sourcemaps desactives
 

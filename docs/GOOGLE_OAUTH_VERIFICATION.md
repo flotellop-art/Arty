@@ -130,6 +130,99 @@ Voir **RÈGLE 8** de `CLAUDE.md` pour la liste des interdits.
 
 ---
 
+## 9. Articulation avec le test fermé du Play Store
+
+> Analyse du 9 août 2026 (7 agents, chaque conclusion contre-expertisée,
+> sources officielles chargées le jour même). Les points marqués « non
+> confirmé » le sont volontairement : ne pas les présenter comme acquis.
+
+### 9.1 Deux régimes indépendants, mais couplés en pratique
+
+Le test fermé du Play Store et la vérification OAuth sont instruits par deux
+équipes Google différentes, dans deux consoles différentes ; aucune page
+officielle de l'un ne cite l'autre. Réunir les testeurs ne lève **ni**
+l'avertissement, **ni** le plafond d'utilisateurs. Contre-intuitif et vérifié :
+une fiche Play Store n'est même pas acceptée comme page d'accueil valide pour
+la vérification OAuth.
+
+Le couplage est ailleurs, et il est décisif : Google refuse l'accès à la
+production pour **engagement insuffisant** des testeurs, et son formulaire
+demande si les testeurs ont utilisé toutes les fonctionnalités comme le ferait
+un utilisateur réel. Or, tant que l'OAuth n'est pas vérifié, chaque testeur
+traverse un écran annonçant une application « non sécurisée ». Ceux qui
+reculent là ne laissent aucune trace : le compteur Play affiche le bon nombre
+de testeurs, tout paraît conforme, et le dossier est refusé sur un critère
+illisible depuis la console.
+
+**Conséquence sur l'ordre des opérations : la vérification OAuth passe AVANT
+le lancement du chronomètre des 14 jours.** Par nécessité, pas par confort.
+
+### 9.2 Chiffres vérifiés (pages officielles, 9 août 2026)
+
+- **12 testeurs, 14 jours consécutifs**, pour les comptes développeur
+  **personnels créés après le 13 novembre 2023**. Un compte antérieur n'est
+  pas soumis à l'exigence — **à vérifier en premier**, cela peut retirer
+  quatorze jours du calendrier.
+- Le test **INTERNE ne compte pas** : il faut une piste de test **fermé**.
+  La distribution Firebase App Distribution ne compte pas non plus.
+- **Plafond de 100 utilisateurs OAuth** : cumul sur toute la vie du projet, ni
+  réinitialisable ni ajustable. Il **court déjà** — il n'est pas déclenché par
+  le passage en production. Retirer une adresse ne libère aucune place (aucune
+  source officielle ne l'étaye).
+- En statut **« Testing »** uniquement : jetons de rafraîchissement expirés à
+  **7 jours** dès qu'un périmètre sort du triplet openid/e-mail/profil.
+  `calendar.events` en sort. **Sans objet pour Arty, qui est en Production.**
+- Instruction : jusqu'à **10 jours** pour la vérification d'un périmètre
+  sensible ; environ 7 jours pour la revue d'accès production.
+- Une application à usage personnel sous 100 utilisateurs peut fonctionner
+  sans vérification : la bêta actuelle n'est **pas** en infraction. L'urgence
+  est pratique, pas réglementaire.
+
+### 9.3 Le piège technique : SHA-1 de la clé de signature Play
+
+La signature d'application Play **resigne l'APK avec une clé différente** de
+la clé d'envoi. Si l'empreinte SHA-1 de la clé **de signature Play** n'est pas
+ajoutée au client OAuth Android, la connexion Google native fonctionne dans le
+build Firebase et **échoue dans le build téléchargé depuis le Store** — même
+code, comportement différent, indiagnosticable depuis le dépôt.
+
+Empreinte à récupérer dans Play Console → Release → Configuration → Intégrité
+de l'application. À ajouter **en plus** de la clé d'envoi, pas à la place.
+
+Zone déjà coûteuse historiquement (BUG 21, 26, 27, 51) : à traiter avant la
+première publication, pas après le premier rapport de bug.
+
+### 9.4 Trois listes de testeurs à ne pas confondre
+
+Firebase App Distribution (retour terrain, aucune valeur réglementaire) ;
+piste de test fermé Play (l'exigence 12/14) ; utilisateurs de test de l'écran
+de consentement OAuth (sans objet en Production). Une même personne peut être
+dans l'une sans être dans les autres. Limites : 2 000 testeurs par liste et
+50 listes par piste Play ; 500 par projet Firebase.
+
+### 9.5 Points NON confirmés — ne pas présenter comme acquis
+
+- La date du passage de 20 à 12 testeurs (souvent citée au 11 décembre 2024) :
+  les deux contre-expertises se contredisent, aucune annonce officielle
+  retrouvée.
+- L'exemption des comptes **organisation** de l'exigence 12/14 : déduction,
+  écrite nulle part, et contredite par plusieurs fils du forum officiel.
+- L'effet d'une désinstallation sans désinscription sur la continuité des
+  14 jours : non documenté.
+- La mesure automatique d'un « temps d'engagement » par Google : introuvable
+  sur les pages officielles, provient uniquement de sites vendant des services
+  de testeurs.
+- Le libellé exact du message affiché au 101ᵉ utilisateur : non confirmé sur
+  une seconde source — risque de ne pas reconnaître le blocage le jour venu.
+- **Vérification développeur Android** (régime distinct, conditionne
+  l'installabilité) : première vague au 30 septembre 2026 pour Brésil,
+  Indonésie, Singapour, Thaïlande ; mondial annoncé « 2027 et au-delà ». La
+  France n'est pas concernée cette année. Les deux contre-expertises se
+  contredisent sur l'inclusion de Firebase App Distribution dans ce périmètre.
+
+---
+
+
 # ANNEXE — version archivée du 24 mai 2026
 
 > ⚠️ **Ne pas suivre.** Conservé pour mémoire : décrit l'architecture
