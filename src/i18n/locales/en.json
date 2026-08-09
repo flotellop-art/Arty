@@ -584,6 +584,7 @@
     "apiInvalidRequest": "Invalid request: {{message}}",
     "apiConnection": "Connection error ({{status}}). Check your internet connection.",
     "apiBadRequest": "Request refused by the AI service (400). This is not your connection: try again, and report it if it persists.",
+    "apiUpstreamBilling": "The AI service is temporarily unavailable: the server's credits are exhausted. This is neither your connection nor your request — please report it to Arty's administrator.",
     "geminiError": "Gemini error ({{status}}). Check your key or connection.",
     "geminiModelNotFound": "Gemini model unavailable ({{status}}). The app needs an update — try Claude in the meantime.",
     "geminiEmptyResponse": "Gemini returned no response ({{reason}}). Rephrase your request or pick another model.",

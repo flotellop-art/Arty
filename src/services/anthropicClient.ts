@@ -240,6 +240,11 @@ function formatApiError(status: number, body: string): string {
       // aucune information sur la clé du propriétaire : il ne reformule que
       // la catégorie déjà portée par le code HTTP.
       if (err === 'AI service error') return mapErrorStatus(status)
+      // Catégorie remontée par le proxy quand l'upstream refuse pour une
+      // raison de facturation (crédits épuisés côté serveur). Terrain 9 août :
+      // ce cas s'affichait comme une erreur générique, ce qui a envoyé le
+      // diagnostic quatre fois dans le décor. Il porte désormais son nom.
+      if (err === 'upstream_billing') return i18n.t('errors.apiUpstreamBilling')
       return err
     }
 
