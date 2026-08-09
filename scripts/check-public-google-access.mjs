@@ -20,6 +20,7 @@
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { quotedStrings } from './lib/quotedStrings.mjs'
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url))
 
@@ -99,15 +100,9 @@ function check(name, fn) {
 }
 
 // Extraction token-level : littéraux entre quotes simples ou doubles.
-function quotedStrings(source) {
-  const out = []
-  // Les accents graves comptent : un scope écrit en littéral gabarit
-  // (`https://…/auth/gmail.readonly`) échappait entièrement au scanner.
-  const re = /'([^'\n]*)'|"([^"\n]*)"|`([^`]*)`/g
-  let m
-  while ((m = re.exec(source)) !== null) out.push(m[1] ?? m[2] ?? m[3])
-  return out
-}
+// Extrait dans `scripts/lib/quotedStrings.mjs` pour être couvert par des
+// tests unitaires : c'est ce seul régex qui a rendu le scanner aveugle au
+// scope Calendar du bundle Android le 9 août 2026.
 
 // Familles de scopes RESTREINTS, par préfixe. Énumérer chaque chaîne exacte
 // est un pari perdu d'avance : Google ajoute des scopes aux familles
