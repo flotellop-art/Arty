@@ -26,3 +26,14 @@
     public static *** d(...);
     public static *** i(...);
 }
+
+# JavaMail (MailImapPlugin) — les providers IMAP sont chargés par réflexion
+# via META-INF/javamail.providers : sans ces keeps, R8 strippe/renomme les
+# classes en release et le client mail casse UNIQUEMENT en APK signé (la CI
+# ne compile que le debug, non minifié — ne pas retirer sans test release).
+-keep class com.sun.mail.** { *; }
+-keep class javax.mail.** { *; }
+-keep class javax.activation.** { *; }
+-dontwarn java.awt.**
+-dontwarn java.beans.**
+-dontwarn javax.security.sasl.**

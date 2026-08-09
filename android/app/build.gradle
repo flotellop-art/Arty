@@ -37,6 +37,15 @@ android {
             }
         }
     }
+    packaging {
+        resources {
+            // android-mail et android-activation embarquent chacun leurs
+            // notices Jakarta (META-INF/NOTICE.md + LICENSE.md) → conflit au
+            // mergeDebugJavaResource. Les textes de licence restent dans le
+            // repo des dépendances ; on exclut les copies dupliquées du APK.
+            excludes += ['META-INF/NOTICE.md', 'META-INF/LICENSE.md']
+        }
+    }
     buildTypes {
         release {
             if (signingConfigs.release.storeFile != null) {
