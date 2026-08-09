@@ -549,6 +549,19 @@ describe('resolveRoute — boîtes mail connectées', () => {
     expect(d.reason.code).not.toBe('private_data')
   })
 
+  // Un faux positif n'est PAS neutre : isPrivateData coupe aussi web_search
+  // pour le tour (resolveRoute → filterAnthropicToolsForRoute). Ces phrases
+  // contiennent un mot ambigu et doivent garder le routage normal.
+  it.each([
+    "J'ai reçu ma nouvelle carte bancaire, comment l'activer ?",
+    'Vide ma messagerie vocale',
+    "Qui m'a envoyé ces fleurs ?",
+    "J'ai reçu un mauvais accueil au garage, je fais quoi ?",
+  ])('« %s » n\'est pas capturé comme donnée privée', (originalText) => {
+    const d = resolveRoute(input({ originalText, hasMailAccounts: true }))
+    expect(d.reason.code).not.toBe('private_data')
+  })
+
   it('euOnly garde la priorité absolue sur la garde boîte mail (RÈGLE 5.3)', () => {
     const d = resolveRoute(input({
       originalText: 'résume mes derniers mails',

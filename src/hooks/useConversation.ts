@@ -37,12 +37,19 @@ import i18n from '../i18n'
 
 type ToolHandler = (name: string, input: Record<string, unknown>) => Promise<{ result: string; screenshot?: string }>
 
-// P1.5 — outils Google qui font ENTRER du contenu (fichier, agenda,
-// contact) dans le contexte → la réponse peut en contenir. Sert à flaguer
-// `hasGoogleData` pour l'avertissement renforcé avant un partage public.
-const GOOGLE_TOOL_NAMES = new Set([
+// P1.5 — outils qui font ENTRER des données PRIVÉES (fichier, agenda,
+// contact, contenu de mail) dans le contexte → la réponse peut en contenir.
+// Sert à flaguer `hasGoogleData`, qui (a) déclenche l'avertissement renforcé
+// avant un partage public et (b) alimente `hasPrivateHistory` : les tours de
+// SUIVI de la conversation restent verrouillés sur Claude (BUG 12).
+// ⚠️ Les outils mail IMAP natifs (9 août 2026) DOIVENT y figurer bien qu'ils
+// ne soient pas Google : sans eux, « et le mail précédent ? » repartait sur
+// Gemini au tour suivant — exactement le bug corrigé côté triggers — et le
+// contenu d'un mail pouvait être partagé sans l'avertissement renforcé.
+export const PRIVATE_DATA_TOOL_NAMES = new Set([
   'list_drive', 'search_drive', 'read_drive_file',
   'list_calendar', 'search_contacts',
+  'list_mail_accounts', 'get_recent_mail', 'search_mail', 'read_mail',
 ])
 
 function confirmVisionAutoCropDisclosure(): boolean {
@@ -744,7 +751,7 @@ export function useConversation() {
       // Wrappe le handler global pour capter le targetId (que le handler n'a
       // pas) au moment exact de l'appel.
       const trackedToolHandler: ToolHandler = async (name, input) => {
-        if (GOOGLE_TOOL_NAMES.has(name)) {
+        if (PRIVATE_DATA_TOOL_NAMES.has(name)) {
           const c = storage.getConversation(targetId)
           if (c && !c.hasGoogleData) {
             c.hasGoogleData = true

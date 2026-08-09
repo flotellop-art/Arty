@@ -24,18 +24,26 @@ import type { ReflectionLevel } from './reflectionLevel'
 // MENTION d'un mail suffit à router vers Claude — le seul provider qui porte
 // les outils mail_*. Un faux positif coûte un routage Claude (inoffensif) ;
 // un faux négatif coûte une réponse vide et une donnée privée envoyée au web.
+// Volontairement resserrés là où un mot est ambigu (revue d'agent) : un faux
+// positif ne se contente PAS de changer de modèle — isPrivateData coupe aussi
+// `web_search` pour le tour (resolveRoute → filterAnthropicToolsForRoute).
+// « messagerie VOCALE », « j'ai reçu ma carte bancaire » ou « qui m'a envoyé
+// ces fleurs » ne doivent donc pas être capturés.
 export const MAILBOX_MENTION_TRIGGERS = [
   /\bmails?\b/i,
   /\be-?mails?\b/i,
   /\bcourriels?\b/i,
-  /\bmessagerie\b/i,
+  /\bmessagerie\b(?!\s+vocale)/i,
   /\binbox\b/i,
   /bo[îi]te\s+(mail|aux\s+lettres|de\s+r[ée]ception)/i,
   /\bma\s+bo[îi]te\b/i,
-  /qui\s+m['’]a\s+(écrit|envoy[ée])/i,
-  /j['’]ai\s+re[çc]u\b/i,
+  /qui\s+m['’]a\s+[ée]crit/i,
+  /qui\s+m['’]a\s+envoy[ée]\s+(un\s+|des\s+)?(mails?|e-?mails?|messages?|courriels?)/i,
+  /j['’]ai\s+re[çc]u\s+(quelque\s+chose|quoi\b|un\s+truc)/i,
+  /j['’]ai\s+re[çc]u\s+(un\s+|des\s+)?(mails?|e-?mails?|messages?|courriels?)/i,
   /\bmailbox\b/i,
   /\bmy\s+mail\b/i,
+  /\bnew\s+messages?\b/i,
   /who\s+(emailed|wrote\s+to)\s+me/i,
 ]
 
