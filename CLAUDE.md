@@ -880,3 +880,42 @@ un fichier orphelin donne l'illusion que le problème est réglé.
 - Tout couple création/écriture différée doit avoir le MÊME garde-fou que l'écriture directe : si `sendMessage` vérifie `isCacheReady()`, `createConversation` aussi — et retourner `null` pour que les appelants ne naviguent pas vers un id fantôme.
 - Un composant de route ne doit JAMAIS retourner `null` en état stable. Le `null` de transition doit être borné (timeout ~4 s) puis remplacé par un état visible et actionnable (message + bouton retour).
 - Les erreurs posées par `useConversation` doivent être rendues sur TOUS les écrans d'où l'action peut partir (Home incluse), pas seulement dans ConversationScreen — qui ne monte jamais si la création échoue.
+
+### BUG 63 — Un adjectif intercalé cassait le routage mail (données privées envoyées au web, réponse vide)
+**Fichiers** : `src/services/aiRouter.ts`, `src/services/router/resolveRoute.ts`,
+`src/services/router/gatherRouteInput.ts`, `src/hooks/useConversation.ts`,
+`src/services/geminiClient.ts` (9 août 2026, PR #410)
+**Problème** : premier test terrain des boîtes mail IMAP (APK 1.0.90).
+« C'est quoi mes derniers mails ? » affichait le badge RECHERCHE WEB et une
+réponse VIDE. Trois défauts empilés :
+1. `PRIVATE_DATA_TRIGGERS` exigeait que le nom suive IMMÉDIATEMENT le
+   possessif (`mes\s+(mails|…)`). L'adjectif de « mes DERNIERS mails » — la
+   formulation la plus naturelle qui soit — cassait le match. La garde BUG 12
+   ne s'armait pas → routage Gemini + recherche web, sans aucun outil mail.
+2. Les outils mail manquaient à la liste qui marque une conversation comme
+   privée (alors nommée `GOOGLE_TOOL_NAMES` — le nom a masqué le besoin, la
+   feature mail étant native et non Google). Après un `read_mail`, un suivi
+   (« et le précédent ? ») repartait sur Gemini : le bug se rouvrait un tour
+   plus tard, et le contenu d'un mail pouvait être partagé publiquement sans
+   l'avertissement renforcé.
+3. Un tour Gemini sans texte (prompt bloqué, filtre de sûreté, budget absorbé
+   par le raisonnement) publiait une bulle VIDE et silencieuse : `onDone()`
+   était appelé sans vérifier `promptFeedback.blockReason` ni `finishReason`.
+**Règle** :
+- Une liste de formulations sera TOUJOURS incomplète (BUG 56). Quand une
+  capacité dépend d'une ressource réellement connectée, doubler les regex
+  d'une GARDE STRUCTURELLE fondée sur l'état : ici `hasMailAccounts` + simple
+  mention d'un mail ⇒ Claude. La regex optimise, l'état garantit.
+- Un faux positif de `isPrivateData` n'est PAS neutre : il coupe aussi
+  `web_search` pour le tour (`filterAnthropicToolsForRoute`). Les mots
+  ambigus doivent être resserrés (« messagerie VOCALE », « j'ai reçu ma carte
+  bancaire », « qui m'a envoyé ces fleurs ») et couverts par des tests
+  NÉGATIFS, pas seulement positifs.
+- Tout outil qui fait entrer des données privées dans le contexte DOIT être
+  listé dans `PRIVATE_DATA_TOOL_NAMES` — le nom d'une liste ne doit jamais
+  restreindre son périmètre réel. Test de parité : un outil mail non classé
+  fait échouer la CI.
+- Un stream qui se termine sans aucun texte est un ÉCHEC, jamais une réponse
+  vide : capturer la raison amont et rendre une erreur lisible (BUG 59/61).
+  Vaut pour tous les clients IA — seul Gemini est corrigé à ce jour, le même
+  filet reste à poser sur Mistral/OpenAI si le cas se présente.
