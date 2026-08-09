@@ -24,11 +24,13 @@ interface Props {
 
 type FactCheckStatus = NonNullable<FactCheckResult['status']>
 
-// Un pending plus vieux que le pire cas de la cascade (~85 s Haiku+Sonnet)
-// est orphelin : l'app a été fermée/crashée pendant la vérif et rien ne la
-// relance au boot. Rendu « indisponible » plutôt qu'un « Vérification… »
-// pulsé pour l'éternité. Purement visuel — aucune écriture storage.
-const STALE_PENDING_MS = 3 * 60_000
+// Un pending plus vieux que le pire cas de la cascade est orphelin : l'app a
+// été fermée/crashée pendant la vérif et rien ne la relance au boot. Rendu
+// « indisponible » plutôt qu'un « Vérification… » pulsé pour l'éternité.
+// Purement visuel — aucune écriture storage. Le pire cas réel est
+// TIER_INFO Haiku 90 s + Sonnet 150 s = 240 s (le repli WebView du transport
+// natif ne ré-arme jamais le timeout, il consomme le temps restant) + marge.
+const STALE_PENDING_MS = 270_000
 
 // Rétro-compat : les résultats persistés (conversations chiffrées) avant
 // l'ajout du champ status n'en ont pas — on dérive l'état des magic

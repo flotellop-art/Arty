@@ -1,3 +1,4 @@
+import { CapacitorHttp } from '@capacitor/core'
 import { getValidAccessToken } from './googleAuth'
 import { getTrialToken } from './emailTrialClient'
 
@@ -76,5 +77,100 @@ export async function fetchWithTimeout(
   } finally {
     clearTimeout(timeoutId)
     if (externalSignal) externalSignal.removeEventListener('abort', onExternalAbort)
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// POST natif avec repli WebView (incident terrain du 9 août 2026)
+//
+// Sur Android, CapacitorHttp (HttpURLConnection) résout le DNS via le
+// résolveur SYSTÈME (netd), distinct du résolveur interne de la WebView
+// Chromium. Pendant une bascule Wi-Fi↔LTE, le résolveur système peut
+// échouer (UnknownHostException « Unable to resolve host ») alors que la
+// pile WebView — cache DNS propre, connexions déjà chaudes — fonctionne
+// encore. Vu en prod : réponse Gemini streamée avec succès, puis
+// fact-check ET récupération de liens en échec DNS trois secondes après.
+//
+// Stratégie : 1 tentative native, puis, UNIQUEMENT si l'exception garantit
+// que la requête n'a jamais été émise (allowlist ci-dessous), 1 repli sur
+// fetch WebView. Deux tentatives maximum, sur deux piles réseau
+// différentes — jamais deux fois la même (retenter le résolveur qui vient
+// d'échouer pendant un handoff réseau est la branche la moins prometteuse).
+//
+// JAMAIS de repli après une réponse HTTP reçue, ni sur une exception
+// ambiguë : les endpoints appelés consomment leur quota à l'ENTRÉE
+// (bg_quota, cap Sonnet 15/jour) — un repli post-émission le brûlerait
+// deux fois. SocketTimeoutException couvre AUSSI des connect-timeouts sur
+// Android (même classe, seul le message diffère) : exclue en bloc.
+// Sur iOS le bridge ne pose pas de `code` → aucun repli (fail-safe).
+// ─────────────────────────────────────────────────────────────────────
+
+// `code` posé par le bridge Capacitor = e.getClass().getSimpleName() Java.
+// Allowlist (jamais denylist) : tout code inconnu ou absent = pas de repli.
+const PRE_EMISSION_ERROR_CODES = new Set([
+  'UnknownHostException',
+  'ConnectException',
+  'NoRouteToHostException',
+])
+
+/** L'exception native garantit-elle que la requête n'a jamais atteint le serveur ? */
+export function isPreEmissionNetworkError(err: unknown): boolean {
+  const code = (err as { code?: unknown } | null)?.code
+  return typeof code === 'string' && PRE_EMISSION_ERROR_CODES.has(code)
+}
+
+export interface NativePostBudget {
+  connectTimeoutMs: number
+  readTimeoutMs: number
+  /**
+   * Deadline ABSOLU (Date.now() + budget du palier). Le repli reçoit le
+   * temps restant — le timeout n'est jamais ré-armé, le pire cas total du
+   * palier ne bouge pas (le badge fact-check en dépend, STALE_PENDING_MS).
+   */
+  deadline: number
+}
+
+/**
+ * POST JSON via CapacitorHttp, avec repli fetch WebView sur échec réseau
+ * pré-émission. À n'appeler QUE sur plateforme native.
+ */
+export async function postJsonNativeWithFallback(
+  url: string,
+  headers: Record<string, string>,
+  payload: unknown,
+  budget: NativePostBudget,
+): Promise<Response> {
+  try {
+    const nativeResponse = await CapacitorHttp.request({
+      url,
+      method: 'POST',
+      // Origin exigé par le middleware Cloudflare. Injecté UNIQUEMENT sur la
+      // branche native : pour fetch, Origin est un forbidden header —
+      // silencieusement ignoré — et la WebView pose déjà https://localhost.
+      headers: { ...headers, Origin: 'https://localhost' },
+      data: payload,
+      connectTimeout: budget.connectTimeoutMs,
+      readTimeout: budget.readTimeoutMs,
+      responseType: 'json',
+    })
+    const body = typeof nativeResponse.data === 'string'
+      ? nativeResponse.data
+      : JSON.stringify(nativeResponse.data ?? {})
+    return new Response(body, {
+      status: nativeResponse.status,
+      headers: nativeResponse.headers,
+    })
+  } catch (err) {
+    if (!isPreEmissionNetworkError(err)) throw err
+    const remainingMs = budget.deadline - Date.now()
+    if (remainingMs < 5_000) throw err
+    // La tentative 2 peut, elle, pendre sur un socket half-open (raison
+    // d'être du transport natif) et consommer le quota — accepté : une
+    // chance de succès vaut mieux qu'un échec garanti, et le deadline borne.
+    return fetchWithTimeout(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload),
+    }, remainingMs)
   }
 }
