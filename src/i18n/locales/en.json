@@ -1465,7 +1465,7 @@
     "errorConnect": "Could not reach the server. Check the server name and your internet connection.",
     "errorTooMany": "Limit of 5 mailboxes reached. Remove one to add another.",
     "errorGeneric": "Could not add this mailbox right now.",
-    "securityNote": "Your password is encrypted with the Android Keystore and is never sent to our servers. Arty reads your mail in read-only mode: no sending, no deleting, no editing."
+    "securityNote": "Your password is encrypted with the Android Keystore and is never sent to our servers. Arty reads your mail in read-only mode: no sending, no deleting, no editing. When you ask Arty to read or summarise a message, its content is sent to our AI provider (Anthropic, United States) to answer you — never to any other model. Attachments are not read."
   },
   "memoryViewer": {
     "title": "🧠 Arty's memory",

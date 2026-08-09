@@ -2,14 +2,14 @@
 
 **Dernière mise à jour :** 9 août 2026
 
-**Éditeur :** Florent Pollet, personne physique, domicilié 884 chemin de la Prairie, 38270 Beaufort, France. Aucune entreprise n'est immatriculée à ce jour ; un SIREN sera ajouté à cette politique dès l'enregistrement de l'activité, prévu avant le lancement public et les premiers paiements.
-**Contact :** flotellop@gmail.com
+**Éditeur :** POLLET FLORENT, entrepreneur individuel, SIREN 887 679 611, SIRET 887 679 611 00012, domicilié Rue des Sièges, 30120 Bréau-Mars, France. Arty est le nom du service logiciel.
+**Contact :** support@tryarty.com
 
 Arty est un assistant IA personnel (application mobile Android et application web `tryarty.com`). La présente politique explique quelles données personnelles nous traitons, à quelles fins, sur quelles bases légales, à qui nous les transmettons, combien de temps nous les conservons, et quels sont vos droits.
 
 ## 1. Responsable de traitement
 
-Le responsable de traitement au sens du RGPD est Florent Pollet, personne physique (coordonnées ci-dessus). Aucun délégué à la protection des données (DPO) n'est désigné, car l'activité ne remplit pas les critères de l'article 37 RGPD.
+Le responsable de traitement au sens du RGPD est POLLET FLORENT, entrepreneur individuel (coordonnées ci-dessus). Aucun délégué à la protection des données (DPO) n'est désigné, car l'activité ne remplit pas les critères de l'article 37 RGPD.
 
 ## 2. Données que nous traitons
 
@@ -18,7 +18,7 @@ Le responsable de traitement au sens du RGPD est Florent Pollet, personne physiq
 | Identité de connexion | Email, nom complet, photo de profil | Connexion Google (OAuth) |
 | Contenu utilisateur | Messages, fichiers et pièces jointes envoyés à l'assistant, y compris le contenu d'un email que vous collez, joignez ou partagez manuellement ; mémoire structurée, conversations partagées et signalements que vous soumettez volontairement | Vous |
 | Données Google Workspace | Lecture et création d'événements (Calendar), uniquement lorsque vous utilisez une fonction d'agenda. L'application publique n'utilise aucune API Gmail | Votre compte Google, sur votre demande explicite |
-| Boîtes mail connectées (app Android uniquement) | Si vous connectez volontairement une boîte mail (Free, Gmail, Yahoo, iCloud ou IMAP), l'assistant peut lister, rechercher et lire vos messages en LECTURE SEULE. La connexion se fait directement depuis votre téléphone (IMAP TLS) ; votre mot de passe d'application est chiffré via le Keystore Android (clé matérielle non extractible) et n'est jamais transmis à nos serveurs. Le contenu d'un message n'est transmis qu'au fournisseur d'IA de la conversation, uniquement quand vous posez une question qui le nécessite | Vous (connexion volontaire dans Réglages → Boîtes mail) |
+| Boîtes mail connectées (app Android uniquement) | Si vous connectez volontairement une boîte mail (Free, Gmail, Yahoo, iCloud ou IMAP), l'assistant peut lister, rechercher et lire vos messages en LECTURE SEULE. La connexion se fait directement depuis votre téléphone (IMAP TLS) ; votre mot de passe d'application est chiffré via le Keystore Android (clé matérielle non extractible) et n'est jamais transmis à nos serveurs. Le contenu d'un message n'est transmis qu'à Anthropic (Claude), et à lui seul, uniquement quand vous posez une question qui le nécessite. Les pièces jointes de vos e-mails ne sont jamais lues | Vous (connexion volontaire dans Réglages → Boîtes mail) |
 | Localisation | Position géographique approximative | Capteur GPS de votre appareil, uniquement si activé |
 | Données de paiement | Email du compte, offre ou pack choisi, identifiants et statut de transaction ; Arty ne reçoit aucune coordonnée bancaire | Vous + Lemon Squeezy ou Creem |
 | Inscription waitlist | Email (pré-lancement uniquement) | Formulaire Tally |
@@ -56,7 +56,7 @@ Vos données sont transmises, **uniquement pour les finalités ci-dessus**, aux 
 
 **Aucun partage à des fins publicitaires. Aucune revente. Aucun courtage de données.**
 
-Pour obtenir une copie des SCC signées avec un prestataire, contactez `flotellop@gmail.com`.
+Pour obtenir une copie des SCC signées avec un prestataire, contactez `support@tryarty.com`.
 
 ## 5. Conformité Google API (Limited Use)
 
@@ -94,6 +94,7 @@ Nous n'utilisons **aucun cookie** de tracking ni d'analyse. Le chargement des po
 |---|---|
 | Identités et sessions email, mémoire structurée, conversations partagées et signalements | Tant que votre compte est actif. Ces données sont supprimées lors de votre demande de suppression (au plus tard sous 30 jours). |
 | Conversations, pièces jointes et rapports | Stockés uniquement sur votre appareil et chiffrés selon le modèle et les limites décrits au §6. Une simple déconnexion les conserve pour votre prochaine connexion. Supprimer une conversation efface ses pièces jointes ; supprimer le compte efface l'ensemble de ces données. |
+| Boîtes mail connectées (adresse, serveur, mot de passe d'application chiffré) | Stockées uniquement sur votre appareil, dans le Keystore Android. Une simple déconnexion les conserve pour votre prochaine connexion. Retirer une boîte dans Réglages → Boîtes mail l'efface immédiatement ; **supprimer le compte les efface toutes**. Le contenu de vos messages n'est jamais stocké : il est lu à la demande et transmis au fournisseur d'IA le temps de la réponse. |
 | Données de paiement | 10 ans (obligation légale comptable, article L123-22 Code de commerce). |
 | Compteurs techniques minimaux d’usage, de quota et d’anti-abus | Conservés pendant la durée strictement nécessaire à la sécurité, à la prévention des abus et à l’intégrité de la facturation. Ils ne contiennent pas le contenu de vos échanges. |
 | Logs techniques serveur (Cloudflare Workers, anti-abus) | 12 mois maximum. |
@@ -112,14 +113,14 @@ Vous disposez des droits suivants sur vos données personnelles :
 - **Portabilité** : récupérer vos données dans un format structuré.
 - **Retrait du consentement** : à tout moment, sans effet rétroactif.
 
-Pour exercer vos droits : `flotellop@gmail.com`. Réponse sous 30 jours maximum.
+Pour exercer vos droits : `support@tryarty.com`. Réponse sous 30 jours maximum.
 
-**Droit de réclamation** : si vous estimez que vos droits ne sont pas respectés, vous pouvez introduire une réclamation auprès de la CNIL : [www.cnil.fr/fr/plaintes](https://www.cnil.fr/fr/plaintes).
+**Droit de réclamation** : si vous estimez que vos droits ne sont pas respectés, vous pouvez introduire une réclamation auprès de la CNIL : [www.cnil.fr/fr/plaintes](https://www.cnil.fr/fr/plaintes), ou auprès de l'autorité de contrôle de votre pays de résidence dans l'Union européenne.
 
 ## 10. Mineurs
 
-Arty n'est pas destiné aux personnes de moins de 16 ans en France ni de moins de 13 ans dans les juridictions appliquant COPPA (États-Unis). Si vous découvrez qu'un mineur a créé un compte, écrivez-nous à `flotellop@gmail.com` et le compte sera supprimé.
+Arty n'est pas destiné aux personnes de moins de 16 ans en France ni de moins de 13 ans dans les juridictions appliquant COPPA (États-Unis). Si vous découvrez qu'un mineur a créé un compte, écrivez-nous à `support@tryarty.com` et le compte sera supprimé.
 
 ## 11. Modifications de cette politique
 
-Cette politique peut évoluer. Toute modification substantielle vous sera notifiée par email au moins **30 jours avant son entrée en vigueur**. La date de dernière mise à jour figure en tête de page. La version archivée des politiques précédentes est disponible sur demande à `flotellop@gmail.com`.
+Cette politique peut évoluer. Toute modification substantielle vous sera notifiée par email au moins **30 jours avant son entrée en vigueur**. La date de dernière mise à jour figure en tête de page. La version archivée des politiques précédentes est disponible sur demande à `support@tryarty.com`.
