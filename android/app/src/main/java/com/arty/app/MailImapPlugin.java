@@ -14,11 +14,13 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 
 import java.nio.charset.StandardCharsets;
 import java.security.KeyStore;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 import java.util.Properties;
+import java.util.TimeZone;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -337,6 +339,14 @@ public class MailImapPlugin extends Plugin {
         return sb.toString();
     }
 
+    /** ISO 8601 UTC sans java.time : Date#toInstant exige l'API 26, minSdk = 24. */
+    private static String formatUtc(Date d) {
+        if (d == null) return "";
+        SimpleDateFormat fmt = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US);
+        fmt.setTimeZone(TimeZone.getTimeZone("UTC"));
+        return fmt.format(d);
+    }
+
     private JSObject messageSummary(Folder folder, Message msg) throws Exception {
         JSObject o = new JSObject();
         long uid = folder instanceof UIDFolder ? ((UIDFolder) folder).getUID(msg) : -1;
@@ -344,7 +354,7 @@ public class MailImapPlugin extends Plugin {
         o.put("subject", decodeHeader(msg.getSubject() == null ? "(sans objet)" : msg.getSubject()));
         o.put("from", formatAddresses(msg.getFrom()));
         Date d = msg.getReceivedDate() != null ? msg.getReceivedDate() : msg.getSentDate();
-        o.put("date", d != null ? d.toInstant().toString() : "");
+        o.put("date", formatUtc(d));
         return o;
     }
 
