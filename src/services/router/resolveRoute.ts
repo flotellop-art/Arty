@@ -24,6 +24,7 @@
 import {
   HYBRID_TRIGGERS,
   PRIVATE_DATA_TRIGGERS,
+  mentionsMailbox,
   TRAIL_TRIGGERS,
   hasUrl,
   hasYouTubeUrl,
@@ -49,7 +50,14 @@ export function canExecuteRoute(input: Pick<RouteInput, 'euOnly' | 'availability
 
 export function resolveRoute(input: RouteInput): RouteDecision {
   const text = input.originalText
-  const isPrivateData = input.hasPrivateHistory || PRIVATE_DATA_TRIGGERS.some((r) => r.test(text))
+  // Garde structurelle boîtes mail (9 août 2026) : une boîte réellement
+  // connectée + une mention de mail ⇒ données privées, même si aucune regex
+  // de PRIVATE_DATA_TRIGGERS ne matche la formulation exacte. Sans elle,
+  // « C'est quoi mes derniers mails ? » partait en recherche web (réponse
+  // vide, données privées exposées au web — BUG 12).
+  const mailboxContext = input.hasMailAccounts === true && mentionsMailbox(text)
+  const isPrivateData =
+    input.hasPrivateHistory || mailboxContext || PRIVATE_DATA_TRIGGERS.some((r) => r.test(text))
   const hasImagesOnly =
     input.hasFiles &&
     input.hasImages &&

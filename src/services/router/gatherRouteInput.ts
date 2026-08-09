@@ -22,6 +22,7 @@ import {
   isVisionTerraAutoRoutingEnabled,
 } from '../visionFeature'
 import { getProviderAvailability } from './availability'
+import { hasConnectedMailAccounts } from '../mailAccounts'
 import type { FileAttachment } from '../../types'
 import type { RouteInput } from './types'
 
@@ -121,6 +122,9 @@ export function gatherRouteInput(ctx: RouteContext): RouteInput {
     plan === 'subscription' || plan === 'vip' || plan === 'pro' || proActivated
   return {
     ...ctx,
+    // Lecture synchrone du cache mémoire des comptes mail (rempli au boot et
+    // à chaque ajout/suppression) : arme la garde structurelle de resolveRoute.
+    hasMailAccounts: hasConnectedMailAccounts(),
     selectedModel: getSelectedModel(),
     availability: getProviderAvailability({
       plan,

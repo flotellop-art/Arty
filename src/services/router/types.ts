@@ -94,6 +94,13 @@ export interface RouteInput {
   // (« Viriville » seul, cas terrain 19 juil.) restent chez Claude, qui a les
   // outils. Optionnel : absent = false (n'affecte que la cascade auto).
   hasTrailHistory?: boolean
+  /** Au moins une boîte mail IMAP est connectée sur cet appareil. Garde
+      STRUCTURELLE (9 août 2026) : dans ce cas, la simple mention d'un mail
+      suffit à router vers Claude — seul provider porteur des outils mail_*.
+      Sans ce flag, une formulation non prévue partait sur Gemini + recherche
+      web et rendait une réponse vide (cas terrain « mes derniers mails »).
+      Optionnel : absent = false (aucun effet sur les autres routages). */
+  hasMailAccounts?: boolean
   selectedModel: AIModel
   availability: ProviderAvailability
   plan: PlanContext

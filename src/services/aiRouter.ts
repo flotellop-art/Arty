@@ -15,14 +15,45 @@ import type { ReflectionLevel } from './reflectionLevel'
 // - euOnly conversations → forcé Mistral en amont (useConversation.ts)
 // - fichiers attachés → forcé Claude en amont (useConversation.ts)
 
+// Boîtes mail IMAP connectées (feature du 9 août 2026) — garde STRUCTURELLE.
+// Constat terrain immédiat : « C'est quoi mes derniers mails ? » ne matchait
+// AUCUN trigger (l'adjectif intercalé cassait `mes\s+mails`) → la requête
+// partait sur Gemini + recherche web, sans aucun outil mail → réponse vide.
+// Leçon BUG 56 poussée d'un cran : une liste de formulations sera TOUJOURS
+// incomplète. Quand au moins une boîte est réellement connectée, la simple
+// MENTION d'un mail suffit à router vers Claude — le seul provider qui porte
+// les outils mail_*. Un faux positif coûte un routage Claude (inoffensif) ;
+// un faux négatif coûte une réponse vide et une donnée privée envoyée au web.
+export const MAILBOX_MENTION_TRIGGERS = [
+  /\bmails?\b/i,
+  /\be-?mails?\b/i,
+  /\bcourriels?\b/i,
+  /\bmessagerie\b/i,
+  /\binbox\b/i,
+  /bo[îi]te\s+(mail|aux\s+lettres|de\s+r[ée]ception)/i,
+  /\bma\s+bo[îi]te\b/i,
+  /qui\s+m['’]a\s+(écrit|envoy[ée])/i,
+  /j['’]ai\s+re[çc]u\b/i,
+  /\bmailbox\b/i,
+  /\bmy\s+mail\b/i,
+  /who\s+(emailed|wrote\s+to)\s+me/i,
+]
+
+export function mentionsMailbox(text: string): boolean {
+  return MAILBOX_MENTION_TRIGGERS.some((r) => r.test(text))
+}
+
 export const PRIVATE_DATA_TRIGGERS = [
   // FR — mail / drive / clients / factures
-  /mes\s+(mails|emails|e-mails|courriers|messages)/i,
-  /mes\s+(fichiers|documents|drive|dossiers)/i,
+  // `(?:\S+\s+){0,2}` tolère les adjectifs intercalés — « mes DERNIERS mails »,
+  // « mes 3 nouveaux messages » (cas terrain du 9 août 2026).
+  /mes\s+(?:\S+\s+){0,2}(mails?|emails?|e-mails?|courriers?|messages?)/i,
+  /mes\s+(?:\S+\s+){0,2}(fichiers|documents|drive|dossiers)/i,
   /mes\s+(clients|contacts|projets)/i,
   /mes\s+(factures|devis|contrats)/i,
   /emails?\s+(non\s+lus|reçus|envoyés|du jour|récents)/i,
-  /boîte\s+(de\s+réception|mail)/i,
+  /(derniers?|nouveaux?|r[ée]cents?)\s+(mails?|e-?mails?|messages?|courriers?)/i,
+  /bo[îi]te\s+(de\s+réception|mail|aux\s+lettres)/i,
   // Boîtes mail IMAP natives (9 août 2026, BUG 56 : phrasings indirects qui
   // nomment le fournisseur ou le compte sans dire « mail »)
   /(ma|la)\s+bo[îi]te\s+(free|gmail|yahoo|icloud|orange|sfr|laposte)/i,
@@ -46,9 +77,9 @@ export const PRIVATE_DATA_TRIGGERS = [
   /mes\s+(rappels?|reminders?)|cr[ée]e[rz]?\s+un\s+rappel/i,
   /mes\s+(t[âa]ches?|tasks?)\s+(google|du|de)?/i,
   /mes\s+(notes?|keep)\s+(google)?/i,
-  // EN — mail / drive / clients
-  /my\s+(mail|mails|email|emails|e-mails|messages|inbox)/i,
-  /my\s+(files|documents|docs|drive|folders)/i,
+  // EN — mail / drive / clients (`(?:\S+\s+){0,2}` = « my LATEST emails »)
+  /my\s+(?:\S+\s+){0,2}(mail|mails|email|emails|e-mails|messages|inbox)/i,
+  /my\s+(?:\S+\s+){0,2}(files|documents|docs|drive|folders)/i,
   /my\s+(clients|projects|jobs)/i,
   /my\s+(invoices|quotes|contracts)/i,
   /unread\s+emails?|received\s+emails?|sent\s+emails?|recent\s+emails?|inbox/i,

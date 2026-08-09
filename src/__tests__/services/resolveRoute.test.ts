@@ -497,3 +497,65 @@ describe('resolveRoute — sentiers/GPX → Claude (trail_tools, juillet 2026)',
     expect(d.overrides).toEqual([])
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Boîtes mail IMAP connectées — garde structurelle (cas terrain 9 août 2026).
+// « C'est quoi mes derniers mails ? » partait sur Gemini + recherche web
+// (badge « RECHERCHE WEB », réponse VIDE) : l'adjectif intercalé cassait le
+// trigger `mes\s+mails`, et Gemini n'a aucun outil mail. Double filet posé :
+// regex tolérantes AUX ADJECTIFS + garde `hasMailAccounts` qui n'exige plus
+// qu'une simple MENTION de mail. Ne jamais retirer l'un sans l'autre.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('resolveRoute — boîtes mail connectées', () => {
+  const FIELD_CASES = [
+    "C'est quoi mes derniers mails ?",
+    'Montre-moi mes derniers mails',
+    'Résume mes 3 derniers mails',
+    'mes nouveaux messages',
+    'my latest emails',
+  ]
+
+  it.each(FIELD_CASES)('« %s » va sur Claude même sans boîte connectée', (originalText) => {
+    const d = resolveRoute(input({ originalText }))
+    expect(d.provider).toBe('claude')
+    expect(d.reason.code).toBe('private_data')
+  })
+
+  it.each(FIELD_CASES)('« %s » ne déclenche JAMAIS de recherche web', (originalText) => {
+    expect(resolveRoute(input({ originalText, hasMailAccounts: true })).webSearch).toBe(false)
+  })
+
+  // Formulations qu'aucune liste de regex n'anticipe : rattrapées uniquement
+  // par la garde structurelle, et seulement si une boîte est vraiment connectée.
+  const LOOSE_CASES = [
+    "Qui m'a écrit aujourd'hui ?",
+    "J'ai reçu quelque chose de Darty ?",
+    'y a quoi dans ma boîte ?',
+  ]
+
+  it.each(LOOSE_CASES)('« %s » va sur Claude QUAND une boîte est connectée', (originalText) => {
+    const d = resolveRoute(input({ originalText, hasMailAccounts: true }))
+    expect(d.provider).toBe('claude')
+    expect(d.reason.code).toBe('private_data')
+  })
+
+  it('sans boîte connectée, la garde ne change rien au routage existant', () => {
+    const d = resolveRoute(input({ originalText: 'Qui a écrit Les Misérables ?' }))
+    expect(d.provider).not.toBe('claude')
+  })
+
+  it('une boîte connectée ne détourne pas une question sans rapport', () => {
+    const d = resolveRoute(input({ originalText: 'Quelle est la météo demain ?', hasMailAccounts: true }))
+    expect(d.reason.code).not.toBe('private_data')
+  })
+
+  it('euOnly garde la priorité absolue sur la garde boîte mail (RÈGLE 5.3)', () => {
+    const d = resolveRoute(input({
+      originalText: 'résume mes derniers mails',
+      hasMailAccounts: true,
+      euOnly: true,
+    }))
+    expect(d.provider).toBe('mistral')
+    expect(d.reason.code).toBe('eu_only')
+  })
+})
