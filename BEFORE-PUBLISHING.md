@@ -72,10 +72,15 @@ sont actifs, pas a decommenter du code.
       `geminiClient`, `mistralClient`, `driveClient`, `calendarClient`,
       `contactsClient`)
       passent par `getValidAccessToken()` qui refresh automatiquement.
-- [x] L'application publique web et Android ne demande aucun scope Gmail,
-      n'expose aucun outil de lecture/envoi Gmail et ne pretend pas acceder a
-      la boite mail. Un email n'est traite que si l'utilisateur colle, joint
-      ou partage lui-meme son contenu.
+- [x] L'application publique web et Android ne demande aucun scope Gmail et
+      n'expose aucun outil Gmail **via l'API Google**.
+- [ ] Depuis le 9 aout 2026, l'app Android expose un client IMAP natif en
+      lecture seule (boites Free/Gmail/Yahoo/iCloud/IMAP connectees par
+      l'utilisateur). Verifier que le formulaire Data Safety de la Play
+      Console declare bien la categorie « Messages > E-mails » (collectees ET
+      partagees, optionnelles) — voir PLAY-STORE-SUBMISSION.md section 1.b
+      et section 2. Aucun texte soumis a Google ne doit affirmer qu'Arty
+      n'accede pas a la boite mail de l'utilisateur.
 - [ ] Google Cloud Console > Data Access contient exactement `openid`,
       `userinfo.email`, `userinfo.profile`, `calendar.events` ; supprimer les anciens
       scopes Gmail/Drive/Contacts/Sheets et révoquer les grants de test.

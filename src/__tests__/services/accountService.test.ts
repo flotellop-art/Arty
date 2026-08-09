@@ -16,6 +16,7 @@ const deps = vi.hoisted(() => ({
   clearActiveSession: vi.fn(),
   purgeLegacyGlobalReports: vi.fn(),
   wipeFileStorage: vi.fn(async () => {}),
+  purgeMailAccountsForUser: vi.fn(async () => {}),
   session: null as Session | null,
 }))
 
@@ -34,6 +35,9 @@ vi.mock('../../services/userSession', () => ({
 }))
 vi.mock('../../services/secureFileStorage', () => ({
   wipeFileStorage: deps.wipeFileStorage,
+}))
+vi.mock('../../services/mailAccounts', () => ({
+  purgeMailAccountsForUser: deps.purgeMailAccountsForUser,
 }))
 
 import {
@@ -148,6 +152,44 @@ describe('accountService — fail-closed account erasure', () => {
     expect(deps.purgeLegacyGlobalReports).not.toHaveBeenCalled()
     expect(deps.clearAllForActiveUser).not.toHaveBeenCalled()
     expect(deps.removeKnownSession).not.toHaveBeenCalled()
+    expect(deps.clearActiveSession).not.toHaveBeenCalled()
+  })
+
+  // Audit du 9 août 2026 : `purgeMailAccountsForUser` existait mais n'était
+  // appelée nulle part. Les boîtes IMAP vivent dans le SharedPreferences natif,
+  // hors localStorage et IndexedDB — elles survivaient donc à la suppression de
+  // compte. Et l'identifiant utilisateur étant déterministe (méthode + hachage
+  // de l'e-mail), une reconnexion ultérieure avec la même adresse ressuscitait
+  // l'adresse, le serveur et le mot de passe chiffré, en contradiction directe
+  // avec la promesse d'effacement de la politique de confidentialité.
+  it('purge les boîtes mail natives du user supprimé', async () => {
+    await wipeLocalAccount()
+
+    expect(deps.purgeMailAccountsForUser).toHaveBeenCalledWith('google-user')
+  })
+
+  it('purge les boîtes mail AVANT de perdre l’identité de session', async () => {
+    deps.purgeMailAccountsForUser.mockImplementationOnce(async () => {
+      // À cet instant la session doit encore exister : sans elle, le scope de
+      // purge natif serait introuvable et l'effacement porterait dans le vide.
+      expect(deps.clearActiveSession).not.toHaveBeenCalled()
+    })
+
+    await wipeLocalAccount()
+
+    expect(deps.purgeMailAccountsForUser).toHaveBeenCalledTimes(1)
+    expect(deps.clearActiveSession).toHaveBeenCalled()
+  })
+
+  it('échoue bruyamment si la purge des boîtes mail échoue', async () => {
+    deps.purgeMailAccountsForUser.mockRejectedValueOnce(new Error('clear_failed'))
+
+    await expect(wipeLocalAccount()).rejects.toThrow('clear_failed')
+
+    // Même discipline que l'échec IndexedDB : la session reste intacte pour que
+    // l'utilisateur puisse relancer la suppression, plutôt que de s'entendre
+    // dire que son compte est effacé alors que ses identifiants mail restent.
+    expect(deps.clearAllForActiveUser).not.toHaveBeenCalled()
     expect(deps.clearActiveSession).not.toHaveBeenCalled()
   })
 })

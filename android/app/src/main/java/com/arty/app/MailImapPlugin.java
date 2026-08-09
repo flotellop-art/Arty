@@ -496,8 +496,16 @@ public class MailImapPlugin extends Plugin {
             return;
         }
         executor.execute(() -> {
-            prefs().edit().remove(scopeKey(scope)).apply();
-            call.resolve();
+            // Chemin « suppression de compte » (RGPD) : commit() écrit de façon
+            // synchrone et rend le succès, là où apply() renvoie la main sans
+            // garantie. On ne veut pas annoncer un effacement qui n'a pas eu
+            // lieu — le rejet fait remonter l'échec jusqu'à l'utilisateur.
+            boolean ok = prefs().edit().remove(scopeKey(scope)).commit();
+            if (ok) {
+                call.resolve();
+            } else {
+                call.reject("clear_failed");
+            }
         });
     }
 

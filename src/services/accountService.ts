@@ -19,6 +19,7 @@ import {
   purgeLegacyGlobalReports,
 } from './userSession'
 import { wipeFileStorage } from './secureFileStorage'
+import { purgeMailAccountsForUser } from './mailAccounts'
 import { getTrialToken } from './emailTrialClient'
 
 /**
@@ -64,6 +65,17 @@ export async function wipeLocalAccount(): Promise<void> {
   // fails, propagate the error and keep the session/localStorage intact so the
   // user can retry instead of being told that deletion succeeded incompletely.
   await wipeFileStorage(userId)
+
+  // Boîtes mail IMAP : elles vivent dans le SharedPreferences natif, hors de
+  // localStorage et d'IndexedDB — `clearAllForActiveUser()` ne les voit pas.
+  // Sans cet appel, l'adresse, le serveur et le mot de passe chiffré
+  // survivaient à la suppression du compte, et l'identifiant utilisateur étant
+  // déterministe (méthode + hachage de l'e-mail), une reconnexion ultérieure
+  // avec la même adresse les ressuscitait en silence. Même discipline que
+  // `wipeFileStorage` ci-dessus : en cas d'échec on propage et on laisse la
+  // session intacte, pour que l'utilisateur puisse relancer la suppression
+  // plutôt que de croire à un effacement complet.
+  await purgeMailAccountsForUser(userId)
 
   // Pre-scoping report keys contain no owner metadata. Purge all of them so a
   // historical personal report cannot survive an erasure request.

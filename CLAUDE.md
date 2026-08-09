@@ -943,3 +943,38 @@ n'a été possible qu'en demandant à l'utilisateur d'aller lire son solde.
 - Ne jamais conclure « c'est un bug de payload » d'un simple HTTP 400 sur
   une API IA : les erreurs de facturation et de quota y sont couramment
   encodées en 400.
+
+### BUG 65 — Une fonction de purge qui existe mais que personne n'appelle
+**Fichiers** : `src/services/accountService.ts`, `src/services/mailAccounts.ts`,
+`src/services/native/mailImap.ts`, `android/.../MailImapPlugin.java`
+(9 août 2026, audit post-livraison IMAP)
+**Problème** : `purgeMailAccountsForUser()` avait été écrite avec la
+fonctionnalité mail, correctement testée à la main, et n'était appelée
+**nulle part**. Les boîtes IMAP (adresse, serveur, mot de passe d'application
+chiffré) vivent dans le SharedPreferences natif — hors de `localStorage` et
+d'IndexedDB, donc invisibles pour `clearAllForActiveUser()` et
+`wipeFileStorage()`. « Supprimer mon compte » les laissait intactes. Et
+comme `generateUserId()` est déterministe (`méthode + hash(email)`), une
+reconnexion ultérieure avec la même adresse retrouvait la même clé de scope
+et **ressuscitait les boîtes**, en contradiction frontale avec la promesse
+d'effacement de la politique de confidentialité (RGPD art. 17).
+Deux audits indépendants l'ont trouvé le même jour ; la relecture humaine
+ne l'avait pas vu, parce que le code *avait l'air* complet.
+**Règle** :
+- Tout nouveau magasin de données persistant (SharedPreferences natif,
+  Keychain, IndexedDB, fichier) DOIT être branché aux TROIS chemins de fin
+  de vie au moment où on l'introduit : suppression de compte, déconnexion,
+  bascule de compte — et la décision doit être écrite pour chacun, y compris
+  quand la réponse est « on ne purge pas » (ici : logout et switch ne
+  purgent pas, le scope par `userId` suffit à isoler).
+- Une fonction de purge exportée et jamais importée est un bug, pas du code
+  mort inoffensif : elle donne l'illusion que le besoin est couvert. Vérifier
+  l'appelant, pas seulement l'existence.
+- Sur le chemin d'effacement, ne JAMAIS avaler l'erreur : un `try/catch`
+  silencieux fait dire « compte supprimé » alors que les données restent.
+  Propager, laisser la session intacte, permettre une nouvelle tentative.
+  Corollaire Android : utiliser `commit()` (synchrone, rend le succès) et
+  non `apply()` quand on doit *prouver* l'effacement.
+- Toute promesse écrite dans `PRIVACY.md` doit avoir un test qui l'adosse au
+  code. Ici : `accountService.test.ts` vérifie l'appel, l'ordre (purge avant
+  perte de l'identité de session) et la propagation de l'échec.

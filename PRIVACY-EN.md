@@ -2,14 +2,14 @@
 
 **Last updated:** August 9, 2026
 
-**Publisher:** Florent Pollet, natural person, residing at 884 chemin de la Prairie, 38270 Beaufort, France. No business is registered to date; a SIREN identifier will be added to this policy upon registration of the activity, planned before the public launch and the first payments.
-**Contact:** flotellop@gmail.com
+**Publisher:** POLLET FLORENT, French sole trader, SIREN 887 679 611, SIRET 887 679 611 00012, Rue des Sièges, 30120 Bréau-Mars, France. Arty is the name of the software service.
+**Contact:** support@tryarty.com
 
 Arty is a personal AI assistant (Android mobile app and web app at `tryarty.com`). This policy explains what personal data we process, for what purposes, on what legal grounds, with whom we share it, how long we keep it, and what your rights are.
 
 ## 1. Data controller
 
-The data controller under the GDPR is Florent Pollet, natural person (contact details above). No Data Protection Officer (DPO) is designated, as the activity does not meet the criteria of GDPR Article 37.
+The data controller under the GDPR is POLLET FLORENT, French sole trader (contact details above). No Data Protection Officer (DPO) is designated, as the activity does not meet the criteria of GDPR Article 37.
 
 ## 2. Data we process
 
@@ -18,7 +18,7 @@ The data controller under the GDPR is Florent Pollet, natural person (contact de
 | Authentication identity | Email, full name, profile picture | Google Sign-In (OAuth) |
 | User content | Messages, files, and attachments sent to the assistant, including email content you manually paste, attach, or share; structured memory, shared conversations, and reports you voluntarily submit | You |
 | Google Workspace data | Reading and creating events (Calendar), only when you use an agenda feature. The public app does not use any Gmail API | Your Google account, on your explicit request |
-| Connected mailboxes (Android app only) | If you voluntarily connect a mailbox (Free, Gmail, Yahoo, iCloud or IMAP), the assistant can list, search and read your messages in READ-ONLY mode. The connection is made directly from your phone (IMAP TLS); your app password is encrypted with the Android Keystore (non-extractable hardware key) and is never sent to our servers. Message content is only sent to the conversation's AI provider, and only when you ask a question that requires it | You (voluntary connection in Settings → Mailboxes) |
+| Connected mailboxes (Android app only) | If you voluntarily connect a mailbox (Free, Gmail, Yahoo, iCloud or IMAP), the assistant can list, search and read your messages in READ-ONLY mode. The connection is made directly from your phone (IMAP TLS); your app password is encrypted with the Android Keystore (non-extractable hardware key) and is never sent to our servers. Message content is only sent to Anthropic (Claude), and to no other provider, and only when you ask a question that requires it. Your email attachments are never read | You (voluntary connection in Settings → Mailboxes) |
 | Location | Approximate geographic position | Your device's GPS sensor, only if enabled |
 | Payment data | Account email, selected offer or pack, transaction identifiers and status; Arty receives no payment-card details | You + Lemon Squeezy or Creem |
 | Waitlist signup | Email (pre-launch only) | Tally form |
@@ -55,7 +55,7 @@ Your data is shared, **strictly for the purposes above**, with the following pro
 
 **No sharing for advertising purposes. No resale. No data brokerage.**
 
-To request a copy of the SCC signed with any provider, contact `flotellop@gmail.com`.
+To request a copy of the SCC signed with any provider, contact `support@tryarty.com`.
 
 ## 5. Google API Services Compliance (Limited Use)
 
@@ -93,6 +93,7 @@ We use **no tracking or analytics cookies**. Loading our display fonts may trigg
 |---|---|
 | Email identities and sessions, structured memory, shared conversations, and submitted reports | As long as your account is active. These data are deleted when you submit a deletion request (within 30 days at the latest). |
 | Conversations, attachments, and reports | Stored only on your device and encrypted according to the model and limitations described in Section 6. A simple sign-out keeps them for your next sign-in. Deleting a conversation erases its attachments; deleting the account erases all of this data. |
+| Connected mailboxes (address, server, encrypted app password) | Stored only on your device, in the Android Keystore. A simple sign-out keeps them for your next sign-in. Removing a mailbox in Settings → Mailboxes erases it immediately; **deleting the account erases all of them**. Your message content is never stored: it is read on demand and sent to the AI provider only for the time needed to answer. |
 | Payment data | 10 years (legal accounting obligation, French Code of Commerce Article L123-22). |
 | Minimal technical usage, quota, and anti-abuse counters | Retained only for as long as strictly necessary for security, abuse prevention, and billing integrity. They contain none of your conversation content. |
 | Server-side technical logs (Cloudflare Workers, anti-abuse) | 12 months maximum. |
@@ -111,14 +112,14 @@ You have the following rights over your personal data:
 - **Portability**: receive your data in a structured format.
 - **Withdraw consent**: at any time, without retroactive effect.
 
-To exercise your rights: `flotellop@gmail.com`. Response within 30 days maximum.
+To exercise your rights: `support@tryarty.com`. Response within 30 days maximum.
 
 **Right to lodge a complaint**: if you believe your rights are not respected, you may lodge a complaint with the French Data Protection Authority (CNIL): [www.cnil.fr/en/plaintes](https://www.cnil.fr/en/plaintes), or with the supervisory authority of your EU country of residence.
 
 ## 10. Minors
 
-Arty is not intended for individuals under 16 years of age in France, nor under 13 years of age in COPPA jurisdictions (United States). If you discover that a minor has created an account, please write to `flotellop@gmail.com` and the account will be deleted.
+Arty is not intended for individuals under 16 years of age in France, nor under 13 years of age in COPPA jurisdictions (United States). If you discover that a minor has created an account, please write to `support@tryarty.com` and the account will be deleted.
 
 ## 11. Changes to this policy
 
-This policy may evolve. Any substantial change will be notified to you by email at least **30 days before it takes effect**. The last-updated date is shown at the top of this page. Archived versions of previous policies are available on request at `flotellop@gmail.com`.
+This policy may evolve. Any substantial change will be notified to you by email at least **30 days before it takes effect**. The last-updated date is shown at the top of this page. Archived versions of previous policies are available on request at `support@tryarty.com`.

@@ -46,7 +46,14 @@ export async function refreshMailAccounts(): Promise<MailAccountMeta[]> {
   return cachedAccounts
 }
 
-/** Purge logout : efface les comptes natifs du user PUIS le cache mémoire. */
+/**
+ * Suppression de compte (RGPD) : efface les comptes natifs du user PUIS le
+ * cache mémoire. Appelée par `wipeLocalAccount()` — et par elle seule.
+ *
+ * Si la purge native échoue, l'erreur remonte et le cache mémoire n'est PAS
+ * vidé : l'état affiché reste fidèle à ce qui subsiste réellement sur
+ * l'appareil, et l'utilisateur peut relancer la suppression.
+ */
 export async function purgeMailAccountsForUser(userId: string | null): Promise<void> {
   if (userId) {
     await clearMailAccountsForUser(userId)

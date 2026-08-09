@@ -101,14 +101,22 @@ export async function removeMailAccount(id: string): Promise<void> {
   await MailImap.removeAccount({ scope: requireScope(), id })
 }
 
-/** Purge tous les comptes du user Arty donné (logout / suppression de compte). */
+/**
+ * Purge tous les comptes du user Arty donné — chemin SUPPRESSION DE COMPTE
+ * (droit à l'effacement, RGPD art. 17). Le logout, lui, ne purge pas : le
+ * stockage natif est scopé par userId, un autre compte ne peut donc pas voir
+ * ces boîtes (même politique que les conversations).
+ *
+ * L'erreur est PROPAGÉE volontairement. Un échec silencieux ici ferait dire à
+ * l'application « compte supprimé » alors que l'adresse, le serveur et le mot
+ * de passe chiffré resteraient sur l'appareil — et l'identifiant utilisateur
+ * étant déterministe (dérivé du hachage de l'e-mail), une reconnexion
+ * ultérieure les ferait réapparaître. Mieux vaut un échec visible et une
+ * nouvelle tentative qu'une promesse d'effacement non tenue.
+ */
 export async function clearMailAccountsForUser(userId: string): Promise<void> {
   if (!isMailImapAvailable()) return
-  try {
-    await MailImap.clearAccounts({ scope: userId })
-  } catch {
-    // Best-effort : un échec de purge native ne doit pas bloquer le logout.
-  }
+  await MailImap.clearAccounts({ scope: userId })
 }
 
 export async function checkMailAccount(id: string): Promise<{
