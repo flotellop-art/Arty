@@ -106,8 +106,11 @@ la justification écrite suffit, et c'est déjà fait au §4.
 
 - **Coût : zéro.** Google ne facture pas la vérification d'un périmètre sensible.
 - **Vérification de marque** (logo, nom, domaine) : quelques jours ouvrés.
-- **Vérification du périmètre sensible** : de quelques jours à quelques
-  semaines, avec des allers-retours possibles sur la vidéo ou la justification.
+- **Vérification du périmètre sensible : prévoir 4 à 8 semaines**, avec des
+  allers-retours possibles sur la vidéo ou la justification. Les « 10 jours »
+  affichés par Google sont un objectif, pas un délai observé — voir §9.2.
+  C'est la file d'attente la plus longue et la moins contrôlable du dossier :
+  elle se lance EN PREMIER, avant le compte Play et avant les testeurs.
 - **CASA : NON REQUIS.** Aucun périmètre restreint n'est demandé. Si un
   interlocuteur vous parle d'audit de sécurité, c'est qu'il raisonne sur
   l'ancienne architecture.
@@ -172,8 +175,14 @@ le lancement du chronomètre des 14 jours.** Par nécessité, pas par confort.
 - En statut **« Testing »** uniquement : jetons de rafraîchissement expirés à
   **7 jours** dès qu'un périmètre sort du triplet openid/e-mail/profil.
   `calendar.events` en sort. **Sans objet pour Arty, qui est en Production.**
-- Instruction : jusqu'à **10 jours** pour la vérification d'un périmètre
+- Instruction : **prévoir 4 à 8 semaines** pour la vérification d'un périmètre
   sensible ; environ 7 jours pour la revue d'accès production.
+  ⚠️ Les « 10 jours » annoncés par Google sont un objectif pour un dossier
+  parfait, PAS un délai observé : des dossiers de 2026 portant exactement
+  `calendar.events` sont restés 5 à 8 semaines sans réponse. C'est le chiffre
+  le plus structurant du dossier, et c'était le plus mal étayé — corrigé le
+  9 août 2026. Conséquence : cette file d'attente s'ATTEND, elle ne se
+  travaille pas, donc elle part en premier, avant tout le reste.
 - Une application à usage personnel sous 100 utilisateurs peut fonctionner
   sans vérification : la bêta actuelle n'est **pas** en infraction. L'urgence
   est pratique, pas réglementaire.
@@ -219,6 +228,99 @@ dans l'une sans être dans les autres. Limites : 2 000 testeurs par liste et
   Indonésie, Singapour, Thaïlande ; mondial annoncé « 2027 et au-delà ». La
   France n'est pas concernée cette année. Les deux contre-expertises se
   contredisent sur l'inclusion de Firebase App Distribution dans ce périmètre.
+
+---
+
+
+### 9.6 Ouverture du compte développeur Play — décisions irréversibles
+
+> Analyse du 9 août 2026 (5 agents, contre-expertisés). Le propriétaire n'a
+> AUCUN compte développeur Play à cette date : tout est à créer.
+
+**Type de compte : PERSONNEL.** Pour un entrepreneur individuel français,
+c'est le seul type qui n'exige pas de numéro D-U-N-S — donc zéro attente
+administrative. Google ne nomme nulle part l'entrepreneur individuel : sa
+définition range du côté « individuel » les indépendants non constitués en
+société, mais la même documentation accepte l'avis SIRENE comme pièce
+d'organisation. Les deux cases sont donc ouvertes ; c'est une lecture
+défendable, pas un classement explicite.
+
+**Le sens de la réversibilité tranche la question.** Personnel →
+organisation reste possible plus tard (vérifier tryarty.com, créer un nouveau
+profil de paiement, attendre 72 h). Organisation → personnel est
+officiellement **impossible** : il faut recréer un compte et repayer les 25 $.
+On part donc du côté d'où l'on peut encore bouger.
+
+**Ne PAS lancer de D-U-N-S aujourd'hui.** Requis uniquement pour le compte
+organisation, gratuit, mais « jusqu'à 30 jours » selon Google. Rien ne
+justifie de payer cette attente maintenant. Des refus sont signalés quand le
+nom commercial diffère du nom légal (non vérifié).
+
+**⚠️ DÉCISION À PRENDRE AVANT DE CRÉER LE PROFIL DE PAIEMENT.** Tant que rien
+n'est vendu DANS l'application et qu'aucun renvoi vers un paiement externe
+n'en part, seuls le nom, le pays et l'e-mail sont publiés — l'adresse
+complète reste privée. **Dès la première monétisation in-app, l'adresse
+complète devient publique.** Le pays et le type sont figés sur le profil de
+paiement. Si une vente in-app est envisagée un jour, mettre en place une
+adresse de domiciliation AVANT de créer ce profil. En l'état (encaissement
+via le web), rien à faire — et aucune commission Google ne s'applique.
+
+### 9.7 La piste de TEST INTERNE remplace avantageusement Firebase
+
+Découverte de l'analyse du 9 août, qui change l'ordre des opérations : la
+piste de **test interne** de la Play Console est disponible **dès la création
+du compte**, sans revue, et **sans la règle des 12 testeurs / 14 jours** —
+celle-ci ne conditionne que l'accès à la piste de PRODUCTION.
+
+Elle supprime d'un coup les trois frottements de Firebase App Distribution :
+- 100 testeurs par application, contre une invitation nominative chez Firebase ;
+- **mises à jour automatiques**, là où Firebase n'en a aucune ;
+- installation sans activer les « sources inconnues ».
+
+À quoi s'ajoute une contrainte de Firebase qui n'était pas documentée ici :
+**chaque version y expire au bout de 150 jours** et doit être republiée.
+
+Et la vérification d'identité qui accompagne la création du compte règle par
+avance l'échéance de vérification développeur de 2027 — à laquelle Firebase
+App Distribution est nommément soumis, contrairement à ce qu'on pourrait
+croire en restant hors du Store.
+
+### 9.8 Ce que la PWA ne peut pas faire (vérifié dans le code)
+
+Deux fonctions n'existent que dans l'APK, et l'écart n'est pas de même nature :
+
+- **Client IMAP natif** : perte irréductible. Une page web ne peut pas ouvrir
+  de connexion TCP directe vers un serveur de messagerie. Le seul
+  contournement — faire l'IMAP côté serveur Cloudflare — détruirait la
+  promesse inscrite dans le code : mot de passe chiffré dans le Keystore du
+  téléphone, rien ne transite par les serveurs Arty.
+- **Notifications** : `src/services/native/notifications.ts` retourne `null`
+  hors natif (`if (!isNative) return null`) et aucun chemin Web Push n'est
+  implémenté. Contrairement à l'IMAP, celle-ci est rattrapable par du
+  développement.
+
+### 9.9 Points NON vérifiés de cette analyse
+
+- L'exemption des comptes organisation à la règle des 12 testeurs : déduite
+  par ABSENCE (le mot « organisation » ne figure pas sur la page de
+  référence), jamais écrite. Des fils du forum officiel portent des titres
+  affirmant l'inverse, dont le contenu n'a pas pu être lu (rendu JavaScript).
+  L'affirmation nette « les organisations sont exemptées » ne provient que de
+  sociétés vendant des services de testeurs. **Sans objet si l'on reste en
+  test interne.**
+- Commissions Play : affirmées puis réfutées dans l'analyse elle-même. Les
+  taux de 20 % / 10 % viennent du contexte américain, non vérifiés pour l'UE,
+  et la date du 1er octobre 2026 n'est pas confirmée. **Ne fonder aucune
+  décision dessus.**
+- Accessibilité de la piste de test OUVERTE avant l'accès production : les
+  deux contre-expertises se contredisent. À vérifier en premier si une
+  distribution publique sans production devenait intéressante.
+- Mois exact du déploiement France de la vérification développeur (annoncé
+  pour « 2027 ») ; existence d'un service D-U-N-S accéléré en France ; tout
+  engagement chiffré de Google sur le délai de vérification d'identité.
+- Le compte gratuit « distribution limitée » (20 appareils, sans pièce
+  d'identité) existe, mais est **fermé à Arty** : réservé aux usages sans
+  intention commerciale.
 
 ---
 
