@@ -1,21 +1,141 @@
 # Dossier de vérification OAuth Google — Arty
 
-**Date :** 24 mai 2026
-**Statut : ARCHIVÉ / SUPERSEDED le 13 juillet 2026. Ne pas utiliser pour configurer Google Cloud.**
-**App :** Arty — assistant IA, PWA `tryarty.com` + Android (Capacitor). iOS = PWA.
-**Éditeur :** Florent Pollet, personne physique, 884 chemin de la Prairie, 38270 Beaufort, France — flotellop@gmail.com.
+**Dernière mise à jour :** 9 août 2026
+**Statut : ACTIF.** Remplace la version du 24 mai 2026, archivée en annexe.
+**Éditeur :** POLLET FLORENT, entrepreneur individuel, SIREN 887 679 611, Rue des Sièges, 30120 Bréau-Mars, France — support@tryarty.com
+**Projet Google Cloud :** n° 794968525529
 
-> Les justifications « EN » ci-dessous sont prêtes à coller telles quelles dans Google Cloud
-> Console (Google attend de l'anglais). Le reste du document est en français pour le pilotage interne.
-
-> ⚠️ Ce dossier décrit l'ancienne architecture avec accès Gmail/Drive et ne
-> correspond plus au produit public. La source active est désormais
-> [`PLAY-STORE-SUBMISSION.md`](../PLAY-STORE-SUBMISSION.md) : le client demande
-> uniquement `openid`, `userinfo.email`, `userinfo.profile` et `calendar.events`.
-> Aucun scope Gmail ou Drive restreint ne doit être ajouté au projet OAuth
-> public. Le contenu ci-dessous est conservé uniquement comme historique.
+> **Ce qui a changé.** La version précédente décrivait une architecture avec
+> scopes Gmail et Drive, et concluait à un audit CASA. Elle est obsolète :
+> depuis la Phase 0 (13 juillet 2026), le client public ne demande plus que
+> quatre périmètres, dont un seul est sensible. **Il n'y a plus de CASA à
+> prévoir** (analyse du 9 août 2026, cf. RÈGLE 8 de `CLAUDE.md`). Ne pas
+> suivre l'annexe historique pour configurer Google Cloud.
 
 ---
+
+## 1. Le problème à résoudre : l'avertissement « application non vérifiée »
+
+L'avertissement a **deux causes distinctes**, qui ne se corrigent pas de la
+même façon. Identifier laquelle s'applique AVANT d'agir :
+
+| Cause | Symptôme | Correction |
+|---|---|---|
+| Écran de consentement en statut **« Test »** | Seuls les comptes inscrits comme testeurs peuvent se connecter (100 max), avertissement affiché | Passer en **« Production »** dans la console |
+| Statut Production mais **vérification non approuvée** | Tout le monde peut tenter, avertissement affiché, **plafond de 100 utilisateurs** | Soumettre la vérification (§3) |
+
+Le plafond de 100 utilisateurs est le vrai obstacle de lancement — bien avant
+toute question d'audit.
+
+## 2. Périmètres réellement demandés (vérifié dans le code)
+
+Source de vérité : `functions/api/_lib/publicGoogleScopes.ts`, gelée par
+`npm run no-casa:check`.
+
+| Périmètre | Classification | Conséquence |
+|---|---|---|
+| `openid` | Élémentaire | Aucune revue |
+| `userinfo.email` | Élémentaire | Aucune revue |
+| `userinfo.profile` | Élémentaire | Aucune revue |
+| `calendar.events` | **Sensible** | Vérification requise — **pas de CASA** |
+
+Un seul périmètre déclenche la vérification. C'est le prix de la
+fonctionnalité Agenda, et de rien d'autre.
+
+## 3. Prérequis publics — état vérifié le 9 août 2026
+
+- [x] Page d'accueil : `https://tryarty.com`
+- [x] Politique de confidentialité : `/privacy` et `/privacy/en`
+- [x] Conditions d'utilisation : `/terms` et `/terms/en`
+- [x] Mentions légales : `/legal-notice` et `/legal-notice/en` (SIREN présent)
+- [x] Section « Google API Limited Use » dans la politique (PRIVACY.md §5)
+- [ ] **Domaine `tryarty.com` vérifié dans Google Search Console** — doit
+      l'être par le compte Google **propriétaire du projet Cloud**, sinon la
+      soumission est refusée sans explication utile
+- [ ] **Logo** téléversé sur l'écran de consentement (déclenche la
+      vérification de marque, quelques jours ouvrés)
+- [ ] **Domaines autorisés** renseignés : `tryarty.com`
+- [ ] **Statut de publication** basculé en « Production »
+
+Les quatre cases non cochées sont les seules choses qui restent à faire, et
+aucune ne se fait depuis le dépôt.
+
+## 4. Justification à coller telle quelle (Google attend de l'anglais)
+
+**calendar.events**
+
+> Arty reads and creates calendar events only when the user requests an
+> agenda-related action, using the event-only scope instead of full calendar
+> access. This OAuth request is limited to Calendar: Arty does not request any
+> Gmail API scope and does not use Google Sign-In or any Google API to read
+> Gmail. Separately, and independently of this OAuth flow, the Android app
+> offers an optional IMAP mail client: if a user chooses to connect a mailbox —
+> which may be a Gmail account secured with an app password, or any other IMAP
+> provider — the device connects directly to that mail server in read-only
+> mode. No Google API, OAuth token, or Arty server is involved in that
+> connection, and message content is shared only with Arty's AI provider
+> (Anthropic) to answer the user's request. Outside of this separate,
+> user-initiated feature, email content is processed only when the user
+> manually pastes, attaches, or shares it with the assistant.
+
+> ⚠️ Ce texte doit rester identique à celui de `PLAY-STORE-SUBMISSION.md` et
+> cohérent avec la politique de confidentialité publique. Un évaluateur croise
+> les trois : une contradiction s'y lit comme une dissimulation, pas comme une
+> nuance technique. Le test `privacyClaims.test.ts` garde cette cohérence.
+
+## 5. Vidéo de démonstration
+
+Non listée sur YouTube, 3 à 5 minutes, sans coupure sur les parties
+sensibles. Doit montrer, dans cet ordre :
+
+1. la page d'accueil `tryarty.com` (établit que le domaine est bien le vôtre) ;
+2. le clic sur « Se connecter avec Google » ;
+3. **l'écran de consentement Google en entier**, avec la barre d'adresse
+   lisible : Google exige de voir le `client_id` dans l'URL et la liste exacte
+   des permissions demandées ;
+4. l'usage réel de la permission : demander un événement à l'assistant, le
+   voir apparaître dans l'agenda, en créer un avec la confirmation ;
+5. l'accès à la politique de confidentialité depuis l'application ;
+6. la déconnexion et la révocation de l'accès.
+
+Ne PAS filmer la fonctionnalité Boîtes mail : elle n'utilise aucun périmètre
+Google et n'entre pas dans le champ de cette vérification. La mentionner dans
+la justification écrite suffit, et c'est déjà fait au §4.
+
+## 6. Délai, coût, et ce qui n'est PAS requis
+
+- **Coût : zéro.** Google ne facture pas la vérification d'un périmètre sensible.
+- **Vérification de marque** (logo, nom, domaine) : quelques jours ouvrés.
+- **Vérification du périmètre sensible** : de quelques jours à quelques
+  semaines, avec des allers-retours possibles sur la vidéo ou la justification.
+- **CASA : NON REQUIS.** Aucun périmètre restreint n'est demandé. Si un
+  interlocuteur vous parle d'audit de sécurité, c'est qu'il raisonne sur
+  l'ancienne architecture.
+
+## 7. L'alternative, si la vérification bloque
+
+Le seul périmètre qui la déclenche est `calendar.events`. Le retirer ramène
+l'application aux périmètres élémentaires : **plus d'avertissement, plus de
+plafond, aucune vérification à passer**. C'est un arbitrage produit —
+l'Agenda contre le délai de vérification — et non une contrainte technique.
+Les fonctionnalités Boîtes mail, IA et localisation n'en dépendent pas.
+
+## 8. Ce qu'il ne faut jamais faire en configurant la console
+
+Ajouter un périmètre directement dans la console, sans passer par le dépôt.
+C'est le seul point de toute la chaîne sans protection technique : trois
+clics, aucun commit, aucune alerte, et le garde-fou `no-casa:check` n'y voit
+rien. Un périmètre restreint ajouté là déclenche CASA immédiatement.
+Voir **RÈGLE 8** de `CLAUDE.md` pour la liste des interdits.
+
+---
+
+# ANNEXE — version archivée du 24 mai 2026
+
+> ⚠️ **Ne pas suivre.** Conservé pour mémoire : décrit l'architecture
+> Gmail/Drive abandonnée en Phase 0, et une analyse CASA sans objet depuis.
+> Les corrections de coût du 6 juillet 2026 (§6) restent instructives si un
+> périmètre restreint devait un jour être envisagé.
 
 ## 1. Scopes réellement demandés
 
