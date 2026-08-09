@@ -486,6 +486,42 @@ flux OAuth — la requête partait mais pas de retour.
 et `clearActiveSession()`.
 
 
+### BUG 66 — Gmail IMAP refusé : les espaces du mot de passe d'application ne sont pas cosmétiques côté serveur
+**Fichiers** : `src/services/mailPassword.ts`, `src/services/native/mailImap.ts`,
+`src/components/settings/MailAccountsModal.tsx`, `android/.../MailImapPlugin.java`
+(9 août 2026)
+**Problème** : « Authentification refusée » sur Gmail malgré un mot de passe
+d'application correct. Google AFFICHE le mot de passe en 4 groupes de 4
+séparés par des espaces (parfois insécables U+00A0/U+202F selon le rendu) ;
+collé tel quel, le serveur Gmail le REJETTE — il ne strippe pas les espaces.
+La modal trimait l'email et le host mais envoyait le mot de passe TEL QUEL
+jusqu'à `store.connect()`. Aggravant : le Java jetait `e.getMessage()`
+(`catch (AuthenticationFailedException) → reject("auth_failed")` opaque),
+alors que Gmail y distingue « Invalid credentials » / « Application-specific
+password required » / « [ALERT] Please log in via your web browser » —
+rechute exacte de la leçon BUG 64, six commits après l'avoir écrite.
+**Règle** :
+- Tout secret copié-collé depuis l'UI d'un fournisseur doit être normalisé
+  avant usage : trim Unicode systématique + retrait des blancs internes sur
+  la double règle HOST (serveurs app-password only : imap.gmail.com,
+  imap.mail.yahoo.*) ∪ FORME (16 minuscules en 4 groupes). Keyer sur le
+  host, JAMAIS sur le preset UI choisi (un preset « IMAP » custom pointé
+  sur imap.gmail.com doit être couvert).
+- Filet anti-régression obligatoire : tenter le normalisé PUIS le brut sur
+  `auth_failed` (`mailPasswordCandidates`) — aucun mot de passe légal avec
+  blancs (RFC 3501) ne peut être cassé. Jamais de retry sur les autres codes.
+- La normalisation est une règle PRODUIT : elle vit côté TS (testable en
+  vitest), pas en Java. Le Java garde la validation frontière (caractères de
+  contrôle) et ne transforme JAMAIS l'input silencieusement. Les blancs
+  Unicode (≥ 0xA0) doivent PASSER `hasControlChars` — ne pas « durcir ».
+- Sur un refus d'auth, remonter la réponse serveur SANITISÉE (une ligne,
+  200 chars max, jamais le mot de passe) en suffixe du code
+  (`auth_failed: <détail>`) et l'afficher en petit sous l'erreur — c'est le
+  seul moyen de distinguer sur le terrain « mauvais mot de passe » de
+  « blocage sécurité Google » (verrouillage temporaire après échecs répétés :
+  le BON mot de passe échoue aussi pendant un moment — tester avec un mot de
+  passe fraîchement régénéré).
+
 ---
 
 ## RÈGLE 6 — AUDIT SÉCURITÉ SYSTÉMATIQUE DES ENDPOINTS

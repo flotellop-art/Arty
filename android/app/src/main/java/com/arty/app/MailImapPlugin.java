@@ -92,6 +92,12 @@ public class MailImapPlugin extends Plugin {
         return false;
     }
 
+    // NB : hasControlChars ne filtre volontairement PAS les blancs Unicode
+    // (U+00A0 ≥ 0x20) — les rejeter casserait des mots de passe IMAP
+    // génériques légitimes. La normalisation des mots de passe d'application
+    // (espaces du format Google 4×4) est une règle produit qui vit côté TS
+    // (src/services/mailPassword.ts), pas ici.
+
     static String validateAccountInput(String host, String email, String password) {
         if (host == null || host.isEmpty() || host.length() > 253 || hasControlChars(host)
                 || !host.matches("^[a-zA-Z0-9.-]+$")) {
@@ -104,6 +110,27 @@ public class MailImapPlugin extends Plugin {
             return "invalid_password";
         }
         return null;
+    }
+
+    /**
+     * Réponse du serveur IMAP sur un refus d'authentification : une ligne,
+     * bornée, sans caractères de contrôle. Elle ne contient jamais le mot de
+     * passe (JavaMail y met la ligne de réponse du serveur) et ne quitte pas
+     * l'appareil. La remonter est vital pour le diagnostic (leçon BUG 64 :
+     * masquer la CATÉGORIE d'une erreur tue le diagnostic) — Gmail y distingue
+     * « Invalid credentials », « Application-specific password required »,
+     * « [ALERT] Please log in via your web browser », etc.
+     */
+    static String sanitizeServerMessage(String raw) {
+        if (raw == null) return "";
+        String s = raw.replaceAll("[\\r\\n\\t]+", " ").replaceAll("[\\x00-\\x1f\\x7f]", "").trim();
+        return s.length() <= 200 ? s : s.substring(0, 200);
+    }
+
+    /** Code de rejet auth : "auth_failed" seul, ou suffixé du détail serveur. */
+    static String authFailedCode(Exception e) {
+        String detail = sanitizeServerMessage(e.getMessage());
+        return detail.isEmpty() ? "auth_failed" : "auth_failed: " + detail;
     }
 
     // ── Chiffrement Keystore ──────────────────────────────────────────────
@@ -228,7 +255,7 @@ public class MailImapPlugin extends Plugin {
                         account.getString("password"));
                 task.run(store, account);
             } catch (AuthenticationFailedException e) {
-                call.reject("auth_failed");
+                call.reject(authFailedCode(e));
             } catch (MessagingException e) {
                 call.reject("connect_failed");
             } catch (Exception e) {
@@ -422,7 +449,7 @@ public class MailImapPlugin extends Plugin {
                 ret.put("messageCount", total);
                 call.resolve(ret);
             } catch (AuthenticationFailedException e) {
-                call.reject("auth_failed");
+                call.reject(authFailedCode(e));
             } catch (MessagingException e) {
                 call.reject("connect_failed");
             } catch (Exception e) {

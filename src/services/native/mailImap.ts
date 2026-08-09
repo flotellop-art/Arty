@@ -1,5 +1,6 @@
 import { Capacitor, registerPlugin } from '@capacitor/core'
 import { getActiveUserId } from '../userSession'
+import { mailPasswordCandidates } from '../mailPassword'
 
 // Bridge vers le client IMAP natif LECTURE SEULE (MailImapPlugin.java).
 // Architecture « natif d'abord » (décision du 9 août 2026) : le mot de passe
@@ -86,7 +87,24 @@ export async function addMailAccount(input: {
   email: string
   password: string
 }): Promise<{ id: string; messageCount: number }> {
-  return MailImap.addAccount({ scope: requireScope(), ...input })
+  const scope = requireScope()
+  // BUG 66 : mot de passe normalisé d'abord (espaces du format Google 4×4,
+  // espace final du clavier), puis le brut en filet sur échec d'auth — un
+  // mot de passe légal contenant réellement des blancs reste connectable.
+  const candidates = mailPasswordCandidates(input.password, input.host)
+  let lastErr: unknown = null
+  for (const password of candidates) {
+    try {
+      return await MailImap.addAccount({ scope, ...input, password })
+    } catch (err) {
+      lastErr = err
+      const code = err instanceof Error ? err.message : ''
+      // Seul un refus d'authentification justifie d'essayer le candidat
+      // suivant ; tout autre échec (réseau, quota, validation) remonte tel quel.
+      if (!code.includes('auth_failed')) throw err
+    }
+  }
+  throw lastErr
 }
 
 export async function listMailAccounts(): Promise<MailAccountMeta[]> {

@@ -48,6 +48,11 @@ export const MailAccountsModal = memo(function MailAccountsModal({ open, onClose
   const [password, setPassword] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Détail technique renvoyé par le serveur IMAP sur un refus d'auth (BUG 66,
+  // leçon BUG 64) : Gmail y distingue « mauvais mot de passe » de « blocage
+  // sécurité » — sans lui, impossible de diagnostiquer sur le terrain.
+  const [errorDetail, setErrorDetail] = useState<string | null>(null)
+  const [showPassword, setShowPassword] = useState(false)
   const [success, setSuccess] = useState<string | null>(null)
   // Divulgation proéminente exigée par Google Play pour les intégrations d'IA
   // tierces (annonce du 15 juillet 2026) : elle doit précéder la collecte,
@@ -65,7 +70,10 @@ export const MailAccountsModal = memo(function MailAccountsModal({ open, onClose
   }, [])
 
   useEffect(() => {
-    if (open) reload()
+    if (open) {
+      setShowPassword(false)
+      reload()
+    }
   }, [open, reload])
 
   if (!open) return null
@@ -75,16 +83,20 @@ export const MailAccountsModal = memo(function MailAccountsModal({ open, onClose
     setProviderId(id)
     setHost(p.host)
     setError(null)
+    setErrorDetail(null)
     setSuccess(null)
   }
 
   const handleAdd = async () => {
     if (submitting) return
     setError(null)
+    setErrorDetail(null)
     setSuccess(null)
     const trimmedEmail = email.trim()
     const trimmedHost = host.trim()
-    if (!trimmedEmail || !password || !trimmedHost) {
+    // trim() aussi sur le mot de passe : "   " est truthy mais deviendra vide
+    // après normalisation (BUG 66) — mieux vaut errorMissing tout de suite.
+    if (!trimmedEmail || !password.trim() || !trimmedHost) {
       setError(t('mailAccountsModal.errorMissing'))
       return
     }
@@ -113,9 +125,16 @@ export const MailAccountsModal = memo(function MailAccountsModal({ open, onClose
       await reload()
     } catch (err) {
       const code = err instanceof Error ? err.message : ''
-      if (code.includes('auth_failed')) setError(t('mailAccountsModal.errorAuth'))
-      else if (code.includes('connect_failed')) setError(t('mailAccountsModal.errorConnect'))
+      if (code.includes('auth_failed')) {
+        setError(t('mailAccountsModal.errorAuth'))
+        // Le plugin suffixe la réponse du serveur : "auth_failed: <détail>".
+        const detail = code.replace(/^.*auth_failed:?\s*/, '').trim()
+        if (detail) setErrorDetail(t('mailAccountsModal.errorAuthDetail', { detail }))
+      } else if (code.includes('connect_failed')) setError(t('mailAccountsModal.errorConnect'))
       else if (code.includes('too_many_accounts')) setError(t('mailAccountsModal.errorTooMany'))
+      else if (code.includes('invalid_host')) setError(t('mailAccountsModal.errorInvalidHost'))
+      else if (code.includes('invalid_email')) setError(t('mailAccountsModal.errorInvalidEmail'))
+      else if (code.includes('invalid_password')) setError(t('mailAccountsModal.errorInvalidPassword'))
       else setError(t('mailAccountsModal.errorGeneric'))
     } finally {
       setSubmitting(false)
@@ -248,15 +267,27 @@ export const MailAccountsModal = memo(function MailAccountsModal({ open, onClose
                 autoCapitalize="none"
                 autoCorrect="off"
               />
-              <input
-                className={inputClass}
-                type="password"
-                placeholder={t('mailAccountsModal.passwordPlaceholder')}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                autoComplete="off"
-              />
+              <div className="relative">
+                <input
+                  className={`${inputClass} pr-20`}
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder={t('mailAccountsModal.passwordPlaceholder')}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  autoComplete="off"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((v) => !v)}
+                  className="absolute inset-y-0 right-0 px-3 text-xs text-theme-muted hover:text-theme-ink"
+                >
+                  {showPassword ? t('mailAccountsModal.hidePassword') : t('mailAccountsModal.showPassword')}
+                </button>
+              </div>
               {error && <p className="text-sm text-red-600">{error}</p>}
+              {errorDetail && <p className="text-xs text-theme-muted">{errorDetail}</p>}
               {success && <p className="text-sm text-theme-accent-text">{success}</p>}
               <div className="border border-theme-ink/30 bg-theme-ink/5 p-3">
                 <p className="text-sm text-theme-ink">{t('mailAccountsModal.securityNote')}</p>
