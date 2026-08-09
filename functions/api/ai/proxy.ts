@@ -30,6 +30,72 @@ import {
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages'
 
+// Anthropic renvoie en 400 DEUX familles d'erreurs : les requêtes malformées
+// (notre bug : schéma d'outil, bloc invalide, champ manquant) et les problèmes
+// de FACTURATION de la clé appelante (« credit balance is too low »). Seule la
+// première est exposable : la seconde décrit l'état de la clé du propriétaire
+// et reste masquée (invariant de l'audit F-6).
+// Motifs SPÉCIFIQUES à la facturation. Volontairement pas de mot isolé trop
+// courant (« plan », « quota », « upgrade ») : Anthropic les emploie aussi
+// dans des messages purement techniques, et les masquer nous priverait du
+// diagnostic sans rien protéger de plus.
+const BILLING_LEAK_PATTERN =
+  /credit\s*balance|insufficient\s*credit|billing|payment|purchase|invoice|spend\s*limit|upgrade\s+your|your\s+plan|too\s+low|exceed(?:s|ed)?\s+your|organization\s+\w*\s*limit|monthly\s+quota|rate\s*limit/i
+
+// Haiku 4.5 ne supporte ni le thinking adaptatif ni `output_config.effort`
+// (400), et pas non plus le server tool `web_fetch_20260209` — contrairement
+// à `web_search_20250305`, choisi précisément pour sa compatibilité Haiku.
+const HAIKU_UNSUPPORTED_TOOL_TYPES = ['web_fetch_20260209']
+
+/**
+ * Aligne le corps de requête sur le modèle RÉELLEMENT servi.
+ * Exporté pour les tests : c'est l'invariant qui empêche un 400 quand le
+ * serveur substitue un modèle sans que le client puisse le savoir.
+ */
+export function alignBodyWithServedModel(body: string, servedModel: string): string {
+  if (!servedModel.toLowerCase().includes('haiku')) return body
+  let parsed: Record<string, unknown>
+  try {
+    parsed = JSON.parse(body) as Record<string, unknown>
+  } catch {
+    return body
+  }
+  let changed = false
+  if ('thinking' in parsed) { delete parsed.thinking; changed = true }
+  if ('output_config' in parsed) { delete parsed.output_config; changed = true }
+  if (typeof parsed.max_tokens === 'number' && parsed.max_tokens > 64000) {
+    parsed.max_tokens = 64000
+    changed = true
+  }
+  if (Array.isArray(parsed.tools)) {
+    const kept = (parsed.tools as Array<Record<string, unknown>>).filter(
+      (tool) => typeof tool?.type !== 'string' || !HAIKU_UNSUPPORTED_TOOL_TYPES.includes(tool.type)
+    )
+    if (kept.length !== parsed.tools.length) { parsed.tools = kept; changed = true }
+  }
+  return changed ? JSON.stringify(parsed) : body
+}
+
+/**
+ * Message d'erreur 400 exposable au client, ou null s'il doit rester masqué.
+ * Exporté pour les tests : la frontière « bug applicatif » / « état de la clé »
+ * est un invariant de sécurité, elle doit être verrouillée.
+ */
+export function safeUpstreamRequestError(detail: string): string | null {
+  let message: unknown
+  try {
+    const parsed = JSON.parse(detail) as { error?: { type?: string; message?: unknown } }
+    if (parsed?.error?.type !== 'invalid_request_error') return null
+    message = parsed.error.message
+  } catch {
+    return null
+  }
+  if (typeof message !== 'string' || !message.trim()) return null
+  if (BILLING_LEAK_PATTERN.test(message)) return null
+  // Borne stricte : un message d'erreur n'a pas vocation à transporter du volume.
+  return `Requête refusée par le service IA : ${message.slice(0, 300)}`
+}
+
 export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUntil }) => {
   // Anti-relais anonyme : tout appel doit venir d'un user authentifié, même en
   // BYOK. Identité = token Google OU jeton d'essai email (espace de clés disjoint,
@@ -214,6 +280,14 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     if (!cap.allowed) return premiumCapReachedResponse(cap)
   }
 
+  // Filet FINAL : le modèle réellement servi peut différer de celui demandé
+  // par le client (substitution trial ci-dessus, plan verrouillé, wallet).
+  // Le client construit `thinking`/`output_config` et le tool set d'après le
+  // modèle DEMANDÉ (anthropicClient : `effortActive = enabled && !isHaiku`) —
+  // il ne PEUT pas savoir. Seul ce point connaît le modèle final : c'est donc
+  // ici qu'on aligne le payload, sinon Anthropic répond 400 (terrain 9 août).
+  body = alignBodyWithServedModel(body, modelName)
+
   const headers: Record<string, string> = {
     'content-type': 'application/json',
     'x-api-key': apiKey,
@@ -281,6 +355,16 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     if (!isByok && !response.ok) {
       const detail = await response.text().catch(() => '')
       console.error('[proxy] upstream error', response.status, detail.slice(0, 500))
+      // Terrain 9 août : un 400 opaque a coûté plusieurs allers-retours de
+      // diagnostic. Un 400 `invalid_request_error` décrit NOTRE payload (un
+      // bug applicatif), pas l'état de la clé du propriétaire — le masquer
+      // n'apporte aucune sécurité et empêche de corriger. Exception : Anthropic
+      // renvoie AUSSI les problèmes de facturation en 400 ; ceux-là restent
+      // masqués (cf. safeUpstreamRequestError).
+      const safe = response.status === 400 ? safeUpstreamRequestError(detail) : null
+      if (safe) {
+        return Response.json({ error: safe }, { status: 400, headers: responseHeaders() })
+      }
       return Response.json({ error: 'AI service error' }, { status: response.status, headers: responseHeaders() })
     }
     return new Response(response.body, {

@@ -22,6 +22,7 @@ describe('formatApiError — erreur générique du proxy', () => {
   const GENERIC = JSON.stringify({ error: 'AI service error' })
 
   it.each([
+    [400, 'errors.apiBadRequest'],
     [429, 'errors.apiRateLimit'],
     [529, 'errors.apiOverloaded'],
     [401, 'errors.apiKeyInvalid'],
