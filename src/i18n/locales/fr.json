@@ -1465,7 +1465,9 @@
     "errorConnect": "Connexion au serveur impossible. Vérifie le serveur et ta connexion internet.",
     "errorTooMany": "Limite de 5 boîtes atteinte. Retire une boîte pour en ajouter une nouvelle.",
     "errorGeneric": "Impossible d'ajouter cette boîte pour le moment.",
-    "securityNote": "Ton mot de passe est chiffré via le Keystore Android et n'est jamais envoyé à nos serveurs. Arty lit tes mails en lecture seule : aucun envoi, aucune suppression, aucune modification. Quand tu demandes à Arty de lire ou de résumer un message, son contenu est transmis à notre fournisseur d'IA (Anthropic, États-Unis) le temps de te répondre — jamais à un autre modèle. Les pièces jointes ne sont pas lues."
+    "securityNote": "Ton mot de passe est chiffré via le Keystore Android et n'est jamais envoyé à nos serveurs. Arty lit tes mails en lecture seule : aucun envoi, aucune suppression, aucune modification. Quand tu demandes à Arty de lire ou de résumer un message, son contenu est transmis à notre fournisseur d'IA (Anthropic, États-Unis) le temps de te répondre — jamais à un autre modèle. Les pièces jointes ne sont pas lues.",
+    "consentLabel": "J'ai compris et j'accepte que le contenu des messages qu'Arty lit soit transmis à Anthropic (Claude, États-Unis) pour répondre à mes demandes.",
+    "errorConsent": "Coche la case pour confirmer que tu as compris avant de connecter une boîte."
   },
   "memoryViewer": {
     "title": "🧠 Mémoire d'Arty",

@@ -49,6 +49,12 @@ export const MailAccountsModal = memo(function MailAccountsModal({ open, onClose
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
+  // Divulgation proéminente exigée par Google Play pour les intégrations d'IA
+  // tierces (annonce du 15 juillet 2026) : elle doit précéder la collecte,
+  // être visible sans défilement dans le flux, et demander un acte positif.
+  // Un paragraphe en petits caractères sous le bouton ne satisfait aucun des
+  // trois critères. L'accord est redemandé à chaque nouvelle boîte.
+  const [consented, setConsented] = useState(false)
 
   const native = isMailImapAvailable()
   const preset = PROVIDER_PRESETS.find((p) => p.id === providerId) ?? FREE_PRESET
@@ -82,6 +88,12 @@ export const MailAccountsModal = memo(function MailAccountsModal({ open, onClose
       setError(t('mailAccountsModal.errorMissing'))
       return
     }
+    // Filet côté logique : le bouton est déjà désactivé sans accord, mais
+    // l'exigence de divulgation ne doit pas reposer sur le seul rendu.
+    if (!consented) {
+      setError(t('mailAccountsModal.errorConsent'))
+      return
+    }
     setSubmitting(true)
     try {
       const res = await addMailAccount({
@@ -95,6 +107,8 @@ export const MailAccountsModal = memo(function MailAccountsModal({ open, onClose
       // on vide le champ immédiatement après l'ajout.
       setPassword('')
       setEmail('')
+      // L'accord vaut pour CETTE boîte : la case se redemande pour la suivante.
+      setConsented(false)
       setSuccess(t('mailAccountsModal.success', { count: res.messageCount }))
       await reload()
     } catch (err) {
@@ -244,14 +258,25 @@ export const MailAccountsModal = memo(function MailAccountsModal({ open, onClose
               />
               {error && <p className="text-sm text-red-600">{error}</p>}
               {success && <p className="text-sm text-theme-accent-text">{success}</p>}
+              <div className="border border-theme-ink/30 bg-theme-ink/5 p-3">
+                <p className="text-sm text-theme-ink">{t('mailAccountsModal.securityNote')}</p>
+                <label className="mt-3 flex items-start gap-2 text-sm text-theme-ink">
+                  <input
+                    type="checkbox"
+                    className="mt-1 shrink-0"
+                    checked={consented}
+                    onChange={(e) => setConsented(e.target.checked)}
+                  />
+                  <span>{t('mailAccountsModal.consentLabel')}</span>
+                </label>
+              </div>
               <button
                 onClick={handleAdd}
-                disabled={submitting}
+                disabled={submitting || !consented}
                 className="w-full border border-theme-ink bg-theme-ink px-4 py-3 text-sm font-medium text-theme-bg hover:opacity-90 disabled:opacity-50"
               >
                 {submitting ? t('mailAccountsModal.testing') : t('mailAccountsModal.addButton')}
               </button>
-              <p className="text-xs text-theme-muted">{t('mailAccountsModal.securityNote')}</p>
             </div>
           )}
         </div>

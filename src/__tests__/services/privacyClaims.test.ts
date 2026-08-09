@@ -122,5 +122,20 @@ describe('privacy and Play submission claims', () => {
     const en = JSON.parse(read('src/i18n/locales/en.json'))
     expect(fr.mailAccountsModal.securityNote).toMatch(/Anthropic/)
     expect(en.mailAccountsModal.securityNote).toMatch(/Anthropic/)
+    // La divulgation doit être ACCEPTÉE, pas seulement affichée (exigence Play
+    // sur les intégrations d'IA tierces, annonce du 15 juillet 2026).
+    expect(fr.mailAccountsModal.consentLabel).toMatch(/Anthropic/)
+    expect(en.mailAccountsModal.consentLabel).toMatch(/Anthropic/)
+  })
+
+  // Le consentement se donne devant l'écran : si une refonte d'interface
+  // supprime la case ou débranche le bouton, la CI doit le voir. Contrôle de
+  // source volontairement grossier — il garde la FORME de la garantie, pas son
+  // rendu, que seul un test de composant couvrirait.
+  it('le bouton d’ajout d’une boîte reste conditionné à l’accord explicite', () => {
+    const modal = read('src/components/settings/MailAccountsModal.tsx')
+    expect(modal).toMatch(/disabled=\{submitting \|\| !consented\}/)
+    expect(modal).toMatch(/if \(!consented\)/)
+    expect(modal).toMatch(/mailAccountsModal\.consentLabel/)
   })
 })
