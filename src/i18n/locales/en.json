@@ -199,16 +199,36 @@
       "calendarDisconnected": "No calendar is connected. Connect Google to display today’s events.",
       "noRecent": "No recent conversations.",
       "intentions": {
-        "prepare": { "title": "Prepare", "subtitle": "an agenda", "prompt": "Prepare a concise agenda for my next meeting. Start by asking for any information you need." },
-        "structure": { "title": "Structure", "subtitle": "scattered ideas", "prompt": "Help me turn my ideas into a clear outline. First ask me to paste my notes." },
-        "analyze": { "title": "Analyze", "subtitle": "the risks", "prompt": "Analyze the risks of my project with nuance. First ask for its context, constraints and deadline." },
-        "imagine": { "title": "Imagine", "subtitle": "new angles", "prompt": "Suggest new angles for my topic. First ask for the objective, audience and ideas already explored." }
+        "prepare": {
+          "title": "Prepare",
+          "subtitle": "an agenda",
+          "prompt": "Prepare a concise agenda for my next meeting. Start by asking for any information you need."
+        },
+        "structure": {
+          "title": "Structure",
+          "subtitle": "scattered ideas",
+          "prompt": "Help me turn my ideas into a clear outline. First ask me to paste my notes."
+        },
+        "analyze": {
+          "title": "Analyze",
+          "subtitle": "the risks",
+          "prompt": "Analyze the risks of my project with nuance. First ask for its context, constraints and deadline."
+        },
+        "imagine": {
+          "title": "Imagine",
+          "subtitle": "new angles",
+          "prompt": "Suggest new angles for my topic. First ask for the objective, audience and ideas already explored."
+        }
       },
       "suggestions": {
-        "summarize": "Summarize", "summarizePrompt": "Summarize this content: ",
-        "write": "Write", "writePrompt": "Help me write: ",
-        "translate": "Translate", "translatePrompt": "Translate this content and ask for the target language: ",
-        "explain": "Explain", "explainPrompt": "Explain this simply: "
+        "summarize": "Summarize",
+        "summarizePrompt": "Summarize this content: ",
+        "write": "Write",
+        "writePrompt": "Help me write: ",
+        "translate": "Translate",
+        "translatePrompt": "Translate this content and ask for the target language: ",
+        "explain": "Explain",
+        "explainPrompt": "Explain this simply: "
       }
     }
   },
@@ -565,6 +585,7 @@
     "apiConnection": "Connection error ({{status}}). Check your internet connection.",
     "geminiError": "Gemini error ({{status}}). Check your key or connection.",
     "geminiModelNotFound": "Gemini model unavailable ({{status}}). The app needs an update — try Claude in the meantime.",
+    "geminiEmptyResponse": "Gemini returned no response ({{reason}}). Rephrase your request or pick another model.",
     "mistralKeyInvalid": "Invalid or expired Mistral API key.",
     "mistralRateLimit": "Mistral request limit reached — retry in a few seconds.",
     "mistralError": "Mistral error ({{status}}): {{message}}",

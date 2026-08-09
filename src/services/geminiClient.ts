@@ -465,6 +465,9 @@ async function runGeminiStream(
     let promptTokens = 0
     let candidatesTokens = 0
     let thoughtsTokens = 0
+    let emittedText = false
+    let blockReason = ''
+    let finishReason = ''
     try {
       while (true) {
         const { done, value } = await reader.read()
@@ -485,8 +488,20 @@ async function runGeminiStream(
             if (searchContext) setSearchContext(searchContext, options?.conversationId)
             const text = data.candidates?.[0]?.content?.parts?.[0]?.text
             if (text) {
+              emittedText = true
               onToken(text)
             }
+            // Un tour peut se terminer SANS aucun texte : prompt bloqué
+            // (promptFeedback.blockReason, aucun candidate), filtre de sûreté
+            // ou budget épuisé par le raisonnement (finishReason ≠ STOP).
+            // Sans ces deux captures, onDone() publiait une bulle VIDE et
+            // silencieuse — symptôme terrain du 9 août (classe BUG 61 :
+            // jamais d'état stable invisible). Cf. aussi BUG 59.
+            if (data.promptFeedback?.blockReason) {
+              blockReason = String(data.promptFeedback.blockReason)
+            }
+            const chunkFinish = data.candidates?.[0]?.finishReason
+            if (chunkFinish) finishReason = String(chunkFinish)
             // Gemini envoie usageMetadata sur chaque chunk avec un cumulé.
             // On garde la dernière valeur reçue.
             const usage = data.usageMetadata
@@ -508,6 +523,16 @@ async function runGeminiStream(
       recordUsage(servedModel, promptTokens, candidatesTokens + thoughtsTokens)
     } catch {
       // Tracking ne doit pas casser la réponse
+    }
+
+    // Aucun texte reçu = échec, jamais une réponse vide silencieuse. On rend
+    // la raison lisible plutôt qu'une bulle vide que l'utilisateur ne peut ni
+    // comprendre ni relancer (leçons BUG 59 « état visible » / BUG 61).
+    if (!emittedText) {
+      onError(new Error(i18n.t('errors.geminiEmptyResponse', {
+        reason: blockReason || finishReason || 'unknown',
+      })))
+      return
     }
 
     onDone()

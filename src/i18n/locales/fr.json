@@ -199,16 +199,36 @@
       "calendarDisconnected": "Aucun calendrier n’est connecté. Connectez Google pour afficher les événements du jour.",
       "noRecent": "Aucune conversation récente.",
       "intentions": {
-        "prepare": { "title": "Préparer", "subtitle": "un ordre du jour", "prompt": "Prépare un ordre du jour concis pour ma prochaine réunion. Commence par me demander les informations qui te manquent." },
-        "structure": { "title": "Structurer", "subtitle": "des idées éparses", "prompt": "Aide-moi à structurer mes idées en un plan clair. Demande-moi d’abord de coller mes notes." },
-        "analyze": { "title": "Analyser", "subtitle": "les risques", "prompt": "Analyse les risques de mon projet avec nuance. Demande-moi d’abord son contexte, ses contraintes et son échéance." },
-        "imagine": { "title": "Imaginer", "subtitle": "de nouveaux angles", "prompt": "Propose de nouveaux angles pour mon sujet. Demande-moi d’abord l’objectif, le public et les pistes déjà explorées." }
+        "prepare": {
+          "title": "Préparer",
+          "subtitle": "un ordre du jour",
+          "prompt": "Prépare un ordre du jour concis pour ma prochaine réunion. Commence par me demander les informations qui te manquent."
+        },
+        "structure": {
+          "title": "Structurer",
+          "subtitle": "des idées éparses",
+          "prompt": "Aide-moi à structurer mes idées en un plan clair. Demande-moi d’abord de coller mes notes."
+        },
+        "analyze": {
+          "title": "Analyser",
+          "subtitle": "les risques",
+          "prompt": "Analyse les risques de mon projet avec nuance. Demande-moi d’abord son contexte, ses contraintes et son échéance."
+        },
+        "imagine": {
+          "title": "Imaginer",
+          "subtitle": "de nouveaux angles",
+          "prompt": "Propose de nouveaux angles pour mon sujet. Demande-moi d’abord l’objectif, le public et les pistes déjà explorées."
+        }
       },
       "suggestions": {
-        "summarize": "Résumer", "summarizePrompt": "Résume ce contenu : ",
-        "write": "Rédiger", "writePrompt": "Aide-moi à rédiger : ",
-        "translate": "Traduire", "translatePrompt": "Traduis ce contenu en précisant la langue cible : ",
-        "explain": "Expliquer", "explainPrompt": "Explique-moi simplement : "
+        "summarize": "Résumer",
+        "summarizePrompt": "Résume ce contenu : ",
+        "write": "Rédiger",
+        "writePrompt": "Aide-moi à rédiger : ",
+        "translate": "Traduire",
+        "translatePrompt": "Traduis ce contenu en précisant la langue cible : ",
+        "explain": "Expliquer",
+        "explainPrompt": "Explique-moi simplement : "
       }
     }
   },
@@ -565,6 +585,7 @@
     "apiConnection": "Erreur de connexion ({{status}}). Vérifie ta connexion internet.",
     "geminiError": "Erreur Gemini ({{status}}). Vérifie ta clé ou ta connexion.",
     "geminiModelNotFound": "Modèle Gemini indisponible ({{status}}). L'app doit être mise à jour — réessaie avec Claude en attendant.",
+    "geminiEmptyResponse": "Gemini n'a renvoyé aucune réponse ({{reason}}). Reformule ta demande ou choisis un autre modèle.",
     "mistralKeyInvalid": "Clé API Mistral invalide ou expirée.",
     "mistralRateLimit": "Limite de requêtes Mistral atteinte — réessaie dans quelques secondes.",
     "mistralError": "Erreur Mistral ({{status}}): {{message}}",
