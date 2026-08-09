@@ -33,14 +33,20 @@ describe('safeUpstreamRequestError — expose le bug, jamais l’état de la cl�
     expect(safeUpstreamRequestError(invalidRequest(message))).toContain(message)
   })
 
+  // Terrain 9 août : les crédits serveur étaient épuisés. Masquer TOUT le
+  // motif ne protégeait rien d'exploitable mais supprimait le diagnostic —
+  // on remonte donc la CATÉGORIE ('billing'), jamais le texte upstream
+  // (montants, seuils, identifiants d'organisation restent invisibles).
   it.each([
     'Your credit balance is too low to access the Claude API',
     'This request would exceed your organization plan limit',
     'Please upgrade your plan or purchase additional credits',
     'Billing issue: payment method declined',
     'You have exceeded your monthly quota',
-  ])('masque tout message de facturation : %s', (message) => {
-    expect(safeUpstreamRequestError(invalidRequest(message))).toBeNull()
+  ])('remonte la catégorie billing sans le texte upstream : %s', (message) => {
+    const out = safeUpstreamRequestError(invalidRequest(message))
+    expect(out).toBe('billing')
+    expect(out).not.toContain(message)
   })
 
   it('masque les erreurs qui ne sont pas des invalid_request_error', () => {

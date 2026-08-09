@@ -44,6 +44,14 @@ describe('formatApiError — erreur générique du proxy', () => {
     }
   })
 
+  it('traduit la catégorie billing du proxy en message actionnable', () => {
+    const body = JSON.stringify({ error: 'upstream_billing' })
+    const out = formatApiErrorForTest(400, body)
+    expect(out).toBe('errors.apiUpstreamBilling')
+    // Jamais le code machine brut à l'écran.
+    expect(out).not.toBe('upstream_billing')
+  })
+
   it('laisse passer les messages explicites de nos propres endpoints', () => {
     const body = JSON.stringify({ error: 'Authentication required — please sign in with Google' })
     expect(formatApiErrorForTest(401, body)).toBe('Authentication required — please sign in with Google')

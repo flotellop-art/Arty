@@ -919,3 +919,27 @@ réponse VIDE. Trois défauts empilés :
   vide : capturer la raison amont et rendre une erreur lisible (BUG 59/61).
   Vaut pour tous les clients IA — seul Gemini est corrigé à ce jour, le même
   filet reste à poser sur Mistral/OpenAI si le cas se présente.
+
+### BUG 64 — Un filtre de sécurité qui masque la CATÉGORIE tue le diagnostic
+**Fichiers** : `functions/api/ai/proxy.ts`, `src/services/anthropicClient.ts` (9 août 2026, PR #414)
+**Problème** : les crédits de la clé Anthropic serveur étaient épuisés.
+Anthropic signale ce cas en **400 `invalid_request_error`** (pas 402/429),
+avec le message « Your credit balance is too low ». Le proxy masquait
+intégralement tout motif de facturation (audit F-6) → le client n'affichait
+qu'une erreur générique (« Erreur de connexion (400) »). Résultat : quatre
+correctifs successifs sur le PAYLOAD (routage, modèle servi, schémas
+d'outils) alors que la requête n'avait jamais été en cause. Le diagnostic
+n'a été possible qu'en demandant à l'utilisateur d'aller lire son solde.
+**Règle** :
+- Masquer un motif d'erreur ne protège que le **détail** (montants, seuils,
+  identité d'organisation). La **catégorie**, elle, doit TOUJOURS remonter :
+  elle n'est pas exploitable par un attaquant (il constate déjà la panne) et
+  c'est la seule chose qui permet d'agir. Ici : `{ error: 'upstream_billing' }`
+  → message utilisateur explicite « crédits du serveur épuisés ».
+- Corollaire général : quand un garde de sécurité rend un état INDISCERNABLE,
+  vérifier qu'il reste au moins un canal (catégorie exposée, log serveur
+  consulté, métrique) qui distingue « bug applicatif » de « panne
+  d'exploitation ». Sans ça, toute l'énergie de debug part du mauvais côté.
+- Ne jamais conclure « c'est un bug de payload » d'un simple HTTP 400 sur
+  une API IA : les erreurs de facturation et de quota y sont couramment
+  encodées en 400.

@@ -80,6 +80,14 @@ export function alignBodyWithServedModel(body: string, servedModel: string): str
  * Message d'erreur 400 exposable au client, ou null s'il doit rester masqué.
  * Exporté pour les tests : la frontière « bug applicatif » / « état de la clé »
  * est un invariant de sécurité, elle doit être verrouillée.
+ *
+ * Terrain 9 août 2026 — leçon coûteuse : masquer TOUT un motif ne protège
+ * rien d'exploitable, mais supprime le diagnostic. Les crédits de la clé
+ * serveur étaient épuisés ; Anthropic le dit en 400 `invalid_request_error`,
+ * ce filtre le masquait, et l'écran n'affichait qu'une erreur générique — ce
+ * qui a coûté quatre correctifs de payload à côté de la plaque. On distingue
+ * donc désormais la CATÉGORIE (exposée, actionnable) du DÉTAIL (masqué :
+ * montants, seuils, identifiants d'organisation).
  */
 export function safeUpstreamRequestError(detail: string): string | null {
   let message: unknown
@@ -91,7 +99,11 @@ export function safeUpstreamRequestError(detail: string): string | null {
     return null
   }
   if (typeof message !== 'string' || !message.trim()) return null
-  if (BILLING_LEAK_PATTERN.test(message)) return null
+  if (BILLING_LEAK_PATTERN.test(message)) {
+    // Catégorie seule, jamais le texte upstream : l'utilisateur sait que le
+    // problème est côté service et non chez lui, l'exploitant sait où aller.
+    return 'billing'
+  }
   // Borne stricte : un message d'erreur n'a pas vocation à transporter du volume.
   return `Requête refusée par le service IA : ${message.slice(0, 300)}`
 }
@@ -358,10 +370,16 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
       // Terrain 9 août : un 400 opaque a coûté plusieurs allers-retours de
       // diagnostic. Un 400 `invalid_request_error` décrit NOTRE payload (un
       // bug applicatif), pas l'état de la clé du propriétaire — le masquer
-      // n'apporte aucune sécurité et empêche de corriger. Exception : Anthropic
-      // renvoie AUSSI les problèmes de facturation en 400 ; ceux-là restent
-      // masqués (cf. safeUpstreamRequestError).
+      // n'apporte aucune sécurité et empêche de corriger. Le cas facturation
+      // ne remonte que sa CATÉGORIE (`billing`), jamais le texte upstream :
+      // assez pour agir, rien d'exploitable (cf. safeUpstreamRequestError).
       const safe = response.status === 400 ? safeUpstreamRequestError(detail) : null
+      if (safe === 'billing') {
+        return Response.json(
+          { error: 'upstream_billing' },
+          { status: 400, headers: responseHeaders() }
+        )
+      }
       if (safe) {
         return Response.json({ error: safe }, { status: 400, headers: responseHeaders() })
       }
