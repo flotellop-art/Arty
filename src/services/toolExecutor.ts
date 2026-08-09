@@ -11,6 +11,7 @@ import { createTrailHandlers } from './tools/trailTools'
 import { createNativeHandlers } from './tools/nativeTools'
 import { createSheetsHandlers } from './tools/sheetsTools'
 import { createImageHandlers } from './tools/imageTools'
+import { createMailHandlers } from './tools/mailTools'
 import { isPublicGoogleOAuthProfileEnabled, isBlockedPublicGoogleTool } from './publicGoogleOAuthProfile'
 
 export type { ToolResult, ToolHandler }
@@ -32,6 +33,10 @@ export function createToolExecutor(
     // P1.3 — toujours enregistré, mais le tool n'est exposé au modèle que
     // conditionnellement (cf. wantsImageGeneration dans useConversation).
     ...createImageHandlers(),
+    // Boîtes mail IMAP natives — même principe : handlers toujours
+    // enregistrés, définitions exposées seulement si ≥1 compte connecté
+    // (mailToolsAvailable dans useConversation).
+    ...createMailHandlers(),
   }
 
   return async (name: string, input: Record<string, unknown>): Promise<ToolResult> => {

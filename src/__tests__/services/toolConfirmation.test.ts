@@ -3,6 +3,7 @@ import type { TFunction } from 'i18next'
 import { buildToolConfirmMessage } from '../../services/toolConfirmation'
 import { TOOLS } from '../../services/toolDefinitions'
 import { NATIVE_TOOL_DEFINITIONS } from '../../services/tools/nativeTools'
+import { mailToolDefinitions } from '../../services/tools/mailTools'
 
 // Faux `t` : renvoie la clé + les params, suffisant pour vérifier QUELLE clé
 // est choisie et QUELS params sont passés, sans charger i18next.
@@ -86,6 +87,12 @@ const SAFE_TOOLS = new Set([
   // le share sheet où l'HUMAIN choisit la destination (même raisonnement que
   // save_local_file/share).
   'find_trails', 'export_trail_gpx',
+  // Boîtes mail IMAP natives (9 août 2026) : LECTURE SEULE stricte côté
+  // plugin (Folder.READ_ONLY, port 993, jamais d'envoi/suppression) et le
+  // contenu revient encadré markUntrustedThirdPartyData. Aucun credential en
+  // paramètre d'outil (account_id opaque). Un futur send_mail/delete_mail
+  // irait dans CONFIRM_REQUIRED.
+  'list_mail_accounts', 'get_recent_mail', 'search_mail', 'read_mail',
   // Server-side (exécutés par l'API Anthropic, jamais par le toolExecutor)
   'web_search', 'web_fetch',
 ])
@@ -95,10 +102,14 @@ describe('parité allowlist HITL ↔ tools déclarés au LLM', () => {
   // CI) : on ajoute NATIVE_TOOL_DEFINITIONS (liste complète, exportée
   // inconditionnellement) pour que la parité couvre AUSSI cette famille —
   // delete_local_file est destructif (revue audit F-16).
+  // mailToolDefinitions n'est pas dans TOOLS (injection conditionnelle quand
+  // ≥1 compte mail est connecté, pattern imageTools) mais le modèle peut les
+  // appeler : la parité DOIT les couvrir aussi.
   const declaredNames = [
     ...new Set([
       ...TOOLS.map((t: { name: string }) => t.name),
       ...NATIVE_TOOL_DEFINITIONS.map((t: { name: string }) => t.name),
+      ...mailToolDefinitions.map((t: { name: string }) => t.name),
     ]),
   ]
 

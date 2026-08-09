@@ -23,6 +23,13 @@ export const PRIVATE_DATA_TRIGGERS = [
   /mes\s+(factures|devis|contrats)/i,
   /emails?\s+(non\s+lus|reçus|envoyés|du jour|récents)/i,
   /boîte\s+(de\s+réception|mail)/i,
+  // Boîtes mail IMAP natives (9 août 2026, BUG 56 : phrasings indirects qui
+  // nomment le fournisseur ou le compte sans dire « mail »)
+  /(ma|la)\s+bo[îi]te\s+(free|gmail|yahoo|icloud|orange|sfr|laposte)/i,
+  /mon\s+compte\s+(mail|e-?mail|free|gmail|yahoo|icloud)/i,
+  /(le|un)\s+mail\s+(de|du|d['’])/i,
+  /re[çc]u\s+(un\s+)?(mail|e-?mail|message)\s/i,
+  /(v[ée]rifie|regarde|check)\s+(mes|ma|mon)\s+(mails?|messagerie|bo[îi]te|courriers?)/i,
   /sur\s+drive|dans\s+drive|google\s+drive/i,
   // FR — agenda / calendar (needs Calendar tools → Claude only)
   /mon\s+(agenda|calendrier|planning|emploi\s+du\s+temps)/i,
@@ -45,6 +52,10 @@ export const PRIVATE_DATA_TRIGGERS = [
   /my\s+(clients|projects|jobs)/i,
   /my\s+(invoices|quotes|contracts)/i,
   /unread\s+emails?|received\s+emails?|sent\s+emails?|recent\s+emails?|inbox/i,
+  // Mailbox IMAP (9 août 2026) — indirect phrasings naming the provider
+  /my\s+(free|gmail|yahoo|icloud)\s+(mailbox|account|mail)/i,
+  /(check|look\s+at)\s+my\s+(mail|mailbox|messages)/i,
+  /the\s+email\s+from\s/i,
   /in\s+drive|on\s+drive|google\s+drive/i,
   // EN — agenda / calendar
   /my\s+(calendar|agenda|schedule|appointments?)/i,
