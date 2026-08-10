@@ -930,6 +930,12 @@ export function useConversation() {
         if (openaiRoute.consumedCurrentFiles) setPendingFiles(null)
         controller = streamOpenAIMessage(openaiRoute.messages, openaiKey, onToken, onDone, onErr, {
           systemPrompt: systemPromptRef.current,
+          // Boucle tools OpenAI (parité Mistral) : tools custom via le même
+          // handler HITL, web_search/fetch_url interceptés dans le client.
+          // Ferme le bug terrain « Ouvre le lien » → « je n'ai pas l'accès
+          // web actif ici » en sélection manuelle ChatGPT (10 août 2026).
+          onToolCall: trackedToolHandler,
+          webSearch: routeDecision.webSearch,
           conversationId: targetId,
           routeReason: routeDecision.reason,
           ...(visionAutoCropOwnerId !== undefined ? { expectedUserId: visionAutoCropOwnerId } : {}),
