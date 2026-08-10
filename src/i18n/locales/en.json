@@ -593,6 +593,8 @@
     "mistralError": "Mistral error ({{status}}): {{message}}",
     "openaiKeyInvalid": "Invalid OpenAI key",
     "openaiRateLimit": "Quota exceeded",
+    "openaiModelUnavailable": "The ChatGPT model is not available with the key in use (account tier too low, or the model is not enabled). Switch to Auto mode, or check GPT-5 model access on the OpenAI account.",
+    "openaiInvalidRequest": "Request rejected by OpenAI: {{message}}",
     "openaiServer": "OpenAI error",
     "openaiError": "OpenAI error ({{status}})",
     "openaiPayloadTooLarge": "The photo batch is too large to send.",

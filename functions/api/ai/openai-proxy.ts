@@ -50,7 +50,7 @@ import {
   RequestBodyTooLargeError,
   type ObservedReadableStream,
 } from '../_lib/boundedRequestBody'
-import { classifyUpstreamBilling } from '../_lib/upstreamBilling'
+import { classifyUpstreamBilling, safeInvalidRequestMessage } from '../_lib/upstreamBilling'
 import { validateOpenAIVisionPayload, type OpenAIVisionValidation } from '../_lib/openaiVision'
 import {
   validateOpenAIVisionStream,
@@ -608,6 +608,17 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
         }
         if (billing) {
           return Response.json({ error: billing }, { status: response.status })
+        }
+        // Un 400 `invalid_request_error` décrit NOTRE payload (bug applicatif),
+        // pas l'état de la clé du propriétaire : le masquer n'apporte aucune
+        // sécurité et supprime le seul indice exploitable. Même règle que le
+        // proxy Anthropic depuis BUG 64. Le message part vers l'utilisateur
+        // qui a émis la requête — il n'est toujours PAS journalisé côté
+        // serveur, où il se mêlerait aux logs d'autres comptes.
+        const invalidRequest =
+          response.status === 400 ? safeInvalidRequestMessage(errorText) : null
+        if (invalidRequest) {
+          return Response.json({ error: `upstream_invalid_request: ${invalidRequest}` }, { status: 400 })
         }
         return Response.json({ error: 'AI service error' }, { status: response.status })
       }

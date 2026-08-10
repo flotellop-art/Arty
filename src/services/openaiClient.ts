@@ -362,6 +362,30 @@ async function streamOnce(
       if (parsed?.error === 'upstream_billing') {
         throw new Error(i18n.t('errors.apiUpstreamBilling'))
       }
+      // Le repli d'éligibilité (Terra → gpt-5) a déjà été tenté par
+      // startChatRequest : si le refus de modèle arrive JUSQU'ICI, c'est que
+      // même le modèle de repli est hors de portée de la clé utilisée —
+      // typiquement un compte au palier trop bas pour la famille gpt-5.
+      // Sans ce message, l'écran affichait « Erreur OpenAI (400) », qui
+      // envoyait chercher un bug de payload inexistant.
+      const rawError = parsed?.error as unknown
+      const errorCode =
+        typeof rawError === 'string'
+          ? rawError
+          : (rawError as { code?: string; message?: string } | undefined)?.code
+            ?? (rawError as { message?: string } | undefined)?.message
+      if (errorCode === 'model_not_supported') {
+        throw new Error(i18n.t('errors.openaiModelUnavailable'))
+      }
+      // Motif de requête invalide relayé par le proxy : c'est un bug de
+      // payload côté Arty, il doit être lisible plutôt que masqué.
+      if (typeof rawError === 'string' && rawError.startsWith('upstream_invalid_request: ')) {
+        throw new Error(
+          i18n.t('errors.openaiInvalidRequest', {
+            message: rawError.slice('upstream_invalid_request: '.length),
+          }),
+        )
+      }
       if (parsed?.error === 'payload_too_large' || parsed?.error === 'vision_payload_too_large') {
         throw new Error(i18n.t('errors.openaiPayloadTooLarge'))
       }
@@ -375,6 +399,8 @@ async function streamOnce(
       if ((e as Error).message === 'premium_cap_reached') throw e
       if ((e as Error).message === 'trial_model_restricted') throw e
       if ((e as Error).message === i18n.t('errors.apiUpstreamBilling')) throw e
+      if ((e as Error).message === i18n.t('errors.openaiModelUnavailable')) throw e
+      if ((e as Error).message.startsWith(i18n.t('errors.openaiInvalidRequest', { message: '' }).slice(0, 20))) throw e
       if (
         (e as Error).message === i18n.t('errors.openaiPayloadTooLarge') ||
         (e as Error).message === i18n.t('errors.openaiVisionDisabled') ||

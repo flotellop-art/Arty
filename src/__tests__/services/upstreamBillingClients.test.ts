@@ -64,3 +64,35 @@ describe('crédits serveur épuisés — message lisible côté client', () => {
     expect(BILLING_MESSAGE.length).toBeGreaterThan(20)
   })
 })
+
+describe('autres motifs de 400 — lisibles au lieu de « Erreur OpenAI (400) »', () => {
+  function runOpenAI(body: object, status = 400): Promise<Error> {
+    global.fetch = vi.fn(async () => new Response(JSON.stringify(body), {
+      status,
+      headers: { 'content-type': 'application/json' },
+    })) as typeof fetch
+    return new Promise((resolve, reject) => {
+      const timeout = window.setTimeout(() => reject(new Error('timeout')), 3000)
+      sendMessageStream(
+        [{ role: 'user', content: 'Salut' }],
+        'sk-user',
+        () => undefined,
+        () => { window.clearTimeout(timeout); reject(new Error('should not complete')) },
+        (e) => { window.clearTimeout(timeout); resolve(e) },
+      )
+    })
+  }
+
+  it('modèle hors de portée du compte : message actionnable, pas un code brut', async () => {
+    // Le repli Terra → gpt-5 a déjà eu lieu en amont ; arriver ici signifie
+    // que même le modèle de repli est refusé (palier de compte insuffisant).
+    const error = await runOpenAI({ error: { message: 'model_not_supported', code: 'model_not_supported' } })
+    expect(error.message).toBe(i18n.t('errors.openaiModelUnavailable'))
+    expect(error.message).not.toMatch(/model_not_supported/)
+  })
+
+  it('requête invalide : le motif upstream est affiché, pas masqué', async () => {
+    const error = await runOpenAI({ error: "upstream_invalid_request: Unsupported parameter: 'tools'" })
+    expect(error.message).toContain("Unsupported parameter: 'tools'")
+  })
+})
