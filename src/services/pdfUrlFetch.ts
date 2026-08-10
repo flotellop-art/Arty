@@ -22,7 +22,26 @@ type FetchOutcome =
   | { ok: true; url: string; markdown: string }
   | { ok: false; url: string; reason: 'unreadable' | 'error' }
 
-async function fetchOne(url: string, token: string | null): Promise<FetchOutcome> {
+// Timeouts (10 août 2026) — ce fetch n'en avait AUCUN. Tolérable tant qu'il
+// n'était qu'une étape de pré-traitement ; inacceptable depuis que le tool
+// `fetch_url` le rend invocable en boucle par le modèle : un cold-start
+// Linkup laissait la boucle pendue sans erreur ni feedback UI.
+const DEFAULT_FETCH_TIMEOUT_MS = 60_000
+export const TOOL_FETCH_TIMEOUT_MS = 30_000
+
+async function fetchOne(
+  url: string,
+  token: string | null,
+  timeoutMs: number,
+  externalSignal?: AbortSignal,
+): Promise<FetchOutcome> {
+  const ctrl = new AbortController()
+  const timeoutId = setTimeout(() => ctrl.abort(new DOMException('Timeout', 'AbortError')), timeoutMs)
+  const onExternalAbort = () => ctrl.abort(externalSignal?.reason ?? new DOMException('Aborted', 'AbortError'))
+  if (externalSignal) {
+    if (externalSignal.aborted) onExternalAbort()
+    else externalSignal.addEventListener('abort', onExternalAbort, { once: true })
+  }
   try {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' }
     if (token) headers['x-google-token'] = token
@@ -33,6 +52,7 @@ async function fetchOne(url: string, token: string | null): Promise<FetchOutcome
       method: 'POST',
       headers,
       body: JSON.stringify({ url }),
+      signal: ctrl.signal,
     })
     if (!res.ok) {
       // 502 « Empty document » = page protégée/illisible (paywall) ; le reste
@@ -44,6 +64,9 @@ async function fetchOne(url: string, token: string | null): Promise<FetchOutcome
     return { ok: true, url, markdown: data.markdown }
   } catch {
     return { ok: false, url, reason: 'error' }
+  } finally {
+    clearTimeout(timeoutId)
+    externalSignal?.removeEventListener('abort', onExternalAbort)
   }
 }
 
@@ -55,7 +78,7 @@ export async function fetchPdfMarkdowns(urls: string[]): Promise<string | null> 
   if (!urls.length) return null
   const token = await getValidAccessToken()
   const picked = urls.slice(0, MAX_PDFS_PER_MESSAGE)
-  const results = await Promise.all(picked.map((u) => fetchOne(u, token)))
+  const results = await Promise.all(picked.map((u) => fetchOne(u, token, DEFAULT_FETCH_TIMEOUT_MS)))
   const ok = results.filter((r): r is { ok: true; url: string; markdown: string } => r.ok)
   if (!ok.length) return null
   return ok
@@ -83,11 +106,16 @@ export interface UrlFetchResult {
  * Retourne le bloc à inliner ET la liste des URLs illisibles (paywall) pour
  * que l'appelant explique honnêtement l'échec au lieu d'un silence.
  */
-export async function fetchUrlMarkdowns(urls: string[]): Promise<UrlFetchResult> {
+export async function fetchUrlMarkdowns(
+  urls: string[],
+  signal?: AbortSignal,
+): Promise<UrlFetchResult> {
   if (!urls.length) return { block: null, unreadable: [] }
   const token = await getValidAccessToken()
   const picked = urls.slice(0, MAX_PDFS_PER_MESSAGE)
-  const results = await Promise.all(picked.map((u) => fetchOne(u, token)))
+  const results = await Promise.all(
+    picked.map((u) => fetchOne(u, token, TOOL_FETCH_TIMEOUT_MS, signal)),
+  )
   const ok = results.filter((r): r is { ok: true; url: string; markdown: string } => r.ok)
   const unreadable = results.filter((r) => !r.ok && r.reason === 'unreadable').map((r) => r.url)
   const block = ok.length

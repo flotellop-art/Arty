@@ -25,7 +25,7 @@ describe('openaiClient — modèles (C3)', () => {
   })
 
   it('interdit explicitement le fallback dès que le payload contient une image', () => {
-    expect(client).toMatch(/if \(hasOpenAIVisionBlocks\(payload\)\) return response/)
+    expect(client).toMatch(/if \(hasOpenAIVisionBlocks\(payload\)\) return \{ response, sentModel/)
     expect(hasOpenAIVisionBlocks({
       messages: [{
         role: 'user',
