@@ -355,6 +355,13 @@ async function streamOnce(
       if (parsed?.error === 'trial_model_restricted') {
         throw new Error('trial_model_restricted')
       }
+      // Terrain 10 août 2026 : « Erreur OpenAI (400) » sur un simple « Salut ».
+      // La clé serveur à sec est signalée par OpenAI en 400/429 selon le cas —
+      // sans cette catégorie, impossible de distinguer une panne d'exploitation
+      // d'un bug de payload (BUG 64). Clé i18n partagée avec Anthropic.
+      if (parsed?.error === 'upstream_billing') {
+        throw new Error(i18n.t('errors.apiUpstreamBilling'))
+      }
       if (parsed?.error === 'payload_too_large' || parsed?.error === 'vision_payload_too_large') {
         throw new Error(i18n.t('errors.openaiPayloadTooLarge'))
       }
@@ -367,6 +374,7 @@ async function streamOnce(
     } catch (e) {
       if ((e as Error).message === 'premium_cap_reached') throw e
       if ((e as Error).message === 'trial_model_restricted') throw e
+      if ((e as Error).message === i18n.t('errors.apiUpstreamBilling')) throw e
       if (
         (e as Error).message === i18n.t('errors.openaiPayloadTooLarge') ||
         (e as Error).message === i18n.t('errors.openaiVisionDisabled') ||

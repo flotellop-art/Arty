@@ -464,6 +464,13 @@ async function streamOnce(
     if (response.status !== 429 || attempt >= 2) break
 
     const errBody = await response.text().catch(() => '')
+    // Clé serveur à sec (BUG 64) : Mistral l'annonce en 429, mais réessayer
+    // ne rechargera pas le compte — deux appels upstream gaspillés et un
+    // message « réessaie » trompeur. Typé RateLimitError pour que le repli
+    // tool_choice de la boucle ne ré-attaque pas non plus.
+    if (errBody.includes('upstream_billing')) {
+      throw Object.assign(new Error(i18n.t('errors.apiUpstreamBilling')), { name: 'RateLimitError' })
+    }
     // Quota journalier du proxy (body { error, count, limit }) : définitif
     // pour aujourd'hui — inutile de retenter, on surface le message précis
     // du proxy au lieu du générique « réessaie dans quelques secondes ».
@@ -493,6 +500,12 @@ async function streamOnce(
 
   if (!response.ok) {
     const err = await response.text().catch(() => '')
+    // Catégorie « clé serveur à sec » remontée par le proxy (BUG 64) : testée
+    // AVANT le mapping par status, car Mistral signale ce cas en 429 — sans
+    // ça l'utilisateur lit « trop de requêtes, réessaie » et attend en vain.
+    if (err.includes('upstream_billing')) {
+      throw new Error(i18n.t('errors.apiUpstreamBilling'))
+    }
     if (response.status === 401) {
       throw new Error(i18n.t('errors.mistralKeyInvalid'))
     } else if (response.status === 429) {

@@ -1,4 +1,5 @@
 import type { Env } from '../../env'
+import { classifyUpstreamBilling } from '../_lib/upstreamBilling'
 import {
   checkAllowedUser,
   isModelAllowedInTrial,
@@ -309,10 +310,12 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
       // plus haut (avant le fetch upstream), donc non concerné. Passthrough
       // conservé pour le BYOK : le message aide le user à diagnostiquer SA clé.
       if (usingServerKey) {
-        // Le body peut refléter du contenu utilisateur : ne journaliser que le status.
-        console.error('[gemini] upstream error', response.status)
+        // Le body peut refléter du contenu utilisateur : ne journaliser que le
+        // status et la CATÉGORIE (BUG 64), jamais le message upstream.
+        const billing = classifyUpstreamBilling(errorText)
+        console.error('[gemini] upstream error', response.status, billing ?? 'unclassified')
         return Response.json(
-          { error: 'AI service error' },
+          { error: billing ?? 'AI service error' },
           { status: response.status, headers: responseHeaders() }
         )
       }

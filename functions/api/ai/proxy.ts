@@ -1,4 +1,5 @@
 import type { Env } from '../../env'
+import { BILLING_LEAK_PATTERN as SHARED_BILLING_LEAK_PATTERN } from '../_lib/upstreamBilling'
 import {
   checkAllowedUser,
   isModelAllowedInTrial,
@@ -39,8 +40,10 @@ const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages'
 // courant (« plan », « quota », « upgrade ») : Anthropic les emploie aussi
 // dans des messages purement techniques, et les masquer nous priverait du
 // diagnostic sans rien protéger de plus.
-const BILLING_LEAK_PATTERN =
-  /credit\s*balance|insufficient\s*credit|billing|payment|purchase|invoice|spend\s*limit|upgrade\s+your|your\s+plan|too\s+low|exceed(?:s|ed)?\s+your|organization\s+\w*\s*limit|monthly\s+quota|rate\s*limit/i
+// Motif partagé avec les proxys openai/mistral/gemini depuis le 10 août 2026
+// (`_lib/upstreamBilling`) : le correctif BUG 64 n'existait que sur Anthropic,
+// et son absence ailleurs a reproduit exactement le même angle mort.
+const BILLING_LEAK_PATTERN = SHARED_BILLING_LEAK_PATTERN
 
 // Haiku 4.5 ne supporte ni le thinking adaptatif ni `output_config.effort`
 // (400), et pas non plus le server tool `web_fetch_20260209` — contrairement

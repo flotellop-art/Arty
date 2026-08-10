@@ -50,6 +50,7 @@ import {
   RequestBodyTooLargeError,
   type ObservedReadableStream,
 } from '../_lib/boundedRequestBody'
+import { classifyUpstreamBilling } from '../_lib/upstreamBilling'
 import { validateOpenAIVisionPayload, type OpenAIVisionValidation } from '../_lib/openaiVision'
 import {
   validateOpenAIVisionStream,
@@ -585,16 +586,28 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
       // OpenAI. premium_cap_reached est émis avant le fetch (non concerné).
       // Passthrough conservé pour le BYOK.
       if (usingServerKey) {
-        // Ne jamais journaliser le message upstream : il pourrait refléter une
-        // portion du payload utilisateur. Le statut suffit au diagnostic.
-        console.error('[openai] upstream error', response.status)
         const modelRejected =
           /model/i.test(errorText) && /not.?found|does.?not.?exist|unknown|invalid/i.test(errorText)
+        // Terrain 10 août 2026 — « Erreur OpenAI (400) » sur un simple
+        // « Salut » : le motif était masqué ici, et le statut seul ne dit pas
+        // si le payload est mauvais ou si la clé du propriétaire est à sec.
+        // On journalise donc la CATÉGORIE (jamais le message upstream, qui
+        // peut refléter une portion du payload utilisateur) et on la renvoie
+        // au client — même leçon que BUG 64, appliquée un provider plus loin.
+        const billing = classifyUpstreamBilling(errorText)
+        console.error(
+          '[openai] upstream error',
+          response.status,
+          billing ?? (modelRejected ? 'model_not_supported' : 'unclassified'),
+        )
         if (modelRejected) {
           return Response.json(
             { error: { message: 'model_not_supported', code: 'model_not_supported' } },
             { status: 400 }
           )
+        }
+        if (billing) {
+          return Response.json({ error: billing }, { status: response.status })
         }
         return Response.json({ error: 'AI service error' }, { status: response.status })
       }
