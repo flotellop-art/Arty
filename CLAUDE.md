@@ -581,6 +581,24 @@ d'une capacité web.
   les arguments déjà reçus → JSON tronqué → outil réputé en échec. Toujours
   compléter, jamais remplacer (le défaut existait aussi dans `mistralClient`,
   corrigé au passage).
+- **Incident de livraison, le soir même** : la mise en production a mis
+  100 % des messages ChatGPT en échec. OpenAI :
+  « Function tools with reasoning_effort are not supported for
+  gpt-5.6-terra in /v1/chat/completions. To use function tools, use
+  /v1/responses or set reasoning_effort to 'none'. » Le raisonnement PAR
+  DÉFAUT de la famille gpt-5 est incompatible avec le function calling sur
+  Chat Completions ; il faut envoyer explicitement `reasoning_effort: 'none'`
+  avec les outils. Trois leçons :
+  1. Ajouter des outils à un provider n'est pas neutre pour le RESTE de la
+     requête : le paramètre `tools` change les combinaisons acceptées par le
+     modèle. Un « Salut » sans aucun outil appelé échouait quand même.
+  2. Aucun test hors ligne ne pouvait l'attraper — le contrat vit chez le
+     fournisseur. D'où le FILET : sur un 400 qui parle d'outils, le client
+     rejoue une fois SANS outils. La réponse perd la recherche web, elle
+     n'est jamais absente. À poser sur toute nouvelle capacité provider.
+  3. Diagnostic : la correction de la cécité (voir BUG 64 ci-dessus) a donné
+     la réponse en une capture d'écran, après des heures d'hypothèses sur un
+     « Erreur OpenAI (400) » muet. Rendre l'erreur lisible AVANT de chercher.
 
 ---
 

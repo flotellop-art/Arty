@@ -32,6 +32,23 @@ export const PlanBadge = memo(function PlanBadge() {
 
   if (status.loading) return null
 
+  // Token Google refusé par le serveur : le plan renvoyé est un repli, pas une
+  // vérité. Afficher « Gratuit » ici, c'est ce qui a fait croire le 10 août
+  // 2026 qu'Arty « refusait » un accès VIP pourtant bien configuré. On montre
+  // donc l'état réel — une identité à revalider — et le clic mène aux réglages
+  // Google plutôt qu'à la page d'achat.
+  if (status.authRejected) {
+    return (
+      <button
+        onClick={() => navigate('/settings')}
+        className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] uppercase tracking-kicker font-sans bg-theme-accent/15 text-theme-accent hover:bg-theme-accent/25 transition-colors"
+        title={t('chat.planBadge.authRejectedTitle')}
+      >
+        {t('chat.planBadge.authRejected')}
+      </button>
+    )
+  }
+
   const planLabel = (p: string) => t(PLAN_LABEL_KEY[p] ?? 'chat.planBadge.labelPro')
   const bucketLabel = (b: string) => (BUCKET_KEY[b] ? t(BUCKET_KEY[b]!) : b)
 
