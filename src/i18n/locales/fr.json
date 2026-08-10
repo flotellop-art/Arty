@@ -593,6 +593,8 @@
     "mistralError": "Erreur Mistral ({{status}}): {{message}}",
     "openaiKeyInvalid": "Clé OpenAI invalide",
     "openaiRateLimit": "Quota dépassé",
+    "openaiModelUnavailable": "Le modèle ChatGPT n'est pas accessible avec la clé utilisée (palier de compte insuffisant ou modèle non activé). Passe en mode Auto, ou vérifie l'accès aux modèles GPT-5 sur le compte OpenAI.",
+    "openaiInvalidRequest": "Requête refusée par OpenAI : {{message}}",
     "openaiServer": "Erreur OpenAI",
     "openaiError": "Erreur OpenAI ({{status}})",
     "openaiPayloadTooLarge": "Le lot de photos est trop volumineux pour être envoyé.",

@@ -1102,6 +1102,42 @@ n'a été possible qu'en demandant à l'utilisateur d'aller lire son solde.
 - Ne jamais conclure « c'est un bug de payload » d'un simple HTTP 400 sur
   une API IA : les erreurs de facturation et de quota y sont couramment
   encodées en 400.
+- **Suite du 10 août 2026 — la vraie leçon était incomplète.** Le correctif
+  n'avait été posé que sur `ai/proxy.ts` (Anthropic). Un mois plus tard, jour
+  pour jour, un « Erreur OpenAI (400) » sur un simple « Salut » a coûté la
+  même enquête, pour la même raison, un provider plus loin : `openai-proxy`,
+  `mistral-proxy` et `gemini-proxy` écrasaient toujours tout en
+  `AI service error`. Corriger l'incident qui brûle ne suffit pas — il faut
+  corriger **tous les chemins équivalents** le même jour, sinon on ne fait que
+  déplacer la date du prochain incident. La détection vit désormais dans
+  `functions/api/_lib/upstreamBilling.ts`, partagée par les quatre proxys de
+  chat, avec le sentinel commun `upstream_billing` et la clé i18n unique
+  `errors.apiUpstreamBilling` (volontairement sans nom de fournisseur).
+- Deux pièges de classement, verrouillés par tests : un **rate limit
+  transitoire** (`rate_limit_exceeded`, `RESOURCE_EXHAUSTED` de Gemini) n'est
+  PAS un compte à sec — le classer ainsi remplace une erreur illisible par une
+  erreur fausse (« préviens l'administrateur » sur un pic de trafic) ; et un
+  vrai bug de payload doit rester non classé, donc masqué.
+- Sur un compte à sec, ne pas RÉESSAYER : Mistral annonce ce cas en 429, et le
+  backoff dépensait deux appels upstream de plus pour un compte qui ne se
+  rechargera pas tout seul.
+- Restent non traités (même cécité, autre classe de proxy) : `whisper-proxy`,
+  `voxtral-proxy`, `tts` et `image-gen` — les deux premiers écrasent en plus
+  le STATUT upstream en 502, ce qui perd aussi cette information.
+
+### Diagnostic — d'abord « ce code tourne-t-il vraiment chez l'utilisateur ? »
+**Fait établi le 10 août 2026** : `capacitor.config.ts` ne définit **aucun**
+`server.url`, il n'y a aucun plugin de mise à jour OTA, et le workflow Firebase
+ne fait que proposer un APK à installer manuellement. Un APK déjà installé
+exécute donc le **client figé au moment de son build** : un merge sur `main` ne
+change QUE le web/PWA et les **endpoints serveur**.
+**Règle** : avant d'imputer une régression terrain à un changement client
+récent, vérifier le support (APK figé vs PWA) et la version installée. Un
+correctif côté client n'atteint pas un APK déjà posé ; un correctif côté
+proxy, si. Corollaire pratique : quand un incident tombe juste après un merge,
+la corrélation temporelle ne vaut pas causalité tant que ce point n'est pas
+tranché — et l'inverse est vrai aussi, un correctif client livré ce soir ne
+soulagera pas l'utilisateur avant sa prochaine installation.
 
 ### BUG 65 — Une fonction de purge qui existe mais que personne n'appelle
 **Fichiers** : `src/services/accountService.ts`, `src/services/mailAccounts.ts`,

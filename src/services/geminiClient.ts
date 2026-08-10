@@ -438,9 +438,15 @@ async function runGeminiStream(
         if (parsed?.error === 'trial_model_restricted') {
           throw new Error('trial_model_restricted')
         }
+        // Clé serveur à sec (BUG 64) : sans cette catégorie, l'utilisateur
+        // reçoit « Erreur Gemini (429) » et croit à un souci passager.
+        if (parsed?.error === 'upstream_billing') {
+          throw new Error(i18n.t('errors.apiUpstreamBilling'))
+        }
       } catch (e) {
         if ((e as Error).message === 'premium_cap_reached') throw e
         if ((e as Error).message === 'trial_model_restricted') throw e
+        if ((e as Error).message === i18n.t('errors.apiUpstreamBilling')) throw e
         // body non-JSON → erreur générique ci-dessous
       }
       // 404 = modèle/endpoint introuvable (renommage Google), pas un problème
