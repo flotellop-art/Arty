@@ -271,3 +271,67 @@ describe('openaiClient — boucle de tools', () => {
     expect(fetchMock).toHaveBeenCalledTimes(8)
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Régression PROD du 10 août 2026 : l'ajout du function calling a mis 100 %
+// des messages ChatGPT en échec. OpenAI : « Function tools with
+// reasoning_effort are not supported for gpt-5.6-terra in
+// /v1/chat/completions. To use function tools, use /v1/responses or set
+// reasoning_effort to 'none'. » Deux garanties ci-dessous : on envoie le
+// paramètre qui rend les outils acceptables, et si un modèle les refuse
+// quand même, la conversation répond sans outils plutôt que de rester muette.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('openaiClient — compatibilité outils / raisonnement', () => {
+  it("envoie reasoning_effort 'none' avec les outils sur la famille gpt-5", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(sseResponse(textChunk('ok')))
+    global.fetch = fetchMock as typeof fetch
+
+    await run([{ role: 'user', content: 'Salut' }], {
+      onToolCall: vi.fn(async () => ({ result: '' })),
+      webSearch: false,
+    })
+
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as {
+      model: string; reasoning_effort?: string; tools?: unknown[]
+    }
+    expect(body.model).toMatch(/^gpt-5/)
+    expect(body.tools).toBeDefined()
+    expect(body.reasoning_effort).toBe('none')
+  })
+
+  it('sans outils, aucun reasoning_effort imposé (comportement historique)', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(sseResponse(textChunk('ok')))
+    global.fetch = fetchMock as typeof fetch
+
+    await run([{ role: 'user', content: 'Salut' }])
+
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as { reasoning_effort?: string }
+    expect(body.reasoning_effort).toBeUndefined()
+  })
+
+  it('modèle qui refuse les outils : rejoue SANS outils au lieu de rester muet', async () => {
+    const refusal = () => new Response(
+      JSON.stringify({ error: 'upstream_invalid_request: Function tools with reasoning_effort are not supported for gpt-5.6-terra in /v1/chat/completions.' }),
+      { status: 400, headers: { 'content-type': 'application/json' } },
+    )
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(refusal())
+      .mockResolvedValueOnce(sseResponse(textChunk('Salut !')))
+    global.fetch = fetchMock as typeof fetch
+
+    const { text, error } = await run([{ role: 'user', content: 'Salut' }], {
+      onToolCall: vi.fn(async () => ({ result: '' })),
+      webSearch: false,
+    })
+
+    expect(error).toBeNull()
+    expect(text).toBe('Salut !')
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    const first = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as { tools?: unknown[] }
+    const second = JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body)) as { tools?: unknown[]; reasoning_effort?: string }
+    expect(first.tools).toBeDefined()
+    // Le rejeu ne doit porter NI les outils NI le paramètre qui les accompagne.
+    expect(second.tools).toBeUndefined()
+    expect(second.reasoning_effort).toBeUndefined()
+  })
+})

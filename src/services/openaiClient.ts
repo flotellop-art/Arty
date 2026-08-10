@@ -293,6 +293,8 @@ interface StreamOnceResult {
   servedModel: string
   /** Modèle réellement ENVOYÉ (après éventuel fallback d'éligibilité). */
   sentModel: string
+  /** Le provider a refusé les outils : ne plus les proposer sur ce message. */
+  toolsDropped: boolean
 }
 
 /**
@@ -325,16 +327,56 @@ async function streamOnce(
     // tool_choice reste 'auto' (pas de forçage type Mistral lot D) : GPT-5
     // suit les consignes d'outillage du prompt, et la forme nommée ajouterait
     // un mode d'échec 400 dédié.
-    ...(tools ? { tools, tool_choice: 'auto' as const } : {}),
+    //
+    // `reasoning_effort: 'none'` est OBLIGATOIRE avec des outils sur la famille
+    // gpt-5 : « Function tools with reasoning_effort are not supported for
+    // gpt-5.6-terra in /v1/chat/completions. To use function tools, use
+    // /v1/responses or set reasoning_effort to 'none' » (400 en production le
+    // 10 août 2026, sur le premier message venu). Le raisonnement par défaut
+    // du modèle est donc incompatible avec le function calling sur cette API.
+    // Restreint à gpt-5* : un modèle qui ignore ce paramètre le rejetterait.
+    ...(tools
+      ? {
+          tools,
+          tool_choice: 'auto' as const,
+          ...(/^gpt-5/.test(model) ? { reasoning_effort: 'none' } : {}),
+        }
+      : {}),
   }
 
-  const { response, sentModel } = await startChatRequest(
+  let { response, sentModel } = await startChatRequest(
     apiKey,
     payload,
     controller.signal,
     options?.expectedUserId,
     options?.expectedSessionEpoch,
   )
+
+  // FILET DE SÉCURITÉ — un provider qui refuse NOS outils ne doit jamais
+  // rendre la conversation muette. Le 10 août 2026, l'ajout du function
+  // calling a mis 100 % des messages ChatGPT en échec parce que le modèle par
+  // défaut refuse les outils sur /v1/chat/completions. Plutôt que de parier
+  // sur une seule parade, on rejoue une fois SANS outils : la réponse perd la
+  // recherche web et la lecture d'URL, elle n'est jamais absente. Le prompt
+  // d'outils reste en place — c'est le seul tour concerné.
+  let toolsDropped = false
+  if (!response.ok && tools && response.status === 400) {
+    const errText = await response.clone().text().catch(() => '')
+    if (/function tools|tool_choice|tools are not supported|reasoning_effort|unsupported parameter.*tool/i.test(errText)) {
+      console.warn('[openai] outils refusés par le modèle, nouvel essai sans outils:', errText.slice(0, 160))
+      const { tools: _tools, tool_choice: _choice, reasoning_effort: _effort, ...withoutTools } = payload
+      const retried = await startChatRequest(
+        apiKey,
+        withoutTools,
+        controller.signal,
+        options?.expectedUserId,
+        options?.expectedSessionEpoch,
+      )
+      response = retried.response
+      sentModel = retried.sentModel
+      toolsDropped = true
+    }
+  }
 
   if (!response.ok) {
     // P0.7 — cap premium mensuel : code structuré surfacé tel quel (la
@@ -495,7 +537,7 @@ async function streamOnce(
     toolCalls.push({ id: tc.id, function: { name: tc.name, arguments: tc.args } })
   }
 
-  return { content, toolCalls, promptTokens, completionTokens, servedModel, sentModel }
+  return { content, toolCalls, promptTokens, completionTokens, servedModel, sentModel, toolsDropped }
 }
 
 /**
@@ -529,7 +571,7 @@ export function sendMessageStream(
       // Décision centrale (routeDecision.webSearch) prioritaire ; fallback
       // heuristique locale pour les appelants qui ne la fournissent pas.
       const webSearchAllowed = options?.webSearch ?? shouldUseWebSearch(lastUserText)
-      const tools = toolsEnabled ? buildOpenAIToolList({ webSearch: webSearchAllowed }) : undefined
+      let tools = toolsEnabled ? buildOpenAIToolList({ webSearch: webSearchAllowed }) : undefined
 
       // Allowlist des URLs lisibles par fetch_url : celles déjà présentes
       // dans la conversation. Alimentée ensuite par les résultats de
@@ -563,6 +605,9 @@ export function sendMessageStream(
 
       for (let iteration = 0; iteration < MAX_TOOL_ITERATIONS; iteration++) {
         const turn = await streamOnce(apiKey, apiMessages, model, tools, onChunk, controller, options)
+        // Outils refusés par le modèle : ne pas les re-proposer aux tours
+        // suivants de ce message (une seule pénalité de requête, pas huit).
+        if (turn.toolsDropped) tools = undefined
         // Fige le modèle réellement accepté pour les itérations suivantes
         // (évite de rejouer le 400 d'éligibilité Terra à chaque tour).
         model = turn.sentModel

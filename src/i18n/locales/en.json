@@ -560,6 +560,8 @@
       "labelSub": "Sub",
       "labelPro": "Pro",
       "labelVip": "VIP",
+      "authRejected": "Account needs re-check",
+      "authRejectedTitle": "Your Google account could not be verified: the displayed plan is not reliable. Reconnect Google in settings.",
       "bucketSonnet": "Sonnet",
       "bucketGpt5": "GPT-5",
       "bucketGeminiPro": "G-Pro",

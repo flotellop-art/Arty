@@ -39,9 +39,18 @@ export interface PlanStatus {
   /** Solde du Pack Premium (+100 messages) acheté, 0 sinon. */
   premiumPackRemaining: number
   loading: boolean
+  /**
+   * Le serveur a REFUSÉ le token Google (audience ≠ Arty, tokeninfo en panne,
+   * e-mail non vérifié) : le plan affiché est un repli, pas une vérité.
+   * Sans ce drapeau, un compte VIP voyait « Gratuit » sans aucun indice —
+   * terrain du 10 août 2026. À afficher comme « reconnecte ton compte Google »,
+   * jamais comme un vrai plan gratuit.
+   */
+  authRejected: boolean
 }
 
 interface ApiResponse {
+  auth?: 'ok' | 'no_token' | 'token_rejected'
   plan: PlanType
   allowed_families: ModelFamily[]
   locked_families: ModelFamily[]
@@ -60,6 +69,7 @@ const DEFAULT_STATUS: PlanStatus = {
   monthlyCap: null,
   premiumPackRemaining: 0,
   loading: true,
+  authRejected: false,
 }
 
 const ALL_FAMILIES: ModelFamily[] = [
@@ -90,6 +100,15 @@ export function usePlanStatus(): PlanStatus & { refresh: () => void } {
         return
       }
       const data = (await res.json()) as ApiResponse
+      // Repli explicite plutôt que silencieux : le plan renvoyé n'est pas
+      // fiable tant que l'identité n'est pas prouvée.
+      if (data.auth === 'token_rejected') {
+        console.warn('[plan] token Google refusé par le serveur — plan affiché non fiable')
+        if (isCurrentRequest()) {
+          setState((s) => ({ ...s, loading: false, authRejected: true }))
+        }
+        return
+      }
       // Crédits prépayés : un user 'free' (essai épuisé ou vrai free) AVEC des
       // crédits peut payer N'IMPORTE QUEL modèle via le wallet → on débloque
       // toutes les familles côté UI. `fetchWalletBalance` met aussi le solde en
@@ -132,6 +151,9 @@ export function usePlanStatus(): PlanStatus & { refresh: () => void } {
         monthlyCap: data.monthly_cap ?? null,
         premiumPackRemaining: data.premium_pack_remaining ?? 0,
         loading: false,
+        // Réponse identifiée : lève un éventuel drapeau posé par un
+        // rafraîchissement précédent (token réparé entre-temps).
+        authRejected: false,
       })
     } catch {
       if (isCurrentRequest()) setState((s) => ({ ...s, loading: false }))
