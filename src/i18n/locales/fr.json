@@ -50,10 +50,12 @@
     },
     "google": {
       "signIn": "Se connecter avec Google",
+      "continue": "Continuer avec Google",
       "failed": "Connexion Google échouée. Réessaie.",
       "iosUnavailable": "Google Sign-In sur iOS nécessite encore la configuration native. Utilise provisoirement l’essai par email ou une clé API.",
       "notice": "Connecte ton compte Google pour ton identité, ton agenda, Drive et Contacts.",
-      "noticeNoCasa": "Connecte ton compte Google pour ton identité et ton agenda."
+      "noticeNoCasa": "Connecte ton compte Google pour ton identité et ton agenda.",
+      "disclosure": "En te connectant, tu autorises Arty à utiliser ton identité Google. Après connexion, Arty lit les prochains événements de ton calendrier principal pour afficher l’Agenda. Le brief proactif, activé par défaut pour les comptes payants et VIP et désactivable dans les paramètres, peut aussi lire ces événements et transmettre à Anthropic (Claude, États-Unis) le contexte nécessaire pour préparer le brief. Arty ne crée, modifie ou supprime un événement qu’à ta demande. Ces données ne servent jamais à la publicité."
     },
     "email": {
       "label": "Email",
@@ -165,8 +167,8 @@
     "googleConnectError": "Erreur connexion Google :",
     "googleReconsent": {
       "title": "Reconnecte Google pour ton agenda",
-      "body": "Arty demande maintenant uniquement l’accès à tes événements, au lieu de l’accès complet à ton agenda. Reconnecte ton compte pour continuer à afficher et créer des événements. Ta session Arty et tes conversations restent intactes.",
-      "cta": "Reconnecter Google"
+      "body": "Arty limite maintenant son autorisation aux événements des calendriers que tu possèdes et utilise uniquement ton calendrier principal. Il n’accède plus aux calendriers partagés dont tu n’es pas propriétaire. Reconnecte ton compte pour consulter et gérer tes événements. Ta session Arty et tes conversations restent intactes.",
+      "cta": "Continuer avec Google"
     },
     "resumeKicker": "Reprendre",
     "optionsSheetTitle": "Réglages",
@@ -560,6 +562,14 @@
       "labelSub": "Sub",
       "labelPro": "Pro",
       "labelVip": "VIP",
+      "authRejected": "Compte à revérifier",
+      "authRejectedTitle": "Ton compte Google n'a pas pu être vérifié. Clique pour le reconnecter et retrouver ton plan.",
+      "authRequired": "Reconnecter Google",
+      "authRequiredTitle": "La session Google qui prouve ton plan n'est plus disponible. Clique pour la reconnecter.",
+      "reconnectDialogTitle": "Vérifier ton compte Google",
+      "reconnectDialogBody": "Reconnecte le compte Google associé à Arty pour vérifier ton plan et restaurer tes accès. Ta session Arty et tes conversations restent intactes.",
+      "statusUnavailable": "Plan à vérifier",
+      "statusUnavailableTitle": "Le plan n'a pas pu être vérifié pour le moment. Clique pour réessayer.",
       "bucketSonnet": "Sonnet",
       "bucketGpt5": "GPT-5",
       "bucketGeminiPro": "G-Pro",
@@ -593,6 +603,8 @@
     "mistralError": "Erreur Mistral ({{status}}): {{message}}",
     "openaiKeyInvalid": "Clé OpenAI invalide",
     "openaiRateLimit": "Quota dépassé",
+    "openaiModelUnavailable": "Le modèle ChatGPT n'est pas accessible avec la clé utilisée (palier de compte insuffisant ou modèle non activé). Passe en mode Auto, ou vérifie l'accès aux modèles GPT-5 sur le compte OpenAI.",
+    "openaiInvalidRequest": "Requête refusée par OpenAI : {{message}}",
     "openaiServer": "Erreur OpenAI",
     "openaiError": "Erreur OpenAI ({{status}})",
     "openaiPayloadTooLarge": "Le lot de photos est trop volumineux pour être envoyé.",
@@ -947,6 +959,7 @@
       "titleMain": "Les meilleures IA.",
       "titleAccent": "Une seule app.",
       "lede": "Arty réunit Claude, GPT-5, Gemini et Mistral dans un assistant personnel, avec ton agenda Google et le contenu que tu choisis de lui confier.",
+      "googleData": "Après connexion Google, Arty affiche les prochains événements de ton calendrier principal. Il ne crée, modifie ou supprime un événement qu'à ta demande. Le brief proactif, activé par défaut pour les comptes payants et VIP et désactivable dans les paramètres, peut lire tes prochains événements et transmettre à Anthropic (Claude) le contexte nécessaire pour préparer le brief. Ces données ne servent jamais à la publicité.",
       "cta": "Essayer gratuitement",
       "ctaNote": "30 messages offerts · sans carte bancaire",
       "secondary": "Voir les tarifs"

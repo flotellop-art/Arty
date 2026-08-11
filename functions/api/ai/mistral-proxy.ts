@@ -15,6 +15,7 @@ import {
 import { checkPremiumCap, premiumCapReachedResponse } from '../_lib/checkPremiumCap'
 import { consumeDailyQuota, recordUsage } from '../_lib/quota'
 import { freeModelLockedResponse } from '../_lib/freeQuota'
+import { classifyUpstreamBilling } from '../_lib/upstreamBilling'
 import {
   createMistralParser,
   enforceStreamUsage,
@@ -212,7 +213,10 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
       // avant le fetch upstream, donc non concernés. Passthrough gardé en BYOK.
       if (usingServerKey) {
         console.error('[mistral] upstream error', response.status, errorText.slice(0, 300))
-        return new Response(JSON.stringify({ error: 'AI service error' }), {
+        // Catégorie exposée, détail toujours masqué (BUG 64) : sans elle, une
+        // clé serveur à sec est indiscernable d'un bug de payload côté client.
+        const billing = classifyUpstreamBilling(errorText)
+        return new Response(JSON.stringify({ error: billing ?? 'AI service error' }), {
           status: response.status,
           headers,
         })

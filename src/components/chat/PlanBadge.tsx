@@ -32,6 +32,34 @@ export const PlanBadge = memo(function PlanBadge() {
 
   if (status.loading) return null
 
+  // Token Google absent/refusé : le plan Free local est un repli, pas une
+  // vérité. Le clic ouvre une explication possédée par AppContent ; seul le
+  // bouton Google conforme de ce dialogue déclenche ensuite le flux OAuth.
+  if (status.authRejected || status.authRequired) {
+    const rejected = status.authRejected
+    return (
+      <button
+        onClick={() => window.dispatchEvent(new CustomEvent('arty-reconnect-google'))}
+        className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] uppercase tracking-kicker font-sans bg-theme-accent/15 text-theme-accent hover:bg-theme-accent/25 transition-colors"
+        title={t(rejected ? 'chat.planBadge.authRejectedTitle' : 'chat.planBadge.authRequiredTitle')}
+      >
+        {t(rejected ? 'chat.planBadge.authRejected' : 'chat.planBadge.authRequired')}
+      </button>
+    )
+  }
+
+  if (status.statusUnavailable) {
+    return (
+      <button
+        onClick={status.refresh}
+        className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] uppercase tracking-kicker font-sans bg-theme-surface text-theme-muted hover:bg-theme-bg hover:text-theme-ink border border-theme-border transition-colors"
+        title={t('chat.planBadge.statusUnavailableTitle')}
+      >
+        {t('chat.planBadge.statusUnavailable')}
+      </button>
+    )
+  }
+
   const planLabel = (p: string) => t(PLAN_LABEL_KEY[p] ?? 'chat.planBadge.labelPro')
   const bucketLabel = (b: string) => (BUCKET_KEY[b] ? t(BUCKET_KEY[b]!) : b)
 

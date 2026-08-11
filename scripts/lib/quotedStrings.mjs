@@ -5,7 +5,7 @@
  *
  * Extrait dans son propre module le 9 août 2026 pour être testable : une
  * régression sur ce seul régex avait rendu le scanner aveugle au scope
- * `calendar.events` du bundle Android, et seule la CI l'avait vue.
+ * `calendar.events.owned` du bundle Android, et seule la CI l'avait vue.
  */
 
 /**

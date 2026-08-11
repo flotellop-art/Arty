@@ -270,7 +270,13 @@ export function extractPdfUrls(message: string): string[] {
 // honnêtement la limite plutôt qu'injecter une page de garde inutile.
 const VIDEO_HOSTS = /(^|\.)(youtube\.com|youtu\.be|vimeo\.com|dailymotion\.com|twitch\.tv|tiktok\.com)$/i
 
-export function extractWebUrls(message: string): string[] {
+/**
+ * Toutes les URLs http(s) d'un texte, dédupliquées, sans filtre de host.
+ * Sert l'allowlist d'URLs du tool `fetch_url` (route OpenAI) : une URL de
+ * plateforme vidéo doit y figurer pour que le modèle reçoive « contenu non
+ * extractible » plutôt que « URL non autorisée », qui serait trompeur.
+ */
+export function extractAllHttpUrls(message: string): string[] {
   if (!message) return []
   const matches = message.match(URL_REGEX_GLOBAL)
   if (!matches) return []
@@ -280,13 +286,22 @@ export function extractWebUrls(message: string): string[] {
     try {
       const u = new URL(cleaned)
       if (u.protocol !== 'https:' && u.protocol !== 'http:') continue
-      if (VIDEO_HOSTS.test(u.hostname)) continue
       out.push(cleaned)
     } catch {
       // Match non parseable → ignoré.
     }
   }
   return [...new Set(out)]
+}
+
+export function extractWebUrls(message: string): string[] {
+  return extractAllHttpUrls(message).filter((raw) => {
+    try {
+      return !VIDEO_HOSTS.test(new URL(raw).hostname)
+    } catch {
+      return false
+    }
+  })
 }
 
 /**

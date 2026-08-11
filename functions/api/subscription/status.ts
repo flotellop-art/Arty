@@ -1,5 +1,5 @@
 import type { Env } from '../../env'
-import { parseAllowedEmails, verifyTokenViaTokeninfo } from '../_lib/checkAllowedUser'
+import { parseAllowedEmails, verifyTokenViaTokeninfoDetailed } from '../_lib/checkAllowedUser'
 import { PREMIUM_BUCKET_CAPS } from '../_lib/checkPremiumCap'
 import {
   FREE_DAILY_LIMITS,
@@ -30,6 +30,18 @@ interface StatusResponse {
   email: string
   plan: 'free' | 'subscription' | 'pro' | 'vip'
   status: 'active' | 'inactive' | 'cancelled' | 'expired' | 'past_due'
+  /**
+   * Pourquoi le plan renvoyé est celui-là (10 août 2026).
+   *
+   * Cet endroit renvoyait `plan: 'free'` en HTTP 200 pour TROIS situations
+   * indiscernables : pas de token, token refusé par Google (audience ≠ Arty,
+   * e-mail non vérifié), `tokeninfo` indisponible, et « identité prouvée, mais
+   * réellement gratuit ». Un compte VIP dont le token est rejeté voit donc
+   * « Gratuit » sans le moindre message — terrain du 10 août, et exactement
+   * la cécité que BUG 64 a déjà coûtée côté proxys. La catégorie n'apprend
+   * rien à un attaquant : elle porte sur SON propre token.
+   */
+  auth: 'ok' | 'no_token' | 'token_rejected' | 'unavailable'
   current_period_end: string | null
   premium_pack_remaining: number
   has_active_license: boolean
@@ -50,6 +62,7 @@ const FREE_RESPONSE: StatusResponse = {
   email: '',
   plan: 'free',
   status: 'inactive',
+  auth: 'no_token',
   current_period_end: null,
   premium_pack_remaining: 0,
   has_active_license: false,
@@ -69,9 +82,9 @@ const STATUS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
 }
 
-function jsonStatus(body: StatusResponse): Response {
+function jsonStatus(body: StatusResponse, status = 200): Response {
   return new Response(JSON.stringify(body), {
-    status: 200,
+    status,
     headers: { 'Content-Type': 'application/json', ...STATUS_HEADERS },
   })
 }
@@ -143,8 +156,17 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
   const token = match?.[1]?.trim()
   if (!token) return jsonStatus(FREE_RESPONSE)
 
-  const email = await verifyTokenViaTokeninfo(token, env.GOOGLE_CLIENT_ID)
-  if (!email) return jsonStatus(FREE_RESPONSE)
+  const verification = await verifyTokenViaTokeninfoDetailed(token, env.GOOGLE_CLIENT_ID)
+  if (verification.status === 'unavailable') {
+    return jsonStatus({ ...FREE_RESPONSE, auth: 'unavailable' }, 503)
+  }
+  // Token présent mais refusé : le distinguer de « pas de token » est le seul
+  // moyen, côté client, de dire « reconnecte ton compte Google » au lieu
+  // d'afficher un plan gratuit qui a l'air définitif.
+  if (verification.status === 'rejected') {
+    return jsonStatus({ ...FREE_RESPONSE, auth: 'token_rejected' })
+  }
+  const email = verification.email
 
   // ALLOWED_EMAILS = bypass VIP : reflète le runtime de checkAllowedUser pour
   // que l'UI affiche "VIP · ∞" même quand la ligne D1 dit autre chose
@@ -155,6 +177,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
       email,
       plan: 'vip',
       status: 'active',
+      auth: 'ok',
       current_period_end: null,
       premium_pack_remaining: 0,
       has_active_license: false,
@@ -170,6 +193,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
     const remaining = await peekFreeDailyRemaining(env, email)
     return jsonStatus({
       ...FREE_RESPONSE,
+      auth: 'ok',
       email,
       daily_remaining: remaining,
     })
@@ -291,6 +315,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
     email,
     plan,
     status,
+    auth: 'ok',
     current_period_end: sub?.current_period_end ?? null,
     premium_pack_remaining: remaining,
     has_active_license: hasActiveLicense,

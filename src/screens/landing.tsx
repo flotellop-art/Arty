@@ -13,7 +13,7 @@
  * - la privacy n'est pas l'argument n°1 : section confiance APRÈS features ;
  * - le pricing reprend mot pour mot les clés upgrade.* (source de vérité) ;
  * - pas d'accès Gmail/Drive revendiqué : le profil OAuth public ne demande
- *   que calendar.events (PR #343/#344) — agenda + contenus joints/collés.
+ *   que calendar.events.owned — agenda principal + contenus joints/collés.
  */
 import { useTranslation } from 'react-i18next'
 import { ArtyWordmark } from '../components/shared/PrismMark'
@@ -84,11 +84,14 @@ export function LandingScreen({ onStart, onLogin }: LandingScreenProps) {
         <section className="py-16 sm:py-24">
           <Kicker>{t('landing.hero.kicker')}</Kicker>
           <h1 className="max-w-3xl font-display text-4xl font-light leading-tight tracking-tight sm:text-6xl">
-            {t('landing.hero.titleMain')}{' '}
+            Arty — {t('landing.hero.titleMain')}{' '}
             <em className="text-theme-accent">{t('landing.hero.titleAccent')}</em>
           </h1>
           <p className="mt-6 max-w-2xl text-lg leading-relaxed text-theme-ink/80 sm:text-xl">
             {t('landing.hero.lede')}
+          </p>
+          <p className="mt-4 max-w-2xl text-sm leading-relaxed text-theme-muted">
+            {t('landing.hero.googleData')}
           </p>
           <div className="mt-10 flex flex-col items-start gap-4 sm:flex-row sm:items-center">
             <CtaButton large onClick={onStart}>

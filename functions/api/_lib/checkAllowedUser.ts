@@ -157,17 +157,34 @@ export async function verifyGoogleUser(
  * Retourne l'email vérifié (minuscules) ou null. Source unique réutilisée par
  * `subscription/status.ts` et `checkout/creem.ts`.
  */
-export async function verifyTokenViaTokeninfo(
+export type TokeninfoVerification =
+  | { status: 'ok'; email: string }
+  | { status: 'rejected' }
+  | { status: 'unavailable' }
+
+/**
+ * Variante détaillée pour les endpoints de lecture qui doivent distinguer un
+ * token réellement refusé d'une panne temporaire de Google. Les deux issues
+ * restent fail-closed ; seule l'explication envoyée au client diffère.
+ */
+export async function verifyTokenViaTokeninfoDetailed(
   token: string,
   expectedAud: string | undefined
-): Promise<string | null> {
-  if (!token) return null
+): Promise<TokeninfoVerification> {
+  if (!token) return { status: 'rejected' }
   try {
     const res = await fetch(
       `https://oauth2.googleapis.com/tokeninfo?access_token=${encodeURIComponent(token)}`,
       { signal: AbortSignal.timeout(10_000) }
     )
-    if (!res.ok) return null
+    // Google documente 400/401 comme un token invalide. Les 5xx/429 et les
+    // erreurs réseau sont transitoires : ne pas demander une reconnexion qui
+    // ne réparerait rien.
+    if (!res.ok) {
+      return res.status === 400 || res.status === 401
+        ? { status: 'rejected' }
+        : { status: 'unavailable' }
+    }
     const info = (await res.json()) as {
       email?: string
       email_verified?: string | boolean
@@ -175,20 +192,28 @@ export async function verifyTokenViaTokeninfo(
       azp?: string
     }
     const email = info.email?.toLowerCase()
-    if (!email) return null
+    if (!email) return { status: 'rejected' }
     const verified = info.email_verified === 'true' || info.email_verified === true
-    if (!verified) return null
+    if (!verified) return { status: 'rejected' }
     // M-3 (audit) : rejeter aussi un token SANS `aud`/`azp` quand un expectedAud
     // est exigé (le `&& info.aud` court-circuitait la garde → token sans aud
     // accepté). Ces endpoints (paiement) reçoivent des tokens web où aud est
     // toujours présent → durcissement sûr.
     if (expectedAud && info.aud !== expectedAud && info.azp !== expectedAud) {
-      return null
+      return { status: 'rejected' }
     }
-    return email
+    return { status: 'ok', email }
   } catch {
-    return null
+    return { status: 'unavailable' }
   }
+}
+
+export async function verifyTokenViaTokeninfo(
+  token: string,
+  expectedAud: string | undefined
+): Promise<string | null> {
+  const result = await verifyTokenViaTokeninfoDetailed(token, expectedAud)
+  return result.status === 'ok' ? result.email : null
 }
 
 /**
@@ -210,10 +235,29 @@ export function notFoundResponse(): Response {
  */
 export function parseAllowedEmails(raw: string | undefined): string[] {
   if (!raw) return []
-  return raw
-    .split(/[,;\s\n]+/)
+  const normalized = (values: string[]) => values
     .map((e) => e.trim().replace(/^['"]+|['"]+$/g, '').toLowerCase())
     .filter(Boolean)
+
+  // Le dashboard Cloudflare incite parfois à saisir une « liste » sous forme
+  // JSON. L'ancien parseur conservait les crochets (`["owner@…"]`) et aucun
+  // compte ne matchait alors la whitelist : tous les VIP apparaissaient Free.
+  const trimmed = raw.trim()
+  if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(trimmed) as unknown
+      if (Array.isArray(parsed) && parsed.every((value) => typeof value === 'string')) {
+        return normalized(parsed)
+      }
+      // Un JSON syntaxiquement valide mais d'une autre forme est une erreur de
+      // configuration, pas une chaîne legacy à découper permissivement.
+      return []
+    } catch {
+      // Repli sur les séparateurs historiques pour une saisie JSON imparfaite.
+    }
+  }
+
+  return normalized(raw.split(/[,;\s\n]+/))
 }
 
 export type PlanType = 'subscription' | 'pro' | 'vip' | 'free' | 'trial'

@@ -19,11 +19,13 @@ import { ConversationScreen } from './components/chat/ConversationScreen'
 import { ReportPage } from './components/shared/ReportPage'
 import { ErrorBoundary } from './components/shared/ErrorBoundary'
 import { Toaster } from './components/shared/Toaster'
+import { PublicLandingFallback } from './components/shared/PublicLandingFallback'
 import { Sidebar } from './components/layout/Sidebar'
 import { ApiKeysModal } from './components/settings/ApiKeysModal'
 import { CapReachedModal } from './components/chat/CapReachedModal'
 import { OAuthCallback } from './components/google/OAuthCallback'
 import { LoginScreen } from './components/auth/LoginScreen'
+import { GoogleReconnectDialog } from './components/auth/GoogleReconnectDialog'
 import { SharedConversationView } from './components/share/SharedConversationView'
 import {
   OnboardingChoice,
@@ -95,6 +97,7 @@ function AppContent({
   const [sidebarOpen, setSidebarOpen] = useState(false)
   // PR D — propriétaire unique de l'ApiKeysModal (Sidebar + écran Upgrade).
   const [showApiKeys, setShowApiKeys] = useState(false)
+  const [showGoogleReconnect, setShowGoogleReconnect] = useState(false)
   const [showMorningBrief, setShowMorningBrief] = useState(false)
   const [showProfileSetup, setShowProfileSetup] = useState(() => getUserProfile() === null)
   const [profileName, setProfileName] = useState<string | null>(() => getUserProfile()?.name || null)
@@ -382,6 +385,16 @@ function AppContent({
     return () => window.removeEventListener('arty-open-compare', open)
   }, [navigate])
 
+  // Le statut de plan peut constater qu'une session Google locale a perdu son
+  // grant (migration de scopes/révocation) ou que le serveur refuse le token.
+  // PlanBadge émet cet événement pour ouvrir une explication. L'autorisation
+  // n'est déclenchée qu'ensuite par le bouton Google conforme du dialogue.
+  useEffect(() => {
+    const reconnect = () => setShowGoogleReconnect(true)
+    window.addEventListener('arty-reconnect-google', reconnect)
+    return () => window.removeEventListener('arty-reconnect-google', reconnect)
+  }, [])
+
   // Open the costs dashboard from Settings — same CustomEvent pattern as Upgrade.
   useEffect(() => {
     const open = () => navigate('/costs')
@@ -488,6 +501,15 @@ function AppContent({
       />
 
       <ApiKeysModal open={showApiKeys} onClose={() => setShowApiKeys(false)} />
+      <GoogleReconnectDialog
+        open={showGoogleReconnect}
+        loading={googleAuth.isLoading}
+        onClose={() => setShowGoogleReconnect(false)}
+        onContinue={() => {
+          setShowGoogleReconnect(false)
+          void googleAuth.login()
+        }}
+      />
       {/* P0.7 — modale de choix au cap premium atteint (event arty-cap-reached). */}
       <CapReachedModal />
 
@@ -868,7 +890,7 @@ export default function App() {
   // single-use and would consume the nonce before `OAuthCallback` (React
   // route) gets a chance to validate it on platforms where both fire. The
   // deeplink is only invokable through an Android Universal Link tied to
-  // appfacade.pages.dev (assetlinks.json), so a remote attacker can't forge
+  // tryarty.com (assetlinks.json), so a remote attacker can't forge
   // a malicious callback URL through this path. State verification stays
   // centralized in `OAuthCallback.tsx` for the web/SPA path.
   useEffect(() => {
@@ -956,8 +978,8 @@ export default function App() {
           openaiKey: existingKeys?.openai,
           identifier: user.email,
         })
-        await storeMailboxFreeGrant(tokens)
         await storeUser(user)
+        await storeMailboxFreeGrant(tokens)
         setSplash(getOnboardingSplash())
       } catch (err) {
         // Stash the error so LoginScreen surfaces it (it drains
@@ -1125,9 +1147,9 @@ function LoggedOutHome({
       !entered && !Capacitor.isNativePlatform() && auth.knownSessions.length === 0
     if (showLanding) {
       return (
-        // Fallback vide aux couleurs du thème : pas de texte « Chargement… »
-        // en première impression marketing (le chunk arrive en <200ms).
-        <Suspense fallback={<div className="min-h-screen bg-theme-bg" />}>
+        // Le fallback reste public et informatif : la landing ne doit jamais
+        // apparaître vide pendant le chargement de son chunk lazy.
+        <Suspense fallback={<PublicLandingFallback />}>
           <LandingScreen onStart={() => setEntered(true)} onLogin={() => navigate('/login')} />
         </Suspense>
       )
@@ -1253,8 +1275,8 @@ function OAuthCallbackAuth({
         openaiKey: existingKeys?.openai || undefined,
         identifier: user.email,
       })
-      await storeMailboxFreeGrant(tokens)
       await storeUser(user)
+      await storeMailboxFreeGrant(tokens)
       onPostLogin?.()
       navigate('/')
     } catch (err) {

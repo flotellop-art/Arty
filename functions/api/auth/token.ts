@@ -2,6 +2,9 @@ import type { Env } from '../../env'
 import {
   CURRENT_GOOGLE_OAUTH_PROFILE,
   isLegacyGoogleOAuthCompatActive,
+  isPreviousGoogleOAuthCompatActive,
+  isPreviousGoogleOAuthRedirectUriAllowed,
+  PREVIOUS_GOOGLE_OAUTH_PROFILE,
   revokeGoogleGrant,
   validatePublicGoogleAccessToken,
 } from '../_lib/publicGoogleScopes'
@@ -17,7 +20,14 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   if (!code || redirect_uri === undefined || redirect_uri === null) {
     return Response.json({ error: 'Missing code or redirect_uri' }, { status: 400 })
   }
-  if (oauth_profile !== undefined && oauth_profile !== CURRENT_GOOGLE_OAUTH_PROFILE) {
+  const previousProfileAccepted = oauth_profile === PREVIOUS_GOOGLE_OAUTH_PROFILE
+    && isPreviousGoogleOAuthCompatActive(env.GOOGLE_OAUTH_PREVIOUS_COMPAT_UNTIL)
+    && isPreviousGoogleOAuthRedirectUriAllowed(redirect_uri)
+  if (
+    oauth_profile !== undefined
+    && oauth_profile !== CURRENT_GOOGLE_OAUTH_PROFILE
+    && !previousProfileAccepted
+  ) {
     return Response.json({ error: 'unsupported_oauth_profile' }, { status: 400 })
   }
 
@@ -66,9 +76,12 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     const scopeCheck = await validatePublicGoogleAccessToken(accessToken, {
       requiredProfile: oauth_profile === CURRENT_GOOGLE_OAUTH_PROFILE
         ? CURRENT_GOOGLE_OAUTH_PROFILE
-        : undefined,
-      // Only installed legacy Android clients exchange with redirect_uri=''.
-      // Old web/PWA flows must reload and use the narrowed current profile.
+        : previousProfileAccepted
+          ? PREVIOUS_GOOGLE_OAUTH_PROFILE
+          : undefined,
+      allowPrevious: previousProfileAccepted,
+      // The much older no-profile grant remains native-only. The immediately
+      // previous profile is handled above through its exact redirect allowlist.
       allowLegacy: oauth_profile === undefined
         && redirect_uri === ''
         && isLegacyGoogleOAuthCompatActive(env.GOOGLE_OAUTH_LEGACY_COMPAT_UNTIL),
@@ -87,7 +100,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
       )
     }
     if (scopeCheck.profile !== CURRENT_GOOGLE_OAUTH_PROFILE) {
-      console.info('[google-oauth] accepted legacy-calendar-v1 token exchange')
+      console.info(`[google-oauth] accepted ${scopeCheck.profile} token exchange`)
     }
 
     return Response.json({
