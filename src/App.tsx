@@ -960,14 +960,13 @@ export default function App() {
       try {
         const { exchangeCode, fetchGoogleUser, storeMailboxFreeGrant, storeUser } = await import('./services/googleAuth')
         const tokens = await exchangeCode(code, undefined, false)
-        const user = await fetchGoogleUser(tokens.access_token)
+        const user = await fetchGoogleUser(tokens.access_token, false)
         // Pose le splash post-login (vip|trial) AVANT de flipper l'auth.
         await initTrial(tokens.access_token)
-        const { generateUserId, setActiveSession } = await import('./services/userSession')
+        const { generateUserId } = await import('./services/userSession')
         const userId = await generateUserId('google', user.email)
-        setActiveSession({ userId, authMethod: 'google', displayName: user.name, email: user.email, avatar: user.picture, createdAt: Date.now() })
-        const { getJSON } = await import('./services/scopedStorage')
-        const existingKeys = getJSON<{ anthropic: string; gemini?: string; mistral?: string; openai?: string }>('api-keys')
+        const { getJSONForUser } = await import('./services/scopedStorage')
+        const existingKeys = getJSONForUser<{ anthropic: string; gemini?: string; mistral?: string; openai?: string }>(userId, 'api-keys')
 
         // Login with existing keys or server-provided
         await authRef.current.login('google', {
@@ -977,9 +976,10 @@ export default function App() {
           mistralKey: existingKeys?.mistral,
           openaiKey: existingKeys?.openai,
           identifier: user.email,
+        }, async (_session, storageOwner) => {
+          if (!(await storeUser(user, storageOwner))) throw new Error('Google user storage was superseded')
+          await storeMailboxFreeGrant(tokens, storageOwner, { verifiedEmail: user.email })
         })
-        await storeUser(user)
-        await storeMailboxFreeGrant(tokens)
         setSplash(getOnboardingSplash())
       } catch (err) {
         // Stash the error so LoginScreen surfaces it (it drains
@@ -1181,19 +1181,16 @@ function LoggedOutHome({
             avatar,
             anthropicKey: 'server-provided',
             identifier: email,
-          })
-          // After auth flips, scopedStorage is keyed to the user — store
-          // the Google credentials through storeTokens/storeUser so they
-          // take the encrypted-at-rest path (D22/P0-a-bis — the previous
-          // raw setJSON bypassed it). First native login: the refresh
-          // token is freshly minted (requestServerAuthCode forces it,
-          // BUG 51), so no merge-with-existing is needed here.
-          const { storeMailboxFreeGrant, storeUser } = await import('./services/googleAuth')
-          await storeUser({ email, name, picture: avatar })
-          await storeMailboxFreeGrant({
-            access_token: accessToken,
-            refresh_token: refreshToken,
-            expires_at: Date.now() + expiresIn * 1000,
+          }, async (_session, storageOwner) => {
+            const { storeMailboxFreeGrant, storeUser } = await import('./services/googleAuth')
+            if (!(await storeUser({ email, name, picture: avatar }, storageOwner))) {
+              throw new Error('Google user storage was superseded')
+            }
+            await storeMailboxFreeGrant({
+              access_token: accessToken,
+              refresh_token: refreshToken,
+              expires_at: Date.now() + expiresIn * 1000,
+            }, storageOwner, { verifiedEmail: email })
           })
           markOnboardingChoiceDone()
           setChoiceDone(true)
@@ -1214,8 +1211,9 @@ function LoggedOutHome({
             email,
             anthropicKey: 'server-provided',
             identifier: `emailtrial:${email}`,
+          }, async () => {
+            setTrialToken(token)
           })
-          setTrialToken(token)
           initEmailTrialSplash(30)
           markOnboardingChoiceDone()
           setChoiceDone(true)
@@ -1248,7 +1246,7 @@ function OAuthCallbackAuth({
     try {
       const { exchangeCode, fetchGoogleUser, storeMailboxFreeGrant, storeUser } = await import('./services/googleAuth')
       const tokens = await exchangeCode(code, undefined, false)
-      const user = await fetchGoogleUser(tokens.access_token)
+      const user = await fetchGoogleUser(tokens.access_token, false)
 
       // Initialise (ou récupère) le statut trial AVANT de finaliser l'auth :
       // ça pose le splash post-login en localStorage avant que le state
@@ -1256,12 +1254,10 @@ function OAuthCallbackAuth({
       await initTrial(tokens.access_token)
 
       // Check if this Google user already has API keys saved
-      const { generateUserId, setActiveSession } = await import('./services/userSession')
+      const { generateUserId } = await import('./services/userSession')
       const userId = await generateUserId('google', user.email)
-      // Temporarily set session to read scoped storage
-      setActiveSession({ userId, authMethod: 'google', displayName: user.name, email: user.email, avatar: user.picture, createdAt: Date.now() })
-      const { getJSON } = await import('./services/scopedStorage')
-      const existingKeys = getJSON<{ anthropic: string; gemini?: string; mistral?: string; openai?: string }>('api-keys')
+      const { getJSONForUser } = await import('./services/scopedStorage')
+      const existingKeys = getJSONForUser<{ anthropic: string; gemini?: string; mistral?: string; openai?: string }>(userId, 'api-keys')
 
       // Use stored keys if available, otherwise login without keys
       // (server-side proxy provides API keys)
@@ -1274,9 +1270,10 @@ function OAuthCallbackAuth({
         mistralKey: existingKeys?.mistral || undefined,
         openaiKey: existingKeys?.openai || undefined,
         identifier: user.email,
+      }, async (_session, storageOwner) => {
+        if (!(await storeUser(user, storageOwner))) throw new Error('Google user storage was superseded')
+        await storeMailboxFreeGrant(tokens, storageOwner, { verifiedEmail: user.email })
       })
-      await storeUser(user)
-      await storeMailboxFreeGrant(tokens)
       onPostLogin?.()
       navigate('/')
     } catch (err) {

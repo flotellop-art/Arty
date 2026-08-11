@@ -8,6 +8,8 @@ import {
   migrateExistingData,
   purgeLegacyGlobalReports,
   getActiveUserId,
+  getActiveSessionEpoch,
+  rememberSession,
   removeKnownSession,
   type UserSession,
   type AuthMethod,
@@ -25,6 +27,16 @@ import { purgeComposerDraftsForActiveUser } from '../services/composerDrafts'
 import { resetMailAccountsCache } from '../services/mailAccounts'
 
 type StoredKeys = { anthropic: string; gemini?: string; mistral?: string; openai?: string }
+
+export interface AuthFinalizationContext {
+  userId: string
+  sessionEpoch: number
+}
+
+// Les clés crypto et les caches Google sont globaux au WebView. Deux
+// finalisations concurrentes ne peuvent donc pas être rendues sûres par le
+// seul préfixe localStorage : on sérialise toutes les mutations de session.
+let authTransactionInFlight = false
 
 export function useAuth() {
   const [currentUser, setCurrentUser] = useState<UserSession | null>(getActiveSession)
@@ -65,58 +77,131 @@ export function useAuth() {
       mistralKey?: string
       openaiKey?: string
       identifier: string
-    }
+    },
+    beforePublish?: (
+      session: UserSession,
+      context: AuthFinalizationContext,
+    ) => Promise<void>,
   ) => {
-    const userId = await generateUserId(method, credentials.identifier)
-
-    const session: UserSession = {
-      userId,
-      authMethod: method,
-      displayName: credentials.displayName,
-      email: credentials.email,
-      avatar: credentials.avatar,
-      createdAt: Date.now(),
+    if (authTransactionInFlight) {
+      throw new Error('Authentication is already in progress')
     }
+    // `login()` construit un NOUVEAU contexte crypto/scopé. Une reconnexion
+    // Google d'un compte déjà publié passe par useGoogleAuth et ne doit jamais
+    // entrer ici : restaurer correctement une ancienne clé crypto, ses clés
+    // BYOK et son grant après un échec serait une transaction multi-stockages.
+    // Refuser avant toute mutation est la seule sémantique atomique.
+    if (getActiveSession()) {
+      throw new Error('Sign out before starting a new login')
+    }
+    authTransactionInFlight = true
+    try {
+      const userId = await generateUserId(method, credentials.identifier)
 
-    // Activate session (sets the prefix for scopedStorage)
-    setActiveSession(session)
-    adoptPendingTrialRemaining()
+      const session: UserSession = {
+        userId,
+        authMethod: method,
+        displayName: credentials.displayName,
+        email: credentials.email,
+        avatar: credentials.avatar,
+        createdAt: Date.now(),
+      }
 
-    // Migrate existing data if first login after update
-    migrateExistingData(userId)
+      // Active provisoirement le scope local sans publier le compte dans React
+      // ni dans la liste des comptes connus. Le finaliseur Google/email peut
+      // ainsi persister son grant sous le bon userId et avec la bonne clé crypto.
+      setActiveSession(session, { remember: false })
+      const provisionalEpoch = getActiveSessionEpoch()
+      const assertCurrentAttempt = () => {
+        if (
+          getActiveUserId() !== userId
+          || getActiveSessionEpoch() !== provisionalEpoch
+        ) throw new Error('Authentication finalization was superseded')
+      }
+      const previousApiKeys = scoped.getItem('api-keys')
+      let writtenApiKeys: string | null = null
+      adoptPendingTrialRemaining()
+      try {
+      // Migrate existing data if first login after update
+      migrateExistingData(userId)
 
-    // Initialize encryption with the API key, then migrate any legacy
-    // plain-JSON Google tokens into encrypted storage.
-    await initCrypto(credentials.anthropicKey)
-    await bootstrapGoogleStorage()
-    bootstrapConversationStorage().catch(() => {})
-    bootstrapFileStorage().catch(() => {})
+      // Initialize encryption with the API key, then migrate any legacy
+      // plain-JSON Google tokens into encrypted storage.
+      await initCrypto(credentials.anthropicKey)
+      assertCurrentAttempt()
+      await bootstrapGoogleStorage()
+      assertCurrentAttempt()
+      // Ces deux stockages enrichissent l'expérience mais ne sont pas des
+      // conditions d'identité. On attend leur stabilisation pour conserver
+      // l'ordre de la transaction, sans rendre un IndexedDB indisponible
+      // bloquant pour toute connexion.
+      await Promise.allSettled([bootstrapConversationStorage(), bootstrapFileStorage()])
+      assertCurrentAttempt()
 
-    // Store API keys as plain JSON for sync reads (getJSON in useEffect)
-    // DO NOT encrypt with migrateKey — it overwrites plain with encrypted,
-    // making getJSON() fail on page reload (see BUG 1 in CLAUDE.md)
-    scoped.setJSON('api-keys', {
-      anthropic: credentials.anthropicKey,
-      gemini: credentials.geminiKey,
-      mistral: credentials.mistralKey,
-      openai: credentials.openaiKey,
-    })
+      // Store API keys as plain JSON for sync reads (getJSON in useEffect)
+      // DO NOT encrypt with migrateKey — it overwrites plain with encrypted,
+      // making getJSON() fail on page reload (see BUG 1 in CLAUDE.md)
+      writtenApiKeys = JSON.stringify({
+        anthropic: credentials.anthropicKey,
+        gemini: credentials.geminiKey,
+        mistral: credentials.mistralKey,
+        openai: credentials.openaiKey,
+      })
+      scoped.setItem('api-keys', writtenApiKeys)
 
-    // Set active keys in memory for AI clients
-    setActiveKeys(
-      credentials.anthropicKey,
-      credentials.geminiKey,
-      credentials.mistralKey,
-      credentials.openaiKey
-    )
+      // Set active keys in memory for AI clients
+      setActiveKeys(
+        credentials.anthropicKey,
+        credentials.geminiKey,
+        credentials.mistralKey,
+        credentials.openaiKey
+      )
 
-    setCurrentUser(session)
-    setKnownSessions(getKnownSessions())
+      assertCurrentAttempt()
+      await beforePublish?.(session, {
+        userId,
+        sessionEpoch: provisionalEpoch,
+      })
+      assertCurrentAttempt()
 
-    return session
+      // Le grant/jeton est durable : la session devient maintenant visible.
+      rememberSession(session)
+      setCurrentUser(session)
+      setKnownSessions(getKnownSessions())
+      return session
+      } catch (error) {
+      // Ne jamais déconnecter un compte qui aurait remplacé cette tentative
+      // pendant un await. Seule l'époque provisoire fautive est nettoyée.
+      if (
+        getActiveUserId() === userId
+        && getActiveSessionEpoch() === provisionalEpoch
+      ) {
+        clearActiveKeys()
+        if (method === 'google') {
+          googleLogout({ notify: false })
+          resetGoogleMemCache()
+        }
+        // Un échec de reconnexion ne doit jamais effacer les clés BYOK qui
+        // existaient déjà pour ce compte. Restaurer seulement si notre propre
+        // écriture est encore présente (pas une édition plus récente).
+        if (writtenApiKeys !== null && scoped.getItem('api-keys') === writtenApiKeys) {
+          if (previousApiKeys === null) scoped.removeItem('api-keys')
+          else scoped.setItem('api-keys', previousApiKeys)
+        }
+        clearActiveSession()
+      }
+      throw error
+      }
+    } finally {
+      authTransactionInFlight = false
+    }
   }, [])
 
   const logout = useCallback(() => {
+    if (authTransactionInFlight) {
+      console.warn('[useAuth] logout ignored while authentication is finalizing')
+      return
+    }
     const leavingUserId = getActiveUserId()
     // Clear everything synchronously first (both plain + encrypted copies)
     clearActiveKeys()
@@ -180,6 +265,11 @@ export function useAuth() {
   }, [])
 
   const switchAccount = useCallback(async (userId: string) => {
+    if (authTransactionInFlight) {
+      throw new Error('Authentication is already in progress')
+    }
+    authTransactionInFlight = true
+    try {
     const known = getKnownSessions()
     const session = known.find(s => s.userId === userId)
     if (!session) return
@@ -215,6 +305,9 @@ export function useAuth() {
     }
 
     setCurrentUser(session)
+    } finally {
+      authTransactionInFlight = false
+    }
   }, [])
 
   return {

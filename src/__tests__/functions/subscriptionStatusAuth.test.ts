@@ -15,11 +15,11 @@ afterEach(() => {
 const ENV = {
   GOOGLE_CLIENT_ID: 'arty-client-id',
   ALLOWED_EMAILS: 'vip@example.com',
-} as never
+}
 
-function call(headers: Record<string, string> = {}) {
+function call(headers: Record<string, string> = {}, env: Record<string, unknown> = ENV) {
   const request = new Request('https://tryarty.com/api/subscription/status', { headers })
-  return onRequestGet({ request, env: ENV } as never) as Promise<Response>
+  return onRequestGet({ request, env } as never) as Promise<Response>
 }
 
 function tokeninfo(body: object, ok = true) {
@@ -55,6 +55,18 @@ describe('subscription/status — pourquoi ce plan', () => {
     expect(res.status).toBe(503)
     expect(body.auth).toBe('unavailable')
     expect(body.plan).toBe('free')
+  })
+
+  it('GOOGLE_CLIENT_ID absent : HTTP 503 fail-closed sans appeler Google', async () => {
+    const fetchSpy = vi.fn()
+    global.fetch = fetchSpy as typeof fetch
+    const res = await call(
+      { Authorization: 'Bearer t' },
+      { ...ENV, GOOGLE_CLIENT_ID: '' },
+    )
+    expect(res.status).toBe(503)
+    expect((await res.json() as { auth: string }).auth).toBe('unavailable')
+    expect(fetchSpy).not.toHaveBeenCalled()
   })
 
   it('erreur réseau tokeninfo : HTTP 503 et non token_rejected', async () => {

@@ -23,10 +23,12 @@ function req(action: string): Request {
 function stubFetch() {
   const spy = vi.fn(async (url: RequestInfo | URL) => {
     const u = String(url)
-    if (u.includes('/tokeninfo')) return new Response(JSON.stringify({ aud: 'arty-client-id' }), { status: 200 })
-    if (u.includes('/oauth2/v2/userinfo')) {
-      return new Response(JSON.stringify({ id: OWNER, email: 'owner@example.com', verified_email: true }), { status: 200 })
-    }
+    if (u.includes('/tokeninfo')) return new Response(JSON.stringify({
+      aud: 'arty-client-id',
+      email: 'owner@example.com',
+      email_verified: true,
+      user_id: OWNER,
+    }), { status: 200 })
     if (u.includes('/health')) return new Response('{}', { status: 200 })
     if (u.includes('/computer/action')) return new Response(JSON.stringify({ success: true }), { status: 200 })
     throw new Error('unexpected fetch ' + u)

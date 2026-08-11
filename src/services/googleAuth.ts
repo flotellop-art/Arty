@@ -3,7 +3,7 @@ import { safeJson } from '../utils/safeJson'
 import * as scoped from './scopedStorage'
 import { apiUrl } from './apiBase'
 import { encrypt, decrypt, isCryptoReady, selfTestCrypto } from './crypto'
-import { getActiveUserId } from './userSession'
+import { getActiveSessionEpoch, getActiveUserId } from './userSession'
 
 const FETCH_TIMEOUT_MS = 15_000
 
@@ -65,6 +65,10 @@ const USER_ENC_KEY = 'google-user-enc'
 // mailbox access was removed. We revoke and purge that grant once, then require
 // a fresh sign-in with the reduced scopes above.
 const MAILBOX_FREE_OAUTH_EPOCH_KEY = 'google-oauth-mailbox-free-v1'
+// Second one-shot epoch: grants persisted before 1.0.99 did not bind their
+// refresh token to the verified Google identity. Revoke them once rather than
+// risk recycling a token from another account after a historical A -> B race.
+const IDENTITY_BOUND_OAUTH_EPOCH_KEY = 'google-oauth-identity-bound-v2'
 const GOOGLE_OAUTH_RECONSENT_KEY = 'google-oauth-reconsent-required'
 
 async function revokeLegacyGoogleGrant(token: string): Promise<void> {
@@ -94,22 +98,40 @@ export function isGoogleStorageReady(): boolean {
   return googleStorageReady
 }
 
-async function migrateLegacyGrantForEpoch(epochKey: string): Promise<boolean> {
-  if (scoped.getItem(epochKey) === '1') return false
+function normalizedGoogleEmail(email: string | undefined): string {
+  return email?.trim().toLowerCase() || ''
+}
+
+async function migrateLegacyGrantForEpoch(
+  epochKeys: string[],
+  options: { force?: boolean } = {},
+): Promise<boolean> {
+  if (!options.force && epochKeys.every((epochKey) => scoped.getItem(epochKey) === '1')) return false
 
   // A retained encrypted blob with no decrypted cache means the crypto key is
   // temporarily unavailable. Do not mark the epoch complete: retry next boot.
   if (scoped.getItem(TOKENS_ENC_KEY) && !memTokens) return false
 
-  scoped.setItem(epochKey, '1')
   const tokens = getStoredTokens()
-  if (!tokens) return false
+  if (!tokens) {
+    for (const epochKey of epochKeys) {
+      try { scoped.setItem(epochKey, '1') } catch { /* retry next bootstrap */ }
+    }
+    return false
+  }
 
   const tokenToRevoke = tokens.refresh_token || tokens.access_token
-  scoped.setItem(GOOGLE_OAUTH_RECONSENT_KEY, CURRENT_GOOGLE_OAUTH_PROFILE)
   // Keep subscribers quiet until bounded revocation + native cache cleanup
   // finish. bootstrapGoogleStorage publishes one coherent ready event after.
   logout({ preserveReconsent: true, notify: false })
+  // Purging above is the security boundary. Marker/notice writes are
+  // best-effort so a storage error can never leave an incoherent grant live.
+  for (const epochKey of epochKeys) {
+    try { scoped.setItem(epochKey, '1') } catch { /* retry next bootstrap */ }
+  }
+  try {
+    scoped.setItem(GOOGLE_OAUTH_RECONSENT_KEY, CURRENT_GOOGLE_OAUTH_PROFILE)
+  } catch { /* disconnected UI remains fail-closed */ }
   // The same-origin server bridge is the single revocation authority. Do not
   // launch a native Google Task here: a late Task completion could invalidate
   // the fresh grant after the reconnect CTA becomes available.
@@ -118,15 +140,24 @@ async function migrateLegacyGrantForEpoch(epochKey: string): Promise<boolean> {
 }
 
 export async function migrateLegacyMailboxGrant(): Promise<boolean> {
-  if (scoped.getItem(MAILBOX_FREE_OAUTH_EPOCH_KEY) === '1') return false
+  const tokens = getStoredTokens()
+  const user = getStoredUser()
+  const verifiedEmail = normalizedGoogleEmail(tokens?.verified_email)
+  const identityMatches = !!verifiedEmail
+    && verifiedEmail === normalizedGoogleEmail(user?.email)
+
   // calendar-events-owned-v2 is server-proven exact and therefore mailbox-free.
-  // If its marker write was interrupted after the token commit, self-heal the
-  // old marker instead of revoking a known-current grant.
-  if (getStoredTokens()?.oauth_profile === CURRENT_GOOGLE_OAUTH_PROFILE) {
-    scoped.setItem(MAILBOX_FREE_OAUTH_EPOCH_KEY, '1')
+  // The identity binding travels in the same encrypted blob as its refresh token;
+  // only that fully coherent state may self-heal interrupted epoch markers.
+  if (tokens?.oauth_profile === CURRENT_GOOGLE_OAUTH_PROFILE && identityMatches) {
+    try { scoped.setItem(MAILBOX_FREE_OAUTH_EPOCH_KEY, '1') } catch { /* retry */ }
+    try { scoped.setItem(IDENTITY_BOUND_OAUTH_EPOCH_KEY, '1') } catch { /* retry */ }
     return false
   }
-  return migrateLegacyGrantForEpoch(MAILBOX_FREE_OAUTH_EPOCH_KEY)
+  return migrateLegacyGrantForEpoch([
+    MAILBOX_FREE_OAUTH_EPOCH_KEY,
+    IDENTITY_BOUND_OAUTH_EPOCH_KEY,
+  ], { force: !!tokens })
 }
 
 export async function migrateLegacyCalendarGrant(): Promise<boolean> {
@@ -316,7 +347,7 @@ export async function buildOAuthUrl(): Promise<string> {
 export async function exchangeCode(
   code: string,
   redirectUriOverride?: string,
-  persistGrant = true,
+  persistGrant = false,
 ): Promise<GoogleTokens> {
   // Native Google Sign-In returns a serverAuthCode that must be exchanged
   // with redirect_uri='' (BUG 2/28); web codes use getRedirectUri(). The
@@ -366,14 +397,37 @@ export async function exchangeCode(
   // cet échange. Il diffère donc la persistance jusqu'à l'activation du scope
   // utilisateur, sinon le grant et son marqueur d'époque seraient écrits sous
   // la portée globale puis considérés comme legacy au bootstrap suivant.
-  return persistGrant ? storeMailboxFreeGrant(tokens) : tokens
+  if (persistGrant) {
+    throw new Error('Google identity must be verified before persisting the grant')
+  }
+  return tokens
 }
 
-export async function storeTokens(tokens: GoogleTokens): Promise<boolean> {
+export interface GoogleStorageOwner {
+  userId: string | null
+  sessionEpoch: number
+}
+
+function currentStorageOwner(): GoogleStorageOwner {
+  return { userId: getActiveUserId(), sessionEpoch: getActiveSessionEpoch() }
+}
+
+function storageOwnerMatches(expected: GoogleStorageOwner): boolean {
+  return getActiveUserId() === expected.userId
+    && getActiveSessionEpoch() === expected.sessionEpoch
+}
+
+export async function storeTokens(
+  tokens: GoogleTokens,
+  expectedOwner?: GoogleStorageOwner,
+): Promise<boolean> {
+  if (expectedOwner && !storageOwnerMatches(expectedOwner)) return false
+  const ownerAtStart = currentStorageOwner()
   const writeGeneration = ++tokenStorageGeneration
-  const ownerAtStart = getActiveUserId()
   const writeStillCurrent = () =>
-    writeGeneration === tokenStorageGeneration && ownerAtStart === getActiveUserId()
+    writeGeneration === tokenStorageGeneration
+    && storageOwnerMatches(ownerAtStart)
+    && (!expectedOwner || storageOwnerMatches(expectedOwner))
   const abandonWrite = () => {
     if (writeGeneration === tokenStorageGeneration && memTokens === tokens) memTokens = null
     return false
@@ -409,10 +463,28 @@ export async function storeTokens(tokens: GoogleTokens): Promise<boolean> {
  * antérieur à cette époque peut encore porter les anciens scopes Gmail et ne
  * doit jamais être recyclé dans un grant frais.
  */
-export async function storeMailboxFreeGrant(tokens: GoogleTokens): Promise<GoogleTokens> {
-  const ownerAtStart = getActiveUserId()
+export async function storeMailboxFreeGrant(
+  tokens: GoogleTokens,
+  expectedOwner?: GoogleStorageOwner,
+  options: {
+    preserveExistingRefreshToken?: boolean
+    /** Identité issue du même grant, vérifiée via Google userinfo. */
+    verifiedEmail?: string
+  } = {},
+): Promise<GoogleTokens> {
+  const ownerAtStart = currentStorageOwner()
+  if (expectedOwner && !storageOwnerMatches(expectedOwner)) {
+    throw new Error('Google grant storage was superseded')
+  }
   const existingTokens = getStoredTokens()
-  const existingRefreshToken = existingTokens?.oauth_profile === CURRENT_GOOGLE_OAUTH_PROFILE
+  const verifiedEmail = normalizedGoogleEmail(options.verifiedEmail)
+  if (!verifiedEmail) {
+    throw new Error('Verified Google email is required to persist the grant')
+  }
+  const existingRefreshToken = options.preserveExistingRefreshToken !== false
+    && existingTokens?.oauth_profile === CURRENT_GOOGLE_OAUTH_PROFILE
+    && !!verifiedEmail
+    && existingTokens.verified_email === verifiedEmail
     ? existingTokens.refresh_token
     : ''
 
@@ -420,16 +492,18 @@ export async function storeMailboxFreeGrant(tokens: GoogleTokens): Promise<Googl
     ...tokens,
     refresh_token: tokens.refresh_token || existingRefreshToken || '',
     oauth_profile: CURRENT_GOOGLE_OAUTH_PROFILE,
+    verified_email: verifiedEmail || undefined,
   }
 
   // Persister d'abord le nouveau grant, puis seulement son marqueur. Si
   // l'écriture ou l'application s'interrompt entre les deux, le bootstrap
   // traitera le grant comme legacy et forcera une reconnexion sûre.
-  const committed = await storeTokens(mailboxFreeTokens)
-  if (!committed || ownerAtStart !== getActiveUserId()) {
+  const committed = await storeTokens(mailboxFreeTokens, expectedOwner)
+  if (!committed || !storageOwnerMatches(ownerAtStart)) {
     throw new Error('Google grant storage was superseded')
   }
   scoped.setItem(MAILBOX_FREE_OAUTH_EPOCH_KEY, '1')
+  scoped.setItem(IDENTITY_BOUND_OAUTH_EPOCH_KEY, '1')
   scoped.removeItem(GOOGLE_OAUTH_RECONSENT_KEY)
   // Le flux natif reste sur la même vue : publier immédiatement le nouveau
   // grant afin que useGoogleAuth et usePlanStatus relisent la session/VIP sans
@@ -441,13 +515,20 @@ export async function storeMailboxFreeGrant(tokens: GoogleTokens): Promise<Googl
   return mailboxFreeTokens
 }
 
-export async function storeUser(user: GoogleUser): Promise<boolean> {
+export async function storeUser(
+  user: GoogleUser,
+  expectedOwner?: GoogleStorageOwner,
+): Promise<boolean> {
+  if (expectedOwner && !storageOwnerMatches(expectedOwner)) return false
+  const ownerAtStart = currentStorageOwner()
   const writeGeneration = ++userStorageGeneration
-  const ownerAtStart = getActiveUserId()
+  const previousMemUser = memUser
   const writeStillCurrent = () =>
-    writeGeneration === userStorageGeneration && ownerAtStart === getActiveUserId()
+    writeGeneration === userStorageGeneration
+    && storageOwnerMatches(ownerAtStart)
+    && (!expectedOwner || storageOwnerMatches(expectedOwner))
   const abandonWrite = () => {
-    if (writeGeneration === userStorageGeneration && memUser === user) memUser = null
+    if (writeGeneration === userStorageGeneration && memUser === user) memUser = previousMemUser
     return false
   }
   memUser = user
@@ -455,17 +536,29 @@ export async function storeUser(user: GoogleUser): Promise<boolean> {
     try {
       const encrypted = await encrypt(JSON.stringify(user))
       if (!writeStillCurrent()) return abandonWrite()
-      scoped.setItem(USER_ENC_KEY, encrypted)
-      scoped.removeItem(USER_PLAIN_KEY)
-      return true
+      let encryptedCommitted = false
+      try {
+        scoped.setItem(USER_ENC_KEY, encrypted)
+        encryptedCommitted = true
+      } catch {
+        // fall through to the plain storage fallback below
+      }
+      if (encryptedCommitted) {
+        try { scoped.removeItem(USER_PLAIN_KEY) } catch { /* encrypted copy committed */ }
+        return true
+      }
     } catch {
       if (!writeStillCurrent()) return abandonWrite()
       // fall through
     }
   }
   if (writeStillCurrent()) {
-    scoped.setJSON(USER_PLAIN_KEY, user)
-    return true
+    try {
+      scoped.setJSON(USER_PLAIN_KEY, user)
+      return true
+    } catch {
+      return abandonWrite()
+    }
   }
   return abandonWrite()
 }
@@ -544,6 +637,7 @@ export async function refreshAccessToken(): Promise<GoogleTokens | null> {
     refresh_token: tokens.refresh_token,
     expires_at: Date.now() + data.expires_in * 1000,
     oauth_profile: CURRENT_GOOGLE_OAUTH_PROFILE,
+    verified_email: tokens.verified_email,
   }
 
   if (data.oauth_profile !== CURRENT_GOOGLE_OAUTH_PROFILE) {
@@ -612,7 +706,10 @@ export async function getValidAccessToken(): Promise<string | null> {
   return tokens.access_token
 }
 
-export async function fetchGoogleUser(accessToken: string): Promise<GoogleUser> {
+export async function fetchGoogleUser(
+  accessToken: string,
+  persistUser = true,
+): Promise<GoogleUser> {
   const t = withTimeout(FETCH_TIMEOUT_MS)
   let res: Response
   try {
@@ -633,7 +730,9 @@ export async function fetchGoogleUser(accessToken: string): Promise<GoogleUser> 
     picture: data.picture,
   }
 
-  await storeUser(user)
+  if (persistUser && !(await storeUser(user))) {
+    throw new Error('Google user storage was superseded')
+  }
   return user
 }
 

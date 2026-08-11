@@ -1,6 +1,6 @@
 import type { Env } from '../../env'
 import {
-  checkAllowedUser,
+  checkAllowedVerifiedUser,
   isModelAllowedInTrial,
   isTrialExpired,
   proKeyRequiredResponse,
@@ -10,7 +10,8 @@ import {
 import {
   consumeEmailTrialMessage,
   emailTrialKey,
-  resolveProxyIdentity,
+  proxyIdentityFailureResponse,
+  resolveProxyIdentityDetailed,
 } from '../_lib/emailTrial'
 import { checkPremiumCap, premiumCapReachedResponse } from '../_lib/checkPremiumCap'
 import { consumeDailyQuota, recordUsage } from '../_lib/quota'
@@ -35,13 +36,11 @@ const MISTRAL_API_URL = 'https://api.mistral.ai/v1/chat/completions'
 export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUntil }) => {
   // Anti-relais : identité Google OU jeton d'essai email (espace de clés disjoint,
   // plan figé 'trial', CRIT-1). Google prioritaire si les deux headers présents.
-  const identity = await resolveProxyIdentity(request, env)
-  if (!identity) {
-    return Response.json(
-      { error: 'Authentication required — please sign in with Google' },
-      { status: 401 }
-    )
+  const identityResolution = await resolveProxyIdentityDetailed(request, env)
+  if (identityResolution.status !== 'ok') {
+    return proxyIdentityFailureResponse(identityResolution)
   }
+  const identity = identityResolution.identity
   const email = identity.kind === 'email-trial' ? emailTrialKey(identity.email) : identity.email
 
   // BYOK prioritaire
@@ -60,7 +59,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     const result =
       identity.kind === 'email-trial'
         ? await consumeEmailTrialMessage(env, identity.email)
-        : await checkAllowedUser(request, env)
+        : await checkAllowedVerifiedUser(identity.email, env)
     if (isTrialExpired(result)) {
       // Essai email épuisé : pas de wallet (espace de clés disjoint, CRIT-1) → 403 direct.
       if (identity.kind === 'email-trial') return trialExpiredResponse()

@@ -157,9 +157,10 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
   if (!token) return jsonStatus(FREE_RESPONSE)
 
   const verification = await verifyTokenViaTokeninfoDetailed(token, env.GOOGLE_CLIENT_ID)
-  if (verification.status === 'unavailable') {
+  if (verification.status === 'unavailable' || verification.status === 'misconfigured') {
     return jsonStatus({ ...FREE_RESPONSE, auth: 'unavailable' }, 503)
   }
+  if (verification.status === 'no_token') return jsonStatus(FREE_RESPONSE)
   // Token présent mais refusé : le distinguer de « pas de token » est le seul
   // moyen, côté client, de dire « reconnecte ton compte Google » au lieu
   // d'afficher un plan gratuit qui a l'air définitif.

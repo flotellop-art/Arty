@@ -59,10 +59,12 @@ function stubFetch(overpass: (url: string, init?: RequestInit) => Response | nul
   const spy = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
     const u = String(url)
     if (u.includes('/tokeninfo')) {
-      return new Response(JSON.stringify({ aud: 'arty-client-id' }), { status: 200 })
-    }
-    if (u.includes('/oauth2/v2/userinfo')) {
-      return new Response(JSON.stringify({ id: 'g-1', email: EMAIL, verified_email: true }), { status: 200 })
+      return new Response(JSON.stringify({
+        aud: 'arty-client-id',
+        email: EMAIL,
+        email_verified: true,
+        user_id: 'g-1',
+      }), { status: 200 })
     }
     if (u.includes('data.geopf.fr/geocodage')) {
       // Par défaut la BAN ne matche pas → la chaîne passe à open-meteo.
@@ -99,7 +101,9 @@ describe('geo/trails — auth (RÈGLE 6)', () => {
   it("token d'une autre app OAuth (aud étranger) → 404 uniforme", async () => {
     vi.stubGlobal('fetch', vi.fn(async (url: RequestInfo | URL) => {
       const u = String(url)
-      if (u.includes('/tokeninfo')) return new Response(JSON.stringify({ aud: 'evil-app' }), { status: 200 })
+      if (u.includes('/tokeninfo')) return new Response(JSON.stringify({
+        aud: 'evil-app', email: EMAIL, email_verified: true,
+      }), { status: 200 })
       return new Response('{}', { status: 200 })
     }))
     const res = await call(req({ action: 'search', location: 'Viriville' }))
@@ -169,10 +173,9 @@ describe('geo/trails — recherche', () => {
     const spy = stubFetch(() => new Response(JSON.stringify(OVERPASS_SEARCH_BODY), { status: 200 }))
     spy.mockImplementation(async (url: RequestInfo | URL) => {
       const u = String(url)
-      if (u.includes('/tokeninfo')) return new Response(JSON.stringify({ aud: 'arty-client-id' }), { status: 200 })
-      if (u.includes('/oauth2/v2/userinfo')) {
-        return new Response(JSON.stringify({ id: 'g-1', email: EMAIL, verified_email: true }), { status: 200 })
-      }
+      if (u.includes('/tokeninfo')) return new Response(JSON.stringify({
+        aud: 'arty-client-id', email: EMAIL, email_verified: true, user_id: 'g-1',
+      }), { status: 200 })
       if (u.includes('data.geopf.fr/geocodage')) {
         return new Response(JSON.stringify({
           features: [{ geometry: { coordinates: [5.205671, 45.311889] }, properties: { label: 'Viriville (38980)', score: 0.94 } }],

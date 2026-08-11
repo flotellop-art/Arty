@@ -12,6 +12,10 @@ function buildKey(baseKey: string): string {
   return `arty-${userId}-${baseKey}`
 }
 
+function buildKeyForUser(userId: string, baseKey: string): string {
+  return `arty-${userId}-${baseKey}`
+}
+
 export function getItem(baseKey: string): string | null {
   return localStorage.getItem(buildKey(baseKey))
 }
@@ -28,6 +32,16 @@ export function removeItem(baseKey: string): void {
 export function getJSON<T>(baseKey: string): T | null {
   try {
     const raw = getItem(baseKey)
+    return raw ? JSON.parse(raw) as T : null
+  } catch {
+    return null
+  }
+}
+
+/** Lecture ciblée sans changer la session active (finalisation OAuth). */
+export function getJSONForUser<T>(userId: string, baseKey: string): T | null {
+  try {
+    const raw = localStorage.getItem(buildKeyForUser(userId, baseKey))
     return raw ? JSON.parse(raw) as T : null
   } catch {
     return null

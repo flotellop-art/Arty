@@ -131,8 +131,12 @@ describe('N-1 / M-3 — Google token audience validation', () => {
   it('strict gate returns the verified Arty identity for matching aud/azp', async () => {
     const { verifyGoogleIdentityStrict } = await import('../../../functions/api/_lib/checkAllowedUser')
     routeFetch({
-      tokeninfo: { aud: 'MY_CLIENT_ID' },
-      userinfo: { email: 'Owner@Example.com', id: 'google-sub-1', verified_email: true },
+      tokeninfo: {
+        aud: 'MY_CLIENT_ID',
+        email: 'Owner@Example.com',
+        email_verified: true,
+        user_id: 'google-sub-1',
+      },
     })
     expect(await verifyGoogleIdentityStrict(req(), 'MY_CLIENT_ID')).toEqual({
       email: 'owner@example.com',
@@ -140,11 +144,10 @@ describe('N-1 / M-3 — Google token audience validation', () => {
     })
   })
 
-  it('strict gate rejects userinfo that does not confirm a verified email', async () => {
+  it('strict gate rejects tokeninfo that does not confirm a verified email', async () => {
     const { verifyGoogleUserStrict } = await import('../../../functions/api/_lib/checkAllowedUser')
     routeFetch({
-      tokeninfo: { aud: 'MY_CLIENT_ID' },
-      userinfo: { email: 'owner@example.com', id: 'google-sub-1' },
+      tokeninfo: { aud: 'MY_CLIENT_ID', email: 'owner@example.com', user_id: 'google-sub-1' },
     })
     expect(await verifyGoogleUserStrict(req(), 'MY_CLIENT_ID')).toBeNull()
   })

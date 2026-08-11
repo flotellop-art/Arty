@@ -2,8 +2,9 @@ import type { Env } from '../../env'
 import {
   parseAllowedEmails,
   resolveUserPlan,
+  strictGoogleIdentityFailureResponse,
   trialModelRestrictedResponse,
-  verifyGoogleUserStrict,
+  verifyGoogleIdentityStrictDetailed,
 } from '../_lib/checkAllowedUser'
 import {
   consumeDailyQuota,
@@ -45,13 +46,9 @@ export function resolveTranscriptionModel(raw: unknown): string | null {
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUntil }) => {
   // Anti-relais anonyme : un token Google valide est obligatoire (CRIT-4).
-  const email = await verifyGoogleUserStrict(request, env.GOOGLE_CLIENT_ID)
-  if (!email) {
-    return Response.json(
-      { error: 'Authentication required — please sign in with Google' },
-      { status: 401 }
-    )
-  }
+  const auth = await verifyGoogleIdentityStrictDetailed(request, env.GOOGLE_CLIENT_ID)
+  if (auth.status !== 'ok') return strictGoogleIdentityFailureResponse(auth)
+  const { email } = auth.identity
 
   // Taille bornée AVANT toute consommation de quota. Les navigateurs
   // envoient toujours Content-Length avec un body FormData.

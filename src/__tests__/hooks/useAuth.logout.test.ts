@@ -22,10 +22,12 @@ const mocks = vi.hoisted(() => {
 vi.mock('../../services/userSession', () => ({
   getActiveSession: () => mocks.session,
   getActiveUserId: () => mocks.session.userId,
+  getActiveSessionEpoch: () => 1,
   getKnownSessions: () => [mocks.session],
   clearActiveSession: mocks.clearActiveSession,
   removeKnownSession: mocks.removeKnownSession,
   setActiveSession: vi.fn(),
+  rememberSession: vi.fn(),
   generateUserId: vi.fn(async () => mocks.session.userId),
   migrateExistingData: vi.fn(),
   purgeLegacyGlobalReports: vi.fn(),

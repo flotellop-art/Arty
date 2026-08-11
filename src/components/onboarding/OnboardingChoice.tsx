@@ -130,10 +130,9 @@ export function OnboardingChoice({
 
   return (
     <main
-      className="keyboard-aware bg-theme-bg text-theme-ink flex items-center justify-center px-6 py-10"
-      style={{ minHeight: 'var(--viewport-h, 100dvh)' }}
+      className="auth-viewport-scroll keyboard-aware bg-theme-bg text-theme-ink flex flex-col items-center px-6"
     >
-      <div className="w-full max-w-md">
+      <div className="my-auto w-full max-w-md">
         <header className="flex flex-col items-center mb-10">
           <ArtyWordmark size={26} color="rgb(var(--theme-accent))" />
         </header>

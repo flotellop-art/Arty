@@ -30,7 +30,12 @@ function context(request: Request, background: Promise<unknown>[]) {
 }
 
 function authResponse(url: string): Response | null {
-  if (url.includes('/tokeninfo')) return Response.json({ aud: CLIENT_ID })
+  if (url.includes('/tokeninfo')) return Response.json({
+    aud: CLIENT_ID,
+    email: EMAIL,
+    email_verified: true,
+    user_id: 'google-sub',
+  })
   if (url.includes('/oauth2/v2/userinfo')) {
     return Response.json({ email: EMAIL, verified_email: true, id: 'google-sub' })
   }

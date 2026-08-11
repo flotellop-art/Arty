@@ -1,5 +1,9 @@
 import type { Env } from '../../env'
-import { emailTrialKey, resolveProxyIdentity } from '../_lib/emailTrial'
+import {
+  emailTrialKey,
+  proxyIdentityFailureResponse,
+  resolveProxyIdentityDetailed,
+} from '../_lib/emailTrial'
 import { consumeCapAtomic, maybeCleanup } from '../_lib/atomicQuota'
 
 /**
@@ -70,10 +74,11 @@ async function ensureTable(env: Env): Promise<void> {
 }
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
-  const identity = await resolveProxyIdentity(request, env)
-  if (!identity) {
-    return Response.json({ error: 'Authentication required' }, { status: 401 })
+  const identityResolution = await resolveProxyIdentityDetailed(request, env)
+  if (identityResolution.status !== 'ok') {
+    return proxyIdentityFailureResponse(identityResolution)
   }
+  const { identity } = identityResolution
   if (!env.DB) {
     return Response.json({ error: 'report_unavailable' }, { status: 503 })
   }

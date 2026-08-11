@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const mocks = vi.hoisted(() => ({
   token: 'token-a' as string | null,
   userId: 'user-a' as string | null,
+  sessionEpoch: 1,
   authMethod: 'google' as 'google' | 'email' | 'apikey' | 'demo',
   storageReady: true,
   storedTokens: { access_token: 'token-a' } as object | null,
@@ -24,6 +25,7 @@ vi.mock('../../services/walletClient', () => ({
 }))
 vi.mock('../../services/userSession', () => ({
   getActiveUserId: () => mocks.userId,
+  getActiveSessionEpoch: () => mocks.sessionEpoch,
   getActiveSession: () => mocks.userId ? { userId: mocks.userId, authMethod: mocks.authMethod } : null,
 }))
 
@@ -54,6 +56,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   localStorage.clear()
   mocks.userId = 'user-a'
+  mocks.sessionEpoch = 1
   mocks.token = 'token-a'
   mocks.authMethod = 'google'
   mocks.storageReady = true
@@ -126,6 +129,7 @@ describe('usePlanStatus — cache effectif et courses', () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
 
     mocks.userId = 'user-b'
+    mocks.sessionEpoch += 1
     mocks.token = 'token-b'
     await act(async () => {
       await result.current.refresh()
@@ -141,6 +145,30 @@ describe('usePlanStatus — cache effectif et courses', () => {
     expect(result.current.plan).toBe('subscription')
     expect(localStorage.getItem('arty-plan-cache')).toBe('subscription')
     expect(JSON.parse(localStorage.getItem('arty-allowed-families') ?? '[]')).toEqual(ALL_FAMILIES)
+  })
+
+  it('une réponse lente d’une ancienne session du même compte est ignorée', async () => {
+    let resolveOld!: (value: Response) => void
+    const oldResponse = new Promise<Response>((resolve) => { resolveOld = resolve })
+    const fetchMock = vi.fn()
+      .mockImplementationOnce(() => oldResponse)
+      .mockResolvedValueOnce(response(status('vip')))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { result } = renderHook(() => usePlanStatus())
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+
+    mocks.sessionEpoch += 1
+    mocks.token = 'token-fresh'
+    await act(async () => { await result.current.refresh() })
+    expect(result.current.plan).toBe('vip')
+
+    await act(async () => {
+      resolveOld(response(status('free')))
+      await oldResponse
+    })
+    expect(result.current.plan).toBe('vip')
+    expect(localStorage.getItem('arty-plan-cache')).toBe('vip')
   })
 
   it('n’affiche pas Free quand une session Google a perdu son grant', async () => {
@@ -206,6 +234,7 @@ describe('usePlanStatus — cache effectif et courses', () => {
     await waitFor(() => expect(result.current.plan).toBe('vip'))
 
     mocks.userId = 'user-email'
+    mocks.sessionEpoch += 1
     mocks.authMethod = 'email'
     mocks.token = null
     mocks.storedTokens = null

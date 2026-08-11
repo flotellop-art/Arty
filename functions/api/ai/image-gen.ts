@@ -1,10 +1,10 @@
 import type { Env } from '../../env'
 import {
-  checkAllowedUser,
+  checkAllowedVerifiedUser,
   isTrialExpired,
   proKeyRequiredResponse,
   trialExpiredResponse,
-  verifyGoogleUserStrict,
+  verifyTokenViaTokeninfoDetailed,
 } from '../_lib/checkAllowedUser'
 import { checkPremiumCap, premiumCapReachedResponse } from '../_lib/checkPremiumCap'
 import { recordUsage } from '../_lib/quota'
@@ -110,10 +110,17 @@ async function generateViaFlux(prompt: string, bflKey: string): Promise<string |
 }
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUntil }) => {
-  const email = await verifyGoogleUserStrict(request, env.GOOGLE_CLIENT_ID)
-  if (!email) {
+  const verification = await verifyTokenViaTokeninfoDetailed(
+    request.headers.get('x-google-token') || '',
+    env.GOOGLE_CLIENT_ID,
+  )
+  if (verification.status === 'unavailable' || verification.status === 'misconfigured') {
+    return Response.json({ error: 'Authentication service temporarily unavailable' }, { status: 503 })
+  }
+  if (verification.status !== 'ok') {
     return Response.json({ error: 'Authentication required — please sign in with Google' }, { status: 401 })
   }
+  const email = verification.email
 
   // BYOK prioritaire (header dédié, aligné sur openai-proxy).
   let apiKey = request.headers.get('x-openai-key') || ''
@@ -121,7 +128,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
   let userPlan: 'subscription' | 'pro' | 'vip' | 'free' | 'trial' = 'free'
 
   if (!apiKey && env.OPENAI_API_KEY) {
-    const result = await checkAllowedUser(request, env)
+    const result = await checkAllowedVerifiedUser(email, env)
     if (isTrialExpired(result)) return trialExpiredResponse()
     if (result && result.planType === 'pro') {
       // Pro = BYOK (P2.5) : la licence donne l'app à vie, pas la clé serveur.

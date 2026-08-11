@@ -1,7 +1,7 @@
 import { getValidAccessToken } from './googleAuth'
 import { apiUrl } from './apiBase'
 import { getTrialRemaining } from './trialClient'
-import { getActiveUserId } from './userSession'
+import { getActiveSessionEpoch, getActiveUserId } from './userSession'
 
 // Client pour le solde de crédits prépayés (GET /api/wallet/balance).
 // Tout est en micro-USD côté serveur ; la conversion en "crédits" affichés est
@@ -81,8 +81,11 @@ export function creditsCoverPremium(): boolean {
 export async function fetchWalletBalance(): Promise<WalletBalance | null> {
   const requestId = ++walletRequestSerial
   const requestUserId = getActiveUserId()
+  const requestSessionEpoch = getActiveSessionEpoch()
   const isCurrentRequest = () =>
-    requestId === walletRequestSerial && getActiveUserId() === requestUserId
+    requestId === walletRequestSerial
+    && getActiveUserId() === requestUserId
+    && getActiveSessionEpoch() === requestSessionEpoch
   const token = await getValidAccessToken()
   if (!token) {
     if (isCurrentRequest()) clearWalletCache()

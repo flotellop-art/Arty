@@ -63,11 +63,19 @@ export function getActiveSessionEpoch(): number {
   return _sessionEpoch
 }
 
-export function setActiveSession(session: UserSession): void {
+export function setActiveSession(
+  session: UserSession,
+  options: { remember?: boolean } = {},
+): void {
   _sessionEpoch += 1
   _activeSession = session
-  localStorage.setItem(ACTIVE_SESSION_KEY, JSON.stringify(session))
+  if (options.remember === false) return
+  rememberSession(session)
+}
 
+/** Rend la session active durable et l'ajoute aux comptes connus. */
+export function rememberSession(session: UserSession): void {
+  localStorage.setItem(ACTIVE_SESSION_KEY, JSON.stringify(session))
   // Add to known sessions
   const known = getKnownSessions()
   const existing = known.findIndex(s => s.userId === session.userId)

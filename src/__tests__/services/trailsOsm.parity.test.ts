@@ -34,10 +34,9 @@ afterEach(() => {
 function stubServerFetch() {
   vi.stubGlobal('fetch', vi.fn(async (url: RequestInfo | URL) => {
     const u = String(url)
-    if (u.includes('/tokeninfo')) return new Response(JSON.stringify({ aud: 'arty-client-id' }), { status: 200 })
-    if (u.includes('/oauth2/v2/userinfo')) {
-      return new Response(JSON.stringify({ id: 'g-1', email: EMAIL, verified_email: true }), { status: 200 })
-    }
+    if (u.includes('/tokeninfo')) return new Response(JSON.stringify({
+      aud: 'arty-client-id', email: EMAIL, email_verified: true, user_id: 'g-1',
+    }), { status: 200 })
     if (u.includes('overpass')) {
       return new Response(JSON.stringify(OVERPASS_BODY), { status: 200 })
     }
