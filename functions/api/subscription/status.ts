@@ -1,5 +1,5 @@
 import type { Env } from '../../env'
-import { parseAllowedEmails, verifyTokenViaTokeninfo } from '../_lib/checkAllowedUser'
+import { parseAllowedEmails, verifyTokenViaTokeninfoDetailed } from '../_lib/checkAllowedUser'
 import { PREMIUM_BUCKET_CAPS } from '../_lib/checkPremiumCap'
 import {
   FREE_DAILY_LIMITS,
@@ -35,13 +35,13 @@ interface StatusResponse {
    *
    * Cet endroit renvoyait `plan: 'free'` en HTTP 200 pour TROIS situations
    * indiscernables : pas de token, token refusé par Google (audience ≠ Arty,
-   * `tokeninfo` en panne, e-mail non vérifié), et « identité prouvée, mais
+   * e-mail non vérifié), `tokeninfo` indisponible, et « identité prouvée, mais
    * réellement gratuit ». Un compte VIP dont le token est rejeté voit donc
    * « Gratuit » sans le moindre message — terrain du 10 août, et exactement
    * la cécité que BUG 64 a déjà coûtée côté proxys. La catégorie n'apprend
    * rien à un attaquant : elle porte sur SON propre token.
    */
-  auth: 'ok' | 'no_token' | 'token_rejected'
+  auth: 'ok' | 'no_token' | 'token_rejected' | 'unavailable'
   current_period_end: string | null
   premium_pack_remaining: number
   has_active_license: boolean
@@ -82,9 +82,9 @@ const STATUS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
 }
 
-function jsonStatus(body: StatusResponse): Response {
+function jsonStatus(body: StatusResponse, status = 200): Response {
   return new Response(JSON.stringify(body), {
-    status: 200,
+    status,
     headers: { 'Content-Type': 'application/json', ...STATUS_HEADERS },
   })
 }
@@ -156,11 +156,17 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
   const token = match?.[1]?.trim()
   if (!token) return jsonStatus(FREE_RESPONSE)
 
-  const email = await verifyTokenViaTokeninfo(token, env.GOOGLE_CLIENT_ID)
+  const verification = await verifyTokenViaTokeninfoDetailed(token, env.GOOGLE_CLIENT_ID)
+  if (verification.status === 'unavailable') {
+    return jsonStatus({ ...FREE_RESPONSE, auth: 'unavailable' }, 503)
+  }
   // Token présent mais refusé : le distinguer de « pas de token » est le seul
   // moyen, côté client, de dire « reconnecte ton compte Google » au lieu
   // d'afficher un plan gratuit qui a l'air définitif.
-  if (!email) return jsonStatus({ ...FREE_RESPONSE, auth: 'token_rejected' })
+  if (verification.status === 'rejected') {
+    return jsonStatus({ ...FREE_RESPONSE, auth: 'token_rejected' })
+  }
+  const email = verification.email
 
   // ALLOWED_EMAILS = bypass VIP : reflète le runtime de checkAllowedUser pour
   // que l'UI affiche "VIP · ∞" même quand la ligne D1 dit autre chose

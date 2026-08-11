@@ -42,10 +42,26 @@ describe('subscription/status — pourquoi ce plan', () => {
     expect(body.email).toBe('')
   })
 
-  it('Google indisponible : auth = token_rejected (l\'échec ne se déguise pas en gratuit)', async () => {
+  it('token expiré/refusé par Google : auth = token_rejected', async () => {
     tokeninfo({}, false)
     const body = await (await call({ Authorization: 'Bearer t' })).json() as { auth: string }
     expect(body.auth).toBe('token_rejected')
+  })
+
+  it('Google indisponible : HTTP 503 sans demander une reconnexion inutile', async () => {
+    global.fetch = vi.fn(async () => new Response('', { status: 503 })) as typeof fetch
+    const res = await call({ Authorization: 'Bearer t' })
+    const body = await res.json() as { auth: string; plan: string }
+    expect(res.status).toBe(503)
+    expect(body.auth).toBe('unavailable')
+    expect(body.plan).toBe('free')
+  })
+
+  it('erreur réseau tokeninfo : HTTP 503 et non token_rejected', async () => {
+    global.fetch = vi.fn(async () => { throw new Error('network') }) as typeof fetch
+    const res = await call({ Authorization: 'Bearer t' })
+    expect(res.status).toBe(503)
+    expect((await res.json() as { auth: string }).auth).toBe('unavailable')
   })
 
   it('e-mail non vérifié : refusé, pas silencieusement gratuit', async () => {

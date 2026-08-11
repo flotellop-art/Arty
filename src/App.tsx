@@ -382,6 +382,16 @@ function AppContent({
     return () => window.removeEventListener('arty-open-compare', open)
   }, [navigate])
 
+  // Le statut de plan peut constater qu'une session Google locale a perdu son
+  // grant (migration de scopes/révocation) ou que le serveur refuse le token.
+  // PlanBadge émet cet événement : on réutilise l'unique flux de connexion déjà
+  // possédé par useGoogleAuth, web PWA comme natif, sans route fantôme.
+  useEffect(() => {
+    const reconnect = () => { void googleAuth.login() }
+    window.addEventListener('arty-reconnect-google', reconnect)
+    return () => window.removeEventListener('arty-reconnect-google', reconnect)
+  }, [googleAuth.login])
+
   // Open the costs dashboard from Settings — same CustomEvent pattern as Upgrade.
   useEffect(() => {
     const open = () => navigate('/costs')
