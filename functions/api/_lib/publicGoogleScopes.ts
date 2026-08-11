@@ -26,8 +26,6 @@ const HARD_MAX_PREVIOUS_COMPAT_UNTIL_MS = Date.parse('2026-10-31T23:59:59Z')
 const PREVIOUS_GOOGLE_OAUTH_REDIRECT_URIS = new Set([
   '', // Android serverAuthCode flow
   'https://tryarty.com/auth/callback',
-  'https://www.tryarty.com/auth/callback',
-  'https://appfacade.pages.dev/auth/callback',
 ])
 
 const LEGACY_PUBLIC_GOOGLE_SCOPE_SET = new Set([

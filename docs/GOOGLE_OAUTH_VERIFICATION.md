@@ -52,12 +52,12 @@ fonctionnalité Agenda, et de rien d'autre.
 - [x] **Domaine `tryarty.com` vérifié dans Google Search Console** par le
       compte Google qui administre le projet Cloud (contre-vérification live du
       11 août 2026 : propriété Domain `sc-domain:tryarty.com` accessible)
-- [ ] **Logo** téléversé sur l'écran de consentement (déclenche la
-      vérification de marque, quelques jours ouvrés)
+- [x] **Logo Arty** téléversé sur l'écran de consentement le 11 août 2026
+      (la validation de marque par Google reste en cours)
 - [x] **Domaine autorisé** `tryarty.com`, origine JavaScript et URI de retour
       `https://tryarty.com/auth/callback` enregistrés dans Google Cloud
-- [x] Client Web renommé **Arty Web** ; variante `www.tryarty.com` enregistrée
-      avec un callback same-origin
+- [x] Client Web renommé **Arty Web** ; seul `tryarty.com` initie désormais un
+      nouveau parcours OAuth web
 - [x] Les quatre scopes exacts du nouveau profil sont déclarés dans « Accès aux
       données », avec la justification de `calendar.events.owned` enregistrée
 - [x] Variable Cloudflare Pages Production
@@ -74,24 +74,28 @@ fonctionnalité Agenda, et de rien d'autre.
       quatre scopes v2 comme l'intégralité du trafic pendant la transition.
 - [x] **Statut de publication** : « En production » (contre-vérification live
       du 11 août 2026)
-- [ ] Conserver temporairement l'origine et le callback exacts
-      `appfacade.pages.dev` pendant la migration : les anciennes données PWA
-      sont isolées par origine et certains utilisateurs doivent se reconnecter
-      pour les exporter. Avant de les retirer de Google Cloud, déployer sur
-      l'ancien domaine un écran lecture/export qui interdit tout nouveau login.
-- [ ] Après export/import et période de grâce mesurée, retirer le callback
-      exact `appfacade.pages.dev`, puis seulement activer sa redirection HTTP
-      permanente vers `tryarty.com`. Les previews `*.appfacade.pages.dev`
-      restent liées au projet Pages mais ne disposent d'aucun wildcard OAuth
-      chez Google.
+- [x] **Décision propriétaire du 11 août 2026 :** aucune migration des données
+      locales des anciennes origines n'est requise. Les pages de
+      `appfacade.pages.dev` et `www.tryarty.com` redirigent donc en 308 vers
+      `tryarty.com`; les utilisateurs se
+      reconnectent et repartent avec un stockage local neuf.
+- [x] L'APK 1.0.97 utilisait déjà directement `https://tryarty.com` pour ses
+      API et son échange OAuth natif utilise `redirect_uri: ''`; aucune
+      exception `appfacade.pages.dev/api/*` n'est nécessaire pour lui.
+- [ ] Vérifier que Creem et Lemon Squeezy ciblent les webhooks `tryarty.com`.
+      Jusqu'à ce smoke fournisseur, seuls leurs deux handlers signés restent
+      joignables sur l'ancien hostname technique.
+- [ ] Après la fenêtre de compatibilité du 30 septembre 2026, retirer cette
+      compatibilité de scope v1, le callback legacy restant dans Google Cloud
+      et les références exactes à l'ancien hostname. Les previews techniques
+      `*.appfacade.pages.dev` ne disposent d'aucun wildcard OAuth chez Google.
 - [ ] Vidéo de démonstration YouTube non listée, couvrant le consentement en
       anglais et les quatre opérations Calendar
 - [ ] Soumettre la vérification de marque et du scope sensible
 
-Les cases non cochées combinent une action de console (logo/soumission), une
-preuve E2E après déploiement et la vidéo exigée par Google. La redirection
-permanente de l'ancien domaine reste volontairement hors de cette phase : elle
-attendra l'export/import des données locales de la PWA.
+Les cases non cochées combinent une action de console, une preuve E2E après
+déploiement et la vidéo exigée par Google. Le code ne peut pas faire disparaître
+l'avertissement à lui seul : Google doit valider la marque et le scope sensible.
 
 ## 4. Justification à coller telle quelle (Google attend de l'anglais)
 
@@ -367,6 +371,12 @@ Deux fonctions n'existent que dans l'APK, et l'écart n'est pas de même nature 
 ---
 
 
+<!--
+ARCHIVE OBSOLÈTE — NE PAS UTILISER POUR LA SOUMISSION GOOGLE.
+Cette annexe décrivait l'ancien produit Gmail/Drive/Contacts et des scopes
+Restricted qui ne sont plus demandés. Elle reste uniquement comme trace
+historique dans la source du dépôt et n'est pas rendue dans la documentation.
+
 # ANNEXE — version archivée du 24 mai 2026
 
 > ⚠️ **Ne pas suivre.** Conservé pour mémoire : décrit l'architecture
@@ -521,3 +531,4 @@ Pour les Restricted Scopes, Google exige généralement un audit externe annuel 
 - **B2 — Google lecture minimale** : `gmail.readonly` + `drive.file` seulement ; pas de send/modify/contacts au départ.
 - **B3 — Import manuel** : l'utilisateur colle volontairement ses contenus, sans OAuth Google (évite la vérification Restricted).
 - **B4 — B2B/Workspace** : intégrations contrôlées côté admin Workspace (déplace la conformité vers contrats/DPA clients).
+-->

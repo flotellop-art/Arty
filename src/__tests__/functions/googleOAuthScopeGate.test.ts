@@ -110,7 +110,7 @@ describe('OAuth Google — profils de scopes réellement émis', () => {
     const response = await exchangeToken({
       request: request('/api/auth/token', {
         code: 'old-client-code',
-        redirect_uri: 'https://appfacade.pages.dev/auth/callback',
+        redirect_uri: 'https://tryarty.com/auth/callback',
         oauth_profile: PREVIOUS_GOOGLE_OAUTH_PROFILE,
       }),
       env: PREVIOUS_COMPAT_ENV,
@@ -273,7 +273,8 @@ describe('OAuth Google — profils de scopes réellement émis', () => {
     vi.setSystemTime(new Date('2026-10-01T00:00:00Z'))
     expect(isPreviousGoogleOAuthCompatActive('2026-09-30T23:59:59Z')).toBe(false)
     expect(isPreviousGoogleOAuthRedirectUriAllowed('')).toBe(true)
-    expect(isPreviousGoogleOAuthRedirectUriAllowed('https://appfacade.pages.dev/auth/callback')).toBe(true)
+    expect(isPreviousGoogleOAuthRedirectUriAllowed('https://tryarty.com/auth/callback')).toBe(true)
+    expect(isPreviousGoogleOAuthRedirectUriAllowed('https://appfacade.pages.dev/auth/callback')).toBe(false)
     expect(isPreviousGoogleOAuthRedirectUriAllowed('https://attacker.example/auth/callback')).toBe(false)
   })
 
@@ -286,7 +287,7 @@ describe('OAuth Google — profils de scopes réellement émis', () => {
     const response = await exchangeToken({
       request: request('/api/auth/token', {
         code: 'old-client-code',
-        redirect_uri: 'https://appfacade.pages.dev/auth/callback',
+        redirect_uri: 'https://tryarty.com/auth/callback',
         oauth_profile: profile,
       }),
       env: PREVIOUS_COMPAT_ENV,

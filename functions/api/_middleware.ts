@@ -2,15 +2,10 @@
 // Runs before every API function on Cloudflare Pages
 
 // Production origins only — capacitor:// is required for native Android/iOS app
-// Exporté pour le test de parité avec PRODUCTION_HOSTS (emailTrial.ts) : les
-// deux listes doivent rester synchronisées sur les hosts prod HTTPS, sinon un
-// nouveau domaine prod serait fail-open sur le gate Turnstile (C2/F-10).
+// Exporté pour le test de couverture par PRODUCTION_HOSTS (emailTrial.ts) :
+// chaque origine web prod doit être protégée par le gate Turnstile.
 export const ALLOWED_ORIGINS = [
-  'https://tryarty.com',        // Nouveau domaine prod (launch Product Hunt)
-  'https://www.tryarty.com',    // Variante www
-  'https://appfacade.pages.dev',
-  'https://arty.pages.dev',
-  'https://app.arty.fr',
+  'https://tryarty.com',        // Domaine web canonique
   'capacitor://localhost',   // Capacitor native app (Android/iOS)
   'https://localhost',       // Capacitor HTTPS on device
 ]

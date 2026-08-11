@@ -28,10 +28,6 @@ function req(url: string): Request {
 describe('turnstileMisconfiguredInProd (C2/F-10)', () => {
   it.each([
     'https://tryarty.com/api/auth/email/request-otp',
-    'https://www.tryarty.com/api/auth/email/request-otp',
-    'https://appfacade.pages.dev/api/auth/email/request-otp',
-    'https://arty.pages.dev/api/auth/email/request-otp',
-    'https://app.arty.fr/api/auth/email/request-otp',
   ])('PROD sans clé → misconfiguré (%s)', (url) => {
     expect(turnstileMisconfiguredInProd(KEYLESS, req(url))).toBe(true)
   })
