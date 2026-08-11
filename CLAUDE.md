@@ -289,12 +289,14 @@ la requête par l'API Anthropic.
 **Règle** : Ne JAMAIS envoyer un header avec une valeur vide.
 Vérifier `if (beta)` avant d'ajouter le header.
 
-### BUG 19 — CSRF bloquait appfacade.pages.dev
+### BUG 19 — CSRF bloquait l'origine publique de l'application
 **Fichier** : `functions/api/_middleware.ts`
-**Problème** : L'origin `appfacade.pages.dev` n'était pas dans la
-whitelist CORS/CSRF → toutes les requêtes POST étaient bloquées.
-**Règle** : Toujours vérifier que les domaines de production sont
-dans `ALLOWED_ORIGINS` du middleware.
+**Problème** : l'origine publique n'était pas dans la whitelist CORS/CSRF →
+toutes les requêtes POST étaient bloquées.
+**Règle** : l'unique origine publique de production est désormais
+`https://tryarty.com`. Ne pas réintroduire l'ancien hostname exact dans
+`ALLOWED_ORIGINS`. Les previews techniques `*.appfacade.pages.dev` sont une
+catégorie distincte, owner-controlled et explicitement testée.
 
 ### BUG 20 — XSS via markdown non sanitisé
 **Fichier** : `src/components/shared/MarkdownRenderer.tsx`
@@ -370,9 +372,10 @@ Java `GoogleSignInNative.signIn()`, jamais le redirect navigateur.
 **Fichier** : `src/services/googleAuth.ts`
 **Problème** : L'app native a comme origin `https://localhost`.
 Google ne reconnaît pas ce redirect_uri → échec de l'échange OAuth.
-**Règle** : Sur natif, forcer `redirect_uri` vers l'URL Cloudflare
-(`https://appfacade.pages.dev/auth/callback`) ou utiliser `''` avec
-`serverAuthCode`.
+**Règle** : sur natif, utiliser `redirect_uri: ''` avec le `serverAuthCode`.
+Sur le Web, l'autorisation et l'échange utilisent exactement
+`https://tryarty.com/auth/callback`, toujours sur la même origine que le state
+et le verifier PKCE. Aucun callback OAuth `appfacade.pages.dev`.
 
 ### BUG 29 — AI Gateway rejette les clés BYOK
 **Fichiers** : `src/services/anthropicClient.ts`
@@ -965,10 +968,10 @@ des conversations — implémenté le 16 mai, voir « PR à venir » ci-dessous.
 
 ### BUG 53 — Vérification state OAuth dans le deeplink + OAuthCallback = double-fire = login cassé
 **Fichiers** : `src/App.tsx` (deeplink listener), `src/components/google/OAuthCallback.tsx` (PR #128 + hotfix commit `fee9144`)
-**Problème** : dans la PR initiale d'ajout du `state` CSRF, `verifyOAuthState()` était appelé à 2 endroits — le listener Capacitor `appUrlOpen` ET le composant React `<OAuthCallback>`. Sur Capacitor avec Universal Links actifs, les deux peuvent fire pour la même URL `appfacade.pages.dev/auth/callback?code=...&state=...`. Or `verifyOAuthState()` est **single-use** (clear le `sessionStorage` avant retour). Le second appel échoue → login cassé silencieusement.
+**Problème** : dans la PR initiale d'ajout du `state` CSRF, `verifyOAuthState()` était appelé à 2 endroits — le listener Capacitor `appUrlOpen` ET le composant React `<OAuthCallback>`. Sur Capacitor avec Universal Links actifs, les deux pouvaient traiter la même URL `tryarty.com/auth/callback?code=...&state=...`. Or `verifyOAuthState()` est **single-use** (clear le `sessionStorage` avant retour). Le second appel échoue → login cassé silencieusement.
 **Règle** :
 - Toute vérification single-use (state nonce, OTP, token JIT) DOIT être appelée à un seul endroit du code-path. Le piège : `verifyOAuthState()` clear le sessionStorage AVANT de retourner — le second appel pour la même URL trouve sessionStorage vide et échoue silencieusement. Si plusieurs handlers peuvent fire (deeplink + React route), choisir le **dernier dans la chaîne** (généralement la route React, pas le listener bas-niveau).
-- Pour Arty : `verifyOAuthState()` est appelé UNIQUEMENT dans `OAuthCallback.tsx`. Le deeplink Capacitor ne vérifie pas — la sécurité du chemin est assurée par les **Universal Links Android** (`assetlinks.json` côté domaine + vérification OS) qui empêchent qu'une URL malveillante atteigne le listener sans contrôler `appfacade.pages.dev`.
+- Pour Arty : `verifyOAuthState()` est appelé UNIQUEMENT dans `OAuthCallback.tsx`. Le deeplink Capacitor ne vérifie pas — la sécurité du chemin est assurée par les **Universal Links Android** (`assetlinks.json` côté `tryarty.com` + vérification OS) qui empêchent qu'une URL malveillante atteigne le listener sans contrôler le domaine canonique.
 - Si tu ajoutes une nouvelle voie de callback OAuth (ex: deeplink iOS, web extension), DOCUMENTE-LA ici et choisis explicitement où vit le check single-use.
 
 ### BUG 54 — Compteurs de coûts ne se rafraîchissaient pas en live
@@ -1003,8 +1006,8 @@ La maintenance des triggers est un **work-in-progress permanent**, pas un final 
 
 ### BUG 57 — Fact-checker supprimait les liens vers les rapports Arty (domaines internes flaggés comme suspects)
 **Fichier** : `src/services/factChecker.ts` (PR #145, commit `93c7c78`)
-**Problème** : sur les réponses contenant un markdown link `[Voir le rapport](https://appfacade.pages.dev/...)` ou `tryarty.com/...`, le fact-checker classait l'URL comme « suspecte » (heuristique générique : domaine non-listé dans une whitelist d'autorités) et la supprimait de la réponse délivrée. Conséquence : l'utilisateur perdait l'accès à ses propres rapports générés par Arty. Remonté en live le 5 mai après PR #144.
-**Règle** : tout module qui valide/filtre des URLs sortantes (fact-checker, sanitizer, link rewriter) DOIT contenir une **whitelist explicite des domaines Arty propriétaires** (`appfacade.pages.dev`, `tryarty.com`, `*.appfacade.pages.dev`) en court-circuit AVANT toute heuristique « suspect/safe ». Pattern : early-return `whitelisted ? keep : applyHeuristic`. Sans ça, chaque heuristique qui se durcit casse les liens internes en silence.
+**Problème** : sur les réponses contenant un lien vers un rapport Arty, le fact-checker classait l'URL comme « suspecte » (heuristique générique : domaine non-listé dans une whitelist d'autorités) et la supprimait de la réponse délivrée. Conséquence : l'utilisateur perdait l'accès à ses propres rapports générés par Arty. Remonté en live le 5 mai après PR #144.
+**Règle** : tout module qui valide/filtre des URLs sortantes (fact-checker, sanitizer, link rewriter) DOIT contenir une **whitelist explicite du domaine public canonique** (`tryarty.com`) en court-circuit AVANT toute heuristique « suspect/safe ». Les sous-domaines `*.appfacade.pages.dev` ne sont admis que pour les previews techniques contrôlées ; l'ancien hostname exact ne doit plus être produit dans une URL utilisateur. Pattern : early-return `whitelisted ? keep : applyHeuristic`. Sans ça, chaque heuristique qui se durcit casse les liens internes en silence.
 
 ### BUG 58 — Mistral Small choisi par défaut pour des questions techniques (routing inversé)
 **Fichier** : `src/services/mistralClient.ts` ou `aiRouter.ts` (PR #140, commit `9334621`)

@@ -82,7 +82,8 @@ sont actifs, pas a decommenter du code.
       et section 2. Aucun texte soumis a Google ne doit affirmer qu'Arty
       n'accede pas a la boite mail de l'utilisateur.
 - [ ] **PRIORITE 1** — Google Cloud Console > Data Access contient exactement
-      `openid`, `userinfo.email`, `userinfo.profile`, `calendar.events` ;
+      `openid`, `userinfo.email`, `userinfo.profile`,
+      `calendar.events.owned` ;
       supprimer les anciens scopes Gmail/Drive/Contacts/Sheets et révoquer les
       grants de test. La classification restreinte/sensible s'evalue sur ce que
       DECLARE LA CONSOLE, pas sur ce que demande le code : tant que des scopes
@@ -204,14 +205,16 @@ Dans Android Studio :
       achat ou upgrade exige d'abord l'inscription au programme Google Play
       applicable et son integration API.
 - Profil OAuth public limite a `openid`, `userinfo.email`, `userinfo.profile`
-  et `calendar.events`. Aucun scope Gmail, `calendar` complet ni `drive` complet dans l'APK/AAB public ;
+  et `calendar.events.owned`. Aucun scope Gmail, `calendar` complet ni `drive`
+  complet dans l'APK/AAB public ;
   verifier les exigences de marque et de consentement Google applicables au
   calendrier avant soumission.
-- Migration beta uniquement : poser `GOOGLE_OAUTH_LEGACY_COMPAT_UNTIL` (date ISO
-  courte, maximum 7 jours) dans Cloudflare AVANT le deploiement afin que l'APK
-  1.0.80 puisse encore renouveler son grant `calendar`. Ne jamais ouvrir cette
-  compatibilite sans date valide. La retirer avant la RC publique, apres mise a
-  jour des 12 testeurs et 72 h sans usage legacy.
+- Migration bornee v1 -> v2 : `GOOGLE_OAUTH_PREVIOUS_COMPAT_UNTIL` autorise
+  exclusivement le profil exact `calendar-events-v1` jusqu'au
+  30 septembre 2026. Ne pas prolonger sans nouvelle revue. Pendant cette
+  fenetre, declarer honnêtement l'ancien scope `calendar.events` a Google ou
+  attendre zero trafic v1 mesure avant la soumission ; retirer ensuite la
+  compatibilite serveur.
 
 ## 13. App Store (iOS)
 
