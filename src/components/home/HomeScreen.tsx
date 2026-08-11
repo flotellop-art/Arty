@@ -413,6 +413,9 @@ function HomeScreenInner({
                     {googleAuth.reconsentRequired && (
                       <p className="mt-2 font-sans text-xs text-theme-accent-text" role="status">{t('home.googleReconsent.body')}</p>
                     )}
+                    <p className="mt-3 max-w-xl rounded-xl bg-theme-surface px-3 py-2 font-sans text-xs leading-relaxed text-theme-muted">
+                      {t('login.google.disclosure')}
+                    </p>
                     <div className="mt-3">
                       <GoogleConnectButton
                         onConnect={googleAuth.login}

@@ -3,6 +3,9 @@ import type { Env } from '../../../functions/env'
 import {
   CURRENT_GOOGLE_OAUTH_PROFILE,
   isLegacyGoogleOAuthCompatActive,
+  isPreviousGoogleOAuthCompatActive,
+  isPreviousGoogleOAuthRedirectUriAllowed,
+  PREVIOUS_GOOGLE_OAUTH_PROFILE,
 } from '../../../functions/api/_lib/publicGoogleScopes'
 import { onRequestPost as exchangeToken } from '../../../functions/api/auth/token'
 import { onRequestPost as refreshToken } from '../../../functions/api/auth/refresh'
@@ -15,8 +18,18 @@ const COMPAT_ENV = {
   ...ENV,
   GOOGLE_OAUTH_LEGACY_COMPAT_UNTIL: '2026-07-21T23:59:59Z',
 } as Env
+const PREVIOUS_COMPAT_ENV = {
+  ...ENV,
+  GOOGLE_OAUTH_PREVIOUS_COMPAT_UNTIL: '2026-09-30T23:59:59Z',
+} as Env
 
 const CURRENT_SCOPES = [
+  'openid',
+  'https://www.googleapis.com/auth/userinfo.email',
+  'https://www.googleapis.com/auth/userinfo.profile',
+  'https://www.googleapis.com/auth/calendar.events.owned',
+].join(' ')
+const PREVIOUS_SCOPES = [
   'openid',
   'https://www.googleapis.com/auth/userinfo.email',
   'https://www.googleapis.com/auth/userinfo.profile',
@@ -71,7 +84,7 @@ afterEach(() => {
 })
 
 describe('OAuth Google — profils de scopes réellement émis', () => {
-  it('accepte le profil calendar.events annoncé par le nouveau client', async () => {
+  it('accepte le profil calendar.events.owned annoncé par le nouveau client', async () => {
     stubGoogle(CURRENT_SCOPES)
 
     const response = await exchangeToken({
@@ -88,6 +101,97 @@ describe('OAuth Google — profils de scopes réellement émis', () => {
       access_token: 'fresh-access',
       oauth_profile: CURRENT_GOOGLE_OAUTH_PROFILE,
     }))
+  })
+
+  it('accepte temporairement l’échange exact calendar-events-v1 de la version 1.0.97', async () => {
+    vi.setSystemTime(new Date('2026-08-11T12:00:00Z'))
+    stubGoogle(PREVIOUS_SCOPES)
+
+    const response = await exchangeToken({
+      request: request('/api/auth/token', {
+        code: 'old-client-code',
+        redirect_uri: 'https://appfacade.pages.dev/auth/callback',
+        oauth_profile: PREVIOUS_GOOGLE_OAUTH_PROFILE,
+      }),
+      env: PREVIOUS_COMPAT_ENV,
+    } as never)
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual(expect.objectContaining({
+      oauth_profile: PREVIOUS_GOOGLE_OAUTH_PROFILE,
+    }))
+  })
+
+  it('accepte temporairement le refresh calendar-events-v1 de la version 1.0.97', async () => {
+    vi.setSystemTime(new Date('2026-08-11T12:00:00Z'))
+    stubGoogle(PREVIOUS_SCOPES)
+
+    const response = await refreshToken({
+      request: request('/api/auth/refresh', {
+        refresh_token: 'old-client-refresh',
+        oauth_profile: PREVIOUS_GOOGLE_OAUTH_PROFILE,
+      }),
+      env: PREVIOUS_COMPAT_ENV,
+    } as never)
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual(expect.objectContaining({
+      oauth_profile: PREVIOUS_GOOGLE_OAUTH_PROFILE,
+    }))
+  })
+
+  it('limite l’échange v1 aux callbacks historiques exacts', async () => {
+    vi.setSystemTime(new Date('2026-08-11T12:00:00Z'))
+    const fetchMock = stubGoogle(PREVIOUS_SCOPES)
+
+    const response = await exchangeToken({
+      request: request('/api/auth/token', {
+        code: 'old-client-code',
+        redirect_uri: 'https://attacker.example/auth/callback',
+        oauth_profile: PREVIOUS_GOOGLE_OAUTH_PROFILE,
+      }),
+      env: PREVIOUS_COMPAT_ENV,
+    } as never)
+
+    expect(response.status).toBe(400)
+    expect(await response.json()).toEqual({ error: 'unsupported_oauth_profile' })
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('refuse calendar-events-v1 sans fenêtre de transition avant tout appel Google', async () => {
+    vi.setSystemTime(new Date('2026-08-11T12:00:00Z'))
+    const fetchMock = stubGoogle(PREVIOUS_SCOPES)
+
+    const response = await refreshToken({
+      request: request('/api/auth/refresh', {
+        refresh_token: 'old-client-refresh',
+        oauth_profile: PREVIOUS_GOOGLE_OAUTH_PROFILE,
+      }),
+      env: ENV,
+    } as never)
+
+    expect(response.status).toBe(400)
+    expect(await response.json()).toEqual({ error: 'unsupported_oauth_profile' })
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('refuse un scope précédent présenté comme le nouveau profil', async () => {
+    vi.setSystemTime(new Date('2026-08-11T12:00:00Z'))
+    const fetchMock = stubGoogle(PREVIOUS_SCOPES)
+
+    const response = await refreshToken({
+      request: request('/api/auth/refresh', {
+        refresh_token: 'mismatched-refresh',
+        oauth_profile: CURRENT_GOOGLE_OAUTH_PROFILE,
+      }),
+      env: PREVIOUS_COMPAT_ENV,
+    } as never)
+
+    expect(response.status).toBe(403)
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://oauth2.googleapis.com/revoke',
+      expect.objectContaining({ method: 'POST' }),
+    )
   })
 
   it('accepte temporairement le profil calendar exact de l’ancien APK natif', async () => {
@@ -158,6 +262,42 @@ describe('OAuth Google — profils de scopes réellement émis', () => {
     expect(isLegacyGoogleOAuthCompatActive('not-a-date')).toBe(false)
     expect(isLegacyGoogleOAuthCompatActive('2026-07-21T23:59:59Z')).toBe(true)
     expect(isLegacyGoogleOAuthCompatActive('2026-07-22T00:00:00Z')).toBe(false)
+  })
+
+  it('borne séparément la compatibilité du profil 1.0.97', () => {
+    vi.setSystemTime(new Date('2026-08-11T12:00:00Z'))
+    expect(isPreviousGoogleOAuthCompatActive(undefined)).toBe(false)
+    expect(isPreviousGoogleOAuthCompatActive('not-a-date')).toBe(false)
+    expect(isPreviousGoogleOAuthCompatActive('2026-09-30T23:59:59Z')).toBe(true)
+    expect(isPreviousGoogleOAuthCompatActive('2026-11-01T00:00:00Z')).toBe(false)
+    vi.setSystemTime(new Date('2026-10-01T00:00:00Z'))
+    expect(isPreviousGoogleOAuthCompatActive('2026-09-30T23:59:59Z')).toBe(false)
+    expect(isPreviousGoogleOAuthRedirectUriAllowed('')).toBe(true)
+    expect(isPreviousGoogleOAuthRedirectUriAllowed('https://appfacade.pages.dev/auth/callback')).toBe(true)
+    expect(isPreviousGoogleOAuthRedirectUriAllowed('https://attacker.example/auth/callback')).toBe(false)
+  })
+
+  it.each([
+    [`${PREVIOUS_SCOPES} https://www.googleapis.com/auth/drive`, PREVIOUS_GOOGLE_OAUTH_PROFILE],
+    [CURRENT_SCOPES, PREVIOUS_GOOGLE_OAUTH_PROFILE],
+  ])('rejette le profil v1 si son ensemble exact ne correspond pas : %s', async (scopes, profile) => {
+    vi.setSystemTime(new Date('2026-08-11T12:00:00Z'))
+    const fetchMock = stubGoogle(scopes)
+    const response = await exchangeToken({
+      request: request('/api/auth/token', {
+        code: 'old-client-code',
+        redirect_uri: 'https://appfacade.pages.dev/auth/callback',
+        oauth_profile: profile,
+      }),
+      env: PREVIOUS_COMPAT_ENV,
+    } as never)
+
+    expect(response.status).toBe(403)
+    expect(await response.json()).toEqual({ error: 'invalid_scope_set' })
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://oauth2.googleapis.com/revoke',
+      expect.objectContaining({ method: 'POST' }),
+    )
   })
 
   it.each([
@@ -233,7 +373,7 @@ describe('OAuth Google — profils de scopes réellement émis', () => {
   })
 
   it('accepte les alias standards email/profile du flux Android courant', async () => {
-    stubGoogle('openid email profile https://www.googleapis.com/auth/calendar.events')
+    stubGoogle('openid email profile https://www.googleapis.com/auth/calendar.events.owned')
     const response = await refreshToken({
       request: request('/api/auth/refresh', {
         refresh_token: 'stored-refresh',

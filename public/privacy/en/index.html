@@ -9,10 +9,10 @@
 <meta property="og:title" content="Privacy Policy — Arty" />
 <meta property="og:description" content="What data we process, why, and your rights." />
 <meta property="og:type" content="article" />
-<meta property="og:url" content="https://tryarty.com/privacy/en" />
-<link rel="canonical" href="https://tryarty.com/privacy/en" />
-<link rel="alternate" hreflang="fr" href="https://tryarty.com/privacy" />
-<link rel="alternate" hreflang="en" href="https://tryarty.com/privacy/en" />
+<meta property="og:url" content="https://tryarty.com/privacy/en/" />
+<link rel="canonical" href="https://tryarty.com/privacy/en/" />
+<link rel="alternate" hreflang="fr" href="https://tryarty.com/privacy/" />
+<link rel="alternate" hreflang="en" href="https://tryarty.com/privacy/en/" />
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -75,7 +75,7 @@
   <div class="topbar">
     <a href="/">← tryarty.com</a>
     <div class="lang-switch">
-      <a href="/privacy">FR</a> · <a class="active" href="/privacy/en">EN</a>
+      <a href="/privacy/">FR</a> · <a class="active" href="/privacy/en/">EN</a>
     </div>
   </div>
 
@@ -83,7 +83,7 @@
   <h1>Your data, your rights.</h1>
 
   <div class="meta">
-    <div><strong>Last updated:</strong> August 9, 2026</div>
+    <div><strong>Last updated:</strong> August 11, 2026</div>
     <div><strong>Publisher:</strong> POLLET FLORENT, French sole trader, SIREN 887 679 611, SIRET 887 679 611 00012, Rue des Sièges, 30120 Bréau-Mars, France. Arty is the name of the software service.</div>
     <div><strong>Contact:</strong> <a href="mailto:support@tryarty.com">support@tryarty.com</a></div>
   </div>
@@ -99,7 +99,7 @@
     <tbody>
       <tr><td>Authentication identity</td><td>Email, full name, profile picture</td><td>Google Sign-In (OAuth)</td></tr>
       <tr><td>User content</td><td>Messages, files, and attachments sent to the assistant, including email content you manually paste, attach, or share; structured memory, shared conversations, and reports you voluntarily submit</td><td>You</td></tr>
-      <tr><td>Google Workspace data</td><td>Reading and creating events (Calendar), only when you use an agenda feature. The public app does not use any Gmail API</td><td>Your Google account, on your explicit request</td></tr>
+      <tr><td>Google Workspace data</td><td>Reading, creating, updating, and deleting events in your primary calendar (Calendar), only when you use an agenda feature. The public app does not use any Gmail API</td><td>Your Google account, on your explicit request</td></tr>
       <tr><td>Connected mailboxes (Android app only)</td><td>If you voluntarily connect a mailbox (Free, Gmail, Yahoo, iCloud or IMAP), the assistant can list, search and read your messages in READ-ONLY mode. The connection is made directly from your phone (IMAP TLS); your app password is encrypted with the Android Keystore (non-extractable hardware key) and is never sent to our servers. Message content is only sent to Anthropic (Claude), and to no other provider, and only when you ask a question that requires it. Your email attachments are never read</td><td>You (voluntary connection in Settings → Mailboxes)</td></tr>
       <tr><td>Location</td><td>Approximate geographic position</td><td>Your device's GPS sensor, only if enabled</td></tr>
       <tr><td>Payment data</td><td>Account email, selected offer or pack, transaction identifiers and status; Arty receives no payment-card details</td><td>You + Lemon Squeezy or Creem</td></tr>
@@ -108,6 +108,7 @@
   </table>
   <p>We do not track your browsing for advertising purposes and do not use any commercial profiling.</p>
   <p>Arty does not use any Gmail API and never sends, modifies or deletes a message in your mailbox. Without a connected mailbox, email content is processed only when you paste, attach, or share it with the assistant yourself. If you connect a mailbox in the Android app (update of August 9, 2026), the assistant can READ it (read-only) directly from your phone; you can remove a mailbox at any time in Settings → Mailboxes, which deletes its password from the device.</p>
+  <p>When you request an agenda-related action, the information needed to answer or perform it (including the event title, times, location, and your instructions) transits through Cloudflare and may be sent to Anthropic (Claude) to interpret and carry out your request. Arty does not retain it on its servers beyond processing the request. Under Anthropic's standard API policy, inputs and outputs are deleted within 30 days, except for documented usage-policy, legal, or custom-agreement exceptions; they are not used to train generative models unless the customer explicitly opts in.</p>
 
   <h2>3. Purposes and legal grounds</h2>
   <table>
@@ -127,7 +128,7 @@
     <thead><tr><th>Provider</th><th>Role</th><th>Location</th><th>Safeguard</th></tr></thead>
     <tbody>
       <tr><td>Cloudflare</td><td>Hosting Workers, Pages, KV (API proxy, non-sensitive key storage, site distribution)</td><td>EU + global (CDN)</td><td>Standard Contractual Clauses (SCC), Cloudflare DPA</td></tr>
-      <tr><td>Anthropic (Claude)</td><td>AI response generation</td><td>United States</td><td>SCC + EU-US Data Privacy Framework</td></tr>
+      <tr><td>Anthropic (Claude)</td><td>AI response generation, including Calendar information strictly necessary for an agenda request</td><td>United States</td><td>SCC + EU-US Data Privacy Framework</td></tr>
       <tr><td>OpenAI</td><td>AI response generation (depending on the selected model)</td><td>United States</td><td>SCC + EU-US Data Privacy Framework</td></tr>
       <tr><td>Google (Gemini + Workspace)</td><td>AI response generation + Calendar features explicitly requested by the user; no Gmail connector in the public app</td><td>EU + United States</td><td>SCC + EU-US Data Privacy Framework</td></tr>
       <tr><td>Mistral AI</td><td>AI response generation</td><td>France (EU)</td><td>Direct EU hosting</td></tr>
@@ -167,7 +168,7 @@
     <li><strong>IndexedDB:</strong> encrypted attachments (images, PDFs, AES-256).</li>
   </ul>
   <p>These storages are <strong>strictly necessary to deliver the service</strong> within the meaning of Article 82 of the French Data Protection Act (transposition of the ePrivacy directive) — they therefore do not require consent.</p>
-  <p>We use <strong>no tracking or analytics cookies</strong>. Loading our display fonts may trigger requests to <code>fonts.googleapis.com</code> (Google Fonts), which may set a third-party session cookie tied to Google; we plan to self-host these fonts before the public launch.</p>
+  <p>We use <strong>no tracking or analytics cookies</strong>. Loading our display fonts sends Google Fonts the IP address, requested resource URL, and technical headers (browser, operating system, and referrer). According to Google, the Google Fonts API does not set or log cookies and does not use this information to create user profiles or for targeted advertising.</p>
 
   <h2>8. Data retention</h2>
   <table>
@@ -180,7 +181,7 @@
       <tr><td>Minimal technical usage, quota, and anti-abuse counters</td><td>Retained only for as long as strictly necessary for security, abuse prevention, and billing integrity. They contain none of your conversation content.</td></tr>
       <tr><td>Server-side technical logs (Cloudflare Workers, anti-abuse)</td><td>12 months maximum.</td></tr>
       <tr><td>Waitlist email (pre-launch)</td><td>Until app launch + 12 months, or unsubscription, whichever comes first.</td></tr>
-      <tr><td>Content transmitted to AI providers</td><td>Not stored on our servers beyond request processing. Retention by the provider follows their own policy (Anthropic 30 days, OpenAI 30 days, Google varies, Mistral 30 days).</td></tr>
+      <tr><td>Content transmitted to AI providers</td><td>Not stored on our servers beyond request processing. Retention by the provider follows its own policy (Anthropic: deletion within 30 days under the standard API policy, subject to documented exceptions; OpenAI 30 days; Google varies; Mistral 30 days).</td></tr>
     </tbody>
   </table>
 
@@ -206,7 +207,7 @@
 
 </main>
 <footer class="footer">
-  <a href="/terms/en">Terms</a> · <a href="/legal-notice/en">Legal notice</a> · <a href="mailto:support@tryarty.com">support@tryarty.com</a> · <a href="/privacy">Français</a>
+  <a href="/terms/en/">Terms</a> · <a href="/legal-notice/en/">Legal notice</a> · <a href="mailto:support@tryarty.com">support@tryarty.com</a> · <a href="/privacy/">Français</a>
 </footer>
 </body>
 </html>

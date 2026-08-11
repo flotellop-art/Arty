@@ -14,7 +14,7 @@ import * as googleAuth from '../../services/googleAuth'
 
 function mockFetch(body: unknown, init: { ok?: boolean; status?: number } = {}) {
   const responseBody = body && typeof body === 'object' && 'access_token' in body && !('oauth_profile' in body)
-    ? { ...body, oauth_profile: 'calendar-events-v1' }
+    ? { ...body, oauth_profile: 'calendar-events-owned-v2' }
     : body
   const response = {
     ok: init.ok ?? true,
@@ -107,7 +107,7 @@ describe('googleAuth — storage paths', () => {
       access_token: 'legacy',
       refresh_token: 'r',
       expires_at: Date.now() + 3600_000,
-      oauth_profile: 'calendar-events-v1' as const,
+      oauth_profile: 'calendar-events-owned-v2' as const,
     }
     scoped.setJSON('google-tokens', tokens)
 
@@ -163,11 +163,15 @@ describe('googleAuth — storage paths', () => {
     expect(googleAuth.getStoredTokens()).toBeNull()
     expect(localStorage.getItem('arty-user-test-google-oauth-mailbox-free-v1')).toBeNull()
 
+    const ready = vi.fn()
+    window.addEventListener('google-storage-ready', ready)
     await googleAuth.storeMailboxFreeGrant(tokens)
     expect(googleAuth.getStoredTokens()?.access_token).toBe('fresh-web-access')
     expect(localStorage.getItem('arty-user-test-google-oauth-mailbox-free-v1')).toBe('1')
-    expect(googleAuth.getStoredTokens()?.oauth_profile).toBe('calendar-events-v1')
+    expect(googleAuth.getStoredTokens()?.oauth_profile).toBe('calendar-events-owned-v2')
     expect(googleAuth.isGoogleOAuthReconsentRequired()).toBe(false)
+    expect(ready).toHaveBeenCalledOnce()
+    window.removeEventListener('google-storage-ready', ready)
   })
 
   it('exchangeCode ne recycle jamais un ancien refresh token pré-epoch', async () => {
@@ -299,7 +303,7 @@ describe('googleAuth — storage paths', () => {
         text: async () => JSON.stringify({
           access_token: 'fresh',
           expires_in: 3600,
-          oauth_profile: 'calendar-events-v1',
+          oauth_profile: 'calendar-events-owned-v2',
         }),
       } as unknown as Response
     }) as unknown as typeof fetch
@@ -331,7 +335,7 @@ describe('googleAuth — storage paths', () => {
       text: async () => JSON.stringify({
         access_token: 'fresh-shared',
         expires_in: 3600,
-        oauth_profile: 'calendar-events-v1',
+        oauth_profile: 'calendar-events-owned-v2',
       }),
     } as Response)
 
@@ -351,7 +355,7 @@ describe('googleAuth — storage paths', () => {
 
     const refreshed = await googleAuth.refreshAccessToken()
 
-    expect(refreshed?.oauth_profile).toBe('calendar-events-v1')
+    expect(refreshed?.oauth_profile).toBe('calendar-events-owned-v2')
     expect(await googleAuth.migrateLegacyCalendarGrant()).toBe(false)
   })
 
@@ -388,7 +392,7 @@ describe('googleAuth — storage paths', () => {
     resolveResponse(new Response(JSON.stringify({
       access_token: 'late',
       expires_in: 3600,
-      oauth_profile: 'calendar-events-v1',
+      oauth_profile: 'calendar-events-owned-v2',
     }), { status: 200 }))
 
     expect(await pending).toBeNull()
@@ -415,7 +419,7 @@ describe('googleAuth — storage paths', () => {
       access_token: 'kept',
       refresh_token: 'r',
       expires_at: Date.now() + 3600_000,
-      oauth_profile: 'calendar-events-v1',
+      oauth_profile: 'calendar-events-owned-v2',
     })
     const encBefore = scoped.getItem('google-tokens-enc')
     expect(encBefore).toBeTruthy()
@@ -470,6 +474,7 @@ describe('googleAuth — PKCE (C5/F-11)', () => {
     const url = await googleAuth.buildOAuthUrl()
     const params = new URL(url).searchParams
     expect(params.get('code_challenge_method')).toBe('S256')
+    expect(params.get('redirect_uri')).toBe(`${window.location.origin}/auth/callback`)
 
     const verifier = sessionStorage.getItem('arty-oauth-verifier')
     expect(verifier).toBeTruthy()
@@ -479,6 +484,16 @@ describe('googleAuth — PKCE (C5/F-11)', () => {
     expect(params.get('state')).toBeTruthy()
   })
 
+  it('refuse de lancer OAuth si sessionStorage ne peut pas conserver state et PKCE', async () => {
+    const setItem = vi.spyOn(Storage.prototype, 'setItem')
+      .mockImplementation(() => { throw new DOMException('blocked', 'SecurityError') })
+
+    await expect(googleAuth.buildOAuthUrl()).rejects.toThrow(/stockage de session/i)
+    expect(sessionStorage.getItem('arty-oauth-state')).toBeNull()
+    expect(sessionStorage.getItem('arty-oauth-verifier')).toBeNull()
+    setItem.mockRestore()
+  })
+
   it('exchangeCode (web) joint le code_verifier et le consomme (single-use)', async () => {
     sessionStorage.setItem('arty-oauth-verifier', 'VERIF-123')
     const fetchMock = mockFetch({ access_token: 'a', refresh_token: 'r', expires_in: 3600 })
@@ -486,6 +501,7 @@ describe('googleAuth — PKCE (C5/F-11)', () => {
     await googleAuth.exchangeCode('code-web')
     const body1 = JSON.parse(fetchMock.mock.calls[0]![1]!.body as string)
     expect(body1.code_verifier).toBe('VERIF-123')
+    expect(body1.redirect_uri).toBe(`${window.location.origin}/auth/callback`)
     // consommé → retiré du sessionStorage
     expect(sessionStorage.getItem('arty-oauth-verifier')).toBeNull()
 
@@ -510,5 +526,52 @@ describe('googleAuth — PKCE (C5/F-11)', () => {
     sessionStorage.setItem('arty-oauth-verifier', 'X')
     googleAuth.clearOAuthState()
     expect(sessionStorage.getItem('arty-oauth-verifier')).toBeNull()
+  })
+
+  it('verifyOAuthState accepte une seule fois le state exact', async () => {
+    const state = new URL(await googleAuth.buildOAuthUrl()).searchParams.get('state')
+    expect(state).toBeTruthy()
+    expect(googleAuth.verifyOAuthState(state)).toBe(true)
+    expect(googleAuth.verifyOAuthState(state)).toBe(false)
+  })
+
+  it('verifyOAuthState rejette un mismatch et consomme la valeur attendue', async () => {
+    const state = new URL(await googleAuth.buildOAuthUrl()).searchParams.get('state')
+    expect(googleAuth.verifyOAuthState('forged-state')).toBe(false)
+    expect(googleAuth.verifyOAuthState(state)).toBe(false)
+  })
+})
+
+describe('googleAuth — callback OAuth lié à l’origine', () => {
+  it.each([
+    ['https://tryarty.com'],
+    ['https://www.tryarty.com'],
+    ['https://appfacade.pages.dev'],
+    ['https://codex-fix.appfacade.pages.dev'],
+    ['http://localhost:5173'],
+  ])('utilise le callback de %s malgré une config cross-origin', (origin) => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    expect(googleAuth.resolveWebGoogleRedirectUri(
+      origin,
+      'https://appfacade.pages.dev/auth/callback',
+    )).toBe(`${origin}/auth/callback`)
+    if (origin !== 'https://appfacade.pages.dev') expect(warn).toHaveBeenCalledOnce()
+    warn.mockRestore()
+  })
+
+  it('refuse une origine web inconnue au lieu de relayer state/PKCE ailleurs', () => {
+    expect(() => googleAuth.resolveWebGoogleRedirectUri(
+      'https://attacker.example',
+      'https://appfacade.pages.dev/auth/callback',
+    )).toThrow(/Origine OAuth Google non autorisée/)
+  })
+
+  it('refuse HTTP pour les domaines publics mais l’autorise en loopback', () => {
+    expect(() => googleAuth.resolveWebGoogleRedirectUri('http://tryarty.com'))
+      .toThrow(/exige HTTPS/)
+    expect(googleAuth.resolveWebGoogleRedirectUri('http://127.0.0.1:5173'))
+      .toBe('http://127.0.0.1:5173/auth/callback')
+    expect(() => googleAuth.resolveWebGoogleRedirectUri('ftp://localhost'))
+      .toThrow(/Protocole OAuth Google non autorisé/)
   })
 })

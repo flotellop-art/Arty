@@ -19,9 +19,9 @@ export const PUBLIC_GOOGLE_SCOPES = [
   'openid',
   'https://www.googleapis.com/auth/userinfo.email',
   'https://www.googleapis.com/auth/userinfo.profile',
-  'https://www.googleapis.com/auth/calendar.events',
+  'https://www.googleapis.com/auth/calendar.events.owned',
 ]
-export const CURRENT_GOOGLE_OAUTH_PROFILE = 'calendar-events-v1' as const
+export const CURRENT_GOOGLE_OAUTH_PROFILE = 'calendar-events-owned-v2' as const
 
 export function getGoogleOAuthScopes(): string[] {
   return [...PUBLIC_GOOGLE_SCOPES]
@@ -119,7 +119,7 @@ async function migrateLegacyGrantForEpoch(epochKey: string): Promise<boolean> {
 
 export async function migrateLegacyMailboxGrant(): Promise<boolean> {
   if (scoped.getItem(MAILBOX_FREE_OAUTH_EPOCH_KEY) === '1') return false
-  // calendar-events-v1 is server-proven exact and therefore mailbox-free.
+  // calendar-events-owned-v2 is server-proven exact and therefore mailbox-free.
   // If its marker write was interrupted after the token commit, self-heal the
   // old marker instead of revoking a known-current grant.
   if (getStoredTokens()?.oauth_profile === CURRENT_GOOGLE_OAUTH_PROFILE) {
@@ -141,24 +141,72 @@ export async function migrateLegacyCalendarGrant(): Promise<boolean> {
   return true
 }
 
-export function getRedirectUri(): string {
-  // Previews Cloudflare Pages (*.appfacade.pages.dev) : renvoyer sur LEUR propre
-  // callback après le login Google. Sinon le VITE_GOOGLE_REDIRECT_URI (épinglé
-  // sur le callback prod) renverrait un login lancé depuis une preview vers la
-  // prod. Les hosts prod (appfacade.pages.dev, tryarty.com) ne matchent pas le
-  // point de tête → ils gardent l'override ci-dessous. ⚠️ l'alias de branche
-  // doit être enregistré comme redirect URI dans le client OAuth Google.
-  try {
-    if (window.location.hostname.endsWith('.appfacade.pages.dev')) {
-      return `${window.location.origin}/auth/callback`
-    }
-  } catch {
-    /* pas de window (SSR/test) — on continue */
+const WEB_OAUTH_HOSTS = new Set([
+  'tryarty.com',
+  'www.tryarty.com',
+  'appfacade.pages.dev',
+])
+
+function isLoopbackHost(hostname: string): boolean {
+  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]'
+}
+
+/**
+ * OAuth state + PKCE vivent dans sessionStorage et sont donc strictement liés
+ * à l'origine qui lance le login. Un callback cross-origin perd les deux et
+ * doit échouer. Cette résolution pure verrouille l'invariant avant même de
+ * construire l'URL Google.
+ */
+export function resolveWebGoogleRedirectUri(
+  origin: string,
+  configuredRedirectUri?: string,
+): string {
+  const currentUrl = new URL(origin)
+  const normalizedOrigin = currentUrl.origin
+  const hostname = currentUrl.hostname
+  const loopback = isLoopbackHost(hostname)
+  const supportedHost = WEB_OAUTH_HOSTS.has(hostname)
+    || hostname.endsWith('.appfacade.pages.dev')
+    || loopback
+  const supportedProtocol = currentUrl.protocol === 'https:' || currentUrl.protocol === 'http:'
+
+  if (!supportedHost) {
+    throw new Error(`Origine OAuth Google non autorisée : ${hostname}`)
   }
-  if (import.meta.env.VITE_GOOGLE_REDIRECT_URI) return import.meta.env.VITE_GOOGLE_REDIRECT_URI
-  // On native, origin is https://localhost — use Cloudflare URL instead
-  if (window.location.origin.includes('localhost')) return 'https://appfacade.pages.dev/auth/callback'
-  return `${window.location.origin}/auth/callback`
+  if (!supportedProtocol) {
+    throw new Error(`Protocole OAuth Google non autorisé : ${currentUrl.protocol}`)
+  }
+  if (!loopback && currentUrl.protocol !== 'https:') {
+    throw new Error(`OAuth Google exige HTTPS pour ${hostname}`)
+  }
+
+  const callback = new URL('/auth/callback', normalizedOrigin).toString()
+  if (configuredRedirectUri) {
+    const configured = new URL(configuredRedirectUri, normalizedOrigin)
+    if (configured.origin !== normalizedOrigin) {
+      // La config Cloudflare historique pointait tryarty.com vers
+      // appfacade.pages.dev : le state et le verifier PKCE devenaient alors
+      // invisibles au callback. La valeur est ignorée plutôt que de relâcher
+      // les protections CSRF/PKCE.
+      console.warn('[googleAuth] redirect URI cross-origin ignorée', {
+        configuredOrigin: configured.origin,
+        currentOrigin: normalizedOrigin,
+      })
+    }
+  }
+  return callback
+}
+
+export function getRedirectUri(): string {
+  if (typeof window === 'undefined') {
+    const configured = import.meta.env.VITE_GOOGLE_REDIRECT_URI
+    if (!configured) throw new Error('VITE_GOOGLE_REDIRECT_URI manquant hors navigateur')
+    return configured
+  }
+  return resolveWebGoogleRedirectUri(
+    window.location.origin,
+    import.meta.env.VITE_GOOGLE_REDIRECT_URI,
+  )
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -239,18 +287,23 @@ export function clearOAuthState(): void {
 export async function buildOAuthUrl(): Promise<string> {
   const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID
   if (!clientId) throw new Error('VITE_GOOGLE_CLIENT_ID manquant')
+  const redirectUri = getRedirectUri()
 
   const state = generateOAuthState()
-  try { sessionStorage.setItem(OAUTH_STATE_KEY, state) } catch {}
-
   // PKCE (F-11) : générer + persister le verifier, envoyer le challenge S256.
   const verifier = generateCodeVerifier()
-  try { sessionStorage.setItem(OAUTH_VERIFIER_KEY, verifier) } catch {}
   const codeChallenge = await computeCodeChallenge(verifier)
+  try {
+    sessionStorage.setItem(OAUTH_STATE_KEY, state)
+    sessionStorage.setItem(OAUTH_VERIFIER_KEY, verifier)
+  } catch {
+    clearOAuthState()
+    throw new Error('Le stockage de session est indisponible pour sécuriser la connexion Google')
+  }
 
   const params = new URLSearchParams({
     client_id: clientId,
-    redirect_uri: getRedirectUri(),
+    redirect_uri: redirectUri,
     response_type: 'code',
     scope: SCOPES,
     include_granted_scopes: 'false',
@@ -382,6 +435,13 @@ export async function storeMailboxFreeGrant(tokens: GoogleTokens): Promise<Googl
   }
   scoped.setItem(MAILBOX_FREE_OAUTH_EPOCH_KEY, '1')
   scoped.removeItem(GOOGLE_OAUTH_RECONSENT_KEY)
+  // Le flux natif reste sur la même vue : publier immédiatement le nouveau
+  // grant afin que useGoogleAuth et usePlanStatus relisent la session/VIP sans
+  // attendre un focus ou un redémarrage. Le callback web bénéficie du même
+  // signal avant sa navigation finale.
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('google-storage-ready'))
+  }
   return mailboxFreeTokens
 }
 

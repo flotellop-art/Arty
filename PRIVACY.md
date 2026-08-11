@@ -1,6 +1,6 @@
 # Politique de confidentialité — Arty
 
-**Dernière mise à jour :** 9 août 2026
+**Dernière mise à jour :** 11 août 2026
 
 **Éditeur :** POLLET FLORENT, entrepreneur individuel, SIREN 887 679 611, SIRET 887 679 611 00012, domicilié Rue des Sièges, 30120 Bréau-Mars, France. Arty est le nom du service logiciel.
 **Contact :** support@tryarty.com
@@ -17,7 +17,7 @@ Le responsable de traitement au sens du RGPD est POLLET FLORENT, entrepreneur in
 |---|---|---|
 | Identité de connexion | Email, nom complet, photo de profil | Connexion Google (OAuth) |
 | Contenu utilisateur | Messages, fichiers et pièces jointes envoyés à l'assistant, y compris le contenu d'un email que vous collez, joignez ou partagez manuellement ; mémoire structurée, conversations partagées et signalements que vous soumettez volontairement | Vous |
-| Données Google Workspace | Lecture et création d'événements (Calendar), uniquement lorsque vous utilisez une fonction d'agenda. L'application publique n'utilise aucune API Gmail | Votre compte Google, sur votre demande explicite |
+| Données Google Workspace | Lecture, création, modification et suppression d'événements de votre calendrier principal (Calendar), uniquement lorsque vous utilisez une fonction d'agenda. L'application publique n'utilise aucune API Gmail | Votre compte Google, sur votre demande explicite |
 | Boîtes mail connectées (app Android uniquement) | Si vous connectez volontairement une boîte mail (Free, Gmail, Yahoo, iCloud ou IMAP), l'assistant peut lister, rechercher et lire vos messages en LECTURE SEULE. La connexion se fait directement depuis votre téléphone (IMAP TLS) ; votre mot de passe d'application est chiffré via le Keystore Android (clé matérielle non extractible) et n'est jamais transmis à nos serveurs. Le contenu d'un message n'est transmis qu'à Anthropic (Claude), et à lui seul, uniquement quand vous posez une question qui le nécessite. Les pièces jointes de vos e-mails ne sont jamais lues | Vous (connexion volontaire dans Réglages → Boîtes mail) |
 | Localisation | Position géographique approximative | Capteur GPS de votre appareil, uniquement si activé |
 | Données de paiement | Email du compte, offre ou pack choisi, identifiants et statut de transaction ; Arty ne reçoit aucune coordonnée bancaire | Vous + Lemon Squeezy ou Creem |
@@ -26,6 +26,8 @@ Le responsable de traitement au sens du RGPD est POLLET FLORENT, entrepreneur in
 Nous ne traçons pas votre navigation à des fins publicitaires et n'utilisons aucun profilage commercial.
 
 Arty n'utilise aucune API Gmail et n'envoie, ne modifie ni ne supprime jamais un message dans votre boîte. Sans boîte connectée, le contenu d'un email n'est traité que si vous le collez, le joignez ou le partagez vous-même avec l'assistant. Si vous connectez une boîte mail dans l'app Android (mise à jour du 9 août 2026), l'assistant peut la LIRE (lecture seule) directement depuis votre téléphone pour répondre à vos demandes ; vous pouvez retirer une boîte à tout moment dans Réglages → Boîtes mail, ce qui supprime son mot de passe de l'appareil.
+
+Lorsque vous demandez une action liée à votre agenda, les informations nécessaires à la réponse ou à l'action (notamment titre, horaires, lieu et vos instructions) transitent par Cloudflare et peuvent être transmises à Anthropic (Claude) afin d'interpréter et d'exécuter votre demande. Arty ne les conserve pas sur ses serveurs au-delà du traitement de la requête. Selon la politique standard de l'API Anthropic, les entrées et sorties sont supprimées sous 30 jours, sauf exceptions documentées liées au respect des règles d'utilisation, à la loi ou à un accord spécifique ; elles ne servent pas à entraîner les modèles génératifs sauf accord explicite du client.
 
 ## 3. Finalités et bases légales
 
@@ -45,7 +47,7 @@ Vos données sont transmises, **uniquement pour les finalités ci-dessus**, aux 
 | Prestataire | Rôle | Localisation | Garantie |
 |---|---|---|---|
 | Cloudflare | Hébergement Workers, Pages, KV (proxy API, stockage clés non sensibles, distribution du site) | UE + monde (CDN) | Standard Contractual Clauses (SCC), DPA Cloudflare |
-| Anthropic (Claude) | Génération de réponses IA | États-Unis | SCC + EU-US Data Privacy Framework |
+| Anthropic (Claude) | Génération de réponses IA, y compris traitement des informations Calendar strictement nécessaires à une demande d'agenda | États-Unis | SCC + EU-US Data Privacy Framework |
 | OpenAI | Génération de réponses IA (selon le modèle choisi) | États-Unis | SCC + EU-US Data Privacy Framework |
 | Google (Gemini + Workspace) | Génération de réponses IA + fonctions Calendar explicitement demandées ; aucun connecteur Gmail dans l'application publique | UE + États-Unis | SCC + EU-US Data Privacy Framework |
 | Mistral AI | Génération de réponses IA | France (UE) | Hébergement UE direct |
@@ -86,7 +88,7 @@ Pour fonctionner, l'application conserve localement les données suivantes. Lors
 
 Ces stockages sont **strictement nécessaires au service** au sens de l'article 82 de la loi Informatique et Libertés (transposition de la directive ePrivacy) — leur consentement n'est donc pas requis.
 
-Nous n'utilisons **aucun cookie** de tracking ni d'analyse. Le chargement des polices d'écriture peut entraîner des requêtes vers `fonts.googleapis.com` (Google Fonts), susceptibles de poser un cookie tiers de session lié à Google ; nous prévoyons de basculer en auto-hébergement de ces polices avant le lancement public.
+Nous n'utilisons **aucun cookie** de tracking ni d'analyse. Le chargement des polices d'écriture envoie à Google Fonts l'adresse IP, l'URL de la ressource et des en-têtes techniques (navigateur, système et référent). Selon Google, l'API Google Fonts ne définit ni ne journalise de cookie et n'utilise pas ces informations pour créer un profil ou cibler de la publicité.
 
 ## 8. Conservation des données
 
@@ -99,7 +101,7 @@ Nous n'utilisons **aucun cookie** de tracking ni d'analyse. Le chargement des po
 | Compteurs techniques minimaux d’usage, de quota et d’anti-abus | Conservés pendant la durée strictement nécessaire à la sécurité, à la prévention des abus et à l’intégrité de la facturation. Ils ne contiennent pas le contenu de vos échanges. |
 | Logs techniques serveur (Cloudflare Workers, anti-abus) | 12 mois maximum. |
 | Email waitlist (pré-lancement) | Jusqu'au lancement de l'application + 12 mois ou désinscription, selon la première éventualité. |
-| Contenu transmis aux fournisseurs d'IA | Non conservé sur nos serveurs au-delà du traitement de la requête. Conservation chez le fournisseur selon sa propre politique (Anthropic 30 jours, OpenAI 30 jours, Google variable, Mistral 30 jours). |
+| Contenu transmis aux fournisseurs d'IA | Non conservé sur nos serveurs au-delà du traitement de la requête. Conservation chez le fournisseur selon sa propre politique (Anthropic : suppression sous 30 jours selon la politique API standard, hors exceptions documentées ; OpenAI 30 jours ; Google variable ; Mistral 30 jours). |
 
 ## 9. Vos droits (RGPD)
 

@@ -29,6 +29,38 @@ describe('privacy and Play submission claims', () => {
     expect(privacyCopies[3]).toContain('the key is neither secret nor hardware-bound')
   })
 
+  it('décrit complètement l’usage Calendar et son transfert nécessaire à Anthropic', () => {
+    for (const policy of privacyCopies) {
+      expect(policy).toMatch(/Reading, creating, updating, and deleting|Lecture, création, modification et suppression/i)
+      expect(policy).toMatch(/primary calendar|calendrier principal/i)
+      expect(policy).toMatch(/event title, times, location|titre, horaires, lieu/i)
+      expect(policy).toMatch(/Anthropic/)
+      expect(policy).toMatch(/within 30 days|sous 30 jours/i)
+      expect(policy).toMatch(/documented.*exceptions|exceptions documentées/i)
+    }
+  })
+
+  it('décrit Google Fonts sans inventer de cookie tiers ni de migration future', () => {
+    for (const policy of privacyCopies) {
+      expect(policy).toMatch(/Google Fonts/)
+      expect(policy).toMatch(/IP address|adresse IP/i)
+      expect(policy).toMatch(/does not set or log cookies|ne définit ni ne journalise de cookie/i)
+      expect(policy).not.toMatch(/third-party session cookie|cookie tiers de session|before the public launch|avant le lancement public/i)
+    }
+  })
+
+  it('garde le scope minimal et la justification identiques dans les dossiers Google', () => {
+    const play = read('PLAY-STORE-SUBMISSION.md')
+    const oauth = read('docs/GOOGLE_OAUTH_VERIFICATION.md')
+    for (const dossier of [play, oauth]) {
+      const normalized = dossier.replace(/\r?\n>\s?/g, ' ')
+      expect(normalized).toContain('calendar.events.owned')
+      expect(normalized).toContain('Arty lists, creates, updates, and deletes events only in the user\'s primary calendar')
+      expect(normalized).toContain('the broader `calendar.events` and `calendar` scopes are unnecessary')
+      expect(normalized).toContain('Event deletion requires an additional in-app confirmation')
+    }
+  })
+
   it("ne fabrique pas de champ 'chiffrement au repos' dans la matrice Data Safety", () => {
     const submission = `${read('BEFORE-PUBLISHING.md')}\n${read('PLAY-STORE-SUBMISSION.md')}`
     expect(submission).not.toMatch(/Chiffrement au repos\s*:\s*OUI/i)
@@ -126,6 +158,26 @@ describe('privacy and Play submission claims', () => {
     // sur les intégrations d'IA tierces, annonce du 15 juillet 2026).
     expect(fr.mailAccountsModal.consentLabel).toMatch(/Anthropic/)
     expect(en.mailAccountsModal.consentLabel).toMatch(/Anthropic/)
+  })
+
+  it('place la divulgation Google dans chaque écran qui peut initier OAuth', () => {
+    const fr = JSON.parse(read('src/i18n/locales/fr.json'))
+    const en = JSON.parse(read('src/i18n/locales/en.json'))
+    for (const disclosure of [fr.login.google.disclosure, en.login.google.disclosure]) {
+      expect(disclosure).toMatch(/Anthropic/)
+      expect(disclosure).toMatch(/calendrier principal|primary calendar/i)
+      expect(disclosure).toMatch(/afficher.*créer.*modifier.*supprimer|display.*create.*update.*delete/i)
+      expect(disclosure).toMatch(/publicité|advertising/i)
+    }
+
+    for (const component of [
+      'src/components/auth/GoogleLoginTab.tsx',
+      'src/components/onboarding/OnboardingChoice.tsx',
+      'src/components/home/HomeScreen.tsx',
+      'src/components/auth/GoogleReconnectDialog.tsx',
+    ]) {
+      expect(read(component)).toContain("t('login.google.disclosure')")
+    }
   })
 
   // Le consentement se donne devant l'écran : si une refonte d'interface

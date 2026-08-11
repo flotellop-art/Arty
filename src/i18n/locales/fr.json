@@ -50,10 +50,12 @@
     },
     "google": {
       "signIn": "Se connecter avec Google",
+      "continue": "Continuer avec Google",
       "failed": "Connexion Google échouée. Réessaie.",
       "iosUnavailable": "Google Sign-In sur iOS nécessite encore la configuration native. Utilise provisoirement l’essai par email ou une clé API.",
       "notice": "Connecte ton compte Google pour ton identité, ton agenda, Drive et Contacts.",
-      "noticeNoCasa": "Connecte ton compte Google pour ton identité et ton agenda."
+      "noticeNoCasa": "Connecte ton compte Google pour ton identité et ton agenda.",
+      "disclosure": "Arty accède à ton identité et aux événements de ton calendrier principal pour les afficher, les créer, les modifier ou les supprimer uniquement à ta demande. Les informations d’événement nécessaires peuvent être transmises à Anthropic (Claude, États-Unis) uniquement pour te répondre, jamais pour la publicité."
     },
     "email": {
       "label": "Email",
@@ -165,8 +167,8 @@
     "googleConnectError": "Erreur connexion Google :",
     "googleReconsent": {
       "title": "Reconnecte Google pour ton agenda",
-      "body": "Arty demande maintenant uniquement l’accès à tes événements, au lieu de l’accès complet à ton agenda. Reconnecte ton compte pour continuer à afficher et créer des événements. Ta session Arty et tes conversations restent intactes.",
-      "cta": "Reconnecter Google"
+      "body": "Arty limite maintenant son autorisation aux événements des calendriers que tu possèdes et utilise uniquement ton calendrier principal. Il n’accède plus aux calendriers partagés dont tu n’es pas propriétaire. Reconnecte ton compte pour consulter et gérer tes événements. Ta session Arty et tes conversations restent intactes.",
+      "cta": "Continuer avec Google"
     },
     "resumeKicker": "Reprendre",
     "optionsSheetTitle": "Réglages",
@@ -564,6 +566,8 @@
       "authRejectedTitle": "Ton compte Google n'a pas pu être vérifié. Clique pour le reconnecter et retrouver ton plan.",
       "authRequired": "Reconnecter Google",
       "authRequiredTitle": "La session Google qui prouve ton plan n'est plus disponible. Clique pour la reconnecter.",
+      "reconnectDialogTitle": "Vérifier ton compte Google",
+      "reconnectDialogBody": "Reconnecte le compte Google associé à Arty pour vérifier ton plan et restaurer tes accès. Ta session Arty et tes conversations restent intactes.",
       "statusUnavailable": "Plan à vérifier",
       "statusUnavailableTitle": "Le plan n'a pas pu être vérifié pour le moment. Clique pour réessayer.",
       "bucketSonnet": "Sonnet",

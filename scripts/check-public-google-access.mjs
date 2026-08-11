@@ -29,11 +29,11 @@ const PUBLIC_WEB_SCOPES = new Set([
   'openid',
   'https://www.googleapis.com/auth/userinfo.email',
   'https://www.googleapis.com/auth/userinfo.profile',
-  'https://www.googleapis.com/auth/calendar.events',
+  'https://www.googleapis.com/auth/calendar.events.owned',
 ])
 
 const PUBLIC_ANDROID_SCOPES = new Set([
-  'https://www.googleapis.com/auth/calendar.events',
+  'https://www.googleapis.com/auth/calendar.events.owned',
 ])
 
 // Scopes RESTREINTS Google (classification officielle, chaînes canoniques
@@ -64,15 +64,18 @@ const FROZEN_FILE_SCOPES = {
     'openid',
     'https://www.googleapis.com/auth/userinfo.email',
     'https://www.googleapis.com/auth/userinfo.profile',
-    'https://www.googleapis.com/auth/calendar.events',
+    'https://www.googleapis.com/auth/calendar.events.owned',
   ]),
   'android/app/src/main/java/com/arty/app/GoogleSignInPlugin.java': new Set([
-    'https://www.googleapis.com/auth/calendar.events',
+    'https://www.googleapis.com/auth/calendar.events.owned',
   ]),
   'functions/api/_lib/publicGoogleScopes.ts': new Set([
     'openid',
     'https://www.googleapis.com/auth/userinfo.email',
     'https://www.googleapis.com/auth/userinfo.profile',
+    'https://www.googleapis.com/auth/calendar.events.owned',
+    // Transition serveur bornée pour les clients 1.0.97. Ce scope sensible
+    // (non restreint) n'est jamais redemandé par le nouveau client public.
     'https://www.googleapis.com/auth/calendar.events',
     // Temporary exact legacy profile for APK 1.0.80; server-gated by cutoff.
     'https://www.googleapis.com/auth/calendar',
@@ -314,7 +317,7 @@ check('bundle APK synchronisé : scope Calendar exact et à jour', () => {
   for (const file of walk(androidAssetsRoot)) {
     const rel = relative(ROOT, file).replaceAll('\\', '/')
     for (const literal of quotedStrings(readFileSync(file, 'utf8'))) {
-      if (literal === 'https://www.googleapis.com/auth/calendar.events') currentScopeFound = true
+      if (literal === 'https://www.googleapis.com/auth/calendar.events.owned') currentScopeFound = true
       if (literal === 'https://www.googleapis.com/auth/calendar') offenders.push(rel)
     }
   }
@@ -322,7 +325,7 @@ check('bundle APK synchronisé : scope Calendar exact et à jour', () => {
     throw new Error(`ancien scope Calendar dans le bundle :\n    ${offenders.join('\n    ')}`)
   }
   if (requireAndroidAssets && !currentScopeFound) {
-    throw new Error('scope calendar.events absent du bundle Android synchronisé')
+    throw new Error('scope calendar.events.owned absent du bundle Android synchronisé')
   }
 })
 

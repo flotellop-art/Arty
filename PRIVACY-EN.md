@@ -1,6 +1,6 @@
 # Privacy Policy — Arty
 
-**Last updated:** August 9, 2026
+**Last updated:** August 11, 2026
 
 **Publisher:** POLLET FLORENT, French sole trader, SIREN 887 679 611, SIRET 887 679 611 00012, Rue des Sièges, 30120 Bréau-Mars, France. Arty is the name of the software service.
 **Contact:** support@tryarty.com
@@ -17,7 +17,7 @@ The data controller under the GDPR is POLLET FLORENT, French sole trader (contac
 |---|---|---|
 | Authentication identity | Email, full name, profile picture | Google Sign-In (OAuth) |
 | User content | Messages, files, and attachments sent to the assistant, including email content you manually paste, attach, or share; structured memory, shared conversations, and reports you voluntarily submit | You |
-| Google Workspace data | Reading and creating events (Calendar), only when you use an agenda feature. The public app does not use any Gmail API | Your Google account, on your explicit request |
+| Google Workspace data | Reading, creating, updating, and deleting events in your primary calendar (Calendar), only when you use an agenda feature. The public app does not use any Gmail API | Your Google account, on your explicit request |
 | Connected mailboxes (Android app only) | If you voluntarily connect a mailbox (Free, Gmail, Yahoo, iCloud or IMAP), the assistant can list, search and read your messages in READ-ONLY mode. The connection is made directly from your phone (IMAP TLS); your app password is encrypted with the Android Keystore (non-extractable hardware key) and is never sent to our servers. Message content is only sent to Anthropic (Claude), and to no other provider, and only when you ask a question that requires it. Your email attachments are never read | You (voluntary connection in Settings → Mailboxes) |
 | Location | Approximate geographic position | Your device's GPS sensor, only if enabled |
 | Payment data | Account email, selected offer or pack, transaction identifiers and status; Arty receives no payment-card details | You + Lemon Squeezy or Creem |
@@ -26,6 +26,8 @@ The data controller under the GDPR is POLLET FLORENT, French sole trader (contac
 We do not track your browsing for advertising purposes and do not use any commercial profiling.
 
 Arty does not use any Gmail API and never sends, modifies or deletes a message in your mailbox. Without a connected mailbox, email content is processed only when you paste, attach, or share it with the assistant yourself. If you connect a mailbox in the Android app (update of August 9, 2026), the assistant can READ it (read-only) directly from your phone to answer your requests; you can remove a mailbox at any time in Settings → Mailboxes, which deletes its password from the device.
+
+When you request an agenda-related action, the information needed to answer or perform it (including the event title, times, location, and your instructions) transits through Cloudflare and may be sent to Anthropic (Claude) to interpret and carry out your request. Arty does not retain it on its servers beyond processing the request. Under Anthropic's standard API policy, inputs and outputs are deleted within 30 days, except for documented usage-policy, legal, or custom-agreement exceptions; they are not used to train generative models unless the customer explicitly opts in.
 
 ## 3. Purposes and legal grounds
 
@@ -44,7 +46,7 @@ Your data is shared, **strictly for the purposes above**, with the following pro
 | Provider | Role | Location | Safeguard |
 |---|---|---|---|
 | Cloudflare | Hosting Workers, Pages, KV (API proxy, non-sensitive key storage, site distribution) | EU + global (CDN) | Standard Contractual Clauses (SCC), Cloudflare DPA |
-| Anthropic (Claude) | AI response generation | United States | SCC + EU-US Data Privacy Framework |
+| Anthropic (Claude) | AI response generation, including Calendar information strictly necessary for an agenda request | United States | SCC + EU-US Data Privacy Framework |
 | OpenAI | AI response generation (depending on the selected model) | United States | SCC + EU-US Data Privacy Framework |
 | Google (Gemini + Workspace) | AI response generation + Calendar features explicitly requested by the user; no Gmail connector in the public app | EU + United States | SCC + EU-US Data Privacy Framework |
 | Mistral AI | AI response generation | France (EU) | Direct EU hosting |
@@ -85,7 +87,7 @@ To operate, the app keeps the following data locally. When you request a feature
 
 These storages are **strictly necessary to deliver the service** within the meaning of Article 82 of the French Data Protection Act (transposition of the ePrivacy directive) — they therefore do not require consent.
 
-We use **no tracking or analytics cookies**. Loading our display fonts may trigger requests to `fonts.googleapis.com` (Google Fonts), which may set a third-party session cookie tied to Google; we plan to self-host these fonts before the public launch.
+We use **no tracking or analytics cookies**. Loading our display fonts sends Google Fonts the IP address, requested resource URL, and technical headers (browser, operating system, and referrer). According to Google, the Google Fonts API does not set or log cookies and does not use this information to create user profiles or for targeted advertising.
 
 ## 8. Data retention
 
@@ -98,7 +100,7 @@ We use **no tracking or analytics cookies**. Loading our display fonts may trigg
 | Minimal technical usage, quota, and anti-abuse counters | Retained only for as long as strictly necessary for security, abuse prevention, and billing integrity. They contain none of your conversation content. |
 | Server-side technical logs (Cloudflare Workers, anti-abuse) | 12 months maximum. |
 | Waitlist email (pre-launch) | Until app launch + 12 months, or until unsubscription, whichever comes first. |
-| Content transmitted to AI providers | Not stored on our servers beyond request processing. Retention by the provider follows their own policy (Anthropic 30 days, OpenAI 30 days, Google varies, Mistral 30 days). |
+| Content transmitted to AI providers | Not stored on our servers beyond request processing. Retention by the provider follows its own policy (Anthropic: deletion within 30 days under the standard API policy, subject to documented exceptions; OpenAI 30 days; Google varies; Mistral 30 days). |
 
 ## 9. Your rights (GDPR)
 
