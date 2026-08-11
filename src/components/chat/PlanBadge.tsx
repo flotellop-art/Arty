@@ -32,19 +32,30 @@ export const PlanBadge = memo(function PlanBadge() {
 
   if (status.loading) return null
 
-  // Token Google refusé par le serveur : le plan renvoyé est un repli, pas une
-  // vérité. Afficher « Gratuit » ici, c'est ce qui a fait croire le 10 août
-  // 2026 qu'Arty « refusait » un accès VIP pourtant bien configuré. On montre
-  // donc l'état réel — une identité à revalider — et le clic mène aux réglages
-  // Google plutôt qu'à la page d'achat.
-  if (status.authRejected) {
+  // Token Google absent/refusé : le plan Free local est un repli, pas une
+  // vérité. Le clic déclenche le vrai flux Google possédé par AppContent ;
+  // l'ancienne route `/settings` n'existait pas et menait dans le vide.
+  if (status.authRejected || status.authRequired) {
+    const rejected = status.authRejected
     return (
       <button
-        onClick={() => navigate('/settings')}
+        onClick={() => window.dispatchEvent(new CustomEvent('arty-reconnect-google'))}
         className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] uppercase tracking-kicker font-sans bg-theme-accent/15 text-theme-accent hover:bg-theme-accent/25 transition-colors"
-        title={t('chat.planBadge.authRejectedTitle')}
+        title={t(rejected ? 'chat.planBadge.authRejectedTitle' : 'chat.planBadge.authRequiredTitle')}
       >
-        {t('chat.planBadge.authRejected')}
+        {t(rejected ? 'chat.planBadge.authRejected' : 'chat.planBadge.authRequired')}
+      </button>
+    )
+  }
+
+  if (status.statusUnavailable) {
+    return (
+      <button
+        onClick={status.refresh}
+        className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] uppercase tracking-kicker font-sans bg-theme-surface text-theme-muted hover:bg-theme-bg hover:text-theme-ink border border-theme-border transition-colors"
+        title={t('chat.planBadge.statusUnavailableTitle')}
+      >
+        {t('chat.planBadge.statusUnavailable')}
       </button>
     )
   }

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { detectProvider, needsThinking, resolveClaudeThinking, selectClaudeSubModel, extractPdfUrls, extractWebUrls, extractYouTubeUrls, hasYouTubeUrl, shouldUseWebSearch } from '../../services/aiRouter'
 import { getGeminiThinkingBudget, resolveGeminiThinkingBudget } from '../../services/geminiClient'
+import { setTrialToken } from '../../services/emailTrialClient'
 
 // Mock the two external dependencies
 vi.mock('../../services/activeApiKey', () => ({
@@ -424,10 +425,17 @@ describe('selectClaudeSubModel — verrou Haiku par plan (C-E)', () => {
 
   afterEach(() => {
     localStorage.removeItem('arty-plan-cache')
+    localStorage.removeItem('arty-email-trial-token')
   })
 
   it.each(['free', 'trial'])('plan %s sans crédits → Haiku, même sur une requête à thinking', (plan) => {
     localStorage.setItem('arty-plan-cache', plan)
+    expect(selectClaudeSubModel(REQUEST_SONNET, THINKING, false, false))
+      .toBe('claude-haiku-4-5-20251001')
+  })
+
+  it('setTrialToken conserve le routage Haiku de l’essai email', () => {
+    setTrialToken('opaque-trial-token')
     expect(selectClaudeSubModel(REQUEST_SONNET, THINKING, false, false))
       .toBe('claude-haiku-4-5-20251001')
   })

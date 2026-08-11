@@ -43,6 +43,18 @@ let googleStorageReady = false
 // Monotonic guard for async token writes. A refresh or encryption that
 // completes after logout/profile migration must never restore stale tokens.
 let tokenStorageGeneration = 0
+
+interface ValidAccessTokenRefresh {
+  ownerId: string | null
+  refreshToken: string
+  promise: Promise<string | null>
+}
+
+// Source unique de mutualisation : useGoogleAuth, usePlanStatus et les clients
+// API peuvent tous demander un token au même retour d'arrière-plan. Sans ce
+// verrou, chacun lançait son propre POST /api/auth/refresh et les gardes de
+// génération invalidaient les réponses concurrentes pourtant valides.
+let validAccessTokenRefresh: ValidAccessTokenRefresh | null = null
 let userStorageGeneration = 0
 
 const TOKENS_PLAIN_KEY = 'google-tokens'
@@ -495,31 +507,50 @@ export async function refreshAccessToken(): Promise<GoogleTokens | null> {
   return getStoredTokens()?.access_token === updated.access_token ? updated : null
 }
 
-export async function getValidAccessToken(): Promise<string | null> {
-  let tokens = getStoredTokens()
-  if (!tokens) return null
-
-  // Ignore placeholder/fake tokens
-  if (!tokens.access_token || tokens.access_token === 'native') return null
-
+async function refreshExpiringAccessToken(): Promise<string | null> {
+  let tokens: GoogleTokens | null
   // Refresh if expiring within 5 minutes. Retry up to 3 times with backoff
   // (0s, 1.5s, 3s) to ride out Cloudflare/network blips on cold-resume —
   // typical scenario: app comes back from background after >1h, mobile
   // radio re-warms (~1-3s), first refresh attempt fails, second succeeds.
   // Stop early if the refresh path called logout() (= invalid_grant, tokens
   // wiped definitively).
+  const delays = [0, 1500, 3000]
+  for (const delay of delays) {
+    if (delay > 0) await new Promise((r) => setTimeout(r, delay))
+    tokens = await refreshAccessToken()
+    if (tokens) return tokens.access_token
+    if (!getStoredTokens()) return null // logout() was called → give up
+  }
+  console.warn('[googleAuth] refresh failed after retries, keeping tokens for next attempt')
+  return null
+}
+
+export async function getValidAccessToken(): Promise<string | null> {
+  const tokens = getStoredTokens()
+  if (!tokens) return null
+
+  // Ignore placeholder/fake tokens
+  if (!tokens.access_token || tokens.access_token === 'native') return null
+
   if (tokens.expires_at - Date.now() < 5 * 60 * 1000) {
-    const delays = [0, 1500, 3000]
-    for (const delay of delays) {
-      if (delay > 0) await new Promise((r) => setTimeout(r, delay))
-      tokens = await refreshAccessToken()
-      if (tokens) break
-      if (!getStoredTokens()) return null // logout() was called → give up
+    const ownerId = getActiveUserId()
+    const refreshToken = tokens.refresh_token || ''
+    if (
+      validAccessTokenRefresh?.ownerId === ownerId
+      && validAccessTokenRefresh.refreshToken === refreshToken
+    ) return validAccessTokenRefresh.promise
+
+    const task: ValidAccessTokenRefresh = {
+      ownerId,
+      refreshToken,
+      promise: Promise.resolve(null),
     }
-    if (!tokens) {
-      console.warn('[googleAuth] refresh failed after retries, keeping tokens for next attempt')
-      return null
-    }
+    task.promise = refreshExpiringAccessToken().finally(() => {
+      if (validAccessTokenRefresh === task) validAccessTokenRefresh = null
+    })
+    validAccessTokenRefresh = task
+    return task.promise
   }
 
   return tokens.access_token

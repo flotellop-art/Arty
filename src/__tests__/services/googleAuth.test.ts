@@ -309,6 +309,38 @@ describe('googleAuth — storage paths', () => {
     expect(calls).toBe(2)
   }, 10_000)
 
+  it('getValidAccessToken mutualise deux renouvellements concurrents', async () => {
+    await googleAuth.storeTokens({
+      access_token: 'old',
+      refresh_token: 'shared-refresh',
+      expires_at: Date.now() - 1000,
+    })
+
+    let resolveRefresh!: (response: Response) => void
+    const pendingResponse = new Promise<Response>((resolve) => { resolveRefresh = resolve })
+    const fetchMock = vi.fn(() => pendingResponse)
+    global.fetch = fetchMock as unknown as typeof fetch
+
+    const first = googleAuth.getValidAccessToken()
+    const second = googleAuth.getValidAccessToken()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+
+    resolveRefresh({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({
+        access_token: 'fresh-shared',
+        expires_in: 3600,
+        oauth_profile: 'calendar-events-v1',
+      }),
+    } as Response)
+
+    await expect(Promise.all([first, second])).resolves.toEqual([
+      'fresh-shared', 'fresh-shared',
+    ])
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
   it('refreshAccessToken conserve le profil dans le blob courant', async () => {
     await googleAuth.storeMailboxFreeGrant({
       access_token: 'old',
