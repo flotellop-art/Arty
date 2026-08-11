@@ -59,9 +59,12 @@ describe('privacy and Play submission claims', () => {
     for (const dossier of [play, oauth]) {
       const normalized = dossier.replace(/\r?\n>\s?/g, ' ')
       expect(normalized).toContain('calendar.events.owned')
-      expect(normalized).toContain('Arty lists, creates, updates, and deletes events only in the user\'s primary calendar')
+      expect(normalized).toContain('Arty reads upcoming events from the user\'s primary calendar to display the in-app Agenda')
+      expect(normalized).toContain('the proactive brief is enabled by default and may read those events automatically')
+      expect(normalized).toContain('the user can disable it in Settings')
+      expect(normalized).toContain('Arty creates, updates, or deletes an event only when the user explicitly requests that action')
       expect(normalized).toContain('the broader `calendar.events` and `calendar` scopes are unnecessary')
-      expect(normalized).toContain('Event deletion requires an additional in-app confirmation')
+      expect(normalized).toContain('deletion requires an additional in-app confirmation')
     }
   })
 

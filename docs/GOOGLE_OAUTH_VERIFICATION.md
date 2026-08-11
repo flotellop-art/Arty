@@ -86,9 +86,10 @@ fonctionnalité Agenda, et de rien d'autre.
       Jusqu'à ce smoke fournisseur, seuls leurs deux handlers signés restent
       joignables sur l'ancien hostname technique.
 - [ ] Après la fenêtre de compatibilité du 30 septembre 2026, retirer cette
-      compatibilité de scope v1, le callback legacy restant dans Google Cloud
-      et les références exactes à l'ancien hostname. Les previews techniques
-      `*.appfacade.pages.dev` ne disposent d'aucun wildcard OAuth chez Google.
+      compatibilité de scope v1 et les dernières références runtime exactes à
+      l'ancien hostname. Le callback `appfacade.pages.dev` est déjà absent de
+      Google Cloud. Les previews techniques `*.appfacade.pages.dev` ne
+      disposent d'aucun wildcard OAuth chez Google.
 - [ ] Vidéo de démonstration YouTube non listée, couvrant le consentement en
       anglais et les quatre opérations Calendar
 - [ ] Soumettre la vérification de marque et du scope sensible
@@ -101,14 +102,18 @@ l'avertissement à lui seul : Google doit valider la marque et le scope sensible
 
 **calendar.events.owned**
 
-> Arty lists, creates, updates, and deletes events only in the user's primary
-> calendar when the user explicitly requests an agenda-related feature. We
-> request `calendar.events.owned` because Arty never accesses calendars the
-> user does not own; the broader `calendar.events` and `calendar` scopes are
-> unnecessary. Event deletion requires an additional in-app confirmation.
-> Event information needed to interpret or perform the request, such as title,
-> time, location, and the user's instructions, may be sent to Anthropic Claude
-> through Arty's Cloudflare proxy. Arty does not store that information
+> After the user connects Google, Arty reads upcoming events from the user's
+> primary calendar to display the in-app Agenda. For paid and VIP accounts,
+> the proactive brief is enabled by default and may read those events
+> automatically; the user can disable it in Settings. Arty creates, updates,
+> or deletes an event only when the user explicitly requests that action, and
+> deletion requires an additional in-app confirmation. We request
+> `calendar.events.owned` because Arty never accesses calendars the user does
+> not own; the broader `calendar.events` and `calendar` scopes are unnecessary.
+> When Arty prepares a proactive brief or interprets or performs an agenda
+> request, the event title, time, location, and the user's instructions may be
+> sent to Anthropic Claude through Arty's Cloudflare proxy. Arty does not store
+> that information
 > server-side beyond request processing. Under Anthropic's standard API policy,
 > inputs and outputs are deleted within 30 days, subject to its documented legal
 > and abuse-prevention exceptions, and are not used to train generative models
@@ -135,14 +140,19 @@ Non listée sur YouTube, 3 à 5 minutes, sans coupure sur les parties
 sensibles. Doit montrer, dans cet ordre :
 
 1. la page d'accueil `tryarty.com` (établit que le domaine est bien le vôtre) ;
-2. le clic sur « Se connecter avec Google » ;
-3. **l'écran de consentement Google en entier**, avec la barre d'adresse
-   lisible : Google exige de voir le `client_id` dans l'URL et la liste exacte
-   des permissions demandées ;
-4. l'usage réel de la permission : lister le calendrier principal, créer puis
-   modifier un événement, et montrer la confirmation avant sa suppression ;
-5. l'accès à la politique de confidentialité depuis l'application ;
-6. la déconnexion et la révocation de l'accès.
+2. le parcours Web depuis `tryarty.com`, avec l'URI de retour même origine et
+   le `client_id` lisibles dans l'URL ;
+3. le parcours Android natif depuis l'APK public ;
+4. **l'écran de consentement Google en anglais et en entier**, avec la liste
+   exacte des permissions demandées ;
+5. la lecture automatique des prochains événements dans l'Agenda après la
+   connexion ;
+6. le brief proactif activé par défaut pour un compte payant/VIP, son contexte
+   Calendar et le réglage qui permet de le désactiver ;
+7. l'usage réel des écritures : créer puis modifier un événement sur demande,
+   et montrer la confirmation avant sa suppression ;
+8. l'accès à la politique de confidentialité depuis l'application ;
+9. la déconnexion et la révocation de l'accès.
 
 Ne PAS filmer la fonctionnalité Boîtes mail : elle n'utilise aucun périmètre
 Google et n'entre pas dans le champ de cette vérification. La mentionner dans
