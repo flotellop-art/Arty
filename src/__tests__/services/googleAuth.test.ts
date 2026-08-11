@@ -545,9 +545,6 @@ describe('googleAuth — PKCE (C5/F-11)', () => {
 describe('googleAuth — callback OAuth lié à l’origine', () => {
   it.each([
     ['https://tryarty.com'],
-    ['https://www.tryarty.com'],
-    ['https://appfacade.pages.dev'],
-    ['https://codex-fix.appfacade.pages.dev'],
     ['http://localhost:5173'],
   ])('utilise le callback de %s malgré une config cross-origin', (origin) => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
@@ -555,8 +552,17 @@ describe('googleAuth — callback OAuth lié à l’origine', () => {
       origin,
       'https://appfacade.pages.dev/auth/callback',
     )).toBe(`${origin}/auth/callback`)
-    if (origin !== 'https://appfacade.pages.dev') expect(warn).toHaveBeenCalledOnce()
+    expect(warn).toHaveBeenCalledOnce()
     warn.mockRestore()
+  })
+
+  it.each([
+    'https://www.tryarty.com',
+    'https://appfacade.pages.dev',
+    'https://codex-fix.appfacade.pages.dev',
+  ])('refuse OAuth sur l’ancienne origine %s', (origin) => {
+    expect(() => googleAuth.resolveWebGoogleRedirectUri(origin))
+      .toThrow(/Origine OAuth Google non autorisée/)
   })
 
   it('refuse une origine web inconnue au lieu de relayer state/PKCE ailleurs', () => {

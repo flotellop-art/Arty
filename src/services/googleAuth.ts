@@ -143,8 +143,6 @@ export async function migrateLegacyCalendarGrant(): Promise<boolean> {
 
 const WEB_OAUTH_HOSTS = new Set([
   'tryarty.com',
-  'www.tryarty.com',
-  'appfacade.pages.dev',
 ])
 
 function isLoopbackHost(hostname: string): boolean {
@@ -165,9 +163,7 @@ export function resolveWebGoogleRedirectUri(
   const normalizedOrigin = currentUrl.origin
   const hostname = currentUrl.hostname
   const loopback = isLoopbackHost(hostname)
-  const supportedHost = WEB_OAUTH_HOSTS.has(hostname)
-    || hostname.endsWith('.appfacade.pages.dev')
-    || loopback
+  const supportedHost = WEB_OAUTH_HOSTS.has(hostname) || loopback
   const supportedProtocol = currentUrl.protocol === 'https:' || currentUrl.protocol === 'http:'
 
   if (!supportedHost) {

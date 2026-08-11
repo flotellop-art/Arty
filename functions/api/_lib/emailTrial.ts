@@ -280,21 +280,17 @@ export async function checkVerifyOtpRateLimit(env: Env, ip: string): Promise<boo
 // ── Turnstile (optionnel en dev/preview — OBLIGATOIRE en prod, fail-closed) ─
 
 /**
- * Hosts de PRODUCTION — miroir côté serveur des domaines prod de
+ * Hosts de PRODUCTION — couverture côté serveur des domaines prod de
  * `ALLOWED_ORIGINS` (`functions/api/_middleware.ts`). Les déploiements preview
  * de Cloudflare Pages servent sur `<hash>.appfacade.pages.dev` (non listé) et
  * `wrangler pages dev` sur localhost → non-prod. Si un domaine prod est ajouté
- * au middleware, l'ajouter ICI aussi — un test de parité
+ * au middleware, l'ajouter ICI aussi — un test de couverture
  * (`turnstileFailClosed.test.ts`) échoue en CI si les deux listes divergent
  * (pattern F-1 : une allowlist positive doit être imposée par la CI, pas par
  * un commentaire). Exporté pour ce test uniquement.
  */
 export const PRODUCTION_HOSTS = new Set([
   'tryarty.com',
-  'www.tryarty.com',
-  'appfacade.pages.dev',
-  'arty.pages.dev',
-  'app.arty.fr',
 ])
 
 /**
