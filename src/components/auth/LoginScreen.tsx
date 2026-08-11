@@ -307,7 +307,7 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
                       access_token: accessToken,
                       refresh_token: refreshToken,
                       expires_at: Date.now() + expiresIn * 1000,
-                    }, storageOwner)
+                    }, storageOwner, { verifiedEmail: email })
                   })
                 } catch (err) {
                   console.error('Native Google login error:', err)

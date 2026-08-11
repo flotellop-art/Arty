@@ -123,7 +123,10 @@ describe('useGoogleAuth — reconsentement Calendar', () => {
     expect(mocks.storeMailboxFreeGrant).toHaveBeenCalledWith(
       expect.objectContaining({ access_token: 'fresh-token' }),
       { userId: 'google:user@example.com', sessionEpoch: 7 },
-      { preserveExistingRefreshToken: true },
+      { preserveExistingRefreshToken: true, verifiedEmail: 'user@example.com' },
+    )
+    expect(mocks.storeUser.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.storeMailboxFreeGrant.mock.invocationCallOrder[0],
     )
     expect(result.current.isConnected).toBe(true)
   })
@@ -153,6 +156,48 @@ describe('useGoogleAuth — reconsentement Calendar', () => {
     expect(mocks.storeMailboxFreeGrant).not.toHaveBeenCalled()
   })
 
+  it('purge fail-closed si le commit utilisateur échoue avant le grant', async () => {
+    mocks.activeSession = {
+      userId: 'google:user@example.com',
+      authMethod: 'google',
+      displayName: 'User',
+      email: 'user@example.com',
+      createdAt: 1,
+    }
+    mocks.epoch = 7
+    mocks.exchangeCode.mockResolvedValue({ access_token: 'fresh-token', refresh_token: '', expires_at: 2 })
+    mocks.fetchGoogleUser.mockResolvedValue({ email: 'user@example.com', name: 'User', picture: '' })
+    mocks.storeUser.mockResolvedValue(false)
+    const { result } = renderHook(() => useGoogleAuth())
+
+    await act(async () => result.current.handleCallback('oauth-code'))
+
+    expect(mocks.storeMailboxFreeGrant).not.toHaveBeenCalled()
+    expect(mocks.logout).toHaveBeenCalledOnce()
+    expect(result.current.isConnected).toBe(false)
+  })
+
+  it('purge fail-closed si le grant échoue après le commit utilisateur', async () => {
+    mocks.activeSession = {
+      userId: 'google:user@example.com',
+      authMethod: 'google',
+      displayName: 'User',
+      email: 'user@example.com',
+      createdAt: 1,
+    }
+    mocks.epoch = 7
+    mocks.exchangeCode.mockResolvedValue({ access_token: 'fresh-token', refresh_token: '', expires_at: 2 })
+    mocks.fetchGoogleUser.mockResolvedValue({ email: 'user@example.com', name: 'User', picture: '' })
+    mocks.storeMailboxFreeGrant.mockRejectedValue(new Error('quota exceeded'))
+    const { result } = renderHook(() => useGoogleAuth())
+
+    await act(async () => result.current.handleCallback('oauth-code'))
+
+    expect(mocks.storeUser).toHaveBeenCalledOnce()
+    expect(mocks.logout).toHaveBeenCalledOnce()
+    expect(result.current.isConnected).toBe(false)
+  })
+
   it('un compte Arty email peut lier un compte Google distinct pour Agenda', async () => {
     mocks.activeSession = {
       userId: 'email:local@example.com',
@@ -180,7 +225,7 @@ describe('useGoogleAuth — reconsentement Calendar', () => {
     expect(mocks.storeMailboxFreeGrant).toHaveBeenCalledWith(
       expect.objectContaining({ access_token: 'calendar-token' }),
       { userId: 'email:local@example.com', sessionEpoch: 4 },
-      { preserveExistingRefreshToken: false },
+      { preserveExistingRefreshToken: true, verifiedEmail: 'calendar@example.com' },
     )
     expect(result.current.error).toBeNull()
     expect(result.current.isConnected).toBe(true)

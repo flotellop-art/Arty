@@ -4,6 +4,8 @@ export interface GoogleTokens {
   expires_at: number
   /** OAuth scope profile proven by the server for this grant. */
   oauth_profile?: 'calendar-events-owned-v2'
+  /** Email Google vérifié lié atomiquement au refresh token stocké. */
+  verified_email?: string
 }
 
 export interface GoogleUser {

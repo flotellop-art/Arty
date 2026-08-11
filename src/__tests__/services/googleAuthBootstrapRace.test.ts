@@ -62,7 +62,7 @@ describe('googleAuth — bootstrap et changement de compte', () => {
       access_token: 'token-a',
       refresh_token: 'refresh-a',
       expires_at: Date.now() + 3600_000,
-    })
+    }, undefined, { verifiedEmail: 'a@example.com' })
     await vi.waitFor(() => expect(state.resolveEncrypt).not.toBeNull())
 
     state.owner = 'account-b'

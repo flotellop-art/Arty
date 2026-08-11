@@ -978,7 +978,7 @@ export default function App() {
           identifier: user.email,
         }, async (_session, storageOwner) => {
           if (!(await storeUser(user, storageOwner))) throw new Error('Google user storage was superseded')
-          await storeMailboxFreeGrant(tokens, storageOwner)
+          await storeMailboxFreeGrant(tokens, storageOwner, { verifiedEmail: user.email })
         })
         setSplash(getOnboardingSplash())
       } catch (err) {
@@ -1190,7 +1190,7 @@ function LoggedOutHome({
               access_token: accessToken,
               refresh_token: refreshToken,
               expires_at: Date.now() + expiresIn * 1000,
-            }, storageOwner)
+            }, storageOwner, { verifiedEmail: email })
           })
           markOnboardingChoiceDone()
           setChoiceDone(true)
@@ -1272,7 +1272,7 @@ function OAuthCallbackAuth({
         identifier: user.email,
       }, async (_session, storageOwner) => {
         if (!(await storeUser(user, storageOwner))) throw new Error('Google user storage was superseded')
-        await storeMailboxFreeGrant(tokens, storageOwner)
+        await storeMailboxFreeGrant(tokens, storageOwner, { verifiedEmail: user.email })
       })
       onPostLogin?.()
       navigate('/')

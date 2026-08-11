@@ -169,6 +169,7 @@ export function useGoogleAuth() {
       if (import.meta.env.DEV) console.log('[useGoogleAuth] login() called — native path')
       setIsLoading(true)
       setError(null)
+      let identityCommitStarted = false
       try {
         // 30s watchdog — if the native plugin's pendingCall is orphaned
         // (activity recycled during the Google popup, a common Android
@@ -215,15 +216,14 @@ export function useGoogleAuth() {
           name: result.name || result.email?.split('@')[0] || '',
           picture: result.avatar || '',
         }
-        const previousGoogleUser = getStoredUser()
-        const canReuseRefreshToken = activeSession.authMethod === 'google'
-          || previousGoogleUser?.email.trim().toLowerCase() === googleUser.email.trim().toLowerCase()
-        await storeMailboxFreeGrant(tokens, storageOwner, {
-          preserveExistingRefreshToken: canReuseRefreshToken,
-        })
+        identityCommitStarted = true
         if (!(await storeUser(googleUser, storageOwner))) {
           throw new Error('Google user storage was superseded')
         }
+        await storeMailboxFreeGrant(tokens, storageOwner, {
+          preserveExistingRefreshToken: true,
+          verifiedEmail: googleUser.email,
+        })
         assertReconnectOwner()
         setUser(googleUser)
         setIsConnected(true)
@@ -231,6 +231,11 @@ export function useGoogleAuth() {
         if (import.meta.env.DEV) console.log('[useGoogleAuth] login success for', result.email)
       } catch (err) {
         console.error('[useGoogleAuth] native login failed:', err)
+        if (
+          identityCommitStarted
+          && getActiveUserId() === storageOwner.userId
+          && getActiveSessionEpoch() === storageOwner.sessionEpoch
+        ) googleLogout()
         setError(err instanceof Error ? err.message : 'Erreur Google Sign-In')
         setUser(getStoredUser())
         setIsConnected(getStoredTokens() !== null)
@@ -251,6 +256,7 @@ export function useGoogleAuth() {
   const handleCallback = useCallback(async (code: string) => {
     setIsLoading(true)
     setError(null)
+    let identityCommitOwner: { userId: string; sessionEpoch: number } | null = null
     try {
       const activeSession = getActiveSession()
       if (!activeSession) {
@@ -275,20 +281,24 @@ export function useGoogleAuth() {
       if (activeSession.authMethod === 'google' && returnedUserId !== storageOwner.userId) {
         throw new Error('Choisis le même compte Google que la session Arty active.')
       }
-      const previousGoogleUser = getStoredUser()
-      const canReuseRefreshToken = activeSession.authMethod === 'google'
-        || previousGoogleUser?.email.trim().toLowerCase() === googleUser.email.trim().toLowerCase()
-      await storeMailboxFreeGrant(tokens, storageOwner, {
-        preserveExistingRefreshToken: canReuseRefreshToken,
-      })
+      identityCommitOwner = storageOwner
       if (!(await storeUser(googleUser, storageOwner))) {
         throw new Error('Google user storage was superseded')
       }
+      await storeMailboxFreeGrant(tokens, storageOwner, {
+        preserveExistingRefreshToken: true,
+        verifiedEmail: googleUser.email,
+      })
       assertReconnectOwner()
       setUser(googleUser)
       setIsConnected(true)
       setReconsentRequired(false)
     } catch (err) {
+      if (
+        identityCommitOwner
+        && getActiveUserId() === identityCommitOwner.userId
+        && getActiveSessionEpoch() === identityCommitOwner.sessionEpoch
+      ) googleLogout()
       setError(err instanceof Error ? err.message : 'Erreur authentification')
       setUser(getStoredUser())
       setIsConnected(getStoredTokens() !== null)
