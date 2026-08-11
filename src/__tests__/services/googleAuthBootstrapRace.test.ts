@@ -41,7 +41,7 @@ describe('googleAuth — bootstrap et changement de compte', () => {
       access_token: 'token-a',
       refresh_token: 'refresh-a',
       expires_at: Date.now() + 3600_000,
-      oauth_profile: 'calendar-events-v1',
+      oauth_profile: 'calendar-events-owned-v2',
     }))
     await bootstrapA
 

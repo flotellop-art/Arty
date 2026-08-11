@@ -33,8 +33,8 @@ export const PlanBadge = memo(function PlanBadge() {
   if (status.loading) return null
 
   // Token Google absent/refusé : le plan Free local est un repli, pas une
-  // vérité. Le clic déclenche le vrai flux Google possédé par AppContent ;
-  // l'ancienne route `/settings` n'existait pas et menait dans le vide.
+  // vérité. Le clic ouvre une explication possédée par AppContent ; seul le
+  // bouton Google conforme de ce dialogue déclenche ensuite le flux OAuth.
   if (status.authRejected || status.authRequired) {
     const rejected = status.authRejected
     return (

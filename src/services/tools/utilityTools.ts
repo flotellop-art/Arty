@@ -78,13 +78,20 @@ export const utilityToolDefinitions = [
   },
 ]
 
+export function buildLocalReportUrl(origin: string, reportId: string): string {
+  return new URL(`/report/${encodeURIComponent(reportId)}`, `${origin}/`).toString()
+}
+
 export function createUtilityHandlers(): Record<string, ToolHandler> {
   return {
     generate_report: async (input) => {
       const title = input.title as string
       const content = input.content as string
       const reportId = await openReport(title, content)
-      return { result: `Rapport "${title}" prêt. Lien : [📄 Ouvrir le rapport](${window.location.origin}/report/${reportId})` }
+      // Le rapport est stocké dans le silo local de l'origine courante. Tant
+      // que la migration appfacade -> tryarty n'est pas terminée, changer ici
+      // de domaine produirait un lien canonique mais vide sur tryarty.com.
+      return { result: `Rapport "${title}" prêt. Lien : [📄 Ouvrir le rapport](${buildLocalReportUrl(window.location.origin, reportId)})` }
     },
 
     calculate_distance: async (input) => {

@@ -277,7 +277,7 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
                   if (!serverAuthCode) {
                     throw new Error(t('login.errors.noAuthCode'))
                   }
-                  // Shared strict exchange: announces calendar-events-v1 and
+                  // Shared strict exchange: announces calendar-events-owned-v2 and
                   // refuses a server response that was validated as legacy.
                   const { accessToken, refreshToken, expiresIn } = await exchangeNativeGoogleCode(serverAuthCode)
 
@@ -300,12 +300,12 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
                   // userId. The mailbox-free helper encrypts via storeTokens,
                   // marks the reduced-scope epoch and only preserves a refresh
                   // token that was already issued inside that epoch.
+                  await storeUser({ email, name, picture: avatar || '' })
                   await storeMailboxFreeGrant({
                     access_token: accessToken,
                     refresh_token: refreshToken,
                     expires_at: Date.now() + expiresIn * 1000,
                   })
-                  await storeUser({ email, name, picture: avatar || '' })
                 } catch (err) {
                   console.error('Native Google login error:', err)
                   // Fall back to the API-key screen (recoverable) AND surface

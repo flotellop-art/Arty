@@ -19,9 +19,9 @@ export const PUBLIC_GOOGLE_SCOPES = [
   'openid',
   'https://www.googleapis.com/auth/userinfo.email',
   'https://www.googleapis.com/auth/userinfo.profile',
-  'https://www.googleapis.com/auth/calendar.events',
+  'https://www.googleapis.com/auth/calendar.events.owned',
 ]
-export const CURRENT_GOOGLE_OAUTH_PROFILE = 'calendar-events-v1' as const
+export const CURRENT_GOOGLE_OAUTH_PROFILE = 'calendar-events-owned-v2' as const
 
 export function getGoogleOAuthScopes(): string[] {
   return [...PUBLIC_GOOGLE_SCOPES]
@@ -119,7 +119,7 @@ async function migrateLegacyGrantForEpoch(epochKey: string): Promise<boolean> {
 
 export async function migrateLegacyMailboxGrant(): Promise<boolean> {
   if (scoped.getItem(MAILBOX_FREE_OAUTH_EPOCH_KEY) === '1') return false
-  // calendar-events-v1 is server-proven exact and therefore mailbox-free.
+  // calendar-events-owned-v2 is server-proven exact and therefore mailbox-free.
   // If its marker write was interrupted after the token commit, self-heal the
   // old marker instead of revoking a known-current grant.
   if (getStoredTokens()?.oauth_profile === CURRENT_GOOGLE_OAUTH_PROFILE) {
@@ -435,6 +435,13 @@ export async function storeMailboxFreeGrant(tokens: GoogleTokens): Promise<Googl
   }
   scoped.setItem(MAILBOX_FREE_OAUTH_EPOCH_KEY, '1')
   scoped.removeItem(GOOGLE_OAUTH_RECONSENT_KEY)
+  // Le flux natif reste sur la même vue : publier immédiatement le nouveau
+  // grant afin que useGoogleAuth et usePlanStatus relisent la session/VIP sans
+  // attendre un focus ou un redémarrage. Le callback web bénéficie du même
+  // signal avant sa navigation finale.
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('google-storage-ready'))
+  }
   return mailboxFreeTokens
 }
 

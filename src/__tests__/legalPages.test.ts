@@ -33,6 +33,21 @@ describe('public legal pages', () => {
     }
   })
 
+  it.each([
+    ['privacy/index.html', 'https://tryarty.com/privacy/'],
+    ['privacy/en/index.html', 'https://tryarty.com/privacy/en/'],
+    ['terms/index.html', 'https://tryarty.com/terms/'],
+    ['terms/en/index.html', 'https://tryarty.com/terms/en/'],
+    ['legal-notice/index.html', 'https://tryarty.com/legal-notice/'],
+    ['legal-notice/en/index.html', 'https://tryarty.com/legal-notice/en/'],
+  ])('uses the final trailing-slash canonical URL in %s', (path, canonical) => {
+    const html = publicFile(path)
+    expect(html).toContain(`<link rel="canonical" href="${canonical}"`)
+    if (path.startsWith('privacy/')) {
+      expect(html).toContain(`<meta property="og:url" content="${canonical}"`)
+    }
+  })
+
   it.each(['agenda', 'confiance', 'essai', 'prix'])(
     'shows legal and branded-support links on the %s landing page',
     (landing) => {

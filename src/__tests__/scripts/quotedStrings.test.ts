@@ -24,8 +24,8 @@ describe('quotedStrings — extraction des littéraux', () => {
   // Le cœur de la régression : un accent grave placé AVANT ne doit plus
   // empêcher la lecture des littéraux qui suivent.
   it('un accent grave antérieur ne masque pas les littéraux suivants', () => {
-    const out = extract("const tpl = `x`; const scope = 'https://www.googleapis.com/auth/calendar.events'")
-    expect(out).toContain('https://www.googleapis.com/auth/calendar.events')
+    const out = extract("const tpl = `x`; const scope = 'https://www.googleapis.com/auth/calendar.events.owned'")
+    expect(out).toContain('https://www.googleapis.com/auth/calendar.events.owned')
   })
 
   // LE cas qui a cassé la CI, et la seule forme qui reproduit vraiment la
@@ -37,10 +37,10 @@ describe('quotedStrings — extraction des littéraux', () => {
   it('un couple d’accents graves enjambant une ligne n’engloutit pas le scope situé entre eux', () => {
     const source = [
       'const tpl = `début de gabarit',
-      `  const scope = 'https://www.googleapis.com/auth/calendar.events'`,
+      `  const scope = 'https://www.googleapis.com/auth/calendar.events.owned'`,
       'fin de gabarit`',
     ].join('\n')
-    expect(extract(source)).toContain('https://www.googleapis.com/auth/calendar.events')
+    expect(extract(source)).toContain('https://www.googleapis.com/auth/calendar.events.owned')
   })
 
   // Propriété distincte de la précédente : un délimiteur ORPHELIN ne doit pas

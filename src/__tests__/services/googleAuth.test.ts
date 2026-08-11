@@ -14,7 +14,7 @@ import * as googleAuth from '../../services/googleAuth'
 
 function mockFetch(body: unknown, init: { ok?: boolean; status?: number } = {}) {
   const responseBody = body && typeof body === 'object' && 'access_token' in body && !('oauth_profile' in body)
-    ? { ...body, oauth_profile: 'calendar-events-v1' }
+    ? { ...body, oauth_profile: 'calendar-events-owned-v2' }
     : body
   const response = {
     ok: init.ok ?? true,
@@ -107,7 +107,7 @@ describe('googleAuth — storage paths', () => {
       access_token: 'legacy',
       refresh_token: 'r',
       expires_at: Date.now() + 3600_000,
-      oauth_profile: 'calendar-events-v1' as const,
+      oauth_profile: 'calendar-events-owned-v2' as const,
     }
     scoped.setJSON('google-tokens', tokens)
 
@@ -163,11 +163,15 @@ describe('googleAuth — storage paths', () => {
     expect(googleAuth.getStoredTokens()).toBeNull()
     expect(localStorage.getItem('arty-user-test-google-oauth-mailbox-free-v1')).toBeNull()
 
+    const ready = vi.fn()
+    window.addEventListener('google-storage-ready', ready)
     await googleAuth.storeMailboxFreeGrant(tokens)
     expect(googleAuth.getStoredTokens()?.access_token).toBe('fresh-web-access')
     expect(localStorage.getItem('arty-user-test-google-oauth-mailbox-free-v1')).toBe('1')
-    expect(googleAuth.getStoredTokens()?.oauth_profile).toBe('calendar-events-v1')
+    expect(googleAuth.getStoredTokens()?.oauth_profile).toBe('calendar-events-owned-v2')
     expect(googleAuth.isGoogleOAuthReconsentRequired()).toBe(false)
+    expect(ready).toHaveBeenCalledOnce()
+    window.removeEventListener('google-storage-ready', ready)
   })
 
   it('exchangeCode ne recycle jamais un ancien refresh token pré-epoch', async () => {
@@ -299,7 +303,7 @@ describe('googleAuth — storage paths', () => {
         text: async () => JSON.stringify({
           access_token: 'fresh',
           expires_in: 3600,
-          oauth_profile: 'calendar-events-v1',
+          oauth_profile: 'calendar-events-owned-v2',
         }),
       } as unknown as Response
     }) as unknown as typeof fetch
@@ -331,7 +335,7 @@ describe('googleAuth — storage paths', () => {
       text: async () => JSON.stringify({
         access_token: 'fresh-shared',
         expires_in: 3600,
-        oauth_profile: 'calendar-events-v1',
+        oauth_profile: 'calendar-events-owned-v2',
       }),
     } as Response)
 
@@ -351,7 +355,7 @@ describe('googleAuth — storage paths', () => {
 
     const refreshed = await googleAuth.refreshAccessToken()
 
-    expect(refreshed?.oauth_profile).toBe('calendar-events-v1')
+    expect(refreshed?.oauth_profile).toBe('calendar-events-owned-v2')
     expect(await googleAuth.migrateLegacyCalendarGrant()).toBe(false)
   })
 
@@ -388,7 +392,7 @@ describe('googleAuth — storage paths', () => {
     resolveResponse(new Response(JSON.stringify({
       access_token: 'late',
       expires_in: 3600,
-      oauth_profile: 'calendar-events-v1',
+      oauth_profile: 'calendar-events-owned-v2',
     }), { status: 200 }))
 
     expect(await pending).toBeNull()
@@ -415,7 +419,7 @@ describe('googleAuth — storage paths', () => {
       access_token: 'kept',
       refresh_token: 'r',
       expires_at: Date.now() + 3600_000,
-      oauth_profile: 'calendar-events-v1',
+      oauth_profile: 'calendar-events-owned-v2',
     })
     const encBefore = scoped.getItem('google-tokens-enc')
     expect(encBefore).toBeTruthy()

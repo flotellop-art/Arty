@@ -50,10 +50,12 @@
     },
     "google": {
       "signIn": "Sign in with Google",
+      "continue": "Continue with Google",
       "failed": "Google sign-in failed. Please try again.",
       "iosUnavailable": "Google Sign-In on iOS still requires native configuration. For now, use the email trial or an API key.",
       "notice": "Connect your Google account for your identity, calendar, Drive and Contacts.",
-      "noticeNoCasa": "Connect your Google account for your identity and calendar."
+      "noticeNoCasa": "Connect your Google account for your identity and calendar.",
+      "disclosure": "Arty accesses your identity and events in your primary calendar to display, create, update or delete them only when you ask. Event information needed to answer may be sent to Anthropic (Claude, United States) solely to respond to you, never for advertising."
     },
     "email": {
       "label": "Email",
@@ -165,8 +167,8 @@
     "googleConnectError": "Google connection error:",
     "googleReconsent": {
       "title": "Reconnect Google for your calendar",
-      "body": "Arty now asks only for access to your events instead of full access to your calendar. Reconnect your account to keep viewing and creating events. Your Arty session and conversations stay intact.",
-      "cta": "Reconnect Google"
+      "body": "Arty now limits authorization to events on calendars you own and uses only your primary calendar. It no longer accesses shared calendars you do not own. Reconnect your account to view and manage your events. Your Arty session and conversations stay intact.",
+      "cta": "Continue with Google"
     },
     "resumeKicker": "Resume",
     "optionsSheetTitle": "Settings",
@@ -564,6 +566,8 @@
       "authRejectedTitle": "Your Google account could not be verified. Tap to reconnect it and restore your plan.",
       "authRequired": "Reconnect Google",
       "authRequiredTitle": "The Google session that proves your plan is no longer available. Tap to reconnect it.",
+      "reconnectDialogTitle": "Verify your Google account",
+      "reconnectDialogBody": "Reconnect the Google account linked to Arty to verify your plan and restore your access. Your Arty session and conversations stay intact.",
       "statusUnavailable": "Plan unavailable",
       "statusUnavailableTitle": "Your plan could not be verified right now. Tap to retry.",
       "bucketSonnet": "Sonnet",

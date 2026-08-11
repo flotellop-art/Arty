@@ -1,6 +1,6 @@
 # Dossier de vérification OAuth Google — Arty
 
-**Dernière mise à jour :** 9 août 2026
+**Dernière mise à jour :** 11 août 2026
 **Statut : ACTIF.** Remplace la version du 24 mai 2026, archivée en annexe.
 **Éditeur :** POLLET FLORENT, entrepreneur individuel, SIREN 887 679 611, Rue des Sièges, 30120 Bréau-Mars, France — support@tryarty.com
 **Projet Google Cloud :** n° 794968525529
@@ -8,7 +8,7 @@
 > **Ce qui a changé.** La version précédente décrivait une architecture avec
 > scopes Gmail et Drive, et concluait à un audit CASA. Elle est obsolète :
 > depuis la Phase 0 (13 juillet 2026), le client public ne demande plus que
-> quatre périmètres, dont un seul est sensible. **Il n'y a plus de CASA à
+> quatre périmètres pour le profil courant, dont un seul est sensible. **Il n'y a plus de CASA à
 > prévoir** (analyse du 9 août 2026, cf. RÈGLE 8 de `CLAUDE.md`). Ne pas
 > suivre l'annexe historique pour configurer Google Cloud.
 
@@ -37,46 +37,88 @@ Source de vérité : `functions/api/_lib/publicGoogleScopes.ts`, gelée par
 | `openid` | Élémentaire | Aucune revue |
 | `userinfo.email` | Élémentaire | Aucune revue |
 | `userinfo.profile` | Élémentaire | Aucune revue |
-| `calendar.events` | **Sensible** | Vérification requise — **pas de CASA** |
+| `calendar.events.owned` | **Sensible** | Vérification requise — **pas de CASA** |
 
 Un seul périmètre déclenche la vérification. C'est le prix de la
 fonctionnalité Agenda, et de rien d'autre.
 
-## 3. Prérequis publics — état vérifié le 9 août 2026
+## 3. Prérequis publics — état vérifié le 11 août 2026
 
-- [x] Page d'accueil : `https://tryarty.com`
-- [x] Politique de confidentialité : `/privacy` et `/privacy/en`
-- [x] Conditions d'utilisation : `/terms` et `/terms/en`
-- [x] Mentions légales : `/legal-notice` et `/legal-notice/en` (SIREN présent)
+- [x] Page d'accueil : `https://tryarty.com/`
+- [x] Politique de confidentialité : `/privacy/` et `/privacy/en/`
+- [x] Conditions d'utilisation : `/terms/` et `/terms/en/`
+- [x] Mentions légales : `/legal-notice/` et `/legal-notice/en/` (SIREN présent)
 - [x] Section « Google API Limited Use » dans la politique (PRIVACY.md §5)
-- [ ] **Domaine `tryarty.com` vérifié dans Google Search Console** — doit
-      l'être par le compte Google **propriétaire du projet Cloud**, sinon la
-      soumission est refusée sans explication utile
+- [x] **Domaine `tryarty.com` vérifié dans Google Search Console** par le
+      compte Google qui administre le projet Cloud (contre-vérification live du
+      11 août 2026 : propriété Domain `sc-domain:tryarty.com` accessible)
 - [ ] **Logo** téléversé sur l'écran de consentement (déclenche la
       vérification de marque, quelques jours ouvrés)
-- [ ] **Domaines autorisés** renseignés : `tryarty.com`
-- [ ] **Statut de publication** basculé en « Production »
+- [x] **Domaine autorisé** `tryarty.com`, origine JavaScript et URI de retour
+      `https://tryarty.com/auth/callback` enregistrés dans Google Cloud
+- [x] Client Web renommé **Arty Web** ; variante `www.tryarty.com` enregistrée
+      avec un callback same-origin
+- [x] Les quatre scopes exacts du nouveau profil sont déclarés dans « Accès aux
+      données », avec la justification de `calendar.events.owned` enregistrée
+- [x] Variable Cloudflare Pages Production
+      `VITE_GOOGLE_REDIRECT_URI=https://tryarty.com/auth/callback`
+- [x] Avant le déploiement v2, variable serveur Cloudflare Pages Production
+      `GOOGLE_OAUTH_PREVIOUS_COMPAT_UNTIL=2026-09-30T23:59:59Z` pour que la
+      PWA et l'APK 1.0.97 puissent encore rafraîchir leur grant exact
+      `calendar-events-v1`. Le code refuse toute date postérieure au
+      31 octobre 2026 et tout ensemble de scopes différent.
+- [ ] **Gate de soumission Google** : tant que des clients 1.0.97 demandent
+      encore `calendar.events`, déclarer aussi ce scope sensible et expliquer
+      la migration, ou attendre la fin mesurée de ce trafic puis retirer la
+      compatibilité v1 avant de soumettre. Ne jamais présenter à Google les
+      quatre scopes v2 comme l'intégralité du trafic pendant la transition.
+- [x] **Statut de publication** : « En production » (contre-vérification live
+      du 11 août 2026)
+- [ ] Conserver temporairement l'origine et le callback exacts
+      `appfacade.pages.dev` pendant la migration : les anciennes données PWA
+      sont isolées par origine et certains utilisateurs doivent se reconnecter
+      pour les exporter. Avant de les retirer de Google Cloud, déployer sur
+      l'ancien domaine un écran lecture/export qui interdit tout nouveau login.
+- [ ] Après export/import et période de grâce mesurée, retirer le callback
+      exact `appfacade.pages.dev`, puis seulement activer sa redirection HTTP
+      permanente vers `tryarty.com`. Les previews `*.appfacade.pages.dev`
+      restent liées au projet Pages mais ne disposent d'aucun wildcard OAuth
+      chez Google.
+- [ ] Vidéo de démonstration YouTube non listée, couvrant le consentement en
+      anglais et les quatre opérations Calendar
+- [ ] Soumettre la vérification de marque et du scope sensible
 
-Les quatre cases non cochées sont les seules choses qui restent à faire, et
-aucune ne se fait depuis le dépôt.
+Les cases non cochées combinent une action de console (logo/soumission), une
+preuve E2E après déploiement et la vidéo exigée par Google. La redirection
+permanente de l'ancien domaine reste volontairement hors de cette phase : elle
+attendra l'export/import des données locales de la PWA.
 
 ## 4. Justification à coller telle quelle (Google attend de l'anglais)
 
-**calendar.events**
+**calendar.events.owned**
 
-> Arty reads and creates calendar events only when the user requests an
-> agenda-related action, using the event-only scope instead of full calendar
-> access. This OAuth request is limited to Calendar: Arty does not request any
-> Gmail API scope and does not use Google Sign-In or any Google API to read
-> Gmail. Separately, and independently of this OAuth flow, the Android app
-> offers an optional IMAP mail client: if a user chooses to connect a mailbox —
-> which may be a Gmail account secured with an app password, or any other IMAP
-> provider — the device connects directly to that mail server in read-only
-> mode. No Google API, OAuth token, or Arty server is involved in that
-> connection, and message content is shared only with Arty's AI provider
-> (Anthropic) to answer the user's request. Outside of this separate,
-> user-initiated feature, email content is processed only when the user
-> manually pastes, attaches, or shares it with the assistant.
+> Arty lists, creates, updates, and deletes events only in the user's primary
+> calendar when the user explicitly requests an agenda-related feature. We
+> request `calendar.events.owned` because Arty never accesses calendars the
+> user does not own; the broader `calendar.events` and `calendar` scopes are
+> unnecessary. Event deletion requires an additional in-app confirmation.
+> Event information needed to interpret or perform the request, such as title,
+> time, location, and the user's instructions, may be sent to Anthropic Claude
+> through Arty's Cloudflare proxy. Arty does not store that information
+> server-side beyond request processing. Under Anthropic's standard API policy,
+> inputs and outputs are deleted within 30 days, subject to its documented legal
+> and abuse-prevention exceptions, and are not used to train generative models
+> unless the customer explicitly opts in. This OAuth request is limited to
+> Calendar: Arty does not request any Gmail API scope and does not use Google
+> Sign-In or any Google API to read Gmail. Separately, and independently of this
+> OAuth flow, the Android app offers an optional IMAP mail client: if a user
+> chooses to connect a mailbox — which may be a Gmail account secured with an
+> app password, or any other IMAP provider — the device connects directly to
+> that mail server in read-only mode. No Google API, OAuth token, or Arty server
+> is involved in that connection, and message content is shared only with
+> Arty's AI provider (Anthropic) to answer the user's request. Outside of this
+> separate, user-initiated feature, email content is processed only when the
+> user manually pastes, attaches, or shares it with the assistant.
 
 > ⚠️ Ce texte doit rester identique à celui de `PLAY-STORE-SUBMISSION.md` et
 > cohérent avec la politique de confidentialité publique. Un évaluateur croise
@@ -93,8 +135,8 @@ sensibles. Doit montrer, dans cet ordre :
 3. **l'écran de consentement Google en entier**, avec la barre d'adresse
    lisible : Google exige de voir le `client_id` dans l'URL et la liste exacte
    des permissions demandées ;
-4. l'usage réel de la permission : demander un événement à l'assistant, le
-   voir apparaître dans l'agenda, en créer un avec la confirmation ;
+4. l'usage réel de la permission : lister le calendrier principal, créer puis
+   modifier un événement, et montrer la confirmation avant sa suppression ;
 5. l'accès à la politique de confidentialité depuis l'application ;
 6. la déconnexion et la révocation de l'accès.
 
@@ -117,7 +159,7 @@ la justification écrite suffit, et c'est déjà fait au §4.
 
 ## 7. L'alternative, si la vérification bloque
 
-Le seul périmètre qui la déclenche est `calendar.events`. Le retirer ramène
+Le seul périmètre qui la déclenche est `calendar.events.owned`. Le retirer ramène
 l'application aux périmètres élémentaires : **plus d'avertissement, plus de
 plafond, aucune vérification à passer**. C'est un arbitrage produit —
 l'Agenda contre le délai de vérification — et non une contrainte technique.
@@ -174,7 +216,7 @@ le lancement du chronomètre des 14 jours.** Par nécessité, pas par confort.
   source officielle ne l'étaye).
 - En statut **« Testing »** uniquement : jetons de rafraîchissement expirés à
   **7 jours** dès qu'un périmètre sort du triplet openid/e-mail/profil.
-  `calendar.events` en sort. **Sans objet pour Arty, qui est en Production.**
+  `calendar.events.owned` en sort. **Sans objet pour Arty, qui est en Production.**
 - Instruction : **prévoir 4 à 8 semaines** pour la vérification d'un périmètre
   sensible ; environ 7 jours pour la revue d'accès production.
   ⚠️ Les « 10 jours » annoncés par Google sont un objectif pour un dossier

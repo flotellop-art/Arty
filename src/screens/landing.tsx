@@ -13,7 +13,7 @@
  * - la privacy n'est pas l'argument n°1 : section confiance APRÈS features ;
  * - le pricing reprend mot pour mot les clés upgrade.* (source de vérité) ;
  * - pas d'accès Gmail/Drive revendiqué : le profil OAuth public ne demande
- *   que calendar.events (PR #343/#344) — agenda + contenus joints/collés.
+ *   que calendar.events.owned — agenda principal + contenus joints/collés.
  */
 import { useTranslation } from 'react-i18next'
 import { ArtyWordmark } from '../components/shared/PrismMark'
