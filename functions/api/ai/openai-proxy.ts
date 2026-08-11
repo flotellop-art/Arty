@@ -1,6 +1,6 @@
 import type { Env } from '../../env'
 import {
-  checkAllowedUser,
+  checkAllowedVerifiedUser,
   isModelAllowedInTrial,
   isTrialExpired,
   proKeyRequiredResponse,
@@ -11,7 +11,8 @@ import {
 import {
   consumeEmailTrialMessage,
   emailTrialKey,
-  resolveProxyIdentity,
+  proxyIdentityFailureResponse,
+  resolveProxyIdentityDetailed,
   voidEmailTrialMessage,
 } from '../_lib/emailTrial'
 import {
@@ -177,9 +178,12 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
 
   // Anti-relais : identité Google OU jeton d'essai email (espace de clés disjoint,
   // plan figé 'trial', CRIT-1). Google prioritaire si les deux headers présents.
-  let identity: Awaited<ReturnType<typeof resolveProxyIdentity>>
+  let identityResolution: Awaited<ReturnType<typeof resolveProxyIdentityDetailed>>
   try {
-    identity = await awaitVisionDependency(resolveProxyIdentity(request, env), visionDeadline)
+    identityResolution = await awaitVisionDependency(
+      resolveProxyIdentityDetailed(request, env),
+      visionDeadline,
+    )
   } catch (error) {
     const timedOut = usesVisionTransport && visionDeadline?.signal.aborted
     cancelIncomingBody(error)
@@ -187,14 +191,12 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     if (timedOut) return visionTimeoutResponse()
     throw error
   }
-  if (!identity) {
+  if (identityResolution.status !== 'ok') {
     if (usesVisionTransport) cancelIncomingBody('vision_authentication_failed')
     cleanupEarlyVision()
-    return Response.json(
-      { error: 'Authentication required — please sign in with Google' },
-      { status: 401 }
-    )
+    return proxyIdentityFailureResponse(identityResolution)
   }
+  const identity = identityResolution.identity
   const email = identity.kind === 'email-trial' ? emailTrialKey(identity.email) : identity.email
 
   // Une auth lente/invalide est bornée par la deadline mais ne monopolise pas
@@ -333,7 +335,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     const accessOperation =
       identity.kind === 'email-trial'
         ? consumeEmailTrialMessage(env, identity.email)
-        : checkAllowedUser(request, env)
+        : checkAllowedVerifiedUser(identity.email, env)
     const result = await awaitVisionDependency(
       accessOperation,
       visionDeadline,

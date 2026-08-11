@@ -139,8 +139,23 @@ select {
   padding-bottom: var(--kb-height, 0px);
 }
 .keyboard-aware {
-  padding-bottom: var(--keyboard-height, 0px);
+  padding-bottom: max(
+    var(--keyboard-height, 0px),
+    var(--keyboard-aware-base-bottom, 0px)
+  );
   transition: padding-bottom 0.25s ease;
+}
+
+/* Écrans d'auth/onboarding : le viewport, et non le document WebView, est le
+   propriétaire du scroll. `my-auto` sur l'enfant centre les formulaires courts
+   mais retombe à 0 lorsque le contenu dépasse la hauteur disponible. */
+.auth-viewport-scroll {
+  height: var(--viewport-h, 100dvh);
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  padding-top: max(2.5rem, env(safe-area-inset-top, 0px));
+  --keyboard-aware-base-bottom: max(2.5rem, env(safe-area-inset-bottom, 0px));
 }
 
 @keyframes slow-rotate {

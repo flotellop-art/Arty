@@ -5,6 +5,7 @@ vi.mock('../../services/apiBase', () => ({
 }))
 vi.mock('../../services/userSession', () => ({
   getActiveUserId: () => 'user-test',
+  getActiveSessionEpoch: () => 0,
 }))
 
 // Keep crypto real but controllable
@@ -172,6 +173,24 @@ describe('googleAuth — storage paths', () => {
     expect(googleAuth.isGoogleOAuthReconsentRequired()).toBe(false)
     expect(ready).toHaveBeenCalledOnce()
     window.removeEventListener('google-storage-ready', ready)
+  })
+
+  it('ne recycle pas le refresh token d’une autre intégration Google liée', async () => {
+    await googleAuth.storeTokens({
+      access_token: 'old-linked-access',
+      refresh_token: 'old-linked-refresh',
+      expires_at: Date.now() + 3600_000,
+      oauth_profile: 'calendar-events-owned-v2',
+    })
+
+    await googleAuth.storeMailboxFreeGrant({
+      access_token: 'new-linked-access',
+      refresh_token: '',
+      expires_at: Date.now() + 3600_000,
+    }, undefined, { preserveExistingRefreshToken: false })
+
+    expect(googleAuth.getStoredTokens()?.access_token).toBe('new-linked-access')
+    expect(googleAuth.getStoredTokens()?.refresh_token).toBe('')
   })
 
   it('exchangeCode ne recycle jamais un ancien refresh token pré-epoch', async () => {

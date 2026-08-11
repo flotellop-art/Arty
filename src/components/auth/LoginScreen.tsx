@@ -21,7 +21,10 @@ interface LoginScreenProps {
     mistralKey?: string
     openaiKey?: string
     identifier: string
-  }) => Promise<UserSession>
+  }, beforePublish?: (
+    session: UserSession,
+    context: { userId: string; sessionEpoch: number },
+  ) => Promise<void>) => Promise<UserSession>
   knownSessions: UserSession[]
   onSwitchAccount: (userId: string) => void
 }
@@ -130,12 +133,16 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
         localStorage.setItem(`arty-email-hash-${email}`, hashHex)
       }
 
-      // Check if this user already has API keys saved
-      // We need to temporarily set a session to read scoped storage
-      const { generateUserId, setActiveSession } = await import('../../services/userSession')
+      // Lire le scope ciblé sans publier une session incomplète. Si l'user doit
+      // encore fournir sa clé API, un reload ne doit jamais l'authentifier.
+      const { generateUserId } = await import('../../services/userSession')
       const userId = await generateUserId('email', email)
-      setActiveSession({ userId, authMethod: 'email', displayName: email, email, createdAt: Date.now() })
-      const existingKeys = scoped.getJSON<{ anthropic: string; gemini?: string; mistral?: string; openai?: string }>('api-keys')
+      const existingKeys = scoped.getJSONForUser<{
+        anthropic: string
+        gemini?: string
+        mistral?: string
+        openai?: string
+      }>(userId, 'api-keys')
 
       if (existingKeys && existingKeys.anthropic) {
         // Already has keys — login directly
@@ -167,10 +174,9 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
   if (pendingAuth) {
     return (
       <main
-        className="bg-theme-bg text-theme-ink flex items-center justify-center px-7 py-8"
-        style={{ minHeight: 'var(--viewport-h, 100dvh)' }}
+        className="auth-viewport-scroll keyboard-aware bg-theme-bg text-theme-ink flex flex-col items-center px-7"
       >
-        <div className="w-full max-w-md">
+        <div className="my-auto w-full max-w-md">
           <header className="flex flex-col items-center mb-10">
             <ArtyWordmark size={22} color="rgb(var(--theme-accent))" />
             <div className="mt-5 mb-3 h-px w-full bg-theme-ink/10" />
@@ -199,10 +205,9 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
 
   return (
     <main
-      className="bg-theme-bg text-theme-ink flex items-center justify-center px-7 py-8"
-      style={{ minHeight: 'var(--viewport-h, 100dvh)' }}
+      className="auth-viewport-scroll keyboard-aware bg-theme-bg text-theme-ink flex flex-col items-center px-7"
     >
-      <div className="w-full max-w-md">
+      <div className="my-auto w-full max-w-md">
         <header className="flex flex-col items-center mb-10">
           <ArtyWordmark size={22} color="rgb(var(--theme-accent))" />
           <div className="mt-5 mb-3 h-px w-full bg-theme-ink/10" />
@@ -294,17 +299,15 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
                     avatar,
                     anthropicKey: 'server-provided',
                     identifier: email,
-                  })
-
-                  // Store Google data AFTER login — scoped storage needs the
-                  // userId. The mailbox-free helper encrypts via storeTokens,
-                  // marks the reduced-scope epoch and only preserves a refresh
-                  // token that was already issued inside that epoch.
-                  await storeUser({ email, name, picture: avatar || '' })
-                  await storeMailboxFreeGrant({
-                    access_token: accessToken,
-                    refresh_token: refreshToken,
-                    expires_at: Date.now() + expiresIn * 1000,
+                  }, async (_session, storageOwner) => {
+                    if (!(await storeUser({ email, name, picture: avatar || '' }, storageOwner))) {
+                      throw new Error('Google user storage was superseded')
+                    }
+                    await storeMailboxFreeGrant({
+                      access_token: accessToken,
+                      refresh_token: refreshToken,
+                      expires_at: Date.now() + expiresIn * 1000,
+                    }, storageOwner)
                   })
                 } catch (err) {
                   console.error('Native Google login error:', err)

@@ -1,7 +1,7 @@
 import type { Env } from '../../env'
 import { classifyUpstreamBilling } from '../_lib/upstreamBilling'
 import {
-  checkAllowedUser,
+  checkAllowedVerifiedUser,
   isModelAllowedInTrial,
   isTrialExpired,
   proKeyRequiredResponse,
@@ -12,7 +12,8 @@ import {
 import {
   consumeEmailTrialMessage,
   emailTrialKey,
-  resolveProxyIdentity,
+  proxyIdentityFailureResponse,
+  resolveProxyIdentityDetailed,
   voidEmailTrialMessage,
 } from '../_lib/emailTrial'
 import {
@@ -60,13 +61,11 @@ function requestedGroundingTool(body: Record<string, unknown>): GeminiGroundingT
 export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUntil }) => {
   // Anti-relais : identité Google OU jeton d'essai email (espace de clés disjoint,
   // plan figé 'trial', CRIT-1). Google prioritaire si les deux headers présents.
-  const identity = await resolveProxyIdentity(request, env)
-  if (!identity) {
-    return Response.json(
-      { error: 'Authentication required — please sign in with Google' },
-      { status: 401 }
-    )
+  const identityResolution = await resolveProxyIdentityDetailed(request, env)
+  if (identityResolution.status !== 'ok') {
+    return proxyIdentityFailureResponse(identityResolution)
   }
+  const identity = identityResolution.identity
   const email = identity.kind === 'email-trial' ? emailTrialKey(identity.email) : identity.email
 
   let walletResId: string | undefined
@@ -113,7 +112,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     const result =
       identity.kind === 'email-trial'
         ? await consumeEmailTrialMessage(env, identity.email)
-        : await checkAllowedUser(request, env)
+        : await checkAllowedVerifiedUser(identity.email, env)
     if (
       result &&
       !isTrialExpired(result) &&

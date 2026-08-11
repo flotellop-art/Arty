@@ -2,7 +2,8 @@ import type { Env } from '../../env'
 import {
   parseAllowedEmails,
   resolveUserPlan,
-  verifyGoogleUserStrict,
+  strictGoogleIdentityFailureResponse,
+  verifyGoogleIdentityStrictDetailed,
 } from '../_lib/checkAllowedUser'
 import { consumeTtsFreeQuota, TTS_FREE_DAILY_LIMIT } from '../_lib/freeQuota'
 import { recordUsage } from '../_lib/quota'
@@ -26,13 +27,9 @@ const ALLOWED_VOICES = ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer'] as 
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUntil }) => {
   // Anti-relais anonyme : un token Google valide est obligatoire (CRIT-4).
-  const email = await verifyGoogleUserStrict(request, env.GOOGLE_CLIENT_ID)
-  if (!email) {
-    return Response.json(
-      { error: 'Authentication required — please sign in with Google' },
-      { status: 401 }
-    )
-  }
+  const auth = await verifyGoogleIdentityStrictDetailed(request, env.GOOGLE_CLIENT_ID)
+  if (auth.status !== 'ok') return strictGoogleIdentityFailureResponse(auth)
+  const { email } = auth.identity
 
   // Corps : { text, voice? }. Le modèle reste serveur-contrôlé (coût).
   let body: { text?: unknown; voice?: unknown }

@@ -1,7 +1,23 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
-vi.mock('../../services/googleAuth', () => ({ getValidAccessToken: vi.fn() }))
+const authState = vi.hoisted(() => ({
+  session: null as null | { userId: string; authMethod: 'google' | 'email' | 'apikey' },
+  epoch: 0,
+  storageReady: true,
+  storedTokens: null as object | null,
+}))
+
+vi.mock('../../services/googleAuth', () => ({
+  getValidAccessToken: vi.fn(),
+  getStoredTokens: () => authState.storedTokens,
+  isGoogleStorageReady: () => authState.storageReady,
+}))
 vi.mock('../../services/emailTrialClient', () => ({ getTrialToken: vi.fn() }))
+vi.mock('../../services/userSession', () => ({
+  getActiveSession: () => authState.session,
+  getActiveUserId: () => authState.session?.userId ?? null,
+  getActiveSessionEpoch: () => authState.epoch,
+}))
 
 import { buildAiHeaders, fetchWithTimeout } from '../../services/aiHttp'
 import { getValidAccessToken } from '../../services/googleAuth'
@@ -13,6 +29,10 @@ const mockTrial = getTrialToken as unknown as Mock
 beforeEach(() => {
   mockGoogle.mockReset(); mockTrial.mockReset()
   mockGoogle.mockResolvedValue('gtok'); mockTrial.mockReturnValue(null)
+  authState.session = null
+  authState.epoch = 0
+  authState.storageReady = true
+  authState.storedTokens = null
 })
 afterEach(() => vi.unstubAllGlobals())
 
@@ -57,6 +77,66 @@ describe('buildAiHeaders — trio factorisé (C9/F-20)', () => {
     const h = await buildAiHeaders()
     expect(h['x-google-token']).toBeUndefined()
     expect(h['x-arty-trial-token']).toBeUndefined()
+  })
+
+  it('session Google sans grant : refuse avant tout fallback email-trial', async () => {
+    authState.session = { userId: 'google-a', authMethod: 'google' }
+    authState.storedTokens = null
+    mockGoogle.mockResolvedValue(null)
+    mockTrial.mockReturnValue('trial-ne-doit-pas-fuir')
+
+    await expect(buildAiHeaders()).rejects.toThrow(/reconnect Google/i)
+    expect(mockTrial).not.toHaveBeenCalled()
+  })
+
+  it('cold boot Google : attend le déchiffrement puis joint le grant', async () => {
+    authState.session = { userId: 'google-a', authMethod: 'google' }
+    authState.storageReady = false
+    mockGoogle.mockResolvedValue('fresh-after-bootstrap')
+    mockTrial.mockReturnValue('trial-ne-doit-pas-fuir')
+
+    const pending = buildAiHeaders()
+    await Promise.resolve()
+    authState.storageReady = true
+    window.dispatchEvent(new CustomEvent('google-storage-ready'))
+
+    await expect(pending).resolves.toMatchObject({
+      'x-google-token': 'fresh-after-bootstrap',
+    })
+    expect(mockTrial).not.toHaveBeenCalled()
+  })
+
+  it.each(['email', 'apikey'] as const)(
+    'cold boot %s avec intégration Google : attend aussi le grant lié',
+    async (authMethod) => {
+      authState.session = { userId: `${authMethod}-a`, authMethod }
+      authState.storageReady = false
+      mockGoogle.mockResolvedValue('linked-google-after-bootstrap')
+      mockTrial.mockReturnValue('trial-ne-doit-pas-gagner')
+
+      const pending = buildAiHeaders({ byokKey: authMethod === 'apikey' ? 'sk-byok' : undefined })
+      await Promise.resolve()
+      expect(mockGoogle).not.toHaveBeenCalled()
+      authState.storageReady = true
+      window.dispatchEvent(new CustomEvent('google-storage-ready'))
+
+      await expect(pending).resolves.toMatchObject({
+        'x-google-token': 'linked-google-after-bootstrap',
+      })
+      expect(mockTrial).not.toHaveBeenCalled()
+    },
+  )
+
+  it('changement d’époque pendant le refresh : aucun ancien token n’est retourné', async () => {
+    authState.session = { userId: 'google-a', authMethod: 'google' }
+    let resolveToken!: (token: string) => void
+    mockGoogle.mockReturnValue(new Promise<string>((resolve) => { resolveToken = resolve }))
+
+    const pending = buildAiHeaders()
+    authState.epoch += 1
+    resolveToken('stale-token')
+
+    await expect(pending).rejects.toThrow(/session changed/i)
   })
 
   it('Content-Type reste présent quand des extra sont fournis', async () => {

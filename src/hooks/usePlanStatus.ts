@@ -10,7 +10,11 @@ import {
 } from '../services/googleAuth'
 import { apiUrl } from '../services/apiBase'
 import { fetchWalletBalance, creditsCoverPremium } from '../services/walletClient'
-import { getActiveSession, getActiveUserId } from '../services/userSession'
+import {
+  getActiveSession,
+  getActiveSessionEpoch,
+  getActiveUserId,
+} from '../services/userSession'
 
 export type PlanType = 'free' | 'subscription' | 'pro' | 'vip'
 
@@ -115,6 +119,7 @@ function unverifiedStatus(
 
 interface SharedPlanRefresh {
   userId: string | null
+  sessionEpoch: number
   promise: Promise<PlanStatus | null>
 }
 
@@ -125,8 +130,13 @@ interface SharedPlanRefresh {
 // concurrents.
 let sharedPlanRefresh: SharedPlanRefresh | null = null
 
-async function resolvePlanStatus(requestUserId: string | null): Promise<PlanStatus | null> {
-  const isCurrentUser = () => getActiveUserId() === requestUserId
+async function resolvePlanStatus(
+  requestUserId: string | null,
+  requestSessionEpoch: number,
+): Promise<PlanStatus | null> {
+  const isCurrentUser = () =>
+    getActiveUserId() === requestUserId
+    && getActiveSessionEpoch() === requestSessionEpoch
   try {
     const token = await getValidAccessToken()
     if (!isCurrentUser()) return null
@@ -230,14 +240,21 @@ async function resolvePlanStatus(requestUserId: string | null): Promise<PlanStat
   }
 }
 
-function getSharedPlanRefresh(userId: string | null): Promise<PlanStatus | null> {
-  if (sharedPlanRefresh?.userId === userId) return sharedPlanRefresh.promise
+function getSharedPlanRefresh(
+  userId: string | null,
+  sessionEpoch: number,
+): Promise<PlanStatus | null> {
+  if (
+    sharedPlanRefresh?.userId === userId
+    && sharedPlanRefresh.sessionEpoch === sessionEpoch
+  ) return sharedPlanRefresh.promise
 
   const task: SharedPlanRefresh = {
     userId,
+    sessionEpoch,
     promise: Promise.resolve(null),
   }
-  task.promise = resolvePlanStatus(userId).finally(() => {
+  task.promise = resolvePlanStatus(userId, sessionEpoch).finally(() => {
     if (sharedPlanRefresh === task) sharedPlanRefresh = null
   })
   sharedPlanRefresh = task
@@ -251,11 +268,13 @@ export function usePlanStatus(): PlanStatus & { refresh: () => void } {
   const refresh = useCallback(async () => {
     const requestId = ++refreshSerialRef.current
     const requestUserId = getActiveUserId()
-    const nextState = await getSharedPlanRefresh(requestUserId)
+    const requestSessionEpoch = getActiveSessionEpoch()
+    const nextState = await getSharedPlanRefresh(requestUserId, requestSessionEpoch)
     if (
       nextState
       && requestId === refreshSerialRef.current
       && getActiveUserId() === requestUserId
+      && getActiveSessionEpoch() === requestSessionEpoch
     ) {
       setState(nextState)
     }

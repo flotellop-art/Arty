@@ -10,7 +10,11 @@ export async function callGoogleApi(
   if (!token) throw new Error('Google non connecté.')
   const res = await fetch(apiUrl(endpoint), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      'x-google-token': token,
+    },
     body: JSON.stringify(payload),
   })
   const data = await safeJson(res)

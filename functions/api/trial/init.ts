@@ -3,6 +3,7 @@ import {
   parseAllowedEmails,
   ensureTrialTable,
   TRIAL_INITIAL_BUDGET,
+  verifyTokenViaTokeninfoDetailed,
 } from '../_lib/checkAllowedUser'
 
 /**
@@ -30,34 +31,6 @@ import {
 interface TrialInitResponse {
   plan: 'trial' | 'vip' | 'subscription' | 'pro' | 'free'
   trial_messages_remaining?: number
-}
-
-async function verifyTokenViaTokeninfo(token: string, expectedAud: string | undefined): Promise<string | null> {
-  try {
-    const res = await fetch(
-      `https://oauth2.googleapis.com/tokeninfo?access_token=${encodeURIComponent(token)}`
-    )
-    if (!res.ok) return null
-    const info = (await res.json()) as {
-      email?: string
-      email_verified?: string | boolean
-      aud?: string
-      azp?: string
-    }
-    const email = info.email?.toLowerCase()
-    if (!email) return null
-    // H-Plan-2 (audit étape 5) — durcir : email_verified ET aud == NOTRE client.
-    // Évite qu'un token Google d'une AUTRE application crée une subscription
-    // au nom de cet email dans NOTRE D1.
-    const verified = info.email_verified === 'true' || info.email_verified === true
-    if (!verified) return null
-    if (expectedAud && info.aud && info.aud !== expectedAud && info.azp !== expectedAud) {
-      return null
-    }
-    return email
-  } catch {
-    return null
-  }
 }
 
 // ─── Attribution first-party pubs (LP Meta, sans pixel) ────────────────────
@@ -183,10 +156,14 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     return Response.json({ error: 'unauthorized' }, { status: 401 })
   }
 
-  const email = await verifyTokenViaTokeninfo(token, env.GOOGLE_CLIENT_ID)
-  if (!email) {
+  const verification = await verifyTokenViaTokeninfoDetailed(token, env.GOOGLE_CLIENT_ID)
+  if (verification.status === 'unavailable' || verification.status === 'misconfigured') {
+    return Response.json({ error: 'authentication_unavailable' }, { status: 503 })
+  }
+  if (verification.status !== 'ok') {
     return Response.json({ error: 'unauthorized' }, { status: 401 })
   }
+  const email = verification.email
 
   // VIP bypass — beta testeurs n'ont pas besoin de trial : pas de ligne
   // D1, pas de compteur KV. Idempotent par construction.

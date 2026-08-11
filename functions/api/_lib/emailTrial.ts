@@ -1,7 +1,7 @@
 import type { Env } from '../../env'
 import { consumeCapAtomic } from './atomicQuota'
 import {
-  verifyGoogleUserStrict,
+  verifyTokenViaTokeninfoDetailed,
   type AllowedUser,
   type CheckResult,
   TRIAL_ALLOWED_MODELS,
@@ -562,23 +562,71 @@ export type ProxyIdentity =
   | { kind: 'google'; email: string }
   | { kind: 'email-trial'; email: string /* normalisé */ }
 
+export type ProxyIdentityResolution =
+  | { status: 'ok'; identity: ProxyIdentity }
+  | { status: 'unauthorized' }
+  | { status: 'unavailable' }
+
 /**
  * Gate d'identité des proxys IA : Google D'ABORD (toujours prioritaire), puis
  * fallback email-trial. Ne broaden PAS le gate Google — la mémoire et les
  * endpoints Google restent Google-only (l'email-trial n'a pas de token Google).
  * Si les deux headers sont envoyés, Google gagne.
  */
-export async function resolveProxyIdentity(
+export async function resolveProxyIdentityDetailed(
   request: Request,
   env: Env
-): Promise<ProxyIdentity | null> {
+): Promise<ProxyIdentityResolution> {
   // Les proxys dépensent une clé owner : l'audience Arty est obligatoire et
-  // un échec tokeninfo ne doit jamais basculer sur une identité Google permissive.
-  const googleEmail = await verifyGoogleUserStrict(request, env.GOOGLE_CLIENT_ID)
-  if (googleEmail) return { kind: 'google', email: googleEmail }
+  // un échec tokeninfo ne doit jamais basculer sur une identité email-trial.
+  // Le Bearer Authorization appartient éventuellement au fournisseur BYOK :
+  // seule la voie explicite x-google-token est autorisée ici.
+  const hasGoogleHeader = request.headers.has('x-google-token')
+  const googleToken = request.headers.get('x-google-token')?.trim() || ''
+  if (hasGoogleHeader) {
+    const verification = await verifyTokenViaTokeninfoDetailed(
+      googleToken,
+      env.GOOGLE_CLIENT_ID,
+    )
+    if (verification.status === 'ok') {
+      return { status: 'ok', identity: { kind: 'google', email: verification.email } }
+    }
+    if (verification.status === 'unavailable' || verification.status === 'misconfigured') {
+      console.warn(`[proxy-auth] google_${verification.status}`)
+      return { status: 'unavailable' }
+    }
+    return { status: 'unauthorized' }
+  }
+
   const trialEmail = await verifyEmailTrialToken(request, env)
-  if (trialEmail) return { kind: 'email-trial', email: trialEmail }
-  return null
+  if (trialEmail) {
+    return { status: 'ok', identity: { kind: 'email-trial', email: trialEmail } }
+  }
+  return { status: 'unauthorized' }
+}
+
+/** Compatibilité pour les endpoints qui n'exposent pas encore la distinction 401/503. */
+export async function resolveProxyIdentity(
+  request: Request,
+  env: Env,
+): Promise<ProxyIdentity | null> {
+  const result = await resolveProxyIdentityDetailed(request, env)
+  return result.status === 'ok' ? result.identity : null
+}
+
+export function proxyIdentityFailureResponse(
+  resolution: Exclude<ProxyIdentityResolution, { status: 'ok' }>,
+): Response {
+  if (resolution.status === 'unavailable') {
+    return Response.json(
+      { error: 'Authentication service temporarily unavailable' },
+      { status: 503 },
+    )
+  }
+  return Response.json(
+    { error: 'Authentication required — please sign in with Google' },
+    { status: 401 },
+  )
 }
 
 /** Pour les peeks/auxiliaires : retourne un AllowedUser email-trial sans décrémenter. */

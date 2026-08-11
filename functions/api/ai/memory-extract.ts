@@ -1,5 +1,8 @@
 import type { Env } from '../../env'
-import { verifyGoogleUserStrict } from '../_lib/checkAllowedUser'
+import {
+  strictGoogleIdentityFailureResponse,
+  verifyGoogleIdentityStrictDetailed,
+} from '../_lib/checkAllowedUser'
 import { consumeCapAtomic } from '../_lib/atomicQuota'
 import { recordUsage } from '../_lib/quota'
 
@@ -71,10 +74,11 @@ function sanitizeFacts(raw: unknown): ExistingFact[] {
 }
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
-  const email = await verifyGoogleUserStrict(request, env.GOOGLE_CLIENT_ID)
-  if (!email) {
-    return Response.json({ error: 'Authentication required' }, { status: 401 })
+  const auth = await verifyGoogleIdentityStrictDetailed(request, env.GOOGLE_CLIENT_ID)
+  if (auth.status !== 'ok') {
+    return strictGoogleIdentityFailureResponse(auth, 'Authentication required')
   }
+  const { email } = auth.identity
   if (!env.ANTHROPIC_API_KEY) {
     return Response.json({ error: 'extract_unavailable' }, { status: 503 })
   }

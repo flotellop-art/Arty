@@ -49,7 +49,11 @@ function stubGoogle(opts: {
     if (url.includes('/tokeninfo')) {
       if (opts.tokeninfo === 'network_error') throw new Error('boom')
       if (opts.tokeninfo === 'http_error') return new Response('', { status: 400 })
-      return new Response(JSON.stringify(opts.tokeninfo ?? {}), { status: 200 })
+      return new Response(JSON.stringify({
+        ...(opts.tokeninfo ?? {}),
+        email: opts.email,
+        email_verified: !!opts.email,
+      }), { status: 200 })
     }
     throw new Error(`fetch inattendu: ${url}`)
   })

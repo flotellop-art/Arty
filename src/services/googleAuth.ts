@@ -3,7 +3,7 @@ import { safeJson } from '../utils/safeJson'
 import * as scoped from './scopedStorage'
 import { apiUrl } from './apiBase'
 import { encrypt, decrypt, isCryptoReady, selfTestCrypto } from './crypto'
-import { getActiveUserId } from './userSession'
+import { getActiveSessionEpoch, getActiveUserId } from './userSession'
 
 const FETCH_TIMEOUT_MS = 15_000
 
@@ -369,11 +369,31 @@ export async function exchangeCode(
   return persistGrant ? storeMailboxFreeGrant(tokens) : tokens
 }
 
-export async function storeTokens(tokens: GoogleTokens): Promise<boolean> {
+export interface GoogleStorageOwner {
+  userId: string | null
+  sessionEpoch: number
+}
+
+function currentStorageOwner(): GoogleStorageOwner {
+  return { userId: getActiveUserId(), sessionEpoch: getActiveSessionEpoch() }
+}
+
+function storageOwnerMatches(expected: GoogleStorageOwner): boolean {
+  return getActiveUserId() === expected.userId
+    && getActiveSessionEpoch() === expected.sessionEpoch
+}
+
+export async function storeTokens(
+  tokens: GoogleTokens,
+  expectedOwner?: GoogleStorageOwner,
+): Promise<boolean> {
+  if (expectedOwner && !storageOwnerMatches(expectedOwner)) return false
+  const ownerAtStart = currentStorageOwner()
   const writeGeneration = ++tokenStorageGeneration
-  const ownerAtStart = getActiveUserId()
   const writeStillCurrent = () =>
-    writeGeneration === tokenStorageGeneration && ownerAtStart === getActiveUserId()
+    writeGeneration === tokenStorageGeneration
+    && storageOwnerMatches(ownerAtStart)
+    && (!expectedOwner || storageOwnerMatches(expectedOwner))
   const abandonWrite = () => {
     if (writeGeneration === tokenStorageGeneration && memTokens === tokens) memTokens = null
     return false
@@ -409,10 +429,18 @@ export async function storeTokens(tokens: GoogleTokens): Promise<boolean> {
  * antérieur à cette époque peut encore porter les anciens scopes Gmail et ne
  * doit jamais être recyclé dans un grant frais.
  */
-export async function storeMailboxFreeGrant(tokens: GoogleTokens): Promise<GoogleTokens> {
-  const ownerAtStart = getActiveUserId()
+export async function storeMailboxFreeGrant(
+  tokens: GoogleTokens,
+  expectedOwner?: GoogleStorageOwner,
+  options: { preserveExistingRefreshToken?: boolean } = {},
+): Promise<GoogleTokens> {
+  const ownerAtStart = currentStorageOwner()
+  if (expectedOwner && !storageOwnerMatches(expectedOwner)) {
+    throw new Error('Google grant storage was superseded')
+  }
   const existingTokens = getStoredTokens()
-  const existingRefreshToken = existingTokens?.oauth_profile === CURRENT_GOOGLE_OAUTH_PROFILE
+  const existingRefreshToken = options.preserveExistingRefreshToken !== false
+    && existingTokens?.oauth_profile === CURRENT_GOOGLE_OAUTH_PROFILE
     ? existingTokens.refresh_token
     : ''
 
@@ -425,8 +453,8 @@ export async function storeMailboxFreeGrant(tokens: GoogleTokens): Promise<Googl
   // Persister d'abord le nouveau grant, puis seulement son marqueur. Si
   // l'écriture ou l'application s'interrompt entre les deux, le bootstrap
   // traitera le grant comme legacy et forcera une reconnexion sûre.
-  const committed = await storeTokens(mailboxFreeTokens)
-  if (!committed || ownerAtStart !== getActiveUserId()) {
+  const committed = await storeTokens(mailboxFreeTokens, expectedOwner)
+  if (!committed || !storageOwnerMatches(ownerAtStart)) {
     throw new Error('Google grant storage was superseded')
   }
   scoped.setItem(MAILBOX_FREE_OAUTH_EPOCH_KEY, '1')
@@ -441,11 +469,17 @@ export async function storeMailboxFreeGrant(tokens: GoogleTokens): Promise<Googl
   return mailboxFreeTokens
 }
 
-export async function storeUser(user: GoogleUser): Promise<boolean> {
+export async function storeUser(
+  user: GoogleUser,
+  expectedOwner?: GoogleStorageOwner,
+): Promise<boolean> {
+  if (expectedOwner && !storageOwnerMatches(expectedOwner)) return false
+  const ownerAtStart = currentStorageOwner()
   const writeGeneration = ++userStorageGeneration
-  const ownerAtStart = getActiveUserId()
   const writeStillCurrent = () =>
-    writeGeneration === userStorageGeneration && ownerAtStart === getActiveUserId()
+    writeGeneration === userStorageGeneration
+    && storageOwnerMatches(ownerAtStart)
+    && (!expectedOwner || storageOwnerMatches(expectedOwner))
   const abandonWrite = () => {
     if (writeGeneration === userStorageGeneration && memUser === user) memUser = null
     return false
@@ -612,7 +646,10 @@ export async function getValidAccessToken(): Promise<string | null> {
   return tokens.access_token
 }
 
-export async function fetchGoogleUser(accessToken: string): Promise<GoogleUser> {
+export async function fetchGoogleUser(
+  accessToken: string,
+  persistUser = true,
+): Promise<GoogleUser> {
   const t = withTimeout(FETCH_TIMEOUT_MS)
   let res: Response
   try {
@@ -633,7 +670,9 @@ export async function fetchGoogleUser(accessToken: string): Promise<GoogleUser> 
     picture: data.picture,
   }
 
-  await storeUser(user)
+  if (persistUser && !(await storeUser(user))) {
+    throw new Error('Google user storage was superseded')
+  }
   return user
 }
 

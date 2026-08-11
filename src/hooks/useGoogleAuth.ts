@@ -10,9 +10,16 @@ import {
   getValidAccessToken,
   isGoogleOAuthReconsentRequired,
   isGoogleStorageReady,
+  storeMailboxFreeGrant,
   storeUser,
   logout as googleLogout,
 } from '../services/googleAuth'
+import {
+  generateUserId,
+  getActiveSession,
+  getActiveSessionEpoch,
+  getActiveUserId,
+} from '../services/userSession'
 
 interface GoogleSignInNativePlugin {
   signIn(): Promise<{ email: string; name: string; avatar: string; serverAuthCode: string }>
@@ -126,6 +133,32 @@ export function useGoogleAuth() {
 
   const login = useCallback(async () => {
     if (!storageReady) return
+    const activeSession = getActiveSession()
+    if (!activeSession) {
+      setError('Session Arty active introuvable — reconnecte-toi depuis l’écran de connexion.')
+      return
+    }
+    const storageOwner = {
+      userId: activeSession.userId,
+      sessionEpoch: getActiveSessionEpoch(),
+    }
+    const assertReconnectOwner = () => {
+      if (
+        getActiveUserId() !== storageOwner.userId
+        || getActiveSessionEpoch() !== storageOwner.sessionEpoch
+      ) throw new Error('La session active a changé pendant la reconnexion Google.')
+    }
+    const assertSameGoogleAccount = async (email: string) => {
+      assertReconnectOwner()
+      const returnedUserId = await generateUserId('google', email)
+      assertReconnectOwner()
+      // Un compte Arty Google doit retrouver la même identité. Un compte
+      // email/BYOK peut en revanche lier un compte Google distinct comme
+      // intégration Agenda/Drive, toujours sous son propre scope Arty.
+      if (activeSession.authMethod === 'google' && returnedUserId !== storageOwner.userId) {
+        throw new Error('Choisis le même compte Google que la session Arty active.')
+      }
+    }
     if (Capacitor.isNativePlatform() && Capacitor.getPlatform() !== 'android') {
       setError('Google Sign-In sur iOS nécessite encore la configuration native. Utilise provisoirement l’essai par email ou une clé API.')
       return
@@ -173,14 +206,25 @@ export function useGoogleAuth() {
         // encrypted-at-rest storage. redirect_uri MUST be '' for a native
         // serverAuthCode (BUG 2/28). exchangeCode throws on failure → the
         // catch below surfaces the error instead of a silent broken session.
-        await exchangeCode(result.serverAuthCode, '')
+        await assertSameGoogleAccount(result.email)
+        const tokens = await exchangeCode(result.serverAuthCode, '', false)
+        assertReconnectOwner()
 
         const googleUser: GoogleUser = {
           email: result.email,
           name: result.name || result.email?.split('@')[0] || '',
           picture: result.avatar || '',
         }
-        await storeUser(googleUser)
+        const previousGoogleUser = getStoredUser()
+        const canReuseRefreshToken = activeSession.authMethod === 'google'
+          || previousGoogleUser?.email.trim().toLowerCase() === googleUser.email.trim().toLowerCase()
+        await storeMailboxFreeGrant(tokens, storageOwner, {
+          preserveExistingRefreshToken: canReuseRefreshToken,
+        })
+        if (!(await storeUser(googleUser, storageOwner))) {
+          throw new Error('Google user storage was superseded')
+        }
+        assertReconnectOwner()
         setUser(googleUser)
         setIsConnected(true)
         setReconsentRequired(false)
@@ -188,6 +232,8 @@ export function useGoogleAuth() {
       } catch (err) {
         console.error('[useGoogleAuth] native login failed:', err)
         setError(err instanceof Error ? err.message : 'Erreur Google Sign-In')
+        setUser(getStoredUser())
+        setIsConnected(getStoredTokens() !== null)
       } finally {
         setIsLoading(false)
       }
@@ -206,14 +252,46 @@ export function useGoogleAuth() {
     setIsLoading(true)
     setError(null)
     try {
-      const tokens = await exchangeCode(code)
-      const googleUser = await fetchGoogleUser(tokens.access_token)
+      const activeSession = getActiveSession()
+      if (!activeSession) {
+        throw new Error('Session Arty active introuvable — recommence la connexion.')
+      }
+      const storageOwner = {
+        userId: activeSession.userId,
+        sessionEpoch: getActiveSessionEpoch(),
+      }
+      const assertReconnectOwner = () => {
+        if (
+          getActiveUserId() !== storageOwner.userId
+          || getActiveSessionEpoch() !== storageOwner.sessionEpoch
+        ) throw new Error('La session active a changé pendant la reconnexion Google.')
+      }
+
+      const tokens = await exchangeCode(code, undefined, false)
+      assertReconnectOwner()
+      const googleUser = await fetchGoogleUser(tokens.access_token, false)
+      const returnedUserId = await generateUserId('google', googleUser.email)
+      assertReconnectOwner()
+      if (activeSession.authMethod === 'google' && returnedUserId !== storageOwner.userId) {
+        throw new Error('Choisis le même compte Google que la session Arty active.')
+      }
+      const previousGoogleUser = getStoredUser()
+      const canReuseRefreshToken = activeSession.authMethod === 'google'
+        || previousGoogleUser?.email.trim().toLowerCase() === googleUser.email.trim().toLowerCase()
+      await storeMailboxFreeGrant(tokens, storageOwner, {
+        preserveExistingRefreshToken: canReuseRefreshToken,
+      })
+      if (!(await storeUser(googleUser, storageOwner))) {
+        throw new Error('Google user storage was superseded')
+      }
+      assertReconnectOwner()
       setUser(googleUser)
       setIsConnected(true)
       setReconsentRequired(false)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erreur authentification')
-      setIsConnected(false)
+      setUser(getStoredUser())
+      setIsConnected(getStoredTokens() !== null)
     } finally {
       setIsLoading(false)
     }

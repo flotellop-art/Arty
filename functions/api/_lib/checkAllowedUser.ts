@@ -39,8 +39,48 @@ function getGoogleToken(request: Request): string {
 
 export interface StrictGoogleIdentity {
   email: string
-  /** Stable Google account identifier (userinfo `id`). */
+  /** Stable Google account identifier (`sub`/`user_id` from tokeninfo). */
   sub: string | null
+}
+
+export type StrictGoogleIdentityResolution =
+  | { status: 'ok'; identity: StrictGoogleIdentity }
+  | { status: 'unauthorized' }
+  | { status: 'unavailable' }
+
+/**
+ * Variante détaillée du gate strict. Elle ne lit volontairement QUE
+ * `x-google-token` : `Authorization` peut contenir une clé BYOK fournisseur
+ * et ne doit jamais être envoyée à Google tokeninfo.
+ */
+export async function verifyGoogleIdentityStrictDetailed(
+  request: Request,
+  expectedAud: string | null | undefined,
+): Promise<StrictGoogleIdentityResolution> {
+  const googleToken = request.headers.get('x-google-token')?.trim() || ''
+  const verification = await verifyTokenViaTokeninfoDetailed(googleToken, expectedAud)
+  if (verification.status === 'ok') {
+    return {
+      status: 'ok',
+      identity: { email: verification.email, sub: verification.sub },
+    }
+  }
+  return verification.status === 'unavailable' || verification.status === 'misconfigured'
+    ? { status: 'unavailable' }
+    : { status: 'unauthorized' }
+}
+
+export function strictGoogleIdentityFailureResponse(
+  resolution: Exclude<StrictGoogleIdentityResolution, { status: 'ok' }>,
+  unauthorizedMessage = 'Authentication required — please sign in with Google',
+): Response {
+  if (resolution.status === 'unavailable') {
+    return Response.json(
+      { error: 'Authentication service temporarily unavailable' },
+      { status: 503 },
+    )
+  }
+  return Response.json({ error: unauthorizedMessage }, { status: 401 })
 }
 
 /**
@@ -48,9 +88,8 @@ export interface StrictGoogleIdentity {
  *
  * Unlike `verifyGoogleUser`, this helper is deliberately fail-closed:
  * - GOOGLE_CLIENT_ID is mandatory;
- * - tokeninfo must answer successfully;
- * - `aud` or `azp` must match Arty's client id;
- * - userinfo must confirm the account identity.
+ * - tokeninfo must answer successfully and confirm a verified email;
+ * - `aud` or `azp` must match Arty's client id.
  *
  * Google API pass-through endpoints keep using the legacy helper because they
  * forward the user's token to Google. Arty data/control endpoints must use this
@@ -65,35 +104,8 @@ export async function verifyGoogleIdentityStrict(
   request: Request,
   expectedAud: string | null | undefined
 ): Promise<StrictGoogleIdentity | null> {
-  const googleToken = getGoogleToken(request)
-  const audience = expectedAud?.trim()
-  if (!googleToken || !audience) return null
-
-  try {
-    const tokenRes = await fetch(
-      `https://oauth2.googleapis.com/tokeninfo?access_token=${encodeURIComponent(googleToken)}`,
-      { signal: AbortSignal.timeout(10_000) }
-    )
-    if (!tokenRes.ok) return null
-    const tokenInfo = (await tokenRes.json()) as { aud?: string; azp?: string }
-    if (tokenInfo.aud !== audience && tokenInfo.azp !== audience) return null
-
-    const userRes = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
-      headers: { Authorization: `Bearer ${googleToken}` },
-      signal: AbortSignal.timeout(10_000),
-    })
-    if (!userRes.ok) return null
-    const userInfo = (await userRes.json()) as {
-      email?: string
-      id?: string
-      verified_email?: boolean
-    }
-    const email = userInfo.email?.trim().toLowerCase()
-    if (!email || userInfo.verified_email !== true) return null
-    return { email, sub: userInfo.id || null }
-  } catch {
-    return null
-  }
+  const verification = await verifyGoogleIdentityStrictDetailed(request, expectedAud)
+  return verification.status === 'ok' ? verification.identity : null
 }
 
 export async function verifyGoogleUserStrict(
@@ -158,9 +170,11 @@ export async function verifyGoogleUser(
  * `subscription/status.ts` et `checkout/creem.ts`.
  */
 export type TokeninfoVerification =
-  | { status: 'ok'; email: string }
+  | { status: 'ok'; email: string; sub: string | null }
+  | { status: 'no_token' }
   | { status: 'rejected' }
   | { status: 'unavailable' }
+  | { status: 'misconfigured' }
 
 /**
  * Variante détaillée pour les endpoints de lecture qui doivent distinguer un
@@ -169,9 +183,14 @@ export type TokeninfoVerification =
  */
 export async function verifyTokenViaTokeninfoDetailed(
   token: string,
-  expectedAud: string | undefined
+  expectedAud: string | null | undefined
 ): Promise<TokeninfoVerification> {
-  if (!token) return { status: 'rejected' }
+  if (!token.trim()) return { status: 'no_token' }
+  const audience = expectedAud?.trim()
+  // L'audience est une condition de sécurité, pas une option. Une variable
+  // manquante ne doit jamais transformer n'importe quel token Google valide en
+  // identité Arty.
+  if (!audience) return { status: 'misconfigured' }
   try {
     const res = await fetch(
       `https://oauth2.googleapis.com/tokeninfo?access_token=${encodeURIComponent(token)}`,
@@ -190,6 +209,8 @@ export async function verifyTokenViaTokeninfoDetailed(
       email_verified?: string | boolean
       aud?: string
       azp?: string
+      sub?: string
+      user_id?: string
     }
     const email = info.email?.toLowerCase()
     if (!email) return { status: 'rejected' }
@@ -199,10 +220,10 @@ export async function verifyTokenViaTokeninfoDetailed(
     // est exigé (le `&& info.aud` court-circuitait la garde → token sans aud
     // accepté). Ces endpoints (paiement) reçoivent des tokens web où aud est
     // toujours présent → durcissement sûr.
-    if (expectedAud && info.aud !== expectedAud && info.azp !== expectedAud) {
+    if (info.aud !== audience && info.azp !== audience) {
       return { status: 'rejected' }
     }
-    return { status: 'ok', email }
+    return { status: 'ok', email, sub: info.sub || info.user_id || null }
   } catch {
     return { status: 'unavailable' }
   }
@@ -210,7 +231,7 @@ export async function verifyTokenViaTokeninfoDetailed(
 
 export async function verifyTokenViaTokeninfo(
   token: string,
-  expectedAud: string | undefined
+  expectedAud: string | null | undefined
 ): Promise<string | null> {
   const result = await verifyTokenViaTokeninfoDetailed(token, expectedAud)
   return result.status === 'ok' ? result.email : null
@@ -382,6 +403,20 @@ export async function checkAllowedUserPeek(
   const email = await verifyGoogleUserStrict(request, env.GOOGLE_CLIENT_ID)
   if (!email) return null
 
+  return checkAllowedVerifiedUserPeek(email, env)
+}
+
+/**
+ * Résout les droits à partir d'un email Google DÉJÀ vérifié par la primitive
+ * tokeninfo commune. Les proxys utilisent cette variante afin de ne pas refaire
+ * un second appel Google entre le gate d'identité et le gate de plan.
+ */
+export async function checkAllowedVerifiedUserPeek(
+  verifiedEmail: string,
+  env: Env,
+): Promise<AllowedUser> {
+  const email = verifiedEmail.trim().toLowerCase()
+
   const allowed = parseAllowedEmails(env.ALLOWED_EMAILS)
   if (allowed.includes(email)) {
     return { email, planType: 'vip' }
@@ -400,6 +435,16 @@ export async function checkAllowedUser(
   // Ce gate dépense les clés owner : audience Arty obligatoire, fail-closed.
   const email = await verifyGoogleUserStrict(request, env.GOOGLE_CLIENT_ID)
   if (!email) return null
+
+  return checkAllowedVerifiedUser(email, env)
+}
+
+/** Variante débitante pour une identité Google déjà vérifiée. */
+export async function checkAllowedVerifiedUser(
+  verifiedEmail: string,
+  env: Env,
+): Promise<Exclude<CheckResult, null>> {
+  const email = verifiedEmail.trim().toLowerCase()
 
   // ALLOWED_EMAILS = beta testeurs VIP, bypass du check D1
   const allowed = parseAllowedEmails(env.ALLOWED_EMAILS)
@@ -431,7 +476,7 @@ export async function checkAllowedUser(
  * atomique. D1 ferme la course. Fail-open sur incident D1 (modèles trial =
  * cheap, impact négligeable) plutôt que de bloquer un user.
  */
-async function consumeTrialMessage(env: Env, email: string): Promise<CheckResult> {
+async function consumeTrialMessage(env: Env, email: string): Promise<Exclude<CheckResult, null>> {
   if (!env.DB) {
     // Sans D1, fail-open : on autorise (les modèles trial sont cheap), on ne
     // peut juste pas décrémenter. Ne devrait pas arriver en prod.

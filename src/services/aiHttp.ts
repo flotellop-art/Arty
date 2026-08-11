@@ -1,6 +1,15 @@
 import { CapacitorHttp } from '@capacitor/core'
-import { getValidAccessToken } from './googleAuth'
+import {
+  getStoredTokens,
+  getValidAccessToken,
+  isGoogleStorageReady,
+} from './googleAuth'
 import { getTrialToken } from './emailTrialClient'
+import {
+  getActiveSession,
+  getActiveSessionEpoch,
+  getActiveUserId,
+} from './userSession'
 
 // ─────────────────────────────────────────────────────────────────────
 // Helper HTTP commun aux clients IA (C9 / F-20)
@@ -27,6 +36,43 @@ export interface AiHeaderOptions {
   extra?: Record<string, string>
 }
 
+let googleStorageReadyWait: Promise<void> | null = null
+
+/** Attend une seule fois le bootstrap chiffré partagé au cold boot. */
+function waitForGoogleStorageReady(timeoutMs = 10_000): Promise<void> {
+  if (isGoogleStorageReady()) return Promise.resolve()
+  if (googleStorageReadyWait) return googleStorageReadyWait
+  if (typeof window === 'undefined') {
+    return Promise.reject(new Error('Google authentication is still loading — please retry'))
+  }
+
+  let task!: Promise<void>
+  const pending = new Promise<void>((resolve, reject) => {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const cleanup = () => {
+      if (timer !== undefined) clearTimeout(timer)
+      window.removeEventListener('google-storage-ready', onReady)
+    }
+    const onReady = () => {
+      if (!isGoogleStorageReady()) return
+      cleanup()
+      resolve()
+    }
+    window.addEventListener('google-storage-ready', onReady)
+    timer = setTimeout(() => {
+      cleanup()
+      reject(new Error('Google authentication is still loading — please retry'))
+    }, timeoutMs)
+    // Ferme la fenêtre entre le premier test et l'abonnement à l'événement.
+    onReady()
+  })
+  task = pending.finally(() => {
+    if (googleStorageReadyWait === task) googleStorageReadyWait = null
+  })
+  googleStorageReadyWait = task
+  return task
+}
+
 /**
  * Construit les en-têtes d'une requête vers un proxy IA :
  *  - Content-Type JSON (+ `extra` provider) ;
@@ -43,10 +89,41 @@ export async function buildAiHeaders(opts: AiHeaderOptions = {}): Promise<Record
     else headers['Authorization'] = `Bearer ${key}`
   }
 
+  const sessionAtStart = getActiveSession()
+  const userIdAtStart = getActiveUserId()
+  const epochAtStart = getActiveSessionEpoch()
+  // Toute session Arty peut avoir une intégration Google liée (Agenda/Drive),
+  // pas seulement une session créée par Google. Attendre le bootstrap avant de
+  // décider entre x-google-token, essai email ou BYOK évite un changement
+  // silencieux d'identité au premier appel après reload.
+  if (sessionAtStart && !isGoogleStorageReady()) {
+    await waitForGoogleStorageReady()
+  }
+  if (
+    getActiveUserId() !== userIdAtStart
+    || getActiveSessionEpoch() !== epochAtStart
+  ) {
+    throw new Error('Authentication session changed — please retry')
+  }
   const googleToken = await getValidAccessToken()
+  if (
+    getActiveUserId() !== userIdAtStart
+    || getActiveSessionEpoch() !== epochAtStart
+  ) {
+    throw new Error('Authentication session changed — please retry')
+  }
   if (googleToken) {
     headers['x-google-token'] = googleToken
   } else {
+    // Une session Google ne doit jamais changer silencieusement d'identité en
+    // héritant d'un éventuel jeton d'essai email. Surtout, aucun fetch proxy ne
+    // doit partir sans la preuve Google attendue.
+    if (sessionAtStart?.authMethod === 'google') {
+      if (getStoredTokens()) {
+        throw new Error('Google authentication is temporarily unavailable — please retry')
+      }
+      throw new Error('Authentication required — please reconnect Google')
+    }
     const trialToken = getTrialToken()
     if (trialToken) headers['x-arty-trial-token'] = trialToken
   }

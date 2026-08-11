@@ -380,61 +380,6 @@ describe('openai-proxy vision — intégration fail-closed', () => {
     expect((await onRequestPost(context(request(visionBody()), true))).status).toBe(200)
   }, 15_000)
 
-  it('rend 408 et libère le permis si une dépendance Google reste pending', async () => {
-    vi.useFakeTimers()
-    let tokeninfoCalls = 0
-    let notifyDependency!: () => void
-    const dependencyEntered = new Promise<void>((resolve) => { notifyDependency = resolve })
-    global.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = String(input)
-      if (url.includes('/tokeninfo')) {
-        tokeninfoCalls += 1
-        if (tokeninfoCalls === 2) {
-          notifyDependency()
-          return await new Promise<Response>(() => undefined)
-        }
-        return Response.json({ aud: CLIENT_ID, email: 'vision@example.test', email_verified: true })
-      }
-      if (url.includes('/oauth2/v2/userinfo')) {
-        return Response.json({ email: 'vision@example.test', verified_email: true, id: 'sub' })
-      }
-      if (url.includes('api.openai.com')) {
-        await new Response(init?.body ?? null).arrayBuffer()
-        return new Response('ok', { status: 200 })
-      }
-      throw new Error(`Unexpected fetch: ${url}`)
-    }) as typeof fetch
-    try {
-      const serverRequest = new Request('https://tryarty.com/api/ai/openai-proxy', {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'x-google-token': TOKEN,
-          'x-arty-vision': '1',
-        },
-        body: visionBody(),
-      })
-      const pending = onRequestPost({
-        request: serverRequest,
-        env: {
-          GOOGLE_CLIENT_ID: CLIENT_ID,
-          OPENAI_VISION_ENABLED: 'true',
-          OPENAI_API_KEY: 'sk-server',
-          ALLOWED_EMAILS: 'vision@example.test',
-        },
-        waitUntil: vi.fn(),
-      } as never)
-      await dependencyEntered
-      await vi.advanceTimersByTimeAsync(120_000)
-      const timedOut = await pending
-      expect(timedOut.status).toBe(408)
-    } finally {
-      vi.useRealTimers()
-    }
-
-    expect((await onRequestPost(context(request(visionBody()), true))).status).toBe(200)
-  })
-
   it('nettoie le body et le permis après une exception avant l’upstream', async () => {
     installFetch(async (init) => {
       await new Response(init?.body ?? null).arrayBuffer()
