@@ -55,7 +55,7 @@
       "iosUnavailable": "Google Sign-In on iOS still requires native configuration. For now, use the email trial or an API key.",
       "notice": "Connect your Google account for your identity, calendar, Drive and Contacts.",
       "noticeNoCasa": "Connect your Google account for your identity and calendar.",
-      "disclosure": "Arty accesses your identity and events in your primary calendar to display, create, update or delete them only when you ask. Event information needed to answer may be sent to Anthropic (Claude, United States) solely to respond to you, never for advertising."
+      "disclosure": "By signing in, you authorize Arty to use your Google identity. After connection, Arty reads upcoming events from your primary calendar to display the Agenda. The proactive brief, enabled by default for paid and VIP accounts and switchable off in Settings, may also read these events and send Anthropic (Claude, United States) the context needed to prepare the brief. Arty creates, updates or deletes an event only when you ask. This data is never used for advertising."
     },
     "email": {
       "label": "Email",
@@ -959,6 +959,7 @@
       "titleMain": "The best AIs.",
       "titleAccent": "One app.",
       "lede": "Arty brings Claude, GPT-5, Gemini and Mistral together in one personal assistant, with your Google calendar and the content you choose to share with it.",
+      "googleData": "After Google connection, Arty displays upcoming events from your primary calendar. It creates, updates or deletes an event only when you ask. The proactive brief, enabled by default for paid and VIP accounts and switchable off in Settings, may read your upcoming events and send Anthropic (Claude) the context needed to prepare the brief. This data is never used for advertising.",
       "cta": "Try it free",
       "ctaNote": "30 free messages · no credit card",
       "secondary": "See pricing"

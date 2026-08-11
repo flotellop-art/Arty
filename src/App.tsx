@@ -19,6 +19,7 @@ import { ConversationScreen } from './components/chat/ConversationScreen'
 import { ReportPage } from './components/shared/ReportPage'
 import { ErrorBoundary } from './components/shared/ErrorBoundary'
 import { Toaster } from './components/shared/Toaster'
+import { PublicLandingFallback } from './components/shared/PublicLandingFallback'
 import { Sidebar } from './components/layout/Sidebar'
 import { ApiKeysModal } from './components/settings/ApiKeysModal'
 import { CapReachedModal } from './components/chat/CapReachedModal'
@@ -1146,9 +1147,9 @@ function LoggedOutHome({
       !entered && !Capacitor.isNativePlatform() && auth.knownSessions.length === 0
     if (showLanding) {
       return (
-        // Fallback vide aux couleurs du thème : pas de texte « Chargement… »
-        // en première impression marketing (le chunk arrive en <200ms).
-        <Suspense fallback={<div className="min-h-screen bg-theme-bg" />}>
+        // Le fallback reste public et informatif : la landing ne doit jamais
+        // apparaître vide pendant le chargement de son chunk lazy.
+        <Suspense fallback={<PublicLandingFallback />}>
           <LandingScreen onStart={() => setEntered(true)} onLogin={() => navigate('/login')} />
         </Suspense>
       )

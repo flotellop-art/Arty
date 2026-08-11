@@ -17,7 +17,7 @@ Le responsable de traitement au sens du RGPD est POLLET FLORENT, entrepreneur in
 |---|---|---|
 | Identité de connexion | Email, nom complet, photo de profil | Connexion Google (OAuth) |
 | Contenu utilisateur | Messages, fichiers et pièces jointes envoyés à l'assistant, y compris le contenu d'un email que vous collez, joignez ou partagez manuellement ; mémoire structurée, conversations partagées et signalements que vous soumettez volontairement | Vous |
-| Données Google Workspace | Lecture, création, modification et suppression d'événements de votre calendrier principal (Calendar), uniquement lorsque vous utilisez une fonction d'agenda. L'application publique n'utilise aucune API Gmail | Votre compte Google, sur votre demande explicite |
+| Données Google Workspace | Lecture des prochains événements de votre calendrier principal pour afficher l'Agenda et, si le brief proactif est activé, préparer ce brief ; création, modification et suppression d'événements seulement à votre demande. L'application publique n'utilise aucune API Gmail | Votre compte Google après connexion volontaire |
 | Boîtes mail connectées (app Android uniquement) | Si vous connectez volontairement une boîte mail (Free, Gmail, Yahoo, iCloud ou IMAP), l'assistant peut lister, rechercher et lire vos messages en LECTURE SEULE. La connexion se fait directement depuis votre téléphone (IMAP TLS) ; votre mot de passe d'application est chiffré via le Keystore Android (clé matérielle non extractible) et n'est jamais transmis à nos serveurs. Le contenu d'un message n'est transmis qu'à Anthropic (Claude), et à lui seul, uniquement quand vous posez une question qui le nécessite. Les pièces jointes de vos e-mails ne sont jamais lues | Vous (connexion volontaire dans Réglages → Boîtes mail) |
 | Localisation | Position géographique approximative | Capteur GPS de votre appareil, uniquement si activé |
 | Données de paiement | Email du compte, offre ou pack choisi, identifiants et statut de transaction ; Arty ne reçoit aucune coordonnée bancaire | Vous + Lemon Squeezy ou Creem |
@@ -27,7 +27,7 @@ Nous ne traçons pas votre navigation à des fins publicitaires et n'utilisons a
 
 Arty n'utilise aucune API Gmail et n'envoie, ne modifie ni ne supprime jamais un message dans votre boîte. Sans boîte connectée, le contenu d'un email n'est traité que si vous le collez, le joignez ou le partagez vous-même avec l'assistant. Si vous connectez une boîte mail dans l'app Android (mise à jour du 9 août 2026), l'assistant peut la LIRE (lecture seule) directement depuis votre téléphone pour répondre à vos demandes ; vous pouvez retirer une boîte à tout moment dans Réglages → Boîtes mail, ce qui supprime son mot de passe de l'appareil.
 
-Lorsque vous demandez une action liée à votre agenda, les informations nécessaires à la réponse ou à l'action (notamment titre, horaires, lieu et vos instructions) transitent par Cloudflare et peuvent être transmises à Anthropic (Claude) afin d'interpréter et d'exécuter votre demande. Arty ne les conserve pas sur ses serveurs au-delà du traitement de la requête. Selon la politique standard de l'API Anthropic, les entrées et sorties sont supprimées sous 30 jours, sauf exceptions documentées liées au respect des règles d'utilisation, à la loi ou à un accord spécifique ; elles ne servent pas à entraîner les modèles génératifs sauf accord explicite du client.
+Après connexion Google, Arty lit automatiquement vos prochains événements pour les afficher dans l'Agenda. Le brief proactif, activé par défaut pour les comptes payants et VIP et désactivable dans Paramètres, peut aussi lire ces événements et transmettre à Anthropic (Claude) le contexte nécessaire pour préparer le brief. Arty ne crée, modifie ou supprime un événement qu'à votre demande. Les informations nécessaires (notamment titre, horaires, lieu et vos instructions) transitent par Cloudflare ; Arty ne les conserve pas sur ses serveurs au-delà du traitement de la requête. Selon la politique standard de l'API Anthropic, les entrées et sorties sont supprimées sous 30 jours, sauf exceptions documentées liées au respect des règles d'utilisation, à la loi ou à un accord spécifique ; elles ne servent pas à entraîner les modèles génératifs sauf accord explicite du client.
 
 ## 3. Finalités et bases légales
 
@@ -47,9 +47,9 @@ Vos données sont transmises, **uniquement pour les finalités ci-dessus**, aux 
 | Prestataire | Rôle | Localisation | Garantie |
 |---|---|---|---|
 | Cloudflare | Hébergement Workers, Pages, KV (proxy API, stockage clés non sensibles, distribution du site) | UE + monde (CDN) | Standard Contractual Clauses (SCC), DPA Cloudflare |
-| Anthropic (Claude) | Génération de réponses IA, y compris traitement des informations Calendar strictement nécessaires à une demande d'agenda | États-Unis | SCC + EU-US Data Privacy Framework |
+| Anthropic (Claude) | Génération de réponses IA et du brief proactif activé, y compris traitement des informations Calendar nécessaires à ces fonctions | États-Unis | SCC + EU-US Data Privacy Framework |
 | OpenAI | Génération de réponses IA (selon le modèle choisi) | États-Unis | SCC + EU-US Data Privacy Framework |
-| Google (Gemini + Workspace) | Génération de réponses IA + fonctions Calendar explicitement demandées ; aucun connecteur Gmail dans l'application publique | UE + États-Unis | SCC + EU-US Data Privacy Framework |
+| Google (Gemini + Workspace) | Génération de réponses IA + affichage de l'Agenda, brief proactif activé et actions Calendar explicitement demandées ; aucun connecteur Gmail dans l'application publique | UE + États-Unis | SCC + EU-US Data Privacy Framework |
 | Mistral AI | Génération de réponses IA | France (UE) | Hébergement UE direct |
 | Lemon Squeezy | Traitement des paiements abonnement Pro | États-Unis | SCC + EU-US Data Privacy Framework, gestion PCI-DSS |
 | Creem | Merchant of Record et page de paiement hébergée pour les packs de crédits. Arty lui transmet l'email Google vérifié du compte, le produit/pack choisi, un identifiant de requête aléatoire et l'URL de retour. Les coordonnées bancaires sont saisies directement chez Creem et ne sont pas reçues par Arty. | Estonie (UE) | RGPD, DPA Creem ; SCC pour ses sous-traitants hors EEE |
@@ -64,7 +64,7 @@ Pour obtenir une copie des SCC signées avec un prestataire, contactez `support@
 
 L'utilisation par Arty des données reçues des API Google, et leur transfert vers toute autre application, respectent la [Google API Services User Data Policy](https://developers.google.com/terms/api-services-user-data-policy), y compris les exigences **Limited Use** :
 
-- l'accès à vos données Google se fait uniquement pour vous fournir les fonctionnalités que vous demandez ;
+- l'accès à vos données Google sert uniquement aux fonctions Calendar décrites ci-dessus : affichage de l'Agenda, brief proactif activé et actions que vous demandez explicitement ;
 - nous n'utilisons pas ces données à des fins publicitaires ;
 - nous ne les vendons pas ;
 - nous ne les utilisons pas pour entraîner des modèles d'IA généralistes ;

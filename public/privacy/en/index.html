@@ -99,7 +99,7 @@
     <tbody>
       <tr><td>Authentication identity</td><td>Email, full name, profile picture</td><td>Google Sign-In (OAuth)</td></tr>
       <tr><td>User content</td><td>Messages, files, and attachments sent to the assistant, including email content you manually paste, attach, or share; structured memory, shared conversations, and reports you voluntarily submit</td><td>You</td></tr>
-      <tr><td>Google Workspace data</td><td>Reading, creating, updating, and deleting events in your primary calendar (Calendar), only when you use an agenda feature. The public app does not use any Gmail API</td><td>Your Google account, on your explicit request</td></tr>
+      <tr><td>Google Workspace data</td><td>Reading upcoming events from your primary calendar to display the Agenda and, when the proactive brief is enabled, prepare that brief; creating, updating, and deleting events only when you ask. The public app does not use any Gmail API</td><td>Your Google account after voluntary connection</td></tr>
       <tr><td>Connected mailboxes (Android app only)</td><td>If you voluntarily connect a mailbox (Free, Gmail, Yahoo, iCloud or IMAP), the assistant can list, search and read your messages in READ-ONLY mode. The connection is made directly from your phone (IMAP TLS); your app password is encrypted with the Android Keystore (non-extractable hardware key) and is never sent to our servers. Message content is only sent to Anthropic (Claude), and to no other provider, and only when you ask a question that requires it. Your email attachments are never read</td><td>You (voluntary connection in Settings → Mailboxes)</td></tr>
       <tr><td>Location</td><td>Approximate geographic position</td><td>Your device's GPS sensor, only if enabled</td></tr>
       <tr><td>Payment data</td><td>Account email, selected offer or pack, transaction identifiers and status; Arty receives no payment-card details</td><td>You + Lemon Squeezy or Creem</td></tr>
@@ -108,7 +108,7 @@
   </table>
   <p>We do not track your browsing for advertising purposes and do not use any commercial profiling.</p>
   <p>Arty does not use any Gmail API and never sends, modifies or deletes a message in your mailbox. Without a connected mailbox, email content is processed only when you paste, attach, or share it with the assistant yourself. If you connect a mailbox in the Android app (update of August 9, 2026), the assistant can READ it (read-only) directly from your phone; you can remove a mailbox at any time in Settings → Mailboxes, which deletes its password from the device.</p>
-  <p>When you request an agenda-related action, the information needed to answer or perform it (including the event title, times, location, and your instructions) transits through Cloudflare and may be sent to Anthropic (Claude) to interpret and carry out your request. Arty does not retain it on its servers beyond processing the request. Under Anthropic's standard API policy, inputs and outputs are deleted within 30 days, except for documented usage-policy, legal, or custom-agreement exceptions; they are not used to train generative models unless the customer explicitly opts in.</p>
+  <p>After Google connection, Arty automatically reads your upcoming events to display them in the Agenda. The proactive brief, enabled by default for paid and VIP accounts and switchable off in Settings, may also read these events and send Anthropic (Claude) the context needed to prepare the brief. Arty creates, updates, or deletes an event only when you ask. The necessary information (including the event title, times, location, and your instructions) transits through Cloudflare; Arty does not retain it on its servers beyond processing the request. Under Anthropic's standard API policy, inputs and outputs are deleted within 30 days, except for documented usage-policy, legal, or custom-agreement exceptions; they are not used to train generative models unless the customer explicitly opts in.</p>
 
   <h2>3. Purposes and legal grounds</h2>
   <table>
@@ -128,9 +128,9 @@
     <thead><tr><th>Provider</th><th>Role</th><th>Location</th><th>Safeguard</th></tr></thead>
     <tbody>
       <tr><td>Cloudflare</td><td>Hosting Workers, Pages, KV (API proxy, non-sensitive key storage, site distribution)</td><td>EU + global (CDN)</td><td>Standard Contractual Clauses (SCC), Cloudflare DPA</td></tr>
-      <tr><td>Anthropic (Claude)</td><td>AI response generation, including Calendar information strictly necessary for an agenda request</td><td>United States</td><td>SCC + EU-US Data Privacy Framework</td></tr>
+      <tr><td>Anthropic (Claude)</td><td>AI response generation and enabled proactive briefs, including Calendar information needed for those features</td><td>United States</td><td>SCC + EU-US Data Privacy Framework</td></tr>
       <tr><td>OpenAI</td><td>AI response generation (depending on the selected model)</td><td>United States</td><td>SCC + EU-US Data Privacy Framework</td></tr>
-      <tr><td>Google (Gemini + Workspace)</td><td>AI response generation + Calendar features explicitly requested by the user; no Gmail connector in the public app</td><td>EU + United States</td><td>SCC + EU-US Data Privacy Framework</td></tr>
+      <tr><td>Google (Gemini + Workspace)</td><td>AI response generation + Agenda display, enabled proactive briefs, and explicitly requested Calendar actions; no Gmail connector in the public app</td><td>EU + United States</td><td>SCC + EU-US Data Privacy Framework</td></tr>
       <tr><td>Mistral AI</td><td>AI response generation</td><td>France (EU)</td><td>Direct EU hosting</td></tr>
       <tr><td>Lemon Squeezy</td><td>Pro subscription payment processing</td><td>United States</td><td>SCC + EU-US Data Privacy Framework, PCI-DSS compliance</td></tr>
       <tr><td>Creem</td><td>Merchant of Record and hosted checkout for prepaid credit packs. Arty sends the verified Google account email, selected product/pack, a random request ID, and the return URL. Payment-card details are entered directly with Creem and are not received by Arty.</td><td>Estonia (EU)</td><td>GDPR, Creem DPA; SCC for its sub-processors outside the EEA</td></tr>
@@ -144,7 +144,7 @@
   <h2>5. Google API Services Compliance (Limited Use)</h2>
   <p>Arty's use of information received from Google APIs, and its transfer to any other app, complies with the <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>, including the <strong>Limited Use</strong> requirements:</p>
   <ul>
-    <li>access to your Google data is performed only to deliver the features you request;</li>
+    <li>access to your Google data is used only for the Calendar features described above: Agenda display, an enabled proactive brief, and actions you explicitly request;</li>
     <li>we do not use this data for advertising purposes;</li>
     <li>we do not sell it;</li>
     <li>we do not use it to train general-purpose AI models;</li>
