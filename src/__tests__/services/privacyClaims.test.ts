@@ -31,9 +31,13 @@ describe('privacy and Play submission claims', () => {
 
   it('décrit complètement l’usage Calendar et son transfert nécessaire à Anthropic', () => {
     for (const policy of privacyCopies) {
-      expect(policy).toMatch(/Reading, creating, updating, and deleting|Lecture, création, modification et suppression/i)
+      expect(policy).toMatch(/Reading upcoming events|Lecture des prochains événements/i)
+      expect(policy).toMatch(/creating, updating, and deleting|création, modification et suppression/i)
       expect(policy).toMatch(/primary calendar|calendrier principal/i)
       expect(policy).toMatch(/event title, times, location|titre, horaires, lieu/i)
+      expect(policy).toMatch(/proactive brief|brief proactif/i)
+      expect(policy).toMatch(/paid and VIP accounts|comptes payants et VIP/i)
+      expect(policy).toMatch(/switchable off in Settings|désactivable dans Paramètres/i)
       expect(policy).toMatch(/Anthropic/)
       expect(policy).toMatch(/within 30 days|sous 30 jours/i)
       expect(policy).toMatch(/documented.*exceptions|exceptions documentées/i)
@@ -165,8 +169,13 @@ describe('privacy and Play submission claims', () => {
     const en = JSON.parse(read('src/i18n/locales/en.json'))
     for (const disclosure of [fr.login.google.disclosure, en.login.google.disclosure]) {
       expect(disclosure).toMatch(/Anthropic/)
+      expect(disclosure).toMatch(/identité Google|Google identity/i)
       expect(disclosure).toMatch(/calendrier principal|primary calendar/i)
-      expect(disclosure).toMatch(/afficher.*créer.*modifier.*supprimer|display.*create.*update.*delete/i)
+      expect(disclosure).toMatch(/lit les prochains événements|reads upcoming events/i)
+      expect(disclosure).toMatch(/brief proactif|proactive brief/i)
+      expect(disclosure).toMatch(/comptes payants et VIP|paid and VIP accounts/i)
+      expect(disclosure).toMatch(/désactivable dans les paramètres|switchable off in Settings/i)
+      expect(disclosure).toMatch(/ne crée.*modifie.*supprime|creates.*updates.*deletes.*only when you ask/i)
       expect(disclosure).toMatch(/publicité|advertising/i)
     }
 

@@ -7,12 +7,14 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="description" content="Arty réunit Claude, GPT-5, Gemini et Mistral dans un assistant personnel, avec ton agenda Google. Essai gratuit : 30 messages, sans carte bancaire. Limites écrites en clair, prix TTC." />
+    <meta name="application-name" content="Arty" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
     <title>Arty — Les meilleures IA. Une seule app.</title>
     <link rel="canonical" href="https://tryarty.com/" />
     <meta property="og:title" content="Arty — Les meilleures IA. Une seule app." />
+    <meta property="og:site_name" content="Arty" />
     <meta property="og:description" content="Claude, GPT-5, Gemini et Mistral dans un assistant personnel, avec ton agenda Google. Essai gratuit : 30 messages, sans carte bancaire." />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://tryarty.com/" />
@@ -23,7 +25,34 @@
     <link href="https://fonts.googleapis.com/css2?family=Google+Sans:wght@500&amp;display=swap" rel="stylesheet" />
   </head>
   <body>
-    <div id="root"></div>
+    <!-- Contenu public visible sans JavaScript. React le remplace au premier
+         rendu. Il permet aussi aux validateurs OAuth de vérifier le nom,
+         la finalité du produit et les liens légaux sans exécuter la SPA. -->
+    <div id="root">
+      <header>
+        <strong>Arty</strong>
+      </header>
+      <main>
+        <h1>Arty</h1>
+        <p>
+          Arty est un assistant IA personnel qui réunit Claude, GPT-5, Gemini et
+          Mistral et permet de consulter et gérer votre agenda Google.
+        </p>
+        <p>
+          Après connexion Google, Arty affiche les prochains événements de votre
+          calendrier principal. Il ne crée, modifie ou supprime un événement qu'à
+          votre demande. Le brief proactif, activé par défaut pour les comptes
+          payants et VIP et désactivable dans les paramètres, peut lire vos prochains
+          événements et transmettre à Anthropic le contexte nécessaire pour préparer
+          le brief. Ces données ne servent jamais à la publicité.
+        </p>
+        <nav aria-label="Informations légales">
+          <a href="/privacy/">Politique de confidentialité</a>
+          <a href="/terms/">Conditions d'utilisation</a>
+          <a href="/legal-notice/">Mentions légales</a>
+        </nav>
+      </main>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
     <!-- SW : OBLIGATOIREMENT en fichier externe — la CSP (script-src 'self')
          bloque tout script inline ; la version inline historique n'a jamais

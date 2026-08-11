@@ -44,6 +44,11 @@ describe('LandingScreen — câblage des CTA', () => {
     const { container } = render(<LandingScreen onStart={() => {}} onLogin={() => {}} />)
     expect(container.querySelectorAll('details').length).toBe(7)
   })
+
+  it('identifie visiblement le produit Arty dans le titre principal', () => {
+    render(<LandingScreen onStart={() => {}} onLogin={() => {}} />)
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(/^Arty —/)
+  })
 })
 
 // ─── Garde-fous i18n / copy ─────────────────────────────────────────────
@@ -75,6 +80,18 @@ describe('parité i18n landing.*', () => {
 })
 
 describe('discipline copy landing (anti-objectifs)', () => {
+  it('explique la finalité du produit et l’usage des données Google en français et en anglais', () => {
+    const frHero = frLanding.hero as Record<string, string>
+    const enHero = enLanding.hero as Record<string, string>
+
+    expect(frHero.lede).toMatch(/Arty.*assistant personnel.*agenda Google/i)
+    expect(frHero.googleData).toMatch(/connexion Google.*calendrier principal.*crée.*modifie.*supprime/i)
+    expect(frHero.googleData).toMatch(/brief proactif.*comptes payants et VIP.*désactivable.*Anthropic/i)
+    expect(enHero.lede).toMatch(/Arty.*personal assistant.*Google calendar/i)
+    expect(enHero.googleData).toMatch(/Google connection.*primary calendar.*creates.*updates.*deletes/i)
+    expect(enHero.googleData).toMatch(/proactive brief.*paid and VIP accounts.*switchable off.*Anthropic/i)
+  })
+
   it('ne promet JAMAIS « illimité »/« unlimited » — formulation validée : « sans plafond mensuel »', () => {
     expect(JSON.stringify(frLanding)).not.toMatch(/illimit/i)
     expect(JSON.stringify(enLanding)).not.toMatch(/unlimited/i)

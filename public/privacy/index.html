@@ -99,7 +99,7 @@
     <tbody>
       <tr><td>Identité de connexion</td><td>Email, nom complet, photo de profil</td><td>Connexion Google (OAuth)</td></tr>
       <tr><td>Contenu utilisateur</td><td>Messages, fichiers et pièces jointes envoyés à l'assistant, y compris le contenu d'un email que vous collez, joignez ou partagez manuellement ; mémoire structurée, conversations partagées et signalements que vous soumettez volontairement</td><td>Vous</td></tr>
-      <tr><td>Données Google Workspace</td><td>Lecture, création, modification et suppression d'événements de votre calendrier principal (Calendar), uniquement lorsque vous utilisez une fonction d'agenda. L'application publique n'utilise aucune API Gmail</td><td>Votre compte Google, sur votre demande explicite</td></tr>
+      <tr><td>Données Google Workspace</td><td>Lecture des prochains événements de votre calendrier principal pour afficher l'Agenda et, si le brief proactif est activé, préparer ce brief ; création, modification et suppression d'événements seulement à votre demande. L'application publique n'utilise aucune API Gmail</td><td>Votre compte Google après connexion volontaire</td></tr>
       <tr><td>Boîtes mail connectées (app Android uniquement)</td><td>Si vous connectez volontairement une boîte mail (Free, Gmail, Yahoo, iCloud ou IMAP), l'assistant peut lister, rechercher et lire vos messages en LECTURE SEULE. La connexion se fait directement depuis votre téléphone (IMAP TLS) ; votre mot de passe d'application est chiffré via le Keystore Android (clé matérielle non extractible) et n'est jamais transmis à nos serveurs. Le contenu d'un message n'est transmis qu'à Anthropic (Claude), et à lui seul, uniquement quand vous posez une question qui le nécessite. Les pièces jointes de vos e-mails ne sont jamais lues</td><td>Vous (connexion volontaire dans Réglages → Boîtes mail)</td></tr>
       <tr><td>Localisation</td><td>Position géographique approximative</td><td>Capteur GPS de votre appareil, uniquement si activé</td></tr>
       <tr><td>Données de paiement</td><td>Email du compte, offre ou pack choisi, identifiants et statut de transaction ; Arty ne reçoit aucune coordonnée bancaire</td><td>Vous + Lemon Squeezy ou Creem</td></tr>
@@ -108,7 +108,7 @@
   </table>
   <p>Nous ne traçons pas votre navigation à des fins publicitaires et n'utilisons aucun profilage commercial.</p>
   <p>Arty n'utilise aucune API Gmail et n'envoie, ne modifie ni ne supprime jamais un message dans votre boîte. Sans boîte connectée, le contenu d'un email n'est traité que si vous le collez, le joignez ou le partagez vous-même avec l'assistant. Si vous connectez une boîte mail dans l'app Android (mise à jour du 9 août 2026), l'assistant peut la LIRE (lecture seule) directement depuis votre téléphone ; vous pouvez retirer une boîte à tout moment dans Réglages → Boîtes mail, ce qui supprime son mot de passe de l'appareil.</p>
-  <p>Lorsque vous demandez une action liée à votre agenda, les informations nécessaires à la réponse ou à l'action (notamment titre, horaires, lieu et vos instructions) transitent par Cloudflare et peuvent être transmises à Anthropic (Claude) afin d'interpréter et d'exécuter votre demande. Arty ne les conserve pas sur ses serveurs au-delà du traitement de la requête. Selon la politique standard de l'API Anthropic, les entrées et sorties sont supprimées sous 30 jours, sauf exceptions documentées liées au respect des règles d'utilisation, à la loi ou à un accord spécifique ; elles ne servent pas à entraîner les modèles génératifs sauf accord explicite du client.</p>
+  <p>Après connexion Google, Arty lit automatiquement vos prochains événements pour les afficher dans l'Agenda. Le brief proactif, activé par défaut pour les comptes payants et VIP et désactivable dans Paramètres, peut aussi lire ces événements et transmettre à Anthropic (Claude) le contexte nécessaire pour préparer le brief. Arty ne crée, modifie ou supprime un événement qu'à votre demande. Les informations nécessaires (notamment titre, horaires, lieu et vos instructions) transitent par Cloudflare ; Arty ne les conserve pas sur ses serveurs au-delà du traitement de la requête. Selon la politique standard de l'API Anthropic, les entrées et sorties sont supprimées sous 30 jours, sauf exceptions documentées liées au respect des règles d'utilisation, à la loi ou à un accord spécifique ; elles ne servent pas à entraîner les modèles génératifs sauf accord explicite du client.</p>
 
   <h2>3. Finalités et bases légales</h2>
   <table>
@@ -128,9 +128,9 @@
     <thead><tr><th>Prestataire</th><th>Rôle</th><th>Localisation</th><th>Garantie</th></tr></thead>
     <tbody>
       <tr><td>Cloudflare</td><td>Hébergement Workers, Pages, KV (proxy API, stockage clés non sensibles, distribution du site)</td><td>UE + monde (CDN)</td><td>Standard Contractual Clauses (SCC), DPA Cloudflare</td></tr>
-      <tr><td>Anthropic (Claude)</td><td>Génération de réponses IA, y compris traitement des informations Calendar strictement nécessaires à une demande d'agenda</td><td>États-Unis</td><td>SCC + EU-US Data Privacy Framework</td></tr>
+      <tr><td>Anthropic (Claude)</td><td>Génération de réponses IA et du brief proactif activé, y compris traitement des informations Calendar nécessaires à ces fonctions</td><td>États-Unis</td><td>SCC + EU-US Data Privacy Framework</td></tr>
       <tr><td>OpenAI</td><td>Génération de réponses IA (selon le modèle choisi)</td><td>États-Unis</td><td>SCC + EU-US Data Privacy Framework</td></tr>
-      <tr><td>Google (Gemini + Workspace)</td><td>Génération de réponses IA + fonctions Calendar explicitement demandées ; aucun connecteur Gmail dans l'application publique</td><td>UE + États-Unis</td><td>SCC + EU-US Data Privacy Framework</td></tr>
+      <tr><td>Google (Gemini + Workspace)</td><td>Génération de réponses IA + affichage de l'Agenda, brief proactif activé et actions Calendar explicitement demandées ; aucun connecteur Gmail dans l'application publique</td><td>UE + États-Unis</td><td>SCC + EU-US Data Privacy Framework</td></tr>
       <tr><td>Mistral AI</td><td>Génération de réponses IA</td><td>France (UE)</td><td>Hébergement UE direct</td></tr>
       <tr><td>Lemon Squeezy</td><td>Traitement des paiements abonnement Pro</td><td>États-Unis</td><td>SCC + EU-US Data Privacy Framework, gestion PCI-DSS</td></tr>
       <tr><td>Creem</td><td>Merchant of Record et page de paiement hébergée pour les packs de crédits. Arty lui transmet l'email Google vérifié du compte, le produit/pack choisi, un identifiant de requête aléatoire et l'URL de retour. Les coordonnées bancaires sont saisies directement chez Creem et ne sont pas reçues par Arty.</td><td>Estonie (UE)</td><td>RGPD, DPA Creem ; SCC pour ses sous-traitants hors EEE</td></tr>
@@ -144,7 +144,7 @@
   <h2>5. Conformité Google API (Limited Use)</h2>
   <p>L'utilisation par Arty des données reçues des API Google, et leur transfert vers toute autre application, respectent la <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>, y compris les exigences <strong>Limited Use</strong> :</p>
   <ul>
-    <li>l'accès à vos données Google se fait uniquement pour vous fournir les fonctionnalités que vous demandez ;</li>
+    <li>l'accès à vos données Google sert uniquement aux fonctions Calendar décrites ci-dessus : affichage de l'Agenda, brief proactif activé et actions que vous demandez explicitement ;</li>
     <li>nous n'utilisons pas ces données à des fins publicitaires ;</li>
     <li>nous ne les vendons pas ;</li>
     <li>nous ne les utilisons pas pour entraîner des modèles d'IA généralistes ;</li>
