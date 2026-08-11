@@ -470,6 +470,7 @@ describe('googleAuth — PKCE (C5/F-11)', () => {
     const url = await googleAuth.buildOAuthUrl()
     const params = new URL(url).searchParams
     expect(params.get('code_challenge_method')).toBe('S256')
+    expect(params.get('redirect_uri')).toBe(`${window.location.origin}/auth/callback`)
 
     const verifier = sessionStorage.getItem('arty-oauth-verifier')
     expect(verifier).toBeTruthy()
@@ -479,6 +480,16 @@ describe('googleAuth — PKCE (C5/F-11)', () => {
     expect(params.get('state')).toBeTruthy()
   })
 
+  it('refuse de lancer OAuth si sessionStorage ne peut pas conserver state et PKCE', async () => {
+    const setItem = vi.spyOn(Storage.prototype, 'setItem')
+      .mockImplementation(() => { throw new DOMException('blocked', 'SecurityError') })
+
+    await expect(googleAuth.buildOAuthUrl()).rejects.toThrow(/stockage de session/i)
+    expect(sessionStorage.getItem('arty-oauth-state')).toBeNull()
+    expect(sessionStorage.getItem('arty-oauth-verifier')).toBeNull()
+    setItem.mockRestore()
+  })
+
   it('exchangeCode (web) joint le code_verifier et le consomme (single-use)', async () => {
     sessionStorage.setItem('arty-oauth-verifier', 'VERIF-123')
     const fetchMock = mockFetch({ access_token: 'a', refresh_token: 'r', expires_in: 3600 })
@@ -486,6 +497,7 @@ describe('googleAuth — PKCE (C5/F-11)', () => {
     await googleAuth.exchangeCode('code-web')
     const body1 = JSON.parse(fetchMock.mock.calls[0]![1]!.body as string)
     expect(body1.code_verifier).toBe('VERIF-123')
+    expect(body1.redirect_uri).toBe(`${window.location.origin}/auth/callback`)
     // consommé → retiré du sessionStorage
     expect(sessionStorage.getItem('arty-oauth-verifier')).toBeNull()
 
@@ -510,5 +522,52 @@ describe('googleAuth — PKCE (C5/F-11)', () => {
     sessionStorage.setItem('arty-oauth-verifier', 'X')
     googleAuth.clearOAuthState()
     expect(sessionStorage.getItem('arty-oauth-verifier')).toBeNull()
+  })
+
+  it('verifyOAuthState accepte une seule fois le state exact', async () => {
+    const state = new URL(await googleAuth.buildOAuthUrl()).searchParams.get('state')
+    expect(state).toBeTruthy()
+    expect(googleAuth.verifyOAuthState(state)).toBe(true)
+    expect(googleAuth.verifyOAuthState(state)).toBe(false)
+  })
+
+  it('verifyOAuthState rejette un mismatch et consomme la valeur attendue', async () => {
+    const state = new URL(await googleAuth.buildOAuthUrl()).searchParams.get('state')
+    expect(googleAuth.verifyOAuthState('forged-state')).toBe(false)
+    expect(googleAuth.verifyOAuthState(state)).toBe(false)
+  })
+})
+
+describe('googleAuth — callback OAuth lié à l’origine', () => {
+  it.each([
+    ['https://tryarty.com'],
+    ['https://www.tryarty.com'],
+    ['https://appfacade.pages.dev'],
+    ['https://codex-fix.appfacade.pages.dev'],
+    ['http://localhost:5173'],
+  ])('utilise le callback de %s malgré une config cross-origin', (origin) => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    expect(googleAuth.resolveWebGoogleRedirectUri(
+      origin,
+      'https://appfacade.pages.dev/auth/callback',
+    )).toBe(`${origin}/auth/callback`)
+    if (origin !== 'https://appfacade.pages.dev') expect(warn).toHaveBeenCalledOnce()
+    warn.mockRestore()
+  })
+
+  it('refuse une origine web inconnue au lieu de relayer state/PKCE ailleurs', () => {
+    expect(() => googleAuth.resolveWebGoogleRedirectUri(
+      'https://attacker.example',
+      'https://appfacade.pages.dev/auth/callback',
+    )).toThrow(/Origine OAuth Google non autorisée/)
+  })
+
+  it('refuse HTTP pour les domaines publics mais l’autorise en loopback', () => {
+    expect(() => googleAuth.resolveWebGoogleRedirectUri('http://tryarty.com'))
+      .toThrow(/exige HTTPS/)
+    expect(googleAuth.resolveWebGoogleRedirectUri('http://127.0.0.1:5173'))
+      .toBe('http://127.0.0.1:5173/auth/callback')
+    expect(() => googleAuth.resolveWebGoogleRedirectUri('ftp://localhost'))
+      .toThrow(/Protocole OAuth Google non autorisé/)
   })
 })
