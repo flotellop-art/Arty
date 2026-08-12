@@ -1,6 +1,14 @@
 import type { ToolHandler } from './types'
 import { listEvents, createEvent, updateEvent, deleteEvent } from '../calendarClient'
 import { getDateLocale } from '../../utils/formatDate'
+import { markUntrustedThirdPartyData } from './untrustedContent'
+
+const EVENT_ID_DESCRIPTION =
+  'Identifiant opaque fourni par list_calendar ou create_calendar_event. Le recopier exactement ; ne jamais l’inventer ni le déduire du titre ou du lien.'
+
+function requiredEventId(input: Record<string, unknown>): string | null {
+  return typeof input.event_id === 'string' && input.event_id.trim() ? input.event_id.trim() : null
+}
 
 export const calendarToolDefinitions = [
   {
@@ -34,7 +42,7 @@ export const calendarToolDefinitions = [
     input_schema: {
       type: 'object' as const,
       properties: {
-        event_id: { type: 'string' as const },
+        event_id: { type: 'string' as const, description: EVENT_ID_DESCRIPTION },
         title: { type: 'string' as const },
         start: { type: 'string' as const },
         end: { type: 'string' as const },
@@ -48,7 +56,7 @@ export const calendarToolDefinitions = [
     description: 'Supprimer un événement du calendrier. CONFIRMATION OBLIGATOIRE.',
     input_schema: {
       type: 'object' as const,
-      properties: { event_id: { type: 'string' as const } },
+      properties: { event_id: { type: 'string' as const, description: EVENT_ID_DESCRIPTION } },
       required: ['event_id'],
     },
   },
@@ -61,13 +69,18 @@ export function createCalendarHandlers(): Record<string, ToolHandler> {
       try {
         const events = await listEvents(days)
         if (events.length > 0) {
-          const summary = events.map((e, i) => {
+          const summary = events.map((e) => {
             const start = new Date(e.start).toLocaleString(getDateLocale(), {
               weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
             })
-            return `${i + 1}. ${start} — ${e.title}${e.location ? ` (${e.location})` : ''}`
-          }).join('\n')
-          return { result: `${events.length} événements dans les ${days} prochains jours:\n${summary}` }
+            return { event_id: e.id, start, title: e.title, location: e.location || '' }
+          })
+          return {
+            result: markUntrustedThirdPartyData(
+              'Google Agenda',
+              `${events.length} événements dans les ${days} prochains jours (JSON):\n${JSON.stringify(summary)}`,
+            ),
+          }
         }
         return { result: `Aucun événement dans les ${days} prochains jours.` }
       } catch (err) {
@@ -82,7 +95,15 @@ export function createCalendarHandlers(): Record<string, ToolHandler> {
       try {
         const data = await createEvent({ title, start, end, location, description })
         return {
-          result: `RDV "${data.title}" créé le ${new Date(data.start).toLocaleString(getDateLocale())}.${data.link ? ` Lien: ${data.link}` : ''}`,
+          result: markUntrustedThirdPartyData(
+            'Google Agenda',
+            `Événement créé (JSON):\n${JSON.stringify({
+              event_id: data.id,
+              title: data.title,
+              start: new Date(data.start).toLocaleString(getDateLocale()),
+              link: data.link || '',
+            })}`,
+          ),
         }
       } catch (err) {
         return { result: `Erreur: ${err instanceof Error ? err.message : 'création RDV échouée.'}` }
@@ -90,8 +111,10 @@ export function createCalendarHandlers(): Record<string, ToolHandler> {
     },
 
     update_calendar_event: async (input) => {
+      const eventId = requiredEventId(input)
+      if (!eventId) return { result: 'Erreur: event_id manquant.' }
       try {
-        const data = await updateEvent(input.event_id as string, {
+        const data = await updateEvent(eventId, {
           title: input.title as string | undefined,
           start: input.start as string | undefined,
           end: input.end as string | undefined,
@@ -104,8 +127,10 @@ export function createCalendarHandlers(): Record<string, ToolHandler> {
     },
 
     delete_calendar_event: async (input) => {
+      const eventId = requiredEventId(input)
+      if (!eventId) return { result: 'Erreur: event_id manquant.' }
       try {
-        const data = await deleteEvent(input.event_id as string)
+        const data = await deleteEvent(eventId)
         return { result: data.success ? 'RDV supprimé.' : 'Erreur: suppression échouée.' }
       } catch (err) {
         return { result: `Erreur: ${err instanceof Error ? err.message : 'suppression RDV échouée.'}` }
