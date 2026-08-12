@@ -41,6 +41,8 @@ export interface StrictGoogleIdentity {
   email: string
   /** Stable Google account identifier (`sub`/`user_id` from tokeninfo). */
   sub: string | null
+  /** Raw OAuth scope claim returned by the same tokeninfo verification. */
+  scope: string | null
 }
 
 export type StrictGoogleIdentityResolution =
@@ -62,7 +64,7 @@ export async function verifyGoogleIdentityStrictDetailed(
   if (verification.status === 'ok') {
     return {
       status: 'ok',
-      identity: { email: verification.email, sub: verification.sub },
+      identity: { email: verification.email, sub: verification.sub, scope: verification.scope },
     }
   }
   return verification.status === 'unavailable' || verification.status === 'misconfigured'
@@ -170,7 +172,7 @@ export async function verifyGoogleUser(
  * `subscription/status.ts` et `checkout/creem.ts`.
  */
 export type TokeninfoVerification =
-  | { status: 'ok'; email: string; sub: string | null }
+  | { status: 'ok'; email: string; sub: string | null; scope: string | null }
   | { status: 'no_token' }
   | { status: 'rejected' }
   | { status: 'unavailable' }
@@ -211,6 +213,7 @@ export async function verifyTokenViaTokeninfoDetailed(
       azp?: string
       sub?: string
       user_id?: string
+      scope?: string
     }
     const email = info.email?.toLowerCase()
     if (!email) return { status: 'rejected' }
@@ -223,7 +226,12 @@ export async function verifyTokenViaTokeninfoDetailed(
     if (info.aud !== audience && info.azp !== audience) {
       return { status: 'rejected' }
     }
-    return { status: 'ok', email, sub: info.sub || info.user_id || null }
+    return {
+      status: 'ok',
+      email,
+      sub: info.sub || info.user_id || null,
+      scope: typeof info.scope === 'string' ? info.scope : null,
+    }
   } catch {
     return { status: 'unavailable' }
   }

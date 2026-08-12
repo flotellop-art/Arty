@@ -74,11 +74,6 @@ const FROZEN_FILE_SCOPES = {
     'https://www.googleapis.com/auth/userinfo.email',
     'https://www.googleapis.com/auth/userinfo.profile',
     'https://www.googleapis.com/auth/calendar.events.owned',
-    // Transition serveur bornée pour les clients 1.0.97. Ce scope sensible
-    // (non restreint) n'est jamais redemandé par le nouveau client public.
-    'https://www.googleapis.com/auth/calendar.events',
-    // Temporary exact legacy profile for APK 1.0.80; server-gated by cutoff.
-    'https://www.googleapis.com/auth/calendar',
   ]),
 }
 
@@ -248,12 +243,16 @@ check('aucune famille de scope restreint dans le texte brut du client public', (
 })
 
 // ── 4. Inventaire gelé des fichiers OAuth clients ───────────────────────
-check('fichiers OAuth clients : aucun scope hors inventaire gelé', () => {
+check('fichiers OAuth clients : ensemble de scopes exactement égal à l’inventaire gelé', () => {
   const offenders = []
   for (const [rel, frozen] of Object.entries(FROZEN_FILE_SCOPES)) {
     const literals = quotedStrings(readFileSync(join(ROOT, rel), 'utf8'))
-    for (const lit of literals) {
-      if (looksLikeScope(lit) && !frozen.has(lit)) offenders.push(`${rel} → ${lit}`)
+    const actual = new Set(literals.filter(looksLikeScope))
+    for (const lit of actual) {
+      if (!frozen.has(lit)) offenders.push(`${rel} → scope inattendu ${lit}`)
+    }
+    for (const expected of frozen) {
+      if (!actual.has(expected)) offenders.push(`${rel} → scope attendu absent ${expected}`)
     }
   }
   if (offenders.length > 0) {
@@ -318,7 +317,10 @@ check('bundle APK synchronisé : scope Calendar exact et à jour', () => {
     const rel = relative(ROOT, file).replaceAll('\\', '/')
     for (const literal of quotedStrings(readFileSync(file, 'utf8'))) {
       if (literal === 'https://www.googleapis.com/auth/calendar.events.owned') currentScopeFound = true
-      if (literal === 'https://www.googleapis.com/auth/calendar') offenders.push(rel)
+      if (
+        literal === 'https://www.googleapis.com/auth/calendar'
+        || literal === 'https://www.googleapis.com/auth/calendar.events'
+      ) offenders.push(`${rel} → ${literal}`)
     }
   }
   if (offenders.length > 0) {

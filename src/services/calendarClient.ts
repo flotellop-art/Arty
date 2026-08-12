@@ -15,6 +15,10 @@ async function calendarFetch(body: Record<string, unknown>): Promise<Response> {
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
+      // Calendar forwarde le Bearer à Google, tandis que le gate d'identité
+      // Arty lit explicitement ce header pour ne jamais confondre un Bearer
+      // BYOK avec un access token Google.
+      'x-google-token': token,
     },
     body: JSON.stringify(body),
   })

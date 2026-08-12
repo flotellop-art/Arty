@@ -700,7 +700,7 @@ hygiène, jamais comme une garantie : c'est la console Google Cloud qui fait
 foi, et elle n'est pas inspectable depuis le dépôt.
 
 **Ce que « pas de CASA » ne dispense PAS de faire** : vérification OAuth du
-scope sensible `calendar.events` (sans elle, application plafonnée à
+scope sensible `calendar.events.owned` (sans elle, application plafonnée à
 100 utilisateurs — vrai risque de lancement), formulaire Sécurité des données
 de Play, divulgation proéminente IA in-app, politique de confidentialité.
 

@@ -1,16 +1,25 @@
-import { verifyGoogleUser, notFoundResponse } from '../_lib/checkAllowedUser'
+import type { Env } from '../../env'
+import {
+  strictGoogleIdentityFailureResponse,
+  verifyGoogleIdentityStrictDetailed,
+} from '../_lib/checkAllowedUser'
 import { googleFetch } from '../_lib/googleFetch'
+import { validatePublicGoogleScopeClaim } from '../_lib/publicGoogleScopes'
 
 const ID_RE = /^[a-zA-Z0-9_@.+\-=]+$/
 
-export const onRequestPost: PagesFunction = async ({ request }) => {
-  // CRIT-4 (audit étape 2) — exiger un user Google identifié pour éviter
-  // le proxy ouvert Google API (un token Google volé ne suffit plus).
-  const email = await verifyGoogleUser(request)
-  if (!email) return notFoundResponse()
+export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
+  const identity = await verifyGoogleIdentityStrictDetailed(request, env.GOOGLE_CLIENT_ID)
+  if (identity.status !== 'ok') return strictGoogleIdentityFailureResponse(identity)
 
-  const token = request.headers.get('authorization')?.replace('Bearer ', '') || ''
-  if (!token) return notFoundResponse()
+  const token = request.headers.get('x-google-token')?.trim() || ''
+  const scopeCheck = validatePublicGoogleScopeClaim(identity.identity.scope)
+  if (!scopeCheck.ok) {
+    return Response.json(
+      { error: scopeCheck.reason === 'scope_mismatch' ? 'Google reconsent required' : 'Google authentication temporarily unavailable' },
+      { status: scopeCheck.reason === 'scope_mismatch' ? 403 : 503 },
+    )
+  }
 
   const body = await request.json() as Record<string, unknown>
   const type = body.type as string | undefined

@@ -209,12 +209,11 @@ Dans Android Studio :
   complet dans l'APK/AAB public ;
   verifier les exigences de marque et de consentement Google applicables au
   calendrier avant soumission.
-- Migration bornee v1 -> v2 : `GOOGLE_OAUTH_PREVIOUS_COMPAT_UNTIL` autorise
-  exclusivement le profil exact `calendar-events-v1` jusqu'au
-  30 septembre 2026. Ne pas prolonger sans nouvelle revue. Pendant cette
-  fenetre, declarer honnêtement l'ancien scope `calendar.events` a Google ou
-  attendre zero trafic v1 mesure avant la soumission ; retirer ensuite la
-  compatibilite serveur.
+- Compatibilite v1 retiree le 12 aout 2026 : les echanges et refresh exigent
+  `calendar-events-owned-v2` et l'ensemble exact avec
+  `calendar.events.owned`. Les anciennes installations doivent etre mises a
+  jour et reconnectees ; ne pas retablir `calendar.events` ou `calendar` sans
+  nouvelle revue OAuth complete.
 
 ## 13. App Store (iOS)
 
