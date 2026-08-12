@@ -812,6 +812,23 @@
     "tomorrow": "Demain",
     "loading": "Chargement de l'agenda…",
     "empty": "Rien de prévu dans les {{days}} prochains jours.",
+    "editor": {
+      "openAria": "Ouvrir {{title}} dans Google Agenda",
+      "edit": "Modifier",
+      "editAria": "Modifier {{title}}",
+      "delete": "Supprimer",
+      "deleteAria": "Supprimer {{title}}",
+      "title": "Titre de l’événement",
+      "save": "Enregistrer",
+      "confirmDelete": "Placer « {{title}} » ({{date}}) dans la corbeille Google Agenda ?",
+      "saved": "Événement modifié dans Google Agenda.",
+      "deleted": "Événement supprimé de Google Agenda.",
+      "errors": {
+        "update": "L’événement n’a pas pu être modifié. Rien n’a changé.",
+        "delete": "L’événement n’a pas pu être supprimé. Rien n’a changé.",
+        "refresh": "La modification est enregistrée, mais l’agenda n’a pas pu être actualisé."
+      }
+    },
     "errors": {
       "fetchFailed": "Erreur agenda"
     }

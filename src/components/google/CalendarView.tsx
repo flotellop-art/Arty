@@ -1,8 +1,8 @@
-import { memo, useEffect, useMemo, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import type { CalendarEvent } from '../../types/google'
-import { listEvents } from '../../services/calendarClient'
+import { deleteEvent, listEvents, updateEvent } from '../../services/calendarClient'
 import { getDateLocale } from '../../utils/formatDate'
 
 interface CalendarViewProps {
@@ -70,35 +70,115 @@ function sectionLabel(date: Date, t: TFunction): string {
 function EventRow({
   event,
   onClick,
+  onEdit,
+  onDelete,
+  editing,
+  draftTitle,
+  onDraftTitleChange,
+  onSave,
+  onCancelEdit,
+  busy,
   last,
 }: {
   event: CalendarEvent
   onClick?: (event: CalendarEvent) => void
+  onEdit: (event: CalendarEvent) => void
+  onDelete: (event: CalendarEvent) => void
+  editing: boolean
+  draftTitle: string
+  onDraftTitleChange: (value: string) => void
+  onSave: (event: CalendarEvent) => void
+  onCancelEdit: () => void
+  busy: boolean
   last: boolean
 }) {
+  const { t } = useTranslation()
   const meta = eventMeta(event)
   return (
-    <button
-      type="button"
-      onClick={onClick ? () => onClick(event) : undefined}
-      className={`w-full text-left flex gap-4 py-2.5 hover:bg-theme-accent/5 transition-colors ${
+    <article
+      className={`py-2.5 ${
         last ? '' : 'border-b border-dotted border-theme-border'
       }`}
     >
-      <span className="font-mono text-[11px] font-bold text-theme-accent w-14 shrink-0 pt-0.5 uppercase tracking-[0.05em]">
-        {eventTimeLabel(event.start)}
-      </span>
-      <span className="flex-1 min-w-0">
-        <span className="block font-display text-[14px] text-theme-ink leading-[1.25] truncate">
-          {event.title}
-        </span>
-        {meta && (
-          <span className="block font-sans text-[11px] text-theme-muted mt-0.5 truncate">
-            {meta}
+      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-1 max-[420px]:grid-cols-2">
+        <button
+          type="button"
+          onClick={onClick ? () => onClick(event) : undefined}
+          disabled={busy}
+          aria-label={t('calendar.editor.openAria', { title: event.title })}
+          className="flex min-h-11 min-w-0 gap-4 rounded-lg px-1 py-2 text-left transition-colors hover:bg-theme-accent/5 disabled:cursor-default disabled:opacity-60 max-[420px]:col-span-2"
+        >
+          <span className="w-14 shrink-0 pt-0.5 font-mono text-[11px] font-bold uppercase tracking-[0.05em] text-theme-accent">
+            {eventTimeLabel(event.start)}
           </span>
-        )}
-      </span>
-    </button>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate font-display text-[14px] leading-[1.25] text-theme-ink">
+              {event.title}
+            </span>
+            {meta && (
+              <span className="mt-0.5 block truncate font-sans text-[11px] text-theme-muted">
+                {meta}
+              </span>
+            )}
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={() => onEdit(event)}
+          disabled={busy}
+          aria-label={t('calendar.editor.editAria', { title: event.title })}
+          className="min-h-11 shrink-0 rounded-lg px-3 font-sans text-xs text-theme-accent-text hover:bg-theme-accent/5 disabled:opacity-50"
+        >
+          {t('calendar.editor.edit')}
+        </button>
+        <button
+          type="button"
+          onClick={() => onDelete(event)}
+          disabled={busy}
+          aria-label={t('calendar.editor.deleteAria', { title: event.title })}
+          className="min-h-11 shrink-0 rounded-lg px-3 font-sans text-xs text-red-700 hover:bg-red-500/10 disabled:opacity-50 dark:text-red-300"
+        >
+          {t('calendar.editor.delete')}
+        </button>
+      </div>
+      {editing && (
+        <form
+          className="mt-2 rounded-xl border border-theme-border bg-theme-surface p-3"
+          onSubmit={(eventSubmit) => {
+            eventSubmit.preventDefault()
+            onSave(event)
+          }}
+        >
+          <label className="block font-sans text-xs font-semibold text-theme-ink">
+            {t('calendar.editor.title')}
+            <input
+              autoFocus
+              value={draftTitle}
+              disabled={busy}
+              onChange={(changeEvent) => onDraftTitleChange(changeEvent.target.value)}
+              className="mt-1 min-h-11 w-full rounded-lg border border-theme-border bg-theme-bg px-3 font-sans text-sm font-normal text-theme-ink focus:border-theme-accent focus:outline-none disabled:opacity-60"
+            />
+          </label>
+          <div className="mt-2 flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={onCancelEdit}
+              disabled={busy}
+              className="min-h-11 rounded-lg px-3 font-sans text-xs text-theme-muted hover:bg-theme-ink/5 disabled:opacity-50"
+            >
+              {t('common.cancel')}
+            </button>
+            <button
+              type="submit"
+              disabled={busy || !draftTitle.trim()}
+              className="min-h-11 rounded-lg bg-theme-accent px-4 font-sans text-xs font-semibold text-theme-bg disabled:opacity-50"
+            >
+              {busy ? t('common.loading') : t('calendar.editor.save')}
+            </button>
+          </div>
+        </form>
+      )}
+    </article>
   )
 }
 
@@ -108,37 +188,121 @@ interface EventGroup {
 }
 
 /**
- * Read-only agenda preview. Fetches the next N days of events from Google
- * Calendar via the authenticated proxy and groups them by day with an
- * editorial kicker ("Aujourd'hui", "Demain", "lundi 22 avril"). Purely
- * presentational — mutations happen through the Calendar tools (Claude).
+ * Agenda preview and explicit user-controlled title/delete editor. Fetches the
+ * next N days from Google Calendar through the authenticated proxy. Mutations
+ * always use the opaque event id returned by Google; deletion requires an
+ * additional confirmation in Arty.
  */
 function CalendarViewInner({ days = 7, onEventClick, onEventsChange }: CalendarViewProps) {
   const { t } = useTranslation()
   const [events, setEvents] = useState<CalendarEvent[] | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<{ kind: 'status' | 'error'; message: string } | null>(null)
   const [loading, setLoading] = useState(true)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [draftTitle, setDraftTitle] = useState('')
+  const [mutatingId, setMutatingId] = useState<string | null>(null)
+  const mutationLockRef = useRef(false)
+  const mountedRef = useRef(false)
+  const requestGenerationRef = useRef(0)
 
-  useEffect(() => {
-    let alive = true
-    setLoading(true)
-    listEvents(days)
-      .then((list) => {
-        if (!alive) return
+  const loadEvents = useCallback(async (showLoading: boolean, preserveOnError: boolean) => {
+    const generation = ++requestGenerationRef.current
+    if (showLoading) setLoading(true)
+    try {
+      const list = await listEvents(days)
+      if (!mountedRef.current || generation !== requestGenerationRef.current) return true
         setEvents(list)
         setError(null)
         onEventsChange?.(list, null)
-      })
-      .catch((err: unknown) => {
-        if (!alive) return
-        const message = err instanceof Error ? err.message : t('calendar.errors.fetchFailed')
+      return true
+    } catch (err: unknown) {
+      if (!mountedRef.current || generation !== requestGenerationRef.current) return false
+      const message = err instanceof Error ? err.message : t('calendar.errors.fetchFailed')
+      if (preserveOnError) {
+        setNotice({ kind: 'error', message: t('calendar.editor.errors.refresh') })
+      } else {
         setError(message)
         setEvents([])
         onEventsChange?.([], message)
-      })
-      .finally(() => { if (alive) setLoading(false) })
-    return () => { alive = false }
+      }
+      return false
+    } finally {
+      if (mountedRef.current && generation === requestGenerationRef.current && showLoading) setLoading(false)
+    }
   }, [days, onEventsChange, t])
+
+  useEffect(() => {
+    mountedRef.current = true
+    void loadEvents(true, false)
+    return () => {
+      mountedRef.current = false
+      requestGenerationRef.current += 1
+    }
+  }, [loadEvents])
+
+  const publishEvents = useCallback((next: CalendarEvent[]) => {
+    setEvents(next)
+    setError(null)
+    onEventsChange?.(next, null)
+  }, [onEventsChange])
+
+  const beginEdit = useCallback((event: CalendarEvent) => {
+    if (mutatingId) return
+    setNotice(null)
+    setEditingId(event.id)
+    setDraftTitle(event.title)
+  }, [mutatingId])
+
+  const saveEdit = useCallback(async (event: CalendarEvent) => {
+    const title = draftTitle.trim()
+    if (!title || mutatingId || mutationLockRef.current) return
+    mutationLockRef.current = true
+    requestGenerationRef.current += 1
+    setMutatingId(event.id)
+    setNotice(null)
+    try {
+      await updateEvent(event.id, { title })
+      if (!mountedRef.current) return
+      const next = (events ?? []).map((item) => item.id === event.id ? { ...item, title } : item)
+      publishEvents(next)
+      setEditingId(null)
+      setNotice({ kind: 'status', message: t('calendar.editor.saved') })
+      await loadEvents(false, true)
+    } catch {
+      if (mountedRef.current) setNotice({ kind: 'error', message: t('calendar.editor.errors.update') })
+    } finally {
+      mutationLockRef.current = false
+      if (mountedRef.current) setMutatingId(null)
+    }
+  }, [draftTitle, events, loadEvents, mutatingId, publishEvents, t])
+
+  const removeEvent = useCallback(async (event: CalendarEvent) => {
+    if (mutatingId || mutationLockRef.current) return
+    const confirmed = window.confirm(t('calendar.editor.confirmDelete', {
+      title: event.title,
+      date: new Date(event.start).toLocaleString(getDateLocale(), { dateStyle: 'medium', timeStyle: event.start.includes('T') ? 'short' : undefined }),
+    }))
+    if (!confirmed) return
+    mutationLockRef.current = true
+    requestGenerationRef.current += 1
+    setMutatingId(event.id)
+    setNotice(null)
+    try {
+      await deleteEvent(event.id)
+      if (!mountedRef.current) return
+      const next = (events ?? []).filter((item) => item.id !== event.id)
+      publishEvents(next)
+      if (editingId === event.id) setEditingId(null)
+      setNotice({ kind: 'status', message: t('calendar.editor.deleted') })
+      await loadEvents(false, true)
+    } catch {
+      if (mountedRef.current) setNotice({ kind: 'error', message: t('calendar.editor.errors.delete') })
+    } finally {
+      mutationLockRef.current = false
+      if (mountedRef.current) setMutatingId(null)
+    }
+  }, [editingId, events, loadEvents, mutatingId, publishEvents, t])
 
   const groups = useMemo<EventGroup[]>(() => {
     if (!events || events.length === 0) return []
@@ -161,13 +325,33 @@ function CalendarViewInner({ days = 7, onEventClick, onEventsChange }: CalendarV
   }
   if (groups.length === 0) {
     return (
-      <p className="font-display italic text-sm text-theme-muted py-3">
-        {t('calendar.empty', { days })}
-      </p>
+      <div>
+        {notice && (
+          <p
+            className="font-sans text-xs text-theme-accent-text"
+            role={notice.kind === 'error' ? 'alert' : 'status'}
+            aria-live={notice.kind === 'error' ? 'assertive' : 'polite'}
+          >
+            {notice.message}
+          </p>
+        )}
+        <p className="py-3 font-display text-sm italic text-theme-muted">
+          {t('calendar.empty', { days })}
+        </p>
+      </div>
     )
   }
   return (
     <div className="flex flex-col gap-5">
+      {notice && (
+        <p
+          className="font-sans text-xs text-theme-accent-text"
+          role={notice.kind === 'error' ? 'alert' : 'status'}
+          aria-live={notice.kind === 'error' ? 'assertive' : 'polite'}
+        >
+          {notice.message}
+        </p>
+      )}
       {groups.map((group) => (
         <section key={group.date.toISOString()}>
           <p className="font-sans text-[10px] font-semibold uppercase tracking-kicker text-theme-muted mb-1">
@@ -179,6 +363,14 @@ function CalendarViewInner({ days = 7, onEventClick, onEventsChange }: CalendarV
                 key={event.id}
                 event={event}
                 onClick={onEventClick}
+                onEdit={beginEdit}
+                onDelete={removeEvent}
+                editing={editingId === event.id}
+                draftTitle={editingId === event.id ? draftTitle : ''}
+                onDraftTitleChange={setDraftTitle}
+                onSave={saveEdit}
+                onCancelEdit={() => setEditingId(null)}
+                busy={mutatingId === event.id}
                 last={i === group.events.length - 1}
               />
             ))}

@@ -21,6 +21,7 @@ import { classifyRouteAttachments, gatherRouteInput } from '../../services/route
 import { resolveRoute } from '../../services/router/resolveRoute'
 import { filterSlashCommands, type SlashCommand } from '../../constants/slashCommands'
 import { detectDates } from '../../utils/dateDetector'
+import { toLocalCalendarDateTime } from '../../utils/calendarDateTime'
 import { getValidAccessToken } from '../../services/googleAuth'
 import { callGoogleApi } from '../../services/googleApiHelper'
 import { enhancePrompt, canEnhancePrompt } from '../../services/promptEnhancer'
@@ -1265,8 +1266,8 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
   // Feature 16 — Create calendar event from detected date
   const handleCreateCalendarEvent = useCallback(async (title: string, date: Date) => {
     try {
-      const startISO = date.toISOString().slice(0, 19)
-      const endISO = new Date(date.getTime() + 60 * 60 * 1000).toISOString().slice(0, 19)
+      const startISO = toLocalCalendarDateTime(date)
+      const endISO = toLocalCalendarDateTime(new Date(date.getTime() + 60 * 60 * 1000))
       await callGoogleApi('/api/calendar/action', {
         type: 'create',
         title,
