@@ -56,7 +56,13 @@ describe('/api/calendar/action — profil OAuth public exact', () => {
         return Response.json(tokenInfo(CURRENT_SCOPES))
       }
       if (url.startsWith('https://www.googleapis.com/calendar/v3/calendars/primary/events?')) {
-        return Response.json({ items: [] })
+        return Response.json({ items: [{
+          id: 'source-event',
+          summary: 'Source event',
+          start: { dateTime: '2026-08-13T09:00:00+02:00' },
+          end: { dateTime: '2026-08-13T09:30:00+02:00' },
+          htmlLink: 'https://calendar.google.com/event?eid=source',
+        }] })
       }
       throw new Error(`URL inattendue: ${url}`)
     })
@@ -65,7 +71,15 @@ describe('/api/calendar/action — profil OAuth public exact', () => {
     const response = await onRequestPost({ request: calendarRequest(), env: ENV } as never)
 
     expect(response.status).toBe(200)
-    expect(await response.json()).toEqual({ events: [] })
+    expect(await response.json()).toEqual({ events: [{
+      id: 'source-event',
+      title: 'Source event',
+      start: '2026-08-13T09:00:00+02:00',
+      end: '2026-08-13T09:30:00+02:00',
+      location: '',
+      description: '',
+      htmlLink: 'https://calendar.google.com/event?eid=source',
+    }] })
     expect(fetchMock.mock.calls.filter(([input]) => String(input).includes('/tokeninfo?'))).toHaveLength(1)
   })
 

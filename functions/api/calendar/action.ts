@@ -61,6 +61,7 @@ async function handleList(token: string, body: Record<string, unknown>): Promise
       end: (e.end as Record<string, string>)?.dateTime || (e.end as Record<string, string>)?.date || '',
       location: (e.location as string) || '',
       description: (e.description as string) || '',
+      htmlLink: (e.htmlLink as string) || undefined,
     }))
     return Response.json({ events })
   } catch {

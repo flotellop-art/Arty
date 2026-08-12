@@ -812,6 +812,23 @@
     "tomorrow": "Tomorrow",
     "loading": "Loading calendar…",
     "empty": "Nothing planned in the next {{days}} days.",
+    "editor": {
+      "openAria": "Open {{title}} in Google Calendar",
+      "edit": "Edit",
+      "editAria": "Edit {{title}}",
+      "delete": "Delete",
+      "deleteAria": "Delete {{title}}",
+      "title": "Event title",
+      "save": "Save",
+      "confirmDelete": "Move “{{title}}” ({{date}}) to Google Calendar Trash?",
+      "saved": "Event updated in Google Calendar.",
+      "deleted": "Event deleted from Google Calendar.",
+      "errors": {
+        "update": "The event could not be updated. Nothing was changed.",
+        "delete": "The event could not be deleted. Nothing was changed.",
+        "refresh": "The change was saved, but the agenda could not be refreshed."
+      }
+    },
     "errors": {
       "fetchFailed": "Calendar error"
     }
