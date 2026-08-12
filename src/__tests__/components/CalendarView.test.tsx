@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { CalendarView } from '../../components/google/CalendarView'
 import type { CalendarEvent } from '../../types/google'
@@ -62,37 +62,61 @@ describe('CalendarView — mutations explicites', () => {
   })
 
   it('ne supprime rien si la confirmation est refusée', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(false)
     render(<CalendarView />)
 
-    fireEvent.click(await screen.findByRole('button', { name: /Supprimer Arty OAuth/i }))
+    const deleteButton = await screen.findByRole('button', { name: /Supprimer Arty OAuth/i })
+    fireEvent.click(deleteButton)
+    const dialog = screen.getByRole('alertdialog', { name: /Confirmer la suppression/i })
+    expect(dialog).toHaveTextContent('Arty OAuth Review Source Event')
+    const cancelButton = screen.getByRole('button', { name: 'Annuler' })
+    await waitFor(() => expect(cancelButton).toHaveFocus())
+    fireEvent.click(cancelButton)
 
     expect(mockDelete).not.toHaveBeenCalled()
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    await waitFor(() => expect(deleteButton).toHaveFocus())
+  })
+
+  it('annule aussi avec Échap et restitue le focus au déclencheur', async () => {
+    render(<CalendarView />)
+
+    const deleteButton = await screen.findByRole('button', { name: /Supprimer Arty OAuth/i })
+    fireEvent.click(deleteButton)
+    const dialog = screen.getByRole('alertdialog', { name: /Confirmer la suppression/i })
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Annuler' })).toHaveFocus())
+    fireEvent.keyDown(dialog, { key: 'Escape' })
+
+    expect(mockDelete).not.toHaveBeenCalled()
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    await waitFor(() => expect(deleteButton).toHaveFocus())
   })
 
   it('confirme avec titre/date, supprime l’ID exact et retire immédiatement la ligne', async () => {
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
     mockList.mockResolvedValueOnce([sourceEvent]).mockResolvedValueOnce([])
     render(<CalendarView />)
 
     fireEvent.click(await screen.findByRole('button', { name: /Supprimer Arty OAuth/i }))
+    expect(screen.getByRole('alertdialog')).toHaveTextContent(/Arty OAuth Review Source Event/)
+    fireEvent.click(screen.getByRole('button', { name: 'Placer dans la corbeille' }))
 
     await waitFor(() => expect(mockDelete).toHaveBeenCalledWith('opaque-google-id'))
-    expect(confirm.mock.calls[0]![0]).toMatch(/Arty OAuth Review Source Event/)
-    expect(await screen.findByText('Événement supprimé de Google Agenda.')).toHaveAttribute('role', 'status')
+    const status = await screen.findByRole('status')
+    expect(status).toHaveTextContent('Événement supprimé de Google Agenda.')
+    await waitFor(() => expect(status).toHaveFocus())
     expect(screen.queryByText('Arty OAuth Review Source Event')).not.toBeInTheDocument()
     await waitFor(() => expect(mockList).toHaveBeenCalledTimes(2))
   })
 
   it('bloque le double clic et garde l’événement si Google refuse la suppression', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
     let rejectDelete!: (error: Error) => void
     mockDelete.mockImplementation(() => new Promise((_resolve, reject) => { rejectDelete = reject }))
     render(<CalendarView />)
 
     const deleteButton = await screen.findByRole('button', { name: /Supprimer Arty OAuth/i })
     fireEvent.click(deleteButton)
-    fireEvent.click(deleteButton)
+    const confirmDeleteButton = screen.getByRole('button', { name: 'Placer dans la corbeille' })
+    fireEvent.click(confirmDeleteButton)
+    fireEvent.click(confirmDeleteButton)
     expect(mockDelete).toHaveBeenCalledTimes(1)
 
     await act(async () => rejectDelete(new Error('403')))
@@ -112,11 +136,11 @@ describe('CalendarView — mutations explicites', () => {
   })
 
   it('garde la suppression visible si la relecture Google échoue après le commit', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
     mockList.mockResolvedValueOnce([sourceEvent]).mockRejectedValueOnce(new Error('network'))
     render(<CalendarView />)
 
     fireEvent.click(await screen.findByRole('button', { name: /Supprimer Arty OAuth/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Placer dans la corbeille' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent('agenda n’a pas pu être actualisé')
     expect(screen.queryByText(sourceEvent.title)).not.toBeInTheDocument()

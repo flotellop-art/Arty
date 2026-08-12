@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import type { CalendarEvent } from '../../types/google'
@@ -72,7 +72,10 @@ function EventRow({
   onClick,
   onEdit,
   onDelete,
+  onConfirmDelete,
+  onCancelDelete,
   editing,
+  confirmingDelete,
   draftTitle,
   onDraftTitleChange,
   onSave,
@@ -84,7 +87,10 @@ function EventRow({
   onClick?: (event: CalendarEvent) => void
   onEdit: (event: CalendarEvent) => void
   onDelete: (event: CalendarEvent) => void
+  onConfirmDelete: (event: CalendarEvent) => void
+  onCancelDelete: () => void
   editing: boolean
+  confirmingDelete: boolean
   draftTitle: string
   onDraftTitleChange: (value: string) => void
   onSave: (event: CalendarEvent) => void
@@ -94,6 +100,19 @@ function EventRow({
 }) {
   const { t } = useTranslation()
   const meta = eventMeta(event)
+  const deleteTriggerRef = useRef<HTMLButtonElement>(null)
+  const cancelDeleteRef = useRef<HTMLButtonElement>(null)
+  const confirmDescriptionId = useId()
+
+  useEffect(() => {
+    if (confirmingDelete) requestAnimationFrame(() => cancelDeleteRef.current?.focus())
+  }, [confirmingDelete])
+
+  const cancelDelete = () => {
+    if (busy) return
+    onCancelDelete()
+    requestAnimationFrame(() => deleteTriggerRef.current?.focus())
+  }
   return (
     <article
       className={`py-2.5 ${
@@ -132,6 +151,7 @@ function EventRow({
           {t('calendar.editor.edit')}
         </button>
         <button
+          ref={deleteTriggerRef}
           type="button"
           onClick={() => onDelete(event)}
           disabled={busy}
@@ -178,6 +198,48 @@ function EventRow({
           </div>
         </form>
       )}
+      {confirmingDelete && (
+        <section
+          className="mt-2 rounded-xl border border-red-700/30 bg-red-500/10 p-3"
+          role="alertdialog"
+          aria-label={t('calendar.editor.confirmDeleteAria', { title: event.title })}
+          aria-describedby={confirmDescriptionId}
+          onKeyDown={(keyEvent) => {
+            if (keyEvent.key !== 'Escape') return
+            keyEvent.preventDefault()
+            cancelDelete()
+          }}
+        >
+          <p id={confirmDescriptionId} className="font-sans text-sm leading-relaxed text-theme-ink">
+            {t('calendar.editor.confirmDelete', {
+              title: event.title,
+              date: new Date(event.start).toLocaleString(getDateLocale(), {
+                dateStyle: 'medium',
+                timeStyle: event.start.includes('T') ? 'short' : undefined,
+              }),
+            })}
+          </p>
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            <button
+              ref={cancelDeleteRef}
+              type="button"
+              onClick={cancelDelete}
+              disabled={busy}
+              className="min-h-11 rounded-lg border border-theme-border px-3 font-sans text-xs text-theme-ink disabled:opacity-50"
+            >
+              {t('common.cancel')}
+            </button>
+            <button
+              type="button"
+              onClick={() => onConfirmDelete(event)}
+              disabled={busy}
+              className="min-h-11 rounded-lg bg-red-700 px-3 font-sans text-xs font-semibold text-white disabled:opacity-50"
+            >
+              {busy ? t('common.loading') : t('calendar.editor.moveToTrash')}
+            </button>
+          </div>
+        </section>
+      )}
     </article>
   )
 }
@@ -200,11 +262,13 @@ function CalendarViewInner({ days = 7, onEventClick, onEventsChange }: CalendarV
   const [notice, setNotice] = useState<{ kind: 'status' | 'error'; message: string } | null>(null)
   const [loading, setLoading] = useState(true)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null)
   const [draftTitle, setDraftTitle] = useState('')
   const [mutatingId, setMutatingId] = useState<string | null>(null)
   const mutationLockRef = useRef(false)
   const mountedRef = useRef(false)
   const requestGenerationRef = useRef(0)
+  const noticeRef = useRef<HTMLParagraphElement>(null)
 
   const loadEvents = useCallback(async (showLoading: boolean, preserveOnError: boolean) => {
     const generation = ++requestGenerationRef.current
@@ -250,6 +314,7 @@ function CalendarViewInner({ days = 7, onEventClick, onEventsChange }: CalendarV
   const beginEdit = useCallback((event: CalendarEvent) => {
     if (mutatingId) return
     setNotice(null)
+    setConfirmingDeleteId(null)
     setEditingId(event.id)
     setDraftTitle(event.title)
   }, [mutatingId])
@@ -279,11 +344,6 @@ function CalendarViewInner({ days = 7, onEventClick, onEventsChange }: CalendarV
 
   const removeEvent = useCallback(async (event: CalendarEvent) => {
     if (mutatingId || mutationLockRef.current) return
-    const confirmed = window.confirm(t('calendar.editor.confirmDelete', {
-      title: event.title,
-      date: new Date(event.start).toLocaleString(getDateLocale(), { dateStyle: 'medium', timeStyle: event.start.includes('T') ? 'short' : undefined }),
-    }))
-    if (!confirmed) return
     mutationLockRef.current = true
     requestGenerationRef.current += 1
     setMutatingId(event.id)
@@ -294,7 +354,9 @@ function CalendarViewInner({ days = 7, onEventClick, onEventsChange }: CalendarV
       const next = (events ?? []).filter((item) => item.id !== event.id)
       publishEvents(next)
       if (editingId === event.id) setEditingId(null)
+      setConfirmingDeleteId(null)
       setNotice({ kind: 'status', message: t('calendar.editor.deleted') })
+      requestAnimationFrame(() => noticeRef.current?.focus())
       await loadEvents(false, true)
     } catch {
       if (mountedRef.current) setNotice({ kind: 'error', message: t('calendar.editor.errors.delete') })
@@ -328,9 +390,11 @@ function CalendarViewInner({ days = 7, onEventClick, onEventsChange }: CalendarV
       <div>
         {notice && (
           <p
+            ref={noticeRef}
             className="font-sans text-xs text-theme-accent-text"
             role={notice.kind === 'error' ? 'alert' : 'status'}
             aria-live={notice.kind === 'error' ? 'assertive' : 'polite'}
+            tabIndex={-1}
           >
             {notice.message}
           </p>
@@ -345,9 +409,11 @@ function CalendarViewInner({ days = 7, onEventClick, onEventsChange }: CalendarV
     <div className="flex flex-col gap-5">
       {notice && (
         <p
+          ref={noticeRef}
           className="font-sans text-xs text-theme-accent-text"
           role={notice.kind === 'error' ? 'alert' : 'status'}
           aria-live={notice.kind === 'error' ? 'assertive' : 'polite'}
+          tabIndex={-1}
         >
           {notice.message}
         </p>
@@ -364,8 +430,16 @@ function CalendarViewInner({ days = 7, onEventClick, onEventsChange }: CalendarV
                 event={event}
                 onClick={onEventClick}
                 onEdit={beginEdit}
-                onDelete={removeEvent}
+                onDelete={(eventToDelete) => {
+                  if (mutatingId || mutationLockRef.current) return
+                  setNotice(null)
+                  setEditingId(null)
+                  setConfirmingDeleteId(eventToDelete.id)
+                }}
+                onConfirmDelete={removeEvent}
+                onCancelDelete={() => setConfirmingDeleteId(null)}
                 editing={editingId === event.id}
+                confirmingDelete={confirmingDeleteId === event.id}
                 draftTitle={editingId === event.id ? draftTitle : ''}
                 onDraftTitleChange={setDraftTitle}
                 onSave={saveEdit}
