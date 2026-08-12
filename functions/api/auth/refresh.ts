@@ -1,9 +1,6 @@
 import type { Env } from '../../env'
 import {
   CURRENT_GOOGLE_OAUTH_PROFILE,
-  isLegacyGoogleOAuthCompatActive,
-  isPreviousGoogleOAuthCompatActive,
-  PREVIOUS_GOOGLE_OAUTH_PROFILE,
   revokeGoogleGrant,
   validatePublicGoogleAccessToken,
 } from '../_lib/publicGoogleScopes'
@@ -17,13 +14,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   if (!refresh_token) {
     return Response.json({ error: 'Missing refresh_token' }, { status: 400 })
   }
-  const previousProfileAccepted = oauth_profile === PREVIOUS_GOOGLE_OAUTH_PROFILE
-    && isPreviousGoogleOAuthCompatActive(env.GOOGLE_OAUTH_PREVIOUS_COMPAT_UNTIL)
-  if (
-    oauth_profile !== undefined
-    && oauth_profile !== CURRENT_GOOGLE_OAUTH_PROFILE
-    && !previousProfileAccepted
-  ) {
+  if (oauth_profile !== CURRENT_GOOGLE_OAUTH_PROFILE) {
     return Response.json({ error: 'unsupported_oauth_profile' }, { status: 400 })
   }
 
@@ -64,16 +55,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
       return Response.json({ error: 'Google token response missing access token' }, { status: 502 })
     }
 
-    const scopeCheck = await validatePublicGoogleAccessToken(accessToken, {
-      requiredProfile: oauth_profile === CURRENT_GOOGLE_OAUTH_PROFILE
-        ? CURRENT_GOOGLE_OAUTH_PROFILE
-        : previousProfileAccepted
-          ? PREVIOUS_GOOGLE_OAUTH_PROFILE
-          : undefined,
-      allowPrevious: previousProfileAccepted,
-      allowLegacy: oauth_profile === undefined
-        && isLegacyGoogleOAuthCompatActive(env.GOOGLE_OAUTH_LEGACY_COMPAT_UNTIL),
-    })
+    const scopeCheck = await validatePublicGoogleAccessToken(accessToken)
     if (!scopeCheck.ok) {
       // Un grant n'est révoqué que lorsque des scopes surnuméraires sont
       // effectivement observés. Les indisponibilités de tokeninfo échouent
@@ -86,10 +68,6 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
         { status: scopeCheck.reason === 'scope_mismatch' ? 403 : 502 },
       )
     }
-    if (scopeCheck.profile !== CURRENT_GOOGLE_OAUTH_PROFILE) {
-      console.info(`[google-oauth] accepted ${scopeCheck.profile} refresh`)
-    }
-
     return Response.json({
       access_token: accessToken,
       expires_in: data.expires_in,

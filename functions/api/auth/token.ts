@@ -1,10 +1,6 @@
 import type { Env } from '../../env'
 import {
   CURRENT_GOOGLE_OAUTH_PROFILE,
-  isLegacyGoogleOAuthCompatActive,
-  isPreviousGoogleOAuthCompatActive,
-  isPreviousGoogleOAuthRedirectUriAllowed,
-  PREVIOUS_GOOGLE_OAUTH_PROFILE,
   revokeGoogleGrant,
   validatePublicGoogleAccessToken,
 } from '../_lib/publicGoogleScopes'
@@ -20,14 +16,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   if (!code || redirect_uri === undefined || redirect_uri === null) {
     return Response.json({ error: 'Missing code or redirect_uri' }, { status: 400 })
   }
-  const previousProfileAccepted = oauth_profile === PREVIOUS_GOOGLE_OAUTH_PROFILE
-    && isPreviousGoogleOAuthCompatActive(env.GOOGLE_OAUTH_PREVIOUS_COMPAT_UNTIL)
-    && isPreviousGoogleOAuthRedirectUriAllowed(redirect_uri)
-  if (
-    oauth_profile !== undefined
-    && oauth_profile !== CURRENT_GOOGLE_OAUTH_PROFILE
-    && !previousProfileAccepted
-  ) {
+  if (oauth_profile !== CURRENT_GOOGLE_OAUTH_PROFILE) {
     return Response.json({ error: 'unsupported_oauth_profile' }, { status: 400 })
   }
 
@@ -73,19 +62,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
       return Response.json({ error: 'Google token response missing access token' }, { status: 502 })
     }
 
-    const scopeCheck = await validatePublicGoogleAccessToken(accessToken, {
-      requiredProfile: oauth_profile === CURRENT_GOOGLE_OAUTH_PROFILE
-        ? CURRENT_GOOGLE_OAUTH_PROFILE
-        : previousProfileAccepted
-          ? PREVIOUS_GOOGLE_OAUTH_PROFILE
-          : undefined,
-      allowPrevious: previousProfileAccepted,
-      // The much older no-profile grant remains native-only. The immediately
-      // previous profile is handled above through its exact redirect allowlist.
-      allowLegacy: oauth_profile === undefined
-        && redirect_uri === ''
-        && isLegacyGoogleOAuthCompatActive(env.GOOGLE_OAUTH_LEGACY_COMPAT_UNTIL),
-    })
+    const scopeCheck = await validatePublicGoogleAccessToken(accessToken)
     if (!scopeCheck.ok) {
       // Seul un écart de scopes prouvé invalide le grant. Une panne de
       // tokeninfo reste fail-closed pour cette requête, mais ne doit pas
@@ -99,10 +76,6 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
         { status: scopeCheck.reason === 'scope_mismatch' ? 403 : 502 },
       )
     }
-    if (scopeCheck.profile !== CURRENT_GOOGLE_OAUTH_PROFILE) {
-      console.info(`[google-oauth] accepted ${scopeCheck.profile} token exchange`)
-    }
-
     return Response.json({
       access_token: accessToken,
       refresh_token: data.refresh_token,

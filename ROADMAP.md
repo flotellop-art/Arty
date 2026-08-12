@@ -10,7 +10,7 @@ avant le lancement (ça compromettrait la v1).
 
 - Le client public web et Android est lancé sans Gmail, Drive, Contacts ni
   Sheets. Il conserve uniquement le profil Google minimal et
-  `calendar.events` avec re-consentement explicite.
+  `calendar.events.owned` avec re-consentement explicite.
 - Drive revient après le lancement avec le scope borné `drive.file` et le
   Google Picker, sans rouvrir l'accès complet au Drive.
 - Une éventuelle bêta Gmail/Drive utilisera un client OAuth séparé et ne

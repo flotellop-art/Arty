@@ -141,6 +141,7 @@ describe('N-1 / M-3 — Google token audience validation', () => {
     expect(await verifyGoogleIdentityStrict(req(), 'MY_CLIENT_ID')).toEqual({
       email: 'owner@example.com',
       sub: 'google-sub-1',
+      scope: null,
     })
   })
 

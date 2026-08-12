@@ -1,26 +1,12 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Env } from '../../../functions/env'
-import {
-  CURRENT_GOOGLE_OAUTH_PROFILE,
-  isLegacyGoogleOAuthCompatActive,
-  isPreviousGoogleOAuthCompatActive,
-  isPreviousGoogleOAuthRedirectUriAllowed,
-  PREVIOUS_GOOGLE_OAUTH_PROFILE,
-} from '../../../functions/api/_lib/publicGoogleScopes'
+import { CURRENT_GOOGLE_OAUTH_PROFILE } from '../../../functions/api/_lib/publicGoogleScopes'
 import { onRequestPost as exchangeToken } from '../../../functions/api/auth/token'
 import { onRequestPost as refreshToken } from '../../../functions/api/auth/refresh'
 
 const ENV = {
   GOOGLE_CLIENT_ID: 'public-client.apps.googleusercontent.com',
   GOOGLE_CLIENT_SECRET: 'server-secret',
-} as Env
-const COMPAT_ENV = {
-  ...ENV,
-  GOOGLE_OAUTH_LEGACY_COMPAT_UNTIL: '2026-07-21T23:59:59Z',
-} as Env
-const PREVIOUS_COMPAT_ENV = {
-  ...ENV,
-  GOOGLE_OAUTH_PREVIOUS_COMPAT_UNTIL: '2026-09-30T23:59:59Z',
 } as Env
 
 const CURRENT_SCOPES = [
@@ -29,17 +15,12 @@ const CURRENT_SCOPES = [
   'https://www.googleapis.com/auth/userinfo.profile',
   'https://www.googleapis.com/auth/calendar.events.owned',
 ].join(' ')
+
 const PREVIOUS_SCOPES = [
   'openid',
   'https://www.googleapis.com/auth/userinfo.email',
   'https://www.googleapis.com/auth/userinfo.profile',
   'https://www.googleapis.com/auth/calendar.events',
-].join(' ')
-const LEGACY_SCOPES = [
-  'openid',
-  'https://www.googleapis.com/auth/userinfo.email',
-  'https://www.googleapis.com/auth/userinfo.profile',
-  'https://www.googleapis.com/auth/calendar',
 ].join(' ')
 
 function request(path: string, body: Record<string, unknown>): Request {
@@ -74,19 +55,12 @@ function stubGoogle(scopes: string | null) {
 }
 
 beforeEach(() => {
-  vi.useFakeTimers()
-  vi.setSystemTime(new Date('2026-07-14T12:00:00Z'))
   vi.restoreAllMocks()
 })
 
-afterEach(() => {
-  vi.useRealTimers()
-})
-
-describe('OAuth Google — profils de scopes réellement émis', () => {
-  it('accepte le profil calendar.events.owned annoncé par le nouveau client', async () => {
+describe('OAuth Google — ensemble public unique calendar.events.owned', () => {
+  it('accepte l’échange du profil courant avec son ensemble exact', async () => {
     stubGoogle(CURRENT_SCOPES)
-
     const response = await exchangeToken({
       request: request('/api/auth/token', {
         code: 'code',
@@ -103,69 +77,34 @@ describe('OAuth Google — profils de scopes réellement émis', () => {
     }))
   })
 
-  it('accepte temporairement l’échange exact calendar-events-v1 de la version 1.0.97', async () => {
-    vi.setSystemTime(new Date('2026-08-11T12:00:00Z'))
-    stubGoogle(PREVIOUS_SCOPES)
-
-    const response = await exchangeToken({
-      request: request('/api/auth/token', {
-        code: 'old-client-code',
-        redirect_uri: 'https://tryarty.com/auth/callback',
-        oauth_profile: PREVIOUS_GOOGLE_OAUTH_PROFILE,
+  it('accepte le refresh du profil courant avec son ensemble exact', async () => {
+    stubGoogle(CURRENT_SCOPES)
+    const response = await refreshToken({
+      request: request('/api/auth/refresh', {
+        refresh_token: 'stored-refresh',
+        oauth_profile: CURRENT_GOOGLE_OAUTH_PROFILE,
       }),
-      env: PREVIOUS_COMPAT_ENV,
+      env: ENV,
     } as never)
 
     expect(response.status).toBe(200)
     expect(await response.json()).toEqual(expect.objectContaining({
-      oauth_profile: PREVIOUS_GOOGLE_OAUTH_PROFILE,
+      access_token: 'fresh-access',
+      oauth_profile: CURRENT_GOOGLE_OAUTH_PROFILE,
     }))
   })
 
-  it('accepte temporairement le refresh calendar-events-v1 de la version 1.0.97', async () => {
-    vi.setSystemTime(new Date('2026-08-11T12:00:00Z'))
-    stubGoogle(PREVIOUS_SCOPES)
-
-    const response = await refreshToken({
-      request: request('/api/auth/refresh', {
-        refresh_token: 'old-client-refresh',
-        oauth_profile: PREVIOUS_GOOGLE_OAUTH_PROFILE,
-      }),
-      env: PREVIOUS_COMPAT_ENV,
-    } as never)
-
-    expect(response.status).toBe(200)
-    expect(await response.json()).toEqual(expect.objectContaining({
-      oauth_profile: PREVIOUS_GOOGLE_OAUTH_PROFILE,
-    }))
-  })
-
-  it('limite l’échange v1 aux callbacks historiques exacts', async () => {
-    vi.setSystemTime(new Date('2026-08-11T12:00:00Z'))
+  it.each([
+    ['calendar-events-v1', 'https://tryarty.com/auth/callback'],
+    ['legacy-calendar-v1', ''],
+    [undefined, ''],
+  ])('refuse l’ancien profil %s avant tout échange Google', async (oauthProfile, redirectUri) => {
     const fetchMock = stubGoogle(PREVIOUS_SCOPES)
-
     const response = await exchangeToken({
       request: request('/api/auth/token', {
-        code: 'old-client-code',
-        redirect_uri: 'https://attacker.example/auth/callback',
-        oauth_profile: PREVIOUS_GOOGLE_OAUTH_PROFILE,
-      }),
-      env: PREVIOUS_COMPAT_ENV,
-    } as never)
-
-    expect(response.status).toBe(400)
-    expect(await response.json()).toEqual({ error: 'unsupported_oauth_profile' })
-    expect(fetchMock).not.toHaveBeenCalled()
-  })
-
-  it('refuse calendar-events-v1 sans fenêtre de transition avant tout appel Google', async () => {
-    vi.setSystemTime(new Date('2026-08-11T12:00:00Z'))
-    const fetchMock = stubGoogle(PREVIOUS_SCOPES)
-
-    const response = await refreshToken({
-      request: request('/api/auth/refresh', {
-        refresh_token: 'old-client-refresh',
-        oauth_profile: PREVIOUS_GOOGLE_OAUTH_PROFILE,
+        code: 'old-code',
+        redirect_uri: redirectUri,
+        oauth_profile: oauthProfile,
       }),
       env: ENV,
     } as never)
@@ -175,146 +114,39 @@ describe('OAuth Google — profils de scopes réellement émis', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('refuse un scope précédent présenté comme le nouveau profil', async () => {
-    vi.setSystemTime(new Date('2026-08-11T12:00:00Z'))
-    const fetchMock = stubGoogle(PREVIOUS_SCOPES)
+  it.each(['calendar-events-v1', 'legacy-calendar-v1', undefined])(
+    'refuse le refresh de l’ancien profil %s avant tout appel Google',
+    async (oauthProfile) => {
+      const fetchMock = stubGoogle(PREVIOUS_SCOPES)
+      const response = await refreshToken({
+        request: request('/api/auth/refresh', {
+          refresh_token: 'old-refresh',
+          oauth_profile: oauthProfile,
+        }),
+        env: ENV,
+      } as never)
 
-    const response = await refreshToken({
-      request: request('/api/auth/refresh', {
-        refresh_token: 'mismatched-refresh',
-        oauth_profile: CURRENT_GOOGLE_OAUTH_PROFILE,
-      }),
-      env: PREVIOUS_COMPAT_ENV,
-    } as never)
-
-    expect(response.status).toBe(403)
-    expect(fetchMock).toHaveBeenCalledWith(
-      'https://oauth2.googleapis.com/revoke',
-      expect.objectContaining({ method: 'POST' }),
-    )
-  })
-
-  it('accepte temporairement le profil calendar exact de l’ancien APK natif', async () => {
-    stubGoogle(LEGACY_SCOPES)
-
-    const response = await exchangeToken({
-      request: request('/api/auth/token', { code: 'old-apk-code', redirect_uri: '' }),
-      env: COMPAT_ENV,
-    } as never)
-
-    expect(response.status).toBe(200)
-    expect(await response.json()).toEqual(expect.objectContaining({
-      oauth_profile: 'legacy-calendar-v1',
-    }))
-  })
-
-  it('refuse le profil legacy sur un échange web même pendant la fenêtre', async () => {
-    const fetchMock = stubGoogle(LEGACY_SCOPES)
-    const response = await exchangeToken({
-      request: request('/api/auth/token', {
-        code: 'old-web-code',
-        redirect_uri: 'https://tryarty.com/auth/callback',
-      }),
-      env: COMPAT_ENV,
-    } as never)
-
-    expect(response.status).toBe(403)
-    expect(fetchMock).toHaveBeenCalledWith(
-      'https://oauth2.googleapis.com/revoke',
-      expect.objectContaining({ method: 'POST' }),
-    )
-  })
-
-  it('accepte temporairement le refresh exact de l’ancien APK', async () => {
-    stubGoogle(LEGACY_SCOPES)
-    const response = await refreshToken({
-      request: request('/api/auth/refresh', { refresh_token: 'stored-refresh' }),
-      env: COMPAT_ENV,
-    } as never)
-
-    expect(response.status).toBe(200)
-    expect(await response.json()).toEqual(expect.objectContaining({
-      oauth_profile: 'legacy-calendar-v1',
-    }))
-  })
+      expect(response.status).toBe(400)
+      expect(await response.json()).toEqual({ error: 'unsupported_oauth_profile' })
+      expect(fetchMock).not.toHaveBeenCalled()
+    },
+  )
 
   it.each([
-    ['compat absente', ENV],
-    ['compat invalide', { ...ENV, GOOGLE_OAUTH_LEGACY_COMPAT_UNTIL: 'not-a-date' } as Env],
-    ['compat expirée', { ...ENV, GOOGLE_OAUTH_LEGACY_COMPAT_UNTIL: '2026-07-13T23:59:59Z' } as Env],
-    ['compat au-delà du maximum codé', { ...ENV, GOOGLE_OAUTH_LEGACY_COMPAT_UNTIL: '2026-12-31T23:59:59Z' } as Env],
-  ])('rejette et révoque le refresh legacy si %s', async (_label, env) => {
-    const fetchMock = stubGoogle(LEGACY_SCOPES)
-    const response = await refreshToken({
-      request: request('/api/auth/refresh', { refresh_token: 'stored-refresh' }),
-      env,
-    } as never)
-
-    expect(response.status).toBe(403)
-    expect(fetchMock).toHaveBeenCalledWith(
-      'https://oauth2.googleapis.com/revoke',
-      expect.objectContaining({ method: 'POST' }),
-    )
-  })
-
-  it('borne le cutoff de compatibilité côté code', () => {
-    expect(isLegacyGoogleOAuthCompatActive(undefined)).toBe(false)
-    expect(isLegacyGoogleOAuthCompatActive('not-a-date')).toBe(false)
-    expect(isLegacyGoogleOAuthCompatActive('2026-07-21T23:59:59Z')).toBe(true)
-    expect(isLegacyGoogleOAuthCompatActive('2026-07-22T00:00:00Z')).toBe(false)
-  })
-
-  it('borne séparément la compatibilité du profil 1.0.97', () => {
-    vi.setSystemTime(new Date('2026-08-11T12:00:00Z'))
-    expect(isPreviousGoogleOAuthCompatActive(undefined)).toBe(false)
-    expect(isPreviousGoogleOAuthCompatActive('not-a-date')).toBe(false)
-    expect(isPreviousGoogleOAuthCompatActive('2026-09-30T23:59:59Z')).toBe(true)
-    expect(isPreviousGoogleOAuthCompatActive('2026-11-01T00:00:00Z')).toBe(false)
-    vi.setSystemTime(new Date('2026-10-01T00:00:00Z'))
-    expect(isPreviousGoogleOAuthCompatActive('2026-09-30T23:59:59Z')).toBe(false)
-    expect(isPreviousGoogleOAuthRedirectUriAllowed('')).toBe(true)
-    expect(isPreviousGoogleOAuthRedirectUriAllowed('https://tryarty.com/auth/callback')).toBe(true)
-    expect(isPreviousGoogleOAuthRedirectUriAllowed('https://appfacade.pages.dev/auth/callback')).toBe(false)
-    expect(isPreviousGoogleOAuthRedirectUriAllowed('https://attacker.example/auth/callback')).toBe(false)
-  })
-
-  it.each([
-    [`${PREVIOUS_SCOPES} https://www.googleapis.com/auth/drive`, PREVIOUS_GOOGLE_OAUTH_PROFILE],
-    [CURRENT_SCOPES, PREVIOUS_GOOGLE_OAUTH_PROFILE],
-  ])('rejette le profil v1 si son ensemble exact ne correspond pas : %s', async (scopes, profile) => {
-    vi.setSystemTime(new Date('2026-08-11T12:00:00Z'))
-    const fetchMock = stubGoogle(scopes)
-    const response = await exchangeToken({
-      request: request('/api/auth/token', {
-        code: 'old-client-code',
-        redirect_uri: 'https://tryarty.com/auth/callback',
-        oauth_profile: profile,
-      }),
-      env: PREVIOUS_COMPAT_ENV,
-    } as never)
-
-    expect(response.status).toBe(403)
-    expect(await response.json()).toEqual({ error: 'invalid_scope_set' })
-    expect(fetchMock).toHaveBeenCalledWith(
-      'https://oauth2.googleapis.com/revoke',
-      expect.objectContaining({ method: 'POST' }),
-    )
-  })
-
-  it.each([
+    PREVIOUS_SCOPES,
     `${CURRENT_SCOPES} https://www.googleapis.com/auth/calendar`,
     `${CURRENT_SCOPES} https://www.googleapis.com/auth/gmail.readonly`,
-    `${LEGACY_SCOPES} https://www.googleapis.com/auth/drive`,
+    `${CURRENT_SCOPES} https://www.googleapis.com/auth/drive`,
     `${CURRENT_SCOPES} https://www.googleapis.com/auth/contacts`,
-  ])('rejette et révoque tout mélange ou scope surnuméraire : %s', async (scopes) => {
+  ])('rejette et révoque tout ensemble différent ou surnuméraire : %s', async (scopes) => {
     const fetchMock = stubGoogle(scopes)
     const response = await exchangeToken({
       request: request('/api/auth/token', {
         code: 'code',
-        redirect_uri: '',
+        redirect_uri: 'https://tryarty.com/auth/callback',
         oauth_profile: CURRENT_GOOGLE_OAUTH_PROFILE,
       }),
-      env: COMPAT_ENV,
+      env: ENV,
     } as never)
 
     expect(response.status).toBe(403)
@@ -325,7 +157,7 @@ describe('OAuth Google — profils de scopes réellement émis', () => {
     )
   })
 
-  it('échoue fermé si tokeninfo ne fournit pas les scopes', async () => {
+  it('échoue fermé sans révoquer si tokeninfo ne fournit pas les scopes', async () => {
     const fetchMock = stubGoogle(null)
     const response = await exchangeToken({
       request: request('/api/auth/token', {

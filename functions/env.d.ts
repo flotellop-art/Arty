@@ -2,14 +2,6 @@
 export interface Env {
   GOOGLE_CLIENT_ID: string
   GOOGLE_CLIENT_SECRET: string
-  // Temporary compatibility window for APK 1.0.80, which still requests the
-  // exact broad Calendar scope. ISO-8601 timestamp; absent/invalid/expired is
-  // fail-closed. Remove after every beta tester has upgraded and 72h at zero.
-  GOOGLE_OAUTH_LEGACY_COMPAT_UNTIL?: string
-  // Fenêtre de transition pour la PWA et l'APK 1.0.97 qui déclarent encore
-  // calendar-events-v1. Seul l'ensemble exact de scopes de ce profil est
-  // accepté. ISO-8601, fail-closed, plafond codé au 31 octobre 2026.
-  GOOGLE_OAUTH_PREVIOUS_COMPAT_UNTIL?: string
   // PR-0 (CDC Phase 1 D26/D29) — variable d'ÉCHAPPEMENT des tombstones.
   // Les connecteurs Gmail/Drive/Contacts/Sheets répondent 410 PAR DÉFAUT
   // (« coupure immédiate », décision du 13 juillet 2026). Poser 'true' ici

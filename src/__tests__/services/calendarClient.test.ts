@@ -37,6 +37,8 @@ describe('calendarClient', () => {
     expect(res[0]!.title).toBe('Chantier')
     const call = fetchMock.mock.calls[0]![1] as RequestInit
     expect(JSON.parse(call.body as string)).toEqual({ type: 'list', days: 7 })
+    expect(new Headers(call.headers).get('x-google-token')).toBe('fresh-token')
+    expect(new Headers(call.headers).get('authorization')).toBe('Bearer fresh-token')
   })
 
   it('listEvents passes custom days', async () => {

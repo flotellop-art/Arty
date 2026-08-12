@@ -62,16 +62,14 @@ fonctionnalité Agenda, et de rien d'autre.
       données », avec la justification de `calendar.events.owned` enregistrée
 - [x] Variable Cloudflare Pages Production
       `VITE_GOOGLE_REDIRECT_URI=https://tryarty.com/auth/callback`
-- [x] Avant le déploiement v2, variable serveur Cloudflare Pages Production
-      `GOOGLE_OAUTH_PREVIOUS_COMPAT_UNTIL=2026-09-30T23:59:59Z` pour que la
-      PWA et l'APK 1.0.97 puissent encore rafraîchir leur grant exact
-      `calendar-events-v1`. Le code refuse toute date postérieure au
-      31 octobre 2026 et tout ensemble de scopes différent.
-- [ ] **Gate de soumission Google** : tant que des clients 1.0.97 demandent
-      encore `calendar.events`, déclarer aussi ce scope sensible et expliquer
-      la migration, ou attendre la fin mesurée de ce trafic puis retirer la
-      compatibilité v1 avant de soumettre. Ne jamais présenter à Google les
-      quatre scopes v2 comme l'intégralité du trafic pendant la transition.
+- [ ] **Gate de soumission Google** : le code supprimant la compatibilité
+      `calendar-events-v1`, `calendar.events` et `calendar` est prêt avec
+      l'accord du propriétaire de repartir d'un stockage et d'un consentement
+      neufs. Avant de cocher : déployer, supprimer les deux anciennes variables
+      de compatibilité Cloudflare, puis prouver en production que les échanges,
+      rafraîchissements et opérations Agenda n'acceptent que
+      `calendar-events-owned-v2` et les quatre scopes exacts. Les anciennes
+      installations devront se mettre à jour et se reconnecter.
 - [x] **Statut de publication** : « En production » (contre-vérification live
       du 11 août 2026)
 - [x] **Décision propriétaire du 11 août 2026 :** aucune migration des données
@@ -85,11 +83,11 @@ fonctionnalité Agenda, et de rien d'autre.
 - [ ] Vérifier que Creem et Lemon Squeezy ciblent les webhooks `tryarty.com`.
       Jusqu'à ce smoke fournisseur, seuls leurs deux handlers signés restent
       joignables sur l'ancien hostname technique.
-- [ ] Après la fenêtre de compatibilité du 30 septembre 2026, retirer cette
-      compatibilité de scope v1 et les dernières références runtime exactes à
-      l'ancien hostname. Le callback `appfacade.pages.dev` est déjà absent de
-      Google Cloud. Les previews techniques `*.appfacade.pages.dev` ne
-      disposent d'aucun wildcard OAuth chez Google.
+- [ ] Après le smoke production, confirmer que le callback
+      `appfacade.pages.dev` reste absent de Google Cloud et qu'aucune
+      compatibilité de scope v1 ne subsiste côté serveur. Les previews
+      techniques `*.appfacade.pages.dev` ne disposent d'aucun wildcard OAuth
+      chez Google.
 - [ ] Vidéo de démonstration YouTube non listée, couvrant le consentement en
       anglais et les quatre opérations Calendar
 - [ ] Soumettre la vérification de marque et du scope sensible
