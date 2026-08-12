@@ -818,9 +818,11 @@
       "editAria": "Edit {{title}}",
       "delete": "Delete",
       "deleteAria": "Delete {{title}}",
+      "confirmDeleteAria": "Confirm deletion of {{title}}",
       "title": "Event title",
       "save": "Save",
       "confirmDelete": "Move “{{title}}” ({{date}}) to Google Calendar Trash?",
+      "moveToTrash": "Move to Trash",
       "saved": "Event updated in Google Calendar.",
       "deleted": "Event deleted from Google Calendar.",
       "errors": {

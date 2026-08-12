@@ -818,9 +818,11 @@
       "editAria": "Modifier {{title}}",
       "delete": "Supprimer",
       "deleteAria": "Supprimer {{title}}",
+      "confirmDeleteAria": "Confirmer la suppression de {{title}}",
       "title": "Titre de l’événement",
       "save": "Enregistrer",
       "confirmDelete": "Placer « {{title}} » ({{date}}) dans la corbeille Google Agenda ?",
+      "moveToTrash": "Placer dans la corbeille",
       "saved": "Événement modifié dans Google Agenda.",
       "deleted": "Événement supprimé de Google Agenda.",
       "errors": {
