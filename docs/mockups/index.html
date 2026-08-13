@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="fr" data-theme="ember">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Arty — Maquettes ergonomiques (galerie)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+<link href="tokens.css" rel="stylesheet" />
+<style>
+  body { font-family:'Inter',sans-serif; max-width:1080px; margin:0 auto; padding:32px 20px 80px; }
+  .top { display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; }
+  .brand { display:flex; align-items:center; gap:10px; }
+  .brand h1 { font-family:'Fraunces',serif; font-size:28px; margin:0; }
+  .brand .k { font-family:'Inter'; font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:0.2em; color:rgb(var(--theme-muted)); }
+  .tbtn { font-family:'Inter'; font-size:13px; font-weight:600; cursor:pointer; padding:10px 16px; border-radius:100px; border:1px solid rgb(var(--theme-border)); background:rgb(var(--theme-surface)); color:rgb(var(--theme-ink)); }
+  .lead { font-size:15px; font-weight:300; line-height:1.6; max-width:720px; margin:18px 0 6px; }
+  .lead b { font-weight:600; color:rgb(var(--theme-accent)); }
+
+  .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:14px; margin:26px 0 8px; }
+  .nav { display:block; text-decoration:none; color:inherit; padding:18px; border-radius:16px; background:rgb(var(--theme-surface)); border:1px solid rgb(var(--theme-border)); transition:transform .15s, box-shadow .15s; }
+  .nav:hover { transform:translateY(-2px); box-shadow:0 10px 30px rgba(0,0,0,0.08); }
+  .nav .ico { width:42px; height:42px; border-radius:12px; background:rgb(var(--theme-accent)/0.12); display:flex; align-items:center; justify-content:center; font-size:20px; margin-bottom:12px; }
+  .nav h3 { font-family:'Fraunces',serif; font-size:19px; margin:0 0 4px; }
+  .nav p { font-size:12.5px; color:rgb(var(--theme-muted)); margin:0; line-height:1.5; }
+
+  h2 { font-family:'Fraunces',serif; font-size:22px; margin:40px 0 8px; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th, td { text-align:left; padding:11px 12px; border-bottom:1px solid rgb(var(--border-weak)); vertical-align:top; }
+  th { font-size:10px; text-transform:uppercase; letter-spacing:0.12em; color:rgb(var(--theme-muted)); }
+  td.before { color:rgb(var(--theme-muted)); width:42%; }
+  td.after { width:42%; }
+  td.after b { color:rgb(var(--theme-accent)); }
+  .sev { display:inline-block; font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:0.08em; padding:2px 7px; border-radius:100px; }
+  .sev.b { background:rgba(224,75,46,0.14); color:#c0392b; }
+  .sev.i { background:rgba(245,154,75,0.18); color:#b26a16; }
+  .note { font-size:12.5px; line-height:1.6; color:rgb(var(--theme-muted)); max-width:760px; margin-top:8px; }
+  .note b { color:rgb(var(--theme-ink)); }
+  footer { margin-top:40px; font-size:11.5px; color:rgb(var(--theme-muted)); }
+</style>
+</head>
+<body>
+  <div class="top">
+    <div class="brand">
+      <svg width="30" height="30" viewBox="0 0 64 64" fill="none"><path d="M32 6 L58 54 L32 40 Z" fill="rgb(var(--theme-accent))"/><path d="M32 6 L6 54 L32 40 Z" fill="rgb(var(--theme-accent))" opacity="0.45"/></svg>
+      <div><div class="k">Maquettes · refonte ergonomique</div><h1>Arty</h1></div>
+    </div>
+    <button class="tbtn" onclick="tog()">◐ Ember / Nocturne</button>
+  </div>
+
+  <p class="lead">
+    Maquettes HTML <b>plus ergonomiques et pratiques</b>, fidèles à l'identité Arty (Ember/Nocturne, Fraunces + Inter, terracotta).
+    Elles répondent aux constats croisés de deux audits ergonomie indépendants et de l'audit frontend du 10 juin.
+    Bascule le thème, ouvre chaque écran, teste les cibles tactiles et le bottom-sheet « Mode ».
+  </p>
+
+  <div class="cards">
+    <a class="nav" href="home.html"><div class="ico">🏠</div><h3>Accueil</h3><p>Tâches en 1 tap, conversations récentes, intentions cliquables, TopBar allégée.</p></a>
+    <a class="nav" href="chat.html"><div class="ico">💬</div><h3>Conversation</h3><p>TopBar 1 rangée + chip « Mode », actions sous les bulles, copier, routage prédit.</p></a>
+    <a class="nav" href="settings.html"><div class="ico">⚙️</div><h3>Réglages</h3><p>3 groupes titrés, clés API rapatriées, zone de danger isolée.</p></a>
+  </div>
+
+  <h2>Avant → Après (problèmes traités)</h2>
+  <table>
+    <thead><tr><th>Sév.</th><th>Aujourd'hui</th><th>Maquette</th></tr></thead>
+    <tbody>
+      <tr><td><span class="sev b">Bloq</span></td><td class="before">Cibles tactiles 14–34px (chips, actions de bulle, dismiss, hamburger) → ratées au tap.</td><td class="after"><b>Tout ≥44px</b> (WCAG 2.2), focus-visible cohérent.</td></tr>
+      <tr><td><span class="sev b">Bloq</span></td><td class="before">ChatTopBar = 4 rangées (titre, filet, 3 chips, sous-titre, 3 icônes) → ~20% d'écran avant le 1ᵉʳ message.</td><td class="after"><b>1 rangée</b> : back · titre · chip Mode · menu ⋯.</td></tr>
+      <tr><td><span class="sev b">Bloq</span></td><td class="before">Tâches enterrées : hamburger → tiroir → chip → panel = 4 taps. Badge invisible.</td><td class="after"><b>Bandeau Tâches en 1 tap</b> sur l'accueil avec badge.</td></tr>
+      <tr><td><span class="sev i">Import</span></td><td class="before">Style + Modèle exposés en permanence sur 3 rangées de contrôles.</td><td class="after">Fusionnés dans un chip <b>« Mode »</b> → bottom-sheet (ton + modèle + transparence).</td></tr>
+      <tr><td><span class="sev i">Import</span></td><td class="before">Actions de bulle en overlay 14px qui chevauchent le texte ; edit/pin hors écran à gauche.</td><td class="after"><b>Rangée d'actions sous la bulle</b> (≥36px), toujours visible en touch.</td></tr>
+      <tr><td><span class="sev i">Import</span></td><td class="before">Pas de bouton Copier (messages ni blocs de code).</td><td class="after"><b>Copier partout</b> + en-tête de bloc code.</td></tr>
+      <tr><td><span class="sev i">Import</span></td><td class="before">Modèle utilisé connu seulement <i>après</i> envoi (anxiété confidentialité).</td><td class="after"><b>Routage prédit en temps réel</b> 🇪🇺/🇺🇸 sous l'input, avant l'envoi.</td></tr>
+      <tr><td><span class="sev i">Import</span></td><td class="before">Barre d'input : 2 boutons micro redondants ; voix disparaît dès qu'on tape.</td><td class="after"><b>1 voix</b> persistante (ajoute par la voix) + envoi morph.</td></tr>
+      <tr><td><span class="sev i">Import</span></td><td class="before">SettingsModal = 12 entrées à plat ; clés API ailleurs ; zone danger sans barrière.</td><td class="after"><b>3 groupes titrés</b> + clés API rapatriées + <b>zone danger isolée</b>.</td></tr>
+      <tr><td><span class="sev i">Import</span></td><td class="before">Pas de conversations récentes sur l'accueil (tout via le tiroir).</td><td class="after"><b>Section « Récent »</b> directement sur l'accueil.</td></tr>
+      <tr><td><span class="sev i">Import</span></td><td class="before">Coûts affichés en $ alors que l'app est en €.</td><td class="after">Pastille coûts <b>en €</b>, seuils recalibrés.</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Décisions de conception (premiers principes)</h2>
+  <p class="note">
+    <b>Bottom-tab-bar : envisagée, écartée.</b> Un agent recommandait une barre d'onglets basse (Accueil / Historique / Tâches / Réglages) pour passer de 4 à 1 tap.
+    Élément irréductible : l'action centrale d'Arty est <b>écrire à l'assistant</b> — la barre d'input vit déjà en bas. Empiler deux barres basses crée un conflit
+    spatial et une ambiguïté de cible. La même réduction de taps est obtenue sans ce conflit en <b>exposant Tâches et Récent directement sur l'accueil</b> et en
+    gardant l'input comme action primaire. Décision : chat-first conservé, navigation aplatie par contenu.
+  </p>
+  <p class="note">
+    <b>Identité de marque préservée.</b> Aucun changement de palette, de polices ni du logo prisme. La refonte porte sur la <b>densité, la hiérarchie, les
+    cibles tactiles et la découvrabilité</b> — pas sur l'esthétique, qui est déjà soignée. Les tokens sont repris à l'identique de <code>src/index.css</code>.
+  </p>
+
+  <footer>
+    Maquettes statiques — <code>docs/mockups/</code>. Constats issus de 2 audits ergonomie (Sonnet) + <code>docs/audits/frontend-audit-2026-06-10.md</code>.
+    Ne remplacent pas le code ; servent de cible visuelle pour les PR de refonte.
+  </footer>
+
+<script>
+  function tog(){ var h=document.documentElement; h.dataset.theme = h.dataset.theme==='ember'?'nocturne':'ember'; try{localStorage.setItem('arty-mock-theme',h.dataset.theme)}catch(e){} }
+  try{var t=localStorage.getItem('arty-mock-theme'); if(t)document.documentElement.dataset.theme=t;}catch(e){}
+</script>
+</body>
+</html>
