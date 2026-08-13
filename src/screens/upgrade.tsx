@@ -4,7 +4,7 @@
  * tiers (Free/BYOK, Pro one-time, Subscription) plus an optional Pack +100
  * messages card for active subscribers.
  *
- * After the Lemon Squeezy checkout closes (`browserFinished`), we wait two
+ * After Lemon Squeezy redirects back to `?checkout=lemonsqueezy`, we wait two
  * seconds for the webhook to land, then call `GET /api/subscription/status`
  * with the user's Google access token to surface the new state.
  */
@@ -42,8 +42,8 @@ type StatusResult =
   | { kind: 'error'; message: string }
 
 interface SubscriptionStatusResponse {
-  active?: boolean
   plan?: string
+  status?: string
 }
 
 export function UpgradeScreen({ onBack, currentPlan: currentPlanProp, email }: UpgradeScreenProps) {
@@ -52,6 +52,7 @@ export function UpgradeScreen({ onBack, currentPlan: currentPlanProp, email }: U
   const [params] = useSearchParams()
   const scrollToPremiumPack = params.get('scroll') === 'premium'
   const premiumPackRef = useRef<HTMLDivElement | null>(null)
+  const checkoutReturnHandledRef = useRef(false)
   const [status, setStatus] = useState<StatusResult>({ kind: 'idle' })
   const [creditsBusy, setCreditsBusy] = useState(false)
 
@@ -95,14 +96,17 @@ export function UpgradeScreen({ onBack, currentPlan: currentPlanProp, email }: U
       }
       const res = await fetch(apiUrl('/api/subscription/status'), {
         method: 'GET',
-        headers: { 'x-google-token': token },
+        headers: { Authorization: `Bearer ${token}` },
       })
       if (!res.ok) {
         setStatus({ kind: 'pending' })
         return
       }
       const data = (await res.json()) as SubscriptionStatusResponse
-      if (data.active) {
+      const paidStatus = data.status === 'active'
+        || data.status === 'cancelled'
+        || data.status === 'past_due'
+      if (data.plan && data.plan !== 'free' && paidStatus) {
         setStatus({ kind: 'active', plan: data.plan ?? 'subscription' })
       } else {
         setStatus({ kind: 'pending' })
@@ -112,6 +116,12 @@ export function UpgradeScreen({ onBack, currentPlan: currentPlanProp, email }: U
     }
   }
 
+  useEffect(() => {
+    if (params.get('checkout') !== 'lemonsqueezy' || checkoutReturnHandledRef.current) return
+    checkoutReturnHandledRef.current = true
+    void refreshStatus()
+  }, [params])
+
   const launchCheckout = async (plan: CheckoutPlan) => {
     if (!resolvedEmail) {
       setStatus({
@@ -120,7 +130,8 @@ export function UpgradeScreen({ onBack, currentPlan: currentPlanProp, email }: U
       })
       return
     }
-    await openCheckout(plan, resolvedEmail, { onReturn: refreshStatus })
+    const ok = await openCheckout(plan, { onReturn: refreshStatus })
+    if (!ok) setStatus({ kind: 'error', message: t('upgrade.checkoutError') })
   }
 
   // Le crédit arrive via le webhook Creem (asynchrone) — il peut atterrir APRÈS

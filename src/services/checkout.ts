@@ -1,13 +1,11 @@
 /**
  * Lemon Squeezy checkout service.
  *
- * Builds the checkout URL with the user's email pre-filled, then opens it on
- * the web. Public native builds fail closed before any checkout URL or network
- * request is reached; existing subscribers use the separate customer-portal
- * URL only to manage or cancel an existing subscription.
- *
- * Test-mode variant IDs live in `CHECKOUT_URLS`. Swap them with the
- * production variants once the store goes live.
+ * Requests a short-lived checkout URL from the server, then opens it on the
+ * web. The server selects the Test/Live variant from Cloudflare configuration
+ * and stamps the verified Google email; no provider ID or API key is shipped
+ * in the browser bundle. Public native builds fail closed before any checkout
+ * request is reached.
  */
 
 import { Capacitor } from '@capacitor/core'
@@ -36,54 +34,57 @@ export const SUBSCRIPTION_PORTAL_URL = 'https://tryarty.lemonsqueezy.com/billing
 
 export type CheckoutPlan = 'subscription' | 'pro' | 'premium_pack'
 
-export const CHECKOUT_URLS: Readonly<Record<CheckoutPlan, string>> = {
-  subscription:
-    'https://tryarty.lemonsqueezy.com/checkout/buy/3e26614c-486d-4c94-be84-fda1b03b138f',
-  pro:
-    'https://tryarty.lemonsqueezy.com/checkout/buy/8a3aa7d6-9e73-4be3-b00b-6ce79db3a1b9',
-  premium_pack:
-    'https://tryarty.lemonsqueezy.com/checkout/buy/4b822170-2641-4c3a-95c6-c1f9de7db474',
-}
-
-function buildCheckoutUrl(plan: CheckoutPlan, email: string): string {
-  const base = CHECKOUT_URLS[plan]
-  const encoded = encodeURIComponent(email)
-  // Lemon Squeezy uses bracketed query params: checkout[email] pre-fills the
-  // email field, checkout[custom][user_email] is forwarded to the webhook so
-  // the backend can match the order back to the Arty account.
-  return `${base}?checkout[email]=${encoded}&checkout[custom][user_email]=${encoded}`
-}
-
 export interface OpenCheckoutOptions {
-  /** Called after the in-app browser closes (native) or immediately after
-   *  opening a new tab (web). Use this to refresh subscription status. */
+  /** Called after an in-app browser closes. Web checkouts return through the
+   * provider redirect URL and refresh from the destination screen. */
   onReturn?: () => void
 }
 
 /**
- * Open the Lemon Squeezy checkout for the given plan.
- *
- * On native (Capacitor), uses `@capacitor/browser` with a popover
- * presentation and listens once for `browserFinished`. On web, opens a new
- * tab via `window.open` and fires `onReturn` immediately (the web flow can't
- * detect tab closure reliably).
+ * Open the Lemon Squeezy checkout for the given plan. The POST uses the same
+ * audience-checked Google token as the Creem checkout. On web, navigation is
+ * same-tab because a popup opened after token refresh + fetch would be blocked
+ * by mobile browsers; Lemon Squeezy redirects to `/upgrade` after payment.
  */
 export async function openCheckout(
   plan: CheckoutPlan,
-  email: string,
   options: OpenCheckoutOptions = {}
-): Promise<void> {
-  if (!canPurchase) return
-  const url = buildCheckoutUrl(plan, email)
-  await openExternalUrl(url, options.onReturn)
+): Promise<boolean> {
+  if (!canPurchase) return false
+  const token = await getValidAccessToken()
+  if (!token) return false
+
+  let url: string
+  try {
+    const response = await fetch(apiUrl('/api/checkout/lemonsqueezy'), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-google-token': token,
+      },
+      body: JSON.stringify({ plan }),
+    })
+    if (!response.ok) return false
+    const data = (await response.json()) as { url?: string }
+    if (!data.url) return false
+    url = data.url
+  } catch {
+    return false
+  }
+
+  if (Capacitor.isNativePlatform()) {
+    await openExternalUrl(url, options.onReturn)
+  } else {
+    window.location.assign(url)
+  }
+  return true
 }
 
 /**
  * Open an external checkout URL: in-app Capacitor browser on native (with a
  * one-shot `browserFinished` listener wired to `onReturn`), a new tab on web
  * (where tab-closure isn't observable, so `onReturn` fires immediately).
- * Shared by the Lemon Squeezy (`openCheckout`) and Creem (`openCreemCheckout`)
- * flows — the only difference between them is how the URL is obtained.
+ * Shared by the defensive native branches of Lemon Squeezy and Creem.
  */
 async function openExternalUrl(url: string, onReturn?: () => void): Promise<void> {
   if (Capacitor.isNativePlatform()) {

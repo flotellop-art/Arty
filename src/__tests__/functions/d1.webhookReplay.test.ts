@@ -7,6 +7,9 @@ import { makeD1Harness, type D1Harness } from './d1Harness'
 
 const CREEM_SECRET = 'creem-test-secret'
 const LEMON_SQUEEZY_SECRET = 'lemon-squeezy-test-secret'
+const LS_SUBSCRIPTION_VARIANT = 1576081
+const LS_PRO_VARIANT = 1576090
+const LS_PREMIUM_PACK_VARIANT = 1576100
 
 let h: D1Harness
 
@@ -15,6 +18,9 @@ beforeAll(async () => {
     CREEM_WEBHOOK_SECRET: CREEM_SECRET,
     CREEM_CREDITS_10_PRODUCT_ID: 'prod_5ba1P24WLXkcXUnbZytWm7',
     LEMONSQUEEZY_WEBHOOK_SECRET: LEMON_SQUEEZY_SECRET,
+    LEMONSQUEEZY_SUBSCRIPTION_VARIANT_ID: String(LS_SUBSCRIPTION_VARIANT),
+    LEMONSQUEEZY_PRO_VARIANT_ID: String(LS_PRO_VARIANT),
+    LEMONSQUEEZY_PREMIUM_PACK_VARIANT_ID: String(LS_PREMIUM_PACK_VARIANT),
   })
 })
 afterAll(async () => { await h.dispose() })
@@ -261,7 +267,7 @@ describe('webhook Lemon Squeezy — replay order_created', () => {
         type: 'orders',
         attributes: {
           user_email: 'Pack.User@Example.com',
-          first_order_item: { product_id: 1004493 },
+          first_order_item: { product_id: 1004493, variant_id: LS_PREMIUM_PACK_VARIANT },
         },
       },
     }
@@ -306,9 +312,74 @@ describe('webhook Lemon Squeezy — replay order_created', () => {
     ).bind('ls_order_pack_1').first<{ count: number }>()
     expect(count?.count).toBe(1)
   })
+
+  it('ignore un achat signé provenant d’une variante non configurée', async () => {
+    const response = await postSignedWebhook(
+      lemonSqueezyWebhook,
+      'https://tryarty.com/api/webhook/lemonsqueezy',
+      'X-Signature',
+      LEMON_SQUEEZY_SECRET,
+      {
+        meta: { event_name: 'order_created' },
+        data: {
+          id: 'ls_order_unknown_variant',
+          type: 'orders',
+          attributes: {
+            user_email: 'unknown-variant@example.com',
+            first_order_item: { variant_id: 9999999 },
+          },
+        },
+      },
+    )
+
+    expect(response.status).toBe(200)
+    expect(await h.db.prepare(
+      `SELECT 1 AS found FROM premium_packs WHERE ls_order_id = ?1`,
+    ).bind('ls_order_unknown_variant').first()).toBeNull()
+    expect(await h.db.prepare(
+      `SELECT 1 AS found FROM subscriptions WHERE user_email = ?1`,
+    ).bind('unknown-variant@example.com').first()).toBeNull()
+  })
 })
 
 describe('webhook Lemon Squeezy — état monotone des abonnements', () => {
+  it('attribue le droit à l’email Google posé côté serveur, pas à l’email de facturation modifiable', async () => {
+    const response = await postSignedWebhook(
+      lemonSqueezyWebhook,
+      'https://tryarty.com/api/webhook/lemonsqueezy',
+      'X-Signature',
+      LEMON_SQUEEZY_SECRET,
+      {
+        meta: {
+          event_name: 'subscription_created',
+          custom_data: { app_user_email: 'Verified.User@Example.com' },
+        },
+        data: {
+          id: 'sub_verified_checkout_email',
+          type: 'subscriptions',
+          attributes: {
+            user_email: 'edited-at-checkout@example.net',
+            variant_id: LS_SUBSCRIPTION_VARIANT,
+            status: 'active',
+            renews_at: '2026-08-15T00:00:00.000Z',
+            updated_at: '2026-07-15T12:00:00.000Z',
+          },
+        },
+      },
+    )
+
+    expect(response.status).toBe(200)
+    expect(await h.db.prepare(
+      `SELECT plan_type, status FROM subscriptions WHERE user_email = ?1`,
+    ).bind('verified.user@example.com').first()).toEqual({
+      plan_type: 'subscription',
+      status: 'active',
+    })
+    expect(await h.db.prepare(
+      `SELECT 1 AS found FROM subscriptions WHERE user_email = ?1`,
+    ).bind('edited-at-checkout@example.net').first()).toBeNull()
+  })
+
   it('conserve le plan payé pendant la période de grâce cancelled', async () => {
     const email = 'cancelled@example.com'
     const endsAt = '2099-02-01T00:00:00.000Z'
@@ -324,6 +395,7 @@ describe('webhook Lemon Squeezy — état monotone des abonnements', () => {
           type: 'subscriptions',
           attributes: {
             user_email: email,
+            variant_id: LS_SUBSCRIPTION_VARIANT,
             status: 'cancelled',
             ends_at: endsAt,
             updated_at: '2026-07-09T10:00:00.000Z',
@@ -356,6 +428,7 @@ describe('webhook Lemon Squeezy — état monotone des abonnements', () => {
         type: 'subscriptions',
         attributes: {
           user_email: email,
+          variant_id: LS_SUBSCRIPTION_VARIANT,
           status,
           renews_at: '2026-08-01T00:00:00.000Z',
           ends_at: status === 'expired' ? '2026-07-01T00:00:00.000Z' : null,
@@ -417,6 +490,7 @@ describe('webhook Lemon Squeezy — état monotone des abonnements', () => {
           type: 'subscriptions',
           attributes: {
             user_email: email,
+            variant_id: LS_SUBSCRIPTION_VARIANT,
             status: 'active',
             renews_at: '2026-08-01T00:00:00.000Z',
             updated_at: '2026-07-08T12:00:00.000Z',
