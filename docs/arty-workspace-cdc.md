@@ -209,7 +209,16 @@ réels ; préparer protocole et instrumentation sans fabriquer leurs résultats.
 - A2 capture/restauration/UI et synchronisation restent non livrées. Le lot ne
   change ni format A1, ni quota serveur, ni configuration Cloudflare/Google.
 
-### W06 A2 — réservation document, validation locale (publication en cours)
+### W06 A2 — réservation document livrée (#449)
+
+- PR [#449](https://github.com/flotellop-art/Arty/pull/449), squash main
+  `cddf6bc43e3681d625935e5745fcee60971dba44`, fusion le 5 septembre à 12:56 UTC.
+  CI PR `33967235536`, CI main `33967461197` et distribution Android
+  `33967461234` vertes. Pages production
+  `9d081c4c-0ac4-4645-873b-b248e084cbdd` ; tryarty.com HTTP 200 et bundle
+  `/assets/index-D64o8VTi.js` servi (232 650 octets, verrou document présent).
+  Vérification globale : 245 fichiers, 2 639 tests verts + 1 conditionnel ignoré ;
+  front/back, couverture, build, no-CASA et worker Office verts.
 
 - Un seul document privé par origine/profil, avant import App/useAuth/preview,
   connexion comprise. Aucun release sur logout/switch/visibilité/cleanup React.
@@ -225,10 +234,30 @@ réels ; préparer protocole et instrumentation sans fabriquer leurs résultats.
   à fermeture, reload et détour externe/callback synthétique/Back/Forward. Vrai
   point d'entrée pour les routes publiques et privées ; format mobile 390×844.
   Pas d'échange OAuth réel, de perte forcée dans App complet ni de recette Android.
+- Préproduction Pages `8125319c.appfacade.pages.dev` : vrai App démo, renommage
+  d'une conversation synthétique dans A, B occupé, fermeture A puis Retry B ;
+  relecture du titre exact dans B. Production : deux documents `/login`, le
+  second occupé comme attendu. Le premier a révélé une route authentifiée
+  `/login` manquante (sidebar seule), corrigée dans le suivi ci-dessous.
 - Aucun changement de schéma ou données, pas de protection contre legacy ni de
   journal/restauration/sync. Capture et reprise complète restent non livrées.
   Décision, périmètre de la défense après perte et repli :
   [ADR](ADR_WORKSPACE_BACKUP.md#révision-du-5-septembre--réservation-par-document-lot-coopératif).
+
+### Suivi de recette — entrée login avec session existante
+
+- Route `/login` ajoutée uniquement dans AppContent authentifié : retour `/`
+  avec remplacement de l'entrée d'historique. Aucun paramètre `next`/`redirect`
+  interprété, ni login relancé, ni state/verifier OAuth consommé. La connexion
+  anonyme et `/auth/callback` restent leurs routes distinctes derrière la gate.
+- Deux contre-revues préalables en lecture seule ; régression reproduite par
+  trois échecs de rendu avant correction, puis cinq tests du vrai routeur App
+  verts (hooks privés et corps d'écrans isolés). Inclut `/login/`, query/hash,
+  transition anonyme → connecté et callback réel avec handler synthétique.
+  Ce test ne prouve ni une authentification réelle, ni le rendu natif.
+- `npm run verify` : 246 fichiers, 2 644 tests verts + 1 conditionnel ignoré ;
+  types front/back, couverture, build, no-CASA et smoke worker Office verts.
+  Recette de préproduction et publication à attester dans le reçu de livraison.
 
 ### W06 A2 — contre-revues de préparation après #448 (historique)
 
