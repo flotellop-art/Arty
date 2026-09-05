@@ -1,6 +1,6 @@
 import type { Conversation } from '../types'
 import * as scoped from './scopedStorage'
-import { encrypt, decrypt, isCryptoReady } from './crypto'
+import { encrypt, decrypt, isCryptoReady, captureCryptoGuard, isCryptoContextChanged } from './crypto'
 import { deleteOwnedFiles } from './secureFileStorage'
 import { getActiveUserId, getActiveSessionEpoch } from './userSession'
 
@@ -144,10 +144,11 @@ function persist(list: Conversation[]): void {
 
 async function persistEncrypted(serialized: string, gen: number, scope: StoreScope, expectedPlain = serialized): Promise<void> {
   if (!isCryptoReady() || !scopeCurrent(scope)) return
+  const cryptoCurrent = captureCryptoGuard()
   try {
     const blob = await encrypt(serialized)
     // Never write an older cipher over a newer commit, nor remove its safety net.
-    if (!scopeCurrent(scope) || gen !== writeGen || encryptionDisabled()) return
+    if (!cryptoCurrent() || !scopeCurrent(scope) || gen !== writeGen || encryptionDisabled()) return
     const plainKey = physicalKey(scope, PLAIN_KEY)
     if (localStorage.getItem(plainKey) !== expectedPlain) return
     localStorage.setItem(physicalKey(scope, ENC_KEY), blob)
@@ -220,7 +221,8 @@ export function deleteConversation(id: string): void {
 export async function bootstrapConversationStorage(): Promise<void> {
   ensureCacheScope()
   const scope = captureScope(), ticket = ++bootstrapGen
-  const current = () => scopeCurrent(scope) && ticket === bootstrapGen
+  const cryptoCurrent = isCryptoReady() ? captureCryptoGuard() : () => true
+  const current = () => scopeCurrent(scope) && ticket === bootstrapGen && cryptoCurrent()
   const initialWrite = writeGen
   try {
     const plainRaw = localStorage.getItem(physicalKey(scope, PLAIN_KEY))
@@ -246,7 +248,8 @@ export async function bootstrapConversationStorage(): Promise<void> {
             localStorage.getItem(physicalKey(scope, PLAIN_KEY)) !== plainRaw) return
         memConversations = sanitizeConversationPayloads(JSON.parse(decoded) as Conversation[])
         cacheReady = true
-      } catch {
+      } catch (error) {
+        if (isCryptoContextChanged(error)) return
         if (!current() || initialWrite !== writeGen || localStorage.getItem(encKey) !== enc ||
             localStorage.getItem(physicalKey(scope, PLAIN_KEY)) !== plainRaw) return
         quarantineUndecryptableBlob(enc, scope)

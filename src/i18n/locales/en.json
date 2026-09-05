@@ -1487,7 +1487,8 @@
     "kicker": "API keys",
     "titleLead": "Your ",
     "titleAccent": "keys.",
-    "subtitle": "Stored locally on this device without application-level encryption."
+    "subtitle": "Stored locally on this device without application-level encryption.",
+    "savedLoadingUnavailable": "Keys saved. Some local data could not be loaded; try again after reloading."
   },
   "mailAccountsModal": {
     "kicker": "Mailboxes",

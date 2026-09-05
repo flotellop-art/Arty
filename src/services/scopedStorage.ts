@@ -4,7 +4,7 @@
  */
 
 import { getActiveUserId } from './userSession'
-import { secureSet, secureGet, isCryptoReady } from './crypto'
+import { secureSet, secureGet, isCryptoReady, isCryptoContextChanged } from './crypto'
 
 function buildKey(baseKey: string): string {
   const userId = getActiveUserId()
@@ -79,7 +79,8 @@ export async function secureGetJSON<T>(baseKey: string): Promise<T | null> {
     try {
       const result = await secureGet<T>(key)
       if (result !== null) return result
-    } catch {
+    } catch (error) {
+      if (isCryptoContextChanged(error)) throw error
       // Decryption failed — try plain
     }
   }

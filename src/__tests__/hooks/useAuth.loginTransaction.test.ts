@@ -1,4 +1,5 @@
 import { act, renderHook, waitFor } from '@testing-library/react'
+import { createElement, StrictMode, type ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
@@ -50,7 +51,7 @@ vi.mock('../../services/userSession', () => ({
   purgeLegacyGlobalReports: vi.fn(),
 }))
 vi.mock('../../services/activeApiKey', () => ({ setActiveKeys: vi.fn(), clearActiveKeys: vi.fn() }))
-vi.mock('../../services/crypto', () => ({ initCrypto: mocks.initCrypto }))
+vi.mock('../../services/crypto', async importOriginal => ({ ...await importOriginal<typeof import('../../services/crypto')>(), initCrypto: mocks.initCrypto }))
 vi.mock('../../services/googleAuth', () => ({
   bootstrapGoogleStorage: vi.fn(async () => {}),
   logout: mocks.googleLogout,
@@ -88,6 +89,9 @@ vi.mock('@capacitor/core', () => ({
 }))
 
 import { useAuth } from '../../hooks/useAuth'
+import * as scoped from '../../services/scopedStorage'
+import { bootstrapGoogleStorage } from '../../services/googleAuth'
+import { setActiveKeys } from '../../services/activeApiKey'
 
 const credentials = {
   displayName: 'User A',
@@ -103,6 +107,7 @@ describe('useAuth login transaction', () => {
     mocks.epoch = 0
     mocks.known = []
     mocks.scoped.clear()
+    vi.mocked(scoped.getJSON).mockReset().mockReturnValue(null)
     mocks.initCrypto.mockReset()
     mocks.initCrypto.mockResolvedValue(undefined)
     mocks.bootstrapConversationStorage.mockReset()
@@ -230,6 +235,62 @@ describe('useAuth login transaction', () => {
     })
     expect(mocks.scoped.has('google-user-b:api-keys')).toBe(false)
     expect(mocks.googleLogout).not.toHaveBeenCalled()
+  })
+
+  it('un bootstrap de montage devenu obsolète ne lance aucun store ni ne republie les clés', async () => {
+    mocks.active = { userId: 'a', authMethod: 'apikey', displayName: 'A', createdAt: 1 }
+    vi.mocked(scoped.getJSON).mockReturnValue({ anthropic: 'key-a' })
+    let release!: () => void; mocks.initCrypto.mockReturnValueOnce(new Promise(resolve => { release = resolve }))
+    const hook = renderHook(() => useAuth())
+    mocks.active = { userId: 'b', authMethod: 'apikey', displayName: 'B', createdAt: 1 }; mocks.epoch++
+    vi.mocked(setActiveKeys).mockClear()
+    await act(async () => { release(); await Promise.resolve() })
+    expect(bootstrapGoogleStorage).not.toHaveBeenCalled()
+    expect(mocks.bootstrapFileStorage).not.toHaveBeenCalled()
+    expect(setActiveKeys).not.toHaveBeenCalled(); hook.unmount()
+  })
+
+  it('StrictMode cancels the obsolete initializer and still boots all stores once', async () => {
+    mocks.active = { userId: 'a', authMethod: 'apikey', displayName: 'A', createdAt: 1 }
+    vi.mocked(scoped.getJSON).mockReturnValue({ anthropic: 'key-a' })
+    const releases: Array<() => void> = []
+    mocks.initCrypto.mockImplementation((...args: unknown[]) => new Promise<void>((resolve, reject) => {
+      releases.push(() => {
+        try { (args[1] as { assertCurrent?: () => void })?.assertCurrent?.(); resolve() } catch (error) { reject(error) }
+      })
+    }))
+    const hook = renderHook(() => useAuth(), { wrapper: ({ children }: { children: ReactNode }) => createElement(StrictMode, null, children) })
+    expect(releases).toHaveLength(2)
+    await act(async () => { releases.forEach(release => release()); await Promise.resolve() })
+    expect(bootstrapGoogleStorage).toHaveBeenCalledOnce()
+    expect(mocks.bootstrapConversationStorage).toHaveBeenCalledOnce()
+    expect(mocks.bootstrapFileStorage).toHaveBeenCalledOnce(); hook.unmount()
+  })
+
+  it('un switch échoué remet UI et scope hors compte sans effacer les historiques', async () => {
+    mocks.active = { userId: 'a', authMethod: 'apikey', displayName: 'A', createdAt: 1 }
+    mocks.known = [mocks.active, { userId: 'b', authMethod: 'apikey', displayName: 'B', createdAt: 1 }]
+    const { result } = renderHook(() => useAuth())
+    vi.mocked(scoped.getJSON).mockReturnValue({ anthropic: 'key-b' })
+    mocks.initCrypto.mockRejectedValueOnce(new Error('storage unavailable'))
+    await act(async () => { await expect(result.current.switchAccount('b')).rejects.toThrow('storage unavailable') })
+    expect(mocks.active).toBeNull(); expect(result.current.currentUser).toBeNull()
+    expect(mocks.googleLogout).not.toHaveBeenCalled()
+  })
+
+  it('un switch obsolète ne nettoie ni ne publie le compte gagnant', async () => {
+    mocks.active = { userId: 'a', authMethod: 'apikey', displayName: 'A', createdAt: 1 }
+    mocks.known = [mocks.active, { userId: 'b', authMethod: 'apikey', displayName: 'B', createdAt: 1 }]
+    const { result } = renderHook(() => useAuth())
+    vi.mocked(scoped.getJSON).mockReturnValue({ anthropic: 'key-b' })
+    let release!: () => void; mocks.initCrypto.mockReturnValueOnce(new Promise(resolve => { release = resolve }))
+    let pending!: Promise<unknown>; act(() => { pending = result.current.switchAccount('b').catch(e => e) })
+    expect(result.current.currentUser).toBeNull()
+    mocks.active = { userId: 'c', authMethod: 'apikey', displayName: 'C', createdAt: 1 }; mocks.epoch++
+    await act(async () => { release(); await pending })
+    expect(mocks.active.userId).toBe('c')
+    expect(bootstrapGoogleStorage).not.toHaveBeenCalled()
+    expect(result.current.currentUser).toBeNull()
   })
 
   it('ne rollback jamais un autre compte qui gagne pendant le finaliseur', async () => {

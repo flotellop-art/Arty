@@ -1487,7 +1487,8 @@
     "kicker": "Clés API",
     "titleLead": "Tes ",
     "titleAccent": "clés.",
-    "subtitle": "Stockées localement sur cet appareil, sans chiffrement applicatif."
+    "subtitle": "Stockées localement sur cet appareil, sans chiffrement applicatif.",
+    "savedLoadingUnavailable": "Clés enregistrées. Certaines données locales n’ont pas pu être chargées ; réessaie après rechargement."
   },
   "mailAccountsModal": {
     "kicker": "Boîtes mail",

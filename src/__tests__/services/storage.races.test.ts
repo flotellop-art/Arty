@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 vi.mock('../../services/userSession', () => ({ getActiveUserId: vi.fn(() => 'a'), getActiveSessionEpoch: vi.fn(() => 1) }))
-vi.mock('../../services/crypto', () => ({ encrypt: vi.fn(async (s: string) => `enc:${s}`), decrypt: vi.fn(async (s: string) => s.slice(4)), isCryptoReady: vi.fn(() => true) }))
+vi.mock('../../services/crypto', async importOriginal => ({
+  ...await importOriginal<typeof import('../../services/crypto')>(), captureCryptoGuard: () => () => true,
+  encrypt: vi.fn(async (s: string) => `enc:${s}`), decrypt: vi.fn(async (s: string) => s.slice(4)), isCryptoReady: vi.fn(() => true),
+}))
 vi.mock('../../services/secureFileStorage', () => ({ deleteOwnedFiles: vi.fn(async () => 0) }))
 import * as store from '../../services/storage'
 import { encrypt, decrypt, isCryptoReady } from '../../services/crypto'

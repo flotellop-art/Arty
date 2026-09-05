@@ -1,10 +1,13 @@
-import { memo, useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ApiKeySetup } from './ApiKeySetup'
 import type { ApiKeys } from '../../hooks/useApiKeys'
 import * as scoped from '../../services/scopedStorage'
 import { setActiveKeys } from '../../services/activeApiKey'
-import { initCrypto } from '../../services/crypto'
+import { initCrypto, CryptoContextChanged, waitForCryptoInitialization, isCryptoReady } from '../../services/crypto'
+import { resumePendingLocalStorage } from '../../services/resumeLocalStorage'
+import { toast } from '../../services/toast'
+import { getActiveUserId, getActiveSessionEpoch } from '../../services/userSession'
 import { useDialogFocusTrap } from '../../hooks/useDialogFocusTrap'
 
 interface ApiKeysModalProps {
@@ -23,35 +26,70 @@ interface ApiKeysModalProps {
  * initCrypto(), stockage plain JSON (BUG 1), activation en mémoire via
  * setActiveKeys(), puis fermeture.
  */
-export const ApiKeysModal = memo(function ApiKeysModal({ open, onClose }: ApiKeysModalProps) {
+export function ApiKeysModal({ open, onClose }: ApiKeysModalProps) {
   const { t } = useTranslation()
-  const dialogRef = useDialogFocusTrap<HTMLDivElement>(open, onClose)
+  const saveGeneration = useRef(0)
+  const openRef = useRef(open)
+  openRef.current = open
+  const editingScope = useRef<{ owner: string | null; epoch: number } | null>(null)
+  const close = () => { saveGeneration.current++; onClose() }
+  const dialogRef = useDialogFocusTrap<HTMLDivElement>(open, close)
   const [initialKeys, setInitialKeys] = useState<ApiKeys | null>(null)
+  const owner = getActiveUserId(), epoch = getActiveSessionEpoch()
 
   useEffect(() => {
     if (!open) return
+    editingScope.current = { owner, epoch }
     const stored = scoped.getJSON<ApiKeys>('api-keys')
     setInitialKeys(stored ?? null)
-  }, [open])
+    return () => { saveGeneration.current++; editingScope.current = null }
+  }, [open]) // One editing identity per opening; never rebind a private draft.
 
-  if (!open) return null
+  useEffect(() => {
+    const scope = editingScope.current
+    if (open && scope && (scope.owner !== owner || scope.epoch !== epoch)) close()
+  }, [open, owner, epoch])
+
+  if (!open || (editingScope.current && (editingScope.current.owner !== owner || editingScope.current.epoch !== epoch))) return null
 
   const handleSave = async (keys: ApiKeys) => {
-    await initCrypto(keys.anthropic)
-    scoped.setJSON('api-keys', {
-      anthropic: keys.anthropic,
-      gemini: keys.gemini,
-      mistral: keys.mistral,
-      openai: keys.openai,
-    })
-    setActiveKeys(keys.anthropic, keys.gemini, keys.mistral, keys.openai)
+    const scope = editingScope.current, generation = ++saveGeneration.current
+    const assertCurrent = () => {
+      if (!scope || !openRef.current || generation !== saveGeneration.current ||
+        scope.owner !== getActiveUserId() || scope.epoch !== getActiveSessionEpoch()) throw new CryptoContextChanged()
+    }
+    assertCurrent()
+    // Never supersede a cold initializer before a committed key exists.
+    await waitForCryptoInitialization()
+    assertCurrent()
+    let committed = false
+    try {
+      await initCrypto(keys.anthropic, {
+        assertCurrent,
+        commit: () => {
+          assertCurrent()
+          scoped.setJSON('api-keys', keys) // quota throws before candidate/active-key publication
+          setActiveKeys(keys.anthropic, keys.gemini, keys.mistral, keys.openai)
+          committed = true
+        },
+      })
+    } finally {
+      if (scope && scope.owner === getActiveUserId() && scope.epoch === getActiveSessionEpoch() && isCryptoReady()) {
+        void resumePendingLocalStorage().then(ok => {
+          if (committed && ok === false && scope.owner === getActiveUserId() && scope.epoch === getActiveSessionEpoch()) {
+            toast(t('apiKeysModal.savedLoadingUnavailable'), 'info')
+          }
+        })
+      }
+    }
+    assertCurrent()
     onClose()
   }
 
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-theme-ink/50"
-      onClick={onClose}
+      onClick={close}
     >
       <div
         ref={dialogRef}
@@ -71,7 +109,7 @@ export const ApiKeysModal = memo(function ApiKeysModal({ open, onClose }: ApiKey
             {t('apiKeysModal.kicker')}
           </span>
           <button
-            onClick={onClose}
+            onClick={close}
             className="grid h-11 w-11 place-items-center border border-theme-border text-theme-ink hover:border-theme-accent"
             aria-label={t('common.close')}
           >
@@ -98,4 +136,4 @@ export const ApiKeysModal = memo(function ApiKeysModal({ open, onClose }: ApiKey
       </div>
     </div>
   )
-})
+}
