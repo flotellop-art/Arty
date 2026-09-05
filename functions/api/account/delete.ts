@@ -1,6 +1,7 @@
 import type { Env } from '../../env'
 import { verifyGoogleUserStrict } from '../_lib/checkAllowedUser'
-import { emailTrialKey, verifyEmailTrialToken } from '../_lib/emailTrial'
+import { verifyEmailTrialToken } from '../_lib/emailTrial'
+import { accountErasureStatements } from '../_lib/accountErasureData'
 
 /**
  * GDPR account erasure.
@@ -37,50 +38,8 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     return Response.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const trialIdentity = emailTrialKey(email)
-  // Rapports emis avant l'unification des identites email-trial. Conserver ce
-  // namespace dans l'effacement tant que des lignes historiques peuvent vivre
-  // pendant leur fenetre de retention.
-  const legacyTrialReportIdentity = `emailtrial:${email}`
-
   try {
-    // Plusieurs tables sont créées paresseusement par leur route. Une table
-    // absente signifie « aucune donnée à effacer », pas une suppression en
-    // échec. En revanche, toute erreur de découverte ou du batch reste un 500.
-    const existing = await env.DB.prepare(
-      `SELECT name FROM sqlite_master
-       WHERE type = 'table' AND name IN (
-         'memory', 'shared_conversations', 'content_reports',
-         'email_otp', 'email_trial_sessions', 'email_trial_usage',
-         'acquisition'
-       )`
-    ).all<{ name: string }>()
-    const present = new Set((existing.results ?? []).map((row) => row.name))
-    const statements: D1PreparedStatement[] = [
-    ]
-
-    const add = (table: string, sql: string, identity: string) => {
-      if (present.has(table)) statements.push(env.DB.prepare(sql).bind(identity))
-    }
-
-    add('email_otp', 'DELETE FROM email_otp WHERE email = ?1', email)
-    add('email_trial_sessions', 'DELETE FROM email_trial_sessions WHERE email = ?1', email)
-    // Attribution pubs (trial/init.ts) — donnée personnelle (email + campagne
-    // d'origine), effacée avec le compte.
-    add('acquisition', 'DELETE FROM acquisition WHERE email = ?1', email)
-    // Proxy content is recorded under a disjoint trial identity even though
-    // authentication/session tables use the normalized raw email. Usage and
-    // quota rows are retained as anti-abuse/accounting records.
-    add('memory', 'DELETE FROM memory WHERE user_id = ?1', trialIdentity)
-    add('shared_conversations', 'DELETE FROM shared_conversations WHERE owner_email = ?1', trialIdentity)
-    add('content_reports', 'DELETE FROM content_reports WHERE reporter_email = ?1', trialIdentity)
-    add('content_reports', 'DELETE FROM content_reports WHERE reporter_email = ?1', legacyTrialReportIdentity)
-
-    if (kind === 'google') {
-      add('memory', 'DELETE FROM memory WHERE user_id = ?1', email)
-      add('shared_conversations', 'DELETE FROM shared_conversations WHERE owner_email = ?1', email)
-      add('content_reports', 'DELETE FROM content_reports WHERE reporter_email = ?1', email)
-    }
+    const statements = await accountErasureStatements(env.DB, email, kind)
 
     // D1 batch is transactional: an unavailable table or failed statement
     // rejects the request instead of returning a misleading { ok: true }.

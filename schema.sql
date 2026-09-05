@@ -5,6 +5,16 @@
 -- En cas de divergence, c'est le code sous functions/ qui fait foi.
 
 -- ── Mémoire utilisateur (functions/api/memory/action.ts) ──
+-- Permanent opaque anti-replay receipts. Do not TTL/delete: old requests must
+-- never erase data recreated after a completed erasure. No raw identity/secret.
+CREATE TABLE IF NOT EXISTS account_erasure_receipts_v1 (
+  operation_id TEXT PRIMARY KEY,
+  capability_hash TEXT NOT NULL UNIQUE,
+  subject_hash TEXT NOT NULL,
+  execution_ticket TEXT NOT NULL,
+  completed INTEGER NOT NULL CHECK(completed IN (0, 1))
+);
+
 CREATE TABLE IF NOT EXISTS memory (
   user_id TEXT NOT NULL,
   category TEXT NOT NULL,  -- 'profil', 'clients', 'projets', 'notes'

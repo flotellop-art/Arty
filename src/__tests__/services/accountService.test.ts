@@ -18,7 +18,7 @@ const deps = vi.hoisted(() => ({
   wipeFileStorage: vi.fn(async () => {}),
   purgeMailAccountsForUser: vi.fn(async () => {}),
   projectBegin: vi.fn(), projectConfirm: vi.fn(), projectFinish: vi.fn(), projectPurge: vi.fn(),
-  projectAssert: vi.fn(), projectBlock: vi.fn(), epoch: 0,
+  projectAssert: vi.fn(), projectBlock: vi.fn(), projectSent: vi.fn(), projectRead: vi.fn(), epoch: 0,
   session: null as Session | null,
 }))
 
@@ -47,12 +47,12 @@ vi.mock('../../services/projects/store', () => ({
   beginProjectErasure: deps.projectBegin, assertProjectErasure: deps.projectAssert,
   confirmServerProjectErasure: deps.projectConfirm, finishProjectErasure: deps.projectFinish,
   releaseFailedProjectErasure: deps.projectFinish,
+  markProjectErasureSent: deps.projectSent, readProjectErasureState: deps.projectRead,
   blockProjectOperations: deps.projectBlock, purgeProjectsForAccount: deps.projectPurge,
 }))
 
 import {
   deleteAccount,
-  deleteServerAccount,
   wipeLocalAccount,
 } from '../../services/accountService'
 
@@ -79,7 +79,8 @@ describe('accountService — fail-closed account erasure', () => {
     vi.clearAllMocks()
     deps.session = googleSession()
     deps.epoch = 0
-    deps.projectBegin.mockImplementation(async (owner: string) => ({ owner, nonce: 'n', serverConfirmed: false }))
+    deps.projectBegin.mockImplementation(async (owner: string, _guard, _local, remote) => ({ owner, nonce: 'n', operationId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', serverConfirmed: false, remote }))
+    deps.projectRead.mockResolvedValue('none'); deps.projectSent.mockResolvedValue(true)
     deps.projectAssert.mockImplementation(async (_lease, guard: () => void) => guard())
     deps.projectConfirm.mockResolvedValue(undefined)
     deps.projectFinish.mockResolvedValue(undefined)
@@ -88,20 +89,26 @@ describe('accountService — fail-closed account erasure', () => {
     deps.googleToken.mockResolvedValue('google-token')
     deps.trialToken.mockReturnValue(null)
     deps.wipeFileStorage.mockResolvedValue(undefined)
-    fetchMock.mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }))
+    fetchMock.mockImplementation(async (_url, init) => new Response(JSON.stringify({ protocol: 1, status: 'confirmed',
+      operationId: init.headers['x-arty-erasure-operation'], subjectHash: init.headers['x-arty-erasure-subject'] }), { status: 200 }))
     vi.stubGlobal('fetch', fetchMock)
   })
 
   afterEach(() => vi.unstubAllGlobals())
+  it('does not invent a subject for a session with no reliable email', async () => {
+    deps.session = { ...googleSession(), email: undefined }
+    await expect(deleteAccount()).rejects.toThrow('identity unavailable')
+    expect(deps.projectBegin).not.toHaveBeenCalled(); expect(fetchMock).not.toHaveBeenCalled()
+  })
 
   it('sends x-arty-trial-token for an authenticated email session', async () => {
     deps.session = emailSession()
     deps.trialToken.mockReturnValue('trial-session-token')
 
-    await deleteServerAccount()
+    await deleteAccount()
 
     expect(deps.googleToken).not.toHaveBeenCalled()
-    expect(fetchMock).toHaveBeenCalledWith('/api/account/delete', expect.objectContaining({
+    expect(fetchMock).toHaveBeenCalledWith('/api/account/erasure-v1', expect.objectContaining({
       method: 'POST',
       headers: expect.objectContaining({ 'x-arty-trial-token': 'trial-session-token' }),
     }))
@@ -110,7 +117,7 @@ describe('accountService — fail-closed account erasure', () => {
   it('uses only the Google credential for a Google session', async () => {
     deps.trialToken.mockReturnValue('stale-trial-token')
 
-    await deleteServerAccount()
+    await deleteAccount()
 
     const init = fetchMock.mock.calls[0]?.[1] as RequestInit
     expect(init.headers).toMatchObject({ 'x-google-token': 'google-token' })
@@ -121,7 +128,7 @@ describe('accountService — fail-closed account erasure', () => {
     deps.googleToken.mockResolvedValue(null)
     deps.trialToken.mockReturnValue('unrelated-trial-token')
 
-    await expect(deleteServerAccount()).rejects.toThrow('Google credential unavailable')
+    await expect(deleteAccount()).rejects.toThrow('Google credential unavailable')
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
@@ -130,7 +137,7 @@ describe('accountService — fail-closed account erasure', () => {
     deps.googleToken.mockResolvedValue('unrelated-google-token')
     deps.trialToken.mockReturnValue(null)
 
-    await expect(deleteServerAccount()).rejects.toThrow('Email credential unavailable')
+    await expect(deleteAccount()).rejects.toThrow('Email credential unavailable')
     expect(deps.googleToken).not.toHaveBeenCalled()
     expect(fetchMock).not.toHaveBeenCalled()
   })
@@ -143,7 +150,7 @@ describe('accountService — fail-closed account erasure', () => {
       createdAt: 1,
     }
 
-    await deleteServerAccount()
+    await deleteAccount()
 
     expect(deps.googleToken).not.toHaveBeenCalled()
     expect(deps.trialToken).not.toHaveBeenCalled()
@@ -212,7 +219,8 @@ describe('accountService — fail-closed account erasure', () => {
   it('does not issue a destructive request after a token refresh crosses accounts', async () => {
     let resolve!: (token: string) => void
     deps.googleToken.mockReturnValueOnce(new Promise<string>(r => { resolve = r }))
-    const pending = deleteServerAccount()
+    const pending = deleteAccount()
+    await vi.waitFor(() => expect(deps.googleToken).toHaveBeenCalled())
     deps.session = emailSession(); deps.epoch++
     resolve('token-b')
     await expect(pending).rejects.toThrow('context changed')
@@ -224,7 +232,8 @@ describe('accountService — fail-closed account erasure', () => {
     const pending = deleteAccount()
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled())
     deps.session = emailSession(); deps.epoch++
-    resolve(new Response('{}', { status: 200 }))
+    const headers = fetchMock.mock.calls[0]![1].headers
+    resolve(new Response(JSON.stringify({ protocol: 1, status: 'confirmed', operationId: headers['x-arty-erasure-operation'], subjectHash: headers['x-arty-erasure-subject'] }), { status: 200 }))
     await expect(pending).rejects.toThrow('context changed')
     expect(deps.projectConfirm).toHaveBeenCalledWith(expect.objectContaining({ owner: 'google-user' }))
     expect(deps.wipeFileStorage).not.toHaveBeenCalled()

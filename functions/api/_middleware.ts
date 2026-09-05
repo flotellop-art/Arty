@@ -14,6 +14,7 @@ export const ALLOWED_ORIGINS = [
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>()
 const RATE_LIMIT = 60
 const RATE_WINDOW = 60_000
+const ALLOWED_HEADERS = 'Content-Type, Authorization, x-api-key, x-openai-key, x-google-token, x-arty-vision, x-arty-trial-token, x-arty-erasure-operation, x-arty-erasure-capability, x-arty-erasure-subject, anthropic-version, anthropic-beta'
 
 export const WORKSPACE_ADDON_POST_PATHS = new Set([
   '/api/workspace-addon/phase0/home',
@@ -84,7 +85,7 @@ export const onRequest: PagesFunction = async (context) => {
       headers: {
         'Access-Control-Allow-Origin': hasValidOrigin ? origin : '',
         'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-api-key, x-openai-key, x-google-token, x-arty-vision, x-arty-trial-token, anthropic-version, anthropic-beta',
+        'Access-Control-Allow-Headers': ALLOWED_HEADERS,
         'Access-Control-Max-Age': '86400',
       },
     })
@@ -119,7 +120,7 @@ export const onRequest: PagesFunction = async (context) => {
   headers.set('Referrer-Policy', 'strict-origin-when-cross-origin')
   if (hasValidOrigin) {
     headers.set('Access-Control-Allow-Origin', origin)
-    headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-api-key, x-openai-key, x-google-token, x-arty-vision, anthropic-version, anthropic-beta')
+    headers.set('Access-Control-Allow-Headers', ALLOWED_HEADERS)
     // Expose les headers custom que le client lit côté navigateur (sinon
     // CORS les masque). Trial met à jour le compteur d'essai ; Gemini expose
     // le modèle effectif après killswitch/fallback 3.6 → 3.5.

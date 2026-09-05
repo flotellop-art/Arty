@@ -92,23 +92,20 @@ describe('/api/account/delete', () => {
   })
 
   it('returns failure instead of claiming success when the transactional batch fails', async () => {
-    authMocks.trial.mockResolvedValue('trial@example.com')
-    const statement = {
-      bind: vi.fn(),
-      run: vi.fn(async () => ({})),
-    } as unknown as D1PreparedStatement
-    ;(statement.bind as unknown as ReturnType<typeof vi.fn>).mockReturnValue(statement)
-    const db = {
-      prepare: vi.fn(() => statement),
-      batch: vi.fn(async () => { throw new Error('D1 unavailable') }),
-    } as unknown as D1Database
-    const res = await onRequestPost({
-      request: new Request('https://tryarty.com/api/account/delete', {
-        method: 'POST', headers: { 'x-arty-trial-token': 'trial-token' },
-      }),
-      env: { DB: db },
-    } as never)
-    expect(res.status).toBe(500)
-    expect(await res.json()).toEqual({ error: 'Account deletion incomplete' })
+    const email = 'trial@example.com'
+    authMocks.trial.mockResolvedValue(email)
+    await h.db.prepare("INSERT INTO memory (user_id, category, data) VALUES (?1, 'profil', 'private')").bind(`trial-email:${email}`).run()
+    await h.db.prepare("INSERT INTO content_reports (id, reporter_email, category, message_excerpt) VALUES ('rollback', ?1, 'other', 'private')").bind(`trial-email:${email}`).run()
+    await h.db.prepare("CREATE TRIGGER legacy_erasure_failure BEFORE DELETE ON content_reports BEGIN SELECT RAISE(ABORT, 'synthetic failure'); END").run()
+    try {
+      const res = await onRequestPost({
+        request: new Request('https://tryarty.com/api/account/delete', { method: 'POST', headers: { 'x-arty-trial-token': 'trial-token' } }),
+        env: h.env,
+      } as never)
+      expect(res.status).toBe(500)
+      expect(await res.json()).toEqual({ error: 'Account deletion incomplete' })
+      expect(await count('memory', 'user_id', `trial-email:${email}`)).toBe(1)
+      expect(await count('content_reports', 'reporter_email', `trial-email:${email}`)).toBe(1)
+    } finally { await h.db.prepare('DROP TRIGGER legacy_erasure_failure').run() }
   })
 })

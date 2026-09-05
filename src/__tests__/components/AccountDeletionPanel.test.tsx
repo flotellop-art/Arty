@@ -1,16 +1,16 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-const mocks = vi.hoisted(() => ({ deleteAccount: vi.fn(), wipeLocal: vi.fn(), owner: 'a', epoch: 1 }))
+const mocks = vi.hoisted(() => ({ deleteAccount: vi.fn(), wipeLocal: vi.fn(), read: vi.fn(), owner: 'a', epoch: 1 }))
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }))
-vi.mock('../../services/accountService', () => ({ deleteAccount: mocks.deleteAccount, wipeLocalAccount: mocks.wipeLocal }))
+vi.mock('../../services/accountService', () => ({ deleteAccount: mocks.deleteAccount, wipeLocalAccount: mocks.wipeLocal, getAccountErasureState: mocks.read }))
 vi.mock('../../services/userSession', () => ({ getActiveUserId: () => mocks.owner, getActiveSessionEpoch: () => mocks.epoch }))
 import { AccountDeletionPanel } from '../../components/settings/AccountDeletionPanel'
-beforeEach(() => { vi.clearAllMocks(); mocks.owner = 'a'; mocks.epoch = 1; mocks.deleteAccount.mockReset(); mocks.wipeLocal.mockReset() })
+beforeEach(() => { vi.clearAllMocks(); mocks.owner = 'a'; mocks.epoch = 1; mocks.deleteAccount.mockReset(); mocks.wipeLocal.mockReset(); mocks.read.mockReset().mockResolvedValue('none') })
 describe('account erasure confirmation UI', () => {
   it('requires account confirmation, then a separate local-only choice and confirmation after failure', async () => {
     mocks.deleteAccount.mockRejectedValueOnce(new Error('uncertain receipt'))
     const done = vi.fn(); render(<AccountDeletionPanel open onComplete={done} />)
-    fireEvent.click(screen.getByText('account.delete'))
+    fireEvent.click(await screen.findByText('account.delete'))
     expect(mocks.deleteAccount).not.toHaveBeenCalled()
     fireEvent.click(screen.getByText('account.confirmCta'))
     await screen.findByText('account.localChoice')
@@ -24,7 +24,7 @@ describe('account erasure confirmation UI', () => {
   })
   it('an old A confirmation cannot delete the now active B account', async () => {
     render(<AccountDeletionPanel open onComplete={vi.fn()} />)
-    fireEvent.click(screen.getByText('account.delete'))
+    fireEvent.click(await screen.findByText('account.delete'))
     mocks.owner = 'b'; mocks.epoch++
     fireEvent.click(screen.getByText('account.confirmCta'))
     expect(mocks.deleteAccount).not.toHaveBeenCalled()
@@ -34,16 +34,16 @@ describe('account erasure confirmation UI', () => {
   it('same-owner retry requires a new arm after cleanup invalidates the prior epoch', async () => {
     mocks.deleteAccount.mockImplementationOnce(async () => { mocks.epoch++; throw new Error('disk') })
     render(<AccountDeletionPanel open onComplete={vi.fn()} />)
-    fireEvent.click(screen.getByText('account.delete')); fireEvent.click(screen.getByText('account.confirmCta'))
+    fireEvent.click(await screen.findByText('account.delete')); fireEvent.click(screen.getByText('account.confirmCta'))
     await screen.findByText('account.localChoice')
     expect(screen.queryByText('account.confirmCta')).toBeNull()
-    fireEvent.click(screen.getByText('account.delete'))
+    fireEvent.click(await screen.findByText('account.delete'))
     fireEvent.click(screen.getByText('account.confirmCta'))
     await waitFor(() => expect(mocks.deleteAccount).toHaveBeenCalledTimes(2))
   })
-  it('closing and reopening disarms the destructive confirmation', () => {
+  it('closing and reopening disarms the destructive confirmation', async () => {
     const { rerender } = render(<AccountDeletionPanel open onComplete={vi.fn()} />)
-    fireEvent.click(screen.getByText('account.delete'))
+    fireEvent.click(await screen.findByText('account.delete'))
     rerender(<AccountDeletionPanel open={false} onComplete={vi.fn()} />)
     rerender(<AccountDeletionPanel open onComplete={vi.fn()} />)
     expect(screen.queryByText('account.confirmCta')).toBeNull()
@@ -53,11 +53,57 @@ describe('account erasure confirmation UI', () => {
     let reject!: (reason: Error) => void
     mocks.deleteAccount.mockReturnValueOnce(new Promise((_resolve, r) => { reject = r }))
     render(<AccountDeletionPanel open onComplete={vi.fn()} />)
-    fireEvent.click(screen.getByText('account.delete')); fireEvent.click(screen.getByText('account.confirmCta'))
+    fireEvent.click(await screen.findByText('account.delete')); fireEvent.click(screen.getByText('account.confirmCta'))
     mocks.owner = 'b'; mocks.epoch++; mocks.owner = 'a'; mocks.epoch++
     reject(new Error('superseded'))
     await screen.findByText('account.error')
     expect(screen.queryByText('account.confirmCta')).toBeNull()
     expect(mocks.deleteAccount).toHaveBeenCalledTimes(1)
+  })
+  it('reads uncertainty on reopen without network action, labels verification plus cleanup explicitly', async () => {
+    mocks.read.mockResolvedValue('uncertain')
+    render(<AccountDeletionPanel open onComplete={vi.fn()} />)
+    expect(screen.queryByText('account.delete')).toBeNull()
+    fireEvent.click(await screen.findByRole('button', { name: 'account.verifyAndFinish' }))
+    expect(mocks.deleteAccount).not.toHaveBeenCalled()
+    expect(screen.getByText('account.recoveryBody')).toBeVisible()
+    expect(screen.getByText('account.closeConfirmation')).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: 'account.verifyAndFinish' }))
+    await waitFor(() => expect(mocks.deleteAccount).toHaveBeenCalledTimes(1))
+  })
+  it('does not show a fresh delete action when the journal cannot be read', async () => {
+    mocks.read.mockRejectedValueOnce(new Error('IDB unavailable')).mockResolvedValue('confirmed')
+    render(<AccountDeletionPanel open onComplete={vi.fn()} />)
+    fireEvent.click(await screen.findByText('account.retryRead'))
+    expect(screen.queryByText('account.delete')).toBeNull()
+    await screen.findByRole('button', { name: 'account.finishLocal' })
+    expect(mocks.deleteAccount).not.toHaveBeenCalled()
+  })
+  it('does not describe historical local-cleanup authority as proof of server deletion', async () => {
+    mocks.read.mockResolvedValue('confirmed')
+    render(<AccountDeletionPanel open onComplete={vi.fn()} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'account.finishLocal' }))
+    expect(screen.getByText('account.authorizedCleanupBody')).toBeVisible()
+    expect(screen.queryByText('account.recoveryBody')).toBeNull()
+  })
+  it('legacy uncertainty cannot arm another server deletion; local-only is separately confirmed', async () => {
+    mocks.read.mockResolvedValue('legacy-unknown')
+    render(<AccountDeletionPanel open onComplete={vi.fn()} />)
+    await screen.findByText('account.legacyUnknown')
+    expect(screen.queryByText('account.delete')).toBeNull()
+    fireEvent.click(screen.getByText('account.localChoice'))
+    expect(screen.getByText('account.localBody')).toBeVisible()
+    expect(mocks.wipeLocal).not.toHaveBeenCalled()
+  })
+  it('ignores a late A journal read after switching to B', async () => {
+    let resolve!: (value: string) => void
+    mocks.read.mockReturnValueOnce(new Promise(r => { resolve = r })).mockResolvedValueOnce('none')
+    const { rerender } = render(<AccountDeletionPanel open onComplete={vi.fn()} />)
+    mocks.owner = 'b'; mocks.epoch++
+    rerender(<AccountDeletionPanel open onComplete={vi.fn()} />)
+    await screen.findByText('account.delete')
+    resolve('uncertain')
+    await waitFor(() => expect(screen.getByText('account.delete')).toBeVisible())
+    expect(screen.queryByRole('button', { name: 'account.verifyAndFinish' })).toBeNull()
   })
 })

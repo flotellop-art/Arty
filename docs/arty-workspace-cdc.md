@@ -108,6 +108,67 @@ réels ; préparer protocole et instrumentation sans fabriquer leurs résultats.
 
 ## Preuves par lot
 
+### W06 A3b.5a — reçu distant d'effacement, parcours courant
+
+Correction séparée de la future reprise froide v5 : le parcours actuel pouvait
+perdre sa dernière intention après une réponse réseau perdue, alors que D1
+avait déjà révoqué le jeton email. Une erreur HTTP, y compris 401, ne prouve pas
+l'absence d'effet. Ce lot ne livre ni restauration ni synchronisation.
+
+- Nouvelle route `/api/account/erasure-v1`, sans repli vers `/delete`. POST
+  authentifié, sujet Google/email-trial lié à l'identité capturée avant tout
+  DELETE. Consultation GET sans jeton, secret 256 bits dans un header uniquement,
+  réponse `no-store`, aucun CREATE/DELETE dans GET.
+- Intention locale enregistrée avant l'envoi ; `uncertain` committé avant fetch.
+  Reprise incertaine = GET seulement, même après reload ou jeton révoqué.
+  HTTP 200, ancien JSON, HTML, mauvais sujet/opération/protocole et corps trop
+  grand ne constituent pas une confirmation. Limite réponse 512 octets, timeout
+  30 secondes. Aucune lecture réseau lors de l'ouverture des réglages.
+- D1 : chaque DELETE exige le ticket gagnant. Reçu terminé et suppressions
+  partagent le même batch transactionnel. Doublons et anciens POST ne peuvent
+  supprimer les données recréées. Le témoin opaque est permanent : ne pas
+  supprimer/expirer cette table. Elle ne contient ni email, token, secret brut,
+  contenu ou date ; le hash du sujet est salé par le secret client.
+- Confirmation validée puis écriture IDB atomique de l'ancien format exact
+  autorisant le nettoyage ; retrait du secret seulement à cette étape. Ancien
+  `true` reste une autorité locale historique, pas une preuve distante.
+  Ancien `false` sans secret reste invérifiable, jamais converti en nouvel envoi.
+- UI FR/EN : lecture locale impossible distincte d'absence ; vérification et
+  nettoyage, nettoyage déjà autorisé, choix local-only avec confirmation
+  séparée. Ce dernier annonce l'abandon du moyen local de vérifier le distant ;
+  une purge locale interrompue conserve encore le secret et l'incertitude.
+  BYOK/démo n'inventent plus de confirmation serveur.
+- Preuves : Miniflare/workerd D1 avec vrai trigger d'échec au milieu du batch,
+  concurrence/rejeu et données recréées ; vrai client + journal IDB + vraie
+  route D1, perte de réponse après commit, révocation effective du jeton email,
+  nouveau graphe JS puis GET et purge projet. Fichiers/natif simulés dans cette
+  dernière recette ; ce n'est pas une recette navigateur ou APK physique.
+- Deux contre-revues indépendantes en lecture seule : ticket/sujet/legacy et
+  produit/reprises. Corrections : double verrou BYOK/démo, interprétation du
+  vieux `true`, ledger qui ne doit pas croître à chaque GET, ancienne preuve de
+  rollback remplacée par un vrai échec SQL. Cas A→B→A et prises concurrentes
+  vérifiés. `npm run verify` final : 263 suites, 2 989 tests verts + 1 ignoré,
+  typecheck front/back, no-CASA, add-on, build et vrai worker Office verts.
+  Couverture globale : statements 67,36 %, branches 61,99 %, fonctions 73,20 %,
+  lignes 69,13 %. Reçus CI/production à consigner après publication.
+
+Limites : `unknown` ne prouve pas un échec ; si aucun commit distant n'a eu lieu,
+la vérification ne relance pas le serveur. Support/local-only restent explicites.
+Pas encore de réauthentification/retry serveur universel. Les anciens APK
+peuvent toujours utiliser la route legacy : aucune barrière générale contre
+leurs écritures n'est revendiquée. Activation isolée toujours OFF ; extensions
+incertaines/local-only refusées par les parsers froids stricts. Fence v5, migration
+v3 interrompue, métadonnées/recréation, restauration/sync et recette native restent
+à fermer.
+
+Déploiement/repli : schéma additif créé paresseusement uniquement après auth,
+contrat ancien endpoint conservé, aucun secret/binding nouveau. Ne jamais
+effacer les tombstones pour revenir en arrière, ni rétablir un client qui
+réémettrait un POST legacy après incertitude. Préférer une correction en avant
+ou un client laissant la vérification disponible et l'envoi désactivé. Les
+clients v1 gardent l'intention si la route devient indisponible. Une panne de
+stockage/lecture ou une divergence de reçu bloque l'effacement, sans faux succès.
+
 ### W06 A3b.4 — reprise froide d'effacement v2, candidat OFF
 
 Décision du 5 septembre 2026 : terminer le nettoyage déjà engagé dans une

@@ -967,3 +967,45 @@ migration v3 avant toute purge ; conserver l'incertitude d'une requête serveur
 perdue ; traiter métadonnées/recréation et la recette native intégrée. Ne pas
 tolérer un fence incohérent à l'ouverture de B, rebaseliner un plan divergent,
 reposter en froid ou retirer simplement A de requiredOwners.
+
+#### A3b.5a — reçu serveur versionné avant réparation froide v5
+
+Contexte : l'ancien client relâchait le dernier marker après erreur HTTP. D1
+pouvait pourtant avoir supprimé les sessions email et perdu sa réponse. Garder
+un booléen « incertain » sans preuve consultable n'aurait pas permis la reprise.
+
+Décision : nouvelle route distincte, intention locale avant POST, état incertain
+durable avant transport. Secret aléatoire 256 bits ; hash du sujet liant ce
+secret au kind Google/email-trial et à l'email capturé. POST vérifie le sujet
+authentifié avant mutation ; GET secret/opId sans auth fait seulement SELECT.
+Le batch D1 réserve un ticket unique, conditionne chaque DELETE par ce ticket,
+termine le reçu et lit son résultat atomiquement. Tombstone opaque permanent,
+sans email ni secret brut : sa suppression permettrait un rejeu destructeur.
+
+Alternatives rejetées : version dans le body de `/delete` (ignorée par ancien
+serveur), INSERT OR IGNORE suivi de DELETE inconditionnels (rejeu), TTL sans
+tombstone (rejeu après expiration), 401 assimilé à refus certain, GET missing
+assimilé à never-sent, POST automatique au reload. La documentation actuelle
+[D1 batch](https://developers.cloudflare.com/d1/worker-api/d1-database/#batch)
+atteste le rollback de la séquence ; le test workerd avec trigger l'exerce.
+Types Workers 5.20260905.1 consultés sans modifier les dépendances du dépôt.
+
+Conséquences : `unknown` reste inconnu ; il n'y a pas de retry serveur universel
+dans ce lot. Reprise incertaine GET-only dans l'app courante ; succès validé
+stocké atomiquement sous le format historique exact de nettoyage local. Aucune
+canonicalisation de champs inconnus par le parser froid. BYOK/démo et effacement
+appareil explicite restent locaux. Le dernier secret est conservé tant que le
+nettoyage local explicite n'est pas terminé ou la preuve distante pas durable.
+L'UI dit que terminer cet effacement appareil abandonne la consultation distante.
+
+Contre-revues : deux GO limités après correction du double verrou BYOK/démo et
+du texte assimilant l'ancien `true` à une preuve serveur. Preuves nouvelles :
+rollback SQL réel, rejeu après recréation, vrai client/D1 avec réponse perdue et
+token révoqué, reprises/switch concurrents et reçus invalides. Les recettes
+fichiers/natif restent simulées ; aucun compte de production effacé pour tester.
+
+Actions suivantes : intégrer GET-only dans l'admission froide isolée sans
+import privé ; réparer fences via un format v5/proof-domain explicite sans
+rebaseliner v4 ; puis poursuivre les autres gates A3b.4. Activation OFF inchangée.
+Le repli doit conserver le journal et les tombstones et ne jamais réintroduire
+un POST legacy implicite. Détails et reçus de livraison dans le CDC.
