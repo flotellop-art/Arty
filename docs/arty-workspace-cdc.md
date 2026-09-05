@@ -31,7 +31,7 @@ supplémentaire n'est implicite dans ce mandat.
 | W03 | Catalogue | Un catalogue partagé aligne comparaison, sélecteurs, labels et éligibilité selon le compte (pas une garantie fournisseur). Modèle demandé, transmis par le proxy et signalé par le fournisseur distingués. Tests contre la dérive et contre l'accès premium hors droit. | Web déployé, PR #440 ; recette visuelle/appareil non vérifiée |
 | W04 | Projets | Créer/renommer/supprimer un projet, consignes propres, conversations associées, bibliothèque de documents réutilisables. Sources identifiables dans le contexte. Recherche bornée, absence de fichier et contexte tronqué explicites. Cloisonnement par compte et projet ; mode Europe conservé. | Bibliothèque web livrée #443 ; conversations web livrées #444 ; recette visuelle/appareil non vérifiée |
 | W05 | Livrables | Export DOCX modifiable et XLSX de tableaux, en plus des exports existants. Téléchargements relus par un parseur indépendant ; cellules dangereuses neutralisées ; aucun HTML actif ni formule arbitraire. Formats et limites documentés. | Web déployé #445 ; recette structurelle vérifiée ; rendu Office/appareil non vérifié |
-| W06 | Continuité | Sauvegarde/restauration explicites puis synchronisation optionnelle multi-appareil chiffrée avant upload, avec secret détenu par l'utilisateur et récupération expliquée. Conflits non destructifs ; reprise hors-ligne ; logout/switch/delete et compte invité traités. Un export manuel seul ne valide pas la synchronisation. | A1 #446, galerie #448, verrou document #449, capture/vérification A2 #451, préparation A3a #452, admission froide #453 et runtime isolé inactif #454 livrés ; restauration/synchronisation non livrées |
+| W06 | Continuité | Sauvegarde/restauration explicites puis synchronisation optionnelle multi-appareil chiffrée avant upload, avec secret détenu par l'utilisateur et récupération expliquée. Conflits non destructifs ; reprise hors-ligne ; logout/switch/delete et compte invité traités. Un export manuel seul ne valide pas la synchronisation. | A1 #446, galerie #448, verrou document #449, capture/vérification A2 #451, préparation A3a #452, admission froide #453, runtime isolé inactif #454 et migrateur journalisé OFF #455 livrés ; restauration/synchronisation non livrées |
 | W07 | Comparaison | Comparer depuis une conversation avec contexte/documents autorisés ; conserver les résultats et poursuivre la réponse choisie sans perdre l'original. Erreurs/coûts/quotas de chaque panneau visibles ; EU et historique privé jamais contournés. | À faire |
 | W08 | Parcours métier | Trois parcours complets : synthèse documentaire, réponse client préparée, planification Agenda avec confirmation avant écriture. Écran de connexions indiquant disponible/non configuré/non pris en charge selon plateforme. Pas de Drive/Gmail OAuth restreint ni relais IMAP serveur. | À faire |
 | W09 | Mobile et identité | PWA installable ; identité tryarty cohérente ; distribution Android authentifiée et documentée. Ne pas rediriger vers une app Play homonyme. Toute migration appId inclut signatures/OAuth/Firebase/liens vérifiés ; un APK distribué n'est pas une publication Store. | À faire |
@@ -108,9 +108,9 @@ réels ; préparer protocole et instrumentation sans fabriquer leurs résultats.
 
 ## Preuves par lot
 
-### W06 A3b.3 — migrateur brut journalisé candidat, activation OFF
+### W06 A3b.3 — migrateur brut journalisé livré (#455), activation OFF
 
-Implémentation locale validée, publication en préparation. La
+Implémentation candidate publiée, sans activation. La
 verticale utilise les vrais lecteurs : stockage legacy chiffré → inventaire →
 barrières v2 → journal/copie isolée → nouveau document → conversation, fichier,
 projet/document et capture d'archive vérifiée. Aucun compte réel n'est migré.
@@ -152,6 +152,22 @@ classification `report-`, typecheck et 49 tests migration/politique verts
 (dont 41 scénarios migration). La CI finale doit revalider l'exact commit.
 Couverture du verify : statements 66,66 %, branches 61,07 %, fonctions 72,48 %,
 lignes 68,42 %. Aucun nouveau package, secret ni workflow de déploiement.
+
+Livraison : PR #455 fusionnée le 5 septembre à 19:51:16 UTC, head
+`fe0245f80e53f59c4848a0f285ae2796e0b7fb6f`, main
+`4ae048fbab81396ba1315a96eb3314396a1246b3`. CI PR `33988126768` et main
+`33988357913` réussies. Pages preview `e8bdb185-95fb-4c68-b05b-569573ddb449` :
+accueil et paramètres ouverts en données d'exemple. Pages production
+`a47c4c39-7a99-45c6-a683-6900453213b7` et tryarty.com servent aux sondes de
+19:52:37 et 19:56:38 UTC le même `index-BpgGTd56.js` (259 680 octets), SHA-256
+`798331d9ed8e342f0446b1e66001090fb9b4faf980fc0894c41ade68ffd9611f`, HTTP 200.
+Sur origine production vierge : accueil → connexion réellement ouvert après
+admission, aucune clé saisie. Onglet utilisateur connecté préservé. Le build
+OFF élimine le writer de migration et conserve seulement l'écran froid
+d'information. Cela ne mesure ni latence terrain ni taux d'erreurs sur 15 min.
+Distribution APK `33988357984` réussie à 19:57:11 UTC : compilation signée et
+étape « Distribute to Firebase App Distribution » confirmées success.
+Aucune recette sur APK installé n'est revendiquée.
 
 ### W06 A3b.2 — runtime isolé livré (#454), activation OFF
 

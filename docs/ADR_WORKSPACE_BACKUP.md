@@ -901,3 +901,41 @@ Repli du **candidat OFF** : revert Git via PR/CI/Pages en cas de régression du
 login/admission legacy. Aucune migration réelle n'est lancée. Si un environnement
 de test a déjà relevé une DB à v2, conserver données/journal et reprendre avec
 une version compatible ; ne pas simuler un downgrade ni supprimer les copies.
+
+#### Livraison A3b.3
+
+PR #455 fusionnée, head `fe0245f80e53f59c4848a0f285ae2796e0b7fb6f`, main
+`4ae048fbab81396ba1315a96eb3314396a1246b3`. CI PR/main vertes, Pages production
+`a47c4c39-7a99-45c6-a683-6900453213b7` publiée. Empreinte/sondes et recette
+navigateur dans le CDC. Aucun job réel lancé : politique OFF inchangée.
+
+#### Pré-revues A3b.4 : effacement froid, aucune implémentation à ce stade
+
+Deux relecteurs indépendants recommandent d'abord la verticale d'une génération
+v2 déjà commise, avec reçu serveur confirmé durable ou intention locale explicite :
+migration synthétique A/B → nouveau document froid → purge exacte A dans legacy,
+génération, job (stores ET plan.localSource), auth/settings/drafts et natif →
+relecture B intact. Aucun POST, token, crypto ou App dans le worker froid.
+
+Objections retenues pour la suite :
+
+- Prefixes legacy `a-` et drafts `a:` ne prouvent pas l'attribution (a-b/a:b).
+  Parseurs purs communs, noms opaques exacts, ambiguïté refusée ; pas de purge
+  générale de rapports anonymes lors de l'effacement d'un autre owner.
+- Brouillons `arty-composer-draft:<owner>:home|conversation:<id>` à inclure
+  dans l'effacement ET les indices crypto de migration. Draft-only + sel global
+  sans session reste un cas à fermer avant activation du migrateur OFF #455.
+- Ne pas interpréter réponse perdue/500/401 comme « non envoyé » ou effacement
+  confirmé. États not-sent / uncertain / confirmed / local-only-explicit ; froid
+  ne repost jamais. L'actuel releaseFailedProjectErasure peut perdre cette
+  incertitude et demande un pont intention/serveur séparé.
+- V3 interrompu doit être supersédé durablement AVANT purge : ne pas reprendre
+  un ancien plan après suppression A. Plan expurgé/reprise B seulement si état
+  source encore attestable ; sinon garder copies B et état bloqué, sans rebaseline.
+- Purge IMAP owner-explicite avec vrai commit natif, pas preuve par liste vide,
+  pas suppression de l'alias Keystore partagé. Échec/plugin absent conserve reçu.
+- Purge complète ne vaut pas autorisation de nouveau sel. Garder A interdit de
+  reprovisionnement tant que le reçu durable borné/consommable n'est pas livré ;
+  ne pas retirer simplement A de requiredOwners pour contourner la protection.
+
+Ces constats ne sont pas des modifications déjà livrées ni un GO d'activation.
