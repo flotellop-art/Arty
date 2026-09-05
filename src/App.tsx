@@ -620,6 +620,7 @@ function AppContent({
           element={
             <ChatRoute
               activeConversation={activeConversation}
+              isConversationBusy={conversation.isConversationBusy}
               isStreaming={isStreaming}
               streamingContent={streamingContent}
               streamingImages={streamingImages}
@@ -739,6 +740,7 @@ function TrialBanner({ onUpgrade }: { onUpgrade: () => void }) {
 }
 
 interface ChatRouteProps {
+  isConversationBusy?: (id: string) => boolean
   onProjectChange?: (project: Project | null) => Promise<boolean>
   activeConversation: ReturnType<typeof useConversation>['activeConversation']
   isStreaming: boolean
@@ -766,6 +768,7 @@ interface ChatRouteProps {
 }
 
 function ChatRoute({
+  isConversationBusy,
   onProjectChange,
   activeConversation,
   isStreaming,
@@ -850,6 +853,7 @@ function ChatRoute({
       // from /chat/A to /chat/B without leaving the route.
       key={activeConversation.id}
       conversation={activeConversation}
+      isConversationBusy={isConversationBusy}
       onProjectChange={onProjectChange}
       isStreaming={isStreaming}
       streamingContent={streamingContent}

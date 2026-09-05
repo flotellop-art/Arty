@@ -1,5 +1,5 @@
 import { BACKUP_FEATURES, BACKUP_LIMITS as L, BackupError, checkBackupGuard, type BackupGuard,
-  type BackupManifest, type BackupSnapshot, type BackupDiagnostics } from './types'
+  type BackupManifest, type BackupSnapshot, type BackupDiagnostics, type BackupSchemaVersion } from './types'
 import { decodeUTF8, hex, readRecoveryCode, sha256, unhex, utf8 } from './bytes'
 import { freezeManifest, parseManifest, validateGraph, validateSnapshot } from './schema'
 
@@ -69,11 +69,12 @@ async function verifyTextObjects(manifest: BackupManifest, objects: ReadonlyMap<
 /** Pure local encoder. Caller must obtain immutable source Blobs and pass a
  * scope guard. No localStorage, IDB, user-session change or network effect.
  * This API does not save/deliver the file; it only prepares an encrypted Blob. */
-export async function sealWorkspaceBackup(snapshot: BackupSnapshot, inputObjects: ReadonlyMap<string, Blob>, secret: string, guard: BackupGuard): Promise<Blob> {
-  checkBackupGuard(guard); validateSnapshot(snapshot)
+export async function sealWorkspaceBackup(snapshot: BackupSnapshot, inputObjects: ReadonlyMap<string, Blob>, secret: string, guard: BackupGuard, version: BackupSchemaVersion = 1): Promise<Blob> {
+  checkBackupGuard(guard); validateSnapshot(snapshot, version)
   // Clone allowlisted metadata synchronously BEFORE the first await.
   const archiveId = crypto.randomUUID()
-  const json = JSON.stringify({ ...snapshot, format: 'arty-workspace', version: 1, minReader: 1,
+  // ARTYBKP1/HKDF /v1 identify the unchanged envelope, not the manifest schema.
+  const json = JSON.stringify({ ...snapshot, format: 'arty-workspace', version, minReader: version,
     features: BACKUP_FEATURES, archiveId, createdAt: Date.now() })
   const manifest = parseManifest(json), plainManifest = utf8.encode(json), shape = calculateArchiveLayout(manifest.objects.map(o => o.bytes), plainManifest.length)
   const objects = new Map<string, Blob>()

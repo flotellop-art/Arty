@@ -6,6 +6,7 @@ import { getActiveUserId, getActiveSessionEpoch } from './userSession'
 import { generatedImageIds } from './generatedImages'
 import { generateId } from '../utils/generateId'
 import { assertDocumentWorkspace, documentWorkspaceSignal } from './workspaceWriter/runtime'
+import { BackupError } from './workspaceBackup/types'
 
 // ─────────────────────────────────────────────────────────────────────────
 // Conversations are encrypted at rest (AES-256) under `conversations-enc`.
@@ -130,6 +131,30 @@ export function getConversations(): Conversation[] {
 
 export function getConversation(id: string): Conversation | null {
   return getConversations().find((c) => c.id === id) ?? null
+}
+
+/** No cold read, bootstrap, recovery or repair. The mapper runs synchronously
+ * before any caller await and must return an independent allowlisted copy. */
+export function captureConversationForBackup<T>(id: string, clone: (source: Conversation) => T) {
+  assertDocumentWorkspace()
+  const scope = captureScope(), cache = memConversations, identity = cacheIdentity
+  const gen = writeGen, boot = bootstrapGen
+  if (!scope.owner || !cacheReady || !cache || !identity || identity.owner !== scope.owner || identity.epoch !== scope.epoch) throw new BackupError('unavailable')
+  const source = cache.find(conversation => conversation.id === id)
+  if (!source) throw new BackupError('missing')
+  const assertUnchanged = () => {
+    assertDocumentWorkspace()
+    if (!scopeCurrent(scope) || !cacheReady || memConversations !== cache || cacheIdentity?.owner !== identity.owner || cacheIdentity?.epoch !== identity.epoch || writeGen !== gen || bootstrapGen !== boot) throw new BackupError('changed')
+  }
+  const snapshot = clone(source)
+  assertUnchanged()
+  return { snapshot, assertUnchanged, assertSnapshot(equal: (a: T, b: T) => boolean) {
+    assertUnchanged()
+    // Handoff-only check also catches an in-place mutation through an old
+    // cache reference that did not call save. Not repeated per crypto chunk.
+    if (!equal(snapshot, clone(source))) throw new BackupError('changed')
+    assertUnchanged()
+  } }
 }
 
 function persist(list: Conversation[]): void {

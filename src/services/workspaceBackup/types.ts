@@ -22,8 +22,21 @@ export const BACKUP_LIMITS = {
 export const BACKUP_FEATURES = ['additive-restore', 'inert-restore', 'eu-monotone'] as const
 export type BackupObjectKind = 'file' | 'project-source' | 'project-text'
 export interface BackupObject { id: string; kind: BackupObjectKind; bytes: number; sha256: string }
-export interface BackupFile extends Omit<FileAttachment, 'data' | 'visionCrop' | 'size'> { size: number; objectId: string }
-export interface BackupFileReference { id: string; visionCrop?: FileAttachment['visionCrop'] }
+export interface BackupFile extends Omit<FileAttachment, 'data' | 'visionCrop' | 'size'> {
+  size: number
+  objectId: string
+  /** Required in v2 only. The legacy record may have counted base64 characters. */
+  recordedSize?: number
+}
+export type BackupSchemaVersion = 1 | 2
+/** Historical display metadata, NEVER authority over object decoding or limits. */
+export type BackupFilePresentation = Pick<FileAttachment, 'name' | 'type' | 'size' | 'width' | 'height' | 'normalizationVersion'>
+export interface BackupFileReference {
+  id: string
+  visionCrop?: FileAttachment['visionCrop']
+  /** Required in manifest v2; forbidden in v1. Preserves per-message variants. */
+  presentation?: BackupFilePresentation
+}
 export interface BackupMessage extends Pick<Message, 'id' | 'role' | 'content' | 'timestamp' | 'pinned' | 'interrupted' |
   'model' | 'requestedModel' | 'modelSource' | 'reasonCode' | 'subModelReasonCode' | 'projectTurn' | 'quickAction' | 'factCheck'> {
   files?: BackupFileReference[]
@@ -43,8 +56,8 @@ export interface BackupSnapshot {
 }
 export interface BackupManifest extends BackupSnapshot {
   format: 'arty-workspace'
-  version: 1
-  minReader: 1
+  version: BackupSchemaVersion
+  minReader: BackupSchemaVersion
   features: typeof BACKUP_FEATURES
   archiveId: string
   createdAt: number
@@ -55,7 +68,7 @@ export interface BackupDiagnostics {
   unavailableCropSources: number
 }
 export class BackupError extends Error {
-  constructor(public readonly code: 'format' | 'limit' | 'integrity' | 'secret' | 'cancelled' | 'missing') {
+  constructor(public readonly code: 'format' | 'limit' | 'integrity' | 'secret' | 'cancelled' | 'missing' | 'busy' | 'unreadable' | 'unavailable' | 'changed' | 'different') {
     super(`backup_${code}`); this.name = 'BackupError'
   }
 }

@@ -19,6 +19,7 @@ import { buildOpenAIRouteMessages } from './openaiRouteMessages'
 import { getReflectionLevel } from '../services/reflectionLevel'
 import { deleteFile, deleteOwnedFiles, putFile } from '../services/secureFileStorage'
 import { clearSearchContext, runFactCheckOnLatest } from '../services/factChecker'
+import { beginConversationWork, hasConversationWork } from '../services/conversationWork'
 import { detectSuggestedTasks, addTask } from '../services/taskService'
 import { TOOLS } from '../services/toolDefinitions'
 import { wantsImageGeneration, generateImageToolDefinition } from '../services/tools/imageTools'
@@ -217,6 +218,7 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
     const current = conversationId ? storage.getConversation(conversationId) : null
     if ((conversationId && (!current || hasStream(conversationId))) || !storage.isCacheReady()) return null
     const before = current ? projectConversationKey(current) : null
+    const finishAssociation = conversationId ? beginConversationWork(conversationId) : () => {}
     try {
       const operation = await beginProjectOperation()
       let euOnly = current ? isProjectEU(current) : false
@@ -241,7 +243,7 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
       setErrorRetryable(false)
       setError(reason instanceof ProjectError ? i18n.t(`projects.errors.${reason.code}`) : reason instanceof Error ? reason.message : i18n.t('projects.errors.unavailable'))
       return null
-    }
+    } finally { finishAssociation() }
   }, [hasStream, refreshConversations, setActiveStream])
 
   const clearActive = useCallback(() => {
@@ -276,6 +278,8 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
       if (hasStream(targetId) || localReplyLocksRef.current.has(targetId)) {
         setError(i18n.t('errors.tooManyConcurrentStreams')); return false
       }
+      const finishPreparation = beginConversationWork(targetId)
+      try {
 
       // Seul un ID connu peut activer une instruction invisible. Le texte
       // saisi reste la source d'affichage, de titre, de recherche et de copie.
@@ -812,7 +816,11 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
 
         // Puis nettoyage des liens et vérification en arrière-plan. Les gardes
         // fines (mode off, euOnly, réponse courte, quota) vivent dans le service.
-        if (!officeRequest) void runFactCheckOnLatest(targetId, refreshConversations)
+        if (!officeRequest) {
+          const finishBackground = beginConversationWork(targetId)
+          void Promise.resolve(runFactCheckOnLatest(targetId, refreshConversations))
+            .finally(finishBackground).catch(() => { console.warn('[factChecker] background check failed') })
+        }
       }
 
       const onErr = (err: Error) => {
@@ -1249,6 +1257,7 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
       }
       releaseVisionAutoCropLock()
       return true
+      } finally { finishPreparation() }
     },
     [
       activeId, refreshConversations, canStart, startStream, getInvocationId, setActiveStream, reviewProjectRequest, setProjectTurn, adoptGeneratedImage,
@@ -1522,6 +1531,7 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
   }, [activeId, retryLastUserMessage])
 
   return {
+    isConversationBusy: (id: string) => hasStream(id) || hasConversationWork(id),
     conversations,
     activeConversation,
     activeId,

@@ -31,7 +31,7 @@ supplémentaire n'est implicite dans ce mandat.
 | W03 | Catalogue | Un catalogue partagé aligne comparaison, sélecteurs, labels et éligibilité selon le compte (pas une garantie fournisseur). Modèle demandé, transmis par le proxy et signalé par le fournisseur distingués. Tests contre la dérive et contre l'accès premium hors droit. | Web déployé, PR #440 ; recette visuelle/appareil non vérifiée |
 | W04 | Projets | Créer/renommer/supprimer un projet, consignes propres, conversations associées, bibliothèque de documents réutilisables. Sources identifiables dans le contexte. Recherche bornée, absence de fichier et contexte tronqué explicites. Cloisonnement par compte et projet ; mode Europe conservé. | Bibliothèque web livrée #443 ; conversations web livrées #444 ; recette visuelle/appareil non vérifiée |
 | W05 | Livrables | Export DOCX modifiable et XLSX de tableaux, en plus des exports existants. Téléchargements relus par un parseur indépendant ; cellules dangereuses neutralisées ; aucun HTML actif ni formule arbitraire. Formats et limites documentés. | Web déployé #445 ; recette structurelle vérifiée ; rendu Office/appareil non vérifié |
-| W06 | Continuité | Sauvegarde/restauration explicites puis synchronisation optionnelle multi-appareil chiffrée avant upload, avec secret détenu par l'utilisateur et récupération expliquée. Conflits non destructifs ; reprise hors-ligne ; logout/switch/delete et compte invité traités. Un export manuel seul ne valide pas la synchronisation. | A1 format #446 et galerie privée #448 livrés ; capture/restauration/UI/synchronisation non livrées |
+| W06 | Continuité | Sauvegarde/restauration explicites puis synchronisation optionnelle multi-appareil chiffrée avant upload, avec secret détenu par l'utilisateur et récupération expliquée. Conflits non destructifs ; reprise hors-ligne ; logout/switch/delete et compte invité traités. Un export manuel seul ne valide pas la synchronisation. | A1 #446, galerie #448 et verrou document #449 livrés ; capture/vérification A2 implémentées (recette ci-dessous) ; restauration/synchronisation non livrées |
 | W07 | Comparaison | Comparer depuis une conversation avec contexte/documents autorisés ; conserver les résultats et poursuivre la réponse choisie sans perdre l'original. Erreurs/coûts/quotas de chaque panneau visibles ; EU et historique privé jamais contournés. | À faire |
 | W08 | Parcours métier | Trois parcours complets : synthèse documentaire, réponse client préparée, planification Agenda avec confirmation avant écriture. Écran de connexions indiquant disponible/non configuré/non pris en charge selon plateforme. Pas de Drive/Gmail OAuth restreint ni relais IMAP serveur. | À faire |
 | W09 | Mobile et identité | PWA installable ; identité tryarty cohérente ; distribution Android authentifiée et documentée. Ne pas rediriger vers une app Play homonyme. Toute migration appId inclut signatures/OAuth/Firebase/liens vérifiés ; un APK distribué n'est pas une publication Store. | À faire |
@@ -272,6 +272,57 @@ réels ; préparer protocole et instrumentation sans fabriquer leurs résultats.
   deuxième document occupé, fermeture du premier puis Retry → accueil complet.
   Aucune conversation créée/modifiée, aucun logout ; onglets de recette fermés.
   Ni nouvel échange Google ni recette d'APK installé revendiqués.
+
+### W06 A2 — capture/vérification d'une conversation (5 septembre)
+
+Implémentation locale : menus conversation classique et sheet, projet entier en
+option, archive v2, code séparé et acquittement avant remise, fichier re-sélectionné
+avec code, contrôle ID/fingerprint. Vérificateur autonome dans les paramètres.
+Ce lot n'est ni une restauration, ni une sauvegarde complète du compte, ni une
+synchronisation. Il ne migre/efface aucun store utilisateur.
+
+Preuves locales :
+
+- `npm run verify` final vert : 251 fichiers, 2 706 tests réussis, 1 ignoré,
+  soit 62 tests supplémentaires depuis #450 ; typechecks frontend/Workers,
+  coverage, build et worker Office isolé réussis. Les avertissements de taille
+  de chunks restent visibles ; ils ne sont pas une mesure de mémoire mobile.
+- Tests réels stores/WebCrypto : toutes les dépendances directes, trois tailles
+  historiques/binaire, aucune écriture source ni création de base, galeries
+  malformées, aucun accès via Markdown, A→B→A, effacement, erreurs illisibles,
+  mutation avec même timestamp ou sans save, snapshot atomique de deux fichiers,
+  projet modifié pendant lecture, token readonly fermé, mauvais code/autre
+  archive, annulation pendant chiffrement, UTF-16 invalide/BOM valide.
+- Hook réel : préparation de fichier suspendue avant stream, vrai pipeline
+  fact-check en attente du jeton de récupération de liens avant pending (aucun
+  appel réseau), association projet suspendue, compteur isolé par conversation.
+- UI : acquittement, code absent du partage, aucune fausse confirmation de
+  fichier enregistré, vérification indépendante après mutation, révocation
+  terminale sur composant monté, résultat tardif ignoré, fermeture/relance,
+  Tab/ShiftTab, paramètres inline, absence d'interception du sous-dialogue mail.
+- Chrome réel, harnais local utilisant les vrais stores/composants : menu fermé,
+  création de 1 conversation / 2 messages / 1 fichier / 1 projet / 1 document.
+  Téléchargement réel de l'archive synthétique
+  `b1c05b3e-2cc4-4449-8a87-97db3d3d651c`, 2 281 octets, puis réouverture du
+  fichier effectivement enregistré et assertions sur octets, source CRLF et
+  texte extrait LF. Aucune donnée personnelle exportée, aucun appel IA.
+  Cette lecture fichier n'est pas une recette du sélecteur natif dans l'APK.
+
+Pré-déploiement / retour arrière :
+
+- Deux contre-revues indépendantes en lecture seule, avec corrections des
+  objections de fidélité, course, révocation du code affiché et focus.
+- `npm run verify` complet et CI de PR requis avant fusion. Publication par
+  la chaîne existante uniquement, contrôle du SHA et des assets Pages.
+- Aucun changement de schéma des bases source ni variable serveur requise.
+  Ne pas effacer les données/archives pour revenir en arrière : corriger en
+  avant ou revert de PR via CI. Un client antérieur à v2 ne relit pas une archive
+  v2 ; garder une version du lecteur v2 disponible avant rollback produit.
+- Arrêt/retour arrière si une capture écrit la source, divulgue le code au
+  partage, remet un artefact après révocation ou si le parcours privé ne charge
+  plus. Télémétrie serveur et pic RAM/partage APK non vérifiés localement.
+
+Reçus Git/CI/Pages à ajouter après livraison effective. W06 reste **partiel**.
 
 ### W06 A2 — contre-revues de préparation après #448 (historique)
 

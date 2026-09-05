@@ -4,6 +4,7 @@ import { getActiveUserId, getActiveSessionEpoch, getKnownSessions, getSessionPro
 import { assertPreparedForOperation, consumePreparedDocument } from './documentImport'
 import { generateId } from '../../utils/generateId'
 import { assertDocumentWorkspace, guardDocumentTransaction } from '../workspaceWriter/runtime'
+import { openExistingDB } from '../readOnlyExistingDB'
 import { PROJECT_LIMITS, ProjectError, boundedInteger, validProject, validProjectId, validDescriptor,
   type PreparedProjectDocument, type ProjectDocument, type Project, type ProjectSummary } from './types'
 
@@ -45,6 +46,13 @@ function getDB(): Promise<IDBPDatabase> {
   return dbPromise
 }
 const OPERATION = Symbol('project-operation')
+const readDatabases = new WeakMap<ProjectOperation, IDBPDatabase>()
+const operationDB = (operation: ProjectOperation): Promise<IDBPDatabase> => {
+  // Check BEFORE any fallback: a closed readonly callback may still have a
+  // detached async read finishing. It must never reopen a creator connection.
+  checkOperation(operation)
+  return readDatabases.has(operation) ? Promise.resolve(readDatabases.get(operation)!) : getDB()
+}
 export interface ProjectOperation {
   readonly owner: string
   readonly epoch: number
@@ -56,18 +64,47 @@ export interface ProjectOperation {
  * The global, ownerless IDB fence cancels work in other windows on erasure.
  * It contains no identity/content and survives erasure of all owner records.
  */
-export async function beginProjectOperation(): Promise<ProjectOperation> {
+/** Shared synchronous admission, including erasure BEFORE its server request.
+ * Capture/export uses this without creating or repairing any database. */
+export function captureLocalReadScope(signal?: AbortSignal) {
   const owner = getActiveUserId(), epoch = getActiveSessionEpoch()
   if (!owner || owner.length > 128 || !isCryptoReady() || deletingOwners.has(owner)) throw new ProjectError('unavailable')
   const generation = localGenerations.get(owner) ?? 0, cryptoCurrent = captureCryptoGuard(), sessionFence = getSessionProjectFence()
+  if (sessionFence === null) throw new ProjectError('cancelled')
   const assertCurrent = () => {
     assertDocumentWorkspace()
-    if (!cryptoCurrent() || owner !== getActiveUserId() || epoch !== getActiveSessionEpoch() ||
+    if (signal?.aborted || !cryptoCurrent() || owner !== getActiveUserId() || epoch !== getActiveSessionEpoch() ||
       generation !== (localGenerations.get(owner) ?? 0) || deletingOwners.has(owner) ||
       sessionFence !== (localStorage.getItem(PROJECT_ERASURE_FENCE_KEY) ?? 'initial') ||
       !getKnownSessions().some(session => session.userId === owner)) throw new ProjectError('cancelled')
   }
   assertCurrent()
+  return { owner, epoch, fence: sessionFence, signal, assertCurrent, async validateReadOnly() {
+    assertCurrent()
+    const db = await openExistingDB('arty-projects', 1, assertCurrent, signal)
+    try {
+      if (!db) {
+        if (sessionFence !== 'initial') throw new ProjectError('cancelled')
+        assertCurrent(); return
+      }
+      await validateReadFence(db, { owner, fence: sessionFence, assertCurrent })
+    } finally { db?.close() }
+  } }
+}
+type LocalReadScope = ReturnType<typeof captureLocalReadScope>
+async function validateReadFence(db: IDBPDatabase, scope: Pick<LocalReadScope, 'owner' | 'fence' | 'assertCurrent'>) {
+  scope.assertCurrent()
+  if (!db.objectStoreNames.contains('meta')) throw new ProjectError('corrupt')
+  const tx = db.transaction('meta', 'readonly')
+  try {
+  const [fence, erasing] = await Promise.all([tx.store.get('erasure-fence'), tx.store.get(['erasing', scope.owner])])
+  await tx.done; scope.assertCurrent()
+  if (fence !== undefined && typeof fence !== 'string') throw new ProjectError('corrupt')
+  if ((fence === undefined ? 'initial' : fence) !== scope.fence || erasing !== undefined) throw new ProjectError('cancelled')
+  } catch (error) { try { tx.abort() } catch { /* complete */ }; await tx.done.catch(() => {}); throw error }
+}
+export async function beginProjectOperation(): Promise<ProjectOperation> {
+  const { owner, epoch, fence: sessionFence, assertCurrent } = captureLocalReadScope()
   const db = await getDB(); assertCurrent()
   const fence = await db.get('meta', 'erasure-fence') ?? 'initial'; assertCurrent()
   if (await db.get('meta', ['erasing', owner])) throw new ProjectError('unavailable')
@@ -83,7 +120,7 @@ function checkOperation(operation: ProjectOperation): void {
 /** Recheck the durable fence before publishing an async read or sending context. */
 export async function assertProjectOperation(operation: ProjectOperation): Promise<void> {
   checkOperation(operation)
-  const db = await getDB(); checkOperation(operation)
+  const db = await operationDB(operation); checkOperation(operation)
   if ((await db.get('meta', 'erasure-fence') ?? 'initial') !== operation.fence) throw new ProjectError('cancelled')
   if (await db.get('meta', ['erasing', operation.owner])) throw new ProjectError('cancelled')
   checkOperation(operation)
@@ -109,7 +146,7 @@ async function decodeProject(operation: ProjectOperation, row: ProjectRow): Prom
     await assertProjectOperation(operation)
     if (!validProject(payload) || payload.owner !== operation.owner || payload.id !== row.id || payload.revision !== row.revision ||
       payload.euOnly !== row.euOnly || payload.createdAt !== row.createdAt || payload.updatedAt !== row.updatedAt) throw new ProjectError('locked')
-    const current = await (await getDB()).get('projects', [operation.owner, row.id]) as ProjectRow | undefined
+    const current = await (await operationDB(operation)).get('projects', [operation.owner, row.id]) as ProjectRow | undefined
     checkOperation(operation)
     if (!current || current.state === 'deleted') throw new ProjectError('deleted')
     if (current.revision !== row.revision || current.cipher !== row.cipher) throw new ProjectError('conflict')
@@ -124,7 +161,7 @@ async function decodeProject(operation: ProjectOperation, row: ProjectRow): Prom
 export async function getProject(operation: ProjectOperation, id: string): Promise<ProjectSummary | null> {
   checkOperation(operation)
   if (!validProjectId(id)) throw new ProjectError('corrupt')
-  const db = await getDB(); checkOperation(operation)
+  const db = await operationDB(operation); checkOperation(operation)
   const row = await db.get('projects', [operation.owner, id]) as ProjectRow | undefined
   checkOperation(operation)
   if (!row) return null
@@ -138,7 +175,7 @@ export async function getProject(operation: ProjectOperation, id: string): Promi
 }
 export async function listProjects(operation: ProjectOperation): Promise<ProjectSummary[]> {
   checkOperation(operation)
-  const db = await getDB(); checkOperation(operation)
+  const db = await operationDB(operation); checkOperation(operation)
   const rows = await db.getAllFromIndex('projects', 'owner-state', [operation.owner, 'live'], PROJECT_LIMITS.projects + 1) as ProjectRow[]
   checkOperation(operation)
   if (rows.length > PROJECT_LIMITS.projects) throw new ProjectError('limit')
@@ -295,7 +332,7 @@ async function readDocument(operation: ProjectOperation, project: Project, docum
   const current = await requireProject(operation, project.id, project.revision)
   const descriptor = current.documents.find(d => d.id === documentId)
   if (!descriptor) throw new ProjectError('deleted')
-  const db = await getDB(); checkOperation(operation)
+  const db = await operationDB(operation); checkOperation(operation)
   // A text read MUST NOT clone/fetch the original source record.
   const key = [operation.owner, current.id, documentId, kind]
   const row = await db.get('documents', key) as DocumentRow | undefined
@@ -325,6 +362,30 @@ async function readDocument(operation: ProjectOperation, project: Project, docum
 }
 export const readProjectDocumentText = (operation: ProjectOperation, project: Project, id: string): Promise<string> => readDocument(operation, project, id, 'text')
 export const readProjectDocumentSource = (operation: ProjectOperation, project: Project, id: string): Promise<string> => readDocument(operation, project, id, 'source')
+
+/** Read adapters are scoped to this callback; they never expose a write token.
+ * Every existing reader uses this connection, not the bootstrapping getDB. */
+export async function withReadOnlyProjectLibrary<T>(scope: LocalReadScope, read: (reader: {
+  get(id: string): Promise<ProjectSummary | null>
+  source(project: Project, id: string): Promise<string>
+  text(project: Project, id: string): Promise<string>
+}) => Promise<T>): Promise<T> {
+  scope.assertCurrent()
+  const db = await openExistingDB('arty-projects', 1, scope.assertCurrent, scope.signal)
+  if (!db) throw new ProjectError('unavailable')
+  let closed = false
+  const assertCurrent = () => { if (closed) throw new ProjectError('cancelled'); scope.assertCurrent() }
+  const operation: ProjectOperation = { owner: scope.owner, epoch: scope.epoch, fence: scope.fence, assertCurrent, [OPERATION]: true }
+  readDatabases.set(operation, db)
+  try {
+    await validateReadFence(db, operation)
+    const result = await read({ get: id => getProject(operation, id),
+      source: (project, id) => readProjectDocumentSource(operation, project, id),
+      text: (project, id) => readProjectDocumentText(operation, project, id) })
+    await validateReadFence(db, operation)
+    return result
+  } finally { closed = true; readDatabases.delete(operation); db.close() }
+}
 
 /** Local-only history: W06 sync MUST replace this GC with acknowledgement-aware GC. */
 async function pruneTombstones(tx: Transaction, owner: string): Promise<void> {

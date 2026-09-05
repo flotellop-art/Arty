@@ -24,6 +24,7 @@ import { isProviderLockedForPlan } from '../../services/providerLock'
 import { toast } from '../../services/toast'
 
 interface ChatTopBarProps {
+  onArchive?: () => void
   onExportOffice?: () => void
   title: string
   onBack: () => void
@@ -52,7 +53,7 @@ function chatSheetV2Enabled(): boolean {
   }
 }
 
-export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, onOpenSummary, onExportOffice, conversations, onSelectConversation }: ChatTopBarProps) {
+export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, onOpenSummary, onExportOffice, onArchive, conversations, onSelectConversation }: ChatTopBarProps) {
   const { t } = useTranslation()
   const planStatus = usePlanStatus()
   const [currentStyle, setCurrentStyle] = useState<ResponseStyle>(getStyle)
@@ -543,6 +544,7 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
                   className="absolute right-0 top-full mt-1 bg-theme-surface rounded-xl border border-theme-border shadow-lg overflow-hidden z-30 min-w-[180px]"
                 >
                   {onExportOffice && <button role="menuitem" onClick={() => { setExportMenuOpen(false); onExportOffice() }} className="w-full flex items-center gap-2 px-3 py-3 text-left text-xs text-theme-ink hover:bg-theme-ink/5">Exporter en Word / Excel</button>}
+                  {onArchive && <button role="menuitem" onClick={() => { setExportMenuOpen(false); onArchive() }} className="w-full px-3 py-3 text-left text-xs text-theme-ink hover:bg-theme-ink/5">{t('workspaceArchive.title')}</button>}
                   <button
                     role="menuitem"
                     onClick={() => { setExportMenuOpen(false); void exportConversationMarkdown(conversation).catch(() => toast('Export impossible. Vérifiez le cache et fermez tout partage en cours.', 'error')) }}
@@ -615,6 +617,7 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
           onExportPdf={() => { setSheetOpen(false); if (conversation) void exportConversationPdf(conversation).catch(() => toast('Export impossible. Vérifiez le cache et fermez tout partage en cours.', 'error')) }}
           onExportJson={() => { setSheetOpen(false); if (conversation) exportConversation(conversation) }}
           onExportOffice={onExportOffice ? () => { setSheetOpen(false); onExportOffice() } : undefined}
+          onArchive={onArchive ? () => { setSheetOpen(false); onArchive() } : undefined}
           onShare={() => { setSheetOpen(false); void handleShare() }}
           onOpenGuide={() => { setSheetOpen(false); setShowGuide(true) }}
         />

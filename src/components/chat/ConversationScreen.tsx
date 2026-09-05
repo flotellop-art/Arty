@@ -16,11 +16,13 @@ import { isDocumentConversation, hasProjectHistory } from '../../services/projec
 import { hasOfficeHistory } from '../../services/documents/prepareOfficeMessages'
 import { ProjectConversationPanel } from './ProjectConversationPanel'
 import { OfficeExportModal } from './OfficeExportModal'
+import { ConversationArchiveModal } from '../workspace/ConversationArchiveModal'
 import type { Project } from '../../services/projects/types'
 import type { useDrive } from '../../hooks/useDrive'
 import type { useComputer } from '../../hooks/useComputer'
 
 interface ConversationScreenProps {
+  isConversationBusy?: (id: string) => boolean
   onProjectChange?: (project: Project | null) => Promise<boolean>
   conversation: Conversation
   isStreaming: boolean
@@ -50,6 +52,7 @@ interface ConversationScreenProps {
 
 export function ConversationScreen({
   conversation,
+  isConversationBusy,
   isStreaming,
   streamingContent,
   streamingImages,
@@ -75,6 +78,7 @@ export function ConversationScreen({
 }: ConversationScreenProps) {
   const { t } = useTranslation()
   const [showSummary, setShowSummary] = useState(false)
+  const [archiveTarget, setArchiveTarget] = useState<string | null>(null)
   const [exportTarget, setExportTarget] = useState<{ conversationId: string; messageId?: string } | null>(null)
   useEffect(() => { setExportTarget(null) }, [conversation.id])
   // Message assistant ciblé par un signalement (policy Play Store
@@ -93,6 +97,7 @@ export function ConversationScreen({
         conversation={conversation}
         onOpenSummary={() => setShowSummary(true)}
         onExportOffice={() => setExportTarget({ conversationId: conversation.id })}
+        onArchive={isConversationBusy ? () => setArchiveTarget(conversation.id) : undefined}
         conversations={conversations}
         onSelectConversation={onSelectConv}
       />
@@ -191,6 +196,7 @@ export function ConversationScreen({
       )}
 
       {exportTarget?.conversationId === conversation.id && <OfficeExportModal conversation={conversation} messageId={exportTarget.messageId} onClose={() => setExportTarget(null)} />}
+      {archiveTarget === conversation.id && isConversationBusy && <ConversationArchiveModal key={conversation.id} conversation={conversation} isBusy={isConversationBusy} onClose={() => setArchiveTarget(null)} />}
       <ReportModal
         conversation={conversation}
         message={reportTarget}

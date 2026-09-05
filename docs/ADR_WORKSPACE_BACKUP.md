@@ -1,8 +1,9 @@
 # ADR — sauvegarde restaurable et coffre optionnel (W06)
 
 Date : 5 septembre 2026. Décision locale acceptée après deux challenges
-indépendants. **W06 non livré** : A1 est le format, pas une interface de
-sauvegarde, une restauration ni une synchronisation utilisable.
+indépendants. **W06 non livré** : A1 fournit le format ; A2 ajoute maintenant
+capture/vérification d'une conversation (preuves de livraison dans le CDC).
+La restauration et la synchronisation restent à implémenter.
 
 ## Contexte
 
@@ -317,12 +318,12 @@ preuves historiques manquantes restent des diagnostics, jamais des suppressions
 inventées. Pas de sélection de sous-plage, fusion ni reprise automatique
 d'actions HTML, rapports/traces exclus, fact-check, outil ou notification.
 Une livraison intermédiaire capture/vérification doit porter ce nom et ne
-valide ni restauration ni W06. Aucun de ces parcours n'est encore branché.
+valide ni restauration ni W06. Le lot ci-dessous branche la capture/vérification.
 
-### Préparation du lot capture/vérification après #450 (non implémenté)
+### Contrat du lot capture/vérification après #450 (implémenté)
 
 Les deux contre-revues indépendantes du 5 septembre et la lecture des stores
-précisent le prochain lot. Il ne livre pas la restauration ni la synchronisation :
+définissent ce lot. Il ne livre pas la restauration ni la synchronisation :
 
 - Entrée distincte « Archive chiffrée de cette conversation » dans les deux
   menus de conversation (ChatTopBar et ChatOptionsSheet). Fermer le menu avant
@@ -369,6 +370,54 @@ clé/compte A→B→A, effacement pendant capture/scellement, remplacement du m�
 mutation avec même timestamp, projet modifié entre documents, limites de taille,
 réouverture avec mauvais code et assertion d'absence de toute écriture source.
 Les seuls tests du conteneur A1 ou de la gate document ne valident pas ce parcours.
+
+#### Décisions d'implémentation A2
+
+- **Manifeste v2 explicite**, paire version/minReader 2/2 ; le lecteur accepte
+  toujours 1/1. L'enveloppe ARTYBKP1, le HKDF /v1 et les codes ARTY1 ne changent
+  pas. Le lecteur v1 refuse v2 : pas de downgrade silencieux.
+- Chaque référence v2 possède une `presentation` qui conserve les métadonnées
+  historiques du message, y compris nom/MIME vide et taille zéro. Le fichier
+  possède une taille binaire réelle et `recordedSize`, la taille du store (qui
+  peut historiquement compter les caractères base64). Les trois restent
+  distinctes ; seules les tailles binaires déterminent les quotas/objets.
+  Aucune recompression, réparation ou interprétation de la présentation.
+- Projection allowlistée synchrone, sans getters ; générations et identité
+  contrôlées pendant les awaits. Projection comparée de nouveau en fin/remise
+  pour détecter aussi une mutation RAM directe sans save. L'invalidation par
+  génération est volontairement globale : « espace modifié », pas seulement
+  « conversation modifiée ». Les slots illisibles en quarantaine ne sont pas
+  une source de cette capture de la conversation actuellement accessible.
+- Préparation de message, fact-check (y compris attente de récupération des
+  liens avant le badge pending) et association projet sont comptés par
+  conversation/compte/époque. Pas de bouton bloqué depuis un getter non réactif :
+  le getter du hook est relu à la demande et pendant la capture.
+- Lecture brute de tous les fichiers dans une seule transaction readonly,
+  puis déchiffrement séquentiel. Projet figé avant cette lecture, révision
+  revérifiée après les documents. Textes source/extraits exacts : un surrogate
+  isolé est refusé, le BOM UTF-8 valide est conservé.
+- La lecture d'une base absente annule l'upgrade initial, sans migration.
+  Erreurs de transaction consommées ; ouverture bloquée rejetée ; succès tardif
+  fermé ; token de lecture fermé incapable de retomber sur un getter créateur.
+  Fence et marqueur d'effacement stricts, sans assimiler null/false/0 à l'absence.
+- La remise reste liée à la fraîcheur source. La vérification d'un fichier
+  déjà enregistré compare ID et fingerprint complets sous gardes session,
+  crypto et effacement, mais n'exige plus que l'historique source soit inchangé.
+  Aucun lookup des IDs de l'archive dans les stores locaux du vérificateur.
+- Révocation terminale des deux vues sur bus local/perte du document, même
+  sans démontage : codes, fichiers, rapports effacés de l'état et du DOM,
+  opérations annulées. Pas de promesse d'effacement physique de la mémoire JS.
+- Paramètres : vue interne de vérification, pas de second dialogue. Focus
+  transféré explicitement lors des transitions ; aucun changement du piège
+  global qui pourrait intercepter les sous-dialogues existants.
+- Plafonds : manifeste 4 Mio, objet 10 Mio, contenu déchiffré 60 Mio,
+  archive 64 Mio, fichiers 128 ; pas de succès partiel. Ces plafonds ne sont
+  **pas** une mesure du pic RAM natif : Blob, base64 et chiffrement se cumulent.
+
+Le code de récupération n'est pas transmis au helper de téléchargement/partage.
+Après remise, le client annonce seulement « demandé » ; la re-sélection reste
+nécessaire pour confirmer le fichier. La recette du sélecteur/partage sur un
+APK installé n'est pas attestée par les tests navigateur ou CI Android.
 
 ### Restauration ultérieure — protocole proposé
 
