@@ -825,3 +825,79 @@ contrôles réussis. Preuves et limites de recette détaillées dans le CDC.
 Distribution Android `33985705852` réussie (signature et Firebase confirmés),
 sans recette sur APK installé. Seconde sonde publique à 19:04:51 UTC : même
 asset/empreinte et HTTP 200 ; pas de mesure continue de performances.
+
+### A3b.3 — décision : migrateur raw à reprise froide (candidat OFF)
+
+Contexte : les lecteurs isolés #454 savent ouvrir un descripteur v2, mais un
+changement d'adresse ne suffit pas à conserver les autorités crypto, ni à
+exclure un ancien APK. Les deux contre-revues pré-code ont imposé une exclusion
+positive de l'admission privée, des références durables aux copies et une
+revalidation après les barrières irréversibles.
+
+Options écartées : migration dans useAuth (imports privés avant récupération),
+réécriture JSON filtrant les lignes (pertes d'orphelins/champs/ciphertexts),
+recopie sous nouveau sel (perte d'autorité), job UUID indépendant du descripteur
+(copie introuvable à purger après commit), rollback vers DB v1 après v2
+(impossible sans supprimer/recréer des données), exclusion générale du préfixe
+workspace dans la signature LS (changements silencieux).
+
+Décision implémentée :
+
+1. `claimMaintenance` est irréversible pour le document et refusé en checking
+   ou ready. Le migrateur capture le vrai singleton et la politique interne
+   OFF ; aucune garde caller vide n'accorde une mutation. Une tentative est
+   sérialisée, retirée après échec, et son délai de 120 s sans progrès est
+   réarmé aux checkpoints. Les opens/transactions tardifs ferment ou avortent.
+2. Le record contrôle unique v3 porte génération/phase/révision. Un header
+   `reserved` est durable avant création/copie privée de la jobDB. Les créations
+   contrôle/identité initiales sont atomiques dans leur upgrade respectif.
+   Le nom `arty-workspace-${generation}-migration` reste calculable depuis v2.
+3. Le plan contient owners, sept slots raw source, versions initiales,
+   empreintes/counts et SHA-256 de toutes les paires LS initiales. Les valeurs
+   auth/settings ne sont jamais journalisées. Les noms connus de ces familles
+   et les sessions validées découvrent les owners sans les réattribuer.
+   `a`, `a-b`, `anon`, `null`, Unicode et ponctuation restent opaques ; le
+   propriétaire files `arty-anon` est ambigu et refusé. Key/owner incohérents,
+   reçus d'effacement même falsy et fences incohérentes refusent.
+4. Chaque store est scanné par curseur complet, pages de 32 lignes / seuil
+   4 Mio de représentation, sans plafond global d'archive. Une ligne est
+   bornée à 32 Mio de représentation et profondeur 64. Le dernier élément peut
+   dépasser le seuil de page ; ce n'est pas une promesse de pic mémoire natif.
+   Encodage tagué UTF-16/undefined/-0 déterministe, ordre de code units indépendant
+   de locale, hash chaîne par ligne indépendant des pages. Date/Map/Set/valeurs
+   typées/cycles/accessors sont refusés, jamais convertis silencieusement.
+5. Pour chaque owner, le sel propre valide ou global effectif est repris
+   textuellement. Vide/invalide/absent sans global valide refuse. Version suit
+   le fallback nullish historique ; check reste strictement propre, absent
+   reste non vérifié. Tous les slots d'origine restent intacts.
+6. LS est réellement copié avant les barrières pour détecter son quota propre.
+   Source attendue = signature initiale + paires cibles exactes de ce job,
+   initialement absentes. Une cible altérée ou un credential/clé inconnue
+   ajouté/supprimé interdit le commit. Un quota peut laisser une copie partielle
+   et le header reserved : reprise explicite possible, pas de suppression.
+7. Les sources legacy deviennent v2 sans modifier leur contenu. Puis copie
+   raw dans le journal et dans les DB isolées v1, sans overwrite divergent.
+   Phases reserved → inventoried → barrier → copied → verified. Reprise relit
+   versions et octets réels, ne fait pas confiance aux seuls checkpoints.
+   Job absent après inventaire attesté ou identité étrangère : refus.
+8. Le remplacement final v3 → v2 lit/compare/put dans la même transaction du
+   contrôle. Dernier contrôle synchrone LS au put. Aucun protocole IDB ne peut
+   rendre ce put atomique avec LS écrit par un ancien client non coopérant ;
+   la source reste conservée et l'activation exige les limites de coexistence.
+   Si le commit a réussi avant observation d'un timeout, l'acteur reconnaît
+   uniquement son UUID avec le vrai lecteur froid et l'identité journal ; il
+   propose une recharge de fin, sans seconde copie. L'App ne s'ouvre que dans
+   un nouveau document normalement admis.
+
+Conséquences / actions restantes : la jobDB contient des copies privées raw
+(dont histoire plaintext si déjà telle en legacy), elle doit faire partie de
+la purge et des reçus d'effacement avant activation. Ni effacement multigénération,
+ni IMAP Keystore, ni rollback prébarrière, ni résolution de source divergente
+ne sont implémentés ici. Les vieux APK peuvent encore agir côté serveur ; pas
+de POST ni révocation dans ce module froid. Recette mobile volumineuse/lente et
+pics mémoire restent à mesurer ; un délai sans progrès n'est pas un SLA.
+
+Repli du **candidat OFF** : revert Git via PR/CI/Pages en cas de régression du
+login/admission legacy. Aucune migration réelle n'est lancée. Si un environnement
+de test a déjà relevé une DB à v2, conserver données/journal et reprendre avec
+une version compatible ; ne pas simuler un downgrade ni supprimer les copies.

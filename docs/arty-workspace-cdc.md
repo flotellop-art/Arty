@@ -108,6 +108,51 @@ réels ; préparer protocole et instrumentation sans fabriquer leurs résultats.
 
 ## Preuves par lot
 
+### W06 A3b.3 — migrateur brut journalisé candidat, activation OFF
+
+Implémentation locale validée, publication en préparation. La
+verticale utilise les vrais lecteurs : stockage legacy chiffré → inventaire →
+barrières v2 → journal/copie isolée → nouveau document → conversation, fichier,
+projet/document et capture d'archive vérifiée. Aucun compte réel n'est migré.
+
+- Réservation froide exclusive : impossible pendant une admission privée déjà
+  lancée ; aucun App/useAuth/crypto importé par le migrateur. La politique OFF
+  interdit intrinsèquement start et reprise, pas seulement le bouton.
+- Journal v3 dans le contrôle physique v1, un seul UUID pour job/génération ;
+  DB journal dérivable du descripteur final, non orpheline après commit.
+- Inventaire de toutes les lignes des cinq stores, sept slots et indices
+  d'owners des sessions/réglages/auth historiques, y compris hors sessions.
+  Valeurs auth/réglages inchangées, non copiées dans le journal ; signature de
+  stabilité de tout LS. Salt global effectif conservé ; aucun check global
+  promu en check d'un compte. Sel absent/ambigu : refus avant réservation.
+- Copie raw paginée, empreintes déterministes par ligne, vérification complète
+  des sources, du journal et des destinations. Champs supplémentaires et
+  undefined préservés ; formes exotiques explicitement refusées. Divergence
+  refusée sans écraser la cible ni effacer la source.
+- Reprise testée à chaque phase, journal absent/étranger, quota LS avant
+  barrières, versions legacy partiellement relevées, upgrade bloqué tardif,
+  changement de credential/source/cible et timeout après commit réel.
+- Écran froid FR/EN pour header reconnu, sans import privé, sans consommation
+  du retour OAuth et sans boucle de rechargement lorsque la reprise est OFF.
+
+Limites bloquant toujours l'activation : purge de toutes les générations et du
+journal, reprise froide d'effacement (dont IMAP natif), résolution explicite
+d'une source modifiée, annulation prébarrière sans perte de références,
+recettes capacité/performance WebView. Un quota LS peut laisser le journal et
+une copie partielle réessayable : pas de retour automatique en legacy. Après
+la première barrière v2, pas de downgrade. Aucun import/restauration de sauvegarde
+ni synchronisation n'est livré par ce lot. W06 global reste **partiel**.
+
+Prépublication : deux contre-revues indépendantes GO limité OFF, après
+correction des owners session-only/orphelins, ordre Unicode, fermeture de
+connexion et fin incertaine après commit. `npm run verify` : 258 fichiers /
+2 908 tests verts + 1 ignoré, typecheck front/back, no-CASA, addon, couverture,
+build et worker Office réussis. Après les derniers petits correctifs de
+classification `report-`, typecheck et 49 tests migration/politique verts
+(dont 41 scénarios migration). La CI finale doit revalider l'exact commit.
+Couverture du verify : statements 66,66 %, branches 61,07 %, fonctions 72,48 %,
+lignes 68,42 %. Aucun nouveau package, secret ni workflow de déploiement.
+
 ### W06 A3b.2 — runtime isolé livré (#454), activation OFF
 
 Contrat de génération globale implémenté : résolveurs histoire/crypto/assets,

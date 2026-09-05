@@ -45,6 +45,15 @@
     }
   },
   "workspaceAdmission": {
+    "recoverableTitle": "Local migration interrupted",
+    "recovery": {
+      "disabled": "An interrupted migration is reported, but recovery is not enabled in this version. Keep site storage and install a compatible version. Reloading this same version will not resolve the situation.",
+      "idle": "Your data and sign-in callback remain in place. You can request local recovery; copies will be verified before opening.",
+      "working": "Local verification and recovery are in progress. Keep this window open.",
+      "failed": "Recovery did not finish. Your data remains closed and no copy was deleted. Close other versions of Arty and check free storage before retrying. Changed data or a missing journal require dedicated recovery; do not clear storage.",
+      "done": "Local migration is verified. Reload to open a new session on this storage.",
+      "resume": "Verify and resume"
+    },
     "checkingTitle": "Checking local storage…",
     "checkingBody": "Arty is checking whether your data can be opened. This check does not change your conversations or files.",
     "maintenanceTitle": "Storage recovery is required",

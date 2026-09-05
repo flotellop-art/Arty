@@ -19,6 +19,7 @@ const PrivateApp = lazy(async () => {
   assertDocumentWorkspace()
   return app
 })
+const ColdMigrationRecovery = lazy(() => import('./ColdMigrationRecovery'))
 
 type Controller = ReturnType<typeof createDocumentWorkspaceLock>
 export function DocumentWorkspaceGate({ controller = documentWorkspace, admission = workspaceAdmission, Content = PrivateApp }: {
@@ -51,6 +52,10 @@ function StorageAdmissionGate({ admission, Content }: { admission: ReturnType<ty
   const phase = useSyncExternalStore(admission.subscribe, admission.getSnapshot, admission.getSnapshot)
   useEffect(() => { void admission.admit() }, [admission])
   if (phase === 'ready') return <Suspense fallback={<Wait title={t('workspaceWindow.loading')} />}><Content /></Suspense>
+  if ((phase === 'recoverable' || phase === 'maintenance') && admission.getRecovery()) return <Wait title={t('workspaceAdmission.recoverableTitle')}>
+    <Suspense fallback={null}><ColdMigrationRecovery /></Suspense>
+    <a className="mt-6 inline-flex min-h-11 items-center px-4 text-sm underline" href="/privacy/">{t('landing.footer.privacy')}</a>
+  </Wait>
   const checking = phase === 'idle' || phase === 'checking'
   const key = checking ? 'checking' : phase
   return <Wait title={t(`workspaceAdmission.${key}Title`)}>

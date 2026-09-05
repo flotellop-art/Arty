@@ -15,6 +15,20 @@ const admissionFor = (controller: ReturnType<typeof createDocumentWorkspaceLock>
 )
 
 describe('workspace gate is before any private hooks/import/seed', () => {
+  it('recognized migration stays cold with OFF recovery, no reload loop and exact OAuth callback preservation', async () => {
+    const db = await openDB('arty-workspace-control', 1, { upgrade(db) { db.createObjectStore('meta') } })
+    await db.put('meta', { format: 'arty-workspace-control', version: 3, layout: 'legacy-v1', state: 'migration', revision: 3,
+      generation: '76ba201a-547f-44a1-9000-111111111111', phase: 'inventoried' }, 'workspace'); db.close()
+    const controller = createDocumentWorkspaceLock(() => sharedWorkspaceLocks().source)
+    const admission = createWorkspaceAdmission({ assertLock: () => controller.assertHeld(), signal: controller.signal })
+    window.history.replaceState({}, '', '/auth/callback?code=synthetic&state=exact#fragment')
+    sessionStorage.setItem('synthetic-verifier', 'keep'); const href = window.location.href
+    const loaded = vi.fn(async () => ({ default: () => <div>private</div> })), Content = lazy(loaded)
+    render(<DocumentWorkspaceGate controller={controller} admission={admission} Content={Content} />)
+    await screen.findByText('workspaceAdmission.recovery.disabled')
+    expect(screen.queryAllByRole('button')).toHaveLength(0); expect(loaded).not.toHaveBeenCalled()
+    expect(window.location.href).toBe(href); expect(sessionStorage.getItem('synthetic-verifier')).toBe('keep')
+  })
   it('StrictMode never loads private Content while the single cold read is pending', async () => {
     const locks = sharedWorkspaceLocks(), controller = createDocumentWorkspaceLock(() => locks.source), gate = deferred()
     const read = vi.fn(async () => { await gate.promise; return LEGACY_WORKSPACE_LAYOUT })

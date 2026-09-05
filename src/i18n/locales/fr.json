@@ -45,6 +45,15 @@
     }
   },
   "workspaceAdmission": {
+    "recoverableTitle": "Migration locale interrompue",
+    "recovery": {
+      "disabled": "Une migration interrompue est signalée, mais la reprise n’est pas activée dans cette version. Conserve le stockage et installe une version compatible. Recharger cette même version ne résoudra pas la situation.",
+      "idle": "Les données et le retour de connexion restent en place. Tu peux demander une reprise locale ; les copies seront vérifiées avant toute ouverture.",
+      "working": "Vérification et reprise locales en cours. Ne ferme pas cette fenêtre.",
+      "failed": "La reprise n’a pas abouti. Les données restent fermées et aucune copie n’a été supprimée. Ferme les autres versions d’Arty et vérifie l’espace disponible avant de réessayer. Si les données ont changé ou si le journal manque, une récupération dédiée est nécessaire ; n’efface pas le stockage.",
+      "done": "La migration locale est vérifiée. Recharge pour ouvrir une nouvelle session sur ce stockage.",
+      "resume": "Vérifier et reprendre"
+    },
     "checkingTitle": "Vérification du stockage local…",
     "checkingBody": "Arty vérifie que tes données peuvent être ouvertes. Ce contrôle ne modifie pas tes conversations ni tes fichiers.",
     "maintenanceTitle": "Une reprise du stockage est nécessaire",
