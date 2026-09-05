@@ -31,7 +31,7 @@ supplémentaire n'est implicite dans ce mandat.
 | W03 | Catalogue | Un catalogue partagé aligne comparaison, sélecteurs, labels et éligibilité selon le compte (pas une garantie fournisseur). Modèle demandé, transmis par le proxy et signalé par le fournisseur distingués. Tests contre la dérive et contre l'accès premium hors droit. | Web déployé, PR #440 ; recette visuelle/appareil non vérifiée |
 | W04 | Projets | Créer/renommer/supprimer un projet, consignes propres, conversations associées, bibliothèque de documents réutilisables. Sources identifiables dans le contexte. Recherche bornée, absence de fichier et contexte tronqué explicites. Cloisonnement par compte et projet ; mode Europe conservé. | Bibliothèque web livrée #443 ; conversations web livrées #444 ; recette visuelle/appareil non vérifiée |
 | W05 | Livrables | Export DOCX modifiable et XLSX de tableaux, en plus des exports existants. Téléchargements relus par un parseur indépendant ; cellules dangereuses neutralisées ; aucun HTML actif ni formule arbitraire. Formats et limites documentés. | Web déployé #445 ; recette structurelle vérifiée ; rendu Office/appareil non vérifié |
-| W06 | Continuité | Sauvegarde/restauration explicites puis synchronisation optionnelle multi-appareil chiffrée avant upload, avec secret détenu par l'utilisateur et récupération expliquée. Conflits non destructifs ; reprise hors-ligne ; logout/switch/delete et compte invité traités. Un export manuel seul ne valide pas la synchronisation. | A1 #446, galerie #448, verrou document #449, capture/vérification A2 #451, préparation A3a #452, admission froide #453, runtime isolé inactif #454, migrateur journalisé OFF #455, reprise froide d'effacement v2 OFF #456 et reçu distant d'effacement #457 livrés ; restauration/synchronisation non livrées |
+| W06 | Continuité | Sauvegarde/restauration explicites puis synchronisation optionnelle multi-appareil chiffrée avant upload, avec secret détenu par l'utilisateur et récupération expliquée. Conflits non destructifs ; reprise hors-ligne ; logout/switch/delete et compte invité traités. Un export manuel seul ne valide pas la synchronisation. | A1 #446, galerie #448, verrou document #449, capture/vérification A2 #451, préparation A3a #452, admission froide #453, runtime isolé inactif #454, migrateur journalisé OFF #455, reprise froide d'effacement v2 OFF #456, reçu distant #457 et pont froid/fence v5 OFF #458 livrés ; restauration/synchronisation non livrées |
 | W07 | Comparaison | Comparer depuis une conversation avec contexte/documents autorisés ; conserver les résultats et poursuivre la réponse choisie sans perdre l'original. Erreurs/coûts/quotas de chaque panneau visibles ; EU et historique privé jamais contournés. | À faire |
 | W08 | Parcours métier | Trois parcours complets : synthèse documentaire, réponse client préparée, planification Agenda avec confirmation avant écriture. Écran de connexions indiquant disponible/non configuré/non pris en charge selon plateforme. Pas de Drive/Gmail OAuth restreint ni relais IMAP serveur. | À faire |
 | W09 | Mobile et identité | PWA installable ; identité tryarty cohérente ; distribution Android authentifiée et documentée. Ne pas rediriger vers une app Play homonyme. Toute migration appId inclut signatures/OAuth/Firebase/liens vérifiés ; un APK distribué n'est pas une publication Store. | À faire |
@@ -144,7 +144,7 @@ Validation générale : `npm run verify` réussi, 265 suites / 3 042 tests verts
 et 1 ignoré ; front/back, no-CASA/add-on, build et worker Office réel verts.
 Couverture statements 67,60 %, branches 62,42 %, fonctions 73,44 %, lignes
 69,33 %. Deux GO finaux limités au candidat OFF, sans objection bloquante.
-Reçus Git/CI/Pages à compléter à la livraison. Aucun
+Reçus Git/CI/Pages ci-dessous. Aucun
 test d'effacement en production, aucune prétention de recette APK réelle.
 `ISOLATED_WORKSPACE_ENABLED=false` inchangé. W06 reste partiel : supersession
 v3, métadonnées/recréation, recette native, restauration et synchronisation
@@ -157,6 +157,27 @@ la PR, flag toujours OFF ; conserver journaux et tombstones. Un stockage v5 ne
 doit pas être rétrogradé ni purgé pour revenir en arrière. Vérifier les assets
 servis après publication et les réponses publiques GET non destructives ; sans
 accès à la télémétrie globale, ne pas prétendre mesurer un taux d'erreur général.
+
+Livraison : [PR #458](https://github.com/flotellop-art/Arty/pull/458), head
+`94423888467ee47c689d21376b910e4edb1ed4e6`, fusion normale 05/09 22:21:48 UTC,
+main `f41725bce242dd9f8f5ed5b6ea379cbc9fe8db54`. CI PR `33995467699` et CI
+main `33995692955` réussies (main terminé 22:25:55 UTC), dont Android et
+orchestrateur. Preview `828082ff-2cfe-4631-8809-cf0e9830d543` et production
+`57f1dbac-da8f-41aa-8ab7-ff245ddddf7f` réussies.
+
+Recette IAB preview : démarrage du profil synthétique, paramètres, confirmation
+appareil-only puis Annuler. Aucun effacement ni appel IA ; onglet test refermé,
+onglet utilisateur et brouillon préservés. Sonde 22:23:54.884 UTC : tryarty.com
+et alias immuable `57f1dbac.appfacade.pages.dev` servent exactement le même
+`index-DVWlPy9K.js` (273 587 octets), SHA256
+`31c88cd840f91279372968f6f5d031907526eb3856c01948a274251870d347ed`, et
+`App-CFZsFFc6.js`, SHA256
+`fa0a7208aea2a8dcfe5981d4c7d292cb69e6145cfacd02baf0bc906328f3269f`.
+GET invalide 400/no-store ; op/cap synthétiques aléatoires donnent
+200/protocol1/unknown/no-store. Ni POST ni auth de production utilisés.
+Sonde répétée 22:28:17.552 UTC : mêmes empreintes/réponses. Build/distribution
+APK `33995692845` réussi, terminé 22:29:13 UTC : APK signé 22:29:01, Firebase
+22:29:08. Ceci ne prouve ni installation sur téléphone ni publication Store.
 
 ### W06 A3b.5a — reçu distant d'effacement, parcours courant
 

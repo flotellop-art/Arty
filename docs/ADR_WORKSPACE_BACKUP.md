@@ -1049,7 +1049,7 @@ comme une reprise utilisable ; livrer le chemin et sa recette ensemble.
 
 #### A3b.5b — pont froid de reçu et réparation v5 (6 septembre 2026)
 
-Statut : implémenté/testé, activation isolée toujours OFF ; publication à suivre.
+Statut : livré #458, activation isolée toujours OFF ; reçus dans le CDC.
 Décideurs : agent principal et deux contre-revues indépendantes en lecture seule.
 
 Contexte : l'abort réel de `purgeProjectsForAccount` après LS laisse un fence
@@ -1093,3 +1093,44 @@ recette sur navigateur ou APK installé. Aucun compte de production effacé.
 Actions restantes : supersession v3 avant purge, métadonnées/recréation sûre,
 recette native intégrée, publication/restauration puis synchronisation. Aucun
 de ces gates n'est levé par le seul succès de cette réparation.
+
+##### Reprise préparée après #458 — pistes à contre-revoir avant code
+
+Deux revues préparatoires indépendantes distinguent deux vrais parcours encore
+absents. Aucun nouveau writer ni droit de recréation n'est implémenté ici.
+
+1. Priorité au trajet nominal isolé : `accountService.performLocalErasure`
+   utilise encore l'ancien nettoyeur actif, puis retire le reçu. Il faut relier
+   l'autorité durable du vrai bouton au nouveau document froid et au nettoyeur
+   multi-copies. Sans ce raccord, une suppression sans crash contournerait la
+   future preuve. `clearAllForActiveUser` utilise encore un préfixe a-/a-b et
+   ne couvre pas le namespace des brouillons. Ces limites ne doivent pas être
+   transposées au contrôle de reprovisionnement.
+2. Recréation = nouvel espace LOCAL, pas effacement confirmé des autres appareils.
+   Garder requiredOwners ; droit versionné lié owner/génération/opération après
+   purge complète, sans ancien secret remote. Allocation d'un seul sel puis
+   finalisation check/accès durable, consommable seulement à la fin. Une coupure
+   après le sel LS n'est pas traitée comme fresh dans `crypto.ts` aujourd'hui.
+   Reprendre la même allocation, jamais emprunter le sel global ni permettre
+   une seconde allocation après disparition du sel consommé. Scans d'absence
+   exacts dans toutes les copies/plan/settings/drafts ; B reste lisible ET writable.
+   Le natif terminal ne se rouvre pas au simple reload : protocole lié à un reçu,
+   invalidation des anciens tickets, test APK intégré, aucun reset JS générique
+   ni suppression de l'alias Keystore partagé.
+3. V3 : aucun client à jour ne peut normalement ouvrir App et effacer pendant
+   migration. Le cas réel est un ancien bundle avant barrières, une action
+   distante sans témoin local, ou une nouvelle action locale sur l'écran froid.
+   Le dernier cas doit livrer UI+autorité+supersession, pas seulement un parser.
+   Une première recette bornée peut viser copied/verified avec journal complet
+   et destination attestables ; CAS de supersession AVANT purge. Un journal
+   partiel et une source divergente ne permettent pas de déduire B depuis les
+   hashes globaux A+B : rester explicitement bloqué, sans rebaseline. Le plan
+   redacted n'est pas une entrée du migrateur v3. Un choix après claimMaintenance
+   exige un coordinateur froid unique ou un nouveau document, pas un second lock.
+
+Correction de la vieille liste de risques : draft-only + sel global est déjà
+traité par observeLocalOwnerHints/localTargets et le test opaque a:b sans session
+dans workspaceMigration.test.ts. Ne pas le rouvrir comme défaut non résolu.
+La prochaine implémentation doit avoir ses propres deux contre-revues et une
+verticale depuis l'action utilisateur jusqu'aux nouvelles écritures relues,
+y compris A migré, A post-cutover, voisins a-b/a:b et second cycle d'effacement.
