@@ -96,6 +96,8 @@ export interface Message {
   role: 'user' | 'assistant'
   content: string
   timestamp: number
+  /** Archive history is data, never authority to resume actions/post-processing. */
+  restoredArchive?: true
   files?: FileAttachment[]
   /** Private image receipts. Ordinary JSON imports must discard these IDs. */
   generatedImages?: string[]

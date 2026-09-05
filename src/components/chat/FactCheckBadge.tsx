@@ -20,6 +20,7 @@ import type { FactCheckResult } from '../../types'
 
 interface Props {
   result: FactCheckResult
+  historical?: boolean
 }
 
 type FactCheckStatus = NonNullable<FactCheckResult['status']>
@@ -62,9 +63,16 @@ const VERDICT_ICON: Record<string, string> = {
   wrong: '❌',
 }
 
-export const FactCheckBadge = memo(function FactCheckBadge({ result }: Props) {
+export const FactCheckBadge = memo(function FactCheckBadge({ result, historical = false }: Props) {
   const { t } = useTranslation()
   const [expanded, setExpanded] = useState(false)
+
+  // Never infer active work from an imported clock/status, even a future date.
+  // Keep the archived proof intact; this is a rendering policy, not a rewrite.
+  if (historical && (result.status === 'pending' ||
+    (!result.status && result.modelLabel === 'Vérification en cours…'))) {
+    return <p role="note" className="mt-2 text-xs text-theme-muted">{t('workspaceArchive.historicalPending')}</p>
+  }
 
   const status = deriveStatus(result)
 

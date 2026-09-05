@@ -1,5 +1,7 @@
 {
   "workspaceArchive": {
+    "historicalMessage": "Restored message: old buttons and links remain disabled. The original text is preserved for copying and export.",
+    "historicalPending": "Unfinished historical fact-check — it has not been restarted.",
     "title": "Encrypted archive of this conversation",
     "demoUnavailable": "Encrypted archives are not available in preview mode. Use Arty with a real account, outside this demo session.",
     "scope": "Local copy of every currently accessible message in this conversation, including its stored attachments and images. Nothing is sent to Arty or an AI.",

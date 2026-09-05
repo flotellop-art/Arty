@@ -1331,10 +1331,11 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
         // vol ne retouche que l'id original dans la conv source (possible
         // depuis la publication immédiate — le message existe et se branche
         // pendant que sa vérif tourne). On le strippe ; les résultats
-        // finalisés, eux, se copient normalement.
+        // finalisés, eux, se copient normalement. Un pending restauré est une
+        // preuve historique explicitement inactive : on le conserve aussi.
         messages: branchedMessages.map(m => {
           const { factCheck, ...rest } = m
-          const isPending = factCheck &&
+          const isPending = m.restoredArchive !== true && factCheck &&
             (factCheck.status === 'pending' || factCheck.modelLabel === 'Vérification en cours…')
           return { ...rest, ...(m.generatedImages ? { generatedImages: [...generatedImageIds(m.generatedImages)] } : {}), id: generateId(), ...(factCheck && !isPending ? { factCheck } : {}) }
         }),

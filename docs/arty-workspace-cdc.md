@@ -108,6 +108,40 @@ réels ; préparer protocole et instrumentation sans fabriquer leurs résultats.
 
 ## Preuves par lot
 
+### W06 A3a — préparation de restauration (en validation, non déployée)
+
+- Service pur de projection A1/v2, graphe multi-conversations/projets conservé,
+  nouveaux IDs par domaine/parent, fichiers partagés et références historiques
+  absentes remappés. Aucun lookup du compte cible, aucune écriture/migration.
+- Marque persistante des messages restaurés : anciens boutons/liens inactifs,
+  texte original disponible à la copie/export, vérification historique non
+  relancée ; les nouvelles réponses et commandes explicites restent utilisables.
+- Reprise de mapping exacte et liée à l'archive, pas une restauration durable.
+  Pas de journal, admission de capacité, publication ou synchronisation. W06
+  reste non livré dans son ensemble. Détails, conséquences et préconditions
+  A3b/A3c dans `ADR_WORKSPACE_BACKUP.md`.
+- 30 tests du planner verts. `npm run verify` final : 254 fichiers,
+  2 764 tests réussis + 1 ignoré,
+  TypeScript front/back, couverture, no-CASA, build et worker Office réels verts.
+  Log local `../arty-workspace-restore-verify-final-20260905.log`. Avertissements de
+  taille de chunks préexistants ; aucune mesure de pic RAM natif.
+  Contre-revues finales sécurité et fidélité : deux GO, après correction d'un
+  replay falsy ; 32 tests ciblés revérifiés par le reviewer sécurité. Deux cas
+  complémentaires ajoutés sur demande du reviewer produit : archive sans
+  aucune conversation et présentations divergentes du même fichier.
+- Recette navigateur local réelle sur messages synthétiques : texte/tableau
+  lisibles, ancien bouton sans effet, anciennes ancres absentes, pending
+  historique affiché ; nouvelle action et commandes export/signalement
+  explicites fonctionnelles avec callbacks simulés. Aucun événement Agenda,
+  export personnel ni clipboard réel déclenché. Aucun test de restauration
+  effective ni d'APK implicite ; l'onglet tryarty.com et son brouillon sont
+  restés intacts. Fixture locale ignorée `.playwright-mcp/restore-history.*`.
+
+Repli prévu : revert du lot par Git/CI/Pages tant qu'aucun publisher n'existe.
+Ne pas utiliser ultérieurement un ancien bundle sans inertie pour des données
+effectivement restaurées. Déclencheurs : régression du chat ordinaire, bouton
+historique actif ou traitement réseau automatique d'un message marqué.
+
 ### Prérequis W06 — exécution image livrée (#447)
 
 - PR [#447](https://github.com/flotellop-art/Arty/pull/447), squash main

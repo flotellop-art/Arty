@@ -120,6 +120,76 @@ describe('Office — cycle complet sans API payante', () => {
     unmount()
   })
 
+  it.each(['off', 'auto'] as const)('real checker does no historical cleanup, token lookup, network or writes in %s mode', async mode => {
+    const actual = await vi.importActual<typeof import('../../services/factChecker')>('../../services/factChecker')
+    const google = await import('../../services/googleAuth')
+    const readToken = vi.spyOn(google, 'getValidAccessToken').mockResolvedValue(null)
+    const fetch = vi.fn(); vi.stubGlobal('fetch', fetch)
+    const refresh = vi.fn()
+    actual.setFactCheckMode(mode)
+    conv.messages = [
+      { id: 'u', role: 'user', content: 'Donne-moi un lien sur les archives', timestamp: 1 },
+      { id: 'earlier', role: 'assistant', content: 'Un assistant non marqué antérieur', timestamp: 2 },
+      { id: 'old', role: 'assistant', content: 'Voici [la source](https://example.com/unproven).', timestamp: 3,
+        restoredArchive: true, factCheck: { status: 'pending', modelLabel: 'Vérification en cours…',
+          checkedAt: Date.now() + 86_400_000, overallConfidence: 'high', claims: [] } },
+    ]
+    const before = structuredClone(conv)
+    try {
+      await actual.runFactCheckOnLatest(conv.id, refresh)
+      expect(conv).toEqual(before)
+      expect(storage.saveConversation).not.toHaveBeenCalled()
+      expect(refresh).not.toHaveBeenCalled()
+      expect(readToken).not.toHaveBeenCalled()
+      expect(fetch).not.toHaveBeenCalled()
+    } finally { actual.setFactCheckMode('off'); vi.unstubAllGlobals() }
+  })
+
+  it('branches keep historical pending but still drop ordinary live pending', () => {
+    const factCheck = { status: 'pending' as const, modelLabel: 'Vérification en cours…',
+      checkedAt: Date.now() + 86_400_000, overallConfidence: 'high' as const, claims: [] }
+    conv.messages = [
+      { id: 'u', role: 'user', content: 'Question', timestamp: 1, restoredArchive: true },
+      { id: 'old', role: 'assistant', content: '<button data-action="create_event">Ancien</button>', timestamp: 2, restoredArchive: true, factCheck },
+      { id: 'fresh', role: 'assistant', content: 'En cours', timestamp: 3, factCheck: { ...factCheck } },
+    ]
+    const before = structuredClone(conv)
+    const { result, unmount } = setup()
+    act(() => { result.current.branchConversation(conv.id, 2) })
+    expect(conv.id).not.toBe(before.id)
+    expect(conv.messages[0]?.restoredArchive).toBe(true)
+    expect(conv.messages[1]).toMatchObject({ restoredArchive: true, content: before.messages[1]!.content, factCheck })
+    expect(conv.messages[2]?.restoredArchive).toBeUndefined()
+    expect(conv.messages[2]?.factCheck).toBeUndefined()
+    expect(before.messages[1]?.factCheck).toEqual(factCheck)
+    unmount()
+  })
+
+  it('a real new streamed answer in a restored thread is unmarked and uses normal link verification', async () => {
+    const actual = await vi.importActual<typeof import('../../services/factChecker')>('../../services/factChecker')
+    const google = await import('../../services/googleAuth')
+    const readToken = vi.spyOn(google, 'getValidAccessToken').mockResolvedValue(null)
+    actual.setFactCheckMode('off')
+    vi.mocked(runFactCheckOnLatest).mockImplementationOnce(actual.runFactCheckOnLatest)
+    conv.messages = [
+      { id: 'u', role: 'user', content: 'Ancienne question', timestamp: 1, restoredArchive: true },
+      { id: 'a', role: 'assistant', content: 'Ancienne réponse', timestamp: 2, restoredArchive: true },
+    ]
+    const prior = vi.mocked(gatherRouteInput).getMockImplementation()!
+    vi.mocked(gatherRouteInput).mockImplementationOnce(ctx => ({ ...prior(ctx), selectedModel: 'claude' }))
+    const { result, unmount } = setup()
+    await act(async () => { await result.current.sendMessage('Donne-moi un lien sur les archives', conv.id) })
+    const call = vi.mocked(streamMessage).mock.calls[0]!
+    act(() => { call[1]('Voici [la source](https://example.com/unproven).'); call[2]() })
+    await waitFor(() => expect(readToken).toHaveBeenCalled())
+    await waitFor(() => expect(result.current.isConversationBusy(conv.id)).toBe(false))
+    expect(conv.messages).toHaveLength(4)
+    expect(conv.messages.slice(0, 2).every(m => m.restoredArchive === true)).toBe(true)
+    expect(conv.messages.slice(2).every(m => m.restoredArchive === undefined)).toBe(true)
+    expect(conv.messages[1]?.content).toBe('Ancienne réponse')
+    unmount()
+  })
+
   it.each(['eu', 'office', 'description', 'negation', 'translation'] as const)('refuse un appel image non annoncé/malveillant : %s', async kind => {
     conv.euOnly = kind === 'eu'
     const prior = vi.mocked(gatherRouteInput).getMockImplementation()!

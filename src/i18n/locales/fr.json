@@ -1,5 +1,7 @@
 {
   "workspaceArchive": {
+    "historicalMessage": "Message restauré : les anciens boutons et liens restent désactivés. Le texte original est conservé pour la copie et l’export.",
+    "historicalPending": "Vérification historique non terminée — elle n’a pas été relancée.",
     "title": "Archive chiffrée de cette conversation",
     "demoUnavailable": "Les archives chiffrées ne sont pas disponibles en mode aperçu. Utilisez Arty avec un compte réel, hors de cette session de démonstration.",
     "scope": "Copie locale de tous les messages actuellement accessibles dans cette conversation, avec leurs pièces jointes et images enregistrées. Aucun envoi à Arty ou à une IA.",

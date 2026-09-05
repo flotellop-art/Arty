@@ -486,3 +486,54 @@ Tests attendus : stores/réseau interdits dans A3a ; collisions inter-domaines,
 références absentes, v1/v2, fidélité et EU monotone ; puis ancien client,
 quota/crash à chaque phase, A→B→A, effacement, archive différente à la reprise,
 inertie après recharge/branche et absence de snapshot global de rollback.
+
+### A3a — préparation implémentée, publication toujours interdite
+
+Décision acceptée pour le service pur `workspaceBackup/restorePlan.ts` et le
+rendu historique. Aucun bouton de restauration, writer cible, migration,
+journal ni upload n'est ajouté. La projection enveloppée porte explicitement
+`publication: not-authorized` : elle ne doit pas être montée dans le chat,
+dont les composants de fichiers lisent les stores privés au rendu.
+
+- A1/v2 complet, y compris plusieurs conversations/projets et objets autonomes.
+  Lecture authentifiée avant projection ; admission de galerie plus stricte
+  que le graphe d'archive (assistant, quatre images, signature/MIME bornés).
+  Ce contrôle n'est pas un décodage d'image complet.
+- Mapping par domaine/parent dans un arbre profondément figé, sources absentes
+  comprises. IDs source, objets et archive réservés ; aucun fallback vers eux.
+  Replay lié à archive ID + fingerprint complet, couverture exacte et unicité.
+  Une entrée de reprise falsy/corrompue est refusée, pas convertie en nouvel
+  import : P2 relevé et corrigé par la contre-revue sécurité.
+- Données originales conservées, dont trois tailles v2, dates, révisions,
+  variantes de présentation, CRLF, tags et valeurs false/0/absentes. Le texte
+  Markdown n'est pas réécrit pour remplacer ses anciennes URI.
+- Tous les messages projetés portent `restoredArchive: true`. Rendu historique
+  sans attributs d'action ni style ni ancre active (également report/trail,
+  mailto/tel et liens externes). Les images Markdown n'ajoutent aucun accès.
+  Le handler parent refuse aussi les attributs réinjectés. Le filtre de style
+  ordinaire limitait déjà les propriétés à width% : aucune fuite CSS préexistante
+  n'a été attestée par ce lot.
+- Pending historique conservé mais explicitement non relancé, même horodaté
+  dans le futur. Garde du vrai vérificateur avant préparation/récupération de
+  liens/écriture ; branche et bootstrap chiffré conservent marqueur et preuve.
+  Une nouvelle réponse générée dans le fil reste non marquée et vérifiable.
+  Copier, exporter, signaler, épingler, créer une branche ou régénérer restent
+  des actions explicites de l'application, distinctes des anciens boutons HTML.
+- Ressources calculées : octets d'objets, base64 et JSON destination UTF-8/code
+  units après expansion UUID/marqueur. Ce n'est ni une réservation de place,
+  ni une admission cumulative du compte, ni une mesure du pic RAM. Une archive
+  A1 valide peut dépasser le budget de projection et être refusée intégralement.
+- La garde est revérifiée pendant et après préparation. `dispose` invalide
+  les prochains accès par le handle et libère ses références ; il ne peut pas
+  révoquer une référence plan/Blob déjà remise ni effacer physiquement la RAM.
+
+Alternative rejetée : brancher directement cette projection sur les anciens
+`saveConversation`/`putFile`. Cela ne fournit ni attribution cible, ni collision
+avec l'existant, ni effacement cohérent, ni reprise crash. A3b/A3c restent des
+préconditions de la restauration effective ; le replay A3a n'est pas un journal.
+
+Recette locale : tests du vrai sealer/reader, stockage et réseau interdits pour
+le planner ; tests DOM du rendu et contrôles explicites ; vrai chiffrement puis
+bootstrap de stockage ; vrai hook de branche/génération et vrai vérificateur
+avec fournisseurs simulés. Aucun compte réel, aucun appel IA payant ni import
+de données personnelles n'est nécessaire à ces tests.
