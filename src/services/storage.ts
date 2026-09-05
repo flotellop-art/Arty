@@ -2,7 +2,7 @@ import type { Conversation } from '../types'
 import * as scoped from './scopedStorage'
 import { encrypt, decrypt, isCryptoReady } from './crypto'
 import { deleteOwnedFiles } from './secureFileStorage'
-import { getActiveUserId } from './userSession'
+import { getActiveUserId, getActiveSessionEpoch } from './userSession'
 
 // ─────────────────────────────────────────────────────────────────────────
 // Conversations are encrypted at rest (AES-256) under `conversations-enc`.
@@ -42,6 +42,24 @@ let cacheReady = false
 // Monotonic write counter — a background encrypt only drops the plain
 // safety-net if no newer saveConversation has run since it started.
 let writeGen = 0
+let resetGen = 0
+let bootstrapGen = 0
+let cacheIdentity: { owner: string | null; epoch: number } | null = null
+type StoreScope = { owner: string | null; epoch: number; reset: number }
+function captureScope(): StoreScope {
+  return { owner: getActiveUserId(), epoch: getActiveSessionEpoch(), reset: resetGen }
+}
+function scopeCurrent(scope: StoreScope): boolean {
+  return scope.owner === getActiveUserId() && scope.epoch === getActiveSessionEpoch() && scope.reset === resetGen
+}
+function physicalKey(scope: StoreScope, key: string): string {
+  return scope.owner ? `arty-${scope.owner}-${key}` : `arty-${key}`
+}
+function ensureCacheScope(): void {
+  const owner = getActiveUserId(), epoch = getActiveSessionEpoch()
+  if (cacheIdentity && (cacheIdentity.owner !== owner || cacheIdentity.epoch !== epoch)) resetConversationMemCache()
+  cacheIdentity = { owner, epoch }
+}
 
 export function sanitizeConversationPayloads(
   conversations: Conversation[],
@@ -79,10 +97,12 @@ function encryptionDisabled(): boolean {
 // callers that create/append messages must check this to surface a
 // "still loading" error instead of dropping the user's action (audit H5).
 export function isCacheReady(): boolean {
+  ensureCacheScope()
   return cacheReady
 }
 
 export function getConversations(): Conversation[] {
+  ensureCacheScope()
   if (memConversations) return memConversations
   // Cold read before bootstrap. A plain copy is a migration leftover or a
   // crash-safety-net write — either way it is the freshest available state.
@@ -108,35 +128,37 @@ export function getConversation(id: string): Conversation | null {
 }
 
 function persist(list: Conversation[]): void {
+  ensureCacheScope()
+  const scope = captureScope()
+  // Invalidate old encryptions even for killswitch/crypto-unavailable writes.
+  const gen = ++writeGen
+  const serialized = JSON.stringify(list)
+  localStorage.setItem(physicalKey(scope, PLAIN_KEY), serialized)
   memConversations = list
-  // Synchronous plain write — crash-safety net (BUG 16 keeps this sync).
-  scoped.setJSON(PLAIN_KEY, list)
   if (encryptionDisabled()) {
-    scoped.removeItem(ENC_KEY)
+    localStorage.removeItem(physicalKey(scope, ENC_KEY))
     return
   }
-  const gen = ++writeGen
-  void persistEncrypted(list, gen)
+  void persistEncrypted(serialized, gen, scope)
 }
 
-async function persistEncrypted(list: Conversation[], gen: number): Promise<void> {
-  // Crypto not ready — leave the plain copy as the at-rest form; the next
-  // bootstrap re-encrypts it.
-  if (!isCryptoReady()) return
+async function persistEncrypted(serialized: string, gen: number, scope: StoreScope, expectedPlain = serialized): Promise<void> {
+  if (!isCryptoReady() || !scopeCurrent(scope)) return
   try {
-    const blob = await encrypt(JSON.stringify(list))
-    scoped.setItem(ENC_KEY, blob)
-    // Drop the plain net only if this is still the latest write — otherwise
-    // a newer saveConversation's plain copy is current and its own encrypt
-    // will clean up.
-    if (gen === writeGen) scoped.removeItem(PLAIN_KEY)
+    const blob = await encrypt(serialized)
+    // Never write an older cipher over a newer commit, nor remove its safety net.
+    if (!scopeCurrent(scope) || gen !== writeGen || encryptionDisabled()) return
+    const plainKey = physicalKey(scope, PLAIN_KEY)
+    if (localStorage.getItem(plainKey) !== expectedPlain) return
+    localStorage.setItem(physicalKey(scope, ENC_KEY), blob)
+    if (localStorage.getItem(plainKey) === expectedPlain) localStorage.removeItem(plainKey)
   } catch {
-    // Encryption failed — keep the plain copy as the at-rest fallback.
+    // Keep the original owner's plain safety net; no migration or destructive retry.
   }
 }
 
 export function saveConversation(conversation: Conversation): void {
-  const conversations = getConversations()
+  const conversations = [...getConversations()]
   if (!cacheReady) {
     // History still locked in `conversations-enc` (bootstrap not done, or
     // its decrypt failed). Persisting now would overwrite it with a partial
@@ -196,54 +218,47 @@ export function deleteConversation(id: string): void {
  * useConversation can re-read once the cache is populated (cf. BUG 43).
  */
 export async function bootstrapConversationStorage(): Promise<void> {
+  ensureCacheScope()
+  const scope = captureScope(), ticket = ++bootstrapGen
+  const current = () => scopeCurrent(scope) && ticket === bootstrapGen
+  const initialWrite = writeGen
   try {
-    // A plain copy present at boot is canonical (written first, synchronously;
-    // the ciphertext is only dropped after it is confirmed). Load it, then
-    // re-encrypt and drop the plain — unless the killswitch is on.
-    const plain = scoped.getJSON<Conversation[]>(PLAIN_KEY)
+    const plainRaw = localStorage.getItem(physicalKey(scope, PLAIN_KEY))
+    let plain: Conversation[] | null = null
+    try { plain = plainRaw ? JSON.parse(plainRaw) as Conversation[] : null } catch { /* legacy malformed plain */ }
     if (plain) {
       memConversations = sanitizeConversationPayloads(plain)
       cacheReady = true
       if (!encryptionDisabled() && isCryptoReady()) {
-        try {
-          scoped.setItem(ENC_KEY, await encrypt(JSON.stringify(memConversations)))
-          scoped.removeItem(PLAIN_KEY)
-        } catch {
-          // Keep the plain copy — re-encryption retried on the next boot.
-        }
+        // Same generation gate as normal saves; a concurrent user save wins.
+        await persistEncrypted(JSON.stringify(memConversations), initialWrite, scope, plainRaw!)
       }
-      await recoverLockedBlobs()
+      if (current() && initialWrite === writeGen) await recoverLockedBlobs(scope, current)
       return
     }
-    const enc = scoped.getItem(ENC_KEY)
+    const encKey = physicalKey(scope, ENC_KEY)
+    const enc = localStorage.getItem(encKey)
     if (enc) {
-      if (!isCryptoReady()) return // can't decrypt yet — stay not-ready
+      if (!isCryptoReady()) return
       try {
-        memConversations = sanitizeConversationPayloads(
-          JSON.parse(await decrypt(enc)) as Conversation[],
-        )
+        const decoded = await decrypt(enc)
+        if (!current() || initialWrite !== writeGen || localStorage.getItem(encKey) !== enc ||
+            localStorage.getItem(physicalKey(scope, PLAIN_KEY)) !== plainRaw) return
+        memConversations = sanitizeConversationPayloads(JSON.parse(decoded) as Conversation[])
         cacheReady = true
       } catch {
-        // Decrypt failed. NEVER wipe — conversations are irreplaceable,
-        // unlike Google tokens. But NEVER stay locked either : cacheReady à
-        // false pour toute la session rendait l'app inutilisable (chaque
-        // nouvelle conversation était droppée par saveConversation → écran
-        // vide permanent sur /chat/:id). On MET EN QUARANTAINE le blob
-        // (déplacé, jamais supprimé) et on repart sur un historique vide
-        // utilisable. recoverLockedBlobs() retente le déchiffrement à chaque
-        // boot et re-fusionne l'historique si la clé redevient la bonne.
-        quarantineUndecryptableBlob(enc)
+        if (!current() || initialWrite !== writeGen || localStorage.getItem(encKey) !== enc ||
+            localStorage.getItem(physicalKey(scope, PLAIN_KEY)) !== plainRaw) return
+        quarantineUndecryptableBlob(enc, scope)
       }
-      if (cacheReady) await recoverLockedBlobs()
+      if (current() && cacheReady) await recoverLockedBlobs(scope, current)
       return
     }
-    // No stored data at all — fresh user (but maybe a quarantined history
-    // from a previous session: retry it now that crypto is up).
     memConversations = []
     cacheReady = true
-    await recoverLockedBlobs()
+    await recoverLockedBlobs(scope, current)
   } finally {
-    if (typeof window !== 'undefined') {
+    if (current() && typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('conversations-storage-ready'))
     }
   }
@@ -258,11 +273,13 @@ export async function bootstrapConversationStorage(): Promise<void> {
  * change. If both slots are full, keep today's behaviour (stay not-ready)
  * rather than destroy anything.
  */
-function quarantineUndecryptableBlob(enc: string): void {
+function quarantineUndecryptableBlob(enc: string, scope: StoreScope): void {
+  if (!scopeCurrent(scope)) return
   for (const key of LOCKED_KEYS) {
-    if (scoped.getItem(key)) continue
-    scoped.setItem(key, enc)
-    scoped.removeItem(ENC_KEY)
+    const slotKey = physicalKey(scope, key)
+    if (localStorage.getItem(slotKey)) continue
+    localStorage.setItem(slotKey, enc)
+    if (localStorage.getItem(physicalKey(scope, ENC_KEY)) === enc) localStorage.removeItem(physicalKey(scope, ENC_KEY))
     memConversations = []
     cacheReady = true
     console.error(`[storage] conversations decrypt failed — blob quarantined under ${key}, continuing with empty history (nothing deleted)`)
@@ -277,23 +294,28 @@ function quarantineUndecryptableBlob(enc: string): void {
  * collision) and the slot is freed. Silent no-op while the key still cannot
  * decrypt them — the blobs are kept for the next attempt.
  */
-async function recoverLockedBlobs(): Promise<void> {
-  if (!isCryptoReady() || !memConversations || !cacheReady) return
+async function recoverLockedBlobs(scope: StoreScope, current: () => boolean): Promise<void> {
+  if (!current() || !isCryptoReady() || !memConversations || !cacheReady) return
   for (const key of LOCKED_KEYS) {
-    const blob = scoped.getItem(key)
+    if (!current()) return
+    const slotKey = physicalKey(scope, key), blob = localStorage.getItem(slotKey)
     if (!blob) continue
     try {
-      const recovered = sanitizeConversationPayloads(
-        JSON.parse(await decrypt(blob)) as Conversation[],
-      )
-      const known = new Set(memConversations.map((c) => c.id))
-      const merged = [...memConversations, ...recovered.filter((c) => !known.has(c.id))]
+      const recoveryWrite = writeGen
+      const decoded = await decrypt(blob)
+      // Recovery must not undo a save/delete that happened while decrypting.
+      // Keep the recovery source for a later bootstrap instead of merging it.
+      if (!current() || recoveryWrite !== writeGen || !memConversations || !cacheReady || localStorage.getItem(slotKey) !== blob) return
+      const recovered = sanitizeConversationPayloads(JSON.parse(decoded) as Conversation[])
+      // Merge into the latest current cache, not the pre-await snapshot.
+      const known = new Set(memConversations.map(c => c.id))
+      const merged = [...memConversations, ...recovered.filter(c => !known.has(c.id))]
       merged.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
-      persist(merged)
-      scoped.removeItem(key)
+      persist(merged) // synchronous durable safety net or throw: keep slot on failure
+      if (current() && localStorage.getItem(slotKey) === blob) localStorage.removeItem(slotKey)
       console.warn(`[storage] recovered ${recovered.length} conversation(s) from ${key}`)
     } catch {
-      // Still locked under another key — keep the blob, retry next boot.
+      // Decrypt/quota failure: preserve the original recovery source.
     }
   }
 }
@@ -303,6 +325,10 @@ async function recoverLockedBlobs(): Promise<void> {
  * user's reads don't return the previous account's conversations.
  */
 export function resetConversationMemCache(): void {
+  resetGen++
+  writeGen++
+  bootstrapGen++
+  cacheIdentity = null
   memConversations = null
   cacheReady = false
 }

@@ -28,7 +28,7 @@ supplémentaire n'est implicite dans ce mandat.
 |---|---|---|---|
 | W01 | Fondations | DOCX : paragraphes et tableaux ; XLSX : feuilles nommées et cellules identifiées. Contenu réellement injecté, accents conservés ; erreurs visibles sur ancien format, fichier chiffré/corrompu ou limite dépassée. Même résultat en nouvel envoi, historique et retry, dont Android et mode Europe. Aucun macro, formule, lien externe exécuté ; ressources bornées ; aucune pièce jointe en base64 dans localStorage. | Web déployé, PR #439 ; recette visuelle/appareil non vérifiée |
 | W02 | Confiance | Essai annoncé conforme au plan servi. BYOK gratuit distinct du Pro optionnel ; conseiller sans licence fictive. Promesses de stockage et de transit exactes FR/EN, page publique cohérente. Aucun quota ni accès serveur élargi implicitement. | Web déployé, PR #437 ; recette visuelle/appareil non vérifiée |
-| W03 | Catalogue | Un catalogue partagé aligne comparaison, sélecteurs, labels et éligibilité selon le compte (pas une garantie fournisseur). Modèle demandé, transmis par le proxy et signalé par le fournisseur distingués. Tests contre la dérive et contre l'accès premium hors droit. | Code et deux contre-revues OK ; vérification finale et livraison en cours |
+| W03 | Catalogue | Un catalogue partagé aligne comparaison, sélecteurs, labels et éligibilité selon le compte (pas une garantie fournisseur). Modèle demandé, transmis par le proxy et signalé par le fournisseur distingués. Tests contre la dérive et contre l'accès premium hors droit. | Web déployé, PR #440 ; recette visuelle/appareil non vérifiée |
 | W04 | Projets | Créer/renommer/supprimer un projet, consignes propres, conversations associées, bibliothèque de documents réutilisables. Sources identifiables dans le contexte. Recherche bornée, absence de fichier et contexte tronqué explicites. Cloisonnement par compte et projet ; mode Europe conservé. | À faire |
 | W05 | Livrables | Export DOCX modifiable et XLSX de tableaux, en plus des exports existants. Téléchargements relus par un parseur indépendant ; cellules dangereuses neutralisées ; aucun HTML actif ni formule arbitraire. Formats et limites documentés. | À faire |
 | W06 | Continuité | Sauvegarde/restauration explicites puis synchronisation optionnelle multi-appareil chiffrée avant upload, avec secret détenu par l'utilisateur et récupération expliquée. Conflits non destructifs ; reprise hors-ligne ; logout/switch/delete et compte invité traités. Un export manuel seul ne valide pas la synchronisation. | À faire |
@@ -107,6 +107,33 @@ réels ; préparer protocole et instrumentation sans fabriquer leurs résultats.
 
 ## Preuves par lot
 
+### W04 — prérequis de sauvegarde, projets non encore implémentés
+
+- Garde-fou des conversations : clés physiques et compte/epoch capturés,
+  générations d'écriture/reset/bootstrap, contrôle avant écriture du résultat
+  chiffré et suppression de sa copie de secours. Une opération tardive ne
+  remplace plus le ciphertext d'un autre compte ou d'un enregistrement récent.
+- Les lectures invalident elles-mêmes un cache d'une autre session. Le mode
+  clair forcé et une écriture sans crypto invalident aussi les vieux résultats.
+  L'API synchrone historique et la copie de secours en clair restent conservées ;
+  ce n'est ni une nouvelle garantie E2EE ni un changement d'enveloppe crypto.
+- Quarantaine libérée seulement après sauvegarde durable du contenu fusionné.
+  Une écriture/suppression pendant migration ou récupération interrompt cette
+  récupération et conserve son slot. Migration Gmail assainie aussi dans le
+  ciphertext. Une nouvelle entrée n'est pas ajoutée au cache si son écriture
+  synchrone échoue ; les objets déjà mutés en place n'ont pas de rollback.
+- 36 tests ciblés verts : vrais modules, crypto/session/stockage factices pour
+  les courses, plus tests historiques avec crypto réelle. Pas de données
+  utilisateur touchées. Revue indépendante des deux fenêtres de résurrection
+  d'une suppression, du quota, des générations et de l'assainissement Gmail.
+- Deux GO indépendants ; vérification finale complète réussie : 211 fichiers,
+  2 189 tests, couverture, typecheck front/back, no-CASA/addon et build.
+  Publication et validation CI/Pages du correctif restent à vérifier.
+- Limites distinctes : pas de verrou transactionnel inter-onglets de l'ancien
+  localStorage ; propriété des clés crypto globales et bootstrap d'auth à
+  fiabiliser avant la bibliothèque W04. Celle-ci utilisera un store IDB chiffré
+  avant commit, avec révisions contrôlées en transaction, sans copie en clair.
+
 ### W03 — catalogue, comparateur et provenance
 
 - Catalogue texte pur partagé : fournisseurs des préférences historiques,
@@ -147,7 +174,12 @@ réels ; préparer protocole et instrumentation sans fabriquer leurs résultats.
   vrais clients à HTTP simulé, 9 scénarios comparateur, attribution persistée
   par invocation et anciennes préparations PDF/URL après Stop. Bundle principal
   local 937 Ko (gzip 292 Ko), avertissement de taille préexistant conservé.
-  CI et déploiement restent à vérifier après publication de la PR.
+  PR [#440](https://github.com/flotellop-art/Arty/pull/440), squash main
+  `b7d893b0e04c9e20053bc7c8fad0ac2684e70536`, fusion 04:22 UTC. CI PR et main
+  web/Android/orchestrateur, build-and-distribute réussis. Pages production
+  succès `3498efa8-4424-4964-9351-af82f669d8c1` ; HTTP `/` 200 et asset
+  `index-qamcbiN-.js` avec marqueurs `comparisonTextOnly`, `invocationId`,
+  `modelSource`. Preuve de version servie, pas de recette visuelle/appareil.
 - Hors W03 : historique/contexte du comparateur (W07), projets (W04), nouvelles
   capacités fournisseur ou migration de préférences. Partage public toujours
   limité à son allowlist sans attribution ; ni contenu ni clé ajouté aux logs.
