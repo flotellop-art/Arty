@@ -638,6 +638,7 @@
     "micCannotStart": "Impossible de démarrer le micro",
     "speechNotSupported": "Reconnaissance vocale non supportée sur ce navigateur. Utilisez Chrome ou Edge.",
     "storageNotReady": "Tes conversations sont encore en cours de chargement — réessaie dans une seconde.",
+    "reminderHistoryChanged": "L'historique a changé pendant le traitement du rappel. Il n'a pas été réécrit. Vérifie tes rappels avant de réessayer.",
     "fileStorageFailed": "Impossible de sauvegarder tous les fichiers sur cet appareil. Libère un peu d’espace puis réessaie.",
     "office": {
       "unsupported": "{{name}} : ce document n’est pas pris en charge (ancien format, chiffrement, macros, révisions ou contenu non extractible). Exporte une copie DOCX/XLSX simple sans révisions, ou un PDF pour Claude.",
@@ -1415,6 +1416,16 @@
     }
   },
   "image": {
+    "galleryTitle": "Images du message",
+    "galleryItem": "Image {{number}}",
+    "galleryUnavailable": "Image indisponible. Aucune récupération ou régénération automatique.",
+    "galleryLoading": "Chargement de l'image…",
+    "galleryLoad": "Afficher l'image",
+    "gallerySave": "Télécharger / partager",
+    "galleryStored": "Fichiers stockés par Arty, éventuellement normalisés. Choisis la destination lors du téléchargement ou du partage.",
+    "galleryDeliveryError": "Téléchargement ou partage impossible. Vérifie la session et réessaie.",
+    "galleryOmitted": "{{count}} image(s) du message non incluse(s) dans cette sortie texte.",
+    "galleryRetryBranch": "Nouvel essai dans une branche : l'original est conservé. Une nouvelle génération peut être facturée.",
     "errorNoPrompt": "Aucune description d'image fournie.",
     "errorPlanLocked": "La génération d'images est réservée aux abonnés. L'utilisateur peut s'abonner pour en profiter.",
     "errorCapReached": "Limite mensuelle d'images atteinte (10/mois). Réinitialisée le 1er du mois.",

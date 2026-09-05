@@ -638,6 +638,7 @@
     "micCannotStart": "Couldn't start the microphone",
     "speechNotSupported": "Speech recognition isn't supported in this browser. Use Chrome or Edge.",
     "storageNotReady": "Your conversations are still loading — try again in a second.",
+    "reminderHistoryChanged": "The history changed while processing the reminder. It was not overwritten. Check your reminders before trying again.",
     "fileStorageFailed": "Could not save every file on this device. Free up some space and try again.",
     "office": {
       "unsupported": "{{name}}: unsupported document (legacy format, encryption, macros, revisions or no extractable content). Export a simple DOCX/XLSX copy without revisions, or a PDF for Claude.",
@@ -1415,6 +1416,16 @@
     }
   },
   "image": {
+    "galleryTitle": "Message images",
+    "galleryItem": "Image {{number}}",
+    "galleryUnavailable": "Image unavailable. No automatic retrieval or regeneration.",
+    "galleryLoading": "Loading image…",
+    "galleryLoad": "Show image",
+    "gallerySave": "Download / share",
+    "galleryStored": "Files stored by Arty, possibly normalized. Choose the destination when downloading or sharing.",
+    "galleryDeliveryError": "Download or sharing failed. Check the session and try again.",
+    "galleryOmitted": "{{count}} message image(s) not included in this text output.",
+    "galleryRetryBranch": "New attempt in a branch: the original is kept. A new generation may be charged.",
     "errorNoPrompt": "No image description provided.",
     "errorPlanLocked": "Image generation is for subscribers only. The user can subscribe to use it.",
     "errorCapReached": "Monthly image limit reached (10/month). Resets on the 1st.",

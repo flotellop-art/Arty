@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Conversation } from '../../types'
 const mock = vi.hoisted(() => ({ token: vi.fn(), share: vi.fn() }))
-vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }))
+vi.mock('react-i18next', async original => ({ ...await original<typeof import('react-i18next')>(), useTranslation: () => ({ t: (key: string) => key }) }))
 vi.mock('../../services/googleAuth', () => ({ getValidAccessToken: mock.token }))
 vi.mock('../../services/userSession', () => ({ getActiveUserId: () => 'a', getActiveSessionEpoch: () => 1 }))
 vi.mock('../../services/native/share', () => ({ shareContent: mock.share }))

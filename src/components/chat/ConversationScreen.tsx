@@ -25,6 +25,7 @@ interface ConversationScreenProps {
   conversation: Conversation
   isStreaming: boolean
   streamingContent: string
+  streamingImages?: readonly string[]
   error: string | null
   errorRetryable?: boolean
   onBack: () => void
@@ -51,6 +52,7 @@ export function ConversationScreen({
   conversation,
   isStreaming,
   streamingContent,
+  streamingImages,
   error,
   errorRetryable = true,
   onBack,
@@ -104,6 +106,7 @@ export function ConversationScreen({
           messages={conversation.messages}
           isStreaming={isStreaming}
           streamingContent={streamingContent}
+          streamingImages={streamingImages}
           conversationId={conversation.id}
           onAction={isDocumentConversation(conversation) ? undefined : onAction}
           onBranch={onBranch}

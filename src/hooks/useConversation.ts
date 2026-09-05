@@ -44,6 +44,9 @@ import { ProjectError, type Project } from '../services/projects/types'
 import { useProjectReview } from './useProjectReview'
 
 import type { ToolDispatcher as ToolHandler } from '../services/tools/types'
+import { generatedImageIds, MAX_GENERATED_IMAGES_PER_TURN } from '../services/generatedImages'
+import { captureGeneratedImageView } from '../services/generatedImageFiles'
+import { toast } from '../services/toast'
 
 // P1.5 — outils qui font ENTRER des données PRIVÉES (fichier, agenda,
 // contact, contenu de mail) dans le contexte → la réponse peut en contenir.
@@ -65,7 +68,9 @@ function confirmVisionAutoCropDisclosure(): boolean {
   return window.confirm(i18n.t('chat.visionAutoCrop.disclosure'))
 }
 
-export function useConversation() {
+export function useConversation(options?: { onNavigate?: (id: string) => void }) {
+  const navigationRef = useRef(options?.onNavigate)
+  navigationRef.current = options?.onNavigate
   const projectReview = useProjectReview()
   const reviewProjectRequest = projectReview.review
   // H1 (audit frontend) — storage.getConversations() retourne la RÉFÉRENCE du
@@ -88,6 +93,7 @@ export function useConversation() {
   // Verrou par conversation : deux taps rapides ne peuvent pas lancer deux
   // séquences locator + analyse en parallèle.
   const visionAutoCropLocksRef = useRef(new Set<string>())
+  const localReplyLocksRef = useRef(new Set<string>())
 
   const activeConversation = conversations.find((c) => c.id === activeId) ?? null
 
@@ -105,7 +111,7 @@ export function useConversation() {
   const {
     canStart, startStream, getInvocationId, setActiveStream, onToken: streamToken,
     onDone: streamDone, onError: streamError, setProgressContent,
-    setAbortController, resetAccumulated, hasStream, isActive, stopStreaming, discardStream, setProjectTurn,
+    setAbortController, resetAccumulated, hasStream, isActive, stopStreaming, discardStream, setProjectTurn, adoptGeneratedImage,
   } = streaming
   const { setPendingFiles, pendingFilesRef } = fileAttachments
 
@@ -267,6 +273,9 @@ export function useConversation() {
     ): Promise<boolean> => {
       const targetId = conversationId ?? activeId
       if (!targetId) return false
+      if (hasStream(targetId) || localReplyLocksRef.current.has(targetId)) {
+        setError(i18n.t('errors.tooManyConcurrentStreams')); return false
+      }
 
       // Seul un ID connu peut activer une instruction invisible. Le texte
       // saisi reste la source d'affichage, de titre, de recherche et de copie.
@@ -279,7 +288,16 @@ export function useConversation() {
       // Passe a true uniquement après la persistance du nouveau message.
       setErrorRetryable(false)
 
-      const storedConversation = storage.getConversation(targetId)
+      let storedConversation = storage.getConversation(targetId)
+      // Recover abandoned partials BEFORE capturing the request object. Never
+      // touch an actual live invocation (including streams in other conversations).
+      if (storedConversation?.messages.some(m => m.id === 'streaming') && !hasStream(targetId)) {
+        const recovered = storage.sanitizeConversationPayloads([storedConversation])[0]!
+        if (recovered !== storedConversation) {
+          try { storage.saveConversation(recovered); storedConversation = recovered; refreshConversations() }
+          catch { setError(i18n.t('image.errorFailed')); return false }
+        }
+      }
       // Preparation never mutates the cached history: quota failures and
       // rejected previews must leave the original request intact.
       const conv = storedConversation && hasProjectHistory(storedConversation) ? structuredClone(storedConversation) : storedConversation
@@ -293,6 +311,13 @@ export function useConversation() {
         }
         return false
       }
+
+      const replaceMessageId = typeof options?.replaceMessageId === 'string' ? options.replaceMessageId : undefined
+      const replaceIndex = replaceMessageId ? conv.messages.findIndex(m => m.id === replaceMessageId && m.role === 'user') : -1
+      if (replaceMessageId && replaceIndex < 0) return false
+      // Local answers must honor replacement too, while leaving the original
+      // image conversation (outside this retry branch) untouched.
+      const localPrefix = replaceMessageId ? conv.messages.slice(0, replaceIndex) : conv.messages
 
       // Roadmap Phase 2 C — détection d'intent rappel.
       // Avant l'envoi LLM, on check si le message demande un rappel
@@ -308,24 +333,33 @@ export function useConversation() {
       const documentHistory = projectRequest || hasOfficeHistory(conv.messages)
       const reminderIntent = documentHistory || quickAction || files?.length ? null : detectReminderIntent(text)
       if (reminderIntent) {
-        const userMsg: Message = {
-          id: generateId(),
-          role: 'user',
-          content: text,
-          timestamp: Date.now(),
-        }
-        const label = await createReminder(reminderIntent, targetId)
-        const reminderResponse: Message = {
-          id: generateId(),
-          role: 'assistant',
-          content: label,
-          timestamp: Date.now(),
-        }
-        conv.messages.push(userMsg, reminderResponse)
-        conv.updatedAt = Date.now()
-        storage.saveConversation(conv)
-        refreshConversations()
-        return true
+        const owner = getActiveUserId(), epoch = getActiveSessionEpoch(), history = JSON.stringify(conv.messages)
+        localReplyLocksRef.current.add(targetId)
+        try {
+          const userMsg: Message = {
+            id: generateId(),
+            role: 'user',
+            content: text,
+            timestamp: Date.now(),
+          }
+          const label = await createReminder(reminderIntent, targetId)
+          // Local actions also cross async boundaries. Never replace a newly
+          // adopted receipt, resurrect a deleted conversation or write under B.
+          if (owner !== getActiveUserId() || epoch !== getActiveSessionEpoch()) return false
+          const current = storage.getConversation(targetId)
+          if (!current || hasStream(targetId) || JSON.stringify(current.messages) !== history) {
+            setError(i18n.t('errors.reminderHistoryChanged')); return false
+          }
+          const reminderResponse: Message = {
+            id: generateId(),
+            role: 'assistant',
+            content: label,
+            timestamp: Date.now(),
+          }
+          storage.saveConversation({ ...current, messages: [...localPrefix, userMsg, reminderResponse], updatedAt: Date.now() })
+          refreshConversations()
+          return true
+        } finally { localReplyLocksRef.current.delete(targetId) }
       }
 
       // Handle /aide command
@@ -342,9 +376,7 @@ export function useConversation() {
           content: `## Aide — Arty\n\n**Ce que je sais faire :**\n- Répondre à tes questions sur tous les sujets\n- Analyser des photos et documents (bouton **+**)\n- Analyser ou résumer un e-mail que tu colles, joins ou partages dans le chat\n- Dicter par la voix (bouton **micro**)\n- Gérer ton agenda Google Calendar\n- Faire des recherches web en temps réel\n\nJe n'accède pas à ta boîte mail et je ne peux pas envoyer de message à ta place.\n\n**Commandes :**\n- \`/aide\` — Affiche cette aide`,
           timestamp: Date.now(),
         }
-        conv.messages.push(helpMsg, helpResponse)
-        conv.updatedAt = Date.now()
-        storage.saveConversation(conv)
+        storage.saveConversation({ ...conv, messages: [...localPrefix, helpMsg, helpResponse], updatedAt: Date.now() })
         refreshConversations()
         return true
       }
@@ -357,9 +389,6 @@ export function useConversation() {
         return false
       }
 
-      const replaceMessageId = typeof options?.replaceMessageId === 'string'
-        ? options.replaceMessageId
-        : undefined
       const relocatingVisionCrop = !!(
         options?.relocateVisionCrop && files?.some((file) => file.visionCrop?.kind === 'auto')
       )
@@ -372,8 +401,6 @@ export function useConversation() {
         conv.messages = conv.messages.slice(0, replaceIndex)
         return true
       }
-      const replaceIndex = replaceMessageId ? conv.messages.findIndex((m) => m.id === replaceMessageId && m.role === 'user') : -1
-      if (replaceMessageId && replaceIndex < 0) return false
       const requestMessages: Message[] = [
         ...(replaceMessageId ? conv.messages.slice(0, replaceIndex) : conv.messages),
         { id: 'preparing', role: 'user', content: text, timestamp: Date.now(), files, quickAction },
@@ -672,8 +699,8 @@ export function useConversation() {
       // Edition atomique : le fil existant reste intact jusqu'à ce que le
       // nouveau crop soit localisé ET stocké. Ensuite, aucune opération
       // asynchrone ne s'intercale entre la troncature et l'insertion du tour.
-      if (replaceMessageId && (relocatingVisionCrop || officeRequest)) {
-        if ((!officeRequest && !visionAutoCropPrepared) || !applyMessageReplacement()) {
+      if (replaceMessageId) {
+        if ((relocatingVisionCrop && !visionAutoCropPrepared) || !applyMessageReplacement()) {
           if (visionAutoCropOwnerId !== undefined) {
             await deleteOwnedFiles(persistedNewIds, visionAutoCropOwnerId)
           } else {
@@ -755,6 +782,7 @@ export function useConversation() {
       const invocationId = getInvocationId(targetId)
       const toolController = new AbortController()
       const imageCryptoCurrent = captureCryptoGuard(), imageFence = getSessionProjectFence()
+      const assertImageScope = captureGeneratedImageView()
       const invocationOwner = getActiveUserId(), invocationEpoch = getActiveSessionEpoch()
       const invocationStillCurrent = () => !!invocationId && getInvocationId(targetId) === invocationId
         && invocationOwner === getActiveUserId() && invocationEpoch === getActiveSessionEpoch() && officeStillCurrent()
@@ -904,6 +932,7 @@ export function useConversation() {
       // Wrappe le handler global pour capter le targetId (que le handler n'a
       // pas) au moment exact de l'appel.
       const imageAllowed = provider === 'claude' && !conv.euOnly && !officeRequest && !quickAction && wantsImageGeneration(text)
+      let imageAttempts = 0, imageInFlight = false
       const imagePermission = { signal: toolController.signal, assertCurrent() {
         assertInvocationCurrent()
         if (toolController.signal.aborted || !imageCryptoCurrent() || imageFence !== (localStorage.getItem(PROJECT_ERASURE_FENCE_KEY) ?? 'initial')) {
@@ -913,6 +942,10 @@ export function useConversation() {
       const trackedToolHandler: ToolHandler = async (name, input) => {
         assertInvocationCurrent()
         if (name === 'generate_image' && !imageAllowed) return { result: 'Image generation is not authorized for this request.' }
+        if (name === 'generate_image') {
+          if (imageInFlight || imageAttempts >= MAX_GENERATED_IMAGES_PER_TURN) return { result: 'Image generation unavailable: at most four attempts per turn and one at a time. Do not retry automatically.' }
+          imageAttempts++; imageInFlight = true // reserve before the first await, including failed attempts
+        }
         if (PRIVATE_DATA_TOOL_NAMES.has(name)) {
           const c = storage.getConversation(targetId)
           if (c && !c.hasGoogleData) {
@@ -937,16 +970,29 @@ export function useConversation() {
           } : undefined) : { result: '' }
           if (name === 'generate_image') imagePermission.assertCurrent()
           assertInvocationCurrent()
+          if (name === 'generate_image' && result.localImageId) {
+            adoptGeneratedImage(targetId, invocationId!, result.localImageId, assertImageScope)
+          }
           return result
         } catch (error) {
           if (name !== 'generate_image') throw error
-          toolController.abort()
           // Only this invocation, never a newer retry or the next account.
           if (getInvocationId(targetId) === invocationId && invocationOwner === getActiveUserId() && invocationEpoch === getActiveSessionEpoch()) {
-            discardStream(targetId)
+            // A later technical failure must keep earlier committed receipts.
+            // The durable scope does not depend on the short-lived request signal.
+            try {
+              // A durable IDB-only fence failure cannot be detected by the
+              // synchronous view guard. Never turn cancellation into a save.
+              if (error instanceof ProjectError || (error instanceof Error && error.name === 'AbortError')) throw error
+              assertImageScope(); stopStreaming(targetId)
+            }
+            catch { discardStream(targetId) }
             if (isActive(targetId)) setError(i18n.t('image.errorFailed'))
           }
+          toolController.abort()
           throw new DOMException('Image request cancelled', 'AbortError')
+        } finally {
+          if (name === 'generate_image') imageInFlight = false
         }
       }
 
@@ -1205,7 +1251,7 @@ export function useConversation() {
       return true
     },
     [
-      activeId, refreshConversations, canStart, startStream, getInvocationId, setActiveStream, reviewProjectRequest, setProjectTurn,
+      activeId, refreshConversations, canStart, startStream, getInvocationId, setActiveStream, reviewProjectRequest, setProjectTurn, adoptGeneratedImage,
       streamToken, streamDone, streamError, setProgressContent,
       setAbortController, resetAccumulated, hasStream, isActive,
       setPendingFiles, pendingFilesRef, stopStreaming, discardStream,
@@ -1281,7 +1327,7 @@ export function useConversation() {
           const { factCheck, ...rest } = m
           const isPending = factCheck &&
             (factCheck.status === 'pending' || factCheck.modelLabel === 'Vérification en cours…')
-          return { ...rest, id: generateId(), ...(factCheck && !isPending ? { factCheck } : {}) }
+          return { ...rest, ...(m.generatedImages ? { generatedImages: [...generatedImageIds(m.generatedImages)] } : {}), id: generateId(), ...(factCheck && !isPending ? { factCheck } : {}) }
         }),
         createdAt: Date.now(),
         updatedAt: Date.now(),
@@ -1329,6 +1375,25 @@ export function useConversation() {
   // Retry an interrupted assistant message: find the user message right
   // before it, drop everything from there on, and resend that user message.
   // Reuses editAndResend's truncation logic.
+  const resendImageBranch = useCallback((conv: Conversation, index: number, content: string, relocate = false): boolean => {
+    if (!conv.messages.slice(index).some(m => m.role === 'assistant' && generatedImageIds(m.generatedImages).length)) return false
+    // A retry is a NEW generation, not recovery of the old paid image.
+    if (!storage.isCacheReady()) { setError(i18n.t('errors.storageNotReady')); return true }
+    if (!canStart(conv.id)) { setError(i18n.t('errors.tooManyConcurrentStreams')); return true }
+    try {
+      const id = branchConversation(conv.id, index)
+      if (!id) return true
+      const user = storage.getConversation(id)?.messages[index]
+      if (!user || user.role !== 'user') return true
+      toast(i18n.t('image.galleryRetryBranch'))
+      selectConversation(id)
+      navigationRef.current?.(id)
+      void sendMessage(content, id, user.files, { replaceMessageId: user.id, quickAction: user.quickAction,
+        ...(relocate ? { relocateVisionCrop: true } : {}) })
+    } catch { setError(i18n.t('image.errorFailed')) }
+    return true
+  }, [branchConversation, canStart, selectConversation, sendMessage])
+
   const retryMessage = useCallback(
     (assistantMessageId: string) => {
       const targetId = activeId
@@ -1346,6 +1411,7 @@ export function useConversation() {
       if (!userMsg) return
 
       const originalFiles = userMsg.files
+      if (resendImageBranch(conv, userIdx, userMsg.content)) return
       if (hasProjectHistory(conv) || hasOfficeHistory(conv.messages.slice(0, userIdx + 1))) {
         void sendMessage(userMsg.content, targetId, originalFiles, { replaceMessageId: userMsg.id, quickAction: userMsg.quickAction })
         return
@@ -1362,7 +1428,7 @@ export function useConversation() {
         userMsg.quickAction ? { quickAction: userMsg.quickAction } : undefined,
       )
     },
-    [activeId, refreshConversations, sendMessage]
+    [activeId, refreshConversations, sendMessage, resendImageBranch]
   )
 
   // Edit the last message in a conversation and re-send (Feature 12)
@@ -1380,6 +1446,7 @@ export function useConversation() {
 
       const originalFiles = msg.files
       const relocatesAutoCrop = !!originalFiles?.some((file) => file.visionCrop?.kind === 'auto')
+      if (resendImageBranch(conv, idx, newContent, relocatesAutoCrop)) return
       const atomicOfficeEdit = hasProjectHistory(conv) || hasOfficeHistory(conv.messages.slice(0, idx + 1))
       if (!relocatesAutoCrop && !atomicOfficeEdit) {
         conv.messages = conv.messages.slice(0, idx)
@@ -1400,7 +1467,7 @@ export function useConversation() {
         },
       )
     },
-    [activeId, refreshConversations, sendMessage]
+    [activeId, refreshConversations, sendMessage, resendImageBranch]
   )
 
   // Retry depuis le bandeau d'erreur (audit UX) : quand l'appel échoue AVANT
@@ -1419,6 +1486,7 @@ export function useConversation() {
     if (!userMsg) return
 
     const originalFiles = userMsg.files
+    if (resendImageBranch(conv, userIdx, userMsg.content)) return
     if (hasProjectHistory(conv) || hasOfficeHistory(conv.messages.slice(0, userIdx + 1))) {
       void sendMessage(userMsg.content, targetId, originalFiles, { replaceMessageId: userMsg.id, quickAction: userMsg.quickAction })
       return
@@ -1434,7 +1502,7 @@ export function useConversation() {
       originalFiles,
       userMsg.quickAction ? { quickAction: userMsg.quickAction } : undefined,
     )
-  }, [activeId, refreshConversations, sendMessage])
+  }, [activeId, refreshConversations, sendMessage, resendImageBranch])
 
   // D4 (CDC visibilité modèle) — « Relancer sur Mistral » de CapReachedModal :
   // la modale bascule le sélecteur puis dispatche cet event pour rejouer la
@@ -1459,6 +1527,7 @@ export function useConversation() {
     activeId,
     isStreaming: streaming.isStreaming,
     streamingContent: streaming.streamingContent,
+    streamingImages: streaming.streamingImages,
     streamingConvIds: streaming.streamingConvIds,
     isStreamingFor: streaming.isStreamingFor,
     error,

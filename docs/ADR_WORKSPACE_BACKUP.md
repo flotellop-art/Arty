@@ -138,13 +138,17 @@ capacité déployées restent non vérifiées ; le choix B attend cet accès.
 
 A2 a deux prérequis supplémentaires établis en contre-revue :
 
-- Le rendu actuel n'affiche pas les URI `arty-img` (transformateur URL par
-  défaut), mais les autoriser globalement exposerait un résolveur d'IDs privés
-  au partage public. Prévoir des liaisons par message issues d'un reçu d'outil,
-  jamais de l'autorité tirée du texte du modèle ; aucun résolveur par défaut.
-  L'exécution image est sécurisée dans un lot séparé avant ce raccordement.
-  Les liaisons alias URI → fichier local nécessiteront une évolution versionnée
-  du manifeste : deux restaurations de la même archive doivent rester distinctes.
+- L'exécution image est livrée dans #447. Le raccordement de galerie du lot
+  suivant utilise `Message.generatedImages`, références privées issues du reçu
+  d'outil local, jamais du texte du modèle. Le rendu Markdown/public ne résout
+  aucun ID de fichier ; les anciennes URI `arty-img` restent indisponibles.
+  **Décision du 5 septembre : pas de table d'alias URI.** A2 peut mapper ces
+  références vers `embeddedFiles` d'A1, puis vers de nouveaux IDs locaux à chaque
+  restauration. Cela ne nécessite pas de changement de version A1. A1 vérifie
+  le graphe déclaré, pas le rôle du message ni le contenu image : A2 devra
+  restreindre ces références aux messages assistant et vérifier MIME/signature
+  des blobs. Les exports JSON locaux omettent ces références avec avertissement,
+  ils ne constituent pas une sauvegarde des images.
 - Un journal seul ne protège pas localStorage contre une fenêtre au cache
   ancien qui réécrit toute la liste. A2 devra isoler une nouvelle génération
   de clés des clients legacy et coordonner tous ses writers (ou migrer vers une
@@ -158,6 +162,18 @@ de l'effacement. Aucun simple try/finally entre trois stockages ne vaut atomicit
 B ne peut réutiliser la GC locale des 100 tombstones sans protocole ACK/checkpoint.
 Un CAS SQL à zéro ligne n'est pas une erreur de transaction : toutes les écritures
 dépendantes doivent rester conditionnées à la même réservation/génération.
+
+Le reçu image est copié synchroniquement dans le filet de sécurité de l'historique
+avant reprise du modèle, y compris sans texte. Un quota localStorage plein refuse
+l'adoption sans inventer de reçu en RAM ; une image précédente reste conservée.
+Il ne s'agit ni d'une transaction physique entre IndexedDB et localStorage, ni
+d'une garantie de flush disque après coupure électrique. Les retries créent une
+branche lorsque la portion remplacée contient une image ; l'original conserve
+ses références. La suppression est limitée aux références structurées sans
+autre détenteur ; le texte legacy peut retenir un fichier, jamais autoriser sa
+suppression. Pas de GC globale, ni de collecte des blobs orphelins de générations
+annulées. Les vues invalident leurs URLs sur changement de compte/clé/fence ;
+un placeholder interrompu ne réacquiert pas automatiquement une vue privée.
 
 Recette : tags/digests, code erroné, frames substituées/dupliquées/tronquées,
 bornes ±1, UTF-8 invalide, JSON profond, références absentes/historiques/crop,

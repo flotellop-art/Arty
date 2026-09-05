@@ -71,7 +71,7 @@ describe('storage', () => {
     expect(convs.map(c => c.id)).toEqual(['b'])
   })
 
-  it('keeps generated images referenced only from Markdown during orphan cleanup', () => {
+  it('never treats a model-authored Markdown ID as deletion authority', () => {
     const imageId = '123e4567-e89b-12d3-a456-426614174000'
     const refs = storage.collectReferencedFileIds([
       makeConv('image', {
@@ -83,7 +83,7 @@ describe('storage', () => {
         }],
       }),
     ])
-    expect(refs).toContain(imageId)
+    expect(refs).not.toContain(imageId)
   })
 
   it('deletes only files owned by the removed conversation and captures the owner', () => {
@@ -113,7 +113,7 @@ describe('storage', () => {
 
     expect(fileStorage.deleteOwnedFiles).toHaveBeenCalledOnce()
     const [candidateIds, ownerUserId] = fileStorage.deleteOwnedFiles.mock.calls[0]!
-    expect([...candidateIds]).toEqual(expect.arrayContaining(['deleted-only', 'generated-only']))
+    expect([...candidateIds]).toEqual(['deleted-only'])
     expect([...candidateIds]).not.toContain('shared-file')
     expect(ownerUserId).toBe('user-test')
   })

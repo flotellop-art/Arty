@@ -1,6 +1,8 @@
 import { memo, useCallback, useRef, useId, useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AssistantAvatar } from './AssistantAvatar'
+import { GeneratedImageGallery } from './GeneratedImageGallery'
+import { generatedImageIds } from '../../services/generatedImages'
 import { MarkdownRenderer } from '../shared/MarkdownRenderer'
 import { FactCheckBadge } from './FactCheckBadge'
 import { ModelFooter } from './ModelFooter'
@@ -11,6 +13,7 @@ import { isAllowedReportAction } from '../../services/reportActions'
 interface AssistantBubbleProps {
   onExport?: () => void
   content: string
+  generatedImages?: readonly string[]
   onAction?: (action: string, params: Record<string, string>) => void
   pinned?: boolean
   onTogglePin?: () => void
@@ -43,7 +46,7 @@ interface AssistantBubbleProps {
   subModelReasonCode?: string
 }
 
-export const AssistantBubble = memo(function AssistantBubble({ content, onExport, onAction, pinned, onTogglePin, interrupted, onRetry, factCheck, isStreaming, isLast, onBranch, onReport, model, requestedModel, modelSource, reasonCode, subModelReasonCode }: AssistantBubbleProps) {
+export const AssistantBubble = memo(function AssistantBubble({ content, generatedImages, onExport, onAction, pinned, onTogglePin, interrupted, onRetry, factCheck, isStreaming, isLast, onBranch, onReport, model, requestedModel, modelSource, reasonCode, subModelReasonCode }: AssistantBubbleProps) {
   const { t } = useTranslation()
   const bubbleRef = useRef<HTMLDivElement>(null)
 
@@ -121,6 +124,7 @@ export const AssistantBubble = memo(function AssistantBubble({ content, onExport
         }`}
       >
         <MarkdownRenderer content={content} />
+        {generatedImages && <GeneratedImageGallery images={generatedImages} />}
         {pinned && (
           <span className="absolute -top-2 -left-3 text-theme-accent text-[10px]">📌</span>
         )}
@@ -245,7 +249,7 @@ export const AssistantBubble = memo(function AssistantBubble({ content, onExport
             📌
           </button>
         )}
-        {onReport && content && !isStreaming && (
+        {onReport && (content || generatedImageIds(generatedImages).length > 0) && !isStreaming && (
           <button
             onClick={onReport}
             className="opacity-50 md:opacity-0 md:group-hover/bubble:opacity-100 focus-visible:opacity-100 p-2 rounded-md text-theme-muted hover:text-theme-accent transition-all"

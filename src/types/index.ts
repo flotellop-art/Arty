@@ -97,6 +97,8 @@ export interface Message {
   content: string
   timestamp: number
   files?: FileAttachment[]
+  /** Private image receipts. Ordinary JSON imports must discard these IDs. */
+  generatedImages?: string[]
   pinned?: boolean
   interrupted?: boolean
   factCheck?: FactCheckResult

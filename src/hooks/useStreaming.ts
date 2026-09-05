@@ -4,6 +4,9 @@ import * as storage from '../services/storage'
 import type { ModelUsedEvent } from '../services/modelLabels'
 import type { ProjectTurn } from '../services/projects/chatPolicy'
 import { getActiveUserId, getActiveSessionEpoch } from '../services/userSession'
+import { EMPTY_GENERATED_IMAGES, isGeneratedImageId, MAX_GENERATED_IMAGES_PER_TURN } from '../services/generatedImages'
+import { onLocalDataInvalidated } from '../services/localDataInvalidation'
+import { PROJECT_ERASURE_FENCE_KEY } from '../services/userSession'
 
 // Cap de streams concurrents — protège des coûts d'abus (8 convs ouvertes en
 // même temps = 8 appels LLM en // sur le compte du proprio). 3 suffit largement
@@ -11,6 +14,7 @@ import { getActiveUserId, getActiveSessionEpoch } from '../services/userSession'
 export const MAX_CONCURRENT_STREAMS = 3
 
 type StreamState = {
+  generatedImages: string[]
   projectTurn?: ProjectTurn
   targetId: string
   invocationId: string
@@ -50,6 +54,7 @@ export function useStreaming(deps: {
   // autres streams en cours continuent en arrière-plan dans streamsRef.
   const [isStreaming, setIsStreaming] = useState(false)
   const [streamingContent, setStreamingContent] = useState('')
+  const [streamingImages, setStreamingImages] = useState<readonly string[]>(EMPTY_GENERATED_IMAGES)
 
   // Set des convIds en cours de streaming — exposé pour la Sidebar (indicateur
   // "en cours de réflexion" sur chaque conv concernée).
@@ -80,13 +85,16 @@ export function useStreaming(deps: {
   // saveInterval, et au beforeunload pour tous les streams ouverts).
   const savePartialFor = useCallback((s: StreamState) => {
     try { s.assertCurrent?.() } catch { s.abortController?.abort(); return false }
-    if (!s.accumulated) return
-    const conv = storage.getConversation(s.targetId)
-    if (!conv) return
+    if (!s.accumulated && !s.generatedImages.length) return true
+    const stored = storage.getConversation(s.targetId)
+    if (!stored || !storage.isCacheReady()) return false
+    // Copy-on-write: a quota failure must not publish a phantom receipt in RAM.
+    const conv = { ...stored, messages: stored.messages.map(m => ({ ...m })) }
 
     const lastMsg = conv.messages[conv.messages.length - 1]
     if (lastMsg?.role === 'assistant' && lastMsg.id === 'streaming') {
       lastMsg.content = s.accumulated
+      if (s.generatedImages.length) lastMsg.generatedImages = [...s.generatedImages]
       // C-B — porte l'attribution sur le partiel : si l'app est tuée en plein
       // stream, le message restauré au boot garde son modèle (revue Opus).
       if (s.model) lastMsg.model = s.model
@@ -101,6 +109,7 @@ export function useStreaming(deps: {
         role: 'assistant',
         content: s.accumulated,
         timestamp: Date.now(),
+        ...(s.generatedImages.length ? { generatedImages: [...s.generatedImages] } : {}),
         ...(s.model ? { model: s.model } : {}),
         ...(s.requestedModel ? { requestedModel: s.requestedModel } : {}),
         ...(s.modelSource ? { modelSource: s.modelSource } : {}),
@@ -110,14 +119,15 @@ export function useStreaming(deps: {
       })
     }
     conv.updatedAt = Date.now()
-    storage.saveConversation(conv)
+    try { storage.saveConversation(conv); return true } catch { return false }
   }, [])
 
   // Finalise une conv : remplace le placeholder `streaming` par le message final.
   const finalize = useCallback((targetId: string, content: string, interrupted?: boolean) => {
     try { streamsRef.current.get(targetId)?.assertCurrent?.() } catch { return }
-    const conv = storage.getConversation(targetId)
-    if (!conv) return
+    const stored = storage.getConversation(targetId)
+    if (!stored || !storage.isCacheReady()) return
+    const conv = { ...stored, messages: [...stored.messages] }
 
     // C-B — attribution du modèle : lue dans le StreamState de CE targetId
     // (encore présent : tous les appelants font finalize AVANT teardown).
@@ -132,6 +142,7 @@ export function useStreaming(deps: {
       role: 'assistant',
       content,
       timestamp: Date.now(),
+      ...(s?.generatedImages.length ? { generatedImages: [...s.generatedImages] } : {}),
       ...(interrupted ? { interrupted: true } : {}),
       ...(model ? { model } : {}),
       ...(s?.requestedModel ? { requestedModel: s.requestedModel } : {}),
@@ -141,7 +152,7 @@ export function useStreaming(deps: {
       ...(s?.projectTurn ? { projectTurn: structuredClone(s.projectTurn) } : {}),
     })
     conv.updatedAt = Date.now()
-    storage.saveConversation(conv)
+    try { storage.saveConversation(conv) } catch { return }
     depsRef.current.refreshConversations()
   }, [])
 
@@ -169,6 +180,7 @@ export function useStreaming(deps: {
       cancelPendingFlush()
       setIsStreaming(false)
       setStreamingContent('')
+      setStreamingImages(EMPTY_GENERATED_IMAGES)
     }
   }, [cancelPendingFlush, removeFromStreamingSet])
 
@@ -176,7 +188,7 @@ export function useStreaming(deps: {
   // leaving a ghost stream/interval after its controller has been aborted.
   const savePartialAll = useCallback(() => {
     for (const s of streamsRef.current.values()) {
-      if (savePartialFor(s) === false) teardownStream(s.targetId)
+      if (savePartialFor(s) === false) { s.abortController?.abort(); teardownStream(s.targetId) }
     }
   }, [savePartialFor, teardownStream])
 
@@ -240,9 +252,10 @@ export function useStreaming(deps: {
       targetId,
       invocationId: generateId(),
       accumulated: '',
+      generatedImages: [],
       saveInterval: setInterval(() => {
         const cur = streamsRef.current.get(targetId)
-        if (cur && savePartialFor(cur) === false) teardownStream(targetId)
+        if (cur && savePartialFor(cur) === false) { cur.abortController?.abort(); teardownStream(targetId) }
       }, 3000),
       abortController: null,
       assertCurrent: () => {
@@ -259,6 +272,7 @@ export function useStreaming(deps: {
     if (activeIdRef.current === targetId) {
       setIsStreaming(true)
       setStreamingContent('')
+      setStreamingImages(EMPTY_GENERATED_IMAGES)
     }
     return true
   }, [savePartialFor, teardownStream])
@@ -267,6 +281,23 @@ export function useStreaming(deps: {
     const state = streamsRef.current.get(targetId)
     if (state) { state.assertCurrent?.(); state.projectTurn = structuredClone(turn) }
   }, [])
+
+  /** Commit the local receipt to the synchronous crash-safety net before continuation. */
+  const adoptGeneratedImage = useCallback((targetId: string, invocationId: string, fileId: string, assertCurrent: () => void) => {
+    const state = streamsRef.current.get(targetId)
+    if (!state || state.invocationId !== invocationId || !isGeneratedImageId(fileId)) throw new DOMException('Image receipt cancelled', 'AbortError')
+    state.assertCurrent?.(); assertCurrent()
+    if (state.generatedImages.includes(fileId)) return
+    if (state.generatedImages.length >= MAX_GENERATED_IMAGES_PER_TURN || !storage.isCacheReady() || !storage.getConversation(targetId)) throw new Error('Image receipt unavailable')
+    const previousGuard = state.assertCurrent
+    const next = { ...state, generatedImages: [...state.generatedImages, fileId],
+      assertCurrent: () => { previousGuard?.(); assertCurrent() } }
+    if (savePartialFor(next) === false) throw new Error('Image receipt could not be saved')
+    state.generatedImages = next.generatedImages
+    state.assertCurrent = next.assertCurrent
+    if (activeIdRef.current === targetId) setStreamingImages([...state.generatedImages])
+    depsRef.current.refreshConversations()
+  }, [savePartialFor])
 
   // Synchronise la conv affichée avec son stream en cours (ou avec l'absence
   // de stream). Appelé depuis selectConversation/clearActive.
@@ -278,11 +309,13 @@ export function useStreaming(deps: {
       if (s) {
         setIsStreaming(true)
         setStreamingContent(s.accumulated)
+        setStreamingImages([...s.generatedImages])
         return
       }
     }
     setIsStreaming(false)
     setStreamingContent('')
+    setStreamingImages(EMPTY_GENERATED_IMAGES)
   }, [cancelPendingFlush])
 
   const isActive = useCallback((targetId: string) => {
@@ -312,6 +345,7 @@ export function useStreaming(deps: {
 
   const onDone = useCallback((targetId: string) => {
     const s = streamsRef.current.get(targetId)
+    if (!s) return
     const content = s?.accumulated || ''
     finalize(targetId, content)
     teardownStream(targetId)
@@ -320,7 +354,7 @@ export function useStreaming(deps: {
   const onError = useCallback((err: Error, targetId: string) => {
     const s = streamsRef.current.get(targetId)
     const content = s?.accumulated
-    if (content) finalize(targetId, content, true)
+    if (content || s?.generatedImages.length) finalize(targetId, content ?? '', true)
     teardownStream(targetId)
     return err
   }, [finalize, teardownStream])
@@ -332,7 +366,7 @@ export function useStreaming(deps: {
     if (!id) return
     const s = streamsRef.current.get(id)
     if (!s) return
-    if (s.accumulated) finalize(id, s.accumulated, true)
+    if (s.accumulated || s.generatedImages.length) finalize(id, s.accumulated, true)
     if (s.abortController) {
       try { s.abortController.abort() } catch { /* déjà aborté */ }
     }
@@ -344,6 +378,20 @@ export function useStreaming(deps: {
     streamsRef.current.get(targetId)?.abortController?.abort()
     teardownStream(targetId)
   }, [teardownStream])
+
+  useEffect(() => {
+    const invalidate = () => {
+      for (const state of streamsRef.current.values()) {
+        if (state.generatedImages.length) discardStream(state.targetId)
+      }
+    }
+    const unsubscribe = onLocalDataInvalidated(invalidate)
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === null || event.key === PROJECT_ERASURE_FENCE_KEY || event.key === 'arty-known-sessions' || event.key === 'arty-active-session') invalidate()
+    }
+    window.addEventListener('storage', onStorage)
+    return () => { unsubscribe(); window.removeEventListener('storage', onStorage) }
+  }, [discardStream])
 
   // Setters indexés par convId — exposés en remplacement des accès directs
   // aux refs depuis useConversation.
@@ -400,6 +448,7 @@ export function useStreaming(deps: {
     // État pour l'UI de la conv active
     isStreaming,
     streamingContent,
+    streamingImages,
     // État multi-conv (Sidebar et autres)
     streamingConvIds,
     isStreamingFor,
@@ -408,6 +457,7 @@ export function useStreaming(deps: {
     // Lifecycle d'un stream
     startStream,
     setProjectTurn,
+    adoptGeneratedImage,
     getInvocationId,
     onToken,
     onDone,
@@ -425,8 +475,8 @@ export function useStreaming(deps: {
     finalize,
     savePartialAll,
   }), [
-    isStreaming, streamingContent, streamingConvIds, isStreamingFor, hasStream,
-    canStart, startStream, setProjectTurn, getInvocationId, onToken, onDone, onError,
+    isStreaming, streamingContent, streamingImages, streamingConvIds, isStreamingFor, hasStream,
+    canStart, startStream, setProjectTurn, adoptGeneratedImage, getInvocationId, onToken, onDone, onError,
     stopStreaming, discardStream, setActiveStream, isActive,
     setProgressContent, setAbortController, resetAccumulated, finalize,
     savePartialAll,

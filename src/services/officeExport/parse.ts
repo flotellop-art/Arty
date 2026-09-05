@@ -12,6 +12,9 @@ export function parseOfficeExport(snapshot: ExportSnapshot): ExportDocument {
   const omissions = { images: 0, html: 0, unsupported: 0, attachments: 0 }
   let nodes = 0, tables = 0, cells = 0, lists = 0, expandedChars = 0, runCount = 0
   const messages = snapshot.messages.map((message, messageIndex) => {
+    const galleryCount = message.galleryImages ?? 0
+    if (!Number.isInteger(galleryCount) || galleryCount < 0 || galleryCount > 4) exportError('Nombre d’images invalide.')
+    omissions.images += galleryCount
     preflightMarkdown(message.content)
     message.sources.forEach(assertExportText)
     const tree = unified().use(remarkParse).use(remarkGfm).parse(message.content) as Root

@@ -10,7 +10,7 @@
  *
  * L'image générée est stockée en IndexedDB chiffré (putFile) — JAMAIS en
  * base64 dans la conversation (anti-BUG 11). Elle est affichée via une
- * référence `arty-img://<fileId>` que le MarkdownRenderer résout au rendu.
+ * référence structurée privée dans les images du message, hors Markdown.
  */
 
 import type { ToolHandler, ToolResult } from './types'
@@ -23,7 +23,7 @@ import i18n from '../../i18n'
 export const generateImageToolDefinition = {
   name: 'generate_image',
   description:
-    "Génère une image à partir d'une description. N'UTILISE CET OUTIL QUE si l'utilisateur demande EXPLICITEMENT de créer/générer/dessiner une image, un logo, une illustration ou un visuel (« génère une image de… », « crée-moi un logo… », « dessine… »). NE PAS l'utiliser si l'utilisateur demande une DESCRIPTION, une explication, ou emploie un conditionnel (« décris… », « à quoi ressemblerait… », « imagine… »). Après génération, affiche l'image en incluant EXACTEMENT le markdown renvoyé par l'outil dans ta réponse.",
+    "Génère une image à partir d'une description. N'UTILISE CET OUTIL QUE si l'utilisateur demande EXPLICITEMENT de créer/générer/dessiner une image, un logo, une illustration ou un visuel (« génère une image de… », « crée-moi un logo… », « dessine… »). NE PAS l'utiliser si l'utilisateur demande une DESCRIPTION, une explication, ou emploie un conditionnel (« décris… », « à quoi ressemblerait… », « imagine… »). Après génération, Arty affiche séparément l'image reçue dans les images du message. Réponds par une courte légende, sans lien ni URI d'image.",
   input_schema: {
     type: 'object' as const,
     properties: {
@@ -128,9 +128,10 @@ export function createImageHandlers(): Record<string, ToolHandler> {
       await request.beforeRequest()
 
       // fileData → Claude « voit » l'image (bloc image). result → instruction
-      // d'affichage via la référence arty-img:// résolue par MarkdownRenderer.
+      // de légende. localImageId reste dans l'application, hors payload API.
       return {
-        result: `Image générée avec succès. AFFICHE-LA en incluant exactement ce markdown dans ta réponse (et seulement une courte légende) :\n![image générée](arty-img://${fileId})`,
+        result: 'Image reçue et stockée. Arty l’affiche séparément dans les images du message. Réponds avec une courte légende ; ne crée aucun lien ou URI d’image.',
+        localImageId: fileId,
         fileData: { name: 'image.png', mimeType: res.mimeType, base64: res.base64 },
       }
     },

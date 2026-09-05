@@ -10,6 +10,8 @@
 import { apiUrl } from './apiBase'
 import { getValidAccessToken } from './googleAuth'
 import { getOpenAIKey } from './activeApiKey'
+import { validGeneratedImage } from './generatedImages'
+export { validGeneratedImage } from './generatedImages'
 
 export type ImageProvider = 'openai' | 'flux'
 
@@ -17,19 +19,6 @@ export interface ImageRequestContext {
   readonly signal: AbortSignal
   assertCurrent(): void
   beforeRequest(): Promise<void>
-}
-
-// Bound data before normalisation/storage. SVG and arbitrary MIME are never images here.
-export function validGeneratedImage(base64: unknown, mime: unknown): base64 is string {
-  if (typeof base64 !== 'string' || base64.length < 16 || base64.length > 13_981_016 || base64.length % 4 !== 0 ||
-    /[^A-Za-z0-9+/=]/.test(base64)) return false
-  const padding = base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0
-  if (base64.slice(0, base64.length - padding).includes('=') || base64.length / 4 * 3 - padding > 10 * 1024 * 1024) return false
-  const prefix = atob(base64.slice(0, 16))
-  if (mime === 'image/png') return prefix.startsWith('\x89PNG\r\n\x1a\n')
-  if (mime === 'image/jpeg') return prefix.startsWith('\xff\xd8\xff')
-  if (mime === 'image/webp') return prefix.startsWith('RIFF') && prefix.slice(8, 12) === 'WEBP'
-  return false
 }
 
 export type ImageGenResult =
