@@ -82,6 +82,34 @@ describe('document-lifetime workspace lock', () => {
     expect(checks).toEqual(['lost']); expect(doc.signal.aborted).toBe(true)
     expect(await doc.acquire()).toBe('lost'); expect(requests).toHaveBeenCalledOnce()
   })
+
+  it('retirement is terminal even from the held observer, without releasing the document lock', async () => {
+    const locks = sharedWorkspaceLocks(), doc = createDocumentWorkspaceLock(() => locks.source)
+    const observed: string[] = []
+    doc.signal.addEventListener('abort', () => {
+      observed.push(doc.getSnapshot()); expect(() => doc.assertHeld()).toThrow()
+    })
+    doc.subscribe(() => { if (doc.getSnapshot() === 'held') doc.retire() })
+    expect(await doc.acquire()).toBe('lost')
+    doc.retire(); expect(await doc.acquire()).toBe('lost')
+    expect(observed).toEqual(['lost']); expect(locks.held.size).toBe(1)
+    expect(await createDocumentWorkspaceLock(() => locks.source).acquire()).toBe('busy')
+    expect(locks.requested).toHaveLength(2)
+  })
+
+  it('retirement cannot cancel an ungranted request or manufacture a lost grant', async () => {
+    const gate = deferred(), locks = sharedWorkspaceLocks()
+    const doc = createDocumentWorkspaceLock(() => ({ async request(name, options, callback) {
+      await gate.promise; return locks.source.request(name, options, callback)
+    } }))
+    expect(() => doc.retire()).toThrow('workspace_document_unavailable')
+    const pending = doc.acquire()
+    expect(doc.getSnapshot()).toBe('acquiring')
+    expect(() => doc.retire()).toThrow('workspace_document_unavailable')
+    expect(doc.signal.aborted).toBe(false)
+    gate.resolve(); expect(await pending).toBe('held')
+    doc.retire(); expect(doc.signal.aborted).toBe(true)
+  })
 })
 
 describe('public entry routing without session module hydration', () => {

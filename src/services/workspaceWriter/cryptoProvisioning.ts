@@ -4,6 +4,7 @@ import { HISTORY_SLOTS, LEGACY_WORKSPACE_LAYOUT, workspaceDataKey, type Isolated
 import { assertDocumentWorkspace, documentWorkspaceSignal, getDocumentStorageLayout } from './runtime'
 import { getActiveUserId, getActiveSessionEpoch, getSessionProjectFence, PROJECT_ERASURE_FENCE_KEY } from '../userSession'
 import { captureOwnerErasureGuard } from '../projects/localErasureGuard'
+import { parseOwnedLocalKey } from './localOwnership'
 
 export class LocalCryptoRecoveryRequired extends Error {
   constructor() {
@@ -36,7 +37,12 @@ export async function provisionIsolatedSalt(layout: IsolatedWorkspaceLayout, own
     // ALL scoped settings, including empty strings and ciphertext with no -enc
     // suffix (reports/memory/instructions). Storage access errors propagate.
     const prefix = `arty-${owner}-`
-    for (let i = 0; i < localStorage.length; i++) if (localStorage.key(i)?.startsWith(prefix)) refuse()
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i)
+      if (!key) continue
+      const parsed = parseOwnedLocalKey(key)
+      if (parsed?.owner === owner || (!parsed && key.startsWith(prefix))) refuse()
+    }
     for (const slot of [...HISTORY_SLOTS, 'crypto-salt', 'crypto-check', 'crypto-version'] as const) {
       if (localStorage.getItem(workspaceDataKey(layout, owner, slot)) !== null) refuse()
     }

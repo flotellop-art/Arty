@@ -46,12 +46,12 @@ export function erasureRowOwner(store: RawStore, row: RawRow, erasure: ErasureHe
 /** Logical B projection of shared session JSON; all B fields and list order
  * survive. Authenticated Email owner comes from its deterministic identifier,
  * never another Google account's display email. Values never enter control. */
-export async function erasureLocalSnapshot(generation: string, owner: string, version: 4 | 5 = 4) {
+export async function erasureLocalSnapshot(generation: string, owner: string, version: 4 | 5 | 6 = 4) {
   const pairs = localPairs(), layout = isolatedWorkspaceLayout(generation, [])
   validateSessions(pairs)
   const protectedPairs: [string, string][] = [], changes: [string, string | null][] = []
   for (const [key, value] of pairs) {
-    if (version === 5 && key === 'arty-project-erasure-fence') {
+    if (version !== 4 && key === 'arty-project-erasure-fence') {
       if (!validErasureFence(value)) return refuseErasure()
       continue // v5 attests this exact location separately; v4 hash is unchanged.
     }
@@ -89,7 +89,7 @@ export async function erasureLocalSnapshot(generation: string, owner: string, ve
     }
     if (belongs) changes.push([key, null]); else protectedPairs.push([key, value])
   }
-  const hash = await digestRaw(version === 5 ? ['arty-erasure-local-v5', protectedPairs] : protectedPairs)
+  const hash = await digestRaw(version !== 4 ? ['arty-erasure-local-v5', protectedPairs] : protectedPairs)
   if (!equalErasure(pairs, localPairs())) return refuseErasure()
   return { pairs, changes, hash }
 }

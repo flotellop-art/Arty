@@ -60,7 +60,7 @@
       "back": "Revenir sans effacer",
       "working": "Vérification de la demande et, si autorisé, nettoyage des copies locales déclarées…",
       "failed": "La vérification ou le nettoyage n’a pas abouti. Aucune nouvelle demande de suppression serveur n’a été envoyée. Conserve le stockage et réessaie ; si le problème persiste, demande de l’aide. Sur Android, une mise à jour de l’application peut être nécessaire.",
-      "done": "Le nettoyage des copies locales déclarées est vérifié. Recharge pour ouvrir les autres comptes. La recréation du compte effacé reste bloquée.",
+      "done": "Le nettoyage des copies locales déclarées est vérifié. Recharge pour revenir à la connexion. Un nouvel espace local pourra être créé si cet effacement dispose du droit de recréation compatible ; une ancienne procédure ne crée pas ce droit automatiquement.",
       "disabled": "Cette version ne peut pas encore reprendre ce nettoyage. Aucune donnée privée n’est ouverte. Une version compatible est nécessaire.",
       "resume": "Reprendre le nettoyage local"
     },

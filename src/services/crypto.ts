@@ -9,6 +9,7 @@ import { assertDocumentWorkspace, documentWorkspaceSignal, documentCryptoKey, ge
 import type { CryptoSlot } from './workspaceWriter/layout'
 import { provisionIsolatedSalt, LocalCryptoRecoveryRequired } from './workspaceWriter/cryptoProvisioning'
 import { captureOwnerErasureGuard } from './projects/localErasureGuard'
+import { readCryptoReset } from './workspaceWriter/cryptoReset'
 
 const SALT_KEY = 'arty-crypto-salt'
 const KEY_CHECK_KEY = 'arty-crypto-check'
@@ -110,8 +111,16 @@ export async function waitForCryptoInitialization(): Promise<void> {
   while (latestInitialization) await latestInitialization.catch(() => {})
 }
 export function initCrypto(passphrase: string, options: CryptoInitOptions = {}): Promise<void> {
+  return startInitialization(passphrase, options, false)
+}
+/** Only useAuth's provisional explicit login calls this. The durable right,
+ * owner/epoch, document and complete empty-copy proof remain intrinsic. */
+export function initLoginCrypto(passphrase: string, assertCurrent: () => void): Promise<void> {
+  return startInitialization(passphrase, { assertCurrent }, true)
+}
+function startInitialization(passphrase: string, options: CryptoInitOptions, explicitLogin: boolean): Promise<void> {
   assertDocumentWorkspace()
-  const task = initializeCrypto(passphrase, options)
+  const task = initializeCrypto(passphrase, options, explicitLogin)
   latestInitialization = task
   void task.finally(() => { if (latestInitialization === task) latestInitialization = null }).catch(() => {})
   return task
@@ -121,7 +130,7 @@ export function initCrypto(passphrase: string, options: CryptoInitOptions = {}):
  * old operations are cancelled, not quarantined. A wrong credential preserves
  * old markers and still publishes its candidate for non-destructive recovery.
  */
-async function initializeCrypto(passphrase: string, options: CryptoInitOptions): Promise<void> {
+async function initializeCrypto(passphrase: string, options: CryptoInitOptions, explicitLogin: boolean): Promise<void> {
   const scope = captureScope()
   const layout = getDocumentStorageLayout()
   const fence = layout.kind === 'isolated-v1' ? getSessionProjectFence() : null
@@ -146,6 +155,28 @@ async function initializeCrypto(passphrase: string, options: CryptoInitOptions):
   let writtenCheck: string | undefined, wroteVersion = false
   try {
     assertAttempt()
+    const reset = layout.kind === 'isolated-v1' ? await readCryptoReset(layout, scope.owner, assertAttempt, explicitLogin) : null
+    if (reset) {
+      let bundle = reset.bundle
+      const salt = bundle ? new Uint8Array(JSON.parse(bundle.salt)) : crypto.getRandomValues(new Uint8Array(16))
+      const keys = await deriveKeys(passphrase, salt)
+      assertAttempt()
+      const candidate: CryptoContext = { ...scope, generation, version: bundle?.version ?? targetVersion(), keys }
+      if (bundle) {
+        let valid = false
+        try { valid = (await decryptWithRing(bundle.check, candidate)) === 'arty-ok' } catch { /* no new allocation on wrong key */ }
+        assertAttempt()
+        if (!valid) throw new LocalCryptoRecoveryRequired()
+      } else {
+        bundle = { salt: JSON.stringify([...salt]), check: await encryptWithRing('arty-ok', candidate), version: candidate.version }
+        assertAttempt(); await reset.allocate(bundle)
+      }
+      await reset.commit(); assertAttempt()
+      // The right is durably consumed before keys/grants become usable. Later
+      // login failure keeps the new markers; the generic rollback wrote none.
+      context = candidate
+      return
+    }
     oldCheck = localStorage.getItem(checkKey); oldVersion = localStorage.getItem(versionKey)
     const version = targetVersion()
     const fresh = layout.kind === 'isolated-v1' && localStorage.getItem(metadataKey(scope, SALT_KEY)) === null

@@ -15,7 +15,7 @@ import {
   type AuthMethod,
 } from '../services/userSession'
 import { setActiveKeys, clearActiveKeys } from '../services/activeApiKey'
-import { initCrypto, isCryptoReady, isCryptoContextChanged, CryptoContextChanged } from '../services/crypto'
+import { initCrypto, initLoginCrypto, isCryptoReady, isCryptoContextChanged, CryptoContextChanged } from '../services/crypto'
 import { bootstrapGoogleStorage, logout as googleLogout, clearOAuthState, resetGoogleMemCache } from '../services/googleAuth'
 import { bootstrapFileStorage } from '../services/secureFileStorage'
 import { bootstrapConversationStorage, resetConversationMemCache } from '../services/storage'
@@ -61,13 +61,13 @@ export function useAuth() {
     if (getDocumentStorageLayout().kind === 'legacy-v1') purgeLegacyGlobalReports()
     const keys = scoped.getJSON<StoredKeys>('api-keys')
     if (!keys?.anthropic) return
-    setActiveKeys(keys.anthropic, keys.gemini, keys.mistral, keys.openai)
     const initialize = isCryptoReady() ? Promise.resolve() : initCrypto(keys.anthropic, {
       assertCurrent: () => { if (!current()) throw new CryptoContextChanged() },
     })
     initialize
       .then(() => {
         if (current()) {
+          setActiveKeys(keys.anthropic, keys.gemini, keys.mistral, keys.openai)
           adoptPendingTrialRemaining()
           return Promise.all([bootstrapGoogleStorage(), bootstrapFileStorage(), bootstrapConversationStorage()])
         }
@@ -89,6 +89,7 @@ export function useAuth() {
       mistralKey?: string
       openaiKey?: string
       identifier: string
+      localEmailHash?: string
     },
     beforePublish?: (
       session: UserSession,
@@ -105,6 +106,10 @@ export function useAuth() {
     // Refuser avant toute mutation est la seule sémantique atomique.
     if (getActiveSession()) {
       throw new Error('Sign out before starting a new login')
+    }
+    if (credentials.localEmailHash !== undefined && (method !== 'email' || !credentials.email ||
+      credentials.email.trim().toLowerCase() !== credentials.identifier.trim().toLowerCase() || !/^[a-f0-9]{64}$/.test(credentials.localEmailHash))) {
+      throw new Error('Invalid local sign-in context')
     }
     authTransactionInFlight = true
     try {
@@ -132,6 +137,9 @@ export function useAuth() {
       }
       const previousApiKeys = scoped.getItem('api-keys')
       let writtenApiKeys: string | null = null
+      const emailHashKey = method === 'email' && credentials.email && credentials.localEmailHash ? `arty-email-hash-${credentials.email}` : null
+      const previousEmailHash = emailHashKey ? localStorage.getItem(emailHashKey) : null
+      let wroteEmailHash = false
       let cryptoInitialized = false
       try {
       // Migrate existing data if first login after update
@@ -139,7 +147,7 @@ export function useAuth() {
 
       // Initialize encryption with the API key, then migrate any legacy
       // plain-JSON Google tokens into encrypted storage.
-      await initCrypto(credentials.anthropicKey)
+      await initLoginCrypto(credentials.anthropicKey, assertCurrentAttempt)
       assertCurrentAttempt()
       cryptoInitialized = true
       adoptPendingTrialRemaining()
@@ -179,6 +187,12 @@ export function useAuth() {
       assertCurrentAttempt()
 
       // Le grant/jeton est durable : la session devient maintenant visible.
+      if (emailHashKey) {
+        if (!/^[a-f0-9]{64}$/.test(credentials.localEmailHash!) || localStorage.getItem(emailHashKey) !== previousEmailHash ||
+          (previousEmailHash !== null && previousEmailHash !== credentials.localEmailHash)) throw new Error('Local login was superseded')
+        localStorage.setItem(emailHashKey, credentials.localEmailHash!)
+        wroteEmailHash = true
+      }
       rememberSession(session)
       setCurrentUser(session)
       setKnownSessions(getKnownSessions())
@@ -203,6 +217,10 @@ export function useAuth() {
         if (writtenApiKeys !== null && scoped.getItem('api-keys') === writtenApiKeys) {
           if (previousApiKeys === null) scoped.removeItem('api-keys')
           else scoped.setItem('api-keys', previousApiKeys)
+        }
+        if (wroteEmailHash && emailHashKey && localStorage.getItem(emailHashKey) === credentials.localEmailHash) {
+          if (previousEmailHash === null) localStorage.removeItem(emailHashKey)
+          else localStorage.setItem(emailHashKey, previousEmailHash)
         }
         clearActiveSession()
       }

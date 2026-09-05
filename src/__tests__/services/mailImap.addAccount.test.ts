@@ -34,10 +34,17 @@ beforeEach(() => {
 })
 
 describe('addMailAccount — normalisation et retry', () => {
+  it('ignores runtime scope/incarnation fields supplied outside the input contract', async () => {
+    mockAddAccount.mockResolvedValue({ id: 'x', messageCount: 0 })
+    await addMailAccount({ ...GMAIL_INPUT, scope: 'victim', incarnation: 'old' } as typeof GMAIL_INPUT)
+    expect(mockAddAccount).toHaveBeenCalledWith(expect.objectContaining({ scope: 'user-test' }))
+    expect(mockAddAccount.mock.calls[0]![0]).not.toHaveProperty('incarnation')
+  })
   it.each([false, true])('rejects an old auth retry during/after erasure release=%s', async released => {
     let reject!: (error: Error) => void
     mockAddAccount.mockReturnValueOnce(new Promise((_yes, no) => { reject = no }))
     const pending = addMailAccount(GMAIL_INPUT), rejected = expect(pending).rejects.toThrow()
+    await vi.waitFor(() => expect(mockAddAccount).toHaveBeenCalledTimes(1))
     const release = blockProjectOperations('user-test')
     if (released) release()
     reject(new Error('auth_failed'))

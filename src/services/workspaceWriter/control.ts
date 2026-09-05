@@ -6,6 +6,7 @@ import { CONTROL_SHAPE, FILE_SHAPE, PROJECT_SHAPE, assertDatabaseShape, type Sto
 import { parseMigrationHeader, type MigrationHeader } from './migrationProtocol'
 import { parseErasureHeader } from './erasureProtocol'
 import { parseAccountErasureRecord, erasureRecordState, type AccountErasureState } from '../accountErasureJournal'
+import { parseResetReadyControl } from './resetProtocol'
 
 export const WORKSPACE_CONTROL_DB = 'arty-workspace-control'
 export const WORKSPACE_CONTROL_VERSION = 1
@@ -36,7 +37,12 @@ function fields(value: unknown, keys: string[]): value is Record<string, unknown
  * or a restore journal, and this module exposes NO writer or repair operation. */
 export function validateWorkspaceControl(value: unknown): WorkspaceStorageLayout {
   const erasure = parseErasureHeader(value)
-  if (erasure) throw new WorkspaceErasureRecoveryAvailable(erasure.version === 5 ? erasureRecordState(erasure.erasure.authority) : 'confirmed', erasureAdmissionBinding(erasure.generation, erasure))
+  if (erasure) throw new WorkspaceErasureRecoveryAvailable(erasure.version !== 4 ? erasureRecordState(erasure.erasure.authority) : 'confirmed', erasureAdmissionBinding(erasure.generation, erasure))
+  const reset = parseResetReadyControl(value)
+  if (reset) {
+    if (!ISOLATED_WORKSPACE_ENABLED) reject('incompatible')
+    return isolatedWorkspaceLayout(reset.generation, reset.requiredOwners)
+  }
   const migration = parseMigrationHeader(value)
   if (migration) throw new WorkspaceRecoveryAvailable(migration)
   const legacyFields = ['format', 'version', 'layout', 'revision', 'state']

@@ -8,7 +8,7 @@ import java.util.Map;
  * This excludes late writes, not concurrent stale-read lost updates. */
 final class MailScopeWriteFence {
     private static final Map<String, State> states = new HashMap<>();
-    private static final class State { long epoch; boolean blocked; boolean terminal; }
+    private static final class State { long epoch; boolean blocked; boolean terminal; String incarnation; }
     interface Commit { boolean run() throws Exception; }
     static boolean validScope(String scope) {
         if (scope == null || scope.isEmpty() || scope.length() > 128) return false;
@@ -48,5 +48,13 @@ final class MailScopeWriteFence {
         if (!commit.run()) throw new IllegalStateException("clear_failed");
         // The cold path NEVER reopens A. Even a later legacy clear cannot do so.
         s.blocked = s.terminal;
+    }
+    /** Package-internal, called ONLY after the durable exact reset CAS. A retry
+     * cannot invalidate new tickets once that same incarnation is already open. */
+    static synchronized void reopenAfterDurableReset(String scope, String incarnation) {
+        State s = state(scope);
+        if (!s.blocked && incarnation.equals(s.incarnation)) return;
+        if (s.epoch == Long.MAX_VALUE) throw new IllegalStateException("scope_exhausted");
+        s.epoch++; s.blocked = false; s.terminal = false; s.incarnation = incarnation;
     }
 }

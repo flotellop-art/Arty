@@ -1,6 +1,7 @@
 import { isolatedWorkspaceLayout } from './layout'
 import { assertOpaqueOwner } from './localOwnership'
 import { parseAccountErasureRecord, type AccountErasureRecord } from '../accountErasureJournal'
+import { resetUuid, exactResetFields, validResetRecords, type ResetRecord } from './resetProtocol'
 
 export interface ConfirmedLocalCleanup {
   owner: string; operationId: string; nonce: string; serverConfirmed: true; pending: string[]
@@ -14,7 +15,9 @@ interface ErasureBase {
 interface ErasureIdentity { owner: string; operationId: string; nonce: string; proof: ErasureProof }
 export interface ErasureFence { initialLocal: string | null; initialActive: string | null; target: string }
 export type ErasureHeader = ErasureBase & ({ version: 4; erasure: ErasureIdentity & { phase: 'reserved' | 'local' | 'native' | 'verified' } } |
-  { version: 5; erasure: ErasureIdentity & { phase: 'reserved' | 'fenced' | 'local' | 'native' | 'verified'; fence: ErasureFence; authority: AccountErasureRecord } })
+  { version: 5; erasure: ErasureIdentity & { phase: 'reserved' | 'fenced' | 'local' | 'native' | 'verified'; fence: ErasureFence; authority: AccountErasureRecord } } |
+  { version: 6; resets: ResetRecord[]; erasure: ErasureIdentity & { phase: 'reserved' | 'fenced' | 'local' | 'native' | 'verified'; fence: ErasureFence; authority: AccountErasureRecord;
+    reset: { resetId: string; previousResetId: string | null } } })
 export const validErasureFence = (v: unknown): v is string => typeof v === 'string' && v.length > 0 && v.length <= 128
 function fields(v: unknown, keys: string[]): v is Record<string, unknown> {
   if (!v || typeof v !== 'object' || Object.getPrototypeOf(v) !== Object.prototype || Object.getOwnPropertySymbols(v).length) return false
@@ -40,22 +43,26 @@ export function parseConfirmedCleanup(v: unknown): ConfirmedLocalCleanup | null 
   return { owner: v.owner, operationId: v.operationId, nonce: v.nonce, serverConfirmed: true, pending: [...v.pending] as string[] }
 }
 export function parseErasureHeader(v: unknown): ErasureHeader | null {
-  if (!fields(v, ['format', 'version', 'layout', 'state', 'revision', 'generation', 'requiredOwners', 'erasure']) ||
-    v.format !== 'arty-workspace-control' || (v.version !== 4 && v.version !== 5) || v.layout !== 'isolated-v1' || v.state !== 'erasing' ||
+  if (!v || typeof v !== 'object' || !fields(v, ['format', 'version', 'layout', 'state', 'revision', 'generation', 'requiredOwners', 'erasure', ...(Object.getOwnPropertyDescriptor(v, 'version')?.value === 6 ? ['resets'] : [])]) ||
+    v.format !== 'arty-workspace-control' || (v.version !== 4 && v.version !== 5 && v.version !== 6) || v.layout !== 'isolated-v1' || v.state !== 'erasing' ||
     !Number.isSafeInteger(v.revision) || (v.revision as number) < 1 || (v.revision as number) > Number.MAX_SAFE_INTEGER - 8) return null
   try { isolatedWorkspaceLayout(v.generation as string, v.requiredOwners as (string | null)[]) } catch { return null }
   const e = v.erasure
-  if (!fields(e, ['owner', 'operationId', 'nonce', 'phase', 'proof', ...(v.version === 5 ? ['fence', 'authority'] : [])]) || !cleanupId(e.operationId) || !cleanupId(e.nonce) ||
-    !['reserved', 'local', 'native', 'verified', ...(v.version === 5 ? ['fenced'] : [])].includes(e.phase as string)) return null
+  if (!fields(e, ['owner', 'operationId', 'nonce', 'phase', 'proof', ...(v.version !== 4 ? ['fence', 'authority'] : []), ...(v.version === 6 ? ['reset'] : [])]) || !cleanupId(e.operationId) || !cleanupId(e.nonce) ||
+    !['reserved', 'local', 'native', 'verified', ...(v.version !== 4 ? ['fenced'] : [])].includes(e.phase as string)) return null
   try { assertOpaqueOwner(e.owner) } catch { return null }
   if (!(v.requiredOwners as unknown[]).includes(e.owner)) return null
-  if (v.version === 5) {
+  if (v.version !== 4) {
     const f = e.fence, a = parseAccountErasureRecord(e.authority)
     if (!fields(f, ['initialLocal', 'initialActive', 'target']) || !cleanupId(f.target) ||
       (f.initialLocal !== null && !validErasureFence(f.initialLocal)) || (f.initialActive !== null && !validErasureFence(f.initialActive)) ||
       f.target === f.initialLocal || f.target === f.initialActive || !a || (!a.serverConfirmed && !a.localOnly) ||
       a.owner !== e.owner || a.operationId !== e.operationId || a.nonce !== e.nonce) return null
   }
+  if (v.version === 6 && (!validResetRecords(v.resets, v.requiredOwners as (string | null)[]) || v.resets.some(r => r.owner === e.owner) ||
+    !exactResetFields(e.reset, ['resetId', 'previousResetId']) || !resetUuid(e.reset.resetId) ||
+    (e.reset.previousResetId !== null && !resetUuid(e.reset.previousResetId)) || e.reset.resetId === e.reset.previousResetId ||
+    v.resets.some(r => r.resetId === (e.reset as { resetId: string }).resetId))) return null
   const proof = e.proof
   if (!fields(proof, ['localHash', 'planHash', 'stores']) || !hash(proof.localHash) || !hash(proof.planHash) || !denseArray(proof.stores) || proof.stores.length !== 15) return null
   const copies = ['legacy', 'active', 'journal'], stores = ['files', 'projects', 'documents', 'usage', 'meta']
@@ -64,11 +71,16 @@ export function parseErasureHeader(v: unknown): ErasureHeader | null {
   // Deep clone/freeze: callers never retain mutable pointers to the durable proof.
   const result = structuredClone(v) as unknown as ErasureHeader
   Object.freeze(result.requiredOwners)
-  if (result.version === 5) {
+  if (result.version !== 4) {
     Object.freeze(result.erasure.fence)
     Object.freeze(result.erasure.authority.pending)
     if (result.erasure.authority.remote) Object.freeze(result.erasure.authority.remote)
     Object.freeze(result.erasure.authority)
+  }
+  if (result.version === 6) {
+    Object.freeze(result.erasure.reset)
+    for (const r of result.resets) { if (r.phase === 'provisioning') Object.freeze(r.bundle); Object.freeze(r) }
+    Object.freeze(result.resets)
   }
   result.erasure.proof.stores.forEach(Object.freeze); Object.freeze(result.erasure.proof.stores)
   Object.freeze(result.erasure.proof); Object.freeze(result.erasure); return Object.freeze(result)

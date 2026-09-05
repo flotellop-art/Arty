@@ -7,7 +7,8 @@ import { validateWorkspaceControl, WORKSPACE_CONTROL_DB, WORKSPACE_CONTROL_KEY, 
 import { isolatedWorkspaceLayout } from './layout'
 import { CONTROL_SHAPE, FILE_SHAPE, PROJECT_SHAPE, MIGRATION_JOURNAL_SHAPE, assertDatabaseShape, type StoreShape } from './schema'
 import { migrationDatabaseName } from './migrationProtocol'
-import { parseConfirmedCleanup, parseErasureHeader, validErasureFence, type ErasureHeader, type ErasureProof, type ErasureStoreProof } from './erasureProtocol'
+import { parseErasureHeader, validErasureFence, type ErasureHeader, type ErasureProof, type ErasureStoreProof } from './erasureProtocol'
+import { parseResetReadyControl, type ResetRecord } from './resetProtocol'
 import { parseAccountErasureRecord, type AccountErasureRecord } from '../accountErasureJournal'
 import { consultErasureReceipt } from '../accountErasureReceipt'
 import { RAW_STORES, scanRawStore, digestRaw, digestText, localPairs } from './migrationInventory'
@@ -20,7 +21,8 @@ type Bind = (snapshot: Snapshot, generation: string, stage?: boolean) => void
 export type ColdErasureAction = 'resume' | 'local-only' | 'cancel-not-sent'
 const FENCE_KEY = 'arty-project-erasure-fence'
 /** Actual cold singleton + intrinsic OFF gate. GET receipt only, never login,
- * POST, KDF, private App import or fresh-key authorization. Local-only requires
+ * POST, KDF or private App import. A v6 final commit grants one local reset;
+ * historical v4/v5 completions grant none. Local-only requires
  * a distinct UI confirmation; it cannot manufacture remote confirmation. */
 export function createColdWorkspaceErasure() {
   if (!ISOLATED_WORKSPACE_ENABLED) throw new Error('workspace_erasure_disabled')
@@ -134,7 +136,7 @@ async function fences(db: IDBPDatabase, guard: Attempt): Promise<[string | null,
   return [local, active]
 }
 async function attestFences(db: IDBPDatabase, header: ErasureHeader, guard: Attempt) {
-  if (header.version !== 5) return undefined
+  if (header.version === 4) return undefined
   const pair = await fences(db, guard), { initialLocal: l, initialActive: d, target: t } = header.erasure.fence
   const allowed = header.erasure.phase === 'reserved' ? [[l, d], [l, t], [t, t]] : [[t, t]]
   if (!allowed.some(p => equal(p, pair))) return refuse()
@@ -150,7 +152,7 @@ async function proof(copies: Copy[], job: IDBPDatabase, header: ErasureHeader, g
   for (const copy of copies) {
     let fence: string | undefined
     for (const store of RAW_STORES) {
-      const repairedStore = header.version === 5 && copy.copy === 'active' && store === 'meta'
+      const repairedStore = header.version !== 4 && copy.copy === 'active' && store === 'meta'
       let hash = await digestText(repairedStore ? 'arty-erasure-protected-active-meta-v5' : 'arty-erasure-protected-store-v1'), count = 0
       await scanRawStore(store === 'files' ? copy.files : copy.projects, store, guard.assertCurrent, guard.signal, async rows => {
         for (const row of rows) {
@@ -220,18 +222,26 @@ async function erase(guard: Attempt, knownFinal: unknown, remember: (v: unknown)
         }
       }
       const requiredOwners = [...new Set([...layout.requiredOwners, receipt.owner])]
+      if (initial.revision > Number.MAX_SAFE_INTEGER - 24) return refuse()
       isolatedWorkspaceLayout(layout.generation, requiredOwners) // bound before mutation
       assertNativeErasureOwner(receipt.owner)
       const pair = await fences(active, guard)
       const target = crypto.randomUUID()
       // Do not loop on a broken RNG. A fresh target is essential to the grammar.
       if (pair.includes(target)) return refuse()
-      const repaired = (pair[0] ?? 'initial') !== (pair[1] ?? 'initial') || !parseConfirmedCleanup(receipt)
+      const previous = parseResetReadyControl(initial)
+      const priorReset = previous?.resets.find(r => r.owner === receipt.owner)
+      // A pending allocation cannot be replaced by an unrelated hot receipt.
+      // It must first be finished by explicit login using its fixed bundle.
+      if (priorReset && priorReset.phase !== 'consumed') return refuse()
+      const resets = previous?.resets.filter(r => r.owner !== receipt.owner) ?? []
+      const resetId = crypto.randomUUID()
+      if (resetId === priorReset?.resetId || resets.some(r => r.resetId === resetId)) return refuse()
       const identity = { owner: receipt.owner, operationId: receipt.operationId, nonce: receipt.nonce, phase: 'reserved' as const, proof: undefined! }
       const candidate: ErasureHeader = { format: 'arty-workspace-control', layout: 'isolated-v1', state: 'erasing',
         generation: layout.generation, revision: initial.revision + 1, requiredOwners,
-        ...(repaired ? { version: 5 as const, erasure: { ...identity, authority: receipt, fence: { initialLocal: pair[0], initialActive: pair[1], target } } }
-          : { version: 4 as const, erasure: identity }) }
+        version: 6, resets, erasure: { ...identity, authority: receipt, fence: { initialLocal: pair[0], initialActive: pair[1], target },
+          reset: { resetId, previousResetId: priorReset?.resetId ?? null } } }
       candidate.erasure.proof = (await proof(copies, job, candidate, guard)).value
       header = parseErasureHeader(candidate)
       if (!header) return refuse()
@@ -252,7 +262,7 @@ async function erase(guard: Attempt, knownFinal: unknown, remember: (v: unknown)
       await cas(header, next, guard); header = next
     }
     await attest()
-    if (header.version === 5 && header.erasure.phase === 'reserved') {
+    if (header.version !== 4 && header.erasure.phase === 'reserved') {
       const active = copies[1]!.projects, pair = (await attestFences(active, header, guard))!, target = header.erasure.fence.target
       if (pair[1] !== target) {
         await transaction(active, ['meta'], 'readwrite', guard, async tx => {
@@ -298,13 +308,17 @@ async function erase(guard: Attempt, knownFinal: unknown, remember: (v: unknown)
     if (header.erasure.phase === 'reserved' || header.erasure.phase === 'fenced') await advance('local')
     // A new native process needs its own sticky fence, including after a crash
     // after the previous clear: call on EVERY resume, not only phase=local.
-    guard.assertCurrent(); await clearColdMailScope(header.erasure.owner); guard.assertCurrent()
+    guard.assertCurrent(); await clearColdMailScope(header.erasure.owner, header.version === 6 ? header.erasure.reset : undefined); guard.assertCurrent()
     if (header.erasure.phase === 'local') await advance('native')
     await attest(true)
     if (header.erasure.phase === 'native') await advance('verified')
     if (header.erasure.phase !== 'verified') return refuse()
-    const final = { format: 'arty-workspace-control', version: 2, layout: 'isolated-v1', state: 'ready',
-      revision: header.revision + 1, generation: header.generation, requiredOwners: header.requiredOwners }
+    const reset: ResetRecord | undefined = header.version === 6 ? { owner: header.erasure.owner, operationId: header.erasure.operationId,
+      resetId: header.erasure.reset.resetId, phase: 'available' } : undefined
+    const final = { format: 'arty-workspace-control', version: reset ? 7 : 2, layout: 'isolated-v1', state: 'ready',
+      revision: header.revision + 1, generation: header.generation, requiredOwners: header.requiredOwners,
+      ...(header.version === 6 ? { resets: [...header.resets, reset!] } : {}) }
+    if (header.version === 6 && !parseResetReadyControl(final)) return refuse()
     const finalSnapshot = await erasureLocalSnapshot(header.generation, header.erasure.owner, header.version)
     if (finalSnapshot.changes.length || finalSnapshot.hash !== header.erasure.proof.localHash) return refuse()
     await attestFences(copies[1]!.projects, header, guard)
@@ -312,7 +326,7 @@ async function erase(guard: Attempt, knownFinal: unknown, remember: (v: unknown)
     remember(final)
     bind({ control: final }, layout.generation, true)
     await cas(header, final, guard, () => {
-      if (!equal(finalLocal, localPairs()) || (header!.version === 5 && localStorage.getItem(FENCE_KEY) !== header!.erasure.fence.target)) refuse()
+      if (!equal(finalLocal, localPairs()) || (header!.version !== 4 && localStorage.getItem(FENCE_KEY) !== header!.erasure.fence.target)) refuse()
     })
     return isolatedWorkspaceLayout(header.generation, header.requiredOwners)
   } finally { opened.forEach(db => db.close()) }

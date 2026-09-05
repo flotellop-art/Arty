@@ -13,6 +13,9 @@ import { beginProjectErasure, assertProjectErasure, confirmServerProjectErasure,
   type ProjectErasure, type ProjectErasureState } from './projects/store'
 import { ACCOUNT_ERASURE_PATH, ERASURE_OPERATION_HEADER, ERASURE_CAPABILITY_HEADER, ERASURE_SUBJECT_HEADER, createRemoteErasure } from './accountErasureProtocol'
 import { readConfirmedErasureReceipt } from './accountErasureReceipt'
+import { getDocumentStorageLayout, documentWorkspace } from './workspaceWriter/runtime'
+
+export type AccountErasureOutcome = 'complete' | 'reload-required'
 
 type AccountContext = { session: UserSession; assertCurrent(): void }
 function captureAccount(): AccountContext {
@@ -62,9 +65,17 @@ async function performServerErasure(context: AccountContext, lease: ProjectErasu
   } finally { clearTimeout(timeout) }
 }
 
-async function performLocalErasure(captured: AccountContext, lease: ProjectErasure): Promise<void> {
+async function performLocalErasure(captured: AccountContext, lease: ProjectErasure): Promise<AccountErasureOutcome> {
   captured.assertCurrent()
   await assertProjectErasure(lease, captured.assertCurrent)
+  if (getDocumentStorageLayout().kind === 'isolated-v1') {
+    // Durable authority stays in place. Never run the legacy, single-copy
+    // cleaner or remove its receipt in this already-private document.
+    captured.assertCurrent()
+    invalidateActiveSessionWork()
+    documentWorkspace.retire()
+    return 'reload-required'
+  }
   // Stop running conversation/file crypto work without dropping the identity
   // required for captured-owner cleanup. Retrying cleanup does not need crypto.
   invalidateActiveSessionWork()
@@ -88,23 +99,24 @@ async function performLocalErasure(captured: AccountContext, lease: ProjectErasu
   await finishProjectErasure(lease)
   context.assertCurrent()
   clearActiveSession()
+  return 'complete'
 }
 
 /** Explicit local-only erasure entry point; does not assume a 401 is success. */
-export async function wipeLocalAccount(): Promise<void> {
+export async function wipeLocalAccount(): Promise<AccountErasureOutcome> {
   const context = captureAccount(), release = blockProjectOperations(context.session.userId)
   try {
     const lease = await beginProjectErasure(context.session.userId, context.assertCurrent, true)
-    await performLocalErasure(context, lease)
+    return await performLocalErasure(context, lease)
   } finally { release() }
 }
 
 /** A confirmed server receipt survives reload and local failure. In particular,
  * email tokens are already revoked after success and must not be posted again. */
-export async function deleteAccount(): Promise<void> {
+export async function deleteAccount(): Promise<AccountErasureOutcome> {
   const context = captureAccount()
   if (context.session.authMethod === 'apikey' || context.session.authMethod === 'demo') {
-    await wipeLocalAccount(); return
+    return wipeLocalAccount()
   }
   const release = blockProjectOperations(context.session.userId)
   let lease: ProjectErasure | undefined, serverConfirmed = false
@@ -121,7 +133,7 @@ export async function deleteAccount(): Promise<void> {
       await confirmServerProjectErasure(lease)
     }
     context.assertCurrent()
-    await performLocalErasure(context, lease)
+    return await performLocalErasure(context, lease)
   } catch (error) {
     // Release only provably not-sent work. The store MUST keep uncertain v1
     // receipts, including timeout, 401, 500 and failure to save a real success.

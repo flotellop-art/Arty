@@ -21,12 +21,13 @@ interface LoginScreenProps {
     mistralKey?: string
     openaiKey?: string
     identifier: string
+    localEmailHash?: string
   }, beforePublish?: (
     session: UserSession,
     context: { userId: string; sessionEpoch: number },
   ) => Promise<void>) => Promise<UserSession>
   knownSessions: UserSession[]
-  onSwitchAccount: (userId: string) => void
+  onSwitchAccount: (userId: string) => void | Promise<void>
 }
 
 export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginScreenProps) {
@@ -66,6 +67,7 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
     displayName: string
     email: string
     avatar?: string
+    localEmailHash?: string
   } | null>(null)
 
   const handleApiKeyLogin = useCallback(async (anthropicKey: string, geminiKey?: string, mistralKey?: string, openaiKey?: string) => {
@@ -83,6 +85,7 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
           mistralKey,
           openaiKey,
           identifier: pendingAuth.email,
+          localEmailHash: pendingAuth.localEmailHash,
         })
         setPendingAuth(null)
       } else {
@@ -128,10 +131,7 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
         return
       }
 
-      // Store hash if new account
-      if (!storedHash) {
-        localStorage.setItem(`arty-email-hash-${email}`, hashHex)
-      }
+      // Keep a new hint in RAM until the guarded login has committed crypto.
 
       // Lire le scope ciblé sans publier une session incomplète. Si l'user doit
       // encore fournir sa clé API, un reload ne doit jamais l'authentifier.
@@ -154,6 +154,7 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
           mistralKey: existingKeys.mistral || undefined,
           openaiKey: existingKeys.openai || undefined,
           identifier: email,
+          localEmailHash: hashHex,
         })
       } else {
         // Need API key — show step 2
@@ -161,10 +162,11 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
           method: 'email',
           displayName: email.split('@')[0] || email,
           email,
+          localEmailHash: hashHex,
         })
       }
-    } catch {
-      setEmailError(t('login.email.errors.generic'))
+    } catch (error) {
+      setEmailError(error instanceof Error ? error.message : t('login.email.errors.generic'))
     } finally {
       setLoading(false)
     }
@@ -340,7 +342,13 @@ export function LoginScreen({ onLogin, knownSessions, onSwitchAccount }: LoginSc
             {knownSessions.slice(0, 3).map((session) => (
               <button
                 key={session.userId}
-                onClick={() => onSwitchAccount(session.userId)}
+                disabled={loading}
+                onClick={() => {
+                  setLoading(true); setLoginError('')
+                  void Promise.resolve().then(() => onSwitchAccount(session.userId)).catch(error => {
+                    setLoginError(error instanceof Error ? error.message : t('login.email.errors.generic'))
+                  }).finally(() => setLoading(false))
+                }}
                 className="w-full flex items-center gap-3 py-2.5 px-1 hover:bg-theme-ink/5 transition-colors text-left"
               >
                 {session.avatar ? (

@@ -136,6 +136,7 @@ public class MailImapPlugin extends Plugin {
     // ── Chiffrement Keystore ──────────────────────────────────────────────
 
     private SecretKey getOrCreateKey() throws Exception {
+        synchronized (MailScopeWriteFence.class) {
         KeyStore ks = KeyStore.getInstance("AndroidKeyStore");
         ks.load(null);
         KeyStore.Entry entry = ks.getEntry(KEYSTORE_ALIAS, null);
@@ -151,6 +152,7 @@ public class MailImapPlugin extends Plugin {
                 .setKeySize(256)
                 .build());
         return gen.generateKey();
+        }
     }
 
     private String encrypt(String plaintext) throws Exception {
@@ -177,14 +179,10 @@ public class MailImapPlugin extends Plugin {
         return getContext().getSharedPreferences(PREFS_NAME, 0);
     }
 
-    private static String scopeKey(String scope) {
-        // Le scope vient de l'app (userId Arty) — on le neutralise pour la clé prefs.
-        return "accounts_" + Base64.encodeToString(
-                scope.getBytes(StandardCharsets.UTF_8), Base64.NO_WRAP | Base64.URL_SAFE);
-    }
+    private MailScopeStorage scopeStorage() { return new MailScopeStorage(prefs()); }
 
-    private JSONArray loadAccounts(String scope) throws Exception {
-        String stored = prefs().getString(scopeKey(scope), null);
+    private JSONArray loadAccounts(MailScopeStorage.Ticket ticket) throws Exception {
+        String stored = scopeStorage().read(ticket);
         if (stored == null) return new JSONArray();
         try {
             return new JSONArray(decrypt(stored));
@@ -197,9 +195,14 @@ public class MailImapPlugin extends Plugin {
         }
     }
 
-    private void saveAccounts(String scope, JSONArray accounts, long ticket) throws Exception {
-        MailScopeWriteFence.write(scope, ticket,
-                () -> prefs().edit().putString(scopeKey(scope), encrypt(accounts.toString())).commit());
+    private void saveAccounts(JSONArray accounts, MailScopeStorage.Ticket ticket) throws Exception {
+        synchronized (MailScopeWriteFence.class) {
+            scopeStorage().assertCurrent(ticket);
+            scopeStorage().write(ticket, encrypt(accounts.toString()));
+        }
+    }
+    private void resolveCurrent(PluginCall call, JSObject result, MailScopeStorage.Ticket ticket) throws Exception {
+        synchronized (MailScopeWriteFence.class) { scopeStorage().assertCurrent(ticket); call.resolve(result); }
     }
 
     private JSONObject findAccount(JSONArray accounts, String id) throws Exception {
@@ -231,7 +234,7 @@ public class MailImapPlugin extends Plugin {
     }
 
     private interface StoreTask {
-        void run(Store store, JSONObject account) throws Exception;
+        void run(Store store, JSONObject account, MailScopeStorage.Ticket ticket) throws Exception;
     }
 
     /** Ouvre le store du compte `id`, exécute la tâche, ferme toujours le store. */
@@ -242,10 +245,13 @@ public class MailImapPlugin extends Plugin {
             call.reject("invalid_input");
             return;
         }
+        final MailScopeStorage.Ticket ticket;
+        try { ticket = scopeStorage().capture(scope, call.getString("incarnation")); }
+        catch (Exception e) { call.reject("scope_unavailable"); return; }
         executor.execute(() -> {
             Store store = null;
             try {
-                JSONObject account = findAccount(loadAccounts(scope), id);
+                JSONObject account = findAccount(loadAccounts(ticket), id);
                 if (account == null) {
                     call.reject("account_not_found");
                     return;
@@ -254,7 +260,8 @@ public class MailImapPlugin extends Plugin {
                         account.getString("host"),
                         account.getString("email"),
                         account.getString("password"));
-                task.run(store, account);
+                scopeStorage().assertCurrent(ticket);
+                task.run(store, account, ticket);
             } catch (AuthenticationFailedException e) {
                 call.reject(authFailedCode(e));
             } catch (MessagingException e) {
@@ -419,13 +426,13 @@ public class MailImapPlugin extends Plugin {
             call.reject(validationError);
             return;
         }
-        final long ticket;
-        try { ticket = MailScopeWriteFence.capture(scope); }
+        final MailScopeStorage.Ticket ticket;
+        try { ticket = scopeStorage().capture(scope, call.getString("incarnation")); }
         catch (Exception e) { call.reject("scope_unavailable"); return; }
         executor.execute(() -> {
             Store store = null;
             try {
-                JSONArray accounts = loadAccounts(scope);
+                JSONArray accounts = loadAccounts(ticket);
                 if (accounts.length() >= MAX_ACCOUNTS_PER_SCOPE) {
                     call.reject("too_many_accounts");
                     return;
@@ -446,12 +453,12 @@ public class MailImapPlugin extends Plugin {
                 account.put("email", email);
                 account.put("password", password);
                 accounts.put(account);
-                saveAccounts(scope, accounts, ticket);
+                saveAccounts(accounts, ticket);
 
                 JSObject ret = new JSObject();
                 ret.put("id", id);
                 ret.put("messageCount", total);
-                call.resolve(ret);
+                resolveCurrent(call, ret, ticket);
             } catch (AuthenticationFailedException e) {
                 call.reject(authFailedCode(e));
             } catch (MessagingException e) {
@@ -471,9 +478,12 @@ public class MailImapPlugin extends Plugin {
             call.reject("invalid_input");
             return;
         }
+        final MailScopeStorage.Ticket ticket;
+        try { ticket = scopeStorage().capture(scope, call.getString("incarnation")); }
+        catch (Exception e) { call.reject("scope_unavailable"); return; }
         executor.execute(() -> {
             try {
-                JSONArray accounts = loadAccounts(scope);
+                JSONArray accounts = loadAccounts(ticket);
                 JSArray out = new JSArray();
                 for (int i = 0; i < accounts.length(); i++) {
                     JSONObject a = accounts.getJSONObject(i);
@@ -488,7 +498,7 @@ public class MailImapPlugin extends Plugin {
                 }
                 JSObject ret = new JSObject();
                 ret.put("accounts", out);
-                call.resolve(ret);
+                resolveCurrent(call, ret, ticket);
             } catch (Exception e) {
                 call.reject("mail_error");
             }
@@ -503,19 +513,19 @@ public class MailImapPlugin extends Plugin {
             call.reject("invalid_input");
             return;
         }
-        final long ticket;
-        try { ticket = MailScopeWriteFence.capture(scope); }
+        final MailScopeStorage.Ticket ticket;
+        try { ticket = scopeStorage().capture(scope, call.getString("incarnation")); }
         catch (Exception e) { call.reject("scope_unavailable"); return; }
         executor.execute(() -> {
             try {
-                JSONArray accounts = loadAccounts(scope);
+                JSONArray accounts = loadAccounts(ticket);
                 JSONArray kept = new JSONArray();
                 for (int i = 0; i < accounts.length(); i++) {
                     JSONObject a = accounts.getJSONObject(i);
                     if (!id.equals(a.optString("id"))) kept.put(a);
                 }
-                saveAccounts(scope, kept, ticket);
-                call.resolve();
+                saveAccounts(kept, ticket);
+                resolveCurrent(call, new JSObject(), ticket);
             } catch (Exception e) {
                 call.reject("mail_error");
             }
@@ -539,11 +549,11 @@ public class MailImapPlugin extends Plugin {
             return;
         }
         final long ticket;
-        try { ticket = MailScopeWriteFence.beginClear(scope, terminal); }
+        try { ticket = scopeStorage().beginLegacyClear(scope, terminal); }
         catch (Exception e) { call.reject("clear_failed"); return; }
         executor.execute(() -> {
             try {
-                MailScopeWriteFence.clear(scope, ticket, () -> prefs().edit().remove(scopeKey(scope)).commit());
+                scopeStorage().legacyClear(scope, ticket);
                 if (terminal) { JSObject ret = new JSObject(); ret.put("protocol", 1); call.resolve(ret); }
                 else call.resolve();
             } catch (Exception e) {
@@ -553,8 +563,28 @@ public class MailImapPlugin extends Plugin {
     }
 
     @PluginMethod
+    public void clearAccountsForReset(PluginCall call) {
+        try {
+            // Invalidate old queued/network tickets immediately, not after the
+            // single network executor eventually reaches a queued clear.
+            String resetId = call.getString("resetId");
+            scopeStorage().clearForReset(call.getString("scope"), resetId, call.getString("previousResetId"));
+            JSObject ret = new JSObject(); ret.put("protocol", 2); ret.put("resetId", resetId); call.resolve(ret);
+        } catch (Exception e) { call.reject("reset_failed"); }
+    }
+
+    @PluginMethod
+    public void reopenAccountsAfterReset(PluginCall call) {
+        try {
+            String resetId = call.getString("resetId");
+            scopeStorage().reopen(call.getString("scope"), resetId);
+            JSObject ret = new JSObject(); ret.put("protocol", 2); ret.put("resetId", resetId); call.resolve(ret);
+        } catch (Exception e) { call.reject("reset_failed"); }
+    }
+
+    @PluginMethod
     public void checkAccount(PluginCall call) {
-        withStore(call, (store, account) -> {
+        withStore(call, (store, account, ticket) -> {
             Folder inbox = store.getFolder("INBOX");
             try {
                 inbox.open(Folder.READ_ONLY);
@@ -562,7 +592,7 @@ public class MailImapPlugin extends Plugin {
                 ret.put("ok", true);
                 ret.put("messageCount", inbox.getMessageCount());
                 ret.put("unreadCount", inbox.getUnreadMessageCount());
-                call.resolve(ret);
+                resolveCurrent(call, ret, ticket);
             } finally {
                 closeQuietly(inbox);
             }
@@ -571,7 +601,7 @@ public class MailImapPlugin extends Plugin {
 
     @PluginMethod
     public void listFolders(PluginCall call) {
-        withStore(call, (store, account) -> {
+        withStore(call, (store, account, ticket) -> {
             Folder[] folders = store.getDefaultFolder().list("*");
             JSArray out = new JSArray();
             int count = 0;
@@ -585,7 +615,7 @@ public class MailImapPlugin extends Plugin {
             }
             JSObject ret = new JSObject();
             ret.put("folders", out);
-            call.resolve(ret);
+            resolveCurrent(call, ret, ticket);
         });
     }
 
@@ -593,7 +623,7 @@ public class MailImapPlugin extends Plugin {
     public void recentMessages(PluginCall call) {
         int limit = clampLimit(call);
         String folderName = requestedFolder(call);
-        withStore(call, (store, account) -> {
+        withStore(call, (store, account, ticket) -> {
             Folder folder = store.getFolder(folderName);
             try {
                 folder.open(Folder.READ_ONLY);
@@ -612,7 +642,7 @@ public class MailImapPlugin extends Plugin {
                 JSObject ret = new JSObject();
                 ret.put("messages", out);
                 ret.put("total", total);
-                call.resolve(ret);
+                resolveCurrent(call, ret, ticket);
             } finally {
                 closeQuietly(folder);
             }
@@ -628,7 +658,7 @@ public class MailImapPlugin extends Plugin {
             call.reject("invalid_input");
             return;
         }
-        withStore(call, (store, account) -> {
+        withStore(call, (store, account, ticket) -> {
             Folder folder = store.getFolder(folderName);
             try {
                 folder.open(Folder.READ_ONLY);
@@ -675,7 +705,7 @@ public class MailImapPlugin extends Plugin {
                 JSObject ret = new JSObject();
                 ret.put("messages", out);
                 ret.put("totalMatches", found.length);
-                call.resolve(ret);
+                resolveCurrent(call, ret, ticket);
             } finally {
                 closeQuietly(folder);
             }
@@ -691,7 +721,7 @@ public class MailImapPlugin extends Plugin {
             return;
         }
         final long uid = uidRaw;
-        withStore(call, (store, account) -> {
+        withStore(call, (store, account, ticket) -> {
             Folder folder = store.getFolder(folderName);
             try {
                 folder.open(Folder.READ_ONLY);
@@ -707,7 +737,7 @@ public class MailImapPlugin extends Plugin {
                 JSObject o = messageSummary(folder, msg);
                 o.put("to", formatAddresses(msg.getRecipients(Message.RecipientType.TO)));
                 o.put("body", truncate(extractText(msg), MAX_BODY_CHARS));
-                call.resolve(o);
+                resolveCurrent(call, o, ticket);
             } finally {
                 closeQuietly(folder);
             }

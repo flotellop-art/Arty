@@ -50,7 +50,7 @@ export function createDocumentWorkspaceLock(getLocks: () => WorkspaceLockSource 
           if (!lock) return
           granted = true
           publish('held')
-          resolve('held')
+          resolve(controller.signal.aborted ? 'lost' : 'held')
           // Never attach a pagehide/visibility/logout/React cleanup resolver.
           await new Promise<void>(() => {})
         })
@@ -69,5 +69,12 @@ export function createDocumentWorkspaceLock(getLocks: () => WorkspaceLockSource 
     subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener) } },
     signal: controller.signal,
     assertHeld() { if (phase !== 'held') throw new DocumentWorkspaceUnavailable() },
+    /** After durable erasure authority, revoke this private document forever.
+     * Keep its Web Lock until actual document destruction: no warm handover. */
+    retire() {
+      if (phase === 'lost') return
+      if (phase !== 'held') throw new DocumentWorkspaceUnavailable()
+      lose()
+    },
   })
 }

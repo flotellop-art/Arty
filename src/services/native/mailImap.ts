@@ -3,7 +3,8 @@ import { getActiveUserId, getActiveSessionEpoch } from '../userSession'
 import { mailPasswordCandidates } from '../mailPassword'
 import { getMailImapPlugin } from './mailImapRegistration'
 import { captureOwnerErasureGuard } from '../projects/localErasureGuard'
-import { assertDocumentWorkspace } from '../workspaceWriter/runtime'
+import { assertDocumentWorkspace, getDocumentStorageLayout } from '../workspaceWriter/runtime'
+import { readResetControl } from '../workspaceWriter/resetStore'
 
 // Bridge vers le client IMAP natif LECTURE SEULE (MailImapPlugin.java).
 // Architecture « natif d'abord » (décision du 9 août 2026) : le mot de passe
@@ -71,7 +72,9 @@ interface MailImapPluginApi {
   }): Promise<MailMessageFull>
 }
 
-const MailImap = getMailImapPlugin<MailImapPluginApi>()
+type MailScope = { scope: string; incarnation?: string }
+type Incarnated<T> = { [K in keyof T]: T[K] extends (options: infer O) => infer R ? (options: O & { incarnation?: string }) => R : never }
+const MailImap = getMailImapPlugin<Incarnated<MailImapPluginApi>>()
 
 export function isMailImapAvailable(): boolean {
   return Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android'
@@ -83,6 +86,28 @@ function requireScope(): string {
   return userId
 }
 
+async function captureMail() {
+  const scope = requireScope(), epoch = getActiveSessionEpoch(), erasure = captureOwnerErasureGuard(scope)
+  const assertCurrent = () => {
+    assertDocumentWorkspace(); erasure()
+    if (getActiveUserId() !== scope || getActiveSessionEpoch() !== epoch) throw new Error('mail_action_cancelled')
+  }
+  assertCurrent()
+  let incarnation: string | undefined
+  if (getDocumentStorageLayout().kind === 'isolated-v1') {
+    const control = await readResetControl(assertCurrent), record = control?.resets.find(r => r.owner === scope)
+    if (record && record.phase !== 'consumed') throw new Error('mail_action_cancelled')
+    incarnation = record?.resetId
+  }
+  assertCurrent()
+  return { options: { scope, ...(incarnation ? { incarnation } : {}) } as MailScope, assertCurrent }
+}
+async function invoke<T>(call: (options: MailScope) => Promise<T>): Promise<T> {
+  const captured = await captureMail()
+  try { const result = await call(captured.options); captured.assertCurrent(); return result }
+  catch (error) { captured.assertCurrent(); throw error }
+}
+
 export async function addMailAccount(input: {
   provider: string
   label: string
@@ -90,12 +115,7 @@ export async function addMailAccount(input: {
   email: string
   password: string
 }): Promise<{ id: string; messageCount: number }> {
-  const scope = requireScope()
-  const epoch = getActiveSessionEpoch(), erasureGuard = captureOwnerErasureGuard(scope)
-  const assertCurrent = () => {
-    assertDocumentWorkspace(); erasureGuard()
-    if (getActiveUserId() !== scope || getActiveSessionEpoch() !== epoch) throw new Error('mail_action_cancelled')
-  }
+  const { options, assertCurrent } = await captureMail()
   // BUG 66 : mot de passe normalisé d'abord (espaces du format Google 4×4,
   // espace final du clavier), puis le brut en filet sur échec d'auth — un
   // mot de passe légal contenant réellement des blancs reste connectable.
@@ -104,7 +124,7 @@ export async function addMailAccount(input: {
   for (const password of candidates) {
     assertCurrent()
     try {
-      const result = await MailImap.addAccount({ scope, ...input, password })
+      const result = await MailImap.addAccount({ provider: input.provider, label: input.label, host: input.host, email: input.email, password, ...options })
       assertCurrent()
       return result
     } catch (err) {
@@ -123,12 +143,12 @@ export async function listMailAccounts(): Promise<MailAccountMeta[]> {
   if (!isMailImapAvailable()) return []
   const userId = getActiveUserId()
   if (!userId) return []
-  const res = await MailImap.listAccounts({ scope: userId })
+  const res = await invoke(options => MailImap.listAccounts(options))
   return res.accounts ?? []
 }
 
 export async function removeMailAccount(id: string): Promise<void> {
-  await MailImap.removeAccount({ scope: requireScope(), id })
+  await invoke(options => MailImap.removeAccount({ ...options, id }))
 }
 
 /**
@@ -154,11 +174,11 @@ export async function checkMailAccount(id: string): Promise<{
   messageCount: number
   unreadCount: number
 }> {
-  return MailImap.checkAccount({ scope: requireScope(), id })
+  return invoke(options => MailImap.checkAccount({ ...options, id }))
 }
 
 export async function listMailFolders(id: string): Promise<string[]> {
-  const res = await MailImap.listFolders({ scope: requireScope(), id })
+  const res = await invoke(options => MailImap.listFolders({ ...options, id }))
   return (res.folders ?? []).map((f) => f.name)
 }
 
@@ -167,7 +187,7 @@ export async function recentMailMessages(
   limit?: number,
   folder?: string
 ): Promise<{ messages: MailMessageSummary[]; total: number }> {
-  return MailImap.recentMessages({ scope: requireScope(), id, limit, folder })
+  return invoke(options => MailImap.recentMessages({ ...options, id, limit, folder }))
 }
 
 export async function searchMailMessages(
@@ -176,7 +196,7 @@ export async function searchMailMessages(
   limit?: number,
   folder?: string
 ): Promise<{ messages: MailMessageSummary[]; totalMatches: number }> {
-  return MailImap.searchMessages({ scope: requireScope(), id, query, limit, folder })
+  return invoke(options => MailImap.searchMessages({ ...options, id, query, limit, folder }))
 }
 
 export async function readMailMessage(
@@ -184,5 +204,5 @@ export async function readMailMessage(
   uid: number,
   folder?: string
 ): Promise<MailMessageFull> {
-  return MailImap.readMessage({ scope: requireScope(), id, uid, folder })
+  return invoke(options => MailImap.readMessage({ ...options, id, uid, folder }))
 }

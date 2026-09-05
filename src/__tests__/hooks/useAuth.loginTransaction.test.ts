@@ -51,7 +51,7 @@ vi.mock('../../services/userSession', () => ({
   purgeLegacyGlobalReports: vi.fn(),
 }))
 vi.mock('../../services/activeApiKey', () => ({ setActiveKeys: vi.fn(), clearActiveKeys: vi.fn() }))
-vi.mock('../../services/crypto', async importOriginal => ({ ...await importOriginal<typeof import('../../services/crypto')>(), initCrypto: mocks.initCrypto }))
+vi.mock('../../services/crypto', async importOriginal => ({ ...await importOriginal<typeof import('../../services/crypto')>(), initCrypto: mocks.initCrypto, initLoginCrypto: mocks.initCrypto }))
 vi.mock('../../services/googleAuth', () => ({
   bootstrapGoogleStorage: vi.fn(async () => {}),
   logout: mocks.googleLogout,
@@ -107,6 +107,7 @@ describe('useAuth login transaction', () => {
     mocks.epoch = 0
     mocks.known = []
     mocks.scoped.clear()
+    localStorage.clear()
     vi.mocked(scoped.getJSON).mockReset().mockReturnValue(null)
     mocks.initCrypto.mockReset()
     mocks.initCrypto.mockResolvedValue(undefined)
@@ -136,6 +137,50 @@ describe('useAuth login transaction', () => {
     expect(result.current.currentUser?.userId).toBe('google-user-a')
     expect(mocks.known).toHaveLength(1)
     expect(mocks.rememberSession).toHaveBeenCalledOnce()
+  })
+
+  it('ne matérialise le hash email qu’après crypto et finalisation, avant la session visible', async () => {
+    const key = `arty-email-hash-${credentials.email}`, hash = 'a'.repeat(64)
+    const { result } = renderHook(() => useAuth())
+    mocks.initCrypto.mockImplementationOnce(async () => { expect(localStorage.getItem(key)).toBeNull() })
+    await act(async () => {
+      await result.current.login('email', { ...credentials, localEmailHash: hash }, async () => {
+        expect(localStorage.getItem(key)).toBeNull(); expect(mocks.rememberSession).not.toHaveBeenCalled()
+      })
+    })
+    expect(localStorage.getItem(key)).toBe(hash); expect(result.current.currentUser?.authMethod).toBe('email')
+  })
+
+  it.each([null, 'a'.repeat(64)])('restaure uniquement son hash email après échec de publication, ancien=%s', previous => {
+    return (async () => {
+      const key = `arty-email-hash-${credentials.email}`, hash = 'a'.repeat(64)
+      if (previous !== null) localStorage.setItem(key, previous)
+      const { result } = renderHook(() => useAuth())
+      mocks.rememberSession.mockImplementationOnce(() => { throw new Error('session quota') })
+      await act(async () => {
+        await expect(result.current.login('email', { ...credentials, localEmailHash: hash })).rejects.toThrow('session quota')
+      })
+      expect(localStorage.getItem(key)).toBe(previous); expect(mocks.active).toBeNull(); expect(result.current.currentUser).toBeNull()
+    })()
+  })
+
+  it('ne remplace jamais un hash email divergent apparu pendant la finalisation', async () => {
+    const key = `arty-email-hash-${credentials.email}`, other = 'b'.repeat(64), { result } = renderHook(() => useAuth())
+    await act(async () => {
+      await expect(result.current.login('email', { ...credentials, localEmailHash: 'a'.repeat(64) }, async () => {
+        localStorage.setItem(key, other)
+      })).rejects.toThrow('Local login was superseded')
+    })
+    expect(localStorage.getItem(key)).toBe(other); expect(mocks.rememberSession).not.toHaveBeenCalled()
+  })
+
+  it('refuse un hash fourni pour un autre email ou une autre méthode avant toute session provisoire', async () => {
+    const { result } = renderHook(() => useAuth())
+    await act(async () => {
+      await expect(result.current.login('google', { ...credentials, localEmailHash: 'a'.repeat(64) })).rejects.toThrow('Invalid local sign-in context')
+      await expect(result.current.login('email', { ...credentials, identifier: 'other@example.com', localEmailHash: 'a'.repeat(64) })).rejects.toThrow('Invalid local sign-in context')
+    })
+    expect(mocks.active).toBeNull(); expect(mocks.initCrypto).not.toHaveBeenCalled()
   })
 
   it('rollback la session provisoire si la persistance du grant échoue', async () => {

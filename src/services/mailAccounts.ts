@@ -4,6 +4,7 @@ import {
   clearMailAccountsForUser,
   type MailAccountMeta,
 } from './native/mailImap'
+import { getActiveUserId, getActiveSessionEpoch } from './userSession'
 
 // Cache mémoire des MÉTADONNÉES de comptes mail (jamais de mot de passe —
 // il vit exclusivement dans l'Android Keystore, côté natif).
@@ -11,32 +12,41 @@ import {
 // outils mail au modèle (pattern imageTools/P1.3) et pour le system prompt.
 // Rafraîchi au boot, à l'ajout/suppression d'un compte, et au switch de user.
 let cachedAccounts: MailAccountMeta[] = []
+let cacheOwner: string | null = null, cacheEpoch = -1, generation = 0
 
 export function getCachedMailAccounts(): MailAccountMeta[] {
-  return cachedAccounts
+  return cacheOwner === getActiveUserId() && cacheEpoch === getActiveSessionEpoch() ? [...cachedAccounts] : []
 }
 
 export function hasConnectedMailAccounts(): boolean {
-  return cachedAccounts.length > 0
+  return getCachedMailAccounts().length > 0
 }
 
 /** BUG 6 : à appeler AVANT setActiveSession() lors d'un switch de compte. */
 export function resetMailAccountsCache(): void {
   cachedAccounts = []
+  cacheOwner = null; cacheEpoch = -1; generation++
 }
 
 export async function refreshMailAccounts(): Promise<MailAccountMeta[]> {
+  const owner = getActiveUserId(), epoch = getActiveSessionEpoch(), attempt = ++generation
+  const current = () => generation === attempt && owner === getActiveUserId() && epoch === getActiveSessionEpoch()
   if (!isMailImapAvailable()) {
     cachedAccounts = []
     return []
   }
   try {
-    cachedAccounts = await listMailAccounts()
+    const accounts = await listMailAccounts()
+    if (!current()) return []
+    cachedAccounts = accounts
   } catch {
     // Plugin indisponible (vieille APK, plateforme non supportée) : cache vide,
     // la feature est simplement absente — jamais d'erreur bloquante au boot.
+    if (!current()) return []
     cachedAccounts = []
   }
+  if (!current()) return []
+  cacheOwner = owner; cacheEpoch = epoch
   try {
     // BUG 54 : toute écriture d'un store partagé entre vues dispatch un event.
     window.dispatchEvent(new CustomEvent('mail-accounts-updated'))
