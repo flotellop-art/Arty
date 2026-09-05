@@ -23,11 +23,13 @@ import {
 
 interface ModelFooterProps {
   model: string
+  requestedModel?: string
+  modelSource?: 'requested' | 'proxy' | 'provider'
   reasonCode?: string
   subModelReasonCode?: string
 }
 
-export const ModelFooter = memo(function ModelFooter({ model, reasonCode, subModelReasonCode }: ModelFooterProps) {
+export const ModelFooter = memo(function ModelFooter({ model, requestedModel, modelSource, reasonCode, subModelReasonCode }: ModelFooterProps) {
   const { t } = useTranslation()
   const [expanded, setExpanded] = useState(false)
   const region = getModelRegion(model)
@@ -56,6 +58,8 @@ export const ModelFooter = memo(function ModelFooter({ model, reasonCode, subMod
       </button>
       {expanded && (
         <div className="mt-1 text-xs text-theme-muted leading-relaxed max-w-[60ch] space-y-1">
+          <p>{t(`compare.attribution.${modelSource ?? 'requested'}`)} : {model}</p>
+          {requestedModel && <p>{t('compare.requestedModel')} : {requestedModel}</p>}
           <p>{explanation}</p>
           {subModelExplanation && <p>{subModelExplanation}</p>}
         </div>

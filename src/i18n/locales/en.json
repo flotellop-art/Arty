@@ -279,11 +279,11 @@
       "sectionStyle": "Response style",
       "sectionActions": "Actions",
       "modelDesc": {
-        "auto": "Arty picks the best model",
+        "auto": "Arty picks a model suited to your request and access",
         "claude": "Files, analysis, Drive / Calendar",
         "mistral": "Data processed in Europe — private content, files, clients",
         "gemini": "Real-time web search, news, directions",
-        "openai": "Manual selection — or auto when you mention ChatGPT with your OpenAI key"
+        "openai": "Manual or automatic selection depending on your request and access"
       },
       "euNote": "This conversation contains EU data (Mistral). Picking a 🇺🇸 model will ask for confirmation before sending its content outside Europe.",
       "euLocked": "Europe-locked conversation — Mistral only, voice dictation included (Voxtral 🇫🇷) · fact-check disabled (it would leave Europe)",
@@ -303,7 +303,7 @@
       "haiku": "Claude Haiku handles quick, short conversations — no monthly cap on paid plans (the free plan is limited to 10/day).",
       "opus": "Claude Opus handles deep analysis, complex tasks and multi-step reasoning. Pro model.",
       "claude": "Claude is the default for attached files, private content supplied in chat, URLs to open, or requests needing Drive and Calendar tools. Data is processed in the United States (Anthropic).",
-      "openai": "GPT (OpenAI) is used when you select it manually — or automatically if you've set up your OpenAI key and your message mentions ChatGPT/GPT. Data processed outside Europe.",
+      "openai": "GPT (OpenAI) is used when you select it manually — or automatically depending on your request and access. Data processed outside Europe.",
       "fallback": "Model picked automatically based on your request."
     },
     "routeReason": {
@@ -1194,6 +1194,13 @@
     }
   },
   "compare": {
+    "costUnavailable": "Estimate unavailable: model or price not confirmed",
+    "requestedModel": "Requested model",
+    "attribution": {"requested":"Served model not confirmed","proxy":"Model sent by the Arty proxy (not confirmed by the provider)","provider":"Model reported by the provider"},
+    "scope": "Text only, without history, files, browsing, video, location or actions. Each submission starts {{count}} calls (retries may consume more). Indicative provider cost: estimated tokens, excluding reasoning/cache, fixed 0.92 EUR/USD conversion; not the amount charged by Arty.",
+    "sameReportedModel": "Several panels report the same model after routing: these are not responses from distinct models.",
+    "timeout": "The comparison exceeded two minutes. You can try again.",
+    "access": {"unknownModel":"This model is not in the catalogue.","auth":"Sign in or reconnect your account to compare.","unverified":"Server access is unverified. Retry after loading or use a personal key.","byok":"The Pro plan requires your personal key for this provider.","trial":"This model is not included in the trial. Choose an eligible model.","plan":"This selection requires credits, an eligible subscription or a personal key.","twoModels":"Choose at least two distinct, eligible models. Two models from the same provider are fine."},
     "title": "Comparator",
     "panels": "{{count}} / {{max}} panels",
     "addPanel": "Add",

@@ -384,6 +384,7 @@ describe('onDone', () => {
     act(() => {
       window.dispatchEvent(new CustomEvent('arty-model-used', {
         detail: {
+          invocationId: result.current.getInvocationId('conv-1'),
           model: 'claude-haiku-4-5-20251001',
           provider: 'claude',
           conversationId: 'conv-1',

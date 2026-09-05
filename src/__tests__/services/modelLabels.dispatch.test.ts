@@ -97,15 +97,17 @@ describe('parité source — les 4 clients IA dispatchent arty-model-used', () =
   // (badge muet ou figé sur le provider précédent, drapeau région faux).
   const CLIENTS = ['anthropicClient', 'mistralClient', 'geminiClient', 'openaiClient']
 
-  it.each(CLIENTS)('%s appelle dispatchModelUsed', (name) => {
-    expect(clientSource(name)).toMatch(/dispatchModelUsed\(/)
+  it.each(CLIENTS)('%s utilise le reporter partagé par invocation', (name) => {
+    expect(clientSource(name)).toMatch(/createModelReporter\(options,/)
+    expect(clientSource(name)).toMatch(/reportModel\(/)
   })
 
-  it('geminiClient ne corrige le modèle que si le proxy a réellement fallback, en conservant reflecting', () => {
+  it('Gemini distingue proxy et modelVersion fournisseur sans confondre les preuves', () => {
     const source = clientSource('geminiClient')
-    const calls = source.match(/dispatchModelUsed\(/g) ?? []
-    expect(calls).toHaveLength(2)
-    expect(source).toMatch(/if \(servedModel !== model\) \{[\s\S]*reflecting: thinkingLevel === 'high',[\s\S]*confirmed: true/)
+    expect(source).toContain("if (response.ok && validModelId(proxyModel))")
+    expect(source).toContain("source: 'proxy'")
+    expect(source).toContain('validModelId(data.modelVersion)')
+    expect(source).toContain("source: 'provider', confirmed: true")
   })
 
   it.each(['anthropicClient', 'mistralClient', 'geminiClient', 'openaiClient'])(

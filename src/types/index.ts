@@ -114,6 +114,9 @@ export interface Message {
   // uniquement — ne JAMAIS s'en servir pour router un prochain appel.
   // Exclu du partage public (décision D3), inclus dans les exports privés.
   model?: string
+  /** Additive attribution; absent on legacy messages = not verified. */
+  requestedModel?: string
+  modelSource?: 'requested' | 'proxy' | 'provider'
   // Refonte routage (étape 4) — POURQUOI ce modèle a été choisi : code machine
   // de resolveRoute (ReasonCode, ex: 'private_data', 'default_capable'),
   // traduit par l'UI via i18n `chat.routeReason.<code>`. Même pattern additif

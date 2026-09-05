@@ -13,6 +13,7 @@ vi.mock('../../services/visionAutoCrop', () => ({
 vi.mock('../../services/secureFileStorage', () => ({ getFile: vi.fn(), putFile: vi.fn(), deleteFile: vi.fn(), deleteOwnedFiles: vi.fn(async () => 0) }))
 vi.mock('../../services/userSession', () => ({ getActiveUserId: vi.fn(() => 'owner-a'), getActiveSessionEpoch: vi.fn(() => 1) }))
 vi.mock('../../services/autoMemory', () => ({ maybeExtractMemory: vi.fn() }))
+vi.mock('../../services/pdfUrlFetch', () => ({ fetchPdfMarkdowns: vi.fn(async () => ''), fetchUrlMarkdowns: vi.fn(async () => ({ block: '', unreadable: [] })) }))
 vi.mock('../../services/factChecker', () => ({ clearSearchContext: vi.fn(), getFactCheckMode: () => 'off', runFactCheckOnLatest: vi.fn() }))
 vi.mock('../../services/taskService', () => ({ detectSuggestedTasks: vi.fn(() => []), addTask: vi.fn() }))
 vi.mock('../../services/reminderService', () => ({ detectReminderIntent: () => null, createReminder: vi.fn() }))
@@ -35,6 +36,8 @@ import { useConversation } from '../../hooks/useConversation'
 import { runFactCheckOnLatest } from '../../services/factChecker'
 import { maybeExtractMemory } from '../../services/autoMemory'
 import { addTask, detectSuggestedTasks } from '../../services/taskService'
+import { fetchPdfMarkdowns, fetchUrlMarkdowns } from '../../services/pdfUrlFetch'
+import { gatherRouteInput } from '../../services/router/gatherRouteInput'
 
 function deferred<T>() {
   let resolve!: (value: T) => void
@@ -68,6 +71,34 @@ describe('Office — cycle complet sans API payante', () => {
       { id: 'a1', role: 'assistant', content: 'Lecture précédente', timestamp: 2 }]
     vi.mocked(getFile).mockResolvedValue(file)
   }
+
+  it.each(['pdf', 'eu-url'] as const)('%s : ancienne préparation après Stop ne vide ni ne contrôle le nouveau tour', async kind => {
+    conv.euOnly = kind === 'eu-url'
+    const deferredPdf = deferred<string>(), deferredUrl = deferred<{ block: string; unreadable: string[] }>()
+    if (kind === 'pdf') vi.mocked(fetchPdfMarkdowns).mockReturnValueOnce(deferredPdf.promise)
+    else vi.mocked(fetchUrlMarkdowns).mockReturnValueOnce(deferredUrl.promise)
+    const previousGather = vi.mocked(gatherRouteInput).getMockImplementation()!
+    for (let i = 0; i < 2; i++) vi.mocked(gatherRouteInput).mockImplementationOnce(ctx => ({ ...previousGather(ctx), selectedModel: 'claude' }))
+    const { result, unmount } = setup()
+    let old!: Promise<boolean>
+    act(() => { old = result.current.sendMessage(kind === 'pdf' ? 'Lis https://example.com/report.pdf' : 'Lis https://example.com/report', conv.id) })
+    await waitFor(() => expect(kind === 'pdf' ? fetchPdfMarkdowns : fetchUrlMarkdowns).toHaveBeenCalled())
+    act(() => result.current.stopStreaming(conv.id))
+    await act(async () => { await result.current.sendMessage('Nouvelle demande', conv.id) })
+    const client = kind === 'pdf' ? vi.mocked(streamMessage) : vi.mocked(streamMistralMessage)
+    expect(client).toHaveBeenCalledTimes(1)
+    const call = client.mock.calls[0]!
+    act(() => call[1]('NOUVELLE REPONSE'))
+    await act(async () => {
+      if (kind === 'pdf') deferredPdf.resolve('ANCIEN PDF')
+      else deferredUrl.resolve({ block: 'ANCIEN LIEN', unreadable: [] })
+      await old
+    })
+    expect(client).toHaveBeenCalledTimes(1)
+    act(() => call[2]())
+    expect(conv.messages.at(-1)?.content).toBe('NOUVELLE REPONSE')
+    unmount()
+  })
 
   it('extrait le vrai texte une seule fois avant sauvegarde, garde seulement les références originales', async () => {
     const { result, unmount } = setup()

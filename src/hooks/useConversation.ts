@@ -95,7 +95,7 @@ export function useConversation() {
   // 60 fps et casserait les memo de MessageItem/Sidebar. Les fonctions,
   // elles, sont stables (useCallback à deps stables dans useStreaming).
   const {
-    canStart, startStream, setActiveStream, onToken: streamToken,
+    canStart, startStream, getInvocationId, setActiveStream, onToken: streamToken,
     onDone: streamDone, onError: streamError, setProgressContent,
     setAbortController, resetAccumulated, hasStream, isActive, stopStreaming, discardStream,
   } = streaming
@@ -669,10 +669,18 @@ export function useConversation() {
       // contexte incomplet. Chaque nouveau tour repart avec une provenance vide.
       clearSearchContext(targetId)
 
-      const onToken = (token: string) => { if (officeStillCurrent()) streamToken(token, targetId) }
+      const invocationId = getInvocationId(targetId)
+      const invocationOwner = getActiveUserId(), invocationEpoch = getActiveSessionEpoch()
+      const invocationStillCurrent = () => !!invocationId && getInvocationId(targetId) === invocationId
+        && invocationOwner === getActiveUserId() && invocationEpoch === getActiveSessionEpoch() && officeStillCurrent()
+      const assertInvocationCurrent = () => {
+        if (!invocationStillCurrent()) throw new DOMException('Request cancelled', 'AbortError')
+        documentContext?.assertCurrent()
+      }
+      const onToken = (token: string) => { if (invocationStillCurrent()) streamToken(token, targetId) }
 
       const onDone = () => {
-        if (!officeStillCurrent()) return
+        if (!invocationStillCurrent()) return
         // Signale au PlanBadge de rafraîchir ses compteurs free quotidiens.
         try { window.dispatchEvent(new CustomEvent('arty-message-sent')) } catch {}
 
@@ -693,7 +701,7 @@ export function useConversation() {
       }
 
       const onErr = (err: Error) => {
-        if (!officeStillCurrent()) return
+        if (!invocationStillCurrent()) return
         clearSearchContext(targetId)
         streamError(err, targetId)
         officeController?.abort()
@@ -849,6 +857,7 @@ export function useConversation() {
         if (pdfUrls.length > 0) {
           setProgressContent('📄 Lecture du PDF...', targetId)
           const pdfSections = await fetchPdfMarkdowns(pdfUrls)
+          assertInvocationCurrent()
           if (pdfSections) {
             outgoingText = `${outgoingText}\n\n${pdfSections}`
           }
@@ -868,6 +877,7 @@ export function useConversation() {
           if (webUrls.length > 0) {
             setProgressContent('🔗 Lecture du lien (EU)...', targetId)
             const { block, unreadable } = await fetchUrlMarkdowns(webUrls)
+            assertInvocationCurrent()
             if (block) {
               outgoingText = `${outgoingText}\n\n${block}`
             }
@@ -894,7 +904,7 @@ export function useConversation() {
           // Si l'utilisateur a cliqué Stop PENDANT la recherche Gemini,
           // stopStreaming() a déjà nettoyé le stream. Sans ce garde, le .then
           // démarrerait quand même une génération Claude "zombie" après le Stop.
-          if (!hasStream(targetId)) return
+          if (!invocationStillCurrent()) return
           if (research) {
             enrichedMessages[enrichedMessages.length - 1] = {
               role: 'user',
@@ -904,17 +914,20 @@ export function useConversation() {
           resetAccumulated(targetId)
           setProgressContent('', targetId)
           controller = streamMessage(enrichedMessages, onToken, onDone, onErr, {
+            assertRequestCurrent: assertInvocationCurrent,
             systemPrompt: systemPromptRef.current,
             onToolCall: trackedToolHandler,
             // Niveau de réflexion utilisateur (chat réel uniquement — jamais
             // sur les appels imposés type comparateur/brief). Cf. anthropicClient.
             reflectionLevel: getReflectionLevel(),
             conversationId: targetId,
+            invocationId,
             // Décision calculée sur le texte ORIGINAL — sans elle, le
             // sous-modèle/thinking se recalculait sur le message enrichi de
             // la recherche Gemini (bug contamination hybride).
             routeDecision,
           })
+          if (!invocationStillCurrent()) { controller.abort(); return }
           setAbortController(targetId, controller)
         }).catch(onErr)
         controller = new AbortController()
@@ -922,13 +935,16 @@ export function useConversation() {
         // Gemini text-only pour l'instant — le multimodal Gemini sera dans
         // une PR future (formats parts/inlineData différents de Claude).
         const apiMessages = await buildTextOnlyMessages(conv.messages)
+        assertInvocationCurrent()
         if (outgoingText !== modelText) {
           apiMessages[apiMessages.length - 1] = { role: 'user', content: outgoingText }
         }
         controller = streamGeminiMessage(apiMessages, onToken, onDone, onErr, {
+          assertRequestCurrent: assertInvocationCurrent,
           systemPrompt: systemPromptRef.current,
           reflectionLevel: getReflectionLevel(),
           conversationId: targetId,
+          invocationId,
           routeReason: routeDecision.reason,
         })
       } else if (provider === 'mistral') {
@@ -937,6 +953,7 @@ export function useConversation() {
         // que les conversations euOnly puissent analyser des images sans
         // sortir d'EU vers Claude/Gemini.
         const apiMessages = await buildMistralMessages(preparedOfficeMessages ?? conv.messages, documentContext)
+        assertInvocationCurrent()
         // Pour le message courant, on ré-injecte les fichiers depuis la RAM
         // (pendingFilesRef) : ça bypass l'IndexedDB roundtrip et garantit
         // que Mistral voit l'image même si putFile a échoué silencieusement
@@ -944,12 +961,13 @@ export function useConversation() {
         // Symétrique du path Claude (voir plus bas).
         if (!officeRequest && currentFiles && currentFiles.length > 0) {
           apiMessages[apiMessages.length - 1] = { role: 'user', content: await buildMistralContentBlocks(outgoingText, currentFiles) }
+          assertInvocationCurrent()
           setPendingFiles(null)
         } else if (outgoingText !== modelText) {
           apiMessages[apiMessages.length - 1] = { role: 'user', content: outgoingText }
         }
         controller = streamMistralMessage(apiMessages, onToken, onDone, onErr, {
-          assertRequestCurrent: documentContext?.assertCurrent,
+          assertRequestCurrent: assertInvocationCurrent,
           documentReadOnly: officeRequest,
           systemPrompt: systemPromptRef.current,
           onToolCall: trackedToolHandler,
@@ -959,6 +977,7 @@ export function useConversation() {
           urlContentInlined: outgoingText !== modelText,
           euOnly: conv.euOnly,
           conversationId: targetId,
+          invocationId,
           routeReason: routeDecision.reason,
           webSearch: routeDecision.webSearch,
         })
@@ -973,6 +992,7 @@ export function useConversation() {
           outgoingText,
           modelText,
         })
+        assertInvocationCurrent()
         // Stop ou changement de session pendant un await de préparation :
         // aucun appel final zombie/facturable ne doit encore pouvoir partir.
         if (visionStreamReserved && !hasStream(targetId)) {
@@ -987,6 +1007,9 @@ export function useConversation() {
         }
         if (openaiRoute.consumedCurrentFiles) setPendingFiles(null)
         controller = streamOpenAIMessage(openaiRoute.messages, openaiKey, onToken, onDone, onErr, {
+          assertRequestCurrent: assertInvocationCurrent,
+          expectedUserId: invocationOwner,
+          expectedSessionEpoch: invocationEpoch,
           systemPrompt: systemPromptRef.current,
           // Boucle tools OpenAI (parité Mistral) : tools custom via le même
           // handler HITL, web_search/fetch_url interceptés dans le client.
@@ -995,6 +1018,7 @@ export function useConversation() {
           onToolCall: trackedToolHandler,
           webSearch: routeDecision.webSearch,
           conversationId: targetId,
+          invocationId,
           routeReason: routeDecision.reason,
           ...(visionAutoCropOwnerId !== undefined ? { expectedUserId: visionAutoCropOwnerId } : {}),
           ...(visionAutoCropSessionEpoch !== undefined
@@ -1007,8 +1031,10 @@ export function useConversation() {
         // buildApiMessages/hydrateFiles). Plus de bug de fichier oublié au
         // tour suivant.
         const apiMessages = await buildApiMessages(preparedOfficeMessages ?? conv.messages, documentContext)
+        assertInvocationCurrent()
         if (!officeRequest && currentFiles && currentFiles.length > 0) {
           apiMessages[apiMessages.length - 1] = { role: 'user', content: await buildContentBlocks(outgoingText, currentFiles) }
+          assertInvocationCurrent()
           setPendingFiles(null)
         } else if (outgoingText !== modelText) {
           apiMessages[apiMessages.length - 1] = { role: 'user', content: outgoingText }
@@ -1026,17 +1052,19 @@ export function useConversation() {
         ]
         const toolsOverride = extraTools.length > 0 ? [...TOOLS, ...extraTools] : undefined
         controller = streamMessage(apiMessages, onToken, onDone, onErr, {
-          assertRequestCurrent: documentContext?.assertCurrent,
+          assertRequestCurrent: assertInvocationCurrent,
           documentReadOnly: officeRequest,
           systemPrompt: systemPromptRef.current,
           onToolCall: trackedToolHandler,
           reflectionLevel: getReflectionLevel(),
           conversationId: targetId,
+          invocationId,
           routeDecision,
           ...(officeRequest ? { tools: [] } : toolsOverride ? { tools: toolsOverride as typeof TOOLS } : {}),
         })
       }
 
+      if (!invocationStillCurrent()) { controller.abort(); releaseVisionAutoCropLock(); return true }
       if (officeController) {
         if (!officeStillCurrent()) { controller.abort(); return true }
         // Keep the original controller as the stream identity across preparation
@@ -1059,7 +1087,7 @@ export function useConversation() {
       return true
     },
     [
-      activeId, refreshConversations, canStart, startStream, setActiveStream,
+      activeId, refreshConversations, canStart, startStream, getInvocationId, setActiveStream,
       streamToken, streamDone, streamError, setProgressContent,
       setAbortController, resetAccumulated, hasStream, isActive,
       setPendingFiles, pendingFilesRef, stopStreaming, discardStream,

@@ -1,3 +1,4 @@
+import { TEXT_DEFAULTS } from '../../services/modelCatalog'
 // C3 (CDC veille 2026-07) : PREMIER test du client OpenAI — la cartographie
 // avait relevé que la logique de fallback (startChatRequest) n'avait aucune
 // couverture. Pattern « garde par source » (les constantes ne sont pas
@@ -12,11 +13,13 @@ const client = readFileSync(resolve(process.cwd(), 'src/services/openaiClient.ts
 
 describe('openaiClient — modèles (C3)', () => {
   it('le défaut est gpt-5.6-terra (décision D-A : −50 % vs gpt-5.5, vérif D1 faite)', () => {
-    expect(client).toMatch(/const DEFAULT_MODEL = 'gpt-5\.6-terra'/)
+    expect(client).toContain('const DEFAULT_MODEL = TEXT_DEFAULTS.openaiChat')
+    expect(TEXT_DEFAULTS.openaiChat).toBe('gpt-5.6-terra')
   })
 
   it('le fallback éligibilité reste gpt-5 (connu bon sur tous les comptes)', () => {
-    expect(client).toMatch(/const FALLBACK_MODEL = 'gpt-5'/)
+    expect(client).toContain('const FALLBACK_MODEL = TEXT_DEFAULTS.openaiFallback')
+    expect(TEXT_DEFAULTS.openaiFallback).toBe('gpt-5')
   })
 
   it('le retry 400/404 « model does not exist » est toujours câblé (pattern startChatRequest)', () => {

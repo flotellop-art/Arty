@@ -279,11 +279,11 @@
       "sectionStyle": "Style de réponse",
       "sectionActions": "Actions",
       "modelDesc": {
-        "auto": "Arty choisit le meilleur modèle",
+        "auto": "Arty choisit un modèle adapté à ta demande et à tes accès",
         "claude": "Fichiers, analyses, Drive / Calendar",
         "mistral": "Données traitées en Europe — contenus privés, fichiers, clients",
         "gemini": "Recherche web temps réel, actus, itinéraires",
-        "openai": "Sélection manuelle — ou auto si tu mentionnes ChatGPT avec ta clé OpenAI"
+        "openai": "Sélection manuelle ou automatique selon ta demande et tes accès"
       },
       "euNote": "Cette conversation contient des données EU (Mistral). Choisir un modèle 🇺🇸 demandera une confirmation avant d'envoyer son contenu hors Europe.",
       "euLocked": "Conversation verrouillée Europe — Mistral uniquement, dictée vocale comprise (Voxtral 🇫🇷) · fact-check désactivé (il sortirait d'Europe)",
@@ -303,7 +303,7 @@
       "haiku": "Claude Haiku est utilisé pour les conversations rapides et courtes — sans plafond mensuel pour les comptes payants (le plan gratuit est limité à 10/jour).",
       "opus": "Claude Opus est utilisé pour les analyses approfondies, les tâches complexes et les raisonnements multi-étapes. Modèle Pro.",
       "claude": "Claude est utilisé par défaut : fichiers attachés, contenus privés fournis dans le chat, URLs à ouvrir, ou requêtes nécessitant les outils Drive et Calendar. Données traitées aux États-Unis (Anthropic).",
-      "openai": "GPT (OpenAI) est utilisé quand tu le sélectionnes manuellement — ou automatiquement si tu as configuré ta clé OpenAI et que ton message mentionne ChatGPT/GPT. Données traitées hors Europe.",
+      "openai": "GPT (OpenAI) est utilisé en sélection manuelle ou automatique selon ta demande et tes accès. Données traitées hors Europe.",
       "fallback": "Modèle sélectionné automatiquement selon le contenu de ta requête."
     },
     "routeReason": {
@@ -1194,6 +1194,13 @@
     }
   },
   "compare": {
+    "costUnavailable": "Estimation indisponible : modèle ou tarif non confirmé",
+    "requestedModel": "Modèle demandé",
+    "attribution": {"requested":"Modèle servi non confirmé","proxy":"Modèle transmis par le proxy Arty (non confirmé par le fournisseur)","provider":"Modèle signalé par le fournisseur"},
+    "scope": "Texte seul, sans historique, fichiers, navigation, vidéo, position ni actions. Chaque envoi lance {{count}} appels (des reprises peuvent en consommer davantage). Coût indicatif fournisseur : tokens estimés, hors raisonnement/cache, conversion fixe 0,92 EUR/USD ; ce n’est pas le montant débité par Arty.",
+    "sameReportedModel": "Plusieurs panneaux signalent le même modèle après routage : ce ne sont pas des réponses de modèles distincts.",
+    "timeout": "La comparaison a dépassé le délai de deux minutes. Vous pouvez réessayer.",
+    "access": {"unknownModel":"Ce modèle n’est pas dans le catalogue.","auth":"Connectez ou reconnectez votre compte pour comparer.","unverified":"Accès serveur non vérifié. Réessayez après chargement ou utilisez une clé personnelle.","byok":"Le plan Pro nécessite votre clé personnelle pour ce fournisseur.","trial":"Ce modèle n’est pas inclus dans l’essai. Choisissez un modèle accessible.","plan":"Cette sélection demande des crédits, un abonnement éligible ou une clé personnelle.","twoModels":"Choisissez au moins deux modèles distincts et accessibles. Deux modèles du même fournisseur conviennent."},
     "title": "Comparateur",
     "panels": "{{count}} / {{max}} panneaux",
     "addPanel": "Ajouter",

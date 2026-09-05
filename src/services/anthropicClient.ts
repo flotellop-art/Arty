@@ -7,7 +7,7 @@ import { buildAiHeaders } from './aiHttp'
 import { resolveClaudeThinking, selectClaudeSubModel, PRIVATE_DATA_TRIGGERS, shouldUseWebSearch, type ClaudeThinkingDirective, type ClaudeSubModel } from './aiRouter'
 import type { RouteDecision, RouteReason } from './router/types'
 import { isProActivated } from './proLicense'
-import { dispatchModelUsed } from './modelLabels'
+import { createModelReporter, type ModelInvocationOptions } from './modelLabels'
 import type { ReflectionLevel } from './reflectionLevel'
 import { buildLocationContext } from './locationContext'
 import { recordUsage } from './costTracker'
@@ -132,7 +132,7 @@ export type ToolHandler = (
   input: Record<string, unknown>
 ) => Promise<{ result: string; screenshot?: string; fileData?: { name: string; mimeType: string; base64: string } }>
 
-interface StreamOptions {
+interface StreamOptions extends ModelInvocationOptions {
   assertRequestCurrent?: () => void
   documentReadOnly?: boolean
   systemPrompt?: string
@@ -319,6 +319,7 @@ async function fetchWithRetry(
   let response: Response | null = null
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     assertRequestCurrent?.()
+    controller.signal.throwIfAborted()
     response = await fetch(apiUrl('/api/ai/proxy'), {
       method: 'POST',
       headers,
@@ -869,7 +870,7 @@ async function runWithTools(
 ) {
   try {
     options?.assertRequestCurrent?.()
-    const compressed = options?.documentReadOnly ? originalMessages : await compressIfNeeded(
+    const compressed = (options?.documentReadOnly || options?.comparisonTextOnly) ? originalMessages : await compressIfNeeded(
       originalMessages.map((m) => ({ role: m.role, content: m.content })),
       options?.systemPrompt,
       apiKey,
@@ -923,9 +924,9 @@ async function runWithTools(
     }
     // string (pas ClaudeSubModel) : le modèle CONFIRMÉ par l'API peut être un
     // id hors union (ex: version datée renvoyée par Anthropic).
-    let dispatchedModel: string = ANTHROPIC_MODEL
-    dispatchModelUsed({ model: ANTHROPIC_MODEL, provider: 'claude', reflecting: effortActive, ...eventScope })
-    const locationContext = options?.documentReadOnly ? '' : await buildLocationContext(lastUserText)
+    const reportModel = createModelReporter(options, ANTHROPIC_MODEL)
+    reportModel({ model: ANTHROPIC_MODEL, provider: 'claude', reflecting: effortActive, ...eventScope })
+    const locationContext = (options?.documentReadOnly || options?.comparisonTextOnly) ? '' : await buildLocationContext(lastUserText)
     options?.assertRequestCurrent?.()
 
     const baseSystemText = options?.systemPrompt || SYSTEM_PROMPT
@@ -953,11 +954,11 @@ async function runWithTools(
     const dateLine = `\n\nDate du jour : ${new Date().toLocaleDateString('fr-FR', {
       weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
     })}.`
-    const systemText = withThinking + dateLine + locationContext + webSearchHint + (options?.documentReadOnly ? DOCUMENT_READ_ONLY_RULES : '')
+    const systemText = options?.comparisonTextOnly ? baseSystemText : withThinking + dateLine + locationContext + webSearchHint + (options?.documentReadOnly ? DOCUMENT_READ_ONLY_RULES : '')
     const systemBlocks = [{ type: 'text', text: systemText, cache_control: { type: 'ephemeral' } }]
     // Add prompt-caching hint to last tool definition. L'ensemble d'outils
     // peut être restreint via options.tools (brief proactif = lecture seule).
-    const toolSet = options?.documentReadOnly ? [] : filterAnthropicToolsForRoute(options?.tools ?? TOOLS, rd)
+    const toolSet = (options?.documentReadOnly || options?.comparisonTextOnly) ? [] : filterAnthropicToolsForRoute(options?.tools ?? TOOLS, rd)
     const cachedTools = toolSet.map((t, i) =>
       i === toolSet.length - 1 ? { ...t, cache_control: { type: 'ephemeral' } } : t
     )
@@ -1014,14 +1015,13 @@ async function runWithTools(
       // label affiché identique (formatModelName strippe la date), un seul
       // re-render. Idempotent : une fois par changement, la boucle tool-use
       // repasse ici avec le même servedModel.
-      if (servedModel && servedModel !== dispatchedModel) {
-        dispatchedModel = servedModel
+      if (servedModel) {
         const servedSubModelReason = resolveServedSubModelReason(
           ANTHROPIC_MODEL,
           servedModel,
           rd?.subModelReason,
         )
-        dispatchModelUsed({
+        reportModel({
           model: servedModel,
           provider: 'claude',
           // reflecting recalculé sur le modèle SERVI : un swap vers Haiku
@@ -1064,7 +1064,7 @@ async function runWithTools(
       }
 
       const hasToolUse = contentBlocks.some((b) => b.type === 'tool_use')
-      if (!hasToolUse || !options?.onToolCall || options.documentReadOnly) {
+      if (!hasToolUse || !options?.onToolCall || options.documentReadOnly || options.comparisonTextOnly) {
         onDone()
         return
       }

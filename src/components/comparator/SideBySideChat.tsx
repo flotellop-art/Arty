@@ -9,11 +9,13 @@ import { useTranslation } from 'react-i18next'
 import { useMultiProviderChat, type PanelState, type StreamFactories } from '../../services/comparator/useMultiProviderChat'
 import { ProviderPanel } from './ProviderPanel'
 import { DEFAULT_PANELS, PROVIDER_CATALOG, type PanelConfig } from '../../services/comparator/providerCatalog'
+import { getActiveUserId, getActiveSessionEpoch } from '../../services/userSession'
 
 export interface SideBySideChatProps {
   factories: StreamFactories
   onBack: () => void
   initialPanels?: PanelConfig[]
+  getAccess: (config: PanelConfig) => string | null
 }
 
 const MAX_PANELS = 4
@@ -25,16 +27,33 @@ function gridColsClass(n: number): string {
   return 'grid-cols-1 md:grid-cols-2 2xl:grid-cols-4'
 }
 
-export function SideBySideChat({ factories, onBack, initialPanels = DEFAULT_PANELS }: SideBySideChatProps) {
+export function SideBySideChat({ factories, onBack, getAccess, initialPanels = DEFAULT_PANELS }: SideBySideChatProps) {
   const { t } = useTranslation()
-  const { panels, setPanels, send, cancel, isStreaming } = useMultiProviderChat({ factories, initialPanels })
+  const { panels, setPanels, send, cancel, isStreaming } = useMultiProviderChat({ factories, initialPanels, getAccess })
+  const accessError = panels.map(p => getAccess(p.config)).find(Boolean)
+    ?? (new Set(panels.map(p => `${p.config.provider}:${p.config.modelId}`)).size < 2 ? 'compare.access.twoModels' : null)
+  const reportedIds = panels.filter(p => p.attribution && p.attribution.source !== 'requested').map(p => p.attribution!.model)
+  const sameReportedModel = reportedIds.length > 1 && new Set(reportedIds).size < reportedIds.length
   const [prompt, setPrompt] = useState('')
+  const promptOwner = useRef({ id: getActiveUserId(), epoch: getActiveSessionEpoch() })
+  const promptIsCurrent = () => promptOwner.current.id === getActiveUserId() && promptOwner.current.epoch === getActiveSessionEpoch()
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
+  const initialized = useRef(false)
+  const eligible = PROVIDER_CATALOG.flatMap(p => p.models.map(m => ({ provider: p.id, modelId: m.modelId })))
+    .filter(c => !getAccess({ id: 'candidate', ...c }))
+  const unused = eligible.filter(c => !panels.some(p => p.config.provider === c.provider && p.config.modelId === c.modelId))
+
+  useEffect(() => {
+    if (initialized.current || eligible.length < 2 || panels.some(p => p.status !== 'idle' || p.text)) return
+    initialized.current = true
+    if (accessError) setPanels(eligible.slice(0, 2).map((c, i) => ({ id: `panel-${i + 1}`, ...c })))
+  }, [eligible, panels, accessError, setPanels])
 
   const handleSubmit = useCallback(() => {
-    if (!prompt.trim() || isStreaming) return
+    if (promptOwner.current.id !== getActiveUserId() || promptOwner.current.epoch !== getActiveSessionEpoch()) { setPrompt(''); return }
+    if (!prompt.trim() || isStreaming || accessError) return
     void send(prompt)
-  }, [prompt, isStreaming, send])
+  }, [prompt, isStreaming, accessError, send])
 
   const onKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -51,16 +70,22 @@ export function SideBySideChat({ factories, onBack, initialPanels = DEFAULT_PANE
 
   useEffect(() => {
     textareaRef.current?.focus()
+    const timer = setInterval(() => {
+      if (!promptIsCurrent()) {
+        setPrompt('')
+        promptOwner.current = { id: getActiveUserId(), epoch: getActiveSessionEpoch() }
+      }
+    }, 250)
+    return () => clearInterval(timer)
   }, [])
 
   const addPanel = () => {
     if (panels.length >= MAX_PANELS) return
-    const usedProviders = new Set(panels.map((p) => p.config.provider))
-    const nextProvider = PROVIDER_CATALOG.find((p) => !usedProviders.has(p.id)) ?? PROVIDER_CATALOG[0]!
+    const next = unused[0]
+    if (!next) return
     const newConfig: PanelConfig = {
       id: `panel-${Date.now()}`,
-      provider: nextProvider.id,
-      modelId: nextProvider.models[0]!.modelId,
+      ...next,
     }
     setPanels([...panels.map((p) => p.config), newConfig])
   }
@@ -101,7 +126,7 @@ export function SideBySideChat({ factories, onBack, initialPanels = DEFAULT_PANE
         <button
           type="button"
           onClick={addPanel}
-          disabled={panels.length >= MAX_PANELS || isStreaming}
+          disabled={panels.length >= MAX_PANELS || isStreaming || unused.length === 0}
           aria-label={t('compare.addPanelAria')}
           className="rounded-full border border-theme-border bg-theme-surface px-3 py-1 text-xs text-theme-ink hover:bg-theme-ink/[0.03] disabled:opacity-40 shrink-0"
         >
@@ -121,6 +146,8 @@ export function SideBySideChat({ factories, onBack, initialPanels = DEFAULT_PANE
           <div key={panel.id} className="min-h-[60vh] md:min-h-0 flex">
             <ProviderPanel
               panel={panel}
+              getAccess={getAccess}
+              locked={isStreaming}
               onChangeConfig={(next) => updatePanelConfig(panel.id, next)}
               onRemove={panels.length > MIN_PANELS ? () => removePanel(panel.id) : undefined}
             />
@@ -136,7 +163,10 @@ export function SideBySideChat({ factories, onBack, initialPanels = DEFAULT_PANE
             id="compare-prompt"
             ref={textareaRef}
             value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
+            onChange={(e) => {
+              if (!promptIsCurrent()) { setPrompt(''); promptOwner.current = { id: getActiveUserId(), epoch: getActiveSessionEpoch() }; return }
+              setPrompt(e.target.value)
+            }}
             onKeyDown={onKeyDown}
             placeholder={t('compare.promptPlaceholder')}
             rows={2}
@@ -154,7 +184,7 @@ export function SideBySideChat({ factories, onBack, initialPanels = DEFAULT_PANE
           ) : (
             <button
               type="submit"
-              disabled={!prompt.trim()}
+              disabled={!prompt.trim() || !!accessError}
               className="rounded-lg bg-theme-accent px-4 py-2 text-sm font-medium text-theme-bg hover:opacity-90 focus:outline-none disabled:opacity-40 self-stretch"
               aria-label={t('compare.sendAria')}
             >
@@ -163,6 +193,9 @@ export function SideBySideChat({ factories, onBack, initialPanels = DEFAULT_PANE
           )}
         </form>
         <p className="mx-auto mt-1 max-w-4xl text-[11px] text-theme-muted">{t('compare.help')}</p>
+        <p className="mx-auto mt-1 max-w-4xl text-[11px] text-theme-muted">{t('compare.scope', { count: panels.length })}</p>
+        {accessError && <p role="status" className="mx-auto max-w-4xl text-xs text-theme-muted">{t(accessError)}</p>}
+        {sameReportedModel && <p role="status" className="mx-auto max-w-4xl text-xs text-theme-muted">{t('compare.sameReportedModel')}</p>}
       </footer>
     </div>
   )

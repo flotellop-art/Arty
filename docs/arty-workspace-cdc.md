@@ -26,9 +26,9 @@ supplémentaire n'est implicite dans ce mandat.
 
 | ID | Lot | Résultat observable et recette | État |
 |---|---|---|---|
-| W01 | Fondations | DOCX : paragraphes et tableaux ; XLSX : feuilles nommées et cellules identifiées. Contenu réellement injecté, accents conservés ; erreurs visibles sur ancien format, fichier chiffré/corrompu ou limite dépassée. Même résultat en nouvel envoi, historique et retry, dont Android et mode Europe. Aucun macro, formule, lien externe exécuté ; ressources bornées ; aucune pièce jointe en base64 dans localStorage. | Code et deux contre-revues OK ; livraison et recette appareil en cours |
+| W01 | Fondations | DOCX : paragraphes et tableaux ; XLSX : feuilles nommées et cellules identifiées. Contenu réellement injecté, accents conservés ; erreurs visibles sur ancien format, fichier chiffré/corrompu ou limite dépassée. Même résultat en nouvel envoi, historique et retry, dont Android et mode Europe. Aucun macro, formule, lien externe exécuté ; ressources bornées ; aucune pièce jointe en base64 dans localStorage. | Web déployé, PR #439 ; recette visuelle/appareil non vérifiée |
 | W02 | Confiance | Essai annoncé conforme au plan servi. BYOK gratuit distinct du Pro optionnel ; conseiller sans licence fictive. Promesses de stockage et de transit exactes FR/EN, page publique cohérente. Aucun quota ni accès serveur élargi implicitement. | Web déployé, PR #437 ; recette visuelle/appareil non vérifiée |
-| W03 | Catalogue | Un catalogue partagé aligne comparaison, sélecteurs, labels et disponibilité réelle. Modèle demandé et modèle effectivement servi distingués. Tests contre la dérive et contre l'accès premium hors droit. | À faire |
+| W03 | Catalogue | Un catalogue partagé aligne comparaison, sélecteurs, labels et éligibilité selon le compte (pas une garantie fournisseur). Modèle demandé, transmis par le proxy et signalé par le fournisseur distingués. Tests contre la dérive et contre l'accès premium hors droit. | Code et deux contre-revues OK ; vérification finale et livraison en cours |
 | W04 | Projets | Créer/renommer/supprimer un projet, consignes propres, conversations associées, bibliothèque de documents réutilisables. Sources identifiables dans le contexte. Recherche bornée, absence de fichier et contexte tronqué explicites. Cloisonnement par compte et projet ; mode Europe conservé. | À faire |
 | W05 | Livrables | Export DOCX modifiable et XLSX de tableaux, en plus des exports existants. Téléchargements relus par un parseur indépendant ; cellules dangereuses neutralisées ; aucun HTML actif ni formule arbitraire. Formats et limites documentés. | À faire |
 | W06 | Continuité | Sauvegarde/restauration explicites puis synchronisation optionnelle multi-appareil chiffrée avant upload, avec secret détenu par l'utilisateur et récupération expliquée. Conflits non destructifs ; reprise hors-ligne ; logout/switch/delete et compte invité traités. Un export manuel seul ne valide pas la synchronisation. | À faire |
@@ -107,6 +107,54 @@ réels ; préparer protocole et instrumentation sans fabriquer leurs résultats.
 
 ## Preuves par lot
 
+### W03 — catalogue, comparateur et provenance
+
+- Catalogue texte pur partagé : fournisseurs des préférences historiques,
+  transports et familles de facturation restent distincts. Les defaults
+  clients/routeur, modèles comparateur et labels exacts en dérivent ; les
+  labels et tarifs historiques restent lisibles. Terra, Opus et Small2603
+  sont déjà utilisés par Arty : aucun nouveau fournisseur ni tarif ajouté.
+- Sélection du comparateur réellement appliquée à la factory ; résultat ancien
+  effacé seulement si sa configuration change. Initialisation et ajout
+  choisissent des modèles accessibles, y compris deux du même fournisseur.
+  Un résultat reste visible lorsque les droits expirent, avec motif par panneau.
+- Éligibilité prudente au dispatch : identité requise, sentinelle exclue des
+  clés personnelles, Pro BYOK uniquement, distinction Free/essai actif/essai
+  épuisé/crédits, statut indisponible explicite. Aucun droit, prix, plafond,
+  endpoint ou routage Auto/EU/Office serveur élargi par ce lot.
+- Comparaison texte explicite : aucun historique/fichier, outil, enrichissement
+  vidéo/position ou compression cloud. Les paramètres de génération propres
+  aux fournisseurs restent différents : ce n'est pas un benchmark contrôlé.
+- Callback d'attribution local par invocation ; demandé, header proxy Gemini
+  et ID du flux fournisseur ont des provenances distinctes, même si l'ID reste
+  identique. ID absent/malformé non confirmé. Coût uniquement estimé pour un
+  ID signalé reconnu exactement ; tarif inconnu = indisponible, jamais zéro.
+  Tokens approximatifs, hors raisonnement/cache, conversion fixe, débit réel
+  serveur distinct ; nombre d'appels/reprises annoncé avant envoi.
+- Champs de message additifs, sans migration : ancien `model` non confirmé.
+  `invocationId` empêche une réponse tardive d'un ancien tour d'altérer le
+  suivant ; garde propriétaire/epoch sur les sauvegardes partielles. Stop,
+  démontage, préparation PDF/URL/fichiers et changement de compte couverts.
+  Promesses d'envoi résolues aussi sur annulation/timeout ; drafts privés
+  du comparateur effacés au changement de session.
+- Deux GO indépendants après reproductions contradictoires : sélection non
+  appliquée, faux verrou Free+BYOK, compteur d'essai cross-session, ancienne
+  génération/attribution réécrivant la nouvelle, rattachement de contrôleur
+  après une préparation obsolète. Les tests permanents utilisent de vrais
+  hooks/clients avec DOM et HTTP simulés ; aucun appel IA payant.
+- Vérification finale du lot réussie : 210 fichiers / 2 170 tests, couverture,
+  typecheck front/back, no-CASA/addon et build. Cas ajoutés : 21 scénarios de
+  vrais clients à HTTP simulé, 9 scénarios comparateur, attribution persistée
+  par invocation et anciennes préparations PDF/URL après Stop. Bundle principal
+  local 937 Ko (gzip 292 Ko), avertissement de taille préexistant conservé.
+  CI et déploiement restent à vérifier après publication de la PR.
+- Hors W03 : historique/contexte du comparateur (W07), projets (W04), nouvelles
+  capacités fournisseur ou migration de préférences. Partage public toujours
+  limité à son allowlist sans attribution ; ni contenu ni clé ajouté aux logs.
+- Repli : revert de la PR par la chaîne Git/Pages. Pas de migration D1/IDB,
+  anciens champs conservés. Une ancienne APK garde son code jusqu'à mise à
+  jour ; build/distribution CI ne signifie pas mise à jour installée.
+
 ### W02 — offre et BYOK
 
 - PR [#437](https://github.com/flotellop-art/Arty/pull/437), squash main
@@ -126,7 +174,16 @@ réels ; préparer protocole et instrumentation sans fabriquer leurs résultats.
   sur téléphone ni validation Store. Inventaire navigateur de contrôle vide
   à deux reprises ce jour : recette visuelle non effectuée.
 
-### W01 — lecture locale Office, lot en livraison
+### W01 — lecture locale Office, web livré
+
+- PR [#439](https://github.com/flotellop-art/Arty/pull/439), squash main
+  `eb1e2c0f598163beebdaa084918a9bf21749cf6c`, fusion 03:43 UTC. CI main
+  web/Android/orchestrateur et build-and-distribute réussis. Pages production
+  succès `6304185a-beb5-456f-80e5-cad68de65e4f`.
+- HTTP production : `/` renvoie 200 et charge `index-DNpWEQdI.js` ; marqueurs
+  `office_documents` et `DOCUMENT READ-ONLY MODE` présents dans le JS servi.
+  Preuve de version publiée, pas d'exécution visuelle du parcours. Troisième
+  inventaire navigateur de contrôle du jour encore vide pendant W03.
 
 - Lecteur ZIP/OOXML borné, sans réseau ni moteur Office : DOCX corps/tableaux,
   XLSX feuilles/cellules/formules textuelles et caches typés. Formules jamais
@@ -157,12 +214,12 @@ réels ; préparer protocole et instrumentation sans fabriquer leurs résultats.
   Aucun document personnel utilisé. 48 tests d'extraction verts ; suite
   finale du lot : 206 fichiers / 2 090 tests, typecheck front/back,
   couverture, build et no-CASA réussis. 13 tests de cycle Office et 5 tests
-  des vrais clients/post-traitements avec réseau simulé. CI à suivre en PR.
+  des vrais clients/post-traitements avec réseau simulé. CI PR et main vertes.
 - Formats exclus : DOC/XLS, macros, chiffrement, révisions/alternatives Word,
   parties principales non canoniques. Pas de reconstruction du rendu, images,
   annotations, entêtes/pieds, styles de dates ou graphiques. Erreurs FR/EN et
-  périmètre visibles dans le composeur. Compatibilité binaire Android à
-  compiler en CI ; interaction réelle mobile non vérifiée.
+  périmètre visibles dans le composeur. Compilation/distribution Android CI
+  réussies ; interaction réelle mobile non vérifiée.
 - Audit npm au démarrage : 13 avis sur des dépendances déjà présentes, aucun
   sur fflate ajouté en version 0.8.3. Aucun `audit fix --force` ; traitement
   ciblé à prévoir avant de conclure le CDC global.

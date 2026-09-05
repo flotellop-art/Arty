@@ -63,6 +63,8 @@ const MessageItem = memo(function MessageItem({ msg, index, onAction, onBranch, 
           model={msg.model}
           reasonCode={msg.reasonCode}
           subModelReasonCode={msg.subModelReasonCode}
+          requestedModel={msg.requestedModel}
+          modelSource={msg.modelSource}
         />
       )}
     </div>

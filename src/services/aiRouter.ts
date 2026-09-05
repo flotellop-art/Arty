@@ -1,3 +1,4 @@
+import { TEXT_DEFAULTS } from './modelCatalog'
 import { getSelectedModel } from './modelSelector'
 import { creditsCoverPremium } from './walletClient'
 import { resolveRoute } from './router/resolveRoute'
@@ -427,7 +428,7 @@ export function resolveClaudeThinking(
   }
 }
 
-export type ClaudeSubModel = 'claude-haiku-4-5-20251001' | 'claude-sonnet-5' | 'claude-opus-4-8'
+export type ClaudeSubModel = typeof TEXT_DEFAULTS.haiku | typeof TEXT_DEFAULTS.sonnet | typeof TEXT_DEFAULTS.opus
 
 // Injection du plan pour rendre la sélection PURE (testable sans mock de
 // localStorage/wallet). Absent → lectures singleton historiques (fallback
@@ -483,22 +484,22 @@ export function selectClaudeSubModelWithReason(
   // vrai free) → on laisse la sélection normale choisir Sonnet/Opus : le
   // wallet paie n'importe quel modèle.
   if ((cachedPlan === 'free' || cachedPlan === 'trial') && !credits) {
-    return { model: 'claude-haiku-4-5-20251001', reason: 'plan_locked_haiku' }
+    return { model: TEXT_DEFAULTS.haiku, reason: 'plan_locked_haiku' }
   }
 
   // Routage automatique selon la requête (un utilisateur premium / avec crédits
   // a déjà passé le pin Haiku ci-dessus) :
   // Haiku — short, low-stakes queries (no private data, no thinking needed)
   if (!isPrivateData && !thinking.enabled && isTrivialChat(message)) {
-    return { model: 'claude-haiku-4-5-20251001', reason: 'submodel_haiku_trivial' }
+    return { model: TEXT_DEFAULTS.haiku, reason: 'submodel_haiku_trivial' }
   }
 
   // Opus — strategic deep-dive reports (Pro tier + max thinking budget)
   if (isPro && thinking.budget >= 10000 && /rapport\s+stratégique|business\s+plan|étude\s+de\s+marché/i.test(message)) {
-    return { model: 'claude-opus-4-8', reason: 'submodel_opus_report' }
+    return { model: TEXT_DEFAULTS.opus, reason: 'submodel_opus_report' }
   }
 
-  return { model: 'claude-sonnet-5', reason: 'submodel_sonnet_default' }
+  return { model: TEXT_DEFAULTS.sonnet, reason: 'submodel_sonnet_default' }
 }
 
 /** Variante historique (modèle seul) — conservée pour les appelants/tests existants. */

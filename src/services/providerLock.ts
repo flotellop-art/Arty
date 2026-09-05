@@ -1,11 +1,11 @@
-import { getOpenAIKey } from './activeApiKey'
+import { getAnthropicKey, getGeminiKey, getMistralKey, getOpenAIKey } from './activeApiKey'
+import { CHAT_PROVIDERS, type TransportProvider } from './modelCatalog'
 import type { AIModel } from './modelSelector'
 
-const PROVIDER_TO_FAMILY: Record<Exclude<AIModel, 'auto'>, string> = {
-  claude: 'claude-haiku',
-  mistral: 'mistral-medium',
-  gemini: 'gemini-flash',
-  openai: 'gpt-mini',
+export function hasPersonalKey(provider: TransportProvider): boolean {
+  const key = provider === 'anthropic' ? getAnthropicKey() : provider === 'gemini' ? getGeminiKey()
+    : provider === 'mistral' ? getMistralKey() : getOpenAIKey()
+  return typeof key === 'string' && !!key.trim() && key.trim() !== 'server-provided'
 }
 
 /** Règle unique des sélecteurs Home/Chat, incluant l'exception BYOK OpenAI. */
@@ -14,6 +14,7 @@ export function isProviderLockedForPlan(
   lockedFamilies: readonly string[],
 ): boolean {
   if (id === 'auto') return false
-  if (id === 'openai' && getOpenAIKey()) return false
-  return lockedFamilies.includes(PROVIDER_TO_FAMILY[id])
+  const provider = CHAT_PROVIDERS.find(p => p.id === id)!
+  if (hasPersonalKey(provider.transport)) return false
+  return lockedFamilies.includes(provider.family)
 }

@@ -31,6 +31,12 @@ import { streamMistralMessage } from '../services/mistralClient'
 import { sendMessageStream } from '../services/openaiClient'
 import { getOpenAIKey } from '../services/activeApiKey'
 import { SideBySideChat } from '../components/comparator/SideBySideChat'
+import { useEffect, useReducer } from 'react'
+import { usePlanStatus } from '../hooks/usePlanStatus'
+import { getActiveSession } from '../services/userSession'
+import { getTrialRemaining } from '../services/trialClient'
+import { hasPersonalKey } from '../services/providerLock'
+import { panelAccess } from '../services/comparator/access'
 import type { StreamFactories } from '../services/comparator/useMultiProviderChat'
 
 // System prompt minimal pour le comparateur : neutre, sans mention de tools,
@@ -89,5 +95,14 @@ const factories: StreamFactories = {
 }
 
 export function ComparatorScreen({ onBack }: { onBack: () => void }) {
-  return <SideBySideChat factories={factories} onBack={onBack} />
+  const plan = usePlanStatus()
+  const [, refresh] = useReducer(n => n + 1, 0)
+  useEffect(() => {
+    window.addEventListener('arty-trial-remaining-changed', refresh)
+    return () => window.removeEventListener('arty-trial-remaining-changed', refresh)
+  }, [])
+  return <SideBySideChat factories={factories} onBack={onBack} getAccess={config => panelAccess(config, {
+    plan, authenticated: !!getActiveSession() && getActiveSession()?.authMethod !== 'demo',
+    personalKey: hasPersonalKey(config.provider), trialRemaining: getTrialRemaining(),
+  })} />
 }

@@ -3,7 +3,8 @@ import { apiUrl } from './apiBase'
 import { buildAiHeaders } from './aiHttp'
 import { shouldUseWebSearch } from './aiRouter'
 import { recordUsage } from './costTracker'
-import { dispatchModelUsed } from './modelLabels'
+import { createModelReporter, type ModelInvocationOptions } from './modelLabels'
+import { TEXT_DEFAULTS } from './modelCatalog'
 import { executeClientWebSearch } from './tools/clientWebSearch'
 import { collectUrlAllowlist, executeFetchUrlTool } from './tools/fetchUrlTool'
 import { buildOpenAIToolList, isToolAllowedForOpenAI } from './tools/openaiToolPolicy'
@@ -28,8 +29,8 @@ const OPENAI_DIRECT_URL = 'https://api.openai.com/v1/chat/completions'
 // Bucket premium : startsWith('gpt-5.') → « gpt-5 », cap 100 inchangé.
 // Si OpenAI renvoie un 400/404 "model does not exist" sur un compte pas
 // encore éligible 5.6, le fallback ci-dessous bascule sur gpt-5 (connu bon).
-const DEFAULT_MODEL = 'gpt-5.6-terra'
-const FALLBACK_MODEL = 'gpt-5'
+const DEFAULT_MODEL = TEXT_DEFAULTS.openaiChat
+const FALLBACK_MODEL = TEXT_DEFAULTS.openaiFallback
 // Modèle utilisé pour valider une clé BYOK saisie dans la modale — dispo
 // sur tous les comptes payants depuis 2024, évite les faux négatifs de
 // test si l'utilisateur n'a pas encore accès à gpt-5 / gpt-5.6.
@@ -119,7 +120,7 @@ interface ToolCall {
   function: { name: string; arguments: string }
 }
 
-interface OpenAIOptions {
+interface OpenAIOptions extends ModelInvocationOptions {
   systemPrompt?: string
   model?: string
   /** Petit budget pour les appels internes structurés (ex. localisation ROI). */
@@ -202,6 +203,7 @@ async function openaiFetch(
   expectedUserId?: string | null,
   expectedSessionEpoch?: number,
 ): Promise<Response> {
+  signal?.throwIfAborted()
   if (
     (expectedUserId !== undefined && getActiveUserId() !== expectedUserId) ||
     (expectedSessionEpoch !== undefined && getActiveSessionEpoch() !== expectedSessionEpoch)
@@ -209,6 +211,7 @@ async function openaiFetch(
     throw new Error(i18n.t('errors.accountChangedDuringRequest'))
   }
   const { url, headers } = await resolveTarget(apiKey)
+  signal?.throwIfAborted()
   // buildAiHeaders peut rafraîchir un token : revalidation obligatoire après
   // cet await, avant que les pixels ne quittent l'appareil.
   if (
@@ -227,6 +230,11 @@ async function openaiFetch(
     body: JSON.stringify(body),
     signal,
   })
+  signal?.throwIfAborted()
+  if ((expectedUserId !== undefined && getActiveUserId() !== expectedUserId) ||
+      (expectedSessionEpoch !== undefined && getActiveSessionEpoch() !== expectedSessionEpoch)) {
+    throw new DOMException('Account changed', 'AbortError')
+  }
   updateTrialFromResponse(res)
   return res
 }
@@ -311,6 +319,7 @@ async function streamOnce(
   controller: AbortController,
   options: OpenAIOptions | undefined,
 ): Promise<StreamOnceResult> {
+  options?.assertRequestCurrent?.()
   const payload = {
     model,
     messages: apiMessages,
@@ -563,7 +572,7 @@ export function sendMessageStream(
       // vision (x-arty-vision) valide un contrat canonique strict côté
       // serveur — un champ `tools` à la racine y vaut 400 invalid_vision_field.
       const hasVisionPayload = hasOpenAIVisionBlocks({ messages })
-      const toolsEnabled = !!options?.onToolCall && !hasVisionPayload
+      const toolsEnabled = !!options?.onToolCall && !hasVisionPayload && !options.comparisonTextOnly
       const lastUserMsg = [...messages].reverse().find((m) => m.role === 'user')
       const lastUserText = typeof lastUserMsg?.content === 'string'
         ? lastUserMsg.content
@@ -596,8 +605,8 @@ export function sendMessageStream(
         conversationId: options?.conversationId,
         ...(options?.routeReason ? { reason: options.routeReason } : {}),
       }
-      let dispatchedModel = model
-      dispatchModelUsed({ model, provider: 'openai', ...eventScope })
+      const reportModel = createModelReporter(options, model)
+      reportModel({ model, provider: 'openai', ...eventScope })
 
       // Historique mutable de la boucle d'outils : chaque itération y pousse
       // le tour assistant (tool_calls) puis les résultats role:'tool'.
@@ -615,9 +624,9 @@ export function sendMessageStream(
         // Boucle « demandé → servi » (F-2/F-3) : corrige le badge dès que le
         // flux confirme un autre modèle (fallback d'éligibilité, ou fallback
         // transparent du proxy serveur).
-        if (turn.servedModel && turn.servedModel !== dispatchedModel) {
-          dispatchedModel = turn.servedModel
-          dispatchModelUsed({ model: turn.servedModel, provider: 'openai', confirmed: true, ...eventScope })
+        options?.assertRequestCurrent?.()
+        if (turn.servedModel) {
+          reportModel({ model: turn.servedModel, provider: 'openai', confirmed: true, ...eventScope })
         }
 
         try {
@@ -627,7 +636,7 @@ export function sendMessageStream(
         }
 
         // Pas de tool call (ou pas de handler) — réponse finale, on sort.
-        if (turn.toolCalls.length === 0 || !options?.onToolCall) {
+        if (turn.toolCalls.length === 0 || !options?.onToolCall || options.comparisonTextOnly) {
           onDone()
           return
         }

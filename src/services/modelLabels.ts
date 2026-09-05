@@ -8,9 +8,38 @@
 // quoi appeler — ChatTopBar écoute et affiche.
 
 import { ALL_REASON_CODES, type RouteReason } from './router/types'
+import { TEXT_MODELS } from './modelCatalog'
+
+export type ModelSource = 'requested' | 'proxy' | 'provider'
+export interface ModelInvocationOptions {
+  invocationId?: string
+  /** Callback is scoped to one invocation, including identical-provider panels. */
+  onModelUsed?: (event: ModelUsedEvent) => void
+  assertRequestCurrent?: () => void
+  /** Text-only comparison: no implicit tools, video, location or prompt enrichment. */
+  comparisonTextOnly?: boolean
+}
+export function validModelId(value: unknown): value is string {
+  return typeof value === 'string' && /^[a-zA-Z0-9][a-zA-Z0-9._:/-]{0,159}$/.test(value)
+}
+export function createModelReporter(options: ModelInvocationOptions | undefined, requestedModel: string) {
+  return (event: ModelUsedEvent) => {
+    options?.assertRequestCurrent?.()
+    if (!validModelId(event.model)) return
+    const reported: ModelUsedEvent = {
+      ...event, requestedModel, invocationId: options?.invocationId,
+      source: event.source ?? (event.confirmed ? 'provider' : 'requested'),
+    }
+    dispatchModelUsed(reported)
+    options?.onModelUsed?.(reported)
+  }
+}
 
 export interface ModelUsedEvent {
+  invocationId?: string
   model: string
+  requestedModel?: string
+  source?: ModelSource
   provider: 'claude' | 'mistral' | 'gemini' | 'openai'
   /** Raison du routage (refonte routage, étape 4) — code machine résolu par
       resolveRoute (router/types.ts), traduit par l'UI via i18n
@@ -129,6 +158,8 @@ export function dispatchModelUsed(event: ModelUsedEvent): void {
 // l'ID ou n'est pas affichée. Le test de parité (modelLabels.test.ts) verrouille
 // chaque ID routable.
 export function formatModelName(model: string): string {
+  const known = TEXT_MODELS.find(m => m.modelId === model || m.responseIds?.includes(model))
+  if (known) return known.label
   const m = model.toLowerCase()
 
   if (m.startsWith('mistral') || m.startsWith('ministral')) {

@@ -2,6 +2,7 @@ import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { generateId } from '../utils/generateId'
 import * as storage from '../services/storage'
 import type { ModelUsedEvent } from '../services/modelLabels'
+import { getActiveUserId, getActiveSessionEpoch } from '../services/userSession'
 
 // Cap de streams concurrents — protège des coûts d'abus (8 convs ouvertes en
 // même temps = 8 appels LLM en // sur le compte du proprio). 3 suffit largement
@@ -10,6 +11,7 @@ export const MAX_CONCURRENT_STREAMS = 3
 
 type StreamState = {
   targetId: string
+  invocationId: string
   accumulated: string
   saveInterval: ReturnType<typeof setInterval> | null
   abortController: AbortController | null
@@ -21,6 +23,8 @@ type StreamState = {
   // cache global getLastModelUsed() : sous MAX_CONCURRENT_STREAMS=3, il peut
   // refléter le stream d'une AUTRE conversation.
   model?: string
+  requestedModel?: string
+  modelSource?: ModelUsedEvent['source']
   // Raison du routage (refonte routage, étape 4) — code machine porté par le
   // même event, persisté sur le Message à finalize() pour que le footer
   // affiche POURQUOI ce modèle, même sur l'historique.
@@ -84,6 +88,8 @@ export function useStreaming(deps: {
       // C-B — porte l'attribution sur le partiel : si l'app est tuée en plein
       // stream, le message restauré au boot garde son modèle (revue Opus).
       if (s.model) lastMsg.model = s.model
+      if (s.requestedModel) lastMsg.requestedModel = s.requestedModel
+      if (s.modelSource) lastMsg.modelSource = s.modelSource
       if (s.reasonCode) lastMsg.reasonCode = s.reasonCode
       if (s.subModelReasonCode) lastMsg.subModelReasonCode = s.subModelReasonCode
     } else {
@@ -93,6 +99,8 @@ export function useStreaming(deps: {
         content: s.accumulated,
         timestamp: Date.now(),
         ...(s.model ? { model: s.model } : {}),
+        ...(s.requestedModel ? { requestedModel: s.requestedModel } : {}),
+        ...(s.modelSource ? { modelSource: s.modelSource } : {}),
         ...(s.reasonCode ? { reasonCode: s.reasonCode } : {}),
         ...(s.subModelReasonCode ? { subModelReasonCode: s.subModelReasonCode } : {}),
       })
@@ -122,6 +130,8 @@ export function useStreaming(deps: {
       timestamp: Date.now(),
       ...(interrupted ? { interrupted: true } : {}),
       ...(model ? { model } : {}),
+      ...(s?.requestedModel ? { requestedModel: s.requestedModel } : {}),
+      ...(s?.modelSource ? { modelSource: s.modelSource } : {}),
       ...(reasonCode ? { reasonCode } : {}),
       ...(subModelReasonCode ? { subModelReasonCode } : {}),
     })
@@ -176,8 +186,11 @@ export function useStreaming(deps: {
       const detail = (e as CustomEvent<ModelUsedEvent>).detail
       if (!detail?.model || detail.background || !detail.conversationId) return
       const s = streamsRef.current.get(detail.conversationId)
-      if (s) {
+      if (s && detail.invocationId === s.invocationId) {
+        try { s.assertCurrent?.() } catch { return }
         s.model = detail.model
+        if (detail.requestedModel) s.requestedModel = detail.requestedModel
+        if (detail.source) s.modelSource = detail.source
         // Seulement si présent : un event `confirmed` sans reason (swap
         // serveur) ne doit pas effacer la raison du dispatch optimiste.
         if (detail.reason?.code) s.reasonCode = detail.reason.code
@@ -217,15 +230,20 @@ export function useStreaming(deps: {
       return false
     }
 
+    const owner = getActiveUserId(), epoch = getActiveSessionEpoch()
     const s: StreamState = {
       targetId,
+      invocationId: generateId(),
       accumulated: '',
       saveInterval: setInterval(() => {
         const cur = streamsRef.current.get(targetId)
         if (cur && savePartialFor(cur) === false) teardownStream(targetId)
       }, 3000),
       abortController: null,
-      assertCurrent,
+      assertCurrent: () => {
+        if (owner !== getActiveUserId() || epoch !== getActiveSessionEpoch()) throw new DOMException('Account changed', 'AbortError')
+        assertCurrent?.()
+      },
     }
     streamsRef.current.set(targetId, s)
     setStreamingConvIds((prev) => {
@@ -362,6 +380,8 @@ export function useStreaming(deps: {
     cancelPendingFlush()
   }, [cancelPendingFlush])
 
+  const getInvocationId = useCallback((id: string) => streamsRef.current.get(id)?.invocationId, [])
+
   // H2 (audit frontend) — retour mémoïsé. Toutes les fonctions ci-dessous ont
   // une identité stable (useCallback à deps stables) ; l'objet ne change donc
   // que quand l'état UI (isStreaming/streamingContent/streamingConvIds) change,
@@ -377,6 +397,7 @@ export function useStreaming(deps: {
     canStart,
     // Lifecycle d'un stream
     startStream,
+    getInvocationId,
     onToken,
     onDone,
     onError,
@@ -394,7 +415,7 @@ export function useStreaming(deps: {
     savePartialAll,
   }), [
     isStreaming, streamingContent, streamingConvIds, isStreamingFor, hasStream,
-    canStart, startStream, onToken, onDone, onError,
+    canStart, startStream, getInvocationId, onToken, onDone, onError,
     stopStreaming, discardStream, setActiveStream, isActive,
     setProgressContent, setAbortController, resetAccumulated, finalize,
     savePartialAll,
