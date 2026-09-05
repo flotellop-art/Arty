@@ -1,415 +1,293 @@
 /**
- * Secure storage using AES-256-GCM via Web Crypto API.
- * No external dependency — uses the browser's native crypto.
- *
- * The encryption key is derived from the user's API key via PBKDF2.
- * This means data is only readable with the correct API key.
- *
- * Étape 9 audit (PR 9a) : PBKDF2 100k → 600k itérations (OWASP 2024+).
- * Versioning au niveau localStorage pour migrer les users existants en lazy
- * (à la prochaine initCrypto réussie) sans wipe destructif. Killswitch
- * `arty-crypto-v2-disabled = '1'` pour rollback rapide via DevTools.
+ * Local AES-GCM storage, with the existing PBKDF2 v1/v2 envelopes. API-key
+ * derivation (including the public server-provided marker) is NOT user-secret
+ * end-to-end encryption. No bulk rewrite or deletion of existing ciphertext.
  */
-
-import { getActiveUserId } from './userSession'
+import { getActiveUserId, getActiveSessionEpoch } from './userSession'
 
 const SALT_KEY = 'arty-crypto-salt'
 const KEY_CHECK_KEY = 'arty-crypto-check'
 const VERSION_KEY = 'arty-crypto-version'
 const KILLSWITCH_KEY = 'arty-crypto-v2-disabled'
-
 type CryptoVersion = 'v1' | 'v2'
+const PBKDF2_ITERATIONS = { v1: 100_000, v2: 600_000 } as const
+type Scope = { owner: string | null; epoch: number }
+type KeyRing = { version: CryptoVersion; keys: Record<CryptoVersion, CryptoKey> }
+type CryptoContext = Scope & KeyRing & { generation: number }
+let context: CryptoContext | null = null
+let initGeneration = 0
+let pendingGeneration: number | null = null
+let latestInitialization: Promise<void> | null = null
 
-/**
- * Itérations PBKDF2 par version. v1 (legacy 100k) conservée pour migrer
- * les blobs des users qui ont déjà chiffré avec l'ancien algo — un swap
- * brutal vers 600k invaliderait KEY_CHECK_KEY → BUG 47 régresserait
- * (l'app croirait à une mauvaise passphrase). v2 = 600k, recommandation
- * OWASP 2024 pour SHA-256.
- */
-const PBKDF2_ITERATIONS: Record<CryptoVersion, number> = {
-  v1: 100_000,
-  v2: 600_000,
+/** Cancellation must never be interpreted as damaged encrypted data. */
+export class CryptoContextChanged extends Error {
+  constructor() { super('Crypto context changed'); this.name = 'CryptoContextChanged' }
+}
+export function isCryptoContextChanged(error: unknown): boolean {
+  return error instanceof CryptoContextChanged
+}
+function captureScope(): Scope { return { owner: getActiveUserId(), epoch: getActiveSessionEpoch() } }
+function scopeCurrent(scope: Scope): boolean {
+  return scope.owner === getActiveUserId() && scope.epoch === getActiveSessionEpoch()
+}
+function metadataKey(scope: Scope, key: string): string {
+  return scope.owner ? `arty-${scope.owner}-${key.replace(/^arty-/, '')}` : key
+}
+function currentContext(): CryptoContext | null {
+  return context && context.generation === initGeneration && scopeCurrent(context) ? context : null
+}
+/** Capture before a caller's first await, not just when it starts encryption. */
+export function captureCryptoGuard(): () => boolean {
+  const captured = currentContext()
+  return () => captured !== null && captured === currentContext()
+}
+function requireContext(): CryptoContext {
+  const captured = currentContext()
+  if (!captured) throw new CryptoContextChanged()
+  return captured
+}
+function assertContext(captured: CryptoContext): void {
+  if (captured !== currentContext()) throw new CryptoContextChanged()
 }
 
-let cachedKey: CryptoKey | null = null
-let cachedVersion: CryptoVersion | null = null
-let cachedKeys: Partial<Record<CryptoVersion, CryptoKey>> = {}
-
-/**
- * Crypto metadata must be isolated exactly like the encrypted payloads. The
- * legacy application kept one global check/version marker, so migrating user A
- * could advance the version while user B still had v1 ciphertext. Keep the
- * legacy keys only as a no-session fallback and migration source.
- */
-function scopedMetadataKey(legacyKey: string): string {
-  const userId = getActiveUserId()
-  return userId ? `arty-${userId}-${legacyKey.replace(/^arty-/, '')}` : legacyKey
+function targetVersion(): CryptoVersion {
+  try { return localStorage.getItem(KILLSWITCH_KEY) === '1' ? 'v1' : 'v2' } catch { return 'v2' }
 }
-
-// ─── Version helpers ───
-
-function getStoredVersion(): CryptoVersion {
-  try {
-    const key = scopedMetadataKey(VERSION_KEY)
-    const raw = localStorage.getItem(key) ?? (key !== VERSION_KEY ? localStorage.getItem(VERSION_KEY) : null)
-    return raw === 'v2' ? 'v2' : 'v1'
-  } catch {
-    return 'v1'
-  }
+function storedVersion(scope: Scope): CryptoVersion {
+  const key = metadataKey(scope, VERSION_KEY)
+  return (localStorage.getItem(key) ?? (key !== VERSION_KEY ? localStorage.getItem(VERSION_KEY) : null)) === 'v2' ? 'v2' : 'v1'
 }
-
-function setStoredVersion(v: CryptoVersion): void {
-  localStorage.setItem(scopedMetadataKey(VERSION_KEY), v)
-}
-
-/**
- * Killswitch d'urgence : si la migration v2 casse en prod, set
- * `arty-crypto-v2-disabled = '1'` via DevTools force le retour à v1 (100k)
- * sans rollback APK. NE DOIT PAS être utilisé en routine — c'est un fallback
- * en cas d'incident massif (ex: regression on initCrypto qui wipe tout).
- */
-function isV2Disabled(): boolean {
-  try { return localStorage.getItem(KILLSWITCH_KEY) === '1' } catch { return false }
-}
-
-/**
- * Liste les clés localStorage qui contiennent des blobs chiffrés (convention :
- * suffixe `-enc`). Utilisé par la migration v1→v2 pour re-chiffrer tous les
- * blobs avec la nouvelle clé. Couvre google-tokens-enc, google-user-enc,
- * arty-*-file-*-enc (secureFileStorage), etc. sans devoir exposer la liste
- * depuis chaque module.
- */
-function listEncryptedKeys(): string[] {
-  const out: string[] = []
-  const userId = getActiveUserId()
-  const prefix = userId ? `arty-${userId}-` : 'arty-'
-  try {
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i)
-      if (k && k.startsWith(prefix) && k.endsWith('-enc')) out.push(k)
-    }
-  } catch { /* SSR / privacy mode */ }
-  return out
-}
-
-// ─── Key derivation ───
-
-async function getSalt(): Promise<Uint8Array> {
-  const key = scopedMetadataKey(SALT_KEY)
-  const existing = localStorage.getItem(key)
-  if (existing) {
-    return new Uint8Array(JSON.parse(existing))
-  }
-
-  // Existing installations encrypted every account with the same legacy salt.
-  // Copy it once into the account scope so old ciphertext remains readable;
-  // fresh installations/users without a legacy salt get an independent salt.
+function getSalt(scope: Scope, create = true): Uint8Array {
+  const key = metadataKey(scope, SALT_KEY)
+  const own = localStorage.getItem(key)
+  if (own) return new Uint8Array(JSON.parse(own))
   const legacy = key !== SALT_KEY ? localStorage.getItem(SALT_KEY) : null
   if (legacy) {
-    localStorage.setItem(key, legacy)
+    if (create) localStorage.setItem(key, legacy)
     return new Uint8Array(JSON.parse(legacy))
   }
+  if (!create) throw new Error('Crypto salt unavailable')
   const salt = crypto.getRandomValues(new Uint8Array(16))
   localStorage.setItem(key, JSON.stringify(Array.from(salt)))
   return salt
 }
-
-async function deriveKey(passphrase: string, version: CryptoVersion): Promise<CryptoKey> {
-  const enc = new TextEncoder()
-  const salt = await getSalt()
-
-  const keyMaterial = await crypto.subtle.importKey(
-    'raw',
-    enc.encode(passphrase),
-    'PBKDF2',
-    false,
-    ['deriveKey']
-  )
-
-  return crypto.subtle.deriveKey(
+async function deriveKeys(passphrase: string, salt: Uint8Array): Promise<Record<CryptoVersion, CryptoKey>> {
+  const material = await crypto.subtle.importKey('raw', new TextEncoder().encode(passphrase), 'PBKDF2', false, ['deriveKey'])
+  const derive = (version: CryptoVersion) => crypto.subtle.deriveKey(
     { name: 'PBKDF2', salt, iterations: PBKDF2_ITERATIONS[version], hash: 'SHA-256' },
-    keyMaterial,
-    { name: 'AES-GCM', length: 256 },
-    false,
-    ['encrypt', 'decrypt']
+    material, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt'],
   )
+  const [v1, v2] = await Promise.all([derive('v1'), derive('v2')])
+  return { v1, v2 }
+}
+function encryptedKeys(scope: Scope): string[] {
+  const prefix = scope.owner ? `arty-${scope.owner}-` : 'arty-'
+  return Object.keys(localStorage).filter(key => key.startsWith(prefix) && key.endsWith('-enc'))
 }
 
-// ─── Public API ───
-
-/**
- * Initialize encryption with the user's passphrase (API key).
- * Must be called before secureSet/secureGet.
- *
- * Versioning behavior (étape 9 audit) :
- * 1. Fresh install (no KEY_CHECK_KEY) → write check + version directly at target.
- * 2. Stored version matches target → derive normally.
- * 3. Stored version is v1 but target is v2 → verify passphrase against old
- *    iterations, then re-encrypt all `*-enc` blobs + KEY_CHECK_KEY with the
- *    new iterations, finally bump the version marker. **No wipe on failure**
- *    (cf. BUG 47) — if passphrase is wrong, we keep the old key cached.
- */
-export async function initCrypto(passphrase: string): Promise<void> {
-  const targetVersion: CryptoVersion = isV2Disabled() ? 'v1' : 'v2'
-  const checkKey = scopedMetadataKey(KEY_CHECK_KEY)
-  // Keep both derivations available. New ciphertext carries its version in an
-  // envelope, while legacy ciphertext (without an envelope) is tried with both
-  // keys. This removes the unsafe in-place bulk rewrite: a WebView may close at
-  // any instruction without ever leaving a mixed, marker-dependent state.
-  const [v1, v2] = await Promise.all([
-    deriveKey(passphrase, 'v1'),
-    deriveKey(passphrase, 'v2'),
-  ])
-  cachedKeys = { v1, v2 }
-  cachedVersion = targetVersion
-  cachedKey = cachedKeys[targetVersion]!
-
-  const scopedCheck = localStorage.getItem(checkKey)
-  if (scopedCheck) {
-    try {
-      if ((await decrypt(scopedCheck)) !== 'arty-ok') return
-    } catch {
-      // A changed/wrong passphrase must never wipe or rewrite the old marker.
-      // Keep the candidate key cached so storage bootstraps can quarantine data
-      // non-destructively and the user can retry with the former credential.
-      return
-    }
-
-    // Migrating the tiny check is crash-safe because its envelope identifies
-    // the derivation independently from the version marker. User blobs remain
-    // untouched and readable through the dual-key legacy fallback.
-    localStorage.setItem(checkKey, await encrypt('arty-ok'))
-    setStoredVersion(targetVersion)
-    return
-  }
-
-  // Adoption from the old global metadata. The global check may belong to a
-  // different account, so only trust it if this passphrase opens it. If it
-  // does not, validate every blob in the active account prefix. This also
-  // repairs installations where a previous global v1→v2 migration stopped
-  // halfway: each unversioned blob is tried independently with v2 then v1.
-  let identityConfirmed = false
-  if (checkKey !== KEY_CHECK_KEY) {
-    const legacyCheck = localStorage.getItem(KEY_CHECK_KEY)
-    if (legacyCheck) {
-      try { identityConfirmed = (await decrypt(legacyCheck)) === 'arty-ok' } catch { /* another account */ }
-    }
-  }
-
-  const blobs = listEncryptedKeys()
-  if (!identityConfirmed && blobs.length > 0) {
-    try {
-      for (const key of blobs) {
-        const raw = localStorage.getItem(key)
-        if (raw) await decrypt(raw)
-      }
-      identityConfirmed = true
-    } catch {
-      // Preserve unreadable data and leave the account without a new marker.
-      return
-    }
-  }
-
-  // Fresh account (no blobs) or verified legacy account.
-  localStorage.setItem(checkKey, await encrypt('arty-ok'))
-  setStoredVersion(targetVersion)
+export interface CryptoInitOptions {
+  /** UI cancellation, checked before any candidate publication or marker write. */
+  assertCurrent?: () => void
+  /** Synchronous credential persistence, after derivation but before publication.
+   * Must throw before changing active keys if durable persistence fails. */
+  commit?: () => void
 }
-
+/** Explicit credential edits wait for the current cold/session initialization. */
+export async function waitForCryptoInitialization(): Promise<void> {
+  while (latestInitialization) await latestInitialization.catch(() => {})
+}
+export function initCrypto(passphrase: string, options: CryptoInitOptions = {}): Promise<void> {
+  const task = initializeCrypto(passphrase, options)
+  latestInitialization = task
+  void task.finally(() => { if (latestInitialization === task) latestInitialization = null }).catch(() => {})
+  return task
+}
 /**
- * Verify if the given passphrase matches the stored key. Utilise la version
- * stockée (pas la target) pour vérifier — sinon on dirait à tort que la
- * passphrase est mauvaise alors qu'elle est juste en attente de migration.
+ * A candidate stays local throughout derivation/verification. Latest init wins;
+ * old operations are cancelled, not quarantined. A wrong credential preserves
+ * old markers and still publishes its candidate for non-destructive recovery.
  */
-export async function verifyCrypto(passphrase: string): Promise<boolean> {
-  const check = localStorage.getItem(scopedMetadataKey(KEY_CHECK_KEY))
-  if (!check) return false
-
-  const previousKey = cachedKey
-  const previousVersion = cachedVersion
-  const previousKeys = cachedKeys
+async function initializeCrypto(passphrase: string, options: CryptoInitOptions): Promise<void> {
+  const scope = captureScope(), generation = ++initGeneration
+  const previous = context && scopeCurrent(context) ? context : null
+  // Retain the last committed ring for rollback through overlapping attempts;
+  // its old generation makes it unusable while a candidate is pending.
+  if (!previous) context = null
+  pendingGeneration = generation
+  const assertAttempt = () => {
+    if (!scopeCurrent(scope) || generation !== initGeneration) throw new CryptoContextChanged()
+    options.assertCurrent?.()
+  }
+  const checkKey = metadataKey(scope, KEY_CHECK_KEY), versionKey = metadataKey(scope, VERSION_KEY)
+  let oldCheck: string | null = null, oldVersion: string | null = null
+  let writtenCheck: string | undefined, wroteVersion = false
   try {
-    const [v1, v2] = await Promise.all([
-      deriveKey(passphrase, 'v1'),
-      deriveKey(passphrase, 'v2'),
-    ])
-    cachedKeys = { v1, v2 }
-    cachedVersion = getStoredVersion()
-    cachedKey = cachedKeys[cachedVersion]!
-    return (await decrypt(check)) === 'arty-ok'
-  } catch {
-    return false
+    assertAttempt()
+    oldCheck = localStorage.getItem(checkKey); oldVersion = localStorage.getItem(versionKey)
+    const version = targetVersion()
+    const keys = await deriveKeys(passphrase, getSalt(scope))
+    assertAttempt()
+    const candidate: CryptoContext = { ...scope, generation, version, keys }
+    let mayWriteCheck = false
+    if (oldCheck) {
+      try { mayWriteCheck = (await decryptWithRing(oldCheck, candidate)) === 'arty-ok' } catch { /* wrong credential: preserve marker */ }
+      assertAttempt()
+    } else {
+      const legacy = checkKey !== KEY_CHECK_KEY ? localStorage.getItem(KEY_CHECK_KEY) : null
+      if (legacy) {
+        try { mayWriteCheck = (await decryptWithRing(legacy, candidate)) === 'arty-ok' } catch { /* another account */ }
+        assertAttempt()
+      }
+      if (!mayWriteCheck) {
+        mayWriteCheck = true
+        for (const key of encryptedKeys(scope)) {
+          const raw = localStorage.getItem(key)
+          try { if (raw) await decryptWithRing(raw, candidate) } catch { mayWriteCheck = false }
+          assertAttempt()
+          if (!mayWriteCheck) break
+        }
+      }
+    }
+    const nextCheck = mayWriteCheck ? await encryptWithRing('arty-ok', candidate) : undefined
+    assertAttempt()
+    // Do not rewind another window's marker while this derivation was pending.
+    if (localStorage.getItem(checkKey) !== oldCheck || localStorage.getItem(versionKey) !== oldVersion) throw new CryptoContextChanged()
+    if (nextCheck !== undefined) {
+      localStorage.setItem(checkKey, nextCheck); writtenCheck = nextCheck
+      localStorage.setItem(versionKey, version); wroteVersion = true
+    }
+    options.commit?.()
+    context = candidate
+  } catch (error) {
+    // Restore only our own marker writes. No ciphertext or salt is removed.
+    // This is best-effort localStorage recovery, not an atomic multi-key store.
+    if (generation === initGeneration && scopeCurrent(scope)) {
+      try {
+        if (writtenCheck !== undefined && localStorage.getItem(checkKey) === writtenCheck) {
+          if (oldCheck === null) localStorage.removeItem(checkKey); else localStorage.setItem(checkKey, oldCheck)
+        }
+        if (wroteVersion) {
+          if (oldVersion === null) localStorage.removeItem(versionKey); else localStorage.setItem(versionKey, oldVersion)
+        }
+      } catch { /* Keep recoverable ciphertext; caller gets the original failure. */ }
+      // A failed BYOK commit must not leave new crypto with old API credentials.
+      context = previous ? { ...previous, generation } : null
+    }
+    throw error
   } finally {
-    cachedKey = previousKey
-    cachedVersion = previousVersion
-    cachedKeys = previousKeys
+    if (pendingGeneration === generation) pendingGeneration = null
   }
 }
 
-/**
- * Returns true if crypto has been initialized.
- */
-export function isCryptoReady(): boolean {
-  return cachedKey !== null
+/** Verify locally: never swap or restore the active global key ring. */
+export async function verifyCrypto(passphrase: string): Promise<boolean> {
+  const scope = captureScope(), generation = initGeneration
+  const checkKey = metadataKey(scope, KEY_CHECK_KEY), check = localStorage.getItem(checkKey)
+  if (!check) return false
+  try {
+    const ring = { keys: await deriveKeys(passphrase, getSalt(scope, false)), version: storedVersion(scope) }
+    const valid = (await decryptWithRing(check, ring)) === 'arty-ok'
+    return scopeCurrent(scope) && generation === initGeneration && localStorage.getItem(checkKey) === check && valid
+  } catch { return false }
 }
-
-/**
- * Returns true if the currently cached key can decrypt KEY_CHECK_KEY.
- * Used by callers (bootstrapGoogleStorage) to distinguish "blob genuinely
- * corrupt" (key OK, decrypt fails) from "wrong passphrase loaded" (key
- * mismatch, decrypt fails on every blob). The latter must NOT trigger a
- * destructive wipe — see BUG 43, BUG 47.
- */
+/** Ready means a candidate for this session, not that all history is unlocked. */
+export function isCryptoReady(): boolean { return currentContext() !== null }
+export function isCryptoInitializing(): boolean { return pendingGeneration === initGeneration }
 export async function selfTestCrypto(): Promise<boolean> {
-  if (!cachedKey) return false
-  const check = localStorage.getItem(scopedMetadataKey(KEY_CHECK_KEY))
+  const captured = currentContext()
+  if (!captured) return false
+  const check = localStorage.getItem(metadataKey(captured, KEY_CHECK_KEY))
   if (!check) return true
   try {
-    return (await decrypt(check)) === 'arty-ok'
-  } catch {
+    const valid = (await decryptWithRing(check, captured)) === 'arty-ok'
+    assertContext(captured)
+    return valid
+  } catch (error) {
+    assertContext(captured)
+    if (isCryptoContextChanged(error)) throw error
     return false
   }
 }
 
-/**
- * Base64-encode bytes by 8 KB chunks. A naive `String.fromCharCode(...bytes)`
- * spreads the whole array into call arguments → RangeError on large payloads
- * (conversation blobs sont de l'ordre du Mo). Cf. BUG 50.
- */
 function bytesToBase64(bytes: Uint8Array): string {
   let binary = ''
-  const CHUNK = 0x8000
-  for (let i = 0; i < bytes.length; i += CHUNK) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK))
-  }
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
   return btoa(binary)
 }
-
-/**
- * Encrypt a string value. Returns a base64-encoded ciphertext.
- */
-export async function encrypt(plaintext: string): Promise<string> {
-  if (!cachedKey || !cachedVersion) throw new Error('Crypto not initialized')
-
-  const enc = new TextEncoder()
+async function encryptWithRing(plaintext: string, ring: KeyRing): Promise<string> {
   const iv = crypto.getRandomValues(new Uint8Array(12))
-  const ciphertext = await crypto.subtle.encrypt(
-    { name: 'AES-GCM', iv },
-    cachedKey,
-    enc.encode(plaintext)
-  )
-
-  // Pack IV + ciphertext
-  const packed = new Uint8Array(iv.length + new Uint8Array(ciphertext).length)
-  packed.set(iv)
-  packed.set(new Uint8Array(ciphertext), iv.length)
-
-  return `${cachedVersion}:${bytesToBase64(packed)}`
+  const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, ring.keys[ring.version], new TextEncoder().encode(plaintext))
+  const packed = new Uint8Array(iv.length + ciphertext.byteLength)
+  packed.set(iv); packed.set(new Uint8Array(ciphertext), iv.length)
+  return `${ring.version}:${bytesToBase64(packed)}`
 }
-
-/**
- * Decrypt a base64-encoded ciphertext. Returns the original string.
- */
-export async function decrypt(encoded: string): Promise<string> {
-  if (!cachedKey) throw new Error('Crypto not initialized')
-
+export async function encrypt(plaintext: string): Promise<string> {
+  const captured = requireContext()
+  const result = await encryptWithRing(plaintext, captured)
+  assertContext(captured)
+  return result
+}
+async function decryptWithKey(encoded: string, key: CryptoKey): Promise<string> {
+  const packed = Uint8Array.from(atob(encoded), c => c.charCodeAt(0))
+  const plaintext = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: packed.slice(0, 12) }, key, packed.slice(12))
+  return new TextDecoder().decode(plaintext)
+}
+async function decryptWithRing(encoded: string, ring: KeyRing): Promise<string> {
   const envelope = /^(v1|v2):(.*)$/s.exec(encoded)
-  if (envelope) {
-    const key = cachedKeys[envelope[1] as CryptoVersion]
-    if (!key) throw new Error('Crypto version not initialized')
-    return decryptWithKey(envelope[2]!, key)
-  }
-
-  // Legacy blobs have no version envelope. Try the active version first, then
-  // the other derivation. This is what makes an old partially migrated account
-  // recoverable without mutating its ciphertext in place.
-  const attempts = [
-    cachedKey,
-    ...(['v1', 'v2'] as CryptoVersion[])
-      .map((version) => cachedKeys[version])
-      .filter((key): key is CryptoKey => !!key && key !== cachedKey),
-  ]
+  if (envelope) return decryptWithKey(envelope[2]!, ring.keys[envelope[1] as CryptoVersion])
+  const versions: CryptoVersion[] = ring.version === 'v1' ? ['v1', 'v2'] : ['v2', 'v1']
   let lastError: unknown
-  for (const key of attempts) {
-    try { return await decryptWithKey(encoded, key) } catch (error) { lastError = error }
+  for (const version of versions) {
+    try { return await decryptWithKey(encoded, ring.keys[version]) } catch (error) { lastError = error }
   }
   throw lastError ?? new Error('Unable to decrypt ciphertext')
 }
-
-async function decryptWithKey(encoded: string, key: CryptoKey): Promise<string> {
-
-  const packed = Uint8Array.from(atob(encoded), (c) => c.charCodeAt(0))
-  const iv = packed.slice(0, 12)
-  const ciphertext = packed.slice(12)
-
-  const plaintext = await crypto.subtle.decrypt(
-    { name: 'AES-GCM', iv },
-    key,
-    ciphertext
-  )
-
-  return new TextDecoder().decode(plaintext)
+export async function decrypt(encoded: string): Promise<string> {
+  const captured = requireContext()
+  try {
+    const result = await decryptWithRing(encoded, captured)
+    assertContext(captured)
+    return result
+  } catch (error) {
+    assertContext(captured) // turn late failure into cancellation, not corruption
+    throw error
+  }
 }
 
-// ─── Secure localStorage wrappers ───
-
-/**
- * Store data encrypted in localStorage.
- */
+/** Legacy wrapper; the existing no-crypto plain fallback is NOT used by projects. */
 export async function secureSet(key: string, value: unknown): Promise<void> {
-  if (!cachedKey) {
-    // Fallback: store as plain JSON if crypto not ready (first launch)
-    localStorage.setItem(key, JSON.stringify(value))
-    return
+  const captured = currentContext()
+  if (!captured) {
+    if (isCryptoInitializing()) throw new CryptoContextChanged()
+    localStorage.setItem(key, JSON.stringify(value)); return
   }
-
-  const json = JSON.stringify(value)
-  const encrypted = await encrypt(json)
+  const encrypted = await encrypt(JSON.stringify(value))
+  assertContext(captured)
   localStorage.setItem(key, encrypted)
 }
-
-/**
- * Read and decrypt data from localStorage.
- * Falls back to reading plain JSON for migration from unencrypted data.
- */
 export async function secureGet<T>(key: string): Promise<T | null> {
   const raw = localStorage.getItem(key)
   if (!raw) return null
-
-  // Try decrypting first
-  if (cachedKey) {
+  const captured = currentContext()
+  if (captured) {
     try {
       const json = await decrypt(raw)
+      assertContext(captured)
       return JSON.parse(json) as T
-    } catch {
-      // Decryption failed — might be old unencrypted data, try plain JSON
+    } catch (error) {
+      assertContext(captured)
+      if (isCryptoContextChanged(error)) throw error
     }
   }
-
-  // Fallback: try parsing as plain JSON (migration path)
-  try {
-    return JSON.parse(raw) as T
-  } catch {
-    return null
-  }
+  try { return JSON.parse(raw) as T } catch { return null }
 }
-
-/**
- * Migrate a localStorage key from plain to encrypted.
- * Does nothing if crypto isn't ready or key doesn't exist.
- */
 export async function migrateKey(key: string): Promise<void> {
-  if (!cachedKey) return
+  const captured = currentContext()
+  if (!captured) return
   const raw = localStorage.getItem(key)
   if (!raw) return
-
-  // Check if already encrypted (base64 that's NOT valid JSON)
-  try {
-    JSON.parse(raw)
-    // It's valid JSON = unencrypted. Re-encrypt it.
-    const encrypted = await encrypt(raw)
-    localStorage.setItem(key, encrypted)
-  } catch {
-    // Not valid JSON = probably already encrypted or corrupted. Leave it.
-  }
+  try { JSON.parse(raw) } catch { return }
+  const encrypted = await encrypt(raw)
+  assertContext(captured)
+  if (localStorage.getItem(key) === raw) localStorage.setItem(key, encrypted)
 }

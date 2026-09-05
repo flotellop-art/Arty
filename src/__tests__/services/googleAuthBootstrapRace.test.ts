@@ -13,7 +13,8 @@ vi.mock('../../services/userSession', () => ({
   getActiveUserId: () => state.owner,
   getActiveSessionEpoch: () => state.epoch,
 }))
-vi.mock('../../services/crypto', () => ({
+vi.mock('../../services/crypto', async importOriginal => ({
+  ...await importOriginal<typeof import('../../services/crypto')>(), captureCryptoGuard: () => () => true,
   isCryptoReady: () => true,
   decrypt: vi.fn(() => new Promise<string>((resolve) => { state.resolveDecrypt = resolve })),
   encrypt: vi.fn((value: string) => state.delayEncrypt

@@ -5,10 +5,6 @@ import { Capacitor } from '@capacitor/core'
 import { useConversation } from './hooks/useConversation'
 import { useAppSetup } from './hooks/useAppSetup'
 import { useAuth } from './hooks/useAuth'
-import { initCrypto, isCryptoReady } from './services/crypto'
-import { bootstrapGoogleStorage } from './services/googleAuth'
-import { bootstrapConversationStorage } from './services/storage'
-import { getJSON } from './services/scopedStorage'
 import { QuestionModal } from './components/chat/QuestionModal'
 import { MorningBrief } from './components/home/MorningBrief'
 import { HomeScreen } from './components/home/HomeScreen'
@@ -867,23 +863,8 @@ export default function App() {
   authRef.current = auth
   const processedDeepLinkRef = useRef<string | null>(null)
 
-  // Initialize AES-256 crypto at startup so later storage writes (Google
-  // tokens, conversations) go through the encrypted path. When an
-  // authenticated session is already present, derive the key from the
-  // Anthropic API key stored under the active user scope; otherwise fall
-  // back to a stable per-device salt (initCrypto still requires a
-  // passphrase — here we use a predictable device marker that upgrades to
-  // the user key as soon as login completes via useAuth).
-  useEffect(() => {
-    if (isCryptoReady()) return
-    const keys = getJSON<{ anthropic?: string }>('api-keys')
-    if (!keys?.anthropic) return
-    initCrypto(keys.anthropic)
-      .then(() => Promise.all([bootstrapGoogleStorage(), bootstrapConversationStorage()]))
-      .catch(() => {
-        // Non-fatal: useAuth will retry initCrypto once auth resolves.
-      })
-  }, [])
+  // useAuth owns crypto initialization and all three storage bootstraps.
+  // A second App initializer could supersede the session transaction.
 
   // Listen for deep links (native OAuth callback)
   // CSRF state check intentionally NOT done here — `verifyOAuthState()` is

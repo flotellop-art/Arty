@@ -128,11 +128,59 @@ réels ; préparer protocole et instrumentation sans fabriquer leurs résultats.
   d'une suppression, du quota, des générations et de l'assainissement Gmail.
 - Deux GO indépendants ; vérification finale complète réussie : 211 fichiers,
   2 189 tests, couverture, typecheck front/back, no-CASA/addon et build.
-  Publication et validation CI/Pages du correctif restent à vérifier.
+  PR [#441](https://github.com/flotellop-art/Arty/pull/441), squash main
+  `1fbbe2fe2ae76f498a84cb4c4a71309e7f7d9644`, fusion 04:45 UTC. CI PR et main
+  web/Android/orchestrateur/build-and-distribute réussies, Pages production
+  succès `1fba6b2a-7fd6-42ac-8468-27c90e293837`. HTTP `/` 200, asset servi
+  `index-DBFGp4A3.js`, 940 897 octets.
+  Recette visuelle/appareil non vérifiée.
 - Limites distinctes : pas de verrou transactionnel inter-onglets de l'ancien
   localStorage ; propriété des clés crypto globales et bootstrap d'auth à
   fiabiliser avant la bibliothèque W04. Celle-ci utilisera un store IDB chiffré
   avant commit, avec révisions contrôlées en transaction, sans copie en clair.
+
+### W04 — prérequis crypto/session, code en vérification
+
+- Contexte crypto immuable lié au compte, à l'époque de session et à la
+  génération d'initialisation. Dérivation et vérification utilisent des
+  candidats locaux ; `verifyCrypto` ne remplace plus la clé globale, et la
+  version de l'enveloppe est figée avant chiffrement. Les marqueurs physiques
+  sont capturés ; anciens ciphertexts v1/v2 et sans enveloppe conservés.
+- La disponibilité indique seulement un candidat pour cette session, pas le
+  déverrouillage de tous les anciens fichiers. Mauvaise clé : marqueur et
+  ciphertext conservés. Pas de rechiffrement massif, suppression de données,
+  nouvelle passphrase utilisateur, modification d'algorithme ou promesse E2EE.
+- Annulation typée distincte de corruption : bootstraps Google/conversations
+  n'effacent ni ne mettent en quarantaine un résultat obsolète. Writers Google
+  refusent le fallback en clair après annulation et pendant initialisation ;
+  leur cache antérieur est restauré seulement dans la même session. Les
+  anciennes copies de secours en clair des conversations restent explicites.
+- Garde avant compression/IDB, chiffrement et commit des pièces jointes ;
+  propriétaire du `fileId` existant contrôlé dans la même transaction readwrite
+  que l'écriture. Aucun nouvel appel payant ou réseau documentaire ajouté.
+- Initialisation App redondante supprimée, restauration useAuth annulable,
+  switch sans UI A au-dessus du stockage B. Un échec courant remet l'UI hors
+  compte sans effacer les historiques ; un échec obsolète ne nettoie pas le
+  compte gagnant. Fichiers/conversations restent des chargements optionnels.
+- Édition BYOK liée à une seule ouverture et session. Elle attend le bootstrap
+  crypto en cours, puis commit synchrone des credentials avant publication de
+  la candidate ; fermer annule aussi cette publication. Quota/cancel restaure
+  le dernier contexte committé, même avec candidats concurrents. Restauration
+  des petits marqueurs best-effort : pas de transaction multi-clés localStorage.
+- Après commit/rollback, reprise seulement des stores non prêts ; pas de
+  re-décryptage forcé des caches déjà chargés sous une clé volontairement
+  différente. Un échec de chargement optionnel ne devient pas une fausse erreur
+  de sauvegarde BYOK. Les pipelines non modifiés (ex. préparation d'un rapport
+  avant `secureSet`) ne sont pas déclarés globalement isolés par ce lot.
+- Nouveaux tests permanents : 17 courses avec vraie Web Crypto, 5 du composant
+  BYOK avec crypto réelle, 4 de reprise sélective, 4 auth/StrictMode, 4 fichiers
+  avec IDB simulé. Fermeture durant init froide, rollback exact de marqueurs
+  v1/v2 sur quota, verification concurrente et annulation du refresh couvertes.
+- Deux GO finaux indépendants, dont reproduction Web Crypto de l'ancien
+  fallback OAuth en clair puis de son refus après correctif. Vérification
+  finale complète : 214 fichiers / 2 223 tests, couverture, typecheck front/back,
+  no-CASA/addon et build réussis. CI/Pages de ce lot restent à vérifier après PR.
+
 
 ### W03 — catalogue, comparateur et provenance
 

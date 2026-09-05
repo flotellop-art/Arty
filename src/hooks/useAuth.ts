@@ -15,7 +15,7 @@ import {
   type AuthMethod,
 } from '../services/userSession'
 import { setActiveKeys, clearActiveKeys } from '../services/activeApiKey'
-import { initCrypto } from '../services/crypto'
+import { initCrypto, isCryptoReady, isCryptoContextChanged, CryptoContextChanged } from '../services/crypto'
 import { bootstrapGoogleStorage, logout as googleLogout, clearOAuthState, resetGoogleMemCache } from '../services/googleAuth'
 import { bootstrapFileStorage } from '../services/secureFileStorage'
 import { bootstrapConversationStorage, resetConversationMemCache } from '../services/storage'
@@ -50,7 +50,10 @@ export function useAuth() {
   // from a tester gives us an actionable stack trace. bootstrapGoogleStorage
   // also self-heals corrupt blobs now.
   useEffect(() => {
-    if (!currentUser) return
+    if (!currentUser || currentUser.userId !== getActiveUserId()) return
+    const owner = currentUser.userId, epoch = getActiveSessionEpoch()
+    let cancelled = false
+    const current = () => !cancelled && owner === getActiveUserId() && epoch === getActiveSessionEpoch()
     adoptPendingTrialRemaining()
     // Legacy reports predate account scoping and contain no owner metadata.
     // They cannot be assigned safely, so remove them on the first authenticated
@@ -59,11 +62,15 @@ export function useAuth() {
     const keys = scoped.getJSON<StoredKeys>('api-keys')
     if (!keys?.anthropic) return
     setActiveKeys(keys.anthropic, keys.gemini, keys.mistral, keys.openai)
-    initCrypto(keys.anthropic)
-      .then(() => Promise.all([bootstrapGoogleStorage(), bootstrapFileStorage(), bootstrapConversationStorage()]))
+    const initialize = isCryptoReady() ? Promise.resolve() : initCrypto(keys.anthropic, {
+      assertCurrent: () => { if (!current()) throw new CryptoContextChanged() },
+    })
+    initialize
+      .then(() => { if (current()) return Promise.all([bootstrapGoogleStorage(), bootstrapFileStorage(), bootstrapConversationStorage()]) })
       .catch((err) => {
-        console.error('[useAuth] crypto bootstrap failed:', err)
+        if (current() && !isCryptoContextChanged(err)) console.error('[useAuth] crypto bootstrap failed:', err)
       })
+    return () => { cancelled = true }
   }, [currentUser])
 
   const login = useCallback(async (
@@ -292,19 +299,38 @@ export function useAuth() {
     clearPendingTrialRemaining()
 
     // Activate new session
+    setCurrentUser(null) // Never keep account A's UI over account B's active scope.
     setActiveSession(session)
+    const epoch = getActiveSessionEpoch()
+    const current = () => getActiveUserId() === userId && getActiveSessionEpoch() === epoch
+    const assertCurrent = () => { if (!current()) throw new CryptoContextChanged() }
 
     // Restore new user's API keys
+    try {
     const keys = scoped.getJSON<StoredKeys>('api-keys')
     if (keys?.anthropic) {
-      await initCrypto(keys.anthropic)
+      await initCrypto(keys.anthropic, { assertCurrent })
+      assertCurrent()
       await bootstrapGoogleStorage()
-      bootstrapConversationStorage().catch(() => {})
-      bootstrapFileStorage().catch(() => {})
+      assertCurrent()
+      await Promise.allSettled([bootstrapConversationStorage(), bootstrapFileStorage()])
+      assertCurrent()
       setActiveKeys(keys.anthropic, keys.gemini, keys.mistral, keys.openai)
     }
 
+    assertCurrent()
     setCurrentUser(session)
+    } catch (error) {
+      if (current()) {
+        clearActiveKeys()
+        resetGoogleMemCache()
+        resetConversationMemCache()
+        resetMailAccountsCache()
+        clearActiveSession()
+        setCurrentUser(null)
+      }
+      throw error
+    }
     } finally {
       authTransactionInFlight = false
     }

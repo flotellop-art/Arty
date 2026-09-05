@@ -36,7 +36,7 @@ vi.mock('../../services/activeApiKey', () => ({
   setActiveKeys: vi.fn(),
   clearActiveKeys: mocks.clearActiveKeys,
 }))
-vi.mock('../../services/crypto', () => ({ initCrypto: vi.fn(async () => {}) }))
+vi.mock('../../services/crypto', async importOriginal => ({ ...await importOriginal<typeof import('../../services/crypto')>(), initCrypto: vi.fn(async () => {}) }))
 vi.mock('../../services/googleAuth', () => ({
   bootstrapGoogleStorage: vi.fn(async () => {}),
   logout: mocks.googleLogout,

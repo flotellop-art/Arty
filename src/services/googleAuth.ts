@@ -2,7 +2,7 @@ import type { GoogleTokens, GoogleUser } from '../types/google'
 import { safeJson } from '../utils/safeJson'
 import * as scoped from './scopedStorage'
 import { apiUrl } from './apiBase'
-import { encrypt, decrypt, isCryptoReady, selfTestCrypto } from './crypto'
+import { encrypt, decrypt, isCryptoReady, selfTestCrypto, captureCryptoGuard, isCryptoContextChanged, isCryptoInitializing } from './crypto'
 import { getActiveSessionEpoch, getActiveUserId } from './userSession'
 
 const FETCH_TIMEOUT_MS = 15_000
@@ -422,14 +422,18 @@ export async function storeTokens(
   expectedOwner?: GoogleStorageOwner,
 ): Promise<boolean> {
   if (expectedOwner && !storageOwnerMatches(expectedOwner)) return false
+  if (isCryptoInitializing()) return false
+  const cryptoCurrent = isCryptoReady() ? captureCryptoGuard() : () => true
   const ownerAtStart = currentStorageOwner()
   const writeGeneration = ++tokenStorageGeneration
+  const previousMemTokens = memTokens
   const writeStillCurrent = () =>
     writeGeneration === tokenStorageGeneration
     && storageOwnerMatches(ownerAtStart)
     && (!expectedOwner || storageOwnerMatches(expectedOwner))
+    && cryptoCurrent()
   const abandonWrite = () => {
-    if (writeGeneration === tokenStorageGeneration && memTokens === tokens) memTokens = null
+    if (writeGeneration === tokenStorageGeneration && memTokens === tokens) memTokens = storageOwnerMatches(ownerAtStart) ? previousMemTokens : null
     return false
   }
   memTokens = tokens
@@ -440,7 +444,8 @@ export async function storeTokens(
       scoped.setItem(TOKENS_ENC_KEY, encrypted)
       scoped.removeItem(TOKENS_PLAIN_KEY) // drop legacy plain copy
       return true
-    } catch {
+    } catch (error) {
+      if (isCryptoContextChanged(error)) return abandonWrite()
       if (!writeStillCurrent()) return abandonWrite()
       // fall through to plain storage
     }
@@ -520,6 +525,8 @@ export async function storeUser(
   expectedOwner?: GoogleStorageOwner,
 ): Promise<boolean> {
   if (expectedOwner && !storageOwnerMatches(expectedOwner)) return false
+  if (isCryptoInitializing()) return false
+  const cryptoCurrent = isCryptoReady() ? captureCryptoGuard() : () => true
   const ownerAtStart = currentStorageOwner()
   const writeGeneration = ++userStorageGeneration
   const previousMemUser = memUser
@@ -527,8 +534,9 @@ export async function storeUser(
     writeGeneration === userStorageGeneration
     && storageOwnerMatches(ownerAtStart)
     && (!expectedOwner || storageOwnerMatches(expectedOwner))
+    && cryptoCurrent()
   const abandonWrite = () => {
-    if (writeGeneration === userStorageGeneration && memUser === user) memUser = previousMemUser
+    if (writeGeneration === userStorageGeneration && memUser === user) memUser = storageOwnerMatches(ownerAtStart) ? previousMemUser : null
     return false
   }
   memUser = user
@@ -547,7 +555,8 @@ export async function storeUser(
         try { scoped.removeItem(USER_PLAIN_KEY) } catch { /* encrypted copy committed */ }
         return true
       }
-    } catch {
+    } catch (error) {
+      if (isCryptoContextChanged(error)) return abandonWrite()
       if (!writeStillCurrent()) return abandonWrite()
       // fall through
     }
@@ -770,12 +779,15 @@ export function getStoredUser(): GoogleUser | null {
 export async function bootstrapGoogleStorage(): Promise<void> {
   if (!isCryptoReady()) return
   const ownerAtStart = getActiveUserId()
+  const epochAtStart = getActiveSessionEpoch()
+  const cryptoCurrent = captureCryptoGuard()
+  const sessionCurrent = () => ownerAtStart === getActiveUserId() && epochAtStart === getActiveSessionEpoch() && cryptoCurrent()
   let expectedTokenGeneration = tokenStorageGeneration
   let expectedUserGeneration = userStorageGeneration
   const tokenContextIsCurrent = () =>
-    ownerAtStart === getActiveUserId() && expectedTokenGeneration === tokenStorageGeneration
+    sessionCurrent() && expectedTokenGeneration === tokenStorageGeneration
   const userContextIsCurrent = () =>
-    ownerAtStart === getActiveUserId() && expectedUserGeneration === userStorageGeneration
+    sessionCurrent() && expectedUserGeneration === userStorageGeneration
 
   try {
     // Tokens
@@ -783,17 +795,18 @@ export async function bootstrapGoogleStorage(): Promise<void> {
     if (encTokens) {
       try {
         const decryptedTokens = JSON.parse(await decrypt(encTokens)) as GoogleTokens
-        if (!tokenContextIsCurrent()) return
+        if (!tokenContextIsCurrent() || scoped.getItem(TOKENS_ENC_KEY) !== encTokens) return
         memTokens = decryptedTokens
       } catch (err) {
-        if (!tokenContextIsCurrent()) return
+        if (isCryptoContextChanged(err)) return
+        if (!tokenContextIsCurrent() || scoped.getItem(TOKENS_ENC_KEY) !== encTokens) return
         // BUG 47 — distinguish "blob genuinely corrupt" (key OK, decrypt
         // fails) from "wrong passphrase loaded" (key mismatch). Only wipe
         // in the first case. The second happens transiently on cold boot
         // when initCrypto runs with a stale or wrong api-keys snapshot,
         // and used to force-relogin after every APK update.
         const keyOk = await selfTestCrypto()
-        if (!tokenContextIsCurrent()) return
+        if (!tokenContextIsCurrent() || scoped.getItem(TOKENS_ENC_KEY) !== encTokens) return
         if (keyOk) {
           console.warn('[googleAuth] tokens ciphertext corrupt (key self-test passed), wiping:', err)
           scoped.removeItem(TOKENS_ENC_KEY)
@@ -806,7 +819,7 @@ export async function bootstrapGoogleStorage(): Promise<void> {
       const plain = scoped.getJSON<GoogleTokens>(TOKENS_PLAIN_KEY)
       if (plain) {
         const committed = await storeTokens(plain) // re-encrypt & drop plain
-        if (!committed || ownerAtStart !== getActiveUserId()) return
+        if (!committed || !sessionCurrent()) return
         expectedTokenGeneration = tokenStorageGeneration
       }
     }
@@ -816,12 +829,13 @@ export async function bootstrapGoogleStorage(): Promise<void> {
     if (encUser) {
       try {
         const decryptedUser = JSON.parse(await decrypt(encUser)) as GoogleUser
-        if (!userContextIsCurrent()) return
+        if (!userContextIsCurrent() || scoped.getItem(USER_ENC_KEY) !== encUser) return
         memUser = decryptedUser
       } catch (err) {
-        if (!userContextIsCurrent()) return
+        if (isCryptoContextChanged(err)) return
+        if (!userContextIsCurrent() || scoped.getItem(USER_ENC_KEY) !== encUser) return
         const keyOk = await selfTestCrypto()
-        if (!userContextIsCurrent()) return
+        if (!userContextIsCurrent() || scoped.getItem(USER_ENC_KEY) !== encUser) return
         if (keyOk) {
           console.warn('[googleAuth] user ciphertext corrupt (key self-test passed), wiping:', err)
           scoped.removeItem(USER_ENC_KEY)
@@ -834,14 +848,14 @@ export async function bootstrapGoogleStorage(): Promise<void> {
       const plain = scoped.getJSON<GoogleUser>(USER_PLAIN_KEY)
       if (plain) {
         const committed = await storeUser(plain)
-        if (!committed || ownerAtStart !== getActiveUserId()) return
+        if (!committed || !sessionCurrent()) return
         expectedUserGeneration = userStorageGeneration
       }
     }
 
     if (!tokenContextIsCurrent() || !userContextIsCurrent()) return
     const mailboxMigrated = await migrateLegacyMailboxGrant()
-    if (ownerAtStart !== getActiveUserId()) return
+    if (!sessionCurrent()) return
     if (mailboxMigrated) {
       if (
         tokenStorageGeneration !== expectedTokenGeneration + 1
@@ -859,8 +873,8 @@ export async function bootstrapGoogleStorage(): Promise<void> {
     // bootstrap threw halfway. Without the finally, a mid-bootstrap crash
     // left subscribers (useGoogleAuth, InputBar) thinking Google was still
     // initialising, hiding the login button forever.
-    if (ownerAtStart === getActiveUserId()) googleStorageReady = true
-    if (typeof window !== 'undefined') {
+    if (sessionCurrent()) googleStorageReady = true
+    if (sessionCurrent() && typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('google-storage-ready'))
     }
   }

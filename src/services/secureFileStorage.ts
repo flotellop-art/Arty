@@ -7,8 +7,8 @@
 // (BUG 11 dans CLAUDE.md). IndexedDB a 50 MB → 1 GB selon la plateforme.
 
 import { openDB, type IDBPDatabase } from 'idb'
-import { encrypt, decrypt, isCryptoReady, selfTestCrypto } from './crypto'
-import { getActiveUserId } from './userSession'
+import { encrypt, decrypt, isCryptoReady, selfTestCrypto, captureCryptoGuard, CryptoContextChanged } from './crypto'
+import { getActiveUserId, getActiveSessionEpoch } from './userSession'
 import { generateId } from '../utils/generateId'
 import { compressImageIfNeeded } from './imageCompression'
 import {
@@ -65,13 +65,15 @@ function getDB(): Promise<IDBPDatabase> {
 // de bootstrapGoogleStorage (BUG 43 — ne JAMAIS lire en sync au mount des
 // stores chiffrés ; toujours attendre l'event ready).
 export async function bootstrapFileStorage(): Promise<void> {
+  const owner = getActiveUserId(), epoch = getActiveSessionEpoch()
+  const cryptoCurrent = isCryptoReady() ? captureCryptoGuard() : () => false
   try {
     await getDB()
-    if (isCryptoReady()) {
+    if (cryptoCurrent()) {
       await selfTestCrypto()
     }
   } finally {
-    window.dispatchEvent(new CustomEvent('file-storage-ready'))
+    if (owner === getActiveUserId() && epoch === getActiveSessionEpoch() && cryptoCurrent()) window.dispatchEvent(new CustomEvent('file-storage-ready'))
   }
 }
 
@@ -90,12 +92,15 @@ export async function putFile(
   file: FileAttachment,
   ownerUserId: string | null = getActiveUserId(),
 ): Promise<string> {
+  if (ownerUserId !== getActiveUserId()) throw new CryptoContextChanged()
   if (!isCryptoReady()) {
     throw new Error('Crypto not ready — cannot persist file')
   }
   if (!file.data) {
     throw new Error('File has no data to persist')
   }
+  const cryptoCurrent = captureCryptoGuard()
+  const assertCurrent = () => { if (!cryptoCurrent() || ownerUserId !== getActiveUserId()) throw new CryptoContextChanged() }
 
   const hasNormalizationMetadata = file.normalizationVersion !== undefined
   if (
@@ -142,7 +147,9 @@ export async function putFile(
         size: canonicalSize,
       }
     : await compressImageIfNeeded(file.data, file.type)
+  assertCurrent()
   const encryptedData = await encrypt(stored.data)
+  assertCurrent()
   const fileId = file.id || generateId()
   const record: StoredFile = {
     fileId,
@@ -164,7 +171,17 @@ export async function putFile(
   }
 
   const db = await getDB()
-  await db.put(STORE, record)
+  assertCurrent()
+  const tx = db.transaction(STORE, 'readwrite')
+  const existing = await tx.store.get(fileId) as StoredFile | undefined
+  if (!cryptoCurrent() || (existing && existing.ownerKey !== record.ownerKey)) {
+    tx.abort()
+    await tx.done.catch(() => {})
+    throw new CryptoContextChanged()
+  }
+  await tx.store.put(record)
+  await tx.done
+  assertCurrent()
   return fileId
 }
 
@@ -174,13 +191,16 @@ export async function getFile(
   fileId: string,
   ownerUserId: string | null = getActiveUserId(),
 ): Promise<FileAttachment | null> {
-  if (!isCryptoReady()) return null
+  if (!isCryptoReady() || ownerUserId !== getActiveUserId()) return null
+  const cryptoCurrent = captureCryptoGuard()
   const db = await getDB()
+  if (!cryptoCurrent()) return null
   const record = (await db.get(STORE, fileId)) as StoredFile | undefined
-  if (!record) return null
+  if (!cryptoCurrent() || !record) return null
   if (record.ownerKey !== ownerKeyFor(ownerUserId)) return null
   try {
     const data = await decrypt(record.encryptedData)
+    if (!cryptoCurrent()) return null
     return {
       id: record.fileId,
       name: record.name,
