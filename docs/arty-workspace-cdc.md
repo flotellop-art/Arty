@@ -108,6 +108,32 @@ réels ; préparer protocole et instrumentation sans fabriquer leurs résultats.
 
 ## Preuves par lot
 
+### W06 A3b.2 — stockage isolé candidat, activation OFF
+
+Contrat de génération globale implémenté : résolveurs histoire/crypto/assets,
+parser strict, bases déclarées obligatoirement existantes, provisioning neuf
+non destructeur et garde d'effacement partagée. Les accès Google ne sont plus
+supprimés lors d'un refus crypto pré-bootstrap ; le compteur provisoire n'est
+adopté qu'après ouverture du chiffrement. Auth/réglages restent à leurs adresses
+existantes. Les anciens rapports ne sont pas nettoyés au boot isolé.
+
+51 tests de runtime candidat avec vrai parser/admission/KDF/stores/hooks et
+API Web Locks simulée ; politique réelle OFF testée séparément avec la même
+fixture valide. A→B→A, logout/relogin/reload, sauvegarde relue, quarantaine et
+reprise crypto, courses/erreurs/effacement sont couverts. Deux GO readonly
+limités, après correction des objections de sûreté et de preuve.
+
+Pas encore une livraison de restauration : aucun migrateur ni writer du
+registre ; aucun override de la constante de release. La purge testée est
+celle de la génération active, pas celle des copies retenues. Recréation d'un
+owner inventorié, reprise froide, purge multigénération et import exact restent
+à terminer. Décisions et repli : `ADR_WORKSPACE_BACKUP.md`, section A3b.2.
+`npm run verify` final réussi : 257 fichiers / 2 866 tests + 1 ignoré,
+typecheck front/back, no-CASA/addon, couverture, build et worker Office verts.
+Couverture lignes 67,75 %, branches 60,45 %. Log local
+`../arty-isolated-readers-verify-final-20260905.log`.
+Reçus de PR/CI/Pages à consigner après livraison.
+
 ### W06 A3b.1 — admission du stockage livrée (#453)
 
 - PR [#453](https://github.com/flotellop-art/Arty/pull/453), head

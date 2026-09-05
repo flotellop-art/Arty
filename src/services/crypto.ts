@@ -3,9 +3,12 @@
  * derivation (including the public server-provided marker) is NOT user-secret
  * end-to-end encryption. No bulk rewrite or deletion of existing ciphertext.
  */
-import { getActiveUserId, getActiveSessionEpoch } from './userSession'
+import { getActiveUserId, getActiveSessionEpoch, getSessionProjectFence, PROJECT_ERASURE_FENCE_KEY } from './userSession'
 import { invalidateLocalDataViews } from './localDataInvalidation'
-import { assertDocumentWorkspace, documentWorkspaceSignal, documentStorageKey } from './workspaceWriter/runtime'
+import { assertDocumentWorkspace, documentWorkspaceSignal, documentCryptoKey, getDocumentStorageLayout } from './workspaceWriter/runtime'
+import type { CryptoSlot } from './workspaceWriter/layout'
+import { provisionIsolatedSalt, LocalCryptoRecoveryRequired } from './workspaceWriter/cryptoProvisioning'
+import { captureOwnerErasureGuard } from './projects/localErasureGuard'
 
 const SALT_KEY = 'arty-crypto-salt'
 const KEY_CHECK_KEY = 'arty-crypto-check'
@@ -33,7 +36,7 @@ function scopeCurrent(scope: Scope): boolean {
   return !documentWorkspaceSignal.aborted && scope.owner === getActiveUserId() && scope.epoch === getActiveSessionEpoch()
 }
 function metadataKey(scope: Scope, key: string): string {
-  return documentStorageKey(scope.owner, key.replace(/^arty-/, ''))
+  return documentCryptoKey(scope.owner, key.replace(/^arty-/, '') as CryptoSlot)
 }
 function currentContext(): CryptoContext | null {
   return context && context.generation === initGeneration && scopeCurrent(context) ? context : null
@@ -57,11 +60,19 @@ function targetVersion(): CryptoVersion {
 }
 function storedVersion(scope: Scope): CryptoVersion {
   const key = metadataKey(scope, VERSION_KEY)
-  return (localStorage.getItem(key) ?? (key !== VERSION_KEY ? localStorage.getItem(VERSION_KEY) : null)) === 'v2' ? 'v2' : 'v1'
+  return (localStorage.getItem(key) ?? (getDocumentStorageLayout().kind === 'legacy-v1' && key !== VERSION_KEY ? localStorage.getItem(VERSION_KEY) : null)) === 'v2' ? 'v2' : 'v1'
 }
 function getSalt(scope: Scope, create = true): Uint8Array {
   const key = metadataKey(scope, SALT_KEY)
   const own = localStorage.getItem(key)
+  if (getDocumentStorageLayout().kind === 'isolated-v1') {
+    // Never borrow a salt (or silently coerce a corrupt one) from legacy.
+    try {
+      const bytes: unknown = own === null ? null : JSON.parse(own)
+      if (!Array.isArray(bytes) || bytes.length !== 16 || bytes.some(b => !Number.isInteger(b) || b < 0 || b > 255)) throw new LocalCryptoRecoveryRequired()
+      return new Uint8Array(bytes)
+    } catch { throw new LocalCryptoRecoveryRequired() }
+  }
   if (own) return new Uint8Array(JSON.parse(own))
   const legacy = key !== SALT_KEY ? localStorage.getItem(SALT_KEY) : null
   if (legacy) {
@@ -111,7 +122,11 @@ export function initCrypto(passphrase: string, options: CryptoInitOptions = {}):
  * old markers and still publishes its candidate for non-destructive recovery.
  */
 async function initializeCrypto(passphrase: string, options: CryptoInitOptions): Promise<void> {
-  const scope = captureScope(), generation = ++initGeneration
+  const scope = captureScope()
+  const layout = getDocumentStorageLayout()
+  const fence = layout.kind === 'isolated-v1' ? getSessionProjectFence() : null
+  const assertNotErasing = layout.kind === 'isolated-v1' ? captureOwnerErasureGuard(scope.owner) : () => {}
+  const generation = ++initGeneration
   invalidateLocalDataViews()
   const previous = context && scopeCurrent(context) ? context : null
   // Retain the last committed ring for rollback through overlapping attempts;
@@ -120,6 +135,10 @@ async function initializeCrypto(passphrase: string, options: CryptoInitOptions):
   pendingGeneration = generation
   const assertAttempt = () => {
     if (!scopeCurrent(scope) || generation !== initGeneration) throw new CryptoContextChanged()
+    assertDocumentWorkspace()
+    assertNotErasing()
+    if (layout.kind === 'isolated-v1' && (layout !== getDocumentStorageLayout() ||
+      fence === null || fence !== (localStorage.getItem(PROJECT_ERASURE_FENCE_KEY) ?? 'initial'))) throw new CryptoContextChanged()
     options.assertCurrent?.()
   }
   const checkKey = metadataKey(scope, KEY_CHECK_KEY), versionKey = metadataKey(scope, VERSION_KEY)
@@ -129,13 +148,23 @@ async function initializeCrypto(passphrase: string, options: CryptoInitOptions):
     assertAttempt()
     oldCheck = localStorage.getItem(checkKey); oldVersion = localStorage.getItem(versionKey)
     const version = targetVersion()
-    const keys = await deriveKeys(passphrase, getSalt(scope))
+    const fresh = layout.kind === 'isolated-v1' && localStorage.getItem(metadataKey(scope, SALT_KEY)) === null
+    const salt = fresh ? await provisionIsolatedSalt(layout, scope.owner, {
+      assertCurrent: assertAttempt, signal: documentWorkspaceSignal, fence: fence!,
+    }) : getSalt(scope)
+    assertAttempt()
+    const keys = await deriveKeys(passphrase, salt)
     assertAttempt()
     const candidate: CryptoContext = { ...scope, generation, version, keys }
     let mayWriteCheck = false
     if (oldCheck) {
       try { mayWriteCheck = (await decryptWithRing(oldCheck, candidate)) === 'arty-ok' } catch { /* wrong credential: preserve marker */ }
       assertAttempt()
+    } else if (layout.kind === 'isolated-v1') {
+      // Missing historical check is NOT evidence of a correct key. Only this
+      // very attempt's empty-owner proof can establish a new check. A retained
+      // salt from an interrupted commit is reused without inventing a proof.
+      mayWriteCheck = fresh
     } else {
       const legacy = checkKey !== KEY_CHECK_KEY ? localStorage.getItem(KEY_CHECK_KEY) : null
       if (legacy) {
@@ -202,7 +231,7 @@ export async function selfTestCrypto(): Promise<boolean> {
   const captured = currentContext()
   if (!captured) return false
   const check = localStorage.getItem(metadataKey(captured, KEY_CHECK_KEY))
-  if (!check) return true
+  if (!check) return getDocumentStorageLayout().kind === 'legacy-v1'
   try {
     const valid = (await decryptWithRing(check, captured)) === 'arty-ok'
     assertContext(captured)

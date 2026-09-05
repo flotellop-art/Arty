@@ -684,7 +684,7 @@ CI Android de distribution `33983051469` réussie : compilation APK signé et
 mêmes HTTP 200, nom d'asset et empreinte ; ce sont deux observations de
 disponibilité, pas une mesure continue du taux d'erreur ou de latence.
 
-### A3b.2 — décision de préparation après #453 (pas encore implémentée)
+### A3b.2 — lecteurs/writers isolés candidats après #453 (activation OFF)
 
 Deux contre-revues indépendantes readonly ont comparé une génération globale
 par document et une table propriétaire→génération. Choix de préparation :
@@ -696,7 +696,7 @@ global conserve les singletons actuels et exige en contrepartie un inventaire
 raw de tous les propriétaires, y compris absents des sessions connues. Aucun
 nettoyage global ni copie de credentials n'est autorisé par cette décision.
 
-Contrat à implémenter/tester dans le prochain lot :
+Contrat retenu et implémenté dans le lot candidat ci-dessous :
 
 1. Résolveurs distincts historique (quatre slots exacts), autorité crypto
    (sel/check/version), assets, et auth/réglages restant à leur emplacement
@@ -739,3 +739,72 @@ anonymes ; base déclarée absente, contrôle perdu avec témoin v2, upgrade tar
 copie partielle ; reprise/purge sans crypto et URL OAuth conservée. La copie
 physique journalisée, son préflight cumulatif et les writers d'import exacts
 suivront ce contrat testé ; aucun état isolé n'est émis par #453.
+
+#### Implémentation candidate du 5 septembre
+
+`activation.ts` conserve une constante de release **false**, sans override URL,
+localStorage ou serveur. Le parser comprend le descripteur version 2
+`isolated-v1` (UUID canonique, inventaire dense strict, révision positive), mais
+la politique réelle le refuse avant de rendre l'App admissible. Aucun writer de
+registre, migrateur ou upgrade des anciennes DB n'est ajouté. Les noms sont
+calculés ; les deux témoins legacy version 2 et les deux DB isolées version 1
+doivent exister et avoir les schémas exacts dans la recette candidate.
+
+Historique/quarantaines et sel/check/version utilisent des résolveurs dédiés.
+Tokens, clés API, réglages et consentements restent aux anciennes adresses.
+Les CRUD, bootstrap, lectures de sauvegarde et suppressions ciblent les mêmes
+familles. Une DB isolée déclarée disparue n'est jamais recréée, même après
+fermeture de sa connexion en cache par versionchange. L'ouverture est bornée,
+et toute connexion obtenue puis refusée est fermée.
+
+Provisioning neuf strict, interne à une tentative crypto : propriétaire actif
+non anonyme et absent de l'inventaire ; zéro clé scoped legacy (même vide ou
+sans suffixe `-enc`), zéro slot isolé restant, zéro asset/usage/reçu d'effacement
+de ce propriétaire dans les DB legacy **et** isolées. Les erreurs et deadlines
+IDB ne valent pas absence. Le writer vérifie lui-même admission, identité du
+layout, propriétaire, époque, fence et génération RAM d'effacement ; le caller
+ajoute son numéro de tentative. La preuve readonly est consommée immédiatement
+par l'unique écriture du sel après une dernière vérification synchrone.
+Un effacement commencé après la dernière transaction, même déjà libéré,
+invalide la preuve. Une interruption après l'écriture conserve le sel pour le
+retry ; elle n'invente pas un check historique absent.
+
+Un sel isolé existant est validé strictement puis réutilisé, sans fallback
+global de sel/check/version. Un check historiquement absent reste non vérifié :
+pas de faux self-test positif autorisant le nettoyage d'un token illisible.
+Le compteur d'essai provisoire n'est adopté qu'après crypto. Un refus avant
+bootstrap ne déclenche plus Google logout ; le boot isolé ne nettoie pas les
+rapports globaux et ne réaffecte pas les données anonymes via la migration
+legacy. La politique de rollback des finaliseurs après bootstrap reste celle
+de l'auth existante ; ce lot ne crée pas une transaction multi-stockages OAuth.
+
+Tests : 51 scénarios du runtime candidat, vraie admission/parser/contrôleur de
+verrou/KDF/useAuth/CRUD/capture, avec seulement la politique finale activée en
+test (API Web Locks simulée, IndexedDB fake). Les documents de test sont arrêtés
+avant resetModules/teardown. Recettes positives Google/email/BYOK, compteur
+provisoire, A→B→A, logout/relogin, reload, quarantaine avec clé erronée puis
+correcte, fichier/projet/document et archive relue ; recettes négatives
+pré-admission/layout étranger/owner étranger, assets orphelins, marqueurs
+partiels, refus/quota, ouverture manquante, transaction readonly réellement
+mise en file, changement de session/fence, perte du document, deadline et
+effacement. Le test de politique réelle refuse la même fixture valide ; les
+tests de frontière existants vérifient le non-chargement privé.
+
+Deux contre-revues indépendantes readonly ont levé leurs objections : coercition
+UUID, fuite de connexion, anciennes clés Google et rapports, garde RAM
+d'effacement, assertion intrinsèque du writer et fiabilité du teardown de
+test. GO limité à la verticale inactive. Ce ne sont ni une recette navigateur
+isolée ni une validation APK installé.
+
+La purge de la **génération active** couvre désormais aussi ses slots histoire
+et crypto ; A/B et recréation d'un owner jamais inventorié sont testés. Cela ne
+valide pas l'effacement de toutes les copies. Un owner inventorié puis supprimé
+reste interdit de reprovisioning sans attestation durable de purge complète.
+Cette attestation, l'inventaire de toutes les générations retenues, la reprise
+froide sans crypto/session, le migrateur journalisé et l'import exact restent
+obligatoires avant activation. W06 n'est pas terminé.
+
+Repli : revert du lot par PR/CI/Pages si le login legacy ou le stockage existant
+régresse. Aucune migration n'ayant été émise, aucun rollback de données n'est
+nécessaire. Ne jamais activer isolated pour contourner une erreur. La CI Android
+et une réponse HTTP ne prouvent ni mise à jour installée ni taux d'erreur terrain.

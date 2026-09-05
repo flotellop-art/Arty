@@ -1,6 +1,7 @@
 import type { IDBPDatabase } from 'idb'
 import { openExistingDB } from '../readOnlyExistingDB'
-import { LEGACY_WORKSPACE_LAYOUT, type WorkspaceStorageLayout } from './layout'
+import { LEGACY_WORKSPACE_LAYOUT, isolatedWorkspaceLayout, type WorkspaceStorageLayout } from './layout'
+import { ISOLATED_WORKSPACE_ENABLED } from './activation'
 
 export const WORKSPACE_CONTROL_DB = 'arty-workspace-control'
 export const WORKSPACE_CONTROL_VERSION = 1
@@ -22,15 +23,26 @@ function fields(value: unknown, keys: string[]): value is Record<string, unknown
 }
 /** No generic ready/unknown-generation fallback. Metadata is not account data
  * or a restore journal, and this module exposes NO writer or repair operation. */
-export function validateWorkspaceControl(value: unknown): void {
-  if (!fields(value, ['format', 'version', 'layout', 'revision', 'state'])) reject('corrupt')
+export function validateWorkspaceControl(value: unknown): WorkspaceStorageLayout {
+  const legacyFields = ['format', 'version', 'layout', 'revision', 'state']
+  if (!fields(value, legacyFields) && !fields(value, [...legacyFields, 'generation', 'requiredOwners'])) reject('corrupt')
   if (value.format !== 'arty-workspace-control' || !Number.isSafeInteger(value.version) || (value.version as number) < 1) reject('corrupt')
-  if (value.version !== 1) reject('incompatible')
+  if (value.version !== 1 && value.version !== 2) reject('incompatible')
   if (typeof value.layout !== 'string' || !value.layout.length || value.layout.length > 64 ||
     !Number.isSafeInteger(value.revision) || (value.revision as number) < 1) reject('corrupt')
-  if (value.layout !== 'legacy-v1') reject('incompatible')
+  let layout: WorkspaceStorageLayout
+  if (value.version === 1 && value.layout === 'legacy-v1') {
+    if (!fields(value, legacyFields)) reject('corrupt')
+    layout = LEGACY_WORKSPACE_LAYOUT
+  } else if (value.version === 2 && value.layout === 'isolated-v1') {
+    if (!fields(value, [...legacyFields, 'generation', 'requiredOwners'])) reject('corrupt')
+    try { layout = isolatedWorkspaceLayout(value.generation as string, value.requiredOwners as (string | null)[]) }
+    catch { reject('corrupt') }
+    if (!ISOLATED_WORKSPACE_ENABLED) reject('incompatible')
+  } else reject('incompatible')
   if (value.state === 'maintenance') reject('maintenance')
   if (value.state !== 'ready') reject('corrupt')
+  return layout
 }
 
 type IndexShape = readonly [name: string, path: string | readonly string[]]
@@ -63,25 +75,31 @@ export async function readWorkspaceStorageLayout(guard: AdmissionGuard, timeoutM
   const stopped = new Promise<never>((_resolve, no) => { rejectStop = no })
   const stop = () => rejectStop(new WorkspaceAdmissionError(timedOut ? 'unavailable' : 'lost'))
   retired.signal.addEventListener('abort', stop, { once: true })
-  const inspect = async (name: string, version: number, shape: readonly StoreShape[], control = false) => {
+  const inspect = async (name: string, version: number, shape: readonly StoreShape[], control = false, required = false) => {
     assertCurrent()
     const db = await openExistingDB(name, version, assertCurrent, retired.signal)
     try {
       assertCurrent()
-      if (!db) return
+      if (!db) { if (required) reject('corrupt'); return }
       if (db.version !== version || [...db.objectStoreNames].sort().join() !== shape.map(s => s[0]).sort().join()) reject('corrupt')
-      await inspectDatabase(db, shape, control, assertCurrent, retired.signal)
+      const layout = await inspectDatabase(db, shape, control, assertCurrent, retired.signal)
       assertCurrent()
+      return layout
     } finally { db?.close() }
   }
   try {
     const reading = (async () => {
-      await inspect(WORKSPACE_CONTROL_DB, WORKSPACE_CONTROL_VERSION, CONTROL_SHAPE, true)
+      const layout = await inspect(WORKSPACE_CONTROL_DB, WORKSPACE_CONTROL_VERSION, CONTROL_SHAPE, true) ?? LEGACY_WORKSPACE_LAYOUT
       // A lost control DB must not silently admit known assets of a future
       // version. Future isolated stores need their own monotone witnesses too.
-      const layout = LEGACY_WORKSPACE_LAYOUT
-      await inspect(layout.files.name, layout.files.version, FILE_SHAPE)
-      await inspect(layout.projects.name, layout.projects.version, PROJECT_SHAPE)
+      if (layout.kind === 'isolated-v1') {
+        // Real version barriers in the old stores; a descriptor alone cannot
+        // exclude an old APK/worker which only understands the legacy layout.
+        await inspect(LEGACY_WORKSPACE_LAYOUT.files.name, 2, FILE_SHAPE, false, true)
+        await inspect(LEGACY_WORKSPACE_LAYOUT.projects.name, 2, PROJECT_SHAPE, false, true)
+      }
+      await inspect(layout.files.name, layout.files.version, FILE_SHAPE, false, layout.kind === 'isolated-v1')
+      await inspect(layout.projects.name, layout.projects.version, PROJECT_SHAPE, false, layout.kind === 'isolated-v1')
       assertCurrent()
       return layout
     })()
@@ -100,6 +118,7 @@ export async function readWorkspaceStorageLayout(guard: AdmissionGuard, timeoutM
 }
 
 async function inspectDatabase(db: IDBPDatabase, shape: readonly StoreShape[], control: boolean, assertCurrent: () => void, signal: AbortSignal) {
+  let layout: WorkspaceStorageLayout | undefined
   const tx = db.transaction(shape.map(s => s[0]), 'readonly')
   const abort = () => { try { tx.abort() } catch { /* settled */ } }
   signal.addEventListener('abort', abort, { once: true })
@@ -120,10 +139,11 @@ async function inspectDatabase(db: IDBPDatabase, shape: readonly StoreShape[], c
       const store = tx.objectStore('meta')
       if (await store.count() !== 1) reject('corrupt')
       assertCurrent()
-      validateWorkspaceControl(await store.get(WORKSPACE_CONTROL_KEY))
+      layout = validateWorkspaceControl(await store.get(WORKSPACE_CONTROL_KEY))
     }
     await tx.done
     assertCurrent()
+    return layout
   } catch (error) {
     abort(); await tx.done.catch(() => {}); throw error
   } finally { signal.removeEventListener('abort', abort) }
