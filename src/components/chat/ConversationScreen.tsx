@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { ChatSendHandler, Conversation, Message } from '../../types'
 import { ChatTopBar } from './ChatTopBar'
@@ -15,6 +15,7 @@ import { consumePendingDraft } from '../../services/shareTargetService'
 import { isDocumentConversation, hasProjectHistory } from '../../services/projects/chatPolicy'
 import { hasOfficeHistory } from '../../services/documents/prepareOfficeMessages'
 import { ProjectConversationPanel } from './ProjectConversationPanel'
+import { OfficeExportModal } from './OfficeExportModal'
 import type { Project } from '../../services/projects/types'
 import type { useDrive } from '../../hooks/useDrive'
 import type { useComputer } from '../../hooks/useComputer'
@@ -72,6 +73,8 @@ export function ConversationScreen({
 }: ConversationScreenProps) {
   const { t } = useTranslation()
   const [showSummary, setShowSummary] = useState(false)
+  const [exportTarget, setExportTarget] = useState<{ conversationId: string; messageId?: string } | null>(null)
+  useEffect(() => { setExportTarget(null) }, [conversation.id])
   // Message assistant ciblé par un signalement (policy Play Store
   // AI-Generated Content) — ouvre la ReportModal.
   const [reportTarget, setReportTarget] = useState<Message | null>(null)
@@ -87,6 +90,7 @@ export function ConversationScreen({
         euOnly={conversation.euOnly}
         conversation={conversation}
         onOpenSummary={() => setShowSummary(true)}
+        onExportOffice={() => setExportTarget({ conversationId: conversation.id })}
         conversations={conversations}
         onSelectConversation={onSelectConv}
       />
@@ -106,6 +110,7 @@ export function ConversationScreen({
           onTogglePin={onTogglePin}
           onEdit={onEdit}
           onRetry={onRetry}
+          onExport={(messageId) => setExportTarget({ conversationId: conversation.id, messageId })}
           onReport={(messageId) => {
             const msg = conversation.messages.find((m) => m.id === messageId)
             if (msg) setReportTarget(msg)
@@ -182,6 +187,7 @@ export function ConversationScreen({
         />
       )}
 
+      {exportTarget?.conversationId === conversation.id && <OfficeExportModal conversation={conversation} messageId={exportTarget.messageId} onClose={() => setExportTarget(null)} />}
       <ReportModal
         conversation={conversation}
         message={reportTarget}

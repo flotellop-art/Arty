@@ -65,6 +65,15 @@ beforeEach(() => {
 })
 
 describe('ChatTopBar — attribution par conversation', () => {
+  it.each(['0', '1'])('expose Office dans les deux menus (%s)', flag => {
+    localStorage.setItem('arty-chat-sheet-v2', flag)
+    const onExportOffice = vi.fn(), conv = conversation('export', 'mistral-medium-latest', 'eu_only')
+    render(<ChatTopBar title="Export" onBack={() => {}} conversation={conv} onExportOffice={onExportOffice} />)
+    if (flag === '0') fireEvent.click(screen.getByRole('button', { name: 'chat.topBar.aria.export' }))
+    else fireEvent.click(screen.getByRole('button', { name: 'chat.optionsSheet.open' }))
+    fireEvent.click(screen.getByText(/Exporter.*Word/))
+    expect(onExportOffice).toHaveBeenCalledOnce()
+  })
   it('réhydrate les deux raisons et ne laisse pas un stream concurrent polluer la conversation active', async () => {
     const convA = conversation(
       'conv-a',

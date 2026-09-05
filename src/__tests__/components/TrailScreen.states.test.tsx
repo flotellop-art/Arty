@@ -2,7 +2,7 @@
 // un écran vide. La référence URL est un UUID opaque résolu localement avant
 // tout appel réseau.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 
 vi.mock('react-i18next', () => ({
@@ -17,6 +17,12 @@ vi.mock('../../services/trailSnapshots', () => ({
   saveTrailGeometry: vi.fn(),
 }))
 vi.mock('../../services/native/shareFile', () => ({ downloadOrShareFile: vi.fn() }))
+vi.mock('../../services/toast', () => ({ toast: vi.fn() }))
+vi.mock('leaflet', () => {
+  const layer = () => ({ on: vi.fn(), addTo: vi.fn(), redraw: vi.fn() })
+  return { default: { map: () => ({ fitBounds: vi.fn(), remove: vi.fn(), invalidateSize: vi.fn() }), tileLayer: layer, polyline: layer,
+    control: { layers: layer, scale: layer }, latLngBounds: () => ({}) } }
+})
 vi.mock('../../services/native/location', () => ({
   getUserLocation: vi.fn(async () => null),
 }))
@@ -24,6 +30,8 @@ vi.mock('../../services/native/location', () => ({
 import { TrailScreen } from '../../screens/trail'
 import { fetchTrailGeometry } from '../../services/trailsClient'
 import { getTrailSnapshot } from '../../services/trailSnapshots'
+import { downloadOrShareFile } from '../../services/native/shareFile'
+import { toast } from '../../services/toast'
 
 const TRAIL_ID = '1f6e8d42-73c4-4f01-9d58-2a6f8c35e920'
 const mockFetch = vi.mocked(fetchTrailGeometry)
@@ -53,12 +61,24 @@ function renderAt(path: string) {
 }
 
 beforeEach(() => {
+  vi.mocked(toast).mockClear(); vi.mocked(downloadOrShareFile).mockReset()
   mockFetch.mockReset()
   mockSnapshot.mockReset()
   mockSnapshot.mockResolvedValue(snapshot)
 })
 
 describe('TrailScreen — états d’échec actionnables (BUG 61)', () => {
+  it.each(['capacity', 'Share canceled'])('export GPX : erreur %s distinguée de l’annulation', async error => {
+    mockFetch.mockResolvedValue({ ok: true, data: { id: 42, name: 'X', kind: 'horse', distanceKm: 2, distanceMeters: 2000,
+      sourceSegments: [[[45, 5], [45.1, 5.1]]], sourceSegmentDirectionLocked: [false], displaySegments: [[[45, 5], [45.1, 5.1]]],
+      integrity: { hasNestedRelations: false, unsupportedWayRoles: [], displaySafe: true }, provenance: { provider: 'OpenStreetMap', relationId: 42, fetchedAt: Date.now() } } })
+    vi.mocked(downloadOrShareFile).mockRejectedValue(new Error(error))
+    renderAt(`/trail/${TRAIL_ID}`)
+    fireEvent.click(await screen.findByText('trailPage.downloadGpx'))
+    await waitFor(() => expect(downloadOrShareFile).toHaveBeenCalled())
+    if (error === 'capacity') await waitFor(() => expect(toast).toHaveBeenCalledWith(expect.stringContaining('Export GPX impossible'), 'error'))
+    else expect(toast).not.toHaveBeenCalled()
+  })
   it('id non opaque → « introuvable » + retour, sans lookup ni réseau', async () => {
     renderAt('/trail/pas-un-id')
     expect(await screen.findByText('trailPage.notFound')).toBeInTheDocument()

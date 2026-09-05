@@ -8,6 +8,7 @@ import { StreamingIndicator } from './StreamingIndicator'
 import { ProjectSources } from './ProjectSources'
 
 interface MessageItemProps {
+  onExport?: (messageId: string) => void
   msg: Message
   index: number
   onAction?: (action: string, params: Record<string, string>) => void
@@ -19,12 +20,13 @@ interface MessageItemProps {
   isLast?: boolean
 }
 
-const MessageItem = memo(function MessageItem({ msg, index, onAction, onBranch, onTogglePin, onEdit, onRetry, onReport, isLast }: MessageItemProps) {
+const MessageItem = memo(function MessageItem({ msg, index, onExport, onAction, onBranch, onTogglePin, onEdit, onRetry, onReport, isLast }: MessageItemProps) {
   const handleBranch = useCallback(() => onBranch?.(index), [onBranch, index])
   const handleTogglePin = useCallback(() => onTogglePin?.(msg.id), [onTogglePin, msg.id])
   const handleEdit = useCallback((newContent: string) => onEdit?.(msg.id, newContent), [onEdit, msg.id])
   const handleRetry = useCallback(() => onRetry?.(msg.id), [onRetry, msg.id])
   const handleReport = useCallback(() => onReport?.(msg.id), [onReport, msg.id])
+  const handleExport = useCallback(() => onExport?.(msg.id), [onExport, msg.id])
 
   // Branche : pas sur le tout premier message (une branche vide n'a pas de sens).
   // Le bouton vit DANS la barre d'actions des bulles — l'ancien bouton flottant
@@ -61,6 +63,7 @@ const MessageItem = memo(function MessageItem({ msg, index, onAction, onBranch, 
           // Le placeholder de stream ('streaming') n'est pas signalable :
           // contenu partiel, non persisté tel quel.
           onReport={onReport && msg.id !== 'streaming' ? handleReport : undefined}
+          onExport={onExport && msg.id !== 'streaming' ? handleExport : undefined}
           model={msg.model}
           reasonCode={msg.reasonCode}
           subModelReasonCode={msg.subModelReasonCode}
@@ -74,6 +77,7 @@ const MessageItem = memo(function MessageItem({ msg, index, onAction, onBranch, 
 })
 
 interface MessageListProps {
+  onExport?: (messageId: string) => void
   messages: Message[]
   isStreaming: boolean
   streamingContent: string
@@ -97,7 +101,7 @@ interface MessageListProps {
 // Différent du comportement antérieur qui suivait le bas en permanence
 // — ça forçait à descendre à chaque token et empêchait de naviguer.
 
-export const MessageList = memo(function MessageList({ messages, isStreaming, streamingContent, conversationId, onAction, onBranch, onTogglePin, onEdit, onRetry, onReport }: MessageListProps) {
+export const MessageList = memo(function MessageList({ messages, isStreaming, streamingContent, conversationId, onExport, onAction, onBranch, onTogglePin, onEdit, onRetry, onReport }: MessageListProps) {
   const { t } = useTranslation()
   const scrollRef = useRef<HTMLDivElement>(null)
   const prevMessagesCount = useRef(messages.length)
@@ -205,6 +209,7 @@ export const MessageList = memo(function MessageList({ messages, isStreaming, st
               onEdit={onEdit}
               onRetry={onRetry}
               onReport={onReport}
+              onExport={onExport}
               // « Régénérer » uniquement sur la dernière réponse assistant,
               // et jamais pendant qu'un stream est en cours (P0.4).
               isLast={!isStreaming && index === lastAssistantIdx}

@@ -9,6 +9,7 @@ import { speak, cancel as cancelTts, getSpeakingId, onSpeakingChange, isTtsSuppo
 import { isAllowedReportAction } from '../../services/reportActions'
 
 interface AssistantBubbleProps {
+  onExport?: () => void
   content: string
   onAction?: (action: string, params: Record<string, string>) => void
   pinned?: boolean
@@ -42,7 +43,7 @@ interface AssistantBubbleProps {
   subModelReasonCode?: string
 }
 
-export const AssistantBubble = memo(function AssistantBubble({ content, onAction, pinned, onTogglePin, interrupted, onRetry, factCheck, isStreaming, isLast, onBranch, onReport, model, requestedModel, modelSource, reasonCode, subModelReasonCode }: AssistantBubbleProps) {
+export const AssistantBubble = memo(function AssistantBubble({ content, onExport, onAction, pinned, onTogglePin, interrupted, onRetry, factCheck, isStreaming, isLast, onBranch, onReport, model, requestedModel, modelSource, reasonCode, subModelReasonCode }: AssistantBubbleProps) {
   const { t } = useTranslation()
   const bubbleRef = useRef<HTMLDivElement>(null)
 
@@ -110,12 +111,12 @@ export const AssistantBubble = memo(function AssistantBubble({ content, onAction
   }, [content])
 
   return (
-    <div className="group/bubble relative flex gap-2.5 mb-6">
+    <div className="group/bubble relative flex flex-wrap gap-2.5 mb-6">
       <AssistantAvatar />
       <div
         ref={bubbleRef}
         onClick={handleClick}
-        className={`relative max-w-[92%] text-theme-ink leading-relaxed ${
+        className={`relative flex-1 min-w-0 max-w-[92%] text-theme-ink leading-relaxed ${
           pinned ? 'pl-3 border-l-2 border-theme-accent' : ''
         }`}
       >
@@ -150,7 +151,8 @@ export const AssistantBubble = memo(function AssistantBubble({ content, onAction
       {/* Actions bar : copier + speak + pin. Visible à 50% opacity sur mobile,
           hover desktop (cohérent avec branche button PR 1) + focus-visible
           pour la navigation clavier. */}
-      <div className="absolute bottom-1 right-1 flex items-center gap-0.5">
+      <div className="basis-full flex flex-wrap justify-end items-center gap-0.5">
+        {content && !isStreaming && onExport && <button onClick={onExport} aria-label="Exporter cette réponse en Word ou Excel" title="Exporter cette réponse en Word ou Excel" className="opacity-50 md:opacity-0 md:group-hover/bubble:opacity-100 focus-visible:opacity-100 p-2 rounded-md text-theme-muted hover:text-theme-accent">⇩</button>}
         {/* Régénérer proactif — distinct du bandeau `interrupted` (retry de
             récupération) : ici c'est « j'aime pas la réponse, relance ».
             Uniquement sur la dernière réponse, jamais pendant un stream. */}

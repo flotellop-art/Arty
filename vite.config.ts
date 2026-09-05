@@ -1,9 +1,17 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import pkg from './package.json'
+import { createRequire } from 'node:module'
+
+// This package's browser condition uses document.createElement at module load.
+// A Web Worker has no DOM. Its default/worker export is a pure entity table.
+const workerCharacterDecoder = createRequire(import.meta.url).resolve('decode-named-character-reference')
 
 export default defineConfig({
   plugins: [react()],
+  // Exact alias also covers dev workers (worker.plugins is build-only).
+  // The normal Markdown renderer uses the same standards-based pure decoder.
+  resolve: { alias: [{ find: /^decode-named-character-reference$/, replacement: workerCharacterDecoder }] },
   // Inject JS bundle version + build timestamp so we can verify from the
   // Settings modal that the APK contains a fresh bundle (and not an old
   // cached one, as happened during the 1.0.30→1.0.32 debugging).

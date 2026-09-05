@@ -21,8 +21,10 @@ import {
 import { ShareModal } from './ShareModal'
 import type { Conversation } from '../../types'
 import { isProviderLockedForPlan } from '../../services/providerLock'
+import { toast } from '../../services/toast'
 
 interface ChatTopBarProps {
+  onExportOffice?: () => void
   title: string
   onBack: () => void
   usedModels?: string[]
@@ -50,7 +52,7 @@ function chatSheetV2Enabled(): boolean {
   }
 }
 
-export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, onOpenSummary, conversations, onSelectConversation }: ChatTopBarProps) {
+export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, onOpenSummary, onExportOffice, conversations, onSelectConversation }: ChatTopBarProps) {
   const { t } = useTranslation()
   const planStatus = usePlanStatus()
   const [currentStyle, setCurrentStyle] = useState<ResponseStyle>(getStyle)
@@ -540,16 +542,17 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
                   role="menu"
                   className="absolute right-0 top-full mt-1 bg-theme-surface rounded-xl border border-theme-border shadow-lg overflow-hidden z-30 min-w-[180px]"
                 >
+                  {onExportOffice && <button role="menuitem" onClick={() => { setExportMenuOpen(false); onExportOffice() }} className="w-full flex items-center gap-2 px-3 py-3 text-left text-xs text-theme-ink hover:bg-theme-ink/5">Exporter en Word / Excel</button>}
                   <button
                     role="menuitem"
-                    onClick={() => { setExportMenuOpen(false); void exportConversationMarkdown(conversation) }}
+                    onClick={() => { setExportMenuOpen(false); void exportConversationMarkdown(conversation).catch(() => toast('Export impossible. Vérifiez le cache et fermez tout partage en cours.', 'error')) }}
                     className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs text-theme-ink hover:bg-theme-ink/5"
                   >
                     <span>📄</span><span>{t('chat.topBar.exportMarkdown')}</span>
                   </button>
                   <button
                     role="menuitem"
-                    onClick={() => { setExportMenuOpen(false); void exportConversationPdf(conversation) }}
+                    onClick={() => { setExportMenuOpen(false); void exportConversationPdf(conversation).catch(() => toast('Export impossible. Vérifiez le cache et fermez tout partage en cours.', 'error')) }}
                     className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs text-theme-ink hover:bg-theme-ink/5"
                   >
                     <span>📑</span><span>{t('chat.topBar.exportPdf')}</span>
@@ -608,9 +611,10 @@ export function ChatTopBar({ title, onBack, usedModels, euOnly, conversation, on
           onSelectStyle={handleStyleChange}
           onOpenSummary={onOpenSummary ? () => { setSheetOpen(false); onOpenSummary() } : undefined}
           hasConversation={!!conversation}
-          onExportMarkdown={() => { setSheetOpen(false); if (conversation) void exportConversationMarkdown(conversation) }}
-          onExportPdf={() => { setSheetOpen(false); if (conversation) void exportConversationPdf(conversation) }}
+          onExportMarkdown={() => { setSheetOpen(false); if (conversation) void exportConversationMarkdown(conversation).catch(() => toast('Export impossible. Vérifiez le cache et fermez tout partage en cours.', 'error')) }}
+          onExportPdf={() => { setSheetOpen(false); if (conversation) void exportConversationPdf(conversation).catch(() => toast('Export impossible. Vérifiez le cache et fermez tout partage en cours.', 'error')) }}
           onExportJson={() => { setSheetOpen(false); if (conversation) exportConversation(conversation) }}
+          onExportOffice={onExportOffice ? () => { setSheetOpen(false); onExportOffice() } : undefined}
           onShare={() => { setSheetOpen(false); void handleShare() }}
           onOpenGuide={() => { setSheetOpen(false); setShowGuide(true) }}
         />
