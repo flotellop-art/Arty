@@ -939,3 +939,31 @@ Objections retenues pour la suite :
   ne pas retirer simplement A de requiredOwners pour contourner la protection.
 
 Ces constats ne sont pas des modifications déjà livrées ni un GO d'activation.
+
+#### Décision/livraison A3b.4 après ces pré-revues
+
+Le candidat OFF est désormais livré par #456 ; détails de preuve et empreinte
+production dans `arty-workspace-cdc.md`. Le terme historique serverConfirmed
+est limité à une autorité de nettoyage local déjà engagé, pas une preuve HTTP
+(BYOK/demo pouvaient le poser sans POST). Une génération v2 cohérente et un seul
+reçu strict permettent la réservation v4, l'expurgation exacte A de legacy,
+active et job (dont plan), puis v2 prêt dans un nouveau document. Les preuves B
+restent distinctes par copie ; settings/auth/drafts sont attribués sans couper
+un owner opaque au premier séparateur. Rapports non attribués préservés.
+
+`requiredOwners ∪ {A}` reste conservé : nettoyage du contenu déclaré ne prouve
+ni purge des métadonnées d'identité ni autorisation de créer un nouveau sel.
+Le clear natif protocole1 laisse A bloqué dans le processus même après succès.
+Les tests JVM/concurrence du kernel et de branchement source ne remplacent pas
+une recette réelle multi-instance SharedPreferences/Keystore sur APK installé.
+
+Contre-revues GO limité OFF après correction des collisions report-conversations,
+draft a:conversation:home et d'un snapshot LS final pouvant adopter une écriture
+tardive. Verify final 2 959 tests verts + 1 ignoré et tests JVM verts.
+
+Prochain périmètre avant activation : réparer de façon durable et attestée le
+fence LS/IDB désaccordé, actuellement refusé sans mutation ; superséder une
+migration v3 avant toute purge ; conserver l'incertitude d'une requête serveur
+perdue ; traiter métadonnées/recréation et la recette native intégrée. Ne pas
+tolérer un fence incohérent à l'ouverture de B, rebaseliner un plan divergent,
+reposter en froid ou retirer simplement A de requiredOwners.

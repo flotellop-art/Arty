@@ -31,7 +31,7 @@ supplémentaire n'est implicite dans ce mandat.
 | W03 | Catalogue | Un catalogue partagé aligne comparaison, sélecteurs, labels et éligibilité selon le compte (pas une garantie fournisseur). Modèle demandé, transmis par le proxy et signalé par le fournisseur distingués. Tests contre la dérive et contre l'accès premium hors droit. | Web déployé, PR #440 ; recette visuelle/appareil non vérifiée |
 | W04 | Projets | Créer/renommer/supprimer un projet, consignes propres, conversations associées, bibliothèque de documents réutilisables. Sources identifiables dans le contexte. Recherche bornée, absence de fichier et contexte tronqué explicites. Cloisonnement par compte et projet ; mode Europe conservé. | Bibliothèque web livrée #443 ; conversations web livrées #444 ; recette visuelle/appareil non vérifiée |
 | W05 | Livrables | Export DOCX modifiable et XLSX de tableaux, en plus des exports existants. Téléchargements relus par un parseur indépendant ; cellules dangereuses neutralisées ; aucun HTML actif ni formule arbitraire. Formats et limites documentés. | Web déployé #445 ; recette structurelle vérifiée ; rendu Office/appareil non vérifié |
-| W06 | Continuité | Sauvegarde/restauration explicites puis synchronisation optionnelle multi-appareil chiffrée avant upload, avec secret détenu par l'utilisateur et récupération expliquée. Conflits non destructifs ; reprise hors-ligne ; logout/switch/delete et compte invité traités. Un export manuel seul ne valide pas la synchronisation. | A1 #446, galerie #448, verrou document #449, capture/vérification A2 #451, préparation A3a #452, admission froide #453, runtime isolé inactif #454 et migrateur journalisé OFF #455 livrés ; restauration/synchronisation non livrées |
+| W06 | Continuité | Sauvegarde/restauration explicites puis synchronisation optionnelle multi-appareil chiffrée avant upload, avec secret détenu par l'utilisateur et récupération expliquée. Conflits non destructifs ; reprise hors-ligne ; logout/switch/delete et compte invité traités. Un export manuel seul ne valide pas la synchronisation. | A1 #446, galerie #448, verrou document #449, capture/vérification A2 #451, préparation A3a #452, admission froide #453, runtime isolé inactif #454, migrateur journalisé OFF #455 et reprise froide d'effacement v2 OFF #456 livrés ; restauration/synchronisation non livrées |
 | W07 | Comparaison | Comparer depuis une conversation avec contexte/documents autorisés ; conserver les résultats et poursuivre la réponse choisie sans perdre l'original. Erreurs/coûts/quotas de chaque panneau visibles ; EU et historique privé jamais contournés. | À faire |
 | W08 | Parcours métier | Trois parcours complets : synthèse documentaire, réponse client préparée, planification Agenda avec confirmation avant écriture. Écran de connexions indiquant disponible/non configuré/non pris en charge selon plateforme. Pas de Drive/Gmail OAuth restreint ni relais IMAP serveur. | À faire |
 | W09 | Mobile et identité | PWA installable ; identité tryarty cohérente ; distribution Android authentifiée et documentée. Ne pas rediriger vers une app Play homonyme. Toute migration appId inclut signatures/OAuth/Firebase/liens vérifiés ; un APK distribué n'est pas une publication Store. | À faire |
@@ -172,6 +172,22 @@ package, endpoint, permission ou secret ; CI exacte requise avant fusion,
 preview puis sondes production. Repli : revert du lot par PR si admission legacy
 ou connexion régresse ; aucun downgrade/suppression de DB de clients candidats.
 Mesures privées de taux d'erreur/latence non attestées par les sondes publiques.
+
+Livraison A3b.4 : [PR #456](https://github.com/flotellop-art/Arty/pull/456)
+fusionnée le 5 septembre à 20:43:13 UTC, head
+`78751fcd4479971ff38a981072e192cd861c81be`, main
+`fc93795853f1a07c41c9ea306d0093e657455f6f`. CI PR `33990716993` réussie.
+Pages preview `ec256fab-a3be-4ecc-91db-7d78754aa11c` : accueil et paramètres
+ouverts en données d'exemple. Pages production
+`3ebabb9c-b3b0-4c9e-b8af-aa7ca9e826be` et tryarty.com servent à 20:44:59 puis 20:48:50 UTC
+le même `index-B0jtzXqm.js` (264 767 octets), SHA-256
+`2e979491e3e4423bac67d2951dccf93d63e4b30029852cd17f43479dab2926f6`, HTTP 200.
+Origine production vierge : accueil → vrai écran de connexion après admission,
+aucune clé saisie. Onglet utilisateur préservé, onglets de test fermés. Le build
+OFF élimine le writer de purge ; protections natives/JS de writes tardifs livrées.
+CI main `33990942362` réussie (20:46:59 UTC). APK `33990942328` réussi
+(20:50:50 UTC), étapes build signé et distribution Firebase toutes deux réussies.
+Aucune installation sur téléphone ni recette native intégrée revendiquée.
 
 ### W06 A3b.3 — migrateur brut journalisé livré (#455), activation OFF
 
