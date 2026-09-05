@@ -47,9 +47,19 @@
   "workspaceAdmission": {
     "erasureTitle": "Local cleanup pending",
     "erasureRecovery": {
-      "idle": "An already-started erasure needs to finish local cleanup before accounts can open. Resuming sends no server request and needs no sign-in.",
-      "working": "Cleaning declared local copies and verifying that other accounts remain unchanged…",
-      "failed": "Cleanup could not be verified. Its receipt is retained; you can retry. On Android, an application update may be required.",
+      "idle": "An already-started erasure needs to finish local cleanup before accounts can open. Recovery never sends another server deletion request and needs no sign-in.",
+      "uncertain": "The server deletion response was not saved. Arty can consult its receipt without signing in. An unknown result will not trigger local cleanup or another deletion request.",
+      "not-sent": "The deletion request was not sent. You can cancel this intent without erasing data, then reload. Nothing will be sent to the server here.",
+      "legacy-unknown": "The outcome of this older request cannot be verified here. Keep storage intact to seek help, or explicitly choose erasure on this device only.",
+      "verify": "Check receipt and finish cleanup",
+      "cancelNotSent": "Cancel the unsent request",
+      "cancelled": "The unsent request was cancelled without cleanup or server calls. Reload to open accounts.",
+      "localOnly": "Erase on this device only…",
+      "localWarning": "This erases this account’s declared local copies, not server data. Once finished, the secret for checking the old request is removed: its remote outcome may remain unknown. Other accounts are retained. This cannot be undone.",
+      "confirmLocal": "Confirm erasure on this device",
+      "back": "Go back without erasing",
+      "working": "Checking the request and, if authorized, cleaning declared local copies…",
+      "failed": "Verification or cleanup did not finish. No new server deletion request was sent. Keep storage and retry; if the issue persists, seek help. On Android, an application update may be required.",
       "done": "Cleanup of the declared local copies is verified. Reload to open other accounts. Recreating the erased account remains blocked.",
       "disabled": "This version cannot resume this cleanup yet. No private data is opened. A compatible version is required.",
       "resume": "Resume local cleanup"

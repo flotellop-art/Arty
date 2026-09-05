@@ -47,9 +47,19 @@
   "workspaceAdmission": {
     "erasureTitle": "Nettoyage local à terminer",
     "erasureRecovery": {
-      "idle": "Un effacement déjà engagé doit terminer son nettoyage local avant l’ouverture des comptes. Cette reprise ne renvoie aucune demande au serveur et ne demande pas de connexion.",
-      "working": "Nettoyage des copies locales déclarées et vérification de la conservation des autres comptes…",
-      "failed": "Le nettoyage n’a pas pu être vérifié. Son reçu est conservé ; tu peux réessayer. Sur Android, une mise à jour de l’application peut être nécessaire.",
+      "idle": "Un effacement déjà engagé doit terminer son nettoyage local avant l’ouverture des comptes. La reprise ne renvoie jamais de demande de suppression au serveur et ne demande pas de connexion.",
+      "uncertain": "La réponse à la suppression serveur n’a pas été enregistrée. Arty peut consulter son reçu sans te reconnecter ; un accès au réseau est nécessaire. Un résultat inconnu ne déclenchera aucun effacement local ni nouvelle demande de suppression.",
+      "not-sent": "La demande de suppression n’a pas été envoyée. Tu peux annuler cette intention sans effacer les données, puis recharger. Aucun envoi au serveur ne sera effectué ici.",
+      "legacy-unknown": "L’issue de cette ancienne demande ne peut pas être vérifiée ici. Conserve le stockage pour demander de l’aide, ou choisis explicitement un effacement sur cet appareil uniquement.",
+      "verify": "Vérifier le reçu et terminer le nettoyage",
+      "cancelNotSent": "Annuler la demande non envoyée",
+      "cancelled": "La demande non envoyée a été annulée sans nettoyage ni appel serveur. Recharge pour ouvrir les comptes.",
+      "localOnly": "Effacer sur cet appareil uniquement…",
+      "localWarning": "Ce choix efface les copies locales déclarées de ce compte, pas les données du serveur. À la fin, le secret permettant de consulter l’ancienne demande sera supprimé : son résultat distant peut rester inconnu. Les autres comptes sont conservés. Cette opération ne peut pas être annulée.",
+      "confirmLocal": "Confirmer l’effacement sur cet appareil",
+      "back": "Revenir sans effacer",
+      "working": "Vérification de la demande et, si autorisé, nettoyage des copies locales déclarées…",
+      "failed": "La vérification ou le nettoyage n’a pas abouti. Aucune nouvelle demande de suppression serveur n’a été envoyée. Conserve le stockage et réessaie ; si le problème persiste, demande de l’aide. Sur Android, une mise à jour de l’application peut être nécessaire.",
       "done": "Le nettoyage des copies locales déclarées est vérifié. Recharge pour ouvrir les autres comptes. La recréation du compte effacé reste bloquée.",
       "disabled": "Cette version ne peut pas encore reprendre ce nettoyage. Aucune donnée privée n’est ouverte. Une version compatible est nécessaire.",
       "resume": "Reprendre le nettoyage local"

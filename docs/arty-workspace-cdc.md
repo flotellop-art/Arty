@@ -1,6 +1,6 @@
 # Arty Workspace — cahier des charges et preuves de livraison
 
-Date : 5 septembre 2026. Statut global : **en cours, non livré**.
+Date : 6 septembre 2026. Statut global : **en cours, non livré**.
 
 ## Mandat et résultat attendu
 
@@ -107,6 +107,56 @@ réels ; préparer protocole et instrumentation sans fabriquer leurs résultats.
   de contrôle navigateur du 5 septembre vide, aucun appareil déclaré.
 
 ## Preuves par lot
+
+### W06 A3b.5b — reçu froid et fence v5, candidat OFF
+
+Implémentation complète du pont froid, de son UI et de deux recettes verticales,
+sans activation de l'espace isolé ni changement de la route serveur de #457.
+
+- Admission isolée liée au snapshot exact génération/reçu ; aucun import de
+  session, crypto privée, App ou OAuth pour consulter le reçu. GET seulement,
+  secret dans les headers, réponse bornée, aucune nouvelle demande de suppression.
+  Confirmation durable par CAS du record entier (nonce/cap/sujet compris).
+- Nettoyage local explicite distinct de la preuve serveur ; secret incertain
+  conservé dans l'autorité v5 jusqu'à la fin, même après panne native. Reprise
+  UI locale explicite après échec. Ancien inconnu ne crée pas de nouvelle intention.
+- Annulation d'une intention réellement `not-sent` sans aucune purge ; contrôle
+  exact du reçu et des fences. Un acquittement de résultat perdu ne peut pas
+  être présenté comme un nettoyage réussi.
+- Réservation v5 avant réparation IDB/LS, cible unique et preuve B immuable,
+  checkpoint avant purge. Anciennes preuves v4 inchangées ; aucune conversion
+  d'un v4 divergent. Seuls les deux emplacements exacts du fence actif sont
+  exclus des nouveaux hashes et attestés séparément, jusque devant le commit.
+- Verticale runtime/KDF/crypto réels : vrai `purgeProjectsForAccount` interrompu
+  avec événement `abort` attesté après LS ; nouveau document → réparation →
+  nouveau document B déchiffre historique/fichier/projet ET crée/modifie/relit
+  un projet. L'échec pré-réparation est bien le fence `cancelled`, crypto prête.
+- Verticale D1 workerd : vrai POST du client, réponse perdue après commit et
+  révocation effective du token email ; nouveau document avec admission privée
+  interdite → GET froid sans auth → nouveau B peut lire/créer un projet.
+- 82 tests ciblés verts : ces recettes, fixture v4 indépendante, cinq phases
+  d'interruption v5, quota LS, valeurs présentes invalides, changement de reçu
+  avant consentement/pendant GET/entre retries, perte de document, mutations B
+  et fences legacy/journal/actif, race avant réparation/publication et annulation.
+  Deux contre-revues indépendantes ; objections corrigées dans ces tests.
+
+Validation générale : `npm run verify` réussi, 265 suites / 3 042 tests verts
+et 1 ignoré ; front/back, no-CASA/add-on, build et worker Office réel verts.
+Couverture statements 67,60 %, branches 62,42 %, fonctions 73,44 %, lignes
+69,33 %. Deux GO finaux limités au candidat OFF, sans objection bloquante.
+Reçus Git/CI/Pages à compléter à la livraison. Aucun
+test d'effacement en production, aucune prétention de recette APK réelle.
+`ISOLATED_WORKSPACE_ENABLED=false` inchangé. W06 reste partiel : supersession
+v3, métadonnées/recréation, recette native, restauration et synchronisation
+restent distinctement à réaliser.
+
+Checklist de déploiement du lot (6 septembre) : suite complète/typechecks,
+deux GO, CI et preview avant fusion ; Git/Pages habituels, pas de migration D1.
+Repli sur régression d'admission ou de suppression courante : revert normal de
+la PR, flag toujours OFF ; conserver journaux et tombstones. Un stockage v5 ne
+doit pas être rétrogradé ni purgé pour revenir en arrière. Vérifier les assets
+servis après publication et les réponses publiques GET non destructives ; sans
+accès à la télémétrie globale, ne pas prétendre mesurer un taux d'erreur général.
 
 ### W06 A3b.5a — reçu distant d'effacement, parcours courant
 

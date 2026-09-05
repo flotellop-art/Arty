@@ -8,6 +8,7 @@ import { openExistingDB } from '../readOnlyExistingDB'
 import { openDeclaredDatabase } from '../workspaceWriter/declaredDatabase'
 import { captureOwnerErasureGuard } from './localErasureGuard'
 import { parseRemoteErasure, type RemoteErasureIntent } from '../accountErasureProtocol'
+import { parseAccountErasureRecord } from '../accountErasureJournal'
 export { blockProjectOperations } from './localErasureGuard'
 import { PROJECT_LIMITS, ProjectError, boundedInteger, validProject, validProjectId, validDescriptor,
   type PreparedProjectDocument, type ProjectDocument, type Project, type ProjectSummary } from './types'
@@ -490,16 +491,7 @@ export interface ProjectErasure {
 }
 type ErasureRecord = ProjectErasure & { pending: string[] }
 function validErasureRecord(v: unknown, owner: string): v is ErasureRecord {
-  if (!v || typeof v !== 'object' || Object.getPrototypeOf(v) !== Object.prototype) return false
-  const r = v as ErasureRecord
-  const owns = (key: string) => Object.prototype.hasOwnProperty.call(v, key)
-  const keys = ['owner', 'nonce', 'operationId', 'serverConfirmed', 'pending', ...(owns('remote') ? ['remote'] : []), ...(owns('localOnly') ? ['localOnly'] : [])]
-  return Reflect.ownKeys(v).length === keys.length && keys.every(k => { const d = Object.getOwnPropertyDescriptor(v, k); return d?.enumerable && 'value' in d }) &&
-    r.owner === owner && validProjectId(r.operationId) && validProjectId(r.nonce) && typeof r.serverConfirmed === 'boolean' &&
-    Array.isArray(r.pending) && r.pending.length <= 32 && Reflect.ownKeys(r.pending).length === r.pending.length + 1 &&
-    Array.from({ length: r.pending.length }, (_, i) => { const d = Object.getOwnPropertyDescriptor(r.pending, String(i)); return !!d?.enumerable && 'value' in d }).every(Boolean) &&
-    r.pending.every(validProjectId) && new Set(r.pending).size === r.pending.length &&
-    (!owns('localOnly') || r.localOnly === true) && (!owns('remote') || (!!parseRemoteErasure(r.remote) && !r.serverConfirmed))
+  return parseAccountErasureRecord(v)?.owner === owner
 }
 export type ProjectErasureState = 'none' | 'not-sent' | 'uncertain' | 'confirmed' | 'local-only' | 'legacy-unknown'
 /** Settings inspection never creates a database or starts network work. */
