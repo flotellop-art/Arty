@@ -595,3 +595,69 @@ onglets legacy, annulation/upgrade tardif, crash entre chaque DB/clé/checkpoint
 quota, archive dépassée par la taille du compte, A→B→A, callbacks conservés,
 clé erronée/quarantaines, effacement sans crypto, version de contrôle inconnue.
 La recette d'un vrai APK mis à jour avec données existantes reste distincte.
+
+### A3b.1 — admission froide et résolveur legacy (5 septembre 2026)
+
+**Décision acceptée, implémentée et testée localement ; livraison à attester.**
+Deux contre-revues indépendantes en lecture seule, sécurité/intégrité et
+produit/mobile, ont donné GO après corrections. Ce lot n'est ni un writer de
+registre, ni une migration, ni une restauration.
+
+- Le verrou document précède un contrôle readonly borné à 8 secondes, avant
+  tout import App/preview, session, sel crypto ou bootstrap privé. Il examine
+  `arty-workspace-control` v1 puis versions et schémas exacts de `arty-files`
+  et `arty-projects` v1. Il ne lit aucun record de compte dans ces assets.
+- L'absence est attestée par une création IDB initiale avortée, sans base
+  résiduelle. Base vide, malformée, maintenance, version/protocole/layout
+  inconnus ou IDB inaccessible refusent l'ouverture. Aucun raccourci fondé
+  sur un localStorage vide ; aucune réparation ni upgrade silencieux.
+- Un contrôle présent ne peut autoriser que le descripteur explicite
+  `legacy-v1`, validé strictement. Le résolveur est utilisé par les clés
+  scoped/historique/crypto et les ouvertures normales/readonly des assets.
+  La décision reste immuable pour le document ; perte du verrou terminale.
+- Deadline et annulation couvrent aussi une ouverture en file derrière un
+  upgrade et une transaction readonly derrière un writer. Transactions
+  annulées drainées, connexions tardives fermées, jamais d'admission tardive.
+- Getters et caches privés refusent avant leurs `try/catch`, même si un caller
+  contourne le composant React. `getFile(id, ownerExplicite)` vérifie aussi à
+  l'entrée : un refus ne doit pas devenir un faux fichier absent. Les helpers
+  purs et opérations de révocation mémoire restent indépendants.
+
+**Alternatives et compromis.** Une simple garde de mutation laisserait les
+lectures/cache hydrater un mauvais format ; un contrôle `ready` générique
+autoriserait un fallback ambigu. Ces options ont été écartées. Une coquille
+de login indépendante d'IDB demanderait une séparation supplémentaire : ce
+lot ferme donc aussi la connexion privée si le contrôle initial ne peut pas
+aboutir, y compris chez un visiteur neuf. Les bootstraps optionnels après
+admission restent optionnels ; leur `allSettled` n'autorise pas l'admission.
+
+**UX.** État de vérification puis refus distincts FR/EN, recharge froide seule
+après décision (pas de réarmement à chaud). URL query/hash et state/verifier
+OAuth conservés, sans redirection login ni effacement. Pages publiques et
+confidentialité accessibles. Le texte Android distingue installation d'une
+version compatible et simple reload, qui ne met pas l'APK à jour.
+
+**Preuves locales.** 255 fichiers, 2 806 tests réussis + 1 ignoré via `npm run
+verify` ; typecheck front/back, no-CASA, couverture, build et worker Office
+réussis. La fixture de capture A2 utilisant le vrai runtime a été adaptée pour
+effectuer la vraie admission, sans nouveau mock. Tests : absence, contrôle
+vide/falsy/futur, vrais opens/transactions bloqués puis résultat tardif,
+StrictMode/remount, getters sans lecture avant admission ou après perte,
+schémas créés par les vrais stores, vrai login provisoire, switch A→B→A,
+reprise BYOK/KDF et effacement. Log :
+`../arty-workspace-admission-verify-final-20260905.log`.
+
+Recette navigateur IAB sur origines locales isolées : refus maintenance,
+bouton Recharger exécuté, URL exacte et sentinelles OAuth inchangées, compteur
+d'import privé toujours nul ; refus incompatible avec texte Android ; lien
+Découvrir utilisable ; autre origine vierge ouvre la vraie connexion. Données
+synthétiques uniquement, aucun appel IA payant, aucun compte utilisateur
+modifié. Ce n'est pas un échange OAuth réel ni une recette APK/WebView.
+
+**Repli et limites.** Revert de la PR via CI/Pages si une installation v1 saine
+est refusée ou si la connexion ne démarre plus ; pas de données à dé-migrer.
+Ce repli reste sûr seulement tant qu'aucun futur writer de contrôle/génération
+n'est activé. Avant activation : lecteurs isolés, témoins monotones dans tous
+les assets, journal/copie physique/reprise/effacement cohérent restent exigés.
+L'absence du contrôle n'exclut pas des bases futures aux noms encore inconnus.
+Aucun verrou universel des anciennes versions ni révocations serveur promis.

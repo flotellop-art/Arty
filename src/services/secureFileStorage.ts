@@ -17,12 +17,10 @@ import {
   MAX_NORMALIZED_IMAGE_BYTES,
 } from './imageNormalization'
 import type { FileAttachment } from '../types'
-import { assertDocumentWorkspace, guardDocumentTransaction } from './workspaceWriter/runtime'
+import { assertDocumentWorkspace, guardDocumentTransaction, getDocumentStorageLayout } from './workspaceWriter/runtime'
 import { openExistingDB } from './readOnlyExistingDB'
 import { BACKUP_LIMITS, BackupError } from './workspaceBackup/types'
 
-const DB_NAME = 'arty-files'
-const DB_VERSION = 1
 const STORE = 'files'
 
 interface StoredFile {
@@ -47,7 +45,8 @@ function ownerKeyFor(userId: string | null): string {
 function getDB(): Promise<IDBPDatabase> {
   assertDocumentWorkspace()
   if (!dbPromise) {
-    dbPromise = openDB(DB_NAME, DB_VERSION, {
+    const { name, version } = getDocumentStorageLayout().files
+    dbPromise = openDB(name, version, {
       upgrade(db) {
         assertDocumentWorkspace()
         if (!db.objectStoreNames.contains(STORE)) {
@@ -202,6 +201,7 @@ export async function getFile(
   fileId: string,
   ownerUserId: string | null = getActiveUserId(),
 ): Promise<FileAttachment | null> {
+  assertDocumentWorkspace()
   if (!isCryptoReady() || ownerUserId !== getActiveUserId()) return null
   const cryptoCurrent = captureCryptoGuard()
   const db = await getDB()
@@ -246,7 +246,8 @@ export async function readOwnedFileSnapshot(ids: readonly string[], assertScope:
   const selected = [...new Set(ids)]
   if (selected.some(id => typeof id !== 'string' || id.length > 128 || !/^[A-Za-z0-9._~-]+$/.test(id))) throw new BackupError('format')
   if (!selected.length) return new Map()
-  const db = await openExistingDB(DB_NAME, DB_VERSION, assertCurrent, signal)
+  const { name, version } = getDocumentStorageLayout().files
+  const db = await openExistingDB(name, version, assertCurrent, signal)
   if (!db) throw new BackupError('missing')
   try {
     if (!db.objectStoreNames.contains(STORE)) throw new BackupError('format')

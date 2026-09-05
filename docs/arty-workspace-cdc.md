@@ -108,6 +108,27 @@ réels ; préparer protocole et instrumentation sans fabriquer leurs résultats.
 
 ## Preuves par lot
 
+### W06 A3b.1 — admission du stockage (testé, livraison à attester)
+
+Contrôle readonly avant tout chargement privé, deadline/cancellation et
+résolveur explicite legacy-v1. Aucune migration, écriture de contrôle,
+restauration ou synchronisation ajoutée. Décisions, limites et repli dans
+`ADR_WORKSPACE_BACKUP.md`, section A3b.1.
+
+Deux GO indépendants après prise en compte du getter de fichier à owner
+explicite et du libellé Android. `npm run verify` : 255 fichiers / 2 806 tests
+réussis + 1 ignoré, typecheck front/back, couverture, no-CASA, build et worker
+Office verts. Log `../arty-workspace-admission-verify-final-20260905.log`.
+Recette navigateur locale synthétique : maintenance puis reload avec URL et
+state/verifier conservés, zéro chargement privé ; format incompatible expliqué,
+pages publiques accessibles, vraie connexion ouverte sur origine vierge.
+L'onglet tryarty de l'utilisateur et son brouillon n'ont pas été modifiés.
+
+Compromis produit explicite : si IDB ne peut pas être contrôlé, le login privé
+reste fermé même pour une première visite ; une connexion indépendante des
+stores nécessiterait un autre lot. Pas de validation OAuth/APK réel, ni de
+mesure terrain latence/mémoire. W06 global reste **partiel**.
+
 ### W06 A3a — préparation de restauration livrée (#452)
 
 - PR [#452](https://github.com/flotellop-art/Arty/pull/452), head

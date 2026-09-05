@@ -5,19 +5,19 @@
 
 import { getActiveUserId } from './userSession'
 import { secureSet, secureGet, isCryptoReady, isCryptoContextChanged } from './crypto'
-import { assertDocumentWorkspace } from './workspaceWriter/runtime'
+import { assertDocumentWorkspace, documentStorageKey } from './workspaceWriter/runtime'
 
 function buildKey(baseKey: string): string {
   const userId = getActiveUserId()
-  if (!userId) return `arty-${baseKey}`
-  return `arty-${userId}-${baseKey}`
+  return documentStorageKey(userId, baseKey)
 }
 
 function buildKeyForUser(userId: string, baseKey: string): string {
-  return `arty-${userId}-${baseKey}`
+  return documentStorageKey(userId, baseKey)
 }
 
 export function getItem(baseKey: string): string | null {
+  assertDocumentWorkspace()
   return localStorage.getItem(buildKey(baseKey))
 }
 
@@ -33,6 +33,7 @@ export function removeItem(baseKey: string): void {
 
 /** Get parsed JSON, returns null on failure */
 export function getJSON<T>(baseKey: string): T | null {
+  assertDocumentWorkspace()
   try {
     const raw = getItem(baseKey)
     return raw ? JSON.parse(raw) as T : null
@@ -43,6 +44,7 @@ export function getJSON<T>(baseKey: string): T | null {
 
 /** Lecture ciblée sans changer la session active (finalisation OAuth). */
 export function getJSONForUser<T>(userId: string, baseKey: string): T | null {
+  assertDocumentWorkspace()
   try {
     const raw = localStorage.getItem(buildKeyForUser(userId, baseKey))
     return raw ? JSON.parse(raw) as T : null
@@ -76,6 +78,7 @@ export function secureSetJSON(baseKey: string, value: unknown): void {
  * Works for both encrypted and non-encrypted data.
  */
 export async function secureGetJSON<T>(baseKey: string): Promise<T | null> {
+  assertDocumentWorkspace()
   const key = buildKey(baseKey)
 
   // Try encrypted read first

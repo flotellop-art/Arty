@@ -3,7 +3,7 @@ import { captureCryptoGuard, encrypt, decrypt, isCryptoReady, isCryptoContextCha
 import { getActiveUserId, getActiveSessionEpoch, getKnownSessions, getSessionProjectFence, PROJECT_ERASURE_FENCE_KEY } from '../userSession'
 import { assertPreparedForOperation, consumePreparedDocument } from './documentImport'
 import { generateId } from '../../utils/generateId'
-import { assertDocumentWorkspace, guardDocumentTransaction } from '../workspaceWriter/runtime'
+import { assertDocumentWorkspace, guardDocumentTransaction, getDocumentStorageLayout } from '../workspaceWriter/runtime'
 import { openExistingDB } from '../readOnlyExistingDB'
 import { PROJECT_LIMITS, ProjectError, boundedInteger, validProject, validProjectId, validDescriptor,
   type PreparedProjectDocument, type ProjectDocument, type Project, type ProjectSummary } from './types'
@@ -26,7 +26,8 @@ const localGenerations = new Map<string, number>()
 
 function getDB(): Promise<IDBPDatabase> {
   assertDocumentWorkspace()
-  if (!dbPromise) dbPromise = openDB('arty-projects', 1, {
+  const { name, version } = getDocumentStorageLayout().projects
+  if (!dbPromise) dbPromise = openDB(name, version, {
     upgrade(db) {
       assertDocumentWorkspace()
       const projects = db.createObjectStore('projects', { keyPath: 'key' })
@@ -81,7 +82,8 @@ export function captureLocalReadScope(signal?: AbortSignal) {
   assertCurrent()
   return { owner, epoch, fence: sessionFence, signal, assertCurrent, async validateReadOnly() {
     assertCurrent()
-    const db = await openExistingDB('arty-projects', 1, assertCurrent, signal)
+    const { name, version } = getDocumentStorageLayout().projects
+    const db = await openExistingDB(name, version, assertCurrent, signal)
     try {
       if (!db) {
         if (sessionFence !== 'initial') throw new ProjectError('cancelled')
@@ -371,7 +373,8 @@ export async function withReadOnlyProjectLibrary<T>(scope: LocalReadScope, read:
   text(project: Project, id: string): Promise<string>
 }) => Promise<T>): Promise<T> {
   scope.assertCurrent()
-  const db = await openExistingDB('arty-projects', 1, scope.assertCurrent, scope.signal)
+  const { name, version } = getDocumentStorageLayout().projects
+  const db = await openExistingDB(name, version, scope.assertCurrent, scope.signal)
   if (!db) throw new ProjectError('unavailable')
   let closed = false
   const assertCurrent = () => { if (closed) throw new ProjectError('cancelled'); scope.assertCurrent() }

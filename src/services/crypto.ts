@@ -5,7 +5,7 @@
  */
 import { getActiveUserId, getActiveSessionEpoch } from './userSession'
 import { invalidateLocalDataViews } from './localDataInvalidation'
-import { assertDocumentWorkspace, documentWorkspaceSignal } from './workspaceWriter/runtime'
+import { assertDocumentWorkspace, documentWorkspaceSignal, documentStorageKey } from './workspaceWriter/runtime'
 
 const SALT_KEY = 'arty-crypto-salt'
 const KEY_CHECK_KEY = 'arty-crypto-check'
@@ -33,7 +33,7 @@ function scopeCurrent(scope: Scope): boolean {
   return !documentWorkspaceSignal.aborted && scope.owner === getActiveUserId() && scope.epoch === getActiveSessionEpoch()
 }
 function metadataKey(scope: Scope, key: string): string {
-  return scope.owner ? `arty-${scope.owner}-${key.replace(/^arty-/, '')}` : key
+  return documentStorageKey(scope.owner, key.replace(/^arty-/, ''))
 }
 function currentContext(): CryptoContext | null {
   return context && context.generation === initGeneration && scopeCurrent(context) ? context : null
@@ -185,6 +185,7 @@ async function initializeCrypto(passphrase: string, options: CryptoInitOptions):
 
 /** Verify locally: never swap or restore the active global key ring. */
 export async function verifyCrypto(passphrase: string): Promise<boolean> {
+  assertDocumentWorkspace()
   const scope = captureScope(), generation = initGeneration
   const checkKey = metadataKey(scope, KEY_CHECK_KEY), check = localStorage.getItem(checkKey)
   if (!check) return false
@@ -271,6 +272,7 @@ export async function secureSet(key: string, value: unknown): Promise<void> {
   localStorage.setItem(key, encrypted)
 }
 export async function secureGet<T>(key: string): Promise<T | null> {
+  assertDocumentWorkspace()
   const raw = localStorage.getItem(key)
   if (!raw) return null
   const captured = currentContext()

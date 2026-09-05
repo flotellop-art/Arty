@@ -44,6 +44,20 @@
       "different": "This is a valid archive, but it is not from this capture. Select the matching file or verify the other archive in settings."
     }
   },
+  "workspaceAdmission": {
+    "checkingTitle": "Checking local storage…",
+    "checkingBody": "Arty is checking whether your data can be opened. This check does not change your conversations or files.",
+    "maintenanceTitle": "Storage recovery is required",
+    "maintenanceBody": "A local operation has not been closed. This version cannot resume it, so opening is stopped to preserve the data. Reload with a compatible version; do not clear site storage.",
+    "incompatibleTitle": "Unsupported local format",
+    "incompatibleBody": "This version of Arty cannot open the detected format. Use a compatible version of Arty, then reload. On Android, install the app update: reloading alone does not update the APK. Your data remains in place.",
+    "corruptTitle": "Storage state needs checking",
+    "corruptBody": "The local control record is incomplete or inconsistent. Arty will not open the data or attempt an automatic repair. Your data remains in place.",
+    "unavailableTitle": "Local storage is inaccessible",
+    "unavailableBody": "Arty could not verify local storage. Sign-in and conversations remain closed to avoid loading an assumed empty workspace. Check site storage permissions, then reload; do not erase your data.",
+    "lostTitle": "Storage check interrupted",
+    "lostBody": "This window no longer has permission to open the data. Reload to run a new check. The URL and sign-in callback information are preserved."
+  },
   "workspaceWindow": {
     "loading": "Opening Arty…",
     "loadFailedTitle": "Arty could not load",

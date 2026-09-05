@@ -1,31 +1,33 @@
 import { lazy, Suspense, useEffect, useSyncExternalStore, type ComponentType } from 'react'
 import { useTranslation } from 'react-i18next'
-import { documentWorkspace } from '../../services/workspaceWriter/runtime'
+import { documentWorkspace, workspaceAdmission, assertDocumentWorkspace } from '../../services/workspaceWriter/runtime'
 import type { createDocumentWorkspaceLock } from '../../services/workspaceWriter/documentLock'
+import type { createWorkspaceAdmission } from '../../services/workspaceWriter/admission'
 import { ErrorBoundary } from '../shared/ErrorBoundary'
 
 /** Import/seeding is INSIDE the held branch, not a static App dependency.
  * React.lazy memoizes the loader across StrictMode's setup/cleanup/setup. */
 const PrivateApp = lazy(async () => {
+  assertDocumentWorkspace()
   if (__DEMO_ALLOWED__) {
     const demo = await import('../../services/previewDemo')
-    documentWorkspace.assertHeld()
+    assertDocumentWorkspace()
     demo.setupPreviewDemo()
   }
-  documentWorkspace.assertHeld()
+  assertDocumentWorkspace()
   const app = await import('../../App')
-  documentWorkspace.assertHeld()
+  assertDocumentWorkspace()
   return app
 })
 
 type Controller = ReturnType<typeof createDocumentWorkspaceLock>
-export function DocumentWorkspaceGate({ controller = documentWorkspace, Content = PrivateApp }: {
-  controller?: Controller; Content?: ComponentType
+export function DocumentWorkspaceGate({ controller = documentWorkspace, admission = workspaceAdmission, Content = PrivateApp }: {
+  controller?: Controller; admission?: ReturnType<typeof createWorkspaceAdmission>; Content?: ComponentType
 }) {
   const { t } = useTranslation()
   const phase = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot)
   useEffect(() => { void controller.acquire() }, [controller]) // no cleanup release
-  if (phase === 'held') return <ErrorBoundary fallback={<WorkspaceBootFailure />}><Suspense fallback={<Wait title={t('workspaceWindow.loading')} />}><Content /></Suspense></ErrorBoundary>
+  if (phase === 'held') return <ErrorBoundary fallback={<WorkspaceBootFailure />}><StorageAdmissionGate admission={admission} Content={Content} /></ErrorBoundary>
   const checking = phase === 'idle' || phase === 'acquiring'
   const key = checking ? 'checking' : phase
   return (
@@ -42,6 +44,21 @@ export function DocumentWorkspaceGate({ controller = documentWorkspace, Content 
       <a className="mt-6 inline-flex min-h-11 items-center text-sm underline" href="/privacy/">{t('landing.footer.privacy')}</a>
     </Wait>
   )
+}
+
+function StorageAdmissionGate({ admission, Content }: { admission: ReturnType<typeof createWorkspaceAdmission>; Content: ComponentType }) {
+  const { t } = useTranslation()
+  const phase = useSyncExternalStore(admission.subscribe, admission.getSnapshot, admission.getSnapshot)
+  useEffect(() => { void admission.admit() }, [admission])
+  if (phase === 'ready') return <Suspense fallback={<Wait title={t('workspaceWindow.loading')} />}><Content /></Suspense>
+  const checking = phase === 'idle' || phase === 'checking'
+  const key = checking ? 'checking' : phase
+  return <Wait title={t(`workspaceAdmission.${key}Title`)}>
+    <p className="mt-4 text-sm leading-relaxed text-theme-muted">{t(`workspaceAdmission.${key}Body`)}</p>
+    {!checking && <button type="button" className="mt-6 min-h-11 rounded-lg bg-theme-ink px-5 py-3 font-semibold text-theme-bg" onClick={() => window.location.reload()}>{t('workspaceWindow.reload')}</button>}
+    <a className="mt-6 inline-flex min-h-11 items-center px-4 text-sm underline" href="/discover">{t('workspaceWindow.discover')}</a>
+    <a className="mt-6 inline-flex min-h-11 items-center px-4 text-sm underline" href="/privacy/">{t('landing.footer.privacy')}</a>
+  </Wait>
 }
 
 export function WorkspaceBootFailure() {

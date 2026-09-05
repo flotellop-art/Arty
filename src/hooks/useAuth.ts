@@ -138,10 +138,10 @@ export function useAuth() {
       assertCurrentAttempt()
       await bootstrapGoogleStorage()
       assertCurrentAttempt()
-      // Ces deux stockages enrichissent l'expérience mais ne sont pas des
-      // conditions d'identité. On attend leur stabilisation pour conserver
-      // l'ordre de la transaction, sans rendre un IndexedDB indisponible
-      // bloquant pour toute connexion.
+      // L'admission froide a déjà vérifié la compatibilité du stockage avant
+      // de charger ce hook. Ces chargements restent optionnels après admission
+      // (ex. quota), mais allSettled ne contourne jamais ce contrôle initial.
+      // On attend leur stabilisation pour conserver l'ordre de la transaction.
       await Promise.allSettled([bootstrapConversationStorage(), bootstrapFileStorage()])
       assertCurrentAttempt()
 
