@@ -430,3 +430,59 @@ limitée aux ressources du job. Ne jamais réécrire un ancien snapshot global
 pour faire un rollback. Acquérir l'autorité de maintenance avant une suppression
 de compte côté serveur, pas après sa révocation distante. Aucun reçu d'effacement
 clos avant purge de tous les stores/générations du compte.
+
+### Préparation A3 après #451 — objections et découpage retenu
+
+Deux contre-revues indépendantes en lecture seule, 5 septembre. **Proposition,
+pas une restauration livrée.** La capture n'ajoute aucune autorité de publication.
+
+Premier lot A3a : plan de restauration sans écriture ni migration. Lecture
+authentifiée complète de l'archive, projection inverse immuable, nouveaux UUID
+par domaine et mapping figé. Les messages sont identifiés par le couple
+conversation/message ; les documents par projet/document : leur ID source
+seul n'est pas globalement unique (`schema.ts`). Remapper aussi les références
+historiques absentes et les crops, sans accès aux stores cible par ID source.
+Un deuxième import volontaire reçoit un nouveau mapping ; une reprise exige
+le même mapping lié à l'archive et son fingerprint, jamais une régénération.
+
+Préserver les trois tailles v2 (présentation du message, taille enregistrée,
+octets), la normalisation historique, les révisions, tags/falsy, sources et
+textes exacts. En v1, la présentation absente provient du fichier global :
+ne pas prétendre retrouver des métadonnées qui n'ont pas été archivées.
+L'horodatage technique `StoredFile.createdAt` n'est pas dans l'archive.
+Galerie : assistant, quatre références au plus, MIME/signature admis et IDs
+remappés ; aucune autorité ajoutée à une URI Markdown.
+
+Inertie à définir avant branchement UI : le contenu exact reste une donnée,
+mais les actions HTML connues sont actuellement dispatchées au clic dans
+`AssistantBubble`. Une marque persistante de message restauré devra couper
+ce dispatch et présenter un fact-check `pending` comme historique non repris,
+y compris après recharge/branche. Ce plan seul n'autorise aucun rendu actif.
+
+A3b : admission et reprise avant tout import privé. Option privilégiée à
+challenger : document froid dédié, sous le verrou existant, sans Chat monté,
+afin d'éviter de traiter un simple compteur busy par conversation comme une
+maintenance globale. Le journal/gate doit aussi précéder les bootstraps de
+connexion et de changement de compte. Aucun epoch RAM comme preuve durable.
+
+La bascule paresseuse du compte courant ne doit pas uniquement renommer une
+clé sous `arty-{owner}-` : `clearAllForActiveUser` legacy efface ce préfixe,
+y compris le sel/check/version crypto. Isoler et inventorier l'autorité crypto
+locale pertinente, l'historique ET les assets. Une barrière IDB de version
+doit attendre réellement la fermeture des connexions v1 ; une ouverture
+bloquée n'est pas une autorisation de passer. Un simple revert vers un ancien
+bundle ne sera plus un rollback compatible après cette bascule : conserver
+les nouveaux readers. Ne pas activer la restauration sans ce contrat testé.
+
+A3c : writers exacts réservés au job (pas `putFile`/`createProject` ordinaires),
+staging masqué, publication du graphe complet et relecture avant levée du gate.
+Préflight cumulatif existant + copies + staging/journal + base64/ciphertext ;
+`navigator.storage.estimate` n'est ni une réservation ni une preuve de place.
+Collision refusée, annulation limitée aux ressources du job, journal et toutes
+générations inclus dans la purge avant `finishProjectErasure`, même sans clé.
+Acquérir la maintenance avant révocation serveur, pas après.
+
+Tests attendus : stores/réseau interdits dans A3a ; collisions inter-domaines,
+références absentes, v1/v2, fidélité et EU monotone ; puis ancien client,
+quota/crash à chaque phase, A→B→A, effacement, archive différente à la reprise,
+inertie après recharge/branche et absence de snapshot global de rollback.
