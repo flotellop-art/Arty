@@ -106,6 +106,7 @@ export interface RouteContext {
   hasSupportedVisionImages: boolean
   euOnly: boolean
   hasPrivateHistory: boolean
+  hasOfficeHistory?: boolean
   hasTrailHistory?: boolean
 }
 

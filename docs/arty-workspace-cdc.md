@@ -26,8 +26,8 @@ supplémentaire n'est implicite dans ce mandat.
 
 | ID | Lot | Résultat observable et recette | État |
 |---|---|---|---|
-| W01 | Fondations | DOCX : paragraphes et tableaux ; XLSX : feuilles nommées et cellules identifiées. Contenu réellement injecté, accents conservés ; erreurs visibles sur ancien format, fichier chiffré/corrompu ou limite dépassée. Même résultat en nouvel envoi, historique et retry, dont Android et mode Europe. Aucun macro, formule, lien externe exécuté ; ressources bornées ; aucune pièce jointe en base64 dans localStorage. | À faire |
-| W02 | Confiance | Essai annoncé conforme au plan servi. BYOK gratuit distinct du Pro optionnel ; conseiller sans licence fictive. Promesses de stockage et de transit exactes FR/EN, page publique cohérente. Aucun quota ni accès serveur élargi implicitement. | Code et contre-revues OK ; livraison en cours |
+| W01 | Fondations | DOCX : paragraphes et tableaux ; XLSX : feuilles nommées et cellules identifiées. Contenu réellement injecté, accents conservés ; erreurs visibles sur ancien format, fichier chiffré/corrompu ou limite dépassée. Même résultat en nouvel envoi, historique et retry, dont Android et mode Europe. Aucun macro, formule, lien externe exécuté ; ressources bornées ; aucune pièce jointe en base64 dans localStorage. | Code et deux contre-revues OK ; livraison et recette appareil en cours |
+| W02 | Confiance | Essai annoncé conforme au plan servi. BYOK gratuit distinct du Pro optionnel ; conseiller sans licence fictive. Promesses de stockage et de transit exactes FR/EN, page publique cohérente. Aucun quota ni accès serveur élargi implicitement. | Web déployé, PR #437 ; recette visuelle/appareil non vérifiée |
 | W03 | Catalogue | Un catalogue partagé aligne comparaison, sélecteurs, labels et disponibilité réelle. Modèle demandé et modèle effectivement servi distingués. Tests contre la dérive et contre l'accès premium hors droit. | À faire |
 | W04 | Projets | Créer/renommer/supprimer un projet, consignes propres, conversations associées, bibliothèque de documents réutilisables. Sources identifiables dans le contexte. Recherche bornée, absence de fichier et contexte tronqué explicites. Cloisonnement par compte et projet ; mode Europe conservé. | À faire |
 | W05 | Livrables | Export DOCX modifiable et XLSX de tableaux, en plus des exports existants. Téléchargements relus par un parseur indépendant ; cellules dangereuses neutralisées ; aucun HTML actif ni formule arbitraire. Formats et limites documentés. | À faire |
@@ -107,9 +107,72 @@ réels ; préparer protocole et instrumentation sans fabriquer leurs résultats.
 
 ## Preuves par lot
 
-Aucune livraison du présent CDC à cette date. Ajouter ici les tests, commits,
-PR et vérifications de production au fur et à mesure ; ne pas remplacer les
-critères d'acceptation par une simple liste de fichiers modifiés.
+### W02 — offre et BYOK
+
+- PR [#437](https://github.com/flotellop-art/Arty/pull/437), squash main
+  `54a865a040d77a784a862370808673c907284b67`, 5 septembre 03:02 UTC.
+- CI PR complète verte (web, Android, orchestrateur), Pages production succès
+  `731ad10b-56a3-42df-be57-b9b9587bb3a5`. Vérification HTTP de
+  `https://tryarty.com/lp/essai/` : 200, offre Haiku présente, ancienne mention
+  Gemini absente ; SPA servie avec `index-YY_3JNd8.js`.
+- CI supplémentaire main : flakiness D1 préexistante constatée sur le même
+  arbre Git exact que la PR verte (getter wallet limité à 250 ms et appels
+  quota concurrents fail-open). Correctif uniquement tests en PR
+  [#438](https://github.com/flotellop-art/Arty/pull/438), 24 tests D1 locaux
+  verts, deux contre-revues et CI web/Android/Pages verte. Fusion main
+  `bf82ff38340a600e3f608cdf54e428e6ebe3d024` à 03:38 UTC. Aucun quota/deadline
+  de production modifié.
+- Build/distribution Android CI a réussi ; cela ne prouve ni installation
+  sur téléphone ni validation Store. Inventaire navigateur de contrôle vide
+  à deux reprises ce jour : recette visuelle non effectuée.
+
+### W01 — lecture locale Office, lot en livraison
+
+- Lecteur ZIP/OOXML borné, sans réseau ni moteur Office : DOCX corps/tableaux,
+  XLSX feuilles/cellules/formules textuelles et caches typés. Formules jamais
+  évaluées ; caches manquants/stales et dates brutes explicites. Racine et
+  relations de parties vérifiées ; document non canonique ou ambigu refusé.
+- Budgets par requête effective entière : 20 Mio source agrégée, 10 Mio par
+  fichier, 2 Mio XML accepté par partie/6 Mio total, 100 000 nœuds/attributs,
+  256 attributs par élément, 200 000 caractères (shared strings incluses),
+  20 000 cellules, 32 feuilles. DEFLATE contrôlé sur les octets réellement
+  produits et CRC réel ; précontrôle avant DOM. Le chunk de décompression
+  peut dépasser transitoirement le seuil : 2 Mio n'est pas une garantie de
+  pic mémoire exact. Mesure sur WebView réelle encore à faire.
+- Parsing avant persistance, dérivés éphémères, originaux chiffrés en IDB ;
+  échec/Stop laisse le fil intact. Owner/epoch capturés, contrôle jusque dans
+  les headers réseau, sauvegardes partielles et finalisation. Édition/retry
+  atomiques. Historique Office interdit locator Terra et route texte-only ;
+  Claude hors EU, Mistral en EU, même pour un tour suivant sans pièce jointe.
+- Fil Office explicitement lecture seule : pas d'outils, recherche publique,
+  compression cloud, géolocalisation, fact-check/récupération de liens,
+  mémoire ou tâches automatiques. W08 devra proposer une transition explicite
+  et confirmée pour agir ; un prompt dans un document ne lèvera pas ce verrou.
+- Deux GO indépendants après corrections des attaques ZIP/XML, confusion de
+  namespaces/relations, révisions et AlternateContent, Ruby/phonétique,
+  formules partagées, annulation tardive, sauvegardes cross-session et effets
+  post-réponse. Tests vrais clients avec `fetch` simulé, pas d'appel payant.
+- Fixtures synthétiques émises par python-docx 1.2.0 et openpyxl 3.1.5
+  (`scripts/generate-office-fixtures.py`), plus fixtures adversariales.
+  Aucun document personnel utilisé. 48 tests d'extraction verts ; suite
+  finale du lot : 206 fichiers / 2 090 tests, typecheck front/back,
+  couverture, build et no-CASA réussis. 13 tests de cycle Office et 5 tests
+  des vrais clients/post-traitements avec réseau simulé. CI à suivre en PR.
+- Formats exclus : DOC/XLS, macros, chiffrement, révisions/alternatives Word,
+  parties principales non canoniques. Pas de reconstruction du rendu, images,
+  annotations, entêtes/pieds, styles de dates ou graphiques. Erreurs FR/EN et
+  périmètre visibles dans le composeur. Compatibilité binaire Android à
+  compiler en CI ; interaction réelle mobile non vérifiée.
+- Audit npm au démarrage : 13 avis sur des dépendances déjà présentes, aucun
+  sur fflate ajouté en version 0.8.3. Aucun `audit fix --force` ; traitement
+  ciblé à prévoir avant de conclure le CDC global.
+
+### Repli du lot W01
+
+Revert Git de la PR via la chaîne Pages habituelle. Aucun schéma/migration de
+données ; originaux conservés. Ne pas remplacer un échec de lecture par un
+faux texte analysé. Un APK déjà installé reste son bundle local jusqu'à mise
+à jour ; pas de contournement OTA du client natif.
 
 ### Repli du lot W02
 

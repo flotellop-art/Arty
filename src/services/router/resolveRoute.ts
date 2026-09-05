@@ -89,6 +89,12 @@ export function resolveRoute(input: RouteInput): RouteDecision {
         reason: { code: 'private_data' },
       })
     }
+  } else if (input.hasOfficeHistory) {
+    provider = 'claude'
+    reason = { code: 'office_documents' }
+    if (input.selectedModel !== 'auto' && input.selectedModel !== 'claude') {
+      overrides.push({ requested: input.selectedModel, applied: 'claude', reason })
+    }
   } else if (input.hasFiles) {
     // PDF, document ou lot mixte : invariant BUG 12 inchangé. Le carve-out
     // ci-dessous ne concerne qu'un lot composé exclusivement d'images.
@@ -254,7 +260,7 @@ export function resolveRoute(input: RouteInput): RouteDecision {
     // Une conversation qui contient des données Google privées ne doit
     // jamais déclencher une recherche publique, même si le nouveau message
     // (ex. « résume ça » ou une question météo) la demanderait isolément.
-    webSearch: !isPrivateData && shouldUseWebSearch(text),
+    webSearch: !isPrivateData && !input.hasOfficeHistory && shouldUseWebSearch(text),
     needsHybrid: provider === 'hybrid',
     isPrivateData,
     reason,

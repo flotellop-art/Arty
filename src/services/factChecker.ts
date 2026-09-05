@@ -22,6 +22,7 @@ import * as storage from './storage'
 import { recordUsage } from './costTracker'
 import type { FactCheckResult, FactCheckClaim, Message } from '../types'
 import { getMessageTextForModel } from './quickActions'
+import { officeKind } from './documents/officeText'
 
 export type Verdict = FactCheckClaim['verdict']
 export type { FactCheckResult, FactCheckClaim }
@@ -1456,6 +1457,13 @@ export async function runFactCheckOnLatest(
   if (!conv) {
     clearSearchContext(conversationId)
     console.warn('[factChecker] conv not found:', conversationId)
+    return
+  }
+  // Document analysis is read-only, including post-processing. In particular,
+  // link recovery runs even when mode=off: never send document-derived URLs
+  // or text into that public search pipeline through another caller.
+  if (conv.messages.some((m) => m.files?.some((f) => officeKind(f) !== null))) {
+    clearSearchContext(conversationId)
     return
   }
 

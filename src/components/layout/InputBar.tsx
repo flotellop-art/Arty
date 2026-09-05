@@ -19,6 +19,7 @@ import {
 import { isVision4kFoundationEnabled } from '../../services/visionFeature'
 import { classifyRouteAttachments, gatherRouteInput } from '../../services/router/gatherRouteInput'
 import { resolveRoute } from '../../services/router/resolveRoute'
+import { officeKind } from '../../services/documents/officeText'
 import { filterSlashCommands, type SlashCommand } from '../../constants/slashCommands'
 import { detectDates } from '../../utils/dateDetector'
 import { toLocalCalendarDateTime } from '../../utils/calendarDateTime'
@@ -66,6 +67,7 @@ interface InputBarProps {
   /** Historique contenant des données Google privées : le preview applique la
       même précédence que l'envoi réel et ne promet jamais Terra. */
   hasPrivateHistory?: boolean
+  hasOfficeHistory?: boolean
   /** Requête explicite de préremplissage (intentions/suggestions de l'accueil).
       L'id permet de rejouer deux fois le même texte sans transformer le champ
       en input contrôlé et sans écraser les modifications libres. */
@@ -252,7 +254,7 @@ function PendingFilePreview({ file, onRemove, disabled = false }: { file: FileAt
   )
 }
 
-export function InputBar({ onSend, isStreaming, onStop, initialText, initialFiles, euOnly, hasPrivateHistory = false, prefill, showQuickActions = true, draftKey, variant = 'default' }: InputBarProps) {
+export function InputBar({ onSend, isStreaming, onStop, initialText, initialFiles, euOnly, hasPrivateHistory = false, hasOfficeHistory = false, prefill, showQuickActions = true, draftKey, variant = 'default' }: InputBarProps) {
   const { t } = useTranslation()
   const heroVariant = variant === 'hero'
   // Évalué à chaque render (lecture localStorage triviale) — un testeur peut
@@ -294,13 +296,15 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
   }, [])
 
   const attachmentRouteFlags = classifyRouteAttachments(files)
+  const officeContext = hasOfficeHistory || files.some((file) => officeKind(file) !== null)
   let attachmentRouteProvider: 'terra' | 'mistral' | 'claude' | null = null
-  if (attachmentRouteFlags.hasImages) {
+  if (attachmentRouteFlags.hasImages || officeContext) {
     const preview = resolveRoute(gatherRouteInput({
       originalText: text,
       ...attachmentRouteFlags,
       euOnly: !!euOnly,
       hasPrivateHistory,
+      hasOfficeHistory: officeContext,
     }))
     attachmentRouteProvider = preview.usesOpenAIVision
       ? 'terra'
@@ -1464,6 +1468,7 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
         </div>
       )}
 
+      {officeContext && <p className="mb-2 px-1 text-xs text-theme-muted" data-testid="office-scope">{t('chat.input.officeScope')}</p>}
       {attachmentRouteProvider && (
         <div
           className="mb-2 flex items-center gap-1.5 px-1 text-[11px] text-theme-muted"
@@ -1591,7 +1596,7 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
           ref={fileInputRef}
           type="file"
           onChange={handleFileSelect}
-          accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.txt,.csv,.md,.json,.xml,.doc,.docx,.xls,.xlsx"
+          accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.txt,.csv,.md,.json,.xml,.docx,.xlsx"
           multiple
           className="hidden"
         />

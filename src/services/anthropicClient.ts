@@ -14,6 +14,7 @@ import { recordUsage } from './costTracker'
 import { updateTrialFromResponse } from './trialClient'
 import { setSearchContext, type SearchContext } from './factChecker'
 import i18n from '../i18n'
+import { DOCUMENT_READ_ONLY_RULES } from './documents/documentPolicy'
 
 const ANTI_HALLU_PROMPT = `
 
@@ -132,6 +133,8 @@ export type ToolHandler = (
 ) => Promise<{ result: string; screenshot?: string; fileData?: { name: string; mimeType: string; base64: string } }>
 
 interface StreamOptions {
+  assertRequestCurrent?: () => void
+  documentReadOnly?: boolean
   systemPrompt?: string
   onToolCall?: ToolHandler
   // Restreint l'ensemble d'outils exposé au modèle (ex: brief proactif =
@@ -293,7 +296,8 @@ function mapErrorStatus(status: number): string {
 async function fetchWithRetry(
   requestBody: string,
   apiKey: string | null,
-  controller: AbortController
+  controller: AbortController,
+  assertRequestCurrent?: () => void,
 ): Promise<Response> {
   const maxRetries = 3
   // `interleaved-thinking-2025-05-14` retiré : obsolète avec le thinking
@@ -303,6 +307,7 @@ async function fetchWithRetry(
   // C9 : trio Content-Type/BYOK(x-api-key, garde server-provided)/google-token
   // factorisé (aiHttp.buildAiHeaders).
   const headers = await buildAiHeaders({
+    assertRequestCurrent,
     byokKey: apiKey,
     auth: 'x-api-key',
     extra: {
@@ -313,12 +318,14 @@ async function fetchWithRetry(
 
   let response: Response | null = null
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    assertRequestCurrent?.()
     response = await fetch(apiUrl('/api/ai/proxy'), {
       method: 'POST',
       headers,
       body: requestBody,
       signal: controller.signal,
     })
+    assertRequestCurrent?.()
 
     const isRetryable = response.status === 429 || response.status === 529 || response.status >= 500
     if (response.ok || !isRetryable || attempt === maxRetries) break
@@ -861,12 +868,14 @@ async function runWithTools(
   controller: AbortController
 ) {
   try {
-    const compressed = await compressIfNeeded(
+    options?.assertRequestCurrent?.()
+    const compressed = options?.documentReadOnly ? originalMessages : await compressIfNeeded(
       originalMessages.map((m) => ({ role: m.role, content: m.content })),
       options?.systemPrompt,
       apiKey,
       controller.signal
     )
+    options?.assertRequestCurrent?.()
 
     const apiMessages: ApiMessage[] = compressed as ApiMessage[]
 
@@ -916,7 +925,8 @@ async function runWithTools(
     // id hors union (ex: version datée renvoyée par Anthropic).
     let dispatchedModel: string = ANTHROPIC_MODEL
     dispatchModelUsed({ model: ANTHROPIC_MODEL, provider: 'claude', reflecting: effortActive, ...eventScope })
-    const locationContext = await buildLocationContext(lastUserText)
+    const locationContext = options?.documentReadOnly ? '' : await buildLocationContext(lastUserText)
+    options?.assertRequestCurrent?.()
 
     const baseSystemText = options?.systemPrompt || SYSTEM_PROMPT
     // ANTI_HALLU parle de « ta longue chaîne de pensée » → ne l'ajouter que
@@ -929,7 +939,7 @@ async function runWithTools(
     // Pas de forçage web_search sur un appel à modèle imposé (ex: brief
     // proactif) : son jeu d'outils est restreint et n'inclut pas web_search,
     // donc pousser le modèle à l'appeler n'aurait aucun sens.
-    const webSearchHint = (!options?.model && (rd ? rd.webSearch : shouldUseWebSearch(lastUserText)))
+    const webSearchHint = (!options?.documentReadOnly && !options?.model && (rd ? rd.webSearch : shouldUseWebSearch(lastUserText)))
       ? FORCE_WEB_SEARCH_PROMPT
       : ''
     // Date du jour — sans ancre temporelle, Claude devine « demain » depuis
@@ -943,11 +953,11 @@ async function runWithTools(
     const dateLine = `\n\nDate du jour : ${new Date().toLocaleDateString('fr-FR', {
       weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
     })}.`
-    const systemText = withThinking + dateLine + locationContext + webSearchHint
+    const systemText = withThinking + dateLine + locationContext + webSearchHint + (options?.documentReadOnly ? DOCUMENT_READ_ONLY_RULES : '')
     const systemBlocks = [{ type: 'text', text: systemText, cache_control: { type: 'ephemeral' } }]
     // Add prompt-caching hint to last tool definition. L'ensemble d'outils
     // peut être restreint via options.tools (brief proactif = lecture seule).
-    const toolSet = filterAnthropicToolsForRoute(options?.tools ?? TOOLS, rd)
+    const toolSet = options?.documentReadOnly ? [] : filterAnthropicToolsForRoute(options?.tools ?? TOOLS, rd)
     const cachedTools = toolSet.map((t, i) =>
       i === toolSet.length - 1 ? { ...t, cache_control: { type: 'ephemeral' } } : t
     )
@@ -991,8 +1001,9 @@ async function runWithTools(
         ...(effort && { output_config: { effort } }),
       })
 
-      const response = await fetchWithRetry(requestBody, apiKey, controller)
+      const response = await fetchWithRetry(requestBody, apiKey, controller, options?.assertRequestCurrent)
       const { contentBlocks, inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens, servedModel } = await parseSSEStream(response, onToken)
+      options?.assertRequestCurrent?.()
       const searchContext = extractAnthropicSearchContext(contentBlocks, lastUserText)
       if (searchContext) setSearchContext(searchContext, options?.conversationId)
 
@@ -1053,7 +1064,7 @@ async function runWithTools(
       }
 
       const hasToolUse = contentBlocks.some((b) => b.type === 'tool_use')
-      if (!hasToolUse || !options?.onToolCall) {
+      if (!hasToolUse || !options?.onToolCall || options.documentReadOnly) {
         onDone()
         return
       }

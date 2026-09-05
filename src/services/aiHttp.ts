@@ -24,6 +24,8 @@ import {
 // ─────────────────────────────────────────────────────────────────────
 
 export interface AiHeaderOptions {
+  /** Identity/cancellation captured before asynchronous document preparation. */
+  assertRequestCurrent?: () => void
   /**
    * Clé BYOK de l'utilisateur. La sentinelle 'server-provided' (comme null/'')
    * signifie « pas de clé cliente → le proxy utilise la clé serveur » : elle ne
@@ -81,6 +83,7 @@ function waitForGoogleStorageReady(timeoutMs = 10_000): Promise<void> {
  *    `x-arty-trial-token` (essai email).
  */
 export async function buildAiHeaders(opts: AiHeaderOptions = {}): Promise<Record<string, string>> {
+  opts.assertRequestCurrent?.()
   const headers: Record<string, string> = { 'Content-Type': 'application/json', ...(opts.extra ?? {}) }
 
   const key = opts.byokKey
@@ -106,6 +109,7 @@ export async function buildAiHeaders(opts: AiHeaderOptions = {}): Promise<Record
     throw new Error('Authentication session changed — please retry')
   }
   const googleToken = await getValidAccessToken()
+  opts.assertRequestCurrent?.()
   if (
     getActiveUserId() !== userIdAtStart
     || getActiveSessionEpoch() !== epochAtStart
@@ -127,6 +131,7 @@ export async function buildAiHeaders(opts: AiHeaderOptions = {}): Promise<Record
     const trialToken = getTrialToken()
     if (trialToken) headers['x-arty-trial-token'] = trialToken
   }
+  opts.assertRequestCurrent?.()
   return headers
 }
 
