@@ -5,6 +5,9 @@ import { assertPreparedForOperation, consumePreparedDocument } from './documentI
 import { generateId } from '../../utils/generateId'
 import { assertDocumentWorkspace, guardDocumentTransaction, getDocumentStorageLayout } from '../workspaceWriter/runtime'
 import { openExistingDB } from '../readOnlyExistingDB'
+import { openDeclaredDatabase } from '../workspaceWriter/declaredDatabase'
+import { captureOwnerErasureGuard } from './localErasureGuard'
+export { blockProjectOperations } from './localErasureGuard'
 import { PROJECT_LIMITS, ProjectError, boundedInteger, validProject, validProjectId, validDescriptor,
   type PreparedProjectDocument, type ProjectDocument, type Project, type ProjectSummary } from './types'
 
@@ -21,13 +24,13 @@ type DocumentRow = {
 }
 type Usage = { owner: string; projects: number; documents: number; sourceBytes: number }
 let dbPromise: Promise<IDBPDatabase> | null = null
-const deletingOwners = new Set<string>()
-const localGenerations = new Map<string, number>()
 
 function getDB(): Promise<IDBPDatabase> {
   assertDocumentWorkspace()
-  const { name, version } = getDocumentStorageLayout().projects
-  if (!dbPromise) dbPromise = openDB(name, version, {
+  const layout = getDocumentStorageLayout(), { name, version } = layout.projects
+  if (!dbPromise) {
+  const closed = () => { if (dbPromise === opening) dbPromise = null }
+  const opening: Promise<IDBPDatabase> = (layout.kind === 'isolated-v1' ? openDeclaredDatabase(layout.projects, closed) : openDB(name, version, {
     upgrade(db) {
       assertDocumentWorkspace()
       const projects = db.createObjectStore('projects', { keyPath: 'key' })
@@ -41,9 +44,11 @@ function getDB(): Promise<IDBPDatabase> {
       db.createObjectStore('usage', { keyPath: 'owner' })
       db.createObjectStore('meta')
     },
-    blocking() { void dbPromise?.then(db => db.close()); dbPromise = null },
-    terminated() { dbPromise = null },
-  }).catch(error => { dbPromise = null; throw error })
+    blocking() { void opening.then(db => db.close(), () => {}); closed() },
+    terminated: closed,
+  })).catch(error => { closed(); throw error })
+  dbPromise = opening
+  }
   return dbPromise
 }
 const OPERATION = Symbol('project-operation')
@@ -69,13 +74,13 @@ export interface ProjectOperation {
  * Capture/export uses this without creating or repairing any database. */
 export function captureLocalReadScope(signal?: AbortSignal) {
   const owner = getActiveUserId(), epoch = getActiveSessionEpoch()
-  if (!owner || owner.length > 128 || !isCryptoReady() || deletingOwners.has(owner)) throw new ProjectError('unavailable')
-  const generation = localGenerations.get(owner) ?? 0, cryptoCurrent = captureCryptoGuard(), sessionFence = getSessionProjectFence()
+  if (!owner || owner.length > 128 || !isCryptoReady()) throw new ProjectError('unavailable')
+  const assertNotErasing = captureOwnerErasureGuard(owner), cryptoCurrent = captureCryptoGuard(), sessionFence = getSessionProjectFence()
   if (sessionFence === null) throw new ProjectError('cancelled')
   const assertCurrent = () => {
     assertDocumentWorkspace()
+    assertNotErasing()
     if (signal?.aborted || !cryptoCurrent() || owner !== getActiveUserId() || epoch !== getActiveSessionEpoch() ||
-      generation !== (localGenerations.get(owner) ?? 0) || deletingOwners.has(owner) ||
       sessionFence !== (localStorage.getItem(PROJECT_ERASURE_FENCE_KEY) ?? 'initial') ||
       !getKnownSessions().some(session => session.userId === owner)) throw new ProjectError('cancelled')
   }
@@ -86,6 +91,7 @@ export function captureLocalReadScope(signal?: AbortSignal) {
     const db = await openExistingDB(name, version, assertCurrent, signal)
     try {
       if (!db) {
+        if (getDocumentStorageLayout().kind === 'isolated-v1') throw new ProjectError('unavailable')
         if (sessionFence !== 'initial') throw new ProjectError('cancelled')
         assertCurrent(); return
       }
@@ -443,14 +449,6 @@ export async function deleteProject(operation: ProjectOperation, id: string, exp
     try { tx.abort() } catch { /* completed */ }
     await tx.done.catch(() => {}); throw error
   }
-}
-
-/** Invalidates local work immediately. Release permits retries, never old work. */
-export function blockProjectOperations(owner: string): () => void {
-  if (deletingOwners.has(owner)) throw new ProjectError('unavailable')
-  deletingOwners.add(owner)
-  localGenerations.set(owner, (localGenerations.get(owner) ?? 0) + 1)
-  return () => { deletingOwners.delete(owner) }
 }
 
 /** Account erasure only: caller has removed the captured owner from known sessions

@@ -31,7 +31,7 @@ supplémentaire n'est implicite dans ce mandat.
 | W03 | Catalogue | Un catalogue partagé aligne comparaison, sélecteurs, labels et éligibilité selon le compte (pas une garantie fournisseur). Modèle demandé, transmis par le proxy et signalé par le fournisseur distingués. Tests contre la dérive et contre l'accès premium hors droit. | Web déployé, PR #440 ; recette visuelle/appareil non vérifiée |
 | W04 | Projets | Créer/renommer/supprimer un projet, consignes propres, conversations associées, bibliothèque de documents réutilisables. Sources identifiables dans le contexte. Recherche bornée, absence de fichier et contexte tronqué explicites. Cloisonnement par compte et projet ; mode Europe conservé. | Bibliothèque web livrée #443 ; conversations web livrées #444 ; recette visuelle/appareil non vérifiée |
 | W05 | Livrables | Export DOCX modifiable et XLSX de tableaux, en plus des exports existants. Téléchargements relus par un parseur indépendant ; cellules dangereuses neutralisées ; aucun HTML actif ni formule arbitraire. Formats et limites documentés. | Web déployé #445 ; recette structurelle vérifiée ; rendu Office/appareil non vérifié |
-| W06 | Continuité | Sauvegarde/restauration explicites puis synchronisation optionnelle multi-appareil chiffrée avant upload, avec secret détenu par l'utilisateur et récupération expliquée. Conflits non destructifs ; reprise hors-ligne ; logout/switch/delete et compte invité traités. Un export manuel seul ne valide pas la synchronisation. | A1 #446, galerie #448, verrou document #449, capture/vérification A2 #451 et préparation technique A3a #452 livrés ; restauration/synchronisation non livrées |
+| W06 | Continuité | Sauvegarde/restauration explicites puis synchronisation optionnelle multi-appareil chiffrée avant upload, avec secret détenu par l'utilisateur et récupération expliquée. Conflits non destructifs ; reprise hors-ligne ; logout/switch/delete et compte invité traités. Un export manuel seul ne valide pas la synchronisation. | A1 #446, galerie #448, verrou document #449, capture/vérification A2 #451, préparation A3a #452 et admission froide A3b.1 #453 livrés ; restauration/synchronisation non livrées |
 | W07 | Comparaison | Comparer depuis une conversation avec contexte/documents autorisés ; conserver les résultats et poursuivre la réponse choisie sans perdre l'original. Erreurs/coûts/quotas de chaque panneau visibles ; EU et historique privé jamais contournés. | À faire |
 | W08 | Parcours métier | Trois parcours complets : synthèse documentaire, réponse client préparée, planification Agenda avec confirmation avant écriture. Écran de connexions indiquant disponible/non configuré/non pris en charge selon plateforme. Pas de Drive/Gmail OAuth restreint ni relais IMAP serveur. | À faire |
 | W09 | Mobile et identité | PWA installable ; identité tryarty cohérente ; distribution Android authentifiée et documentée. Ne pas rediriger vers une app Play homonyme. Toute migration appId inclut signatures/OAuth/Firebase/liens vérifiés ; un APK distribué n'est pas une publication Store. | À faire |
@@ -108,7 +108,50 @@ réels ; préparer protocole et instrumentation sans fabriquer leurs résultats.
 
 ## Preuves par lot
 
-### W06 A3b.1 — admission du stockage (testé, livraison à attester)
+### W06 A3b.2 — stockage isolé candidat, activation OFF
+
+Contrat de génération globale implémenté : résolveurs histoire/crypto/assets,
+parser strict, bases déclarées obligatoirement existantes, provisioning neuf
+non destructeur et garde d'effacement partagée. Les accès Google ne sont plus
+supprimés lors d'un refus crypto pré-bootstrap ; le compteur provisoire n'est
+adopté qu'après ouverture du chiffrement. Auth/réglages restent à leurs adresses
+existantes. Les anciens rapports ne sont pas nettoyés au boot isolé.
+
+51 tests de runtime candidat avec vrai parser/admission/KDF/stores/hooks et
+API Web Locks simulée ; politique réelle OFF testée séparément avec la même
+fixture valide. A→B→A, logout/relogin/reload, sauvegarde relue, quarantaine et
+reprise crypto, courses/erreurs/effacement sont couverts. Deux GO readonly
+limités, après correction des objections de sûreté et de preuve.
+
+Pas encore une livraison de restauration : aucun migrateur ni writer du
+registre ; aucun override de la constante de release. La purge testée est
+celle de la génération active, pas celle des copies retenues. Recréation d'un
+owner inventorié, reprise froide, purge multigénération et import exact restent
+à terminer. Décisions et repli : `ADR_WORKSPACE_BACKUP.md`, section A3b.2.
+`npm run verify` final réussi : 257 fichiers / 2 866 tests + 1 ignoré,
+typecheck front/back, no-CASA/addon, couverture, build et worker Office verts.
+Couverture lignes 67,75 %, branches 60,45 %. Log local
+`../arty-isolated-readers-verify-final-20260905.log`.
+Reçus de PR/CI/Pages à consigner après livraison.
+
+### W06 A3b.1 — admission du stockage livrée (#453)
+
+- PR [#453](https://github.com/flotellop-art/Arty/pull/453), head
+  `39405506857888966c659f806835e55ee3087bf0`, squash main
+  `ffd9bf69ee5a0d09ceed219c84e03fab5fa2efdc` ; fusion 18:07:07 UTC.
+- CI PR `33982796853` et main `33983051454` réussies (web, Android,
+  orchestrateur). Pages preview `49d1726c-ef33-465e-a216-d3a905963890` et
+  production `1e1b6381-9e51-4c20-864f-e8964f0aac17` réussis.
+- Distribution Android `33983051469` réussie, étapes APK signé et Firebase
+  App Distribution confirmées ; pas de recette APK installé sur appareil.
+- tryarty.com et URL immuable production servent le même asset d'entrée
+  `/assets/index-_bsPvJWd.js`, HTTP 200, 254 221 octets, SHA-256
+  `4c1ee5b4c3a30bb185d0a04989ce45352436aba0dce37bba40b52b507ae9cd2d`
+  (sonde publique 18:10:26 UTC). Connexion du build principal ouverte en
+  navigateur sur origine vierge, sans compte réel ni seed démo.
+- Sonde répétée à 18:16 UTC : mêmes HTTP 200 et empreinte. Pas de mesure
+  continue de latence/taux d'erreur ; API Cloudflare directe non authentifiée,
+  reçus de déploiement lus via les check-runs GitHub autorisés.
 
 Contrôle readonly avant tout chargement privé, deadline/cancellation et
 résolveur explicite legacy-v1. Aucune migration, écriture de contrôle,

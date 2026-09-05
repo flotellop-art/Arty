@@ -154,6 +154,16 @@ describe('useAuth login transaction', () => {
     expect(mocks.resetGoogleMemCache).toHaveBeenCalledOnce()
   })
 
+  it('un refus crypto avant bootstrap ne supprime jamais un ancien grant Google', async () => {
+    mocks.initCrypto.mockRejectedValueOnce(new Error('local recovery required'))
+    const { result } = renderHook(() => useAuth())
+    await act(async () => { await expect(result.current.login('google', credentials)).rejects.toThrow('local recovery required') })
+    expect(mocks.googleLogout).not.toHaveBeenCalled()
+    expect(bootstrapGoogleStorage).not.toHaveBeenCalled()
+    expect(mocks.resetGoogleMemCache).toHaveBeenCalledOnce()
+    expect(mocks.active).toBeNull(); expect(mocks.known).toEqual([])
+  })
+
   it('restaure les clés BYOK préexistantes après un échec de reconnexion', async () => {
     mocks.scoped.set('google-user-a:api-keys', JSON.stringify({ anthropic: 'existing-byok' }))
     const { result } = renderHook(() => useAuth())

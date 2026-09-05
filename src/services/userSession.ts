@@ -4,7 +4,7 @@
  */
 
 import { invalidateLocalDataViews } from './localDataInvalidation'
-import { assertDocumentWorkspace } from './workspaceWriter/runtime'
+import { assertDocumentWorkspace, getDocumentStorageLayout } from './workspaceWriter/runtime'
 
 const ACTIVE_SESSION_KEY = 'arty-active-session'
 const KNOWN_SESSIONS_KEY = 'arty-known-sessions'
@@ -163,6 +163,10 @@ const LEGACY_KEYS = [
 ]
 
 export function migrateExistingData(userId: string): void {
+  assertDocumentWorkspace()
+  // Isolated generations have an explicit source inventory. A normal login
+  // cannot silently adopt anonymous legacy content or credentials from it.
+  if (getDocumentStorageLayout().kind !== 'legacy-v1') return
   // Do this before the per-user migration flag check: an ownerless report may
   // appear after an earlier migration (for example after restoring old data).
   purgeLegacyGlobalReports()

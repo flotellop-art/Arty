@@ -3,7 +3,7 @@ import { openDB, type IDBPDatabase } from 'idb'
 /** Never bootstrap a missing database during an export/read. Aborting the
  * initial versionchange rolls creation back. All other failures remain errors.
  * The caller owns and must close a successful connection. */
-export async function openExistingDB(name: string, version: number, assertCurrent: () => void, signal?: AbortSignal): Promise<IDBPDatabase | null> {
+export async function openExistingDB(name: string, version: number, assertCurrent: () => void, signal?: AbortSignal, onClosed?: () => void): Promise<IDBPDatabase | null> {
   assertCurrent()
   if (signal?.aborted) throw new DOMException('Read cancelled', 'AbortError')
   let absent = false, retired = false
@@ -21,7 +21,8 @@ export async function openExistingDB(name: string, version: number, assertCurren
         transaction.abort()
       },
       blocked() { retired = true; rejectStop(new DOMException('Database opening blocked', 'InvalidStateError')) },
-      blocking() { void opening.then(db => db.close(), () => {}) },
+      blocking() { void opening.then(db => db.close(), () => {}); onClosed?.() },
+      terminated() { onClosed?.() },
     })
     const admitted = opening.then(db => {
       try { assertCurrent(); if (retired) throw new DOMException('Read cancelled', 'AbortError'); return db }

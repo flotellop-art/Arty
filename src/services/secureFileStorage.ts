@@ -19,6 +19,7 @@ import {
 import type { FileAttachment } from '../types'
 import { assertDocumentWorkspace, guardDocumentTransaction, getDocumentStorageLayout } from './workspaceWriter/runtime'
 import { openExistingDB } from './readOnlyExistingDB'
+import { openDeclaredDatabase } from './workspaceWriter/declaredDatabase'
 import { BACKUP_LIMITS, BackupError } from './workspaceBackup/types'
 
 const STORE = 'files'
@@ -45,8 +46,9 @@ function ownerKeyFor(userId: string | null): string {
 function getDB(): Promise<IDBPDatabase> {
   assertDocumentWorkspace()
   if (!dbPromise) {
-    const { name, version } = getDocumentStorageLayout().files
-    dbPromise = openDB(name, version, {
+    const layout = getDocumentStorageLayout(), { name, version } = layout.files
+    const closed = () => { if (dbPromise === opening) dbPromise = null }
+    const opening: Promise<IDBPDatabase> = (layout.kind === 'isolated-v1' ? openDeclaredDatabase(layout.files, closed) : openDB(name, version, {
       upgrade(db) {
         assertDocumentWorkspace()
         if (!db.objectStoreNames.contains(STORE)) {
@@ -54,7 +56,10 @@ function getDB(): Promise<IDBPDatabase> {
           store.createIndex('ownerKey', 'ownerKey', { unique: false })
         }
       },
-    })
+      blocking() { void opening.then(db => db.close(), () => {}); closed() },
+      terminated: closed,
+    })).catch(error => { closed(); throw error })
+    dbPromise = opening
   }
   return dbPromise
 }

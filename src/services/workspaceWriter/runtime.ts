@@ -1,6 +1,6 @@
 import { createDocumentWorkspaceLock } from './documentLock'
 import { createWorkspaceAdmission } from './admission'
-import { legacyStorageKey } from './layout'
+import { legacyStorageKey, workspaceDataKey, type HistorySlot, type CryptoSlot } from './layout'
 
 /** No private application module is imported until this singleton is held. */
 export const documentWorkspace = createDocumentWorkspaceLock(() => navigator.locks)
@@ -9,9 +9,12 @@ export const assertDocumentWorkspace = () => { documentWorkspace.assertHeld(); w
 export const documentWorkspaceSignal = documentWorkspace.signal
 export const getDocumentStorageLayout = () => workspaceAdmission.getLayout()
 export function documentStorageKey(owner: string | null, key: string): string {
-  getDocumentStorageLayout() // future layouts need explicit readers, never fallback
+  getDocumentStorageLayout()
+  // Authentication, settings, consent and their logout lifecycle stay here.
   return legacyStorageKey(owner, key)
 }
+export const documentHistoryKey = (owner: string | null, key: HistorySlot) => workspaceDataKey(getDocumentStorageLayout(), owner, key)
+export const documentCryptoKey = (owner: string | null, key: CryptoSlot) => workspaceDataKey(getDocumentStorageLayout(), owner, key)
 
 /** Defence for an exceptional loss (normal application code never releases).
  * Already committed transactions cannot be undone by this guard. */

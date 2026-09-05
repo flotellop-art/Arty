@@ -25,6 +25,7 @@ import { clearWalletCache } from '../services/walletClient'
 import { adoptPendingTrialRemaining, clearPendingTrialRemaining } from '../services/trialClient'
 import { purgeComposerDraftsForActiveUser } from '../services/composerDrafts'
 import { resetMailAccountsCache } from '../services/mailAccounts'
+import { getDocumentStorageLayout } from '../services/workspaceWriter/runtime'
 
 type StoredKeys = { anthropic: string; gemini?: string; mistral?: string; openai?: string }
 
@@ -54,11 +55,10 @@ export function useAuth() {
     const owner = currentUser.userId, epoch = getActiveSessionEpoch()
     let cancelled = false
     const current = () => !cancelled && owner === getActiveUserId() && epoch === getActiveSessionEpoch()
-    adoptPendingTrialRemaining()
     // Legacy reports predate account scoping and contain no owner metadata.
     // They cannot be assigned safely, so remove them on the first authenticated
     // boot instead of leaving personal HTML globally readable.
-    purgeLegacyGlobalReports()
+    if (getDocumentStorageLayout().kind === 'legacy-v1') purgeLegacyGlobalReports()
     const keys = scoped.getJSON<StoredKeys>('api-keys')
     if (!keys?.anthropic) return
     setActiveKeys(keys.anthropic, keys.gemini, keys.mistral, keys.openai)
@@ -66,7 +66,12 @@ export function useAuth() {
       assertCurrent: () => { if (!current()) throw new CryptoContextChanged() },
     })
     initialize
-      .then(() => { if (current()) return Promise.all([bootstrapGoogleStorage(), bootstrapFileStorage(), bootstrapConversationStorage()]) })
+      .then(() => {
+        if (current()) {
+          adoptPendingTrialRemaining()
+          return Promise.all([bootstrapGoogleStorage(), bootstrapFileStorage(), bootstrapConversationStorage()])
+        }
+      })
       .catch((err) => {
         if (current() && !isCryptoContextChanged(err)) console.error('[useAuth] crypto bootstrap failed:', err)
       })
@@ -127,7 +132,7 @@ export function useAuth() {
       }
       const previousApiKeys = scoped.getItem('api-keys')
       let writtenApiKeys: string | null = null
-      adoptPendingTrialRemaining()
+      let cryptoInitialized = false
       try {
       // Migrate existing data if first login after update
       migrateExistingData(userId)
@@ -136,6 +141,8 @@ export function useAuth() {
       // plain-JSON Google tokens into encrypted storage.
       await initCrypto(credentials.anthropicKey)
       assertCurrentAttempt()
+      cryptoInitialized = true
+      adoptPendingTrialRemaining()
       await bootstrapGoogleStorage()
       assertCurrentAttempt()
       // L'admission froide a déjà vérifié la compatibilité du stockage avant
@@ -184,10 +191,12 @@ export function useAuth() {
         && getActiveSessionEpoch() === provisionalEpoch
       ) {
         clearActiveKeys()
-        if (method === 'google') {
+        if (method === 'google' && cryptoInitialized) {
           googleLogout({ notify: false })
-          resetGoogleMemCache()
         }
+        // A local recovery refusal precedes any grant/bootstrap write. Never
+        // delete a previously stored grant merely because crypto could not open.
+        if (method === 'google') resetGoogleMemCache()
         // Un échec de reconnexion ne doit jamais effacer les clés BYOK qui
         // existaient déjà pour ce compte. Restaurer seulement si notre propre
         // écriture est encore présente (pas une édition plus récente).

@@ -1,11 +1,11 @@
 import type { Conversation } from '../types'
-import * as scoped from './scopedStorage'
 import { encrypt, decrypt, isCryptoReady, captureCryptoGuard, isCryptoContextChanged } from './crypto'
 import { deleteOwnedFiles } from './secureFileStorage'
 import { getActiveUserId, getActiveSessionEpoch } from './userSession'
 import { generatedImageIds } from './generatedImages'
 import { generateId } from '../utils/generateId'
-import { assertDocumentWorkspace, documentWorkspaceSignal, documentStorageKey } from './workspaceWriter/runtime'
+import { assertDocumentWorkspace, documentWorkspaceSignal, documentHistoryKey } from './workspaceWriter/runtime'
+import type { HistorySlot } from './workspaceWriter/layout'
 import { BackupError } from './workspaceBackup/types'
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -34,7 +34,7 @@ const KILLSWITCH_KEY = 'arty-conv-encryption-disabled'
 // otherwise stay false for the whole session and every new conversation would
 // be silently dropped (blank-screen bug, juillet 2026). Each bootstrap retries
 // these slots and merges the history back if the key situation heals.
-const LOCKED_KEYS = ['conversations-enc-locked', 'conversations-enc-locked-2']
+const LOCKED_KEYS = ['conversations-enc-locked', 'conversations-enc-locked-2'] as const
 
 // Decrypted conversations, kept in memory for synchronous reads.
 let memConversations: Conversation[] | null = null
@@ -56,8 +56,8 @@ function captureScope(): StoreScope {
 function scopeCurrent(scope: StoreScope): boolean {
   return !documentWorkspaceSignal.aborted && scope.owner === getActiveUserId() && scope.epoch === getActiveSessionEpoch() && scope.reset === resetGen
 }
-function physicalKey(scope: StoreScope, key: string): string {
-  return documentStorageKey(scope.owner, key)
+function physicalKey(scope: StoreScope, key: HistorySlot): string {
+  return documentHistoryKey(scope.owner, key)
 }
 function ensureCacheScope(): void {
   assertDocumentWorkspace()
@@ -112,7 +112,9 @@ export function getConversations(): Conversation[] {
   if (memConversations) return memConversations
   // Cold read before bootstrap. A plain copy is a migration leftover or a
   // crash-safety-net write — either way it is the freshest available state.
-  const plain = scoped.getJSON<Conversation[]>(PLAIN_KEY)
+  const scope = captureScope()
+  let plain: Conversation[] | null = null
+  try { const raw = localStorage.getItem(physicalKey(scope, PLAIN_KEY)); plain = raw ? JSON.parse(raw) as Conversation[] : null } catch { /* malformed legacy plain */ }
   if (plain) {
     memConversations = sanitizeConversationPayloads(plain)
     cacheReady = true
@@ -122,7 +124,7 @@ export function getConversations(): Conversation[] {
   // empty and the empty cache is authoritative. Otherwise the history is
   // locked in `conversations-enc` — only the async bootstrap can load it;
   // stay not-ready so writes don't clobber it.
-  if (!scoped.getItem(ENC_KEY)) {
+  if (!localStorage.getItem(physicalKey(scope, ENC_KEY))) {
     memConversations = []
     cacheReady = true
   }

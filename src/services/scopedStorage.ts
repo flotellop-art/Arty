@@ -6,6 +6,8 @@
 import { getActiveUserId } from './userSession'
 import { secureSet, secureGet, isCryptoReady, isCryptoContextChanged } from './crypto'
 import { assertDocumentWorkspace, documentStorageKey } from './workspaceWriter/runtime'
+import { getDocumentStorageLayout } from './workspaceWriter/runtime'
+import { HISTORY_SLOTS, workspaceDataKey } from './workspaceWriter/layout'
 
 function buildKey(baseKey: string): string {
   const userId = getActiveUserId()
@@ -118,4 +120,12 @@ export function clearAllForActiveUser(): void {
     if (k && k.startsWith(prefix)) toRemove.push(k)
   }
   toRemove.forEach((k) => localStorage.removeItem(k))
+  const layout = getDocumentStorageLayout()
+  if (layout.kind === 'isolated-v1') {
+    // Active generation only. The production admission gate remains OFF until
+    // the recovery journal can attest purging every retained generation.
+    for (const slot of [...HISTORY_SLOTS, 'crypto-salt', 'crypto-check', 'crypto-version'] as const) {
+      localStorage.removeItem(workspaceDataKey(layout, userId, slot))
+    }
+  }
 }
