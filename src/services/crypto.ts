@@ -4,6 +4,7 @@
  * end-to-end encryption. No bulk rewrite or deletion of existing ciphertext.
  */
 import { getActiveUserId, getActiveSessionEpoch } from './userSession'
+import { invalidateLocalDataViews } from './localDataInvalidation'
 
 const SALT_KEY = 'arty-crypto-salt'
 const KEY_CHECK_KEY = 'arty-crypto-check'
@@ -109,6 +110,7 @@ export function initCrypto(passphrase: string, options: CryptoInitOptions = {}):
  */
 async function initializeCrypto(passphrase: string, options: CryptoInitOptions): Promise<void> {
   const scope = captureScope(), generation = ++initGeneration
+  invalidateLocalDataViews()
   const previous = context && scopeCurrent(context) ? context : null
   // Retain the last committed ring for rollback through overlapping attempts;
   // its old generation makes it unusable while a candidate is pending.

@@ -10,6 +10,7 @@ vi.mock('../../utils/generateId', () => ({
 }))
 
 vi.mock('../../services/storage', () => ({
+  isCacheReady: () => true,
   getConversation: vi.fn(),
   saveConversation: vi.fn(),
 }))

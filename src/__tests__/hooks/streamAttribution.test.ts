@@ -1,6 +1,6 @@
 import { act, cleanup, renderHook } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-vi.mock('../../services/storage', () => ({ getConversation: vi.fn(), saveConversation: vi.fn() }))
+vi.mock('../../services/storage', () => ({ getConversation: vi.fn(), saveConversation: vi.fn(), isCacheReady: () => true }))
 vi.mock('../../services/userSession', () => ({ getActiveUserId: () => 'a', getActiveSessionEpoch: vi.fn(() => 1) }))
 import * as storage from '../../services/storage'
 import { getActiveSessionEpoch } from '../../services/userSession'
@@ -11,6 +11,7 @@ describe('Persisted attribution belongs to the exact invocation', () => {
   it('same-conversation Stop/restart ignores old and unscoped events, including partial saves', () => {
     const conv: Conversation = { id: 'c', title: 'test', createdAt: 0, updatedAt: 0, messages: [] }
     vi.mocked(storage.getConversation).mockReturnValue(conv)
+    vi.mocked(storage.saveConversation).mockImplementation(saved => Object.assign(conv, saved))
     const { result } = renderHook(() => useStreaming({ refreshConversations: vi.fn() }))
     act(() => { result.current.startStream('c') })
     const oldId = result.current.getInvocationId('c')

@@ -4,6 +4,7 @@ import { captureCryptoGuard } from '../crypto'
 import { getConversation } from '../storage'
 import { beginProjectOperation, assertProjectOperation } from '../projects/store'
 import { downloadOrShareFile } from '../native/shareFile'
+import { generatedImageIds } from '../generatedImages'
 import { EXPORT_LIMITS as L, assertExportText, preflightMarkdown, exportError, type ExportSnapshot, type ExportMessage, type ExportDocument, type ExportChoices } from './types'
 
 function bounded(value: unknown, max: number): string {
@@ -31,7 +32,8 @@ export function snapshotForExport(conv: Conversation, messageId?: string): Expor
     if (chars > L.chars) exportError('Export limité à 200 000 caractères, sources comprises.')
     preflightMarkdown(content)
     return { id: bounded(m.id, 128), role: m.role, content, sources, interrupted: !!m.interrupted,
-      model: m.model ? bounded(m.model, 200) : '', attachments: m.files?.length ?? 0 }
+      model: m.model ? bounded(m.model, 200) : '', attachments: m.files?.length ?? 0,
+      galleryImages: m.role === 'assistant' ? generatedImageIds(m.generatedImages).length : 0 }
   })
   return { title: bounded(conv.title, 255), messages }
 }

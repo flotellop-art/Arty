@@ -6,6 +6,7 @@ import { AssistantBubble } from './AssistantBubble'
 import { TypingIndicator } from './TypingIndicator'
 import { StreamingIndicator } from './StreamingIndicator'
 import { ProjectSources } from './ProjectSources'
+import { generatedImageIds } from '../../services/generatedImages'
 
 interface MessageItemProps {
   onExport?: (messageId: string) => void
@@ -21,6 +22,7 @@ interface MessageItemProps {
 }
 
 const MessageItem = memo(function MessageItem({ msg, index, onExport, onAction, onBranch, onTogglePin, onEdit, onRetry, onReport, isLast }: MessageItemProps) {
+  const { t } = useTranslation()
   const handleBranch = useCallback(() => onBranch?.(index), [onBranch, index])
   const handleTogglePin = useCallback(() => onTogglePin?.(msg.id), [onTogglePin, msg.id])
   const handleEdit = useCallback((newContent: string) => onEdit?.(msg.id, newContent), [onEdit, msg.id])
@@ -52,6 +54,10 @@ const MessageItem = memo(function MessageItem({ msg, index, onExport, onAction, 
       ) : (
         <AssistantBubble
           content={msg.content}
+          // A discarded live gallery must not remount under a new scope by
+          // falling back to its crash placeholder. Boot/new-send recovery
+          // assigns a historical UUID before it can render those images.
+          generatedImages={msg.id === 'streaming' ? undefined : msg.generatedImages}
           onAction={onAction}
           pinned={msg.pinned}
           onTogglePin={onTogglePin ? handleTogglePin : undefined}
@@ -71,6 +77,7 @@ const MessageItem = memo(function MessageItem({ msg, index, onExport, onAction, 
           modelSource={msg.modelSource}
         />
       )}
+      {msg.id === 'streaming' && generatedImageIds(msg.generatedImages).length > 0 && <p role="status" className="text-xs text-theme-muted">{t('image.galleryUnavailable')}</p>}
       {msg.projectTurn && <ProjectSources turn={msg.projectTurn} prepared={msg.role === 'user'} />}
     </div>
   )
@@ -81,6 +88,7 @@ interface MessageListProps {
   messages: Message[]
   isStreaming: boolean
   streamingContent: string
+  streamingImages?: readonly string[]
   /** Id de la conversation affichée — relayé à StreamingIndicator pour
       filtrer les events modèle des streams concurrents (F-4). */
   conversationId?: string
@@ -101,7 +109,7 @@ interface MessageListProps {
 // Différent du comportement antérieur qui suivait le bas en permanence
 // — ça forçait à descendre à chaque token et empêchait de naviguer.
 
-export const MessageList = memo(function MessageList({ messages, isStreaming, streamingContent, conversationId, onExport, onAction, onBranch, onTogglePin, onEdit, onRetry, onReport }: MessageListProps) {
+export const MessageList = memo(function MessageList({ messages, isStreaming, streamingContent, streamingImages, conversationId, onExport, onAction, onBranch, onTogglePin, onEdit, onRetry, onReport }: MessageListProps) {
   const { t } = useTranslation()
   const scrollRef = useRef<HTMLDivElement>(null)
   const prevMessagesCount = useRef(messages.length)
@@ -136,7 +144,7 @@ export const MessageList = memo(function MessageList({ messages, isStreaming, st
   // l'état à jour quand l'user scroll manuellement.
   useEffect(() => {
     updateCanScrollDown()
-  }, [streamingContent, messages.length, updateCanScrollDown])
+  }, [streamingContent, streamingImages, messages.length, updateCanScrollDown])
 
   // Quand un nouveau message arrive (typiquement le user envoie),
   // scroll de manière à ce que SA bulle soit alignée en HAUT du viewport.
@@ -217,14 +225,14 @@ export const MessageList = memo(function MessageList({ messages, isStreaming, st
           )
         })}
 
-        {isStreaming && streamingContent && (
+        {isStreaming && (streamingContent || !!streamingImages?.length) && (
           <>
-            <AssistantBubble content={streamingContent} onAction={onAction} isStreaming />
+            <AssistantBubble content={streamingContent} generatedImages={streamingImages} onAction={onAction} isStreaming />
             <StreamingIndicator conversationId={conversationId} />
           </>
         )}
 
-        {isStreaming && !streamingContent && (
+        {isStreaming && !streamingContent && !streamingImages?.length && (
           <TypingIndicator />
         )}
       </div>

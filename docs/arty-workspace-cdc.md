@@ -42,7 +42,8 @@ supplémentaire n'est implicite dans ce mandat.
 Ordre : W01/W02 → W03/W04/W05 → W06/W07 → W08/W09/W10.
 Des travaux indépendants peuvent avancer ensemble, mais les livraisons restent
 petites et réversibles. W04 et W07 réutilisent le lecteur de W01 ; W06 réutilise
-le format versionné des projets et ne change pas les clés de stockage existantes.
+le format versionné des projets. A1 ne change pas les clés existantes ; les
+prérequis de coordination/migration d'A2 restent à implémenter selon l'ADR.
 
 - Documents importés = données non fiables, jamais instructions système.
 - Préserver les garde-fous auth, quota atomique, confirmation d'actions, EU,
@@ -107,7 +108,14 @@ réels ; préparer protocole et instrumentation sans fabriquer leurs résultats.
 
 ## Preuves par lot
 
-### Prérequis W06 — exécution image, en validation de livraison
+### Prérequis W06 — exécution image livrée (#447)
+
+- PR [#447](https://github.com/flotellop-art/Arty/pull/447), squash main
+  `0cb637f458afab3b65f9268235223669ffcff132`, fusion le 5 septembre à 09:25 UTC.
+  CI PR `33957766155`, main `33957967001` et Android `33957967008` vertes.
+  Pages production `861d056a-40a2-4e10-87cc-6968db34d39f`, HTTP 200 et bundle
+  `/assets/index-B8PwHIHS.js` attestés à cette livraison avant pause/migration.
+  Reprise sur D: : SHA main revérifié, pas de copie écrasée ni d'effacement.
 
 - Défauts reproduits : résultat d'image commencé sous A pouvant être stocké
   sous B après switch ; outil absent du catalogue EU mais exécutable au handler
@@ -143,6 +151,51 @@ réels ; préparer protocole et instrumentation sans fabriquer leurs résultats.
 - Rendu et références locales attestées, image créée avant premier token,
   traitement des orphelins, capture/restauration sont le lot suivant. Aucun
   bouton de sauvegarde ni changement du format A1 dans ce correctif.
+
+### Prérequis W06 — galerie privée, validation de livraison en cours
+
+- Les images reçues par l'outil sont attachées structurellement au message,
+  avant poursuite du modèle. Une réponse sans texte reste enregistrable ;
+  Stop/erreur après un premier reçu le conserve. Les tentatives, même échouées,
+  sont limitées à quatre par invocation et ne sont pas parallélisées. Une
+  annulation de session/clé/fence abandonne le flux sans écriture tardive.
+- Adoption avec copie avant écriture : quota plein sans reçu fantôme en RAM,
+  reçus précédents préservés. Normalisation du placeholder interrompu lors de
+  la lecture à froid et avant nouvel envoi, jamais réarmement automatique de
+  sa galerie après invalidation. Les rappels locaux réservent aussi leur fil
+  et vérifient compte/epoch/historique après attente avant toute réécriture.
+- Galerie privée chargée à proximité de la vue, lectures binaires sérialisées,
+  déchargement hors écran et révocation des URLs après invalidation. Attente
+  du premier démarrage crypto sans renouveler silencieusement une ancienne
+  autorisation. Boutons tactiles de 44 px. Téléchargement du format réellement
+  stocké (PNG/JPEG/WebP), sans promesse d'original non normalisé.
+- Aucun résolveur d'ID dans Markdown/HTML/public. Les exports JSON/MD/PDF,
+  partage, livrables Office et signalements indiquent l'omission d'images sans
+  incorporer ID ni binaire privé ; le JSON réimporté n'autorise pas de fichiers
+  locaux. Un signalement très long reste borné à 2 000 caractères et peut
+  tronquer la notice finale ; les images ne sont pas transmises.
+- Retry/régénération/édition préservent l'original par une branche si une image
+  serait remplacée ; avertissement de nouveau coût, branche sélectionnée et
+  navigation alignée. Suppression respectant les références des autres branches,
+  texte legacy limité à la rétention. Aucun nettoyage global d'orphelins.
+- Deux GO indépendants après objections corrigées : second outil en erreur,
+  adoption avec quota plein, amorçage crypto, libération hors écran, réarmement
+  live→placeholder, annulation durable IDB et rappel asynchrone concurrent.
+  Recette globale : **241 fichiers / 2 596 tests verts**, 1 interop conditionnel
+  ignoré sans fixture ; front/back, couverture, addon/no-CASA, build et smoke
+  worker Office. 58 tests supplémentaires par rapport à #447, aucune dépendance.
+  Build final local : `index-1JMViGZj.js`, 1 030,02 ko / 322,84 ko gzip ;
+  avertissement de taille préexistant, pas de nouvelle dépendance.
+- Recette visuelle Chrome sur origine localhost isolée avec icône Arty publique
+  synthétique : thème clair bureau, sombre à 390 × 844, image sans texte dans
+  réponse interrompue, déchargement hors écran (une seule image DOM), invalidation
+  (zéro image DOM), Markdown legacy indisponible. Pas de compte réel, d'appel IA,
+  ni de publication de données. Le bouton de téléchargement a été activé sans
+  erreur dans la page, mais la réception du fichier n'a pas été attestée par
+  l'outil navigateur ; elle reste à vérifier. Pas de recette Android native.
+  Page de test temporaire retirée, serveur arrêté, viewport Chrome rétabli.
+- A2 capture/restauration/UI et synchronisation restent non livrées. Le lot ne
+  change ni format A1, ni quota serveur, ni configuration Cloudflare/Google.
 
 ### W06 — fondation de format A1, non utilisable seule
 

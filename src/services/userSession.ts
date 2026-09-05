@@ -3,6 +3,8 @@
  * Manages multi-user isolation in localStorage via userId prefixing.
  */
 
+import { invalidateLocalDataViews } from './localDataInvalidation'
+
 const ACTIVE_SESSION_KEY = 'arty-active-session'
 const KNOWN_SESSIONS_KEY = 'arty-known-sessions'
 
@@ -30,7 +32,7 @@ function captureProjectFence(): void {
 }
 export function getSessionProjectFence(): string | null { getActiveSession(); return _projectErasureFence }
 /** Cancels pending async work without erasing the identity needed for cleanup. */
-export function invalidateActiveSessionWork(): void { _sessionEpoch += 1 }
+export function invalidateActiveSessionWork(): void { _sessionEpoch += 1; invalidateLocalDataViews() }
 
 // ─── Hash helper ───
 
@@ -82,6 +84,7 @@ export function setActiveSession(
   _sessionEpoch += 1
   captureProjectFence()
   _activeSession = session
+  invalidateLocalDataViews()
   if (options.remember === false) return
   rememberSession(session)
 }
@@ -103,7 +106,8 @@ export function rememberSession(session: UserSession): void {
 export function clearActiveSession(): void {
   _sessionEpoch += 1
   _activeSession = null
-  localStorage.removeItem(ACTIVE_SESSION_KEY)
+  try { localStorage.removeItem(ACTIVE_SESSION_KEY) }
+  finally { invalidateLocalDataViews() }
 }
 
 export function getKnownSessions(): UserSession[] {
@@ -118,6 +122,7 @@ export function getKnownSessions(): UserSession[] {
 export function removeKnownSession(userId: string): void {
   const known = getKnownSessions().filter(s => s.userId !== userId)
   localStorage.setItem(KNOWN_SESSIONS_KEY, JSON.stringify(known))
+  invalidateLocalDataViews()
 }
 
 // ─── Data migration ───

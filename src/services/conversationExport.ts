@@ -7,6 +7,7 @@ import { formatModelName } from './modelLabels'
 import { getActiveUserId, getActiveSessionEpoch } from './userSession'
 import { hasProjectHistory, isProjectEU } from './projects/chatPolicy'
 import { toast } from './toast'
+import { messageImageText } from './messageImageText'
 
 function stripLegacyMailboxPayload<T extends Conversation['messages'][number]>(message: T): Omit<T, 'gmailSearch'> {
   const { gmailSearch: _removed, ...safe } = message as T & { gmailSearch?: unknown }
@@ -29,7 +30,10 @@ export function buildConversationJsonExport(conv: Conversation) {
     ...conv,
     // Purge de compatibilité pour les exports créés depuis un historique
     // antérieur à la suppression de l'intégration boîte mail.
-    messages: conv.messages.map(stripLegacyMailboxPayload),
+    messages: conv.messages.map(message => {
+      const { generatedImages: _privateImages, ...safe } = stripLegacyMailboxPayload(message)
+      return { ...safe, content: messageImageText(message) }
+    }),
   }
   const payload = {
     version: 1,
@@ -72,9 +76,9 @@ export async function importConversationFromFile(file: File): Promise<string> {
     createdAt: Date.now(),
     updatedAt: Date.now(),
     messages: original.messages.map((legacyMessage) => {
-      const { projectTurn: _foreignSources, files, ...safeMessage } = stripLegacyMailboxPayload(legacyMessage)
+      const { projectTurn: _foreignSources, generatedImages: _foreignImages, files, ...safeMessage } = stripLegacyMailboxPayload(legacyMessage)
       if (files && (!Array.isArray(files) || files.length > 64 || files.some(f => !f || typeof f.name !== 'string' || typeof f.type !== 'string' || (f.data !== undefined && typeof f.data !== 'string')))) throw new Error('Pièces jointes importées invalides')
-      return { ...safeMessage, id: generateId(),
+      return { ...safeMessage, content: messageImageText(legacyMessage), id: generateId(),
         // A foreign ID is not authority to read this account's IndexedDB.
         ...(files ? { files: files.map(f => ({ id: generateId(), name: f.name.slice(0, 255), type: f.type.slice(0, 160), ...(f.data ? { data: f.data } : {}) })) } : {}) }
     }),
@@ -152,7 +156,7 @@ export function buildConversationMarkdown(conv: Conversation): string {
     lines.push(`*${formatDate(msg.timestamp)}${modelSuffix}*`)
     lines.push('')
     const cleanContent = typeof msg.content === 'string'
-      ? msg.content
+      ? messageImageText(msg)
       : JSON.stringify(msg.content)
     lines.push(cleanContent)
     if (msg.files?.length) {
@@ -194,7 +198,7 @@ export function buildConversationHtml(conv: Conversation): string {
     const roleLabel = isUser ? 'Utilisateur' : 'Arty'
     const bgColor = isUser ? '#fef3e8' : '#f5f5f5'
     const borderColor = isUser ? '#e04b2e' : '#888888'
-    const content = typeof msg.content === 'string' ? msg.content : ''
+    const content = typeof msg.content === 'string' ? messageImageText(msg) : ''
     // Light markdown -> HTML (bold, italic, code, line breaks). Escape first
     // so the regexes below only apply to legitimate markup, not user input.
     const formatted = escape(content)

@@ -17,6 +17,7 @@ import { apiUrl } from './apiBase'
 import { getValidAccessToken } from './googleAuth'
 import { getActiveUserId, getActiveSessionEpoch } from './userSession'
 import { hasProjectHistory, isProjectEU } from './projects/chatPolicy'
+import { messageImageText } from './messageImageText'
 
 export interface ShareResult {
   ok: boolean
@@ -48,7 +49,7 @@ export function buildSharePayload(conv: Conversation): {
       .filter((m) => m.id !== 'streaming' && (m.role === 'user' || m.role === 'assistant'))
       .map((m) => ({
         role: m.role,
-        content: stripLocalImages(m.content),
+        content: stripLocalImages(messageImageText(m)),
         timestamp: m.timestamp,
       })),
     usedModels: [...(conv.usedModels ?? [])],

@@ -2,6 +2,7 @@
 export interface ExportMessage {
   id: string; role: 'user' | 'assistant'; content: string; interrupted: boolean
   model: string; sources: string[]; attachments: number
+  galleryImages?: number
 }
 export interface ExportSnapshot { title: string; messages: ExportMessage[] }
 export interface ExportRun { text: string; bold?: boolean; italic?: boolean; strike?: boolean; code?: boolean }

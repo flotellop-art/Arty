@@ -8,6 +8,8 @@ export interface ToolResult {
   result: string
   screenshot?: string
   fileData?: FileData
+  /** Local receipt from generate_image only; never forwarded to an AI API. */
+  localImageId?: string
 }
 
 /** Local authority, never taken from tool arguments or sent to a provider. */

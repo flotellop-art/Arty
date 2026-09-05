@@ -58,6 +58,7 @@ describe('Office — cycle complet sans API payante', () => {
     conv = { id: 'c1', title: 'Documents', messages: [], createdAt: 1, updatedAt: 1 }
     vi.mocked(storage.getConversations).mockReturnValue([conv])
     vi.mocked(storage.getConversation).mockImplementation((id) => id === conv.id ? conv : null)
+    vi.mocked(storage.saveConversation).mockImplementation(saved => { conv = saved })
     vi.spyOn(console, 'warn').mockImplementation(() => {})
   })
   afterEach(() => vi.restoreAllMocks())

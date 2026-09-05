@@ -120,13 +120,14 @@ function AppContent({
     return () => window.removeEventListener('user-profile-changed', sync)
   }, [])
 
-  const conversation = useConversation()
+  const conversation = useConversation({ onNavigate: id => navigate(`/chat/${id}`) })
   const {
     conversations,
     activeConversation,
     activeId,
     isStreaming,
     streamingContent,
+    streamingImages,
     streamingConvIds,
     error,
     errorRetryable,
@@ -619,6 +620,7 @@ function AppContent({
               activeConversation={activeConversation}
               isStreaming={isStreaming}
               streamingContent={streamingContent}
+              streamingImages={streamingImages}
               error={error}
               errorRetryable={errorRetryable}
               onBack={handleBack}
@@ -739,6 +741,7 @@ interface ChatRouteProps {
   activeConversation: ReturnType<typeof useConversation>['activeConversation']
   isStreaming: boolean
   streamingContent: string
+  streamingImages?: readonly string[]
   error: string | null
   errorRetryable?: boolean
   onBack: () => void
@@ -765,6 +768,7 @@ function ChatRoute({
   activeConversation,
   isStreaming,
   streamingContent,
+  streamingImages,
   error,
   errorRetryable,
   onBack,
@@ -847,6 +851,7 @@ function ChatRoute({
       onProjectChange={onProjectChange}
       isStreaming={isStreaming}
       streamingContent={streamingContent}
+      streamingImages={streamingImages}
       error={error}
       errorRetryable={errorRetryable}
       onBack={onBack}

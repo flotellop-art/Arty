@@ -26,7 +26,8 @@ describe('image tool — fail closed capability and captured owner', () => {
   })
   it('persists with owner captured before generation and an internal guard', async () => {
     const result = await handler({ prompt: 'create a logo' }, context)
-    expect(result.result).toContain('arty-img://')
+    expect(result.result).not.toContain('arty-img://')
+    expect(result.localImageId).toEqual(expect.any(String))
     expect(putFile).toHaveBeenCalledWith(expect.objectContaining({ data: 'synthetic-data' }), 'a', expect.any(Function))
     valid = false
     expect(vi.mocked(putFile).mock.calls[0][2]).toThrow()

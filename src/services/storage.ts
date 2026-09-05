@@ -3,6 +3,8 @@ import * as scoped from './scopedStorage'
 import { encrypt, decrypt, isCryptoReady, captureCryptoGuard, isCryptoContextChanged } from './crypto'
 import { deleteOwnedFiles } from './secureFileStorage'
 import { getActiveUserId, getActiveSessionEpoch } from './userSession'
+import { generatedImageIds } from './generatedImages'
+import { generateId } from '../utils/generateId'
 
 // ─────────────────────────────────────────────────────────────────────────
 // Conversations are encrypted at rest (AES-256) under `conversations-enc`.
@@ -73,11 +75,12 @@ export function sanitizeConversationPayloads(
       // carte de passage vers Gmail. Elle est retirée sans condition au boot,
       // même si son ancien TTL n'est pas expiré.
       const legacyMessage = message as typeof message & { gmailSearch?: unknown }
-      if (!Object.prototype.hasOwnProperty.call(legacyMessage, 'gmailSearch')) return message
+      if (!Object.prototype.hasOwnProperty.call(legacyMessage, 'gmailSearch') && message.id !== 'streaming') return message
       const { gmailSearch: _removed, ...safeMessage } = legacyMessage
       changed = true
       conversationChanged = true
-      return safeMessage
+      // A recovered partial is historical, never the placeholder of a NEW stream.
+      return message.id === 'streaming' ? { ...safeMessage, id: generateId(), interrupted: true } : safeMessage
     })
     return conversationChanged ? { ...conversation, messages } : conversation
   })
@@ -176,7 +179,7 @@ export function saveConversation(conversation: Conversation): void {
   persist(conversations)
 }
 
-/** Collect every IndexedDB file reference, including generated-image URLs. */
+/** Structured references only. Model-authored text never authorizes deletion. */
 export function collectReferencedFileIds(conversations: Conversation[]): Set<string> {
   const referencedIds = new Set<string>()
   for (const conversation of conversations) {
@@ -184,8 +187,7 @@ export function collectReferencedFileIds(conversations: Conversation[]): Set<str
       for (const file of message.files ?? []) {
         if (file.id) referencedIds.add(file.id)
       }
-      const generatedImages = message.content.matchAll(/arty-img:\/\/([A-Za-z0-9._~-]+)/g)
-      for (const match of generatedImages) referencedIds.add(match[1]!)
+      if (message.role === 'assistant') for (const id of generatedImageIds(message.generatedImages)) referencedIds.add(id)
     }
   }
   return referencedIds
@@ -206,6 +208,10 @@ export function deleteConversation(id: string): void {
   // orphan sweep can race with sendMessage(), which writes the IndexedDB file
   // before persisting its Message reference, and delete an in-flight upload.
   const remainingRefs = collectReferencedFileIds(remaining)
+  // Legacy text may conservatively RETAIN a file, never select one for deletion.
+  for (const c of remaining) for (const m of c.messages) {
+    for (const match of m.content.matchAll(/arty-img:\/\/([A-Za-z0-9._~-]+)/g)) remainingRefs.add(match[1]!)
+  }
   const candidates = collectReferencedFileIds([deleted])
   for (const fileId of remainingRefs) candidates.delete(fileId)
   const ownerUserId = getActiveUserId()

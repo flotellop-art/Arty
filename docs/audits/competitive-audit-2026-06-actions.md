@@ -161,6 +161,16 @@ unique sous 20 $/mois). Pas par la largeur de catalogue. Volume = distribution
   par tag). **Tags exclus du partage public** (privés — test de non-régression ajouté).
   branchConversation hérite des tags. Tests : conversationTags + shareClient.
 - [x] **P1.3 Génération d'images** — FAIT (12 juin 2026). gpt-image-1 via proxy dédié
+  **Correctif du 5 septembre 2026 :** l'exécution a été durcie dans
+  [#447](https://github.com/flotellop-art/Arty/pull/447). Le rendu legacy décrit
+  ci-dessous n'était pas une preuve de galerie fonctionnelle. Le lot de galerie
+  privée en validation le remplace par des reçus structurés par message : aucun
+  ID privé résolu depuis Markdown, conservation sans texte et après interruption,
+  retry en branche, omissions explicites à l'export. Voir le
+  [journal de recette et de livraison](../arty-workspace-cdc.md). Les détails de
+  juin ci-dessous sont historiques, pas une attestation des quotas/prix actuels.
+
+  Description historique : génération via
   `/api/ai/image-gen` (RÈGLE 3) — réutilise l'`OPENAI_API_KEY` serveur existante, ZÉRO
   nouvelle clé. Déclenchement par tool `generate_image` injecté CONDITIONNELLEMENT
   (`wantsImageGeneration` : verbe de création + nom visuel, exclusions « décris/
