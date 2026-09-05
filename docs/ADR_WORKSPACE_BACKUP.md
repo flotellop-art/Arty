@@ -808,3 +808,20 @@ Repli : revert du lot par PR/CI/Pages si le login legacy ou le stockage existant
 régresse. Aucune migration n'ayant été émise, aucun rollback de données n'est
 nécessaire. Ne jamais activer isolated pour contourner une erreur. La CI Android
 et une réponse HTTP ne prouvent ni mise à jour installée ni taux d'erreur terrain.
+
+#### Livraison A3b.2
+
+PR #454 fusionnée à 18:58:51 UTC : head
+`6413e307f8d4240f1cd613da549744ceacf62d61`, main
+`9981e5fe290711eb1f9b114cca8ef50afac17240`. CI PR `33985479466` et main
+`33985705847` réussies. Pages production
+`9dd0152d-b0ad-42d7-88e6-4bb3a2fea755` et tryarty.com servent à 19:01:34 UTC
+le même `index-pT3N8hdK.js`, SHA-256
+`cb9afe4cf5ed91acaf84f5fe7e03cded2de29c42bdc33f287b7e52f0dffcd71b`.
+Connexion de production ouverte en navigateur sur origine vierge après
+admission froide ; aucun compte réel utilisé. L'activation isolée reste OFF.
+`npm run verify` final : 257 fichiers / 2 866 tests verts + 1 ignoré, tous
+contrôles réussis. Preuves et limites de recette détaillées dans le CDC.
+Distribution Android `33985705852` réussie (signature et Firebase confirmés),
+sans recette sur APK installé. Seconde sonde publique à 19:04:51 UTC : même
+asset/empreinte et HTTP 200 ; pas de mesure continue de performances.
