@@ -140,8 +140,8 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
   if (!apiKey) {
     const result =
       identity.kind === 'email-trial'
-        ? await consumeEmailTrialMessage(env, identity.email)
-        : await checkAllowedVerifiedUser(identity.email, env)
+        ? await consumeEmailTrialMessage(env, identity.email, waitUntil)
+        : await checkAllowedVerifiedUser(identity.email, env, waitUntil)
     if (isTrialExpired(result)) {
       // Essai email épuisé : pas de wallet/crédits (espace de clés disjoint,
       // CRIT-1 — un jeton email-trial n'a jamais de solde) → 403 trial_expired direct.

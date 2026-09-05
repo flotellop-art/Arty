@@ -74,6 +74,52 @@ describe('Office — cycle complet sans API payante', () => {
     vi.mocked(getFile).mockResolvedValue(file)
   }
 
+  it('reports real attachment preparation and post-stream background checking as busy without blocking another conversation', async () => {
+    const fileReady = deferred<string>(), background = deferred<void>()
+    vi.mocked(putFile).mockReturnValueOnce(fileReady.promise)
+    vi.mocked(runFactCheckOnLatest).mockReturnValueOnce(background.promise)
+    // Claude text route, ordinary file preparation BEFORE startStream.
+    const gather = vi.mocked(gatherRouteInput).getMockImplementation()!
+    vi.mocked(gatherRouteInput).mockImplementationOnce(ctx => ({ ...gather(ctx), selectedModel: 'claude' }))
+    const { result, unmount } = setup()
+    let sending!: Promise<boolean>
+    act(() => { sending = result.current.sendMessage('Lis cette note', conv.id, [{ id: 'f', name: 'note.txt', type: 'text/plain', data: 'QQ==' }]) })
+    await waitFor(() => expect(putFile).toHaveBeenCalled())
+    expect(result.current.isConversationBusy(conv.id)).toBe(true)
+    expect(result.current.isConversationBusy('other')).toBe(false)
+    expect(streamMessage).not.toHaveBeenCalled()
+    await act(async () => { fileReady.resolve('f'); await sending })
+    const call = vi.mocked(streamMessage).mock.calls[0]!
+    act(() => { call[1]('Une réponse assez longue pour être vérifiée.'); call[2]() })
+    expect(runFactCheckOnLatest).toHaveBeenCalled()
+    expect(result.current.isStreaming).toBe(false)
+    expect(result.current.isConversationBusy(conv.id)).toBe(true)
+    await act(async () => { background.resolve(); await background.promise })
+    expect(result.current.isConversationBusy(conv.id)).toBe(false)
+    unmount()
+  })
+
+  it('covers the real fact-check link-recovery await before any pending badge exists', async () => {
+    const actual = await vi.importActual<typeof import('../../services/factChecker')>('../../services/factChecker')
+    const google = await import('../../services/googleAuth'), token = deferred<string | null>()
+    const readToken = vi.spyOn(google, 'getValidAccessToken').mockReturnValueOnce(token.promise)
+    actual.setFactCheckMode('off')
+    vi.mocked(runFactCheckOnLatest).mockImplementationOnce(actual.runFactCheckOnLatest)
+    const gather = vi.mocked(gatherRouteInput).getMockImplementation()!
+    vi.mocked(gatherRouteInput).mockImplementationOnce(ctx => ({ ...gather(ctx), selectedModel: 'claude' }))
+    const { result, unmount } = setup()
+    await act(async () => { await result.current.sendMessage('Donne-moi un lien sur les archives', conv.id) })
+    const call = vi.mocked(streamMessage).mock.calls[0]!
+    act(() => { call[1]('Voici [la source](https://example.com/unproven).'); call[2]() })
+    await waitFor(() => expect(readToken).toHaveBeenCalled())
+    expect(conv.messages.at(-1)?.factCheck).toBeUndefined()
+    expect(result.current.isStreaming).toBe(false)
+    expect(result.current.isConversationBusy(conv.id)).toBe(true)
+    await act(async () => { token.resolve(null); await token.promise })
+    await waitFor(() => expect(result.current.isConversationBusy(conv.id)).toBe(false))
+    unmount()
+  })
+
   it.each(['eu', 'office', 'description', 'negation', 'translation'] as const)('refuse un appel image non annoncé/malveillant : %s', async kind => {
     conv.euOnly = kind === 'eu'
     const prior = vi.mocked(gatherRouteInput).getMockImplementation()!

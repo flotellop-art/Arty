@@ -1,8 +1,9 @@
 # ADR — sauvegarde restaurable et coffre optionnel (W06)
 
 Date : 5 septembre 2026. Décision locale acceptée après deux challenges
-indépendants. **W06 non livré** : A1 est le format, pas une interface de
-sauvegarde, une restauration ni une synchronisation utilisable.
+indépendants. **W06 non livré** : A1 fournit le format ; A2 ajoute maintenant
+capture/vérification d'une conversation (preuves de livraison dans le CDC).
+La restauration et la synchronisation restent à implémenter.
 
 ## Contexte
 
@@ -317,7 +318,108 @@ preuves historiques manquantes restent des diagnostics, jamais des suppressions
 inventées. Pas de sélection de sous-plage, fusion ni reprise automatique
 d'actions HTML, rapports/traces exclus, fact-check, outil ou notification.
 Une livraison intermédiaire capture/vérification doit porter ce nom et ne
-valide ni restauration ni W06. Aucun de ces parcours n'est encore branché.
+valide ni restauration ni W06. Le lot ci-dessous branche la capture/vérification.
+
+### Contrat du lot capture/vérification après #450 (implémenté)
+
+Les deux contre-revues indépendantes du 5 septembre et la lecture des stores
+définissent ce lot. Il ne livre pas la restauration ni la synchronisation :
+
+- Entrée distincte « Archive chiffrée de cette conversation » dans les deux
+  menus de conversation (ChatTopBar et ChatOptionsSheet). Fermer le menu avant
+  la modale. Les paramètres offrent seulement la vérification d'une archive,
+  pas un export implicite de toutes les données. Projet courant entier sur
+  choix explicite ; aucune sélection partielle de messages.
+- Capture stricte de la conversation clonée avant le premier await, cache déjà
+  chargé et génération monotone vérifiée, jamais `updatedAt` seul. La copie
+  logique fraîche reste utilisable pendant son chiffrement différé. En revanche,
+  chargement, traitement actif sur cette conversation ou dépendance non persistée
+  empêchent un succès. L'état de traitement doit venir du hook propriétaire,
+  pas seulement de la présence d'un message nommé `streaming`.
+- Tous les enregistrements fichiers requis sont figés dans une seule transaction
+  readonly avant déchiffrement, pour éviter un mélange de versions du même ID.
+  Lectures dédiées sans bootstrap, réparation, création ni migration de base.
+  Fichier direct absent/inaccessible ou galerie présente mais malformée : erreur
+  bloquante, jamais filtrage silencieux via `getFiles`/`generatedImageIds`.
+  Un échec AES-GCM reste « illisible : clé incompatible ou données altérées ».
+- Le graphe provient exclusivement des références structurées. Le Markdown
+  n'autorise aucune lecture. Propriétés optionnelles réellement omises,
+  sous-arbres frais et allowlistés. Les écarts entre métadonnées du message et
+  version réellement persistée sont diagnostiqués avant export ; pas de promesse
+  de retrouver un original antérieur à la compression. Les sources historiques
+  indisponibles sont des diagnostics, pas des fichiers déclarés supprimés.
+- Si le projet est inclus : tous les originaux persistés et textes extraits
+  exacts, vérification des descripteurs/hashes et de la révision après lecture.
+  Aucun réimport, aucune réextraction.
+- Pour toute capture, avec ou sans projet : gardes document, owner, epoch,
+  crypto et effacement capturées avant le premier await et revérifiées jusqu'à
+  la remise ; le verrou seul ne prouve ni la
+  quiescence interne ni la sûreté face aux anciens clients.
+- Sceller puis rouvrir le Blob via A1 et vérifier le graphe avant de proposer
+  la remise. Code de récupération séparé ; nom de fichier date/ID opaque, sans
+  titre de conversation en clair. Le téléchargement/partage lancé ne prouve pas
+  la sauvegarde effective : une vérification réelle demande de re-sélectionner
+  le fichier enregistré et de saisir son code. Après une capture, comparer aussi
+  l'identité et l'inventaire attendus pour qu'une autre archive valide ne valide
+  pas cette sauvegarde. Le vérificateur autonome annonce seulement le contenu
+  de l'archive effectivement sélectionnée. Limites A1 appliquées tôt, sans
+  promettre un pic RAM égal à la taille d'archive, notamment sur Android/base64.
+
+Recette à fournir : fichier absent, galerie malformée, aucun accès via Markdown,
+clé/compte A→B→A, effacement pendant capture/scellement, remplacement du même ID,
+mutation avec même timestamp, projet modifié entre documents, limites de taille,
+réouverture avec mauvais code et assertion d'absence de toute écriture source.
+Les seuls tests du conteneur A1 ou de la gate document ne valident pas ce parcours.
+
+#### Décisions d'implémentation A2
+
+- **Manifeste v2 explicite**, paire version/minReader 2/2 ; le lecteur accepte
+  toujours 1/1. L'enveloppe ARTYBKP1, le HKDF /v1 et les codes ARTY1 ne changent
+  pas. Le lecteur v1 refuse v2 : pas de downgrade silencieux.
+- Chaque référence v2 possède une `presentation` qui conserve les métadonnées
+  historiques du message, y compris nom/MIME vide et taille zéro. Le fichier
+  possède une taille binaire réelle et `recordedSize`, la taille du store (qui
+  peut historiquement compter les caractères base64). Les trois restent
+  distinctes ; seules les tailles binaires déterminent les quotas/objets.
+  Aucune recompression, réparation ou interprétation de la présentation.
+- Projection allowlistée synchrone, sans getters ; générations et identité
+  contrôlées pendant les awaits. Projection comparée de nouveau en fin/remise
+  pour détecter aussi une mutation RAM directe sans save. L'invalidation par
+  génération est volontairement globale : « espace modifié », pas seulement
+  « conversation modifiée ». Les slots illisibles en quarantaine ne sont pas
+  une source de cette capture de la conversation actuellement accessible.
+- Préparation de message, fact-check (y compris attente de récupération des
+  liens avant le badge pending) et association projet sont comptés par
+  conversation/compte/époque. Pas de bouton bloqué depuis un getter non réactif :
+  le getter du hook est relu à la demande et pendant la capture.
+- Lecture brute de tous les fichiers dans une seule transaction readonly,
+  puis déchiffrement séquentiel. Projet figé avant cette lecture, révision
+  revérifiée après les documents. Textes source/extraits exacts : un surrogate
+  isolé est refusé, le BOM UTF-8 valide est conservé.
+- La lecture d'une base absente annule l'upgrade initial, sans migration.
+  Erreurs de transaction consommées ; ouverture bloquée rejetée ; succès tardif
+  fermé ; token de lecture fermé incapable de retomber sur un getter créateur.
+  Fence et marqueur d'effacement stricts, sans assimiler null/false/0 à l'absence.
+- La remise reste liée à la fraîcheur source. La vérification d'un fichier
+  déjà enregistré compare ID et fingerprint complets sous gardes session,
+  crypto et effacement, mais n'exige plus que l'historique source soit inchangé.
+  Aucun lookup des IDs de l'archive dans les stores locaux du vérificateur.
+- Révocation terminale des deux vues sur bus local/perte du document, même
+  sans démontage : codes, fichiers, rapports effacés de l'état et du DOM,
+  opérations annulées. Pas de promesse d'effacement physique de la mémoire JS.
+- Paramètres : vue interne de vérification, pas de second dialogue. Focus
+  transféré explicitement lors des transitions ; aucun changement du piège
+  global qui pourrait intercepter les sous-dialogues existants.
+- Plafonds : manifeste 4 Mio, objet 10 Mio, contenu déchiffré 60 Mio,
+  archive 64 Mio, fichiers 128 ; pas de succès partiel. Ces plafonds ne sont
+  **pas** une mesure du pic RAM natif : Blob, base64 et chiffrement se cumulent.
+
+Le code de récupération n'est pas transmis au helper de téléchargement/partage.
+Après remise, le client annonce seulement « demandé » ; la re-sélection reste
+nécessaire pour confirmer le fichier. La recette du sélecteur/partage sur un
+APK installé n'est pas attestée par les tests navigateur ou CI Android.
+
+### Restauration ultérieure — protocole proposé
 
 Journal proposé sous bail et maintenance : préparé → staging → vérifié →
 publication → terminé. Mapping créé une seule fois, données exactes chiffrées

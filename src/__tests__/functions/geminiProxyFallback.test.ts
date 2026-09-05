@@ -1,12 +1,38 @@
 // @vitest-environment node
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { onRequestPost as geminiProxy } from '../../../functions/api/ai/gemini-proxy'
 import { makeD1Harness, type D1Harness } from './d1Harness'
+import { checkAllowedVerifiedUser } from '../../../functions/api/_lib/checkAllowedUser'
+import { consumeEmailTrialMessage } from '../../../functions/api/_lib/emailTrial'
 
 const EMAIL = 'gemini-fallback@example.test'
 const TOKEN = 'google-access-token'
 const CLIENT_ID = 'arty-client-id'
 let h: D1Harness
+let quotaDeadline: Promise<() => void>
+
+// Control only the production quota deadline, not workerd's clock or SQL.
+// Normal-path cases never expire it; delayed cases explicitly do. Thus used=1
+// stays a strict assertion even on a busy CI host. Separate unit tests assert
+// that the actual deadline duration is exactly 250 ms.
+function controlQuotaDeadline(): Promise<() => void> {
+  const realSetTimeout = globalThis.setTimeout
+  const realClearTimeout = globalThis.clearTimeout
+  const handles = new Set<ReturnType<typeof setTimeout>>()
+  let announce!: (expire: () => void) => void
+  const registered = new Promise<() => void>((resolve) => { announce = resolve })
+  vi.spyOn(globalThis, 'setTimeout').mockImplementation(((callback: (...args: unknown[]) => void, delay?: number, ...args: unknown[]) => {
+    if (delay !== 250) return realSetTimeout(callback, delay, ...args)
+    const handle = Object.create(null) as ReturnType<typeof setTimeout>
+    handles.add(handle)
+    announce(() => { if (handles.delete(handle)) callback(...args) })
+    return handle
+  }) as typeof setTimeout)
+  vi.spyOn(globalThis, 'clearTimeout').mockImplementation((handle) => {
+    if (!handles.delete(handle as ReturnType<typeof setTimeout>)) realClearTimeout(handle)
+  })
+  return registered
+}
 
 beforeAll(async () => {
   h = await makeD1Harness({
@@ -15,10 +41,12 @@ beforeAll(async () => {
   })
 })
 afterAll(async () => { await h.dispose() })
+afterEach(() => { vi.restoreAllMocks() })
 beforeEach(async () => {
   await h.reset()
   vi.restoreAllMocks()
   delete h.env.GEMINI_36_DISABLED
+  quotaDeadline = controlQuotaDeadline()
 })
 
 function context(request: Request, background: Promise<unknown>[]) {
@@ -69,7 +97,105 @@ async function grantTrial(): Promise<void> {
   ).bind(EMAIL).run()
 }
 
+function holdTrialResponse(table: 'trial_usage' | 'email_trial_usage', afterCommit = true) {
+  let release!: () => void
+  const held = new Promise<void>((resolve) => { release = resolve })
+  let confirmCommit!: () => void
+  const committed = new Promise<void>((resolve) => { confirmCommit = resolve })
+  const db = h.env.DB!
+  const wrapped = new Proxy(db, {
+    get(target, prop) {
+      if (prop !== 'prepare') return Reflect.get(target, prop)
+      return (sql: string) => {
+        const statement = target.prepare(sql)
+        if (!sql.includes(`INSERT INTO ${table}`)) return statement
+        return { bind: (...values: unknown[]) => ({ first: async () => {
+          if (!afterCommit) await held
+          const row = await statement.bind(...values).first()
+          confirmCommit()
+          if (afterCommit) await held
+          return row
+        } }) }
+      }
+    },
+  })
+  return { release, committed, db, wrapped }
+}
+
 describe('Gemini proxy — fallback 3.6 compté une seule fois', () => {
+  it.each([
+    { status: 401, afterCommit: true }, { status: 200, afterCommit: true },
+    { status: 503, afterCommit: true }, { status: 401, afterCommit: false },
+  ])('compense le débit trial tardif, HTTP $status, commit avant deadline=$afterCommit', async ({ status, afterCommit }) => {
+    await grantTrial()
+    await h.db.prepare('INSERT INTO trial_usage (email, used, updated_at) VALUES (?1, 7, 0)').bind(EMAIL).run()
+    await h.db.prepare('INSERT INTO email_trial_usage (email, used, updated_at) VALUES (?1, 13, 0)').bind(EMAIL).run()
+    // Real SQL, gated before commit or after it. RETURNING cannot arrive until
+    // after the proxy answers. No sleep, quota mock, or retry of the write.
+    const { release, committed, db, wrapped } = holdTrialResponse('trial_usage', afterCommit)
+    h.env.DB = wrapped
+    const background: Promise<unknown>[] = []
+    let upstreamCalls = 0
+    global.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const auth = authResponse(String(input))
+      if (auth) return auth
+      upstreamCalls += 1
+      return status === 200 || (status === 503 && upstreamCalls === 2)
+        ? success() : Response.json({ error: 'refused' }, { status })
+    }) as typeof fetch
+    try {
+      const operation = geminiProxy(context(request(), background))
+      const expire = await quotaDeadline
+      if (afterCommit) await committed
+      expire()
+      const response = await operation
+      expect(response.status).toBe(status === 503 ? 200 : status)
+      await response.text()
+      // An independent successful reservation must survive compensation.
+      const other = await checkAllowedVerifiedUser(EMAIL, { ...h.env, DB: db })
+      expect(other).toMatchObject({ trialDebited: true })
+      release()
+      await Promise.all(background)
+      const trial = await db.prepare('SELECT used FROM trial_usage WHERE email = ?1')
+        .bind(EMAIL).first<{ used: number }>()
+      expect(trial?.used).toBe(8)
+      const emailTrial = await db.prepare('SELECT used FROM email_trial_usage WHERE email = ?1')
+        .bind(EMAIL).first<{ used: number }>()
+      expect(emailTrial?.used).toBe(13)
+      expect(upstreamCalls).toBe(status === 503 ? 2 : 1)
+    } finally {
+      release()
+      await Promise.allSettled(background)
+      h.env.DB = db
+    }
+  })
+
+  it.each([7, 30])('email-trial tardif à used=%s ne touche ni Google ni un débit non effectué', async (initial) => {
+    await h.db.prepare('INSERT INTO trial_usage (email, used, updated_at) VALUES (?1, 12, 0)').bind(EMAIL).run()
+    await h.db.prepare('INSERT INTO email_trial_usage (email, used, updated_at) VALUES (?1, ?2, 0)').bind(EMAIL, initial).run()
+    const { release, committed, db, wrapped } = holdTrialResponse('email_trial_usage')
+    const background: Promise<unknown>[] = []
+    try {
+      const operation = consumeEmailTrialMessage({ ...h.env, DB: wrapped }, EMAIL, (p) => { background.push(p) })
+      const expire = await quotaDeadline
+      await committed
+      expire()
+      const result = await operation
+      expect(result).toMatchObject({ planType: 'trial' })
+      expect(result).not.toHaveProperty('trialDebited')
+      expect(background).toHaveLength(1)
+      release()
+      await Promise.all(background)
+      const trial = await db.prepare('SELECT used FROM trial_usage WHERE email = ?1').bind(EMAIL).first<{ used: number }>()
+      const emailTrial = await db.prepare('SELECT used FROM email_trial_usage WHERE email = ?1').bind(EMAIL).first<{ used: number }>()
+      expect(trial?.used).toBe(12)
+      expect(emailTrial?.used).toBe(initial)
+    } finally {
+      release()
+      await Promise.allSettled(background)
+    }
+  })
+
   it.each([400, 401, 403, 429])('ne fallback jamais sur HTTP %s et rembourse le trial', async (status) => {
     await grantTrial()
     const upstream: string[] = []

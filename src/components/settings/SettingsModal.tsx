@@ -52,6 +52,7 @@ import { LocalMemoryModal } from './LocalMemoryModal'
 import { MailAccountsModal } from './MailAccountsModal'
 import { isMailImapAvailable } from '../../services/native/mailImap'
 import { AccountDeletionPanel } from './AccountDeletionPanel'
+import { ArchiveVerifier, archiveButton } from '../workspace/ArchiveVerifier'
 
 interface SettingsModalProps {
   open: boolean
@@ -80,6 +81,8 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
   const [customInstructions, setCustomInstructionsState] = useState('')
   const [factCheckMode, setFactCheckModeState] = useState<FactCheckMode>(getFactCheckMode)
   const [showMemoryHistory, setShowMemoryHistory] = useState(false)
+  const [showArchiveVerifier, setShowArchiveVerifier] = useState(false)
+  useEffect(() => { if (open) dialogRef.current?.querySelector<HTMLButtonElement>('button:not([disabled])')?.focus() }, [open, showArchiveVerifier, dialogRef])
   const [showMemoryViewer, setShowMemoryViewer] = useState(false)
   const [streakData, setStreakDataState] = useState<StreakData>(getStreakData)
   const [showLocalMemory, setShowLocalMemory] = useState(false)
@@ -104,6 +107,7 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
   }, [])
 
   useEffect(() => {
+    if (!open) setShowArchiveVerifier(false)
     if (!open) return
     setNotifEnabled(areNotificationsEnabled())
     setLocationEnabled(isLocationConsentEnabled())
@@ -270,7 +274,11 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
           </p>
         </div>
 
-        <div className="p-6 space-y-6">
+        {showArchiveVerifier ? <div className="p-6 space-y-4">
+          <button className={archiveButton} onClick={() => setShowArchiveVerifier(false)}>{t('workspaceArchive.backSettings')}</button>
+          <ArchiveVerifier />
+        </div> : <div className="p-6 space-y-6">
+          <button className={`${archiveButton} w-full text-left`} onClick={() => setShowArchiveVerifier(true)}>{t('workspaceArchive.verifyTitle')}</button>
           {/* Notifications toggle */}
           <div>
             <div className="flex items-center justify-between gap-4">
@@ -792,7 +800,7 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
               Arty v{__APP_VERSION__} · build {__BUILD_TIME__.slice(0, 16).replace('T', ' ')}
             </p>
           </div>
-        </div>
+        </div>}
       </div>
       {showMemoryHistory && <MemoryHistoryPanel onClose={() => setShowMemoryHistory(false)} />}
       {showMemoryViewer && <MemoryViewer onClose={() => setShowMemoryViewer(false)} />}

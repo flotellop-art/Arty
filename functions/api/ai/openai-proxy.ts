@@ -334,8 +334,8 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
   if (!apiKey && env.OPENAI_API_KEY) {
     const accessOperation =
       identity.kind === 'email-trial'
-        ? consumeEmailTrialMessage(env, identity.email)
-        : checkAllowedVerifiedUser(identity.email, env)
+        ? consumeEmailTrialMessage(env, identity.email, waitUntil)
+        : checkAllowedVerifiedUser(identity.email, env, waitUntil)
     const result = await awaitVisionDependency(
       accessOperation,
       visionDeadline,

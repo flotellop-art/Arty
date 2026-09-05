@@ -1,5 +1,5 @@
 import type { Env } from '../../env'
-import { consumeCapAtomic } from './atomicQuota'
+import { consumeRefundableCapAtomic, type QuotaWaitUntil } from './atomicQuota'
 
 /**
  * Vérifie via `tokeninfo` que le token a été émis POUR Arty (`aud`/`azp`).
@@ -438,19 +438,21 @@ export async function checkAllowedVerifiedUserPeek(
 
 export async function checkAllowedUser(
   request: Request,
-  env: Env
+  env: Env,
+  waitUntil?: QuotaWaitUntil,
 ): Promise<CheckResult> {
   // Ce gate dépense les clés owner : audience Arty obligatoire, fail-closed.
   const email = await verifyGoogleUserStrict(request, env.GOOGLE_CLIENT_ID)
   if (!email) return null
 
-  return checkAllowedVerifiedUser(email, env)
+  return checkAllowedVerifiedUser(email, env, waitUntil)
 }
 
 /** Variante débitante pour une identité Google déjà vérifiée. */
 export async function checkAllowedVerifiedUser(
   verifiedEmail: string,
   env: Env,
+  waitUntil?: QuotaWaitUntil,
 ): Promise<Exclude<CheckResult, null>> {
   const email = verifiedEmail.trim().toLowerCase()
 
@@ -465,7 +467,7 @@ export async function checkAllowedVerifiedUser(
     return { email, planType: plan }
   }
   if (plan === 'trial') {
-    return await consumeTrialMessage(env, email)
+    return await consumeTrialMessage(env, email, waitUntil)
   }
 
   // Plan 'free' : tous les users Google authentifiés sans abonnement payant
@@ -484,7 +486,7 @@ export async function checkAllowedVerifiedUser(
  * atomique. D1 ferme la course. Fail-open sur incident D1 (modèles trial =
  * cheap, impact négligeable) plutôt que de bloquer un user.
  */
-async function consumeTrialMessage(env: Env, email: string): Promise<Exclude<CheckResult, null>> {
+async function consumeTrialMessage(env: Env, email: string, waitUntil?: QuotaWaitUntil): Promise<Exclude<CheckResult, null>> {
   if (!env.DB) {
     // Sans D1, fail-open : on autorise (les modèles trial sont cheap), on ne
     // peut juste pas décrémenter. Ne devrait pas arriver en prod.
@@ -498,14 +500,16 @@ async function consumeTrialMessage(env: Env, email: string): Promise<Exclude<Che
 
   await ensureTrialTable(env)
 
-  const outcome = await consumeCapAtomic(
+  const outcome = await consumeRefundableCapAtomic(
     env,
     `INSERT INTO trial_usage (email, used, updated_at)
      VALUES (?1, 1, unixepoch())
      ON CONFLICT (email) DO UPDATE SET used = used + 1, updated_at = unixepoch()
        WHERE trial_usage.used < ?2
      RETURNING used AS count`,
-    [email, TRIAL_INITIAL_MESSAGES]
+    [email, TRIAL_INITIAL_MESSAGES],
+    () => voidTrialMessage(env, email),
+    waitUntil,
   )
 
   if (outcome.status === 'cap_reached') {

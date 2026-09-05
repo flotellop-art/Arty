@@ -51,6 +51,7 @@ interface ChatOptionsSheetProps {
   onExportPdf: () => void
   onExportJson: () => void
   onExportOffice?: () => void
+  onArchive?: () => void
   onShare: () => void
   onOpenGuide: () => void
 }
@@ -80,6 +81,7 @@ export function ChatOptionsSheet({
   onExportPdf,
   onExportJson,
   onExportOffice,
+  onArchive,
   onShare,
   onOpenGuide,
 }: ChatOptionsSheetProps) {
@@ -300,6 +302,7 @@ export function ChatOptionsSheet({
         {hasConversation && (
           <>
             {onExportOffice && <button onClick={onExportOffice} className="w-full text-left min-h-[48px] px-1.5 rounded-xl text-[13.5px] text-theme-ink hover:bg-theme-ink/[0.03]">⇩ Exporter les échanges en Word / Excel</button>}
+            {onArchive && <button onClick={onArchive} className="w-full text-left min-h-[48px] px-1.5 rounded-xl text-[13.5px] text-theme-ink hover:bg-theme-ink/[0.03]">{t('workspaceArchive.title')}</button>}
             <div className="flex items-center gap-3 min-h-[48px] px-1.5 text-[13.5px] text-theme-ink">
               <span className="w-6 text-center" aria-hidden="true">⇩</span>
               <span>{t('chat.optionsSheet.exportLabel')}</span>

@@ -1,5 +1,5 @@
 import type { Env } from '../../env'
-import { consumeCapAtomic } from './atomicQuota'
+import { consumeRefundableCapAtomic, type QuotaWaitUntil } from './atomicQuota'
 import {
   verifyTokenViaTokeninfoDetailed,
   type AllowedUser,
@@ -511,21 +511,24 @@ export async function revokeSession(env: Env, token: string): Promise<void> {
  */
 export async function consumeEmailTrialMessage(
   env: Env,
-  normalizedEmail: string
+  normalizedEmail: string,
+  waitUntil?: QuotaWaitUntil,
 ): Promise<CheckResult> {
   const key = emailTrialKey(normalizedEmail)
   if (!env.DB) {
     return { email: key, planType: 'trial', trialRemaining: EMAIL_TRIAL_MESSAGES, allowedModels: [...TRIAL_ALLOWED_MODELS] }
   }
   await ensureEmailTrialTables(env)
-  const outcome = await consumeCapAtomic(
+  const outcome = await consumeRefundableCapAtomic(
     env,
     `INSERT INTO email_trial_usage (email, used, updated_at)
      VALUES (?1, 1, unixepoch())
      ON CONFLICT (email) DO UPDATE SET used = used + 1, updated_at = unixepoch()
        WHERE email_trial_usage.used < ?2
      RETURNING used AS count`,
-    [normalizedEmail, EMAIL_TRIAL_MESSAGES]
+    [normalizedEmail, EMAIL_TRIAL_MESSAGES],
+    () => voidEmailTrialMessage(env, normalizedEmail),
+    waitUntil,
   )
   if (outcome.status === 'cap_reached') {
     return { error: 'trial_expired', email: key }

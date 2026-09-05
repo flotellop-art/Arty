@@ -128,7 +128,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
   let userPlan: 'subscription' | 'pro' | 'vip' | 'free' | 'trial' = 'free'
 
   if (!apiKey && env.OPENAI_API_KEY) {
-    const result = await checkAllowedVerifiedUser(email, env)
+    const result = await checkAllowedVerifiedUser(email, env, waitUntil)
     if (isTrialExpired(result)) return trialExpiredResponse()
     if (result && result.planType === 'pro') {
       // Pro = BYOK (P2.5) : la licence donne l'app à vie, pas la clé serveur.

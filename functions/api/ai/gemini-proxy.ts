@@ -111,8 +111,8 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
   if (!apiKey && env.GEMINI_API_KEY) {
     const result =
       identity.kind === 'email-trial'
-        ? await consumeEmailTrialMessage(env, identity.email)
-        : await checkAllowedVerifiedUser(identity.email, env)
+        ? await consumeEmailTrialMessage(env, identity.email, waitUntil)
+        : await checkAllowedVerifiedUser(identity.email, env, waitUntil)
     if (
       result &&
       !isTrialExpired(result) &&

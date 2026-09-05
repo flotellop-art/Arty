@@ -18,6 +18,8 @@ import {
 } from './imageNormalization'
 import type { FileAttachment } from '../types'
 import { assertDocumentWorkspace, guardDocumentTransaction } from './workspaceWriter/runtime'
+import { openExistingDB } from './readOnlyExistingDB'
+import { BACKUP_LIMITS, BackupError } from './workspaceBackup/types'
 
 const DB_NAME = 'arty-files'
 const DB_VERSION = 1
@@ -228,6 +230,47 @@ export async function getFile(
 export async function getFiles(fileIds: string[]): Promise<FileAttachment[]> {
   const results = await Promise.all(fileIds.map((id) => getFile(id)))
   return results.filter((f): f is FileAttachment => f !== null)
+}
+
+/** Capture all directly referenced encrypted records at one IDB snapshot point.
+ * No getFile/null filtering, decrypt, bootstrap or version upgrade here. */
+export async function readOwnedFileSnapshot(ids: readonly string[], assertScope: () => void, signal?: AbortSignal): Promise<ReadonlyMap<string, Readonly<StoredFile>>> {
+  assertDocumentWorkspace(); assertScope()
+  const owner = getActiveUserId(), epoch = getActiveSessionEpoch(), cryptoCurrent = captureCryptoGuard()
+  const assertCurrent = () => {
+    assertDocumentWorkspace(); assertScope()
+    if (signal?.aborted || !owner || getActiveUserId() !== owner || getActiveSessionEpoch() !== epoch || !cryptoCurrent()) throw new BackupError('cancelled')
+  }
+  assertCurrent()
+  if (ids.length > BACKUP_LIMITS.files) throw new BackupError('limit')
+  const selected = [...new Set(ids)]
+  if (selected.some(id => typeof id !== 'string' || id.length > 128 || !/^[A-Za-z0-9._~-]+$/.test(id))) throw new BackupError('format')
+  if (!selected.length) return new Map()
+  const db = await openExistingDB(DB_NAME, DB_VERSION, assertCurrent, signal)
+  if (!db) throw new BackupError('missing')
+  try {
+    if (!db.objectStoreNames.contains(STORE)) throw new BackupError('format')
+    const tx = db.transaction(STORE, 'readonly')
+    const result = new Map<string, Readonly<StoredFile>>()
+    let cipherChars = 0
+    try { for (const id of selected) {
+      // Sequential IDB requests, in ONE transaction, bound the retained clones
+      // before requesting another record. No crypto/non-IDB await in this loop.
+      const row = await tx.store.get(id) as StoredFile | undefined
+      assertCurrent()
+      if (!row || row.ownerKey !== ownerKeyFor(owner)) throw new BackupError('missing')
+      if (row.fileId !== id || typeof row.encryptedData !== 'string' ||
+        row.encryptedData.length > Math.ceil((Math.ceil(BACKUP_LIMITS.objectBytes * 4 / 3) + 1024) * 4 / 3) + 1024) throw new BackupError('format')
+      cipherChars += row.encryptedData.length
+      if (cipherChars > Math.ceil(BACKUP_LIMITS.plaintextBytes * 16 / 9) + 128 * 2048) throw new BackupError('limit')
+      // IDB supplied an independent structured clone. Unknown fields are not
+      // forwarded into the archive; the capture mapper validates the allowlist.
+      result.set(id, Object.freeze(row))
+    }
+    await tx.done; assertCurrent()
+    } catch (error) { try { tx.abort() } catch { /* complete */ }; await tx.done.catch(() => {}); throw error }
+    return result
+  } finally { db.close() }
 }
 
 export async function deleteFile(fileId: string): Promise<void> {

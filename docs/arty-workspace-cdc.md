@@ -31,7 +31,7 @@ supplémentaire n'est implicite dans ce mandat.
 | W03 | Catalogue | Un catalogue partagé aligne comparaison, sélecteurs, labels et éligibilité selon le compte (pas une garantie fournisseur). Modèle demandé, transmis par le proxy et signalé par le fournisseur distingués. Tests contre la dérive et contre l'accès premium hors droit. | Web déployé, PR #440 ; recette visuelle/appareil non vérifiée |
 | W04 | Projets | Créer/renommer/supprimer un projet, consignes propres, conversations associées, bibliothèque de documents réutilisables. Sources identifiables dans le contexte. Recherche bornée, absence de fichier et contexte tronqué explicites. Cloisonnement par compte et projet ; mode Europe conservé. | Bibliothèque web livrée #443 ; conversations web livrées #444 ; recette visuelle/appareil non vérifiée |
 | W05 | Livrables | Export DOCX modifiable et XLSX de tableaux, en plus des exports existants. Téléchargements relus par un parseur indépendant ; cellules dangereuses neutralisées ; aucun HTML actif ni formule arbitraire. Formats et limites documentés. | Web déployé #445 ; recette structurelle vérifiée ; rendu Office/appareil non vérifié |
-| W06 | Continuité | Sauvegarde/restauration explicites puis synchronisation optionnelle multi-appareil chiffrée avant upload, avec secret détenu par l'utilisateur et récupération expliquée. Conflits non destructifs ; reprise hors-ligne ; logout/switch/delete et compte invité traités. Un export manuel seul ne valide pas la synchronisation. | A1 format #446 et galerie privée #448 livrés ; capture/restauration/UI/synchronisation non livrées |
+| W06 | Continuité | Sauvegarde/restauration explicites puis synchronisation optionnelle multi-appareil chiffrée avant upload, avec secret détenu par l'utilisateur et récupération expliquée. Conflits non destructifs ; reprise hors-ligne ; logout/switch/delete et compte invité traités. Un export manuel seul ne valide pas la synchronisation. | A1 #446, galerie #448 et verrou document #449 livrés ; capture/vérification A2 implémentées (recette ci-dessous) ; restauration/synchronisation non livrées |
 | W07 | Comparaison | Comparer depuis une conversation avec contexte/documents autorisés ; conserver les résultats et poursuivre la réponse choisie sans perdre l'original. Erreurs/coûts/quotas de chaque panneau visibles ; EU et historique privé jamais contournés. | À faire |
 | W08 | Parcours métier | Trois parcours complets : synthèse documentaire, réponse client préparée, planification Agenda avec confirmation avant écriture. Écran de connexions indiquant disponible/non configuré/non pris en charge selon plateforme. Pas de Drive/Gmail OAuth restreint ni relais IMAP serveur. | À faire |
 | W09 | Mobile et identité | PWA installable ; identité tryarty cohérente ; distribution Android authentifiée et documentée. Ne pas rediriger vers une app Play homonyme. Toute migration appId inclut signatures/OAuth/Firebase/liens vérifiés ; un APK distribué n'est pas une publication Store. | À faire |
@@ -244,7 +244,14 @@ réels ; préparer protocole et instrumentation sans fabriquer leurs résultats.
   Décision, périmètre de la défense après perte et repli :
   [ADR](ADR_WORKSPACE_BACKUP.md#révision-du-5-septembre--réservation-par-document-lot-coopératif).
 
-### Suivi de recette — entrée login avec session existante
+### Suivi de recette — entrée login avec session existante livrée (#450)
+
+- PR [#450](https://github.com/flotellop-art/Arty/pull/450), squash main
+  `af688a2ddcbddb81931a9ea9ffbaab63cd4719c5`, fusion le 5 septembre à 13:18 UTC.
+  CI PR `33968309103`, CI main `33968517141` et distribution APK Firebase
+  `33968517033` vertes. Pages production
+  `d8ae3cd7-6779-441d-90cd-8e6ffc3b1e0d` ; tryarty.com et son bundle
+  `/assets/index-D3rsfy-q.js` HTTP 200 (232 650 octets).
 
 - Route `/login` ajoutée uniquement dans AppContent authentifié : retour `/`
   avec remplacement de l'entrée d'historique. Aucun paramètre `next`/`redirect`
@@ -257,7 +264,106 @@ réels ; préparer protocole et instrumentation sans fabriquer leurs résultats.
   Ce test ne prouve ni une authentification réelle, ni le rendu natif.
 - `npm run verify` : 246 fichiers, 2 644 tests verts + 1 conditionnel ignoré ;
   types front/back, couverture, build, no-CASA et smoke worker Office verts.
-  Recette de préproduction et publication à attester dans le reçu de livraison.
+- Deux contre-revues finales GO. Chrome préproduction réelle
+  `dd7c758b.appfacade.pages.dev` : `/login/` avec query/hash → accueil `/` ;
+  `/discover` → Se connecter → accueil → Back vers `/discover` → Forward vers
+  l'accueil, sans boucle ni shell vide. Données démo uniquement.
+- Chrome production avec session existante : `/login` → accueil complet `/` ;
+  deuxième document occupé, fermeture du premier puis Retry → accueil complet.
+  Aucune conversation créée/modifiée, aucun logout ; onglets de recette fermés.
+  Ni nouvel échange Google ni recette d'APK installé revendiqués.
+
+### W06 A2 — capture/vérification d'une conversation (5 septembre)
+
+Implémentation locale : menus conversation classique et sheet, projet entier en
+option, archive v2, code séparé et acquittement avant remise, fichier re-sélectionné
+avec code, contrôle ID/fingerprint. Vérificateur autonome dans les paramètres.
+Ce lot n'est ni une restauration, ni une sauvegarde complète du compte, ni une
+synchronisation. Il ne migre/efface aucun store utilisateur.
+
+Preuves locales :
+
+- `npm run verify` final vert : 251 fichiers, 2 709 tests réussis, 1 ignoré,
+  soit 65 tests supplémentaires depuis #450 ; typechecks frontend/Workers,
+  coverage, build et worker Office isolé réussis. Les avertissements de taille
+  de chunks restent visibles ; ils ne sont pas une mesure de mémoire mobile.
+- Tests réels stores/WebCrypto : toutes les dépendances directes, trois tailles
+  historiques/binaire, aucune écriture source ni création de base, galeries
+  malformées, aucun accès via Markdown, A→B→A, effacement, erreurs illisibles,
+  mutation avec même timestamp ou sans save, snapshot atomique de deux fichiers,
+  projet modifié pendant lecture, token readonly fermé, mauvais code/autre
+  archive, annulation pendant chiffrement, UTF-16 invalide/BOM valide.
+- Hook réel : préparation de fichier suspendue avant stream, vrai pipeline
+  fact-check en attente du jeton de récupération de liens avant pending (aucun
+  appel réseau), association projet suspendue, compteur isolé par conversation.
+- UI : acquittement, code absent du partage, aucune fausse confirmation de
+  fichier enregistré, vérification indépendante après mutation, révocation
+  terminale sur composant monté, résultat tardif ignoré, fermeture/relance,
+  Tab/ShiftTab, paramètres inline, absence d'interception du sous-dialogue mail.
+- Chrome réel, harnais local utilisant les vrais stores/composants : menu fermé,
+  création de 1 conversation / 2 messages / 1 fichier / 1 projet / 1 document.
+  Téléchargement réel de l'archive synthétique
+  `b1c05b3e-2cc4-4449-8a87-97db3d3d651c`, 2 281 octets, puis réouverture du
+  fichier effectivement enregistré et assertions sur octets, source CRLF et
+  texte extrait LF. Aucune donnée personnelle exportée, aucun appel IA.
+  Cette lecture fichier n'est pas une recette du sélecteur natif dans l'APK.
+- La recette de la vraie app sur Pages a révélé que le mode démo n'a
+  intentionnellement ni crypto ni compte connu. Les deux vues montrent désormais
+  une notice avant toute saisie, sans assouplir les services ni initialiser une
+  clé de démonstration. Détection de la méthode de session, pas de l'hôte : un
+  vrai compte sur un hôte preview garde son parcours. Trois tests UI ajoutés.
+  Notice contrôlée dans Chrome sur `74c27235.appfacade.pages.dev` : menu
+  conversation et vérificateur des paramètres, sans champs de fichier/code
+  ni possibilité de création dans cette session de démonstration.
+
+Pré-déploiement / retour arrière :
+
+- Deux contre-revues indépendantes en lecture seule, avec corrections des
+  objections de fidélité, course, révocation du code affiché et focus.
+- `npm run verify` complet et CI de PR requis avant fusion. Publication par
+  la chaîne existante uniquement, contrôle du SHA et des assets Pages.
+- Aucun changement de schéma des bases source ni variable serveur requise.
+  Ne pas effacer les données/archives pour revenir en arrière : corriger en
+  avant ou revert de PR via CI. Un client antérieur à v2 ne relit pas une archive
+  v2 ; garder une version du lecteur v2 disponible avant rollback produit.
+- Arrêt/retour arrière si une capture écrit la source, divulgue le code au
+  partage, remet un artefact après révocation ou si le parcours privé ne charge
+  plus. Télémétrie serveur et pic RAM/partage APK non vérifiés localement.
+
+Reçus Git/CI/Pages à ajouter après livraison effective. W06 reste **partiel**.
+
+### W02 — débit d'essai D1 tardif révélé pendant la CI de #451
+
+- La CI `33974694368` a refusé #451 sur le cas Gemini HTTP 401 :
+  `trial_usage.used=1` au lieu de 0. Son journal montre un timeout D1 de
+  250 ms immédiatement avant le refus. Défaut préexistant, pas une erreur
+  d'archive : le timeout ne termine pas l'UPSERT et son résultat était perdu.
+- Reproduction avant correctif : deux tests avec vrai D1/SQL, résultat retenu
+  jusqu'après la réponse HTTP 401/200, échouent avec un débit résiduel.
+- Politique retenue pour les essais Google et e-mail : timeout = appel offert,
+  même si l'IA réussit. La promesse exacte de l'écriture est conservée et suivie
+  par `waitUntil` ; seul un `RETURNING` confirmant une consommation déclenche
+  une compensation. Aucun rejeu SQL, aucune remise sur résultat nul/rejet,
+  aucun marqueur `trialDebited` sur ce chemin déjà compensé. Les cinq proxys
+  transmettent le contexte de fond ; sans ce contexte, l'appel direct attend
+  et retourne l'issue finale réelle, sans garantie de latence de 250 ms.
+- Tests : les timers de quota des cas D1 sont pilotés indépendamment de ceux
+  de workerd ; le délai de 250 ms est vérifié avec une horloge virtuelle. Commit avant
+  deadline et commit après réponse, HTTP 401/200/fallback 503→200, compteur
+  initial 7 et autre appel réussi conservé à 8, espaces Google/e-mail disjoints,
+  résultat tardif nul à la limite de 30, rejet tardif, échec d'enregistrement,
+  absence de waiter, pas de retry de compensation. Garde d'ordre vision OpenAI
+  conservée et adaptée au troisième argument, sans affaiblir ses assertions.
+- Deux contre-revues readonly : objections intégrées (double remboursement,
+  attente sans contexte, horloge des tests, ancienne signature structurelle).
+  Suite complète finale `npm run verify` : 252 fichiers, 2 725 tests réussis
+  + 1 ignoré, typechecks app/Workers, coverage, build et worker Office isolé
+  verts ; CI du commit final requise avant fusion.
+- Limites : `waitUntil` et les remboursements restent best-effort, pas un
+  journal durable face à une panne prolongée ou un commit D1 ambigu. Les caps
+  premium et compteurs free/rate-limit partagés ne changent pas de politique
+  dans ce correctif ; le cap premium garde un risque de débit tardif distinct
+  à traiter. Aucun changement de schéma, de secret ni effacement de compteur.
 
 ### W06 A2 — contre-revues de préparation après #448 (historique)
 

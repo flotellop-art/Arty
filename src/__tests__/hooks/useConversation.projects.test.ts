@@ -67,8 +67,11 @@ describe('project chat end-to-end hook with local fake providers', () => {
     let pending!: Promise<string | null>
     act(() => { pending = hook.result.current.setConversationProject('c1', project) })
     await waitFor(() => expect(resume).toBeTypeOf('function'))
+    expect(hook.result.current.isConversationBusy('c1')).toBe(true)
+    expect(hook.result.current.isConversationBusy('other')).toBe(false)
     vi.mocked(storage.getConversation).mockReturnValue(null)
     await act(async () => { resume({ id: project.id, revision: 1, status: 'ready', project }); expect(await pending).toBeNull() })
+    expect(hook.result.current.isConversationBusy('c1')).toBe(false)
     expect(storage.saveConversation).not.toHaveBeenCalled(); hook.unmount()
   })
   it('keeps a failed association immutable when local storage is full', async () => {
