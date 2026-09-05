@@ -18,10 +18,16 @@ import type { Env } from '../../env'
 // borne la latence ajoutée par la dépendance D1.
 const D1_QUOTA_TIMEOUT_MS = 250
 
-export type AtomicConsumeOutcome =
+type SettledConsumeOutcome =
   | { status: 'consumed'; count: number }
   | { status: 'cap_reached' }
   | { status: 'fail_open' }
+
+export type AtomicConsumeOutcome =
+  | Exclude<SettledConsumeOutcome, { status: 'fail_open' }>
+  | { status: 'fail_open'; pending?: Promise<SettledConsumeOutcome> }
+
+export type QuotaWaitUntil = (promise: Promise<unknown>) => void
 
 /**
  * Consomme atomiquement un compteur cappé via un upsert conditionnel D1.
@@ -52,25 +58,63 @@ export async function consumeCapAtomic(
   binds: ReadonlyArray<string | number>
 ): Promise<AtomicConsumeOutcome> {
   if (!env.DB) return { status: 'fail_open' }
+  let timer: ReturnType<typeof setTimeout> | undefined
   try {
     const query = env.DB.prepare(sql)
       .bind(...binds)
       .first<{ count: number }>()
-    const timeout = new Promise<'__timeout__'>((resolve) =>
-      setTimeout(() => resolve('__timeout__'), D1_QUOTA_TIMEOUT_MS)
-    )
+      .then<SettledConsumeOutcome, SettledConsumeOutcome>(
+        (row) => row ? { status: 'consumed', count: row.count } : { status: 'cap_reached' },
+        (err) => {
+          console.error('[quota] D1 erreur sur consume, fail-open', err)
+          return { status: 'fail_open' }
+        },
+      )
+    const timeout = new Promise<'__timeout__'>((resolve) => {
+      timer = setTimeout(() => resolve('__timeout__'), D1_QUOTA_TIMEOUT_MS)
+    })
     const res = await Promise.race([query, timeout])
     if (res === '__timeout__') {
       console.error('[quota] D1 timeout sur consume, fail-open')
-      return { status: 'fail_open' }
+      // A timeout does not cancel the write. Keep THIS query's final result;
+      // refundable callers must not infer a debit or replay the UPSERT.
+      return { status: 'fail_open', pending: query }
     }
-    const row = res as { count: number } | null
-    if (!row) return { status: 'cap_reached' }
-    return { status: 'consumed', count: row.count }
+    return res
   } catch (err) {
     console.error('[quota] D1 erreur sur consume, fail-open', err)
     return { status: 'fail_open' }
+  } finally {
+    if (timer !== undefined) clearTimeout(timer)
   }
+}
+
+/** Trial policy: timeout means uncharged, even if the upstream succeeds.
+ * Register compensation before returning; only a confirmed late debit can be
+ * refunded. No retry on an ambiguous D1 failure. waitUntil/refund remain
+ * best-effort, not a durable journal. Other caps keep their existing policy.
+ * Without a background lifetime, wait for the actual result (no latency bound).
+ */
+export async function consumeRefundableCapAtomic(
+  env: Env,
+  sql: string,
+  binds: ReadonlyArray<string | number>,
+  refund: () => Promise<void>,
+  waitUntil?: QuotaWaitUntil,
+): Promise<SettledConsumeOutcome> {
+  const outcome = await consumeCapAtomic(env, sql, binds)
+  if (outcome.status !== 'fail_open' || !outcome.pending) return outcome
+  if (!waitUntil) return outcome.pending
+  const compensation = outcome.pending.then(async (late) => {
+    if (late.status === 'consumed') await refund()
+  })
+  try {
+    waitUntil(compensation)
+  } catch {
+    // The same promise is drained, never recreated or refunded twice.
+    await compensation
+  }
+  return { status: 'fail_open' }
 }
 
 /**

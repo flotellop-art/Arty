@@ -312,6 +312,9 @@ Preuves locales :
   une notice avant toute saisie, sans assouplir les services ni initialiser une
   clé de démonstration. Détection de la méthode de session, pas de l'hôte : un
   vrai compte sur un hôte preview garde son parcours. Trois tests UI ajoutés.
+  Notice contrôlée dans Chrome sur `74c27235.appfacade.pages.dev` : menu
+  conversation et vérificateur des paramètres, sans champs de fichier/code
+  ni possibilité de création dans cette session de démonstration.
 
 Pré-déploiement / retour arrière :
 
@@ -328,6 +331,39 @@ Pré-déploiement / retour arrière :
   plus. Télémétrie serveur et pic RAM/partage APK non vérifiés localement.
 
 Reçus Git/CI/Pages à ajouter après livraison effective. W06 reste **partiel**.
+
+### W02 — débit d'essai D1 tardif révélé pendant la CI de #451
+
+- La CI `33974694368` a refusé #451 sur le cas Gemini HTTP 401 :
+  `trial_usage.used=1` au lieu de 0. Son journal montre un timeout D1 de
+  250 ms immédiatement avant le refus. Défaut préexistant, pas une erreur
+  d'archive : le timeout ne termine pas l'UPSERT et son résultat était perdu.
+- Reproduction avant correctif : deux tests avec vrai D1/SQL, résultat retenu
+  jusqu'après la réponse HTTP 401/200, échouent avec un débit résiduel.
+- Politique retenue pour les essais Google et e-mail : timeout = appel offert,
+  même si l'IA réussit. La promesse exacte de l'écriture est conservée et suivie
+  par `waitUntil` ; seul un `RETURNING` confirmant une consommation déclenche
+  une compensation. Aucun rejeu SQL, aucune remise sur résultat nul/rejet,
+  aucun marqueur `trialDebited` sur ce chemin déjà compensé. Les cinq proxys
+  transmettent le contexte de fond ; sans ce contexte, l'appel direct attend
+  et retourne l'issue finale réelle, sans garantie de latence de 250 ms.
+- Tests : les timers de quota des cas D1 sont pilotés indépendamment de ceux
+  de workerd ; le délai de 250 ms est vérifié avec une horloge virtuelle. Commit avant
+  deadline et commit après réponse, HTTP 401/200/fallback 503→200, compteur
+  initial 7 et autre appel réussi conservé à 8, espaces Google/e-mail disjoints,
+  résultat tardif nul à la limite de 30, rejet tardif, échec d'enregistrement,
+  absence de waiter, pas de retry de compensation. Garde d'ordre vision OpenAI
+  conservée et adaptée au troisième argument, sans affaiblir ses assertions.
+- Deux contre-revues readonly : objections intégrées (double remboursement,
+  attente sans contexte, horloge des tests, ancienne signature structurelle).
+  Suite complète finale `npm run verify` : 252 fichiers, 2 725 tests réussis
+  + 1 ignoré, typechecks app/Workers, coverage, build et worker Office isolé
+  verts ; CI du commit final requise avant fusion.
+- Limites : `waitUntil` et les remboursements restent best-effort, pas un
+  journal durable face à une panne prolongée ou un commit D1 ambigu. Les caps
+  premium et compteurs free/rate-limit partagés ne changent pas de politique
+  dans ce correctif ; le cap premium garde un risque de débit tardif distinct
+  à traiter. Aucun changement de schéma, de secret ni effacement de compteur.
 
 ### W06 A2 — contre-revues de préparation après #448 (historique)
 
