@@ -1137,7 +1137,7 @@ y compris A migré, A post-cutover, voisins a-b/a:b et second cycle d'effacement
 
 #### A3b.6 — effacement nominal froid et droit de nouvel espace local (6 septembre 2026)
 
-Statut : implémenté et validé localement, livraison à consigner dans le CDC.
+Statut : livré #459, preuves de publication consignées dans le CDC.
 Activation isolée OFF, aucune migration réelle ni suppression de production.
 Deux contre-revues indépendantes avant code et sur le diff final : GO limité.
 
@@ -1223,3 +1223,49 @@ Protection coopérative, pas atomicité inter-DB/LS ni défense contre un client
 ancien/malveillant réécrivant arbitrairement le stockage. Repli du candidat OFF :
 revert via PR/CI/Pages, conserver reçus/tombstones ; ne pas downgrader ou purger
 un stockage v6/v7 pour revenir à une version ancienne.
+
+##### Préparation A3b.7 — supersession v3, non implémentée
+
+Deux contre-revues préparatoires indépendantes recommandent de réutiliser v6/v7
+plutôt que d'ajouter un format. Le chemin borné est : écran froid → sélection
+et confirmation locale A → préflight original complet → CAS v3 exact vers v6
+reserved → reload → nettoyeur existant → v7 → nouveau B lisible et writable.
+
+`copied` atteste seulement le journal ; les deux DB destination sont créées et
+remplies APRÈS ce checkpoint. Accepter verified, ou copied uniquement si source,
+journal, destinations et targets LS sont physiquement complets et réattestés.
+Destination absente/partielle, source divergente (même seulement A), journal
+incomplet, cible inconnue ou receipt imprévu : refus explicite sans mutation.
+Ne pas déduire un nouveau baseline B depuis les hashes globaux A+B.
+
+Préflight readonly à extraire des attestations du migrateur, jamais un appel
+de resume qui écrit. Choix lié au header/révision/génération et au catalogue
+attesté plan.owners ; libellés raw de sessions validés seulement comme aide,
+avec ID opaque visible pour les homonymes. Pas de useAuth/getKnownSessions ni
+d'écriture LS d'une préférence ou du consentement : la signature source prend
+en compte tout LS hors targets exacts du job. Owner nul hors ce premier lot.
+
+Confirmation crée une autorité locale neuve (serverConfirmed:false,
+localOnly:true, pending:[], nouveaux opId/nonce/resetId, previousResetId:null),
+requiredOwners=plan.owners et resets=[]. Construire les preuves B par copie
+après réattestation globale. Aucun marker préalable dans active ni sel à froid.
+CAS avant purge avec comparaison synchrone LS juste devant put ; réponse
+perdue reconnue seulement pour le v6 exact de la tentative, pas un autre choix.
+Après CAS, roll-forward v6 seulement ; l'ancien v3 ne peut reprendre le plan
+expurgé. Une incarnation native inattendue refuse sans être adoptée.
+
+L'admission donne une seule capacité de maintenance par document. Choisir le
+mode avant de créer l'acteur ; après une tentative Resume, demander un reload
+pour changer de mode. Après supersession, reload avant création de l'eraser.
+Recette attendue : vrai écran, A/B avec historique/fichier/projet/credentials,
+interruption aux frontières, ancien migrateur incapable de recopier A,
+B déchiffre ET crée/modifie/relit après reload, puis A se recrée et second
+effacement. Aucun POST/GET, aucun import privé avant admission, OAuth intact.
+
+Correctif voisin encore à faire : purge logout par owner exact dans les caches
+RAM/LS. Ne pas réutiliser aveuglément parseOwnedLocalKey : son mode strict
+refuse conversation:conv-1, encore couvert par le contrat legacy du composeur.
+Conserver le GC par clé exacte ; résolution partagée avec sous-ensemble legacy
+non ambigu pour logout sans élargissement silencieux du parser de migration.
+Tester vrai logout avec a, a:b, a-b, Unicode, UUID, conv-1 et formes ambiguës
+anonymous/:conversation: conservées explicitement. Ces notes ne lèvent aucun gate.
