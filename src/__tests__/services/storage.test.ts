@@ -6,6 +6,7 @@ const fileStorage = vi.hoisted(() => ({
 
 vi.mock('../../services/userSession', () => ({
   getActiveUserId: () => 'user-test',
+  getActiveSessionEpoch: () => 1,
 }))
 vi.mock('../../services/secureFileStorage', () => fileStorage)
 
