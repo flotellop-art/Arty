@@ -31,7 +31,7 @@ supplémentaire n'est implicite dans ce mandat.
 | W03 | Catalogue | Un catalogue partagé aligne comparaison, sélecteurs, labels et éligibilité selon le compte (pas une garantie fournisseur). Modèle demandé, transmis par le proxy et signalé par le fournisseur distingués. Tests contre la dérive et contre l'accès premium hors droit. | Web déployé, PR #440 ; recette visuelle/appareil non vérifiée |
 | W04 | Projets | Créer/renommer/supprimer un projet, consignes propres, conversations associées, bibliothèque de documents réutilisables. Sources identifiables dans le contexte. Recherche bornée, absence de fichier et contexte tronqué explicites. Cloisonnement par compte et projet ; mode Europe conservé. | Bibliothèque web livrée #443 ; conversations web livrées #444 ; recette visuelle/appareil non vérifiée |
 | W05 | Livrables | Export DOCX modifiable et XLSX de tableaux, en plus des exports existants. Téléchargements relus par un parseur indépendant ; cellules dangereuses neutralisées ; aucun HTML actif ni formule arbitraire. Formats et limites documentés. | Web déployé #445 ; recette structurelle vérifiée ; rendu Office/appareil non vérifié |
-| W06 | Continuité | Sauvegarde/restauration explicites puis synchronisation optionnelle multi-appareil chiffrée avant upload, avec secret détenu par l'utilisateur et récupération expliquée. Conflits non destructifs ; reprise hors-ligne ; logout/switch/delete et compte invité traités. Un export manuel seul ne valide pas la synchronisation. | A1 #446, galerie #448, verrou document #449, capture/vérification A2 #451, préparation A3a #452, admission froide #453, runtime isolé inactif #454, migrateur journalisé OFF #455 et reprise froide d'effacement v2 OFF #456 livrés ; restauration/synchronisation non livrées |
+| W06 | Continuité | Sauvegarde/restauration explicites puis synchronisation optionnelle multi-appareil chiffrée avant upload, avec secret détenu par l'utilisateur et récupération expliquée. Conflits non destructifs ; reprise hors-ligne ; logout/switch/delete et compte invité traités. Un export manuel seul ne valide pas la synchronisation. | A1 #446, galerie #448, verrou document #449, capture/vérification A2 #451, préparation A3a #452, admission froide #453, runtime isolé inactif #454, migrateur journalisé OFF #455, reprise froide d'effacement v2 OFF #456 et reçu distant d'effacement #457 livrés ; restauration/synchronisation non livrées |
 | W07 | Comparaison | Comparer depuis une conversation avec contexte/documents autorisés ; conserver les résultats et poursuivre la réponse choisie sans perdre l'original. Erreurs/coûts/quotas de chaque panneau visibles ; EU et historique privé jamais contournés. | À faire |
 | W08 | Parcours métier | Trois parcours complets : synthèse documentaire, réponse client préparée, planification Agenda avec confirmation avant écriture. Écran de connexions indiquant disponible/non configuré/non pris en charge selon plateforme. Pas de Drive/Gmail OAuth restreint ni relais IMAP serveur. | À faire |
 | W09 | Mobile et identité | PWA installable ; identité tryarty cohérente ; distribution Android authentifiée et documentée. Ne pas rediriger vers une app Play homonyme. Toute migration appId inclut signatures/OAuth/Firebase/liens vérifiés ; un APK distribué n'est pas une publication Store. | À faire |
@@ -170,6 +170,35 @@ réémettrait un POST legacy après incertitude. Préférer une correction en av
 ou un client laissant la vérification disponible et l'envoi désactivé. Les
 clients v1 gardent l'intention si la route devient indisponible. Une panne de
 stockage/lecture ou une divergence de reçu bloque l'effacement, sans faux succès.
+
+Livraison A3b.5a : [PR #457](https://github.com/flotellop-art/Arty/pull/457),
+head `741049a71c32fb429f8ad48024f8fb9cad105430`, fusion main
+`7cbede54c322dd5416b103c61f1e60949e129dae` le 5 septembre à 21:34:54 UTC.
+CI PR `33993213963` et CI main `33993458989` réussies (web, Android,
+orchestrateur). Verify local final sur ce head : 263 suites / 2 990 tests verts
+et 1 ignoré ; couverture statements 67,37 %, branches 62 %, fonctions 73,20 %,
+lignes 69,14 % ; front/back/no-CASA/add-on/build/worker Office verts.
+
+Pages preview finale `fc65d8cf-1d95-4087-b3c6-3e9578db6cf8` et production
+`0d38a60f-f8cf-4d1b-8845-4643d39a660a` réussies. Recette navigateur sur l'aperçu
+isolé : accueil, réglages, description appareil-only, confirmation puis annulation
+sans effacement ; onglets de test fermés, onglet utilisateur conservé.
+Deux contrôles HTTP publics à 21:36:54 et 21:40:01 UTC attestent les mêmes assets
+sur tryarty.com et l'URL immuable de production :
+
+- `/assets/index-Czk5vSdC.js`, 267 651 octets, SHA-256
+  `ea5cb06c1d49af4b93932a0f892101a1487de0faacc15f74027eaf87479e5afe`.
+- `assets/App-BsDzYnxX.js`, SHA-256
+  `828c06a0a029736bcccf5eedc9bf1489398ff329ae7f28c4c79154cc09a8559b`,
+  contenant le nouveau chemin de protocole.
+- GET invalide → 400/no-store ; GET opId/capability aléatoires synthétiques →
+  200, protocole1/unknown/no-store. Aucun POST, aucun compte réel effacé, aucun
+  secret utilisateur manipulé. Cela ne mesure pas le taux d'erreurs réel global.
+
+Build/distribution APK `33993459116` réussi : compilation signée terminée
+21:41:27 UTC, distribution Firebase réussie 21:41:33 UTC, workflow terminé
+21:41:38 UTC. Cela ne prouve pas une installation sur téléphone ni une
+publication Store. Aucun APK personnel/appareil réel manipulé dans ce lot.
 
 ### W06 A3b.4 — reprise froide d'effacement v2, candidat OFF
 

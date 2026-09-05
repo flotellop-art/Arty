@@ -1009,3 +1009,40 @@ import privé ; réparer fences via un format v5/proof-domain explicite sans
 rebaseliner v4 ; puis poursuivre les autres gates A3b.4. Activation OFF inchangée.
 Le repli doit conserver le journal et les tombstones et ne jamais réintroduire
 un POST legacy implicite. Détails et reçus de livraison dans le CDC.
+
+##### Préparation du lot froid suivant — décision de travail, non implémentée
+
+Les contre-revues préparatoires ont retenu ces bornes pour éviter de réinventer
+la preuve au prochain lot. Elles ne valent pas validation du futur code.
+
+- Le crash réel à reproduire commence en v2 : `purgeProjectsForAccount` écrit
+  le fence LS avant `tx.done`, puis l'IDB peut abort. L'ancien v4 exige leur
+  égalité et son hash protège les deux emplacements : le relâcher rétroactivement
+  casserait la preuve. Un v4 cohérent garde son algorithme ; un v4 divergent
+  reste bloqué, jamais converti en v5 par une nouvelle baseline B.
+- Un nouveau v5 doit réserver durablement owner/opId/nonce/génération, valeurs
+  brutes initiales LS et meta active (absence distincte de "initial"), un UUID
+  cible unique T et les preuves B avant toute réparation. Son domaine de preuve
+  exclut seulement ces deux emplacements, attestés séparément. Les fences des
+  copies legacy et journal demeurent intégralement protégés par leurs hashes.
+- Ordre fixe IDB active puis LS : seules les paires `(L0,D0)`, `(L0,T)` et
+  `(T,T)` sont des états de reprise. Pas de produit cartésien des valeurs, pas
+  de nouvelle cible à chaque tentative. Checkpoint "fence réparé" durable avant
+  toute purge A ; après ce checkpoint, seule la paire T/T reste admissible.
+  Valeurs présentes null/false/0/chaîne vide invalides, non assimilées à absence.
+- Le pont de reçu froid doit rester GET-only, sans App/OAuth/session/crypto
+  privés, et prendre le même verrou document irréversible. Une seule intention
+  strictement reconnue ; résultat lié à opId/capability/subject puis confirmation
+  IDB durable de cette exacte opération. Missing/invalide/401/503 reste incertain.
+  Réparer un fence ne confirme jamais le distant ni n'autorise un nouveau sel.
+- Recette verticale requise : vraie migration A/B et vrai effacement projet
+  interrompu après LS mais avant commit IDB (attester l'abort), nouveau document,
+  reprise puis nouveau document B capable de déchiffrer historique/fichier/projet
+  ET de créer/modifier un projet. Vérifier coupures après réservation, IDB, LS,
+  checkpoint et commit final ; quota LS, perte de document, mutation B/legacy/job,
+  multiple reçu et remplacement nonce. Aucun POST destructeur à froid.
+
+Les autres gates restent indépendants : migration v3 supersédée avant purge,
+métadonnées et recréation, effacement natif intégré, restauration/synchronisation.
+Ne pas transformer cette préparation en un nouveau lot de parsers seuls présenté
+comme une reprise utilisable ; livrer le chemin et sa recette ensemble.
