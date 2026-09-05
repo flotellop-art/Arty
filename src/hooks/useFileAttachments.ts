@@ -8,6 +8,7 @@ import {
   MAX_NORMALIZED_IMAGE_BYTES,
 } from '../services/imageNormalization'
 import i18n from '../i18n'
+import { prepareOfficeMessages, type DocumentPreparation } from '../services/documents/prepareOfficeMessages'
 
 // Detect MIME type from filename if browser didn't set it
 function detectMimeType(name: string, type: string): string {
@@ -36,12 +37,14 @@ function detectMimeType(name: string, type: string): string {
 // être déchiffrés en parallèle sur une WebView mobile.
 let canonicalHydrationChain: Promise<void> = Promise.resolve()
 
-async function hydrateFiles(files: FileAttachment[]): Promise<FileAttachment[]> {
+async function hydrateFiles(files: FileAttachment[], preparation?: DocumentPreparation): Promise<FileAttachment[]> {
   return Promise.all(
     files.map((f) => {
       if (f.data) return f
       const load = async () => {
-        const loaded = await getFile(f.id)
+        preparation?.assertCurrent()
+        const loaded = preparation ? await getFile(f.id, preparation.owner) : await getFile(f.id)
+        preparation?.assertCurrent()
         return loaded ?? f // f sans data → traité comme indisponible plus bas
       }
       if (f.normalizationVersion === undefined) return load()
@@ -93,15 +96,16 @@ function buildBlocksFromFiles(files: FileAttachment[]): Array<Record<string, unk
 // Build API messages with file attachments as content blocks.
 // Async because past messages need to hydrate their files from IndexedDB.
 export async function buildApiMessages(
-  messages: Message[]
+  messages: Message[], preparation?: DocumentPreparation,
 ): Promise<Array<{ role: string; content: string | Array<Record<string, unknown>> }>> {
+  const prepared = await prepareOfficeMessages(messages, preparation)
   return Promise.all(
-    messages.map(async (m) => {
+    prepared.map(async (m) => {
       const modelText = getMessageTextForModel(m)
       if (!m.files || m.files.length === 0) {
         return { role: m.role, content: modelText }
       }
-      const hydrated = await hydrateFiles(m.files)
+      const hydrated = await hydrateFiles(m.files, preparation)
       const blocks = buildBlocksFromFiles(hydrated)
       // Un bloc text vide est rejeté par l'API Anthropic ("text content blocks
       // must contain non-whitespace text"). Pour un message image-only,
@@ -144,15 +148,16 @@ export type OpenAIVisionBlock =
   | { type: 'image_url'; image_url: { url: string; detail: 'original' } }
 
 export async function buildMistralMessages(
-  messages: Message[]
+  messages: Message[], preparation?: DocumentPreparation,
 ): Promise<Array<{ role: string; content: string | MistralBlock[] }>> {
+  const prepared = await prepareOfficeMessages(messages, preparation)
   return Promise.all(
-    messages.map(async (m) => {
+    prepared.map(async (m) => {
       const modelText = getMessageTextForModel(m)
       if (!m.files || m.files.length === 0) {
         return { role: m.role, content: modelText }
       }
-      const blocks = await buildMistralContentBlocks(modelText, m.files)
+      const blocks = await buildMistralContentBlocks(modelText, m.files, preparation)
       return { role: m.role, content: blocks }
     })
   )
@@ -199,9 +204,10 @@ export function buildMistralBlocks(
 // de perdre silencieusement une image lors d'une relance Mistral.
 export async function buildMistralContentBlocks(
   text: string,
-  files: FileAttachment[]
+  files: FileAttachment[], preparation?: DocumentPreparation,
 ): Promise<MistralBlock[]> {
-  const hydrated = await hydrateFiles(files)
+  const prepared = await prepareOfficeMessages([{ id: 'api', role: 'user', content: text, timestamp: 0, files }], preparation)
+  const hydrated = await hydrateFiles(prepared[0]!.files!, preparation)
   return buildMistralBlocks(text, hydrated)
 }
 
@@ -252,9 +258,10 @@ export async function buildOpenAIVisionContentBlocks(
 // in RAM, no IndexedDB roundtrip needed).
 export async function buildContentBlocks(
   text: string,
-  files: FileAttachment[]
+  files: FileAttachment[], preparation?: DocumentPreparation,
 ): Promise<Array<Record<string, unknown>>> {
-  const hydrated = await hydrateFiles(files)
+  const prepared = await prepareOfficeMessages([{ id: 'api', role: 'user', content: text, timestamp: 0, files }], preparation)
+  const hydrated = await hydrateFiles(prepared[0]!.files!, preparation)
   const blocks = buildBlocksFromFiles(hydrated)
   blocks.push({ type: 'text', text: text || 'Analyse ce fichier.' })
   return blocks

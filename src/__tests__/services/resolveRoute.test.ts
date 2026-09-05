@@ -34,6 +34,19 @@ function input(overrides: Partial<RouteInput> = {}): RouteInput {
 }
 
 describe('resolveRoute — invariants euOnly / fichiers (ex-useConversation, 0 test avant)', () => {
+  it('préserve Office historique avant tous les carve-outs photo, sauf le verrou EU', () => {
+    const office = { hasOfficeHistory: true, hasFiles: true, hasImages: true, hasSupportedVisionImages: true, visionOpenAIEnabled: true, visionAutoRoutingEnabled: true } as const
+    for (const selectedModel of ['auto', 'openai', 'mistral', 'gemini'] as const) {
+      const decision = resolveRoute(input({ ...office, selectedModel }))
+      expect(decision.provider).toBe('claude')
+      expect(decision.usesOpenAIVision).toBe(false)
+      expect(decision.webSearch).toBe(false)
+    }
+    const eu = resolveRoute(input({ ...office, euOnly: true }))
+    expect(eu.provider).toBe('mistral')
+    expect(eu.webSearch).toBe(false)
+    expect(resolveRoute(input({ hasOfficeHistory: true })).provider).toBe('claude')
+  })
   it('euOnly sans accès Mistral est bloqué, sans fallback hors Europe', () => {
     const routeInput = input({ euOnly: true, availability: NONE, plan: FREE })
     expect(canExecuteRoute(routeInput)).toBe(false)

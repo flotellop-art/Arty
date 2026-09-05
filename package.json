@@ -37,6 +37,7 @@
     "@streamparser/json-whatwg": "^0.0.22",
     "clsx": "^2.1.1",
     "dompurify": "^3.4.11",
+    "fflate": "0.8.3",
     "html2canvas": "^1.4.1",
     "i18next": "^24.2.3",
     "i18next-browser-languagedetector": "^8.2.1",

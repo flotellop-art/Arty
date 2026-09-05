@@ -20,7 +20,9 @@ unique sous 20 $/mois). Pas par la largeur de catalogue. Volume = distribution
   [CDC Workspace](../arty-workspace-cdc.md), 5 septembre 2026. Textes essai
   Haiku/BYOK/Pro/proxy alignés ; conseiller sans licence BYOK fictive, avec
   unités correctes et refus des modalités non comparables. Tests et deux
-  contre-revues OK ; PR et preuve de livraison à compléter. Ce suivi ne
+  contre-revues OK ; PR #437 fusionnée le 5 septembre et Pages production
+  vérifié par HTTP (page essai Haiku et nouveau bundle). Recette visuelle et
+  installation appareil non vérifiées ; détails dans le CDC. Ce suivi ne
   réactive aucun ancien scope Google ni offre serveur illimitée.
 
 - [x] **P0.1 Coloration syntaxique des blocs de code** — FAIT (12 juin 2026, PR P0

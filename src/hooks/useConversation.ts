@@ -34,6 +34,8 @@ import {
   VisionAutoCropError,
 } from '../services/visionAutoCrop'
 import i18n from '../i18n'
+import { captureDocumentPreparation, hasOfficeHistory, prepareOfficeMessages } from '../services/documents/prepareOfficeMessages'
+import { OfficeReadError } from '../services/documents/officeArchive'
 
 type ToolHandler = (name: string, input: Record<string, unknown>) => Promise<{ result: string; screenshot?: string }>
 
@@ -95,7 +97,7 @@ export function useConversation() {
   const {
     canStart, startStream, setActiveStream, onToken: streamToken,
     onDone: streamDone, onError: streamError, setProgressContent,
-    setAbortController, resetAccumulated, hasStream, isActive, stopStreaming,
+    setAbortController, resetAccumulated, hasStream, isActive, stopStreaming, discardStream,
   } = streaming
   const { setPendingFiles, pendingFilesRef } = fileAttachments
 
@@ -114,7 +116,7 @@ export function useConversation() {
   useEffect(() => {
     if (streaming.isStreaming) return
     const active = conversations.find((c) => c.id === activeId)
-    if (!active || active.messages.length === 0) return
+    if (!active || active.messages.length === 0 || hasOfficeHistory(active.messages)) return
     const last = active.messages[active.messages.length - 1]
     if (!last || last.role !== 'assistant') return
     if (lastScannedRef.current === last.id) return
@@ -258,7 +260,7 @@ export function useConversation() {
       // Une action rapide explicite doit gagner sur les automations locales :
       // un texte à résumer contenant « rappelle-moi mardi » ne doit pas créer
       // un vrai rappel à la place du résumé demandé.
-      const reminderIntent = quickAction ? null : detectReminderIntent(text)
+      const reminderIntent = quickAction || files?.length ? null : detectReminderIntent(text)
       if (reminderIntent) {
         const userMsg: Message = {
           id: generateId(),
@@ -281,7 +283,7 @@ export function useConversation() {
       }
 
       // Handle /aide command
-      if (!quickAction && text.trim().toLowerCase() === '/aide') {
+      if (!quickAction && !files?.length && text.trim().toLowerCase() === '/aide') {
         const helpMsg: Message = {
           id: generateId(),
           role: 'user',
@@ -324,12 +326,49 @@ export function useConversation() {
         conv.messages = conv.messages.slice(0, replaceIndex)
         return true
       }
+      const replaceIndex = replaceMessageId ? conv.messages.findIndex((m) => m.id === replaceMessageId && m.role === 'user') : -1
+      if (replaceMessageId && replaceIndex < 0) return false
+      const requestMessages: Message[] = [
+        ...(replaceMessageId ? conv.messages.slice(0, replaceIndex) : conv.messages),
+        { id: 'preparing', role: 'user', content: text, timestamp: Date.now(), files, quickAction },
+      ]
+      const officeRequest = hasOfficeHistory(requestMessages)
+      const officeController = officeRequest ? new AbortController() : undefined
+      const documentContext = officeController ? captureDocumentPreparation(officeController.signal) : undefined
+      let preparedOfficeMessages: Message[] | undefined
+      const officeStillCurrent = (): boolean => {
+        if (!documentContext) return true
+        try { documentContext.assertCurrent(); return true } catch {
+          // An old, stopped request must never tear down a newly started one.
+          if (!officeController!.signal.aborted) discardStream(targetId)
+          officeController!.abort()
+          return false
+        }
+      }
+      if (officeRequest) {
+        if (!startStream(targetId, documentContext?.assertCurrent)) return false
+        setActiveStream(targetId)
+        setAbortController(targetId, officeController!)
+        setProgressContent(i18n.t('chat.input.officePreparing'), targetId)
+        try {
+          preparedOfficeMessages = await prepareOfficeMessages(requestMessages, documentContext)
+          documentContext!.assertCurrent()
+          setProgressContent('', targetId)
+        } catch (err) {
+          if (officeStillCurrent()) {
+            discardStream(targetId)
+            const issue = err instanceof OfficeReadError ? err : new OfficeReadError('corrupt')
+            setError(i18n.t(`errors.office.${issue.code}`, { name: issue.fileName }))
+          }
+          return false
+        }
+      }
       let effectiveFiles = files
       let autoCropSources: FileAttachment[] | null = null
       let visionAutoCropOwnerId: string | null | undefined
       let visionAutoCropSessionEpoch: number | undefined
       let visionAutoCropLockHeld = false
-      let visionStreamReserved = false
+      let visionStreamReserved = officeRequest
       let visionAutoCropPrepared = false
       let lockedVisionRouteDecision: ReturnType<typeof resolveRoute> | null = null
       const releaseVisionAutoCropLock = () => {
@@ -342,7 +381,7 @@ export function useConversation() {
           getActiveUserId() !== visionAutoCropOwnerId ||
           getActiveSessionEpoch() !== visionAutoCropSessionEpoch
         )
-      if (!quickAction && options?.relocateVisionCrop && files?.some((file) => file.visionCrop)) {
+      if (!officeRequest && !quickAction && options?.relocateVisionCrop && files?.some((file) => file.visionCrop)) {
         const provenance = files.find((file) => file.visionCrop?.kind === 'auto')?.visionCrop
         const sourceIds = [...new Set(provenance?.sourceFileIds?.length
           ? provenance.sourceFileIds
@@ -356,7 +395,7 @@ export function useConversation() {
           setError(i18n.t('errors.visionAutoCropAssetUnavailable'))
           return false
         }
-      } else if (!quickAction && (!files || files.length === 0) && isVisionAutoCropFollowUp(text)) {
+      } else if (!officeRequest && !quickAction && (!files || files.length === 0) && isVisionAutoCropFollowUp(text)) {
         autoCropSources = findLatestTerraVisionBatch(conv.messages)
       }
 
@@ -461,15 +500,19 @@ export function useConversation() {
       const persistedNewIds: string[] = []
       if (effectiveFiles && effectiveFiles.length > 0) {
         const persistOne = async (f: FileAttachment): Promise<FileAttachment> => {
+          documentContext?.assertCurrent()
           // Si f.data est absent (cas retry/edit : déjà persisté),
           // on garde la référence telle quelle.
           if (!f.data) return f
           try {
             const id = await putFile(
-              f,
-              visionAutoCropOwnerId !== undefined ? visionAutoCropOwnerId : getActiveUserId(),
+              // Fresh IDs avoid overwriting/deleting an original on a failed
+              // edit or on Stop while storage is committing.
+              officeRequest ? { ...f, id: generateId() } : f,
+              documentContext ? documentContext.owner : visionAutoCropOwnerId !== undefined ? visionAutoCropOwnerId : getActiveUserId(),
             )
             persistedNewIds.push(id)
+            documentContext?.assertCurrent()
             return {
               id,
               name: f.name,
@@ -484,7 +527,7 @@ export function useConversation() {
             if (import.meta.env.DEV) console.warn('putFile failed:', err)
             // L'asset canonique est le contrat du premier envoi ET des retry.
             // Continuer uniquement en RAM rendrait le prochain tour différent.
-            if (f.normalizationVersion !== undefined) throw err
+            if (officeRequest || f.normalizationVersion !== undefined) throw err
             // Ne PAS retourner l'objet avec data — saveConversation écrirait
             // le base64 en localStorage et risquerait la limite 5 MB (BUG 11).
             // Le tour courant marche via pendingFilesRef qui contient encore
@@ -507,7 +550,7 @@ export function useConversation() {
         // leur parallélisme existant.
         let canonicalWriteChain = Promise.resolve()
         const persistenceTasks = effectiveFiles.map((f) => {
-          if (f.normalizationVersion === undefined) return persistOne(f)
+          if (!officeRequest && f.normalizationVersion === undefined) return persistOne(f)
           const task = canonicalWriteChain.then(() => persistOne(f))
           // La queue reste utilisable après un échec; allSettled ci-dessous
           // collecte le rejet et supprime tous les canoniques déjà écrits.
@@ -515,6 +558,10 @@ export function useConversation() {
           return task
         })
         const persistenceResults = await Promise.allSettled(persistenceTasks)
+        if (!officeStillCurrent()) {
+          await deleteOwnedFiles(persistedNewIds, documentContext!.owner)
+          return false
+        }
         if (visionStreamReserved && !hasStream(targetId)) {
           if (visionAutoCropOwnerId !== undefined) {
             await deleteOwnedFiles(persistedNewIds, visionAutoCropOwnerId)
@@ -532,7 +579,10 @@ export function useConversation() {
           return false
         }
         if (persistenceResults.some((result) => result.status === 'rejected')) {
-          if (visionAutoCropOwnerId !== undefined) {
+          if (documentContext) {
+            await deleteOwnedFiles(persistedNewIds, documentContext.owner)
+            if (!officeStillCurrent()) return false
+          } else if (visionAutoCropOwnerId !== undefined) {
             await deleteOwnedFiles(persistedNewIds, visionAutoCropOwnerId)
           } else {
             await Promise.allSettled(persistedNewIds.map((id) => deleteFile(id)))
@@ -550,8 +600,8 @@ export function useConversation() {
       // Edition atomique : le fil existant reste intact jusqu'à ce que le
       // nouveau crop soit localisé ET stocké. Ensuite, aucune opération
       // asynchrone ne s'intercale entre la troncature et l'insertion du tour.
-      if (replaceMessageId && relocatingVisionCrop) {
-        if (!visionAutoCropPrepared || !applyMessageReplacement()) {
+      if (replaceMessageId && (relocatingVisionCrop || officeRequest)) {
+        if ((!officeRequest && !visionAutoCropPrepared) || !applyMessageReplacement()) {
           if (visionAutoCropOwnerId !== undefined) {
             await deleteOwnedFiles(persistedNewIds, visionAutoCropOwnerId)
           } else {
@@ -619,9 +669,10 @@ export function useConversation() {
       // contexte incomplet. Chaque nouveau tour repart avec une provenance vide.
       clearSearchContext(targetId)
 
-      const onToken = (token: string) => streamToken(token, targetId)
+      const onToken = (token: string) => { if (officeStillCurrent()) streamToken(token, targetId) }
 
       const onDone = () => {
+        if (!officeStillCurrent()) return
         // Signale au PlanBadge de rafraîchir ses compteurs free quotidiens.
         try { window.dispatchEvent(new CustomEvent('arty-message-sent')) } catch {}
 
@@ -630,19 +681,22 @@ export function useConversation() {
         // avec la finalisation du stream). Fire-and-forget, jamais bloquant,
         // tous les garde-fous (toggle, euOnly, trial, debounce) sont dans le
         // service.
-        void maybeExtractMemory(storage.getConversation(targetId))
+        if (!officeRequest) void maybeExtractMemory(storage.getConversation(targetId))
 
         // Publication immédiate dans tous les cas.
         streamDone(targetId)
+        officeController?.abort()
 
         // Puis nettoyage des liens et vérification en arrière-plan. Les gardes
         // fines (mode off, euOnly, réponse courte, quota) vivent dans le service.
-        void runFactCheckOnLatest(targetId, refreshConversations)
+        if (!officeRequest) void runFactCheckOnLatest(targetId, refreshConversations)
       }
 
       const onErr = (err: Error) => {
+        if (!officeStillCurrent()) return
         clearSearchContext(targetId)
         streamError(err, targetId)
+        officeController?.abort()
         // P0.7 — cap premium atteint : pas de bandeau rouge ni de redirect
         // muet vers /upgrade. On dispatche un event que CapReachedModal
         // (App.tsx) écoute pour proposer un CHOIX explicite : continuer en
@@ -685,6 +739,7 @@ export function useConversation() {
         euOnly: !!conv.euOnly,
         hasPrivateHistory: !!conv.hasGoogleData,
         hasTrailHistory: !!conv.hasTrailContext,
+        hasOfficeHistory: officeRequest,
       })
       // Une ancienne conversation EU peut survivre à l'expiration d'un
       // abonnement. On bloque alors localement : jamais de fallback Claude
@@ -751,6 +806,7 @@ export function useConversation() {
       // Wrappe le handler global pour capter le targetId (que le handler n'a
       // pas) au moment exact de l'appel.
       const trackedToolHandler: ToolHandler = async (name, input) => {
+        documentContext?.assertCurrent()
         if (PRIVATE_DATA_TOOL_NAMES.has(name)) {
           const c = storage.getConversation(targetId)
           if (c && !c.hasGoogleData) {
@@ -788,7 +844,7 @@ export function useConversation() {
       // le chemin de données euOnly (recherche web Mistral via /api/search/web)
       // et hébergé en EU → compatible avec la promesse "données EU".
       let outgoingText = modelText
-      if (provider !== 'hybrid') {
+      if (provider !== 'hybrid' && !officeRequest) {
         const pdfUrls = extractPdfUrls(text)
         if (pdfUrls.length > 0) {
           setProgressContent('📄 Lecture du PDF...', targetId)
@@ -880,19 +936,21 @@ export function useConversation() {
         // multimodal pour passer les images en image_url. Indispensable pour
         // que les conversations euOnly puissent analyser des images sans
         // sortir d'EU vers Claude/Gemini.
-        const apiMessages = await buildMistralMessages(conv.messages)
+        const apiMessages = await buildMistralMessages(preparedOfficeMessages ?? conv.messages, documentContext)
         // Pour le message courant, on ré-injecte les fichiers depuis la RAM
         // (pendingFilesRef) : ça bypass l'IndexedDB roundtrip et garantit
         // que Mistral voit l'image même si putFile a échoué silencieusement
         // ou si le commit IndexedDB n'a pas encore été visible côté lecture.
         // Symétrique du path Claude (voir plus bas).
-        if (currentFiles && currentFiles.length > 0) {
+        if (!officeRequest && currentFiles && currentFiles.length > 0) {
           apiMessages[apiMessages.length - 1] = { role: 'user', content: await buildMistralContentBlocks(outgoingText, currentFiles) }
           setPendingFiles(null)
         } else if (outgoingText !== modelText) {
           apiMessages[apiMessages.length - 1] = { role: 'user', content: outgoingText }
         }
         controller = streamMistralMessage(apiMessages, onToken, onDone, onErr, {
+          assertRequestCurrent: documentContext?.assertCurrent,
+          documentReadOnly: officeRequest,
           systemPrompt: systemPromptRef.current,
           onToolCall: trackedToolHandler,
           // Fix 429 — outgoingText ≠ modelText ⇔ du contenu d'URL/PDF a été
@@ -948,8 +1006,8 @@ export function useConversation() {
         // et PDFs des tours précédents (rechargés depuis IndexedDB via
         // buildApiMessages/hydrateFiles). Plus de bug de fichier oublié au
         // tour suivant.
-        const apiMessages = await buildApiMessages(conv.messages)
-        if (currentFiles && currentFiles.length > 0) {
+        const apiMessages = await buildApiMessages(preparedOfficeMessages ?? conv.messages, documentContext)
+        if (!officeRequest && currentFiles && currentFiles.length > 0) {
           apiMessages[apiMessages.length - 1] = { role: 'user', content: await buildContentBlocks(outgoingText, currentFiles) }
           setPendingFiles(null)
         } else if (outgoingText !== modelText) {
@@ -968,16 +1026,24 @@ export function useConversation() {
         ]
         const toolsOverride = extraTools.length > 0 ? [...TOOLS, ...extraTools] : undefined
         controller = streamMessage(apiMessages, onToken, onDone, onErr, {
+          assertRequestCurrent: documentContext?.assertCurrent,
+          documentReadOnly: officeRequest,
           systemPrompt: systemPromptRef.current,
           onToolCall: trackedToolHandler,
           reflectionLevel: getReflectionLevel(),
           conversationId: targetId,
           routeDecision,
-          ...(toolsOverride ? { tools: toolsOverride as typeof TOOLS } : {}),
+          ...(officeRequest ? { tools: [] } : toolsOverride ? { tools: toolsOverride as typeof TOOLS } : {}),
         })
       }
 
-      setAbortController(targetId, controller)
+      if (officeController) {
+        if (!officeStillCurrent()) { controller.abort(); return true }
+        // Keep the original controller as the stream identity across preparation
+        // and generation. Stop always invalidates late callbacks from this run.
+        officeController.signal.addEventListener('abort', () => controller.abort(), { once: true })
+        setPendingFiles(null)
+      } else setAbortController(targetId, controller)
       releaseVisionAutoCropLock()
 
       } catch (err) {
@@ -996,7 +1062,7 @@ export function useConversation() {
       activeId, refreshConversations, canStart, startStream, setActiveStream,
       streamToken, streamDone, streamError, setProgressContent,
       setAbortController, resetAccumulated, hasStream, isActive,
-      setPendingFiles, pendingFilesRef,
+      setPendingFiles, pendingFilesRef, stopStreaming, discardStream,
     ]
   )
 
@@ -1132,6 +1198,10 @@ export function useConversation() {
       if (!userMsg) return
 
       const originalFiles = userMsg.files
+      if (hasOfficeHistory(conv.messages.slice(0, userIdx + 1))) {
+        void sendMessage(userMsg.content, targetId, originalFiles, { replaceMessageId: userMsg.id, quickAction: userMsg.quickAction })
+        return
+      }
       conv.messages = conv.messages.slice(0, userIdx)
       conv.updatedAt = Date.now()
       storage.saveConversation(conv)
@@ -1162,7 +1232,8 @@ export function useConversation() {
 
       const originalFiles = msg.files
       const relocatesAutoCrop = !!originalFiles?.some((file) => file.visionCrop?.kind === 'auto')
-      if (!relocatesAutoCrop) {
+      const atomicOfficeEdit = hasOfficeHistory(conv.messages.slice(0, idx + 1))
+      if (!relocatesAutoCrop && !atomicOfficeEdit) {
         conv.messages = conv.messages.slice(0, idx)
         conv.updatedAt = Date.now()
         storage.saveConversation(conv)
@@ -1175,7 +1246,7 @@ export function useConversation() {
         targetId,
         originalFiles,
         {
-          ...(relocatesAutoCrop ? { replaceMessageId: messageId } : {}),
+          ...(relocatesAutoCrop || atomicOfficeEdit ? { replaceMessageId: messageId } : {}),
           ...(msg.quickAction ? { quickAction: msg.quickAction } : {}),
           ...(relocatesAutoCrop ? { relocateVisionCrop: true } : {}),
         },
@@ -1200,6 +1271,10 @@ export function useConversation() {
     if (!userMsg) return
 
     const originalFiles = userMsg.files
+    if (hasOfficeHistory(conv.messages.slice(0, userIdx + 1))) {
+      void sendMessage(userMsg.content, targetId, originalFiles, { replaceMessageId: userMsg.id, quickAction: userMsg.quickAction })
+      return
+    }
     conv.messages = conv.messages.slice(0, userIdx)
     conv.updatedAt = Date.now()
     storage.saveConversation(conv)

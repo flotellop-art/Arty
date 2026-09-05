@@ -12,6 +12,7 @@ import { ContextCompressedBanner } from './ContextCompressedBanner'
 import { ContextMeter } from './ContextMeter'
 import { ErrorBoundary } from '../shared/ErrorBoundary'
 import { consumePendingDraft } from '../../services/shareTargetService'
+import { hasOfficeHistory } from '../../services/documents/prepareOfficeMessages'
 import type { useDrive } from '../../hooks/useDrive'
 import type { useComputer } from '../../hooks/useComputer'
 
@@ -163,6 +164,7 @@ export function ConversationScreen({
         initialFiles={initialDraft?.files}
         euOnly={conversation.euOnly}
         hasPrivateHistory={!!conversation.hasGoogleData}
+        hasOfficeHistory={hasOfficeHistory(conversation.messages)}
         draftKey={`conversation:${conversation.id}`}
       />
 

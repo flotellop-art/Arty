@@ -11,6 +11,7 @@ import { isTrivialChat, shouldUseWebSearch } from './aiRouter'
 import type { RouteReason } from './router/types'
 import { updateTrialFromResponse } from './trialClient'
 import i18n from '../i18n'
+import { DOCUMENT_READ_ONLY_RULES } from './documents/documentPolicy'
 
 /**
  * Sélection du modèle Mistral. Depuis mai 2026, Mistral Small est déprécié
@@ -103,6 +104,8 @@ assumée vaut toujours mieux qu'une réponse fausse donnée avec aplomb.`
 type ToolHandler = (name: string, input: Record<string, unknown>) => Promise<{ result: string; screenshot?: string }>
 
 interface MistralStreamOptions {
+  assertRequestCurrent?: () => void
+  documentReadOnly?: boolean
   systemPrompt?: string
   onToolCall?: ToolHandler
   // Force un modèle précis (utilisé par le comparateur multi-modèles).
@@ -202,7 +205,9 @@ async function runMistralStream(
     const lastUserText = typeof lastUserMsg?.content === 'string'
       ? lastUserMsg.content
       : (lastUserMsg?.content || []).filter((b): b is { type: 'text'; text: string } => b.type === 'text').map(b => b.text).join(' ')
-    const locationContext = await buildLocationContext(lastUserText)
+    options?.assertRequestCurrent?.()
+    const locationContext = options?.documentReadOnly ? '' : await buildLocationContext(lastUserText)
+    options?.assertRequestCurrent?.()
     // Force web_search systématique sauf données privées/triviales (règle
     // user du 10 mai 2026). La RÈGLE TEMPS RÉEL du prompt de base est
     // conditionnelle ("pour TOUTE question portant sur des données qui
@@ -213,7 +218,7 @@ async function runMistralStream(
     // alors qu'on n'a pas de handler pour l'exécuter résulte en un panneau
     // vide (toolCalls détectés → onDone direct sans streamer de texte).
     // Symétrique du fix Anthropic dans le wiring du comparateur (compare.tsx).
-    const webSearchAllowed = options?.webSearch ?? shouldUseWebSearch(lastUserText)
+    const webSearchAllowed = !options?.documentReadOnly && (options?.webSearch ?? shouldUseWebSearch(lastUserText))
     const forceWebHint = shouldForceSearch(
       lastUserText,
       !!options?.onToolCall,
@@ -238,7 +243,7 @@ async function runMistralStream(
     // voir commentaire de la constante). Les règles déclarent primer sur les
     // instructions précédentes pour neutraliser les mentions web_fetch du
     // prompt générique.
-    const systemPrompt = basePrompt + MISTRAL_RULES + euOverride + dateLine + locationContext + forceWebHint
+    const systemPrompt = basePrompt + MISTRAL_RULES + euOverride + dateLine + locationContext + forceWebHint + (options?.documentReadOnly ? DOCUMENT_READ_ONLY_RULES : '')
     // Température basse quand la requête est factuelle (recherche web
     // déclenchée) : 0.7 favorisait la variabilité, donc l'hallucination de
     // chiffres/dates (audit, cause n°4). Conversationnel : 0.7 conservé.
@@ -273,7 +278,7 @@ async function runMistralStream(
     // client → panneau vide avec 0 token streamé. Symétrique du fix
     // Anthropic dans le wiring du comparateur (compare.tsx).
     const baseTools = options?.onToolCall ? convertToolsToOpenAI(TOOLS) : []
-    const openaiTools = options?.onToolCall
+    const openaiTools = options?.onToolCall && !options.documentReadOnly
       ? [
           ...baseTools,
           ...(webSearchAllowed ? [WEB_SEARCH_TOOL_DEF] : []),
@@ -295,7 +300,7 @@ async function runMistralStream(
       forceSearchNext = false
       try {
         once = await streamOnce(
-          apiKey, apiMessages, openaiTools, onToken, controller, model, temperature, wantForce
+          apiKey, apiMessages, openaiTools, onToken, controller, model, temperature, wantForce, options?.assertRequestCurrent
         )
       } catch (err) {
         // Repli défensif : si l'appel FORCÉ échoue (ex : l'API rejette la
@@ -307,10 +312,11 @@ async function runMistralStream(
         const name = (err as Error).name
         if (!wantForce || name === 'AbortError' || name === 'RateLimitError') throw err
         once = await streamOnce(
-          apiKey, apiMessages, openaiTools, onToken, controller, model, temperature, false
+          apiKey, apiMessages, openaiTools, onToken, controller, model, temperature, false, options?.assertRequestCurrent
         )
       }
       const { content, toolCalls, inputTokens, outputTokens, servedModel } = once
+      options?.assertRequestCurrent?.()
 
       // Boucle « demandé → servi » (F-1/F-2) : le flux OpenAI-compatible de
       // Mistral porte le modèle réellement servi dans chaque chunk — corrige
@@ -329,7 +335,7 @@ async function runMistralStream(
       }
 
       // No tool calls — we're done
-      if (!toolCalls || toolCalls.length === 0 || !options?.onToolCall) {
+      if (!toolCalls || toolCalls.length === 0 || !options?.onToolCall || options.documentReadOnly) {
         onDone()
         return
       }
@@ -408,7 +414,8 @@ async function streamOnce(
   controller: AbortController,
   model: string,
   temperature: number,
-  forceSearchTool: boolean
+  forceSearchTool: boolean,
+  assertRequestCurrent?: () => void,
 ): Promise<{
   content: string
   toolCalls: ToolCall[]
@@ -419,7 +426,7 @@ async function streamOnce(
   servedModel?: string
 }> {
   // C9 : headers factorisés (BYOK Bearer + garde server-provided + google-token/trial).
-  const headers = await buildAiHeaders({ byokKey: apiKey, auth: 'bearer' })
+  const headers = await buildAiHeaders({ byokKey: apiKey, auth: 'bearer', assertRequestCurrent })
 
   const body: Record<string, any> = {
     model,
@@ -450,6 +457,7 @@ async function streamOnce(
   // utilisateur. Le retry se fait AVANT toute lecture du stream — sûr.
   let response!: Response
   for (let attempt = 0; ; attempt++) {
+    assertRequestCurrent?.()
     // CRIT-5 — Timeout 60s sur le stream Mistral. Cold-start Cloudflare ou
     // réseau flaky peuvent laisser pendre 60-90s sinon. Compose avec le
     // controller externe (annulation utilisateur) pour les deux raisons.

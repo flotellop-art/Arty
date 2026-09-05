@@ -310,6 +310,7 @@
       "manual_selection": "Tu as choisi ce modèle manuellement.",
       "eu_only": "Conversation en mode Europe : Mistral (serveurs en France) est le seul modèle utilisé — tes données ne quittent pas l'Europe.",
       "files_to_claude": "Ce fichier n'est pas pris en charge par le modèle choisi dans Arty : Claude est utilisé pour l'analyser.",
+      "office_documents": "Les documents Word/Excel de ce fil sont lus localement puis analysés par Claude.",
       "files_mistral_native": "Image jointe avec Mistral sélectionné : Mistral l'analyse avec sa vision native (les données restent en Europe).",
       "image_vision_openai": "Photos compatibles : GPT-5.6 Terra les analyse en détail 4K via OpenAI.",
       "private_data": "Ta demande contient des données privées fournies dans le chat, un fichier ou des données d'agenda : Claude est utilisé pour les traiter sans recherche web inutile.",
@@ -330,6 +331,7 @@
     "override": {
       "eu_only": "Conversation Europe → passage à Mistral au lieu de {{requested}} pour que les données restent en Europe.",
       "files_to_claude": "Fichier joint → réponse confiée à Claude car le modèle choisi ne prend pas ce fichier en charge, au lieu de {{requested}}.",
+      "office_documents": "Contexte Word/Excel → analyse par Claude au lieu de {{requested}} pour conserver le contenu des documents.",
       "private_data": "Données privées détectées → réponse confiée à Claude au lieu de {{requested}}.",
       "fallback_no_provider": "{{requested}} n'est pas disponible avec ce compte → passage à Claude avant l'envoi."
     },
@@ -476,6 +478,8 @@
       "imageOutputTooLarge": "La photo reste trop volumineuse après optimisation : {{name}}.",
       "imagePreparationFailed": "Échec de la préparation de la photo : {{name}}.",
       "fileReadFailed": "Impossible de lire le fichier : {{name}}.",
+      "officePreparing": "Lecture locale des documents Word/Excel…",
+      "officeScope": "DOCX/XLSX : texte et cellules, sans mise en page, images ni annotations. Formules non recalculées, dates Excel brutes ; feuilles masquées incluses. Limites par envoi, historique inclus : 20 Mo de fichiers Office, 200 000 caractères (dont chaînes Excel) et 20 000 cellules. Analyse sans outils d’action ni recherche web automatique.",
       "tooManyImages": "Maximum {{max}} photos par message",
       "imageBatchTooLarge": "Le total des photos optimisées dépasse 24 Mo.",
       "optimized4k": "Optimisée en 4K",
@@ -630,7 +634,14 @@
     "micCannotStart": "Impossible de démarrer le micro",
     "speechNotSupported": "Reconnaissance vocale non supportée sur ce navigateur. Utilisez Chrome ou Edge.",
     "storageNotReady": "Tes conversations sont encore en cours de chargement — réessaie dans une seconde.",
-    "fileStorageFailed": "Impossible de sauvegarder toutes les photos sur cet appareil. Libère un peu d’espace puis réessaie.",
+    "fileStorageFailed": "Impossible de sauvegarder tous les fichiers sur cet appareil. Libère un peu d’espace puis réessaie.",
+    "office": {
+      "unsupported": "{{name}} : ce document n’est pas pris en charge (ancien format, chiffrement, macros, révisions ou contenu non extractible). Exporte une copie DOCX/XLSX simple sans révisions, ou un PDF pour Claude.",
+      "corrupt": "{{name}} : le document est corrompu ou sa structure est incohérente. Réenregistre-le depuis Word ou Excel puis joins la nouvelle copie.",
+      "limit": "{{name}} : la limite de lecture locale de cet envoi est dépassée. Réduis les documents ou ouvre un nouveau fil avec un extrait plus court.",
+      "unavailable": "{{name}} : le fichier original n’est plus disponible sur cet appareil. Joins-le à nouveau dans un nouveau fil.",
+      "cancelled": "Lecture du document annulée."
+    },
     "mistralTimeout": "Mistral n'a pas répondu à temps (60 s) — réseau lent ou service surchargé. Réessaie.",
     "trialModelRestricted": "Ce modèle n'est pas disponible sans crédits — l'accès gratuit utilise Haiku.",
     "euPlanRequired": "La conversation EU nécessite un accès Mistral : abonnement, crédits suffisants ou clé API personnelle. Aucune donnée n'a été envoyée hors Europe."

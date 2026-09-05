@@ -13,6 +13,7 @@ type StreamState = {
   accumulated: string
   saveInterval: ReturnType<typeof setInterval> | null
   abortController: AbortController | null
+  assertCurrent?: () => void
   // CDC visibilité modèle (C-B) — model id de CE stream, capturé via l'event
   // 'arty-model-used' scopé conversationId (voir listener plus bas). Un event
   // `confirmed` (modèle servi ≠ demandé) écrase la valeur optimiste — c'est
@@ -72,6 +73,7 @@ export function useStreaming(deps: {
   // Sauvegarde partielle d'un stream précis (appelé périodiquement par
   // saveInterval, et au beforeunload pour tous les streams ouverts).
   const savePartialFor = useCallback((s: StreamState) => {
+    try { s.assertCurrent?.() } catch { s.abortController?.abort(); return false }
     if (!s.accumulated) return
     const conv = storage.getConversation(s.targetId)
     if (!conv) return
@@ -99,15 +101,9 @@ export function useStreaming(deps: {
     storage.saveConversation(conv)
   }, [])
 
-  // Backward-compat : savePartial sans args flush tous les streams actifs.
-  const savePartialAll = useCallback(() => {
-    for (const s of streamsRef.current.values()) {
-      savePartialFor(s)
-    }
-  }, [savePartialFor])
-
   // Finalise une conv : remplace le placeholder `streaming` par le message final.
   const finalize = useCallback((targetId: string, content: string, interrupted?: boolean) => {
+    try { streamsRef.current.get(targetId)?.assertCurrent?.() } catch { return }
     const conv = storage.getConversation(targetId)
     if (!conv) return
 
@@ -161,6 +157,14 @@ export function useStreaming(deps: {
     }
   }, [cancelPendingFlush, removeFromStreamingSet])
 
+  // Backward-compat : flush all streams, discarding invalid sessions without
+  // leaving a ghost stream/interval after its controller has been aborted.
+  const savePartialAll = useCallback(() => {
+    for (const s of streamsRef.current.values()) {
+      if (savePartialFor(s) === false) teardownStream(s.targetId)
+    }
+  }, [savePartialFor, teardownStream])
+
   // CDC visibilité modèle (C-B) — capture le model id de chaque stream depuis
   // l'event 'arty-model-used' scopé conversationId (posé par les clients IA
   // depuis la PR C-A). Écriture SYNCHRONE dans le StreamState pendant le
@@ -203,7 +207,7 @@ export function useStreaming(deps: {
 
   // Démarre un nouveau stream pour une conv. Retourne false si le cap de
   // concurrence est atteint — le caller doit alors annuler son envoi.
-  const startStream = useCallback((targetId: string): boolean => {
+  const startStream = useCallback((targetId: string, assertCurrent?: () => void): boolean => {
     if (streamsRef.current.has(targetId)) {
       // Stream déjà en cours pour cette conv → impossible d'en démarrer un
       // second (l'UI bloque déjà via isStreaming, mais défense en profondeur).
@@ -218,9 +222,10 @@ export function useStreaming(deps: {
       accumulated: '',
       saveInterval: setInterval(() => {
         const cur = streamsRef.current.get(targetId)
-        if (cur) savePartialFor(cur)
+        if (cur && savePartialFor(cur) === false) teardownStream(targetId)
       }, 3000),
       abortController: null,
+      assertCurrent,
     }
     streamsRef.current.set(targetId, s)
     setStreamingConvIds((prev) => {
@@ -233,7 +238,7 @@ export function useStreaming(deps: {
       setStreamingContent('')
     }
     return true
-  }, [savePartialFor])
+  }, [savePartialFor, teardownStream])
 
   // Synchronise la conv affichée avec son stream en cours (ou avec l'absence
   // de stream). Appelé depuis selectConversation/clearActive.
@@ -306,6 +311,12 @@ export function useStreaming(deps: {
     teardownStream(id)
   }, [finalize, teardownStream])
 
+  // Session invalidated: never persist partial content into another account.
+  const discardStream = useCallback((targetId: string) => {
+    streamsRef.current.get(targetId)?.abortController?.abort()
+    teardownStream(targetId)
+  }, [teardownStream])
+
   // Setters indexés par convId — exposés en remplacement des accès directs
   // aux refs depuis useConversation.
 
@@ -342,6 +353,15 @@ export function useStreaming(deps: {
     return streamsRef.current.size < MAX_CONCURRENT_STREAMS
   }, [])
 
+  useEffect(() => () => {
+    for (const stream of streamsRef.current.values()) {
+      if (stream.saveInterval) clearInterval(stream.saveInterval)
+      stream.abortController?.abort()
+    }
+    streamsRef.current.clear()
+    cancelPendingFlush()
+  }, [cancelPendingFlush])
+
   // H2 (audit frontend) — retour mémoïsé. Toutes les fonctions ci-dessous ont
   // une identité stable (useCallback à deps stables) ; l'objet ne change donc
   // que quand l'état UI (isStreaming/streamingContent/streamingConvIds) change,
@@ -361,6 +381,7 @@ export function useStreaming(deps: {
     onDone,
     onError,
     stopStreaming,
+    discardStream,
     // Sync avec la conv affichée
     setActiveStream,
     isActive,
@@ -374,7 +395,7 @@ export function useStreaming(deps: {
   }), [
     isStreaming, streamingContent, streamingConvIds, isStreamingFor, hasStream,
     canStart, startStream, onToken, onDone, onError,
-    stopStreaming, setActiveStream, isActive,
+    stopStreaming, discardStream, setActiveStream, isActive,
     setProgressContent, setAbortController, resetAccumulated, finalize,
     savePartialAll,
   ])
