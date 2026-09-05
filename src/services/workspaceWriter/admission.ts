@@ -9,7 +9,7 @@ export type WorkspaceAdmissionPhase = 'idle' | 'checking' | 'ready' | AdmissionF
 export function createWorkspaceAdmission(guard: AdmissionGuard, read = readWorkspaceStorageLayout) {
   let phase: WorkspaceAdmissionPhase = guard.signal.aborted ? 'lost' : 'idle', layout: WorkspaceStorageLayout | undefined
   let pending: Promise<WorkspaceAdmissionPhase> | undefined
-  let recovery: Readonly<MigrationHeader> | undefined, claimed = false
+  let recovery: Readonly<MigrationHeader> | undefined, erasure = false, claimed = false
   const listeners = new Set<() => void>()
   const lost = () => guard.signal.aborted || phase === 'lost'
   const publish = (next: WorkspaceAdmissionPhase) => {
@@ -26,7 +26,7 @@ export function createWorkspaceAdmission(guard: AdmissionGuard, read = readWorks
      * Even cancellation requires a new document before any private App import. */
     claimMaintenance(): AdmissionGuard {
       guard.assertLock()
-      if (lost() || claimed || (phase !== 'idle' && phase !== 'recoverable')) throw new WorkspaceAdmissionError(lost() ? 'lost' : 'unavailable')
+      if (lost() || claimed || (phase !== 'idle' && phase !== 'recoverable' && phase !== 'erasure')) throw new WorkspaceAdmissionError(lost() ? 'lost' : 'unavailable')
       claimed = true
       publish('maintenance')
       return Object.freeze({ signal: guard.signal, assertLock() {
@@ -35,6 +35,7 @@ export function createWorkspaceAdmission(guard: AdmissionGuard, read = readWorks
       } })
     },
     getRecovery() { guard.assertLock(); return recovery },
+    hasErasureRecovery() { guard.assertLock(); return erasure },
     admit(): Promise<WorkspaceAdmissionPhase> {
       if (phase === 'lost') return Promise.resolve(phase)
       if (pending) return pending
@@ -54,6 +55,7 @@ export function createWorkspaceAdmission(guard: AdmissionGuard, read = readWorks
         } catch (error) {
           layout = undefined
           if (error instanceof WorkspaceRecoveryAvailable && !lost()) recovery = error.header
+          if (error instanceof WorkspaceAdmissionError && error.code === 'erasure' && !lost()) erasure = true
           publish(lost() ? 'lost' : error instanceof WorkspaceAdmissionError ? error.code : 'unavailable')
         }
         settle(phase)

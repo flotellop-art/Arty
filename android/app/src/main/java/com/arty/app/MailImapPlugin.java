@@ -197,8 +197,9 @@ public class MailImapPlugin extends Plugin {
         }
     }
 
-    private void saveAccounts(String scope, JSONArray accounts) throws Exception {
-        prefs().edit().putString(scopeKey(scope), encrypt(accounts.toString())).apply();
+    private void saveAccounts(String scope, JSONArray accounts, long ticket) throws Exception {
+        MailScopeWriteFence.write(scope, ticket,
+                () -> prefs().edit().putString(scopeKey(scope), encrypt(accounts.toString())).commit());
     }
 
     private JSONObject findAccount(JSONArray accounts, String id) throws Exception {
@@ -418,6 +419,9 @@ public class MailImapPlugin extends Plugin {
             call.reject(validationError);
             return;
         }
+        final long ticket;
+        try { ticket = MailScopeWriteFence.capture(scope); }
+        catch (Exception e) { call.reject("scope_unavailable"); return; }
         executor.execute(() -> {
             Store store = null;
             try {
@@ -442,7 +446,7 @@ public class MailImapPlugin extends Plugin {
                 account.put("email", email);
                 account.put("password", password);
                 accounts.put(account);
-                saveAccounts(scope, accounts);
+                saveAccounts(scope, accounts, ticket);
 
                 JSObject ret = new JSObject();
                 ret.put("id", id);
@@ -499,6 +503,9 @@ public class MailImapPlugin extends Plugin {
             call.reject("invalid_input");
             return;
         }
+        final long ticket;
+        try { ticket = MailScopeWriteFence.capture(scope); }
+        catch (Exception e) { call.reject("scope_unavailable"); return; }
         executor.execute(() -> {
             try {
                 JSONArray accounts = loadAccounts(scope);
@@ -507,7 +514,7 @@ public class MailImapPlugin extends Plugin {
                     JSONObject a = accounts.getJSONObject(i);
                     if (!id.equals(a.optString("id"))) kept.put(a);
                 }
-                saveAccounts(scope, kept);
+                saveAccounts(scope, kept, ticket);
                 call.resolve();
             } catch (Exception e) {
                 call.reject("mail_error");
@@ -517,20 +524,29 @@ public class MailImapPlugin extends Plugin {
 
     @PluginMethod
     public void clearAccounts(PluginCall call) {
+        clearScope(call, false);
+    }
+
+    @PluginMethod
+    public void clearAccountsForErasure(PluginCall call) {
+        clearScope(call, true);
+    }
+
+    private void clearScope(PluginCall call, boolean terminal) {
         String scope = call.getString("scope");
-        if (scope == null || scope.isEmpty()) {
+        if (!MailScopeWriteFence.validScope(scope)) {
             call.reject("invalid_input");
             return;
         }
+        final long ticket;
+        try { ticket = MailScopeWriteFence.beginClear(scope, terminal); }
+        catch (Exception e) { call.reject("clear_failed"); return; }
         executor.execute(() -> {
-            // Chemin « suppression de compte » (RGPD) : commit() écrit de façon
-            // synchrone et rend le succès, là où apply() renvoie la main sans
-            // garantie. On ne veut pas annoncer un effacement qui n'a pas eu
-            // lieu — le rejet fait remonter l'échec jusqu'à l'utilisateur.
-            boolean ok = prefs().edit().remove(scopeKey(scope)).commit();
-            if (ok) {
-                call.resolve();
-            } else {
+            try {
+                MailScopeWriteFence.clear(scope, ticket, () -> prefs().edit().remove(scopeKey(scope)).commit());
+                if (terminal) { JSObject ret = new JSObject(); ret.put("protocol", 1); call.resolve(ret); }
+                else call.resolve();
+            } catch (Exception e) {
                 call.reject("clear_failed");
             }
         });

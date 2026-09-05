@@ -1,6 +1,9 @@
-import { Capacitor, registerPlugin } from '@capacitor/core'
-import { getActiveUserId } from '../userSession'
+import { Capacitor } from '@capacitor/core'
+import { getActiveUserId, getActiveSessionEpoch } from '../userSession'
 import { mailPasswordCandidates } from '../mailPassword'
+import { getMailImapPlugin } from './mailImapRegistration'
+import { captureOwnerErasureGuard } from '../projects/localErasureGuard'
+import { assertDocumentWorkspace } from '../workspaceWriter/runtime'
 
 // Bridge vers le client IMAP natif LECTURE SEULE (MailImapPlugin.java).
 // Architecture « natif d'abord » (décision du 9 août 2026) : le mot de passe
@@ -68,7 +71,7 @@ interface MailImapPluginApi {
   }): Promise<MailMessageFull>
 }
 
-const MailImap = registerPlugin<MailImapPluginApi>('MailImap')
+const MailImap = getMailImapPlugin<MailImapPluginApi>()
 
 export function isMailImapAvailable(): boolean {
   return Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android'
@@ -88,15 +91,24 @@ export async function addMailAccount(input: {
   password: string
 }): Promise<{ id: string; messageCount: number }> {
   const scope = requireScope()
+  const epoch = getActiveSessionEpoch(), erasureGuard = captureOwnerErasureGuard(scope)
+  const assertCurrent = () => {
+    assertDocumentWorkspace(); erasureGuard()
+    if (getActiveUserId() !== scope || getActiveSessionEpoch() !== epoch) throw new Error('mail_action_cancelled')
+  }
   // BUG 66 : mot de passe normalisé d'abord (espaces du format Google 4×4,
   // espace final du clavier), puis le brut en filet sur échec d'auth — un
   // mot de passe légal contenant réellement des blancs reste connectable.
   const candidates = mailPasswordCandidates(input.password, input.host)
   let lastErr: unknown = null
   for (const password of candidates) {
+    assertCurrent()
     try {
-      return await MailImap.addAccount({ scope, ...input, password })
+      const result = await MailImap.addAccount({ scope, ...input, password })
+      assertCurrent()
+      return result
     } catch (err) {
+      assertCurrent()
       lastErr = err
       const code = err instanceof Error ? err.message : ''
       // Seul un refus d'authentification justifie d'essayer le candidat

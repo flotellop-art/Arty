@@ -15,9 +15,11 @@ vi.mock('@capacitor/core', () => ({
 
 vi.mock('../../services/userSession', () => ({
   getActiveUserId: () => 'user-test',
+  getActiveSessionEpoch: () => 1,
 }))
 
 import { addMailAccount } from '../../services/native/mailImap'
+import { blockProjectOperations } from '../../services/projects/localErasureGuard'
 
 const GMAIL_INPUT = {
   provider: 'gmail',
@@ -32,6 +34,16 @@ beforeEach(() => {
 })
 
 describe('addMailAccount — normalisation et retry', () => {
+  it.each([false, true])('rejects an old auth retry during/after erasure release=%s', async released => {
+    let reject!: (error: Error) => void
+    mockAddAccount.mockReturnValueOnce(new Promise((_yes, no) => { reject = no }))
+    const pending = addMailAccount(GMAIL_INPUT), rejected = expect(pending).rejects.toThrow()
+    const release = blockProjectOperations('user-test')
+    if (released) release()
+    reject(new Error('auth_failed'))
+    await rejected; release()
+    expect(mockAddAccount).toHaveBeenCalledTimes(1)
+  })
   it('envoie le mot de passe normalisé (sans espaces) en premier', async () => {
     mockAddAccount.mockResolvedValue({ id: 'x', messageCount: 3 })
     await addMailAccount(GMAIL_INPUT)

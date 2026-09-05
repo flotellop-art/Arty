@@ -9,6 +9,9 @@ export const PROJECT_SHAPE: readonly StoreShape[] = [
   ['documents', 'key', [['owner', 'owner'], ['owner-project', ['owner', 'projectId']], ['owner-state-kind', ['owner', 'state', 'kind']], ['owner-state-kind-bytes', ['owner', 'state', 'kind', 'sourceBytes']]]],
   ['usage', 'owner', []], ['meta', null, []],
 ]
+export const MIGRATION_JOURNAL_SHAPE: readonly StoreShape[] = [
+  ['journal', null, []], ['files', null, []], ['projects', null, []], ['documents', null, []], ['usage', null, []], ['meta', null, []],
+]
 
 /** Exact known physical schema, shared by admission and the cold migrator. */
 export function assertDatabaseShape(db: IDBPDatabase, shape: readonly StoreShape[], tx: IDBPTransaction<unknown, string[], 'readonly' | 'readwrite' | 'versionchange'>) {

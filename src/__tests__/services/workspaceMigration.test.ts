@@ -221,6 +221,15 @@ describe('cold raw migration candidate: real IDB journal, barriers and admission
     expect(JSON.stringify(await db.get('journal', 'plan'))).not.toContain('private-settings-bytes'); db.close()
     expect(localStorage.getItem(`arty-orphan-${slot}`)).toBe('private-settings-bytes')
   })
+  it('draft-only opaque owner is inventoried and gets its effective salt without copying draft plaintext/ciphertext', async () => {
+    localStorage.setItem('arty-crypto-salt', salt)
+    localStorage.setItem('arty-composer-draft:a:b:home', 'private-draft')
+    const layout = await migration.createColdWorkspaceMigration().start()
+    expect(layout.requiredOwners).toContain('a:b')
+    expect(localStorage.getItem(workspaceDataKey(layout, 'a:b', 'crypto-salt'))).toBe(salt)
+    const db = await openDB(migrationDatabaseName(layout.generation), 1)
+    expect(JSON.stringify(await db.get('journal', 'plan'))).not.toContain('private-draft'); db.close()
+  })
   it('acknowledges an actually committed v2 after timeout without a second copy or endless missing-journal retry', async () => {
     await seed()
     const originalTimeout = setTimeout, originalPut = IDBObjectStore.prototype.put

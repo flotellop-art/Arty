@@ -45,6 +45,15 @@
     }
   },
   "workspaceAdmission": {
+    "erasureTitle": "Local cleanup pending",
+    "erasureRecovery": {
+      "idle": "An already-started erasure needs to finish local cleanup before accounts can open. Resuming sends no server request and needs no sign-in.",
+      "working": "Cleaning declared local copies and verifying that other accounts remain unchanged…",
+      "failed": "Cleanup could not be verified. Its receipt is retained; you can retry. On Android, an application update may be required.",
+      "done": "Cleanup of the declared local copies is verified. Reload to open other accounts. Recreating the erased account remains blocked.",
+      "disabled": "This version cannot resume this cleanup yet. No private data is opened. A compatible version is required.",
+      "resume": "Resume local cleanup"
+    },
     "recoverableTitle": "Local migration interrupted",
     "recovery": {
       "disabled": "An interrupted migration is reported, but recovery is not enabled in this version. Keep site storage and install a compatible version. Reloading this same version will not resolve the situation.",

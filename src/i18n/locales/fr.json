@@ -45,6 +45,15 @@
     }
   },
   "workspaceAdmission": {
+    "erasureTitle": "Nettoyage local à terminer",
+    "erasureRecovery": {
+      "idle": "Un effacement déjà engagé doit terminer son nettoyage local avant l’ouverture des comptes. Cette reprise ne renvoie aucune demande au serveur et ne demande pas de connexion.",
+      "working": "Nettoyage des copies locales déclarées et vérification de la conservation des autres comptes…",
+      "failed": "Le nettoyage n’a pas pu être vérifié. Son reçu est conservé ; tu peux réessayer. Sur Android, une mise à jour de l’application peut être nécessaire.",
+      "done": "Le nettoyage des copies locales déclarées est vérifié. Recharge pour ouvrir les autres comptes. La recréation du compte effacé reste bloquée.",
+      "disabled": "Cette version ne peut pas encore reprendre ce nettoyage. Aucune donnée privée n’est ouverte. Une version compatible est nécessaire.",
+      "resume": "Reprendre le nettoyage local"
+    },
     "recoverableTitle": "Migration locale interrompue",
     "recovery": {
       "disabled": "Une migration interrompue est signalée, mais la reprise n’est pas activée dans cette version. Conserve le stockage et installe une version compatible. Recharger cette même version ne résoudra pas la situation.",
