@@ -1,4 +1,5 @@
-import { readWorkspaceStorageLayout, WorkspaceAdmissionError, type AdmissionFailure, type AdmissionGuard } from './control'
+import { readWorkspaceStorageLayout, WorkspaceAdmissionError, WorkspaceRecoveryAvailable, type AdmissionFailure, type AdmissionGuard } from './control'
+import type { MigrationHeader } from './migrationProtocol'
 import type { WorkspaceStorageLayout } from './layout'
 
 export type WorkspaceAdmissionPhase = 'idle' | 'checking' | 'ready' | AdmissionFailure
@@ -8,6 +9,7 @@ export type WorkspaceAdmissionPhase = 'idle' | 'checking' | 'ready' | AdmissionF
 export function createWorkspaceAdmission(guard: AdmissionGuard, read = readWorkspaceStorageLayout) {
   let phase: WorkspaceAdmissionPhase = guard.signal.aborted ? 'lost' : 'idle', layout: WorkspaceStorageLayout | undefined
   let pending: Promise<WorkspaceAdmissionPhase> | undefined
+  let recovery: Readonly<MigrationHeader> | undefined, claimed = false
   const listeners = new Set<() => void>()
   const lost = () => guard.signal.aborted || phase === 'lost'
   const publish = (next: WorkspaceAdmissionPhase) => {
@@ -20,6 +22,19 @@ export function createWorkspaceAdmission(guard: AdmissionGuard, read = readWorks
     if (phase !== 'ready' || !layout || guard.signal.aborted) throw new WorkspaceAdmissionError(phase === 'lost' ? 'lost' : 'unavailable')
   }
   return Object.freeze({
+    /** Irreversible cold choice. An admission already checking cannot be stolen.
+     * Even cancellation requires a new document before any private App import. */
+    claimMaintenance(): AdmissionGuard {
+      guard.assertLock()
+      if (lost() || claimed || (phase !== 'idle' && phase !== 'recoverable')) throw new WorkspaceAdmissionError(lost() ? 'lost' : 'unavailable')
+      claimed = true
+      publish('maintenance')
+      return Object.freeze({ signal: guard.signal, assertLock() {
+        guard.assertLock()
+        if (guard.signal.aborted || phase !== 'maintenance' || !claimed) throw new WorkspaceAdmissionError('lost')
+      } })
+    },
+    getRecovery() { guard.assertLock(); return recovery },
     admit(): Promise<WorkspaceAdmissionPhase> {
       if (phase === 'lost') return Promise.resolve(phase)
       if (pending) return pending
@@ -38,6 +53,7 @@ export function createWorkspaceAdmission(guard: AdmissionGuard, read = readWorks
           publish('ready')
         } catch (error) {
           layout = undefined
+          if (error instanceof WorkspaceRecoveryAvailable && !lost()) recovery = error.header
           publish(lost() ? 'lost' : error instanceof WorkspaceAdmissionError ? error.code : 'unavailable')
         }
         settle(phase)

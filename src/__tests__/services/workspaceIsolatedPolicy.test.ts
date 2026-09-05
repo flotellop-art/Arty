@@ -8,6 +8,13 @@ import { ISOLATED_WORKSPACE_ENABLED } from '../../services/workspaceWriter/activ
 import { GENERATION, seedIsolatedWorkspace } from '../helpers/isolatedWorkspace'
 
 beforeEach(() => { globalThis.indexedDB = new IDBFactory(); localStorage.clear() })
+it('real OFF policy blocks the cold migrator before any reservation, data read, or write', async () => {
+  const opening = vi.spyOn(indexedDB, 'open'), read = vi.spyOn(Storage.prototype, 'getItem'), write = vi.spyOn(Storage.prototype, 'setItem')
+  const { createColdWorkspaceMigration } = await import('../../services/workspaceWriter/migration')
+  expect(() => createColdWorkspaceMigration()).toThrow('workspace_migration_disabled')
+  expect(opening).not.toHaveBeenCalled(); expect(read).not.toHaveBeenCalled(); expect(write).not.toHaveBeenCalled()
+  opening.mockRestore(); read.mockRestore(); write.mockRestore()
+})
 it('the actual release policy refuses a fully valid isolated fixture, without reading private data or allowing private import', async () => {
   expect(ISOLATED_WORKSPACE_ENABLED).toBe(false)
   await seedIsolatedWorkspace()

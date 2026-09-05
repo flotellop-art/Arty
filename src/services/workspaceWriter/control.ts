@@ -2,13 +2,18 @@ import type { IDBPDatabase } from 'idb'
 import { openExistingDB } from '../readOnlyExistingDB'
 import { LEGACY_WORKSPACE_LAYOUT, isolatedWorkspaceLayout, type WorkspaceStorageLayout } from './layout'
 import { ISOLATED_WORKSPACE_ENABLED } from './activation'
+import { CONTROL_SHAPE, FILE_SHAPE, PROJECT_SHAPE, assertDatabaseShape, type StoreShape } from './schema'
+import { parseMigrationHeader, type MigrationHeader } from './migrationProtocol'
 
 export const WORKSPACE_CONTROL_DB = 'arty-workspace-control'
 export const WORKSPACE_CONTROL_VERSION = 1
 export const WORKSPACE_CONTROL_KEY = 'workspace'
-export type AdmissionFailure = 'maintenance' | 'incompatible' | 'corrupt' | 'unavailable' | 'lost'
+export type AdmissionFailure = 'maintenance' | 'recoverable' | 'incompatible' | 'corrupt' | 'unavailable' | 'lost'
 export class WorkspaceAdmissionError extends Error {
   constructor(public readonly code: AdmissionFailure) { super(`workspace_admission_${code}`); this.name = 'WorkspaceAdmissionError' }
+}
+export class WorkspaceRecoveryAvailable extends WorkspaceAdmissionError {
+  constructor(public readonly header: Readonly<MigrationHeader>) { super('recoverable') }
 }
 export interface AdmissionGuard { assertLock(): void; signal: AbortSignal }
 
@@ -24,6 +29,8 @@ function fields(value: unknown, keys: string[]): value is Record<string, unknown
 /** No generic ready/unknown-generation fallback. Metadata is not account data
  * or a restore journal, and this module exposes NO writer or repair operation. */
 export function validateWorkspaceControl(value: unknown): WorkspaceStorageLayout {
+  const migration = parseMigrationHeader(value)
+  if (migration) throw new WorkspaceRecoveryAvailable(migration)
   const legacyFields = ['format', 'version', 'layout', 'revision', 'state']
   if (!fields(value, legacyFields) && !fields(value, [...legacyFields, 'generation', 'requiredOwners'])) reject('corrupt')
   if (value.format !== 'arty-workspace-control' || !Number.isSafeInteger(value.version) || (value.version as number) < 1) reject('corrupt')
@@ -44,16 +51,6 @@ export function validateWorkspaceControl(value: unknown): WorkspaceStorageLayout
   if (value.state !== 'ready') reject('corrupt')
   return layout
 }
-
-type IndexShape = readonly [name: string, path: string | readonly string[]]
-type StoreShape = readonly [name: string, path: string | null, indexes: readonly IndexShape[]]
-const CONTROL_SHAPE: readonly StoreShape[] = [['meta', null, []]]
-const FILE_SHAPE: readonly StoreShape[] = [['files', 'fileId', [['ownerKey', 'ownerKey']]]]
-const PROJECT_SHAPE: readonly StoreShape[] = [
-  ['projects', 'key', [['owner', 'owner'], ['owner-state', ['owner', 'state']]]],
-  ['documents', 'key', [['owner', 'owner'], ['owner-project', ['owner', 'projectId']], ['owner-state-kind', ['owner', 'state', 'kind']], ['owner-state-kind-bytes', ['owner', 'state', 'kind', 'sourceBytes']]]],
-  ['usage', 'owner', []], ['meta', null, []],
-]
 
 /** Lock-only, bounded, readonly admission. Missing DB creation is rolled back;
  * blocked/unavailable/unknown storage never means a pristine installation.
@@ -127,14 +124,7 @@ async function inspectDatabase(db: IDBPDatabase, shape: readonly StoreShape[], c
   void tx.done.catch(() => {})
   try {
     assertCurrent()
-    for (const [name, path, indexes] of shape) {
-      const store = tx.objectStore(name)
-      if (store.keyPath !== path || store.autoIncrement || [...store.indexNames].sort().join() !== indexes.map(i => i[0]).sort().join()) reject('corrupt')
-      for (const [indexName, indexPath] of indexes) {
-        const index = store.index(indexName)
-        if (JSON.stringify(index.keyPath) !== JSON.stringify(indexPath) || index.unique || index.multiEntry) reject('corrupt')
-      }
-    }
+    try { assertDatabaseShape(db, shape, tx) } catch { reject('corrupt') }
     if (control) {
       const store = tx.objectStore('meta')
       if (await store.count() !== 1) reject('corrupt')
