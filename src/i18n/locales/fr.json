@@ -1,6 +1,7 @@
 {
   "workspaceArchive": {
     "title": "Archive chiffrée de cette conversation",
+    "demoUnavailable": "Les archives chiffrées ne sont pas disponibles en mode aperçu. Utilisez Arty avec un compte réel, hors de cette session de démonstration.",
     "scope": "Copie locale de tous les messages actuellement accessibles dans cette conversation, avec leurs pièces jointes et images enregistrées. Aucun envoi à Arty ou à une IA.",
     "exclusions": "Ce n’est pas une sauvegarde complète du compte : clés API, connexions, réglages, mémoire, données illisibles mises à l’écart et ressources externes ne sont pas inclus. La restauration et la synchronisation ne sont pas encore disponibles.",
     "limits": "Limites : 128 fichiers, 10 Mio par objet, 60 Mio de contenu déchiffré (messages et fichiers) et 64 Mio pour l’archive. La conversation doit être au repos pendant sa capture. Une limite dépassée bloque l’opération, sans export partiel.",

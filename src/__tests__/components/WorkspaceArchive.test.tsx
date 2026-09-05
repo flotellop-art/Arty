@@ -14,6 +14,7 @@ import { ChatTopBar } from '../../components/chat/ChatTopBar'
 import { invalidateLocalDataViews } from '../../services/localDataInvalidation'
 import * as mailNative from '../../services/native/mailImap'
 import * as mailAccounts from '../../services/mailAccounts'
+import * as users from '../../services/userSession'
 
 const conversation: Conversation = { id: 'c', title: 'Synthetic conversation', messages: [], createdAt: 1, updatedAt: 1, projectId: 'p' }
 const report: ArchiveReport = { archiveId: 'synthetic-archive', createdAt: 1, version: 2, fingerprint: 'a'.repeat(64), conversations: 1, messages: 2, files: 0, projects: 0, documents: 0, bytes: 0, metadataVariants: 0, diagnostics: { unavailableAssociatedProjects: 0, unavailableHistoricalSources: 0, unavailableCropSources: 0 } }
@@ -34,6 +35,23 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.restoreAllMocks(); localStorage.clear() })
 
 describe('encrypted archive user flow', () => {
+  it.each(['capture', 'verify'])('explains the demo restriction before any %s input or service call', view => {
+    vi.spyOn(users, 'getActiveSession').mockReturnValue({ userId: 'demo', authMethod: 'demo', displayName: 'Preview', createdAt: 1 })
+    render(view === 'capture' ? <ConversationArchiveModal conversation={conversation} isBusy={() => false} onClose={() => {}} /> : <ArchiveVerifier />)
+    expect(screen.getByRole('note')).toHaveTextContent('workspaceArchive.demoUnavailable')
+    expect(screen.queryByLabelText('workspaceArchive.file')).toBeNull(); expect(screen.queryByLabelText('workspaceArchive.code')).toBeNull()
+    expect(screen.queryByLabelText('workspaceArchive.includeProject')).toBeNull(); expect(screen.queryByRole('button', { name: 'workspaceArchive.prepare' })).toBeNull()
+    expect(mocks.prepare).not.toHaveBeenCalled(); expect(mocks.verify).not.toHaveBeenCalled()
+  })
+  it('does not treat a real session as demo and revokes an old capture when the session becomes demo', async () => {
+    const session = vi.spyOn(users, 'getActiveSession').mockReturnValue({ userId: 'real', authMethod: 'apikey', displayName: 'Synthetic account', createdAt: 1 })
+    render(<ConversationArchiveModal conversation={conversation} isBusy={() => false} onClose={() => {}} />)
+    await create(); expect(screen.getByDisplayValue(prepared.recoveryCode)).toBeVisible()
+    session.mockReturnValue({ userId: 'demo', authMethod: 'demo', displayName: 'Preview', createdAt: 1 })
+    act(() => invalidateLocalDataViews())
+    expect(prepared.dispose).toHaveBeenCalled(); expect(screen.queryByDisplayValue(prepared.recoveryCode)).toBeNull()
+    expect(screen.getByRole('alert')).toHaveTextContent('workspaceArchive.errors.cancelled')
+  })
   it('requires an explicit project choice and separate-code acknowledgement; does not pass the code to download', async () => {
     const isBusy = vi.fn(() => false)
     render(<ConversationArchiveModal conversation={conversation} isBusy={isBusy} onClose={() => {}} />)

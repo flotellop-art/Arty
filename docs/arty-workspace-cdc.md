@@ -283,8 +283,8 @@ synchronisation. Il ne migre/efface aucun store utilisateur.
 
 Preuves locales :
 
-- `npm run verify` final vert : 251 fichiers, 2 706 tests réussis, 1 ignoré,
-  soit 62 tests supplémentaires depuis #450 ; typechecks frontend/Workers,
+- `npm run verify` final vert : 251 fichiers, 2 709 tests réussis, 1 ignoré,
+  soit 65 tests supplémentaires depuis #450 ; typechecks frontend/Workers,
   coverage, build et worker Office isolé réussis. Les avertissements de taille
   de chunks restent visibles ; ils ne sont pas une mesure de mémoire mobile.
 - Tests réels stores/WebCrypto : toutes les dépendances directes, trois tailles
@@ -307,6 +307,11 @@ Preuves locales :
   fichier effectivement enregistré et assertions sur octets, source CRLF et
   texte extrait LF. Aucune donnée personnelle exportée, aucun appel IA.
   Cette lecture fichier n'est pas une recette du sélecteur natif dans l'APK.
+- La recette de la vraie app sur Pages a révélé que le mode démo n'a
+  intentionnellement ni crypto ni compte connu. Les deux vues montrent désormais
+  une notice avant toute saisie, sans assouplir les services ni initialiser une
+  clé de démonstration. Détection de la méthode de session, pas de l'hôte : un
+  vrai compte sur un hôte preview garde son parcours. Trois tests UI ajoutés.
 
 Pré-déploiement / retour arrière :
 

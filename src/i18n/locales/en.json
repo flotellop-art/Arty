@@ -1,6 +1,7 @@
 {
   "workspaceArchive": {
     "title": "Encrypted archive of this conversation",
+    "demoUnavailable": "Encrypted archives are not available in preview mode. Use Arty with a real account, outside this demo session.",
     "scope": "Local copy of every currently accessible message in this conversation, including its stored attachments and images. Nothing is sent to Arty or an AI.",
     "exclusions": "This is not a full account backup: API keys, connections, settings, memory, quarantined unreadable data and external resources are excluded. Restore and sync are not available yet.",
     "limits": "Limits: 128 files, 10 MiB per object, 60 MiB of decrypted content (messages and files) and a 64 MiB archive. The conversation must be idle during capture. Exceeding a limit stops the operation; no partial export is created.",

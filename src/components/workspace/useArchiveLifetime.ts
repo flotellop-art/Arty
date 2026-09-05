@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { onLocalDataInvalidated } from '../../services/localDataInvalidation'
 import { documentWorkspaceSignal } from '../../services/workspaceWriter/runtime'
+import { getActiveSession } from '../../services/userSession'
 
 /** Terminal revocation even when a same-account crypto reset keeps UI mounted.
  * Reopening the view is explicit; keys/results are never automatically revived. */
@@ -15,5 +16,5 @@ export function useArchiveLifetime(onInvalidate: () => void) {
     if (documentWorkspaceSignal.aborted) revoke()
     return () => { unsubscribe(); documentWorkspaceSignal.removeEventListener('abort', revoke) }
   }, [])
-  return { invalidated, invalid }
+  return { invalidated, invalid, demo: getActiveSession()?.authMethod === 'demo' }
 }

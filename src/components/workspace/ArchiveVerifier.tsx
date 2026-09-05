@@ -31,7 +31,7 @@ export function ArchiveVerifier({ verify }: { verify?: (file: Blob, code: string
   const lifetime = useArchiveLifetime(() => { reset(); setCode(''); setFile(null) })
   const check = async (event: React.FormEvent) => {
     event.preventDefault()
-    if (lifetime.invalid.current || operation.current || !file || !code.trim()) return
+    if (lifetime.invalid.current || lifetime.demo || operation.current || !file || !code.trim()) return
     const controller = new AbortController(); operation.current = controller
     setBusy(true); setError(''); setReport(null)
     try {
@@ -42,6 +42,10 @@ export function ArchiveVerifier({ verify }: { verify?: (file: Blob, code: string
     finally { if (!controller.signal.aborted) { operation.current = null; setBusy(false) } }
   }
   if (lifetime.invalidated) return <p role="alert">{t('workspaceArchive.errors.cancelled')}</p>
+  if (lifetime.demo) return <section className="space-y-3 text-sm text-theme-ink">
+    <h2 className="text-lg font-semibold">{t('workspaceArchive.verifyTitle')}</h2>
+    <p role="note">{t('workspaceArchive.demoUnavailable')}</p>
+  </section>
   return <section className="space-y-3 text-sm text-theme-ink">
     <h2 className="text-lg font-semibold">{t('workspaceArchive.verifyTitle')}</h2>
     <p>{t(verify ? 'workspaceArchive.reselect' : 'workspaceArchive.verifyHelp')}</p>

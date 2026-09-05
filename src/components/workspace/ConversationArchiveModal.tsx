@@ -30,7 +30,7 @@ export function ConversationArchiveModal({ conversation, isBusy, onClose }: {
   useEffect(() => { closed.current = false; return () => { closed.current = true; dispose() } }, [])
 
   const prepare = async () => {
-    if (working.current || closed.current || lifetime.invalid.current) return
+    if (working.current || closed.current || lifetime.invalid.current || lifetime.demo) return
     working.current = true; dispose()
     const abort = new AbortController(); controller.current = abort
     setBusy(true); setError(''); setPreview(null); setAgreed(false); setEngaged(false)
@@ -60,7 +60,7 @@ export function ConversationArchiveModal({ conversation, isBusy, onClose }: {
         <h2 id="conversation-archive-title" className="text-lg font-semibold">{t('workspaceArchive.title')}</h2>
         <button className={archiveButton} onClick={close}>{t('common.close')}</button>
       </div>
-      {lifetime.invalidated ? <p role="alert">{t('workspaceArchive.errors.cancelled')}</p> : <>
+      {lifetime.invalidated ? <p role="alert">{t('workspaceArchive.errors.cancelled')}</p> : lifetime.demo ? <p role="note">{t('workspaceArchive.demoUnavailable')}</p> : <>
       <p className="text-sm">{t('workspaceArchive.scope')}</p>
       <p className="text-xs text-theme-muted">{t('workspaceArchive.exclusions')}</p>
       <p className="text-xs text-theme-muted">{t('workspaceArchive.limits')}</p>
