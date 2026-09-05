@@ -31,7 +31,7 @@ supplémentaire n'est implicite dans ce mandat.
 | W03 | Catalogue | Un catalogue partagé aligne comparaison, sélecteurs, labels et éligibilité selon le compte (pas une garantie fournisseur). Modèle demandé, transmis par le proxy et signalé par le fournisseur distingués. Tests contre la dérive et contre l'accès premium hors droit. | Web déployé, PR #440 ; recette visuelle/appareil non vérifiée |
 | W04 | Projets | Créer/renommer/supprimer un projet, consignes propres, conversations associées, bibliothèque de documents réutilisables. Sources identifiables dans le contexte. Recherche bornée, absence de fichier et contexte tronqué explicites. Cloisonnement par compte et projet ; mode Europe conservé. | Bibliothèque web livrée #443 ; conversations web livrées #444 ; recette visuelle/appareil non vérifiée |
 | W05 | Livrables | Export DOCX modifiable et XLSX de tableaux, en plus des exports existants. Téléchargements relus par un parseur indépendant ; cellules dangereuses neutralisées ; aucun HTML actif ni formule arbitraire. Formats et limites documentés. | Web déployé #445 ; recette structurelle vérifiée ; rendu Office/appareil non vérifié |
-| W06 | Continuité | Sauvegarde/restauration explicites puis synchronisation optionnelle multi-appareil chiffrée avant upload, avec secret détenu par l'utilisateur et récupération expliquée. Conflits non destructifs ; reprise hors-ligne ; logout/switch/delete et compte invité traités. Un export manuel seul ne valide pas la synchronisation. | A1 format en validation ; capture/restauration/UI/synchronisation non livrées |
+| W06 | Continuité | Sauvegarde/restauration explicites puis synchronisation optionnelle multi-appareil chiffrée avant upload, avec secret détenu par l'utilisateur et récupération expliquée. Conflits non destructifs ; reprise hors-ligne ; logout/switch/delete et compte invité traités. Un export manuel seul ne valide pas la synchronisation. | A1 format fusionné #446 ; capture/restauration/UI/synchronisation non livrées |
 | W07 | Comparaison | Comparer depuis une conversation avec contexte/documents autorisés ; conserver les résultats et poursuivre la réponse choisie sans perdre l'original. Erreurs/coûts/quotas de chaque panneau visibles ; EU et historique privé jamais contournés. | À faire |
 | W08 | Parcours métier | Trois parcours complets : synthèse documentaire, réponse client préparée, planification Agenda avec confirmation avant écriture. Écran de connexions indiquant disponible/non configuré/non pris en charge selon plateforme. Pas de Drive/Gmail OAuth restreint ni relais IMAP serveur. | À faire |
 | W09 | Mobile et identité | PWA installable ; identité tryarty cohérente ; distribution Android authentifiée et documentée. Ne pas rediriger vers une app Play homonyme. Toute migration appId inclut signatures/OAuth/Firebase/liens vérifiés ; un APK distribué n'est pas une publication Store. | À faire |
@@ -107,7 +107,52 @@ réels ; préparer protocole et instrumentation sans fabriquer leurs résultats.
 
 ## Preuves par lot
 
+### Prérequis W06 — exécution image, en validation de livraison
+
+- Défauts reproduits : résultat d'image commencé sous A pouvant être stocké
+  sous B après switch ; outil absent du catalogue EU mais exécutable au handler
+  global ; annulation de clé/fence convertie en texte puis boucle poursuivie.
+- Permission locale hors arguments du modèle, figée à l'invocation Claude,
+  non-EU/non-documentaire, hors action rapide, intention cherchée dans le texte
+  utilisateur brut. Détection conservatrice, pas garantie de compréhension :
+  elle refuse aussi des formulations légitimes (« sans fond », « without text »).
+- Compte/epoch/crypto/barrière d'effacement capturés ; token et BYOK ne sont
+  pas recapturés sous le compte suivant. Signal réseau et garde avant/après
+  attente ; fence durable relue après réponse, avant repli et autour du stockage.
+  Propriétaire explicite et garde interne de transaction fichier, abort avant
+  commit en cas d'invalidation. Une annulation tardive après commit empêche la
+  restitution, mais ne promet pas de supprimer le blob déjà écrit.
+- Les exceptions image atteignent le hook : abort/démontage uniquement de
+  l'invocation correspondante, pas d'un nouvel essai. Aucune poursuite automatique
+  après annulation ni fallback Flux→OpenAI sur échec ambigu. Le repli subsiste
+  uniquement pour les refus explicites 403/503 ; quotas et providers inchangés.
+  Stop ne garantit pas l'annulation d'une facturation serveur déjà engagée.
+- Enveloppe base64 bornée à 10 Mio décodés, signatures PNG/JPEG/WebP et types
+  allowlistés ; ce contrôle intervient après JSON et ne prouve ni décodabilité
+  complète, ni borne avant allocation JSON, ni protection contre toute bombe
+  de dimensions d'image. Aucun média privé utilisé dans les tests.
+- Deux GO indépendants après correction de deux catches qui absorbaient encore
+  l'annulation. Tests avec vrais hook/dispatcher/handler/crypto et transactions
+  fake-indexeddb, réseau simulé : rotation de clé, A→B→A, fence LS/IDB, Stop,
+  réponse et stockage tardifs, zéro seconde génération ; pas de recette native.
+- Recette finale : `npm run verify` réussi, **237 fichiers / 2 538 tests**
+  (49 nouveaux tests), 1 interop sauvegarde ignoré sans fixture. Typecheck
+  front/back, couverture, addon/no-CASA, build et smoke worker Office verts.
+  Bundle principal 1 019,97 ko / 319,70 ko gzip ; avertissement de taille
+  préexistant. Aucun nouvel abonnement, secret serveur, endpoint ou migration.
+- Rendu et références locales attestées, image créée avant premier token,
+  traitement des orphelins, capture/restauration sont le lot suivant. Aucun
+  bouton de sauvegarde ni changement du format A1 dans ce correctif.
+
 ### W06 — fondation de format A1, non utilisable seule
+
+- PR [#446](https://github.com/flotellop-art/Arty/pull/446), squash main
+  `4b2c77b733884caf425494afad4ebffb19d65178`, fusion le 5 septembre à 09:04 UTC.
+  CI PR `33956368394` verte après relance du seul job en échec (timeout D1
+  wallet préexistant, assertion inchangée). CI main `33956985028` et distribution
+  Android `33956985027` vertes. Pages production
+  `fee141f0-074b-497e-8413-27bbe71541b2` ; tryarty.com HTTP 200, bundle
+  `/assets/index-DHRGpiA_.js`. Aucun parcours de sauvegarde n'est encore branché.
 
 - [Décision d'architecture](ADR_WORKSPACE_BACKUP.md) : A1 format/validation
   locale, A2 capture/restauration additive journalisée/UI, B coffre optionnel.

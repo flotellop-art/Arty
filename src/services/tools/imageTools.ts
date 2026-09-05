@@ -3,10 +3,10 @@
  *
  * Le tool `generate_image` N'EST PAS dans le tableau TOOLS par défaut : il est
  * injecté CONDITIONNELLEMENT (cf. wantsImageGeneration + useConversation) quand
- * l'utilisateur demande explicitement une image. C'est la seule garantie qu'il
- * ne tire pas à l'aveugle sur « décris-moi une image » (qui brûlerait le cap —
- * la frustration n°1 du marché). Le handler reste toujours enregistré (inerte
- * tant que le tool n'est pas exposé au modèle).
+ * une heuristique conservatrice reconnaît une demande d'image. Elle réduit les
+ * déclenchements sur « décris-moi une image » (qui brûleraient le cap —
+ * la frustration n°1 du marché). Le handler reste toujours enregistré, mais
+ * refuse toute exécution sans permission locale de l'invocation.
  *
  * L'image générée est stockée en IndexedDB chiffré (putFile) — JAMAIS en
  * base64 dans la conversation (anti-BUG 11). Elle est affichée via une
@@ -17,6 +17,7 @@ import type { ToolHandler, ToolResult } from './types'
 import { generateImage } from '../imageClient'
 import { putFile } from '../secureFileStorage'
 import { generateId } from '../../utils/generateId'
+import { beginProjectOperation, assertProjectOperation } from '../projects/store'
 import i18n from '../../i18n'
 
 export const generateImageToolDefinition = {
@@ -42,12 +43,13 @@ const IMAGE_CREATE_VERBS =
 const IMAGE_NOUNS =
   /\b(image|images|logo|logos|dessin|illustration|visuel|photo|picture|drawing|artwork|avatar|ic[oô]ne|icon|banni[eè]re|banner|affiche|poster|wallpaper|fond d['e ]?[eé]cran)\b/i
 const IMAGE_NEGATIVE =
-  /\b(d[eé]cris|d[eé]crire|d[eé]crivez|explique|expliquer|ressemblerait|imagine|describe|explain)\b/i
+  /\b(d[eé]cris|d[eé]crire|d[eé]crivez|explique|expliquer|ressemblerait|imagine|describe|explain|traduis|traduire|traduction|translate|translation|reformule|rewrite|corrige|correct|summarize|r[eé]sume|r[eé][eé]cris|ne|pas|sans|not|without|don['’]?t|never)\b/i
 
 /**
  * L'utilisateur demande-t-il EXPLICITEMENT de générer une image ? Doit avoir un
  * verbe de création + un nom visuel, et pas de verbe « descriptif » qui
- * trahirait une intention non-générative. Pattern volontairement strict :
+ * trahirait une intention non-générative. Heuristique, pas compréhension
+ * certaine de toute négation/citation. Pattern volontairement strict :
  * un faux négatif (on rate « fais-moi un truc visuel ») est sans coût ;
  * un faux positif brûle le cap de l'utilisateur (inacceptable).
  */
@@ -75,18 +77,35 @@ export function selectImageProvider(prompt: string): 'openai' | 'flux' {
 
 export function createImageHandlers(): Record<string, ToolHandler> {
   return {
-    generate_image: async (input): Promise<ToolResult> => {
+    generate_image: async (input, context): Promise<ToolResult> => {
+      // Omission from the advertised tool list is not an execution boundary.
+      const permission = context?.imageGeneration
+      if (!permission) return { result: 'Image generation is not authorized for this request.' }
+      permission.assertCurrent()
       const prompt = typeof input.prompt === 'string' ? input.prompt.trim() : ''
       if (!prompt) return { result: i18n.t('image.errorNoPrompt') }
+      if (prompt.length > 16_000) return { result: i18n.t('image.errorFailed') }
+
+      // Captures owner/epoch/crypto and the erasure fence before any network await.
+      const operation = await beginProjectOperation()
+      const assertCurrent = () => {
+        if (permission.signal.aborted) throw new DOMException('Image request cancelled', 'AbortError')
+        permission.assertCurrent(); operation.assertCurrent()
+      }
+      assertCurrent()
+      const request = { signal: permission.signal, assertCurrent, async beforeRequest() {
+        assertCurrent(); await assertProjectOperation(operation); assertCurrent()
+      } }
 
       const provider = selectImageProvider(prompt)
-      let res = await generateImage(prompt, provider)
-      // Fallback flux→openai autorisé ICI uniquement parce que ce handler
-      // n'est JAMAIS injecté en conversation euOnly (forcée sur Mistral, tool
-      // non exposé). Le jour où le chemin euOnly s'active (DPA BFL signé),
-      // son code dédié ne devra PAS avoir ce fallback (promesse EU).
-      if (!res.ok && provider === 'flux' && (res.code === 'unavailable' || res.code === 'failed' || res.code === 'plan_locked')) {
-        res = await generateImage(prompt, 'openai')
+      let res = await generateImage(prompt, provider, request)
+      await request.beforeRequest()
+      // Capability excludes EU/documentary requests at execution, not merely
+      // advertisement. Do not retry ambiguous transport/provider failures:
+      // the first generation may already have incurred a charge.
+      if (!res.ok && provider === 'flux' && (res.code === 'unavailable' || res.code === 'plan_locked')) {
+        res = await generateImage(prompt, 'openai', request)
+        await request.beforeRequest()
       }
       if (!res.ok) {
         // Message destiné à Claude (qui le relaiera à l'utilisateur). Jamais
@@ -104,11 +123,9 @@ export function createImageHandlers(): Record<string, ToolHandler> {
 
       // Anti-BUG 11 : l'image va en IndexedDB chiffré, pas dans la conversation.
       const fileId = generateId()
-      try {
-        await putFile({ id: fileId, name: 'image.png', type: res.mimeType, size: 0, data: res.base64 })
-      } catch {
-        return { result: i18n.t('image.errorFailed') }
-      }
+      await request.beforeRequest()
+      await putFile({ id: fileId, name: 'image.png', type: res.mimeType, size: 0, data: res.base64 }, operation.owner, assertCurrent)
+      await request.beforeRequest()
 
       // fileData → Claude « voit » l'image (bloc image). result → instruction
       // d'affichage via la référence arty-img:// résolue par MarkdownRenderer.
