@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef, lazy, Suspense } from 'react'
 import { useTranslation } from 'react-i18next'
-import { BrowserRouter, Routes, Route, useNavigate, useParams } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useNavigate, useParams } from 'react-router-dom'
 import { Capacitor } from '@capacitor/core'
 import { useConversation } from './hooks/useConversation'
 import { useAppSetup } from './hooks/useAppSetup'
@@ -548,6 +548,8 @@ function AppContent({
             />
           }
         />
+        {/* A public sign-in CTA can be opened with an existing session. */}
+        <Route path="/login" element={<Navigate to="/" replace />} />
         <Route
           path="/auth/callback"
           element={<OAuthCallback onCallback={handleOAuthCallback} />}
