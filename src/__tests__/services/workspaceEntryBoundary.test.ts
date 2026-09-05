@@ -32,7 +32,7 @@ function staticGraph(entry: string): Set<string> {
 }
 
 describe('workspace entry static dependency boundary', () => {
-  it.each(['src/main.tsx', 'src/screens/landing.tsx', 'src/components/share/SharedConversationView.tsx'])('%s does not statically import private identity/crypto/stores', entry => {
+  it.each(['src/main.tsx', 'src/screens/landing.tsx', 'src/components/share/SharedConversationView.tsx', 'src/services/workspaceWriter/control.ts'])('%s does not statically import private identity/crypto/stores', entry => {
     const graph = staticGraph(entry)
     for (const forbidden of ['src/App.tsx', 'src/hooks/useAuth.ts', 'src/services/userSession.ts', 'src/services/crypto.ts', 'src/services/storage.ts', 'src/services/secureFileStorage.ts', 'src/services/projects/store.ts', 'src/services/previewDemo.ts']) {
       expect(graph.has(resolve(forbidden)), forbidden).toBe(false)
@@ -42,7 +42,9 @@ describe('workspace entry static dependency boundary', () => {
     const main = readFileSync('src/main.tsx', 'utf8'), gate = readFileSync('src/components/workspace/DocumentWorkspaceGate.tsx', 'utf8')
     expect(main).not.toContain('setupPreviewDemo()')
     expect(gate.indexOf('if (__DEMO_ALLOWED__)')).toBeLessThan(gate.indexOf("import('../../services/previewDemo')"))
-    expect(gate).toContain('documentWorkspace.assertHeld()')
+    const loader = gate.slice(gate.indexOf('const PrivateApp'), gate.indexOf('type Controller'))
+    expect(loader.indexOf('assertDocumentWorkspace()')).toBeLessThan(loader.indexOf("import('../../services/previewDemo')"))
+    expect(loader).not.toContain('documentWorkspace.assertHeld()')
     expect(gate).toContain("import('../../App')")
   })
 })

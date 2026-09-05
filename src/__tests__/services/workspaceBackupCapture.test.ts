@@ -26,7 +26,9 @@ beforeEach(async () => {
   Object.defineProperty(navigator, 'locks', { configurable: true, value: {
     request(_n: string, _o: unknown, callback: (lock: unknown) => Promise<void>) { return callback({}) },
   } })
-  await (await import('../../services/workspaceWriter/runtime')).documentWorkspace.acquire()
+  const runtime = await import('../../services/workspaceWriter/runtime')
+  await runtime.documentWorkspace.acquire()
+  expect(await runtime.workspaceAdmission.admit()).toBe('ready')
   users = await import('../../services/userSession'); crypt = await import('../../services/crypto')
   history = await import('../../services/storage'); files = await import('../../services/secureFileStorage')
   projects = await import('../../services/projects/store'); capture = await import('../../services/workspaceBackup/capture')

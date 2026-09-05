@@ -2,6 +2,7 @@ import 'fake-indexeddb/auto'
 import { IDBFactory } from 'fake-indexeddb'
 import { openDB } from 'idb'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { act, cleanup, renderHook } from '@testing-library/react'
 import { deferred } from '../helpers/workspaceLocks'
 
 // This suite intentionally DOES NOT use the setup's admitted-document fixture.
@@ -27,16 +28,106 @@ beforeEach(async () => {
   storage = await import('../../services/storage'); files = await import('../../services/secureFileStorage')
   projects = await import('../../services/projects/store')
 })
-afterEach(() => { vi.restoreAllMocks(); localStorage.clear() })
+afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); localStorage.clear() })
 
-async function enter() { await runtime.documentWorkspace.acquire(); users.setActiveSession(session()); await c.initCrypto('synthetic-document-key') }
+async function admit() { await runtime.documentWorkspace.acquire(); expect(await runtime.workspaceAdmission.admit()).toBe('ready') }
+async function enter() { await admit(); users.setActiveSession(session()); await c.initCrypto('synthetic-document-key') }
 async function lose() {
   request.reject(new Error('exceptional loss'))
   await vi.waitFor(() => expect(runtime.documentWorkspaceSignal.aborted).toBe(true))
 }
 const conversation = { id: 'synthetic-conversation', title: 'Synthetic history', createdAt: 1, updatedAt: 1, messages: [] }
 
+async function expectPrivateReadsRefused(message: string) {
+  const scoped = await import('../../services/scopedStorage')
+  const read = vi.spyOn(Storage.prototype, 'getItem'), write = vi.spyOn(Storage.prototype, 'setItem')
+  const opening = vi.spyOn(indexedDB, 'open')
+  for (const get of [users.getActiveSession, users.getKnownSessions, users.getActiveUserId,
+    storage.getConversations, storage.isCacheReady, () => scoped.getItem('api-keys'),
+    () => scoped.getJSON('api-keys'), () => scoped.getJSONForUser('a', 'api-keys'),
+    () => runtime.documentStorageKey('a', 'api-keys'), runtime.getDocumentStorageLayout,
+  ]) expect(get).toThrow(message)
+  await expect(scoped.secureGetJSON('api-keys')).rejects.toThrow(message)
+  await expect(c.secureGet('arty-a-conversations-enc')).rejects.toThrow(message)
+  await expect(c.verifyCrypto('synthetic')).rejects.toThrow(message)
+  await expect(files.getFile('synthetic')).rejects.toThrow(message)
+  await expect(files.getFile('synthetic', 'a')).rejects.toThrow(message)
+  await expect(projects.beginProjectOperation()).rejects.toThrow(message)
+  expect(read).not.toHaveBeenCalled(); expect(write).not.toHaveBeenCalled(); expect(opening).not.toHaveBeenCalled()
+  read.mockRestore(); write.mockRestore(); opening.mockRestore()
+}
+
 describe('real document boundary with real crypto and IDB transactions', () => {
+  it('held lock alone does not permit private reads or crypto initialization before storage admission', async () => {
+    await runtime.documentWorkspace.acquire()
+    await expectPrivateReadsRefused('workspace_admission_unavailable')
+    expect(() => c.initCrypto('must-not-create-salt')).toThrow('workspace_admission_unavailable')
+    expect(localStorage.length).toBe(0); expect(await indexedDB.databases()).toEqual([])
+  })
+
+  it('corrupt control stays closed even if a caller directly mounts useAuth, before allSettled bootstraps', async () => {
+    const db = await openDB('arty-workspace-control', 1, { upgrade(db) { db.createObjectStore('meta') } }); db.close()
+    await runtime.documentWorkspace.acquire()
+    expect(await runtime.workspaceAdmission.admit()).toBe('corrupt')
+    await expectPrivateReadsRefused('workspace_admission_unavailable')
+    const { useAuth } = await import('../../hooks/useAuth')
+    const read = vi.spyOn(Storage.prototype, 'getItem'), write = vi.spyOn(Storage.prototype, 'setItem')
+    const fetch = vi.fn(); vi.stubGlobal('fetch', fetch)
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    expect(() => renderHook(() => useAuth())).toThrow('workspace_admission_unavailable')
+    expect(read).not.toHaveBeenCalled(); expect(write).not.toHaveBeenCalled(); expect(fetch).not.toHaveBeenCalled()
+    expect(await runtime.workspaceAdmission.admit()).toBe('corrupt')
+    expect(await indexedDB.databases()).toEqual([{ name: 'arty-workspace-control', version: 1 }])
+  })
+
+  it('admits schemas created by the real file/project writers without reading their account records', async () => {
+    await enter()
+    await files.putFile({ name: 'note.txt', type: 'text/plain', size: 1, data: 'YQ==' })
+    await projects.createProject(await projects.beginProjectOperation(), 'Synthetic project')
+    const { readWorkspaceStorageLayout } = await import('../../services/workspaceWriter/control')
+    const read = vi.spyOn(IDBObjectStore.prototype, 'get'), all = vi.spyOn(IDBObjectStore.prototype, 'getAll')
+    expect(await readWorkspaceStorageLayout({ assertLock: () => runtime.documentWorkspace.assertHeld(), signal: runtime.documentWorkspaceSignal })).toEqual(runtime.getDocumentStorageLayout())
+    expect(read).not.toHaveBeenCalled(); expect(all).not.toHaveBeenCalled()
+  })
+
+  it('real provisional login, A-B-A switch and BYOK resume keep one admitted layout and existing data', async () => {
+    await admit()
+    const layout = runtime.getDocumentStorageLayout(), { useAuth } = await import('../../hooks/useAuth')
+    const scoped = await import('../../services/scopedStorage'), { resumePendingLocalStorage } = await import('../../services/resumeLocalStorage')
+    const { getAnthropicKey, setActiveKeys } = await import('../../services/activeApiKey')
+    const fetch = vi.fn(); vi.stubGlobal('fetch', fetch)
+    const view = renderHook(() => useAuth())
+    const credentials = { displayName: 'Synthetic A', anthropicKey: 'synthetic-a', identifier: 'synthetic-a' }
+    const finalizer = vi.fn(async (account: import('../../services/userSession').UserSession) => {
+      expect(users.getActiveUserId()).toBe(account.userId)
+      expect(users.getKnownSessions()).toEqual([])
+      expect(localStorage.getItem('arty-active-session')).toBeNull()
+      runtime.assertDocumentWorkspace()
+    })
+    await act(async () => { await view.result.current.login('apikey', credentials, finalizer) })
+    expect(finalizer).toHaveBeenCalledOnce()
+    const owner = view.result.current.currentUser!.userId
+    storage.saveConversation(conversation)
+    const fileId = await files.putFile({ name: 'note.txt', type: 'text/plain', size: 1, data: 'YQ==' })
+    // A remembered second identity, with its own synthetic credentials.
+    users.rememberSession(session('b')); localStorage.setItem('arty-b-api-keys', JSON.stringify({ anthropic: 'synthetic-b' }))
+    await act(async () => { await view.result.current.switchAccount('b') })
+    expect(storage.getConversation(conversation.id)).toBeNull(); expect(await files.getFile(fileId)).toBeNull()
+    await act(async () => { await view.result.current.switchAccount(owner) })
+    expect(storage.getConversation(conversation.id)?.title).toBe(conversation.title)
+    expect((await files.getFile(fileId))?.data).toBe('YQ==')
+    // Same commit + resume path as ApiKeysModal, with a real KDF and stores.
+    await c.initCrypto('synthetic-new-key', { commit: () => {
+      scoped.setJSON('api-keys', { anthropic: 'synthetic-new-key' }); setActiveKeys('synthetic-new-key')
+    } })
+    expect(await resumePendingLocalStorage()).toBe(true)
+    expect(getAnthropicKey()).toBe('synthetic-new-key')
+    expect(scoped.getJSON('api-keys')).toEqual({ anthropic: 'synthetic-new-key' })
+    expect(runtime.getDocumentStorageLayout()).toBe(layout)
+    expect(fetch).not.toHaveBeenCalled()
+    view.unmount()
+  })
+
   it('before acquisition cannot initialize identity, crypto, history or file/project stores', async () => {
     expect(() => users.setActiveSession(session())).toThrow('workspace_document_unavailable')
     expect(() => c.initCrypto('no-salt-created')).toThrow('workspace_document_unavailable')
@@ -64,6 +155,7 @@ describe('real document boundary with real crypto and IDB transactions', () => {
     await enter(); await storage.bootstrapConversationStorage(); storage.saveConversation(conversation)
     const before = { ...localStorage }
     await lose()
+    await expectPrivateReadsRefused('workspace_document_unavailable')
     const scoped = await import('../../services/scopedStorage')
     for (const mutation of [
       () => storage.saveConversation({ ...conversation, title: 'late' }), () => storage.deleteConversation(conversation.id),
@@ -92,7 +184,7 @@ describe('real document boundary with real crypto and IDB transactions', () => {
   })
 
   it('real pending derivation cannot publish crypto markers or execute a credential commit after loss', async () => {
-    await runtime.documentWorkspace.acquire(); users.setActiveSession(session())
+    await admit(); users.setActiveSession(session())
     const gate = deferred(), real = crypto.subtle.deriveKey.bind(crypto.subtle), commit = vi.fn()
     const derive = vi.spyOn(crypto.subtle, 'deriveKey').mockImplementationOnce(async (...args) => { const key = await real(...args); await gate.promise; return key })
     const initializing = c.initCrypto('synthetic', { commit }).catch(error => error)

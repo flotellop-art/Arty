@@ -537,3 +537,127 @@ le planner ; tests DOM du rendu et contrôles explicites ; vrai chiffrement puis
 bootstrap de stockage ; vrai hook de branche/génération et vrai vérificateur
 avec fournisseurs simulés. Aucun compte réel, aucun appel IA payant ni import
 de données personnelles n'est nécessaire à ces tests.
+
+### A3b — contre-revues avant admission/migration (préparation, pas activation)
+
+Deux revues indépendantes en lecture seule après #452. GO pour un découpage,
+pas pour une bascule branchée directement sur les bootstraps actuels.
+
+1. Admission froide bas niveau après le verrou document, **avant** import de
+   previewDemo ou App. Le contrôle durable ne doit importer ni userSession,
+   ni crypto, ni les stores. Absence réelle d'un contrôle encore jamais créé
+   et contrôle existant incomplet/corrompu ne sont pas le même état. Version
+   inconnue, journal incertain et maintenance doivent refuser l'import privé.
+2. Résolveur d'emplacements et lecteurs compatibles avant toute activation.
+   La décision de génération est immuable dans le document. Boot, login
+   provisoire, switch et reprise après BYOK (`ApiKeysModal`/`resumeLocalStorage`)
+   ne peuvent contourner l'admission au niveau crypto/stores ni convertir son
+   refus en succès partiel via `Promise.allSettled`. Le login provisoire n'est
+   pas encore un compte connu : le helper de capture d'archive ne l'admet pas.
+3. Migration physique distincte de l'import A3a : garder les IDs existants,
+   les quatre slots d'historique brut (plain, encrypted, deux quarantaines),
+   fichiers orphelins/illisibles, tombstones, compteurs et reçus d'effacement.
+   Ne pas appliquer au compte entier les allowlists/plafonds d'archive. Copier
+   et relire l'état raw sans déchiffrer/réécrire arbitrairement ni changer le sel.
+4. Le descripteur couvre historique, assets et autorité crypto. Les builders
+   directs de storage/crypto et le fallback global doivent être traités, pas
+   seulement scopedStorage. En génération déclarée, aucun fallback legacy ni
+   création silencieuse d'un nouveau sel. Ne pas multiplier les copies de
+   credentials hors des mécanismes existants de logout/effacement.
+5. Gate durable avant le premier upgrade IDB, deux bases ne constituant pas
+   une transaction. Lecteurs compatibles avec l'état partiel déjà livrés,
+   y compris les readers readonly d'archives aujourd'hui fixés sur v1.
+   Un upgrade de projects existant ne doit pas recréer ses object stores.
+   Une requête bloquée subsiste après annulation UI : ticket vérifié dans
+   l'upgrade tardif, transaction avortée et résultat tardif fermé.
+6. Journal de migration distinct d'un futur journal d'import, avec owner,
+   génération source/cible, job et protocole/phase. Copies vérifiées avant
+   sélection atomique du descripteur ; sources conservées. Les écritures LS
+   legacy ne sont pas bloquées par IDB : elles restent une divergence détectée,
+   jamais fusionnée automatiquement dans la génération active.
+7. Effacement engagé ou requête serveur incertaine prime sur migration.
+   Reprise sans clé ni nouveau POST après reçu serveur confirmé ; purge de
+   toutes générations, copies, métadonnées et journaux avant clôture du reçu.
+
+Limite distante confirmée : l'ordre marqueur IDB avant POST n'existe que
+depuis #443 (`d48398ad`). Les vieux clients authentifiés peuvent toujours
+appeler `/api/account/delete` sans admission locale ; la route n'exige aucun
+protocole de maintenance. A3b local ne revendiquera pas l'exclusion de ces
+révocations distantes. Toute restriction de compatibilité serveur sera une
+décision distincte ; un simple header de version n'est pas une preuve de verrou.
+L'export `deleteServerAccount` actuel contourne aussi l'admission locale mais
+aucun caller produit n'a été trouvé. Pas de redirection globale des API POST.
+
+Prochain incrément : registre/admission **sans** migration automatique ni
+publisher activable ; ensuite compatibilité lecteurs et copie physique,
+puis reprise/effacement avant bascule. Tests prévus : import espionné, vrais
+onglets legacy, annulation/upgrade tardif, crash entre chaque DB/clé/checkpoint,
+quota, archive dépassée par la taille du compte, A→B→A, callbacks conservés,
+clé erronée/quarantaines, effacement sans crypto, version de contrôle inconnue.
+La recette d'un vrai APK mis à jour avec données existantes reste distincte.
+
+### A3b.1 — admission froide et résolveur legacy (5 septembre 2026)
+
+**Décision acceptée, implémentée et testée localement ; livraison à attester.**
+Deux contre-revues indépendantes en lecture seule, sécurité/intégrité et
+produit/mobile, ont donné GO après corrections. Ce lot n'est ni un writer de
+registre, ni une migration, ni une restauration.
+
+- Le verrou document précède un contrôle readonly borné à 8 secondes, avant
+  tout import App/preview, session, sel crypto ou bootstrap privé. Il examine
+  `arty-workspace-control` v1 puis versions et schémas exacts de `arty-files`
+  et `arty-projects` v1. Il ne lit aucun record de compte dans ces assets.
+- L'absence est attestée par une création IDB initiale avortée, sans base
+  résiduelle. Base vide, malformée, maintenance, version/protocole/layout
+  inconnus ou IDB inaccessible refusent l'ouverture. Aucun raccourci fondé
+  sur un localStorage vide ; aucune réparation ni upgrade silencieux.
+- Un contrôle présent ne peut autoriser que le descripteur explicite
+  `legacy-v1`, validé strictement. Le résolveur est utilisé par les clés
+  scoped/historique/crypto et les ouvertures normales/readonly des assets.
+  La décision reste immuable pour le document ; perte du verrou terminale.
+- Deadline et annulation couvrent aussi une ouverture en file derrière un
+  upgrade et une transaction readonly derrière un writer. Transactions
+  annulées drainées, connexions tardives fermées, jamais d'admission tardive.
+- Getters et caches privés refusent avant leurs `try/catch`, même si un caller
+  contourne le composant React. `getFile(id, ownerExplicite)` vérifie aussi à
+  l'entrée : un refus ne doit pas devenir un faux fichier absent. Les helpers
+  purs et opérations de révocation mémoire restent indépendants.
+
+**Alternatives et compromis.** Une simple garde de mutation laisserait les
+lectures/cache hydrater un mauvais format ; un contrôle `ready` générique
+autoriserait un fallback ambigu. Ces options ont été écartées. Une coquille
+de login indépendante d'IDB demanderait une séparation supplémentaire : ce
+lot ferme donc aussi la connexion privée si le contrôle initial ne peut pas
+aboutir, y compris chez un visiteur neuf. Les bootstraps optionnels après
+admission restent optionnels ; leur `allSettled` n'autorise pas l'admission.
+
+**UX.** État de vérification puis refus distincts FR/EN, recharge froide seule
+après décision (pas de réarmement à chaud). URL query/hash et state/verifier
+OAuth conservés, sans redirection login ni effacement. Pages publiques et
+confidentialité accessibles. Le texte Android distingue installation d'une
+version compatible et simple reload, qui ne met pas l'APK à jour.
+
+**Preuves locales.** 255 fichiers, 2 806 tests réussis + 1 ignoré via `npm run
+verify` ; typecheck front/back, no-CASA, couverture, build et worker Office
+réussis. La fixture de capture A2 utilisant le vrai runtime a été adaptée pour
+effectuer la vraie admission, sans nouveau mock. Tests : absence, contrôle
+vide/falsy/futur, vrais opens/transactions bloqués puis résultat tardif,
+StrictMode/remount, getters sans lecture avant admission ou après perte,
+schémas créés par les vrais stores, vrai login provisoire, switch A→B→A,
+reprise BYOK/KDF et effacement. Log :
+`../arty-workspace-admission-verify-final-20260905.log`.
+
+Recette navigateur IAB sur origines locales isolées : refus maintenance,
+bouton Recharger exécuté, URL exacte et sentinelles OAuth inchangées, compteur
+d'import privé toujours nul ; refus incompatible avec texte Android ; lien
+Découvrir utilisable ; autre origine vierge ouvre la vraie connexion. Données
+synthétiques uniquement, aucun appel IA payant, aucun compte utilisateur
+modifié. Ce n'est pas un échange OAuth réel ni une recette APK/WebView.
+
+**Repli et limites.** Revert de la PR via CI/Pages si une installation v1 saine
+est refusée ou si la connexion ne démarre plus ; pas de données à dé-migrer.
+Ce repli reste sûr seulement tant qu'aucun futur writer de contrôle/génération
+n'est activé. Avant activation : lecteurs isolés, témoins monotones dans tous
+les assets, journal/copie physique/reprise/effacement cohérent restent exigés.
+L'absence du contrôle n'exclut pas des bases futures aux noms encore inconnus.
+Aucun verrou universel des anciennes versions ni révocations serveur promis.

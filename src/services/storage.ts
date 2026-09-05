@@ -5,7 +5,7 @@ import { deleteOwnedFiles } from './secureFileStorage'
 import { getActiveUserId, getActiveSessionEpoch } from './userSession'
 import { generatedImageIds } from './generatedImages'
 import { generateId } from '../utils/generateId'
-import { assertDocumentWorkspace, documentWorkspaceSignal } from './workspaceWriter/runtime'
+import { assertDocumentWorkspace, documentWorkspaceSignal, documentStorageKey } from './workspaceWriter/runtime'
 import { BackupError } from './workspaceBackup/types'
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -57,7 +57,7 @@ function scopeCurrent(scope: StoreScope): boolean {
   return !documentWorkspaceSignal.aborted && scope.owner === getActiveUserId() && scope.epoch === getActiveSessionEpoch() && scope.reset === resetGen
 }
 function physicalKey(scope: StoreScope, key: string): string {
-  return scope.owner ? `arty-${scope.owner}-${key}` : `arty-${key}`
+  return documentStorageKey(scope.owner, key)
 }
 function ensureCacheScope(): void {
   assertDocumentWorkspace()

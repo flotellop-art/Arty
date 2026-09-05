@@ -44,6 +44,20 @@
       "different": "Ce fichier est une archive valide, mais pas celle de cette capture. Sélectionnez le bon fichier ou vérifiez l’autre archive dans les paramètres."
     }
   },
+  "workspaceAdmission": {
+    "checkingTitle": "Vérification du stockage local…",
+    "checkingBody": "Arty vérifie que tes données peuvent être ouvertes. Ce contrôle ne modifie pas tes conversations ni tes fichiers.",
+    "maintenanceTitle": "Une reprise du stockage est nécessaire",
+    "maintenanceBody": "Une opération locale n’est pas clôturée. Cette version ne peut pas la reprendre : l’ouverture est arrêtée pour préserver les données. Recharge avec une version compatible ; n’efface pas le stockage du site.",
+    "incompatibleTitle": "Format local non pris en charge",
+    "incompatibleBody": "Cette version d’Arty ne sait pas ouvrir le format détecté. Utilise une version compatible d’Arty, puis recharge. Sur Android, installe la mise à jour de l’application : recharger seul ne met pas l’APK à jour. Les données restent en place.",
+    "corruptTitle": "État du stockage à vérifier",
+    "corruptBody": "Le contrôle local est incomplet ou incohérent. Arty n’ouvre pas les données et ne tente aucune réparation automatique. Les données restent en place.",
+    "unavailableTitle": "Stockage local inaccessible",
+    "unavailableBody": "Arty n’a pas pu vérifier le stockage local. La connexion et les conversations restent fermées pour éviter de charger un espace supposé vide. Vérifie l’autorisation de stockage du site, puis recharge ; n’efface pas tes données.",
+    "lostTitle": "Contrôle du stockage interrompu",
+    "lostBody": "Cette fenêtre ne dispose plus de l’autorisation d’ouvrir les données. Recharge pour effectuer un nouveau contrôle. L’URL et les informations de retour de connexion sont conservées."
+  },
   "workspaceWindow": {
     "loading": "Ouverture d’Arty…",
     "loadFailedTitle": "Arty n’a pas pu se charger",

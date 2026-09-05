@@ -56,6 +56,7 @@ export async function generateUserId(method: AuthMethod, identifier: string): Pr
 // ─── Session management ───
 
 export function getActiveSession(): UserSession | null {
+  assertDocumentWorkspace()
   if (_activeSession) return _activeSession
 
   try {
@@ -115,6 +116,7 @@ export function clearActiveSession(): void {
 }
 
 export function getKnownSessions(): UserSession[] {
+  assertDocumentWorkspace()
   try {
     const raw = localStorage.getItem(KNOWN_SESSIONS_KEY)
     return raw ? JSON.parse(raw) : []

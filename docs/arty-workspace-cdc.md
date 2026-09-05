@@ -31,7 +31,7 @@ supplémentaire n'est implicite dans ce mandat.
 | W03 | Catalogue | Un catalogue partagé aligne comparaison, sélecteurs, labels et éligibilité selon le compte (pas une garantie fournisseur). Modèle demandé, transmis par le proxy et signalé par le fournisseur distingués. Tests contre la dérive et contre l'accès premium hors droit. | Web déployé, PR #440 ; recette visuelle/appareil non vérifiée |
 | W04 | Projets | Créer/renommer/supprimer un projet, consignes propres, conversations associées, bibliothèque de documents réutilisables. Sources identifiables dans le contexte. Recherche bornée, absence de fichier et contexte tronqué explicites. Cloisonnement par compte et projet ; mode Europe conservé. | Bibliothèque web livrée #443 ; conversations web livrées #444 ; recette visuelle/appareil non vérifiée |
 | W05 | Livrables | Export DOCX modifiable et XLSX de tableaux, en plus des exports existants. Téléchargements relus par un parseur indépendant ; cellules dangereuses neutralisées ; aucun HTML actif ni formule arbitraire. Formats et limites documentés. | Web déployé #445 ; recette structurelle vérifiée ; rendu Office/appareil non vérifié |
-| W06 | Continuité | Sauvegarde/restauration explicites puis synchronisation optionnelle multi-appareil chiffrée avant upload, avec secret détenu par l'utilisateur et récupération expliquée. Conflits non destructifs ; reprise hors-ligne ; logout/switch/delete et compte invité traités. Un export manuel seul ne valide pas la synchronisation. | A1 #446, galerie #448, verrou document #449 et capture/vérification A2 #451 livrés ; restauration/synchronisation non livrées |
+| W06 | Continuité | Sauvegarde/restauration explicites puis synchronisation optionnelle multi-appareil chiffrée avant upload, avec secret détenu par l'utilisateur et récupération expliquée. Conflits non destructifs ; reprise hors-ligne ; logout/switch/delete et compte invité traités. Un export manuel seul ne valide pas la synchronisation. | A1 #446, galerie #448, verrou document #449, capture/vérification A2 #451 et préparation technique A3a #452 livrés ; restauration/synchronisation non livrées |
 | W07 | Comparaison | Comparer depuis une conversation avec contexte/documents autorisés ; conserver les résultats et poursuivre la réponse choisie sans perdre l'original. Erreurs/coûts/quotas de chaque panneau visibles ; EU et historique privé jamais contournés. | À faire |
 | W08 | Parcours métier | Trois parcours complets : synthèse documentaire, réponse client préparée, planification Agenda avec confirmation avant écriture. Écran de connexions indiquant disponible/non configuré/non pris en charge selon plateforme. Pas de Drive/Gmail OAuth restreint ni relais IMAP serveur. | À faire |
 | W09 | Mobile et identité | PWA installable ; identité tryarty cohérente ; distribution Android authentifiée et documentée. Ne pas rediriger vers une app Play homonyme. Toute migration appId inclut signatures/OAuth/Firebase/liens vérifiés ; un APK distribué n'est pas une publication Store. | À faire |
@@ -108,7 +108,43 @@ réels ; préparer protocole et instrumentation sans fabriquer leurs résultats.
 
 ## Preuves par lot
 
-### W06 A3a — préparation de restauration (en validation, non déployée)
+### W06 A3b.1 — admission du stockage (testé, livraison à attester)
+
+Contrôle readonly avant tout chargement privé, deadline/cancellation et
+résolveur explicite legacy-v1. Aucune migration, écriture de contrôle,
+restauration ou synchronisation ajoutée. Décisions, limites et repli dans
+`ADR_WORKSPACE_BACKUP.md`, section A3b.1.
+
+Deux GO indépendants après prise en compte du getter de fichier à owner
+explicite et du libellé Android. `npm run verify` : 255 fichiers / 2 806 tests
+réussis + 1 ignoré, typecheck front/back, couverture, no-CASA, build et worker
+Office verts. Log `../arty-workspace-admission-verify-final-20260905.log`.
+Recette navigateur locale synthétique : maintenance puis reload avec URL et
+state/verifier conservés, zéro chargement privé ; format incompatible expliqué,
+pages publiques accessibles, vraie connexion ouverte sur origine vierge.
+L'onglet tryarty de l'utilisateur et son brouillon n'ont pas été modifiés.
+
+Compromis produit explicite : si IDB ne peut pas être contrôlé, le login privé
+reste fermé même pour une première visite ; une connexion indépendante des
+stores nécessiterait un autre lot. Pas de validation OAuth/APK réel, ni de
+mesure terrain latence/mémoire. W06 global reste **partiel**.
+
+### W06 A3a — préparation de restauration livrée (#452)
+
+- PR [#452](https://github.com/flotellop-art/Arty/pull/452), head
+  `0e176201570524905d51a062e19537114f9dc8d1`, squash main
+  `e9275fa920fac16e6b00b929b6aca2ae16f58a15`, fusion le 5 septembre à 17:23 UTC.
+  CI PR `33980559723` réussie (web, orchestrateur, Android). Preview Pages
+  `fca2ee5a-f3f0-4d61-8076-98f5b0af4e20` réussie ; accueil/paramètres build
+  `2026-09-05 17:19` vérifiés dans le navigateur, archive refusée en mode aperçu.
+- Pages production `fa34dbe2-6a69-4252-8474-80433ea1b434` réussie pour ce main.
+  `tryarty.com` et l'URL immuable servent en HTTP 200 le même
+  `/assets/index-CrliE4Mg.js`, 241 763 octets, SHA-256
+  `35f34f34cce6b11c8269de7afab320a51bbb200999967d20f3f935aa83a4dc79`.
+  CI main `33980833231` et build/distribution APK `33980833236` réussies au
+  contrôle final. Cela atteste la chaîne Android, pas un APK installé/testé
+  sur appareil. Aucun taux d'erreur/latence de production ni mesure RAM natif
+  n'est déduit du smoke HTTP ou de la recette synthétique.
 
 - Service pur de projection A1/v2, graphe multi-conversations/projets conservé,
   nouveaux IDs par domaine/parent, fichiers partagés et références historiques
