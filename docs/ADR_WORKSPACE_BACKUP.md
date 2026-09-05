@@ -1134,3 +1134,92 @@ dans workspaceMigration.test.ts. Ne pas le rouvrir comme défaut non résolu.
 La prochaine implémentation doit avoir ses propres deux contre-revues et une
 verticale depuis l'action utilisateur jusqu'aux nouvelles écritures relues,
 y compris A migré, A post-cutover, voisins a-b/a:b et second cycle d'effacement.
+
+#### A3b.6 — effacement nominal froid et droit de nouvel espace local (6 septembre 2026)
+
+Statut : implémenté et validé localement, livraison à consigner dans le CDC.
+Activation isolée OFF, aucune migration réelle ni suppression de production.
+Deux contre-revues indépendantes avant code et sur le diff final : GO limité.
+
+Contexte : le bouton isolé devait rejoindre le nettoyeur multi-copies même sans
+crash. La purge seule ne permettait pas de recréer un espace ; le clear natif
+restait terminal. Une reconnexion partiellement écrite ne doit ni réallouer un
+sel ni rendre les anciens callbacks valides dans le nouvel espace.
+
+Décision :
+
+- Le vrai bouton conserve l'autorité durable puis retire définitivement le
+  document privé (`lost` avant les observateurs/abort), sans libérer son Web
+  Lock. L'UI demande un reload même si elle vient d'être démontée. Si le reload
+  tarde, ni App, ni login, ni acteur froid ne peut se réactiver dans ce document.
+- Tout nouvel effacement depuis ready v2/v7 réserve v6, avec cible de fence,
+  preuves B, identité de reset et ancienne incarnation consommée éventuelle.
+  Réparation et purge suivent le domaine v5. Les reprises historiques v4/v5
+  gardent leur domaine et leur sortie v2, sans droit de nouveau sel ajouté.
+- Le dernier CAS remplace l'autorité par un ready v7 unique portant le droit
+  `available` de A et les droits B inchangés. `requiredOwners` conserve A. Aucun
+  secret distant ne passe dans ce droit. Les UUID historiques d'opération
+  restent opaques, contrairement aux nouveaux resetId stricts.
+- Seul le login explicite peut passer available → provisioning → consumed.
+  Une allocation durable de tout le bundle sel/check/version précède toute
+  écriture des trois marqueurs LS. Chaque reprise réutilise ce bundle, vérifie
+  la clé et les copies/plan/settings/drafts ; pas de nouveau sel si un marqueur
+  consommé a disparu. Bootstrap/switch ne consomment jamais un droit en attente.
+- Le CAS est étroit et capture intrinsèquement owner/epoch/layout/fence, même
+  avec un appelant faible. Snapshots clonés, preuve LS juste avant put et après
+  commit. Le contexte crypto puis le grant/session sont publiés après consumed.
+  Un échec ultérieur du grant ne détruit pas le bundle matérialisé. Le hash
+  email est différé jusqu'à cette transaction de login et restauré uniquement
+  si l'écriture appartient encore à cette tentative.
+- Android protocole2 : retrait du compte et reçu fermé liés au resetId dans
+  le même SharedPreferences commit. La réouverture exige ce reçu et l'absence
+  brute de la clé compte. Tout appel ordinaire porte l'incarnation attendue.
+  Après réouverture, un ancien clear/reopen/ticket ne peut pas effacer ou écrire
+  le nouvel A. L'alias Keystore partagé n'est jamais supprimé ; création de clé,
+  chiffrement/écriture et fence partagent le moniteur. Cache JS lié à l'époque.
+
+Alternatives rejetées : retirer A de requiredOwners, autoriser un reset via
+booléen public d'initCrypto, écrire le sel avant son allocation durable, effacer
+les marqueurs en rollback de login, ajouter un second record de contrôle,
+réouvrir le natif au simple reload, traiter `loadAccounts()==[]` comme preuve,
+réutiliser un ancien clear après une nouvelle écriture, rendre le lock à chaud.
+
+Objections corrigées : preuves LS périmées à l'intérieur du CAS ; transition
+trop générique ; ABA de session avec appelant faible ; collision a/a-b dans les
+indices crypto ; getters de parseur ; budget de révision ; grammaire UUID
+historique ; course de première création Keystore ; scope natif injecté par
+spread ; fenêtre de reconnexion si reload retardé. Les droits B pending sont
+comparés intacts lors de l'effacement, pas encore consommés par cette recette.
+
+Preuves et limites : `npm run verify` vert (268 suites, 3 087 tests + 1 ignoré),
+60 tests ciblés lock/Gate/cycle, build APK debug/test et tests JVM verts. Vrai
+bouton, useAuth, KDF, lecture/écriture historique/fichier/projet, deux cycles A
+migré ou post-cutover et B writable ; documents et IndexedDB simulés en Vitest,
+navigation JSDOM non implémentée, natif simulé dans cette verticale web.
+
+Recette native distincte réellement exécutée sur AVD API35 neuf
+`ArtyResetRecipe_API35_20260906` : quatre méthodes d'instrumentation réussies,
+après réinstallation des seuls APK synthétiques. La première phase affirme
+que l'alias est absent avant huit chiffrements concurrents ; phases 2/3
+affirment un PID différent. SharedPreferences et AndroidKeyStore réels,
+deux cycles, B/a:b déchiffrables, late tickets/rejeux refusés, commit échoué
+avant/après écriture et reçus malformés. Pas de parcours UI APK ni réseau IMAP.
+
+Reproduction sur une installation de test vierge, jamais un téléphone client :
+assembler `:app:assembleDebug :app:assembleDebugAndroidTest`, installer les
+deux APK sur l'émulateur explicitement identifié, puis appeler
+`am instrument -w -r -e class com.arty.app.MailScopeStorageInstrumentedTest#METHOD
+com.arty.app.test/androidx.test.runner.AndroidJUnitRunner` avec METHOD =
+phaseOne, phaseTwo, phaseThree, failedCommitsAndMalformedReceiptRemainClosed.
+Forcer l'arrêt de com.arty.app entre phases ; les trois phases ordonnées sont
+ignorées dans un batch non sélectionné, qui ne saurait prouver un redémarrage.
+
+Actions avant activation : supersession v3 avant purge, restauration/sync,
+recette UI Android et limites anciens clients. Préexistant signalé par la
+contre-revue : logout purge encore les brouillons par préfixe `${owner}:` dans
+composerDrafts.ts ; le voisin a:b demande correction/recette dédiée. Les switches
+par service de cette verticale ne prouvent pas sa conservation au vrai logout.
+Protection coopérative, pas atomicité inter-DB/LS ni défense contre un client
+ancien/malveillant réécrivant arbitrairement le stockage. Repli du candidat OFF :
+revert via PR/CI/Pages, conserver reçus/tombstones ; ne pas downgrader ou purger
+un stockage v6/v7 pour revenir à une version ancienne.

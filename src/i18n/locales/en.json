@@ -60,7 +60,7 @@
       "back": "Go back without erasing",
       "working": "Checking the request and, if authorized, cleaning declared local copies…",
       "failed": "Verification or cleanup did not finish. No new server deletion request was sent. Keep storage and retry; if the issue persists, seek help. On Android, an application update may be required.",
-      "done": "Cleanup of the declared local copies is verified. Reload to open other accounts. Recreating the erased account remains blocked.",
+      "done": "Cleanup of the declared local copies is verified. Reload to return to sign-in. A new local workspace can be created if this erasure has a compatible reset right; an older procedure does not create that right automatically.",
       "disabled": "This version cannot resume this cleanup yet. No private data is opened. A compatible version is required.",
       "resume": "Resume local cleanup"
     },

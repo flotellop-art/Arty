@@ -164,6 +164,26 @@ describe('workspace gate is before any private hooks/import/seed', () => {
     await screen.findByText('workspaceWindow.lostTitle'); expect(cleanupEffect).toHaveBeenCalledOnce()
     expect(screen.queryByText('private-ready')).toBeNull(); expect(screen.queryByText('workspaceWindow.retry')).toBeNull()
   })
+
+  it('explicit retirement unmounts private effects but never hands the lock to a warm or second document', async () => {
+    const locks = sharedWorkspaceLocks(), cleanupEffect = vi.fn(), controller = createDocumentWorkspaceLock(() => locks.source)
+    const admission = admissionFor(controller)
+    window.history.replaceState({}, '', '/auth/callback?code=synthetic&state=exact#fragment')
+    sessionStorage.setItem('synthetic-verifier', 'keep')
+    const href = window.location.href
+    function Content() { useEffect(() => cleanupEffect, []); return <div>private-ready</div> }
+    render(<DocumentWorkspaceGate controller={controller} admission={admission} Content={Content} />)
+    await screen.findByText('private-ready')
+    await act(async () => controller.retire())
+    await screen.findByText('workspaceWindow.lostTitle')
+    expect(cleanupEffect).toHaveBeenCalledOnce(); expect(screen.queryByText('private-ready')).toBeNull()
+    expect(screen.getByRole('button', { name: 'workspaceWindow.reload' })).toBeVisible()
+    expect(screen.queryByText('workspaceWindow.retry')).toBeNull()
+    expect(admission.getSnapshot()).toBe('lost'); expect(() => admission.claimMaintenance()).toThrow()
+    expect(await controller.acquire()).toBe('lost')
+    expect(await createDocumentWorkspaceLock(() => locks.source).acquire()).toBe('busy')
+    expect(window.location.href).toBe(href); expect(sessionStorage.getItem('synthetic-verifier')).toBe('keep')
+  })
 })
 import 'fake-indexeddb/auto'
 import { IDBFactory } from 'fake-indexeddb'

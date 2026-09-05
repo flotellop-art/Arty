@@ -38,8 +38,8 @@ export function AccountDeletionPanel({ open, onComplete }: { open: boolean; onCo
     }
     setBusy(true); setError(false)
     try {
-      if (confirm === 'local') await wipeLocalAccount()
-      else await deleteAccount()
+      const outcome = confirm === 'local' ? await wipeLocalAccount() : await deleteAccount()
+      if (outcome === 'reload-required') { window.location.reload(); return }
       if (mounted.current) onComplete()
     } catch {
       if (!mounted.current) return

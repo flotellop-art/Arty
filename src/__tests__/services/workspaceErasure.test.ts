@@ -13,7 +13,7 @@ vi.unmock('../../services/workspaceWriter/runtime')
 vi.mock('../../services/workspaceWriter/activation', () => ({ ISOLATED_WORKSPACE_ENABLED: true }))
 const native = vi.hoisted(() => ({ android: false, clear: vi.fn() }))
 vi.mock('@capacitor/core', () => ({ Capacitor: { isNativePlatform: () => native.android, getPlatform: () => 'android' },
-  registerPlugin: () => ({ clearAccountsForErasure: native.clear }) }))
+  registerPlugin: () => ({ clearAccountsForErasure: native.clear, clearAccountsForReset: native.clear }) }))
 let runtime: typeof import('../../services/workspaceWriter/runtime'), lock: ReturnType<typeof deferred>
 const salt = JSON.stringify(Array(16).fill(7)), nonce = '76ba201a-547f-44a1-9000-111111111111', operationId = '76ba201a-547f-44a1-9000-222222222222'
 const receipt = (owner = 'a') => ({ owner, operationId, nonce, serverConfirmed: true, pending: [] })
@@ -62,13 +62,13 @@ async function seed() {
 function crash(phase: string) {
   const original = IDBObjectStore.prototype.put
   return vi.spyOn(IDBObjectStore.prototype, 'put').mockImplementation(function (this: IDBObjectStore, value, key) {
-    if (this.transaction.db.name === 'arty-workspace-control' && (value.erasure?.phase === phase || (phase === 'commit' && value.version === 2))) throw new Error('synthetic-crash')
+    if (this.transaction.db.name === 'arty-workspace-control' && (value.erasure?.phase === phase || (phase === 'commit' && value.version === 7))) throw new Error('synthetic-crash')
     return original.call(this, value, key)
   })
 }
 /** Independent old-format fixture: no call into the new erasure writer or
  * erasureLocalSnapshot. The v4 domain includes BOTH raw fence locations. */
-async function reserveHistoricalV4(layout: IsolatedWorkspaceLayout) {
+async function reserveHistoricalV4(layout: IsolatedWorkspaceLayout, version: 4 | 5 = 4) {
   const initial = await control(), stores = []
   for (const [copy, filesName, projectsName] of [['legacy', 'arty-files', 'arty-projects'], ['active', layout.files.name, layout.projects.name], ['journal', migrationDatabaseName(layout.generation), migrationDatabaseName(layout.generation)]]) {
     for (const store of RAW_STORES) {
@@ -78,9 +78,10 @@ async function reserveHistoricalV4(layout: IsolatedWorkspaceLayout) {
       const rows = []
       while (cursor) { rows.push([cursor.key, cursor.value]); cursor = await cursor.continue() }
       await tx.done; db.close()
-      let hash = await digestText('arty-erasure-protected-store-v1')
+      let hash = await digestText(version === 5 && copy === 'active' && store === 'meta' ? 'arty-erasure-protected-active-meta-v5' : 'arty-erasure-protected-store-v1')
       for (const [key, value] of rows) {
         if (value.owner === 'a' || value.ownerKey === 'arty-a') continue
+        if (version === 5 && copy === 'active' && store === 'meta' && key === 'erasure-fence') continue
         hash = await digestText(JSON.stringify([hash, await digestRaw([key, value])])) ; count++
       }
       stores.push({ copy, store, hash, count })
@@ -91,14 +92,17 @@ async function reserveHistoricalV4(layout: IsolatedWorkspaceLayout) {
     localSource: plan.localSource.filter(([key]: [string]) => key !== 'arty-a-conversations-enc-locked') }
   const ownKeys = ['arty-a-conversations-enc-locked', 'arty-a-api-keys', 'arty-composer-draft:a:home', workspaceDataKey(layout, 'a', 'conversations-enc-locked'), workspaceDataKey(layout, 'a', 'crypto-salt')]
   const pairs = localPairs().filter(([key]) => !ownKeys.includes(key)).map(([key, value]) => [key, key === 'arty-known-sessions' ? JSON.stringify(JSON.parse(value).filter((s: { userId: string }) => s.userId !== 'a')) : value])
-  const v4 = { format: 'arty-workspace-control', version: 4, layout: 'isolated-v1', state: 'erasing', revision: initial.revision + 1, generation: layout.generation, requiredOwners: initial.requiredOwners,
-    erasure: { owner: 'a', operationId, nonce, phase: 'reserved', proof: { stores, localHash: await digestRaw(pairs), planHash: await digestRaw(redacted) } } }
+  const active = await openDB(layout.projects.name), activeFence = await active.get('meta', 'erasure-fence'); active.close()
+  const v4 = { format: 'arty-workspace-control', version, layout: 'isolated-v1', state: 'erasing', revision: initial.revision + 1, generation: layout.generation, requiredOwners: initial.requiredOwners,
+    erasure: { owner: 'a', operationId, nonce, phase: 'reserved', proof: { stores,
+      localHash: await digestRaw(version === 5 ? ['arty-erasure-local-v5', pairs.filter(([key]) => key !== 'arty-project-erasure-fence')] : pairs), planHash: await digestRaw(redacted) },
+      ...(version === 5 ? { authority: receipt(), fence: { initialLocal: localStorage.getItem('arty-project-erasure-fence'), initialActive: activeFence ?? null, target: '67ba201a-547f-44a1-9000-111111111111' } } : {}) } }
   const db = await openDB('arty-workspace-control'); await db.put('meta', v4, 'workspace'); db.close()
   return v4
 }
 beforeEach(async () => {
   vi.restoreAllMocks(); localStorage.clear(); sessionStorage.clear(); globalThis.indexedDB = new IDBFactory()
-  native.android = false; native.clear.mockReset().mockResolvedValue({ protocol: 1 })
+  native.android = false; native.clear.mockReset().mockImplementation(async (options: { resetId?: string }) => ({ protocol: 2, resetId: options.resetId }))
   vi.stubGlobal('fetch', vi.fn(() => { throw new Error('network-forbidden') })); await newDocument()
 })
 afterEach(async () => { await endDocument(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
@@ -136,10 +140,10 @@ describe('committed generation cold erasure', () => {
   it.each(['local', 'native', 'verified', 'commit'])('resumes after %s including loss of A session and source receipt', async phase => {
     const layout = await seed(), fault = crash(phase)
     await expect((await actor()).resume()).rejects.toThrow('synthetic-crash'); fault.mockRestore()
-    const header = await control(); expect(header.version).toBe(4)
+    const header = await control(); expect(header.version).toBe(6)
     const db = await openDB(layout.projects.name); expect(await db.get('meta', ['erasing', 'a'])).toBeUndefined(); db.close()
     await newDocument(); expect(await runtime.workspaceAdmission.admit()).toBe('erasure')
-    await (await actor()).resume(); expect((await control()).version).toBe(2)
+    await (await actor()).resume(); expect((await control()).version).toBe(7)
   })
   it.each(['files', 'projects', 'documents', 'usage', 'meta'])('retries a crash deleting active %s without rebaselining B', async store => {
     const layout = await seed(), original = IDBObjectStore.prototype.delete
@@ -148,16 +152,16 @@ describe('committed generation cold erasure', () => {
       return original.call(this, key)
     })
     await expect((await actor()).resume()).rejects.toThrow('delete-crash'); fault.mockRestore()
-    await newDocument(); await (await actor()).resume(); expect((await control()).version).toBe(2)
+    await newDocument(); await (await actor()).resume(); expect((await control()).version).toBe(7)
   })
   it.each(['old-plugin', 'failure', 'wrong-protocol'])('native %s retains receipt and supports explicit retry', async kind => {
     await seed(); native.android = true
     if (kind === 'wrong-protocol') native.clear.mockResolvedValue({ protocol: 0 })
     else native.clear.mockRejectedValue(new Error(kind))
     const worker = await actor(); await expect(worker.resume()).rejects.toThrow()
-    expect((await control()).version).toBe(4)
-    native.clear.mockResolvedValue({ protocol: 1 }); await worker.resume(); expect((await control()).version).toBe(2)
-    expect(native.clear).toHaveBeenLastCalledWith({ scope: 'a' })
+    expect((await control()).version).toBe(6)
+    native.clear.mockImplementation(async (options: { resetId?: string }) => ({ protocol: 2, resetId: options.resetId })); await worker.resume(); expect((await control()).version).toBe(7)
+    expect(native.clear).toHaveBeenLastCalledWith({ scope: 'a', resetId: expect.any(String), previousResetId: null })
   })
   it.each([false, null, { ...receipt(), serverConfirmed: false }])('uncertain/falsy receipt %j refuses before mutation', async value => {
     const layout = await seed(); await setReceipt(layout, value); const before = localPairs(), initial = await control()
@@ -184,34 +188,34 @@ describe('committed generation cold erasure', () => {
       if (this.transaction.db.name === 'arty-workspace-control' && value.erasure?.phase === 'verified') localStorage.setItem(`arty-${changed === 'A' ? 'a' : 'a-b'}-api-keys`, 'late')
       return original.call(this, value, key)
     })
-    await expect((await actor()).resume()).rejects.toThrow(); expect((await control()).version).toBe(4)
+    await expect((await actor()).resume()).rejects.toThrow(); expect((await control()).version).toBe(6)
   })
   it('refuses B tamper after a crash, never overwrites or silently rebaselines', async () => {
     const layout = await seed(), fault = crash('local')
     await expect((await actor()).resume()).rejects.toThrow(); fault.mockRestore()
     const db = await openDB(layout.files.name); await db.put('files', { fileId: 'a-b', ownerKey: 'arty-a-b', encryptedData: 'tampered' }); db.close()
-    await newDocument(); await expect((await actor()).resume()).rejects.toThrow(); expect((await control()).version).toBe(4)
+    await newDocument(); await expect((await actor()).resume()).rejects.toThrow(); expect((await control()).version).toBe(6)
   })
-  it('reserves v5 before repairing a v2 fence, then returns to v2', async () => {
+  it('reserves v6 before repairing a v2 fence, then grants one v7 reset', async () => {
     const layout = await seed(); localStorage.setItem('arty-project-erasure-fence', 'interrupted-fence')
     const fault = crash('fenced')
     await expect((await actor()).resume()).rejects.toThrow('synthetic-crash'); fault.mockRestore()
-    const h = await control(); expect(h.version).toBe(5); expect(h.erasure.phase).toBe('reserved')
+    const h = await control(); expect(h.version).toBe(6); expect(h.erasure.phase).toBe('reserved')
     const db = await openDB(layout.projects.name)
     expect(await db.get('projects', ['a', 'p'])).toBeDefined()
     expect(await db.get('meta', 'erasure-fence')).toBe(h.erasure.fence.target); db.close()
     expect(localStorage.getItem('arty-project-erasure-fence')).toBe(h.erasure.fence.target)
-    await newDocument(); await (await actor()).resume(); expect((await control()).version).toBe(2)
+    await newDocument(); await (await actor()).resume(); expect((await control()).version).toBe(7)
   })
-  it('LS quota leaves durable v4 after source receipt removal; retry preserves B', async () => {
+  it('LS quota leaves durable v6 after source receipt removal; retry preserves B', async () => {
     await seed(); const original = Storage.prototype.setItem
     const fault = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (this: Storage, key, value) {
       if (key === 'arty-known-sessions') throw new DOMException('full', 'QuotaExceededError')
       original.call(this, key, value)
     })
     const worker = await actor(); await expect(worker.resume()).rejects.toMatchObject({ name: 'QuotaExceededError' }); fault.mockRestore()
-    expect((await control()).version).toBe(4)
-    await worker.resume(); expect((await control()).version).toBe(2)
+    expect((await control()).version).toBe(6)
+    await worker.resume(); expect((await control()).version).toBe(7)
     expect(JSON.parse(localStorage.getItem('arty-known-sessions')!)[0].userId).toBe('a-b')
   })
   it('acknowledges its own actually committed final record after timeout, without a second purge', async () => {
@@ -222,21 +226,21 @@ describe('committed generation cold erasure', () => {
       return originalTimer(fn, ms)
     }) as typeof setTimeout)
     const fault = vi.spyOn(IDBObjectStore.prototype, 'put').mockImplementation(function (this: IDBObjectStore, value, key) {
-      if (this.transaction.db.name === 'arty-workspace-control' && value.version === 2) this.transaction.addEventListener('complete', () => expire(), { once: true })
+      if (this.transaction.db.name === 'arty-workspace-control' && value.version === 7) this.transaction.addEventListener('complete', () => expire(), { once: true })
       return originalPut.call(this, value, key)
     })
     const worker = await actor(); await expect(worker.resume()).rejects.toThrow('workspace_erasure_cancelled'); fault.mockRestore()
     const final = await control(), writes = vi.spyOn(IDBObjectStore.prototype, 'put'), deletes = vi.spyOn(IDBObjectStore.prototype, 'delete')
-    expect(final.version).toBe(2); await worker.resume()
+    expect(final.version).toBe(7); await worker.resume()
     expect(writes).not.toHaveBeenCalled(); expect(deletes).not.toHaveBeenCalled(); expect(await control()).toEqual(final)
   })
   it('retired document cannot finalize after a late native completion', async () => {
     await seed(); native.android = true
-    const nativePending = deferred(); native.clear.mockImplementation(async () => { await nativePending.promise; return { protocol: 1 } })
+    const nativePending = deferred(); native.clear.mockImplementation(async (options: { resetId: string }) => { await nativePending.promise; return { protocol: 2, resetId: options.resetId } })
     const worker = await actor(), pending = worker.resume(), rejected = expect(pending).rejects.toThrow()
     await vi.waitFor(() => expect(native.clear).toHaveBeenCalledOnce()); await endDocument(); await rejected
-    nativePending.resolve(); await Promise.resolve(); expect((await control()).version).toBe(4)
-    await newDocument(); native.clear.mockResolvedValue({ protocol: 1 }); await (await actor()).resume(); expect((await control()).version).toBe(2)
+    nativePending.resolve(); await Promise.resolve(); expect((await control()).version).toBe(6)
+    await newDocument(); native.clear.mockImplementation(async (options: { resetId?: string }) => ({ protocol: 2, resetId: options.resetId })); await (await actor()).resume(); expect((await control()).version).toBe(7)
   })
   it.each(['coherent', 'aborted-purge'])('real %s → new document recovery → B history/file/project decrypt AND project writes commit', async scenario => {
     expect(await runtime.workspaceAdmission.admit()).toBe('ready')
@@ -309,6 +313,29 @@ describe('committed generation cold erasure', () => {
     if (kind === 'coherent') { await (await actor()).resume(); expect((await control()).version).toBe(2) }
     else { await expect((await actor()).resume()).rejects.toThrow(); expect(put).not.toHaveBeenCalled(); expect(remove).not.toHaveBeenCalled(); expect(await control()).toEqual(header) }
   })
+  it('independent historical v5 resumes unchanged and grants NO reset right', async () => {
+    const layout = await seed(); localStorage.setItem('arty-project-erasure-fence', 'old-incomplete-write')
+    const old = await reserveHistoricalV4(layout, 5), fault = crash('local')
+    await newDocument(); await expect((await actor()).resume()).rejects.toThrow('synthetic-crash'); fault.mockRestore()
+    expect((await control()).version).toBe(5); expect((await control()).erasure.proof).toEqual(old.erasure.proof)
+    await newDocument(); await (await actor()).resume()
+    expect((await control()).version).toBe(2); expect(await control()).not.toHaveProperty('resets')
+  })
+  it('historical uppercase/unrestricted UUID operation remains opaque through v6 and v7', async () => {
+    const layout = await seed(), oldId = 'ABCDEF12-ABCD-0000-0000-ABCDEF123456'
+    await setReceipt(layout, { ...receipt(), operationId: oldId })
+    await (await actor()).resume()
+    expect((await control()).resets[0]).toMatchObject({ operationId: oldId, phase: 'available' })
+  })
+  it('erasure preserves a different owner pending reset bundle byte-for-byte', async () => {
+    const layout = await seed(), initial = await control(), other = { owner: 'a-b', operationId, resetId: '67ba201a-547f-44a1-9000-222222222222', phase: 'provisioning',
+      bundle: { salt, check: 'v2:' + 'A'.repeat(47) + '=', version: 'v2' } }
+    const db = await openDB('arty-workspace-control'); await db.put('meta', { ...initial, version: 7, resets: [other] }, 'workspace'); db.close()
+    await newDocument(); await (await actor()).resume()
+    expect((await control()).resets.find((r: { owner: string }) => r.owner === 'a-b')).toEqual(other)
+    expect((await control()).resets.find((r: { owner: string }) => r.owner === 'a').phase).toBe('available')
+    expect(layout.requiredOwners).toContain('a-b')
+  })
   it('cold uncertain GET confirms exact record durably before any purge; retry never GETs or POSTs again', async () => {
     const layout = await seed(), r = remoteReceipt(); await setReceipt(layout, r)
     expect(await runtime.workspaceAdmission.admit()).toBe('erasure'); expect(runtime.workspaceAdmission.getErasureMode()).toBe('uncertain')
@@ -348,9 +375,9 @@ describe('committed generation cold erasure', () => {
     const layout = await seed(), r = kind === 'legacy-unknown' ? { ...receipt(), serverConfirmed: false } : { ...remoteReceipt('not-sent'), ...(kind === 'local-only' ? { localOnly: true as const } : {}) }
     await setReceipt(layout, r); native.android = true; native.clear.mockRejectedValue(new Error('native unavailable'))
     await expect((await actor()).resume(kind === 'local-only' ? 'resume' : 'local-only')).rejects.toThrow()
-    const h = await control(); expect(h.version).toBe(5); expect(h.erasure.authority).toEqual({ ...r, localOnly: true }); expect(h.erasure.authority.serverConfirmed).toBe(false)
-    await newDocument(); native.clear.mockResolvedValue({ protocol: 1 }); await (await actor()).resume()
-    expect((await control()).version).toBe(2); expect(JSON.stringify(await control())).not.toContain('capability'); expect(fetch).not.toHaveBeenCalled()
+    const h = await control(); expect(h.version).toBe(6); expect(h.erasure.authority).toEqual({ ...r, localOnly: true }); expect(h.erasure.authority.serverConfirmed).toBe(false)
+    await newDocument(); native.clear.mockImplementation(async (options: { resetId?: string }) => ({ protocol: 2, resetId: options.resetId })); await (await actor()).resume()
+    expect((await control()).version).toBe(7); expect(JSON.stringify(await control())).not.toContain('capability'); expect(fetch).not.toHaveBeenCalled()
   })
   it('uncertain explicit local erasure keeps its LAST remote secret through native failure and document loss', async () => {
     const layout = await seed(), r = remoteReceipt(); await setReceipt(layout, r)
@@ -359,7 +386,7 @@ describe('committed generation cold erasure', () => {
     const h = await control(); expect(h.erasure.authority.remote).toEqual(r.remote)
     const db = await openDB(layout.projects.name); expect(await db.get('meta', ['erasing', 'a'])).toBeUndefined(); db.close()
     await newDocument(); expect(await runtime.workspaceAdmission.admit()).toBe('erasure'); expect(runtime.workspaceAdmission.getErasureMode()).toBe('local-only')
-    native.clear.mockResolvedValue({ protocol: 1 }); await (await actor()).resume(); expect(fetch).not.toHaveBeenCalled()
+    native.clear.mockImplementation(async (options: { resetId?: string }) => ({ protocol: 2, resetId: options.resetId })); await (await actor()).resume(); expect(fetch).not.toHaveBeenCalled()
   })
   it('not-sent cancellation changes only the exact marker, never purges or sends a request', async () => {
     const layout = await seed(); await setReceipt(layout, remoteReceipt('not-sent'))
@@ -399,7 +426,7 @@ describe('committed generation cold erasure', () => {
     await worker.resume('cancel-not-sent'); expect(writes).not.toHaveBeenCalled(); expect(deletes).not.toHaveBeenCalled(); expect(fetch).not.toHaveBeenCalled()
     await newDocument(); expect(await runtime.workspaceAdmission.admit()).toBe('ready')
   })
-  it.each(['reserved', 'idb-committed', 'ls-committed', 'fenced', 'final'])('v5 interruption at %s keeps one target/proof and resumes in a fresh document', async phase => {
+  it.each(['reserved', 'idb-committed', 'ls-committed', 'fenced', 'final'])('v6 interruption at %s keeps one target/proof and resumes in a fresh document', async phase => {
     const layout = await seed(); localStorage.setItem('arty-project-erasure-fence', 'interrupted')
     const put = IDBObjectStore.prototype.put, set = Storage.prototype.setItem
     const fault = phase === 'reserved' ? vi.spyOn(IDBObjectStore.prototype, 'put').mockImplementation(function (this: IDBObjectStore, value, key) {
@@ -410,7 +437,7 @@ describe('committed generation cold erasure', () => {
       return set.call(this, key, value)
     }) : phase === 'fenced' ? vi.spyOn(IDBObjectStore.prototype, 'delete').mockImplementation(() => { throw new Error('interruption') }) : crash(phase === 'ls-committed' ? 'fenced' : 'commit')
     await expect((await actor()).resume()).rejects.toThrow(); fault.mockRestore()
-    const h = await control(); expect(h.version).toBe(5)
+    const h = await control(); expect(h.version).toBe(6)
     const db = await openDB(layout.projects.name), local = localStorage.getItem('arty-project-erasure-fence'), active = await db.get('meta', 'erasure-fence')
     if (phase === 'reserved') { expect(local).toBe('interrupted'); expect(active).toBeUndefined() }
     else if (phase === 'idb-committed') { expect(local).toBe('interrupted'); expect(active).toBe(h.erasure.fence.target) }
@@ -419,10 +446,10 @@ describe('committed generation cold erasure', () => {
     db.close(); await newDocument()
     const checkpoints: unknown[] = []
     vi.spyOn(IDBObjectStore.prototype, 'put').mockImplementation(function (this: IDBObjectStore, value, key) {
-      if (value?.version === 5) checkpoints.push({ proof: value.erasure.proof, fence: value.erasure.fence })
+      if (value?.version === 6) checkpoints.push({ proof: value.erasure.proof, fence: value.erasure.fence })
       return put.call(this, value, key)
     })
-    await (await actor()).resume(); expect((await control()).version).toBe(2)
+    await (await actor()).resume(); expect((await control()).version).toBe(7)
     for (const checkpoint of checkpoints) expect(checkpoint).toEqual({ proof: h.erasure.proof, fence: h.erasure.fence })
   })
   it.each([undefined, null, false, 0, ''])('present malformed active fence %j is not absence or repairable', async value => {
@@ -430,7 +457,7 @@ describe('committed generation cold erasure', () => {
     const initial = await control(), before = localPairs()
     await expect((await actor()).resume()).rejects.toThrow(); expect(await control()).toEqual(initial); expect(localPairs()).toEqual(before)
   })
-  it.each(['B', 'legacy-fence', 'journal-fence', 'active-fence', 'nonce'])('v5 never rebaselines %s changed after reservation', async changed => {
+  it.each(['B', 'legacy-fence', 'journal-fence', 'active-fence', 'nonce'])('v6 never rebaselines %s changed after reservation', async changed => {
     const layout = await seed(); localStorage.setItem('arty-project-erasure-fence', 'interrupted')
     const put = IDBObjectStore.prototype.put
     const fault = vi.spyOn(IDBObjectStore.prototype, 'put').mockImplementation(function (this: IDBObjectStore, value, key) {
@@ -445,21 +472,21 @@ describe('committed generation cold erasure', () => {
     db.close(); await newDocument(); const writes = vi.spyOn(IDBObjectStore.prototype, 'put')
     await expect((await actor()).resume()).rejects.toThrow(); expect(writes).not.toHaveBeenCalled(); expect(await control()).toEqual(h)
   })
-  it('v5 rejects a foreign LS fence inserted at verified instead of publishing ready', async () => {
+  it('v6 rejects a foreign LS fence inserted at verified instead of publishing ready', async () => {
     await seed(); localStorage.setItem('arty-project-erasure-fence', 'interrupted')
     const put = IDBObjectStore.prototype.put
     vi.spyOn(IDBObjectStore.prototype, 'put').mockImplementation(function (this: IDBObjectStore, value, key) {
-      if (value?.version === 5 && value.erasure.phase === 'verified') localStorage.setItem('arty-project-erasure-fence', 'foreign')
+      if (value?.version === 6 && value.erasure.phase === 'verified') localStorage.setItem('arty-project-erasure-fence', 'foreign')
       return put.call(this, value, key)
     })
-    await expect((await actor()).resume()).rejects.toThrow(); expect((await control()).version).toBe(5); expect(localStorage.getItem('arty-project-erasure-fence')).toBe('foreign')
+    await expect((await actor()).resume()).rejects.toThrow(); expect((await control()).version).toBe(6); expect(localStorage.getItem('arty-project-erasure-fence')).toBe('foreign')
   })
-  it.each(['before-idb-repair', 'before-ls-repair'])('v5 refuses foreign fence injected at %s after the previous asynchronous attestation', async point => {
+  it.each(['before-idb-repair', 'before-ls-repair'])('v6 refuses foreign fence injected at %s after the previous asynchronous attestation', async point => {
     const layout = await seed(); localStorage.setItem('arty-project-erasure-fence', 'interrupted')
     const put = IDBObjectStore.prototype.put, digest = crypto.subtle.digest.bind(crypto.subtle)
     let reserved = false, activeCommitted = false, injected = false
     vi.spyOn(IDBObjectStore.prototype, 'put').mockImplementation(function (this: IDBObjectStore, value, key) {
-      if (value?.version === 5) this.transaction.addEventListener('complete', () => { reserved = true }, { once: true })
+      if (value?.version === 6) this.transaction.addEventListener('complete', () => { reserved = true }, { once: true })
       if (this.transaction.db.name === layout.projects.name && key === 'erasure-fence') this.transaction.addEventListener('complete', () => { activeCommitted = true }, { once: true })
       return put.call(this, value, key)
     })

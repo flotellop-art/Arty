@@ -108,6 +108,50 @@ réels ; préparer protocole et instrumentation sans fabriquer leurs résultats.
 
 ## Preuves par lot
 
+### W06 A3b.6 — nouvel espace local après effacement, candidat OFF
+
+Implémenté, validations locales terminées ; livraison PR/CI/Pages à consigner.
+Le vrai bouton isolé conserve l'autorité puis ferme irréversiblement l'ancien
+document, même si le rechargement tarde. Le nouveau document froid purge les
+copies avant de publier atomiquement un droit borné de nouvel espace local.
+
+- V6 pour les nouvelles suppressions, ready v7 avec droits A/B versionnés.
+  V4/v5 historiques inchangés et sans nouveau droit. A reste requiredOwner.
+  Seul le login explicite alloue une fois sel/check/version et consomme le droit
+  avant de publier crypto/grants/session. Reprises après écritures partielles,
+  refus de mauvaise clé ou de marqueur consommé disparu, aucun reset universel.
+- 17 tests de cycle : vrai bouton/useAuth/KDF et stores, A migré/post-cutover,
+  deux effacements, nouveau A et B déchiffrent/créent/modifient/relisent ; six
+  coupures, mutation LS pendant la transaction, CAS direct après ABA/perte du
+  document, grant échoué après consommation. Simulation IDB/documents/navigation,
+  pas une recette navigateur/Android de bout en bout.
+- Android : SharedPreferences commit atomique compte+reçu protocole2, incarnation
+  durable obligatoire après reset, anciens clear/reopen/tickets refusés, cache
+  JS protégé contre réponses tardives. Keystore partagé conservé et synchronisé.
+- Quatre tests d'instrumentation exécutés sur AVD API35 synthétique neuf, puis
+  rejoués après installation de test vierge : absence initiale d'alias vérifiée,
+  huit demandes concurrentes de chiffrement, deux cycles avec changements de PID,
+  autres scopes a-b/a:b conservés et déchiffrables, commits perdus/échoués et
+  reçus malformés. Tests JVM et compilation APK debug/test verts. Ni téléphone
+  utilisateur, ni IMAP réseau, ni parcours visuel WebView testés par ces essais.
+- Deux contre-revues GO limitées après corrections, dont race LS avant CAS,
+  garde ABA intrinsèque, grammaire historique et fermeture définitive du document.
+  Pré-requis restant identifié : logout et brouillons voisins a:b (hors diff),
+  à corriger avant activation ; pas de preuve générale du logout multi-compte.
+
+`npm run verify` réussi : 268 suites, 3 087 tests verts et 1 ignoré ; types
+front/back, no-CASA/add-on, couverture, build, worker Office réel. Couverture :
+statements 67,97 %, branches 62,91 %, fonctions 73,68 %, lignes 69,73 %.
+Décision et reproduction native détaillées dans `ADR_WORKSPACE_BACKUP.md` A3b.6.
+
+Checklist de livraison : deux GO et validation locale acquis ; CI et preview
+requises avant fusion, puis preuve Pages/GET publics et build APK. Flag
+`ISOLATED_WORKSPACE_ENABLED=false` inchangé, aucune migration/effacement réel.
+Repli sur régression legacy/login/natif : revert normal par PR/CI/Pages, aucun
+downgrade v6/v7 ni suppression de reçus. Sans télémétrie globale disponible,
+ne pas revendiquer de mesure générale d'erreurs/latence. W06 reste incomplet :
+supersession v3, restauration, synchronisation et recette UI/appareil restantes.
+
 ### W06 A3b.5b — reçu froid et fence v5, candidat OFF
 
 Implémentation complète du pont froid, de son UI et de deux recettes verticales,
