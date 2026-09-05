@@ -9,6 +9,7 @@ import { buildGpx, chainSegments, gpxFilename, haversineMeters, type LatLon } fr
 import { downloadOrShareFile } from '../services/native/shareFile'
 import { getUserLocation, isLocationConsentEnabled, requestLocationPermission } from '../services/native/location'
 import { getTrailSnapshot, saveTrailGeometry, type TrailSnapshot } from '../services/trailSnapshots'
+import { toast } from '../services/toast'
 
 // Visualiseur zéro coût : PLAN IGN v2 (France) en fond principal,
 // OpenTopoMap en comparaison et grille neutre en mode dégradé. La carte
@@ -285,8 +286,9 @@ export function TrailScreen() {
         gpxFilename(name, `circuit-${state.trail.id}`),
         { title: t('trailPage.shareTitle'), dialogTitle: t('trailPage.shareTitle') }
       )
-    } catch {
-      // Fermer le share sheet n'altère ni le snapshot ni la trace locale.
+    } catch (error) {
+      // Capacitor's explicit cancellation is benign, not an inventory/quota failure.
+      if (!(error instanceof Error && error.message === 'Share canceled')) toast('Export GPX impossible. Vérifiez le cache et fermez tout partage en cours.', 'error')
     }
   }, [state, t])
 

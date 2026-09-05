@@ -29,8 +29,8 @@ supplémentaire n'est implicite dans ce mandat.
 | W01 | Fondations | DOCX : paragraphes et tableaux ; XLSX : feuilles nommées et cellules identifiées. Contenu réellement injecté, accents conservés ; erreurs visibles sur ancien format, fichier chiffré/corrompu ou limite dépassée. Même résultat en nouvel envoi, historique et retry, dont Android et mode Europe. Aucun macro, formule, lien externe exécuté ; ressources bornées ; aucune pièce jointe en base64 dans localStorage. | Web déployé, PR #439 ; recette visuelle/appareil non vérifiée |
 | W02 | Confiance | Essai annoncé conforme au plan servi. BYOK gratuit distinct du Pro optionnel ; conseiller sans licence fictive. Promesses de stockage et de transit exactes FR/EN, page publique cohérente. Aucun quota ni accès serveur élargi implicitement. | Web déployé, PR #437 ; recette visuelle/appareil non vérifiée |
 | W03 | Catalogue | Un catalogue partagé aligne comparaison, sélecteurs, labels et éligibilité selon le compte (pas une garantie fournisseur). Modèle demandé, transmis par le proxy et signalé par le fournisseur distingués. Tests contre la dérive et contre l'accès premium hors droit. | Web déployé, PR #440 ; recette visuelle/appareil non vérifiée |
-| W04 | Projets | Créer/renommer/supprimer un projet, consignes propres, conversations associées, bibliothèque de documents réutilisables. Sources identifiables dans le contexte. Recherche bornée, absence de fichier et contexte tronqué explicites. Cloisonnement par compte et projet ; mode Europe conservé. | Bibliothèque web livrée #443 ; raccordement conversations validé localement, publication en cours ; recette visuelle/appareil non vérifiée |
-| W05 | Livrables | Export DOCX modifiable et XLSX de tableaux, en plus des exports existants. Téléchargements relus par un parseur indépendant ; cellules dangereuses neutralisées ; aucun HTML actif ni formule arbitraire. Formats et limites documentés. | À faire |
+| W04 | Projets | Créer/renommer/supprimer un projet, consignes propres, conversations associées, bibliothèque de documents réutilisables. Sources identifiables dans le contexte. Recherche bornée, absence de fichier et contexte tronqué explicites. Cloisonnement par compte et projet ; mode Europe conservé. | Bibliothèque web livrée #443 ; conversations web livrées #444 ; recette visuelle/appareil non vérifiée |
+| W05 | Livrables | Export DOCX modifiable et XLSX de tableaux, en plus des exports existants. Téléchargements relus par un parseur indépendant ; cellules dangereuses neutralisées ; aucun HTML actif ni formule arbitraire. Formats et limites documentés. | Implémentation et recette structurelle locale ; validation finale/publication en cours ; rendu Office/appareil non vérifié |
 | W06 | Continuité | Sauvegarde/restauration explicites puis synchronisation optionnelle multi-appareil chiffrée avant upload, avec secret détenu par l'utilisateur et récupération expliquée. Conflits non destructifs ; reprise hors-ligne ; logout/switch/delete et compte invité traités. Un export manuel seul ne valide pas la synchronisation. | À faire |
 | W07 | Comparaison | Comparer depuis une conversation avec contexte/documents autorisés ; conserver les résultats et poursuivre la réponse choisie sans perdre l'original. Erreurs/coûts/quotas de chaque panneau visibles ; EU et historique privé jamais contournés. | À faire |
 | W08 | Parcours métier | Trois parcours complets : synthèse documentaire, réponse client préparée, planification Agenda avec confirmation avant écriture. Écran de connexions indiquant disponible/non configuré/non pris en charge selon plateforme. Pas de Drive/Gmail OAuth restreint ni relais IMAP serveur. | À faire |
@@ -107,7 +107,102 @@ réels ; préparer protocole et instrumentation sans fabriquer leurs résultats.
 
 ## Preuves par lot
 
-### W04 — conversations documentaires, publication en cours
+### W05 — livrables modifiables, validation finale
+
+- Décision de périmètre : export des échanges déjà conservés, pas génération
+  d'un nouveau document par une IA ni éditeur intégré. Un bouton par réponse
+  assistant stable et une entrée Word/Excel dans les deux menus du fil.
+  Fragments `streaming` exclus ; réponses interrompues signalées et confirmées.
+- Compétence DOCX appliquée : docx-js **9.7.1** dans un worker externe Vite,
+  A4 explicite 11 906 × 16 838 DXA, marges 1 440, Arial, titres natifs avec
+  niveaux, listes numérotées/pucées natives et reprises à leur valeur initiale,
+  tableaux à largeurs DXA cohérentes, marges internes, fond `CLEAR`.
+  `remark-parse` 11.0.0 et `unified` 11.0.5 deviennent dépendances directes,
+  versions déjà présentes transitivement. Aucun nouvel avis npm : les 13 avis
+  préexistants restent à traiter séparément, sans `audit fix --force`.
+- Recette du véritable bundle worker : une VM sans DOM/process/require/fetch
+  a détecté la résolution erronée de `decode-named-character-reference` vers
+  sa variante navigateur DOM. Alias exact vers l'export pur (version 1.3.0
+  déclarée directement), aussi en développement. Le rendu Markdown principal
+  utilise le même décodeur pur. `npm run verify` exécute désormais le smoke
+  du bundle construit, sans réseau ; fichiers DOCX/XLSX synthétiques produits
+  par ce bundle et relus à nouveau avec les trois validateurs : PASS avant
+  publication. Cette VM ne constitue pas un navigateur ni une preuve de CSP.
+- Markdown/GFM source traité séparément par message, jamais le DOM du rendu.
+  HTML/images explicitement omis, liens rendus comme texte sans relation
+  externe, tableaux dans du code non reconnus comme tableaux de données.
+  Première définition de lien gagnante, même imbriquée ; aucune définition
+  d'un tour ne modifie un autre tour. Les annexes `[S1]`, noms, révisions,
+  hashes et lignes extraites restent propres au message, non certifiés.
+  Bibliothèque supprimée/détachée non relue et non exigée pour cet export.
+- XLSX : paquet OOXML minimal via fflate, feuilles sélectionnées et feuille
+  Informations, numéros de tableaux d'origine conservés. **Toutes les cellules
+  sont du texte typé `inlineStr`**, y compris nombres, `0012`, téléphones,
+  dates, expressions `=`, `+`, `@` et longs entiers. Aucune conversion de locale,
+  formule, macro, nom calculé ou lien externe. L'utilisateur peut convertir
+  les valeurs dans Excel ensuite. Aucun calcul créé, donc pas de formule à
+  recalculer. Littéraux `_x0041_` échappés selon ST_Xstring ; caractères XML
+  invalides/surrogates isolés refusés, pas remplacés silencieusement.
+- Ressources : 50 messages, 200 000 caractères source/métadonnées, 4 000 lignes
+  et 4 000 caractères/ligne, précontrôle linéaire des marqueurs/préfixes de
+  listes/citations AVANT micromark. Puis 20 000 nœuds/runs, profondeur 24,
+  400 000 caractères développés (liens compris), listes sur 6 niveaux,
+  32 tableaux/10 000 cellules, 1 000 lignes/16 colonnes par tableau et 8 192
+  caractères par cellule ; Word limité à 8 colonnes. Refus explicite sans
+  troncature. Worker isolé, concurrence un export, timeout parse 10 s/pack
+  30 s, sortie comprimée max 12 Mio. Ce sont des budgets de contenu et de
+  durée, pas une garantie absolue de pic mémoire ni de pagination.
+- Snapshot allowlisté avant toute attente, compte/epoch/crypto et fence
+  d'effacement capturés, contenu relu dans le cache canonique avant effet.
+  Changement de session/contenu, annulation, démontage ou timeout terminent
+  le worker ; l'aperçu est effacé et le consentement ne se réactive pas.
+  Validation durable avant livraison puis avant/après écriture native.
+- Livraison locale : téléchargement web ou Cache + FileProvider/feuille
+  système sur Android, nom physique UUID avec extension MIME correcte.
+  Verrou partagé avec JSON/MD/PDF/GPX ; inventaire doit être lisible ; 32
+  copies récentes maximum. Nettoyage des seuls fichiers reconnus âgés de
+  24 h au prochain export, pas une promesse de purge quand l'app est arrêtée.
+  Une écriture annulée avant partage est supprimée à son chemin exact
+  (échec de nettoyage possible : cache OS/prochain passage TTL). Une fois
+  le partage engagé, ne pas supprimer immédiatement ce qu'un destinataire
+  lit encore. Les fichiers sont non chiffrés ; les copies externes ne sont
+  pas révoquées et l'ouverture du partage ne prouve pas un enregistrement.
+  La génération reste locale ; un service destinataire peut ensuite uploader.
+- Erreurs des anciens exports rendues visibles, y compris GPX ; l'annulation
+  explicite Capacitor `Share canceled` reste distincte d'une panne/capacité.
+  Barre d'actions des bulles mise sur sa propre ligne repliable. Interface
+  de ce lot en français V1 (cible du mandat), traduction anglaise différée.
+- Contre-revues intégrées : OOM préparse avec listes/citations répétées,
+  expansion de liens, définitions imbriquées, sous-liste sans paragraphe
+  parent, course de capacité entre deux formats natifs, erreurs GPX avalées,
+  numéros/aperçu Excel incohérents et ancienne session encore affichée.
+- Recette locale : 64 tests ciblés/6 suites verts. Fichiers synthétiques
+  régénérés puis relus avec **python-docx 1.2.0**, **openpyxl 3.1.5** et
+  validateur DOCX/XSD de la compétence : PASS. Encodage UTF-8 explicite du
+  validateur Windows ; dépendance defusedxml 0.7.1 isolée dans le répertoire
+  temporaire de recette, pas installée globalement. Script reproductible
+  `scripts/check-editable-export-fixtures.py`. Cette preuve est structurelle,
+  pas une validation visuelle de Word/Excel ou d'une application destinataire.
+- Vérification globale finale : **231 fichiers / 2 413 tests**, typecheck
+  front/back, contrôles addon/no-CASA, couverture et build verts. Deux GO de
+  contre-revue, puis nouvelle revue du décodeur : 2 130 entités comparées sans
+  différence entre variantes DOM/pure et 37 tests Markdown/export verts.
+  Smoke du vrai worker ajouté à la CI et borné par un processus de 45 s.
+  Bundle principal 1 017,68 kB (gzip 318,75) ; Markdown 541,84 kB (gzip
+  167,90), coût du décodeur pur ; worker chargé à la demande, pas dans le
+  bundle principal. Avertissements de taille préexistants, pas masqués.
+- Repli : revert Git du lot, déploiement Pages normal ; aucune migration de
+  données. Les fichiers déjà exportés restent des copies utilisateur. Ne pas
+  modifier un ancien APK installé en place ; distribution d'un nouveau binaire.
+
+### W04 — conversations documentaires, web livré #444
+
+- Publication confirmée : PR #444, main
+  `efc6982fc4129eb7959a981e546668b9dd84537f`. CI `33952270263` et distribution
+  Android `33952270239` vertes. Pages production
+  `9882cbfd-0120-4002-8f5d-4c7ec507a8b0`. Vérification HTTP tryarty.com : 200,
+  bundle `/assets/index-Cm9RW2Mr.js`. Ni le HTTP ni la CI Android ne remplacent
+  une recette visuelle ou une installation réellement observée.
 
 - Depuis un projet, ouvrir une conversation liée ; dans un chat, associer ou
   détacher une bibliothèque. État lu à l'ouverture, au focus et sur Gérer :

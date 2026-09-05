@@ -6,6 +6,7 @@ import { getDateLocale } from '../utils/formatDate'
 import { formatModelName } from './modelLabels'
 import { getActiveUserId, getActiveSessionEpoch } from './userSession'
 import { hasProjectHistory, isProjectEU } from './projects/chatPolicy'
+import { toast } from './toast'
 
 function stripLegacyMailboxPayload<T extends Conversation['messages'][number]>(message: T): Omit<T, 'gmailSearch'> {
   const { gmailSearch: _removed, ...safe } = message as T & { gmailSearch?: unknown }
@@ -20,7 +21,7 @@ export function exportConversation(conv: Conversation): void {
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
   const filename = `arty-${sanitizeFilename(conv.title)}.json`
   // Reuse the share path on native so the user can pick a destination.
-  void downloadOrShare(blob, filename, 'application/json')
+  void downloadOrShare(blob, filename, 'application/json').catch(() => toast('Export impossible. Vérifiez le cache et fermez tout partage en cours.', 'error'))
 }
 
 export function buildConversationJsonExport(conv: Conversation) {
