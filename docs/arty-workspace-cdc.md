@@ -30,8 +30,8 @@ supplémentaire n'est implicite dans ce mandat.
 | W02 | Confiance | Essai annoncé conforme au plan servi. BYOK gratuit distinct du Pro optionnel ; conseiller sans licence fictive. Promesses de stockage et de transit exactes FR/EN, page publique cohérente. Aucun quota ni accès serveur élargi implicitement. | Web déployé, PR #437 ; recette visuelle/appareil non vérifiée |
 | W03 | Catalogue | Un catalogue partagé aligne comparaison, sélecteurs, labels et éligibilité selon le compte (pas une garantie fournisseur). Modèle demandé, transmis par le proxy et signalé par le fournisseur distingués. Tests contre la dérive et contre l'accès premium hors droit. | Web déployé, PR #440 ; recette visuelle/appareil non vérifiée |
 | W04 | Projets | Créer/renommer/supprimer un projet, consignes propres, conversations associées, bibliothèque de documents réutilisables. Sources identifiables dans le contexte. Recherche bornée, absence de fichier et contexte tronqué explicites. Cloisonnement par compte et projet ; mode Europe conservé. | Bibliothèque web livrée #443 ; conversations web livrées #444 ; recette visuelle/appareil non vérifiée |
-| W05 | Livrables | Export DOCX modifiable et XLSX de tableaux, en plus des exports existants. Téléchargements relus par un parseur indépendant ; cellules dangereuses neutralisées ; aucun HTML actif ni formule arbitraire. Formats et limites documentés. | Implémentation et recette structurelle locale ; validation finale/publication en cours ; rendu Office/appareil non vérifié |
-| W06 | Continuité | Sauvegarde/restauration explicites puis synchronisation optionnelle multi-appareil chiffrée avant upload, avec secret détenu par l'utilisateur et récupération expliquée. Conflits non destructifs ; reprise hors-ligne ; logout/switch/delete et compte invité traités. Un export manuel seul ne valide pas la synchronisation. | À faire |
+| W05 | Livrables | Export DOCX modifiable et XLSX de tableaux, en plus des exports existants. Téléchargements relus par un parseur indépendant ; cellules dangereuses neutralisées ; aucun HTML actif ni formule arbitraire. Formats et limites documentés. | Web déployé #445 ; recette structurelle vérifiée ; rendu Office/appareil non vérifié |
+| W06 | Continuité | Sauvegarde/restauration explicites puis synchronisation optionnelle multi-appareil chiffrée avant upload, avec secret détenu par l'utilisateur et récupération expliquée. Conflits non destructifs ; reprise hors-ligne ; logout/switch/delete et compte invité traités. Un export manuel seul ne valide pas la synchronisation. | A1 format en validation ; capture/restauration/UI/synchronisation non livrées |
 | W07 | Comparaison | Comparer depuis une conversation avec contexte/documents autorisés ; conserver les résultats et poursuivre la réponse choisie sans perdre l'original. Erreurs/coûts/quotas de chaque panneau visibles ; EU et historique privé jamais contournés. | À faire |
 | W08 | Parcours métier | Trois parcours complets : synthèse documentaire, réponse client préparée, planification Agenda avec confirmation avant écriture. Écran de connexions indiquant disponible/non configuré/non pris en charge selon plateforme. Pas de Drive/Gmail OAuth restreint ni relais IMAP serveur. | À faire |
 | W09 | Mobile et identité | PWA installable ; identité tryarty cohérente ; distribution Android authentifiée et documentée. Ne pas rediriger vers une app Play homonyme. Toute migration appId inclut signatures/OAuth/Firebase/liens vérifiés ; un APK distribué n'est pas une publication Store. | À faire |
@@ -107,7 +107,63 @@ réels ; préparer protocole et instrumentation sans fabriquer leurs résultats.
 
 ## Preuves par lot
 
-### W05 — livrables modifiables, validation finale
+### W06 — fondation de format A1, non utilisable seule
+
+- [Décision d'architecture](ADR_WORKSPACE_BACKUP.md) : A1 format/validation
+  locale, A2 capture/restauration additive journalisée/UI, B coffre optionnel.
+  Les stockages existants ne sont pas migrés par A1. Aucun appel réseau ni
+  écriture applicative, aucune clé liée à l'authentification utilisée.
+- Conteneur sans compression, HKDF-SHA256/AES-256-GCM avec code de récupération
+  aléatoire 32 octets, salt/UUID internes, nonce unique par frame, header/préfixe
+  authentifiés. Manifeste chiffré strict et objets binaires SHA-256 ; UTF-8 fatal,
+  tailles/ordre/EOF vérifiés, aucun résultat avant validation complète.
+- Limites : manifeste 4 Mio, objet 10 Mio, 256 objets, 512 frames, blocs 256 Kio,
+  60 Mio plaintext manifeste compris, archive 64 Mio. Limite de frames défensive
+  (les autres limites peuvent être atteintes avant). Pas de lecture du fichier
+  entier ; hash WebCrypto par objet, donc jusqu'à 10 Mio temporaires et résultat
+  Blob jusqu'à 60 Mio, sans promesse de pic RAM équivalent.
+- Deux objections reproduites puis corrigées : JSON très profond alloué avant
+  contrôle (préflight lexical avant JSON.parse ajouté) et méthode `toJSON`
+  cachée dans un tableau (prototype/propriétés vérifiés avant stringify).
+  Pas de parser Markdown implicite : `embeddedFiles` déclare les dépendances
+  d'image. A1 prouve le graphe déclaré ; A2 devra attester la complétude du
+  capteur et interdire tout fallback vers un ID brut du compte destinataire.
+- Fidélité : originaux/textes/version/descripteurs liés ; provenance historique
+  non incluse admise et signalée, sans prétendre que le fichier est supprimé.
+  EU/Google/document conservés, recadrages normalisés et sources non
+  relocalisables signalés. Intention rapide et preuve de fact-check allowlistées,
+  aucune reprise de traitement. Secrets de configuration exclus, pas les
+  secrets volontairement collés dans le texte ; autres exclusions dans l'ADR.
+- Vérification de stockage cloud : accès Wrangler local expiré. Pas de login
+  forcé, nouveau bucket ni service payant activé. R2/D1 restent à choisir après
+  inventaire authentifié ; cette attente n'empêche pas A2 local.
+- Recette A1 finale : **76 tests permanents** + **1 interop conditionnel**,
+  **77/77** exécutés avec fixture. Python `cryptography` **50.0.1** relit
+  l'archive TypeScript, compare 4 objets artificiels octet par octet et produit
+  une seconde archive relue par TypeScript. Script reproductible
+  `scripts/check-workspace-backup-fixture.py`, variable de test
+  `ARTY_BACKUP_FIXTURE_DIR`. Aucun contenu personnel ni vrai code utilisateur.
+  Test indépendant du reviewer à exactement 10 Mio également réussi.
+- Suite globale finale : **232 fichiers / 2 489 tests réussis**, 1 test interop
+  ignoré sans fixture (exécuté séparément ci-dessus). Typecheck front/back,
+  couverture, addon/no-CASA, build et smoke du worker Office verts. Un premier
+  run a rencontré le timeout D1 du test wallet 4 images (503 au lieu de 402) ;
+  7 tests wallet isolés puis suite complète réussis, aucun délai/quota de
+  production ni test de facturation modifié. Deux GO indépendants A1 après
+  les corrections. Aucun navigateur/appareil disponible dans l'inventaire de
+  contrôle ; la recette ne vaut pas validation visuelle ou restauration réelle.
+- Repli A1 : revert Git ; aucune migration, aucun changement de route/API,
+  aucun composant utilisateur branché. Ne pas annoncer « sauvegarde disponible »
+  ni « synchronisation terminée » sur la base de ces tests de format.
+
+### W05 — livrables modifiables, web livré #445
+
+- PR [#445](https://github.com/flotellop-art/Arty/pull/445), squash main
+  `a33167afa9ba0ac3b35510b077f1df6afb22f84c`, fusion le 5 septembre à 08:11 UTC.
+  CI PR `33953915756`, CI main `33954567051` et distribution Android
+  `33954567050` vertes. Pages production
+  `dd370ea1-99b6-4a88-a29e-ec16e047e42f`. HTTP tryarty.com : 200, bundle
+  `/assets/index-DuS-baT3.js`. Preuve de version servie, pas de recette visuelle.
 
 - Décision de périmètre : export des échanges déjà conservés, pas génération
   d'un nouveau document par une IA ni éditeur intégré. Un bouton par réponse
