@@ -1,4 +1,5 @@
-import { readWorkspaceStorageLayout, WorkspaceAdmissionError, WorkspaceRecoveryAvailable, type AdmissionFailure, type AdmissionGuard } from './control'
+import { readWorkspaceStorageLayout, WorkspaceAdmissionError, WorkspaceRecoveryAvailable, WorkspaceErasureRecoveryAvailable, erasureAdmissionBinding, type AdmissionFailure, type AdmissionGuard } from './control'
+import type { AccountErasureState } from '../accountErasureJournal'
 import type { MigrationHeader } from './migrationProtocol'
 import type { WorkspaceStorageLayout } from './layout'
 
@@ -10,6 +11,8 @@ export function createWorkspaceAdmission(guard: AdmissionGuard, read = readWorks
   let phase: WorkspaceAdmissionPhase = guard.signal.aborted ? 'lost' : 'idle', layout: WorkspaceStorageLayout | undefined
   let pending: Promise<WorkspaceAdmissionPhase> | undefined
   let recovery: Readonly<MigrationHeader> | undefined, erasure = false, claimed = false
+  let erasureMode: AccountErasureState = 'confirmed'
+  let erasureBinding: string | undefined
   const listeners = new Set<() => void>()
   const lost = () => guard.signal.aborted || phase === 'lost'
   const publish = (next: WorkspaceAdmissionPhase) => {
@@ -36,6 +39,13 @@ export function createWorkspaceAdmission(guard: AdmissionGuard, read = readWorks
     },
     getRecovery() { guard.assertLock(); return recovery },
     hasErasureRecovery() { guard.assertLock(); return erasure },
+    getErasureMode() { guard.assertLock(); return erasureMode },
+    /** Compare without handing the receipt/capability to the UI. Direct cold
+     * actors claimed from idle bind their own first snapshot instead. */
+    assertErasureSnapshot(generation: string, value: unknown) {
+      guard.assertLock()
+      if (erasureBinding !== undefined && erasureBinding !== erasureAdmissionBinding(generation, value)) throw new WorkspaceAdmissionError('lost')
+    },
     admit(): Promise<WorkspaceAdmissionPhase> {
       if (phase === 'lost') return Promise.resolve(phase)
       if (pending) return pending
@@ -56,6 +66,7 @@ export function createWorkspaceAdmission(guard: AdmissionGuard, read = readWorks
           layout = undefined
           if (error instanceof WorkspaceRecoveryAvailable && !lost()) recovery = error.header
           if (error instanceof WorkspaceAdmissionError && error.code === 'erasure' && !lost()) erasure = true
+          if (error instanceof WorkspaceErasureRecoveryAvailable && !lost()) { erasureMode = error.mode; erasureBinding = error.binding }
           publish(lost() ? 'lost' : error instanceof WorkspaceAdmissionError ? error.code : 'unavailable')
         }
         settle(phase)

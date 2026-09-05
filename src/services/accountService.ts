@@ -12,6 +12,7 @@ import { beginProjectErasure, assertProjectErasure, confirmServerProjectErasure,
   releaseFailedProjectErasure, markProjectErasureSent, readProjectErasureState, blockProjectOperations, purgeProjectsForAccount,
   type ProjectErasure, type ProjectErasureState } from './projects/store'
 import { ACCOUNT_ERASURE_PATH, ERASURE_OPERATION_HEADER, ERASURE_CAPABILITY_HEADER, ERASURE_SUBJECT_HEADER, createRemoteErasure } from './accountErasureProtocol'
+import { readConfirmedErasureReceipt } from './accountErasureReceipt'
 
 type AccountContext = { session: UserSession; assertCurrent(): void }
 function captureAccount(): AccountContext {
@@ -55,27 +56,7 @@ async function performServerErasure(context: AccountContext, lease: ProjectErasu
   try {
     const res = await fetch(apiUrl(ACCOUNT_ERASURE_PATH), { method: send ? 'POST' : 'GET', headers,
       cache: 'no-store', credentials: 'omit', redirect: 'error', signal: controller.signal })
-    if (!res.ok) throw new Error(`Erasure not confirmed (${res.status})`)
-    // Bound even a stale SPA/HTML or malformed response; HTTP 200 is no proof.
-    const reader = res.body?.getReader()
-    if (!reader) throw new Error('Erasure receipt unavailable')
-    let text = '', bytes = 0
-    const decoder = new TextDecoder('utf-8', { fatal: true })
-    try {
-      for (;;) {
-        const { done, value } = await reader.read()
-        if (done) break
-        bytes += value.byteLength
-        if (bytes > 512) throw new Error('Erasure receipt invalid')
-        text += decoder.decode(value, { stream: true })
-      }
-      text += decoder.decode()
-    } finally { await reader.cancel().catch(() => {}); reader.releaseLock() }
-    const receipt: unknown = JSON.parse(text)
-    if (!receipt || typeof receipt !== 'object' || Array.isArray(receipt)) throw new Error('Erasure receipt invalid')
-    const r = receipt as Record<string, unknown>
-    if (Object.keys(r).length !== 4 || r.protocol !== 1 || r.operationId !== lease.operationId ||
-      r.subjectHash !== intent.subjectHash || r.status !== 'confirmed') throw new Error('Erasure outcome remains unknown')
+    await readConfirmedErasureReceipt(res, lease.operationId, intent.subjectHash)
     // The validated result belongs to A even after a UI switch. Its durable
     // receipt may be recorded; the caller must still refuse local cleanup of B.
   } finally { clearTimeout(timeout) }

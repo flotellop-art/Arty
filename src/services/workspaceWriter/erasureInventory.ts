@@ -1,7 +1,7 @@
 import { isolatedWorkspaceLayout, workspaceDataKey } from './layout'
 import { parseOwnedLocalKey, parseLegacyWorkspaceKey, WORKSPACE_SLOTS } from './localOwnership'
 import { rawEncoding, digestRaw, localPairs, validateSessions, localTargets, RAW_STORES, observeRawOwner, type MigrationPlan, type RawStore, type RawRow } from './migrationInventory'
-import { parseConfirmedCleanup, type ErasureHeader } from './erasureProtocol'
+import { parseConfirmedCleanup, validErasureFence, type ErasureHeader } from './erasureProtocol'
 
 export const equalErasure = (a: unknown, b: unknown) => rawEncoding(a) === rawEncoding(b)
 export const refuseErasure = (): never => { throw new Error('workspace_erasure_unverifiable') }
@@ -32,7 +32,7 @@ export function erasureRowOwner(store: RawStore, row: RawRow, erasure: ErasureHe
   if (store === 'meta') {
     rawEncoding(row)
     if (row.key === 'erasure-fence' && typeof row.value === 'string' && row.value.length) return null
-    const receipt = parseConfirmedCleanup(row.value)
+    const receipt = 'authority' in erasure ? (equalErasure(row.value, erasure.authority) ? erasure.authority : null) : parseConfirmedCleanup(row.value)
     if (!Array.isArray(row.key) || row.key.length !== 2 || row.key[0] !== 'erasing' || !receipt || row.key[1] !== receipt.owner ||
       receipt.owner !== erasure.owner || receipt.operationId !== erasure.operationId || receipt.nonce !== erasure.nonce) return refuseErasure()
     return receipt.owner
@@ -46,11 +46,15 @@ export function erasureRowOwner(store: RawStore, row: RawRow, erasure: ErasureHe
 /** Logical B projection of shared session JSON; all B fields and list order
  * survive. Authenticated Email owner comes from its deterministic identifier,
  * never another Google account's display email. Values never enter control. */
-export async function erasureLocalSnapshot(generation: string, owner: string) {
+export async function erasureLocalSnapshot(generation: string, owner: string, version: 4 | 5 = 4) {
   const pairs = localPairs(), layout = isolatedWorkspaceLayout(generation, [])
   validateSessions(pairs)
   const protectedPairs: [string, string][] = [], changes: [string, string | null][] = []
   for (const [key, value] of pairs) {
+    if (version === 5 && key === 'arty-project-erasure-fence') {
+      if (!validErasureFence(value)) return refuseErasure()
+      continue // v5 attests this exact location separately; v4 hash is unchanged.
+    }
     if (key === 'arty-active-session') {
       if (JSON.parse(value).userId === owner) changes.push([key, null])
       else protectedPairs.push([key, value])
@@ -85,7 +89,7 @@ export async function erasureLocalSnapshot(generation: string, owner: string) {
     }
     if (belongs) changes.push([key, null]); else protectedPairs.push([key, value])
   }
-  const hash = await digestRaw(protectedPairs)
+  const hash = await digestRaw(version === 5 ? ['arty-erasure-local-v5', protectedPairs] : protectedPairs)
   if (!equalErasure(pairs, localPairs())) return refuseErasure()
   return { pairs, changes, hash }
 }

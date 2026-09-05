@@ -1009,3 +1009,87 @@ import privé ; réparer fences via un format v5/proof-domain explicite sans
 rebaseliner v4 ; puis poursuivre les autres gates A3b.4. Activation OFF inchangée.
 Le repli doit conserver le journal et les tombstones et ne jamais réintroduire
 un POST legacy implicite. Détails et reçus de livraison dans le CDC.
+
+##### Préparation du lot froid suivant — décision de travail, non implémentée
+
+Les contre-revues préparatoires ont retenu ces bornes pour éviter de réinventer
+la preuve au prochain lot. Elles ne valent pas validation du futur code.
+
+- Le crash réel à reproduire commence en v2 : `purgeProjectsForAccount` écrit
+  le fence LS avant `tx.done`, puis l'IDB peut abort. L'ancien v4 exige leur
+  égalité et son hash protège les deux emplacements : le relâcher rétroactivement
+  casserait la preuve. Un v4 cohérent garde son algorithme ; un v4 divergent
+  reste bloqué, jamais converti en v5 par une nouvelle baseline B.
+- Un nouveau v5 doit réserver durablement owner/opId/nonce/génération, valeurs
+  brutes initiales LS et meta active (absence distincte de "initial"), un UUID
+  cible unique T et les preuves B avant toute réparation. Son domaine de preuve
+  exclut seulement ces deux emplacements, attestés séparément. Les fences des
+  copies legacy et journal demeurent intégralement protégés par leurs hashes.
+- Ordre fixe IDB active puis LS : seules les paires `(L0,D0)`, `(L0,T)` et
+  `(T,T)` sont des états de reprise. Pas de produit cartésien des valeurs, pas
+  de nouvelle cible à chaque tentative. Checkpoint "fence réparé" durable avant
+  toute purge A ; après ce checkpoint, seule la paire T/T reste admissible.
+  Valeurs présentes null/false/0/chaîne vide invalides, non assimilées à absence.
+- Le pont de reçu froid doit rester GET-only, sans App/OAuth/session/crypto
+  privés, et prendre le même verrou document irréversible. Une seule intention
+  strictement reconnue ; résultat lié à opId/capability/subject puis confirmation
+  IDB durable de cette exacte opération. Missing/invalide/401/503 reste incertain.
+  Réparer un fence ne confirme jamais le distant ni n'autorise un nouveau sel.
+- Recette verticale requise : vraie migration A/B et vrai effacement projet
+  interrompu après LS mais avant commit IDB (attester l'abort), nouveau document,
+  reprise puis nouveau document B capable de déchiffrer historique/fichier/projet
+  ET de créer/modifier un projet. Vérifier coupures après réservation, IDB, LS,
+  checkpoint et commit final ; quota LS, perte de document, mutation B/legacy/job,
+  multiple reçu et remplacement nonce. Aucun POST destructeur à froid.
+
+Les autres gates restent indépendants : migration v3 supersédée avant purge,
+métadonnées et recréation, effacement natif intégré, restauration/synchronisation.
+Ne pas transformer cette préparation en un nouveau lot de parsers seuls présenté
+comme une reprise utilisable ; livrer le chemin et sa recette ensemble.
+
+#### A3b.5b — pont froid de reçu et réparation v5 (6 septembre 2026)
+
+Statut : implémenté/testé, activation isolée toujours OFF ; publication à suivre.
+Décideurs : agent principal et deux contre-revues indépendantes en lecture seule.
+
+Contexte : l'abort réel de `purgeProjectsForAccount` après LS laisse un fence
+divergent. Un reçu distant incertain ne doit pas ouvrir App/OAuth pour reprendre,
+et un consentement local ne doit pas se transférer à une demande remplacée.
+
+Décision : admission v2 reconnaissant la grammaire exacte du journal courant,
+liée au snapshot génération/reçu. L'acteur reste froid, verrouillé et GET-only.
+La réponse distante bornée doit être validée puis son record complet remplacé
+par CAS avant le nettoyage. Aucun CAS cross-DB atomique n'est revendiqué :
+contrôle document et comparaisons avant/après encadrent les transactions.
+
+V5 est réservé depuis v2 uniquement pour un fence désaccordé ou une autorité
+locale étendue. Il conserve L0/D0/T et la preuve B initiale. IDB commit avant
+LS, trois couples admissibles puis checkpoint `fenced` avant purge. Domaines
+v5 explicites uniquement pour LS et meta active ; legacy/journal restent protégés.
+V4 cohérent conserve strictement son domaine, divergent reste refusé.
+
+Choix locaux : intention jamais envoyée annulable par CAS sans purge, avec
+fences vérifiés dans la même transaction meta et LS juste avant suppression.
+Incertain = GET ou consentement local séparé ; ancien inconnu = support/local.
+L'autorité locale complète, secret distant compris, demeure dans v5 jusqu'au
+commit final : une panne native ne perd pas le dernier moyen de vérification.
+L'UI annonce que terminer le local abandonne cette consultation, pas que le
+serveur a confirmé. Le même acteur ne reconnaît que ses propres transitions
+adjacentes, y compris les résultats perdus ; annulation ≠ nettoyage terminé.
+
+Alternatives rejetées : ouvrir App à froid, renvoyer POST, convertir local-only
+en `serverConfirmed:true`, relâcher les hashes v4, rebaseliner après divergence,
+normaliser une nouvelle valeur de fence, appliquer un ancien consentement à B.
+
+Conséquences et preuves : vraie transaction projet abortée après LS, nouveau
+document froid, puis B déchiffre historique/fichier/projet et crée/modifie un
+projet avec révision relue. Autre verticale : vrai client/IDB/D1 workerd, réponse
+perdue après révocation réelle du token puis GET froid et B lit/écrit. Fixtures
+v4 indépendantes, cinq coupures v5, quotas LS, remplacements de reçu/contrôle,
+perte de document, altérations B/fences/nonce et confirmation UI couverts.
+Ce sont des recettes automatisées (Web Locks, IDB et natif simulés), pas une
+recette sur navigateur ou APK installé. Aucun compte de production effacé.
+
+Actions restantes : supersession v3 avant purge, métadonnées/recréation sûre,
+recette native intégrée, publication/restauration puis synchronisation. Aucun
+de ces gates n'est levé par le seul succès de cette réparation.
