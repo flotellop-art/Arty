@@ -7,6 +7,7 @@ import { assertDocumentWorkspace, guardDocumentTransaction, getDocumentStorageLa
 import { openExistingDB } from '../readOnlyExistingDB'
 import { openDeclaredDatabase } from '../workspaceWriter/declaredDatabase'
 import { captureOwnerErasureGuard } from './localErasureGuard'
+import { parseRemoteErasure, type RemoteErasureIntent } from '../accountErasureProtocol'
 export { blockProjectOperations } from './localErasureGuard'
 import { PROJECT_LIMITS, ProjectError, boundedInteger, validProject, validProjectId, validDescriptor,
   type PreparedProjectDocument, type ProjectDocument, type Project, type ProjectSummary } from './types'
@@ -483,22 +484,57 @@ export async function purgeProjectsForAccount(owner: string, assertCurrent: () =
   }
 }
 
-export interface ProjectErasure { readonly owner: string; readonly nonce: string; readonly operationId: string; readonly serverConfirmed: boolean }
+export interface ProjectErasure {
+  readonly owner: string; readonly nonce: string; readonly operationId: string; readonly serverConfirmed: boolean
+  readonly remote?: RemoteErasureIntent; readonly localOnly?: true
+}
 type ErasureRecord = ProjectErasure & { pending: string[] }
+function validErasureRecord(v: unknown, owner: string): v is ErasureRecord {
+  if (!v || typeof v !== 'object' || Object.getPrototypeOf(v) !== Object.prototype) return false
+  const r = v as ErasureRecord
+  const owns = (key: string) => Object.prototype.hasOwnProperty.call(v, key)
+  const keys = ['owner', 'nonce', 'operationId', 'serverConfirmed', 'pending', ...(owns('remote') ? ['remote'] : []), ...(owns('localOnly') ? ['localOnly'] : [])]
+  return Reflect.ownKeys(v).length === keys.length && keys.every(k => { const d = Object.getOwnPropertyDescriptor(v, k); return d?.enumerable && 'value' in d }) &&
+    r.owner === owner && validProjectId(r.operationId) && validProjectId(r.nonce) && typeof r.serverConfirmed === 'boolean' &&
+    Array.isArray(r.pending) && r.pending.length <= 32 && Reflect.ownKeys(r.pending).length === r.pending.length + 1 &&
+    Array.from({ length: r.pending.length }, (_, i) => { const d = Object.getOwnPropertyDescriptor(r.pending, String(i)); return !!d?.enumerable && 'value' in d }).every(Boolean) &&
+    r.pending.every(validProjectId) && new Set(r.pending).size === r.pending.length &&
+    (!owns('localOnly') || r.localOnly === true) && (!owns('remote') || (!!parseRemoteErasure(r.remote) && !r.serverConfirmed))
+}
+export type ProjectErasureState = 'none' | 'not-sent' | 'uncertain' | 'confirmed' | 'local-only' | 'legacy-unknown'
+/** Settings inspection never creates a database or starts network work. */
+export async function readProjectErasureState(owner: string, guard: () => void): Promise<ProjectErasureState> {
+  const check = () => { assertDocumentWorkspace(); guard() }
+  check()
+  const { name, version } = getDocumentStorageLayout().projects
+  const db = await openExistingDB(name, version, check)
+  if (!db) return 'none'
+  try {
+    const raw: unknown = await db.get('meta', ['erasing', owner]); check()
+    if (raw === undefined) return 'none'
+    if (!validErasureRecord(raw, owner)) throw new ProjectError('unavailable')
+    return raw.serverConfirmed ? 'confirmed' : raw.localOnly ? 'local-only' : raw.remote?.state ?? 'legacy-unknown'
+  } finally { db.close() }
+}
 /** Durable only while erasure is in progress. Explicit retry takes over a
  * crashed erasure; success removes this identity-bearing marker completely. */
-export async function beginProjectErasure(owner: string, assertCurrent: () => void, localOnly = false): Promise<ProjectErasure> {
+export async function beginProjectErasure(owner: string, assertCurrent: () => void, localOnly = false, remote?: RemoteErasureIntent): Promise<ProjectErasure> {
   assertCurrent()
   const db = await getDB(); assertCurrent()
   const nonce = generateId()
   const tx = guardDocumentTransaction(db.transaction('meta', 'readwrite'))
   const previous = await tx.store.get(['erasing', owner]) as ErasureRecord | undefined
-  if (previous && (previous.owner !== owner || !validProjectId(previous.operationId) || !Array.isArray(previous.pending) ||
-    !previous.pending.every(validProjectId) || (!localOnly && !previous.serverConfirmed && previous.pending.length >= 32))) {
+  if ((previous !== undefined && !validErasureRecord(previous, owner)) ||
+    (remote && !parseRemoteErasure(remote)) || (previous && !localOnly && !previous.serverConfirmed && !previous.remote &&
+      (remote || previous.pending.length >= 32))) {
     tx.abort(); await tx.done.catch(() => {}); throw new ProjectError('unavailable')
   }
-  const lease = { owner, nonce, operationId: previous?.operationId ?? generateId(), serverConfirmed: previous?.owner === owner && previous.serverConfirmed === true }
-  const pending = lease.serverConfirmed ? [] : localOnly ? (previous?.pending ?? []) : [...(previous?.pending ?? []), nonce]
+  const intent = previous?.remote ?? (previous ? undefined : remote)
+  const lease: ProjectErasure = { owner, nonce, operationId: previous?.operationId ?? generateId(), serverConfirmed: previous?.serverConfirmed === true,
+    ...(intent ? { remote: intent } : {}), ...((localOnly || previous?.localOnly) ? { localOnly: true as const } : {}) }
+  // Remote v1 confirmation binds op/capability/subject, not a growing list of
+  // verification nonces. Legacy callers retain their original bounded ledger.
+  const pending = lease.serverConfirmed || intent ? [] : localOnly ? (previous?.pending ?? []) : [...(previous?.pending ?? []), nonce]
   try {
     assertCurrent(); await tx.store.put({ ...lease, pending }, ['erasing', owner]); await tx.done; assertCurrent()
     return lease
@@ -528,15 +564,34 @@ export async function confirmServerProjectErasure(lease: ProjectErasure): Promis
   const current = await tx.store.get(['erasing', lease.owner]) as ErasureRecord | undefined
   // A second window may take over local cleanup, but must not lose the first
   // window's authenticated success for this SAME erasure operation.
-  if (current?.operationId !== lease.operationId || !current.pending.includes(lease.nonce)) { tx.abort(); await tx.done.catch(() => {}); throw new ProjectError('cancelled') }
-  await tx.store.put({ ...current, serverConfirmed: true }, ['erasing', lease.owner]); await tx.done
+  const bound = lease.remote ? current?.remote?.state === 'uncertain' && current.remote.capability === lease.remote.capability && current.remote.subjectHash === lease.remote.subjectHash : current?.pending.includes(lease.nonce)
+  if (!current || current.operationId !== lease.operationId || (!current.serverConfirmed && !bound)) { tx.abort(); await tx.done.catch(() => {}); throw new ProjectError('cancelled') }
+  // Only a validated wire response reaches here for v1. Atomically replace it
+  // with the historical EXACT confirmed format; do not strip fields on reads.
+  await tx.store.put({ owner: current.owner, operationId: current.operationId, nonce: current.nonce,
+    serverConfirmed: true, pending: lease.remote ? [] : current.pending }, ['erasing', lease.owner]); await tx.done
+}
+/** Claim the one permitted POST before fetch. Any outcome after this commit is
+ * uncertain until a validated receipt. A concurrent claimant may only GET. */
+export async function markProjectErasureSent(lease: ProjectErasure, guard: () => void): Promise<boolean> {
+  guard()
+  const db = await getDB(), tx = guardDocumentTransaction(db.transaction('meta', 'readwrite'))
+  try {
+    const raw: unknown = await tx.store.get(['erasing', lease.owner])
+    if (!validErasureRecord(raw, lease.owner) || raw.operationId !== lease.operationId || !raw.remote ||
+      raw.remote.capability !== lease.remote?.capability || raw.remote.subjectHash !== lease.remote.subjectHash || raw.localOnly) throw new ProjectError('cancelled')
+    const send = raw.remote.state === 'not-sent'
+    guard()
+    if (send) await tx.store.put({ ...raw, remote: { ...raw.remote, state: 'uncertain' } }, ['erasing', lease.owner])
+    await tx.done; guard(); return send
+  } catch (error) { try { tx.abort() } catch { /* committed */ }; await tx.done.catch(() => {}); throw error }
 }
 export async function releaseFailedProjectErasure(lease: ProjectErasure): Promise<void> {
   const db = await getDB(), tx = guardDocumentTransaction(db.transaction('meta', 'readwrite'))
   const current = await tx.store.get(['erasing', lease.owner]) as ErasureRecord | undefined
   if (current?.operationId === lease.operationId) {
     const pending = current.pending.filter(nonce => nonce !== lease.nonce)
-    if (!current.serverConfirmed && pending.length === 0) await tx.store.delete(['erasing', lease.owner])
+    if (!current.serverConfirmed && !current.localOnly && current.remote?.state !== 'uncertain' && pending.length === 0) await tx.store.delete(['erasing', lease.owner])
     else await tx.store.put({ ...current, pending }, ['erasing', lease.owner])
   }
   await tx.done

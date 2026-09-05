@@ -2,10 +2,10 @@ import 'fake-indexeddb/auto'
 import { IDBFactory } from 'fake-indexeddb'
 import { openDB } from 'idb'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-const mocks = vi.hoisted(() => ({ wipeFiles: vi.fn(), purgeMail: vi.fn(), fetch: vi.fn() }))
+const mocks = vi.hoisted(() => ({ wipeFiles: vi.fn(), purgeMail: vi.fn(), fetch: vi.fn(), trialToken: vi.fn() }))
 vi.mock('../../services/apiBase', () => ({ apiUrl: (path: string) => path }))
 vi.mock('../../services/googleAuth', () => ({ getValidAccessToken: async () => 'google-test' }))
-vi.mock('../../services/emailTrialClient', () => ({ getTrialToken: () => 'email-test' }))
+vi.mock('../../services/emailTrialClient', () => ({ getTrialToken: mocks.trialToken }))
 vi.mock('../../services/secureFileStorage', () => ({ wipeFileStorage: mocks.wipeFiles }))
 vi.mock('../../services/mailAccounts', () => ({ purgeMailAccountsForUser: mocks.purgeMail }))
 let store: typeof import('../../services/projects/store')
@@ -17,12 +17,142 @@ const deferred = () => { let resolve!: () => void; const promise = new Promise<v
 beforeEach(async () => {
   vi.restoreAllMocks(); vi.resetModules(); localStorage.clear(); globalThis.indexedDB = new IDBFactory()
   mocks.wipeFiles.mockReset().mockResolvedValue(undefined); mocks.purgeMail.mockReset().mockResolvedValue(undefined)
-  mocks.fetch.mockReset().mockResolvedValue(new Response('{}', { status: 200 })); vi.stubGlobal('fetch', mocks.fetch)
+  mocks.trialToken.mockReset().mockReturnValue('email-test')
+  mocks.fetch.mockReset().mockImplementation(async (_url, init) => new Response(JSON.stringify({ protocol: 1, status: 'confirmed',
+    operationId: init.headers['x-arty-erasure-operation'], subjectHash: init.headers['x-arty-erasure-subject'] }), { status: 200 })); vi.stubGlobal('fetch', mocks.fetch)
   users = await import('../../services/userSession'); users.setActiveSession(session())
   c = await import('../../services/crypto'); await c.initCrypto('test')
   store = await import('../../services/projects/store'); account = await import('../../services/accountService')
 })
 describe('account erasure — durable project integration', () => {
+  it.each(['html', 'legacy-200', 'subject', 'operation', 'protocol', 'oversized'])('does not trust a %s receipt or clear its durable uncertainty', async bad => {
+    mocks.fetch.mockImplementationOnce(async (_url, init) => {
+      const proof = { protocol: bad === 'protocol' ? 2 : 1, status: 'confirmed',
+        operationId: bad === 'operation' ? crypto.randomUUID() : init.headers['x-arty-erasure-operation'],
+        subjectHash: bad === 'subject' ? '0'.repeat(64) : init.headers['x-arty-erasure-subject'] }
+      return new Response(bad === 'html' ? '<html>old deployment</html>' : bad === 'legacy-200' ? '{"ok":true}' : bad === 'oversized' ? ' '.repeat(513) : JSON.stringify(proof))
+    })
+    await expect(account.deleteAccount()).rejects.toThrow()
+    expect(await account.getAccountErasureState()).toBe('uncertain')
+    expect(mocks.wipeFiles).not.toHaveBeenCalled()
+  })
+  it('remote concurrent takeover checks by GET and preserves a first POST success for later local cleanup', async () => {
+    let resolve!: (response: Response) => void, proof: object
+    const original = account
+    mocks.fetch.mockImplementationOnce(async (_url, init) => {
+      proof = { protocol: 1, status: 'confirmed', operationId: init.headers['x-arty-erasure-operation'], subjectHash: init.headers['x-arty-erasure-subject'] }
+      return new Promise<Response>(r => { resolve = r })
+    })
+    const first = original.deleteAccount().catch(e => e)
+    await vi.waitFor(() => expect(mocks.fetch).toHaveBeenCalledTimes(1))
+    vi.resetModules() // independent JS owner lock, shared durable erasure record
+    const second = await import('../../services/accountService')
+    mocks.fetch.mockImplementationOnce(async (_url, init) => {
+      expect(init.method).toBe('GET')
+      return new Response(JSON.stringify({ protocol: 1, operationId: init.headers['x-arty-erasure-operation'], status: 'unknown' }))
+    })
+    await expect(second.deleteAccount()).rejects.toThrow('unknown')
+    resolve(new Response(JSON.stringify(proof!)))
+    expect(await first).toMatchObject({ code: 'cancelled' }) // its local nonce was superseded
+    expect(await second.getAccountErasureState()).toBe('confirmed')
+    await second.deleteAccount()
+    expect(mocks.fetch.mock.calls.map(([, init]) => init.method)).toEqual(['POST', 'GET'])
+  })
+  it('a receipt returned after A→B→A is recorded for A without local cleanup', async () => {
+    mocks.fetch.mockRejectedValueOnce(new Error('lost')); await expect(account.deleteAccount()).rejects.toThrow('lost')
+    const db = await openDB('arty-projects', 1), record = await db.get('meta', ['erasing', 'a'])
+    mocks.fetch.mockImplementationOnce(async () => {
+      users.setActiveSession(session('b')); users.setActiveSession(session('a'))
+      return new Response(JSON.stringify({ protocol: 1, status: 'confirmed', operationId: record.operationId, subjectHash: record.remote.subjectHash }))
+    })
+    await expect(account.deleteAccount()).rejects.toThrow('context changed')
+    expect(await db.get('meta', ['erasing', 'a'])).toMatchObject({ serverConfirmed: true })
+    expect(mocks.wipeFiles).not.toHaveBeenCalled()
+    expect(users.getKnownSessions().map(s => s.userId).sort()).toEqual(['a', 'b'])
+  })
+  it.each(['apikey', 'demo'] as const)('deleteAccount keeps %s explicitly local without taking the owner lock twice', async authMethod => {
+    users.setActiveSession({ ...session(), authMethod }); await c.initCrypto('test')
+    mocks.wipeFiles.mockRejectedValueOnce(new Error('local disk busy'))
+    await expect(account.deleteAccount()).rejects.toThrow('local disk busy')
+    expect(await (await openDB('arty-projects', 1)).get('meta', ['erasing', 'a'])).toMatchObject({ localOnly: true, serverConfirmed: false })
+    await account.deleteAccount()
+    expect(mocks.fetch).not.toHaveBeenCalled(); expect(mocks.trialToken).not.toHaveBeenCalled()
+    expect(users.getActiveUserId()).toBeNull()
+  })
+  it('persists uncertainty before POST, then recovers its lost response by GET after reload without a token', async () => {
+    let receipt: object
+    mocks.fetch.mockImplementationOnce(async (_url, init) => {
+      expect(await (await openDB('arty-projects', 1)).get('meta', ['erasing', 'a'])).toMatchObject({ remote: { state: 'uncertain' } })
+      receipt = { protocol: 1, status: 'confirmed', operationId: init.headers['x-arty-erasure-operation'], subjectHash: init.headers['x-arty-erasure-subject'] }
+      throw new TypeError('response lost')
+    })
+    await expect(account.deleteAccount()).rejects.toThrow('response lost')
+    expect(mocks.wipeFiles).not.toHaveBeenCalled()
+    vi.resetModules(); mocks.trialToken.mockReset().mockReturnValue(null)
+    account = await import('../../services/accountService')
+    expect(await account.getAccountErasureState()).toBe('uncertain')
+    mocks.fetch.mockImplementationOnce(async (_url, init) => {
+      expect(init.method).toBe('GET')
+      expect(Object.keys(init.headers).sort()).toEqual(['x-arty-erasure-capability', 'x-arty-erasure-operation'])
+      return new Response(JSON.stringify(receipt))
+    })
+    await account.deleteAccount()
+    expect(mocks.trialToken).not.toHaveBeenCalled()
+    expect(mocks.fetch).toHaveBeenCalledTimes(2)
+    expect(await (await openDB('arty-projects', 1)).get('meta', ['erasing', 'a'])).toBeUndefined()
+  })
+  it('unknown/invalid receipts never erase, reset the intent or fill the nonce ledger, even after 40 checks', async () => {
+    mocks.fetch.mockRejectedValueOnce(new TypeError('request lost'))
+    await expect(account.deleteAccount()).rejects.toThrow()
+    const db = await openDB('arty-projects', 1), original = await db.get('meta', ['erasing', 'a'])
+    mocks.trialToken.mockReset().mockReturnValue(null)
+    mocks.fetch.mockImplementation(async (_url, init) => new Response(JSON.stringify({ protocol: 1, operationId: init.headers['x-arty-erasure-operation'], status: 'unknown' })))
+    for (let i = 0; i < 40; i++) await expect(account.deleteAccount()).rejects.toThrow('unknown')
+    const current = await db.get('meta', ['erasing', 'a'])
+    expect(current.remote).toEqual(original.remote); expect(current.operationId).toBe(original.operationId); expect(current.pending).toEqual([])
+    expect(mocks.trialToken).not.toHaveBeenCalled(); expect(mocks.wipeFiles).not.toHaveBeenCalled()
+    expect(mocks.fetch.mock.calls.filter(([, init]) => init.method === 'POST')).toHaveLength(1)
+  })
+  it('a committed confirmation whose IDB save fails retains the secret for a subsequent GET', async () => {
+    const realConfirm = store.confirmServerProjectErasure
+    vi.spyOn(store, 'confirmServerProjectErasure').mockRejectedValueOnce(new Error('confirmation disk full'))
+    let receipt: object
+    mocks.fetch.mockImplementationOnce(async (_url, init) => {
+      receipt = { protocol: 1, status: 'confirmed', operationId: init.headers['x-arty-erasure-operation'], subjectHash: init.headers['x-arty-erasure-subject'] }
+      return new Response(JSON.stringify(receipt))
+    })
+    await expect(account.deleteAccount()).rejects.toThrow('confirmation disk full')
+    expect(await account.getAccountErasureState()).toBe('uncertain')
+    vi.mocked(store.confirmServerProjectErasure).mockImplementation(realConfirm)
+    mocks.fetch.mockImplementationOnce(async () => new Response(JSON.stringify(receipt)))
+    await account.deleteAccount()
+    expect(mocks.fetch.mock.calls[1]![1].method).toBe('GET')
+  })
+  it('explicit local-only failure preserves remote uncertainty until local erasure actually finishes', async () => {
+    mocks.fetch.mockRejectedValueOnce(new Error('lost')); await expect(account.deleteAccount()).rejects.toThrow('lost')
+    const db = await openDB('arty-projects', 1), before = await db.get('meta', ['erasing', 'a'])
+    mocks.wipeFiles.mockRejectedValueOnce(new Error('disk'))
+    await expect(account.wipeLocalAccount()).rejects.toThrow('disk')
+    expect(await db.get('meta', ['erasing', 'a'])).toMatchObject({ remote: before.remote, serverConfirmed: false, localOnly: true })
+    await account.wipeLocalAccount()
+    expect(await db.get('meta', ['erasing', 'a'])).toBeUndefined()
+    expect(mocks.fetch).toHaveBeenCalledTimes(1)
+  })
+  it('legacy unconfirmed records are not upgraded into a new server request', async () => {
+    const lease = await store.beginProjectErasure('a', () => {})
+    expect(await account.getAccountErasureState()).toBe('legacy-unknown')
+    await expect(account.deleteAccount()).rejects.toThrow('Legacy')
+    expect(mocks.fetch).not.toHaveBeenCalled()
+    expect((await (await openDB('arty-projects', 1)).get('meta', ['erasing', 'a'])).operationId).toBe(lease.operationId)
+  })
+  it('a known not-sent intent can be submitted once, without regenerating its capability', async () => {
+    const { createRemoteErasure } = await import('../../services/accountErasureProtocol')
+    const remote = await createRemoteErasure('email-trial', 'a@example.test')
+    await store.beginProjectErasure('a', () => {}, false, remote)
+    expect(await account.getAccountErasureState()).toBe('not-sent')
+    await account.deleteAccount()
+    expect(mocks.fetch.mock.calls[0]![1].headers['x-arty-erasure-capability']).toBe(remote.capability)
+  })
   it('email server success survives a failed local purge and reload, without a second POST', async () => {
     const op = await store.beginProjectOperation(); await store.createProject(op, 'Private project')
     mocks.wipeFiles.mockRejectedValueOnce(new Error('disk busy'))
@@ -43,11 +173,11 @@ describe('account erasure — durable project integration', () => {
     const op = await store.beginProjectOperation(), project = await store.createProject(op, 'Keep')
     mocks.fetch.mockResolvedValueOnce(new Response('{}', { status: 401 }))
     await expect(account.deleteAccount()).rejects.toThrow('(401)')
-    const fresh = await store.beginProjectOperation()
-    expect((await store.getProject(fresh, project.id))?.project?.name).toBe('Keep')
+    await expect(store.beginProjectOperation()).rejects.toMatchObject({ code: 'unavailable' })
+    expect(await (await openDB('arty-projects', 1)).get('projects', ['a', project.id])).toBeTruthy()
     expect(localStorage.getItem(users.PROJECT_ERASURE_FENCE_KEY)).toBeNull()
     expect(mocks.wipeFiles).not.toHaveBeenCalled()
-    expect(await (await openDB('arty-projects', 1)).get('meta', ['erasing', 'a'])).toBeUndefined()
+    expect(await (await openDB('arty-projects', 1)).get('meta', ['erasing', 'a'])).toMatchObject({ serverConfirmed: false, remote: { state: 'uncertain' } })
   })
   it('same-window session replacement cancels cleanup and cannot create projects while erasure waits', async () => {
     const gate = deferred()

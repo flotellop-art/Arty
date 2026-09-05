@@ -939,3 +939,73 @@ Objections retenues pour la suite :
   ne pas retirer simplement A de requiredOwners pour contourner la protection.
 
 Ces constats ne sont pas des modifications déjà livrées ni un GO d'activation.
+
+#### Décision/livraison A3b.4 après ces pré-revues
+
+Le candidat OFF est désormais livré par #456 ; détails de preuve et empreinte
+production dans `arty-workspace-cdc.md`. Le terme historique serverConfirmed
+est limité à une autorité de nettoyage local déjà engagé, pas une preuve HTTP
+(BYOK/demo pouvaient le poser sans POST). Une génération v2 cohérente et un seul
+reçu strict permettent la réservation v4, l'expurgation exacte A de legacy,
+active et job (dont plan), puis v2 prêt dans un nouveau document. Les preuves B
+restent distinctes par copie ; settings/auth/drafts sont attribués sans couper
+un owner opaque au premier séparateur. Rapports non attribués préservés.
+
+`requiredOwners ∪ {A}` reste conservé : nettoyage du contenu déclaré ne prouve
+ni purge des métadonnées d'identité ni autorisation de créer un nouveau sel.
+Le clear natif protocole1 laisse A bloqué dans le processus même après succès.
+Les tests JVM/concurrence du kernel et de branchement source ne remplacent pas
+une recette réelle multi-instance SharedPreferences/Keystore sur APK installé.
+
+Contre-revues GO limité OFF après correction des collisions report-conversations,
+draft a:conversation:home et d'un snapshot LS final pouvant adopter une écriture
+tardive. Verify final 2 959 tests verts + 1 ignoré et tests JVM verts.
+
+Prochain périmètre avant activation : réparer de façon durable et attestée le
+fence LS/IDB désaccordé, actuellement refusé sans mutation ; superséder une
+migration v3 avant toute purge ; conserver l'incertitude d'une requête serveur
+perdue ; traiter métadonnées/recréation et la recette native intégrée. Ne pas
+tolérer un fence incohérent à l'ouverture de B, rebaseliner un plan divergent,
+reposter en froid ou retirer simplement A de requiredOwners.
+
+#### A3b.5a — reçu serveur versionné avant réparation froide v5
+
+Contexte : l'ancien client relâchait le dernier marker après erreur HTTP. D1
+pouvait pourtant avoir supprimé les sessions email et perdu sa réponse. Garder
+un booléen « incertain » sans preuve consultable n'aurait pas permis la reprise.
+
+Décision : nouvelle route distincte, intention locale avant POST, état incertain
+durable avant transport. Secret aléatoire 256 bits ; hash du sujet liant ce
+secret au kind Google/email-trial et à l'email capturé. POST vérifie le sujet
+authentifié avant mutation ; GET secret/opId sans auth fait seulement SELECT.
+Le batch D1 réserve un ticket unique, conditionne chaque DELETE par ce ticket,
+termine le reçu et lit son résultat atomiquement. Tombstone opaque permanent,
+sans email ni secret brut : sa suppression permettrait un rejeu destructeur.
+
+Alternatives rejetées : version dans le body de `/delete` (ignorée par ancien
+serveur), INSERT OR IGNORE suivi de DELETE inconditionnels (rejeu), TTL sans
+tombstone (rejeu après expiration), 401 assimilé à refus certain, GET missing
+assimilé à never-sent, POST automatique au reload. La documentation actuelle
+[D1 batch](https://developers.cloudflare.com/d1/worker-api/d1-database/#batch)
+atteste le rollback de la séquence ; le test workerd avec trigger l'exerce.
+Types Workers 5.20260905.1 consultés sans modifier les dépendances du dépôt.
+
+Conséquences : `unknown` reste inconnu ; il n'y a pas de retry serveur universel
+dans ce lot. Reprise incertaine GET-only dans l'app courante ; succès validé
+stocké atomiquement sous le format historique exact de nettoyage local. Aucune
+canonicalisation de champs inconnus par le parser froid. BYOK/démo et effacement
+appareil explicite restent locaux. Le dernier secret est conservé tant que le
+nettoyage local explicite n'est pas terminé ou la preuve distante pas durable.
+L'UI dit que terminer cet effacement appareil abandonne la consultation distante.
+
+Contre-revues : deux GO limités après correction du double verrou BYOK/démo et
+du texte assimilant l'ancien `true` à une preuve serveur. Preuves nouvelles :
+rollback SQL réel, rejeu après recréation, vrai client/D1 avec réponse perdue et
+token révoqué, reprises/switch concurrents et reçus invalides. Les recettes
+fichiers/natif restent simulées ; aucun compte de production effacé pour tester.
+
+Actions suivantes : intégrer GET-only dans l'admission froide isolée sans
+import privé ; réparer fences via un format v5/proof-domain explicite sans
+rebaseliner v4 ; puis poursuivre les autres gates A3b.4. Activation OFF inchangée.
+Le repli doit conserver le journal et les tombstones et ne jamais réintroduire
+un POST legacy implicite. Détails et reçus de livraison dans le CDC.
