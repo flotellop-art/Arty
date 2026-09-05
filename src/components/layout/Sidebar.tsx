@@ -38,6 +38,7 @@ interface SidebarProps {
   onOpenTemplates?: () => void
   onOpenCosts?: () => void
   onOpenCompare?: () => void
+  onOpenProjects?: () => void
   onOpenApiKeys?: () => void
 }
 
@@ -121,6 +122,7 @@ export const Sidebar = memo(function Sidebar({
   onOpenTemplates,
   onOpenCosts,
   onOpenCompare,
+  onOpenProjects,
   onOpenApiKeys,
 }: SidebarProps) {
   const { t, i18n } = useTranslation()
@@ -500,6 +502,9 @@ export const Sidebar = memo(function Sidebar({
               <span>{t('compare.settingsEntry')}</span>
             </button>
           )}
+          {onOpenProjects && <button type="button" className={NAV_ITEM_CLASS} onClick={() => { onOpenProjects(); onClose() }}>
+            <span className="w-4 text-center" aria-hidden="true">▤</span><span>{t('projects.title')}</span>
+          </button>}
         </nav>
 
         <section className="mt-2 px-3.5 pb-2 min-[900px]:min-h-0 min-[900px]:flex-1 min-[900px]:overflow-y-auto">

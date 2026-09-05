@@ -29,7 +29,7 @@ supplémentaire n'est implicite dans ce mandat.
 | W01 | Fondations | DOCX : paragraphes et tableaux ; XLSX : feuilles nommées et cellules identifiées. Contenu réellement injecté, accents conservés ; erreurs visibles sur ancien format, fichier chiffré/corrompu ou limite dépassée. Même résultat en nouvel envoi, historique et retry, dont Android et mode Europe. Aucun macro, formule, lien externe exécuté ; ressources bornées ; aucune pièce jointe en base64 dans localStorage. | Web déployé, PR #439 ; recette visuelle/appareil non vérifiée |
 | W02 | Confiance | Essai annoncé conforme au plan servi. BYOK gratuit distinct du Pro optionnel ; conseiller sans licence fictive. Promesses de stockage et de transit exactes FR/EN, page publique cohérente. Aucun quota ni accès serveur élargi implicitement. | Web déployé, PR #437 ; recette visuelle/appareil non vérifiée |
 | W03 | Catalogue | Un catalogue partagé aligne comparaison, sélecteurs, labels et éligibilité selon le compte (pas une garantie fournisseur). Modèle demandé, transmis par le proxy et signalé par le fournisseur distingués. Tests contre la dérive et contre l'accès premium hors droit. | Web déployé, PR #440 ; recette visuelle/appareil non vérifiée |
-| W04 | Projets | Créer/renommer/supprimer un projet, consignes propres, conversations associées, bibliothèque de documents réutilisables. Sources identifiables dans le contexte. Recherche bornée, absence de fichier et contexte tronqué explicites. Cloisonnement par compte et projet ; mode Europe conservé. | À faire |
+| W04 | Projets | Créer/renommer/supprimer un projet, consignes propres, conversations associées, bibliothèque de documents réutilisables. Sources identifiables dans le contexte. Recherche bornée, absence de fichier et contexte tronqué explicites. Cloisonnement par compte et projet ; mode Europe conservé. | En cours : bibliothèque locale en vérification ; conversations liées et recette intégrée à faire |
 | W05 | Livrables | Export DOCX modifiable et XLSX de tableaux, en plus des exports existants. Téléchargements relus par un parseur indépendant ; cellules dangereuses neutralisées ; aucun HTML actif ni formule arbitraire. Formats et limites documentés. | À faire |
 | W06 | Continuité | Sauvegarde/restauration explicites puis synchronisation optionnelle multi-appareil chiffrée avant upload, avec secret détenu par l'utilisateur et récupération expliquée. Conflits non destructifs ; reprise hors-ligne ; logout/switch/delete et compte invité traités. Un export manuel seul ne valide pas la synchronisation. | À faire |
 | W07 | Comparaison | Comparer depuis une conversation avec contexte/documents autorisés ; conserver les résultats et poursuivre la réponse choisie sans perdre l'original. Erreurs/coûts/quotas de chaque panneau visibles ; EU et historique privé jamais contournés. | À faire |
@@ -107,7 +107,88 @@ réels ; préparer protocole et instrumentation sans fabriquer leurs résultats.
 
 ## Preuves par lot
 
-### W04 — prérequis de sauvegarde, projets non encore implémentés
+### W04 — bibliothèque locale et récupération, sous-lot en vérification
+
+- Écran `/projects` depuis la Sidebar : création, renommage, consignes,
+  restriction Europe fixe, import séquentiel, recherche/aperçu local, retrait
+  de document et suppression confirmée du projet, y compris verrouillé.
+  Les consignes non enregistrées bloquent import, navigation interne, création
+  et confirmation de retrait de document ; elles peuvent être enregistrées
+  ou annulées explicitement. Résultats d'import précédant un échec conservés
+  et comptés à l'écran. Remontage AppContent identifié par compte.
+- **Ce sous-lot ne relie pas encore les projets aux conversations.** La copie
+  l'annonce : les consignes/Europe ne modifient pas les chats existants ; aucune
+  API IA n'est invoquée par la bibliothèque. Ne pas déclarer W04 complet.
+  Restent association et détachement, héritage EU monotone, contexte par
+  invocation sans mémoire globale, preview avant envoi, références durables,
+  partage/import/branch/retry et verrou documentaire de bout en bout.
+- Nouveau schéma additif `arty-projects` v1 : manifestes, originaux et textes
+  dérivés chiffrés séparément. Les clés physiques, états et compteurs techniques
+  propriétaire/projet/révision/taille sont en clair ; noms, consignes, contenus
+  et empreintes des originaux sont dans les payloads chiffrés. Pas de garantie
+  E2EE avec la clé actuelle du compte, ni sauvegarde multi-appareil.
+- CAS de révision + quotas dans une seule transaction IDB. Les mises à jour
+  reconstruisent depuis le manifeste canonique, pas depuis un objet UI arbitraire.
+  Les octets sont recomptés via un index technique/key cursor sans charger
+  les originaux. Source/texte liés dans leurs payloads au propriétaire, projet,
+  ID/révision/hash/extracteur ; substitution refusée. Recherche ne lit pas
+  les originaux. Import capturé avant lecture, résultat gelé lié à la même
+  opération puis consommé après commit ; pas de résurrection d'un ID supprimé.
+- Limites : 20 projets/compte, 16 documents/projet, 64/compte, 10 Mio/source,
+  50 Mio de sources/compte, 200 000 caractères/document, 500 000/projet.
+  TXT/MD/CSV strictement UTF-8 ; DOCX/XLSX via W01. Pas de PDF/OCR ni DOC/XLS.
+  Texte trop long refusé, jamais importé silencieusement en préfixe.
+- Recherche lexicale locale déterministe, accents normalisés seulement pour
+  le score et chevauchement des longues lignes couvrant 64 points Unicode.
+  Aperçu générique uniquement après sélection explicite, jamais comme fallback
+  d'une recherche sans résultat. Budget de contexte 20 000 caractères incluant
+  consignes/références, 20 extraits maximum ; références hash/version/lignes
+  extraites, pas de pages Word inventées. Erreur source distincte de no-hit.
+- Tombstones sans contenu, bornés à 100/compte pour cette version locale.
+  Avant W06, remplacer cette GC par une stratégie d'acquittement sync : ne pas
+  réutiliser telle quelle cette suppression des plus anciens tombstones.
+  Supprimer une bibliothèque ne retire pas les citations/résumés des chats,
+  ni ce qui a déjà été transmis à un fournisseur ; copie explicite.
+- Effacement compte : contexte capturé avant token/POST, contrôle avant fetch
+  et chaque phase locale. Succès serveur A ne nettoie jamais B. Annulation du
+  travail async local avant purge ; marqueur IDB temporaire bloque une nouvelle
+  opération projet pendant l'effacement, même si un autre contexte réinscrit A.
+  Un reçu serveur **effectivement persisté** permet une reprise locale après
+  rechargement sans réutiliser le jeton email déjà révoqué. Requêtes concurrentes
+  partagent un ID d'effacement ; un 401 concurrent ne détruit pas un reçu 200.
+- Limite explicite : crash/échec IDB entre 200 et enregistrement du reçu ne
+  prouve pas le succès serveur. Aucun 401 n'est assimilé à une confirmation.
+  Après erreur, choix séparé puis deuxième confirmation pour effacer uniquement
+  cet appareil, sans POST ni affirmation de suppression serveur ; support pour
+  le résiduel distant. Ancienne confirmation A→B→A désarmée, pas réattribuée.
+- Fence global sans identité, lié à la session et sérialisé LS/IDB par la même
+  transaction : protège des résultats préparés avant effacement, y compris si
+  une vieille liste de comptes réintroduit A. Effet assumé : les bibliothèques
+  des autres comptes ouverts peuvent exiger une reconnexion. Crash entre LS
+  et IDB : refus fermé jusqu'à reprise explicite de l'effacement ; pas de
+  réconciliation automatique qui pourrait ressusciter un import. Après succès,
+  marqueurs et données propres au propriétaire purgés ; seul ce fence global
+  sans identité reste. Un ancien client/APK non mis à jour n'est pas couvert.
+- Tests : vraie Web Crypto et transactions `fake-indexeddb` 6.2.5 (dépendance
+  de développement seulement), faux réseau ; deux graphes de modules distincts
+  partageant IDB/localStorage simulent deux fenêtres, pas un E2E navigateur.
+  Fixtures DOCX/XLSX produites par outils indépendants déjà utilisées par W01.
+  Tests UI du mode verrouillé, brouillons, import partiel/séquentiel, démontage,
+  remontage de compte et double confirmation. Inventaire CUA du jour toujours
+  vide : aucune recette visuelle/native déclarée.
+- Deux GO indépendants après correction des pertes de brouillon, annulations
+  ABA, reprise crypto froide, quotas concurrents et recherche Unicode.
+  Vérification locale finale : 220 fichiers / 2 293 tests verts (+70 tests),
+  couverture, types front/back, no-CASA/addon et build réussis. Nouveau chunk
+  bibliothèque ~13,1 ko brut ; bundle principal ~971 ko brut / 303 ko gzip.
+  CI, Pages et version HTTP restent à relever après publication du sous-lot.
+- Repli : masquer l'entrée et la route pour désactiver la bibliothèque sans
+  détruire la nouvelle base. Conserver le chemin d'effacement du nouveau store
+  et des reçus tant qu'il peut exister des données W04 ; un revert aveugle vers
+  l'ancien `accountService` laisserait ces données derrière. Ne pas supprimer
+  une base ou des sources automatiquement pour restaurer une ancienne UI.
+
+### W04 — prérequis de sauvegarde, livré avant la bibliothèque
 
 - Garde-fou des conversations : clés physiques et compte/epoch capturés,
   générations d'écriture/reset/bootstrap, contrôle avant écriture du résultat
@@ -139,7 +220,15 @@ réels ; préparer protocole et instrumentation sans fabriquer leurs résultats.
   fiabiliser avant la bibliothèque W04. Celle-ci utilisera un store IDB chiffré
   avant commit, avec révisions contrôlées en transaction, sans copie en clair.
 
-### W04 — prérequis crypto/session, code en vérification
+### W04 — prérequis crypto/session, livré
+
+- PR [#442](https://github.com/flotellop-art/Arty/pull/442), squash main
+  `acb65e6bdce8ffd523d4c6210816b489cc9e2922`, fusion 5 septembre 05:11 UTC.
+  Pages production succès `b1a52c81-c27b-4829-8743-b3f9bc722dee` ; HTTP `/`
+  200, bundle `index-Dhv1sxTE.js`. CI PR verte ; CI main verte à la relance
+  du job échoué : le test D1 séquentiel a une fois atteint le fail-open
+  250 ms (remaining absent), sans échec des tests crypto. Réserve de stabilité
+  du harnais conservée. Build/distribution APK réussis, pas de recette appareil.
 
 - Contexte crypto immuable lié au compte, à l'époque de session et à la
   génération d'initialisation. Dérivation et vérification utilisent des
@@ -179,7 +268,7 @@ réels ; préparer protocole et instrumentation sans fabriquer leurs résultats.
 - Deux GO finaux indépendants, dont reproduction Web Crypto de l'ancien
   fallback OAuth en clair puis de son refus après correctif. Vérification
   finale complète : 214 fichiers / 2 223 tests, couverture, typecheck front/back,
-  no-CASA/addon et build réussis. CI/Pages de ce lot restent à vérifier après PR.
+  no-CASA/addon et build réussis. CI/Pages vérifiées ci-dessus.
 
 
 ### W03 — catalogue, comparateur et provenance

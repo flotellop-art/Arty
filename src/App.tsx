@@ -50,6 +50,7 @@ const UpgradeScreen = lazy(() => import('./screens/upgrade').then((m) => ({ defa
 const TemplatesScreen = lazy(() => import('./screens/templates').then((m) => ({ default: m.TemplatesScreen })))
 const CostsScreen = lazy(() => import('./screens/costs').then((m) => ({ default: m.CostsScreen })))
 const ComparatorScreen = lazy(() => import('./screens/compare').then((m) => ({ default: m.ComparatorScreen })))
+const ProjectsScreen = lazy(() => import('./screens/projects').then((m) => ({ default: m.ProjectsScreen })))
 // Landing marketing (item 16 roadmap v2) — vue uniquement par les
 // primo-visiteurs web ; les utilisateurs connectés ne la téléchargent jamais.
 const LandingScreen = lazy(() => import('./screens/landing').then((m) => ({ default: m.LandingScreen })))
@@ -316,6 +317,7 @@ function AppContent({
   // chaque frame de streaming (audit PR D, R4).
   const handleOpenCosts = useCallback(() => navigate('/costs'), [navigate])
   const handleOpenCompare = useCallback(() => navigate('/compare'), [navigate])
+  const handleOpenProjects = useCallback(() => navigate('/projects'), [navigate])
   const handleOpenApiKeys = useCallback(() => setShowApiKeys(true), [])
   const handleSendInChat: ChatSendHandler = useCallback(
     (text, files, options) => sendMessage(text, undefined, files, options),
@@ -493,6 +495,7 @@ function AppContent({
         onOpenTemplates={handleOpenTemplates}
         onOpenCosts={handleOpenCosts}
         onOpenCompare={handleOpenCompare}
+        onOpenProjects={handleOpenProjects}
         onOpenApiKeys={handleOpenApiKeys}
       />
 
@@ -586,6 +589,10 @@ function AppContent({
               <ComparatorScreen onBack={() => navigate('/')} />
             </Suspense>
           }
+        />
+        <Route
+          path="/projects"
+          element={<Suspense fallback={<LazyFallback />}><ProjectsScreen onBack={() => navigate('/')} /></Suspense>}
         />
         <Route
           path="/report/:id"
@@ -1064,6 +1071,7 @@ export default function App() {
           lazy = écran blanc total sans message. */}
       <ErrorBoundary>
         <AppContent
+          key={auth.currentUser?.userId ?? 'no-account'}
           onLogout={auth.logout}
           userName={auth.currentUser?.displayName}
           authMethod={auth.currentUser?.authMethod}
