@@ -36,6 +36,11 @@ import {
 import i18n from '../i18n'
 import { captureDocumentPreparation, hasOfficeHistory, prepareOfficeMessages } from '../services/documents/prepareOfficeMessages'
 import { OfficeReadError } from '../services/documents/officeArchive'
+import { hasProjectHistory, isProjectEU, isDocumentConversation, projectConversationKey } from '../services/projects/chatPolicy'
+import { prepareProjectChat, type PreparedProjectChat } from '../services/projects/chatPreparation'
+import { beginProjectOperation, getProject } from '../services/projects/store'
+import { ProjectError, type Project } from '../services/projects/types'
+import { useProjectReview } from './useProjectReview'
 
 type ToolHandler = (name: string, input: Record<string, unknown>) => Promise<{ result: string; screenshot?: string }>
 
@@ -60,6 +65,8 @@ function confirmVisionAutoCropDisclosure(): boolean {
 }
 
 export function useConversation() {
+  const projectReview = useProjectReview()
+  const reviewProjectRequest = projectReview.review
   // H1 (audit frontend) — storage.getConversations() retourne la RÉFÉRENCE du
   // cache mémoire, muté en place par saveConversation. La repasser telle
   // quelle à setState ferait bail-out React (même identité → pas de
@@ -97,7 +104,7 @@ export function useConversation() {
   const {
     canStart, startStream, getInvocationId, setActiveStream, onToken: streamToken,
     onDone: streamDone, onError: streamError, setProgressContent,
-    setAbortController, resetAccumulated, hasStream, isActive, stopStreaming, discardStream,
+    setAbortController, resetAccumulated, hasStream, isActive, stopStreaming, discardStream, setProjectTurn,
   } = streaming
   const { setPendingFiles, pendingFilesRef } = fileAttachments
 
@@ -116,7 +123,7 @@ export function useConversation() {
   useEffect(() => {
     if (streaming.isStreaming) return
     const active = conversations.find((c) => c.id === activeId)
-    if (!active || active.messages.length === 0 || hasOfficeHistory(active.messages)) return
+    if (!active || active.messages.length === 0 || isDocumentConversation(active)) return
     const last = active.messages[active.messages.length - 1]
     if (!last || last.role !== 'assistant') return
     if (lastScannedRef.current === last.id) return
@@ -197,6 +204,39 @@ export function useConversation() {
     setErrorRetryable(false)
   }, [setActiveStream])
 
+  /** Association changes are local, immutable and never relax EU/history.
+   * Existing non-EU traffic cannot be relabelled EU: start a new EU chat. */
+  const setConversationProject = useCallback(async (conversationId: string | null, project: Project | null): Promise<string | null> => {
+    const current = conversationId ? storage.getConversation(conversationId) : null
+    if ((conversationId && (!current || hasStream(conversationId))) || !storage.isCacheReady()) return null
+    const before = current ? projectConversationKey(current) : null
+    try {
+      const operation = await beginProjectOperation()
+      let euOnly = current ? isProjectEU(current) : false
+      if (project) {
+        const latest = await getProject(operation, project.id)
+        if (!latest || latest.status !== 'ready' || latest.revision !== project.revision) throw new ProjectError('conflict')
+        if (latest.euOnly && current?.messages.length && !euOnly) throw new ProjectError('unsupported')
+        euOnly ||= latest.euOnly
+      }
+      operation.assertCurrent()
+      const latestConversation = conversationId ? storage.getConversation(conversationId) : null
+      if (conversationId && (!latestConversation || hasStream(conversationId) || projectConversationKey(latestConversation) !== before)) throw new ProjectError('conflict')
+      const input = gatherRouteInput({ originalText: '', ...classifyRouteAttachments(null), euOnly, hasPrivateHistory: false })
+      if (!canExecuteRoute(input)) throw new Error(i18n.t('errors.euPlanRequired'))
+      const id = current?.id ?? generateId()
+      const next: Conversation = current ? structuredClone(current) : { id, title: project?.name ?? 'Projet', messages: [], createdAt: Date.now(), updatedAt: Date.now() }
+      next.projectId = project?.id; next.hasProjectContext = true; next.euOnly = euOnly; next.updatedAt = Date.now()
+      storage.saveConversation(next); refreshConversations()
+      if (!current) { setActiveId(id); setActiveStream(id) }
+      return id
+    } catch (reason) {
+      setErrorRetryable(false)
+      setError(reason instanceof ProjectError ? i18n.t(`projects.errors.${reason.code}`) : reason instanceof Error ? reason.message : i18n.t('projects.errors.unavailable'))
+      return null
+    }
+  }, [hasStream, refreshConversations, setActiveStream])
+
   const clearActive = useCallback(() => {
     setActiveStream(null)
     setActiveId(null)
@@ -238,7 +278,10 @@ export function useConversation() {
       // Passe a true uniquement après la persistance du nouveau message.
       setErrorRetryable(false)
 
-      const conv = storage.getConversation(targetId)
+      const storedConversation = storage.getConversation(targetId)
+      // Preparation never mutates the cached history: quota failures and
+      // rejected previews must leave the original request intact.
+      const conv = storedConversation && hasProjectHistory(storedConversation) ? structuredClone(storedConversation) : storedConversation
       if (!conv) {
         // H5 (audit frontend) — fenêtre de boot : l'historique chiffré n'est
         // pas encore déchiffré, saveConversation est no-op, la conv créée
@@ -260,7 +303,9 @@ export function useConversation() {
       // Une action rapide explicite doit gagner sur les automations locales :
       // un texte à résumer contenant « rappelle-moi mardi » ne doit pas créer
       // un vrai rappel à la place du résumé demandé.
-      const reminderIntent = quickAction || files?.length ? null : detectReminderIntent(text)
+      const projectRequest = hasProjectHistory(conv)
+      const documentHistory = projectRequest || hasOfficeHistory(conv.messages)
+      const reminderIntent = documentHistory || quickAction || files?.length ? null : detectReminderIntent(text)
       if (reminderIntent) {
         const userMsg: Message = {
           id: generateId(),
@@ -283,7 +328,7 @@ export function useConversation() {
       }
 
       // Handle /aide command
-      if (!quickAction && !files?.length && text.trim().toLowerCase() === '/aide') {
+      if (!documentHistory && !quickAction && !files?.length && text.trim().toLowerCase() === '/aide') {
         const helpMsg: Message = {
           id: generateId(),
           role: 'user',
@@ -332,13 +377,17 @@ export function useConversation() {
         ...(replaceMessageId ? conv.messages.slice(0, replaceIndex) : conv.messages),
         { id: 'preparing', role: 'user', content: text, timestamp: Date.now(), files, quickAction },
       ]
-      const officeRequest = hasOfficeHistory(requestMessages)
+      // Legacy variable name retained in the shared Office pipeline: all
+      // document-derived histories now use its strict/read-only safeguards.
+      const officeRequest = projectRequest || hasOfficeHistory(requestMessages)
       const officeController = officeRequest ? new AbortController() : undefined
       const documentContext = officeController ? captureDocumentPreparation(officeController.signal) : undefined
       let preparedOfficeMessages: Message[] | undefined
+      let preparedProject: PreparedProjectChat | undefined
+      let projectRoute: ReturnType<typeof resolveRoute> | undefined
       const officeStillCurrent = (): boolean => {
         if (!documentContext) return true
-        try { documentContext.assertCurrent(); return true } catch {
+        try { documentContext.assertCurrent(); preparedProject?.assertCurrent(); return true } catch {
           // An old, stopped request must never tear down a newly started one.
           if (!officeController!.signal.aborted) discardStream(targetId)
           officeController!.abort()
@@ -346,20 +395,35 @@ export function useConversation() {
         }
       }
       if (officeRequest) {
-        if (!startStream(targetId, documentContext?.assertCurrent)) return false
+        if (!startStream(targetId, () => { documentContext?.assertCurrent(); preparedProject?.assertCurrent() })) return false
         setActiveStream(targetId)
         setAbortController(targetId, officeController!)
-        setProgressContent(i18n.t('chat.input.officePreparing'), targetId)
+        setProgressContent(i18n.t(projectRequest ? 'chat.input.projectPreparing' : 'chat.input.officePreparing'), targetId)
         try {
           preparedOfficeMessages = await prepareOfficeMessages(requestMessages, documentContext)
           documentContext!.assertCurrent()
+          if (projectRequest) {
+            conv.euOnly = isProjectEU(conv)
+            const input = gatherRouteInput({ originalText: modelText, ...classifyRouteAttachments(files),
+              euOnly: !!conv.euOnly, hasPrivateHistory: !!conv.hasGoogleData, hasProjectContext: true })
+            if (!canExecuteRoute(input)) throw new Error(i18n.t('errors.euPlanRequired'))
+            projectRoute = resolveRoute(input)
+            if (projectRoute.provider !== 'claude' && projectRoute.provider !== 'mistral') throw new ProjectError('unsupported')
+            preparedProject = await prepareProjectChat({ conversation: conv, messages: preparedOfficeMessages, query: text, effectiveQuestion: modelText,
+              provider: projectRoute.provider, preparation: documentContext!, signal: officeController!.signal, review: reviewProjectRequest })
+          }
           setProgressContent('', targetId)
         } catch (err) {
           if (officeStillCurrent()) {
             discardStream(targetId)
-            const issue = err instanceof OfficeReadError ? err : new OfficeReadError('corrupt')
-            setError(i18n.t(`errors.office.${issue.code}`, { name: issue.fileName }))
+            if (projectRequest) {
+              if (!(err instanceof ProjectError && err.code === 'cancelled')) setError(err instanceof ProjectError ? i18n.t(`projects.errors.${err.code}`) : err instanceof Error ? err.message : i18n.t('projects.errors.unavailable'))
+            } else {
+              const issue = err instanceof OfficeReadError ? err : new OfficeReadError('corrupt')
+              setError(i18n.t(`errors.office.${issue.code}`, { name: issue.fileName }))
+            }
           }
+          officeController?.abort()
           return false
         }
       }
@@ -370,7 +434,7 @@ export function useConversation() {
       let visionAutoCropLockHeld = false
       let visionStreamReserved = officeRequest
       let visionAutoCropPrepared = false
-      let lockedVisionRouteDecision: ReturnType<typeof resolveRoute> | null = null
+      let lockedVisionRouteDecision: ReturnType<typeof resolveRoute> | null = projectRoute ?? null
       const releaseVisionAutoCropLock = () => {
         if (!visionAutoCropLockHeld) return
         visionAutoCropLocksRef.current.delete(targetId)
@@ -597,6 +661,13 @@ export function useConversation() {
         )
       }
 
+      if (preparedProject) {
+        try { await preparedProject.validate() } catch (reason) {
+          await deleteOwnedFiles(persistedNewIds, documentContext!.owner)
+          if (officeStillCurrent()) { discardStream(targetId); setError(i18n.t(`projects.errors.${reason instanceof ProjectError ? reason.code : 'unavailable'}`)) }
+          officeController?.abort(); return false
+        }
+      }
       // Edition atomique : le fil existant reste intact jusqu'à ce que le
       // nouveau crop soit localisé ET stocké. Ensuite, aucune opération
       // asynchrone ne s'intercale entre la troncature et l'insertion du tour.
@@ -620,6 +691,7 @@ export function useConversation() {
         timestamp: Date.now(),
         ...(persistedFiles ? { files: persistedFiles } : {}),
         ...(quickAction ? { quickAction } : {}),
+        ...(preparedProject ? { projectTurn: structuredClone(preparedProject.turn) } : {}),
       }
 
       conv.messages.push(userMessage)
@@ -634,7 +706,17 @@ export function useConversation() {
         conv.title = text.trim().slice(0, 50) + (text.trim().length > 50 ? '...' : '')
       }
       conv.updatedAt = Date.now()
-      storage.saveConversation(conv)
+      if (preparedProject) conv.hasProjectContext = true
+      try {
+        storage.saveConversation(conv)
+        preparedProject?.acceptPersisted(conv)
+        if (preparedProject) setProjectTurn(targetId, preparedProject.turn)
+      } catch (reason) {
+        if (!preparedProject) throw reason
+        await deleteOwnedFiles(persistedNewIds, documentContext!.owner)
+        discardStream(targetId); officeController?.abort()
+        setError(i18n.t('errors.fileStorageFailed')); return false
+      }
       refreshConversations()
       setErrorRetryable(true)
       setActiveStream(targetId)
@@ -676,6 +758,7 @@ export function useConversation() {
       const assertInvocationCurrent = () => {
         if (!invocationStillCurrent()) throw new DOMException('Request cancelled', 'AbortError')
         documentContext?.assertCurrent()
+        preparedProject?.assertCurrent()
       }
       const onToken = (token: string) => { if (invocationStillCurrent()) streamToken(token, targetId) }
 
@@ -748,6 +831,7 @@ export function useConversation() {
         hasPrivateHistory: !!conv.hasGoogleData,
         hasTrailHistory: !!conv.hasTrailContext,
         hasOfficeHistory: officeRequest,
+        hasProjectContext: projectRequest,
       })
       // Une ancienne conversation EU peut survivre à l'expiration d'un
       // abonnement. On bloque alors localement : jamais de fallback Claude
@@ -803,6 +887,7 @@ export function useConversation() {
       // injectée (5k tokens parasites sur "salut"). Avec : profil minimal
       // si le message ne touche pas à la mémoire.
       try {
+        if (!projectRequest)
         window.dispatchEvent(
           new CustomEvent('arty-rebuild-prompt', { detail: { userMessage: modelText } })
         )
@@ -952,7 +1037,7 @@ export function useConversation() {
         // multimodal pour passer les images en image_url. Indispensable pour
         // que les conversations euOnly puissent analyser des images sans
         // sortir d'EU vers Claude/Gemini.
-        const apiMessages = await buildMistralMessages(preparedOfficeMessages ?? conv.messages, documentContext)
+        const apiMessages = preparedProject?.mistralMessages ?? await buildMistralMessages(preparedOfficeMessages ?? conv.messages, documentContext)
         assertInvocationCurrent()
         // Pour le message courant, on ré-injecte les fichiers depuis la RAM
         // (pendingFilesRef) : ça bypass l'IndexedDB roundtrip et garantit
@@ -969,7 +1054,8 @@ export function useConversation() {
         controller = streamMistralMessage(apiMessages, onToken, onDone, onErr, {
           assertRequestCurrent: assertInvocationCurrent,
           documentReadOnly: officeRequest,
-          systemPrompt: systemPromptRef.current,
+          systemPrompt: preparedProject?.systemPrompt ?? systemPromptRef.current,
+          beforeDocumentRequest: preparedProject?.beforeFirstRequest,
           onToolCall: trackedToolHandler,
           // Fix 429 — outgoingText ≠ modelText ⇔ du contenu d'URL/PDF a été
           // inliné (lot C) : la recherche forcée serait un appel Mistral
@@ -1030,7 +1116,7 @@ export function useConversation() {
         // et PDFs des tours précédents (rechargés depuis IndexedDB via
         // buildApiMessages/hydrateFiles). Plus de bug de fichier oublié au
         // tour suivant.
-        const apiMessages = await buildApiMessages(preparedOfficeMessages ?? conv.messages, documentContext)
+        const apiMessages = preparedProject?.claudeMessages ?? await buildApiMessages(preparedOfficeMessages ?? conv.messages, documentContext)
         assertInvocationCurrent()
         if (!officeRequest && currentFiles && currentFiles.length > 0) {
           apiMessages[apiMessages.length - 1] = { role: 'user', content: await buildContentBlocks(outgoingText, currentFiles) }
@@ -1054,7 +1140,8 @@ export function useConversation() {
         controller = streamMessage(apiMessages, onToken, onDone, onErr, {
           assertRequestCurrent: assertInvocationCurrent,
           documentReadOnly: officeRequest,
-          systemPrompt: systemPromptRef.current,
+          systemPrompt: preparedProject?.systemPrompt ?? systemPromptRef.current,
+          beforeDocumentRequest: preparedProject?.beforeFirstRequest,
           onToolCall: trackedToolHandler,
           reflectionLevel: getReflectionLevel(),
           conversationId: targetId,
@@ -1087,7 +1174,7 @@ export function useConversation() {
       return true
     },
     [
-      activeId, refreshConversations, canStart, startStream, getInvocationId, setActiveStream,
+      activeId, refreshConversations, canStart, startStream, getInvocationId, setActiveStream, reviewProjectRequest, setProjectTurn,
       streamToken, streamDone, streamError, setProgressContent,
       setAbortController, resetAccumulated, hasStream, isActive,
       setPendingFiles, pendingFilesRef, stopStreaming, discardStream,
@@ -1169,7 +1256,9 @@ export function useConversation() {
         updatedAt: Date.now(),
         // Preserve EU flag, model history AND tags from parent conversation
         // (une branche hérite du contexte d'organisation — P1.8).
-        ...(conv.euOnly ? { euOnly: true } : {}),
+        ...(isProjectEU(conv) ? { euOnly: true } : {}),
+        ...(hasProjectHistory(conv) ? { hasProjectContext: true } : {}),
+        ...(conv.projectId ? { projectId: conv.projectId } : {}),
         ...(conv.usedModels ? { usedModels: [...conv.usedModels] } : {}),
         ...(conv.tags ? { tags: [...conv.tags] } : {}),
         // BUG 8 (même classe) : les flags de contexte doivent suivre la
@@ -1226,7 +1315,7 @@ export function useConversation() {
       if (!userMsg) return
 
       const originalFiles = userMsg.files
-      if (hasOfficeHistory(conv.messages.slice(0, userIdx + 1))) {
+      if (hasProjectHistory(conv) || hasOfficeHistory(conv.messages.slice(0, userIdx + 1))) {
         void sendMessage(userMsg.content, targetId, originalFiles, { replaceMessageId: userMsg.id, quickAction: userMsg.quickAction })
         return
       }
@@ -1260,7 +1349,7 @@ export function useConversation() {
 
       const originalFiles = msg.files
       const relocatesAutoCrop = !!originalFiles?.some((file) => file.visionCrop?.kind === 'auto')
-      const atomicOfficeEdit = hasOfficeHistory(conv.messages.slice(0, idx + 1))
+      const atomicOfficeEdit = hasProjectHistory(conv) || hasOfficeHistory(conv.messages.slice(0, idx + 1))
       if (!relocatesAutoCrop && !atomicOfficeEdit) {
         conv.messages = conv.messages.slice(0, idx)
         conv.updatedAt = Date.now()
@@ -1299,7 +1388,7 @@ export function useConversation() {
     if (!userMsg) return
 
     const originalFiles = userMsg.files
-    if (hasOfficeHistory(conv.messages.slice(0, userIdx + 1))) {
+    if (hasProjectHistory(conv) || hasOfficeHistory(conv.messages.slice(0, userIdx + 1))) {
       void sendMessage(userMsg.content, targetId, originalFiles, { replaceMessageId: userMsg.id, quickAction: userMsg.quickAction })
       return
     }
@@ -1345,6 +1434,8 @@ export function useConversation() {
     errorRetryable,
     clearError,
     createConversation,
+    setConversationProject,
+    projectReview,
     selectConversation,
     clearActive,
     sendMessage,

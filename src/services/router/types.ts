@@ -17,6 +17,7 @@ import type { ReflectionLevel } from '../reflectionLevel'
 // (routeReason.i18n.test.ts), d'où la liste RUNTIME (pas seulement un type).
 export const ALL_REASON_CODES = [
   'office_documents',      // Office courant ou historique : extraction textuelle locale
+  'project_documents',
   'manual_selection',       // l'utilisateur a choisi ce modèle
   'eu_only',                // conversation verrouillée Europe → Mistral (RÈGLE 5.3)
   'files_to_claude',        // fichier attaché → Claude (lecture native PDF/image, BUG 12)
@@ -91,6 +92,7 @@ export interface RouteInput {
   // Gemini/OpenAI, même si le nouveau texte est aussi vague que « résume ça ».
   hasPrivateHistory: boolean
   hasOfficeHistory?: boolean
+  hasProjectContext?: boolean
   // La conversation a un contexte sentiers (routage trail_tools ou outil
   // find_trails déjà appelé) : les suivis qui ne matchent aucun trigger texte
   // (« Viriville » seul, cas terrain 19 juil.) restent chez Claude, qui a les

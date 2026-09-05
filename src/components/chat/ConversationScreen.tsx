@@ -12,11 +12,15 @@ import { ContextCompressedBanner } from './ContextCompressedBanner'
 import { ContextMeter } from './ContextMeter'
 import { ErrorBoundary } from '../shared/ErrorBoundary'
 import { consumePendingDraft } from '../../services/shareTargetService'
+import { isDocumentConversation, hasProjectHistory } from '../../services/projects/chatPolicy'
 import { hasOfficeHistory } from '../../services/documents/prepareOfficeMessages'
+import { ProjectConversationPanel } from './ProjectConversationPanel'
+import type { Project } from '../../services/projects/types'
 import type { useDrive } from '../../hooks/useDrive'
 import type { useComputer } from '../../hooks/useComputer'
 
 interface ConversationScreenProps {
+  onProjectChange?: (project: Project | null) => Promise<boolean>
   conversation: Conversation
   isStreaming: boolean
   streamingContent: string
@@ -64,6 +68,7 @@ export function ConversationScreen({
   actionScreenshot,
   conversations,
   onSelectConv,
+  onProjectChange,
 }: ConversationScreenProps) {
   const { t } = useTranslation()
   const [showSummary, setShowSummary] = useState(false)
@@ -87,6 +92,7 @@ export function ConversationScreen({
       />
 
       <ActionBanner icon="📁" message={t('chat.banners.driveAccess')} isVisible={drive.isLoading} />
+      {onProjectChange && <ProjectConversationPanel key={conversation.id} conversation={conversation} busy={isStreaming} onChange={onProjectChange} />}
       <BrowserBanner action={computerActions.currentAction} />
 
       <ErrorBoundary>
@@ -95,7 +101,7 @@ export function ConversationScreen({
           isStreaming={isStreaming}
           streamingContent={streamingContent}
           conversationId={conversation.id}
-          onAction={onAction}
+          onAction={isDocumentConversation(conversation) ? undefined : onAction}
           onBranch={onBranch}
           onTogglePin={onTogglePin}
           onEdit={onEdit}
@@ -152,9 +158,9 @@ export function ConversationScreen({
         </div>
       )}
 
-      <ContextMeter messages={conversation.messages} onNewConversation={onNewConversation} />
+      {!isDocumentConversation(conversation) && <ContextMeter messages={conversation.messages} onNewConversation={onNewConversation} />}
 
-      <ContextCompressedBanner onNewConversation={onNewConversation} />
+      {!isDocumentConversation(conversation) && <ContextCompressedBanner onNewConversation={onNewConversation} />}
 
       <InputBar
         onSend={onSend}
@@ -165,6 +171,7 @@ export function ConversationScreen({
         euOnly={conversation.euOnly}
         hasPrivateHistory={!!conversation.hasGoogleData}
         hasOfficeHistory={hasOfficeHistory(conversation.messages)}
+        hasProjectContext={hasProjectHistory(conversation)}
         draftKey={`conversation:${conversation.id}`}
       />
 

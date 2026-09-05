@@ -5,6 +5,7 @@ import { UserBubble } from './UserBubble'
 import { AssistantBubble } from './AssistantBubble'
 import { TypingIndicator } from './TypingIndicator'
 import { StreamingIndicator } from './StreamingIndicator'
+import { ProjectSources } from './ProjectSources'
 
 interface MessageItemProps {
   msg: Message
@@ -67,6 +68,7 @@ const MessageItem = memo(function MessageItem({ msg, index, onAction, onBranch, 
           modelSource={msg.modelSource}
         />
       )}
+      {msg.projectTurn && <ProjectSources turn={msg.projectTurn} prepared={msg.role === 'user'} />}
     </div>
   )
 })

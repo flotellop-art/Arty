@@ -107,6 +107,7 @@ type ToolHandler = (name: string, input: Record<string, unknown>) => Promise<{ r
 interface MistralStreamOptions extends ModelInvocationOptions {
   assertRequestCurrent?: () => void
   documentReadOnly?: boolean
+  beforeDocumentRequest?: () => Promise<void>
   systemPrompt?: string
   onToolCall?: ToolHandler
   // Force un modèle précis (utilisé par le comparateur multi-modèles).
@@ -301,7 +302,7 @@ async function runMistralStream(
       forceSearchNext = false
       try {
         once = await streamOnce(
-          apiKey, apiMessages, openaiTools, onToken, controller, model, temperature, wantForce, options?.assertRequestCurrent
+          apiKey, apiMessages, openaiTools, onToken, controller, model, temperature, wantForce, options?.assertRequestCurrent, options?.beforeDocumentRequest
         )
       } catch (err) {
         // Repli défensif : si l'appel FORCÉ échoue (ex : l'API rejette la
@@ -313,7 +314,7 @@ async function runMistralStream(
         const name = (err as Error).name
         if (!wantForce || name === 'AbortError' || name === 'RateLimitError') throw err
         once = await streamOnce(
-          apiKey, apiMessages, openaiTools, onToken, controller, model, temperature, false, options?.assertRequestCurrent
+          apiKey, apiMessages, openaiTools, onToken, controller, model, temperature, false, options?.assertRequestCurrent, options?.beforeDocumentRequest
         )
       }
       const { content, toolCalls, inputTokens, outputTokens, servedModel } = once
@@ -416,6 +417,7 @@ async function streamOnce(
   temperature: number,
   forceSearchTool: boolean,
   assertRequestCurrent?: () => void,
+  beforeDocumentRequest?: () => Promise<void>,
 ): Promise<{
   content: string
   toolCalls: ToolCall[]
@@ -457,6 +459,7 @@ async function streamOnce(
   // utilisateur. Le retry se fait AVANT toute lecture du stream — sûr.
   let response!: Response
   for (let attempt = 0; ; attempt++) {
+    await beforeDocumentRequest?.()
     assertRequestCurrent?.()
     controller.signal.throwIfAborted()
     // CRIT-5 — Timeout 60s sur le stream Mistral. Cold-start Cloudflare ou

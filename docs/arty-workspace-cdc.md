@@ -29,7 +29,7 @@ supplémentaire n'est implicite dans ce mandat.
 | W01 | Fondations | DOCX : paragraphes et tableaux ; XLSX : feuilles nommées et cellules identifiées. Contenu réellement injecté, accents conservés ; erreurs visibles sur ancien format, fichier chiffré/corrompu ou limite dépassée. Même résultat en nouvel envoi, historique et retry, dont Android et mode Europe. Aucun macro, formule, lien externe exécuté ; ressources bornées ; aucune pièce jointe en base64 dans localStorage. | Web déployé, PR #439 ; recette visuelle/appareil non vérifiée |
 | W02 | Confiance | Essai annoncé conforme au plan servi. BYOK gratuit distinct du Pro optionnel ; conseiller sans licence fictive. Promesses de stockage et de transit exactes FR/EN, page publique cohérente. Aucun quota ni accès serveur élargi implicitement. | Web déployé, PR #437 ; recette visuelle/appareil non vérifiée |
 | W03 | Catalogue | Un catalogue partagé aligne comparaison, sélecteurs, labels et éligibilité selon le compte (pas une garantie fournisseur). Modèle demandé, transmis par le proxy et signalé par le fournisseur distingués. Tests contre la dérive et contre l'accès premium hors droit. | Web déployé, PR #440 ; recette visuelle/appareil non vérifiée |
-| W04 | Projets | Créer/renommer/supprimer un projet, consignes propres, conversations associées, bibliothèque de documents réutilisables. Sources identifiables dans le contexte. Recherche bornée, absence de fichier et contexte tronqué explicites. Cloisonnement par compte et projet ; mode Europe conservé. | En cours : bibliothèque locale en vérification ; conversations liées et recette intégrée à faire |
+| W04 | Projets | Créer/renommer/supprimer un projet, consignes propres, conversations associées, bibliothèque de documents réutilisables. Sources identifiables dans le contexte. Recherche bornée, absence de fichier et contexte tronqué explicites. Cloisonnement par compte et projet ; mode Europe conservé. | Bibliothèque web livrée #443 ; raccordement conversations validé localement, publication en cours ; recette visuelle/appareil non vérifiée |
 | W05 | Livrables | Export DOCX modifiable et XLSX de tableaux, en plus des exports existants. Téléchargements relus par un parseur indépendant ; cellules dangereuses neutralisées ; aucun HTML actif ni formule arbitraire. Formats et limites documentés. | À faire |
 | W06 | Continuité | Sauvegarde/restauration explicites puis synchronisation optionnelle multi-appareil chiffrée avant upload, avec secret détenu par l'utilisateur et récupération expliquée. Conflits non destructifs ; reprise hors-ligne ; logout/switch/delete et compte invité traités. Un export manuel seul ne valide pas la synchronisation. | À faire |
 | W07 | Comparaison | Comparer depuis une conversation avec contexte/documents autorisés ; conserver les résultats et poursuivre la réponse choisie sans perdre l'original. Erreurs/coûts/quotas de chaque panneau visibles ; EU et historique privé jamais contournés. | À faire |
@@ -107,7 +107,84 @@ réels ; préparer protocole et instrumentation sans fabriquer leurs résultats.
 
 ## Preuves par lot
 
-### W04 — bibliothèque locale et récupération, sous-lot en vérification
+### W04 — conversations documentaires, publication en cours
+
+- Depuis un projet, ouvrir une conversation liée ; dans un chat, associer ou
+  détacher une bibliothèque. État lu à l'ouverture, au focus et sur Gérer :
+  prêt, verrouillé, supprimé ou indisponible. Une association disparue reste
+  détachable. Association clonée/CAS local de contenu : quota de stockage ou
+  suppression pendant attente ne publie ni faux changement ni chat ressuscité.
+- `hasProjectContext` durable, dérivé aussi des références historiques. Après
+  détachement/suppression, branche et import : lecture seule conservée. EU
+  monotone ; impossible de rebaptiser EU un ancien fil non-EU déjà rempli :
+  ouvrir un nouveau chat pour ce projet. Pas de nouvelles autorisations serveur.
+- Chaque message de chat projet a deux étapes locales : sélection des sources
+  et mode recherche/aperçu, puis confirmation du destinataire, question
+  effective (action rapide comprise), consignes principales, budget, noms des
+  pièces jointes, révision et extraits exacts. Recherche sans résultat n'active
+  jamais l'aperçu automatiquement ; envoi sans nouvel extrait explicitement
+  libellé. Repères de lignes partielles et sélection partielle visibles.
+- Préparation unique propriétaire/epoch/crypto/fence, convo/historique,
+  projet/révision et choix de sources. Identité propre de dialogue : un ancien
+  clic ne confirme pas la requête suivante. Stop/démontage/changement de compte
+  ou refus laisse texte/historique intacts. Retry et édition préparent d'abord
+  puis remplacent atomiquement ; les sources sont celles de la bibliothèque
+  actuelle, pas une prétendue reproduction identique de l'ancien appel.
+- Relire projet/fence après accord, après stockage des pièces et après les
+  headers d'authentification juste avant le premier HTTP. Snapshot immuable
+  après engagement : un renommage/tag/épingle ne perd pas le flux. Contrôle
+  structurel léger, owner/epoch/crypto/fence pendant tokens, sauvegardes
+  partielles et finalisation. Modifier/supprimer la bibliothèque ne retire pas
+  ce qui est déjà transmis ; copie explicite avant accord.
+- Lecture seule généralisée au pipeline Office : Claude hors EU, Mistral en
+  EU, aucun locator Terra, enrichissement URL/PDF public, outil, rappel,
+  mémoire automatique, tâche extraite ou fact-check/récupération de lien.
+  Prompt par invocation, sans mémoire locale/Google ni singleton mutable.
+  Les instructions du projet restent subordonnées à cette politique.
+- Extraits ajoutés aux messages API construits, jamais en remplacement des
+  blocs image/PDF/Office. Les pièces texte sont validées base64/UTF-8 avant
+  accord ; MIME JSON/XML et aliases PDF normalisés seulement sur le clone
+  éphémère. Fichier manquant/illisible ou format non reconnu : refus explicite.
+  PDF natif dans les pièces de chat Claude seulement ; pas de PDF dans la
+  bibliothèque et refus des PDF en chat projet EU. Pas d'OCR implicite.
+- Budget réel agrégé : 200 000 caractères, incluant instructions/historique/
+  fichiers texte/extraits et réserve de 32 000 caractères pour règles/date
+  ajoutées par les clients ; 20 Mio binaires à part. Le préfixe `data:` d'un
+  texte ne le fait pas compter comme binaire. Pas de troncature silencieuse ni
+  compresseur cloud. Ce n'est pas une mesure de tokens ni de pic RAM exact.
+- Sources/hash/version/lignes figés **par tour**, présents aussi sur réponse
+  partielle persistée. Pas de corps de bibliothèque dans les conversations ;
+  ces extraits sont seulement dans la requête RAM. [S1] n'est jamais résolu
+  depuis le projet courant. UI : sources jointes, pas certification de chaque
+  affirmation ; côté user, contexte approuvé n'est pas un reçu fournisseur.
+- Résumé annexe = échanges abrégés (2 000 caractères/message), pas relecture
+  des documents. Sans outils, garde EU/droits/session/crypto/fence ; aucun
+  contenu tardif publié après switch. Scope d'origine aussi conservé avant
+  copie/export. Rapports : clé physique fixée avant sanitisation, contrôle
+  après chaque await, UUID pour éviter écrasement entre créations simultanées.
+- Import JSON borné et capturé avant lecture ; associations et références
+  étrangères retirées mais restrictions conservées. Nouveaux IDs pour les
+  pièces : un ID importé n'ouvre jamais le fichier local homonyme. Tags/modèles
+  invalides refusés. Partage public toujours whitelist sans source technique,
+  mais avertissement sur les citations contenues dans le texte. Accord lié au
+  contenu, session et ouverture ; Annuler/Escape avant POST interdit celui-ci.
+  Après engagement, fermer ne révoque pas un lien éventuellement créé.
+- Deux GO indépendants après traitement des courses de dialogue, stockage,
+  suppression, exports et partage. Vérification finale locale : **227 fichiers,
+  2 355 tests verts (+62)**, couverture, types front/back, no-CASA/addon, build.
+  Tests avec fixtures indépendantes Office et vrais clients à HTTP simulé ;
+  aucun appel IA payant, aucune publication utilisateur ou suppression réelle.
+  Bundle principal ~1 002 ko brut / 313 ko gzip ; avertissement de taille connu.
+  Inventaire navigateur encore vide le 5 septembre : aucune recette visuelle
+  ni appareil prétendue. CI/Pages/version servie à relever après publication.
+- Repli : désactiver les entrées d'association/conversation projet et refuser
+  les envois `hasProjectContext`, sans effacer bibliothèques/chats. Garder les
+  protections d'effacement #443, restrictions historiques et références. Un
+  simple revert vers un client ignorant ces flags pourrait lever la lecture
+  seule ; ne pas le présenter comme un rollback sûr. Les anciennes APK doivent
+  être mises à jour : distribution CI n'est pas installation ni publication Store.
+
+### W04 — bibliothèque locale et récupération, sous-lot livré #443
 
 - Écran `/projects` depuis la Sidebar : création, renommage, consignes,
   restriction Europe fixe, import séquentiel, recherche/aperçu local, retrait
@@ -116,10 +193,10 @@ réels ; préparer protocole et instrumentation sans fabriquer leurs résultats.
   et confirmation de retrait de document ; elles peuvent être enregistrées
   ou annulées explicitement. Résultats d'import précédant un échec conservés
   et comptés à l'écran. Remontage AppContent identifié par compte.
-- **Ce sous-lot ne relie pas encore les projets aux conversations.** La copie
+- **La version #443 seule ne relie pas les projets aux conversations.** La copie
   l'annonce : les consignes/Europe ne modifient pas les chats existants ; aucune
-  API IA n'est invoquée par la bibliothèque. Ne pas déclarer W04 complet.
-  Restent association et détachement, héritage EU monotone, contexte par
+  API IA n'est invoquée par la bibliothèque. Cette livraison seule ne validait
+  pas W04. Le sous-lot suivant ajoute association et détachement, héritage EU monotone, contexte par
   invocation sans mémoire globale, preview avant envoi, références durables,
   partage/import/branch/retry et verrou documentaire de bout en bout.
 - Nouveau schéma additif `arty-projects` v1 : manifestes, originaux et textes
@@ -181,7 +258,12 @@ réels ; préparer protocole et instrumentation sans fabriquer leurs résultats.
   Vérification locale finale : 220 fichiers / 2 293 tests verts (+70 tests),
   couverture, types front/back, no-CASA/addon et build réussis. Nouveau chunk
   bibliothèque ~13,1 ko brut ; bundle principal ~971 ko brut / 303 ko gzip.
-  CI, Pages et version HTTP restent à relever après publication du sous-lot.
+  PR [#443](https://github.com/flotellop-art/Arty/pull/443), squash main
+  `d48398ad207149cd0c8c8057bda2e177bed0f3fc`, 5 septembre 06:32 UTC.
+  CI PR `33949392859`, main `33950081525` et build-and-distribute
+  `33950081633` réussis. Pages production succès
+  `bfae3458-3892-408a-ae7c-d05fb6c06c3d`. HTTP `/` 200 et asset
+  `index-BNZ1W8px.js` servis. Preuve de déploiement, pas de recette visuelle.
 - Repli : masquer l'entrée et la route pour désactiver la bibliothèque sans
   détruire la nouvelle base. Conserver le chemin d'effacement du nouveau store
   et des reçus tant qu'il peut exister des données W04 ; un revert aveugle vers

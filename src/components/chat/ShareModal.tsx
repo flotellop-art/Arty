@@ -7,10 +7,11 @@
  * À la confirmation : crée le lien public et le partage (Web Share / copie).
  */
 
-import { memo, useEffect, useState } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { Conversation } from '../../types'
-import { createShare } from '../../services/shareClient'
+import { createShare, shareConsentKey } from '../../services/shareClient'
+import { hasProjectHistory, isProjectEU } from '../../services/projects/chatPolicy'
 import { shareContent } from '../../services/native/share'
 import { toast } from '../../services/toast'
 
@@ -23,29 +24,42 @@ interface ShareModalProps {
 export const ShareModal = memo(function ShareModal({ conversation, open, onClose }: ShareModalProps) {
   const { t } = useTranslation()
   const [agreed, setAgreed] = useState(false)
+  const [approvedKey, setApprovedKey] = useState<string | null>(null)
+  const consentKey = conversation ? shareConsentKey(conversation) : ''
+  const currentKey = useRef(consentKey), mounted = useRef(true)
+  const generation = useRef(0)
+  const [engaged, setEngaged] = useState(false)
+  currentKey.current = open ? consentKey : ''
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; generation.current++ } }, [])
   const [busy, setBusy] = useState(false)
   const [url, setUrl] = useState<string | null>(null)
 
   useEffect(() => {
-    if (open) { setAgreed(false); setBusy(false); setUrl(null) }
-  }, [open])
+    generation.current++
+    if (open) { setAgreed(false); setApprovedKey(null); setUrl(null); setBusy(false); setEngaged(false) }
+  }, [open, consentKey])
+
+  const close = () => { generation.current++; setBusy(false); onClose() }
 
   useEffect(() => {
     if (!open) return
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') close() }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
   }, [open, onClose])
 
   if (!open || !conversation) return null
 
-  const isEu = !!conversation.euOnly
+  const isEu = isProjectEU(conversation)
   const hasGoogle = !!conversation.hasGoogleData
 
   const publish = async () => {
-    if (busy || !agreed) return
+    if (busy || !agreed || approvedKey !== consentKey) return
+    const run = ++generation.current
+    const current = () => mounted.current && currentKey.current === consentKey && generation.current === run
     setBusy(true)
-    const res = await createShare(conversation)
+    const res = await createShare(conversation, { isCurrent: current, onEngaged: () => { if (current()) setEngaged(true) } })
+    if (!current()) return
     setBusy(false)
     if (!res.ok || !res.url) {
       const key =
@@ -60,16 +74,18 @@ export const ShareModal = memo(function ShareModal({ conversation, open, onClose
     setUrl(res.url)
     // Partage natif (feuille de partage) ou copie presse-papier.
     const shared = await shareContent({ title: conversation.title, url: res.url, dialogTitle: t('share.dialogTitle') })
+    if (!current()) return
     if (!shared) {
       try {
         await navigator.clipboard.writeText(res.url)
+        if (!current()) return
         toast(t('share.copied'), 'success')
       } catch { /* l'URL reste affichée pour copie manuelle */ }
     }
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={close}>
       <div
         role="dialog"
         aria-modal="true"
@@ -82,7 +98,7 @@ export const ShareModal = memo(function ShareModal({ conversation, open, onClose
           <>
             <p className="text-sm text-theme-muted leading-relaxed mb-5">{t('share.euBlocked')}</p>
             <div className="flex justify-end">
-              <button onClick={onClose} className="px-4 py-1.5 text-xs font-sans uppercase tracking-kicker bg-theme-accent text-theme-bg rounded-md">
+              <button onClick={close} className="px-4 py-1.5 text-xs font-sans uppercase tracking-kicker bg-theme-accent text-theme-bg rounded-md">
                 {t('common.ok')}
               </button>
             </div>
@@ -99,7 +115,7 @@ export const ShareModal = memo(function ShareModal({ conversation, open, onClose
               >
                 {t('share.copyLink')}
               </button>
-              <button onClick={onClose} className="px-4 py-1.5 text-xs font-sans uppercase tracking-kicker bg-theme-accent text-theme-bg rounded-md">
+              <button onClick={close} className="px-4 py-1.5 text-xs font-sans uppercase tracking-kicker bg-theme-accent text-theme-bg rounded-md">
                 {t('common.done')}
               </button>
             </div>
@@ -107,25 +123,28 @@ export const ShareModal = memo(function ShareModal({ conversation, open, onClose
         ) : (
           <>
             <p className="text-sm text-theme-muted leading-relaxed mb-3">{t('share.warning')}</p>
+            {engaged && <p role="status" className="text-sm mb-3">{t('share.publicationEngaged')}</p>}
+            {hasProjectHistory(conversation) && <p className="text-sm text-red-700 dark:text-red-400 mb-3">{t('share.projectWarning')}</p>}
             {hasGoogle && (
               <p className="text-sm text-amber-600 leading-relaxed mb-3">⚠️ {t('share.googleWarning')}</p>
             )}
             <label className="flex items-start gap-2.5 mb-5 cursor-pointer">
               <input
                 type="checkbox"
+                disabled={busy}
                 checked={agreed}
-                onChange={(e) => setAgreed(e.target.checked)}
+                onChange={(e) => { setAgreed(e.target.checked); setApprovedKey(e.target.checked ? consentKey : null) }}
                 className="mt-0.5 accent-[rgb(var(--theme-accent))] w-4 h-4 shrink-0"
               />
               <span className="text-xs text-theme-ink leading-relaxed">{t('share.consent')}</span>
             </label>
             <div className="flex justify-end gap-2">
-              <button onClick={onClose} className="px-3 py-1.5 text-xs font-sans uppercase tracking-kicker text-theme-muted hover:text-theme-ink transition-colors">
+              <button onClick={close} className="px-3 py-1.5 text-xs font-sans uppercase tracking-kicker text-theme-muted hover:text-theme-ink transition-colors">
                 {t('common.cancel')}
               </button>
               <button
                 onClick={publish}
-                disabled={!agreed || busy}
+                disabled={!agreed || approvedKey !== consentKey || busy}
                 className="px-4 py-1.5 text-xs font-sans uppercase tracking-kicker bg-theme-accent text-theme-bg rounded-md hover:opacity-90 transition-opacity disabled:opacity-40"
               >
                 {busy ? t('share.publishing') : t('share.publish')}

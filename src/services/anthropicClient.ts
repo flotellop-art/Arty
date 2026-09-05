@@ -135,6 +135,8 @@ export type ToolHandler = (
 interface StreamOptions extends ModelInvocationOptions {
   assertRequestCurrent?: () => void
   documentReadOnly?: boolean
+  /** Revalidate locally prepared project consent after async auth, before HTTP. */
+  beforeDocumentRequest?: () => Promise<void>
   systemPrompt?: string
   onToolCall?: ToolHandler
   // Restreint l'ensemble d'outils exposé au modèle (ex: brief proactif =
@@ -298,6 +300,7 @@ async function fetchWithRetry(
   apiKey: string | null,
   controller: AbortController,
   assertRequestCurrent?: () => void,
+  beforeDocumentRequest?: () => Promise<void>,
 ): Promise<Response> {
   const maxRetries = 3
   // `interleaved-thinking-2025-05-14` retiré : obsolète avec le thinking
@@ -318,6 +321,7 @@ async function fetchWithRetry(
 
   let response: Response | null = null
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    await beforeDocumentRequest?.()
     assertRequestCurrent?.()
     controller.signal.throwIfAborted()
     response = await fetch(apiUrl('/api/ai/proxy'), {
@@ -1002,7 +1006,7 @@ async function runWithTools(
         ...(effort && { output_config: { effort } }),
       })
 
-      const response = await fetchWithRetry(requestBody, apiKey, controller, options?.assertRequestCurrent)
+      const response = await fetchWithRetry(requestBody, apiKey, controller, options?.assertRequestCurrent, options?.beforeDocumentRequest)
       const { contentBlocks, inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens, servedModel } = await parseSSEStream(response, onToken)
       options?.assertRequestCurrent?.()
       const searchContext = extractAnthropicSearchContext(contentBlocks, lastUserText)

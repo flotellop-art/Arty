@@ -311,6 +311,7 @@
       "eu_only": "Conversation en mode Europe : Mistral (serveurs en France) est le seul modèle utilisé — tes données ne quittent pas l'Europe.",
       "files_to_claude": "Ce fichier n'est pas pris en charge par le modèle choisi dans Arty : Claude est utilisé pour l'analyser.",
       "office_documents": "Les documents Word/Excel de ce fil sont lus localement puis analysés par Claude.",
+      "project_documents": "Contexte de projet analysé par Claude en lecture seule, après aperçu confirmé.",
       "files_mistral_native": "Image jointe avec Mistral sélectionné : Mistral l'analyse avec sa vision native (les données restent en Europe).",
       "image_vision_openai": "Photos compatibles : GPT-5.6 Terra les analyse en détail 4K via OpenAI.",
       "private_data": "Ta demande contient des données privées fournies dans le chat, un fichier ou des données d'agenda : Claude est utilisé pour les traiter sans recherche web inutile.",
@@ -332,6 +333,7 @@
       "eu_only": "Conversation Europe → passage à Mistral au lieu de {{requested}} pour que les données restent en Europe.",
       "files_to_claude": "Fichier joint → réponse confiée à Claude car le modèle choisi ne prend pas ce fichier en charge, au lieu de {{requested}}.",
       "office_documents": "Contexte Word/Excel → analyse par Claude au lieu de {{requested}} pour conserver le contenu des documents.",
+      "project_documents": "Contexte de projet → Claude en lecture seule au lieu de {{requested}}.",
       "private_data": "Données privées détectées → réponse confiée à Claude au lieu de {{requested}}.",
       "fallback_no_provider": "{{requested}} n'est pas disponible avec ce compte → passage à Claude avant l'envoi."
     },
@@ -479,6 +481,8 @@
       "imagePreparationFailed": "Échec de la préparation de la photo : {{name}}.",
       "fileReadFailed": "Impossible de lire le fichier : {{name}}.",
       "officePreparing": "Lecture locale des documents Word/Excel…",
+      "projectPreparing": "Préparation locale du contexte de projet…",
+      "projectScope": "Projet : aperçu obligatoire avant chaque envoi, extraits limités et historique inclus. Lecture seule, sans mémoire personnelle ni recherche web. Limite globale : 200 000 caractères, réserve système comprise, et 20 Mo binaires. Pas de résumé automatique pour réduire ce contexte.",
       "officeScope": "DOCX/XLSX : texte et cellules, sans mise en page, images ni annotations. Formules non recalculées, dates Excel brutes ; feuilles masquées incluses. Limites par envoi, historique inclus : 20 Mo de fichiers Office, 200 000 caractères (dont chaînes Excel) et 20 000 cellules. Analyse sans outils d’action ni recherche web automatique.",
       "tooManyImages": "Maximum {{max}} photos par message",
       "imageBatchTooLarge": "Le total des photos optimisées dépasse 24 Mo.",
@@ -806,6 +810,7 @@
     "prompt": "Prépare mon brief du jour maintenant à partir de mon agenda, de mes tâches et de ma mémoire, puis propose des actions pertinentes. Renvoie le résultat via l'outil present_brief."
   },
   "summary": {
+    "exchangesOnly": "Résumé des échanges uniquement : les messages longs sont abrégés, la bibliothèque et les pièces jointes ne sont pas relues.",
     "title": "Résumé de la conversation",
     "generating": "Génération en cours...",
     "copy": "Copier",
@@ -1417,6 +1422,8 @@
     "errorFailed": "La génération d'image a échoué. Réessaie dans un moment."
   },
   "share": {
+    "publicationEngaged": "La requête de publication est partie. Fermer cette fenêtre ne révoque pas un lien éventuellement créé.",
+    "projectWarning": "Ce fil contient ou a contenu un projet. Ses réponses peuvent révéler des documents, même après détachement ou suppression. Les références techniques ne seront pas publiées, mais les citations présentes dans le texte le seront. Relis tout le texte avant publication.",
     "title": "Partager cette conversation",
     "warning": "Un lien public sera créé : toute personne disposant du lien pourra lire cette conversation (pendant 30 jours). Vérifie qu'elle ne contient rien de personnel.",
     "googleWarning": "Cette conversation a utilisé tes données Google (fichiers ou agenda) — leur contenu peut apparaître dans les réponses. Relis avant de publier.",

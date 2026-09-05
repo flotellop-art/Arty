@@ -107,6 +107,7 @@ export interface RouteContext {
   euOnly: boolean
   hasPrivateHistory: boolean
   hasOfficeHistory?: boolean
+  hasProjectContext?: boolean
   hasTrailHistory?: boolean
 }
 

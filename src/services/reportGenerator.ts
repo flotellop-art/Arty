@@ -1,6 +1,6 @@
 import { getDateLocale } from '../utils/formatDate'
-import { secureGet, secureSet, isCryptoReady } from './crypto'
-import { getActiveUserId, purgeLegacyGlobalReports } from './userSession'
+import { secureGet, secureSet, isCryptoReady, captureCryptoGuard } from './crypto'
+import { getActiveUserId, getActiveSessionEpoch, purgeLegacyGlobalReports } from './userSession'
 
 export { purgeLegacyGlobalReports } from './userSession'
 
@@ -316,17 +316,27 @@ export async function sanitizeReportDocument(html: string): Promise<string> {
   return `<!DOCTYPE html>\n${doc.documentElement.outerHTML}`
 }
 
-export async function saveReport(title: string, htmlContent: string): Promise<string> {
+export async function saveReport(title: string, htmlContent: string, requestCurrent?: () => void): Promise<string> {
+  const owner = getActiveUserId(), epoch = getActiveSessionEpoch(), cryptoCurrent = captureCryptoGuard()
+  const assertCurrent = () => {
+    requestCurrent?.()
+    if (!owner || owner !== getActiveUserId() || epoch !== getActiveSessionEpoch() || !cryptoCurrent()) throw new DOMException('Report cancelled', 'AbortError')
+  }
+  assertCurrent()
   purgeLegacyGlobalReports()
   if (!isCryptoReady()) throw new Error('Crypto not initialized — report not stored')
 
-  const id = Date.now().toString(36)
+  const id = crypto.randomUUID(), key = reportStorageKey(id)
   const fullHtml = await sanitizeReportDocument(REPORT_TEMPLATE(title, htmlContent))
-  await secureSet(reportStorageKey(id), fullHtml)
+  assertCurrent()
+  await secureSet(key, fullHtml)
+  assertCurrent()
   return id
 }
 
 export async function getReport(id: string): Promise<string | null> {
+  const owner = getActiveUserId(), epoch = getActiveSessionEpoch(), cryptoCurrent = captureCryptoGuard()
+  const assertCurrent = () => { if (owner !== getActiveUserId() || epoch !== getActiveSessionEpoch() || !cryptoCurrent()) throw new DOMException('Report cancelled', 'AbortError') }
   purgeLegacyGlobalReports()
   if (!getActiveUserId() || !isCryptoReady()) return null
 
@@ -338,16 +348,19 @@ export async function getReport(id: string): Promise<string | null> {
   const html = raw.trimStart().startsWith('<')
     ? raw // transient scoped plaintext produced by the previous implementation
     : await secureGet<string>(key)
+  assertCurrent()
   if (!html) return null
 
   // Ciphertext bearing our marker was sanitized before encryption. Plaintext,
   // legacy ciphertext and older report versions are hardened then re-encrypted.
   if (encrypted && html.includes('data-arty-report-hardened="1"')) return html
   const hardened = await sanitizeReportDocument(html)
+  assertCurrent()
   await secureSet(key, hardened)
+  assertCurrent()
   return hardened
 }
 
-export async function openReport(title: string, htmlContent: string): Promise<string> {
-  return saveReport(title, htmlContent)
+export async function openReport(title: string, htmlContent: string, assertCurrent?: () => void): Promise<string> {
+  return saveReport(title, htmlContent, assertCurrent)
 }

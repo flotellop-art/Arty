@@ -34,6 +34,7 @@ import {
   type LocalMemoryFact,
 } from './localMemoryService'
 import type { Conversation } from '../types'
+import { isDocumentConversation } from './projects/chatPolicy'
 import i18n from '../i18n'
 import { toast } from './toast'
 
@@ -139,6 +140,7 @@ let inFlight = false
 export async function maybeExtractMemory(conv: Conversation | null | undefined): Promise<void> {
   try {
     if (!conv || inFlight) return
+    if (isDocumentConversation(conv)) return
     if (!isAutoMemoryEnabled()) return
     if (hasEuData(conv)) return
     // Trial débutant : pas d'extraction avant l'engagement (~5 messages).

@@ -15,6 +15,8 @@
 import type { Conversation } from '../types'
 import { apiUrl } from './apiBase'
 import { getValidAccessToken } from './googleAuth'
+import { getActiveUserId, getActiveSessionEpoch } from './userSession'
+import { hasProjectHistory, isProjectEU } from './projects/chatPolicy'
 
 export interface ShareResult {
   ok: boolean
@@ -49,29 +51,45 @@ export function buildSharePayload(conv: Conversation): {
         content: stripLocalImages(m.content),
         timestamp: m.timestamp,
       })),
-    usedModels: conv.usedModels ?? [],
-    euOnly: !!conv.euOnly,
+    usedModels: [...(conv.usedModels ?? [])],
+    euOnly: isProjectEU(conv),
     hasGoogleData: !!conv.hasGoogleData,
   }
 }
 
-export async function createShare(conv: Conversation): Promise<ShareResult> {
-  // euOnly : barrière client (le serveur refuse aussi — défense en profondeur).
-  if (conv.euOnly) return { ok: false, code: 'eu_blocked' }
+export function shareConsentKey(conv: Conversation): string {
+  return JSON.stringify([getActiveUserId(), getActiveSessionEpoch(), conv.id, conv.projectId, hasProjectHistory(conv), buildSharePayload(conv)])
+}
 
-  const token = await getValidAccessToken()
+export async function createShare(conv: Conversation, options?: { isCurrent?: () => boolean; onEngaged?: () => void }): Promise<ShareResult> {
+  // euOnly : barrière client (le serveur refuse aussi — défense en profondeur).
+  if (isProjectEU(conv)) return { ok: false, code: 'eu_blocked' }
+
+  const owner = getActiveUserId(), epoch = getActiveSessionEpoch(), consentKey = shareConsentKey(conv)
+  const body = JSON.stringify(buildSharePayload(conv))
+  const current = () => owner === getActiveUserId() && epoch === getActiveSessionEpoch() && (options?.isCurrent?.() ?? true)
+  if (!current()) return { ok: false, code: 'failed' }
+
+  let token: string | null
+  try { token = await getValidAccessToken() } catch { return { ok: false, code: 'auth' } }
+  if (!current()) return { ok: false, code: 'auth' }
+  if (shareConsentKey(conv) !== consentKey) return { ok: false, code: 'failed' }
   if (!token) return { ok: false, code: 'auth' }
 
   let res: Response
   try {
+    if (!current()) return { ok: false, code: 'failed' }
+    options?.onEngaged?.()
     res = await fetch(apiUrl('/api/share'), {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-google-token': token },
-      body: JSON.stringify(buildSharePayload(conv)),
+      body,
     })
   } catch {
     return { ok: false, code: 'failed' }
   }
+
+  if (!current()) return { ok: false, code: 'auth' }
 
   if (!res.ok) {
     if (res.status === 400) return { ok: false, code: 'eu_blocked' }
@@ -84,6 +102,7 @@ export async function createShare(conv: Conversation): Promise<ShareResult> {
 
   try {
     const data = (await res.json()) as { id?: string }
+    if (!current()) return { ok: false, code: 'auth' }
     if (!data.id) return { ok: false, code: 'failed' }
     return { ok: true, id: data.id, url: `${SHARE_ORIGIN}/share/${data.id}` }
   } catch {

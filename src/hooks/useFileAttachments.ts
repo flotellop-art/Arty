@@ -11,7 +11,7 @@ import i18n from '../i18n'
 import { prepareOfficeMessages, type DocumentPreparation } from '../services/documents/prepareOfficeMessages'
 
 // Detect MIME type from filename if browser didn't set it
-function detectMimeType(name: string, type: string): string {
+export function detectMimeType(name: string, type: string): string {
   if (type && type !== 'application/octet-stream') return type
   const ext = name.split('.').pop()?.toLowerCase()
   switch (ext) {
