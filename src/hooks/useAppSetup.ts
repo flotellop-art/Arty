@@ -9,6 +9,7 @@ import { buildContextualPrompt, buildMailboxAccessPrompt, MAILBOX_NO_ACCESS_PROM
 import { buildLocalMemoryPrompt } from '../services/localMemoryService'
 import { getCustomInstructions } from '../services/customInstructions'
 import { createToolExecutor } from '../services/toolExecutor'
+import type { ToolDispatcher } from '../services/tools/types'
 import { getStyle, setStyle, getStylePrompt, STYLE_OPTIONS, type ResponseStyle } from '../services/responseStyles'
 import type { Question } from '../components/chat/QuestionModal'
 import { isPublicGoogleOAuthProfileEnabled } from '../services/publicGoogleOAuthProfile'
@@ -21,7 +22,7 @@ interface ConversationHook {
   activeId: string | null
   sendMessage: (text: string, conversationId?: string) => void
   setSystemPrompt: (prompt: string | undefined) => void
-  setToolHandler: (handler: (name: string, input: Record<string, unknown>) => Promise<{ result: string; screenshot?: string }>) => void
+  setToolHandler: (handler: ToolDispatcher) => void
 }
 
 export function useAppSetup(conversation: ConversationHook) {
@@ -80,7 +81,8 @@ export function useAppSetup(conversation: ConversationHook) {
   // Create tool executor and register it
   useEffect(() => {
     toolExecutorRef.current = createToolExecutor(computerActions, drive)
-    setToolHandler((name: string, input: Record<string, unknown>) => {
+    setToolHandler((name, input, context) => {
+      context?.imageGeneration?.assertCurrent()
       if (name === 'ask_user') {
         const questions = (input.questions as Question[]) || []
         return new Promise<{ result: string }>((resolve) => {
@@ -108,7 +110,8 @@ export function useAppSetup(conversation: ConversationHook) {
         })
       }
 
-      return toolExecutorRef.current(name, input).then((res) => {
+      return toolExecutorRef.current(name, input, context).then((res) => {
+        context?.imageGeneration?.assertCurrent()
         if (res.screenshot) {
           setActionScreenshot(res.screenshot)
         }

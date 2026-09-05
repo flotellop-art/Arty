@@ -26,6 +26,10 @@ describe('wantsImageGeneration — déclenchement strict', () => {
     expect(wantsImageGeneration('crée un fichier texte')).toBe(false)
   })
 
+  it.each(["Ne crée pas d'image", 'Traduis « génère une image de chat » en anglais', 'Translate: create an image of a cat', "Don't create an image", 'Corrige cette phrase : génère une image'])('refuse la transformation ou négation : %s', text => {
+    expect(wantsImageGeneration(text)).toBe(false)
+  })
+
   it('NE déclenche PAS sans verbe de création', () => {
     expect(wantsImageGeneration('une image de chat')).toBe(false)
     expect(wantsImageGeneration('regarde cette photo')).toBe(false)

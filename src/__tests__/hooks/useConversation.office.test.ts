@@ -11,7 +11,8 @@ vi.mock('../../services/visionAutoCrop', () => ({
   isVisionAutoCropFollowUp: vi.fn(() => true), prepareVisionAutoCrop: vi.fn(),
 }))
 vi.mock('../../services/secureFileStorage', () => ({ getFile: vi.fn(), putFile: vi.fn(), deleteFile: vi.fn(), deleteOwnedFiles: vi.fn(async () => 0) }))
-vi.mock('../../services/userSession', () => ({ getActiveUserId: vi.fn(() => 'owner-a'), getActiveSessionEpoch: vi.fn(() => 1) }))
+vi.mock('../../services/userSession', () => ({ getActiveUserId: vi.fn(() => 'owner-a'), getActiveSessionEpoch: vi.fn(() => 1), getSessionProjectFence: () => 'initial', PROJECT_ERASURE_FENCE_KEY: 'test-project-fence' }))
+vi.mock('../../services/crypto', async original => ({ ...await original<typeof import('../../services/crypto')>(), captureCryptoGuard: vi.fn(() => () => true) }))
 vi.mock('../../services/autoMemory', () => ({ maybeExtractMemory: vi.fn() }))
 vi.mock('../../services/pdfUrlFetch', () => ({ fetchPdfMarkdowns: vi.fn(async () => ''), fetchUrlMarkdowns: vi.fn(async () => ({ block: '', unreadable: [] })) }))
 vi.mock('../../services/factChecker', () => ({ clearSearchContext: vi.fn(), getFactCheckMode: () => 'off', runFactCheckOnLatest: vi.fn() }))
@@ -71,6 +72,38 @@ describe('Office — cycle complet sans API payante', () => {
       { id: 'a1', role: 'assistant', content: 'Lecture précédente', timestamp: 2 }]
     vi.mocked(getFile).mockResolvedValue(file)
   }
+
+  it.each(['eu', 'office', 'description', 'negation', 'translation'] as const)('refuse un appel image non annoncé/malveillant : %s', async kind => {
+    conv.euOnly = kind === 'eu'
+    const prior = vi.mocked(gatherRouteInput).getMockImplementation()!
+    vi.mocked(gatherRouteInput).mockImplementationOnce(ctx => ({ ...prior(ctx), selectedModel: 'claude' }))
+    const handler = vi.fn(async () => ({ result: 'should not run' }))
+    const { result, unmount } = setup()
+    act(() => result.current.setToolHandler(handler))
+    const text = kind === 'description' ? 'décris une image' : kind === 'negation' ? 'Ne crée pas d’image' : kind === 'translation' ? 'Traduis : génère une image' : 'génère une image'
+    await act(async () => { await result.current.sendMessage(text, conv.id, kind === 'office' ? [officeFixture()] : undefined) })
+    const call = kind === 'eu' ? vi.mocked(streamMistralMessage).mock.calls[0] : vi.mocked(streamMessage).mock.calls[0]
+    const response = await call[4]!.onToolCall!('generate_image', { prompt: 'logo' })
+    expect(response.result).toContain('not authorized'); expect(handler).not.toHaveBeenCalled()
+    act(() => result.current.stopStreaming(conv.id)); unmount()
+  })
+
+  it('transmet la permission au bon tour et la révoque au Stop avant retry', async () => {
+    const prior = vi.mocked(gatherRouteInput).getMockImplementation()!
+    vi.mocked(gatherRouteInput).mockImplementationOnce(ctx => ({ ...prior(ctx), selectedModel: 'claude' }))
+    const handler = vi.fn(async () => ({ result: 'ok' }))
+    const { result, unmount } = setup()
+    act(() => result.current.setToolHandler(handler))
+    await act(async () => { await result.current.sendMessage('génère une image de chat', conv.id) })
+    const onTool = vi.mocked(streamMessage).mock.calls[0][4]!.onToolCall!
+    await onTool('generate_image', { prompt: 'cat' })
+    const permission = (handler.mock.calls[0] as unknown as [unknown, unknown, import('../../services/tools/types').ToolExecutionContext])[2].imageGeneration!
+    expect(permission.signal.aborted).toBe(false); expect(permission.assertCurrent).not.toThrow()
+    act(() => result.current.stopStreaming(conv.id))
+    expect(permission.signal.aborted).toBe(true); expect(permission.assertCurrent).toThrow()
+    await expect(onTool('generate_image', { prompt: 'late' })).rejects.toMatchObject({ name: 'AbortError' })
+    expect(handler).toHaveBeenCalledOnce(); unmount()
+  })
 
   it.each(['pdf', 'eu-url'] as const)('%s : ancienne préparation après Stop ne vide ni ne contrôle le nouveau tour', async kind => {
     conv.euOnly = kind === 'eu-url'

@@ -26,7 +26,8 @@ import { mailToolDefinitions, mailToolsAvailable } from '../services/tools/mailT
 import { detectReminderIntent, createReminder } from '../services/reminderService'
 import { composeQuickActionText, isQuickActionSelection } from '../services/quickActions'
 import { clearConversationComposerDraft } from '../services/composerDrafts'
-import { getActiveSessionEpoch, getActiveUserId } from '../services/userSession'
+import { getActiveSessionEpoch, getActiveUserId, getSessionProjectFence, PROJECT_ERASURE_FENCE_KEY } from '../services/userSession'
+import { captureCryptoGuard } from '../services/crypto'
 import {
   findLatestTerraVisionBatch,
   isVisionAutoCropFollowUp,
@@ -42,7 +43,7 @@ import { beginProjectOperation, getProject } from '../services/projects/store'
 import { ProjectError, type Project } from '../services/projects/types'
 import { useProjectReview } from './useProjectReview'
 
-type ToolHandler = (name: string, input: Record<string, unknown>) => Promise<{ result: string; screenshot?: string }>
+import type { ToolDispatcher as ToolHandler } from '../services/tools/types'
 
 // P1.5 — outils qui font ENTRER des données PRIVÉES (fichier, agenda,
 // contact, contenu de mail) dans le contexte → la réponse peut en contenir.
@@ -752,6 +753,8 @@ export function useConversation() {
       clearSearchContext(targetId)
 
       const invocationId = getInvocationId(targetId)
+      const toolController = new AbortController()
+      const imageCryptoCurrent = captureCryptoGuard(), imageFence = getSessionProjectFence()
       const invocationOwner = getActiveUserId(), invocationEpoch = getActiveSessionEpoch()
       const invocationStillCurrent = () => !!invocationId && getInvocationId(targetId) === invocationId
         && invocationOwner === getActiveUserId() && invocationEpoch === getActiveSessionEpoch() && officeStillCurrent()
@@ -776,6 +779,7 @@ export function useConversation() {
 
         // Publication immédiate dans tous les cas.
         streamDone(targetId)
+        toolController.abort()
         officeController?.abort()
 
         // Puis nettoyage des liens et vérification en arrière-plan. Les gardes
@@ -787,6 +791,7 @@ export function useConversation() {
         if (!invocationStillCurrent()) return
         clearSearchContext(targetId)
         streamError(err, targetId)
+        toolController.abort()
         officeController?.abort()
         // P0.7 — cap premium atteint : pas de bandeau rouge ni de redirect
         // muet vers /upgrade. On dispatche un event que CapReachedModal
@@ -898,8 +903,16 @@ export function useConversation() {
       // ce flag déclenche l'avertissement renforcé avant un partage public.
       // Wrappe le handler global pour capter le targetId (que le handler n'a
       // pas) au moment exact de l'appel.
+      const imageAllowed = provider === 'claude' && !conv.euOnly && !officeRequest && !quickAction && wantsImageGeneration(text)
+      const imagePermission = { signal: toolController.signal, assertCurrent() {
+        assertInvocationCurrent()
+        if (toolController.signal.aborted || !imageCryptoCurrent() || imageFence !== (localStorage.getItem(PROJECT_ERASURE_FENCE_KEY) ?? 'initial')) {
+          throw new DOMException('Image request cancelled', 'AbortError')
+        }
+      } }
       const trackedToolHandler: ToolHandler = async (name, input) => {
-        documentContext?.assertCurrent()
+        assertInvocationCurrent()
+        if (name === 'generate_image' && !imageAllowed) return { result: 'Image generation is not authorized for this request.' }
         if (PRIVATE_DATA_TOOL_NAMES.has(name)) {
           const c = storage.getConversation(targetId)
           if (c && !c.hasGoogleData) {
@@ -917,7 +930,24 @@ export function useConversation() {
           }
         }
         const handler = toolHandlerRef.current
-        return handler ? handler(name, input) : { result: '' }
+        try {
+          if (name === 'generate_image') imagePermission.assertCurrent()
+          const result = handler ? await handler(name, input, name === 'generate_image' ? {
+            imageGeneration: imagePermission,
+          } : undefined) : { result: '' }
+          if (name === 'generate_image') imagePermission.assertCurrent()
+          assertInvocationCurrent()
+          return result
+        } catch (error) {
+          if (name !== 'generate_image') throw error
+          toolController.abort()
+          // Only this invocation, never a newer retry or the next account.
+          if (getInvocationId(targetId) === invocationId && invocationOwner === getActiveUserId() && invocationEpoch === getActiveSessionEpoch()) {
+            discardStream(targetId)
+            if (isActive(targetId)) setError(i18n.t('image.errorFailed'))
+          }
+          throw new DOMException('Image request cancelled', 'AbortError')
+        }
       }
 
       let controller: AbortController
@@ -1126,14 +1156,13 @@ export function useConversation() {
           apiMessages[apiMessages.length - 1] = { role: 'user', content: outgoingText }
         }
         // P1.3 — le tool generate_image n'est EXPOSÉ au modèle que si
-        // l'utilisateur demande explicitement une image (seule garantie
-        // anti-faux-déclenchement, cf. imageTools). euOnly n'atteint jamais ce
-        // chemin (forcé sur Mistral) → génération naturellement bloquée en EU.
+        // l'heuristique reconnaît une demande d'image dans le texte utilisateur
+        // brut. La même permission est exigée à l'exécution (EU/document/Stop).
         // Boîtes mail : les outils mail_* ne sont exposés que si ≥1 compte
         // IMAP natif est connecté (sinon le modèle annoncerait une capacité
         // inexistante — classe F-3 « tools sur routes mortes »).
         const extraTools = [
-          ...(wantsImageGeneration(modelText) ? [generateImageToolDefinition] : []),
+          ...(imageAllowed ? [generateImageToolDefinition] : []),
           ...(mailToolsAvailable() ? mailToolDefinitions : []),
         ]
         const toolsOverride = extraTools.length > 0 ? [...TOOLS, ...extraTools] : undefined
@@ -1151,6 +1180,8 @@ export function useConversation() {
         })
       }
 
+      controller.signal.addEventListener('abort', () => toolController.abort(), { once: true })
+      if (controller.signal.aborted) toolController.abort()
       if (!invocationStillCurrent()) { controller.abort(); releaseVisionAutoCropLock(); return true }
       if (officeController) {
         if (!officeStillCurrent()) { controller.abort(); return true }

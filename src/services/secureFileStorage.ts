@@ -91,7 +91,9 @@ function base64ByteLength(value: string): number {
 export async function putFile(
   file: FileAttachment,
   ownerUserId: string | null = getActiveUserId(),
+  requestGuard?: () => void,
 ): Promise<string> {
+  requestGuard?.()
   if (ownerUserId !== getActiveUserId()) throw new CryptoContextChanged()
   if (!isCryptoReady()) {
     throw new Error('Crypto not ready — cannot persist file')
@@ -100,7 +102,10 @@ export async function putFile(
     throw new Error('File has no data to persist')
   }
   const cryptoCurrent = captureCryptoGuard()
-  const assertCurrent = () => { if (!cryptoCurrent() || ownerUserId !== getActiveUserId()) throw new CryptoContextChanged() }
+  const assertCurrent = () => {
+    requestGuard?.()
+    if (!cryptoCurrent() || ownerUserId !== getActiveUserId()) throw new CryptoContextChanged()
+  }
 
   const hasNormalizationMetadata = file.normalizationVersion !== undefined
   if (
@@ -173,14 +178,18 @@ export async function putFile(
   const db = await getDB()
   assertCurrent()
   const tx = db.transaction(STORE, 'readwrite')
-  const existing = await tx.store.get(fileId) as StoredFile | undefined
-  if (!cryptoCurrent() || (existing && existing.ownerKey !== record.ownerKey)) {
-    tx.abort()
+  try {
+    const existing = await tx.store.get(fileId) as StoredFile | undefined
+    assertCurrent()
+    if (existing && existing.ownerKey !== record.ownerKey) throw new CryptoContextChanged()
+    await tx.store.put(record)
+    assertCurrent()
+    await tx.done
+  } catch (error) {
+    try { tx.abort() } catch { /* already completed/aborted */ }
     await tx.done.catch(() => {})
-    throw new CryptoContextChanged()
+    throw error
   }
-  await tx.store.put(record)
-  await tx.done
   assertCurrent()
   return fileId
 }

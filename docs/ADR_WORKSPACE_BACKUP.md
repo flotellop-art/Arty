@@ -136,6 +136,22 @@ capacité déployées restent non vérifiées ; le choix B attend cet accès.
 
 ## Conséquences et prochaines preuves
 
+A2 a deux prérequis supplémentaires établis en contre-revue :
+
+- Le rendu actuel n'affiche pas les URI `arty-img` (transformateur URL par
+  défaut), mais les autoriser globalement exposerait un résolveur d'IDs privés
+  au partage public. Prévoir des liaisons par message issues d'un reçu d'outil,
+  jamais de l'autorité tirée du texte du modèle ; aucun résolveur par défaut.
+  L'exécution image est sécurisée dans un lot séparé avant ce raccordement.
+  Les liaisons alias URI → fichier local nécessiteront une évolution versionnée
+  du manifeste : deux restaurations de la même archive doivent rester distinctes.
+- Un journal seul ne protège pas localStorage contre une fenêtre au cache
+  ancien qui réécrit toute la liste. A2 devra isoler une nouvelle génération
+  de clés des clients legacy et coordonner tous ses writers (ou migrer vers une
+  autorité transactionnelle), pas seulement verrouiller le bouton Restaurer.
+  Une comparaison suivie d'un setItem n'est pas un CAS. Aucun verrou ni
+  migration d'historique n'est implémenté par A1 ou le lot d'exécution image.
+
 A1 peut être testé et livré sans migration ni UI. A2 doit ajouter inventaire
 exhaustif, contrôle de stabilité, journal de restauration, reprise et intégration
 de l'effacement. Aucun simple try/finally entre trois stockages ne vaut atomicité.

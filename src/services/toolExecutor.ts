@@ -1,6 +1,6 @@
 import type { useComputer } from '../hooks/useComputer'
 import type { useDrive } from '../hooks/useDrive'
-import type { ToolResult, ToolHandler } from './tools/types'
+import type { ToolResult, ToolHandler, ToolExecutionContext } from './tools/types'
 import { createComputerHandlers } from './tools/computerTools'
 import { createDriveHandlers } from './tools/driveTools'
 import { createCalendarHandlers } from './tools/calendarTools'
@@ -39,7 +39,7 @@ export function createToolExecutor(
     ...createMailHandlers(),
   }
 
-  return async (name: string, input: Record<string, unknown>): Promise<ToolResult> => {
+  return async (name: string, input: Record<string, unknown>, context?: ToolExecutionContext): Promise<ToolResult> => {
     if (isPublicGoogleOAuthProfileEnabled() && isBlockedPublicGoogleTool(name)) {
       return {
         result: 'Ce profil Google public ne donne pas à Arty un accès global à Drive ou Contacts.',
@@ -48,8 +48,11 @@ export function createToolExecutor(
     const handler = handlers[name]
     if (!handler) return { result: `Outil inconnu: ${name}` }
     try {
-      return await handler(input)
+      return await handler(input, context)
     } catch (err) {
+      // Image scope failures must reach the invocation owner for teardown;
+      // returning them as model text would allow the tool loop to continue.
+      if (context?.imageGeneration) throw err
       return { result: `Erreur: ${err instanceof Error ? err.message : 'inconnue'}` }
     }
   }

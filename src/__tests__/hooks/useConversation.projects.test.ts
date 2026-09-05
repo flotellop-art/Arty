@@ -9,7 +9,7 @@ vi.mock('../../services/storage', () => ({ getConversations: vi.fn(), getConvers
 vi.mock('../../services/anthropicClient', () => ({ streamMessage: vi.fn(() => new AbortController()) }))
 vi.mock('../../services/mistralClient', () => ({ streamMistralMessage: vi.fn(() => new AbortController()) }))
 vi.mock('../../services/secureFileStorage', () => ({ getFile: vi.fn(), putFile: vi.fn(async f => f.id), deleteFile: vi.fn(), deleteOwnedFiles: vi.fn(async () => 0) }))
-vi.mock('../../services/userSession', () => ({ getActiveUserId: vi.fn(() => 'owner-a'), getActiveSessionEpoch: vi.fn(() => 1) }))
+vi.mock('../../services/userSession', () => ({ getActiveUserId: vi.fn(() => 'owner-a'), getActiveSessionEpoch: vi.fn(() => 1), getSessionProjectFence: () => 'initial', PROJECT_ERASURE_FENCE_KEY: 'test-project-fence' }))
 vi.mock('../../services/autoMemory', () => ({ maybeExtractMemory: vi.fn() }))
 vi.mock('../../services/pdfUrlFetch', () => ({ fetchPdfMarkdowns: vi.fn(), fetchUrlMarkdowns: vi.fn() }))
 vi.mock('../../services/factChecker', () => ({ clearSearchContext: vi.fn(), getFactCheckMode: () => 'off', runFactCheckOnLatest: vi.fn() }))

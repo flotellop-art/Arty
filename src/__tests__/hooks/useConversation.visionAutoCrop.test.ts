@@ -47,6 +47,7 @@ vi.mock('../../services/secureFileStorage', () => ({
 vi.mock('../../services/userSession', () => ({
   getActiveUserId: vi.fn(() => 'user-a'),
   getActiveSessionEpoch: vi.fn(() => 7),
+  getSessionProjectFence: () => 'initial', PROJECT_ERASURE_FENCE_KEY: 'test-project-fence',
 }))
 vi.mock('../../services/autoMemory', () => ({ maybeExtractMemory: vi.fn() }))
 vi.mock('../../services/factChecker', () => ({

@@ -10,4 +10,10 @@ export interface ToolResult {
   fileData?: FileData
 }
 
-export type ToolHandler = (input: Record<string, unknown>) => Promise<ToolResult>
+/** Local authority, never taken from tool arguments or sent to a provider. */
+export interface ToolExecutionContext {
+  imageGeneration?: { readonly signal: AbortSignal; assertCurrent(): void }
+}
+
+export type ToolHandler = (input: Record<string, unknown>, context?: ToolExecutionContext) => Promise<ToolResult>
+export type ToolDispatcher = (name: string, input: Record<string, unknown>, context?: ToolExecutionContext) => Promise<ToolResult>
