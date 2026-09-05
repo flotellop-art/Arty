@@ -598,7 +598,7 @@ La recette d'un vrai APK mis à jour avec données existantes reste distincte.
 
 ### A3b.1 — admission froide et résolveur legacy (5 septembre 2026)
 
-**Décision acceptée, implémentée et testée localement ; livraison à attester.**
+**Décision acceptée, implémentée et livrée sur le web par #453.**
 Deux contre-revues indépendantes en lecture seule, sécurité/intégrité et
 produit/mobile, ont donné GO après corrections. Ce lot n'est ni un writer de
 registre, ni une migration, ni une restauration.
@@ -661,3 +661,81 @@ n'est activé. Avant activation : lecteurs isolés, témoins monotones dans tous
 les assets, journal/copie physique/reprise/effacement cohérent restent exigés.
 L'absence du contrôle n'exclut pas des bases futures aux noms encore inconnus.
 Aucun verrou universel des anciennes versions ni révocations serveur promis.
+
+Reçu web #453 : head `39405506857888966c659f806835e55ee3087bf0`, squash main
+`ffd9bf69ee5a0d09ceed219c84e03fab5fa2efdc`, fusion 2026-09-05 18:07:07 UTC.
+CI PR `33982796853` et CI main `33983051454` réussies (web, Android,
+orchestrateur). Pages preview `49d1726c-ef33-465e-a216-d3a905963890` et
+production `1e1b6381-9e51-4c20-864f-e8964f0aac17` réussis, attestés par les
+check-runs Cloudflare sur les SHA respectifs. L'API Wrangler directe n'est pas
+authentifiée dans ce contexte : aucun credential récupéré ou déplacé.
+
+Sonde publique 18:10:26 UTC : tryarty.com et 1e1b6381.appfacade.pages.dev
+retournent HTTP 200 et le même `/assets/index-_bsPvJWd.js`, 254 221 octets,
+SHA-256 `4c1ee5b4c3a30bb185d0a04989ce45352436aba0dce37bba40b52b507ae9cd2d`,
+avec le contrôle froid dans l'entrée. Le build principal ouvre la vraie
+connexion sur origine vierge ; pas de seed démo. La preview affiche
+v1.0.99 / build 2026-09-05 18:02 et conserve ses exemples après recharge.
+Ses projets sont volontairement indisponibles sans clé, conformément à
+`previewDemo` : ne pas comptabiliser cette visite comme recette authentifiée.
+Aucun taux d'erreur, latence de production ou test APK installé revendiqué.
+CI Android de distribution `33983051469` réussie : compilation APK signé et
+étape Firebase App Distribution confirmées. Sonde publique répétée à 18:16 UTC,
+mêmes HTTP 200, nom d'asset et empreinte ; ce sont deux observations de
+disponibilité, pas une mesure continue du taux d'erreur ou de latence.
+
+### A3b.2 — décision de préparation après #453 (pas encore implémentée)
+
+Deux contre-revues indépendantes readonly ont comparé une génération globale
+par document et une table propriétaire→génération. Choix de préparation :
+**génération globale immuable, ownership inchangé, résolveurs par famille**.
+La table par compte réduirait la première copie mais imposerait des caches DB
+par emplacement et une résolution sûre pendant login provisoire, switch et
+effacement ; la barrière sur les anciennes DB resterait globale. Le choix
+global conserve les singletons actuels et exige en contrepartie un inventaire
+raw de tous les propriétaires, y compris absents des sessions connues. Aucun
+nettoyage global ni copie de credentials n'est autorisé par cette décision.
+
+Contrat à implémenter/tester dans le prochain lot :
+
+1. Résolveurs distincts historique (quatre slots exacts), autorité crypto
+   (sel/check/version), assets, et auth/réglages restant à leur emplacement
+   actuel. Ne pas changer universellement `documentStorageKey`, utilisé aussi
+   pour api-keys/tokens/consentements. Aligner aussi les lectures d'historique
+   via `scoped` et les writes via `physicalKey`, pas uniquement les writers.
+2. Descripteur strict, génération opaque bornée ; noms physiques calculés par
+   le code, pas chemins reçus du registre. Deux nouveaux noms de DB avec lignes
+   inchangées ; témoins monotones v2 aux anciens noms avant toute activation.
+   L'effacement de tous les témoins par le navigateur reste hors garantie.
+3. Génération déclarée absente/corrompue = refus, pas création d'une base vide.
+   Pas de lecture isolée couplée à des écritures legacy : initCrypto,
+   bootstraps/quarantaines et CRUD doivent tous respecter les emplacements.
+   Ne pas déclarer l'App utilisable à partir de lecteurs seuls.
+4. Conserver sel/KDF/enveloppes exacts ; même keyring possible pour les tokens
+   restés en place, pas de rechiffrement global requis. Inventorier explicitement
+   les autorités issues du fallback global et les absences historiques.
+   Quarantaines seules, assets seuls ou check absent ne prouvent jamais un
+   compte neuf. Provisioning neuf distinct et attesté ; aucun sel inventé pour
+   des données existantes. Pas de fallback vers une adresse legacy en isolé.
+5. Maintenir login provisoire sans appartenance préalable aux comptes connus,
+   commit BYOK et reprise ; ne pas réaffecter implicitement l'historique anonyme
+   via `migrateExistingData` en mode isolé. Les credentials ne sont pas dupliqués.
+
+Avant tout writer activable, la reprise devra distinguer **ready(layout)**,
+**recoverable(job connu)** et **blocked(reason)**. Recoverable monte un module
+froid distinct, sans App/useAuth, avec capacité bornée job/générations/owner/
+fence/révision, et primitives raw sans crypto/session globale. Ne pas donner
+une admission normale temporaire pour réutiliser `accountService`, qui exige
+déjà une session admise. Pas de boucle maintenance→recharge automatique ; après
+transition durable terminée seulement, recharge explicite de l'URL exacte.
+Effacement engagé/incertain prime ; reçu confirmé repris sans clé ni nouveau
+POST. Purger toutes les copies/générations/journaux avant clôture du reçu.
+
+Tests attendus : fixture isolée réelle→runtime/KDF→lecture, écriture, fichiers,
+projets et capture, zéro write aux anciens slots workspace ; A→B→A, login
+provisoire, logout/relogin, BYOK erronée/correcte/quota ; données legacy pièges,
+global fallback historique, quarantaines/assets seuls, propriétaires orphelins,
+anonymes ; base déclarée absente, contrôle perdu avec témoin v2, upgrade tardif,
+copie partielle ; reprise/purge sans crypto et URL OAuth conservée. La copie
+physique journalisée, son préflight cumulatif et les writers d'import exacts
+suivront ce contrat testé ; aucun état isolé n'est émis par #453.
