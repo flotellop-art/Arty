@@ -15,6 +15,21 @@ const admissionFor = (controller: ReturnType<typeof createDocumentWorkspaceLock>
 )
 
 describe('workspace gate is before any private hooks/import/seed', () => {
+  it('recognized v4 erasure stays cold while release policy is OFF, preserving OAuth without a reload loop', async () => {
+    const db = await openDB('arty-workspace-control', 1, { upgrade(db) { db.createObjectStore('meta') } })
+    const generation = '76ba201a-547f-44a1-9000-111111111111', hash = 'a'.repeat(64)
+    await db.put('meta', { format: 'arty-workspace-control', version: 4, layout: 'isolated-v1', state: 'erasing', revision: 4, generation, requiredOwners: ['a'],
+      erasure: { owner: 'a', operationId: generation, nonce: generation, phase: 'local', proof: { localHash: hash, planHash: hash,
+        stores: ['legacy', 'active', 'journal'].flatMap(copy => ['files', 'projects', 'documents', 'usage', 'meta'].map(store => ({ copy, store, hash, count: 0 }))) } } }, 'workspace'); db.close()
+    const controller = createDocumentWorkspaceLock(() => sharedWorkspaceLocks().source)
+    const admission = createWorkspaceAdmission({ assertLock: () => controller.assertHeld(), signal: controller.signal })
+    window.history.replaceState({}, '', '/auth/callback?code=synthetic&state=exact#fragment'); sessionStorage.setItem('verifier', 'keep')
+    const loaded = vi.fn(async () => ({ default: () => <div>private</div> })), Content = lazy(loaded)
+    render(<DocumentWorkspaceGate controller={controller} admission={admission} Content={Content} />)
+    await screen.findByText('workspaceAdmission.erasureRecovery.disabled')
+    expect(screen.queryAllByRole('button')).toHaveLength(0); expect(loaded).not.toHaveBeenCalled()
+    expect(location.search + location.hash).toBe('?code=synthetic&state=exact#fragment'); expect(sessionStorage.getItem('verifier')).toBe('keep')
+  })
   it('recognized migration stays cold with OFF recovery, no reload loop and exact OAuth callback preservation', async () => {
     const db = await openDB('arty-workspace-control', 1, { upgrade(db) { db.createObjectStore('meta') } })
     await db.put('meta', { format: 'arty-workspace-control', version: 3, layout: 'legacy-v1', state: 'migration', revision: 3,

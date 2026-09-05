@@ -1,5 +1,6 @@
 import type { IDBPDatabase } from 'idb'
-import { HISTORY_SLOTS, legacyStorageKey, workspaceDataKey, isolatedWorkspaceLayout, type CryptoSlot, type HistorySlot } from './layout'
+import { legacyStorageKey, workspaceDataKey, isolatedWorkspaceLayout } from './layout'
+import { parseLegacyWorkspaceKey, parseOwnedLocalKey } from './localOwnership'
 
 export class WorkspaceMigrationError extends Error {
   constructor(public readonly code: 'disabled' | 'busy' | 'cancelled' | 'unsupported' | 'erasure' | 'changed' | 'collision' | 'missing' | 'storage') {
@@ -7,8 +8,6 @@ export class WorkspaceMigrationError extends Error {
   }
 }
 export const failMigration = (code: WorkspaceMigrationError['code']): never => { throw new WorkspaceMigrationError(code) }
-const SLOTS = [...HISTORY_SLOTS, 'crypto-salt', 'crypto-check', 'crypto-version'] as const
-type Slot = HistorySlot | CryptoSlot
 export const RAW_STORES = ['files', 'projects', 'documents', 'usage', 'meta'] as const
 export type RawStore = typeof RAW_STORES[number]
 export interface RawRow { key: IDBValidKey; value: unknown }
@@ -54,16 +53,8 @@ export const digestRaw = (value: unknown) => digestText(rawEncoding(value))
 export function localPairs(): [string, string][] {
   return Object.keys(localStorage).sort().map(k => [k, localStorage.getItem(k)!])
 }
-export function parseLegacySlot(key: string): { owner: string | null; slot: Slot } | null {
-  for (const slot of SLOTS) {
-    if (key === `arty-${slot}`) return { owner: null, slot }
-    if (key.startsWith('arty-') && key.endsWith(`-${slot}`)) {
-      const owner = key.slice(5, -slot.length - 1)
-      assertOwner(owner)
-      return { owner, slot }
-    }
-  }
-  return null
+export function parseLegacySlot(key: string) {
+  try { return parseLegacyWorkspaceKey(key) } catch { return failMigration('unsupported') }
 }
 export function assertOwner(owner: unknown): asserts owner is string {
   if (typeof owner !== 'string' || owner.length === 0 || owner.length > 128) failMigration('unsupported')
@@ -87,36 +78,10 @@ export function validateSessions(pairs: [string, string][]) {
 /** Historical auth/settings names are ownership hints ONLY. Their values stay
  * at their original addresses and never enter the private-copy journal.
  * Also covers logged-out/orphan owners with no history or assets. */
-const LEGACY_OWNER_HINT_SLOTS = [
-  'api-keys', 'google-tokens', 'google-tokens-enc', 'google-user', 'google-user-enc',
-  'google-oauth-mailbox-free-v1', 'google-oauth-identity-bound-v2', 'google-oauth-reconsent-required',
-  'email-trial-token', 'trial-remaining', 'local-memory-facts', 'custom-instructions',
-  'memory-history', 'user-profile', 'streak-data', 'tasks', 'cost_history', 'cost_alert',
-  'ai-model', 'reflection-level', 'fact-check-mode', 'response-style', 'theme', 'location-consent',
-  'proactive-brief-enabled', 'proactive-brief-last-run', 'proactive-brief-nudge-day', 'proactive-brief-prefs',
-  'notifications-enabled', 'prompt-enhancement-enabled', 'prompt-enhancement-model', 'auto-memory-enabled', 'auto-memory-progress',
-]
 export function observeLocalOwnerHints(pairs: [string, string][], owners: Set<string | null>) {
   for (const [key] of pairs) {
-    const slots = [...LEGACY_OWNER_HINT_SLOTS]
-    const dated = key.match(/factcheck-count-\d{4}-\d{2}-\d{2}$/)?.[0]
-    if (dated) slots.push(dated)
-    const report = key.match(/report-(?:[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|[a-z0-9]+)$/)?.[0]
-    let recognized = false
-    for (const slot of slots) {
-      if (key === `arty-${slot}`) { owners.add(null); recognized = true; break }
-      if (key.startsWith('arty-') && key.endsWith(`-${slot}`)) {
-        const owner = key.slice(5, -slot.length - 1); assertOwner(owner); owners.add(owner); recognized = true; break
-      }
-    }
-    // e.g. owner "a-report" + setting "theme" vs owner "a" + old report
-    // id "theme". Both addresses are legal: neither authority may be guessed.
-    if (recognized && report) failMigration('unsupported')
-    if (recognized || parseLegacySlot(key)) continue
-    if (report && key === `arty-${report}`) owners.add(null)
-    else if (report && key.startsWith('arty-')) {
-      const owner = key.slice(5, -report.length - 1); assertOwner(owner); owners.add(owner)
-    } else if (/^arty-(?:.*-)?report-/.test(key)) failMigration('unsupported')
+    try { const part = parseOwnedLocalKey(key); if (part) owners.add(part.owner) }
+    catch { failMigration('unsupported') }
   }
 }
 function validSalt(value: string) {

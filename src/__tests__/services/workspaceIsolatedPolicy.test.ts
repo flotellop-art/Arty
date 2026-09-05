@@ -12,6 +12,8 @@ it('real OFF policy blocks the cold migrator before any reservation, data read, 
   const opening = vi.spyOn(indexedDB, 'open'), read = vi.spyOn(Storage.prototype, 'getItem'), write = vi.spyOn(Storage.prototype, 'setItem')
   const { createColdWorkspaceMigration } = await import('../../services/workspaceWriter/migration')
   expect(() => createColdWorkspaceMigration()).toThrow('workspace_migration_disabled')
+  const { createColdWorkspaceErasure } = await import('../../services/workspaceWriter/erasure')
+  expect(() => createColdWorkspaceErasure()).toThrow('workspace_erasure_disabled')
   expect(opening).not.toHaveBeenCalled(); expect(read).not.toHaveBeenCalled(); expect(write).not.toHaveBeenCalled()
   opening.mockRestore(); read.mockRestore(); write.mockRestore()
 })

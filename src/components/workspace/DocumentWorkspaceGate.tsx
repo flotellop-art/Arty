@@ -52,6 +52,10 @@ function StorageAdmissionGate({ admission, Content }: { admission: ReturnType<ty
   const phase = useSyncExternalStore(admission.subscribe, admission.getSnapshot, admission.getSnapshot)
   useEffect(() => { void admission.admit() }, [admission])
   if (phase === 'ready') return <Suspense fallback={<Wait title={t('workspaceWindow.loading')} />}><Content /></Suspense>
+  if ((phase === 'erasure' || phase === 'maintenance') && admission.hasErasureRecovery()) return <Wait title={t('workspaceAdmission.erasureTitle')}>
+    <Suspense fallback={null}><ColdMigrationRecovery erasure /></Suspense>
+    <a className="mt-6 inline-flex min-h-11 items-center px-4 text-sm underline" href="/privacy/">{t('landing.footer.privacy')}</a>
+  </Wait>
   if ((phase === 'recoverable' || phase === 'maintenance') && admission.getRecovery()) return <Wait title={t('workspaceAdmission.recoverableTitle')}>
     <Suspense fallback={null}><ColdMigrationRecovery /></Suspense>
     <a className="mt-6 inline-flex min-h-11 items-center px-4 text-sm underline" href="/privacy/">{t('landing.footer.privacy')}</a>

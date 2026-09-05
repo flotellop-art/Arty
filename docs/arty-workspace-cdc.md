@@ -31,7 +31,7 @@ supplémentaire n'est implicite dans ce mandat.
 | W03 | Catalogue | Un catalogue partagé aligne comparaison, sélecteurs, labels et éligibilité selon le compte (pas une garantie fournisseur). Modèle demandé, transmis par le proxy et signalé par le fournisseur distingués. Tests contre la dérive et contre l'accès premium hors droit. | Web déployé, PR #440 ; recette visuelle/appareil non vérifiée |
 | W04 | Projets | Créer/renommer/supprimer un projet, consignes propres, conversations associées, bibliothèque de documents réutilisables. Sources identifiables dans le contexte. Recherche bornée, absence de fichier et contexte tronqué explicites. Cloisonnement par compte et projet ; mode Europe conservé. | Bibliothèque web livrée #443 ; conversations web livrées #444 ; recette visuelle/appareil non vérifiée |
 | W05 | Livrables | Export DOCX modifiable et XLSX de tableaux, en plus des exports existants. Téléchargements relus par un parseur indépendant ; cellules dangereuses neutralisées ; aucun HTML actif ni formule arbitraire. Formats et limites documentés. | Web déployé #445 ; recette structurelle vérifiée ; rendu Office/appareil non vérifié |
-| W06 | Continuité | Sauvegarde/restauration explicites puis synchronisation optionnelle multi-appareil chiffrée avant upload, avec secret détenu par l'utilisateur et récupération expliquée. Conflits non destructifs ; reprise hors-ligne ; logout/switch/delete et compte invité traités. Un export manuel seul ne valide pas la synchronisation. | A1 #446, galerie #448, verrou document #449, capture/vérification A2 #451, préparation A3a #452, admission froide #453 et runtime isolé inactif #454 livrés ; restauration/synchronisation non livrées |
+| W06 | Continuité | Sauvegarde/restauration explicites puis synchronisation optionnelle multi-appareil chiffrée avant upload, avec secret détenu par l'utilisateur et récupération expliquée. Conflits non destructifs ; reprise hors-ligne ; logout/switch/delete et compte invité traités. Un export manuel seul ne valide pas la synchronisation. | A1 #446, galerie #448, verrou document #449, capture/vérification A2 #451, préparation A3a #452, admission froide #453, runtime isolé inactif #454 et migrateur journalisé OFF #455 livrés ; restauration/synchronisation non livrées |
 | W07 | Comparaison | Comparer depuis une conversation avec contexte/documents autorisés ; conserver les résultats et poursuivre la réponse choisie sans perdre l'original. Erreurs/coûts/quotas de chaque panneau visibles ; EU et historique privé jamais contournés. | À faire |
 | W08 | Parcours métier | Trois parcours complets : synthèse documentaire, réponse client préparée, planification Agenda avec confirmation avant écriture. Écran de connexions indiquant disponible/non configuré/non pris en charge selon plateforme. Pas de Drive/Gmail OAuth restreint ni relais IMAP serveur. | À faire |
 | W09 | Mobile et identité | PWA installable ; identité tryarty cohérente ; distribution Android authentifiée et documentée. Ne pas rediriger vers une app Play homonyme. Toute migration appId inclut signatures/OAuth/Firebase/liens vérifiés ; un APK distribué n'est pas une publication Store. | À faire |
@@ -108,9 +108,74 @@ réels ; préparer protocole et instrumentation sans fabriquer leurs résultats.
 
 ## Preuves par lot
 
-### W06 A3b.3 — migrateur brut journalisé candidat, activation OFF
+### W06 A3b.4 — reprise froide d'effacement v2, candidat OFF
 
-Implémentation locale validée, publication en préparation. La
+Décision du 5 septembre 2026 : terminer le nettoyage déjà engagé dans une
+génération **v2 prête et cohérente**, sans authentification ni nouveau POST.
+Le `serverConfirmed: true` historique autorise la reprise locale seulement :
+BYOK/demo pouvaient le poser sans requête serveur. Aucune confirmation distante
+n'est inventée. Un seul reçu strict est accepté ; reçu incertain/falsy/multiple
+ou format inconnu refuse avant purge.
+
+Options examinées : réutiliser le nettoyeur connecté (rejeté : dépendance à A,
+préfixe ambigu a/a-b, copies legacy/journal oubliées) ; supprimer le job entier
+(rejeté : contient B) ; réserver un contrôle v4 puis purger les seules données
+attribuables à A (retenu). La réservation précède toute suppression et devient
+l'autorité durable, même après disparition du reçu source et de la session A.
+
+- Preuves B immuables **par copie** : legacy, génération active, journal ;
+  les trois copies peuvent légitimement différer après cutover. Scan complet
+  paginé des cinq stores, pas seulement les index owner.
+- Plan du journal expurgé : owners/localSource de A retirés, anciens compteurs
+  et hashes inclusifs abandonnés ; format distinct non consommable par v3.
+- Auth/réglages/brouillons attribués exactement ; rapports globaux non attribués
+  et sel global conservés. Google A ne possède pas le hash Email B de la même
+  adresse. Les formes ambiguës/anciennes non couvertes bloquent explicitement.
+- Contrôle final v2, même génération, `requiredOwners ∪ {A}` conservé : B se
+  rouvre dans un nouveau document ; **A ne peut pas recréer un sel**. Ce lot
+  n'est donc ni une purge de toutes les métadonnées d'identité ni une autorisation
+  de recréation de compte.
+- Android : nouveau clear protocole1, blocage terminal process-static de A,
+  ticket avant executor/réseau et contrôle+commit dans la même section critique.
+  Un clear historique ne lève pas le blocage terminal. Retry JS ancien invalidé
+  même après release ; Unicode malformé refusé sans normalisation. Aucun fallback
+  vers l'ancien plugin, aucune suppression de la clé Keystore partagée.
+- UI froide FR/EN : reprise explicite, retour OAuth intact, aucune ouverture
+  d'App/KDF ; fin « Recharger », jamais « compte supprimé ».
+
+Deux contre-revues indépendantes ont fait corriger avant finalisation : collision
+report-conversations, ambiguïté de brouillon a:conversation:home et adoption
+possible d'une écriture LS tardive au checkpoint verified. Les tests injectent
+ces cas et exigent refus sans finalisation v2.
+
+Preuves locales : migration réelle → nettoyage → déchiffrement B (historique,
+fichier, projet/document, capture d'archive) ; A post-cutover refuse un nouveau
+sel ; interruptions de stores/phases, reçu source déjà supprimé, quota LS,
+commit final réellement effectué puis timeout, perte du document pendant le
+clear natif, méthode ancienne/échec/mauvais protocole, modifications B, owners
+opaques et email partagé. Aucun compte utilisateur réel utilisé ou effacé.
+Verify final : 261 suites / 2 959 tests verts + 1 ignoré, front/back,
+no-CASA, addon, build, worker Office et couverture OK (statements 67,16 %, branches 61,64 %, fonctions
+73,08 %, lignes 68,91 %). Tests UI/quota/fin incertaine/perte document : 43/43.
+Gradle compile Java et tests JVM OK, dont les 5 tests du nouveau fence ; les tests de concurrence
+du kernel et de branchement source ne sont **pas** une recette de deux véritables
+instances du plugin/SharedPreferences ni d'un APK installé.
+
+Limites bloquant l'activation : fence LS/IDB déjà désaccordé (refus sans mutation
+testé, réparation dédiée restante), effacement pendant migration v3, résultat
+serveur incertain, générations non déclarées, purge des métadonnées/recréation,
+recettes native intégrée et capacité/performance WebView. Aucun import de
+sauvegarde ni synchronisation ajouté. W06 reste partiel.
+
+Checklist de livraison : politique intrinsèque OFF inchangée ; aucun nouveau
+package, endpoint, permission ou secret ; CI exacte requise avant fusion,
+preview puis sondes production. Repli : revert du lot par PR si admission legacy
+ou connexion régresse ; aucun downgrade/suppression de DB de clients candidats.
+Mesures privées de taux d'erreur/latence non attestées par les sondes publiques.
+
+### W06 A3b.3 — migrateur brut journalisé livré (#455), activation OFF
+
+Implémentation candidate publiée, sans activation. La
 verticale utilise les vrais lecteurs : stockage legacy chiffré → inventaire →
 barrières v2 → journal/copie isolée → nouveau document → conversation, fichier,
 projet/document et capture d'archive vérifiée. Aucun compte réel n'est migré.
@@ -152,6 +217,22 @@ classification `report-`, typecheck et 49 tests migration/politique verts
 (dont 41 scénarios migration). La CI finale doit revalider l'exact commit.
 Couverture du verify : statements 66,66 %, branches 61,07 %, fonctions 72,48 %,
 lignes 68,42 %. Aucun nouveau package, secret ni workflow de déploiement.
+
+Livraison : PR #455 fusionnée le 5 septembre à 19:51:16 UTC, head
+`fe0245f80e53f59c4848a0f285ae2796e0b7fb6f`, main
+`4ae048fbab81396ba1315a96eb3314396a1246b3`. CI PR `33988126768` et main
+`33988357913` réussies. Pages preview `e8bdb185-95fb-4c68-b05b-569573ddb449` :
+accueil et paramètres ouverts en données d'exemple. Pages production
+`a47c4c39-7a99-45c6-a683-6900453213b7` et tryarty.com servent aux sondes de
+19:52:37 et 19:56:38 UTC le même `index-BpgGTd56.js` (259 680 octets), SHA-256
+`798331d9ed8e342f0446b1e66001090fb9b4faf980fc0894c41ade68ffd9611f`, HTTP 200.
+Sur origine production vierge : accueil → connexion réellement ouvert après
+admission, aucune clé saisie. Onglet utilisateur connecté préservé. Le build
+OFF élimine le writer de migration et conserve seulement l'écran froid
+d'information. Cela ne mesure ni latence terrain ni taux d'erreurs sur 15 min.
+Distribution APK `33988357984` réussie à 19:57:11 UTC : compilation signée et
+étape « Distribute to Firebase App Distribution » confirmées success.
+Aucune recette sur APK installé n'est revendiquée.
 
 ### W06 A3b.2 — runtime isolé livré (#454), activation OFF
 
