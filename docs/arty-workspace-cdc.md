@@ -147,10 +147,12 @@ l'absence d'effet. Ce lot ne livre ni restauration ni synchronisation.
   produit/reprises. Corrections : double verrou BYOK/démo, interprétation du
   vieux `true`, ledger qui ne doit pas croître à chaque GET, ancienne preuve de
   rollback remplacée par un vrai échec SQL. Cas A→B→A et prises concurrentes
-  vérifiés. `npm run verify` final : 263 suites, 2 989 tests verts + 1 ignoré,
+  vérifiés. `npm run verify` avant recette visuelle : 263 suites, 2 989 tests verts + 1 ignoré,
   typecheck front/back, no-CASA, add-on, build et vrai worker Office verts.
   Couverture globale : statements 67,36 %, branches 61,99 %, fonctions 73,20 %,
-  lignes 69,13 %. Reçus CI/production à consigner après publication.
+  lignes 69,13 %. La recette preview a fait préciser la description locale
+  BYOK/démo (sans promesse serveur), avec un test UI supplémentaire.
+  Reçus de validation finale/CI/production à consigner après publication.
 
 Limites : `unknown` ne prouve pas un échec ; si aucun commit distant n'a eu lieu,
 la vérification ne relance pas le serveur. Support/local-only restent explicites.

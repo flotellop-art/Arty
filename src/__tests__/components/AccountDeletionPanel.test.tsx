@@ -86,6 +86,15 @@ describe('account erasure confirmation UI', () => {
     expect(screen.getByText('account.authorizedCleanupBody')).toBeVisible()
     expect(screen.queryByText('account.recoveryBody')).toBeNull()
   })
+  it('describes BYOK/demo and local-only recovery without promising server deletion', async () => {
+    mocks.read.mockResolvedValue('local-only')
+    render(<AccountDeletionPanel open onComplete={vi.fn()} />)
+    await screen.findByText('account.localDescription')
+    expect(screen.queryByText('account.deleteDescription')).toBeNull()
+    fireEvent.click(screen.getByText('account.localChoice'))
+    expect(screen.getByText('account.localBody')).toBeVisible()
+    expect(mocks.deleteAccount).not.toHaveBeenCalled()
+  })
   it('legacy uncertainty cannot arm another server deletion; local-only is separately confirmed', async () => {
     mocks.read.mockResolvedValue('legacy-unknown')
     render(<AccountDeletionPanel open onComplete={vi.fn()} />)

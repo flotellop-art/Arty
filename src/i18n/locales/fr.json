@@ -1410,6 +1410,7 @@
     "error": "L’effacement n’est pas entièrement confirmé. Vérifie le reçu existant, termine un nettoyage déjà autorisé ou contacte le support. Une vérification ne relance pas une suppression serveur qui aurait échoué.",
     "localRecovery": "Si la confirmation serveur n’a pas pu être enregistrée, Arty ne peut pas déduire que le compte a été supprimé. Tu peux choisir un effacement limité à cet appareil.",
     "localChoice": "Choisir l’effacement de cet appareil uniquement",
+    "localDescription": "Efface les données de ce profil sur cet appareil uniquement. Aucune suppression serveur n’est demandée.",
     "localTitle": "Effacer uniquement les données de ce compte sur cet appareil ?",
     "localBody": "Irréversible : conversations, projets, documents, clés et sessions locales seront effacés. Ce choix supprime aussi le moyen local de vérifier une éventuelle demande distante en cours. Aucune suppression serveur n’est demandée ni confirmée par cette action. Les données serveur peuvent subsister ; contacte le support pour terminer leur effacement.",
     "localConfirm": "Oui, effacer uniquement cet appareil"

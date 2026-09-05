@@ -1410,6 +1410,7 @@
     "error": "Erasure is not fully confirmed. Check the existing receipt, finish previously authorized cleanup or contact support. Checking does not retry a server deletion that may have failed.",
     "localRecovery": "If server confirmation could not be saved, Arty cannot infer that the account was deleted. You may choose to erase this device only.",
     "localChoice": "Choose device-only erasure",
+    "localDescription": "Erase this profile’s data on this device only. No server deletion is requested.",
     "localTitle": "Erase only this account’s data on this device?",
     "localBody": "Irreversible: local conversations, projects, documents, keys and sessions will be erased. This also removes this device’s ability to check any pending remote request. This action neither requests nor confirms server deletion. Server data may remain; contact support to complete its erasure.",
     "localConfirm": "Yes, erase this device only"

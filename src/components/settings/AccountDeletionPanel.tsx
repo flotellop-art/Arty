@@ -55,7 +55,7 @@ export function AccountDeletionPanel({ open, onComplete }: { open: boolean; onCo
       : status === 'read-failed' ? <div role="alert" className="mt-3 text-sm">
         <p>{t('account.readFailed')}</p><button className="min-h-11" onClick={() => setRevision(v => v + 1)}>{t('account.retryRead')}</button>
       </div> : !confirm ? <>
-      <p className="font-display italic text-xs text-theme-muted mt-0.5">{t('account.deleteDescription')}</p>
+      <p className="font-display italic text-xs text-theme-muted mt-0.5">{t(status === 'local-only' ? 'account.localDescription' : 'account.deleteDescription')}</p>
       {status === 'legacy-unknown' ? <p role="status" className="mt-3 text-sm">{t('account.legacyUnknown')}</p>
         : <button onClick={() => arm(status === 'local-only' ? 'local' : 'account')} className="mt-3 px-3 py-2 border border-red-500/50 text-red-600 text-sm">
           {t(status === 'local-only' ? 'account.localChoice' : recovery ? actionKey : 'account.delete')}</button>}
