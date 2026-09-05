@@ -125,6 +125,8 @@ export interface Message {
   // Sous-décision Claude (Haiku/Sonnet/Opus), conservée séparément afin de ne
   // pas perdre la raison principale du provider (privé, fichier, hybride…).
   subModelReasonCode?: string
+  /** Private, per-turn provenance. Never a routing instruction or source body. */
+  projectTurn?: import('../services/projects/chatPolicy').ProjectTurn
 }
 
 export interface Conversation {
@@ -148,6 +150,9 @@ export interface Conversation {
   // hasGoogleData pour les données privées. Optionnel → transparent au
   // déchiffrement, aucune migration.
   hasTrailContext?: boolean
+  projectId?: string
+  /** Monotone, even after detaching a library or removing its documents. */
+  hasProjectContext?: boolean
   // P1.8 — étiquettes (tags) libres/prédéfinies pour ranger les conversations,
   // filtrables depuis la Sidebar. Champ optionnel → transparent au
   // déchiffrement (cast nu), aucune migration. Privé : exclu du partage public.

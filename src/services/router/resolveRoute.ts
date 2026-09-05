@@ -89,9 +89,9 @@ export function resolveRoute(input: RouteInput): RouteDecision {
         reason: { code: 'private_data' },
       })
     }
-  } else if (input.hasOfficeHistory) {
+  } else if (input.hasProjectContext || input.hasOfficeHistory) {
     provider = 'claude'
-    reason = { code: 'office_documents' }
+    reason = { code: input.hasProjectContext ? 'project_documents' : 'office_documents' }
     if (input.selectedModel !== 'auto' && input.selectedModel !== 'claude') {
       overrides.push({ requested: input.selectedModel, applied: 'claude', reason })
     }
@@ -260,7 +260,7 @@ export function resolveRoute(input: RouteInput): RouteDecision {
     // Une conversation qui contient des données Google privées ne doit
     // jamais déclencher une recherche publique, même si le nouveau message
     // (ex. « résume ça » ou une question météo) la demanderait isolément.
-    webSearch: !isPrivateData && !input.hasOfficeHistory && shouldUseWebSearch(text),
+    webSearch: !isPrivateData && !input.hasOfficeHistory && !input.hasProjectContext && shouldUseWebSearch(text),
     needsHybrid: provider === 'hybrid',
     isPrivateData,
     reason,

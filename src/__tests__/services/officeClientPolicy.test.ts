@@ -23,6 +23,19 @@ beforeEach(() => { vi.clearAllMocks(); vi.spyOn(console, 'log').mockImplementati
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
 describe('Politique Office au dernier point réseau', () => {
+  it.each(['claude', 'mistral'])('%s : revalidation projet après les headers peut encore refuser le POST', async provider => {
+    const fetch = vi.fn(); vi.stubGlobal('fetch', fetch)
+    let authCompleted = false
+    vi.mocked(getValidAccessToken).mockImplementationOnce(async () => { authCompleted = true; return null })
+    const failure = new Error('project_revision_changed')
+    const beforeDocumentRequest = vi.fn(async () => { expect(authCompleted).toBe(true); throw failure })
+    const result = new Promise<Error>(resolve => {
+      const args = [[{ role: 'user', content: 'Extraits privés' }], () => {}, () => {}, resolve] as const
+      if (provider === 'claude') streamMessage(...args, { documentReadOnly: true, beforeDocumentRequest })
+      else streamMistralMessage(...args, { documentReadOnly: true, beforeDocumentRequest })
+    })
+    expect(await result).toBe(failure); expect(beforeDocumentRequest).toHaveBeenCalledTimes(1); expect(fetch).not.toHaveBeenCalled()
+  })
   it.each(['claude', 'mistral'])('%s réel : payload sans tools ni prétraitement externe', async (provider) => {
     const fetch = vi.fn(async () => new Response(provider === 'claude' ? 'event: message_stop\ndata: {"type":"message_stop"}\n\n' : 'data: [DONE]\n\n'))
     vi.stubGlobal('fetch', fetch)

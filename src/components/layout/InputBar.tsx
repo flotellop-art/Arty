@@ -68,6 +68,7 @@ interface InputBarProps {
       même précédence que l'envoi réel et ne promet jamais Terra. */
   hasPrivateHistory?: boolean
   hasOfficeHistory?: boolean
+  hasProjectContext?: boolean
   /** Requête explicite de préremplissage (intentions/suggestions de l'accueil).
       L'id permet de rejouer deux fois le même texte sans transformer le champ
       en input contrôlé et sans écraser les modifications libres. */
@@ -254,7 +255,7 @@ function PendingFilePreview({ file, onRemove, disabled = false }: { file: FileAt
   )
 }
 
-export function InputBar({ onSend, isStreaming, onStop, initialText, initialFiles, euOnly, hasPrivateHistory = false, hasOfficeHistory = false, prefill, showQuickActions = true, draftKey, variant = 'default' }: InputBarProps) {
+export function InputBar({ onSend, isStreaming, onStop, initialText, initialFiles, euOnly, hasPrivateHistory = false, hasOfficeHistory = false, hasProjectContext = false, prefill, showQuickActions = true, draftKey, variant = 'default' }: InputBarProps) {
   const { t } = useTranslation()
   const heroVariant = variant === 'hero'
   // Évalué à chaque render (lecture localStorage triviale) — un testeur peut
@@ -298,13 +299,14 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
   const attachmentRouteFlags = classifyRouteAttachments(files)
   const officeContext = hasOfficeHistory || files.some((file) => officeKind(file) !== null)
   let attachmentRouteProvider: 'terra' | 'mistral' | 'claude' | null = null
-  if (attachmentRouteFlags.hasImages || officeContext) {
+  if (attachmentRouteFlags.hasImages || officeContext || hasProjectContext) {
     const preview = resolveRoute(gatherRouteInput({
       originalText: text,
       ...attachmentRouteFlags,
       euOnly: !!euOnly,
       hasPrivateHistory,
       hasOfficeHistory: officeContext,
+      hasProjectContext,
     }))
     attachmentRouteProvider = preview.usesOpenAIVision
       ? 'terra'
@@ -1469,6 +1471,7 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
       )}
 
       {officeContext && <p className="mb-2 px-1 text-xs text-theme-muted" data-testid="office-scope">{t('chat.input.officeScope')}</p>}
+      {hasProjectContext && <p className="mb-2 px-1 text-xs text-theme-muted">{t('chat.input.projectScope')}</p>}
       {attachmentRouteProvider && (
         <div
           className="mb-2 flex items-center gap-1.5 px-1 text-[11px] text-theme-muted"

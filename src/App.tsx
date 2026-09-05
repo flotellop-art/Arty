@@ -12,6 +12,8 @@ import { shouldShowMorningBrief } from './services/morningBriefService'
 import { useProactiveBrief } from './hooks/useProactiveBrief'
 import { isProactiveBriefEnabled } from './services/proactiveBriefSettings'
 import { ConversationScreen } from './components/chat/ConversationScreen'
+import { ProjectReviewDialog } from './components/chat/ProjectReviewDialog'
+import type { Project } from './services/projects/types'
 import { ReportPage } from './components/shared/ReportPage'
 import { ErrorBoundary } from './components/shared/ErrorBoundary'
 import { Toaster } from './components/shared/Toaster'
@@ -129,6 +131,8 @@ function AppContent({
     error,
     errorRetryable,
     createConversation,
+    setConversationProject,
+    projectReview,
     selectConversation,
     clearActive,
     sendMessage,
@@ -592,7 +596,9 @@ function AppContent({
         />
         <Route
           path="/projects"
-          element={<Suspense fallback={<LazyFallback />}><ProjectsScreen onBack={() => navigate('/')} /></Suspense>}
+          element={<Suspense fallback={<LazyFallback />}><ProjectsScreen onBack={() => navigate('/')} onStartConversation={project => {
+            void setConversationProject(null, project).then(id => { if (id) navigate(`/chat/${id}`) })
+          }} /></Suspense>}
         />
         <Route
           path="/report/:id"
@@ -632,11 +638,13 @@ function AppContent({
               onNewConversation={handleNewConversation}
               conversations={conversations}
               onSelectConv={handleSelectConversation}
+              onProjectChange={async project => !!activeConversation && !!(await setConversationProject(activeConversation.id, project))}
             />
           }
         />
       </Routes>
       </main>
+      {projectReview.request && <ProjectReviewDialog key={projectReview.request.reviewId} request={projectReview.request} onAnswer={value => projectReview.answer(projectReview.request!.reviewId, value)} />}
 
       {questionModal && (
         <QuestionModal
@@ -727,6 +735,7 @@ function TrialBanner({ onUpgrade }: { onUpgrade: () => void }) {
 }
 
 interface ChatRouteProps {
+  onProjectChange?: (project: Project | null) => Promise<boolean>
   activeConversation: ReturnType<typeof useConversation>['activeConversation']
   isStreaming: boolean
   streamingContent: string
@@ -752,6 +761,7 @@ interface ChatRouteProps {
 }
 
 function ChatRoute({
+  onProjectChange,
   activeConversation,
   isStreaming,
   streamingContent,
@@ -834,6 +844,7 @@ function ChatRoute({
       // from /chat/A to /chat/B without leaving the route.
       key={activeConversation.id}
       conversation={activeConversation}
+      onProjectChange={onProjectChange}
       isStreaming={isStreaming}
       streamingContent={streamingContent}
       error={error}

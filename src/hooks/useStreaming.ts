@@ -2,6 +2,7 @@ import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { generateId } from '../utils/generateId'
 import * as storage from '../services/storage'
 import type { ModelUsedEvent } from '../services/modelLabels'
+import type { ProjectTurn } from '../services/projects/chatPolicy'
 import { getActiveUserId, getActiveSessionEpoch } from '../services/userSession'
 
 // Cap de streams concurrents — protège des coûts d'abus (8 convs ouvertes en
@@ -10,6 +11,7 @@ import { getActiveUserId, getActiveSessionEpoch } from '../services/userSession'
 export const MAX_CONCURRENT_STREAMS = 3
 
 type StreamState = {
+  projectTurn?: ProjectTurn
   targetId: string
   invocationId: string
   accumulated: string
@@ -92,6 +94,7 @@ export function useStreaming(deps: {
       if (s.modelSource) lastMsg.modelSource = s.modelSource
       if (s.reasonCode) lastMsg.reasonCode = s.reasonCode
       if (s.subModelReasonCode) lastMsg.subModelReasonCode = s.subModelReasonCode
+      if (s.projectTurn) lastMsg.projectTurn = structuredClone(s.projectTurn)
     } else {
       conv.messages.push({
         id: 'streaming',
@@ -103,6 +106,7 @@ export function useStreaming(deps: {
         ...(s.modelSource ? { modelSource: s.modelSource } : {}),
         ...(s.reasonCode ? { reasonCode: s.reasonCode } : {}),
         ...(s.subModelReasonCode ? { subModelReasonCode: s.subModelReasonCode } : {}),
+        ...(s.projectTurn ? { projectTurn: structuredClone(s.projectTurn) } : {}),
       })
     }
     conv.updatedAt = Date.now()
@@ -134,6 +138,7 @@ export function useStreaming(deps: {
       ...(s?.modelSource ? { modelSource: s.modelSource } : {}),
       ...(reasonCode ? { reasonCode } : {}),
       ...(subModelReasonCode ? { subModelReasonCode } : {}),
+      ...(s?.projectTurn ? { projectTurn: structuredClone(s.projectTurn) } : {}),
     })
     conv.updatedAt = Date.now()
     storage.saveConversation(conv)
@@ -257,6 +262,11 @@ export function useStreaming(deps: {
     }
     return true
   }, [savePartialFor, teardownStream])
+
+  const setProjectTurn = useCallback((targetId: string, turn: ProjectTurn) => {
+    const state = streamsRef.current.get(targetId)
+    if (state) { state.assertCurrent?.(); state.projectTurn = structuredClone(turn) }
+  }, [])
 
   // Synchronise la conv affichée avec son stream en cours (ou avec l'absence
   // de stream). Appelé depuis selectConversation/clearActive.
@@ -397,6 +407,7 @@ export function useStreaming(deps: {
     canStart,
     // Lifecycle d'un stream
     startStream,
+    setProjectTurn,
     getInvocationId,
     onToken,
     onDone,
@@ -415,7 +426,7 @@ export function useStreaming(deps: {
     savePartialAll,
   }), [
     isStreaming, streamingContent, streamingConvIds, isStreamingFor, hasStream,
-    canStart, startStream, getInvocationId, onToken, onDone, onError,
+    canStart, startStream, setProjectTurn, getInvocationId, onToken, onDone, onError,
     stopStreaming, discardStream, setActiveStream, isActive,
     setProgressContent, setAbortController, resetAccumulated, finalize,
     savePartialAll,

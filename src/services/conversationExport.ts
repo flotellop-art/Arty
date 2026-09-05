@@ -4,6 +4,8 @@ import { generateId } from '../utils/generateId'
 import * as storage from './storage'
 import { getDateLocale } from '../utils/formatDate'
 import { formatModelName } from './modelLabels'
+import { getActiveUserId, getActiveSessionEpoch } from './userSession'
+import { hasProjectHistory, isProjectEU } from './projects/chatPolicy'
 
 function stripLegacyMailboxPayload<T extends Conversation['messages'][number]>(message: T): Omit<T, 'gmailSearch'> {
   const { gmailSearch: _removed, ...safe } = message as T & { gmailSearch?: unknown }
@@ -41,23 +43,42 @@ export function buildConversationJsonExport(conv: Conversation) {
  * Returns the new conversation ID (generated to avoid collisions).
  */
 export async function importConversationFromFile(file: File): Promise<string> {
+  const owner = getActiveUserId(), epoch = getActiveSessionEpoch()
+  const assertCurrent = () => {
+    if (owner !== getActiveUserId() || epoch !== getActiveSessionEpoch() || !storage.isCacheReady()) throw new Error('Import annulé : session ou historique indisponible')
+  }
+  storage.getConversations(); assertCurrent()
+  if (file.size > 24 * 1024 * 1024) throw new Error('Import trop volumineux')
   const text = await file.text()
+  assertCurrent()
+  if (text.length > 24 * 1024 * 1024) throw new Error('Import trop volumineux')
   const data = JSON.parse(text) as { conversation?: Conversation; version?: number }
   if (!data.conversation || !Array.isArray(data.conversation.messages)) {
     throw new Error('Fichier invalide: pas une conversation Arty')
   }
   const original = data.conversation
+  if (original.messages.length > 5000 || original.messages.some(m => !m || typeof m !== 'object' || !['user', 'assistant'].includes(m.role) || typeof m.content !== 'string' || m.content.length > 2_000_000)) throw new Error('Messages importés invalides')
+  const projectHistory = hasProjectHistory(original), euOnly = isProjectEU(original)
+  if (original.tags !== undefined && (!Array.isArray(original.tags) || original.tags.length > 100 || original.tags.some(tag => typeof tag !== 'string' || tag.length > 200))) throw new Error('Étiquettes importées invalides')
+  if (original.usedModels !== undefined && (!Array.isArray(original.usedModels) || original.usedModels.length > 100 || original.usedModels.some(model => typeof model !== 'string' || model.length > 200))) throw new Error('Modèles importés invalides')
+  const { projectId: _foreignProject, hasProjectContext: _oldFlag, ...safeOriginal } = original
   const newConv: Conversation = {
-    ...original,
+    ...safeOriginal,
+    euOnly,
+    ...(projectHistory ? { hasProjectContext: true } : {}),
     id: generateId(),
-    title: original.title ? `${original.title} (importée)` : 'Conversation importée',
+    title: typeof original.title === 'string' && original.title ? `${original.title.slice(0, 200)} (importée)` : 'Conversation importée',
     createdAt: Date.now(),
     updatedAt: Date.now(),
-    messages: original.messages.map((legacyMessage) => ({
-      ...stripLegacyMailboxPayload(legacyMessage),
-      id: generateId(),
-    })),
+    messages: original.messages.map((legacyMessage) => {
+      const { projectTurn: _foreignSources, files, ...safeMessage } = stripLegacyMailboxPayload(legacyMessage)
+      if (files && (!Array.isArray(files) || files.length > 64 || files.some(f => !f || typeof f.name !== 'string' || typeof f.type !== 'string' || (f.data !== undefined && typeof f.data !== 'string')))) throw new Error('Pièces jointes importées invalides')
+      return { ...safeMessage, id: generateId(),
+        // A foreign ID is not authority to read this account's IndexedDB.
+        ...(files ? { files: files.map(f => ({ id: generateId(), name: f.name.slice(0, 255), type: f.type.slice(0, 160), ...(f.data ? { data: f.data } : {}) })) } : {}) }
+    }),
   }
+  assertCurrent()
   storage.saveConversation(newConv)
   return newConv.id
 }
