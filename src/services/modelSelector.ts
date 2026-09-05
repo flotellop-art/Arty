@@ -1,13 +1,11 @@
 import * as scoped from './scopedStorage'
+import { CHAT_PROVIDERS, type ChatProvider } from './modelCatalog'
 
-export type AIModel = 'auto' | 'claude' | 'mistral' | 'gemini' | 'openai'
+export type AIModel = 'auto' | ChatProvider
 
 export const MODEL_OPTIONS: Array<{ id: AIModel; label: string; flag: string }> = [
   { id: 'auto', label: 'Auto', flag: '🔄' },
-  { id: 'claude', label: 'Claude', flag: '🇺🇸' },
-  { id: 'mistral', label: 'Mistral', flag: '🇪🇺' },
-  { id: 'gemini', label: 'Gemini', flag: '🇺🇸' },
-  { id: 'openai', label: 'ChatGPT', flag: '🇺🇸' },
+  ...CHAT_PROVIDERS.map(({ id, label, flag }) => ({ id, label, flag })),
 ]
 
 // Regex to detect explicit mentions of ChatGPT / GPT / OpenAI in a user message.

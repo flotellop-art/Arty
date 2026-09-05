@@ -3,7 +3,8 @@ import { apiUrl } from './apiBase'
 import { buildAiHeaders, fetchWithTimeout } from './aiHttp'
 import { buildLocationContext } from './locationContext'
 import { recordUsage } from './costTracker'
-import { dispatchModelUsed } from './modelLabels'
+import { createModelReporter, validModelId, type ModelInvocationOptions } from './modelLabels'
+import { TEXT_DEFAULTS } from './modelCatalog'
 import { extractYouTubeUrls } from './aiRouter'
 import { isMapToolQuery, isWeatherQuery } from './router/intentPatterns'
 import type { RouteReason } from './router/types'
@@ -30,13 +31,13 @@ import i18n from '../i18n'
 // est déjà éprouvé en prod (il servait la recherche hybride depuis mai).
 // Si Google renomme, le 404 affiche errors.geminiModelNotFound.
 // Noms valides : GET https://generativelanguage.googleapis.com/v1beta/models
-const GEMINI_CHAT_MODEL = 'gemini-3.5-flash'
+const GEMINI_CHAT_MODEL = TEXT_DEFAULTS.geminiChat
 
 // Recherche hybride one-shot : Gemini 3.6 Flash (GA 21/07/2026). Le chat
 // multi-tour reste volontairement sur 3.5 Flash : ce déploiement ne change pas
 // son comportement ni la gestion historique des thought signatures.
-const GEMINI_RESEARCH_MODEL = 'gemini-3.6-flash'
-const GEMINI_RESEARCH_FALLBACK_MODEL = 'gemini-3.5-flash'
+const GEMINI_RESEARCH_MODEL = TEXT_DEFAULTS.geminiResearch
+const GEMINI_RESEARCH_FALLBACK_MODEL = TEXT_DEFAULTS.geminiChat
 
 // Rollback local complémentaire. Le vrai killswitch global vit côté proxy
 // (`GEMINI_36_DISABLED=true`) afin de pouvoir désactiver 3.6 pour tous les
@@ -262,7 +263,7 @@ export function resolveGeminiResearchThinkingLevel(
   return 'medium'
 }
 
-interface GeminiStreamOptions {
+interface GeminiStreamOptions extends ModelInvocationOptions {
   systemPrompt?: string
   // Force un modèle précis (utilisé par le comparateur multi-modèles).
   // Si absent, fallback sur geminiChatModel() (défaut Arty).
@@ -314,7 +315,9 @@ async function runGeminiStream(
   // au début pour que l'event "model-used", la requête, et le tracking
   // de coût remontent tous le même nom.
   const model = options?.model || geminiChatModel()
+  const reportModel = createModelReporter(options, model)
   try {
+    options?.assertRequestCurrent?.()
     // Convert messages to Gemini format
     type GeminiPart = { text: string } | { fileData: { fileUri: string } }
     const contents: Array<{ role: string; parts: GeminiPart[] }> = messages.map((m) => ({
@@ -329,7 +332,7 @@ async function runGeminiStream(
     // que la page web, pas la vidéo). On normalise via extractYouTubeUrls
     // (watch?v=ID) et on injecte la/les part(s) vidéo sur le dernier message
     // user uniquement — la vidéo n'est facturée qu'au tour où elle est collée.
-    const youtubeUrls = extractYouTubeUrls(lastMessage)
+    const youtubeUrls = options?.comparisonTextOnly ? [] : extractYouTubeUrls(lastMessage)
     const hasVideo = youtubeUrls.length > 0
     if (hasVideo) {
       const last = contents[contents.length - 1]
@@ -353,10 +356,11 @@ async function runGeminiStream(
     const defaultTools = isMapQuery
       ? [{ google_maps: {} }]
       : [{ google_search: {} }, { url_context: {} }]
-    const selectedTools = options?.tools ?? defaultTools
+    const selectedTools = options?.comparisonTextOnly ? [] : options?.tools ?? defaultTools
     const tools = hasVideo || selectedTools.length === 0 ? undefined : selectedTools
 
-    const locationContext = await buildLocationContext(lastMessage)
+    const locationContext = options?.comparisonTextOnly ? '' : await buildLocationContext(lastMessage)
+    options?.assertRequestCurrent?.()
     const systemText = (options?.systemPrompt || GEMINI_SYSTEM) + locationContext
 
     const reflectionLevel = options?.reflectionLevel ?? 'auto'
@@ -369,7 +373,7 @@ async function runGeminiStream(
     // NB : l'API Gemini ne renvoie pas le modèle servi dans ses chunks —
     // c'est le SEUL client dont l'event reste une déclaration d'intention
     // (pas de dispatch correctif possible, cf. audit visibilité F-2).
-    dispatchModelUsed({
+    reportModel({
       model,
       provider: 'gemini',
       reflecting: thinkingLevel === 'high',
@@ -395,7 +399,8 @@ async function runGeminiStream(
     }
 
     // C9 : headers factorisés (BYOK Bearer + garde server-provided + google-token/trial).
-    const headers = await buildAiHeaders({ byokKey: apiKey, auth: 'bearer' })
+    const headers = await buildAiHeaders({ byokKey: apiKey, auth: 'bearer', assertRequestCurrent: options?.assertRequestCurrent })
+    controller.signal.throwIfAborted()
 
     const response = await fetchWithTimeout(
       apiUrl('/api/ai/gemini-proxy'),
@@ -403,19 +408,22 @@ async function runGeminiStream(
       GEMINI_TIMEOUT_MS,
       controller.signal,
     )
+    options?.assertRequestCurrent?.()
     updateTrialFromResponse(response)
 
     // Le proxy peut appliquer le killswitch global ou le fallback 3.6 → 3.5.
     // Corrige l'attribution optimiste et le coût local avec le modèle servi.
-    const servedModel = response.headers.get('x-arty-model-used')?.trim() || model
-    if (servedModel !== model) {
-      dispatchModelUsed({
+    const proxyModel = response.headers.get('x-arty-model-used')?.trim()
+    let servedModel = validModelId(proxyModel) ? proxyModel : model
+    if (response.ok && validModelId(proxyModel)) {
+      reportModel({
         model: servedModel,
         provider: 'gemini',
         reflecting: thinkingLevel === 'high',
         background: options?.background,
         conversationId: options?.conversationId,
-        confirmed: true,
+        source: 'proxy',
+        confirmed: false,
         ...(options?.routeReason ? { reason: options.routeReason } : {}),
       })
     }
@@ -477,6 +485,7 @@ async function runGeminiStream(
     try {
       while (true) {
         const { done, value } = await reader.read()
+        options?.assertRequestCurrent?.()
         if (done) break
 
         buffer += decoder.decode(value, { stream: true })
@@ -490,6 +499,12 @@ async function runGeminiStream(
 
           try {
             const data = JSON.parse(jsonStr)
+            if (validModelId(data.modelVersion)) {
+              servedModel = data.modelVersion
+              reportModel({ model: servedModel, provider: 'gemini', source: 'provider', confirmed: true,
+                background: options?.background, conversationId: options?.conversationId, reflecting: thinkingLevel === 'high',
+                ...(options?.routeReason ? { reason: options.routeReason } : {}) })
+            }
             const searchContext = extractGeminiSearchContext(data, lastMessage)
             if (searchContext) setSearchContext(searchContext, options?.conversationId)
             const text = data.candidates?.[0]?.content?.parts?.[0]?.text

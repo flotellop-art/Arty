@@ -33,6 +33,8 @@ interface AssistantBubbleProps {
   /** Model id exact qui a produit cette réponse (Message.model, CDC C-B/C-C).
       Absent sur les messages antérieurs au déploiement → pas de footer. */
   model?: string
+  requestedModel?: string
+  modelSource?: 'requested' | 'proxy' | 'provider'
   /** Raison exacte du routage (Message.reasonCode, refonte routage étape 5).
       Absent → le footer garde l'explication générique. */
   reasonCode?: string
@@ -40,7 +42,7 @@ interface AssistantBubbleProps {
   subModelReasonCode?: string
 }
 
-export const AssistantBubble = memo(function AssistantBubble({ content, onAction, pinned, onTogglePin, interrupted, onRetry, factCheck, isStreaming, isLast, onBranch, onReport, model, reasonCode, subModelReasonCode }: AssistantBubbleProps) {
+export const AssistantBubble = memo(function AssistantBubble({ content, onAction, pinned, onTogglePin, interrupted, onRetry, factCheck, isStreaming, isLast, onBranch, onReport, model, requestedModel, modelSource, reasonCode, subModelReasonCode }: AssistantBubbleProps) {
   const { t } = useTranslation()
   const bubbleRef = useRef<HTMLDivElement>(null)
 
@@ -138,6 +140,8 @@ export const AssistantBubble = memo(function AssistantBubble({ content, onAction
         {model && !isStreaming && (
           <ModelFooter
             model={model}
+            requestedModel={requestedModel}
+            modelSource={modelSource}
             reasonCode={reasonCode}
             subModelReasonCode={subModelReasonCode}
           />

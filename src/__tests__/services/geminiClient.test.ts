@@ -1,3 +1,5 @@
+import { TEXT_DEFAULTS } from '../../services/modelCatalog'
+import { PROVIDER_CATALOG } from '../../services/comparator/providerCatalog'
 // C1 (CDC veille 2026-07) : PREMIER test du client Gemini — la cartographie
 // avait relevé qu'aucun test ne gardait ni le modèle par défaut ni le
 // killswitch. Pattern « garde par source » (comme factCheckEndpoint.test.ts) :
@@ -22,9 +24,11 @@ const comparator = readFileSync(resolve(process.cwd(), 'src/screens/compare.tsx'
 
 describe('geminiClient — modèles et killswitch (C1)', () => {
   it('garde le chat en 3.5 et réserve 3.6 à la recherche one-shot', () => {
-    expect(client).toMatch(/const GEMINI_CHAT_MODEL = 'gemini-3\.5-flash'/)
-    expect(client).toMatch(/const GEMINI_RESEARCH_MODEL = 'gemini-3\.6-flash'/)
-    expect(client).toMatch(/const GEMINI_RESEARCH_FALLBACK_MODEL = 'gemini-3\.5-flash'/)
+    expect(client).toContain('const GEMINI_CHAT_MODEL = TEXT_DEFAULTS.geminiChat')
+    expect(TEXT_DEFAULTS.geminiChat).toBe('gemini-3.5-flash')
+    expect(client).toContain('const GEMINI_RESEARCH_MODEL = TEXT_DEFAULTS.geminiResearch')
+    expect(TEXT_DEFAULTS.geminiResearch).toBe('gemini-3.6-flash')
+    expect(client).toContain('const GEMINI_RESEARCH_FALLBACK_MODEL = TEXT_DEFAULTS.geminiChat')
   })
 
   it("aucun modèle de la famille 2.5 n'est routable par le client", () => {
@@ -51,11 +55,9 @@ describe('geminiClient — modèles et killswitch (C1)', () => {
   it('le comparateur ne propose plus aucun modèle 2.5 (404 garantis après le 16/10/2026)', () => {
     expect(catalog).not.toMatch(/modelId: 'gemini-2\.5[^']*'/)
     // Les quatre survivants GA restent proposés.
-    expect(catalog).toMatch(/modelId: 'gemini-3\.6-flash'/)
-    expect(catalog).toMatch(/modelId: 'gemini-3\.5-flash'/)
-    expect(catalog).toMatch(/modelId: 'gemini-3\.5-flash-lite'/)
-    expect(catalog).toMatch(/modelId: 'gemini-3\.1-flash-lite'/)
-    expect(catalog).toMatch(/provider: 'gemini', modelId: 'gemini-3\.6-flash'/)
+    expect(PROVIDER_CATALOG.find(p => p.id === 'gemini')?.models.map(m => m.modelId)).toEqual([
+      'gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite',
+    ])
   })
 
   it("aucun ID preview Gemini n'est exposé au comparateur (anti-objectif)", () => {

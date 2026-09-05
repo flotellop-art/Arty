@@ -4,7 +4,6 @@ vi.mock('../../services/activeApiKey', () => ({ getAnthropicKey: () => 'server-p
 vi.mock('../../services/conversationCompressor', () => ({ compressIfNeeded: vi.fn() }))
 vi.mock('../../services/locationContext', () => ({ buildLocationContext: vi.fn() }))
 vi.mock('../../services/costTracker', () => ({ recordUsage: vi.fn() }))
-vi.mock('../../services/modelLabels', () => ({ dispatchModelUsed: vi.fn() }))
 vi.mock('../../services/trialClient', () => ({ updateTrialFromResponse: vi.fn() }))
 vi.mock('../../services/googleAuth', () => ({ getValidAccessToken: vi.fn(async () => null), getStoredTokens: () => null, isGoogleStorageReady: () => true }))
 vi.mock('../../services/emailTrialClient', () => ({ getTrialToken: () => null }))

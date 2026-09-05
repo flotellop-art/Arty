@@ -14,6 +14,8 @@ export interface ProviderPanelProps {
   panel: PanelState
   onChangeConfig: (next: PanelConfig) => void
   onRemove?: () => void
+  getAccess: (config: PanelConfig) => string | null
+  locked?: boolean
 }
 
 const STATUS_CLS: Record<PanelState['status'], string> = {
@@ -30,13 +32,14 @@ function formatMs(ms: number | null): string {
   return `${(ms / 1000).toFixed(2)} s`
 }
 
-function formatEur(eur: number): string {
+function formatEur(eur: number | null): string {
+  if (eur === null) return '—'
   if (eur === 0) return '0 €'
   if (eur < 0.0001) return '< 0,0001 €'
   return `${eur.toFixed(4)} €`
 }
 
-export const ProviderPanel = memo(function ProviderPanel({ panel, onChangeConfig, onRemove }: ProviderPanelProps) {
+export const ProviderPanel = memo(function ProviderPanel({ panel, onChangeConfig, onRemove, getAccess, locked }: ProviderPanelProps) {
   const { t } = useTranslation()
   const { config, text, status, error, metrics } = panel
   const provider = PROVIDER_CATALOG.find((p) => p.id === config.provider)
@@ -57,14 +60,14 @@ export const ProviderPanel = memo(function ProviderPanel({ panel, onChangeConfig
           onChange={(e) => {
             const nextProvider = e.target.value as ProviderId
             const nextModelId =
-              PROVIDER_CATALOG.find((p) => p.id === nextProvider)?.models[0]?.modelId ?? config.modelId
+              PROVIDER_CATALOG.find((p) => p.id === nextProvider)?.models.find(m => !getAccess({ ...config, provider: nextProvider, modelId: m.modelId }))?.modelId ?? config.modelId
             onChangeConfig({ ...config, provider: nextProvider, modelId: nextModelId })
           }}
-          disabled={status === 'streaming'}
+          disabled={locked || status === 'streaming'}
           className="rounded border border-theme-border bg-theme-surface px-1.5 py-0.5 text-xs text-theme-ink focus:outline-none focus:border-theme-accent disabled:opacity-50"
         >
           {PROVIDER_CATALOG.map((p) => (
-            <option key={p.id} value={p.id}>{p.label}</option>
+            <option key={p.id} value={p.id} disabled={p.models.every(m => !!getAccess({ ...config, provider: p.id, modelId: m.modelId }))}>{p.label}</option>
           ))}
         </select>
 
@@ -73,11 +76,11 @@ export const ProviderPanel = memo(function ProviderPanel({ panel, onChangeConfig
           id={`${config.id}-model`}
           value={config.modelId}
           onChange={(e) => onChangeConfig({ ...config, modelId: e.target.value })}
-          disabled={status === 'streaming' || models.length <= 1}
+          disabled={locked || status === 'streaming' || models.length <= 1}
           className="flex-1 min-w-0 rounded border border-theme-border bg-theme-surface px-1.5 py-0.5 text-xs text-theme-ink focus:outline-none focus:border-theme-accent disabled:opacity-50"
         >
           {models.map((m) => (
-            <option key={m.modelId} value={m.modelId}>{m.label}</option>
+            <option key={m.modelId} value={m.modelId} disabled={!!getAccess({ ...config, modelId: m.modelId })}>{m.label}</option>
           ))}
         </select>
 
@@ -89,7 +92,7 @@ export const ProviderPanel = memo(function ProviderPanel({ panel, onChangeConfig
           <button
             type="button"
             onClick={onRemove}
-            disabled={status === 'streaming'}
+            disabled={locked || status === 'streaming'}
             aria-label={t('compare.removePanelAria', { provider: provider?.label ?? config.provider })}
             className="rounded p-1 text-theme-muted hover:bg-theme-ink/10 hover:text-theme-ink focus:outline-none disabled:opacity-30"
           >
@@ -102,9 +105,10 @@ export const ProviderPanel = memo(function ProviderPanel({ panel, onChangeConfig
 
       {/* Corps : réponse */}
       <div className="flex-1 overflow-y-auto p-3 text-sm min-h-0" aria-live="polite" aria-busy={status === 'streaming'}>
+        {getAccess(config) && <p className="mb-2 text-xs text-theme-muted">{t(getAccess(config)!)}</p>}
         {status === 'error' && (
           <div role="alert" className="rounded border border-red-500/40 bg-red-500/10 p-2 text-red-500 text-xs">
-            <strong>{t('compare.errorPrefix')}</strong> {error}
+            <strong>{t('compare.errorPrefix')}</strong> {error?.startsWith('compare.') ? t(error) : error}
           </div>
         )}
         {status === 'idle' && !text && (
@@ -118,6 +122,10 @@ export const ProviderPanel = memo(function ProviderPanel({ panel, onChangeConfig
         className="grid grid-cols-3 gap-1 border-t border-theme-border bg-theme-bg/40 px-2 py-1.5 text-[11px] text-theme-muted"
         aria-label="metrics"
       >
+        <div className="col-span-3 break-words">
+          <div>{t('compare.requestedModel')}: {config.modelId}</div>
+          <div>{t(`compare.attribution.${panel.attribution?.source ?? 'requested'}`)}{panel.attribution?.source && panel.attribution.source !== 'requested' ? ` : ${panel.attribution.model}` : ''}</div>
+        </div>
         <div>
           <div className="text-theme-muted">{t('compare.metricFirstToken')}</div>
           <div className="font-mono text-theme-ink">{formatMs(metrics.firstTokenMs)}</div>
@@ -128,7 +136,7 @@ export const ProviderPanel = memo(function ProviderPanel({ panel, onChangeConfig
         </div>
         <div>
           <div className="text-theme-muted">{t('compare.metricCost')}</div>
-          <div className="font-mono text-theme-ink">{formatEur(metrics.costEur)}</div>
+          <div className="font-mono text-theme-ink" title={metrics.costEur === null ? t('compare.costUnavailable') : undefined} aria-label={metrics.costEur === null ? t('compare.costUnavailable') : undefined}>{formatEur(metrics.costEur)}</div>
         </div>
         <div className="col-span-3 text-[10px] text-theme-muted">
           {t('compare.metricTokens', { in: metrics.inputTokens, out: metrics.outputTokens })}

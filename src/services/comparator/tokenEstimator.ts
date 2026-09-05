@@ -17,11 +17,11 @@ export function estimateTokens(text: string): number {
 
 /**
  * Coût estimé en EUR pour (input + output) tokens d'un modèle donné.
- * Renvoie 0 (pas NaN) si le modèle est inconnu du tarifaire.
+ * Renvoie null si le tarif ou la mesure est inconnu (jamais « gratuit »).
  */
-export function estimateCostEur(costKey: string, inputTokens: number, outputTokens: number): number {
+export function estimateCostEur(costKey: string, inputTokens: number, outputTokens: number): number | null {
   const cost = MODEL_COSTS[costKey]
-  if (!cost) return 0
+  if (!cost || !Number.isFinite(inputTokens) || !Number.isFinite(outputTokens) || inputTokens < 0 || outputTokens < 0) return null
   const usd = (inputTokens * cost.input + outputTokens * cost.output) / 1_000_000
   return usd * EUR_PER_USD
 }

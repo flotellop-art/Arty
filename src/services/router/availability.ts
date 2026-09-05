@@ -25,7 +25,7 @@
 // ROLLBACK (si les coûts dérapent) : retourner `false` dans serverAllows —
 // une ligne, ce fichier seul.
 // ─────────────────────────────────────────────────────────────────────────────
-import { getGeminiKey, getMistralKey, getOpenAIKey } from '../activeApiKey'
+import { hasPersonalKey } from '../providerLock'
 import type { ProviderAvailability } from './types'
 
 export interface ProviderAccessContext {
@@ -58,7 +58,7 @@ export function getProviderAvailability(context: ProviderAccessContext): Provide
     ((context.plan === 'free' || context.plan === 'trial') && context.creditsCoverPremium)
   const serverAllows = (...fams: string[]) =>
     canUseServerKey && fams.some((f) => families.includes(f))
-  const openaiByok = !!getOpenAIKey()
+  const openaiByok = hasPersonalKey('openai')
   // Le cache plan normalise l'essai en `free`. `null` est ambigu : il peut
   // signifier « aucun essai » OU « initTrial a échoué ». Comme le serveur
   // débite l'essai avant de refuser Terra, seule la preuve explicite `0`
@@ -71,8 +71,8 @@ export function getProviderAvailability(context: ProviderAccessContext): Provide
       context.trialRemaining === 0)
   return {
     claude: true,
-    gemini: !!getGeminiKey() || serverAllows('gemini-flash', 'gemini-pro'),
-    mistral: !!getMistralKey() || serverAllows('mistral-medium'),
+    gemini: hasPersonalKey('gemini') || serverAllows('gemini-flash', 'gemini-pro'),
+    mistral: hasPersonalKey('mistral') || serverAllows('mistral-medium'),
     openai: openaiByok || serverAllows('gpt-mini', 'gpt-full'),
     // Décision A5 : le trial conserve Claude pour les photos tant que Terra
     // n'est pas dans TRIAL_ALLOWED_MODELS. Une clé OpenAI personnelle reste
