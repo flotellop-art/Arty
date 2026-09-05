@@ -1,97 +1,105 @@
-/**
- * Suppression de compte (RGPD — droit à l'effacement).
- *
- * Ordre : serveur d'abord (a besoin du token Google encore présent), puis local.
- * Si la suppression serveur échoue, on NE wipe PAS le local -> l'utilisateur
- * peut réessayer sans se retrouver dans un état incohérent.
- *
- * Le caller recharge la page après succès (reset propre vers l'écran de login).
- */
-
+/** Authenticated server erasure first; local cleanup is resumable and always
+ * bound to the identity captured before the first asynchronous operation. */
 import { getValidAccessToken } from './googleAuth'
 import { apiUrl } from './apiBase'
 import { clearAllForActiveUser } from './scopedStorage'
-import {
-  getActiveUserId,
-  getActiveSession,
-  removeKnownSession,
-  clearActiveSession,
-  purgeLegacyGlobalReports,
-} from './userSession'
+import { getActiveUserId, getActiveSession, getActiveSessionEpoch, invalidateActiveSessionWork,
+  removeKnownSession, clearActiveSession, purgeLegacyGlobalReports, type UserSession } from './userSession'
 import { wipeFileStorage } from './secureFileStorage'
 import { purgeMailAccountsForUser } from './mailAccounts'
 import { getTrialToken } from './emailTrialClient'
+import { beginProjectErasure, assertProjectErasure, confirmServerProjectErasure, finishProjectErasure,
+  releaseFailedProjectErasure, blockProjectOperations, purgeProjectsForAccount, type ProjectErasure } from './projects/store'
 
-/**
- * Supprime les données personnelles côté serveur (mémoire + quotas).
- * Utilise le token Google ou, pour un essai par email, le jeton de session
- * x-arty-trial-token. No-op uniquement pour une session purement locale.
- */
-export async function deleteServerAccount(): Promise<void> {
-  const session = getActiveSession()
-  if (!session) throw new Error('No active account to delete')
-
-  // API-key/demo accounts are local-only and have no server account record.
+type AccountContext = { session: UserSession; assertCurrent(): void }
+function captureAccount(): AccountContext {
+  const active = getActiveSession()
+  if (!active) throw new Error('No active account to delete')
+  const session = { ...active }, epoch = getActiveSessionEpoch()
+  return { session, assertCurrent() {
+    if (getActiveUserId() !== session.userId || getActiveSessionEpoch() !== epoch) throw new Error('Account erasure context changed')
+  } }
+}
+async function performServerErasure(context: AccountContext): Promise<void> {
+  context.assertCurrent()
+  const { session } = context
   if (session.authMethod === 'apikey' || session.authMethod === 'demo') return
-
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   if (session.authMethod === 'google') {
-    const googleToken = await getValidAccessToken()
-    if (!googleToken) throw new Error('Google credential unavailable for account deletion')
-    headers['x-google-token'] = googleToken
+    const token = await getValidAccessToken()
+    // Refresh may have waited while the UI switched to another account.
+    context.assertCurrent()
+    if (!token) throw new Error('Google credential unavailable for account deletion')
+    headers['x-google-token'] = token
   } else {
-    const trialToken = getTrialToken()
-    if (!trialToken) throw new Error('Email credential unavailable for account deletion')
-    headers['x-arty-trial-token'] = trialToken
+    const token = getTrialToken()
+    if (!token) throw new Error('Email credential unavailable for account deletion')
+    headers['x-arty-trial-token'] = token
   }
-
-  const res = await fetch(apiUrl('/api/account/delete'), {
-    method: 'POST',
-    headers,
-  })
+  context.assertCurrent()
+  const res = await fetch(apiUrl('/api/account/delete'), { method: 'POST', headers })
   if (!res.ok) throw new Error(`account delete failed (${res.status})`)
+  // A received success belongs to the token captured above, even if the UI
+  // switched meanwhile. The caller may record that receipt for A, not wipe B.
 }
+export async function deleteServerAccount(): Promise<void> { await performServerErasure(captureAccount()) }
 
-/**
- * Efface toutes les données locales du user actif : conversations, mémoire
- * locale, clés BYOK, tokens Google, profil, streaks… + pièces jointes (IndexedDB)
- * + retrait de la liste des comptes connus.
- */
-export async function wipeLocalAccount(): Promise<void> {
-  const userId = getActiveUserId()
-  const email = getActiveSession()?.email
-
-  // Delete IndexedDB first while the owner identity is still active. If this
-  // fails, propagate the error and keep the session/localStorage intact so the
-  // user can retry instead of being told that deletion succeeded incompletely.
+async function performLocalErasure(captured: AccountContext, lease: ProjectErasure): Promise<void> {
+  captured.assertCurrent()
+  await assertProjectErasure(lease, captured.assertCurrent)
+  // Stop running conversation/file crypto work without dropping the identity
+  // required for captured-owner cleanup. Retrying cleanup does not need crypto.
+  invalidateActiveSessionWork()
+  const context = captureAccount(), { userId, email } = context.session
+  // Other windows check this durable membership at every project operation.
+  // The temporary IDB marker also blocks a concurrent explicit re-login.
+  removeKnownSession(userId)
+  await purgeProjectsForAccount(userId, context.assertCurrent)
+  await assertProjectErasure(lease, context.assertCurrent)
   await wipeFileStorage(userId)
-
-  // Boîtes mail IMAP : elles vivent dans le SharedPreferences natif, hors de
-  // localStorage et d'IndexedDB — `clearAllForActiveUser()` ne les voit pas.
-  // Sans cet appel, l'adresse, le serveur et le mot de passe chiffré
-  // survivaient à la suppression du compte, et l'identifiant utilisateur étant
-  // déterministe (méthode + hachage de l'e-mail), une reconnexion ultérieure
-  // avec la même adresse les ressuscitait en silence. Même discipline que
-  // `wipeFileStorage` ci-dessus : en cas d'échec on propage et on laisse la
-  // session intacte, pour que l'utilisateur puisse relancer la suppression
-  // plutôt que de croire à un effacement complet.
+  context.assertCurrent()
   await purgeMailAccountsForUser(userId)
-
-  // Pre-scoping report keys contain no owner metadata. Purge all of them so a
-  // historical personal report cannot survive an erasure request.
+  await assertProjectErasure(lease, context.assertCurrent)
+  // No await in this final localStorage phase: never resolve ownership late.
   purgeLegacyGlobalReports()
   clearAllForActiveUser()
-  // `arty-email-hash-{email}` (reconnaissance des comptes au login) n'est pas
-  // préfixée par userId -> effacement ciblé de la seule clé du user courant.
-  if (email) {
-    try { localStorage.removeItem(`arty-email-hash-${email}`) } catch { /* noop */ }
-  }
-  if (userId) removeKnownSession(userId)
+  if (email) localStorage.removeItem(`arty-email-hash-${email}`)
+  removeKnownSession(userId)
+  // The receipt is removed only after all identity-bearing local stores are
+  // erased. A failed final IDB cleanup keeps the active identity for retry.
+  await finishProjectErasure(lease)
+  context.assertCurrent()
   clearActiveSession()
 }
 
-/** Suppression complète : serveur (perso) puis local. Le caller recharge ensuite. */
+/** Explicit local-only erasure entry point; does not assume a 401 is success. */
+export async function wipeLocalAccount(): Promise<void> {
+  const context = captureAccount(), release = blockProjectOperations(context.session.userId)
+  try {
+    const lease = await beginProjectErasure(context.session.userId, context.assertCurrent, true)
+    await performLocalErasure(context, lease)
+  } finally { release() }
+}
+
+/** A confirmed server receipt survives reload and local failure. In particular,
+ * email tokens are already revoked after success and must not be posted again. */
 export async function deleteAccount(): Promise<void> {
-  await deleteServerAccount()
-  await wipeLocalAccount()
+  const context = captureAccount(), release = blockProjectOperations(context.session.userId)
+  let lease: ProjectErasure | undefined, serverConfirmed = false
+  try {
+    lease = await beginProjectErasure(context.session.userId, context.assertCurrent)
+    serverConfirmed = lease.serverConfirmed
+    if (!serverConfirmed) {
+      await performServerErasure(context)
+      serverConfirmed = true
+      await confirmServerProjectErasure(lease)
+    }
+    context.assertCurrent()
+    await performLocalErasure(context, lease)
+  } catch (error) {
+    // No server success: no local erasure was started. Release the temporary
+    // marker; never clear a confirmed/potentially confirmed server receipt.
+    if (lease && !serverConfirmed) await releaseFailedProjectErasure(lease).catch(() => {})
+    throw error
+  } finally { release() }
 }

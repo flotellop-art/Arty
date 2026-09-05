@@ -20,6 +20,17 @@ export interface UserSession {
 // Current active session
 let _activeSession: UserSession | null = null
 let _sessionEpoch = 0
+// Ownerless fence contains no personal data. Captured at session restoration /
+// explicit login, never silently reacquired by an old window after erasure.
+export const PROJECT_ERASURE_FENCE_KEY = 'arty-project-erasure-fence'
+let _projectErasureFence: string | null = null
+function captureProjectFence(): void {
+  try { _projectErasureFence = localStorage.getItem(PROJECT_ERASURE_FENCE_KEY) ?? 'initial' }
+  catch { _projectErasureFence = null }
+}
+export function getSessionProjectFence(): string | null { getActiveSession(); return _projectErasureFence }
+/** Cancels pending async work without erasing the identity needed for cleanup. */
+export function invalidateActiveSessionWork(): void { _sessionEpoch += 1 }
 
 // ─── Hash helper ───
 
@@ -47,6 +58,7 @@ export function getActiveSession(): UserSession | null {
   try {
     const raw = localStorage.getItem(ACTIVE_SESSION_KEY)
     if (raw) {
+      captureProjectFence()
       _activeSession = JSON.parse(raw) as UserSession
       return _activeSession
     }
@@ -68,6 +80,7 @@ export function setActiveSession(
   options: { remember?: boolean } = {},
 ): void {
   _sessionEpoch += 1
+  captureProjectFence()
   _activeSession = session
   if (options.remember === false) return
   rememberSession(session)

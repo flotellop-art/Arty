@@ -17,6 +17,8 @@ const deps = vi.hoisted(() => ({
   purgeLegacyGlobalReports: vi.fn(),
   wipeFileStorage: vi.fn(async () => {}),
   purgeMailAccountsForUser: vi.fn(async () => {}),
+  projectBegin: vi.fn(), projectConfirm: vi.fn(), projectFinish: vi.fn(), projectPurge: vi.fn(),
+  projectAssert: vi.fn(), projectBlock: vi.fn(), epoch: 0,
   session: null as Session | null,
 }))
 
@@ -29,6 +31,8 @@ vi.mock('../../services/scopedStorage', () => ({
 vi.mock('../../services/userSession', () => ({
   getActiveSession: () => deps.session,
   getActiveUserId: () => deps.session?.userId ?? null,
+  getActiveSessionEpoch: () => deps.epoch,
+  invalidateActiveSessionWork: () => { deps.epoch++ },
   removeKnownSession: deps.removeKnownSession,
   clearActiveSession: deps.clearActiveSession,
   purgeLegacyGlobalReports: deps.purgeLegacyGlobalReports,
@@ -38,6 +42,12 @@ vi.mock('../../services/secureFileStorage', () => ({
 }))
 vi.mock('../../services/mailAccounts', () => ({
   purgeMailAccountsForUser: deps.purgeMailAccountsForUser,
+}))
+vi.mock('../../services/projects/store', () => ({
+  beginProjectErasure: deps.projectBegin, assertProjectErasure: deps.projectAssert,
+  confirmServerProjectErasure: deps.projectConfirm, finishProjectErasure: deps.projectFinish,
+  releaseFailedProjectErasure: deps.projectFinish,
+  blockProjectOperations: deps.projectBlock, purgeProjectsForAccount: deps.projectPurge,
 }))
 
 import {
@@ -68,6 +78,13 @@ describe('accountService — fail-closed account erasure', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     deps.session = googleSession()
+    deps.epoch = 0
+    deps.projectBegin.mockImplementation(async (owner: string) => ({ owner, nonce: 'n', serverConfirmed: false }))
+    deps.projectAssert.mockImplementation(async (_lease, guard: () => void) => guard())
+    deps.projectConfirm.mockResolvedValue(undefined)
+    deps.projectFinish.mockResolvedValue(undefined)
+    deps.projectBlock.mockImplementation(() => vi.fn())
+    deps.projectPurge.mockResolvedValue(undefined)
     deps.googleToken.mockResolvedValue('google-token')
     deps.trialToken.mockReturnValue(null)
     deps.wipeFileStorage.mockResolvedValue(undefined)
@@ -151,7 +168,7 @@ describe('accountService — fail-closed account erasure', () => {
     expect(deps.wipeFileStorage).toHaveBeenCalledWith('google-user')
     expect(deps.purgeLegacyGlobalReports).not.toHaveBeenCalled()
     expect(deps.clearAllForActiveUser).not.toHaveBeenCalled()
-    expect(deps.removeKnownSession).not.toHaveBeenCalled()
+    expect(deps.removeKnownSession).toHaveBeenCalledWith('google-user')
     expect(deps.clearActiveSession).not.toHaveBeenCalled()
   })
 
@@ -191,5 +208,44 @@ describe('accountService — fail-closed account erasure', () => {
     // dire que son compte est effacé alors que ses identifiants mail restent.
     expect(deps.clearAllForActiveUser).not.toHaveBeenCalled()
     expect(deps.clearActiveSession).not.toHaveBeenCalled()
+  })
+  it('does not issue a destructive request after a token refresh crosses accounts', async () => {
+    let resolve!: (token: string) => void
+    deps.googleToken.mockReturnValueOnce(new Promise<string>(r => { resolve = r }))
+    const pending = deleteServerAccount()
+    deps.session = emailSession(); deps.epoch++
+    resolve('token-b')
+    await expect(pending).rejects.toThrow('context changed')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+  it('records successful server A erasure but never wipes B when the response arrives after a switch', async () => {
+    let resolve!: (res: Response) => void
+    fetchMock.mockReturnValueOnce(new Promise<Response>(r => { resolve = r }))
+    const pending = deleteAccount()
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled())
+    deps.session = emailSession(); deps.epoch++
+    resolve(new Response('{}', { status: 200 }))
+    await expect(pending).rejects.toThrow('context changed')
+    expect(deps.projectConfirm).toHaveBeenCalledWith(expect.objectContaining({ owner: 'google-user' }))
+    expect(deps.wipeFileStorage).not.toHaveBeenCalled()
+    expect(deps.clearAllForActiveUser).not.toHaveBeenCalled()
+  })
+  it('resumes a confirmed email erasure without a second server call', async () => {
+    deps.session = emailSession(); deps.trialToken.mockReturnValue('trial-token')
+    deps.wipeFileStorage.mockRejectedValueOnce(new Error('disk unavailable'))
+    await expect(deleteAccount()).rejects.toThrow('disk unavailable')
+    expect(deps.projectConfirm).toHaveBeenCalled()
+    deps.projectBegin.mockResolvedValueOnce({ owner: 'email-user', nonce: 'retry', serverConfirmed: true })
+    deps.trialToken.mockReturnValue(null)
+    await deleteAccount()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(deps.clearActiveSession).toHaveBeenCalledTimes(1)
+  })
+  it('does not clear B after a captured A file purge waits across a switch', async () => {
+    deps.wipeFileStorage.mockImplementationOnce(async () => { deps.session = emailSession(); deps.epoch++ })
+    await expect(wipeLocalAccount()).rejects.toThrow('context changed')
+    expect(deps.wipeFileStorage).toHaveBeenCalledWith('google-user')
+    expect(deps.purgeMailAccountsForUser).not.toHaveBeenCalled()
+    expect(deps.clearAllForActiveUser).not.toHaveBeenCalled()
   })
 })

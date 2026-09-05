@@ -51,7 +51,7 @@ import { getCustomInstructions, setCustomInstructions, MAX_CUSTOM_INSTRUCTIONS_C
 import { LocalMemoryModal } from './LocalMemoryModal'
 import { MailAccountsModal } from './MailAccountsModal'
 import { isMailImapAvailable } from '../../services/native/mailImap'
-import { deleteAccount } from '../../services/accountService'
+import { AccountDeletionPanel } from './AccountDeletionPanel'
 
 interface SettingsModalProps {
   open: boolean
@@ -84,22 +84,6 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
   const [streakData, setStreakDataState] = useState<StreakData>(getStreakData)
   const [showLocalMemory, setShowLocalMemory] = useState(false)
   const [showMailAccounts, setShowMailAccounts] = useState(false)
-  const [confirmDeleteAccount, setConfirmDeleteAccount] = useState(false)
-  const [deletingAccount, setDeletingAccount] = useState(false)
-  const [deleteAccountError, setDeleteAccountError] = useState('')
-
-  const handleDeleteAccount = async () => {
-    setDeletingAccount(true)
-    setDeleteAccountError('')
-    try {
-      await deleteAccount()
-      // Reset propre : recharge l'app -> écran de login (plus de session).
-      window.location.reload()
-    } catch {
-      setDeletingAccount(false)
-      setDeleteAccountError(t('account.error'))
-    }
-  }
   const [proLicense, setProLicense] = useState<ProLicenseState | null>(getProLicense)
   const [licenseKey, setLicenseKey] = useState('')
   const [licenseEmail, setLicenseEmail] = useState('')
@@ -798,46 +782,7 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
           </div>
 
           {/* Zone de danger — suppression de compte (RGPD, droit à l'effacement) */}
-          <div className="border-t border-theme-border pt-5">
-            <p className="font-display text-base text-red-600 dark:text-red-400">⚠️ {t('account.dangerZone')}</p>
-            {!confirmDeleteAccount ? (
-              <>
-                <p className="font-display italic text-xs text-theme-muted mt-0.5">
-                  {t('account.deleteDescription')}
-                </p>
-                <button
-                  onClick={() => { setConfirmDeleteAccount(true); setDeleteAccountError('') }}
-                  className="mt-3 px-3 py-2 rounded-sm border border-red-500/50 text-red-600 dark:text-red-400 text-sm font-medium hover:bg-red-500/10 transition-colors"
-                >
-                  {t('account.delete')}
-                </button>
-              </>
-            ) : (
-              <div className="mt-3 rounded-sm border border-red-500/50 bg-red-500/5 p-3">
-                <p className="font-display text-sm text-theme-ink font-medium">{t('account.confirmTitle')}</p>
-                <p className="font-display italic text-xs text-theme-muted mt-1">{t('account.confirmBody')}</p>
-                {deleteAccountError && (
-                  <p className="font-sans text-xs text-red-500 mt-2" role="alert">{deleteAccountError}</p>
-                )}
-                <div className="flex gap-2 mt-3">
-                  <button
-                    onClick={handleDeleteAccount}
-                    disabled={deletingAccount}
-                    className="flex-1 py-2 bg-red-600 text-white text-sm font-medium rounded-sm hover:bg-red-700 transition-colors disabled:opacity-50"
-                  >
-                    {deletingAccount ? t('account.deleting') : t('account.confirmCta')}
-                  </button>
-                  <button
-                    onClick={() => setConfirmDeleteAccount(false)}
-                    disabled={deletingAccount}
-                    className="px-4 py-2 border border-theme-border text-theme-ink text-sm rounded-sm hover:bg-theme-ink/5 transition-colors disabled:opacity-50"
-                  >
-                    {t('account.cancel')}
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
+          <AccountDeletionPanel open={open} onComplete={() => window.location.reload()} />
 
           {/* Version du bundle JS — séparée du versionName Android (qui vient
               de build.gradle). Si les deux divergent, cowork n'a pas refait
