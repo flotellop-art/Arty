@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
-import { creditWallet, getWalletBalance } from '../../../functions/api/_lib/wallet'
+import { creditWallet } from '../../../functions/api/_lib/wallet'
 import { onRequestPost as creemWebhook } from '../../../functions/api/webhook/creem'
 import { onRequestPost as lemonSqueezyWebhook } from '../../../functions/api/webhook/lemonsqueezy'
 import { makeD1Harness, type D1Harness } from './d1Harness'
@@ -19,6 +19,14 @@ beforeAll(async () => {
 })
 afterAll(async () => { await h.dispose() })
 beforeEach(async () => { await h.reset() })
+
+// Verify the persisted ledger, not the production getter's 250 ms timeout
+// fallback (null means unavailable, not necessarily an absent wallet).
+async function readWalletBalance(email: string): Promise<number | null> {
+  const row = await h.db.prepare('SELECT balance_micro FROM wallet WHERE user_email = ?1')
+    .bind(email).first<{ balance_micro: number }>()
+  return row?.balance_micro ?? null
+}
 
 async function hmacHex(body: string, secret: string): Promise<string> {
   const encoder = new TextEncoder()
@@ -92,7 +100,7 @@ describe('webhook Creem — remboursements partiels', () => {
       payload,
     )
     expect(first.status).toBe(200)
-    expect((await getWalletBalance(h.env, email))?.balanceMicro).toBe(7_500_000)
+    expect(await readWalletBalance(email)).toBe(7_500_000)
 
     const replay = await postSignedWebhook(
       creemWebhook,
@@ -102,7 +110,7 @@ describe('webhook Creem — remboursements partiels', () => {
       payload,
     )
     expect(replay.status).toBe(200)
-    expect((await getWalletBalance(h.env, email))?.balanceMicro).toBe(7_500_000)
+    expect(await readWalletBalance(email)).toBe(7_500_000)
 
     const refunds = await h.db.prepare(
       `SELECT amount_micro FROM credit_ledger WHERE kind = 'refund' ORDER BY id`,
@@ -140,7 +148,7 @@ describe('webhook Creem — remboursements partiels', () => {
       expect(response.status).toBe(200)
     }
 
-    expect((await getWalletBalance(h.env, email))?.balanceMicro).toBe(0)
+    expect(await readWalletBalance(email)).toBe(0)
     const totalRefund = await h.db.prepare(
       `SELECT COALESCE(SUM(amount_micro), 0) AS amount_micro
        FROM credit_ledger WHERE kind = 'refund'`,
@@ -198,7 +206,7 @@ describe('webhook Creem — remboursements partiels', () => {
       },
     )
     expect(checkout.status).toBe(200)
-    expect((await getWalletBalance(h.env, email))?.balanceMicro).toBe(7_500_000)
+    expect(await readWalletBalance(email)).toBe(7_500_000)
     expect(await h.db.prepare(
       `SELECT requested_micro, collected_micro, status FROM wallet_reversal
        WHERE provider = 'creem' AND event_id = 'evt_refund_before_topup'`,
@@ -216,7 +224,7 @@ describe('webhook Creem — remboursements partiels', () => {
       refundPayload,
     )
     expect(replay.status).toBe(200)
-    expect((await getWalletBalance(h.env, email))?.balanceMicro).toBe(7_500_000)
+    expect(await readWalletBalance(email)).toBe(7_500_000)
   })
 
   it('retourne 5xx si un checkout credits payé utilise un product id ayant tourné', async () => {
@@ -245,7 +253,7 @@ describe('webhook Creem — remboursements partiels', () => {
       )
 
       expect(response.status).toBe(500)
-      expect(await getWalletBalance(h.env, 'rotation@example.com')).toBeNull()
+      expect(await readWalletBalance('rotation@example.com')).toBeNull()
     } finally {
       h.env.CREEM_CREDITS_10_PRODUCT_ID = previousProductId
     }
