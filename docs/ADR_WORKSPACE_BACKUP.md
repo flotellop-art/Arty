@@ -138,8 +138,8 @@ capacité déployées restent non vérifiées ; le choix B attend cet accès.
 
 A2 a deux prérequis supplémentaires établis en contre-revue :
 
-- L'exécution image est livrée dans #447. Le raccordement de galerie du lot
-  suivant utilise `Message.generatedImages`, références privées issues du reçu
+- L'exécution image est livrée dans #447. La galerie livrée dans #448
+  utilise `Message.generatedImages`, références privées issues du reçu
   d'outil local, jamais du texte du modèle. Le rendu Markdown/public ne résout
   aucun ID de fichier ; les anciennes URI `arty-img` restent indisponibles.
   **Décision du 5 septembre : pas de table d'alias URI.** A2 peut mapper ces
@@ -181,3 +181,86 @@ mutation du caller et annulation. Puis stockage vierge/nouvelle clé locale,
 quota/crash à chaque phase, double import, A→B→A/effacement et deux appareils
 isolés/offline/divergence/suppression. Aucun test simulé ne vaut une recette
 visuelle Office, Android ou multi-appareil réelle.
+
+## Préparation A2 après la livraison #448
+
+Contre-revues du 5 septembre : code A2 non commencé. Le tableau décrit le
+protocole à établir et tester, pas des garanties déjà présentes.
+
+| Frontière | Risque vérifié dans le code | Prérequis proposé |
+|---|---|---|
+| `storage.ts`, `userSession.ts` | CRUD synchrone sur cache entier ; bootstrap, chiffrement différé, quarantaine et migration peuvent écrire | Writer unique par compte pendant toute la session d'édition ; bail capturé avant les attentes ; lecture fraîche avant activation d'un nouveau bail ; clés vNext isolées du CRUD legacy |
+| `secureFileStorage.ts` | Ancien client peut écrire/supprimer les fichiers ; ouverture v1 sans `blocking` | Neutralisation des connexions legacy avant publication, par barrière de version IDB ou isolation complète des assets ; fermeture explicite d'un ancien onglet si upgrade bloqué, aucun contournement ; restauration exacte distincte de `putFile` |
+| `projects/store.ts` | Mutations transactionnelles locales mais pas de transaction avec l'historique ; readers peuvent exposer des copies partielles | Même coordination des writers ; journal/staging masqués ; gate durable lu avant bootstrap/publication et reprise idempotente |
+| `accountService.ts` | Purges actuelles ne connaissent pas de futur journal/staging | Stores de restauration indexés par propriétaire, inclus dans la purge avant `finishProjectErasure` ; marker conservé si échec ; aucune reprise après changement de fence |
+
+Un mutex seulement pendant la restauration ne suffit pas : une fenêtre ayant
+gardé un ancien cache peut ensuite réécrire la liste et enlever les copies.
+Un writer de session permet de garder les APIs synchrones actuelles, avec le
+coût UX d'une seule fenêtre éditrice par compte. Les autres fenêtres devront
+être explicitement non éditrices ; pas de prise de contrôle automatique avec
+`steal`. L'autre option est une refonte des mutations vers transaction/CAS
+asynchrones, plus large. L'absence de Web Locks ne doit pas être remplacée par
+un faux verrou localStorage pour autoriser une restauration.
+
+La coordination de session est par compte, mais une montée de version IDB
+concerne la base entière : prévoir aussi une maintenance/bascule à l'échelle
+de l'origine. Les générations legacy restent conservées ; leurs écritures
+tardives sont des divergences récupérables à signaler, jamais fusionnées
+automatiquement après activation de la nouvelle génération.
+
+Le Web Lock est coopératif : sa durée dépend de la promesse du callback ; un
+signal d'annulation de demande ne remplace pas la fin d'un callback déjà actif.
+La barrière de version IDB doit attendre la fermeture des anciennes connexions,
+pas les supposer neutralisées dès l'appel `open`. Références primaires relues :
+[Web Locks](https://www.w3.org/TR/web-locks/),
+[IndexedDB](https://w3c.github.io/IndexedDB/). Aucun de ces mécanismes n'est une
+autorisation d'accès, un remplacement du chiffrement ou une protection contre
+un script malveillant déjà exécuté dans la même origine.
+
+Inventaire/capture et admission de restauration :
+
+- Lectures strictes distinguant absent, verrouillé, corrompu, occupé et prêt,
+  notamment les slots d'historique en quarantaine ; aucun filtre de fichiers
+  absents transformant un export incomplet en succès.
+- Construction allowlistée de chaque sous-arbre : omettre les champs absents,
+  ne pas injecter `undefined` ni partager des objets `factCheck` entre messages
+  d'un snapshot. Ne pas normaliser silencieusement le texte ou les tags.
+- `embeddedFiles` A1 admet plus que la galerie : admission A2 des seuls messages
+  assistant, au plus quatre références uniques, MIME/signature et bornes image.
+  Les IDs source admis par A1 deviennent de nouveaux UUID locaux ; les références
+  historiques indisponibles sont aussi remappées sans résolution côté cible.
+- `BackupFileReference` ne porte que ID/crop ; les noms/MIME/tailles du message
+  peuvent différer des octets après compression historique. Refuser ou signaler
+  ces divergences avant export, sans choisir arbitrairement la métadonnée.
+  Si la fidélité requiert plusieurs variantes, il faut décider explicitement
+  d'une évolution du format ou d'objets distincts comptés dans les bornes : A1
+  interdit plusieurs `BackupFile` partageant un seul `objectId`.
+- Écrivains exacts pour fichiers et projets : aucune recompression/réextraction,
+  conservation des métadonnées de normalisation historique v1/v2 et des textes
+  extraits exacts. Les APIs ordinaires d'import ne remplissent pas ce contrat.
+- Les tags sont autonomes : IDs prédéfinis intégrés au code ou libellés perso,
+  pas de catalogue utilisateur externe oublié. Conserver chaînes et ordre,
+  dont `work` et `Client Émile` dans un round-trip FR→EN.
+- Préflight capacité cible : existant + copies additives + staging/journal +
+  expansion base64/chiffrement. La limite de l'archive seule ne valide pas un
+  pic mémoire natif ; le helper de partage natif convertit le Blob en base64.
+
+Premier parcours complet proposé : une conversation entière et toutes ses
+dépendances directes, projet courant entier en option explicite, code séparé,
+export chiffré puis réouverture/vérification, restauration d'une copie. Les
+preuves historiques manquantes restent des diagnostics, jamais des suppressions
+inventées. Pas de sélection de sous-plage, fusion ni reprise automatique
+d'actions HTML, rapports/traces exclus, fact-check, outil ou notification.
+Une livraison intermédiaire capture/vérification doit porter ce nom et ne
+valide ni restauration ni W06. Aucun de ces parcours n'est encore branché.
+
+Journal proposé sous bail et maintenance : préparé → staging → vérifié →
+publication → terminé. Mapping créé une seule fois, données exactes chiffrées
+et indexées par owner/job ; gate durable avant publication, vérification du
+graphe publié et levée du gate en dernier. Reprise avec les mêmes IDs après
+crash, demande de re-sélection d'archive si le staging est incomplet, annulation
+limitée aux ressources du job. Ne jamais réécrire un ancien snapshot global
+pour faire un rollback. Acquérir l'autorité de maintenance avant une suppression
+de compte côté serveur, pas après sa révocation distante. Aucun reçu d'effacement
+clos avant purge de tous les stores/générations du compte.

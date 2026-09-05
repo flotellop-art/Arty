@@ -31,7 +31,7 @@ supplémentaire n'est implicite dans ce mandat.
 | W03 | Catalogue | Un catalogue partagé aligne comparaison, sélecteurs, labels et éligibilité selon le compte (pas une garantie fournisseur). Modèle demandé, transmis par le proxy et signalé par le fournisseur distingués. Tests contre la dérive et contre l'accès premium hors droit. | Web déployé, PR #440 ; recette visuelle/appareil non vérifiée |
 | W04 | Projets | Créer/renommer/supprimer un projet, consignes propres, conversations associées, bibliothèque de documents réutilisables. Sources identifiables dans le contexte. Recherche bornée, absence de fichier et contexte tronqué explicites. Cloisonnement par compte et projet ; mode Europe conservé. | Bibliothèque web livrée #443 ; conversations web livrées #444 ; recette visuelle/appareil non vérifiée |
 | W05 | Livrables | Export DOCX modifiable et XLSX de tableaux, en plus des exports existants. Téléchargements relus par un parseur indépendant ; cellules dangereuses neutralisées ; aucun HTML actif ni formule arbitraire. Formats et limites documentés. | Web déployé #445 ; recette structurelle vérifiée ; rendu Office/appareil non vérifié |
-| W06 | Continuité | Sauvegarde/restauration explicites puis synchronisation optionnelle multi-appareil chiffrée avant upload, avec secret détenu par l'utilisateur et récupération expliquée. Conflits non destructifs ; reprise hors-ligne ; logout/switch/delete et compte invité traités. Un export manuel seul ne valide pas la synchronisation. | A1 format fusionné #446 ; capture/restauration/UI/synchronisation non livrées |
+| W06 | Continuité | Sauvegarde/restauration explicites puis synchronisation optionnelle multi-appareil chiffrée avant upload, avec secret détenu par l'utilisateur et récupération expliquée. Conflits non destructifs ; reprise hors-ligne ; logout/switch/delete et compte invité traités. Un export manuel seul ne valide pas la synchronisation. | A1 format #446 et galerie privée #448 livrés ; capture/restauration/UI/synchronisation non livrées |
 | W07 | Comparaison | Comparer depuis une conversation avec contexte/documents autorisés ; conserver les résultats et poursuivre la réponse choisie sans perdre l'original. Erreurs/coûts/quotas de chaque panneau visibles ; EU et historique privé jamais contournés. | À faire |
 | W08 | Parcours métier | Trois parcours complets : synthèse documentaire, réponse client préparée, planification Agenda avec confirmation avant écriture. Écran de connexions indiquant disponible/non configuré/non pris en charge selon plateforme. Pas de Drive/Gmail OAuth restreint ni relais IMAP serveur. | À faire |
 | W09 | Mobile et identité | PWA installable ; identité tryarty cohérente ; distribution Android authentifiée et documentée. Ne pas rediriger vers une app Play homonyme. Toute migration appId inclut signatures/OAuth/Firebase/liens vérifiés ; un APK distribué n'est pas une publication Store. | À faire |
@@ -152,7 +152,19 @@ réels ; préparer protocole et instrumentation sans fabriquer leurs résultats.
   traitement des orphelins, capture/restauration sont le lot suivant. Aucun
   bouton de sauvegarde ni changement du format A1 dans ce correctif.
 
-### Prérequis W06 — galerie privée, validation de livraison en cours
+### Prérequis W06 — galerie privée livrée (#448)
+
+- PR [#448](https://github.com/flotellop-art/Arty/pull/448), head
+  `618eb011ee50fe895f101db07af357312c19c0f2`, squash main
+  `6578001886a35fe82ece9319cdbae0d6fe2e12aa`, fusion le 5 septembre à 11:47 UTC.
+  CI PR `33964079985` verte : app, orchestrateur et Android. Pages production
+  `cbb89bee-5d7f-4304-8601-5c0fb035f9e4` verte. tryarty.com HTTP 200 et asset
+  `/assets/index-BXM1jcZL.js` HTTP 200 ; garde d'adoption, invalidation privée,
+  omission galerie et concurrence rappel présents dans l'asset réellement servi.
+  Le hash du build local diffère du build de production ; il n'est pas présenté
+  comme celui servi. CI main `33964266481` et distribution Android `33964266485`
+  terminées avec succès. Un APK distribué ne prouve pas son installation ni
+  la recette de partage natif sur l'appareil de l'utilisateur.
 
 - Les images reçues par l'outil sont attachées structurellement au message,
   avant poursuite du modèle. Une réponse sans texte reste enregistrable ;
@@ -196,6 +208,29 @@ réels ; préparer protocole et instrumentation sans fabriquer leurs résultats.
   Page de test temporaire retirée, serveur arrêté, viewport Chrome rétabli.
 - A2 capture/restauration/UI et synchronisation restent non livrées. Le lot ne
   change ni format A1, ni quota serveur, ni configuration Cloudflare/Google.
+
+### W06 A2 — contre-revues de préparation après #448, code non commencé
+
+- Deux lectures indépendantes (writers/sécurité et inventaire/produit) et
+  vérification du code par l'agent principal. Découpage proposé dans l'ADR :
+  coordination des écritures et bascule legacy d'abord, puis inventaire exact,
+  capture, écriture de restauration journalisée et parcours complet en copies.
+- Une archive A1 valide n'est pas nécessairement admise par l'UI de galerie ;
+  les contraintes de rôle/nombre/MIME doivent être vérifiées avant staging.
+  Les IDs source d'A1 sont remappés, pas refusés parce que non UUID.
+- Ne pas utiliser les getters UI permissifs pour conclure à un workspace vide,
+  ni `putFile`/réimport projet pour restaurer des octets et textes exacts.
+  Différences de métadonnées entre message et fichier à diagnostiquer ; aucun
+  choix silencieux. Tags autonomes, chaînes et ordre à conserver.
+- Un verrou limité au bouton Restaurer ne protège pas la liste complète
+  réécrite depuis un cache ancien. La proposition minimale gardant le CRUD
+  synchrone est un writer unique pour toute sa session d'édition. Les autres
+  fenêtres doivent attendre ou rester en lecture seule, puis recharger les
+  données sous un nouveau bail avant toute écriture. Les effets asynchrones
+  doivent conserver le bail initial, pas emprunter celui d'une nouvelle session.
+- Pas de changement du stockage applicatif, de migration, d'upgrade IndexedDB
+  ni de clé de production effectué pendant cette préparation. Le profil
+  d'admission, les erreurs visibles et le périmètre exact seront testés avant UI.
 
 ### W06 — fondation de format A1, non utilisable seule
 
