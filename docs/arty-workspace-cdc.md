@@ -244,7 +244,14 @@ réels ; préparer protocole et instrumentation sans fabriquer leurs résultats.
   Décision, périmètre de la défense après perte et repli :
   [ADR](ADR_WORKSPACE_BACKUP.md#révision-du-5-septembre--réservation-par-document-lot-coopératif).
 
-### Suivi de recette — entrée login avec session existante
+### Suivi de recette — entrée login avec session existante livrée (#450)
+
+- PR [#450](https://github.com/flotellop-art/Arty/pull/450), squash main
+  `af688a2ddcbddb81931a9ea9ffbaab63cd4719c5`, fusion le 5 septembre à 13:18 UTC.
+  CI PR `33968309103`, CI main `33968517141` et distribution APK Firebase
+  `33968517033` vertes. Pages production
+  `d8ae3cd7-6779-441d-90cd-8e6ffc3b1e0d` ; tryarty.com et son bundle
+  `/assets/index-D3rsfy-q.js` HTTP 200 (232 650 octets).
 
 - Route `/login` ajoutée uniquement dans AppContent authentifié : retour `/`
   avec remplacement de l'entrée d'historique. Aucun paramètre `next`/`redirect`
@@ -257,7 +264,14 @@ réels ; préparer protocole et instrumentation sans fabriquer leurs résultats.
   Ce test ne prouve ni une authentification réelle, ni le rendu natif.
 - `npm run verify` : 246 fichiers, 2 644 tests verts + 1 conditionnel ignoré ;
   types front/back, couverture, build, no-CASA et smoke worker Office verts.
-  Recette de préproduction et publication à attester dans le reçu de livraison.
+- Deux contre-revues finales GO. Chrome préproduction réelle
+  `dd7c758b.appfacade.pages.dev` : `/login/` avec query/hash → accueil `/` ;
+  `/discover` → Se connecter → accueil → Back vers `/discover` → Forward vers
+  l'accueil, sans boucle ni shell vide. Données démo uniquement.
+- Chrome production avec session existante : `/login` → accueil complet `/` ;
+  deuxième document occupé, fermeture du premier puis Retry → accueil complet.
+  Aucune conversation créée/modifiée, aucun logout ; onglets de recette fermés.
+  Ni nouvel échange Google ni recette d'APK installé revendiqués.
 
 ### W06 A2 — contre-revues de préparation après #448 (historique)
 

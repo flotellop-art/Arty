@@ -319,6 +319,59 @@ d'actions HTML, rapports/traces exclus, fact-check, outil ou notification.
 Une livraison intermédiaire capture/vérification doit porter ce nom et ne
 valide ni restauration ni W06. Aucun de ces parcours n'est encore branché.
 
+### Préparation du lot capture/vérification après #450 (non implémenté)
+
+Les deux contre-revues indépendantes du 5 septembre et la lecture des stores
+précisent le prochain lot. Il ne livre pas la restauration ni la synchronisation :
+
+- Entrée distincte « Archive chiffrée de cette conversation » dans les deux
+  menus de conversation (ChatTopBar et ChatOptionsSheet). Fermer le menu avant
+  la modale. Les paramètres offrent seulement la vérification d'une archive,
+  pas un export implicite de toutes les données. Projet courant entier sur
+  choix explicite ; aucune sélection partielle de messages.
+- Capture stricte de la conversation clonée avant le premier await, cache déjà
+  chargé et génération monotone vérifiée, jamais `updatedAt` seul. La copie
+  logique fraîche reste utilisable pendant son chiffrement différé. En revanche,
+  chargement, traitement actif sur cette conversation ou dépendance non persistée
+  empêchent un succès. L'état de traitement doit venir du hook propriétaire,
+  pas seulement de la présence d'un message nommé `streaming`.
+- Tous les enregistrements fichiers requis sont figés dans une seule transaction
+  readonly avant déchiffrement, pour éviter un mélange de versions du même ID.
+  Lectures dédiées sans bootstrap, réparation, création ni migration de base.
+  Fichier direct absent/inaccessible ou galerie présente mais malformée : erreur
+  bloquante, jamais filtrage silencieux via `getFiles`/`generatedImageIds`.
+  Un échec AES-GCM reste « illisible : clé incompatible ou données altérées ».
+- Le graphe provient exclusivement des références structurées. Le Markdown
+  n'autorise aucune lecture. Propriétés optionnelles réellement omises,
+  sous-arbres frais et allowlistés. Les écarts entre métadonnées du message et
+  version réellement persistée sont diagnostiqués avant export ; pas de promesse
+  de retrouver un original antérieur à la compression. Les sources historiques
+  indisponibles sont des diagnostics, pas des fichiers déclarés supprimés.
+- Si le projet est inclus : tous les originaux persistés et textes extraits
+  exacts, vérification des descripteurs/hashes et de la révision après lecture.
+  Aucun réimport, aucune réextraction.
+- Pour toute capture, avec ou sans projet : gardes document, owner, epoch,
+  crypto et effacement capturées avant le premier await et revérifiées jusqu'à
+  la remise ; le verrou seul ne prouve ni la
+  quiescence interne ni la sûreté face aux anciens clients.
+- Sceller puis rouvrir le Blob via A1 et vérifier le graphe avant de proposer
+  la remise. Code de récupération séparé ; nom de fichier date/ID opaque, sans
+  titre de conversation en clair. Le téléchargement/partage lancé ne prouve pas
+  la sauvegarde effective : une vérification réelle demande de re-sélectionner
+  le fichier enregistré et de saisir son code. Après une capture, comparer aussi
+  l'identité et l'inventaire attendus pour qu'une autre archive valide ne valide
+  pas cette sauvegarde. Le vérificateur autonome annonce seulement le contenu
+  de l'archive effectivement sélectionnée. Limites A1 appliquées tôt, sans
+  promettre un pic RAM égal à la taille d'archive, notamment sur Android/base64.
+
+Recette à fournir : fichier absent, galerie malformée, aucun accès via Markdown,
+clé/compte A→B→A, effacement pendant capture/scellement, remplacement du même ID,
+mutation avec même timestamp, projet modifié entre documents, limites de taille,
+réouverture avec mauvais code et assertion d'absence de toute écriture source.
+Les seuls tests du conteneur A1 ou de la gate document ne valident pas ce parcours.
+
+### Restauration ultérieure — protocole proposé
+
 Journal proposé sous bail et maintenance : préparé → staging → vérifié →
 publication → terminé. Mapping créé une seule fois, données exactes chiffrées
 et indexées par owner/job ; gate durable avant publication, vérification du
