@@ -72,6 +72,14 @@ function boundedJSONTree(root: unknown): void {
   }
 }
 
+/** A bounded data copy, not graph validation or publication authority. */
+export function cloneBoundedBackupJSON<T>(value: T): T {
+  boundedJSONTree(value)
+  const json = JSON.stringify(value)
+  if (utf8.encode(json).length > L.manifestBytes) limit()
+  return JSON.parse(json) as T
+}
+
 function source(value: unknown): asserts value is ProjectSourceReference {
   object(value, ['projectId', 'projectRevision', 'documentId', 'documentRevision', 'sourceHash', 'extractorVersion', 'name', 'format', 'startLine', 'endLine', 'partial'])
   uuid(value.projectId); uuid(value.documentId); integer(value.projectRevision, Number.MAX_SAFE_INTEGER, 1); integer(value.documentRevision, 1, 1)

@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { waitFor } from '@testing-library/react'
 
 const fileStorage = vi.hoisted(() => ({
   deleteOwnedFiles: vi.fn(async (_fileIds: Iterable<string>, _ownerUserId: string | null) => 0),
@@ -123,6 +124,26 @@ describe('storage', () => {
     // messages only render after a full reload (see CLAUDE.md BUG 16).
     const ret = storage.saveConversation(makeConv('a')) as unknown
     expect(ret).toBeUndefined()
+  })
+
+  it('preserves restored marker, exact content and historical pending through real encrypted persistence and bootstrap', async () => {
+    await initCrypto('synthetic-history-only')
+    const source = makeConv('historical', { messages: [{
+      id: 'archived-message', role: 'assistant', timestamp: 0, restoredArchive: true,
+      content: '<button data-action="create_event">Ancien</button>\r\n[Archive](/report/old) 😀',
+      factCheck: { status: 'pending', modelLabel: 'Vérification en cours…',
+        checkedAt: Date.now() + 86_400_000, overallConfidence: 'high', claims: [], appliedCorrections: 0 },
+    }] })
+    storage.saveConversation(source)
+    await waitFor(() => expect(localStorage.getItem('arty-user-test-conversations')).toBeNull())
+    const ciphertext = localStorage.getItem('arty-user-test-conversations-enc')
+    expect(ciphertext).toBeTruthy()
+    expect(ciphertext).not.toContain('Ancien')
+    storage.resetConversationMemCache()
+    expect(storage.isCacheReady()).toBe(false)
+    await storage.bootstrapConversationStorage()
+    expect(storage.getConversation(source.id)).toEqual(source)
+    expect(storage.getConversation(source.id)).not.toBe(source)
   })
 
   it('purge les anciens passages Gmail sans tenir compte de leur ancien TTL', () => {

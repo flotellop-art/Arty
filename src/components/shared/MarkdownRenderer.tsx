@@ -122,6 +122,7 @@ const sanitizeSchema = {
 
 interface MarkdownRendererProps {
   content: string
+  historical?: boolean
 }
 
 // Extraction récursive du texte des nœuds React. Indispensable depuis la
@@ -318,7 +319,22 @@ function sanitizeReportStyle(style: React.CSSProperties | undefined): React.CSSP
 // les anciens messages (qui ont un `content` stable) étaient reparsés
 // (remark+rehype+sanitize). Combiné à CRIT-7 (1000 setState par stream),
 // c'était O(n_messages × n_tokens) parses sur mobile.
-export const MarkdownRenderer = memo(function MarkdownRenderer({ content }: MarkdownRendererProps) {
+const historicalSchema = {
+  ...sanitizeSchema,
+  attributes: { ...sanitizeSchema.attributes,
+    button: ['className', 'class'], div: ['className', 'class'], span: ['className', 'class'],
+  },
+}
+const historicalComponents: Components = {
+  ...components,
+  // Original content remains byte-for-byte available to copying/export. These
+  // old links may target private IDs on THIS account, so none grant navigation.
+  a: ({ children }) => <span>{children}</span>,
+  button: ({ children }) => <span>{children}</span>,
+  img: () => <UnavailableImage />,
+}
+
+export const MarkdownRenderer = memo(function MarkdownRenderer({ content, historical = false }: MarkdownRendererProps) {
   return (
     <div className="max-w-none text-sm text-theme-ink/90 leading-relaxed report-content">
       {/* Ordre des plugins IMPÉRATIF : highlight AVANT sanitize, pour que les
@@ -326,7 +342,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({ content }: Mark
           wildcard '*': ['className'] les laisse passer). L'inverse poserait
           du contenu non vérifié après la sanitisation (BUG 20 : sanitize
           reste TOUJOURS actif, en dernier). */}
-      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw, rehypeHighlight, [rehypeSanitize, sanitizeSchema]]} components={components}>
+      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw, rehypeHighlight, [rehypeSanitize, historical ? historicalSchema : sanitizeSchema]]} components={historical ? historicalComponents : components}>
         {content}
       </ReactMarkdown>
     </div>

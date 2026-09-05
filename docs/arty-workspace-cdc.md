@@ -31,7 +31,7 @@ supplémentaire n'est implicite dans ce mandat.
 | W03 | Catalogue | Un catalogue partagé aligne comparaison, sélecteurs, labels et éligibilité selon le compte (pas une garantie fournisseur). Modèle demandé, transmis par le proxy et signalé par le fournisseur distingués. Tests contre la dérive et contre l'accès premium hors droit. | Web déployé, PR #440 ; recette visuelle/appareil non vérifiée |
 | W04 | Projets | Créer/renommer/supprimer un projet, consignes propres, conversations associées, bibliothèque de documents réutilisables. Sources identifiables dans le contexte. Recherche bornée, absence de fichier et contexte tronqué explicites. Cloisonnement par compte et projet ; mode Europe conservé. | Bibliothèque web livrée #443 ; conversations web livrées #444 ; recette visuelle/appareil non vérifiée |
 | W05 | Livrables | Export DOCX modifiable et XLSX de tableaux, en plus des exports existants. Téléchargements relus par un parseur indépendant ; cellules dangereuses neutralisées ; aucun HTML actif ni formule arbitraire. Formats et limites documentés. | Web déployé #445 ; recette structurelle vérifiée ; rendu Office/appareil non vérifié |
-| W06 | Continuité | Sauvegarde/restauration explicites puis synchronisation optionnelle multi-appareil chiffrée avant upload, avec secret détenu par l'utilisateur et récupération expliquée. Conflits non destructifs ; reprise hors-ligne ; logout/switch/delete et compte invité traités. Un export manuel seul ne valide pas la synchronisation. | A1 #446, galerie #448 et verrou document #449 livrés ; capture/vérification A2 implémentées (recette ci-dessous) ; restauration/synchronisation non livrées |
+| W06 | Continuité | Sauvegarde/restauration explicites puis synchronisation optionnelle multi-appareil chiffrée avant upload, avec secret détenu par l'utilisateur et récupération expliquée. Conflits non destructifs ; reprise hors-ligne ; logout/switch/delete et compte invité traités. Un export manuel seul ne valide pas la synchronisation. | A1 #446, galerie #448, verrou document #449 et capture/vérification A2 #451 livrés ; restauration/synchronisation non livrées |
 | W07 | Comparaison | Comparer depuis une conversation avec contexte/documents autorisés ; conserver les résultats et poursuivre la réponse choisie sans perdre l'original. Erreurs/coûts/quotas de chaque panneau visibles ; EU et historique privé jamais contournés. | À faire |
 | W08 | Parcours métier | Trois parcours complets : synthèse documentaire, réponse client préparée, planification Agenda avec confirmation avant écriture. Écran de connexions indiquant disponible/non configuré/non pris en charge selon plateforme. Pas de Drive/Gmail OAuth restreint ni relais IMAP serveur. | À faire |
 | W09 | Mobile et identité | PWA installable ; identité tryarty cohérente ; distribution Android authentifiée et documentée. Ne pas rediriger vers une app Play homonyme. Toute migration appId inclut signatures/OAuth/Firebase/liens vérifiés ; un APK distribué n'est pas une publication Store. | À faire |
@@ -107,6 +107,40 @@ réels ; préparer protocole et instrumentation sans fabriquer leurs résultats.
   de contrôle navigateur du 5 septembre vide, aucun appareil déclaré.
 
 ## Preuves par lot
+
+### W06 A3a — préparation de restauration (en validation, non déployée)
+
+- Service pur de projection A1/v2, graphe multi-conversations/projets conservé,
+  nouveaux IDs par domaine/parent, fichiers partagés et références historiques
+  absentes remappés. Aucun lookup du compte cible, aucune écriture/migration.
+- Marque persistante des messages restaurés : anciens boutons/liens inactifs,
+  texte original disponible à la copie/export, vérification historique non
+  relancée ; les nouvelles réponses et commandes explicites restent utilisables.
+- Reprise de mapping exacte et liée à l'archive, pas une restauration durable.
+  Pas de journal, admission de capacité, publication ou synchronisation. W06
+  reste non livré dans son ensemble. Détails, conséquences et préconditions
+  A3b/A3c dans `ADR_WORKSPACE_BACKUP.md`.
+- 30 tests du planner verts. `npm run verify` final : 254 fichiers,
+  2 764 tests réussis + 1 ignoré,
+  TypeScript front/back, couverture, no-CASA, build et worker Office réels verts.
+  Log local `../arty-workspace-restore-verify-final-20260905.log`. Avertissements de
+  taille de chunks préexistants ; aucune mesure de pic RAM natif.
+  Contre-revues finales sécurité et fidélité : deux GO, après correction d'un
+  replay falsy ; 32 tests ciblés revérifiés par le reviewer sécurité. Deux cas
+  complémentaires ajoutés sur demande du reviewer produit : archive sans
+  aucune conversation et présentations divergentes du même fichier.
+- Recette navigateur local réelle sur messages synthétiques : texte/tableau
+  lisibles, ancien bouton sans effet, anciennes ancres absentes, pending
+  historique affiché ; nouvelle action et commandes export/signalement
+  explicites fonctionnelles avec callbacks simulés. Aucun événement Agenda,
+  export personnel ni clipboard réel déclenché. Aucun test de restauration
+  effective ni d'APK implicite ; l'onglet tryarty.com et son brouillon sont
+  restés intacts. Fixture locale ignorée `.playwright-mcp/restore-history.*`.
+
+Repli prévu : revert du lot par Git/CI/Pages tant qu'aucun publisher n'existe.
+Ne pas utiliser ultérieurement un ancien bundle sans inertie pour des données
+effectivement restaurées. Déclencheurs : régression du chat ordinaire, bouton
+historique actif ou traitement réseau automatique d'un message marqué.
 
 ### Prérequis W06 — exécution image livrée (#447)
 
@@ -330,7 +364,25 @@ Pré-déploiement / retour arrière :
   partage, remet un artefact après révocation ou si le parcours privé ne charge
   plus. Télémétrie serveur et pic RAM/partage APK non vérifiés localement.
 
-Reçus Git/CI/Pages à ajouter après livraison effective. W06 reste **partiel**.
+Reçus de livraison du 5 septembre :
+
+- PR [#451](https://github.com/flotellop-art/Arty/pull/451), fusion normale
+  après CI/Pages vertes sur `eeacbea98da5e274c3982c3457eac0e6e7ba7b29` ;
+  main `7a800462a3eca5faee937f932b87fe9066d65b95`.
+- CI PR `33977381905` et CI main `33977643337` réussies
+  (app, Android, growth). Aucun contournement de l'échec précédent.
+- Pages production `2712747d-fd83-46be-add2-7e2677ba2067` réussie ;
+  `tryarty.com` et l'URL immutable servent `/assets/index-iF9m96dT.js`,
+  HTTP 200, 241 300 octets. Chrome réel affiche build `2026-09-05 16:22`.
+- Session réelle : accueil puis paramètres → vérificateur local, champs
+  fichier/code présents, bouton désactivé tant qu'ils sont vides. Aucun export
+  personnel, changement de compte, suppression ou appel IA pendant ce smoke.
+- Build et distribution APK Firebase `33977643335` réussis sur le même SHA.
+  Ce succès n'est pas une recette du partage Android installé.
+
+W06 reste **partiel** : cette livraison permet capture/vérification seulement.
+La re-sélection native APK, le pic mémoire Android et la télémétrie serveur
+restent non attestés ; aucune restauration/synchronisation annoncée.
 
 ### W02 — débit d'essai D1 tardif révélé pendant la CI de #451
 
@@ -358,7 +410,7 @@ Reçus Git/CI/Pages à ajouter après livraison effective. W06 reste **partiel**
   attente sans contexte, horloge des tests, ancienne signature structurelle).
   Suite complète finale `npm run verify` : 252 fichiers, 2 725 tests réussis
   + 1 ignoré, typechecks app/Workers, coverage, build et worker Office isolé
-  verts ; CI du commit final requise avant fusion.
+  verts ; CI finale PR/main verte, correctif inclus dans la livraison #451.
 - Limites : `waitUntil` et les remboursements restent best-effort, pas un
   journal durable face à une panne prolongée ou un commit D1 ambigu. Les caps
   premium et compteurs free/rate-limit partagés ne changent pas de politique

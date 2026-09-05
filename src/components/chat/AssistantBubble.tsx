@@ -14,6 +14,7 @@ interface AssistantBubbleProps {
   onExport?: () => void
   content: string
   generatedImages?: readonly string[]
+  historical?: boolean
   onAction?: (action: string, params: Record<string, string>) => void
   pinned?: boolean
   onTogglePin?: () => void
@@ -46,7 +47,7 @@ interface AssistantBubbleProps {
   subModelReasonCode?: string
 }
 
-export const AssistantBubble = memo(function AssistantBubble({ content, generatedImages, onExport, onAction, pinned, onTogglePin, interrupted, onRetry, factCheck, isStreaming, isLast, onBranch, onReport, model, requestedModel, modelSource, reasonCode, subModelReasonCode }: AssistantBubbleProps) {
+export const AssistantBubble = memo(function AssistantBubble({ content, generatedImages, historical = false, onExport, onAction, pinned, onTogglePin, interrupted, onRetry, factCheck, isStreaming, isLast, onBranch, onReport, model, requestedModel, modelSource, reasonCode, subModelReasonCode }: AssistantBubbleProps) {
   const { t } = useTranslation()
   const bubbleRef = useRef<HTMLDivElement>(null)
 
@@ -74,6 +75,7 @@ export const AssistantBubble = memo(function AssistantBubble({ content, generate
   }, [content, isSpeaking, ttsId])
 
   const handleClick = useCallback((e: React.MouseEvent) => {
+    if (historical) return
     const target = e.target as HTMLElement
     const btn = target.closest('[data-action]') as HTMLElement
     if (!btn || !onAction) return
@@ -100,7 +102,7 @@ export const AssistantBubble = memo(function AssistantBubble({ content, generate
     }
 
     onAction(action, params)
-  }, [onAction, t])
+  }, [onAction, historical, t])
 
   // Audit UX — bouton "copier la réponse" (action la plus fréquente d'un chat
   // IA, présente sur claude.ai/ChatGPT, absente ici jusqu'au 10 juin 2026).
@@ -123,7 +125,8 @@ export const AssistantBubble = memo(function AssistantBubble({ content, generate
           pinned ? 'pl-3 border-l-2 border-theme-accent' : ''
         }`}
       >
-        <MarkdownRenderer content={content} />
+        {historical && <p role="note" className="mb-2 text-xs text-theme-muted">{t('workspaceArchive.historicalMessage')}</p>}
+        <MarkdownRenderer content={content} historical={historical} />
         {generatedImages && <GeneratedImageGallery images={generatedImages} />}
         {pinned && (
           <span className="absolute -top-2 -left-3 text-theme-accent text-[10px]">📌</span>
@@ -141,7 +144,7 @@ export const AssistantBubble = memo(function AssistantBubble({ content, generate
             )}
           </div>
         )}
-        {factCheck && <FactCheckBadge result={factCheck} />}
+        {factCheck && <FactCheckBadge result={factCheck} historical={historical} />}
         {model && !isStreaming && (
           <ModelFooter
             model={model}

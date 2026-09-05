@@ -1496,6 +1496,10 @@ export async function runFactCheckOnLatest(
   }
 
   const assistantMsg = conv.messages[lastAssistantIdx]!
+  if (assistantMsg.restoredArchive === true) {
+    clearSearchContext(conversationId)
+    return
+  }
   // Réponse interrompue (bouton Stop) : contenu partiel — vérifier ou
   // « corriger » une réponse tronquée n'a pas de sens et gaspille le quota
   // de fond. Remplace le garde H4 du flow deferPublish supprimé.

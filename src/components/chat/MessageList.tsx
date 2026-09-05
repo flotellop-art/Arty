@@ -58,6 +58,7 @@ const MessageItem = memo(function MessageItem({ msg, index, onExport, onAction, 
           // falling back to its crash placeholder. Boot/new-send recovery
           // assigns a historical UUID before it can render those images.
           generatedImages={msg.id === 'streaming' ? undefined : msg.generatedImages}
+          historical={msg.restoredArchive === true}
           onAction={onAction}
           pinned={msg.pinned}
           onTogglePin={onTogglePin ? handleTogglePin : undefined}
