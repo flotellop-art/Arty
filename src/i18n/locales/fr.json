@@ -236,9 +236,9 @@
   },
   "chat": {
     "upgradeModal": {
-      "title": "{{model}} réservé aux Pro",
-      "body": "En gratuit tu as accès à <0>Claude Haiku (10/jour)</0> et <1>Mistral (5/jour)</1>. Pour débloquer Sonnet, Opus, Gemini et GPT, passe à Pro.",
-      "bodyNative": "En gratuit tu as accès à <0>Claude Haiku (10/jour)</0> et <1>Mistral (5/jour)</1>. Pour débloquer Sonnet, Opus, Gemini et GPT, utilise ta propre clé API (BYOK).",
+      "title": "{{model}} non inclus dans ton accès actuel",
+      "body": "L'essai offre <0>30 messages avec Claude Haiku</0>. Pour les autres modèles, utilise des clés API compatibles (BYOK), des crédits ou un abonnement. La licence Pro seule n'inclut pas les appels IA.",
+      "bodyNative": "L'essai offre <0>30 messages avec Claude Haiku</0>. Pour les autres modèles, configure des clés API compatibles (BYOK) dans les Paramètres.",
       "later": "Plus tard",
       "seePlans": "Voir les plans",
       "useByok": "Utiliser ma clé API"
@@ -713,9 +713,11 @@
   "advisor": {
     "title": "Suggestion",
     "recommend_subscription": "Sur tes 30 derniers jours, le forfait ({{subscription}} €) reviendrait moins cher que tes crédits ({{credits}} €) — tu économiserais ~{{savings}} €/mois.",
-    "recommend_byok": "Sur tes 30 derniers jours, apporter ta propre clé reviendrait à ~{{byok}} €/mois (vs {{current}} €), rentabilisé en ~{{payback}} mois — ensuite tu ne paies que le coût fournisseur.",
+    "recommend_byok": "Sur tes 30 derniers jours, utiliser tes propres clés compatibles reviendrait à ~{{byok}} €/mois (vs {{current}} €). Le BYOK est gratuit côté Arty, sans licence Pro obligatoire ; les fournisseurs te facturent séparément.",
     "recommend_credits": "Sur tes 30 derniers jours, le paiement à l'usage (~{{credits}} €) reviendrait moins cher que ton forfait — ~{{savings}} €/mois d'économie.",
     "threeNumbers": "Crédits {{credits}} € · Forfait {{subscription}} € · Ta clé {{byok}} €",
+    "estimateNote": "Estimation des appels texte à usage constant, pas une facture. BYOK hors taxes et frais fournisseur, avec une hypothèse de change de 1 $ = 0,92 €. Crédits valorisés au pack de 10 € pour 1 000 crédits ; les minimums et règles de facturation peuvent différer.",
+    "nativeByokNote": "Le BYOK est gratuit côté Arty. Configure des clés compatibles dans les Paramètres ; les fournisseurs facturent directement tes appels.",
     "optOut": "Ne plus me suggérer d'optimisation",
     "ctaSubscribe": "Passer au forfait"
   },
@@ -1035,7 +1037,7 @@
       "trialCallout": "🎁 Commence par l'essai gratuit : 30 messages offerts, sans carte bancaire.",
       "byokName": "Gratuit (BYOK)",
       "byokPrice": "0 €",
-      "byokDesc": "Ta propre clé API · Tous les modèles · Stockage local chiffré",
+      "byokDesc": "Tes clés API compatibles · App gratuite · Données locales",
       "subName": "Abonnement",
       "subPrice": "9,99 €/mois · TTC",
       "subDesc": "Sans clé API · 150 Claude Sonnet/Opus + 100 GPT-5 par mois · Haiku, Flash et Mistral sans plafond mensuel",
@@ -1052,15 +1054,15 @@
       "kicker": "FAQ",
       "title": "Questions fréquentes",
       "q1": "Quels modèles sont inclus ?",
-      "a1": "Avec l'abonnement : 150 messages Claude Sonnet/Opus et 100 GPT-5 par mois, plus Haiku, Flash et Mistral sans plafond mensuel. L'essai gratuit (30 messages) utilise les modèles de base (Haiku, Flash, Mistral Medium).",
+      "a1": "Avec l'abonnement : 150 messages Claude Sonnet/Opus et 100 GPT-5 par mois, plus Haiku, Flash et Mistral sans plafond mensuel, sous réserve de la limite journalière anti-abus. L'essai gratuit offre 30 messages avec Claude Haiku, sans carte bancaire.",
       "q2": "Puis-je utiliser ma propre clé API ?",
-      "a2": "Oui. Le mode BYOK est gratuit côté Arty : tu branches ta clé Anthropic, OpenAI, Google ou Mistral, tu accèdes à tous les modèles et tu paies ton fournisseur au prix coûtant. Ta clé est chiffrée localement, elle ne quitte jamais ton appareil en clair.",
+      "a2": "Oui. Le BYOK est gratuit côté Arty, sans licence Pro obligatoire. Le démarrage autonome demande une clé Anthropic ; tu peux ensuite ajouter les clés OpenAI, Google ou Mistral et utiliser les modèles compatibles. Les fournisseurs te facturent séparément. Tes clés sont stockées localement sans chiffrement applicatif supplémentaire. Elles transitent sous HTTPS par le proxy Arty vers le fournisseur, sans stockage ni journalisation sur le serveur Arty.",
       "q3": "Quelle différence entre l'Abonnement et Pro ?",
-      "a3": "L'Abonnement (9,99 €/mois TTC) fonctionne sans clé API : Arty fournit l'accès aux modèles, avec des quotas écrits en clair. Pro (39 € une fois) est une licence à vie de l'app où tu utilises ta propre clé API — l'accès aux modèles passe par ta clé, pas par les serveurs d'Arty.",
+      "a3": "L'Abonnement (9,99 €/mois TTC) fonctionne sans clé API : Arty fournit l'accès aux modèles, avec des quotas écrits en clair. Pro (39 € une fois) est une licence optionnelle de fonctions de l'app. Les appels IA utilisent tes propres clés et sont facturés par tes fournisseurs ; ils ne sont pas inclus dans la licence.",
       "q4": "Que se passe-t-il quand j'atteins mon quota ?",
       "a4": "Rien en silence : Arty te prévient et te laisse choisir — ajouter un pack de 100 messages premium (1,99 €), continuer sur les modèles sans plafond mensuel, ou attendre le mois suivant.",
       "q5": "Où vont mes données ?",
-      "a5": "Tes conversations sont chiffrées sur ton appareil (AES-256). Claude, GPT-5 et Gemini traitent les requêtes aux États-Unis (encadré par les clauses contractuelles types et l'EU-US DPF) ; pour le sensible, le mode confidentiel route tout vers Mistral, sur des serveurs en France.",
+      "a5": "Les conversations sont conservées localement avec chiffrement AES-256. Ce n'est pas un chiffrement de bout en bout : les requêtes transitent par le proxy Arty vers les fournisseurs choisis. Le mode Europe utilise Mistral pour le chat. Consulte la politique de confidentialité pour les traitements, la mémoire automatique et les limites du chiffrement local.",
       "q6": "Est-ce qu'Arty remplace ChatGPT Plus ou Claude Pro ?",
       "a6": "Arty est un assistant personnel qui réunit plusieurs IA dans une seule app, avec ton agenda et tes contenus. Si tu cumules plusieurs abonnements aujourd'hui, un seul peut suffire — et si un modèle est plus fort sur ta tâche, tu changes en un geste, sans perdre le fil.",
       "q7": "Qui est derrière Arty ?",
@@ -1100,7 +1102,7 @@
     "proPrice": "39€ une fois · TTC",
     "subscriptionPrice": "9,99€/mois · TTC",
     "premiumPackPrice": "1,99€ · TTC",
-    "byokDescription": "Ta propre clé API · Tous les modèles · Stockage local",
+    "byokDescription": "Tes clés API compatibles · App gratuite · Données locales",
     "byokCta": "Passer en BYOK",
     "proBadge": "Populaire",
     "proTagline": "Licence à vie · ta propre clé",
@@ -1295,9 +1297,9 @@
     },
     "trial": {
       "title": "30 messages offerts !",
-      "subtitle": "Tout est prêt. Pose ta première question — ou pioche un exemple sur l'accueil.",
+      "subtitle": "30 messages avec Claude Haiku, sans carte bancaire. Pose ta première question — ou pioche un exemple sur l'accueil.",
       "cta": "C'est parti",
-      "upgrade": "Passe à Pro ou Subscription pour débloquer tous les modèles",
+      "upgrade": "Découvre les accès avec tes clés, les crédits et l'abonnement",
       "memoryNote": "Arty mémorise discrètement ce qui compte pour toi — tout reste chiffré sur ton appareil, modifiable dans les Paramètres."
     },
     "vip": {
@@ -1322,8 +1324,8 @@
   },
   "trial": {
     "banner": {
-      "remaining_one": "✨ Essai gratuit — {{count}} message restant · modèles de base (Haiku, Flash, Medium)",
-      "remaining_other": "✨ Essai gratuit — {{count}} messages restants · modèles de base (Haiku, Flash, Medium)",
+      "remaining_one": "✨ Essai gratuit — {{count}} message restant · Claude Haiku",
+      "remaining_other": "✨ Essai gratuit — {{count}} messages restants · Claude Haiku",
       "ended": "Essai terminé — Choisis un plan pour continuer",
       "upgradeCta": "Passer à Pro",
       "seePlans": "Voir les plans →"

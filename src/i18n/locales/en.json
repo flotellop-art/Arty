@@ -236,9 +236,9 @@
   },
   "chat": {
     "upgradeModal": {
-      "title": "{{model}} is Pro-only",
-      "body": "On the free plan you get access to <0>Claude Haiku (10/day)</0> and <1>Mistral (5/day)</1>. To unlock Sonnet, Opus, Gemini and GPT, upgrade to Pro.",
-      "bodyNative": "On the free plan you get access to <0>Claude Haiku (10/day)</0> and <1>Mistral (5/day)</1>. To unlock Sonnet, Opus, Gemini and GPT, use your own API key (BYOK).",
+      "title": "{{model}} is not included in your current access",
+      "body": "The trial includes <0>30 messages with Claude Haiku</0>. For other models, use compatible API keys (BYOK), credits or a subscription. A Pro licence alone does not include AI calls.",
+      "bodyNative": "The trial includes <0>30 messages with Claude Haiku</0>. For other models, configure compatible API keys (BYOK) in Settings.",
       "later": "Later",
       "seePlans": "See plans",
       "useByok": "Use my API key"
@@ -713,9 +713,11 @@
   "advisor": {
     "title": "Suggestion",
     "recommend_subscription": "Over your last 30 days, the flat plan ({{subscription}} €) would cost less than your credits ({{credits}} €) — you'd save ~{{savings}} €/mo.",
-    "recommend_byok": "Over your last 30 days, bringing your own key would cost ~{{byok}} €/mo (vs {{current}} €), paid back in ~{{payback}} months — then you only pay provider cost.",
+    "recommend_byok": "Based on your last 30 days, using your own compatible keys would cost ~{{byok}} €/mo (vs {{current}} €). BYOK is free on Arty's side, with no required Pro licence; providers bill you separately.",
     "recommend_credits": "Over your last 30 days, pay-as-you-go (~{{credits}} €) would cost less than your flat plan — ~{{savings}} €/mo saved.",
     "threeNumbers": "Credits {{credits}} € · Flat {{subscription}} € · Your key {{byok}} €",
+    "estimateNote": "Same-usage text-call estimate, not an invoice. BYOK excludes provider taxes and fees and assumes $1 = €0.92. Credits valued at €10 per 1,000 credits; billing minimums and rules may differ.",
+    "nativeByokNote": "BYOK is free on Arty's side. Configure compatible keys in Settings; providers bill your calls directly.",
     "optOut": "Stop suggesting optimizations",
     "ctaSubscribe": "Switch to the flat plan"
   },
@@ -1035,7 +1037,7 @@
       "trialCallout": "🎁 Start with the free trial: 30 messages, no credit card.",
       "byokName": "Free (BYOK)",
       "byokPrice": "€0",
-      "byokDesc": "Your own API key · All models · Encrypted local storage",
+      "byokDesc": "Compatible API keys · Free app · Local data",
       "subName": "Subscription",
       "subPrice": "€9.99/mo · VAT incl.",
       "subDesc": "No API key · 150 Claude Sonnet/Opus + 100 GPT-5 per month · Haiku, Flash and Mistral with no monthly cap",
@@ -1052,15 +1054,15 @@
       "kicker": "FAQ",
       "title": "Frequently asked questions",
       "q1": "Which models are included?",
-      "a1": "With the subscription: 150 Claude Sonnet/Opus messages and 100 GPT-5 per month, plus Haiku, Flash and Mistral with no monthly cap. The free trial (30 messages) uses the base models (Haiku, Flash, Mistral Medium).",
+      "a1": "With the subscription: 150 Claude Sonnet/Opus messages and 100 GPT-5 per month, plus Haiku, Flash and Mistral with no monthly cap, subject to a daily anti-abuse limit. The free trial includes 30 messages with Claude Haiku, with no credit card required.",
       "q2": "Can I use my own API key?",
-      "a2": "Yes. BYOK mode is free on Arty's side: plug in your Anthropic, OpenAI, Google or Mistral key, access every model and pay your provider at cost price. Your key is encrypted locally and never leaves your device in the clear.",
+      "a2": "Yes. BYOK is free on Arty's side, with no required Pro licence. Standalone sign-in requires an Anthropic key; you can then add OpenAI, Google or Mistral keys and use compatible models. Providers bill you separately. Keys are stored locally without additional application-level encryption. They transit over HTTPS through Arty's proxy to the provider, without storage or logging on Arty's server.",
       "q3": "What's the difference between the Subscription and Pro?",
-      "a3": "The Subscription (€9.99/mo VAT incl.) works without an API key: Arty provides model access, with quotas stated in plain words. Pro (€39 one-time) is a lifetime license for the app where you use your own API key — model access goes through your key, not Arty's servers.",
+      "a3": "The Subscription (€9.99/mo VAT incl.) works without an API key: Arty provides model access, with quotas stated in plain words. Pro (€39 one-time) is an optional licence for app features. AI calls use your own keys and are billed by your providers; they are not included in the licence.",
       "q4": "What happens when I reach my quota?",
       "a4": "Nothing silent: Arty tells you and lets you choose — add a 100 premium messages pack (€1.99), continue on the models with no monthly cap, or wait for next month.",
       "q5": "Where does my data go?",
-      "a5": "Your conversations are encrypted on your device (AES-256). Claude, GPT-5 and Gemini process requests in the United States (covered by Standard Contractual Clauses and the EU-US DPF); for sensitive work, the confidential mode routes everything to Mistral, on servers in France.",
+      "a5": "Conversations are kept locally with AES-256 encryption. This is not end-to-end encryption: requests transit through Arty's proxy to the selected providers. Europe mode uses Mistral for chat. See the privacy policy for data processing, automatic memory and the limitations of local encryption.",
       "q6": "Does Arty replace ChatGPT Plus or Claude Pro?",
       "a6": "Arty is a personal assistant that brings several AIs into one app, with your calendar and your content. If you stack several subscriptions today, one may be enough — and if another model is stronger for your task, you switch in one tap without losing the thread.",
       "q7": "Who is behind Arty?",
@@ -1100,7 +1102,7 @@
     "proPrice": "€39 one-time · VAT incl.",
     "subscriptionPrice": "€9.99/mo · VAT incl.",
     "premiumPackPrice": "€1.99 · VAT incl.",
-    "byokDescription": "Your own API key · All models · Local storage",
+    "byokDescription": "Compatible API keys · Free app · Local data",
     "byokCta": "Switch to BYOK",
     "proBadge": "Popular",
     "proTagline": "Lifetime license · your own key",
@@ -1295,9 +1297,9 @@
     },
     "trial": {
       "title": "30 free messages!",
-      "subtitle": "You're all set. Ask your first question — or pick an example on the home screen.",
+      "subtitle": "30 messages with Claude Haiku, no credit card required. Ask your first question — or pick an example on the home screen.",
       "cta": "Let's go",
-      "upgrade": "Upgrade to Pro or Subscription to unlock all models",
+      "upgrade": "Explore access with your keys, credits or a subscription",
       "memoryNote": "Arty quietly remembers what matters to you — everything stays encrypted on your device, editable in Settings."
     },
     "vip": {
@@ -1322,8 +1324,8 @@
   },
   "trial": {
     "banner": {
-      "remaining_one": "✨ Free trial — {{count}} message left · base models (Haiku, Flash, Medium)",
-      "remaining_other": "✨ Free trial — {{count}} messages left · base models (Haiku, Flash, Medium)",
+      "remaining_one": "✨ Free trial — {{count}} message left · Claude Haiku",
+      "remaining_other": "✨ Free trial — {{count}} messages left · Claude Haiku",
       "ended": "Trial over — pick a plan to continue",
       "upgradeCta": "Upgrade",
       "seePlans": "See plans →"
