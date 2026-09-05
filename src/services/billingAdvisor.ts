@@ -38,6 +38,7 @@ export type AdviceReason =
   | 'already_optimal'
   | 'insufficient_data'
   | 'not_representative'
+  | 'not_comparable'
   | 'not_applicable'
 
 export interface BillingAdvice {
@@ -47,7 +48,6 @@ export interface BillingAdvice {
   creditsEur: number
   subscriptionEur: number
   byokEur: number
-  byokPaybackMonths: number | null
   currentEur: number
   savingsEur: number
 }
@@ -57,13 +57,10 @@ const USD_TO_EUR = 0.92
 const SUBSCRIPTION_EUR = 9.99
 const PACK_EUR = 1.99
 const PACK_SIZE = 100
-const BYOK_LICENSE_EUR = 39
 const MIN_MESSAGES = 20
 const MIN_ACTIVE_DAYS = 5
 const MIN_SAVINGS_EUR = 3
 const MIN_SAVINGS_RATIO = 0.25
-const BYOK_MAX_PAYBACK_MONTHS = 4
-const BYOK_MIN_MONTHLY_SAVING_EUR = 3
 const SPIKE_DOMINANCE = 0.5
 // Plafonds premium RÉELS (cf. checkPremiumCap) — Sonnet ET Opus mutualisés.
 const PREMIUM_CAPS = { claude: 150, gpt5: 100, geminiPro: 80 } as const
@@ -80,22 +77,40 @@ function premiumBucket(model: string): Bucket | null {
 const usdMicroToEur = (micro: number): number => (micro / 1_000_000) * USD_TO_EUR
 const round2 = (n: number): number => Math.round(n * 100) / 100
 
+// Only these text models have comparable billing in all three modes. Do not
+// infer support from a broad provider prefix (FLUX, voice, images, new models).
+export const COMPARABLE_TEXT_MODELS: ReadonlySet<string> = new Set([
+  'claude-haiku-4-5', 'claude-haiku-4-5-20251001', 'claude-sonnet-4-6',
+  'claude-sonnet-5', 'claude-opus-4-6', 'claude-opus-4-7', 'claude-opus-4-8',
+  'gpt-5', 'gpt-5-mini', 'gpt-5-nano', 'gpt-5.5', 'gpt-5.5-mini', 'gpt-5.6-terra',
+  'gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite',
+  'gemini-3.1-flash-lite', 'gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3.6-flash',
+  'mistral-small-latest', 'mistral-small-2603', 'mistral-medium-latest',
+  'mistral-medium-3-5', 'mistral-large-latest', 'mistral-large-2512',
+])
+
+function comparableUsage(usage: BillingUsage): boolean {
+  const validAmount = (n: number) => Number.isSafeInteger(n) && n >= 0
+  return usage.windowDays === 30 && Array.isArray(usage.byModel) &&
+    usage.byModel.every((m) => m && typeof m.model === 'string' &&
+      COMPARABLE_TEXT_MODELS.has(m.model) && validAmount(m.count) &&
+      validAmount(m.providerCostMicro) && validAmount(m.creditsMicro)) &&
+    !!usage.byDayCostMicro && typeof usage.byDayCostMicro === 'object' &&
+    !Array.isArray(usage.byDayCostMicro) && Object.values(usage.byDayCostMicro)
+      .every((n) => Number.isFinite(n) && n >= 0)
+}
+
 /**
  * Décide la meilleure facturation pour l'utilisateur à partir de son usage réel.
  * Pure et déterministe — testée en CI.
  */
 export function decideBillingAdvice(usage: BillingUsage): BillingAdvice {
-  const messages = usage.byModel.reduce((s, m) => s + m.count, 0)
-  const dayCosts = Object.values(usage.byDayCostMicro)
-  const activeDays = dayCosts.filter((c) => c > 0).length
-
   const silent = (reasonCode: AdviceReason, numbers?: Partial<BillingAdvice>): BillingAdvice => ({
     recommend: null,
     reasonCode,
     creditsEur: 0,
     subscriptionEur: 0,
     byokEur: 0,
-    byokPaybackMonths: null,
     currentEur: 0,
     savingsEur: 0,
     ...numbers,
@@ -107,6 +122,12 @@ export function decideBillingAdvice(usage: BillingUsage): BillingAdvice {
   if (usage.currentMode !== 'credits' && usage.currentMode !== 'subscription') {
     return silent('not_applicable')
   }
+  // The server currently estimates credit costs for text. Voice/images and
+  // unknown models cannot support an honest same-usage comparison.
+  if (!comparableUsage(usage)) return silent('not_comparable')
+  const messages = usage.byModel.reduce((s, m) => s + m.count, 0)
+  const dayCosts = Object.values(usage.byDayCostMicro)
+  const activeDays = dayCosts.filter((c) => c > 0).length
   // Assez de données ?
   if (messages < MIN_MESSAGES || activeDays < MIN_ACTIVE_DAYS) {
     return silent('insufficient_data')
@@ -133,7 +154,9 @@ export function decideBillingAdvice(usage: BillingUsage): BillingAdvice {
   }
   const packs = Math.ceil(overflow / PACK_SIZE)
 
-  const creditsEur = round2(usdMicroToEur(creditsMicro))
+  // Pack sold at 10 EUR for 10,000,000 ledger micro-units. This is purchase
+  // value, NOT a currency conversion of supplier USD (which only BYOK uses).
+  const creditsEur = round2(creditsMicro / 1_000_000)
   const subscriptionEur = round2(SUBSCRIPTION_EUR + packs * PACK_EUR)
   const byokEur = round2(usdMicroToEur(providerMicro))
   const currentEur = usage.currentMode === 'credits' ? creditsEur : subscriptionEur
@@ -144,19 +167,9 @@ export function decideBillingAdvice(usage: BillingUsage): BillingAdvice {
   if (usage.currentMode !== 'subscription')
     candidates.push({ target: 'subscription', eur: subscriptionEur })
 
-  // BYOK = licence 39€ (sunk). On le juge en POINT DE RENTABILITÉ, pas en
-  // amortissement : on ne le recommande que s'il est remboursé vite ET fait
-  // économiser une somme réelle chaque mois.
-  const byokMonthlySaving = currentEur - byokEur
-  const byokPaybackMonths =
-    byokMonthlySaving > 0 ? round2(BYOK_LICENSE_EUR / byokMonthlySaving) : null
-  if (
-    byokPaybackMonths !== null &&
-    byokPaybackMonths <= BYOK_MAX_PAYBACK_MONTHS &&
-    byokMonthlySaving >= BYOK_MIN_MONTHLY_SAVING_EUR
-  ) {
-    candidates.push({ target: 'byok', eur: byokEur })
-  }
+  // BYOK is free on Arty's side. Pro is an optional feature licence, not an
+  // entry fee. The same meaningful-savings gate applies to every candidate.
+  candidates.push({ target: 'byok', eur: byokEur })
 
   const best = candidates.reduce(
     (b, c) => (c.eur < b.eur ? c : b),
@@ -167,7 +180,6 @@ export function decideBillingAdvice(usage: BillingUsage): BillingAdvice {
     creditsEur,
     subscriptionEur,
     byokEur,
-    byokPaybackMonths,
     currentEur,
     savingsEur,
   }

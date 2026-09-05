@@ -311,9 +311,7 @@ export function TrialIntro({ onDone, onUpgrade }: TrialIntroProps) {
         </h1>
         <p className="font-display italic text-theme-muted text-base mt-3">
           {t('onboardingChoice.trial.subtitle', {
-            // « GPT-4o mini » était obsolète — la source de vérité (checkAllowedUser)
-            // liste gpt-5-mini. Aligné aussi avec la carte pricing.
-            defaultValue: 'Modèles disponibles : Claude Haiku, GPT-5 mini, Gemini Flash, Mistral Medium',
+            defaultValue: '30 messages avec Claude Haiku, sans carte bancaire. Pose ta première question.',
           })}
         </p>
         {/* P1.1 — obligation de transparence de la mémoire auto (ON par défaut). */}

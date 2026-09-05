@@ -103,7 +103,6 @@ export function BillingAdvisorCard() {
     byok: advice.byokEur.toFixed(2),
     current: advice.currentEur.toFixed(2),
     savings: advice.savingsEur.toFixed(2),
-    payback: advice.byokPaybackMonths != null ? String(Math.ceil(advice.byokPaybackMonths)) : '',
   }
 
   return (
@@ -111,9 +110,13 @@ export function BillingAdvisorCard() {
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-[10px] uppercase tracking-wider text-theme-muted">{t('advisor.title')}</p>
-          <p className="text-sm text-theme-ink mt-1">{t(`advisor.${advice.reasonCode}`, vars)}</p>
-          {/* Transparence : les 3 chiffres, toujours, pour que la reco soit vérifiable. */}
-          <p className="text-[11px] text-theme-muted mt-2 font-mono">{t('advisor.threeNumbers', vars)}</p>
+          {canPurchase ? <>
+            <p className="text-sm text-theme-ink mt-1">{t(`advisor.${advice.reasonCode}`, vars)}</p>
+            <p className="text-[11px] text-theme-muted mt-2 font-mono">{t('advisor.threeNumbers', vars)}</p>
+            <p className="text-[11px] text-theme-muted mt-1">{t('advisor.estimateNote')}</p>
+          </> : (
+            <p className="text-sm text-theme-ink mt-1">{t('advisor.nativeByokNote')}</p>
+          )}
           {advice.recommend === 'subscription' && (
             <div className="mt-3">
               <button
