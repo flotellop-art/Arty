@@ -184,8 +184,72 @@ visuelle Office, Android ou multi-appareil réelle.
 
 ## Préparation A2 après la livraison #448
 
-Contre-revues du 5 septembre : code A2 non commencé. Le tableau décrit le
-protocole à établir et tester, pas des garanties déjà présentes.
+### Révision du 5 septembre : réservation par document, lot coopératif
+
+La proposition de bail transférable par compte ci-dessous est **remplacée pour
+le premier sous-lot** par un verrou Web Locks unique par origine/profil, acquis
+avant tout import de l'application privée, connexion et preview comprises.
+Une fenêtre/PWA détient ce verrou pendant toute la vie de son document. Les
+autres affichent Occupé et un Retry explicite ; pas de vol, attente automatique,
+expiration arbitraire ni faux mutex localStorage. Sans API disponible, l'espace
+privé est indisponible avec explication FR/EN ; les pages publiques restent lues.
+
+Pourquoi : le bail par compte obligeait à transférer l'autorité au changement
+de clé, au login provisoire et à l'effacement, et à propager un nonce dans des
+dizaines de callbacks qui peuvent déjà muter la RAM avant save. Le verrou
+document ne se libère ni sur logout/switch/crypto, ni sur hidden/pagehide ou
+démontage React. Il ne remplace pas les guards de compte/époque/crypto existants.
+Le coût assumé est une seule fenêtre privée par profil/origine, tous comptes
+confondus, connexion comprise. Les onglets publics ne réservent rien ; leurs CTA
+font une navigation complète pour relire la session après acquisition.
+
+`/auth/callback` n'est PAS public : la gate précède consommation du nonce,
+verifier et code. `App`, `useAuth` et le seed preview sont importés après grant.
+Le module d'entrée ne remplit donc aucun ancien cache pendant l'attente.
+L'attribution de campagne et la langue, non privées, restent hors workspace.
+Le callback du verrou reste pendant même si le chargement React échoue ; la
+récupération est un rechargement froid, pas un reset du même lazy rejeté.
+Un retour BFCache privé demande aussi une recharge froide sans release volontaire.
+
+Un token document perdu est terminal et n'est jamais réarmé dans ce document.
+Les frontières conversations/crypto/scoped/session et transactions fichiers/
+projets le contrôlent ; les transactions IDB actives sont avortées sur perte.
+Un commit déjà terminé ne peut pas être annulé. Ce durcissement ne prouve PAS
+l'arrêt de tous les callbacks annexes (notamment trails/cache wallet) en cas de
+vol exceptionnel par un autre script. En fonctionnement conforme, le verrou
+document les sérialise aussi. Ce n'est ni une autorisation ni une barrière XSS.
+
+Deux contre-revues indépendantes favorables. Recette locale Chrome, même profil
+et origine, données synthétiques : B occupé, Retry refusé tant qu'A vit ; après
+fermeture réelle d'A, B relit exactement le titre et le fichier chiffré écrits
+par A. Fermeture réelle pendant transaction IDB maintenue : rollback observé,
+reader suivant non bloqué, historique/fichier précédents préservés. Recharge,
+navigation externe et retour callback synthétique, Back/Forward vérifiés ; vrai
+`main.tsx` pour discover/share/login/callback, UI privée réelle après rejet du
+state synthétique. Ce n'est PAS un échange Google réel ni une validation Android.
+Écran occupé vérifié à 390×844 ; boutons 44 px minimum et contraste ink/bg.
+Le harness temporaire est retiré avant publication. Aucun compte réel utilisé.
+
+Tests : 43 nouveaux tests de noyau, StrictMode/UI, vrai Web Crypto + transactions
+IDB simulées, effacement et graphe statique des imports publics. Les anciens
+tests unitaires utilisent une fixture explicite de document déjà admis ; la
+suite de persistance désactive cette fixture pour tester les vrais refus.
+
+Limites inchangées : clients legacy non coopératifs, restauration dans le même
+document (quiescence encore nécessaire), snapshot strict, générations vNext,
+journal et sync restent à faire. Pas de migration de clés/schéma ni de purge
+de données dans ce sous-lot. Avant d'activer restauration, la barrière legacy et
+la maintenance des writers du document courant restent indispensables. Les
+paragraphes de proposition ci-dessous décrivent ces travaux, pas du code livré.
+
+Repli : revert du lot par Git/CI/Pages, sans rollback de données. Déclencheurs :
+blocage d'un document unique sur navigateur compatible, callback incapable de
+reprendre après navigation externe, ou chargement privé hors grant. Les APK
+déjà installés gardent leur bundle ; CI Android n'est pas une recette WebView.
+
+Contre-revues préparatoires du 5 septembre : capture/restauration A2 non codées.
+Le tableau décrit le protocole à établir et tester, pas des garanties présentes ;
+la coordination initialement par compte est remplacée par la décision ci-dessus.
 
 | Frontière | Risque vérifié dans le code | Prérequis proposé |
 |---|---|---|

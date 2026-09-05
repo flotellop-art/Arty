@@ -209,7 +209,28 @@ réels ; préparer protocole et instrumentation sans fabriquer leurs résultats.
 - A2 capture/restauration/UI et synchronisation restent non livrées. Le lot ne
   change ni format A1, ni quota serveur, ni configuration Cloudflare/Google.
 
-### W06 A2 — contre-revues de préparation après #448, code non commencé
+### W06 A2 — réservation document, validation locale (publication en cours)
+
+- Un seul document privé par origine/profil, avant import App/useAuth/preview,
+  connexion comprise. Aucun release sur logout/switch/visibilité/cleanup React.
+  Occupé/indisponible/erreur distincts ; Retry explicite, sans voler le verrou.
+  Landing publique, discover et partage restent hors authentification ; callback
+  Google reste derrière la gate sans consommer son state pendant l'attente.
+- Remplace le prototype non intégré de bail par compte ; deux contre-revues GO
+  après corrections du fallback lazy, compatibilité `?start` et contraste AA.
+  Tokens de compte/époque/crypto existants conservés ; garde document supplémentaire
+  aux frontières de persistance et annulation des transactions fichiers/projets.
+- 43 tests nouveaux ; recette Chrome réellement multi-onglets : exclusion,
+  Retry, fermeture et relecture exacte du titre/fichier, rollback transaction IDB
+  à fermeture, reload et détour externe/callback synthétique/Back/Forward. Vrai
+  point d'entrée pour les routes publiques et privées ; format mobile 390×844.
+  Pas d'échange OAuth réel, de perte forcée dans App complet ni de recette Android.
+- Aucun changement de schéma ou données, pas de protection contre legacy ni de
+  journal/restauration/sync. Capture et reprise complète restent non livrées.
+  Décision, périmètre de la défense après perte et repli :
+  [ADR](ADR_WORKSPACE_BACKUP.md#révision-du-5-septembre--réservation-par-document-lot-coopératif).
+
+### W06 A2 — contre-revues de préparation après #448 (historique)
 
 - Deux lectures indépendantes (writers/sécurité et inventaire/produit) et
   vérification du code par l'agent principal. Découpage proposé dans l'ADR :

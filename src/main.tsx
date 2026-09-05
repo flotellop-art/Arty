@@ -1,7 +1,8 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { Capacitor } from '@capacitor/core'
-import App from './App'
+import { WorkspaceEntry } from './components/workspace/WorkspaceEntry'
+import { getWorkspaceEntryRoute } from './services/workspaceWriter/entryRoute'
 import { resolveNativeViewportHeight } from './services/native/viewport'
 import './index.css'
 import './i18n' // initialise react-i18next (détection navigator + localStorage)
@@ -111,22 +112,19 @@ if (Capacitor.isNativePlatform()) {
 }
 
 function renderApp() {
+  const route = getWorkspaceEntryRoute(location.pathname, location.search, Capacitor.isNativePlatform(), __DEMO_ALLOWED__, { getItem: key => localStorage.getItem(key) })
+  // A browser may keep a held-lock document in BFCache. On restoration, start
+  // cold rather than reuse its private caches. No release on pagehide/hidden:
+  // those documents can still have unfinished asynchronous writes.
+  window.addEventListener('pageshow', event => {
+    if (event.persisted && route === 'private') window.location.reload()
+  })
   createRoot(document.getElementById('root')!).render(
     <StrictMode>
-      <App />
+      <WorkspaceEntry route={route} />
     </StrictMode>
   )
 }
 
-// Mode démo preview : pose la session factice AVANT le render (pour que
-// getActiveSession() la voie au 1er mount). `__DEMO_ALLOWED__` est `false`
-// figé en prod → ce bloc + l'import() dynamique sont éliminés par Vite :
-// le module previewDemo n'est même pas dans le bundle de prod.
-if (__DEMO_ALLOWED__) {
-  import('./services/previewDemo')
-    .then((m) => { m.setupPreviewDemo() })
-    .catch(() => {})
-    .finally(renderApp)
-} else {
-  renderApp()
-}
+// Preview seeding also waits for the document lock, inside the private loader.
+renderApp()

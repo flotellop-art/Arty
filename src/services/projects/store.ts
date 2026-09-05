@@ -3,6 +3,7 @@ import { captureCryptoGuard, encrypt, decrypt, isCryptoReady, isCryptoContextCha
 import { getActiveUserId, getActiveSessionEpoch, getKnownSessions, getSessionProjectFence, PROJECT_ERASURE_FENCE_KEY } from '../userSession'
 import { assertPreparedForOperation, consumePreparedDocument } from './documentImport'
 import { generateId } from '../../utils/generateId'
+import { assertDocumentWorkspace, guardDocumentTransaction } from '../workspaceWriter/runtime'
 import { PROJECT_LIMITS, ProjectError, boundedInteger, validProject, validProjectId, validDescriptor,
   type PreparedProjectDocument, type ProjectDocument, type Project, type ProjectSummary } from './types'
 
@@ -23,8 +24,10 @@ const deletingOwners = new Set<string>()
 const localGenerations = new Map<string, number>()
 
 function getDB(): Promise<IDBPDatabase> {
+  assertDocumentWorkspace()
   if (!dbPromise) dbPromise = openDB('arty-projects', 1, {
     upgrade(db) {
+      assertDocumentWorkspace()
       const projects = db.createObjectStore('projects', { keyPath: 'key' })
       projects.createIndex('owner', 'owner')
       projects.createIndex('owner-state', ['owner', 'state'])
@@ -58,6 +61,7 @@ export async function beginProjectOperation(): Promise<ProjectOperation> {
   if (!owner || owner.length > 128 || !isCryptoReady() || deletingOwners.has(owner)) throw new ProjectError('unavailable')
   const generation = localGenerations.get(owner) ?? 0, cryptoCurrent = captureCryptoGuard(), sessionFence = getSessionProjectFence()
   const assertCurrent = () => {
+    assertDocumentWorkspace()
     if (!cryptoCurrent() || owner !== getActiveUserId() || epoch !== getActiveSessionEpoch() ||
       generation !== (localGenerations.get(owner) ?? 0) || deletingOwners.has(owner) ||
       sessionFence !== (localStorage.getItem(PROJECT_ERASURE_FENCE_KEY) ?? 'initial') ||
@@ -195,7 +199,7 @@ async function writeProject(
   if (!validProject(project) || project.owner !== operation.owner || project.revision !== expectedRevision + 1) throw new ProjectError('corrupt')
   const cipher = await encryptPayload(operation, project); checkOperation(operation)
   const db = await getDB(); checkOperation(operation)
-  const tx = db.transaction([...STORES], 'readwrite')
+  const tx = guardDocumentTransaction(db.transaction([...STORES], 'readwrite'))
   try {
     await checkFence(tx, operation)
     const previous = await tx.objectStore('projects').get([operation.owner, project.id]) as ProjectRow | undefined
@@ -347,7 +351,7 @@ export async function deleteProject(operation: ProjectOperation, id: string, exp
   checkOperation(operation)
   if (!validProjectId(id)) throw new ProjectError('corrupt')
   const db = await getDB(); checkOperation(operation)
-  const tx = db.transaction([...STORES], 'readwrite')
+  const tx = guardDocumentTransaction(db.transaction([...STORES], 'readwrite'))
   try {
     await checkFence(tx, operation)
     const row = await tx.objectStore('projects').get([operation.owner, id]) as ProjectRow | undefined
@@ -395,12 +399,12 @@ export async function purgeProjectsForAccount(owner: string, assertCurrent: () =
   // Sync half first: a crash before the IDB commit fails closed until erasure
   // is retried. Never silently repair this mismatch by adopting a new lease.
   const fence = generateId()
-  const tx = db.transaction([...STORES], 'readwrite')
+  const tx = guardDocumentTransaction(db.transaction([...STORES], 'readwrite'))
   try {
     await tx.objectStore('meta').put(fence, 'erasure-fence')
     // Serialized by the same IDB writer: two successful erasures cannot leave
     // LS and IDB with different final fences by reversing their commit order.
-    localStorage.setItem(PROJECT_ERASURE_FENCE_KEY, fence)
+    assertDocumentWorkspace(); localStorage.setItem(PROJECT_ERASURE_FENCE_KEY, fence)
     for (const name of ['projects', 'documents'] as const) {
       let cursor = await tx.objectStore(name).index('owner').openKeyCursor(owner)
       while (cursor) {
@@ -425,7 +429,7 @@ export async function beginProjectErasure(owner: string, assertCurrent: () => vo
   assertCurrent()
   const db = await getDB(); assertCurrent()
   const nonce = generateId()
-  const tx = db.transaction('meta', 'readwrite')
+  const tx = guardDocumentTransaction(db.transaction('meta', 'readwrite'))
   const previous = await tx.store.get(['erasing', owner]) as ErasureRecord | undefined
   if (previous && (previous.owner !== owner || !validProjectId(previous.operationId) || !Array.isArray(previous.pending) ||
     !previous.pending.every(validProjectId) || (!localOnly && !previous.serverConfirmed && previous.pending.length >= 32))) {
@@ -450,7 +454,7 @@ export async function assertProjectErasure(lease: ProjectErasure, assertCurrent:
   assertCurrent()
 }
 export async function finishProjectErasure(lease: ProjectErasure): Promise<void> {
-  const db = await getDB(), tx = db.transaction('meta', 'readwrite')
+  const db = await getDB(), tx = guardDocumentTransaction(db.transaction('meta', 'readwrite'))
   if ((await tx.store.get(['erasing', lease.owner]))?.nonce !== lease.nonce) { tx.abort(); await tx.done.catch(() => {}); throw new ProjectError('cancelled') }
   await tx.store.delete(['erasing', lease.owner])
   await tx.done
@@ -458,7 +462,7 @@ export async function finishProjectErasure(lease: ProjectErasure): Promise<void>
 /** Called only after a successful authenticated server response. Durable receipt
  * lets email sessions resume local erasure after their server token is revoked. */
 export async function confirmServerProjectErasure(lease: ProjectErasure): Promise<void> {
-  const db = await getDB(), tx = db.transaction('meta', 'readwrite')
+  const db = await getDB(), tx = guardDocumentTransaction(db.transaction('meta', 'readwrite'))
   const current = await tx.store.get(['erasing', lease.owner]) as ErasureRecord | undefined
   // A second window may take over local cleanup, but must not lose the first
   // window's authenticated success for this SAME erasure operation.
@@ -466,7 +470,7 @@ export async function confirmServerProjectErasure(lease: ProjectErasure): Promis
   await tx.store.put({ ...current, serverConfirmed: true }, ['erasing', lease.owner]); await tx.done
 }
 export async function releaseFailedProjectErasure(lease: ProjectErasure): Promise<void> {
-  const db = await getDB(), tx = db.transaction('meta', 'readwrite')
+  const db = await getDB(), tx = guardDocumentTransaction(db.transaction('meta', 'readwrite'))
   const current = await tx.store.get(['erasing', lease.owner]) as ErasureRecord | undefined
   if (current?.operationId === lease.operationId) {
     const pending = current.pending.filter(nonce => nonce !== lease.nonce)
