@@ -1,4 +1,22 @@
 {
+  "workspaceWindow": {
+    "loading": "Ouverture d’Arty…",
+    "loadFailedTitle": "Arty n’a pas pu se charger",
+    "loadFailedBody": "Recharge la page pour retenter le chargement. Si tu avais ouvert ton espace, Arty repartira des données enregistrées.",
+    "checkingTitle": "Ouverture de ton espace",
+    "checkingBody": "Vérification qu’aucune autre fenêtre Arty ne modifie les données de ce navigateur.",
+    "busyTitle": "Arty est déjà ouvert",
+    "busyBody": "Une autre fenêtre ou la PWA utilise Arty dans ce profil de navigateur. Pour protéger l’historique, une seule fenêtre peut être active, connexion comprise. Ferme l’autre fenêtre puis réessaie ici. Cette fenêtre n’a pas chargé ni modifié ton espace.",
+    "unsupportedTitle": "Navigateur à mettre à jour",
+    "unsupportedBody": "Ce navigateur ne fournit pas le verrou nécessaire pour protéger ton espace. Mets à jour ton navigateur ou Android System WebView. Tes données n’ont pas été modifiées ; les pages publiques restent accessibles.",
+    "failedTitle": "Ouverture impossible pour le moment",
+    "failedBody": "Le navigateur n’a pas autorisé la réservation de cet espace. Réessaie ou vérifie ses restrictions de stockage. Aucun accès à ton espace n’a démarré.",
+    "lostTitle": "Recharge Arty pour continuer",
+    "lostBody": "La réservation de cette fenêtre n’est plus valide. L’espace a été fermé : recharge la page pour repartir des données enregistrées.",
+    "retry": "Réessayer",
+    "reload": "Recharger",
+    "discover": "Découvrir Arty"
+  },
   "common": {
     "appName": "Arty",
     "cancel": "Annuler",

@@ -5,6 +5,7 @@ import { deleteOwnedFiles } from './secureFileStorage'
 import { getActiveUserId, getActiveSessionEpoch } from './userSession'
 import { generatedImageIds } from './generatedImages'
 import { generateId } from '../utils/generateId'
+import { assertDocumentWorkspace, documentWorkspaceSignal } from './workspaceWriter/runtime'
 
 // ─────────────────────────────────────────────────────────────────────────
 // Conversations are encrypted at rest (AES-256) under `conversations-enc`.
@@ -52,12 +53,13 @@ function captureScope(): StoreScope {
   return { owner: getActiveUserId(), epoch: getActiveSessionEpoch(), reset: resetGen }
 }
 function scopeCurrent(scope: StoreScope): boolean {
-  return scope.owner === getActiveUserId() && scope.epoch === getActiveSessionEpoch() && scope.reset === resetGen
+  return !documentWorkspaceSignal.aborted && scope.owner === getActiveUserId() && scope.epoch === getActiveSessionEpoch() && scope.reset === resetGen
 }
 function physicalKey(scope: StoreScope, key: string): string {
   return scope.owner ? `arty-${scope.owner}-${key}` : `arty-${key}`
 }
 function ensureCacheScope(): void {
+  assertDocumentWorkspace()
   const owner = getActiveUserId(), epoch = getActiveSessionEpoch()
   if (cacheIdentity && (cacheIdentity.owner !== owner || cacheIdentity.epoch !== epoch)) resetConversationMemCache()
   cacheIdentity = { owner, epoch }
@@ -225,6 +227,7 @@ export function deleteConversation(id: string): void {
  * useConversation can re-read once the cache is populated (cf. BUG 43).
  */
 export async function bootstrapConversationStorage(): Promise<void> {
+  assertDocumentWorkspace()
   ensureCacheScope()
   const scope = captureScope(), ticket = ++bootstrapGen
   const cryptoCurrent = isCryptoReady() ? captureCryptoGuard() : () => true

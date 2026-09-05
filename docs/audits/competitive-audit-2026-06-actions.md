@@ -163,8 +163,9 @@ unique sous 20 $/mois). Pas par la largeur de catalogue. Volume = distribution
 - [x] **P1.3 Génération d'images** — FAIT (12 juin 2026). gpt-image-1 via proxy dédié
   **Correctif du 5 septembre 2026 :** l'exécution a été durcie dans
   [#447](https://github.com/flotellop-art/Arty/pull/447). Le rendu legacy décrit
-  ci-dessous n'était pas une preuve de galerie fonctionnelle. Le lot de galerie
-  privée en validation le remplace par des reçus structurés par message : aucun
+  ci-dessous n'était pas une preuve de galerie fonctionnelle. La galerie privée
+  livrée dans [#448](https://github.com/flotellop-art/Arty/pull/448) le remplace
+  par des reçus structurés par message : aucun
   ID privé résolu depuis Markdown, conservation sans texte et après interruption,
   retry en branche, omissions explicites à l'export. Voir le
   [journal de recette et de livraison](../arty-workspace-cdc.md). Les détails de

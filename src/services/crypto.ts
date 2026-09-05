@@ -5,6 +5,7 @@
  */
 import { getActiveUserId, getActiveSessionEpoch } from './userSession'
 import { invalidateLocalDataViews } from './localDataInvalidation'
+import { assertDocumentWorkspace, documentWorkspaceSignal } from './workspaceWriter/runtime'
 
 const SALT_KEY = 'arty-crypto-salt'
 const KEY_CHECK_KEY = 'arty-crypto-check'
@@ -29,7 +30,7 @@ export function isCryptoContextChanged(error: unknown): boolean {
 }
 function captureScope(): Scope { return { owner: getActiveUserId(), epoch: getActiveSessionEpoch() } }
 function scopeCurrent(scope: Scope): boolean {
-  return scope.owner === getActiveUserId() && scope.epoch === getActiveSessionEpoch()
+  return !documentWorkspaceSignal.aborted && scope.owner === getActiveUserId() && scope.epoch === getActiveSessionEpoch()
 }
 function metadataKey(scope: Scope, key: string): string {
   return scope.owner ? `arty-${scope.owner}-${key.replace(/^arty-/, '')}` : key
@@ -98,6 +99,7 @@ export async function waitForCryptoInitialization(): Promise<void> {
   while (latestInitialization) await latestInitialization.catch(() => {})
 }
 export function initCrypto(passphrase: string, options: CryptoInitOptions = {}): Promise<void> {
+  assertDocumentWorkspace()
   const task = initializeCrypto(passphrase, options)
   latestInitialization = task
   void task.finally(() => { if (latestInitialization === task) latestInitialization = null }).catch(() => {})
@@ -258,6 +260,7 @@ export async function decrypt(encoded: string): Promise<string> {
 
 /** Legacy wrapper; the existing no-crypto plain fallback is NOT used by projects. */
 export async function secureSet(key: string, value: unknown): Promise<void> {
+  assertDocumentWorkspace()
   const captured = currentContext()
   if (!captured) {
     if (isCryptoInitializing()) throw new CryptoContextChanged()
@@ -284,6 +287,7 @@ export async function secureGet<T>(key: string): Promise<T | null> {
   try { return JSON.parse(raw) as T } catch { return null }
 }
 export async function migrateKey(key: string): Promise<void> {
+  assertDocumentWorkspace()
   const captured = currentContext()
   if (!captured) return
   const raw = localStorage.getItem(key)

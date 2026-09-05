@@ -1,4 +1,22 @@
 {
+  "workspaceWindow": {
+    "loading": "Opening Arty…",
+    "loadFailedTitle": "Arty could not load",
+    "loadFailedBody": "Reload the page to try loading again. If you had opened your workspace, Arty will read the saved data again.",
+    "checkingTitle": "Opening your workspace",
+    "checkingBody": "Checking that no other Arty window is changing this browser’s data.",
+    "busyTitle": "Arty is already open",
+    "busyBody": "Another window or the PWA is using Arty in this browser profile. To protect your history, only one window can be active, including sign-in. Close the other window, then retry here. This window has not loaded or changed your workspace.",
+    "unsupportedTitle": "Please update your browser",
+    "unsupportedBody": "This browser does not provide the lock needed to protect your workspace. Update your browser or Android System WebView. Your data has not changed; public pages remain available.",
+    "failedTitle": "Unable to open right now",
+    "failedBody": "The browser did not allow this workspace reservation. Retry or check its storage restrictions. Your workspace has not been accessed.",
+    "lostTitle": "Reload Arty to continue",
+    "lostBody": "This window’s reservation is no longer valid. The workspace has been closed: reload the page to read the saved data again.",
+    "retry": "Retry",
+    "reload": "Reload",
+    "discover": "Discover Arty"
+  },
   "common": {
     "appName": "Arty",
     "cancel": "Cancel",

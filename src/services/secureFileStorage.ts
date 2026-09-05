@@ -17,6 +17,7 @@ import {
   MAX_NORMALIZED_IMAGE_BYTES,
 } from './imageNormalization'
 import type { FileAttachment } from '../types'
+import { assertDocumentWorkspace, guardDocumentTransaction } from './workspaceWriter/runtime'
 
 const DB_NAME = 'arty-files'
 const DB_VERSION = 1
@@ -37,19 +38,16 @@ interface StoredFile {
 
 let dbPromise: Promise<IDBPDatabase> | null = null
 
-function getOwnerKey(): string {
-  const userId = getActiveUserId()
-  return userId ? `arty-${userId}` : 'arty-anon'
-}
-
 function ownerKeyFor(userId: string | null): string {
   return userId ? `arty-${userId}` : 'arty-anon'
 }
 
 function getDB(): Promise<IDBPDatabase> {
+  assertDocumentWorkspace()
   if (!dbPromise) {
     dbPromise = openDB(DB_NAME, DB_VERSION, {
       upgrade(db) {
+        assertDocumentWorkspace()
         if (!db.objectStoreNames.contains(STORE)) {
           const store = db.createObjectStore(STORE, { keyPath: 'fileId' })
           store.createIndex('ownerKey', 'ownerKey', { unique: false })
@@ -93,6 +91,7 @@ export async function putFile(
   ownerUserId: string | null = getActiveUserId(),
   requestGuard?: () => void,
 ): Promise<string> {
+  assertDocumentWorkspace()
   requestGuard?.()
   if (ownerUserId !== getActiveUserId()) throw new CryptoContextChanged()
   if (!isCryptoReady()) {
@@ -103,6 +102,7 @@ export async function putFile(
   }
   const cryptoCurrent = captureCryptoGuard()
   const assertCurrent = () => {
+    assertDocumentWorkspace()
     requestGuard?.()
     if (!cryptoCurrent() || ownerUserId !== getActiveUserId()) throw new CryptoContextChanged()
   }
@@ -177,7 +177,7 @@ export async function putFile(
 
   const db = await getDB()
   assertCurrent()
-  const tx = db.transaction(STORE, 'readwrite')
+  const tx = guardDocumentTransaction(db.transaction(STORE, 'readwrite'))
   try {
     const existing = await tx.store.get(fileId) as StoredFile | undefined
     assertCurrent()
@@ -231,11 +231,7 @@ export async function getFiles(fileIds: string[]): Promise<FileAttachment[]> {
 }
 
 export async function deleteFile(fileId: string): Promise<void> {
-  const ownerKey = getOwnerKey()
-  const db = await getDB()
-  const record = (await db.get(STORE, fileId)) as StoredFile | undefined
-  if (!record || record.ownerKey !== ownerKey) return
-  await db.delete(STORE, fileId)
+  await deleteOwnedFiles([fileId], getActiveUserId())
 }
 
 /**
@@ -251,21 +247,29 @@ export async function deleteOwnedFiles(
   fileIds: Iterable<string>,
   ownerUserId: string | null = getActiveUserId(),
 ): Promise<number> {
+  assertDocumentWorkspace()
   const ownerKey = ownerKeyFor(ownerUserId)
   const uniqueIds = [...new Set(fileIds)]
   if (uniqueIds.length === 0) return 0
 
   const db = await getDB()
-  const tx = db.transaction(STORE, 'readwrite')
+  const tx = guardDocumentTransaction(db.transaction(STORE, 'readwrite'))
   let deleted = 0
+  try {
   for (const fileId of uniqueIds) {
     const record = (await tx.store.get(fileId)) as StoredFile | undefined
+    assertDocumentWorkspace()
     if (record?.ownerKey !== ownerKey) continue
     await tx.store.delete(fileId)
     deleted++
   }
   await tx.done
+  assertDocumentWorkspace()
   return deleted
+  } catch (error) {
+    try { tx.abort() } catch { /* completed */ }
+    await tx.done.catch(() => {}); throw error
+  }
 }
 
 // Wipe TOUS les fichiers (du user actif uniquement). Appelé dans logout()
@@ -275,15 +279,22 @@ export async function wipeFileStorage(ownerUserId: string | null = getActiveUser
   // resolving it afterwards would target arty-anon and leave user files behind.
   const ownerKey = ownerKeyFor(ownerUserId)
   const db = await getDB()
-  const tx = db.transaction(STORE, 'readwrite')
+  const tx = guardDocumentTransaction(db.transaction(STORE, 'readwrite'))
   const index = tx.store.index('ownerKey')
+  try {
   let cursor = await index.openCursor(IDBKeyRange.only(ownerKey))
   while (cursor) {
+    assertDocumentWorkspace()
     await cursor.delete()
     cursor = await cursor.continue()
   }
   await tx.done
+  assertDocumentWorkspace()
   window.dispatchEvent(new CustomEvent('file-storage-ready'))
+  } catch (error) {
+    try { tx.abort() } catch { /* completed */ }
+    await tx.done.catch(() => {}); throw error
+  }
 }
 
 // Purge les fichiers orphelins : ceux qui ne sont plus référencés par
@@ -294,11 +305,13 @@ export async function purgeOrphanFiles(
 ): Promise<number> {
   const ownerKey = ownerKeyFor(ownerUserId)
   const db = await getDB()
-  const tx = db.transaction(STORE, 'readwrite')
+  const tx = guardDocumentTransaction(db.transaction(STORE, 'readwrite'))
   const index = tx.store.index('ownerKey')
   let count = 0
+  try {
   let cursor = await index.openCursor(IDBKeyRange.only(ownerKey))
   while (cursor) {
+    assertDocumentWorkspace()
     const record = cursor.value as StoredFile
     if (!referencedIds.has(record.fileId)) {
       await cursor.delete()
@@ -307,7 +320,12 @@ export async function purgeOrphanFiles(
     cursor = await cursor.continue()
   }
   await tx.done
+  assertDocumentWorkspace()
   return count
+  } catch (error) {
+    try { tx.abort() } catch { /* completed */ }
+    await tx.done.catch(() => {}); throw error
+  }
 }
 
 export async function estimateStorageUsage(): Promise<{ usage: number; quota: number }> {

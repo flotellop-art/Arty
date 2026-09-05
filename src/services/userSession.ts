@@ -4,6 +4,7 @@
  */
 
 import { invalidateLocalDataViews } from './localDataInvalidation'
+import { assertDocumentWorkspace } from './workspaceWriter/runtime'
 
 const ACTIVE_SESSION_KEY = 'arty-active-session'
 const KNOWN_SESSIONS_KEY = 'arty-known-sessions'
@@ -81,6 +82,7 @@ export function setActiveSession(
   session: UserSession,
   options: { remember?: boolean } = {},
 ): void {
+  assertDocumentWorkspace()
   _sessionEpoch += 1
   captureProjectFence()
   _activeSession = session
@@ -91,6 +93,7 @@ export function setActiveSession(
 
 /** Rend la session active durable et l'ajoute aux comptes connus. */
 export function rememberSession(session: UserSession): void {
+  assertDocumentWorkspace()
   localStorage.setItem(ACTIVE_SESSION_KEY, JSON.stringify(session))
   // Add to known sessions
   const known = getKnownSessions()
@@ -104,6 +107,7 @@ export function rememberSession(session: UserSession): void {
 }
 
 export function clearActiveSession(): void {
+  assertDocumentWorkspace()
   _sessionEpoch += 1
   _activeSession = null
   try { localStorage.removeItem(ACTIVE_SESSION_KEY) }
@@ -120,6 +124,7 @@ export function getKnownSessions(): UserSession[] {
 }
 
 export function removeKnownSession(userId: string): void {
+  assertDocumentWorkspace()
   const known = getKnownSessions().filter(s => s.userId !== userId)
   localStorage.setItem(KNOWN_SESSIONS_KEY, JSON.stringify(known))
   invalidateLocalDataViews()
@@ -133,6 +138,7 @@ export function removeKnownSession(userId: string): void {
  * report on a shared device, so the only safe migration is deletion.
  */
 export function purgeLegacyGlobalReports(): number {
+  assertDocumentWorkspace()
   // Legacy IDs were generated with Date.now().toString(36): lowercase
   // alphanumerics only. The exact shape avoids matching a scoped key when a
   // synthetic/test userId itself starts with "report-".

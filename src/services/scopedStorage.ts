@@ -5,6 +5,7 @@
 
 import { getActiveUserId } from './userSession'
 import { secureSet, secureGet, isCryptoReady, isCryptoContextChanged } from './crypto'
+import { assertDocumentWorkspace } from './workspaceWriter/runtime'
 
 function buildKey(baseKey: string): string {
   const userId = getActiveUserId()
@@ -21,10 +22,12 @@ export function getItem(baseKey: string): string | null {
 }
 
 export function setItem(baseKey: string, value: string): void {
+  assertDocumentWorkspace()
   localStorage.setItem(buildKey(baseKey), value)
 }
 
 export function removeItem(baseKey: string): void {
+  assertDocumentWorkspace()
   localStorage.removeItem(buildKey(baseKey))
 }
 
@@ -58,6 +61,7 @@ export function setJSON(baseKey: string, value: unknown): void {
  * Plain JSON is overwritten as soon as crypto becomes available.
  */
 export function secureSetJSON(baseKey: string, value: unknown): void {
+  assertDocumentWorkspace()
   const key = buildKey(baseKey)
   // Always write plain JSON first for sync reads (getJSON)
   localStorage.setItem(key, JSON.stringify(value))
@@ -101,6 +105,7 @@ export async function secureGetJSON<T>(baseKey: string): Promise<T | null> {
  * user actif (on ne wipe jamais en aveugle les clés globales `arty-*`).
  */
 export function clearAllForActiveUser(): void {
+  assertDocumentWorkspace()
   const userId = getActiveUserId()
   if (!userId) return
   const prefix = `arty-${userId}-`
