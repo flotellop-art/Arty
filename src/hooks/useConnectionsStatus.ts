@@ -11,7 +11,7 @@ export function useConnectionsStatus() {
   const receiptRef = useRef(receipt); receiptRef.current = receipt
   const attempt = useRef<AbortController | null>(null), alive = useRef(true)
   const refresh = useCallback(async () => {
-    if (!alive.current) return
+    if (!alive.current || documentWorkspaceSignal.aborted) return
     attempt.current?.abort(); const controller = new AbortController(); attempt.current = controller
     receiptRef.current = null; setReceipt(null); setState('loading')
     try {
@@ -27,6 +27,7 @@ export function useConnectionsStatus() {
     let queued = false, disposed = false
     const invalidate = () => {
       attempt.current?.abort(); receiptRef.current = null; setReceipt(null); setState('loading')
+      if (documentWorkspaceSignal.aborted) { setState('unavailable'); return }
       // Grant revocation can be reentrant inside a sync reader. Wait for its
       // writer to finish; never start a refresh/bootstrap as a reaction.
       if (!queued) { queued = true; queueMicrotask(() => { queued = false; if (!disposed && alive.current) void refresh() }) }
@@ -44,7 +45,7 @@ export function useConnectionsStatus() {
   }, [refresh])
   // Each render's callback belongs to that receipt, not a later ref value.
   const act = useCallback((action: () => void) => {
-    if (!alive.current || !receipt) return
+    if (!alive.current || documentWorkspaceSignal.aborted || !receipt) return
     try { receipt.assertCurrent() } catch { void refresh(); return }
     action()
   }, [receipt, refresh])
