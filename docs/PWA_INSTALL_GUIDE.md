@@ -1,7 +1,7 @@
 # W09 — guide public d’installation
 
-6 septembre 2026. Guide #473 publié ; correctif des transformations CDN en cours
-de validation. Base du guide : main `6a1ac3f8e5a5fe045607af7e2fc51508995c9738` (#472).
+6 septembre 2026. Guide #473 et correctif des transformations CDN #474 publiés
+et vérifiés. Base du guide : main `6a1ac3f8e5a5fe045607af7e2fc51508995c9738` (#472).
 
 ## Contrat livré par ce lot
 
@@ -165,7 +165,51 @@ Logs/sondes ignorés : `install-edge-browser-public.log`, `install-edge-verify.l
 complète locale réussie : `npm run verify` exit 0, **308 suites, 3 823 tests réussis
 + 1 sauté**, couverture 71,58 / 66,42 / 77,24 / 73,44 %. Typechecks, no-CASA,
 build et worker Office isolé verts ; recette Chrome également passée sur `dist`.
-Preview, promotion et preuve canonique du correctif à consigner après succès ;
-**pas encore de GO production**. Les anciens documents déjà ouverts
+Preview, promotion et preuve canonique du correctif consignées ci-dessous.
+Les anciens documents déjà ouverts
 et appareils encore hors ligne ne sont pas corrigés rétroactivement. Aucune
 purge de données utilisateur ni désinstallation demandée.
+
+### Reçu final #474 — 6 septembre 2026
+
+PR [#474](https://github.com/flotellop-art/Arty/pull/474), head
+`d084bdf821588862b917120904494fa085419f93`, squash main
+`48840dc4c962d70ee19df7b2f5e2dcaed5d9a1f4`, fusion 11:26:52 UTC. Deux GO
+readonly indépendants, y compris le périmètre réel du TTL CSS décrit ci-dessous.
+CI PR `34029984857` et main `34030279084` réussies. Pages preview
+`902b60c4-b76b-4def-a516-29c8ba0a3b28` réussie ; octets, en-têtes et Chrome
+distant JS activé/désactivé passent à 11:22:08–11 UTC avant promotion.
+
+Pages production `522af73b-9a28-4c56-8dd0-0b7599f7c7fa`, succès 11:27:52 UTC.
+Sondes **tryarty.com réel**, pas seulement immutable :
+
+- 11:31:05.448 UTC, les quatre fichiers HTML FR/EN, CSS et SW ont les mêmes
+  octets/hash que l'immutable et les sources normalisées. Aucun script,
+  décodeur ou data-cfemail ; deux liens mailto intacts par document ;
+- 11:31:06.277 UTC, deux CSP complètes séparées par virgule, no-transform et
+  no-cache sur les HTML ; alias/slash/query également propres. Anciens
+  validateurs #473 → 200 nouveaux octets ; nouveaux validateurs → 304.
+  Racine, login, installation et SW conservent exactement la CSP globale ;
+- 11:31:08.534 UTC, Chrome isolé distant FR/EN, JS activé et désactivé,
+  navigation linguistique, CSS utilisable et aucune requête inattendue ;
+- les sept sondes publiques GET/OPTIONS du transport API #471 passent encore,
+  sans compte, token ou écriture chez un fournisseur.
+
+Le premier contrôle du correctif s'est arrêté sur **no-cache de la CSS** : la
+politique existante de zone lui donne `public, max-age=14400` sur tryarty.com,
+alors que l'immutable conserve no-cache. La CSS est inchangée et conserve
+no-transform, les deux CSP et les octets exacts. Après double revue, l'exigence
+de revalidation immédiate est bornée aux **documents HTML**, qui la respectent ;
+le TTL CSS de quatre heures est consigné, pas modifié globalement. Aucune
+assertion zéro script/mailto n'a été retirée ou affaiblie. Le SW possède aussi
+le TTL de zone existant ; aucune mise à jour immédiate d'ancien appareil attestée.
+
+FR SHA-256 `14f3b3f8bc39eddbef9ba6cb584b3e2c2c8add549b7d139a8c6bd9a08363be1f`,
+EN `dc6babd637aecf963ab828934247b2bd07659f29097aa7d69470538a9343aecd`.
+Logs ignorés `install-edge-production-{bytes,http,browser}.log` et
+`install-edge-legacy-api.log`.
+
+Android/Firebase `34030279123` réussi 11:35:45 UTC : identité du candidat
+11:35:36, distribution 11:35:42, reçu JSON uploadé 11:35:43. Réussite du pipeline,
+pas installation physique. Ce reçu ferme le correctif documentaire, pas W09
+global ni les validations externes appareil/Store.
