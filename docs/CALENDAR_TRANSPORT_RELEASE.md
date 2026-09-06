@@ -1,7 +1,8 @@
 # W08 — transport Agenda, recette et promotion
 
 6 septembre 2026. Base main `2da5735` (#463), branche
-`codex/calendar-owned-transport`. **Testé localement ; pas encore livré.**
+`codex/calendar-owned-transport`. **Livré sur le web par #464 et distribué
+en APK Firebase**, contrôles main réussis. Installation physique non attestée.
 Les trois verticales guidées et l'écran de connexions restent à terminer.
 
 ## Périmètre et compatibilité
@@ -68,9 +69,10 @@ schéma D1/IDB ou activation W06 modifié. Aucun effacement de données.
 - [x] Repli et limites documentés ci-dessous ; pas de migration à appliquer.
 - [x] Diff final contrôlé ; liste de staging explicite, marketing utilisateur
   exclu. OpenAI sans changement sémantique et exclu du commit.
-- [ ] CI PR web/Android/orchestrateur verte ; preview Pages vérifiée.
-- [ ] Fusion normale, CI main et production Pages attestées séparément.
-- [ ] APK signé/distribué Firebase attesté séparément.
+- [x] CI PR web/Android/orchestrateur verte ; preview Pages vérifiée.
+- [x] Fusion normale et production Pages attestées ; CI main suivie séparément.
+- [x] CI main terminée avec succès.
+- [x] APK signé/distribué Firebase attesté séparément.
 
 Pas d'équipe d'astreinte ni notification externe déclenchée par cette checklist.
 Le suivi est dans le fil et la PR. Aucun ticket tiers fermé implicitement.
@@ -106,3 +108,32 @@ annulation réseau ne défait une écriture déjà reçue par Google ; vérifier
 l'agenda et demander un nouveau consentement avant une action compensatrice.
 Le socle Google #463 et son marqueur de transfert chiffré restent compatibles.
 Les anciennes APK demeurent leurs bundles jusqu'à mise à jour installée.
+
+## Reçus de publication #464
+
+Head final `fed51ed1b53f890520397cc3bc4ed38276e4712c`, CI PR `34012491974`
+réussie ; verify-app terminé à 04:55:09 UTC. Preview
+`37a72e52-9f17-4cf8-99b8-f2246eb14415` réussie à 04:51:11, GET readonly
+à 04:52:43.814 UTC. Reçu avant fusion :
+<https://github.com/flotellop-art/Arty/pull/464#issuecomment-5557040941>.
+
+Fusion normale squash à 04:56:39 UTC, main
+`a3724e3f54da334f4e1d05a999c9889a42906471`. Pages production
+`30358b9f-28ff-4705-9792-e7c902e936b5` réussie à 04:57:40 UTC.
+GET publics sans auth/redirection à 04:58:22.455 UTC : domaine canonique
+et <https://30358b9f.appfacade.pages.dev> servent les mêmes octets, avec les
+marqueurs protocole/compte/confirmation/refus et socle Google antérieur.
+
+| Asset | Octets | SHA-256 |
+|---|---:|---|
+| `index-BgEQ9Pqt.js` | 296 230 | `5900ed01f6c4e571bbd3e81185e36fc0372737a84ab06db9ec112fbdf2ad6fb0` |
+| `App-9xYD_KjG.js` | 893 742 | `2a922fcc8a3ca246e26723f3eae220a94007719e0bdd6f160b66b4c28535f251` |
+
+CI main `34012751897` réussie : verify-app terminé à 05:01:38 UTC,
+282 suites / 3 388 réussis / 1 ignoré, couverture CI 70,70 / 65,28 / 76,52 /
+72,67 %. Android et growth également verts. APK `34012751898` réussie sur le
+même SHA main : compilation signée à 05:04:41 UTC, distribution Firebase et
+nettoyage des secrets réussis à 05:04:47, job terminé à 05:04:50. Installation
+physique et Play Store non attestés. Second GET canonique/immutable identique
+à 05:04:49.149 UTC. Aucun POST authentifié privé ni agenda personnel utilisé.
+Préparation de la suite, non implémentée : `ADR_WORKFLOW_DOCUMENT_COPY.md`.

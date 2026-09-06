@@ -33,7 +33,7 @@ supplémentaire n'est implicite dans ce mandat.
 | W05 | Livrables | Export DOCX modifiable et XLSX de tableaux, en plus des exports existants. Téléchargements relus par un parseur indépendant ; cellules dangereuses neutralisées ; aucun HTML actif ni formule arbitraire. Formats et limites documentés. | Web déployé #445 ; recette structurelle vérifiée ; rendu Office/appareil non vérifié |
 | W06 | Continuité | Sauvegarde/restauration explicites puis synchronisation optionnelle multi-appareil chiffrée avant upload, avec secret détenu par l'utilisateur et récupération expliquée. Conflits non destructifs ; reprise hors-ligne ; logout/switch/delete et compte invité traités. Un export manuel seul ne valide pas la synchronisation. | A1 #446, galerie #448, verrou document #449, capture/vérification A2 #451, préparation A3a #452, admission froide #453, runtime isolé inactif #454, migrateur journalisé OFF #455, reprise froide d'effacement v2 OFF #456, reçu distant #457, pont froid/fence v5 OFF #458 et reset local v6/v7 OFF #459 livrés ; restauration/synchronisation non livrées |
 | W07 | Comparaison | Comparer depuis une conversation avec contexte/documents autorisés ; conserver les résultats et poursuivre la réponse choisie sans perdre l'original. Erreurs/coûts/quotas de chaque panneau visibles ; EU et historique privé jamais contournés. | Web livré #462 ; recette App/navigateur synthétique vérifiée ; APK distribuée, installation physique et OAuth/facturation réels non attestés |
-| W08 | Parcours métier | Trois parcours complets : synthèse documentaire, réponse client préparée, planification Agenda avec confirmation avant écriture. Écran de connexions indiquant disponible/non configuré/non pris en charge selon plateforme. Pas de Drive/Gmail OAuth restreint ni relais IMAP serveur. | Socle propriété Google/reprise BYOK livré web #463 ; transport Agenda raccordé/testé localement, publication en cours ; trois verticales et connexions incomplètes |
+| W08 | Parcours métier | Trois parcours complets : synthèse documentaire, réponse client préparée, planification Agenda avec confirmation avant écriture. Écran de connexions indiquant disponible/non configuré/non pris en charge selon plateforme. Pas de Drive/Gmail OAuth restreint ni relais IMAP serveur. | Socle Google/BYOK #463 et transport Agenda #464 livrés web ; trois verticales et connexions incomplètes |
 | W09 | Mobile et identité | PWA installable ; identité tryarty cohérente ; distribution Android authentifiée et documentée. Ne pas rediriger vers une app Play homonyme. Toute migration appId inclut signatures/OAuth/Firebase/liens vérifiés ; un APK distribué n'est pas une publication Store. | À faire |
 | W10 | Mesure | Instrumentation minimale sans contenu utilisateur : activation, succès/échec des parcours, retour D7/D30 et conversion. Marges fondées sur coût serveur, pas un compteur local. Tableau avec période, échantillon et limites ; aucune métrique inventée. | À faire |
 
@@ -108,7 +108,7 @@ réels ; préparer protocole et instrumentation sans fabriquer leurs résultats.
 
 ## Preuves par lot
 
-### W08 — transport Agenda et consentement initial, avant publication
+### W08 — transport Agenda et consentement initial, web livré #464
 
 Base main `2da5735`, branche `codex/calendar-owned-transport`. Contrat opaque
 Google + portée locale/documentaire capturé avant attente ; validation durable
@@ -149,6 +149,19 @@ deux GO finaux readonly ; verify de livraison : 282 suites / 3 388 réussis /
 1 ignoré, tous contrôles verts. Recette browser répétée à 04:48:49 UTC avec
 bouton de rapport réel, aucune écriture Google réelle. Ce contrôle n'atteste
 pas les autres anciens feedbacks de rapport, inchangés par ce lot.
+
+Fusion #464 normale à 04:56:39 UTC, main `a3724e3`. CI PR `34012491974`
+verte, preview vérifiée avant fusion. Pages production
+`30358b9f-28ff-4705-9792-e7c902e936b5` réussie à 04:57:40 UTC ; GET
+readonly canonique/immutable identiques à 04:58:22 UTC. Assets, SHA et limites
+dans `CALENDAR_TRANSPORT_RELEASE.md`. CI main `34012751897` réussie à
+05:01:38 UTC (282 suites, 3 388 réussis +1 ignoré), Android/growth verts ;
+APK `34012751898` réussie : signée à 05:04:41 UTC, distribuée Firebase et
+secrets temporaires nettoyés à 05:04:47, job terminé à 05:04:50. Pas de preuve
+d'installation physique ni Store. Second GET production identique à 05:04:49.
+Suite retenue après deux diagnostics : copie explicite d'une réponse terminée
+vers un brouillon Agenda indépendant, puis synthèse/réponse client guidées ;
+`ADR_WORKFLOW_DOCUMENT_COPY.md` ne constitue pas encore leur implémentation.
 
 ### W06 A3b.8 — préparation de migrations incomplètes avant effacement, OFF
 
