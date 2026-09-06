@@ -1,4 +1,16 @@
 {
+  "productMeasurement": {
+    "title": "Share technical outcomes from the Client reply guide",
+    "on": "On",
+    "off": "Off",
+    "retryWithdrawal": "Retry saving the off setting",
+    "help": "Optional and off by default for this account and browser. After your next submissions to the Client reply guide, Arty may send a technical outcome: saved, empty, error, stopped, not saved or not started. No text, file, model name or conversation identifier is sent in this measurement. “Saved” means a successful local copy, not a quality assessment.",
+    "auth": "Available only on the Web with a Google account. An already-ready Google token authenticates this request, without reconnecting or refreshing for measurement. The server retains only shared daily counters, without individual identity. Requests remain subject to the host’s usual technical processing.",
+    "withdrawal": "You can switch this option off here at any time. This stops future requests; declarations already received are mixed into the counters and cannot be removed individually. These aggregate counters have no scheduled automatic deletion.",
+    "unavailable": "Unavailable in this session. No measurement request is sent.",
+    "enableError": "Activation could not be saved. Check that this account is still open and browser storage is available, then try again.",
+    "withdrawError": "Requests have stopped in this tab, but the off setting could not be saved. Free up storage and try again before reloading: otherwise the old setting may become active again."
+  },
   "workspaceRestore": {
     "title": "Restore an archive",
     "limits": "This first release accepts archives up to 16 MiB and encrypted preparation up to 32 MiB, including existing history. Larger archives can still be verified, but cannot yet be restored here.",

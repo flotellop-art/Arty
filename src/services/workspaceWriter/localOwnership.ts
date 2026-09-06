@@ -16,6 +16,7 @@ export const LEGACY_SETTING_SLOTS = [
   'ai-model', 'reflection-level', 'fact-check-mode', 'response-style', 'theme', 'location-consent',
   'proactive-brief-enabled', 'proactive-brief-last-run', 'proactive-brief-nudge-day', 'proactive-brief-prefs',
   'notifications-enabled', 'prompt-enhancement-enabled', 'prompt-enhancement-model', 'auto-memory-enabled', 'auto-memory-progress',
+  'product-measurement-v1',
 ] as const
 export function assertOpaqueOwner(owner: unknown): asserts owner is string {
   if (typeof owner !== 'string' || !owner.length || owner.length > 128) refuse()

@@ -9,9 +9,13 @@ it.each(['a', 'a-b', 'a:b', 'é', '𝄞', 'null', 'anon'])('exact opaque owner %
   localStorage.setItem(`arty-${owner}-theme`, 'own')
   localStorage.setItem(`arty-composer-draft:${owner}:home`, 'draft')
   localStorage.setItem('arty-neighbour-theme', 'B')
+  localStorage.setItem(`arty-${owner}-product-measurement-v1`, 'own-consent')
+  localStorage.setItem('arty-neighbour-product-measurement-v1', 'neighbor-consent')
   const snapshot = await erasureLocalSnapshot(GENERATION, owner)
   expect(snapshot.changes).toEqual(expect.arrayContaining([[`arty-${owner}-theme`, null], [`arty-composer-draft:${owner}:home`, null]]))
   expect(snapshot.changes).not.toContainEqual(['arty-neighbour-theme', null])
+  expect(snapshot.changes).toContainEqual([`arty-${owner}-product-measurement-v1`, null])
+  expect(snapshot.changes).not.toContainEqual(['arty-neighbour-product-measurement-v1', null])
 })
 it.each(['arty-a-report-conversations', 'arty-a-report-theme', 'arty-composer-draft:anonymous:home', 'arty-composer-draft:a:conversation:home', 'arty-composer-draft:a:conversation:old-id'])('refuses ambiguous/unsupported %s', key => {
   expect(() => parseOwnedLocalKey(key)).toThrow()

@@ -38,8 +38,9 @@ describe('client reply through real shared transport, synthetic HTTP', () => {
   it.each([false, true])('persists full fields+restriction, detached long retry, no Calendar context, reload does not regenerate (EU=%s)', async euOnly => {
     const calendarRead = vi.spyOn(calendar, 'captureCalendarContext'), hook = renderHook(() => useConversation()), controller = new AbortController()
     let pending!: Promise<boolean>, id = ''
+    const observation = { settle: vi.fn(), discard: vi.fn() }
     act(() => { pending = hook.result.current.startClientReply({ fields, locale: 'fr', euOnly, signal: controller.signal,
-      assertDraft: () => {}, assertAccess: () => {}, review: hook.result.current.projectReview.review,
+      assertDraft: () => {}, assertAccess: () => {}, review: hook.result.current.projectReview.review, observation,
       onAdopted(value) { id = value; controller.abort() },
     }) })
     await waitFor(() => expect(hook.result.current.projectReview.request?.kind).toBe('confirm'))
@@ -50,6 +51,7 @@ describe('client reply through real shared transport, synthetic HTTP', () => {
     await act(async () => expect(await pending).toBe(true))
     await waitFor(() => expect(storage.getConversation(id)?.messages.at(-1)?.content).toBe(resultText))
     expect(fetch).toHaveBeenCalledOnce(); expect(calendarRead).not.toHaveBeenCalled()
+    expect(observation.settle).toHaveBeenCalledExactlyOnceWith('saved'); expect(observation.discard).not.toHaveBeenCalled()
     expect(storage.getConversation(id)).toMatchObject({ outputRestriction: 'client-reply-draft-v1', title: fields.objective, hasProjectContext: true })
     expect(storage.getConversation(id)?.projectId).toBeUndefined()
     expect(storage.getConversation(id)?.messages[0]?.content).toBe(clientReplyQuestion(fields, 'fr'))
@@ -74,6 +76,7 @@ describe('client reply through real shared transport, synthetic HTTP', () => {
     expect(reopened.result.current.activeConversation?.outputRestriction).toBe('client-reply-draft-v1')
     expect(reopened.result.current.activeConversation?.title).toBe(fields.objective)
     expect(fetch).toHaveBeenCalledTimes(2); expect(calendarRead).not.toHaveBeenCalled()
+    expect(observation.settle).toHaveBeenCalledOnce()
   })
   it.each(['cancel', 'stop', 'storage', 'ownerAfterAdoption', 'stopAfterAdoption', 'throwAfterAdoption'] as const)('handles %s without an unauthorized request or false storage failure', async outcome => {
     const hook = renderHook(() => useConversation()), controller = new AbortController(); let pending!: Promise<boolean>, id = ''

@@ -115,7 +115,7 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
   // 60 fps et casserait les memo de MessageItem/Sidebar. Les fonctions,
   // elles, sont stables (useCallback à deps stables dans useStreaming).
   const {
-    canStart, startStream, getInvocationId, setActiveStream, onToken: streamToken,
+    canStart, startStream, getInvocationId, observeStreamCompletion, setActiveStream, onToken: streamToken,
     onDone: streamDone, onError: streamError, setProgressContent,
     setAbortController, resetAccumulated, hasStream, isActive, stopStreaming, discardStream, setProjectTurn, adoptGeneratedImage,
   } = streaming
@@ -825,6 +825,9 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
       clearSearchContext(targetId)
 
       const invocationId = getInvocationId(targetId)
+      if (synthesis?.observation && invocationId && observeStreamCompletion(targetId, invocationId, synthesis.observation)) {
+        synthesis.markObservationBound()
+      }
       const toolController = new AbortController()
       const imageCryptoCurrent = captureCryptoGuard(), imageFence = getSessionProjectFence()
       const assertImageScope = captureGeneratedImageView()
@@ -1314,7 +1317,7 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
       } finally { synthesis?.dispose(); finishPreparation() }
     },
     [
-      activeId, refreshConversations, canStart, startStream, getInvocationId, setActiveStream, reviewProjectRequest, setProjectTurn, adoptGeneratedImage,
+      activeId, refreshConversations, canStart, startStream, getInvocationId, observeStreamCompletion, setActiveStream, reviewProjectRequest, setProjectTurn, adoptGeneratedImage,
       streamToken, streamDone, streamError, setProgressContent,
       setAbortController, resetAccumulated, hasStream, isActive,
       setPendingFiles, pendingFilesRef, stopStreaming, discardStream,
@@ -1328,7 +1331,8 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
 
   const startClientReply = useCallback(async (args: Parameters<typeof captureClientReply>[0]) => {
     const invocation = captureClientReply(args)
-    return sendMessage(invocation.objective, invocation.conversation.id, undefined, undefined, invocation)
+    try { return await sendMessage(invocation.objective, invocation.conversation.id, undefined, undefined, invocation) }
+    finally { invocation.finishUnboundObservation() }
   }, [sendMessage])
 
   const deleteConv = useCallback(
