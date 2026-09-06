@@ -34,7 +34,19 @@ schéma D1/IDB ou activation W06 modifié. Aucun effacement de données.
   démarrage à 06:35:32 Europe/Paris, mêmes 280 suites / 3 376 réussis / 1 ignoré.
   Couverture finale 70,43 / 65,19 / 76,09 / 72,38 %. Typechecks front/back,
   no-CASA/addon, build et worker Office isolé réussis. Aucun code produit
-  modifié ensuite. Bundle App local 890,53 Ko / gzip 273,65 Ko.
+  changé avant la première PR. Bundle App local 890,53 Ko / gzip 273,65 Ko.
+- [x] Dernier delta de rapport découvert avant fusion : le timer générique de
+  bouton annonçait « Fait ! » même après refus/issue inconnue. Agenda n'utilise
+  plus ce faux reçu ; un appel pending par bouton, sans idempotence promise
+  entre deux confirmations distinctes. Le consommateur du toast garde aussi
+  le contexte/signal initial et revalide la portée durable après executor ;
+  aucun résultat privé après relink/switch/démontage. Douze tests permanents
+  ajoutés et deux GO readonly finaux sur ce delta.
+- [x] Verify de livraison après ce delta : exit 0, démarrage 06:47:30
+  Europe/Paris, **282 suites / 3 388 tests réussis / 1 ignoré**, couverture
+  70,68 / 65,25 / 76,49 / 72,66 %. Tous contrôles front/back/no-CASA/addon,
+  build et worker Office isolé réussis. Bundle App local 891,09 Ko, gzip
+  273,77 Ko. Aucun code produit changé ensuite.
 - [x] Recette Chromium headless 04:35:41.804 UTC, huit combinaisons FR/EN,
   390×900 et 1440×900, InputBar v1/v2, timezone America/New_York : vrais
   composants, crypto, grant et admission documentaire ; HTTP synthétique.
@@ -42,6 +54,10 @@ schéma D1/IDB ou activation W06 modifié. Aucun effacement de données.
   avec bouton désactivé, focus/Escape sur suppression, relink invalidant puis
   lecture explicite autre compte. Zéro erreur JS et débordement horizontal.
   Captures de review/erreur/suppression mobile relues. Réseau externe interdit.
+- [x] Nouvelle recette Chromium 04:48:49.789 UTC : les huit combinaisons
+  restent vertes ; bouton de rapport réel/handler/transport fictif ajouté en
+  FR 390 px, confirmation refusée puis réponse perdue, zéro faux « Fait ! »
+  après 2,2 s. Le résultat du hook consommateur est testé séparément en JSDOM.
 - [x] Tests permanents de protocole, client, route Pages, handlers, composants
   et hooks réels : crypto/fence/document, A→B et ABA, timeout avant/après,
   réponse JSON invalide, refus versionné, double-clic, annuler/Stop/démontage,

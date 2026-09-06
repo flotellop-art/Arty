@@ -142,6 +142,14 @@ Vérification complète, preuves permanentes et checklist de promotion dans
 depuis une réponse documentaire et les trois parcours guidés/connexions sont
 encore à réaliser. Ne pas lever les verrous documentaires pour les simuler.
 
+Avant fusion #464, suppression du faux succès temporisé de l'ancien bouton de
+rapport et garde du toast après attente ; double-clic pending refusé, ancien
+résultat non publié après relink/switch/démontage. Douze tests supplémentaires,
+deux GO finaux readonly ; verify de livraison : 282 suites / 3 388 réussis /
+1 ignoré, tous contrôles verts. Recette browser répétée à 04:48:49 UTC avec
+bouton de rapport réel, aucune écriture Google réelle. Ce contrôle n'atteste
+pas les autres anciens feedbacks de rapport, inchangés par ce lot.
+
 ### W06 A3b.8 — préparation de migrations incomplètes avant effacement, OFF
 
 Livré par #461 le 6 septembre ; activation isolée toujours OFF. Cette

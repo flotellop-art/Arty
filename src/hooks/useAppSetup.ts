@@ -79,6 +79,11 @@ export function useAppSetup(conversation: ConversationHook) {
   }, [])
 
   const toolExecutorRef = useRef(createToolExecutor(computerActions, drive))
+  const reportLifetime = useRef(new AbortController())
+  useEffect(() => {
+    const controller = new AbortController(); reportLifetime.current = controller
+    return () => controller.abort()
+  }, [])
 
   // Create tool executor and register it
   useEffect(() => {
@@ -191,11 +196,20 @@ export function useAppSetup(conversation: ConversationHook) {
           }
           break
         }
-        case 'create_event':
+        case 'create_event': {
           // Clicking a report opens a NEW creation proposal, not consent stored
           // in generated text. Documentary/restored report buttons stay inert.
-          toast((await executor('create_calendar_event', params, { calendar: { scope: captureCalendarContext() } })).result, 'info')
+          const signal = reportLifetime.current.signal
+          if (signal.aborted) break
+          const scope = captureCalendarContext(signal)
+          if (!scope) { toast(t('calendarWorkflow.unavailable'), 'error'); break }
+          const result = await executor('create_calendar_event', params, { calendar: { scope, signal } })
+          if (signal.aborted) break
+          try { await scope.validateReadOnly(); scope.assertCurrent() }
+          catch { if (!signal.aborted) toast(t('calendarWorkflow.errors.unknown'), 'error'); break }
+          if (!signal.aborted) toast(result.result, 'info')
           break
+        }
         case 'publish_wp':
           if (!window.confirm(t('chat.actionConfirm.wp', { title: params.title || '?' }))) break
           await executor('wp_create_post', { title: params.title || '', content: params.content || '', status: params.status || 'draft' })
