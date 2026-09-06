@@ -36,6 +36,8 @@ interface HomeScreenProps {
   onNewConversation?: () => void
   error?: string | null
   onDismissError?: () => void
+  connectionsAgenda?: boolean
+  onConnections?: () => void
 }
 
 type SecondarySection = 'brief' | 'agenda' | 'recents'
@@ -111,6 +113,8 @@ function HomeScreenInner({
   onNewConversation,
   error,
   onDismissError,
+  connectionsAgenda = false,
+  onConnections,
 }: HomeScreenProps) {
   const { t, i18n } = useTranslation()
   const noCasaPhase0 = isPublicGoogleOAuthProfileEnabled()
@@ -214,6 +218,20 @@ function HomeScreenInner({
     requestAnimationFrame(() => element.scrollIntoView?.({ behavior: 'smooth', block: 'start' }))
   }, [])
 
+  useEffect(() => {
+    if (!connectionsAgenda) return
+    const element = agendaDetailsRef.current
+    if (!element) return
+    element.open = true
+    let second = 0
+    const first = requestAnimationFrame(() => { second = requestAnimationFrame(() => {
+      if (document.querySelector('[role="dialog"], [role="alertdialog"], [aria-modal="true"]')) return
+      element.querySelector('summary')?.focus()
+      element.scrollIntoView?.({ block: 'start' })
+    }) })
+    return () => { cancelAnimationFrame(first); cancelAnimationFrame(second) }
+  }, [connectionsAgenda])
+
   const dismissBrief = () => {
     onDismissBrief?.()
     requestAnimationFrame(() => reopenBriefRef.current?.focus())
@@ -239,6 +257,7 @@ function HomeScreenInner({
   return (
     <div className="flex h-full min-h-0 max-w-full flex-col overflow-x-hidden bg-theme-bg text-theme-ink">
       <TopBar onMenuToggle={onMenuToggle} menuOpen={menuOpen} dateLabel={dateLabel} />
+      {connectionsAgenda && onConnections && <button type="button" onClick={onConnections} className="min-h-11 shrink-0 self-start px-4 text-sm text-theme-ink hover:underline">← {t('connections.return')}</button>}
 
       <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
         <main className="mx-auto flex min-h-full min-w-0 w-full max-w-[1060px] flex-col px-[34px] max-[899px]:px-[14px]" aria-labelledby="home-chat-title">

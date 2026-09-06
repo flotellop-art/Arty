@@ -1,4 +1,44 @@
 {
+  "connections": {
+    "title": "Connections",
+    "kicker": "Your Arty workspace",
+    "intro": "Find the services available on this device and where to configure them.",
+    "localOnly": "These indicators describe local configuration. They do not test key validity, quotas or the availability of a remote service.",
+    "back": "Back to home",
+    "return": "Back to connections",
+    "settingsDescription": "Calendar, AI keys and mail accounts: capabilities and configuration on this device.",
+    "reading": "Checking access to local settings…",
+    "unavailable": "Local settings cannot be displayed for this session.",
+    "retry": "Read local settings again",
+    "demo": "Demo mode: personal configurations are not accessible here.",
+    "platform": { "web": "Web / PWA", "android": "Android", "ios": "iOS", "other": "Other platform" },
+    "state": {
+      "configured": "Configured locally", "not-configured": "Not configured", "loading": "Loading locally",
+      "unknown": "Not verified", "unavailable": "Status unavailable", "reconnect": "Reconnection needed", "not-supported": "Not supported here"
+    },
+    "session": {
+      "title": "Arty access", "description": "Your sign-in method does not indicate your subscription. Open the access screen to check the offer and available options.",
+      "google": "Google sign-in", "email": "Email sign-in", "apikey": "Personal key sign-in", "demo": "Demo", "action": "View my access"
+    },
+    "google": {
+      "title": "Google Calendar", "description": "The existing Calendar flow lets you connect Google, then view and manage authorized events.",
+      "action": "Open Calendar settings", "unsupported": "Calendar connection is available on the web and on Android with the compatible Google module.",
+      "returnHint": "After a Google redirect, find this screen again in the Connections menu."
+    },
+    "keys": {
+      "title": "Personal AI keys", "description": "Optional with an Arty offer or trial. Personal keys use your provider’s billing.",
+      "setupNote": "The current form configures providers together and requires an Anthropic key.", "action": "Configure my keys"
+    },
+    "mail": {
+      "title": "IMAP mail", "description": "Read-only on Android: credentials remain encrypted in native storage and the mail connection runs from your phone. Adding an account tests the connection, after your consent.",
+      "count_one": "{{count}} account saved locally", "count_other": "{{count}} accounts saved locally",
+      "unknown": "Without a verifiable inventory, this status cannot establish that no accounts are saved.",
+      "unsupported": "Requires the Android application and its mail module. No web mail connector is offered here.", "action": "Configure my mail accounts"
+    },
+    "unsupported": {
+      "title": "Integrations not offered", "description": "Google Drive, Gmail OAuth, Contacts and Sheets are not user connectors available in this flow. Local documents can still be imported from projects."
+    }
+  },
   "calendarCopy": {
     "open": "Copy to Calendar",
     "title": "Prepare an appointment from a copy",

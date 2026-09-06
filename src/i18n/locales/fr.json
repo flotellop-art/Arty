@@ -1,4 +1,44 @@
 {
+  "connections": {
+    "title": "Connexions",
+    "kicker": "Votre espace Arty",
+    "intro": "Retrouvez les services disponibles sur cet appareil et leurs réglages.",
+    "localOnly": "Ces indications décrivent la configuration locale. Elles ne testent ni la validité d’une clé, ni le quota, ni la disponibilité d’un service distant.",
+    "back": "Retour à l’accueil",
+    "return": "Retour aux connexions",
+    "settingsDescription": "Agenda, clés IA et comptes mail : capacités et configuration sur cet appareil.",
+    "reading": "Vérification de l’accès aux réglages locaux…",
+    "unavailable": "Les réglages locaux ne peuvent pas être affichés pour cette session.",
+    "retry": "Relire les réglages locaux",
+    "demo": "Mode démonstration : les configurations personnelles ne sont pas accessibles ici.",
+    "platform": { "web": "Web / PWA", "android": "Android", "ios": "iOS", "other": "Autre plateforme" },
+    "state": {
+      "configured": "Configuré localement", "not-configured": "Non configuré", "loading": "Chargement local",
+      "unknown": "État non vérifié", "unavailable": "État indisponible", "reconnect": "Reconnexion nécessaire", "not-supported": "Non pris en charge ici"
+    },
+    "session": {
+      "title": "Accès à Arty", "description": "La méthode de connexion n’indique pas votre abonnement. Consultez l’écran d’accès pour l’offre et les options disponibles.",
+      "google": "Connexion Google", "email": "Connexion par e-mail", "apikey": "Connexion avec une clé personnelle", "demo": "Démonstration", "action": "Consulter mon accès"
+    },
+    "google": {
+      "title": "Agenda Google", "description": "Le parcours Agenda existant permet de connecter Google, puis de consulter et gérer les événements autorisés.",
+      "action": "Ouvrir les réglages Agenda", "unsupported": "La connexion Agenda est disponible sur le web et sur Android avec le module Google compatible.",
+      "returnHint": "Après une redirection Google, retrouvez cet écran dans le menu Connexions."
+    },
+    "keys": {
+      "title": "Clés IA personnelles", "description": "Facultatives avec une offre ou un essai Arty. Les clés personnelles utilisent la facturation de votre fournisseur.",
+      "setupNote": "Le formulaire actuel configure les fournisseurs ensemble et demande une clé Anthropic.", "action": "Configurer mes clés"
+    },
+    "mail": {
+      "title": "Mail IMAP", "description": "Lecture seule sur Android : les identifiants restent chiffrés dans le stockage natif et la connexion mail part du téléphone. L’ajout d’un compte effectue un test de connexion, après votre accord.",
+      "count_one": "{{count}} compte enregistré localement", "count_other": "{{count}} comptes enregistrés localement",
+      "unknown": "Sans inventaire vérifiable, cet état ne permet pas de conclure qu’aucun compte n’est enregistré.",
+      "unsupported": "Nécessite l’application Android et son module mail. Aucun connecteur mail web n’est proposé ici.", "action": "Configurer mes comptes mail"
+    },
+    "unsupported": {
+      "title": "Intégrations non proposées", "description": "Google Drive, Gmail OAuth, Contacts et Sheets ne sont pas des connecteurs utilisateur disponibles dans ce parcours. L’import de documents locaux reste accessible depuis les projets."
+    }
+  },
   "calendarCopy": {
     "open": "Copie vers Agenda",
     "title": "Préparer un rendez-vous depuis une copie",

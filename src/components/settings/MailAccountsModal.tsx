@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useState } from 'react'
+import { memo, useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useDialogFocusTrap } from '../../hooks/useDialogFocusTrap'
 import {
@@ -7,7 +7,10 @@ import {
   removeMailAccount,
   type MailAccountMeta,
 } from '../../services/native/mailImap'
-import { getCachedMailAccounts, refreshMailAccounts } from '../../services/mailAccounts'
+import { getCachedMailAccounts, getMailInventoryStatus, refreshMailAccounts } from '../../services/mailAccounts'
+import { captureLocalReadScope } from '../../services/projects/store'
+import { onLocalDataInvalidated } from '../../services/localDataInvalidation'
+import { documentWorkspaceSignal } from '../../services/workspaceWriter/runtime'
 
 interface MailAccountsModalProps {
   open: boolean
@@ -40,8 +43,12 @@ const PROVIDER_PRESETS: ProviderPreset[] = [
 
 export const MailAccountsModal = memo(function MailAccountsModal({ open, onClose }: MailAccountsModalProps) {
   const { t } = useTranslation()
-  const dialogRef = useDialogFocusTrap<HTMLDivElement>(open, onClose)
-  const [accounts, setAccounts] = useState<MailAccountMeta[]>(getCachedMailAccounts())
+  const tRef = useRef(t); tRef.current = t
+  type Opening = { controller: AbortController; scope: ReturnType<typeof captureLocalReadScope>; read: number; busy: boolean; validated: boolean }
+  const opening = useRef<Opening | null>(null), onCloseRef = useRef(onClose)
+  onCloseRef.current = onClose
+  const [admitted, setAdmitted] = useState(false)
+  const [accounts, setAccounts] = useState<MailAccountMeta[]>([])
   const [providerId, setProviderId] = useState('free')
   const [host, setHost] = useState(FREE_PRESET.host)
   const [email, setEmail] = useState('')
@@ -61,20 +68,65 @@ export const MailAccountsModal = memo(function MailAccountsModal({ open, onClose
   // trois critères. L'accord est redemandé à chaque nouvelle boîte.
   const [consented, setConsented] = useState(false)
 
+  const current = useCallback((ticket: Opening | null): ticket is Opening => {
+    if (!ticket || opening.current !== ticket || ticket.controller.signal.aborted) return false
+    try { ticket.scope.assertCurrent(); return true } catch { return false }
+  }, [])
+  const close = useCallback(() => {
+    opening.current?.controller.abort(); opening.current = null
+    setPassword(''); setEmail(''); setAccounts([]); setConsented(false); setAdmitted(false)
+    onCloseRef.current()
+  }, [])
+  const dialogRef = useDialogFocusTrap<HTMLDivElement>(open, close)
+
   const native = isMailImapAvailable()
   const preset = PROVIDER_PRESETS.find((p) => p.id === providerId) ?? FREE_PRESET
 
-  const reload = useCallback(async () => {
-    const list = await refreshMailAccounts()
-    setAccounts(list)
-  }, [])
+  const readInventory = useCallback((ticket: Opening) => {
+    if (!current(ticket) || !ticket.validated) return
+    const inventory = getMailInventoryStatus()
+    setAccounts(inventory.status === 'ready' ? getCachedMailAccounts() : [])
+    if (inventory.status === 'failed') setError(tRef.current('mailAccountsModal.errorGeneric'))
+  }, [current])
+  const reload = useCallback(async (ticket: Opening) => {
+    if (!current(ticket)) return
+    const read = ++ticket.read
+    await refreshMailAccounts()
+    if (!current(ticket) || ticket.read !== read) return
+    readInventory(ticket)
+  }, [current, readInventory])
 
   useEffect(() => {
-    if (open) {
-      setShowPassword(false)
-      reload()
+    if (!open) return
+    setShowPassword(false); setPassword(''); setEmail(''); setAccounts([])
+    setConsented(false); setSubmitting(false); setAdmitted(false)
+    setError(null); setErrorDetail(null); setSuccess(null)
+    const controller = new AbortController()
+    let ticket: Opening
+    try { ticket = { controller, scope: captureLocalReadScope(controller.signal), read: 0, busy: false, validated: false } }
+    catch { setError(tRef.current('mailAccountsModal.errorGeneric')); return }
+    opening.current = ticket
+    const retire = () => { if (opening.current === ticket) close() }
+    const off = onLocalDataInvalidated(retire)
+    // A native mutation from a previous opening can invalidate this inventory.
+    // Observe metadata only: no bridge, password reset or implicit consent.
+    const inventoryChanged = () => readInventory(ticket)
+    window.addEventListener('mail-accounts-updated', inventoryChanged)
+    documentWorkspaceSignal.addEventListener('abort', retire, { once: true })
+    const timer = setInterval(() => { if (!current(ticket)) retire() }, 250)
+    void (async () => {
+      try {
+        await ticket.scope.validateReadOnly()
+        if (!current(ticket)) return
+        ticket.validated = true; setAdmitted(true); await reload(ticket)
+      } catch { if (current(ticket)) setError(tRef.current('mailAccountsModal.errorGeneric')) }
+    })()
+    return () => {
+      controller.abort(); if (opening.current === ticket) opening.current = null
+      off(); clearInterval(timer); documentWorkspaceSignal.removeEventListener('abort', retire)
+      window.removeEventListener('mail-accounts-updated', inventoryChanged)
     }
-  }, [open, reload])
+  }, [open, reload, close, current, readInventory])
 
   if (!open) return null
 
@@ -88,7 +140,8 @@ export const MailAccountsModal = memo(function MailAccountsModal({ open, onClose
   }
 
   const handleAdd = async () => {
-    if (submitting) return
+    const ticket = opening.current
+    if (!admitted || !current(ticket) || ticket.busy) return
     setError(null)
     setErrorDetail(null)
     setSuccess(null)
@@ -106,7 +159,7 @@ export const MailAccountsModal = memo(function MailAccountsModal({ open, onClose
       setError(t('mailAccountsModal.errorConsent'))
       return
     }
-    setSubmitting(true)
+    ticket.busy = true; setSubmitting(true)
     try {
       const res = await addMailAccount({
         provider: providerId,
@@ -115,38 +168,49 @@ export const MailAccountsModal = memo(function MailAccountsModal({ open, onClose
         email: trimmedEmail,
         password,
       })
+      if (!current(ticket)) return
       // Le mot de passe ne vit qu'ici, en transit vers le Keystore natif —
       // on vide le champ immédiatement après l'ajout.
       setPassword('')
       setEmail('')
       // L'accord vaut pour CETTE boîte : la case se redemande pour la suivante.
       setConsented(false)
-      setSuccess(t('mailAccountsModal.success', { count: res.messageCount }))
-      await reload()
+      setSuccess(tRef.current('mailAccountsModal.success', { count: res.messageCount }))
+      await reload(ticket)
     } catch (err) {
+      if (!current(ticket)) return
       const code = err instanceof Error ? err.message : ''
       if (code.includes('auth_failed')) {
-        setError(t('mailAccountsModal.errorAuth'))
+        setError(tRef.current('mailAccountsModal.errorAuth'))
         // Le plugin suffixe la réponse du serveur : "auth_failed: <détail>".
         const detail = code.replace(/^.*auth_failed:?\s*/, '').trim()
-        if (detail) setErrorDetail(t('mailAccountsModal.errorAuthDetail', { detail }))
-      } else if (code.includes('connect_failed')) setError(t('mailAccountsModal.errorConnect'))
-      else if (code.includes('too_many_accounts')) setError(t('mailAccountsModal.errorTooMany'))
-      else if (code.includes('invalid_host')) setError(t('mailAccountsModal.errorInvalidHost'))
-      else if (code.includes('invalid_email')) setError(t('mailAccountsModal.errorInvalidEmail'))
-      else if (code.includes('invalid_password')) setError(t('mailAccountsModal.errorInvalidPassword'))
-      else setError(t('mailAccountsModal.errorGeneric'))
+        if (detail) setErrorDetail(tRef.current('mailAccountsModal.errorAuthDetail', { detail }))
+      } else if (code.includes('connect_failed')) setError(tRef.current('mailAccountsModal.errorConnect'))
+      else if (code.includes('too_many_accounts')) setError(tRef.current('mailAccountsModal.errorTooMany'))
+      else if (code.includes('invalid_host')) setError(tRef.current('mailAccountsModal.errorInvalidHost'))
+      else if (code.includes('invalid_email')) setError(tRef.current('mailAccountsModal.errorInvalidEmail'))
+      else if (code.includes('invalid_password')) setError(tRef.current('mailAccountsModal.errorInvalidPassword'))
+      else setError(tRef.current('mailAccountsModal.errorGeneric'))
     } finally {
-      setSubmitting(false)
+      if (current(ticket)) { ticket.busy = false; setSubmitting(false) }
     }
   }
 
   const handleRemove = async (account: MailAccountMeta) => {
+    const ticket = opening.current
+    if (!admitted || !current(ticket) || ticket.busy) return
     if (!window.confirm(t('mailAccountsModal.confirmRemove', { email: account.email }))) return
+    if (!current(ticket) || ticket.busy) return
+    ticket.busy = true; setSubmitting(true)
     try {
       await removeMailAccount(account.id)
+    } catch {
+      if (current(ticket)) setError(tRef.current('mailAccountsModal.errorGeneric'))
     } finally {
-      await reload()
+      if (current(ticket)) {
+        await reload(ticket)
+        if (current(ticket)) { ticket.busy = false; setSubmitting(false) }
+      }
     }
   }
 
@@ -156,7 +220,7 @@ export const MailAccountsModal = memo(function MailAccountsModal({ open, onClose
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-theme-ink/50"
-      onClick={onClose}
+      onClick={close}
     >
       <div
         ref={dialogRef}
@@ -176,7 +240,7 @@ export const MailAccountsModal = memo(function MailAccountsModal({ open, onClose
             {t('mailAccountsModal.kicker')}
           </span>
           <button
-            onClick={onClose}
+            onClick={close}
             className="grid h-11 w-11 place-items-center border border-theme-border text-theme-ink hover:border-theme-accent"
             aria-label={t('common.close')}
           >
@@ -218,6 +282,7 @@ export const MailAccountsModal = memo(function MailAccountsModal({ open, onClose
                   </div>
                   <button
                     onClick={() => handleRemove(a)}
+                    disabled={!admitted || submitting}
                     className="ml-3 shrink-0 border border-theme-border px-2.5 py-1.5 text-xs text-theme-ink hover:border-theme-accent"
                   >
                     {t('mailAccountsModal.remove')}
@@ -303,7 +368,7 @@ export const MailAccountsModal = memo(function MailAccountsModal({ open, onClose
               </div>
               <button
                 onClick={handleAdd}
-                disabled={submitting || !consented}
+                disabled={!admitted || submitting || !consented}
                 className="w-full border border-theme-ink bg-theme-ink px-4 py-3 text-sm font-medium text-theme-bg hover:opacity-90 disabled:opacity-50"
               >
                 {submitting ? t('mailAccountsModal.testing') : t('mailAccountsModal.addButton')}

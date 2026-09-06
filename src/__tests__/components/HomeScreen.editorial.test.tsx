@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { HomeScreen } from '../../components/home/HomeScreen'
 import i18n from '../../i18n'
@@ -112,6 +112,34 @@ describe('HomeScreen — accueil éditorial', () => {
   afterEach(() => {
     cleanup()
     vi.clearAllMocks()
+    vi.unstubAllGlobals()
+  })
+
+  it('opens and focuses the real Agenda summary from Connections without initiating Google login', async () => {
+    const back = vi.fn()
+    const view = render(<HomeScreen onMenuToggle={vi.fn()} onSend={vi.fn()} isStreaming={false}
+      googleAuth={googleAuth as never} drive={{} as never} connectionsAgenda onConnections={back} />)
+    const details = view.container.querySelector<HTMLDetailsElement>('#home-agenda')!
+    expect(details.open).toBe(true)
+    await waitFor(() => expect(details.querySelector('summary')).toHaveFocus())
+    expect(googleAuth.login).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: /Retour aux connexions/ }))
+    expect(back).toHaveBeenCalledOnce()
+  })
+
+  it('does not steal deferred Agenda focus from a newly opened dialog', () => {
+    const frames: FrameRequestCallback[] = []
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => { frames.push(callback); return frames.length })
+    vi.stubGlobal('cancelAnimationFrame', vi.fn())
+    const view = render(<HomeScreen onMenuToggle={vi.fn()} onSend={vi.fn()} isStreaming={false}
+      googleAuth={googleAuth as never} drive={{} as never} connectionsAgenda />)
+    act(() => { frames.shift()?.(0) })
+    const dialog = document.createElement('div'), input = document.createElement('input')
+    dialog.setAttribute('role', 'dialog'); dialog.append(input); document.body.append(dialog); input.focus()
+    try {
+      act(() => { for (const frame of frames.splice(0)) frame(0) })
+      expect(input).toHaveFocus(); expect(view.container.querySelector('#home-agenda > summary')).not.toHaveFocus()
+    } finally { dialog.remove() }
   })
 
   it('met le chat au premier plan dans sa variante hero', () => {
