@@ -33,7 +33,7 @@ supplémentaire n'est implicite dans ce mandat.
 | W05 | Livrables | Export DOCX modifiable et XLSX de tableaux, en plus des exports existants. Téléchargements relus par un parseur indépendant ; cellules dangereuses neutralisées ; aucun HTML actif ni formule arbitraire. Formats et limites documentés. | Web déployé #445 ; recette structurelle vérifiée ; rendu Office/appareil non vérifié |
 | W06 | Continuité | Sauvegarde/restauration explicites puis synchronisation optionnelle multi-appareil chiffrée avant upload, avec secret détenu par l'utilisateur et récupération expliquée. Conflits non destructifs ; reprise hors-ligne ; logout/switch/delete et compte invité traités. Un export manuel seul ne valide pas la synchronisation. | A1 #446, galerie #448, verrou document #449, capture/vérification A2 #451, préparation A3a #452, admission froide #453, runtime isolé inactif #454, migrateur journalisé OFF #455, reprise froide d'effacement v2 OFF #456, reçu distant #457, pont froid/fence v5 OFF #458 et reset local v6/v7 OFF #459 livrés ; restauration/synchronisation non livrées |
 | W07 | Comparaison | Comparer depuis une conversation avec contexte/documents autorisés ; conserver les résultats et poursuivre la réponse choisie sans perdre l'original. Erreurs/coûts/quotas de chaque panneau visibles ; EU et historique privé jamais contournés. | Web livré #462 ; recette App/navigateur synthétique vérifiée ; APK distribuée, installation physique et OAuth/facturation réels non attestés |
-| W08 | Parcours métier | Trois parcours complets : synthèse documentaire, réponse client préparée, planification Agenda avec confirmation avant écriture. Écran de connexions indiquant disponible/non configuré/non pris en charge selon plateforme. Pas de Drive/Gmail OAuth restreint ni relais IMAP serveur. | Socle Google/BYOK #463, transport Agenda #464 et pont copie documentaire/Agenda #465 livrés web ; synthèse/réponse client et connexions incomplètes |
+| W08 | Parcours métier | Trois parcours complets : synthèse documentaire, réponse client préparée, planification Agenda avec confirmation avant écriture. Écran de connexions indiquant disponible/non configuré/non pris en charge selon plateforme. Pas de Drive/Gmail OAuth restreint ni relais IMAP serveur. | Socle Google/BYOK #463, transport Agenda #464 et pont copie documentaire/Agenda #465 livrés web ; synthèse guidée validée localement, publication en cours ; réponse client et connexions incomplètes |
 | W09 | Mobile et identité | PWA installable ; identité tryarty cohérente ; distribution Android authentifiée et documentée. Ne pas rediriger vers une app Play homonyme. Toute migration appId inclut signatures/OAuth/Firebase/liens vérifiés ; un APK distribué n'est pas une publication Store. | À faire |
 | W10 | Mesure | Instrumentation minimale sans contenu utilisateur : activation, succès/échec des parcours, retour D7/D30 et conversion. Marges fondées sur coût serveur, pas un compteur local. Tableau avec période, échantillon et limites ; aucune métrique inventée. | À faire |
 
@@ -107,6 +107,22 @@ réels ; préparer protocole et instrumentation sans fabriquer leurs résultats.
   de contrôle navigateur du 5 septembre vide, aucun appareil déclaré.
 
 ## Preuves par lot
+
+### W08 — synthèse guidée, validée localement
+
+Création atomique après revue depuis Templates/Projects, sélection explicite
+overview non vide, objectif exact, source/révision/compte gardés, même moteur
+documentaire et résultat persistant. Annulation conserve le formulaire sans
+créer de fil. Réponse source copiée/exportée explicitement, pas d'Agenda ou
+d'outils IA. Accès distinct de CurrentPlan ; cap documentaire sans faux Mistral.
+
+Deux GO readonly. Verify locale : 290 suites / 3 504 réussis + 1 ignoré,
+couverture 71,10 / 65,76 / 76,86 / 73,03 %. Recette vraie App FR/EN 390/1440
+avec crypto/IDB et client IA réels, HTTP synthétique ; un appel confirmé,
+reload sans HTTP et DOCX ciblé téléchargé puis XML relu indépendamment.
+Checklist et preuves : `PROJECT_SYNTHESIS_RELEASE.md`. Publication non encore
+attestée ; réponse client, connexions, W06 restauration/sync et W09–W10 restent
+incomplets. Aucun appareil physique, OAuth ou compte réel utilisé.
 
 ### W08 — copie indépendante vers Agenda, livrée #465
 

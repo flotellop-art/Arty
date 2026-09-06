@@ -14,6 +14,10 @@ import { useTranslation } from 'react-i18next'
 import { canPurchase } from '../../services/checkout'
 import { setSelectedModel } from '../../services/modelSelector'
 import { usePlanStatus } from '../../hooks/usePlanStatus'
+import { getConversation } from '../../services/storage'
+import { isDocumentConversation } from '../../services/projects/chatPolicy'
+import { getActiveSessionEpoch, getActiveUserId } from '../../services/userSession'
+import { onLocalDataInvalidated } from '../../services/localDataInvalidation'
 
 const BUCKET_LABELS: Record<string, string> = {
   'claude-sonnet': 'Claude Sonnet/Opus',
@@ -40,7 +44,7 @@ function nextResetDate(locale: string): string {
 export const CapReachedModal = memo(function CapReachedModal() {
   const navigate = useNavigate()
   const { t, i18n } = useTranslation()
-  const [detail, setDetail] = useState<CapDetail | null>(null)
+  const [detail, setDetail] = useState<(CapDetail & { owner: string | null; epoch: number }) | null>(null)
   // Garde anti-lock (revue C-D) : le bouton bascule le sélecteur en direct,
   // en contournant le garde isProviderLocked du sélecteur normal. Aujourd'hui
   // le cap ne touche que le plan subscription (aucune famille verrouillée),
@@ -50,10 +54,11 @@ export const CapReachedModal = memo(function CapReachedModal() {
 
   useEffect(() => {
     const onCap = (e: Event) => {
-      setDetail((e as CustomEvent<CapDetail>).detail ?? {})
+      setDetail({ ...(e as CustomEvent<CapDetail>).detail, owner: getActiveUserId(), epoch: getActiveSessionEpoch() })
     }
     window.addEventListener('arty-cap-reached', onCap)
-    return () => window.removeEventListener('arty-cap-reached', onCap)
+    const unsubscribe = onLocalDataInvalidated(() => setDetail(null))
+    return () => { window.removeEventListener('arty-cap-reached', onCap); unsubscribe() }
   }, [])
 
   useEffect(() => {
@@ -62,10 +67,16 @@ export const CapReachedModal = memo(function CapReachedModal() {
       if (e.key === 'Escape') setDetail(null)
     }
     document.addEventListener('keydown', handleKey)
-    return () => document.removeEventListener('keydown', handleKey)
+    const timer = setInterval(() => {
+      if (detail.owner !== getActiveUserId() || detail.epoch !== getActiveSessionEpoch() ||
+        (detail.conversationId && !getConversation(detail.conversationId))) setDetail(null)
+    }, 250)
+    return () => { document.removeEventListener('keydown', handleKey); clearInterval(timer) }
   }, [detail])
 
   if (!detail) return null
+  const target = detail.conversationId ? getConversation(detail.conversationId) : null
+  const documentary = !!target && isDocumentConversation(target)
 
   const close = () => setDetail(null)
   const buyPack = () => {
@@ -99,7 +110,10 @@ export const CapReachedModal = memo(function CapReachedModal() {
             : t('quota.capReachedBodyNoCount', { model: modelLabel })}
         </p>
         <p className="text-sm text-theme-muted mb-5 leading-relaxed">
-          {t('quota.capReachedHint', { date: nextResetDate(i18n.language) })}
+          {documentary ? (i18n.language.startsWith('fr')
+            ? 'Votre demande reste dans le fil documentaire. Son fournisseur reste imposé par la confidentialité ; aucun changement de modèle ni nouvel envoi automatique.'
+            : 'Your request remains in the documentary chat. Its provider remains constrained by confidentiality; no model change or automatic resend.')
+            : t('quota.capReachedHint', { date: nextResetDate(i18n.language) })}
         </p>
         <div className="flex flex-col gap-2">
           {/* Play Store — pas de CTA d'achat sur natif (le hint ci-dessus
@@ -121,10 +135,13 @@ export const CapReachedModal = memo(function CapReachedModal() {
               (le chemin cap ne pose ni bandeau ni bouton retry, et l'input
               est déjà vidé — sans relance, l'utilisateur devait retaper).
               Pas de downgrade silencieux : le clic EST le consentement. */}
-          {!mistralLocked && (
+          {!mistralLocked && target && !documentary && (
             <button
               onClick={() => {
+                const current = detail.conversationId ? getConversation(detail.conversationId) : null
+                if (detail.owner !== getActiveUserId() || detail.epoch !== getActiveSessionEpoch() || !current || isDocumentConversation(current)) { close(); return }
                 setSelectedModel('mistral')
+                if (detail.owner !== getActiveUserId() || detail.epoch !== getActiveSessionEpoch()) { close(); return }
                 try {
                   window.dispatchEvent(new CustomEvent('arty-retry-last', {
                     detail: { conversationId: detail.conversationId },

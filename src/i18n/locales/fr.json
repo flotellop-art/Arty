@@ -167,6 +167,7 @@
     "discover": "Découvrir Arty"
   },
   "common": {
+    "manageAccess": "Gérer mon accès",
     "appName": "Arty",
     "cancel": "Annuler",
     "continue": "Continuer",

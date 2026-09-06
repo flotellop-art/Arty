@@ -1,8 +1,9 @@
 # W08 — synthèse documentaire et réponse client préparée
 
-6 septembre 2026. Préparation uniquement, base main `59bfbc6` (#465).
-Aucun code de ces deux parcours implémenté par cette note. Deux diagnostics
-indépendants readonly examinés : produit/accès et sécurité/fidélité.
+6 septembre 2026, base main `59bfbc6` (#465). Première verticale synthèse
+implémentée et validée localement ; publication suivie dans
+`PROJECT_SYNTHESIS_RELEASE.md`. Réponse client encore à réaliser. Deux
+diagnostics indépendants readonly examinés : produit/accès et sécurité/fidélité.
 
 ## Problème et objectif
 
@@ -92,11 +93,13 @@ Pas d'envoi client, partage public, Gmail/Drive OAuth restreint, IMAP serveur,
 nouveau fournisseur, OCR, synthèse exhaustive, sync W06 ou extension de droits.
 Le partage public existant publie à distance : il n'est pas un export local.
 
-Engineering, avant code : choisir la persistance du mode qui impose le statut
-client à ses futurs résultats sans casser les archives/anciens clients ; définir
-la création atomique du fil après approbation et le maintien du formulaire en
-cas de quota/refus ; préciser le raccord d'accès sans confondre CurrentPlan
-marketing et capacité routeur. Ces choix sont à résoudre dans la tranche,
+Pour la réponse client : choisir la persistance du mode qui impose le statut
+client à ses futurs résultats sans casser les archives/anciens clients.
+La création atomique après approbation, le formulaire owner-scoped et l'accès
+distinct de CurrentPlan sont implémentés pour la synthèse (ADR dédié).
+Les tours suivants et retries du chat restent documentaires génériques ; refaire
+une synthèse guidée demande de revenir au formulaire, sans ancien consentement.
+Les choix propres à la réponse client sont à résoudre dans la tranche,
 pas des demandes utilisateur bloquantes. Pas de délai contractuel donné.
 
 Phases : synthèse d'abord, réponse client ensuite, puis écran de connexions.

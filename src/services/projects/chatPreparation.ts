@@ -14,7 +14,9 @@ export const PROJECT_REQUEST_BINARY_LIMIT = 20 * 1024 * 1024
 // Conservative space for rules/date/instructions appended inside the clients.
 export const PROJECT_CLIENT_RESERVE = 32_000
 export interface ProjectSelection { mode: 'search' | 'overview'; documentIds: string[] }
-export type ProjectReview = { kind: 'select'; project: Project } | {
+/** Restricts one locally initiated workflow. Never inferred from saved text. */
+export interface ProjectSynthesisPolicy { kind: 'project-synthesis'; projectId: string; projectRevision: number }
+export type ProjectReview = { kind: 'select'; project: Project; policy?: ProjectSynthesisPolicy; initialDocumentIds?: string[]; onSelectionChange?(ids: string[]): void } | {
   kind: 'confirm'; context: ProjectContext | null; provider: 'claude' | 'mistral';
   question: string; textChars: number; binaryBytes: number; historyMessages: number;
   files: string[]; systemPrompt: string; comparisonModels?: [string, string]
@@ -68,12 +70,18 @@ export interface PreparedProjectChat {
 export interface ProjectPayloadArgs {
   conversation: Conversation; messages: Message[]; query: string; effectiveQuestion?: string; provider: 'claude' | 'mistral';
   preparation: DocumentPreparation; signal: AbortSignal; review: ReviewProjectRequest
+  policy?: ProjectSynthesisPolicy
 }
 
-export async function prepareProjectChat(args: ProjectPayloadArgs): Promise<PreparedProjectChat> {
+export async function prepareProjectChat(args: ProjectPayloadArgs & {
+  /** Internal admission for an empty, not-yet-persisted documentary chat. */
+  creation?: { assertCurrent(): void }
+}): Promise<PreparedProjectChat> {
   const { preparation, signal } = args
   preparation.assertCurrent()
   const original = structuredClone(args.conversation)
+  const creation = args.creation
+  if (creation && (!original.hasProjectContext || original.messages.length || !args.policy || original.projectId !== args.policy.projectId)) throw new ProjectError('unsupported')
   const euOnly = isProjectEU(original)
   let expectedConversation = projectConversationKey(original), persisted = false, engaged = false
   let committedMessages = 0, committedLastId: string | undefined
@@ -81,6 +89,11 @@ export async function prepareProjectChat(args: ProjectPayloadArgs): Promise<Prep
     preparation.assertCurrent()
     if (signal.aborted) throw new ProjectError('cancelled')
     const current = storage.getConversation(original.id)
+    if (creation && !persisted) {
+      creation.assertCurrent()
+      if (current) throw new ProjectError('conflict')
+      return
+    }
     if (!current) throw new ProjectError('conflict')
     if (!engaged) {
       if (projectConversationKey(current) !== expectedConversation) throw new ProjectError('conflict')
@@ -101,6 +114,7 @@ export async function prepareProjectChat(args: ProjectPayloadArgs): Promise<Prep
     acceptPersisted(conversation) {
       // Caller has just saved this snapshot without an intervening await.
       preparation.assertCurrent()
+      creation?.assertCurrent()
       if (persisted || conversation.id !== original.id || conversation.projectId !== original.projectId || isProjectEU(conversation) !== euOnly) throw new ProjectError('conflict')
       expectedConversation = projectConversationKey(conversation)
       const history = conversation.messages.filter(m => m.id !== 'streaming')
@@ -124,6 +138,8 @@ export async function prepareProjectPayload(args: ProjectPayloadArgs & {
   const { preparation, signal, review } = args
   preparation.assertCurrent(); args.assertConversationCurrent()
   const original = structuredClone(args.conversation), messages = structuredClone(args.messages)
+  const policy = args.policy ? structuredClone(args.policy) : undefined
+  if (policy && (policy.kind !== 'project-synthesis' || original.projectId !== policy.projectId)) throw new ProjectError('unsupported')
   const operation = await beginProjectOperation()
   const assertCurrent = () => {
     preparation.assertCurrent(); operation.assertCurrent(); args.assertConversationCurrent()
@@ -138,13 +154,17 @@ export async function prepareProjectPayload(args: ProjectPayloadArgs & {
     if (!summary || summary.status === 'deleted') throw new ProjectError('deleted')
     if (!summary.project || summary.status !== 'ready') throw new ProjectError('locked')
     if (summary.euOnly && !euOnly) throw new ProjectError('conflict')
-    const selection = await review({ kind: 'select', project: structuredClone(summary.project) }, signal)
+    if (policy && summary.revision !== policy.projectRevision) throw new ProjectError('conflict')
+    const answer = await review({ kind: 'select', project: structuredClone(summary.project), ...(policy ? { policy: structuredClone(policy) } : {}) }, signal)
     assertCurrent()
-    if (!selection || typeof selection !== 'object') throw new ProjectError('cancelled')
+    if (!answer || typeof answer !== 'object') throw new ProjectError('cancelled')
+    const selection = structuredClone(answer)
     if (!['search', 'overview'].includes(selection.mode) || !Array.isArray(selection.documentIds) || (summary.project.documents.length > 0 && !selection.documentIds.length)) throw new ProjectError('unsupported')
+    if (policy && (selection.mode !== 'overview' || !selection.documentIds.length)) throw new ProjectError('unsupported')
     context = await buildProjectContext(operation, summary.project, args.query, selection)
     assertCurrent()
   }
+  if (policy && (!context || !context.excerpts.some(excerpt => excerpt.text.trim()))) throw new ProjectError('unavailable')
   // Fully hydrate once before the preview. No lost asset silently becomes a
   // placeholder. Office files in this array have already been extracted locally.
   let sourceBytes = 0
