@@ -1,7 +1,35 @@
 // ⚠️ Bumper à CHAQUE déploiement qui touche un fichier statique non hashé
 // servi en cache-first (lp.js, manifest.json, favicon.svg) — sinon les
 // visiteurs qui l'ont en cache ne verront jamais la nouvelle version.
-const CACHE_NAME = 'arty-cache-v53'
+const CACHE_NAME = 'arty-cache-v54'
+
+// Only real public guide documents may be returned for an offline guide URL.
+// An unknown /install/* URL may previously have cached the server's SPA shell.
+const INSTALL_GUIDE_PATHS = new Set(['/install', '/install/', '/install/en', '/install/en/'])
+
+async function offlineNavigation(request, url) {
+  const isGuide = url.pathname === '/install' || url.pathname.startsWith('/install/')
+  try {
+    if (!isGuide || INSTALL_GUIDE_PATHS.has(url.pathname)) {
+      const cache = await caches.open(CACHE_NAME)
+      const cached = await cache.match(isGuide ? request : '/')
+      if (cached) return cached
+    }
+  } catch {
+    // Storage can be unavailable; always return a real public response.
+  }
+  return new Response('Hors ligne / Offline. Reconnectez-vous au réseau puis rechargez cette page. Reconnect to the internet and reload this page.', {
+    status: 503,
+    headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' },
+  })
+}
+
+function rememberResponse(event, request, response) {
+  if (!response.ok) return
+  const clone = response.clone()
+  // A cache write failure must not replace a successful network response.
+  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.put(request, clone)).catch(() => {}))
+}
 
 // ─── Push Notifications (Web Push API) ───
 self.addEventListener('push', (event) => {
@@ -83,6 +111,8 @@ self.addEventListener('fetch', (event) => {
   const { request } = event
   const url = new URL(request.url)
 
+  if (request.method !== 'GET') return
+
   // Never cache API calls
   if (url.hostname === 'api.anthropic.com' || url.hostname === 'gateway.ai.cloudflare.com') {
     return
@@ -92,7 +122,7 @@ self.addEventListener('fetch', (event) => {
   // Sans ça, le SW peut servir une réponse mise en cache (souvent une erreur
   // CORS ou un 5xx) sur /api/ai/proxy, /api/auth/token, etc.
   // → l'app croit que le proxy est cassé alors qu'il marche.
-  if (url.pathname.startsWith('/api/')) {
+  if (url.pathname === '/api' || url.pathname.startsWith('/api/')) {
     return
   }
 
@@ -114,13 +144,10 @@ self.addEventListener('fetch', (event) => {
         .then((response) => {
           // Ne jamais mettre en cache une erreur (404 typo d'URL de pub,
           // 5xx transitoire) — même garde que la branche assets ci-dessous.
-          if (response.ok) {
-            const clone = response.clone()
-            caches.open(CACHE_NAME).then((cache) => cache.put(request, clone))
-          }
+          rememberResponse(event, request, response)
           return response
         })
-        .catch(() => caches.match('/') || new Response('Offline', { status: 503 }))
+        .catch(() => offlineNavigation(request, url))
     )
     return
   }
@@ -130,10 +157,7 @@ self.addEventListener('fetch', (event) => {
     caches.match(request).then((cached) => {
       if (cached) return cached
       return fetch(request).then((response) => {
-        if (response.ok) {
-          const clone = response.clone()
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone))
-        }
+        rememberResponse(event, request, response)
         return response
       })
     })

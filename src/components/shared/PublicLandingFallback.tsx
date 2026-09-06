@@ -22,7 +22,10 @@ export function PublicLandingFallback() {
           brief proactif, désactivable dans les paramètres, peut utiliser ces événements pour
           préparer un résumé avec Anthropic (Claude), jamais pour la publicité.
         </p>
-        <nav aria-label="Informations légales" className="mt-8 flex flex-wrap gap-4 text-sm">
+        <nav aria-label="Installation et informations légales" className="mt-8 flex flex-wrap gap-4 text-sm">
+          <a className="inline-flex min-h-11 items-center underline underline-offset-4" href="/install/">
+            Guide d&apos;installation
+          </a>
           <a className="underline underline-offset-4" href="/privacy/">
             Politique de confidentialité
           </a>

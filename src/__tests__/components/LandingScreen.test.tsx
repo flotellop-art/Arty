@@ -6,11 +6,12 @@
 // 3. Discipline copy (anti-objectifs audit concurrentiel 12 juin 2026) :
 //    jamais « illimité »/« unlimited » sur la landing, et le pricing repris
 //    mot pour mot des clés upgrade.* (source de vérité) pour ne pas dériver.
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 
+const language = vi.hoisted(() => ({ resolvedLanguage: 'fr' }))
 vi.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (k: string) => k }),
+  useTranslation: () => ({ t: (k: string) => k, i18n: language }),
 }))
 
 import { LandingScreen } from '../../screens/landing'
@@ -18,6 +19,19 @@ import fr from '../../i18n/locales/fr.json'
 import en from '../../i18n/locales/en.json'
 
 describe('LandingScreen — câblage des CTA', () => {
+  beforeEach(() => { language.resolvedLanguage = 'fr' })
+
+  it.each([['fr', '/install/'], ['en-US', '/install/en/']])('câble un lien documentaire vers le guide en %s', (locale, href) => {
+    language.resolvedLanguage = locale
+    const onStart = vi.fn()
+    const onLogin = vi.fn()
+    render(<LandingScreen onStart={onStart} onLogin={onLogin} />)
+    const link = screen.getByRole('link', { name: 'landing.footer.installGuide' })
+    expect(link).toHaveAttribute('href', href)
+    expect(link).not.toHaveAttribute('target')
+    expect(onStart).not.toHaveBeenCalled()
+    expect(onLogin).not.toHaveBeenCalled()
+  })
   it('les CTA « essayer » (header, hero, cartes pricing, CTA final) appellent onStart', () => {
     const onStart = vi.fn()
     render(<LandingScreen onStart={onStart} onLogin={() => {}} />)

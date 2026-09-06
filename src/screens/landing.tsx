@@ -56,7 +56,7 @@ function CtaButton({
 }
 
 export function LandingScreen({ onStart, onLogin }: LandingScreenProps) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
 
   const features = ['models', 'calendar', 'files', 'voice'] as const
   const trust = ['limits', 'noSwitch', 'privacy', 'byok'] as const
@@ -263,6 +263,9 @@ export function LandingScreen({ onStart, onLogin }: LandingScreenProps) {
         <div className="mx-auto flex max-w-5xl flex-col items-center gap-3 px-6 py-8 text-center text-xs text-theme-muted sm:flex-row sm:justify-between sm:text-left">
           <p>{t('landing.footer.madeIn')}</p>
           <nav className="flex flex-wrap items-center justify-center gap-4">
+            <a href={i18n.resolvedLanguage?.startsWith('en') ? '/install/en/' : '/install/'} className="inline-flex min-h-11 items-center underline underline-offset-4 hover:text-theme-ink">
+              {t('landing.footer.installGuide')}
+            </a>
             <a href="/privacy/" className="underline underline-offset-4 hover:text-theme-ink">
               {t('landing.footer.privacy')}
             </a>
