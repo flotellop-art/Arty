@@ -1,7 +1,7 @@
 // ⚠️ Bumper à CHAQUE déploiement qui touche un fichier statique non hashé
 // servi en cache-first (lp.js, manifest.json, favicon.svg) — sinon les
 // visiteurs qui l'ont en cache ne verront jamais la nouvelle version.
-const CACHE_NAME = 'arty-cache-v54'
+const CACHE_NAME = 'arty-cache-v55'
 
 // Only real public guide documents may be returned for an offline guide URL.
 // An unknown /install/* URL may previously have cached the server's SPA shell.

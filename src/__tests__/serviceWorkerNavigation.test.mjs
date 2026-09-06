@@ -10,7 +10,7 @@ const cacheKey = (request) => new URL(typeof request === 'string' ? request : re
 
 function worker({ online = false, status = 200, body = 'NETWORK', openFails = false, matchFails = false, putFails = false, current = {}, old = {} } = {}) {
   const listeners = {}
-  const values = new Map(Object.entries(current).map(([key, text]) => [cacheKey(key), new Response(text)]))
+  const values = new Map(Object.entries(current).map(([key, text]) => [cacheKey(key), text instanceof Response ? text : new Response(text)]))
   const cache = {
     match: vi.fn(async (key) => {
       if (matchFails) throw new Error('unavailable')
@@ -44,6 +44,15 @@ function worker({ online = false, status = 200, body = 'NETWORK', openFails = fa
 }
 
 describe('actual public service worker navigation', () => {
+  it('uses v55 and preserves the cached guide security headers offline', async () => {
+    expect(currentName).toBe('arty-cache-v55')
+    const headers = { 'Content-Security-Policy': "default-src 'none'; script-src 'none'", 'Cache-Control': 'public, no-cache, no-transform', 'Content-Type': 'text/html; charset=utf-8' }
+    const runtime = worker({ current: { '/install/': new Response('PUBLIC GUIDE', { headers }) } })
+    const { response } = await runtime.request('/install/')
+    for (const [name, value] of Object.entries(headers)) expect(response.headers.get(name)).toBe(value)
+    expect(await response.text()).toBe('PUBLIC GUIDE')
+  })
+
   it.each(['/install/', '/install/en/', '/install', '/install/en'])('serves only the exact current cached guide for %s', async (path) => {
     const runtime = worker({ current: { '/': 'PRIVATE SHELL', [path]: 'PUBLIC GUIDE' } })
     const { response } = await runtime.request(path)
