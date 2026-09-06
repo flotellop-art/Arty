@@ -1,6 +1,6 @@
 # W09 — identité du candidat APK Firebase
 
-6 septembre 2026. Implémentation et validation locales réussies, publication à confirmer.
+6 septembre 2026. Livré par PR #472, premier candidat signé vérifié et distribué.
 Base main `70872fa9acc4960b9f50964d9513587be8d40f83` (#471), branche
 `codex/android-artifact-identity`. Aucun changement d'appId, clé de signature,
 assetlinks, OAuth, Firebase, permission ou données utilisateur.
@@ -95,8 +95,8 @@ nouvelle. Java absent du PATH a été remplacé pour cette inspection par le che
 explicite du Java déjà installé avec Android Studio, sans installation système.
 
 Logs locaux ignorés : `apk-identity-targeted.log`, `apk-identity-real-tools.log`,
-`apk-identity-verify.log`. Revue finale, verify complet et vrai candidat de la
-prochaine CI release à consigner après résultats. W06 restore/sync reste OFF ;
+`apk-identity-verify.log`. Revue finale, verify complet et premier candidat CI
+réel sont consignés ci-dessous. W06 restore/sync reste OFF ;
 guide PWA et validations appareil/Store restent distincts et inachevés.
 
 ### Validation finale locale
@@ -118,5 +118,30 @@ Log ignoré `apk-identity-final-verify.log`.
 
 Inspection readonly du même ancien APK avec le code corrigé, à
 **10:22:26.608 UTC**, exit 0, mêmes hash/signataire/version ; log ignoré
-`apk-identity-real-tools-final.log`. Le prochain run CI doit encore fournir le
-reçu de son propre candidat avant de conclure à la livraison de ce lot.
+`apk-identity-real-tools-final.log`. Ce contrôle local reste distinct du premier
+candidat CI réellement livré ci-dessous.
+
+## Premier reçu de livraison réel
+
+PR [#472](https://github.com/flotellop-art/Arty/pull/472), fusion 10:33:26 UTC,
+main `6a1ac3f8e5a5fe045607af7e2fc51508995c9738`.
+CI main [34027751323](https://github.com/flotellop-art/Arty/actions/runs/34027751323)
+tous contrôles réussis. Pages `6254b98c-5615-4ac9-9627-597690f408f0` réussie à
+10:34:20 UTC ; GET public à 10:46:40.936 UTC : six assets identiques entre
+tryarty.com et https://6254b98c.appfacade.pages.dev.
+
+Run [34027751325](https://github.com/flotellop-art/Arty/actions/runs/34027751325),
+tentative 1 : build signé, contrôle identité, distribution Firebase et upload
+JSON tous réussis ; fin 10:41:33 UTC. JSON téléchargé depuis l'artifact GitHub
+`9987708543`, nommé `arty-apk-identity-6a1ac3f8e5a5fe045607af7e2fc51508995c9738-1`.
+
+- Vérification 10:41:22.569 UTC, SDK 37.0.0 ; package `com.arty.app`, 100 / 1.0.99.
+- 4 347 467 octets ; SHA-256 APK `68f37367658ce01e8c15da1d9dcc50cad2736ea26d4fb792930d52891e910067`.
+- Signature valide ; certificat `2656e001a8bcbb6504bbbb7a2b6416e6371d21d0b86713d045f5bca22527a2e0`.
+- Assetlinks du checkout conforme, hash brut `3f6c4530b85bdb3a4b05ea0103e54ec3bd883666c4ef2814690f76ef69ddd78c`.
+- Firebase a consommé `android/app/build/outputs/verified-release/app-release.apk` ;
+  succès 10:41:28 UTC. JSON publié à 10:41:29 UTC, statut `artifact-verified`.
+
+Le succès Firebase est une preuve distincte du JSON d'identité, pas une preuve
+de réception ou d'installation physique. Les limites OAuth/VIP/Play/association
+Android ci-dessus restent applicables. W06 OFF, W09 globalement partiel.
