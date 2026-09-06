@@ -9,6 +9,7 @@ import { ProjectSources } from './ProjectSources'
 import { generatedImageIds } from '../../services/generatedImages'
 
 interface MessageItemProps {
+  onCalendarCopy?: (messageId: string) => void
   onCompare?: (messageId: string) => void
   onExport?: (messageId: string) => void
   msg: Message
@@ -22,7 +23,7 @@ interface MessageItemProps {
   isLast?: boolean
 }
 
-const MessageItem = memo(function MessageItem({ msg, index, onExport, onAction, onBranch, onCompare, onTogglePin, onEdit, onRetry, onReport, isLast }: MessageItemProps) {
+const MessageItem = memo(function MessageItem({ msg, index, onExport, onCalendarCopy, onAction, onBranch, onCompare, onTogglePin, onEdit, onRetry, onReport, isLast }: MessageItemProps) {
   const { t } = useTranslation()
   const handleBranch = useCallback(() => onBranch?.(index), [onBranch, index])
   const handleTogglePin = useCallback(() => onTogglePin?.(msg.id), [onTogglePin, msg.id])
@@ -73,6 +74,7 @@ const MessageItem = memo(function MessageItem({ msg, index, onExport, onAction, 
           // contenu partiel, non persisté tel quel.
           onReport={onReport && msg.id !== 'streaming' ? handleReport : undefined}
           onExport={onExport && msg.id !== 'streaming' ? handleExport : undefined}
+          onCalendarCopy={onCalendarCopy && msg.id !== 'streaming' && !msg.interrupted ? () => onCalendarCopy(msg.id) : undefined}
           model={msg.model}
           reasonCode={msg.reasonCode}
           subModelReasonCode={msg.subModelReasonCode}
@@ -87,6 +89,7 @@ const MessageItem = memo(function MessageItem({ msg, index, onExport, onAction, 
 })
 
 interface MessageListProps {
+  onCalendarCopy?: (messageId: string) => void
   onCompare?: (messageId: string) => void
   onExport?: (messageId: string) => void
   messages: Message[]
@@ -113,7 +116,7 @@ interface MessageListProps {
 // Différent du comportement antérieur qui suivait le bas en permanence
 // — ça forçait à descendre à chaque token et empêchait de naviguer.
 
-export const MessageList = memo(function MessageList({ messages, isStreaming, streamingContent, streamingImages, conversationId, onExport, onAction, onBranch, onCompare, onTogglePin, onEdit, onRetry, onReport }: MessageListProps) {
+export const MessageList = memo(function MessageList({ messages, isStreaming, streamingContent, streamingImages, conversationId, onExport, onCalendarCopy, onAction, onBranch, onCompare, onTogglePin, onEdit, onRetry, onReport }: MessageListProps) {
   const { t } = useTranslation()
   const scrollRef = useRef<HTMLDivElement>(null)
   const prevMessagesCount = useRef(messages.length)
@@ -223,6 +226,7 @@ export const MessageList = memo(function MessageList({ messages, isStreaming, st
               onRetry={onRetry}
               onReport={onReport}
               onExport={onExport}
+              onCalendarCopy={isStreaming ? undefined : onCalendarCopy}
               // « Régénérer » uniquement sur la dernière réponse assistant,
               // et jamais pendant qu'un stream est en cours (P0.4).
               isLast={!isStreaming && index === lastAssistantIdx}

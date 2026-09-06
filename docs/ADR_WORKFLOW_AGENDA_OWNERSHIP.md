@@ -1,7 +1,7 @@
 # ADR W08 — propriété des requêtes Google avant les parcours métier
 
 Statut : socle d'authentification **livré sur le web par #463**, main `2da5735` ;
-transport Agenda implémenté et en recette avant publication ; les trois
+transport Agenda **livré web par #464**, main `a3724e3` ; les trois
 parcours métier restent incomplets. Reçus et limites :
 `GOOGLE_OWNERSHIP_RELEASE.md` et `CALENDAR_TRANSPORT_RELEASE.md`.
 Date : 6 septembre 2026. Base : main `d80efb4`, W07 #462.
@@ -194,10 +194,10 @@ Ce relevé n'est pas une attestation d'implémentation ni une disponibilité Age
 - [x] Deux diagnostics contradictoires examinés et découpage accepté.
 - [x] Reproductions permanentes des courses auth, puis correctif de propriété.
 - [x] Revue, recette et livraison web du socle ; APK attesté séparément.
-- [x] Transport Agenda, consentement initial et chemins InputBar/outils implémentés et testés localement ; publication suivie séparément.
+- [x] Transport Agenda, consentement initial et chemins InputBar/outils livrés web #464 ; reçus main/APK suivis séparément.
 - [ ] Trois verticales et écran connexions : validation complète séparée.
 
-### Transport implémenté le 6 septembre, avant publication
+### Transport livré web le 6 septembre, #464
 
 Le client capture le grant Google et la portée locale/documentaire avant les
 attentes. Il vérifie la barrière durable en lecture seule avant dispatch et
@@ -231,3 +231,5 @@ preuve navigateur couvre les composants réels et le transport simulé, pas un
 parcours complet App/OAuth/appareil. Notes longues dans le dialogue natif et
 WebView physique ne sont pas attestées. Les trois verticales guidées et
 l'écran de connexions nécessitent leur propre implémentation/recette.
+Le prochain pont applicatif est décidé dans `ADR_WORKFLOW_DOCUMENT_COPY.md`,
+sans réactiver les actions générées dans les fils documentaires.

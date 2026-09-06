@@ -11,6 +11,7 @@ import { speak, cancel as cancelTts, getSpeakingId, onSpeakingChange, isTtsSuppo
 import { isAllowedReportAction } from '../../services/reportActions'
 
 interface AssistantBubbleProps {
+  onCalendarCopy?: () => void
   onExport?: () => void
   content: string
   generatedImages?: readonly string[]
@@ -47,7 +48,7 @@ interface AssistantBubbleProps {
   subModelReasonCode?: string
 }
 
-export const AssistantBubble = memo(function AssistantBubble({ content, generatedImages, historical = false, onExport, onAction, pinned, onTogglePin, interrupted, onRetry, factCheck, isStreaming, isLast, onBranch, onReport, model, requestedModel, modelSource, reasonCode, subModelReasonCode }: AssistantBubbleProps) {
+export const AssistantBubble = memo(function AssistantBubble({ content, generatedImages, historical = false, onExport, onCalendarCopy, onAction, pinned, onTogglePin, interrupted, onRetry, factCheck, isStreaming, isLast, onBranch, onReport, model, requestedModel, modelSource, reasonCode, subModelReasonCode }: AssistantBubbleProps) {
   const { t } = useTranslation()
   const bubbleRef = useRef<HTMLDivElement>(null)
   const calendarPending = useRef(new WeakSet<HTMLElement>())
@@ -174,6 +175,7 @@ export const AssistantBubble = memo(function AssistantBubble({ content, generate
           pour la navigation clavier. */}
       <div className="basis-full flex flex-wrap justify-end items-center gap-0.5">
         {content && !isStreaming && onExport && <button onClick={onExport} aria-label="Exporter cette réponse en Word ou Excel" title="Exporter cette réponse en Word ou Excel" className="opacity-50 md:opacity-0 md:group-hover/bubble:opacity-100 focus-visible:opacity-100 p-2 rounded-md text-theme-muted hover:text-theme-accent">⇩</button>}
+        {content.trim() && !isStreaming && !interrupted && onCalendarCopy && <button onClick={onCalendarCopy} className="min-h-11 px-2 text-xs text-theme-muted hover:text-theme-accent">{t('calendarCopy.open')}</button>}
         {/* Régénérer proactif — distinct du bandeau `interrupted` (retry de
             récupération) : ici c'est « j'aime pas la réponse, relance ».
             Uniquement sur la dernière réponse, jamais pendant un stream. */}

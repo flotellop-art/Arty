@@ -55,17 +55,34 @@ function captureGrantCrypto(): () => boolean {
   return () => generationCurrent() && keyCurrent() && !isCryptoInitializing()
 }
 let cacheOwner: GoogleStorageOwner | null = null
+const grantInvalidationListeners = new Set<() => void>()
+let notifyingGrantInvalidation = false
+/** Local, content-free notification. It never refreshes or reconnects Google. */
+export function onGoogleGrantInvalidated(listener: () => void): () => void {
+  grantInvalidationListeners.add(listener)
+  return () => { grantInvalidationListeners.delete(listener) }
+}
 function revokeGrant(): number {
   grantAdmissionOpen = false
   grantCryptoCurrent = () => false
   validAccessTokenRefresh = null
   refreshAttempt = null
-  return ++grantEpoch
+  const revokedEpoch = ++grantEpoch
+  // Close authority BEFORE callbacks, including reentrant readers. Preserve
+  // this call's epoch if a callback starts another installation.
+  if (!notifyingGrantInvalidation) {
+    notifyingGrantInvalidation = true
+    try { for (const listener of [...grantInvalidationListeners]) { try { listener() } catch { /* isolate observers */ } } }
+    finally { notifyingGrantInvalidation = false }
+  }
+  return revokedEpoch
 }
-function ensureCacheOwner(): void {
+function ensureCacheOwner(): boolean {
   const owner = currentStorageOwner()
-  if (cacheOwner && !storageOwnerMatches(cacheOwner)) resetGoogleMemCache()
-  cacheOwner = owner
+  const resets = !!cacheOwner && !storageOwnerMatches(cacheOwner), expectedEpoch = grantEpoch + (resets ? 1 : 0)
+  if (resets) resetGoogleMemCache()
+  cacheOwner = currentStorageOwner()
+  return storageOwnerMatches(owner) && grantEpoch === expectedEpoch
 }
 
 interface ValidAccessTokenRefresh {
@@ -119,7 +136,7 @@ function sameGoogleRecords(raws: (string | null)[]) { return GOOGLE_RECORD_KEYS.
  * capability is not evidence of absent encrypted credentials. No OAuth request,
  * promotion of scopes, forced bootstrap or historical-cache rewrite here. */
 export async function prepareGoogleKeyChange(): Promise<GoogleKeyChange | null> {
-  ensureCacheOwner()
+  if (!ensureCacheOwner()) throw new GoogleKeyTransferUnavailable()
   const raws = googleRecords()
   if (!hasPendingKeyTransfer() && !raws.slice(0, 4).some(raw => raw !== null) && !memTokens && !memUser) return null
   const lease = captureGrantContext(), owner = currentStorageOwner(), cryptoCurrent = captureCryptoGuard()
@@ -137,7 +154,8 @@ export async function prepareGoogleKeyChange(): Promise<GoogleKeyChange | null> 
     raws[1] !== null ? decrypt(raws[1]!) : Promise.resolve(raws[3])]).catch(() => { throw new GoogleKeyTransferUnavailable() })
   assertSource()
   if (stored[0] !== JSON.stringify(tokens) || stored[1] !== JSON.stringify(user)) throw new GoogleKeyTransferUnavailable()
-  const epoch = revokeGrant(), tokenGeneration = ++tokenStorageGeneration, userGeneration = ++userStorageGeneration
+  const tokenGeneration = ++tokenStorageGeneration, userGeneration = ++userStorageGeneration, epoch = revokeGrant()
+  if (!storageOwnerMatches(owner) || epoch !== grantEpoch || !cryptoCurrent()) throw new GoogleKeyTransferUnavailable()
   const nonce = crypto.randomUUID()
   let begun = false
   const assertAuthority = () => {
@@ -487,7 +505,7 @@ export async function exchangeCode(
   redirectUriOverride?: string,
   persistGrant = false,
 ): Promise<GoogleTokens> {
-  ensureCacheOwner()
+  if (!ensureCacheOwner()) throw new Error('Google token exchange was superseded')
   const exchangeOwner = currentStorageOwner(), exchangeEpoch = grantEpoch
   // Native Google Sign-In returns a serverAuthCode that must be exchanged
   // with redirect_uri='' (BUG 2/28); web codes use getRedirectUri(). The
@@ -565,7 +583,7 @@ function storageOwnerMatches(expected: GoogleStorageOwner): boolean {
  * pending-transfer state. Only the actual writer receipt may advance it. */
 export function captureGoogleAuthIntent(): () => boolean {
   try {
-    ensureCacheOwner()
+    if (!ensureCacheOwner()) return () => false
     const owner = currentStorageOwner(), epoch = grantEpoch, cryptoCurrent = captureGrantCrypto()
     return () => storageOwnerMatches(owner) && epoch === grantEpoch && cryptoCurrent()
   } catch { return () => false }
@@ -576,9 +594,11 @@ export async function storeTokens(
   expectedOwner?: GoogleStorageOwner,
   onWriteStarted?: (isCurrent: () => boolean) => void,
 ): Promise<boolean> {
-  ensureCacheOwner()
-  if ((expectedOwner && !storageOwnerMatches(expectedOwner)) || isCryptoInitializing() || hasPendingKeyTransfer()) return false
-  const epoch = revokeGrant(), owner = currentStorageOwner(), cryptoCurrent = captureGrantCrypto()
+  const owner = currentStorageOwner(), cryptoCurrent = captureGrantCrypto()
+  if (!ensureCacheOwner()) return false
+  if (!storageOwnerMatches(owner) || !cryptoCurrent() || (expectedOwner && !storageOwnerMatches(expectedOwner)) || isCryptoInitializing() || hasPendingKeyTransfer()) return false
+  const epoch = revokeGrant()
+  if (!storageOwnerMatches(owner) || epoch !== grantEpoch || !cryptoCurrent()) return false
   onWriteStarted?.(() => storageOwnerMatches(owner) && epoch === grantEpoch && cryptoCurrent())
   const committed = await writeTokens(tokens, expectedOwner ?? owner, () => epoch === grantEpoch && cryptoCurrent())
   if (epoch !== grantEpoch || !storageOwnerMatches(owner) || !cryptoCurrent()) return false
@@ -650,9 +670,9 @@ export async function storeMailboxFreeGrant(
     onWriteStarted?: (isCurrent: () => boolean) => void
   } = {},
 ): Promise<GoogleTokens> {
-  ensureCacheOwner()
-  const ownerAtStart = currentStorageOwner()
-  if (expectedOwner && !storageOwnerMatches(expectedOwner)) {
+  const ownerAtStart = currentStorageOwner(), cryptoAtStart = captureGrantCrypto()
+  if (!ensureCacheOwner()) throw new Error('Google grant storage was superseded')
+  if (!storageOwnerMatches(ownerAtStart) || !cryptoAtStart() || (expectedOwner && !storageOwnerMatches(expectedOwner))) {
     throw new Error('Google grant storage was superseded')
   }
   const existingTokens = getStoredTokens()
@@ -683,10 +703,12 @@ export async function storeMailboxFreeGrant(
   if (pendingTransfer !== null) {
     // Only a newly verified, coherent sign-in may complete an interrupted pair.
     if (!memUser || normalizedGoogleEmail(memUser.email) !== verifiedEmail || !isCryptoReady()) throw new GoogleKeyTransferUnavailable()
-    const epoch = revokeGrant(), cryptoCurrent = captureCryptoGuard(), assertNotErasing = captureOwnerErasureGuard(ownerAtStart.userId)
+    const cryptoCurrent = captureCryptoGuard(), assertNotErasing = captureOwnerErasureGuard(ownerAtStart.userId), user = memUser
     const tokenGeneration = ++tokenStorageGeneration, userGeneration = ++userStorageGeneration
+    const epoch = revokeGrant()
+    if (!storageOwnerMatches(ownerAtStart) || epoch !== grantEpoch || !cryptoCurrent()) throw new GoogleKeyTransferUnavailable()
     options.onWriteStarted?.(() => storageOwnerMatches(ownerAtStart) && epoch === grantEpoch && cryptoCurrent())
-    committed = await writeGooglePairStrict(mailboxFreeTokens, memUser, pendingTransfer, () => {
+    committed = await writeGooglePairStrict(mailboxFreeTokens, user, pendingTransfer, () => {
       assertNotErasing()
       return epoch === grantEpoch && storageOwnerMatches(ownerAtStart) && cryptoCurrent() &&
         tokenGeneration === tokenStorageGeneration && userGeneration === userStorageGeneration
@@ -713,9 +735,11 @@ export async function storeUser(
   expectedOwner?: GoogleStorageOwner,
   onWriteStarted?: (isCurrent: () => boolean) => void,
 ): Promise<boolean> {
-  ensureCacheOwner()
-  if ((expectedOwner && !storageOwnerMatches(expectedOwner)) || isCryptoInitializing()) return false
-  const epoch = revokeGrant(), owner = currentStorageOwner(), cryptoCurrent = captureGrantCrypto()
+  const owner = currentStorageOwner(), cryptoCurrent = captureGrantCrypto()
+  if (!ensureCacheOwner()) return false
+  if (!storageOwnerMatches(owner) || !cryptoCurrent() || (expectedOwner && !storageOwnerMatches(expectedOwner)) || isCryptoInitializing()) return false
+  const epoch = revokeGrant()
+  if (!storageOwnerMatches(owner) || epoch !== grantEpoch || !cryptoCurrent()) return false
   onWriteStarted?.(() => storageOwnerMatches(owner) && epoch === grantEpoch && cryptoCurrent())
   // Remain closed between identity publication and the following grant install.
   return writeUser(user, expectedOwner ?? owner, () => epoch === grantEpoch && cryptoCurrent())
@@ -1004,7 +1028,7 @@ export async function fetchGoogleUser(
   accessToken: string,
   persistUser = true,
 ): Promise<GoogleUser> {
-  ensureCacheOwner()
+  if (!ensureCacheOwner()) throw new Error('Google identity lookup was superseded')
   const requestOwner = currentStorageOwner(), requestEpoch = grantEpoch
   const t = withTimeout(FETCH_TIMEOUT_MS)
   let res: Response
@@ -1039,7 +1063,7 @@ export async function fetchGoogleUser(
  * legacy plain-JSON copy for unmigrated data. Returns null if not connected.
  */
 export function getStoredTokens(): GoogleTokens | null {
-  ensureCacheOwner()
+  if (!ensureCacheOwner()) return null
   if (hasPendingKeyTransfer()) return null
   if (memTokens) return { ...memTokens }
   const legacy = scoped.getJSON<GoogleTokens>(TOKENS_PLAIN_KEY)
@@ -1048,7 +1072,7 @@ export function getStoredTokens(): GoogleTokens | null {
 }
 
 export function getStoredUser(): GoogleUser | null {
-  ensureCacheOwner()
+  if (!ensureCacheOwner()) return null
   if (hasPendingKeyTransfer()) return null
   if (memUser) return { ...memUser }
   const legacy = scoped.getJSON<GoogleUser>(USER_PLAIN_KEY)
@@ -1070,8 +1094,12 @@ export function getStoredUser(): GoogleUser | null {
  */
 export async function bootstrapGoogleStorage(): Promise<void> {
   if (!isCryptoReady()) return
-  ensureCacheOwner()
+  const ownerAtStart = getActiveUserId(), epochAtStart = getActiveSessionEpoch(), cryptoCurrent = captureCryptoGuard()
+  const sessionCurrent = () => ownerAtStart === getActiveUserId() && epochAtStart === getActiveSessionEpoch() && cryptoCurrent()
+  if (!ensureCacheOwner()) return
+  if (!sessionCurrent()) return
   const bootGrantEpoch = revokeGrant()
+  if (!sessionCurrent() || bootGrantEpoch !== grantEpoch) return
   // This attempt must read its own candidates, not re-admit a previous cache
   // after missing records or an early return during decryption.
   tokenStorageGeneration += 1
@@ -1079,10 +1107,6 @@ export async function bootstrapGoogleStorage(): Promise<void> {
   memTokens = null
   memUser = null
   let bootCompleted = false
-  const ownerAtStart = getActiveUserId()
-  const epochAtStart = getActiveSessionEpoch()
-  const cryptoCurrent = captureCryptoGuard()
-  const sessionCurrent = () => ownerAtStart === getActiveUserId() && epochAtStart === getActiveSessionEpoch() && cryptoCurrent()
   let expectedTokenGeneration = tokenStorageGeneration
   let expectedUserGeneration = userStorageGeneration
   const tokenContextIsCurrent = () =>
@@ -1191,8 +1215,11 @@ export async function bootstrapGoogleStorage(): Promise<void> {
 }
 
 export function logout(options: { preserveReconsent?: boolean; notify?: boolean } = {}): void {
-  ensureCacheOwner()
-  revokeGrant()
+  const owner = currentStorageOwner()
+  if (!ensureCacheOwner()) return
+  if (!storageOwnerMatches(owner)) return
+  const epoch = revokeGrant()
+  if (!storageOwnerMatches(owner) || epoch !== grantEpoch) return
   tokenStorageGeneration += 1
   userStorageGeneration += 1
   memTokens = null
@@ -1220,13 +1247,14 @@ export function logout(options: { preserveReconsent?: boolean; notify?: boolean 
  * readers (getStoredTokens) — until bootstrapGoogleStorage() repopulates.
  */
 export function resetGoogleMemCache(): void {
-  revokeGrant()
   cacheOwner = currentStorageOwner()
   tokenStorageGeneration += 1
   userStorageGeneration += 1
   memTokens = null
   memUser = null
   googleStorageReady = false
+  // Nothing after notification may erase a reentrant owner's new cache.
+  revokeGrant()
 }
 
 export function isConnected(): boolean {
