@@ -34,24 +34,28 @@ export function parseLegacyWorkspaceKey(key: string): { owner: string | null; sl
   }
   return null
 }
+/** Explicitly different historical subsets. Cold proofs remain UUID-only;
+ * logout also knows old ASCII conversation IDs such as conv-1. Ambiguous keys
+ * return null, never an owner inferred from the first colon. */
+export function parseComposerDraftOwnership(tail: string, mode: 'strict' | 'logout'): { owner: string; slot: string } | null {
+  let owner: string, slot: string
+  if (tail.endsWith(':home')) { owner = tail.slice(0, -5); slot = 'home' }
+  else {
+    const match = tail.match(mode === 'logout' ? /:conversation:([A-Za-z0-9_-]+)$/ : /:conversation:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i)
+    if (!match) return null
+    owner = tail.slice(0, -match[0].length); slot = `conversation:${match[1]}`
+  }
+  if (!owner.length || owner.length > 128 || owner === 'anonymous' || owner.includes(':conversation:') || owner.endsWith(':conversation')) return null
+  return { owner, slot }
+}
 /** Closed historical families, never the first '-' or ':' of an opaque owner.
  * Unknown draft/report forms and colliding interpretations refuse explicitly.
  * IDs outside the supported historical subset are NOT treated as absent. */
 export function parseOwnedLocalKey(key: string): LocalOwnership | null {
   if (key.startsWith('arty-composer-draft:')) {
-    const tail = key.slice('arty-composer-draft:'.length)
-    let owner: string, slot: string
-    if (tail.endsWith(':home')) { owner = tail.slice(0, -5); slot = 'home' }
-    else {
-      const match = tail.match(/:conversation:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i)
-      if (!match) return refuse()
-      owner = tail.slice(0, -match[0].length); slot = `conversation:${match[1]}`
-    }
-    assertOpaqueOwner(owner)
-    // 'anonymous' also encoded null historically; a nested conversation marker
-    // can be an old draft ID or part of the owner. Neither may be adopted.
-    if (owner === 'anonymous' || owner.includes(':conversation:') || owner.endsWith(':conversation')) return refuse()
-    return { owner, kind: 'draft', slot }
+    const parsed = parseComposerDraftOwnership(key.slice('arty-composer-draft:'.length), 'strict')
+    if (!parsed) return refuse()
+    return { ...parsed, kind: 'draft' }
   }
   const workspace = parseLegacyWorkspaceKey(key)
   if (workspace) return { ...workspace, kind: 'workspace' }

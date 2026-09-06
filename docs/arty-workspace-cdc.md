@@ -108,6 +108,47 @@ réels ; préparer protocole et instrumentation sans fabriquer leurs résultats.
 
 ## Preuves par lot
 
+### W06 A3b.7 — effacement depuis une migration complète interrompue, candidat OFF
+
+Implémenté le 6 septembre ; vérification complète réussie, livraison en cours.
+La supersession v3→v6 locale est proposée uniquement après attestation exacte
+source/journal/destinations/targets LS pour verified ou copied physiquement
+complet. L'aperçu reste privé et figé jusqu'au CAS. Aucun effacement ni marqueur
+préalable ; reload puis nettoyage v6/v7 déjà livré. Copied absent/partiel ou
+phase précoce refuse explicitement et conserve les octets. Pas de nouveau
+format, ni adoption de compte depuis un simple libellé, ni confirmation serveur.
+
+L'UI lie son premier choix avant l'import différé, affiche l'identifiant opaque
+échappé pour les homonymes, et exige un reload pour changer d'action après claim.
+« Demande enregistrée » n'annonce pas une purge terminée. Fix adjacent actif sur
+le parcours courant : logout supprime les brouillons RAM/LS du seul owner exact,
+préserve les voisins a:b/a-b et conserve les anciennes formes ambiguës. Le
+parseur froid reste strict ; conv-1 est reconnu seulement par le mode logout.
+
+Preuves ciblées : 105 tests verts sur les quatre suites de services avant les
+derniers ajouts UI ; puis 43/43 workspaceResetCycle verts, typecheck front/back
+vert. Vrais composants/useAuth/KDF/stores avec fake-IDB/JSDOM : B se connecte,
+déchiffre et écrit, A est recréé puis effacé une deuxième fois. Six frontières
+de crash du nettoyeur ; snapshot changé, CAS tardif, document perdu, double
+confirmation, commit incertain, ancien migrateur et unmount/choix UI exclusif.
+Ces preuves ne sont ni une recette navigateur installée ni une recette UI APK.
+
+Validation complète finale : `npm run verify` exit 0, 268 suites, 3 117 tests
+verts et 1 ignoré ; typechecks front/back, add-on/no-CASA, build et worker Office
+réel verts. Couverture statements 68,16 %, branches 63,06 %, fonctions 73,91 %,
+lignes 69,89 %. Avertissements de gros chunks préexistants, non bloquants.
+Deux GO finaux indépendants, bornés au candidat OFF, après correction des
+objections ; pas de blocage restant sur ce diff. Revues readonly, tests exécutés
+par l'agent principal et non indépendamment par les relecteurs.
+
+Checklist de déploiement : deux contre-revues readonly, suite verify complète,
+CI PR et preview avant fusion normale, puis reçus Pages/main/APK et GET publics.
+`ISOLATED_WORKSPACE_ENABLED=false` inchangé ; aucune migration D1 ni donnée
+utilisateur modifiée. Repli en cas de régression login/logout/legacy : PR de
+revert par la même CI, jamais downgrade/effacement de reçus v6/v7. Pas d'accès
+à une télémétrie globale d'erreurs/latence : ne pas en inventer. W06 reste
+incomplet (v3 précoce/partiel, restauration, synchronisation, recette appareil).
+
 ### W06 A3b.6 — nouvel espace local après effacement, candidat OFF
 
 Livré via #459, activation isolée toujours OFF ; reçus ci-dessous.

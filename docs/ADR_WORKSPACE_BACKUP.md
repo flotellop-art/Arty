@@ -1269,3 +1269,52 @@ Conserver le GC par clé exacte ; résolution partagée avec sous-ensemble legac
 non ambigu pour logout sans élargissement silencieux du parser de migration.
 Tester vrai logout avec a, a:b, a-b, Unicode, UUID, conv-1 et formes ambiguës
 anonymous/:conversation: conservées explicitement. Ces notes ne lèvent aucun gate.
+
+##### A3b.7 — supersession v3 physiquement complète, implémentation bornée
+
+6 septembre 2026. Décision issue des deux contre-revues indépendantes : garder
+le protocole v6/v7 existant et un constructeur privé dans migration.ts. L'acteur
+froid capture le header admis complet ; inspect fige intérieurement plan et
+paires LS après attestation de toutes les copies. confirm accepte seulement un
+owner non nul de cet aperçu, lié avant le premier await. Il réatteste l'aperçu,
+construit une autorité locale neuve, puis réatteste encore avant l'unique CAS
+v3→v6 reserved. La comparaison LS est synchrone dans la transaction de contrôle.
+Le projecteur readonly readErasureProof est partagé ; aucun builder public
+d'autorité, appel à resume(), marker actif, purge, KDF ou requête réseau.
+
+`copied` ne dispense jamais de vérifier les deux destinations et chaque paire
+LS cible. Absence/partiel refuse sans créer de base. Aucune adoption d'un nouveau
+baseline B depuis le hash global. Après échec de commit, seul le même choix
+peut reprendre ; seul le v6 exact de sa tentative peut acquitter un commit
+incertain. L'ancien acteur de migration appartient au document retiré.
+
+UI : choix exclusif avant import différé ; une capacité froide par document.
+Après inspection ou tentative de reprise, changer d'action demande un reload.
+Les homonymes affichent l'ID opaque JSON ; contrôles C1/bidi et invisibles usuels
+sont échappés sans normalisation. Labels bornés, facultatifs, non autoritaires.
+Les callbacks après démontage n'ouvrent pas d'acteur tardif et ne réaffichent pas
+la sélection. Le succès indique seulement « demande enregistrée » : reload
+avant purge existante, puis v7 et login explicite pour recréer A.
+
+Correction adjacente : le logout résout exactement les brouillons RAM/LS au
+lieu d'effacer par préfixe owner. Le mode logout accepte les anciens IDs ASCII
+tels que conv-1 ; le mode froid reste UUID-only. anonymous, owners portant le
+marqueur conversation et formes inconnues sont conservés, pas devinés. Le GC
+par clé exacte est inchangé. Le vrai useAuth.logout conserve et redéchiffre B/C
+pour A=a et A Unicode, dont les voisins :b et -b.
+
+Recette automatisée : vrai écran → CAS sans purge → nouveaux documents →
+nettoyeur → vrai login B, lecture/écriture de projets/documents/historique/pièces,
+recréation A et deuxième cycle. Négatifs : copies absentes/partielles, mutations
+header/label/source/target/journal/destination, liste caller falsifiée, CAS LS et
+perte du document, doubles confirmations A/B, nonce conservé après échec,
+acquittement perdu exact vs remplacé, ancien migrateur, six coupures de purge
+(fenced/plan/local/native/verified/ready), premier clic UI exclusif et démontage.
+URL OAuth et vérificateur session conservés ; fetch interdit par les tests.
+
+Limites inchangées : activation OFF, pas de migration/effacement réel en
+production ; réservations v3 précoces ou destinations incomplètes refusées,
+pas encore un effacement alternatif pour ces états. Pas de restauration/sync
+livrée ni clôture W06. JSDOM/fake-IDB simulent documents et rechargements ; les
+tests natifs de #459 ne constituent pas une recette UI APK de cette nouveauté.
+La protection reste coopérative, non atomique entre DB et LS.

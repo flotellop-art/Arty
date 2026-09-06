@@ -142,7 +142,9 @@ async function attestFences(db: IDBPDatabase, header: ErasureHeader, guard: Atte
   if (!allowed.some(p => equal(p, pair))) return refuse()
   return pair
 }
-async function proof(copies: Copy[], job: IDBPDatabase, header: ErasureHeader, guard: Attempt): Promise<{ value: ErasureProof; absent: boolean }> {
+/** Internal readonly projector shared with the v3 supersession actor. It grants
+ * no authority, constructs no header and exposes no control writer. */
+export async function readErasureProof(copies: Copy[], job: IDBPDatabase, header: ErasureHeader, guard: Attempt): Promise<{ value: ErasureProof; absent: boolean }> {
   await attestFences(copies[1]!.projects, header, guard)
   const local = await erasureLocalSnapshot(header.generation, header.erasure.owner, header.version)
   guard.assertCurrent()
@@ -242,7 +244,7 @@ async function erase(guard: Attempt, knownFinal: unknown, remember: (v: unknown)
         generation: layout.generation, revision: initial.revision + 1, requiredOwners,
         version: 6, resets, erasure: { ...identity, authority: receipt, fence: { initialLocal: pair[0], initialActive: pair[1], target },
           reset: { resetId, previousResetId: priorReset?.resetId ?? null } } }
-      candidate.erasure.proof = (await proof(copies, job, candidate, guard)).value
+      candidate.erasure.proof = (await readErasureProof(copies, job, candidate, guard)).value
       header = parseErasureHeader(candidate)
       if (!header) return refuse()
       if (!equal(pair, await fences(active, guard)) || !equal(await transaction(active, ['meta'], 'readonly', guard, tx => readReceipts(tx, guard)), [receipt])) return refuse()
@@ -252,7 +254,7 @@ async function erase(guard: Attempt, knownFinal: unknown, remember: (v: unknown)
     assertNativeErasureOwner(header.erasure.owner)
     const attest = async (requireAbsent = false) => {
       if (!equal(await control(guard), header)) return refuse()
-      const current = await proof(copies, job, header!, guard)
+      const current = await readErasureProof(copies, job, header!, guard)
       if (!equal(current.value, header!.erasure.proof) || (requireAbsent && !current.absent)) return refuse()
     }
     const advance = async (phase: ErasureHeader['erasure']['phase']) => {

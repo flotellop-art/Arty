@@ -73,6 +73,21 @@
       "done": "La migration locale est vérifiée. Recharge pour ouvrir une nouvelle session sur ce stockage.",
       "resume": "Vérifier et reprendre"
     },
+    "migrationErasure": {
+      "inspect": "Vérifier si un compte peut être effacé localement",
+      "working": "Vérification des sources et de toutes les copies. Aucune donnée n’est effacée.",
+      "choose": "Choisis le compte à effacer sur cet appareil. Les noms sont indicatifs ; vérifie aussi l’identifiant exact affiché.",
+      "accounts": "Comptes présents dans les copies vérifiées",
+      "review": "Examiner la demande locale",
+      "confirm": "Confirmer l’effacement local de cet identifiant ?",
+      "confirmBody": "Irréversible : après enregistrement puis rechargement, les conversations, fichiers, projets, clés et sessions locales de ce compte seront effacés dans les copies de cette migration. Les autres comptes seront conservés. Aucune suppression serveur ou sur un autre appareil n’est demandée ni confirmée. Cette décision remplace la reprise de migration ; elle ne pourra pas recopier les anciennes données du compte.",
+      "confirmCta": "Enregistrer cette demande d’effacement local",
+      "recording": "Enregistrement de la demande locale. Garde cette fenêtre ouverte.",
+      "recorded": "Demande locale enregistrée. Recharge pour continuer le nettoyage ; les données ne sont pas encore effacées.",
+      "failed": "La demande ne peut pas être confirmée dans cette fenêtre. Une copie a changé ou le stockage est inaccessible. Rien n’a été effacé ici. Recharge pour relire l’état durable : si la demande a été enregistrée, Arty proposera de poursuivre son nettoyage.",
+      "incomplete": "Cet effacement n’est pas disponible pour l’état actuel : la destination ou le journal est incomplet, ou son format n’est pas pris en charge. Rien n’a été modifié. Recharge pour choisir la reprise de migration ; en cas de divergence persistante, conserve le stockage et contacte le support.",
+      "reloadChoice": "Recharger pour choisir une autre action"
+    },
     "checkingTitle": "Vérification du stockage local…",
     "checkingBody": "Arty vérifie que tes données peuvent être ouvertes. Ce contrôle ne modifie pas tes conversations ni tes fichiers.",
     "maintenanceTitle": "Une reprise du stockage est nécessaire",

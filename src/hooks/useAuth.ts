@@ -267,8 +267,8 @@ export function useAuth() {
     clearWalletCache()
     clearPendingTrialRemaining()
     // Revue PR #353 — brouillons du composeur (mémoire + blobs chiffrés
-    // `arty-composer-draft:*`). Même hygiène que BUG 41 : aucune famille de
-    // clés du user partant ne doit survivre. AVANT clearActiveSession — le
+    // `arty-composer-draft:*`). Purger les formes exactement attribuables ;
+    // conserver les anciennes clés ambiguës sans toucher un voisin. AVANT clearActiveSession — le
     // scope userId doit encore pointer sur le compte qui part.
     purgeComposerDraftsForActiveUser()
     // Drop any pending OAuth state nonce (e.g. user clicked Google then
