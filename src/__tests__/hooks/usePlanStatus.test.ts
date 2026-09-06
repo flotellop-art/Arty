@@ -72,6 +72,20 @@ beforeEach(() => {
 })
 
 describe('usePlanStatus — cache effectif et courses', () => {
+  it('an unopened comparator makes no auth/status call, activation reads and completion refreshes server counters', async () => {
+    let remaining = 10
+    const fetch = vi.fn(async () => response({ ...status('free'), daily_remaining: { 'claude-haiku': remaining } }))
+    vi.stubGlobal('fetch', fetch)
+    const hook = renderHook(({ active }) => usePlanStatus(active), { initialProps: { active: false } })
+    act(() => { hook.result.current.refresh(); window.dispatchEvent(new Event('arty-message-sent')) })
+    expect(mocks.getValidAccessToken).not.toHaveBeenCalled(); expect(fetch).not.toHaveBeenCalled()
+    hook.rerender({ active: true })
+    await waitFor(() => expect(hook.result.current.dailyRemaining?.['claude-haiku']).toBe(10))
+    remaining = 8
+    act(() => window.dispatchEvent(new Event('arty-message-sent')))
+    await waitFor(() => expect(hook.result.current.dailyRemaining?.['claude-haiku']).toBe(8))
+    expect(fetch).toHaveBeenCalledTimes(2); hook.unmount()
+  })
   it('notifie le composer seulement après avoir commité plan et familles', async () => {
     const snapshots: Array<{ plan: string | null; families: string | null }> = []
     const listener = () => snapshots.push({

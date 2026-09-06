@@ -93,6 +93,37 @@ describe('initial state', () => {
   })
 })
 
+describe('external stream leases share the chat registry', () => {
+  it.each(['manual', 'timer'] as const)('%s flush cannot remove a replacement invocation', mode => {
+    const { result } = renderStreaming()
+    let lease!: NonNullable<ReturnType<typeof result.current.reserveExternalStreams>>[number]
+    const flush = vi.fn(() => { lease.release(); result.current.startStream('comparison'); return false })
+    act(() => { lease = result.current.reserveExternalStreams([{ id: 'comparison', assertCurrent() {}, lifecycle: { flush, cancel() {} } }])![0]! })
+    act(() => { if (mode === 'manual') result.current.savePartialAll(); else vi.advanceTimersByTime(3000) })
+    expect(flush).toHaveBeenCalledTimes(1); expect(result.current.hasStream('comparison')).toBe(true)
+    act(() => lease.release())
+    expect(result.current.hasStream('comparison')).toBe(true); expect(lease.isCurrent()).toBe(false)
+  })
+  it('rechecks capacity after a reentrant guard without taking partial ownership', () => {
+    const { result } = renderStreaming(), lifecycle = { flush: () => true, cancel() {} }
+    let leases: unknown
+    act(() => { leases = result.current.reserveExternalStreams([
+      { id: 'a', lifecycle, assertCurrent() { result.current.startStream('other1'); result.current.startStream('other2') } },
+      { id: 'b', lifecycle, assertCurrent() {} },
+    ]) })
+    expect(leases).toBeNull(); expect(result.current.hasStream('a')).toBe(false); expect(result.current.hasStream('b')).toBe(false)
+  })
+  it('a throwing external flush/cancel does not prevent sibling save or teardown', () => {
+    const { result } = renderStreaming(), second = vi.fn(() => true)
+    act(() => result.current.reserveExternalStreams([
+      { id: 'bad', assertCurrent() {}, lifecycle: { flush() { throw new Error('bad observer') }, cancel() { throw new Error('bad cancellation') } } },
+      { id: 'good', assertCurrent() {}, lifecycle: { flush: second, cancel() {} } },
+    ]))
+    act(() => result.current.savePartialAll())
+    expect(result.current.hasStream('bad')).toBe(false); expect(result.current.hasStream('good')).toBe(true); expect(second).toHaveBeenCalledTimes(1)
+  })
+})
+
 // ──────────────────────────────────────────────
 // startStream
 // ──────────────────────────────────────────────

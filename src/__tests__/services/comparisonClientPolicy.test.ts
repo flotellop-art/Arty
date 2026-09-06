@@ -38,6 +38,36 @@ function start(provider: Provider, options: ModelInvocationOptions, done: () => 
 beforeEach(() => { vi.clearAllMocks(); vi.mocked(getValidAccessToken).mockReset().mockResolvedValue(null); vi.mocked(getActiveSessionEpoch).mockReturnValue(1); vi.spyOn(console, 'log').mockImplementation(() => {}) })
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals() })
 describe('Real clients, simulated HTTP: text-only and attribution', () => {
+  it('Claude rechecks document consent after backoff and blocks a stale retry before a second HTTP call', async () => {
+    const fetch = vi.fn(async () => new Response('{}', { status: 503 })); vi.stubGlobal('fetch', fetch)
+    const gate = vi.fn(async () => { if (fetch.mock.calls.length) throw new Error('Document scope revoked') })
+    const error = await new Promise<Error>(resolve => streamMessage([{ role: 'user', content: 'Document' }], () => {}, () => {}, resolve,
+      { documentReadOnly: true, comparisonTextOnly: true, maxOutputTokens: 8192, beforeDocumentRequest: gate }))
+    expect(error.message).toBe('Document scope revoked'); expect(gate).toHaveBeenCalledTimes(2); expect(fetch).toHaveBeenCalledTimes(1)
+  })
+  it('Claude contextual output bound is applied to the real request, with the exact approved prompt', async () => {
+    const fetch = vi.fn(async () => new Response(sse('claude', models.claude)))
+    vi.stubGlobal('fetch', fetch)
+    const gate = vi.fn(async () => {})
+    await new Promise<void>((resolve, reject) => streamMessage([{ role: 'user', content: '中文 Document' }], () => {}, resolve, reject,
+      { documentReadOnly: true, comparisonTextOnly: true, maxOutputTokens: 8192, systemPrompt: 'APPROVED', model: 'claude-sonnet-5', beforeDocumentRequest: gate }))
+    const body = JSON.parse((fetch.mock.calls[0] as unknown as [string, RequestInit])[1].body as string)
+    expect(body.max_tokens).toBe(8192); expect(body.system[0].text).toBe('APPROVED'); expect(body.tools).toBeUndefined()
+    expect(gate).toHaveBeenCalledTimes(1); expect(getValidAccessToken).toHaveBeenCalled()
+    expect(gate.mock.invocationCallOrder[0]).toBeGreaterThan(vi.mocked(getValidAccessToken).mock.invocationCallOrder[0]!)
+  })
+  it.each([0, -1, 8193, 1.5, NaN, Infinity])('Claude rejects invalid output bound %s before auth or HTTP', limit => {
+    const error = vi.fn(), fetch = vi.fn(); vi.stubGlobal('fetch', fetch)
+    streamMessage([], () => {}, () => {}, error, { documentReadOnly: true, maxOutputTokens: limit })
+    expect(error).toHaveBeenCalledExactlyOnceWith(expect.any(Error)); expect(getValidAccessToken).not.toHaveBeenCalled(); expect(fetch).not.toHaveBeenCalled()
+  })
+  it('Claude refuses a bound outside documentary mode, but preserves the absent-option default', async () => {
+    const error = vi.fn(), fetch = vi.fn(async () => new Response(sse('claude', models.claude))); vi.stubGlobal('fetch', fetch)
+    streamMessage([], () => {}, () => {}, error, { maxOutputTokens: 8192 })
+    expect(error).toHaveBeenCalledTimes(1); expect(fetch).not.toHaveBeenCalled(); expect(getValidAccessToken).not.toHaveBeenCalled()
+    await new Promise<void>((resolve, reject) => start('claude', {}, resolve, reject))
+    expect(JSON.parse((fetch.mock.calls[0] as unknown as [string, RequestInit])[1].body as string).max_tokens).toBe(65536)
+  })
   it.each(providers)('%s preserves requested model when the provider reports a substitution', async provider => {
     const substituted = { claude: 'claude-haiku-4-5-20251001', mistral: 'mistral-medium-2505', gemini: 'gemini-3.5-flash', openai: 'gpt-5' }[provider]
     vi.stubGlobal('fetch', vi.fn(async () => new Response(sse(provider, substituted))))

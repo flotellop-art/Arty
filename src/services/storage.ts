@@ -168,7 +168,9 @@ function persist(list: Conversation[]): void {
   localStorage.setItem(physicalKey(scope, PLAIN_KEY), serialized)
   memConversations = list
   if (encryptionDisabled()) {
-    localStorage.removeItem(physicalKey(scope, ENC_KEY))
+    // The durable plain copy already won. A denied cleanup must not turn a
+    // successful commit into a reported failure (and invite duplicate work).
+    try { localStorage.removeItem(physicalKey(scope, ENC_KEY)) } catch { /* plain remains canonical */ }
     return
   }
   void persistEncrypted(serialized, gen, scope)
@@ -206,6 +208,24 @@ export function saveConversation(conversation: Conversation): void {
     conversations.unshift(conversation)
   }
   persist(conversations)
+}
+
+/** Publish new branches together in the synchronous crash-safety net. Either
+ * the entire list is stored or the existing cache/history stays unchanged.
+ * Unlike legacy saveConversation this never silently succeeds before boot. */
+export function insertConversationsAtomically(branches: readonly Conversation[], assertCurrent: () => void): void {
+  assertCurrent()
+  const copies = structuredClone(branches)
+  assertCurrent()
+  const current = getConversations()
+  if (!cacheReady || copies.length === 0) throw new Error('Conversation storage unavailable')
+  const ids = new Set(current.map(conversation => conversation.id))
+  for (const branch of copies) {
+    if (!branch.id || ids.has(branch.id)) throw new Error('Conversation identity conflict')
+    ids.add(branch.id)
+  }
+  assertCurrent()
+  persist([...copies, ...current])
 }
 
 /** Structured references only. Model-authored text never authorizes deletion. */
