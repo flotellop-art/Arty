@@ -52,6 +52,7 @@ import { LocalMemoryModal } from './LocalMemoryModal'
 import { AccountDeletionPanel } from './AccountDeletionPanel'
 import { ArchiveVerifier, archiveButton } from '../workspace/ArchiveVerifier'
 import { WorkspaceRestorer } from '../workspace/WorkspaceRestorer'
+import { ProductMeasurementSetting } from './ProductMeasurementSetting'
 
 interface SettingsModalProps {
   open: boolean
@@ -280,6 +281,7 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose, onOpen
         </div> : <div className="p-6 space-y-6">
           <button className={`${archiveButton} w-full text-left`} onClick={() => setShowArchiveVerifier(true)}>{t('workspaceArchive.verifyTitle')}</button>
           <button className={`${archiveButton} w-full text-left`} onClick={() => setShowRestorer(true)}>{t('workspaceRestore.title')}</button>
+          <ProductMeasurementSetting />
           {/* Notifications toggle */}
           <div>
             <div className="flex items-center justify-between gap-4">

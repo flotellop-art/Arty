@@ -1,8 +1,8 @@
-# Restauration publiée — verticale W06 en recette
+# Restauration Web publiée — verticale W06
 
-6 septembre 2026, après #477. **Candidat Web activé localement ;
-non livré.** Ce lot doit livrer une
-capacité utilisable, pas un nouveau bouton définitivement OFF.
+6 septembre 2026, **Web livré par #478**. Restauration activée sur tryarty.com,
+avec préparation initiale explicite du stockage. Synchronisation distante et
+recette physique APK non livrées par ce lot.
 
 ## Résultat à livrer
 
@@ -19,8 +19,7 @@ du secret à travers les documents. Ne pas écrire ceux-ci dans les réglages.
 
 L'entrée est maintenant implémentée dans cette branche : Réglages → Restaurer
 une archive → `/workspace/prepare`, consentement explicite avant tout travail,
-puis retour par navigation complète `/?start=1`. La livraison en production
-reste à vérifier séparément.
+puis retour par navigation complète `/?start=1`. Reçus de livraison ci-dessous.
 
 ## Réutilisable et manquant
 
@@ -29,9 +28,8 @@ fige les messages historiques et expose objets/diagnostics/ressources. Sa
 projection reste `not-authorized` : aucune autorité sur le compte cible.
 `captureLocalReadScope` et les snapshots stricts fournissent les gardes à
 réutiliser. Les lecteurs isolés et les nouveaux départs Web sont activés dans
-ce candidat. La branche ajoute le journal v8,
-le publisher chaud/froid et l'interface ; aucune disponibilité en production
-n'est encore revendiquée.
+ce lot. La livraison ajoute le journal v8, le publisher chaud/froid et
+l'interface. Le démarrage natif reste indisponible.
 
 Les writers usuels ne conviennent pas à la publication : `putFile` peut
 écraser un ID du même propriétaire ; `createProject` recrée identité/dates ;
@@ -129,7 +127,7 @@ typechecks front/functions, no-CASA, build et worker Office réel isolé.
 La première passe a révélé une assertion historique de politique OFF ; elle
 vérifie désormais le refus de provisioning avant admission puis l'admission
 ready sous les constantes réelles. Aucun assouplissement du garde de production.
-Les reçus CI et livraison restent nécessaires avant d'appeler la verticale livrée.
+Les reçus CI et livraison figurent ci-dessous.
 
 ### 4. Publication froide autonome
 
@@ -246,3 +244,48 @@ aucune recette physique APK ou capacité mémoire téléphone n'est revendiquée
 La synchronisation serveur et ses garanties multi-appareil ne font pas partie
 de ce lot. Les sondes publiques de livraison ne mesurent pas un taux global
 d'erreurs ou une latence réelle d'utilisateurs.
+
+## Reçus de livraison du 6 septembre 2026
+
+- [PR #478](https://github.com/flotellop-art/Arty/pull/478), head
+  `771cde6161a8550538442c17e464abfc075867c2`, squash
+  `36d432dfd6570777d81af4e6875fe4f841ff0897` à 15:23:04 UTC.
+- CI PR `34041724494` réussie : application, Android et growth. Preview Pages
+  `091e9566-8589-4e11-aaf2-7972dc893717` réussie avant fusion. Recette Chrome
+  déployée FR/EN 390/1280 à 15:20:07 UTC : consentement visible, zéro base
+  créée, aucun App privé, pas de débordement. Aucun démarrage de migration.
+  Le premier harnais avait supposé la détection automatique de l'anglais ;
+  il a été corrigé pour respecter la préférence explicite `arty-locale`.
+- Pages main `4a6f1589-5509-4fe2-af0c-653ab7815cf5` réussi. GET anonymes à
+  15:26:38 UTC : huit assets identiques à l'octet sur tryarty.com et le domaine
+  immuable, code actif de préparation/reprise et limites 16/32 Mio vérifiés.
+- Chrome sur tryarty.com, 15:26:52 UTC, quatre profils frais FR/EN 390/1280 :
+  mêmes assertions de consentement sans mutation de bases, aucune erreur JS.
+  Fonts et beacon Cloudflare externes bloqués dans le harnais ; aucune collecte
+  personnelle ni import authentifié de production. La recette complète avec
+  publication et fichiers exacts est locale, pas sur un compte réel.
+
+| Asset de production | Octets | SHA-256 |
+|---|---:|---|
+| `index-L8GO-ISP.js` | 325300 | `4e42ed5b35c712286693f9d3eea1d4d2bc317dde557615732d364dcf323bf3c7` |
+| `ColdWorkspaceSetup-D0IaDTw9.js` | 1925 | `9e8952e9125c1a231e6299788bd3d905eacb21caca82655d0e46adf15efe7329` |
+| `ColdRestoreRecovery-D42liMFz.js` | 1829 | `6e730384d736b669ebe63a9f0631683c248c842dfaea3a966d31f2d03c574304` |
+| `restorePublication-jAwVZ0aW.js` | 12080 | `b7cb06dd37f82fec66043869656084806d2c804aef215a7b083142cbaafe105d` |
+
+CI main `34042135018` réussie en première tentative. Distribution Firebase
+`34042135040` réussie également en tentative 1 ; reçu d'identité allowlisté
+téléchargé (849 octets compressés) : commit exact `36d432d`, package
+`com.arty.app`, version `1.0.99` / code `100`, APK 4 392 871 octets,
+SHA-256 `3c809e6daf772bdfe8805afd0668986e5ebec60ceb9d29a85f137b9dd64e1256`.
+Signature vérifiée à 15:30:25 UTC et assetlinks du checkout concordant.
+Le succès de la distribution vient de la CI ; le reçu seul ne prouve pas
+distribution, installation physique, App Links servi ou OAuth.
+Aucun taux d'erreur/latence utilisateurs accessible pour attester une
+surveillance de métriques pendant 15 minutes.
+
+La configuration de la future synchronisation reste bloquée séparément :
+`wrangler 4.129.0 whoami --json`, le 6 septembre à 15:25 UTC, confirme que
+l'authentification configurée est expirée et non renouvelable dans ce terminal.
+Aucun login lancé, credential extrait, nouveau binding ou stockage créé.
+Le Git/Pages déjà configuré reste opérationnel ; ce refus ne remet pas en cause
+la livraison Web constatée, mais demande une reconnexion pour le lot distant.

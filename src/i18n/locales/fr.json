@@ -1,4 +1,16 @@
 {
+  "productMeasurement": {
+    "title": "Partager les résultats techniques du guide Réponse client",
+    "on": "Activé",
+    "off": "Désactivé",
+    "retryWithdrawal": "Réessayer la désactivation",
+    "help": "Facultatif, désactivé par défaut pour ce compte et ce navigateur. Après vos prochaines soumissions au guide Réponse client, Arty peut envoyer un résultat technique : enregistré, vide, erreur, arrêté, non enregistré ou non démarré. Aucun texte, fichier, nom de modèle ou identifiant de conversation n’est envoyé dans cette mesure. « Enregistré » indique une copie locale réussie, pas la qualité de la réponse.",
+    "auth": "Disponible uniquement sur le Web avec un compte Google. Un jeton Google déjà prêt est utilisé pour authentifier cet envoi, sans reconnexion ni renouvellement pour la mesure. Le serveur conserve seulement des compteurs quotidiens communs, sans identité individuelle. Les requêtes restent soumises aux traitements techniques habituels de l’hébergeur.",
+    "withdrawal": "Vous pouvez désactiver cette option ici à tout moment. Elle arrête les futurs envois ; les déclarations déjà reçues sont mélangées aux compteurs et ne peuvent pas être retirées individuellement. Ces compteurs agrégés n’ont pas de suppression automatique planifiée.",
+    "unavailable": "Indisponible dans cette session. Aucun envoi de mesure n’est effectué.",
+    "enableError": "L’activation n’a pas pu être enregistrée. Vérifiez que ce compte est toujours ouvert et que le stockage du navigateur est disponible, puis réessayez.",
+    "withdrawError": "Les envois sont arrêtés dans cet onglet, mais la désactivation n’a pas pu être enregistrée. Libérez du stockage et réessayez avant de recharger : l’ancien réglage peut sinon redevenir actif."
+  },
   "workspaceRestore": {
     "title": "Restaurer une archive",
     "help": "Ajoutez les conversations, fichiers et projets d’une archive chiffrée à ce compte, sur cet appareil. Rien n’est envoyé à une IA ni synchronisé avec un serveur.",

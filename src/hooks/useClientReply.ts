@@ -8,6 +8,8 @@ import { captureClientReplyFields, clientReplyQuestion, type captureClientReply,
 import { projectSynthesisAccess } from '../services/workflows/projectSynthesisAccess'
 import { onLocalDataInvalidated } from '../services/localDataInvalidation'
 import { getActiveSession } from '../services/userSession'
+import { beginClientReplyMeasurement } from '../services/productMeasurement'
+import type { WorkflowObservation } from '../services/workflows/outcome'
 
 type Draft = ClientReplyFields & { euOnly: boolean; busy: boolean; error: string | null; adoptedId?: string }
 type Start = (args: Parameters<typeof captureClientReply>[0]) => Promise<boolean>
@@ -48,6 +50,7 @@ export function useClientReply(start: Start, review: ReviewProjectRequest, navig
     const source = draftRef.current, scope = scopeRef.current
     if (!source || !scope || pending.current) return
     const controller = new AbortController(); pending.current = controller
+    let observation: WorkflowObservation | undefined
     patch({ busy: true, error: null })
     const assertDraft = () => {
       scope.assertCurrent()
@@ -57,7 +60,9 @@ export function useClientReply(start: Start, review: ReviewProjectRequest, navig
       assertDraft()
       const fields = captureClientReplyFields(source), euOnly = source.euOnly, locale = i18n.language
       const question = clientReplyQuestion(fields, locale)
+      observation = beginClientReplyMeasurement()
       await callbacks.current.start({ fields, euOnly, locale, signal: controller.signal, assertDraft,
+        observation,
         assertAccess() {
           const access = projectSynthesisAccess(planRef.current, euOnly, question)
           if (access.error) throw new Error(i18n.t(access.error))
@@ -73,6 +78,7 @@ export function useClientReply(start: Start, review: ReviewProjectRequest, navig
         },
       })
     } catch (reason) {
+      observation?.discard()
       if (pending.current === controller) patch({ error: reason instanceof ProjectError ? i18n.t(`projects.errors.${reason.code}`)
         : reason instanceof Error ? reason.message : i18n.t('projects.errors.unavailable') })
     } finally {

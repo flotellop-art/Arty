@@ -1656,7 +1656,7 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
             "Target Size Minimum" recommande 44px, 52px = confort terrain). */}
         {isStreaming ? (
           <button
-            onClick={onStop}
+            onClick={() => onStop?.()}
             className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-theme-ink text-theme-bg shadow-[0_8px_22px_-12px_rgb(var(--theme-ink)/0.85)] transition-[background-color,transform,box-shadow] duration-[180ms] hover:bg-theme-accent active:scale-[0.98]"
             aria-label={t('chat.input.aria.stop')}
           >

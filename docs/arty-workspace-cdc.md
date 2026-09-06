@@ -26,16 +26,16 @@ supplémentaire n'est implicite dans ce mandat.
 
 | ID | Lot | Résultat observable et recette | État |
 |---|---|---|---|
-| W01 | Fondations | DOCX : paragraphes et tableaux ; XLSX : feuilles nommées et cellules identifiées. Contenu réellement injecté, accents conservés ; erreurs visibles sur ancien format, fichier chiffré/corrompu ou limite dépassée. Même résultat en nouvel envoi, historique et retry, dont Android et mode Europe. Aucun macro, formule, lien externe exécuté ; ressources bornées ; aucune pièce jointe en base64 dans localStorage. | Web déployé, PR #439 ; recette visuelle/appareil non vérifiée |
+| W01 | Fondations | DOCX : paragraphes et tableaux ; XLSX : feuilles nommées et cellules identifiées. Contenu réellement injecté, accents conservés ; erreurs visibles sur ancien format, fichier chiffré/corrompu ou limite dépassée. Même résultat en nouvel envoi, historique et retry, dont Android et mode Europe. Aucun macro, formule, lien externe exécuté ; ressources bornées ; aucune pièce jointe en base64 dans localStorage. | Web déployé, PR #439 ; recette App/Chrome locale FR/Claude et EN/Mistral-EU acquise sur candidat #479 (OFFICE_BROWSER_RECIPE.md), appareil/fournisseurs réels non vérifiés |
 | W02 | Confiance | Essai annoncé conforme au plan servi. BYOK gratuit distinct du Pro optionnel ; conseiller sans licence fictive. Promesses de stockage et de transit exactes FR/EN, page publique cohérente. Aucun quota ni accès serveur élargi implicitement. | Web déployé, PR #437 ; recette visuelle/appareil non vérifiée |
 | W03 | Catalogue | Un catalogue partagé aligne comparaison, sélecteurs, labels et éligibilité selon le compte (pas une garantie fournisseur). Modèle demandé, transmis par le proxy et signalé par le fournisseur distingués. Tests contre la dérive et contre l'accès premium hors droit. | Web déployé, PR #440 ; recette visuelle/appareil non vérifiée |
 | W04 | Projets | Créer/renommer/supprimer un projet, consignes propres, conversations associées, bibliothèque de documents réutilisables. Sources identifiables dans le contexte. Recherche bornée, absence de fichier et contexte tronqué explicites. Cloisonnement par compte et projet ; mode Europe conservé. | Bibliothèque web livrée #443 ; conversations web livrées #444 ; recette visuelle/appareil non vérifiée |
-| W05 | Livrables | Export DOCX modifiable et XLSX de tableaux, en plus des exports existants. Téléchargements relus par un parseur indépendant ; cellules dangereuses neutralisées ; aucun HTML actif ni formule arbitraire. Formats et limites documentés. | Web déployé #445 ; recette structurelle vérifiée ; rendu Office/appareil non vérifié |
-| W06 | Continuité | Sauvegarde/restauration explicites puis synchronisation optionnelle multi-appareil chiffrée avant upload, avec secret détenu par l'utilisateur et récupération expliquée. Conflits non destructifs ; reprise hors-ligne ; logout/switch/delete et compte invité traités. Un export manuel seul ne valide pas la synchronisation. | A1 #446, galerie #448, verrou document #449, capture/vérification A2 #451, préparation A3a #452, admission froide #453, runtime isolé inactif #454, migrateur journalisé OFF #455, reprise froide d'effacement v2 OFF #456, reçu distant #457, pont froid/fence v5 OFF #458 et reset local v6/v7 OFF #459 livrés ; restauration/synchronisation non livrées |
+| W05 | Livrables | Export DOCX modifiable et XLSX de tableaux, en plus des exports existants. Téléchargements relus par un parseur indépendant ; cellules dangereuses neutralisées ; aucun HTML actif ni formule arbitraire. Formats et limites documentés. | Web déployé #445 ; téléchargement réel Chrome FR/EN et relecture indépendante DOCX/XLSX acquis sur candidat #479 (OFFICE_BROWSER_RECIPE.md) ; rendu Office/appareil non vérifié |
+| W06 | Continuité | Sauvegarde/restauration explicites puis synchronisation optionnelle multi-appareil chiffrée avant upload, avec secret détenu par l'utilisateur et récupération expliquée. Conflits non destructifs ; reprise hors-ligne ; logout/switch/delete et compte invité traités. Un export manuel seul ne valide pas la synchronisation. | Restauration Web activée et livrée #478 (WORKSPACE_RESTORE_PUBLISHER.md), après fondations #446–459 et annulation #477 ; préparation explicite, journal v8 et repli compatibles. Synchronisation distante non livrée, accès de configuration Cloudflare expiré ; démarrage/recette physique APK non attestés |
 | W07 | Comparaison | Comparer depuis une conversation avec contexte/documents autorisés ; conserver les résultats et poursuivre la réponse choisie sans perdre l'original. Erreurs/coûts/quotas de chaque panneau visibles ; EU et historique privé jamais contournés. | Web livré #462 ; recette App/navigateur synthétique vérifiée ; APK distribuée, installation physique et OAuth/facturation réels non attestés |
 | W08 | Parcours métier | Trois parcours complets : synthèse documentaire, réponse client préparée, planification Agenda avec confirmation avant écriture. Écran de connexions indiquant disponible/non configuré/non pris en charge selon plateforme. Pas de Drive/Gmail OAuth restreint ni relais IMAP serveur. | Socle Google/BYOK #463, transport Agenda #464, pont copie documentaire/Agenda #465, synthèse guidée #466, statut client #467, formulaire client #468/#469 et Connexions #470 livrés web ; recettes App/navigateur synthétiques vérifiées ; APK distribuées, installation physique et intégrations réelles non attestées |
 | W09 | Mobile et identité | PWA installable ; identité tryarty cohérente ; distribution Android authentifiée et documentée. Ne pas rediriger vers une app Play homonyme. Toute migration appId inclut signatures/OAuth/Firebase/liens vérifiés ; un APK distribué n'est pas une publication Store. | Transport API historique livré #471, sondes publiques vérifiées ; identité APK et premier reçu réel livrés #472, distribution Firebase réussie ; guide PWA #473 et correctif CDN #474 publiés/vérifiés sur tryarty.com (PWA_INSTALL_GUIDE.md) ; validations appareil/Store non livrées |
-| W10 | Mesure | Instrumentation minimale sans contenu utilisateur : activation, succès/échec des parcours, retour D7/D30 et conversion. Marges fondées sur coût serveur, pas un compteur local. Tableau avec période, échantillon et limites ; aucune métrique inventée. | Rapport opérateur local wallet livré #475 (WALLET_MEASUREMENT.md), CI/Pages/Firebase vérifiés ; pas une marge commerciale. Activation, succès métier, D7/D30 et conversion non instrumentés |
+| W10 | Mesure | Instrumentation minimale sans contenu utilisateur : activation, succès/échec des parcours, retour D7/D30 et conversion. Marges fondées sur coût serveur, pas un compteur local. Tableau avec période, échantillon et limites ; aucune métrique inventée. | Rapport opérateur local wallet livré #475 (WALLET_MEASUREMENT.md), CI/Pages/Firebase vérifiés ; pas une marge commerciale. Pilote facultatif réponse client préparé/testé f49ecec, publication fermée ; activation, D7/D30 et conversion non instrumentés |
 
 ## Dépendances et choix de sûreté
 
@@ -108,7 +108,7 @@ réels ; préparer protocole et instrumentation sans fabriquer leurs résultats.
 
 ## Preuves par lot
 
-### W06 — restauration Web, candidat activé et validé localement
+### W06 — restauration Web, livrée #478
 
 Réglages → Restaurer : préparation initiale consentie si stockage legacy,
 archive/code → aperçu lié au compte → adoption durable v8 → reprise froide
@@ -124,8 +124,83 @@ indépendantes GO bornés Web ; verify 318 suites / 4 087 tests + 1 sauté.
 Chrome réel avec fixtures locales FR/EN 390/1280, reload/back/forward,
 exclusion second onglet, A/B relus/réécrits, PDF/TXT comparés à l'octet, reprise
 sur nouveau bundle START=false. Aucune donnée réelle ni requête IA.
-La livraison Git/CI/Pages reste à attester. Démarrage natif indisponible et
-recette appareil absente ; W06 n'est donc pas entièrement clôturé.
+PR #478 fusionnée `36d432d` ; CI PR et preview vertes. Pages main `4a6f1589`
+réussie ; huit assets canonique/immuables identiques et consentement FR/EN
+contrôlé sur tryarty.com à 15:26 UTC. Reçus détaillés dans le document dédié.
+CI main `34042135018` et distribution Firebase `34042135040` réussies en
+première tentative ; reçu de l'APK signé au commit exact vérifié.
+Démarrage natif indisponible et recette appareil absente ; W06 reste partiel.
+L'accès de configuration Cloudflare a été revérifié à 15:25 UTC : expiré,
+reconnexion requise avant la synchronisation distante ; aucun contournement.
+
+### W10 — pilote réponse client préparé, publication fermée
+
+Le commit local `f49ecec` prépare un reçu facultatif du parcours réponse client,
+six issues fermées et un rapport opérateur quotidien JSON/CSV/HTML FR/EN.
+`PRODUCT_MEASUREMENT_RELEASED=false` : réglage non monté, ticket inerte avant
+lecture de consentement/jeton, handler 404 avant corps/auth/binding D1. Les
+contrôles HTTP du middleware préexistant restent applicables. Aucun nouveau
+traitement de mesure ni table créée tant que cette barrière reste fermée.
+Ce n'est pas un changement entièrement inerte : les protections de finalisation
+du streaming, de Stop et des réponses partielles sont actives pour tous les fils.
+
+Deux contre-revues indépendantes ont challengé les réentrances, remplacements
+de stream, refus/quota durable de retrait, consentement inter-comptes, égalité
+des reçus et bornes SQL. Les objections pertinentes sont intégrées et détaillées
+dans `ADR_PRODUCT_MEASUREMENT.md`. Vérification finale locale : 325 suites,
+4 181 tests réussis et 1 sauté, typecheck front/back, no-CASA, build et worker
+Office isolé ; log `.playwright-mcp/product-measurement-verify-final.log`.
+Recette prospective Chrome FR/EN 390/1280 : retrait en quota, remontage, retrait
+durable, rapport statique, zéro requête API. Seule la réponse de développement
+locale remplace le flag pour cette recette ; aucun flag source publié ouvert.
+
+GO techniques bornés à la livraison fermée, réexaminés avant publication.
+Repli sur `36d432d` (ou révocation ciblée sur une base compatible) : conserver
+les lecteurs/restauration #478 et `ISOLATED_WORKSPACE_ENABLED=true`. Aucune
+migration de schéma ou notice publique ajoutée dans ce lot. CI, preview et
+production restent à attester pour ce candidat ; testé localement ≠ livré.
+
+La recette Office pré-fusion #479 a révélé un défaut antérieur : le clic Stop
+transmettait un événement React pris pour un identifiant de conversation.
+Deux contre-revues confirment la correction d'une ligne au composeur partagé,
+sans changer les arrêts explicites par ID. Test bouton + hook rouge avant puis
+vert après, variantes Chat/Home, flux voisin préservé. Chrome FR/Claude et
+EN/Mistral-EU : imports/historique/retry, Stop clic/Entrée/Espace, téléchargements
+DOCX/XLSX relus indépendamment ; reçus dans `OFFICE_BROWSER_RECIPE.md`.
+Un repli vers `36d432d` réintroduirait aussi ce défaut Stop connu.
+
+Première CI #479 `34046137950` : Android/growth/Pages réussis, app en échec
+avant cinq tests à cause de l'import ESM `node:sqlite` sous Node 22.23.2.
+Échec reproduit localement sous cette version exacte ; chargement natif
+`createRequire` limité au test, sans mock SQL/exclusion/modification CI.
+Vérification complète suivante sous Node 22.23.2 : 326 suites, 4 185 tests
+réussis, 1 sauté ; typecheck/build/no-CASA et worker Office isolé réussis,
+log `.playwright-mcp/product-measurement-verify-node22.log`. Nouvelle CI exigée.
+
+L'activation exige une décision du responsable sur l'information préalable :
+les politiques publiées promettent un préavis de 30 jours pour les changements
+importants. Ce préavis n'est ni envoyé ni réputé levé par le seul consentement.
+Le pilote agrège des déclarations reçues, pas des utilisateurs uniques, une
+activation globale, des cohortes D7/D30 ou une conversion. Ces exigences W10
+restent ouvertes, ainsi que l'observation de vrais utilisateurs.
+
+Les deux lectures indépendantes privilégient un premier parcours réel « réponse
+client → résultat finalisé et enregistré localement → rapport opérateur ».
+Ne pas réutiliser `arty-message-sent` (avant finalisation, également présent
+après échec/arrêt du comparateur), le montage du streak ou l'adoption d'un guide
+comme oracle de réussite. La persistance synchrone est un filet local ; le
+chiffrement différé n'est pas attesté par ce reçu.
+
+Option de mesure facultative désactivée par défaut ; champs fermés sans contenu,
+erreurs libres, IDs métier ou clés. Une première agrégation de déclarations
+quotidiennes sans identifiant persistant peut être livrée sans nouveau cron,
+mais ne mesure ni utilisateurs uniques, ni D7/D30, ni conversion cohortée.
+Le compte ou l'installation, la suppression et les écritures tardives doivent
+être traités avant toute cohorte ; une purge opportuniste ne garantit pas J45.
+Le mode réel/test, l'identité de paiement et les remboursements doivent être
+attestés prospectivement avant d'attribuer un achat à une cohorte.
+
+Ces décisions sont une préparation, pas une instrumentation en production.
 
 ### W06 — abandon avant barrière, livré #477 (OFF)
 

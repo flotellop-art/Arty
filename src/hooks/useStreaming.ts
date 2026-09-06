@@ -8,6 +8,7 @@ import { EMPTY_GENERATED_IMAGES, isGeneratedImageId, MAX_GENERATED_IMAGES_PER_TU
 import { onLocalDataInvalidated } from '../services/localDataInvalidation'
 import { PROJECT_ERASURE_FENCE_KEY } from '../services/userSession'
 import { beginConversationWork } from '../services/conversationWork'
+import { onceWorkflowObservation, type WorkflowObservation, type WorkflowOutcome } from '../services/workflows/outcome'
 
 // Cap de streams concurrents — protège des coûts d'abus (8 convs ouvertes en
 // même temps = 8 appels LLM en // sur le compte du proprio). 3 suffit largement
@@ -25,6 +26,8 @@ export interface ExternalStreamLease {
 }
 
 type StreamState = {
+  terminal?: boolean
+  observation?: WorkflowObservation
   finishWork(): void
   external?: ExternalStreamLifecycle
   generatedImages: string[]
@@ -50,6 +53,20 @@ type StreamState = {
   reasonCode?: string
   // Raison de la sous-décision Claude, distincte de la raison du provider.
   subModelReasonCode?: string
+}
+
+function discardObservation(state: StreamState) {
+  const observation = state.observation; state.observation = undefined
+  try { observation?.discard() } catch { /* measurement is optional */ }
+}
+function settleObservation(state: StreamState, outcome: WorkflowOutcome, committed = false) {
+  const observation = state.observation; state.observation = undefined
+  if (!observation) return
+  // A completed save deliberately changes the committed history prefix.
+  // Its payload guard was proved immediately before that synchronous write;
+  // the observer retains its own independent owner/consent lifetime.
+  try { if (!committed) state.assertCurrent?.(); observation.settle(outcome) }
+  catch { try { observation.discard() } catch { /* measurement is optional */ } }
 }
 
 export function useStreaming(deps: {
@@ -97,6 +114,7 @@ export function useStreaming(deps: {
   // Sauvegarde partielle d'un stream précis (appelé périodiquement par
   // saveInterval, et au beforeunload pour tous les streams ouverts).
   const savePartialFor = useCallback((s: StreamState) => {
+    if (s.terminal) return true
     try { s.assertCurrent?.() } catch {
       try { s.external?.cancel('discard') } catch { /* Other streams still need cleanup. */ }
       try { s.abortController?.abort() } catch { /* already aborted */ }
@@ -146,10 +164,13 @@ export function useStreaming(deps: {
   }, [])
 
   // Finalise une conv : remplace le placeholder `streaming` par le message final.
-  const finalize = useCallback((targetId: string, content: string, interrupted?: boolean) => {
-    try { streamsRef.current.get(targetId)?.assertCurrent?.() } catch { return }
-    const stored = storage.getConversation(targetId)
-    if (!stored || !storage.isCacheReady()) return
+  const finalize = useCallback((state: StreamState, content: string, interrupted?: boolean, onCommitted?: () => void): 'saved' | 'not_saved' | 'invalidated' => {
+    const targetId = state.targetId
+    if (streamsRef.current.get(targetId) !== state) return 'invalidated'
+    try { state.assertCurrent?.() } catch { return 'invalidated' }
+    let stored
+    try { stored = storage.getConversation(targetId) } catch { return 'not_saved' }
+    if (!stored || !storage.isCacheReady()) return 'not_saved'
     const conv = { ...stored, messages: [...stored.messages] }
 
     // C-B — attribution du modèle : lue dans le StreamState de CE targetId
@@ -175,8 +196,12 @@ export function useStreaming(deps: {
       ...(s?.projectTurn ? { projectTurn: structuredClone(s.projectTurn) } : {}),
     })
     conv.updatedAt = Date.now()
-    try { storage.saveConversation(conv) } catch { return }
-    depsRef.current.refreshConversations()
+    try { storage.saveConversation(conv) } catch { return 'not_saved' }
+    // The local safety copy has committed. Claim evidence before reentrant UI
+    // notifications; their failure must not turn a real commit into a failure.
+    try { onCommitted?.() } catch { /* optional observer */ }
+    try { depsRef.current.refreshConversations() } catch { /* commit remains real */ }
+    return 'saved'
   }, [])
 
   // Retire un convId du Set des streams actifs (déclenche re-render Sidebar).
@@ -191,8 +216,10 @@ export function useStreaming(deps: {
 
   // Nettoyage d'un stream : clearInterval, suppression du ref, et reset UI
   // si la conv concernée était celle affichée.
-  const teardownStream = useCallback((targetId: string) => {
+  const teardownStream = useCallback((targetId: string, expected?: StreamState) => {
     const s = streamsRef.current.get(targetId)
+    if (expected && s !== expected) return
+    if (s) { s.terminal = true; discardObservation(s) }
     s?.finishWork()
     if (s?.saveInterval) {
       clearInterval(s.saveInterval)
@@ -213,8 +240,9 @@ export function useStreaming(deps: {
   const savePartialAll = useCallback(() => {
     for (const s of streamsRef.current.values()) {
       if (savePartialFor(s) === false) {
+        s.terminal = true; settleObservation(s, 'not_saved')
         s.abortController?.abort()
-        if (streamsRef.current.get(s.targetId) === s) teardownStream(s.targetId)
+        teardownStream(s.targetId, s)
       }
     }
   }, [savePartialFor, teardownStream])
@@ -249,10 +277,11 @@ export function useStreaming(deps: {
   // pas juste la conv active. Sans ça, fermer l'onglet pendant qu'un stream
   // tournait en arrière-plan perdrait son contenu accumulé.
   useEffect(() => {
+    const abandonMeasurements = () => { for (const state of streamsRef.current.values()) discardObservation(state) }
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'hidden') savePartialAll()
+      if (document.visibilityState === 'hidden') { abandonMeasurements(); savePartialAll() }
     }
-    const handleBeforeUnload = () => savePartialAll()
+    const handleBeforeUnload = () => { abandonMeasurements(); savePartialAll() }
 
     document.addEventListener('visibilitychange', handleVisibilityChange)
     window.addEventListener('beforeunload', handleBeforeUnload)
@@ -287,8 +316,9 @@ export function useStreaming(deps: {
       saveInterval: setInterval(() => {
         const cur = streamsRef.current.get(targetId)
         if (cur && savePartialFor(cur) === false) {
+          cur.terminal = true; settleObservation(cur, 'not_saved')
           cur.abortController?.abort()
-          if (streamsRef.current.get(targetId) === cur) teardownStream(targetId)
+          teardownStream(targetId, cur)
         }
       }, 3000),
       abortController: null,
@@ -310,6 +340,14 @@ export function useStreaming(deps: {
     }
     return true
   }, [savePartialFor, teardownStream])
+
+  /** Exact invocation, not a conversation marker read from imported history. */
+  const observeStreamCompletion = useCallback((targetId: string, invocationId: string, observation: WorkflowObservation): boolean => {
+    const state = streamsRef.current.get(targetId)
+    if (!state || state.terminal || state.external || state.observation || state.invocationId !== invocationId) return false
+    try { state.assertCurrent?.(); state.observation = onceWorkflowObservation(observation); return true }
+    catch { return false }
+  }, [])
 
   /** Same cap/Stop/page lifecycle as chat. Handles are tied to the actual
    * StreamState, so a late release never touches a replacement invocation. */
@@ -380,7 +418,7 @@ export function useStreaming(deps: {
 
   const onToken = useCallback((token: string, targetId: string) => {
     const s = streamsRef.current.get(targetId)
-    if (!s) return
+    if (!s || s.terminal) return
     s.accumulated += token
     if (activeIdRef.current !== targetId) return
     // Throttle RAF : on coalesce les tokens en 1 setState par frame, lu
@@ -397,17 +435,24 @@ export function useStreaming(deps: {
 
   const onDone = useCallback((targetId: string) => {
     const s = streamsRef.current.get(targetId)
-    if (!s) return
+    if (!s || s.terminal) return
+    s.terminal = true
     const content = s?.accumulated || ''
-    finalize(targetId, content)
-    teardownStream(targetId)
+    try {
+      const outcome = content.trim() || s.generatedImages.length ? 'saved' : 'empty'
+      const result = finalize(s, content, false, () => settleObservation(s, outcome, true))
+      if (result === 'not_saved') settleObservation(s, 'not_saved')
+      else if (result === 'invalidated') discardObservation(s)
+    } finally { teardownStream(targetId, s) }
   }, [finalize, teardownStream])
 
   const onError = useCallback((err: Error, targetId: string) => {
     const s = streamsRef.current.get(targetId)
+    if (!s || s.terminal) return err
+    s.terminal = true; settleObservation(s, 'error')
     const content = s?.accumulated
-    if (content || s?.generatedImages.length) finalize(targetId, content ?? '', true)
-    teardownStream(targetId)
+    try { if (content || s.generatedImages.length) finalize(s, content ?? '', true) }
+    finally { teardownStream(targetId, s) }
     return err
   }, [finalize, teardownStream])
 
@@ -417,21 +462,23 @@ export function useStreaming(deps: {
     const id = targetId ?? activeIdRef.current
     if (!id) return
     const s = streamsRef.current.get(id)
-    if (!s) return
+    if (!s || s.terminal) return
+    s.terminal = true; settleObservation(s, 'stopped')
     if (s.external) {
       try { s.external.cancel('stop') } finally { if (streamsRef.current.get(id) === s) teardownStream(id) }
       return
     }
-    if (s.accumulated || s.generatedImages.length) finalize(id, s.accumulated, true)
-    if (s.abortController) {
-      try { s.abortController.abort() } catch { /* déjà aborté */ }
+    try { if (s.accumulated || s.generatedImages.length) finalize(s, s.accumulated, true) }
+    finally {
+      try { s.abortController?.abort() } catch { /* déjà aborté */ }
+      teardownStream(id, s)
     }
-    teardownStream(id)
   }, [finalize, teardownStream])
 
   // Session invalidated: never persist partial content into another account.
   const discardStream = useCallback((targetId: string) => {
     const state = streamsRef.current.get(targetId)
+    if (state) { state.terminal = true; discardObservation(state) }
     try { state?.external?.cancel('discard') } catch { /* Isolate lifecycle observers. */ }
     try { state?.abortController?.abort() } catch { /* Continue removal. */ }
     if (streamsRef.current.get(targetId) !== state) return
@@ -490,6 +537,7 @@ export function useStreaming(deps: {
 
   useEffect(() => () => {
     for (const stream of streamsRef.current.values()) {
+      stream.terminal = true; discardObservation(stream)
       stream.finishWork()
       if (stream.saveInterval) clearInterval(stream.saveInterval)
       try { stream.external?.cancel('unmount') } catch { /* Keep cleaning up siblings. */ }
@@ -517,6 +565,7 @@ export function useStreaming(deps: {
     canStart,
     // Lifecycle d'un stream
     startStream,
+    observeStreamCompletion,
     reserveExternalStreams,
     setProjectTurn,
     adoptGeneratedImage,
@@ -538,7 +587,7 @@ export function useStreaming(deps: {
     savePartialAll,
   }), [
     isStreaming, streamingContent, streamingImages, streamingConvIds, isStreamingFor, hasStream,
-    canStart, startStream, reserveExternalStreams, setProjectTurn, adoptGeneratedImage, getInvocationId, onToken, onDone, onError,
+    canStart, startStream, observeStreamCompletion, reserveExternalStreams, setProjectTurn, adoptGeneratedImage, getInvocationId, onToken, onDone, onError,
     stopStreaming, discardStream, setActiveStream, isActive,
     setProgressContent, setAbortController, resetAccumulated, finalize,
     savePartialAll,

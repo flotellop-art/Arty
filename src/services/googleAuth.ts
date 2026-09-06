@@ -837,6 +837,26 @@ function captureGrantContext(): GrantContext | null {
 /** Capture before confirmation/preparation. No token is exposed by the handle. */
 export function captureGoogleGrant(): GoogleGrantLease | null { return captureGrantContext() }
 
+/** Optional diagnostics may use ONLY an already admitted, fresh token. This
+ * accessor never bootstraps storage, waits for refresh or starts OAuth. */
+export function captureReadyGoogleToken(): { token: string; isCurrent(): boolean } | null {
+  try {
+    const context = captureGrantContext(), tokens = getStoredTokens()
+    if (!context || !tokens || !isGoogleStorageReady() || !context.isCurrent() ||
+      tokens.oauth_profile !== CURRENT_GOOGLE_OAUTH_PROFILE || !tokens.verified_email ||
+      !tokens.access_token || tokens.access_token === 'native' || !Number.isFinite(tokens.expires_at) ||
+      tokens.expires_at - Date.now() < 5 * 60_000) return null
+    const token = tokens.access_token, expires = tokens.expires_at
+    return Object.freeze({ token, isCurrent() {
+      try {
+        if (!context.isCurrent() || expires - Date.now() < 5 * 60_000) return false
+        const current = getStoredTokens()
+        return !!current && current.access_token === token && current.expires_at === expires
+      } catch { return false }
+    } })
+  } catch { return null }
+}
+
 /** Local configuration, not remote health. No bootstrap, refresh or remote
  * revocation. Existing owner guards may discard an obsolete in-memory grant. */
 export function getGoogleConfigurationStatus(): 'loading' | 'not-configured' | 'reconnect' | 'configured' | 'unavailable' {
