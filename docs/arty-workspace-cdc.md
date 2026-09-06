@@ -32,8 +32,8 @@ supplémentaire n'est implicite dans ce mandat.
 | W04 | Projets | Créer/renommer/supprimer un projet, consignes propres, conversations associées, bibliothèque de documents réutilisables. Sources identifiables dans le contexte. Recherche bornée, absence de fichier et contexte tronqué explicites. Cloisonnement par compte et projet ; mode Europe conservé. | Bibliothèque web livrée #443 ; conversations web livrées #444 ; recette visuelle/appareil non vérifiée |
 | W05 | Livrables | Export DOCX modifiable et XLSX de tableaux, en plus des exports existants. Téléchargements relus par un parseur indépendant ; cellules dangereuses neutralisées ; aucun HTML actif ni formule arbitraire. Formats et limites documentés. | Web déployé #445 ; recette structurelle vérifiée ; rendu Office/appareil non vérifié |
 | W06 | Continuité | Sauvegarde/restauration explicites puis synchronisation optionnelle multi-appareil chiffrée avant upload, avec secret détenu par l'utilisateur et récupération expliquée. Conflits non destructifs ; reprise hors-ligne ; logout/switch/delete et compte invité traités. Un export manuel seul ne valide pas la synchronisation. | A1 #446, galerie #448, verrou document #449, capture/vérification A2 #451, préparation A3a #452, admission froide #453, runtime isolé inactif #454, migrateur journalisé OFF #455, reprise froide d'effacement v2 OFF #456, reçu distant #457, pont froid/fence v5 OFF #458 et reset local v6/v7 OFF #459 livrés ; restauration/synchronisation non livrées |
-| W07 | Comparaison | Comparer depuis une conversation avec contexte/documents autorisés ; conserver les résultats et poursuivre la réponse choisie sans perdre l'original. Erreurs/coûts/quotas de chaque panneau visibles ; EU et historique privé jamais contournés. | Implémenté et validé localement ; PR/CI/Pages à attester |
-| W08 | Parcours métier | Trois parcours complets : synthèse documentaire, réponse client préparée, planification Agenda avec confirmation avant écriture. Écran de connexions indiquant disponible/non configuré/non pris en charge selon plateforme. Pas de Drive/Gmail OAuth restreint ni relais IMAP serveur. | À faire |
+| W07 | Comparaison | Comparer depuis une conversation avec contexte/documents autorisés ; conserver les résultats et poursuivre la réponse choisie sans perdre l'original. Erreurs/coûts/quotas de chaque panneau visibles ; EU et historique privé jamais contournés. | Web livré #462 ; recette App/navigateur synthétique vérifiée ; APK distribuée, installation physique et OAuth/facturation réels non attestés |
+| W08 | Parcours métier | Trois parcours complets : synthèse documentaire, réponse client préparée, planification Agenda avec confirmation avant écriture. Écran de connexions indiquant disponible/non configuré/non pris en charge selon plateforme. Pas de Drive/Gmail OAuth restreint ni relais IMAP serveur. | Audit contradictoire et découpage acceptés ; prérequis propriété Google/Agenda identifié ; code et parcours non livrés |
 | W09 | Mobile et identité | PWA installable ; identité tryarty cohérente ; distribution Android authentifiée et documentée. Ne pas rediriger vers une app Play homonyme. Toute migration appId inclut signatures/OAuth/Firebase/liens vérifiés ; un APK distribué n'est pas une publication Store. | À faire |
 | W10 | Mesure | Instrumentation minimale sans contenu utilisateur : activation, succès/échec des parcours, retour D7/D30 et conversion. Marges fondées sur coût serveur, pas un compteur local. Tableau avec période, échantillon et limites ; aucune métrique inventée. | À faire |
 
@@ -170,7 +170,7 @@ et `App-DCOXHnlX.js` (SHA-256
 Consultation du reçu invalide 400/no-store ; opération synthétique aléatoire
 200/unknown/no-store. Aucun POST, authentification ou effacement de compte.
 
-### W07 — comparaison contextuelle, candidat complet non encore livré
+### W07 — comparaison contextuelle, web livré #462
 
 Branche `codex/contextual-comparison`, base main #461. Les deux contre-revues
 indépendantes ont imposé : deux modèles admissibles, pas nécessairement deux
@@ -218,7 +218,34 @@ révoqué) ont ensuite passé : 54 tests ciblés verts, aucun code produit chang
 Le premier run avait détecté l'appel de plan trop précoce ; il a été corrigé,
 pas masqué. Second run limité à quatre workers après un worker local interrompu.
 Checklist et preuves : `CONTEXTUAL_COMPARISON_RELEASE.md`. W06 et W08–W10
-restent ouverts ; la publication de ce candidat doit encore être attestée.
+restent ouverts.
+
+Publication #462 : head `8cd65461d641867b4ce48eab40a2d8ba6605ba2f`, CI PR
+`34005734631` verte, preview `94eecd22-03a9-4407-bc4f-c1d1b4e21d37` et GET
+du chunk/route verts. Squash main `d80efb413769b1a0ad818143f3dee0c306207a61`
+à 02:14:32 UTC ; CI main `34005972879` verte (271 suites, 3 238 tests, 1 ignoré).
+Pages `973ff4b1-1b0d-4e11-b1ab-a95340936017` ; tryarty.com et immutable
+servent exactement les mêmes index/App/contextualCompare, vérifié à
+02:16:30.907 et 02:22:13.496 UTC. Hashes dans la checklist. APK
+`34005972893` signé puis distribué via Firebase à 02:21:41 UTC ; pas une
+preuve d'installation physique ni de publication Store.
+
+### W08 — préparation du premier lot, non implémenté
+
+Deux audits readonly produit/mobile et sécurité ont accepté le découpage de
+`ADR_WORKFLOW_AGENDA_OWNERSHIP.md`. Avant la nouvelle UI, corriger les réponses
+de refresh Google tardives pouvant déconnecter le compte suivant, les retries
+qui relisent un autre grant et la capture des requêtes Agenda après attente.
+Préserver la mutualisation du refresh, l'effacement Google autorisé et la
+distinction grant logique/génération d'écriture ; tester relink et ABA.
+Le mini-formulaire InputBar contourne aujourd'hui calendarClient et doit être
+raccordé au même contrat. Aucun correctif produit encore appliqué.
+
+Les parcours guidés ne seront pas trois prompts supplémentaires présentés comme
+un résultat livré : préparation/source/confirmation, résultat conservé puis
+copie/export, réponse client explicitement non envoyée. Transition Agenda via
+formulaire applicatif confirmé, sans lever l'inertie documentaire. Connexions
+et issue incertaine distinctes ; aucun nouvel accès Gmail/Drive ou relais IMAP.
 
 ### W06 A3b.7 — effacement depuis une migration complète interrompue, candidat OFF
 

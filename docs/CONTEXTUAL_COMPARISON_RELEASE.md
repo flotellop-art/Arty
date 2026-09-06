@@ -1,7 +1,8 @@
 # W07 — checklist de livraison de la comparaison contextuelle
 
 Date : 6 septembre 2026. Base main : `ca31dce` (#461).
-État : candidat local validé ; publication non encore attestée.
+État : web livré par #462 ; CI main et distribution APK attestées. Recette
+fournisseur/OAuth réelle et installation physique de l'APK non attestées.
 
 ## Pré-déploiement
 
@@ -14,8 +15,44 @@ Date : 6 septembre 2026. Base main : `ca31dce` (#461).
 - [x] Aucun nouveau store ni migration de base. W06 reste OFF ; aucun nouveau
   scope OAuth, aucun relâchement de quota/plan/EU, aucun changement de clé APK.
 - [x] Retours arrière et limites documentés ci-dessous.
-- [ ] PR, CI et preview vérifiées sur le SHA candidat exact.
-- [ ] Fusion sans bypass, CI main, production Pages et APK vérifiés.
+- [x] PR, CI et preview vérifiées sur le SHA candidat exact.
+- [x] Fusion sans bypass, CI main, production Pages et distribution APK vérifiés.
+
+## Reçus de publication
+
+PR [#462](https://github.com/flotellop-art/Arty/pull/462), head
+`8cd65461d641867b4ce48eab40a2d8ba6605ba2f` ; CI PR `34005734631` verte,
+271 suites / 3 238 tests verts / 1 ignoré. Preview
+`94eecd22-03a9-4407-bc4f-c1d1b4e21d37`, GET lecture seule le 6 septembre à
+02:13:36.764 UTC : route et chunk contextualCompare servis. Le code de la
+fusion correspond exactement à l'arbre relu, comparé par Git.
+
+Fusion squash normale à 02:14:32 UTC, main
+`d80efb413769b1a0ad818143f3dee0c306207a61` ; CI main `34005972879` verte
+à 02:19:32 UTC, 271 suites / 3 238 tests verts / 1 ignoré. Couverture main :
+68,76 % statements / 63,64 % branches / 74,56 % fonctions / 70,49 % lignes.
+
+Pages production `973ff4b1-1b0d-4e11-b1ab-a95340936017` réussie à 02:15:59 UTC,
+immutable <https://973ff4b1.appfacade.pages.dev>. GET à 02:16:30.907 puis
+02:22:13.496 UTC : tryarty.com et immutable servent les mêmes trois assets :
+
+| Asset | SHA-256 |
+|---|---|
+| `index-Dp_yJ6v6.js` (291 454 octets) | `5c66d81f60411a06963d7a5bf722eee7878ee951a1ec0fb6d60dcc259c23b246` |
+| `App-ym5uZdAR.js` | `76469fa7141df59b53ac7c2778d3ee97f129a7554c3da1894d5ee490fad56e13` |
+| `contextualCompare-BSZLIt5A.js` (5 466 octets) | `b13375bbd65171f70c6739aa31335b2f3dd04a58de2582dd51e3d68d3aadbcc5` |
+
+Deep link public synthétique servi avec la même entrée ; aucune branche privée
+lue. Régression reçu d'effacement à 02:16:31.895 UTC : GET invalide 400/no-store,
+consultation synthétique aléatoire 200/unknown/no-store. Aucun POST, effacement,
+authentification ou appel fournisseur. Ces GET ne mesurent pas les erreurs métier.
+
+APK run `34005972893` entièrement réussi : APK signé à 02:21:34 UTC,
+Firebase App Distribution à 02:21:41, nettoyage des secrets réussi. Ce reçu
+ne prouve ni une installation ni une publication Play Store. Le serveur local
+de recette a été arrêté ; aucun onglet/session personnel n'a été modifié.
+
+[Reçu public consigné dans la PR](https://github.com/flotellop-art/Arty/pull/462#issuecomment-5556334079).
 
 ## Preuves locales et limites
 
