@@ -1979,5 +1979,28 @@ restent les étapes suivantes de W06, pas des exclusions du cahier des charges.
 Deux GO readonly bornés ; 60 tests ciblés verts. Dernière passe complète Node
 22 : 331 suites / 4 283 tests réussis, 1 ignoré préexistant, typechecks, couverture,
 build et vrai worker Office verts, avant quatre cas négatifs ajoutés aux tests
-ciblés (code applicatif inchangé). CI du candidat exact reste le gate avant
-fusion. Détails, limites et repli dans l'ADR ; W06 distant n'est pas livré.
+ciblés (code applicatif inchangé). CI exacte #483 ensuite verte à 4 287 tests,
+fusion main `45b0488`, CI main et Firebase réussis, Pages publié et assets
+canoniques vérifiés à 21:21 UTC. Détails, limites et repli dans l'ADR ; W06
+distant n'est pas livré.
+
+### W06-B2a — codec chiffré candidat, pas de synchronisation activée
+
+L'[ADR W06](ADR_WORKSPACE_SYNC.md) détaille maintenant le paquet incrémental
+privé lié à une base exacte : clé utilisateur en RAM, HKDF par enveloppe,
+AES-GCM par frames, engagements et bornes cumulées, reprise des octets figés
+sans relire la source. Aucune clé synchronisée par Google et aucune promesse
+de récupération sans le secret ; importer une clé ne confirme pas le secret.
+
+Deux GO readonly après correctif de révocation réentrante ; 57 tests ciblés,
+suite complète finale Node 22 : 332 fichiers / 4 345 tests réussis + 1 ignoré,
+après stabilisation tests-only de la fixture d'agenda tardive (détail dans l'ADR).
+Recette Chrome avec WebCrypto/IndexedDB natifs, fermeture/réouverture de page,
+transfert de deux deltas entre contextes isolés et zéro rechiffrement réussie.
+Les DTO, scopes et store de ce test sont synthétiques, pas l'application Arty.
+
+Le codec est non importé par l'app : aucune modification de l'UI, outbox,
+endpoint, migration, clé persistée ou activation cloud. Capture fidèle,
+identités logiques/physiques, vrai journal atomique, rétention/bootstrap,
+réception/application, ACK/effacement serveur et recette à deux appareils
+restent obligatoires pour W06. CI exacte à vérifier avant fusion de ce lot.
