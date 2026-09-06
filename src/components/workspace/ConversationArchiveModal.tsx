@@ -62,6 +62,7 @@ export function ConversationArchiveModal({ conversation, isBusy, onClose }: {
       </div>
       {lifetime.invalidated ? <p role="alert">{t('workspaceArchive.errors.cancelled')}</p> : lifetime.demo ? <p role="note">{t('workspaceArchive.demoUnavailable')}</p> : <>
       <p className="text-sm">{t('workspaceArchive.scope')}</p>
+      {conversation.comparison && <p className="text-sm" role="note">{t('compare.context.exportNotice')}</p>}
       <p className="text-xs text-theme-muted">{t('workspaceArchive.exclusions')}</p>
       <p className="text-xs text-theme-muted">{t('workspaceArchive.limits')}</p>
       {!preview && <>

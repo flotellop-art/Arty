@@ -7,7 +7,7 @@ const fixture = vi.hoisted(() => ({
   authenticated: true,
   login: vi.fn(),
   callback: vi.fn<(_: string) => Promise<void>>(),
-  conversation: { conversations: [], streamingConvIds: new Set(), projectReview: { request: null } },
+  conversation: { conversations: [], streamingConvIds: new Set(), projectReview: { request: null }, comparisons: { open: vi.fn(), selection: null, error: null } },
 }))
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }))
 vi.mock('../../hooks/useAuth', () => ({ useAuth: () => ({

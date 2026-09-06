@@ -79,6 +79,7 @@ export const ProviderPanel = memo(function ProviderPanel({ panel, onChangeConfig
           disabled={locked || status === 'streaming' || models.length <= 1}
           className="flex-1 min-w-0 rounded border border-theme-border bg-theme-surface px-1.5 py-0.5 text-xs text-theme-ink focus:outline-none focus:border-theme-accent disabled:opacity-50"
         >
+          {!models.some(m => m.modelId === config.modelId) && <option value={config.modelId}>{config.modelId}</option>}
           {models.map((m) => (
             <option key={m.modelId} value={m.modelId} disabled={!!getAccess({ ...config, modelId: m.modelId })}>{m.label}</option>
           ))}

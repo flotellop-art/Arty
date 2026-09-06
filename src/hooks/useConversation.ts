@@ -43,6 +43,7 @@ import { prepareProjectChat, type PreparedProjectChat } from '../services/projec
 import { beginProjectOperation, getProject } from '../services/projects/store'
 import { ProjectError, type Project } from '../services/projects/types'
 import { useProjectReview } from './useProjectReview'
+import { useContextualComparisons } from './useContextualComparisons'
 
 import type { ToolDispatcher as ToolHandler } from '../services/tools/types'
 import { generatedImageIds, MAX_GENERATED_IMAGES_PER_TURN } from '../services/generatedImages'
@@ -103,6 +104,7 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
   }, [])
 
   const streaming = useStreaming({ refreshConversations })
+  const comparisons = useContextualComparisons(streaming, refreshConversations, reviewProjectRequest)
   const fileAttachments = useFileAttachments()
   // H2 (audit frontend) — identités stables extraites une fois. L'objet
   // `streaming` porte streamingContent → il change à chaque frame pendant un
@@ -1386,7 +1388,9 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
   // before it, drop everything from there on, and resend that user message.
   // Reuses editAndResend's truncation logic.
   const resendImageBranch = useCallback((conv: Conversation, index: number, content: string, relocate = false): boolean => {
-    if (!conv.messages.slice(index).some(m => m.role === 'assistant' && generatedImageIds(m.generatedImages).length)) return false
+    const comparedQuestion = conv.comparison && conv.messages.findIndex(m => m.id === conv.comparison!.questionId)
+    const protectsComparison = comparedQuestion !== undefined && comparedQuestion >= index
+    if (!protectsComparison && !conv.messages.slice(index).some(m => m.role === 'assistant' && generatedImageIds(m.generatedImages).length)) return false
     // A retry is a NEW generation, not recovery of the old paid image.
     if (!storage.isCacheReady()) { setError(i18n.t('errors.storageNotReady')); return true }
     if (!canStart(conv.id)) { setError(i18n.t('errors.tooManyConcurrentStreams')); return true }
@@ -1395,7 +1399,7 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
       if (!id) return true
       const user = storage.getConversation(id)?.messages[index]
       if (!user || user.role !== 'user') return true
-      toast(i18n.t('image.galleryRetryBranch'))
+      toast(i18n.t(protectsComparison ? 'compare.context.retryBranch' : 'image.galleryRetryBranch'))
       selectConversation(id)
       navigationRef.current?.(id)
       void sendMessage(content, id, user.files, { replaceMessageId: user.id, quickAction: user.quickAction,
@@ -1532,6 +1536,7 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
   }, [activeId, retryLastUserMessage])
 
   return {
+    comparisons,
     isConversationBusy: (id: string) => hasStream(id) || hasConversationWork(id),
     conversations,
     activeConversation,

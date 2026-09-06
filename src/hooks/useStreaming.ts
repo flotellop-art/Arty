@@ -13,7 +13,18 @@ import { PROJECT_ERASURE_FENCE_KEY } from '../services/userSession'
 // pour l'usage "je lance un long brief pendant que je discute autre part".
 export const MAX_CONCURRENT_STREAMS = 3
 
+export interface ExternalStreamLifecycle {
+  flush(): boolean
+  cancel(reason: 'stop' | 'discard' | 'unmount'): void
+}
+export interface ExternalStreamLease {
+  invocationId: string
+  isCurrent(): boolean
+  release(): void
+}
+
 type StreamState = {
+  external?: ExternalStreamLifecycle
   generatedImages: string[]
   projectTurn?: ProjectTurn
   targetId: string
@@ -84,7 +95,17 @@ export function useStreaming(deps: {
   // Sauvegarde partielle d'un stream précis (appelé périodiquement par
   // saveInterval, et au beforeunload pour tous les streams ouverts).
   const savePartialFor = useCallback((s: StreamState) => {
-    try { s.assertCurrent?.() } catch { s.abortController?.abort(); return false }
+    try { s.assertCurrent?.() } catch {
+      try { s.external?.cancel('discard') } catch { /* Other streams still need cleanup. */ }
+      try { s.abortController?.abort() } catch { /* already aborted */ }
+      return false
+    }
+    if (s.external) {
+      try { return s.external.flush() } catch {
+        try { s.external.cancel('stop') } catch { /* Caller tears down this exact state. */ }
+        return false
+      }
+    }
     if (!s.accumulated && !s.generatedImages.length) return true
     const stored = storage.getConversation(s.targetId)
     if (!stored || !storage.isCacheReady()) return false
@@ -188,7 +209,10 @@ export function useStreaming(deps: {
   // leaving a ghost stream/interval after its controller has been aborted.
   const savePartialAll = useCallback(() => {
     for (const s of streamsRef.current.values()) {
-      if (savePartialFor(s) === false) { s.abortController?.abort(); teardownStream(s.targetId) }
+      if (savePartialFor(s) === false) {
+        s.abortController?.abort()
+        if (streamsRef.current.get(s.targetId) === s) teardownStream(s.targetId)
+      }
     }
   }, [savePartialFor, teardownStream])
 
@@ -229,15 +253,17 @@ export function useStreaming(deps: {
 
     document.addEventListener('visibilitychange', handleVisibilityChange)
     window.addEventListener('beforeunload', handleBeforeUnload)
+    window.addEventListener('pagehide', handleBeforeUnload)
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange)
       window.removeEventListener('beforeunload', handleBeforeUnload)
+      window.removeEventListener('pagehide', handleBeforeUnload)
     }
   }, [savePartialAll])
 
   // Démarre un nouveau stream pour une conv. Retourne false si le cap de
   // concurrence est atteint — le caller doit alors annuler son envoi.
-  const startStream = useCallback((targetId: string, assertCurrent?: () => void): boolean => {
+  const startStream = useCallback((targetId: string, assertCurrent?: () => void, external?: ExternalStreamLifecycle): boolean => {
     if (streamsRef.current.has(targetId)) {
       // Stream déjà en cours pour cette conv → impossible d'en démarrer un
       // second (l'UI bloque déjà via isStreaming, mais défense en profondeur).
@@ -249,13 +275,17 @@ export function useStreaming(deps: {
 
     const owner = getActiveUserId(), epoch = getActiveSessionEpoch()
     const s: StreamState = {
+      external,
       targetId,
       invocationId: generateId(),
       accumulated: '',
       generatedImages: [],
       saveInterval: setInterval(() => {
         const cur = streamsRef.current.get(targetId)
-        if (cur && savePartialFor(cur) === false) { cur.abortController?.abort(); teardownStream(targetId) }
+        if (cur && savePartialFor(cur) === false) {
+          cur.abortController?.abort()
+          if (streamsRef.current.get(targetId) === cur) teardownStream(targetId)
+        }
       }, 3000),
       abortController: null,
       assertCurrent: () => {
@@ -276,6 +306,24 @@ export function useStreaming(deps: {
     }
     return true
   }, [savePartialFor, teardownStream])
+
+  /** Same cap/Stop/page lifecycle as chat. Handles are tied to the actual
+   * StreamState, so a late release never touches a replacement invocation. */
+  const reserveExternalStreams = useCallback((entries: Array<{
+    id: string; assertCurrent(): void; lifecycle: ExternalStreamLifecycle
+  }>): ExternalStreamLease[] | null => {
+    if (!entries.length || new Set(entries.map(e => e.id)).size !== entries.length ||
+        entries.some(e => streamsRef.current.has(e.id)) || streamsRef.current.size + entries.length > MAX_CONCURRENT_STREAMS) return null
+    entries.forEach(e => e.assertCurrent())
+    // A guard must not be able to make the earlier capacity check stale.
+    if (entries.some(e => streamsRef.current.has(e.id)) || streamsRef.current.size + entries.length > MAX_CONCURRENT_STREAMS) return null
+    return entries.map(entry => {
+      startStream(entry.id, entry.assertCurrent, entry.lifecycle)
+      const state = streamsRef.current.get(entry.id)!
+      return { invocationId: state.invocationId, isCurrent: () => streamsRef.current.get(entry.id) === state,
+        release: () => { if (streamsRef.current.get(entry.id) === state) teardownStream(entry.id) } }
+    })
+  }, [startStream, teardownStream])
 
   const setProjectTurn = useCallback((targetId: string, turn: ProjectTurn) => {
     const state = streamsRef.current.get(targetId)
@@ -366,6 +414,10 @@ export function useStreaming(deps: {
     if (!id) return
     const s = streamsRef.current.get(id)
     if (!s) return
+    if (s.external) {
+      try { s.external.cancel('stop') } finally { if (streamsRef.current.get(id) === s) teardownStream(id) }
+      return
+    }
     if (s.accumulated || s.generatedImages.length) finalize(id, s.accumulated, true)
     if (s.abortController) {
       try { s.abortController.abort() } catch { /* déjà aborté */ }
@@ -375,14 +427,17 @@ export function useStreaming(deps: {
 
   // Session invalidated: never persist partial content into another account.
   const discardStream = useCallback((targetId: string) => {
-    streamsRef.current.get(targetId)?.abortController?.abort()
+    const state = streamsRef.current.get(targetId)
+    try { state?.external?.cancel('discard') } catch { /* Isolate lifecycle observers. */ }
+    try { state?.abortController?.abort() } catch { /* Continue removal. */ }
+    if (streamsRef.current.get(targetId) !== state) return
     teardownStream(targetId)
   }, [teardownStream])
 
   useEffect(() => {
     const invalidate = () => {
       for (const state of streamsRef.current.values()) {
-        if (state.generatedImages.length) discardStream(state.targetId)
+        if (state.generatedImages.length || state.external) discardStream(state.targetId)
       }
     }
     const unsubscribe = onLocalDataInvalidated(invalidate)
@@ -432,7 +487,8 @@ export function useStreaming(deps: {
   useEffect(() => () => {
     for (const stream of streamsRef.current.values()) {
       if (stream.saveInterval) clearInterval(stream.saveInterval)
-      stream.abortController?.abort()
+      try { stream.external?.cancel('unmount') } catch { /* Keep cleaning up siblings. */ }
+      try { stream.abortController?.abort() } catch { /* Keep cleaning up siblings. */ }
     }
     streamsRef.current.clear()
     cancelPendingFlush()
@@ -456,6 +512,7 @@ export function useStreaming(deps: {
     canStart,
     // Lifecycle d'un stream
     startStream,
+    reserveExternalStreams,
     setProjectTurn,
     adoptGeneratedImage,
     getInvocationId,
@@ -476,7 +533,7 @@ export function useStreaming(deps: {
     savePartialAll,
   }), [
     isStreaming, streamingContent, streamingImages, streamingConvIds, isStreamingFor, hasStream,
-    canStart, startStream, setProjectTurn, adoptGeneratedImage, getInvocationId, onToken, onDone, onError,
+    canStart, startStream, reserveExternalStreams, setProjectTurn, adoptGeneratedImage, getInvocationId, onToken, onDone, onError,
     stopStreaming, discardStream, setActiveStream, isActive,
     setProgressContent, setAbortController, resetAccumulated, finalize,
     savePartialAll,

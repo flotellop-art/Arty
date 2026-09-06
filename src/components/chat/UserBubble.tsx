@@ -5,6 +5,7 @@ import type { FileAttachment } from '../../types'
 import { getFile } from '../../services/secureFileStorage'
 
 interface UserBubbleProps {
+  onCompare?: () => void
   content: string
   files?: FileAttachment[]
   pinned?: boolean
@@ -171,7 +172,7 @@ const FileThumbnail = memo(function FileThumbnail({ file }: { file: FileAttachme
   )
 })
 
-export const UserBubble = memo(function UserBubble({ content, files, pinned, onTogglePin, onEdit, onBranch }: UserBubbleProps) {
+export const UserBubble = memo(function UserBubble({ content, files, pinned, onTogglePin, onEdit, onBranch, onCompare }: UserBubbleProps) {
   const { t } = useTranslation()
   const [editing, setEditing] = useState(false)
   const [value, setValue] = useState(content)
@@ -252,6 +253,7 @@ export const UserBubble = memo(function UserBubble({ content, files, pinned, onT
 
   return (
     <div className="group/user relative flex flex-col items-end mb-4">
+      {onCompare && <button className="min-h-11 px-3 mb-1 text-xs border border-theme-border rounded-md" onClick={onCompare}>{t('compare.context.action')}</button>}
       {hasFiles && (
         <div className="flex flex-wrap gap-2 mb-1.5 justify-end max-w-[85%]">
           {files!.map((f) => (

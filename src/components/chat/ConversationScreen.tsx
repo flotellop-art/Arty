@@ -22,6 +22,8 @@ import type { useDrive } from '../../hooks/useDrive'
 import type { useComputer } from '../../hooks/useComputer'
 
 interface ConversationScreenProps {
+  onCompare?: (conversationId: string, messageId: string) => void
+  onOpenComparison?: (branchId: string) => void
   isConversationBusy?: (id: string) => boolean
   onProjectChange?: (project: Project | null) => Promise<boolean>
   conversation: Conversation
@@ -51,6 +53,7 @@ interface ConversationScreenProps {
 }
 
 export function ConversationScreen({
+  onCompare, onOpenComparison,
   conversation,
   isConversationBusy,
   isStreaming,
@@ -107,7 +110,9 @@ export function ConversationScreen({
       <BrowserBanner action={computerActions.currentAction} />
 
       <ErrorBoundary>
+        {conversation.comparison && onOpenComparison && <button className="min-h-11 border border-theme-border mx-4 px-3" onClick={() => onOpenComparison(conversation.id)}>{t('compare.context.reopen')}</button>}
         <MessageList
+          onCompare={onCompare ? messageId => onCompare(conversation.id, messageId) : undefined}
           messages={conversation.messages}
           isStreaming={isStreaming}
           streamingContent={streamingContent}

@@ -47,6 +47,7 @@ interface ChatOptionsSheetProps {
   onSelectStyle: (style: ResponseStyle) => void
   onOpenSummary?: () => void
   hasConversation: boolean
+  exportNotice?: string
   onExportMarkdown: () => void
   onExportPdf: () => void
   onExportJson: () => void
@@ -77,6 +78,7 @@ export function ChatOptionsSheet({
   onSelectStyle,
   onOpenSummary,
   hasConversation,
+  exportNotice,
   onExportMarkdown,
   onExportPdf,
   onExportJson,
@@ -301,6 +303,7 @@ export function ChatOptionsSheet({
         )}
         {hasConversation && (
           <>
+            {exportNotice && <p className="px-1.5 py-2 text-xs text-theme-muted">{exportNotice}</p>}
             {onExportOffice && <button onClick={onExportOffice} className="w-full text-left min-h-[48px] px-1.5 rounded-xl text-[13.5px] text-theme-ink hover:bg-theme-ink/[0.03]">⇩ Exporter les échanges en Word / Excel</button>}
             {onArchive && <button onClick={onArchive} className="w-full text-left min-h-[48px] px-1.5 rounded-xl text-[13.5px] text-theme-ink hover:bg-theme-ink/[0.03]">{t('workspaceArchive.title')}</button>}
             <div className="flex items-center gap-3 min-h-[48px] px-1.5 text-[13.5px] text-theme-ink">

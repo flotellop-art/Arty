@@ -13,6 +13,7 @@ import { useProactiveBrief } from './hooks/useProactiveBrief'
 import { isProactiveBriefEnabled } from './services/proactiveBriefSettings'
 import { ConversationScreen } from './components/chat/ConversationScreen'
 import { ProjectReviewDialog } from './components/chat/ProjectReviewDialog'
+import { ContextualComparisonDialog } from './components/comparator/ContextualComparisonDialog'
 import type { Project } from './services/projects/types'
 import { ReportPage } from './components/shared/ReportPage'
 import { ErrorBoundary } from './components/shared/ErrorBoundary'
@@ -52,6 +53,7 @@ const UpgradeScreen = lazy(() => import('./screens/upgrade').then((m) => ({ defa
 const TemplatesScreen = lazy(() => import('./screens/templates').then((m) => ({ default: m.TemplatesScreen })))
 const CostsScreen = lazy(() => import('./screens/costs').then((m) => ({ default: m.CostsScreen })))
 const ComparatorScreen = lazy(() => import('./screens/compare').then((m) => ({ default: m.ComparatorScreen })))
+const ContextualCompareScreen = lazy(() => import('./screens/contextualCompare').then(m => ({ default: m.ContextualCompareScreen })))
 const ProjectsScreen = lazy(() => import('./screens/projects').then((m) => ({ default: m.ProjectsScreen })))
 // Landing marketing (item 16 roadmap v2) — vue uniquement par les
 // primo-visiteurs web ; les utilisateurs connectés ne la téléchargent jamais.
@@ -603,6 +605,7 @@ function AppContent({
             void setConversationProject(null, project).then(id => { if (id) navigate(`/chat/${id}`) })
           }} /></Suspense>}
         />
+        <Route path="/compare/:branchId" element={<Suspense fallback={<LazyFallback />}><ContextualCompareScreen controller={conversation.comparisons} onChat={handleSelectConversation} onBack={handleHome} onStop={stopStreaming} /></Suspense>} />
         <Route
           path="/report/:id"
           element={<ReportPage />}
@@ -619,6 +622,8 @@ function AppContent({
           path="/chat/:id"
           element={
             <ChatRoute
+              onCompare={conversation.comparisons.open}
+              onOpenComparison={id => navigate(`/compare/${encodeURIComponent(id)}`)}
               activeConversation={activeConversation}
               isConversationBusy={conversation.isConversationBusy}
               isStreaming={isStreaming}
@@ -649,6 +654,8 @@ function AppContent({
         />
       </Routes>
       </main>
+      {conversation.comparisons.error && <div role="alert" className="fixed bottom-4 inset-x-4 z-[85] bg-theme-bg border border-red-500 p-4 rounded-xl"><p>{t(conversation.comparisons.error)}</p><button className="min-h-11 px-3" onClick={conversation.comparisons.dismissError}>{t('common.close')}</button></div>}
+      {conversation.comparisons.selection && <ContextualComparisonDialog controller={conversation.comparisons} onStarted={id => navigate(`/compare/${encodeURIComponent(id)}`)} />}
       {projectReview.request && <ProjectReviewDialog key={projectReview.request.reviewId} request={projectReview.request} onAnswer={value => projectReview.answer(projectReview.request!.reviewId, value)} />}
 
       {questionModal && (
@@ -740,6 +747,8 @@ function TrialBanner({ onUpgrade }: { onUpgrade: () => void }) {
 }
 
 interface ChatRouteProps {
+  onCompare?: (conversationId: string, messageId: string) => void
+  onOpenComparison?: (branchId: string) => void
   isConversationBusy?: (id: string) => boolean
   onProjectChange?: (project: Project | null) => Promise<boolean>
   activeConversation: ReturnType<typeof useConversation>['activeConversation']
@@ -768,6 +777,7 @@ interface ChatRouteProps {
 }
 
 function ChatRoute({
+  onCompare, onOpenComparison,
   isConversationBusy,
   onProjectChange,
   activeConversation,
@@ -853,6 +863,8 @@ function ChatRoute({
       // from /chat/A to /chat/B without leaving the route.
       key={activeConversation.id}
       conversation={activeConversation}
+      onCompare={onCompare}
+      onOpenComparison={onOpenComparison}
       isConversationBusy={isConversationBusy}
       onProjectChange={onProjectChange}
       isStreaming={isStreaming}

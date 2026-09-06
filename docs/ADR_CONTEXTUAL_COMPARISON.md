@@ -37,6 +37,13 @@ la révision et l'accès après leurs awaits d'auth. Chaque résultat et chaque
 échec sont indépendants, aucune promesse que les deux fournisseurs réussissent.
 Des copies de messages sont des données ; elles ne réactivent pas les outils.
 
+Le registre expose un lifecycle externe étroit (flush/cancel et lease liée au
+StreamState), pas un deuxième ordonnanceur. Le moteur comparatif est seul
+propriétaire du `responseId` fixe et du reçu de sauvegarde. Stop est terminal
+avant abort ; release/flush ne peuvent retirer une invocation de remplacement.
+Le plan n'est chargé qu'à l'ouverture du comparateur, puis relu depuis le
+serveur après chaque panneau engagé : aucun décrément local supposé.
+
 La branche est `hasProjectContext=true`, avec provenance de tour documentaire,
 même sans bibliothèque. Ce flag existant est monotone, préservé par les branches,
 imports et sauvegardes, et désactive actions HTML, rappels, fact-check et mémoire
@@ -81,13 +88,16 @@ attribution historique. Les modèles demandés/servis restent distingués.
 ## Actions et preuve attendue
 
 1. [x] Préparation commune et réservation atomique avec tests ciblés.
-2. [ ] UI de sélection/confirmation sur question et route de reprise locale.
-3. [ ] Intégration des deux invocations au registre de streams existant.
-4. [ ] Persistance des réponses/erreurs/attributions/coûts et statut de commit.
-5. [ ] Recette unique : projet + Office, deux appels, erreur quota partielle,
+2. [x] UI de sélection/confirmation sur question et route de reprise locale.
+3. [x] Intégration des deux invocations au registre de streams existant.
+4. [x] Persistance des réponses/erreurs/attributions/coûts et statut de commit.
+5. [x] Parcours validés par intégration et navigateur : projet + Office, deux appels, erreur quota partielle,
    reload, continuation, original intact, suppression d'une branche sans perte
    de pièces. Variantes EU, fichier absent, scope/crypto/effacement, quota local,
    cap partagé et inertie export/import/branch/détachement.
 6. [ ] Deux GO finaux, verify complète, PR/CI/preview, main/Pages/APK vérifiés.
 
-Un socle testé sans cette verticale n'est pas W07 livré.
+Preuves et périmètres exacts dans `CONTEXTUAL_COMPARISON_RELEASE.md`. Les tests
+locaux utilisent des comptes/données fictifs et des réponses HTTP simulées ;
+ils n'attestent ni OAuth ni facturation fournisseur en production. W07 n'est
+pas livré tant que PR/CI/Pages n'ont pas leur reçu.

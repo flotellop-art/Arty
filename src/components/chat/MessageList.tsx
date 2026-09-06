@@ -9,6 +9,7 @@ import { ProjectSources } from './ProjectSources'
 import { generatedImageIds } from '../../services/generatedImages'
 
 interface MessageItemProps {
+  onCompare?: (messageId: string) => void
   onExport?: (messageId: string) => void
   msg: Message
   index: number
@@ -21,7 +22,7 @@ interface MessageItemProps {
   isLast?: boolean
 }
 
-const MessageItem = memo(function MessageItem({ msg, index, onExport, onAction, onBranch, onTogglePin, onEdit, onRetry, onReport, isLast }: MessageItemProps) {
+const MessageItem = memo(function MessageItem({ msg, index, onExport, onAction, onBranch, onCompare, onTogglePin, onEdit, onRetry, onReport, isLast }: MessageItemProps) {
   const { t } = useTranslation()
   const handleBranch = useCallback(() => onBranch?.(index), [onBranch, index])
   const handleTogglePin = useCallback(() => onTogglePin?.(msg.id), [onTogglePin, msg.id])
@@ -39,6 +40,7 @@ const MessageItem = memo(function MessageItem({ msg, index, onExport, onAction, 
     <div className="group relative" data-msg-id={msg.id} data-msg-role={msg.role}>
       {msg.role === 'user' ? (
         <UserBubble
+          onCompare={onCompare ? () => onCompare(msg.id) : undefined}
           content={msg.content}
           files={msg.files}
           pinned={msg.pinned}
@@ -85,6 +87,7 @@ const MessageItem = memo(function MessageItem({ msg, index, onExport, onAction, 
 })
 
 interface MessageListProps {
+  onCompare?: (messageId: string) => void
   onExport?: (messageId: string) => void
   messages: Message[]
   isStreaming: boolean
@@ -110,7 +113,7 @@ interface MessageListProps {
 // Différent du comportement antérieur qui suivait le bas en permanence
 // — ça forçait à descendre à chaque token et empêchait de naviguer.
 
-export const MessageList = memo(function MessageList({ messages, isStreaming, streamingContent, streamingImages, conversationId, onExport, onAction, onBranch, onTogglePin, onEdit, onRetry, onReport }: MessageListProps) {
+export const MessageList = memo(function MessageList({ messages, isStreaming, streamingContent, streamingImages, conversationId, onExport, onAction, onBranch, onCompare, onTogglePin, onEdit, onRetry, onReport }: MessageListProps) {
   const { t } = useTranslation()
   const scrollRef = useRef<HTMLDivElement>(null)
   const prevMessagesCount = useRef(messages.length)
@@ -209,6 +212,7 @@ export const MessageList = memo(function MessageList({ messages, isStreaming, st
           if (isStreaming && msg.id === 'streaming') return null
           return (
             <MessageItem
+              onCompare={isStreaming ? undefined : onCompare}
               key={msg.id}
               msg={msg}
               index={index}

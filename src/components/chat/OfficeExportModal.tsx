@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Capacitor } from '@capacitor/core'
+import { useTranslation } from 'react-i18next'
 import type { Conversation } from '../../types'
 import { prepareOfficeExport, type OfficeExportSession } from '../../services/officeExport/session'
 import type { ExportDocument, ExportFormat } from '../../services/officeExport/types'
@@ -7,6 +8,7 @@ import { BottomSheet } from '../shared/BottomSheet'
 import { getActiveUserId, getActiveSessionEpoch } from '../../services/userSession'
 
 export function OfficeExportModal({ conversation, messageId, onClose }: { conversation: Conversation; messageId?: string; onClose(): void }) {
+  const { t } = useTranslation()
   const initial = useRef({ conversation, messageId })
   const [identity] = useState(() => ({ owner: getActiveUserId(), epoch: getActiveSessionEpoch() }))
   const session = useRef<OfficeExportSession | null>(null)
@@ -48,6 +50,7 @@ export function OfficeExportModal({ conversation, messageId, onClose }: { conver
   return <BottomSheet open onClose={close} title={messageId ? 'Exporter cette réponse' : 'Exporter les échanges du fil'}>
     <div className="space-y-4 text-sm text-theme-ink max-w-3xl mx-auto pb-3">
       <p>Fichier modifiable dans Word ou Excel, sans nouvelle génération IA. La génération reste locale ; une application de partage choisie peut ensuite envoyer le fichier à son propre service. Les fragments de réponse en cours sont exclus.</p>
+      {conversation.comparison && <p role="note">{t('compare.context.exportNotice')}</p>}
       {!document && !error && <p role="status">Préparation de l’aperçu local…</p>}
       {document && <>
         <p>{document.messages.length} message(s), {document.chars.toLocaleString('fr-FR')} caractères, {tables.length} tableau(x) reconnu(s).</p>

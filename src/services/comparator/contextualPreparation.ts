@@ -9,6 +9,8 @@ import { prepareOfficeMessages } from '../documents/prepareOfficeMessages'
 import { detectMimeType } from '../../hooks/useFileAttachments'
 import { getMessageTextForModel } from '../quickActions'
 import { findModel, type PanelConfig } from './providerCatalog'
+import type { PanelMetrics } from './useMultiProviderChat'
+import type { ModelUsedEvent } from '../modelLabels'
 
 /** Local grouping only. Never route, fetch a file, or resume an HTTP request
  * using imported grouping metadata. A branch remains documentary without it. */
@@ -23,6 +25,10 @@ export interface ContextualComparison {
   provider: 'anthropic' | 'mistral'
   requestedModel: string
   status: 'pending' | 'streaming' | 'done' | 'error' | 'aborted'
+  error?: string
+  metrics?: PanelMetrics
+  binaryBytes?: number
+  attribution?: ModelUsedEvent
 }
 
 /** Capture before the first await. The original conversation is never edited.
@@ -54,7 +60,7 @@ export function captureContextualComparison(args: {
   }
   assertSource()
   let started = false
-  return { provider, question: prefix.messages.at(-1)!.content,
+  return { provider, question: prefix.messages.at(-1)!.content, assertCurrent: assertSource,
     async prepare(selected: readonly PanelConfig[], review: ReviewProjectRequest) {
       assertSource()
       if (started) throw new ProjectError('conflict')
@@ -121,6 +127,7 @@ export function captureContextualComparison(args: {
             (full && (current.messages.length !== expected.messages.length || JSON.stringify(current.messages) !== JSON.stringify(expected.messages)))) throw new ProjectError('conflict')
       }
       return { groupId, branchIds,
+        assertCurrent: assertSource,
         /** Call after reserving both slots in the shared streaming manager.
          * No await between this final guard and the single local commit. */
         commit() {

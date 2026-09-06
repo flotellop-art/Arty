@@ -261,17 +261,20 @@ function getSharedPlanRefresh(
   return task.promise
 }
 
-export function usePlanStatus(): PlanStatus & { refresh: () => void } {
+export function usePlanStatus(enabled = true): PlanStatus & { refresh: () => void } {
   const [state, setState] = useState<PlanStatus>(DEFAULT_STATUS)
+  const enabledRef = useRef(enabled); enabledRef.current = enabled
   const refreshSerialRef = useRef(0)
 
   const refresh = useCallback(async () => {
+    if (!enabledRef.current) return
     const requestId = ++refreshSerialRef.current
     const requestUserId = getActiveUserId()
     const requestSessionEpoch = getActiveSessionEpoch()
     const nextState = await getSharedPlanRefresh(requestUserId, requestSessionEpoch)
     if (
       nextState
+      && enabledRef.current
       && requestId === refreshSerialRef.current
       && getActiveUserId() === requestUserId
       && getActiveSessionEpoch() === requestSessionEpoch
@@ -281,6 +284,7 @@ export function usePlanStatus(): PlanStatus & { refresh: () => void } {
   }, [])
 
   useEffect(() => {
+    if (!enabled) return
     void refresh()
     // Re-sync sur événements custom : `arty-message-sent` (après chaque
     // message → décrémenter le compteur en live), `google-storage-ready`
@@ -310,7 +314,7 @@ export function usePlanStatus(): PlanStatus & { refresh: () => void } {
       window.removeEventListener('pageshow', handleFocus)
       document.removeEventListener('visibilitychange', handleVisibility)
     }
-  }, [refresh])
+  }, [refresh, enabled])
 
   return { ...state, refresh }
 }

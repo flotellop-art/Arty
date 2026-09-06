@@ -135,6 +135,8 @@ export type ToolHandler = (
 interface StreamOptions extends ModelInvocationOptions {
   assertRequestCurrent?: () => void
   documentReadOnly?: boolean
+  /** Bounded documentary comparison output, never an entitlement override. */
+  maxOutputTokens?: number
   /** Revalidate locally prepared project consent after async auth, before HTTP. */
   beforeDocumentRequest?: () => Promise<void>
   systemPrompt?: string
@@ -182,6 +184,12 @@ export function streamMessage(
   apiKeyOverride?: string
 ): AbortController {
   const controller = new AbortController()
+
+  if (options?.maxOutputTokens !== undefined && (options.documentReadOnly !== true ||
+      !Number.isSafeInteger(options.maxOutputTokens) || options.maxOutputTokens < 1 || options.maxOutputTokens > 8192)) {
+    onError(new Error('Invalid documentary output limit'))
+    return controller
+  }
 
   const apiKey = apiKeyOverride || getAnthropicKey()
   if (!apiKey) {
@@ -976,7 +984,8 @@ async function runWithTools(
     let toolContextChars = 0
     while (maxIterations-- > 0) {
       // Haiku max output = 64000 tokens (API limit). Cap unconditionally.
-      const maxTokens = isHaiku ? 64000 : 65536
+      const maxTokens = options?.documentReadOnly && Number.isInteger(options.maxOutputTokens) && options.maxOutputTokens! >= 1 && options.maxOutputTokens! <= 8192
+        ? options.maxOutputTokens! : isHaiku ? 64000 : 65536
       // Cache de l'historique : (re)pose le marqueur sur le dernier bloc à
       // CHAQUE itération (cf. lookback 20 blocs dans markLastBlockForCaching).
       markLastBlockForCaching(apiMessages)
