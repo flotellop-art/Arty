@@ -1942,3 +1942,13 @@ régression : revert Git de la PR puis déploiement Pages par la chaîne habitue
 Ne pas rétablir l'ancienne affirmation de confidentialité comme « fix » ; couper
 temporairement la carte du conseiller si elle est la cause. Les binaires Android
 existants restent inchangés tant qu'un nouvel APK n'a pas été installé.
+
+### Correctif dépendances isolé — 6 septembre 2026
+
+Le point de contrôle ci-dessus décrit l'état **avant correction**. Le lot
+[dépendances du 6 septembre](DEPENDENCY_SECURITY_20260906.md) résout localement
+les avis npm (audit complet et omit-dev à zéro) avec recette Office/navigate/PDF,
+tests de runtime natif et benchmark workerd. Vérification complète locale :
+4 227 tests réussis, 1 ignoré ; deux contre-revues readonly GO code. CI et
+livraison restent à attester dans cette fiche avant de considérer ce gate
+livré. Le CDC global n'est pas déclaré terminé.

@@ -1101,7 +1101,7 @@ export default function App() {
     // au lieu de la page attendue. La décision landing / choix d'onboarding /
     // login vit dans LoggedOutHome.
     return (
-      <BrowserRouter>
+      <BrowserRouter useTransitions={false}>
         <Routes>
           <Route
             path="/auth/callback"
@@ -1169,7 +1169,7 @@ export default function App() {
   }
 
   return (
-    <BrowserRouter>
+    <BrowserRouter useTransitions={false}>
       {/* M8 (audit frontend) — boundary RACINE. La seule boundary existante
           entourait MessageList : un crash dans Sidebar, InputBar ou un screen
           lazy = écran blanc total sans message. */}

@@ -324,7 +324,10 @@ async function createRuntime(script) {
     outboundService: async (request) => {
       const url = new URL(request.url)
       if (url.hostname === 'oauth2.googleapis.com') {
-        return Response.json({ aud: 'workerd-benchmark-client' })
+        // Match the production tokeninfo-only identity contract. A missing
+        // verified email must remain a rejection, not be repaired by userinfo.
+        return Response.json({ aud: 'workerd-benchmark-client', email: 'vision-workerd@example.test',
+          email_verified: true, sub: 'vision-workerd-sub' })
       }
       if (url.hostname === 'www.googleapis.com') {
         return Response.json({
@@ -375,6 +378,14 @@ async function createRuntime(script) {
 
 async function runScenario({ runtime, makePayload, concurrency, pathName, gateBytes, sampleDuring }) {
   const baseline = await runtime.inspector.command('Runtime.getHeapUsage')
+  const abort = new AbortController()
+  let firstFailure
+  let rejectFailure
+  const failed = new Promise((_, reject) => { rejectFailure = reject })
+  // Install observers before waiting for an upstream that a failed request
+  // will never reach. The error remains fatal; this is not a retry or fallback.
+  void failed.catch(() => {})
+  const recordFailure = (error) => { firstFailure ??= error; rejectFailure(error) }
   let peak = baseline
   let monitoring = true
   const monitor = sampleDuring ? (async () => {
@@ -384,13 +395,15 @@ async function runScenario({ runtime, makePayload, concurrency, pathName, gateBy
       await sleep(2)
     }
   })() : Promise.resolve()
+  void monitor.catch(recordFailure)
 
   const statuses = []
   let settled = 0
   let payloadBytes = 0
   const startedAt = performance.now()
+  let requests = []
   try {
-    const requests = Array.from({ length: concurrency }, (_, requestIndex) => (async () => {
+    requests = Array.from({ length: concurrency }, (_, requestIndex) => (async () => {
       const payload = makePayload(requestIndex)
       const bytes = Buffer.byteLength(payload)
       if (payloadBytes === 0) payloadBytes = bytes
@@ -405,6 +418,7 @@ async function runScenario({ runtime, makePayload, concurrency, pathName, gateBy
           ...(pathName === 'byok' ? { 'x-openai-key': 'sk-local-benchmark' } : {}),
         },
         body: payload,
+        signal: abort.signal,
       })
       const responseBody = await response.text()
       statuses.push(response.status)
@@ -412,24 +426,35 @@ async function runScenario({ runtime, makePayload, concurrency, pathName, gateBy
         throw new Error(`Proxy returned ${response.status}: ${responseBody.slice(0, 300)}`)
       }
     })().finally(() => { settled += 1 }))
+    const completed = Promise.all(requests)
+    void completed.catch(recordFailure)
 
-    await withTimeout(runtime.firstUpstream, SCENARIO_TIMEOUT_MS, 'First OpenAI upstream')
+    await withTimeout(Promise.race([runtime.firstUpstream, failed]), SCENARIO_TIMEOUT_MS, 'First OpenAI upstream')
     const expectedBusy = concurrency - 1
-    await withTimeout((async () => {
-      while (settled < expectedBusy) await sleep(5)
-    })(), 5_000, 'Fail-fast concurrent refusals')
+    await withTimeout(Promise.race([(async () => {
+      while (settled < expectedBusy && !abort.signal.aborted) await sleep(5)
+    })(), failed]), 5_000, 'Fail-fast concurrent refusals')
     runtime.releaseUpstreams()
-    await withTimeout(Promise.all(requests), SCENARIO_TIMEOUT_MS, 'Scenario requests')
+    await withTimeout(Promise.race([completed, failed]), SCENARIO_TIMEOUT_MS, 'Scenario requests')
 
     if (!sampleDuring) {
       const after = await runtime.inspector.command('Runtime.getHeapUsage')
       if (accountedBytes(after) > accountedBytes(peak)) peak = after
     }
+  } catch (error) {
+    firstFailure ??= error
+    throw error
   } finally {
     runtime.releaseUpstreams()
     monitoring = false
-    await monitor
+    abort.abort()
+    try { await withTimeout(Promise.allSettled([...requests, monitor]), SCENARIO_TIMEOUT_MS, 'Scenario cleanup') }
+    catch (cleanupError) {
+      if (firstFailure) throw new AggregateError([firstFailure, cleanupError], 'Scenario failed and cleanup also failed')
+      throw cleanupError
+    }
   }
+  if (firstFailure) throw firstFailure
 
   const orderedStatuses = statuses.toSorted((left, right) => left - right)
   const expectedStatuses = [200, ...Array.from({ length: concurrency - 1 }, () => 429)]
@@ -584,7 +609,7 @@ async function main(argv = process.argv.slice(2)) {
   return report
 }
 
-export { aggregateRuns, crc32, main, percentile, pngFixture, visionPayload }
+export { aggregateRuns, crc32, main, percentile, pngFixture, runScenario, visionPayload }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   await main()
