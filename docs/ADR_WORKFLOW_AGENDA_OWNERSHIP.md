@@ -1,7 +1,8 @@
 # ADR W08 — propriété des requêtes Google avant les parcours métier
 
-Statut : socle d'authentification implémenté, **candidat non livré** ; transport
-Agenda et parcours métier non implémentés.
+Statut : socle d'authentification **livré sur le web par #463**, main `2da5735` ;
+transport Agenda et parcours métier non implémentés. Reçus et limites :
+`GOOGLE_OWNERSHIP_RELEASE.md`.
 Date : 6 septembre 2026. Base : main `d80efb4`, W07 #462.
 Décideur : root, après deux contre-revues indépendantes readonly produit/mobile
 et sécurité/lifecycle. Aucun compte réel ni endpoint Google utilisé par cet audit.
@@ -155,8 +156,42 @@ d'implémentation, d'OAuth live, d'installation Android ou de livraison W08.
 
 ## Actions
 
+### Reprise du prochain lot, base `2da5735`
+
+Deux contre-revues readonly distinctes ont préparé le transport pendant la CI
+#463. Root a relu `calendarClient`, `googleApiHelper`, la route Calendar,
+`googleFetch`, `safeJson`, `calendarTools` et `captureLocalReadScope` ; aucun
+code Calendar n'a été modifié ni testé par cette préparation.
+
+- Composer bail Google + `captureLocalReadScope(signal)` (store.ts:77), puis
+  `validateReadOnly()` avant dispatch ; aucun bootstrap/création de base pour
+  cette vérification. Conserver le contexte depuis l'ouverture du formulaire,
+  la lecture des événements ou le début du tour, pas depuis le dernier fetch.
+- Construire une allowlist avant sérialisation : les spreads actuels de
+  calendarClient:45/55 peuvent substituer `type`/`eventId` au runtime.
+- Les catches proxy après appel mutateur amalgament pré-dispatch et issue
+  inconnue. Ajouter une attestation additive/versionnée uniquement lorsque la
+  route sait qu'elle n'a pas appelé Calendar ; pas de déduction du HTTP seul.
+- Ne pas propager le « Réessaie » de safeJson aux mutations incertaines. Aucun
+  retry mutateur ; schéma de réponse valide avant succès. Une fin explicite
+  est nécessaire au premier parcours horaire Paris : le défaut actuel mélange
+  interprétation du runtime et fuseau affiché. All-day hors première verticale.
+- Inventaire à raccorder et vérifier intégralement : CalendarView, InputBar,
+  useConversation → useAppSetup → calendarTools/toolConfirmation, boutons de
+  rapport ; aussi useProactiveBrief, MorningBrief et morningBriefService.
+  Les briefs doivent distinguer indisponibilité/portée perdue et agenda vide.
+- Garder les outils et anciens boutons inertes dans les fils documentaires,
+  Office, comparaisons et historiques restaurés. Le contexte local ne peut pas
+  provenir des arguments du modèle ; la confirmation appartient à l'application.
+
+Critères suivants : tests vraie UI → vrai client → HTTP synthétique, y compris
+relink identique/ABA après ouverture, Stop/unmount/fence/document, payload modifié,
+annulation et double-clic, écriture réussie puis réponse perdue, JSON 200 invalide,
+suppression confirmée suivie d'un listing indisponible et formats mobile/clavier.
+Ce relevé n'est pas une attestation d'implémentation ni une disponibilité Agenda.
+
 - [x] Deux diagnostics contradictoires examinés et découpage accepté.
 - [x] Reproductions permanentes des courses auth, puis correctif de propriété.
-- [ ] Revue, recette et livraison du socle.
+- [x] Revue, recette et livraison web du socle ; APK attesté séparément.
 - [ ] Transport Agenda, consentement initial et chemins InputBar/outils.
 - [ ] Trois verticales et écran connexions : validation complète séparée.
