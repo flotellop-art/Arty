@@ -42,7 +42,8 @@ export async function readConnectionsSnapshot(signal: AbortSignal) {
   }
   const assertCurrent = () => {
     scope.assertCurrent()
-    if (!googleCurrent() || (keys.ready && !keys.isCurrent()) || getMailInventoryStatus().generation !== mail.generation) throw new Error('Connections view superseded')
+    if (!googleCurrent() || !keys.isUnchanged() || (keys.ready && !keys.isCurrent()) ||
+        getMailInventoryStatus().revision !== mail.revision) throw new Error('Connections view superseded')
     calendar?.assertCurrent()
   }
   assertCurrent(); await scope.validateReadOnly(); assertCurrent()

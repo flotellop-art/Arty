@@ -14,13 +14,17 @@ import { getActiveUserId, getActiveSessionEpoch } from './userSession'
 let cachedAccounts: MailAccountMeta[] = []
 let cacheOwner: string | null = null, cacheEpoch = -1, generation = 0
 let inventory: 'unknown' | 'loading' | 'ready' | 'failed' = 'unknown'
-const notify = () => { try { window.dispatchEvent(new Event('mail-accounts-updated')) } catch { /* no DOM */ } }
+let inventoryRevision = 0
+const notify = () => {
+  inventoryRevision++
+  try { window.dispatchEvent(new Event('mail-accounts-updated')) } catch { /* no DOM */ }
+}
 
 /** No bridge call and no address/credentials. Empty is known only after success. */
 export function getMailInventoryStatus() {
   const current = cacheOwner === getActiveUserId() && cacheEpoch === getActiveSessionEpoch()
   return { status: current ? inventory : 'unknown' as const,
-    count: current && inventory === 'ready' ? cachedAccounts.length : 0, generation }
+    count: current && inventory === 'ready' ? cachedAccounts.length : 0, revision: inventoryRevision }
 }
 
 export function getCachedMailAccounts(): MailAccountMeta[] {
@@ -41,7 +45,9 @@ export function resetMailAccountsCache(): void {
 export async function refreshMailAccounts(): Promise<MailAccountMeta[]> {
   const owner = getActiveUserId(), epoch = getActiveSessionEpoch(), attempt = ++generation
   const current = () => generation === attempt && owner === getActiveUserId() && epoch === getActiveSessionEpoch()
+  if (cacheOwner !== owner || cacheEpoch !== epoch) cachedAccounts = []
   cacheOwner = owner; cacheEpoch = epoch; inventory = 'loading'; notify()
+  if (!current()) return []
   if (!isMailImapAvailable()) {
     cachedAccounts = []
     inventory = 'unknown'; notify()
@@ -61,13 +67,9 @@ export async function refreshMailAccounts(): Promise<MailAccountMeta[]> {
   }
   if (!current()) return []
   cacheOwner = owner; cacheEpoch = epoch
-  try {
-    // BUG 54 : toute écriture d'un store partagé entre vues dispatch un event.
-    window.dispatchEvent(new CustomEvent('mail-accounts-updated'))
-  } catch {
-    // Contexte sans window (tests) — silencieux.
-  }
-  return cachedAccounts
+  // A completion changes the readonly receipt even within the same attempt.
+  notify()
+  return current() ? [...cachedAccounts] : []
 }
 
 /**

@@ -15,9 +15,10 @@ const changed = () => { try { window.dispatchEvent(new Event('arty-active-keys-c
 /** Metadata proof only; the existing transport getters remain unchanged. */
 export function captureActiveKeysInstallation() {
   const captured = installation, generation = installationGeneration
+  const isUnchanged = () => captured === installation && generation === installationGeneration
   const isCurrent = () => captured !== null && captured.owner !== null && captured === installation &&
     generation === installationGeneration && captured.owner === getActiveUserId() && captured.epoch === getActiveSessionEpoch()
-  return { ready: isCurrent(), isCurrent }
+  return { ready: isCurrent(), isCurrent, isUnchanged }
 }
 
 export function setActiveKeys(

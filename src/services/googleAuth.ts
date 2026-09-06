@@ -837,13 +837,14 @@ function captureGrantContext(): GrantContext | null {
 /** Capture before confirmation/preparation. No token is exposed by the handle. */
 export function captureGoogleGrant(): GoogleGrantLease | null { return captureGrantContext() }
 
-/** Local configuration, not remote health. Never renews, bootstraps or revokes. */
+/** Local configuration, not remote health. No bootstrap, refresh or remote
+ * revocation. Existing owner guards may discard an obsolete in-memory grant. */
 export function getGoogleConfigurationStatus(): 'loading' | 'not-configured' | 'reconnect' | 'configured' | 'unavailable' {
   try {
     const tokens = getStoredTokens(), user = getStoredUser()
     if (!isGoogleStorageReady() || isCryptoInitializing()) return 'loading'
     if (isGoogleOAuthReconsentRequired()) return 'reconnect'
-    if (!tokens && !user) return googleRecords().some(value => value !== null) ? 'unavailable' : 'not-configured'
+    if (!tokens && !user) return hasPendingKeyTransfer() || googleRecords().slice(0, 4).some(value => value !== null) ? 'unavailable' : 'not-configured'
     if (!tokens || !user || tokens.oauth_profile !== CURRENT_GOOGLE_OAUTH_PROFILE ||
       !tokens.verified_email || normalizedGoogleEmail(user.email) !== normalizedGoogleEmail(tokens.verified_email)) return 'unavailable'
     return captureGrantContext()?.isCurrent() ? 'configured' : 'unavailable'
