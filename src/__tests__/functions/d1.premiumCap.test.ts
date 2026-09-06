@@ -12,13 +12,43 @@ const IMG = 'gpt-image-1'        // bucket 'gpt-image', cap 10
 const STD = 'claude-haiku-4-5'   // standard, jamais cappé
 
 let h: D1Harness
+let quotaDeadline: Promise<() => void>
+let pendingDeadlines: () => number
+
+// Same test seam as geminiProxyFallback: hold only the 250 ms D1 deadline.
+// Real SQL, workerd IO and all other timers keep running. Normal-path tests
+// assert exact accounting independently of host latency; timeout tests below
+// expire it explicitly. atomicQuotaLateDebit tests the real 249/250 boundary.
+function controlQuotaDeadline() {
+  const realSetTimeout = globalThis.setTimeout, realClearTimeout = globalThis.clearTimeout
+  const handles = new Set<ReturnType<typeof setTimeout>>()
+  let announce!: (expire: () => void) => void
+  quotaDeadline = new Promise(resolve => { announce = resolve })
+  pendingDeadlines = () => handles.size
+  vi.spyOn(globalThis, 'setTimeout').mockImplementation(((callback: (...args: unknown[]) => void, delay?: number, ...args: unknown[]) => {
+    if (delay !== 250) return realSetTimeout(callback, delay, ...args)
+    const handle = Object.create(null) as ReturnType<typeof setTimeout>
+    handles.add(handle)
+    announce(() => { if (handles.delete(handle)) callback(...args) })
+    return handle
+  }) as typeof setTimeout)
+  vi.spyOn(globalThis, 'clearTimeout').mockImplementation(handle => {
+    if (!handles.delete(handle as ReturnType<typeof setTimeout>)) realClearTimeout(handle)
+  })
+}
+
 beforeAll(async () => { h = await makeD1Harness() })
 afterAll(async () => { await h.dispose() })
 afterEach(() => {
-  vi.useRealTimers()
-  vi.restoreAllMocks()
+  try { expect(pendingDeadlines()).toBe(0) }
+  finally { vi.useRealTimers(); vi.restoreAllMocks() }
 })
-beforeEach(async () => { await h.reset() })
+beforeEach(async () => {
+  await h.reset()
+  controlQuotaDeadline()
+  // No probabilistic background cleanup in a counter/period fixture.
+  vi.spyOn(Math, 'random').mockReturnValue(1)
+})
 
 describe('checkPremiumCap — cap atomique (zone 1)', () => {
   it('un modèle standard passe sans consommer de cap', async () => {
@@ -49,6 +79,7 @@ describe('checkPremiumCap — cap atomique (zone 1)', () => {
       expect(r.allowed).toBe(true)
       expect(r.reason).toBe('monthly_cap')
       expect(r.remaining).toBe(cap - 1 - i)
+      expect(r.debited).toEqual({ kind: 'monthly_cap', month: expect.any(String) })
     }
     const over = await checkPremiumCap(email, IMG, h.env)
     expect(over.allowed).toBe(false)
@@ -58,12 +89,9 @@ describe('checkPremiumCap — cap atomique (zone 1)', () => {
   })
 
   it('appels CONCURRENTS : le compteur D1 ne dépasse jamais le cap', async () => {
-    // Le harnais Miniflare est mono-writer (SQLite sérialise les écritures) : ce
-    // test ne prouve PAS l'atomicité sous course matérielle réelle (impossible en
-    // in-memory), mais il vérifie l'invariant de NON-DÉPASSEMENT sous charge —
-    // la garde `WHERE count < cap` n'est jamais franchie, même quand une part des
-    // appels part en fail_open (timeout 250ms non annulable). L'assertion robuste
-    // est donc `<= cap` (une écriture différée peut committer après le read).
+    // Concurrent callers, real D1 serialized writer, controlled deadline.
+    // Promise.all drains the actual SQL replies before the oracle/reset. This
+    // proves exact counter/admission results, not latency or multi-POP timing.
     const email = 'race@x.io'
     const cap = 10
     const results = await Promise.all(
@@ -73,18 +101,47 @@ describe('checkPremiumCap — cap atomique (zone 1)', () => {
       .prepare('SELECT count FROM premium_cap WHERE email = ?1')
       .bind(email)
       .first<{ count: number }>()
-    expect(row).not.toBeNull()
-    expect(row!.count).toBeGreaterThan(0)
-    expect(row!.count).toBeLessThanOrEqual(cap) // JAMAIS de dépassement des débits D1
-    // Aucun restant négatif (overspend) sur les réponses réellement consommées.
-    for (const r of results) {
-      if (typeof r.remaining === 'number') expect(r.remaining).toBeGreaterThanOrEqual(0)
+    expect(row).toEqual({ count: cap })
+    const consumed = results.filter(result => result.allowed)
+    const refused = results.filter(result => !result.allowed)
+    expect(consumed).toHaveLength(cap)
+    expect(refused).toHaveLength(cap * 2)
+    expect(consumed.map(result => result.remaining).sort((a, b) => a! - b!))
+      .toEqual(Array.from({ length: cap }, (_, index) => index))
+    for (const result of consumed) expect(result).toMatchObject({
+      reason: 'monthly_cap', debited: { kind: 'monthly_cap', month: expect.any(String) },
+    })
+    for (const result of refused) {
+      expect(result).toMatchObject({ reason: 'cap_reached', remaining: 0 })
+      expect(result.debited).toBeUndefined()
     }
-    // Do not require a timely cap_reached response here: all callers can hit
-    // the intentional production fail-open deadline under CI load. Exact
-    // saturation/refusal is asserted by the sequential test above. This test
-    // proves the SQL counter bound, not a bound on requests served fail-open.
   }, 20_000)
+
+  it('un timeout ne promet ni restant ni débit, même si le SQL aboutit ensuite', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    let release!: (row: { count: number }) => void
+    const held = new Promise<{ count: number }>(resolve => { release = resolve })
+    const first = vi.fn(() => held)
+    const db = { prepare(sql: string) {
+      if (sql.includes('CREATE TABLE IF NOT EXISTS premium_cap')) return { run: async () => ({ success: true }) }
+      if (sql.includes('INSERT INTO premium_cap')) return { bind: () => ({ first }) }
+      throw new Error(`Unexpected SQL: ${sql}`)
+    } }
+    const pending = checkPremiumCap('late@x.io', IMG, { DB: db } as unknown as Env)
+    try {
+      const expire = await quotaDeadline
+      expire()
+      const result = await pending
+      expect(result).toEqual({ allowed: true, reason: 'monthly_cap', bucket: 'gpt-image', cap: 10 })
+      expect(first).toHaveBeenCalledTimes(1)
+    } finally {
+      release({ count: 1 }); await held; await pending
+    }
+    // A late SQL completion cannot retrofit refundable authority or remaining.
+    expect((await pending).debited).toBeUndefined()
+    expect((await pending).remaining).toBeUndefined()
+    expect(first).toHaveBeenCalledTimes(1)
+  })
 
   it("n'annonce aucun débit remboursable lors d'un fail-open D1", async () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => undefined)

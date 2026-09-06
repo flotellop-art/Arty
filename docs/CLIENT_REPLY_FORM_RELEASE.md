@@ -1,8 +1,9 @@
 # W08 — formulaire de réponse client préparée
 
-6 septembre 2026. Base main `225f560` (#467). Validation locale ; pas encore
-reçu de publication de cette tranche. La fondation et ses preuves de production
-sont dans `CLIENT_REPLY_DRAFT_FOUNDATION.md`.
+6 septembre 2026. Base main `225f560` (#467). Formulaire publié par #468 ;
+CI main en échec sur une lecture de contrôle wallet temporisée, traitée
+séparément ci-dessous. La fondation et ses preuves de production sont dans
+`CLIENT_REPLY_DRAFT_FOUNDATION.md`.
 
 ## Contrat et périmètre
 
@@ -63,6 +64,71 @@ sont dans `CLIENT_REPLY_DRAFT_FOUNDATION.md`.
   intercepté dans la page. Aucun compte ou document utilisateur utilisé.
 
 ## Promotion et repli
+
+PR #468, head `7ef14ea0bf3b1c837961ed143ea541847ebb26aa`, CI PR
+`34020723002` réussie (les trois jobs). Preview
+`055fb986-6c82-4ca3-9a77-15eb8e5fa078` réussie à 08:03:04 UTC ; GET publics
+à 08:03:54.792 UTC contrôlant les chunks et marqueurs du formulaire.
+Fusion normale à 08:09:08 UTC, main
+`96486f402cf369881a85a54bd63e8e6291e8887e`. Pages production
+`fac57bf1-def7-4fac-b907-2778fa013796` réussie à 08:10:16 UTC.
+À 08:12:00.469 UTC, chemins, octets et SHA-256 identiques entre tryarty.com et
+`https://fac57bf1.appfacade.pages.dev` pour index, App, clientReply, templates
+et projectSynthesis. App `DBObQmIT` : 927 696 octets,
+SHA-256 `ca09095c5806a4390e8d2487f3c93716577ac8e8d64ea5941738076088d0f8d5`.
+Sondes statiques sans compte, pas une recette authentifiée en production.
+APK `34021062639` réussi ; distribution Firebase terminée à 08:17:19 UTC.
+Cette exécution APK a également réussi `npm run verify` sur ce même commit.
+
+**Incident CI distinct, non effacé par ces succès :** run main `34021062636`,
+verify-app en échec, growth et Android réussis. 295 suites réussies, une seule
+assertion échouée dans `proxyWalletIntegration.test.ts` (vision mesurée) :
+`getWalletBalance()` a retourné null. Log exact à 08:10:40.7511461 UTC :
+`[wallet] getWalletBalance D1 timeout — traité comme pas de wallet`.
+Le lecteur hot-path abandonne après 250 ms ; ce retour ne démontre donc pas
+une perte comptable. Le scénario isolé original réussit localement (7/7).
+Deux diagnostics readonly indépendants confirment l'attente du règlement,
+mais son `allSettled` peut masquer une erreur : ne pas remplacer les contrôles
+comptables par la seule fin des tâches. Correctif de test séparé : oracle D1
+durable, crédit asserté, réservation et unique débit liés et usage exact ;
+contrat du lecteur lent testé à horloge contrôlée. Aucun délai de production,
+prix, quota, code de facturation ou migration modifié. Le run original reste
+rouge ; la correction nécessite sa propre CI avant promotion.
+
+Correctif isolé sur `codex/wallet-test-oracle` : deux GO readonly après code,
+11/11 tests ciblés puis `npm run verify` exit 0 à 08:25 UTC : **297 suites,
+3603 réussis + 1 ignoré**, typechecks front/back, no-CASA/addon, couverture,
+build et vrai worker Office en VM isolée. Couverture 71,33 / 66,12 / 77,07 /
+73,26 %. Aucun changement de production dans ce correctif ; les tests de prix
+et replay existants restent distincts du contrôle de règlement ajouté ici.
+Le test ne prétend pas supprimer les deadlines réelles pendant l'admission.
+
+La première CI PR #469 (`34021834869`) a ensuite trouvé un autre oracle
+sensible à la deadline dans `d1.premiumCap.test.ts:51` : `remaining` attendu 9,
+reçu undefined, avec `[premium-cap] FAIL-OPEN ... email=seq...` à
+08:27:27.2789206 UTC. Les tests wallet sont réussis. 296 suites réussies,
+une seule assertion en échec ; Pages et les deux autres jobs réussis.
+La fusion reste bloquée. Deux diagnostics readonly confirment le contrat
+existant : fail-open ne promet ni restant ni débit. Test original isolé 16/16.
+
+Correction additionnelle uniquement dans ce test : contrôle explicite du
+timer 250 ms selon le précédent `geminiProxyFallback`, après boot/reset du
+vrai D1 ; les autres timers et E/S restent réels. Aucun timer n'expire par
+latence du runner dans les scénarios comptables nominaux. Séquentiel inchangé
+et renforcé par débit confirmé ; concurrence : exactement dix débits, vingt
+refus, restants 0..9 et compteur dix, après drainage de toutes les réponses.
+Un scénario séparé expire explicitement la deadline et vérifie l'absence de
+restant/débit promis après résultat tardif, libéré dans finally. La frontière
+réelle 249/250 ms reste couverte par `atomicQuotaLateDebit`. Aucune assertion
+nullable tolérante, aucun retry de consommation, aucune limite de production
+ou concurrence CI modifiée. La contention CI reste une hypothèse de contexte,
+pas une cause d'infrastructure démontrée.
+
+Ce complément a reçu deux GO readonly après code : 38/38 ciblés puis verify
+complet exit 0 à 08:38 UTC, **297 suites / 3604 réussis + 1 ignoré**, build et
+worker Office réel compris (couverture 71,32 / 66,12 / 77,07 / 73,25 %).
+Le mapping timeout ajouté emploie une réponse D1 suspendue simulée, et le
+sélecteur de timers se base sur la durée, pas sur le module d'origine.
 
 Verify final → deux GO code → PR/CI/Pages preview → fusion normale → comparer
 les assets immutables avec tryarty.com ; vérifier CI main et APK Firebase
