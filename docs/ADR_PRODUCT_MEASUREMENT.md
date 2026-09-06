@@ -197,6 +197,10 @@ déjà déployé. Ne pas créer de secret/binding/cron en contournant cet accès
   4 185 tests réussis, 1 ignoré**, typecheck/build/no-CASA/add-on/worker Office
   réussis. Journal `.playwright-mcp/product-measurement-verify-node22.log`.
   Repli `36d432d` compatible avec #478, mais réintroduirait le défaut Stop.
-- À terminer : notice et décision de publication, puis nouvelle CI/Pages dans le
-  périmètre retenu. Aucun résultat de production W10 n'est attesté ici.
-  D7/D30, activation/cohortes et conversion restent ouverts.
+- Code fermé livré #479 (`9b491b2`) : CI PR `34046927402` et CI main
+  `34047281347` réussies. Pages production `7a1a5b21`, endpoint fermé et
+  assets canonique/immuables vérifiés le 6 septembre à 17:03 UTC ; détails
+  et état Firebase dans `MEASUREMENT_CLOSED_RELEASE.md`.
+- À terminer avant activation : notice et décision de publication. Aucun
+  résultat utilisateur de production W10 n'est attesté ; D7/D30,
+  activation/cohortes et conversion restent ouverts.

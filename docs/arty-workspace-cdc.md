@@ -35,7 +35,7 @@ supplémentaire n'est implicite dans ce mandat.
 | W07 | Comparaison | Comparer depuis une conversation avec contexte/documents autorisés ; conserver les résultats et poursuivre la réponse choisie sans perdre l'original. Erreurs/coûts/quotas de chaque panneau visibles ; EU et historique privé jamais contournés. | Web livré #462 ; recette App/navigateur synthétique vérifiée ; APK distribuée, installation physique et OAuth/facturation réels non attestés |
 | W08 | Parcours métier | Trois parcours complets : synthèse documentaire, réponse client préparée, planification Agenda avec confirmation avant écriture. Écran de connexions indiquant disponible/non configuré/non pris en charge selon plateforme. Pas de Drive/Gmail OAuth restreint ni relais IMAP serveur. | Socle Google/BYOK #463, transport Agenda #464, pont copie documentaire/Agenda #465, synthèse guidée #466, statut client #467, formulaire client #468/#469 et Connexions #470 livrés web ; recettes App/navigateur synthétiques vérifiées ; APK distribuées, installation physique et intégrations réelles non attestées |
 | W09 | Mobile et identité | PWA installable ; identité tryarty cohérente ; distribution Android authentifiée et documentée. Ne pas rediriger vers une app Play homonyme. Toute migration appId inclut signatures/OAuth/Firebase/liens vérifiés ; un APK distribué n'est pas une publication Store. | Transport API historique livré #471, sondes publiques vérifiées ; identité APK et premier reçu réel livrés #472, distribution Firebase réussie ; guide PWA #473 et correctif CDN #474 publiés/vérifiés sur tryarty.com (PWA_INSTALL_GUIDE.md) ; validations appareil/Store non livrées |
-| W10 | Mesure | Instrumentation minimale sans contenu utilisateur : activation, succès/échec des parcours, retour D7/D30 et conversion. Marges fondées sur coût serveur, pas un compteur local. Tableau avec période, échantillon et limites ; aucune métrique inventée. | Rapport opérateur local wallet livré #475 (WALLET_MEASUREMENT.md), CI/Pages/Firebase vérifiés ; pas une marge commerciale. Pilote facultatif réponse client préparé/testé f49ecec, publication fermée ; activation, D7/D30 et conversion non instrumentés |
+| W10 | Mesure | Instrumentation minimale sans contenu utilisateur : activation, succès/échec des parcours, retour D7/D30 et conversion. Marges fondées sur coût serveur, pas un compteur local. Tableau avec période, échantillon et limites ; aucune métrique inventée. | Rapport opérateur local wallet livré #475 ; pilote réponse client livré avec collecte fermée #479, correction Stop et recette Office associées (MEASUREMENT_CLOSED_RELEASE.md). Activation, D7/D30 et conversion non instrumentés ; pas une marge commerciale |
 
 ## Dépendances et choix de sûreté
 
@@ -133,9 +133,19 @@ Démarrage natif indisponible et recette appareil absente ; W06 reste partiel.
 L'accès de configuration Cloudflare a été revérifié à 15:25 UTC : expiré,
 reconnexion requise avant la synchronisation distante ; aucun contournement.
 
-### W10 — pilote réponse client préparé, publication fermée
+### W10 — code du pilote livré #479, collecte fermée
 
-Le commit local `f49ecec` prépare un reçu facultatif du parcours réponse client,
+PR #479 fusionnée `9b491b2` le 6 septembre à 17:01:22 UTC après CI PR réussie
+sur `71c1007` et deux contre-revues. Pages production `7a1a5b21` réussie ;
+tryarty.com vérifié à 17:03:39–41 UTC : endpoint fermé, flag false et UI absente,
+huit assets canonique/immuables identiques, restauration #478 préservée.
+Recette Chrome publique FR/EN 390/1280 sans ouverture privée/écriture de base.
+Reçus et limites dans `MEASUREMENT_CLOSED_RELEASE.md` ; CI main `34047281347`
+et Firebase `34047281334` réussis, reçu d'identité de l'APK au commit exact
+vérifié. Pas d'installation physique attestée. La collecte n'est pas activée
+et W10 n'est pas achevé.
+
+Le commit préparatoire `f49ecec` a introduit un reçu facultatif du parcours réponse client,
 six issues fermées et un rapport opérateur quotidien JSON/CSV/HTML FR/EN.
 `PRODUCT_MEASUREMENT_RELEASED=false` : réglage non monté, ticket inerte avant
 lecture de consentement/jeton, handler 404 avant corps/auth/binding D1. Les
@@ -147,7 +157,7 @@ du streaming, de Stop et des réponses partielles sont actives pour tous les fil
 Deux contre-revues indépendantes ont challengé les réentrances, remplacements
 de stream, refus/quota durable de retrait, consentement inter-comptes, égalité
 des reçus et bornes SQL. Les objections pertinentes sont intégrées et détaillées
-dans `ADR_PRODUCT_MEASUREMENT.md`. Vérification finale locale : 325 suites,
+dans `ADR_PRODUCT_MEASUREMENT.md`. Vérification locale avant recette Office : 325 suites,
 4 181 tests réussis et 1 sauté, typecheck front/back, no-CASA, build et worker
 Office isolé ; log `.playwright-mcp/product-measurement-verify-final.log`.
 Recette prospective Chrome FR/EN 390/1280 : retrait en quota, remontage, retrait
@@ -157,8 +167,8 @@ locale remplace le flag pour cette recette ; aucun flag source publié ouvert.
 GO techniques bornés à la livraison fermée, réexaminés avant publication.
 Repli sur `36d432d` (ou révocation ciblée sur une base compatible) : conserver
 les lecteurs/restauration #478 et `ISOLATED_WORKSPACE_ENABLED=true`. Aucune
-migration de schéma ou notice publique ajoutée dans ce lot. CI, preview et
-production restent à attester pour ce candidat ; testé localement ≠ livré.
+migration de schéma ou notice publique ajoutée dans ce lot. Les reçus de CI,
+preview et production sont consignés ci-dessus ; testé localement ≠ livré.
 
 La recette Office pré-fusion #479 a révélé un défaut antérieur : le clic Stop
 transmettait un événement React pris pour un identifiant de conversation.
@@ -175,7 +185,8 @@ avant cinq tests à cause de l'import ESM `node:sqlite` sous Node 22.23.2.
 `createRequire` limité au test, sans mock SQL/exclusion/modification CI.
 Vérification complète suivante sous Node 22.23.2 : 326 suites, 4 185 tests
 réussis, 1 sauté ; typecheck/build/no-CASA et worker Office isolé réussis,
-log `.playwright-mcp/product-measurement-verify-node22.log`. Nouvelle CI exigée.
+log `.playwright-mcp/product-measurement-verify-node22.log`. Nouvelle CI PR
+`34046927402` réussie sur ce code, puis CI main `34047281347` réussie.
 
 L'activation exige une décision du responsable sur l'information préalable :
 les politiques publiées promettent un préavis de 30 jours pour les changements
