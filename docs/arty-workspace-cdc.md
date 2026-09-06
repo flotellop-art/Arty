@@ -1952,6 +1952,32 @@ tests de runtime natif et benchmark workerd. Vérification complète locale et
 CI PR : 4 227 tests réussis, 1 ignoré ; deux contre-revues readonly GO code.
 PR #481 fusionnée `24e6ac8`, Pages publié et octets servis vérifiés le
 6 septembre à 20:32 UTC. Recette navigateur et compatibilité ancienne API
-vertes ; suivi post-déploiement et CI main encore en cours à ce point.
+vertes ; suivi public de 15 minutes terminé (16 échantillons conformes),
+CI main et workflow Firebase réussis. CI main et octets servis du complément
+documentaire #482 également vérifiés. L'identité de l'APK compilé est reçue,
+pas son installation sur le téléphone actuellement déconnecté.
 Ce gate de code livré ne vaut ni recette téléphone, ni validation marchande,
 ni clôture du CDC global.
+
+### W06-B1 — noyau causal candidat, synchronisation toujours non livrée
+
+[Décision W06-B](ADR_WORKSPACE_SYNC.md) : synchronisation bidirectionnelle
+optionnelle, secret utilisateur distinct, capture fidèle, publication D1/R2,
+outbox durable et application locale journalisée. Le lot B1 implémente seulement
+le graphe causal privé : objets stables, parents/intentions exacts, tombstones,
+conflits conservés, retry identique et refus sans troncature des limites.
+Ni endpoint, ni bucket, ni secret, ni flag activé ; code non importé par l'app.
+Tests de protocole purs ≠ recette à deux appareils avec vrais stores/réseau.
+
+Les contre-revues imposent notamment : conservation de l'ascendance après
+résolution ; distinction entre ancien replay et nouvelle édition hors ligne ;
+base ACK non reconstruite ; troisième tête non absorbée ; reprise possible
+après limite de têtes sans réécrire l'intention. La capture applicative, l'E2EE,
+les ACK/outbox, l'applicateur, les suppressions serveur et la politique publique
+restent les étapes suivantes de W06, pas des exclusions du cahier des charges.
+
+Deux GO readonly bornés ; 60 tests ciblés verts. Dernière passe complète Node
+22 : 331 suites / 4 283 tests réussis, 1 ignoré préexistant, typechecks, couverture,
+build et vrai worker Office verts, avant quatre cas négatifs ajoutés aux tests
+ciblés (code applicatif inchangé). CI du candidat exact reste le gate avant
+fusion. Détails, limites et repli dans l'ADR ; W06 distant n'est pas livré.
