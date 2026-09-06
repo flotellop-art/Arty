@@ -870,7 +870,9 @@
       "bucketImages": "Images",
       "titleFree": "Free plan · {{haiku}}/{{limit}} Haiku today. Tap to unlock Sonnet, Opus, Mistral, Gemini and GPT.",
       "titleSub": "Premium messages left this month — {{detail}}",
-      "titlePro": "{{plan}} plan · unlimited access"
+      "titleSubUnknown": "Subscription recognized · quotas temporarily unavailable",
+      "titlePro": "Pro license recognized · your own API key required",
+      "titleVip": "VIP access recognized"
     },
     "notFound": {
       "title": "Conversation not found",
@@ -1405,7 +1407,7 @@
       "proDesc": "One-time payment, app for life · You use your own API key (BYOK) · Business templates · Priority support",
       "cardCta": "Get started",
       "extras": "Need more? +100 premium messages pack at €1.99 VAT incl., or prepaid credits (€10 = 1,000 credits) that never expire.",
-      "transparency": "Our limits are stated in plain messages — no “credits” or “points”. The price shown is the final price, VAT included. A daily anti-abuse limit applies to all plans."
+      "transparency": "Subscription quotas are stated in messages. Prepaid usage is deducted from your credit balance. Applicable limits are shown for each offer. Prices include VAT; a daily anti-abuse limit applies."
     },
     "faq": {
       "kicker": "FAQ",
@@ -1449,10 +1451,19 @@
     "legalPrivacy": "Privacy",
     "legalNotice": "Legal notice",
     "support": "support@tryarty.com",
-    "statusChecking": "Checking your subscription…",
-    "statusActive": "✓ Subscription activated!",
+    "statusChecking": "Checking your account status…",
+    "statusActive": "Access status verified",
     "statusPendingTitle": "Pending",
-    "statusPendingBody": "Confirmation can take a minute. Check back in a moment.",
+    "statusPendingBody": "No update observed yet. You can check the status again. This does not confirm a payment.",
+    "recheck": "Check status again",
+    "accessVip": "VIP access is recognized for this account.",
+    "accessPro": "Your Pro license is recognized. Your own API key is required to use AI.",
+    "accessSubscription": "Your subscription is recognized. Your subscription quotas apply.",
+    "accessOptions": "Choose from the options available for this account.",
+    "trialRemaining": "Claude Haiku trial: {{count}} messages remaining.",
+    "trialRemaining_one": "Claude Haiku trial: {{count}} message remaining.",
+    "trialRemaining_other": "Claude Haiku trial: {{count}} messages remaining.",
+    "trialEnded": "Trial ended — explore the available options.",
     "errorNoToken": "Sign in with Google to check your subscription.",
     "errorNoEmail": "No email found. Sign in with Google first.",
     "currentPlan": "Current plan",
@@ -1460,8 +1471,8 @@
     "proPrice": "€39 one-time · VAT incl.",
     "subscriptionPrice": "€9.99/mo · VAT incl.",
     "premiumPackPrice": "€1.99 · VAT incl.",
-    "byokDescription": "Compatible API keys · Free app · Local data",
-    "byokCta": "Switch to BYOK",
+    "byokDescription": "Free app with compatible API keys · usage billed by your providers",
+    "byokCta": "Configure my API keys",
     "proBadge": "Popular",
     "proTagline": "Lifetime license · your own key",
     "proDescription": "One-time payment, app for life · You use your own API key (BYOK) · Business templates · Priority support · No subscription",
@@ -1479,17 +1490,17 @@
     "creditsCta": "Buy credits",
     "creditsBusy": "Opening checkout…",
     "creditsError": "Couldn't start the checkout. Please try again.",
-    "creditsAdded": "Credits added — your balance is up to date.",
-    "transparency": "Our limits are stated in plain messages — no “credits” or “points”. The price shown is the final price, VAT included. A daily anti-abuse limit applies to all plans.",
+    "creditsAdded": "Balance increase observed.",
+    "transparency": "Subscription quotas are stated in messages. Prepaid usage is deducted from your credit balance. Applicable limits are shown for each offer. Prices include VAT; a daily anti-abuse limit applies.",
     "manageSubscription": "Manage my subscription (cancel online)",
-    "nativeUnavailableTitle": "Plans not available in this version",
-    "nativeUnavailableBody": "In the Android app you can use your own API key (BYOK) — free on Arty's side, you pay your provider directly. If you already have a subscription, just sign in: it's recognized automatically.",
+    "nativeUnavailableTitle": "Purchases unavailable in this Android version",
+    "nativeUnavailableBody": "You can configure your own API keys. Existing access is checked after you sign in to the associated account.",
     "subscriptionReassurance": "✓ Cancel in one click, anytime — pause available. No commitment.",
     "whyTitle": "Why is it cheaper?",
     "whyIntro": "No magic — just an economic model we own up to:",
     "whyRouting": "Smart routing: each question goes to the model that's just good enough, not always the priciest one. Less compute paid = cheaper for you.",
     "whyMargin": "Low margin, on purpose: a small markup over the real cost, not a 3x price like elsewhere.",
-    "whyTransparency": "Limits stated in plain messages (not opaque “credits”) and the final price shown, VAT included.",
+    "whyTransparency": "Subscription quotas in messages, prepaid usage in credits. Each offer's limits and VAT-inclusive prices are shown.",
     "whyByok": "And you can always plug in your own API key (BYOK) to pay cost price.",
     "trialCallout": "🎁 New here? Try it free first: 30 messages, no credit card."
   },
@@ -1791,9 +1802,9 @@
     "banner": {
       "remaining_one": "✨ Free trial — {{count}} message left · Claude Haiku",
       "remaining_other": "✨ Free trial — {{count}} messages left · Claude Haiku",
-      "ended": "Trial over — pick a plan to continue",
-      "upgradeCta": "Upgrade",
-      "seePlans": "See plans →"
+      "ended": "Trial over — explore the options to continue",
+      "upgradeCta": "See options",
+      "seePlans": "See options →"
     }
   },
   "image": {

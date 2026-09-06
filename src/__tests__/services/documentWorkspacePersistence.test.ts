@@ -2,7 +2,7 @@ import 'fake-indexeddb/auto'
 import { IDBFactory } from 'fake-indexeddb'
 import { openDB } from 'idb'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, cleanup, renderHook } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, renderHook, screen } from '@testing-library/react'
 import { deferred } from '../helpers/workspaceLocks'
 
 // This suite intentionally DOES NOT use the setup's admitted-document fixture.
@@ -58,6 +58,54 @@ async function expectPrivateReadsRefused(message: string) {
 }
 
 describe('real document boundary with real crypto and IDB transactions', () => {
+  it('Upgrade does not publish or reject a pending credit action after real document loss before unmount', async () => {
+    await enter()
+    const google = await import('../../services/googleAuth'), checkout = await import('../../services/checkout')
+    const { UpgradeScreen } = await import('../../screens/upgrade'), { MemoryRouter } = await import('react-router-dom')
+    const { createElement } = await import('react'), { default: i18n } = await import('../../i18n')
+    await google.storeUser({ email: 'synthetic@example.invalid', name: 'Synthetic', picture: '' })
+    await google.storeMailboxFreeGrant({ access_token: 'synthetic-access', refresh_token: 'synthetic-refresh', expires_at: Date.now() + 3600_000 },
+      undefined, { verifiedEmail: 'synthetic@example.invalid' })
+    const value = { hasWallet: true, availableMicro: 900000, balanceMicro: 900000, reservedMicro: 0 }
+    const fetch = vi.fn(async (url: string) => Response.json(url === '/api/wallet/balance' ? value : {
+      auth: 'ok', plan: 'vip', allowed_families: ['claude-haiku'], locked_families: [], daily_remaining: null, daily_limits: null,
+    })); vi.stubGlobal('fetch', fetch)
+    const opened = vi.spyOn(checkout, 'openCreemCheckout'), gate = deferred<Response>()
+    const mounted = render(createElement(MemoryRouter, null, createElement(UpgradeScreen, { currentPlan: 'unknown', onBack() {} })))
+    await vi.waitFor(() => expect(screen.getByTestId('verified-offer-access')).toBeInTheDocument())
+    fetch.mockImplementationOnce(() => gate.promise)
+    fireEvent.click(screen.getByRole('button', { name: i18n.t('upgrade.creditsCta') }))
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(3))
+    await lose()
+    const read = vi.spyOn(Storage.prototype, 'getItem'), write = vi.spyOn(Storage.prototype, 'setItem')
+    await act(async () => { gate.resolve(Response.json(value)); await gate.promise })
+    expect(opened).not.toHaveBeenCalled(); expect(read).not.toHaveBeenCalled(); expect(write).not.toHaveBeenCalled()
+    mounted.unmount()
+  })
+  it.each(['http', 'json'])('billing fails closed on actual document loss during wallet %s, without late storage access', async phase => {
+    await enter()
+    const google = await import('../../services/googleAuth'), billing = await import('../../services/billingContext')
+    const wallet = await import('../../services/walletClient')
+    await google.storeUser({ email: 'synthetic@example.invalid', name: 'Synthetic', picture: '' })
+    await google.storeMailboxFreeGrant({ access_token: 'synthetic-access', refresh_token: 'synthetic-refresh', expires_at: Date.now() + 3600_000 },
+      undefined, { verifiedEmail: 'synthetic@example.invalid' })
+    const context = billing.captureBillingContext(), response = deferred<Response>(), body = deferred<unknown>()
+    const json = vi.fn(() => body.promise), fetch = vi.fn(() => phase === 'http' ? response.promise : Promise.resolve({ ok: true, json } as unknown as Response))
+    vi.stubGlobal('fetch', fetch)
+    const pending = wallet.fetchWalletBalance()
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledOnce())
+    if (phase === 'json') await vi.waitFor(() => expect(json).toHaveBeenCalledOnce())
+    await lose()
+    const read = vi.spyOn(Storage.prototype, 'getItem'), write = vi.spyOn(Storage.prototype, 'setItem')
+    const value = { hasWallet: true, availableMicro: 900000, balanceMicro: 900000, reservedMicro: 0 }
+    response.resolve(Response.json(value)); body.resolve(value)
+    await expect(pending).resolves.toBeNull()
+    expect(context.isCurrent()).toBe(false)
+    expect(billing.captureBillingContext().isCurrent()).toBe(false)
+    await expect(context.getAccessToken()).resolves.toBeNull()
+    await expect(wallet.fetchWalletBalance()).resolves.toBeNull()
+    expect(read).not.toHaveBeenCalled(); expect(write).not.toHaveBeenCalled(); expect(fetch).toHaveBeenCalledOnce()
+  })
   it.each(['before', 'after'])('fences Calendar on real document loss %s dispatch', async phase => {
     await enter()
     const google = await import('../../services/googleAuth'), calendar = await import('../../services/calendarClient')

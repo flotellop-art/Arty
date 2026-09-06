@@ -8,6 +8,8 @@ import { useClientReply } from './hooks/useClientReply'
 import { isDocumentConversation } from './services/projects/chatPolicy'
 import { useAppSetup } from './hooks/useAppSetup'
 import { useAuth } from './hooks/useAuth'
+import { usePlanStatus } from './hooks/usePlanStatus'
+import { creditsCoverPremium } from './services/walletClient'
 import { QuestionModal } from './components/chat/QuestionModal'
 import { MorningBrief } from './components/home/MorningBrief'
 import { HomeScreen } from './components/home/HomeScreen'
@@ -508,7 +510,7 @@ function AppContent({
         </div>
       )}
 
-      <TrialBanner onUpgrade={() => navigate('/upgrade')} />
+      <TrialBanner enabled={authMethod === 'google' || authMethod === 'email'} onUpgrade={() => navigate('/upgrade')} />
 
       <Sidebar
         isOpen={sidebarOpen}
@@ -751,10 +753,11 @@ function AppContent({
  * à chaque réponse contenant le header `x-trial-remaining`. Pas de
  * polling : se rafraîchit uniquement quand le compteur change.
  */
-function TrialBanner({ onUpgrade }: { onUpgrade: () => void }) {
+function TrialBanner({ onUpgrade, enabled }: { onUpgrade: () => void; enabled: boolean }) {
   // P0.10 — textes via i18n (étaient hardcodés FR → bannière cassée en EN).
   const { t } = useTranslation()
   const [remaining, setRemaining] = useState<number | null>(() => getTrialRemaining())
+  const access = usePlanStatus(enabled)
 
   useEffect(() => {
     const sync = () => setRemaining(getTrialRemaining())
@@ -766,7 +769,10 @@ function TrialBanner({ onUpgrade }: { onUpgrade: () => void }) {
     }
   }, [])
 
-  if (remaining === null) return null
+  // The scoped counter is history, not the current entitlement. Preserve it,
+  // but never advertise a new plan to recognized paid/prepaid users or BYOK.
+  if (!enabled || remaining === null || access.loading || access.authRejected || access.authRequired
+    || access.statusUnavailable || access.plan !== 'free' || creditsCoverPremium()) return null
 
   if (remaining === 0) {
     return (

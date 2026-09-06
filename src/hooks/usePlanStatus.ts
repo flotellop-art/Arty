@@ -5,11 +5,12 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   getStoredTokens,
-  getValidAccessToken,
   isGoogleStorageReady,
 } from '../services/googleAuth'
 import { apiUrl } from '../services/apiBase'
-import { fetchWalletBalance, creditsCoverPremium } from '../services/walletClient'
+import { fetchWalletBalance, creditsCoverPremium, clearWalletCache } from '../services/walletClient'
+import { captureBillingContext, onBillingContextInvalidated, type BillingContext } from '../services/billingContext'
+import { onLocalDataInvalidated } from '../services/localDataInvalidation'
 import {
   getActiveSession,
   getActiveSessionEpoch,
@@ -92,6 +93,7 @@ const ALL_FAMILIES: ModelFamily[] = [
 ]
 
 function clearVerifiedPlanCache(): void {
+  clearWalletCache()
   try { localStorage.removeItem('arty-plan-cache') } catch { /* noop */ }
   try { localStorage.removeItem('arty-allowed-families') } catch { /* noop */ }
   try { window.dispatchEvent(new CustomEvent('arty-plan-status-changed')) } catch { /* noop */ }
@@ -120,6 +122,7 @@ function unverifiedStatus(
 interface SharedPlanRefresh {
   userId: string | null
   sessionEpoch: number
+  context: BillingContext
   promise: Promise<PlanStatus | null>
 }
 
@@ -133,12 +136,14 @@ let sharedPlanRefresh: SharedPlanRefresh | null = null
 async function resolvePlanStatus(
   requestUserId: string | null,
   requestSessionEpoch: number,
+  context: BillingContext,
 ): Promise<PlanStatus | null> {
   const isCurrentUser = () =>
-    getActiveUserId() === requestUserId
+    context.isCurrent() && getActiveUserId() === requestUserId
     && getActiveSessionEpoch() === requestSessionEpoch
+    && context.isCurrent()
   try {
-    const token = await getValidAccessToken()
+    const token = await context.getAccessToken()
     if (!isCurrentUser()) return null
 
     if (!token) {
@@ -154,7 +159,7 @@ async function resolvePlanStatus(
         // scopes, révocation ou logout Google). Un grant encore stocké mais
         // momentanément impossible à rafraîchir = panne transitoire.
         const hasStoredGrant = getStoredTokens() !== null
-        if (!hasStoredGrant) clearVerifiedPlanCache()
+        clearVerifiedPlanCache()
         return unverifiedStatus(hasStoredGrant ? 'statusUnavailable' : 'authRequired')
       }
 
@@ -171,7 +176,7 @@ async function resolvePlanStatus(
       headers: { Authorization: `Bearer ${token}` },
     })
     if (!isCurrentUser()) return null
-    if (!res.ok) return unverifiedStatus('statusUnavailable')
+    if (!res.ok) { clearVerifiedPlanCache(); return unverifiedStatus('statusUnavailable') }
 
     const data = (await res.json()) as ApiResponse
     if (!isCurrentUser()) return null
@@ -185,6 +190,11 @@ async function resolvePlanStatus(
     if (data.auth === 'no_token') {
       clearVerifiedPlanCache()
       return unverifiedStatus('authRequired')
+    }
+    if (data.auth !== 'ok' || !['free', 'vip', 'pro', 'subscription'].includes(data.plan)
+      || !Array.isArray(data.allowed_families) || !Array.isArray(data.locked_families)) {
+      clearVerifiedPlanCache()
+      return unverifiedStatus('statusUnavailable')
     }
 
     // Crédits prépayés : un user 'free' (essai épuisé ou vrai free) AVEC des
@@ -236,55 +246,79 @@ async function resolvePlanStatus(
       statusUnavailable: false,
     }
   } catch {
-    return isCurrentUser() ? unverifiedStatus('statusUnavailable') : null
+    if (!isCurrentUser()) return null
+    clearVerifiedPlanCache()
+    return unverifiedStatus('statusUnavailable')
   }
 }
 
 function getSharedPlanRefresh(
   userId: string | null,
   sessionEpoch: number,
+  context: BillingContext,
 ): Promise<PlanStatus | null> {
-  if (
-    sharedPlanRefresh?.userId === userId
-    && sharedPlanRefresh.sessionEpoch === sessionEpoch
-  ) return sharedPlanRefresh.promise
+  const previous = sharedPlanRefresh
+  if (previous?.userId === userId && previous.sessionEpoch === sessionEpoch
+    && previous.context.isCurrent() && sharedPlanRefresh === previous) return previous.promise
+  if (!context.isCurrent()) return Promise.resolve(null)
 
   const task: SharedPlanRefresh = {
     userId,
     sessionEpoch,
+    context,
     promise: Promise.resolve(null),
   }
-  task.promise = resolvePlanStatus(userId, sessionEpoch).finally(() => {
+  // Publish BEFORE invoking any potentially reentrant Google reader.
+  sharedPlanRefresh = task
+  task.promise = resolvePlanStatus(userId, sessionEpoch, context).finally(() => {
     if (sharedPlanRefresh === task) sharedPlanRefresh = null
   })
-  sharedPlanRefresh = task
   return task.promise
 }
 
-export function usePlanStatus(enabled = true): PlanStatus & { refresh: () => void } {
+export function usePlanStatus(enabled = true): PlanStatus & { refresh: () => Promise<PlanStatus | null> } {
   const [state, setState] = useState<PlanStatus>(DEFAULT_STATUS)
   const enabledRef = useRef(enabled); enabledRef.current = enabled
   const refreshSerialRef = useRef(0)
+  const receiptContext = useRef<BillingContext | null>(null)
 
   const refresh = useCallback(async () => {
-    if (!enabledRef.current) return
+    try {
+    if (!enabledRef.current) return null
     const requestId = ++refreshSerialRef.current
     const requestUserId = getActiveUserId()
     const requestSessionEpoch = getActiveSessionEpoch()
-    const nextState = await getSharedPlanRefresh(requestUserId, requestSessionEpoch)
+    const context = captureBillingContext()
+    if (requestId !== refreshSerialRef.current || !context.isCurrent()) return null
+    const nextState = await getSharedPlanRefresh(requestUserId, requestSessionEpoch, context)
     if (
       nextState
       && enabledRef.current
       && requestId === refreshSerialRef.current
       && getActiveUserId() === requestUserId
       && getActiveSessionEpoch() === requestSessionEpoch
+      && context.isCurrent() && requestId === refreshSerialRef.current
     ) {
+      receiptContext.current = context
       setState(nextState)
+      return nextState
     }
+    return null
+    } catch { return null } // lost private document: no publication or retry
   }, [])
 
   useEffect(() => {
     if (!enabled) return
+    const invalidate = () => {
+      // Retire tasks/results before cache cleanup can notify reentrant readers.
+      refreshSerialRef.current += 1; receiptContext.current = null; sharedPlanRefresh = null
+      setState(DEFAULT_STATUS)
+      clearVerifiedPlanCache()
+    }
+    const offGrant = onBillingContextInvalidated(invalidate)
+    const offOwner = onLocalDataInvalidated(() => {
+      if (receiptContext.current && !receiptContext.current.isCurrent()) invalidate()
+    })
     void refresh()
     // Re-sync sur événements custom : `arty-message-sent` (après chaque
     // message → décrémenter le compteur en live), `google-storage-ready`
@@ -305,9 +339,10 @@ export function usePlanStatus(enabled = true): PlanStatus & { refresh: () => voi
     }
     document.addEventListener('visibilitychange', handleVisibility)
     return () => {
-      // Toute réponse encore en vol après un unmount devient obsolète et ne
-      // peut plus écrire les caches globaux.
+      // Retire this UI subscriber; another mounted hook may share the cache
+      // refresh. That task still has its original owner/session/grant guard.
       refreshSerialRef.current += 1
+      receiptContext.current = null; offGrant(); offOwner()
       events.forEach((e) => window.removeEventListener(e, refresh))
       window.removeEventListener('focus', handleFocus)
       window.removeEventListener('online', handleFocus)

@@ -2,6 +2,15 @@
 
 Date : 6 septembre 2026. Statut global : **en cours, non livré**.
 
+Extension explicite de l'objectif le 6 septembre : abonnements **et** crédits
+réellement opérationnels, y compris qualification du prestataire marchand et
+cycle de paiement complet. Critères obligatoires dans `BILLING_OPERATIONAL_CDC.md` ;
+non livré, aucune acceptation/refus de Lemon Squeezy confirmé à ce stade.
+Première recette téléphone réel : `MOBILE_RECEIPT_2026_09_06.md` (APK installé
+distinct de #479 ; navigation, VIP affiché et une réponse réelle vérifiés).
+Lot candidat Offres/statuts/solde : `VERIFIED_OFFERS_RELEASE.md` ; vrai App local
+FR/EN avec identités et HTTP fictifs, suite Node 22 validée, production à attester.
+
 ## Mandat et résultat attendu
 
 Mettre en œuvre les priorités de l'audit Arty/Mammouth du 4 septembre,
@@ -31,11 +40,11 @@ supplémentaire n'est implicite dans ce mandat.
 | W03 | Catalogue | Un catalogue partagé aligne comparaison, sélecteurs, labels et éligibilité selon le compte (pas une garantie fournisseur). Modèle demandé, transmis par le proxy et signalé par le fournisseur distingués. Tests contre la dérive et contre l'accès premium hors droit. | Web déployé, PR #440 ; recette visuelle/appareil non vérifiée |
 | W04 | Projets | Créer/renommer/supprimer un projet, consignes propres, conversations associées, bibliothèque de documents réutilisables. Sources identifiables dans le contexte. Recherche bornée, absence de fichier et contexte tronqué explicites. Cloisonnement par compte et projet ; mode Europe conservé. | Bibliothèque web livrée #443 ; conversations web livrées #444 ; recette visuelle/appareil non vérifiée |
 | W05 | Livrables | Export DOCX modifiable et XLSX de tableaux, en plus des exports existants. Téléchargements relus par un parseur indépendant ; cellules dangereuses neutralisées ; aucun HTML actif ni formule arbitraire. Formats et limites documentés. | Web déployé #445 ; téléchargement réel Chrome FR/EN et relecture indépendante DOCX/XLSX acquis sur candidat #479 (OFFICE_BROWSER_RECIPE.md) ; rendu Office/appareil non vérifié |
-| W06 | Continuité | Sauvegarde/restauration explicites puis synchronisation optionnelle multi-appareil chiffrée avant upload, avec secret détenu par l'utilisateur et récupération expliquée. Conflits non destructifs ; reprise hors-ligne ; logout/switch/delete et compte invité traités. Un export manuel seul ne valide pas la synchronisation. | Restauration Web activée et livrée #478 (WORKSPACE_RESTORE_PUBLISHER.md), après fondations #446–459 et annulation #477 ; préparation explicite, journal v8 et repli compatibles. Synchronisation distante non livrée, accès de configuration Cloudflare expiré ; démarrage/recette physique APK non attestés |
+| W06 | Continuité | Sauvegarde/restauration explicites puis synchronisation optionnelle multi-appareil chiffrée avant upload, avec secret détenu par l'utilisateur et récupération expliquée. Conflits non destructifs ; reprise hors-ligne ; logout/switch/delete et compte invité traités. Un export manuel seul ne valide pas la synchronisation. | Restauration Web activée et livrée #478 (WORKSPACE_RESTORE_PUBLISHER.md), après fondations #446–459 et annulation #477 ; préparation explicite, journal v8 et repli compatibles. Synchronisation distante non livrée ; accès Cloudflare rétabli le 6 septembre à 17:21 UTC, Pages/D1 accessibles mais R2 non activé ; démarrage/recette physique APK non attestés |
 | W07 | Comparaison | Comparer depuis une conversation avec contexte/documents autorisés ; conserver les résultats et poursuivre la réponse choisie sans perdre l'original. Erreurs/coûts/quotas de chaque panneau visibles ; EU et historique privé jamais contournés. | Web livré #462 ; recette App/navigateur synthétique vérifiée ; APK distribuée, installation physique et OAuth/facturation réels non attestés |
 | W08 | Parcours métier | Trois parcours complets : synthèse documentaire, réponse client préparée, planification Agenda avec confirmation avant écriture. Écran de connexions indiquant disponible/non configuré/non pris en charge selon plateforme. Pas de Drive/Gmail OAuth restreint ni relais IMAP serveur. | Socle Google/BYOK #463, transport Agenda #464, pont copie documentaire/Agenda #465, synthèse guidée #466, statut client #467, formulaire client #468/#469 et Connexions #470 livrés web ; recettes App/navigateur synthétiques vérifiées ; APK distribuées, installation physique et intégrations réelles non attestées |
 | W09 | Mobile et identité | PWA installable ; identité tryarty cohérente ; distribution Android authentifiée et documentée. Ne pas rediriger vers une app Play homonyme. Toute migration appId inclut signatures/OAuth/Firebase/liens vérifiés ; un APK distribué n'est pas une publication Store. | Transport API historique livré #471, sondes publiques vérifiées ; identité APK et premier reçu réel livrés #472, distribution Firebase réussie ; guide PWA #473 et correctif CDN #474 publiés/vérifiés sur tryarty.com (PWA_INSTALL_GUIDE.md) ; validations appareil/Store non livrées |
-| W10 | Mesure | Instrumentation minimale sans contenu utilisateur : activation, succès/échec des parcours, retour D7/D30 et conversion. Marges fondées sur coût serveur, pas un compteur local. Tableau avec période, échantillon et limites ; aucune métrique inventée. | Rapport opérateur local wallet livré #475 (WALLET_MEASUREMENT.md), CI/Pages/Firebase vérifiés ; pas une marge commerciale. Pilote facultatif réponse client préparé/testé f49ecec, publication fermée ; activation, D7/D30 et conversion non instrumentés |
+| W10 | Mesure | Instrumentation minimale sans contenu utilisateur : activation, succès/échec des parcours, retour D7/D30 et conversion. Marges fondées sur coût serveur, pas un compteur local. Tableau avec période, échantillon et limites ; aucune métrique inventée. | Rapport opérateur local wallet livré #475 ; pilote réponse client livré avec collecte fermée #479, correction Stop et recette Office associées (MEASUREMENT_CLOSED_RELEASE.md). Activation, D7/D30 et conversion non instrumentés ; pas une marge commerciale |
 
 ## Dépendances et choix de sûreté
 
@@ -130,12 +139,25 @@ contrôlé sur tryarty.com à 15:26 UTC. Reçus détaillés dans le document dé
 CI main `34042135018` et distribution Firebase `34042135040` réussies en
 première tentative ; reçu de l'APK signé au commit exact vérifié.
 Démarrage natif indisponible et recette appareil absente ; W06 reste partiel.
-L'accès de configuration Cloudflare a été revérifié à 15:25 UTC : expiré,
-reconnexion requise avant la synchronisation distante ; aucun contournement.
+L'accès de configuration Cloudflare, expiré à 15:25 UTC, a été réautorisé
+explicitement par l'utilisateur et vérifié à 17:21 UTC : connexion réussie,
+Pages et D1 lisibles. R2 retourne 10042 (service non activé). Aucun nouveau
+stockage, upload ou service payant activé ; synchronisation toujours absente.
+Reçu détaillé dans `ADR_WORKSPACE_BACKUP.md`.
 
-### W10 — pilote réponse client préparé, publication fermée
+### W10 — code du pilote livré #479, collecte fermée
 
-Le commit local `f49ecec` prépare un reçu facultatif du parcours réponse client,
+PR #479 fusionnée `9b491b2` le 6 septembre à 17:01:22 UTC après CI PR réussie
+sur `71c1007` et deux contre-revues. Pages production `7a1a5b21` réussie ;
+tryarty.com vérifié à 17:03:39–41 UTC : endpoint fermé, flag false et UI absente,
+huit assets canonique/immuables identiques, restauration #478 préservée.
+Recette Chrome publique FR/EN 390/1280 sans ouverture privée/écriture de base.
+Reçus et limites dans `MEASUREMENT_CLOSED_RELEASE.md` ; CI main `34047281347`
+et Firebase `34047281334` réussis, reçu d'identité de l'APK au commit exact
+vérifié. Pas d'installation physique attestée. La collecte n'est pas activée
+et W10 n'est pas achevé.
+
+Le commit préparatoire `f49ecec` a introduit un reçu facultatif du parcours réponse client,
 six issues fermées et un rapport opérateur quotidien JSON/CSV/HTML FR/EN.
 `PRODUCT_MEASUREMENT_RELEASED=false` : réglage non monté, ticket inerte avant
 lecture de consentement/jeton, handler 404 avant corps/auth/binding D1. Les
@@ -147,7 +169,7 @@ du streaming, de Stop et des réponses partielles sont actives pour tous les fil
 Deux contre-revues indépendantes ont challengé les réentrances, remplacements
 de stream, refus/quota durable de retrait, consentement inter-comptes, égalité
 des reçus et bornes SQL. Les objections pertinentes sont intégrées et détaillées
-dans `ADR_PRODUCT_MEASUREMENT.md`. Vérification finale locale : 325 suites,
+dans `ADR_PRODUCT_MEASUREMENT.md`. Vérification locale avant recette Office : 325 suites,
 4 181 tests réussis et 1 sauté, typecheck front/back, no-CASA, build et worker
 Office isolé ; log `.playwright-mcp/product-measurement-verify-final.log`.
 Recette prospective Chrome FR/EN 390/1280 : retrait en quota, remontage, retrait
@@ -157,8 +179,8 @@ locale remplace le flag pour cette recette ; aucun flag source publié ouvert.
 GO techniques bornés à la livraison fermée, réexaminés avant publication.
 Repli sur `36d432d` (ou révocation ciblée sur une base compatible) : conserver
 les lecteurs/restauration #478 et `ISOLATED_WORKSPACE_ENABLED=true`. Aucune
-migration de schéma ou notice publique ajoutée dans ce lot. CI, preview et
-production restent à attester pour ce candidat ; testé localement ≠ livré.
+migration de schéma ou notice publique ajoutée dans ce lot. Les reçus de CI,
+preview et production sont consignés ci-dessus ; testé localement ≠ livré.
 
 La recette Office pré-fusion #479 a révélé un défaut antérieur : le clic Stop
 transmettait un événement React pris pour un identifiant de conversation.
@@ -175,7 +197,8 @@ avant cinq tests à cause de l'import ESM `node:sqlite` sous Node 22.23.2.
 `createRequire` limité au test, sans mock SQL/exclusion/modification CI.
 Vérification complète suivante sous Node 22.23.2 : 326 suites, 4 185 tests
 réussis, 1 sauté ; typecheck/build/no-CASA et worker Office isolé réussis,
-log `.playwright-mcp/product-measurement-verify-node22.log`. Nouvelle CI exigée.
+log `.playwright-mcp/product-measurement-verify-node22.log`. Nouvelle CI PR
+`34046927402` réussie sur ce code, puis CI main `34047281347` réussie.
 
 L'activation exige une décision du responsable sur l'information préalable :
 les politiques publiées promettent un préavis de 30 jours pour les changements

@@ -11,9 +11,9 @@
  */
 
 import { Capacitor } from '@capacitor/core'
-import { getValidAccessToken } from './googleAuth'
 import { apiUrl } from './apiBase'
 import { isNative } from './native/platform'
+import { captureBillingContext } from './billingContext'
 
 /**
  * Play Store — les biens numériques vendus DANS l'app Android doivent passer
@@ -55,6 +55,8 @@ function buildCheckoutUrl(plan: CheckoutPlan, email: string): string {
 }
 
 export interface OpenCheckoutOptions {
+  /** Optional initiating UI lifetime, in addition to the service's own grant. */
+  isCurrent?: () => boolean
   /** Called after the in-app browser closes (native) or immediately after
    *  opening a new tab (web). Use this to refresh subscription status. */
   onReturn?: () => void
@@ -134,8 +136,14 @@ export async function openCreemCheckout(
   options: OpenCheckoutOptions = {}
 ): Promise<boolean> {
   if (!canPurchase) return false
-  const token = await getValidAccessToken()
-  if (!token) return false
+  const context = captureBillingContext()
+  const isCurrent = () => {
+    try { return context.isCurrent() && (options.isCurrent?.() ?? true) && context.isCurrent() }
+    catch { return false }
+  }
+  if (!isCurrent()) return false
+  const token = await context.getAccessToken()
+  if (!token || !isCurrent()) return false
 
   let url: string
   try {
@@ -147,14 +155,15 @@ export async function openCreemCheckout(
       },
       body: JSON.stringify({ pack }),
     })
-    if (!res.ok) return false
+    if (!isCurrent() || !res.ok) return false
     const data = (await res.json()) as { url?: string }
-    if (!data.url) return false
+    if (!isCurrent() || !data.url) return false
     url = data.url
   } catch {
     return false
   }
 
+  if (!isCurrent()) return false
   if (Capacitor.isNativePlatform()) {
     // Natif : navigateur in-app Capacitor + browserFinished → refresh via onReturn.
     await openExternalUrl(url, options.onReturn)
