@@ -113,6 +113,13 @@ export async function waitForCryptoInitialization(): Promise<void> {
 export function initCrypto(passphrase: string, options: CryptoInitOptions = {}): Promise<void> {
   return startInitialization(passphrase, options, false)
 }
+/** Monotonic even when no key exists: a failed initialization cannot re-arm a
+ * capability acquired by a legacy plaintext credential reader. No erasure gate
+ * is added here; authorized account deletion still needs its Google token. */
+export function captureCryptoGenerationGuard(): () => boolean {
+  const generation = initGeneration, scope = captureScope()
+  return () => generation === initGeneration && scopeCurrent(scope)
+}
 /** Only useAuth's provisional explicit login calls this. The durable right,
  * owner/epoch, document and complete empty-copy proof remain intrinsic. */
 export function initLoginCrypto(passphrase: string, assertCurrent: () => void): Promise<void> {

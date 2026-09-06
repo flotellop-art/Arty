@@ -95,9 +95,9 @@ attribution historique. Les modèles demandés/servis restent distingués.
    reload, continuation, original intact, suppression d'une branche sans perte
    de pièces. Variantes EU, fichier absent, scope/crypto/effacement, quota local,
    cap partagé et inertie export/import/branch/détachement.
-6. [ ] Deux GO finaux, verify complète, PR/CI/preview, main/Pages/APK vérifiés.
+6. [x] Deux GO finaux, verify complète, PR/CI/preview, main/Pages/distribution APK vérifiés (#462).
 
 Preuves et périmètres exacts dans `CONTEXTUAL_COMPARISON_RELEASE.md`. Les tests
 locaux utilisent des comptes/données fictifs et des réponses HTTP simulées ;
-ils n'attestent ni OAuth ni facturation fournisseur en production. W07 n'est
-pas livré tant que PR/CI/Pages n'ont pas leur reçu.
+ils n'attestent ni OAuth ni facturation fournisseur en production. W07 est
+livré sur le web ; l'APK est distribuée, sans preuve d'installation physique.

@@ -37,6 +37,7 @@ vi.mock('../../services/googleAuth', () => ({
   isGoogleStorageReady: () => mocks.storageReady,
   storeMailboxFreeGrant: mocks.storeMailboxFreeGrant,
   storeUser: mocks.storeUser,
+  captureGoogleAuthIntent: () => () => true,
   logout: mocks.logout,
 }))
 vi.mock('../../services/userSession', () => ({
@@ -60,7 +61,7 @@ beforeEach(() => {
   mocks.storeMailboxFreeGrant.mockReset()
   mocks.storeMailboxFreeGrant.mockResolvedValue(undefined)
   mocks.storeUser.mockReset()
-  mocks.storeUser.mockResolvedValue(true)
+  mocks.storeUser.mockImplementation(async (_user, _owner, onWriteStarted) => { onWriteStarted?.(() => true); return true })
   mocks.logout.mockClear()
 })
 
@@ -119,11 +120,12 @@ describe('useGoogleAuth — reconsentement Calendar', () => {
     expect(mocks.storeUser).toHaveBeenCalledWith(
       expect.objectContaining({ email: 'user@example.com' }),
       { userId: 'google:user@example.com', sessionEpoch: 7 },
+      expect.any(Function),
     )
     expect(mocks.storeMailboxFreeGrant).toHaveBeenCalledWith(
       expect.objectContaining({ access_token: 'fresh-token' }),
       { userId: 'google:user@example.com', sessionEpoch: 7 },
-      { preserveExistingRefreshToken: true, verifiedEmail: 'user@example.com' },
+      { preserveExistingRefreshToken: true, verifiedEmail: 'user@example.com', onWriteStarted: expect.any(Function) },
     )
     expect(mocks.storeUser.mock.invocationCallOrder[0]).toBeLessThan(
       mocks.storeMailboxFreeGrant.mock.invocationCallOrder[0],
@@ -167,7 +169,7 @@ describe('useGoogleAuth — reconsentement Calendar', () => {
     mocks.epoch = 7
     mocks.exchangeCode.mockResolvedValue({ access_token: 'fresh-token', refresh_token: '', expires_at: 2 })
     mocks.fetchGoogleUser.mockResolvedValue({ email: 'user@example.com', name: 'User', picture: '' })
-    mocks.storeUser.mockResolvedValue(false)
+    mocks.storeUser.mockImplementation(async (_user, _owner, onWriteStarted) => { onWriteStarted?.(() => true); return false })
     const { result } = renderHook(() => useGoogleAuth())
 
     await act(async () => result.current.handleCallback('oauth-code'))
@@ -221,11 +223,12 @@ describe('useGoogleAuth — reconsentement Calendar', () => {
     expect(mocks.storeUser).toHaveBeenCalledWith(
       expect.objectContaining({ email: 'calendar@example.com' }),
       { userId: 'email:local@example.com', sessionEpoch: 4 },
+      expect.any(Function),
     )
     expect(mocks.storeMailboxFreeGrant).toHaveBeenCalledWith(
       expect.objectContaining({ access_token: 'calendar-token' }),
       { userId: 'email:local@example.com', sessionEpoch: 4 },
-      { preserveExistingRefreshToken: true, verifiedEmail: 'calendar@example.com' },
+      { preserveExistingRefreshToken: true, verifiedEmail: 'calendar@example.com', onWriteStarted: expect.any(Function) },
     )
     expect(result.current.error).toBeNull()
     expect(result.current.isConnected).toBe(true)
@@ -253,7 +256,7 @@ describe('useGoogleAuth — reconsentement Calendar', () => {
     resolveUser({ email: 'user@example.com', name: 'User', picture: '' })
     await act(async () => { await pending })
 
-    expect(result.current.error).toMatch(/session active a changé/i)
+    expect(result.current.error).toBeNull() // the old callback must not paint the replacement session
     expect(mocks.storeUser).not.toHaveBeenCalled()
     expect(mocks.storeMailboxFreeGrant).not.toHaveBeenCalled()
   })

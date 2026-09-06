@@ -1740,7 +1740,9 @@
     "titleLead": "Tes ",
     "titleAccent": "clés.",
     "subtitle": "Stockées localement sur cet appareil, sans chiffrement applicatif.",
-    "savedLoadingUnavailable": "Clés enregistrées. Certaines données locales n’ont pas pu être chargées ; réessaie après rechargement."
+    "savedLoadingUnavailable": "Clés enregistrées. Certaines données locales n’ont pas pu être chargées ; réessaie après rechargement.",
+    "googleLoadingBeforeSave": "Clés inchangées. Attends le chargement de Google, puis réessaie. Si la connexion reste indisponible, recharge Arty et reconnecte Google.",
+    "savedGoogleUnavailable": "Clés enregistrées. La connexion Google n’a pas pu être conservée. Depuis l’accueil, ouvre Agenda et reconnecte Google."
   },
   "mailAccountsModal": {
     "kicker": "Boîtes mail",

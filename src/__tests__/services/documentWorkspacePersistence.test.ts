@@ -58,6 +58,71 @@ async function expectPrivateReadsRefused(message: string) {
 }
 
 describe('real document boundary with real crypto and IDB transactions', () => {
+  it('refreshes an expired Google grant after erasure admission and completes the authorized synthetic erasure', async () => {
+    await admit()
+    users.setActiveSession({ ...session(), authMethod: 'google', email: 'synthetic@example.invalid' })
+    await c.initCrypto('synthetic-document-key')
+    const google = await import('../../services/googleAuth'), account = await import('../../services/accountService')
+    await google.storeUser({ email: 'synthetic@example.invalid', name: 'Synthetic', picture: '' })
+    await google.storeMailboxFreeGrant({ access_token: 'expired-synthetic', refresh_token: 'synthetic-refresh', expires_at: Date.now() - 1 },
+      undefined, { verifiedEmail: 'synthetic@example.invalid' })
+    const fetch = vi.fn(async (url: string, init: RequestInit) => {
+      if (url === '/api/auth/refresh') {
+        expect(await account.getAccountErasureState()).toBe('not-sent')
+        return Response.json({ access_token: 'refreshed-synthetic', expires_in: 3600, oauth_profile: google.CURRENT_GOOGLE_OAUTH_PROFILE })
+      }
+      expect(url).toBe('/api/account/erasure-v1')
+      const headers = new Headers(init.headers)
+      expect(headers.get('x-google-token')).toBe('refreshed-synthetic')
+      return Response.json({ protocol: 1, status: 'confirmed', operationId: headers.get('x-arty-erasure-operation'),
+        subjectHash: headers.get('x-arty-erasure-subject') })
+    })
+    vi.stubGlobal('fetch', fetch)
+    await expect(account.deleteAccount()).resolves.toBe('complete')
+    expect(fetch).toHaveBeenCalledTimes(2)
+    expect(users.getActiveUserId()).toBeNull()
+    expect(google.captureGoogleGrant()).toBeNull()
+  })
+
+  it('returns null for Google authentication after losing the actual document, without private reads', async () => {
+    await enter()
+    const google = await import('../../services/googleAuth')
+    await google.storeUser({ email: 'synthetic@example.invalid', name: 'Synthetic', picture: '' })
+    await google.storeMailboxFreeGrant({ access_token: 'synthetic-access', refresh_token: 'synthetic-refresh', expires_at: Date.now() + 3600_000 },
+      undefined, { verifiedEmail: 'synthetic@example.invalid' })
+    const lease = google.captureGoogleGrant()!
+    expect(lease.isCurrent()).toBe(true)
+    await lose()
+    const read = vi.spyOn(Storage.prototype, 'getItem'), fetch = vi.fn(); vi.stubGlobal('fetch', fetch)
+    expect(lease.isCurrent()).toBe(false)
+    expect(google.captureGoogleGrant()).toBeNull()
+    await expect(google.getValidAccessToken()).resolves.toBeNull()
+    await expect(lease.getAccessToken()).resolves.toBeNull()
+    expect(read).not.toHaveBeenCalled(); expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it('terminates a Google key transfer after real document loss without reads, writes or late notification', async () => {
+    await enter()
+    const google = await import('../../services/googleAuth')
+    await google.storeUser({ email: 'synthetic@example.invalid', name: 'Synthetic', picture: '' })
+    await google.storeMailboxFreeGrant({ access_token: 'synthetic-access', refresh_token: 'synthetic-refresh', expires_at: Date.now() + 3600_000 },
+      undefined, { verifiedEmail: 'synthetic@example.invalid' })
+    const change = (await google.prepareGoogleKeyChange())!
+    await c.initCrypto('next-synthetic-key', { commit: change.begin })
+    const generation = c.captureCryptoGenerationGuard(), gate = deferred<string>()
+    vi.spyOn(c, 'encrypt').mockReturnValueOnce(gate.promise)
+    const pending = change.finish(generation)
+    await vi.waitFor(() => expect(c.encrypt).toHaveBeenCalledTimes(2))
+    await lose()
+    const read = vi.spyOn(Storage.prototype, 'getItem'), write = vi.spyOn(Storage.prototype, 'setItem'), notify = vi.fn()
+    window.addEventListener('google-storage-ready', notify)
+    try {
+      gate.resolve('stale-synthetic-ciphertext')
+      await expect(pending).resolves.toBe(false)
+      expect(read).not.toHaveBeenCalled(); expect(write).not.toHaveBeenCalled(); expect(notify).not.toHaveBeenCalled()
+    } finally { window.removeEventListener('google-storage-ready', notify) }
+  })
+
   it('the production policy also blocks a direct provisioning call on a valid isolated fixture', async () => {
     const { seedIsolatedWorkspace } = await import('../helpers/isolatedWorkspace')
     const layout = await seedIsolatedWorkspace()

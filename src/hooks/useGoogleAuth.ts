@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Capacitor, registerPlugin } from '@capacitor/core'
 import type { GoogleUser } from '../types/google'
 import {
@@ -12,6 +12,7 @@ import {
   isGoogleStorageReady,
   storeMailboxFreeGrant,
   storeUser,
+  captureGoogleAuthIntent,
   logout as googleLogout,
 } from '../services/googleAuth'
 import {
@@ -28,6 +29,7 @@ interface GoogleSignInNativePlugin {
 const GoogleSignInNative = registerPlugin<GoogleSignInNativePlugin>('GoogleSignInNative')
 
 export function useGoogleAuth() {
+  const reconnectGeneration = useRef(0)
   const [user, setUser] = useState<GoogleUser | null>(() => getStoredUser())
   const [isConnected, setIsConnected] = useState(() => getStoredTokens() !== null)
   const [isLoading, setIsLoading] = useState(false)
@@ -142,9 +144,13 @@ export function useGoogleAuth() {
       userId: activeSession.userId,
       sessionEpoch: getActiveSessionEpoch(),
     }
+    const requestGeneration = ++reconnectGeneration.current
+    const intentCurrent = captureGoogleAuthIntent()
+    let cleanupCurrent: (() => boolean) | undefined
+    const onWriteStarted = (current: () => boolean) => { cleanupCurrent = current }
     const assertReconnectOwner = () => {
       if (
-        getActiveUserId() !== storageOwner.userId
+        !(cleanupCurrent ?? intentCurrent)() || requestGeneration !== reconnectGeneration.current || getActiveUserId() !== storageOwner.userId
         || getActiveSessionEpoch() !== storageOwner.sessionEpoch
       ) throw new Error('La session active a changé pendant la reconnexion Google.')
     }
@@ -169,7 +175,6 @@ export function useGoogleAuth() {
       if (import.meta.env.DEV) console.log('[useGoogleAuth] login() called — native path')
       setIsLoading(true)
       setError(null)
-      let identityCommitStarted = false
       try {
         // 30s watchdog — if the native plugin's pendingCall is orphaned
         // (activity recycled during the Google popup, a common Android
@@ -216,47 +221,54 @@ export function useGoogleAuth() {
           name: result.name || result.email?.split('@')[0] || '',
           picture: result.avatar || '',
         }
-        identityCommitStarted = true
-        if (!(await storeUser(googleUser, storageOwner))) {
+        if (!(await storeUser(googleUser, storageOwner, onWriteStarted))) {
           throw new Error('Google user storage was superseded')
         }
+        assertReconnectOwner()
+        if (!cleanupCurrent?.()) throw new Error('Google identity installation was superseded')
         await storeMailboxFreeGrant(tokens, storageOwner, {
           preserveExistingRefreshToken: true,
           verifiedEmail: googleUser.email,
+          onWriteStarted,
         })
         assertReconnectOwner()
+        if (!cleanupCurrent?.()) throw new Error('Google grant installation was superseded')
         setUser(googleUser)
         setIsConnected(true)
         setReconsentRequired(false)
         if (import.meta.env.DEV) console.log('[useGoogleAuth] login success for', result.email)
       } catch (err) {
+        try { assertReconnectOwner() } catch { return }
+        if (cleanupCurrent && !cleanupCurrent()) return
         console.error('[useGoogleAuth] native login failed:', err)
-        if (
-          identityCommitStarted
-          && getActiveUserId() === storageOwner.userId
-          && getActiveSessionEpoch() === storageOwner.sessionEpoch
-        ) googleLogout()
+        if (cleanupCurrent?.()) googleLogout()
         setError(err instanceof Error ? err.message : 'Erreur Google Sign-In')
         setUser(getStoredUser())
         setIsConnected(getStoredTokens() !== null)
       } finally {
-        setIsLoading(false)
+        if (requestGeneration === reconnectGeneration.current) setIsLoading(false)
       }
     } else {
       // Web: redirect OAuth
       try {
         const url = await buildOAuthUrl()
+        assertReconnectOwner()
         window.location.href = url
       } catch (err) {
+        try { assertReconnectOwner() } catch { return }
         setError(err instanceof Error ? err.message : 'Erreur connexion Google')
       }
     }
   }, [storageReady])
 
   const handleCallback = useCallback(async (code: string) => {
+    const requestGeneration = ++reconnectGeneration.current
     setIsLoading(true)
     setError(null)
-    let identityCommitOwner: { userId: string; sessionEpoch: number } | null = null
+    let requestOwner: { userId: string; sessionEpoch: number } | null = null
+    const intentCurrent = captureGoogleAuthIntent()
+    let cleanupCurrent: (() => boolean) | undefined
+    const onWriteStarted = (current: () => boolean) => { cleanupCurrent = current }
     try {
       const activeSession = getActiveSession()
       if (!activeSession) {
@@ -266,9 +278,10 @@ export function useGoogleAuth() {
         userId: activeSession.userId,
         sessionEpoch: getActiveSessionEpoch(),
       }
+      requestOwner = storageOwner
       const assertReconnectOwner = () => {
         if (
-          getActiveUserId() !== storageOwner.userId
+          !(cleanupCurrent ?? intentCurrent)() || requestGeneration !== reconnectGeneration.current || getActiveUserId() !== storageOwner.userId
           || getActiveSessionEpoch() !== storageOwner.sessionEpoch
         ) throw new Error('La session active a changé pendant la reconnexion Google.')
       }
@@ -281,29 +294,32 @@ export function useGoogleAuth() {
       if (activeSession.authMethod === 'google' && returnedUserId !== storageOwner.userId) {
         throw new Error('Choisis le même compte Google que la session Arty active.')
       }
-      identityCommitOwner = storageOwner
-      if (!(await storeUser(googleUser, storageOwner))) {
+      if (!(await storeUser(googleUser, storageOwner, onWriteStarted))) {
         throw new Error('Google user storage was superseded')
       }
+      assertReconnectOwner()
+      if (!cleanupCurrent?.()) throw new Error('Google identity installation was superseded')
       await storeMailboxFreeGrant(tokens, storageOwner, {
         preserveExistingRefreshToken: true,
         verifiedEmail: googleUser.email,
+        onWriteStarted,
       })
       assertReconnectOwner()
+      if (!cleanupCurrent?.()) throw new Error('Google grant installation was superseded')
       setUser(googleUser)
       setIsConnected(true)
       setReconsentRequired(false)
     } catch (err) {
-      if (
-        identityCommitOwner
-        && getActiveUserId() === identityCommitOwner.userId
-        && getActiveSessionEpoch() === identityCommitOwner.sessionEpoch
-      ) googleLogout()
+      if (requestGeneration !== reconnectGeneration.current || !(cleanupCurrent ?? intentCurrent)()) return
+      try {
+        if (requestOwner && (getActiveUserId() !== requestOwner.userId || getActiveSessionEpoch() !== requestOwner.sessionEpoch)) return
+      } catch { return }
+      if (cleanupCurrent?.()) googleLogout()
       setError(err instanceof Error ? err.message : 'Erreur authentification')
       setUser(getStoredUser())
       setIsConnected(getStoredTokens() !== null)
     } finally {
-      setIsLoading(false)
+      if (requestGeneration === reconnectGeneration.current) setIsLoading(false)
     }
   }, [])
 
