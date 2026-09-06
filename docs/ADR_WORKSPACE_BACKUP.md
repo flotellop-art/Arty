@@ -1392,3 +1392,13 @@ supplémentaires possibles avant découverte d'un conflit, aucun écrasement ;
 quota durable/source divergente/absence de propriétaire effaçable non résolus.
 Activation OFF ; ni restauration/synchronisation ni recette UI navigateur/APK
 déduites de fake-IDB/JSDOM. Reçus et mesures de validation dans le CDC.
+
+##### Prérequis composeur — opérations en vol (6 septembre)
+
+Le composeur partagé est durci indépendamment de l'activation isolée :
+incarnation owner/epoch/fil, validation readonly du fence après chiffrement ou
+déchiffrement, annulation au démontage, suppression exacte sans clé via une
+capacité metadata étroite et acquittement d'envoi distinct. Aucun changement
+du protocole A3b ni des formats stockés. Diagnostic, objections, tests et
+limites dans `COMPOSER_DRAFT_LIFETIME.md`. Restauration/synchronisation et
+quota durable de préparation restent non résolus ; flag de production OFF.

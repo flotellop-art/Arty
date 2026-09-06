@@ -33,15 +33,7 @@ import { haptic } from '../../utils/haptic'
 import { InputContextSlot } from './InputContextSlot'
 import { ReflectionPill } from '../chat/ReflectionPill'
 import { createQuickActionSelection, QUICK_ACTIONS } from '../../services/quickActions'
-import { decrypt, encrypt, isCryptoReady } from '../../services/crypto'
-import {
-  clearComposerDraft,
-  composerDraftStorageKey,
-  getComposerDraft,
-  hasComposerDraft,
-  scopeComposerDraftKey,
-  setComposerDraftMemory,
-} from '../../services/composerDrafts'
+import { useComposerDraft } from '../../hooks/useComposerDraft'
 
 export interface ComposerPrefill {
   id: number
@@ -263,14 +255,11 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
   // poser le killswitch en DevTools et le voir s'appliquer immédiatement.
   const v2 = inputBarV2Enabled()
   const vision4kFoundation = isVision4kFoundationEnabled()
-  const scopedDraftKey = draftKey ? scopeComposerDraftKey(draftKey) : undefined
-  const encryptedDraftKey = scopedDraftKey ? composerDraftStorageKey(scopedDraftKey) : undefined
-  const previousDraftKeyRef = useRef(scopedDraftKey)
-  const draftTouchedRef = useRef(Boolean(initialText))
-  const draftWriteVersionRef = useRef(0)
-  const [text, setText] = useState(() => initialText ?? (scopedDraftKey ? getComposerDraft(scopedDraftKey) ?? '' : ''))
+  const { text, setText, captureRevision, captureAcceptedDraft, binding: draftBinding } = useComposerDraft(draftKey, initialText)
+  const previousDraftBindingRef = useRef(draftBinding)
   const [files, setFiles] = useState<FileAttachment[]>(() => initialFiles ?? [])
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const submittingRef = useRef(false)
   const [isPreparingAttachments, setIsPreparingAttachments] = useState(false)
   const [isPreparingImages, setIsPreparingImages] = useState(false)
   const [, setRoutePreviewVersion] = useState(0)
@@ -278,6 +267,8 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
   // n'entre jamais dans le textarea ni dans la bulle user : seuls l'ID et la
   // locale allowlistés traversent le flux d'envoi.
   const [pendingQuickAction, setPendingQuickAction] = useState<QuickActionSelection | undefined>()
+  const pendingQuickActionRef = useRef(pendingQuickAction)
+  useEffect(() => { pendingQuickActionRef.current = pendingQuickAction }, [pendingQuickAction])
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const cameraInputRef = useRef<HTMLInputElement>(null)
@@ -318,7 +309,6 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
 
   useEffect(() => {
     if (!prefill) return
-    draftTouchedRef.current = true
     setText(prefill.text)
     setPendingQuickAction(undefined)
     requestAnimationFrame(() => {
@@ -329,55 +319,13 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
   }, [prefill?.id])
 
   useEffect(() => {
-    if (!draftKey || !scopedDraftKey) return
-    setComposerDraftMemory(scopedDraftKey, text)
-
-    const writeVersion = ++draftWriteVersionRef.current
-    if (!encryptedDraftKey) return
-    if (!text) {
-      if (draftTouchedRef.current) localStorage.removeItem(encryptedDraftKey)
-      return
-    }
-    if (!isCryptoReady()) return
-    void encrypt(text).then((ciphertext) => {
-      if (draftWriteVersionRef.current === writeVersion) {
-        localStorage.setItem(encryptedDraftKey, ciphertext)
-      }
-    }).catch(() => {})
-  }, [draftKey, encryptedDraftKey, scopedDraftKey, text])
-
-  useEffect(() => {
-    if (!encryptedDraftKey || hasComposerDraft(scopedDraftKey!) || initialText) return
-    let active = true
-    const restoreEncryptedDraft = () => {
-      if (!active || !isCryptoReady()) return
-      const ciphertext = localStorage.getItem(encryptedDraftKey)
-      if (!ciphertext) return
-      void decrypt(ciphertext).then((restored) => {
-        if (!active || !restored) return
-        setComposerDraftMemory(scopedDraftKey!, restored)
-        setText((current) => current || restored)
-      }).catch(() => {})
-    }
-    restoreEncryptedDraft()
-    window.addEventListener('conversations-storage-ready', restoreEncryptedDraft)
-    return () => {
-      active = false
-      window.removeEventListener('conversations-storage-ready', restoreEncryptedDraft)
-    }
-  }, [encryptedDraftKey, initialText, scopedDraftKey])
-
-  useEffect(() => {
-    if (previousDraftKeyRef.current === scopedDraftKey) return
-    previousDraftKeyRef.current = scopedDraftKey
-    draftTouchedRef.current = Boolean(initialText)
-    draftWriteVersionRef.current += 1
-    setText(initialText ?? (scopedDraftKey ? getComposerDraft(scopedDraftKey) ?? '' : ''))
+    if (previousDraftBindingRef.current === draftBinding) return
+    previousDraftBindingRef.current = draftBinding
     const nextInitialFiles = initialFiles ?? []
     filesRef.current = nextInitialFiles
     setFiles(nextInitialFiles)
     setPendingQuickAction(undefined)
-  }, [initialFiles, initialText, scopedDraftKey])
+  }, [initialFiles, draftBinding])
 
   // Attach menu popup (replaces separate camera/scan/web-camera buttons).
   const [showAttachMenu, setShowAttachMenu] = useState(false)
@@ -395,7 +343,7 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
   const openCalendarForm = () => {
     if (calendarSuggestion && !officeContext && !hasProjectContext) setCalendarForm({ detected: calendarSuggestion, context: text, scope: captureCalendarContext() })
   }
-  useEffect(() => { setCalendarForm(null) }, [scopedDraftKey])
+  useEffect(() => { setCalendarForm(null) }, [draftBinding])
 
   // Audio recording state — Whisper branch (long press).
   const [isRecordingAudio, setIsRecordingAudio] = useState(false)
@@ -435,6 +383,7 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
   // draft/attachments at the moment the user releases the mic.
   const textRef = useRef('')
   const filesRef = useRef<FileAttachment[]>(initialFiles ?? [])
+  const compositionRevisionRef = useRef(0)
   // Mutex synchrone : React peut batcher setIsPreparingImages. Sans ce ref,
   // deux sélections déclenchées avant le render suivant normalisent en
   // parallèle puis la dernière fin écrase le résultat de l'autre.
@@ -519,12 +468,11 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
 
   // Callback for speech recognition
   const handleTranscript = useCallback((spokenText: string) => {
-    draftTouchedRef.current = true
     setText((prev) => {
       if (!prev) return spokenText
       return prev + (prev.endsWith(' ') ? '' : ' ') + spokenText
     })
-  }, [])
+  }, [setText])
 
   // Pure send function — takes explicit text/files rather than closing over
   // state, so the async MediaRecorder.onstop callback can call it with fresh
@@ -535,6 +483,7 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
       (!trimmed && filesToSend.length === 0) ||
       isStreaming ||
       isSubmitting ||
+      submittingRef.current ||
       isPreparingAttachments ||
       imagePreparationLockRef.current
     ) return false
@@ -542,10 +491,10 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
     // Roadmap UI Phase 1 #6 — retour haptique léger sur envoi. Confirme
     // l'action même en bruit de fond / poche / écran non regardé.
     haptic('light').catch(() => {})
-    const clearAcceptedDraft = () => {
-      draftWriteVersionRef.current += 1
-      if (scopedDraftKey) clearComposerDraft(scopedDraftKey)
-      draftTouchedRef.current = false
+    const submittedIsCurrent = captureRevision()
+    if (!submittedIsCurrent()) return false
+    const submittedFiles = filesRef.current, submittedAction = pendingQuickActionRef.current, compositionRevision = compositionRevisionRef.current
+    const clearCurrentUI = () => {
       setText('')
       filesRef.current = []
       setFiles([])
@@ -553,8 +502,16 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
       if (textareaRef.current) textareaRef.current.style.height = 'auto'
       return true
     }
+    const acknowledge = captureAcceptedDraft(() => compositionRevisionRef.current === compositionRevision &&
+      filesRef.current === submittedFiles && pendingQuickActionRef.current === submittedAction, clearCurrentUI)
+    const clearAcceptedDraft = () => {
+      const cleaned = acknowledge()
+      // The parent accepted the message even if a newer draft prevented cleanup.
+      return typeof cleaned === 'boolean' ? true : cleaned.then(() => true)
+    }
 
     let accepted: ReturnType<ChatSendHandler>
+    submittingRef.current = true // includes synchronous parent + asynchronous durable cleanup
     try {
       accepted = onSend(
       trimmed || t('chat.input.defaultFilePrompt'),
@@ -562,32 +519,35 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
       pendingQuickAction ? { quickAction: pendingQuickAction } : undefined,
       )
     } catch {
+      submittingRef.current = false
       return false
     }
-    if (accepted && typeof (accepted as Promise<void | boolean>).then === 'function') {
+    const result = accepted && typeof (accepted as Promise<void | boolean>).then === 'function'
+      ? (accepted as Promise<void | boolean>).then((value) => (value === false ? false : clearAcceptedDraft()))
+      : accepted === false ? false : clearAcceptedDraft()
+    if (typeof result !== 'boolean') {
       setIsSubmitting(true)
-      return (accepted as Promise<void | boolean>)
-        .then((result) => (result === false ? false : clearAcceptedDraft()))
+      return result
         .catch(() => false)
-        .finally(() => setIsSubmitting(false))
+        .finally(() => { submittingRef.current = false; setIsSubmitting(false) })
     }
-    if (accepted === false) return false
-    return clearAcceptedDraft()
-  }, [encryptedDraftKey, isStreaming, isSubmitting, isPreparingAttachments, isListening, stopListening, onSend, t, pendingQuickAction, scopedDraftKey])
+    submittingRef.current = false
+    return result
+  }, [captureRevision, captureAcceptedDraft, setText, isStreaming, isSubmitting, isPreparingAttachments, isListening, stopListening, onSend, t, pendingQuickAction])
 
   const handleSend = () => { sendText(text, files) }
 
   const applySlashCommand = useCallback((cmd: SlashCommand) => {
-    draftTouchedRef.current = true
     setText(cmd.prompt)
     // Une commande slash explicite remplace le mode rapide précédemment
     // armé, sinon deux intentions invisibles se cumuleraient.
     setPendingQuickAction(undefined)
     setShowSlashPalette(false)
     setTimeout(() => textareaRef.current?.focus(), 0)
-  }, [])
+  }, [setText])
 
   const handleQuickActionClick = useCallback((id: QuickActionId) => {
+    ++compositionRevisionRef.current
     // Second clic = annulation ; clic sur une autre action = remplacement.
     setPendingQuickAction((current) =>
       current?.id === id ? undefined : createQuickActionSelection(id)
@@ -649,6 +609,7 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
       return
     }
 
+    ++compositionRevisionRef.current // revoke old acknowledgements BEFORE FileReader/normalization
     setFileError(null)
     const next = [...filesRef.current]
     const errors: string[] = []
@@ -743,6 +704,7 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
 
   const removeFile = (index: number) => {
     if (imagePreparationLockRef.current) return
+    ++compositionRevisionRef.current
     const next = filesRef.current.filter((_, i) => i !== index)
     filesRef.current = next
     setFiles(next)
@@ -768,6 +730,7 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
       ? acquireImagePreparationLock()
       : false
     if (vision4kFoundation && !ownsPreparationLock) return
+    ++compositionRevisionRef.current
     setFileError(null)
     try {
       const photo = await takePhoto(
@@ -822,6 +785,7 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
       ? acquireImagePreparationLock()
       : false
     if (vision4kFoundation && !ownsPreparationLock) return
+    ++compositionRevisionRef.current
     try {
       const doc = await scanDocument()
       if (!doc) return
@@ -846,7 +810,6 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
       setFiles(next)
       // Ajouter le prompt OCR seulement après acceptation du scan : aucun
       // texte orphelin si la normalisation ou la borne du lot le refuse.
-      draftTouchedRef.current = true
       setText((prev) => {
         if (prev.trim().length > 0) return prev
         return t('chat.input.scanPrompt', {
@@ -893,6 +856,7 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
       if (cameraInputRef.current) cameraInputRef.current.value = ''
       return
     }
+    ++compositionRevisionRef.current
     setFileError(null)
     try {
       if (vision4kFoundation && f.size > MAX_IMAGE_SOURCE_BYTES) {
@@ -1104,7 +1068,6 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
         const combined = draft ? draft + ' ' + transcription : transcription
         const sent = await sendText(combined, filesRef.current)
         if (!sent) {
-          draftTouchedRef.current = true
           setText((prev) => (prev ? prev + ' ' : '') + transcription)
         }
       } catch (err) {
@@ -1311,7 +1274,6 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
     setEnhanceError(null)
     try {
       const enhanced = await enhancePrompt(current, { euOnly })
-      draftTouchedRef.current = true
       setText(enhanced)
     } catch (err) {
       setEnhanceError(err instanceof Error ? err.message : t('errors.promptEnhancementFailed'))
@@ -1612,7 +1574,6 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
             ref={textareaRef}
             value={text}
             onChange={(e) => {
-              draftTouchedRef.current = true
               setText(e.target.value)
             }}
             onKeyDown={handleKeyDown}

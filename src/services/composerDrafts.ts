@@ -10,7 +10,7 @@ import { parseComposerDraftOwnership } from './workspaceWriter/localOwnership'
 
 const STORAGE_PREFIX = 'arty-composer-draft:'
 
-const memory = new Map<string, string>()
+const memory = new Map<string, { text: string }>()
 
 /** `<userId|anonymous>:<draftKey>` — identifiant mémoire d'un brouillon. */
 export function scopeComposerDraftKey(draftKey: string): string {
@@ -23,7 +23,7 @@ export function composerDraftStorageKey(scopedKey: string): string {
 }
 
 export function getComposerDraft(scopedKey: string): string | undefined {
-  return memory.get(scopedKey)
+  return memory.get(scopedKey)?.text
 }
 
 export function hasComposerDraft(scopedKey: string): boolean {
@@ -33,8 +33,15 @@ export function hasComposerDraft(scopedKey: string): boolean {
 /** Met à jour le cache mémoire seul — l'écriture chiffrée reste dans InputBar
     (elle dépend de l'état crypto et d'un versionnement anti-course). */
 export function setComposerDraftMemory(scopedKey: string, text: string): void {
-  if (text) memory.set(scopedKey, text)
+  if (text) memory.set(scopedKey, { text })
   else memory.delete(scopedKey)
+}
+
+/** Identity, not string equality: typing A -> B -> A is a new draft too.
+ * No tombstones accumulate after deletion; pending tickets retain their entry. */
+export function captureComposerDraftRevision(scopedKey: string): () => boolean {
+  const entry = memory.get(scopedKey)
+  return () => memory.get(scopedKey) === entry
 }
 
 /** Efface un brouillon des deux niveaux (mémoire + localStorage). */
