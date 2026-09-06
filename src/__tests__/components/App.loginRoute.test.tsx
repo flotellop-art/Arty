@@ -1,5 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { Conversation } from '../../types'
 
 // Exercise the actual App router and OAuthCallback. Private hooks and screen
 // bodies are isolated: this is a routing regression, not an auth/network test.
@@ -7,7 +8,8 @@ const fixture = vi.hoisted(() => ({
   authenticated: true,
   login: vi.fn(),
   callback: vi.fn<(_: string) => Promise<void>>(),
-  conversation: { error: null as string | null, clearActive: vi.fn(), conversations: [], streamingConvIds: new Set(), projectReview: { request: null }, comparisons: { open: vi.fn(), selection: null, error: null } },
+  accessGate: null as Promise<void> | null,
+  conversation: { activeConversation: undefined as Conversation | undefined, error: null as string | null, clearActive: vi.fn(), conversations: [], streamingConvIds: new Set(), projectReview: { request: null }, comparisons: { open: vi.fn(), selection: null, error: null } },
 }))
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }))
 vi.mock('../../hooks/useAuth', () => ({ useAuth: () => ({
@@ -41,8 +43,11 @@ vi.mock('../../hooks/useConnectionsStatus', () => ({ useConnectionsStatus: () =>
   state: 'ready', platform: 'android', refresh: vi.fn(), act: (action: () => void) => action(),
   snapshot: { platform: 'android', demo: false, session: 'email', google: 'not-configured', keys: [], mail: 'unknown', mailCount: 0 },
 }) }))
-vi.mock('../../screens/upgrade', () => ({ UpgradeScreen: ({ onBack }: { onBack: () => void }) => <><h1>Access screen</h1><button onClick={onBack}>Access back</button><button onClick={() => window.dispatchEvent(new Event('arty-open-api-keys'))}>Keys from access</button></> }))
-vi.mock('../../components/chat/ConversationScreen', () => ({ ConversationScreen: () => null }))
+vi.mock('../../screens/upgrade', () => ({ UpgradeScreen: ({ onBack }: { onBack: () => void }) => {
+  if (fixture.accessGate) throw fixture.accessGate
+  return <><h1>Access screen</h1><button onClick={onBack}>Access back</button><button onClick={() => window.dispatchEvent(new Event('arty-open-api-keys'))}>Keys from access</button></>
+} }))
+vi.mock('../../components/chat/ConversationScreen', () => ({ ConversationScreen: ({ conversation }: { conversation: Conversation }) => <><h1>Chat screen</h1><p>{conversation.messages[0]?.content}</p></> }))
 vi.mock('../../components/chat/ProjectReviewDialog', () => ({ ProjectReviewDialog: () => null }))
 vi.mock('../../components/chat/QuestionModal', () => ({ QuestionModal: () => null }))
 vi.mock('../../components/home/MorningBrief', () => ({ MorningBrief: () => null }))
@@ -59,6 +64,8 @@ import App from '../../App'
 
 beforeEach(() => {
   fixture.authenticated = true
+  fixture.accessGate = null
+  fixture.conversation.activeConversation = undefined
   fixture.conversation.error = null
   vi.clearAllMocks()
   fixture.callback.mockResolvedValue(undefined)
@@ -70,6 +77,38 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
 describe('App login entry routing', () => {
+  it('keeps chat history across real BrowserRouter navigation and disposes the previous screen while access is suspended', async () => {
+    const saved: Conversation = { id: 'synthetic-chat', title: 'Synthetic', createdAt: 1, updatedAt: 1,
+      messages: [{ id: 'message', role: 'user', timestamp: 1, content: 'History must survive navigation' }] }
+    fixture.conversation.activeConversation = saved
+    window.history.replaceState({}, '', '/chat/synthetic-chat')
+    render(<App />)
+    await screen.findByRole('heading', { name: 'Chat screen' })
+    fireEvent.click(screen.getByText('Open connections'))
+    await screen.findByRole('heading', { name: 'connections.title' })
+    expect(screen.queryByText('Chat screen')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByText('connections.mail.action'))
+    expect(screen.getByRole('dialog', { name: 'Synthetic mail' })).toBeInTheDocument()
+    expect(screen.getByText('connections.session.action')).toBeDisabled()
+    fireEvent.click(screen.getByText('Close mail'))
+    let release!: () => void
+    fixture.accessGate = new Promise<void>(resolve => { release = resolve })
+    fireEvent.click(screen.getByText('connections.session.action'))
+    // Regression-sensitive: implicit v7 transitions would retain Connections.
+    expect(screen.queryByRole('heading', { name: 'connections.title' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    await act(async () => { fixture.accessGate = null; release() })
+    await screen.findByText('Access screen')
+    act(() => window.history.back())
+    await screen.findByRole('heading', { name: 'connections.title' })
+    act(() => window.history.back())
+    await screen.findByRole('heading', { name: 'Chat screen' })
+    expect(screen.getByText('History must survive navigation')).toBeInTheDocument()
+    expect(fixture.conversation.activeConversation).toBe(saved)
+    expect(fixture.conversation.clearActive).not.toHaveBeenCalled()
+    expect(fixture.callback).not.toHaveBeenCalled()
+  })
+
   it('keeps Connections, its configurations and fixed access/Agenda returns reachable after a retained subscription error', async () => {
     fixture.conversation.error = 'no_active_subscription'
     vi.stubGlobal('fetch', vi.fn())

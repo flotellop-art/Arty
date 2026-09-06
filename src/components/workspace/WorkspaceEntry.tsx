@@ -16,6 +16,6 @@ export function WorkspaceEntry({ route }: { route: EntryRoute }) {
   return <ErrorBoundary fallback={<WorkspaceBootFailure />}><Suspense fallback={<PublicLandingFallback />}>
     {route === 'landing'
       ? <Landing onStart={() => window.location.assign('/?start=1')} onLogin={() => window.location.assign('/login')} />
-      : <BrowserRouter><Routes><Route path="/share/:id" element={<Shared />} /></Routes></BrowserRouter>}
+      : <BrowserRouter useTransitions={false}><Routes><Route path="/share/:id" element={<Shared />} /></Routes></BrowserRouter>}
   </Suspense></ErrorBoundary>
 }

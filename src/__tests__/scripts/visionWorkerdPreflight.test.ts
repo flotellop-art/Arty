@@ -1,13 +1,14 @@
 // @vitest-environment node
 import { Buffer } from 'node:buffer'
 import { inflateSync } from 'node:zlib'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 // @ts-expect-error The executable benchmark intentionally stays plain ESM.
 import {
   aggregateRuns,
   crc32,
   percentile,
   pngFixture,
+  runScenario,
   visionPayload,
 } from '../../../scripts/bench-vision-workerd-memory.mjs'
 
@@ -16,6 +17,57 @@ function readU32(bytes: Buffer, offset: number): number {
 }
 
 describe('préflight mémoire vision — fixtures et agrégation', () => {
+  it('stops the refusal polling loop and retains the original cause when a transport ignores abort', async () => {
+    vi.useFakeTimers()
+    try {
+      let calls = 0
+      const runtime = {
+        inspector: { command: async () => ({ usedSize: 1, embedderHeapUsedSize: 1, backingStorageSize: 1 }) },
+        firstUpstream: Promise.resolve(), releaseUpstreams: vi.fn(), stats: () => ({}),
+        miniflare: { dispatchFetch: async () => {
+          if (calls++ === 0) { await new Promise(resolve => setTimeout(resolve, 10)); throw new Error('original transport error') }
+          return new Promise(() => {}) // deliberately ignores AbortSignal
+        } },
+      }
+      const outcome = runScenario({ runtime, makePayload: () => '{}', concurrency: 2,
+        pathName: 'byok', gateBytes: 1000, sampleDuring: true }).then(() => null, (error: Error) => error)
+      await vi.advanceTimersByTimeAsync(30_011)
+      const error = await outcome
+      expect(error).toBeInstanceOf(AggregateError)
+      expect((error as AggregateError).errors.map((e: Error) => e.message)).toEqual([
+        'original transport error', 'Scenario cleanup timed out after 30000 ms',
+      ])
+      expect(vi.getTimerCount()).toBe(0)
+    } finally { vi.useRealTimers() }
+  })
+
+  it.each(['transport', 'identity', 'inspector'])('propagates an early %s failure without waiting for an impossible upstream and drains pending work', async failure => {
+    let calls = 0, drained = 0
+    const releaseUpstreams = vi.fn()
+    const heap = { usedSize: 1, embedderHeapUsedSize: 1, backingStorageSize: 1 }
+    const command = vi.fn(async () => {
+      if (failure === 'inspector' && command.mock.calls.length > 1) throw new Error('synthetic inspector error')
+      return heap
+    })
+    const runtime = { inspector: { command }, releaseUpstreams,
+      firstUpstream: new Promise(() => {}), stats: () => ({}),
+      miniflare: { dispatchFetch: async (_url: string, { signal }: { signal: AbortSignal }) => {
+        if (calls++ === 0 && failure !== 'inspector') {
+          if (failure === 'identity') return new Response('verified identity missing', { status: 401 })
+          throw new Error('synthetic transport error')
+        }
+        return new Promise((_, reject) => signal.addEventListener('abort', () => {
+          expect(releaseUpstreams).toHaveBeenCalled(); drained++; reject(new Error('synthetic drained'))
+        }, { once: true }))
+      } },
+    }
+    await expect(runScenario({ runtime, makePayload: () => '{}', concurrency: 2,
+      pathName: 'byok', gateBytes: 1000, sampleDuring: true })).rejects.toThrow(
+      failure === 'identity' ? 'Proxy returned 401: verified identity missing' : `synthetic ${failure} error`)
+    expect(drained).toBe(failure === 'inspector' ? 2 : 1)
+    expect(releaseUpstreams).toHaveBeenCalled()
+  })
+
   it('produit un PNG 4096² décodable, à CRC valides et taille exacte', () => {
     const expectedBytes = 64 * 1024
     const bytes = Buffer.from(pngFixture(expectedBytes, 7), 'base64')
