@@ -39,6 +39,7 @@ interface SidebarProps {
   onOpenCosts?: () => void
   onOpenCompare?: () => void
   onOpenProjects?: () => void
+  onOpenConnections?: () => void
   onOpenApiKeys?: () => void
 }
 
@@ -123,6 +124,7 @@ export const Sidebar = memo(function Sidebar({
   onOpenCosts,
   onOpenCompare,
   onOpenProjects,
+  onOpenConnections,
   onOpenApiKeys,
 }: SidebarProps) {
   const { t, i18n } = useTranslation()
@@ -505,6 +507,9 @@ export const Sidebar = memo(function Sidebar({
           {onOpenProjects && <button type="button" className={NAV_ITEM_CLASS} onClick={() => { onOpenProjects(); onClose() }}>
             <span className="w-4 text-center" aria-hidden="true">▤</span><span>{t('projects.title')}</span>
           </button>}
+          {onOpenConnections && <button type="button" className={NAV_ITEM_CLASS} onClick={() => { closeForModal(); onOpenConnections() }}>
+            <span className="w-4 text-center" aria-hidden="true">↔</span><span>{t('connections.title')}</span>
+          </button>}
         </nav>
 
         <section className="mt-2 px-3.5 pb-2 min-[900px]:min-h-0 min-[900px]:flex-1 min-[900px]:overflow-y-auto">
@@ -849,7 +854,7 @@ export const Sidebar = memo(function Sidebar({
         </footer>
       </aside>
 
-      <SettingsModal open={showSettings} onClose={() => setShowSettings(false)} />
+      <SettingsModal open={showSettings} onClose={() => setShowSettings(false)} onOpenConnections={onOpenConnections ? () => { closeForModal(); onOpenConnections() } : undefined} />
       {!onOpenApiKeys && <ApiKeysModal open={showApiKeys} onClose={() => setShowApiKeys(false)} />}
       {showTasks && <TaskPanel onClose={() => setShowTasks(false)} />}
       {editingTagsId && onSetTags && (() => {

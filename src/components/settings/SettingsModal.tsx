@@ -49,14 +49,13 @@ import { getStreakData, setVacationMode, type StreakData } from '../../services/
 import { isAutoMemoryEnabled, setAutoMemoryEnabled } from '../../services/autoMemory'
 import { getCustomInstructions, setCustomInstructions, MAX_CUSTOM_INSTRUCTIONS_CHARS } from '../../services/customInstructions'
 import { LocalMemoryModal } from './LocalMemoryModal'
-import { MailAccountsModal } from './MailAccountsModal'
-import { isMailImapAvailable } from '../../services/native/mailImap'
 import { AccountDeletionPanel } from './AccountDeletionPanel'
 import { ArchiveVerifier, archiveButton } from '../workspace/ArchiveVerifier'
 
 interface SettingsModalProps {
   open: boolean
   onClose: () => void
+  onOpenConnections?: () => void
 }
 
 /**
@@ -65,7 +64,7 @@ interface SettingsModalProps {
  *
  * Depuis 1.0.41, les clés API sont dans une modal séparée (ApiKeysModal).
  */
-export const SettingsModal = memo(function SettingsModal({ open, onClose }: SettingsModalProps) {
+export const SettingsModal = memo(function SettingsModal({ open, onClose, onOpenConnections }: SettingsModalProps) {
   const { t } = useTranslation()
   const dialogRef = useDialogFocusTrap<HTMLDivElement>(open, onClose)
   const [notifEnabled, setNotifEnabled] = useState(false)
@@ -86,7 +85,6 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
   const [showMemoryViewer, setShowMemoryViewer] = useState(false)
   const [streakData, setStreakDataState] = useState<StreakData>(getStreakData)
   const [showLocalMemory, setShowLocalMemory] = useState(false)
-  const [showMailAccounts, setShowMailAccounts] = useState(false)
   const [proLicense, setProLicense] = useState<ProLicenseState | null>(getProLicense)
   const [licenseKey, setLicenseKey] = useState('')
   const [licenseEmail, setLicenseEmail] = useState('')
@@ -676,17 +674,17 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
             </button>
           </div>
 
-          {/* Boîtes mail IMAP natives (9 août 2026 — Android uniquement) */}
-          {isMailImapAvailable() && (
+          {/* Configuration centralisée : quitter Réglages avant navigation. */}
+          {(
             <div className="border-t border-theme-border pt-5">
               <button
-                onClick={() => setShowMailAccounts(true)}
+                onClick={() => { onClose(); if (onOpenConnections) onOpenConnections(); else window.dispatchEvent(new Event('arty-open-connections')) }}
                 className="w-full flex items-center justify-between text-left"
               >
                 <div>
-                  <p className="font-display text-base text-theme-ink">📧 {t('mailAccountsModal.settingsTitle')}</p>
+                  <p className="font-display text-base text-theme-ink">↔ {t('connections.title')}</p>
                   <p className="font-display italic text-xs text-theme-muted mt-0.5">
-                    {t('mailAccountsModal.settingsDescription')}
+                    {t('connections.settingsDescription')}
                   </p>
                 </div>
                 <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="text-theme-accent">
@@ -805,7 +803,6 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose }: Sett
       {showMemoryHistory && <MemoryHistoryPanel onClose={() => setShowMemoryHistory(false)} />}
       {showMemoryViewer && <MemoryViewer onClose={() => setShowMemoryViewer(false)} />}
       {showLocalMemory && <LocalMemoryModal onClose={() => setShowLocalMemory(false)} />}
-      <MailAccountsModal open={showMailAccounts} onClose={() => setShowMailAccounts(false)} />
       {showLocationDebug && (
         <div
           className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-theme-ink/50"

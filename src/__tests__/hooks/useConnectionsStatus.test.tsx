@@ -23,6 +23,13 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
 describe('Connections status view lifetime', () => {
+  it('does not read, subscribe or act in a preview without private admission', async () => {
+    const view = renderHook(() => useConnectionsStatus(false)), action = vi.fn()
+    await act(async () => { await view.result.current.refresh(); view.result.current.act(action); window.dispatchEvent(new Event('focus')) })
+    expect(f.read).not.toHaveBeenCalled(); expect(f.google.size).toBe(0); expect(f.local.size).toBe(0)
+    expect(action).not.toHaveBeenCalled(); expect(view.result.current.snapshot).toBeNull()
+  })
+
   it('mounts under StrictMode without any network or a surviving first receipt', async () => {
     const view = renderHook(() => useConnectionsStatus(), { wrapper: StrictMode })
     await waitFor(() => expect(view.result.current.state).toBe('ready'))

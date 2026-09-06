@@ -5,13 +5,13 @@ import { connectionPlatform, readConnectionsSnapshot } from '../services/connect
 import { documentWorkspaceSignal } from '../services/workspaceWriter/runtime'
 
 /** No network/refresh/bootstrap. Old actions never adopt a replacement scope. */
-export function useConnectionsStatus() {
+export function useConnectionsStatus(enabled = true) {
   const [receipt, setReceipt] = useState<Awaited<ReturnType<typeof readConnectionsSnapshot>> | null>(null)
   const [state, setState] = useState<'loading' | 'unavailable' | 'ready'>('loading')
   const receiptRef = useRef(receipt); receiptRef.current = receipt
   const attempt = useRef<AbortController | null>(null), alive = useRef(true)
   const refresh = useCallback(async () => {
-    if (!alive.current || documentWorkspaceSignal.aborted) return
+    if (!enabled || !alive.current || documentWorkspaceSignal.aborted) return
     attempt.current?.abort(); const controller = new AbortController(); attempt.current = controller
     receiptRef.current = null; setReceipt(null); setState('loading')
     try {
@@ -21,8 +21,9 @@ export function useConnectionsStatus() {
     } catch {
       if (alive.current && attempt.current === controller) { receiptRef.current = null; setReceipt(null); setState('unavailable') }
     }
-  }, [])
+  }, [enabled])
   useEffect(() => {
+    if (!enabled) { attempt.current?.abort(); receiptRef.current = null; setReceipt(null); setState('unavailable'); return }
     alive.current = true; void refresh()
     let queued = false, disposed = false
     const invalidate = () => {
@@ -42,12 +43,12 @@ export function useConnectionsStatus() {
     for (const event of events) window.addEventListener(event, invalidate)
     const timer = setInterval(() => { try { receiptRef.current?.assertCurrent() } catch { invalidate() } }, 250)
     return () => { disposed = true; alive.current = false; attempt.current?.abort(); offData(); offGoogle(); documentWorkspaceSignal.removeEventListener('abort', retire); clearInterval(timer); for (const event of events) window.removeEventListener(event, invalidate) }
-  }, [refresh])
+  }, [enabled, refresh])
   // Each render's callback belongs to that receipt, not a later ref value.
   const act = useCallback((action: () => void) => {
-    if (!alive.current || documentWorkspaceSignal.aborted || !receipt) return
+    if (!enabled || !alive.current || documentWorkspaceSignal.aborted || !receipt) return
     try { receipt.assertCurrent() } catch { void refresh(); return }
     action()
-  }, [receipt, refresh])
+  }, [enabled, receipt, refresh])
   return { snapshot: receipt?.snapshot ?? null, state, refresh, act, platform: connectionPlatform() }
 }

@@ -24,6 +24,7 @@ import { Toaster } from './components/shared/Toaster'
 import { PublicLandingFallback } from './components/shared/PublicLandingFallback'
 import { Sidebar } from './components/layout/Sidebar'
 import { ApiKeysModal } from './components/settings/ApiKeysModal'
+import { MailAccountsModal } from './components/settings/MailAccountsModal'
 import { CapReachedModal } from './components/chat/CapReachedModal'
 import { OAuthCallback } from './components/google/OAuthCallback'
 import { LoginScreen } from './components/auth/LoginScreen'
@@ -60,6 +61,7 @@ const ContextualCompareScreen = lazy(() => import('./screens/contextualCompare')
 const ProjectsScreen = lazy(() => import('./screens/projects').then((m) => ({ default: m.ProjectsScreen })))
 const ProjectSynthesisScreen = lazy(() => import('./screens/projectSynthesis').then(m => ({ default: m.ProjectSynthesisScreen })))
 const ClientReplyScreen = lazy(() => import('./screens/clientReply').then(m => ({ default: m.ClientReplyScreen })))
+const ConnectionsScreen = lazy(() => import('./screens/connections').then(m => ({ default: m.ConnectionsScreen })))
 // Landing marketing (item 16 roadmap v2) — vue uniquement par les
 // primo-visiteurs web ; les utilisateurs connectés ne la téléchargent jamais.
 const LandingScreen = lazy(() => import('./screens/landing').then((m) => ({ default: m.LandingScreen })))
@@ -102,7 +104,10 @@ function AppContent({
 }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   // PR D — propriétaire unique de l'ApiKeysModal (Sidebar + écran Upgrade).
-  const [showApiKeys, setShowApiKeys] = useState(false)
+  const [configuration, setConfiguration] = useState<'keys' | 'mail' | null>(null)
+  const showApiKeys = configuration === 'keys'
+  const setShowApiKeys = useCallback((open: boolean) => setConfiguration(previous => open ? 'keys' : previous === 'keys' ? null : previous), [])
+  const closeConfiguration = useCallback(() => setConfiguration(null), [])
   const [showGoogleReconnect, setShowGoogleReconnect] = useState(false)
   const [showMorningBrief, setShowMorningBrief] = useState(false)
   const [showProfileSetup, setShowProfileSetup] = useState(() => getUserProfile() === null)
@@ -342,6 +347,11 @@ function AppContent({
   const handleOpenCosts = useCallback(() => navigate('/costs'), [navigate])
   const handleOpenCompare = useCallback(() => navigate('/compare'), [navigate])
   const handleOpenProjects = useCallback(() => navigate('/projects'), [navigate])
+  const handleOpenConnections = useCallback(() => navigate('/connections'), [navigate])
+  useEffect(() => {
+    window.addEventListener('arty-open-connections', handleOpenConnections)
+    return () => window.removeEventListener('arty-open-connections', handleOpenConnections)
+  }, [handleOpenConnections])
   const handleOpenApiKeys = useCallback(() => setShowApiKeys(true), [])
   const handleSendInChat: ChatSendHandler = useCallback(
     (text, files, options) => sendMessage(text, undefined, files, options),
@@ -437,13 +447,14 @@ function AppContent({
 
   useEffect(() => {
     if (!error) return
-    if (error.includes('no_active_subscription') && !['/workflows/project-synthesis', '/workflows/client-reply'].includes(location.pathname) && !(activeConversation && isDocumentConversation(activeConversation))) {
+    if (error.includes('no_active_subscription') && !['/workflows/project-synthesis', '/workflows/client-reply', '/connections', '/upgrade'].includes(location.pathname) &&
+        !(location.pathname === '/' && location.state?.connectionsAgenda === true) && !(activeConversation && isDocumentConversation(activeConversation))) {
       navigate('/upgrade')
     }
     // `premium_cap_reached` ne passe plus par ici : useConversation dispatche
     // `arty-cap-reached` → CapReachedModal propose un choix explicite (P0.7),
     // au lieu de l'ancien redirect muet qui éjectait l'utilisateur du fil.
-  }, [error, navigate, location.pathname, activeConversation])
+  }, [error, navigate, location.pathname, location.state, activeConversation])
 
   const currentPlan: CurrentPlan = authMethod === 'apikey' ? 'byok' : 'unknown'
 
@@ -520,10 +531,12 @@ function AppContent({
         onOpenCosts={handleOpenCosts}
         onOpenCompare={handleOpenCompare}
         onOpenProjects={handleOpenProjects}
+        onOpenConnections={handleOpenConnections}
         onOpenApiKeys={handleOpenApiKeys}
       />
 
       <ApiKeysModal open={showApiKeys} onClose={() => setShowApiKeys(false)} />
+      {configuration === 'mail' && <MailAccountsModal open onClose={closeConfiguration} />}
       <GoogleReconnectDialog
         open={showGoogleReconnect}
         loading={googleAuth.isLoading}
@@ -564,6 +577,8 @@ function AppContent({
               onNewConversation={handleNewConversation}
               error={error}
               onDismissError={clearError}
+              connectionsAgenda={location.state?.connectionsAgenda === true}
+              onConnections={handleOpenConnections}
             />
           }
         />
@@ -580,13 +595,20 @@ function AppContent({
           element={
             <Suspense fallback={<LazyFallback />}>
               <UpgradeScreen
-                onBack={() => navigate('/')}
+                onBack={() => navigate(location.state?.fromConnections === true ? '/connections' : '/')}
                 currentPlan={currentPlan}
                 email={userEmail}
               />
             </Suspense>
           }
         />
+        <Route path="/connections" element={<Suspense fallback={<LazyFallback />}><ConnectionsScreen
+          onBack={handleHome} onAccess={() => navigate('/upgrade', { state: { fromConnections: true } })}
+          onAgenda={() => navigate('/', { state: { connectionsAgenda: true } })}
+          onApiKeys={handleOpenApiKeys} onMail={() => setConfiguration('mail')}
+          configurationOpen={configuration !== null} onCloseConfiguration={closeConfiguration}
+          navigationKey={location.key} onMenuToggle={openSidebar} menuOpen={sidebarOpen} demo={authMethod === 'demo'}
+        /></Suspense>} />
         <Route
           path="/templates"
           element={

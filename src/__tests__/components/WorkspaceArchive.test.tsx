@@ -12,8 +12,6 @@ import { ArchiveVerifier } from '../../components/workspace/ArchiveVerifier'
 import { SettingsModal } from '../../components/settings/SettingsModal'
 import { ChatTopBar } from '../../components/chat/ChatTopBar'
 import { invalidateLocalDataViews } from '../../services/localDataInvalidation'
-import * as mailNative from '../../services/native/mailImap'
-import * as mailAccounts from '../../services/mailAccounts'
 import * as users from '../../services/userSession'
 
 const conversation: Conversation = { id: 'c', title: 'Synthetic conversation', messages: [], createdAt: 1, updatedAt: 1, projectId: 'p' }
@@ -131,18 +129,13 @@ describe('encrypted archive user flow', () => {
     rerender(<SettingsModal open={false} onClose={() => {}} />); rerender(<SettingsModal open onClose={() => {}} />)
     expect(screen.queryByLabelText('workspaceArchive.file')).toBeNull()
   })
-  it('does not let the Settings parent steal Tab from an existing sibling mail dialog', async () => {
-    vi.spyOn(mailNative, 'isMailImapAvailable').mockReturnValue(true)
-    vi.spyOn(mailAccounts, 'refreshMailAccounts').mockResolvedValue([])
-    render(<SettingsModal open onClose={() => {}} />)
-    fireEvent.click(screen.getByRole('button', { name: /mailAccountsModal.settingsTitle/ }))
-    await waitFor(() => expect(screen.getAllByRole('dialog')).toHaveLength(2))
-    const child = screen.getAllByRole('dialog')[1]!, select = child.querySelector<HTMLInputElement>('input[type="email"]')!
-    select.focus()
-    const event = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true })
-    act(() => { select.dispatchEvent(event) })
-    expect(event.defaultPrevented).toBe(false)
-    expect(document.activeElement).toBe(select)
+  it('closes Settings before navigating to Connections without a sibling mail dialog', () => {
+    const calls: string[] = []
+    render(<SettingsModal open onClose={() => calls.push('close')} onOpenConnections={() => calls.push('connections')} />)
+    fireEvent.click(screen.getByRole('button', { name: /connections.title/ }))
+    expect(calls).toEqual(['close', 'connections'])
+    expect(screen.getAllByRole('dialog')).toHaveLength(1)
+    expect(screen.queryByPlaceholderText('mailAccountsModal.emailPlaceholder')).not.toBeInTheDocument()
   })
   it.each([true, false])('closes the %s conversation menu before launching archive UI', async sheet => {
     localStorage.setItem('arty-chat-sheet-v2', sheet ? '1' : '0')

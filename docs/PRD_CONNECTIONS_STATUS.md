@@ -1,6 +1,6 @@
 # W08 — Connexions : capacité, configuration et vérification
 
-6 septembre 2026, base main `96486f4` (#468). Spécification de réalisation,
+6 septembre 2026, base main `5a995a2` (#469). Spécification de réalisation,
 pas attestation de livraison. Deux diagnostics readonly indépendants examinés :
 produit/plateformes/navigation et sécurité/sources de vérité.
 
@@ -86,7 +86,7 @@ injection de plateforme ; cela ne prouve pas une installation physique.
 Deux contre-revues après code, verify complet, PR/CI/preview puis production
 contrôlée distinctement. Pas de délai ni résultat commercial inventé.
 
-## Journal du socle — non publié, écran encore absent
+## Journal du socle — avant raccordement de l'écran
 
 Reprise sur disque D:, puis main #469 intégré. Les 41 tests ciblés du lecteur,
 du hook et de la modal mail passent, avec crypto/IDB réels pour les services et
@@ -124,8 +124,8 @@ limites ci-dessous. Elles sont désormais corrigées et testées dans le socle :
   pas l'absence de comptes : lecture stricte dédiée ou état explicitement non
   vérifiable requis, y compris pour anciens APK.
 
-Les routes, cartes et parcours Sidebar/Réglages/Agenda restent à construire.
-Ces preuves de socle ne valent ni validation W08, ni recette d'interface native.
+Au stade du socle, les routes, cartes et parcours restaient à construire.
+Ces seules preuves de socle ne valent ni validation W08, ni recette native.
 
 ### Validation du socle, 6 septembre, 09:16 UTC
 
@@ -156,3 +156,57 @@ avertissement historique >500 Ko inchangé, worker Office réel exécuté en VM
 isolée avec fixtures. Log local ignoré `connections-admitted-verify.log`.
 Ni publication de cette branche, ni route Connexions, ni vraie connexion IMAP
 ou installation physique ne sont attestées par ces tests.
+
+### Raccordement UI et recette locale — 09:35 UTC
+
+Route `/connections` lazy, entrées Sidebar et Réglages (y compris l'instance
+historique de TopBar via événement interne fixe). Réglages ferme son panneau
+avant navigation, son ancienne modal mail est retirée. App possède une union
+clés/mail ; ouverture mail conditionnelle, configuration fermée à la sortie de
+la route, pas lors d'une actualisation normale de métadonnées.
+
+Cartes FR/EN : méthode d'accès, Agenda, quatre fournisseurs IA, IMAP et limites
+Drive/Gmail OAuth/Contacts/Sheets. Aucun prix, entitlement ou état distant déduit
+du badge. Nombre de comptes affiché seulement pour une liste positive admise.
+Clés facultatives pour l'offre/essai Arty, contrainte Anthropic du formulaire
+collectif explicitée. Pas de CTA pour une intégration absente de la plateforme.
+L'aperçu passe un booléen déjà connu d'App : aucun lecteur privé ni boucle de
+réessai, aucune initialisation crypto pour obtenir un badge.
+
+Ancienne erreur `no_active_subscription` conservée sans éjecter Connexions ni
+écraser le retour d'Upgrade. Agenda reçoit seulement un booléen visuel exact,
+déplie/focalise son summary réel ; destinations de retour fixes. Aucun protocole
+OAuth modifié : après redirection Google, le retour par menu est indiqué.
+Bouton de menu mobile léger, sans remonter un second hook de plan.
+
+Les contre-revues ont fait corriger l'arrivée sur la route déjà active
+(`location.key`, indépendamment du cleanup), l'aperçu sans snapshot admis, et
+la collision du focus différé avec une modal ou le tiroir ouvert entre frames.
+Deux GO readonly bornés au code, dont dernier GO produit après le test négatif
+de focus. Aucun reviewer n'a modifié de fichiers.
+
+Recette Chrome headless du **vrai App/router/crypto/IDB/formulaire de clés**,
+compte synthétique isolé : FR/EN × 390/1440, Sidebar → Connexions, Clés → Tab/
+Escape/retour focus, Agenda déplié/focalisé → Retour, Upgrade → Retour, Réglages
+→ même route avec focus repris. Aucune erreur page, aucun débordement horizontal,
+captures haut/bas relues. La première capture mobile prise pendant la transition
+du tiroir a été remplacée par une capture attendant sa fermeture géométrique.
+
+La recette distingue les appels : **aucune requête ajoutée par Connexions**.
+Réglages conserve son ancienne sonde `http://127.0.0.1:8000/api/stats` ; elle a
+été interceptée/refusée dans la fixture, pas exécutée. Tout trafic extérieur
+est bloqué. Une seconde fixture utilise le vrai `seedDemoData()` sans crypto :
+notice dédiée visible, aucune carte privée ni bouton de réessai. Ce n'est pas
+un changement des barrières d'activation de l'aperçu.
+
+Recette enregistrée à `2026-09-06T09:35:47.975Z`, log local ignoré
+`connections-browser.log`. Premier verify UI : 303 suites / 3 677 + 1 sauté ;
+après dernière garde focus, 303 suites / 3 678 + 1 sauté. La promotion PR/CI/
+preview/production reste distincte ; aucune vraie connexion IMAP, session VIP,
+Google consentement, installation APK physique ou validation Store n'est simulée
+comme accomplie. W06 restore/sync reste OFF.
+
+Verify final **exit 0** (`connections-final-verify.log`) : couverture
+71,54 / 66,35 / 77,27 / 73,38 %, App 930,31 Ko (gzip 286,06), chunk Connexions
+lazy séparé, avertissement historique >500 Ko inchangé ; export Office réel
+exécuté en VM isolée. Aucune modification des timeouts/quota/prix/worker concurrency.
