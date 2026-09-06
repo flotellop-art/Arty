@@ -1,6 +1,7 @@
 # ADR W08 — propriété des requêtes Google avant les parcours métier
 
-Statut : décision de découpage acceptée, **implémentation non commencée**.
+Statut : socle d'authentification implémenté, **candidat non livré** ; transport
+Agenda et parcours métier non implémentés.
 Date : 6 septembre 2026. Base : main `d80efb4`, W07 #462.
 Décideur : root, après deux contre-revues indépendantes readonly produit/mobile
 et sécurité/lifecycle. Aucun compte réel ni endpoint Google utilisé par cet audit.
@@ -46,7 +47,7 @@ acceptées à partir des résumés d'agents.
 3. Livrer d'abord un socle de propriété des requêtes, puis des verticales guidées
    réutilisant le chat documentaire et les exports existants. **Retenu.**
 
-### Premier lot borné : authentification et transport Agenda
+### Premier lot borné : authentification ; transport Agenda au lot suivant
 
 - Introduire une incarnation logique de grant RAM monotone, distincte de la
   génération des écritures chiffrées. Logout, reset, réinstallation/reconnexion
@@ -73,6 +74,32 @@ acceptées à partir des résumés d'agents.
   contre effacement reste un niveau supplémentaire, spécifique au parcours.
 - Aucun changement d'algorithme crypto, de scopes Google, de quota, de droit,
   de clé APK ou d'activation W06. Pas de nouveau relais ni connecteur.
+
+### Ajustement issu des contre-revues : clés API et reconnexion
+
+Changer ou simplement réenregistrer les clés API recrée le contexte crypto.
+Révoquer les anciens baux sans chemin de reprise laisserait Google bloqué
+jusqu'au reload. Forcer le bootstrap des caches chauds sous une autre clé
+pourrait confondre indisponibilité et corruption. Le candidat vérifie donc les
+deux snapshots sous l'ancienne clé, puis transfère explicitement les seuls
+credentials Google sous la nouvelle incarnation. Les autres caches restent
+soumis au contrat existant de `resumePendingLocalStorage`.
+
+Le marqueur non secret `google-crypto-transfer-pending-v1`, scoped au propriétaire,
+est posé avant le commit API. Présent (même malformé), il bloque les lecteurs,
+les installations génériques et le bootstrap sans déchiffrement/purge/révocation.
+Les deux blobs sont préparés avant toute écriture stricte, sans fallback plain.
+La finalisation propriétaire ou une reconnexion fraîche strictement persistée
+retire le marqueur. La compensation d'un échec ordinaire est CAS et garde
+owner/session/grant/writers/crypto/effacement/nonce ; la séquence localStorage
+n'est pas atomique. Les anciens bundles ignorant ce marqueur ne sont pas couverts.
+
+Les réponses des reconnexions sont liées à leur intention avant les attentes,
+puis à des reçus armés par chaque writer réellement commencé. Un rejet avant
+writer ne peut pas adopter une époque créée par une autre connexion. Le hook
+revalide entre identité et grant, après commit et avant cleanup/publication UI.
+Les retries restent propres au getter ; les appels directs partagent seulement
+l'essai HTTP + persistance, avec un résultat défensif par consommateur.
 
 ### Verticales suivantes, non incluses dans le socle
 
@@ -129,6 +156,7 @@ d'implémentation, d'OAuth live, d'installation Android ou de livraison W08.
 ## Actions
 
 - [x] Deux diagnostics contradictoires examinés et découpage accepté.
-- [ ] Reproductions permanentes des courses, puis correctif de propriété.
+- [x] Reproductions permanentes des courses auth, puis correctif de propriété.
 - [ ] Revue, recette et livraison du socle.
+- [ ] Transport Agenda, consentement initial et chemins InputBar/outils.
 - [ ] Trois verticales et écran connexions : validation complète séparée.

@@ -4,7 +4,8 @@ import { ApiKeySetup } from './ApiKeySetup'
 import type { ApiKeys } from '../../hooks/useApiKeys'
 import * as scoped from '../../services/scopedStorage'
 import { setActiveKeys } from '../../services/activeApiKey'
-import { initCrypto, CryptoContextChanged, waitForCryptoInitialization, isCryptoReady } from '../../services/crypto'
+import { initCrypto, CryptoContextChanged, waitForCryptoInitialization, isCryptoReady, captureCryptoGenerationGuard } from '../../services/crypto'
+import { prepareGoogleKeyChange, type GoogleKeyChange } from '../../services/googleAuth'
 import { resumePendingLocalStorage } from '../../services/resumeLocalStorage'
 import { toast } from '../../services/toast'
 import { getActiveUserId, getActiveSessionEpoch } from '../../services/userSession'
@@ -53,6 +54,7 @@ export function ApiKeysModal({ open, onClose }: ApiKeysModalProps) {
   if (!open || (editingScope.current && (editingScope.current.owner !== owner || editingScope.current.epoch !== epoch))) return null
 
   const handleSave = async (keys: ApiKeys) => {
+    keys = Object.freeze({ ...keys })
     const scope = editingScope.current, generation = ++saveGeneration.current
     const assertCurrent = () => {
       if (!scope || !openRef.current || generation !== saveGeneration.current ||
@@ -63,27 +65,55 @@ export function ApiKeysModal({ open, onClose }: ApiKeysModalProps) {
     await waitForCryptoInitialization()
     assertCurrent()
     let committed = false
+    let transfer: GoogleKeyChange | null = null
+    const previousKeysRaw = scoped.getItem('api-keys')
+    let expectedKeysRaw = previousKeysRaw
+    let attemptCurrent = captureCryptoGenerationGuard()
+    const sameOwner = () => {
+      try { return !!scope && scope.owner === getActiveUserId() && scope.epoch === getActiveSessionEpoch() }
+      catch { return false }
+    }
     try {
-      await initCrypto(keys.anthropic, {
+      try { transfer = await prepareGoogleKeyChange() }
+      catch (error) {
+        if (sameOwner()) toast(t('apiKeysModal.googleLoadingBeforeSave'), 'info')
+        throw error
+      }
+      assertCurrent()
+      if (scoped.getItem('api-keys') !== previousKeysRaw) throw new CryptoContextChanged()
+      const initializing = initCrypto(keys.anthropic, {
         assertCurrent,
         commit: () => {
           assertCurrent()
+          transfer?.begin()
           scoped.setJSON('api-keys', keys) // quota throws before candidate/active-key publication
+          expectedKeysRaw = scoped.getItem('api-keys')
+          attemptCurrent = captureCryptoGenerationGuard()
           setActiveKeys(keys.anthropic, keys.gemini, keys.mistral, keys.openai)
           committed = true
         },
       })
+      // Also identify this attempt if derivation/commit fails and crypto rolls
+      // back. A concurrent init, even failed, cannot be adopted by its finalizer.
+      attemptCurrent = captureCryptoGenerationGuard()
+      await initializing
     } finally {
-      if (scope && scope.owner === getActiveUserId() && scope.epoch === getActiveSessionEpoch() && isCryptoReady()) {
+      if (transfer) {
+        const restored = await transfer.finish(() => sameOwner() && attemptCurrent() &&
+          scoped.getItem('api-keys') === expectedKeysRaw)
+        if (!restored && committed && sameOwner() && attemptCurrent() && transfer.isCurrent()) toast(t('apiKeysModal.savedGoogleUnavailable'), 'info')
+      }
+      if (sameOwner() && attemptCurrent() && isCryptoReady()) {
         void resumePendingLocalStorage().then(ok => {
-          if (committed && ok === false && scope.owner === getActiveUserId() && scope.epoch === getActiveSessionEpoch()) {
+          if (committed && ok === false && sameOwner() && attemptCurrent()) {
             toast(t('apiKeysModal.savedLoadingUnavailable'), 'info')
           }
         })
       }
     }
-    assertCurrent()
-    onClose()
+    // A committed transfer finishes independently of focus; never close a new
+    // modal or another owner's view after an old save completes.
+    if (sameOwner() && openRef.current && generation === saveGeneration.current) onClose()
   }
 
   return (

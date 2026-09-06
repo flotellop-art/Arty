@@ -1740,7 +1740,9 @@
     "titleLead": "Your ",
     "titleAccent": "keys.",
     "subtitle": "Stored locally on this device without application-level encryption.",
-    "savedLoadingUnavailable": "Keys saved. Some local data could not be loaded; try again after reloading."
+    "savedLoadingUnavailable": "Keys saved. Some local data could not be loaded; try again after reloading.",
+    "googleLoadingBeforeSave": "Keys unchanged. Wait for Google to finish loading, then try again. If the connection remains unavailable, reload Arty and reconnect Google.",
+    "savedGoogleUnavailable": "Keys saved. The Google connection could not be preserved. Open Calendar from Home and reconnect Google."
   },
   "mailAccountsModal": {
     "kicker": "Mailboxes",

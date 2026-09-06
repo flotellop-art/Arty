@@ -33,7 +33,7 @@ supplémentaire n'est implicite dans ce mandat.
 | W05 | Livrables | Export DOCX modifiable et XLSX de tableaux, en plus des exports existants. Téléchargements relus par un parseur indépendant ; cellules dangereuses neutralisées ; aucun HTML actif ni formule arbitraire. Formats et limites documentés. | Web déployé #445 ; recette structurelle vérifiée ; rendu Office/appareil non vérifié |
 | W06 | Continuité | Sauvegarde/restauration explicites puis synchronisation optionnelle multi-appareil chiffrée avant upload, avec secret détenu par l'utilisateur et récupération expliquée. Conflits non destructifs ; reprise hors-ligne ; logout/switch/delete et compte invité traités. Un export manuel seul ne valide pas la synchronisation. | A1 #446, galerie #448, verrou document #449, capture/vérification A2 #451, préparation A3a #452, admission froide #453, runtime isolé inactif #454, migrateur journalisé OFF #455, reprise froide d'effacement v2 OFF #456, reçu distant #457, pont froid/fence v5 OFF #458 et reset local v6/v7 OFF #459 livrés ; restauration/synchronisation non livrées |
 | W07 | Comparaison | Comparer depuis une conversation avec contexte/documents autorisés ; conserver les résultats et poursuivre la réponse choisie sans perdre l'original. Erreurs/coûts/quotas de chaque panneau visibles ; EU et historique privé jamais contournés. | Web livré #462 ; recette App/navigateur synthétique vérifiée ; APK distribuée, installation physique et OAuth/facturation réels non attestés |
-| W08 | Parcours métier | Trois parcours complets : synthèse documentaire, réponse client préparée, planification Agenda avec confirmation avant écriture. Écran de connexions indiquant disponible/non configuré/non pris en charge selon plateforme. Pas de Drive/Gmail OAuth restreint ni relais IMAP serveur. | Audit contradictoire et découpage acceptés ; prérequis propriété Google/Agenda identifié ; code et parcours non livrés |
+| W08 | Parcours métier | Trois parcours complets : synthèse documentaire, réponse client préparée, planification Agenda avec confirmation avant écriture. Écran de connexions indiquant disponible/non configuré/non pris en charge selon plateforme. Pas de Drive/Gmail OAuth restreint ni relais IMAP serveur. | Socle propriété Google et reprise BYOK candidat, non livré ; transport Agenda et parcours non implémentés |
 | W09 | Mobile et identité | PWA installable ; identité tryarty cohérente ; distribution Android authentifiée et documentée. Ne pas rediriger vers une app Play homonyme. Toute migration appId inclut signatures/OAuth/Firebase/liens vérifiés ; un APK distribué n'est pas une publication Store. | À faire |
 | W10 | Mesure | Instrumentation minimale sans contenu utilisateur : activation, succès/échec des parcours, retour D7/D30 et conversion. Marges fondées sur coût serveur, pas un compteur local. Tableau avec période, échantillon et limites ; aucune métrique inventée. | À faire |
 
@@ -230,7 +230,7 @@ servent exactement les mêmes index/App/contextualCompare, vérifié à
 `34005972893` signé puis distribué via Firebase à 02:21:41 UTC ; pas une
 preuve d'installation physique ni de publication Store.
 
-### W08 — préparation du premier lot, non implémenté
+### W08 — socle Google candidat, transport Agenda et parcours restant à faire
 
 Deux audits readonly produit/mobile et sécurité ont accepté le découpage de
 `ADR_WORKFLOW_AGENDA_OWNERSHIP.md`. Avant la nouvelle UI, corriger les réponses
@@ -239,7 +239,12 @@ qui relisent un autre grant et la capture des requêtes Agenda après attente.
 Préserver la mutualisation du refresh, l'effacement Google autorisé et la
 distinction grant logique/génération d'écriture ; tester relink et ABA.
 Le mini-formulaire InputBar contourne aujourd'hui calendarClient et doit être
-raccordé au même contrat. Aucun correctif produit encore appliqué.
+raccordé au même contrat. Le candidat implémente la propriété du grant, le refresh
+partagé durable, la reprise explicite après modification BYOK et les reçus de
+reconnexion. Tests à crypto réelle, modules rechargés et hook réel sous HTTP
+simulé ; aucune connexion Google réelle ni écriture Agenda. Détail et limites
+du marqueur d'interruption dans l'ADR. Vérification/revues et livraison restent
+à attester ; le transport Agenda n'est pas encore raccordé.
 
 Les parcours guidés ne seront pas trois prompts supplémentaires présentés comme
 un résultat livré : préparation/source/confirmation, résultat conservé puis

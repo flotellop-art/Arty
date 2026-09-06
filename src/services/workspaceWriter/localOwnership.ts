@@ -10,6 +10,7 @@ export interface LocalOwnership { owner: string | null; kind: 'workspace' | 'set
 export const LEGACY_SETTING_SLOTS = [
   'api-keys', 'google-tokens', 'google-tokens-enc', 'google-user', 'google-user-enc',
   'google-oauth-mailbox-free-v1', 'google-oauth-identity-bound-v2', 'google-oauth-reconsent-required',
+  'google-crypto-transfer-pending-v1',
   'email-trial-token', 'trial-remaining', 'token-usage', 'token-init-v2', 'local-memory-facts', 'custom-instructions',
   'memory-history', 'user-profile', 'streak-data', 'tasks', 'cost_history', 'cost_alert',
   'ai-model', 'reflection-level', 'fact-check-mode', 'response-style', 'theme', 'location-consent',
