@@ -7,6 +7,7 @@ import { generateId } from '../utils/generateId'
 import { assertDocumentWorkspace, documentWorkspaceSignal, documentHistoryKey } from './workspaceWriter/runtime'
 import type { HistorySlot } from './workspaceWriter/layout'
 import { BackupError } from './workspaceBackup/types'
+import { restrictConversationOutput } from './workflows/outputRestriction'
 
 // ─────────────────────────────────────────────────────────────────────────
 // Conversations are encrypted at rest (AES-256) under `conversations-enc`.
@@ -38,6 +39,15 @@ const LOCKED_KEYS = ['conversations-enc-locked', 'conversations-enc-locked-2'] a
 
 // Decrypted conversations, kept in memory for synchronous reads.
 let memConversations: Conversation[] | null = null
+// Independent of the mutable cache objects exposed by legacy callers. Updating
+// an alias must not erase the last committed restrictive authority.
+let committedOutputRestrictions = new Map<string, Conversation['outputRestriction']>()
+function installMemoryConversations(list: Conversation[]): void {
+  const restrictions = new Map<string, Conversation['outputRestriction']>()
+  for (const c of list) if (c.outputRestriction) restrictions.set(c.id, c.outputRestriction)
+  memConversations = list
+  committedOutputRestrictions = restrictions
+}
 // True once `memConversations` is known to reflect the full stored history
 // (after a successful bootstrap, a cold plain read, or a confirmed-empty
 // store). Writes are skipped while false so a partial list never overwrites
@@ -85,7 +95,9 @@ export function sanitizeConversationPayloads(
       // A recovered partial is historical, never the placeholder of a NEW stream.
       return message.id === 'streaming' ? { ...safeMessage, id: generateId(), interrupted: true } : safeMessage
     })
-    return conversationChanged ? { ...conversation, messages } : conversation
+    const restricted = restrictConversationOutput(conversationChanged ? { ...conversation, messages } : conversation)
+    if (restricted !== conversation) changed = true
+    return restricted
   })
   return changed ? sanitized : conversations
 }
@@ -109,23 +121,27 @@ export function isCacheReady(): boolean {
 
 export function getConversations(): Conversation[] {
   ensureCacheScope()
-  if (memConversations) return memConversations
+  if (memConversations) {
+    for (const c of memConversations) restrictConversationOutput(c, { outputRestriction: committedOutputRestrictions.get(c.id) })
+    return memConversations
+  }
   // Cold read before bootstrap. A plain copy is a migration leftover or a
   // crash-safety-net write — either way it is the freshest available state.
   const scope = captureScope()
   let plain: Conversation[] | null = null
   try { const raw = localStorage.getItem(physicalKey(scope, PLAIN_KEY)); plain = raw ? JSON.parse(raw) as Conversation[] : null } catch { /* malformed legacy plain */ }
   if (plain) {
-    memConversations = sanitizeConversationPayloads(plain)
+    const loaded = sanitizeConversationPayloads(plain)
+    installMemoryConversations(loaded)
     cacheReady = true
-    return memConversations
+    return loaded
   }
   // No plain copy. If there is no ciphertext either, the store is genuinely
   // empty and the empty cache is authoritative. Otherwise the history is
   // locked in `conversations-enc` — only the async bootstrap can load it;
   // stay not-ready so writes don't clobber it.
   if (!localStorage.getItem(physicalKey(scope, ENC_KEY))) {
-    memConversations = []
+    installMemoryConversations([])
     cacheReady = true
   }
   return memConversations ?? []
@@ -161,12 +177,13 @@ export function captureConversationForBackup<T>(id: string, clone: (source: Conv
 
 function persist(list: Conversation[]): void {
   ensureCacheScope()
+  list = list.map(conversation => restrictConversationOutput(conversation, { outputRestriction: committedOutputRestrictions.get(conversation.id) }))
   const scope = captureScope()
   // Invalidate old encryptions even for killswitch/crypto-unavailable writes.
   const gen = ++writeGen
   const serialized = JSON.stringify(list)
   localStorage.setItem(physicalKey(scope, PLAIN_KEY), serialized)
-  memConversations = list
+  installMemoryConversations(list)
   if (encryptionDisabled()) {
     // The durable plain copy already won. A denied cleanup must not turn a
     // successful commit into a reported failure (and invite duplicate work).
@@ -285,7 +302,7 @@ export async function bootstrapConversationStorage(): Promise<void> {
     let plain: Conversation[] | null = null
     try { plain = plainRaw ? JSON.parse(plainRaw) as Conversation[] : null } catch { /* legacy malformed plain */ }
     if (plain) {
-      memConversations = sanitizeConversationPayloads(plain)
+      installMemoryConversations(sanitizeConversationPayloads(plain))
       cacheReady = true
       if (!encryptionDisabled() && isCryptoReady()) {
         // Same generation gate as normal saves; a concurrent user save wins.
@@ -302,7 +319,7 @@ export async function bootstrapConversationStorage(): Promise<void> {
         const decoded = await decrypt(enc)
         if (!current() || initialWrite !== writeGen || localStorage.getItem(encKey) !== enc ||
             localStorage.getItem(physicalKey(scope, PLAIN_KEY)) !== plainRaw) return
-        memConversations = sanitizeConversationPayloads(JSON.parse(decoded) as Conversation[])
+        installMemoryConversations(sanitizeConversationPayloads(JSON.parse(decoded) as Conversation[]))
         cacheReady = true
       } catch (error) {
         if (isCryptoContextChanged(error)) return
@@ -313,7 +330,7 @@ export async function bootstrapConversationStorage(): Promise<void> {
       if (current() && cacheReady) await recoverLockedBlobs(scope, current)
       return
     }
-    memConversations = []
+    installMemoryConversations([])
     cacheReady = true
     await recoverLockedBlobs(scope, current)
   } finally {
@@ -339,7 +356,7 @@ function quarantineUndecryptableBlob(enc: string, scope: StoreScope): void {
     if (localStorage.getItem(slotKey)) continue
     localStorage.setItem(slotKey, enc)
     if (localStorage.getItem(physicalKey(scope, ENC_KEY)) === enc) localStorage.removeItem(physicalKey(scope, ENC_KEY))
-    memConversations = []
+    installMemoryConversations([])
     cacheReady = true
     console.error(`[storage] conversations decrypt failed — blob quarantined under ${key}, continuing with empty history (nothing deleted)`)
     return
@@ -389,5 +406,6 @@ export function resetConversationMemCache(): void {
   bootstrapGen++
   cacheIdentity = null
   memConversations = null
+  committedOutputRestrictions.clear()
   cacheReady = false
 }

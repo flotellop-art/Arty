@@ -134,10 +134,11 @@ export async function prepareConversationArchive(id: string, options: {
         snapshot.projects.push(project)
       })
     } else await captureFiles()
-    assertCurrent(); validateSnapshot(snapshot, 2)
+    const version = conversation.outputRestriction ? 3 : 2
+    assertCurrent(); validateSnapshot(snapshot, version)
     await validate()
     let recoveryCode = createRecoveryCode()
-    let archive: Blob | null = await sealWorkspaceBackup(snapshot, objects, recoveryCode, guard, 2)
+    let archive: Blob | null = await sealWorkspaceBackup(snapshot, objects, recoveryCode, guard, version)
     objects.clear()
     const report = await reportFor(await openWorkspaceBackup(archive, recoveryCode, guard), guard)
     await validate()

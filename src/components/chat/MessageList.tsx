@@ -1,6 +1,6 @@
 import { memo, useRef, useEffect, useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import type { Message } from '../../types'
+import type { Message, Conversation } from '../../types'
 import { UserBubble } from './UserBubble'
 import { AssistantBubble } from './AssistantBubble'
 import { TypingIndicator } from './TypingIndicator'
@@ -9,6 +9,7 @@ import { ProjectSources } from './ProjectSources'
 import { generatedImageIds } from '../../services/generatedImages'
 
 interface MessageItemProps {
+  outputRestriction?: Conversation['outputRestriction']
   onCalendarCopy?: (messageId: string) => void
   onCompare?: (messageId: string) => void
   onExport?: (messageId: string) => void
@@ -23,7 +24,7 @@ interface MessageItemProps {
   isLast?: boolean
 }
 
-const MessageItem = memo(function MessageItem({ msg, index, onExport, onCalendarCopy, onAction, onBranch, onCompare, onTogglePin, onEdit, onRetry, onReport, isLast }: MessageItemProps) {
+const MessageItem = memo(function MessageItem({ msg, index, outputRestriction, onExport, onCalendarCopy, onAction, onBranch, onCompare, onTogglePin, onEdit, onRetry, onReport, isLast }: MessageItemProps) {
   const { t } = useTranslation()
   const handleBranch = useCallback(() => onBranch?.(index), [onBranch, index])
   const handleTogglePin = useCallback(() => onTogglePin?.(msg.id), [onTogglePin, msg.id])
@@ -56,6 +57,7 @@ const MessageItem = memo(function MessageItem({ msg, index, onExport, onCalendar
         />
       ) : (
         <AssistantBubble
+          outputRestriction={outputRestriction}
           content={msg.content}
           // A discarded live gallery must not remount under a new scope by
           // falling back to its crash placeholder. Boot/new-send recovery
@@ -65,7 +67,7 @@ const MessageItem = memo(function MessageItem({ msg, index, onExport, onCalendar
           onAction={onAction}
           pinned={msg.pinned}
           onTogglePin={onTogglePin ? handleTogglePin : undefined}
-          interrupted={msg.interrupted}
+          interrupted={msg.interrupted || msg.id === 'streaming'}
           onRetry={onRetry ? handleRetry : undefined}
           factCheck={msg.factCheck}
           isLast={isLast}
@@ -89,6 +91,7 @@ const MessageItem = memo(function MessageItem({ msg, index, onExport, onCalendar
 })
 
 interface MessageListProps {
+  outputRestriction?: Conversation['outputRestriction']
   onCalendarCopy?: (messageId: string) => void
   onCompare?: (messageId: string) => void
   onExport?: (messageId: string) => void
@@ -116,7 +119,7 @@ interface MessageListProps {
 // Différent du comportement antérieur qui suivait le bas en permanence
 // — ça forçait à descendre à chaque token et empêchait de naviguer.
 
-export const MessageList = memo(function MessageList({ messages, isStreaming, streamingContent, streamingImages, conversationId, onExport, onCalendarCopy, onAction, onBranch, onCompare, onTogglePin, onEdit, onRetry, onReport }: MessageListProps) {
+export const MessageList = memo(function MessageList({ messages, outputRestriction, isStreaming, streamingContent, streamingImages, conversationId, onExport, onCalendarCopy, onAction, onBranch, onCompare, onTogglePin, onEdit, onRetry, onReport }: MessageListProps) {
   const { t } = useTranslation()
   const scrollRef = useRef<HTMLDivElement>(null)
   const prevMessagesCount = useRef(messages.length)
@@ -215,6 +218,7 @@ export const MessageList = memo(function MessageList({ messages, isStreaming, st
           if (isStreaming && msg.id === 'streaming') return null
           return (
             <MessageItem
+              outputRestriction={outputRestriction}
               onCompare={isStreaming ? undefined : onCompare}
               key={msg.id}
               msg={msg}
@@ -236,7 +240,7 @@ export const MessageList = memo(function MessageList({ messages, isStreaming, st
 
         {isStreaming && (streamingContent || !!streamingImages?.length) && (
           <>
-            <AssistantBubble content={streamingContent} generatedImages={streamingImages} onAction={onAction} isStreaming />
+            <AssistantBubble content={streamingContent} outputRestriction={outputRestriction} generatedImages={streamingImages} onAction={onAction} isStreaming />
             <StreamingIndicator conversationId={conversationId} />
           </>
         )}

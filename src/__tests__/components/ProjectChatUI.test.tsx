@@ -24,6 +24,11 @@ beforeEach(() => {
   mock.claude.mockReturnValue(new AbortController()); mock.mistral.mockReturnValue(new AbortController())
 })
 describe('project review UI and secondary summary route', () => {
+  it('never auto-summarizes a restricted client reply even if the modal is directly mounted', () => {
+    render(<ConversationSummaryModal conversation={{ ...conv, outputRestriction: 'client-reply-draft-v1' }} onClose={vi.fn()} />)
+    expect(screen.getByText('summary.clientDraftUnavailable')).toBeVisible()
+    expect(mock.claude).not.toHaveBeenCalled(); expect(mock.mistral).not.toHaveBeenCalled()
+  })
   it('requires an explicit click and shows detached/history and effective question truthfully', () => {
     const answer = vi.fn(); render(<ProjectReviewDialog request={confirm} onAnswer={answer} />)
     expect(answer).not.toHaveBeenCalled(); expect(screen.getByText(/Bibliothèque non jointe/)).toBeVisible()

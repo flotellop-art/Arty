@@ -134,6 +134,8 @@ export interface Message {
 }
 
 export interface Conversation {
+  /** Restrictive output provenance, not permission to send or execute tools. */
+  outputRestriction?: 'client-reply-draft-v1'
   /** Private contextual result grouping, never routing or imported authority. */
   comparison?: import('../services/comparator/contextualPreparation').ContextualComparison
   id: string

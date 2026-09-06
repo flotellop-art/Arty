@@ -28,7 +28,8 @@ export interface BackupFile extends Omit<FileAttachment, 'data' | 'visionCrop' |
   /** Required in v2 only. The legacy record may have counted base64 characters. */
   recordedSize?: number
 }
-export type BackupSchemaVersion = 1 | 2
+/** v3 adds a closed, monotone conversation output restriction; v2 files unchanged. */
+export type BackupSchemaVersion = 1 | 2 | 3
 /** Historical display metadata, NEVER authority over object decoding or limits. */
 export type BackupFilePresentation = Pick<FileAttachment, 'name' | 'type' | 'size' | 'width' | 'height' | 'normalizationVersion'>
 export interface BackupFileReference {

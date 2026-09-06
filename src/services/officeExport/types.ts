@@ -3,15 +3,17 @@ export interface ExportMessage {
   id: string; role: 'user' | 'assistant'; content: string; interrupted: boolean
   model: string; sources: string[]; attachments: number
   galleryImages?: number
+  /** Application notice kept separately from raw model text and table cells. */
+  outputNotice?: string
 }
-export interface ExportSnapshot { title: string; messages: ExportMessage[] }
+export interface ExportSnapshot { title: string; messages: ExportMessage[]; outputRestriction?: 'client-reply-draft-v1' }
 export interface ExportRun { text: string; bold?: boolean; italic?: boolean; strike?: boolean; code?: boolean }
 export type ExportBlock =
   | { kind: 'paragraph'; runs: ExportRun[]; heading?: number; quote?: number; indent?: number; code?: boolean; list?: { id: string; ordered: boolean; start: number; depth: number } }
   | { kind: 'table'; id: string; rows: string[][]; message: number }
 export interface ExportDocument {
   title: string
-  messages: { id: string; role: 'user' | 'assistant'; model: string; interrupted: boolean; sources: string[]; blocks: ExportBlock[] }[]
+  messages: { id: string; role: 'user' | 'assistant'; model: string; interrupted: boolean; sources: string[]; outputNotice?: string; blocks: ExportBlock[] }[]
   omissions: { images: number; html: number; unsupported: number; attachments: number }
   chars: number
 }

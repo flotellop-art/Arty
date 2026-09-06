@@ -64,7 +64,7 @@ export function mapCapturedConversation(source: Conversation): BackupConversatio
     } else m.embeddedFiles = []
     return m
   }
-  return shape(source, ['id', 'title', 'messages', 'createdAt', 'updatedAt'], ['usedModels', 'euOnly', 'hasGoogleData', 'hasTrailContext', 'projectId', 'hasProjectContext', 'tags'], {
+  return shape(source, ['id', 'title', 'messages', 'createdAt', 'updatedAt'], ['usedModels', 'euOnly', 'hasGoogleData', 'hasTrailContext', 'projectId', 'hasProjectContext', 'outputRestriction', 'tags'], {
     messages: list(L.messages, message), usedModels: list(100), tags: list(100),
   }) as unknown as BackupConversation
 }

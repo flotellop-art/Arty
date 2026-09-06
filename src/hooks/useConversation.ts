@@ -1403,6 +1403,7 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
         ...(isProjectEU(conv) ? { euOnly: true } : {}),
         ...(hasProjectHistory(conv) ? { hasProjectContext: true } : {}),
         ...(conv.projectId ? { projectId: conv.projectId } : {}),
+        ...(conv.outputRestriction ? { outputRestriction: conv.outputRestriction } : {}),
         ...(conv.usedModels ? { usedModels: [...conv.usedModels] } : {}),
         ...(conv.tags ? { tags: [...conv.tags] } : {}),
         // BUG 8 (même classe) : les flags de contexte doivent suivre la

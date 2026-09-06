@@ -101,7 +101,7 @@ export function ConversationScreen({
         usedModels={conversation.usedModels}
         euOnly={conversation.euOnly}
         conversation={conversation}
-        onOpenSummary={() => setShowSummary(true)}
+        onOpenSummary={conversation.outputRestriction ? undefined : () => setShowSummary(true)}
         onExportOffice={() => setExportTarget({ conversationId: conversation.id })}
         onArchive={isConversationBusy ? () => setArchiveTarget(conversation.id) : undefined}
         conversations={conversations}
@@ -115,6 +115,7 @@ export function ConversationScreen({
       <ErrorBoundary>
         {conversation.comparison && onOpenComparison && <button className="min-h-11 border border-theme-border mx-4 px-3" onClick={() => onOpenComparison(conversation.id)}>{t('compare.context.reopen')}</button>}
         <MessageList
+          outputRestriction={conversation.outputRestriction}
           onCompare={onCompare ? messageId => onCompare(conversation.id, messageId) : undefined}
           messages={conversation.messages}
           isStreaming={isStreaming}
@@ -122,7 +123,7 @@ export function ConversationScreen({
           streamingImages={streamingImages}
           conversationId={conversation.id}
           onAction={isDocumentConversation(conversation) ? undefined : onAction}
-          onCalendarCopy={isDocumentConversation(conversation) && isConversationBusy ? calendarCopy.open : undefined}
+          onCalendarCopy={!conversation.outputRestriction && isDocumentConversation(conversation) && isConversationBusy ? calendarCopy.open : undefined}
           onBranch={onBranch}
           onTogglePin={onTogglePin}
           onEdit={onEdit}
@@ -197,7 +198,7 @@ export function ConversationScreen({
         draftKey={`conversation:${conversation.id}`}
       />
 
-      {showSummary && (
+      {showSummary && !conversation.outputRestriction && (
         <ConversationSummaryModal
           conversation={conversation}
           onClose={() => setShowSummary(false)}

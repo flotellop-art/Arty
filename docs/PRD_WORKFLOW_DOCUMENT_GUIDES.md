@@ -1,8 +1,8 @@
 # W08 — synthèse documentaire et réponse client préparée
 
-6 septembre 2026, base main `59bfbc6` (#465). Première verticale synthèse
-implémentée et validée localement ; publication suivie dans
-`PROJECT_SYNTHESIS_RELEASE.md`. Réponse client encore à réaliser. Deux
+6 septembre 2026. Première verticale synthèse livrée par #466, main `2c114cf`,
+Pages/CI/APK vérifiés dans `PROJECT_SYNTHESIS_RELEASE.md`.
+Réponse client en réalisation, décision `ADR_CLIENT_REPLY_DRAFT.md`. Deux
 diagnostics indépendants readonly examinés : produit/accès et sécurité/fidélité.
 
 ## Problème et objectif
@@ -48,8 +48,9 @@ réutiliser un consentement IA/Agenda. Aucun CalendarContext pour préparer du t
   relancer est explicite et potentiellement facturé ; une erreur/annulation
   garde les saisies et ne réutilise jamais une ancienne approbation.
 - Je copie/exporte cette réponse, pas automatiquement tout le fil. Le résultat
-  client indique effectivement « préparée, non envoyée » dans le contenu
-  conservé et exporté, pas seulement dans un badge ou un prompt au modèle.
+  client indique effectivement « préparée, non envoyée par Arty » par une
+  restriction persistée et une projection applicative des sorties, y compris
+  Excel ; pas seulement dans un badge ou un prompt au modèle.
 
 ## Contraintes et ancrages d'implémentation à revalider
 
@@ -68,8 +69,9 @@ réutiliser un consentement IA/Agenda. Aucun CalendarContext pour préparer du t
 - Une projection applicative du statut client doit couvrir résultat final,
   partiels/Stop/crash (`useStreaming`) et writer de comparaison
   (`comparator/contextualRunner`), sans double préfixe ni faux tokens modèle.
-  Les mappers Office/archives/Markdown/HTML conservent `content` ; un champ
-  workflow nouveau exigerait une décision explicite de fidélité/versionnement.
+  Le texte modèle brut reste intact. La restriction canonique de conversation
+  passe explicitement dans les projections et mappers ; manifeste v3 uniquement
+  lorsqu'elle est présente, avec règles fichiers v2 et lecteurs v1/v2 conservés.
 - Les branches gardent déjà hasProjectContext. Vérifier aussi nouveaux résultats
   après retry/édition/comparaison/import ; ne pas inférer un mode exécutable
   depuis le texte d'une ancienne réponse. La restriction ne peut que persister.
@@ -93,8 +95,8 @@ Pas d'envoi client, partage public, Gmail/Drive OAuth restreint, IMAP serveur,
 nouveau fournisseur, OCR, synthèse exhaustive, sync W06 ou extension de droits.
 Le partage public existant publie à distance : il n'est pas un export local.
 
-Pour la réponse client : choisir la persistance du mode qui impose le statut
-client à ses futurs résultats sans casser les archives/anciens clients.
+Pour la réponse client : décision de persistance/versionnement prise dans
+`ADR_CLIENT_REPLY_DRAFT.md`, implémentation et recette encore à terminer.
 La création atomique après approbation, le formulaire owner-scoped et l'accès
 distinct de CurrentPlan sont implémentés pour la synthèse (ADR dédié).
 Les tours suivants et retries du chat restent documentaires génériques ; refaire

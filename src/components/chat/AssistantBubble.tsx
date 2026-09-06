@@ -10,7 +10,11 @@ import type { FactCheckResult } from '../../types'
 import { speak, cancel as cancelTts, getSpeakingId, onSpeakingChange, isTtsSupported } from '../../utils/tts'
 import { isAllowedReportAction } from '../../services/reportActions'
 
+import type { Conversation } from '../../types'
+import { outputNoticeForMessage, messageOutputText } from '../../services/workflows/outputRestriction'
+
 interface AssistantBubbleProps {
+  outputRestriction?: Conversation['outputRestriction']
   onCalendarCopy?: () => void
   onExport?: () => void
   content: string
@@ -48,8 +52,11 @@ interface AssistantBubbleProps {
   subModelReasonCode?: string
 }
 
-export const AssistantBubble = memo(function AssistantBubble({ content, generatedImages, historical = false, onExport, onCalendarCopy, onAction, pinned, onTogglePin, interrupted, onRetry, factCheck, isStreaming, isLast, onBranch, onReport, model, requestedModel, modelSource, reasonCode, subModelReasonCode }: AssistantBubbleProps) {
-  const { t } = useTranslation()
+export const AssistantBubble = memo(function AssistantBubble({ content, outputRestriction, generatedImages, historical = false, onExport, onCalendarCopy, onAction, pinned, onTogglePin, interrupted, onRetry, factCheck, isStreaming, isLast, onBranch, onReport, model, requestedModel, modelSource, reasonCode, subModelReasonCode }: AssistantBubbleProps) {
+  const { t, i18n } = useTranslation()
+  const output = { id: isStreaming ? 'streaming' : 'display', role: 'assistant' as const, content, interrupted }
+  const outputNotice = outputNoticeForMessage({ outputRestriction }, output, { locale: i18n.language, streaming: isStreaming })
+  const copyText = messageOutputText({ outputRestriction }, output, { locale: i18n.language })
   const bubbleRef = useRef<HTMLDivElement>(null)
   const calendarPending = useRef(new WeakSet<HTMLElement>())
 
@@ -73,11 +80,11 @@ export const AssistantBubble = memo(function AssistantBubble({ content, generate
 
   const toggleSpeak = useCallback(() => {
     if (isSpeaking) cancelTts()
-    else speak(content, ttsId)
-  }, [content, isSpeaking, ttsId])
+    else speak(copyText, ttsId)
+  }, [copyText, isSpeaking, ttsId])
 
   const handleClick = useCallback((e: React.MouseEvent) => {
-    if (historical) return
+    if (historical || outputRestriction) return
     const target = e.target as HTMLElement
     const btn = target.closest('[data-action]') as HTMLElement
     if (!btn || !onAction) return
@@ -117,18 +124,18 @@ export const AssistantBubble = memo(function AssistantBubble({ content, generate
     }
 
     onAction(action, params)
-  }, [onAction, historical, t])
+  }, [onAction, historical, outputRestriction, t])
 
   // Audit UX — bouton "copier la réponse" (action la plus fréquente d'un chat
   // IA, présente sur claude.ai/ChatGPT, absente ici jusqu'au 10 juin 2026).
   const [copied, setCopied] = useState(false)
   const handleCopy = useCallback(async () => {
     try {
-      await navigator.clipboard.writeText(content)
+      await navigator.clipboard.writeText(copyText)
       setCopied(true)
       setTimeout(() => setCopied(false), 1500)
     } catch { /* clipboard indisponible (permissions WebView) */ }
-  }, [content])
+  }, [copyText])
 
   return (
     <div className="group/bubble relative flex flex-wrap gap-2.5 mb-6">
@@ -141,7 +148,8 @@ export const AssistantBubble = memo(function AssistantBubble({ content, generate
         }`}
       >
         {historical && <p role="note" className="mb-2 text-xs text-theme-muted">{t('workspaceArchive.historicalMessage')}</p>}
-        <MarkdownRenderer content={content} historical={historical} />
+        {outputNotice && <p role="status" className="mb-2 text-sm font-medium text-theme-muted">{outputNotice}</p>}
+        <MarkdownRenderer content={content} historical={historical} disableFragmentCopy={!!outputRestriction} inertActions={!!outputRestriction} />
         {generatedImages && <GeneratedImageGallery images={generatedImages} />}
         {pinned && (
           <span className="absolute -top-2 -left-3 text-theme-accent text-[10px]">📌</span>

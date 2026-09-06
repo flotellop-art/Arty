@@ -18,6 +18,7 @@ import { getValidAccessToken } from './googleAuth'
 import { getActiveUserId, getActiveSessionEpoch } from './userSession'
 import { hasProjectHistory, isProjectEU } from './projects/chatPolicy'
 import { messageImageText } from './messageImageText'
+import { messageOutputText } from './workflows/outputRestriction'
 
 export interface ShareResult {
   ok: boolean
@@ -49,7 +50,7 @@ export function buildSharePayload(conv: Conversation): {
       .filter((m) => m.id !== 'streaming' && (m.role === 'user' || m.role === 'assistant'))
       .map((m) => ({
         role: m.role,
-        content: stripLocalImages(messageImageText(m)),
+        content: stripLocalImages(messageOutputText(conv, m, { text: messageImageText(m) })),
         timestamp: m.timestamp,
       })),
     usedModels: [...(conv.usedModels ?? [])],
@@ -59,7 +60,7 @@ export function buildSharePayload(conv: Conversation): {
 }
 
 export function shareConsentKey(conv: Conversation): string {
-  return JSON.stringify([getActiveUserId(), getActiveSessionEpoch(), conv.id, conv.projectId, hasProjectHistory(conv), buildSharePayload(conv)])
+  return JSON.stringify([getActiveUserId(), getActiveSessionEpoch(), conv.id, conv.projectId, conv.outputRestriction, hasProjectHistory(conv), buildSharePayload(conv)])
 }
 
 export async function createShare(conv: Conversation, options?: { isCurrent?: () => boolean; onEngaged?: () => void }): Promise<ShareResult> {

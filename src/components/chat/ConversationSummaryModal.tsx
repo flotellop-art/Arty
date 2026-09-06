@@ -66,6 +66,11 @@ export function ConversationSummaryModal({ conversation, onClose }: Props) {
   const summaryScope = useRef<(() => void) | null>(null)
 
   useEffect(() => {
+    if (conversation.outputRestriction) {
+      summaryScope.current = null
+      setSummary(''); setLoading(false); setError(t('summary.clientDraftUnavailable'))
+      return
+    }
     const owner = getActiveUserId(), epoch = getActiveSessionEpoch(), documentary = isDocumentConversation(conversation)
     const cryptoCurrent = captureCryptoGuard(), euOnly = isProjectEU(conversation)
     let cancelled = false
@@ -73,7 +78,7 @@ export function ConversationSummaryModal({ conversation, onClose }: Props) {
     let controller: AbortController | undefined
     const current = () => {
       try { projectOperation?.assertCurrent() } catch { controller?.abort(); return false }
-      const valid = !cancelled && owner === getActiveUserId() && epoch === getActiveSessionEpoch() && (!documentary || cryptoCurrent())
+      const valid = !cancelled && !conversation.outputRestriction && owner === getActiveUserId() && epoch === getActiveSessionEpoch() && (!documentary || cryptoCurrent())
       if (!valid) controller?.abort()
       return valid
     }

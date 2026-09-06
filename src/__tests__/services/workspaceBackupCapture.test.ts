@@ -51,6 +51,57 @@ async function addTextFile() {
 }
 
 describe('capture + seal + reopen from real admitted source stores', () => {
+  it('keeps a crash placeholder incomplete when JSON remaps its message identity', async () => {
+    source.outputRestriction = 'client-reply-draft-v1'; source.hasProjectContext = true
+    source.messages = [{ id: 'streaming', role: 'assistant', content: 'Partiel exact', timestamp: 1 }]
+    history.saveConversation(source)
+    const { buildConversationJsonExport, importConversationFromFile } = await import('../../services/conversationExport')
+    const { outputNoticeForMessage } = await import('../../services/workflows/outputRestriction')
+    const json = buildConversationJsonExport(source)
+    expect(json.conversation.messages[0]!.interrupted).toBe(true)
+    // Also covers previously exported partials with no interrupted flag.
+    delete json.conversation.messages[0]!.interrupted
+    const id = await importConversationFromFile(new NodeFile([JSON.stringify(json)], 'partial.json') as unknown as File)
+    const restored = history.getConversation(id)!, m = restored.messages[0]!
+    expect(m.id).not.toBe('streaming'); expect(m).toMatchObject({ content: 'Partiel exact', interrupted: true })
+    expect(outputNoticeForMessage(restored, m)).toContain('incomplète')
+  })
+  it('round-trips JSON without duplicating application text and rejects unknown restrictions', async () => {
+    source.outputRestriction = 'client-reply-draft-v1'; source.hasProjectContext = true
+    history.saveConversation(source)
+    const { buildConversationJsonExport, importConversationFromFile } = await import('../../services/conversationExport')
+    let c = source
+    for (let i = 0; i < 3; i++) {
+      const payload = buildConversationJsonExport(c)
+      const id = await importConversationFromFile(new NodeFile([JSON.stringify(payload)], 'synthetic.json', { type: 'application/json' }) as unknown as File)
+      c = history.getConversation(id)!
+      expect(c.outputRestriction).toBe('client-reply-draft-v1'); expect(c.hasProjectContext).toBe(true)
+      expect(c.messages[1]!.content).toBe('Texte historique')
+    }
+    const before = JSON.stringify(history.getConversations())
+    const forged = { version: 2, conversation: { ...source, outputRestriction: 'sent' } }
+    await expect(importConversationFromFile(new NodeFile([JSON.stringify(forged)], 'invalid.json') as unknown as File)).rejects.toThrow(/Unsupported/)
+    expect(JSON.stringify(history.getConversations())).toBe(before)
+  })
+  it('captures restricted replies as v3 with v2 file fidelity and an inert restore plan', async () => {
+    await addTextFile()
+    source.outputRestriction = 'client-reply-draft-v1'; source.hasProjectContext = true
+    history.saveConversation(source)
+    const prepared = await capture.prepareConversationArchive('c', options())
+    expect(prepared.report.version).toBe(3)
+    const decoded = await archive.openWorkspaceBackup(prepared.archive, prepared.recoveryCode, { assertCurrent() {} })
+    expect(decoded.manifest.minReader).toBe(3)
+    expect(decoded.manifest.conversations[0]!.outputRestriction).toBe('client-reply-draft-v1')
+    expect(decoded.manifest.files[0]!.recordedSize).toBeDefined()
+    expect(decoded.manifest.conversations[0]!.messages[0]!.files![0]!.presentation).toMatchObject({ name: 'original.txt', type: '', size: 999 })
+    const { prepareWorkspaceRestore } = await import('../../services/workspaceBackup/restorePlan')
+    const restored = await prepareWorkspaceRestore(prepared.archive, prepared.recoveryCode, { assertCurrent() {} })
+    expect(restored.plan.publication).toBe('not-authorized')
+    expect(restored.plan.conversations[0]!.conversation).toMatchObject({ outputRestriction: 'client-reply-draft-v1', hasProjectContext: true })
+    expect(restored.plan.conversations[0]!.conversation.messages[1]).toMatchObject({ content: 'Texte historique', interrupted: true, restoredArchive: true })
+    expect(history.getConversations()).toHaveLength(1)
+    prepared.dispose()
+  })
   it('keeps a saved capture verifiable after source writes but never allows a new stale download', async () => {
     const prepared = await capture.prepareConversationArchive('c', options()), blob = prepared.archive, code = prepared.recoveryCode, report = prepared.report
     expect(Object.isFrozen(report)).toBe(true); expect(Object.isFrozen(report.diagnostics)).toBe(true)

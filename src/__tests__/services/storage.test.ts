@@ -35,6 +35,34 @@ beforeEach(() => {
 })
 
 describe('storage', () => {
+  it('keeps output restriction through writes, crash recovery and cold reads', () => {
+    localStorage.setItem('arty-conv-encryption-disabled', '1')
+    const c = makeConv('draft', { outputRestriction: 'client-reply-draft-v1', messages: [{ id: 'streaming', role: 'assistant', content: 'Partiel exact', timestamp: 1 }] })
+    storage.saveConversation(c)
+    expect(storage.getConversation('draft')?.hasProjectContext).toBe(true)
+    const raw = JSON.stringify(storage.getConversations())
+    expect(() => storage.saveConversation({ ...c, outputRestriction: undefined })).toThrow(/cannot be removed/)
+    expect(JSON.stringify(storage.getConversations())).toBe(raw)
+    storage.resetConversationMemCache()
+    const recovered = storage.getConversation('draft')!
+    expect(recovered.outputRestriction).toBe('client-reply-draft-v1')
+    expect(recovered.messages[0]).toMatchObject({ interrupted: true, content: 'Partiel exact' })
+    expect(recovered.messages[0]!.id).not.toBe('streaming')
+  })
+  it('refuses unknown output modes before committing any conversation', () => {
+    expect(() => storage.saveConversation(makeConv('bad', { outputRestriction: 'sent' as never }))).toThrow(/Unsupported/)
+    expect(storage.getConversations()).toEqual([])
+  })
+  it('rejects removing the mode through a mutable cache alias, preserving the durable record', () => {
+    localStorage.setItem('arty-conv-encryption-disabled', '1')
+    storage.saveConversation(makeConv('draft', { outputRestriction: 'client-reply-draft-v1' }))
+    const aliased = storage.getConversation('draft')!
+    delete aliased.outputRestriction
+    expect(() => storage.saveConversation(aliased)).toThrow(/cannot be removed/)
+    expect(() => storage.getConversation('draft')).toThrow(/cannot be removed/)
+    storage.resetConversationMemCache()
+    expect(storage.getConversation('draft')!.outputRestriction).toBe('client-reply-draft-v1')
+  })
   it('getConversations returns [] when nothing stored', () => {
     expect(storage.getConversations()).toEqual([])
   })

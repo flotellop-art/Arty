@@ -124,7 +124,7 @@ function uniqueIds(values: { id: string }[]): void { if (new Set(values.map(valu
 
 /** Validates only; never reads application storage to resolve a foreign ID. */
 export function validateSnapshot(value: unknown, version: BackupSchemaVersion = 1): asserts value is BackupSnapshot {
-  if (version !== 1 && version !== 2) fail()
+  if (version !== 1 && version !== 2 && version !== 3) fail()
   boundedJSONTree(value)
   object(value, ['conversations', 'projects', 'files', 'objects'])
   array(value.objects, L.objects); array(value.files, L.files); array(value.projects, PROJECT_LIMITS.projects); array(value.conversations, L.conversations)
@@ -136,10 +136,10 @@ export function validateSnapshot(value: unknown, version: BackupSchemaVersion = 
     objectBytes += item.bytes; if (objectBytes > L.plaintextBytes) limit()
   }
   for (const file of value.files) {
-    object(file, ['id', 'name', 'type', 'size', 'objectId', ...(version === 2 ? ['recordedSize'] : [])], ['width', 'height', 'normalizationVersion'])
+    object(file, ['id', 'name', 'type', 'size', 'objectId', ...(version >= 2 ? ['recordedSize'] : [])], ['width', 'height', 'normalizationVersion'])
     id(file.id); uuid(file.objectId); text(file.name, 255, true); text(file.type, 160, version === 1)
-    if (!(version === 2 && file.type === '') && !/^[a-zA-Z0-9!#$&^_.+-]+\/[a-zA-Z0-9!#$&^_.+-]+$/.test(file.type)) fail()
-    if (version === 2) integer(file.recordedSize)
+    if (!(version >= 2 && file.type === '') && !/^[a-zA-Z0-9!#$&^_.+-]+\/[a-zA-Z0-9!#$&^_.+-]+$/.test(file.type)) fail()
+    if (version >= 2) integer(file.recordedSize)
     integer(file.size, L.objectBytes, 1)
     for (const key of ['width', 'height']) if (file[key] !== undefined) integer(file[key], 100_000, 1)
     if (file.normalizationVersion !== undefined) {
@@ -164,9 +164,10 @@ export function validateSnapshot(value: unknown, version: BackupSchemaVersion = 
     uniqueIds(p.documents as { id: string }[])
   }
   for (const c of value.conversations) {
-    object(c, ['id', 'title', 'messages', 'createdAt', 'updatedAt'], ['usedModels', 'euOnly', 'hasGoogleData', 'hasTrailContext', 'projectId', 'hasProjectContext', 'tags'])
+    object(c, ['id', 'title', 'messages', 'createdAt', 'updatedAt'], ['usedModels', 'euOnly', 'hasGoogleData', 'hasTrailContext', 'projectId', 'hasProjectContext', 'tags', ...(version === 3 ? ['outputRestriction'] : [])])
     id(c.id); text(c.title, 500); integer(c.createdAt); integer(c.updatedAt)
     optionalBoolean(c, ['euOnly', 'hasGoogleData', 'hasTrailContext', 'hasProjectContext'])
+    if (owns(c, 'outputRestriction')) enumeration(c.outputRestriction, ['client-reply-draft-v1'])
     if (c.projectId !== undefined) uuid(c.projectId)
     if (c.tags !== undefined) stringArray(c.tags, 100, 200)
     if (c.usedModels !== undefined) stringArray(c.usedModels, 100, 200)
@@ -191,9 +192,9 @@ export function validateSnapshot(value: unknown, version: BackupSchemaVersion = 
       if (m.files !== undefined) {
         array(m.files, 64)
         for (const file of m.files) {
-          object(file, version === 2 ? ['id', 'presentation'] : ['id'], ['visionCrop'])
+          object(file, version >= 2 ? ['id', 'presentation'] : ['id'], ['visionCrop'])
           id(file.id); if (file.visionCrop !== undefined) crop(file.visionCrop)
-          if (version === 2) {
+          if (version >= 2) {
             const p = file.presentation
             object(p, ['name', 'type'], ['size', 'width', 'height', 'normalizationVersion'])
             text(p.name, 255); text(p.type, 160)
@@ -236,7 +237,7 @@ export function validateGraph(snapshot: BackupSnapshot, textLines?: ReadonlyMap<
   for (const conv of snapshot.conversations) {
     const project = conv.projectId ? projects.get(conv.projectId) : undefined
     if (conv.projectId && !project) diagnostics.unavailableAssociatedProjects++
-    const documentary = !!conv.projectId || conv.messages.some(m => !!m.projectTurn)
+    const documentary = !!conv.projectId || !!conv.outputRestriction || conv.messages.some(m => !!m.projectTurn)
     const eu = project?.euOnly || conv.messages.some(m => m.projectTurn && (m.projectTurn.euOnly ||
       (m.projectTurn.projectId && projects.get(m.projectTurn.projectId)?.euOnly) ||
       m.projectTurn.sources.some(ref => projects.get(ref.projectId)?.euOnly)))
@@ -269,7 +270,7 @@ export function parseManifest(json: string): BackupManifest {
   try { raw = JSON.parse(json) } catch { throw new BackupError('format') }
   boundedJSONTree(raw)
   object(raw, ['format', 'version', 'minReader', 'features', 'archiveId', 'createdAt', 'conversations', 'projects', 'files', 'objects'])
-  if (raw.format !== 'arty-workspace' || (raw.version !== 1 && raw.version !== 2) || raw.minReader !== raw.version || JSON.stringify(raw.features) !== JSON.stringify(BACKUP_FEATURES)) fail()
+  if (raw.format !== 'arty-workspace' || (raw.version !== 1 && raw.version !== 2 && raw.version !== 3) || raw.minReader !== raw.version || JSON.stringify(raw.features) !== JSON.stringify(BACKUP_FEATURES)) fail()
   uuid(raw.archiveId); integer(raw.createdAt)
   validateSnapshot({ conversations: raw.conversations, projects: raw.projects, files: raw.files, objects: raw.objects }, raw.version)
   return raw as unknown as BackupManifest

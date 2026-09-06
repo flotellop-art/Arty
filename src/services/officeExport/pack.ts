@@ -18,6 +18,7 @@ async function packDocx(doc: ExportDocument): Promise<ArrayBuffer> {
   doc.messages.forEach((message, index) => {
     children.push(new Paragraph({ text: `Message ${index + 1} — ${message.role === 'user' ? 'Vous' : 'Arty'}${message.interrupted ? ' — Réponse interrompue' : ''}`, heading: HeadingLevel.HEADING_1 }))
     if (message.model) children.push(new Paragraph(`Modèle indiqué dans l'historique : ${message.model}`))
+    if (message.outputNotice) children.push(new Paragraph(message.outputNotice))
     for (const block of message.blocks) {
       if (block.kind === 'paragraph') {
         if (block.list && !listIds.has(block.list.id)) {
@@ -85,6 +86,7 @@ function packXlsx(doc: ExportDocument, tableIds: string[]): ArrayBuffer {
   doc.messages.forEach((m, i) => {
     if (!chosen.some(t => t.message === i + 1)) return
     info.push([`Message ${i + 1}`, `${m.role} ; modèle historique : ${m.model || 'non indiqué'} ; ${m.interrupted ? 'réponse interrompue' : 'message conservé'}`])
+    if (m.outputNotice) info.push([`Statut message ${i + 1}`, m.outputNotice])
     m.sources.forEach(s => info.push([`Sources message ${i + 1}`, s]))
   })
   sheets.push({ name: 'Informations', rows: info })

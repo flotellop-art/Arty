@@ -123,6 +123,7 @@ export function captureContextualComparison(args: {
             current.comparison.responseId !== expected.comparison!.responseId ||
             current.messages[expected.messages.length - 1]?.id !== expected.comparison!.questionId ||
             current.hasGoogleData !== expected.hasGoogleData || current.hasTrailContext !== expected.hasTrailContext ||
+            current.outputRestriction !== expected.outputRestriction ||
             current.projectId !== prefix.projectId || isProjectEU(current) !== prefix.euOnly || !current.hasProjectContext ||
             (full && (current.messages.length !== expected.messages.length || JSON.stringify(current.messages) !== JSON.stringify(expected.messages)))) throw new ProjectError('conflict')
       }

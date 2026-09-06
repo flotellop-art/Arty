@@ -10,6 +10,7 @@ import { ProjectSources } from '../components/chat/ProjectSources'
 import { captureLocalReadScope } from '../services/projects/store'
 import { onLocalDataInvalidated } from '../services/localDataInvalidation'
 import { getActiveUserId, getActiveSessionEpoch } from '../services/userSession'
+import { outputNoticeForMessage } from '../services/workflows/outputRestriction'
 
 /** Read-only boot gate, including the durable fence. A captured scope is
  * terminally revoked, never rebound to new keys behind the same open screen. */
@@ -67,7 +68,7 @@ export function comparisonPanel(branch: Conversation): PanelState | null {
 export function ContextualCompareScreen({ controller, onChat, onBack, onStop }: {
   controller: ReturnType<typeof useContextualComparisons>; onChat(id: string): void; onBack(): void; onStop(id: string): void
 }) {
-  const { branchId } = useParams<{ branchId: string }>(), { t } = useTranslation()
+  const { branchId } = useParams<{ branchId: string }>(), { t, i18n } = useTranslation()
   const readScope = useComparisonReadScope()
   useEffect(() => { controller.activate?.() }, [controller.activate])
   const [, refresh] = useReducer(n => n + 1, 0)
@@ -102,8 +103,10 @@ export function ContextualCompareScreen({ controller, onChat, onBack, onStop }: 
         const quota = controller.getQuota?.(panel.config)
         const persistedResponse = value.messages.some(m => m.id === value.comparison!.responseId && m.role === 'assistant')
         const unsaved = !!live && !live.saved && panel.status !== 'streaming'
+        const outputNotice = outputNoticeForMessage(value, { id: value.comparison!.responseId, role: 'assistant', content: panel.text,
+          interrupted: panel.status !== 'done' }, { locale: i18n.language, streaming: panel.status === 'streaming' })
         return <div key={value.id} className="min-w-0 space-y-2">
-          <div className="h-[65dvh] min-h-72"><ProviderPanel panel={panel} onChangeConfig={() => {}} getAccess={() => null} locked /></div>
+          <div className="h-[65dvh] min-h-72"><ProviderPanel panel={panel} outputNotice={outputNotice} onChangeConfig={() => {}} getAccess={() => null} locked /></div>
           {quota && <p className="text-xs text-theme-muted">{t(quota.key, quota.values)}</p>}
           {unsaved && <p role="alert">{t('compare.context.notSaved')}</p>}
           {panel.status === 'streaming' ? <button className="min-h-11 border px-3" onClick={() => onStop(value.id)}>{t('compare.stop')}</button>

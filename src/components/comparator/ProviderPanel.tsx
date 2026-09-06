@@ -11,6 +11,7 @@ import { PROVIDER_CATALOG, type PanelConfig, type ProviderId } from '../../servi
 import type { PanelState } from '../../services/comparator/useMultiProviderChat'
 
 export interface ProviderPanelProps {
+  outputNotice?: string
   panel: PanelState
   onChangeConfig: (next: PanelConfig) => void
   onRemove?: () => void
@@ -39,7 +40,7 @@ function formatEur(eur: number | null): string {
   return `${eur.toFixed(4)} €`
 }
 
-export const ProviderPanel = memo(function ProviderPanel({ panel, onChangeConfig, onRemove, getAccess, locked }: ProviderPanelProps) {
+export const ProviderPanel = memo(function ProviderPanel({ panel, outputNotice, onChangeConfig, onRemove, getAccess, locked }: ProviderPanelProps) {
   const { t } = useTranslation()
   const { config, text, status, error, metrics } = panel
   const provider = PROVIDER_CATALOG.find((p) => p.id === config.provider)
@@ -115,7 +116,8 @@ export const ProviderPanel = memo(function ProviderPanel({ panel, onChangeConfig
         {status === 'idle' && !text && (
           <p className="text-theme-muted italic">{t('compare.waiting')}</p>
         )}
-        {text && <MarkdownRenderer content={text} />}
+        {outputNotice && <p role="status" className="mb-2 text-sm font-medium text-theme-muted">{outputNotice}</p>}
+        {text && <MarkdownRenderer content={text} disableFragmentCopy={!!outputNotice} inertActions={!!outputNotice} />}
       </div>
 
       {/* Footer : métriques */}
