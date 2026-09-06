@@ -1,4 +1,37 @@
 {
+  "calendarCopy": {
+    "open": "Copy to Calendar",
+    "title": "Prepare an appointment from a copy",
+    "loading": "Checking the local copy…",
+    "previewNotice": "Review this text before adopting it. No appointment has been prepared or sent yet.",
+    "independent": "Independent copy adopted: later conversation changes will not update it. Closing, switching conversations or reloading discards this local draft.",
+    "sourceText": "Read-only source text",
+    "exclusions": "Text only: images and attachments are not included. Markup, links and instructions remain inert text. No document is read again.",
+    "references": "Recorded historical references, not reverified",
+    "adopt": "Use this copy as a draft",
+    "manual": "Fill in the fields yourself. Times use Paris (Europe/Paris), even when abroad. Calendar conflicts have not been checked.",
+    "dateFormat": "Time format: YYYY-MM-DDTHH:MM (e.g. 2026-09-15T09:00). For the ambiguous hour when daylight saving ends, include the offset, for example 2026-10-25T02:30+02:00 or +01:00.",
+    "pendingVerification": "Verification of this response has not been confirmed as complete. This copy does not restart it: check the content yourself.",
+    "useSelection": "Append selected text to notes",
+    "selectionRequired": "Select a passage in the source text first.",
+    "notesLimit": "These notes would exceed 8,192 characters. Select a shorter passage; no text has been truncated.",
+    "review": "Review the fields to send",
+    "reviewNotice": "Only the fields below will be sent to the displayed account. Check the normalized Paris times and exact notes.",
+    "edit": "Edit the draft",
+    "confirm": "Confirm and create this appointment",
+    "dispatchNotice": "After sending, closing this window does not delete an appointment already created at Google. If the result is uncertain, check your calendar before trying again.",
+    "submitting": "Sending — no automatic retry…",
+    "done": "Creation confirmed by Google. The local draft has been cleared.",
+    "errors": {
+      "unavailable": "Copy unavailable in this context. Close this window and reopen the response from your loaded workspace.",
+      "connection": "Calendar needs an available Google connection. Close, connect or reconnect Google through Calendar on the home screen, then open a new copy.",
+      "source": "This response is not a usable completed text source.",
+      "busy": "The conversation or its verification is still running. Wait for it to finish, then open a new copy.",
+      "changed": "The context has changed. This copy and its confirmation are no longer usable; close this window and start again.",
+      "state": "This confirmation is no longer valid. Return to the draft or open a new copy.",
+      "limit": "The source exceeds this copy's limits (200,000 text characters and 100 references maximum). Nothing was truncated."
+    }
+  },
   "workspaceArchive": {
     "historicalMessage": "Restored message: old buttons and links remain disabled. The original text is preserved for copying and export.",
     "historicalPending": "Unfinished historical fact-check — it has not been restarted.",

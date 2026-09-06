@@ -1,4 +1,37 @@
 {
+  "calendarCopy": {
+    "open": "Copie vers Agenda",
+    "title": "Préparer un rendez-vous depuis une copie",
+    "loading": "Vérification locale de la copie…",
+    "previewNotice": "Relisez ce texte avant de l’adopter. Aucun rendez-vous n’est encore préparé ni envoyé.",
+    "independent": "Copie indépendante adoptée : les changements ultérieurs du fil ne la mettent pas à jour. Fermer, changer de conversation ou recharger abandonne ce brouillon local.",
+    "sourceText": "Texte source en lecture seule",
+    "exclusions": "Texte uniquement : images et pièces jointes ne sont pas incorporées. Les balises, liens et instructions restent du texte inerte. Aucun document n’est relu.",
+    "references": "Références historiques enregistrées, non revérifiées",
+    "adopt": "Utiliser cette copie comme brouillon",
+    "manual": "Renseignez vous-même les champs. Les horaires sont ceux de Paris (Europe/Paris), même à l’étranger. Aucun conflit d’agenda n’a été vérifié.",
+    "dateFormat": "Format des horaires : AAAA-MM-JJTHH:MM (ex. 2026-09-15T09:00). À l’heure ambiguë du passage à l’heure d’hiver, précisez le décalage, par exemple 2026-10-25T02:30+02:00 ou +01:00.",
+    "pendingVerification": "La vérification de cette réponse n’est pas attestée comme terminée. Cette copie ne la relance pas : vérifiez vous-même son contenu.",
+    "useSelection": "Ajouter le texte sélectionné aux notes",
+    "selectionRequired": "Sélectionnez d’abord un passage dans le texte source.",
+    "notesLimit": "Ces notes dépasseraient 8 192 caractères. Choisissez un passage plus court ; aucun texte n’a été tronqué.",
+    "review": "Relire les champs à envoyer",
+    "reviewNotice": "Seuls les champs ci-dessous seront envoyés au compte indiqué. Vérifiez les horaires normalisés de Paris et le contenu exact des notes.",
+    "edit": "Modifier le brouillon",
+    "confirm": "Confirmer et créer ce rendez-vous",
+    "dispatchNotice": "Après l’envoi, fermer cette fenêtre ne supprime pas un rendez-vous déjà créé chez Google. En cas de résultat incertain, vérifiez votre agenda avant toute nouvelle tentative.",
+    "submitting": "Envoi en cours — aucune relance automatique…",
+    "done": "Création confirmée par Google. Le brouillon local a été effacé.",
+    "errors": {
+      "unavailable": "Copie indisponible dans ce contexte. Fermez cette fenêtre et rouvrez la réponse depuis votre espace chargé.",
+      "connection": "Agenda nécessite une connexion Google disponible. Fermez, connectez ou reconnectez Google depuis Agenda sur l’accueil, puis ouvrez une nouvelle copie.",
+      "source": "Cette réponse n’est pas une source textuelle terminée utilisable.",
+      "busy": "Le fil ou sa vérification est encore en cours. Attendez la fin puis ouvrez une nouvelle copie.",
+      "changed": "Le contexte a changé. La copie et sa confirmation ne sont plus utilisables ; fermez cette fenêtre puis recommencez.",
+      "state": "Cette confirmation n’est plus valable. Revenez au brouillon ou ouvrez une nouvelle copie.",
+      "limit": "La source dépasse les limites de cette copie (200 000 caractères de texte et 100 références maximum). Rien n’a été tronqué."
+    }
+  },
   "workspaceArchive": {
     "historicalMessage": "Message restauré : les anciens boutons et liens restent désactivés. Le texte original est conservé pour la copie et l’export.",
     "historicalPending": "Vérification historique non terminée — elle n’a pas été relancée.",

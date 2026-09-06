@@ -1,10 +1,10 @@
 # ADR W08 — copie documentaire explicite vers Agenda
 
-6 septembre 2026. Diagnostic readonly uniquement, aucun code de verticale
-implémenté par cette préparation. Deux contre-revues indépendantes reçues,
-produit/mobile et sécurité/lifecycle ; sources critiques relues par root.
-Statut : décision de conception, non implémentée. Base main `a3724e3` (#464).
-Reçus du transport : `CALENDAR_TRANSPORT_RELEASE.md`.
+6 septembre 2026. Implémentation candidate sur `codex/workflow-calendar-copy`,
+base main `a3724e3` (#464). Deux contre-revues indépendantes avant code puis
+sur l'implémentation : produit/mobile et sécurité/lifecycle.
+Reçus et état de promotion : `CALENDAR_DOCUMENT_COPY_RELEASE.md`.
+Le transport antérieur reste documenté dans `CALENDAR_TRANSPORT_RELEASE.md`.
 
 ## Décision de découpage
 
@@ -55,11 +55,15 @@ Le texte source n'est pas une commande. Ne pas injecter/tronquer toute la
 réponse dans description. Titre, lieu, notes modifiables avec compteurs et
 erreurs de limite ; début/fin Paris contrôlés. Un formulaire local avec revue
 scrollable sémantique remplace toute dépendance aux longues notes d'une boîte
-native. N'envoyer que les champs approuvés ; pas d'historique/fichier/HTML.
+native. N'envoyer que les champs approuvés, pas l'historique ni les fichiers.
+Les balises éventuellement sélectionnées/saisies sont des chaînes littérales,
+sans rendu HTML ni exécution locale. Leur présentation chez Google n'est pas
+garantie par cette recette ; le texte exact est revu avant envoi.
 
 Owner/crypto/document/effacement/grant continuent de révoquer le brouillon. La
 suppression ultérieure du fil ne supprime pas implicitement la copie adoptée,
-ce qui doit être annoncé. Si on choisit un contrat source vivante à la place,
+tant que le dialogue reste ouvert. Une navigation qui démonte la conversation
+abandonne le brouillon, comme indiqué dans l'interface. Si on choisit un contrat source vivante à la place,
 sa garde doit entrer dans la frontière pré-fetch après refresh (et non seulement
 avant execute) : option distincte, plus coûteuse, non décidée ici.
 
@@ -94,3 +98,22 @@ limites/champs Paris, annuler zéro POST, double-clic une tentative, succès
 validé versus issue perdue, aucune reprise automatique, nouvelle ouverture
 sans réutiliser un consentement. Rester uniquement synthétique, sans OAuth,
 agenda personnel ni génération facturée pour les tests.
+
+## Ajustements issus de l'implémentation et des contre-revues
+
+- Une vérification `pending` historique/orpheline n'est pas un travail actif.
+  Autoriser sa copie avec avertissement, sans relance ni attestation de vérité ;
+  `isConversationBusy` bloque toujours le travail réel. Réponse interrompue,
+  source vide, doublon d'ID et placeholder streaming restent refusés.
+- La revue A perd toute autorité dès édition, revue B ou préparation invalide.
+  L'acteur réserve une seule tentative avant l'attente. Un résultat confirmé
+  est monotone : ni relink ni échec tardif d'un poll ne le rendent inconnu.
+- Une notification Google locale, sans contenu, invalide immédiatement les
+  champs à la révocation. Observer non levant ; admission fermée/époque tournée
+  avant callback. Owner et crypto restent ceux de l'entrée même si un observer
+  réentrant change de session ; aucun writer/cleanup A n'adopte B. Le refresh
+  privé ne notifie pas une nouvelle installation.
+- Un seul dialogue sémantique, focus de phase, retour depuis l'arrière-plan,
+  Escape et Ctrl/Cmd+K : le drawer ne doit pas rendre le dialogue mobile inerte.
+  Horaires ISO saisis manuellement, décalage explicite possible au changement
+  d'heure ; aucun fuseau du navigateur utilisé implicitement.

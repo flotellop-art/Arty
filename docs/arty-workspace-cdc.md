@@ -33,7 +33,7 @@ supplémentaire n'est implicite dans ce mandat.
 | W05 | Livrables | Export DOCX modifiable et XLSX de tableaux, en plus des exports existants. Téléchargements relus par un parseur indépendant ; cellules dangereuses neutralisées ; aucun HTML actif ni formule arbitraire. Formats et limites documentés. | Web déployé #445 ; recette structurelle vérifiée ; rendu Office/appareil non vérifié |
 | W06 | Continuité | Sauvegarde/restauration explicites puis synchronisation optionnelle multi-appareil chiffrée avant upload, avec secret détenu par l'utilisateur et récupération expliquée. Conflits non destructifs ; reprise hors-ligne ; logout/switch/delete et compte invité traités. Un export manuel seul ne valide pas la synchronisation. | A1 #446, galerie #448, verrou document #449, capture/vérification A2 #451, préparation A3a #452, admission froide #453, runtime isolé inactif #454, migrateur journalisé OFF #455, reprise froide d'effacement v2 OFF #456, reçu distant #457, pont froid/fence v5 OFF #458 et reset local v6/v7 OFF #459 livrés ; restauration/synchronisation non livrées |
 | W07 | Comparaison | Comparer depuis une conversation avec contexte/documents autorisés ; conserver les résultats et poursuivre la réponse choisie sans perdre l'original. Erreurs/coûts/quotas de chaque panneau visibles ; EU et historique privé jamais contournés. | Web livré #462 ; recette App/navigateur synthétique vérifiée ; APK distribuée, installation physique et OAuth/facturation réels non attestés |
-| W08 | Parcours métier | Trois parcours complets : synthèse documentaire, réponse client préparée, planification Agenda avec confirmation avant écriture. Écran de connexions indiquant disponible/non configuré/non pris en charge selon plateforme. Pas de Drive/Gmail OAuth restreint ni relais IMAP serveur. | Socle Google/BYOK #463 et transport Agenda #464 livrés web ; trois verticales et connexions incomplètes |
+| W08 | Parcours métier | Trois parcours complets : synthèse documentaire, réponse client préparée, planification Agenda avec confirmation avant écriture. Écran de connexions indiquant disponible/non configuré/non pris en charge selon plateforme. Pas de Drive/Gmail OAuth restreint ni relais IMAP serveur. | Socle Google/BYOK #463 et transport Agenda #464 livrés web ; pont copie documentaire/Agenda candidat local ; synthèse/réponse client et connexions incomplètes |
 | W09 | Mobile et identité | PWA installable ; identité tryarty cohérente ; distribution Android authentifiée et documentée. Ne pas rediriger vers une app Play homonyme. Toute migration appId inclut signatures/OAuth/Firebase/liens vérifiés ; un APK distribué n'est pas une publication Store. | À faire |
 | W10 | Mesure | Instrumentation minimale sans contenu utilisateur : activation, succès/échec des parcours, retour D7/D30 et conversion. Marges fondées sur coût serveur, pas un compteur local. Tableau avec période, échantillon et limites ; aucune métrique inventée. | À faire |
 
@@ -107,6 +107,22 @@ réels ; préparer protocole et instrumentation sans fabriquer leurs résultats.
   de contrôle navigateur du 5 septembre vide, aucun appareil déclaré.
 
 ## Preuves par lot
+
+### W08 — copie indépendante vers Agenda, candidat local
+
+Base `a3724e3`, branche `codex/workflow-calendar-copy`. Source terminée et
+grant initial capturés avant attente ; aperçu inerte puis adoption explicite,
+champs manuels, revue immuable, une tentative Calendar. Source abandonnée
+comme dépendance après adoption, autorité compte/crypto/fence/document/grant
+conservée. Pas de fichiers/images incorporés, d'IA, de lecture Agenda ou de
+génération/sauvegarde automatique. Anciennes commandes documentaires inertes.
+Pending historique annoncé sans attente impossible, succès confirmé monotone,
+réentrance des notifications auth et raccourci drawer mobile contrôlés.
+
+Tests permanents et vrai App/router synthétique FR/EN 390/1440 vérifiés ;
+état exact de promotion et limites dans `CALENDAR_DOCUMENT_COPY_RELEASE.md`.
+Ne valide pas les deux autres parcours guidés, les connexions, la restauration,
+la synchronisation, ni OAuth/Agenda réel ou l'installation physique.
 
 ### W08 — transport Agenda et consentement initial, web livré #464
 

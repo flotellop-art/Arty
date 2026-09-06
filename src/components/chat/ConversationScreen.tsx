@@ -17,6 +17,8 @@ import { hasOfficeHistory } from '../../services/documents/prepareOfficeMessages
 import { ProjectConversationPanel } from './ProjectConversationPanel'
 import { OfficeExportModal } from './OfficeExportModal'
 import { ConversationArchiveModal } from '../workspace/ConversationArchiveModal'
+import { useCalendarDocumentCopy } from './useCalendarDocumentCopy'
+import { CalendarDocumentCopyDialog } from './CalendarDocumentCopyDialog'
 import type { Project } from '../../services/projects/types'
 import type { useDrive } from '../../hooks/useDrive'
 import type { useComputer } from '../../hooks/useComputer'
@@ -80,6 +82,7 @@ export function ConversationScreen({
   onProjectChange,
 }: ConversationScreenProps) {
   const { t } = useTranslation()
+  const calendarCopy = useCalendarDocumentCopy(conversation.id, id => isStreaming || !isConversationBusy || isConversationBusy(id))
   const [showSummary, setShowSummary] = useState(false)
   const [archiveTarget, setArchiveTarget] = useState<string | null>(null)
   const [exportTarget, setExportTarget] = useState<{ conversationId: string; messageId?: string } | null>(null)
@@ -119,6 +122,7 @@ export function ConversationScreen({
           streamingImages={streamingImages}
           conversationId={conversation.id}
           onAction={isDocumentConversation(conversation) ? undefined : onAction}
+          onCalendarCopy={isDocumentConversation(conversation) && isConversationBusy ? calendarCopy.open : undefined}
           onBranch={onBranch}
           onTogglePin={onTogglePin}
           onEdit={onEdit}
@@ -201,6 +205,7 @@ export function ConversationScreen({
       )}
 
       {exportTarget?.conversationId === conversation.id && <OfficeExportModal conversation={conversation} messageId={exportTarget.messageId} onClose={() => setExportTarget(null)} />}
+      {calendarCopy.opening && <CalendarDocumentCopyDialog key={calendarCopy.opening.key} opening={calendarCopy.opening} onClose={calendarCopy.close} />}
       {archiveTarget === conversation.id && isConversationBusy && <ConversationArchiveModal key={conversation.id} conversation={conversation} isBusy={isConversationBusy} onClose={() => setArchiveTarget(null)} />}
       <ReportModal
         conversation={conversation}
