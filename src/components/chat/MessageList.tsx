@@ -42,6 +42,7 @@ const MessageItem = memo(function MessageItem({ msg, index, outputRestriction, o
     <div className="group relative" data-msg-id={msg.id} data-msg-role={msg.role}>
       {msg.role === 'user' ? (
         <UserBubble
+          restoredArchive={msg.restoredArchive === true}
           onCompare={onCompare ? () => onCompare(msg.id) : undefined}
           content={msg.content}
           files={msg.files}

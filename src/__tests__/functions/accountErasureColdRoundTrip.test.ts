@@ -11,7 +11,7 @@ import { verifyEmailTrialToken } from '../../../functions/api/_lib/emailTrial'
 import { deferred } from '../helpers/workspaceLocks'
 import { createDatabaseShape, FILE_SHAPE } from '../../services/workspaceWriter/schema'
 vi.unmock('../../services/workspaceWriter/runtime')
-vi.mock('../../services/workspaceWriter/activation', () => ({ ISOLATED_WORKSPACE_ENABLED: true }))
+vi.mock('../../services/workspaceWriter/activation', () => ({ ISOLATED_WORKSPACE_ENABLED: true, WORKSPACE_RESTORE_START_ENABLED: true }))
 vi.mock('../../services/googleAuth', () => ({ getValidAccessToken: vi.fn(() => { throw new Error('oauth forbidden') }) }))
 vi.mock('../../services/apiBase', () => ({ apiUrl: (path: string) => `https://tryarty.com${path}` }))
 vi.mock('@capacitor/core', () => ({ Capacitor: { isNativePlatform: () => false, getPlatform: () => 'web' }, registerPlugin: () => ({}) }))

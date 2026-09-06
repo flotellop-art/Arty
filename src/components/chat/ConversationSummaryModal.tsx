@@ -12,6 +12,7 @@ import { getActiveUserId, getActiveSessionEpoch } from '../../services/userSessi
 import { canExecuteRoute } from '../../services/router/resolveRoute'
 import { gatherRouteInput, classifyRouteAttachments } from '../../services/router/gatherRouteInput'
 import type { ProjectOperation } from '../../services/projects/store'
+import { beginConversationWork } from '../../services/conversationWork'
 
 // Minimal markdown → HTML conversion for PDF export.
 function mdToHtml(md: string): string {
@@ -124,15 +125,17 @@ export function ConversationSummaryModal({ conversation, onClose }: Props) {
     // (Anthropic, US). On respecte le flag : Mistral (France) pour les convs EU.
     const streamFn = euOnly ? streamMistralMessage : streamMessage
 
-    controller = streamFn(
+    const finishWork = beginConversationWork(conversation.id)
+    try { controller = streamFn(
       prompt as Array<{ role: string; content: string }>,
       (token) => {
         if (!current()) return
         accumulated += token
         setSummary(accumulated)
       },
-      () => { if (current()) setLoading(false) },
+      () => { finishWork(); if (current()) setLoading(false) },
       (err) => {
+        finishWork()
         if (!current()) return
         setError(err.message)
         setLoading(false)
@@ -149,11 +152,15 @@ export function ConversationSummaryModal({ conversation, onClose }: Props) {
         background: true,
       }
     )
+    controller.signal.addEventListener('abort', finishWork, { once: true })
+    if (controller.signal.aborted) finishWork()
+    } catch (error) { finishWork(); if (current()) { setError(error instanceof Error ? error.message : ''); setLoading(false) } }
 
     return () => {
       cancelled = true
       if (summaryScope.current === assertCurrent) summaryScope.current = null
       controller?.abort()
+      finishWork(); controller?.signal.removeEventListener('abort', finishWork)
     }
   }, [conversation])
 

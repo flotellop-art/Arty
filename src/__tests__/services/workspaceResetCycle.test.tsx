@@ -11,7 +11,7 @@ import { workspaceDataKey } from '../../services/workspaceWriter/layout'
 vi.unmock('../../services/workspaceWriter/runtime')
 vi.mock('react', async original => original()) // one React identity across simulated cold documents
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }))
-vi.mock('../../services/workspaceWriter/activation', () => ({ ISOLATED_WORKSPACE_ENABLED: true }))
+vi.mock('../../services/workspaceWriter/activation', () => ({ ISOLATED_WORKSPACE_ENABLED: true, WORKSPACE_RESTORE_START_ENABLED: true }))
 vi.mock('@capacitor/core', () => ({ Capacitor: { isNativePlatform: () => false, getPlatform: () => 'web' }, registerPlugin: () => ({}) }))
 const native = vi.hoisted(() => ({ reopen: vi.fn(async () => {}) }))
 vi.mock('../../services/native/coldMailErasure', async original => ({ ...await original<typeof import('../../services/native/coldMailErasure')>(), reopenColdMailScope: native.reopen }))

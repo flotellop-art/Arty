@@ -1,6 +1,6 @@
 # Abandon avant barrière — contrat et preuves
 
-6 septembre 2026. **Implémenté et validé localement ; publication en cours.**
+6 septembre 2026. **Livré par #477, CI/Pages/Firebase vérifiés, activation OFF.**
 Deux challenges indépendants readonly produit et sécurité ont approuvé ce
 périmètre avant code. Aucun GO d'activation W06 ; le flag reste OFF.
 
@@ -141,3 +141,36 @@ Flag OFF conservé et aucune migration D1, scope OAuth ou fonction serveur.
 Repli par PR vers le code précédent si régression froide, sans purge ni
 rétrogradation de journal/base. Les sondes publiques ne prouvent pas des taux
 d'erreur ou latences globaux ; aucune télémétrie de production inventée.
+
+### Reçu distant du 6 septembre
+
+[PR #477](https://github.com/flotellop-art/Arty/pull/477), head
+`4c26df0a3878cd8fa3a2eae2c9f7922a2a602d33`, squash main
+`397112cb6886a27c0c5a593936c4ae7e83df607e`, fusion à 13:17:34 UTC.
+CI PR `34035305773` réussie : web 6 min 03, Android 3 min 44.
+Preview `fc549adc-917d-471c-893b-8e3bfba71700` réussie à 13:11:33 UTC ;
+marqueurs/bundles et politique OFF servis vérifiés avant fusion.
+
+Pages main `6e1ff81c-ed01-43dd-b110-ab6a218e8e2b` réussi à 13:18:57 UTC.
+Sondes anonymes canonical/immuable à 13:20:21–24 UTC : deux assets froids,
+six assets des parcours, guide FR/EN/CSS/SW byte-identiques. Sept sondes
+GET/OPTIONS du transport historique réussies, sans action de compte.
+Entrée `index-D3DPUHoP.js`, 310918 octets, SHA-256
+`67f4d6d83ea5da51eec93d60e2b474c15dad09a822d3e6c629742ae3c9a777a2` ;
+`ColdMigrationRecovery-gKUfA5eJ.js`, 1148 octets, SHA-256
+`78f4c75298228780bd4e290572683124d611a967426a4a8842bd6cfe24b2ebb4`.
+Le chunk froid réel ne contient aucune action de migration/import ; OFF.
+
+Android/Firebase `34035652398` réussi à 13:26:40 UTC : identité candidat
+vérifiée à 13:26:30, distribution à 13:26:36 et reçu JSON à 13:26:37.
+Artifact `arty-apk-identity-397112cb6886a27c0c5a593936c4ae7e83df607e-1`
+présent/non expiré, 851 octets. Ni APK ni reçu téléchargé dans cette recette ;
+ce sont des preuves du pipeline, pas d'installation sur appareil physique.
+
+CI main `34035652413`, tentative 1 : un échec du test préexistant
+`proxyWalletIntegration.test.ts:251` (503 au lieu de 402), log exact
+`[wallet] reserve D1 timeout`. Le code wallet impose 250 ms et n'a pas changé
+dans #477. Les sept tests de ce fichier passent isolément ; aucun changement
+d'assertion, de délai ou de comportement serveur. Relance bornée du job web
+inchangé (tentative 2) réussie à 13:30:38 UTC ; run complet réussi à 13:30:39.
+Le reçu conserve le premier échec ; la CI finale, Pages et Firebase sont verts.

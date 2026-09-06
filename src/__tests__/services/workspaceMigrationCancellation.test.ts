@@ -9,7 +9,7 @@ import { migrationDatabaseName } from '../../services/workspaceWriter/migrationP
 import { isolatedWorkspaceLayout } from '../../services/workspaceWriter/layout'
 
 vi.unmock('../../services/workspaceWriter/runtime')
-vi.mock('../../services/workspaceWriter/activation', () => ({ ISOLATED_WORKSPACE_ENABLED: true }))
+vi.mock('../../services/workspaceWriter/activation', () => ({ ISOLATED_WORKSPACE_ENABLED: true, WORKSPACE_RESTORE_START_ENABLED: true }))
 vi.mock('@capacitor/core', () => ({ Capacitor: { isNativePlatform: () => false, getPlatform: () => 'web' }, registerPlugin: () => ({}) }))
 let runtime: typeof import('../../services/workspaceWriter/runtime'), service: typeof import('../../services/workspaceWriter/migration')
 let lock: ReturnType<typeof deferred>

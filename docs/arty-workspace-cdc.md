@@ -108,7 +108,26 @@ réels ; préparer protocole et instrumentation sans fabriquer leurs résultats.
 
 ## Preuves par lot
 
-### W06 — abandon avant barrière, validé localement
+### W06 — restauration Web, candidat activé et validé localement
+
+Réglages → Restaurer : préparation initiale consentie si stockage legacy,
+archive/code → aperçu lié au compte → adoption durable v8 → reprise froide
+sans secret → retour ready. Copie additive des conversations/projets/fichiers,
+fichiers autonomes accessibles par une conversation reçue. Bornes nouvelles
+archives 16 Mio / journaux 32 Mio ; reprises compatibles jusqu'au plafond du
+protocole, sans promesse mémoire téléphone. Pas de synchronisation serveur.
+
+`WORKSPACE_RESTORE_PUBLISHER.md` décrit les invariants, limites et repli :
+ISOLATED doit rester true ; seul START peut être fermé dans une livraison
+compatible, sans bloquer les lectures ou jobs adoptés. Deux contre-revues
+indépendantes GO bornés Web ; verify 318 suites / 4 087 tests + 1 sauté.
+Chrome réel avec fixtures locales FR/EN 390/1280, reload/back/forward,
+exclusion second onglet, A/B relus/réécrits, PDF/TXT comparés à l'octet, reprise
+sur nouveau bundle START=false. Aucune donnée réelle ni requête IA.
+La livraison Git/CI/Pages reste à attester. Démarrage natif indisponible et
+recette appareil absente ; W06 n'est donc pas entièrement clôturé.
+
+### W06 — abandon avant barrière, livré #477 (OFF)
 
 Un quota durable de duplication peut maintenant être quitté, après inspection
 et confirmation explicites, uniquement depuis `reserved` avec sources encore
@@ -120,7 +139,11 @@ unique ; après coupure, nouvel aperçu/consentement, pas de baseline réinvent�
 `COLD_MIGRATION_CANCELLATION.md` consigne le contrat et les preuves : verify
 314 suites / 3 994 tests + 1 sauté ; quota first/last maintenu et B réel
 lecture/écriture/relecture ; Chrome isolé 390/1280 avec sources comparées et
-flag OFF réel vérifié. Livraison distante en cours. L'abandon après barrière,
+flag OFF réel vérifié. PR #477/main `397112c`, Pages `6e1ff81c` et Firebase
+`34035652398` réussis ; assets canonical/immuables identiques. CI main
+`34035652413` réussie en tentative 2, après timeout D1 d'un test wallet
+préexistant, sans modification du code/test/délai. Le reçu conserve cet échec.
+L'abandon après barrière,
 le publisher de restauration et la synchronisation restent à réaliser ; ce
 prérequis ne clôt pas W06.
 

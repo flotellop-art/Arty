@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import ColdErasureRecovery from '../../components/workspace/ColdErasureRecovery'
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }))
-vi.mock('../../services/workspaceWriter/activation', () => ({ ISOLATED_WORKSPACE_ENABLED: true }))
+vi.mock('../../services/workspaceWriter/activation', () => ({ ISOLATED_WORKSPACE_ENABLED: true, WORKSPACE_RESTORE_START_ENABLED: true }))
 const state = vi.hoisted(() => ({ resume: vi.fn(), create: vi.fn() }))
 vi.mock('../../services/workspaceWriter/erasure', () => ({ createColdWorkspaceErasure: () => { state.create(); return { resume: state.resume } } }))
 const key = (s: string) => `workspaceAdmission.erasureRecovery.${s}`

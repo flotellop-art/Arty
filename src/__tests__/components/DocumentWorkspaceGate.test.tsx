@@ -8,6 +8,8 @@ import { LEGACY_WORKSPACE_LAYOUT } from '../../services/workspaceWriter/layout'
 import { deferred, sharedWorkspaceLocks } from '../helpers/workspaceLocks'
 
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }))
+// Explicit legacy OFF fixture; actual released ON compatibility is tested separately.
+vi.mock('../../services/workspaceWriter/activation', () => ({ ISOLATED_WORKSPACE_ENABLED: false, WORKSPACE_RESTORE_START_ENABLED: false }))
 beforeEach(() => { globalThis.indexedDB = new IDBFactory() })
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); window.history.replaceState({}, '', '/'); localStorage.clear(); sessionStorage.clear() })
 const admissionFor = (controller: ReturnType<typeof createDocumentWorkspaceLock>) => createWorkspaceAdmission(

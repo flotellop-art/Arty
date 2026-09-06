@@ -10,7 +10,8 @@ import { migrationDatabaseName } from '../../services/workspaceWriter/migrationP
 import { workspaceDataKey } from '../../services/workspaceWriter/layout'
 
 vi.unmock('../../services/workspaceWriter/runtime')
-vi.mock('../../services/workspaceWriter/activation', () => ({ ISOLATED_WORKSPACE_ENABLED: true }))
+const policy = vi.hoisted(() => ({ start: true }))
+vi.mock('../../services/workspaceWriter/activation', () => ({ ISOLATED_WORKSPACE_ENABLED: true, get WORKSPACE_RESTORE_START_ENABLED() { return policy.start } }))
 let runtime: typeof import('../../services/workspaceWriter/runtime')
 let migration: typeof import('../../services/workspaceWriter/migration')
 let lock: ReturnType<typeof deferred>
@@ -31,7 +32,7 @@ async function newDocument() {
   await runtime.documentWorkspace.acquire()
 }
 beforeEach(async () => {
-  vi.restoreAllMocks(); localStorage.clear(); globalThis.indexedDB = new IDBFactory()
+  vi.restoreAllMocks(); policy.start = true; localStorage.clear(); globalThis.indexedDB = new IDBFactory()
   vi.stubGlobal('fetch', vi.fn(() => { throw new Error('No network allowed') }))
   await newDocument()
 })
@@ -67,6 +68,19 @@ function crashPhase(phase: string) {
   })
 }
 describe('cold raw migration candidate: real IDB journal, barriers and admission', () => {
+  it('START rollback refuses reservation but never strands an adopted v3 migration', async () => {
+    await seed(); const before = local(); policy.start = false
+    const opening = vi.spyOn(indexedDB, 'open')
+    await expect(migration.createColdWorkspaceMigration().start()).rejects.toMatchObject({ code: 'disabled' })
+    expect(opening).not.toHaveBeenCalled(); expect(local()).toEqual(before); opening.mockRestore()
+    policy.start = true; await newDocument(); const fault = crashPhase('barrier')
+    await expect(migration.createColdWorkspaceMigration().start()).rejects.toThrow(); fault.mockRestore()
+    const header = await control(); policy.start = false; await newDocument()
+    expect(await runtime.workspaceAdmission.admit()).toBe('recoverable')
+    await migration.createColdWorkspaceMigration().resume()
+    expect((await control()).generation).toBe(header.generation); await newDocument(); expect(await runtime.workspaceAdmission.admit()).toBe('ready')
+    for (const [k, v] of Object.entries(before)) expect(localStorage.getItem(k)).toBe(v)
+  })
   it('excludes private admission positively, including a previously pending admission', async () => {
     const actor = migration.createColdWorkspaceMigration()
     expect(await runtime.workspaceAdmission.admit()).toBe('maintenance')

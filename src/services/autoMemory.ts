@@ -37,6 +37,8 @@ import type { Conversation } from '../types'
 import { isDocumentConversation } from './projects/chatPolicy'
 import i18n from '../i18n'
 import { toast } from './toast'
+import { beginConversationWork } from './conversationWork'
+import { captureLocalReadScope } from './projects/store'
 
 const SETTING_KEY = 'auto-memory-enabled'
 const PROGRESS_KEY = 'auto-memory-progress'
@@ -99,22 +101,27 @@ interface ExtractionResult {
  *  de changements effectifs. Éviction FIFO : la mémoire auto ne doit jamais
  *  échouer silencieusement au cap (bug addFact→null identifié à l'audit) —
  *  le fait le plus ANCIEN est évincé pour faire de la place. */
-export function applyExtraction(result: ExtractionResult, existing: LocalMemoryFact[]): number {
+export function applyExtraction(result: ExtractionResult, existing: LocalMemoryFact[], assertCurrent: () => void = () => {}): number {
   let changes = 0
   for (const r of result.replace) {
+    assertCurrent()
     if (updateFact(r.id, r.fact)) changes++
+    assertCurrent() // mutators synchronously notify listeners, which can switch accounts
   }
   for (const a of result.add) {
+    assertCurrent()
     const current = getAllFacts()
     if (current.length >= MAX_FACTS) {
       const oldest = [...current].sort((x, y) => x.createdAt - y.createdAt)[0]
       if (oldest) deleteFact(oldest.id)
+      assertCurrent()
     }
     // Dédup de dernier ressort (le serveur demande déjà à Haiku de comparer) :
     // contenu identique normalisé → skip.
     const norm = a.fact.trim().toLowerCase()
     if (existing.some((f) => f.content.trim().toLowerCase() === norm)) continue
     if (addFact(a.fact)) changes++
+    assertCurrent()
   }
   return changes
 }
@@ -138,6 +145,7 @@ let inFlight = false
  * jamais, ne bloque jamais l'UI.
  */
 export async function maybeExtractMemory(conv: Conversation | null | undefined): Promise<void> {
+  let finishWork: (() => void) | undefined
   try {
     if (!conv || inFlight) return
     if (isDocumentConversation(conv)) return
@@ -159,11 +167,14 @@ export async function maybeExtractMemory(conv: Conversation | null | undefined):
       return
     }
 
+    const scope = captureLocalReadScope()
+    finishWork = beginConversationWork(conv.id); inFlight = true
     const token = await getValidAccessToken()
+    scope.assertCurrent()
     if (!token) return
 
-    inFlight = true
     const existing = getAllFacts()
+    await scope.validateReadOnly(); scope.assertCurrent()
     const res = await fetch(apiUrl('/api/ai/memory-extract'), {
       method: 'POST',
       headers: {
@@ -175,21 +186,23 @@ export async function maybeExtractMemory(conv: Conversation | null | undefined):
         facts: existing.map((f) => ({ id: f.id, content: f.content })),
       }),
     })
+    scope.assertCurrent()
 
+    const data = res.ok ? (await res.json()) as Partial<ExtractionResult> : null
+    await scope.validateReadOnly(); scope.assertCurrent()
     // Quota d'extraction du jour atteint (20) ou échec : on marque la
     // progression pour ne pas marteler l'endpoint, et on réessaiera
     // naturellement sur les messages suivants.
     setProgress(conv.id, userMessages.length)
-    if (!res.ok) return
-
-    const data = (await res.json()) as Partial<ExtractionResult>
+    if (!data) return
     const result: ExtractionResult = {
       add: Array.isArray(data.add) ? data.add.filter((a) => typeof a?.fact === 'string') : [],
       replace: Array.isArray(data.replace)
         ? data.replace.filter((r) => typeof r?.id === 'string' && typeof r?.fact === 'string')
         : [],
     }
-    const changes = applyExtraction(result, existing)
+    const changes = applyExtraction(result, existing, scope.assertCurrent)
+    scope.assertCurrent()
     if (changes > 0) {
       // Transparence (stratégie confiance) : jamais de mémorisation invisible.
       try { toast(i18n.t('settings.autoMemory.updated'), 'info') } catch { /* tests */ }
@@ -197,6 +210,6 @@ export async function maybeExtractMemory(conv: Conversation | null | undefined):
   } catch {
     // Silencieux par design — la mémoire auto ne doit jamais perturber le chat.
   } finally {
-    inFlight = false
+    if (finishWork) { finishWork(); inFlight = false }
   }
 }

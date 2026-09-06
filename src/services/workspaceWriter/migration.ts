@@ -1,6 +1,6 @@
 import { openDB, type IDBPDatabase, type IDBPTransaction } from 'idb'
 import { openExistingDB } from '../readOnlyExistingDB'
-import { ISOLATED_WORKSPACE_ENABLED } from './activation'
+import { ISOLATED_WORKSPACE_ENABLED, WORKSPACE_RESTORE_START_ENABLED } from './activation'
 import { workspaceAdmission } from './runtime'
 import { validateWorkspaceControl, readWorkspaceStorageLayout, WORKSPACE_CONTROL_DB, WORKSPACE_CONTROL_KEY, type AdmissionGuard } from './control'
 import { isolatedWorkspaceLayout } from './layout'
@@ -11,6 +11,7 @@ import { digestRaw, localPairs, localTargets, parseLegacySlot, validateSessions,
 import { parseErasureHeader, type ErasureHeader } from './erasureProtocol'
 import { readErasureProof } from './erasure'
 import { assertNativeErasureOwner } from '../native/coldMailErasure'
+import { isNative } from '../native/platform'
 
 const JOURNAL_SHAPE: readonly StoreShape[] = [['journal', null, []], ...RAW_STORES.map(name => [name, null, []] as const)]
 const identity = (generation: string) => ({ format: 'arty-workspace-migration', version: 1, generation })
@@ -331,6 +332,7 @@ export function createColdWorkspaceMigration() {
   let knownGeneration = workspaceAdmission.getRecovery()?.generation
   const run = async (start: boolean) => {
     if (!ISOLATED_WORKSPACE_ENABLED) return failMigration('disabled')
+    if (start && !WORKSPACE_RESTORE_START_ENABLED) return failMigration('disabled')
     cold.assertLock()
     if (busy) return failMigration('busy')
     busy = true
@@ -355,7 +357,7 @@ export function createColdWorkspaceMigration() {
       aborter.signal.removeEventListener('abort', stop); busy = false
     }
   }
-  return Object.freeze({ start: () => run(true), resume: () => run(false) })
+  return Object.freeze({ start: () => { if (isNative) return Promise.reject(new WorkspaceMigrationError('disabled')); return run(true) }, resume: () => run(false) })
 }
 
 async function transaction<T, M extends 'readonly' | 'readwrite'>(db: IDBPDatabase, stores: string[], mode: M, guard: Attempt,

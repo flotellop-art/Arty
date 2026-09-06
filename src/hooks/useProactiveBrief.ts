@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { beginConversationWork } from '../services/conversationWork'
 import i18n from '../i18n'
 import { streamMessage, type ToolHandler as ClientToolHandler } from '../services/anthropicClient'
 import { TOOLS } from '../services/toolDefinitions'
@@ -72,13 +73,14 @@ export function useProactiveBrief({ isGoogleConnected, userName, onSend }: Param
     setLoading(true)
     const calendarController = new AbortController()
     calendarAbortRef.current = calendarController
+    const finishWork = beginConversationWork('proactive-brief')
+    try {
     const calendarScope = captureCalendarContext(calendarController.signal)
     const cardScope = captureCalendarContext() // same initial grant, independent of Hide/Stop calculation signal
     calendarScopeRef.current = cardScope
     // On NE vide PAS `brief` : si une carte est déjà affichée (ex: refresh au
     // retour dans l'app), elle reste lisible jusqu'à ce que la nouvelle soit prête.
 
-    try {
       // Pré-check gratuit : agenda, tâches et mémoire locale sont inspectés
       // avant de décider si un appel IA est utile.
       const events = await listEvents(2, calendarScope)
@@ -136,11 +138,19 @@ export function useProactiveBrief({ isGoogleConnected, userName, onSend }: Param
 
       let acc = ''
       await new Promise<void>((resolve) => {
-        const controller = streamMessage(
+        let controller: AbortController | undefined, settled = false
+        const finish = () => {
+          if (settled) return
+          settled = true; calendarController.signal.removeEventListener('abort', cancel)
+          controller?.signal.removeEventListener('abort', finish); resolve()
+        }
+        const cancel = () => { controller?.abort(); finish() }
+        calendarController.signal.addEventListener('abort', cancel, { once: true })
+        try { controller = streamMessage(
           [{ role: 'user', content: i18n.t('proactiveBrief.prompt') }],
           (token) => { acc += token },
-          () => resolve(),
-          () => resolve(), // erreur → on résout, le fallback gère l'affichage
+          finish,
+          finish, // erreur → on résout, le fallback gère l'affichage
           {
             systemPrompt,
             onToolCall,
@@ -156,6 +166,9 @@ export function useProactiveBrief({ isGoogleConnected, userName, onSend }: Param
           },
         )
         abortRef.current = controller
+        if (!settled) controller.signal.addEventListener('abort', finish, { once: true })
+        if (controller.signal.aborted || calendarController.signal.aborted) cancel()
+        } catch { finish() }
       })
 
       // Sortie structurée si capturée, sinon fallback sur le texte streamé
@@ -172,6 +185,7 @@ export function useProactiveBrief({ isGoogleConnected, userName, onSend }: Param
       // Unavailable is not an empty/calm agenda. Never retain a previous owner's brief.
       if (!calendarController.signal.aborted) setBrief({ text: i18n.t('calendarWorkflow.briefUnavailable') })
     } finally {
+      finishWork()
       setLoading(false)
       runningRef.current = false
     }

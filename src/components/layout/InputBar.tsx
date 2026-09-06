@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback, type KeyboardEvent } from 'react'
 import { useTranslation } from 'react-i18next'
+import { beginConversationWork } from '../../services/conversationWork'
 import type { TFunction } from 'i18next'
 import type { ChatSendHandler, FileAttachment, QuickActionId, QuickActionSelection } from '../../types'
 import { generateId } from '../../utils/generateId'
@@ -1056,6 +1057,7 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
       if (blob.size < 1024) return
 
       setIsTranscribing(true)
+      const finishWork = beginConversationWork('audio-transcription')
       try {
         const { transcribeAudio } = await import('../../services/whisperClient')
         // Conversation EU : dictée via Voxtral (Mistral, France), jamais OpenAI US.
@@ -1078,6 +1080,7 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
         const detail = err instanceof Error && err.message ? err.message : ''
         setAudioError(detail || t('chat.input.voice.transcribeFailed'))
       } finally {
+        finishWork()
         setIsTranscribing(false)
       }
     }
@@ -1272,12 +1275,14 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
     if (!current || isEnhancing) return
     setIsEnhancing(true)
     setEnhanceError(null)
+    const finishWork = beginConversationWork('prompt-enhancement')
     try {
       const enhanced = await enhancePrompt(current, { euOnly })
       setText(enhanced)
     } catch (err) {
       setEnhanceError(err instanceof Error ? err.message : t('errors.promptEnhancementFailed'))
     } finally {
+      finishWork()
       setIsEnhancing(false)
     }
   }

@@ -146,15 +146,15 @@ describe('real document boundary with real crypto and IDB transactions', () => {
     } finally { window.removeEventListener('google-storage-ready', notify) }
   })
 
-  it('the production policy also blocks a direct provisioning call on a valid isolated fixture', async () => {
+  it('a valid isolated fixture does not permit direct provisioning before storage admission', async () => {
     const { seedIsolatedWorkspace } = await import('../helpers/isolatedWorkspace')
     const layout = await seedIsolatedWorkspace()
     await runtime.documentWorkspace.acquire()
-    expect(await runtime.workspaceAdmission.admit()).toBe('incompatible')
     const { provisionIsolatedSalt } = await import('../../services/workspaceWriter/cryptoProvisioning')
     const write = vi.spyOn(Storage.prototype, 'setItem')
     await expect(provisionIsolatedSalt(layout, 'a', { assertCurrent() {}, fence: 'initial', signal: new AbortController().signal })).rejects.toThrow('workspace_admission_unavailable')
     expect(write).not.toHaveBeenCalled()
+    expect(await runtime.workspaceAdmission.admit()).toBe('ready')
   })
   it('held lock alone does not permit private reads or crypto initialization before storage admission', async () => {
     await runtime.documentWorkspace.acquire()

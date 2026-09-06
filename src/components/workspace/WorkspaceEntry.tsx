@@ -9,6 +9,7 @@ const Landing = lazy(() => import('../../screens/landing').then(m => ({ default:
 const Shared = lazy(() => import('../share/SharedConversationView').then(m => ({ default: m.SharedConversationView })))
 
 export function WorkspaceEntry({ route }: { route: EntryRoute }) {
+  if (route === 'workspace-setup') return <DocumentWorkspaceGate setup />
   if (route === 'private') return <DocumentWorkspaceGate />
   // Public CTAs perform a full navigation: the private entry then acquires
   // before its FIRST session read. Never mount useAuth in a public document.

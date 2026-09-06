@@ -175,6 +175,24 @@ export function captureConversationForBackup<T>(id: string, clone: (source: Conv
   } }
 }
 
+/** Full authoritative history for additive restore; preserve existing fields,
+ * unlike the archive allowlist. Never bootstrap or return a partial cache. */
+export function captureHistoryForRestore() {
+  assertDocumentWorkspace()
+  const scope = captureScope(), cache = memConversations, identity = cacheIdentity
+  const gen = writeGen, boot = bootstrapGen
+  if (!scope.owner || !cacheReady || !cache || !identity || identity.owner !== scope.owner || identity.epoch !== scope.epoch || encryptionDisabled()) throw new BackupError('unavailable')
+  const json = JSON.stringify(cache)
+  const assertUnchanged = () => {
+    assertDocumentWorkspace()
+    if (!scopeCurrent(scope) || !cacheReady || memConversations !== cache || cacheIdentity?.owner !== identity.owner || cacheIdentity?.epoch !== identity.epoch || writeGen !== gen || bootstrapGen !== boot || encryptionDisabled()) throw new BackupError('changed')
+  }
+  return { json, snapshot: JSON.parse(json) as Conversation[], assertUnchanged, assertSnapshot() {
+    assertUnchanged()
+    if (JSON.stringify(cache) !== json) throw new BackupError('changed')
+  } }
+}
+
 function persist(list: Conversation[]): void {
   ensureCacheScope()
   list = list.map(conversation => restrictConversationOutput(conversation, { outputRestriction: committedOutputRestrictions.get(conversation.id) }))
