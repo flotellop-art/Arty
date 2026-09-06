@@ -150,11 +150,22 @@ describe('HomeScreen — accueil éditorial', () => {
     expect(screen.queryByText(/templates métier/)).not.toBeInTheDocument()
   })
 
-  it('affiche une note agenda utile dans la partie haute sans carte', async () => {
-    renderHome(vi.fn(), vi.fn(), vi.fn(), { ...googleAuth, isConnected: true })
-
-    expect(await screen.findByText('Revue produit')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Ouvrir l’agenda du jour' })).toBeInTheDocument()
+  it.each([[12, 0, true], [23, 55, false]] as const)('limite la note agenda au jour courant lors du rendu à %i:%i', async (hour, minute, today) => {
+    // The mock's now+10min falls tomorrow after 23:50. Fix local wall time,
+    // not UTC, and keep real DOM timers. This is not a live-midnight test.
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      vi.setSystemTime(new Date(2026, 8, 6, hour, minute))
+      renderHome(vi.fn(), vi.fn(), vi.fn(), { ...googleAuth, isConnected: true })
+      if (today) expect(await screen.findByText('Revue produit')).toBeInTheDocument()
+      else {
+        expect(await screen.findByText(i18n.t('home.hybrid.agendaFree'))).toBeInTheDocument()
+        expect(screen.queryByText('Revue produit')).not.toBeInTheDocument()
+      }
+      expect(screen.getByRole('button', { name: 'Ouvrir l’agenda du jour' })).toBeInTheDocument()
+    } finally {
+      try { cleanup() } finally { vi.useRealTimers() }
+    }
   })
 
   it('une action rapide préremplit le composeur sans envoyer', () => {
