@@ -2,9 +2,11 @@ import {
   isMailImapAvailable,
   listMailAccounts,
   clearMailAccountsForUser,
+  onNativeMailAccountsChanged,
   type MailAccountMeta,
 } from './native/mailImap'
 import { getActiveUserId, getActiveSessionEpoch } from './userSession'
+import { documentWorkspaceSignal } from './workspaceWriter/runtime'
 
 // Cache mémoire des MÉTADONNÉES de comptes mail (jamais de mot de passe —
 // il vit exclusivement dans l'Android Keystore, côté natif).
@@ -20,7 +22,16 @@ const notify = () => {
   try { window.dispatchEvent(new Event('mail-accounts-updated')) } catch { /* no DOM */ }
 }
 
-/** No bridge call and no address/credentials. Empty is known only after success. */
+onNativeMailAccountsChanged(owner => {
+  if (cacheOwner !== owner) return
+  // Same owner after A→B→A may already have read the pre-commit inventory.
+  // Retire any pending inventory too; never read a session or start the bridge.
+  generation++; cachedAccounts = []; inventory = 'unknown'
+  if (!documentWorkspaceSignal.aborted) notify()
+})
+
+/** No bridge call and no address/credentials. Ready means a bridge reply;
+ * the legacy plugin's empty reply does not attest absence (it masks corruption). */
 export function getMailInventoryStatus() {
   const current = cacheOwner === getActiveUserId() && cacheEpoch === getActiveSessionEpoch()
   return { status: current ? inventory : 'unknown' as const,
@@ -44,7 +55,10 @@ export function resetMailAccountsCache(): void {
 
 export async function refreshMailAccounts(): Promise<MailAccountMeta[]> {
   const owner = getActiveUserId(), epoch = getActiveSessionEpoch(), attempt = ++generation
-  const current = () => generation === attempt && owner === getActiveUserId() && epoch === getActiveSessionEpoch()
+  const current = () => {
+    try { return generation === attempt && owner === getActiveUserId() && epoch === getActiveSessionEpoch() }
+    catch { return false } // A terminal document no longer permits even session getters.
+  }
   if (cacheOwner !== owner || cacheEpoch !== epoch) cachedAccounts = []
   cacheOwner = owner; cacheEpoch = epoch; inventory = 'loading'; notify()
   if (!current()) return []

@@ -198,7 +198,9 @@ describe('privacy and Play submission claims', () => {
   // rendu, que seul un test de composant couvrirait.
   it('le bouton d’ajout d’une boîte reste conditionné à l’accord explicite', () => {
     const modal = read('src/components/settings/MailAccountsModal.tsx')
-    expect(modal).toMatch(/disabled=\{submitting \|\| !consented\}/)
+    // Source tripwire plus executable consent/lifetime coverage in
+    // components/MailAccountsModal.session.test.tsx. Admission is additive.
+    expect(modal).toMatch(/disabled=\{!admitted \|\| submitting \|\| !consented\}/)
     expect(modal).toMatch(/if \(!consented\)/)
     expect(modal).toMatch(/mailAccountsModal\.consentLabel/)
   })

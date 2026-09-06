@@ -36,7 +36,9 @@ export async function readConnectionsSnapshot(signal: AbortSignal) {
     platform, demo: session?.authMethod === 'demo', session: session?.authMethod ?? 'demo',
     google: google === 'configured' && !calendar ? 'unavailable' : google,
     keys: CONNECTION_PROVIDERS.map(provider => ({ provider, state: keys.ready ? hasPersonalKey(provider) ? 'configured' : 'not-configured' : 'unknown' })),
-    mail: !mailSupported ? 'not-supported' : mail.status === 'ready' ? mail.count ? 'configured' : 'not-configured'
+    // Historical Android listAccounts also returns [] for an unreadable blob.
+    // Without a strict native inventory protocol, empty must remain unknown.
+    mail: !mailSupported ? 'not-supported' : mail.status === 'ready' ? mail.count ? 'configured' : 'unknown'
       : mail.status === 'failed' ? 'unavailable' : mail.status,
     mailCount: mailSupported && mail.status === 'ready' ? mail.count : 0,
   }

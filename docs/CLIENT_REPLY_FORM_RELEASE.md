@@ -1,9 +1,9 @@
 # W08 — formulaire de réponse client préparée
 
 6 septembre 2026. Base main `225f560` (#467). Formulaire publié par #468 ;
-CI main en échec sur une lecture de contrôle wallet temporisée, traitée
-séparément ci-dessous. La fondation et ses preuves de production sont dans
-`CLIENT_REPLY_DRAFT_FOUNDATION.md`.
+deux oracles de test sensibles à la deadline D1 corrigés ensuite par #469,
+dont la CI main est verte. La fondation et ses preuves de production sont
+dans `CLIENT_REPLY_DRAFT_FOUNDATION.md`.
 
 ## Contrat et périmètre
 
@@ -129,6 +129,24 @@ complet exit 0 à 08:38 UTC, **297 suites / 3604 réussis + 1 ignoré**, build e
 worker Office réel compris (couverture 71,32 / 66,12 / 77,07 / 73,25 %).
 Le mapping timeout ajouté emploie une réponse D1 suspendue simulée, et le
 sélecteur de timers se base sur la durée, pas sur le module d'origine.
+
+### Reçu #469 — correction livrée
+
+Head `c8f98493c0fd880fcf641eed9bc7134f72e10dca`, CI PR `34022445255`
+entièrement réussie ; preview `bb1ce0e5-9f9b-4b17-bb4f-34145b2ff868` réussie,
+GET publics et marqueurs vérifiés à 08:45:26.224 UTC. Fusion normale à
+08:46:00 UTC, main `5a995a258f12d59de43c312f0d86a49a23951e77`.
+Pages production `062236d4-a4db-4826-925c-c0c470a5611f` réussie à 08:46:51 UTC.
+À 08:48:44.484 UTC, cinq chunks identiques (chemin, octets, SHA-256) entre
+tryarty.com et `https://062236d4.appfacade.pages.dev` : index, App, clientReply,
+templates, projectSynthesis. App `CvBPbilL`, 927 696 octets,
+SHA-256 `c496bcc60aede001162e404224a6aa778391dff8c23588aa05a20a3cc257cf45`.
+CI main `34022774327` réussie, dernier job achevé à 08:51:53 UTC.
+APK `34022774345` entièrement réussi (statut confirmé à 08:54:19 UTC).
+Aucun runtime de production modifié par ce correctif. Ces réussites ne
+réécrivent pas les deux runs rouges historiques ; elles valident leurs
+corrections sur un nouveau commit. Toujours aucune installation physique,
+recette OAuth/VIP réel ou mesure terrain attestée.
 
 Verify final → deux GO code → PR/CI/Pages preview → fusion normale → comparer
 les assets immutables avec tryarty.com ; vérifier CI main et APK Firebase

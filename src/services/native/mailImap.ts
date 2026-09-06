@@ -76,6 +76,18 @@ type MailScope = { scope: string; incarnation?: string }
 type Incarnated<T> = { [K in keyof T]: T[K] extends (options: infer O) => infer R ? (options: O & { incarnation?: string }) => R : never }
 const MailImap = getMailImapPlugin<Incarnated<MailImapPluginApi>>()
 
+// A committed native mutation can outlive its UI opening or JS session epoch.
+// Notify only the captured owner; this is cache invalidation, not permission
+// to read that owner's storage or dispatch another native operation.
+const accountChanges = new Set<(owner: string) => void>()
+export function onNativeMailAccountsChanged(listener: (owner: string) => void) {
+  accountChanges.add(listener)
+  return () => { accountChanges.delete(listener) }
+}
+function accountsChanged(owner: string) {
+  for (const listener of accountChanges) { try { listener(owner) } catch { /* observers cannot change native outcome */ } }
+}
+
 export function isMailImapAvailable(): boolean {
   return Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android'
 }
@@ -102,9 +114,15 @@ async function captureMail() {
   assertCurrent()
   return { options: { scope, ...(incarnation ? { incarnation } : {}) } as MailScope, assertCurrent }
 }
-async function invoke<T>(call: (options: MailScope) => Promise<T>): Promise<T> {
+async function invoke<T>(call: (options: MailScope) => Promise<T>, changesAccounts = false): Promise<T> {
   const captured = await captureMail()
-  try { const result = await call(captured.options); captured.assertCurrent(); return result }
+  captured.assertCurrent()
+  try {
+    let result: T
+    try { result = await call(captured.options) }
+    finally { if (changesAccounts) accountsChanged(captured.options.scope) }
+    captured.assertCurrent(); return result
+  }
   catch (error) { captured.assertCurrent(); throw error }
 }
 
@@ -124,7 +142,9 @@ export async function addMailAccount(input: {
   for (const password of candidates) {
     assertCurrent()
     try {
-      const result = await MailImap.addAccount({ provider: input.provider, label: input.label, host: input.host, email: input.email, password, ...options })
+      let result: { id: string; messageCount: number }
+      try { result = await MailImap.addAccount({ provider: input.provider, label: input.label, host: input.host, email: input.email, password, ...options }) }
+      finally { accountsChanged(options.scope) } // A rejected bridge reply cannot prove that no native write committed.
       assertCurrent()
       return result
     } catch (err) {
@@ -148,7 +168,7 @@ export async function listMailAccounts(): Promise<MailAccountMeta[]> {
 }
 
 export async function removeMailAccount(id: string): Promise<void> {
-  await invoke(options => MailImap.removeAccount({ ...options, id }))
+  await invoke(options => MailImap.removeAccount({ ...options, id }), true)
 }
 
 /**

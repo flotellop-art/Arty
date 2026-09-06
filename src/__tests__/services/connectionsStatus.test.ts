@@ -99,7 +99,8 @@ describe('Connections readonly owner-bound snapshot', () => {
     keys.setActiveKeys('installed-during-read'); release(); await rejected
   })
 
-  it.each([Date.now() + 3_600_000, 1])('describes local Google configuration, not expiry/remote health (%s)', async expiry => {
+  it.each(['valid', 'expired'])('describes local Google configuration, not expiry/remote health (%s)', async lifetime => {
+    const expiry = lifetime === 'valid' ? Date.now() + 3_600_000 : 1
     await installGoogle(expiry)
     const receipt = await snapshot()
     expect(receipt.snapshot.google).toBe('configured')
@@ -150,7 +151,8 @@ describe('Connections readonly owner-bound snapshot', () => {
     expect(old.snapshot.mail).toBe('loading')
     release({ accounts: [] }); await loading
     expect(old.assertCurrent).toThrow()
-    expect((await snapshot()).snapshot.mail).toBe('not-configured')
+    // The historical plugin also maps unreadable encrypted records to [].
+    expect((await snapshot()).snapshot.mail).toBe('unknown')
     platform.list.mockRejectedValueOnce(new Error('synthetic bridge unavailable'))
     await mail.refreshMailAccounts()
     expect((await snapshot()).snapshot.mail).toBe('unavailable')
