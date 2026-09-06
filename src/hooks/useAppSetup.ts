@@ -15,6 +15,8 @@ import type { Question } from '../components/chat/QuestionModal'
 import { isPublicGoogleOAuthProfileEnabled } from '../services/publicGoogleOAuthProfile'
 import { isAllowedReportAction, parseTrailRouteId, parseTrailSnapshotId } from '../services/reportActions'
 import { toast } from '../services/toast'
+import { captureCalendarContext } from '../services/calendarClient'
+import { isCalendarMutationTool } from '../services/tools/calendarTools'
 import { useNavigate } from 'react-router-dom'
 import { hasConnectedMailAccounts, refreshMailAccounts, getCachedMailAccounts } from '../services/mailAccounts'
 
@@ -103,7 +105,8 @@ export function useAppSetup(conversation: ConversationHook) {
       // exécution. Sans ça, un contenu lu par Arty (prompt-injection) pouvait
       // déclencher l'action en autonomie. Si l'utilisateur refuse, on rend un
       // résultat clair au modèle pour qu'il ne relance pas l'action.
-      const confirmMessage = buildToolConfirmMessage(name, input, t)
+      // Agenda prepares its immutable, account-bound review inside its handler.
+      const confirmMessage = isCalendarMutationTool(name) ? null : buildToolConfirmMessage(name, input, t)
       if (confirmMessage && !window.confirm(confirmMessage)) {
         return Promise.resolve({
           result: "L'utilisateur a refusé cette action. Ne la relance pas sans son accord explicite.",
@@ -189,8 +192,9 @@ export function useAppSetup(conversation: ConversationHook) {
           break
         }
         case 'create_event':
-          if (!window.confirm(t('chat.actionConfirm.event', { title: params.title || params.summary || '?' }))) break
-          await executor('create_calendar_event', params)
+          // Clicking a report opens a NEW creation proposal, not consent stored
+          // in generated text. Documentary/restored report buttons stay inert.
+          toast((await executor('create_calendar_event', params, { calendar: { scope: captureCalendarContext() } })).result, 'info')
           break
         case 'publish_wp':
           if (!window.confirm(t('chat.actionConfirm.wp', { title: params.title || '?' }))) break

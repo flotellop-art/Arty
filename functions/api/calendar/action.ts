@@ -5,23 +5,40 @@ import {
 } from '../_lib/checkAllowedUser'
 import { googleFetch } from '../_lib/googleFetch'
 import { validatePublicGoogleScopeClaim } from '../_lib/publicGoogleScopes'
+import { CALENDAR_PROTOCOL, calendarMutationPayload } from '../../../src/utils/calendarProtocol'
 
 const ID_RE = /^[a-zA-Z0-9_@.+\-=]+$/
+const rejected = (error: string, status = 400) => Response.json({ error, calendarProtocol: CALENDAR_PROTOCOL, calendarOutcome: 'rejected-before-dispatch' }, { status })
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   const identity = await verifyGoogleIdentityStrictDetailed(request, env.GOOGLE_CLIENT_ID)
-  if (identity.status !== 'ok') return strictGoogleIdentityFailureResponse(identity)
+  if (identity.status !== 'ok') {
+    const response = strictGoogleIdentityFailureResponse(identity)
+    const data = await response.json() as { error: string }
+    return rejected(data.error, response.status)
+  }
 
   const token = request.headers.get('x-google-token')?.trim() || ''
   const scopeCheck = validatePublicGoogleScopeClaim(identity.identity.scope)
   if (!scopeCheck.ok) {
-    return Response.json(
-      { error: scopeCheck.reason === 'scope_mismatch' ? 'Google reconsent required' : 'Google authentication temporarily unavailable' },
-      { status: scopeCheck.reason === 'scope_mismatch' ? 403 : 503 },
-    )
+    return rejected(scopeCheck.reason === 'scope_mismatch' ? 'Google reconsent required' : 'Google authentication temporarily unavailable', scopeCheck.reason === 'scope_mismatch' ? 403 : 503)
   }
 
-  const body = await request.json() as Record<string, unknown>
+  let body: Record<string, unknown>
+  try {
+    const parsed: unknown = await request.json()
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return rejected('Invalid request')
+    body = parsed as Record<string, unknown>
+    if (body.calendarProtocol !== undefined) {
+      if (body.calendarProtocol !== CALENDAR_PROTOCOL) return rejected('Unsupported Calendar protocol')
+      if (body.calendarAccount !== identity.identity.email.trim().toLowerCase()) return rejected('Calendar account changed', 409)
+      if (body.type === 'list') {
+        if (!Number.isInteger(body.days) || (body.days as number) < 1 || (body.days as number) > 366) return rejected('Invalid days')
+      } else if (body.type === 'create' || body.type === 'update' || body.type === 'delete') {
+        body = calendarMutationPayload(body.type, body, body.eventId as string)
+      } else return rejected('Invalid operation')
+    }
+  } catch { return rejected('Invalid Calendar request') }
   const type = body.type as string | undefined
 
   switch (type) {
@@ -29,7 +46,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     case 'create': return handleCreate(token, body)
     case 'update': return handleUpdate(token, body)
     case 'delete': return handleDelete(token, body)
-    default: return Response.json({ error: 'Use type: list, create, update, delete' }, { status: 400 })
+    default: return rejected('Use type: list, create, update, delete')
   }
 }
 
@@ -73,7 +90,7 @@ async function handleCreate(token: string, body: Record<string, unknown>): Promi
   const { title, start, end, location, description } = body as {
     title?: string; start?: string; end?: string; location?: string; description?: string
   }
-  if (!title || !start) return Response.json({ error: 'Missing title or start' }, { status: 400 })
+  if (typeof title !== 'string' || !title || typeof start !== 'string' || !start) return rejected('Missing title or start')
 
   try {
     const event: Record<string, unknown> = {
@@ -111,17 +128,17 @@ async function handleUpdate(token: string, body: Record<string, unknown>): Promi
   const { eventId, title, start, end, location, description } = body as {
     eventId?: string; title?: string; start?: string; end?: string; location?: string; description?: string
   }
-  if (!eventId) return Response.json({ error: 'Missing eventId' }, { status: 400 })
+  if (typeof eventId !== 'string' || !eventId) return rejected('Missing eventId')
   // BUG 32 — valider eventId pour éviter l'injection dans l'URL Google API.
-  if (!ID_RE.test(eventId)) return Response.json({ error: 'Invalid eventId' }, { status: 400 })
+  if (!ID_RE.test(eventId)) return rejected('Invalid eventId')
 
   try {
     const update: Record<string, unknown> = {}
     if (title) update.summary = title
     if (start) update.start = start.includes('T') ? { dateTime: start, timeZone: 'Europe/Paris' } : { date: start }
     if (end) update.end = end.includes('T') ? { dateTime: end, timeZone: 'Europe/Paris' } : { date: end }
-    if (location) update.location = location
-    if (description) update.description = description
+    if (location || (body.calendarProtocol === CALENDAR_PROTOCOL && location === '')) update.location = location
+    if (description || (body.calendarProtocol === CALENDAR_PROTOCOL && description === '')) update.description = description
 
     const r = await googleFetch(
       `https://www.googleapis.com/calendar/v3/calendars/primary/events/${eventId}`,
@@ -135,9 +152,9 @@ async function handleUpdate(token: string, body: Record<string, unknown>): Promi
 
 async function handleDelete(token: string, body: Record<string, unknown>): Promise<Response> {
   const eventId = body.eventId as string
-  if (!eventId) return Response.json({ error: 'Missing eventId' }, { status: 400 })
+  if (typeof eventId !== 'string' || !eventId) return rejected('Missing eventId')
   // BUG 32 — valider eventId pour éviter l'injection dans l'URL Google API.
-  if (!ID_RE.test(eventId)) return Response.json({ error: 'Invalid eventId' }, { status: 400 })
+  if (!ID_RE.test(eventId)) return rejected('Invalid eventId')
 
   try {
     const r = await googleFetch(

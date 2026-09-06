@@ -33,7 +33,7 @@ supplémentaire n'est implicite dans ce mandat.
 | W05 | Livrables | Export DOCX modifiable et XLSX de tableaux, en plus des exports existants. Téléchargements relus par un parseur indépendant ; cellules dangereuses neutralisées ; aucun HTML actif ni formule arbitraire. Formats et limites documentés. | Web déployé #445 ; recette structurelle vérifiée ; rendu Office/appareil non vérifié |
 | W06 | Continuité | Sauvegarde/restauration explicites puis synchronisation optionnelle multi-appareil chiffrée avant upload, avec secret détenu par l'utilisateur et récupération expliquée. Conflits non destructifs ; reprise hors-ligne ; logout/switch/delete et compte invité traités. Un export manuel seul ne valide pas la synchronisation. | A1 #446, galerie #448, verrou document #449, capture/vérification A2 #451, préparation A3a #452, admission froide #453, runtime isolé inactif #454, migrateur journalisé OFF #455, reprise froide d'effacement v2 OFF #456, reçu distant #457, pont froid/fence v5 OFF #458 et reset local v6/v7 OFF #459 livrés ; restauration/synchronisation non livrées |
 | W07 | Comparaison | Comparer depuis une conversation avec contexte/documents autorisés ; conserver les résultats et poursuivre la réponse choisie sans perdre l'original. Erreurs/coûts/quotas de chaque panneau visibles ; EU et historique privé jamais contournés. | Web livré #462 ; recette App/navigateur synthétique vérifiée ; APK distribuée, installation physique et OAuth/facturation réels non attestés |
-| W08 | Parcours métier | Trois parcours complets : synthèse documentaire, réponse client préparée, planification Agenda avec confirmation avant écriture. Écran de connexions indiquant disponible/non configuré/non pris en charge selon plateforme. Pas de Drive/Gmail OAuth restreint ni relais IMAP serveur. | Socle propriété Google/reprise BYOK livré web #463 ; transport Agenda et parcours non implémentés |
+| W08 | Parcours métier | Trois parcours complets : synthèse documentaire, réponse client préparée, planification Agenda avec confirmation avant écriture. Écran de connexions indiquant disponible/non configuré/non pris en charge selon plateforme. Pas de Drive/Gmail OAuth restreint ni relais IMAP serveur. | Socle propriété Google/reprise BYOK livré web #463 ; transport Agenda raccordé/testé localement, publication en cours ; trois verticales et connexions incomplètes |
 | W09 | Mobile et identité | PWA installable ; identité tryarty cohérente ; distribution Android authentifiée et documentée. Ne pas rediriger vers une app Play homonyme. Toute migration appId inclut signatures/OAuth/Firebase/liens vérifiés ; un APK distribué n'est pas une publication Store. | À faire |
 | W10 | Mesure | Instrumentation minimale sans contenu utilisateur : activation, succès/échec des parcours, retour D7/D30 et conversion. Marges fondées sur coût serveur, pas un compteur local. Tableau avec période, échantillon et limites ; aucune métrique inventée. | À faire |
 
@@ -107,6 +107,40 @@ réels ; préparer protocole et instrumentation sans fabriquer leurs résultats.
   de contrôle navigateur du 5 septembre vide, aucun appareil déclaré.
 
 ## Preuves par lot
+
+### W08 — transport Agenda et consentement initial, avant publication
+
+Base main `2da5735`, branche `codex/calendar-owned-transport`. Contrat opaque
+Google + portée locale/documentaire capturé avant attente ; validation durable
+readonly avant le POST et le résultat. Corps allowlisté figé avant confirmation,
+compte Google vérifié, calendrier principal et heures Paris explicites. Le
+protocole v1 atteste seulement les refus avant appel mutateur ; réponse perdue,
+annulation après dispatch ou succès malformé = issue inconnue, sans retry.
+Une tentative par contexte, double-clic joint, actualisation readonly distincte.
+
+Appelants raccordés : CalendarView, les deux InputBar avec un mini-formulaire
+commun, outils/rapports et useConversation, briefs visuels/proactifs/vocaux.
+Reconnexion Google seule, même identité et ABA invalident les anciennes
+intentions. Les briefs indisponibles ne deviennent pas des agendas vides ;
+Masquer/restaurer une carte courante reste utilisable. Les outils OpenAI restent
+interdits, les fils documentaires/Office/comparaisons restent inertes.
+Dates v1 bornées/validées, DST ambigu refusé sans offset ; anciens appels sans
+version conservés. Pas de migration, tarif, entitlement, scope OAuth ou W06 ON.
+
+Deux GO code readonly, angles produit/mobile et sécurité/lifecycle, après
+corrections des hypothèses erronées et des reprises tardives. Recette Chromium
+04:35:41 UTC : huit combinaisons FR/EN, 390/1440, InputBar v1/v2, appareil réglé
+sur America/New_York. Composants, crypto, baux Google et admission documentaire
+réels ; HTTP synthétique, réseau externe interdit. Manifeste Paris exact,
+annulation zéro POST, issue inconnue terminale après un POST, suppression avec
+focus/Escape, invalidation au relink puis refresh explicite, zéro erreur JS ni
+débordement horizontal. Captures relues par root. Pas une recette routeur App,
+OAuth réel, dialogue natif de notes longues ou installation physique APK.
+
+Vérification complète, preuves permanentes et checklist de promotion dans
+`CALENDAR_TRANSPORT_RELEASE.md`. W08 reste partiel : la transition explicite
+depuis une réponse documentaire et les trois parcours guidés/connexions sont
+encore à réaliser. Ne pas lever les verrous documentaires pour les simuler.
 
 ### W06 A3b.8 — préparation de migrations incomplètes avant effacement, OFF
 

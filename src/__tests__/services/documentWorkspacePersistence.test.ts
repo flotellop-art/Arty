@@ -58,6 +58,29 @@ async function expectPrivateReadsRefused(message: string) {
 }
 
 describe('real document boundary with real crypto and IDB transactions', () => {
+  it.each(['before', 'after'])('fences Calendar on real document loss %s dispatch', async phase => {
+    await enter()
+    const google = await import('../../services/googleAuth'), calendar = await import('../../services/calendarClient')
+    await google.storeUser({ email: 'synthetic@example.invalid', name: 'Synthetic', picture: '' })
+    await google.storeMailboxFreeGrant({ access_token: 'synthetic-access', refresh_token: 'synthetic-refresh', expires_at: Date.now() + 3600_000 }, undefined, { verifiedEmail: 'synthetic@example.invalid' })
+    const prepared = calendar.prepareCalendarMutation(calendar.captureCalendarContext(), 'delete', {}, 'synthetic-event')
+    const response = deferred<Response>(), fetcher = vi.fn(() => response.promise); vi.stubGlobal('fetch', fetcher)
+    if (phase === 'before') {
+      await lose()
+      const read = vi.spyOn(Storage.prototype, 'getItem')
+      await expect(prepared.execute()).rejects.toMatchObject({ outcome: 'not-sent' })
+      expect(fetcher).not.toHaveBeenCalled(); expect(read).not.toHaveBeenCalled()
+    } else {
+      const outcome = prepared.execute().catch(error => error)
+      await vi.waitFor(() => expect(fetcher).toHaveBeenCalledOnce())
+      await lose()
+      expect((await outcome).outcome).toBe('unknown')
+      response.resolve(Response.json({ success: true }))
+      await expect(prepared.execute()).rejects.toMatchObject({ outcome: 'unknown' })
+      expect(fetcher).toHaveBeenCalledOnce()
+    }
+  })
+
   it('refreshes an expired Google grant after erasure admission and completes the authorized synthetic erasure', async () => {
     await admit()
     users.setActiveSession({ ...session(), authMethod: 'google', email: 'synthetic@example.invalid' })

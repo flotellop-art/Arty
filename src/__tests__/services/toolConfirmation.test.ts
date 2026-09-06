@@ -37,7 +37,7 @@ describe('buildToolConfirmMessage — garde HITL boucle d\'outils', () => {
 
   it('laisse passer librement les lectures / recherches / listings', () => {
     for (const safe of [
-      'list_calendar', 'create_calendar_event', 'list_local_files', 'read_local_file',
+      'list_calendar', 'list_local_files', 'read_local_file',
       'web_search', 'ask_user', 'update_memory', 'wp_list_posts',
     ]) {
       expect(buildToolConfirmMessage(safe, {}, fakeT)).toBeNull()
@@ -62,6 +62,8 @@ describe('buildToolConfirmMessage — garde HITL boucle d\'outils', () => {
 
 // Tools sensibles → input représentatif du cas qui DOIT déclencher la garde.
 const CONFIRM_REQUIRED: Record<string, Record<string, unknown>> = {
+  create_calendar_event: {},
+  update_calendar_event: {},
   delete_calendar_event: {},
   delete_local_file: {},
   wp_delete_post: {},
@@ -75,7 +77,7 @@ const SAFE_TOOLS = new Set([
   // Lectures / recherches / listings
   'list_calendar', 'list_local_files', 'read_local_file', 'wp_list_posts',
   // Écritures réversibles dans l'espace PROPRE de l'utilisateur
-  'create_calendar_event', 'update_calendar_event', 'save_local_file',
+  'save_local_file',
   'update_memory',
   // Interaction locale / owner-only (computer-use : gate = relay owner-only +
   // serveur local durci ; share : l'humain choisit la cible dans le sheet OS)

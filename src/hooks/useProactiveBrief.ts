@@ -4,7 +4,7 @@ import { streamMessage, type ToolHandler as ClientToolHandler } from '../service
 import { TOOLS } from '../services/toolDefinitions'
 import { createCalendarHandlers } from '../services/tools/calendarTools'
 import type { ToolHandler } from '../services/tools/types'
-import { listEvents } from '../services/calendarClient'
+import { captureCalendarContext, listEvents, type CalendarContext } from '../services/calendarClient'
 import { areNotificationsEnabled } from '../services/notificationService'
 import { scheduleMorningNotification } from '../services/morningBriefService'
 import { getTasks, addTask } from '../services/taskService'
@@ -51,6 +51,10 @@ export function useProactiveBrief({ isGoogleConnected, userName, onSend }: Param
 
   const runningRef = useRef(false)
   const abortRef = useRef<AbortController | null>(null)
+  const calendarAbortRef = useRef<AbortController | null>(null)
+  const calendarScopeRef = useRef<CalendarContext | null>(null)
+  const itemScopes = useRef(new WeakMap<BriefItem, CalendarContext>())
+  const alive = useRef(true)
   const nameRef = useRef(userName)
   nameRef.current = userName
   const onSendRef = useRef(onSend)
@@ -66,19 +70,26 @@ export function useProactiveBrief({ isGoogleConnected, userName, onSend }: Param
     runningRef.current = true
     setDismissed(false)
     setLoading(true)
+    const calendarController = new AbortController()
+    calendarAbortRef.current = calendarController
+    const calendarScope = captureCalendarContext(calendarController.signal)
+    const cardScope = captureCalendarContext() // same initial grant, independent of Hide/Stop calculation signal
+    calendarScopeRef.current = cardScope
     // On NE vide PAS `brief` : si une carte est déjà affichée (ex: refresh au
     // retour dans l'app), elle reste lisible jusqu'à ce que la nouvelle soit prête.
 
     try {
       // Pré-check gratuit : agenda, tâches et mémoire locale sont inspectés
       // avant de décider si un appel IA est utile.
-      const events = await listEvents(2).catch(() => [])
+      const events = await listEvents(2, calendarScope)
+      calendarScope!.assertCurrent()
       const tasks = getTasks().filter((t) => !t.done).slice(0, 10).map((t) => `- ${t.text}`)
       let memoryContext = ''
       try {
         const mem = await readAllMemory()
         memoryContext = formatMemoryForPrompt(mem, ' ').slice(0, 600).trim()
       } catch { /* mémoire indisponible — non bloquant */ }
+      calendarScope!.assertCurrent()
       markBriefRun()
       if (areNotificationsEnabled() && shouldScheduleNudge()) {
         markNudgeScheduled()
@@ -113,13 +124,14 @@ export function useProactiveBrief({ isGoogleConnected, userName, onSend }: Param
       const captured: { data: BriefData | null } = { data: null }
 
       const onToolCall: ClientToolHandler = async (name, input) => {
+        calendarScope!.assertCurrent()
         if (name === 'present_brief') {
           if (!captured.data) captured.data = sanitizeBriefData(input)
           return { result: 'Brief enregistré. Termine maintenant sans autre action.' }
         }
         const handler = readHandlers[name]
         if (!handler) return { result: `Outil "${name}" non autorisé en mode brief (lecture seule).` }
-        try { return await handler(input) } catch { return { result: `Erreur de lecture (${name}).` } }
+        try { return await handler(input, { calendar: { scope: calendarScope, signal: calendarController.signal } }) } catch { return { result: `Erreur de lecture (${name}).` } }
       }
 
       let acc = ''
@@ -139,23 +151,42 @@ export function useProactiveBrief({ isGoogleConnected, userName, onSend }: Param
             // (le brief se déclenche au retour foreground, en pleine
             // conversation — le badge passait à Haiku 🇺🇸 sans message envoyé).
             background: true,
+            assertRequestCurrent: () => calendarScope!.assertCurrent(),
+            beforeDocumentRequest: () => calendarScope!.validateReadOnly(),
           },
         )
         abortRef.current = controller
       })
 
       // Sortie structurée si capturée, sinon fallback sur le texte streamé
+      calendarScope!.assertCurrent()
       // (jamais de carte vide), sinon message "calme".
-      if (captured.data && captured.data.items.length) setBrief({ items: captured.data.items })
+      if (captured.data && captured.data.items.length) {
+        cardScope!.assertCurrent()
+        for (const item of captured.data.items) itemScopes.current.set(item, cardScope!)
+        setBrief({ items: captured.data.items })
+      }
       else if (acc.trim()) setBrief({ text: acc.trim() })
       else setBrief({ text: i18n.t('proactiveBrief.calm') })
     } catch {
-      // On garde une éventuelle carte déjà affichée plutôt que de la vider.
+      // Unavailable is not an empty/calm agenda. Never retain a previous owner's brief.
+      if (!calendarController.signal.aborted) setBrief({ text: i18n.t('calendarWorkflow.briefUnavailable') })
     } finally {
       setLoading(false)
       runningRef.current = false
     }
   }, [isGoogleConnected])
+
+  useEffect(() => {
+    alive.current = true
+    const invalidate = () => {
+      if (!calendarScopeRef.current) return
+      try { calendarScopeRef.current.assertCurrent(); return } catch { /* old grant */ }
+      calendarAbortRef.current?.abort(); abortRef.current?.abort(); setBrief(null)
+    }
+    window.addEventListener('google-storage-ready', invalidate)
+    return () => { alive.current = false; window.removeEventListener('google-storage-ready', invalidate) }
+  }, [])
 
   // Déclencheurs : ouverture (mount) + retour au premier plan (appStateChange
   // natif / visibilitychange web). PAS de setInterval (timers gelés en arrière-plan).
@@ -187,12 +218,14 @@ export function useProactiveBrief({ isGoogleConnected, userName, onSend }: Param
       document.removeEventListener('visibilitychange', onVisible)
       removeNative?.()
       abortRef.current?.abort()
+      calendarAbortRef.current?.abort()
     }
   }, [isGoogleConnected, runBrief])
 
   const dismiss = useCallback(() => {
     setDismissed(true)
     abortRef.current?.abort()
+    calendarAbortRef.current?.abort()
   }, [])
 
   const restore = useCallback(() => {
@@ -202,6 +235,10 @@ export function useProactiveBrief({ isGoogleConnected, userName, onSend }: Param
   // Exécute une action de chip. Le routage est construit côté client : reminder
   // crée une tâche locale ; schedule passe par le chat avec humain dans la boucle.
   const runAction = useCallback((action: BriefAction, item: BriefItem): 'task' | 'chat' | null => {
+    if (!alive.current) return null
+    const scope = itemScopes.current.get(item)
+    if (!scope) return null
+    try { scope.assertCurrent() } catch { return null }
     const route = routeBriefAction(action, item)
     if (!route) return null
     if (route.kind === 'task') {

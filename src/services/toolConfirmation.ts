@@ -25,6 +25,10 @@ export function buildToolConfirmMessage(
   t: TFunction
 ): string | null {
   switch (name) {
+    // Agenda handlers render the exact frozen payload/account for all writes.
+    case 'create_calendar_event':
+    case 'update_calendar_event':
+      return t('chat.actionConfirm.event', { title: input.title || '?' })
     // Suppression destructive
     case 'delete_calendar_event':
       return t('chat.actionConfirm.deleteEvent')
