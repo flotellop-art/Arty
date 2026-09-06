@@ -18,7 +18,7 @@ pas autant d'exploits démontrés dans Arty. Après `npm ci` avec Node 22.23.2 :
 | react-router-dom / react-router | 7.18.3 | Navigation client Declarative |
 | Miniflare / workerd | 4.20260730.0 / 1.20260730.1 | Tests et benchmark locaux |
 | Undici de Miniflare | 7.29.0 | Override limité à cette version de Miniflare |
-| Sharp / libvips réellement chargé, Windows x64 | 0.35.2 / 8.18.3 | Dépendance native de Miniflare |
+| Sharp / libvips réellement chargé, Windows et Linux x64 | 0.35.2 / 8.18.3 | Dépendance native de Miniflare |
 | PostCSS | 8.5.28 | Build |
 | @xmldom/xmldom / tar | 0.8.15 / 7.5.22 | Outils Capacitor |
 | brace-expansion / browserslist | 5.0.9 / 4.28.9 | Outils transitifs |
@@ -50,8 +50,8 @@ Voir la [release officielle Miniflare](https://github.com/cloudflare/workers-sdk
   exclut explicitement le mode Declarative : pas d'exposition SSR revendiquée.
 - La sécurité native est attestée par **libvips réellement chargé**, pas par
   le seul numéro Sharp. Le test ancré sur la dépendance de Miniflare exige
-  libvips >= 8.18.3 et encode/redimensionne un PNG. Windows passe ; le même
-  test doit passer en CI Linux avant fusion. Voir [l'avis Sharp](https://github.com/lovell/sharp/security/advisories/GHSA-f88m-g3jw-g9cj).
+  libvips >= 8.18.3 et encode/redimensionne un PNG. Windows et le même test en
+  CI Linux passent (reçu natif Linux à 20:28:34 UTC). Voir [l'avis Sharp](https://github.com/lovell/sharp/security/advisories/GHSA-f88m-g3jw-g9cj).
 
 ## Preuves locales et limites
 
@@ -59,7 +59,7 @@ Voir la [release officielle Miniflare](https://github.com/cloudflare/workers-sdk
   exécution du vrai worker d'export Office : dernière passe complète verte,
   **330 suites, 4 227 tests réussis, 1 ignoré préexistant**, incluant les quatre
   tests de panne du benchmark. Deux contre-revues readonly indépendantes
-  (sanitizer/routage et toolchain/runtime) : GO code borné, CI encore requise.
+  (sanitizer/routage et toolchain/runtime) : GO code borné ; CI PR verte aussi.
 - Tests ajoutés : vrai App/BrowserRouter avec navigation, écran suspendu,
   modale fermée et historique retenu ; vrai sanitizer à la frontière DOM
   connectée du PDF et nettoyage après échec de rasterisation ; vrai
@@ -102,6 +102,38 @@ dans le répertoire ignoré `.playwright-mcp` ; aucun reçu privé de support,
 document utilisateur ou clé n'est publié dans ce lot.
 
 ## Checklist de livraison et repli
+
+PR [#481](https://github.com/flotellop-art/Arty/pull/481) fusionnée le
+6 septembre 2026 à 20:31:10 UTC, squash `24e6ac8d2cf56f2fa821c1cede211f91f93c5f2f`.
+CI PR [34057879644](https://github.com/flotellop-art/Arty/actions/runs/34057879644)
+entièrement verte : web (330 suites / 4 227 tests), orchestrateur, Android
+lint/tests/compilation et inspections manifest/APK. Le test natif atteste
+Sharp 0.35.2 / libvips 8.18.3 sur Linux x64.
+
+Preview Pages `4e1c4a40-15ed-4064-88c7-f1f6d17548a7` réussie. Recette
+visuelle dans le navigateur intégré : accueil, Connexions, ouverture d'un
+historique fictif, brouillon saisi sans envoi puis navigation/retour, deux
+messages et brouillon intégral conservés, journal navigateur sans erreur.
+Les bundles vendor et DOMPurify servis correspondent octet pour octet au
+build local vérifié. Mode aperçu uniquement ; pas de session client réelle.
+
+Production Pages `50f497ad-ff9d-404b-92a8-d032481ae36f` réussie pour ce squash.
+À 20:32:43 UTC, `tryarty.com` et l'URL immuable servent des assets identiques :
+`index-DwgHv71W.js`, `App-DGvsWWTH.js`, `upgrade-DUfbQ6bE.js`,
+`vendor-BGgxeYae.js`, `purify.es-DedTAGkB.js`. Les deux derniers correspondent
+aussi exactement au build local vérifié. GET/OPTIONS publics : ancienne API
+non redirigée, CORS natif conservé ; redirection des pages vers le domaine
+canonique maintenue ; statut anonyme `free`/`no_token` et wallet protégé 401.
+
+Contrôle UI production sans envoi : accueil → Connexions → Accès → retours,
+brouillon préexistant conservé. La session Google locale ancienne réclame
+une reconnexion : **ce n'est pas une preuve de VIP authentifié**. Le même
+build main sur l'origine immuable neuve affiche bien la connexion anonyme,
+sans mode démo. Aucun compte, token ou accès n'a été modifié pour la recette.
+
+Suivi public de 15 minutes démarré à 20:32:44 UTC ; verdict final et CI main /
+distribution Firebase à compléter après leurs résultats. Les premières
+sondes sont vertes, ce n'est pas encore le verdict de la fenêtre entière.
 
 Avant fusion : dernière passe `npm run verify`, deux contre-revues readonly,
 CI PR web/orchestrateur/Android, attestation native Linux et smoke Pages

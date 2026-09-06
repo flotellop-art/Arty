@@ -1948,7 +1948,10 @@ existants restent inchangés tant qu'un nouvel APK n'a pas été installé.
 Le point de contrôle ci-dessus décrit l'état **avant correction**. Le lot
 [dépendances du 6 septembre](DEPENDENCY_SECURITY_20260906.md) résout localement
 les avis npm (audit complet et omit-dev à zéro) avec recette Office/navigate/PDF,
-tests de runtime natif et benchmark workerd. Vérification complète locale :
-4 227 tests réussis, 1 ignoré ; deux contre-revues readonly GO code. CI et
-livraison restent à attester dans cette fiche avant de considérer ce gate
-livré. Le CDC global n'est pas déclaré terminé.
+tests de runtime natif et benchmark workerd. Vérification complète locale et
+CI PR : 4 227 tests réussis, 1 ignoré ; deux contre-revues readonly GO code.
+PR #481 fusionnée `24e6ac8`, Pages publié et octets servis vérifiés le
+6 septembre à 20:32 UTC. Recette navigateur et compatibilité ancienne API
+vertes ; suivi post-déploiement et CI main encore en cours à ce point.
+Ce gate de code livré ne vaut ni recette téléphone, ni validation marchande,
+ni clôture du CDC global.
