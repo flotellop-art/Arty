@@ -26,8 +26,9 @@ export function exportConversation(conv: Conversation): void {
 }
 
 export function buildConversationJsonExport(conv: Conversation) {
+  const { comparison: _privateGroup, ...exportedConversation } = conv
   const conversation = {
-    ...conv,
+    ...exportedConversation,
     // Purge de compatibilité pour les exports créés depuis un historique
     // antérieur à la suppression de l'intégration boîte mail.
     messages: conv.messages.map(message => {
@@ -66,7 +67,7 @@ export async function importConversationFromFile(file: File): Promise<string> {
   const projectHistory = hasProjectHistory(original), euOnly = isProjectEU(original)
   if (original.tags !== undefined && (!Array.isArray(original.tags) || original.tags.length > 100 || original.tags.some(tag => typeof tag !== 'string' || tag.length > 200))) throw new Error('Étiquettes importées invalides')
   if (original.usedModels !== undefined && (!Array.isArray(original.usedModels) || original.usedModels.length > 100 || original.usedModels.some(model => typeof model !== 'string' || model.length > 200))) throw new Error('Modèles importés invalides')
-  const { projectId: _foreignProject, hasProjectContext: _oldFlag, ...safeOriginal } = original
+  const { projectId: _foreignProject, hasProjectContext: _oldFlag, comparison: _foreignGroup, ...safeOriginal } = original
   const newConv: Conversation = {
     ...safeOriginal,
     euOnly,

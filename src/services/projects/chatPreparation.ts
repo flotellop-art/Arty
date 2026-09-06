@@ -17,7 +17,7 @@ export interface ProjectSelection { mode: 'search' | 'overview'; documentIds: st
 export type ProjectReview = { kind: 'select'; project: Project } | {
   kind: 'confirm'; context: ProjectContext | null; provider: 'claude' | 'mistral';
   question: string; textChars: number; binaryBytes: number; historyMessages: number;
-  files: string[]; systemPrompt: string
+  files: string[]; systemPrompt: string; comparisonModels?: [string, string]
 }
 export type ReviewProjectRequest = (review: ProjectReview, signal: AbortSignal) => Promise<ProjectSelection | boolean | null>
 type ClaudeMessages = Awaited<ReturnType<typeof buildApiMessages>>
@@ -65,18 +65,20 @@ export interface PreparedProjectChat {
   beforeFirstRequest(): Promise<void>
 }
 
-export async function prepareProjectChat(args: {
+export interface ProjectPayloadArgs {
   conversation: Conversation; messages: Message[]; query: string; effectiveQuestion?: string; provider: 'claude' | 'mistral';
   preparation: DocumentPreparation; signal: AbortSignal; review: ReviewProjectRequest
-}): Promise<PreparedProjectChat> {
-  const { preparation, signal, review } = args
+}
+
+export async function prepareProjectChat(args: ProjectPayloadArgs): Promise<PreparedProjectChat> {
+  const { preparation, signal } = args
   preparation.assertCurrent()
-  const original = structuredClone(args.conversation), messages = structuredClone(args.messages)
+  const original = structuredClone(args.conversation)
+  const euOnly = isProjectEU(original)
   let expectedConversation = projectConversationKey(original), persisted = false, engaged = false
   let committedMessages = 0, committedLastId: string | undefined
-  const operation = await beginProjectOperation()
-  const assertCurrent = () => {
-    preparation.assertCurrent(); operation.assertCurrent()
+  const assertConversationCurrent = () => {
+    preparation.assertCurrent()
     if (signal.aborted) throw new ProjectError('cancelled')
     const current = storage.getConversation(original.id)
     if (!current) throw new ProjectError('conflict')
@@ -91,6 +93,41 @@ export async function prepareProjectChat(args: {
       if (current.projectId !== original.projectId || isProjectEU(current) !== euOnly ||
         history.length !== committedMessages || history.at(-1)?.id !== committedLastId) throw new ProjectError('conflict')
     }
+  }
+  assertConversationCurrent()
+  const payload = await prepareProjectPayload({ ...args, conversation: original, assertConversationCurrent })
+  const { assertCurrent, validate } = payload
+  return { ...payload,
+    acceptPersisted(conversation) {
+      // Caller has just saved this snapshot without an intervening await.
+      preparation.assertCurrent()
+      if (persisted || conversation.id !== original.id || conversation.projectId !== original.projectId || isProjectEU(conversation) !== euOnly) throw new ProjectError('conflict')
+      expectedConversation = projectConversationKey(conversation)
+      const history = conversation.messages.filter(m => m.id !== 'streaming')
+      committedMessages = history.length; committedLastId = history.at(-1)?.id
+      persisted = true; assertCurrent()
+    },
+    async beforeFirstRequest() {
+      if (!persisted) throw new ProjectError('conflict')
+      if (!engaged) { await validate(); engaged = true }
+      assertCurrent()
+    },
+  }
+}
+
+/** One immutable document selection and hydration, independent of how many
+ * conversations will receive its answers. No storage commit or HTTP here.
+ * Each consumer supplies its own source-lifetime guard and commit protocol. */
+export async function prepareProjectPayload(args: ProjectPayloadArgs & {
+  assertConversationCurrent(): void
+}): Promise<Omit<PreparedProjectChat, 'acceptPersisted' | 'beforeFirstRequest'>> {
+  const { preparation, signal, review } = args
+  preparation.assertCurrent(); args.assertConversationCurrent()
+  const original = structuredClone(args.conversation), messages = structuredClone(args.messages)
+  const operation = await beginProjectOperation()
+  const assertCurrent = () => {
+    preparation.assertCurrent(); operation.assertCurrent(); args.assertConversationCurrent()
+    if (signal.aborted) throw new ProjectError('cancelled')
   }
   assertCurrent()
   const euOnly = isProjectEU(original)
@@ -171,19 +208,5 @@ export async function prepareProjectChat(args: {
       mode: context?.mode ?? 'detached', euOnly, partial: context?.truncated ?? false,
       sources: context?.excerpts.map(e => ({ ...e.reference })) ?? [] },
     assertCurrent, validate,
-    acceptPersisted(conversation) {
-      // Caller has just saved this snapshot without an intervening await.
-      preparation.assertCurrent(); operation.assertCurrent()
-      if (persisted || conversation.id !== original.id || conversation.projectId !== original.projectId || isProjectEU(conversation) !== euOnly) throw new ProjectError('conflict')
-      expectedConversation = projectConversationKey(conversation)
-      const history = conversation.messages.filter(m => m.id !== 'streaming')
-      committedMessages = history.length; committedLastId = history.at(-1)?.id
-      persisted = true; assertCurrent()
-    },
-    async beforeFirstRequest() {
-      if (!persisted) throw new ProjectError('conflict')
-      if (!engaged) { await validate(); engaged = true }
-      preparation.assertCurrent(); operation.assertCurrent()
-    },
   }
 }

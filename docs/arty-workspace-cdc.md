@@ -32,7 +32,7 @@ supplémentaire n'est implicite dans ce mandat.
 | W04 | Projets | Créer/renommer/supprimer un projet, consignes propres, conversations associées, bibliothèque de documents réutilisables. Sources identifiables dans le contexte. Recherche bornée, absence de fichier et contexte tronqué explicites. Cloisonnement par compte et projet ; mode Europe conservé. | Bibliothèque web livrée #443 ; conversations web livrées #444 ; recette visuelle/appareil non vérifiée |
 | W05 | Livrables | Export DOCX modifiable et XLSX de tableaux, en plus des exports existants. Téléchargements relus par un parseur indépendant ; cellules dangereuses neutralisées ; aucun HTML actif ni formule arbitraire. Formats et limites documentés. | Web déployé #445 ; recette structurelle vérifiée ; rendu Office/appareil non vérifié |
 | W06 | Continuité | Sauvegarde/restauration explicites puis synchronisation optionnelle multi-appareil chiffrée avant upload, avec secret détenu par l'utilisateur et récupération expliquée. Conflits non destructifs ; reprise hors-ligne ; logout/switch/delete et compte invité traités. Un export manuel seul ne valide pas la synchronisation. | A1 #446, galerie #448, verrou document #449, capture/vérification A2 #451, préparation A3a #452, admission froide #453, runtime isolé inactif #454, migrateur journalisé OFF #455, reprise froide d'effacement v2 OFF #456, reçu distant #457, pont froid/fence v5 OFF #458 et reset local v6/v7 OFF #459 livrés ; restauration/synchronisation non livrées |
-| W07 | Comparaison | Comparer depuis une conversation avec contexte/documents autorisés ; conserver les résultats et poursuivre la réponse choisie sans perdre l'original. Erreurs/coûts/quotas de chaque panneau visibles ; EU et historique privé jamais contournés. | À faire |
+| W07 | Comparaison | Comparer depuis une conversation avec contexte/documents autorisés ; conserver les résultats et poursuivre la réponse choisie sans perdre l'original. Erreurs/coûts/quotas de chaque panneau visibles ; EU et historique privé jamais contournés. | Socle de préparation/réservation local testé ; UI/streams/recette non livrés |
 | W08 | Parcours métier | Trois parcours complets : synthèse documentaire, réponse client préparée, planification Agenda avec confirmation avant écriture. Écran de connexions indiquant disponible/non configuré/non pris en charge selon plateforme. Pas de Drive/Gmail OAuth restreint ni relais IMAP serveur. | À faire |
 | W09 | Mobile et identité | PWA installable ; identité tryarty cohérente ; distribution Android authentifiée et documentée. Ne pas rediriger vers une app Play homonyme. Toute migration appId inclut signatures/OAuth/Firebase/liens vérifiés ; un APK distribué n'est pas une publication Store. | À faire |
 | W10 | Mesure | Instrumentation minimale sans contenu utilisateur : activation, succès/échec des parcours, retour D7/D30 et conversion. Marges fondées sur coût serveur, pas un compteur local. Tableau avec période, échantillon et limites ; aucune métrique inventée. | À faire |
@@ -110,7 +110,7 @@ réels ; préparer protocole et instrumentation sans fabriquer leurs résultats.
 
 ### W06 A3b.8 — préparation de migrations incomplètes avant effacement, OFF
 
-Implémenté le 6 septembre ; validation globale réussie, livraison en cours. Cette
+Livré par #461 le 6 septembre ; activation isolée toujours OFF. Cette
 préparation consentie complète le journal/copies jusqu'à v3 verified sans v2
 ready ni session privée. Un nouveau document garde donc le choix d'effacer A
 même si sa clé manque. Inspection readonly, plan/header/snapshot privé figés ;
@@ -152,6 +152,63 @@ jamais downgrade/purge des journaux. Pas de télémétrie globale disponible.
 W06 reste partiel : capacité durable, sources divergentes, anonymat, recette
 UI/appareil, restauration et synchronisation restent distincts. La preuve
 JSDOM/fake-IDB ne vaut pas une recette navigateur ou APK installé.
+
+Reçus #461 : head `07702cb00e237dea8a5243af38637fb2cade8961`, CI PR
+`34002162619` entièrement verte ; preview `f2b33676-6819-4980-bc02-c37a9342b286`
+et GET lecture seule verts avant fusion normale à 00:52:30 UTC. Main
+`ca31dceac79e82a5c778d8769068e8b71a1529cf`, CI main `34002424719` réussie
+à 00:58:01 UTC. Run APK `34002424730` réussi à 00:59:51 UTC : APK signé
+à 00:59:42, distribution Firebase à 00:59:48, nettoyage des secrets réussi.
+Ce reçu ne prouve pas une installation ni une publication Play Store.
+
+Pages production `c0b92ac0-ae70-41ae-a660-00f77210389d`, URL immutable
+<https://c0b92ac0.appfacade.pages.dev>. GET à 00:55:37.429 puis 01:06:55.896 UTC :
+tryarty.com et immutable servent le même `index-DFpdRDPW.js` (285 736 octets,
+SHA-256 `a8e721849f4cee36a44ced897be0523eca02d25cba4c5212ed031bd85613daa0`)
+et `App-DCOXHnlX.js` (SHA-256
+`6377ff61358ad437cb264b0b19fee6c7ef728ff3d9f1a36a25ea7d4245ae8719`).
+Consultation du reçu invalide 400/no-store ; opération synthétique aléatoire
+200/unknown/no-store. Aucun POST, authentification ou effacement de compte.
+
+### W07 — comparaison contextuelle, travail local non livré
+
+Branche `codex/contextual-comparison`, base main #461. Les deux contre-revues
+indépendantes ont imposé : deux modèles admissibles, pas nécessairement deux
+fournisseurs ; préparation documentaire commune ; réservation atomique locale
+avant HTTP ; registre de streams partagé ; inertie documentaire durable et
+absence d'autorité de navigation importée. Décision et limites dans
+`ADR_CONTEXTUAL_COMPARISON.md`. W06 demeure ouvert en parallèle.
+
+Socle local : extraction de `prepareProjectPayload` sans retirer le contrat
+de commit/post-auth du chat projet ; capture du préfixe d'une question existante,
+Office lu une seule fois, même sélection actuelle de projet pour les deux
+panneaux, branches profondes gardant les références de fichiers, publication
+commune avec garde propriétaire. Quota avant commit ne crée aucune branche ;
+échec de nettoyage après commit ne transforme plus un succès en échec annoncé.
+Les liens de comparaison sont exclus des JSON importés/exportés et du mapping
+backup existant ; la branche reste documentaire sans eux.
+
+Tests du socle : 85 tests ciblés verts, typechecks front/back verts. Ce sont des
+builders/parsers/stockage réels avec mocks de portée, fichiers et bibliothèque ;
+aucun appel fournisseur. L'UI, les streams partagés, la fiche d'erreurs/coûts,
+la reprise et la continuation ne sont pas encore implémentés. W07 n'est donc
+ni utilisable ni livré à ce checkpoint ; ne pas publier ce socle seul comme
+une comparaison terminée.
+
+Dernières contre-revues : GO limités au socle, pas à la livraison W07. Retrait
+des fact-checks actifs recopiés (preuves terminées/restaurées conservées),
+refus des galeries malformées présentes et du suffixe ajouté avant HTTP.
+Les refus/annulations demandent un nouvel acteur et un nouveau consentement.
+La preuve GC porte sur les références candidates, pas encore sur une relecture
+chiffrée de la survivante après reload. La verticale prévue doit le démontrer.
+
+Verify locale finale du socle : exit 0, 269 suites, 3 199 tests verts + 1 ignoré,
+typechecks front/back, add-on/no-CASA, build et worker Office réel en VM verts.
+Couverture statements 68,44 %, branches 63,47 %, fonctions 74,22 %, lignes
+70,18 %. Cette exécution inclut les neuf derniers négatifs/historiques ajoutés
+après la première verify (3 190 verts). Aucun code changé après la verify
+finale, seulement ce reçu documentaire. Branche locale uniquement à ce stade :
+pas de nouvelle PR ni de déploiement du socle W07.
 
 ### W06 A3b.7 — effacement depuis une migration complète interrompue, candidat OFF
 

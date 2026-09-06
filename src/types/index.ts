@@ -134,6 +134,8 @@ export interface Message {
 }
 
 export interface Conversation {
+  /** Private contextual result grouping, never routing or imported authority. */
+  comparison?: import('../services/comparator/contextualPreparation').ContextualComparison
   id: string
   title: string
   messages: Message[]

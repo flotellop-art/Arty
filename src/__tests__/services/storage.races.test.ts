@@ -23,6 +23,42 @@ beforeEach(() => {
 })
 afterEach(() => vi.restoreAllMocks())
 describe('Conversation storage: owner, generation and recoverability', () => {
+  it('inserts both branches with one durable write, detaches caller objects and retains existing history', () => {
+    store.saveConversation(conv('source'))
+    const branches = [conv('one'), conv('two')]
+    branches[0]!.messages = [{ id: 'q', role: 'user', content: 'Question', timestamp: 1, files: [{ id: 'file', name: 'a.txt', type: 'text/plain' }] }]
+    const writes = vi.spyOn(Storage.prototype, 'setItem'), guard = vi.fn()
+    store.insertConversationsAtomically(branches, guard)
+    expect(writes.mock.calls.filter(([k]) => k === key('a'))).toHaveLength(1)
+    expect(store.getConversations().map(c => c.id)).toEqual(['one', 'two', 'source'])
+    branches[0]!.messages[0]!.files![0]!.name = 'Mutated'
+    expect(store.getConversation('one')?.messages[0]?.files?.[0]?.name).toBe('a.txt')
+    expect(guard).toHaveBeenCalled()
+  })
+  it.each(['quota', 'duplicate', 'existing', 'guard', 'locked'] as const)('atomic %s refusal publishes neither branch', mode => {
+    localStorage.setItem('arty-conv-encryption-disabled', '1')
+    store.saveConversation(conv('source'))
+    const before = localStorage.getItem(key('a')), branches = [conv('one'), conv('two')]
+    const guard = () => { if (mode === 'guard') throw new Error('Cancelled') }
+    if (mode === 'duplicate') branches[1]!.id = 'one'
+    if (mode === 'existing') branches[1]!.id = 'source'
+    if (mode === 'locked') { localStorage.removeItem(key('a')); localStorage.setItem(key('a', '-enc'), 'LOCKED'); store.resetConversationMemCache() }
+    if (mode === 'quota') vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new DOMException('Quota', 'QuotaExceededError') })
+    expect(() => store.insertConversationsAtomically(branches, guard)).toThrow()
+    if (mode !== 'locked') { expect(localStorage.getItem(key('a'))).toBe(before); expect(store.getConversations().map(c => c.id)).toEqual(['source']) }
+    else expect(localStorage.getItem(key('a', '-enc'))).toBe('LOCKED')
+  })
+  it('post-commit killswitch cleanup failure reports success and retains canonical branches', () => {
+    localStorage.setItem('arty-conv-encryption-disabled', '1')
+    store.saveConversation(conv('source'))
+    localStorage.setItem(key('a', '-enc'), 'OLD-CIPHER')
+    vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => { throw new DOMException('Denied', 'SecurityError') })
+    expect(() => store.insertConversationsAtomically([conv('one'), conv('two')], () => {})).not.toThrow()
+    expect(store.getConversations().map(c => c.id)).toEqual(['one', 'two', 'source'])
+    store.resetConversationMemCache()
+    expect(store.getConversations().map(c => c.id)).toEqual(['one', 'two', 'source'])
+    expect(localStorage.getItem(key('a', '-enc'))).toBe('OLD-CIPHER')
+  })
   it('late encryption A cannot replace B ciphertext or remove its newer safety net', async () => {
     const pending = defer<string>(); vi.mocked(encrypt).mockReturnValueOnce(pending.promise)
     store.saveConversation(conv('a1'))
