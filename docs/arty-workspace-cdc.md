@@ -26,11 +26,11 @@ supplémentaire n'est implicite dans ce mandat.
 
 | ID | Lot | Résultat observable et recette | État |
 |---|---|---|---|
-| W01 | Fondations | DOCX : paragraphes et tableaux ; XLSX : feuilles nommées et cellules identifiées. Contenu réellement injecté, accents conservés ; erreurs visibles sur ancien format, fichier chiffré/corrompu ou limite dépassée. Même résultat en nouvel envoi, historique et retry, dont Android et mode Europe. Aucun macro, formule, lien externe exécuté ; ressources bornées ; aucune pièce jointe en base64 dans localStorage. | Web déployé, PR #439 ; recette visuelle/appareil non vérifiée |
+| W01 | Fondations | DOCX : paragraphes et tableaux ; XLSX : feuilles nommées et cellules identifiées. Contenu réellement injecté, accents conservés ; erreurs visibles sur ancien format, fichier chiffré/corrompu ou limite dépassée. Même résultat en nouvel envoi, historique et retry, dont Android et mode Europe. Aucun macro, formule, lien externe exécuté ; ressources bornées ; aucune pièce jointe en base64 dans localStorage. | Web déployé, PR #439 ; recette App/Chrome locale FR/Claude et EN/Mistral-EU acquise sur candidat #479 (OFFICE_BROWSER_RECIPE.md), appareil/fournisseurs réels non vérifiés |
 | W02 | Confiance | Essai annoncé conforme au plan servi. BYOK gratuit distinct du Pro optionnel ; conseiller sans licence fictive. Promesses de stockage et de transit exactes FR/EN, page publique cohérente. Aucun quota ni accès serveur élargi implicitement. | Web déployé, PR #437 ; recette visuelle/appareil non vérifiée |
 | W03 | Catalogue | Un catalogue partagé aligne comparaison, sélecteurs, labels et éligibilité selon le compte (pas une garantie fournisseur). Modèle demandé, transmis par le proxy et signalé par le fournisseur distingués. Tests contre la dérive et contre l'accès premium hors droit. | Web déployé, PR #440 ; recette visuelle/appareil non vérifiée |
 | W04 | Projets | Créer/renommer/supprimer un projet, consignes propres, conversations associées, bibliothèque de documents réutilisables. Sources identifiables dans le contexte. Recherche bornée, absence de fichier et contexte tronqué explicites. Cloisonnement par compte et projet ; mode Europe conservé. | Bibliothèque web livrée #443 ; conversations web livrées #444 ; recette visuelle/appareil non vérifiée |
-| W05 | Livrables | Export DOCX modifiable et XLSX de tableaux, en plus des exports existants. Téléchargements relus par un parseur indépendant ; cellules dangereuses neutralisées ; aucun HTML actif ni formule arbitraire. Formats et limites documentés. | Web déployé #445 ; recette structurelle vérifiée ; rendu Office/appareil non vérifié |
+| W05 | Livrables | Export DOCX modifiable et XLSX de tableaux, en plus des exports existants. Téléchargements relus par un parseur indépendant ; cellules dangereuses neutralisées ; aucun HTML actif ni formule arbitraire. Formats et limites documentés. | Web déployé #445 ; téléchargement réel Chrome FR/EN et relecture indépendante DOCX/XLSX acquis sur candidat #479 (OFFICE_BROWSER_RECIPE.md) ; rendu Office/appareil non vérifié |
 | W06 | Continuité | Sauvegarde/restauration explicites puis synchronisation optionnelle multi-appareil chiffrée avant upload, avec secret détenu par l'utilisateur et récupération expliquée. Conflits non destructifs ; reprise hors-ligne ; logout/switch/delete et compte invité traités. Un export manuel seul ne valide pas la synchronisation. | Restauration Web activée et livrée #478 (WORKSPACE_RESTORE_PUBLISHER.md), après fondations #446–459 et annulation #477 ; préparation explicite, journal v8 et repli compatibles. Synchronisation distante non livrée, accès de configuration Cloudflare expiré ; démarrage/recette physique APK non attestés |
 | W07 | Comparaison | Comparer depuis une conversation avec contexte/documents autorisés ; conserver les résultats et poursuivre la réponse choisie sans perdre l'original. Erreurs/coûts/quotas de chaque panneau visibles ; EU et historique privé jamais contournés. | Web livré #462 ; recette App/navigateur synthétique vérifiée ; APK distribuée, installation physique et OAuth/facturation réels non attestés |
 | W08 | Parcours métier | Trois parcours complets : synthèse documentaire, réponse client préparée, planification Agenda avec confirmation avant écriture. Écran de connexions indiquant disponible/non configuré/non pris en charge selon plateforme. Pas de Drive/Gmail OAuth restreint ni relais IMAP serveur. | Socle Google/BYOK #463, transport Agenda #464, pont copie documentaire/Agenda #465, synthèse guidée #466, statut client #467, formulaire client #468/#469 et Connexions #470 livrés web ; recettes App/navigateur synthétiques vérifiées ; APK distribuées, installation physique et intégrations réelles non attestées |
@@ -159,6 +159,23 @@ Repli sur `36d432d` (ou révocation ciblée sur une base compatible) : conserver
 les lecteurs/restauration #478 et `ISOLATED_WORKSPACE_ENABLED=true`. Aucune
 migration de schéma ou notice publique ajoutée dans ce lot. CI, preview et
 production restent à attester pour ce candidat ; testé localement ≠ livré.
+
+La recette Office pré-fusion #479 a révélé un défaut antérieur : le clic Stop
+transmettait un événement React pris pour un identifiant de conversation.
+Deux contre-revues confirment la correction d'une ligne au composeur partagé,
+sans changer les arrêts explicites par ID. Test bouton + hook rouge avant puis
+vert après, variantes Chat/Home, flux voisin préservé. Chrome FR/Claude et
+EN/Mistral-EU : imports/historique/retry, Stop clic/Entrée/Espace, téléchargements
+DOCX/XLSX relus indépendamment ; reçus dans `OFFICE_BROWSER_RECIPE.md`.
+Un repli vers `36d432d` réintroduirait aussi ce défaut Stop connu.
+
+Première CI #479 `34046137950` : Android/growth/Pages réussis, app en échec
+avant cinq tests à cause de l'import ESM `node:sqlite` sous Node 22.23.2.
+Échec reproduit localement sous cette version exacte ; chargement natif
+`createRequire` limité au test, sans mock SQL/exclusion/modification CI.
+Vérification complète suivante sous Node 22.23.2 : 326 suites, 4 185 tests
+réussis, 1 sauté ; typecheck/build/no-CASA et worker Office isolé réussis,
+log `.playwright-mcp/product-measurement-verify-node22.log`. Nouvelle CI exigée.
 
 L'activation exige une décision du responsable sur l'information préalable :
 les politiques publiées promettent un préavis de 30 jours pour les changements

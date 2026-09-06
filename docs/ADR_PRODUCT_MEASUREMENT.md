@@ -182,6 +182,21 @@ déjà déployé. Ne pas créer de secret/binding/cron en contournant cet accès
   `.playwright-mcp/product-measurement-browser.mjs` et `.log`, captures
   `product-measurement-{fr,en}-{390,1280}.png` et variantes `withdraw`/`report`.
   Pas de téléphone physique ni de collecte Google/prod pour ces recettes.
-- À terminer : notice et décision de publication, puis PR/CI/Pages dans le
+- PR #479 ouverte. Son premier passage CI `34046137950` échoue avant cinq
+  tests au chargement ESM de `node:sqlite` sous Node 22.23.2 (Android et Pages
+  réussis). Reproduit sous ce Node exact ; import natif via `createRequire`
+  uniquement dans le test, véritable SQLite conservé. Aucune exclusion de
+  suite, réduction de couverture ou modification de la CI. [Documentation
+  Node 22 : SQLite](https://nodejs.org/download/release/latest-jod/docs/api/sqlite.html).
+- Recette Office réelle App/Chrome pré-fusion : défaut Stop antérieur détecté,
+  corrigé à la frontière événement DOM après deux contre-revues. Nouveau test
+  vrai composeur + vrai hook rouge→vert, Chat/Home, voisin non annulé et
+  partiel conservé. Recette imports/historique/retry/Stop clavier/exports :
+  `OFFICE_BROWSER_RECIPE.md`. Aucun changement du gate de mesure.
+- Vérification complète après ces corrections sous Node 22.23.2 : **326 suites,
+  4 185 tests réussis, 1 ignoré**, typecheck/build/no-CASA/add-on/worker Office
+  réussis. Journal `.playwright-mcp/product-measurement-verify-node22.log`.
+  Repli `36d432d` compatible avec #478, mais réintroduirait le défaut Stop.
+- À terminer : notice et décision de publication, puis nouvelle CI/Pages dans le
   périmètre retenu. Aucun résultat de production W10 n'est attesté ici.
   D7/D30, activation/cohortes et conversion restent ouverts.

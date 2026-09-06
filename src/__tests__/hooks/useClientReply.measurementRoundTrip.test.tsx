@@ -1,7 +1,8 @@
 import 'fake-indexeddb/auto'
 import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { DatabaseSync } from 'node:sqlite'
+import { createRequire } from 'node:module'
+import type { DatabaseSync as SQLiteDatabase } from 'node:sqlite'
 import type { Env } from '../../../functions/env'
 import { onRequest } from '../../../functions/api/measurement/client-reply-v1'
 import { PRODUCT_MEASUREMENT_SCHEMA_SQL } from '../../../functions/api/_lib/productMeasurement'
@@ -26,7 +27,10 @@ vi.mock('../../hooks/usePlanStatus', () => ({ usePlanStatus: () => ({ plan: 'vip
 // Miniflare's synchronous proxy is not compatible with jsdom's URL globals.
 // This end-to-end UI recipe executes the actual collector SQL in SQLite;
 // d1.productMeasurement.test.ts separately exercises the same writer in D1.
-let raw: DatabaseSync, h: { db: D1Database; env: Env }, serial = 0, owner = ''
+// Node 22 has SQLite, but Vitest/Vite's jsdom builtin external list omits its
+// prefix-only module. Native require keeps the real database, not a SQL mock.
+const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as typeof import('node:sqlite')
+let raw: SQLiteDatabase, h: { db: D1Database; env: Env }, serial = 0, owner = ''
 beforeAll(async () => {
   raw = new DatabaseSync(':memory:')
   const db = { prepare(sql: string) {
