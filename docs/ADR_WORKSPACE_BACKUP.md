@@ -1318,3 +1318,36 @@ pas encore un effacement alternatif pour ces états. Pas de restauration/sync
 livrée ni clôture W06. JSDOM/fake-IDB simulent documents et rechargements ; les
 tests natifs de #459 ne constituent pas une recette UI APK de cette nouveauté.
 La protection reste coopérative, non atomique entre DB et LS.
+
+##### Préparation A3b.8 — conserver l'accès froid aux migrations incomplètes
+
+Deux contre-revues readonly après #460 identifient un vrai manque : resume
+termine en v2 ready, qui ouvre App, puis l'effacement ordinaire demande une
+session A. Ce repli n'est pas universel si sa clé est perdue. Proposition unique
+bornée (non implémentée) : action explicitement consentie de préparation des
+copies, mode d'acteur immuable « verified-only », arrêt après attestations
+physiques et checkpoint v3 verified, jamais v2 ready. Rechargement volontaire,
+puis inspection/sélection/confirmation v3→v6 de #460 et nettoyeur existant.
+Aucun nouveau format, aucun owner/consentement transféré en LS/sessionStorage.
+La préparation écrit des copies et demande de la capacité ; elle n'efface rien.
+
+Réutiliser les contrôles du migrateur (plan/source exacts, versions par phase,
+putRows sans écrasement divergent), avec point d'arrêt interne et méthode
+publique nommée, pas un booléen générique mutable par appel. Retry conserve le
+mode et le header/job admis ; un v2 ready n'est jamais un acquittement de cette
+préparation. Tester perte d'acquittement autour du checkpoint verified.
+
+Reserved sans plan est distinct : aucun hash initial n'a été conservé. Exiger
+readonly un journal absent ou identité exacte et raw stores vides, destinations
+absentes, aucune clé isolée, sources v0/v1 cohérentes. Capturer le premier
+inventaire stable, annoncer explicitement qu'il provient des données présentes,
+puis revalider exactement avant journalisation. Tout fragment sans plan refuse.
+Ne pas prétendre prouver la fidélité à un inventaire initial non durable.
+
+Recette : A sans clé avant le premier snapshot, B déchiffrable ; reserved,
+barrier et copied-partial, quota transitoire/retry, UI→verified→nouveau document
+→choix A→v6→coupure nettoyage→v7, B login/lecture/écriture/relecture. Aucun privé,
+KDF, réseau ni effacement avant confirmation ; OAuth/verifier inchangés.
+Quota durable, source divergente même A, plan perdu après reserved ou receipt
+étranger restent des refus et gates d'activation : ne pas rebâtir B depuis le
+hash global ni promettre qu'une préparation avec copies libère de l'espace.

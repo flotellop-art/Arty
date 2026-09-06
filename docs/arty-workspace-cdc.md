@@ -110,7 +110,7 @@ réels ; préparer protocole et instrumentation sans fabriquer leurs résultats.
 
 ### W06 A3b.7 — effacement depuis une migration complète interrompue, candidat OFF
 
-Implémenté le 6 septembre ; vérification complète réussie, livraison en cours.
+Livré par #460 le 6 septembre, activation isolée toujours OFF.
 La supersession v3→v6 locale est proposée uniquement après attestation exacte
 source/journal/destinations/targets LS pour verified ou copied physiquement
 complet. L'aperçu reste privé et figé jusqu'au CAS. Aucun effacement ni marqueur
@@ -148,6 +148,25 @@ utilisateur modifiée. Repli en cas de régression login/logout/legacy : PR de
 revert par la même CI, jamais downgrade/effacement de reçus v6/v7. Pas d'accès
 à une télémétrie globale d'erreurs/latence : ne pas en inventer. W06 reste
 incomplet (v3 précoce/partiel, restauration, synchronisation, recette appareil).
+
+Livraison : [PR #460](https://github.com/flotellop-art/Arty/pull/460), head
+`f6040510795d7565f63be17769da7eea2b3340f4`, squash normal le 06/09 à 00:14:46 UTC,
+main `68a80ef63952eed3a5bef3a6a4fcb1a74531d991`. CI PR `34000596175` entièrement
+verte (web, Android, orchestrateur), preview Pages
+`a6ac5405-1df0-4819-b01c-7f5bee642be0` et sonde GET à 00:13:33.619 UTC réussies.
+Pages production `1f5d3cb2-25b2-422e-9673-2fd73be4b8ff` réussi ; sonde publique
+00:16:11.627 UTC sur tryarty.com et https://1f5d3cb2.appfacade.pages.dev : mêmes
+assets `index-3CCF14PE.js` (282 484 octets) et `App-C-KfLNs9.js`, SHA-256
+respectifs `44d42a04d72207ea37e7022670576c85347da949a7cc6c090aa14a1cf5cd0493`
+et `e0e1c832ec52e366ed8165ed76b1701f86416d4a08cd64c12d63007baa5320fe`.
+GET reçu invalide 400/no-store ; consultation synthétique 200/unknown/no-store.
+Aucun POST, authentification ou effacement réel. CI main `34000778082` et
+build/distribution APK `34000778099` encore en cours à cette sonde. CI main
+entièrement réussie à 00:18:53 UTC. Build/distribution APK ensuite réussi à
+00:22:13 UTC : compilation signée terminée à 00:22:01, transfert Firebase à
+00:22:08, nettoyage des fichiers de secrets réussi. Pas une installation sur
+téléphone utilisateur ni une publication Store. Sonde répétée à 00:22:32.695 UTC :
+mêmes assets, empreintes et réponses GET. Aucune télémétrie générale attestée.
 
 ### W06 A3b.6 — nouvel espace local après effacement, candidat OFF
 
