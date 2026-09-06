@@ -9,6 +9,7 @@ import { openDeclaredDatabase } from '../workspaceWriter/declaredDatabase'
 import { captureOwnerErasureGuard } from './localErasureGuard'
 import { parseRemoteErasure, type RemoteErasureIntent } from '../accountErasureProtocol'
 import { parseAccountErasureRecord } from '../accountErasureJournal'
+import { parseSyncStorageKey, parseSyncStorageRow, syncStorageContext } from '../workspaceSync/localFormat'
 export { blockProjectOperations } from './localErasureGuard'
 import { PROJECT_LIMITS, ProjectError, boundedInteger, validProject, validProjectId, validDescriptor,
   type PreparedProjectDocument, type ProjectDocument, type Project, type ProjectSummary } from './types'
@@ -489,6 +490,17 @@ export async function purgeProjectsForAccount(owner: string, assertCurrent: () =
       }
     }
     await tx.objectStore('usage').delete(owner); assertCurrent()
+    const context = syncStorageContext(getDocumentStorageLayout(), db)
+    let syncCursor = await tx.objectStore('meta').openKeyCursor()
+    while (syncCursor) {
+      assertCurrent()
+      const key = parseSyncStorageKey(syncCursor.key)
+      if (key) {
+        const row = parseSyncStorageRow(syncCursor.key, await tx.objectStore('meta').get(syncCursor.key), context)
+        if (row.owner === owner) await tx.objectStore('meta').delete(syncCursor.key)
+      }
+      syncCursor = await syncCursor.continue()
+    }
     await tx.done; assertCurrent()
   } catch (error) {
     try { tx.abort() } catch { /* completed */ }

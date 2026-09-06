@@ -1,11 +1,12 @@
 import { encodeSyncManifest, parseSyncManifest } from './schema'
 import { reconcileSyncManifests } from './causal'
 import { SYNC_LIMITS, type SyncManifest, type SyncValue } from './types'
+import { parseSyncStateBinding, SYNC_STATE_BYTES, SYNC_STATE_OVERHEAD, syncBase64ToBytes, syncBytesToBase64 } from './localFormat'
 import { SYNC_ENVELOPE_LIMITS, parseSyncEnvelopeReference, envelopeFail as fail, envelopeFields as exact,
   envelopeScope as scope, assertEnvelopeScope as sameScope, envelopeHash as hash, type SyncVaultScope, type SyncEnvelopeReference } from './envelopeFormat'
 export { SYNC_ENVELOPE_LIMITS, SyncEnvelopeError, parseSyncEnvelopeReference, type SyncVaultScope, type SyncEnvelopeReference } from './envelopeFormat'
 
-/** Candidate transport only: no storage, network, UI, ACK or server authority. */
+/** Encryption only: no storage, network, UI, ACK or server authority. */
 const L = SYNC_ENVELOPE_LIMITS, HEADER = 104, PREFIX = 9, TAG = 16
 const utf8 = new TextEncoder(), MAGIC = utf8.encode('ARTYSYN1')
 const hex = (bytes: Uint8Array): string => Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('')
@@ -51,6 +52,48 @@ function active(vault: UnlockedSyncVault): VaultState {
   const state = vaults.get(vault)
   if (!state) return fail('locked')
   state.assertCurrent(); return state
+}
+
+const STATE_MAGIC = utf8.encode('ARTYSST1'), STATE_HEADER = 52
+async function stateKey(state: VaultState, header: Uint8Array) {
+  state.assertCurrent()
+  const key = await crypto.subtle.deriveKey({ name: 'HKDF', hash: 'SHA-256', salt: header.slice(8, 40),
+    info: utf8.encode('arty-workspace-sync/local-state/v1') }, state.root!, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt'])
+  state.assertCurrent(); return key
+}
+function stateAAD(binding: unknown, state: VaultState) {
+  const parsed = parseSyncStateBinding(binding); sameScope(parsed, state.scope)
+  // Authenticates owner, generation, enrollment, revision AND the entire exact
+  // pending reference, including its ciphertext digest and byte length.
+  return utf8.encode(JSON.stringify(parsed))
+}
+export async function sealSyncLocalState(vault: UnlockedSyncVault, binding: unknown, plaintext: Blob): Promise<string> {
+  const state = active(vault), aad = stateAAD(binding, state), input = immutableBlob(plaintext)
+  if (!input.size || input.size > SYNC_STATE_BYTES) return fail('limit')
+  const header = new Uint8Array(STATE_HEADER); header.set(STATE_MAGIC)
+  header.set(crypto.getRandomValues(new Uint8Array(44)), 8)
+  const raw = await bytes(input, state)
+  try {
+    const key = await stateKey(state, header)
+    const sealed = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv: header.slice(40), additionalData: aad, tagLength: 128 }, key, raw))
+    state.assertCurrent(); await state.validate(); state.assertCurrent()
+    const packet = new Uint8Array(STATE_HEADER + sealed.length); packet.set(header); packet.set(sealed, STATE_HEADER)
+    return syncBytesToBase64(packet, SYNC_STATE_OVERHEAD + 1, SYNC_STATE_BYTES + SYNC_STATE_OVERHEAD)
+  } finally { raw.fill(0) }
+}
+export async function openSyncLocalState(vault: UnlockedSyncVault, binding: unknown, ciphertext: string) {
+  const state = active(vault), aad = stateAAD(binding, state)
+  const packet = syncBase64ToBytes(ciphertext, SYNC_STATE_OVERHEAD + 1, SYNC_STATE_BYTES + SYNC_STATE_OVERHEAD)
+  if (!STATE_MAGIC.every((v, i) => packet[i] === v)) return fail('format')
+  const key = await stateKey(state, packet.slice(0, STATE_HEADER))
+  let plaintext: Uint8Array | undefined
+  try {
+    try { plaintext = new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: packet.slice(40, STATE_HEADER), additionalData: aad, tagLength: 128 }, key, packet.slice(STATE_HEADER))) }
+    catch { state.assertCurrent(); return fail('integrity') }
+    state.assertCurrent(); await state.validate(); state.assertCurrent()
+    const blob = new Blob([plaintext], { type: 'application/octet-stream' })
+    return Object.freeze({ get plaintext() { state.assertCurrent(); return blob }, validate: () => state.validate() })
+  } finally { plaintext?.fill(0) }
 }
 
 export function createSyncRecoveryCode(): string {

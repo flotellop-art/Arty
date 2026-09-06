@@ -10,6 +10,7 @@ import { assertDocumentWorkspace, documentWorkspaceSignal, getDocumentStorageLay
 import { getActiveUserId, getActiveSessionEpoch, getSessionProjectFence, PROJECT_ERASURE_FENCE_KEY } from '../userSession'
 import { captureOwnerErasureGuard } from '../projects/localErasureGuard'
 import { LocalCryptoRecoveryRequired } from './cryptoProvisioning'
+import { parseSyncStorageKey, parseSyncStorageRow, syncStorageContext } from '../workspaceSync/localFormat'
 
 const refuse = (): never => { throw new LocalCryptoRecoveryRequired() }
 /** A private login-only protocol, not an allowReset boolean on initCrypto.
@@ -130,7 +131,10 @@ async function inspectEmptyCopies(layout: IsolatedWorkspaceLayout, owner: string
         await scanRawStore(db, store, guard, retired.signal, async rows => {
           for (const row of rows) {
             if (store === 'meta') {
-              if (row.key !== 'erasure-fence' || typeof row.value !== 'string' || !row.value.length) refuse()
+              if (parseSyncStorageKey(row.key)) {
+                const context = active && !journal ? syncStorageContext(layout, db) : undefined
+                if (parseSyncStorageRow(row.key, row.value, context).owner === owner) refuse()
+              } else if (row.key !== 'erasure-fence' || typeof row.value !== 'string' || !row.value.length) refuse()
             } else {
               const owners = new Set<string | null>(); observeRawOwner(store, row, owners, 'initial')
               if (owners.size !== 1 || owners.has(owner)) refuse()

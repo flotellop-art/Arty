@@ -2019,7 +2019,18 @@ Vérification complète Node 22 réussie : 334 suites / 4 387 tests réussis et
 1 ignoré préexistant, build et vrai worker Office inclus. Deux contre-revues
 readonly clôturées ; candidat ni poussé ni déployé.
 
-L'outbox, la capture fidèle et la persistance du mapping ne sont pas encore
-réalisées. Elles constituent la suite de B2b ; ni cet upgrade, ni le codec B2a
-ne permettent d'annoncer la synchronisation. L'ensemble des obligations W06
-et du cahier des charges reste inchangé.
+La tranche suivante dispose maintenant d'une vraie outbox locale et d'un
+mapping chiffré persisté : adoption atomique état/opération, base ACK séparée,
+reprise des octets exacts, garde de compte et effacement, inventaires raccordés.
+Elle reçoit un snapshot historique détaché ; **la capture fidèle des vrais
+stores n'est pas encore raccordée**. La recette Chrome native finale à 23:26:23 UTC
+confirme réouverture/quota/commit perdu et absence de rechiffrement. Les vrais
+cycles restauration et effacement/reset conservent le paquet de B, même quand
+A n'a plus qu'une opération orpheline. Détails et limites dans l'ADR.
+
+Passe complète finale Node 22 : 336 suites / **4 427 PASS + 1 ignoré**,
+typechecks, couverture, build et vrai worker Office verts. Deux GO readonly
+locaux bornés, aucun défaut bloquant restant identifié. Le candidat
+reste local, START OFF, sans endpoint ni activation UI. Capture stable, rescan,
+transport, ACK, applicateur, effacement serveur et recettes multi-appareils
+restent obligatoires : aucune synchronisation complète annoncée.

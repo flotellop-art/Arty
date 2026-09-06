@@ -2,6 +2,7 @@ import { isolatedWorkspaceLayout, workspaceDataKey } from './layout'
 import { parseOwnedLocalKey, parseLegacyWorkspaceKey, WORKSPACE_SLOTS } from './localOwnership'
 import { rawEncoding, digestRaw, localPairs, validateSessions, localTargets, RAW_STORES, observeRawOwner, type MigrationPlan, type RawStore, type RawRow } from './migrationInventory'
 import { parseConfirmedCleanup, validErasureFence, type ErasureHeader } from './erasureProtocol'
+import { parseSyncStorageKey, parseSyncStorageRow, type SyncStorageContext } from '../workspaceSync/localFormat'
 
 export const equalErasure = (a: unknown, b: unknown) => rawEncoding(a) === rawEncoding(b)
 export const refuseErasure = (): never => { throw new Error('workspace_erasure_unverifiable') }
@@ -28,8 +29,9 @@ export function projectErasurePlan(value: unknown, generation: string, owner: st
     localSource: p.localSource.filter(([key]) => parseLegacyWorkspaceKey(key)!.owner !== owner) }
 }
 
-export function erasureRowOwner(store: RawStore, row: RawRow, erasure: ErasureHeader['erasure']): string | null {
+export function erasureRowOwner(store: RawStore, row: RawRow, erasure: ErasureHeader['erasure'], context?: SyncStorageContext): string | null {
   if (store === 'meta') {
+    if (parseSyncStorageKey(row.key)) return parseSyncStorageRow(row.key, row.value, context).owner
     rawEncoding(row)
     if (row.key === 'erasure-fence' && typeof row.value === 'string' && row.value.length) return null
     const receipt = 'authority' in erasure ? (equalErasure(row.value, erasure.authority) ? erasure.authority : null) : parseConfirmedCleanup(row.value)

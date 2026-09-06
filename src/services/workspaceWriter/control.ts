@@ -9,6 +9,8 @@ import { parseAccountErasureRecord, erasureRecordState, type AccountErasureState
 import { parseResetReadyControl } from './resetProtocol'
 import { parseRestoreHeader, restoreJobKey, type RestoreHeader } from './restoreProtocol'
 import { parseWorkspaceUpgrade, type WorkspaceUpgradeHeader } from './upgradeProtocol'
+import { syncStorageContext, type SyncStorageContext } from '../workspaceSync/localFormat'
+import { inspectSyncInventory } from '../workspaceSync/localInventory'
 
 export const WORKSPACE_CONTROL_DB = 'arty-workspace-control'
 export const WORKSPACE_CONTROL_VERSION = 1
@@ -98,14 +100,14 @@ export async function readWorkspaceStorageLayout(guard: AdmissionGuard, timeoutM
   const stopped = new Promise<never>((_resolve, no) => { rejectStop = no })
   const stop = () => rejectStop(new WorkspaceAdmissionError(timedOut ? 'unavailable' : 'lost'))
   retired.signal.addEventListener('abort', stop, { once: true })
-  const inspect = async (name: string, version: number, shape: readonly StoreShape[], control = false, required = false, cleanup?: string) => {
+  const inspect = async (name: string, version: number, shape: readonly StoreShape[], control = false, required = false, cleanup?: string, activeLayout?: WorkspaceStorageLayout) => {
     assertCurrent()
     const db = await openExistingDB(name, version, assertCurrent, retired.signal)
     try {
       assertCurrent()
       if (!db) { if (required) reject('corrupt'); return }
       if (db.version !== version || [...db.objectStoreNames].sort().join() !== shape.map(s => s[0]).sort().join()) reject('corrupt')
-      const layout = await inspectDatabase(db, shape, control, assertCurrent, retired.signal, cleanup)
+      const layout = await inspectDatabase(db, shape, control, assertCurrent, retired.signal, cleanup, activeLayout ? syncStorageContext(activeLayout, db) : undefined)
       assertCurrent()
       return layout
     } finally { db?.close() }
@@ -122,7 +124,7 @@ export async function readWorkspaceStorageLayout(guard: AdmissionGuard, timeoutM
         await inspect(LEGACY_WORKSPACE_LAYOUT.projects.name, 2, PROJECT_SHAPE, false, true)
       }
       await inspect(layout.files.name, layout.files.version, FILE_SHAPE, false, layout.kind === 'isolated-v1')
-      await inspect(layout.projects.name, layout.projects.version, PROJECT_SHAPE, false, layout.kind === 'isolated-v1', layout.kind === 'isolated-v1' ? layout.generation : undefined)
+      await inspect(layout.projects.name, layout.projects.version, PROJECT_SHAPE, false, layout.kind === 'isolated-v1', layout.kind === 'isolated-v1' ? layout.generation : undefined, layout)
       assertCurrent()
       return layout
     })()
@@ -140,7 +142,7 @@ export async function readWorkspaceStorageLayout(guard: AdmissionGuard, timeoutM
   }
 }
 
-async function inspectDatabase(db: IDBPDatabase, shape: readonly StoreShape[], control: boolean, assertCurrent: () => void, signal: AbortSignal, cleanup?: string) {
+async function inspectDatabase(db: IDBPDatabase, shape: readonly StoreShape[], control: boolean, assertCurrent: () => void, signal: AbortSignal, cleanup?: string, context?: SyncStorageContext) {
   let layout: WorkspaceStorageLayout | undefined
   const tx = db.transaction(shape.map(s => s[0]), 'readonly')
   const abort = () => { try { tx.abort() } catch { /* settled */ } }
@@ -178,6 +180,8 @@ async function inspectDatabase(db: IDBPDatabase, shape: readonly StoreShape[], c
       if (found > 1) reject('maintenance')
       if (mode) throw new WorkspaceErasureRecoveryAvailable(mode, binding)
     }
+    // Recovery precedes pair validation so a confirmed owner can purge an orphan.
+    if (!control && db.objectStoreNames.contains('meta')) await inspectSyncInventory(tx.objectStore('meta'), context, assertCurrent)
     await tx.done
     assertCurrent()
     return layout

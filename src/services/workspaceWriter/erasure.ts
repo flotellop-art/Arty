@@ -1,4 +1,5 @@
 import type { IDBPDatabase, IDBPTransaction } from 'idb'
+import { syncStorageContext } from '../workspaceSync/localFormat'
 import { openExistingDB } from '../readOnlyExistingDB'
 import { assertNativeErasureOwner, clearColdMailScope } from '../native/coldMailErasure'
 import { ISOLATED_WORKSPACE_ENABLED } from './activation'
@@ -152,6 +153,7 @@ export async function readErasureProof(copies: Copy[], job: IDBPDatabase, header
   let absent = !local.changes.length && equal(plan, redacted)
   const stores: ErasureStoreProof[] = []
   for (const copy of copies) {
+    const syncContext = copy.copy === 'active' ? syncStorageContext(isolatedWorkspaceLayout(header.generation, header.requiredOwners, controlProjectsVersion(header)), copy.projects) : undefined
     let fence: string | undefined
     for (const store of RAW_STORES) {
       const repairedStore = header.version !== 4 && copy.copy === 'active' && store === 'meta'
@@ -159,7 +161,7 @@ export async function readErasureProof(copies: Copy[], job: IDBPDatabase, header
       await scanRawStore(store === 'files' ? copy.files : copy.projects, store, guard.assertCurrent, guard.signal, async rows => {
         for (const row of rows) {
           if (repairedStore && row.key === 'erasure-fence') { if (!validErasureFence(row.value)) return refuse(); continue }
-          if (erasureRowOwner(store, row, header.erasure) === header.erasure.owner) absent = false
+          if (erasureRowOwner(store, row, header.erasure, syncContext) === header.erasure.owner) absent = false
           else { hash = await digestText(JSON.stringify([hash, await digestRaw([row.key, row.value])])); count++ }
           if (store === 'meta' && row.key === 'erasure-fence') fence = row.value as string
           guard.assertCurrent()
@@ -286,7 +288,8 @@ async function erase(guard: Attempt, knownFinal: unknown, remember: (v: unknown)
     for (const copy of copies) for (const store of RAW_STORES) {
       const db = store === 'files' ? copy.files : copy.projects
       await scanRawStore(db, store, guard.assertCurrent, guard.signal, async rows => {
-        const own = rows.filter(row => erasureRowOwner(store, row, header!.erasure) === header!.erasure.owner)
+        const context = copy.copy === 'active' ? syncStorageContext(layout, copy.projects) : undefined
+        const own = rows.filter(row => erasureRowOwner(store, row, header!.erasure, context) === header!.erasure.owner)
         if (!own.length) return
         if (!equal(await control(guard), header)) return refuse()
         await transaction(db, [store], 'readwrite', guard, async tx => {

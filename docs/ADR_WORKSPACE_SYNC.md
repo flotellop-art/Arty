@@ -394,3 +394,110 @@ ultérieures. Ensuite transport/ACK, applicateur et recettes W06 complètes.
 Le secret verrouillé ne doit pas bloquer le chat local ; une opération déjà
 préparée ne doit pas être remplacée par une édition ultérieure. Il ne faut pas
 activer START ou un writer outbox sur la seule preuve de cette montée.
+
+### B2b — outbox locale réellement persistante (7 septembre, non déployée)
+
+`localOutbox.ts` adopte maintenant un **instantané historique détaché** dans la
+DB projets active physique 2. Il ne lit pas encore les conversations/projets :
+le futur adaptateur de capture doit produire ce snapshot puis organiser le
+rescan. Ce contrat n'atteste ni une lecture atomique de localStorage et deux DB,
+ni la fraîcheur des sources à l'instant du commit. Aucune capture fidèle ou
+politique automatique de sélection n'est déduite des fixtures ci-dessous.
+
+Les lignes fermées `['sync-state', owner]` et
+`['sync-operation', owner, operationId]` sont ajoutées à `meta`, avec une seule
+opération en attente. L'état chiffré conserve la **base ACK exacte**, distincte
+de la tête proposée, et un mapping local/logique immuable par domaine et parent.
+Les références non sélectionnées peuvent réserver une identité sans importer
+leur contenu ; l'adoption ordinaire ne peut réattribuer ni retirer ces identités.
+L'état privé utilise le secret utilisateur du coffre sync, un domaine HKDF
+distinct, un sel et un IV frais et AES-GCM ; l'AAD lie owner, génération,
+inscription, coffre, époque, révision et référence complète du paquet pending
+(identifiant, longueur et hash du ciphertext). Les engagements en clair et les
+identifiants physiques restent dans le ciphertext. L'état est borné à 8 Mio,
+le paquet à 17 Mio ; base64 canonique contrôlé avant décodage, chaque ligne
+reste dans la borne brute existante de 32 Mio. Référence API consultée :
+[Web Cryptography Level 2, draft W3C du 22 avril 2025](https://www.w3.org/TR/2025/WD-webcrypto-2-20250422/),
+pas une preuve de sécurité du produit ni une REC finale de niveau 2.
+
+L'outbox capture elle-même le vrai compte, epoch, clé locale, verrou document,
+layout, fence et garde d'effacement. Le client ne fournit ni owner, garde
+d'autorisation, callback de transaction, ni objet `Prepared` structurel faisant
+autorité. Elle prépare le paquet en interne, chiffre hors transaction puis
+adopte état et opération dans **la même transaction RW meta**, avec CAS de la
+paire précédente, fence et absence par clé du reçu d'effacement (même falsy).
+Un quota entre les écritures abort les deux. Une reprise de commit incertain
+ne reconnaît que cette paire exacte ; une opération A ne peut être remplacée
+par B. Pas d'ACK local fictif ni d'avancement implicite de la base.
+
+L'inscription et les vues RAM ne sont publiées qu'après commit et nouvelle
+vérification de génération. Logout, changement de compte/clé, perte du document
+ou constatation d'un fence IDB divergent retirent la capacité ; un mauvais
+secret ne réinitialise aucune ligne. Verrouiller le coffre conserve la paire
+durable et ne bloque pas les sauvegardes locales ordinaires. La réouverture
+vérifie état privé, base, mapping et paquet puis `resumeSyncUpdate` reprend les
+octets persistés, sans recapture ni nouvel appel de chiffrement.
+
+Les inventaires utilisent le même parseur **pur**, sans importer la clé :
+admission, provisioning, effacement froid, reset, restauration et purge chaude.
+Version 2 seule ne suffit pas : nom actif et génération doivent correspondre
+au layout déclaré ; legacy et journal de migration refusent ces familles.
+La présence d'une opération orpheline interdit le provisioning comme compte
+neuf ; son propriétaire vérifiable peut cependant la purger. Admission et
+reprise exigent une paire cohérente, après priorité à la récupération d'un
+effacement confirmé. Les ciphertexts des autres comptes sont inclus, non
+filtrés, dans les preuves de restauration/effacement. L'admission parcourt les
+clés et lit les lignes une par une, en ne gardant que les identités des paires.
+
+Restauration et outbox partagent une exclusion de publication du même document
+et un compteur monotone : une écriture déjà terminée invalide aussi un ancien
+préflight. L'exclusion est prise avant la preuve finale de restauration et
+relâchée à la fin de la tentative. Dès l'entrée dans l'adoption control, la
+retraite du document précède cette libération, même en erreur ; un échec de
+préflight antérieur ne nécessite pas de retraite. Le travail d'adoption est aussi
+annoncé au registre d'activité existant. Ce mécanisme ne revendique toujours
+pas de transaction globale entre bases.
+
+Deux challenges readonly avant et après code ont notamment fait corriger :
+références historiques non sélectionnées, réattribution de mapping, publication
+RAM après verrouillage réentrant, inscription RAM avant commit, fence durable
+refusé mais clé encore accessible, et course restauration/outbox. GO code bornés,
+sans affirmation de W06 complet.
+
+Preuves : suites nouvelles `workspaceSyncLocalFormat.test.ts` et
+`workspaceSyncLocalOutbox.test.ts`, vrais services de compte/crypto/admission,
+WebCrypto réel et fake-indexeddb. A pending puis vraie sauvegarde B et reboot ;
+mauvais secret ; quota entre les deux writes ; CAS concurrent ; commit perdu ;
+ABA ; falsy erasing ; DB supprimée non recréée ; verrouillage dans le dernier
+retour de validation ; fresh `initCrypto` avec sel absent et state/orphan ;
+purge de A préservant `a-b` et `a:b`. La vraie publication d'archives v1/v2/v3
+préserve une paire B qui se rouvre ensuite. Le vrai cycle effacement froid et
+reset est testé avec paire A complète **et opération A orpheline**, B lisant,
+écrivant et reprenant son paquet inchangé. Une tentative sync pendant le vrai
+commit control de restauration est refusée et la reprise froide reste valide.
+
+Recette `scripts/check-workspace-sync-outbox-browser.mjs`, Chrome 152.0.7977.77,
+le 6 septembre à **23:26:23 UTC** (rejeu final) : vrais IndexedDB, Web Locks et WebCrypto,
+profils synthétiques jetables, pages détruites. Trois scénarios passent :
+réouverture, quota entre writes, coupure après commit avant réponse ; lignes et
+référence exactes, aucun encrypt/aléa à la reprise, sauvegarde locale B coffre
+fermé, zéro erreur de page et zéro appel externe/API. La coupure native est
+enregistrée avant le gestionnaire Promise IDB pour tenir compte du checkpoint
+microtask entre listeners Chrome, différent de fake-indexeddb. Aucune donnée
+de production, aucun override de START, aucun APK ni appareil physique testé.
+
+Vérification complète finale Node 22.23.2 : 336 suites, **4 427 PASS et
+1 ignoré préexistant**, typechecks front/back, couverture, no-CASA, build et
+vrai worker Office. Les deux canaris ajoutés après la première passe à 4 425
+tests sont inclus dans cette dernière passe réussie. Reçus ignorés :
+`workspace-sync-outbox-verify.log`, `workspace-sync-outbox-verify-final.log`,
+`workspace-sync-outbox-targeted.log`, `workspace-sync-outbox-browser.log`,
+`workspace-sync-outbox-browser-final.log`.
+
+Le service d'outbox n'est pas appelé par l'UI ; les inventaires sont raccordés.
+START reste OFF, aucun endpoint, bucket, migration distante, checkout ou secret
+de production modifié. Candidat local non poussé/non déployé. Il reste le
+raccord de capture réelle et stable (dont IDs `streaming`, comparaison avec
+nulls, textes vides, galerie et références), le scan de rattrapage, transport,
+ACK, applicateur sans ping-pong et effacement serveur. Ces travaux restent des
+obligations W06, pas des exclusions du cahier des charges.

@@ -1,4 +1,5 @@
 import type { IDBPDatabase, IDBPTransaction } from 'idb'
+import { parseSyncStorageKey, parseSyncStorageRow, syncStorageContext } from '../workspaceSync/localFormat'
 import { openExistingDB } from '../readOnlyExistingDB'
 import { BackupError } from '../workspaceBackup/types'
 import { PROJECT_LIMITS, boundedInteger } from '../projects/types'
@@ -145,6 +146,9 @@ export async function restoreStoreProof(files: IDBPDatabase, projects: IDBPDatab
     let hash = await digestText('arty-restore-baseline-v1'), count = 0
     await scanRawStore(store === 'files' ? files : projects, store, guard.assertCurrent, guard.signal, async rows => {
       for (const row of rows) {
+        if (store === 'meta' && parseSyncStorageKey(row.key)) {
+          parseSyncStorageRow(row.key, row.value, syncStorageContext(isolatedWorkspaceLayout(p.generation, [], projects.version === 2 ? 2 : 1), projects))
+        }
         if (store === 'usage' && row.key === p.owner) continue
         const copy = targets.get(rawEncoding(row.key))
         if (copy !== undefined) { if (!restoreEqual(copy, row.value)) restoreFail(); continue }
