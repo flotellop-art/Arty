@@ -74,7 +74,7 @@ export function createColdMigrationErasure() {
   })
 }
 
-interface PreparationSnapshot extends CompletedMigration { initialInventory: boolean; copies: unknown[] }
+interface PreparationSnapshot extends CompletedMigration { initialInventory: boolean; journalPresent: boolean; copies: unknown[] }
 interface PreparationProgress {
   plan: MigrationPlan; initialPairs?: [string, string][]
   assertHeader(value: unknown): void
@@ -128,9 +128,85 @@ export function createColdErasurePreparation() {
   })
 }
 
+async function readPreparationSnapshot(header: Readonly<MigrationHeader>, guard: Attempt): Promise<PreparationSnapshot> {
+  const snapshot = await readMigrationSnapshot(header, guard)
+  if (!snapshot.plan.owners.some(owner => { if (owner === null) return false; try { assertNativeErasureOwner(owner); return true } catch { return false } })) return failMigration('no-account')
+  return snapshot
+}
+
+/** One confirmed attempt, including failures and uncertain commits. Only a new
+ * cold document can inspect a new baseline after the private plan is removed.
+ * Sources are never written; this is NOT restoration or account erasure. */
+export function createColdMigrationCancellation() {
+  if (!ISOLATED_WORKSPACE_ENABLED) return failMigration('disabled')
+  const admitted = workspaceAdmission.getRecovery()
+  if (!admitted) return failMigration('missing')
+  const header = parseMigrationHeader(admitted)!, run = coldRunner(workspaceAdmission.claimMaintenance())
+  let preview: PreparationSnapshot | undefined, attempted = false
+  const snapshot = async (guard: Attempt) => {
+    if (header.phase !== 'reserved') return failMigration('unsupported')
+    return readMigrationSnapshot(header, guard)
+  }
+  return Object.freeze({
+    inspect(): Promise<{ initialInventory: boolean }> { return run(async guard => {
+      if (attempted) return failMigration('changed')
+      const current = await snapshot(guard)
+      if (attempted || (preview && !equal(preview, current))) return failMigration('changed')
+      preview ??= structuredClone(current)
+      return { initialInventory: preview.initialInventory }
+    }) },
+    async confirm(): Promise<void> {
+      if (attempted) return failMigration('changed')
+      attempted = true // synchronous, before run/await; coldRunner's busy is not revocation
+      return run(async guard => {
+        if (!preview) return failMigration('missing')
+        const expected = structuredClone(preview)
+        if (!equal(await snapshot(guard), expected)) return failMigration('changed')
+        const assertLocal = () => { guard.assertCurrent(); if (!equal(expected.pairs, localPairs())) failMigration('changed') }
+        for (const [key, value] of localTargets(expected.plan, header.generation)) {
+          await assertControl(header, guard); assertLocal()
+          const present = localStorage.getItem(key)
+          if (present !== null) {
+            if (present !== value) return failMigration('changed')
+            localStorage.removeItem(key)
+            expected.pairs = expected.pairs.filter(([k]) => k !== key)
+            assertLocal()
+          }
+        }
+        if (!equal(await snapshot(guard), expected)) return failMigration('changed')
+        const journal = await inspect(migrationDatabaseName(header.generation), JOURNAL_SHAPE, guard)
+        try {
+          if (!!journal !== expected.journalPresent) return failMigration('changed')
+          if (journal) {
+            if (journal.version !== 1) return failMigration('unsupported')
+            // Snapshot reads do not lock raw stores. Recheck all of them in the
+            // SAME transaction as plan removal, so no private fragment is orphaned.
+            await transaction(journal, ['journal', ...RAW_STORES], 'readwrite', guard, async tx => {
+              const store = tx.objectStore('journal')
+              if (!equal(await store.getAllKeys(), expected.initialInventory ? ['identity'] : ['identity', 'plan']) ||
+                !equal(await store.get('identity'), identity(header.generation)) ||
+                !equal(await store.get('plan'), expected.initialInventory ? undefined : expected.plan)) return failMigration('changed')
+              for (const name of RAW_STORES) if (await tx.objectStore(name).count() !== 0) return failMigration('changed')
+              assertLocal()
+              if (!expected.initialInventory) await store.delete('plan')
+            })
+          }
+        } finally { journal?.close() }
+        expected.initialInventory = true
+        // Keep the captured source baseline through our own cleanup. Never adopt
+        // a new one in this actor, including after a lost transaction acknowledgement.
+        if (!equal(await snapshot(guard), expected)) return failMigration('changed')
+        await compareAndSwap(header, { format: 'arty-workspace-control', version: 1, layout: 'legacy-v1', state: 'ready',
+          revision: header.revision + 1 }, guard, false, assertLocal)
+        // Maintenance remains terminal in this document. A voluntary reload is required.
+      })
+    },
+  })
+}
+
 /** Snapshot partial copies without creating them or claiming they are complete.
  * A missing first plan is admissible only before ANY copying has begun. */
-async function readPreparationSnapshot(header: Readonly<MigrationHeader>, guard: Attempt): Promise<PreparationSnapshot> {
+async function readMigrationSnapshot(header: Readonly<MigrationHeader>, guard: Attempt): Promise<PreparationSnapshot> {
   if (header.revision > Number.MAX_SAFE_INTEGER - 24) return failMigration('unsupported')
   await assertControl(header, guard)
   const journal = await inspect(migrationDatabaseName(header.generation), JOURNAL_SHAPE, guard)
@@ -163,13 +239,12 @@ async function readPreparationSnapshot(header: Readonly<MigrationHeader>, guard:
     const pairs = localPairs(), current = await readInventory(guard, plan ? localTargets(plan, header.generation) : [])
     if (plan) sameInventory(plan, current)
     else { plan = current; localTargets(plan, header.generation) }
-    if (!plan.owners.some(owner => { if (owner === null) return false; try { assertNativeErasureOwner(owner); return true } catch { return false } })) return failMigration('no-account')
     if (current.versions.some((v, i) => header.phase === 'reserved' ? v !== plan!.versions[i] || v > 1
       : header.phase === 'inventoried' ? v !== 2 && v !== plan!.versions[i] : v !== 2)) return failMigration('missing')
     if ((header.phase === 'copied' || header.phase === 'verified') && !equal(journalRows, plan.stores)) return failMigration('changed')
     await assertControl(header, guard)
     if (!equal(pairs, localPairs())) return failMigration('changed')
-    return { header, plan, pairs, copies, initialInventory }
+    return { header, plan, pairs, copies, initialInventory, journalPresent: !!journal }
   } finally { journal?.close(); files?.close(); projects?.close() }
 }
 

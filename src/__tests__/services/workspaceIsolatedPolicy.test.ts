@@ -10,10 +10,11 @@ import { GENERATION, seedIsolatedWorkspace } from '../helpers/isolatedWorkspace'
 beforeEach(() => { globalThis.indexedDB = new IDBFactory(); localStorage.clear() })
 it('real OFF policy blocks the cold migrator before any reservation, data read, or write', async () => {
   const opening = vi.spyOn(indexedDB, 'open'), read = vi.spyOn(Storage.prototype, 'getItem'), write = vi.spyOn(Storage.prototype, 'setItem')
-  const { createColdWorkspaceMigration, createColdMigrationErasure, createColdErasurePreparation } = await import('../../services/workspaceWriter/migration')
+  const { createColdWorkspaceMigration, createColdMigrationErasure, createColdErasurePreparation, createColdMigrationCancellation } = await import('../../services/workspaceWriter/migration')
   expect(() => createColdWorkspaceMigration()).toThrow('workspace_migration_disabled')
   expect(() => createColdMigrationErasure()).toThrow('workspace_migration_disabled')
   expect(() => createColdErasurePreparation()).toThrow('workspace_migration_disabled')
+  expect(() => createColdMigrationCancellation()).toThrow('workspace_migration_disabled')
   const { createColdWorkspaceErasure } = await import('../../services/workspaceWriter/erasure')
   expect(() => createColdWorkspaceErasure()).toThrow('workspace_erasure_disabled')
   expect(opening).not.toHaveBeenCalled(); expect(read).not.toHaveBeenCalled(); expect(write).not.toHaveBeenCalled()

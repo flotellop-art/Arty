@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { ISOLATED_WORKSPACE_ENABLED } from '../../services/workspaceWriter/activation'
 import type { AccountErasureState } from '../../services/accountErasureJournal'
 import ColdErasureRecovery from './ColdErasureRecovery'
-import type { ColdMigrationAccount, createColdMigrationErasure, createColdErasurePreparation } from '../../services/workspaceWriter/migration'
+import type { ColdMigrationAccount, createColdMigrationErasure, createColdErasurePreparation, createColdMigrationCancellation } from '../../services/workspaceWriter/migration'
 
 /** No accounts, decrypted content, OAuth consumer or private App imports.
  * OFF is also enforced inside the writer, not merely on this button. */
@@ -15,8 +15,11 @@ function MigrationRecovery() {
   const actor = useRef<{ resume(): Promise<unknown> }>()
   const eraser = useRef<ReturnType<typeof createColdMigrationErasure>>()
   const preparer = useRef<ReturnType<typeof createColdErasurePreparation>>()
-  const running = useRef(false), chosen = useRef<'resume' | 'erase' | 'prepare'>(), mounted = useRef(true)
-  const [mode, setMode] = useState<'choose' | 'resume' | 'erase' | 'prepare'>('choose')
+  const canceller = useRef<ReturnType<typeof createColdMigrationCancellation>>()
+  const running = useRef(false), chosen = useRef<'resume' | 'erase' | 'prepare' | 'cancel'>(), mounted = useRef(true)
+  const cancellationAttempted = useRef(false)
+  const [mode, setMode] = useState<'choose' | 'resume' | 'erase' | 'prepare' | 'cancel'>('choose')
+  const [cancelState, setCancelState] = useState<'working' | 'confirm' | 'cancelling' | 'failed' | 'done'>('working')
   const [prepareState, setPrepareState] = useState<'working' | 'confirm' | 'preparing' | 'retry' | 'failed' | 'noAccount' | 'done'>('working')
   const [initialInventory, setInitialInventory] = useState(false)
   const [state, setState] = useState<'idle' | 'working' | 'failed' | 'done'>('idle')
@@ -75,10 +78,38 @@ function MigrationRecovery() {
       if (mounted.current) setPrepareState(divergent ? 'failed' : 'retry')
     } finally { running.current = false }
   }
+  const inspectCancellation = async () => {
+    if (!ISOLATED_WORKSPACE_ENABLED || running.current || chosen.current) return
+    chosen.current = 'cancel'; setMode('cancel'); running.current = true
+    try {
+      const service = await import('../../services/workspaceWriter/migration')
+      if (!mounted.current) return
+      canceller.current = service.createColdMigrationCancellation()
+      const snapshot = await canceller.current.inspect()
+      if (mounted.current) { setInitialInventory(snapshot.initialInventory); setCancelState('confirm') }
+    } catch { if (mounted.current) setCancelState('failed') }
+    finally { running.current = false }
+  }
+  const confirmCancellation = async () => {
+    if (!ISOLATED_WORKSPACE_ENABLED || running.current || chosen.current !== 'cancel' || cancelState !== 'confirm' || !canceller.current || cancellationAttempted.current) return
+    cancellationAttempted.current = true; running.current = true; setCancelState('cancelling')
+    try { await canceller.current.confirm(); if (mounted.current) setCancelState('done') }
+    catch { if (mounted.current) setCancelState('failed') }
+    finally { running.current = false }
+  }
   const button = 'mt-6 min-h-11 rounded-lg bg-theme-ink px-5 py-3 text-theme-bg disabled:opacity-50'
   const reload = (label: string) => <button type="button" className={button} onClick={() => window.location.reload()}>{t(label)}</button>
   // Keep control characters visible without changing the actual authority ID.
   const shownOwner = (value: string) => JSON.stringify(value).replace(/[\u007f-\u009f\u061c\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff]/g, c => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`)
+  if (ISOLATED_WORKSPACE_ENABLED && mode === 'cancel') return <>
+    <p className="mt-4 text-sm leading-relaxed text-theme-muted" role="status">{t(`workspaceAdmission.migrationCancellation.${cancelState}`)}</p>
+    {cancelState === 'confirm' && <>
+      <p className="mt-4 text-sm">{t('workspaceAdmission.migrationCancellation.consent')}</p>
+      {initialInventory && <p className="mt-4 text-sm">{t('workspaceAdmission.migrationCancellation.initialInventory')}</p>}
+      <button type="button" className={button} onClick={() => { void confirmCancellation() }}>{t('workspaceAdmission.migrationCancellation.confirmCta')}</button>
+    </>}
+    {['confirm', 'failed', 'done'].includes(cancelState) && reload('workspaceWindow.reload')}
+  </>
   if (ISOLATED_WORKSPACE_ENABLED && mode === 'prepare') return <>
     <p className="mt-4 text-sm leading-relaxed text-theme-muted" role="status">{t(`workspaceAdmission.erasurePreparation.${prepareState}`)}</p>
     {(prepareState === 'confirm' || prepareState === 'retry') && <>
@@ -114,6 +145,7 @@ function MigrationRecovery() {
       : <button type="button" disabled={state === 'working'} className={button} onClick={() => { void resume() }}>{t('workspaceAdmission.recovery.resume')}</button>)}
     {ISOLATED_WORKSPACE_ENABLED && mode === 'choose' && <button type="button" className="mt-3 min-h-11 px-4 underline" onClick={() => { void inspectErasure() }}>{t('workspaceAdmission.migrationErasure.inspect')}</button>}
     {ISOLATED_WORKSPACE_ENABLED && mode === 'choose' && <button type="button" className="mt-3 min-h-11 px-4 underline" onClick={() => { void inspectPreparation() }}>{t('workspaceAdmission.erasurePreparation.inspect')}</button>}
+    {ISOLATED_WORKSPACE_ENABLED && mode === 'choose' && <button type="button" className="mt-3 min-h-11 px-4 underline" onClick={() => { void inspectCancellation() }}>{t('workspaceAdmission.migrationCancellation.inspect')}</button>}
     {ISOLATED_WORKSPACE_ENABLED && mode === 'resume' && state === 'failed' && reload('workspaceAdmission.migrationErasure.reloadChoice')}
   </>
 }

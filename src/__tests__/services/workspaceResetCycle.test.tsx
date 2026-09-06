@@ -191,6 +191,113 @@ async function rawCopies() {
   return { local: Object.keys(localStorage).sort().map(k => [k, localStorage.getItem(k)]), copies }
 }
 
+it.each(['first', 'last'] as const)('real cancellation UI keeps %s-target quota active; keyless A preserved, B decrypts/writes/reloads', async position => {
+  const { a, b, savedB, header } = await interruptedMigration('reserved')
+  const { localTargets } = await import('../../services/workspaceWriter/migrationInventory')
+  const db = await openDB(`arty-workspace-${header.generation}-migration`), plan = await db.get('journal', 'plan'); db.close()
+  const targets = localTargets(plan, header.generation)
+  // Set a fixed byte budget too small for first/last duplicate. Keep that SAME
+  // origin quota throughout cancellation, subsequent real writes and reload.
+  for (const [key] of targets) localStorage.removeItem(key)
+  const original = Storage.prototype.setItem
+  const bytes = () => Object.keys(localStorage).reduce((sum, key) => sum + 2 * (key.length + localStorage.getItem(key)!.length), 0)
+  const duplicateBytes = targets.map(([key, value]) => 2 * (key.length + value.length))
+  const capacity = bytes() + (position === 'first' ? duplicateBytes[0] : duplicateBytes.reduce((sum, n) => sum + n, 0)) - 1
+  const quota = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (this: Storage, key, value) {
+    const old = this.getItem(key), next = bytes() - (old === null ? 0 : 2 * (key.length + old.length)) + 2 * (key.length + String(value).length)
+    if (this === localStorage && next > capacity) throw new DOMException('persistent synthetic origin quota', 'QuotaExceededError')
+    return original.call(this, key, value)
+  })
+  await expect((await import('../../services/workspaceWriter/migration')).createColdWorkspaceMigration().resume()).rejects.toThrow()
+  expect((await control()).phase).toBe('reserved')
+  expect(targets.filter(([key]) => localStorage.getItem(key) !== null)).toHaveLength(position === 'first' ? 0 : targets.length - 1)
+  const before = await rawCopies()
+  await newDocument(); expect(await runtime.workspaceAdmission.admit()).toBe('recoverable')
+  const derive = vi.spyOn(crypto.subtle, 'deriveKey'), decrypt = vi.spyOn(crypto.subtle, 'decrypt')
+  const nativeModule = await import('../../services/native/coldMailErasure'), nativeCheck = vi.spyOn(nativeModule, 'assertNativeErasureOwner')
+  const { DocumentWorkspaceGate } = await import('../../components/workspace/DocumentWorkspaceGate'), privateImport = vi.fn(() => createElement('div', {}, 'private'))
+  window.history.replaceState({}, '', '/auth/callback?code=synthetic&state=keep#fragment'); sessionStorage.setItem('synthetic-verifier', 'keep')
+  render(createElement(DocumentWorkspaceGate, { controller: runtime.documentWorkspace, admission: runtime.workspaceAdmission, Content: privateImport }))
+  fireEvent.click(await screen.findByText('workspaceAdmission.migrationCancellation.inspect'))
+  const confirm = await screen.findByText('workspaceAdmission.migrationCancellation.confirmCta')
+  expect(screen.queryByRole('radio')).toBeNull(); expect(await rawCopies()).toEqual(before)
+  act(() => { fireEvent.click(confirm); fireEvent.click(confirm) })
+  await screen.findByText('workspaceAdmission.migrationCancellation.done')
+  expect(await control()).toMatchObject({ version: 1, layout: 'legacy-v1', state: 'ready', revision: header.revision + 1 })
+  expect(privateImport).not.toHaveBeenCalled(); expect(derive).not.toHaveBeenCalled(); expect(decrypt).not.toHaveBeenCalled(); expect(nativeCheck).not.toHaveBeenCalled()
+  expect(native.reopen).not.toHaveBeenCalled(); expect(fetch).not.toHaveBeenCalled()
+  expect(window.location.href).toContain('/auth/callback?code=synthetic&state=keep#fragment'); expect(sessionStorage.getItem('synthetic-verifier')).toBe('keep')
+  expect(() => runtime.workspaceAdmission.assertReady()).toThrow()
+  const after = await rawCopies()
+  expect(after.local).toEqual(before.local.filter(([key]) => !key!.startsWith('arty-workspace:')))
+  expect(after.copies.filter(copy => ['arty-files', 'arty-projects'].includes((copy as string[])[0]))).toEqual(before.copies.filter(copy => ['arty-files', 'arty-projects'].includes((copy as string[])[0])))
+  expect(localStorage.getItem(`arty-${a}-api-keys`)).toBeNull()
+  expect(() => localStorage.setItem('synthetic-over-quota', 'x'.repeat(capacity))).toThrow('persistent synthetic origin quota')
+  derive.mockRestore(); decrypt.mockRestore()
+  await newDocument(); expect(await runtime.workspaceAdmission.admit()).toBe('ready')
+  let users = await import('../../services/userSession'), crypt = await import('../../services/crypto')
+  users.setActiveSession(account(b)); await crypt.initCrypto('key-b'); await readAndUpdate(savedB)
+  const history = await import('../../services/storage'), old = history.getConversation('B')!
+  history.saveConversation({ ...old, title: 'B edit' })
+  await vi.waitFor(() => expect(localStorage.getItem(`arty-${b}-conversations`)).toBeNull())
+  await newDocument(); expect(await runtime.workspaceAdmission.admit()).toBe('ready')
+  users = await import('../../services/userSession'); crypt = await import('../../services/crypto'); users.setActiveSession(account(b)); await crypt.initCrypto('key-b')
+  const reloaded = await import('../../services/storage'); await reloaded.bootstrapConversationStorage()
+  expect(reloaded.getConversation('B')?.title).toBe('B edit')
+  expect((await (await import('../../services/secureFileStorage')).getFile('B'))?.data).toBe('QQ==')
+  const projects = await import('../../services/projects/store')
+  expect(await projects.getProject(await projects.beginProjectOperation(), savedB.id)).toMatchObject({ status: 'ready', project: { name: 'B updated' } })
+  expect(() => localStorage.setItem('synthetic-over-quota', 'x'.repeat(capacity))).toThrow('persistent synthetic origin quota')
+  expect(quota).toHaveBeenCalled(); expect(fetch).not.toHaveBeenCalled()
+}, 30_000)
+
+it('cancellation UI after partial cleanup requires reload, never retries or automatically resumes a planless migration', async () => {
+  const { header } = await interruptedMigration('reserved'), service = await import('../../services/workspaceWriter/migration')
+  const factory = service.createColdMigrationCancellation, confirms = vi.fn()
+  vi.spyOn(service, 'createColdMigrationCancellation').mockImplementation(() => {
+    const actor = factory(); return { ...actor, confirm: async () => { confirms(); await actor.confirm() } }
+  })
+  const put = IDBObjectStore.prototype.put, fault = vi.spyOn(IDBObjectStore.prototype, 'put').mockImplementation(function (this: IDBObjectStore, value, key) {
+    if (this.transaction.db.name === 'arty-workspace-control' && value.version === 1) throw new Error('before final cas')
+    return put.call(this, value, key)
+  })
+  const { default: Recovery } = await import('../../components/workspace/ColdMigrationRecovery')
+  render(createElement(Recovery)); fireEvent.click(screen.getByText('workspaceAdmission.migrationCancellation.inspect'))
+  const confirm = await screen.findByText('workspaceAdmission.migrationCancellation.confirmCta')
+  act(() => { fireEvent.click(confirm); fireEvent.click(confirm) })
+  await screen.findByText('workspaceAdmission.migrationCancellation.failed'); fault.mockRestore()
+  expect(confirms).toHaveBeenCalledOnce(); expect(screen.getAllByRole('button')).toHaveLength(1)
+  expect(screen.getByText('workspaceWindow.reload')).toBeVisible()
+  expect(screen.queryByText('workspaceAdmission.recovery.failed')).toBeNull()
+  const db = await openDB(`arty-workspace-${header.generation}-migration`); expect(await db.getAllKeys('journal')).toEqual(['identity']); db.close()
+  await newDocument(); expect(await runtime.workspaceAdmission.admit()).toBe('recoverable')
+  const resumed = vi.spyOn(await import('../../services/workspaceWriter/migration'), 'createColdWorkspaceMigration')
+  const Fresh = (await import('../../components/workspace/ColdMigrationRecovery')).default
+  render(createElement(Fresh)); expect(resumed).not.toHaveBeenCalled(); expect(await control()).toEqual(header)
+  fireEvent.click(screen.getByText('workspaceAdmission.migrationCancellation.inspect'))
+  await screen.findByText('workspaceAdmission.migrationCancellation.initialInventory')
+  expect(await control()).toEqual(header)
+  fireEvent.click(screen.getByText('workspaceAdmission.migrationCancellation.confirmCta'))
+  await screen.findByText('workspaceAdmission.migrationCancellation.done'); expect((await control()).version).toBe(1)
+}, 30_000)
+
+it.each(['import', 'inspection'] as const)('cancellation UI unmount during %s never confirms or warms the app', async phase => {
+  await interruptedMigration('reserved')
+  const service = await import('../../services/workspaceWriter/migration'), original = service.createColdMigrationCancellation
+  const pending = deferred(), confirm = vi.fn()
+  const factory = vi.spyOn(service, 'createColdMigrationCancellation').mockImplementation(() => {
+    const actor = original()
+    return { ...actor, inspect: async () => { const snapshot = await actor.inspect(); await pending.promise; return snapshot }, confirm }
+  })
+  const { default: Recovery } = await import('../../components/workspace/ColdMigrationRecovery'), before = await rawCopies()
+  const view = render(createElement(Recovery))
+  act(() => { fireEvent.click(screen.getByText('workspaceAdmission.migrationCancellation.inspect')); if (phase === 'import') view.unmount() })
+  if (phase === 'inspection') { await vi.waitFor(() => expect(factory).toHaveBeenCalledOnce()); view.unmount() }
+  await act(async () => { pending.resolve(); await Promise.resolve() })
+  expect(factory).toHaveBeenCalledTimes(phase === 'import' ? 0 : 1); expect(confirm).not.toHaveBeenCalled()
+  expect(screen.queryByText('workspaceAdmission.migrationCancellation.confirmCta')).toBeNull(); expect(await rawCopies()).toEqual(before)
+}, 30_000)
+
 it.each(['no-journal', 'reserved-no-plan', 'reserved', 'inventoried', 'barrier', 'copied-partial'] as const)('real UI prepares %s without A key or private activation, then cold erases A and B logs in/writes/reloads', async phase => {
   const { a, b, savedB, oldActor } = await interruptedMigration(phase), before = await rawCopies()
   const derive = vi.spyOn(crypto.subtle, 'deriveKey'), decrypt = vi.spyOn(crypto.subtle, 'decrypt')
@@ -481,7 +588,8 @@ it('homonymous catalog escapes opaque control IDs but confirms their exact origi
   expect((await control()).erasure.owner).toBe(owner)
 }, 30_000)
 
-it.each([['resume', 'erase'], ['resume', 'prepare'], ['erase', 'resume'], ['erase', 'prepare'], ['prepare', 'resume'], ['prepare', 'erase']] as const)('UI binds first %s before lazy import and ignores %s until reload', async (first, second) => {
+it.each([['resume', 'erase'], ['resume', 'prepare'], ['erase', 'resume'], ['erase', 'prepare'], ['prepare', 'resume'], ['prepare', 'erase'],
+  ['cancel', 'resume'], ['cancel', 'erase'], ['cancel', 'prepare'], ['resume', 'cancel'], ['erase', 'cancel'], ['prepare', 'cancel']] as const)('UI binds first %s before lazy import and ignores %s until reload', async (first, second) => {
   await interruptedMigration()
   const service = await import('../../services/workspaceWriter/migration'), resumeFactory = service.createColdWorkspaceMigration
   const resumed = vi.spyOn(service, 'createColdWorkspaceMigration').mockImplementation(() => {
@@ -490,16 +598,19 @@ it.each([['resume', 'erase'], ['resume', 'prepare'], ['erase', 'resume'], ['eras
   })
   const inspected = vi.spyOn(service, 'createColdMigrationErasure')
   const prepared = vi.spyOn(service, 'createColdErasurePreparation')
+  const cancelled = vi.spyOn(service, 'createColdMigrationCancellation')
   const { default: Recovery } = await import('../../components/workspace/ColdMigrationRecovery')
   render(createElement(Recovery))
-  const buttons = { resume: screen.getByText('workspaceAdmission.recovery.resume'), erase: screen.getByText('workspaceAdmission.migrationErasure.inspect'), prepare: screen.getByText('workspaceAdmission.erasurePreparation.inspect') }
+  const buttons = { resume: screen.getByText('workspaceAdmission.recovery.resume'), erase: screen.getByText('workspaceAdmission.migrationErasure.inspect'), prepare: screen.getByText('workspaceAdmission.erasurePreparation.inspect'), cancel: screen.getByText('workspaceAdmission.migrationCancellation.inspect') }
   act(() => {
     fireEvent.click(buttons[first]); fireEvent.click(buttons[second]); fireEvent.click(buttons[first])
   })
-  await screen.findByText('workspaceAdmission.migrationErasure.reloadChoice')
+  await screen.findByText(first === 'cancel' ? 'workspaceWindow.reload' : 'workspaceAdmission.migrationErasure.reloadChoice')
   expect(resumed).toHaveBeenCalledTimes(first === 'resume' ? 1 : 0)
   expect(inspected).toHaveBeenCalledTimes(first === 'erase' ? 1 : 0)
   expect(prepared).toHaveBeenCalledTimes(first === 'prepare' ? 1 : 0)
+  expect(cancelled).toHaveBeenCalledTimes(first === 'cancel' ? 1 : 0)
+  expect(screen.queryByText('workspaceAdmission.migrationCancellation.inspect')).toBeNull()
   expect(screen.queryByText('workspaceAdmission.migrationErasure.inspect')).toBeNull()
   expect(screen.queryByText('workspaceAdmission.erasurePreparation.inspect')).toBeNull()
   if (first !== 'resume') expect(screen.queryByText('workspaceAdmission.recovery.resume')).toBeNull()
