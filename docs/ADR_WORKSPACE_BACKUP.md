@@ -1351,3 +1351,44 @@ KDF, réseau ni effacement avant confirmation ; OAuth/verifier inchangés.
 Quota durable, source divergente même A, plan perdu après reserved ou receipt
 étranger restent des refus et gates d'activation : ne pas rebâtir B depuis le
 hash global ni promettre qu'une préparation avec copies libère de l'espace.
+
+##### A3b.8 — préparation froide vers verified, implémentée (6 septembre)
+
+Décision : `createColdErasurePreparation` ne dispose que de inspect/prepare,
+avec politique OFF et capacité réelle du document. Son aperçu privé fixe le
+header, plan, LS et empreintes des copies partielles. Sans plan, seules l'absence
+du journal ou son identité exacte avec stores vides, l'absence de destinations
+et targets, et des sources v0/v1 autorisent le premier inventaire consenti.
+Le plan injecté ensuite est celui de cet aperçu ; garde LS dans la transaction
+de journalisation. Le retry accepte son installation exacte sans rebaseliner.
+
+Progression : dernier header acquitté + au plus un couple from/to mémorisé avant
+CAS. Seuls ces octets exacts autorisent une reprise ; génération commune, v2,
+retour à un ancien checkpoint ou nouvelle révision ne suffisent pas. Les copies
+idempotentes et versions phase-compatibles peuvent progresser, jamais le plan
+source. Le checkpoint verified porte désormais sa propre garde LS dans son
+CAS, suivi d'une réattestation complète. Acquittement verified perdu : chemin
+readonly, zéro put/setItem ; jamais la branche historique d'acquittement v2.
+
+UI : trois modes exclusifs avant import ; confirmation des copies de tous les
+comptes, puis autre document et confirmation distincte d'un effacement. Aucun
+owner ou consentement en LS. Notice spécifique pour premier inventaire absent.
+Le cas sans owner non nul accepté par le contrat natif est refusé readonly,
+avec notice et reprise normale conservée après reload. Ce correctif traite
+l'objection produit « copies préparées mais aucun compte sélectionnable ».
+
+Deux GO indépendants readonly après code ; protections CAS et progression
+intégrées à la demande de la contre-revue sécurité. Tests par root seulement.
+La verticale couvre six coupures initiales, sans clé A avant le snapshot,
+UI→verified→nouveau document→choix A→v6/v7, B login/lecture/écriture/relecture ;
+KDF/déchiffrement et réseau interdits à froid, hash autorisé. Quota transitoire,
+ack plan/checkpoints perdus, header rétrogradé/v2/remplacé, mutations des deux
+transactions finales, fragments sans plan et copies divergentes testés.
+
+Alternatives rejetées : activer v2 avant effacement (perd le parcours sans clé),
+nouveau format d'effacement pour les seules copies saines incomplètes, inventaire
+réévalué en silence, booléen caller de publication. Limites conservées : copies
+supplémentaires possibles avant découverte d'un conflit, aucun écrasement ;
+quota durable/source divergente/absence de propriétaire effaçable non résolus.
+Activation OFF ; ni restauration/synchronisation ni recette UI navigateur/APK
+déduites de fake-IDB/JSDOM. Reçus et mesures de validation dans le CDC.

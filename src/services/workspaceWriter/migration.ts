@@ -18,17 +18,9 @@ const equal = (a: unknown, b: unknown) => rawEncoding(a) === rawEncoding(b)
 type Attempt = AdmissionGuard & { assertCurrent(): void }
 interface CompletedMigration { header: Readonly<MigrationHeader>; plan: MigrationPlan; pairs: [string, string][] }
 export interface ColdMigrationAccount { owner: string; label?: string }
-
-/** A separate, irreversible choice in a new cold document. The complete
- * preview is private to this actor; callers cannot supply a plan or authority.
- * No deletion, crypto initialization or remote request happens here. */
-export function createColdMigrationErasure() {
-  if (!ISOLATED_WORKSPACE_ENABLED) return failMigration('disabled')
-  const admitted = workspaceAdmission.getRecovery()
-  if (!admitted) return failMigration('missing')
-  const header = parseMigrationHeader(admitted)!, cold = workspaceAdmission.claimMaintenance()
-  let busy = false, preview: CompletedMigration | undefined, selected: string | undefined, attempted: ErasureHeader | undefined
-  const run = async <T>(work: (guard: Attempt) => Promise<T>) => {
+function coldRunner(cold: AdmissionGuard) {
+  let busy = false
+  return async <T>(work: (guard: Attempt) => Promise<T>) => {
     if (busy) return failMigration('busy')
     cold.assertLock(); busy = true
     const aborter = new AbortController(), cancel = () => aborter.abort()
@@ -46,6 +38,17 @@ export function createColdMigrationErasure() {
     try { guard.assertCurrent(); return await Promise.race([work(guard), stopped]) }
     finally { cancel(); clearTimeout(timer); aborter.signal.removeEventListener('abort', stop); cold.signal.removeEventListener('abort', cancel); busy = false }
   }
+}
+
+/** A separate, irreversible choice in a new cold document. The complete
+ * preview is private to this actor; callers cannot supply a plan or authority.
+ * No deletion, crypto initialization or remote request happens here. */
+export function createColdMigrationErasure() {
+  if (!ISOLATED_WORKSPACE_ENABLED) return failMigration('disabled')
+  const admitted = workspaceAdmission.getRecovery()
+  if (!admitted) return failMigration('missing')
+  const header = parseMigrationHeader(admitted)!, run = coldRunner(workspaceAdmission.claimMaintenance())
+  let preview: CompletedMigration | undefined, selected: string | undefined, attempted: ErasureHeader | undefined
   return Object.freeze({
     inspect(): Promise<ColdMigrationAccount[]> { return run(async guard => {
       if (selected !== undefined) return failMigration('changed')
@@ -69,6 +72,105 @@ export function createColdMigrationErasure() {
       })
     }) },
   })
+}
+
+interface PreparationSnapshot extends CompletedMigration { initialInventory: boolean; copies: unknown[] }
+interface PreparationProgress {
+  plan: MigrationPlan; initialPairs?: [string, string][]
+  assertHeader(value: unknown): void
+  stage(from: Readonly<MigrationHeader>, to: Readonly<MigrationHeader>): void
+  acknowledge(header: Readonly<MigrationHeader>): void
+}
+/** Explicit copy preparation ONLY. Its destination is immutable: v3 verified,
+ * never ready. Neither the preview nor a caller supplies a writable address,
+ * owner, baseline or activation boolean. Erasure requires another document. */
+export function createColdErasurePreparation() {
+  if (!ISOLATED_WORKSPACE_ENABLED) return failMigration('disabled')
+  const admitted = workspaceAdmission.getRecovery()
+  if (!admitted) return failMigration('missing')
+  const header = parseMigrationHeader(admitted)!, run = coldRunner(workspaceAdmission.claimMaintenance())
+  let preview: PreparationSnapshot | undefined, started = false, acknowledged = header
+  let transition: { from: Readonly<MigrationHeader>; to: Readonly<MigrationHeader> } | undefined
+  const assertHeader = (value: unknown) => {
+    if (!equal(value, acknowledged) && !(transition && equal(value, transition.to))) failMigration('changed')
+  }
+  return Object.freeze({
+    inspect(): Promise<{ initialInventory: boolean }> { return run(async guard => {
+      if (started) return failMigration('changed')
+      const current = await readPreparationSnapshot(header, guard)
+      if (preview && !equal(preview, current)) return failMigration('changed')
+      preview ??= structuredClone(current)
+      return { initialInventory: preview.initialInventory }
+    }) },
+    prepare(): Promise<void> { return run(async guard => {
+      if (!preview) return failMigration('missing')
+      const value = await readControl(guard); assertHeader(value)
+      const currentHeader = parseMigrationHeader(value) ?? failMigration('changed')
+      const current = await readPreparationSnapshot(currentHeader, guard)
+      if (!equal(current.plan, preview.plan) || (!preview.initialInventory && current.initialInventory) || (!started && !equal(current, preview))) return failMigration('changed')
+      started = true
+      if (currentHeader.phase === 'verified') {
+        const completed = await readCompletedMigration(currentHeader, guard)
+        if (!equal(completed.plan, preview.plan)) return failMigration('changed')
+        acknowledged = currentHeader; transition = undefined; return // readonly uncertain-commit acknowledgement
+      }
+      if (transition && equal(currentHeader, transition.to)) { acknowledged = currentHeader; transition = undefined }
+      const progress: PreparationProgress = {
+        plan: preview.plan, ...(preview.initialInventory ? { initialPairs: preview.pairs } : {}), assertHeader,
+        stage(from, to) {
+          if (!equal(from, acknowledged) || (transition && (!equal(from, transition.from) || !equal(to, transition.to)))) failMigration('changed')
+          transition = { from: structuredClone(from), to: structuredClone(to) }
+        },
+        acknowledge(next) { if (!transition || !equal(next, transition.to)) failMigration('changed'); acknowledged = next; transition = undefined },
+      }
+      await migrate(false, guard, undefined, () => {}, progress)
+    }) },
+  })
+}
+
+/** Snapshot partial copies without creating them or claiming they are complete.
+ * A missing first plan is admissible only before ANY copying has begun. */
+async function readPreparationSnapshot(header: Readonly<MigrationHeader>, guard: Attempt): Promise<PreparationSnapshot> {
+  if (header.revision > Number.MAX_SAFE_INTEGER - 24) return failMigration('unsupported')
+  await assertControl(header, guard)
+  const journal = await inspect(migrationDatabaseName(header.generation), JOURNAL_SHAPE, guard)
+  let files: IDBPDatabase | null = null, projects: IDBPDatabase | null = null
+  try {
+    let plan: MigrationPlan | undefined
+    if (journal) {
+      if (journal.version !== 1) return failMigration('unsupported')
+      plan = await transaction(journal, ['journal'], 'readonly', guard, async tx => {
+        const store = tx.objectStore('journal'), keys = await store.getAllKeys(), value = await store.get('plan')
+        if (!equal(await store.get('identity'), identity(header.generation)) || !equal(keys, value === undefined ? ['identity'] : ['identity', 'plan'])) return failMigration('missing')
+        if (value === undefined) return undefined
+        rawEncoding(value); return validatePlan(value, header.generation)
+      })
+    }
+    const initialInventory = !plan, layout = isolatedWorkspaceLayout(header.generation, [])
+    files = await inspect(layout.files.name, FILE_SHAPE, guard); projects = await inspect(layout.projects.name, PROJECT_SHAPE, guard)
+    if ((files && files.version !== 1) || (projects && projects.version !== 1)) return failMigration('unsupported')
+    const copies: unknown[] = [], journalRows = []
+    for (const store of RAW_STORES) journalRows.push(await scanRawStore(journal, store, guard.assertCurrent, guard.signal))
+    copies.push({ name: 'journal', present: !!journal, stores: journalRows })
+    for (const [name, db, stores] of [['files', files, ['files']], ['projects', projects, ['projects', 'documents', 'usage', 'meta']]] as const) {
+      const rows = []
+      for (const store of stores) rows.push(await scanRawStore(db, store, guard.assertCurrent, guard.signal))
+      copies.push({ name, present: !!db, stores: rows })
+    }
+    if (!plan && (header.phase !== 'reserved' || files || projects || journalRows.some(s => s.count !== 0))) return failMigration('missing')
+    if (plan && ((header.phase === 'reserved' || header.phase === 'inventoried') && journalRows.some(s => s.count !== 0))) return failMigration('changed')
+    if (header.phase !== 'copied' && header.phase !== 'verified' && (files || projects)) return failMigration('collision')
+    const pairs = localPairs(), current = await readInventory(guard, plan ? localTargets(plan, header.generation) : [])
+    if (plan) sameInventory(plan, current)
+    else { plan = current; localTargets(plan, header.generation) }
+    if (!plan.owners.some(owner => { if (owner === null) return false; try { assertNativeErasureOwner(owner); return true } catch { return false } })) return failMigration('no-account')
+    if (current.versions.some((v, i) => header.phase === 'reserved' ? v !== plan!.versions[i] || v > 1
+      : header.phase === 'inventoried' ? v !== 2 && v !== plan!.versions[i] : v !== 2)) return failMigration('missing')
+    if ((header.phase === 'copied' || header.phase === 'verified') && !equal(journalRows, plan.stores)) return failMigration('changed')
+    await assertControl(header, guard)
+    if (!equal(pairs, localPairs())) return failMigration('changed')
+    return { header, plan, pairs, copies, initialInventory }
+  } finally { journal?.close(); files?.close(); projects?.close() }
 }
 
 function migrationAccountLabels(snapshot: CompletedMigration): ColdMigrationAccount[] {
@@ -259,9 +361,11 @@ async function compareAndSwap(expected: unknown, next: unknown, guard: Attempt, 
     })
   } finally { db.close() }
 }
-async function advance(header: Readonly<MigrationHeader>, phase: MigrationPhase, guard: Attempt): Promise<Readonly<MigrationHeader>> {
+async function advance(header: Readonly<MigrationHeader>, phase: MigrationPhase, guard: Attempt, beforePut?: () => void, preparation?: PreparationProgress): Promise<Readonly<MigrationHeader>> {
   const next = { ...header, revision: header.revision + 1, phase }
-  await compareAndSwap(header, next, guard)
+  preparation?.stage(header, next)
+  await compareAndSwap(header, next, guard, false, beforePut)
+  preparation?.acknowledge(next)
   return next
 }
 async function assertControl(header: Readonly<MigrationHeader>, guard: Attempt) {
@@ -354,11 +458,12 @@ async function attestStores(dbFor: (store: RawStore) => IDBPDatabase | null, pla
   }
 }
 
-async function migrate(start: boolean, guard: Attempt, knownGeneration: string | undefined, remember: (generation: string) => void) {
+async function migrate(start: boolean, guard: Attempt, knownGeneration: string | undefined, remember: (generation: string) => void, preparation?: PreparationProgress) {
   const initial = await readControl(guard)
+  preparation?.assertHeader(initial)
   // A final transaction may commit before timeout/cancellation is observed.
   // Only this cold actor's known job can acknowledge that uncertain success.
-  if (!start && knownGeneration && initial && typeof initial === 'object' && 'version' in initial && initial.version === 2) {
+  if (!preparation && !start && knownGeneration && initial && typeof initial === 'object' && 'version' in initial && initial.version === 2) {
     const committed = await readWorkspaceStorageLayout(guard)
     if (committed.kind !== 'isolated-v1' || committed.generation !== knownGeneration) failMigration('changed')
     const journal = await openJournal({ format: 'arty-workspace-control', version: 3, layout: 'legacy-v1', state: 'migration',
@@ -390,17 +495,21 @@ async function migrate(start: boolean, guard: Attempt, knownGeneration: string |
     let value = await transaction(journal, ['journal'], 'readonly', guard, tx => tx.objectStore('journal').get('plan'))
     if (value === undefined) {
       if (header.phase !== 'reserved') failMigration('missing')
-      const plan = initialPlan ?? await readInventory(guard)
+      if (preparation && !preparation.initialPairs) return failMigration('missing')
+      const plan = preparation?.plan ?? initialPlan ?? await readInventory(guard)
       if (plan.versions.some(v => v > 1)) failMigration('missing')
       localTargets(plan, header.generation)
+      if (preparation) sameInventory(plan, await readInventory(guard))
       await assertControl(header, guard)
       await transaction(journal, ['journal'], 'readwrite', guard, async tx => {
         if (await tx.objectStore('journal').count('plan')) failMigration('changed')
+        if (preparation && !equal(preparation.initialPairs, localPairs())) failMigration('changed')
         await tx.objectStore('journal').put(plan, 'plan')
       })
       value = plan
     }
     const plan = validatePlan(value, header.generation), targets = localTargets(plan, header.generation)
+    if (preparation && !equal(plan, preparation.plan)) return failMigration('changed')
     const current = await readInventory(guard, targets)
     sameInventory(plan, current)
     if (current.versions.some((v, i) => header!.phase === 'reserved' ? v !== plan.versions[i]
@@ -414,13 +523,13 @@ async function migrate(start: boolean, guard: Attempt, knownGeneration: string |
       if (old !== null && old !== value) failMigration('changed')
       localStorage.setItem(key, value)
     }
-    if (header.phase === 'reserved') header = await advance(header, 'inventoried', guard)
+    if (header.phase === 'reserved') header = await advance(header, 'inventoried', guard, undefined, preparation)
     for (const [name, shape] of [['arty-files', FILE_SHAPE], ['arty-projects', PROJECT_SHAPE]] as const) {
       await assertControl(header, guard)
       const db = await writable(name, 2, shape, guard); db.close()
     }
     sameInventory(plan, await readInventory(guard, targets))
-    if (header.phase === 'inventoried') header = await advance(header, 'barrier', guard)
+    if (header.phase === 'inventoried') header = await advance(header, 'barrier', guard, undefined, preparation)
     const files = await inspect('arty-files', FILE_SHAPE, guard)
     let projects: IDBPDatabase | null = null
     try {
@@ -433,7 +542,7 @@ async function migrate(start: boolean, guard: Attempt, knownGeneration: string |
       }
     } finally { files?.close(); projects?.close() }
     await attestStores(() => journal, plan, guard)
-    if (header.phase === 'barrier') header = await advance(header, 'copied', guard)
+    if (header.phase === 'barrier') header = await advance(header, 'copied', guard, undefined, preparation)
     const layout = isolatedWorkspaceLayout(header.generation, plan.owners)
     const destFiles = await writable(layout.files.name, 1, FILE_SHAPE, guard)
     let destProjects: IDBPDatabase | undefined
@@ -449,8 +558,13 @@ async function migrate(start: boolean, guard: Attempt, knownGeneration: string |
       if (!equal(finalLocal, localPairs()) || targets.some(([key, value]) => localStorage.getItem(key) !== value)) failMigration('changed')
     }
     assertFinalLocal()
-    if (header.phase === 'copied') header = await advance(header, 'verified', guard)
+    if (header.phase === 'copied') header = await advance(header, 'verified', guard, assertFinalLocal, preparation)
     if (header.phase !== 'verified') failMigration('unsupported')
+    if (preparation) {
+      const completed = await readCompletedMigration(header, guard)
+      if (!equal(completed.plan, preparation.plan)) return failMigration('changed')
+      guard.assertCurrent(); assertFinalLocal(); return layout
+    }
     // Sole active-layout selection. Readers need a NEW admitted document.
     await compareAndSwap(header, { format: 'arty-workspace-control', version: 2, layout: 'isolated-v1', state: 'ready',
       revision: header.revision + 1, generation: header.generation, requiredOwners: plan.owners }, guard, false, assertFinalLocal)

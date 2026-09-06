@@ -73,6 +73,20 @@
       "done": "La migration locale est vérifiée. Recharge pour ouvrir une nouvelle session sur ce stockage.",
       "resume": "Vérifier et reprendre"
     },
+    "erasurePreparation": {
+      "noAccount": "Aucun compte sélectionnable pour cet effacement local. Rien n’a été préparé ni effacé. Les données anonymes ne sont pas prises en charge par ce parcours ; recharge pour choisir la reprise normale de la migration.",
+      "inspect": "Préparer les copies avant de choisir un effacement",
+      "working": "Examen des données et des copies présentes. Rien n’est écrit ni effacé.",
+      "confirm": "Préparer les copies locales de tous les comptes inventoriés ?",
+      "consent": "Cette étape écrit et vérifie des copies locales. Elle peut nécessiter davantage d’espace et ne libère pas le stockage. Aucun compte ne sera effacé ni connecté. Après rechargement, tu choisiras séparément le compte à effacer et confirmeras sa suppression locale.",
+      "initialInventory": "Aucun inventaire initial n’a été conservé. La préparation utilisera uniquement l’inventaire des données actuellement présentes qui vient d’être examiné, sans garantir qu’il correspond à un état antérieur.",
+      "confirmCta": "Confirmer la préparation de ces copies",
+      "preparing": "Écriture et vérification des copies en cours. Aucun effacement. Garde cette fenêtre ouverte.",
+      "retry": "La préparation s’est interrompue. Des copies partielles peuvent rester. Tu peux réessayer la même préparation ; un manque durable de capacité ou une ancienne fenêtre bloquante devra être résolu sans purger les données.",
+      "retryCta": "Réessayer la même préparation",
+      "failed": "La préparation ne peut pas continuer sur cet inventaire. Conserve le stockage et recharge pour réexaminer son état. Aucune suppression de compte n’a été effectuée.",
+      "done": "Copies vérifiées. Recharge pour choisir un compte à effacer. Aucun compte n’a été supprimé et aucune session privée n’a été ouverte."
+    },
     "migrationErasure": {
       "inspect": "Vérifier si un compte peut être effacé localement",
       "working": "Vérification des sources et de toutes les copies. Aucune donnée n’est effacée.",

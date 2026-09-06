@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { ISOLATED_WORKSPACE_ENABLED } from '../../services/workspaceWriter/activation'
 import type { AccountErasureState } from '../../services/accountErasureJournal'
 import ColdErasureRecovery from './ColdErasureRecovery'
-import type { ColdMigrationAccount, createColdMigrationErasure } from '../../services/workspaceWriter/migration'
+import type { ColdMigrationAccount, createColdMigrationErasure, createColdErasurePreparation } from '../../services/workspaceWriter/migration'
 
 /** No accounts, decrypted content, OAuth consumer or private App imports.
  * OFF is also enforced inside the writer, not merely on this button. */
@@ -14,14 +14,17 @@ function MigrationRecovery() {
   const { t } = useTranslation()
   const actor = useRef<{ resume(): Promise<unknown> }>()
   const eraser = useRef<ReturnType<typeof createColdMigrationErasure>>()
-  const running = useRef(false), chosen = useRef<'resume' | 'erase'>(), mounted = useRef(true)
-  const [mode, setMode] = useState<'choose' | 'resume' | 'erase'>('choose')
+  const preparer = useRef<ReturnType<typeof createColdErasurePreparation>>()
+  const running = useRef(false), chosen = useRef<'resume' | 'erase' | 'prepare'>(), mounted = useRef(true)
+  const [mode, setMode] = useState<'choose' | 'resume' | 'erase' | 'prepare'>('choose')
+  const [prepareState, setPrepareState] = useState<'working' | 'confirm' | 'preparing' | 'retry' | 'failed' | 'noAccount' | 'done'>('working')
+  const [initialInventory, setInitialInventory] = useState(false)
   const [state, setState] = useState<'idle' | 'working' | 'failed' | 'done'>('idle')
   const [eraseState, setEraseState] = useState<'working' | 'choose' | 'confirm' | 'recording' | 'recorded' | 'failed' | 'incomplete'>('working')
   const [accounts, setAccounts] = useState<ColdMigrationAccount[]>([]), [owner, setOwner] = useState('')
   useEffect(() => { mounted.current = true; return () => { mounted.current = false } }, [])
   const resume = async () => {
-    if (!ISOLATED_WORKSPACE_ENABLED || running.current || chosen.current === 'erase') return
+    if (!ISOLATED_WORKSPACE_ENABLED || running.current || (chosen.current && chosen.current !== 'resume')) return
     chosen.current = 'resume'; setMode('resume'); running.current = true; setState('working')
     try {
       const service = await import('../../services/workspaceWriter/migration')
@@ -51,10 +54,41 @@ function MigrationRecovery() {
     catch { if (mounted.current) setEraseState('failed') }
     finally { running.current = false }
   }
+  const inspectPreparation = async () => {
+    if (!ISOLATED_WORKSPACE_ENABLED || running.current || chosen.current) return
+    chosen.current = 'prepare'; setMode('prepare'); running.current = true
+    try {
+      const service = await import('../../services/workspaceWriter/migration')
+      if (!mounted.current) return
+      preparer.current = service.createColdErasurePreparation()
+      const snapshot = await preparer.current.inspect()
+      if (mounted.current) { setInitialInventory(snapshot.initialInventory); setPrepareState('confirm') }
+    } catch (error) { if (mounted.current) setPrepareState(error && typeof error === 'object' && 'code' in error && error.code === 'no-account' ? 'noAccount' : 'failed') }
+    finally { running.current = false }
+  }
+  const prepareCopies = async () => {
+    if (!ISOLATED_WORKSPACE_ENABLED || running.current || chosen.current !== 'prepare' || !preparer.current || !['confirm', 'retry'].includes(prepareState)) return
+    running.current = true; setPrepareState('preparing')
+    try { await preparer.current.prepare(); if (mounted.current) setPrepareState('done') }
+    catch (error) {
+      const divergent = error && typeof error === 'object' && 'code' in error && ['changed', 'missing', 'unsupported', 'collision'].includes(String(error.code))
+      if (mounted.current) setPrepareState(divergent ? 'failed' : 'retry')
+    } finally { running.current = false }
+  }
   const button = 'mt-6 min-h-11 rounded-lg bg-theme-ink px-5 py-3 text-theme-bg disabled:opacity-50'
   const reload = (label: string) => <button type="button" className={button} onClick={() => window.location.reload()}>{t(label)}</button>
   // Keep control characters visible without changing the actual authority ID.
   const shownOwner = (value: string) => JSON.stringify(value).replace(/[\u007f-\u009f\u061c\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff]/g, c => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`)
+  if (ISOLATED_WORKSPACE_ENABLED && mode === 'prepare') return <>
+    <p className="mt-4 text-sm leading-relaxed text-theme-muted" role="status">{t(`workspaceAdmission.erasurePreparation.${prepareState}`)}</p>
+    {(prepareState === 'confirm' || prepareState === 'retry') && <>
+      <p className="mt-4 text-sm">{t('workspaceAdmission.erasurePreparation.consent')}</p>
+      {initialInventory && <p className="mt-4 text-sm">{t('workspaceAdmission.erasurePreparation.initialInventory')}</p>}
+      <button type="button" className={button} onClick={() => { void prepareCopies() }}>{t(`workspaceAdmission.erasurePreparation.${prepareState === 'retry' ? 'retryCta' : 'confirmCta'}`)}</button>
+    </>}
+    {prepareState === 'done' ? reload('workspaceWindow.reload') :
+      !['working', 'preparing'].includes(prepareState) && reload('workspaceAdmission.migrationErasure.reloadChoice')}
+  </>
   if (ISOLATED_WORKSPACE_ENABLED && mode === 'erase') return <>
     <p className="mt-4 text-sm leading-relaxed text-theme-muted" role="status">{t(`workspaceAdmission.migrationErasure.${eraseState}`)}</p>
     {eraseState === 'choose' && <fieldset className="mt-4 text-left">
@@ -79,6 +113,7 @@ function MigrationRecovery() {
       ? reload('workspaceWindow.reload')
       : <button type="button" disabled={state === 'working'} className={button} onClick={() => { void resume() }}>{t('workspaceAdmission.recovery.resume')}</button>)}
     {ISOLATED_WORKSPACE_ENABLED && mode === 'choose' && <button type="button" className="mt-3 min-h-11 px-4 underline" onClick={() => { void inspectErasure() }}>{t('workspaceAdmission.migrationErasure.inspect')}</button>}
+    {ISOLATED_WORKSPACE_ENABLED && mode === 'choose' && <button type="button" className="mt-3 min-h-11 px-4 underline" onClick={() => { void inspectPreparation() }}>{t('workspaceAdmission.erasurePreparation.inspect')}</button>}
     {ISOLATED_WORKSPACE_ENABLED && mode === 'resume' && state === 'failed' && reload('workspaceAdmission.migrationErasure.reloadChoice')}
   </>
 }

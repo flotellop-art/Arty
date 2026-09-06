@@ -108,6 +108,51 @@ réels ; préparer protocole et instrumentation sans fabriquer leurs résultats.
 
 ## Preuves par lot
 
+### W06 A3b.8 — préparation de migrations incomplètes avant effacement, OFF
+
+Implémenté le 6 septembre ; validation globale réussie, livraison en cours. Cette
+préparation consentie complète le journal/copies jusqu'à v3 verified sans v2
+ready ni session privée. Un nouveau document garde donc le choix d'effacer A
+même si sa clé manque. Inspection readonly, plan/header/snapshot privé figés ;
+progression limitée aux headers exacts du même acteur. Un premier inventaire
+non conservé exige consentement distinct et absence de fragments sans plan.
+Le CAS verified est protégé contre LS/document tardifs, puis réattesté ; son
+acquittement perdu est readonly. Aucun nouvel effacement ou format ajouté.
+
+UI : choix mutuellement exclusifs reprise normale/préparation/effacement ;
+consentement à écrire les copies de tous les comptes, puis confirmation locale
+distincte après reload. Notice sans compte effaçable (dont données uniquement
+anonymes), zéro préparation et reprise normale conservée. Pas de promesse de
+libérer de l'espace : un quota durable doit être résolu séparément.
+
+Tests ciblés : 93 tests existants verts, puis 55 et 76 tests de verticale verts
+avant les trois derniers négatifs de progression. Typecheck front/back vert.
+Six phases d'interruption réelles en fake-IDB : pas de journal, reserved sans
+plan, reserved, inventoried, barrier, copied partiel ; A sans clé dès avant le
+snapshot, B login/déchiffrement/écriture/relecture après nouveau document.
+Pertes d'acquittement plan/checkpoints, quota partiel sans nouveau baseline,
+CAS verified et première journalisation avec mutation LS, aperçu modifié,
+fragments sans plan, v2 étranger et rollback de progression ; six ordres de
+clics UI et démontages. Digests permis, KDF/déchiffrement/réseau interdits avant
+v7. Les deux contre-revues readonly ont levé leurs réserves ; root exécute les
+tests, ce ne sont pas deux exécutions indépendantes.
+
+Validation finale : `npm run verify` exit 0, 268 suites, 3 153 tests verts et
+1 ignoré ; typechecks front/back, add-on/no-CASA, build et worker Office réel
+verts. Couverture statements 68,28 %, branches 63,23 %, fonctions 74,02 %,
+lignes 70,02 %. Les trois derniers négatifs rollback/révision/v2 après commit
+incertain font partie de cette exécution. Avertissement de gros chunks
+préexistant, non bloquant. Aucun code modifié après cette vérification.
+
+Checklist de livraison : verify complète, CI web/orchestrateur/Android et
+preview avant fusion normale ; reçus main/Pages/APK et GET publics ensuite.
+Flag intrinsèque `ISOLATED_WORKSPACE_ENABLED=false` inchangé, aucun D1/scopes
+OAuth ni données utilisateur modifiés. Repli par PR de revert et même CI,
+jamais downgrade/purge des journaux. Pas de télémétrie globale disponible.
+W06 reste partiel : capacité durable, sources divergentes, anonymat, recette
+UI/appareil, restauration et synchronisation restent distincts. La preuve
+JSDOM/fake-IDB ne vaut pas une recette navigateur ou APK installé.
+
 ### W06 A3b.7 — effacement depuis une migration complète interrompue, candidat OFF
 
 Livré par #460 le 6 septembre, activation isolée toujours OFF.

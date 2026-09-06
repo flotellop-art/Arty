@@ -139,30 +139,41 @@ it.each([true, false])('actual button → cold document → real login → two r
   expect(fetch).not.toHaveBeenCalled()
 }, 30_000)
 
-async function interruptedMigration(phase: 'verified' | 'copied-complete' | 'copied-partial' | 'copied-absent' = 'verified', extraOwners: string[] = []) {
+type MigrationCut = 'verified' | 'copied-complete' | 'copied-partial' | 'copied-absent' | 'no-journal' | 'reserved-no-plan' | 'reserved' | 'inventoried' | 'barrier'
+async function interruptedMigration(phase: MigrationCut = 'verified', extraOwners: string[] = []) {
   const seeded = await seedLegacy(true, true)
+  expect(localStorage.getItem(`arty-${seeded.a}-api-keys`)).toBeNull() // A's key unavailable BEFORE the source snapshot
   for (const owner of extraOwners) {
     (await import('../../services/userSession')).setActiveSession(account(owner))
     await (await import('../../services/crypto')).initCrypto('synthetic-control-key')
   }
   await newDocument()
   const put = IDBObjectStore.prototype.put
+  const open = indexedDB.open.bind(indexedDB), opening = vi.spyOn(indexedDB, 'open').mockImplementation((name, version) => {
+    if (phase === 'no-journal' && name.endsWith('-migration') && version === 1) throw new Error('journal creation cut')
+    return open(name, version)
+  })
   let copied = false
   const fault = vi.spyOn(IDBObjectStore.prototype, 'put').mockImplementation(function (this: IDBObjectStore, value, key) {
     if (value.version === 3 && value.phase === 'copied') {
       copied = true
       if (phase === 'copied-absent') this.transaction.addEventListener('complete', () => lock.resolve(), { once: true })
     }
-    if ((phase === 'verified' && value.version === 2 && value.state === 'ready') ||
+    if ((phase === 'reserved-no-plan' && this.name === 'journal' && key === 'plan') ||
+      (phase === 'reserved' && value.version === 3 && value.phase === 'inventoried') ||
+      (phase === 'inventoried' && value.version === 3 && value.phase === 'barrier') ||
+      (phase === 'barrier' && this.name === 'projects' && this.transaction.db.name.endsWith('-migration')) ||
+      (phase === 'verified' && value.version === 2 && value.state === 'ready') ||
       (phase === 'copied-complete' && value.version === 3 && value.phase === 'verified') ||
       (phase === 'copied-partial' && copied && this.name === 'projects' && this.transaction.db.name.startsWith('arty-workspace-'))) throw new Error('migration cut')
     return put.call(this, value, key)
   })
   const oldActor = (await import('../../services/workspaceWriter/migration')).createColdWorkspaceMigration()
   await expect(oldActor.start()).rejects.toThrow()
-  fault.mockRestore()
+  fault.mockRestore(); opening.mockRestore()
   const header = await control()
-  expect(header).toMatchObject({ version: 3, phase: phase === 'verified' ? 'verified' : 'copied' })
+  const expected = phase === 'verified' ? 'verified' : phase.startsWith('copied') ? 'copied' : ['no-journal', 'reserved-no-plan', 'reserved'].includes(phase) ? 'reserved' : phase
+  expect(header).toMatchObject({ version: 3, phase: expected })
   await newDocument(); expect(await runtime.workspaceAdmission.admit()).toBe('recoverable')
   return { ...seeded, header, oldActor }
 }
@@ -179,6 +190,235 @@ async function rawCopies() {
   }
   return { local: Object.keys(localStorage).sort().map(k => [k, localStorage.getItem(k)]), copies }
 }
+
+it.each(['no-journal', 'reserved-no-plan', 'reserved', 'inventoried', 'barrier', 'copied-partial'] as const)('real UI prepares %s without A key or private activation, then cold erases A and B logs in/writes/reloads', async phase => {
+  const { a, b, savedB, oldActor } = await interruptedMigration(phase), before = await rawCopies()
+  const derive = vi.spyOn(crypto.subtle, 'deriveKey'), decrypt = vi.spyOn(crypto.subtle, 'decrypt')
+  const { DocumentWorkspaceGate } = await import('../../components/workspace/DocumentWorkspaceGate'), privateImport = vi.fn(() => createElement('div', {}, 'private'))
+  window.history.replaceState({}, '', '/auth/callback?code=synthetic&state=keep#fragment'); sessionStorage.setItem('synthetic-verifier', 'keep')
+  render(createElement(DocumentWorkspaceGate, { controller: runtime.documentWorkspace, admission: runtime.workspaceAdmission, Content: privateImport }))
+  fireEvent.click(await screen.findByText('workspaceAdmission.erasurePreparation.inspect'))
+  await screen.findByText('workspaceAdmission.erasurePreparation.confirmCta')
+  expect(!!screen.queryByText('workspaceAdmission.erasurePreparation.initialInventory')).toBe(phase === 'no-journal' || phase === 'reserved-no-plan')
+  expect(await rawCopies()).toEqual(before)
+  fireEvent.click(screen.getByText('workspaceAdmission.erasurePreparation.confirmCta'))
+  await screen.findByText('workspaceAdmission.erasurePreparation.done')
+  expect(await control()).toMatchObject({ version: 3, phase: 'verified' })
+  expect(privateImport).not.toHaveBeenCalled(); expect(derive).not.toHaveBeenCalled(); expect(decrypt).not.toHaveBeenCalled()
+  expect(() => runtime.workspaceAdmission.assertReady()).toThrow()
+  await newDocument(); expect(await runtime.workspaceAdmission.admit()).toBe('recoverable')
+  const { default: Recovery } = await import('../../components/workspace/ColdMigrationRecovery')
+  render(createElement(Recovery))
+  fireEvent.click(screen.getByText('workspaceAdmission.migrationErasure.inspect'))
+  fireEvent.click(await screen.findByRole('radio', { name: new RegExp(`"${a}"`) }))
+  fireEvent.click(screen.getByText('workspaceAdmission.migrationErasure.review'))
+  fireEvent.click(screen.getByText('workspaceAdmission.migrationErasure.confirmCta'))
+  await screen.findByText('workspaceAdmission.migrationErasure.recorded')
+  expect((await control()).erasure.owner).toBe(a)
+  expect(location.search + location.hash).toBe('?code=synthetic&state=keep#fragment'); expect(sessionStorage.getItem('synthetic-verifier')).toBe('keep')
+  await cold()
+  expect(derive).not.toHaveBeenCalled(); expect(decrypt).not.toHaveBeenCalled(); derive.mockRestore(); decrypt.mockRestore()
+  const { useAuth } = await import('../../hooks/useAuth'), auth = renderHook(() => useAuth())
+  await act(async () => { await auth.result.current.login('apikey', { identifier: 'key-b', anthropicKey: 'key-b', displayName: 'B' }) })
+  expect(auth.result.current.currentUser?.userId).toBe(b)
+  await readAndUpdate(savedB); const added = await writeAndRead(`B-after-preparation-${phase}`)
+  auth.unmount(); await newDocument(); expect(await runtime.workspaceAdmission.admit()).toBe('ready')
+  const users = await import('../../services/userSession'); users.setActiveSession(account(b)); await (await import('../../services/crypto')).initCrypto('key-b')
+  await readAndUpdate(savedB); await readAndUpdate(added)
+  await expect(oldActor.resume()).rejects.toThrow(); expect(fetch).not.toHaveBeenCalled()
+  window.history.replaceState({}, '', '/')
+}, 30_000)
+
+it.each(['plan', 'inventoried', 'barrier', 'copied', 'verified', 'verified-changed'])('preparation resumes an exact lost acknowledgement at %s without becoming ready', async point => {
+  const { header } = await interruptedMigration('no-journal'), actor = (await import('../../services/workspaceWriter/migration')).createColdErasurePreparation()
+  expect(await actor.inspect()).toEqual({ initialInventory: true })
+  const originalTimeout = setTimeout, put = IDBObjectStore.prototype.put
+  let expire!: () => void, cut = false
+  const timer = vi.spyOn(globalThis, 'setTimeout').mockImplementation(((fn: () => void, ms?: number) => {
+    if (ms === 120_000) expire = fn
+    return originalTimeout(fn, ms)
+  }) as typeof setTimeout)
+  const fault = vi.spyOn(IDBObjectStore.prototype, 'put').mockImplementation(function (this: IDBObjectStore, value, key) {
+    if (!cut && (point === 'plan' ? this.name === 'journal' && key === 'plan' : value.version === 3 && value.phase === (point === 'verified-changed' ? 'verified' : point))) {
+      cut = true; this.transaction.addEventListener('complete', () => expire(), { once: true })
+    }
+    return put.call(this, value, key)
+  })
+  await expect(actor.prepare()).rejects.toMatchObject({ code: 'cancelled' }); fault.mockRestore(); timer.mockRestore(); expect(cut).toBe(true)
+  expect((await control()).generation).toBe(header.generation)
+  if (point === 'verified-changed') localStorage.setItem('synthetic-source-change', 'keep')
+  const writes = vi.spyOn(IDBObjectStore.prototype, 'put'), localWrites = vi.spyOn(Storage.prototype, 'setItem')
+  if (point === 'verified-changed') await expect(actor.prepare()).rejects.toThrow()
+  else await actor.prepare()
+  expect(await control()).toMatchObject({ version: 3, phase: 'verified', generation: header.generation })
+  if (point.startsWith('verified')) { expect(writes).not.toHaveBeenCalled(); expect(localWrites).not.toHaveBeenCalled() }
+}, 30_000)
+
+it('preparation retry after partial target quota retains the first plan and refuses any new source baseline', async () => {
+  await interruptedMigration('reserved-no-plan')
+  const actor = (await import('../../services/workspaceWriter/migration')).createColdErasurePreparation(); await actor.inspect()
+  const set = Storage.prototype.setItem; let targets = 0
+  const fault = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (this: Storage, key, value) {
+    if (key.startsWith('arty-workspace:') && ++targets === 2) throw new DOMException('synthetic quota', 'QuotaExceededError')
+    return set.call(this, key, value)
+  })
+  await expect(actor.prepare()).rejects.toThrow(); fault.mockRestore(); expect(targets).toBe(2)
+  const header = await control(), db = await openDB(`arty-workspace-${header.generation}-migration`), plan = await db.get('journal', 'plan'); db.close()
+  localStorage.setItem('synthetic-source-change', 'keep')
+  const writes = vi.spyOn(IDBObjectStore.prototype, 'put'), before = await rawCopies()
+  await expect(actor.prepare()).rejects.toThrow(); expect(writes).not.toHaveBeenCalled(); expect(await rawCopies()).toEqual(before)
+  localStorage.removeItem('synthetic-source-change'); await actor.prepare()
+  const job = await openDB(`arty-workspace-${header.generation}-migration`); expect(await job.get('journal', 'plan')).toEqual(plan); job.close()
+  expect(await control()).toMatchObject({ version: 3, phase: 'verified' })
+}, 30_000)
+
+it.each(['rollback', 'future', 'v2'])('a %s header cannot replace the exact preparation progression after lost copied acknowledgement', async replacement => {
+  const { header } = await interruptedMigration('no-journal'), actor = (await import('../../services/workspaceWriter/migration')).createColdErasurePreparation(); await actor.inspect()
+  const timeout = setTimeout, put = IDBObjectStore.prototype.put; let expire!: () => void
+  const timer = vi.spyOn(globalThis, 'setTimeout').mockImplementation(((fn: () => void, ms?: number) => { if (ms === 120_000) expire = fn; return timeout(fn, ms) }) as typeof setTimeout)
+  const fault = vi.spyOn(IDBObjectStore.prototype, 'put').mockImplementation(function (this: IDBObjectStore, value, key) {
+    if (value.version === 3 && value.phase === 'copied') this.transaction.addEventListener('complete', () => expire(), { once: true })
+    return put.call(this, value, key)
+  })
+  await expect(actor.prepare()).rejects.toMatchObject({ code: 'cancelled' }); fault.mockRestore(); timer.mockRestore()
+  const committed = await control(), job = await openDB(`arty-workspace-${header.generation}-migration`), plan = await job.get('journal', 'plan'); job.close()
+  expect(committed.phase).toBe('copied')
+  const foreign = replacement === 'rollback' ? header : replacement === 'future' ? { ...committed, revision: committed.revision + 1 } :
+    { format: header.format, version: 2, layout: 'isolated-v1', state: 'ready', revision: committed.revision + 1, generation: header.generation, requiredOwners: plan.owners }
+  const db = await openDB('arty-workspace-control'); await db.put('meta', foreign, 'workspace'); db.close()
+  const before = await rawCopies(), writes = vi.spyOn(IDBObjectStore.prototype, 'put'), localWrites = vi.spyOn(Storage.prototype, 'setItem')
+  await expect(actor.prepare()).rejects.toMatchObject({ code: 'changed' })
+  expect(writes).not.toHaveBeenCalled(); expect(localWrites).not.toHaveBeenCalled(); expect(await rawCopies()).toEqual(before); expect(await control()).toEqual(foreign)
+}, 30_000)
+
+it.each(['source', 'revision', 'v2', 'copy'])('preparation refuses changed %s after inspection without new writes', async change => {
+  const { header } = await interruptedMigration(change === 'copy' || change === 'v2' ? 'copied-partial' : 'no-journal')
+  const actor = (await import('../../services/workspaceWriter/migration')).createColdErasurePreparation(); await actor.inspect()
+  if (change === 'source') localStorage.setItem('synthetic-source-change', 'keep')
+  if (change === 'revision' || change === 'v2') {
+    let next = { ...header, revision: header.revision + 1 }
+    if (change === 'v2') {
+      const job = await openDB(`arty-workspace-${header.generation}-migration`), plan = await job.get('journal', 'plan'); job.close()
+      next = { format: header.format, version: 2, layout: 'isolated-v1', state: 'ready', revision: header.revision + 1, generation: header.generation, requiredOwners: plan.owners }
+    }
+    const db = await openDB('arty-workspace-control'); await db.put('meta', next, 'workspace'); db.close()
+  }
+  if (change === 'copy') {
+    const db = await openDB(`arty-workspace-${header.generation}-files`), keys = await db.getAllKeys('files'), row = await db.get('files', keys[0]!)
+    await db.put('files', { ...row, foreign: true }); db.close()
+  }
+  const before = await rawCopies(), expected = await control(), put = vi.spyOn(IDBObjectStore.prototype, 'put'), set = vi.spyOn(Storage.prototype, 'setItem')
+  await expect(actor.prepare()).rejects.toThrow()
+  expect(put).not.toHaveBeenCalled(); expect(set).not.toHaveBeenCalled(); expect(await rawCopies()).toEqual(before); expect(await control()).toEqual(expected)
+}, 30_000)
+
+it.each(['journal-row', 'destination', 'target', 'source-v2'])('initial inventory refuses preexisting %s without a plan and without writes', async fragment => {
+  const { a, header } = await interruptedMigration('reserved-no-plan')
+  if (fragment === 'journal-row') {
+    const source = await openDB('arty-files'), keys = await source.getAllKeys('files'), row = await source.get('files', keys[0]!); source.close()
+    const job = await openDB(`arty-workspace-${header.generation}-migration`); await job.put('files', row, keys[0]!); job.close()
+  }
+  if (fragment === 'destination') {
+    const { FILE_SHAPE, createDatabaseShape } = await import('../../services/workspaceWriter/schema')
+    const db = await openDB(`arty-workspace-${header.generation}-files`, 1, { upgrade(db) { createDatabaseShape(db, FILE_SHAPE) } }); db.close()
+  }
+  if (fragment === 'target') localStorage.setItem(workspaceDataKey((await import('../../services/workspaceWriter/layout')).isolatedWorkspaceLayout(header.generation, [a]), a, 'crypto-salt'), 'fragment')
+  if (fragment === 'source-v2') { const db = await openDB('arty-files', 2); db.close() }
+  const before = await rawCopies(), put = vi.spyOn(IDBObjectStore.prototype, 'put'), set = vi.spyOn(Storage.prototype, 'setItem')
+  await expect((await import('../../services/workspaceWriter/migration')).createColdErasurePreparation().inspect()).rejects.toThrow()
+  expect(put).not.toHaveBeenCalled(); expect(set).not.toHaveBeenCalled(); expect(await rawCopies()).toEqual(before); expect(await control()).toEqual(header)
+}, 30_000)
+
+it.each(['local', 'document'])('verified-only never publishes its last checkpoint after %s loss inside the actual CAS', async reason => {
+  const { header } = await interruptedMigration('copied-partial'), actor = (await import('../../services/workspaceWriter/migration')).createColdErasurePreparation(); await actor.inspect()
+  const get = IDBObjectStore.prototype.get; let injected = false
+  const put = vi.spyOn(IDBObjectStore.prototype, 'put')
+  const fault = vi.spyOn(IDBObjectStore.prototype, 'get').mockImplementation(function (this: IDBObjectStore, key) {
+    const request = get.call(this, key)
+    if (!injected && this.transaction.db.name === 'arty-workspace-control' && this.transaction.mode === 'readwrite') request.addEventListener('success', () => {
+      injected = true
+      if (reason === 'local') localStorage.setItem('synthetic-late-source', 'keep')
+      else runtime.documentWorkspace.retire()
+    }, { once: true })
+    return request
+  })
+  await expect(actor.prepare()).rejects.toThrow(); expect(injected).toBe(true)
+  expect(put.mock.calls.some(([value]) => value.version === 3 && value.phase === 'verified')).toBe(false)
+  expect(await control()).toEqual(header); fault.mockRestore()
+}, 30_000)
+
+it('first plan installation refuses a late LS change in its own journal transaction', async () => {
+  const { header } = await interruptedMigration('no-journal'), actor = (await import('../../services/workspaceWriter/migration')).createColdErasurePreparation(); await actor.inspect()
+  const count = IDBObjectStore.prototype.count; let injected = false
+  const fault = vi.spyOn(IDBObjectStore.prototype, 'count').mockImplementation(function (this: IDBObjectStore, key) {
+    const request = count.call(this, key)
+    if (!injected && this.name === 'journal' && this.transaction.mode === 'readwrite' && key === 'plan') request.addEventListener('success', () => {
+      injected = true; localStorage.setItem('synthetic-late-source', 'keep')
+    }, { once: true })
+    return request
+  })
+  await expect(actor.prepare()).rejects.toThrow(); fault.mockRestore(); expect(injected).toBe(true)
+  const job = await openDB(`arty-workspace-${header.generation}-migration`); expect(await job.get('journal', 'plan')).toBeUndefined(); job.close()
+  expect(await control()).toEqual(header)
+}, 30_000)
+
+it('a divergent partial fragment is never overwritten or promoted to verified', async () => {
+  const { header } = await interruptedMigration('copied-partial'), db = await openDB(`arty-workspace-${header.generation}-files`)
+  const keys = await db.getAllKeys('files'), row = { ...await db.get('files', keys[0]!), foreign: true }; await db.put('files', row); db.close()
+  const actor = (await import('../../services/workspaceWriter/migration')).createColdErasurePreparation(); await actor.inspect()
+  await expect(actor.prepare()).rejects.toThrow()
+  const checked = await openDB(`arty-workspace-${header.generation}-files`); expect(await checked.get('files', keys[0]!)).toEqual(row); checked.close()
+  expect(await control()).toEqual(header)
+}, 30_000)
+
+it('anonymous-only UI refuses erasure preparation without writes and still permits normal recovery after reload', async () => {
+  localStorage.setItem('arty-crypto-salt', JSON.stringify(Array(16).fill(7))); localStorage.setItem('arty-conversations', 'anonymous history')
+  const put = IDBObjectStore.prototype.put, fault = vi.spyOn(IDBObjectStore.prototype, 'put').mockImplementation(function (this: IDBObjectStore, value, key) {
+    if (value.version === 3 && value.phase === 'inventoried') throw new Error('cut')
+    return put.call(this, value, key)
+  })
+  await expect((await import('../../services/workspaceWriter/migration')).createColdWorkspaceMigration().start()).rejects.toThrow(); fault.mockRestore()
+  await newDocument(); expect(await runtime.workspaceAdmission.admit()).toBe('recoverable')
+  const before = await rawCopies(), { default: Recovery } = await import('../../components/workspace/ColdMigrationRecovery')
+  render(createElement(Recovery)); fireEvent.click(screen.getByText('workspaceAdmission.erasurePreparation.inspect'))
+  await screen.findByText('workspaceAdmission.erasurePreparation.noAccount')
+  expect(screen.queryByText('workspaceAdmission.erasurePreparation.confirmCta')).toBeNull(); expect(await rawCopies()).toEqual(before)
+  await newDocument(); expect(await runtime.workspaceAdmission.admit()).toBe('recoverable')
+  await (await import('../../services/workspaceWriter/migration')).createColdWorkspaceMigration().resume()
+  expect((await control()).version).toBe(2); expect(localStorage.getItem('arty-conversations')).toBe('anonymous history')
+}, 30_000)
+
+it('real preparation UI retries a transient target quota without changing action or opening private storage', async () => {
+  await interruptedMigration('reserved-no-plan')
+  const { default: Recovery } = await import('../../components/workspace/ColdMigrationRecovery'), set = Storage.prototype.setItem
+  render(createElement(Recovery)); fireEvent.click(screen.getByText('workspaceAdmission.erasurePreparation.inspect'))
+  await screen.findByText('workspaceAdmission.erasurePreparation.confirmCta')
+  let targets = 0
+  const fault = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (this: Storage, key, value) {
+    if (key.startsWith('arty-workspace:') && ++targets === 2) throw new DOMException('quota', 'QuotaExceededError')
+    return set.call(this, key, value)
+  })
+  fireEvent.click(screen.getByText('workspaceAdmission.erasurePreparation.confirmCta')); await screen.findByText('workspaceAdmission.erasurePreparation.retryCta')
+  fault.mockRestore(); expect((await control()).phase).toBe('reserved')
+  expect(screen.queryByText('workspaceAdmission.recovery.resume')).toBeNull(); expect(screen.queryByText('workspaceAdmission.migrationErasure.inspect')).toBeNull()
+  fireEvent.click(screen.getByText('workspaceAdmission.erasurePreparation.retryCta')); await screen.findByText('workspaceAdmission.erasurePreparation.done')
+  expect(await control()).toMatchObject({ version: 3, phase: 'verified' }); expect(() => runtime.workspaceAdmission.assertReady()).toThrow()
+}, 30_000)
+
+it.each(['import', 'inspection'] as const)('preparation unmount during %s cannot write or create a late actor', async phase => {
+  await interruptedMigration('no-journal')
+  const service = await import('../../services/workspaceWriter/migration'), original = service.createColdErasurePreparation
+  let finish!: () => void; const pending = new Promise<void>(resolve => { finish = resolve })
+  const factory = vi.spyOn(service, 'createColdErasurePreparation').mockImplementation(() => {
+    const actor = original(); return { ...actor, inspect: async () => { const result = await actor.inspect(); await pending; return result } }
+  })
+  const { default: Recovery } = await import('../../components/workspace/ColdMigrationRecovery'), before = await rawCopies(), view = render(createElement(Recovery))
+  act(() => { fireEvent.click(screen.getByText('workspaceAdmission.erasurePreparation.inspect')); if (phase === 'import') view.unmount() })
+  if (phase === 'inspection') { await vi.waitFor(() => expect(factory).toHaveBeenCalledOnce()); view.unmount() }
+  await act(async () => { finish(); await Promise.resolve() })
+  expect(factory).toHaveBeenCalledTimes(phase === 'import' ? 0 : 1); expect(screen.queryByText('workspaceAdmission.erasurePreparation.confirmCta')).toBeNull()
+  expect(await rawCopies()).toEqual(before)
+}, 30_000)
 
 it.each(['verified', 'copied-complete'] as const)('real cold UI supersedes %s before purge, B logs in/reads/writes, A recreates and erases again', async phase => {
   const { a, b, savedB } = await interruptedMigration(phase), before = await rawCopies()
@@ -241,7 +481,7 @@ it('homonymous catalog escapes opaque control IDs but confirms their exact origi
   expect((await control()).erasure.owner).toBe(owner)
 }, 30_000)
 
-it.each(['resume', 'erase'] as const)('UI binds the first %s click before the lazy import and requires reload to change action', async first => {
+it.each([['resume', 'erase'], ['resume', 'prepare'], ['erase', 'resume'], ['erase', 'prepare'], ['prepare', 'resume'], ['prepare', 'erase']] as const)('UI binds first %s before lazy import and ignores %s until reload', async (first, second) => {
   await interruptedMigration()
   const service = await import('../../services/workspaceWriter/migration'), resumeFactory = service.createColdWorkspaceMigration
   const resumed = vi.spyOn(service, 'createColdWorkspaceMigration').mockImplementation(() => {
@@ -249,19 +489,20 @@ it.each(['resume', 'erase'] as const)('UI binds the first %s click before the la
     return { ...actor, resume: async () => { throw new Error('synthetic resume refusal') } }
   })
   const inspected = vi.spyOn(service, 'createColdMigrationErasure')
+  const prepared = vi.spyOn(service, 'createColdErasurePreparation')
   const { default: Recovery } = await import('../../components/workspace/ColdMigrationRecovery')
   render(createElement(Recovery))
-  const resumeButton = screen.getByText('workspaceAdmission.recovery.resume'), eraseButton = screen.getByText('workspaceAdmission.migrationErasure.inspect')
+  const buttons = { resume: screen.getByText('workspaceAdmission.recovery.resume'), erase: screen.getByText('workspaceAdmission.migrationErasure.inspect'), prepare: screen.getByText('workspaceAdmission.erasurePreparation.inspect') }
   act(() => {
-    fireEvent.click(first === 'resume' ? resumeButton : eraseButton)
-    fireEvent.click(first === 'resume' ? eraseButton : resumeButton)
-    fireEvent.click(first === 'resume' ? resumeButton : eraseButton)
+    fireEvent.click(buttons[first]); fireEvent.click(buttons[second]); fireEvent.click(buttons[first])
   })
   await screen.findByText('workspaceAdmission.migrationErasure.reloadChoice')
   expect(resumed).toHaveBeenCalledTimes(first === 'resume' ? 1 : 0)
   expect(inspected).toHaveBeenCalledTimes(first === 'erase' ? 1 : 0)
+  expect(prepared).toHaveBeenCalledTimes(first === 'prepare' ? 1 : 0)
   expect(screen.queryByText('workspaceAdmission.migrationErasure.inspect')).toBeNull()
-  if (first === 'erase') expect(screen.queryByText('workspaceAdmission.recovery.resume')).toBeNull()
+  expect(screen.queryByText('workspaceAdmission.erasurePreparation.inspect')).toBeNull()
+  if (first !== 'resume') expect(screen.queryByText('workspaceAdmission.recovery.resume')).toBeNull()
 }, 30_000)
 
 it.each(['import', 'inspection'] as const)('UI unmount during %s cannot create a late actor or reintroduce the chooser', async phase => {
