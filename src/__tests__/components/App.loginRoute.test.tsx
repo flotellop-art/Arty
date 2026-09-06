@@ -17,6 +17,7 @@ vi.mock('../../hooks/useAuth', () => ({ useAuth: () => ({
 }) }))
 vi.mock('../../hooks/useConversation', () => ({ useConversation: () => fixture.conversation }))
 vi.mock('../../hooks/useProjectSynthesis', () => ({ useProjectSynthesis: () => ({ draft: null, open: vi.fn() }) }))
+vi.mock('../../hooks/useClientReply', () => ({ useClientReply: () => ({ draft: null, open: vi.fn() }) }))
 vi.mock('../../hooks/useAppSetup', () => ({ useAppSetup: () => ({
   googleAuth: { isConnected: false, handleCallback: fixture.callback },
 }) }))

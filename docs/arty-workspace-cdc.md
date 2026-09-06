@@ -33,7 +33,7 @@ supplémentaire n'est implicite dans ce mandat.
 | W05 | Livrables | Export DOCX modifiable et XLSX de tableaux, en plus des exports existants. Téléchargements relus par un parseur indépendant ; cellules dangereuses neutralisées ; aucun HTML actif ni formule arbitraire. Formats et limites documentés. | Web déployé #445 ; recette structurelle vérifiée ; rendu Office/appareil non vérifié |
 | W06 | Continuité | Sauvegarde/restauration explicites puis synchronisation optionnelle multi-appareil chiffrée avant upload, avec secret détenu par l'utilisateur et récupération expliquée. Conflits non destructifs ; reprise hors-ligne ; logout/switch/delete et compte invité traités. Un export manuel seul ne valide pas la synchronisation. | A1 #446, galerie #448, verrou document #449, capture/vérification A2 #451, préparation A3a #452, admission froide #453, runtime isolé inactif #454, migrateur journalisé OFF #455, reprise froide d'effacement v2 OFF #456, reçu distant #457, pont froid/fence v5 OFF #458 et reset local v6/v7 OFF #459 livrés ; restauration/synchronisation non livrées |
 | W07 | Comparaison | Comparer depuis une conversation avec contexte/documents autorisés ; conserver les résultats et poursuivre la réponse choisie sans perdre l'original. Erreurs/coûts/quotas de chaque panneau visibles ; EU et historique privé jamais contournés. | Web livré #462 ; recette App/navigateur synthétique vérifiée ; APK distribuée, installation physique et OAuth/facturation réels non attestés |
-| W08 | Parcours métier | Trois parcours complets : synthèse documentaire, réponse client préparée, planification Agenda avec confirmation avant écriture. Écran de connexions indiquant disponible/non configuré/non pris en charge selon plateforme. Pas de Drive/Gmail OAuth restreint ni relais IMAP serveur. | Socle Google/BYOK #463, transport Agenda #464, pont copie documentaire/Agenda #465 et synthèse guidée #466 livrés ; réponse client et connexions incomplètes |
+| W08 | Parcours métier | Trois parcours complets : synthèse documentaire, réponse client préparée, planification Agenda avec confirmation avant écriture. Écran de connexions indiquant disponible/non configuré/non pris en charge selon plateforme. Pas de Drive/Gmail OAuth restreint ni relais IMAP serveur. | Socle Google/BYOK #463, transport Agenda #464, pont copie documentaire/Agenda #465, synthèse guidée #466 et statut client durable #467 livrés ; formulaire client validé localement, publication et connexions incomplètes |
 | W09 | Mobile et identité | PWA installable ; identité tryarty cohérente ; distribution Android authentifiée et documentée. Ne pas rediriger vers une app Play homonyme. Toute migration appId inclut signatures/OAuth/Firebase/liens vérifiés ; un APK distribué n'est pas une publication Store. | À faire |
 | W10 | Mesure | Instrumentation minimale sans contenu utilisateur : activation, succès/échec des parcours, retour D7/D30 et conversion. Marges fondées sur coût serveur, pas un compteur local. Tableau avec période, échantillon et limites ; aucune métrique inventée. | À faire |
 
@@ -108,14 +108,31 @@ réels ; préparer protocole et instrumentation sans fabriquer leurs résultats.
 
 ## Preuves par lot
 
-### W08 — statut durable client, socle validé localement
+### W08 — formulaire client, validé localement
+
+Entrée Templates → champs manuels → revue exacte Claude/Mistral → nouveau fil
+détaché marqué « préparée, non envoyée ». Aucune bibliothèque, donnée de compte
+connecté, action mail/Agenda ni URL téléchargée. Bornes 8192/8192/1600, faits
+absents confirmés, choix EU explicite, annulation garde la saisie, consentement
+obsolète invalidé. Association de projet interdite, titre conservé au retry.
+
+Admission par union stricte et cycle partagé avec la synthèse ; nouveau shape
+initial allowlisté avant lecture IDB. Deux diagnostics et corrections de revue.
+49 tests nouveaux (30 service, 8 transport réel simulé, 11 formulaire/revue).
+Vrai App FR/EN 390/1440 : deux fournisseurs, double clic un appel, copie et
+reload zéro HTTP, DOCX ciblé téléchargé et XML relu. Quota simulé avec ancien
+brouillon synthèse : Retour retrouve le client, sans retry automatique.
+Voir `CLIENT_REPLY_FORM_RELEASE.md`. Pas encore de livraison de cette tranche.
+
+### W08 — statut durable client, socle livré #467
 
 Mode canonique restrictif, raw modèle intact, projections copie/export,
 archives v3 et branches/retry/comparateur. Deux contre-revues, verify 293 suites /
 3 550 tests réussis + 1 ignoré, vraie App sur fil fictif FR/EN 390/1440 avec
 Word/Excel ciblés téléchargés et XML relus. Détails et limites :
-`CLIENT_REPLY_DRAFT_FOUNDATION.md`. Pas encore de formulaire ni de livraison
-de ce socle ; le parcours client n'est pas déclaré terminé.
+`CLIENT_REPLY_DRAFT_FOUNDATION.md`. Main `225f560`, Pages `e0cd4933`, six assets
+publics tryarty.com/immutable identiques ; CI main `34019451600` et Firebase
+`34019451598` réussis. Ce socle livré ne constitue pas à lui seul le formulaire.
 
 ### W08 — synthèse guidée, livrée #466
 

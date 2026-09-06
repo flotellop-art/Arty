@@ -8,6 +8,8 @@ import { beginProjectOperation, getProject, assertProjectOperation } from './sto
 import { buildProjectContext, projectContextText, type ProjectContext } from './context'
 import { ProjectError, type Project } from './types'
 import { isProjectEU, projectConversationKey, type ProjectTurn } from './chatPolicy'
+import { CLIENT_REPLY_RULES, clientReplyQuestion, type ClientReplyPolicy, type ClientReplyFields } from '../workflows/clientReply'
+import { CLIENT_REPLY_DRAFT } from '../workflows/outputRestriction'
 
 export const PROJECT_REQUEST_TEXT_LIMIT = 200_000
 export const PROJECT_REQUEST_BINARY_LIMIT = 20 * 1024 * 1024
@@ -16,10 +18,11 @@ export const PROJECT_CLIENT_RESERVE = 32_000
 export interface ProjectSelection { mode: 'search' | 'overview'; documentIds: string[] }
 /** Restricts one locally initiated workflow. Never inferred from saved text. */
 export interface ProjectSynthesisPolicy { kind: 'project-synthesis'; projectId: string; projectRevision: number }
+export type WorkflowPolicy = ProjectSynthesisPolicy | ClientReplyPolicy
 export type ProjectReview = { kind: 'select'; project: Project; policy?: ProjectSynthesisPolicy; initialDocumentIds?: string[]; onSelectionChange?(ids: string[]): void } | {
   kind: 'confirm'; context: ProjectContext | null; provider: 'claude' | 'mistral';
   question: string; textChars: number; binaryBytes: number; historyMessages: number;
-  files: string[]; systemPrompt: string; comparisonModels?: [string, string]
+  files: string[]; systemPrompt: string; comparisonModels?: [string, string]; clientReply?: ClientReplyFields
 }
 export type ReviewProjectRequest = (review: ProjectReview, signal: AbortSignal) => Promise<ProjectSelection | boolean | null>
 type ClaudeMessages = Awaited<ReturnType<typeof buildApiMessages>>
@@ -70,7 +73,7 @@ export interface PreparedProjectChat {
 export interface ProjectPayloadArgs {
   conversation: Conversation; messages: Message[]; query: string; effectiveQuestion?: string; provider: 'claude' | 'mistral';
   preparation: DocumentPreparation; signal: AbortSignal; review: ReviewProjectRequest
-  policy?: ProjectSynthesisPolicy
+  policy?: WorkflowPolicy
 }
 
 export async function prepareProjectChat(args: ProjectPayloadArgs & {
@@ -81,7 +84,8 @@ export async function prepareProjectChat(args: ProjectPayloadArgs & {
   preparation.assertCurrent()
   const original = structuredClone(args.conversation)
   const creation = args.creation
-  if (creation && (!original.hasProjectContext || original.messages.length || !args.policy || original.projectId !== args.policy.projectId)) throw new ProjectError('unsupported')
+  if (creation && (!original.hasProjectContext || original.messages.length || !args.policy)) throw new ProjectError('unsupported')
+  if (args.policy?.kind === 'client-reply' && !creation) throw new ProjectError('unsupported')
   const euOnly = isProjectEU(original)
   let expectedConversation = projectConversationKey(original), persisted = false, engaged = false
   let committedMessages = 0, committedLastId: string | undefined
@@ -139,7 +143,20 @@ export async function prepareProjectPayload(args: ProjectPayloadArgs & {
   preparation.assertCurrent(); args.assertConversationCurrent()
   const original = structuredClone(args.conversation), messages = structuredClone(args.messages)
   const policy = args.policy ? structuredClone(args.policy) : undefined
-  if (policy && (policy.kind !== 'project-synthesis' || original.projectId !== policy.projectId)) throw new ProjectError('unsupported')
+  if (policy) {
+    if (policy.kind === 'project-synthesis') {
+      if (original.projectId !== policy.projectId) throw new ProjectError('unsupported')
+    } else if (policy.kind === 'client-reply') {
+      const message = messages[0], question = clientReplyQuestion(policy.fields, policy.locale)
+      const conversationKeys = ['id', 'title', 'createdAt', 'updatedAt', 'messages', 'hasProjectContext', 'euOnly', 'outputRestriction']
+      const messageKeys = ['id', 'role', 'content', 'timestamp', 'files', 'quickAction']
+      if (original.projectId || original.messages.length || original.outputRestriction !== CLIENT_REPLY_DRAFT ||
+        Object.keys(original).some(key => !conversationKeys.includes(key)) || !message || Object.keys(message).some(key => !messageKeys.includes(key)) ||
+        !original.hasProjectContext || typeof policy.euOnly !== 'boolean' || isProjectEU(original) !== policy.euOnly ||
+        messages.length !== 1 || message?.role !== 'user' || message.content !== question ||
+        message.files !== undefined || message.quickAction !== undefined || args.effectiveQuestion !== question || args.query !== policy.fields.objective) throw new ProjectError('unsupported')
+    } else throw new ProjectError('unsupported')
+  }
   const operation = await beginProjectOperation()
   const assertCurrent = () => {
     preparation.assertCurrent(); operation.assertCurrent(); args.assertConversationCurrent()
@@ -154,17 +171,18 @@ export async function prepareProjectPayload(args: ProjectPayloadArgs & {
     if (!summary || summary.status === 'deleted') throw new ProjectError('deleted')
     if (!summary.project || summary.status !== 'ready') throw new ProjectError('locked')
     if (summary.euOnly && !euOnly) throw new ProjectError('conflict')
-    if (policy && summary.revision !== policy.projectRevision) throw new ProjectError('conflict')
-    const answer = await review({ kind: 'select', project: structuredClone(summary.project), ...(policy ? { policy: structuredClone(policy) } : {}) }, signal)
+    const synthesis = policy?.kind === 'project-synthesis' ? policy : undefined
+    if (synthesis && summary.revision !== synthesis.projectRevision) throw new ProjectError('conflict')
+    const answer = await review({ kind: 'select', project: structuredClone(summary.project), ...(synthesis ? { policy: structuredClone(synthesis) } : {}) }, signal)
     assertCurrent()
     if (!answer || typeof answer !== 'object') throw new ProjectError('cancelled')
     const selection = structuredClone(answer)
     if (!['search', 'overview'].includes(selection.mode) || !Array.isArray(selection.documentIds) || (summary.project.documents.length > 0 && !selection.documentIds.length)) throw new ProjectError('unsupported')
-    if (policy && (selection.mode !== 'overview' || !selection.documentIds.length)) throw new ProjectError('unsupported')
+    if (synthesis && (selection.mode !== 'overview' || !selection.documentIds.length)) throw new ProjectError('unsupported')
     context = await buildProjectContext(operation, summary.project, args.query, selection)
     assertCurrent()
   }
-  if (policy && (!context || !context.excerpts.some(excerpt => excerpt.text.trim()))) throw new ProjectError('unavailable')
+  if (policy?.kind === 'project-synthesis' && (!context || !context.excerpts.some(excerpt => excerpt.text.trim()))) throw new ProjectError('unavailable')
   // Fully hydrate once before the preview. No lost asset silently becomes a
   // placeholder. Office files in this array have already been extracted locally.
   let sourceBytes = 0
@@ -193,6 +211,7 @@ export async function prepareProjectPayload(args: ProjectPayloadArgs & {
     'You are Arty. Answer in the language of the user. Analyse only the supplied conversation and excerpts. No personal memory or connected account data is available.',
     'Cite [S1], [S2], etc. only for the CURRENT turn excerpts, with their extracted line ranges. Previous turn labels are not current sources. Never claim a full library review. Distinguish evidence, inference and missing information.',
     DOCUMENT_READ_ONLY_RULES,
+    original.outputRestriction === CLIENT_REPLY_DRAFT ? CLIENT_REPLY_RULES : '',
     context?.instructions ? `Project owner preferences (subordinate to read-only policy):\n${context.instructions}` : '',
   ].filter(Boolean).join('\n\n')
   const sourceText = context ? projectContextText(context) : 'No library attached to this turn. Earlier conversation text is still supplied; do not claim to have reread its sources.'
@@ -221,7 +240,8 @@ export async function prepareProjectPayload(args: ProjectPayloadArgs & {
   await validate()
   if (await review({ kind: 'confirm', context: context ? structuredClone(context) : null, provider: args.provider,
     question: args.effectiveQuestion ?? args.query, ...budget, historyMessages: Math.max(0, messages.length - 1),
-    files: messages.flatMap(m => m.files?.map(f => f.name) ?? []), systemPrompt }, signal) !== true) throw new ProjectError('cancelled')
+    files: messages.flatMap(m => m.files?.map(f => f.name) ?? []), systemPrompt,
+    ...(policy?.kind === 'client-reply' ? { clientReply: structuredClone(policy.fields) } : {}) }, signal) !== true) throw new ProjectError('cancelled')
   await validate()
   return { provider: args.provider, claudeMessages, mistralMessages, systemPrompt,
     turn: { version: 1, ...(context ? { projectId: context.projectId, projectRevision: context.projectRevision, projectName: context.name } : {}),

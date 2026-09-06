@@ -46,6 +46,7 @@ import { ProjectError, type Project } from '../services/projects/types'
 import { useProjectReview } from './useProjectReview'
 import { useContextualComparisons } from './useContextualComparisons'
 import { captureProjectSynthesis, type ProjectSynthesisInvocation } from '../services/workflows/projectSynthesis'
+import { captureClientReply, type ClientReplyInvocation } from '../services/workflows/clientReply'
 
 import type { ToolDispatcher as ToolHandler } from '../services/tools/types'
 import { generatedImageIds, MAX_GENERATED_IMAGES_PER_TURN } from '../services/generatedImages'
@@ -220,6 +221,7 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
    * Existing non-EU traffic cannot be relabelled EU: start a new EU chat. */
   const setConversationProject = useCallback(async (conversationId: string | null, project: Project | null): Promise<string | null> => {
     const current = conversationId ? storage.getConversation(conversationId) : null
+    if (current?.outputRestriction) return null // this workflow stays detached, including long retries
     if ((conversationId && (!current || hasStream(conversationId))) || !storage.isCacheReady()) return null
     const before = current ? projectConversationKey(current) : null
     const finishAssociation = conversationId ? beginConversationWork(conversationId) : () => {}
@@ -276,7 +278,7 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
       conversationId?: string,
       files?: FileAttachment[],
       options?: ChatSendOptions,
-      synthesis?: ProjectSynthesisInvocation,
+      synthesis?: ProjectSynthesisInvocation | ClientReplyInvocation,
     ): Promise<boolean> => {
       const targetId = conversationId ?? activeId
       if (!targetId) return false
@@ -759,7 +761,7 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
       // Pas de préfixe 🇪🇺 dans le titre : la Sidebar affiche déjà le badge EU
       // sur la ligne d'aperçu (doublon relevé en relecture).
       const userMessageCount = conv.messages.filter((m) => m.role === 'user').length
-      if (userMessageCount === 1) {
+      if (userMessageCount === 1 && (!conv.outputRestriction || synthesis)) {
         conv.title = text.trim().slice(0, 50) + (text.trim().length > 50 ? '...' : '')
       }
       conv.updatedAt = Date.now()
@@ -1324,6 +1326,11 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
     return sendMessage(invocation.objective, invocation.conversation.id, undefined, undefined, invocation)
   }, [sendMessage])
 
+  const startClientReply = useCallback(async (args: Parameters<typeof captureClientReply>[0]) => {
+    const invocation = captureClientReply(args)
+    return sendMessage(invocation.objective, invocation.conversation.id, undefined, undefined, invocation)
+  }, [sendMessage])
+
   const deleteConv = useCallback(
     (id: string) => {
       // Si la conv supprimée a un stream en cours, l'arrêter d'abord pour
@@ -1612,6 +1619,7 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
     clearActive,
     sendMessage,
     startProjectSynthesis,
+    startClientReply,
     deleteConversation: deleteConv,
     renameConversation,
     setConversationTags,

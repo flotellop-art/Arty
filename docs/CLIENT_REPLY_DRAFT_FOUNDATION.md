@@ -53,6 +53,22 @@ toujours historique/inert et publication non autorisée. W06/sync restent OFF.
 
 ## Promotion et limites
 
+Socle fusionné normalement par #467 à 07:33:00 UTC, main
+`225f560ceca729412d3b454dde8caf39b1df9d4d`. CI PR `34019181453` verte ;
+preview `5f56d12f-aef8-431a-8a62-70439a64b432` à 07:28:09 UTC, assets contrôlés
+à 07:32:36.310 UTC. Pages production `e0cd4933-c6d1-4de8-9e68-fc9b71917040`
+réussie à 07:34:21 UTC. GET publics à 07:36:41.324 UTC : chemins, octets et
+SHA-256 identiques entre tryarty.com et `https://e0cd4933.appfacade.pages.dev`
+pour index, App, contextualCompare, officeExport.worker, ProviderPanel et
+SharedConversationView. App `DbCteNoo` : 919 590 octets,
+SHA-256 `e139ff8494b645d7ae58bc57a6a5c7e5e59e525b05828b8d05f9bbf52d93c366`.
+CI main `34019451600` réussie ; APK `34019451598` réussie, distribution
+Firebase terminée à 07:41:07 UTC. Pas d'installation physique ou Store attestés.
+La sonde suit les dépendances réellement déclarées : le helper est factorisé
+dans storage en preview, intégré dans App en production selon les flags.
+L'identité byte-à-byte est vérifiée uniquement entre le domaine canonique et
+son propre déploiement production, pas entre preview et production.
+
 PR/CI et Pages preview avant fusion normale ; contrôler ensuite immutable
 production contre tryarty.com, CI main et APK Firebase séparément. Pas de
 migration physique ou perte de données, pas de dépendance nouvelle. Ne pas
