@@ -5,8 +5,10 @@ indépendants. **W06 non livré** : A1 fournit le format ; A2 ajoute maintenant
 capture/vérification d'une conversation (preuves de livraison dans le CDC).
 État courant du 6 septembre : restauration Web activée et livrée #478, preuves
 dans `WORKSPACE_RESTORE_PUBLISHER.md`. La synchronisation reste à implémenter ;
-la connexion Cloudflare de configuration est toujours expirée après contrôle
-à 15:25 UTC. Les mentions OFF et non livré ci-dessous sont l'historique des
+la connexion Cloudflare de configuration a été réautorisée par l'utilisateur
+et vérifiée à 17:21 UTC. Pages et D1 sont accessibles ; R2 n'est pas activé
+(réponse Cloudflare 10042), aucun stockage distant créé. Les mentions OFF et
+non livré ci-dessous sont l'historique des
 sous-lots, pas la politique actuelle : ISOLATED doit désormais rester true,
 y compris dans un repli fermant seulement les nouveaux départs START.
 
@@ -139,6 +141,19 @@ Vérification locale du 5 septembre : Wrangler 4.129.0 exécuté via npx, comman
 `whoami --json`, authentification expirée/non renouvelable. Aucun login,
 contournement, nouveau bucket, upload ni activation payante. Configuration et
 capacité déployées restent non vérifiées ; le choix B attend cet accès.
+
+Actualisation du 6 septembre à 17:21 UTC : après demande explicite de relance
+et validation de l'utilisateur, `wrangler login` termine avec succès et
+`whoami --json` confirme `loggedIn: true`. Les lectures standard autorisées
+`pages project list` et `d1 list --json` retrouvent `appfacade` (tryarty.com,
+www.tryarty.com, intégration Git) et `arty-db` (juridiction déclarée `eu`).
+Cette liste ne valide ni le schéma, ni la capacité disponible, ni la résidence
+des futurs objets. `r2 bucket list` retourne 10042 : R2 doit être activé dans
+le tableau de bord. Aucun secret extrait, requête SQL, bucket créé, upload,
+activation R2 ou changement de facturation effectué. L'expiration locale
+n'est donc plus le blocage ; l'activation/capacité du stockage et le protocole
+de synchronisation restent à traiter. Les livraisons Git/Pages existantes
+n'étaient pas interrompues par cette expiration locale.
 
 ## Conséquences et prochaines preuves
 
