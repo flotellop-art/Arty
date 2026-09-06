@@ -33,7 +33,7 @@ supplémentaire n'est implicite dans ce mandat.
 | W05 | Livrables | Export DOCX modifiable et XLSX de tableaux, en plus des exports existants. Téléchargements relus par un parseur indépendant ; cellules dangereuses neutralisées ; aucun HTML actif ni formule arbitraire. Formats et limites documentés. | Web déployé #445 ; recette structurelle vérifiée ; rendu Office/appareil non vérifié |
 | W06 | Continuité | Sauvegarde/restauration explicites puis synchronisation optionnelle multi-appareil chiffrée avant upload, avec secret détenu par l'utilisateur et récupération expliquée. Conflits non destructifs ; reprise hors-ligne ; logout/switch/delete et compte invité traités. Un export manuel seul ne valide pas la synchronisation. | A1 #446, galerie #448, verrou document #449, capture/vérification A2 #451, préparation A3a #452, admission froide #453, runtime isolé inactif #454, migrateur journalisé OFF #455, reprise froide d'effacement v2 OFF #456, reçu distant #457, pont froid/fence v5 OFF #458 et reset local v6/v7 OFF #459 livrés ; restauration/synchronisation non livrées |
 | W07 | Comparaison | Comparer depuis une conversation avec contexte/documents autorisés ; conserver les résultats et poursuivre la réponse choisie sans perdre l'original. Erreurs/coûts/quotas de chaque panneau visibles ; EU et historique privé jamais contournés. | Web livré #462 ; recette App/navigateur synthétique vérifiée ; APK distribuée, installation physique et OAuth/facturation réels non attestés |
-| W08 | Parcours métier | Trois parcours complets : synthèse documentaire, réponse client préparée, planification Agenda avec confirmation avant écriture. Écran de connexions indiquant disponible/non configuré/non pris en charge selon plateforme. Pas de Drive/Gmail OAuth restreint ni relais IMAP serveur. | Socle Google/BYOK #463 et transport Agenda #464 livrés web ; pont copie documentaire/Agenda candidat local ; synthèse/réponse client et connexions incomplètes |
+| W08 | Parcours métier | Trois parcours complets : synthèse documentaire, réponse client préparée, planification Agenda avec confirmation avant écriture. Écran de connexions indiquant disponible/non configuré/non pris en charge selon plateforme. Pas de Drive/Gmail OAuth restreint ni relais IMAP serveur. | Socle Google/BYOK #463, transport Agenda #464 et pont copie documentaire/Agenda #465 livrés web ; synthèse/réponse client et connexions incomplètes |
 | W09 | Mobile et identité | PWA installable ; identité tryarty cohérente ; distribution Android authentifiée et documentée. Ne pas rediriger vers une app Play homonyme. Toute migration appId inclut signatures/OAuth/Firebase/liens vérifiés ; un APK distribué n'est pas une publication Store. | À faire |
 | W10 | Mesure | Instrumentation minimale sans contenu utilisateur : activation, succès/échec des parcours, retour D7/D30 et conversion. Marges fondées sur coût serveur, pas un compteur local. Tableau avec période, échantillon et limites ; aucune métrique inventée. | À faire |
 
@@ -108,7 +108,7 @@ réels ; préparer protocole et instrumentation sans fabriquer leurs résultats.
 
 ## Preuves par lot
 
-### W08 — copie indépendante vers Agenda, candidat local
+### W08 — copie indépendante vers Agenda, livrée #465
 
 Base `a3724e3`, branche `codex/workflow-calendar-copy`. Source terminée et
 grant initial capturés avant attente ; aperçu inerte puis adoption explicite,
@@ -123,6 +123,15 @@ Tests permanents et vrai App/router synthétique FR/EN 390/1440 vérifiés ;
 état exact de promotion et limites dans `CALENDAR_DOCUMENT_COPY_RELEASE.md`.
 Ne valide pas les deux autres parcours guidés, les connexions, la restauration,
 la synchronisation, ni OAuth/Agenda réel ou l'installation physique.
+
+Fusion #465 à 05:50:50 UTC, main `59bfbc6`. CI PR `34014732996` et preview
+vertes avant fusion. Pages production `11a513c0-58ba-4d15-8560-19e186bd7475`
+réussie à 05:51:57 ; GET canonique/immutable identiques à 05:52:23 et 06:00:19.
+CI main `34014996455` verte à 05:56:16 : 285 suites / 3 451 réussis + 1 ignoré.
+APK `34014996417` signée à 05:59:00 puis distribuée Firebase et secrets
+nettoyés à 05:59:07, job terminé 05:59:10. Hashes et limites dans la checklist.
+Deux parcours suivants cadrés après diagnostics readonly dans
+`PRD_WORKFLOW_DOCUMENT_GUIDES.md` ; aucun de leur code encore implémenté.
 
 ### W08 — transport Agenda et consentement initial, web livré #464
 
