@@ -3,7 +3,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import { onRequestPost as geminiProxy } from '../../../functions/api/ai/gemini-proxy'
 import { onRequestPost as openaiProxy } from '../../../functions/api/ai/openai-proxy'
 import { chargeForUsageMicro } from '../../../functions/api/_lib/creditPricing'
-import { creditWallet, getWalletBalance } from '../../../functions/api/_lib/wallet'
+import { creditWallet } from '../../../functions/api/_lib/wallet'
 import { makeD1Harness, type D1Harness } from './d1Harness'
 
 const EMAIL = 'wallet-proxy@example.test'
@@ -42,6 +42,21 @@ function context(request: Request, background: Promise<unknown>[]) {
     env: h.env,
     waitUntil(promise: Promise<unknown>) { background.push(promise) },
   } as never
+}
+
+// Accounting assertions must read durable D1 state, not the hot-path reader
+// whose intentional 250 ms deadline can return null on a busy CI runner.
+function readDurableWallet() {
+  return h.db.prepare(
+    `SELECT balance_micro AS balanceMicro, reserved_micro AS reservedMicro
+     FROM wallet WHERE user_email = ?1`,
+  ).bind(EMAIL).first<{ balanceMicro: number; reservedMicro: number }>()
+}
+
+async function seedWallet(eventId: string, amountMicro = 1_000_000) {
+  expect(await creditWallet(h.env, {
+    provider: 'creem', eventId, email: EMAIL, amountMicro,
+  })).toEqual({ status: 'credited' })
 }
 
 function square4kPngBase64(): string {
@@ -98,9 +113,7 @@ describe('wallet billing through complete proxy handlers', () => {
       throw new Error(`Unexpected fetch: ${url}`)
     }) as typeof fetch
 
-    await creditWallet(h.env, {
-      provider: 'creem', eventId: 'gemini-topup', email: EMAIL, amountMicro: 1_000_000,
-    })
+    await seedWallet('gemini-topup')
     const background: Promise<unknown>[] = []
     const response = await geminiProxy(context(new Request('https://tryarty.com/api/ai/gemini-proxy', {
       method: 'POST',
@@ -116,7 +129,7 @@ describe('wallet billing through complete proxy handlers', () => {
     await Promise.all(background)
 
     const expectedCharge = chargeForUsageMicro(model, usage).chargeMicro
-    expect(await getWalletBalance(h.env, EMAIL)).toMatchObject({
+    expect(await readDurableWallet()).toEqual({
       balanceMicro: 1_000_000 - expectedCharge,
       reservedMicro: 0,
     })
@@ -151,9 +164,7 @@ describe('wallet billing through complete proxy handlers', () => {
       throw new Error(`Unexpected fetch: ${url}`)
     }) as typeof fetch
 
-    await creditWallet(h.env, {
-      provider: 'creem', eventId: 'openai-topup', email: EMAIL, amountMicro: 1_000_000,
-    })
+    await seedWallet('openai-topup')
     const background: Promise<unknown>[] = []
     const response = await openaiProxy(context(new Request('https://tryarty.com/api/ai/openai-proxy', {
       method: 'POST',
@@ -188,9 +199,7 @@ describe('wallet billing through complete proxy handlers', () => {
       if (url.includes('api.openai.com')) return new Response(null, { status: 200 })
       throw new Error(`Unexpected fetch: ${url}`)
     }) as typeof fetch
-    await creditWallet(h.env, {
-      provider: 'creem', eventId: 'openai-empty-topup', email: EMAIL, amountMicro: 1_000_000,
-    })
+    await seedWallet('openai-empty-topup')
     const background: Promise<unknown>[] = []
     const response = await openaiProxy(context(new Request('https://tryarty.com/api/ai/openai-proxy', {
       method: 'POST',
@@ -202,7 +211,7 @@ describe('wallet billing through complete proxy handlers', () => {
     }), background))
     expect(response.status).toBe(200)
     await Promise.all(background)
-    expect(await getWalletBalance(h.env, EMAIL)).toMatchObject({
+    expect(await readDurableWallet()).toEqual({
       balanceMicro: 1_000_000,
       reservedMicro: 0,
     })
@@ -222,9 +231,7 @@ describe('wallet billing through complete proxy handlers', () => {
     })
     global.fetch = fetchMock as typeof fetch
 
-    await creditWallet(h.env, {
-      provider: 'creem', eventId: 'vision-tiny-topup', email: EMAIL, amountMicro: 1,
-    })
+    await seedWallet('vision-tiny-topup', 1)
     const image = {
       type: 'image_url',
       image_url: { url: `data:image/png;base64,${square4kPngBase64()}`, detail: 'original' },
@@ -244,7 +251,7 @@ describe('wallet billing through complete proxy handlers', () => {
     expect(response.status).toBe(402)
     await Promise.all(background)
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes('api.openai.com'))).toBe(false)
-    expect(await getWalletBalance(h.env, EMAIL)).toMatchObject({ balanceMicro: 1, reservedMicro: 0 })
+    expect(await readDurableWallet()).toEqual({ balanceMicro: 1, reservedMicro: 0 })
   })
 
   it("règle la réservation vision sur l'usage OpenAI mesuré", async () => {
@@ -274,9 +281,7 @@ describe('wallet billing through complete proxy handlers', () => {
       throw new Error(`Unexpected fetch: ${url}`)
     }) as typeof fetch
 
-    await creditWallet(h.env, {
-      provider: 'creem', eventId: 'vision-success-topup', email: EMAIL, amountMicro: 1_000_000,
-    })
+    await seedWallet('vision-success-topup')
     const background: Promise<unknown>[] = []
     const response = await openaiProxy(context(new Request('https://tryarty.com/api/ai/openai-proxy', {
       method: 'POST',
@@ -290,14 +295,34 @@ describe('wallet billing through complete proxy handlers', () => {
     await Promise.all(background)
 
     const expectedCharge = chargeForUsageMicro('gpt-5.6-terra', usage).chargeMicro
-    expect(await getWalletBalance(h.env, EMAIL)).toMatchObject({
+    expect(await readDurableWallet()).toEqual({
       balanceMicro: 1_000_000 - expectedCharge,
       reservedMicro: 0,
     })
-    const reservation = await h.db.prepare(
-      `SELECT status FROM reservation ORDER BY created_at DESC LIMIT 1`,
-    ).first<{ status: string }>()
-    expect(reservation?.status).toBe('settled')
+    const reservations = await h.db.prepare(
+      `SELECT id, status, model FROM reservation WHERE user_email = ?1`,
+    ).bind(EMAIL).all<{ id: string; status: string; model: string }>()
+    expect(reservations.results).toHaveLength(1)
+    const reservation = reservations.results[0]
+    expect(reservation).toEqual({
+      id: expect.any(String), status: 'settled', model: 'gpt-5.6-terra',
+    })
+    const debits = await h.db.prepare(
+      `SELECT amount_micro, ref_type, ref_id, model, balance_after, meta
+       FROM credit_ledger WHERE user_email = ?1 AND kind = 'debit'`,
+    ).bind(EMAIL).all<{
+      amount_micro: number; ref_type: string; ref_id: string; model: string;
+      balance_after: number; meta: string;
+    }>()
+    expect(debits.results).toHaveLength(1)
+    expect(debits.results[0]).toEqual({
+      amount_micro: -expectedCharge,
+      ref_type: 'reservation', ref_id: reservation.id, model: 'gpt-5.6-terra',
+      balance_after: 1_000_000 - expectedCharge, meta: expect.any(String),
+    })
+    expect(JSON.parse(debits.results[0].meta)).toEqual({
+      input: 1_234, output: 56, cacheRead: 0, cacheCreation: 0, usageMeasured: true,
+    })
   })
 
   it("annule intégralement la réservation vision si OpenAI refuse l'appel", async () => {
@@ -313,9 +338,7 @@ describe('wallet billing through complete proxy handlers', () => {
       throw new Error(`Unexpected fetch: ${url}`)
     }) as typeof fetch
 
-    await creditWallet(h.env, {
-      provider: 'creem', eventId: 'vision-refund-topup', email: EMAIL, amountMicro: 1_000_000,
-    })
+    await seedWallet('vision-refund-topup')
     const background: Promise<unknown>[] = []
     const response = await openaiProxy(context(new Request('https://tryarty.com/api/ai/openai-proxy', {
       method: 'POST',
@@ -327,7 +350,7 @@ describe('wallet billing through complete proxy handlers', () => {
     expect(response.status).toBe(400)
     await Promise.all(background)
 
-    expect(await getWalletBalance(h.env, EMAIL)).toMatchObject({
+    expect(await readDurableWallet()).toEqual({
       balanceMicro: 1_000_000,
       reservedMicro: 0,
     })
@@ -346,9 +369,7 @@ describe('wallet billing through complete proxy handlers', () => {
       throw new Error(`Unexpected fetch: ${url}`)
     })
     global.fetch = fetchMock as typeof fetch
-    await creditWallet(h.env, {
-      provider: 'creem', eventId: 'vision-invalid-topup', email: EMAIL, amountMicro: 1_000_000,
-    })
+    await seedWallet('vision-invalid-topup')
 
     const malformed = JSON.parse(visionRequestBody()) as Record<string, unknown>
     const messages = malformed.messages as Array<{ content: Array<Record<string, unknown>> }>
@@ -368,7 +389,7 @@ describe('wallet billing through complete proxy handlers', () => {
     const row = await h.db.prepare('SELECT COUNT(*) AS count FROM reservation')
       .first<{ count: number }>()
     expect(row?.count).toBe(0)
-    expect(await getWalletBalance(h.env, EMAIL)).toMatchObject({
+    expect(await readDurableWallet()).toEqual({
       balanceMicro: 1_000_000,
       reservedMicro: 0,
     })
