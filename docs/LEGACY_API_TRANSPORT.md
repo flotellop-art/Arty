@@ -1,6 +1,6 @@
 # W09 — transport API des anciens APK
 
-6 septembre 2026. Travail local validé, publication encore à confirmer. Base main
+6 septembre 2026. **Transport API historique livré par #471**. Base main
 `3d99585bcf001500bf9a2b0f1bf48073ab914d24` (#470), branche
 `codex/mobile-compatibility`.
 
@@ -102,3 +102,39 @@ refus de l'origine historique, redirections pages/www conservées. Aucun OTP,
 email, action Calendar, webhook de paiement ni credential réel envoyé.
 Repli : revert ciblé par PR ; il restaure aussi le défaut de transport observé,
 donc décider selon l'incident, sans effacer ni migrer des données.
+
+## Reçu de production — #471
+
+PR [#471](https://github.com/flotellop-art/Arty/pull/471), head
+`e517faf7804686e2b990b132ad7572a03b0f21d7`, fusion squash normale avec match-head
+à **10:09:56 UTC** ; main `70872fa9acc4960b9f50964d9513587be8d40f83`.
+CI PR [34026356784](https://github.com/flotellop-art/Arty/actions/runs/34026356784)
+entièrement réussie à **10:09:25 UTC**. Preview Pages
+`2480eef1-9b7d-4733-9243-3c5f82a707ba` réussie à 10:05:05 UTC.
+
+Pages production `0bce4e51-79cb-4adf-bb45-75340d9aed50` réussie à
+**10:11:00 UTC**. Recette publique **10:13:49.266 UTC**, exit 0 :
+
+- Ancien host, OPTIONS `subscription/status`, origines `https://localhost`
+  et `capacitor://localhost` : 204, ACAO natif exact, POST et header Google
+  autorisés, aucune Location.
+- Même préflight avec Origin `https://appfacade.pages.dev` : 204, **ACAO absent**.
+  L'edge omet l'en-tête vide du middleware. La première sonde exigeait à tort
+  la chaîne vide ; cette attente a été corrigée sans toucher au code produit.
+  Absence et valeur vide refusent toutes deux CORS ; aucune origine ajoutée.
+- Canonical : préflight natif toujours 204 ; ancienne page `/connections`,
+  faux préfixe `/apiary` et API `www` : 308 vers les destinations exactes prévues.
+
+À **10:13:50.797 UTC**, `/connections` et six chunks HTTP 200, octets/hashes
+égaux sur `https://tryarty.com` et `https://0bce4e51.appfacade.pages.dev`.
+Entrée `index-h295p9Pf.js`, SHA-256
+`cb07b4f8772fe09fa879e96854e45fe979ea341f2abc2390b4cdaf69e0a06fa2`.
+Logs ignorés `legacy-api-production-transport.log` et
+`legacy-api-production-assets.log`.
+
+CI main [34026654773](https://github.com/flotellop-art/Arty/actions/runs/34026654773)
+réussie à **10:15:31 UTC**. APK
+[34026654771](https://github.com/flotellop-art/Arty/actions/runs/34026654771)
+réussie à **10:18:14 UTC**, distribution Firebase à **10:18:12 UTC**.
+L'installation physique et les comptes réels restent non attestés. Toutes les
+sondes externes de ce lot étaient des OPTIONS/GET publics, sans credential ni body.

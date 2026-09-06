@@ -111,10 +111,26 @@ FIREBASE_GROUPS="beta-testers" ./deploy-beta.sh
 
 ## 4. Que reçoivent les testeurs ?
 
-1. Email de Firebase avec un lien d'installation
-2. Ils doivent installer l'app **App Tester** (Firebase) depuis le Play Store
-3. L'APK apparaît dans App Tester → clic → install
-4. Les mises à jour arrivent automatiquement à chaque nouvel upload
+1. Ouvrir l'invitation Firebase sur Android, choisir un compte Google et accepter
+   l'invitation. Conserver ensuite le même compte pour accéder à cette invitation.
+2. **App Tester est facultatif** : il se télécharge depuis la proposition du
+   portail Firebase après acceptation, ou depuis
+   [App Distribution](https://appdistribution.firebase.google.com/), pas depuis
+   une application homonyme trouvée dans le Play Store.
+3. Sélectionner Arty dans le portail/App Tester, télécharger la version proposée,
+   puis confirmer son installation sur l'appareil. Les autorisations Android
+   éventuelles sont accordées par le testeur, pas automatiquement par la CI.
+4. Un upload peut rendre une nouvelle version disponible ; il ne prouve ni sa
+   réception effective ni l'installation automatique d'une mise à jour.
+
+Source : [guide officiel Firebase pour les testeurs Android](https://firebase.google.com/docs/app-distribution/get-set-up-as-a-tester?platform=android),
+vérifié le 6 septembre 2026. Ce circuit concerne l'APK bêta Firebase, pas une
+publication Play Store. Ne pas désinstaller/effacer l'ancienne application pour
+forcer une mise à jour : préserver les données locales et diagnostiquer d'abord.
+
+Le workflow produit aussi un [reçu d'identité du candidat APK](docs/ANDROID_APK_IDENTITY.md).
+Il distingue le fichier vérifié, le succès de l'étape Firebase et l'installation
+physique, qui sont trois preuves différentes.
 
 ---
 
