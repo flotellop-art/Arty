@@ -20,6 +20,7 @@ import { getReflectionLevel } from '../services/reflectionLevel'
 import { deleteFile, deleteOwnedFiles, putFile } from '../services/secureFileStorage'
 import { clearSearchContext, runFactCheckOnLatest } from '../services/factChecker'
 import { beginConversationWork, hasConversationWork } from '../services/conversationWork'
+import { captureCalendarContext } from '../services/calendarClient'
 import { detectSuggestedTasks, addTask } from '../services/taskService'
 import { TOOLS } from '../services/toolDefinitions'
 import { wantsImageGeneration, generateImageToolDefinition } from '../services/tools/imageTools'
@@ -281,6 +282,8 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
         setError(i18n.t('errors.tooManyConcurrentStreams')); return false
       }
       const finishPreparation = beginConversationWork(targetId)
+      const calendarScope = captureCalendarContext() // before all preparation awaits; never recapture at tool dispatch
+      let calendarUsed = false
       try {
 
       // Seul un ID connu peut activer une instruction invisible. Le texte
@@ -796,11 +799,18 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
         if (!invocationStillCurrent()) throw new DOMException('Request cancelled', 'AbortError')
         documentContext?.assertCurrent()
         preparedProject?.assertCurrent()
+        if (calendarUsed) calendarScope!.assertCurrent()
       }
-      const onToken = (token: string) => { if (invocationStillCurrent()) streamToken(token, targetId) }
+      const beforeOwnedRequest = async () => {
+        await preparedProject?.beforeFirstRequest()
+        if (calendarUsed) await calendarScope!.validateReadOnly()
+        assertInvocationCurrent()
+      }
+      const onToken = (token: string) => { try { assertInvocationCurrent() } catch { return }; streamToken(token, targetId) }
 
       const onDone = () => {
         if (!invocationStillCurrent()) return
+        if (calendarUsed) { try { calendarScope!.assertCurrent() } catch { onErr(new Error(i18n.t('calendarWorkflow.errors.unknown'))); return } }
         // Signale au PlanBadge de rafraîchir ses compteurs free quotidiens.
         try { window.dispatchEvent(new CustomEvent('arty-message-sent')) } catch {}
 
@@ -951,6 +961,9 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
       } }
       const trackedToolHandler: ToolHandler = async (name, input) => {
         assertInvocationCurrent()
+        if (calendarScope && ['list_calendar', 'create_calendar_event', 'update_calendar_event', 'delete_calendar_event'].includes(name)) {
+          calendarScope.assertCurrent(); calendarUsed = true
+        }
         if (name === 'generate_image' && !imageAllowed) return { result: 'Image generation is not authorized for this request.' }
         if (name === 'generate_image') {
           if (imageInFlight || imageAttempts >= MAX_GENERATED_IMAGES_PER_TURN) return { result: 'Image generation unavailable: at most four attempts per turn and one at a time. Do not retry automatically.' }
@@ -977,7 +990,7 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
           if (name === 'generate_image') imagePermission.assertCurrent()
           const result = handler ? await handler(name, input, name === 'generate_image' ? {
             imageGeneration: imagePermission,
-          } : undefined) : { result: '' }
+          } : { calendar: { scope: calendarScope, signal: toolController.signal } }) : { result: '' }
           if (name === 'generate_image') imagePermission.assertCurrent()
           assertInvocationCurrent()
           if (name === 'generate_image' && result.localImageId) {
@@ -1086,6 +1099,7 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
           setProgressContent('', targetId)
           controller = streamMessage(enrichedMessages, onToken, onDone, onErr, {
             assertRequestCurrent: assertInvocationCurrent,
+            beforeDocumentRequest: beforeOwnedRequest,
             systemPrompt: systemPromptRef.current,
             onToolCall: trackedToolHandler,
             // Niveau de réflexion utilisateur (chat réel uniquement — jamais
@@ -1141,7 +1155,7 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
           assertRequestCurrent: assertInvocationCurrent,
           documentReadOnly: officeRequest,
           systemPrompt: preparedProject?.systemPrompt ?? systemPromptRef.current,
-          beforeDocumentRequest: preparedProject?.beforeFirstRequest,
+          beforeDocumentRequest: beforeOwnedRequest,
           onToolCall: trackedToolHandler,
           // Fix 429 — outgoingText ≠ modelText ⇔ du contenu d'URL/PDF a été
           // inliné (lot C) : la recherche forcée serait un appel Mistral
@@ -1226,7 +1240,7 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
           assertRequestCurrent: assertInvocationCurrent,
           documentReadOnly: officeRequest,
           systemPrompt: preparedProject?.systemPrompt ?? systemPromptRef.current,
-          beforeDocumentRequest: preparedProject?.beforeFirstRequest,
+          beforeDocumentRequest: beforeOwnedRequest,
           onToolCall: trackedToolHandler,
           reflectionLevel: getReflectionLevel(),
           conversationId: targetId,

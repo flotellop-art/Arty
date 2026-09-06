@@ -953,6 +953,59 @@
     "exportPdf": "Exporter PDF",
     "reportTitle": "Résumé — {{title}}"
   },
+  "calendarWorkflow": {
+    "errors": {
+      "already-attempted": "Une action a déjà été tentée dans ce parcours et a pu être effectuée. Vérifiez son résultat ; aucun renvoi automatique.",
+      "unknown": "Issue incertaine : Google a pu effectuer cette action. Vérifiez directement votre agenda ; aucune relance automatique.",
+      "rejected-before-dispatch": "Action refusée avant envoi à Google. Aucun changement effectué par cette tentative.",
+      "not-sent": "Action non envoyée. Le compte ou la session a changé, ou Agenda est indisponible. Rouvrez le parcours pour une nouvelle confirmation."
+    },
+    "unavailable": "Agenda indisponible. Aucun résultat confirmé.",
+    "validation": {
+      "date": "Début et fin horaires valides requis, en Europe/Paris. Une heure ambiguë nécessite un décalage explicite (+01:00 ou +02:00).",
+      "eventId": "Identifiant Agenda exact requis.",
+      "operation": "Opération Agenda invalide.",
+      "field": "Champ Agenda invalide ou trop long.",
+      "title": "Titre requis.",
+      "interval": "La fin doit être après le début.",
+      "noChanges": "Aucune modification à confirmer.",
+      "period": "Période Agenda invalide (1 à 366 jours).",
+      "response": "Réponse Agenda invalide."
+    },
+    "account": "Compte Google : {{account}}",
+    "scope": "Calendrier : principal · Europe/Paris",
+    "action": "Action : {{operation}}",
+    "operations": {
+      "create": "créer",
+      "update": "modifier",
+      "delete": "supprimer"
+    },
+    "fields": {
+      "eventId": "Événement (identifiant exact)",
+      "title": "Titre",
+      "start": "Début",
+      "end": "Fin",
+      "location": "Lieu",
+      "description": "Notes"
+    },
+    "question": "Confirmer cette action exacte ?",
+    "formTitle": "Créer un rendez-vous",
+    "disconnected": "Google non connecté",
+    "start": "Début (Paris)",
+    "end": "Fin (Paris)",
+    "close": "Fermer",
+    "cancel": "Annuler",
+    "editDraft": "Modifier le brouillon",
+    "sending": "Envoi…",
+    "confirmCreate": "Confirmer la création",
+    "review": "Vérifier avant envoi",
+    "created": "Rendez-vous créé.",
+    "changed": "Compte Google changé. Actualisez la liste avant une nouvelle action.",
+    "refresh": "Actualiser la liste (sans rejouer d’action)",
+    "briefUnavailable": "Agenda indisponible : le brief ne peut pas confirmer vos rendez-vous.",
+    "speechUnavailable": "Agenda indisponible : vos rendez-vous ne sont pas vérifiés.",
+    "reopenBrief": "Compte Google changé. Rouvrez le brief."
+  },
   "calendar": {
     "suggestionPillPrefix": "Créer un événement : ",
     "create": "Créer",

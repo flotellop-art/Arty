@@ -1,7 +1,7 @@
 import { memo, useEffect, useState, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { CalendarEvent } from '../../types/google'
-import { listEvents } from '../../services/calendarClient'
+import { captureCalendarContext, listEvents, type CalendarContext } from '../../services/calendarClient'
 import {
   markBriefShown,
   scheduleMorningNotification,
@@ -24,11 +24,15 @@ function MorningBriefInner({ onClose, onSend, userName, isGoogleConnected }: Pro
   const { t } = useTranslation()
   const [events, setEvents] = useState<CalendarEvent[]>([])
   const [loading, setLoading] = useState(true)
+  const [calendarUnavailable, setCalendarUnavailable] = useState(false)
 
   const [audioStatus, setAudioStatus] = useState<'idle' | 'loading' | 'playing' | 'paused' | 'error'>('idle')
   const [audioError, setAudioError] = useState<string | null>(null)
   const [audioUrl, setAudioUrl] = useState<string | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
+  const listScope = useRef<CalendarContext | null>(null)
+  const audioScope = useRef<CalendarContext | null>(null)
+  const lifetime = useRef(new AbortController())
 
   const stopAudio = () => {
     if (audioRef.current) {
@@ -52,11 +56,32 @@ function MorningBriefInner({ onClose, onSend, userName, isGoogleConnected }: Pro
       return
     }
 
-    listEvents(1)
-      .then((evts) => setEvents(evts.slice(0, 4)))
-      .catch(() => setEvents([]))
-      .finally(() => setLoading(false))
+    const controller = new AbortController(), scope = captureCalendarContext(controller.signal)
+    listScope.current = scope
+    setLoading(true); setEvents([]); setCalendarUnavailable(false)
+    listEvents(1, scope)
+      .then((evts) => { scope!.assertCurrent(); if (!controller.signal.aborted) setEvents(evts.slice(0, 4)) })
+      .catch(() => { if (!controller.signal.aborted) { setEvents([]); setCalendarUnavailable(true) } })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false) })
+    return () => controller.abort()
   }, [isGoogleConnected, userName])
+
+  useEffect(() => {
+    lifetime.current = new AbortController()
+    const invalidate = () => {
+      for (const scope of [listScope.current, audioScope.current]) {
+        if (!scope) continue
+        try { scope.assertCurrent() } catch {
+          setEvents([]); setCalendarUnavailable(true)
+          if (audioRef.current) { audioRef.current.pause(); audioRef.current.src = ''; audioRef.current = null }
+          setAudioStatus('error'); setAudioError(t('calendarWorkflow.reopenBrief'))
+          break
+        }
+      }
+    }
+    window.addEventListener('google-storage-ready', invalidate)
+    return () => { lifetime.current.abort(); window.removeEventListener('google-storage-ready', invalidate) }
+  }, [])
 
   useEffect(() => {
     return () => {
@@ -78,6 +103,7 @@ function MorningBriefInner({ onClose, onSend, userName, isGoogleConnected }: Pro
 
     if (audioStatus === 'paused' && audioRef.current) {
       try {
+        audioScope.current?.assertCurrent()
         await audioRef.current.play()
       } catch (e) {
         setAudioStatus('error')
@@ -86,14 +112,17 @@ function MorningBriefInner({ onClose, onSend, userName, isGoogleConnected }: Pro
       return
     }
 
+    const signal = lifetime.current.signal, scope = captureCalendarContext(signal)
+    audioScope.current = scope
     let token: string | null = null
     try {
       token = await getValidAccessToken()
+      scope?.assertCurrent()
     } catch {
       // Ignored
     }
 
-    if (!token) {
+    if (!token || !scope || signal.aborted) {
       setAudioStatus('error')
       setAudioError(t('morningBrief.player.connectGoogleToListen'))
       return
@@ -103,7 +132,8 @@ function MorningBriefInner({ onClose, onSend, userName, isGoogleConnected }: Pro
     setAudioError(null)
 
     try {
-      let text = await buildBriefSpeechText(userName, isGoogleConnected)
+      let text = await buildBriefSpeechText(userName, isGoogleConnected, scope)
+      await scope.validateReadOnly()
       if (!text || !text.trim()) {
         setAudioStatus('error')
         setAudioError(t('morningBrief.player.errorGeneric'))
@@ -115,6 +145,7 @@ function MorningBriefInner({ onClose, onSend, userName, isGoogleConnected }: Pro
       }
 
       const res = await fetch(apiUrl('/api/ai/tts'), {
+        signal,
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -122,6 +153,7 @@ function MorningBriefInner({ onClose, onSend, userName, isGoogleConnected }: Pro
         },
         body: JSON.stringify({ text, voice: 'alloy' }),
       })
+      scope.assertCurrent()
 
       if (!res.ok) {
         setAudioStatus('error')
@@ -138,6 +170,7 @@ function MorningBriefInner({ onClose, onSend, userName, isGoogleConnected }: Pro
       }
 
       const blob = await res.blob()
+      scope.assertCurrent()
       const url = URL.createObjectURL(blob)
 
       if (audioRef.current) {
@@ -292,7 +325,7 @@ function MorningBriefInner({ onClose, onSend, userName, isGoogleConnected }: Pro
                 <span className="font-sans text-[10px] font-semibold uppercase tracking-kicker text-theme-muted">
                   I · {t('home.agendaKicker')}
                 </span>
-                {!loading && (
+                {!loading && !calendarUnavailable && (
                   <span className="font-mono text-[10px] text-theme-muted">
                     {t('morningBrief.eventCount', { count: events.length })}
                   </span>
@@ -304,7 +337,7 @@ function MorningBriefInner({ onClose, onSend, userName, isGoogleConnected }: Pro
                     <div key={i} className="h-10 bg-theme-ink/5 rounded-sm animate-pulse" />
                   ))}
                 </div>
-              ) : events.length === 0 ? (
+              ) : calendarUnavailable ? <p role="status">{t('calendarWorkflow.speechUnavailable')}</p> : events.length === 0 ? (
                 <p className="font-display italic text-sm text-theme-muted py-2">
                   {t('morningBrief.noEvents')}
                 </p>

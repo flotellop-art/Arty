@@ -1,7 +1,9 @@
 # ADR W08 — propriété des requêtes Google avant les parcours métier
 
-Statut : socle d'authentification implémenté, **candidat non livré** ; transport
-Agenda et parcours métier non implémentés.
+Statut : socle d'authentification **livré sur le web par #463**, main `2da5735` ;
+transport Agenda implémenté et en recette avant publication ; les trois
+parcours métier restent incomplets. Reçus et limites :
+`GOOGLE_OWNERSHIP_RELEASE.md` et `CALENDAR_TRANSPORT_RELEASE.md`.
 Date : 6 septembre 2026. Base : main `d80efb4`, W07 #462.
 Décideur : root, après deux contre-revues indépendantes readonly produit/mobile
 et sécurité/lifecycle. Aucun compte réel ni endpoint Google utilisé par cet audit.
@@ -155,8 +157,77 @@ d'implémentation, d'OAuth live, d'installation Android ou de livraison W08.
 
 ## Actions
 
+### Reprise du prochain lot, base `2da5735`
+
+Deux contre-revues readonly distinctes ont préparé le transport pendant la CI
+#463. Root a relu `calendarClient`, `googleApiHelper`, la route Calendar,
+`googleFetch`, `safeJson`, `calendarTools` et `captureLocalReadScope` ; aucun
+code Calendar n'a été modifié ni testé par cette préparation.
+
+- Composer bail Google + `captureLocalReadScope(signal)` (store.ts:77), puis
+  `validateReadOnly()` avant dispatch ; aucun bootstrap/création de base pour
+  cette vérification. Conserver le contexte depuis l'ouverture du formulaire,
+  la lecture des événements ou le début du tour, pas depuis le dernier fetch.
+- Construire une allowlist avant sérialisation : les spreads actuels de
+  calendarClient:45/55 peuvent substituer `type`/`eventId` au runtime.
+- Les catches proxy après appel mutateur amalgament pré-dispatch et issue
+  inconnue. Ajouter une attestation additive/versionnée uniquement lorsque la
+  route sait qu'elle n'a pas appelé Calendar ; pas de déduction du HTTP seul.
+- Ne pas propager le « Réessaie » de safeJson aux mutations incertaines. Aucun
+  retry mutateur ; schéma de réponse valide avant succès. Une fin explicite
+  est nécessaire au premier parcours horaire Paris : le défaut actuel mélange
+  interprétation du runtime et fuseau affiché. All-day hors première verticale.
+- Inventaire à raccorder et vérifier intégralement : CalendarView, InputBar,
+  useConversation → useAppSetup → calendarTools/toolConfirmation, boutons de
+  rapport ; aussi useProactiveBrief, MorningBrief et morningBriefService.
+  Les briefs doivent distinguer indisponibilité/portée perdue et agenda vide.
+- Garder les outils et anciens boutons inertes dans les fils documentaires,
+  Office, comparaisons et historiques restaurés. Le contexte local ne peut pas
+  provenir des arguments du modèle ; la confirmation appartient à l'application.
+
+Critères suivants : tests vraie UI → vrai client → HTTP synthétique, y compris
+relink identique/ABA après ouverture, Stop/unmount/fence/document, payload modifié,
+annulation et double-clic, écriture réussie puis réponse perdue, JSON 200 invalide,
+suppression confirmée suivie d'un listing indisponible et formats mobile/clavier.
+Ce relevé n'est pas une attestation d'implémentation ni une disponibilité Agenda.
+
 - [x] Deux diagnostics contradictoires examinés et découpage accepté.
 - [x] Reproductions permanentes des courses auth, puis correctif de propriété.
-- [ ] Revue, recette et livraison du socle.
-- [ ] Transport Agenda, consentement initial et chemins InputBar/outils.
+- [x] Revue, recette et livraison web du socle ; APK attesté séparément.
+- [x] Transport Agenda, consentement initial et chemins InputBar/outils implémentés et testés localement ; publication suivie séparément.
 - [ ] Trois verticales et écran connexions : validation complète séparée.
+
+### Transport implémenté le 6 septembre, avant publication
+
+Le client capture le grant Google et la portée locale/documentaire avant les
+attentes. Il vérifie la barrière durable en lecture seule avant dispatch et
+avant publication des résultats. Une autorité locale opaque contient le compte
+Google vérifié ; aucun argument du modèle ne peut la créer ou la remplacer.
+Le mini-formulaire v1/v2 capture à l'ouverture, CalendarView à la lecture puis
+à l'édition, le chat au début du tour. Les briefs capturent avant leurs lectures
+et ne confondent plus indisponibilité et agenda vide. Une carte structurée
+conserve sa propre portée, indépendante du bouton Masquer, et l'ancien item
+ne peut pas être réutilisé après reconnexion ou ABA.
+
+Le protocole v1 ajoute calendarAccount et une allowlist partagée client/serveur.
+Le corps exact est figé avant confirmation : opération, ID opaque, début/fin
+RFC3339 Paris explicites ; dates invalides, trous/plis DST sans offset et
+intervalles incohérents refusés. Le serveur vérifie le compte et atteste un
+refus uniquement avant son appel mutateur. Après dispatch : issue inconnue
+pour une réponse perdue/annulée/invalide, aucune relance automatique. Un handle
+et son contexte ne permettent qu'une tentative ; refresh readonly distinct.
+Les anciens clients sans version gardent leur contrat, sans recevoir les
+garanties nouvelles de validation v1. Pas de migration ni nouveau scope.
+
+Tous les appelants recensés ont été raccordés. Les outils restent inertes dans
+Office/projets/comparaisons et la politique OpenAI refuse toujours les quatre
+outils Agenda. Les vraies boucles Claude/Mistral reçoivent la garde durable
+post-auth ; une recette Claude/SSE/HTTP fictif vérifie la seconde requête après
+lecture Calendar. Confirmation create/update/delete par l'application, pas
+par un booléen du modèle. Les boutons de rapport ouvrent une nouvelle proposition.
+
+Deux contre-revues readonly ont donné GO code borné après corrections. La
+preuve navigateur couvre les composants réels et le transport simulé, pas un
+parcours complet App/OAuth/appareil. Notes longues dans le dialogue natif et
+WebView physique ne sont pas attestées. Les trois verticales guidées et
+l'écran de connexions nécessitent leur propre implémentation/recette.

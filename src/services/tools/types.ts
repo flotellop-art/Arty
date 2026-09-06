@@ -1,3 +1,5 @@
+import type { CalendarContext } from '../calendarClient'
+
 export interface FileData {
   name: string
   mimeType: string
@@ -15,6 +17,7 @@ export interface ToolResult {
 /** Local authority, never taken from tool arguments or sent to a provider. */
 export interface ToolExecutionContext {
   imageGeneration?: { readonly signal: AbortSignal; assertCurrent(): void }
+  calendar?: { readonly scope: CalendarContext | null; readonly signal?: AbortSignal }
 }
 
 export type ToolHandler = (input: Record<string, unknown>, context?: ToolExecutionContext) => Promise<ToolResult>

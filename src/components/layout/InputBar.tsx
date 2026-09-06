@@ -22,9 +22,10 @@ import { resolveRoute } from '../../services/router/resolveRoute'
 import { officeKind } from '../../services/documents/officeText'
 import { filterSlashCommands, type SlashCommand } from '../../constants/slashCommands'
 import { detectDates } from '../../utils/dateDetector'
-import { toLocalCalendarDateTime } from '../../utils/calendarDateTime'
+import { captureCalendarContext } from '../../services/calendarClient'
+import { toast } from '../../services/toast'
+import { CalendarMiniForm, type CalendarMiniFormProps } from '../google/CalendarMiniForm'
 import { getValidAccessToken } from '../../services/googleAuth'
-import { callGoogleApi } from '../../services/googleApiHelper'
 import { enhancePrompt, canEnhancePrompt } from '../../services/promptEnhancer'
 import { isPromptEnhancementEnabled } from '../../services/promptEnhancerSettings'
 import { hasUrl } from '../../services/aiRouter'
@@ -389,7 +390,12 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
   // Calendar event suggestion (Feature 16)
   const [calendarSuggestion, setCalendarSuggestion] = useState<{ text: string; date: Date } | null>(null)
   const [googleConnected, setGoogleConnected] = useState(false)
-  const [showCalendarForm, setShowCalendarForm] = useState(false)
+  const [calendarForm, setCalendarForm] = useState<Omit<CalendarMiniFormProps, 'onComplete' | 'onCancel'> | null>(null)
+  const showCalendarForm = calendarForm !== null
+  const openCalendarForm = () => {
+    if (calendarSuggestion && !officeContext && !hasProjectContext) setCalendarForm({ detected: calendarSuggestion, context: text, scope: captureCalendarContext() })
+  }
+  useEffect(() => { setCalendarForm(null) }, [scopedDraftKey])
 
   // Audio recording state — Whisper branch (long press).
   const [isRecordingAudio, setIsRecordingAudio] = useState(false)
@@ -498,8 +504,9 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
 
   // Detect dates in input for calendar suggestion pill
   useEffect(() => {
-    if (!googleConnected || !text.trim()) {
+    if (!googleConnected || !text.trim() || officeContext || hasProjectContext) {
       setCalendarSuggestion(null)
+      setCalendarForm(null)
       return
     }
     const found = detectDates(text)
@@ -508,7 +515,7 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
     } else {
       setCalendarSuggestion(null)
     }
-  }, [text, googleConnected])
+  }, [text, googleConnected, officeContext, hasProjectContext])
 
   // Callback for speech recognition
   const handleTranscript = useCallback((spokenText: string) => {
@@ -1269,24 +1276,6 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
     return () => { hardResetRecording() }
   }, [])
 
-  // Feature 16 — Create calendar event from detected date
-  const handleCreateCalendarEvent = useCallback(async (title: string, date: Date) => {
-    try {
-      const startISO = toLocalCalendarDateTime(date)
-      const endISO = toLocalCalendarDateTime(new Date(date.getTime() + 60 * 60 * 1000))
-      await callGoogleApi('/api/calendar/action', {
-        type: 'create',
-        title,
-        start: startISO,
-        end: endISO,
-      })
-      setCalendarSuggestion(null)
-      setShowCalendarForm(false)
-    } catch (err) {
-      console.warn('Create event failed:', err)
-    }
-  }, [])
-
   // Mobile detection for camera button (Feature 14)
   const hasCameraSupport = typeof navigator !== 'undefined' && !!navigator.mediaDevices
   const isMobile = typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)
@@ -1417,7 +1406,7 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
             {t('calendar.suggestionPillPrefix')}<span className="font-semibold">{calendarSuggestion.text}</span>
           </span>
           <button
-            onClick={() => setShowCalendarForm(true)}
+            onClick={openCalendarForm}
             className="px-2 py-0.5 rounded-md bg-theme-accent text-theme-bg text-[10px] font-semibold hover:opacity-90"
           >
             {t('calendar.create')}
@@ -1432,12 +1421,11 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
         </div>
       )}
 
-      {showCalendarForm && calendarSuggestion && (
+      {calendarForm && (
         <CalendarMiniForm
-          detected={calendarSuggestion}
-          context={text}
-          onConfirm={handleCreateCalendarEvent}
-          onCancel={() => setShowCalendarForm(false)}
+          {...calendarForm}
+          onComplete={() => { setCalendarForm(null); setCalendarSuggestion(null); toast(t('calendarWorkflow.created'), 'success') }}
+          onCancel={() => setCalendarForm(null)}
         />
       )}
 
@@ -1505,7 +1493,7 @@ export function InputBar({ onSend, isStreaming, onStop, initialText, initialFile
           isListening={isListening}
           interimTranscript={interimTranscript}
           calendarSuggestion={showCalendarForm ? null : calendarSuggestion}
-          onCreateCalendarEvent={() => setShowCalendarForm(true)}
+          onCreateCalendarEvent={openCalendarForm}
           onDismissCalendar={() => setCalendarSuggestion(null)}
           showChips={!text.trim() && files.length === 0 && !isStreaming && !isPreparingAttachments && !isListening && !isRecordingAudio}
           chips={showQuickActions ? getQuickActionChips(t) : []}
@@ -2008,57 +1996,5 @@ function VoiceButton({
         </svg>
       )}
     </button>
-  )
-}
-
-// Mini-form for confirming a calendar event (Feature 16)
-interface CalendarMiniFormProps {
-  detected: { text: string; date: Date }
-  context: string
-  onConfirm: (title: string, date: Date) => void
-  onCancel: () => void
-}
-
-function CalendarMiniForm({ detected, context, onConfirm, onCancel }: CalendarMiniFormProps) {
-  const { t } = useTranslation()
-  const defaultTitle = context.trim().slice(0, 80) || t('calendar.defaultEventTitle', { text: detected.text })
-  const [title, setTitle] = useState(defaultTitle)
-  const [dateStr, setDateStr] = useState(() => {
-    const d = detected.date
-    const pad = (n: number) => String(n).padStart(2, '0')
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
-  })
-
-  return (
-    <div className="mb-2 border border-theme-accent/30 bg-theme-surface p-3">
-      <p className="text-xs font-semibold text-theme-ink mb-2">📅 {t('calendar.newEvent')}</p>
-      <input
-        type="text"
-        value={title}
-        onChange={(e) => setTitle(e.target.value)}
-        placeholder={t('calendar.eventTitlePlaceholder')}
-        className="mb-2 w-full border border-theme-border bg-transparent px-2 py-1.5 text-xs text-theme-ink focus:border-theme-accent focus:outline-none"
-      />
-      <input
-        type="datetime-local"
-        value={dateStr}
-        onChange={(e) => setDateStr(e.target.value)}
-        className="mb-2 w-full border border-theme-border bg-transparent px-2 py-1.5 text-xs text-theme-ink focus:border-theme-accent focus:outline-none"
-      />
-      <div className="flex gap-2">
-        <button
-          onClick={onCancel}
-          className="flex-1 border border-theme-border py-1.5 text-xs text-theme-ink/80 hover:border-theme-accent"
-        >
-          {t('common.cancel')}
-        </button>
-        <button
-          onClick={() => onConfirm(title, new Date(dateStr))}
-          className="flex-1 border border-theme-accent bg-theme-accent py-1.5 text-xs font-semibold text-theme-bg hover:bg-theme-ink"
-        >
-          {t('calendar.addToCalendar')}
-        </button>
-      </div>
-    </div>
   )
 }

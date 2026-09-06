@@ -1,14 +1,10 @@
 import type { ToolHandler } from './types'
-import { listEvents, createEvent, updateEvent, deleteEvent } from '../calendarClient'
-import { getDateLocale } from '../../utils/formatDate'
+import { listEvents, prepareCalendarMutation, calendarErrorMessage, CalendarError, type CalendarContext } from '../calendarClient'
 import { markUntrustedThirdPartyData } from './untrustedContent'
 
 const EVENT_ID_DESCRIPTION =
   'Identifiant opaque fourni par list_calendar ou create_calendar_event. Le recopier exactement ; ne jamais l’inventer ni le déduire du titre ou du lien.'
 
-function requiredEventId(input: Record<string, unknown>): string | null {
-  return typeof input.event_id === 'string' && input.event_id.trim() ? input.event_id.trim() : null
-}
 
 export const calendarToolDefinitions = [
   {
@@ -29,11 +25,11 @@ export const calendarToolDefinitions = [
       properties: {
         title: { type: 'string' as const, description: "Titre de l'événement" },
         start: { type: 'string' as const, description: 'Date/heure début (ISO 8601, ex: 2026-04-15T09:00:00)' },
-        end: { type: 'string' as const, description: 'Date/heure fin (optionnel)' },
+        end: { type: 'string' as const, description: 'Date/heure fin explicite (Europe/Paris)' },
         location: { type: 'string' as const, description: 'Lieu (adresse ou salle, etc.)' },
         description: { type: 'string' as const, description: 'Notes' },
       },
-      required: ['title', 'start'],
+      required: ['title', 'start', 'end'],
     },
   },
   {
@@ -62,79 +58,42 @@ export const calendarToolDefinitions = [
   },
 ]
 
+export const isCalendarMutationTool = (name: string) => ['create_calendar_event', 'update_calendar_event', 'delete_calendar_event'].includes(name)
+const declined = new WeakSet<CalendarContext>()
+
 export function createCalendarHandlers(): Record<string, ToolHandler> {
+  const mutate = (operation: 'create' | 'update' | 'delete'): ToolHandler => async (input, context) => {
+    const scope = context?.calendar?.scope ?? null
+    try {
+      if (!scope || context?.calendar?.signal?.aborted) return { result: 'Agenda non autorisé pour ce parcours. Aucun envoi.' }
+      if (declined.has(scope)) return { result: "Action déjà refusée. Ne la relance pas sans un nouveau tour explicite de l'utilisateur." }
+      const prepared = prepareCalendarMutation(scope, operation, input, input.event_id as string)
+      // Native browser dialog is application UI. The model supplies no consent.
+      if (!window.confirm(prepared.review)) {
+        declined.add(scope)
+        return { result: "L'utilisateur a refusé cette action. Ne la relance pas sans son accord explicite." }
+      }
+      const data = await prepared.execute(context?.calendar?.signal)
+      try { scope.assertCurrent() } catch { throw new CalendarError('unknown') }
+      return { result: markUntrustedThirdPartyData('Google Agenda', `Action ${operation} confirmée (JSON):\n${JSON.stringify(data)}`) }
+    } catch (error) {
+      return { result: calendarErrorMessage(error) }
+    }
+  }
   return {
-    list_calendar: async (input) => {
-      const days = (input.days as number) || 7
+    list_calendar: async (input, context) => {
       try {
-        const events = await listEvents(days)
-        if (events.length > 0) {
-          const summary = events.map((e) => {
-            const start = new Date(e.start).toLocaleString(getDateLocale(), {
-              weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
-            })
-            return { event_id: e.id, start, title: e.title, location: e.location || '' }
-          })
-          return {
-            result: markUntrustedThirdPartyData(
-              'Google Agenda',
-              `${events.length} événements dans les ${days} prochains jours (JSON):\n${JSON.stringify(summary)}`,
-            ),
-          }
-        }
-        return { result: `Aucun événement dans les ${days} prochains jours.` }
-      } catch (err) {
-        return { result: `Erreur: ${err instanceof Error ? err.message : 'calendrier échoué.'}` }
-      }
+        const days = input.days === undefined ? 7 : input.days as number
+        const events = await listEvents(days, context?.calendar?.scope ?? null, context?.calendar?.signal)
+        context!.calendar!.scope!.assertCurrent()
+        return { result: markUntrustedThirdPartyData('Google Agenda',
+          `Liste limitée à 20 événements, pas une preuve d'absence de conflit ; période ${days} jours (JSON):\n${JSON.stringify(events.map(e => ({
+            event_id: e.id, start: e.start, end: e.end, title: e.title, location: e.location,
+          })))}`) }
+      } catch (error) { return { result: calendarErrorMessage(error) } }
     },
-
-    create_calendar_event: async (input) => {
-      const { title, start, end, location, description } = input as {
-        title: string; start: string; end?: string; location?: string; description?: string
-      }
-      try {
-        const data = await createEvent({ title, start, end, location, description })
-        return {
-          result: markUntrustedThirdPartyData(
-            'Google Agenda',
-            `Événement créé (JSON):\n${JSON.stringify({
-              event_id: data.id,
-              title: data.title,
-              start: new Date(data.start).toLocaleString(getDateLocale()),
-              link: data.link || '',
-            })}`,
-          ),
-        }
-      } catch (err) {
-        return { result: `Erreur: ${err instanceof Error ? err.message : 'création RDV échouée.'}` }
-      }
-    },
-
-    update_calendar_event: async (input) => {
-      const eventId = requiredEventId(input)
-      if (!eventId) return { result: 'Erreur: event_id manquant.' }
-      try {
-        const data = await updateEvent(eventId, {
-          title: input.title as string | undefined,
-          start: input.start as string | undefined,
-          end: input.end as string | undefined,
-          location: input.location as string | undefined,
-        })
-        return { result: data.success ? 'RDV modifié.' : 'Erreur: modification échouée.' }
-      } catch (err) {
-        return { result: `Erreur: ${err instanceof Error ? err.message : 'modification RDV échouée.'}` }
-      }
-    },
-
-    delete_calendar_event: async (input) => {
-      const eventId = requiredEventId(input)
-      if (!eventId) return { result: 'Erreur: event_id manquant.' }
-      try {
-        const data = await deleteEvent(eventId)
-        return { result: data.success ? 'RDV supprimé.' : 'Erreur: suppression échouée.' }
-      } catch (err) {
-        return { result: `Erreur: ${err instanceof Error ? err.message : 'suppression RDV échouée.'}` }
-      }
-    },
+    create_calendar_event: mutate('create'),
+    update_calendar_event: mutate('update'),
+    delete_calendar_event: mutate('delete'),
   }
 }

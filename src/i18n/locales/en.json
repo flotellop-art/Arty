@@ -953,6 +953,59 @@
     "exportPdf": "Export PDF",
     "reportTitle": "Summary — {{title}}"
   },
+  "calendarWorkflow": {
+    "errors": {
+      "already-attempted": "An action has already been attempted in this workflow and may have completed. Check its outcome; no automatic retry.",
+      "unknown": "Outcome uncertain: Google may have performed this action. Check your calendar directly; no automatic retry.",
+      "rejected-before-dispatch": "Action rejected before sending to Google. This attempt made no changes.",
+      "not-sent": "Action not sent. The account or session changed, or Calendar is unavailable. Reopen the workflow for a new confirmation."
+    },
+    "unavailable": "Calendar unavailable. No result confirmed.",
+    "validation": {
+      "date": "Valid timed start and end are required in Europe/Paris. An ambiguous time needs an explicit offset (+01:00 or +02:00).",
+      "eventId": "Exact Calendar event ID required.",
+      "operation": "Invalid Calendar operation.",
+      "field": "Invalid or oversized Calendar field.",
+      "title": "Title required.",
+      "interval": "The end must be after the start.",
+      "noChanges": "No changes to confirm.",
+      "period": "Invalid Calendar period (1 to 366 days).",
+      "response": "Invalid Calendar response."
+    },
+    "account": "Google account: {{account}}",
+    "scope": "Calendar: primary · Europe/Paris",
+    "action": "Action: {{operation}}",
+    "operations": {
+      "create": "create",
+      "update": "update",
+      "delete": "delete"
+    },
+    "fields": {
+      "eventId": "Event (exact ID)",
+      "title": "Title",
+      "start": "Start",
+      "end": "End",
+      "location": "Location",
+      "description": "Notes"
+    },
+    "question": "Confirm this exact action?",
+    "formTitle": "Create an appointment",
+    "disconnected": "Google not connected",
+    "start": "Start (Paris)",
+    "end": "End (Paris)",
+    "close": "Close",
+    "cancel": "Cancel",
+    "editDraft": "Edit draft",
+    "sending": "Sending…",
+    "confirmCreate": "Confirm creation",
+    "review": "Review before sending",
+    "created": "Appointment created.",
+    "changed": "Google account changed. Refresh the list before a new action.",
+    "refresh": "Refresh list (without repeating an action)",
+    "briefUnavailable": "Calendar unavailable: the brief cannot confirm your appointments.",
+    "speechUnavailable": "Calendar unavailable: your appointments have not been verified.",
+    "reopenBrief": "Google account changed. Reopen the brief."
+  },
   "calendar": {
     "suggestionPillPrefix": "Create event: ",
     "create": "Create",

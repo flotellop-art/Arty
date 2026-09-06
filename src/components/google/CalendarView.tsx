@@ -2,7 +2,7 @@ import { memo, useCallback, useEffect, useId, useMemo, useRef, useState } from '
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import type { CalendarEvent } from '../../types/google'
-import { deleteEvent, listEvents, updateEvent } from '../../services/calendarClient'
+import { captureCalendarContext, calendarErrorMessage, listEvents, prepareCalendarMutation, type CalendarContext, type PreparedCalendarMutation } from '../../services/calendarClient'
 import { getDateLocale } from '../../utils/formatDate'
 
 interface CalendarViewProps {
@@ -11,28 +11,19 @@ interface CalendarViewProps {
   onEventsChange?: (events: CalendarEvent[], error: string | null) => void
 }
 
-function startOfDay(d: Date): Date {
-  const x = new Date(d)
-  x.setHours(0, 0, 0, 0)
-  return x
+const PARIS = 'Europe/Paris'
+function calendarDay(iso: string): string {
+  if (!iso.includes('T')) return iso
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: PARIS, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date(iso)).map(p => [p.type, p.value]))
+  return `${parts.year}-${parts.month}-${parts.day}`
 }
-
-function isSameDay(a: Date, b: Date): boolean {
-  return a.toDateString() === b.toDateString()
+function displayStart(iso: string): string {
+  const timed = iso.includes('T')
+  return new Date(timed ? iso : `${iso}T12:00:00Z`).toLocaleString(getDateLocale(), { timeZone: PARIS, dateStyle: 'medium', ...(timed ? { timeStyle: 'short' as const } : {}) })
 }
-
-function isTomorrow(d: Date): boolean {
-  const t = startOfDay(new Date())
-  t.setDate(t.getDate() + 1)
-  return isSameDay(d, t)
-}
-
-/** Editorial time label for the agenda row (mono accent). */
-function eventTimeLabel(startISO: string): string {
-  const start = new Date(startISO)
-  const hasTime = startISO.includes('T')
-  if (!hasTime) return start.toLocaleDateString(getDateLocale(), { day: '2-digit', month: 'short' })
-  return start.toLocaleTimeString(getDateLocale(), { hour: '2-digit', minute: '2-digit' })
+function eventTimeLabel(iso: string): string {
+  if (!iso.includes('T')) return new Date(`${iso}T12:00:00Z`).toLocaleDateString(getDateLocale(), { timeZone: PARIS, day: '2-digit', month: 'short' })
+  return new Date(iso).toLocaleTimeString(getDateLocale(), { timeZone: PARIS, hour: '2-digit', minute: '2-digit' })
 }
 
 /** Small meta line under the title (duration + location). */
@@ -56,15 +47,12 @@ function eventMeta(event: CalendarEvent): string {
 }
 
 /** Section label ("AUJOURD'HUI", "DEMAIN", "LUN. 22 AVR."). */
-function sectionLabel(date: Date, t: TFunction): string {
-  const today = startOfDay(new Date())
-  if (isSameDay(date, today)) return t('calendar.today')
-  if (isTomorrow(date)) return t('calendar.tomorrow')
-  return date.toLocaleDateString(getDateLocale(), {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-  })
+function sectionLabel(date: string, t: TFunction): string {
+  const today = calendarDay(new Date().toISOString())
+  if (date === today) return t('calendar.today')
+  const tomorrow = new Date(Date.parse(`${today}T12:00Z`) + 86400_000).toISOString().slice(0, 10)
+  if (date === tomorrow) return t('calendar.tomorrow')
+  return new Date(`${date}T12:00Z`).toLocaleDateString(getDateLocale(), { timeZone: PARIS, weekday: 'long', day: 'numeric', month: 'long' })
 }
 
 function EventRow({
@@ -82,6 +70,8 @@ function EventRow({
   onCancelEdit,
   busy,
   last,
+  account,
+  deleteReview,
 }: {
   event: CalendarEvent
   onClick?: (event: CalendarEvent) => void
@@ -97,6 +87,8 @@ function EventRow({
   onCancelEdit: () => void
   busy: boolean
   last: boolean
+  account?: string
+  deleteReview?: string
 }) {
   const { t } = useTranslation()
   const meta = eventMeta(event)
@@ -169,6 +161,7 @@ function EventRow({
             onSave(event)
           }}
         >
+          <p className="mb-2 break-words text-xs">{account} · {t('calendarWorkflow.scope')}</p>
           <label className="block font-sans text-xs font-semibold text-theme-ink">
             {t('calendar.editor.title')}
             <input
@@ -213,12 +206,10 @@ function EventRow({
           <p id={confirmDescriptionId} className="font-sans text-sm leading-relaxed text-theme-ink">
             {t('calendar.editor.confirmDelete', {
               title: event.title,
-              date: new Date(event.start).toLocaleString(getDateLocale(), {
-                dateStyle: 'medium',
-                timeStyle: event.start.includes('T') ? 'short' : undefined,
-              }),
+              date: displayStart(event.start),
             })}
           </p>
+          <pre className="mt-2 whitespace-pre-wrap break-words font-sans text-xs">{deleteReview}</pre>
           <div className="mt-2 grid grid-cols-2 gap-2">
             <button
               ref={cancelDeleteRef}
@@ -245,7 +236,7 @@ function EventRow({
 }
 
 interface EventGroup {
-  date: Date
+  date: string
   events: CalendarEvent[]
 }
 
@@ -257,7 +248,11 @@ interface EventGroup {
  */
 function CalendarViewInner({ days = 7, onEventClick, onEventsChange }: CalendarViewProps) {
   const { t } = useTranslation()
-  const [events, setEvents] = useState<CalendarEvent[] | null>(null)
+  const [snapshot, setSnapshot] = useState<{ events: CalendarEvent[]; scope: CalendarContext | null } | null>(null)
+  const events = snapshot?.events ?? null
+  const editingScope = useRef<CalendarContext | null>(null)
+  const [deleteReview, setDeleteReview] = useState<PreparedCalendarMutation | null>(null)
+  const lifecycle = useRef(new AbortController())
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<{ kind: 'status' | 'error'; message: string } | null>(null)
   const [loading, setLoading] = useState(true)
@@ -274,20 +269,22 @@ function CalendarViewInner({ days = 7, onEventClick, onEventsChange }: CalendarV
     const generation = ++requestGenerationRef.current
     if (showLoading) setLoading(true)
     try {
-      const list = await listEvents(days)
+      const scope = captureCalendarContext(lifecycle.current.signal)
+      const list = await listEvents(days, scope)
+      scope!.assertCurrent()
       if (!mountedRef.current || generation !== requestGenerationRef.current) return true
-        setEvents(list)
-        setError(null)
-        onEventsChange?.(list, null)
+      setSnapshot({ events: list, scope })
+      setError(null)
+      onEventsChange?.(list, null)
       return true
     } catch (err: unknown) {
       if (!mountedRef.current || generation !== requestGenerationRef.current) return false
       const message = err instanceof Error ? err.message : t('calendar.errors.fetchFailed')
       if (preserveOnError) {
-        setNotice({ kind: 'error', message: t('calendar.editor.errors.refresh') })
+        setNotice(previous => ({ kind: 'error', message: `${previous?.message ?? ''} ${t('calendar.editor.errors.refresh')}`.trim() }))
       } else {
         setError(message)
-        setEvents([])
+        setSnapshot(null)
         onEventsChange?.([], message)
       }
       return false
@@ -298,15 +295,19 @@ function CalendarViewInner({ days = 7, onEventClick, onEventsChange }: CalendarV
 
   useEffect(() => {
     mountedRef.current = true
+    lifecycle.current = new AbortController()
+    mutationLockRef.current = false; setMutatingId(null)
+    setEditingId(null); setConfirmingDeleteId(null); setDeleteReview(null)
     void loadEvents(true, false)
     return () => {
       mountedRef.current = false
+      lifecycle.current.abort()
       requestGenerationRef.current += 1
     }
   }, [loadEvents])
 
   const publishEvents = useCallback((next: CalendarEvent[]) => {
-    setEvents(next)
+    setSnapshot(previous => previous && { ...previous, events: next })
     setError(null)
     onEventsChange?.(next, null)
   }, [onEventsChange])
@@ -317,7 +318,8 @@ function CalendarViewInner({ days = 7, onEventClick, onEventsChange }: CalendarV
     setConfirmingDeleteId(null)
     setEditingId(event.id)
     setDraftTitle(event.title)
-  }, [mutatingId])
+    editingScope.current = snapshot?.scope ?? null
+  }, [mutatingId, snapshot])
 
   const saveEdit = useCallback(async (event: CalendarEvent) => {
     const title = draftTitle.trim()
@@ -326,19 +328,22 @@ function CalendarViewInner({ days = 7, onEventClick, onEventsChange }: CalendarV
     requestGenerationRef.current += 1
     setMutatingId(event.id)
     setNotice(null)
+    const signal = lifecycle.current.signal, scope = editingScope.current
     try {
-      await updateEvent(event.id, { title })
-      if (!mountedRef.current) return
+      const prepared = prepareCalendarMutation(scope, 'update', { title }, event.id)
+      if (!window.confirm(prepared.review)) return
+      await prepared.execute(signal)
+      if (!mountedRef.current || signal.aborted) return
+      try { scope!.assertCurrent() } catch { return }
       const next = (events ?? []).map((item) => item.id === event.id ? { ...item, title } : item)
       publishEvents(next)
       setEditingId(null)
       setNotice({ kind: 'status', message: t('calendar.editor.saved') })
       await loadEvents(false, true)
-    } catch {
-      if (mountedRef.current) setNotice({ kind: 'error', message: t('calendar.editor.errors.update') })
+    } catch (error) {
+      if (mountedRef.current && !signal.aborted) setNotice({ kind: 'error', message: calendarErrorMessage(error) })
     } finally {
-      mutationLockRef.current = false
-      if (mountedRef.current) setMutatingId(null)
+      if (mountedRef.current && !signal.aborted) { mutationLockRef.current = false; setMutatingId(null) }
     }
   }, [draftTitle, events, loadEvents, mutatingId, publishEvents, t])
 
@@ -348,9 +353,12 @@ function CalendarViewInner({ days = 7, onEventClick, onEventsChange }: CalendarV
     requestGenerationRef.current += 1
     setMutatingId(event.id)
     setNotice(null)
+    const signal = lifecycle.current.signal, scope = snapshot?.scope
     try {
-      await deleteEvent(event.id)
-      if (!mountedRef.current) return
+      if (!deleteReview || deleteReview.payload.eventId !== event.id) return
+      await deleteReview.execute(signal)
+      if (!mountedRef.current || signal.aborted) return
+      try { scope!.assertCurrent() } catch { return }
       const next = (events ?? []).filter((item) => item.id !== event.id)
       publishEvents(next)
       if (editingId === event.id) setEditingId(null)
@@ -358,36 +366,56 @@ function CalendarViewInner({ days = 7, onEventClick, onEventsChange }: CalendarV
       setNotice({ kind: 'status', message: t('calendar.editor.deleted') })
       requestAnimationFrame(() => noticeRef.current?.focus())
       await loadEvents(false, true)
-    } catch {
-      if (mountedRef.current) setNotice({ kind: 'error', message: t('calendar.editor.errors.delete') })
+    } catch (error) {
+      if (mountedRef.current && !signal.aborted) setNotice({ kind: 'error', message: calendarErrorMessage(error) })
     } finally {
-      mutationLockRef.current = false
-      if (mountedRef.current) setMutatingId(null)
+      if (mountedRef.current && !signal.aborted) { mutationLockRef.current = false; setMutatingId(null) }
     }
-  }, [editingId, events, loadEvents, mutatingId, publishEvents, t])
+  }, [deleteReview, editingId, events, snapshot, loadEvents, mutatingId, publishEvents, t])
+
+  useEffect(() => {
+    const invalidate = () => {
+      if (!snapshot?.scope) return
+      try { snapshot.scope.assertCurrent(); return } catch { /* changed incarnation */ }
+      lifecycle.current.abort(); requestGenerationRef.current += 1
+      setSnapshot(null); setEditingId(null); setConfirmingDeleteId(null); setDeleteReview(null)
+      setMutatingId(null); mutationLockRef.current = false; setNotice(null)
+      const message = t('calendarWorkflow.changed')
+      setLoading(false); setError(message); onEventsChange?.([], message)
+    }
+    window.addEventListener('google-storage-ready', invalidate)
+    return () => window.removeEventListener('google-storage-ready', invalidate)
+  }, [snapshot, onEventsChange, t])
+
+  const refreshButton = <button type="button" className="min-h-11 px-3 text-sm text-theme-accent-text" disabled={!!mutatingId} onClick={() => {
+    lifecycle.current.abort(); lifecycle.current = new AbortController()
+    setEditingId(null); setConfirmingDeleteId(null); setDeleteReview(null); setNotice(null)
+    void loadEvents(true, false)
+  }}>{t('calendarWorkflow.refresh')}</button>
 
   const groups = useMemo<EventGroup[]>(() => {
     if (!events || events.length === 0) return []
     const byKey = new Map<string, EventGroup>()
     for (const event of events) {
-      const d = startOfDay(new Date(event.start))
-      const key = d.toISOString()
+      const d = calendarDay(event.start)
+      const key = d
       const existing = byKey.get(key)
       if (existing) existing.events.push(event)
       else byKey.set(key, { date: d, events: [event] })
     }
-    return Array.from(byKey.values()).sort((a, b) => a.date.getTime() - b.date.getTime())
+    return Array.from(byKey.values()).sort((a, b) => a.date.localeCompare(b.date))
   }, [events])
 
   if (loading) {
     return <p className="font-display italic text-sm text-theme-muted text-center py-4">{t('calendar.loading')}</p>
   }
   if (error) {
-    return <p className="font-sans text-xs text-theme-accent text-center py-4">{error}</p>
+    return <div><p role="alert" className="font-sans text-xs text-theme-accent text-center py-4">{error}</p>{refreshButton}</div>
   }
   if (groups.length === 0) {
     return (
       <div>
+        {refreshButton}
         {notice && (
           <p
             ref={noticeRef}
@@ -407,6 +435,7 @@ function CalendarViewInner({ days = 7, onEventClick, onEventsChange }: CalendarV
   }
   return (
     <div className="flex flex-col gap-5">
+      {refreshButton}
       {notice && (
         <p
           ref={noticeRef}
@@ -419,7 +448,7 @@ function CalendarViewInner({ days = 7, onEventClick, onEventsChange }: CalendarV
         </p>
       )}
       {groups.map((group) => (
-        <section key={group.date.toISOString()}>
+        <section key={group.date}>
           <p className="font-sans text-[10px] font-semibold uppercase tracking-kicker text-theme-muted mb-1">
             — <span className="capitalize">{sectionLabel(group.date, t)}</span>
           </p>
@@ -432,6 +461,8 @@ function CalendarViewInner({ days = 7, onEventClick, onEventsChange }: CalendarV
                 onEdit={beginEdit}
                 onDelete={(eventToDelete) => {
                   if (mutatingId || mutationLockRef.current) return
+                  try { setDeleteReview(prepareCalendarMutation(snapshot?.scope ?? null, 'delete', {}, eventToDelete.id)) }
+                  catch (error) { setNotice({ kind: 'error', message: calendarErrorMessage(error) }); return }
                   setNotice(null)
                   setEditingId(null)
                   setConfirmingDeleteId(eventToDelete.id)
@@ -446,6 +477,8 @@ function CalendarViewInner({ days = 7, onEventClick, onEventsChange }: CalendarV
                 onCancelEdit={() => setEditingId(null)}
                 busy={mutatingId === event.id}
                 last={i === group.events.length - 1}
+                account={editingScope.current?.account}
+                deleteReview={deleteReview?.review}
               />
             ))}
           </div>

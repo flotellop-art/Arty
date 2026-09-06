@@ -1,6 +1,6 @@
 import i18n from '../i18n'
 import { getDateLocale } from '../utils/formatDate'
-import { listEvents } from './calendarClient'
+import { captureCalendarContext, listEvents, type CalendarContext } from './calendarClient'
 import { getUserLocation, isLocationConsentEnabled } from './native/location'
 import { apiUrl } from './apiBase'
 import { safeJson } from '../utils/safeJson'
@@ -86,8 +86,10 @@ export function formatEventTime(isoStart: string): string {
  */
 export async function buildBriefSpeechText(
   userName?: string,
-  isGoogleConnected?: boolean
+  isGoogleConnected?: boolean,
+  originalScope?: CalendarContext | null,
 ): Promise<string> {
+  const calendarScope = originalScope === undefined ? (isGoogleConnected ? captureCalendarContext() : null) : originalScope
   // 1. Salutation (sans emoji)
   const hour = new Date().getHours()
   const firstName = userName?.split(' ')[0] || ''
@@ -113,8 +115,11 @@ export async function buildBriefSpeechText(
     try {
       const pos = await getUserLocation()
       if (pos) {
+        if (!calendarScope) throw new Error('Agenda unavailable')
+        calendarScope.assertCurrent()
         const googleToken = await getValidAccessToken()
         if (!googleToken) throw new Error('Google authentication required for weather')
+        await calendarScope.validateReadOnly()
         const city = `${pos.latitude.toFixed(5)},${pos.longitude.toFixed(5)}`
         const res = await fetch(apiUrl('/api/browser/weather'), {
           method: 'POST',
@@ -123,6 +128,7 @@ export async function buildBriefSpeechText(
         })
         if (res.ok) {
           const data = await safeJson(res)
+          calendarScope.assertCurrent()
           if (data && data.current) {
             weatherSpeech = i18n.t('morningBrief.speech.weather', {
               city: data.city || '',
@@ -141,7 +147,7 @@ export async function buildBriefSpeechText(
   let calendarSpeech = ''
   if (isGoogleConnected) {
     try {
-      const events = await listEvents(1)
+      const events = await listEvents(1, calendarScope)
       if (events.length === 0) {
         calendarSpeech = i18n.t('morningBrief.speech.noEvents')
       } else {
@@ -158,7 +164,7 @@ export async function buildBriefSpeechText(
         })
       }
     } catch (e) {
-      console.warn('Speech calendar fetch error:', e)
+      calendarSpeech = i18n.t('calendarWorkflow.speechUnavailable')
     }
   }
 
@@ -166,6 +172,7 @@ export async function buildBriefSpeechText(
   if (weatherSpeech) speechParts.push(weatherSpeech)
   if (calendarSpeech) speechParts.push(calendarSpeech)
 
+  calendarScope?.assertCurrent()
   return speechParts.filter(Boolean).join(' ')
 }
 

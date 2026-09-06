@@ -50,6 +50,7 @@ interface AssistantBubbleProps {
 export const AssistantBubble = memo(function AssistantBubble({ content, generatedImages, historical = false, onExport, onAction, pinned, onTogglePin, interrupted, onRetry, factCheck, isStreaming, isLast, onBranch, onReport, model, requestedModel, modelSource, reasonCode, subModelReasonCode }: AssistantBubbleProps) {
   const { t } = useTranslation()
   const bubbleRef = useRef<HTMLDivElement>(null)
+  const calendarPending = useRef(new WeakSet<HTMLElement>())
 
   // Roadmap Phase 2 A — mode voix bidirectionnel. Bouton 🔊 sur chaque bulle
   // assistant qui lit la réponse à voix haute via Web Speech API
@@ -88,7 +89,20 @@ export const AssistantBubble = memo(function AssistantBubble({ content, generate
       if (key !== 'action') params[key] = value || ''
     }
 
-    // Visual feedback
+    // Calendar's real handler owns confirmation and outcome. A timer cannot
+    // attest a write; repeated clicks on this proposal join its pending call.
+    if (action === 'create_event') {
+      if (calendarPending.current.has(btn)) return
+      calendarPending.current.add(btn)
+      void (async () => {
+        try { await onAction(action, params) }
+        catch { /* no fabricated success if the application handler fails */ }
+        finally { calendarPending.current.delete(btn) }
+      })()
+      return
+    }
+
+    // Legacy feedback for the other report actions (not a Calendar receipt).
     if (action === 'reply') {
       btn.style.opacity = '0.5'
       btn.style.pointerEvents = 'none'

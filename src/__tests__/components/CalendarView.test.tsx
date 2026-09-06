@@ -1,149 +1,137 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { CalendarView } from '../../components/google/CalendarView'
-import type { CalendarEvent } from '../../types/google'
-
-vi.mock('../../services/calendarClient', () => ({
-  listEvents: vi.fn(),
-  updateEvent: vi.fn(),
-  deleteEvent: vi.fn(),
-}))
-
-import { deleteEvent, listEvents, updateEvent } from '../../services/calendarClient'
-
-const mockList = vi.mocked(listEvents)
-const mockUpdate = vi.mocked(updateEvent)
-const mockDelete = vi.mocked(deleteEvent)
-
-const sourceEvent: CalendarEvent = {
-  id: 'opaque-google-id',
-  title: 'Arty OAuth Review Source Event',
-  start: '2026-08-13T09:00:00+02:00',
-  end: '2026-08-13T09:30:00+02:00',
-  location: '',
-  description: '',
-  htmlLink: 'https://calendar.google.com/event?eid=review',
-}
-
-beforeEach(() => {
-  vi.clearAllMocks()
-  mockList.mockResolvedValue([sourceEvent])
-  mockUpdate.mockResolvedValue({ success: true, title: 'Updated' })
-  mockDelete.mockResolvedValue({ success: true })
+import { deferred } from '../helpers/workspaceLocks'
+import { relinkCalendarGoogle, resetCalendarFixture, syntheticEvent } from '../helpers/calendarFixture'
+vi.mock('../../services/apiBase', () => ({ apiUrl: (path: string) => path }))
+let events = [syntheticEvent]
+let fetcher: ReturnType<typeof vi.fn>
+beforeEach(async () => {
+  await resetCalendarFixture(); events = [syntheticEvent]
+  fetcher = vi.fn(async (_url: string, init: RequestInit) => {
+    const body = JSON.parse(init.body as string)
+    if (body.type === 'list') return Response.json({ events })
+    if (body.type === 'update') { events = [{ ...syntheticEvent, title: body.title }]; return Response.json({ success: true, title: body.title }) }
+    if (body.type === 'delete') { events = []; return Response.json({ success: true }) }
+    throw new Error('Unexpected request')
+  }); vi.stubGlobal('fetch', fetcher)
+  vi.spyOn(window, 'confirm').mockReturnValue(true)
 })
+afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
+const writes = () => fetcher.mock.calls.filter(([, init]) => JSON.parse(init.body).type !== 'list')
+async function openDelete() { fireEvent.click(await screen.findByRole('button', { name: /Supprimer Synthetic/i })) }
+const confirmDelete = () => fireEvent.click(screen.getByRole('button', { name: 'Placer dans la corbeille' }))
 
-afterEach(() => vi.restoreAllMocks())
-
-describe('CalendarView — mutations explicites', () => {
-  it('rend des commandes sœurs accessibles sans bouton imbriqué', async () => {
+describe('CalendarView — real UI → owned transport → synthetic HTTP', () => {
+  it('renders sibling accessible controls without nested buttons', async () => {
     const { container } = render(<CalendarView onEventClick={vi.fn()} />)
-
     expect(await screen.findByRole('button', { name: /Ouvrir .* Google Agenda/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Modifier Arty OAuth/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Supprimer Arty OAuth/i })).toBeInTheDocument()
     expect(container.querySelector('button button')).toBeNull()
   })
-
-  it('modifie uniquement le titre avec l’identifiant opaque puis relit Google', async () => {
-    const onEventsChange = vi.fn()
-    mockList
-      .mockResolvedValueOnce([sourceEvent])
-      .mockResolvedValueOnce([{ ...sourceEvent, title: 'Updated source event' }])
-    render(<CalendarView onEventsChange={onEventsChange} />)
-
-    fireEvent.click(await screen.findByRole('button', { name: /Modifier Arty OAuth/i }))
-    const input = screen.getByRole('textbox', { name: /Titre de l’événement/i })
-    fireEvent.change(input, { target: { value: '  Updated source event  ' } })
+  it('confirms the exact account/title/ID then changes only the title and reloads', async () => {
+    render(<CalendarView />)
+    fireEvent.click(await screen.findByRole('button', { name: /Modifier Synthetic/i }))
+    fireEvent.change(screen.getByRole('textbox', { name: /Titre de l’événement/i }), { target: { value: '  Changed  ' } })
     fireEvent.click(screen.getByRole('button', { name: 'Enregistrer' }))
-
-    await waitFor(() => expect(mockUpdate).toHaveBeenCalledWith('opaque-google-id', { title: 'Updated source event' }))
-    await waitFor(() => expect(mockList).toHaveBeenCalledTimes(2))
-    expect(await screen.findByText('Événement modifié dans Google Agenda.')).toHaveAttribute('role', 'status')
+    expect(await screen.findByRole('status')).toHaveTextContent('Événement modifié')
+    expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('a@example.invalid'))
+    expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('opaque-google-id'))
+    expect(JSON.parse(writes()[0][1].body)).toEqual({ calendarProtocol: 1, calendarAccount: 'a@example.invalid', type: 'update', eventId: 'opaque-google-id', title: 'Changed' })
+    await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(3))
   })
-
-  it('ne supprime rien si la confirmation est refusée', async () => {
-    render(<CalendarView />)
-
-    const deleteButton = await screen.findByRole('button', { name: /Supprimer Arty OAuth/i })
-    fireEvent.click(deleteButton)
-    const dialog = screen.getByRole('alertdialog', { name: /Confirmer la suppression/i })
-    expect(dialog).toHaveTextContent('Arty OAuth Review Source Event')
-    const cancelButton = screen.getByRole('button', { name: 'Annuler' })
-    await waitFor(() => expect(cancelButton).toHaveFocus())
-    fireEvent.click(cancelButton)
-
-    expect(mockDelete).not.toHaveBeenCalled()
-    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
-    await waitFor(() => expect(deleteButton).toHaveFocus())
-  })
-
-  it('annule aussi avec Échap et restitue le focus au déclencheur', async () => {
-    render(<CalendarView />)
-
-    const deleteButton = await screen.findByRole('button', { name: /Supprimer Arty OAuth/i })
-    fireEvent.click(deleteButton)
-    const dialog = screen.getByRole('alertdialog', { name: /Confirmer la suppression/i })
+  it.each(['Annuler', 'Escape'])('cancels deletion with %s, zero writes and restored focus', async action => {
+    render(<CalendarView />); await openDelete()
+    const dialog = screen.getByRole('alertdialog')
+    expect(dialog).toHaveTextContent('a@example.invalid'); expect(dialog).toHaveTextContent('Synthetic appointment')
     await waitFor(() => expect(screen.getByRole('button', { name: 'Annuler' })).toHaveFocus())
-    fireEvent.keyDown(dialog, { key: 'Escape' })
-
-    expect(mockDelete).not.toHaveBeenCalled()
-    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
-    await waitFor(() => expect(deleteButton).toHaveFocus())
+    if (action === 'Escape') fireEvent.keyDown(dialog, { key: 'Escape' })
+    else fireEvent.click(screen.getByRole('button', { name: 'Annuler' }))
+    expect(writes()).toHaveLength(0)
+    await waitFor(() => expect(screen.getByRole('button', { name: /Supprimer Synthetic/i })).toHaveFocus())
   })
-
-  it('confirme avec titre/date, supprime l’ID exact et retire immédiatement la ligne', async () => {
-    mockList.mockResolvedValueOnce([sourceEvent]).mockResolvedValueOnce([])
-    render(<CalendarView />)
-
-    fireEvent.click(await screen.findByRole('button', { name: /Supprimer Arty OAuth/i }))
-    expect(screen.getByRole('alertdialog')).toHaveTextContent(/Arty OAuth Review Source Event/)
-    fireEvent.click(screen.getByRole('button', { name: 'Placer dans la corbeille' }))
-
-    await waitFor(() => expect(mockDelete).toHaveBeenCalledWith('opaque-google-id'))
+  it('deletes the exact ID, focuses success and removes the displayed row', async () => {
+    render(<CalendarView />); await openDelete(); confirmDelete()
     const status = await screen.findByRole('status')
-    expect(status).toHaveTextContent('Événement supprimé de Google Agenda.')
+    expect(status).toHaveTextContent('Événement supprimé')
     await waitFor(() => expect(status).toHaveFocus())
-    expect(screen.queryByText('Arty OAuth Review Source Event')).not.toBeInTheDocument()
-    await waitFor(() => expect(mockList).toHaveBeenCalledTimes(2))
+    expect(JSON.parse(writes()[0][1].body).eventId).toBe('opaque-google-id')
+    expect(screen.queryByText(syntheticEvent.title)).not.toBeInTheDocument()
   })
-
-  it('bloque le double clic et garde l’événement si Google refuse la suppression', async () => {
-    let rejectDelete!: (error: Error) => void
-    mockDelete.mockImplementation(() => new Promise((_resolve, reject) => { rejectDelete = reject }))
-    render(<CalendarView />)
-
-    const deleteButton = await screen.findByRole('button', { name: /Supprimer Arty OAuth/i })
-    fireEvent.click(deleteButton)
-    const confirmDeleteButton = screen.getByRole('button', { name: 'Placer dans la corbeille' })
-    fireEvent.click(confirmDeleteButton)
-    fireEvent.click(confirmDeleteButton)
-    expect(mockDelete).toHaveBeenCalledTimes(1)
-
-    await act(async () => rejectDelete(new Error('403')))
-    expect(await screen.findByRole('alert')).toHaveTextContent('Rien n’a changé')
-    expect(screen.getByText('Arty OAuth Review Source Event')).toBeInTheDocument()
-    expect(deleteButton).toBeEnabled()
+  it.each(['refused', 'unknown'])('one attempt on double click and an honest %s message', async kind => {
+    const gate = deferred<Response>()
+    const base = fetcher.getMockImplementation()!
+    fetcher.mockImplementation((url, init) => JSON.parse(init.body).type === 'delete' ? gate.promise : base(url, init))
+    render(<CalendarView />); await openDelete()
+    const button = screen.getByRole('button', { name: 'Placer dans la corbeille' })
+    fireEvent.click(button); fireEvent.click(button)
+    await waitFor(() => expect(writes()).toHaveLength(1))
+    await act(async () => gate.resolve(Response.json(kind === 'refused' ? { calendarProtocol: 1, calendarOutcome: 'rejected-before-dispatch' } : {}, { status: 503 })))
+    expect(await screen.findByRole('alert')).toHaveTextContent(kind === 'refused' ? 'Action refusée avant envoi' : 'Issue incertaine')
+    expect(writes()).toHaveLength(1)
+    confirmDelete()
+    expect(writes()).toHaveLength(1)
   })
-
-  it('ignore une liste initiale périmée après une mutation', async () => {
-    let resolveStale!: (events: CalendarEvent[]) => void
-    mockList.mockImplementationOnce(() => new Promise((resolve) => { resolveStale = resolve }))
-    const { unmount } = render(<CalendarView />)
-
-    unmount()
-    await act(async () => resolveStale([sourceEvent]))
-    expect(screen.queryByText(sourceEvent.title)).not.toBeInTheDocument()
+  it('keeps confirmed deletion despite reload failure and offers a read-only refresh', async () => {
+    let reads = 0
+    const base = fetcher.getMockImplementation()!
+    fetcher.mockImplementation((url, init) => JSON.parse(init.body).type === 'list' && ++reads === 2 ? Promise.reject(new Error('offline')) : base(url, init))
+    render(<CalendarView />); await openDelete(); confirmDelete()
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('Événement supprimé')
+    expect(alert).toHaveTextContent('agenda n’a pas pu être actualisé')
+    expect(screen.queryByText(syntheticEvent.title)).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /Actualiser la liste/i }))
+    await waitFor(() => expect(reads).toBe(3))
+    expect(writes()).toHaveLength(1)
   })
-
-  it('garde la suppression visible si la relecture Google échoue après le commit', async () => {
-    mockList.mockResolvedValueOnce([sourceEvent]).mockRejectedValueOnce(new Error('network'))
-    render(<CalendarView />)
-
-    fireEvent.click(await screen.findByRole('button', { name: /Supprimer Arty OAuth/i }))
-    fireEvent.click(screen.getByRole('button', { name: 'Placer dans la corbeille' }))
-
-    expect(await screen.findByRole('alert')).toHaveTextContent('agenda n’a pas pu être actualisé')
-    expect(screen.queryByText(sourceEvent.title)).not.toBeInTheDocument()
-    expect(mockDelete).toHaveBeenCalledOnce()
+  it('clears the old list and confirmation on relink without unmounting; no write to B', async () => {
+    render(<CalendarView />); await openDelete()
+    await act(async () => relinkCalendarGoogle('b'))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Compte Google changé')
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    expect(screen.queryByText(syntheticEvent.title)).not.toBeInTheDocument()
+    expect(writes()).toHaveLength(0)
+    events = [{ ...syntheticEvent, title: 'B appointment' }]
+    fireEvent.click(screen.getByRole('button', { name: /Actualiser/i }))
+    expect(await screen.findByText('B appointment')).toBeInTheDocument()
+    expect(JSON.parse(fetcher.mock.calls.at(-1)![1].body).calendarAccount).toBe('b@example.invalid')
+  })
+  it('does not publish a late initial list after unmount', async () => {
+    const gate = deferred<Response>(); fetcher.mockReturnValue(gate.promise)
+    const callback = vi.fn(), { unmount } = render(<CalendarView onEventsChange={callback} />)
+    await waitFor(() => expect(fetcher).toHaveBeenCalledOnce()); unmount()
+    await act(async () => gate.resolve(Response.json({ events })))
+    expect(callback).not.toHaveBeenCalled()
+  })
+  it('resets the UI incarnation when days changes during a pending write, without a permanent lock', async () => {
+    const gate = deferred<Response>(), base = fetcher.getMockImplementation()!
+    fetcher.mockImplementation((url, init) => JSON.parse(init.body).type === 'delete' ? gate.promise : base(url, init))
+    const { rerender } = render(<CalendarView days={7} />); await openDelete(); confirmDelete()
+    await waitFor(() => expect(writes()).toHaveLength(1))
+    rerender(<CalendarView days={14} />)
+    const edit = await screen.findByRole('button', { name: /Modifier Synthetic/i })
+    expect(edit).toBeEnabled()
+    await act(async () => gate.resolve(Response.json({ success: true })))
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(edit).toBeEnabled()
+    fireEvent.click(edit)
+    expect(screen.getByRole('textbox', { name: /Titre de l’événement/i })).toBeEnabled()
+  })
+  it('does not publish a late mutation after relink while Google may have written', async () => {
+    const gate = deferred<Response>(), callback = vi.fn(), base = fetcher.getMockImplementation()!
+    fetcher.mockImplementation((url, init) => JSON.parse(init.body).type === 'delete' ? gate.promise : base(url, init))
+    render(<CalendarView onEventsChange={callback} />); await openDelete(); confirmDelete()
+    await waitFor(() => expect(writes()).toHaveLength(1))
+    await act(async () => relinkCalendarGoogle('b'))
+    callback.mockClear()
+    await act(async () => gate.resolve(Response.json({ success: true })))
+    expect(screen.queryByRole('status')).not.toBeInTheDocument(); expect(callback).not.toHaveBeenCalled()
+  })
+  it('keeps the original all-day date in the confirmation', async () => {
+    events = [{ ...syntheticEvent, start: '2026-09-07', end: '2026-09-08' }]
+    render(<CalendarView />); await openDelete()
+    expect(screen.getByRole('alertdialog')).toHaveTextContent(/7 sept\. 2026/)
+    confirmDelete()
+    expect(await screen.findByRole('status')).toHaveTextContent('Événement supprimé')
   })
 })
