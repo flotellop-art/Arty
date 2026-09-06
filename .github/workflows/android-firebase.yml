@@ -115,14 +115,28 @@ jobs:
           ARTY_KEY_PASSWORD: ${{ secrets.ARTY_KEY_PASSWORD }}
         run: ./gradlew :app:lintRelease :app:testReleaseUnitTest :app:assembleRelease --no-daemon
 
+      - name: Verify exact APK candidate identity
+        run: node scripts/verify-release-apk.mjs
+
       - name: Distribute to Firebase App Distribution
         uses: wzieba/Firebase-Distribution-Github-Action@bd494989dd4bec0343f78adee87fe66e48279ad6 # v1.7.1
         with:
           appId: ${{ secrets.FIREBASE_APP_ID }}
           serviceCredentialsFileContent: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           groups: ${{ env.FIREBASE_GROUPS }}
-          file: android/app/build/outputs/apk/release/app-release.apk
+          file: android/app/build/outputs/verified-release/app-release.apk
           releaseNotesFile: android/app/release-notes.txt
+
+      # Only the allowlisted JSON, never APKs, certificates, keystores, tool
+      # stdout or google-services.json. This follows Firebase success, but the
+      # JSON itself is an artifact-verification receipt, not proof of install.
+      - name: Upload verified APK identity receipt
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: arty-apk-identity-${{ github.sha }}-${{ github.run_attempt }}
+          path: android/app/build/outputs/verified-release/identity-receipt.json
+          retention-days: 30
+          if-no-files-found: error
 
       - name: Cleanup secret files
         if: always()
