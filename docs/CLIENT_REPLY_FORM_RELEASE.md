@@ -103,6 +103,33 @@ build et vrai worker Office en VM isolée. Couverture 71,33 / 66,12 / 77,07 /
 et replay existants restent distincts du contrôle de règlement ajouté ici.
 Le test ne prétend pas supprimer les deadlines réelles pendant l'admission.
 
+La première CI PR #469 (`34021834869`) a ensuite trouvé un autre oracle
+sensible à la deadline dans `d1.premiumCap.test.ts:51` : `remaining` attendu 9,
+reçu undefined, avec `[premium-cap] FAIL-OPEN ... email=seq...` à
+08:27:27.2789206 UTC. Les tests wallet sont réussis. 296 suites réussies,
+une seule assertion en échec ; Pages et les deux autres jobs réussis.
+La fusion reste bloquée. Deux diagnostics readonly confirment le contrat
+existant : fail-open ne promet ni restant ni débit. Test original isolé 16/16.
+
+Correction additionnelle uniquement dans ce test : contrôle explicite du
+timer 250 ms selon le précédent `geminiProxyFallback`, après boot/reset du
+vrai D1 ; les autres timers et E/S restent réels. Aucun timer n'expire par
+latence du runner dans les scénarios comptables nominaux. Séquentiel inchangé
+et renforcé par débit confirmé ; concurrence : exactement dix débits, vingt
+refus, restants 0..9 et compteur dix, après drainage de toutes les réponses.
+Un scénario séparé expire explicitement la deadline et vérifie l'absence de
+restant/débit promis après résultat tardif, libéré dans finally. La frontière
+réelle 249/250 ms reste couverte par `atomicQuotaLateDebit`. Aucune assertion
+nullable tolérante, aucun retry de consommation, aucune limite de production
+ou concurrence CI modifiée. La contention CI reste une hypothèse de contexte,
+pas une cause d'infrastructure démontrée.
+
+Ce complément a reçu deux GO readonly après code : 38/38 ciblés puis verify
+complet exit 0 à 08:38 UTC, **297 suites / 3604 réussis + 1 ignoré**, build et
+worker Office réel compris (couverture 71,32 / 66,12 / 77,07 / 73,25 %).
+Le mapping timeout ajouté emploie une réponse D1 suspendue simulée, et le
+sélecteur de timers se base sur la durée, pas sur le module d'origine.
+
 Verify final → deux GO code → PR/CI/Pages preview → fusion normale → comparer
 les assets immutables avec tryarty.com ; vérifier CI main et APK Firebase
 séparément. Aucun secret/config Android, dépendance ou migration ajouté.
