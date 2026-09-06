@@ -65,7 +65,23 @@ réussis + 1 sauté**, dont **62 tests** du nouveau fichier de durée de vie.
 Typechecks front/back, no-CASA, couverture, build et vrai worker Office isolé
 réussis. Couverture 71,74 / 66,65 / 77,39 / 73,59 %. Logs ignorés
 `composer-draft-verify-final.log` et `composer-draft-sixth.log` (60 tests avant
-les deux dernières recettes de double-clic). Publication distante à consigner.
+les deux dernières recettes de double-clic).
+
+Publication par [PR #476](https://github.com/flotellop-art/Arty/pull/476),
+head `086a7f1e20e8165a45258cdb0e7371a888f88b14`, squash main
+`1e3aed83acabbc10c9d063474739d5c992b838d8` à 12:37:16 UTC.
+CI PR `34033402682` réussie (web 3 min 52 s, Android 3 min 49 s).
+Pages main `ddfbc368-9347-4818-9df9-94b0cc24ec9d` réussi à 12:38:25 UTC.
+GET anonymes canonical/version immuable à 12:39:20–22 UTC : marqueurs du
+correctif, six assets et guide FR/EN/CSS/SW identiques. App servi :
+`App-BCuqcO6p.js`, 936254 octets, SHA-256
+`1db4bbb0db68c0675049d9818c244559ac222994b55eaec95fe76e3b30218edf`.
+Sept sondes GET/OPTIONS du transport API historique également réussies.
+CI main `34033648916` réussie (dernière étape web à 12:41:35 UTC).
+Android/Firebase `34033648917` réussi à 12:46:36 UTC : identité du candidat
+vérifiée à 12:46:23, distribution Firebase à 12:46:30, reçu JSON téléversé à
+12:46:31 UTC. Aucun APK ni reçu téléchargé pour ce lot ; preuve de pipeline,
+pas d'installation physique ou de recette sur téléphone.
 
 Recette Chrome isolée le 6 septembre à 12:31:20 UTC, 390/1280 px : vrai
 InputBar/crypto/runtime, brouillon chiffré relu après reload, A–B–A, acquittement

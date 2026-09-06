@@ -108,6 +108,22 @@ réels ; préparer protocole et instrumentation sans fabriquer leurs résultats.
 
 ## Preuves par lot
 
+### W06 — abandon avant barrière, validé localement
+
+Un quota durable de duplication peut maintenant être quitté, après inspection
+et confirmation explicites, uniquement depuis `reserved` avec sources encore
+physiquement 0/1. Copies exactes puis payload du plan retirés ; sources et
+comptes intacts ; CAS legacy et rechargement obligatoire. Aucun reset, effacement
+de compte ou réactivation privée dans le document froid. Confirmation à usage
+unique ; après coupure, nouvel aperçu/consentement, pas de baseline réinventé.
+
+`COLD_MIGRATION_CANCELLATION.md` consigne le contrat et les preuves : verify
+314 suites / 3 994 tests + 1 sauté ; quota first/last maintenu et B réel
+lecture/écriture/relecture ; Chrome isolé 390/1280 avec sources comparées et
+flag OFF réel vérifié. Livraison distante en cours. L'abandon après barrière,
+le publisher de restauration et la synchronisation restent à réaliser ; ce
+prérequis ne clôt pas W06.
+
 ### W08 — formulaire client, validé localement
 
 Entrée Templates → champs manuels → revue exacte Claude/Mistral → nouveau fil
@@ -1785,6 +1801,18 @@ Revert Git de la PR via la chaîne Pages habituelle. Aucun schéma/migration de
 données ; originaux conservés. Ne pas remplacer un échec de lecture par un
 faux texte analysé. Un APK déjà installé reste son bundle local jusqu'à mise
 à jour ; pas de contournement OTA du client natif.
+
+### Point de contrôle dépendances — 6 septembre 2026
+
+Audit readonly complémentaire `npm audit --omit=dev` : **6 entrées**, 2 high,
+4 moderate, aucune critical (ce n'est pas le comptage complet dev compris).
+`npm ls --omit=dev` situe @xmldom/xmldom 0.8.13, brace-expansion 5.0.7 et
+tar 7.5.19 sous @capacitor/cli 8.3.0 ; DOMPurify 3.4.11 et React Router /
+react-router-dom 6.30.4 sont aussi présents. La portée réelle des options
+sanitizer, destinations Link/navigate et chemins build doit être examinée,
+pas déduite du seul niveau npm. Aucun `audit fix --force` ni mise à jour
+silencieuse exécuté. Ces avis préexistants restent un gate avant clôture CDC ;
+le correctif de durée de vie des brouillons #476 ne prétend pas les résoudre.
 
 ### Repli du lot W02
 

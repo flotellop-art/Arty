@@ -140,11 +140,22 @@
     "recoverableTitle": "Migration locale interrompue",
     "recovery": {
       "disabled": "Une migration interrompue est signalée, mais la reprise n’est pas activée dans cette version. Conserve le stockage et installe une version compatible. Recharger cette même version ne résoudra pas la situation.",
-      "idle": "Les données et le retour de connexion restent en place. Tu peux demander une reprise locale ; les copies seront vérifiées avant toute ouverture.",
+      "idle": "Les données et le retour de connexion restent en place. Reprendre la migration peut recréer des copies et demander davantage d’espace ; elles seront vérifiées avant toute ouverture.",
       "working": "Vérification et reprise locales en cours. Ne ferme pas cette fenêtre.",
       "failed": "La reprise n’a pas abouti. Les données restent fermées et aucune copie n’a été supprimée. Ferme les autres versions d’Arty et vérifie l’espace disponible avant de réessayer. Si les données ont changé ou si le journal manque, une récupération dédiée est nécessaire ; n’efface pas le stockage.",
       "done": "La migration locale est vérifiée. Recharge pour ouvrir une nouvelle session sur ce stockage.",
-      "resume": "Vérifier et reprendre"
+      "resume": "Reprendre la migration"
+    },
+    "migrationCancellation": {
+      "inspect": "Vérifier si cette préparation peut être abandonnée",
+      "working": "Examen des sources et des copies de préparation. Rien n’est modifié.",
+      "confirm": "Abandonner cette préparation locale ?",
+      "consent": "Seules les copies de préparation identifiées et vérifiées seront retirées. Les conversations, fichiers, projets, comptes et accès d’origine ne seront pas modifiés. Cela peut libérer l’espace occupé par ces copies, sans garantir une capacité suffisante. Ce n’est ni une restauration ni une suppression de compte. Recharge ensuite pour ouvrir une nouvelle session sur le stockage d’origine.",
+      "initialInventory": "Aucun inventaire initial n’a été conservé. Cette confirmation porte uniquement sur les sources actuellement présentes qui viennent d’être examinées, sans garantie de correspondance avec un état antérieur.",
+      "confirmCta": "Abandonner cette préparation, conserver les sources",
+      "cancelling": "Retrait des copies vérifiées et arrêt de la préparation. Garde cette fenêtre ouverte.",
+      "failed": "L’abandon n’a pas pu être confirmé. Ce parcours n’a pas modifié les sources ; certaines copies de préparation peuvent déjà avoir été retirées. Conserve le stockage et recharge pour examiner l’état actuel. Une migration plus avancée ne peut pas être abandonnée ici.",
+      "done": "Préparation abandonnée. Les sources sont conservées. Recharge pour ouvrir une nouvelle session sur le stockage d’origine ; aucune session privée n’a été ouverte ici."
     },
     "erasurePreparation": {
       "noAccount": "Aucun compte sélectionnable pour cet effacement local. Rien n’a été préparé ni effacé. Les données anonymes ne sont pas prises en charge par ce parcours ; recharge pour choisir la reprise normale de la migration.",

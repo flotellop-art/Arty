@@ -140,11 +140,22 @@
     "recoverableTitle": "Local migration interrupted",
     "recovery": {
       "disabled": "An interrupted migration is reported, but recovery is not enabled in this version. Keep site storage and install a compatible version. Reloading this same version will not resolve the situation.",
-      "idle": "Your data and sign-in callback remain in place. You can request local recovery; copies will be verified before opening.",
+      "idle": "Your data and sign-in callback remain in place. Resuming migration may recreate copies and need more space; they will be verified before opening.",
       "working": "Local verification and recovery are in progress. Keep this window open.",
       "failed": "Recovery did not finish. Your data remains closed and no copy was deleted. Close other versions of Arty and check free storage before retrying. Changed data or a missing journal require dedicated recovery; do not clear storage.",
       "done": "Local migration is verified. Reload to open a new session on this storage.",
-      "resume": "Verify and resume"
+      "resume": "Resume migration"
+    },
+    "migrationCancellation": {
+      "inspect": "Check whether this preparation can be abandoned",
+      "working": "Inspecting the sources and preparation copies. Nothing is being changed.",
+      "confirm": "Abandon this local preparation?",
+      "consent": "Only identified, verified preparation copies will be removed. Original conversations, files, projects, accounts and access will not be modified. This may free the space used by these copies, without guaranteeing enough capacity. This is not a restore or account deletion. Then reload to open a new session on the original storage.",
+      "initialInventory": "No initial inventory was preserved. This confirmation applies only to the currently present sources just inspected, without guaranteeing that they match an earlier state.",
+      "confirmCta": "Abandon this preparation, keep the sources",
+      "cancelling": "Removing verified copies and stopping preparation. Keep this window open.",
+      "failed": "Abandonment could not be confirmed. This path did not modify the sources; some preparation copies may already have been removed. Preserve storage and reload to inspect its current state. A more advanced migration cannot be abandoned here.",
+      "done": "Preparation abandoned. Sources are preserved. Reload to open a new session on the original storage; no private session was opened here."
     },
     "erasurePreparation": {
       "noAccount": "No selectable account for this local erasure. Nothing was prepared or erased. Anonymous data is not supported by this path; reload to choose normal migration recovery.",
