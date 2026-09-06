@@ -45,6 +45,7 @@ import { beginProjectOperation, getProject } from '../services/projects/store'
 import { ProjectError, type Project } from '../services/projects/types'
 import { useProjectReview } from './useProjectReview'
 import { useContextualComparisons } from './useContextualComparisons'
+import { captureProjectSynthesis, type ProjectSynthesisInvocation } from '../services/workflows/projectSynthesis'
 
 import type { ToolDispatcher as ToolHandler } from '../services/tools/types'
 import { generatedImageIds, MAX_GENERATED_IMAGES_PER_TURN } from '../services/generatedImages'
@@ -275,6 +276,7 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
       conversationId?: string,
       files?: FileAttachment[],
       options?: ChatSendOptions,
+      synthesis?: ProjectSynthesisInvocation,
     ): Promise<boolean> => {
       const targetId = conversationId ?? activeId
       if (!targetId) return false
@@ -282,7 +284,8 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
         setError(i18n.t('errors.tooManyConcurrentStreams')); return false
       }
       const finishPreparation = beginConversationWork(targetId)
-      const calendarScope = captureCalendarContext() // before all preparation awaits; never recapture at tool dispatch
+      const documentSource = synthesis?.conversation ?? storage.getConversation(targetId)
+      const calendarScope = documentSource && isDocumentConversation(documentSource) ? null : captureCalendarContext()
       let calendarUsed = false
       try {
 
@@ -291,13 +294,14 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
       const quickAction = isQuickActionSelection(options?.quickAction)
         ? options.quickAction
         : undefined
-      const modelText = composeQuickActionText(text, quickAction)
+      synthesis?.assertCurrent()
+      const modelText = synthesis?.question ?? composeQuickActionText(text, quickAction)
 
       setError(null)
       // Passe a true uniquement après la persistance du nouveau message.
       setErrorRetryable(false)
 
-      let storedConversation = storage.getConversation(targetId)
+      let storedConversation = synthesis?.conversation ?? storage.getConversation(targetId)
       // Recover abandoned partials BEFORE capturing the request object. Never
       // touch an actual live invocation (including streams in other conversations).
       if (storedConversation?.messages.some(m => m.id === 'streaming') && !hasStream(targetId)) {
@@ -412,13 +416,23 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
       }
       const requestMessages: Message[] = [
         ...(replaceMessageId ? conv.messages.slice(0, replaceIndex) : conv.messages),
-        { id: 'preparing', role: 'user', content: text, timestamp: Date.now(), files, quickAction },
+        { id: 'preparing', role: 'user', content: synthesis?.question ?? text, timestamp: Date.now(), files, quickAction },
       ]
       // Legacy variable name retained in the shared Office pipeline: all
       // document-derived histories now use its strict/read-only safeguards.
       const officeRequest = projectRequest || hasOfficeHistory(requestMessages)
       const officeController = officeRequest ? new AbortController() : undefined
-      const documentContext = officeController ? captureDocumentPreparation(officeController.signal) : undefined
+      let documentInvocation: string | undefined
+      const documentSession = officeController ? captureDocumentPreparation(officeController.signal) : undefined
+      const documentContext = officeController ? synthesis ? {
+        ...synthesis.preparation,
+        signal: officeController.signal,
+        assertCurrent() {
+          documentSession!.assertCurrent()
+          synthesis.assertCurrent()
+          if (officeController.signal.aborted || (documentInvocation && getInvocationId(targetId) !== documentInvocation)) throw new ProjectError('cancelled')
+        },
+      } : documentSession : undefined
       let preparedOfficeMessages: Message[] | undefined
       let preparedProject: PreparedProjectChat | undefined
       let projectRoute: ReturnType<typeof resolveRoute> | undefined
@@ -426,17 +440,22 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
         if (!documentContext) return true
         try { documentContext.assertCurrent(); preparedProject?.assertCurrent(); return true } catch {
           // An old, stopped request must never tear down a newly started one.
-          if (!officeController!.signal.aborted) discardStream(targetId)
+          if (!officeController!.signal.aborted && (!documentInvocation || getInvocationId(targetId) === documentInvocation)) discardStream(targetId)
           officeController!.abort()
           return false
         }
       }
       if (officeRequest) {
         if (!startStream(targetId, () => { documentContext?.assertCurrent(); preparedProject?.assertCurrent() })) return false
+        documentInvocation = getInvocationId(targetId)
         setActiveStream(targetId)
         setAbortController(targetId, officeController!)
         setProgressContent(i18n.t(projectRequest ? 'chat.input.projectPreparing' : 'chat.input.officePreparing'), targetId)
         try {
+          synthesis?.bindCancellation(() => {
+            if (getInvocationId(targetId) === documentInvocation) discardStream(targetId)
+            officeController!.abort()
+          })
           preparedOfficeMessages = await prepareOfficeMessages(requestMessages, documentContext)
           documentContext!.assertCurrent()
           if (projectRequest) {
@@ -447,7 +466,8 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
             projectRoute = resolveRoute(input)
             if (projectRoute.provider !== 'claude' && projectRoute.provider !== 'mistral') throw new ProjectError('unsupported')
             preparedProject = await prepareProjectChat({ conversation: conv, messages: preparedOfficeMessages, query: text, effectiveQuestion: modelText,
-              provider: projectRoute.provider, preparation: documentContext!, signal: officeController!.signal, review: reviewProjectRequest })
+              provider: projectRoute.provider, preparation: documentContext!, signal: officeController!.signal, review: synthesis?.review ?? reviewProjectRequest,
+              ...(synthesis ? { policy: synthesis.policy, creation: { assertCurrent: synthesis.assertCurrent } } : {}) })
           }
           setProgressContent('', targetId)
         } catch (err) {
@@ -724,7 +744,7 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
       const userMessage: Message = {
         id: generateId(),
         role: 'user',
-        content: text,
+        content: synthesis?.question ?? text,
         timestamp: Date.now(),
         ...(persistedFiles ? { files: persistedFiles } : {}),
         ...(quickAction ? { quickAction } : {}),
@@ -744,20 +764,34 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
       }
       conv.updatedAt = Date.now()
       if (preparedProject) conv.hasProjectContext = true
+      let synthesisPublished = false
       try {
-        storage.saveConversation(conv)
+        if (synthesis) {
+          storage.insertConversationsAtomically([conv], () => { synthesis.assertCurrent(); preparedProject!.assertCurrent() })
+          synthesisPublished = true
+          synthesis.acceptPersisted()
+        }
+        else storage.saveConversation(conv)
         preparedProject?.acceptPersisted(conv)
         if (preparedProject) setProjectTurn(targetId, preparedProject.turn)
       } catch (reason) {
         if (!preparedProject) throw reason
         await deleteOwnedFiles(persistedNewIds, documentContext!.owner)
         discardStream(targetId); officeController?.abort()
-        setError(i18n.t('errors.fileStorageFailed')); return false
+        setError(synthesisPublished
+          ? (i18n.language.startsWith('fr') ? 'Le fil a été enregistré, mais la génération n’a pas démarré. Retrouvez-le dans l’historique avant de réessayer.' : 'The chat was saved, but generation did not start. Find it in history before trying again.')
+          : i18n.t('errors.fileStorageFailed'))
+        if (synthesisPublished) refreshConversations()
+        return false
       }
       refreshConversations()
       setErrorRetryable(true)
       setActiveStream(targetId)
       setActiveId(targetId)
+      synthesis?.notifyAdopted()
+      // A synchronous navigation/observer may revoke A, delete the chat or Stop.
+      // Never recapture B as the owner of this already-adopted invocation.
+      if (!officeStillCurrent()) return true
 
       setPendingFiles((effectiveFiles && effectiveFiles.length > 0) ? effectiveFiles : null)
 
@@ -792,7 +826,8 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
       const toolController = new AbortController()
       const imageCryptoCurrent = captureCryptoGuard(), imageFence = getSessionProjectFence()
       const assertImageScope = captureGeneratedImageView()
-      const invocationOwner = getActiveUserId(), invocationEpoch = getActiveSessionEpoch()
+      const invocationOwner = documentContext ? documentContext.owner : getActiveUserId()
+      const invocationEpoch = documentContext ? documentContext.epoch : getActiveSessionEpoch()
       const invocationStillCurrent = () => !!invocationId && getInvocationId(targetId) === invocationId
         && invocationOwner === getActiveUserId() && invocationEpoch === getActiveSessionEpoch() && officeStillCurrent()
       const assertInvocationCurrent = () => {
@@ -928,6 +963,7 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
         }
       }
       if (usedModelsChanged) {
+        if (!officeStillCurrent()) return true
         conv.usedModels = usedModels
         storage.saveConversation(conv)
       }
@@ -1273,7 +1309,7 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
       }
       releaseVisionAutoCropLock()
       return true
-      } finally { finishPreparation() }
+      } finally { synthesis?.dispose(); finishPreparation() }
     },
     [
       activeId, refreshConversations, canStart, startStream, getInvocationId, setActiveStream, reviewProjectRequest, setProjectTurn, adoptGeneratedImage,
@@ -1282,6 +1318,11 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
       setPendingFiles, pendingFilesRef, stopStreaming, discardStream,
     ]
   )
+
+  const startProjectSynthesis = useCallback(async (args: Parameters<typeof captureProjectSynthesis>[0]) => {
+    const invocation = captureProjectSynthesis(args)
+    return sendMessage(invocation.objective, invocation.conversation.id, undefined, undefined, invocation)
+  }, [sendMessage])
 
   const deleteConv = useCallback(
     (id: string) => {
@@ -1569,6 +1610,7 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
     selectConversation,
     clearActive,
     sendMessage,
+    startProjectSynthesis,
     deleteConversation: deleteConv,
     renameConversation,
     setConversationTags,

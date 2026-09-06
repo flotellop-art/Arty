@@ -1,7 +1,8 @@
 # W08 — copie documentaire vers Agenda : recette et promotion
 
 6 septembre 2026. Branche `codex/workflow-calendar-copy`, base main `a3724e3`
-(#464). Candidat local ; ne pas confondre avec une publication déjà confirmée.
+(#464). **Livré par #465 sur le web et distribué en APK Firebase** ; CI main
+verte. Installation physique, Store et événement Google réel non attestés.
 
 ## Périmètre
 
@@ -63,9 +64,9 @@ ensureCacheOwner ; les opérations ne changent pas implicitement de propriétair
   branches / 76,68 % fonctions / 72,82 % lignes. Front/back, no-CASA/addon,
   build et worker Office isolé verts. App local 902,91 Ko, gzip 277,46 Ko ;
   avertissement de gros chunk préexistant. Aucun code produit changé ensuite.
-- [ ] CI PR, preview statique et diff final vérifiés avant fusion.
-- [ ] Fusion normale, Pages et assets canoniques/immutables concordants.
-- [ ] CI main et APK Firebase vérifiées séparément.
+- [x] CI PR, preview statique et diff final vérifiés avant fusion.
+- [x] Fusion normale, Pages et assets canoniques/immutables concordants.
+- [x] CI main et APK Firebase vérifiées séparément.
 
 ## Déploiement, repli et limites
 
@@ -85,3 +86,31 @@ erreur/latence consultées : « 15 minutes nominales » non attestées. Pas d'é
 d'astreinte notifiée ni ticket tiers fermé ; suivi dans le fil et la PR.
 W08 demeure partiel (synthèse/réponse client guidées et écran de connexions),
 W06 restauration/synchronisation OFF et W09–W10 non terminés.
+
+## Reçus de publication #465
+
+Head `c87c0383f21c6bcf09642ef600bf53aa315bf281`, CI PR `34014732996`
+verte (verify-app à 05:50:04 UTC). Preview Pages
+`475740c9-6c85-4f69-bdcf-7206e412e91d` réussie à 05:45:28 UTC ; GET
+readonly à 05:45:42.245 UTC. Reçu avant fusion :
+<https://github.com/flotellop-art/Arty/pull/465#issuecomment-5557287678>.
+
+Fusion squash normale à 05:50:50 UTC, main
+`59bfbc6c179458199d1c791e2c1244022bf9ba2c`. Production Pages
+`11a513c0-58ba-4d15-8560-19e186bd7475` réussie à 05:51:57 UTC.
+GET sans auth sur tryarty.com et `https://11a513c0.appfacade.pages.dev`
+à 05:52:23.888 puis 06:00:19.494 UTC : mêmes octets et marqueurs attendus.
+
+| Asset | Octets | SHA-256 |
+|---|---:|---|
+| `index-DxajglB6.js` | 301 881 | `58f983ecfae2e8d49e3c9c8bf9e4025a78ffcb3e6ecfdb3841f3d9847dbfef06` |
+| `App-BwbtWHm_.js` | 905 559 | `ffa075b94b6f0af3301502e501f4b24e4c75abd084ab5c7024161dc4928235a6` |
+
+CI main `34014996455` réussie ; verify-app terminé à 05:56:16 UTC,
+285 suites / 3 451 réussis + 1 ignoré, couverture 70,86 / 65,49 / 76,68 /
+72,81 %. Android et orchestrateur verts. APK `34014996417` réussie sur le
+même SHA : signée à 05:59:00 UTC, distribution Firebase et nettoyage des
+secrets réussis à 05:59:07, job terminé à 05:59:10. Pas une preuve
+d'installation physique ou de publication Store. Aucun agenda personnel utilisé.
+
+Suite préparée, non implémentée : `PRD_WORKFLOW_DOCUMENT_GUIDES.md`.

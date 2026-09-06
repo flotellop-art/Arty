@@ -28,6 +28,7 @@ interface TemplatesScreenProps {
   onUpgrade: () => void
   onUseTemplate: (prompt: string) => void
   currentPlan: CurrentPlan
+  onProjectSynthesis?: () => void
 }
 
 type FilterValue = 'all' | TemplateCategory
@@ -41,8 +42,8 @@ const FILTERS: Array<{ value: FilterValue; label: string; icon?: string }> = [
   { value: 'finances', label: CATEGORY_LABELS.finances.label, icon: CATEGORY_LABELS.finances.icon },
 ]
 
-function TemplatesScreenInner({ onBack, onUpgrade, onUseTemplate, currentPlan }: TemplatesScreenProps) {
-  const { t } = useTranslation()
+function TemplatesScreenInner({ onBack, onUpgrade, onUseTemplate, currentPlan, onProjectSynthesis }: TemplatesScreenProps) {
+  const { t, i18n } = useTranslation()
   const [filter, setFilter] = useState<FilterValue>('all')
   const [selected, setSelected] = useState<Template | null>(null)
 
@@ -102,6 +103,11 @@ function TemplatesScreenInner({ onBack, onUpgrade, onUseTemplate, currentPlan }:
           </p>
         </div>
 
+        {onProjectSynthesis && <section className="mb-6 border border-theme-border rounded-lg p-4 space-y-3">
+          <h2 className="text-xl">{i18n.language.startsWith('fr') ? 'Parcours documentaire guidé' : 'Guided document workflow'}</h2>
+          <p className="text-sm text-theme-muted">{i18n.language.startsWith('fr') ? 'Choisissez un projet, les documents et relisez les extraits avant tout envoi. Accès vérifié selon votre compte et vos clés, indépendamment des anciens modèles Pro ci-dessous.' : 'Choose a project and documents, then review excerpts before sending. Access is checked against your account and keys, separately from the legacy Pro templates below.'}</p>
+          <button className="min-h-11 rounded border border-theme-border px-4 py-2" onClick={onProjectSynthesis}>{i18n.language.startsWith('fr') ? 'Synthèse guidée de projet' : 'Guided project synthesis'}</button>
+        </section>}
         {/* Bannière Pro si non débloqué */}
         {!isPro && (
           <button

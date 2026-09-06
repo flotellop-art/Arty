@@ -1,6 +1,6 @@
 # ADR W08 — copie documentaire explicite vers Agenda
 
-6 septembre 2026. Implémentation candidate sur `codex/workflow-calendar-copy`,
+6 septembre 2026. Implémentation livrée par #465 (`59bfbc6`),
 base main `a3724e3` (#464). Deux contre-revues indépendantes avant code puis
 sur l'implémentation : produit/mobile et sécurité/lifecycle.
 Reçus et état de promotion : `CALENDAR_DOCUMENT_COPY_RELEASE.md`.

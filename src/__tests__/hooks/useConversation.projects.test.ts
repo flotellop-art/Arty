@@ -4,8 +4,10 @@ import type { Conversation } from '../../types'
 import type { Project } from '../../services/projects/types'
 import { officeFixture } from '../helpers/officeFixture'
 const mock = vi.hoisted(() => ({ begin: vi.fn(), getProject: vi.fn(), readText: vi.fn(), fence: vi.fn(), guard: vi.fn() }))
-vi.mock('../../services/projects/store', () => ({ beginProjectOperation: mock.begin, getProject: mock.getProject, readProjectDocumentText: mock.readText, assertProjectOperation: mock.fence }))
-vi.mock('../../services/storage', () => ({ getConversations: vi.fn(), getConversation: vi.fn(), saveConversation: vi.fn(), isCacheReady: () => true }))
+vi.mock('../../services/projects/store', () => ({ beginProjectOperation: mock.begin, getProject: mock.getProject, readProjectDocumentText: mock.readText, assertProjectOperation: mock.fence,
+  captureLocalReadScope: () => ({ owner: 'owner-a', epoch: 1, assertCurrent: mock.guard }),
+}))
+vi.mock('../../services/storage', () => ({ getConversations: vi.fn(), getConversation: vi.fn(), saveConversation: vi.fn(), insertConversationsAtomically: vi.fn(), isCacheReady: () => true }))
 vi.mock('../../services/anthropicClient', () => ({ streamMessage: vi.fn(() => new AbortController()) }))
 vi.mock('../../services/mistralClient', () => ({ streamMistralMessage: vi.fn(() => new AbortController()) }))
 vi.mock('../../services/secureFileStorage', () => ({ getFile: vi.fn(), putFile: vi.fn(async f => f.id), deleteFile: vi.fn(), deleteOwnedFiles: vi.fn(async () => 0) }))
@@ -60,6 +62,67 @@ async function answer(hook: Hook, kind: 'select' | 'confirm', ok = true) {
   act(() => hook.result.current.projectReview.answer(current.reviewId, ok ? kind === 'select' ? { mode: 'search', documentIds: ['d1'] } : true : null))
 }
 describe('project chat end-to-end hook with local fake providers', () => {
+  it.each(['done', 'abort-on-adopt', 'throw-on-adopt', 'owner-on-adopt', 'delete-on-adopt', 'stop-on-adopt'] as const)('guided creation: %s, same documentary engine and no pre-review writes', async outcome => {
+    const records = new Map([[conv.id, conv]]), original = structuredClone(conv)
+    vi.mocked(storage.getConversation).mockImplementation(id => records.get(id) ?? null)
+    vi.mocked(storage.getConversations).mockImplementation(() => [...records.values()])
+    vi.mocked(storage.saveConversation).mockImplementation(c => { records.set(c.id, c) })
+    vi.mocked(storage.insertConversationsAtomically).mockImplementation((values, guard) => {
+      guard(); if (values.some(c => records.has(c.id))) throw new Error('collision')
+      values.forEach(c => records.set(c.id, structuredClone(c)))
+    })
+    const hook = setup(), controller = new AbortController(); let pending!: Promise<boolean>, adopted: string | undefined
+    act(() => { pending = hook.result.current.startProjectSynthesis({ project, objective: 'Synthétiser les faits.', locale: 'fr', signal: controller.signal,
+      assertDraft: () => {}, assertAccess: () => {}, review: hook.result.current.projectReview.review,
+      onAdopted(id) {
+        adopted = id
+        if (outcome === 'abort-on-adopt') controller.abort()
+        if (outcome === 'throw-on-adopt') throw new Error('UI failed')
+        if (outcome === 'owner-on-adopt') vi.mocked(getActiveSessionEpoch).mockReturnValue(2)
+        if (outcome === 'delete-on-adopt') records.delete(id)
+        if (outcome === 'stop-on-adopt') hook.result.current.stopStreaming(id)
+      },
+    }) })
+    await waitFor(() => expect(hook.result.current.projectReview.request?.kind).toBe('select'))
+    const selection = hook.result.current.projectReview.request!
+    expect(selection).toMatchObject({ policy: { kind: 'project-synthesis' } })
+    act(() => hook.result.current.projectReview.answer(selection.reviewId, { mode: 'overview', documentIds: ['d1'] }))
+    await waitFor(() => expect(hook.result.current.projectReview.request?.kind).toBe('confirm'))
+    expect(records.size).toBe(1); expect(storage.saveConversation).not.toHaveBeenCalled(); expect(streamMessage).not.toHaveBeenCalled()
+    await answer(hook, 'confirm'); await act(async () => expect(await pending).toBe(true))
+    expect(adopted).toBeTypeOf('string'); expect(records.get(original.id)).toEqual(original)
+    if (['owner-on-adopt', 'delete-on-adopt', 'stop-on-adopt'].includes(outcome)) {
+      expect(streamMessage).not.toHaveBeenCalled(); expect(storage.saveConversation).not.toHaveBeenCalled()
+    } else {
+      const call = vi.mocked(streamMessage).mock.calls[0]!
+      expect(call[4]).toMatchObject({ documentReadOnly: true, tools: [] })
+      expect(JSON.stringify(call[0])).toContain('Prépare une synthèse des extraits')
+      await act(async () => { await call[4]?.beforeDocumentRequest?.() })
+      act(() => { call[1]('Résultat sourcé [S1]'); call[2]() })
+      expect(records.get(adopted!)?.messages.at(-1)?.content).toBe('Résultat sourcé [S1]')
+      expect(records.get(adopted!)?.hasProjectContext).toBe(true)
+      expect(detectReminderIntent).not.toHaveBeenCalled(); expect(maybeExtractMemory).not.toHaveBeenCalled()
+    }
+    hook.unmount()
+  })
+  it.each(['cancel-select', 'cancel-confirm', 'abort', 'storage', 'search', 'blank-source'] as const)('guided refusal %s leaves no published chat or provider call', async refusal => {
+    const hook = setup(), controller = new AbortController(); let pending!: Promise<boolean>
+    vi.mocked(storage.insertConversationsAtomically).mockImplementation(() => { throw new Error('quota') })
+    if (refusal === 'blank-source') mock.readText.mockResolvedValue('   \n  ')
+    act(() => { pending = hook.result.current.startProjectSynthesis({ project, objective: 'Objectif gardé', locale: 'fr', signal: controller.signal,
+      assertDraft: () => {}, assertAccess: () => {}, review: hook.result.current.projectReview.review, onAdopted: vi.fn(),
+    }) })
+    await waitFor(() => expect(hook.result.current.projectReview.request?.kind).toBe('select'))
+    const selection = hook.result.current.projectReview.request!
+    act(() => {
+      if (refusal === 'abort') controller.abort()
+      else hook.result.current.projectReview.answer(selection.reviewId, refusal === 'cancel-select' ? null : { mode: refusal === 'search' ? 'search' : 'overview', documentIds: ['d1'] })
+    })
+    if (refusal === 'cancel-confirm' || refusal === 'storage') await answer(hook, 'confirm', refusal !== 'cancel-confirm')
+    await act(async () => expect(await pending).toBe(false))
+    expect(conv.messages).toHaveLength(0); expect(storage.saveConversation).not.toHaveBeenCalled(); expect(streamMessage).not.toHaveBeenCalled()
+    expect(hook.result.current.streamingConvIds.size).toBe(0); hook.unmount()
+  })
   it('does not resurrect an empty conversation deleted while association is awaiting the library', async () => {
     const hook = setup()
     let resume!: (value: unknown) => void

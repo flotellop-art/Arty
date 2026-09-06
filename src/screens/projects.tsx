@@ -9,8 +9,8 @@ import { PROJECT_LIMITS, ProjectError, type Project, type ProjectSummary } from 
 const button = 'min-h-11 border border-theme-border px-3 py-2 text-sm disabled:opacity-40'
 const input = 'w-full border border-theme-border bg-theme-bg p-2 text-theme-ink'
 
-export function ProjectsScreen({ onBack, onStartConversation }: { onBack: () => void; onStartConversation?: (project: Project) => void }) {
-  const { t } = useTranslation()
+export function ProjectsScreen({ onBack, onStartConversation, onProjectSynthesis }: { onBack: () => void; onStartConversation?: (project: Project) => void; onProjectSynthesis?: (project: Project) => void }) {
+  const { t, i18n } = useTranslation()
   const operation = useRef<ProjectOperation | null>(null), running = useRef(false), fileInput = useRef<HTMLInputElement>(null)
   const [loading, setLoading] = useState(true), [busy, setBusy] = useState(false), [error, setError] = useState('')
   const [summaries, setSummaries] = useState<ProjectSummary[]>([]), [selected, setSelected] = useState<ProjectSummary | null>(null)
@@ -156,6 +156,7 @@ export function ProjectsScreen({ onBack, onStartConversation }: { onBack: () => 
                 </details>)}
               </section>}
               {onStartConversation && <button className={`${button} mt-5`} disabled={busy || !!dirty} onClick={() => { try { if (!operation.current) throw new ProjectError('unavailable'); operation.current.assertCurrent(); onStartConversation(project) } catch (reason) { reportError(reason) } }}>{t('projects.startChat')}</button>}
+              {onProjectSynthesis && <button className={`${button} mt-3`} disabled={busy || !!dirty || !project.documents.length} onClick={() => { try { if (!operation.current) throw new ProjectError('unavailable'); operation.current.assertCurrent(); onProjectSynthesis(project) } catch (reason) { reportError(reason) } }}>{i18n.language.startsWith('fr') ? 'Synthèse guidée — choisir les documents' : 'Guided synthesis — choose documents'}</button>}
             </> : <p className="text-sm">{t('projects.lockedHelp')}</p>}
             <button className={`${button} mt-6 text-red-600`} disabled={busy} onClick={() => setConfirmDelete('project')}>{t('projects.delete')}</button>
             {confirmDelete && <div role="alertdialog" aria-label={t('projects.confirmTitle')} className="mt-3 border border-red-500 p-3">

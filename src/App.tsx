@@ -1,8 +1,10 @@
 import { useState, useCallback, useEffect, useRef, lazy, Suspense } from 'react'
 import { useTranslation } from 'react-i18next'
-import { BrowserRouter, Routes, Route, Navigate, useNavigate, useParams } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useNavigate, useParams, useLocation } from 'react-router-dom'
 import { Capacitor } from '@capacitor/core'
 import { useConversation } from './hooks/useConversation'
+import { useProjectSynthesis } from './hooks/useProjectSynthesis'
+import { isDocumentConversation } from './services/projects/chatPolicy'
 import { useAppSetup } from './hooks/useAppSetup'
 import { useAuth } from './hooks/useAuth'
 import { QuestionModal } from './components/chat/QuestionModal'
@@ -55,6 +57,7 @@ const CostsScreen = lazy(() => import('./screens/costs').then((m) => ({ default:
 const ComparatorScreen = lazy(() => import('./screens/compare').then((m) => ({ default: m.ComparatorScreen })))
 const ContextualCompareScreen = lazy(() => import('./screens/contextualCompare').then(m => ({ default: m.ContextualCompareScreen })))
 const ProjectsScreen = lazy(() => import('./screens/projects').then((m) => ({ default: m.ProjectsScreen })))
+const ProjectSynthesisScreen = lazy(() => import('./screens/projectSynthesis').then(m => ({ default: m.ProjectSynthesisScreen })))
 // Landing marketing (item 16 roadmap v2) — vue uniquement par les
 // primo-visiteurs web ; les utilisateurs connectés ne la téléchargent jamais.
 const LandingScreen = lazy(() => import('./screens/landing').then((m) => ({ default: m.LandingScreen })))
@@ -109,6 +112,7 @@ function AppContent({
   const [shareError, setShareError] = useState<string | null>(null)
   const shareOperationRef = useRef(0)
   const navigate = useNavigate()
+  const location = useLocation()
   const { t } = useTranslation()
 
   // Listen for profile updates so the Home hero refreshes without reload
@@ -123,6 +127,13 @@ function AppContent({
   }, [])
 
   const conversation = useConversation({ onNavigate: id => navigate(`/chat/${id}`) })
+  const synthesisOrigin = useRef('/templates')
+  const synthesis = useProjectSynthesis(conversation.startProjectSynthesis, conversation.projectReview.review, id => navigate(`/chat/${id}`))
+  const openSynthesis = useCallback((project?: Project) => {
+    if (location.pathname === '/projects' || project) synthesisOrigin.current = '/projects'
+    else if (location.pathname === '/templates') synthesisOrigin.current = '/templates'
+    conversation.clearError(); synthesis.open(project); navigate('/workflows/project-synthesis')
+  }, [conversation.clearError, synthesis.open, navigate, location.pathname])
   const {
     conversations,
     activeConversation,
@@ -420,13 +431,13 @@ function AppContent({
 
   useEffect(() => {
     if (!error) return
-    if (error.includes('no_active_subscription')) {
+    if (error.includes('no_active_subscription') && location.pathname !== '/workflows/project-synthesis' && !(activeConversation && isDocumentConversation(activeConversation))) {
       navigate('/upgrade')
     }
     // `premium_cap_reached` ne passe plus par ici : useConversation dispatche
     // `arty-cap-reached` → CapReachedModal propose un choix explicite (P0.7),
     // au lieu de l'ancien redirect muet qui éjectait l'utilisateur du fil.
-  }, [error, navigate])
+  }, [error, navigate, location.pathname, activeConversation])
 
   const currentPlan: CurrentPlan = authMethod === 'apikey' ? 'byok' : 'unknown'
 
@@ -578,6 +589,7 @@ function AppContent({
                 onBack={() => navigate('/')}
                 onUpgrade={() => navigate('/upgrade')}
                 onUseTemplate={(prompt) => handleSendFromHome(prompt)}
+                onProjectSynthesis={() => openSynthesis()}
                 currentPlan={currentPlan}
               />
             </Suspense>
@@ -601,10 +613,18 @@ function AppContent({
         />
         <Route
           path="/projects"
-          element={<Suspense fallback={<LazyFallback />}><ProjectsScreen onBack={() => navigate('/')} onStartConversation={project => {
+          element={<Suspense fallback={<LazyFallback />}><ProjectsScreen onBack={() => navigate('/')} onProjectSynthesis={openSynthesis} onStartConversation={project => {
             void setConversationProject(null, project).then(id => { if (id) navigate(`/chat/${id}`) })
           }} /></Suspense>}
         />
+        <Route path="/workflows/project-synthesis" element={<Suspense fallback={<LazyFallback />}><ProjectSynthesisScreen
+          controller={synthesis} error={error} onBack={() => navigate(synthesisOrigin.current)} onProjects={() => navigate('/projects')}
+          onAccess={() => {
+            if (synthesis.plan.authRequired || synthesis.plan.authRejected) setShowGoogleReconnect(true)
+            else if (synthesis.access?.error === 'compare.access.byok') setShowApiKeys(true)
+            else if (synthesis.plan.loading || synthesis.plan.statusUnavailable || synthesis.access?.error === 'compare.access.unknownModel') synthesis.plan.refresh()
+            else navigate('/upgrade')
+          }} onChat={id => navigate(`/chat/${id}`)} /></Suspense>} />
         <Route path="/compare/:branchId" element={<Suspense fallback={<LazyFallback />}><ContextualCompareScreen controller={conversation.comparisons} onChat={handleSelectConversation} onBack={handleHome} onStop={stopStreaming} /></Suspense>} />
         <Route
           path="/report/:id"
@@ -654,6 +674,12 @@ function AppContent({
         />
       </Routes>
       </main>
+      {error?.includes('no_active_subscription') && activeConversation && isDocumentConversation(activeConversation) && <div role="alert" className="fixed bottom-4 inset-x-4 z-[85] bg-theme-bg border border-theme-border rounded-xl p-4 flex flex-wrap gap-3">
+        <p>{t('compare.access.plan')}</p>
+        <button className="min-h-11 px-3 border border-theme-border" onClick={() => navigate('/upgrade')}>{t('common.manageAccess')}</button>
+        {synthesis.draft && <button className="min-h-11 px-3 border border-theme-border" onClick={() => openSynthesis()}>{t('common.back')}</button>}
+        <button className="min-h-11 px-3" onClick={clearError}>{t('common.close')}</button>
+      </div>}
       {conversation.comparisons.error && <div role="alert" className="fixed bottom-4 inset-x-4 z-[85] bg-theme-bg border border-red-500 p-4 rounded-xl"><p>{t(conversation.comparisons.error)}</p><button className="min-h-11 px-3" onClick={conversation.comparisons.dismissError}>{t('common.close')}</button></div>}
       {conversation.comparisons.selection && <ContextualComparisonDialog controller={conversation.comparisons} onStarted={id => navigate(`/compare/${encodeURIComponent(id)}`)} />}
       {projectReview.request && <ProjectReviewDialog key={projectReview.request.reviewId} request={projectReview.request} onAnswer={value => projectReview.answer(projectReview.request!.reviewId, value)} />}
