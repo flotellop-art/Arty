@@ -4,7 +4,6 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   canonicalRedirect,
   LEGACY_PUBLIC_HOSTS,
-  LEGACY_WEBHOOK_PATHS,
   onRequest,
 } from '../../../functions/_middleware'
 
@@ -33,16 +32,35 @@ describe('canonical origin middleware', () => {
       .toBe('https://tryarty.com//attacker.example/phishing?x=1')
   })
 
-  it('redirige aussi les API ordinaires de l’ancien host', () => {
+  it.each(['GET', 'HEAD', 'OPTIONS', 'POST', 'PUT', 'PATCH', 'DELETE'])('laisse le transport API historique à next, méthode %s', (method) => {
     const response = canonicalRedirect(
-      new Request('https://appfacade.pages.dev/api/subscription/status'),
+      new Request('https://appfacade.pages.dev/api/subscription/status/?id=42', { method }),
     )
-    expect(response?.status).toBe(308)
-    expect(response?.headers.get('location'))
-      .toBe('https://tryarty.com/api/subscription/status')
+    expect(response).toBeNull()
   })
 
-  it.each([...LEGACY_WEBHOOK_PATHS])('laisse temporairement le webhook signé %s sur appfacade', (path) => {
+  it.each(['/api', '/api/'])('laisse %s à next sans garantir un handler', async (path) => {
+    const next = vi.fn(async () => new Response('not found', { status: 404 }))
+    const response = await onRequest({
+      request: new Request(`https://appfacade.pages.dev${path}`), next,
+    } as never)
+    expect(next).toHaveBeenCalledOnce()
+    expect(response.status).toBe(404)
+  })
+
+  it.each(['/apiary', '/API/calendar/action', '/api%2Fcalendar/action', '/api%252Fcalendar/action', '//api/calendar/action'])('ne traite pas %s comme le segment API', (path) => {
+    const response = canonicalRedirect(new Request(`https://appfacade.pages.dev${path}`))
+    expect(response?.status).toBe(308)
+    expect(response?.headers.get('location')).toBe(`https://tryarty.com${path}`)
+  })
+
+  it('conserve la politique www, y compris ses API', () => {
+    const response = canonicalRedirect(new Request('https://www.tryarty.com/api/calendar/action?x=1', { method: 'POST' }))
+    expect(response?.status).toBe(308)
+    expect(response?.headers.get('location')).toBe('https://tryarty.com/api/calendar/action?x=1')
+  })
+
+  it.each(['/api/webhook/creem', '/api/webhook/lemonsqueezy'])('laisse le webhook signé %s sur appfacade', (path) => {
     expect(canonicalRedirect(new Request(`https://appfacade.pages.dev${path}`))).toBeNull()
     expect(canonicalRedirect(new Request(`https://appfacade.pages.dev${path}/`))).toBeNull()
   })

@@ -2,8 +2,9 @@
 
 6 septembre 2026. Première verticale synthèse livrée par #466, main `2c114cf`,
 Pages/CI/APK vérifiés dans `PROJECT_SYNTHESIS_RELEASE.md`.
-Socle client livré #467, formulaire/revue validés localement,
-publication de cette tranche à contrôler dans `CLIENT_REPLY_FORM_RELEASE.md`.
+Socle client livré #467, formulaire/revue livrés #468/#469,
+preuves de publication dans `CLIENT_REPLY_FORM_RELEASE.md`. Connexions livrées
+#470 (`PRD_CONNECTIONS_STATUS.md`), sans attestation d'intégrations réelles.
 Décision `ADR_CLIENT_REPLY_DRAFT.md`. Deux
 diagnostics indépendants readonly examinés : produit/accès et sécurité/fidélité.
 
@@ -98,7 +99,8 @@ nouveau fournisseur, OCR, synthèse exhaustive, sync W06 ou extension de droits.
 Le partage public existant publie à distance : il n'est pas un export local.
 
 Pour la réponse client : persistance/versionnement livré #467 ; formulaire
-manuel/revue/admission et recette locale réalisés (`CLIENT_REPLY_FORM_RELEASE.md`).
+manuel/revue/admission et recette locale réalisés, web publié et APK distribuée
+par #468/#469 (`CLIENT_REPLY_FORM_RELEASE.md`), sans installation physique attestée.
 Bornes demande/faits 8192 chacune, objectif 1600, ton enum, faits absents
 explicitement confirmés. Claude ou Mistral EU choisi par l'utilisateur. La
 question complète est conservée pour les relances génériques ; le titre reste
