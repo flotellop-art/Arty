@@ -73,6 +73,21 @@
       "done": "Local migration is verified. Reload to open a new session on this storage.",
       "resume": "Verify and resume"
     },
+    "migrationErasure": {
+      "inspect": "Check whether an account can be erased locally",
+      "working": "Checking the sources and every copy. No data is being erased.",
+      "choose": "Choose the account to erase on this device. Names are only hints; also check the exact identifier shown.",
+      "accounts": "Accounts in the verified copies",
+      "review": "Review the local request",
+      "confirm": "Confirm local erasure of this identifier?",
+      "confirmBody": "Irreversible: after recording and reloading, this account’s local conversations, files, projects, keys and sessions will be erased from this migration’s copies. Other accounts will be preserved. No deletion on the server or another device is requested or confirmed. This decision replaces migration recovery; it will not copy the account’s old data back.",
+      "confirmCta": "Record this local erasure request",
+      "recording": "Recording the local request. Keep this window open.",
+      "recorded": "Local request recorded. Reload to continue cleanup; the data has not been erased yet.",
+      "failed": "The request cannot be confirmed in this window. A copy changed or storage is inaccessible. Nothing was erased here. Reload to read the durable state: if the request was recorded, Arty will offer to continue its cleanup.",
+      "incomplete": "This erasure is unavailable in the current state: the destination or journal is incomplete, or its format is unsupported. Nothing was changed. Reload to choose migration recovery; if data keeps diverging, keep storage and contact support.",
+      "reloadChoice": "Reload to choose another action"
+    },
     "checkingTitle": "Checking local storage…",
     "checkingBody": "Arty is checking whether your data can be opened. This check does not change your conversations or files.",
     "maintenanceTitle": "Storage recovery is required",

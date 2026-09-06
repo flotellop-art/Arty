@@ -205,6 +205,37 @@ describe('candidate isolated runtime, deliberately disabled in production', () =
     expect(await crypt.selfTestCrypto()).toBe(false)
   })
 
+  it.each(['a', 'élève:東京'])('real useAuth logout of %s preserves neighbouring RAM drafts and decryptable ciphertext', async a => {
+    await admit()
+    const drafts = await import('../../services/composerDrafts'), b = `${a}:b`, c = `${a}-b`
+    const saved: { owner: string; key: string; cipher: string; text: string }[] = []
+    for (const owner of [a, b, c]) {
+      await enter(owner)
+      for (const slot of ['home', 'conversation:conv-1']) {
+        const key = drafts.scopeComposerDraftKey(slot), text = `${owner}/${slot}`, cipher = await crypt.encrypt(text)
+        saved.push({ owner, key, cipher, text })
+      }
+    }
+    // Provision each account before injecting historical non-UUID drafts: the
+    // isolated cold parser must continue to refuse those ambiguous old forms.
+    for (const item of saved) {
+      drafts.setComposerDraftMemory(item.key, item.text); localStorage.setItem(drafts.composerDraftStorageKey(item.key), item.cipher)
+    }
+    users.setActiveSession(account(a)); await crypt.initCrypto(`synthetic-${a}`)
+    const { useAuth } = await import('../../hooks/useAuth'), auth = renderHook(() => useAuth())
+    act(() => auth.result.current.logout())
+    expect(users.getActiveSession()).toBeNull()
+    for (const item of saved) {
+      expect(drafts.getComposerDraft(item.key)).toBe(item.owner === a ? undefined : item.text)
+      expect(localStorage.getItem(drafts.composerDraftStorageKey(item.key))).toBe(item.owner === a ? null : item.cipher)
+    }
+    for (const owner of [b, c]) {
+      users.setActiveSession(account(owner)); await crypt.initCrypto(`synthetic-${owner}`)
+      for (const item of saved.filter(item => item.owner === owner)) expect(await crypt.decrypt(item.cipher)).toBe(item.text)
+    }
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
   it.each(['files', 'projects'] as const)('never recreates a declared %s DB deleted after admission or after cached use', async family => {
     await admit(); await enter()
     if (family === 'files') await files.putFile({ id: 'f', name: 'a.txt', type: 'text/plain', data: 'QQ==' })

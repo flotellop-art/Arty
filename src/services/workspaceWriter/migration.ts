@@ -8,11 +8,140 @@ import { assertDatabaseShape, createDatabaseShape, CONTROL_SHAPE, FILE_SHAPE, PR
 import { parseMigrationHeader, migrationDatabaseName, type MigrationHeader, type MigrationPhase } from './migrationProtocol'
 import { digestRaw, localPairs, localTargets, parseLegacySlot, validateSessions, observeLocalOwnerHints, observeRawOwner, scanRawStore,
   RAW_STORES, rawEncoding, failMigration, WorkspaceMigrationError, type MigrationPlan, type RawRow, type RawStore } from './migrationInventory'
+import { parseErasureHeader, type ErasureHeader } from './erasureProtocol'
+import { readErasureProof } from './erasure'
+import { assertNativeErasureOwner } from '../native/coldMailErasure'
 
 const JOURNAL_SHAPE: readonly StoreShape[] = [['journal', null, []], ...RAW_STORES.map(name => [name, null, []] as const)]
 const identity = (generation: string) => ({ format: 'arty-workspace-migration', version: 1, generation })
 const equal = (a: unknown, b: unknown) => rawEncoding(a) === rawEncoding(b)
 type Attempt = AdmissionGuard & { assertCurrent(): void }
+interface CompletedMigration { header: Readonly<MigrationHeader>; plan: MigrationPlan; pairs: [string, string][] }
+export interface ColdMigrationAccount { owner: string; label?: string }
+
+/** A separate, irreversible choice in a new cold document. The complete
+ * preview is private to this actor; callers cannot supply a plan or authority.
+ * No deletion, crypto initialization or remote request happens here. */
+export function createColdMigrationErasure() {
+  if (!ISOLATED_WORKSPACE_ENABLED) return failMigration('disabled')
+  const admitted = workspaceAdmission.getRecovery()
+  if (!admitted) return failMigration('missing')
+  const header = parseMigrationHeader(admitted)!, cold = workspaceAdmission.claimMaintenance()
+  let busy = false, preview: CompletedMigration | undefined, selected: string | undefined, attempted: ErasureHeader | undefined
+  const run = async <T>(work: (guard: Attempt) => Promise<T>) => {
+    if (busy) return failMigration('busy')
+    cold.assertLock(); busy = true
+    const aborter = new AbortController(), cancel = () => aborter.abort()
+    cold.signal.addEventListener('abort', cancel, { once: true })
+    let timer = setTimeout(cancel, 120_000)
+    const guard: Attempt = { signal: aborter.signal, assertLock: cold.assertLock, assertCurrent() {
+      cold.assertLock()
+      if (!ISOLATED_WORKSPACE_ENABLED || cold.signal.aborted || aborter.signal.aborted) failMigration('cancelled')
+      clearTimeout(timer); timer = setTimeout(cancel, 120_000)
+    } }
+    let reject!: (error: Error) => void
+    const stopped = new Promise<never>((_resolve, no) => { reject = no })
+    const stop = () => reject(new WorkspaceMigrationError('cancelled'))
+    aborter.signal.addEventListener('abort', stop, { once: true })
+    try { guard.assertCurrent(); return await Promise.race([work(guard), stopped]) }
+    finally { cancel(); clearTimeout(timer); aborter.signal.removeEventListener('abort', stop); cold.signal.removeEventListener('abort', cancel); busy = false }
+  }
+  return Object.freeze({
+    inspect(): Promise<ColdMigrationAccount[]> { return run(async guard => {
+      if (selected !== undefined) return failMigration('changed')
+      const current = await readCompletedMigration(header, guard)
+      if (preview && !equal(preview, current)) return failMigration('changed')
+      preview ??= structuredClone(current)
+      return migrationAccountLabels(preview)
+    }) },
+    confirm(owner: string): Promise<void> { return run(async guard => {
+      if (!preview || typeof owner !== 'string' || !preview.plan.owners.includes(owner) || (selected !== undefined && owner !== selected)) return failMigration('changed')
+      assertNativeErasureOwner(owner); selected = owner // bound before the first await, including retries
+      const current = await readControl(guard)
+      if (attempted && equal(current, attempted)) return // only this exact uncertain commit
+      if (!equal(current, header) || !equal(await readCompletedMigration(header, guard), preview)) return failMigration('changed')
+      const candidate = attempted ?? await migrationErasureCandidate(preview, owner, guard)
+      // The readonly proof pass cannot silently adopt new source/destination bytes.
+      if (!equal(await readCompletedMigration(header, guard), preview)) return failMigration('changed')
+      attempted = candidate
+      await compareAndSwap(header, candidate, guard, false, () => {
+        if (!equal(preview!.pairs, localPairs())) failMigration('changed')
+      })
+    }) },
+  })
+}
+
+function migrationAccountLabels(snapshot: CompletedMigration): ColdMigrationAccount[] {
+  const raw = new Map(snapshot.pairs).get('arty-known-sessions')
+  const sessions: { userId: string; displayName?: unknown }[] = raw ? JSON.parse(raw) : []
+  const labelsByOwner = new Map<string, Set<unknown>>()
+  for (const session of sessions) {
+    const labels = labelsByOwner.get(session.userId) ?? new Set<unknown>()
+    labels.add(session.displayName); labelsByOwner.set(session.userId, labels)
+  }
+  return snapshot.plan.owners.filter((owner): owner is string => owner !== null).map(owner => {
+    const labels = labelsByOwner.get(owner)
+    const label = labels?.size === 1 ? [...labels][0] : undefined
+    return { owner, ...(typeof label === 'string' && label.length > 0 && label.length <= 80 && !/[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/.test(label) ? { label } : {}) }
+  })
+}
+
+/** Readonly only: never resume(), writable(), putRows() or a new baseline.
+ * copied denotes a complete JOURNAL, so destination presence is checked too. */
+async function readCompletedMigration(header: Readonly<MigrationHeader>, guard: Attempt): Promise<CompletedMigration> {
+  if ((header.phase !== 'copied' && header.phase !== 'verified') || header.revision > Number.MAX_SAFE_INTEGER - 24) return failMigration('missing')
+  await assertControl(header, guard)
+  const journal = await inspect(migrationDatabaseName(header.generation), JOURNAL_SHAPE, guard)
+  let files: IDBPDatabase | null = null, projects: IDBPDatabase | null = null
+  try {
+    if (!journal || journal.version !== 1) return failMigration('missing')
+    const plan = await transaction(journal, ['journal'], 'readonly', guard, async tx => {
+      const store = tx.objectStore('journal'), value = await store.get('plan')
+      if (!equal(await store.getAllKeys(), ['identity', 'plan']) || !equal(await store.get('identity'), identity(header.generation))) return failMigration('missing')
+      rawEncoding(value); return validatePlan(value, header.generation)
+    })
+    const layout = isolatedWorkspaceLayout(header.generation, plan.owners), targets = localTargets(plan, header.generation)
+    const pairs = localPairs(), current = await readInventory(guard, targets)
+    sameInventory(plan, current)
+    if (current.versions.some(v => v !== 2) || targets.some(([key, value]) => localStorage.getItem(key) !== value)) return failMigration('missing')
+    await attestStores(() => journal, plan, guard, true)
+    files = await inspect(layout.files.name, FILE_SHAPE, guard); projects = await inspect(layout.projects.name, PROJECT_SHAPE, guard)
+    if (!files || !projects || files.version !== 1 || projects.version !== 1) return failMigration('missing')
+    await attestStores(store => store === 'files' ? files : projects, plan, guard, true)
+    sameInventory(plan, await readInventory(guard, targets)); await assertControl(header, guard)
+    if (!equal(pairs, localPairs()) || targets.some(([key, value]) => localStorage.getItem(key) !== value)) return failMigration('changed')
+    return { header, plan, pairs }
+  } finally { journal?.close(); files?.close(); projects?.close() }
+}
+
+/** Private builder: receives only the actor's fully attested snapshot. */
+async function migrationErasureCandidate(snapshot: CompletedMigration, owner: string, guard: Attempt): Promise<ErasureHeader> {
+  const { header, plan } = snapshot, layout = isolatedWorkspaceLayout(header.generation, plan.owners)
+  const opened: IDBPDatabase[] = []
+  const required = async (name: string, version: number, shape: readonly StoreShape[]) => {
+    const db = await inspect(name, shape, guard)
+    if (!db) return failMigration('missing')
+    opened.push(db); if (db.version !== version) return failMigration('changed'); return db
+  }
+  try {
+    const copies = [
+      { copy: 'legacy' as const, files: await required('arty-files', 2, FILE_SHAPE), projects: await required('arty-projects', 2, PROJECT_SHAPE) },
+      { copy: 'active' as const, files: await required(layout.files.name, 1, FILE_SHAPE), projects: await required(layout.projects.name, 1, PROJECT_SHAPE) },
+    ]
+    const journal = await required(migrationDatabaseName(header.generation), 1, JOURNAL_SHAPE)
+    const initialLocal = localStorage.getItem('arty-project-erasure-fence')
+    const initialActive = await transaction(copies[1]!.projects, ['meta'], 'readonly', guard, async tx => {
+      const cursor = await tx.objectStore('meta').openCursor('erasure-fence'); return cursor ? cursor.value : null
+    })
+    const operationId = crypto.randomUUID(), nonce = crypto.randomUUID(), target = crypto.randomUUID(), resetId = crypto.randomUUID()
+    const candidate: ErasureHeader = { format: 'arty-workspace-control', version: 6, layout: 'isolated-v1', state: 'erasing',
+      revision: header.revision + 1, generation: header.generation, requiredOwners: [...plan.owners], resets: [],
+      erasure: { owner, operationId, nonce, phase: 'reserved', proof: undefined!, fence: { initialLocal, initialActive, target },
+        authority: { owner, operationId, nonce, serverConfirmed: false, localOnly: true, pending: [] }, reset: { resetId, previousResetId: null } } }
+    candidate.erasure.proof = (await readErasureProof([...copies, { copy: 'journal', files: journal, projects: journal }], journal, candidate, guard)).value
+    return parseErasureHeader(candidate) ?? failMigration('changed')
+  } finally { opened.forEach(db => db.close()) }
+}
 
 /** Candidate only. Intrinsic release policy AND the actual document singleton
  * protect every entry point. No caller-supplied boolean/noop guard can opt in.
@@ -218,10 +347,10 @@ async function putRows(db: IDBPDatabase, store: RawStore, rows: RawRow[], guard:
     }
   })
 }
-async function attestStores(dbFor: (store: RawStore) => IDBPDatabase | null, plan: MigrationPlan, guard: Attempt) {
+async function attestStores(dbFor: (store: RawStore) => IDBPDatabase | null, plan: MigrationPlan, guard: Attempt, classifyIncomplete = false) {
   for (const expected of plan.stores) {
     const actual = await scanRawStore(dbFor(expected.store), expected.store, guard.assertCurrent, guard.signal)
-    if (!equal(actual, expected)) failMigration('changed')
+    if (!equal(actual, expected)) failMigration(classifyIncomplete && actual.count < expected.count ? 'missing' : 'changed')
   }
 }
 

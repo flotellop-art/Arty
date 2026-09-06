@@ -31,7 +31,7 @@ supplémentaire n'est implicite dans ce mandat.
 | W03 | Catalogue | Un catalogue partagé aligne comparaison, sélecteurs, labels et éligibilité selon le compte (pas une garantie fournisseur). Modèle demandé, transmis par le proxy et signalé par le fournisseur distingués. Tests contre la dérive et contre l'accès premium hors droit. | Web déployé, PR #440 ; recette visuelle/appareil non vérifiée |
 | W04 | Projets | Créer/renommer/supprimer un projet, consignes propres, conversations associées, bibliothèque de documents réutilisables. Sources identifiables dans le contexte. Recherche bornée, absence de fichier et contexte tronqué explicites. Cloisonnement par compte et projet ; mode Europe conservé. | Bibliothèque web livrée #443 ; conversations web livrées #444 ; recette visuelle/appareil non vérifiée |
 | W05 | Livrables | Export DOCX modifiable et XLSX de tableaux, en plus des exports existants. Téléchargements relus par un parseur indépendant ; cellules dangereuses neutralisées ; aucun HTML actif ni formule arbitraire. Formats et limites documentés. | Web déployé #445 ; recette structurelle vérifiée ; rendu Office/appareil non vérifié |
-| W06 | Continuité | Sauvegarde/restauration explicites puis synchronisation optionnelle multi-appareil chiffrée avant upload, avec secret détenu par l'utilisateur et récupération expliquée. Conflits non destructifs ; reprise hors-ligne ; logout/switch/delete et compte invité traités. Un export manuel seul ne valide pas la synchronisation. | A1 #446, galerie #448, verrou document #449, capture/vérification A2 #451, préparation A3a #452, admission froide #453, runtime isolé inactif #454, migrateur journalisé OFF #455, reprise froide d'effacement v2 OFF #456, reçu distant #457 et pont froid/fence v5 OFF #458 livrés ; restauration/synchronisation non livrées |
+| W06 | Continuité | Sauvegarde/restauration explicites puis synchronisation optionnelle multi-appareil chiffrée avant upload, avec secret détenu par l'utilisateur et récupération expliquée. Conflits non destructifs ; reprise hors-ligne ; logout/switch/delete et compte invité traités. Un export manuel seul ne valide pas la synchronisation. | A1 #446, galerie #448, verrou document #449, capture/vérification A2 #451, préparation A3a #452, admission froide #453, runtime isolé inactif #454, migrateur journalisé OFF #455, reprise froide d'effacement v2 OFF #456, reçu distant #457, pont froid/fence v5 OFF #458 et reset local v6/v7 OFF #459 livrés ; restauration/synchronisation non livrées |
 | W07 | Comparaison | Comparer depuis une conversation avec contexte/documents autorisés ; conserver les résultats et poursuivre la réponse choisie sans perdre l'original. Erreurs/coûts/quotas de chaque panneau visibles ; EU et historique privé jamais contournés. | À faire |
 | W08 | Parcours métier | Trois parcours complets : synthèse documentaire, réponse client préparée, planification Agenda avec confirmation avant écriture. Écran de connexions indiquant disponible/non configuré/non pris en charge selon plateforme. Pas de Drive/Gmail OAuth restreint ni relais IMAP serveur. | À faire |
 | W09 | Mobile et identité | PWA installable ; identité tryarty cohérente ; distribution Android authentifiée et documentée. Ne pas rediriger vers une app Play homonyme. Toute migration appId inclut signatures/OAuth/Firebase/liens vérifiés ; un APK distribué n'est pas une publication Store. | À faire |
@@ -108,9 +108,50 @@ réels ; préparer protocole et instrumentation sans fabriquer leurs résultats.
 
 ## Preuves par lot
 
+### W06 A3b.7 — effacement depuis une migration complète interrompue, candidat OFF
+
+Implémenté le 6 septembre ; vérification complète réussie, livraison en cours.
+La supersession v3→v6 locale est proposée uniquement après attestation exacte
+source/journal/destinations/targets LS pour verified ou copied physiquement
+complet. L'aperçu reste privé et figé jusqu'au CAS. Aucun effacement ni marqueur
+préalable ; reload puis nettoyage v6/v7 déjà livré. Copied absent/partiel ou
+phase précoce refuse explicitement et conserve les octets. Pas de nouveau
+format, ni adoption de compte depuis un simple libellé, ni confirmation serveur.
+
+L'UI lie son premier choix avant l'import différé, affiche l'identifiant opaque
+échappé pour les homonymes, et exige un reload pour changer d'action après claim.
+« Demande enregistrée » n'annonce pas une purge terminée. Fix adjacent actif sur
+le parcours courant : logout supprime les brouillons RAM/LS du seul owner exact,
+préserve les voisins a:b/a-b et conserve les anciennes formes ambiguës. Le
+parseur froid reste strict ; conv-1 est reconnu seulement par le mode logout.
+
+Preuves ciblées : 105 tests verts sur les quatre suites de services avant les
+derniers ajouts UI ; puis 43/43 workspaceResetCycle verts, typecheck front/back
+vert. Vrais composants/useAuth/KDF/stores avec fake-IDB/JSDOM : B se connecte,
+déchiffre et écrit, A est recréé puis effacé une deuxième fois. Six frontières
+de crash du nettoyeur ; snapshot changé, CAS tardif, document perdu, double
+confirmation, commit incertain, ancien migrateur et unmount/choix UI exclusif.
+Ces preuves ne sont ni une recette navigateur installée ni une recette UI APK.
+
+Validation complète finale : `npm run verify` exit 0, 268 suites, 3 117 tests
+verts et 1 ignoré ; typechecks front/back, add-on/no-CASA, build et worker Office
+réel verts. Couverture statements 68,16 %, branches 63,06 %, fonctions 73,91 %,
+lignes 69,89 %. Avertissements de gros chunks préexistants, non bloquants.
+Deux GO finaux indépendants, bornés au candidat OFF, après correction des
+objections ; pas de blocage restant sur ce diff. Revues readonly, tests exécutés
+par l'agent principal et non indépendamment par les relecteurs.
+
+Checklist de déploiement : deux contre-revues readonly, suite verify complète,
+CI PR et preview avant fusion normale, puis reçus Pages/main/APK et GET publics.
+`ISOLATED_WORKSPACE_ENABLED=false` inchangé ; aucune migration D1 ni donnée
+utilisateur modifiée. Repli en cas de régression login/logout/legacy : PR de
+revert par la même CI, jamais downgrade/effacement de reçus v6/v7. Pas d'accès
+à une télémétrie globale d'erreurs/latence : ne pas en inventer. W06 reste
+incomplet (v3 précoce/partiel, restauration, synchronisation, recette appareil).
+
 ### W06 A3b.6 — nouvel espace local après effacement, candidat OFF
 
-Implémenté, validations locales terminées ; livraison PR/CI/Pages à consigner.
+Livré via #459, activation isolée toujours OFF ; reçus ci-dessous.
 Le vrai bouton isolé conserve l'autorité puis ferme irréversiblement l'ancien
 document, même si le rechargement tarde. Le nouveau document froid purge les
 copies avant de publier atomiquement un droit borné de nouvel espace local.
@@ -151,6 +192,36 @@ Repli sur régression legacy/login/natif : revert normal par PR/CI/Pages, aucun
 downgrade v6/v7 ni suppression de reçus. Sans télémétrie globale disponible,
 ne pas revendiquer de mesure générale d'erreurs/latence. W06 reste incomplet :
 supersession v3, restauration, synchronisation et recette UI/appareil restantes.
+
+Livraison : [PR #459](https://github.com/flotellop-art/Arty/pull/459), head
+`71504c9ee890eef6517a85c3beb31966a6eb3925`, squash normal 05/09 23:31:27 UTC,
+main `91455ca6c31602064f11293c09cba1d6bf894e4c`. CI PR `33998666762`
+entièrement verte (web, Android et orchestrateur). Preview Cloudflare
+`a80e44b8-3a70-4de3-9f29-767b15748763` puis production
+`2c54a605-d85d-4808-99d8-70d9639316b3` réussies.
+
+Recette IAB preview : profil synthétique, paramètres, choix d'effacement
+appareil-only, texte de confirmation puis Annuler ; retour au choix attesté.
+Aucune suppression ni appel IA. Onglet 17 fermé, onglet utilisateur et brouillon
+non touchés ; émulateur synthétique également arrêté après les tests natifs.
+Pas de recette isolée dans le navigateur puisque le drapeau reste OFF.
+
+Sonde GET 23:33:54.335 UTC : tryarty.com et alias immuable
+`2c54a605.appfacade.pages.dev` servent le même `index-B08hZL4N.js`,
+279 054 octets, SHA256
+`2077c8e8b4b3e77cc231835d4593362f22493c342f718cb2933a10074a801a38`,
+et `App-DZDfWsCr.js`, SHA256
+`8de871bdd8a850a915fea8b29ee249a193739ed03bd409cba93bdd249eaaed6e`.
+GET invalide 400/no-store, consultation op/cap synthétiques aléatoires
+200/protocol1/unknown/no-store. Aucun POST ni credential de production.
+CI main `33998898958` entièrement réussie, terminée à 23:36:01 UTC.
+Distribution APK `33998898953` réussie, terminée à 23:39:19 UTC : APK signé
+23:39:07, transfert Firebase 23:39:15, nettoyage des fichiers de secrets réussi.
+Cela ne prouve ni installation sur téléphone utilisateur ni publication Store.
+Sonde répétée à 23:39:47.166 UTC : mêmes assets, empreintes et réponses GET.
+Pas d'accès à la télémétrie générale ; ces sondes ne mesurent pas un taux global
+d'erreur/latence. Préparation du prochain gate v3 consignée dans l'ADR ; aucun
+code de supersession v3 n'est encore implémenté à ce checkpoint.
 
 ### W06 A3b.5b — reçu froid et fence v5, candidat OFF
 

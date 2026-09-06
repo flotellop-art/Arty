@@ -16,6 +16,7 @@ import {
   scopeComposerDraftKey,
   setComposerDraftMemory,
 } from '../../services/composerDrafts'
+import { parseComposerDraftOwnership, parseOwnedLocalKey } from '../../services/workspaceWriter/localOwnership'
 
 describe('composerDrafts — brouillons du composeur', () => {
   beforeEach(() => {
@@ -68,5 +69,27 @@ describe('composerDrafts — brouillons du composeur', () => {
     expect(hasComposerDraft(mine)).toBe(false)
     expect(localStorage.getItem(composerDraftStorageKey(mine))).toBeNull()
     expect(localStorage.getItem('arty-composer-draft:user-b:home')).toBe('cipher-other')
+  })
+
+  it('resolves exact colon/hyphen neighbours and retains ambiguous or unknown keys in both caches', () => {
+    const own = ['a:home', 'a:conversation:conv-1', 'a:conversation:11111111-1111-1111-1111-111111111111']
+    const others = ['a:b:home', 'a-b:conversation:conv-1', 'élève:東京:home', 'anonymous:home', 'a:conversation:home', 'a:conversation:nested:home', 'a:conversation:id:other', 'a:unknown']
+    for (const key of [...own, ...others]) { setComposerDraftMemory(key, key); localStorage.setItem(composerDraftStorageKey(key), key) }
+    getActiveUserId.mockReturnValue('a'); purgeComposerDraftsForActiveUser()
+    for (const key of own) { expect(hasComposerDraft(key)).toBe(false); expect(localStorage.getItem(composerDraftStorageKey(key))).toBeNull() }
+    for (const key of others) { expect(getComposerDraft(key)).toBe(key); expect(localStorage.getItem(composerDraftStorageKey(key))).toBe(key) }
+    getActiveUserId.mockReturnValue(null); purgeComposerDraftsForActiveUser()
+    getActiveUserId.mockReturnValue('anonymous'); purgeComposerDraftsForActiveUser()
+    expect(getComposerDraft('anonymous:home')).toBe('anonymous:home')
+    for (const key of others) clearComposerDraft(key)
+  })
+
+  it('never widens the strict cold grammar to the logout legacy subset', () => {
+    expect(parseComposerDraftOwnership('a:b:conversation:conv-1', 'logout')).toEqual({ owner: 'a:b', slot: 'conversation:conv-1' })
+    expect(parseComposerDraftOwnership('a:b:conversation:conv-1', 'strict')).toBeNull()
+    expect(() => parseOwnedLocalKey('arty-composer-draft:a:b:conversation:conv-1')).toThrow()
+    for (const tail of ['a:conversation:home', 'anonymous:home', 'a:conversation:with:colon', ':home']) {
+      expect(parseComposerDraftOwnership(tail, 'logout')).toBeNull()
+    }
   })
 })

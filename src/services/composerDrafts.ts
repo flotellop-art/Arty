@@ -6,6 +6,7 @@
 // Les clés sont scopées par utilisateur : jamais de restauration croisée
 // entre comptes sur un même appareil.
 import { getActiveUserId } from './userSession'
+import { parseComposerDraftOwnership } from './workspaceWriter/localOwnership'
 
 const STORAGE_PREFIX = 'arty-composer-draft:'
 
@@ -51,19 +52,22 @@ export function clearConversationComposerDraft(conversationId: string): void {
   clearComposerDraft(scopeComposerDraftKey(`conversation:${conversationId}`))
 }
 
-/** Purge au logout (hygiène BUG 41 : aucune famille de clés orpheline).
+/** Purge au logout des formes exactement attribuables. Les anciennes formes
+    ambiguës restent conservées : jamais de fallback par préfixe.
     À appeler AVANT clearActiveSession() — le scope userId doit encore
     pointer sur le compte qui se déconnecte. */
 export function purgeComposerDraftsForActiveUser(): void {
-  const scopePrefix = `${getActiveUserId() ?? 'anonymous'}:`
+  const owner = getActiveUserId()
+  if (owner === null) return // historical anonymous also encoded a literal owner
+  const belongs = (key: string) => parseComposerDraftOwnership(key, 'logout')?.owner === owner
   for (const key of Array.from(memory.keys())) {
-    if (key.startsWith(scopePrefix)) memory.delete(key)
+    if (belongs(key)) memory.delete(key)
   }
   try {
     const doomed: string[] = []
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i)
-      if (key?.startsWith(`${STORAGE_PREFIX}${scopePrefix}`)) doomed.push(key)
+      if (key?.startsWith(STORAGE_PREFIX) && belongs(key.slice(STORAGE_PREFIX.length))) doomed.push(key)
     }
     doomed.forEach((key) => localStorage.removeItem(key))
   } catch {
