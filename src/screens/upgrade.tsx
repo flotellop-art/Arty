@@ -4,9 +4,8 @@
  * tiers (Free/BYOK, Pro one-time, Subscription) plus an optional Pack +100
  * messages card for active subscribers.
  *
- * After the Lemon Squeezy checkout closes (`browserFinished`), we wait two
- * seconds for the webhook to land, then call `GET /api/subscription/status`
- * with the user's Google access token to surface the new state.
+ * A checkout callback is not proof of payment (on Web it fires on opening).
+ * Recheck through the shared status contract, bound to the original account.
  */
 
 import { useEffect, useRef, useState } from 'react'
@@ -19,9 +18,11 @@ import {
   SUBSCRIPTION_PORTAL_URL,
   type CheckoutPlan,
 } from '../services/checkout'
-import { getValidAccessToken, getStoredUser } from '../services/googleAuth'
-import { fetchWalletBalance } from '../services/walletClient'
-import { apiUrl } from '../services/apiBase'
+import { getStoredUser } from '../services/googleAuth'
+import { fetchWalletBalance, creditsCoverPremium } from '../services/walletClient'
+import { captureBillingContext, onBillingContextInvalidated } from '../services/billingContext'
+import { getActiveSessionEpoch, getActiveUserId } from '../services/userSession'
+import { getTrialRemaining } from '../services/trialClient'
 import { usePlanStatus } from '../hooks/usePlanStatus'
 
 export type CurrentPlan = 'byok' | 'pro' | 'subscription' | 'unknown'
@@ -41,11 +42,6 @@ type StatusResult =
   | { kind: 'creditsAdded' }
   | { kind: 'error'; message: string }
 
-interface SubscriptionStatusResponse {
-  active?: boolean
-  plan?: string
-}
-
 export function UpgradeScreen({ onBack, currentPlan: currentPlanProp, email }: UpgradeScreenProps) {
   const { t } = useTranslation()
   const navigate = useNavigate()
@@ -54,20 +50,45 @@ export function UpgradeScreen({ onBack, currentPlan: currentPlanProp, email }: U
   const premiumPackRef = useRef<HTMLDivElement | null>(null)
   const [status, setStatus] = useState<StatusResult>({ kind: 'idle' })
   const [creditsBusy, setCreditsBusy] = useState(false)
+  const [trialRemaining, setTrial] = useState(getTrialRemaining)
+  const alive = useRef(true), actionSerial = useRef(0), busyRef = useRef<object | null>(null)
+  const renderOwner = getActiveUserId(), renderEpoch = getActiveSessionEpoch()
 
   // Bug P0.7 (audit) : App.tsx ne sait dériver que 'byok' | 'unknown' depuis
   // authMethod — un abonné connecté en Google arrivait toujours en 'unknown',
   // le PremiumPackCard n'était jamais rendu et le `?scroll=premium` tombait
   // dans le vide. On résout le plan réel via /api/subscription/status.
   const planStatus = usePlanStatus()
-  const currentPlan: CurrentPlan =
-    currentPlanProp !== 'unknown'
-      ? currentPlanProp
-      : planStatus.plan === 'subscription' || planStatus.plan === 'pro'
-        ? planStatus.plan
-        : 'unknown'
+  const verified = !planStatus.loading && !planStatus.authRejected && !planStatus.authRequired && !planStatus.statusUnavailable
+  // Local BYOK configuration is not proof of a paid entitlement. VIP is not
+  // a licence or subscription; App/Templates access gates remain unchanged.
+  const byokConfigured = currentPlanProp === 'byok'
+  const currentPlan: CurrentPlan | 'vip' = verified && planStatus.plan !== 'free'
+    ? planStatus.plan : byokConfigured ? 'byok' : 'unknown'
 
   const resolvedEmail = email ?? getStoredUser()?.email ?? ''
+
+  useEffect(() => {
+    alive.current = true
+    const syncTrial = () => setTrial(getTrialRemaining())
+    const off = onBillingContextInvalidated(() => {
+      actionSerial.current += 1; busyRef.current = null
+      setCreditsBusy(false); setStatus({ kind: 'idle' })
+    })
+    window.addEventListener('arty-trial-remaining-changed', syncTrial)
+    return () => { alive.current = false; actionSerial.current += 1; off(); window.removeEventListener('arty-trial-remaining-changed', syncTrial) }
+  }, [])
+
+  const captureAction = () => {
+    const id = ++actionSerial.current, context = captureBillingContext()
+    return () => {
+      try {
+        return alive.current && id === actionSerial.current && context.isCurrent()
+          && renderOwner === getActiveUserId() && renderEpoch === getActiveSessionEpoch()
+          && context.isCurrent() && id === actionSerial.current
+      } catch { return false }
+    }
+  }
 
   useEffect(() => {
     if (!scrollToPremiumPack) return
@@ -80,39 +101,32 @@ export function UpgradeScreen({ onBack, currentPlan: currentPlanProp, email }: U
     return () => window.clearTimeout(t)
   }, [scrollToPremiumPack, currentPlan])
 
-  const refreshStatus = async () => {
+  const refreshStatus = async (isCurrent: () => boolean) => {
+    if (!isCurrent()) return
     setStatus({ kind: 'checking' })
-    // Give the Lemon Squeezy webhook a moment to reach the backend before we
-    // poll. Two seconds matches what the spec asks for and is enough in
-    // practice for the test-mode webhook.
-    await new Promise((r) => setTimeout(r, 2000))
-
     try {
-      const token = await getValidAccessToken()
-      if (!token) {
+      const next = await planStatus.refresh()
+      if (!isCurrent()) return
+      // A focus/pageshow refresh can supersede this subscriber, even while
+      // the shared request succeeds. Null is not proof of missing identity.
+      if (!next) { setStatus({ kind: 'idle' }); return }
+      if (next.authRequired || next.authRejected) {
         setStatus({ kind: 'error', message: t('upgrade.errorNoToken') })
         return
       }
-      const res = await fetch(apiUrl('/api/subscription/status'), {
-        method: 'GET',
-        headers: { 'x-google-token': token },
-      })
-      if (!res.ok) {
+      if (next.statusUnavailable || next.loading) {
         setStatus({ kind: 'pending' })
         return
       }
-      const data = (await res.json()) as SubscriptionStatusResponse
-      if (data.active) {
-        setStatus({ kind: 'active', plan: data.plan ?? 'subscription' })
-      } else {
-        setStatus({ kind: 'pending' })
-      }
+      setStatus(next.plan !== 'free' ? { kind: 'active', plan: next.plan } : { kind: 'pending' })
     } catch {
-      setStatus({ kind: 'pending' })
+      if (isCurrent()) setStatus({ kind: 'pending' })
     }
   }
 
   const launchCheckout = async (plan: CheckoutPlan) => {
+    const isCurrent = captureAction()
+    if (!isCurrent()) return
     if (!resolvedEmail) {
       setStatus({
         kind: 'error',
@@ -120,44 +134,59 @@ export function UpgradeScreen({ onBack, currentPlan: currentPlanProp, email }: U
       })
       return
     }
-    await openCheckout(plan, resolvedEmail, { onReturn: refreshStatus })
+    try { await openCheckout(plan, resolvedEmail, { onReturn: () => { void refreshStatus(isCurrent) } }) }
+    catch { if (isCurrent()) setStatus({ kind: 'error', message: t('upgrade.creditsError') }) }
   }
 
   // Le crédit arrive via le webhook Creem (asynchrone) — il peut atterrir APRÈS
   // la fermeture du navigateur de paiement. On poll le solde en backoff jusqu'à
   // le voir augmenter, puis on notifie le badge (event 'wallet-updated').
-  const pollWalletAfterPurchase = async (beforeMicro: number) => {
+  const pollWalletAfterPurchase = async (beforeMicro: number, isCurrent: () => boolean) => {
+    if (!isCurrent()) return
     setStatus({ kind: 'checking' })
     const delays = [1500, 3000, 5000]
     for (const d of delays) {
       await new Promise((r) => setTimeout(r, d))
+      if (!isCurrent()) return
       const bal = await fetchWalletBalance()
+      if (!isCurrent()) return
       if (bal && bal.availableMicro > beforeMicro) {
-        window.dispatchEvent(new Event('wallet-updated'))
         setStatus({ kind: 'creditsAdded' })
+        window.dispatchEvent(new Event('wallet-updated'))
         return
       }
     }
     // Pas encore visible : le badge se mettra à jour via son interval. On notifie
     // quand même pour forcer un dernier refresh.
-    window.dispatchEvent(new Event('wallet-updated'))
     setStatus({ kind: 'pending' })
+    window.dispatchEvent(new Event('wallet-updated'))
   }
 
   const launchCreditsCheckout = async () => {
-    if (creditsBusy) return // garde anti double-clic (évite 2 onglets/2 paiements)
+    if (busyRef.current) return
+    const isCurrent = captureAction()
+    if (!isCurrent()) return
+    const ticket = {}; busyRef.current = ticket
     setCreditsBusy(true)
     try {
       const before = await fetchWalletBalance()
-      const beforeMicro = before?.availableMicro ?? 0
+      if (!isCurrent()) return
+      // Unknown is not zero: do not invent a balance increase afterward.
+      if (!before) { setStatus({ kind: 'error', message: t('upgrade.creditsError') }); return }
+      const beforeMicro = before.availableMicro
       const ok = await openCreemCheckout('credits_10', {
+        isCurrent,
         onReturn: () => {
-          void pollWalletAfterPurchase(beforeMicro)
+          void pollWalletAfterPurchase(beforeMicro, isCurrent)
         },
       })
-      if (!ok) setStatus({ kind: 'error', message: t('upgrade.creditsError') })
+      if (isCurrent() && !ok) setStatus({ kind: 'error', message: t('upgrade.creditsError') })
     } finally {
-      setCreditsBusy(false)
+      // Superseding a result does not transfer ownership of its busy lock.
+      if (busyRef.current === ticket) {
+        busyRef.current = null
+        if (alive.current && captureBillingContext().isCurrent()) setCreditsBusy(false)
+      }
     }
   }
 
@@ -209,14 +238,22 @@ export function UpgradeScreen({ onBack, currentPlan: currentPlanProp, email }: U
           </p>
         </div>
 
+        <section aria-live="polite" className="rounded-xl border border-theme-border px-4 py-3 space-y-2 text-sm">
+          {planStatus.loading ? <p>{t('upgrade.statusChecking')}</p>
+            : planStatus.authRejected || planStatus.authRequired ? <>
+              <p>{t(planStatus.authRejected ? 'chat.planBadge.authRejectedTitle' : 'chat.planBadge.authRequiredTitle')}</p>
+              <button type="button" className="min-h-11 underline" onClick={() => window.dispatchEvent(new CustomEvent('arty-reconnect-google'))}>{t('chat.planBadge.authRequired')}</button>
+            </> : planStatus.statusUnavailable ? <p>{t('chat.planBadge.statusUnavailableTitle')}</p>
+            : currentPlan === 'vip' || currentPlan === 'pro' || currentPlan === 'subscription'
+              ? <p data-testid="verified-offer-access">{t(`upgrade.access${currentPlan === 'vip' ? 'Vip' : currentPlan === 'pro' ? 'Pro' : 'Subscription'}`)}</p>
+              : <p>{t('upgrade.accessOptions')}</p>}
+          {!planStatus.loading && <button type="button" className="min-h-11 underline" onClick={() => { void refreshStatus(captureAction()) }}>{t('upgrade.recheck')}</button>}
+        </section>
         {status.kind !== 'idle' && <StatusBanner status={status} />}
 
-        {/* P0.10 — un visiteur qui arrive sur /upgrade par lien direct ne
-            voyait le trial nulle part. La plainte n°1 contre le concurrent
-            direct = pas d'essai gratuit ; le nôtre existe, on le montre. */}
-        {currentPlan !== 'subscription' && currentPlan !== 'pro' && (
-          <p className="px-3 py-2.5 rounded-xl bg-theme-accent/10 text-theme-ink text-sm font-display text-center">
-            {t('upgrade.trialCallout')}
+        {verified && planStatus.plan === 'free' && !byokConfigured && !creditsCoverPremium() && trialRemaining !== null && (
+          <p data-testid="offer-trial-status" className="px-3 py-2.5 rounded-xl bg-theme-accent/10 text-theme-ink text-sm font-display text-center">
+            {t(trialRemaining > 0 ? 'upgrade.trialRemaining' : 'upgrade.trialEnded', { count: trialRemaining })}
           </p>
         )}
 
@@ -226,7 +263,7 @@ export function UpgradeScreen({ onBack, currentPlan: currentPlanProp, email }: U
             statut d'un abonné existant reste visible ailleurs (PlanBadge,
             quotas). */}
         <div className="grid grid-cols-1 gap-4">
-          <FreeBYOKCard isCurrent={currentPlan === 'byok'} onClick={handleByokClick} />
+          <FreeBYOKCard isCurrent={byokConfigured} onClick={handleByokClick} />
           {canPurchase && (
             <>
               <ProCard

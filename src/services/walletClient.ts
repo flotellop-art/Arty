@@ -1,7 +1,6 @@
-import { getValidAccessToken } from './googleAuth'
+import { captureBillingContext, onBillingContextInvalidated, type BillingContext } from './billingContext'
 import { apiUrl } from './apiBase'
 import { getTrialRemaining } from './trialClient'
-import { getActiveSessionEpoch, getActiveUserId } from './userSession'
 
 // Client pour le solde de crédits prépayés (GET /api/wallet/balance).
 // Tout est en micro-USD côté serveur ; la conversion en "crédits" affichés est
@@ -24,6 +23,8 @@ const WALLET_CACHE_KEY = 'arty-wallet-available'
 // EXPOSE le markup (P1.7, audit 14 juin).
 const WALLET_HAS_KEY = 'arty-wallet-has'
 let walletRequestSerial = 0
+let observingContext = false
+let sharedBalance: { context: BillingContext; promise: Promise<WalletBalance | null> } | null = null
 
 // 1 crédit AFFICHÉ = 1 cent US (10 000 micro-USD). Choix de PRÉSENTATION
 // centralisé ICI (avant : dupliqué dans WalletBadge) — une seule source pour
@@ -56,6 +57,7 @@ export function getCachedWalletAvailableMicro(): number {
 /** Invalide les requêtes en vol et purge les caches globaux du wallet. */
 export function clearWalletCache(): void {
   walletRequestSerial += 1
+  sharedBalance = null
   try {
     localStorage.removeItem(WALLET_CACHE_KEY)
     localStorage.removeItem(WALLET_HAS_KEY)
@@ -79,14 +81,26 @@ export function creditsCoverPremium(): boolean {
 }
 
 export async function fetchWalletBalance(): Promise<WalletBalance | null> {
+  if (!observingContext) { observingContext = true; onBillingContextInvalidated(clearWalletCache) }
+  const context = captureBillingContext()
+  if (!context.isCurrent()) return null
+  const previous = sharedBalance
+  if (previous?.context.isCurrent() && sharedBalance === previous) return previous.promise
   const requestId = ++walletRequestSerial
-  const requestUserId = getActiveUserId()
-  const requestSessionEpoch = getActiveSessionEpoch()
+  const task = { context, promise: Promise.resolve<WalletBalance | null>(null) }
+  sharedBalance = task
+  task.promise = resolveWalletBalance(context, requestId).finally(() => {
+    if (sharedBalance === task) sharedBalance = null
+  })
+  return task.promise
+}
+
+async function resolveWalletBalance(context: BillingContext, requestId: number): Promise<WalletBalance | null> {
   const isCurrentRequest = () =>
     requestId === walletRequestSerial
-    && getActiveUserId() === requestUserId
-    && getActiveSessionEpoch() === requestSessionEpoch
-  const token = await getValidAccessToken()
+    && context.isCurrent() && requestId === walletRequestSerial
+  const token = await context.getAccessToken()
+  if (!isCurrentRequest()) return null
   if (!token) {
     if (isCurrentRequest()) clearWalletCache()
     return null

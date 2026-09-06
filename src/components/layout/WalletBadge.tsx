@@ -1,10 +1,12 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   fetchWalletBalance,
   microToCredits,
   type WalletBalance,
 } from '../../services/walletClient'
+import { captureBillingContext, onBillingContextInvalidated } from '../../services/billingContext'
+import { onLocalDataInvalidated } from '../../services/localDataInvalidation'
 
 // 1 crédit AFFICHÉ = 1 cent US : la conversion µ$ ↔ crédits vit dans walletClient
 // (microToCredits) — une seule source pour toutes les surfaces (P1.7).
@@ -17,14 +19,21 @@ const REFRESH_MS = 5 * 60_000
 export function WalletBadge() {
   const { t } = useTranslation()
   const [data, setData] = useState<WalletBalance | null>(null)
+  const serial = useRef(0), alive = useRef(true)
 
   const refresh = useCallback(async () => {
+    if (!alive.current) return
+    const id = ++serial.current, context = captureBillingContext()
+    if (!context.isCurrent()) return
     const bal = await fetchWalletBalance()
-    if (bal) setData(bal)
+    if (alive.current && id === serial.current && context.isCurrent() && id === serial.current) setData(bal)
   }, [])
 
   useEffect(() => {
-    refresh()
+    alive.current = true
+    const invalidate = () => { serial.current += 1; setData(null) }
+    const offGrant = onBillingContextInvalidated(invalidate), offOwner = onLocalDataInvalidated(invalidate)
+    void refresh()
     const interval = window.setInterval(refresh, REFRESH_MS)
     const onRefreshEvent = () => {
       refresh()
@@ -33,10 +42,13 @@ export function WalletBadge() {
     // achat de crédits (retour de checkout Creem) pour màj instantanée du solde.
     window.addEventListener('cost-updated', onRefreshEvent)
     window.addEventListener('wallet-updated', onRefreshEvent)
+    window.addEventListener('google-storage-ready', onRefreshEvent)
     return () => {
+      alive.current = false; serial.current += 1; offGrant(); offOwner()
       window.clearInterval(interval)
       window.removeEventListener('cost-updated', onRefreshEvent)
       window.removeEventListener('wallet-updated', onRefreshEvent)
+      window.removeEventListener('google-storage-ready', onRefreshEvent)
     }
   }, [refresh])
 

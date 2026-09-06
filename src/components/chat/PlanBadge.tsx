@@ -1,7 +1,7 @@
 // Petit badge en haut de l'écran qui indique le plan actuel et les quotas
 // restants. Pour les free users : affiche le quota Haiku restant
 // (Mistral n'est plus accessible aux free depuis la dépréciation de Small).
-// Pour les payants : "∞".
+// Pour les payants : statut reconnu et quotas connus, jamais d'illimité déduit.
 //
 // Click → ouvre la page upgrade pour les free, no-op pour les payants.
 
@@ -71,7 +71,7 @@ export const PlanBadge = memo(function PlanBadge() {
   // le bucket le plus entamé (ratio restant le plus faible) — c'est celui
   // qui bloquera en premier. Le détail des 3 buckets vit dans le tooltip
   // et dans la section Quota du ChatOptionsSheet.
-  let subLabel = `${planLabel('subscription')} · ∞`
+  let subLabel = planLabel('subscription')
   let subTitle = ''
   let subExhausted = false
   if (isSub && status.monthlyCap) {
@@ -96,7 +96,7 @@ export const PlanBadge = memo(function PlanBadge() {
     ? `${planLabel('free')} · ${haikuLeft}🤖`
     : isSub
     ? subLabel
-    : `${planLabel(status.plan)} · ∞`
+    : planLabel(status.plan)
 
   const isAlmostExhausted = (isFree && haikuLeft <= 2) || subExhausted
 
@@ -118,9 +118,9 @@ export const PlanBadge = memo(function PlanBadge() {
       title={
         isFree
           ? t('chat.planBadge.titleFree', { haiku: haikuLeft, limit: status.dailyLimits?.['claude-haiku'] })
-          : isSub && subTitle
-          ? t('chat.planBadge.titleSub', { detail: subTitle })
-          : t('chat.planBadge.titlePro', { plan: planLabel(status.plan) })
+          : isSub
+          ? subTitle ? t('chat.planBadge.titleSub', { detail: subTitle }) : t('chat.planBadge.titleSubUnknown')
+          : t(status.plan === 'vip' ? 'chat.planBadge.titleVip' : 'chat.planBadge.titlePro')
       }
     >
       {label}

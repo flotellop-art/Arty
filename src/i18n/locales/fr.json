@@ -870,7 +870,9 @@
       "bucketImages": "Images",
       "titleFree": "Plan gratuit · {{haiku}}/{{limit}} Haiku aujourd'hui. Clique pour débloquer Sonnet, Opus, Mistral, Gemini et GPT.",
       "titleSub": "Messages premium restants ce mois — {{detail}}",
-      "titlePro": "Plan {{plan}} · accès illimité"
+      "titleSubUnknown": "Abonnement reconnu · quotas momentanément indisponibles",
+      "titlePro": "Licence Pro reconnue · clé API personnelle requise",
+      "titleVip": "Accès VIP reconnu"
     },
     "notFound": {
       "title": "Conversation introuvable",
@@ -1405,7 +1407,7 @@
       "proDesc": "Paiement unique, app à vie · Tu utilises ta propre clé API (BYOK) · Templates métier · Support prioritaire",
       "cardCta": "Commencer",
       "extras": "Besoin de plus ? Pack +100 messages premium à 1,99 € TTC, ou crédits prépayés (10 € = 1 000 crédits) qui n'expirent jamais.",
-      "transparency": "Nos limites sont écrites en clair, en messages — pas en « crédits » ni en « points ». Le prix affiché est le prix final, TVA comprise. Une limite journalière anti-abus s'applique à tous les plans."
+      "transparency": "Abonnement : quotas exprimés en messages. Crédits prépayés : consommation déduite du solde. Les limites applicables sont indiquées pour chaque offre. Prix affichés TVA comprise ; une limite journalière anti-abus s'applique."
     },
     "faq": {
       "kicker": "FAQ",
@@ -1449,10 +1451,19 @@
     "legalPrivacy": "Confidentialité",
     "legalNotice": "Mentions légales",
     "support": "support@tryarty.com",
-    "statusChecking": "Vérification de ton abonnement…",
-    "statusActive": "✓ Abonnement activé !",
+    "statusChecking": "Vérification du statut de ton compte…",
+    "statusActive": "Statut d'accès vérifié",
     "statusPendingTitle": "En attente",
-    "statusPendingBody": "La confirmation peut prendre une minute. Reviens dans quelques instants.",
+    "statusPendingBody": "Aucune mise à jour constatée pour le moment. Tu peux revérifier le statut. Ceci ne confirme pas un paiement.",
+    "recheck": "Revérifier le statut",
+    "accessVip": "Ton accès VIP est reconnu pour ce compte.",
+    "accessPro": "Ta licence Pro est reconnue. Une clé API personnelle est requise pour utiliser l'IA.",
+    "accessSubscription": "Ton abonnement est reconnu. Les quotas de ton abonnement s'appliquent.",
+    "accessOptions": "Choisis parmi les options disponibles pour ce compte.",
+    "trialRemaining": "Essai Claude Haiku : {{count}} messages restants.",
+    "trialRemaining_one": "Essai Claude Haiku : {{count}} message restant.",
+    "trialRemaining_other": "Essai Claude Haiku : {{count}} messages restants.",
+    "trialEnded": "Essai terminé — découvre les options disponibles.",
     "errorNoToken": "Connecte-toi avec Google pour vérifier ton abonnement.",
     "errorNoEmail": "Aucun email trouvé. Connecte-toi avec Google d'abord.",
     "currentPlan": "Mode actuel",
@@ -1460,8 +1471,8 @@
     "proPrice": "39€ une fois · TTC",
     "subscriptionPrice": "9,99€/mois · TTC",
     "premiumPackPrice": "1,99€ · TTC",
-    "byokDescription": "Tes clés API compatibles · App gratuite · Données locales",
-    "byokCta": "Passer en BYOK",
+    "byokDescription": "App gratuite avec tes clés compatibles · consommation facturée par tes fournisseurs",
+    "byokCta": "Configurer mes clés API",
     "proBadge": "Populaire",
     "proTagline": "Licence à vie · ta propre clé",
     "proDescription": "Paiement unique, app à vie · Tu utilises ta clé API (BYOK) · Templates métier · Support prioritaire · Pas d'abonnement",
@@ -1479,17 +1490,17 @@
     "creditsCta": "Acheter des crédits",
     "creditsBusy": "Ouverture du paiement…",
     "creditsError": "Impossible de lancer le paiement. Réessaie.",
-    "creditsAdded": "Crédits ajoutés — ton solde est à jour.",
-    "transparency": "Nos limites sont écrites en clair, en messages — pas en « crédits » ni en « points ». Le prix affiché est le prix final, TVA comprise. Une limite journalière anti-abus s'applique à tous les plans.",
+    "creditsAdded": "Augmentation du solde constatée.",
+    "transparency": "Abonnement : quotas exprimés en messages. Crédits prépayés : consommation déduite du solde. Les limites applicables sont indiquées pour chaque offre. Prix affichés TVA comprise ; une limite journalière anti-abus s'applique.",
     "manageSubscription": "Gérer mon abonnement (annulation en ligne)",
-    "nativeUnavailableTitle": "Plans non disponibles dans cette version",
-    "nativeUnavailableBody": "Dans l'app Android, tu peux utiliser ta propre clé API (BYOK) — gratuit côté Arty, tu paies ton fournisseur directement. Si tu as déjà un abonnement, connecte-toi simplement : il est reconnu automatiquement.",
+    "nativeUnavailableTitle": "Achats indisponibles dans cette version Android",
+    "nativeUnavailableBody": "Tu peux configurer tes clés API personnelles. Si tu disposes déjà d'un accès, son statut est vérifié après connexion au compte associé.",
     "subscriptionReassurance": "✓ Annulation en 1 clic, à tout moment — pause possible. Sans engagement.",
     "whyTitle": "Pourquoi c'est moins cher ?",
     "whyIntro": "Pas de magie — juste un modèle économique assumé :",
     "whyRouting": "Routage intelligent : chaque question part au modèle juste suffisant, pas toujours le plus cher. Moins de calcul payé = moins cher pour toi.",
     "whyMargin": "Marge faible, assumée : une petite marge sur le coût réel, pas un prix multiplié par trois comme ailleurs.",
-    "whyTransparency": "Limites écrites en clair (en messages, pas en « crédits » opaques) et prix final affiché, TVA comprise.",
+    "whyTransparency": "Quotas d'abonnement en messages, consommation prépayée en crédits. Les limites de chaque offre et les prix TVA comprise sont affichés.",
     "whyByok": "Et tu peux toujours brancher ta propre clé API (BYOK) pour payer au prix coûtant.",
     "trialCallout": "🎁 Nouveau ? Essaie d'abord gratuitement : 30 messages offerts, sans carte bancaire."
   },
@@ -1791,9 +1802,9 @@
     "banner": {
       "remaining_one": "✨ Essai gratuit — {{count}} message restant · Claude Haiku",
       "remaining_other": "✨ Essai gratuit — {{count}} messages restants · Claude Haiku",
-      "ended": "Essai terminé — Choisis un plan pour continuer",
-      "upgradeCta": "Passer à Pro",
-      "seePlans": "Voir les plans →"
+      "ended": "Essai terminé — Découvre les options pour continuer",
+      "upgradeCta": "Voir les options",
+      "seePlans": "Voir les options →"
     }
   },
   "image": {

@@ -14,12 +14,15 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('../../services/googleAuth', () => ({
+  captureGoogleGrant: () => ({ isCurrent: () => true, getAccessToken: mocks.getValidAccessToken }),
+  onGoogleGrantInvalidated: () => () => {},
   getValidAccessToken: mocks.getValidAccessToken,
   getStoredTokens: () => mocks.storedTokens,
   isGoogleStorageReady: () => mocks.storageReady,
 }))
 vi.mock('../../services/apiBase', () => ({ apiUrl: (path: string) => path }))
 vi.mock('../../services/walletClient', () => ({
+  clearWalletCache: vi.fn(),
   fetchWalletBalance: mocks.fetchWalletBalance,
   creditsCoverPremium: mocks.creditsCoverPremium,
 }))

@@ -38,6 +38,14 @@ beforeEach(() => {
 })
 
 describe('PlanBadge — identité VIP à réparer', () => {
+  it.each([null, {}])('does not invent unlimited quotas or a Pro license for a subscription without caps (%s)', monthlyCap => {
+    mocks.status = { ...baseStatus(), plan: 'subscription', monthlyCap }
+    render(<PlanBadge />)
+    const badge = screen.getByRole('button')
+    expect(badge).toHaveTextContent('chat.planBadge.labelSub')
+    expect(badge).not.toHaveTextContent('∞')
+    expect(badge).toHaveAttribute('title', 'chat.planBadge.titleSubUnknown')
+  })
   it('déclenche le vrai flux Google quand le grant manque', () => {
     mocks.status = { ...baseStatus(), authRequired: true }
     const reconnect = vi.fn()

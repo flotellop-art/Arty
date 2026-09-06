@@ -14,6 +14,7 @@ vi.mock('../../services/checkout', () => ({
 }))
 
 vi.mock('../../services/googleAuth', () => ({
+  onGoogleGrantInvalidated: () => () => {},
   getStoredUser: () => null,
   getValidAccessToken: vi.fn(),
 }))

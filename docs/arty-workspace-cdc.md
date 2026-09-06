@@ -2,6 +2,15 @@
 
 Date : 6 septembre 2026. Statut global : **en cours, non livré**.
 
+Extension explicite de l'objectif le 6 septembre : abonnements **et** crédits
+réellement opérationnels, y compris qualification du prestataire marchand et
+cycle de paiement complet. Critères obligatoires dans `BILLING_OPERATIONAL_CDC.md` ;
+non livré, aucune acceptation/refus de Lemon Squeezy confirmé à ce stade.
+Première recette téléphone réel : `MOBILE_RECEIPT_2026_09_06.md` (APK installé
+distinct de #479 ; navigation, VIP affiché et une réponse réelle vérifiés).
+Lot candidat Offres/statuts/solde : `VERIFIED_OFFERS_RELEASE.md` ; vrai App local
+FR/EN avec identités et HTTP fictifs, suite Node 22 validée, production à attester.
+
 ## Mandat et résultat attendu
 
 Mettre en œuvre les priorités de l'audit Arty/Mammouth du 4 septembre,
