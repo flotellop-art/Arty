@@ -280,17 +280,17 @@ export async function checkVerifyOtpRateLimit(env: Env, ip: string): Promise<boo
 // ── Turnstile (optionnel en dev/preview — OBLIGATOIRE en prod, fail-closed) ─
 
 /**
- * Hosts de PRODUCTION — couverture côté serveur des domaines prod de
- * `ALLOWED_ORIGINS` (`functions/api/_middleware.ts`). Les déploiements preview
- * de Cloudflare Pages servent sur `<hash>.appfacade.pages.dev` (non listé) et
- * `wrangler pages dev` sur localhost → non-prod. Si un domaine prod est ajouté
- * au middleware, l'ajouter ICI aussi — un test de couverture
- * (`turnstileFailClosed.test.ts`) échoue en CI si les deux listes divergent
- * (pattern F-1 : une allowlist positive doit être imposée par la CI, pas par
- * un commentaire). Exporté pour ce test uniquement.
+ * Hosts de PRODUCTION : domaines web prod ET hôte API historique des APK.
+ * Un hôte API n'est pas nécessairement une Origin navigateur autorisée :
+ * appfacade reste refusé dans ALLOWED_ORIGINS, mais son API ne doit jamais
+ * bénéficier du fail-open réservé aux previews en cas de clé manquante.
+ * Les previews `<hash>.appfacade.pages.dev` et localhost restent non-prod.
+ * `turnstileFailClosed.test.ts` impose la couverture des origines web prod
+ * et de LEGACY_API_HOST, sans confondre ces deux allowlists.
  */
 export const PRODUCTION_HOSTS = new Set([
   'tryarty.com',
+  'appfacade.pages.dev',
 ])
 
 /**

@@ -210,3 +210,34 @@ Verify final **exit 0** (`connections-final-verify.log`) : couverture
 71,54 / 66,35 / 77,27 / 73,38 %, App 930,31 Ko (gzip 286,06), chunk Connexions
 lazy séparé, avertissement historique >500 Ko inchangé ; export Office réel
 exécuté en VM isolée. Aucune modification des timeouts/quota/prix/worker concurrency.
+
+### Publication #470 — 6 septembre 2026
+
+PR [#470](https://github.com/flotellop-art/Arty/pull/470), head
+`a5f012c41e37edda276579ca777ef5c60b924452`, fusion squash normale avec match-head
+le 6 septembre à **09:45:54 UTC**, main
+`3d99585bcf001500bf9a2b0f1bf48073ab914d24`. Aucune protection contournée.
+
+- CI PR [34025257439](https://github.com/flotellop-art/Arty/actions/runs/34025257439)
+  : app, Android et orchestrateur réussis. Preview Pages
+  `7e196246-e99f-4599-b1f4-7012130815e6` réussie à 09:40:07 UTC.
+  Recette Chrome réelle anonyme du preview à 09:43:39.805 UTC : notice aperçu,
+  zéro carte privée et zéro erreur de page ; trafic API/externe bloqué par la
+  recette. Ce contrôle n'est pas une session privée de production.
+- Pages production `2b96d225-ab89-48aa-9426-6f0f917d25bc` réussie à
+  **09:47:03 UTC**. À **09:48:00.587 UTC**, GET anonyme de `/connections` et
+  de six assets sur `https://tryarty.com` et
+  `https://2b96d225.appfacade.pages.dev` : HTTP 200, octets/hashes égaux,
+  marqueurs attendus. Chunk `connections-DEfh4z1M.js` : 8 556 octets,
+  SHA-256 `1653585130ba4ebb13771acda338d0398b52a223ebf0b64d20dea93723b683b9`.
+- CI main [34025562663](https://github.com/flotellop-art/Arty/actions/runs/34025562663)
+  entièrement réussie à **09:51:29 UTC** (dont Android à 09:49:58 UTC).
+- APK [34025562668](https://github.com/flotellop-art/Arty/actions/runs/34025562668)
+  réussie à **09:54:06 UTC** ; étape de distribution Firebase réussie à
+  **09:54:03 UTC**. Aucune preuve d'installation physique, d'accès effectif
+  d'un testeur ou de publication Store ne découle de ce reçu.
+
+Logs locaux ignorés : `connections-preview-probe.log`,
+`connections-preview-browser.log`, `connections-production-probe.log`.
+Retour arrière : revert ciblé de #470 par la même chaîne PR/CI, sans effacement
+de données ni activation de restauration/synchronisation W06.

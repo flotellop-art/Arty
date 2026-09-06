@@ -4,7 +4,8 @@ import {
   turnstileMisconfiguredInProd,
 } from '../../../functions/api/_lib/emailTrial'
 import { onRequestPost } from '../../../functions/api/auth/email/request-otp'
-import { ALLOWED_ORIGINS } from '../../../functions/api/_middleware'
+import { ALLOWED_ORIGINS, isAllowedOrigin } from '../../../functions/api/_middleware'
+import { LEGACY_API_HOST } from '../../../functions/_middleware'
 import type { Env } from '../../../functions/env'
 
 // C2 / F-10 (fail-closed) — en PRODUCTION, une TURNSTILE_SECRET_KEY manquante
@@ -28,6 +29,7 @@ function req(url: string): Request {
 describe('turnstileMisconfiguredInProd (C2/F-10)', () => {
   it.each([
     'https://tryarty.com/api/auth/email/request-otp',
+    'https://appfacade.pages.dev/api/auth/email/request-otp',
   ])('PROD sans clé → misconfiguré (%s)', (url) => {
     expect(turnstileMisconfiguredInProd(KEYLESS, req(url))).toBe(true)
   })
@@ -53,11 +55,12 @@ describe('turnstileMisconfiguredInProd (C2/F-10)', () => {
   })
 })
 
-describe('parité PRODUCTION_HOSTS ⇄ ALLOWED_ORIGINS (anti-dérive d’allowlist, pattern F-1)', () => {
+describe('couverture des hosts web ET API de production (anti-dérive, pattern F-1)', () => {
   // Un domaine prod ajouté au middleware mais oublié dans PRODUCTION_HOSTS
   // serait FAIL-OPEN silencieux sur le gate Turnstile — exactement le trou que
   // C2/F-10 ferme. Ce test impose la synchronisation par la CI, pas par un
-  // commentaire. Les origins non-HTTPS (capacitor://) et localhost (Capacitor
+  // commentaire. L'hôte API historique n'est PAS une origine web autorisée.
+  // Les origins non-HTTPS (capacitor://) et localhost (Capacitor
   // on-device, wrangler dev) sont hors périmètre : ce ne sont pas des hosts
   // de déploiement prod.
   const prodOriginHosts = ALLOWED_ORIGINS.filter(
@@ -70,12 +73,15 @@ describe('parité PRODUCTION_HOSTS ⇄ ALLOWED_ORIGINS (anti-dérive d’allowli
     }
   })
 
-  it('chaque host du gate existe dans le middleware (pas d’entrée fantôme)', () => {
-    for (const host of PRODUCTION_HOSTS) {
-      expect(prodOriginHosts.includes(host), `entrée fantôme dans PRODUCTION_HOSTS : ${host}`).toBe(
-        true
-      )
-    }
+  it('couvre exactement les hosts web et le host API de transition, jamais les previews', () => {
+    expect([...PRODUCTION_HOSTS].sort()).toEqual([...new Set([...prodOriginHosts, LEGACY_API_HOST])].sort())
+    expect(PRODUCTION_HOSTS.has(LEGACY_API_HOST)).toBe(true)
+    expect(PRODUCTION_HOSTS.has('branch.appfacade.pages.dev')).toBe(false)
+  })
+
+  it('ne confond pas hôte API de production et Origin navigateur autorisée', () => {
+    expect(ALLOWED_ORIGINS).not.toContain(`https://${LEGACY_API_HOST}`)
+    expect(isAllowedOrigin(`https://${LEGACY_API_HOST}`)).toBe(false)
   })
 })
 
@@ -101,8 +107,8 @@ describe('request-otp — gate fail-closed en prod (C2/F-10)', () => {
     return { request: req(url), env } as unknown as Parameters<typeof onRequestPost>[0]
   }
 
-  it('PROD sans clé → 503 email_trial_unavailable, AUCUN accès D1, aucun email', async () => {
-    const res = await onRequestPost(ctx('https://tryarty.com/api/auth/email/request-otp', makeEnv(false)))
+  it.each(['tryarty.com', 'appfacade.pages.dev'])('PROD %s sans clé → 503 email_trial_unavailable, AUCUN accès D1, aucun email', async (host) => {
+    const res = await onRequestPost(ctx(`https://${host}/api/auth/email/request-otp`, makeEnv(false)))
     expect(res.status).toBe(503)
     expect(await res.json()).toEqual({ error: 'email_trial_unavailable' })
   })

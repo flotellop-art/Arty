@@ -1,31 +1,27 @@
 const CANONICAL_ORIGIN = 'https://tryarty.com'
+export const LEGACY_API_HOST = 'appfacade.pages.dev'
 
 // Public hosts that previously served the production application. Cloudflare
 // preview deployments remain available because their host is a subdomain of
 // appfacade.pages.dev, not the exact project hostname below.
 export const LEGACY_PUBLIC_HOSTS = new Set([
-  'appfacade.pages.dev',
+  LEGACY_API_HOST,
   'www.tryarty.com',
-])
-
-// Les fournisseurs peuvent avoir un webhook en vol au moment du déploiement.
-// Ces deux handlers vérifient leur signature HMAC; on les garde joignables sur
-// l'hostname technique jusqu'au smoke des URLs configurées chez les providers.
-export const LEGACY_WEBHOOK_PATHS = new Set([
-  '/api/webhook/creem',
-  '/api/webhook/lemonsqueezy',
 ])
 
 export function canonicalRedirect(request: Request): Response | null {
   const source = new URL(request.url)
   if (!LEGACY_PUBLIC_HOSTS.has(source.hostname.toLowerCase())) return null
-  const normalizedPath = source.pathname.length > 1
-    ? source.pathname.replace(/\/+$/, '')
-    : source.pathname
 
+  // Installed APKs may still call this API host. A redirect can break native
+  // CORS preflights even when 308 preserves POST bodies. Pass the ORIGINAL
+  // request to the existing API middleware/handlers for every method: their
+  // Origin, auth, captcha, quota and webhook HMAC gates remain authoritative.
+  // This is an API transport host, NOT a new allowed browser Origin. Keep it
+  // classified as production in emailTrial.ts (fail-closed Turnstile).
   if (
-    source.hostname.toLowerCase() === 'appfacade.pages.dev'
-    && LEGACY_WEBHOOK_PATHS.has(normalizedPath)
+    source.hostname.toLowerCase() === LEGACY_API_HOST
+    && (source.pathname === '/api' || source.pathname.startsWith('/api/'))
   ) {
     return null
   }
