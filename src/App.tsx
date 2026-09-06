@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route, Navigate, useNavigate, useParams, useLoca
 import { Capacitor } from '@capacitor/core'
 import { useConversation } from './hooks/useConversation'
 import { useProjectSynthesis } from './hooks/useProjectSynthesis'
+import { useClientReply } from './hooks/useClientReply'
 import { isDocumentConversation } from './services/projects/chatPolicy'
 import { useAppSetup } from './hooks/useAppSetup'
 import { useAuth } from './hooks/useAuth'
@@ -58,6 +59,7 @@ const ComparatorScreen = lazy(() => import('./screens/compare').then((m) => ({ d
 const ContextualCompareScreen = lazy(() => import('./screens/contextualCompare').then(m => ({ default: m.ContextualCompareScreen })))
 const ProjectsScreen = lazy(() => import('./screens/projects').then((m) => ({ default: m.ProjectsScreen })))
 const ProjectSynthesisScreen = lazy(() => import('./screens/projectSynthesis').then(m => ({ default: m.ProjectSynthesisScreen })))
+const ClientReplyScreen = lazy(() => import('./screens/clientReply').then(m => ({ default: m.ClientReplyScreen })))
 // Landing marketing (item 16 roadmap v2) — vue uniquement par les
 // primo-visiteurs web ; les utilisateurs connectés ne la téléchargent jamais.
 const LandingScreen = lazy(() => import('./screens/landing').then((m) => ({ default: m.LandingScreen })))
@@ -134,6 +136,10 @@ function AppContent({
     else if (location.pathname === '/templates') synthesisOrigin.current = '/templates'
     conversation.clearError(); synthesis.open(project); navigate('/workflows/project-synthesis')
   }, [conversation.clearError, synthesis.open, navigate, location.pathname])
+  const clientReply = useClientReply(conversation.startClientReply, conversation.projectReview.review, id => navigate(`/chat/${id}`))
+  const openClientReply = useCallback(() => {
+    conversation.clearError(); clientReply.open(); navigate('/workflows/client-reply')
+  }, [conversation.clearError, clientReply.open, navigate])
   const {
     conversations,
     activeConversation,
@@ -431,7 +437,7 @@ function AppContent({
 
   useEffect(() => {
     if (!error) return
-    if (error.includes('no_active_subscription') && location.pathname !== '/workflows/project-synthesis' && !(activeConversation && isDocumentConversation(activeConversation))) {
+    if (error.includes('no_active_subscription') && !['/workflows/project-synthesis', '/workflows/client-reply'].includes(location.pathname) && !(activeConversation && isDocumentConversation(activeConversation))) {
       navigate('/upgrade')
     }
     // `premium_cap_reached` ne passe plus par ici : useConversation dispatche
@@ -590,6 +596,7 @@ function AppContent({
                 onUpgrade={() => navigate('/upgrade')}
                 onUseTemplate={(prompt) => handleSendFromHome(prompt)}
                 onProjectSynthesis={() => openSynthesis()}
+                onClientReply={openClientReply}
                 currentPlan={currentPlan}
               />
             </Suspense>
@@ -623,6 +630,14 @@ function AppContent({
             if (synthesis.plan.authRequired || synthesis.plan.authRejected) setShowGoogleReconnect(true)
             else if (synthesis.access?.error === 'compare.access.byok') setShowApiKeys(true)
             else if (synthesis.plan.loading || synthesis.plan.statusUnavailable || synthesis.access?.error === 'compare.access.unknownModel') synthesis.plan.refresh()
+            else navigate('/upgrade')
+          }} onChat={id => navigate(`/chat/${id}`)} /></Suspense>} />
+        <Route path="/workflows/client-reply" element={<Suspense fallback={<LazyFallback />}><ClientReplyScreen
+          controller={clientReply} error={error} onBack={() => navigate('/templates')}
+          onAccess={() => {
+            if (clientReply.plan.authRequired || clientReply.plan.authRejected) setShowGoogleReconnect(true)
+            else if (clientReply.access?.error === 'compare.access.byok') setShowApiKeys(true)
+            else if (clientReply.plan.loading || clientReply.plan.statusUnavailable || clientReply.access?.error === 'compare.access.unknownModel') clientReply.plan.refresh()
             else navigate('/upgrade')
           }} onChat={id => navigate(`/chat/${id}`)} /></Suspense>} />
         <Route path="/compare/:branchId" element={<Suspense fallback={<LazyFallback />}><ContextualCompareScreen controller={conversation.comparisons} onChat={handleSelectConversation} onBack={handleHome} onStop={stopStreaming} /></Suspense>} />
@@ -674,10 +689,11 @@ function AppContent({
         />
       </Routes>
       </main>
-      {error?.includes('no_active_subscription') && activeConversation && isDocumentConversation(activeConversation) && <div role="alert" className="fixed bottom-4 inset-x-4 z-[85] bg-theme-bg border border-theme-border rounded-xl p-4 flex flex-wrap gap-3">
+      {error?.includes('no_active_subscription') && location.pathname.startsWith('/chat/') && activeConversation && isDocumentConversation(activeConversation) && <div role="alert" className="fixed bottom-4 inset-x-4 z-[85] bg-theme-bg border border-theme-border rounded-xl p-4 flex flex-wrap gap-3">
         <p>{t('compare.access.plan')}</p>
         <button className="min-h-11 px-3 border border-theme-border" onClick={() => navigate('/upgrade')}>{t('common.manageAccess')}</button>
-        {synthesis.draft && <button className="min-h-11 px-3 border border-theme-border" onClick={() => openSynthesis()}>{t('common.back')}</button>}
+        {synthesis.draft?.adoptedId === activeConversation.id && <button className="min-h-11 px-3 border border-theme-border" onClick={() => openSynthesis()}>{t('common.back')}</button>}
+        {clientReply.draft?.adoptedId === activeConversation.id && <button className="min-h-11 px-3 border border-theme-border" onClick={openClientReply}>{t('common.back')}</button>}
         <button className="min-h-11 px-3" onClick={clearError}>{t('common.close')}</button>
       </div>}
       {conversation.comparisons.error && <div role="alert" className="fixed bottom-4 inset-x-4 z-[85] bg-theme-bg border border-red-500 p-4 rounded-xl"><p>{t(conversation.comparisons.error)}</p><button className="min-h-11 px-3" onClick={conversation.comparisons.dismissError}>{t('common.close')}</button></div>}

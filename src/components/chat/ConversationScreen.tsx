@@ -109,7 +109,7 @@ export function ConversationScreen({
       />
 
       <ActionBanner icon="📁" message={t('chat.banners.driveAccess')} isVisible={drive.isLoading} />
-      {onProjectChange && <ProjectConversationPanel key={conversation.id} conversation={conversation} busy={isStreaming} onChange={onProjectChange} />}
+      {onProjectChange && !conversation.outputRestriction && <ProjectConversationPanel key={conversation.id} conversation={conversation} busy={isStreaming} onChange={onProjectChange} />}
       <BrowserBanner action={computerActions.currentAction} />
 
       <ErrorBoundary>

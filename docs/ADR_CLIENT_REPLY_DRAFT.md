@@ -88,3 +88,29 @@ jamais être présentée comme le parcours client livré.
 
 Pas de résultat commercial ni de mesure de rétention prétendus. La validation
 P0 est une condition de lancement ; les mesures terrain restent W10.
+
+## Réalisation du formulaire, 6 septembre
+
+`clientReply.ts` capture les quatre champs primitifs, l'absence de faits
+confirmée, le choix EU et la locale avant toute attente. Le texte canonique
+contient l'objectif et les données exactes ; JSON les sépare mais ne constitue
+pas une défense anti-injection à lui seul. Règles applicatives fixes et moteur
+documentaire sans outils imposent le contrat. Aucune consigne système libre
+de l'appelant. Les relances réutilisent le texte stocké, jamais une policy
+reconstituée à partir d'un import ou du marqueur.
+
+Union explicite project-synthesis/client-reply dans chatPreparation. Pour le
+client : nouveau fil marqué, détaché, vide ; un seul message utilisateur,
+aucune métadonnée/contextualisation étrangère, fichier ou action. Allowlist
+positive avant beginProjectOperation. Le cycle d'admission/adoption commun
+extrait dans `invocation.ts` garde owner/crypto/fence, annulation jusqu'au
+commit, désabonnement synchrone avant callback et garde fournisseur après
+callback réentrant. L'insertion reste atomique avec la demande complète.
+
+Contrôleur RAM distinct monté au-dessus des routes : aucune liste de projets.
+Le formulaire ne raccourcit pas les collages, distingue entrée invalide et
+accès, propose reprise explicite si le scope est indisponible et explique la
+limite démo. Aucun bricolage de session/crypto pour débloquer la démo.
+Retour de quota vérifie l'ID réellement adopté, pas la simple existence d'un
+ancien brouillon de synthèse. Le fil reste sans association projet ; cela
+préserve les longues relances sans augmenter les bornes générales de projet.

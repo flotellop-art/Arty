@@ -2,7 +2,9 @@
 
 6 septembre 2026. Première verticale synthèse livrée par #466, main `2c114cf`,
 Pages/CI/APK vérifiés dans `PROJECT_SYNTHESIS_RELEASE.md`.
-Réponse client en réalisation, décision `ADR_CLIENT_REPLY_DRAFT.md`. Deux
+Socle client livré #467, formulaire/revue validés localement,
+publication de cette tranche à contrôler dans `CLIENT_REPLY_FORM_RELEASE.md`.
+Décision `ADR_CLIENT_REPLY_DRAFT.md`. Deux
 diagnostics indépendants readonly examinés : produit/accès et sécurité/fidélité.
 
 ## Problème et objectif
@@ -95,14 +97,20 @@ Pas d'envoi client, partage public, Gmail/Drive OAuth restreint, IMAP serveur,
 nouveau fournisseur, OCR, synthèse exhaustive, sync W06 ou extension de droits.
 Le partage public existant publie à distance : il n'est pas un export local.
 
-Pour la réponse client : décision de persistance/versionnement prise dans
-`ADR_CLIENT_REPLY_DRAFT.md`, implémentation et recette encore à terminer.
+Pour la réponse client : persistance/versionnement livré #467 ; formulaire
+manuel/revue/admission et recette locale réalisés (`CLIENT_REPLY_FORM_RELEASE.md`).
+Bornes demande/faits 8192 chacune, objectif 1600, ton enum, faits absents
+explicitement confirmés. Claude ou Mistral EU choisi par l'utilisateur. La
+question complète est conservée pour les relances génériques ; le titre reste
+stable. Association de projet refusée pour éviter de réintroduire une limite
+de requête projet de 2000 caractères sur ce fil long et détaché.
 La création atomique après approbation, le formulaire owner-scoped et l'accès
 distinct de CurrentPlan sont implémentés pour la synthèse (ADR dédié).
 Les tours suivants et retries du chat restent documentaires génériques ; refaire
 une synthèse guidée demande de revenir au formulaire, sans ancien consentement.
-Les choix propres à la réponse client sont à résoudre dans la tranche,
-pas des demandes utilisateur bloquantes. Pas de délai contractuel donné.
+L'admission client a son shape initial strict ; elle réutilise les guards et
+l'adoption de la synthèse, pas ses lectures/sélections de documents. Le marqueur
+persisté n'est pas une invocation sauvegardée. Pas de délai contractuel donné.
 
 Phases : synthèse d'abord, réponse client ensuite, puis écran de connexions.
 Chaque implémentation reçoit deux contre-revues et ses preuves CI/publication.

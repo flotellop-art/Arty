@@ -3,6 +3,7 @@ import { generateId } from '../../utils/generateId'
 import { captureLocalReadScope } from '../projects/store'
 import { ProjectError, PROJECT_LIMITS, type Project } from '../projects/types'
 import type { ProjectSynthesisPolicy, ReviewProjectRequest } from '../projects/chatPreparation'
+import { captureWorkflowInvocation } from './invocation'
 
 // Leave room for the visible application instructions, including on chat retry.
 export const SYNTHESIS_OBJECTIVE_LIMIT = PROJECT_LIMITS.queryChars - 400
@@ -19,7 +20,6 @@ export function captureProjectSynthesis(args: {
   project: Project; objective: string; locale: string; signal: AbortSignal;
   assertDraft(): void; assertAccess(): void; review: ReviewProjectRequest; onAdopted(id: string): void
 }) {
-  const { signal, assertDraft, assertAccess, review, onAdopted } = args
   const scope = captureLocalReadScope()
   const project = structuredClone(args.project), objective = args.objective
   const question = synthesisQuestion(objective, args.locale)
@@ -28,38 +28,6 @@ export function captureProjectSynthesis(args: {
   const conversation: Conversation = { id: generateId(), title: project.name, createdAt: now, updatedAt: now,
     messages: [], projectId: project.id, hasProjectContext: true, euOnly: project.euOnly }
   const policy: ProjectSynthesisPolicy = { kind: 'project-synthesis', projectId: project.id, projectRevision: project.revision }
-  let adopted = false, notified = false, unbind = () => {}
-  const assertCurrent = () => {
-    scope.assertCurrent()
-    if (!adopted) {
-      if (signal.aborted) throw new ProjectError('cancelled')
-      assertDraft(); assertAccess()
-      scope.assertCurrent()
-      if (signal.aborted) throw new ProjectError('cancelled')
-    }
-  }
-  assertCurrent()
-  return { conversation, policy, objective, question, review,
-    preparation: { ...scope, assertCurrent }, assertCurrent,
-    bindCancellation(cancel: () => void) {
-      assertCurrent()
-      signal.addEventListener('abort', cancel, { once: true })
-      unbind = () => signal.removeEventListener('abort', cancel)
-    },
-    acceptPersisted() {
-      // The last insertion guard already checked callbacks. Do not call UI or
-      // access callbacks again inside the irreversible publication transition.
-      scope.assertCurrent()
-      if (adopted || signal.aborted) throw new ProjectError('conflict')
-      adopted = true; unbind()
-    },
-    notifyAdopted() {
-      if (!adopted || notified) throw new ProjectError('conflict')
-      notified = true
-      // UI errors cannot undo the durable commit or masquerade as storage errors.
-      try { onAdopted(conversation.id) } catch { /* the saved chat remains accessible */ }
-    },
-    dispose() { unbind() },
-  }
+  return captureWorkflowInvocation({ ...args, scope, conversation, policy, objective, question })
 }
 export type ProjectSynthesisInvocation = ReturnType<typeof captureProjectSynthesis>
