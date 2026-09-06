@@ -2003,4 +2003,23 @@ Le codec est non importé par l'app : aucune modification de l'UI, outbox,
 endpoint, migration, clé persistée ou activation cloud. Capture fidèle,
 identités logiques/physiques, vrai journal atomique, rétention/bootstrap,
 réception/application, ACK/effacement serveur et recette à deux appareils
-restent obligatoires pour W06. CI exacte à vérifier avant fusion de ce lot.
+restent obligatoires pour W06. #484 fusionnée sur main `77a561a` ; CI main
+`34063135233` et Firebase `34063135145` revérifiées réussies le 6 septembre
+à 22:43 UTC. Ceci confirme B2a, pas une synchronisation livrée.
+
+### W06-B2b — chantier local de persistance, non livré
+
+Barrière physique projets 1→2 et acteur de reprise froide v9 implémentés sur
+`codex/workspace-sync-durable-20260907`, START toujours OFF. La génération,
+les données et l'allocation de clé v7 sont conservées ; un nouveau document
+est exigé avant réouverture privée. 32 tests acteur/protocole, 4 tests UI,
+intégration réelle reset/compte B/archives et cinq scénarios Chrome natif
+réussis. Détail, conditions, limites et preuves dans l'[ADR](ADR_WORKSPACE_SYNC.md).
+Vérification complète Node 22 réussie : 334 suites / 4 387 tests réussis et
+1 ignoré préexistant, build et vrai worker Office inclus. Deux contre-revues
+readonly clôturées ; candidat ni poussé ni déployé.
+
+L'outbox, la capture fidèle et la persistance du mapping ne sont pas encore
+réalisées. Elles constituent la suite de B2b ; ni cet upgrade, ni le codec B2a
+ne permettent d'annoncer la synchronisation. L'ensemble des obligations W06
+et du cahier des charges reste inchangé.

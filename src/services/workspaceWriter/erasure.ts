@@ -4,7 +4,7 @@ import { assertNativeErasureOwner, clearColdMailScope } from '../native/coldMail
 import { ISOLATED_WORKSPACE_ENABLED } from './activation'
 import { workspaceAdmission } from './runtime'
 import { validateWorkspaceControl, WORKSPACE_CONTROL_DB, WORKSPACE_CONTROL_KEY, type AdmissionGuard } from './control'
-import { isolatedWorkspaceLayout } from './layout'
+import { isolatedWorkspaceLayout, controlProjectsVersion, projectVersionFields } from './layout'
 import { CONTROL_SHAPE, FILE_SHAPE, PROJECT_SHAPE, MIGRATION_JOURNAL_SHAPE, assertDatabaseShape, type StoreShape } from './schema'
 import { migrationDatabaseName } from './migrationProtocol'
 import { parseErasureHeader, validErasureFence, type ErasureHeader, type ErasureProof, type ErasureStoreProof } from './erasureProtocol'
@@ -96,11 +96,11 @@ async function readPlan(job: IDBPDatabase, generation: string, guard: Attempt) {
 }
 async function readReceipts(tx: IDBPTransaction<unknown, string[], 'readonly' | 'readwrite'>, guard: Attempt) {
   const receipts: AccountErasureRecord[] = []
-  let cursor = await tx.objectStore('meta').openCursor()
+  let cursor = await tx.objectStore('meta').openKeyCursor()
   while (cursor) {
     guard.assertCurrent()
     if (Array.isArray(cursor.key) && cursor.key[0] === 'erasing') {
-      const receipt = parseAccountErasureRecord(cursor.value)
+      const receipt = parseAccountErasureRecord(await tx.objectStore('meta').get(cursor.key))
       if (!receipt || cursor.key.length !== 2 || cursor.key[1] !== receipt.owner) return refuse()
       receipts.push(receipt)
     }
@@ -180,7 +180,7 @@ async function erase(guard: Attempt, knownFinal: unknown, remember: (v: unknown)
   if (knownFinal && equal(initial, knownFinal)) return validateWorkspaceControl(initial)
   let header = parseErasureHeader(initial)
   if (header && action === 'cancel-not-sent') return refuse()
-  const layout = header ? isolatedWorkspaceLayout(header.generation, header.requiredOwners) : validateWorkspaceControl(initial)
+  const layout = header ? isolatedWorkspaceLayout(header.generation, header.requiredOwners, controlProjectsVersion(header)) : validateWorkspaceControl(initial)
   if (layout.kind !== 'isolated-v1') return refuse()
   if (header) bind({ control: initial }, layout.generation)
   const opened: IDBPDatabase[] = []
@@ -190,7 +190,7 @@ async function erase(guard: Attempt, knownFinal: unknown, remember: (v: unknown)
   try {
     const copies: Copy[] = [
       { copy: 'legacy', files: await open('arty-files', 2, FILE_SHAPE), projects: await open('arty-projects', 2, PROJECT_SHAPE) },
-      { copy: 'active', files: await open(layout.files.name, 1, FILE_SHAPE), projects: await open(layout.projects.name, 1, PROJECT_SHAPE) },
+      { copy: 'active', files: await open(layout.files.name, layout.files.version, FILE_SHAPE), projects: await open(layout.projects.name, layout.projects.version, PROJECT_SHAPE) },
     ]
     const job = await open(migrationDatabaseName(layout.generation), 1, MIGRATION_JOURNAL_SHAPE)
     copies.push({ copy: 'journal', files: job, projects: job })
@@ -241,7 +241,7 @@ async function erase(guard: Attempt, knownFinal: unknown, remember: (v: unknown)
       if (resetId === priorReset?.resetId || resets.some(r => r.resetId === resetId)) return refuse()
       const identity = { owner: receipt.owner, operationId: receipt.operationId, nonce: receipt.nonce, phase: 'reserved' as const, proof: undefined! }
       const candidate: ErasureHeader = { format: 'arty-workspace-control', layout: 'isolated-v1', state: 'erasing',
-        generation: layout.generation, revision: initial.revision + 1, requiredOwners,
+        generation: layout.generation, revision: initial.revision + 1, requiredOwners, ...projectVersionFields(layout.projects.version),
         version: 6, resets, erasure: { ...identity, authority: receipt, fence: { initialLocal: pair[0], initialActive: pair[1], target },
           reset: { resetId, previousResetId: priorReset?.resetId ?? null } } }
       candidate.erasure.proof = (await readErasureProof(copies, job, candidate, guard)).value
@@ -319,6 +319,7 @@ async function erase(guard: Attempt, knownFinal: unknown, remember: (v: unknown)
       resetId: header.erasure.reset.resetId, phase: 'available' } : undefined
     const final = { format: 'arty-workspace-control', version: reset ? 7 : 2, layout: 'isolated-v1', state: 'ready',
       revision: header.revision + 1, generation: header.generation, requiredOwners: header.requiredOwners,
+      ...projectVersionFields(controlProjectsVersion(header)),
       ...(header.version === 6 ? { resets: [...header.resets, reset!] } : {}) }
     if (header.version === 6 && !parseResetReadyControl(final)) return refuse()
     const finalSnapshot = await erasureLocalSnapshot(header.generation, header.erasure.owner, header.version)
@@ -330,6 +331,6 @@ async function erase(guard: Attempt, knownFinal: unknown, remember: (v: unknown)
     await cas(header, final, guard, () => {
       if (!equal(finalLocal, localPairs()) || (header!.version !== 4 && localStorage.getItem(FENCE_KEY) !== header!.erasure.fence.target)) refuse()
     })
-    return isolatedWorkspaceLayout(header.generation, header.requiredOwners)
+    return isolatedWorkspaceLayout(header.generation, header.requiredOwners, controlProjectsVersion(header))
   } finally { opened.forEach(db => db.close()) }
 }

@@ -16,6 +16,7 @@ import { assertRestoreLocal, deriveRestoreUsage, openRestoreDatabases, proveRest
 import { prepareWorkspaceRestore } from './restorePlan'
 import { decodeUTF8 } from './bytes'
 import { RESTORE_ARCHIVE_BYTES, RESTORE_ADOPTION_BYTES } from './restoreLimits'
+import { controlProjectsVersion, projectVersionFields } from '../workspaceWriter/layout'
 
 /** Warm target preparation. Neither archive data nor callers choose the owner,
  * generation, baseline, destination addresses, ciphertexts or commit header. */
@@ -57,7 +58,7 @@ export async function prepareRestorePublication(file: Blob, code: string, receip
         if (await tx.objectStore('meta').count() !== 1) return restoreFail()
         return parseRestoreReady(await tx.objectStore('meta').get(WORKSPACE_CONTROL_KEY)) ?? restoreFail()
       })
-      if (base.generation !== layout.generation || !restoreEqual(base.requiredOwners, layout.requiredOwners)) return restoreFail()
+      if (base.generation !== layout.generation || controlProjectsVersion(base) !== layout.projects.version || !restoreEqual(base.requiredOwners, layout.requiredOwners)) return restoreFail()
       const plan = archive.plan, now = Date.now(), conversations = structuredClone(plan.conversations.map(c => c.conversation))
       const allNewIds = new Set(plan.mapping.ids.map(i => i.target))
       const fresh = () => { const id = crypto.randomUUID(); if (allNewIds.has(id)) return restoreFail(); allNewIds.add(id); return id }
@@ -161,7 +162,7 @@ export async function prepareRestorePublication(file: Blob, code: string, receip
       const bytes = new TextEncoder().encode(raw).length
       if (bytes > RESTORE_ADOPTION_BYTES) return restoreFail('limit')
       const header: RestoreHeader = { format: 'arty-workspace-control', version: 8, layout: 'isolated-v1', state: 'restoring', revision: base.revision + 1,
-        generation: base.generation, requiredOwners: [...base.requiredOwners], base, restore: { id: payload.id, owner: scope.owner, phase: 'copies', bytes, hash: await digestText(raw) } }
+        generation: base.generation, requiredOwners: [...base.requiredOwners], ...projectVersionFields(layout.projects.version), base, restore: { id: payload.id, owner: scope.owner, phase: 'copies', bytes, hash: await digestText(raw) } }
       if (!parseRestoreHeader(header)) return restoreFail('format')
       await parseRestorePayload(raw, header, guard)
       const preview = Object.freeze({ ...plan.resources, addedConversations: conversations.length, addedMessages: conversations.reduce((n, c) => n + c.messages.length, 0),

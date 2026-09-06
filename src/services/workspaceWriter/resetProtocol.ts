@@ -1,4 +1,4 @@
-import { isolatedWorkspaceLayout } from './layout'
+import { isolatedWorkspaceLayout, controlProjectsVersion, projectVersionKeys, type WorkspacePhysicalVersion } from './layout'
 import { assertOpaqueOwner } from './localOwnership'
 
 // Kept pure: cold admission/erasure must never import crypto or authentication.
@@ -19,7 +19,7 @@ function dense(v: unknown): v is unknown[] {
 export interface ResetBundle { salt: string; check: string; version: 'v1' | 'v2' }
 interface ResetIdentity { owner: string; operationId: string; resetId: string }
 export type ResetRecord = ResetIdentity & ({ phase: 'available' | 'consumed' } | { phase: 'provisioning'; bundle: ResetBundle })
-export interface ResetReadyControl {
+export interface ResetReadyControl extends WorkspacePhysicalVersion {
   format: 'arty-workspace-control'; version: 7; layout: 'isolated-v1'; state: 'ready'
   revision: number; generation: string; requiredOwners: (string | null)[]; resets: ResetRecord[]
 }
@@ -46,10 +46,10 @@ export function validResetRecords(v: unknown, owners: readonly (string | null)[]
   return true
 }
 export function parseResetReadyControl(v: unknown): ResetReadyControl | null {
-  if (!exactResetFields(v, ['format', 'version', 'layout', 'state', 'revision', 'generation', 'requiredOwners', 'resets']) ||
+  if (!exactResetFields(v, ['format', 'version', 'layout', 'state', 'revision', 'generation', 'requiredOwners', 'resets', ...projectVersionKeys(v)]) ||
     v.format !== 'arty-workspace-control' || v.version !== 7 || v.layout !== 'isolated-v1' || v.state !== 'ready' ||
     !Number.isSafeInteger(v.revision) || (v.revision as number) < 1) return null
-  try { isolatedWorkspaceLayout(v.generation as string, v.requiredOwners as (string | null)[]) } catch { return null }
+  try { isolatedWorkspaceLayout(v.generation as string, v.requiredOwners as (string | null)[], controlProjectsVersion(v)) } catch { return null }
   if (!validResetRecords(v.resets, v.requiredOwners as (string | null)[])) return null
   return structuredClone(v) as unknown as ResetReadyControl
 }

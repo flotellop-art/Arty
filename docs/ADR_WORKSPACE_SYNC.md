@@ -285,7 +285,9 @@ le diagnostic. Correctif **tests uniquement** : Date locale figée à midi et
 le rendu initial tardif, pas l'actualisation d'une page ouverte à minuit.
 Passe complète finale après correctif réussie sous Node 22.23.2 : **332 suites,
 4 345 tests réussis, 1 ignoré préexistant**, typechecks, couverture, no-CASA,
-build et worker Office isolé verts. CI exacte à vérifier avant fusion.
+build et worker Office isolé verts. CI du candidat #484 réussie, fusion main
+`77a561a02ec6e19b8f99eee14f5c8a01a5da924c`. CI main `34063135233` et Firebase
+`34063135145` revérifiées **success** le 6 septembre à 22:43 UTC.
 
 Recette Chrome 152.0.7977.77 le 6 septembre à 21:55 UTC : WebCrypto et IndexedDB
 natifs, page initiale détruite puis coffre synthétique redéverrouillé dans une
@@ -303,3 +305,92 @@ Reçus locaux ignorés : `workspace-sync-b2a-verify.log`,
 `workspace-sync-b2a-verify-release.log`, `workspace-sync-b2a-browser-final.log`.
 Aucun bucket, endpoint, migration, dépendance
 ou flag activé. Même repli Git que B1 ; l'ADR et W06 complet restent ouverts.
+
+### B2b en cours — barrière physique et reprise froide (7 septembre, local)
+
+Décision : garder les adresses et la génération existantes, ajouter le champ
+fermé `projectsVersion: 2` aux contrôles isolés et monter uniquement la DB
+projets active de 1 à 2. Absence du champ = version historique 1 ; les valeurs
+présentes `undefined`, `null`, `1`, chaînes, getters et versions futures sont
+refusées. Versions sémantiques 2/7/8 et effacement 4/5/6 restent distinctes de
+cette version physique. Les contrôles de reset/restauration/effacement la
+conservent ; le registre v7 complet, y compris son allocation `provisioning`,
+n'est jamais reconstruit. Les témoins legacy restent en version 2 et les
+fichiers actifs en version 1.
+
+Le vrai acteur `workspaceWriter/upgrade.ts` est raccordé à une entrée froide
+`/workspace/upgrade` et à la reprise détectée avant l'import privé. Il réclame
+le verrou document exclusif existant ; une fenêtre déjà admise ne peut pas
+devenir une fenêtre de maintenance. Aucun store métier, fichier, historique,
+clé ou valeur localStorage n'est écrit. Le ticket v9 contient la base complète,
+un identifiant et les deux fences bruts (absence préservée), jamais un secret.
+
+| Contrôle | DB projets active | Action autorisée |
+|---|---|---|
+| ready 2/7 historique | 1, schéma exact, meta vide/fence seul | réservation CAS v9 |
+| ticket v9 exact | 1 | versionchange vers 2, sans écriture de lignes |
+| ticket v9 exact | 2 | vérification puis CAS final |
+| ready 2/7 avec projectsVersion 2 | 2 | admission dans un nouveau document |
+
+Tout autre couple manque/version/schéma est refusé sans création ni réparation.
+La transaction d'upgrade refuse explicitement `oldVersion=0`, même si la DB
+disparaît entre préflight et ouverture. Une connexion bloquante ou un délai
+expiré retire l'ouverture : sa reprise tardive doit aborter. Le CAS final
+conserve la base et ajoute seulement le champ physique et deux révisions.
+Un résultat de commit incertain n'est retrouvé que comme le final exact déjà
+préparé par cet acteur ; un autre ready de même génération ne suffit pas.
+
+Alternative écartée : changer globalement tous les appels `open(1)` en `open(2)`
+ou créer une DB outbox indépendante non inventoriée. Cela mélangerait témoins
+legacy, copies de migration et stockage actif, sans reprise de crash attestée.
+La contrepartie du ticket est une maintenance froide avec rechargement ; les
+transactions IDB ne rendent pas atomiques plusieurs DB et localStorage. La
+garantie d'exclusion concerne les clients coopératifs utilisant le verrou,
+pas un ancien client antérieur au verrou ni un programme malveillant.
+Référence de sémantique : [IndexedDB 3, draft W3C du 13 août 2025](https://www.w3.org/TR/2025/WD-IndexedDB-3-20250813/#upgrade-transaction),
+complétée par les exécutions navigateur ci-dessous, pas présentée comme une REC.
+
+`WORKSPACE_UPGRADE_START_ENABLED=false` reste intrinsèque et sans override
+URL/localStorage. Les nouveaux départs natifs sont également refusés dans le
+service, pas seulement l'UI. La reprise d'un v9 adopté reste indépendante de
+START, y compris native. Aucun démarrage de synchronisation ni envoi n'est
+exposé par cette préparation. La grammaire d'enveloppe B2a a été extraite dans
+`envelopeFormat.ts`, pure et sans capacités de clé ; son API reste réexportée.
+
+Preuves locales : 32 tests de protocole/acteur, 4 tests UI réels de la porte
+froide (StrictMode/double clic, retour OAuth inchangé, démontage pendant import,
+reprise START OFF). Les cas d'intégration exercent les vrais services de clé,
+historique, fichiers et projets : allocation interrompue après le seul sel,
+upgrade, reprise de la même allocation, lecture/écriture de B et nouvel
+effacement/reset ; restauration de vraies archives v1/v2/v3 après upgrade.
+Ces suites unitaires utilisent fake-indexeddb, pas un moteur natif.
+
+Recette indépendante `scripts/check-workspace-upgrade-browser.mjs`, Chrome
+152.0.7977.77 à 22:43 UTC : vrai IndexedDB + Web Locks, destruction des pages,
+cinq scénarios (succès, coupure après ticket, coupure après montée physique,
+connexion tenue, disparition de la DB). Données synthétiques intactes, aucune
+DB disparue recréée, zéro erreur de page et zéro appel externe/API. Le harness
+active START **dans son seul build de test**, pas dans le dépôt. Le codec B2a
+a aussi été rejoué dans Chrome à 22:43:53 UTC après extraction : deux contextes,
+deux deltas, zéro rechiffrement et aucun appel externe.
+
+Deux challenges readonly avant code puis après code : réserve Web-only fermée
+dans le service ; canaris de remplacement du ticket et de fences modifiés
+pendant les deux CAS ajoutés. Deux GO code bornés après fermeture des réserves.
+`npm run verify` sous Node 22.23.2 réussi : **334 suites, 4 387 tests réussis,
+1 ignoré préexistant**, typechecks front/back, couverture, no-CASA, build et
+vrai worker Office isolé. Reçu local ignoré
+`.playwright-mcp/workspace-sync-b2b-upgrade-verify.log` ; recettes navigateur
+`workspace-upgrade-browser.log` et `workspace-sync-b2b-codec-browser.log`.
+Ce candidat n'est ni poussé ni déployé à ce stade ; la CI de B2a ci-dessus ne
+constitue pas la CI de B2b. Les avertissements préexistants de taille de chunks
+et les erreurs synthétiques des tests de refus ne sont pas des échecs de suite.
+
+Suite obligatoire B2b, non réalisée par cette barrière : grammaire d'ownership
+des lignes sync + inventaire/purge/provisioning/reset/restore, état privé sous
+secret sync, capture fidèle des vrais stores et mapping durable, adoption
+atomique état/opération, reprise des octets exacts puis rescan des modifications
+ultérieures. Ensuite transport/ACK, applicateur et recettes W06 complètes.
+Le secret verrouillé ne doit pas bloquer le chat local ; une opération déjà
+préparée ne doit pas être remplacée par une édition ultérieure. Il ne faut pas
+activer START ou un writer outbox sur la seule preuve de cette montée.

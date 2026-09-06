@@ -117,7 +117,7 @@ function renderApp() {
   // cold rather than reuse its private caches. No release on pagehide/hidden:
   // those documents can still have unfinished asynchronous writes.
   window.addEventListener('pageshow', event => {
-    if (event.persisted && (route === 'private' || route === 'workspace-setup')) window.location.reload()
+    if (event.persisted && (route === 'private' || route === 'workspace-setup' || route === 'workspace-upgrade')) window.location.reload()
   })
   createRoot(document.getElementById('root')!).render(
     <StrictMode>

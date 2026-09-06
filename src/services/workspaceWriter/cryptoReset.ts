@@ -143,7 +143,7 @@ async function inspectEmptyCopies(layout: IsolatedWorkspaceLayout, owner: string
   }
   try {
     await inspect('arty-files', 2, FILE_SHAPE); await inspect('arty-projects', 2, PROJECT_SHAPE)
-    await inspect(layout.files.name, 1, FILE_SHAPE, true); await inspect(layout.projects.name, 1, PROJECT_SHAPE, true)
+    await inspect(layout.files.name, layout.files.version, FILE_SHAPE, true); await inspect(layout.projects.name, layout.projects.version, PROJECT_SHAPE, true)
     await inspect(migrationDatabaseName(layout.generation), 1, MIGRATION_JOURNAL_SHAPE, false, true)
   } finally { clearTimeout(timer); documentWorkspaceSignal.removeEventListener('abort', stop); retired.abort() }
 }

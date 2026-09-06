@@ -1,29 +1,17 @@
 import { encodeSyncManifest, parseSyncManifest } from './schema'
 import { reconcileSyncManifests } from './causal'
 import { SYNC_LIMITS, type SyncManifest, type SyncValue } from './types'
+import { SYNC_ENVELOPE_LIMITS, parseSyncEnvelopeReference, envelopeFail as fail, envelopeFields as exact,
+  envelopeScope as scope, assertEnvelopeScope as sameScope, envelopeHash as hash, type SyncVaultScope, type SyncEnvelopeReference } from './envelopeFormat'
+export { SYNC_ENVELOPE_LIMITS, SyncEnvelopeError, parseSyncEnvelopeReference, type SyncVaultScope, type SyncEnvelopeReference } from './envelopeFormat'
 
 /** Candidate transport only: no storage, network, UI, ACK or server authority. */
-export const SYNC_ENVELOPE_LIMITS = {
-  metadataBytes: SYNC_LIMITS.manifestBytes + 1024,
-  plaintextBytes: 16 * 1024 * 1024,
-  ciphertextBytes: 17 * 1024 * 1024,
-  payloads: 256,
-  frames: 512,
-  chunkBytes: 256 * 1024,
-} as const
 const L = SYNC_ENVELOPE_LIMITS, HEADER = 104, PREFIX = 9, TAG = 16
 const utf8 = new TextEncoder(), MAGIC = utf8.encode('ARTYSYN1')
 const hex = (bytes: Uint8Array): string => Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('')
 const unhex = (text: string): Uint8Array => Uint8Array.from(text.match(/../g)!, pair => parseInt(pair, 16))
 const digest = async (bytes: Uint8Array): Promise<string> => hex(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)))
 
-export class SyncEnvelopeError extends Error {
-  constructor(public readonly code: 'format' | 'limit' | 'secret' | 'locked' | 'cancelled' | 'scope' | 'integrity' | 'base' | 'missing') {
-    super(`sync_envelope_${code}`); this.name = 'SyncEnvelopeError'
-  }
-}
-const fail = (code: SyncEnvelopeError['code']): never => { throw new SyncEnvelopeError(code) }
-export interface SyncVaultScope { vaultId: string; epoch: string }
 /** Captured account/document/erasure lifetime, NOT source-content freshness.
  * The application adapter must bind this to real owner/epoch/fence admission. */
 export interface SyncVaultGuard {
@@ -37,10 +25,6 @@ export interface SyncCaptureGuard { assertCurrent(): void; validate(): Promise<v
  * intended vault. Only opening an independently expected envelope proves that;
  * the future UI must not equate unlock() success with a confirmed secret. */
 export interface UnlockedSyncVault extends Readonly<SyncVaultScope> {}
-/** Public transport reference. Parsing this does NOT authenticate a server ACK. */
-export interface SyncEnvelopeReference extends SyncVaultScope {
-  format: 'arty-sync-envelope-ref'; version: 1; operationId: string; bytes: number; sha256: string
-}
 export interface PreparedSyncUpdate {
   readonly reference: Readonly<SyncEnvelopeReference>
   readonly ciphertext: Blob
@@ -55,40 +39,6 @@ export interface OpenedSyncUpdate {
   validate(): Promise<void>
 }
 
-function exact(input: unknown, keys: readonly string[]): Record<string, unknown> {
-  if (!input || typeof input !== 'object' || Object.getPrototypeOf(input) !== Object.prototype || Object.getOwnPropertySymbols(input).length) return fail('format')
-  const names = Object.getOwnPropertyNames(input), result: Record<string, unknown> = {}
-  if (names.length !== keys.length || names.some(name => !keys.includes(name))) return fail('format')
-  for (const key of keys) {
-    const property = Object.getOwnPropertyDescriptor(input, key)
-    if (!property?.enumerable || !('value' in property)) return fail('format')
-    result[key] = property.value
-  }
-  return result
-}
-function uuid(value: unknown): string {
-  if (typeof value !== 'string' || value.length !== 36 || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(value)) return fail('format')
-  return value
-}
-function scope(input: unknown): SyncVaultScope {
-  const value = exact(input, ['vaultId', 'epoch'])
-  return { vaultId: uuid(value.vaultId), epoch: uuid(value.epoch) }
-}
-function sameScope(a: SyncVaultScope, b: SyncVaultScope): void {
-  if (a.vaultId !== b.vaultId || a.epoch !== b.epoch) fail('scope')
-}
-function hash(value: unknown): string {
-  if (typeof value !== 'string' || value.length !== 64 || !/^[0-9a-f]{64}$/.test(value)) return fail('format')
-  return value
-}
-export function parseSyncEnvelopeReference(input: unknown): Readonly<SyncEnvelopeReference> {
-  const value = exact(input, ['format', 'version', 'vaultId', 'epoch', 'operationId', 'bytes', 'sha256'])
-  if (value.format !== 'arty-sync-envelope-ref' || value.version !== 1 || typeof value.bytes !== 'number' ||
-    !Number.isSafeInteger(value.bytes) || value.bytes <= HEADER + PREFIX + TAG) return fail('format')
-  if (value.bytes > L.ciphertextBytes) return fail('limit')
-  return Object.freeze({ format: 'arty-sync-envelope-ref', version: 1, vaultId: uuid(value.vaultId), epoch: uuid(value.epoch),
-    operationId: uuid(value.operationId), bytes: value.bytes, sha256: hash(value.sha256) })
-}
 function immutableBlob(input: Blob): Blob {
   // Native intrinsic rejects non-Blobs and avoids overridden size/slice methods.
   try { return Blob.prototype.slice.call(input, 0, undefined, 'application/octet-stream') }

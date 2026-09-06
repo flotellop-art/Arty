@@ -7,6 +7,7 @@ import type { ResetRecord } from './resetProtocol'
 import { equalErasure } from './erasureInventory'
 import { getActiveUserId, getActiveSessionEpoch, getSessionProjectFence, PROJECT_ERASURE_FENCE_KEY } from '../userSession'
 import { captureOwnerErasureGuard } from '../projects/localErasureGuard'
+import { controlProjectsVersion } from './layout'
 
 const refuse = (): never => { throw new Error('workspace_reset_unverifiable') }
 /** Only the document owner writes. No new DB, no second metadata record and no
@@ -35,11 +36,11 @@ async function access(assert: () => void, expected?: ResetReadyControl, next?: R
         const raw = await store.get(WORKSPACE_CONTROL_KEY)
         const layout = validateWorkspaceControl(raw), current = getDocumentStorageLayout()
         if (layout.kind !== 'isolated-v1' || current.kind !== 'isolated-v1' || layout.generation !== current.generation ||
-          !equalErasure(layout.requiredOwners, current.requiredOwners)) return refuse()
+          layout.projects.version !== current.projects.version || !equalErasure(layout.requiredOwners, current.requiredOwners)) return refuse()
         guard()
         if (next) {
           if (!expected || !parseResetReadyControl(expected) || !parseResetReadyControl(next) || !equalErasure(raw, expected) ||
-            next.revision !== expected.revision + 1 || next.generation !== expected.generation || !equalErasure(next.requiredOwners, expected.requiredOwners)) return refuse()
+            next.revision !== expected.revision + 1 || next.generation !== expected.generation || controlProjectsVersion(next) !== controlProjectsVersion(expected) || !equalErasure(next.requiredOwners, expected.requiredOwners)) return refuse()
           guard(); beforePut!(); await store.put!(next, WORKSPACE_CONTROL_KEY)
         }
         await tx.done; guard(); return raw

@@ -12,7 +12,7 @@ import { renderHook, act, cleanup } from '@testing-library/react'
 
 vi.unmock('../../services/workspaceWriter/runtime')
 const policy = vi.hoisted(() => ({ start: true }))
-vi.mock('../../services/workspaceWriter/activation', () => ({ ISOLATED_WORKSPACE_ENABLED: true, get WORKSPACE_RESTORE_START_ENABLED() { return policy.start } }))
+vi.mock('../../services/workspaceWriter/activation', () => ({ ISOLATED_WORKSPACE_ENABLED: true, WORKSPACE_UPGRADE_START_ENABLED: true, get WORKSPACE_RESTORE_START_ENABLED() { return policy.start } }))
 vi.mock('@capacitor/core', () => ({ Capacitor: { isNativePlatform: () => false, getPlatform: () => 'web' }, registerPlugin: () => ({}) }))
 let runtime: typeof import('../../services/workspaceWriter/runtime'), users: typeof import('../../services/userSession'), crypt: typeof import('../../services/crypto')
 let history: typeof import('../../services/storage'), warm: typeof import('../../services/workspaceBackup/restorePublication'), cold: typeof import('../../services/workspaceWriter/restore')
@@ -111,7 +111,12 @@ it.each(['same', 'token-account-change', 'response-account-change', 'body-accoun
   }
 })
 
-it.each([1, 2, 3] as const)('real archive v%s → atomic adoption → no-key cold publication → usable copies', async version => {
+it.each([[1, 1], [2, 1], [3, 1], [1, 2], [2, 2], [3, 2]] as const)('real archive v%s → projects physical %s → atomic adoption → no-key cold publication → usable copies', async (version, physical) => {
+  if (physical === 2) {
+    await newDocument(); await (await import('../../services/workspaceWriter/upgrade')).createColdWorkspaceUpgrade('start').run()
+    await ready(); layout = runtime.getDocumentStorageLayout() as IsolatedWorkspaceLayout
+    expect(layout.projects.version).toBe(2)
+  }
   const existing = structuredClone(history.getConversations()), before = await root(), { prepared, source, objects } = await prepare('full', version)
   expect(prepared.preview.targetOwner).toBe('a'); expect(prepared.preview.receiptFiles).toBe(0)
   expect(await root()).toEqual(before); expect(await journal()).toHaveLength(1)

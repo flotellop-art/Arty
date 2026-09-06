@@ -1,4 +1,14 @@
 {
+  "workspaceUpgrade": {
+    "title": "Préparation du stockage local",
+    "choose": "Cette étape prépare le stockage local sans envoyer ni remplacer vos conversations ou fichiers. Elle n’active pas encore la synchronisation.",
+    "working": "Préparation en cours… Arty reste fermé dans cette fenêtre.",
+    "done": "Préparation terminée. Rechargez Arty pour rouvrir votre espace local.",
+    "failed": "La préparation n’a pas pu être confirmée. Rechargez Arty pour reprendre l’étape interrompue. Ne supprimez pas le stockage du navigateur.",
+    "disabled": "Le démarrage de cette préparation n’est pas encore disponible. Votre espace local reste inchangé.",
+    "start": "Préparer le stockage local",
+    "resume": "Reprendre la préparation"
+  },
   "productMeasurement": {
     "title": "Partager les résultats techniques du guide Réponse client",
     "on": "Activé",

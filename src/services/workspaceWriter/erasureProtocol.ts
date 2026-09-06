@@ -1,4 +1,4 @@
-import { isolatedWorkspaceLayout } from './layout'
+import { isolatedWorkspaceLayout, controlProjectsVersion, projectVersionKeys, type WorkspacePhysicalVersion } from './layout'
 import { assertOpaqueOwner } from './localOwnership'
 import { parseAccountErasureRecord, type AccountErasureRecord } from '../accountErasureJournal'
 import { resetUuid, exactResetFields, validResetRecords, type ResetRecord } from './resetProtocol'
@@ -8,7 +8,7 @@ export interface ConfirmedLocalCleanup {
 }
 export interface ErasureStoreProof { copy: 'legacy' | 'active' | 'journal'; store: 'files' | 'projects' | 'documents' | 'usage' | 'meta'; hash: string; count: number }
 export interface ErasureProof { localHash: string; planHash: string; stores: ErasureStoreProof[] }
-interface ErasureBase {
+interface ErasureBase extends WorkspacePhysicalVersion {
   format: 'arty-workspace-control'; layout: 'isolated-v1'; state: 'erasing'
   revision: number; generation: string; requiredOwners: (string | null)[]
 }
@@ -43,10 +43,10 @@ export function parseConfirmedCleanup(v: unknown): ConfirmedLocalCleanup | null 
   return { owner: v.owner, operationId: v.operationId, nonce: v.nonce, serverConfirmed: true, pending: [...v.pending] as string[] }
 }
 export function parseErasureHeader(v: unknown): ErasureHeader | null {
-  if (!v || typeof v !== 'object' || !fields(v, ['format', 'version', 'layout', 'state', 'revision', 'generation', 'requiredOwners', 'erasure', ...(Object.getOwnPropertyDescriptor(v, 'version')?.value === 6 ? ['resets'] : [])]) ||
+  if (!v || typeof v !== 'object' || !fields(v, ['format', 'version', 'layout', 'state', 'revision', 'generation', 'requiredOwners', 'erasure', ...(Object.getOwnPropertyDescriptor(v, 'version')?.value === 6 ? ['resets'] : []), ...projectVersionKeys(v)]) ||
     v.format !== 'arty-workspace-control' || (v.version !== 4 && v.version !== 5 && v.version !== 6) || v.layout !== 'isolated-v1' || v.state !== 'erasing' ||
     !Number.isSafeInteger(v.revision) || (v.revision as number) < 1 || (v.revision as number) > Number.MAX_SAFE_INTEGER - 8) return null
-  try { isolatedWorkspaceLayout(v.generation as string, v.requiredOwners as (string | null)[]) } catch { return null }
+  try { isolatedWorkspaceLayout(v.generation as string, v.requiredOwners as (string | null)[], controlProjectsVersion(v)) } catch { return null }
   const e = v.erasure
   if (!fields(e, ['owner', 'operationId', 'nonce', 'phase', 'proof', ...(v.version !== 4 ? ['fence', 'authority'] : []), ...(v.version === 6 ? ['reset'] : [])]) || !cleanupId(e.operationId) || !cleanupId(e.nonce) ||
     !['reserved', 'local', 'native', 'verified', ...(v.version !== 4 ? ['fenced'] : [])].includes(e.phase as string)) return null

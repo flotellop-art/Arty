@@ -11,7 +11,7 @@ import { workspaceDataKey } from '../../services/workspaceWriter/layout'
 vi.unmock('../../services/workspaceWriter/runtime')
 vi.mock('react', async original => original()) // one React identity across simulated cold documents
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }))
-vi.mock('../../services/workspaceWriter/activation', () => ({ ISOLATED_WORKSPACE_ENABLED: true, WORKSPACE_RESTORE_START_ENABLED: true }))
+vi.mock('../../services/workspaceWriter/activation', () => ({ ISOLATED_WORKSPACE_ENABLED: true, WORKSPACE_RESTORE_START_ENABLED: true, WORKSPACE_UPGRADE_START_ENABLED: true }))
 vi.mock('@capacitor/core', () => ({ Capacitor: { isNativePlatform: () => false, getPlatform: () => 'web' }, registerPlugin: () => ({}) }))
 const native = vi.hoisted(() => ({ reopen: vi.fn(async () => {}) }))
 vi.mock('../../services/native/coldMailErasure', async original => ({ ...await original<typeof import('../../services/native/coldMailErasure')>(), reopenColdMailScope: native.reopen }))
@@ -874,6 +874,38 @@ it.each(['allocated', 'salt', 'check', 'version', 'native', 'consumed'])('crash 
   expect(localStorage.getItem(workspaceDataKey(layout, a, 'crypto-salt'))).toBe((allocated as { salt: string }).salt)
   expect((await control()).resets[0].phase).toBe('consumed')
   users.rememberSession(account(a)); await writeAndRead(`after-${point}`)
+}, 30_000)
+
+it('physical upgrade preserves a real salt-only reset allocation, real B writes, and the next erasure/reset cycle', async () => {
+  const { a, b, savedB, layout } = await prepare(); await handoff(); await cold()
+  const set = Storage.prototype.setItem
+  const fault = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (this: Storage, key, value) {
+    set.call(this, key, value)
+    if (key === workspaceDataKey(layout, a, 'crypto-salt')) throw new Error('salt-only cut')
+  })
+  await expect(explicit(a)).rejects.toThrow('salt-only cut'); fault.mockRestore()
+  const allocated = await control(), bundle = allocated.resets[0].bundle
+  expect(allocated.resets[0].phase).toBe('provisioning')
+  expect(localStorage.getItem(workspaceDataKey(layout, a, 'crypto-salt'))).toBe(bundle.salt)
+  expect(localStorage.getItem(workspaceDataKey(layout, a, 'crypto-check'))).toBeNull()
+  await newDocument()
+  await (await import('../../services/workspaceWriter/upgrade')).createColdWorkspaceUpgrade('start').run()
+  expect(await control()).toEqual({ ...allocated, projectsVersion: 2, revision: allocated.revision + 2 })
+  expect(runtime.workspaceAdmission.getSnapshot()).toBe('maintenance')
+  await newDocument(); expect(await runtime.workspaceAdmission.admit()).toBe('ready')
+  let { users, crypt } = await explicit(a)
+  expect(await crypt.selfTestCrypto()).toBe(true)
+  expect(localStorage.getItem(workspaceDataKey(layout, a, 'crypto-salt'))).toBe(bundle.salt)
+  expect((await control()).resets[0].phase).toBe('consumed')
+  users.rememberSession(account(a)); await writeAndRead('after-physical-upgrade')
+  users.setActiveSession(account(b)); await crypt.initCrypto('key-b'); await readAndUpdate(savedB)
+  users.setActiveSession(account(a)); await crypt.initCrypto('new-key-a'); await handoff(); await cold()
+  expect((await control()).projectsVersion).toBe(2)
+  ;({ users, crypt } = await explicit(a))
+  expect(localStorage.getItem(workspaceDataKey(layout, a, 'crypto-salt'))).not.toBe(bundle.salt)
+  users.rememberSession(account(a)); await writeAndRead('second-physical-reset')
+  users.setActiveSession(account(b)); await crypt.initCrypto('key-b'); await readAndUpdate(savedB)
+  expect(fetch).not.toHaveBeenCalled()
 }, 30_000)
 
 it('pending rights cannot be consumed by ordinary init; wrong key and consumed missing salt never allocate', async () => {
