@@ -10,7 +10,7 @@ import { workspaceDataKey, type IsolatedWorkspaceLayout } from '../../services/w
 import { localPairs, digestRaw, digestText, RAW_STORES } from '../../services/workspaceWriter/migrationInventory'
 
 vi.unmock('../../services/workspaceWriter/runtime')
-vi.mock('../../services/workspaceWriter/activation', () => ({ ISOLATED_WORKSPACE_ENABLED: true }))
+vi.mock('../../services/workspaceWriter/activation', () => ({ ISOLATED_WORKSPACE_ENABLED: true, WORKSPACE_RESTORE_START_ENABLED: true }))
 const native = vi.hoisted(() => ({ android: false, clear: vi.fn() }))
 vi.mock('@capacitor/core', () => ({ Capacitor: { isNativePlatform: () => native.android, getPlatform: () => 'android' },
   registerPlugin: () => ({ clearAccountsForErasure: native.clear, clearAccountsForReset: native.clear }) }))

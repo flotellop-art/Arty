@@ -51,6 +51,7 @@ import { getCustomInstructions, setCustomInstructions, MAX_CUSTOM_INSTRUCTIONS_C
 import { LocalMemoryModal } from './LocalMemoryModal'
 import { AccountDeletionPanel } from './AccountDeletionPanel'
 import { ArchiveVerifier, archiveButton } from '../workspace/ArchiveVerifier'
+import { WorkspaceRestorer } from '../workspace/WorkspaceRestorer'
 
 interface SettingsModalProps {
   open: boolean
@@ -81,7 +82,8 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose, onOpen
   const [factCheckMode, setFactCheckModeState] = useState<FactCheckMode>(getFactCheckMode)
   const [showMemoryHistory, setShowMemoryHistory] = useState(false)
   const [showArchiveVerifier, setShowArchiveVerifier] = useState(false)
-  useEffect(() => { if (open) dialogRef.current?.querySelector<HTMLButtonElement>('button:not([disabled])')?.focus() }, [open, showArchiveVerifier, dialogRef])
+  const [showRestorer, setShowRestorer] = useState(false)
+  useEffect(() => { if (open) dialogRef.current?.querySelector<HTMLButtonElement>('button:not([disabled])')?.focus() }, [open, showArchiveVerifier, showRestorer, dialogRef])
   const [showMemoryViewer, setShowMemoryViewer] = useState(false)
   const [streakData, setStreakDataState] = useState<StreakData>(getStreakData)
   const [showLocalMemory, setShowLocalMemory] = useState(false)
@@ -105,7 +107,7 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose, onOpen
   }, [])
 
   useEffect(() => {
-    if (!open) setShowArchiveVerifier(false)
+    if (!open) { setShowArchiveVerifier(false); setShowRestorer(false) }
     if (!open) return
     setNotifEnabled(areNotificationsEnabled())
     setLocationEnabled(isLocationConsentEnabled())
@@ -272,11 +274,12 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose, onOpen
           </p>
         </div>
 
-        {showArchiveVerifier ? <div className="p-6 space-y-4">
-          <button className={archiveButton} onClick={() => setShowArchiveVerifier(false)}>{t('workspaceArchive.backSettings')}</button>
-          <ArchiveVerifier />
+        {showArchiveVerifier || showRestorer ? <div className="p-6 space-y-4">
+          <button className={archiveButton} onClick={() => { setShowArchiveVerifier(false); setShowRestorer(false) }}>{t('workspaceArchive.backSettings')}</button>
+          {showRestorer ? <WorkspaceRestorer /> : <ArchiveVerifier />}
         </div> : <div className="p-6 space-y-6">
           <button className={`${archiveButton} w-full text-left`} onClick={() => setShowArchiveVerifier(true)}>{t('workspaceArchive.verifyTitle')}</button>
+          <button className={`${archiveButton} w-full text-left`} onClick={() => setShowRestorer(true)}>{t('workspaceRestore.title')}</button>
           {/* Notifications toggle */}
           <div>
             <div className="flex items-center justify-between gap-4">

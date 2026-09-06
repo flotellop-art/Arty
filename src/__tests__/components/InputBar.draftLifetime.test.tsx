@@ -9,7 +9,7 @@ import { deferred, sharedWorkspaceLocks } from '../helpers/workspaceLocks'
 
 vi.unmock('../../services/workspaceWriter/runtime')
 // Exercise both real layouts, not production activation (which remains OFF).
-vi.mock('../../services/workspaceWriter/activation', () => ({ ISOLATED_WORKSPACE_ENABLED: true }))
+vi.mock('../../services/workspaceWriter/activation', () => ({ ISOLATED_WORKSPACE_ENABLED: true, WORKSPACE_RESTORE_START_ENABLED: true }))
 vi.mock('react-i18next', async original => ({ ...(await original<typeof import('react-i18next')>()),
   useTranslation: () => ({ t: (key: string) => key }),
 }))

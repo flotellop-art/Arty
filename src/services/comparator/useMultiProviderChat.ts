@@ -3,6 +3,7 @@ import { findModel, type PanelConfig } from './providerCatalog'
 import { estimateTokens, estimateCostEur } from './tokenEstimator'
 import { validModelId, type ModelUsedEvent } from '../modelLabels'
 import { getActiveUserId, getActiveSessionEpoch } from '../userSession'
+import { beginConversationWork } from '../conversationWork'
 
 export type StreamFactory = (
   messages: Array<{ role: string; content: string }>,
@@ -83,7 +84,8 @@ export function useMultiProviderChat(opts: UseMultiProviderChatOptions) {
     const distinct = new Set(selected.map(c => `${c.provider}:${findModel(c.provider, c.modelId)?.modelId ?? c.modelId}`)).size
     const globalError = !userId ? 'compare.access.auth' : selected.length < 2 || selected.length > 4 || distinct < 2 ? 'compare.access.twoModels' : null
     setPanelsState(selected.map(initialState))
-    await Promise.allSettled(selected.map(config => new Promise<void>(resolve => {
+    const finishWork = beginConversationWork('comparison-panels')
+    try { await Promise.allSettled(selected.map(config => new Promise<void>(resolve => {
       let active = true, accumulated = '', firstToken: number | null = null
       let attribution: ModelUsedEvent | undefined
       let timer: ReturnType<typeof setTimeout> | undefined
@@ -138,7 +140,7 @@ export function useMultiProviderChat(opts: UseMultiProviderChatOptions) {
         task.controller = controller
         if (!valid()) controller.abort() // synchronous done/error or Stop during factory
       } catch (error) { finish(error instanceof Error ? error : new Error(String(error))) }
-    })))
+    }))) } finally { finishWork() }
   }, [invalidate])
   return { panels, setPanels, send, cancel, isStreaming: panels.some(p => p.status === 'streaming') }
 }

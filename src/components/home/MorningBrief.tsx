@@ -12,6 +12,7 @@ import {
 import { getDateLocale } from '../../utils/formatDate'
 import { getValidAccessToken } from '../../services/googleAuth'
 import { apiUrl } from '../../services/apiBase'
+import { beginConversationWork } from '../../services/conversationWork'
 
 interface Props {
   onClose: () => void
@@ -114,6 +115,8 @@ function MorningBriefInner({ onClose, onSend, userName, isGoogleConnected }: Pro
 
     const signal = lifetime.current.signal, scope = captureCalendarContext(signal)
     audioScope.current = scope
+    const finishWork = beginConversationWork('morning-brief-audio')
+    try {
     let token: string | null = null
     try {
       token = await getValidAccessToken()
@@ -170,6 +173,7 @@ function MorningBriefInner({ onClose, onSend, userName, isGoogleConnected }: Pro
       }
 
       const blob = await res.blob()
+      finishWork() // local playback is not an in-flight AI request
       scope.assertCurrent()
       const url = URL.createObjectURL(blob)
 
@@ -203,6 +207,7 @@ function MorningBriefInner({ onClose, onSend, userName, isGoogleConnected }: Pro
       setAudioStatus('error')
       setAudioError(t('morningBrief.player.errorGeneric'))
     }
+    } finally { finishWork() }
   }
 
   const handleClose = () => {

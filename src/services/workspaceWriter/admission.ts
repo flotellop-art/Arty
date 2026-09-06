@@ -1,7 +1,8 @@
-import { readWorkspaceStorageLayout, WorkspaceAdmissionError, WorkspaceRecoveryAvailable, WorkspaceErasureRecoveryAvailable, erasureAdmissionBinding, type AdmissionFailure, type AdmissionGuard } from './control'
+import { readWorkspaceStorageLayout, WorkspaceAdmissionError, WorkspaceRecoveryAvailable, WorkspaceRestoreAvailable, WorkspaceErasureRecoveryAvailable, erasureAdmissionBinding, type AdmissionFailure, type AdmissionGuard } from './control'
 import type { AccountErasureState } from '../accountErasureJournal'
 import type { MigrationHeader } from './migrationProtocol'
 import type { WorkspaceStorageLayout } from './layout'
+import type { RestoreHeader } from './restoreProtocol'
 
 export type WorkspaceAdmissionPhase = 'idle' | 'checking' | 'ready' | AdmissionFailure
 
@@ -11,6 +12,7 @@ export function createWorkspaceAdmission(guard: AdmissionGuard, read = readWorks
   let phase: WorkspaceAdmissionPhase = guard.signal.aborted ? 'lost' : 'idle', layout: WorkspaceStorageLayout | undefined
   let pending: Promise<WorkspaceAdmissionPhase> | undefined
   let recovery: Readonly<MigrationHeader> | undefined, erasure = false, claimed = false
+  let restore: Readonly<RestoreHeader> | undefined
   let erasureMode: AccountErasureState = 'confirmed'
   let erasureBinding: string | undefined
   const listeners = new Set<() => void>()
@@ -29,7 +31,7 @@ export function createWorkspaceAdmission(guard: AdmissionGuard, read = readWorks
      * Even cancellation requires a new document before any private App import. */
     claimMaintenance(): AdmissionGuard {
       guard.assertLock()
-      if (lost() || claimed || (phase !== 'idle' && phase !== 'recoverable' && phase !== 'erasure')) throw new WorkspaceAdmissionError(lost() ? 'lost' : 'unavailable')
+      if (lost() || claimed || (phase !== 'idle' && phase !== 'recoverable' && phase !== 'restoring' && phase !== 'erasure')) throw new WorkspaceAdmissionError(lost() ? 'lost' : 'unavailable')
       claimed = true
       publish('maintenance')
       return Object.freeze({ signal: guard.signal, assertLock() {
@@ -38,6 +40,7 @@ export function createWorkspaceAdmission(guard: AdmissionGuard, read = readWorks
       } })
     },
     getRecovery() { guard.assertLock(); return recovery },
+    getRestoreRecovery() { guard.assertLock(); return restore },
     hasErasureRecovery() { guard.assertLock(); return erasure },
     getErasureMode() { guard.assertLock(); return erasureMode },
     /** Compare without handing the receipt/capability to the UI. Direct cold
@@ -65,6 +68,7 @@ export function createWorkspaceAdmission(guard: AdmissionGuard, read = readWorks
         } catch (error) {
           layout = undefined
           if (error instanceof WorkspaceRecoveryAvailable && !lost()) recovery = error.header
+          if (error instanceof WorkspaceRestoreAvailable && !lost()) restore = error.header
           if (error instanceof WorkspaceAdmissionError && error.code === 'erasure' && !lost()) erasure = true
           if (error instanceof WorkspaceErasureRecoveryAvailable && !lost()) { erasureMode = error.mode; erasureBinding = error.binding }
           publish(lost() ? 'lost' : error instanceof WorkspaceAdmissionError ? error.code : 'unavailable')

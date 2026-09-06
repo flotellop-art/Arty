@@ -7,6 +7,7 @@ import { getActiveUserId, getActiveSessionEpoch } from '../services/userSession'
 import { EMPTY_GENERATED_IMAGES, isGeneratedImageId, MAX_GENERATED_IMAGES_PER_TURN } from '../services/generatedImages'
 import { onLocalDataInvalidated } from '../services/localDataInvalidation'
 import { PROJECT_ERASURE_FENCE_KEY } from '../services/userSession'
+import { beginConversationWork } from '../services/conversationWork'
 
 // Cap de streams concurrents — protège des coûts d'abus (8 convs ouvertes en
 // même temps = 8 appels LLM en // sur le compte du proprio). 3 suffit largement
@@ -24,6 +25,7 @@ export interface ExternalStreamLease {
 }
 
 type StreamState = {
+  finishWork(): void
   external?: ExternalStreamLifecycle
   generatedImages: string[]
   projectTurn?: ProjectTurn
@@ -191,6 +193,7 @@ export function useStreaming(deps: {
   // si la conv concernée était celle affichée.
   const teardownStream = useCallback((targetId: string) => {
     const s = streamsRef.current.get(targetId)
+    s?.finishWork()
     if (s?.saveInterval) {
       clearInterval(s.saveInterval)
       s.saveInterval = null
@@ -278,6 +281,7 @@ export function useStreaming(deps: {
       external,
       targetId,
       invocationId: generateId(),
+      finishWork: beginConversationWork(targetId),
       accumulated: '',
       generatedImages: [],
       saveInterval: setInterval(() => {
@@ -486,6 +490,7 @@ export function useStreaming(deps: {
 
   useEffect(() => () => {
     for (const stream of streamsRef.current.values()) {
+      stream.finishWork()
       if (stream.saveInterval) clearInterval(stream.saveInterval)
       try { stream.external?.cancel('unmount') } catch { /* Keep cleaning up siblings. */ }
       try { stream.abortController?.abort() } catch { /* Keep cleaning up siblings. */ }

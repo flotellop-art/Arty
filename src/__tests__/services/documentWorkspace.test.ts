@@ -120,6 +120,12 @@ describe('public entry routing without session module hydration', () => {
     expect(route('/', '?start=1')).toBe('private'); expect(route('/', '', true)).toBe('private'); expect(route('/', '', false, true)).toBe('private')
     expect(route('/', '?start')).toBe('private'); expect(route('/', '?start=')).toBe('private')
   })
+  it('only the exact setup route enters cold consent, without hydrating auth or consuming callback/query input', () => {
+    const read = vi.fn(() => { throw new Error('private storage must not be read here') })
+    expect(getWorkspaceEntryRoute('/workspace/prepare', '?code=unconsumed&start=1', false, false, { getItem: read })).toBe('workspace-setup')
+    expect(read).not.toHaveBeenCalled()
+    expect(route('/workspace/prepare/')).toBe('private'); expect(route('/workspace/prepare/anything')).toBe('private')
+  })
   it.each(['/login', '/auth/callback', '/auth/callback/', '/conversation/id', '/upgrade', '/share/id/more', '/unknown'])('never exempts %s', path => {
     expect(route(path, '?code=not-consumed&state=not-consumed')).toBe('private')
   })

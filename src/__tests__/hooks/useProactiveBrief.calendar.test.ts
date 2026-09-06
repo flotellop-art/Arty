@@ -5,6 +5,7 @@ import { resetCalendarFixture, relinkCalendarGoogle, syntheticEvent } from '../h
 import { streamMessage } from '../../services/anthropicClient'
 import { addTask } from '../../services/taskService'
 import type { BriefItem } from '../../services/proactiveBriefActions'
+import { hasActiveConversationWork } from '../../services/conversationWork'
 vi.mock('../../services/apiBase', () => ({ apiUrl: (path: string) => path }))
 vi.mock('../../services/anthropicClient', () => ({ streamMessage: vi.fn(() => new AbortController()) }))
 vi.mock('../../services/proactiveBriefSettings', () => ({ isProactiveBriefEnabled: () => true, isBriefDue: () => true, markBriefRun: vi.fn(), shouldScheduleNudge: () => false, markNudgeScheduled: vi.fn(), getBriefPrefs: () => ({ length: 'normal' }) }))
@@ -20,6 +21,15 @@ async function trigger() {
   return hook
 }
 describe('Proactive brief Calendar ownership', () => {
+  it.each(['dismiss', 'unmount'] as const)('releases live background work on %s even if the provider never calls done/error on abort', async action => {
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ events: [syntheticEvent] })))
+    const hook = await trigger()
+    await waitFor(() => expect(streamMessage).toHaveBeenCalledOnce())
+    expect(hasActiveConversationWork()).toBe(true)
+    await act(async () => { if (action === 'dismiss') hook.result.current.dismiss(); else hook.unmount() })
+    await waitFor(() => expect(hasActiveConversationWork()).toBe(false))
+    expect(vi.mocked(streamMessage).mock.results[0]!.value.signal.aborted).toBe(true)
+  })
   it('unavailable is not a calm/empty agenda and does not call an AI', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 503 })))
     const hook = await trigger()

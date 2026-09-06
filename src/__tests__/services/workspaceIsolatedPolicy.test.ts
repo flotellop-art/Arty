@@ -6,9 +6,11 @@ import { createWorkspaceAdmission } from '../../services/workspaceWriter/admissi
 import { isolatedWorkspaceLayout, workspaceDataKey } from '../../services/workspaceWriter/layout'
 import { ISOLATED_WORKSPACE_ENABLED } from '../../services/workspaceWriter/activation'
 import { GENERATION, seedIsolatedWorkspace } from '../helpers/isolatedWorkspace'
+// Historical incompatible-reader behavior, NOT the current release setting.
+vi.mock('../../services/workspaceWriter/activation', () => ({ ISOLATED_WORKSPACE_ENABLED: false, WORKSPACE_RESTORE_START_ENABLED: false }))
 
 beforeEach(() => { globalThis.indexedDB = new IDBFactory(); localStorage.clear() })
-it('real OFF policy blocks the cold migrator before any reservation, data read, or write', async () => {
+it('an explicit old OFF policy blocks the cold migrator before any reservation, data read, or write', async () => {
   const opening = vi.spyOn(indexedDB, 'open'), read = vi.spyOn(Storage.prototype, 'getItem'), write = vi.spyOn(Storage.prototype, 'setItem')
   const { createColdWorkspaceMigration, createColdMigrationErasure, createColdErasurePreparation, createColdMigrationCancellation } = await import('../../services/workspaceWriter/migration')
   expect(() => createColdWorkspaceMigration()).toThrow('workspace_migration_disabled')
@@ -20,7 +22,7 @@ it('real OFF policy blocks the cold migrator before any reservation, data read, 
   expect(opening).not.toHaveBeenCalled(); expect(read).not.toHaveBeenCalled(); expect(write).not.toHaveBeenCalled()
   opening.mockRestore(); read.mockRestore(); write.mockRestore()
 })
-it('the actual release policy refuses a fully valid isolated fixture, without reading private data or allowing private import', async () => {
+it('the old incompatible-reader fixture refuses an isolated space without reading private data', async () => {
   expect(ISOLATED_WORKSPACE_ENABLED).toBe(false)
   await seedIsolatedWorkspace()
   const privateImport = vi.fn(), read = vi.spyOn(Storage.prototype, 'getItem'), write = vi.spyOn(Storage.prototype, 'setItem')

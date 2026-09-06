@@ -3,8 +3,10 @@ import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import type { FileAttachment } from '../../types'
 import { getFile } from '../../services/secureFileStorage'
+import { RestoredFileDownload } from '../workspace/RestoredFileDownload'
 
 interface UserBubbleProps {
+  restoredArchive?: boolean
   onCompare?: () => void
   content: string
   files?: FileAttachment[]
@@ -172,7 +174,7 @@ const FileThumbnail = memo(function FileThumbnail({ file }: { file: FileAttachme
   )
 })
 
-export const UserBubble = memo(function UserBubble({ content, files, pinned, onTogglePin, onEdit, onBranch, onCompare }: UserBubbleProps) {
+export const UserBubble = memo(function UserBubble({ content, files, pinned, onTogglePin, onEdit, onBranch, onCompare, restoredArchive }: UserBubbleProps) {
   const { t } = useTranslation()
   const [editing, setEditing] = useState(false)
   const [value, setValue] = useState(content)
@@ -257,7 +259,7 @@ export const UserBubble = memo(function UserBubble({ content, files, pinned, onT
       {hasFiles && (
         <div className="flex flex-wrap gap-2 mb-1.5 justify-end max-w-[85%]">
           {files!.map((f) => (
-            <FileThumbnail key={f.id} file={f} />
+            <div key={f.id}><FileThumbnail file={f} />{restoredArchive && <RestoredFileDownload id={f.id} name={f.name} />}</div>
           ))}
         </div>
       )}

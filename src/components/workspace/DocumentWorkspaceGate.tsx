@@ -20,15 +20,19 @@ const PrivateApp = lazy(async () => {
   return app
 })
 const ColdMigrationRecovery = lazy(() => import('./ColdMigrationRecovery'))
+const ColdRestoreRecovery = lazy(() => import('./ColdRestoreRecovery'))
+const ColdWorkspaceSetup = lazy(() => import('./ColdWorkspaceSetup'))
 
 type Controller = ReturnType<typeof createDocumentWorkspaceLock>
-export function DocumentWorkspaceGate({ controller = documentWorkspace, admission = workspaceAdmission, Content = PrivateApp }: {
-  controller?: Controller; admission?: ReturnType<typeof createWorkspaceAdmission>; Content?: ComponentType
+export function DocumentWorkspaceGate({ controller = documentWorkspace, admission = workspaceAdmission, Content = PrivateApp, setup = false }: {
+  controller?: Controller; admission?: ReturnType<typeof createWorkspaceAdmission>; Content?: ComponentType; setup?: boolean
 }) {
   const { t } = useTranslation()
   const phase = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot)
   useEffect(() => { void controller.acquire() }, [controller]) // no cleanup release
-  if (phase === 'held') return <ErrorBoundary fallback={<WorkspaceBootFailure />}><StorageAdmissionGate admission={admission} Content={Content} /></ErrorBoundary>
+  if (phase === 'held') return <ErrorBoundary fallback={<WorkspaceBootFailure />}>{setup
+    ? <Suspense fallback={<Wait title={t('workspaceWindow.loading')} />}><ColdWorkspaceSetup /></Suspense>
+    : <StorageAdmissionGate admission={admission} Content={Content} />}</ErrorBoundary>
   const checking = phase === 'idle' || phase === 'acquiring'
   const key = checking ? 'checking' : phase
   return (
@@ -52,6 +56,9 @@ function StorageAdmissionGate({ admission, Content }: { admission: ReturnType<ty
   const phase = useSyncExternalStore(admission.subscribe, admission.getSnapshot, admission.getSnapshot)
   useEffect(() => { void admission.admit() }, [admission])
   if (phase === 'ready') return <Suspense fallback={<Wait title={t('workspaceWindow.loading')} />}><Content /></Suspense>
+  if ((phase === 'restoring' || phase === 'maintenance') && admission.getRestoreRecovery()) return <Wait title={t('workspaceRestore.recoveryTitle')}>
+    <Suspense fallback={null}><ColdRestoreRecovery /></Suspense>
+  </Wait>
   if ((phase === 'erasure' || phase === 'maintenance') && admission.hasErasureRecovery()) return <Wait title={t('workspaceAdmission.erasureTitle')}>
     <Suspense fallback={null}><ColdMigrationRecovery erasure mode={admission.getErasureMode()} /></Suspense>
     <a className="mt-6 inline-flex min-h-11 items-center px-4 text-sm underline" href="/privacy/">{t('landing.footer.privacy')}</a>

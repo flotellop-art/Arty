@@ -11,7 +11,7 @@ import { HISTORY_SLOTS, workspaceDataKey, type IsolatedWorkspaceLayout } from '.
 // Only the final release policy is enabled in this suite. Real lock controller,
 // parser, schema probes, runtime admission, sessions, KDF, CRUD and erasure run.
 vi.unmock('../../services/workspaceWriter/runtime')
-vi.mock('../../services/workspaceWriter/activation', () => ({ ISOLATED_WORKSPACE_ENABLED: true }))
+vi.mock('../../services/workspaceWriter/activation', () => ({ ISOLATED_WORKSPACE_ENABLED: true, WORKSPACE_RESTORE_START_ENABLED: true }))
 vi.mock('../../services/apiBase', () => ({ apiUrl: (path: string) => path }))
 let runtime: typeof import('../../services/workspaceWriter/runtime')
 let users: typeof import('../../services/userSession')

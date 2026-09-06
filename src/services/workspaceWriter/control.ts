@@ -7,16 +7,20 @@ import { parseMigrationHeader, type MigrationHeader } from './migrationProtocol'
 import { parseErasureHeader } from './erasureProtocol'
 import { parseAccountErasureRecord, erasureRecordState, type AccountErasureState } from '../accountErasureJournal'
 import { parseResetReadyControl } from './resetProtocol'
+import { parseRestoreHeader, restoreJobKey, type RestoreHeader } from './restoreProtocol'
 
 export const WORKSPACE_CONTROL_DB = 'arty-workspace-control'
 export const WORKSPACE_CONTROL_VERSION = 1
 export const WORKSPACE_CONTROL_KEY = 'workspace'
-export type AdmissionFailure = 'maintenance' | 'recoverable' | 'erasure' | 'incompatible' | 'corrupt' | 'unavailable' | 'lost'
+export type AdmissionFailure = 'maintenance' | 'recoverable' | 'restoring' | 'erasure' | 'incompatible' | 'corrupt' | 'unavailable' | 'lost'
 export class WorkspaceAdmissionError extends Error {
   constructor(public readonly code: AdmissionFailure) { super(`workspace_admission_${code}`); this.name = 'WorkspaceAdmissionError' }
 }
 export class WorkspaceRecoveryAvailable extends WorkspaceAdmissionError {
   constructor(public readonly header: Readonly<MigrationHeader>) { super('recoverable') }
+}
+export class WorkspaceRestoreAvailable extends WorkspaceAdmissionError {
+  constructor(public readonly header: Readonly<RestoreHeader>) { super('restoring') }
 }
 export class WorkspaceErasureRecoveryAvailable extends WorkspaceAdmissionError {
   constructor(public readonly mode: AccountErasureState = 'confirmed', public readonly binding?: string) { super('erasure') }
@@ -36,6 +40,8 @@ function fields(value: unknown, keys: string[]): value is Record<string, unknown
 /** No generic ready/unknown-generation fallback. Metadata is not account data
  * or a restore journal, and this module exposes NO writer or repair operation. */
 export function validateWorkspaceControl(value: unknown): WorkspaceStorageLayout {
+  const restore = parseRestoreHeader(value)
+  if (restore) throw new WorkspaceRestoreAvailable(restore)
   const erasure = parseErasureHeader(value)
   if (erasure) throw new WorkspaceErasureRecoveryAvailable(erasure.version !== 4 ? erasureRecordState(erasure.erasure.authority) : 'confirmed', erasureAdmissionBinding(erasure.generation, erasure))
   const reset = parseResetReadyControl(value)
@@ -141,9 +147,14 @@ async function inspectDatabase(db: IDBPDatabase, shape: readonly StoreShape[], c
     try { assertDatabaseShape(db, shape, tx) } catch { reject('corrupt') }
     if (control) {
       const store = tx.objectStore('meta')
-      if (await store.count() !== 1) reject('corrupt')
+      const root = await store.get(WORKSPACE_CONTROL_KEY)
+      const restore = parseRestoreHeader(root)
+      // Identify the small root before considering a potentially large payload.
+      // getAllKeys is bounded by count; never clone ciphertexts at admission.
+      if (await store.count() !== (restore ? 2 : 1)) reject('corrupt')
+      if (restore && !(await store.getAllKeys()).includes(restoreJobKey(restore.restore.id))) reject('corrupt')
       assertCurrent()
-      layout = validateWorkspaceControl(await store.get(WORKSPACE_CONTROL_KEY))
+      layout = validateWorkspaceControl(root)
     }
     if (cleanup) {
       let cursor = await tx.objectStore('meta').openCursor(), mode: AccountErasureState | undefined, binding: string | undefined, found = 0
