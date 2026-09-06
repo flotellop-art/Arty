@@ -16,6 +16,7 @@ import { apiUrl } from './apiBase'
 import { getValidAccessToken } from './googleAuth'
 import { getTrialToken } from './emailTrialClient'
 import { messageImageText } from './messageImageText'
+import { messageOutputText } from './workflows/outputRestriction'
 
 export type ReportCategory = 'offensive' | 'dangerous' | 'misinformation' | 'other'
 export const REPORT_CATEGORIES: readonly ReportCategory[] = [
@@ -68,7 +69,7 @@ export function buildReportPayload(
   return {
     category,
     freeText: truncate(freeText.trim(), MAX_FREE_TEXT_CHARS),
-    messageExcerpt: truncate(messageImageText(message), MAX_EXCERPT_CHARS),
+    messageExcerpt: truncate(messageOutputText(conv, message, { text: messageImageText(message) }), MAX_EXCERPT_CHARS),
     precedingExcerpt: truncate(preceding, MAX_EXCERPT_CHARS),
     usedModelsInConversation: conv.usedModels ?? [],
     euOnly: !!conv.euOnly,

@@ -40,7 +40,7 @@ describe('manifest v2 preserves display metadata independently of stored bytes',
     Object.assign(f.snapshot.conversations[0]!.messages[0]!.files![0]!.presentation!, { [field]: 'untrusted' })
     expect(() => validateSnapshot(f.snapshot, 2)).toThrow('backup_format')
   })
-  it.each([[2, 1], [1, 2], [3, 3]])('rejects mismatched/unknown version %i minReader %i even with valid GCM', async (version, minReader) => {
+  it.each([[2, 1], [1, 2], [4, 4]])('rejects mismatched/unknown version %i minReader %i even with valid GCM', async (version, minReader) => {
     const f = await v2(), raw = { ...manifest(f.snapshot), version, minReader }
     expect(() => parseManifest(JSON.stringify(raw))).toThrow('backup_format')
     const chunks = await Promise.all(f.snapshot.objects.map(async o => new Uint8Array(await f.objects.get(o.id)!.arrayBuffer())))

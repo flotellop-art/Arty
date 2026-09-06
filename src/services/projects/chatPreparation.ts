@@ -103,7 +103,7 @@ export async function prepareProjectChat(args: ProjectPayloadArgs & {
       // every token. Content edits/association changes are blocked while a
       // stream is active; deletion/session changes still fail closed here.
       const history = current.messages.filter(m => m.id !== 'streaming')
-      if (current.projectId !== original.projectId || isProjectEU(current) !== euOnly ||
+      if (current.projectId !== original.projectId || current.outputRestriction !== original.outputRestriction || isProjectEU(current) !== euOnly ||
         history.length !== committedMessages || history.at(-1)?.id !== committedLastId) throw new ProjectError('conflict')
     }
   }
@@ -115,7 +115,7 @@ export async function prepareProjectChat(args: ProjectPayloadArgs & {
       // Caller has just saved this snapshot without an intervening await.
       preparation.assertCurrent()
       creation?.assertCurrent()
-      if (persisted || conversation.id !== original.id || conversation.projectId !== original.projectId || isProjectEU(conversation) !== euOnly) throw new ProjectError('conflict')
+      if (persisted || conversation.id !== original.id || conversation.projectId !== original.projectId || conversation.outputRestriction !== original.outputRestriction || isProjectEU(conversation) !== euOnly) throw new ProjectError('conflict')
       expectedConversation = projectConversationKey(conversation)
       const history = conversation.messages.filter(m => m.id !== 'streaming')
       committedMessages = history.length; committedLastId = history.at(-1)?.id

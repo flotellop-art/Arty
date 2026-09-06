@@ -14,8 +14,8 @@ export interface ProjectTurn {
   sources: ProjectSourceReference[]
 }
 
-export function hasProjectHistory(conv: Pick<Conversation, 'projectId' | 'hasProjectContext' | 'messages'>): boolean {
-  return !!(conv.projectId || conv.hasProjectContext || conv.messages.some(m => m.projectTurn))
+export function hasProjectHistory(conv: Pick<Conversation, 'projectId' | 'hasProjectContext' | 'messages' | 'outputRestriction'>): boolean {
+  return !!(conv.projectId || conv.hasProjectContext || conv.outputRestriction !== undefined || conv.messages.some(m => m.projectTurn))
 }
 export function isProjectEU(conv: Pick<Conversation, 'euOnly' | 'messages'>): boolean {
   return !!conv.euOnly || conv.messages.some(m => m.projectTurn?.euOnly === true)
@@ -29,6 +29,7 @@ export function isDocumentConversation(conv: Conversation): boolean {
  * excluded. Streaming placeholders are not part of the approved history. */
 export function projectConversationKey(conv: Conversation): string {
   return JSON.stringify({ id: conv.id, projectId: conv.projectId, euOnly: isProjectEU(conv),
+    outputRestriction: conv.outputRestriction,
     title: conv.title, tags: conv.tags, hasGoogleData: conv.hasGoogleData, hasTrailContext: conv.hasTrailContext,
     documentary: hasProjectHistory(conv), messages: conv.messages.filter(m => m.id !== 'streaming') })
 }

@@ -1,7 +1,7 @@
 # W08 — synthèse guidée de projet : recette et promotion
 
 6 septembre 2026. Branche `codex/workflow-document-guides`, base main
-`59bfbc6` (#465). **Validé localement, publication en attente de CI/Pages.**
+`59bfbc6` (#465). **Livré par #466, main `2c114cf`, Pages et Firebase vérifiés.**
 
 ## Périmètre
 
@@ -58,9 +58,20 @@ clé sans Google testé, Google rejeté requiert encore une reconnexion.
 - [x] Captures mobiles relues ; aucun débordement ni erreur JS. Fixture locale
   ignorée `.playwright-mcp/project-synthesis-*`, comptes et HTTP synthétiques,
   réseau externe bloqué. Aucun document/compte privé utilisateur utilisé.
-- [ ] CI PR verte et preview identifiée/contrôlée.
-- [ ] Fusion normale puis octets/hash Pages immutable et tryarty.com concordants.
-- [ ] CI main et distribution APK Firebase vérifiées séparément.
+- [x] CI PR `34017485114` entièrement verte, head `63364a6` ; preview
+  `2f74be3a-6129-4ff1-902f-c179307b41d1` publiée à 06:49:54 UTC, cinq assets
+  contrôlés à 06:52:28 UTC. Reçu pré-promotion dans #466.
+- [x] Fusion normale #466 à 06:56:46 UTC, main
+  `2c114cff932509cb6bcafadc8eba4c3fc821b38f`. Pages production
+  `d082fbad-ec3e-49a6-af1a-b7b51f1a4072` réussie à 06:57:44 UTC.
+  GET publics à 06:58:46.468 UTC : mêmes chemins, octets et SHA-256 entre
+  tryarty.com et `https://d082fbad.appfacade.pages.dev` pour cinq chunks :
+  index `CcxaAt0t`, App `CaOTS5Wo`, projectSynthesis `X5mim-SE`, projects
+  `BMbE-GXQ` et templates `B0WXna6N`. App : 916 323 octets,
+  SHA-256 `8782f55ee448484052c2ef90d6818c68f18d0c3f5c29ac1bab8a03fedd2ad399`.
+- [x] CI main `34017827612` réussie (dernier job 07:02:06 UTC). Distribution
+  APK `34017827579` réussie, étape Firebase terminée à 07:05:01 UTC.
+  Cela ne prouve ni installation physique ni publication Store.
 
 ## Promotion, rollback et limites
 

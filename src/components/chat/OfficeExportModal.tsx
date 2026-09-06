@@ -79,6 +79,7 @@ export function OfficeExportModal({ conversation, messageId, onClose }: { conver
             {document.messages.map((m, i) => format === 'xlsx' && !m.blocks.some(b => b.kind === 'table' && selected.includes(b.id)) ? null : <section key={m.id}>
               <h3 className="font-semibold">Message {i + 1} — {m.role === 'user' ? 'Vous' : 'Arty'}{m.interrupted ? ' (interrompu)' : ''}</h3>
               {m.model && <p>Modèle indiqué dans l’historique : {m.model}</p>}
+              {m.outputNotice && <p role="note" className="font-medium">{m.outputNotice}</p>}
               <pre className="whitespace-pre-wrap break-words font-sans">{m.blocks.filter(b => format === 'docx' || (b.kind === 'table' && selected.includes(b.id))).map(b => b.kind === 'table' ? b.rows.map(r => r.join(' | ')).join('\n') : b.runs.map(r => r.text).join('')).join('\n\n')}</pre>
               {m.sources.map((s, j) => <p key={j} className="text-xs break-words mt-1">{s}</p>)}
             </section>)}

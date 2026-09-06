@@ -81,6 +81,65 @@ beforeEach(async () => {
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
 describe('Contextual vertical — real encrypted stores and shared registry, fake provider only', () => {
+  it.each(['done', 'stop', 'crash'] as const)('preserves raw restricted output through the shared %s writer and encrypted reload', async outcome => {
+    source.outputRestriction = 'client-reply-draft-v1'; source.hasProjectContext = true
+    storage.saveConversation(source)
+    const hook = registry()
+    act(() => { hook.result.current.startStream(source.id); hook.result.current.onToken('TEXTE MODELE BRUT', source.id); hook.result.current.savePartialAll() })
+    expect(storage.getConversation(source.id)!.messages.at(-1)).toMatchObject({ id: 'streaming', content: 'TEXTE MODELE BRUT' })
+    if (outcome === 'done') act(() => hook.result.current.onDone(source.id))
+    if (outcome === 'stop') act(() => hook.result.current.stopStreaming(source.id))
+    hook.unmount()
+    await waitFor(async () => {
+      const encKey = Object.keys(localStorage).find(k => k.endsWith('conversations-enc'))!
+      expect(encKey).toBeTruthy(); expect(Object.keys(localStorage).some(k => k.endsWith('conversations'))).toBe(false)
+      expect(await decrypt(localStorage.getItem(encKey)!)).toContain('TEXTE MODELE BRUT')
+    })
+    storage.resetConversationMemCache(); await storage.bootstrapConversationStorage()
+    const c = storage.getConversation(source.id)!
+    expect(c.outputRestriction).toBe('client-reply-draft-v1'); expect(c.hasProjectContext).toBe(true)
+    expect(c.messages.at(-1)!.content).toBe('TEXTE MODELE BRUT')
+    expect(!!c.messages.at(-1)!.interrupted).toBe(outcome !== 'done')
+    expect(c.messages.at(-1)!.id).not.toBe('streaming'); expect(fetch).not.toHaveBeenCalled()
+  })
+  it('keeps restrictions before/after a branch and during a generic retry without injecting fake model tokens', async () => {
+    source.outputRestriction = 'client-reply-draft-v1'; source.hasProjectContext = true
+    storage.saveConversation(source)
+    const hook = renderHook(() => useConversation())
+    act(() => hook.result.current.selectConversation(source.id))
+    for (const index of [0, 1]) {
+      let id: string | null = null
+      act(() => { id = hook.result.current.branchConversation(source.id, index) })
+      expect(storage.getConversation(id!)!).toMatchObject({ outputRestriction: 'client-reply-draft-v1', hasProjectContext: true })
+    }
+    act(() => hook.result.current.retryMessage('original-response'))
+    await waitFor(() => expect(hook.result.current.projectReview.request?.kind).toBe('confirm'))
+    expect(calls).toHaveLength(0)
+    act(() => { const r = hook.result.current.projectReview.request!; hook.result.current.projectReview.answer(r.reviewId, true) })
+    await waitFor(() => expect(calls).toHaveLength(1)); await engage()
+    expect(calls[0]!.args[4]).toMatchObject({ documentReadOnly: true, tools: [] })
+    act(() => { calls[0]!.args[1]('NOUVELLE REPONSE BRUTE'); calls[0]!.args[2]() })
+    expect(storage.getConversation(source.id)!.messages.at(-1)!.content).toBe('NOUVELLE REPONSE BRUTE')
+    expect(storage.getConversation(source.id)!.outputRestriction).toBe('client-reply-draft-v1')
+    expect(fetch).not.toHaveBeenCalled(); hook.unmount()
+  })
+  it('shows two restricted comparison outputs after reload while keeping model metrics/text raw', async () => {
+    source.outputRestriction = 'client-reply-draft-v1'; source.hasProjectContext = true
+    storage.saveConversation(source)
+    const { run, hook } = await start(); await engage(0); await engage(1)
+    act(() => { calls[0]!.args[1]('ANSWER A'); calls[0]!.args[2](); calls[1]!.args[1]('PARTIAL B'); calls[1]!.args[3](new Error('Synthetic stop')) })
+    for (const [index, id] of run.branchIds.entries()) {
+      const c = storage.getConversation(id)!
+      expect(c.outputRestriction).toBe('client-reply-draft-v1')
+      expect(c.messages.at(-1)!.content).toBe(index ? 'PARTIAL B' : 'ANSWER A')
+      expect(run.read(id)!.metrics.outputTokens).toBeLessThan(10)
+    }
+    hook.unmount(); storage.resetConversationMemCache(); await storage.bootstrapConversationStorage()
+    const view = page({ ...run, read: () => null })
+    await screen.findByText('Réponse préparée — non envoyée par Arty')
+    expect(screen.getByText('Réponse préparée incomplète — non envoyée par Arty')).toBeTruthy()
+    expect(fetch).not.toHaveBeenCalled(); view.unmount()
+  })
   it('actual first-question action, A→B navigation, cancel, confirm, continue, regenerate and detach keep the comparison intact', async () => {
     let chat!: ReturnType<typeof useConversation>
     function Workbench() {

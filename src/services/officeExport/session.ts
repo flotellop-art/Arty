@@ -5,6 +5,7 @@ import { getConversation } from '../storage'
 import { beginProjectOperation, assertProjectOperation } from '../projects/store'
 import { downloadOrShareFile } from '../native/shareFile'
 import { generatedImageIds } from '../generatedImages'
+import { outputNoticeForMessage } from '../workflows/outputRestriction'
 import { EXPORT_LIMITS as L, assertExportText, preflightMarkdown, exportError, type ExportSnapshot, type ExportMessage, type ExportDocument, type ExportChoices } from './types'
 
 function bounded(value: unknown, max: number): string {
@@ -27,15 +28,16 @@ export function snapshotForExport(conv: Conversation, messageId?: string): Expor
   let chars = 0
   const messages: ExportMessage[] = selected.map(m => {
     if (m.id === 'streaming' || !['assistant', 'user'].includes(m.role) || (messageId && m.role !== 'assistant')) exportError('La réponse en cours ne peut pas être exportée.')
-    const content = bounded(m.content, L.chars), sources = sourceLines(m)
-    chars += content.length + sources.join('').length
+    const content = bounded(m.content, L.chars), sources = sourceLines(m), outputNotice = outputNoticeForMessage(conv, m)
+    chars += content.length + sources.join('').length + outputNotice.length
     if (chars > L.chars) exportError('Export limité à 200 000 caractères, sources comprises.')
     preflightMarkdown(content)
     return { id: bounded(m.id, 128), role: m.role, content, sources, interrupted: !!m.interrupted,
+      ...(outputNotice ? { outputNotice } : {}),
       model: m.model ? bounded(m.model, 200) : '', attachments: m.files?.length ?? 0,
       galleryImages: m.role === 'assistant' ? generatedImageIds(m.generatedImages).length : 0 }
   })
-  return { title: bounded(conv.title, 255), messages }
+  return { title: bounded(conv.title, 255), messages, ...(conv.outputRestriction ? { outputRestriction: conv.outputRestriction } : {}) }
 }
 
 let active: symbol | null = null

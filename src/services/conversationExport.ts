@@ -8,6 +8,8 @@ import { getActiveUserId, getActiveSessionEpoch } from './userSession'
 import { hasProjectHistory, isProjectEU } from './projects/chatPolicy'
 import { toast } from './toast'
 import { messageImageText } from './messageImageText'
+import { generatedImageIds } from './generatedImages'
+import { assertOutputRestriction, messageOutputText, restrictConversationOutput } from './workflows/outputRestriction'
 
 function stripLegacyMailboxPayload<T extends Conversation['messages'][number]>(message: T): Omit<T, 'gmailSearch'> {
   const { gmailSearch: _removed, ...safe } = message as T & { gmailSearch?: unknown }
@@ -26,6 +28,7 @@ export function exportConversation(conv: Conversation): void {
 }
 
 export function buildConversationJsonExport(conv: Conversation) {
+  conv = restrictConversationOutput(conv)
   const { comparison: _privateGroup, ...exportedConversation } = conv
   const conversation = {
     ...exportedConversation,
@@ -33,11 +36,12 @@ export function buildConversationJsonExport(conv: Conversation) {
     // antérieur à la suppression de l'intégration boîte mail.
     messages: conv.messages.map(message => {
       const { generatedImages: _privateImages, ...safe } = stripLegacyMailboxPayload(message)
-      return { ...safe, content: messageImageText(message) }
+      return { ...safe, ...(message.id === 'streaming' ? { interrupted: true } : {}), content: conv.outputRestriction ? message.content : messageImageText(message) }
     }),
   }
   const payload = {
-    version: 1,
+    version: conv.outputRestriction ? 2 : 1,
+    ...(conv.outputRestriction ? { omittedGeneratedImages: conv.messages.reduce((sum, m) => sum + (m.role === 'assistant' ? generatedImageIds(m.generatedImages).length : 0), 0) } : {}),
     exportedAt: new Date().toISOString(),
     conversation,
   }
@@ -63,6 +67,8 @@ export async function importConversationFromFile(file: File): Promise<string> {
     throw new Error('Fichier invalide: pas une conversation Arty')
   }
   const original = data.conversation
+  if (data.version !== undefined && data.version !== 1 && data.version !== 2) throw new Error('Version de conversation non prise en charge')
+  assertOutputRestriction(original.outputRestriction)
   if (original.messages.length > 5000 || original.messages.some(m => !m || typeof m !== 'object' || !['user', 'assistant'].includes(m.role) || typeof m.content !== 'string' || m.content.length > 2_000_000)) throw new Error('Messages importés invalides')
   const projectHistory = hasProjectHistory(original), euOnly = isProjectEU(original)
   if (original.tags !== undefined && (!Array.isArray(original.tags) || original.tags.length > 100 || original.tags.some(tag => typeof tag !== 'string' || tag.length > 200))) throw new Error('Étiquettes importées invalides')
@@ -79,7 +85,7 @@ export async function importConversationFromFile(file: File): Promise<string> {
     messages: original.messages.map((legacyMessage) => {
       const { projectTurn: _foreignSources, generatedImages: _foreignImages, files, ...safeMessage } = stripLegacyMailboxPayload(legacyMessage)
       if (files && (!Array.isArray(files) || files.length > 64 || files.some(f => !f || typeof f.name !== 'string' || typeof f.type !== 'string' || (f.data !== undefined && typeof f.data !== 'string')))) throw new Error('Pièces jointes importées invalides')
-      return { ...safeMessage, content: messageImageText(legacyMessage), id: generateId(),
+      return { ...safeMessage, ...(legacyMessage.id === 'streaming' ? { interrupted: true } : {}), content: original.outputRestriction ? legacyMessage.content : messageImageText(legacyMessage), id: generateId(),
         // A foreign ID is not authority to read this account's IndexedDB.
         ...(files ? { files: files.map(f => ({ id: generateId(), name: f.name.slice(0, 255), type: f.type.slice(0, 160), ...(f.data ? { data: f.data } : {}) })) } : {}) }
     }),
@@ -157,7 +163,7 @@ export function buildConversationMarkdown(conv: Conversation): string {
     lines.push(`*${formatDate(msg.timestamp)}${modelSuffix}*`)
     lines.push('')
     const cleanContent = typeof msg.content === 'string'
-      ? messageImageText(msg)
+      ? messageOutputText(conv, msg, { text: messageImageText(msg) })
       : JSON.stringify(msg.content)
     lines.push(cleanContent)
     if (msg.files?.length) {
@@ -199,7 +205,7 @@ export function buildConversationHtml(conv: Conversation): string {
     const roleLabel = isUser ? 'Utilisateur' : 'Arty'
     const bgColor = isUser ? '#fef3e8' : '#f5f5f5'
     const borderColor = isUser ? '#e04b2e' : '#888888'
-    const content = typeof msg.content === 'string' ? messageImageText(msg) : ''
+    const content = typeof msg.content === 'string' ? messageOutputText(conv, msg, { text: messageImageText(msg) }) : ''
     // Light markdown -> HTML (bold, italic, code, line breaks). Escape first
     // so the regexes below only apply to legitimate markup, not user input.
     const formatted = escape(content)

@@ -48,7 +48,7 @@ describe('export lifecycle: no AI, no late cross-account download', () => {
     await expect(start().promise).rejects.toThrow(/session/)
     expect(FakeWorker.instances).toHaveLength(0)
   })
-  it.each(['owner', 'epoch', 'crypto', 'delete', 'edit', 'fence'] as const)('refuses %s change during parse', async change => {
+  it.each(['owner', 'epoch', 'crypto', 'delete', 'edit', 'fence', 'output-restriction'] as const)('refuses %s change during parse', async change => {
     const op = start(); const result = expect(op.promise).rejects.toThrow()
     await vi.waitFor(() => expect(FakeWorker.instances).toHaveLength(1))
     if (change === 'owner') mock.owner = 'b'
@@ -56,6 +56,7 @@ describe('export lifecycle: no AI, no late cross-account download', () => {
     if (change === 'delete') mock.get.mockReturnValue(null)
     if (change === 'edit') conv.messages[0]!.content = 'Autre'
     if (change === 'fence') mock.guard.mockImplementation(() => { throw new Error('erasure') })
+    if (change === 'output-restriction') conv.outputRestriction = 'client-reply-draft-v1'
     FakeWorker.instances[0]!.respond(); await result
     expect(FakeWorker.instances[0]!.terminate).toHaveBeenCalled(); expect(mock.share).not.toHaveBeenCalled()
   })

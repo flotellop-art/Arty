@@ -979,6 +979,7 @@
     "prompt": "Prépare mon brief du jour maintenant à partir de mon agenda, de mes tâches et de ma mémoire, puis propose des actions pertinentes. Renvoie le résultat via l'outil present_brief."
   },
   "summary": {
+    "clientDraftUnavailable": "Le résumé automatique est indisponible pour les réponses client préparées. Copiez ou exportez la réponse complète pour conserver son statut.",
     "exchangesOnly": "Résumé des échanges uniquement : les messages longs sont abrégés, la bibliothèque et les pièces jointes ne sont pas relues.",
     "title": "Résumé de la conversation",
     "generating": "Génération en cours...",

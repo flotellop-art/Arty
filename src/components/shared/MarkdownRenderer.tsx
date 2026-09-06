@@ -1,4 +1,4 @@
-import { memo, useState } from 'react'
+import { createContext, memo, useContext, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -123,7 +123,11 @@ const sanitizeSchema = {
 interface MarkdownRendererProps {
   content: string
   historical?: boolean
+  /** Whole-output provenance must not be dropped by a secondary fragment copy. */
+  disableFragmentCopy?: boolean
+  inertActions?: boolean
 }
+const DisableFragmentCopy = createContext(false)
 
 // Extraction récursive du texte des nœuds React. Indispensable depuis la
 // coloration syntaxique : rehype-highlight enveloppe les tokens dans des
@@ -140,12 +144,14 @@ function extractText(node: React.ReactNode): string {
 // Bloc de code avec header (langage + bouton copier) et coloration syntaxique
 // via rehype-highlight — standard claude.ai/ChatGPT (plan d'action P0.1/P0.2).
 function CodeBlock({ className, children, ...props }: { className?: string; children?: React.ReactNode }) {
+  const copyDisabled = useContext(DisableFragmentCopy)
   // useTranslation (pas i18n.t direct) : abonne le composant au changement de
   // langue — MarkdownRenderer est memo'é sur `content` et ne re-rendrait pas.
   const { t } = useTranslation()
   const [copied, setCopied] = useState(false)
   const lang = /language-([\w+-]+)/.exec(className ?? '')?.[1] ?? ''
   const handleCopy = async () => {
+    if (copyDisabled) return
     try {
       const code = extractText(children).replace(/\n$/, '')
       await navigator.clipboard.writeText(code)
@@ -159,7 +165,7 @@ function CodeBlock({ className, children, ...props }: { className?: string; chil
         <span className="text-[10px] font-sans uppercase tracking-wider text-theme-bg/60">
           {lang || 'code'}
         </span>
-        <button
+        {!copyDisabled && <button
           onClick={handleCopy}
           className={`px-2 py-1 rounded-md text-[10px] font-sans uppercase tracking-wider transition-all ${
             copied
@@ -169,7 +175,7 @@ function CodeBlock({ className, children, ...props }: { className?: string; chil
           aria-label={copied ? t('chat.bubble.codeCopied') : t('chat.bubble.copyCode')}
         >
           {copied ? `✓ ${t('chat.bubble.codeCopied')}` : t('chat.bubble.copyCode')}
-        </button>
+        </button>}
       </div>
       <pre className="text-theme-bg p-4 overflow-x-auto text-sm leading-relaxed">
         <code className={className} {...props}>{children}</code>
@@ -333,18 +339,21 @@ const historicalComponents: Components = {
   button: ({ children }) => <span>{children}</span>,
   img: () => <UnavailableImage />,
 }
+const inertActionComponents: Components = { ...components, button: ({ children }) => <span>{children}</span> }
 
-export const MarkdownRenderer = memo(function MarkdownRenderer({ content, historical = false }: MarkdownRendererProps) {
+export const MarkdownRenderer = memo(function MarkdownRenderer({ content, historical = false, disableFragmentCopy = false, inertActions = false }: MarkdownRendererProps) {
   return (
+    <DisableFragmentCopy.Provider value={disableFragmentCopy}>
     <div className="max-w-none text-sm text-theme-ink/90 leading-relaxed report-content">
       {/* Ordre des plugins IMPÉRATIF : highlight AVANT sanitize, pour que les
           <span class="hljs-*"> ajoutés soient validés par le schema (le
           wildcard '*': ['className'] les laisse passer). L'inverse poserait
           du contenu non vérifié après la sanitisation (BUG 20 : sanitize
           reste TOUJOURS actif, en dernier). */}
-      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw, rehypeHighlight, [rehypeSanitize, historical ? historicalSchema : sanitizeSchema]]} components={historical ? historicalComponents : components}>
+      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw, rehypeHighlight, [rehypeSanitize, historical ? historicalSchema : sanitizeSchema]]} components={historical ? historicalComponents : inertActions ? inertActionComponents : components}>
         {content}
       </ReactMarkdown>
     </div>
+    </DisableFragmentCopy.Provider>
   )
 })

@@ -979,6 +979,7 @@
     "prompt": "Prepare today's brief from my calendar, tasks and memory, then suggest relevant actions. Return the result through the present_brief tool."
   },
   "summary": {
+    "clientDraftUnavailable": "Automatic summaries are unavailable for prepared client replies. Copy or export the full reply to retain its status.",
     "exchangesOnly": "Summary of exchanges only: long messages are shortened; the library and attachments are not reread.",
     "title": "Conversation summary",
     "generating": "Generating...",

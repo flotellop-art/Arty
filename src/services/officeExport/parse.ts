@@ -6,7 +6,7 @@ import { EXPORT_LIMITS as L, preflightMarkdown, assertExportText, exportError, t
 
 export function parseOfficeExport(snapshot: ExportSnapshot): ExportDocument {
   if (!snapshot.messages.length || snapshot.messages.length > L.messages) exportError('Choisissez entre 1 et 50 messages conservés.')
-  const chars = snapshot.messages.reduce((sum, m) => sum + m.content.length + m.sources.join('').length, snapshot.title.length)
+  const chars = snapshot.messages.reduce((sum, m) => sum + m.content.length + m.sources.join('').length + (m.outputNotice?.length ?? 0), snapshot.title.length)
   if (chars > L.chars) exportError('Export limité à 200 000 caractères, sources comprises.')
   assertExportText(snapshot.title)
   const omissions = { images: 0, html: 0, unsupported: 0, attachments: 0 }
@@ -16,6 +16,10 @@ export function parseOfficeExport(snapshot: ExportSnapshot): ExportDocument {
     if (!Number.isInteger(galleryCount) || galleryCount < 0 || galleryCount > 4) exportError('Nombre d’images invalide.')
     omissions.images += galleryCount
     preflightMarkdown(message.content)
+    if (message.outputNotice !== undefined) {
+      if (typeof message.outputNotice !== 'string' || message.outputNotice.length > 200) exportError('Notice de sortie invalide.')
+      assertExportText(message.outputNotice)
+    }
     message.sources.forEach(assertExportText)
     const tree = unified().use(remarkParse).use(remarkGfm).parse(message.content) as Root
     // Bound ALL nodes before any recursive transformation.
@@ -104,7 +108,8 @@ export function parseOfficeExport(snapshot: ExportSnapshot): ExportDocument {
       return result
     }
     omissions.attachments += message.attachments
-    return { id: message.id, role: message.role, model: message.model, interrupted: message.interrupted, sources: message.sources, blocks: blocks(tree.children) }
+    return { id: message.id, role: message.role, model: message.model, interrupted: message.interrupted, sources: message.sources,
+      ...(message.outputNotice ? { outputNotice: message.outputNotice } : {}), blocks: blocks(tree.children) }
   })
   return { title: snapshot.title, messages, omissions, chars }
 }
