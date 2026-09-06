@@ -1,5 +1,5 @@
 import { openDB, type IDBPDatabase, type IDBPTransaction } from 'idb'
-import { captureCryptoGuard, encrypt, decrypt, isCryptoReady, isCryptoContextChanged } from '../crypto'
+import { captureCryptoGuard, captureCryptoGenerationGuard, encrypt, decrypt, isCryptoReady, isCryptoContextChanged } from '../crypto'
 import { getActiveUserId, getActiveSessionEpoch, getKnownSessions, getSessionProjectFence, PROJECT_ERASURE_FENCE_KEY } from '../userSession'
 import { assertPreparedForOperation, consumePreparedDocument } from './documentImport'
 import { generateId } from '../../utils/generateId'
@@ -75,9 +75,20 @@ export interface ProjectOperation {
 /** Shared synchronous admission, including erasure BEFORE its server request.
  * Capture/export uses this without creating or repairing any database. */
 export function captureLocalReadScope(signal?: AbortSignal) {
+  return captureLocalScope(signal, true)
+}
+/** Exact-key removal can be requested before crypto is ready. This does NOT
+ * grant decryption/content access: owner, known session, erasure, document and
+ * durable fence checks stay identical to a read scope. No DB is created. */
+export function captureLocalRemovalScope(signal?: AbortSignal) {
+  const scope = captureLocalScope(signal, false)
+  return { assertCurrent: scope.assertCurrent, validateReadOnly: scope.validateReadOnly }
+}
+function captureLocalScope(signal: AbortSignal | undefined, requireCrypto: boolean) {
   const owner = getActiveUserId(), epoch = getActiveSessionEpoch()
-  if (!owner || owner.length > 128 || !isCryptoReady()) throw new ProjectError('unavailable')
-  const assertNotErasing = captureOwnerErasureGuard(owner), cryptoCurrent = captureCryptoGuard(), sessionFence = getSessionProjectFence()
+  const ready = isCryptoReady()
+  if (!owner || owner.length > 128 || (requireCrypto && !ready)) throw new ProjectError('unavailable')
+  const assertNotErasing = captureOwnerErasureGuard(owner), cryptoCurrent = ready ? captureCryptoGuard() : captureCryptoGenerationGuard(), sessionFence = getSessionProjectFence()
   if (sessionFence === null) throw new ProjectError('cancelled')
   const assertCurrent = () => {
     assertDocumentWorkspace()

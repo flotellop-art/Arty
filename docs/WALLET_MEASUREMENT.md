@@ -140,7 +140,21 @@ isolée 390/1280 px à 11:49:13.353 UTC, sans JavaScript, aucun débordement ou 
 externe. Capture 1280 px inspectée visuellement. HTML volontairement documentaire,
 pas un nouvel écran public Arty. Fichiers ignorés `wallet-demo.{html,csv,json}`,
 `wallet-demo-{390,1280}.png` et `wallet-measurement-demo.log` dans `.playwright-mcp/`.
-Publication et CI distante restent à consigner ; aucune donnée réelle affichée.
+Publication : [PR #475](https://github.com/flotellop-art/Arty/pull/475), squash
+`ff118b426ab2572465edeab981e5d89fe4415db5` le 6 septembre à 12:00:17 UTC.
+CI PR `34031528936` et main `34031826279` réussies. Pages main
+`9edef9f5-c0f4-4dcf-824a-35a762b9bd63` réussi à 12:01:13 UTC.
+GET anonymes de tryarty.com et de cette version immuable à 12:05:32–33 UTC :
+guide FR/EN/CSS/SW et six assets de l'application identiques. Cela vérifie les
+artefacts web, pas un nouveau tableau de bord ni des métriques réelles.
+
+Android/Firebase `34031826128` : première tentative arrêtée sur le délai de
+250 ms de `reserveCredits` dans la fixture D1 (`db_unavailable`), pas sur le SQL
+du rapport. Le test isolé a repassé ; relance intégrale du job sans modifier
+le délai de production ni retirer un test, réussie (tentative 2). Identité APK
+vérifiée à 12:14:06 UTC, distribution Firebase à 12:14:13 UTC et reçu JSON
+téléversé à 12:14:14 UTC. Installation physique non attestée ; aucun reçu APK
+téléchargé pour ce lot. Le premier échec demeure dans l'historique CI.
 
 Aucune donnée de production extraite ni mesure commerciale réelle présentée.
 Sources primaires consultées le 6 septembre 2026 :
