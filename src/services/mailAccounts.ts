@@ -13,6 +13,15 @@ import { getActiveUserId, getActiveSessionEpoch } from './userSession'
 // Rafraîchi au boot, à l'ajout/suppression d'un compte, et au switch de user.
 let cachedAccounts: MailAccountMeta[] = []
 let cacheOwner: string | null = null, cacheEpoch = -1, generation = 0
+let inventory: 'unknown' | 'loading' | 'ready' | 'failed' = 'unknown'
+const notify = () => { try { window.dispatchEvent(new Event('mail-accounts-updated')) } catch { /* no DOM */ } }
+
+/** No bridge call and no address/credentials. Empty is known only after success. */
+export function getMailInventoryStatus() {
+  const current = cacheOwner === getActiveUserId() && cacheEpoch === getActiveSessionEpoch()
+  return { status: current ? inventory : 'unknown' as const,
+    count: current && inventory === 'ready' ? cachedAccounts.length : 0, generation }
+}
 
 export function getCachedMailAccounts(): MailAccountMeta[] {
   return cacheOwner === getActiveUserId() && cacheEpoch === getActiveSessionEpoch() ? [...cachedAccounts] : []
@@ -26,24 +35,29 @@ export function hasConnectedMailAccounts(): boolean {
 export function resetMailAccountsCache(): void {
   cachedAccounts = []
   cacheOwner = null; cacheEpoch = -1; generation++
+  inventory = 'unknown'; notify()
 }
 
 export async function refreshMailAccounts(): Promise<MailAccountMeta[]> {
   const owner = getActiveUserId(), epoch = getActiveSessionEpoch(), attempt = ++generation
   const current = () => generation === attempt && owner === getActiveUserId() && epoch === getActiveSessionEpoch()
+  cacheOwner = owner; cacheEpoch = epoch; inventory = 'loading'; notify()
   if (!isMailImapAvailable()) {
     cachedAccounts = []
+    inventory = 'unknown'; notify()
     return []
   }
   try {
     const accounts = await listMailAccounts()
     if (!current()) return []
     cachedAccounts = accounts
+    inventory = 'ready'
   } catch {
     // Plugin indisponible (vieille APK, plateforme non supportée) : cache vide,
     // la feature est simplement absente — jamais d'erreur bloquante au boot.
     if (!current()) return []
     cachedAccounts = []
+    inventory = 'failed'
   }
   if (!current()) return []
   cacheOwner = owner; cacheEpoch = epoch
