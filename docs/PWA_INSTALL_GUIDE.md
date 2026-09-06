@@ -1,7 +1,7 @@
 # W09 — guide public d’installation
 
-6 septembre 2026. Validation locale réussie ; publication à confirmer.
-Base main `6a1ac3f8e5a5fe045607af7e2fc51508995c9738` (#472).
+6 septembre 2026. Guide #473 publié ; correctif des transformations CDN en cours
+de validation. Base du guide : main `6a1ac3f8e5a5fe045607af7e2fc51508995c9738` (#472).
 
 ## Contrat livré par ce lot
 
@@ -54,7 +54,8 @@ Le guide ne s’enregistre pas lui-même comme application/SW. Un SW existant pe
 le contrôler. Ces garanties commencent **après activation de v54** : un appareil
 restant hors ligne avec v53 n’est pas réparé rétroactivement. Aucune purge de
 localStorage/IndexedDB ; l’activation existante ne retire que les anciens caches
-HTTP `arty-cache-*`. Pas de promesse de fonctionnement complet hors ligne.
+CacheStorage `arty-cache-*`, pas le cache HTTP du navigateur. Pas de promesse de
+fonctionnement complet hors ligne.
 
 ## Validation et limites
 
@@ -97,3 +98,74 @@ historique >500 Ko inchangé. Logs ignorés `install-guide-verify.log`,
 
 W06 reste OFF. W09 reste partiel : installation Safari/Android physique, réception
 testeur, association de liens/Store et droits VIP réels ne sont pas attestés.
+
+## Publication #473 et écart réel du domaine canonique
+
+PR [#473](https://github.com/flotellop-art/Arty/pull/473), main
+`f91954b21d32bb8642709fee54f2e9e77c821db2`, fusion 11:02:45 UTC.
+CI PR `34028802568` et main `34029100459` réussies. Pages production
+`c950149c-0ed1-41b5-aaf8-e186d2268f28` succès 11:03:49 UTC. Android/Firebase
+`34029100477` réussi à 11:09:43 UTC, vérification du candidat et upload du reçu
+JSON réussis. Ce succès n'atteste pas une installation physique.
+
+La preview `044b6416.appfacade.pages.dev` passe les sondes d'octets à
+10:58:06.873 UTC et le navigateur réel sans JS à 10:59:09.677 UTC. Après fusion,
+l'immutable `c950149c.appfacade.pages.dev` reste propre mais **tryarty.com ne
+respecte pas encore le contrat sans script** : injection de Web Analytics et
+du décodeur d'adresses email par Cloudflare. Le second réécrit les liens mailto ;
+bloquer son exécution seul laisserait donc le lien de support dégradé.
+La sonde de production échoue volontairement sur ces scripts ; elle n'a pas été
+assouplie. Aucun import privé App n'est en cause.
+
+## Correctif ciblé de la politique CDN
+
+`public/_headers` ajoute seulement `/install` et `/install/*` :
+
+- `Cache-Control: public, no-cache, no-transform` pour interdire les deux
+  transformations et permettre la revalidation ; pas de désactivation globale
+  de l'analytics, du WAF, de Turnstile ou des protections de l'application ;
+- CSP supplémentaire : aucun script ni connexion ; CSS et images de même
+  origine seulement, aucune base, aucun formulaire/cadre. Pages cumule les
+  politiques correspondantes avec une virgule ; elles s'appliquent toutes.
+  La politique globale reste intacte, sans détachement ni `sandbox` ;
+- SW v55 : les guides de v54 ne sont plus une source de fallback après
+  activation ; les réponses stockées conservent leurs en-têtes ;
+- nouveaux octets HTML FR/EN (commentaire de version), pour changer aussi le
+  validateur HTTP. Le bump SW seul ne vide pas le cache HTTP du navigateur.
+
+Les réponses canoniques transformées observées n'ont **pas d'ETag**. Les ETags
+immuables #473 sont conservés pour tester la revalidation après publication :
+FR `W/"d3161169420d8093002e27b567799ab0"`, EN
+`W/"f9ebd2b8e0d71e91859e05ea99a898da"`. Ancien validateur attendu : 200 propre,
+jamais 304 ; nouveau : 304 ou 200 identique. Ce contrôle n'est pas une preuve
+de migration d'un ancien appareil réel.
+
+Pas de modification de `_routes.json` ou du middleware : les pages historiques
+conservent leur redirection canonique et les API leur transport #471. Les
+Functions qui créent elles-mêmes une Response ne reçoivent pas `_headers` ;
+les en-têtes finaux des guides doivent être **constatés sur le réseau**.
+
+Sources primaires consultées le 6 septembre 2026 :
+[Analytics/no-transform](https://developers.cloudflare.com/web-analytics/faq/),
+[obfuscation/no-transform](https://developers.cloudflare.com/waf/tools/scrape-shield/email-address-obfuscation/),
+[Pages headers](https://developers.cloudflare.com/pages/configuration/headers/),
+[Pages ETag](https://developers.cloudflare.com/pages/configuration/serving-pages/#behavior),
+[CSP multiples](https://www.w3.org/TR/CSP3/#multiple-policies).
+
+52 tests ciblés passent : périmètre des règles, HTML, SW réel en VM et conservation
+des en-têtes offline. Recette Chrome locale réussie sur `public` avec les vraies
+règles `_headers` cumulées : six vues sans JS, deux mailto intacts, CSS/clavier,
+scripts inline/self/beacon volontairement injectés dans une **fixture modifiée**
+et bloqués, `connect-src 'none'` effectif, vrai v55 hors ligne conservant la CSP,
+ancien guide transformé v54 ignoré. Ce harnais simule l'application des en-têtes,
+pas les transformations de Cloudflare ; la preuve canonique reste indispensable.
+
+Logs/sondes ignorés : `install-edge-browser-public.log`, `install-edge-verify.log`,
+`install-edge-http-probe.mjs`, `install-guide-release-probe.mjs`. Validation
+complète locale réussie : `npm run verify` exit 0, **308 suites, 3 823 tests réussis
++ 1 sauté**, couverture 71,58 / 66,42 / 77,24 / 73,44 %. Typechecks, no-CASA,
+build et worker Office isolé verts ; recette Chrome également passée sur `dist`.
+Preview, promotion et preuve canonique du correctif à consigner après succès ;
+**pas encore de GO production**. Les anciens documents déjà ouverts
+et appareils encore hors ligne ne sont pas corrigés rétroactivement. Aucune
+purge de données utilisateur ni désinstallation demandée.

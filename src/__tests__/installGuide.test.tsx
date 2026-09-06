@@ -18,6 +18,9 @@ describe('public installation documents', () => {
     expect(doc.querySelectorAll('link[rel="stylesheet"]')).toHaveLength(1)
     expect(doc.querySelectorAll('.card')).toHaveLength(4)
     expect(doc.querySelectorAll('details')).toHaveLength(4)
+    expect(doc.querySelectorAll('a[href="mailto:support@tryarty.com"]')).toHaveLength(2)
+    expect(html).not.toMatch(/data-cfemail|email-decode|cloudflareinsights/i)
+    expect(html).toContain('Guide policy v55')
     expect(doc.querySelector('.notice')?.compareDocumentPosition(doc.querySelector('.grid')!)).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
     for (const link of doc.querySelectorAll<HTMLAnchorElement>('a')) {
       expect(link.textContent?.trim()).not.toBe('')
