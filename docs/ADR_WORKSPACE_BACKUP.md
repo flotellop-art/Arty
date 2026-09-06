@@ -1318,3 +1318,77 @@ pas encore un effacement alternatif pour ces états. Pas de restauration/sync
 livrée ni clôture W06. JSDOM/fake-IDB simulent documents et rechargements ; les
 tests natifs de #459 ne constituent pas une recette UI APK de cette nouveauté.
 La protection reste coopérative, non atomique entre DB et LS.
+
+##### Préparation A3b.8 — conserver l'accès froid aux migrations incomplètes
+
+Deux contre-revues readonly après #460 identifient un vrai manque : resume
+termine en v2 ready, qui ouvre App, puis l'effacement ordinaire demande une
+session A. Ce repli n'est pas universel si sa clé est perdue. Proposition unique
+bornée (non implémentée) : action explicitement consentie de préparation des
+copies, mode d'acteur immuable « verified-only », arrêt après attestations
+physiques et checkpoint v3 verified, jamais v2 ready. Rechargement volontaire,
+puis inspection/sélection/confirmation v3→v6 de #460 et nettoyeur existant.
+Aucun nouveau format, aucun owner/consentement transféré en LS/sessionStorage.
+La préparation écrit des copies et demande de la capacité ; elle n'efface rien.
+
+Réutiliser les contrôles du migrateur (plan/source exacts, versions par phase,
+putRows sans écrasement divergent), avec point d'arrêt interne et méthode
+publique nommée, pas un booléen générique mutable par appel. Retry conserve le
+mode et le header/job admis ; un v2 ready n'est jamais un acquittement de cette
+préparation. Tester perte d'acquittement autour du checkpoint verified.
+
+Reserved sans plan est distinct : aucun hash initial n'a été conservé. Exiger
+readonly un journal absent ou identité exacte et raw stores vides, destinations
+absentes, aucune clé isolée, sources v0/v1 cohérentes. Capturer le premier
+inventaire stable, annoncer explicitement qu'il provient des données présentes,
+puis revalider exactement avant journalisation. Tout fragment sans plan refuse.
+Ne pas prétendre prouver la fidélité à un inventaire initial non durable.
+
+Recette : A sans clé avant le premier snapshot, B déchiffrable ; reserved,
+barrier et copied-partial, quota transitoire/retry, UI→verified→nouveau document
+→choix A→v6→coupure nettoyage→v7, B login/lecture/écriture/relecture. Aucun privé,
+KDF, réseau ni effacement avant confirmation ; OAuth/verifier inchangés.
+Quota durable, source divergente même A, plan perdu après reserved ou receipt
+étranger restent des refus et gates d'activation : ne pas rebâtir B depuis le
+hash global ni promettre qu'une préparation avec copies libère de l'espace.
+
+##### A3b.8 — préparation froide vers verified, implémentée (6 septembre)
+
+Décision : `createColdErasurePreparation` ne dispose que de inspect/prepare,
+avec politique OFF et capacité réelle du document. Son aperçu privé fixe le
+header, plan, LS et empreintes des copies partielles. Sans plan, seules l'absence
+du journal ou son identité exacte avec stores vides, l'absence de destinations
+et targets, et des sources v0/v1 autorisent le premier inventaire consenti.
+Le plan injecté ensuite est celui de cet aperçu ; garde LS dans la transaction
+de journalisation. Le retry accepte son installation exacte sans rebaseliner.
+
+Progression : dernier header acquitté + au plus un couple from/to mémorisé avant
+CAS. Seuls ces octets exacts autorisent une reprise ; génération commune, v2,
+retour à un ancien checkpoint ou nouvelle révision ne suffisent pas. Les copies
+idempotentes et versions phase-compatibles peuvent progresser, jamais le plan
+source. Le checkpoint verified porte désormais sa propre garde LS dans son
+CAS, suivi d'une réattestation complète. Acquittement verified perdu : chemin
+readonly, zéro put/setItem ; jamais la branche historique d'acquittement v2.
+
+UI : trois modes exclusifs avant import ; confirmation des copies de tous les
+comptes, puis autre document et confirmation distincte d'un effacement. Aucun
+owner ou consentement en LS. Notice spécifique pour premier inventaire absent.
+Le cas sans owner non nul accepté par le contrat natif est refusé readonly,
+avec notice et reprise normale conservée après reload. Ce correctif traite
+l'objection produit « copies préparées mais aucun compte sélectionnable ».
+
+Deux GO indépendants readonly après code ; protections CAS et progression
+intégrées à la demande de la contre-revue sécurité. Tests par root seulement.
+La verticale couvre six coupures initiales, sans clé A avant le snapshot,
+UI→verified→nouveau document→choix A→v6/v7, B login/lecture/écriture/relecture ;
+KDF/déchiffrement et réseau interdits à froid, hash autorisé. Quota transitoire,
+ack plan/checkpoints perdus, header rétrogradé/v2/remplacé, mutations des deux
+transactions finales, fragments sans plan et copies divergentes testés.
+
+Alternatives rejetées : activer v2 avant effacement (perd le parcours sans clé),
+nouveau format d'effacement pour les seules copies saines incomplètes, inventaire
+réévalué en silence, booléen caller de publication. Limites conservées : copies
+supplémentaires possibles avant découverte d'un conflit, aucun écrasement ;
+quota durable/source divergente/absence de propriétaire effaçable non résolus.
+Activation OFF ; ni restauration/synchronisation ni recette UI navigateur/APK
+déduites de fake-IDB/JSDOM. Reçus et mesures de validation dans le CDC.

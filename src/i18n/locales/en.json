@@ -73,6 +73,20 @@
       "done": "Local migration is verified. Reload to open a new session on this storage.",
       "resume": "Verify and resume"
     },
+    "erasurePreparation": {
+      "noAccount": "No selectable account for this local erasure. Nothing was prepared or erased. Anonymous data is not supported by this path; reload to choose normal migration recovery.",
+      "inspect": "Prepare copies before choosing local erasure",
+      "working": "Inspecting current data and copies. Nothing is being written or erased.",
+      "confirm": "Prepare local copies of every inventoried account?",
+      "consent": "This step writes and verifies local copies. It may need additional space and does not free storage. No account will be erased or signed in. After reloading, you will separately choose the account to erase and confirm its local deletion.",
+      "initialInventory": "No initial inventory was preserved. Preparation will use only the inventory of currently present data just inspected, without guaranteeing that it matches an earlier state.",
+      "confirmCta": "Confirm preparation of these copies",
+      "preparing": "Writing and verifying copies. No erasure. Keep this window open.",
+      "retry": "Preparation was interrupted. Partial copies may remain. You can retry the same preparation; a persistent capacity shortage or a blocking older window must be resolved without purging data.",
+      "retryCta": "Retry the same preparation",
+      "failed": "Preparation cannot continue from this inventory. Preserve storage and reload to inspect its state again. No account deletion was performed.",
+      "done": "Copies verified. Reload to choose an account to erase. No account was deleted and no private session was opened."
+    },
     "migrationErasure": {
       "inspect": "Check whether an account can be erased locally",
       "working": "Checking the sources and every copy. No data is being erased.",

@@ -3,7 +3,7 @@ import { legacyStorageKey, workspaceDataKey, isolatedWorkspaceLayout } from './l
 import { parseLegacyWorkspaceKey, parseOwnedLocalKey } from './localOwnership'
 
 export class WorkspaceMigrationError extends Error {
-  constructor(public readonly code: 'disabled' | 'busy' | 'cancelled' | 'unsupported' | 'erasure' | 'changed' | 'collision' | 'missing' | 'storage') {
+  constructor(public readonly code: 'disabled' | 'busy' | 'cancelled' | 'unsupported' | 'erasure' | 'changed' | 'collision' | 'missing' | 'storage' | 'no-account') {
     super(`workspace_migration_${code}`); this.name = 'WorkspaceMigrationError'
   }
 }
