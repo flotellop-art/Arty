@@ -31,7 +31,7 @@ supplémentaire n'est implicite dans ce mandat.
 | W03 | Catalogue | Un catalogue partagé aligne comparaison, sélecteurs, labels et éligibilité selon le compte (pas une garantie fournisseur). Modèle demandé, transmis par le proxy et signalé par le fournisseur distingués. Tests contre la dérive et contre l'accès premium hors droit. | Web déployé, PR #440 ; recette visuelle/appareil non vérifiée |
 | W04 | Projets | Créer/renommer/supprimer un projet, consignes propres, conversations associées, bibliothèque de documents réutilisables. Sources identifiables dans le contexte. Recherche bornée, absence de fichier et contexte tronqué explicites. Cloisonnement par compte et projet ; mode Europe conservé. | Bibliothèque web livrée #443 ; conversations web livrées #444 ; recette visuelle/appareil non vérifiée |
 | W05 | Livrables | Export DOCX modifiable et XLSX de tableaux, en plus des exports existants. Téléchargements relus par un parseur indépendant ; cellules dangereuses neutralisées ; aucun HTML actif ni formule arbitraire. Formats et limites documentés. | Web déployé #445 ; recette structurelle vérifiée ; rendu Office/appareil non vérifié |
-| W06 | Continuité | Sauvegarde/restauration explicites puis synchronisation optionnelle multi-appareil chiffrée avant upload, avec secret détenu par l'utilisateur et récupération expliquée. Conflits non destructifs ; reprise hors-ligne ; logout/switch/delete et compte invité traités. Un export manuel seul ne valide pas la synchronisation. | A1 #446, galerie #448, verrou document #449, capture/vérification A2 #451, préparation A3a #452, admission froide #453, runtime isolé inactif #454, migrateur journalisé OFF #455, reprise froide d'effacement v2 OFF #456, reçu distant #457, pont froid/fence v5 OFF #458 et reset local v6/v7 OFF #459 livrés ; restauration/synchronisation non livrées |
+| W06 | Continuité | Sauvegarde/restauration explicites puis synchronisation optionnelle multi-appareil chiffrée avant upload, avec secret détenu par l'utilisateur et récupération expliquée. Conflits non destructifs ; reprise hors-ligne ; logout/switch/delete et compte invité traités. Un export manuel seul ne valide pas la synchronisation. | Restauration Web activée et livrée #478 (WORKSPACE_RESTORE_PUBLISHER.md), après fondations #446–459 et annulation #477 ; préparation explicite, journal v8 et repli compatibles. Synchronisation distante non livrée, accès de configuration Cloudflare expiré ; démarrage/recette physique APK non attestés |
 | W07 | Comparaison | Comparer depuis une conversation avec contexte/documents autorisés ; conserver les résultats et poursuivre la réponse choisie sans perdre l'original. Erreurs/coûts/quotas de chaque panneau visibles ; EU et historique privé jamais contournés. | Web livré #462 ; recette App/navigateur synthétique vérifiée ; APK distribuée, installation physique et OAuth/facturation réels non attestés |
 | W08 | Parcours métier | Trois parcours complets : synthèse documentaire, réponse client préparée, planification Agenda avec confirmation avant écriture. Écran de connexions indiquant disponible/non configuré/non pris en charge selon plateforme. Pas de Drive/Gmail OAuth restreint ni relais IMAP serveur. | Socle Google/BYOK #463, transport Agenda #464, pont copie documentaire/Agenda #465, synthèse guidée #466, statut client #467, formulaire client #468/#469 et Connexions #470 livrés web ; recettes App/navigateur synthétiques vérifiées ; APK distribuées, installation physique et intégrations réelles non attestées |
 | W09 | Mobile et identité | PWA installable ; identité tryarty cohérente ; distribution Android authentifiée et documentée. Ne pas rediriger vers une app Play homonyme. Toute migration appId inclut signatures/OAuth/Firebase/liens vérifiés ; un APK distribué n'est pas une publication Store. | Transport API historique livré #471, sondes publiques vérifiées ; identité APK et premier reçu réel livrés #472, distribution Firebase réussie ; guide PWA #473 et correctif CDN #474 publiés/vérifiés sur tryarty.com (PWA_INSTALL_GUIDE.md) ; validations appareil/Store non livrées |
@@ -108,7 +108,7 @@ réels ; préparer protocole et instrumentation sans fabriquer leurs résultats.
 
 ## Preuves par lot
 
-### W06 — restauration Web, candidat activé et validé localement
+### W06 — restauration Web, livrée #478
 
 Réglages → Restaurer : préparation initiale consentie si stockage legacy,
 archive/code → aperçu lié au compte → adoption durable v8 → reprise froide
@@ -124,8 +124,34 @@ indépendantes GO bornés Web ; verify 318 suites / 4 087 tests + 1 sauté.
 Chrome réel avec fixtures locales FR/EN 390/1280, reload/back/forward,
 exclusion second onglet, A/B relus/réécrits, PDF/TXT comparés à l'octet, reprise
 sur nouveau bundle START=false. Aucune donnée réelle ni requête IA.
-La livraison Git/CI/Pages reste à attester. Démarrage natif indisponible et
-recette appareil absente ; W06 n'est donc pas entièrement clôturé.
+PR #478 fusionnée `36d432d` ; CI PR et preview vertes. Pages main `4a6f1589`
+réussie ; huit assets canonique/immuables identiques et consentement FR/EN
+contrôlé sur tryarty.com à 15:26 UTC. Reçus détaillés dans le document dédié.
+CI main `34042135018` et distribution Firebase `34042135040` réussies en
+première tentative ; reçu de l'APK signé au commit exact vérifié.
+Démarrage natif indisponible et recette appareil absente ; W06 reste partiel.
+L'accès de configuration Cloudflare a été revérifié à 15:25 UTC : expiré,
+reconnexion requise avant la synchronisation distante ; aucun contournement.
+
+### W10 — contre-revues préparatoires du prochain lot, aucun code livré
+
+Les deux lectures indépendantes privilégient un premier parcours réel « réponse
+client → résultat finalisé et enregistré localement → rapport opérateur ».
+Ne pas réutiliser `arty-message-sent` (avant finalisation, également présent
+après échec/arrêt du comparateur), le montage du streak ou l'adoption d'un guide
+comme oracle de réussite. La persistance synchrone est un filet local ; le
+chiffrement différé n'est pas attesté par ce reçu.
+
+Option de mesure facultative désactivée par défaut ; champs fermés sans contenu,
+erreurs libres, IDs métier ou clés. Une première agrégation de déclarations
+quotidiennes sans identifiant persistant peut être livrée sans nouveau cron,
+mais ne mesure ni utilisateurs uniques, ni D7/D30, ni conversion cohortée.
+Le compte ou l'installation, la suppression et les écritures tardives doivent
+être traités avant toute cohorte ; une purge opportuniste ne garantit pas J45.
+Le mode réel/test, l'identité de paiement et les remboursements doivent être
+attestés prospectivement avant d'attribuer un achat à une cohorte.
+
+Ces décisions sont une préparation, pas une instrumentation en production.
 
 ### W06 — abandon avant barrière, livré #477 (OFF)
 

@@ -3,7 +3,12 @@
 Date : 5 septembre 2026. Décision locale acceptée après deux challenges
 indépendants. **W06 non livré** : A1 fournit le format ; A2 ajoute maintenant
 capture/vérification d'une conversation (preuves de livraison dans le CDC).
-La restauration et la synchronisation restent à implémenter.
+État courant du 6 septembre : restauration Web activée et livrée #478, preuves
+dans `WORKSPACE_RESTORE_PUBLISHER.md`. La synchronisation reste à implémenter ;
+la connexion Cloudflare de configuration est toujours expirée après contrôle
+à 15:25 UTC. Les mentions OFF et non livré ci-dessous sont l'historique des
+sous-lots, pas la politique actuelle : ISOLATED doit désormais rester true,
+y compris dans un repli fermant seulement les nouveaux départs START.
 
 ## Contexte
 
