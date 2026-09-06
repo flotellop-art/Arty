@@ -131,9 +131,32 @@ une reconnexion : **ce n'est pas une preuve de VIP authentifié**. Le même
 build main sur l'origine immuable neuve affiche bien la connexion anonyme,
 sans mode démo. Aucun compte, token ou accès n'a été modifié pour la recette.
 
-Suivi public de 15 minutes démarré à 20:32:44 UTC ; verdict final et CI main /
-distribution Firebase à compléter après leurs résultats. Les premières
-sondes sont vertes, ce n'est pas encore le verdict de la fenêtre entière.
+Suivi public achevé de 20:32:44 à 20:47:44 UTC : **16 échantillons**, cinq
+GET publics chacun, tous conformes (200 pages/statut anonyme, 401 wallet,
+aucune redirection API). Reçu `dependency-security-production-observe.log` :
+`public_probes_only_passed`, 900 secondes. Cela ne mesure ni les taux d'erreur
+internes, ni un paiement ou appel IA authentifié en production.
+
+CI main [34058243060](https://github.com/flotellop-art/Arty/actions/runs/34058243060)
+et workflow Firebase [34058243047](https://github.com/flotellop-art/Arty/actions/runs/34058243047)
+**réussis**. Le reçu d'identité de l'APK, vérifié à 20:40:28 UTC, atteste
+`com.arty.app`, version `1.0.99` / code `100`, 4 404 915 octets et SHA-256
+`488632863009eb7085c82c611496541ff62230c92545087e01961009ae896033`.
+Signature vérifiée et correspondance avec les assetlinks du checkout ;
+ce reçu seul ne prouve ni distribution, ni installation physique, ni OAuth.
+La réussite de la distribution vient du workflow distinct. Aucun appareil
+ne figure dans `adb devices -l` lors du contrôle suivant : le binaire installé
+antérieurement n'est pas requalifié comme celui de cette release.
+
+La PR documentaire [#482](https://github.com/flotellop-art/Arty/pull/482), squash
+`acd8153661f3920c4153f0d656f63aa9a8c64085`, a aussi une CI main verte
+([34058953306](https://github.com/flotellop-art/Arty/actions/runs/34058953306)).
+Pages `40d969fd-862a-43c8-ae0c-87d9286d1fff` réussi ; à 20:54:24 UTC,
+les cinq assets canoniques correspondent exactement à cette origine immuable :
+`index-CK-f5HN4.js`, `App-Bzu12uar.js`, `upgrade-BZBd9rTY.js`, vendor et
+DOMPurify inchangés. Les premiers hashes changent avec l'horodatage de build,
+sans changement de code applicatif dans cette PR. Reçu local
+`dependency-security-final-assets.log` ; aucune session authentifiée utilisée.
 
 Avant fusion : dernière passe `npm run verify`, deux contre-revues readonly,
 CI PR web/orchestrateur/Android, attestation native Linux et smoke Pages
