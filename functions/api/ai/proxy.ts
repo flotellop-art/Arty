@@ -1,5 +1,6 @@
 import type { Env } from '../../env'
 import { isAdmissionUnavailable, admissionUnavailableResponse } from '../_lib/admission'
+import { readAnthropicRequestBody } from '../_lib/anthropicRequestBody'
 import { BILLING_LEAK_PATTERN as SHARED_BILLING_LEAK_PATTERN } from '../_lib/upstreamBilling'
 import {
   checkAllowedVerifiedUser,
@@ -7,7 +8,6 @@ import {
   isTrialExpired,
   proKeyRequiredResponse,
   trialExpiredResponse,
-  trialModelRestrictedResponse,
 } from '../_lib/checkAllowedUser'
 import {
   consumeEmailTrialMessage,
@@ -65,6 +65,12 @@ export function alignBodyWithServedModel(body: string, servedModel: string): str
   } catch {
     return body
   }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return body
+  return alignParsedBodyWithServedModel(parsed, servedModel) ? JSON.stringify(parsed) : body
+}
+
+function alignParsedBodyWithServedModel(parsed: Record<string, unknown>, servedModel: string): boolean {
+  if (!servedModel.toLowerCase().includes('haiku')) return false
   let changed = false
   if ('thinking' in parsed) { delete parsed.thinking; changed = true }
   if ('output_config' in parsed) { delete parsed.output_config; changed = true }
@@ -78,7 +84,7 @@ export function alignBodyWithServedModel(body: string, servedModel: string): str
     )
     if (kept.length !== parsed.tools.length) { parsed.tools = kept; changed = true }
   }
-  return changed ? JSON.stringify(parsed) : body
+  return changed
 }
 
 /**
@@ -123,6 +129,15 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
   }
   const identity = identityResolution.identity
   const email = identity.kind === 'email-trial' ? emailTrialKey(identity.email) : identity.email
+
+  // Authentication first; complete bounded syntax validation before any trial,
+  // wallet, daily or premium debit. One DOM survives through the transformations.
+  const bodyRead = await readAnthropicRequestBody(request)
+  if (!bodyRead.ok) return bodyRead.response
+  if (request.signal.aborted) return Response.json(
+    { error: 'invalid_request_body' }, { status: 400, headers: { 'cache-control': 'no-store' } },
+  )
+  let parsedBody = bodyRead.body
 
   // BYOK prioritaire — si le client envoie sa propre clé, on l'utilise
   // telle quelle (chaque user paie ses propres appels, donc pas de quota
@@ -184,31 +199,12 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     )
   }
 
-  let body = await request.text()
-
-  // Extract the model name from the body so the quota breakdown in Settings
-  // knows which model was called. Defaults to 'claude' if parsing fails —
-  // the quota still works, we just lose granularity for that call.
-  let modelName = 'claude'
-  try {
-    const parsed = JSON.parse(body) as { model?: unknown }
-    if (typeof parsed.model === 'string' && parsed.model.length > 0) {
-      modelName = parsed.model
-    }
-  } catch {
-    // Leave fallback.
-  }
+  let modelName = typeof parsedBody.model === 'string' && parsedBody.model.length > 0 ? parsedBody.model : 'claude'
 
   // Defense-in-depth: cap max_tokens for any Haiku request regardless of path.
   // claude-haiku-4-5-20251001 hard limit = 64000 output tokens.
   if (modelName.includes('haiku')) {
-    try {
-      const bodyObj = JSON.parse(body) as Record<string, unknown>
-      if (typeof bodyObj.max_tokens === 'number' && bodyObj.max_tokens > 64000) {
-        bodyObj.max_tokens = 64000
-        body = JSON.stringify(bodyObj)
-      }
-    } catch { /* ignore */ }
+    if (typeof parsedBody.max_tokens === 'number' && parsedBody.max_tokens > 64000) parsedBody.max_tokens = 64000
   }
 
   // Trial : override silencieux du modèle vers Haiku si le modèle demandé
@@ -216,41 +212,32 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
   // côté serveur pour garantir que les trials restent sur le tier gratuit
   // sans exposer d'erreur visible au client.
   if (!isByok && userPlan === 'trial' && !isModelAllowedInTrial(modelName)) {
-    try {
-      const bodyObj = JSON.parse(body) as Record<string, unknown>
-      bodyObj.model = 'claude-haiku-4-5-20251001'
+      parsedBody.model = 'claude-haiku-4-5-20251001'
       // Haiku max_tokens = 64000 — cap pour éviter l'erreur 400
-      if (typeof bodyObj.max_tokens === 'number' && bodyObj.max_tokens > 64000) {
-        bodyObj.max_tokens = 64000
+      if (typeof parsedBody.max_tokens === 'number' && parsedBody.max_tokens > 64000) {
+        parsedBody.max_tokens = 64000
       }
-      body = JSON.stringify(bodyObj)
       modelName = 'claude-haiku-4-5-20251001'
-    } catch {
-      return trialModelRestrictedResponse()
-    }
   }
 
   // Sans abo : si l'utilisateur a des crédits, il passe par son WALLET (n'importe
   // quel modèle, payé à l'usage) ; sinon le tier gratuit Haiku 10/jour (inchangé).
   let walletResId: string | undefined
   if (!isByok && userPlan === 'free') {
-    let parsedBody: Record<string, unknown> = {}
-    try {
-      parsedBody = JSON.parse(body) as Record<string, unknown>
-    } catch {
-      /* body illisible → réserve au plafond (estimation input = 0) */
-    }
-    enforceWalletOutputLimit('anthropic', parsedBody)
+    // The wallet limit is root-only. Do not leak its cap into the Free skip
+    // branch; previously its separately parsed candidate was discarded there.
+    const walletBody = { ...parsedBody }
+    enforceWalletOutputLimit('anthropic', walletBody)
     const start = await beginWalletBilling(env, waitUntil, {
       email,
       model: modelName,
       provider: 'anthropic',
-      body: parsedBody,
+      body: walletBody,
     })
     if (start.mode === 'refuse') return start.response
     if (start.mode === 'wallet') {
       walletResId = start.resId
-      body = JSON.stringify(parsedBody)
+      parsedBody = walletBody
     } else {
       // Pas de crédits. Essai ÉPUISÉ → 403 trial_expired : le tier Haiku gratuit
       // est réservé aux vrais 'free' (qui n'ont jamais eu d'essai), pas aux
@@ -303,7 +290,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
   // modèle DEMANDÉ (anthropicClient : `effortActive = enabled && !isHaiku`) —
   // il ne PEUT pas savoir. Seul ce point connaît le modèle final : c'est donc
   // ici qu'on aligne le payload, sinon Anthropic répond 400 (terrain 9 août).
-  body = alignBodyWithServedModel(body, modelName)
+  alignParsedBodyWithServedModel(parsedBody, modelName)
 
   const headers: Record<string, string> = {
     'content-type': 'application/json',
@@ -320,7 +307,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     const response = await fetch(ANTHROPIC_URL, {
       method: 'POST',
       headers,
-      body,
+      body: JSON.stringify(parsedBody),
     })
 
     const responseHeaders = (extra: Record<string, string> = {}) => {
