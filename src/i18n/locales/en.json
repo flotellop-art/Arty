@@ -1094,7 +1094,7 @@
       "loading": "Generating audio...",
       "connectGoogleToListen": "Connect Google to listen",
       "error401": "Google session expired. Reconnect Google.",
-      "error429": "Daily free voice attempt limit reached. Try again tomorrow; availability also depends on Arty’s voice budget.",
+      "error429": "A voice limit has been reached. Try again later; for the daily free limit, wait until tomorrow.",
       "error502": "Voice service error. Try again.",
       "errorGeneric": "Text-to-speech error."
     }

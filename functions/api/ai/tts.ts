@@ -77,7 +77,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
       if (!quota.allowed) {
         return Response.json(
           {
-            error: `Limite de tentatives de voix gratuite atteinte (${TTS_FREE_DAILY_LIMIT}/jour). Réessaie demain ; la disponibilité dépend aussi du budget vocal d’Arty.`,
+            error: `Limite de tentatives de voix gratuite atteinte (${TTS_FREE_DAILY_LIMIT}/jour). Réessaie demain.`,
             limit: TTS_FREE_DAILY_LIMIT,
           },
           { status: 429 }
