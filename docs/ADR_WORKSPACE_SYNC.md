@@ -843,7 +843,8 @@ d'un appel R2 définitivement inconnu. Deux contre-revues indépendantes ont
 corrigé la capture des anciens coffres, le schéma partiel et le tombstone non
 inventorié. GO borné au checkpoint local, pas à une activation.
 
-**À terminer avant raccord/activation :**
+**À terminer avant raccord/activation (état historique B3a ; points 1–2
+implémentés localement en B3b ci-dessous) :**
 
 1. Reprise utilisateur du nettoyage dans les parcours chaud **et** froid. Le
    GET de reçu reste actuellement SELECT-only et ne renvoie pas encore
@@ -870,6 +871,77 @@ inventorié. GO borné au checkpoint local, pas à une activation.
    timeout/TTL/settlement administratif inventé comme preuve. Politique de
    rétention/consentement, juridiction et capacité à valider avant provisioning.
 
-Après le premier coffre réel, un rollback serveur ignorant ces tables (dont
-#485) serait incompatible avec l'effacement : garder ces lecteurs/gates et
-préférer un correctif en avant. Désactiver START n'autorise pas de les retirer.
+Après le premier état sync serveur réel, y compris un challenge avant tout
+coffre, un rollback serveur ignorant ces tables (dont #485) serait incompatible
+avec l'effacement : garder ces lecteurs/gates et préférer un correctif en avant.
+Sinon une suppression legacy pourrait omettre la rotation de génération et
+laisser un ancien challenge réutilisable après roll-forward. Désactiver START
+n'autorise pas de retirer ces protections.
+
+### B3b — reprise explicite du nettoyage distant, candidat local (7 septembre)
+
+Ce lot raccorde l'effacement existant, pas le démarrage de synchronisation.
+Les flags/bindings/ressources distants restent inchangés. Aucun POST n'est
+déclenché en ouvrant les réglages ou par la simple consultation d'un reçu.
+
+- Le premier POST d'effacement renvoie désormais `202 cleanup-pending` quand
+  ses cibles distantes restent à purger. Le GET demeure SELECT-only et renvoie
+  le même statut fermé, lié à l'opération/capacité/sujet exacts. Seul `confirmed`
+  autorise le passage au nettoyage local ; un 202 ne publie pas cette autorité.
+- Parcours chaud, y compris stockage legacy : une action séparée et confirmée
+  appelle `continueAccountErasureCleanup`. Chaque invocation fait GET, atteste
+  le reçu complet/root/paire de fences/document/session, puis peut POSTer le
+  cleanup existant. Aucun OAuth, nouveau nonce ou recours à la confirmation
+  historique permissive. Le helper dédié fait un CAS intégral de confirmation.
+- Parcours froid : le GET pending validé et réattesté crée une autorité privée
+  dans l'acteur. Le bouton distinct la consomme avant le POST ; une erreur ou
+  réponse perdue impose de consulter à nouveau. Le passage du reçu à confirmé
+  compare aussi les fences dans sa transaction RW. Le protocole local v6/v7
+  reprend ensuite sans importer l'App privée ni lancer de KDF.
+- Annulation, changement de session, document perdu ou changement du reçu
+  refusent la suite. Pending n'est jamais `done`. L'UI protège les doubles clics,
+  les suites d'import après démontage et les anciens callbacks A face à B.
+  Une confirmation durable avec nettoyage local interrompu conserve sa voie
+  locale, sans deuxième requête distante. Le handoff isolé exige un reload.
+- Les textes FR/EN distinguent distant/local, consultation/reprise et résultat
+  inconnu. Ils ne prétendent pas qu'une requête déjà envoyée a été annulée.
+  Le focus revient au résultat après l'action ; le titre froid ne présume plus
+  que le travail restant est exclusivement local.
+
+Preuves ajoutées : `accountErasureSyncCleanupRoundTrip.test.ts` passe **4 cas**
+avec vrais services locaux, handlers/middleware dans workerd, D1 et R2 locaux :
+legacy après reload, isolé chaud, isolé froid, et POST cleanup réellement
+committé dont la réponse est perdue, suivi d'un GET confirmé sans second POST.
+Côté backend, seule l'API tokeninfo externe est simulée. Le banc client emploie
+fake-indexeddb, des Web Locks simulés, un getter OAuth contrôlé et un shim
+Capacitor web ; les services/runtime/KDF sont réels. Les paquets sont
+opaques/synthétiques, donc ce test ne valide pas le codec. Le client ne redemande aucun token après
+le premier effacement. Dans chaque cas, B conserve son objet R2, sa ligne D1,
+son projet chiffré et peut lire/créer/relire après un nouveau document.
+
+Tests unitaires/de composants : pending répété, reçu invalide, A→B→A, quota du
+CAS, panne locale après confirmation, double clic et démontage. Les injections
+de nonce/fence à l'intérieur des vraies transactions IndexedDB de confirmation
+refusent sans confirmation/purge. IndexedDB est simulé dans ces suites.
+
+Recette Chrome réelle du 7 septembre à 01:43:56 UTC : **5 scénarios PASS**,
+FR/390 et EN/1280 chaud/froid, plus perte réelle de l'admission pendant le GET
+avec panneau encore monté. UI/services/IndexedDB/chiffrement locaux réels,
+statuts HTTP et reçu initial synthétiques, réseau extérieur bloqué. Pending
+répété puis confirmation, B relu/réécrit après reload, focus vérifié, aucun
+débordement horizontal ou pageerror ; aucun POST après perte du document.
+La voie froide utilise le vrai point d'entrée `main`, sans App/crypto importés
+pendant sa reprise et sans toucher l'URL callback. Les preuves serveur et UI
+sont complémentaires, pas un E2E Google/Cloudflare de production.
+
+Les contre-revues ont fait corriger : fences absentes du CAS froid, getters
+privés susceptibles de lever après perte du document, succès tardif A pouvant
+recharger B, et texte d'erreur trop affirmatif. La validation reste locale.
+Les scripts/captures et logs synthétiques sont dans `.playwright-mcp`, hors Git.
+
+Toujours requis pour W06 : découverte/jointure d'un coffre au second profil,
+transport client avec véritable grant, ACK/persistance exacte et rescan,
+réception/apply/conflits, consentement/rétention et recette deux profils puis
+appareil. Le cas PUT définitivement inconnu reste bloquant pour son coffre ;
+aucun TTL ni settlement inventé ne le clôt. B3b ne valide pas ces exigences et
+ne justifie aucune activation/provisioning de synchronisation.

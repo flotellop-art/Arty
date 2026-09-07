@@ -22,7 +22,9 @@ export async function makeWorkspaceSyncHarness(start = 'true', bucket = true) {
     } }`, resolveDir: root, loader: 'ts' }, bundle: true, format: 'esm', platform: 'browser', write: false, logLevel: 'silent' })
   const authCalls: string[] = []
   const options: MiniflareOptions = { host: '127.0.0.1', port: 0, modules: true, script: bundle.outputFiles[0]!.text,
-    compatibilityDate: '2026-08-06', d1Databases: { DB: 'sync-synthetic' }, r2Buckets: bucket ? { WORKSPACE_SYNC_BUCKET: 'sync-synthetic' } : {},
+    // Match the Pages production setting re-read before B3 release. Do not
+    // silently test newer runtime semantics than the deployed account uses.
+    compatibilityDate: '2026-04-10', d1Databases: { DB: 'sync-synthetic' }, r2Buckets: bucket ? { WORKSPACE_SYNC_BUCKET: 'sync-synthetic' } : {},
     bindings: { GOOGLE_CLIENT_ID: 'synthetic-arty-client', WORKSPACE_SYNC_START_ENABLED: start },
     outboundService(request) {
       const url = new URL(request.url)

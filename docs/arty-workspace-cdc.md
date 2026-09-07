@@ -2105,3 +2105,26 @@ binding/flag/bucket distant modifié. Les START livrés restent inchangés. Repr
 cleanup visible en layouts legacy/isolé, découverte/jointure second appareil,
 transport client/ACK, réception/apply, consentement et recettes multi-profils
 restent à réaliser. Aucun de ces points n'est exclu de W06 ; pas de GO activation.
+
+### W06-B3b — reprise du nettoyage raccordée, candidat local (7 septembre)
+
+Les manques « cleanup visible » du checkpoint précédent sont maintenant
+implémentés dans les deux parcours : réglages legacy/isolé et reprise froide.
+GET reste une consultation ; la reprise distante requiert une action distincte.
+Un reçu pending ne confirme jamais l'effacement local. Reçu exact, document,
+session et fences sont réattestés avant POST et CAS de confirmation.
+
+**4 roundtrips PASS** avec vrais services/handlers/middleware/D1/R2 locaux,
+dont réponse cleanup perdue après commit → GET confirmé sans second POST.
+**5 recettes Chrome PASS**, FR390/EN1280 chaud/froid et vrai document perdu
+avant démontage ; données du compte B relues et réécrites, focus conservé.
+Tests UI/domaines supplémentaires : quota, fermeture, double clic, A→B→A et
+mutation du marqueur/fences jusque dans la transaction RW. Le périmètre précis
+et les défauts trouvés par les contre-revues figurent dans
+[ADR_WORKSPACE_SYNC.md](ADR_WORKSPACE_SYNC.md).
+
+**Non poussé/non déployé à ce checkpoint** ; aucun flag, binding, bucket ou
+migration distante changé. W06 reste partiel : jointure second profil,
+transport/ACK/apply, inconnus R2, consentement et recettes multi-appareils ne
+sont pas clos par ces tests locaux. Ni recette physique Android ni acceptation
+du prestataire d'abonnement/crédits ne sont revendiquées.

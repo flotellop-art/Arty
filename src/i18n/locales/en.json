@@ -195,7 +195,7 @@
     }
   },
   "workspaceAdmission": {
-    "erasureTitle": "Local cleanup pending",
+    "erasureTitle": "Erasure pending",
     "erasureRecovery": {
       "idle": "An already-started erasure needs to finish local cleanup before accounts can open. Recovery never sends another server deletion request and needs no sign-in.",
       "uncertain": "The server deletion response was not saved. Arty can consult its receipt without signing in. An unknown result will not trigger local cleanup or another deletion request.",
@@ -209,7 +209,9 @@
       "confirmLocal": "Confirm erasure on this device",
       "back": "Go back without erasing",
       "working": "Checking the request and, if authorized, cleaning declared local copies…",
-      "failed": "Verification or cleanup did not finish. No new server deletion request was sent. Keep storage and retry; if the issue persists, seek help. On Android, an application update may be required.",
+      "failed": "The result of verification or cleanup is not confirmed. A remote cleanup request already sent may have run. Preserve storage and reload to read the recorded state; seek help if this persists.",
+      "cleanupPending": "Remote erasure has started, but cleanup is not finished. Local copies and the receipt are retained. Continuing only resumes this existing request, without sign-in or a new account deletion. If this persists, keep storage and seek help.",
+      "cleanupContinue": "Continue remote cleanup",
       "done": "Cleanup of the declared local copies is verified. Reload to return to sign-in. A new local workspace can be created if this erasure has a compatible reset right; an older procedure does not create that right automatically.",
       "disabled": "This version cannot resume this cleanup yet. No private data is opened. A compatible version is required.",
       "resume": "Resume local cleanup"
@@ -1685,6 +1687,11 @@
     }
   },
   "account": {
+    "cleanupPending": "The server has started erasure, but remote cleanup is still pending. Local data and the receipt are retained; local erasure has not been confirmed.",
+    "cleanupChoice": "Resume remote cleanup…",
+    "cleanupTitle": "Continue the existing erasure?",
+    "cleanupBody": "Arty will check this receipt, then resume only the targets of that request. Local copies will be cleaned after server confirmation. No sign-in is needed. Closing after sending does not guarantee cancellation.",
+    "cleanupConfirm": "Check and continue cleanup",
     "dangerZone": "Danger zone",
     "delete": "Delete my account",
     "deleteDescription": "Permanently erases your content, sessions, and reports — on this device and our servers.",

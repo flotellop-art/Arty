@@ -195,7 +195,7 @@
     }
   },
   "workspaceAdmission": {
-    "erasureTitle": "Nettoyage local à terminer",
+    "erasureTitle": "Effacement à terminer",
     "erasureRecovery": {
       "idle": "Un effacement déjà engagé doit terminer son nettoyage local avant l’ouverture des comptes. La reprise ne renvoie jamais de demande de suppression au serveur et ne demande pas de connexion.",
       "uncertain": "La réponse à la suppression serveur n’a pas été enregistrée. Arty peut consulter son reçu sans te reconnecter ; un accès au réseau est nécessaire. Un résultat inconnu ne déclenchera aucun effacement local ni nouvelle demande de suppression.",
@@ -209,7 +209,9 @@
       "confirmLocal": "Confirmer l’effacement sur cet appareil",
       "back": "Revenir sans effacer",
       "working": "Vérification de la demande et, si autorisé, nettoyage des copies locales déclarées…",
-      "failed": "La vérification ou le nettoyage n’a pas abouti. Aucune nouvelle demande de suppression serveur n’a été envoyée. Conserve le stockage et réessaie ; si le problème persiste, demande de l’aide. Sur Android, une mise à jour de l’application peut être nécessaire.",
+      "failed": "Le résultat de la vérification ou du nettoyage n’est pas confirmé. Une reprise distante déjà envoyée peut avoir été exécutée. Conserve le stockage et recharge pour relire l’état enregistré ; si le problème persiste, demande de l’aide.",
+      "cleanupPending": "L’effacement distant est engagé, mais son nettoyage n’est pas terminé. Les copies locales et le reçu sont conservés. Continuer reprend uniquement cette demande existante, sans te reconnecter ni demander une nouvelle suppression de compte. Si cet état persiste, conserve le stockage et demande de l’aide.",
+      "cleanupContinue": "Continuer le nettoyage distant",
       "done": "Le nettoyage des copies locales déclarées est vérifié. Recharge pour revenir à la connexion. Un nouvel espace local pourra être créé si cet effacement dispose du droit de recréation compatible ; une ancienne procédure ne crée pas ce droit automatiquement.",
       "disabled": "Cette version ne peut pas encore reprendre ce nettoyage. Aucune donnée privée n’est ouverte. Une version compatible est nécessaire.",
       "resume": "Reprendre le nettoyage local"
@@ -1685,6 +1687,11 @@
     }
   },
   "account": {
+    "cleanupPending": "Le serveur a engagé l’effacement, mais le nettoyage distant reste à terminer. Les données locales et le reçu sont conservés ; aucun effacement local n’est encore confirmé.",
+    "cleanupChoice": "Reprendre le nettoyage distant…",
+    "cleanupTitle": "Continuer l’effacement déjà engagé ?",
+    "cleanupBody": "Arty vérifiera ce reçu, puis reprendra uniquement les cibles de cette demande. Les copies locales seront nettoyées après confirmation du serveur. Aucune reconnexion n’est nécessaire. Fermer après l’envoi ne garantit pas son annulation.",
+    "cleanupConfirm": "Vérifier et continuer le nettoyage",
     "dangerZone": "Zone de danger",
     "delete": "Supprimer mon compte",
     "deleteDescription": "Efface définitivement ton contenu, tes sessions et tes rapports — sur cet appareil et sur nos serveurs.",

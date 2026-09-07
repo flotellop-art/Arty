@@ -11,7 +11,7 @@ import { migrationDatabaseName } from './migrationProtocol'
 import { parseErasureHeader, validErasureFence, type ErasureHeader, type ErasureProof, type ErasureStoreProof } from './erasureProtocol'
 import { parseResetReadyControl, type ResetRecord } from './resetProtocol'
 import { parseAccountErasureRecord, type AccountErasureRecord } from '../accountErasureJournal'
-import { consultErasureReceipt } from '../accountErasureReceipt'
+import { consultErasureStatus, resumeErasureCleanup, ErasureCleanupPendingError } from '../accountErasureReceipt'
 import { RAW_STORES, scanRawStore, digestRaw, digestText, localPairs } from './migrationInventory'
 import { equalErasure as equal, refuseErasure as refuse, projectErasurePlan, erasureLocalSnapshot, erasureRowOwner } from './erasureInventory'
 
@@ -19,10 +19,12 @@ type Attempt = AdmissionGuard & { assertCurrent(): void }
 type Copy = { copy: ErasureStoreProof['copy']; files: IDBPDatabase; projects: IDBPDatabase }
 type Snapshot = { control: unknown; receipt?: AccountErasureRecord | null }
 type Bind = (snapshot: Snapshot, generation: string, stage?: boolean) => void
-export type ColdErasureAction = 'resume' | 'local-only' | 'cancel-not-sent'
+type CleanupAuthority = { current?: { snapshot: Snapshot; fences: [string | null, string | null] } }
+export type ColdErasureAction = 'resume' | 'local-only' | 'cancel-not-sent' | 'resume-remote-cleanup'
 const FENCE_KEY = 'arty-project-erasure-fence'
-/** Actual cold singleton + intrinsic OFF gate. GET receipt only, never login,
- * POST, KDF or private App import. A v6 final commit grants one local reset;
+/** Actual cold singleton + intrinsic OFF gate. Resume consults by GET only;
+ * a separate command may POST cleanup for an attested existing intent. Never
+ * login, KDF or private App import. A v6 final commit grants one local reset;
  * historical v4/v5 completions grant none. Local-only requires
  * a distinct UI confirmation; it cannot manufacture remote confirmation. */
 export function createColdWorkspaceErasure() {
@@ -30,19 +32,23 @@ export function createColdWorkspaceErasure() {
   const cold = workspaceAdmission.claimMaintenance()
   let busy = false, knownFinal: unknown, knownCancellation: unknown
   let accepted: Snapshot[] = []
+  const cleanup: CleanupAuthority = {}
   const bind: Bind = (snapshot, generation, stage = false) => {
     if (stage) { accepted = [accepted[accepted.length - 1]!, structuredClone(snapshot)]; return }
     if (!accepted.length) workspaceAdmission.assertErasureSnapshot(generation, snapshot.receipt ?? snapshot.control)
     else if (!accepted.some(v => equal(v, snapshot))) return refuse()
     accepted = [structuredClone(snapshot)]
   }
-  return Object.freeze({ async resume(action: ColdErasureAction = 'resume') {
+  return Object.freeze({ async resume(action: ColdErasureAction = 'resume', externalSignal?: AbortSignal) {
     if (!ISOLATED_WORKSPACE_ENABLED) throw new Error('workspace_erasure_disabled')
+    if (!['resume', 'local-only', 'cancel-not-sent', 'resume-remote-cleanup'].includes(action) || externalSignal?.aborted) return refuse()
     cold.assertLock()
     if (busy) throw new Error('workspace_erasure_busy')
     busy = true
+    if (action !== 'resume-remote-cleanup') cleanup.current = undefined
     const aborter = new AbortController(), cancel = () => aborter.abort()
     cold.signal.addEventListener('abort', cancel, { once: true })
+    externalSignal?.addEventListener('abort', cancel, { once: true })
     let timeout = setTimeout(cancel, 120_000)
     const guard: Attempt = { signal: aborter.signal, assertLock: cold.assertLock, assertCurrent() {
       cold.assertLock()
@@ -53,8 +59,8 @@ export function createColdWorkspaceErasure() {
     const stopped = new Promise<never>((_yes, no) => { rejectStop = no })
     const stop = () => rejectStop(new Error('workspace_erasure_cancelled'))
     aborter.signal.addEventListener('abort', stop, { once: true })
-    try { return await Promise.race([erase(guard, knownFinal, v => { knownFinal = v }, action, bind, knownCancellation, v => { knownCancellation = v }), stopped]) }
-    finally { cancel(); clearTimeout(timeout); cold.signal.removeEventListener('abort', cancel); aborter.signal.removeEventListener('abort', stop); busy = false }
+    try { return await Promise.race([erase(guard, knownFinal, v => { knownFinal = v }, action, bind, knownCancellation, v => { knownCancellation = v }, cleanup), stopped]) }
+    finally { cancel(); clearTimeout(timeout); cold.signal.removeEventListener('abort', cancel); externalSignal?.removeEventListener('abort', cancel); aborter.signal.removeEventListener('abort', stop); busy = false }
   } })
 }
 async function transaction<T, M extends 'readonly' | 'readwrite'>(db: IDBPDatabase, stores: string[], mode: M, guard: Attempt,
@@ -114,8 +120,8 @@ async function replaceReceipt(db: IDBPDatabase, initial: unknown, expected: Acco
   if (!equal(await control(guard), initial)) return refuse()
   await transaction(db, ['meta'], 'readwrite', guard, async tx => {
     if (!equal(await readReceipts(tx, guard), [expected])) return refuse()
-    if (!next) {
-      if (!expectedFences) return refuse()
+    if (!next && !expectedFences) return refuse()
+    if (expectedFences) {
       const cursor = await tx.objectStore('meta').openCursor('erasure-fence')
       if ((cursor && !validErasureFence(cursor.value)) || !equal(cursor ? cursor.value : null, expectedFences[1]) || localStorage.getItem(FENCE_KEY) !== expectedFences[0]) return refuse()
     }
@@ -175,13 +181,15 @@ export async function readErasureProof(copies: Copy[], job: IDBPDatabase, header
   return { value: { localHash: local.hash, planHash: await digestRaw(redacted), stores }, absent }
 }
 async function erase(guard: Attempt, knownFinal: unknown, remember: (v: unknown) => void, action: ColdErasureAction,
-  bind: Bind, knownCancellation: unknown, rememberCancellation: (v: unknown) => void) {
+  bind: Bind, knownCancellation: unknown, rememberCancellation: (v: unknown) => void, cleanup: CleanupAuthority) {
+  const cleanupProof = cleanup.current
+  cleanup.current = undefined // consume before any possible POST
   const initial = await control(guard)
   // Only an exact final record attempted by this actor can acknowledge a lost
   // commit response. No arbitrary v2 generation implies completed erasure.
-  if (knownFinal && equal(initial, knownFinal)) return validateWorkspaceControl(initial)
+  if (knownFinal && equal(initial, knownFinal) && action !== 'resume-remote-cleanup') return validateWorkspaceControl(initial)
   let header = parseErasureHeader(initial)
-  if (header && action === 'cancel-not-sent') return refuse()
+  if (header && (action === 'cancel-not-sent' || action === 'resume-remote-cleanup')) return refuse()
   const layout = header ? isolatedWorkspaceLayout(header.generation, header.requiredOwners, controlProjectsVersion(header)) : validateWorkspaceControl(initial)
   if (layout.kind !== 'isolated-v1') return refuse()
   if (header) bind({ control: initial }, layout.generation)
@@ -205,6 +213,8 @@ async function erase(guard: Attempt, knownFinal: unknown, remember: (v: unknown)
       if (receipts.length !== 1) return refuse()
       let receipt = receipts[0]!
       bind({ control: initial, receipt }, layout.generation)
+      if (action === 'resume-remote-cleanup' && (!cleanupProof || receipt.serverConfirmed || receipt.localOnly || receipt.remote?.state !== 'uncertain' ||
+        !equal(cleanupProof.snapshot, { control: initial, receipt }))) return refuse()
       if (action === 'cancel-not-sent') {
         const pair = await fences(active, guard)
         if (receipt.serverConfirmed || receipt.localOnly || receipt.remote?.state !== 'not-sent' || receipt.pending.length || (pair[0] ?? 'initial') !== (pair[1] ?? 'initial')) return refuse()
@@ -219,10 +229,25 @@ async function erase(guard: Attempt, knownFinal: unknown, remember: (v: unknown)
           await replaceReceipt(active, initial, receipt, next, guard); receipt = next
         } else {
           if (receipt.remote?.state !== 'uncertain') throw new Error('workspace_erasure_choice_required')
-          await consultErasureReceipt(receipt.operationId, receipt.remote, guard.signal); guard.assertCurrent()
+          const pair = action === 'resume-remote-cleanup' ? cleanupProof!.fences : await fences(active, guard)
+          const attest = async () => {
+            if (!equal(await control(guard), initial) || !equal(await transaction(active, ['meta'], 'readonly', guard, tx => readReceipts(tx, guard)), [receipt]) ||
+              !equal(await fences(active, guard), pair) || !equal(await control(guard), initial)) return refuse()
+            beforeSend()
+          }
+          const beforeSend = () => { guard.assertCurrent(); if (localStorage.getItem(FENCE_KEY) !== pair[0]) return refuse() }
+          await attest()
+          const status = action === 'resume-remote-cleanup'
+            ? await resumeErasureCleanup(receipt.operationId, receipt.remote, guard.signal, beforeSend)
+            : await consultErasureStatus(receipt.operationId, receipt.remote, guard.signal)
+          await attest()
+          if (status === 'cleanup-pending') {
+            cleanup.current = { snapshot: structuredClone({ control: initial, receipt }), fences: [...pair] }
+            throw new ErasureCleanupPendingError()
+          }
           const next: AccountErasureRecord = { owner: receipt.owner, operationId: receipt.operationId, nonce: receipt.nonce, serverConfirmed: true, pending: [] }
           bind({ control: initial, receipt: next }, layout.generation, true)
-          await replaceReceipt(active, initial, receipt, next, guard); receipt = next
+          await replaceReceipt(active, initial, receipt, next, guard, pair); receipt = next
         }
       }
       const requiredOwners = [...new Set([...layout.requiredOwners, receipt.owner])]

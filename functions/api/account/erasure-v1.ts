@@ -3,6 +3,7 @@ import { verifyGoogleUserStrict } from '../_lib/checkAllowedUser'
 import { verifyEmailTrialToken } from '../_lib/emailTrial'
 import { accountErasureStatements } from '../_lib/accountErasureData'
 import { syncAccountIdentity, syncRevocationStatements, syncErasureCompleteGate } from '../_lib/workspaceSync/erasure'
+import { hasSyncSchema } from '../_lib/workspaceSync/common'
 import { ERASURE_OPERATION_HEADER, ERASURE_CAPABILITY_HEADER, ERASURE_SUBJECT_HEADER,
   erasureDigest, erasureSubject, erasureUuid, erasureHash } from '../../../src/services/accountErasureProtocol'
 
@@ -33,9 +34,13 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
     const row = table ? await env.DB.prepare(`SELECT subject_hash, completed FROM account_erasure_receipts_v1
       WHERE operation_id = ?1 AND capability_hash = ?2`).bind(c.operationId, await erasureDigest(c.capability))
       .first<{ subject_hash: string; completed: number }>() : null
-    return row?.completed === 1 && erasureHash(row.subject_hash)
-      ? reply({ protocol: 1, operationId: c.operationId, status: 'confirmed', subjectHash: row.subject_hash })
-      : reply({ protocol: 1, operationId: c.operationId, status: 'unknown' })
+    if (row && erasureHash(row.subject_hash)) {
+      if (row.completed === 1) return reply({ protocol: 1, operationId: c.operationId, status: 'confirmed', subjectHash: row.subject_hash })
+      if (row.completed === 0 && await hasSyncSchema(env.DB) && await env.DB.prepare('SELECT 1 FROM workspace_sync_erasure_targets_v1 WHERE operation_id=? LIMIT 1').bind(c.operationId).first()) {
+        return reply({ protocol: 1, operationId: c.operationId, status: 'cleanup-pending', subjectHash: row.subject_hash })
+      }
+    }
+    return reply({ protocol: 1, operationId: c.operationId, status: 'unknown' })
   } catch {
     // Never log raw D1 errors: they may include SQL bindings.
     return reply({ error: 'Erasure status unavailable' }, 503)
@@ -78,7 +83,11 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     ])
     // All deletes AND the receipt commit in one D1 transaction. A duplicate's
     // new ticket cannot win any DELETE, including after account recreation.
-    if (result.some(r => !r.success) || result.at(-1)?.results[0]?.completed !== 1) return reply({ error: 'Erasure conflict' }, 409)
+    if (result.some(r => !r.success)) return reply({ error: 'Erasure conflict' }, 409)
+    if (result.at(-1)?.results[0]?.completed === 0 && syncSubject && await env.DB.prepare('SELECT 1 FROM workspace_sync_erasure_targets_v1 WHERE operation_id=? LIMIT 1').bind(c.operationId).first()) {
+      return reply({ protocol: 1, operationId: c.operationId, status: 'cleanup-pending', subjectHash }, 202)
+    }
+    if (result.at(-1)?.results[0]?.completed !== 1) return reply({ error: 'Erasure conflict' }, 409)
     return reply({ protocol: 1, operationId: c.operationId, status: 'confirmed', subjectHash })
   } catch {
     return reply({ error: 'Erasure not confirmed' }, 503)

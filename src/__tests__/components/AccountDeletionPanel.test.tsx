@@ -1,11 +1,25 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-const mocks = vi.hoisted(() => ({ deleteAccount: vi.fn(), wipeLocal: vi.fn(), read: vi.fn(), owner: 'a', epoch: 1 }))
+const mocks = vi.hoisted(() => ({ deleteAccount: vi.fn(), cleanup: vi.fn(), wipeLocal: vi.fn(), read: vi.fn(), owner: 'a' as string | null, epoch: 1, lost: false }))
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }))
-vi.mock('../../services/accountService', () => ({ deleteAccount: mocks.deleteAccount, wipeLocalAccount: mocks.wipeLocal, getAccountErasureState: mocks.read }))
-vi.mock('../../services/userSession', () => ({ getActiveUserId: () => mocks.owner, getActiveSessionEpoch: () => mocks.epoch }))
+vi.mock('../../services/accountService', () => ({ deleteAccount: mocks.deleteAccount, continueAccountErasureCleanup: mocks.cleanup, wipeLocalAccount: mocks.wipeLocal, getAccountErasureState: mocks.read }))
+vi.mock('../../services/userSession', () => ({ getActiveUserId: () => { if (mocks.lost) throw new Error('document lost'); return mocks.owner }, getActiveSessionEpoch: () => mocks.epoch }))
 import { AccountDeletionPanel } from '../../components/settings/AccountDeletionPanel'
-beforeEach(() => { vi.clearAllMocks(); mocks.owner = 'a'; mocks.epoch = 1; mocks.deleteAccount.mockReset(); mocks.wipeLocal.mockReset(); mocks.read.mockReset().mockResolvedValue('none') })
+import { ErasureCleanupPendingError } from '../../services/accountErasureReceipt'
+beforeEach(() => {
+  vi.clearAllMocks(); mocks.owner = 'a'; mocks.epoch = 1; mocks.lost = false
+  const complete = async () => { mocks.owner = null; mocks.epoch++; return 'complete' }
+  mocks.deleteAccount.mockReset().mockImplementation(complete); mocks.cleanup.mockReset().mockImplementation(complete)
+  mocks.wipeLocal.mockReset().mockImplementation(complete); mocks.read.mockReset().mockResolvedValue('none')
+})
+
+async function revealCleanup() {
+  mocks.deleteAccount.mockRejectedValueOnce(new ErasureCleanupPendingError())
+  fireEvent.click(await screen.findByText('account.delete'))
+  mocks.read.mockResolvedValue('uncertain')
+  fireEvent.click(screen.getByText('account.confirmCta'))
+  return screen.findByRole('button', { name: 'account.cleanupChoice' })
+}
 describe('account erasure confirmation UI', () => {
   it('requires account confirmation, then a separate local-only choice and confirmation after failure', async () => {
     mocks.deleteAccount.mockRejectedValueOnce(new Error('uncertain receipt'))
@@ -114,5 +128,84 @@ describe('account erasure confirmation UI', () => {
     resolve('uncertain')
     await waitFor(() => expect(screen.getByText('account.delete')).toBeVisible())
     expect(screen.queryByRole('button', { name: 'account.verifyAndFinish' })).toBeNull()
+  })
+  it('requires a distinct cleanup confirmation; repeated pending never means done', async () => {
+    const done = vi.fn(); render(<AccountDeletionPanel open onComplete={done} />)
+    fireEvent.click(await revealCleanup())
+    expect(screen.getByText('account.cleanupBody')).toBeVisible()
+    expect(mocks.cleanup).not.toHaveBeenCalled()
+    mocks.cleanup.mockRejectedValueOnce(new ErasureCleanupPendingError())
+    const confirm = screen.getByRole('button', { name: 'account.cleanupConfirm' })
+    fireEvent.click(confirm); fireEvent.click(confirm)
+    await screen.findByRole('button', { name: 'account.cleanupChoice' })
+    expect(mocks.cleanup).toHaveBeenCalledTimes(1); expect(done).not.toHaveBeenCalled()
+    expect(mocks.cleanup.mock.calls[0]![0]).toBeInstanceOf(AbortSignal)
+    expect(mocks.deleteAccount).toHaveBeenCalledTimes(1)
+  })
+  it('after a lost cleanup response, verification is available and cleanup is not implicitly retried', async () => {
+    const done = vi.fn(); render(<AccountDeletionPanel open onComplete={done} />)
+    fireEvent.click(await revealCleanup()); mocks.cleanup.mockRejectedValueOnce(new Error('lost response'))
+    fireEvent.click(screen.getByRole('button', { name: 'account.cleanupConfirm' }))
+    await screen.findByText('account.error')
+    expect(done).not.toHaveBeenCalled(); expect(mocks.cleanup).toHaveBeenCalledTimes(1)
+    fireEvent.click(screen.getByText('account.closeConfirmation'))
+    fireEvent.click(await screen.findByRole('button', { name: 'account.verifyAndFinish' }))
+    expect(mocks.cleanup).toHaveBeenCalledTimes(1)
+    fireEvent.click(screen.getByRole('button', { name: 'account.verifyAndFinish' }))
+    await waitFor(() => expect(done).toHaveBeenCalledOnce())
+    expect(mocks.deleteAccount).toHaveBeenCalledTimes(2)
+  })
+  it.each(['close', 'unmount'])('%s aborts in-flight cleanup and cannot display a late pending authority', async change => {
+    let reject!: (error: Error) => void
+    mocks.cleanup.mockImplementationOnce(() => new Promise((_resolve, r) => { reject = r }))
+    const done = vi.fn(), view = render(<AccountDeletionPanel open onComplete={done} />)
+    fireEvent.click(await revealCleanup()); fireEvent.click(screen.getByRole('button', { name: 'account.cleanupConfirm' }))
+    const signal = mocks.cleanup.mock.calls[0]![0] as AbortSignal
+    expect(signal.aborted).toBe(false)
+    if (change === 'close') view.rerender(<AccountDeletionPanel open={false} onComplete={done} />)
+    else view.unmount()
+    expect(signal.aborted).toBe(true)
+    await act(async () => { reject(new ErasureCleanupPendingError()) })
+    if (change === 'close') { view.rerender(<AccountDeletionPanel open onComplete={done} />); await screen.findByRole('button', { name: 'account.verifyAndFinish' }) }
+    expect(screen.queryByText('account.cleanupChoice')).toBeNull(); expect(done).not.toHaveBeenCalled()
+  })
+  it('a displayed A cleanup button cannot adopt B or a new A epoch', async () => {
+    const view = render(<AccountDeletionPanel open onComplete={vi.fn()} />), oldButton = await revealCleanup()
+    mocks.owner = 'b'; mocks.epoch++
+    fireEvent.click(oldButton)
+    expect(screen.queryByText('account.cleanupConfirm')).toBeNull(); expect(mocks.cleanup).not.toHaveBeenCalled()
+    mocks.owner = 'a'; mocks.epoch++
+    view.rerender(<AccountDeletionPanel open onComplete={vi.fn()} />)
+    await screen.findByRole('button', { name: 'account.verifyAndFinish' })
+    expect(screen.queryByText('account.cleanupChoice')).toBeNull()
+  })
+  it('durable confirmation followed by local failure exposes local finish, not a new remote deletion', async () => {
+    render(<AccountDeletionPanel open onComplete={vi.fn()} />)
+    fireEvent.click(await revealCleanup())
+    mocks.cleanup.mockImplementationOnce(async () => { mocks.read.mockResolvedValue('confirmed'); throw new Error('local disk') })
+    fireEvent.click(screen.getByRole('button', { name: 'account.cleanupConfirm' }))
+    await screen.findByText('account.error')
+    expect(screen.queryByText('account.cleanupConfirm')).toBeNull()
+    fireEvent.click(await screen.findByRole('button', { name: 'account.finishLocal' }))
+    expect(screen.getByText('account.authorizedCleanupBody')).toBeVisible()
+    expect(mocks.cleanup).toHaveBeenCalledTimes(1); expect(mocks.deleteAccount).toHaveBeenCalledTimes(1)
+  })
+  it('a late successful A completion does not reload a newly active B', async () => {
+    const done = vi.fn(); render(<AccountDeletionPanel open onComplete={done} />)
+    fireEvent.click(await revealCleanup())
+    mocks.cleanup.mockImplementationOnce(async () => { mocks.owner = 'b'; mocks.epoch += 2; return 'complete' })
+    fireEvent.click(screen.getByRole('button', { name: 'account.cleanupConfirm' }))
+    await waitFor(() => expect(mocks.read).toHaveBeenCalledTimes(3))
+    expect(done).not.toHaveBeenCalled(); expect(mocks.cleanup).toHaveBeenCalledOnce()
+  })
+  it('a lost document during cleanup refuses safely even before the component unmounts', async () => {
+    let reject!: (error: Error) => void
+    const done = vi.fn(); render(<AccountDeletionPanel open onComplete={done} />)
+    fireEvent.click(await revealCleanup())
+    mocks.cleanup.mockImplementationOnce(() => new Promise((_resolve, r) => { reject = r }))
+    fireEvent.click(screen.getByRole('button', { name: 'account.cleanupConfirm' }))
+    await act(async () => { mocks.lost = true; reject(new ErasureCleanupPendingError()) })
+    expect(screen.queryByText('account.cleanupChoice')).toBeNull()
+    expect(screen.queryByText('account.cleanupConfirm')).toBeNull(); expect(done).not.toHaveBeenCalled()
   })
 })

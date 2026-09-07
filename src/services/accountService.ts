@@ -12,8 +12,9 @@ import { beginProjectErasure, assertProjectErasure, confirmServerProjectErasure,
   releaseFailedProjectErasure, markProjectErasureSent, readProjectErasureState, blockProjectOperations, purgeProjectsForAccount,
   type ProjectErasure, type ProjectErasureState } from './projects/store'
 import { ACCOUNT_ERASURE_PATH, ERASURE_OPERATION_HEADER, ERASURE_CAPABILITY_HEADER, ERASURE_SUBJECT_HEADER, createRemoteErasure } from './accountErasureProtocol'
-import { readConfirmedErasureReceipt } from './accountErasureReceipt'
-import { getDocumentStorageLayout, documentWorkspace } from './workspaceWriter/runtime'
+import { readErasureReceiptStatus, consultErasureStatus, resumeErasureCleanup, ErasureCleanupPendingError } from './accountErasureReceipt'
+import { captureProjectErasureCleanup } from './projects/remoteErasureCleanup'
+import { getDocumentStorageLayout, documentWorkspace, documentWorkspaceSignal } from './workspaceWriter/runtime'
 
 export type AccountErasureOutcome = 'complete' | 'reload-required'
 
@@ -59,10 +60,38 @@ async function performServerErasure(context: AccountContext, lease: ProjectErasu
   try {
     const res = await fetch(apiUrl(ACCOUNT_ERASURE_PATH), { method: send ? 'POST' : 'GET', headers,
       cache: 'no-store', credentials: 'omit', redirect: 'error', signal: controller.signal })
-    await readConfirmedErasureReceipt(res, lease.operationId, intent.subjectHash)
+    const status = await readErasureReceiptStatus(res, lease.operationId, intent.subjectHash)
+    if (controller.signal.aborted) throw new Error('Erasure consultation cancelled')
+    if (status === 'cleanup-pending') { context.assertCurrent(); throw new ErasureCleanupPendingError() }
     // The validated result belongs to A even after a UI switch. Its durable
     // receipt may be recorded; the caller must still refuse local cleanup of B.
   } finally { clearTimeout(timeout) }
+}
+
+/** Distinct explicit command from Settings, including a legacy local layout.
+ * Every invocation consults first; Settings/read-only retries never POST here.
+ * The capability and exact journal snapshot are private to this invocation. */
+export async function continueAccountErasureCleanup(signal?: AbortSignal): Promise<AccountErasureOutcome> {
+  const context = captureAccount(), release = blockProjectOperations(context.session.userId)
+  const aborter = new AbortController(), cancel = () => aborter.abort()
+  signal?.addEventListener('abort', cancel, { once: true }); documentWorkspaceSignal.addEventListener('abort', cancel, { once: true })
+  if (signal?.aborted || documentWorkspaceSignal.aborted) cancel()
+  const timeout = setTimeout(cancel, 120_000)
+  try {
+    const proof = await captureProjectErasureCleanup(context.session.userId, context.assertCurrent, aborter.signal)
+    let status = await consultErasureStatus(proof.operationId, proof.intent, aborter.signal)
+    await proof.attest()
+    if (status === 'cleanup-pending') {
+      status = await resumeErasureCleanup(proof.operationId, proof.intent, aborter.signal, proof.assertCurrent)
+      await proof.attest()
+    }
+    if (status === 'cleanup-pending') throw new ErasureCleanupPendingError()
+    const lease = await proof.confirm()
+    context.assertCurrent()
+    return await performLocalErasure(context, lease)
+  } finally {
+    clearTimeout(timeout); signal?.removeEventListener('abort', cancel); documentWorkspaceSignal.removeEventListener('abort', cancel); release()
+  }
 }
 
 async function performLocalErasure(captured: AccountContext, lease: ProjectErasure): Promise<AccountErasureOutcome> {
