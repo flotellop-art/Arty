@@ -2054,6 +2054,50 @@
       "syncFailed": "Sync failed"
     }
   },
+  "workspaceSyncApply": {
+    "title": "Receive your workspace",
+    "description": "First import from an existing vault, or explicit recovery of a concurrent upload. Local data is preserved. Applying updates and choosing between versions still need to be completed.",
+    "inspect": "Check my vault",
+    "code": "Vault recovery code",
+    "prepare": "Link this device and prepare import",
+    "summary": "{{conversations}} conversations, {{projects}} projects, {{documents}} documents and {{files}} files. {{retainedNotApplied}} unattached items remain in the vault without local import.",
+    "consent": "I confirm this import on this device and reloading Arty. My current upload selection remains unchanged.",
+    "apply": "Confirm import",
+    "reconcile": "Prepare a new upload keeping all versions",
+    "reconcileConsent": "I confirm preparing a new upload containing concurrent versions without choosing a winner. My newer local edits are not included and no received content is applied here.",
+    "reconciledSummary": "{{conflicts}} items retain multiple versions. They are not resolved yet.",
+    "sendPending": "Send the prepared packet",
+    "receiveAgain": "Read the vault versions again",
+    "recoveryTitle": "Finish importing on this device",
+    "resume": "Resume import",
+    "abort": "Review abandoning this import",
+    "erase": "Erase this import account locally",
+    "confirm": "Confirm",
+    "warm": {
+      "closed": "No remote reading starts automatically.",
+      "busy": "Preparing…",
+      "code": "A vault exists. Enter its code; it is not sent to the server.",
+      "preview": "Items have been checked and prepared, but not saved yet.",
+      "pending": "A historical upload awaits confirmation. The button below may send that packet without adding your newer local edits. No received content is applied.",
+      "conflict": "Another device published before this upload. Both versions are retained. You can prepare a new upload; this does not resolve the conflict or replace your local work.",
+      "reconciled": "The new upload is saved on this device, not sent yet. It retains concurrent versions. Server admission is still required and may be disabled.",
+      "receiveAgain": "The vault changed again. Nothing is merged or resent automatically. Read its versions before preparing another upload.",
+      "published": "The historical upload is confirmed. Received content is not applied here, and newer local edits still need to be sent separately.",
+      "reload": "The import is reserved. Reload Arty to finish saving it.",
+      "failed": "This flow could not finish. Reload Arty to check its state and resume if needed.",
+      "historyNotDurable": "Your local history contains an old item corrected in memory but not saved yet. Close settings, rename a local conversation, wait for it to save, then return to prepare the import. No received content has been imported.",
+      "unavailable": "No accessible vault for this first import. Vault creation and updates still need to be completed."
+    },
+    "cold": {
+      "choose": "An import is pending. It can resume offline. Arty remains closed while it is saved.",
+      "confirmAbort": "Abandonment is only possible before new history has been published. Only exact copies from this import will be removed; pre-existing data will be preserved.",
+      "confirmErase": "Warning: this erases all local data for the account linked to this import, including pre-existing data. Other accounts are preserved. The remote account and vault are not deleted.",
+      "working": "Saving safely…",
+      "done": "Local operation completed. Reload Arty to open your workspace.",
+      "erasureReserved": "Local erasure is reserved, not complete. Reload Arty to continue its confirmation and cleanup.",
+      "failed": "Completion could not be confirmed. Reload Arty to check its state, resume if needed or review local erasure."
+    }
+  },
   "templates": {
     "filterAll": "All",
     "headerKicker": "Library · Pro",

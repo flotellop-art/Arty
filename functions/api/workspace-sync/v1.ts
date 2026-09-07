@@ -4,12 +4,13 @@ import { SYNC_TRANSPORT_LIMITS, syncHead } from '../../../src/services/workspace
 import { readRequestTextWithLimit, RequestBodyTooLargeError } from '../_lib/boundedRequestBody'
 import { syncReply, requireSyncSubject, requireVault, rejectSync, SyncHttpError, publication, objectKey } from '../_lib/workspaceSync/common'
 import { enrollmentChallenge, enroll } from '../_lib/workspaceSync/enrollment'
+import { discoverVault, joinVault } from '../_lib/workspaceSync/discovery'
 import { reserve, getOperation, operationStatus, upload, commit, attestObject } from '../_lib/workspaceSync/operations'
 import type { SyncOperationRow } from '../_lib/workspaceSync/common'
 
 export const onRequest: PagesFunction<Env> = async ({ request, env }) => {
   const url = new URL(request.url), action = url.searchParams.get('action')
-  const starts = request.method === 'POST' && ['challenge', 'enroll', 'reserve'].includes(action ?? '')
+  const starts = request.method === 'POST' && ['challenge', 'enroll', 'join', 'reserve'].includes(action ?? '')
   // Missing configuration/OFF refuses new starts before authentication, body
   // consumption or schema access. Previously admitted operations still resume.
   if (starts && env.WORKSPACE_SYNC_START_ENABLED !== 'true') return syncReply({ error: 'Sync starts unavailable' }, 404)
@@ -22,8 +23,10 @@ export const onRequest: PagesFunction<Env> = async ({ request, env }) => {
       if (url.searchParams.size !== 1 || request.headers.get('content-type') !== 'application/json' || request.headers.has('content-encoding')) return rejectSync(400, 'invalid_request')
       const body: unknown = JSON.parse(await readRequestTextWithLimit(request, SYNC_TRANSPORT_LIMITS.jsonBytes))
       return syncReply(action === 'challenge' ? await enrollmentChallenge(db, subject, body)
-        : action === 'enroll' ? await enroll(db, subject, body) : await reserve(db, subject, body))
+        : action === 'enroll' ? await enroll(db, subject, body)
+        : action === 'join' ? await joinVault(db, subject, body) : await reserve(db, subject, body))
     }
+    if (action === 'discover' && request.method === 'GET' && url.searchParams.size === 1) return syncReply(await discoverVault(db, subject))
     const vaultId = uuid(url.searchParams.get('vaultId')), epoch = uuid(url.searchParams.get('epoch'))
     const vault = await requireVault(db, subject, vaultId, epoch)
     if (action === 'head' && request.method === 'GET' && url.searchParams.size === 3) return syncReply({ protocol: 1, vaultId, epoch, head: vault.head, sequence: vault.sequence })

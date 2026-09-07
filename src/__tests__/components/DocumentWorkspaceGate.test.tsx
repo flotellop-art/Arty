@@ -8,6 +8,7 @@ import { LEGACY_WORKSPACE_LAYOUT } from '../../services/workspaceWriter/layout'
 import { deferred, sharedWorkspaceLocks } from '../helpers/workspaceLocks'
 
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }))
+vi.mock('../../components/workspace/ColdSyncApplyRecovery', () => ({ default: () => <div>synthetic-cold-apply</div> }))
 // Explicit legacy OFF fixture; actual released ON compatibility is tested separately.
 vi.mock('../../services/workspaceWriter/activation', () => ({ ISOLATED_WORKSPACE_ENABLED: false, WORKSPACE_RESTORE_START_ENABLED: false }))
 beforeEach(() => { globalThis.indexedDB = new IDBFactory() })
@@ -17,6 +18,21 @@ const admissionFor = (controller: ReturnType<typeof createDocumentWorkspaceLock>
 )
 
 describe('workspace gate is before any private hooks/import/seed', () => {
+  it('a recognized first-apply journal remains ahead of private App even when starts are OFF', async () => {
+    const db = await openDB('arty-workspace-control', 1, { upgrade(db) { db.createObjectStore('meta') } })
+    const base = { format: 'arty-workspace-control', version: 2, layout: 'isolated-v1', state: 'ready', revision: 1,
+      generation: '76ba201a-547f-44a1-9000-111111111111', requiredOwners: ['a'], projectsVersion: 2 }
+    const id = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee'
+    await db.put('meta', { ...base, version: 10, state: 'applying', revision: 2, base,
+      apply: { id, owner: 'a', phase: 'prepared', bytes: 1, hash: 'a'.repeat(64) } }, 'workspace')
+    await db.put('meta', 'ciphertext fixture', `sync-apply:${id}`); db.close()
+    const controller = createDocumentWorkspaceLock(() => sharedWorkspaceLocks().source)
+    const admission = createWorkspaceAdmission({ assertLock: () => controller.assertHeld(), signal: controller.signal })
+    const loaded = vi.fn(async () => ({ default: () => <div>private</div> })), Content = lazy(loaded)
+    render(<DocumentWorkspaceGate controller={controller} admission={admission} Content={Content} />)
+    await screen.findByText('synthetic-cold-apply'); expect(loaded).not.toHaveBeenCalled()
+    expect(admission.getSnapshot()).toBe('applying')
+  })
   it('recognized v4 erasure stays cold while release policy is OFF, preserving OAuth without a reload loop', async () => {
     const db = await openDB('arty-workspace-control', 1, { upgrade(db) { db.createObjectStore('meta') } })
     const generation = '76ba201a-547f-44a1-9000-111111111111', hash = 'a'.repeat(64)

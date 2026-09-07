@@ -10,8 +10,9 @@ function scope(a: SyncManifest, b: SyncManifest): void {
 
 /** An ACK checkpoint is an exact retained ancestry, never just a timestamp or
  * a plaintext fingerprint. An absent record is NOT a deletion. Pruned bases
- * require explicit rebase; the caller must not reinterpret this as empty. */
-function retains(base: SyncManifest, next: SyncManifest): void {
+ * require explicit rebase; the caller must not reinterpret this as empty.
+ * Both arguments must already be closed manifests parsed by the schema. */
+export function assertSyncManifestRetains(base: SyncManifest, next: SyncManifest): void {
   scope(base, next)
   const records = new Map(next.records.map(item => [item.id, item]))
   for (const before of base.records) {
@@ -32,7 +33,7 @@ function retains(base: SyncManifest, next: SyncManifest): void {
  * update/delete conflicts. No clock, transport, storage or LWW winner. */
 export function reconcileSyncManifests(baseInput: unknown, localInput: unknown, remoteInput: unknown): SyncManifest {
   const base = parseSyncManifest(baseInput), local = parseSyncManifest(localInput), remote = parseSyncManifest(remoteInput)
-  retains(base, local); retains(base, remote)
+  assertSyncManifestRetains(base, local); assertSyncManifestRetains(base, remote)
   const records = new Map(local.records.map(item => [item.id, item]))
   for (const incoming of remote.records) {
     const current = records.get(incoming.id)

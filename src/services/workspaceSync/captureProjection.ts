@@ -22,11 +22,21 @@ export function copySyncCaptureSelection(input: SyncCaptureSelection): SyncCaptu
  * null metrics, empty text and restrictive provenance must survive unchanged.
  * Unknown fields require an explicit schema decision, not silent data loss. */
 export function projectSyncConversation(input: unknown): Conversation {
+  return projectConversationShape(input, { nodes: 100_000, chars: SYNC_LIMITS.objectBytes })
+}
+/** Local addresses may be longer than the wire UUIDs and historical safety
+ * metadata consumes extra space. Never use this entry point to decode wire:
+ * the remapped result must pass projectSyncConversation and encodeSyncContent. */
+export const SYNC_LOCAL_CONVERSATION_LIMITS = { nodes: 200_000, chars: 16 * 1024 * 1024 } as const
+export function projectLocalSyncConversationShape(input: unknown): Conversation {
+  return projectConversationShape(input, SYNC_LOCAL_CONVERSATION_LIMITS)
+}
+function projectConversationShape(input: unknown, limits: { nodes: number; chars: number }): Conversation {
   let nodes = 0, chars = 0
-  const count = () => { if (++nodes > 100_000) fail('limit') }
+  const count = () => { if (++nodes > limits.nodes) fail('limit') }
   const text: Read = v => {
     count(); if (typeof v !== 'string') return fail('format')
-    chars += v.length; if (chars > SYNC_LIMITS.objectBytes) fail('limit'); return v
+    chars += v.length; if (chars > limits.chars) fail('limit'); return v
   }
   const number: Read = v => { count(); if (typeof v !== 'number' || !Number.isFinite(v) || Object.is(v, -0)) return fail('format'); return v }
   const integer: Read = v => { number(v); if (!Number.isSafeInteger(v) || (v as number) < 0) return fail('format'); return v }

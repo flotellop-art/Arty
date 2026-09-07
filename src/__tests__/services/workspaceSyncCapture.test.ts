@@ -9,6 +9,7 @@ import { deferred } from '../helpers/workspaceLocks'
 import { isolatedWorkspaceLayout, workspaceDataKey } from '../../services/workspaceWriter/layout'
 import type { Conversation } from '../../types'
 import type { SyncManifest } from '../../services/workspaceSync/types'
+import type { LocalSyncContent } from '../../services/workspaceSync/receiveMapping'
 
 vi.unmock('../../services/workspaceWriter/runtime')
 vi.mock('../../services/workspaceWriter/activation', () => ({ ISOLATED_WORKSPACE_ENABLED: true, WORKSPACE_RESTORE_START_ENABLED: true, WORKSPACE_UPGRADE_START_ENABLED: false }))
@@ -59,9 +60,51 @@ async function content(b: Awaited<ReturnType<typeof box>>) {
     const bytes = new Uint8Array(await opened.payload(value.payloadId).arrayBuffer())
     expect(new TextDecoder().decode(bytes.slice(0, 9))).toBe('ARTYSOBJ1')
     const size = new DataView(bytes.buffer).getUint32(9), meta = JSON.parse(new TextDecoder().decode(bytes.slice(13, 13 + size)))
+    // Exercise the production decoder against the actual stored capture corpus,
+    // including comparison, gallery and historical project-text edge cases.
+    const { decodeSyncContent } = await import('../../services/workspaceSync/content')
+    const parsed = await decodeSyncContent(opened.payload(value.payloadId), record, () => {})
+    expect(parsed.kind).toBe(meta.kind); expect(parsed.data).toEqual(meta.data)
     result.push({ ...meta, binary: bytes.slice(13 + size), recordId: record.id })
   }
   return result
+}
+
+/** Test-only physical publication of already projected values, not a sync
+ * journal or authority seam. Uses the actual account crypto and reader formats.
+ * No private V3 state is injected: baseline is the real original capture DAG. */
+async function publishProjectionFixture(input: LocalSyncContent[]) {
+  const files = await openDB(layout.files.name, 1), db = await openDB(layout.projects.name, 2)
+  const base64 = async (blob: Blob) => btoa(String.fromCharCode(...new Uint8Array(await blob.arrayBuffer())))
+  const saved: Conversation[] = [], projectIds: string[] = []
+  try {
+    for (const row of input) {
+      if (row.kind === 'conversation') { await save(row.conversation); saved.push(row.conversation) }
+      if (row.kind === 'file') {
+        const { id, type, size: _binarySize, recordedSize, ...data } = row.file
+        await files.add('files', { ...data, fileId: id, ownerKey: 'arty-a', mimeType: type, size: recordedSize, encryptedData: await crypt.encrypt(await base64(row.binary)) })
+      }
+      if (row.kind === 'project') {
+        const project = { ...row.project, owner: 'a', revision: 47 }
+        projectIds.push(project.id)
+        await db.add('projects', { key: ['a', project.id], owner: 'a', id: project.id, revision: project.revision, state: 'live', euOnly: project.euOnly,
+          createdAt: project.createdAt, updatedAt: project.updatedAt, cipher: await crypt.encrypt(JSON.stringify(project)) })
+        for (const d of project.documents) for (const kind of ['source', 'text'] as const) {
+          const part = input.find(p => p.kind === `project-${kind}` && p.projectId === project.id &&
+            (p.kind === 'project-source' ? p.document.id : p.kind === 'project-text' ? p.documentId : null) === d.id)!
+          const value = part.kind === 'project-source' ? await base64(part.binary) : part.kind === 'project-text' ? part.text : null
+          if (value === null) throw new Error('missing projected document')
+          await db.add('documents', { key: ['a', project.id, d.id, kind], owner: 'a', projectId: project.id, id: d.id, kind, state: 'live',
+            sourceBytes: d.sourceBytes, textChars: d.textChars, updatedAt: project.updatedAt,
+            cipher: await crypt.encrypt(JSON.stringify({ schema: 1, owner: 'a', projectId: project.id, kind, descriptor: d, content: value })) })
+        }
+      }
+    }
+    const projects = (await db.getAll('projects')).filter(p => p.owner === 'a' && p.state === 'live')
+    const docs = (await db.getAll('documents')).filter(d => d.owner === 'a' && d.kind === 'source' && d.state === 'live')
+    await db.put('usage', { owner: 'a', projects: projects.length, documents: docs.length, sourceBytes: docs.reduce((n, d) => n + d.sourceBytes, 0) })
+    return { conversationIds: saved.map(c => c.id), projectIds }
+  } finally { files.close(); db.close() }
 }
 beforeEach(async () => {
   vi.restoreAllMocks(); localStorage.clear(); sessionStorage.clear(); globalThis.indexedDB = new IDBFactory()
@@ -229,6 +272,80 @@ it('keeps actual shared file bytes, three sizes, crops, gallery receipts and raw
   expect(outbox.snapshot.bindings.find(b => b.localId === 'missing-crop-source')!.presence).toBe('reference')
 })
 
+it.each(['', '\uFEFFA\r\n\uD800'])('real encrypted stores: project/gallery inverse fixture, reload and unchanged recapture with text=%j', async storedText => {
+  const op = await projects.beginProjectOperation(), importer = await import('../../services/projects/documentImport')
+  let originalProject = await projects.createProject(op, 'Source P')
+  originalProject = await projects.addProjectDocument(op, originalProject, await importer.prepareProjectDocument(op, new NodeFile(['Source\r\n'], 'original.txt') as unknown as File))
+  originalProject.documents[0]!.textChars = storedText.length
+  const descriptor = originalProject.documents[0]!, db = await openDB(layout.projects.name, 2)
+  const originalRow = await db.get('projects', ['a', originalProject.id])
+  await db.put('projects', { ...originalRow, cipher: await crypt.encrypt(JSON.stringify(originalProject)) })
+  for (const kind of ['source', 'text']) {
+    const row = await db.get('documents', ['a', originalProject.id, descriptor.id, kind]), payload = JSON.parse(await crypt.decrypt(row.cipher))
+    payload.descriptor = descriptor; if (kind === 'text') payload.content = storedText
+    await db.put('documents', { ...row, textChars: storedText.length, cipher: await crypt.encrypt(JSON.stringify(payload)) })
+  }
+  const oldProjects = await db.getAll('projects'), oldDocs = await db.getAll('documents'); db.close()
+  const files = await import('../../services/secureFileStorage'), imageId = id(550), oldTextId = id(551)
+  await files.putFile({ id: imageId, name: '', type: 'image/png', data: 'iVBORw0KGgoAAAANSUhEUg==' })
+  await files.putFile({ id: 'empty', name: '', type: '', data: 'data:;base64,' })
+  const c = conversation(); c.projectId = originalProject.id; c.hasProjectContext = true; c.outputRestriction = 'client-reply-draft-v1'
+  delete c.messages[1]!.restoredArchive
+  c.messages[1]!.generatedImages = [imageId]; c.messages[1]!.content = `\uFEFF![old](arty-img://${oldTextId})\r\n\uD800`
+  c.messages[0]!.files = [{ id: 'empty', name: 'Shown differently', type: 'text/plain', size: 123 }]
+  c.comparison = { version: 1, groupId: 'group', sourceConversationId: 'unselected', sourceMessageId: 'q', peerId: 'missing-peer',
+    questionId: 'q', responseId: 'r', provider: 'mistral', requestedModel: 'historical', status: 'streaming',
+    metrics: { firstTokenMs: null, totalMs: null, inputTokens: 0, outputTokens: 0, costEur: null } }
+  c.messages[1]!.projectTurn = { version: 1, mode: 'search', euOnly: false, partial: false, projectId: originalProject.id, projectRevision: 2,
+    sources: [{ projectId: originalProject.id, projectRevision: 2, documentId: descriptor.id, documentRevision: 1, sourceHash: descriptor.sourceHash,
+      extractorVersion: descriptor.extractorVersion, name: descriptor.name, format: descriptor.format, startLine: 0, endLine: 0, partial: false }] }
+  await save(c)
+  const sourceHistory = JSON.stringify(c), sourceOutbox = await box(); await sourceOutbox.capture(select(['chat'], [originalProject.id]))
+  const baseline = sourceOutbox.snapshot.localHead, objects = await content(sourceOutbox)
+  const { createSyncReceiveMapping } = await import('../../services/workspaceSync/receiveMapping')
+  const { encodeSyncContent } = await import('../../services/workspaceSync/captureContent')
+  const { decodeSyncContent } = await import('../../services/workspaceSync/content')
+  const inverse = createSyncReceiveMapping({ ...baseline, records: [] }, [], () => crypto.randomUUID())
+  const decoded = await Promise.all(objects.map(async o => ({ recordId: o.recordId,
+    content: await decodeSyncContent(encodeSyncContent(o.kind as any, o.data, o.binary), { id: o.recordId, kind: o.kind as any }, () => {}) })))
+  for (const v of decoded) if (v.content.kind === 'project') for (const d of v.content.data.documents) inverse.documentPair(v.recordId, d.sourceId, d.textId)
+  const projected = decoded.map(v => inverse.projectContent(v.recordId, v.content)), bindings = inverse.bindings
+  const selected = await publishProjectionFixture(projected)
+  const adoptedConversation = selected.conversationIds[0]!, adoptedProject = selected.projectIds[0]!
+  expect(adoptedConversation).not.toBe('chat'); expect(adoptedProject).not.toBe(originalProject.id)
+  sourceOutbox.lock()
+  await newDocument(); expect(await runtime.workspaceAdmission.admit()).toBe('ready'); await login(); await history.bootstrapConversationStorage()
+  const restored = history.getConversation(adoptedConversation)!
+  expect(restored.messages.every(m => m.restoredArchive === true)).toBe(true)
+  expect(restored.messages[1]!.content).toBe(c.messages[1]!.content)
+  expect(restored.messages[1]!.generatedImages![0]).not.toBe(imageId)
+  expect(restored.messages[1]!.localSyncProvenance!.galleryAliases![0]!.textId).toBe(imageId)
+  expect(restored.comparison?.status).toBe('streaming')
+  expect(history.getConversation(restored.comparison!.peerId)).toBeNull()
+  expect(JSON.stringify(history.getConversation('chat'))).toBe(sourceHistory)
+  const reader = await projects.beginProjectOperation(), loaded = await projects.getProject(reader, adoptedProject)
+  expect(loaded?.status).toBe('ready'); const p = loaded!.project!
+  expect(p.revision).toBe(47); expect(p.documents[0]!.id).not.toBe(descriptor.id)
+  expect(await projects.readProjectDocumentText(reader, p, p.documents[0]!.id)).toBe(storedText)
+  expect(atob(await projects.readProjectDocumentSource(reader, p, p.documents[0]!.id))).toBe('Source\r\n')
+  const physicalFile = await (await import('../../services/secureFileStorage')).getFile(restored.messages[1]!.generatedImages![0]!)
+  expect(physicalFile!.data).toBe('iVBORw0KGgoAAAANSUhEUg==')
+  const { captureLocalSyncSnapshot } = await import('../../services/workspaceSync/capture')
+  const uuid = vi.spyOn(webcrypto, 'randomUUID'), encrypt = vi.spyOn(webcrypto.subtle, 'encrypt')
+  const recaptured = await captureLocalSyncSnapshot(baseline, bindings, selected)
+  expect(recaptured.changed).toBe(false); expect(recaptured.payloads.size).toBe(0); expect(recaptured.next).toEqual(baseline)
+  expect(uuid).not.toHaveBeenCalled(); expect(encrypt).not.toHaveBeenCalled(); uuid.mockRestore(); encrypt.mockRestore()
+  await save({ ...restored, title: 'Local edited', messages: restored.messages.map(m => m.role === 'assistant' ? { ...m, pinned: true } : m) })
+  const changed = await captureLocalSyncSnapshot(baseline, bindings, selected)
+  expect(changed.payloads.size).toBe(1)
+  const unchanged = changed.next.records.filter(r => r.kind !== 'conversation')
+  expect(unchanged).toEqual(baseline.records.filter(r => r.kind !== 'conversation'))
+  const after = await openDB(layout.projects.name, 2)
+  for (const row of oldProjects) expect(await after.get('projects', row.key)).toEqual(row)
+  for (const row of oldDocs) expect(await after.get('documents', row.key)).toEqual(row)
+  after.close(); expect(fetch).not.toHaveBeenCalled()
+})
+
 it.each([undefined, null, ['bad-id'], new Array(1)])('rejects a present malformed gallery %s without interpreting it as absent', async gallery => {
   await save(conversation()); const c = history.getConversation('chat')!
   Object.defineProperty(c.messages[1], 'generatedImages', { value: gallery, enumerable: true, configurable: true })
@@ -317,13 +434,15 @@ it('keeps same physical document ID in two projects distinct and links each cata
   }
 })
 
-it.each(['mutation', 'owner-aba', 'fence', 'abort'])('refuses %s during actual file decryption with no partial adoption', async event => {
+it.each(['mutation', 'local-provenance', 'owner-aba', 'fence', 'abort'])('refuses %s during actual file decryption with no partial adoption', async event => {
   const files = await import('../../services/secureFileStorage'); await files.putFile({ id: 'f', name: 'f', type: '', data: 'QQ==' })
-  const c = conversation(); c.messages[0]!.files = [{ id: 'f', name: 'f', type: '' }]; await save(c)
+  const c = conversation(); c.messages[0]!.files = [{ id: 'f', name: 'f', type: '' }]
+  c.messages[1]!.localSyncProvenance = { version: 1, historicalInjected: true }; await save(c)
   const outbox = await box(), before = await rows(), original = crypt.decrypt, abort = new AbortController()
   vi.spyOn(crypt, 'decrypt').mockImplementationOnce(async value => {
     const plain = await original(value)
     if (event === 'mutation') c.messages[1]!.content = 'in-place'
+    if (event === 'local-provenance') c.messages[1]!.localSyncProvenance = { version: 1, galleryAliases: [{ fileId: id(900), textId: id(901) }] }
     if (event === 'owner-aba') { await login('b'); await login('a') }
     if (event === 'abort') abort.abort()
     if (event === 'fence') { const db = await openDB(layout.projects.name, 2); await db.put('meta', id(99), 'erasure-fence'); db.close() }

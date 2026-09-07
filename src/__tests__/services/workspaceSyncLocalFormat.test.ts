@@ -50,6 +50,12 @@ it('individual orphan ownership is not permission to replay or provision fresh',
   expect(() => assertSyncPair(state(), { ...operation(), reference: { ...reference, sha256: 'b'.repeat(64) } })).toThrow('integrity')
   expect(() => parseSyncStorageRow(['sync-state', 'a-b'], state(), { generation: id(1) })).toThrow('scope')
 })
+it('admits the received-history state barrier without promoting operation grammar', () => {
+  const v2 = { ...state(), version: 2 }
+  expect(parseSyncStorageRow(['sync-state', 'a'], v2, { generation: id(1) })).toEqual(v2)
+  expect(() => parseSyncStorageRow(['sync-operation', 'a', reference.operationId], { ...operation(), version: 2 }, { generation: id(1) })).toThrow()
+  expect(() => parseSyncStorageRow(['sync-state', 'a'], { ...state(), version: 3 }, { generation: id(1) })).toThrow()
+})
 it('retains unresolved identities without importing records and forbids reassignment/removal', () => {
   const b = binding(), parsed = parseSyncPrivateState(privateState([b]))
   assertSyncPrivateHead(parsed, parsed.base)

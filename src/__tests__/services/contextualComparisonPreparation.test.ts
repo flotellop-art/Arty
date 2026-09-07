@@ -57,6 +57,19 @@ beforeEach(() => {
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
 describe('Contextual comparison preparation and durable reservation, no streams yet', () => {
+  it('copies local historical provenance independently to comparison branches and preserves it on reload', async () => {
+    const m = source.messages[0]!
+    m.restoredArchive = true; m.localSyncProvenance = { version: 1, historicalInjected: true }
+    storage.saveConversation(source)
+    const prepared = await capture().prepare(panels(), review); prepared.commit()
+    const left = storage.getConversation(prepared.branchIds[0])!.messages[0]!, right = storage.getConversation(prepared.branchIds[1])!.messages[0]!
+    expect(left.localSyncProvenance).toEqual(m.localSyncProvenance); expect(right.localSyncProvenance).toEqual(m.localSyncProvenance)
+    expect(left.localSyncProvenance).not.toBe(right.localSyncProvenance)
+    expect(left.id).not.toBe(m.id); expect(right.id).not.toBe(m.id)
+    storage.resetConversationMemCache()
+    expect(storage.getConversation(prepared.branchIds[0])!.messages[0]!.localSyncProvenance).toEqual(m.localSyncProvenance)
+    expect(storage.getConversation(prepared.branchIds[1])!.messages[0]!.restoredArchive).toBe(true)
+  })
   it.each(['pending', 'legacy', 'completed', 'restored'] as const)('copies %s fact-check history without orphaning an active job', async mode => {
     source.messages.unshift({ id: 'history', role: 'assistant', content: 'Préfixe avant la question', timestamp: 0,
       ...(mode === 'restored' ? { restoredArchive: true as const } : {}),

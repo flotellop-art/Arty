@@ -56,6 +56,23 @@ describe('gallery authority and honest text-only boundaries', () => {
     expect(JSON.stringify(imported)).not.toContain(id1)
     expect(imported.messages[0]!.content).toMatch(/2 image\(s\)|2 message image\(s\)/)
   })
+  it('excludes device-local sync provenance from every export and discards even forged provenance on JSON import', async () => {
+    const conv = conversation(), textId = '123e4567-e89b-12d3-a456-426614174099'
+    conv.messages[0]!.restoredArchive = true
+    conv.messages[0]!.localSyncProvenance = { version: 1, historicalInjected: true, galleryAliases: [{ fileId: id1, textId }] }
+    const { mapCapturedConversation } = await import('../../services/workspaceBackup/captureMapping')
+    for (const output of [buildSharePayload(conv), buildConversationJsonExport(conv), snapshotForExport(conv), mapCapturedConversation(conv)]) {
+      expect(JSON.stringify(output)).not.toContain('localSyncProvenance'); expect(JSON.stringify(output)).not.toContain(textId)
+    }
+    // No caller-provided provenance is admitted, even malformed future data.
+    ;(conv.messages[0] as any).localSyncProvenance = { version: 99, secret: textId }
+    const body = JSON.stringify({ version: 1, conversation: conv })
+    const importedId = await importConversationFromFile({ size: body.length, text: async () => body } as File)
+    storage.resetConversationMemCache()
+    const loaded = storage.getConversation(importedId)!
+    expect(loaded.messages[0]).not.toHaveProperty('localSyncProvenance')
+    expect(JSON.stringify(loaded)).not.toContain(textId); expect(loaded.messages[0]!.restoredArchive).toBe(true)
+  })
   it('keeps files shared by two branches; last branch deletion removes only structured IDs', () => {
     storage.saveConversation(conversation('original')); storage.saveConversation(conversation('branch'))
     storage.deleteConversation('original')

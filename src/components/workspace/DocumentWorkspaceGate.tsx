@@ -21,6 +21,7 @@ const PrivateApp = lazy(async () => {
 })
 const ColdMigrationRecovery = lazy(() => import('./ColdMigrationRecovery'))
 const ColdRestoreRecovery = lazy(() => import('./ColdRestoreRecovery'))
+const ColdSyncApplyRecovery = lazy(() => import('./ColdSyncApplyRecovery'))
 const ColdWorkspaceSetup = lazy(() => import('./ColdWorkspaceSetup'))
 const ColdWorkspaceUpgrade = lazy(() => import('./ColdWorkspaceUpgrade'))
 
@@ -59,6 +60,9 @@ function StorageAdmissionGate({ admission, Content }: { admission: ReturnType<ty
   const phase = useSyncExternalStore(admission.subscribe, admission.getSnapshot, admission.getSnapshot)
   useEffect(() => { void admission.admit() }, [admission])
   if (phase === 'ready') return <Suspense fallback={<Wait title={t('workspaceWindow.loading')} />}><Content /></Suspense>
+  if ((phase === 'applying' || phase === 'maintenance') && admission.getSyncApplyRecovery()) return <Wait title={t('workspaceSyncApply.recoveryTitle')}>
+    <Suspense fallback={null}><ColdSyncApplyRecovery /></Suspense>
+  </Wait>
   if ((phase === 'upgrading' || phase === 'maintenance') && admission.getUpgradeRecovery()) return <Wait title={t('workspaceUpgrade.title')}>
     <Suspense fallback={null}><ColdWorkspaceUpgrade recovery /></Suspense>
   </Wait>

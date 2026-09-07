@@ -52,6 +52,7 @@ import type { ToolDispatcher as ToolHandler } from '../services/tools/types'
 import { generatedImageIds, MAX_GENERATED_IMAGES_PER_TURN } from '../services/generatedImages'
 import { captureGeneratedImageView } from '../services/generatedImageFiles'
 import { toast } from '../services/toast'
+import { copyMessageSyncProvenance } from '../services/workspaceSync/localProvenance'
 
 // P1.5 — outils qui font ENTRER des données PRIVÉES (fichier, agenda,
 // contact, contenu de mail) dans le contexte → la réponse peut en contenir.
@@ -1405,7 +1406,7 @@ export function useConversation(options?: { onNavigate?: (id: string) => void })
           const { factCheck, ...rest } = m
           const isPending = m.restoredArchive !== true && factCheck &&
             (factCheck.status === 'pending' || factCheck.modelLabel === 'Vérification en cours…')
-          return { ...rest, ...(m.generatedImages ? { generatedImages: [...generatedImageIds(m.generatedImages)] } : {}), id: generateId(), ...(factCheck && !isPending ? { factCheck } : {}) }
+          return { ...rest, ...copyMessageSyncProvenance(m), ...(m.generatedImages ? { generatedImages: [...generatedImageIds(m.generatedImages)] } : {}), id: generateId(), ...(factCheck && !isPending ? { factCheck } : {}) }
         }),
         createdAt: Date.now(),
         updatedAt: Date.now(),

@@ -477,6 +477,10 @@ export async function purgeProjectsForAccount(owner: string, assertCurrent: () =
   const fence = generateId()
   const tx = guardDocumentTransaction(db.transaction([...STORES], 'readwrite'))
   try {
+    // A received-history barrier cannot be removed while account history is
+    // retained. Isolated v2 cleanup must use the complete cold owner erasure.
+    const retained = await tx.objectStore('meta').get(['sync-state', owner])
+    if (retained !== undefined && parseSyncStorageRow(['sync-state', owner], retained, syncStorageContext(getDocumentStorageLayout(), db)).version === 2) throw new ProjectError('unavailable')
     await tx.objectStore('meta').put(fence, 'erasure-fence')
     // Serialized by the same IDB writer: two successful erasures cannot leave
     // LS and IDB with different final fences by reversing their commit order.

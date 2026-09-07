@@ -81,6 +81,35 @@ beforeEach(async () => {
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
 describe('Contextual vertical — real encrypted stores and shared registry, fake provider only', () => {
+  it('real branch + pin + encrypted reload preserves independent historical gallery provenance', async () => {
+    const image = '00000000-0000-4000-8000-000000000001', text = '00000000-0000-4000-8000-000000000002'
+    const old = source.messages[1]!
+    old.restoredArchive = true; old.generatedImages = [image]
+    old.localSyncProvenance = { version: 1, historicalInjected: true, galleryAliases: [{ fileId: image, textId: text }] }
+    storage.saveConversation(source)
+    const hook = renderHook(() => useConversation())
+    let id: string | null = null
+    act(() => { id = hook.result.current.branchConversation(source.id, 1) })
+    const branch = storage.getConversation(id!)!, copied = branch.messages[1]!
+    expect(copied.localSyncProvenance).toEqual(old.localSyncProvenance)
+    expect(copied.localSyncProvenance!.galleryAliases).not.toBe(old.localSyncProvenance!.galleryAliases)
+    act(() => hook.result.current.togglePinMessage(id!, copied.id))
+    await waitFor(async () => {
+      const key = Object.keys(localStorage).find(k => k.endsWith('conversations-enc'))!
+      expect(Object.keys(localStorage).some(k => k.endsWith('conversations'))).toBe(false)
+      expect(await decrypt(localStorage.getItem(key)!)).toContain('localSyncProvenance')
+    })
+    hook.unmount(); storage.resetConversationMemCache(); await storage.bootstrapConversationStorage()
+    const loaded = storage.getConversation(id!)!
+    expect(loaded.messages[1]).toMatchObject({ restoredArchive: true, pinned: true, localSyncProvenance: old.localSyncProvenance })
+    const { createSyncCaptureMapping } = await import('../../services/workspaceSync/captureMapping')
+    const projected = createSyncCaptureMapping([]).conversation(loaded)
+    expect(projected.galleryAliases[0]!.textId).toBe(text)
+    expect(projected.conversation.messages[1]).toMatchObject({ pinned: true, content: old.content })
+    expect(projected.conversation.messages[1]).not.toHaveProperty('restoredArchive')
+    expect(projected.conversation.messages[1]).not.toHaveProperty('localSyncProvenance')
+    expect(calls).toHaveLength(0); expect(fetch).not.toHaveBeenCalled()
+  })
   it.each(['done', 'stop', 'crash'] as const)('preserves raw restricted output through the shared %s writer and encrypted reload', async outcome => {
     source.outputRestriction = 'client-reply-draft-v1'; source.hasProjectContext = true
     storage.saveConversation(source)

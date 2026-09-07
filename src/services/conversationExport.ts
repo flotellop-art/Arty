@@ -35,7 +35,7 @@ export function buildConversationJsonExport(conv: Conversation) {
     // Purge de compatibilité pour les exports créés depuis un historique
     // antérieur à la suppression de l'intégration boîte mail.
     messages: conv.messages.map(message => {
-      const { generatedImages: _privateImages, ...safe } = stripLegacyMailboxPayload(message)
+      const { generatedImages: _privateImages, localSyncProvenance: _localSync, ...safe } = stripLegacyMailboxPayload(message)
       return { ...safe, ...(message.id === 'streaming' ? { interrupted: true } : {}), content: conv.outputRestriction ? message.content : messageImageText(message) }
     }),
   }
@@ -83,7 +83,7 @@ export async function importConversationFromFile(file: File): Promise<string> {
     createdAt: Date.now(),
     updatedAt: Date.now(),
     messages: original.messages.map((legacyMessage) => {
-      const { projectTurn: _foreignSources, generatedImages: _foreignImages, files, ...safeMessage } = stripLegacyMailboxPayload(legacyMessage)
+      const { projectTurn: _foreignSources, generatedImages: _foreignImages, localSyncProvenance: _foreignSync, files, ...safeMessage } = stripLegacyMailboxPayload(legacyMessage)
       if (files && (!Array.isArray(files) || files.length > 64 || files.some(f => !f || typeof f.name !== 'string' || typeof f.type !== 'string' || (f.data !== undefined && typeof f.data !== 'string')))) throw new Error('Pièces jointes importées invalides')
       return { ...safeMessage, ...(legacyMessage.id === 'streaming' ? { interrupted: true } : {}), content: original.outputRestriction ? legacyMessage.content : messageImageText(legacyMessage), id: generateId(),
         // A foreign ID is not authority to read this account's IndexedDB.
