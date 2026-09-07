@@ -292,7 +292,7 @@ describe('wallet billing through complete proxy handlers', () => {
 
     let release!: () => void
     const held = new Promise<void>(resolve => { release = resolve })
-    type BalanceRow = { balance_micro: number; reserved_micro: number } | null
+    type BalanceRow = { balance_micro: number; reserved_micro: number; reversal_pending: number } | null
     let announceRead!: (read: { values: unknown[]; row: BalanceRow }) => void
     let failRead!: (error: unknown) => void
     const readCompleted = new Promise<{ values: unknown[]; row: BalanceRow }>((resolve, reject) => {
@@ -309,7 +309,9 @@ describe('wallet billing through complete proxy handlers', () => {
       get(target, key) {
         if (key === 'prepare') return (sql: string) => {
           const statement = realPrepare(sql)
-          if (sql.replace(/\s+/g, ' ').trim() !== 'SELECT balance_micro, reserved_micro FROM wallet WHERE user_email = ?1') return statement
+          const normalized = sql.replace(/\s+/g, ' ').trim()
+          if (!normalized.startsWith('SELECT balance_micro, reserved_micro,')
+            || !normalized.includes('END AS reversal_pending FROM wallet WHERE user_email = ?1')) return statement
           // A narrow facade is intentional: Miniflare RPC stubs do not
           // consistently expose method replacements made by vi.spyOn.
           return { bind(...values: unknown[]) {
@@ -355,7 +357,7 @@ describe('wallet billing through complete proxy handlers', () => {
         }),
       ])
       expect(await readCompleted).toEqual({
-        values: [EMAIL], row: { balance_micro: 1_000_000, reserved_micro: 0 },
+        values: [EMAIL], row: { balance_micro: 1_000_000, reserved_micro: 0, reversal_pending: 0 },
       })
       expire()
       const response = await pending

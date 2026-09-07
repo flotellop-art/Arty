@@ -5,6 +5,7 @@ import { buildLocationContext } from './locationContext'
 import { recordUsage } from './costTracker'
 import { createModelReporter, validModelId, type ModelInvocationOptions } from './modelLabels'
 import { TEXT_DEFAULTS } from './modelCatalog'
+import { walletReconciliationError } from './walletFailure'
 import { extractYouTubeUrls } from './aiRouter'
 import { isMapToolQuery, isWeatherQuery } from './router/intentPatterns'
 import type { RouteReason } from './router/types'
@@ -432,6 +433,8 @@ async function runGeminiStream(
       // P0.7 — cap premium mensuel : code structuré surfacé tel quel (la
       // modale de choix l'intercepte), au lieu du générique « Gemini error ».
       const errBody = await response.clone().text().catch(() => '')
+      const walletError = walletReconciliationError(response.status, errBody)
+      if (walletError) throw walletError
       try {
         const parsed = JSON.parse(errBody) as { error?: string; bucket?: string; cap?: number }
         if (parsed?.error === 'premium_cap_reached') {

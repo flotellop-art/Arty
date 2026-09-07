@@ -19,7 +19,7 @@ import {
   type CheckoutPlan,
 } from '../services/checkout'
 import { getStoredUser } from '../services/googleAuth'
-import { fetchWalletBalance, creditsCoverPremium } from '../services/walletClient'
+import { fetchWalletBalance, creditsCoverPremium, microToCredits } from '../services/walletClient'
 import { captureBillingContext, onBillingContextInvalidated } from '../services/billingContext'
 import { getActiveSessionEpoch, getActiveUserId } from '../services/userSession'
 import { getTrialRemaining } from '../services/trialClient'
@@ -39,7 +39,7 @@ type StatusResult =
   | { kind: 'checking' }
   | { kind: 'active'; plan: string }
   | { kind: 'pending' }
-  | { kind: 'creditsAdded' }
+  | { kind: 'creditsAdded'; credits: number }
   | { kind: 'error'; message: string }
 
 export function UpgradeScreen({ onBack, currentPlan: currentPlanProp, email }: UpgradeScreenProps) {
@@ -150,8 +150,12 @@ export function UpgradeScreen({ onBack, currentPlan: currentPlanProp, email }: U
       if (!isCurrent()) return
       const bal = await fetchWalletBalance()
       if (!isCurrent()) return
+      if (!bal || bal.reversalPending) {
+        setStatus({ kind: 'error', message: t(bal?.reversalPending ? 'wallet.reversalError' : 'wallet.balanceUnavailable') })
+        return
+      }
       if (bal && bal.availableMicro > beforeMicro) {
-        setStatus({ kind: 'creditsAdded' })
+        setStatus({ kind: 'creditsAdded', credits: microToCredits(bal.availableMicro) })
         window.dispatchEvent(new Event('wallet-updated'))
         return
       }
@@ -172,7 +176,9 @@ export function UpgradeScreen({ onBack, currentPlan: currentPlanProp, email }: U
       const before = await fetchWalletBalance()
       if (!isCurrent()) return
       // Unknown is not zero: do not invent a balance increase afterward.
-      if (!before) { setStatus({ kind: 'error', message: t('upgrade.creditsError') }); return }
+      if (!before || before.reversalPending) {
+        setStatus({ kind: 'error', message: t(before?.reversalPending ? 'wallet.reversalError' : 'wallet.balanceUnavailable') }); return
+      }
       const beforeMicro = before.availableMicro
       const ok = await openCreemCheckout('credits_10', {
         isCurrent,
@@ -387,7 +393,7 @@ function StatusBanner({ status }: { status: StatusResult }) {
   if (status.kind === 'creditsAdded') {
     return (
       <div className="rounded-sm border border-theme-accent/60 bg-theme-surface px-4 py-3">
-        <p className="font-display text-sm text-theme-ink">{t('upgrade.creditsAdded')}</p>
+        <p className="font-display text-sm text-theme-ink">{t('upgrade.creditsAdded', { credits: status.credits })}</p>
       </div>
     )
   }

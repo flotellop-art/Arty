@@ -23,7 +23,7 @@ beforeEach(async () => {
   await google.storeUser({ email: 'synthetic@example.invalid', name: 'Synthetic', picture: '' }); await relink('G1'); await google.bootstrapGoogleStorage()
   await i18n.changeLanguage('fr'); plan = 'vip'; auth = 'ok'; httpStatus = 200
   vi.stubGlobal('fetch', vi.fn(async (url: string, options?: RequestInit) => {
-    if (url === '/api/wallet/balance') return Response.json({ hasWallet: false, availableMicro: 0, balanceMicro: 0, reservedMicro: 0 })
+    if (url === '/api/wallet/balance') return Response.json({ hasWallet: false, availableMicro: 0, balanceMicro: 0, reservedMicro: 0, reversalPending: false })
     if (url !== '/api/subscription/status') throw new Error('Unexpected HTTP')
     expect(new Headers(options?.headers).get('Authorization')).toMatch(/^Bearer G[12]$/)
     expect(new Headers(options?.headers).has('x-google-token')).toBe(false)
@@ -34,11 +34,40 @@ beforeEach(async () => {
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
 function mount() { return render(<MemoryRouter><UpgradeScreen currentPlan="unknown" onBack={() => {}} /></MemoryRouter>) }
 describe('actual Upgrade + plan hook + Google/crypto, synthetic HTTP (no purchase)', () => {
+  it.each(['pending', 'unavailable', 'legacy-dto'])('does not launch a credit purchase from a %s balance', async state => {
+    mount(); await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2))
+    vi.mocked(fetch).mockImplementationOnce(async () => state === 'unavailable' ? new Response(null, { status: 503 })
+      : Response.json({ hasWallet: true, balanceMicro: 900000, availableMicro: 0, reservedMicro: 0,
+        ...(state === 'pending' ? { reversalPending: true } : {}) }))
+    fireEvent.click(screen.getByRole('button', { name: i18n.t('upgrade.creditsCta') }))
+    await screen.findByText(i18n.t(state === 'pending' ? 'wallet.reversalError' : 'wallet.balanceUnavailable'))
+    expect(checkout.credits).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: i18n.t('upgrade.creditsCta') })).toBeEnabled()
+  })
+
+  it.each(['pending', 'unavailable', 'increase'])('describes a %s checkout-return read without claiming a payment occurred', async state => {
+    checkout.credits.mockResolvedValue(true)
+    mount(); await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2))
+    fireEvent.click(screen.getByRole('button', { name: i18n.t('upgrade.creditsCta') }))
+    await waitFor(() => expect(checkout.credits).toHaveBeenCalledOnce())
+    const callback = checkout.credits.mock.calls[0][1].onReturn
+    vi.mocked(fetch).mockImplementation(async () => state === 'unavailable' ? new Response(null, { status: 503 }) : Response.json({
+      hasWallet: true, balanceMicro: 900000, availableMicro: state === 'pending' ? 0 : 900000, reservedMicro: 0, reversalPending: state === 'pending',
+    }))
+    vi.useFakeTimers()
+    try { await act(async () => { callback(); await vi.advanceTimersByTimeAsync(1500) }) }
+    finally { vi.useRealTimers() }
+    const key = state === 'increase' ? 'upgrade.creditsAdded' : state === 'pending' ? 'wallet.reversalError' : 'wallet.balanceUnavailable'
+    await screen.findByText(i18n.t(key, { credits: 90 }))
+    expect(checkout.credits).toHaveBeenCalledOnce()
+    expect(screen.queryByText(/Paiement réussi|Payment successful/)).not.toBeInTheDocument()
+  })
+
   it.each([0, 1])('does not sell another plan to usable prepaid credits, but preserves an active trial (%s remaining)', async remaining => {
     plan = 'free'; setTrialRemaining(remaining)
     const normal = vi.mocked(fetch).getMockImplementation()!
     vi.mocked(fetch).mockImplementation((input, init) => String(input) === '/api/wallet/balance'
-      ? Promise.resolve(Response.json({ hasWallet: true, availableMicro: 900000, balanceMicro: 900000, reservedMicro: 0 })) : normal(input, init))
+      ? Promise.resolve(Response.json({ hasWallet: true, availableMicro: 900000, balanceMicro: 900000, reservedMicro: 0, reversalPending: false })) : normal(input, init))
     mount(); await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2))
     await waitFor(() => expect(screen.queryByText(i18n.t('upgrade.statusChecking'))).not.toBeInTheDocument())
     if (remaining === 0) expect(screen.queryByTestId('offer-trial-status')).not.toBeInTheDocument()
@@ -55,7 +84,7 @@ describe('actual Upgrade + plan hook + Google/crypto, synthetic HTTP (no purchas
     vi.mocked(fetch).mockImplementation(normal)
     fireEvent.click(screen.getByRole('button', { name: i18n.t('upgrade.recheck') }))
     await waitFor(() => expect(fetch).toHaveBeenCalledTimes(4))
-    await act(async () => { finish(Response.json({ hasWallet: true, availableMicro: 0, balanceMicro: 0, reservedMicro: 0 })) })
+    await act(async () => { finish(Response.json({ hasWallet: true, availableMicro: 0, balanceMicro: 0, reservedMicro: 0, reversalPending: false })) })
     await waitFor(() => expect(screen.getByRole('button', { name: i18n.t('upgrade.creditsCta') })).toBeEnabled())
     expect(checkout.credits).not.toHaveBeenCalled()
   })
