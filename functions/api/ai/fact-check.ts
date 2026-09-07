@@ -1,4 +1,5 @@
 import type { Env } from '../../env'
+import { isAdmissionUnavailable, admissionUnavailableResponse } from '../_lib/admission'
 import { checkAllowedUserPeek } from '../_lib/checkAllowedUser'
 import { consumeCapAtomic } from '../_lib/atomicQuota'
 import { recordUsage } from '../_lib/quota'
@@ -459,6 +460,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   // client les croit VIP (subscription/status les mappe 'vip') et tente un
   // fact-check à chaque réponse.
   const user = await checkAllowedUserPeek(request, env)
+  if (isAdmissionUnavailable(user)) return admissionUnavailableResponse()
   if (!user) {
     return Response.json({ error: 'Authentication required' }, { status: 401 })
   }

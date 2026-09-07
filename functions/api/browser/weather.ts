@@ -1,4 +1,5 @@
 import type { Env } from '../../env'
+import { isAdmissionUnavailable, admissionUnavailableResponse } from '../_lib/admission'
 import { checkAllowedUserPeek, notFoundResponse } from '../_lib/checkAllowedUser'
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
@@ -7,6 +8,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   // `checkAllowedUserPeek` ne décrémente pas le compteur trial — la
   // météo est légitime à utiliser pour tous les plans (y compris free).
   const user = await checkAllowedUserPeek(request, env)
+  if (isAdmissionUnavailable(user)) return admissionUnavailableResponse()
   if (!user) return notFoundResponse()
 
   const { city } = await request.json() as { city?: string }

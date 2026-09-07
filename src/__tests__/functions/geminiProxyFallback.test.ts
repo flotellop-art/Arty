@@ -149,8 +149,9 @@ describe('Gemini proxy — fallback 3.6 compté une seule fois', () => {
       if (afterCommit) await committed
       expire()
       const response = await operation
-      expect(response.status).toBe(status === 503 ? 200 : status)
-      await response.text()
+      expect(response.status).toBe(503)
+      expect(await response.json()).toMatchObject({ error: 'admission_unavailable' })
+      expect(response.headers.get('x-trial-remaining')).toBeNull()
       // An independent successful reservation must survive compensation.
       const other = await checkAllowedVerifiedUser(EMAIL, { ...h.env, DB: db })
       expect(other).toMatchObject({ trialDebited: true })
@@ -162,7 +163,7 @@ describe('Gemini proxy — fallback 3.6 compté une seule fois', () => {
       const emailTrial = await db.prepare('SELECT used FROM email_trial_usage WHERE email = ?1')
         .bind(EMAIL).first<{ used: number }>()
       expect(emailTrial?.used).toBe(13)
-      expect(upstreamCalls).toBe(status === 503 ? 2 : 1)
+      expect(upstreamCalls).toBe(0)
     } finally {
       release()
       await Promise.allSettled(background)
@@ -181,7 +182,7 @@ describe('Gemini proxy — fallback 3.6 compté une seule fois', () => {
       await committed
       expire()
       const result = await operation
-      expect(result).toMatchObject({ planType: 'trial' })
+      expect(result).toEqual({ error: 'admission_unavailable' })
       expect(result).not.toHaveProperty('trialDebited')
       expect(background).toHaveLength(1)
       release()

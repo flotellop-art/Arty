@@ -1,4 +1,5 @@
 import type { Env } from '../../env'
+import { isAdmissionUnavailable, admissionUnavailableResponse } from '../_lib/admission'
 import {
   checkAllowedVerifiedUser,
   isModelAllowedInTrial,
@@ -60,6 +61,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
       identity.kind === 'email-trial'
         ? await consumeEmailTrialMessage(env, identity.email, waitUntil)
         : await checkAllowedVerifiedUser(identity.email, env, waitUntil)
+    if (isAdmissionUnavailable(result)) return admissionUnavailableResponse()
     if (isTrialExpired(result)) {
       // Essai email épuisé : pas de wallet (espace de clés disjoint, CRIT-1) → 403 direct.
       if (identity.kind === 'email-trial') return trialExpiredResponse()

@@ -1,5 +1,6 @@
 import { TEXT_DEFAULTS } from './modelCatalog'
 import { walletReconciliationError } from './walletFailure'
+import { admissionUnavailableError } from './admissionFailure'
 import { getMistralKey } from './activeApiKey'
 import { apiUrl } from './apiBase'
 import { buildAiHeaders, fetchWithTimeout } from './aiHttp'
@@ -313,7 +314,7 @@ async function runMistralStream(
         // backoff de streamOnce a déjà retenté ; ré-attaquer immédiatement
         // enfonçait le 429 — bug live du 11 juin, article Figaro en EU).
         const name = (err as Error).name
-        if (!wantForce || name === 'AbortError' || name === 'RateLimitError' || name === 'WalletReconciliationError') throw err
+        if (!wantForce || name === 'AbortError' || name === 'RateLimitError' || name === 'WalletReconciliationError' || name === 'AdmissionUnavailableError') throw err
         once = await streamOnce(
           apiKey, apiMessages, openaiTools, onToken, controller, model, temperature, false, options?.assertRequestCurrent, options?.beforeDocumentRequest
         )
@@ -515,7 +516,7 @@ async function streamOnce(
 
   if (!response.ok) {
     const err = await response.text().catch(() => '')
-    const walletError = walletReconciliationError(response.status, err)
+    const walletError = admissionUnavailableError(response.status, err) ?? walletReconciliationError(response.status, err)
     if (walletError) throw walletError
     // Catégorie « clé serveur à sec » remontée par le proxy (BUG 64) : testée
     // AVANT le mapping par status, car Mistral signale ce cas en 429 — sans

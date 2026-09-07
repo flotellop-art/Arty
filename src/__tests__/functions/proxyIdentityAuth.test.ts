@@ -137,7 +137,9 @@ describe('proxy identity — contrat Google explicite et fail-closed', () => {
     } as never)
 
     expect(response.status).toBe(503)
-    expect(await response.json()).toEqual({ error: 'Authentication service temporarily unavailable' })
+    expect(await response.json()).toMatchObject({ error: 'admission_unavailable' })
+    expect(response.headers.get('cache-control')).toBe('no-store')
+    expect(response.headers.get('retry-after')).toBe('30')
   })
 
   it('les proxys auxiliaires distinguent aussi une panne Google d’un token rejeté', async () => {

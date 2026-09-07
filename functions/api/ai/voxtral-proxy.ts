@@ -1,7 +1,8 @@
 import type { Env } from '../../env'
+import { admissionUnavailableResponse } from '../_lib/admission'
 import {
   parseAllowedEmails,
-  resolveUserPlan,
+  resolveUserPlanDetailed,
   strictGoogleIdentityFailureResponse,
   trialModelRestrictedResponse,
   verifyGoogleIdentityStrictDetailed,
@@ -47,7 +48,9 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
   if (!apiKey && env.MISTRAL_API_KEY) {
     const allowedList = parseAllowedEmails(env.ALLOWED_EMAILS)
     const isWhitelisted = allowedList.includes(email)
-    const plan = isWhitelisted ? 'vip' : await resolveUserPlan(env, email)
+    const resolution = isWhitelisted ? { status: 'ready', plan: 'vip' } as const : await resolveUserPlanDetailed(env, email)
+    if (resolution.status === 'unavailable') return admissionUnavailableResponse()
+    const plan = resolution.plan
     if (plan === 'trial') {
       return trialModelRestrictedResponse()
     }

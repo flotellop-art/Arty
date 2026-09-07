@@ -1,4 +1,5 @@
 import type { Env } from '../../../env'
+import { isAdmissionUnavailable, admissionUnavailableResponse } from '../../_lib/admission'
 import { checkAllowedUserPeek } from '../../_lib/checkAllowedUser'
 import { getMonthlyQuotaStatus } from '../../_lib/quota'
 
@@ -15,6 +16,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
   // Peek = pas de décrément du compteur trial. Cet endpoint est read-only,
   // afficher ses stats ne doit pas coûter un message d'essai gratuit.
   const allowed = await checkAllowedUserPeek(request, env)
+  if (isAdmissionUnavailable(allowed)) return admissionUnavailableResponse()
   if (!allowed) {
     return Response.json({ error: 'Not found' }, { status: 404 })
   }

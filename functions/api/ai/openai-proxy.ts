@@ -1,4 +1,5 @@
 import type { Env } from '../../env'
+import { isAdmissionUnavailable, admissionUnavailableResponse } from '../_lib/admission'
 import {
   checkAllowedVerifiedUser,
   isModelAllowedInTrial,
@@ -344,6 +345,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
           if (
             !lateResult ||
             isTrialExpired(lateResult) ||
+            isAdmissionUnavailable(lateResult) ||
             lateResult.planType !== 'trial' ||
             lateResult.trialDebited !== true
           ) return
@@ -353,6 +355,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
         }).catch(() => undefined))
       },
     )
+    if (isAdmissionUnavailable(result)) return cancelBufferedVision(admissionUnavailableResponse())
     if (
       usesVisionTransport &&
       result &&

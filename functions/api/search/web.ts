@@ -9,6 +9,7 @@
 // sans toucher au client.
 
 import type { Env } from '../../env'
+import { isAdmissionUnavailable, admissionUnavailableResponse } from '../_lib/admission'
 import { checkAllowedUserPeek, isTrialExpired } from '../_lib/checkAllowedUser'
 import {
   consumeOwnerApiQuota,
@@ -67,6 +68,7 @@ type SearchResponse = SingleSourceResponse | MultiSourceResponse
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   // Auth obligatoire — anti-relais anonyme (RÈGLE 6 / CRIT-4).
   const user = await checkAllowedUserPeek(request, env)
+  if (isAdmissionUnavailable(user)) return admissionUnavailableResponse()
   if (!user || isTrialExpired(user)) {
     return Response.json({ error: 'Authentication required' }, { status: 401 })
   }
@@ -112,6 +114,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   // côté provider (budget Linkup) — cf. docs ops.
   if (planSubjectToOwnerApiCap(user.planType)) {
     const cap = await consumeOwnerApiQuota(env, user.email, 'web-search', providerCalls)
+    if (cap.unavailable) return admissionUnavailableResponse()
     if (!cap.allowed) return ownerApiLimitResponse('web-search', cap.limit)
   }
 

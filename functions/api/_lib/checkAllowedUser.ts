@@ -1,5 +1,7 @@
 import type { Env } from '../../env'
-import { consumeRefundableCapAtomic, type QuotaWaitUntil } from './atomicQuota'
+import { admissionUnavailable, type AdmissionUnavailable } from './admission'
+import { consumeTrialCounter } from './trialAdmission'
+import type { QuotaWaitUntil } from './atomicQuota'
 
 /**
  * Vérifie via `tokeninfo` que le token a été émis POUR Arty (`aud`/`azp`).
@@ -307,7 +309,7 @@ export interface TrialExpired {
   email: string
 }
 
-export type CheckResult = AllowedUser | TrialExpired | null
+export type CheckResult = AllowedUser | TrialExpired | AdmissionUnavailable | null
 
 export function isTrialExpired(r: CheckResult): r is TrialExpired {
   return r !== null && typeof r === 'object' && 'error' in r && r.error === 'trial_expired'
@@ -398,14 +400,14 @@ export function isModelAllowedInTrial(model: string): boolean {
  */
 /**
  * Variante read-only de `checkAllowedUser` : retourne `AllowedUser` sans
- * décrémenter le compteur trial KV. Pour les endpoints auxiliaires qui
+ * décrémenter le compteur trial D1. Pour les endpoints auxiliaires qui
  * vérifient juste l'identité sans facturer un message d'essai (stats de
  * quota, geocoding, etc.).
  */
 export async function checkAllowedUserPeek(
   request: Request,
   env: Env
-): Promise<AllowedUser | null> {
+): Promise<AllowedUser | AdmissionUnavailable | null> {
   // Les chemins « peek » peuvent dépenser des clés owner. L'audience Arty est
   // donc obligatoire et toute panne/absence de `aud` échoue fermée.
   const email = await verifyGoogleUserStrict(request, env.GOOGLE_CLIENT_ID)
@@ -422,7 +424,7 @@ export async function checkAllowedUserPeek(
 export async function checkAllowedVerifiedUserPeek(
   verifiedEmail: string,
   env: Env,
-): Promise<AllowedUser> {
+): Promise<AllowedUser | AdmissionUnavailable> {
   const email = verifiedEmail.trim().toLowerCase()
 
   const allowed = parseAllowedEmails(env.ALLOWED_EMAILS)
@@ -430,7 +432,8 @@ export async function checkAllowedVerifiedUserPeek(
     return { email, planType: 'vip' }
   }
 
-  const plan = await resolveUserPlan(env, email)
+  const plan = await readUserPlan(env, email)
+  if (plan === null) return admissionUnavailable()
   // Plan 'free' = OK pour les endpoints peek (status, geocoding, etc.) ;
   // les proxies IA appliqueront leurs quotas free spécifiques.
   return { email, planType: plan }
@@ -462,7 +465,8 @@ export async function checkAllowedVerifiedUser(
     return { email, planType: 'vip' }
   }
 
-  const plan = await resolveUserPlan(env, email)
+  const plan = await readUserPlan(env, email)
+  if (plan === null) return admissionUnavailable()
   if (plan === 'subscription' || plan === 'pro' || plan === 'vip') {
     return { email, planType: plan }
   }
@@ -483,31 +487,16 @@ export async function checkAllowedVerifiedUser(
  * `AllowedUser` avec `trialRemaining` (= 30 - used post-incrément).
  *
  * Migré depuis KV (mai 2026) : le pattern KV get→décrémente→put n'était pas
- * atomique. D1 ferme la course. Fail-open sur incident D1 (modèles trial =
- * cheap, impact négligeable) plutôt que de bloquer un user.
+ * atomique. D1 ferme la course. Une panne, un timeout ou un compteur corrompu
+ * retourne AdmissionUnavailable : aucune requête fournisseur n'est autorisée.
  */
 async function consumeTrialMessage(env: Env, email: string, waitUntil?: QuotaWaitUntil): Promise<Exclude<CheckResult, null>> {
-  if (!env.DB) {
-    // Sans D1, fail-open : on autorise (les modèles trial sont cheap), on ne
-    // peut juste pas décrémenter. Ne devrait pas arriver en prod.
-    return {
-      email,
-      planType: 'trial',
-      trialRemaining: TRIAL_INITIAL_MESSAGES,
-      allowedModels: [...TRIAL_ALLOWED_MODELS],
-    }
-  }
+  if (!env.DB) return admissionUnavailable()
 
   await ensureTrialTable(env)
 
-  const outcome = await consumeRefundableCapAtomic(
-    env,
-    `INSERT INTO trial_usage (email, used, updated_at)
-     VALUES (?1, 1, unixepoch())
-     ON CONFLICT (email) DO UPDATE SET used = used + 1, updated_at = unixepoch()
-       WHERE trial_usage.used < ?2
-     RETURNING used AS count`,
-    [email, TRIAL_INITIAL_MESSAGES],
+  const outcome = await consumeTrialCounter(
+    env, email, 'trial_usage',
     () => voidTrialMessage(env, email),
     waitUntil,
   )
@@ -515,15 +504,7 @@ async function consumeTrialMessage(env: Env, email: string, waitUntil?: QuotaWai
   if (outcome.status === 'cap_reached') {
     return { error: 'trial_expired', email }
   }
-  if (outcome.status === 'fail_open') {
-    // D1 lent/down → on laisse passer sans connaître le restant exact.
-    return {
-      email,
-      planType: 'trial',
-      trialRemaining: 1,
-      allowedModels: [...TRIAL_ALLOWED_MODELS],
-    }
-  }
+  if (outcome.status === 'unavailable') return admissionUnavailable()
   // consumed : outcome.count = `used` post-incrément.
   return {
     email,
@@ -537,7 +518,7 @@ async function consumeTrialMessage(env: Env, email: string, waitUntil?: QuotaWai
 /**
  * Rembourse un message trial réservé par `checkAllowedUser` lorsqu'aucune
  * requête IA n'est finalement servie (timeout/refus vision pré-upstream).
- * Best-effort et borné à zéro ; sans D1, le chemin d'origine était fail-open.
+ * Best-effort et borné à zéro ; aucun retry sur résultat de remboursement ambigu.
  */
 export async function voidTrialMessage(env: Env, email: string): Promise<void> {
   if (!env.DB) return
@@ -545,7 +526,7 @@ export async function voidTrialMessage(env: Env, email: string): Promise<void> {
     await env.DB.prepare(
       `UPDATE trial_usage
        SET used = MAX(0, used - 1), updated_at = unixepoch()
-       WHERE email = ?1`,
+       WHERE email = ?1 AND typeof(used) = 'integer' AND used BETWEEN 1 AND 30`,
     ).bind(email).run()
   } catch (err) {
     console.error('[trial] void failed', err)
@@ -560,11 +541,20 @@ export async function voidTrialMessage(env: Env, email: string): Promise<void> {
  * fin de la période, donc 'cancelled' = "annulé mais accès jusqu'à la fin
  * du mois payé".
  *
- * Failsafe : si la table n'existe pas (DB neuve, migration pas appliquée),
- * retourne 'free' — le caller appliquera son propre fallback (ALLOWED_EMAILS).
+ * Une lecture impossible est distincte d'une absence réelle de droits : elle
+ * n'autorise ni une clé serveur gratuite ni une réservation de crédits.
  */
+export type UserPlanResolution = { status: 'ready'; plan: PlanType } | { status: 'unavailable' }
+export async function resolveUserPlanDetailed(env: Env, email: string): Promise<UserPlanResolution> {
+  const plan = await readUserPlan(env, email)
+  return plan === null ? { status: 'unavailable' } : { status: 'ready', plan }
+}
+/** Historical display-only wrapper. Spending gates use the detailed result. */
 export async function resolveUserPlan(env: Env, email: string): Promise<PlanType> {
-  if (!env.DB) return 'free'
+  return (await readUserPlan(env, email)) ?? 'free'
+}
+async function readUserPlan(env: Env, email: string): Promise<PlanType | null> {
+  if (!env.DB) return null
 
   try {
     // Expiration des abonnements (audit 14 juin) — symétrie avec le garde des
@@ -595,6 +585,7 @@ export async function resolveUserPlan(env: Env, email: string): Promise<PlanType
     if (sub?.plan_type === 'vip') return 'vip'
     if (sub?.plan_type === 'subscription') return 'subscription'
     if (sub?.plan_type === 'trial') return 'trial'
+    if (sub !== null) return null // impossible/malformed result, not known Free
 
     // Licences Pro = à vie (pas de colonne `expires_at` dans le schéma prod —
     // l'ancienne condition `expires_at ...` faisait planter la requête → tout
@@ -609,13 +600,14 @@ export async function resolveUserPlan(env: Env, email: string): Promise<PlanType
       .bind(email)
       .first<{ ok: number }>()
 
-    if (license) return 'pro'
+    if (license?.ok === 1) return 'pro'
+    if (license !== null) return null
 
     return 'free'
   } catch (err) {
-    // Table missing / D1 down → log et fallback. Le caller décidera (whitelist).
+    // Table missing / D1 down is not proof of Free eligibility.
     console.error('checkAllowedUser.resolveUserPlan failed', err)
-    return 'free'
+    return null
   }
 }
 

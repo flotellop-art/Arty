@@ -1,4 +1,5 @@
 import type { Env } from '../../../env'
+import { isAdmissionUnavailable, admissionUnavailableResponse } from '../../_lib/admission'
 import { checkAllowedUserPeek } from '../../_lib/checkAllowedUser'
 import { getDailyQuotaStatus } from '../../_lib/quota'
 
@@ -16,6 +17,7 @@ import { getDailyQuotaStatus } from '../../_lib/quota'
 export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
   // Peek = pas de décrément du compteur trial (read-only stats).
   const allowed = await checkAllowedUserPeek(request, env)
+  if (isAdmissionUnavailable(allowed)) return admissionUnavailableResponse()
   if (!allowed) {
     // Pas de leak d'info : 404 uniforme (RÈGLE 6)
     return Response.json({ error: 'Not found' }, { status: 404 })

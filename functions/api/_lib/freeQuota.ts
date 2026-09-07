@@ -10,7 +10,8 @@
 // coûteux et ne s'inscrit pas dans l'économie du tier free.
 
 import type { Env } from '../../env'
-import { consumeCapAtomic, maybeCleanup } from './atomicQuota'
+import { maybeCleanup } from './atomicQuota'
+import { consumeSubsidizedDailyQuota } from './subsidizedDailyQuota'
 
 export type ModelFamily = 'claude-haiku'
 
@@ -35,6 +36,7 @@ function todayKey(): string {
 }
 
 export interface FreeQuotaResult {
+  unavailable?: true
   allowed: boolean
   remaining: number
   limit: number
@@ -63,8 +65,7 @@ async function ensureFreeTable(env: Env): Promise<void> {
 // false` si le quota est atteint OU si le modèle n'est pas dans la liste
 // autorisée (cas Sonnet/Opus/Gemini Pro pour un free).
 //
-// Fail-open sur incident D1 (cohérent quota.ts) : on autorise plutôt que de
-// bloquer un user — l'impact financier du free (Haiku) est négligeable.
+// Une admission non confirmée est indisponible (503), pas gratuite ni épuisée.
 export async function consumeFreeDailyQuota(
   env: Env,
   email: string,
@@ -76,8 +77,8 @@ export async function consumeFreeDailyQuota(
   }
   const limit = FREE_DAILY_LIMITS[family]
   if (!env.DB) {
-    // Pas de binding D1 : fail-open. Ne devrait pas arriver en prod.
-    return { allowed: true, remaining: limit, limit, family }
+    // Sans D1 aucun coût serveur gratuit ne peut être autorisé.
+    return { allowed: false, unavailable: true, remaining: 0, limit, family }
   }
 
   const day = todayKey()
@@ -85,18 +86,10 @@ export async function consumeFreeDailyQuota(
   // GC paresseux des jours passés (D1 n'a pas de TTL comme KV).
   await maybeCleanup(env, `DELETE FROM free_daily_quota WHERE day < ?1`, [day])
 
-  const outcome = await consumeCapAtomic(
-    env,
-    `INSERT INTO free_daily_quota (email, day, family, count, updated_at)
-     VALUES (?1, ?2, ?3, 1, unixepoch())
-     ON CONFLICT (email, day, family) DO UPDATE SET count = count + 1, updated_at = unixepoch()
-       WHERE free_daily_quota.count < ?4
-     RETURNING count`,
-    [email, day, family, limit]
-  )
+  const outcome = await consumeSubsidizedDailyQuota(env, 'free_daily_quota', email, day, family, limit)
 
-  if (outcome.status === 'fail_open') {
-    return { allowed: true, remaining: limit, limit, family }
+  if (outcome.status === 'unavailable') {
+    return { allowed: false, unavailable: true, remaining: 0, limit, family }
   }
   if (outcome.status === 'cap_reached') {
     return { allowed: false, remaining: 0, limit, family }
@@ -141,21 +134,13 @@ export const TTS_FREE_DAILY_LIMIT = 5
 export async function consumeTtsFreeQuota(
   env: Env,
   email: string
-): Promise<{ allowed: boolean; remaining: number }> {
-  if (!env.DB) return { allowed: true, remaining: TTS_FREE_DAILY_LIMIT }
+): Promise<{ allowed: boolean; remaining: number; unavailable?: true }> {
+  if (!env.DB) return { allowed: false, unavailable: true, remaining: 0 }
   const day = todayKey()
   await ensureFreeTable(env)
   await maybeCleanup(env, `DELETE FROM free_daily_quota WHERE day < ?1`, [day])
-  const outcome = await consumeCapAtomic(
-    env,
-    `INSERT INTO free_daily_quota (email, day, family, count, updated_at)
-     VALUES (?1, ?2, 'tts', 1, unixepoch())
-     ON CONFLICT (email, day, family) DO UPDATE SET count = count + 1, updated_at = unixepoch()
-       WHERE free_daily_quota.count < ?3
-     RETURNING count`,
-    [email, day, TTS_FREE_DAILY_LIMIT]
-  )
-  if (outcome.status === 'fail_open') return { allowed: true, remaining: TTS_FREE_DAILY_LIMIT }
+  const outcome = await consumeSubsidizedDailyQuota(env, 'free_daily_quota', email, day, 'tts', TTS_FREE_DAILY_LIMIT)
+  if (outcome.status === 'unavailable') return { allowed: false, unavailable: true, remaining: 0 }
   if (outcome.status === 'cap_reached') return { allowed: false, remaining: 0 }
   return { allowed: true, remaining: Math.max(0, TTS_FREE_DAILY_LIMIT - outcome.count) }
 }
@@ -169,14 +154,13 @@ export async function consumeTtsFreeQuota(
 // provider est épuisé).
 //
 // ⚠️ Ce cap borne l'abus PAR COMPTE (équité + runaway). Il NE borne PAS un
-// attaquant qui crée N comptes Gmail jetables — pour ce cas, le filet est le
-// plafond DUR côté provider (crédits prépayés Linkup + quota journalier Google
-// Maps), à configurer côté ops (cf. docs). Les deux ensemble = défense complète.
+// attaquant qui crée N comptes. Le budget global et l'éligibilité multi-compte
+// restent obligatoires (FREE_TRIAL_ABUSE_CDC.md). Aucun plafond provider n'est
+// présumé actif ni suffisant sans recette et preuve de configuration.
 //
 // Réutilise la table free_daily_quota (même mécanisme atomique que le quota
-// Haiku/TTS), avec une "famille" dédiée par ressource. Fail-open sur incident
-// D1 (cohérent avec tout le code quota) : un incident infra ne bloque pas
-// l'usage légitime ; le plafond provider couvre cette fenêtre.
+// Haiku/TTS), avec une "famille" dédiée par ressource. Une panne D1 refuse
+// l'admission, sans modifier la politique existante des quotas payants.
 // ─────────────────────────────────────────────────────────────────────
 
 export type OwnerApiFamily = 'web-search' | 'url-fetch' | 'geo-reverse' | 'osm-trails'
@@ -205,37 +189,24 @@ export function planSubjectToOwnerApiCap(plan: string): boolean {
  * = nombre d'appels provider RÉELS (recherche multi-source = 1 par source) pour
  * que le cap reflète le coût réel et pas le nombre de requêtes HTTP. Tout-ou-rien :
  * une requête qui dépasserait le cap est refusée (429) au lieu d'être partiellement
- * facturée. Fail-open sur incident D1.
+ * facturée. Admission refusée temporairement sur incident D1.
  */
 export async function consumeOwnerApiQuota(
   env: Env,
   email: string,
   family: OwnerApiFamily,
   amount = 1
-): Promise<{ allowed: boolean; remaining: number; limit: number }> {
+): Promise<{ allowed: boolean; remaining: number; limit: number; unavailable?: true }> {
   const limit = OWNER_API_DAILY_LIMITS[family]
-  const n = Math.max(1, Math.floor(Number.isFinite(amount) ? amount : 1))
-  if (!env.DB) return { allowed: true, remaining: limit, limit }
+  if (!env.DB) return { allowed: false, unavailable: true, remaining: 0, limit }
 
   const day = todayKey()
   await ensureFreeTable(env)
   await maybeCleanup(env, `DELETE FROM free_daily_quota WHERE day < ?1`, [day])
 
-  // Upsert conditionnel paramétré par `n` (au lieu du +1 fixe) : l'INSERT initial
-  // crée la ligne à `n`, l'UPDATE n'ajoute `n` que si `count + n <= cap`. Invariant
-  // requis : n <= cap (garanti — n <= 6 sources, cap >= 20). Atomique via le
-  // write-lock D1 (cf. atomicQuota.ts) → jamais de dépassement concurrent.
-  const outcome = await consumeCapAtomic(
-    env,
-    `INSERT INTO free_daily_quota (email, day, family, count, updated_at)
-     VALUES (?1, ?2, ?3, ?4, unixepoch())
-     ON CONFLICT (email, day, family) DO UPDATE SET count = count + ?4, updated_at = unixepoch()
-       WHERE free_daily_quota.count + ?4 <= ?5
-     RETURNING count`,
-    [email, day, family, n, limit]
-  )
+  const outcome = await consumeSubsidizedDailyQuota(env, 'free_daily_quota', email, day, family, limit, amount)
 
-  if (outcome.status === 'fail_open') return { allowed: true, remaining: limit, limit }
+  if (outcome.status === 'unavailable') return { allowed: false, unavailable: true, remaining: 0, limit }
   if (outcome.status === 'cap_reached') return { allowed: false, remaining: 0, limit }
   return { allowed: true, remaining: Math.max(0, limit - outcome.count), limit }
 }

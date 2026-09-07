@@ -1,7 +1,8 @@
 import type { Env } from '../../env'
+import { admissionUnavailableResponse } from '../_lib/admission'
 import {
   parseAllowedEmails,
-  resolveUserPlan,
+  resolveUserPlanDetailed,
   strictGoogleIdentityFailureResponse,
   verifyGoogleIdentityStrictDetailed,
 } from '../_lib/checkAllowedUser'
@@ -65,11 +66,14 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
     // Voix gratuite pour tous via la clé serveur. Free/essai : plafond
     // quotidien. Payants : illimité.
     const allowedList = parseAllowedEmails(env.ALLOWED_EMAILS)
-    const plan = allowedList.includes(email) ? 'vip' : await resolveUserPlan(env, email)
+    const resolution = allowedList.includes(email) ? { status: 'ready' as const, plan: 'vip' as const } : await resolveUserPlanDetailed(env, email)
+    if (resolution.status === 'unavailable') return admissionUnavailableResponse()
+    const plan = resolution.plan
     const isPaidPlan = plan === 'subscription' || plan === 'pro' || plan === 'vip'
 
     if (!isPaidPlan) {
       const quota = await consumeTtsFreeQuota(env, email)
+      if (quota.unavailable) return admissionUnavailableResponse()
       if (!quota.allowed) {
         return Response.json(
           {

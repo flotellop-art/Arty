@@ -1,4 +1,5 @@
 import type { Env } from '../../env'
+import { isAdmissionUnavailable, admissionUnavailableResponse } from '../_lib/admission'
 import { BILLING_LEAK_PATTERN as SHARED_BILLING_LEAK_PATTERN } from '../_lib/upstreamBilling'
 import {
   checkAllowedVerifiedUser,
@@ -142,6 +143,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
       identity.kind === 'email-trial'
         ? await consumeEmailTrialMessage(env, identity.email, waitUntil)
         : await checkAllowedVerifiedUser(identity.email, env, waitUntil)
+    if (isAdmissionUnavailable(result)) return admissionUnavailableResponse()
     if (isTrialExpired(result)) {
       // Essai email épuisé : pas de wallet/crédits (espace de clés disjoint,
       // CRIT-1 — un jeton email-trial n'a jamais de solde) → 403 trial_expired direct.
@@ -259,6 +261,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
         return freeModelLockedResponse(modelName)
       }
       const free = await consumeFreeDailyQuota(env, email, modelName)
+      if (free.unavailable) return admissionUnavailableResponse()
       if (!free.allowed) {
         return freeQuotaExhaustedResponse('claude-haiku', free.limit)
       }

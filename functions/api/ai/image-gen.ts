@@ -1,6 +1,7 @@
 import type { Env } from '../../env'
+import { isAdmissionUnavailable, admissionUnavailableResponse } from '../_lib/admission'
 import {
-  checkAllowedVerifiedUser,
+  checkAllowedVerifiedUserPeek,
   isTrialExpired,
   proKeyRequiredResponse,
   trialExpiredResponse,
@@ -128,7 +129,8 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env, waitUnti
   let userPlan: 'subscription' | 'pro' | 'vip' | 'free' | 'trial' = 'free'
 
   if (!apiKey && env.OPENAI_API_KEY) {
-    const result = await checkAllowedVerifiedUser(email, env, waitUntil)
+    const result = await checkAllowedVerifiedUserPeek(email, env)
+    if (isAdmissionUnavailable(result)) return admissionUnavailableResponse()
     if (isTrialExpired(result)) return trialExpiredResponse()
     if (result && result.planType === 'pro') {
       // Pro = BYOK (P2.5) : la licence donne l'app à vie, pas la clé serveur.

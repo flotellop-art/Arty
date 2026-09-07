@@ -10,6 +10,13 @@ dans `WORKSPACE_SYNC_APPLY_CONTRACT.md`, `WORKSPACE_SYNC_CLIENT_RELEASE.md` et
 
 Date : 7 septembre 2026. Statut global : **en cours, livraisons partielles**.
 
+Extension explicite du 7 septembre : protection contre l'abus des 30 messages
+gratuits par comptes email multiples et VPN. Critères de clôture obligatoires
+dans [FREE_TRIAL_ABUSE_CDC.md](FREE_TRIAL_ABUSE_CDC.md) : quotas serveur fiables,
+éligibilité multi-compte, coût global borné, faux positifs et données minimisées.
+Priorité P0 avant ouverture commerciale/acquisition à grande échelle ; à réaliser,
+sans retirer W01–W10 ni les obligations abonnements et crédits.
+
 Extension explicite de l'objectif le 6 septembre : abonnements **et** crédits
 réellement opérationnels, y compris qualification du prestataire marchand et
 cycle de paiement complet. Critères obligatoires dans `BILLING_OPERATIONAL_CDC.md` ;

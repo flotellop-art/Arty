@@ -1,9 +1,10 @@
 import type { Env } from '../../env'
+import { admissionUnavailableResponse } from '../_lib/admission'
 import {
   strictGoogleIdentityFailureResponse,
   verifyGoogleIdentityStrictDetailed,
 } from '../_lib/checkAllowedUser'
-import { consumeCapAtomic } from '../_lib/atomicQuota'
+import { consumeSubsidizedDailyQuota } from '../_lib/subsidizedDailyQuota'
 import { recordUsage } from '../_lib/quota'
 
 /**
@@ -85,7 +86,8 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
 
   // Rate-limit dédié : 20/jour/utilisateur (anti-boucle + borne le coût et
   // l'usage de cet endpoint comme mini-proxy Haiku gratuit).
-  if (env.DB) {
+  if (!env.DB) return admissionUnavailableResponse()
+  {
     try {
       await env.DB.prepare(
         `CREATE TABLE IF NOT EXISTS bg_quota (
@@ -101,15 +103,8 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
       console.error('[memory-extract] ensure table failed', err)
     }
     const day = new Date().toISOString().slice(0, 10)
-    const outcome = await consumeCapAtomic(
-      env,
-      `INSERT INTO bg_quota (email, day, task, count, updated_at)
-       VALUES (?1, ?2, ?3, 1, unixepoch())
-       ON CONFLICT (email, day, task) DO UPDATE SET count = count + 1, updated_at = unixepoch()
-         WHERE bg_quota.count < ?4
-       RETURNING count`,
-      [email, day, 'memory-extract', DAILY_EXTRACT_CAP]
-    )
+    const outcome = await consumeSubsidizedDailyQuota(env, 'bg_quota', email, day, 'memory-extract', DAILY_EXTRACT_CAP)
+    if (outcome.status === 'unavailable') return admissionUnavailableResponse()
     if (outcome.status === 'cap_reached') {
       return Response.json({ error: 'extract_quota' }, { status: 429 })
     }
