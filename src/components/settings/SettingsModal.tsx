@@ -52,6 +52,8 @@ import { LocalMemoryModal } from './LocalMemoryModal'
 import { AccountDeletionPanel } from './AccountDeletionPanel'
 import { ArchiveVerifier, archiveButton } from '../workspace/ArchiveVerifier'
 import { WorkspaceRestorer } from '../workspace/WorkspaceRestorer'
+import { WorkspaceSyncReceiver } from '../workspace/WorkspaceSyncReceiver'
+import { WORKSPACE_SYNC_APPLY_START_ENABLED } from '../../services/workspaceSync/activation'
 import { ProductMeasurementSetting } from './ProductMeasurementSetting'
 
 interface SettingsModalProps {
@@ -281,6 +283,7 @@ export const SettingsModal = memo(function SettingsModal({ open, onClose, onOpen
         </div> : <div className="p-6 space-y-6">
           <button className={`${archiveButton} w-full text-left`} onClick={() => setShowArchiveVerifier(true)}>{t('workspaceArchive.verifyTitle')}</button>
           <button className={`${archiveButton} w-full text-left`} onClick={() => setShowRestorer(true)}>{t('workspaceRestore.title')}</button>
+          {WORKSPACE_SYNC_APPLY_START_ENABLED && <WorkspaceSyncReceiver />}
           <ProductMeasurementSetting />
           {/* Notifications toggle */}
           <div>

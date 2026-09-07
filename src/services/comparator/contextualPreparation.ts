@@ -11,6 +11,7 @@ import { getMessageTextForModel } from '../quickActions'
 import { findModel, type PanelConfig } from './providerCatalog'
 import type { PanelMetrics } from './useMultiProviderChat'
 import type { ModelUsedEvent } from '../modelLabels'
+import { copyMessageSyncProvenance } from '../workspaceSync/localProvenance'
 
 /** Local grouping only. Never route, fetch a file, or resume an HTTP request
  * using imported grouping metadata. A branch remains documentary without it. */
@@ -102,7 +103,7 @@ export function captureContextualComparison(args: {
           const { factCheck, ...rest } = message
           const pending = message.restoredArchive !== true && factCheck &&
             (factCheck.status === 'pending' || factCheck.modelLabel === 'Vérification en cours…')
-          return { ...rest, id: generateId(), ...(factCheck && !pending ? { factCheck } : {}) }
+          return { ...rest, ...copyMessageSyncProvenance(message), id: generateId(), ...(factCheck && !pending ? { factCheck } : {}) }
         })
         branch.messages.at(-1)!.projectTurn = structuredClone(payload.turn)
         branch.id = branchIds[panel]!; branch.title = `${original.title.slice(0, 160)} · ${descriptors[panel]!.label}`

@@ -30,10 +30,10 @@ export async function makeWorkspaceSyncHarness(start = 'true', bucket = true) {
       const url = new URL(request.url)
       if (url.origin !== 'https://oauth2.googleapis.com' || url.pathname !== '/tokeninfo') throw new Error('Unexpected outbound request')
       const token = url.searchParams.get('access_token'); authCalls.push(token ?? '')
-      if (!['a', 'b', 'missing-sub', 'bad-sub', 'wrong-audience'].includes(token ?? '')) return LocalResponse.json({}, { status: 401 })
+      if (!['a', 'b', 'same-email-other-sub', 'missing-sub', 'bad-sub', 'wrong-audience'].includes(token ?? '')) return LocalResponse.json({}, { status: 401 })
       return LocalResponse.json({ email: token === 'b' ? 'b@example.test' : 'a@example.test', email_verified: true,
         aud: token === 'wrong-audience' ? 'foreign-client' : 'synthetic-arty-client',
-        ...(token === 'missing-sub' ? {} : { sub: token === 'bad-sub' ? { invalid: true } : token === 'b' ? '222222' : '111111' }) })
+        ...(token === 'missing-sub' ? {} : { sub: token === 'bad-sub' ? { invalid: true } : token === 'b' ? '222222' : token === 'same-email-other-sub' ? '333333' : '111111' }) })
     },
   }
   const mf = new Miniflare(options)

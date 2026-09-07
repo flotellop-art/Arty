@@ -9,7 +9,9 @@ const CONTEXT = ['owner', 'generation', 'enrollmentId', 'vaultId', 'epoch', 'rev
 export interface SyncStorageContext { readonly generation: string }
 export interface SyncLocalIdentity extends SyncVaultScope { owner: string; generation: string; enrollmentId: string; revision: number }
 export interface SyncStateBinding extends SyncLocalIdentity { pending: Readonly<SyncEnvelopeReference> | null }
-export interface SyncStateRow extends SyncStateBinding { format: 'arty-sync-local-state'; version: 1; ciphertext: string }
+/** v2 is a durable reader barrier for local sync history provenance. Old
+ * closed readers reject it before App; ordinary writers must never downgrade. */
+export interface SyncStateRow extends SyncStateBinding { format: 'arty-sync-local-state'; version: 1 | 2; ciphertext: string }
 export interface SyncOperationRow extends SyncLocalIdentity { format: 'arty-sync-local-operation'; version: 1; reference: Readonly<SyncEnvelopeReference>; ciphertext: string }
 export type SyncStorageKey = { kind: 'sync-state'; owner: string } | { kind: 'sync-operation'; owner: string; operationId: string }
 
@@ -81,12 +83,12 @@ export function parseSyncStorageRow(keyInput: unknown, input: unknown, context?:
   if (!key || !context) return fail('format')
   const state = key.kind === 'sync-state'
   const v = fields(input, ['format', 'version', ...CONTEXT, state ? 'pending' : 'reference', 'ciphertext']), bound = identity(v)
-  if (v.format !== (state ? 'arty-sync-local-state' : 'arty-sync-local-operation') || v.version !== 1 ||
+  if (v.format !== (state ? 'arty-sync-local-state' : 'arty-sync-local-operation') || (state ? v.version !== 1 && v.version !== 2 : v.version !== 1) ||
     bound.owner !== key.owner || bound.generation !== context.generation) return fail('scope')
   if (state) {
     syncBase64Size(v.ciphertext, SYNC_STATE_OVERHEAD + 1, SYNC_STATE_BYTES + SYNC_STATE_OVERHEAD)
     const pending = v.pending === null ? null : boundReference(v.pending, bound)
-    return { format: 'arty-sync-local-state', version: 1, ...bound, pending, ciphertext: v.ciphertext as string }
+    return { format: 'arty-sync-local-state', version: v.version as 1 | 2, ...bound, pending, ciphertext: v.ciphertext as string }
   }
   const reference = boundReference(v.reference, bound)
   if (reference.operationId !== (key as Extract<SyncStorageKey, { kind: 'sync-operation' }>).operationId ||

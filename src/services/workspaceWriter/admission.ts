@@ -4,6 +4,8 @@ import type { MigrationHeader } from './migrationProtocol'
 import type { WorkspaceStorageLayout } from './layout'
 import type { RestoreHeader } from './restoreProtocol'
 import type { WorkspaceUpgradeHeader } from './upgradeProtocol'
+import { WorkspaceSyncApplyAvailable } from './control'
+import type { SyncApplyHeader } from './syncApplyProtocol'
 
 export type WorkspaceAdmissionPhase = 'idle' | 'checking' | 'ready' | AdmissionFailure
 
@@ -15,6 +17,7 @@ export function createWorkspaceAdmission(guard: AdmissionGuard, read = readWorks
   let recovery: Readonly<MigrationHeader> | undefined, erasure = false, claimed = false
   let restore: Readonly<RestoreHeader> | undefined
   let upgrade: Readonly<WorkspaceUpgradeHeader> | undefined
+  let apply: Readonly<SyncApplyHeader> | undefined
   let erasureMode: AccountErasureState = 'confirmed'
   let erasureBinding: string | undefined
   const listeners = new Set<() => void>()
@@ -33,7 +36,7 @@ export function createWorkspaceAdmission(guard: AdmissionGuard, read = readWorks
      * Even cancellation requires a new document before any private App import. */
     claimMaintenance(): AdmissionGuard {
       guard.assertLock()
-      if (lost() || claimed || (phase !== 'idle' && phase !== 'recoverable' && phase !== 'restoring' && phase !== 'upgrading' && phase !== 'erasure')) throw new WorkspaceAdmissionError(lost() ? 'lost' : 'unavailable')
+      if (lost() || claimed || (phase !== 'idle' && phase !== 'recoverable' && phase !== 'restoring' && phase !== 'applying' && phase !== 'upgrading' && phase !== 'erasure')) throw new WorkspaceAdmissionError(lost() ? 'lost' : 'unavailable')
       claimed = true
       publish('maintenance')
       return Object.freeze({ signal: guard.signal, assertLock() {
@@ -43,6 +46,7 @@ export function createWorkspaceAdmission(guard: AdmissionGuard, read = readWorks
     },
     getRecovery() { guard.assertLock(); return recovery },
     getRestoreRecovery() { guard.assertLock(); return restore },
+    getSyncApplyRecovery() { guard.assertLock(); return apply && structuredClone(apply) },
     getUpgradeRecovery() { guard.assertLock(); return upgrade && structuredClone(upgrade) },
     hasErasureRecovery() { guard.assertLock(); return erasure },
     getErasureMode() { guard.assertLock(); return erasureMode },
@@ -72,6 +76,7 @@ export function createWorkspaceAdmission(guard: AdmissionGuard, read = readWorks
           layout = undefined
           if (error instanceof WorkspaceRecoveryAvailable && !lost()) recovery = error.header
           if (error instanceof WorkspaceRestoreAvailable && !lost()) restore = error.header
+          if (error instanceof WorkspaceSyncApplyAvailable && !lost()) apply = structuredClone(error.header)
           if (error instanceof WorkspaceUpgradeAvailable && !lost()) upgrade = structuredClone(error.header)
           if (error instanceof WorkspaceAdmissionError && error.code === 'erasure' && !lost()) erasure = true
           if (error instanceof WorkspaceErasureRecoveryAvailable && !lost()) { erasureMode = error.mode; erasureBinding = error.binding }

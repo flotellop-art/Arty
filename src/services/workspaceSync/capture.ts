@@ -7,8 +7,9 @@ import type { Project } from '../projects/types'
 import { validGeneratedImage } from '../generatedImages'
 import { BackupError } from '../workspaceBackup/types'
 import { sha256 } from '../workspaceBackup/bytes'
-import { projectSyncConversation, copySyncCaptureSelection } from './captureProjection'
-import { canonicalSyncJSON, decodeSyncSourceBase64, encodeSyncContent } from './captureContent'
+import { copySyncCaptureSelection } from './captureProjection'
+import { projectLocalSyncConversation, localSyncConversationWitness } from './localProvenance'
+import { decodeSyncSourceBase64, encodeSyncContent } from './captureContent'
 import { createSyncCaptureMapping } from './captureMapping'
 import { assertSyncPrivateHead, assertSyncMappingExtension, parseSyncPrivateState, type SyncLocalBinding } from './privateState'
 import { parseSyncManifest, recordHeads } from './schema'
@@ -41,12 +42,12 @@ export async function captureLocalSyncSnapshot(headInput: unknown, bindingsInput
   // every capture ticket and cannot silently succeed on a denied safety net.
   if (selection.conversationIds.length) await ensureDurableConversationIdentities(signal)
   assertAlive()
-  const tickets = selection.conversationIds.map(id => captureConversationForBackup(id, projectSyncConversation))
+  const tickets = selection.conversationIds.map(id => captureConversationForBackup(id, projectLocalSyncConversation))
   const conversations = tickets.map(t => t.snapshot)
   const assertFresh = () => {
     assertAlive()
     if (hasActiveConversationWork()) throw new BackupError('busy')
-    for (const ticket of tickets) { ticket.assertUnchanged(); ticket.assertSnapshot((a, b) => canonicalSyncJSON(a) === canonicalSyncJSON(b)) }
+    for (const ticket of tickets) { ticket.assertUnchanged(); ticket.assertSnapshot((a, b) => localSyncConversationWitness(a) === localSyncConversationWitness(b)) }
   }
   const validateFresh = async () => { assertFresh(); await scope.validateReadOnly(); assertFresh() }
   const mapping = createSyncCaptureMapping(prior.bindings)

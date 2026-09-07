@@ -1,5 +1,12 @@
 # Arty Workspace — cahier des charges et preuves de livraison
 
+État technique du 7 septembre 2026 : objectif global toujours incomplet.
+Projection/recapture fidèle, premier import sous journal et préparation d’un
+envoi concurrent raccordés et testés localement ; application des mises à jour
+et résolution des conflits restent à terminer. Livraison OFF en préparation ;
+preuves dans `WORKSPACE_SYNC_APPLY_CONTRACT.md` et
+`WORKSPACE_SYNC_CLIENT_RELEASE.md`.
+
 Date : 6 septembre 2026. Statut global : **en cours, non livré**.
 
 Extension explicite de l'objectif le 6 septembre : abonnements **et** crédits
@@ -2106,7 +2113,7 @@ cleanup visible en layouts legacy/isolé, découverte/jointure second appareil,
 transport client/ACK, réception/apply, consentement et recettes multi-profils
 restent à réaliser. Aucun de ces points n'est exclu de W06 ; pas de GO activation.
 
-### W06-B3b — reprise du nettoyage raccordée, candidat local (7 septembre)
+### W06-B3b — reprise du nettoyage raccordée, livrée OFF (7 septembre)
 
 Les manques « cleanup visible » du checkpoint précédent sont maintenant
 implémentés dans les deux parcours : réglages legacy/isolé et reprise froide.
@@ -2128,3 +2135,125 @@ migration distante changé. W06 reste partiel : jointure second profil,
 transport/ACK/apply, inconnus R2, consentement et recettes multi-appareils ne
 sont pas clos par ces tests locaux. Ni recette physique Android ni acceptation
 du prestataire d'abonnement/crédits ne sont revendiquées.
+
+**Livraison ultérieure #486 confirmée** : main `5f1dbe8`, CI PR/main et Firebase
+réussies, Pages production `c3f0b1fa` à 02:06:03 UTC. Octets comparés entre
+tryarty et cette URL immuable ; Chrome FR/EN 390/1280 PASS, upgrade/sync OFF,
+restauration ON. Aucun provisioning ni schéma sync distant ; les preuves
+fonctionnelles d'effacement restent locales/synthétiques. Première observation
+HTTP interrompue par un timeout de connexion à la dernière mesure, après
+15 mesures réussies ; sonde complète suivante PASS. Nouvelle fenêtre indépendante
+terminée de 02:23:09 à 02:38:09 UTC, 16 mesures réussies et PASS terminal exit 0.
+L'échec initial reste consigné ; seule la disponibilité HTTP anonyme/static
+est attestée par cette observation. Détails, reçu APK exact et bornes :
+[WORKSPACE_SYNC_TRANSPORT_RELEASE.md](WORKSPACE_SYNC_TRANSPORT_RELEASE.md).
+Le code B3a/B3b est livré et cette observation est terminée ; W06 et les
+prérequis d'activation restent ouverts.
+
+### W06-B3c — découverte/jointure serveur, checkpoint local
+
+La découverte authentifiée et la confirmation du coffre exact sont écrites en
+lecture seule, sans création implicite, avec START OFF pour toute nouvelle
+jointure. 26 tests dédiés ; 45 tests ciblés et vérification complète
+341 suites / 4557 PASS + 1 skip existant. Deux contre-revues indépendantes.
+Code non poussé/non déployé à ce checkpoint. Le
+[contrat client accepté](WORKSPACE_SYNC_CLIENT_CONTRACT.md) garde explicitement
+à réaliser : véritable grant, preuve de clé/genesis, ACK atomique, réception/
+apply/conflits et recette deux profils. Ni activation ni réduction du périmètre
+W06 ; pas de validation commerciale ou physique revendiquée.
+
+### W06-B3c — contrôleur client et acquittement locaux
+
+Le vrai grant, la preuve de clé sur genesis réelle et l'ACK v2 atomique sont
+désormais écrits. La base ACK vient des octets A persistés, pas des stores B ;
+un doublon conserve B en attente, un verrouillage/relink invalide l'action, et
+une création perdante n'est récupérable qu'avec preuve des deux clés et d'une
+initialisation ancienne vide. Aucun reset permissif ni promotion réseau v1.
+24 roundtrips et 3 tests de grammaire ajoutés passent ; campagne complète
+`npm run verify` exit 0, 343 suites / 4 584 PASS + 1 skip existant, types,
+build et worker Office réussis. Les canaris demandés par les deux contre-revues
+sont verts ; leur GO reste borné au contrôleur, pas à la verticale.
+Le [contrat client](WORKSPACE_SYNC_CLIENT_CONTRACT.md) détaille les preuves :
+vrais services/migration/upgrade/D1/R2, mais profils JSDOM/fake-IDB et HTTP
+bufferisé. Non poussé/non déployé ; la verticale deux vrais navigateurs,
+réception/apply/conflits et les prérequis d'activation W06 restent à terminer.
+
+### W06-B3c — réception vérifiée, pas encore appliquée
+
+Réception cliente de la chaîne complète et de ses anciens fichiers ajoutée,
+avec ancre historique, checkpoint/base exacts, bornes cumulées et invalidation
+sur changement d'autorité ou de paire. Aucune écriture/ACK ; état reçu/non
+appliqué distinct de la compatibilité applicative du contenu. 30 tests client
+workerd et 11 tests codec/réception réussis ; campagne complète `npm run verify`
+exit 0, 344 suites / 4 601 PASS + 1 skip existant, types/build/worker Office verts.
+Les deux contre-revues valident seulement ce raccord. Le
+[contrat apply](WORKSPACE_SYNC_APPLY_CONTRACT.md) documente les exigences
+encore ouvertes de journal froid, fraîcheur des cibles, provenance des alias,
+inertie, versions/conflits et recette deux vrais profils. Code local uniquement.
+
+### W06-B3d — validation des contenus avant import (local)
+
+Décodeur de contenu fermé et revue de toutes les maximales raccordés au
+contrôleur privé. Conversations/comparaisons, fichiers/galerie, source originale
+et texte de projet sont validés sans modifier A pending ni B local. Dépendances
+ambiguës, supprimées et manquantes sont distinguées ; pas de winner implicite
+ou de résurrection des documents retirés. L'aperçu n'autorise aucun import.
+Contrat, bornes, contre-revues et preuves détaillés dans le
+[contrat apply](WORKSPACE_SYNC_APPLY_CONTRACT.md). Deux GO indépendants à lecture,
+`npm run verify` exit 0 : 345 suites / 4 665 PASS + 1 skip existant, types/build/
+inventaire OAuth et worker Office verts. W06 reste partiel : journal,
+mapping/provenance, adoption froide, conflits, recapture, vraie recette deux
+navigateurs, chaîne de livraison et validation mobile restent nécessaires.
+
+### W06-B3e — premier import journalisé (candidat local OFF)
+
+La projection/recapture fidèle du lot `6202341` est désormais raccordée à un
+premier import via le vrai acteur de réception, un journal v10 et les lecteurs
+du produit après nouveaux documents. L'appareil peut déjà avoir des données
+locales et plusieurs comptes ; aucun écrasement implicite. Le premier parcours
+exige M/bindings vides et aucune A pending. Les cas d'update, concurrence,
+suppression et résolution ne sont pas retirés du CDC : ils restent à terminer.
+
+Préparation chiffrée sous clé/grant/document, inventaire fermé, étapes froides
+rejouables, abandon avant publication d'histoire, barrière lecteur durable v2
+et sortie vers effacement local v6 sont implémentés. Les contre-revues ont
+fait corriger la révocation en pleine transaction, les confirmations UI,
+l'ancienne normalisation RAM seule, la preuve du reçu/fence avec présence
+exacte et l'expiration d'une preuve bloquée. Tests et frontières détaillés dans
+[WORKSPACE_SYNC_APPLY_CONTRACT.md](WORKSPACE_SYNC_APPLY_CONTRACT.md).
+
+Les canaris utilisent les vrais services et un worker D1/R2 local, mais des
+profils JSDOM/fake-IDB. Import/reload/recapture, coupures, quotas, projets seuls,
+préservation et édition de B et effacement A avec compte B chiffré distinct
+sont couverts. Aucun push, déploiement, activation, donnée utilisateur migrée
+ou nouveau bucket. Le flag de démarrage est OFF. Les vrais navigateurs/APK,
+la livraison sync complète et la qualification abonnements/crédits restent requis.
+
+Validation finale locale : deux contre-revues GO bornés, `npm run verify`
+exit 0, **349 suites / 4 773 PASS + 1 skip existant** ; types, inventaire OAuth,
+build et worker Office verts. Log : `.playwright-mcp/workspace-sync-first-apply-verify.log`.
+
+### W06-B3f — reprise d’envoi concurrent (candidat local OFF)
+
+Le contrôleur ajoute une inspection GET seule, puis une préparation explicite
+de remplacement d'A uniquement après son conflit serveur exact et terminal.
+Le nouveau paquet conserve l'union de toutes les versions A/R et les corps
+historiques nécessaires, sans recapturer B, appliquer R ni résoudre le conflit.
+M, associations locales et sélection sont préservées. Une seule transaction
+annulable remplace l'ancienne paire ; après un acquittement local perdu, le
+rechargement retrouve les octets exacts du successeur. Le prochain envoi reste
+une action distincte et une nouvelle admission peut être refusée sous OFF.
+
+La contre-revue a conduit à détacher le rapport avant révocation des anciennes
+capacités, et à relire la paire durable même pour annoncer « aucun envoi ».
+Tests et preuves consignés dans le [contrat d'application](WORKSPACE_SYNC_APPLY_CONTRACT.md).
+Vérification locale finale : 349 suites, 4 804 tests PASS et un skip préexistant,
+types/inventaire OAuth/build/worker Office vérifiés dans
+`.playwright-mcp/workspace-sync-supersession-final-verify.log` après sortie terminale.
+Aucune livraison ou activation revendiquée ici.
+
+La mise à jour physique d'un espace déjà importé, les fichiers partagés, les
+restrictions EU/sortie, le couple source/texte, les suppressions et le choix
+explicite entre versions restent nécessaires. W06 est toujours partiel ; le
+CDC complet et la qualification opérationnelle abonnements/crédits restent
+les critères de l'objectif, pas seulement ce raccord transport.

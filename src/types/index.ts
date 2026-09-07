@@ -98,6 +98,13 @@ export interface Message {
   timestamp: number
   /** Archive history is data, never authority to resume actions/post-processing. */
   restoredArchive?: true
+  /** Device-local receive provenance; never imported from ordinary JSON or sent
+   * on the sync wire. The safety marker stays usable with the sync vault locked. */
+  localSyncProvenance?: {
+    version: 1
+    historicalInjected?: true
+    galleryAliases?: { fileId: string; textId: string }[]
+  }
   files?: FileAttachment[]
   /** Private image receipts. Ordinary JSON imports must discard these IDs. */
   generatedImages?: string[]

@@ -1,6 +1,8 @@
 import type { Conversation } from '../../types'
 import type { SyncLocalBinding } from './privateState'
 import { envelopeFail as fail } from './envelopeFormat'
+import { projectLocalSyncConversation } from './localProvenance'
+import { projectSyncConversation } from './captureProjection'
 
 /** Extends only; an unselected original/peer/crop is a reference, never an
  * implicit request to read it. Document identity IS its project-source ID. */
@@ -19,17 +21,26 @@ export function createSyncCaptureMapping(prior: SyncLocalBinding[]) {
     bindings.push(entry); byLocal.set(k, entry); return entry.logicalId
   }
   function conversation(c: Conversation) {
-    const result = structuredClone(c), localId = c.id
+    const result = projectLocalSyncConversation(c), localId = c.id
     const galleryAliases: { messageId: string; textId: string; fileId: string }[] = []
     result.id = bind('conversation', localId, null, true)
     if (c.projectId !== undefined) result.projectId = bind('project', c.projectId)
     for (const m of result.messages) {
+      const provenance = m.localSyncProvenance
+      delete m.localSyncProvenance
+      if (provenance?.historicalInjected) delete m.restoredArchive
       m.id = bind('message', m.id, localId, true)
       const gallery = new Map((m.generatedImages ?? []).map(id => [id, bind('file', id)]))
       if (m.generatedImages !== undefined) m.generatedImages = [...gallery.values()]
       // Keep raw text EXACT, including code/prose containing a known URI. This
       // typed alias is historical presentation data, not a local lookup grant.
-      for (const [textId, fileId] of gallery) galleryAliases.push({ messageId: m.id, textId, fileId })
+      const oldAliases = new Map(provenance?.galleryAliases?.map(a => [a.fileId, a.textId]))
+      const texts = new Set<string>()
+      for (const [physicalId, fileId] of gallery) {
+        const textId = oldAliases.get(physicalId) ?? physicalId
+        if (texts.has(textId)) return fail('format')
+        texts.add(textId); galleryAliases.push({ messageId: m.id, textId, fileId })
+      }
       for (const f of m.files ?? []) {
         f.id = bind('file', f.id)
         if (f.visionCrop) {
@@ -56,7 +67,7 @@ export function createSyncCaptureMapping(prior: SyncLocalBinding[]) {
       comparison.responseId = bind('message', comparison.responseId, localId)
       if (comparison.attribution?.conversationId !== undefined) comparison.attribution.conversationId = bind('conversation', comparison.attribution.conversationId)
     }
-    return { conversation: result, galleryAliases }
+    return { conversation: projectSyncConversation(result), galleryAliases }
   }
   return { bind, conversation, bindings }
 }

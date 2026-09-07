@@ -776,7 +776,7 @@ lui seul « tous les appareils à jour ».
 
 ### B3a — checkpoint serveur local, désactivé (7 septembre)
 
-**Code présent, non poussé/non déployé ; W06 reste partiel.** Le contrat local
+**Checkpoint initial local ; livré depuis avec B3b par #486, START OFF. W06 reste partiel.** Le contrat local
 `scripts/workspace-sync-contract/wrangler.jsonc` sert à générer les types avec
 Wrangler 4.129.0. Il ne contient ni point d'entrée déployable ni identifiant de
 ressource réelle. Les bindings générés sont optionnels dans `functions/env.d.ts`.
@@ -878,7 +878,7 @@ Sinon une suppression legacy pourrait omettre la rotation de génération et
 laisser un ancien challenge réutilisable après roll-forward. Désactiver START
 n'autorise pas de retirer ces protections.
 
-### B3b — reprise explicite du nettoyage distant, candidat local (7 septembre)
+### B3b — reprise explicite du nettoyage distant, livrée OFF (7 septembre)
 
 Ce lot raccorde l'effacement existant, pas le démarrage de synchronisation.
 Les flags/bindings/ressources distants restent inchangés. Aucun POST n'est
@@ -936,7 +936,8 @@ sont complémentaires, pas un E2E Google/Cloudflare de production.
 
 Les contre-revues ont fait corriger : fences absentes du CAS froid, getters
 privés susceptibles de lever après perte du document, succès tardif A pouvant
-recharger B, et texte d'erreur trop affirmatif. La validation reste locale.
+recharger B, et texte d'erreur trop affirmatif. Ces recettes fonctionnelles
+restent locales ; la livraison est attestée séparément ci-dessous.
 Les scripts/captures et logs synthétiques sont dans `.playwright-mcp`, hors Git.
 
 Toujours requis pour W06 : découverte/jointure d'un coffre au second profil,
@@ -945,3 +946,96 @@ réception/apply/conflits, consentement/rétention et recette deux profils puis
 appareil. Le cas PUT définitivement inconnu reste bloquant pour son coffre ;
 aucun TTL ni settlement inventé ne le clôt. B3b ne valide pas ces exigences et
 ne justifie aucune activation/provisioning de synchronisation.
+
+**Livraison #486 :** fusion normale le 7 septembre à 02:04:50 UTC, main
+`5f1dbe8cc702457f589202597bac370513ccbf4a`, arbre identique au candidat
+`0a67128`. CI PR/main application/growth/Android réussies, Pages production
+`c3f0b1fa` SUCCESS à 02:06:03 UTC ; tryarty et l'URL immuable servent les mêmes
+octets du lot. Recette publique Chrome FR/EN 390/1280 réussie, upgrade/sync OFF,
+restauration ON. Pipeline Firebase `34075075292` SUCCESS, reçu identité APK
+1.0.99 (100) lié au même commit ; pas de recette physique.
+Configuration distante relue : pas de START/binding R2 ni de table sync.
+Première observation : 15 mesures minutes 0–14 réussies, puis timeout de
+connexion avant réponse HTTP à la minute 15, donc pas de PASS 15 minutes.
+Sonde complète rejouée ensuite : PASS ; seconde fenêtre indépendante terminée
+de 02:23:09 à 02:38:09 UTC, 16 mesures réussies, PASS terminal exit 0.
+Le premier échec reste consigné ; borne HTTP anonyme/static seulement.
+Aucun repli ou changement de configuration.
+Le
+[reçu de livraison](WORKSPACE_SYNC_TRANSPORT_RELEASE.md) contient les preuves
+exactes, les bornes et le repli ; pas d'activation ni de migration distante.
+
+### B3c — découverte/jointure serveur locale et contrat client accepté
+
+Premier morceau local, non poussé : découverte SELECT-only liée au sujet strict,
+jointure explicitement confirmée sur génération/coffre/epoch exacts et soumise
+à START. Schéma absent/partiel, orphelins et autorités multiples refusent.
+Une publication entre découverte et confirmation retourne le head actuel sans
+changer le coffre confirmé ; aucune row n'est créée par ces deux opérations.
+26 tests de découverte/grammaire ; campagne ciblée 45 PASS puis vérification
+complète 341 suites / 4557 PASS + 1 skip existant. Types/Pages compile réussis.
+Deux contre-revues ont validé le checkpoint local et les limites documentées.
+
+Le [contrat client accepté](WORKSPACE_SYNC_CLIENT_CONTRACT.md) fixe la preuve
+privée de transport, genesis chiffrée ordinaire, adoption après AEAD, ACK v2
+atomique et vraie recette deux profils. Ces éléments ne sont **pas encore
+implémentés** par le morceau serveur ; aucun scope de test ou auto-adoption
+par `unlock(initialScope)` ne remplace la jointure réelle. W06 reste ouvert.
+
+### B3c — contrôleur privé et ACK v2 locaux
+
+Suite du checkpoint serveur : vrai grant capturé, découverte privée, genesis
+durable avant enroll, status exact avant reserve et ACK lié à la réponse HTTP
+interne. Réouverture du paquet A, base/checkpoint scellés, CAS paire complète
+et DELETE A seulement ; aucune lecture des stores B ne fabrique la base ACK.
+Sélection durable, reprise des deux wrappers sans changer le ciphertext,
+rescan différé si B travaille encore, refus de publier depuis une base dépassée.
+La v1 ne gagne aucune autorité distante implicite.
+
+La récupération d'une course de création demande ancien coffre vide prouvé
+par l'ancienne clé, même génération/autre coffre observé et vraie genesis
+gagnante ouverte dans une clé temporaire. CAS exact puis `joined-locked`,
+sans effacer les stores métier ; ancien secret absent = aucune réinitialisation.
+
+Les deux contre-revues ont fermé leurs objections ACK/annulation/récupération
+à la lecture. Leurs canaris sont ensuite verts : 24 roundtrips et 3 grammaires
+ajoutés ; `npm run verify` exit 0, 343 suites / 4 584 PASS + 1 skip existant,
+types frontend/functions, build, inventaire OAuth et véritable worker Office.
+Voir le
+[contrat et les limites de preuve](WORKSPACE_SYNC_CLIENT_CONTRACT.md).
+Ces profils JSDOM/fake-IDB et le pont HTTP bufferisé ne sont pas une recette
+UI/main/useAuth ni une preuve d'annulation effective d'un PUT R2 tenu.
+Code local non poussé ; réception/apply/conflits, deux vrais navigateurs,
+inconnus R2 et gates d'activation restent ouverts.
+
+### B3c — réception complète ancrée, toujours non appliquée
+
+Le contrôleur reçoit désormais la chaîne depuis genesis et conserve les
+payloads historiques sous leur engagement, au lieu d'essayer d'ouvrir le
+dernier paquet seul. Il vérifie budgets cumulés, continuité interpage, propre
+checkpoint/base exacts et head final non régressif. Rapport historique privé,
+exposé sous forme détachée « reçu, non appliqué / contenu non validé » ; aucun
+write/ACK/capture, même si A publiée est encore pending après ACK perdu.
+Changement de paire/clé/grant/fence invalide le résultat.
+
+30 tests client/workerd + 11 codec/réception passent ; campagne complète
+`npm run verify` exit 0, 344 suites / 4 601 PASS + 1 skip existant,
+types/build/inventaire OAuth et vrai worker Office réussis. Deux contre-revues
+ont donné un GO borné à la réception, pas à l'apply.
+Le [contrat d'application froide](WORKSPACE_SYNC_APPLY_CONTRACT.md) incorpore
+leurs objections : capture historique insuffisante pour protéger B jusqu'au
+commit, v2 insuffisante pour distinguer transport/matérialisé/pending, alias
+galerie et bit historique ne devant pas créer de révision fantôme, lecture
+sûre même coffre fermé. Journal, validation métier, conflits et vraie recette
+multi-navigateurs restent requis. Aucun déploiement/flag/provisioning de ce lot.
+
+### B3d — revue métier des contenus reçus (local)
+
+Le [contrat d'application](WORKSPACE_SYNC_APPLY_CONTRACT.md) décrit maintenant
+le décodeur `ARTYSOBJ1` et `prepareReceived()` : toutes les variantes maximales,
+identités/références typées, aliases historiques, source/texte exacts et images
+marquées canoniques validés avant tout writer. Les corps dominés restent
+opaques jusqu'à leur utilisation explicite. Les ambiguïtés restent visibles,
+les orphelins inertes et les données locales inchangées. Ce raccord prépare
+le vrai applicateur sans remplacer sa preuve : journal, état versionné,
+provenance durable, conflits/recapture et recettes terrain restent ouverts.
