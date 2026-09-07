@@ -1,7 +1,7 @@
 # Refus d'essai et de crédits — lot autonome
 
-7 septembre 2026. **Web livré par PR #495 ; observation et distribution Android
-encore en cours à 19:00 UTC.**
+7 septembre 2026. **Web livré par PR #495, observation terminée et APK distribué
+par Firebase ; recette physique non effectuée sur cette version.**
 Base publique `2e0504ee7c2ab5e70cf50c06f9974c38250ebd89` ; branche
 `codex/funding-ui-release-20260907`. Delta fonctionnel `5a1e035`, adaptation
 autonome `25526ec`. Aucun droit marchand ou plafond financier activé.
@@ -91,12 +91,25 @@ contournement de l'arrêt d'authentification de l'inventaire D1 distant.
   prévol 204 sans redirection sur les deux domaines, origine localhost, méthode
   GET et headers content-type/x-google-token autorisés. Timeout incluant le
   corps, taille de lecture bornée, chaque latence et échec conservé sans retry.
-- Observation lancée pour seize passages de t0 à t0+15 min. **Un premier
-  passage PASS ne vaut pas réception des quinze minutes** ; résultat final
-  encore à renseigner. Ces sondes ne prouvent pas l'exécution React, les caches
+- Observation terminée : **16/16 passages PASS**, du 7 septembre à 18:59:47,703
+  jusqu'à 19:14:48,347 UTC, soit **900,644 secondes**, exit 0 ; aucune tentative
+  remplacée par un retry. Ces sondes ne prouvent pas l'exécution React, les caches
   PWA, des droits connectés, la disponibilité D1 ou une télémétrie globale.
-- CI main `34153688927` et Firebase `34153688988` encore en cours. Le résultat
-  de distribution et le SHA de l'APK seront relevés séparément. À 18:49 UTC,
+- CI main `34153688927` entièrement SUCCESS. Firebase `34153688988` SUCCESS :
+  vérification, construction signée, contrôle de l'identité exacte, distribution
+  et téléversement du reçu d'identité tous réussis. Le reçu allowlisté
+  `arty-apk-identity-cac505a30f7358c51dcb35c21062dd8bc82ed246-1` (artefact
+  `10030499019`) a été téléchargé et relu séparément, sans télécharger l'APK.
+  Il atteste `com.arty.app`, version `1.0.99`/code `100`, **4 427 323 octets**,
+  SHA-256 `dc7d027e684e9000463c321f170847e1bfef50c5f83ac6423ccc8072f679e2cd`,
+  signature vérifiée et commit `cac505a`. Le numéro de version seul ne suffit
+  pas à identifier ce binaire. La preuve de distribution vient de l'étape
+  Firebase, pas du JSON seul ; pas d'attestation indépendante de reproductibilité.
+- À 19:13:03 UTC, le fichier assetlinks servi par tryarty.com égale le fichier
+  vérifié par ce reçu (SHA-256
+  `3f6c4530b85bdb3a4b05ea0103e54ec3bd883666c4ef2814690f76ef69ddd78c`). Ce constat
+  ne prouve pas la vérification des liens par Android ou un parcours OAuth.
+- À 18:49 UTC,
   `adb devices -l` ne détectait aucun téléphone : recette physique absente pour
   ce SHA. Le reçu mobile du 6 septembre concerne une autre version.
 
@@ -133,6 +146,8 @@ Deux contre-revues indépendantes trouvent plausible une annulation précoce
 du corps entrant pendant l'envoi HTTP chunked, mais la cause n'est pas encore
 reproduite. Ce test et le lecteur serveur sont inchangés dans le présent lot.
 Ne pas transformer une coupure en succès ni annoncer l'APK de cette base livré.
+Le nouveau run Firebase de `cac505a` est vert ; cela ne reproduit ni n'explique
+la cause du run précédent. Le test et les gardes n'ont pas été assouplis.
 
 Après qualification locale et CI du lot exact, la livraison devra vérifier
 l'identité du bundle public, les mêmes sondes anonymes et le résultat distinct

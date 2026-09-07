@@ -31,8 +31,9 @@ cohérents dans les clients IA, les compteurs et l'accès financé ; PR #495,
 source `cac505a`, web servi sur tryarty.com vérifié. Les réponses périmées ne
 doivent pas modifier une autre session, et les refus terminaux ne relancent pas
 une autre IA. Deux contre-revues, vérification locale complète et CI de PR PASS.
-Réception : `FUNDING_UI_STANDALONE_RELEASE.md`. Observation post-livraison et
-distribution Firebase encore en cours ; pas de recette téléphone de ce SHA.
+Réception : `FUNDING_UI_STANDALONE_RELEASE.md`. Seize contrôles publics PASS
+sur quinze minutes, CI main et distribution Firebase SUCCESS ; identité exacte
+de l'APK vérifiée séparément. Pas de recette téléphone de ce SHA.
 Ce lot n'active pas les achats, la protection multi-comptes ou le budget global
 et ne clôt ni W02 globalement ni les extensions commerciales ci-dessus.
 
