@@ -102,6 +102,32 @@ les mutations métier. Aucune nouvelle objection bloquante pour livraison OFF.
 - [ ] Livraison main, réception publique observée et identité de l'APK distribuée.
 - [ ] Essai utilisateur sur la plateforme et version réellement annoncées.
 
+### Première CI et correction du test HTTP
+
+PR496, candidat `b23685d`, CI34161058024 : terminale en échec, 371 suites
+réussies et une en échec ; 5 524 tests réussis, un échec et un ignoré,
+518,69 s. Échec unique dans `anthropicPreflight.workerd.test.ts:48` :
+`fetch failed`, causé par `write ECONNRESET` dans Undici `AsyncWriter.end`.
+Le build du job application n'a pas été atteint. Android et orchestrateur
+réussissent ; la preview d1050da7 est déployée et ses contrôles anonymes passent.
+
+Le même test inchangé passe isolément en local (3 tests, 3,11 s) ; cela
+n'efface pas l'échec CI. La source Miniflare retransmet un body stream à
+Undici, qui écrit un terminateur chunked sans longueur connue. Une course
+avec l'annulation anticipée est cohérente avec cette trace, sans causalité
+définitivement reproduite par le test local.
+
+Port sélectif de la correction test-only déjà préparée dans le candidat
+opérationnel : longueur HTTP finie exacte pour les deux corps négatifs,
+assertions 413/JSON/no-store/zéro fournisseur ; deux canaris supplémentaires
+exécutent le vrai parseur dans workerd sur un flux jamais fermé et exigent
+son annulation effective avant EOF. Les positifs 32 MB et deux fois 11 MB avec
+Unicode restent identiques. Aucun ECONNRESET accepté comme succès ni retry.
+Les deux contre-revues indépendantes valident ce périmètre. Six tests ciblés
+PASS (4,07 s), typechecks repassés. Ce contrôle du flux interne ne prouve pas
+la fiabilité d'un upload HTTP chunked externe. Runtime, limites, timeout et
+configuration inchangés. La nouvelle CI complète reste à recevoir.
+
 La chaîne existante peut distribuer un APK Firebase à la fusion main. Aucun
 changement de workflow, migration D1 distante, paiement, webhook, secret,
 binding ou provisionnement n'appartient à ce lot. Ne pas tester des comptes
