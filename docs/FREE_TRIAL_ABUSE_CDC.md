@@ -15,6 +15,12 @@ Cela corrige le repli permissif sur incident décrit au point de départ ci-dess
 Le budget global et l'éligibilité multi-compte ne sont pas encore réalisés ;
 aucun de leurs critères n'est clos par cette livraison.
 
+Complément livré : [PR492](https://github.com/flotellop-art/Arty/pull/492),
+main `96daa8d`, corrige les bornes des appels recherche/mémoire ; 5208 tests
+réussis en CI et observation publique de 15 minutes réussie. Le
+[noyau de budget cumulatif](SUBSIDIZED_BUDGET_LEDGER.md) est développé localement,
+sans raccord ni activation. Il ne ferme pas encore les critères 2 à 4.
+
 ## Résultat attendu
 
 Rendre le renouvellement abusif des essais difficile et borner la dépense
