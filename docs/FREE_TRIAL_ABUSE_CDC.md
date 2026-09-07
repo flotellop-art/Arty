@@ -21,6 +21,12 @@ réussis en CI et observation publique de 15 minutes réussie. Le
 [noyau de budget cumulatif](SUBSIDIZED_BUDGET_LEDGER.md) est développé localement,
 sans raccord ni activation. Il ne ferme pas encore les critères 2 à 4.
 
+Le noyau est maintenant fusionné via PR493, main `69dd37e`, avec 5274 tests
+réussis en CI ; migration et raccord restent désactivés. Le prochain candidat
+[précontrôle Anthropic](ANTHROPIC_PREFLIGHT_RELEASE.md) refuse les transports
+invalides avant débit, sans prétendre valider tout le schéma fournisseur ni
+remplacer les règles d'éligibilité multi-compte à venir.
+
 ## Résultat attendu
 
 Rendre le renouvellement abusif des essais difficile et borner la dépense
