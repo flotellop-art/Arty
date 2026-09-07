@@ -350,11 +350,63 @@ describe('committed generation cold erasure', () => {
     expect(await db.get('projects', ['a', 'p'])).toBeDefined(); db.close()
     expect(derive).not.toHaveBeenCalled(); await newDocument(); await (await actor()).resume(); expect(fetcher).toHaveBeenCalledOnce()
   })
-  it.each(['unknown', 'html', '401', 'oversized'])('cold receipt %s leaves the complete intent and data intact', async kind => {
+  it('cold pending needs a distinct command, retains the journal between batches and confirms durably before purge', async () => {
+    const layout = await seed(), r = remoteReceipt(); await setReceipt(layout, r)
+    const initial = await control(), before = localPairs(), worker = await actor()
+    const fetcher = vi.fn(async (_url, init) => {
+      expect(Object.keys(init.headers).sort()).toEqual(['x-arty-erasure-capability', 'x-arty-erasure-operation'])
+      return Response.json({ protocol: 1, operationId, subjectHash: r.remote.subjectHash, status: fetcher.mock.calls.length < 3 ? 'cleanup-pending' : 'confirmed' })
+    }); vi.stubGlobal('fetch', fetcher)
+    await expect(worker.resume('resume-remote-cleanup')).rejects.toThrow(); expect(fetcher).not.toHaveBeenCalled()
+    await expect(worker.resume()).rejects.toThrow('erasure_cleanup_pending')
+    expect(await control()).toEqual(initial); expect(localPairs()).toEqual(before)
+    await expect(worker.resume('resume-remote-cleanup')).rejects.toThrow('erasure_cleanup_pending')
+    expect(await control()).toEqual(initial); const db = await openDB(layout.projects.name)
+    expect(await db.get('meta', ['erasing', 'a'])).toEqual(r); expect(await db.get('projects', ['a', 'p'])).toBeDefined(); db.close()
+    const fault = crash('reserved')
+    await expect(worker.resume('resume-remote-cleanup')).rejects.toThrow('synthetic-crash'); fault.mockRestore()
+    const saved = await openDB(layout.projects.name); expect(await saved.get('meta', ['erasing', 'a'])).toEqual(receipt()); saved.close()
+    await newDocument(); await (await actor()).resume()
+    expect(fetcher.mock.calls.map(([url, init]) => [String(url).split('/').at(-1), init.method])).toEqual([
+      ['erasure-v1', 'GET'], ['erasure-cleanup-v1', 'POST'], ['erasure-cleanup-v1', 'POST']])
+    const final = await openDB(layout.projects.name); expect(await final.get('projects', ['a', 'p'])).toBeUndefined(); expect(await final.get('projects', ['a-b', 'p'])).toBeDefined(); final.close()
+  })
+  it.each(['nonce', 'capability', 'localOnly', 'root', 'local-fence', 'active-fence', 'document'])('cold cleanup refuses changed %s before POST', async change => {
+    const layout = await seed(), r = remoteReceipt(); await setReceipt(layout, r)
+    const fetcher = vi.fn(async () => Response.json({ protocol: 1, operationId, subjectHash: r.remote.subjectHash, status: 'cleanup-pending' })); vi.stubGlobal('fetch', fetcher)
+    const worker = await actor(); await expect(worker.resume()).rejects.toThrow('erasure_cleanup_pending')
+    if (change === 'document') await endDocument()
+    else if (change === 'local-fence') localStorage.setItem('arty-project-erasure-fence', 'changed')
+    else if (change === 'root') { const db = await openDB('arty-workspace-control'); const h = await db.get('meta', 'workspace'); await db.put('meta', { ...h, revision: h.revision + 1 }, 'workspace'); db.close() }
+    else if (change === 'active-fence') { const db = await openDB(layout.projects.name); await db.put('meta', 'changed', 'erasure-fence'); db.close() }
+    else await setReceipt(layout, change === 'nonce' ? { ...r, nonce: crypto.randomUUID() } : change === 'localOnly' ? { ...r, localOnly: true } : { ...r, remote: { ...r.remote, capability: 'e'.repeat(64) } })
+    await expect(worker.resume('resume-remote-cleanup')).rejects.toThrow(); expect(fetcher).toHaveBeenCalledOnce()
+    const db = await openDB(layout.projects.name); expect(await db.get('projects', ['a', 'p'])).toBeDefined(); db.close()
+  })
+  it.each(['not-sent', 'confirmed', 'local-only', 'legacy', 'unknown-action'])('cold cleanup cannot adopt %s authority', async kind => {
+    const layout = await seed(), r = kind === 'confirmed' ? receipt() : kind === 'legacy' ? { ...receipt(), serverConfirmed: false } : { ...remoteReceipt(kind === 'not-sent' ? 'not-sent' : 'uncertain'), ...(kind === 'local-only' ? { localOnly: true } : {}) }
+    await setReceipt(layout, r); const initial = await control(), worker = await actor()
+    await expect(worker.resume(kind === 'unknown-action' ? 'invented' as never : 'resume-remote-cleanup')).rejects.toThrow()
+    expect(fetch).not.toHaveBeenCalled(); expect(await control()).toEqual(initial)
+  })
+  it('a cancelled pending response never arms cleanup; response loss after POST requires a new GET', async () => {
+    const layout = await seed(), r = remoteReceipt(); await setReceipt(layout, r)
+    const pending = () => Response.json({ protocol: 1, operationId, subjectHash: r.remote.subjectHash, status: 'cleanup-pending' })
+    const gate = deferred(), external = new AbortController(), fetcher = vi.fn(async () => { await gate.promise; return pending() }); vi.stubGlobal('fetch', fetcher)
+    const worker = await actor(), action = worker.resume('resume', external.signal), rejected = expect(action).rejects.toThrow()
+    await vi.waitFor(() => expect(fetcher).toHaveBeenCalledOnce()); external.abort(); gate.resolve(); await rejected
+    await expect(worker.resume('resume-remote-cleanup')).rejects.toThrow(); expect(fetcher).toHaveBeenCalledOnce()
+    fetcher.mockImplementation(async () => pending()); await expect(worker.resume()).rejects.toThrow('erasure_cleanup_pending')
+    fetcher.mockRejectedValueOnce(new Error('lost POST response')); await expect(worker.resume('resume-remote-cleanup')).rejects.toThrow('lost POST response')
+    await expect(worker.resume('resume-remote-cleanup')).rejects.toThrow(); expect(fetcher).toHaveBeenCalledTimes(3)
+    fetcher.mockImplementation(async () => Response.json({ protocol: 1, operationId, subjectHash: r.remote.subjectHash, status: 'confirmed' }))
+    await worker.resume(); expect(fetcher).toHaveBeenCalledTimes(4)
+  })
+  it.each(['unknown', 'html', '401', 'oversized', 'pending-wrong-subject', 'pending-extra'])('cold receipt %s leaves the complete intent and data intact', async kind => {
     const layout = await seed(), r = remoteReceipt(); await setReceipt(layout, r)
     const initial = await control(), before = localPairs()
     vi.stubGlobal('fetch', vi.fn(async () => kind === '401' ? new Response('{}', { status: 401 }) : kind === 'html' ? new Response('<html>App</html>') :
-      kind === 'oversized' ? new Response('x'.repeat(513)) : Response.json({ protocol: 1, operationId, status: 'unknown' })))
+      kind === 'oversized' ? new Response('x'.repeat(513)) : kind.startsWith('pending') ? Response.json({ protocol: 1, operationId, status: 'cleanup-pending', subjectHash: kind === 'pending-wrong-subject' ? 'e'.repeat(64) : r.remote.subjectHash, ...(kind === 'pending-extra' ? { extra: true } : {}) }) : Response.json({ protocol: 1, operationId, status: 'unknown' })))
     await expect((await actor()).resume()).rejects.toThrow(); expect(await control()).toEqual(initial); expect(localPairs()).toEqual(before)
     const db = await openDB(layout.projects.name); expect(await db.get('meta', ['erasing', 'a'])).toEqual(r); expect(await db.get('projects', ['a', 'p'])).toBeDefined(); db.close()
   })
@@ -504,6 +556,29 @@ describe('committed generation cold erasure', () => {
     if (point === 'before-idb-repair') expect(await db.get('meta', 'erasure-fence')).toBe('foreign')
     else expect(localStorage.getItem('arty-project-erasure-fence')).toBe('foreign')
     db.close(); expect((await control()).erasure.phase).toBe('reserved')
+  })
+  it.each(['local', 'active'])('cleanup confirmation refuses a %s fence changed inside its receipt transaction', async changed => {
+    const layout = await seed(), initial = await control(), r = remoteReceipt(); await setReceipt(layout, r)
+    const fetcher = vi.fn(async () => Response.json({ protocol: 1, operationId, subjectHash: r.remote.subjectHash, status: 'cleanup-pending' }))
+    vi.stubGlobal('fetch', fetcher)
+    const worker = await actor(); await expect(worker.resume()).rejects.toThrow('erasure_cleanup_pending')
+    fetcher.mockImplementation(async () => Response.json({ protocol: 1, operationId, subjectHash: r.remote.subjectHash, status: 'confirmed' }))
+    const open = IDBDatabase.prototype.transaction
+    let injected = false
+    vi.spyOn(IDBDatabase.prototype, 'transaction').mockImplementation(function (this: IDBDatabase, stores, mode, options) {
+      const tx = open.call(this, stores, mode, options)
+      if (!injected && this.name === layout.projects.name && mode === 'readwrite') {
+        injected = true
+        if (changed === 'local') localStorage.setItem('arty-project-erasure-fence', 'foreign')
+        else tx.objectStore('meta').put('foreign', 'erasure-fence')
+      }
+      return tx
+    })
+    await expect(worker.resume('resume-remote-cleanup')).rejects.toThrow(); expect(injected).toBe(true)
+    const db = await openDB(layout.projects.name)
+    expect(await db.get('meta', ['erasing', 'a'])).toEqual(r)
+    expect(await db.get('projects', ['a', 'p'])).toBeDefined(); db.close()
+    expect(await control()).toEqual(initial)
   })
   it.each(['local', 'active'])('not-sent cancellation refuses a %s fence changed after its preflight', async changed => {
     const layout = await seed(); await setReceipt(layout, remoteReceipt('not-sent'))

@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import ColdErasureRecovery from '../../components/workspace/ColdErasureRecovery'
+import { ErasureCleanupPendingError } from '../../services/accountErasureReceipt'
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }))
 vi.mock('../../services/workspaceWriter/activation', () => ({ ISOLATED_WORKSPACE_ENABLED: true, WORKSPACE_RESTORE_START_ENABLED: true }))
 const state = vi.hoisted(() => ({ resume: vi.fn(), create: vi.fn() }))
@@ -16,21 +17,39 @@ it.each(['uncertain', 'not-sent'] as const)('%s local choice needs separate conf
   expect(state.resume).not.toHaveBeenCalled(); expect(screen.getByRole('alert')).toHaveTextContent(key('localWarning'))
   fireEvent.click(screen.getByText(key('back'))); expect(state.resume).not.toHaveBeenCalled()
   fireEvent.click(screen.getByText(key('localOnly'))); fireEvent.click(screen.getByText(key('confirmLocal')))
-  await screen.findByText(key('failed')); expect(state.resume).toHaveBeenLastCalledWith('local-only')
+  await screen.findByText(key('failed')); expect(state.resume).toHaveBeenLastCalledWith('local-only', expect.any(AbortSignal))
   expect(screen.queryByText(key('verify'))).toBeNull(); expect(screen.queryByText(key('cancelNotSent'))).toBeNull()
   fireEvent.click(screen.getByText(key('resume')))
-  await screen.findByText(key('done')); expect(state.create).toHaveBeenCalledOnce(); expect(state.resume).toHaveBeenLastCalledWith('local-only')
+  await screen.findByText(key('done')); expect(state.create).toHaveBeenCalledOnce(); expect(state.resume).toHaveBeenLastCalledWith('local-only', expect.any(AbortSignal))
 })
 it('unknown remote proof can only retry consultation or require separate local consent', async () => {
   state.resume.mockRejectedValue(new Error('unknown'))
   render(<ColdErasureRecovery mode="uncertain" />)
   fireEvent.click(screen.getByText(key('verify'))); await screen.findByText(key('failed'))
-  expect(state.resume).toHaveBeenLastCalledWith('resume'); expect(screen.getByText(key('localOnly'))).toBeInTheDocument()
+  expect(state.resume).toHaveBeenLastCalledWith('resume', expect.any(AbortSignal)); expect(screen.getByText(key('localOnly'))).toBeInTheDocument()
   expect(screen.queryByText(key('cancelNotSent'))).toBeNull()
 })
 it('cancelled not-sent request shows reload without claiming cleanup', async () => {
   state.resume.mockResolvedValue({}); render(<ColdErasureRecovery mode="not-sent" />)
   fireEvent.click(screen.getByText(key('cancelNotSent'))); await screen.findByText(key('cancelled'))
-  expect(state.resume).toHaveBeenLastCalledWith('cancel-not-sent'); expect(screen.queryByText(key('done'))).toBeNull()
+  expect(state.resume).toHaveBeenLastCalledWith('cancel-not-sent', expect.any(AbortSignal)); expect(screen.queryByText(key('done'))).toBeNull()
   expect(screen.getByText('workspaceWindow.reload')).toBeInTheDocument()
+})
+it('keeps pending distinct from done, and only a distinct click resumes remote cleanup', async () => {
+  state.resume.mockRejectedValueOnce(new ErasureCleanupPendingError()).mockRejectedValueOnce(new ErasureCleanupPendingError()).mockResolvedValueOnce({})
+  render(<ColdErasureRecovery mode="uncertain" />)
+  expect(screen.queryByText(key('cleanupContinue'))).toBeNull()
+  fireEvent.click(screen.getByText(key('verify'))); await screen.findByText(key('cleanupPending'))
+  expect(screen.queryByText(key('done'))).toBeNull(); expect(state.resume).toHaveBeenCalledOnce()
+  const button = screen.getByText(key('cleanupContinue')); fireEvent.click(button); fireEvent.click(button)
+  await screen.findByText(key('cleanupPending')); expect(state.resume).toHaveBeenCalledTimes(2)
+  expect(state.resume).toHaveBeenLastCalledWith('resume-remote-cleanup', expect.any(AbortSignal))
+  fireEvent.click(screen.getByText(key('verify'))); await screen.findByText(key('done'))
+  expect(state.resume).toHaveBeenLastCalledWith('resume', expect.any(AbortSignal))
+})
+it('unmount during the deferred module import cannot create or start an actor', async () => {
+  const rendered = render(<ColdErasureRecovery mode="uncertain" />)
+  fireEvent.click(screen.getByText(key('verify'))); rendered.unmount()
+  await new Promise(resolve => setTimeout(resolve, 0))
+  expect(state.create).not.toHaveBeenCalled(); expect(state.resume).not.toHaveBeenCalled()
 })

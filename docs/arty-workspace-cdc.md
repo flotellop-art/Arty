@@ -2061,3 +2061,70 @@ ni serveur. Snapshot historique, pas transaction globale ou état forcément
 courant des fichiers. Rescan explicite seulement ; transport, ACK, réception/
 application sans ping-pong, effacement distant et recettes multi-appareils
 restent à livrer avant de déclarer W06 terminé.
+
+### W06-B2b — livraison du socle local (7 septembre)
+
+Les trois candidats ci-dessus sont fusionnés via
+[#485](https://github.com/flotellop-art/Arty/pull/485), main `cadf1ab` : stockage
+projets physique 2 récupérable à froid, outbox durable chiffrée, capture réelle
+et rescan explicite. CI PR/main réussies, **4 458 tests PASS + 1 ignoré** ;
+Pages production `2bf7374d` vérifié sur tryarty.com. Parcours publics FR/EN en
+390/1280 px contrôlés, vrais rejeux locaux upgrade/restauration réussis.
+Observation HTTP ciblée achevée : 16 points concordants entre 00:12:09 et
+00:27:09 UTC (15 minutes), pas une télémétrie globale ni une session connectée.
+Firebase a distribué l'APK signé exact 1.0.99 / code 100 (run `34068949155`
+réussi). Aucune installation ni recette sur téléphone physique : ADB vide.
+L'[ADR](ADR_WORKSPACE_SYNC.md) conserve heures UTC, hashes, limites et repli.
+
+`WORKSPACE_UPGRADE_START_ENABLED=false`, sans désactiver les START déjà livrés
+d'isolation/restauration. Aucun endpoint/bucket sync ni activation cloud. Le
+contrat B3 proposé intègre deux challenges readonly : ACK exact atomique,
+supersession sur conflit attesté, chaîne complète pour le second appareil,
+alias galerie stables, identité/révocation communes et nettoyage durable.
+Un spike R2 local a éprouvé un véritable PUT incomplet, pas la garantie de
+production. **W06 reste partiel** ; réception/application, effacement serveur,
+consentement et recettes multi-appareils restent nécessaires. Abonnements et
+crédits restent également dans le périmètre global du CDC.
+
+### W06-B3a — checkpoint serveur local, non activé (7 septembre)
+
+Les handlers locaux d'enrôlement, réservation bornée, upload opaque R2,
+publication CAS, chaîne ancrée et révocation/cleanup sont maintenant écrits.
+Le [checkpoint ADR](ADR_WORKSPACE_SYNC.md) borne les garanties et les limites.
+Typechecks réussis ; **79 suites / 922 tests PASS**, dont 15 nouveaux tests
+transport dans les vrais D1/R2/workerd locaux. Auth HTTP Google simulée,
+ciphertexts synthétiques ; ce n'est pas une recette de l'application complète.
+
+L'effacement capture aussi les anciens coffres non purgés et refuse un schéma
+partiel. Un PUT tenu incomplet pendant la révocation ne peut plus publier ;
+sa fin positive est nécessaire avant confirmation du nettoyage. Les PUT
+définitivement inconnus restent pending ; aucune expiration ne les acquitte.
+
+**Candidat local uniquement** : migration 0009 non appliquée à distance, aucun
+binding/flag/bucket distant modifié. Les START livrés restent inchangés. Reprise
+cleanup visible en layouts legacy/isolé, découverte/jointure second appareil,
+transport client/ACK, réception/apply, consentement et recettes multi-profils
+restent à réaliser. Aucun de ces points n'est exclu de W06 ; pas de GO activation.
+
+### W06-B3b — reprise du nettoyage raccordée, candidat local (7 septembre)
+
+Les manques « cleanup visible » du checkpoint précédent sont maintenant
+implémentés dans les deux parcours : réglages legacy/isolé et reprise froide.
+GET reste une consultation ; la reprise distante requiert une action distincte.
+Un reçu pending ne confirme jamais l'effacement local. Reçu exact, document,
+session et fences sont réattestés avant POST et CAS de confirmation.
+
+**4 roundtrips PASS** avec vrais services/handlers/middleware/D1/R2 locaux,
+dont réponse cleanup perdue après commit → GET confirmé sans second POST.
+**5 recettes Chrome PASS**, FR390/EN1280 chaud/froid et vrai document perdu
+avant démontage ; données du compte B relues et réécrites, focus conservé.
+Tests UI/domaines supplémentaires : quota, fermeture, double clic, A→B→A et
+mutation du marqueur/fences jusque dans la transaction RW. Le périmètre précis
+et les défauts trouvés par les contre-revues figurent dans
+[ADR_WORKSPACE_SYNC.md](ADR_WORKSPACE_SYNC.md).
+
+**Non poussé/non déployé à ce checkpoint** ; aucun flag, binding, bucket ou
+migration distante changé. W06 reste partiel : jointure second profil,
+transport/ACK/apply, inconnus R2, consentement et recettes multi-appareils ne
+sont pas clos par ces tests locaux. Ni recette physique Android ni acceptation
+du prestataire d'abonnement/crédits ne sont revendiquées.

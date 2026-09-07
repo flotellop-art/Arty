@@ -1,5 +1,6 @@
 /** Shared wire contract. No account, storage, OAuth or UI imports. */
 export const ACCOUNT_ERASURE_PATH = '/api/account/erasure-v1'
+export const ACCOUNT_ERASURE_CLEANUP_PATH = '/api/account/erasure-cleanup-v1'
 export const ERASURE_OPERATION_HEADER = 'x-arty-erasure-operation'
 export const ERASURE_CAPABILITY_HEADER = 'x-arty-erasure-capability'
 export const ERASURE_SUBJECT_HEADER = 'x-arty-erasure-subject'

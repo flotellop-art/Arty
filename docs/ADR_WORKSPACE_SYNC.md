@@ -596,3 +596,352 @@ non poussé/non déployé. Le rescan est explicite, pas un ordonnanceur automati
 Transport, ACK authentifié, rattrapage après ACK, applicateur sans ping-pong
 (y compris alias galerie et restrictions), effacement serveur, consentement UI
 et recettes à deux appareils restent des obligations W06, pas des exclusions.
+
+### Livraison B2b — stockage récupérable, outbox et capture (7 septembre)
+
+Les candidats locaux ci-dessus sont maintenant livrés :
+[PR #485](https://github.com/flotellop-art/Arty/pull/485), fusion normale à
+00:10:19 UTC, main `cadf1abc738b949b26ce0cb04a209b00dff8d734`. Les trois commits
+0dd036b/ebe94b9/284bb4b ont été squashés sans changement de leur arbre vérifié.
+Deux GO readonly indépendants bornés avant fusion. [CI PR](https://github.com/flotellop-art/Arty/actions/runs/34068623055)
+et [CI main](https://github.com/flotellop-art/Arty/actions/runs/34068949051)
+réussies : 337 suites / **4 458 PASS + 1 ignoré préexistant**, types,
+couverture, no-CASA, build, vrai worker Office, Android et Worker de croissance.
+
+Pages preview `36ac4704-754f-46ee-99e8-70eec2088c8c`, puis production
+`2bf7374d-0a14-40f5-b73e-de4c4d174a46` réussies. À 00:12:08 UTC, tryarty.com et
+[le déploiement immuable](https://2bf7374d.appfacade.pages.dev) servent les mêmes
+octets des chunks déclarés contrôlés. Entrée `index-D_D2RtDz.js`, SHA-256
+`0ac50ae4482de3fe4cf8752069388710e63384e3293cd0ff5752747f5d01d63d`.
+Chrome public réel : FR/EN, 390 et 1280 px ; routes upgrade/prepare conformes,
+aucun débordement ni erreur de page, aucune DB créée par leur simple visite.
+Les polices et le beacon Cloudflare sont tentés puis bloqués et recensés dans
+la recette ; aucun appel API autorisé. Ce test DOM n'est pas une revue visuelle
+générale ni une session utilisateur authentifiée.
+
+Observation achevée de **00:12:09 à 00:27:09 UTC** : 16 points sur 15 minutes,
+HTTP 200 et entrée JS identique entre domaine canonique et déploiement immuable
+à chaque point ; exit 0 (`workspace-sync-production-observe.log`). Les sept
+chunks contrôlés restent identiques au contrôle final de 00:27:06 UTC
+(`workspace-sync-production-final-static.log`). Ce sondage anonyme ciblé ne
+mesure pas le taux global d'erreur des utilisateurs ni les parcours connectés.
+
+Rejeux locaux dans Chrome avec vrais services et comptes synthétiques : cinq
+scénarios upgrade natifs à 00:03:29 UTC ; vraie UI de restauration à 00:07:05,
+téléchargement exact PDF/TXT, projets, deux propriétaires relus/écrits après
+reload et repli compatible du START de restauration. Aucune donnée personnelle
+de production utilisée. Logs ignorés `workspace-sync-release-upgrade-browser`,
+`workspace-sync-release-restore-ui`, `workspace-sync-preview-ui`,
+`workspace-sync-production-static` et `workspace-sync-production-ui` (`.log`).
+
+[Firebase](https://github.com/flotellop-art/Arty/actions/runs/34068949155)
+réussi à 00:19:55 UTC, y compris vérification du candidat exact, distribution
+et nettoyage des secrets. Reçu `arty-apk-identity-<main>-1` : `com.arty.app`,
+1.0.99 / code 100, 4 411 137 octets, signature vérifiée, SHA-256
+`69358159d5a0c457a2f740b6db975105b158d418cb9aad9c1081d005a4aa81fe`.
+Le JSON est une preuve d'identité d'artefact ; c'est le job Firebase réussi
+qui atteste la distribution. ADB ne voyait aucun appareil connecté lors du
+contrôle : **aucune installation ni recette sur téléphone physique annoncée**.
+À 00:24:15 UTC, le `/.well-known/assetlinks.json` réellement servi sur
+tryarty.com correspond octet pour octet au reçu du checkout, avec le package
+et le fingerprint du signataire vérifié (`workspace-sync-production-assetlinks.log`).
+Cela ne constitue pas la vérification de liens par Android sur un appareil.
+
+Seul `WORKSPACE_UPGRADE_START_ENABLED` reste false ;
+`ISOLATED_WORKSPACE_ENABLED` et `WORKSPACE_RESTORE_START_ENABLED` restent true.
+Pas d'activation de capture/outbox par l'UI, d'endpoint sync, de bucket ni de
+migration distante. Le lot touche réellement admission, inventaires et reprise
+locale : il n'est pas « inerte » dans son ensemble. Repli vers #484 seulement
+si aucun layout physique 2/journal v9 n'a été adopté ; sinon conserver les
+readers projectsVersion 2 et la reprise v9 avec un correctif en avant. Aucun
+downgrade IndexedDB ni suppression du journal/ticket pour forcer un repli.
+W06 distant reste ouvert.
+
+### B3 — contrat de raccord transport/ACK avant code (7 septembre)
+
+**Statut initial de cette section : conception proposée, non implémentée ni activée.**
+Le checkpoint serveur local décrit plus bas implémente depuis une partie de ce
+contrat ; il ne constitue pas la verticale B3 ni une activation. Deux challenges
+readonly indépendants (continuité/produit et sécurité/publication) ont relevé
+les raccords suivants. Ils ne remettent pas en cause la livraison locale B2b,
+mais interdisent de la présenter comme une synchronisation distante.
+
+1. **Identité et révocation communes.** Partir de
+   `verifyGoogleIdentityStrictDetailed`, puis exiger explicitement un `sub`
+   string non vide ; son résultat `ok` actuel ne suffit pas. Ni identité proxy,
+   whitelist, email fourni par le client, ni repli email pour ce coffre Google.
+   L'enrôlement coffre/incarnation doit être attesté par le serveur avant les
+   opérations : `unlock(initialScope)` n'atteste aujourd'hui qu'un état local.
+   Les deux routes `account/delete.ts` et `account/erasure-v1.ts` doivent porter
+   ce sujet vérifié jusqu'à la révocation du coffre, tout en conservant leurs
+   effacements email existants. Aucun nouveau writer distant avant ce raccord.
+2. **Trois checkpoints distincts.** La base B1 privée, le head de transport
+   opaque acquitté et l'état réellement matérialisé dans les stores ne sont pas
+   interchangeables. Le serveur ne reçoit pas le hash de base plaintext B1.
+   Un reçu lie incarnation, opération, hash/longueur du ciphertext, prédécesseur
+   et nouveau head opaques ; le client vérifie aussi son manifeste A exact.
+   Aucun avancement de base d'application sur simple téléchargement de R.
+3. **ACK A atomique.** L'état privé actuel ne contient que `base` et `bindings`
+   (`privateState.ts`) ; le CAS actuel ajoute une opération et écrit l'état,
+   mais n'en supprime aucune (`localOutbox.ts`). La future transition adopte
+   ensemble l'état chiffré avec base A/checkpoint et la suppression de la seule
+   row A. Sceller avant la transaction ; propriétaire/fence/génération/pending
+   exacts dans celle-ci ; publier la RAM après commit. Quota/coupure conserve
+   soit l'ancienne paire complète, soit le nouvel état complet reconnaissable.
+   Seul un doublon du reçu exact d'un A déjà acquitté est un no-op pendant un
+   nouveau paquet B pending ; l'operationId seul n'atteste pas ce doublon.
+   Le premier ACK A avance bien la base vers A même si B a entre-temps été
+   sauvegardé dans les stores. Jamais de clear global. Après ACK A,
+   rescanner les vrais stores pour B, sans remplacer B par le snapshot A.
+   La nouvelle forme privée exige un format/version et une compatibilité de
+   reprise explicites ; pas de champs glissés dans la grammaire v1 fermée.
+4. **Issue inconnue versus conflit définitif.** Réponse perdue : rejouer les
+   octets A ou consulter son reçu durable. Un 404, timeout ou échec d'auth n'est
+   pas un refus définitif. Si le serveur atteste que R a gagné le CAS et que A
+   ne pourra plus être publié, conserver A jusqu'à adoption atomique d'une
+   supersession fusionnant la base commune exacte, A figé et R vérifié via B1.
+   Les modifications B non capturées restent dans les stores pour le rescan
+   suivant. Préserver les révisions de A et ses
+   payloads ; ni faux ACK, ni nouvelle opération sur base vide. Le retry exact
+   seul ne peut résoudre ce conflit : l'outbox actuelle bloque à juste titre
+   une nouvelle préparation pendant A.
+5. **Un second appareil a besoin de la chaîne.** B2a n'embarque que les nouveaux
+   payloads contre une base exacte. Choix initial proposé : chaîne publiée
+   conservée par incarnation, pagination ancrée sur un head précis et limites
+   cumulées d'objets/octets incluant réservations et orphelins. Ne pas collecter
+   les anciens paquets à leur ACK : un fichier inchangé peut n'exister que dans
+   le premier. Une base absente/inaccessible bloque la réception. Alternative
+   reportée : checkpoints autonomes et collecte attestée, plus complexes mais
+   nécessaires si la rétention bornée limite trop les usages ; jamais une
+   troncature silencieuse ni un quota calculé seulement sur le dernier paquet.
+6. **Application fidèle et recapture inchangée.** Le futur journal `sync-apply`
+   coordonne stores, mapping et checkpoint matérialisé dans la génération
+   active ; il ne détourne pas la restauration additive. `captureMapping.ts`
+   tire actuellement les alias galerie des IDs physiques. Un autre appareil
+   peut allouer d'autres IDs sans changer le texte historique : conserver une
+   provenance d'alias durable réutilisable à la recapture, indépendante des
+   adresses physiques. Aucun lookup d'URI ni réécriture du texte brut. Éprouver
+   aussi présentations/tailles, comparaison, restrictions et marqueurs inertes.
+
+Réservation D1 atomique avant les octets R2 : sujet, coffre/incarnation,
+operationId, head attendu et hash/longueur du ciphertext figés, budgets octets
+**et nombre d'opérations**. Même opération identique = même réservation ;
+toute variation est un conflit. Corps binaire borné via `limitReadableStream`,
+taille réellement consommée et checksum SHA-256 R2 vérifiés ; clé calculée
+serveur, sans chemin fourni par le client. `put=null` impose de relire et
+attester l'objet existant ; des métadonnées déclaratives seules ne suffisent
+pas. Publication head/reçu/compteurs sous le même ticket et gate SQL dans le
+batch D1 ; zéro ligne modifiée n'est pas une erreur SQL. Les compteurs IA
+fail-open et la limite IP en RAM ne constituent pas ce budget de stockage.
+
+Pour l'effacement R2, la révocation D1 suivie d'un DELETE et d'un délai ne prouve
+pas qu'un PUT déjà admis ne recréera pas l'objet. La documentation indique que
+le dernier PUT/DELETE terminé gagne ([cohérence R2](https://developers.cloudflare.com/r2/reference/consistency/)).
+Piste à éprouver, **non adoptée comme garantie** : clés create-only par opération
+avec `If-None-Match: *`, neutralisées par une tombstone sans contenu conservée
+sur la même clé. R2 documente le refus de stockage si la condition échoue
+([API conditionnelle](https://developers.cloudflare.com/r2/api/workers/workers-api-reference/#conditional-operations)),
+mais un test local ne certifie pas à lui seul l'atomicité d'un PUT déjà en vol
+contre cette neutralisation en production. Tant que les écritures admises ne
+sont pas neutralisées avec une preuve suffisante, garder le nettoyage durable
+incomplet ; aucun reçu « effacé » ni expiration qui supprime cette obligation.
+Le GET de reçu `erasure-v1.ts` reste SELECT-only : prévoir un exécuteur durable
+de nettoyage distinct et réellement appelable après crash ; ne pas faire du
+GET actuel ou de `waitUntil` un faux mécanisme de reprise.
+
+Spike local, rejeu final à **00:22:50 UTC**, Miniflare 4.20260730.0, compatibilité Workerd
+2026-08-06, bucket synthétique éphémère : le vrai `FixedLengthStream(2)` est
+suspendu après résolution de l'écriture du premier octet, puis repris après
+neutralisation. Le PUT n'est pas résolu et le dernier octet n'a pas encore été
+fourni ; le test ne voit pas le moment où R2 évalue sa condition côté stockage.
+Contrôle négatif DELETE : les deux octets réapparaissent. Tombstone vide sur
+la même clé : PUT conditionnel retourne null et la tombstone reste intacte.
+La tombstone préexistante refuse aussi le PUT. Trois scénarios passent ; aucun
+stockage distant ou handler Arty, ni preuve de transaction D1 ou d'atomicité
+en production. Script/log ignorés `workspace-sync-r2-race-probe.mjs`/`.log`.
+
+**Recette de passage obligatoire** : deux profils indépendants, vrais stores
+et API locale D1/R2. A contient comparaison, galerie, pièce jointe et projet ;
+B est sauvegardé localement pendant A. Publication A réussie/réponse perdue,
+reload, reçu exact, ACK A, rescan/publication B. L'autre profil rejoint depuis
+zéro, retrouve aussi les anciens payloads, applique/recharge puis recapture
+inchangée (aucune nouvelle révision). Réponse dans l'autre sens sans doublon ;
+variante modifications concurrentes avec toutes les versions et conflit
+visible. Coupures à chaque frontière, second compte intact, corruption/quota,
+révocation/recréation et PUT suspendu avant sa vraie consommation finale.
+Un stub retardant seulement la réponse d'un PUT terminé n'éprouve pas ce cas.
+Les états « local », « publication inconnue », « publication confirmée »,
+« reçu non appliqué » et « conflit » restent distincts ; aucun ne signifie à
+lui seul « tous les appareils à jour ».
+
+### B3a — checkpoint serveur local, désactivé (7 septembre)
+
+**Code présent, non poussé/non déployé ; W06 reste partiel.** Le contrat local
+`scripts/workspace-sync-contract/wrangler.jsonc` sert à générer les types avec
+Wrangler 4.129.0. Il ne contient ni point d'entrée déployable ni identifiant de
+ressource réelle. Les bindings générés sont optionnels dans `functions/env.d.ts`.
+`0009_workspace_sync.sql` n'a été appliquée que dans les D1 éphémères du test ;
+0008 reste réservée au chantier crédit séparé. Aucun bucket ou flag distant
+n'a été créé/modifié. Le START doit être exactement `true`, avec DB et bucket,
+avant challenge/enrôlement/réservation ; tout défaut refuse avant auth/body/SQL.
+Les opérations déjà admises et l'effacement restent indépendants de START.
+
+Implémenté dans `functions/api/_lib/workspaceSync` et les handlers :
+
+- Sujet Google strict vérifié, `sub` string borné, digest distinct du namespace
+  des reçus d'effacement. Aucun email, token, secret de chiffrement ou hash de
+  plaintext stocké dans les tables sync.
+- Challenge durable idempotent, génération serveur rotative à l'effacement,
+  confirmation explicite. Un ancien challenge rejoué ne crée pas une nouvelle
+  génération. Le plafond de 512 challenges historiques ne doit pas être
+  contourné en supprimant leur preuve anti-rejeu.
+- Réservation exacte et budgets cumulés par sujet : 128 MiB et 512 opérations,
+  incluant réservations/coffres non purgés. Batch D1 avec ticket commun pour
+  insertion et compteur ; doublons différents refusés.
+- PUT ciphertext create-only, flux de longueur exacte borné et checksum R2
+  SHA-256 ; objet existant relu/attesté. Chaque appel PUT est inventorié avant
+  départ. Seule sa résolution positive permet de retirer cette tentative.
+  Un rejet/timeout ambigu reste durablement non résolu, sans expiration.
+- CAS publication/reçu/head dans le même batch ; un perdant devient `conflict`,
+  un `reserved` ou `uploaded` n'est jamais une publication. Pagination 32
+  entrées ancrée, continuité des séquences/prédécesseurs contrôlée. Les anciens
+  paquets publiés restent récupérables ; pas de collecte à l'ACK.
+- Effacement compte : mêmes tickets SQL pour données historiques, capture de
+  **tous** les coffres non purgés (même déjà révoqués), révocation et rotation de
+  génération. Le legacy `/account/delete` refuse avant toute suppression dès
+  qu'un coffre existe pour ce sujet. Un schéma sync partiel échoue fermé.
+- `POST /api/account/erasure-cleanup-v1` reprend uniquement les cibles figées
+  d'un reçu existant, authentifié par sa capacité, sans OAuth ni nouvelle cible.
+  Lots de 8 coffres / 32 opérations, sans PUT de tombstone. Tant qu'un writer
+  admis reste inconnu, pas de DELETE de son objet ni de reçu `confirmed`.
+  Tous les writers positivement terminés permettent DELETE puis purge attestée.
+  Rejouer un ancien reçu confirmé n'efface pas une incarnation recréée.
+
+Les requêtes D1 n'emploient pas une session « first-primary » qui ne rendrait
+pas les lectures suivantes nécessairement fraîches : sans Sessions API, D1
+dirige chaque requête vers le primaire, selon la
+[documentation de réplication D1](https://developers.cloudflare.com/d1/best-practices/read-replication/)
+revérifiée. Le test R2 local n'est toujours pas une garantie d'atomicité distante.
+
+**Preuves locales :** typechecks frontend/functions réussis ; campagne de
+régression **79 suites / 922 tests PASS**, dont les 15 nouveaux tests transport
+et les 7 reçus D1 existants. Compilation locale complète des Pages Functions
+réussie avec Wrangler 4.129.0 ; aucune publication. Les handlers, middleware et vérificateur Google
+réels sont compilés dans workerd/Miniflare 4.20260730.0 (compatibilité test
+2026-08-06). Seule la réponse HTTP `tokeninfo` est simulée ; paquets synthétiques
+de 200 octets, donc aucune preuve de crypto ou d'application multi-appareils.
+
+Les tests couvrent compte étranger, doublons/variations, concurrence CAS/budget,
+pagination 34 opérations puis publication 35 sans glissement d'ancre, trous,
+OFF/retrait du bucket, schéma partiel, ancien reçu/recréation, et rollback
+transactionnel par vrai trigger D1. Une requête HTTP dont le corps est tenu
+incomplet est réellement admise, révoquée puis libérée : réponse 410, nettoyage
+pending avant sa résolution et confirmé après. Ce test n'observe pas l'instant
+d'évaluation de la condition R2. Un autre canari injecte un writer inconnu puis
+sa résolution **synthétique SQL** ; cela ne prouve aucune récupération automatique
+d'un appel R2 définitivement inconnu. Deux contre-revues indépendantes ont
+corrigé la capture des anciens coffres, le schéma partiel et le tombstone non
+inventorié. GO borné au checkpoint local, pas à une activation.
+
+**À terminer avant raccord/activation (état historique B3a ; points 1–2
+implémentés localement en B3b ci-dessous) :**
+
+1. Reprise utilisateur du nettoyage dans les parcours chaud **et** froid. Le
+   GET de reçu reste actuellement SELECT-only et ne renvoie pas encore
+   `cleanup-pending` ; l'ancien client ne peut pas appeler le nouveau POST.
+   Un appareil legacy peut effacer un compte dont le coffre vient d'ailleurs :
+   ne pas présumer que son journal l'amènera à l'écran froid. Prévoir une commande
+   explicitement confirmée, pas une migration, un POST ou un reload implicites.
+2. Contrat froid accepté avant code : autorité privée liée à root/reçu complet/
+   paire de fences, acquise après un GET pending strict puis réattestation.
+   Consommer avant POST ; relecture readonly puis garde/LS synchrones juste
+   avant fetch. Pending typé seulement après contrôle d'annulation/autorité.
+   Refuser cleanup pour header déjà adopté, not-sent, local-only, confirmé ou
+   action inconnue. Réponse perdue : conserver le reçu et revenir à GET.
+   Garde de montage avant import/départ ; pending distinct de `done` dans l'UI.
+3. Découverte/jointure d'un coffre existant depuis un second profil, avec
+   confirmation explicite. Le challenge actuel crée une nouvelle proposition
+   et l'enrôlement refuse un autre coffre actif ; transmettre directement un
+   scope de test ne résoudrait pas ce manque.
+4. Transport client lié au vrai GoogleGrant capturé avant await, privateState
+   versionné, ACK exact A puis rescan B, supersession sur conflit, réception/
+   apply et recette deux profils décrits plus haut : toujours absents.
+5. Issue opérationnelle sûre des PUT définitivement inconnus, borner et expliquer
+   la saturation des huit tentatives non résolues et des historiques. Pas de
+   timeout/TTL/settlement administratif inventé comme preuve. Politique de
+   rétention/consentement, juridiction et capacité à valider avant provisioning.
+
+Après le premier état sync serveur réel, y compris un challenge avant tout
+coffre, un rollback serveur ignorant ces tables (dont #485) serait incompatible
+avec l'effacement : garder ces lecteurs/gates et préférer un correctif en avant.
+Sinon une suppression legacy pourrait omettre la rotation de génération et
+laisser un ancien challenge réutilisable après roll-forward. Désactiver START
+n'autorise pas de retirer ces protections.
+
+### B3b — reprise explicite du nettoyage distant, candidat local (7 septembre)
+
+Ce lot raccorde l'effacement existant, pas le démarrage de synchronisation.
+Les flags/bindings/ressources distants restent inchangés. Aucun POST n'est
+déclenché en ouvrant les réglages ou par la simple consultation d'un reçu.
+
+- Le premier POST d'effacement renvoie désormais `202 cleanup-pending` quand
+  ses cibles distantes restent à purger. Le GET demeure SELECT-only et renvoie
+  le même statut fermé, lié à l'opération/capacité/sujet exacts. Seul `confirmed`
+  autorise le passage au nettoyage local ; un 202 ne publie pas cette autorité.
+- Parcours chaud, y compris stockage legacy : une action séparée et confirmée
+  appelle `continueAccountErasureCleanup`. Chaque invocation fait GET, atteste
+  le reçu complet/root/paire de fences/document/session, puis peut POSTer le
+  cleanup existant. Aucun OAuth, nouveau nonce ou recours à la confirmation
+  historique permissive. Le helper dédié fait un CAS intégral de confirmation.
+- Parcours froid : le GET pending validé et réattesté crée une autorité privée
+  dans l'acteur. Le bouton distinct la consomme avant le POST ; une erreur ou
+  réponse perdue impose de consulter à nouveau. Le passage du reçu à confirmé
+  compare aussi les fences dans sa transaction RW. Le protocole local v6/v7
+  reprend ensuite sans importer l'App privée ni lancer de KDF.
+- Annulation, changement de session, document perdu ou changement du reçu
+  refusent la suite. Pending n'est jamais `done`. L'UI protège les doubles clics,
+  les suites d'import après démontage et les anciens callbacks A face à B.
+  Une confirmation durable avec nettoyage local interrompu conserve sa voie
+  locale, sans deuxième requête distante. Le handoff isolé exige un reload.
+- Les textes FR/EN distinguent distant/local, consultation/reprise et résultat
+  inconnu. Ils ne prétendent pas qu'une requête déjà envoyée a été annulée.
+  Le focus revient au résultat après l'action ; le titre froid ne présume plus
+  que le travail restant est exclusivement local.
+
+Preuves ajoutées : `accountErasureSyncCleanupRoundTrip.test.ts` passe **4 cas**
+avec vrais services locaux, handlers/middleware dans workerd, D1 et R2 locaux :
+legacy après reload, isolé chaud, isolé froid, et POST cleanup réellement
+committé dont la réponse est perdue, suivi d'un GET confirmé sans second POST.
+Côté backend, seule l'API tokeninfo externe est simulée. Le banc client emploie
+fake-indexeddb, des Web Locks simulés, un getter OAuth contrôlé et un shim
+Capacitor web ; les services/runtime/KDF sont réels. Les paquets sont
+opaques/synthétiques, donc ce test ne valide pas le codec. Le client ne redemande aucun token après
+le premier effacement. Dans chaque cas, B conserve son objet R2, sa ligne D1,
+son projet chiffré et peut lire/créer/relire après un nouveau document.
+
+Tests unitaires/de composants : pending répété, reçu invalide, A→B→A, quota du
+CAS, panne locale après confirmation, double clic et démontage. Les injections
+de nonce/fence à l'intérieur des vraies transactions IndexedDB de confirmation
+refusent sans confirmation/purge. IndexedDB est simulé dans ces suites.
+
+Recette Chrome réelle du 7 septembre à 01:43:56 UTC : **5 scénarios PASS**,
+FR/390 et EN/1280 chaud/froid, plus perte réelle de l'admission pendant le GET
+avec panneau encore monté. UI/services/IndexedDB/chiffrement locaux réels,
+statuts HTTP et reçu initial synthétiques, réseau extérieur bloqué. Pending
+répété puis confirmation, B relu/réécrit après reload, focus vérifié, aucun
+débordement horizontal ou pageerror ; aucun POST après perte du document.
+La voie froide utilise le vrai point d'entrée `main`, sans App/crypto importés
+pendant sa reprise et sans toucher l'URL callback. Les preuves serveur et UI
+sont complémentaires, pas un E2E Google/Cloudflare de production.
+
+Les contre-revues ont fait corriger : fences absentes du CAS froid, getters
+privés susceptibles de lever après perte du document, succès tardif A pouvant
+recharger B, et texte d'erreur trop affirmatif. La validation reste locale.
+Les scripts/captures et logs synthétiques sont dans `.playwright-mcp`, hors Git.
+
+Toujours requis pour W06 : découverte/jointure d'un coffre au second profil,
+transport client avec véritable grant, ACK/persistance exacte et rescan,
+réception/apply/conflits, consentement/rétention et recette deux profils puis
+appareil. Le cas PUT définitivement inconnu reste bloquant pour son coffre ;
+aucun TTL ni settlement inventé ne le clôt. B3b ne valide pas ces exigences et
+ne justifie aucune activation/provisioning de synchronisation.
