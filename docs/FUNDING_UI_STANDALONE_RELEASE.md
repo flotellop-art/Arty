@@ -1,6 +1,7 @@
 # Refus d'essai et de crédits — lot autonome
 
-7 septembre 2026. **Candidat local validé, non publié.**
+7 septembre 2026. **Web livré par PR #495 ; observation et distribution Android
+encore en cours à 19:00 UTC.**
 Base publique `2e0504ee7c2ab5e70cf50c06f9974c38250ebd89` ; branche
 `codex/funding-ui-release-20260907`. Delta fonctionnel `5a1e035`, adaptation
 autonome `25526ec`. Aucun droit marchand ou plafond financier activé.
@@ -68,8 +69,42 @@ dépôt vérifie et construit sans migration distante. Pages/bindings sont
 configurés hors dépôt : l'isolation D1 d'une preview n'est pas attestée ; ne
 pas y exécuter de login/paiement/test IA réel sur la supposition d'une sandbox.
 Une fusion main déclenche aussi la construction/distribution Firebase prévue
-par le dépôt. Aucun push, PR ou déploiement à ce stade ; aucun contournement
-de l'arrêt d'authentification de l'inventaire D1 distant.
+par le dépôt. La livraison ci-dessous utilise cette chaîne existante ; aucun
+contournement de l'arrêt d'authentification de l'inventaire D1 distant.
+
+## Livraison du 7 septembre — PR #495
+
+- CI de PR `34152920063` entièrement verte : application, growth-orchestrator,
+  lint/tests/compilation Android et inspections manifest/APK. Build web 11,63 s
+  et exports Office VM PASS. Ce contrôle Android porte sur le debug, pas une
+  distribution release Firebase.
+- Prévisualisation `c63cde47-ca7a-4130-85c8-1d5e98dfaf1b` réussie, source
+  `335fa76707cf52331afd9720cdebf530c9f387c4`. À 18:48 UTC : HTML et JS servis,
+  wallet anonyme refusé 401. Aucun test connecté ni donnée de preview utilisée.
+- Fusion à 18:57:16 UTC : `cac505a30f7358c51dcb35c21062dd8bc82ed246`.
+  Arbre Git identique à celui du candidat revu et testé, comparaison vide.
+- Pages production réussi : `1202de61-e2e6-4e57-bd6a-a6dffe821947`, lié au
+  SHA fusionné par le check GitHub. À 18:59:48 UTC, tryarty.com et l'URL
+  immuable servent `/assets/index-C_HK8I33.js`, SHA-256
+  `f2b4b96019e286c307fd7df6f65280ee9484f5697271f199d7363d541c101adf`.
+- Sondes anonymes : HTML/JS 200 avec types attendus ; wallet 401 et JSON exact ;
+  prévol 204 sans redirection sur les deux domaines, origine localhost, méthode
+  GET et headers content-type/x-google-token autorisés. Timeout incluant le
+  corps, taille de lecture bornée, chaque latence et échec conservé sans retry.
+- Observation lancée pour seize passages de t0 à t0+15 min. **Un premier
+  passage PASS ne vaut pas réception des quinze minutes** ; résultat final
+  encore à renseigner. Ces sondes ne prouvent pas l'exécution React, les caches
+  PWA, des droits connectés, la disponibilité D1 ou une télémétrie globale.
+- CI main `34153688927` et Firebase `34153688988` encore en cours. Le résultat
+  de distribution et le SHA de l'APK seront relevés séparément. À 18:49 UTC,
+  `adb devices -l` ne détectait aucun téléphone : recette physique absente pour
+  ce SHA. Le reçu mobile du 6 septembre concerne une autre version.
+
+Retour arrière possible vers la référence production ci-dessous si une
+régression est attribuée au lot. Une autre livraison simultanée impose d'abord
+de vérifier la nouvelle source ; ne pas annuler aveuglément le travail d'autrui.
+Un retour Pages ne rappelle pas un APK déjà distribué et réintroduit les anciens
+défauts UI. Aucun retour arrière ne doit remettre à zéro données ou compteurs.
 
 ## Référence publique avant livraison — 7 septembre, 18:40 UTC
 
