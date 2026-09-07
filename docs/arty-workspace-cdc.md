@@ -2085,3 +2085,23 @@ Un spike R2 local a éprouvé un véritable PUT incomplet, pas la garantie de
 production. **W06 reste partiel** ; réception/application, effacement serveur,
 consentement et recettes multi-appareils restent nécessaires. Abonnements et
 crédits restent également dans le périmètre global du CDC.
+
+### W06-B3a — checkpoint serveur local, non activé (7 septembre)
+
+Les handlers locaux d'enrôlement, réservation bornée, upload opaque R2,
+publication CAS, chaîne ancrée et révocation/cleanup sont maintenant écrits.
+Le [checkpoint ADR](ADR_WORKSPACE_SYNC.md) borne les garanties et les limites.
+Typechecks réussis ; **79 suites / 922 tests PASS**, dont 15 nouveaux tests
+transport dans les vrais D1/R2/workerd locaux. Auth HTTP Google simulée,
+ciphertexts synthétiques ; ce n'est pas une recette de l'application complète.
+
+L'effacement capture aussi les anciens coffres non purgés et refuse un schéma
+partiel. Un PUT tenu incomplet pendant la révocation ne peut plus publier ;
+sa fin positive est nécessaire avant confirmation du nettoyage. Les PUT
+définitivement inconnus restent pending ; aucune expiration ne les acquitte.
+
+**Candidat local uniquement** : migration 0009 non appliquée à distance, aucun
+binding/flag/bucket distant modifié. Les START livrés restent inchangés. Reprise
+cleanup visible en layouts legacy/isolé, découverte/jointure second appareil,
+transport client/ACK, réception/apply, consentement et recettes multi-profils
+restent à réaliser. Aucun de ces points n'est exclu de W06 ; pas de GO activation.

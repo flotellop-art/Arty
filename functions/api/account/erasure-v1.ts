@@ -2,6 +2,7 @@ import type { Env } from '../../env'
 import { verifyGoogleUserStrict } from '../_lib/checkAllowedUser'
 import { verifyEmailTrialToken } from '../_lib/emailTrial'
 import { accountErasureStatements } from '../_lib/accountErasureData'
+import { syncAccountIdentity, syncRevocationStatements, syncErasureCompleteGate } from '../_lib/workspaceSync/erasure'
 import { ERASURE_OPERATION_HEADER, ERASURE_CAPABILITY_HEADER, ERASURE_SUBJECT_HEADER,
   erasureDigest, erasureSubject, erasureUuid, erasureHash } from '../../../src/services/accountErasureProtocol'
 
@@ -55,19 +56,23 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
     // Bind the captured client identity BEFORE any destructive SQL. These are
     // public request digests, not direct comparisons of raw credentials.
     if (subjectHash !== expectedSubject) return reply({ error: 'Erasure identity mismatch' }, 409)
+    const syncSubject = await syncAccountIdentity(request, env, email, kind)
     const capHash = await erasureDigest(c.capability), ticket = crypto.randomUUID()
     await env.DB.prepare(SCHEMA).run()
-    const deletes = await accountErasureStatements(env.DB, email, kind, {
+    const gate = {
       sql: `EXISTS (SELECT 1 FROM account_erasure_receipts_v1 WHERE operation_id = ?2 AND capability_hash = ?3
         AND subject_hash = ?4 AND execution_ticket = ?5 AND completed = 0)`,
       values: [c.operationId, capHash, subjectHash, ticket],
-    })
+    }
+    const deletes = await accountErasureStatements(env.DB, email, kind, gate)
     const result = await env.DB.batch<{ completed: number }>([
       env.DB.prepare(`INSERT INTO account_erasure_receipts_v1 (operation_id, capability_hash, subject_hash, execution_ticket, completed)
         VALUES (?1, ?2, ?3, ?4, 0) ON CONFLICT DO NOTHING`).bind(c.operationId, capHash, subjectHash, ticket),
       ...deletes,
+      ...(syncSubject ? syncRevocationStatements(env.DB, syncSubject, gate) : []),
       env.DB.prepare(`UPDATE account_erasure_receipts_v1 SET completed = 1 WHERE operation_id = ?1 AND capability_hash = ?2
-        AND subject_hash = ?3 AND execution_ticket = ?4 AND completed = 0`).bind(c.operationId, capHash, subjectHash, ticket),
+        AND subject_hash = ?3 AND execution_ticket = ?4 AND completed = 0
+        ${syncSubject ? `AND (${syncErasureCompleteGate})` : ''}`).bind(c.operationId, capHash, subjectHash, ticket),
       env.DB.prepare(`SELECT completed FROM account_erasure_receipts_v1 WHERE operation_id = ?1
         AND capability_hash = ?2 AND subject_hash = ?3`).bind(c.operationId, capHash, subjectHash),
     ])

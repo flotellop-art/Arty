@@ -1,5 +1,7 @@
-// Cloudflare Pages environment bindings
-export interface Env {
+/// <reference path="./workspaceSyncBindings.d.ts" />
+// Cloudflare Pages environment bindings. Sync additions are generated from
+// the local type contract, optional until explicit production provisioning.
+export interface Env extends Partial<WorkspaceSyncBindings> {
   GOOGLE_CLIENT_ID: string
   GOOGLE_CLIENT_SECRET: string
   // PR-0 (CDC Phase 1 D26/D29) — variable d'ÉCHAPPEMENT des tombstones.

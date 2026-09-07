@@ -1,0 +1,10 @@
+{
+  // Type-generation/local-test contract ONLY. No deployable entry point,
+  // real resource identifiers or production configuration in this file.
+  "name": "arty-workspace-sync-contract",
+  "compatibility_date": "2026-09-07",
+  "vars": { "WORKSPACE_SYNC_START_ENABLED": "false" },
+  "r2_buckets": [
+    { "binding": "WORKSPACE_SYNC_BUCKET", "bucket_name": "arty-sync-unconfigured-contract", "remote": false }
+  ]
+}
