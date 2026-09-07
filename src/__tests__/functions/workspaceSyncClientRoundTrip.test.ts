@@ -1211,7 +1211,7 @@ it.each(['fence', 'receipt', 'null-fence', 'undefined-receipt'])('erasure bridge
   expect(await control.get('meta', `sync-apply:${before.apply.id}`)).toBeTruthy(); control.close()
 }, 30_000)
 
-it.each([10, 11])('v%s local erasure removes A including its v2 barrier and preserves real encrypted B history, project, file and pending pair', async version => {
+it.each([[10, 'erasure'], [11, 'erasure'], [11, 'publication']] as const)('v%s %s preserves real encrypted B history, project, file and pending pair', async (version, outcome) => {
   let bProjectId = '', bPair: Awaited<ReturnType<typeof rows>>, bCipher = '', bKey = '', bPacket: ArrayBuffer
   const loginB = async () => {
     const users = await import('../../services/userSession'); users.setActiveSession({ userId: 'b', authMethod: 'apikey', displayName: 'Synthetic B', createdAt: 1 })
@@ -1237,20 +1237,34 @@ it.each([10, 11])('v%s local erasure removes A including its v2 barrier and pres
     const update = await existingUpdatePreparation(false, false, beforeJoin)
     await update.controller.applyReceived(); f = update.first
   }
-  const first = await coldApply(), put = IDBObjectStore.prototype.put
-  vi.spyOn(IDBObjectStore.prototype, 'put').mockImplementation(function(value, key) {
-    if (value?.apply?.phase === 'publishing') this.transaction.addEventListener('complete', () => runtime!.documentWorkspace.retire(), { once: true })
-    return put.call(this, value, key)
-  })
-  await expect(first.resume()).rejects.toThrow(); vi.restoreAllMocks()
-  const active = await openDB(f.layout.projects.name); expect((await active.get('meta', ['sync-state', 'a'])).version).toBe(2); active.close()
-  const traffic = exchanges.length; await (await coldApply()).eraseLocal()
-  expect(await controlRoot()).toMatchObject({ version: 6, state: 'erasing', erasure: { authority: { owner: 'a', localOnly: true, serverConfirmed: false } } })
-  await newDocument(); expect(await runtime!.workspaceAdmission.admit()).toBe('erasure')
-  await (await import('../../services/workspaceWriter/erasure')).createColdWorkspaceErasure().resume('local-only')
+  const first = await coldApply(), traffic = exchanges.length
+  if (outcome === 'publication') {
+    await first.resume()
+    expect(await controlRoot()).toMatchObject({ state: 'ready' })
+    expect(localStorage.getItem(f.historyKey)).not.toBeNull()
+  } else {
+    const put = IDBObjectStore.prototype.put
+    vi.spyOn(IDBObjectStore.prototype, 'put').mockImplementation(function(value, key) {
+      if (value?.apply?.phase === 'publishing') this.transaction.addEventListener('complete', () => runtime!.documentWorkspace.retire(), { once: true })
+      return put.call(this, value, key)
+    })
+    await expect(first.resume()).rejects.toThrow(); vi.restoreAllMocks()
+    const active = await openDB(f.layout.projects.name); expect((await active.get('meta', ['sync-state', 'a'])).version).toBe(2); active.close()
+    await (await coldApply()).eraseLocal()
+    expect(await controlRoot()).toMatchObject({ version: 6, state: 'erasing', erasure: { authority: { owner: 'a', localOnly: true, serverConfirmed: false } } })
+    await newDocument(); expect(await runtime!.workspaceAdmission.admit()).toBe('erasure')
+    await (await import('../../services/workspaceWriter/erasure')).createColdWorkspaceErasure().resume('local-only')
+    expect(localStorage.getItem(f.historyKey)).toBeNull()
+  }
   expect(exchanges).toHaveLength(traffic)
   await newDocument(); expect(await runtime!.workspaceAdmission.admit()).toBe('ready'); await loginB()
-  expect(await rows()).toEqual(bPair!); expect(localStorage.getItem(bKey)).toBe(bCipher); expect(localStorage.getItem(f.historyKey)).toBeNull()
+  const afterRows = await rows()
+  if (outcome === 'publication') {
+    const aRows = afterRows.filter(row => Array.isArray(row.key) && row.key.length === 2 && row.key[0] === 'sync-state' && row.key[1] === 'a')
+    expect(aRows).toHaveLength(1); expect(aRows[0]!.value).toMatchObject({ owner: 'a', version: 2, pending: null })
+    expect(afterRows.filter(row => row !== aRows[0])).toEqual(bPair!)
+  } else expect(afterRows).toEqual(bPair!)
+  expect(localStorage.getItem(bKey)).toBe(bCipher)
   const history = await import('../../services/storage'); await history.bootstrapConversationStorage(); expect(history.getConversation('b-chat')!.title).toBe('Account B original')
   expect(await (await import('../../services/secureFileStorage')).getFile('b-file')).toMatchObject({ data: 'Qg==' })
   const box = await localBox(); await box.unlock(code); expect(await (await box.resume())!.ciphertext.arrayBuffer()).toEqual(bPacket!)

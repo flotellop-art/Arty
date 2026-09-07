@@ -1,6 +1,7 @@
 # ADR — appliquer les mises à jour des objets existants
 
-Statut : décision acceptée, implémentation et recette en cours, non livré.
+Statut : décision acceptée, implémentation et recette automatisée reçues,
+livraison et recette utilisateur encore ouvertes.
 Date : 7 septembre 2026. Deux challenges indépendants produit et sécurité.
 
 ## Contexte et décision
@@ -66,16 +67,17 @@ reprise à tester. Il préserve en échange les lecteurs et garanties v10.
 
 ## Recette obligatoire avant livraison
 
-- [ ] Deux profils réels du harness : premier import puis modifications
+- [x] Deux profils du harness : premier import puis modifications
   distantes, préparation/confirmation v11, rechargement et lecteurs réels.
-- [ ] Mêmes IDs, nouveaux messages texte, dates exactes, voisin modifié avant
+- [x] Mêmes IDs, nouveaux messages texte, dates exactes, voisin modifié avant
   préparation et autre compte préservés ; fichiers/documents inchangés.
-- [ ] Recapture non vide avec objets lus et changed=false ; édition locale
+- [x] Recapture non vide avec objets lus et changed=false ; édition locale
   suivante avec parent causal exact, sans renvoi artificiel de l'import.
-- [ ] Mutations cible/voisin, retrait clé/grant, fence absent/présent initial,
+- [x] Mutations cible/voisin, retrait clé/grant, fence absent/présent initial,
   reçu présent undefined/null et révocation au dernier succès IDB refusés.
-- [ ] Coupures, quota, ACK perdu, chaque frontière durable et mélange
-  BEFORE/AFTER ; abandon/reprise et effacement A préservant B.
+- [x] Interruptions et ACK locaux perdus aux six frontières déclarées,
+  quotas histoire/projet et matrice phase/histoire/projet/état BEFORE/AFTER ;
+  abandon/reprise et effacement A au checkpoint publishing préservant B.
 - [ ] Deux contre-revues finales, vérification complète, Git/CI/Pages et
   recette utilisateur de portée explicite.
 
@@ -85,3 +87,21 @@ n'active pas START, ne provisionne rien et ne clôt pas la recette multi-apparei
 
 Preuves ciblées, état de vérification complète et limites de livraison :
 SYNC_EXISTING_UPDATE_RELEASE.md.
+
+Les trois premiers critères sont exercés dans
+`src/__tests__/functions/workspaceSyncClientRoundTrip.test.ts` : parcours
+`existing update uses the real journal and readers without ping-pong`, corpus
+comparaison/galerie/documents et scénario `v11 publication preserves real
+encrypted B history, project, file and pending pair`. Ce dernier lit puis
+modifie et recharge réellement B après que A est revenu à ready ; les scénarios
+d'effacement v10/v11 restent distincts. JSDOM/fake-IDB ne sont pas des
+navigateurs réels. Le test B ajouté après la campagne complète passe dans la
+session 73731 (3 scénarios, exit 0), sans changement du runtime.
+
+Portée sécurité : six frontières simulées dans le harness, 24 combinaisons de
+matrice, quotas histoire et projet. Les deux directions de présence du fence
+sont couvertes dans `workspaceSyncMaterializedCoverage.test.ts` ; le canari
+intégré couvre une direction. Pas de preuve de coupure physique navigateur/
+disque, de quota à chaque instruction, de mélange entre deux projets distincts
+ou d'effacement v11 après mutation métier. Ces limites ne sont pas effacées par
+la vérification complète réussie ni par la livraison OFF.

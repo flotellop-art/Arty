@@ -1,7 +1,8 @@
 # Mise à jour des objets synchronisés existants — réception du lot
 
-7 septembre 2026. État : code local, deux contre-revues favorables sur le
-delta, vérification complète en cours. Aucune livraison de ce lot attestée.
+7 septembre 2026. État : runtime local `2cef4dc`, deux contre-revues favorables
+sur le delta, vérification complète réussie puis renforcement ciblé du test
+multi-compte. Aucune livraison de ce lot attestée.
 Base publique : cac505a30f7358c51dcb35c21062dd8bc82ed246 (#495).
 Branche : codex/sync-existing-update-20260907.
 
@@ -46,6 +47,14 @@ local après le dernier succès d'écriture du ticket d'effacement.
 - Plan pur : 18 tests PASS, dont six cas de dépendance forte (inchangée,
   révision différente à contenu égal, modifiée, conflit, absente, divergence
   locale). La révision matérialisée d'une dépendance n'avance pas implicitement.
+- Contre-revue de la matrice de recette : ajout d'une publication v11 réussie
+  jusqu'à ready avec un vrai compte B chiffré voisin. Lectures histoire/fichier/
+  projet B, paire et paquet pending exacts, puis édition B et rechargement.
+  Session 73731 exit 0 : trois scénarios (effacements v10/v11 et publication v11),
+  14,66 s. L'essai initial 17486 échouait car l'assertion globale héritée de
+  l'effacement attendait aussi l'absence de A après publication ; corrigée pour
+  exiger exactement l'état A v2 et l'intégralité des lignes B inchangées.
+  Aucun runtime ni critère d'effacement affaibli ; typechecks repassés.
 
 Ne pas additionner ces sous-ensembles : ils se recouvrent. Le harness utilise
 deux profils JSDOM/fake-IDB, les vrais stores/chiffrement/acteurs et HTTP workerd
@@ -60,19 +69,35 @@ Sécurité : BEFORE1, ordre admission/lecture, borne cumulative puis garde
 post-import v10. Toutes les objections relevées ont une correction et un canari.
 GO local limité ; les agents n'ont exécuté aucun test ni modifié de fichier.
 
-## Vérification et livraison — encore ouvertes
+Contre-revue de réception : la matrice attestée porte sur six frontières
+durables simulées et 24 combinaisons phase/histoire/projet/état. Les quotas
+sont injectés sur histoire/projet ; l'effacement v11 avec B est exercé au
+checkpoint publishing. Pas de couverture exhaustive des instructions, de
+coupure physique, de mélange entre deux projets ou d'effacement après toutes
+les mutations métier. Aucune nouvelle objection bloquante pour livraison OFF.
 
-- [ ] `npm run verify` du code gelé : première session 98808 terminée exit 1,
+## Vérification et livraison
+
+- [x] `npm run verify` du code gelé : première session 98808 terminée exit 1,
   214 échecs, 5310 réussites et un SKIP (372 suites, 223,47 s). Erreurs observées
   : connexions Miniflare locales `EADDRINUSE` (127.0.0.1), puis serveur de test
   indisponible et délais de hooks/tests. Aucun de ces échecs n'est effacé du reçu.
   Contre-épreuve sans changement : accountDelete + d1.productMeasurement,
-  un worker, session 58178 exit 0, 21/21 tests en 12,67 s. Nouvelle campagne
-  complète avec `VITEST_MAX_WORKERS=2`, option supportée par Vitest installé.
+  un worker, session 58178 exit 0, 21/21 tests en 12,67 s. Seconde campagne
+  complète avec `VITEST_MAX_WORKERS=2`, option supportée par Vitest installé :
+  session 39860 terminée exit 0, 372 suites réussies, 5 524 tests réussis et un
+  ignoré (5 525 au total), durée Vitest 842,01 s. Couverture globale : statements
+  77,35 %, branches 71,96 %, fonctions 82,23 %, lignes 79,67 %. Le build réussit
+  en 7,47 s et le vrai worker Office export est validé dans une VM isolée ;
+  cela ne constitue ni une ouverture visuelle dans Office ni un test natif.
+  La commande complète est réussie ; l'avertissement de taille des chunks
+  reste présent. Ce résultat ne prouve pas rétrospectivement la cause de chacun
+  des échecs de la première campagne.
   Aucun test retiré, aucun délai/seuil/assertion affaibli. La limitation de
   charge est une mesure de vérification locale, pas une correction prouvée
   d'un défaut métier ou une mesure du pic de ports lors du premier échec.
-- [ ] PR et CI application, orchestrateur et Android vertes sur le même candidat.
+- [ ] PR et CI application, orchestrateur et Android vertes sur le même candidat,
+  incluant le scénario B ajouté après la vérification complète locale.
 - [ ] Prévisualisation Pages identifiée, contrôles anonymes bornés.
 - [ ] Livraison main, réception publique observée et identité de l'APK distribuée.
 - [ ] Essai utilisateur sur la plateforme et version réellement annoncées.

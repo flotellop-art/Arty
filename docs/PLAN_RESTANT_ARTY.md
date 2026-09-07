@@ -14,8 +14,10 @@ La réception du lot #495 est consignée dans FUNDING_UI_STANDALONE_RELEASE.md.
 La distribution Firebase ne prouve pas l'installation de cet APK sur téléphone.
 La synchronisation reste désactivée. Son premier import existe ; la mise à
 jour d'objets existants passe ses tests ciblés, y compris le retour vers le profil
-créateur corrigé. La vérification complète est en cours. Ce lot reste local et
-non livré ; aucun essai entre deux appareils réels ne le valide.
+créateur corrigé. La vérification complète du code `2cef4dc` est passée :
+372 suites, 5 524 tests réussis et un ignoré, build et worker Office compris
+(session 39860, exit 0). Ce lot reste local et non livré ; aucun essai entre
+deux appareils réels ne le valide.
 Abonnements/crédits et anti-abus complet ne sont pas opérationnellement validés.
 
 Source : cahier des charges et reçus du dépôt, pas nouvel audit de production
@@ -24,10 +26,10 @@ ou nouvelle consultation des comptes marchands à l'occasion de ce plan.
 ## Ordre concret de reprise
 
 1. Fermer le petit lot de synchronisation déjà commencé, sans engager toute
-   la suite : corriger le retour vers le profil créateur, valider les droits
-   avant toute lecture privée, borner l'inventaire des identités et montrer
-   précisément les éléments qui seront modifiés avant confirmation. Puis
-   contre-revues et tests complets. Aucun déploiement de ce lot tant qu'ils échouent.
+   la suite : corrections, aperçu, contre-revues et vérification complète
+   sont reçus localement. Restent la PR, la CI, le contrôle de prévisualisation
+   et la livraison identifiée. La synchronisation reste désactivée ; la recette
+   réelle entre appareils et l'activation ne sont pas acquises par ce lot.
 2. Priorité de mise en service : qualifier le prestataire de paiement et finir
    abonnements/crédits, puis recevoir les protections anti-abus avant ouverture
    large. Une attente externe sur le prestataire ne bloque pas les travaux locaux.
