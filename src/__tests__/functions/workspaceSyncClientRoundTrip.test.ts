@@ -469,6 +469,20 @@ async function pendingFirstApply(projectsOnly = false, beforeJoin?: () => Promis
   const header = await db.get('meta', 'workspace'), raw = await db.get('meta', `sync-apply:${header.apply.id}`); db.close()
   return { ...f, payload: JSON.parse(raw) }
 }
+it('first apply rechecks real actor authority after a delayed module import before any private capture', async () => {
+  const f = await firstApplyPreparation(), actual = await import('../../services/workspaceSync/applyPublication')
+  expect(f.box.snapshot.localHead.records).toEqual([])
+  const entered = deferred(), release = deferred(), prepare = vi.fn(actual.prepareFirstSyncApply)
+  const capture = vi.spyOn(await import('../../services/storage'), 'captureHistoryForRestore')
+  const decrypt = vi.spyOn(await import('../../services/crypto'), 'decrypt'), root = await controlRoot()
+  vi.doMock('../../services/workspaceSync/applyPublication', async () => { entered.resolve(); await release.promise; return { ...actual, prepareFirstSyncApply: prepare } })
+  try {
+    const preparing = f.controller.prepareApply(), rejected = expect(preparing).rejects.toThrow()
+    await entered.promise; f.controller.close(); release.resolve(); await rejected
+    expect(prepare).not.toHaveBeenCalled(); expect(capture).not.toHaveBeenCalled(); expect(decrypt).not.toHaveBeenCalled()
+    expect(await controlRoot()).toEqual(root); expect(await rows()).toEqual(f.before)
+  } finally { release.resolve(); vi.doUnmock('../../services/workspaceSync/applyPublication') }
+}, 30_000)
 async function coldApply() {
   await newDocument(); expect(await runtime!.workspaceAdmission.admit()).toBe('applying')
   return (await import('../../services/workspaceWriter/syncApply')).createColdWorkspaceSyncApply()
@@ -479,6 +493,288 @@ async function readyProfile(next: Profile) {
   await (await import('../../services/storage')).bootstrapConversationStorage()
   const box = await localBox(); await box.unlock(code); return box
 }
+// A real received update of M, never a private-state fixture. Both profiles
+// passed migration/upgrade and the receiver already completed the v10 import.
+async function existingUpdatePreparation(projectsOnly = false, plainHistory = false, beforeJoin?: () => Promise<void>) {
+  const first = await pendingFirstApply(projectsOnly, beforeJoin), receiver = profile, source = profiles[0]!
+  await (await coldApply()).resume()
+  const importedBox = await reopenBox(), imported = importedBox.snapshot
+  const chatId = imported.bindings.find(b => b.kind === 'conversation' && b.presence === 'record')?.localId
+  const projectId = imported.bindings.find(b => b.kind === 'project' && b.presence === 'record')!.localId
+  const sourceBox = await readyProfile(source), projectStore = await import('../../services/projects/store')
+  const sourceProjectId = sourceBox.snapshot.bindings.find(b => b.kind === 'project' && b.presence === 'record')!.localId
+  const op = await projectStore.beginProjectOperation(), oldProject = (await projectStore.getProject(op, sourceProjectId))!.project!
+  const changedProject = await projectStore.updateProject(op, oldProject, { name: 'Updated project', instructions: '\uFEFFExact\r\nInstructions\uD800' })
+  if (!projectsOnly) {
+    const history = await import('../../services/storage'), old = history.getConversation('source-chat')!
+    await saveExact({ ...old, title: 'Remote update', updatedAt: 17, usedModels: ['mistral'], messages: [...old.messages,
+      { id: 'source-added-message', role: 'assistant', content: '\uFEFFNew\r\nanswer\uD800', timestamp: 17, model: 'historical-model' }] })
+    await saveExact({ id: 'extra-remote-chat', title: 'Not materialized here', createdAt: 1, updatedAt: 1, messages: [] })
+  }
+  expect(await sourceBox.connect().synchronize({ conversationIds: projectsOnly ? [] : ['source-chat', 'extra-remote-chat'], projectIds: [sourceProjectId] }))
+    .toMatchObject({ status: 'scanned', publication: { status: 'acknowledged' } })
+  const remoteHead = sourceBox.snapshot.localHead
+  const box = await readyProfile(receiver), controller = box.connect()
+  const history = await save('Neighbour edited before preparation'), neighbour = structuredClone(history.getConversation('chat')!)
+  if (plainHistory) {
+    const { workspaceDataKey } = await import('../../services/workspaceWriter/layout')
+    localStorage.setItem(workspaceDataKey(first.layout, 'a', 'conversations'), JSON.stringify(history.getConversations()))
+  }
+  const db = await openDB(first.layout.projects.name, 2)
+  const beforeDocuments = await db.getAll('documents'), beforeProjects = await db.getAll('projects'), beforeUsage = await db.getAll('usage'); db.close()
+  const beforeRows = await rows(), beforeSlots = Object.entries(localStorage)
+  await controller.receive()
+  const preview = await controller.prepareApply()
+  expect(preview).toMatchObject({ status: 'existing-update-reviewed', canApply: true, conversations: projectsOnly ? 0 : 1, projects: 1 })
+  expect(await rows()).toEqual(beforeRows); expect(Object.entries(localStorage)).toEqual(beforeSlots)
+  return { first, receiver, source, box, controller, preview, chatId, projectId, imported, changedProject, remoteHead,
+    beforeRows, beforeDocuments, beforeProjects, beforeUsage, neighbour }
+}
+it.each([false, true])('existing update uses the real journal and readers without ping-pong (projects only: %s)', async projectsOnly => {
+  const f = await existingUpdatePreparation(projectsOnly)
+  expect(f.preview.targets).toEqual(expect.arrayContaining([{ kind: 'project', localId: f.projectId, before: 'Remote project', after: 'Updated project' }]))
+  if (!projectsOnly) expect(f.preview.targets).toContainEqual({ kind: 'conversation', localId: f.chatId, before: 'Incoming', after: 'Remote update' })
+  if (!projectsOnly) expect(f.preview.retained).toEqual(expect.arrayContaining([expect.objectContaining({ reason: 'new-record' })]))
+  const noMoreHTTP = exchanges.length
+  await f.controller.applyReceived()
+  expect(await controlRoot()).toMatchObject({ version: 11, apply: { phase: 'prepared' } })
+  await newDocument(); expect(await runtime!.workspaceAdmission.admit()).toBe('applying')
+  const crypt = await import('../../services/crypto'), decrypt = vi.spyOn(crypt, 'decrypt'), random = vi.spyOn(crypto, 'randomUUID')
+  await (await import('../../services/workspaceWriter/syncApply')).createColdWorkspaceSyncApply().resume()
+  expect(decrypt).not.toHaveBeenCalled(); expect(random).not.toHaveBeenCalled(); expect(exchanges).toHaveLength(noMoreHTTP)
+  decrypt.mockRestore(); random.mockRestore()
+  const box = await reopenBox(), history = await import('../../services/storage'), view = box.snapshot
+  expect(history.getConversation('chat')).toEqual(f.neighbour)
+  expect(view.remote!.selection).toEqual({ conversationIds: [], projectIds: [] })
+  expect(view.localHead.records).toHaveLength(f.imported.localHead.records.length)
+  expect(view.bindings.filter(b => b.presence === 'record')).toEqual(f.imported.bindings.filter(b => b.presence === 'record'))
+  if (!projectsOnly) {
+    const chat = history.getConversation(f.chatId!)!
+    expect(chat).toMatchObject({ title: 'Remote update', createdAt: 0, updatedAt: 17, usedModels: ['mistral'] })
+    expect(chat.messages).toHaveLength(2); expect(chat.messages[1]).toMatchObject({ content: '\uFEFFNew\r\nanswer\uD800', timestamp: 17, model: 'historical-model', restoredArchive: true })
+    expect(chat.messages[1]!.id).not.toBe('source-added-message')
+  }
+  const projectStore = await import('../../services/projects/store')
+  await projectStore.withReadOnlyProjectLibrary(projectStore.captureLocalReadScope(), async reader => {
+    const project = (await reader.get(f.projectId))!.project!
+    expect(project).toMatchObject({ name: 'Updated project', instructions: f.changedProject.instructions, revision: 2, updatedAt: f.changedProject.updatedAt })
+    expect(atob(await reader.source(project, project.documents[0]!.id))).toBe('Original\r\nDocument')
+    expect(await reader.text(project, project.documents[0]!.id)).toContain('Original')
+  })
+  const db = await openDB(f.first.layout.projects.name, 2)
+  expect(await db.getAll('documents')).toEqual(f.beforeDocuments); expect(await db.getAll('usage')).toEqual(f.beforeUsage)
+  for (const row of f.beforeProjects.filter(p => p.id !== f.projectId)) expect(await db.get('projects', row.key)).toEqual(row)
+  db.close()
+  const chosen = { conversationIds: f.chatId ? [f.chatId] : [], projectIds: [f.projectId] }
+  const capture = await (await import('../../services/workspaceSync/capture')).captureLocalSyncSnapshot(view.localHead, view.bindings, chosen)
+  expect(capture.report.capturedObjects).toBeGreaterThan(0)
+  expect(capture.changed).toBe(false); expect(capture.payloads.size).toBe(0)
+  if (!projectsOnly) {
+    const beforeHead = view.localHead.records.find(r => r.kind === 'conversation')!
+    const { recordHeads } = await import('../../services/workspaceSync/schema'), parent = recordHeads(beforeHead)[0]!.id
+    await saveExact({ ...history.getConversation(f.chatId!)!, title: 'Local edit after update' })
+    expect(await box.connect().synchronize(chosen)).toMatchObject({ status: 'scanned', publication: { status: 'acknowledged' } })
+    expect(recordHeads(box.snapshot.localHead.records.find(r => r.id === beforeHead.id)!)[0]!.parents).toEqual([parent])
+    const origin = await readyProfile(f.source)
+    expect((await rows()).find(r => r.value.format === 'arty-sync-local-state')!.value.version).toBe(1)
+    const receivingBack = origin.connect(); await receivingBack.receive()
+    expect(await receivingBack.prepareApply()).toMatchObject({ status: 'existing-update-reviewed', canApply: true, conversations: 1, projects: 0 })
+    await receivingBack.applyReceived(); await (await coldApply()).resume(); await reopenBox()
+    expect((await import('../../services/storage')).getConversation('source-chat')!.title).toBe('Local edit after update')
+    expect((await rows()).find(r => r.value.format === 'arty-sync-local-state')!.value.version).toBe(2)
+  }
+}, 30_000)
+it.each(['durable-pair', 'fence', 'key'])('existing update rejects %s replaced before warm entry without any private history capture or decrypt', async change => {
+  const f = await existingUpdatePreparation(), seam = await import('../../services/workspaceSync/updatePublication'), prepare = seam.prepareExistingSyncUpdate
+  const decrypt = vi.spyOn(await import('../../services/crypto'), 'decrypt')
+  const capture = vi.spyOn(await import('../../services/storage'), 'captureHistoryForSyncCoverage')
+  const root = await controlRoot(), slots = Object.entries(localStorage)
+  const warm = vi.spyOn(seam, 'prepareExistingSyncUpdate').mockImplementationOnce(async args => {
+    const db = await openDB(f.first.layout.projects.name, 2)
+    if (change === 'durable-pair') { const state = await db.get('meta', ['sync-state', 'a']); await db.put('meta', { ...state, revision: state.revision + 1 }, ['sync-state', 'a']) }
+    if (change === 'fence') await db.put('meta', crypto.randomUUID(), 'erasure-fence')
+    db.close()
+    if (change === 'key') f.box.lock()
+    return prepare(args)
+  })
+  await expect(f.controller.prepareApply()).rejects.toThrow()
+  expect(warm).toHaveBeenCalledOnce(); expect(decrypt).not.toHaveBeenCalled(); expect(capture).not.toHaveBeenCalled()
+  expect(await controlRoot()).toEqual(root); expect(Object.entries(localStorage)).toEqual(slots)
+  const db = await openDB('arty-workspace-control', 1); expect(await db.getAllKeys('meta')).toEqual(['workspace']); db.close()
+}, 30_000)
+it('existing update with only locally changed targets reviews without sealing, allocating or adopting', async () => {
+  const f = await existingUpdatePreparation(), history = await import('../../services/storage'), projects = await import('../../services/projects/store')
+  await saveExact({ ...history.getConversation(f.chatId!)!, title: 'My local conversation' })
+  const op = await projects.beginProjectOperation(), project = (await projects.getProject(op, f.projectId))!.project!
+  await projects.updateProject(op, project, { name: 'My local project' })
+  const before = await rows(), slots = Object.entries(localStorage), root = await controlRoot()
+  const random = vi.spyOn(crypto, 'randomUUID'), encrypt = vi.spyOn(crypto.subtle, 'encrypt')
+  const preview = await f.controller.prepareApply()
+  expect(preview).toMatchObject({ status: 'existing-update-reviewed', canApply: false, targets: [], conversations: 0, projects: 0, journalBytes: 0 })
+  expect(preview.status === 'existing-update-reviewed' && preview.retained.filter(r => r.reason === 'local-change')).toHaveLength(2)
+  expect(random).not.toHaveBeenCalled(); expect(encrypt).not.toHaveBeenCalled()
+  await expect(f.controller.applyReceived()).rejects.toThrow('unavailable')
+  expect(await rows()).toEqual(before); expect(Object.entries(localStorage)).toEqual(slots); expect(await controlRoot()).toEqual(root)
+}, 30_000)
+it('v11 payload parser accepts public BEFORE1/2 but refuses AFTER1 and changed closed bindings even with a recomputed checksum', async () => {
+  const f = await existingUpdatePreparation(); await f.controller.applyReceived()
+  const root = await controlRoot(), db = await openDB('arty-workspace-control', 1), p = JSON.parse(await db.get('meta', `sync-update:${root.apply.id}`)); db.close()
+  const { digestText } = await import('../../services/workspaceWriter/migrationInventory')
+  const { parseSyncUpdateHeader } = await import('../../services/workspaceWriter/syncUpdateProtocol')
+  const { parseSyncUpdatePayload } = await import('../../services/workspaceWriter/syncUpdateJournal')
+  for (const mutation of ['before1', 'before2', 'after1', 'before3', 'owner', 'revision', 'extra', 'same-cipher', 'project-extra', 'project-eu', 'project-duplicate']) {
+    const next = structuredClone(p)
+    if (mutation === 'before1') next.stateBefore.version = 1
+    if (mutation === 'before2') next.stateBefore.version = 2
+    if (mutation === 'after1') next.stateAfter.version = 1
+    if (mutation === 'before3') next.stateBefore.version = 3
+    if (mutation === 'owner') next.stateBefore.owner = 'b'
+    if (mutation === 'revision') next.stateAfter.revision++
+    if (mutation === 'extra') next.stateBefore.extra = true
+    if (mutation === 'same-cipher') next.stateAfter.ciphertext = next.stateBefore.ciphertext
+    if (mutation === 'project-extra') next.projects[0].after.extra = true
+    if (mutation === 'project-eu') next.projects[0].after.euOnly = !next.projects[0].before.euOnly
+    if (mutation === 'project-duplicate') next.projects.push(next.projects[0])
+    const raw = JSON.stringify(next), h = parseSyncUpdateHeader({ ...root, apply: { ...root.apply, bytes: new TextEncoder().encode(raw).length, hash: await digestText(raw) } })!
+    const parsed = parseSyncUpdatePayload(raw, h, { assertCurrent() {} })
+    if (mutation === 'before1' || mutation === 'before2') expect(await parsed).toEqual(next)
+    else await expect(parsed, mutation).rejects.toThrow()
+  }
+}, 30_000)
+it.each(['target', 'neighbour', 'key', 'grant', 'fence-presence', 'erasing-undefined', 'erasing-null'])('existing update refuses warm %s changes without adopting a journal', async change => {
+  const f = await existingUpdatePreparation(), history = await import('../../services/storage')
+  if (change === 'target' || change === 'neighbour') await saveExact({ ...history.getConversation(change === 'target' ? f.chatId! : 'chat')!, title: 'Keep this newer edit' })
+  if (change === 'key') f.box.lock()
+  if (change === 'grant') (await import('../../services/googleAuth')).logout()
+  if (change === 'fence-presence' || change.startsWith('erasing')) {
+    const db = await openDB(f.first.layout.projects.name, 2)
+    if (change === 'fence-presence') {
+      if (await db.getKey('meta', 'erasure-fence') === undefined) await db.put('meta', 'initial', 'erasure-fence')
+      else await db.delete('meta', 'erasure-fence')
+    } else await db.put('meta', change === 'erasing-null' ? null : undefined, ['erasing', 'a'])
+    db.close()
+  }
+  const slots = Object.entries(localStorage)
+  await expect(f.controller.applyReceived()).rejects.toThrow()
+  expect(await controlRoot()).toMatchObject({ state: 'ready' }); expect(await rows(f.first.layout)).toEqual(f.beforeRows)
+  expect(Object.entries(localStorage)).toEqual(slots)
+}, 30_000)
+it.each(['key', 'grant'])('existing update warm last-root-success %s invalidation aborts the actual RW', async mode => {
+  const f = await existingUpdatePreparation(), root = await controlRoot(), put = IDBObjectStore.prototype.put
+  const google = await import('../../services/googleAuth'); let revoked = false, aborted = false
+  vi.spyOn(IDBObjectStore.prototype, 'put').mockImplementation(function(value, key) {
+    const request = put.call(this, value, key)
+    if (value?.format === 'arty-workspace-control' && value.version === 11) {
+      this.transaction.addEventListener('abort', () => { aborted = true }, { once: true })
+      request.addEventListener('success', () => { revoked = true; if (mode === 'key') f.box.lock(); else google.logout() }, { once: true })
+    }
+    return request
+  })
+  await expect(f.controller.applyReceived()).rejects.toThrow()
+  expect(revoked).toBe(true); expect(aborted).toBe(true); expect(await controlRoot()).toEqual(root)
+  const control = await openDB('arty-workspace-control', 1); expect(await control.getAllKeys('meta')).toEqual(['workspace']); control.close()
+  expect(await rows(f.first.layout)).toEqual(f.beforeRows)
+}, 30_000)
+it.each(['adopted', 'publishing', 'history', 'history-plain', 'records', 'ready'])('existing update resumes after a real committed %s boundary and lost acknowledgement', async boundary => {
+  const f = await existingUpdatePreparation(false, true)
+  const put = IDBObjectStore.prototype.put, set = profile.dom.window.Storage.prototype.setItem, remove = profile.dom.window.Storage.prototype.removeItem
+  const { workspaceDataKey } = await import('../../services/workspaceWriter/layout'), plainKey = workspaceDataKey(f.first.layout, 'a', 'conversations')
+  let cut = false
+  vi.spyOn(IDBObjectStore.prototype, 'put').mockImplementation(function(value, key) {
+    const matches = boundary === 'records' ? value?.format === 'arty-sync-local-state' && value.revision === f.beforeRows[0]!.value.revision + 1
+      : value?.format === 'arty-workspace-control' && (boundary === 'ready' ? value.state === 'ready' : value.version === 11 && value.apply.phase === (boundary === 'adopted' ? 'prepared' : boundary))
+    if (matches && !cut) { cut = true; this.transaction.addEventListener('complete', () => runtime!.documentWorkspace.retire(), { once: true }) }
+    return put.call(this, value, key)
+  })
+  vi.spyOn(profile.dom.window.Storage.prototype, 'setItem').mockImplementation(function(key, value) {
+    set.call(this, key, value)
+    if (boundary === 'history' && key === f.first.historyKey && !cut) { cut = true; runtime!.documentWorkspace.retire() }
+  })
+  vi.spyOn(profile.dom.window.Storage.prototype, 'removeItem').mockImplementation(function(key) {
+    remove.call(this, key)
+    if (boundary === 'history-plain' && key === plainKey && !cut) { cut = true; runtime!.documentWorkspace.retire() }
+  })
+  if (boundary === 'adopted') await expect(f.controller.applyReceived()).rejects.toThrow()
+  else { await f.controller.applyReceived(); await expect((await coldApply()).resume()).rejects.toThrow() }
+  expect(cut).toBe(true); vi.restoreAllMocks()
+  if (boundary !== 'ready') await (await coldApply()).resume()
+  await reopenBox(); const history = await import('../../services/storage')
+  expect(history.getConversation('chat')).toEqual(f.neighbour); expect(history.getConversation(f.chatId!)!.title).toBe('Remote update')
+  expect(history.getConversation(f.chatId!)!.messages).toHaveLength(2)
+  const db = await openDB(f.first.layout.projects.name, 2)
+  expect((await db.get('projects', ['a', f.projectId])).revision).toBe(2)
+  expect(await db.getAll('documents')).toEqual(f.beforeDocuments); expect(await db.getAll('usage')).toEqual(f.beforeUsage); db.close()
+}, 30_000)
+it('existing update admits only the closed history/project/state matrix, never per-row mixtures', async () => {
+  const f = await existingUpdatePreparation(false, true), slots = Object.entries(localStorage)
+  const { workspaceDataKey } = await import('../../services/workspaceWriter/layout'), plainKey = workspaceDataKey(f.first.layout, 'a', 'conversations')
+  await f.controller.applyReceived()
+  const root = await controlRoot(), control = await openDB('arty-workspace-control', 1), jobKey = `sync-update:${root.apply.id}`
+  const raw = await control.get('meta', jobKey), p = JSON.parse(raw); control.close()
+  for (const phase of ['prepared', 'publishing']) for (const historyMode of ['before', 'intermediate', 'after']) for (const rowsMode of ['before', 'after', 'mixed-project', 'mixed-state']) {
+    const tag = `${phase}/${historyMode}/${rowsMode}`, c = await openDB('arty-workspace-control', 1), db = await openDB(f.first.layout.projects.name, 2)
+    await c.put('meta', { ...root, apply: { ...root.apply, phase } }, 'workspace'); await c.put('meta', raw, jobKey); c.close()
+    await db.put('projects', rowsMode === 'after' || rowsMode === 'mixed-project' ? p.projects[0].after : p.projects[0].before)
+    await db.put('meta', rowsMode === 'after' || rowsMode === 'mixed-state' ? p.stateAfter : p.stateBefore, ['sync-state', 'a']); db.close()
+    for (const [key, value] of slots) localStorage.setItem(key, value)
+    if (historyMode !== 'before') localStorage.setItem(f.first.historyKey, p.historyCipher)
+    if (historyMode === 'after') localStorage.removeItem(plainKey)
+    const allowed = rowsMode === 'before' && (phase === 'publishing' || historyMode === 'before') || phase === 'publishing' && rowsMode === 'after' && historyMode === 'after'
+    const cold = await coldApply()
+    if (allowed) { await cold.resume(); expect(await controlRoot(), tag).toMatchObject({ state: 'ready' }) }
+    else { await expect(cold.resume(), tag).rejects.toThrow(); expect(await controlRoot(), tag).toMatchObject({ version: 11, apply: { phase } }) }
+  }
+}, 30_000)
+it.each(['history', 'project'])('existing update quota at %s allows abandonment only before its first business write', async boundary => {
+  const f = await existingUpdatePreparation(), beforeSlots = Object.entries(localStorage)
+  await f.controller.applyReceived()
+  const put = IDBObjectStore.prototype.put, set = profile.dom.window.Storage.prototype.setItem
+  const writing = vi.spyOn(IDBObjectStore.prototype, 'put').mockImplementation(function(value, key) {
+    if (boundary === 'project' && this.name === 'projects' && value?.id === f.projectId) throw new DOMException('quota', 'QuotaExceededError')
+    return put.call(this, value, key)
+  })
+  const setting = vi.spyOn(profile.dom.window.Storage.prototype, 'setItem').mockImplementation(function(key, value) {
+    if (boundary === 'history' && key === f.first.historyKey) throw new DOMException('quota', 'QuotaExceededError')
+    set.call(this, key, value)
+  })
+  await expect((await coldApply()).resume()).rejects.toThrow()
+  const afterFailure = Object.entries(localStorage)
+  if (boundary === 'history') {
+    await (await coldApply()).abort()
+    expect(Object.entries(localStorage)).toEqual(beforeSlots); expect(await rows(f.first.layout)).toEqual(f.beforeRows)
+  } else {
+    await expect((await coldApply()).abort()).rejects.toThrow()
+    expect(Object.entries(localStorage)).toEqual(afterFailure); expect(await rows(f.first.layout)).toEqual(f.beforeRows)
+  }
+  writing.mockRestore(); setting.mockRestore()
+  if (boundary === 'project') await (await coldApply()).resume()
+  const box = await reopenBox(); expect(box.snapshot.localHead.records.length).toBe(f.imported.localHead.records.length)
+}, 30_000)
+it('existing update abandons an invalidated prepared job without restoring over a late ordinary writer', async () => {
+  const f = await existingUpdatePreparation(); await f.controller.applyReceived()
+  const db = await openDB(f.first.layout.projects.name, 2), before = await db.get('projects', ['a', f.projectId])
+  const changed = { ...before, lateWriter: 'preserve actual data' }; await db.put('projects', changed); db.close()
+  await expect((await coldApply()).resume()).rejects.toThrow(); expect(await controlRoot()).toMatchObject({ apply: { phase: 'prepared' } })
+  await (await coldApply()).abort()
+  const reopened = await openDB(f.first.layout.projects.name, 2); expect(await reopened.get('projects', before.key)).toEqual(changed); reopened.close()
+  expect(await rows(f.first.layout)).toEqual(f.beforeRows)
+}, 30_000)
+it.each([10, 11])('v%s erasure bridge rolls back root and job when local data change on its last root success', async version => {
+  const f = version === 10 ? await pendingFirstApply() : await existingUpdatePreparation()
+  if (version === 11) await f.controller.applyReceived()
+  const cold = await coldApply(), root = await controlRoot(), put = IDBObjectStore.prototype.put
+  let changed = false
+  vi.spyOn(IDBObjectStore.prototype, 'put').mockImplementation(function(value, key) {
+    const request = put.call(this, value, key)
+    if (value?.version === 6 && value?.state === 'erasing') request.addEventListener('success', () => {
+      changed = true; localStorage.setItem('arty-project-erasure-fence', crypto.randomUUID())
+    }, { once: true })
+    return request
+  })
+  await expect(cold.eraseLocal()).rejects.toThrow(); expect(changed).toBe(true); expect(await controlRoot()).toEqual(root)
+  const db = await openDB('arty-workspace-control', 1)
+  expect(await db.get('meta', `${version === 10 ? 'sync-apply' : 'sync-update'}:${root.apply.id}`)).toBeTruthy(); db.close()
+}, 30_000)
 it('materialized coverage uses the real private M after cold import with an EMPTY selection, returning counts only and writing nothing', async () => {
   const f = await pendingFirstApply(); await (await coldApply()).resume()
   const box = await reopenBox(), actor = box.connect(); await actor.receive()
@@ -915,13 +1211,13 @@ it.each(['fence', 'receipt', 'null-fence', 'undefined-receipt'])('erasure bridge
   expect(await control.get('meta', `sync-apply:${before.apply.id}`)).toBeTruthy(); control.close()
 }, 30_000)
 
-it('v10 local erasure removes A including its v2 barrier and preserves real encrypted B history, project, file and pending pair', async () => {
+it.each([[10, 'erasure'], [11, 'erasure'], [11, 'publication']] as const)('v%s %s preserves real encrypted B history, project, file and pending pair', async (version, outcome) => {
   let bProjectId = '', bPair: Awaited<ReturnType<typeof rows>>, bCipher = '', bKey = '', bPacket: ArrayBuffer
   const loginB = async () => {
     const users = await import('../../services/userSession'); users.setActiveSession({ userId: 'b', authMethod: 'apikey', displayName: 'Synthetic B', createdAt: 1 })
     await (await import('../../services/crypto')).initCrypto('synthetic-key-b')
   }
-  const f = await pendingFirstApply(false, async () => {
+  const beforeJoin = async () => {
     await loginB()
     const store = await import('../../services/projects/store'), p = await store.createProject(await store.beginProjectOperation(), 'Account B original'); bProjectId = p.id
     await (await import('../../services/secureFileStorage')).putFile({ id: 'b-file', name: 'B.txt', type: 'text/plain', data: 'Qg==' })
@@ -934,21 +1230,41 @@ it('v10 local erasure removes A including its v2 barrier and preserves real encr
     const box = await localBox(); await box.unlock(code, { vaultId: crypto.randomUUID(), epoch: crypto.randomUUID() })
     await box.capture({ conversationIds: ['b-chat'], projectIds: [p.id] }); bPair = await rows(); bPacket = await (await box.resume())!.ciphertext.arrayBuffer(); box.close()
     await login()
-  })
-  const first = await coldApply(), put = IDBObjectStore.prototype.put
-  vi.spyOn(IDBObjectStore.prototype, 'put').mockImplementation(function(value, key) {
-    if (value?.apply?.phase === 'publishing') this.transaction.addEventListener('complete', () => runtime!.documentWorkspace.retire(), { once: true })
-    return put.call(this, value, key)
-  })
-  await expect(first.resume()).rejects.toThrow(); vi.restoreAllMocks()
-  const active = await openDB(f.layout.projects.name); expect((await active.get('meta', ['sync-state', 'a'])).version).toBe(2); active.close()
-  const traffic = exchanges.length; await (await coldApply()).eraseLocal()
-  expect(await controlRoot()).toMatchObject({ version: 6, state: 'erasing', erasure: { authority: { owner: 'a', localOnly: true, serverConfirmed: false } } })
-  await newDocument(); expect(await runtime!.workspaceAdmission.admit()).toBe('erasure')
-  await (await import('../../services/workspaceWriter/erasure')).createColdWorkspaceErasure().resume('local-only')
+  }
+  let f: Pick<Awaited<ReturnType<typeof pendingFirstApply>>, 'layout' | 'historyKey'>
+  if (version === 10) f = await pendingFirstApply(false, beforeJoin)
+  else {
+    const update = await existingUpdatePreparation(false, false, beforeJoin)
+    await update.controller.applyReceived(); f = update.first
+  }
+  const first = await coldApply(), traffic = exchanges.length
+  if (outcome === 'publication') {
+    await first.resume()
+    expect(await controlRoot()).toMatchObject({ state: 'ready' })
+    expect(localStorage.getItem(f.historyKey)).not.toBeNull()
+  } else {
+    const put = IDBObjectStore.prototype.put
+    vi.spyOn(IDBObjectStore.prototype, 'put').mockImplementation(function(value, key) {
+      if (value?.apply?.phase === 'publishing') this.transaction.addEventListener('complete', () => runtime!.documentWorkspace.retire(), { once: true })
+      return put.call(this, value, key)
+    })
+    await expect(first.resume()).rejects.toThrow(); vi.restoreAllMocks()
+    const active = await openDB(f.layout.projects.name); expect((await active.get('meta', ['sync-state', 'a'])).version).toBe(2); active.close()
+    await (await coldApply()).eraseLocal()
+    expect(await controlRoot()).toMatchObject({ version: 6, state: 'erasing', erasure: { authority: { owner: 'a', localOnly: true, serverConfirmed: false } } })
+    await newDocument(); expect(await runtime!.workspaceAdmission.admit()).toBe('erasure')
+    await (await import('../../services/workspaceWriter/erasure')).createColdWorkspaceErasure().resume('local-only')
+    expect(localStorage.getItem(f.historyKey)).toBeNull()
+  }
   expect(exchanges).toHaveLength(traffic)
   await newDocument(); expect(await runtime!.workspaceAdmission.admit()).toBe('ready'); await loginB()
-  expect(await rows()).toEqual(bPair!); expect(localStorage.getItem(bKey)).toBe(bCipher); expect(localStorage.getItem(f.historyKey)).toBeNull()
+  const afterRows = await rows()
+  if (outcome === 'publication') {
+    const aRows = afterRows.filter(row => Array.isArray(row.key) && row.key.length === 2 && row.key[0] === 'sync-state' && row.key[1] === 'a')
+    expect(aRows).toHaveLength(1); expect(aRows[0]!.value).toMatchObject({ owner: 'a', version: 2, pending: null })
+    expect(afterRows.filter(row => row !== aRows[0])).toEqual(bPair!)
+  } else expect(afterRows).toEqual(bPair!)
+  expect(localStorage.getItem(bKey)).toBe(bCipher)
   const history = await import('../../services/storage'); await history.bootstrapConversationStorage(); expect(history.getConversation('b-chat')!.title).toBe('Account B original')
   expect(await (await import('../../services/secureFileStorage')).getFile('b-file')).toMatchObject({ data: 'Qg==' })
   const box = await localBox(); await box.unlock(code); expect(await (await box.resume())!.ciphertext.arrayBuffer()).toEqual(bPacket!)
@@ -1005,7 +1321,8 @@ it('cold apply payload rejects closed-field and state/usage corruption even unde
   }
 }, 30_000)
 
-it('two storage-prepared profiles apply comparison/gallery/documents through the real actor and cold journal, then recapture unchanged', async () => {
+it('two storage-prepared profiles apply and update comparison/gallery/documents through real journals, then recapture unchanged', async () => {
+  const sourceProfile = profile
   const { actor } = await created(), p = await actualProjectDocument(), doc = p.documents[0]!
   const files = await import('../../services/secureFileStorage'), history = await import('../../services/storage')
   const imageId = '11111111-1111-1111-1111-111111111111'
@@ -1050,7 +1367,8 @@ it('two storage-prepared profiles apply comparison/gallery/documents through the
   await (await import('../../services/workspaceWriter/syncApply')).createColdWorkspaceSyncApply().resume()
   expect(decrypt).not.toHaveBeenCalled(); expect(random).not.toHaveBeenCalled(); decrypt.mockRestore(); random.mockRestore()
   expect(exchanges).toHaveLength(noMoreHTTP)
-  const reopened = await reopenBox(), importedHistory = await import('../../services/storage'), state = reopened.snapshot
+  let reopened = await reopenBox()
+  const importedHistory = await import('../../services/storage'), state = reopened.snapshot
   expect(state.remote!.selection).toEqual(baseline.remote!.selection)
   expect(importedHistory.getConversation('chat')).toEqual(originalB)
   const imported = state.bindings.filter(b => b.kind === 'conversation' && b.presence === 'record').map(b => importedHistory.getConversation(b.localId)!)
@@ -1080,7 +1398,42 @@ it('two storage-prepared profiles apply comparison/gallery/documents through the
   const diagnostic = reopened.connect(); await diagnostic.receive()
   expect(await diagnostic.inspectMaterialized()).toMatchObject({ local: { requested: 7, equal: 7, unreadable: 0, missing: 0 }, remote: { dependencyIssues: 0 } })
   diagnostic.close()
-  const edited = imported[0]!; edited.title = 'Edited after receive'; await saveExact(edited)
+  // The comparison's absent response was reserved during the real first
+  // import. A later ordinary source message must promote that SAME identity,
+  // while gallery aliases, attachments, document provenance and peer survive.
+  const receiverProfile = profile, sourceBox = await readyProfile(sourceProfile), sourceHistory = await import('../../services/storage')
+  const sourceChat = sourceHistory.getConversation('chat')!
+  const logicalChat = sourceBox.snapshot.bindings.find(b => b.kind === 'conversation' && b.localId === 'chat')!.logicalId
+  const targetId = state.bindings.find(b => b.logicalId === logicalChat)!.localId
+  const priorChat = imported.find(c => c.id === targetId)!, reservedId = priorChat.comparison!.responseId
+  expect(state.bindings.find(b => b.localId === reservedId)!.presence).toBe('reference')
+  await saveExact({ ...sourceChat, title: 'Comparison updated', updatedAt: 19, messages: [...sourceChat.messages,
+    { id: 'absent-r', role: 'assistant', content: '\uFEFFFinal comparison answer\r\n\uD800', timestamp: 19, model: 'historical' }] })
+  expect(await sourceBox.connect().synchronize({ conversationIds: ['chat', 'peer'], projectIds: [p.id] })).toMatchObject({ publication: { status: 'acknowledged' } })
+  const receiverBox = await readyProfile(receiverProfile), receiver = receiverBox.connect()
+  const filesBeforeDB = await openDB(layout.files.name), projectsBeforeDB = await openDB(layout.projects.name, 2)
+  const unchanged = { files: await filesBeforeDB.getAll('files'), projects: await projectsBeforeDB.getAll('projects'),
+    documents: await projectsBeforeDB.getAll('documents'), usage: await projectsBeforeDB.getAll('usage') }
+  filesBeforeDB.close(); projectsBeforeDB.close()
+  await receiver.receive()
+  const allocate = vi.spyOn(crypto, 'randomUUID'), update = await receiver.prepareApply()
+  expect(update).toMatchObject({ status: 'existing-update-reviewed', conversations: 1, projects: 0, canApply: true })
+  expect(allocate).toHaveBeenCalledOnce(); allocate.mockRestore() // journal ID only, no new message identity
+  if (update.status !== 'existing-update-reviewed') throw new Error('test')
+  update.targets[0]!.localId = 'chat'; update.targets[0]!.after = 'Forged preview only'
+  await receiver.applyReceived(); await (await coldApply()).resume(); reopened = await reopenBox()
+  const updatedHistory = await import('../../services/storage'), updated = updatedHistory.getConversation(targetId)!
+  expect(updated.title).toBe('Comparison updated'); expect(updated.messages[2]).toMatchObject({ id: reservedId, content: '\uFEFFFinal comparison answer\r\n\uD800', restoredArchive: true })
+  expect(updated.comparison).toEqual(priorChat.comparison); expect(updated.messages.slice(0, 2)).toEqual(priorChat.messages)
+  expect(updatedHistory.getConversation('chat')).toEqual(originalB)
+  expect(reopened.snapshot.bindings.find(b => b.localId === reservedId)!.presence).toBe('embedded')
+  const filesAfterDB = await openDB(layout.files.name), projectsAfterDB = await openDB(layout.projects.name, 2)
+  expect(await filesAfterDB.getAll('files')).toEqual(unchanged.files); expect(await projectsAfterDB.getAll('projects')).toEqual(unchanged.projects)
+  expect(await projectsAfterDB.getAll('documents')).toEqual(unchanged.documents); expect(await projectsAfterDB.getAll('usage')).toEqual(unchanged.usage)
+  filesAfterDB.close(); projectsAfterDB.close()
+  const updatedCapture = await (await import('../../services/workspaceSync/capture')).captureLocalSyncSnapshot(reopened.snapshot.localHead, reopened.snapshot.bindings, captureSelection)
+  expect(updatedCapture.report.capturedObjects).toBeGreaterThan(0); expect(updatedCapture.changed).toBe(false); expect(updatedCapture.payloads.size).toBe(0)
+  const edited = updatedHistory.getConversation(imported[0]!.id)!; edited.title = 'Edited after receive'; await saveExact(edited)
   expect(await reopened.capture(captureSelection)).toMatchObject({ status: 'adopted', report: { changedObjects: 1 } })
   expect((await rows()).find(r => (r.key as string[])[0] === 'sync-state')!.value.version).toBe(2)
   expect(await reopened.connect().resume()).toMatchObject({ status: 'acknowledged' })

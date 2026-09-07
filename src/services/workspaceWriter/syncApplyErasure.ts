@@ -8,9 +8,10 @@ import { migrationDatabaseName } from './migrationProtocol'
 import { parseErasureHeader, validErasureFence, type ErasureHeader } from './erasureProtocol'
 import { readErasureProof } from './erasure'
 import { localPairs } from './migrationInventory'
-import { syncApplyJobKey, parseSyncApplyHeader } from './syncApplyProtocol'
+import { syncPublicationJobKey, parseSyncPublicationHeader } from './syncPublicationProtocol'
 import { workspaceAdmission, documentWorkspace } from './runtime'
 import { parseSyncApplyPayload } from './syncApplyJournal'
+import { parseSyncUpdatePayload } from './syncUpdateJournal'
 import { openRestoreDatabases, restoreTransaction as transact, restoreEqual as equal, restoreFail as fail, type RestoreGuard } from './restoreJournal'
 
 /** Explicit UI-confirmed LOCAL erasure of the job owner, not a server receipt.
@@ -18,7 +19,7 @@ import { openRestoreDatabases, restoreTransaction as transact, restoreEqual as e
  * new document runs the existing owner erasure. All B proofs describe CURRENT
  * data; no baseline, account key, old usage or old fence is reinstalled. */
 export async function reserveSyncApplyErasure(external: RestoreGuard) {
-  const initial = parseSyncApplyHeader(workspaceAdmission.getSyncApplyRecovery()) ?? fail('unavailable')
+  const initial = parseSyncPublicationHeader(workspaceAdmission.getSyncApplyRecovery()) ?? fail('unavailable')
   const guard: RestoreGuard = { signal: external.signal, assertCurrent() {
     documentWorkspace.assertHeld(); external.assertCurrent()
     if (workspaceAdmission.getSnapshot() !== 'maintenance' || !equal(workspaceAdmission.getSyncApplyRecovery(), initial)) return fail('unavailable')
@@ -35,13 +36,14 @@ export async function reserveSyncApplyErasure(external: RestoreGuard) {
   ], guard)
   const [control, legacyFiles, legacyProjects, files, projects, job] = dbs as [typeof dbs[number], typeof dbs[number], typeof dbs[number], typeof dbs[number], typeof dbs[number], typeof dbs[number]]
   try {
-    const key = syncApplyJobKey(initial.apply.id)
+    const key = syncPublicationJobKey(initial)
     const raw = await transact(control, ['meta'], 'readonly', guard, async tx => {
       const store = tx.objectStore('meta')
       if (await store.count() !== 2 || !equal(await store.get(WORKSPACE_CONTROL_KEY), initial)) return fail()
       return store.get(key)
     })
-    await parseSyncApplyPayload(raw, initial, guard)
+    if (initial.version === 10) await parseSyncApplyPayload(raw, initial, guard)
+    else await parseSyncUpdatePayload(raw, initial, guard)
     const readActiveAuthority = async (tx: IDBPTransaction<unknown, string[], 'readonly'>) => {
       const receipt = await tx.objectStore('meta').openCursor(['erasing', initial.apply.owner])
       const fence = await tx.objectStore('meta').openCursor('erasure-fence')
@@ -92,6 +94,7 @@ export async function reserveSyncApplyErasure(external: RestoreGuard) {
       await store.delete(key)
       if (!equal(localPairs(), local)) return fail()
       await store.put(header, WORKSPACE_CONTROL_KEY)
+      if (!equal(localPairs(), local)) return fail()
     })
   } finally { dbs.forEach(db => db.close()) }
 }

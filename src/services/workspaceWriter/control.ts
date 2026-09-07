@@ -11,7 +11,7 @@ import { parseRestoreHeader, restoreJobKey, type RestoreHeader } from './restore
 import { parseWorkspaceUpgrade, type WorkspaceUpgradeHeader } from './upgradeProtocol'
 import { syncStorageContext, type SyncStorageContext } from '../workspaceSync/localFormat'
 import { inspectSyncInventory } from '../workspaceSync/localInventory'
-import { parseSyncApplyHeader, syncApplyJobKey, type SyncApplyHeader } from './syncApplyProtocol'
+import { parseSyncPublicationHeader, syncPublicationJobKey, type SyncPublicationHeader } from './syncPublicationProtocol'
 
 export const WORKSPACE_CONTROL_DB = 'arty-workspace-control'
 export const WORKSPACE_CONTROL_VERSION = 1
@@ -27,7 +27,7 @@ export class WorkspaceRestoreAvailable extends WorkspaceAdmissionError {
   constructor(public readonly header: Readonly<RestoreHeader>) { super('restoring') }
 }
 export class WorkspaceSyncApplyAvailable extends WorkspaceAdmissionError {
-  constructor(public readonly header: Readonly<SyncApplyHeader>) { super('applying') }
+  constructor(public readonly header: Readonly<SyncPublicationHeader>) { super('applying') }
 }
 export class WorkspaceUpgradeAvailable extends WorkspaceAdmissionError {
   constructor(public readonly header: Readonly<WorkspaceUpgradeHeader>) { super('upgrading') }
@@ -50,7 +50,7 @@ function fields(value: unknown, keys: string[]): value is Record<string, unknown
 /** No generic ready/unknown-generation fallback. Metadata is not account data
  * or a restore journal, and this module exposes NO writer or repair operation. */
 export function validateWorkspaceControl(value: unknown): WorkspaceStorageLayout {
-  const apply = parseSyncApplyHeader(value)
+  const apply = parseSyncPublicationHeader(value)
   if (apply) throw new WorkspaceSyncApplyAvailable(apply)
   const upgrade = parseWorkspaceUpgrade(value)
   if (upgrade) throw new WorkspaceUpgradeAvailable(upgrade)
@@ -163,12 +163,12 @@ async function inspectDatabase(db: IDBPDatabase, shape: readonly StoreShape[], c
       const store = tx.objectStore('meta')
       const root = await store.get(WORKSPACE_CONTROL_KEY)
       const restore = parseRestoreHeader(root)
-      const apply = parseSyncApplyHeader(root)
+      const apply = parseSyncPublicationHeader(root)
       // Identify the small root before considering a potentially large payload.
       // getAllKeys is bounded by count; never clone ciphertexts at admission.
       if (await store.count() !== (restore || apply ? 2 : 1)) reject('corrupt')
       if (restore && !(await store.getAllKeys()).includes(restoreJobKey(restore.restore.id))) reject('corrupt')
-      if (apply && !(await store.getAllKeys()).includes(syncApplyJobKey(apply.apply.id))) reject('corrupt')
+      if (apply && !(await store.getAllKeys()).includes(syncPublicationJobKey(apply))) reject('corrupt')
       assertCurrent()
       layout = validateWorkspaceControl(root)
     }

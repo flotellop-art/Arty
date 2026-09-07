@@ -7,6 +7,8 @@ import { isolatedWorkspaceLayout } from './layout'
 import { digestRaw } from './migrationInventory'
 import { parseSyncApplyHeader, syncApplyJobKey, syncApplyCompletedBase, type SyncApplyHeader } from './syncApplyProtocol'
 import { parseSyncApplyPayload, syncApplyStoreProof, type SyncApplyPayload } from './syncApplyJournal'
+import { parseSyncUpdateHeader } from './syncUpdateProtocol'
+import { createColdWorkspaceSyncUpdate } from './syncUpdate'
 import { openRestoreDatabase, restoreTransaction as transact, restoreEqual as equal, restoreFail as fail, restoreLocalSnapshot,
   assertRestoreLocal, proveRestoreSlots, restoreHistoryKeys, deriveRestoreUsage, zeroRestoreUsage, type RestoreGuard } from './restoreJournal'
 
@@ -15,6 +17,7 @@ import { openRestoreDatabase, restoreTransaction as transact, restoreEqual as eq
  * success, failure and uncertain commits all require a fresh document. */
 export function createColdWorkspaceSyncApply() {
   if (!ISOLATED_WORKSPACE_ENABLED) return fail('unavailable')
+  if (parseSyncUpdateHeader(workspaceAdmission.getSyncApplyRecovery())) return createColdWorkspaceSyncUpdate()
   const initial = parseSyncApplyHeader(workspaceAdmission.getSyncApplyRecovery()) ?? fail('unavailable')
   const cold = workspaceAdmission.claimMaintenance()
   let chosen = false
