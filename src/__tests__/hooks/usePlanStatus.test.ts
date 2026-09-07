@@ -22,6 +22,7 @@ vi.mock('../../services/googleAuth', () => ({
 }))
 vi.mock('../../services/apiBase', () => ({ apiUrl: (path: string) => path }))
 vi.mock('../../services/walletClient', () => ({
+  onWalletBalanceChanged: () => () => {},
   clearWalletCache: vi.fn(),
   fetchWalletBalance: mocks.fetchWalletBalance,
   creditsCoverPremium: mocks.creditsCoverPremium,

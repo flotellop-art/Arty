@@ -47,7 +47,7 @@ const D1_TIMEOUT_MS = 250
 // récupérant vite les réserves gelées par un settle/void raté (auto-soin).
 const RESERVATION_STALE_MINUTES = 15
 
-let tablesEnsured = false
+const tablesEnsured = new WeakSet<D1Database>()
 
 export type ReserveResult = { status: 'reserved' | 'insufficient' | 'db_unavailable' }
 export type SettleResult =
@@ -62,6 +62,26 @@ export interface WalletBalance {
   balanceMicro: number
   reservedMicro: number
   availableMicro: number
+  /** A known refund/chargeback still needs attribution or collection. */
+  reversalPending: boolean
+}
+
+export type WalletBalanceRead =
+  | { status: 'ready'; balance: WalletBalance }
+  | { status: 'missing' | 'unavailable' }
+
+// Shared by the read and BOTH halves of the atomic hold. A refund can be
+// known before its amount/owner is resolved; pendingMicro alone misses that
+// state. Unrelated orders/providers/users must not freeze this wallet.
+function noPendingReversal(email: '?1' | '?2'): string {
+  return `NOT EXISTS (
+    SELECT 1 FROM wallet_reversal r
+    WHERE (r.user_email = ${email} AND r.requested_micro > r.collected_micro)
+       OR (r.requested_micro IS NULL AND EXISTS (
+         SELECT 1 FROM webhook_event e WHERE e.provider = r.provider
+           AND e.order_id = r.order_id AND e.kind = 'topup' AND e.user_email = ${email}
+       ))
+  )`
 }
 
 /** Race une requête D1 contre un timeout, pour borner la latence du hot path. */
@@ -76,7 +96,7 @@ async function raceTimeout<T>(p: Promise<T>, ms: number): Promise<T | '__timeout
  * propres, ceci est le filet runtime). Idempotent + mémoïsé par worker chaud.
  */
 export async function ensureWalletTables(env: Env): Promise<void> {
-  if (tablesEnsured || !env.DB) return
+  if (!env.DB || tablesEnsured.has(env.DB)) return
   try {
     await env.DB.batch([
       env.DB.prepare(
@@ -120,6 +140,10 @@ export async function ensureWalletTables(env: Env): Promise<void> {
          )`,
       ),
       env.DB.prepare(
+        `CREATE INDEX IF NOT EXISTS idx_webhook_event_order_topup
+           ON webhook_event(provider, order_id, kind, user_email)`,
+      ),
+      env.DB.prepare(
         `CREATE TABLE IF NOT EXISTS reservation (
            id TEXT PRIMARY KEY, user_email TEXT NOT NULL,
            reserved_micro INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'open',
@@ -158,7 +182,7 @@ export async function ensureWalletTables(env: Env): Promise<void> {
            ON wallet_reversal(user_email, status, created_at)`,
       ),
     ])
-    tablesEnsured = true
+    tablesEnsured.add(env.DB)
   } catch (err) {
     console.error('[wallet] ensureWalletTables échec (non bloquant)', err)
   }
@@ -173,29 +197,42 @@ export async function ensureWalletTables(env: Env): Promise<void> {
  * fail-closed : pas de premium gratuit pendant un incident.)
  */
 export async function getWalletBalance(env: Env, email: string): Promise<WalletBalance | null> {
-  if (!env.DB) return null
+  const result = await readWalletBalance(env, email)
+  return result.status === 'ready' ? result.balance : null
+}
+
+/** Explicit absence vs. failed read for the balance API. No collection or
+ * financial write here: accounting and spendability share one SQL snapshot. */
+export async function readWalletBalance(env: Env, email: string): Promise<WalletBalanceRead> {
+  if (!env.DB) return { status: 'unavailable' }
   await ensureWalletTables(env)
   try {
     const query = env.DB.prepare(
-      `SELECT balance_micro, reserved_micro FROM wallet WHERE user_email = ?1`,
+      `SELECT balance_micro, reserved_micro,
+        CASE WHEN ${noPendingReversal('?1')} THEN 0 ELSE 1 END AS reversal_pending
+       FROM wallet WHERE user_email = ?1`,
     )
       .bind(email)
-      .first<{ balance_micro: number; reserved_micro: number }>()
+      .first<{ balance_micro: number; reserved_micro: number; reversal_pending: number }>()
     const raced = await raceTimeout(query, D1_TIMEOUT_MS)
     if (raced === '__timeout__') {
       console.error('[wallet] getWalletBalance D1 timeout — traité comme pas de wallet')
-      return null
+      return { status: 'unavailable' }
     }
-    const row = raced as { balance_micro: number; reserved_micro: number } | null
-    if (!row) return null
-    return {
+    const row = raced
+    if (!row) return { status: 'missing' }
+    if (!Number.isSafeInteger(row.balance_micro) || row.balance_micro < 0
+      || !Number.isSafeInteger(row.reserved_micro) || row.reserved_micro < 0
+      || (row.reversal_pending !== 0 && row.reversal_pending !== 1)) return { status: 'unavailable' }
+    return { status: 'ready', balance: {
       balanceMicro: row.balance_micro,
       reservedMicro: row.reserved_micro,
-      availableMicro: row.balance_micro - row.reserved_micro,
-    }
+      availableMicro: row.reversal_pending === 1 ? 0 : Math.max(0, row.balance_micro - row.reserved_micro),
+      reversalPending: row.reversal_pending === 1,
+    } }
   } catch (err) {
     console.error('[wallet] getWalletBalance erreur — traité comme pas de wallet', err)
-    return null
+    return { status: 'unavailable' }
   }
 }
 
@@ -221,11 +258,13 @@ export async function reserveCredits(
         env.DB.prepare(
           `INSERT INTO reservation (id, user_email, reserved_micro, status, model, modality)
            SELECT ?1, ?2, ?3, 'open', ?4, ?5
-           WHERE EXISTS (SELECT 1 FROM wallet WHERE user_email = ?2 AND (balance_micro - reserved_micro) >= ?3)`,
+           WHERE EXISTS (SELECT 1 FROM wallet WHERE user_email = ?2 AND (balance_micro - reserved_micro) >= ?3)
+             AND ${noPendingReversal('?2')}`,
         ).bind(resId, email, estMicro, model, modality),
         env.DB.prepare(
           `UPDATE wallet SET reserved_micro = reserved_micro + ?2, updated_at = datetime('now')
-           WHERE user_email = ?1 AND (balance_micro - reserved_micro) >= ?2`,
+           WHERE user_email = ?1 AND (balance_micro - reserved_micro) >= ?2
+             AND ${noPendingReversal('?1')}`,
         ).bind(email, estMicro),
       ]),
       D1_TIMEOUT_MS,

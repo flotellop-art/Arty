@@ -1,4 +1,5 @@
 import i18n from '../i18n'
+import { walletReconciliationError } from './walletFailure'
 import { apiUrl } from './apiBase'
 import { buildAiHeaders } from './aiHttp'
 import { shouldUseWebSearch } from './aiRouter'
@@ -392,6 +393,8 @@ async function streamOnce(
     // modale de choix l'intercepte), au lieu du « Trop de requêtes »
     // générique qui masquait totalement le cap.
     const errBody = await response.clone().text().catch(() => '')
+    const walletError = walletReconciliationError(response.status, errBody)
+    if (walletError) throw walletError
     try {
       const parsed = JSON.parse(errBody) as { error?: string; bucket?: string; cap?: number }
       if (parsed?.error === 'premium_cap_reached') {

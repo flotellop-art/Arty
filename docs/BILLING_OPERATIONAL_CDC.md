@@ -78,6 +78,14 @@ Voir [contrat et livraison](LEMON_INVOICE_RECEIPTS_RELEASE.md). La migration
 prestataire live, ni le rattachement checkout, ni les droits historiques ou
 la réconciliation ; l'exigence abonnements **et** crédits reste non livrée.
 
+Lot de disponibilité des crédits : [contrat et preuves](WALLET_SPENDABILITY_RELEASE.md).
+Le solde disponible et les réservations sont maintenant protégés localement
+contre une réclamation de remboursement non régularisée, même de montant encore
+inconnu. L'interface sépare cet état d'un portefeuille absent ou d'une panne.
+Le candidat ne remplace pas les handlers historiques, n'active aucune vente et
+ne valide aucun prestataire. L'intention serveur de checkout, son activation
+positive, le rapprochement historique et la recette marchande restent requis.
+
 Références officielles consultées le 6 septembre :
 [activation et distinction test/live Lemon](https://docs.lemonsqueezy.com/help/getting-started/activate-your-store),
 [événements Lemon](https://docs.lemonsqueezy.com/help/webhooks/event-types),

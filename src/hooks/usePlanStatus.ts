@@ -8,7 +8,7 @@ import {
   isGoogleStorageReady,
 } from '../services/googleAuth'
 import { apiUrl } from '../services/apiBase'
-import { fetchWalletBalance, creditsCoverPremium, clearWalletCache } from '../services/walletClient'
+import { fetchWalletBalance, creditsCoverPremium, clearWalletCache, onWalletBalanceChanged } from '../services/walletClient'
 import { captureBillingContext, onBillingContextInvalidated, type BillingContext } from '../services/billingContext'
 import { onLocalDataInvalidated } from '../services/localDataInvalidation'
 import {
@@ -92,7 +92,22 @@ const ALL_FAMILIES: ModelFamily[] = [
   'gemini-flash', 'gemini-pro', 'gpt-mini', 'gpt-full',
 ]
 
+// Preserve the verified server entitlement separately from the revocable
+// wallet extension. A balance-only refresh must not strip paid/BYOK access.
+const basePlans = new WeakMap<PlanStatus, { base: PlanStatus; walletVerified: boolean }>()
+let latestBaseReceipt: { context: BillingContext; base: PlanStatus } | null = null
+function withWalletAccess(base: PlanStatus): PlanStatus {
+  return base.plan === 'free' && !base.authRequired && !base.authRejected
+    && !base.statusUnavailable && creditsCoverPremium()
+    ? { ...base, allowedFamilies: [...ALL_FAMILIES], lockedFamilies: [] } : base
+}
+
+function cacheEffectiveFamilies(status: PlanStatus) {
+  try { localStorage.setItem('arty-allowed-families', JSON.stringify(status.allowedFamilies)) } catch { /* RAM wallet gate remains closed */ }
+}
+
 function clearVerifiedPlanCache(): void {
+  latestBaseReceipt = null
   clearWalletCache()
   try { localStorage.removeItem('arty-plan-cache') } catch { /* noop */ }
   try { localStorage.removeItem('arty-allowed-families') } catch { /* noop */ }
@@ -207,9 +222,15 @@ async function resolvePlanStatus(
     if (!isCurrentUser()) return null
     // Un échec wallet est fermé par défaut : ne jamais réutiliser un solde
     // local ancien pour ouvrir les familles premium.
-    const unlock = data.plan === 'free' && walletBalance !== null && creditsCoverPremium()
-    const effectiveFamilies = unlock ? [...ALL_FAMILIES] : data.allowed_families
-    const effectiveLockedFamilies = unlock ? [] : data.locked_families
+    const base: PlanStatus = {
+      plan: data.plan, allowedFamilies: data.allowed_families, lockedFamilies: data.locked_families,
+      dailyRemaining: data.daily_remaining, dailyLimits: data.daily_limits,
+      monthlyCap: data.monthly_cap ?? null, premiumPackRemaining: data.premium_pack_remaining ?? 0,
+      loading: false, authRejected: false, authRequired: false, statusUnavailable: false,
+    }
+    const effective = walletBalance === null ? base : withWalletAccess(base)
+    basePlans.set(effective, { base, walletVerified: walletBalance !== null })
+    latestBaseReceipt = { context, base }
     // F-14 (refonte routage, étape 3) — cache aussi les FAMILLES autorisées
     // pour le routage auto hors React (router/availability.ts) : un abonné
     // clé-serveur peut atteindre Gemini/Mistral selon son plan, plus
@@ -221,7 +242,7 @@ async function resolvePlanStatus(
       localStorage.setItem('arty-plan-cache', data.plan)
       localStorage.setItem(
         'arty-allowed-families',
-        JSON.stringify(effectiveFamilies)
+        JSON.stringify(effective.allowedFamilies)
       )
     } catch {}
     // Le composer calcule une destination avant envoi hors React context.
@@ -230,21 +251,7 @@ async function resolvePlanStatus(
     try {
       window.dispatchEvent(new CustomEvent('arty-plan-status-changed'))
     } catch {}
-    return {
-      plan: data.plan,
-      allowedFamilies: effectiveFamilies,
-      lockedFamilies: effectiveLockedFamilies,
-      dailyRemaining: data.daily_remaining,
-      dailyLimits: data.daily_limits,
-      monthlyCap: data.monthly_cap ?? null,
-      premiumPackRemaining: data.premium_pack_remaining ?? 0,
-      loading: false,
-      // Réponse identifiée : lève un éventuel drapeau posé par un
-      // rafraîchissement précédent (token réparé entre-temps).
-      authRejected: false,
-      authRequired: false,
-      statusUnavailable: false,
-    }
+    return effective
   } catch {
     if (!isCurrentUser()) return null
     clearVerifiedPlanCache()
@@ -300,8 +307,14 @@ export function usePlanStatus(enabled = true): PlanStatus & { refresh: () => Pro
       && context.isCurrent() && requestId === refreshSerialRef.current
     ) {
       receiptContext.current = context
-      setState(nextState)
-      return nextState
+      const receipt = basePlans.get(nextState)
+      const base = receipt?.base ?? nextState
+      // Do not re-open a failed wallet read while committing the plan receipt.
+      // Later verified balance notifications may still extend this base plan.
+      const projected = receipt?.walletVerified ? withWalletAccess(base) : base
+      if (!base.authRejected && !base.authRequired && !base.statusUnavailable) cacheEffectiveFamilies(projected)
+      setState(projected)
+      return projected
     }
     return null
     } catch { return null } // lost private document: no publication or retry
@@ -318,6 +331,18 @@ export function usePlanStatus(enabled = true): PlanStatus & { refresh: () => Pro
     const offGrant = onBillingContextInvalidated(invalidate)
     const offOwner = onLocalDataInvalidated(() => {
       if (receiptContext.current && !receiptContext.current.isCurrent()) invalidate()
+    })
+    const offWallet = onWalletBalanceChanged(() => {
+      // All subscribers must project the newest verified plan, not a local
+      // Free receipt predating another hook's paid-plan refresh.
+      const latest = latestBaseReceipt
+      const base = latest?.base
+      if (!enabledRef.current || !receiptContext.current?.isCurrent() || !latest?.context.isCurrent() || !base
+        || base.authRejected || base.authRequired || base.statusUnavailable) return
+      const next = withWalletAccess(base)
+      cacheEffectiveFamilies(next)
+      setState(next)
+      // Local projection only. Never refetch from a wallet publication.
     })
     void refresh()
     // Re-sync sur événements custom : `arty-message-sent` (après chaque
@@ -342,7 +367,7 @@ export function usePlanStatus(enabled = true): PlanStatus & { refresh: () => Pro
       // Retire this UI subscriber; another mounted hook may share the cache
       // refresh. That task still has its original owner/session/grant guard.
       refreshSerialRef.current += 1
-      receiptContext.current = null; offGrant(); offOwner()
+      receiptContext.current = null; offGrant(); offOwner(); offWallet()
       events.forEach((e) => window.removeEventListener(e, refresh))
       window.removeEventListener('focus', handleFocus)
       window.removeEventListener('online', handleFocus)

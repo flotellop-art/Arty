@@ -1024,7 +1024,12 @@
   "wallet": {
     "badge": "{{credits}} crédits",
     "badgeTitle": "Crédits prépayés restants",
-    "badgeAria": "Solde de crédits"
+    "badgeAria": "Solde de crédits",
+    "refresh": "Actualiser le solde",
+    "reversalBadge": "Crédits indisponibles — vérification nécessaire",
+    "reversalDetail": "Un remboursement ou une contestation reste à régulariser. Solde comptable : {{balance}} crédits ; réservés : {{reserved}} ; disponibles : 0. Actualise le solde ; si cet état persiste, contacte le support.",
+    "reversalError": "Tes crédits sont indisponibles : un remboursement ou une contestation reste à régulariser. Actualise le solde ; si cet état persiste, contacte le support.",
+    "balanceUnavailable": "Le solde n’a pas pu être vérifié. Réessaie avant de lancer un achat."
   },
   "advisor": {
     "title": "Suggestion",
@@ -1502,7 +1507,7 @@
     "creditsCta": "Acheter des crédits",
     "creditsBusy": "Ouverture du paiement…",
     "creditsError": "Impossible de lancer le paiement. Réessaie.",
-    "creditsAdded": "Augmentation du solde constatée.",
+    "creditsAdded": "Solde disponible actualisé : {{credits}} crédits. Cela ne confirme pas un nouvel achat.",
     "transparency": "Abonnement : quotas exprimés en messages. Crédits prépayés : consommation déduite du solde. Les limites applicables sont indiquées pour chaque offre. Prix affichés TVA comprise ; une limite journalière anti-abus s'applique.",
     "manageSubscription": "Gérer mon abonnement (annulation en ligne)",
     "nativeUnavailableTitle": "Achats indisponibles dans cette version Android",

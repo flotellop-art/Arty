@@ -10,8 +10,9 @@ export interface WalletBalance {
   hasWallet: boolean
   balanceMicro: number
   reservedMicro: number
-  /** Solde réellement disponible (balance - réservations en vol). */
+  /** Solde dépensable, nul tant qu'un remboursement reste à rapprocher. */
   availableMicro: number
+  reversalPending: boolean
 }
 
 // Cache synchrone du solde disponible : les services non-React (aiRouter) en ont
@@ -25,6 +26,39 @@ const WALLET_HAS_KEY = 'arty-wallet-has'
 let walletRequestSerial = 0
 let observingContext = false
 let sharedBalance: { context: BillingContext; promise: Promise<WalletBalance | null> } | null = null
+let snapshot: { context: BillingContext; data: WalletBalance } | null = null
+const listeners = new Set<() => void>()
+
+export function onWalletBalanceChanged(listener: () => void): () => void {
+  listeners.add(listener)
+  return () => { listeners.delete(listener) }
+}
+
+function notifyBalanceChanged() {
+  for (const listener of [...listeners]) { try { listener() } catch { /* isolate subscribers */ } }
+  try { window.dispatchEvent(new CustomEvent('arty-plan-status-changed')) } catch { /* no browser */ }
+}
+
+export function getWalletSnapshot(): WalletBalance | null {
+  const current = snapshot
+  return current?.context.isCurrent() && snapshot === current ? current.data : null
+}
+
+function parseWalletBalance(value: unknown): WalletBalance | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const data = value as Record<string, unknown>
+  if (typeof data.hasWallet !== 'boolean' || typeof data.reversalPending !== 'boolean') return null
+  for (const key of ['balanceMicro', 'reservedMicro', 'availableMicro']) {
+    if (typeof data[key] !== 'number' || !Number.isSafeInteger(data[key]) || data[key] < 0) return null
+  }
+  const { balanceMicro, reservedMicro, availableMicro } = data as unknown as WalletBalance
+  if (!data.hasWallet && (balanceMicro !== 0 || reservedMicro !== 0 || availableMicro !== 0 || data.reversalPending)) return null
+  if (availableMicro > Math.max(0, balanceMicro - reservedMicro)) return null
+  // Blocked status is authoritative even if a future server accidentally
+  // includes an old positive available amount. Never cache that positive.
+  return { hasWallet: data.hasWallet, balanceMicro, reservedMicro,
+    availableMicro: data.reversalPending ? 0 : availableMicro, reversalPending: data.reversalPending }
+}
 
 // 1 crédit AFFICHÉ = 1 cent US (10 000 micro-USD). Choix de PRÉSENTATION
 // centralisé ICI (avant : dupliqué dans WalletBadge) — une seule source pour
@@ -38,32 +72,25 @@ export function microToCredits(micro: number): number {
 
 /** Vrai si le dernier fetch a vu un wallet (lecture synchrone, sans hook). */
 export function hasWalletCached(): boolean {
-  try {
-    return localStorage.getItem(WALLET_HAS_KEY) === '1'
-  } catch {
-    return false
-  }
+  return getWalletSnapshot()?.hasWallet ?? false
 }
 
 export function getCachedWalletAvailableMicro(): number {
-  try {
-    const n = Number(localStorage.getItem(WALLET_CACHE_KEY))
-    return Number.isFinite(n) && n > 0 ? n : 0
-  } catch {
-    return 0
-  }
+  return getWalletSnapshot()?.availableMicro ?? 0
 }
 
 /** Invalide les requêtes en vol et purge les caches globaux du wallet. */
 export function clearWalletCache(): void {
   walletRequestSerial += 1
   sharedBalance = null
+  snapshot = null
   try {
     localStorage.removeItem(WALLET_CACHE_KEY)
     localStorage.removeItem(WALLET_HAS_KEY)
   } catch {
-    /* storage indispo — état synchrone déjà invalidé par le serial */
+    /* Persisted hints are never authority; RAM is already closed. */
   }
+  notifyBalanceChanged()
 }
 
 /**
@@ -114,17 +141,26 @@ async function resolveWalletBalance(context: BillingContext, requestId: number):
       if (isCurrentRequest()) clearWalletCache()
       return null
     }
-    const data = (await resp.json()) as WalletBalance
+    const data = parseWalletBalance(await resp.json())
     // Un changement de compte ou un fetch plus récent a eu lieu pendant le
     // réseau : cette réponse ne doit jamais repeupler les caches globaux.
     if (!isCurrentRequest()) return null
+    if (!data) { clearWalletCache(); return null }
+    // Publish closed/current RAM before best-effort persistence. Quota or
+    // disabled localStorage must not resurrect a previous positive balance.
+    snapshot = { context, data }
     try {
       localStorage.setItem(WALLET_CACHE_KEY, String(data.availableMicro ?? 0))
+      if (!isCurrentRequest()) return null
       localStorage.setItem(WALLET_HAS_KEY, data.hasWallet ? '1' : '0')
     } catch {
       /* storage indispo — non bloquant */
     }
-    return data
+    if (!isCurrentRequest()) return null
+    notifyBalanceChanged()
+    // A subscriber may have invalidated this receipt synchronously. Do not
+    // hand a revoked DTO to a checkout/plan continuation after publication.
+    return isCurrentRequest() ? getWalletSnapshot() : null
   } catch {
     if (isCurrentRequest()) clearWalletCache()
     return null

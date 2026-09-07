@@ -1,10 +1,13 @@
 // @vitest-environment node
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Env } from '../../../functions/env'
-import { ensureWalletTables, getWalletBalance } from '../../../functions/api/_lib/wallet'
+import { ensureWalletTables, getWalletBalance, readWalletBalance } from '../../../functions/api/_lib/wallet'
+import { onRequestGet } from '../../../functions/api/wallet/balance'
+
+vi.mock('../../../functions/api/_lib/checkAllowedUser', () => ({ verifyGoogleUserStrict: async () => 'wallet-reader@example.test' }))
 
 const EMAIL = 'wallet-reader@example.test'
-const row = { balance_micro: 994_112, reserved_micro: 0 }
+const row = { balance_micro: 994_112, reserved_micro: 0, reversal_pending: 0 }
 
 async function fixture(first: () => Promise<typeof row | null>) {
   const statement = { first: vi.fn(first), bind: vi.fn() }
@@ -22,10 +25,32 @@ afterEach(() => {
 })
 
 describe('wallet hot-path balance reader (not an accounting oracle)', () => {
+  it.each([{ reversal_pending: undefined }, { reversal_pending: 2 }, { balance_micro: -1 },
+    { balance_micro: '994112' }, { reserved_micro: NaN }])('rejects malformed accounting reads without inventing a zero (%j)', async patch => {
+    const { env } = await fixture(async () => ({ ...row, ...patch }) as typeof row)
+    expect(await readWalletBalance(env, EMAIL)).toEqual({ status: 'unavailable' })
+  })
+
+  it.each(['timeout', 'sql-error'])('returns a non-cacheable API 503 with no financial amounts on %s', async failure => {
+    let release!: (value: typeof row) => void
+    const pending = new Promise<typeof row>(resolve => { release = resolve })
+    const { env, db } = await fixture(() => failure === 'timeout' ? pending : Promise.reject(new Error('synthetic SQL error')))
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.useFakeTimers()
+    const result = onRequestGet({ env, request: new Request('https://tryarty.com/api/wallet/balance') } as never)
+    try {
+      await vi.advanceTimersByTimeAsync(250)
+      const response = await result
+      expect(response.status).toBe(503); expect(response.headers.get('cache-control')).toBe('no-store')
+      expect(await response.json()).toEqual({ error: 'wallet_temporarily_unavailable' })
+      expect(db.batch).not.toHaveBeenCalled()
+    } finally { release(row); await pending }
+  })
+
   it('returns exact available balance for a completed read', async () => {
     const { env, db, statement } = await fixture(async () => ({ ...row, reserved_micro: 112 }))
     expect(await getWalletBalance(env, EMAIL)).toEqual({
-      balanceMicro: 994_112, reservedMicro: 112, availableMicro: 994_000,
+      balanceMicro: 994_112, reservedMicro: 112, availableMicro: 994_000, reversalPending: false,
     })
     expect(statement.bind).toHaveBeenCalledWith(EMAIL)
     expect(db.batch).not.toHaveBeenCalled()
@@ -73,7 +98,7 @@ describe('wallet hot-path balance reader (not an accounting oracle)', () => {
     }
     expect(await reading).toBeNull()
     expect(await getWalletBalance(env, EMAIL)).toEqual({
-      balanceMicro: 994_112, reservedMicro: 0, availableMicro: 994_112,
+      balanceMicro: 994_112, reservedMicro: 0, availableMicro: 994_112, reversalPending: false,
     })
     expect(db.batch).not.toHaveBeenCalled()
   })

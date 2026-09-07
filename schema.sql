@@ -238,6 +238,8 @@ CREATE TABLE IF NOT EXISTS wallet_reversal (
 );
 CREATE INDEX IF NOT EXISTS idx_wallet_reversal_order
   ON wallet_reversal(provider, order_id, status);
+CREATE INDEX IF NOT EXISTS idx_webhook_event_order_topup
+  ON webhook_event(provider, order_id, kind, user_email);
 CREATE INDEX IF NOT EXISTS idx_wallet_reversal_user
   ON wallet_reversal(user_email, status, created_at);
 

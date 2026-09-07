@@ -5,18 +5,23 @@ import * as google from '../../services/googleAuth'
 import { initCrypto } from '../../services/crypto'
 import { getActiveSessionEpoch, setActiveSession } from '../../services/userSession'
 import { usePlanStatus } from '../../hooks/usePlanStatus'
-import { clearWalletCache, fetchWalletBalance } from '../../services/walletClient'
+import { clearWalletCache, fetchWalletBalance, creditsCoverPremium, getWalletSnapshot, onWalletBalanceChanged } from '../../services/walletClient'
 import { WalletBadge } from '../../components/layout/WalletBadge'
+import { CostIndicator } from '../../components/layout/CostIndicator'
+import userEvent from '@testing-library/user-event'
 import i18n from '../../i18n'
 import { captureBillingContext } from '../../services/billingContext'
 import { openCreemCheckout } from '../../services/checkout'
 
 vi.mock('../../services/apiBase', () => ({ apiUrl: (path: string) => path }))
+vi.mock('../../services/quotaStatus', () => ({ fetchMonthlyQuotaStatus: vi.fn(async () => ({
+  month: '2026-09', totalCostUsd: 0.12, totalInputTokens: 1, totalOutputTokens: 1, totalCalls: 1, byModel: [],
+})) }))
 const families = ['claude-haiku', 'claude-sonnet', 'claude-opus', 'mistral-medium', 'gemini-flash', 'gemini-pro', 'gpt-mini', 'gpt-full']
 const dto = (plan: string) => ({ auth: 'ok', status: plan === 'free' ? 'inactive' : 'active', plan,
   allowed_families: plan === 'free' ? ['claude-haiku'] : families,
   locked_families: plan === 'free' ? families.slice(1) : [], daily_remaining: null, daily_limits: null })
-const wallet = (n = 0) => Response.json({ hasWallet: n > 0, availableMicro: n, balanceMicro: n, reservedMicro: 0 })
+const wallet = (n = 0) => Response.json({ hasWallet: n > 0, availableMicro: n, balanceMicro: n, reservedMicro: 0, reversalPending: false })
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(r => { resolve = r }); return { promise, resolve } }
 let serial = 0
 async function relink(token = 'G2') {
@@ -33,6 +38,84 @@ beforeEach(async () => {
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
 describe('plan and wallet with real encrypted Google grant lifecycle (HTTP synthetic)', () => {
+  it('projects the latest shared paid receipt instead of an older Free hook on a wallet-only update', async () => {
+    const http = vi.fn(async (url: string) => url === '/api/wallet/balance' ? wallet(900000) : Response.json(dto('free')))
+    vi.stubGlobal('fetch', http)
+    const a = renderHook(() => usePlanStatus()), b = renderHook(() => usePlanStatus())
+    await waitFor(() => { expect(a.result.current.loading).toBe(false); expect(b.result.current.loading).toBe(false) })
+    http.mockImplementation(async url => url === '/api/wallet/balance' ? wallet(900000) : Response.json(dto('subscription')))
+    await act(async () => { await b.result.current.refresh() })
+    expect(b.result.current.plan).toBe('subscription')
+    const reads = http.mock.calls.filter(([url]) => url === '/api/subscription/status').length
+    http.mockImplementation(async () => Response.json({ hasWallet: true, availableMicro: 0, balanceMicro: 900000, reservedMicro: 0, reversalPending: true }))
+    await act(async () => { await fetchWalletBalance() })
+    expect(a.result.current.plan).toBe('subscription'); expect(b.result.current.plan).toBe('subscription')
+    expect(a.result.current.allowedFamilies).toEqual(families)
+    expect(JSON.parse(localStorage.getItem('arty-allowed-families')!)).toEqual(families)
+    expect(localStorage.getItem('arty-plan-cache')).toBe('subscription')
+    expect(http.mock.calls.filter(([url]) => url === '/api/subscription/status')).toHaveLength(reads)
+  })
+
+  it('does not resurrect a returned badge after same-context invalidation during wallet publication', async () => {
+    const off = onWalletBalanceChanged(() => { if (getWalletSnapshot()) clearWalletCache() })
+    const http = vi.fn(async () => wallet(900000)); vi.stubGlobal('fetch', http)
+    try {
+      render(<WalletBadge />)
+      await waitFor(() => expect(http).toHaveBeenCalledOnce())
+      await act(async () => { await fetchWalletBalance() })
+      expect(getWalletSnapshot()).toBeNull(); expect(creditsCoverPremium()).toBe(false)
+      expect(screen.queryByLabelText(i18n.t('wallet.badgeAria'))).not.toBeInTheDocument()
+    } finally { off() }
+  })
+
+  it.each(['fr', 'en'])('exposes blocked-wallet details and a read-only refresh to touch/keyboard in %s', async language => {
+    await i18n.changeLanguage(language)
+    const http = vi.fn(async (_url: string, _init?: RequestInit) => Response.json({ hasWallet: true, balanceMicro: 900000, reservedMicro: 50000, availableMicro: 0, reversalPending: true }))
+    vi.stubGlobal('fetch', http); render(<WalletBadge />)
+    const badge = await screen.findByRole('button', { name: `${i18n.t('wallet.badgeAria')}: ${i18n.t('wallet.reversalBadge')}` })
+    const user = userEvent.setup(); await user.tab(); expect(badge).toHaveFocus()
+    await user.keyboard('{Enter}')
+    expect(badge).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByText(i18n.t('wallet.reversalDetail', { balance: 90, reserved: 5 }))).toBeVisible()
+    http.mockImplementation(async () => wallet(50000))
+    await user.click(screen.getByRole('button', { name: i18n.t('wallet.refresh') }))
+    await waitFor(() => expect(screen.getByLabelText(i18n.t('wallet.badgeAria'))).toHaveTextContent('5'))
+    expect(http).toHaveBeenCalledTimes(2)
+    expect(http.mock.calls.every(([url, init]) => url === '/api/wallet/balance' && init?.method === 'GET')).toBe(true)
+  })
+
+  it.each(['cost-first', 'wallet-first'])('hides provider-cost units on the first RAM wallet publication (%s)', async order => {
+    const response = deferred<Response>(), http = vi.fn(() => response.promise)
+    vi.stubGlobal('fetch', http)
+    render(order === 'cost-first' ? <><CostIndicator /><WalletBadge /></> : <><WalletBadge /><CostIndicator /></>)
+    await screen.findByLabelText(i18n.t('costs.badgeAria'))
+    await act(async () => { response.resolve(wallet(900000)); await response.promise })
+    await waitFor(() => expect(screen.getByLabelText(i18n.t('wallet.badgeAria'))).toHaveTextContent('90'))
+    expect(screen.queryByLabelText(i18n.t('costs.badgeAria'))).not.toBeInTheDocument()
+    expect(http).toHaveBeenCalledOnce()
+  })
+
+  it.each(['free', 'vip', 'subscription', 'pro'])('updates badge-only spendability without refetching the %s plan or revoking paid rights', async plan => {
+    const http = vi.fn(async (url: string) => url === '/api/wallet/balance' ? wallet(900000) : Response.json(dto(plan)))
+    vi.stubGlobal('fetch', http)
+    render(<WalletBadge />); const hook = renderHook(() => usePlanStatus())
+    await waitFor(() => expect(hook.result.current.allowedFamilies).toContain('gpt-full'))
+    const planReads = http.mock.calls.filter(([url]) => url === '/api/subscription/status').length
+    http.mockImplementation(async url => url === '/api/wallet/balance'
+      ? Response.json({ hasWallet: true, balanceMicro: 900000, reservedMicro: 0, availableMicro: 0, reversalPending: true }) : Response.json(dto(plan)))
+    act(() => window.dispatchEvent(new Event('cost-updated')))
+    await waitFor(() => expect(screen.getByRole('button', { name: `${i18n.t('wallet.badgeAria')}: ${i18n.t('wallet.reversalBadge')}` })).toBeInTheDocument())
+    expect(creditsCoverPremium()).toBe(false)
+    expect(hook.result.current.plan).toBe(plan)
+    expect(hook.result.current.allowedFamilies.includes('gpt-full')).toBe(plan !== 'free')
+    expect(http.mock.calls.filter(([url]) => url === '/api/subscription/status')).toHaveLength(planReads)
+    expect(http.mock.calls.filter(([url]) => url === '/api/wallet/balance')).toHaveLength(2)
+    http.mockImplementation(async url => url === '/api/wallet/balance' ? wallet(50000) : Response.json(dto(plan)))
+    act(() => window.dispatchEvent(new Event('wallet-updated')))
+    await waitFor(() => expect(screen.getByLabelText(i18n.t('wallet.badgeAria'))).toHaveTextContent('5'))
+    expect(hook.result.current.allowedFamilies).toContain('gpt-full')
+  })
+
   it.each(['wallet-first', 'plan-first'])('keeps the actual badge and plan coherent when concurrent consumers refresh (%s)', async order => {
     const http = vi.fn(async (url: string) => url === '/api/wallet/balance' ? wallet(900000) : Response.json(dto('vip')))
     vi.stubGlobal('fetch', http); render(<WalletBadge />); const hook = renderHook(() => usePlanStatus())

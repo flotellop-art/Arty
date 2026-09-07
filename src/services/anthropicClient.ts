@@ -1,4 +1,5 @@
 import { SYSTEM_PROMPT } from '../constants/systemPrompt'
+import { walletReconciliationError } from './walletFailure'
 import { TOOLS } from './toolDefinitions'
 import { compressIfNeeded } from './conversationCompressor'
 import { getAnthropicKey } from './activeApiKey'
@@ -234,6 +235,8 @@ export function formatApiErrorForTest(status: number, body: string): string {
 }
 
 function formatApiError(status: number, body: string): string {
+  const walletError = walletReconciliationError(status, body)
+  if (walletError) return walletError.message
   try {
     const parsed = JSON.parse(body) as { error?: string | { type?: string; message?: string } }
     const err = parsed?.error
@@ -362,7 +365,7 @@ async function fetchWithRetry(
 
   if (!response!.ok) {
     const body = await response!.text().catch(() => '')
-    const error = new Error(formatApiError(response!.status, body))
+    const error = walletReconciliationError(response!.status, body) ?? new Error(formatApiError(response!.status, body))
     // Cap premium : attache bucket/cap pour que la modale de choix (P0.7)
     // affiche « 150/150 Sonnet utilisés » avec précision.
     try {

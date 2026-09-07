@@ -327,6 +327,10 @@ export async function beginWalletBilling(
   }
 
   const bal: WalletBalance | null = await getWalletBalance(env, email)
+  if (bal?.reversalPending) return {
+    mode: 'refuse',
+    response: Response.json({ error: 'wallet_reconciliation_pending' }, { status: 409 }),
+  }
   if (!bal || bal.availableMicro <= 0) return { mode: 'skip' }
 
   const maxOutputTokens = extractMaxOutputTokens(provider, body)
@@ -352,10 +356,24 @@ export async function beginWalletBilling(
 
   if (r.status === 'reserved') return { mode: 'wallet', resId }
   if (r.status === 'insufficient') {
+    // A refund may have arrived after the favorable read but before the
+    // atomic hold. Do not turn that refusal into an invitation to buy more.
+    const latest = await getWalletBalance(env, email)
+    if (!latest || latest.reversalPending) return {
+      mode: 'refuse',
+      response: Response.json({ error: latest?.reversalPending ? 'wallet_reconciliation_pending' : 'wallet_temporarily_unavailable' },
+        { status: latest?.reversalPending ? 409 : 503 }),
+    }
+    // Concurrent reconciliation may already have restored enough funds.
+    // Do not turn a refused hold into a misleading invitation to buy more.
+    if (latest.availableMicro >= estMicro) return {
+      mode: 'refuse',
+      response: Response.json({ error: 'wallet_temporarily_unavailable' }, { status: 503 }),
+    }
     return {
       mode: 'refuse',
       response: Response.json(
-        { error: 'insufficient_credits', availableMicro: bal.availableMicro, estimatedMicro: estMicro },
+        { error: 'insufficient_credits', availableMicro: latest.availableMicro, estimatedMicro: estMicro },
         { status: 402 },
       ),
     }

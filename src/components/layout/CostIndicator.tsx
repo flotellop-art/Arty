@@ -5,7 +5,7 @@ import {
   type MonthlyModelUsage,
   type MonthlyQuotaStatus,
 } from '../../services/quotaStatus'
-import { hasWalletCached } from '../../services/walletClient'
+import { hasWalletCached, onWalletBalanceChanged } from '../../services/walletClient'
 
 // Refresh périodique du badge. MED (audit étape 6) — 60s était trop fréquent :
 // l'event 'cost-updated' (BUG 54) fire à chaque recordUsage local, ce qui
@@ -28,6 +28,7 @@ export function CostIndicator() {
   }, [])
 
   useEffect(() => {
+    const offBalance = onWalletBalanceChanged(() => setIsWalletUser(hasWalletCached()))
     refresh()
     const interval = window.setInterval(refresh, REFRESH_MS)
     const onCostEvent = () => {
@@ -38,6 +39,7 @@ export function CostIndicator() {
     window.addEventListener('cost-updated', onCostEvent)
     window.addEventListener('wallet-updated', onCostEvent)
     return () => {
+      offBalance()
       window.clearInterval(interval)
       window.removeEventListener('cost-updated', onCostEvent)
       window.removeEventListener('wallet-updated', onCostEvent)

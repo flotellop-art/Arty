@@ -1024,7 +1024,12 @@
   "wallet": {
     "badge": "{{credits}} credits",
     "badgeTitle": "Prepaid credits remaining",
-    "badgeAria": "Credits balance"
+    "badgeAria": "Credits balance",
+    "refresh": "Refresh balance",
+    "reversalBadge": "Credits unavailable — review needed",
+    "reversalDetail": "A refund or dispute still needs reconciliation. Accounting balance: {{balance}} credits; reserved: {{reserved}}; available: 0. Refresh the balance; if this persists, contact support.",
+    "reversalError": "Your credits are unavailable: a refund or dispute still needs reconciliation. Refresh the balance; if this persists, contact support.",
+    "balanceUnavailable": "Your balance could not be verified. Try again before starting a purchase."
   },
   "advisor": {
     "title": "Suggestion",
@@ -1502,7 +1507,7 @@
     "creditsCta": "Buy credits",
     "creditsBusy": "Opening checkout…",
     "creditsError": "Couldn't start the checkout. Please try again.",
-    "creditsAdded": "Balance increase observed.",
+    "creditsAdded": "Available balance refreshed: {{credits}} credits. This does not confirm a new purchase.",
     "transparency": "Subscription quotas are stated in messages. Prepaid usage is deducted from your credit balance. Applicable limits are shown for each offer. Prices include VAT; a daily anti-abuse limit applies.",
     "manageSubscription": "Manage my subscription (cancel online)",
     "nativeUnavailableTitle": "Purchases unavailable in this Android version",
