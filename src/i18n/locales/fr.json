@@ -899,6 +899,7 @@
     "apiRateLimit": "Trop de requêtes. Patiente quelques secondes...",
     "apiOverloaded": "Le serveur IA est temporairement surchargé. Réessai automatique...",
     "apiServer": "Erreur serveur chez Anthropic. Réessaie dans un instant.",
+    "admissionUnavailable": "Arty ne peut pas vérifier ton accès pour le moment. Aucune demande n’a été envoyée à l’IA. Réessaie dans 30 secondes.",
     "apiInvalidRequest": "Requête invalide : {{message}}",
     "apiConnection": "Erreur de connexion ({{status}}). Vérifie ta connexion internet.",
     "apiBadRequest": "Requête refusée par le service IA (400). Ce n'est pas ta connexion : réessaie, et signale-le si ça persiste.",

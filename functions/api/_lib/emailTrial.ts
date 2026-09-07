@@ -1,5 +1,7 @@
 import type { Env } from '../../env'
-import { consumeRefundableCapAtomic, type QuotaWaitUntil } from './atomicQuota'
+import type { QuotaWaitUntil } from './atomicQuota'
+import { admissionUnavailable, admissionUnavailableResponse } from './admission'
+import { consumeTrialCounter } from './trialAdmission'
 import {
   verifyTokenViaTokeninfoDetailed,
   type AllowedUser,
@@ -468,9 +470,14 @@ export async function createSession(env: Env, normalizedEmail: string): Promise<
  * plan est figé `trial` par construction (CRIT-1).
  */
 export async function verifyEmailTrialToken(request: Request, env: Env): Promise<string | null> {
-  if (!env.DB) return null
+  const result = await verifyEmailTrialTokenDetailed(request, env)
+  return result.status === 'ok' ? result.email : null
+}
+export type EmailTrialVerification = { status: 'ok'; email: string } | { status: 'unauthorized' } | { status: 'unavailable' }
+export async function verifyEmailTrialTokenDetailed(request: Request, env: Env): Promise<EmailTrialVerification> {
   const token = request.headers.get('x-arty-trial-token')
-  if (!token) return null
+  if (!token) return { status: 'unauthorized' }
+  if (!env.DB) return { status: 'unavailable' }
   try {
     const tokenHash = await sha256Hex(token)
     const row = await env.DB.prepare(
@@ -480,10 +487,12 @@ export async function verifyEmailTrialToken(request: Request, env: Env): Promise
     )
       .bind(tokenHash)
       .first<{ email: string }>()
-    return row?.email ?? null
+    if (row === null) return { status: 'unauthorized' }
+    return row && typeof row.email === 'string' && isValidEmail(row.email) && normalizeEmail(row.email) === row.email
+      ? { status: 'ok', email: row.email } : { status: 'unavailable' }
   } catch (err) {
     console.error('[emailTrial] verifyEmailTrialToken failed', err)
-    return null
+    return { status: 'unavailable' }
   }
 }
 
@@ -515,27 +524,17 @@ export async function consumeEmailTrialMessage(
   waitUntil?: QuotaWaitUntil,
 ): Promise<CheckResult> {
   const key = emailTrialKey(normalizedEmail)
-  if (!env.DB) {
-    return { email: key, planType: 'trial', trialRemaining: EMAIL_TRIAL_MESSAGES, allowedModels: [...TRIAL_ALLOWED_MODELS] }
-  }
+  if (!env.DB) return admissionUnavailable()
   await ensureEmailTrialTables(env)
-  const outcome = await consumeRefundableCapAtomic(
-    env,
-    `INSERT INTO email_trial_usage (email, used, updated_at)
-     VALUES (?1, 1, unixepoch())
-     ON CONFLICT (email) DO UPDATE SET used = used + 1, updated_at = unixepoch()
-       WHERE email_trial_usage.used < ?2
-     RETURNING used AS count`,
-    [normalizedEmail, EMAIL_TRIAL_MESSAGES],
+  const outcome = await consumeTrialCounter(
+    env, normalizedEmail, 'email_trial_usage',
     () => voidEmailTrialMessage(env, normalizedEmail),
     waitUntil,
   )
   if (outcome.status === 'cap_reached') {
     return { error: 'trial_expired', email: key }
   }
-  if (outcome.status === 'fail_open') {
-    return { email: key, planType: 'trial', trialRemaining: 1, allowedModels: [...TRIAL_ALLOWED_MODELS] }
-  }
+  if (outcome.status === 'unavailable') return admissionUnavailable()
   return {
     email: key,
     planType: 'trial',
@@ -552,7 +551,7 @@ export async function voidEmailTrialMessage(env: Env, normalizedEmail: string): 
     await env.DB.prepare(
       `UPDATE email_trial_usage
        SET used = MAX(0, used - 1), updated_at = unixepoch()
-       WHERE email = ?1`,
+       WHERE email = ?1 AND typeof(used) = 'integer' AND used BETWEEN 1 AND 30`,
     ).bind(normalizedEmail).run()
   } catch (err) {
     console.error('[email-trial] void failed', err)
@@ -601,11 +600,11 @@ export async function resolveProxyIdentityDetailed(
     return { status: 'unauthorized' }
   }
 
-  const trialEmail = await verifyEmailTrialToken(request, env)
-  if (trialEmail) {
-    return { status: 'ok', identity: { kind: 'email-trial', email: trialEmail } }
+  const trial = await verifyEmailTrialTokenDetailed(request, env)
+  if (trial.status === 'ok') {
+    return { status: 'ok', identity: { kind: 'email-trial', email: trial.email } }
   }
-  return { status: 'unauthorized' }
+  return trial
 }
 
 /** Compatibilité pour les endpoints qui n'exposent pas encore la distinction 401/503. */
@@ -621,10 +620,7 @@ export function proxyIdentityFailureResponse(
   resolution: Exclude<ProxyIdentityResolution, { status: 'ok' }>,
 ): Response {
   if (resolution.status === 'unavailable') {
-    return Response.json(
-      { error: 'Authentication service temporarily unavailable' },
-      { status: 503 },
-    )
+    return admissionUnavailableResponse()
   }
   return Response.json(
     { error: 'Authentication required — please sign in with Google' },

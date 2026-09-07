@@ -1,5 +1,6 @@
 import { SYSTEM_PROMPT } from '../constants/systemPrompt'
 import { walletReconciliationError } from './walletFailure'
+import { admissionUnavailableError } from './admissionFailure'
 import { TOOLS } from './toolDefinitions'
 import { compressIfNeeded } from './conversationCompressor'
 import { getAnthropicKey } from './activeApiKey'
@@ -235,6 +236,8 @@ export function formatApiErrorForTest(status: number, body: string): string {
 }
 
 function formatApiError(status: number, body: string): string {
+  const admissionError = admissionUnavailableError(status, body)
+  if (admissionError) return admissionError.message
   const walletError = walletReconciliationError(status, body)
   if (walletError) return walletError.message
   try {
@@ -345,6 +348,10 @@ async function fetchWithRetry(
 
     const isRetryable = response.status === 429 || response.status === 529 || response.status >= 500
     if (response.ok || !isRetryable || attempt === maxRetries) break
+    if (response.status === 503) {
+      const peek = await response.clone().text().catch(() => '')
+      if (admissionUnavailableError(response.status, peek)) break
+    }
 
     // P0.7 — le 429 `premium_cap_reached` est DÉFINITIF jusqu'au mois
     // prochain : retenter 3 fois (24 s de backoff) ne sert à rien et fige
@@ -365,7 +372,7 @@ async function fetchWithRetry(
 
   if (!response!.ok) {
     const body = await response!.text().catch(() => '')
-    const error = walletReconciliationError(response!.status, body) ?? new Error(formatApiError(response!.status, body))
+    const error = admissionUnavailableError(response!.status, body) ?? walletReconciliationError(response!.status, body) ?? new Error(formatApiError(response!.status, body))
     // Cap premium : attache bucket/cap pour que la modale de choix (P0.7)
     // affiche « 150/150 Sonnet utilisés » avec précision.
     try {

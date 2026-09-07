@@ -1,4 +1,5 @@
 import type { Env } from '../../env'
+import { isAdmissionUnavailable, admissionUnavailableResponse } from '../_lib/admission'
 import { checkAllowedUserPeek } from '../_lib/checkAllowedUser'
 import {
   consumeOwnerApiQuota,
@@ -20,6 +21,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   // les plans payants ne sont pas plafonnés. Le filet multi-comptes est le quota
   // journalier DUR côté Google Cloud (cf. docs ops).
   const allowed = await checkAllowedUserPeek(request, env)
+  if (isAdmissionUnavailable(allowed)) return admissionUnavailableResponse()
   if (!allowed) return Response.json({ error: 'Not found' }, { status: 404 })
 
   if (!env.GOOGLE_MAPS_API_KEY) {
@@ -52,6 +54,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   // coords brutes), pas un crash.
   if (planSubjectToOwnerApiCap(allowed.planType)) {
     const cap = await consumeOwnerApiQuota(env, allowed.email, 'geo-reverse')
+    if (cap.unavailable) return admissionUnavailableResponse()
     if (!cap.allowed) return ownerApiLimitResponse('geo-reverse', cap.limit)
   }
 

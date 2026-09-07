@@ -57,9 +57,9 @@ describe('planSubjectToOwnerApiCap', () => {
 })
 
 describe('consumeOwnerApiQuota', () => {
-  it('fail-open si pas de binding D1 (incident infra ne bloque pas)', async () => {
+  it('refuse temporairement si le compteur D1 est absent', async () => {
     const res = await consumeOwnerApiQuota({} as never, 'a@b.c', 'web-search')
-    expect(res.allowed).toBe(true)
+    expect(res).toMatchObject({ allowed: false, unavailable: true })
     expect(res.limit).toBe(OWNER_API_DAILY_LIMITS['web-search'])
   })
 
@@ -86,11 +86,11 @@ describe('consumeOwnerApiQuota', () => {
     expect(capture.binds?.[4]).toBe(OWNER_API_DAILY_LIMITS['web-search'])
   })
 
-  it('borne `amount` à >= 1 (jamais 0 ni négatif)', async () => {
+  it('refuse un montant invalide sans inventer un débit de remplacement', async () => {
     const capture: { binds?: unknown[] } = {}
     const env = mockEnv({ count: 1 }, capture) as never
-    await consumeOwnerApiQuota(env, 'a@b.c', 'url-fetch', 0)
-    expect(capture.binds?.[3]).toBe(1)
+    expect(await consumeOwnerApiQuota(env, 'a@b.c', 'url-fetch', 0)).toMatchObject({ allowed: false, unavailable: true })
+    expect(capture.binds).toBeUndefined()
   })
 })
 

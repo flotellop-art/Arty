@@ -18,9 +18,17 @@ import type { Env } from '../../../functions/env'
 const CLIENT_ID = 'arty-web.apps.googleusercontent.com'
 const OWNER_TOKEN = 'tok-abc'
 
-function makeEnv(): Env {
-  // DB absente → resolveUserPlan renvoie 'free' ; ALLOWED_EMAILS vide.
-  return { GOOGLE_CLIENT_ID: CLIENT_ID } as unknown as Env
+function makeEnv(withReadableDb = true): Env {
+  // Free is confirmed by successful reads with no subscription/license.
+  // This fixture must never turn a missing DB into proof of eligibility.
+  const prepare = vi.fn((sql: string) => {
+    expect(sql).toMatch(/^SELECT (plan_type FROM subscriptions|1 AS ok FROM licenses)\s/)
+    return { bind: (email: string) => {
+      expect(email).toBe('user@gmail.com')
+      return { first: async () => null }
+    } }
+  })
+  return { GOOGLE_CLIENT_ID: CLIENT_ID, DB: withReadableDb ? { prepare } : undefined } as unknown as Env
 }
 
 function makeRequest(): Request {
@@ -67,7 +75,9 @@ afterEach(() => vi.unstubAllGlobals())
 describe('checkAllowedUserPeek — validation aud (C1/F-9)', () => {
   it('REJETTE (null) un token dont aud ET azp sont étrangers', async () => {
     stubGoogle({ email: 'user@gmail.com', tokeninfo: { aud: 'evil-app.example', azp: 'evil-app.example' } })
-    expect(await checkAllowedUserPeek(makeRequest(), makeEnv())).toBeNull()
+    const env = makeEnv()
+    expect(await checkAllowedUserPeek(makeRequest(), env)).toBeNull()
+    expect(env.DB!.prepare).not.toHaveBeenCalled()
   })
 
   it('ACCEPTE un token dont aud === GOOGLE_CLIENT_ID', async () => {
@@ -84,7 +94,9 @@ describe('checkAllowedUserPeek — validation aud (C1/F-9)', () => {
 
   it('REJETTE un token sans aud/azp', async () => {
     stubGoogle({ email: 'user@gmail.com', tokeninfo: {} })
-    expect(await checkAllowedUserPeek(makeRequest(), makeEnv())).toBeNull()
+    const env = makeEnv()
+    expect(await checkAllowedUserPeek(makeRequest(), env)).toBeNull()
+    expect(env.DB!.prepare).not.toHaveBeenCalled()
   })
 
   it('REJETTE sur tokeninfo KO (fail-closed)', async () => {
@@ -102,10 +114,12 @@ describe('checkAllowedUserPeek — validation aud (C1/F-9)', () => {
 describe('checkAllowedUser — validation aud (C1/F-9)', () => {
   it('REJETTE (null) un token à audience étrangère', async () => {
     stubGoogle({ email: 'user@gmail.com', tokeninfo: { aud: 'evil-app.example', azp: 'evil-app.example' } })
-    expect(await checkAllowedUser(makeRequest(), makeEnv())).toBeNull()
+    const env = makeEnv()
+    expect(await checkAllowedUser(makeRequest(), env)).toBeNull()
+    expect(env.DB!.prepare).not.toHaveBeenCalled()
   })
 
-  it('ACCEPTE un token à audience Arty (plan free par défaut sans D1)', async () => {
+  it('ACCEPTE un token à audience Arty (Free confirmé par une DB lisible vide)', async () => {
     stubGoogle({ email: 'user@gmail.com', tokeninfo: { aud: CLIENT_ID } })
     const r = await checkAllowedUser(makeRequest(), makeEnv())
     expect(r).toEqual({ email: 'user@gmail.com', planType: 'free' })
@@ -115,5 +129,15 @@ describe('checkAllowedUser — validation aud (C1/F-9)', () => {
     stubGoogle({ email: 'user@gmail.com', tokeninfo: { aud: 'other' } })
     const env = {} as unknown as Env // GOOGLE_CLIENT_ID absent → expectedAud falsy
     expect(await checkAllowedUser(makeRequest(), env)).toBeNull()
+  })
+})
+
+describe.each([
+  { name: 'peek', check: checkAllowedUserPeek },
+  { name: 'consume', check: checkAllowedUser },
+])('$name — audience valide ne remplace pas les droits vérifiés', ({ check }) => {
+  it.each(['aud', 'azp'] as const)('%s Arty mais D1 absente : indisponible, jamais Free', async field => {
+    stubGoogle({ email: 'user@gmail.com', tokeninfo: { [field]: CLIENT_ID } })
+    expect(await check(makeRequest(), makeEnv(false))).toEqual({ error: 'admission_unavailable' })
   })
 })

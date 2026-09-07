@@ -1,4 +1,5 @@
 import type { Env } from '../../env'
+import { isAdmissionUnavailable, admissionUnavailableResponse } from '../_lib/admission'
 import { checkAllowedUserPeek, notFoundResponse, type AllowedUser } from '../_lib/checkAllowedUser'
 import {
   consumeOwnerApiQuota,
@@ -75,6 +76,7 @@ const REVERSIBLE_WAY_ROLES = new Set(['', 'main'])
 
 export const onRequestPost: PagesFunction<Env> = async ({ request, env }) => {
   const allowed = await checkAllowedUserPeek(request, env)
+  if (isAdmissionUnavailable(allowed)) return admissionUnavailableResponse()
   if (!allowed) return notFoundResponse()
 
   let body: Record<string, unknown>
@@ -578,6 +580,7 @@ function clampRadius(value: unknown): number {
 async function enforceQuota(env: Env, allowed: AllowedUser): Promise<Response | null> {
   if (!planSubjectToOwnerApiCap(allowed.planType)) return null
   const cap = await consumeOwnerApiQuota(env, allowed.email, 'osm-trails')
+  if (cap.unavailable) return admissionUnavailableResponse()
   if (!cap.allowed) return ownerApiLimitResponse('osm-trails', cap.limit)
   return null
 }
