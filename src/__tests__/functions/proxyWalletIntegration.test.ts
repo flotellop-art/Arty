@@ -1,16 +1,60 @@
 // @vitest-environment node
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { onRequestPost as geminiProxy } from '../../../functions/api/ai/gemini-proxy'
 import { onRequestPost as openaiProxy } from '../../../functions/api/ai/openai-proxy'
 import { chargeForUsageMicro } from '../../../functions/api/_lib/creditPricing'
 import { creditWallet } from '../../../functions/api/_lib/wallet'
 import { makeD1Harness, type D1Harness } from './d1Harness'
+import type { Env } from '../../../functions/env'
 
 const EMAIL = 'wallet-proxy@example.test'
 const TOKEN = 'google-access-token'
 const CLIENT_ID = 'arty-client-id'
 
 let h: D1Harness
+const originalFetch = globalThis.fetch
+let backgroundGroups: Promise<unknown>[][] = []
+let deadline: Promise<() => void>
+let releaseDeadlines = () => {}
+
+function trackBackground(background: Promise<unknown>[], promise: Promise<unknown>) {
+  // Observe rejection immediately, but retain the original promise so the
+  // drain reports the error after every sibling operation has completed.
+  void promise.catch(() => {})
+  background.push(promise)
+}
+
+async function drainBackground(background: Promise<unknown>[]) {
+  const settled = await Promise.allSettled(background)
+  const errors = settled.filter((result): result is PromiseRejectedResult => result.status === 'rejected')
+  if (errors.length) throw new AggregateError(errors.map(result => result.reason), 'Background work failed')
+}
+
+// These are accounting/stream tests, not a host-speed benchmark. Hold only
+// the 250 ms D1 deadline: real D1, auth, streams and every other timer run as
+// usual. The refusal case below expires it explicitly; walletBalanceRead
+// separately proves the real 249/250 ms boundary and late-result contract.
+function controlD1Deadline() {
+  const realSetTimeout = globalThis.setTimeout
+  const realClearTimeout = globalThis.clearTimeout
+  const pending = new Map<ReturnType<typeof setTimeout>, () => void>()
+  let announce!: (expire: () => void) => void
+  deadline = new Promise(resolve => { announce = resolve })
+  releaseDeadlines = () => {
+    for (const expire of [...pending.values()]) expire()
+  }
+  vi.spyOn(globalThis, 'setTimeout').mockImplementation(((callback: (...args: unknown[]) => void, delay?: number, ...args: unknown[]) => {
+    if (delay !== 250) return realSetTimeout(callback, delay, ...args)
+    const handle = Object.create(null) as ReturnType<typeof setTimeout>
+    const expire = () => { if (pending.delete(handle)) callback(...args) }
+    pending.set(handle, expire)
+    announce(expire)
+    return handle
+  }) as typeof setTimeout)
+  vi.spyOn(globalThis, 'clearTimeout').mockImplementation(handle => {
+    if (!pending.delete(handle as ReturnType<typeof setTimeout>)) realClearTimeout(handle)
+  })
+}
 
 beforeAll(async () => {
   h = await makeD1Harness({
@@ -23,7 +67,21 @@ afterAll(async () => { await h.dispose() })
 beforeEach(async () => {
   await h.reset()
   vi.restoreAllMocks()
+  backgroundGroups = []
+  controlD1Deadline()
   delete h.env.OPENAI_VISION_ENABLED
+})
+afterEach(async () => {
+  try {
+    // Even a failed assertion must not leak real SQL into the next reset.
+    await drainBackground(backgroundGroups.flat())
+  } finally {
+    // Wallet's Promise.race leaves the losing timer alive after a fast read.
+    // Release those callbacks only after the actual operations have drained.
+    releaseDeadlines()
+    vi.restoreAllMocks()
+    globalThis.fetch = originalFetch
+  }
 })
 
 function googleIdentityResponse(url: string): Response | null {
@@ -36,11 +94,12 @@ function googleIdentityResponse(url: string): Response | null {
   return null
 }
 
-function context(request: Request, background: Promise<unknown>[]) {
+function context(request: Request, background: Promise<unknown>[], env: Env = h.env) {
+  backgroundGroups.push(background)
   return {
     request,
-    env: h.env,
-    waitUntil(promise: Promise<unknown>) { background.push(promise) },
+    env,
+    waitUntil(promise: Promise<unknown>) { trackBackground(background, promise) },
   } as never
 }
 
@@ -91,6 +150,30 @@ function visionRequestBody() {
 }
 
 describe('wallet billing through complete proxy handlers', () => {
+  it('drains later background work before reporting an earlier rejection', async () => {
+    const jobs: Promise<unknown>[] = []
+    let release!: () => void
+    const held = new Promise<void>(resolve => { release = resolve })
+    const error = new Error('synthetic background rejection')
+    trackBackground(jobs, Promise.reject(error))
+    trackBackground(jobs, held)
+    let finished = false
+    const drained = drainBackground(jobs).then(
+      () => { finished = true; return null },
+      failure => { finished = true; return failure },
+    )
+    try {
+      await new Promise<void>(resolve => setTimeout(resolve, 0))
+      expect(finished).toBe(false)
+    } finally {
+      release()
+      await drained
+    }
+    expect(finished).toBe(true)
+    expect(await drained).toBeInstanceOf(AggregateError)
+    expect((await drained as AggregateError).errors).toEqual([error])
+  })
+
   it('charges measured Gemini usage for a non-streamed JSON response', async () => {
     const usage = {
       inputTokens: 1_000,
@@ -141,7 +224,7 @@ describe('wallet billing through complete proxy handlers', () => {
   })
 
   it('charges the full OpenAI reservation when the upstream stream is interrupted', async () => {
-    global.fetch = vi.fn(async (input: RequestInfo | URL) => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input)
       const google = googleIdentityResponse(url)
       if (google) return google
@@ -162,7 +245,8 @@ describe('wallet billing through complete proxy handlers', () => {
         return new Response(body, { status: 200, headers: { 'content-type': 'text/event-stream' } })
       }
       throw new Error(`Unexpected fetch: ${url}`)
-    }) as typeof fetch
+    })
+    global.fetch = fetchMock as typeof fetch
 
     await seedWallet('openai-topup')
     const background: Promise<unknown>[] = []
@@ -174,8 +258,13 @@ describe('wallet billing through complete proxy handlers', () => {
         messages: [{ role: 'user', content: 'Bonjour' }],
       }),
     }), background))
-    await expect(response.text()).rejects.toThrow('upstream interrupted')
-    await Promise.all(background)
+    try {
+      expect(response.status).toBe(200)
+      expect(fetchMock.mock.calls.filter(([url]) => String(url).includes('api.openai.com'))).toHaveLength(1)
+      await expect(response.text()).rejects.toThrow('upstream interrupted')
+    } finally {
+      await drainBackground(background)
+    }
 
     const reservation = await h.db.prepare(
       `SELECT reserved_micro, status FROM reservation ORDER BY created_at DESC LIMIT 1`,
@@ -189,6 +278,102 @@ describe('wallet billing through complete proxy handlers', () => {
       usageMeasured: false,
       fallback: 'full_reservation',
     })
+  })
+
+  it('refuses OpenAI without a reservation or debit when the balance deadline expires, even after a late real D1 result', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const google = googleIdentityResponse(String(input))
+      if (google) return google
+      throw new Error(`Unexpected fetch: ${String(input)}`)
+    })
+    global.fetch = fetchMock as typeof fetch
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+    await seedWallet('openai-late-balance-topup')
+
+    let release!: () => void
+    const held = new Promise<void>(resolve => { release = resolve })
+    type BalanceRow = { balance_micro: number; reserved_micro: number } | null
+    let announceRead!: (read: { values: unknown[]; row: BalanceRow }) => void
+    let failRead!: (error: unknown) => void
+    const readCompleted = new Promise<{ values: unknown[]; row: BalanceRow }>((resolve, reject) => {
+      announceRead = resolve
+      failRead = reject
+    })
+    void readCompleted.catch(() => {})
+    let delayedRead: Promise<unknown> | undefined
+    let balanceReads = 0
+    const realPrepare = h.db.prepare.bind(h.db)
+    // Delay only delivery of the actual D1 balance SELECT. Every other query
+    // and mutation still uses the original database and production handler.
+    const db = new Proxy(h.db, {
+      get(target, key) {
+        if (key === 'prepare') return (sql: string) => {
+          const statement = realPrepare(sql)
+          if (sql.replace(/\s+/g, ' ').trim() !== 'SELECT balance_micro, reserved_micro FROM wallet WHERE user_email = ?1') return statement
+          // A narrow facade is intentional: Miniflare RPC stubs do not
+          // consistently expose method replacements made by vi.spyOn.
+          return { bind(...values: unknown[]) {
+            const bound = statement.bind(...values)
+            return { first() {
+              balanceReads += 1
+              delayedRead = bound.first<BalanceRow>().then(async row => {
+                announceRead({ values, row })
+                await held
+                return row
+              }, error => {
+                failRead(error)
+                throw error
+              })
+              return delayedRead
+            } }
+          } } as D1PreparedStatement
+        }
+        const value = Reflect.get(target, key)
+        return typeof value === 'function' ? value.bind(target) : value
+      },
+    })
+    const background: Promise<unknown>[] = []
+    const pending = openaiProxy(context(new Request('https://tryarty.com/api/ai/openai-proxy', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-google-token': TOKEN },
+      body: JSON.stringify({
+        model: 'gpt-5-mini', stream: true, max_tokens: 100,
+        messages: [{ role: 'user', content: 'Bonjour' }],
+      }),
+    }), background, { ...h.env, DB: db }))
+    const assertNoCharge = async () => {
+      expect(fetchMock.mock.calls.filter(([url]) => String(url).includes('api.openai.com'))).toHaveLength(0)
+      expect(await readDurableWallet()).toEqual({ balanceMicro: 1_000_000, reservedMicro: 0 })
+      expect(await h.db.prepare('SELECT COUNT(*) AS count FROM reservation').first()).toEqual({ count: 0 })
+      expect(await h.db.prepare("SELECT COUNT(*) AS count FROM credit_ledger WHERE kind = 'debit'").first()).toEqual({ count: 0 })
+    }
+    try {
+      const expire = await Promise.race([
+        deadline,
+        pending.then(response => {
+          throw new Error(`Proxy ended before the balance deadline: ${response.status}`)
+        }),
+      ])
+      expect(await readCompleted).toEqual({
+        values: [EMAIL], row: { balance_micro: 1_000_000, reserved_micro: 0 },
+      })
+      expire()
+      const response = await pending
+      expect(response.status).toBe(403)
+      expect(await response.json()).toMatchObject({ error: 'model_locked' })
+      expect(balanceReads).toBe(1)
+      expect(log).toHaveBeenCalledExactlyOnceWith('[wallet] getWalletBalance D1 timeout — traité comme pas de wallet')
+      await assertNoCharge()
+    } finally {
+      release()
+      releaseDeadlines()
+      await delayedRead
+      await pending
+      await drainBackground(background)
+    }
+    expect((await pending).status).toBe(403)
+    expect(balanceReads).toBe(1)
+    await assertNoCharge()
   })
 
   it('annule le wallet sur un 200 OpenAI sans body exploitable', async () => {
