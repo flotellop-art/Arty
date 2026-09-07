@@ -27,14 +27,27 @@ const SPLASH_KEY = 'arty-trial-onboarding-splash'
 const SPLASH_SHOWN_KEY = 'arty-trial-onboarding-splash-shown'
 const REMAINING_KEY = 'arty-trial-remaining'
 const SCOPED_REMAINING_KEY = 'trial-remaining'
+// Optional display cache only, keyed by the existing local owner. A failed
+// disk write must not resurrect an older readable positive counter.
+const failedCacheWrites = new Map<string, string | null>()
+
+function cacheRemaining(owner: string, value: string | null): void {
+  try {
+    if (value === null) scoped.removeItem(SCOPED_REMAINING_KEY)
+    else scoped.setItem(SCOPED_REMAINING_KEY, value)
+    failedCacheWrites.delete(owner)
+  } catch { failedCacheWrites.set(owner, value) }
+}
 
 function setRemainingValue(value: string): void {
-  if (getActiveUserId()) scoped.setItem(SCOPED_REMAINING_KEY, value)
+  const owner = getActiveUserId()
+  if (owner) cacheRemaining(owner, value)
   else localStorage.setItem(REMAINING_KEY, value)
 }
 
 function removeRemainingValue(): void {
-  if (getActiveUserId()) scoped.removeItem(SCOPED_REMAINING_KEY)
+  const owner = getActiveUserId()
+  if (owner) cacheRemaining(owner, null)
   else localStorage.removeItem(REMAINING_KEY)
 }
 
@@ -43,10 +56,14 @@ function removeRemainingValue(): void {
  * session active, déplace le compteur temporaire vers le stockage du compte.
  */
 export function adoptPendingTrialRemaining(): void {
-  if (!getActiveUserId()) return
+  const owner = getActiveUserId()
+  if (!owner) return
   const pending = localStorage.getItem(REMAINING_KEY)
   if (pending === null) return
   scoped.setItem(SCOPED_REMAINING_KEY, pending)
+  // Preserve the existing pre-login transport and its failure behavior.
+  // A successful adoption supersedes any optional failed-write RAM override.
+  failedCacheWrites.delete(owner)
   localStorage.removeItem(REMAINING_KEY)
   try {
     window.dispatchEvent(new CustomEvent('arty-trial-remaining-changed', {
@@ -150,12 +167,14 @@ export function clearOnboardingSplash(): void {
 }
 
 export function getTrialRemaining(): number | null {
-  const raw = getActiveUserId()
-    ? scoped.getItem(SCOPED_REMAINING_KEY)
-    : localStorage.getItem(REMAINING_KEY)
-  if (raw === null) return null
-  const n = parseInt(raw, 10)
-  return Number.isFinite(n) ? Math.max(0, n) : null
+  try {
+    const owner = getActiveUserId()
+    const raw = owner && failedCacheWrites.has(owner) ? failedCacheWrites.get(owner) ?? null
+      : owner ? scoped.getItem(SCOPED_REMAINING_KEY) : localStorage.getItem(REMAINING_KEY)
+    if (raw === null) return null
+    const n = parseInt(raw, 10)
+    return Number.isFinite(n) ? Math.max(0, n) : null
+  } catch { return null }
 }
 
 /**

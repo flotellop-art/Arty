@@ -13,7 +13,7 @@ import { createModelReporter, type ModelInvocationOptions } from './modelLabels'
 import type { ReflectionLevel } from './reflectionLevel'
 import { buildLocationContext } from './locationContext'
 import { recordUsage } from './costTracker'
-import { updateTrialFromResponse } from './trialClient'
+import { captureAiEntitlementReceipt, trialExpiredError } from './aiEntitlementReceipt'
 import { setSearchContext, type SearchContext } from './factChecker'
 import i18n from '../i18n'
 import { DOCUMENT_READ_ONLY_RULES } from './documents/documentPolicy'
@@ -236,6 +236,8 @@ export function formatApiErrorForTest(status: number, body: string): string {
 }
 
 function formatApiError(status: number, body: string): string {
+  const trialError = trialExpiredError(status, body)
+  if (trialError) return trialError.message
   const admissionError = admissionUnavailableError(status, body)
   if (admissionError) return admissionError.message
   const walletError = walletReconciliationError(status, body)
@@ -316,6 +318,7 @@ async function fetchWithRetry(
   assertRequestCurrent?: () => void,
   beforeDocumentRequest?: () => Promise<void>,
 ): Promise<Response> {
+  const receipt = captureAiEntitlementReceipt(!apiKey || apiKey === 'server-provided', controller.signal, assertRequestCurrent)
   const maxRetries = 3
   // `interleaved-thinking-2025-05-14` retiré : obsolète avec le thinking
   // adaptatif (GA sur Opus 4.8/4.7 et Sonnet 5). Le header n'est plus requis,
@@ -368,11 +371,11 @@ async function fetchWithRetry(
   }
 
   // Met à jour le compteur trial local depuis le header x-trial-remaining.
-  updateTrialFromResponse(response!)
+  receipt.updateTrial(response!)
 
   if (!response!.ok) {
     const body = await response!.text().catch(() => '')
-    const error = admissionUnavailableError(response!.status, body) ?? walletReconciliationError(response!.status, body) ?? new Error(formatApiError(response!.status, body))
+    const error = admissionUnavailableError(response!.status, body) ?? receipt.error(response!.status, body) ?? new Error(formatApiError(response!.status, body))
     // Cap premium : attache bucket/cap pour que la modale de choix (P0.7)
     // affiche « 150/150 Sonnet utilisés » avec précision.
     try {

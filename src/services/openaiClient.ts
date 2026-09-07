@@ -10,7 +10,7 @@ import { TEXT_DEFAULTS } from './modelCatalog'
 import { executeClientWebSearch } from './tools/clientWebSearch'
 import { collectUrlAllowlist, executeFetchUrlTool } from './tools/fetchUrlTool'
 import { buildOpenAIToolList, isToolAllowedForOpenAI } from './tools/openaiToolPolicy'
-import { updateTrialFromResponse } from './trialClient'
+import { captureAiEntitlementReceipt } from './aiEntitlementReceipt'
 import { getActiveSessionEpoch, getActiveUserId } from './userSession'
 import type { RouteReason } from './router/types'
 
@@ -182,7 +182,8 @@ function buildMessages(
 // Route : BYOK direct si clé présente, sinon proxy Cloudflare avec token Google
 // pour vérification whitelist (pattern miroir de whisperClient).
 async function resolveTarget(
-  apiKey: string | null
+  apiKey: string | null,
+  assertRequestCurrent?: () => void,
 ): Promise<{ url: string; headers: Record<string, string> }> {
   if (apiKey) {
     return {
@@ -194,7 +195,7 @@ async function resolveTarget(
     }
   }
   // C9 : branche proxy (pas de BYOK) → google-token/trial factorisés (aiHttp).
-  const headers = await buildAiHeaders()
+  const headers = await buildAiHeaders({ assertRequestCurrent })
   return { url: apiUrl('/api/ai/openai-proxy'), headers }
 }
 
@@ -204,7 +205,10 @@ async function openaiFetch(
   signal?: AbortSignal,
   expectedUserId?: string | null,
   expectedSessionEpoch?: number,
+  assertRequestCurrent?: () => void,
 ): Promise<Response> {
+  assertRequestCurrent?.()
+  const receipt = captureAiEntitlementReceipt(!apiKey, signal, assertRequestCurrent)
   signal?.throwIfAborted()
   if (
     (expectedUserId !== undefined && getActiveUserId() !== expectedUserId) ||
@@ -212,7 +216,8 @@ async function openaiFetch(
   ) {
     throw new Error(i18n.t('errors.accountChangedDuringRequest'))
   }
-  const { url, headers } = await resolveTarget(apiKey)
+  const { url, headers } = await resolveTarget(apiKey, assertRequestCurrent)
+  assertRequestCurrent?.()
   signal?.throwIfAborted()
   // buildAiHeaders peut rafraîchir un token : revalidation obligatoire après
   // cet await, avant que les pixels ne quittent l'appareil.
@@ -226,6 +231,7 @@ async function openaiFetch(
   // qui ment sur ce header ne gagne rien : le serveur exige ensuite le contrat
   // vision canonique complet. Le BYOK direct ne passe pas par ce transport.
   if (!apiKey && hasOpenAIVisionBlocks(body)) headers['x-arty-vision'] = '1'
+  assertRequestCurrent?.()
   const res = await fetch(url, {
     method: 'POST',
     headers,
@@ -237,7 +243,11 @@ async function openaiFetch(
       (expectedSessionEpoch !== undefined && getActiveSessionEpoch() !== expectedSessionEpoch)) {
     throw new DOMException('Account changed', 'AbortError')
   }
-  updateTrialFromResponse(res)
+  receipt.updateTrial(res)
+  if (!res.ok && (res.status === 403 || res.status === 409)) {
+    const error = receipt.error(res.status, await res.clone().text().catch(() => ''))
+    if (error) throw error
+  }
   return res
 }
 
@@ -252,9 +262,10 @@ async function startChatRequest(
   signal?: AbortSignal,
   expectedUserId?: string | null,
   expectedSessionEpoch?: number,
+  assertRequestCurrent?: () => void,
 ): Promise<{ response: Response; sentModel: string }> {
   const requestedModel = String(payload.model)
-  const response = await openaiFetch(apiKey, payload, signal, expectedUserId, expectedSessionEpoch)
+  const response = await openaiFetch(apiKey, payload, signal, expectedUserId, expectedSessionEpoch, assertRequestCurrent)
   if (response.ok) return { response, sentModel: requestedModel }
   // gpt-5 n'a pas le même contrat `detail: original`. Une requête vision ne
   // doit jamais être rejouée silencieusement sur ce fallback texte historique.
@@ -273,6 +284,7 @@ async function startChatRequest(
     signal,
     expectedUserId,
     expectedSessionEpoch,
+    assertRequestCurrent,
   )
   // sentModel = FALLBACK dès qu'on a retenté : la boucle tool réutilise ce
   // modèle aux itérations suivantes au lieu de rejouer le 400 Terra à chaque
@@ -361,6 +373,7 @@ async function streamOnce(
     controller.signal,
     options?.expectedUserId,
     options?.expectedSessionEpoch,
+    options?.assertRequestCurrent,
   )
 
   // FILET DE SÉCURITÉ — un provider qui refuse NOS outils ne doit jamais
@@ -382,6 +395,7 @@ async function streamOnce(
         controller.signal,
         options?.expectedUserId,
         options?.expectedSessionEpoch,
+        options?.assertRequestCurrent,
       )
       response = retried.response
       sentModel = retried.sentModel

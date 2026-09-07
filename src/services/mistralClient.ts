@@ -1,5 +1,5 @@
 import { TEXT_DEFAULTS } from './modelCatalog'
-import { walletReconciliationError } from './walletFailure'
+import { captureAiEntitlementReceipt } from './aiEntitlementReceipt'
 import { admissionUnavailableError } from './admissionFailure'
 import { getMistralKey } from './activeApiKey'
 import { apiUrl } from './apiBase'
@@ -12,7 +12,6 @@ import { recordUsage } from './costTracker'
 import { createModelReporter, type ModelInvocationOptions } from './modelLabels'
 import { isTrivialChat, shouldUseWebSearch } from './aiRouter'
 import type { RouteReason } from './router/types'
-import { updateTrialFromResponse } from './trialClient'
 import i18n from '../i18n'
 import { DOCUMENT_READ_ONLY_RULES } from './documents/documentPolicy'
 
@@ -314,7 +313,7 @@ async function runMistralStream(
         // backoff de streamOnce a déjà retenté ; ré-attaquer immédiatement
         // enfonçait le 429 — bug live du 11 juin, article Figaro en EU).
         const name = (err as Error).name
-        if (!wantForce || name === 'AbortError' || name === 'RateLimitError' || name === 'WalletReconciliationError' || name === 'AdmissionUnavailableError') throw err
+        if (!wantForce || name === 'AbortError' || name === 'RateLimitError' || name === 'WalletReconciliationError' || name === 'TrialExpiredError' || name === 'AdmissionUnavailableError') throw err
         once = await streamOnce(
           apiKey, apiMessages, openaiTools, onToken, controller, model, temperature, false, options?.assertRequestCurrent, options?.beforeDocumentRequest
         )
@@ -429,6 +428,7 @@ async function streamOnce(
       OpenAI-compatible). Vide si absent du flux. */
   servedModel?: string
 }> {
+  const receipt = captureAiEntitlementReceipt(!apiKey || apiKey === 'server-provided', controller.signal, assertRequestCurrent)
   // C9 : headers factorisés (BYOK Bearer + garde server-provided + google-token/trial).
   const headers = await buildAiHeaders({ byokKey: apiKey, auth: 'bearer', assertRequestCurrent })
 
@@ -512,11 +512,11 @@ async function streamOnce(
     })
   }
 
-  updateTrialFromResponse(response)
+  receipt.updateTrial(response)
 
   if (!response.ok) {
     const err = await response.text().catch(() => '')
-    const walletError = admissionUnavailableError(response.status, err) ?? walletReconciliationError(response.status, err)
+    const walletError = admissionUnavailableError(response.status, err) ?? receipt.error(response.status, err)
     if (walletError) throw walletError
     // Catégorie « clé serveur à sec » remontée par le proxy (BUG 64) : testée
     // AVANT le mapping par status, car Mistral signale ce cas en 429 — sans
